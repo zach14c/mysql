@@ -205,6 +205,12 @@ inline void reset_floating_point_exceptions()
 extern "C" int gethostname(char *name, int namelen);
 #endif
 
+/* 
+  Online backup initialization and shutdown functions - defined in 
+  backup/kernel.cc
+ */
+int backup_init();
+void backup_shutdown();
 
 /* Constants */
 
@@ -581,7 +587,6 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
 		LOCK_crypt, LOCK_bytes_sent, LOCK_bytes_received,
 	        LOCK_global_system_variables,
 		LOCK_user_conn, LOCK_slave_list, LOCK_active_mi;
-pthread_mutex_t LOCK_backup;
 
 /*
   The below lock protects access to two global server variables:
@@ -1225,6 +1230,7 @@ void clean_up(bool print_message)
     udf_free();
 #endif
   }
+  backup_shutdown();
   plugin_shutdown();
   ha_end();
   if (tc_log)
@@ -1341,7 +1347,6 @@ static void clean_up_mutexes()
   (void) pthread_mutex_destroy(&LOCK_bytes_sent);
   (void) pthread_mutex_destroy(&LOCK_bytes_received);
   (void) pthread_mutex_destroy(&LOCK_user_conn);
-  (void) pthread_mutex_destroy(&LOCK_backup);
   Events::destroy_mutexes();
 #ifdef HAVE_OPENSSL
   (void) pthread_mutex_destroy(&LOCK_des_key_file);
@@ -3099,7 +3104,6 @@ static int init_thread_environment()
   (void) pthread_mutex_init(&LOCK_global_read_lock, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_prepared_stmt_count, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_uuid_generator, MY_MUTEX_INIT_FAST);
-  (void) pthread_mutex_init(&LOCK_backup, MY_MUTEX_INIT_FAST);
 #ifdef HAVE_OPENSSL
   (void) pthread_mutex_init(&LOCK_des_key_file,MY_MUTEX_INIT_FAST);
 #ifndef HAVE_YASSL
@@ -3455,6 +3459,12 @@ server.");
                   (opt_help ? PLUGIN_INIT_SKIP_INITIALIZATION : 0)))
   {
     sql_print_error("Failed to initialize plugins.");
+    unireg_abort(1);
+  }
+
+  if (backup_init())
+  {
+    sql_print_error("Failed to initialize online backup.");
     unireg_abort(1);
   }
 

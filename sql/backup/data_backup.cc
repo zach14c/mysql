@@ -256,7 +256,7 @@ class Scheduler
   void remove_pump(Pump_iterator&);
   void cancel_backup();
 
-  friend int write_table_data(THD*, Backup_info&, OStream&);
+  friend int write_table_data(THD*, Logger&, Backup_info&, OStream&);
   friend class Pump_iterator;
 };
 
@@ -463,14 +463,14 @@ int unblock_commits(THD *thd)
 
   @returns 0 on success.
  */
-int write_table_data(THD* thd, Backup_info &info, OStream &s)
+int write_table_data(THD* thd, Logger &log, Backup_info &info, OStream &s)
 {
   DBUG_ENTER("backup::write_table_data");
 
-  if (info.snap_count==0 || info.table_count==0) // nothing to backup
+  if (info.snap_count()==0 || info.table_count()==0) // nothing to backup
     DBUG_RETURN(0);
 
-  Scheduler   sch(s,&info);         // scheduler instance
+  Scheduler   sch(s,&log);          // scheduler instance
   List<Scheduler::Pump>  inactive;  // list of images not yet being created
   size_t      max_init_size=0;      // keeps maximal init size for images in inactive list
   time_t      vp_time;              // to store validity point time
@@ -487,15 +487,10 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
       continue;
 
     Scheduler::Pump *p= new Scheduler::Pump(*i,s);
-    
-    /*
-      Record the backup id and name for this driver.
-    */
-    report_ob_engines(info.backup_prog_id, p->m_name);
 
     if (!p || !p->is_valid())
     {
-      info.report_error(ER_OUT_OF_RESOURCES);
+      log.report_error(ER_OUT_OF_RESOURCES);
       goto error;
     }
 
@@ -597,10 +592,14 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
     if (sch.step())
       goto error;
 
-    // VP creation
+    /**** VP creation (start) ********************************************/
+    
     DBUG_PRINT("backup_data",("-- SYNC PHASE --"));
 
-    report_ob_state(info.backup_prog_id, BUP_VALIDITY_POINT);
+    LOG_INFO binlog_pos;
+    
+    log.report_state(BUP_VALIDITY_POINT);
+    
     /*
       Block commits.
 
@@ -621,13 +620,7 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
       Save binlog information for point in time recovery on restore.
     */
     if (mysql_bin_log.is_open())
-    {
-      LOG_INFO li;
-      mysql_bin_log.get_current_log(&li);
-      info.save_binlog_pos(li);
-      DBUG_PRINT("backup_ptr_pos", ("%d", (int) li.pos));
-      DBUG_PRINT("backup_ptr_logname", ("%s", li.log_file_name));
-    }
+      mysql_bin_log.get_current_log(&binlog_pos);
 
     /*
       Save VP creation time.
@@ -653,14 +646,22 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
       timing of the validity point.
     */
     BACKUP_BREAKPOINT("bp_vp_state");
+
+    // Report and save information about VP
+
     info.save_vp_time(vp_time);
-    report_ob_vp_time(info.backup_prog_id, vp_time);
-    report_ob_state(info.backup_prog_id, BUP_RUNNING);
-    BACKUP_BREAKPOINT("bp_running_state");
+    log.report_vp_time(vp_time);
 
     if (mysql_bin_log.is_open())
-      report_ob_binlog_info(info.backup_prog_id, 
-                            info.binlog_pos.pos, info.binlog_pos.file);
+    {
+      info.save_binlog_pos(binlog_pos);
+      log.report_binlog_pos(info.binlog_pos);
+    }
+
+    log.report_state(BUP_RUNNING);
+    BACKUP_BREAKPOINT("bp_running_state");
+
+    /**** VP creation (done) ********************************************/
 
     // get final data from drivers
     DBUG_PRINT("backup_data",("-- FINISH PHASE --"));
@@ -1352,13 +1353,13 @@ namespace backup {
 /**
   Read backup image data from a backup stream and forward it to restore drivers.
  */
-int restore_table_data(THD*, Restore_info &info, IStream &s)
+int restore_table_data(THD*, Logger &log, Restore_info &info, IStream &s)
 {
   DBUG_ENTER("restore::restore_table_data");
 
   enum { READING, SENDING, DONE, ERROR } state= READING;
 
-  if (info.snap_count==0 || info.table_count==0) // nothing to restore
+  if (info.snap_count()==0 || info.table_count()==0) // nothing to restore
     DBUG_RETURN(0);
 
   Restore_driver* drv[256];
@@ -1366,16 +1367,16 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
   TABLE_LIST *table_list= 0;
   TABLE_LIST *table_list_last= 0;
 
-  if (info.snap_count > 256)
+  if (info.snap_count() > 256)
   {
-    info.report_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count, 256);
+    log.report_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count(), 256);
     DBUG_RETURN(ERROR);
   }
 
-  // Initializing restore drivers
+  // Create restore drivers
   result_t res;
 
-  for (uint no=0; no < info.snap_count; ++no)
+  for (uint no=0; no < info.snap_count(); ++no)
   {
     drv[no]= NULL;
 
@@ -1388,16 +1389,10 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
     res= snap->get_restore_driver(drv[no]);
     if (res == backup::ERROR)
     {
-      info.report_error(ER_BACKUP_CREATE_RESTORE_DRIVER,snap->name());
+      log.report_error(ER_BACKUP_CREATE_RESTORE_DRIVER,snap->name());
       goto error;
     };
-
-    res= drv[no]->begin(0);
-    if (res == backup::ERROR)
-    {
-      info.report_error(ER_BACKUP_INIT_RESTORE_DRIVER,snap->name());
-      goto error;
-    }
+    
     /*
       Collect tables from default and snapshot for open and lock tables.
       There should be at most only 1 of each driver.
@@ -1406,11 +1401,33 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
         (snap->type() == Snapshot_info::CS_SNAPSHOT))
       get_default_snapshot_tables(NULL, (default_backup::Restore *)drv[no],
                                   &table_list, &table_list_last);
+  }
 
-    /*
-      Record the name for this driver.
-    */
-    report_ob_engines(info.backup_prog_id, snap->name());
+  /*
+    Open tables for default and snapshot drivers.
+  */
+  if (table_list)
+  {
+    table_list->lock_type= TL_WRITE;
+    query_cache.invalidate_locked_for_write(table_list);
+    if (open_and_lock_tables(::current_thd, table_list))
+    {
+      log.report_error(ER_BACKUP_OPEN_TABLES, "restore");
+      DBUG_RETURN(backup::ERROR);
+    }
+    if (table_list_last)
+      table_list_last->next_global= NULL; // break lists
+  }
+
+  // Initialize the drivers.
+  for (uint no=0; no < info.snap_count(); ++no)
+  {
+    res= drv[no]->begin(0);
+    if (res == backup::ERROR)
+    {
+      log.report_error(ER_BACKUP_INIT_RESTORE_DRIVER,info.m_snap[no]->name());
+      goto error;
+    }
   }
 
   {
@@ -1424,24 +1441,6 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
 
     Restore_driver  *drvr= NULL;  // pointer to the current driver
     Snapshot_info   *snap= NULL;   // corresponding snapshot object
-
-    /*
-      Open tables for default and snapshot drivers.
-    */
-    if (table_list)
-    {
-      table_list->lock_type= TL_WRITE;
-      query_cache.invalidate_locked_for_write(table_list);
-      if (open_and_lock_tables(::current_thd, table_list))
-      {
-        DBUG_PRINT("restore",
-          ( "error on open tables for default and snapshot drivers!" ));
-        info.report_error(ER_BACKUP_OPEN_TABLES, "restore");
-        DBUG_RETURN(backup::ERROR);
-      }
-      if (table_list_last)
-        table_list_last->next_global= NULL; // break lists
-    }
 
     // main data reading loop
 
@@ -1468,7 +1467,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
           break;
 
         case BSTREAM_ERROR:
-          info.report_error(ER_BACKUP_READ_DATA);
+          log.report_error(ER_BACKUP_READ_DATA);
         default:
           state= ERROR;
           goto error;
@@ -1488,7 +1487,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
         buf.data= chunk_info.data.begin;
         buf.size= chunk_info.data.end - chunk_info.data.begin;
 
-        if (snap_no > info.snap_count || !(drvr= drv[snap_no]))
+        if (snap_no > info.snap_count() || !(drvr= drv[snap_no]))
         {
           DBUG_PRINT("restore",("Skipping data from snapshot #%u",snap_no));
           state= READING;
@@ -1523,7 +1522,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
         case backup::ERROR:
           if( errors > MAX_ERRORS )
           {
-            info.report_error(ER_BACKUP_SEND_DATA, buf.table_no, snap->name());
+            log.report_error(ER_BACKUP_SEND_DATA, buf.table_no, snap->name());
             state= ERROR;
             goto error;
           }
@@ -1535,7 +1534,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
         default:
           if( repeats > MAX_REPEATS )
           {
-            info.report_error(ER_BACKUP_SEND_DATA_RETRY, repeats, snap->name());
+            log.report_error(ER_BACKUP_SEND_DATA_RETRY, repeats, snap->name());
             state= ERROR;
             goto error;
           }
@@ -1558,7 +1557,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
 
     String bad_drivers;
 
-    for (uint no=0; no < info.snap_count; ++no)
+    for (uint no=0; no < info.snap_count(); ++no)
     {
       if (!drv[no])
         continue;
@@ -1578,7 +1577,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
     }
 
     if (!bad_drivers.is_empty())
-      info.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
+      log.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
   }
 
   /*
@@ -1593,7 +1592,7 @@ int restore_table_data(THD*, Restore_info &info, IStream &s)
 
   DBUG_PRINT("restore",("Cancelling restore process"));
 
-  for (uint no=0; no < info.snap_count; ++no)
+  for (uint no=0; no < info.snap_count(); ++no)
   {
     if (!drv[no])
       continue;

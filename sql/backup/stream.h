@@ -4,7 +4,8 @@
 #include <backup_stream.h>
 
 #include <backup/api_types.h>    // for Buffer definition
-#include "debug.h"        // for definition of DBUG_BACKUP
+#include <backup/debug.h>        // for definition of DBUG_BACKUP
+#include <backup/logger.h>
 
 /**
   @file
@@ -49,6 +50,14 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob);
 
  ****************************************************/
 
+struct fd_stream: public backup_stream
+{
+  int m_fd;
+  size_t bytes;
+  
+  fd_stream(): m_fd(-1), bytes(0) {}
+};
+
 /**
   Base for @c OStream and @c IStream.
 
@@ -57,29 +66,29 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob);
   so that an instance of @c Stream class can be passed to backup stream library
   functions.
 */
-class Stream: public backup_stream
+class Stream: public fd_stream
 {
  public:
 
   bool open();
-  void close();
+  virtual void close();
   bool rewind();
 
   /// Check if stream is opened
   bool is_open() const
   { return m_fd>0; }
 
-  ~Stream()
+  virtual ~Stream()
   { close(); }
 
  protected:
 
-  Stream(const ::String&, int);
+  Stream(Logger&, const ::String&, int);
 
-  int     m_fd;
   String  m_path;
   int     m_flags;  ///< flags used when opening the file
   size_t  m_block_size;
+  Logger  m_log;
 
   friend int stream_write(void*,bstream_blob*,bstream_blob);
   friend int stream_read(void*,bstream_blob*,bstream_blob);
@@ -91,12 +100,10 @@ class OStream:
 {
  public:
 
-  size_t bytes; ///< number of bytes written
-
-  OStream(const ::String&);
+  OStream(Logger&, const ::String&);
 
   bool open();
-  void close(bool destroy=TRUE);
+  void close();
   bool rewind();
 
  private:
@@ -110,12 +117,10 @@ class IStream:
 {
  public:
 
-  size_t bytes; ///< number of bytes read
-
-  IStream(const ::String &name);
+  IStream(Logger&, const ::String &name);
 
   bool open();
-  void close(bool destroy=TRUE);
+  void close();
   bool rewind();
 
   int next_chunk();

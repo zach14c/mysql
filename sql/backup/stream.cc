@@ -34,7 +34,7 @@ extern "C" int stream_write(void *instance, bstream_blob *buf, bstream_blob)
   DBUG_ASSERT(instance);
   DBUG_ASSERT(buf);
 
-  OStream *s= (OStream*)instance;
+  fd_stream *s= (fd_stream*)instance;
 
   fd= s->m_fd;
 
@@ -76,7 +76,7 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
   DBUG_ASSERT(instance);
   DBUG_ASSERT(buf);
 
-  IStream *s= (IStream*)instance;
+  fd_stream *s= (fd_stream*)instance;
 
   fd= s->m_fd;
 
@@ -113,8 +113,8 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 }
 
 
-Stream::Stream(const ::String &name, int flags):
-  m_fd(-1), m_path(name), m_flags(flags)
+Stream::Stream(Logger &log, const ::String &name, int flags):
+  m_path(name), m_flags(flags), m_block_size(0), m_log(log)
 {
   bzero(&stream, sizeof(stream));
   bzero(&buf, sizeof(buf));
@@ -146,8 +146,8 @@ bool Stream::rewind()
 }
 
 
-OStream::OStream(const ::String &name):
-  Stream(name,O_WRONLY|O_CREAT|O_EXCL|O_TRUNC), bytes(0)
+OStream::OStream(Logger &log, const ::String &name):
+  Stream(log, name, O_WRONLY|O_CREAT|O_EXCL|O_TRUNC)
 {
   stream.write= stream_write;
   m_block_size=0; // use default block size provided by the backup stram library
@@ -189,7 +189,7 @@ int OStream::write_magic_and_version()
 */
 bool OStream::open()
 {
-  close(FALSE);
+  close();
 
   bool ret= Stream::open();
 
@@ -216,16 +216,13 @@ bool OStream::open()
 
   If @c destroy is TRUE, the stream object is deleted.
 */
-void OStream::close(bool destroy)
+void OStream::close()
 {
   if (m_fd<0)
     return;
 
   bstream_close(this);
   Stream::close();
-
-  if (destroy)
-    delete this;
 }
 
 /**
@@ -255,8 +252,8 @@ bool OStream::rewind()
 }
 
 
-IStream::IStream(const ::String &name):
-  Stream(name,O_RDONLY), bytes(0)
+IStream::IStream(Logger &log, const ::String &name):
+  Stream(log, name, O_RDONLY)
 {
   stream.read= stream_read;
 }
@@ -301,7 +298,7 @@ int IStream::check_magic_and_version()
 */
 bool IStream::open()
 {
-  close(FALSE);
+  close();
 
   bool ret= Stream::open();
 
@@ -328,16 +325,13 @@ bool IStream::open()
 
   If @c destroy is TRUE, the stream object is deleted.
 */
-void IStream::close(bool destroy)
+void IStream::close()
 {
   if (m_fd<0)
     return;
 
   bstream_close(this);
   Stream::close();
-
-  if (destroy)
-    delete this;
 }
 
 /**

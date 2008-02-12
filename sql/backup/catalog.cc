@@ -1,10 +1,6 @@
 #include "../mysql_priv.h"
 
-#include <backup_stream.h>
-#include "backup_aux.h"
 #include "catalog.h"
-#include "be_snapshot.h"
-#include "be_default.h"
 #include "be_native.h"
 
 /**
@@ -18,12 +14,16 @@
 
 namespace backup {
 
-/* Image_info implementation */
-
 Image_info::Image_info():
-  backup_prog_id(0), table_count(0), data_size(0)
+  data_size(0), m_table_count(0), m_dbs(16,16)
 {
+  init_alloc_root(&mem_root, 4 * 1024, 0);
+
   /* initialize st_bstream_image_header members */
+
+  bzero(static_cast<st_bstream_image_header*>(this),
+        sizeof(st_bstream_image_header));
+
   version= 1;
 
   /*
@@ -44,20 +44,14 @@ Image_info::Image_info():
                             strlen((const char*)server_version.extra.begin);
 
   flags= 0;  // TODO: set BSTREAM_FLAG_BIG_ENDIAN flag accordingly
-  snap_count= 0;
 
-  bzero(&start_time,sizeof(start_time));
-  bzero(&end_time,sizeof(end_time));
-  bzero(&vp_time,sizeof(vp_time));
-  bzero(&binlog_pos,sizeof(binlog_pos));
-  bzero(&binlog_group,sizeof(binlog_group));
-  bzero(m_snap, sizeof(m_snap));
+  bzero(m_snap,sizeof(m_snap));
 }
 
 Image_info::~Image_info()
 {
-  // Delete snapshot objects
-
+  // Delete server table objects 
+  
   for (uint no=0; no<256; ++no)
   {
     Snapshot_info *snap= m_snap[no];
@@ -67,93 +61,194 @@ Image_info::~Image_info()
     
     for (uint i=0; i < snap->table_count(); ++i)
     {
-      Table_item *t= snap->get_table(i);
+      Table *t= snap->get_table(i);
       
       if (!t)
         continue;
         
-      delete t->obj_ptr();
+      delete t->m_obj_ptr;
     }
-    
-    delete snap;
-    m_snap[no]= NULL;
   }
-  
-  // delete server object instances as we own them.
+
+  // delete server database objects 
 
   for (uint i=0; i < db_count(); ++i)
   {
-    Db_item *db= m_db[i];
+    Db *db= get_db(i);
     
     if (db)
-      delete db->obj_ptr();
+      delete db->m_obj_ptr;
   }
+
+  free_root(&mem_root, MYF(0));
 }
 
 
-void Image_info::save_time(const time_t t, bstream_time_t &buf)
+Image_info::Db* 
+Image_info::add_db(const String &db_name, ulong pos)
 {
-  struct tm time;
-  gmtime_r(&t,&time);
-  buf.year= time.tm_year;
-  buf.mon= time.tm_mon;
-  buf.mday= time.tm_mday;
-  buf.hour= time.tm_hour;
-  buf.min= time.tm_min;
-  buf.sec= time.tm_sec;  
-}
-
-result_t Image_info::Item::get_serialization(THD *thd, ::String &buf)
-{
-  obs::Obj *obj= obj_ptr();
+  Db *db= new (&mem_root) Db(db_name);
   
-  DBUG_ASSERT(obj);
+  if (!db)
+  {
+    // TODO: report error
+    return NULL;
+  }
   
-  if (!obj)
-    return ERROR;
-    
-  return obj->serialize(thd, &buf) ? ERROR : OK;
+  if (m_dbs.insert(pos,db))
+  {
+    // TODO: report error
+    return NULL;
+  }
+  
+  db->base.pos= pos;
+  
+  return db;
 }
 
-/// Add table to database's table list.
-result_t Image_info::Db_item::add_table(Table_item &t)
+Image_info::Db* 
+Image_info::get_db(uint pos) const
 {
-  t.next_table= NULL;
-  t.base.db= this;
-
-  if (!m_last_table)
-  {
-    m_tables= m_last_table= &t;
-  }
-  else
-  {
-    m_last_table->next_table= &t;
-    m_last_table= &t;
-  }
-
-  table_count++;
-
-  return OK;
+  return m_dbs[pos];
 }
 
 /**
-  Locate in the catalogue an object described by the @c st_bstream_item_info
-  structure.
-
-  @todo Handle unknown item types.
-*/
-Image_info::Item*
-Image_info::locate_item(const st_bstream_item_info *item) const
+  Add snapshot to the catalogue.
+  
+  The snapshot should be non-empty, that is contain data of at least one table.
+  Snapshot is added to the list of snapshots used in the image and a number is
+  assigned to it. This number is stored in @c snap.m_no. If snapshot's number
+  is @c no then pointer to a corresponding @c Snapshot_info object is stored in 
+  @c m_snap[no-1].
+  
+  The @c Snapshot_info object is not owned by @c Image_info instance - it must
+  be deleted externally.
+ */ 
+int Image_info::add_snapshot(Snapshot_info &snap)
 {
-  switch (item->type) {
+  uint no= st_bstream_image_header::snap_count++;
+  
+  if (no > 256)
+    return -1;
+  
+  m_snap[no]= &snap;
+  snap.m_no= no+1;
+  
+  // Store information about snapshot in the snapshot[] table
+  
+  st_bstream_snapshot_info &info= snapshot[no];
+  
+  bzero(&info,sizeof(st_bstream_snapshot_info));
+  info.type= enum_bstream_snapshot_type(snap.type());
+  info.version= snap.version();
+  info.table_count= snap.table_count();
+  
+  if (snap.type() == Snapshot_info::NATIVE_SNAPSHOT)
+  {
+    Native_snapshot &ns= static_cast<Native_snapshot&>(snap);
+    uint se_ver= ns.se_ver();
+    const char *se_name= ns.se_name();
+    
+    info.engine.major= se_ver >> 8;
+    info.engine.minor= se_ver & 0xFF;
+    info.engine.name.begin= (byte*)se_name;
+    info.engine.name.end= info.engine.name.begin + strlen(se_name);    
+  }
+  
+  return no+1;
+}
+
+/**
+  Add table to the catalogue.
+  
+  Table's data snapshot is added to the catalogue if it was not there already.
+  
+  FIXME: add_table should generate error if table name starts with 'b' (?)
+ */
+Image_info::Table* 
+Image_info::add_table(Db &db, const String &table_name, 
+                      Snapshot_info &snap, ulong pos)
+{
+  Table *t= new (&mem_root) Table(db, table_name);
+  
+  if (!t)
+  {
+    // TODO: report error
+    return NULL;
+  }
+
+  if (snap.add_table(*t, pos))
+  {
+    // TODO: report error
+    return NULL;
+  }
+  
+  if (db.add_table(*t))
+  {
+    // TODO: report error
+    return NULL;
+  }
+
+  if (!snap.m_no)
+    snap.m_no= add_snapshot(snap); // reports errors
+
+  if (!snap.m_no)
+   return NULL;
+
+  t->snap_no= snap.m_no - 1;
+  t->base.base.pos= pos;
+  t->base.db= &db;
+
+  m_table_count++;
+
+  return t;  
+}
+
+Image_info::Table* 
+Image_info::get_table(uint snap_no, ulong pos) const
+{
+  if (snap_no > snap_count() || m_snap[snap_no] == NULL)
+  {
+    // TODO: report error
+    return NULL;
+  }
+  
+  Table *t= m_snap[snap_no]->get_table(pos);
+  
+  if (!t)
+  {
+    // TODO: report error
+    return NULL;
+  }
+  
+  return t;
+}
+
+/**
+  Locate given item in a backup image catalogue.
+  
+  The positon of the item is stored in @c item structure in the format 
+  appropriate for the type of the object. Normally @c item is filled by 
+  backup stream library functions when reading backup image.
+  
+  @returns Pointer to the @c Image_info::Obj instance corresponding to the
+  object indicated by @c item or NULL if the object could not be found in
+  the catalogue.
+*/
+Image_info::Obj *find_obj(const Image_info &info, 
+                          const st_bstream_item_info &item)
+{
+  switch (item.type) {
 
   case BSTREAM_IT_DB:
-    return get_db(item->pos);
+    return info.get_db(item.pos);
 
   case BSTREAM_IT_TABLE:
   {
-    const st_bstream_table_info *ti= reinterpret_cast<const st_bstream_table_info*>(item);
-    return get_table(ti->snap_no,item->pos);
+    const st_bstream_table_info &ti= 
+                           reinterpret_cast<const st_bstream_table_info&>(item);
+
+    return info.get_table(ti.snap_no,item.pos);
   }
 
   default:
@@ -164,34 +259,43 @@ Image_info::locate_item(const st_bstream_item_info *item) const
 
 } // backup namespace
 
+template class Map<uint,backup::Image_info::Db>;
 
-/* catalogue services for backup stream library */
 
-extern "C" {
+/*************************************************
 
-/* iterators */
+               CATALOGUE SERVICES
+
+ *************************************************/
+
+/*
+  Iterators - used by the backup stream library to enumerate objects to be
+  saved in a backup image.
+ */ 
 
 static uint cset_iter;  ///< Used to implement trivial charset iterator.
 static uint null_iter;  ///< Used to implement trivial empty iterator.
 
+/// Return pointer to an instance of iterator of a given type.
+extern "C"
 void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 {
   switch (type) {
 
-  case BSTREAM_IT_PERDB:
-  case BSTREAM_IT_PERTABLE:
+  case BSTREAM_IT_PERDB:    // per-db objects, except tables
+  case BSTREAM_IT_PERTABLE: // per-table objects
     return &null_iter;
 
-  case BSTREAM_IT_CHARSET:
+  case BSTREAM_IT_CHARSET:  // character sets
     cset_iter= 0;
     return &cset_iter;
 
-  case BSTREAM_IT_USER:
+  case BSTREAM_IT_USER:     // users
     return &null_iter;
 
-  case BSTREAM_IT_GLOBAL:
+  case BSTREAM_IT_GLOBAL:   // all global objects
     // only global items (for which meta-data is stored) are databases
-  case BSTREAM_IT_DB:
+  case BSTREAM_IT_DB:       // all databases
     return
     new backup::Image_info::Db_iterator(*static_cast<backup::Image_info*>(catalogue));
     // TODO: report error if iterator could not be created
@@ -202,9 +306,13 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   }
 }
 
+/// Return next item pointed by a given iterator and advance it to the next positon.
+extern "C"
 struct st_bstream_item_info*
 bcat_iterator_next(st_bstream_image_header *catalogue, void *iter)
 {
+  using namespace backup;
+
   /* If this is the null iterator, return NULL immediately */
   if (iter == &null_iter)
     return NULL;
@@ -219,8 +327,8 @@ bcat_iterator_next(st_bstream_image_header *catalogue, void *iter)
   if (iter == &cset_iter)
   {
     switch (cset_iter) {
-      case 0: name.begin= (byte*)::my_charset_utf8_bin.csname; break;
-      case 1: name.begin= (byte*)::system_charset_info->csname; break;
+      case 0: name.begin= (byte*)my_charset_utf8_bin.csname; break;
+      case 1: name.begin= (byte*)system_charset_info->csname; break;
       default: name.begin= NULL; break;
     }
 
@@ -234,11 +342,12 @@ bcat_iterator_next(st_bstream_image_header *catalogue, void *iter)
     In all other cases assume that iter points at instance of
     @c Image_info::Iterator and use this instance to get next item.
    */
-  const backup::Image_info::Item *ptr= (*(backup::Image_info::Iterator*)iter)++;
+  const Image_info::Obj *ptr= (*(Image_info::Iterator*)iter)++;
 
   return ptr ? (st_bstream_item_info*)(ptr->info()) : NULL;
 }
 
+extern "C"
 void  bcat_iterator_free(st_bstream_image_header *catalogue, void *iter)
 {
   /*
@@ -256,33 +365,46 @@ void  bcat_iterator_free(st_bstream_image_header *catalogue, void *iter)
 
 /* db-items iterator */
 
-void* bcat_db_iterator_get(st_bstream_image_header *catalogue, struct st_bstream_db_info *db)
+/** 
+  Return pointer to an iterator for iterating over objects inside a given 
+  database.
+ */
+extern "C"
+void* bcat_db_iterator_get(st_bstream_image_header *catalogue, struct st_bstream_db_info *dbi)
 {
   using namespace backup;
+  
+  DBUG_ASSERT(catalogue);
+  DBUG_ASSERT(dbi);
+  
+  Image_info *info= static_cast<backup::Image_info*>(catalogue);
+  Image_info::Db *db = info->get_db(dbi->base.pos);
 
-  Image_info::Db_item *dbi = static_cast<Image_info::Db_item*>(db);
+  if (!db)
+  {
+    // TODO: reprt error
+    return NULL;
+  }
 
-  return
-  new Image_info::Ditem_iterator(*static_cast<backup::Image_info*>(catalogue),
-                                 *dbi);
+  return new Image_info::DbObj_iterator(*info, *db);
 }
 
+extern "C"
 struct st_bstream_dbitem_info*
 bcat_db_iterator_next(st_bstream_image_header *catalogue,
                         struct st_bstream_db_info *db,
                         void *iter)
 {
-  const backup::Image_info::Item *ptr= (*(backup::Image_info::Iterator*)iter)++;
+  const backup::Image_info::Obj *ptr= (*(backup::Image_info::Iterator*)iter)++;
 
   return ptr ? (st_bstream_dbitem_info*)ptr->info() : NULL;
 }
 
+extern "C"
 void  bcat_db_iterator_free(st_bstream_image_header *catalogue,
                               struct st_bstream_db_info *db,
                               void *iter)
 {
-  delete (backup::Image_info::Ditem_iterator*)iter;
-}
-
+  delete (backup::Image_info::DbObj_iterator*)iter;
 }
 

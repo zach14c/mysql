@@ -114,10 +114,10 @@ class CS_snapshot: public Snapshot_info
 {
  public:
 
-  CS_snapshot()
-  {
-    version= 1;
-  }
+  CS_snapshot(Logger&): Snapshot_info(1) // current version no is 1
+  {}
+  CS_snapshot(Logger&, version_t ver): Snapshot_info(ver)
+  {}
 
   enum_snap_type type() const
   { return CS_SNAPSHOT; }
@@ -125,8 +125,10 @@ class CS_snapshot: public Snapshot_info
   const char* name() const
   { return "Snapshot"; }
 
-  bool accept(const Table_ref&, const ::handlerton* h)
+  bool accept(const Table_ref&, const storage_engine_ref se)
   {
+    ::handlerton *h= se_hton(se);
+
     return (h->start_consistent_snapshot != NULL);
   }; // accept all tables that support consistent read
 

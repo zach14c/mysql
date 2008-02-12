@@ -4,6 +4,7 @@
 #include <backup/api_types.h>
 #include <backup/catalog.h>
 #include <backup/logger.h>
+#include <backup/stream_services.h>
 
 /**
   @file
@@ -19,220 +20,271 @@
 #define DATA_BUFFER_SIZE  (1024*1024)
 
 /*
+  Functions used to initialize and shut down the online backup system.
+  
+  Note: these functions are called at plugin load and plugin shutdown time,
+  respectively.
+ */ 
+int backup_init();
+void backup_shutdown();
+
+/*
   Called from the big switch in mysql_execute_command() to execute
   backup related statement
 */
 int execute_backup_command(THD*, LEX*);
 
-namespace backup {
+// forward declarations
 
-class Image_info;
 class Backup_info;
 class Restore_info;
 
-} // backup namespace
-
-// Backup kernel API
-
-int mysql_backup(THD*, backup::Backup_info&, backup::OStream&);
-int mysql_restore(THD*, backup::Restore_info&, backup::IStream&);
-
-
 namespace backup {
 
-/**
-  Represents a location where backup archive can be stored.
+class Mem_allocator;
+class OStream;
+class IStream;
+class Native_snapshot;
 
-  The class is supposed to represent the location on the abstract level
-  so that it is easier to add new types of locations.
+int write_table_data(THD*, Logger&, Backup_info&, OStream&);
+int restore_table_data(THD*, Logger&, Restore_info&, IStream&);
 
-  Currently we support only files on the server's file system. Thus the
-  only type of location is a path to a file.
- */
-
-struct Location
-{
-  /// Type of location
-  enum enum_type {SERVER_FILE, INVALID};
-  bool read;
-
-  virtual enum_type type() const
-  { return INVALID; }
-
-  virtual ~Location() {}  // we want to inherit this class
-
-  /// Deallocate any resources used by Location object.
-  virtual void free()
-  { delete this; }  // use destructor to free resources
-
-  /** 
-    Determine if the location is valid
-  
-    An invalid location will not be used.
-    
-    @retval TRUE  Location is valid.
-    @retval FALSE Location is invalid.
-  */
-  virtual bool is_valid() =0;
-  
-  /// Describe location for debug purposes
-  virtual const char* describe()
-  { return "Invalid location"; }
-
-  /**
-    Remove any system resources connected to that location.
-
-    When location is opened for writing, some system resources will be usually
-    created (depending on the type of the location). For example, a file in the
-    file system. This method should remove/free any such resources. If no
-    resources were created, the method should do nothing.
-    
-    @returns OK on success, ERROR otherwise.
-   */ 
-  virtual result_t remove() =0;
-
-  /**
-    Interpret string passed to BACKUP/RESTORE statement as backup location
-    and construct corresponding Location object.
-
-    @returns NULL if the string doesn't denote a valid location
-   */
-  static Location* find(const LEX_STRING&);
-};
-
+}
 
 /**
-  Specialization of @c Image_info which adds methods for selecting items
-  to backup.
-
-  When Backup_info object is created it is empty and ready for adding items
-  to it. Methods @c add_table() @c add_db(), @c add_dbs() and @c add_all_dbs()
-  can be used for that purpose (currently only databases and tables are
-  supported). After populating info object with items it should be "closed"
-  with a call to @c close() method. After that it is ready for use as a
-  description of backup archive to be created.
-*/
-class Backup_info: public Image_info, public Logger
+  Instances of this class are used for creating required context and performing
+  backup/restore operations.
+  
+  @see kernel.cc
+ */ 
+class Backup_restore_ctx: public backup::Logger 
 {
  public:
 
-  Backup_info(THD*);
+  Backup_restore_ctx(THD*);
+  ~Backup_restore_ctx();
+
+  bool is_valid() const;
+  ulong op_id() const;
+
+  Backup_info*  prepare_for_backup(LEX_STRING location);
+  Restore_info* prepare_for_restore(LEX_STRING location);  
+
+  int do_backup();
+  int do_restore();
+
+  int close();
+
+  THD *m_thd;
+
+ private:
+
+  static bool is_running; ///< Indicates if a backup/restore operation is in progress.
+  static pthread_mutex_t  run_lock; ///< To guard @c is_running flag.
+
+  /** 
+    @brief State of a context object. 
+    
+    Backup/restore can be performed only if object is prepared for that operation.
+   */
+  enum { CREATED,
+         PREPARED_FOR_BACKUP,
+         PREPARED_FOR_RESTORE,
+         CLOSED } m_state;
+
+  ulong m_thd_options;  ///< For saving thd->options.
+  /**
+    If backup/restore was interrupted by an error, this member stores the error 
+    number.
+   */ 
+  int m_error;
+  
+  const char *m_path;   ///< Path to the file where backup image is located.
+  bool m_remove_loc;    ///< If true, the backup image file is deleted at clean-up time.
+  backup::Stream *m_stream; ///< Pointer to the backup stream object if it is opened.
+  backup::Image_info *m_catalog;  ///< Pointer to the image catalogue object.
+  static backup::Mem_allocator *mem_alloc; ///< Memory allocator for backup stream library.
+
+  int prepare(LEX_STRING location);
+  void disable_fkey_constraints();
+  
+  friend class Backup_info;
+  friend class Restore_info;
+  friend int backup_init();
+  friend void backup_shutdown();
+  friend bstream_byte* bstream_alloc(unsigned long int);
+  friend void bstream_free(bstream_byte *ptr);
+};
+
+/// Check if instance is correctly created.
+inline
+bool Backup_restore_ctx::is_valid() const
+{
+  return m_error == 0;
+}
+
+/// Return global id of the backup/restore operation.
+inline
+ulong Backup_restore_ctx::op_id() const
+{
+  return m_op_id; // inherited from Logger class
+}
+
+/// Disable foreign key constraint checks (needed during restore).
+inline
+void Backup_restore_ctx::disable_fkey_constraints()
+{
+  m_thd->options|= OPTION_NO_FOREIGN_KEY_CHECKS;
+}
+
+/**
+  Specialization of @c Image_info which adds methods for selecting objects
+  to backup.
+
+  A pointer to empty @c Backup_info instance is returned by 
+  @c Backup_restore_ctx::prepare_for_backup() method.
+  Methods @c add_dbs() or @c add_all_dbs() can be used to select which databases
+  should be backed up. When this is done, the @c Backup_info object should be
+  "closed" with @c close() method. Only then it is ready to be used in a backup
+  operation.
+*/
+class Backup_info: public backup::Image_info
+{
+ public:
+
+  Backup_restore_ctx &m_ctx;
+
+  Backup_info(Backup_restore_ctx&);
   ~Backup_info();
 
-  bool is_valid()
-  {
-    bool ok= TRUE;
-
-    switch (m_state) {
-
-    case ERROR:
-      ok= FALSE;
-      break;
-
-    case INIT:
-      ok= (i_s_tables != NULL);
-      break;
-
-    default:
-      ok= TRUE;
-    }
-
-    if (!ok)
-      m_state= ERROR;
-
-    return ok;
-  }
+  bool is_valid();
 
   int add_dbs(List< ::LEX_STRING >&);
   int add_all_dbs();
 
-  bool close();
+  int close();
 
  private:
 
   /// State of the info structure.
-  enum {INIT,   // structure ready for filling
-        READY,  // structure ready for backup (tables opened)
-        DONE,   // tables are closed
-        ERROR
-       }   m_state;
+  enum {CREATED,
+        CLOSED,  
+        ERROR}   m_state;
 
-  int find_backup_engine(const ::TABLE *const, const Table_ref&);
+  backup::Snapshot_info* find_backup_engine(const backup::Table_ref&);
 
-  Table_item* add_table(Db_item&, const Table_ref&);
+  Db* add_db(obs::Obj*);
+  Table* add_table(Db&, obs::Obj*);
 
-  int add_db_items(Db_item&);
-  int add_table_items(Table_item&);
-
-  THD    *m_thd;
-  TABLE  *i_s_tables;
-  String binlog_file_name; ///< stores name of the binlog at VP time
-
+  int add_db_items(Db&);
+  
   /**
-    @brief Storage for table and database names.
+    List of existing @c Snapshot_info objects.
+    
+    This list is used when selecting a backup engine for a given table. Order
+    of this list is important -- more preferred snapshots should come first. 
+   */ 
+  List<backup::Snapshot_info> snapshots;
+  
+  /**
+    Stores existing native snapshot objects.
+    
+    Given reference to a storage engine, a corresponding native snapshot object
+    can be quickly located if it was already created. 
+   */ 
+  Map<storage_engine_ref,backup::Native_snapshot > native_snapshots;
 
-    When adding tables or databases to the backup catalogue, their names
-    are stored in String objects, and these objects are appended to this
-    list so that they can be freed when Backup_info object is destroyed.
-  */
-  // FIXME: use better solution, e.g., MEM_ROOT
-  List<String>  name_strings;
-
-  void save_binlog_pos(const ::LOG_INFO &li)
-  {
-    binlog_file_name= li.log_file_name;
-    binlog_file_name.copy();
-    binlog_pos.pos= (unsigned long int)li.pos;
-    binlog_pos.file= binlog_file_name.c_ptr();
-  }
-
-  friend int write_table_data(THD*, Backup_info&, OStream&);
+  String serialization_buf; ///< Used to store serialization strings of backed-up objects.
+  
+  friend int backup::write_table_data(THD*, backup::Logger&, Backup_info&, 
+                                      backup::OStream&);
+  // Needs access to serialization_buf
+  friend int ::bcat_get_item_create_query(st_bstream_image_header *catalogue,
+                               struct st_bstream_item_info *item,
+                               bstream_blob *stmt);
 };
+
+/// Check if instance is correctly created.
+inline
+bool Backup_info::is_valid()
+{
+  return m_state != ERROR;
+}
+
+/**
+  Close @c Backup_info object after populating it with items.
+
+  After this call the @c Backup_info object is ready for use as a catalogue
+  for backup stream functions such as @c bstream_wr_preamble().
+ */
+inline
+int Backup_info::close()
+{
+  if (!is_valid())
+    return ERROR;
+
+  if (m_state == CLOSED)
+    return 0;
+
+  // report backup drivers used in the image
+  
+  for (uint no=0; no < snap_count(); ++no)
+    m_ctx.report_driver(m_snap[no]->name());
+  
+  m_state= CLOSED;
+  return 0;
+}  
 
 
 /**
-  Specialization of @c Image_info which is used to select and restore items
-  from a backup image.
+  Specialization of @c Image_info which is in restore operation.
 
-  An instance of this class is created by reading backup image header and it
-  describes its contents. @c Restore_info methods select which items
-  should be restored.
-
-  @note This class is not fully implemented. Right now it is not possible to
-  select items to restore - always all items are restored.
+  An instance of this class is created by 
+  @c Backup_restore_ctx::prepare_for_restore() method, which fills the catalogue
+  with data read from a backup image.
+  
+  Currently it is not possible to select objects which will be restored. Thus
+  this class can only be used to examine what is going to be restored.
  */
 
-class Restore_info: public Image_info, public Logger
+class Restore_info: public backup::Image_info
 {
-  bool m_valid;
-  THD  *m_thd;
-  const Db_ref *curr_db;
-
-  CHARSET_INFO *system_charset;
-  bool same_sys_charset;
-
  public:
 
-  Restore_info(THD*, IStream&);
+  Backup_restore_ctx &m_ctx;
+
+  Restore_info(Backup_restore_ctx&);
   ~Restore_info();
 
-  bool is_valid() const
-  { return m_valid; }
+  bool is_valid() const;
 
-  int restore_all_dbs()
-  { return 0; }
+ private:
 
-  /// Determine if given item is selected for restore.
-  bool selected(const Image_info::Item&)
-  { return TRUE; }
-
-  result_t restore_item(Item &it, String &sdata, String&);
-
-  friend int restore_table_data(THD*, Restore_info&, IStream&);
+  friend int backup::restore_table_data(THD*, backup::Logger&, Restore_info&, 
+                                        backup::IStream&);
   friend int ::bcat_add_item(st_bstream_image_header*,
                              struct st_bstream_item_info*);
 };
 
-} // backup namespace
+inline
+Restore_info::Restore_info(Backup_restore_ctx &ctx):
+  m_ctx(ctx)
+{}
+
+inline
+Restore_info::~Restore_info()
+{
+  /*
+    Delete Snapshot_info instances - they are created in bcat_reset(). 
+   */
+  for (uint no=0; no < snap_count(); ++no)
+    delete m_snap[no];
+}
+
+inline
+bool Restore_info::is_valid() const
+{
+  return TRUE; 
+}
 
 #endif

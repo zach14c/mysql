@@ -1,6 +1,12 @@
 #include "../mysql_priv.h"
 
 #include "logger.h"
+#include "catalog.h"
+
+/** @file
+ 
+ @todo Log errors to progress tables
+ */ 
 
 namespace backup {
 
@@ -22,28 +28,37 @@ namespace backup {
 int Logger::write_message(log_level::value level, int error_code,
                           const char *msg)
 {
-   const char *prefix= m_type == BACKUP ? "Backup" : "Restore";
    char buf[ERRMSGSIZE + 30];
+   const char *out= msg;
 
-   my_snprintf(buf,sizeof(buf),"%s: %s",prefix,msg);
-
+   if (m_state == READY || m_state == RUNNING)
+   {
+     my_snprintf(buf,sizeof(buf),"%s: %s", 
+                 m_type == BACKUP ? "Backup" : "Restore" , msg);
+     out= buf;
+   }
+   
    switch (level) {
    case log_level::ERROR:
      if (m_save_errors)
-       errors.push_front(new MYSQL_ERROR(::current_thd,error_code,
+       errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
                                          MYSQL_ERROR::WARN_LEVEL_ERROR,msg));
-     sql_print_error(buf);
-     DBUG_PRINT("backup_log",("[ERROR] %s",buf));
+     sql_print_error(out);
+     DBUG_PRINT("backup_log",("[ERROR] %s",out));
+     
+     if (m_state == READY || m_state == RUNNING)
+       report_ob_error(m_op_id, error_code);
+     
      return 0;
 
    case log_level::WARNING:
-     sql_print_warning(buf);
-     DBUG_PRINT("backup_log",("[Warning] %s",buf));
+     sql_print_warning(out);
+     DBUG_PRINT("backup_log",("[Warning] %s",out));
      return 0;
 
    case log_level::INFO:
-     sql_print_information(buf);
-     DBUG_PRINT("backup_log",("[Info] %s",buf));
+     sql_print_information(out);
+     DBUG_PRINT("backup_log",("[Info] %s",out));
      return 0;
 
    default: return ERROR;
@@ -82,5 +97,24 @@ int Logger::v_write_message(log_level::value level, int error_code,
   return write_message(level,error_code,buf);
 }
 
+/**
+  Report statistics from backup/restore catalogue before the main operation starts.
+ */ 
+void Logger::report_stats_pre(const Image_info &info)
+{
+  DBUG_ASSERT(m_state == RUNNING);
+  
+  report_ob_num_objects(m_op_id, info.table_count());
+}
+
+/**
+  Report statistics from backup/restore catalogue after the operation is completed.
+ */ 
+void Logger::report_stats_post(const Image_info &info)
+{
+  DBUG_ASSERT(m_state == RUNNING);
+  
+  report_ob_size(m_op_id, info.data_size);
+}
 
 } // backup namespace

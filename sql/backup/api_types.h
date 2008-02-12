@@ -187,10 +187,10 @@ class Table_list
     virtual ~Table_list() {}
 
     /// Return reference to given list element. Elements are counted from 0.
-    virtual Table_ref operator[](uint pos) const =0;
+    virtual Table_ref operator[](ulong pos) const =0;
 
     /// Return number of elements in the list.
-    virtual uint  count() const =0;
+    virtual ulong count() const =0;
 };
 
 
