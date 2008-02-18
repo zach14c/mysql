@@ -11,6 +11,7 @@
   backed up.
 
   @todo Implement better scheduling strategy in Scheduler::step
+  @todo Add error reporting in the scheduler and elsewhere
   @todo If an error from driver is ignored (and operation retried) leave trace
         of the error in the log.
  */
@@ -599,6 +600,12 @@ int write_table_data(THD* thd, Logger &log, Backup_info &info, OStream &s)
     LOG_INFO binlog_pos;
     
     log.report_state(BUP_VALIDITY_POINT);
+    /*
+      This breakpoint is used to assist in testing state changes for
+      the backup progress. It is not to be used to indicate actual
+      timing of the validity point.
+    */
+    BACKUP_BREAKPOINT("bp_vp_state");
     
     /*
       Block commits.
@@ -639,13 +646,6 @@ int write_table_data(THD* thd, Logger &log, Backup_info &info, OStream &s)
     error= unblock_commits(thd);
     if (error)
       goto error;
-
-    /*
-      This breakpoint is used to assist in testing state changes for
-      the backup progress. It is not to be used to indicate actual
-      timing of the validity point.
-    */
-    BACKUP_BREAKPOINT("bp_vp_state");
 
     // Report and save information about VP
 

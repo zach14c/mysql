@@ -109,6 +109,7 @@ class OStream:
  private:
 
   int write_magic_and_version();
+  bool init();
 };
 
 /// Used to read from backup stream.
@@ -128,6 +129,7 @@ class IStream:
  private:
 
   int check_magic_and_version();
+  bool init();
 };
 
 } // backup namespace

@@ -123,13 +123,10 @@ execute_backup_command(THD *thd, LEX *lex)
 
   using namespace backup;
 
-  Backup_restore_ctx context(thd);
+  Backup_restore_ctx context(thd); // reports errors
   
   if (!context.is_valid())
-  {
-    context.report_error(ER_BACKUP_UNKNOWN_ERROR);
-    DBUG_RETURN(send_error(context,ER_BACKUP_UNKNOWN_ERROR));
-  }
+    DBUG_RETURN(send_error(context,ER_BACKUP_CONTEXT_CREATE));
 
   switch (lex->sql_command) {
 
@@ -165,11 +162,11 @@ execute_backup_command(THD *thd, LEX *lex)
     info->close(); // close catalogue after filling it with objects to backup
 
     if (res || !info->is_valid())
-      DBUG_RETURN(send_error(context,ER_BACKUP_UNKNOWN_ERROR));
+      DBUG_RETURN(send_error(context,ER_BACKUP_BACKUP_PREPARE));
 
     if (info->db_count() == 0)
     {
-      context.report_error(ER_BACKUP_NOTHING_TO_BACKUP);
+      context.fatal_error(ER_BACKUP_NOTHING_TO_BACKUP);
       DBUG_RETURN(send_error(context,ER_BACKUP_NOTHING_TO_BACKUP));
     }
 
@@ -211,7 +208,7 @@ execute_backup_command(THD *thd, LEX *lex)
   } // switch(lex->sql_command)
 
   if (context.close())
-    DBUG_RETURN(send_error(context,ER_BACKUP_UNKNOWN_ERROR));
+    DBUG_RETURN(send_error(context,ER_BACKUP_CONTEXT_REMOVE));
 
   // All seems OK - send positive reply to client
 
@@ -297,7 +294,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
     Check access for SUPER rights. If user does not have SUPER, fail with error.
   */
   if (check_global_access(m_thd, SUPER_ACL))
-    report_error((m_error= ER_SPECIFIC_ACCESS_DENIED_ERROR), "SUPER");
+    fatal_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, "SUPER");
 
   /*
     Check if another BACKUP/RESTORE is running and if not, register 
@@ -309,7 +306,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   if (!is_running)
     is_running= TRUE;
   else
-    report_error((m_error= ER_BACKUP_RUNNING));
+    fatal_error(ER_BACKUP_RUNNING);
 
   pthread_mutex_unlock(&run_lock);
 
@@ -332,7 +329,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 
   if (bad_filename)
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR),location.str);
+    fatal_error(ER_BAD_PATH,location.str);
     return m_error;
   }
 
@@ -347,7 +344,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 
   if (!mem_alloc)
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_OUT_OF_RESOURCES);
     return m_error;
   }
 
@@ -355,7 +352,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 
   if (!DDL_blocker->block_DDL(m_thd))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_DDL_BLOCK);
     return m_error;
   }
 
@@ -381,7 +378,7 @@ Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
   
   if (Logger::init(m_thd, BACKUP, location))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
   }
   
@@ -404,12 +401,15 @@ Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
   
   if (!s)
   {
-    report_error(ER_BACKUP_UNKNOWN_ERROR);
+    fatal_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }
   
   if (!s->open())
+  {
+    fatal_error(ER_BACKUP_WRITE_LOC,path.ptr());
     return NULL;
+  }
 
   m_stream= s;
 
@@ -421,7 +421,7 @@ Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
 
   if (!info)
   {
-    report_error(ER_BACKUP_UNKNOWN_ERROR);
+    fatal_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }
 
@@ -454,7 +454,7 @@ Restore_info* Backup_restore_ctx::prepare_for_restore(LEX_STRING location)
   
   if (Logger::init(m_thd, RESTORE, location))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
   }
 
@@ -476,12 +476,15 @@ Restore_info* Backup_restore_ctx::prepare_for_restore(LEX_STRING location)
   
   if (!s)
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }
   
   if (!s->open())
+  {
+    fatal_error(ER_BACKUP_READ_LOC,path.ptr());
     return NULL;
+  }
 
   m_stream= s;
 
@@ -493,7 +496,7 @@ Restore_info* Backup_restore_ctx::prepare_for_restore(LEX_STRING location)
 
   if (!info)
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }
 
@@ -509,25 +512,25 @@ Restore_info* Backup_restore_ctx::prepare_for_restore(LEX_STRING location)
 
   if (read_header(*info, *s))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_READ_HEADER);
     return NULL;
   }
 
   if (s->next_chunk() != BSTREAM_OK)
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_NEXT_CHUNK);
     return NULL;
   }
 
   if (read_catalog(*info, *s))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_READ_HEADER);
     return NULL;
   }
 
   if (s->next_chunk() != BSTREAM_OK)
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_NEXT_CHUNK);
     return NULL;
   }
 
@@ -584,9 +587,13 @@ int Backup_restore_ctx::close()
   is_running= FALSE;
   pthread_mutex_unlock(&run_lock);
 
-  // remove the location, if asked for
-  
-  if (m_remove_loc)
+  /* 
+    Remove the location, if asked for.
+    
+    Important: This is done only for backup operation - RESTORE should never
+    remove the specified backup image!
+   */
+  if (m_remove_loc && m_state == PREPARED_FOR_BACKUP)
   {
     int res= my_delete(m_path, MYF(0));
 
@@ -639,7 +646,7 @@ int Backup_restore_ctx::do_backup()
 
   if (write_preamble(info, s))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_WRITE_HEADER);
     DBUG_RETURN(m_error);
   }
 
@@ -647,14 +654,14 @@ int Backup_restore_ctx::do_backup()
 
   BACKUP_BREAKPOINT("backup_data");
 
-  if ((m_error= write_table_data(m_thd, *this, info, s))) // reports errors
-    DBUG_RETURN(m_error);
+  if (write_table_data(m_thd, *this, info, s)) // reports errors
+    DBUG_RETURN(send_error(*this, ER_BACKUP_BACKUP));
 
   DBUG_PRINT("backup",("Writing summary"));
 
   if (write_summary(info, s))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_WRITE_SUMMARY);
     DBUG_RETURN(m_error);
   }
 
@@ -695,7 +702,7 @@ int Backup_restore_ctx::do_restore()
 
   if (read_meta_data(info, s))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_READ_META);
     DBUG_RETURN(m_error);
   }
 
@@ -704,14 +711,14 @@ int Backup_restore_ctx::do_restore()
   DBUG_PRINT("restore",("Restoring table data"));
 
   // Here restore drivers are created to restore table data
-  if ((m_error= restore_table_data(m_thd, *this, info, s))) // reports errors
-    DBUG_RETURN(m_error);
+  if (restore_table_data(m_thd, *this, info, s)) // reports errors
+    DBUG_RETURN(send_error(*this, ER_BACKUP_RESTORE));
 
   DBUG_PRINT("restore",("Done."));
 
   if (read_summary(info, s))
   {
-    report_error((m_error= ER_BACKUP_UNKNOWN_ERROR));
+    fatal_error(ER_BACKUP_READ_SUMMARY);
     DBUG_RETURN(m_error);
   }
 
@@ -819,12 +826,11 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
     
     if (is_internal_db_name(&db_name))
     {
-      m_ctx.report_error(backup::log_level::ERROR, ER_BACKUP_CANNOT_INCLUDE_DB,
-                         db_name.c_ptr());
+      m_ctx.fatal_error(ER_BACKUP_CANNOT_INCLUDE_DB, db_name.c_ptr());
       goto error;
     }
     
-    obs::Obj *obj= get_database(&db_name);
+    obs::Obj *obj= get_database(&db_name); // reports errors
 
     if (obj && !check_db_existence(&db_name))
     {    
@@ -845,7 +851,7 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
       if (add_db_items(*db))  // reports errors
         goto error;
     }
-    else
+    else if (obj)
     {
       if (!unknown_dbs.is_empty())
         unknown_dbs.append(",");
@@ -853,11 +859,13 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
       
       delete obj;
     }
+    else
+      goto error; // error was reported in get_database()
   }
 
   if (!unknown_dbs.is_empty())
   {
-    m_ctx.report_error(ER_BAD_DB_ERROR,unknown_dbs.c_ptr());
+    m_ctx.fatal_error(ER_BAD_DB_ERROR,unknown_dbs.c_ptr());
     goto error;
   }
 
@@ -886,7 +894,7 @@ int Backup_info::add_all_dbs()
   
   if (!dbit)
   {
-    m_ctx.report_error(ER_BACKUP_LIST_DBS);
+    m_ctx.fatal_error(ER_BACKUP_LIST_DBS);
     return ERROR;
   }
   
@@ -950,7 +958,7 @@ int Backup_info::add_db_items(Db &db)
 
   if (!it || TEST_ERROR)
   {
-    m_ctx.report_error(ER_BACKUP_LIST_DB_TABLES,db.name().ptr());
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_TABLES,db.name().ptr());
     return ERROR;
   }
   
@@ -1056,8 +1064,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   
   if (!se)
   {
-    // TODO: better error message
-    m_ctx.report_error(ER_BACKUP_TABLE_OPEN,tbl.describe(buf));
+    m_ctx.fatal_error(ER_NO_STORAGE_ENGINE,tbl.describe(buf));
     DBUG_RETURN(NULL);
   }
   
@@ -1066,7 +1073,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   if (!snap)
     if (has_native_backup(se))
     {
-      Native_snapshot *nsnap= new Native_snapshot(se);
+      Native_snapshot *nsnap= new Native_snapshot(m_ctx,se);
       DBUG_ASSERT(nsnap);
       snapshots.push_front(nsnap);
       native_snapshots.insert(se,nsnap);
@@ -1096,7 +1103,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   }
 
   if (!snap)
-    m_ctx.report_error(ER_BACKUP_NO_BACKUP_DRIVER,tbl.describe(buf));
+    m_ctx.fatal_error(ER_BACKUP_NO_BACKUP_DRIVER,tbl.describe(buf));
   
   DBUG_RETURN(snap);
 }
@@ -1307,6 +1314,7 @@ int bcat_reset(st_bstream_image_header *catalogue)
 
   uint no;
 
+  DBUG_ASSERT(catalogue);
   Restore_info *info= static_cast<Restore_info*>(catalogue);
 
   /*
@@ -1330,43 +1338,39 @@ int bcat_reset(st_bstream_image_header *catalogue)
       storage_engine_ref se= get_se_by_name(name_lex);
       handlerton *hton= se_hton(se);
 
-      if (!hton)
+      if (!se || !hton)
       {
-        // TODO: report error
+        info->m_ctx.fatal_error(ER_BACKUP_CANT_FIND_SE,name_lex.str);
         return BSTREAM_ERROR;
       }
 
       if (!hton->get_backup_engine)
       {
-        // TODO: report error
+        info->m_ctx.fatal_error(ER_BACKUP_NO_NATIVE_BE,name_lex.str);
         return BSTREAM_ERROR;
       }
 
-      info->m_snap[no]= new Native_snapshot(snap->version, se);
-      // TODO: handle errors during creation of the snapshot object
-
+      info->m_snap[no]= new Native_snapshot(info->m_ctx, snap->version, se); // reports errors
       break;
     }
 
     case BI_CS:
-      info->m_snap[no]= new CS_snapshot(info->m_ctx, snap->version);
-      // TODO: handle errors during creation of the snapshot object
+      info->m_snap[no]= new CS_snapshot(info->m_ctx, snap->version); // reports errors
       break;
 
     case BI_DEFAULT:
-      info->m_snap[no]= new Default_snapshot(info->m_ctx, snap->version);
-      // TODO: handle errors during creation of the snapshot object
+      info->m_snap[no]= new Default_snapshot(info->m_ctx, snap->version); // reports errors
       break;
 
     default:
-      DBUG_PRINT("restore",("Unknown snapshot type %d",
-                            info->snapshot[no].type));
+      // note: we use convention that snapshots are counted starting from 1.
+      info->m_ctx.fatal_error(ER_BACKUP_UNKNOWN_BE,no+1);
       return BSTREAM_ERROR;
     }
 
     if (!info->m_snap[no])
     {
-      // TODO: report error
+      info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
       return BSTREAM_ERROR;
     }
 
@@ -1430,7 +1434,13 @@ int bcat_add_item(st_bstream_image_header *catalogue, struct st_bstream_item_inf
 
     if (!snap)
     {
-      // TODO: report error
+      /* 
+        This can happen only if the snapshot number is too big - if we failed
+        to create one of the snapshots listed in image's header we would stop
+        with error earlier.
+       */
+      DBUG_ASSERT(it->snap_no >= info->snap_count());
+      info->m_ctx.fatal_error(ER_BACKUP_WRONG_TABLE_BE,it->snap_no+1);
       return BSTREAM_ERROR;
     }
 
@@ -1457,6 +1467,166 @@ int bcat_add_item(st_bstream_image_header *catalogue, struct st_bstream_item_inf
 
 /*****************************************************************
 
+   Iterators
+
+ *****************************************************************/
+
+static uint cset_iter;  ///< Used to implement trivial charset iterator.
+static uint null_iter;  ///< Used to implement trivial empty iterator.
+
+/// Return pointer to an instance of iterator of a given type.
+extern "C"
+void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
+{
+  DBUG_ASSERT(catalogue);
+
+  Backup_info *info= static_cast<Backup_info*>(catalogue);
+
+  switch (type) {
+
+  case BSTREAM_IT_PERDB:    // per-db objects, except tables
+  case BSTREAM_IT_PERTABLE: // per-table objects
+    return &null_iter;
+
+  case BSTREAM_IT_CHARSET:  // character sets
+    cset_iter= 0;
+    return &cset_iter;
+
+  case BSTREAM_IT_USER:     // users
+    return &null_iter;
+
+  case BSTREAM_IT_GLOBAL:   // all global objects
+    // only global items (for which meta-data is stored) are databases
+  case BSTREAM_IT_DB:       // all databases
+  {
+    Backup_info::Db_iterator *it= info->get_dbs();
+  
+    if (!it)
+    {
+      info->m_ctx.fatal_error(ER_BACKUP_LIST_DBS);
+      return NULL;
+    }
+
+    return it;
+  }
+
+  default:
+    return NULL;
+
+  }
+}
+
+/// Return next item pointed by a given iterator and advance it to the next positon.
+extern "C"
+struct st_bstream_item_info*
+bcat_iterator_next(st_bstream_image_header *catalogue, void *iter)
+{
+  using namespace backup;
+
+  /* If this is the null iterator, return NULL immediately */
+  if (iter == &null_iter)
+    return NULL;
+
+  static bstream_blob name= {NULL, NULL};
+
+  /*
+    If it is cset iterator then cset_iter variable contains iterator position.
+    We return only 2 charsets: the utf8 charset used to encode all strings and
+    the default server charset.
+  */
+  if (iter == &cset_iter)
+  {
+    switch (cset_iter) {
+      case 0: name.begin= (byte*)my_charset_utf8_bin.csname; break;
+      case 1: name.begin= (byte*)system_charset_info->csname; break;
+      default: name.begin= NULL; break;
+    }
+
+    name.end= name.begin ? name.begin + strlen((char*)name.begin) : NULL;
+    cset_iter++;
+
+    return name.begin ? (st_bstream_item_info*)&name : NULL;
+  }
+
+  /*
+    In all other cases assume that iter points at instance of
+    @c Image_info::Iterator and use this instance to get next item.
+   */
+  const Image_info::Obj *ptr= (*(Image_info::Iterator*)iter)++;
+
+  return ptr ? (st_bstream_item_info*)(ptr->info()) : NULL;
+}
+
+extern "C"
+void  bcat_iterator_free(st_bstream_image_header *catalogue, void *iter)
+{
+  /*
+    Do nothing for the null and cset iterators, but delete the
+    @c Image_info::Iterator object otherwise.
+  */
+  if (iter == &null_iter)
+    return;
+
+  if (iter == &cset_iter)
+    return;
+
+  delete (backup::Image_info::Iterator*)iter;
+}
+
+/* db-items iterator */
+
+/** 
+  Return pointer to an iterator for iterating over objects inside a given 
+  database.
+ */
+extern "C"
+void* bcat_db_iterator_get(st_bstream_image_header *catalogue, struct st_bstream_db_info *dbi)
+{
+  DBUG_ASSERT(catalogue);
+  DBUG_ASSERT(dbi);
+  
+  Backup_info *info= static_cast<Backup_info*>(catalogue);
+  Backup_info::Db *db = info->get_db(dbi->base.pos);
+
+  if (!db)
+  {
+    info->m_ctx.fatal_error(ER_BACKUP_UNKNOWN_OBJECT);
+    return NULL;
+  }
+
+  Backup_info::DbObj_iterator *it= info->get_db_objects(*db);
+
+  if (!it)
+  {
+    info->m_ctx.fatal_error(ER_BACKUP_LIST_DB_TABLES);
+    return NULL;
+  }
+
+  return it;
+}
+
+extern "C"
+struct st_bstream_dbitem_info*
+bcat_db_iterator_next(st_bstream_image_header *catalogue,
+                        struct st_bstream_db_info *db,
+                        void *iter)
+{
+  const backup::Image_info::Obj *ptr= (*(backup::Image_info::Iterator*)iter)++;
+
+  return ptr ? (st_bstream_dbitem_info*)ptr->info() : NULL;
+}
+
+extern "C"
+void  bcat_db_iterator_free(st_bstream_image_header *catalogue,
+                              struct st_bstream_db_info *db,
+                              void *iter)
+{
+  delete (backup::Image_info::DbObj_iterator*)iter;
+}
+
+
+/*****************************************************************
+
    Services for backup stream library related to meta-data
    manipulation.
 
@@ -1478,17 +1648,31 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   DBUG_ASSERT(item);
 
   Restore_info *info= static_cast<Restore_info*>(catalogue);
+  int create_err= 0;
 
-  Image_info::Obj *obj= find_obj(*info, *item); // reports errors
-
+  switch (item->type) {
+  
+  case BSTREAM_IT_DB:     create_err= ER_BACKUP_CANT_RESTORE_DB; break;
+  case BSTREAM_IT_TABLE:  create_err= ER_BACKUP_CANT_RESTORE_TABLE; break;
+  
   /*
     TODO: Decide what to do when we come across unknown item:
     break the restore process as it is done now or continue
     with a warning?
   */
 
+  default:
+    info->m_ctx.fatal_error(ER_BACKUP_UNKNOWN_OBJECT_TYPE);
+    return BSTREAM_ERROR;    
+  }
+
+  Image_info::Obj *obj= find_obj(*info, *item);
+
   if (!obj)
-    return BSTREAM_ERROR; // find_obj should report errors
+  {
+    info->m_ctx.fatal_error(ER_BACKUP_UNKNOWN_OBJECT);
+    return BSTREAM_ERROR;
+  }
 
   backup::String sdata(create_stmt.begin, create_stmt.end);
 
@@ -1500,15 +1684,17 @@ int bcat_create_item(st_bstream_image_header *catalogue,
    */ 
   obs::Obj *sobj= obj->materialize(0, sdata);
 
+  Image_info::Obj::describe_buf buf;
+
   if (!sobj)
   {
-    // TODO: report error
+    info->m_ctx.fatal_error(create_err,obj->describe(buf));
     return BSTREAM_ERROR;
   }
 
   if (sobj->execute(::current_thd))
   {
-    // TODO: report error (think about how execute() reports errors)
+    info->m_ctx.fatal_error(create_err,obj->describe(buf));
     return BSTREAM_ERROR;
   }
   
@@ -1536,14 +1722,26 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
 
   Backup_info *info= static_cast<Backup_info*>(catalogue);
 
-  Image_info::Obj *obj= find_obj(*info, *item);
+  int meta_err;
 
-  if (!obj)
-  {
-    // TODO: warn that object was not found (?)
-    return BSTREAM_ERROR;
+  switch (item->type) {
+  
+  case BSTREAM_IT_DB:     meta_err= ER_BACKUP_GET_META_DB; break;
+  case BSTREAM_IT_TABLE:  meta_err= ER_BACKUP_GET_META_TABLE; break;
+  
+  /*
+   This can't happen - the item was obtained from the backup kernel.
+  */
+  default: DBUG_ASSERT(FALSE);
   }
 
+  Image_info::Obj *obj= find_obj(*info, *item);
+
+  /*
+    The catalogue should contain the specified object and it should have 
+    a corresponding server object instance.
+   */ 
+  DBUG_ASSERT(obj);
   DBUG_ASSERT(obj->m_obj_ptr);
   
   /*
@@ -1558,7 +1756,9 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
   buf->length(0);
   if (obj->m_obj_ptr->serialize(::current_thd, buf))
   {
-    // TODO: report error
+    Image_info::Obj::describe_buf dbuf;
+
+    info->m_ctx.fatal_error(meta_err,obj->describe(dbuf));
     return BSTREAM_ERROR;    
   }
 
@@ -1616,7 +1816,8 @@ int send_error(Backup_restore_ctx &log, int error_code, ...)
     va_end(args);
   }
 
-  log.report_stop(my_time(0),FALSE); // FASLE = no success
+  if (log.backup::Logger::m_state == backup::Logger::RUNNING)
+    log.report_stop(my_time(0),FALSE); // FASLE = no success
   return error_code;
 }
 

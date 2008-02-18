@@ -18,18 +18,18 @@ class Native_snapshot: public Snapshot_info
 
  public:
 
-  Native_snapshot(const storage_engine_ref se): 
+  Native_snapshot(Logger &log, const storage_engine_ref se): 
     Snapshot_info(0), m_hton(NULL), m_be(NULL)
   {
-    init(se);
+    init(log, se);
     if (m_be)
       m_version= m_be->version();
   }
   
-  Native_snapshot(const version_t ver, const storage_engine_ref se): 
+  Native_snapshot(Logger &log, const version_t ver, const storage_engine_ref se): 
     Snapshot_info(ver), m_hton(NULL), m_be(NULL)
   {
-    init(se);
+    init(log, se);
   }
 
   ~Native_snapshot()
@@ -73,17 +73,21 @@ class Native_snapshot: public Snapshot_info
 
  private:
 
-  int init(const storage_engine_ref se);
+  int init(Logger &log, const storage_engine_ref se);
 };
 
 inline
-int Native_snapshot::init(const storage_engine_ref se)
+int Native_snapshot::init(Logger &log, const storage_engine_ref se)
 {
+  DBUG_ASSERT(se);
+
   m_hton= se_hton(se);
   m_se_ver= se_version(se);
 
   DBUG_ASSERT(m_hton);
   DBUG_ASSERT(m_hton->get_backup_engine);
+
+  m_name= ::ha_resolve_storage_engine_name(m_hton);
 
   result_t ret= m_hton->get_backup_engine(const_cast<handlerton*>(m_hton), m_be);
 
@@ -92,10 +96,10 @@ int Native_snapshot::init(const storage_engine_ref se)
     if (m_be)
       m_be->free();
     m_be= NULL;
+    log.report_error(ER_BACKUP_CREATE_BE,m_name);
     return 1;
   }
   
-  m_name= ::ha_resolve_storage_engine_name(m_hton);
   return 0;
 }
 

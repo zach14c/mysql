@@ -72,6 +72,7 @@ class Backup_restore_ctx: public backup::Logger
 
   int do_backup();
   int do_restore();
+  int fatal_error(int, ...);
 
   int close();
 
@@ -135,6 +136,33 @@ inline
 void Backup_restore_ctx::disable_fkey_constraints()
 {
   m_thd->options|= OPTION_NO_FOREIGN_KEY_CHECKS;
+}
+
+/**
+  Report error and move context object into error state.
+  
+  After this method is called the context object is in error state and
+  cannot be normally used. It still can be examined for saved error messages.
+  The code of the error reported here is saved in m_error member.
+  
+  When called multiple time, later calls overwrite error code saved by
+  the previous ones.
+  
+  @returns error code given as input.
+ */ 
+inline
+int Backup_restore_ctx::fatal_error(int error_code, ...)
+{
+  va_list args;
+
+  m_error= error_code;
+  m_remove_loc= TRUE;
+
+  va_start(args,error_code);
+  v_report_error(backup::log_level::ERROR, error_code, args);
+  va_end(args);
+
+  return error_code;
 }
 
 /**

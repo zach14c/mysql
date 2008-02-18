@@ -23,6 +23,12 @@ namespace backup {
                      for other messages set to 0
   @param msg         message text
 
+  @note It should be possible to use this method (and other error reporting
+  methods relying on it) right after creation of the Logger object instance.
+  The message should be written to these destinations which are available at
+  the moment. Destinations which are not ready/initialized yet should be 
+  silently ignored.
+
   @returns 0 on success.
  */
 int Logger::write_message(log_level::value level, int error_code,

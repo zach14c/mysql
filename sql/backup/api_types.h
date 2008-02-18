@@ -132,7 +132,7 @@ class Table_ref
   /// Produce string identifying the table (e.g. for error reporting)
   const char* describe(char *buf, size_t len) const
   {
-    my_snprintf(buf,len,"%s.%s",db().name().ptr(),name().ptr());
+    my_snprintf(buf,len,"`%s`.`%s`",db().name().ptr(),name().ptr());
     return buf;
   }
 

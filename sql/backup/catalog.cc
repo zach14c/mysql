@@ -90,16 +90,10 @@ Image_info::add_db(const String &db_name, ulong pos)
   Db *db= new (&mem_root) Db(db_name);
   
   if (!db)
-  {
-    // TODO: report error
     return NULL;
-  }
   
   if (m_dbs.insert(pos,db))
-  {
-    // TODO: report error
     return NULL;
-  }
   
   db->base.pos= pos;
   
@@ -172,22 +166,13 @@ Image_info::add_table(Db &db, const String &table_name,
   Table *t= new (&mem_root) Table(db, table_name);
   
   if (!t)
-  {
-    // TODO: report error
     return NULL;
-  }
 
   if (snap.add_table(*t, pos))
-  {
-    // TODO: report error
     return NULL;
-  }
   
   if (db.add_table(*t))
-  {
-    // TODO: report error
     return NULL;
-  }
 
   if (!snap.m_no)
     snap.m_no= add_snapshot(snap); // reports errors
@@ -208,18 +193,12 @@ Image_info::Table*
 Image_info::get_table(uint snap_no, ulong pos) const
 {
   if (snap_no > snap_count() || m_snap[snap_no] == NULL)
-  {
-    // TODO: report error
     return NULL;
-  }
   
   Table *t= m_snap[snap_no]->get_table(pos);
   
   if (!t)
-  {
-    // TODO: report error
     return NULL;
-  }
   
   return t;
 }
@@ -252,7 +231,6 @@ Image_info::Obj *find_obj(const Image_info &info,
   }
 
   default:
-    // TODO: warn or report error
     return NULL;
   }
 }
@@ -260,151 +238,3 @@ Image_info::Obj *find_obj(const Image_info &info,
 } // backup namespace
 
 template class Map<uint,backup::Image_info::Db>;
-
-
-/*************************************************
-
-               CATALOGUE SERVICES
-
- *************************************************/
-
-/*
-  Iterators - used by the backup stream library to enumerate objects to be
-  saved in a backup image.
- */ 
-
-static uint cset_iter;  ///< Used to implement trivial charset iterator.
-static uint null_iter;  ///< Used to implement trivial empty iterator.
-
-/// Return pointer to an instance of iterator of a given type.
-extern "C"
-void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
-{
-  switch (type) {
-
-  case BSTREAM_IT_PERDB:    // per-db objects, except tables
-  case BSTREAM_IT_PERTABLE: // per-table objects
-    return &null_iter;
-
-  case BSTREAM_IT_CHARSET:  // character sets
-    cset_iter= 0;
-    return &cset_iter;
-
-  case BSTREAM_IT_USER:     // users
-    return &null_iter;
-
-  case BSTREAM_IT_GLOBAL:   // all global objects
-    // only global items (for which meta-data is stored) are databases
-  case BSTREAM_IT_DB:       // all databases
-    return
-    new backup::Image_info::Db_iterator(*static_cast<backup::Image_info*>(catalogue));
-    // TODO: report error if iterator could not be created
-
-  default:
-    return NULL;
-
-  }
-}
-
-/// Return next item pointed by a given iterator and advance it to the next positon.
-extern "C"
-struct st_bstream_item_info*
-bcat_iterator_next(st_bstream_image_header *catalogue, void *iter)
-{
-  using namespace backup;
-
-  /* If this is the null iterator, return NULL immediately */
-  if (iter == &null_iter)
-    return NULL;
-
-  static bstream_blob name= {NULL, NULL};
-
-  /*
-    If it is cset iterator then cset_iter variable contains iterator position.
-    We return only 2 charsets: the utf8 charset used to encode all strings and
-    the default server charset.
-  */
-  if (iter == &cset_iter)
-  {
-    switch (cset_iter) {
-      case 0: name.begin= (byte*)my_charset_utf8_bin.csname; break;
-      case 1: name.begin= (byte*)system_charset_info->csname; break;
-      default: name.begin= NULL; break;
-    }
-
-    name.end= name.begin ? name.begin + strlen((char*)name.begin) : NULL;
-    cset_iter++;
-
-    return name.begin ? (st_bstream_item_info*)&name : NULL;
-  }
-
-  /*
-    In all other cases assume that iter points at instance of
-    @c Image_info::Iterator and use this instance to get next item.
-   */
-  const Image_info::Obj *ptr= (*(Image_info::Iterator*)iter)++;
-
-  return ptr ? (st_bstream_item_info*)(ptr->info()) : NULL;
-}
-
-extern "C"
-void  bcat_iterator_free(st_bstream_image_header *catalogue, void *iter)
-{
-  /*
-    Do nothing for the null and cset iterators, but delete the
-    @c Image_info::Iterator object otherwise.
-  */
-  if (iter == &null_iter)
-    return;
-
-  if (iter == &cset_iter)
-    return;
-
-  delete (backup::Image_info::Iterator*)iter;
-}
-
-/* db-items iterator */
-
-/** 
-  Return pointer to an iterator for iterating over objects inside a given 
-  database.
- */
-extern "C"
-void* bcat_db_iterator_get(st_bstream_image_header *catalogue, struct st_bstream_db_info *dbi)
-{
-  using namespace backup;
-  
-  DBUG_ASSERT(catalogue);
-  DBUG_ASSERT(dbi);
-  
-  Image_info *info= static_cast<backup::Image_info*>(catalogue);
-  Image_info::Db *db = info->get_db(dbi->base.pos);
-
-  if (!db)
-  {
-    // TODO: reprt error
-    return NULL;
-  }
-
-  return new Image_info::DbObj_iterator(*info, *db);
-}
-
-extern "C"
-struct st_bstream_dbitem_info*
-bcat_db_iterator_next(st_bstream_image_header *catalogue,
-                        struct st_bstream_db_info *db,
-                        void *iter)
-{
-  const backup::Image_info::Obj *ptr= (*(backup::Image_info::Iterator*)iter)++;
-
-  return ptr ? (st_bstream_dbitem_info*)ptr->info() : NULL;
-}
-
-extern "C"
-void  bcat_db_iterator_free(st_bstream_image_header *catalogue,
-                              struct st_bstream_db_info *db,
-                              void *iter)
-{
-  delete (backup::Image_info::DbObj_iterator*)iter;
-}
-

@@ -180,6 +180,31 @@ int OStream::write_magic_and_version()
 }
 
 /**
+  Initialize backup stream after the underlying stream has been opened.
+ */ 
+bool OStream::init()
+{
+  // write magic bytes and format version
+  int len= write_magic_and_version();
+
+  if (len <= 0)
+  {
+    m_log.report_error(ER_BACKUP_WRITE_HEADER);
+    return FALSE;
+  }
+
+  bytes= 0;
+  
+  if (BSTREAM_OK != bstream_open_wr(this,m_block_size,len))
+  {
+    m_log.report_error(ER_BACKUP_OPEN_WR);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
   Open and initialize backup stream for writing.
 
   @retval TRUE  operation succeeded
@@ -196,19 +221,7 @@ bool OStream::open()
   if (!ret)
     return FALSE;
 
-  // write magic bytes and format version
-  int len= write_magic_and_version();
-
-  if (len <= 0)
-  {
-    // TODO: report errors
-    return FALSE;
-  }
-
-  bytes= 0;
-  ret= BSTREAM_OK == bstream_open_wr(this,m_block_size,len);
-  // TODO: report errors
-  return ret;
+  return init();
 }
 
 /**
@@ -241,14 +254,7 @@ bool OStream::rewind()
   if (!ret)
     return FALSE;
 
-  int len= write_magic_and_version();
-
-  if (len <= 0)
-    return FALSE;
-
-  ret= BSTREAM_OK == bstream_open_wr(this,m_block_size,len);
-
-  return ret;
+  return init();
 }
 
 
@@ -289,6 +295,30 @@ int IStream::check_magic_and_version()
 }
 
 /**
+  Initialize backup stream after the underlying stream has been opened.
+ */ 
+bool IStream::init()
+{
+  int len= check_magic_and_version();
+
+  if (len <= 0)
+  {
+    m_log.report_error(ER_BACKUP_BAD_MAGIC);
+    return FALSE;
+  }
+
+  bytes= 0;
+
+  if (BSTREAM_OK != bstream_open_rd(this,len))
+  {
+    m_log.report_error(ER_BACKUP_OPEN_RD);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
   Open backup stream for reading.
 
   @retval TRUE  operation succeeded
@@ -305,19 +335,7 @@ bool IStream::open()
   if (!ret)
     return FALSE;
 
-  int len= check_magic_and_version();
-
-  if (len <= 0)
-  {
-    // TODO: report errors
-    return FALSE;
-  }
-
-  bytes= 0;
-
-  ret= BSTREAM_OK == bstream_open_rd(this,len);
-  // TODO: report errors
-  return ret;
+  return init();
 }
 
 /**
@@ -346,17 +364,7 @@ bool IStream::rewind()
 
   bool ret= Stream::rewind();
 
-  if (!ret)
-    return FALSE;
-
-  int len= check_magic_and_version();
-
-  if (len < 0)
-    return FALSE;
-
-  ret= BSTREAM_OK == bstream_open_rd(this,len);
-
-  return ret;
+  return ret ? init() : FALSE;
 }
 
 /// Move to next chunk in the stream.

@@ -3,6 +3,7 @@
 
 #include <backup_stream.h>
 #include <backup/error.h>
+#include <backup/debug.h>
 #include <backup/backup_progress.h>
 
 
@@ -26,7 +27,11 @@ class Image_info;
   process.
 
   Destination of the messages is determined by the implementation. Currently
-  messages are output the the servers error log.
+  messages are:
+  - for errors, reported to the online backup progress table,
+  - for errors and warning, pushed on client's error stack,
+  - written to error log and trace file (if enabled)
+  
 
   Messages are intended for a DBA and thus should be localized. A message should
   be registered in errmsg.txt database and have assigned an error code. Printing
@@ -40,6 +45,7 @@ class Logger
    enum { CREATED, READY, RUNNING, DONE } m_state;
 
    Logger();
+   ~Logger();
    int init(THD*, enum_type, const LEX_STRING);
 
    int report_error(int error_code, ...);
@@ -87,6 +93,12 @@ Logger::Logger():
   m_type(BACKUP), m_state(CREATED), m_op_id(0), m_save_errors(FALSE)
 {}
 
+inline
+Logger::~Logger()
+{
+  clear_saved_errors();
+}
+
 /**
   Initialize logger for backup or restore operation.
   
@@ -111,6 +123,7 @@ int Logger::init(THD *thd, enum_type type, const LEX_STRING path)
   m_op_id= report_ob_init(thd->id, BUP_STARTING, 
                           type == BACKUP ? OP_BACKUP : OP_RESTORE, 
                           0, "", path.str, thd->query);  
+  BACKUP_BREAKPOINT("bp_starting_state");
   return 0;
 }
 

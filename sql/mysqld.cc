@@ -209,8 +209,10 @@ extern "C" int gethostname(char *name, int namelen);
   Online backup initialization and shutdown functions - defined in 
   backup/kernel.cc
  */
+#ifndef EMBEDDED_LIBRARY
 int backup_init();
 void backup_shutdown();
+#endif
 
 /* Constants */
 
@@ -1230,7 +1232,9 @@ void clean_up(bool print_message)
     udf_free();
 #endif
   }
+#ifndef EMBEDDED_LIBRARY
   backup_shutdown();
+#endif
   plugin_shutdown();
   ha_end();
   if (tc_log)
@@ -3462,11 +3466,13 @@ server.");
     unireg_abort(1);
   }
 
+#ifndef EMBEDDED_LIBRARY
   if (backup_init())
   {
     sql_print_error("Failed to initialize online backup.");
     unireg_abort(1);
   }
+#endif
 
   if (opt_help)
     unireg_abort(0);

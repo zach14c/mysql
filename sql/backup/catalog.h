@@ -305,6 +305,8 @@ class Image_info::Obj: public Sql_alloc
    */
   virtual ~Obj();
 
+  obj_type type() const;
+
   /**
     Returns pointer to @c st_bstream_item_info structure filled with data about
     the object.
@@ -320,6 +322,9 @@ class Image_info::Obj: public Sql_alloc
     Create corresponding @c obs::Obj instance from a serialization string.
    */ 
   virtual obs::Obj *materialize(uint ver, const String&) =0;
+
+  typedef Table_ref::describe_buf describe_buf;
+  virtual const char* describe(describe_buf&) const =0;
 
  protected:
 
@@ -357,6 +362,7 @@ class Image_info::Db
   const st_bstream_item_info* info() const;
   obs::Obj* materialize(uint ver, const String &sdata);
   result_t add_table(Table&);
+  const char* describe(describe_buf&) const;
 
  private:
  
@@ -394,6 +400,7 @@ class Image_info::Table
 
   const st_bstream_item_info* info() const;
   obs::Obj* materialize(uint ver, const String &sdata);
+  const char* describe(Obj::describe_buf&) const;
 
   friend class Db;
   friend class DbObj_iterator;
@@ -600,6 +607,18 @@ void Image_info::save_binlog_pos(const ::LOG_INFO &li)
   binlog_pos.file= const_cast<char*>(li.log_file_name);
 }
 
+inline
+Image_info::Db_iterator* Image_info::get_dbs()
+{
+  return new Db_iterator(*this);
+}
+
+inline
+Image_info::DbObj_iterator* Image_info::get_db_objects(const Db &db)
+{
+  return new DbObj_iterator(*this,db);
+}
+
 /********************************************************************
  
    Inline members of Image_info::Tables class.
@@ -653,6 +672,11 @@ void Image_info::Obj::store_name(const String &name)
   info->name.end= info->name.begin + name.length();
 }
 
+inline
+Image_info::obj_type  Image_info::Obj::type() const
+{
+  return info()->type;
+}
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
@@ -666,6 +690,21 @@ inline
 const st_bstream_item_info* Image_info::Table::info() const 
 {
   return &base.base; 
+}
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
+const char* Image_info::Db::describe(describe_buf &buf) const
+{
+  my_snprintf(buf, sizeof(buf), "`%s`", Obj::m_name.ptr());
+  return buf;
+}
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
+const char* Image_info::Table::describe(Obj::describe_buf &buf) const
+{
+  return Table_ref::describe(buf);
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
@@ -805,8 +844,6 @@ namespace backup {
 
 /*
  Wrappers around backup stream functions which perform necessary type conversions.
-
- TODO: report errors
 */
 
 inline
