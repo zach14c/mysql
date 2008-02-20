@@ -9114,7 +9114,7 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
   int range_res;
   KEY* key_info= table->key_info + active_index;
   ulong reclength= table_share->reclength;
-  NdbOperation* op;
+  const NdbOperation* op;
   NDB_INDEX_TYPE cur_index_type= get_index_type(active_index);
   DBUG_ENTER("multi_range_start_retrievals");
 
@@ -9151,11 +9151,6 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
   uint num_scan_ranges= 0;
   int range_no= -1;
   int mrr_range_no= starting_range;
-  struct read_multi_callback_data data;
-  // ToDo: proper interface to save/retrieve point to iterate from
-  QUICK_RANGE_SEQ_CTX *ctx= (QUICK_RANGE_SEQ_CTX*)mrr_iter;
-  QUICK_RANGE **callback_ctx_cur= ctx->cur;
-  data.first_range= starting_range;
 
   while (!(range_res= mrr_funcs.next(mrr_iter, &mrr_cur_range)) &&
          row_buf+reclength <= end_of_buffer) // ToDo: is this really correct, will not mrr_cur_range be offset on reentering
@@ -9213,7 +9208,7 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
 
         if (lm == NdbOperation::LM_Read)
           options.scan_flags|= NdbScanOperation::SF_KeyInfo;
-        if (sorted)
+        if (mrr_is_output_sorted)
           options.scan_flags|= NdbScanOperation::SF_OrderBy;
 
         options.parallel=parallelism;
@@ -9298,11 +9293,6 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
       row_buf+= reclength;
     }
   }
-
-  DBUG_ASSERT(i > 0 || i == range_count);       // Require progress
-  m_multi_range_defined_end= ranges + i;
-
-  buffer->end_of_used_area= row_buf;
 
   /*
    * Set first operation in multi range
