@@ -224,11 +224,6 @@ inline my_bool get_binlog_use_update(NDB_SHARE *share)
 { return (share->flags & NSF_BINLOG_USE_UPDATE) != 0; }
 #endif
 
-typedef enum ndb_query_state_bits {
-  NDB_QUERY_NORMAL = 0,
-  NDB_QUERY_MULTI_READ_RANGE = 1
-} NDB_QUERY_STATE_BITS;
-
 /*
   Place holder for ha_ndbcluster thread specific data
 */
@@ -272,7 +267,6 @@ class Thd_ndb
   uint32 options;
   uint32 trans_options;
   List<NDB_SHARE> changed_tables;
-  uint query_state;
   HASH open_tables;
   /*
     This is a memroot used to buffer rows for batched execution.
@@ -618,12 +612,12 @@ private:
   void no_uncommitted_rows_update(int);
   void no_uncommitted_rows_reset(THD *);
 
-  void release_completed_operations(NdbTransaction*, bool);
+  void release_completed_operations(NdbTransaction*);
 
   friend int execute_commit(ha_ndbcluster*, NdbTransaction*);
   friend int execute_no_commit_ignore_no_key(ha_ndbcluster*, NdbTransaction*);
-  friend int execute_no_commit(ha_ndbcluster*, NdbTransaction*, bool);
-  friend int execute_no_commit_ie(ha_ndbcluster*, NdbTransaction*, bool);
+  friend int execute_no_commit(ha_ndbcluster*, NdbTransaction*);
+  friend int execute_no_commit_ie(ha_ndbcluster*, NdbTransaction*);
 
   void transaction_checks(THD *thd);
   int start_statement(THD *thd, Thd_ndb *thd_ndb, Ndb* ndb);
@@ -713,8 +707,7 @@ private:
 
   ha_ndbcluster_cond *m_cond;
   bool m_disable_multi_read;
-  const uchar *m_multi_range_result_ptr;
-  const NdbOperation *m_current_multi_operation;
+  uchar *m_multi_range_result_ptr;
   NdbIndexScanOperation *m_multi_cursor;
   Ndb *get_ndb(THD *thd);
 
