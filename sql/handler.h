@@ -1006,9 +1006,6 @@ typedef struct st_range_seq_if
   uint (*next) (range_seq_t seq, KEY_MULTI_RANGE *range);
 } RANGE_SEQ_IF;
 
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx);
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx);
-
 class COST_VECT
 { 
 public:
