@@ -9217,7 +9217,6 @@ int ha_ndbcluster::multi_range_read_init(RANGE_SEQ_IF *seq_funcs,
                                          uint n_ranges, uint mode,
                                          HANDLER_BUFFER *buffer)
 {
-  int res;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_init");
 
   /*
@@ -9247,13 +9246,28 @@ int ha_ndbcluster::multi_range_read_init(RANGE_SEQ_IF *seq_funcs,
   mrr_iter= mrr_funcs.init(seq_init_param, n_ranges, mode);
   ranges_in_seq= n_ranges;
 
-  res= multi_range_start_retrievals(-1);
+  /*
+    We do not start fetching here with execute(), rather we defer this to the
+    first call to multi_range_read_next() by setting first_running_range and
+    first_unstarted_range like this.
 
-  DBUG_RETURN(res);
+    The reason is that the MRR interface is designed so that in some cases
+    multi_range_read_next() may never get called (eg. in case of WHERE
+    condition on previous table that is never satisfied). So we may not need
+    to fetch anything.
+
+    Also, at the time of writing, returning an error from
+    multi_range_read_init() does not correctly set the error status, so we get
+    an assert on missing result status in net_end_statement().
+  */
+  first_running_range= 0;
+  first_unstarted_range= 0;
+
+  DBUG_RETURN(0);
 }
 
 
-int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
+int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
 {
   int range_res;
   KEY* key_info= table->key_info + active_index;
@@ -9441,7 +9455,7 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
     DBUG_PRINT("info",
                ("Split MRR read, %d-%d of %d bufsize=%lu used=%lu need=%lu "
                 "range_no=%d",
-                starting_range + 1, mrr_range_no, ranges_in_seq,
+                starting_range, mrr_range_no - 1, ranges_in_seq,
                 (ulong)(end_of_buffer - multi_range_buffer->buffer),
                 (ulong)(row_buf - multi_range_buffer->buffer),
                 entry_max_size, range_no));
@@ -9458,8 +9472,8 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
     multi_range_buffer->end_of_used_area= row_buf;
 
   m_multi_range_result_ptr= (uchar*)multi_range_buffer->buffer;
-  first_running_range= first_range_in_batch= starting_range + 1;
-  first_unstarted_range= mrr_range_no + 1;
+  first_running_range= first_range_in_batch= starting_range;
+  first_unstarted_range= mrr_range_no;
 
   /*
     Now we need to inspect all ranges that were converted to key operations.
@@ -9505,14 +9519,16 @@ int ha_ndbcluster::multi_range_start_retrievals(int starting_range)
 
 int ha_ndbcluster::multi_range_read_next(char **range_info)
 {
+  int res;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_next");
 
- if (m_disable_multi_read)
+  if (m_disable_multi_read)
   {
     DBUG_RETURN(handler::multi_range_read_next(range_info));
   }
 
-  int res;
+  for(;;)
+  {
 
   /* for each range (we should have remembered the number) */
   while (first_running_range < first_unstarted_range)
@@ -9639,9 +9655,10 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
   /*
     Read remaining ranges
   */
-  if ((res= multi_range_start_retrievals(first_running_range-1)))
+  if ((res= multi_range_start_retrievals(first_running_range)))
     DBUG_RETURN(res);
-  DBUG_RETURN(multi_range_read_next(range_info));
+
+  }
 }
 
 /*

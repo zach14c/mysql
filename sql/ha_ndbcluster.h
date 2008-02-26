@@ -337,7 +337,7 @@ private:
   uint first_running_range;
   uint first_range_in_batch;
   uint first_unstarted_range;
-  int multi_range_start_retrievals(int first_range);
+  int multi_range_start_retrievals(uint first_range);
 public:
 
   bool null_value_index_search(KEY_MULTI_RANGE *ranges,
