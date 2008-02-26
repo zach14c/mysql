@@ -9530,124 +9530,124 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
   for(;;)
   {
 
-  /* for each range (we should have remembered the number) */
-  while (first_running_range < first_unstarted_range)
-  {
-    uchar *row_buf= m_multi_range_result_ptr;
-    const multi_range_data *buffer_entry=
-      reinterpret_cast<const multi_range_data *>(row_buf);
-
-    switch (multi_range_entry_type(row_buf))
+    /* for each range (we should have remembered the number) */
+    while (first_running_range < first_unstarted_range)
     {
-      case enum_skip_range:
-      case enum_empty_unique_range:
-        /* Nothing in this range; continue with next. */
-        break;
+      uchar *row_buf= m_multi_range_result_ptr;
+      const multi_range_data *buffer_entry=
+        reinterpret_cast<const multi_range_data *>(row_buf);
 
-      case enum_unique_range:
-        /*
-          Move to next range; we can have at most one record from a unique
-          range.
-        */
-        first_running_range++;
-        m_multi_range_result_ptr=
-          multi_range_next_entry(m_multi_range_result_ptr,
-                                 table_share->reclength);
-
-        /*
-          Clear m_active_cursor; it is used as a flag in update_row() /
-          delete_row() to know whether the current tuple is from a scan
-          or pk operation.
-        */
-        m_active_cursor= NULL;
-
-        /* Return the record. */
-        *range_info= buffer_entry->custom_ptr;
-        memcpy(table->record[0], multi_range_row(row_buf),
-               table_share->reclength);
-        DBUG_RETURN(0);
-
-      case enum_ordered_range:
-        /* An index scan range. */
-        {
-          int res;
-          if ((res= read_multi_range_fetch_next()) != 0)
-          {
-            *range_info= buffer_entry->custom_ptr;
-            first_running_range++;
-            m_multi_range_result_ptr=
-              multi_range_next_entry(m_multi_range_result_ptr,
-                                     table_share->reclength);
-            DBUG_RETURN(res);
-          }
-        }
-        if (!m_next_row)
-        {
-          /*
-            The whole scan is done, and the cursor has been closed.
-            So nothing more for this range. Move to next.
-          */
+      switch (multi_range_entry_type(row_buf))
+      {
+        case enum_skip_range:
+        case enum_empty_unique_range:
+          /* Nothing in this range; continue with next. */
           break;
-        }
-        else
-        {
-          int current_range_no= m_current_range_no;
-          int expected_range_no;
+
+        case enum_unique_range:
           /*
-            For a sorted index scan, we will receive rows in increasing
-            range_no order, so we can return ranges in order, pausing when
-            range_no indicate that the currently processed range
-            (first_running_range) is done.
-
-            But for unsorted scan, we may receive a high range_no from one
-            fragment followed by a low range_no from another fragment. So we
-            need to process all index scan ranges together.
+            Move to next range; we can have at most one record from a unique
+            range.
           */
-          if (!mrr_is_output_sorted ||
-              (expected_range_no= first_running_range - first_range_in_batch)
-              == current_range_no)
-          {
-            *range_info= buffer_entry->custom_ptr;
-            /* Copy out data from the new row. */
-            unpack_record(table->record[0], m_next_row);
-            /*
-              Mark that we have used this row, so we need to fetch a new
-              one on the next call.
-            */
-            m_next_row= 0;
-            /*
-              Set m_active_cursor; it is used as a flag in update_row() /
-              delete_row() to know whether the current tuple is from a scan or
-              pk operation.
-            */
-            m_active_cursor= m_multi_cursor;
+          first_running_range++;
+          m_multi_range_result_ptr=
+            multi_range_next_entry(m_multi_range_result_ptr,
+                                   table_share->reclength);
 
-            DBUG_RETURN(0);
-          }
-          else if (current_range_no > expected_range_no)
+          /*
+            Clear m_active_cursor; it is used as a flag in update_row() /
+            delete_row() to know whether the current tuple is from a scan
+            or pk operation.
+          */
+          m_active_cursor= NULL;
+
+          /* Return the record. */
+          *range_info= buffer_entry->custom_ptr;
+          memcpy(table->record[0], multi_range_row(row_buf),
+                 table_share->reclength);
+          DBUG_RETURN(0);
+
+        case enum_ordered_range:
+          /* An index scan range. */
           {
-            /* Nothing more in scan for this range. Move to next. */
+            int res;
+            if ((res= read_multi_range_fetch_next()) != 0)
+            {
+              *range_info= buffer_entry->custom_ptr;
+              first_running_range++;
+              m_multi_range_result_ptr=
+                multi_range_next_entry(m_multi_range_result_ptr,
+                                       table_share->reclength);
+              DBUG_RETURN(res);
+            }
+          }
+          if (!m_next_row)
+          {
+            /*
+              The whole scan is done, and the cursor has been closed.
+              So nothing more for this range. Move to next.
+            */
             break;
           }
           else
           {
+            int current_range_no= m_current_range_no;
+            int expected_range_no;
             /*
-              Should not happen. Ranges should be returned from NDB API in
-              the order we requested them.
-            */
-            DBUG_ASSERT(0);
-            break;                              // Attempt to carry on
-          }
-        }
+              For a sorted index scan, we will receive rows in increasing
+              range_no order, so we can return ranges in order, pausing when
+              range_no indicate that the currently processed range
+              (first_running_range) is done.
 
-      default:
-        DBUG_ASSERT(0);
+              But for unsorted scan, we may receive a high range_no from one
+              fragment followed by a low range_no from another fragment. So we
+              need to process all index scan ranges together.
+            */
+            if (!mrr_is_output_sorted ||
+                (expected_range_no= first_running_range - first_range_in_batch)
+                == current_range_no)
+            {
+              *range_info= buffer_entry->custom_ptr;
+              /* Copy out data from the new row. */
+              unpack_record(table->record[0], m_next_row);
+              /*
+                Mark that we have used this row, so we need to fetch a new
+                one on the next call.
+              */
+              m_next_row= 0;
+              /*
+                Set m_active_cursor; it is used as a flag in update_row() /
+                delete_row() to know whether the current tuple is from a scan or
+                pk operation.
+              */
+              m_active_cursor= m_multi_cursor;
+
+              DBUG_RETURN(0);
+            }
+            else if (current_range_no > expected_range_no)
+            {
+              /* Nothing more in scan for this range. Move to next. */
+              break;
+            }
+            else
+            {
+              /*
+                Should not happen. Ranges should be returned from NDB API in
+                the order we requested them.
+              */
+              DBUG_ASSERT(0);
+              break;                              // Attempt to carry on
+            }
+          }
+
+        default:
+          DBUG_ASSERT(0);
+      }
+      /* At this point the current range is done, proceed to next. */
+      first_running_range++;
+      m_multi_range_result_ptr=
+        multi_range_next_entry(m_multi_range_result_ptr, table_share->reclength);
     }
-    /* At this point the current range is done, proceed to next. */
-    first_running_range++;
-    m_multi_range_result_ptr=
-      multi_range_next_entry(m_multi_range_result_ptr, table_share->reclength);
-  }
 
   if (first_running_range == ranges_in_seq)
     DBUG_RETURN(HA_ERR_END_OF_FILE);
