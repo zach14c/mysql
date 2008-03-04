@@ -278,7 +278,6 @@ class Scheduler::Pump: public Backup_pump
 
  public:
 
-  // FIXME: how to react if the buffer could not be allocated?
   Pump(Snapshot_info &snap, Output_stream &s)
     :Backup_pump(snap, bw), start_pos(0),
     bw(snap.m_num - 1, DATA_BUFFER_SIZE, s)

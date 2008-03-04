@@ -88,11 +88,11 @@ class String: public ::String
   {}
 
   String(const ::LEX_STRING &s)
-    : ::String(s.str, s.length, &::my_charset_bin) // FIXME: charset info
+    : ::String(s.str, s.length, &::my_charset_bin)
   {}
 
   String(byte *begin, byte *end)
-    : ::String((char*)begin, end - begin, &::my_charset_bin) // FIXME: charset info
+    : ::String((char*)begin, end - begin, &::my_charset_bin)
   {
     if (!begin)
      set((char*)NULL, 0, NULL);

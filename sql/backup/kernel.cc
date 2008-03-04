@@ -441,8 +441,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   @note It is important that changes of meta-data are blocked as part of the
   preparations. The set of server objects and their definitions should not
   change after the backup context has been prepared and before the actual backup
-  is performed using @c do_backup() method. In particular, meta-data should be 
-  frozen when 
+  is performed using @c do_backup() method.
  */ 
 Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
 {
@@ -1436,16 +1435,18 @@ int bcat_get_item_create_data(st_bstream_image_header *catalogue,
 
 namespace backup {
 
-/// Build linked @c TABLE_LIST list from a list stored in @c Table_list object.
+/** 
+  Build linked @c TABLE_LIST list from a list stored in @c Table_list object.
+ 
+  @note The order of tables in the returned list is different than in the 
+  input list (reversed).
+
+  @todo Decide what to do if errors are detected. For example, how to react
+  if memory for TABLE_LIST structure could not be allocated?
+ */
 TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
 {
   TABLE_LIST *tl= NULL;
-
-  /*
-    FIXME: build list with the same order as in input
-    Actually, should work fine with reversed list as long as we use the reversed
-    list both in table writing and reading.
-   */
 
   for( uint tno=0; tno < tables.count() ; tno++ )
   {
