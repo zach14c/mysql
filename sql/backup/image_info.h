@@ -3,8 +3,7 @@
 
 #include <si_objects.h>
 #include <backup_stream.h> // for st_bstream_* types
-#include <backup/stream.h> // for I/OStream classes
-#include <backup/backup_aux.h>
+#include <backup/backup_aux.h>  // for Map template
 
 namespace backup {
 
@@ -28,9 +27,9 @@ class Snapshot_info;
   stored in table data snapshots created by backup drivers.
 
   For each snapshot present in the image there is a @c Snapshot_info object.
-  A pointer to n-th snapshot object is stored in @c m_snap[no]. This object 
-  contains list of tables whose data is stored in it. Note that each table must 
-  belong to exactly one snapshot.
+  A pointer to n-th snapshot object is stored in @c m_snap[n]. This object 
+  contains list of tables whose data is stored in the snapshot. Note that each 
+  table in the catalogue must belong to exactly one snapshot.
 
   Each object in the catalogue has its coordinates. The format of these 
   coordinates depends on the object type. For databases, it is just its number. 
@@ -39,7 +38,7 @@ class Snapshot_info;
   objects given their coordinates. Objects can be also browsed using one of
   the iterator classes defined within @c Image_info.
 
-  For each type of objects stored in the catalogue, there is a class derived
+  For each type of object stored in the catalogue, there is a class derived
   from @c Image_info::Obj, whose instances are used to keep information about
   such objects. These instances are owned by the @c Image_info object who is 
   responsible for freeing memory used by them. Currently a memory root is used
@@ -67,14 +66,18 @@ public: // public interface
 
    size_t     data_size;      ///< How much of table data is saved in the image.
 
-   uint       table_count() const;
+   ulong      table_count() const;
    uint       db_count() const;
-   uint       snap_count() const;
+   ushort     snap_count() const;
+
+   // Examine contents of the catalogue.
+
+   bool has_db(const String&);
 
    // Retrieve objects using their coordinates.
 
    Db*    get_db(uint pos) const;
-   Table* get_table(uint snap_no, ulong pos) const;
+   Table* get_table(ushort snap_num, ulong pos) const;
 
    // Iterators for enumerating the contents of the archive.
 
@@ -82,8 +85,12 @@ public: // public interface
    DbObj_iterator* get_db_objects(const Db &db);
 
    /**
-     Pointers to Snapshot_info objects corresponding to snapshots
-     present in the image. 
+     Pointers to @c Snapshot_info objects corresponding to the snapshots
+     present in the image.
+     
+     We can have at most 256 different snapshots which is a limitation imposed
+     by the backup stream library (the number of snapshots is stored inside 
+     backup image using one byte field).
     */ 
    Snapshot_info *m_snap[256];
    
@@ -100,7 +107,7 @@ public: // public interface
   // Populate the catalogue
   
   int    add_snapshot(Snapshot_info&);
-  Db*    add_db(const String &db_name, ulong pos);
+  Db*    add_db(const String &db_name, uint pos);
   Table* add_table(Db &db, const String &table_name, 
                    Snapshot_info &snap, ulong pos);
 
@@ -117,23 +124,14 @@ public: // public interface
 
   // storage
 
-  MEM_ROOT  mem_root;    ///< Memory root used to allocate @c Obj instaces.
-  Map<uint,Db>   m_dbs;  ///< Pointers to Db instances.
+  MEM_ROOT  mem_root;    ///< Memory root used to allocate @c Obj instances.
+  Map<uint, Db>   m_dbs; ///< Pointers to Db instances.
 
   // friends
 
   friend class Snapshot_info;
 };
 
-/**
-  Find object in a catalogue.
-  
-  The object is identified by its coordinates stored in a 
-  @c st_bstream_item_info structure.
-  
-  @returns Pointer to the corresponding @c Obj instance or NULL if object
-  was not found.
- */ 
 Image_info::Obj* find_obj(const Image_info &info, 
                           const st_bstream_item_info &item);
 
@@ -146,14 +144,14 @@ Image_info::Obj* find_obj(const Image_info &info,
   that interface using a map, which for given table number returns a pointer
   to corresponding @c Image_info::Table instance.
   
-  This class is not a container - it only stores pointers to 
+  @note This class is not a container - it only stores pointers to 
   @c Image_info::Table objects which are owned by the @c Image_info instance.
  */ 
 class Image_info::Tables:
   public Table_list,
-  public Map<uint,Image_info::Table>
+  public Map<uint, Image_info::Table>
 {
-  typedef Map<uint,Image_info::Table> Base;
+  typedef Map<uint, Image_info::Table> Base;
  
  public:
 
@@ -173,8 +171,8 @@ class Image_info::Tables:
                         when the current capacity is exceeded
  */ 
 inline
-Image_info::Tables::Tables(ulong init_size, ulong increase): 
-  Base(init_size, increase) 
+Image_info::Tables::Tables(ulong init_size, ulong increase)
+  :Base(init_size, increase) 
 {}
 
 
@@ -199,9 +197,12 @@ class Snapshot_info
  public:
 
   enum enum_snap_type {
-    NATIVE_SNAPSHOT= BI_NATIVE,   ///< snapshot created by native backup engine
-    DEFAULT_SNAPSHOT= BI_DEFAULT, ///< snapshot created by built-in, blocking backup engine
-    CS_SNAPSHOT= BI_CS            ///< snapshot created by built-in CS backup engine
+    /** snapshot created by native backup engine. */
+    NATIVE_SNAPSHOT= BI_NATIVE,
+    /** Snapshot created by built-in, blocking backup engine. */
+    DEFAULT_SNAPSHOT= BI_DEFAULT,
+    /** Snapshot created by built-in CS backup engine. */
+    CS_SNAPSHOT= BI_CS
   };
 
   virtual enum_snap_type type() const =0; 
@@ -210,10 +211,10 @@ class Snapshot_info
   /**
     Position inside image's snapshot list.
 
-    Starts with 1. M_no == 0 means that this snapshot is not included in the
+    Starts with 1. @c M_num == 0 means that this snapshot is not included in the
     backup image (for example, no tables have been added to it yet).
   */
-  ushort m_no;
+  ushort m_num;
 
   /**
     Size of the initial data transfer (estimate). This is
@@ -226,7 +227,7 @@ class Snapshot_info
 
     The name should fit into "%s backup/restore driver" pattern.
    */
-  virtual const char* name() const;
+  virtual const char* name() const =0;
 
   /// Check if instance was correctly constructed
   virtual bool is_valid() =0;
@@ -246,7 +247,7 @@ class Snapshot_info
 
  protected:
  
-  version_t m_version; ///< to store version of the snapshot's format
+  version_t m_version; ///< Stores version number of the snapshot's format.
 
   Snapshot_info(const version_t);
 
@@ -264,8 +265,8 @@ class Snapshot_info
 
 
 inline
-Snapshot_info::Snapshot_info(const version_t version): 
-  m_no(0), init_size(0), m_version(version), m_tables(128,1024)
+Snapshot_info::Snapshot_info(const version_t version) 
+  :m_num(0), init_size(0), m_version(version), m_tables(128, 1024)
 {}
 
 inline
@@ -281,9 +282,9 @@ Snapshot_info::~Snapshot_info()
 /**
   Represents object stored in a backup image.
 
-  Instances of this class store name of the object and other relevant
-  information. For each type of objects a subclass of this class is derived
-  which is specialized in storing information about that kind of objects.
+  Instances of this class store the name and other relevant information about
+  an object. For each type of object a subclass of this class is derived
+  which is specialized in storing information specific to that kind of object.
 
   Method @c info() returns a pointer to @c st_bstream_item_info structure 
   filled with data describing the corresponding object in the way required by
@@ -291,16 +292,16 @@ Snapshot_info::~Snapshot_info()
   
   Method @c materialize() can be used to create a corresponding instance of
   @c obs::Obj, to be used by server's objects services API. If @c m_obj_ptr is
-  not NULL then it contains a pointer to the corresponding @c obs:;Obj instance
-  which was obtained earlier (wither with @c materialize() or from server's 
-  object enumerators).
+  not NULL then it contains a pointer to the corresponding @c obs::Obj instance
+  which was obtained earlier (either with @c materialize() or from server's 
+  object iterators).
 */
 class Image_info::Obj: public Sql_alloc
 {
  public:
  
   /* 
-    Note: Snice we are using Sql_alloc and allocate instances using MEM_ROOT,
+    Note: Since we are using Sql_alloc and allocate instances using MEM_ROOT,
     destructors will not be called! This is also true for derived classes.
    */
   virtual ~Obj();
@@ -338,7 +339,7 @@ class Image_info::Obj: public Sql_alloc
 };
 
 inline
-Image_info::Obj::Obj(): m_obj_ptr(NULL)
+Image_info::Obj::Obj() :m_obj_ptr(NULL)
 {}
 
 inline
@@ -353,7 +354,7 @@ class Image_info::Db
    public Image_info::Obj,
    public Db_ref
 {
-  ulong m_table_count;  ///< Number of tables belonging to that database.
+  ulong m_table_count;  ///< Number of tables in the database.
 
  public:
 
@@ -366,18 +367,18 @@ class Image_info::Db
 
  private:
  
-  Table *first_table; ///< Pointer to the first table in this database's table list. 
-  Table *last_table;  ///< Pointer to the last table in this database's table list.
+  Table *first_table; ///< Pointer to the first table in database's table list. 
+  Table *last_table;  ///< Pointer to the last table in database's table list.
 
   friend class DbObj_iterator;
 };
 
 inline
-Image_info::Db::Db(const String &name):
- Db_ref(Image_info::Obj::m_name),
+Image_info::Db::Db(const String &name)
+ :Db_ref(Image_info::Obj::m_name),
  m_table_count(0), first_table(NULL), last_table(NULL)
 {
-  bzero(&base,sizeof(base));
+  bzero(&base, sizeof(base));
   base.type= BSTREAM_IT_DB;
   store_name(name);
 }
@@ -407,10 +408,10 @@ class Image_info::Table
 };
 
 inline
-Image_info::Table::Table(const Db &db, const String &name):
-  Table_ref(db.name(), Image_info::Obj::m_name), m_db(db), next_table(NULL)
+Image_info::Table::Table(const Db &db, const String &name)
+  :Table_ref(db.name(), Image_info::Obj::m_name), m_db(db), next_table(NULL)
 {
-  bzero(&base,sizeof(base));
+  bzero(&base, sizeof(base));
   base.base.type= BSTREAM_IT_TABLE;
   store_name(name);
 }
@@ -470,8 +471,7 @@ class Image_info::Iterator
 };
 
 inline
-Image_info::Iterator::Iterator(const Image_info &info): 
- m_info(info) 
+Image_info::Iterator::Iterator(const Image_info &info) :m_info(info) 
 {}
 
 inline
@@ -496,8 +496,8 @@ class Image_info::Db_iterator
 };
 
 inline
-Image_info::Db_iterator::Db_iterator(const Image_info &info): 
-  Iterator(info), pos(0)
+Image_info::Db_iterator::Db_iterator(const Image_info &info)
+  :Iterator(info), pos(0)
 {}
 
 /**
@@ -521,8 +521,8 @@ class Image_info::DbObj_iterator
 };
 
 inline
-Image_info::DbObj_iterator::DbObj_iterator(const Image_info &info, const Db &db):
- Db_iterator(info), ptr(db.first_table)
+Image_info::DbObj_iterator::DbObj_iterator(const Image_info &info, const Db &db)
+ :Db_iterator(info), ptr(db.first_table)
 {}
 
 
@@ -541,14 +541,14 @@ uint Image_info::db_count() const
 
 /// Returns total number of tables in the image.
 inline
-uint Image_info::table_count() const
+ulong Image_info::table_count() const
 { 
   return m_table_count;
 }
 
 /// Returns number of snapshots used by the image.
 inline
-uint Image_info::snap_count() const
+ushort Image_info::snap_count() const
 { 
   return st_bstream_image_header::snap_count;
 }
@@ -561,7 +561,7 @@ static
 void save_time(const time_t t, bstream_time_t &buf)
 {
   struct tm time;
-  gmtime_r(&t,&time);
+  gmtime_r(&t, &time);
   buf.year= time.tm_year;
   buf.mon= time.tm_mon;
   buf.mday= time.tm_mday;
@@ -616,7 +616,7 @@ Image_info::Db_iterator* Image_info::get_dbs()
 inline
 Image_info::DbObj_iterator* Image_info::get_db_objects(const Db &db)
 {
-  return new DbObj_iterator(*this,db);
+  return new DbObj_iterator(*this, db);
 }
 
 /********************************************************************
@@ -756,11 +756,6 @@ inline
 version_t Snapshot_info::version() const  
 { return m_version; }
 
-/// Default implementation of the virtual method
-inline 
-const char* Snapshot_info::name() const
-{ return "<Unknown>"; }
-
 /// Add table at a given position.
 inline
 int Snapshot_info::add_table(Image_info::Table &t, ulong pos)
@@ -836,64 +831,6 @@ bool Image_info::DbObj_iterator::next()
   if (ptr)
     ptr= ptr->next_table;
   return ptr != NULL;
-}
-
-} // backup namespace
-
-namespace backup {
-
-/*
- Wrappers around backup stream functions which perform necessary type conversions.
-*/
-
-inline
-result_t
-write_preamble(const Image_info &info, OStream &s)
-{
-  const st_bstream_image_header *hdr= static_cast<const st_bstream_image_header*>(&info);
-  int ret= bstream_wr_preamble(&s, const_cast<st_bstream_image_header*>(hdr));
-  return ret == BSTREAM_ERROR ? ERROR : OK;
-}
-
-inline
-result_t
-write_summary(const Image_info &info, OStream &s)
-{
-  const st_bstream_image_header *hdr= static_cast<const st_bstream_image_header*>(&info);
-  int ret= bstream_wr_summary(&s, const_cast<st_bstream_image_header*>(hdr));
-  return ret == BSTREAM_ERROR ? ERROR : OK;
-}
-
-inline
-result_t
-read_header(Image_info &info, IStream &s)
-{
-  int ret= bstream_rd_header(&s, static_cast<st_bstream_image_header*>(&info));
-  return ret == BSTREAM_ERROR ? ERROR : OK;
-}
-
-inline
-result_t
-read_catalog(Image_info &info, IStream &s)
-{
-  int ret= bstream_rd_catalogue(&s, static_cast<st_bstream_image_header*>(&info));
-  return ret == BSTREAM_ERROR ? ERROR : OK;
-}
-
-inline
-result_t
-read_meta_data(Image_info &info, IStream &s)
-{
-  int ret= bstream_rd_meta_data(&s, static_cast<st_bstream_image_header*>(&info));
-  return ret == BSTREAM_ERROR ? ERROR : OK;
-}
-
-inline
-result_t
-read_summary(Image_info &info, IStream &s)
-{
-  int ret= bstream_rd_summary(&s, static_cast<st_bstream_image_header*>(&info));
-  return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
 } // backup namespace

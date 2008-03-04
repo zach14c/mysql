@@ -78,8 +78,8 @@ class Logger
    */ 
   ulong m_op_id;
 
-  int v_report_error(log_level::value,int,va_list);
-  int v_write_message(log_level::value,int, const char*,va_list);
+  int v_report_error(log_level::value, int, va_list);
+  int v_write_message(log_level::value, int, const char*, va_list);
   int write_message(log_level::value level , int error_code, const char *msg);
 
  private:
@@ -89,8 +89,8 @@ class Logger
 };
 
 inline
-Logger::Logger(): 
-  m_type(BACKUP), m_state(CREATED), m_op_id(0), m_save_errors(FALSE)
+Logger::Logger() 
+  :m_type(BACKUP), m_state(CREATED), m_op_id(0), m_save_errors(FALSE)
 {}
 
 inline
@@ -133,7 +133,7 @@ int Logger::write_message(log_level::value level, const char *msg, ...)
 {
   va_list args;
 
-  va_start(args,msg);
+  va_start(args, msg);
   int res= v_write_message(level, 0, msg, args);
   va_end(args);
 
@@ -146,7 +146,7 @@ int Logger::report_error(int error_code, ...)
 {
   va_list args;
 
-  va_start(args,error_code);
+  va_start(args, error_code);
   int res= v_report_error(log_level::ERROR, error_code, args);
   va_end(args);
 
@@ -159,7 +159,7 @@ int Logger::report_error(log_level::value level, int error_code, ...)
 {
   va_list args;
 
-  va_start(args,error_code);
+  va_start(args, error_code);
   int res= v_report_error(level, error_code, args);
   va_end(args);
 
@@ -172,7 +172,7 @@ int Logger::report_error(const char *format, ...)
 {
   va_list args;
 
-  va_start(args,format);
+  va_start(args, format);
   int res= v_write_message(log_level::ERROR, 0, format, args);
   va_end(args);
 

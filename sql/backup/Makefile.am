@@ -28,7 +28,8 @@ INCLUDES = \
 libbackup_la_SOURCES = \
   stream.cc \
   logger.cc \
-  catalog.cc \
+  image_info.cc \
+  backup_info.cc \
   kernel.cc \
   data_backup.cc \
   be_default.cc \
@@ -55,7 +56,9 @@ noinst_HEADERS = \
   stream.h \
   backup_aux.h \
   logger.h \
-  catalog.h \
+  image_info.h \
+  backup_info.h \
+  restore_info.h \
   be_native.h \
   be_default.h \
   be_snapshot.h \

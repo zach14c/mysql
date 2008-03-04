@@ -1,9 +1,9 @@
 #ifndef _SNAPSHOT_BACKUP_H
 #define _SNAPSHOT_BACKUP_H
 
-#include "catalog.h"        
-#include "buffer_iterator.h"
-#include "be_default.h"
+#include <backup/image_info.h>        
+#include <backup/buffer_iterator.h>
+#include <backup/be_default.h>
 
 namespace snapshot_backup {
 
@@ -58,8 +58,8 @@ class Engine: public Backup_engine
 class Backup: public default_backup::Backup
 {
   public:
-    Backup(const Table_list &tables, THD *t_thd): 
-      default_backup::Backup(tables, t_thd, TL_READ) { tables_open= FALSE; };
+    Backup(const Table_list &tables, THD *t_thd) 
+      :default_backup::Backup(tables, t_thd, TL_READ) { tables_open= FALSE; };
     virtual ~Backup()
     {
       if (locking_thd->lock_state == LOCK_ACQUIRED)
@@ -93,8 +93,8 @@ class Backup: public default_backup::Backup
 class Restore: public default_backup::Restore
 {
   public:
-    Restore(const Table_list &tables, THD *t_thd):
-      default_backup::Restore(tables, t_thd){};
+    Restore(const Table_list &tables, THD *t_thd)
+      :default_backup::Restore(tables, t_thd){};
     virtual ~Restore(){};
     void free() { delete this; };
 };
@@ -114,9 +114,9 @@ class CS_snapshot: public Snapshot_info
 {
  public:
 
-  CS_snapshot(Logger&): Snapshot_info(1) // current version no is 1
+  CS_snapshot(Logger&) :Snapshot_info(1) // current version number is 1
   {}
-  CS_snapshot(Logger&, version_t ver): Snapshot_info(ver)
+  CS_snapshot(Logger&, version_t ver) :Snapshot_info(ver)
   {}
 
   enum_snap_type type() const
@@ -133,10 +133,10 @@ class CS_snapshot: public Snapshot_info
   }; // accept all tables that support consistent read
 
   result_t get_backup_driver(Backup_driver* &ptr)
-  { return (ptr= new snapshot_backup::Backup(m_tables,::current_thd)) ? OK : ERROR; }
+  { return (ptr= new snapshot_backup::Backup(m_tables, ::current_thd)) ? OK : ERROR; }
 
   result_t get_restore_driver(Restore_driver* &ptr)
-  { return (ptr= new snapshot_backup::Restore(m_tables,::current_thd)) ? OK : ERROR; }
+  { return (ptr= new snapshot_backup::Restore(m_tables, ::current_thd)) ? OK : ERROR; }
 
   bool is_valid(){ return TRUE; };
 

@@ -2,7 +2,8 @@
 #define BE_NATIVE_H_
 
 #include <backup_engine.h>
-#include "../sql_plugin.h"
+#include <backup/image_info.h>
+#include <backup/logger.h>
 
 namespace backup {
 
@@ -18,16 +19,16 @@ class Native_snapshot: public Snapshot_info
 
  public:
 
-  Native_snapshot(Logger &log, const storage_engine_ref se): 
-    Snapshot_info(0), m_hton(NULL), m_be(NULL)
+  Native_snapshot(Logger &log, const storage_engine_ref se) 
+    :Snapshot_info(0), m_hton(NULL), m_be(NULL)
   {
     init(log, se);
     if (m_be)
       m_version= m_be->version();
   }
   
-  Native_snapshot(Logger &log, const version_t ver, const storage_engine_ref se): 
-    Snapshot_info(ver), m_hton(NULL), m_be(NULL)
+  Native_snapshot(Logger &log, const version_t ver, const storage_engine_ref se) 
+    :Snapshot_info(ver), m_hton(NULL), m_be(NULL)
   {
     init(log, se);
   }
@@ -62,13 +63,13 @@ class Native_snapshot: public Snapshot_info
   result_t get_backup_driver(Backup_driver* &drv)
   {
     DBUG_ASSERT(m_be);
-    return m_be->get_backup(Driver::PARTIAL,m_tables,drv);
+    return m_be->get_backup(Driver::PARTIAL, m_tables, drv);
   }
 
   result_t get_restore_driver(Restore_driver* &drv)
   {
     DBUG_ASSERT(m_be);
-    return m_be->get_restore(m_version,Driver::PARTIAL,m_tables,drv);
+    return m_be->get_restore(m_version, Driver::PARTIAL, m_tables, drv);
   }
 
  private:
@@ -96,7 +97,7 @@ int Native_snapshot::init(Logger &log, const storage_engine_ref se)
     if (m_be)
       m_be->free();
     m_be= NULL;
-    log.report_error(ER_BACKUP_CREATE_BE,m_name);
+    log.report_error(ER_BACKUP_CREATE_BE, m_name);
     return 1;
   }
   

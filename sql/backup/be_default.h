@@ -1,12 +1,10 @@
 #ifndef _DEFAULT_BACKUP_H
 #define _DEFAULT_BACKUP_H
 
-#include <backup/backup_engine.h>
-#include "catalog.h"  // to define default backup image class
-#include "buffer_iterator.h"
-#include "backup_aux.h"
-#include "mysql_priv.h"
-#include "be_thread.h"
+#include <backup_engine.h>
+#include <backup/image_info.h>  // to define default backup image class
+#include <backup/buffer_iterator.h>
+#include <backup/be_thread.h>
 
 namespace default_backup {
 
@@ -207,14 +205,15 @@ class Restore: public Restore_driver
 
 namespace backup {
 
+class Logger;
 
 class Default_snapshot: public Snapshot_info
 {
  public:
 
-  Default_snapshot(Logger&): Snapshot_info(1) // current version no is 1
+  Default_snapshot(Logger&) :Snapshot_info(1) // current version number is 1
   {}
-  Default_snapshot(Logger&, const version_t ver): Snapshot_info(ver)
+  Default_snapshot(Logger&, const version_t ver) :Snapshot_info(ver)
   {}
 
   enum_snap_type type() const
@@ -227,11 +226,11 @@ class Default_snapshot: public Snapshot_info
   { return TRUE; }; // accept all tables
 
   result_t get_backup_driver(Backup_driver* &ptr)
-  { return (ptr= new default_backup::Backup(m_tables,::current_thd,
+  { return (ptr= new default_backup::Backup(m_tables, ::current_thd,
                                             TL_READ_NO_INSERT)) ? OK : ERROR; }
 
   result_t get_restore_driver(Restore_driver* &ptr)
-  { return (ptr= new default_backup::Restore(m_tables,::current_thd)) ? OK : ERROR; }
+  { return (ptr= new default_backup::Restore(m_tables, ::current_thd)) ? OK : ERROR; }
 
   bool is_valid(){ return TRUE; };
 

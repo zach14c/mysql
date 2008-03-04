@@ -9376,11 +9376,6 @@ show_param:
             Lex->spname= $3;
             Lex->sql_command = SQLCOM_SHOW_CREATE_EVENT;
           }
-        | BACKUP_SYM TEXT_STRING_sys
-          {
-            Lex->sql_command = SQLCOM_SHOW_ARCHIVE;
-            Lex->backup_dir = $2; 
-          }
         ;
 
 show_engine_param:

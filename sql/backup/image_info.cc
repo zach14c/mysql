@@ -1,6 +1,6 @@
 #include "../mysql_priv.h"
 
-#include "catalog.h"
+#include "image_info.h"
 #include "be_native.h"
 
 /**
@@ -14,8 +14,8 @@
 
 namespace backup {
 
-Image_info::Image_info():
-  data_size(0), m_table_count(0), m_dbs(16,16)
+Image_info::Image_info()
+  :data_size(0), m_table_count(0), m_dbs(16, 16)
 {
   init_alloc_root(&mem_root, 4 * 1024, 0);
 
@@ -24,18 +24,20 @@ Image_info::Image_info():
   bzero(static_cast<st_bstream_image_header*>(this),
         sizeof(st_bstream_image_header));
 
-  version= 1;
+  /* 
+    This code reads and writes backup image using version 1 of the backup 
+    image format.
+   */ 
+  version= 1; 
 
   /*
-    The arithmetic below assumes that MYSQL_VERSION_ID digits are arrenged
+    The arithmetic below assumes that MYSQL_VERSION_ID digits are arranged
     as follows: HLLRR where
     H - major version number
     L - minor version number
     R - release
-
-    TODO: check if this is correct
   */
-  DBUG_PRINT("backup",("version %d",MYSQL_VERSION_ID));
+  DBUG_PRINT("backup",("version %d", MYSQL_VERSION_ID));
   server_version.major= MYSQL_VERSION_ID / 10000;
   server_version.minor= (MYSQL_VERSION_ID % 10000) / 100;
   server_version.release= MYSQL_VERSION_ID % 100;
@@ -45,16 +47,16 @@ Image_info::Image_info():
 
   flags= 0;  // TODO: set BSTREAM_FLAG_BIG_ENDIAN flag accordingly
 
-  bzero(m_snap,sizeof(m_snap));
+  bzero(m_snap, sizeof(m_snap));
 }
 
 Image_info::~Image_info()
 {
   // Delete server table objects 
   
-  for (uint no=0; no<256; ++no)
+  for (uint n=0; n<256; ++n)
   {
-    Snapshot_info *snap= m_snap[no];
+    Snapshot_info *snap= m_snap[n];
     
     if (!snap)
       continue;
@@ -83,16 +85,15 @@ Image_info::~Image_info()
   free_root(&mem_root, MYF(0));
 }
 
-
 Image_info::Db* 
-Image_info::add_db(const String &db_name, ulong pos)
+Image_info::add_db(const String &db_name, uint pos)
 {
   Db *db= new (&mem_root) Db(db_name);
   
   if (!db)
     return NULL;
   
-  if (m_dbs.insert(pos,db))
+  if (m_dbs.insert(pos, db))
     return NULL;
   
   db->base.pos= pos;
@@ -111,28 +112,32 @@ Image_info::get_db(uint pos) const
   
   The snapshot should be non-empty, that is contain data of at least one table.
   Snapshot is added to the list of snapshots used in the image and a number is
-  assigned to it. This number is stored in @c snap.m_no. If snapshot's number
-  is @c no then pointer to a corresponding @c Snapshot_info object is stored in 
-  @c m_snap[no-1].
+  assigned to it. This number is stored in @c snap.m_num. If snapshot's number
+  is @c n then pointer to a corresponding @c Snapshot_info object is stored in 
+  @c m_snap[n-1].
   
   The @c Snapshot_info object is not owned by @c Image_info instance - it must
   be deleted externally.
  */ 
 int Image_info::add_snapshot(Snapshot_info &snap)
 {
-  uint no= st_bstream_image_header::snap_count++;
-  
-  if (no > 256)
+  uint num= st_bstream_image_header::snap_count++;
+
+  // The limit of 256 snapshots is imposed by backup stream format.  
+  if (num > 256)
     return -1;
   
-  m_snap[no]= &snap;
-  snap.m_no= no+1;
+  m_snap[num]= &snap;
+  snap.m_num= num + 1;
   
-  // Store information about snapshot in the snapshot[] table
+  /* 
+    Store information about snapshot in the snapshot[] table for the
+    backup stream library
+   */
+
+  st_bstream_snapshot_info &info= snapshot[num];
   
-  st_bstream_snapshot_info &info= snapshot[no];
-  
-  bzero(&info,sizeof(st_bstream_snapshot_info));
+  bzero(&info, sizeof(st_bstream_snapshot_info));
   info.type= enum_bstream_snapshot_type(snap.type());
   info.version= snap.version();
   info.table_count= snap.table_count();
@@ -149,15 +154,25 @@ int Image_info::add_snapshot(Snapshot_info &snap)
     info.engine.name.end= info.engine.name.begin + strlen(se_name);    
   }
   
-  return no+1;
+  return num + 1;
+}
+
+/**
+  Check if catalogue contains given database.
+ */ 
+bool Image_info::has_db(const String &db_name)
+{
+  for (uint n=0; n < m_dbs.count() ; ++n)
+    if (m_dbs[n] && m_dbs[n]->name() == db_name)
+      return TRUE;
+
+  return FALSE;
 }
 
 /**
   Add table to the catalogue.
   
   Table's data snapshot is added to the catalogue if it was not there already.
-  
-  FIXME: add_table should generate error if table name starts with 'b' (?)
  */
 Image_info::Table* 
 Image_info::add_table(Db &db, const String &table_name, 
@@ -174,13 +189,13 @@ Image_info::add_table(Db &db, const String &table_name,
   if (db.add_table(*t))
     return NULL;
 
-  if (!snap.m_no)
-    snap.m_no= add_snapshot(snap); // reports errors
+  if (!snap.m_num)
+    snap.m_num= add_snapshot(snap); // reports errors
 
-  if (!snap.m_no)
+  if (!snap.m_num)
    return NULL;
 
-  t->snap_no= snap.m_no - 1;
+  t->snap_num= snap.m_num - 1;
   t->base.base.pos= pos;
   t->base.db= &db;
 
@@ -190,12 +205,12 @@ Image_info::add_table(Db &db, const String &table_name,
 }
 
 Image_info::Table* 
-Image_info::get_table(uint snap_no, ulong pos) const
+Image_info::get_table(ushort snap_num, ulong pos) const
 {
-  if (snap_no > snap_count() || m_snap[snap_no] == NULL)
+  if (snap_num > snap_count() || m_snap[snap_num] == NULL)
     return NULL;
   
-  Table *t= m_snap[snap_no]->get_table(pos);
+  Table *t= m_snap[snap_num]->get_table(pos);
   
   if (!t)
     return NULL;
@@ -204,16 +219,15 @@ Image_info::get_table(uint snap_no, ulong pos) const
 }
 
 /**
-  Locate given item in a backup image catalogue.
+  Find object in a catalogue.
   
-  The positon of the item is stored in @c item structure in the format 
-  appropriate for the type of the object. Normally @c item is filled by 
-  backup stream library functions when reading backup image.
+  The object is identified by its coordinates stored in a 
+  @c st_bstream_item_info structure. Normally these coordinates are
+  filled by backup stream library when reading backup image.
   
-  @returns Pointer to the @c Image_info::Obj instance corresponding to the
-  object indicated by @c item or NULL if the object could not be found in
-  the catalogue.
-*/
+  @returns Pointer to the corresponding @c Obj instance or NULL if object
+  was not found.
+ */ 
 Image_info::Obj *find_obj(const Image_info &info, 
                           const st_bstream_item_info &item)
 {
@@ -227,7 +241,7 @@ Image_info::Obj *find_obj(const Image_info &info,
     const st_bstream_table_info &ti= 
                            reinterpret_cast<const st_bstream_table_info&>(item);
 
-    return info.get_table(ti.snap_no,item.pos);
+    return info.get_table(ti.snap_num, item.pos);
   }
 
   default:
@@ -237,4 +251,4 @@ Image_info::Obj *find_obj(const Image_info &info,
 
 } // backup namespace
 
-template class Map<uint,backup::Image_info::Db>;
+template class Map<uint, backup::Image_info::Db>;

@@ -1,7 +1,7 @@
 #include "../mysql_priv.h"
 
 #include "logger.h"
-#include "catalog.h"
+#include "image_info.h"
 
 /** @file
  
@@ -39,7 +39,7 @@ int Logger::write_message(log_level::value level, int error_code,
 
    if (m_state == READY || m_state == RUNNING)
    {
-     my_snprintf(buf,sizeof(buf),"%s: %s", 
+     my_snprintf(buf, sizeof(buf), "%s: %s", 
                  m_type == BACKUP ? "Backup" : "Restore" , msg);
      out= buf;
    }
@@ -48,9 +48,9 @@ int Logger::write_message(log_level::value level, int error_code,
    case log_level::ERROR:
      if (m_save_errors)
        errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
-                                         MYSQL_ERROR::WARN_LEVEL_ERROR,msg));
+                                         MYSQL_ERROR::WARN_LEVEL_ERROR, msg));
      sql_print_error(out);
-     DBUG_PRINT("backup_log",("[ERROR] %s",out));
+     DBUG_PRINT("backup_log",("[ERROR] %s", out));
      
      if (m_state == READY || m_state == RUNNING)
        report_ob_error(m_op_id, error_code);
@@ -59,12 +59,12 @@ int Logger::write_message(log_level::value level, int error_code,
 
    case log_level::WARNING:
      sql_print_warning(out);
-     DBUG_PRINT("backup_log",("[Warning] %s",out));
+     DBUG_PRINT("backup_log",("[Warning] %s", out));
      return 0;
 
    case log_level::INFO:
      sql_print_information(out);
-     DBUG_PRINT("backup_log",("[Info] %s",out));
+     DBUG_PRINT("backup_log",("[Info] %s", out));
      return 0;
 
    default: return ERROR;
@@ -84,7 +84,7 @@ int Logger::write_message(log_level::value level, int error_code,
  */
 int Logger::v_report_error(log_level::value level, int error_code, va_list args)
 {
-  return v_write_message(level,error_code,ER_SAFE(error_code),args);
+  return v_write_message(level, error_code, ER_SAFE(error_code), args);
 }
 
 /**
@@ -99,12 +99,13 @@ int Logger::v_write_message(log_level::value level, int error_code,
 {
   char buf[ERRMSGSIZE + 20];
 
-  my_vsnprintf(buf,sizeof(buf),format,args);
-  return write_message(level,error_code,buf);
+  my_vsnprintf(buf, sizeof(buf), format, args);
+  return write_message(level, error_code, buf);
 }
 
 /**
-  Report statistics from backup/restore catalogue before the main operation starts.
+  Report statistics from backup/restore catalogue before the main operation
+  starts.
  */ 
 void Logger::report_stats_pre(const Image_info &info)
 {
@@ -114,7 +115,8 @@ void Logger::report_stats_pre(const Image_info &info)
 }
 
 /**
-  Report statistics from backup/restore catalogue after the operation is completed.
+  Report statistics from backup/restore catalogue after the operation is
+  completed.
  */ 
 void Logger::report_stats_post(const Image_info &info)
 {

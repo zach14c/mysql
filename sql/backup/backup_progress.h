@@ -22,10 +22,6 @@
    Data Dictionary related operations of Online Backup.
 */
 
-#include "my_global.h"
-#include "my_time.h"
-#include "mysql_priv.h"
-
 /**
    List of fields for online backup table.
   */

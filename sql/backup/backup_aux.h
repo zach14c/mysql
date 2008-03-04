@@ -27,7 +27,7 @@ handlerton* se_hton(storage_engine_ref se)
 inline
 storage_engine_ref get_se_by_name(const LEX_STRING name)
 { 
-  plugin_ref plugin= ::ha_resolve_by_name(::current_thd,&name);
+  plugin_ref plugin= ::ha_resolve_by_name(::current_thd, &name);
   return plugin_ref_to_se_ref(plugin); 
 }
 
@@ -84,29 +84,29 @@ class String: public ::String
 {
  public:
 
-  String(const ::String &s): ::String(s)
+  String(const ::String &s) : ::String(s)
   {}
 
-  String(const ::LEX_STRING &s):
-    ::String(s.str,s.length,&::my_charset_bin) // FIXME: charset info
+  String(const ::LEX_STRING &s)
+    : ::String(s.str, s.length, &::my_charset_bin) // FIXME: charset info
   {}
 
-  String(byte *begin, byte *end):
-    ::String((char*)begin,end-begin,&::my_charset_bin) // FIXME: charset info
+  String(byte *begin, byte *end)
+    : ::String((char*)begin, end - begin, &::my_charset_bin) // FIXME: charset info
   {
     if (!begin)
-     set((char*)NULL,0,NULL);
+     set((char*)NULL, 0, NULL);
   }
 
-  String(const char *s):
-    ::String(s,&::my_charset_bin)
+  String(const char *s)
+    : ::String(s, &::my_charset_bin)
   {}
 
-  String(): ::String()
+  String() : ::String()
   {}
 };
 
-TABLE_LIST *build_table_list(const Table_list&,thr_lock_type);
+TABLE_LIST *build_table_list(const Table_list&, thr_lock_type);
 
 /*
   Free the memory for the table list.
@@ -197,10 +197,14 @@ class Map
 template<class A, class B>
 struct Map<A,B>::Node
 {
-  A key;  // Note: must be first for correct key offset value in HASH initialization
+  /* 
+    Note: key member must be first for correct key offset value in HASH 
+    initialization.
+   */
+  A key;  
   B *ptr;
 
-  Node(const A &a, B *b): key(a), ptr(b) {}
+  Node(const A &a, B *b) :key(a), ptr(b) {}
   
   static void del_key(void *node)
   { delete (Node*) node; }
@@ -226,7 +230,7 @@ template<class A, class B>
 inline
 int Map<A,B>::insert(const A &a, B *b)
 {
-  Node *n= new Node(a,b); // TODO: use mem root (?)
+  Node *n= new Node(a, b); // TODO: use mem root (?)
 
   return my_hash_insert(&m_hash, (uchar*) n);
 }
@@ -243,7 +247,8 @@ B* Map<A,B>::operator[](const A &a) const
 
 
 /**
-  Specialization of Map template with integer indexes implemented as a Dynamic_array.
+  Specialization of Map template with integer indexes implemented as a 
+  Dynamic_array.
  */ 
 template<class T>
 class Map<uint,T>: public ::Dynamic_array< T* >
@@ -265,7 +270,7 @@ class Map<uint,T>: public ::Dynamic_array< T* >
 
 template<class T>
 inline
-Map<uint,T>::Map(uint init_size, uint increment): Base(init_size, increment)
+Map<uint,T>::Map(uint init_size, uint increment) :Base(init_size, increment)
 {
   clear_free_space();
 }
@@ -301,7 +306,7 @@ int Map<uint,T>::insert(ulong pos, T *ptr)
     return 1;
 
   if (pos >= Base::array.elements)
-    Base::array.elements= pos+1;
+    Base::array.elements= pos + 1;
 
   entry= dynamic_array_ptr(array, pos);
   *(T**)entry= ptr;
