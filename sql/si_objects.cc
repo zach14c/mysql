@@ -2485,14 +2485,15 @@ bool check_db_existence(const String *db_name)
 
    @param[in] thd  current thread
 
-   @retval my_bool success = TRUE, error = FALSE
+   @retval FALSE on success.
+   @retval TRUE on error.
   */
 bool ddl_blocker_enable(THD *thd)
 {
   DBUG_ENTER("ddl_blocker_enable()");
   if (!DDL_blocker->block_DDL(thd))
-    DBUG_RETURN(FALSE);
-  DBUG_RETURN(TRUE);
+    DBUG_RETURN(TRUE);
+  DBUG_RETURN(FALSE);
 }
 
 /**

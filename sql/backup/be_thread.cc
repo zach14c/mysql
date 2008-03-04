@@ -24,6 +24,7 @@
   * calls easier for the driver code.
   */
 
+#include "../mysql_priv.h"
 #include "be_thread.h"
 
 /**

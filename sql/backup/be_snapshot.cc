@@ -40,10 +40,11 @@
  * Please see <code> be_default.cc </code> for a complete description.
  */
 
-#include "mysql_priv.h"
+#include "../mysql_priv.h"
 #include "backup_engine.h"
 #include "be_snapshot.h"
 #include "backup_aux.h"
+#include "debug.h"
 
 namespace snapshot_backup {
 

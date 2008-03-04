@@ -24,6 +24,7 @@
          of byte?
   */
 
+#include "../mysql_priv.h"
 #include "backup_progress.h"
 #include "be_thread.h"
 
