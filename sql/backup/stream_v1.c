@@ -980,6 +980,7 @@ int bstream_rd_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
 {
   unsigned short int flags;
   struct st_bstream_table_info ti;
+  unsigned long int pos= 0;
   int ret;
 
   bzero(&ti,sizeof(ti));
@@ -1007,6 +1008,8 @@ int bstream_rd_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
       CHECK_RD_OK(bstream_rd_byte(s,&ti.snap_num));
       CHECK_RD_RES(bstream_rd_num(s,&ti.base.base.pos));
     }
+    else
+      ti.base.base.pos= pos++;
 
     if (bcat_add_item(cat, &ti.base.base) != BSTREAM_OK)
       return BSTREAM_ERROR;

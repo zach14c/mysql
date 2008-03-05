@@ -8,7 +8,6 @@
 
   @brief Implements @c Image_info class and friends.
 
-  @todo Error reporting
   @todo Store endianess info in the image.
 */
 
@@ -61,7 +60,7 @@ Image_info::~Image_info()
     if (!snap)
       continue;
     
-    for (uint i=0; i < snap->table_count(); ++i)
+    for (ulong i=0; i < snap->table_count(); ++i)
     {
       Table *t= snap->get_table(i);
       
@@ -78,10 +77,35 @@ Image_info::~Image_info()
   {
     Db *db= get_db(i);
     
-    if (db)
-      delete db->m_obj_ptr;
+    if (!db)
+      continue;
+    
+    delete db->m_obj_ptr;
+
+    // delete all server objects belonging to that database (except tables)
+    for (ulong j=0; j < db->obj_count(); ++j)
+    {
+      Dbobj *o= db->get_obj(j);
+      if (o)
+        delete o->m_obj_ptr;
+    }
+
+    // explicitly call destructor since this is mem_root allocated object
+    db->~Db(); 
+  }
 }
 
+/**
+  Add database to the catalogue.
+
+  @param[in] db_name  name of the database
+  @param[in] pos      position at which this database should be stored
+
+  @returns Pointer to @c Image_info::Db instance storing information 
+  about the database or NULL in case of error.
+
+  @see @c get_db().
+ */
 Image_info::Db* 
 Image_info::add_db(const String &db_name, uint pos)
 {
@@ -98,6 +122,14 @@ Image_info::add_db(const String &db_name, uint pos)
   return db;
 }
 
+/**
+  Return database stored in the catalogue.
+
+  @param[in]  pos positon of the database in the catalogue
+
+  @returns Pointer to @c Image_info::Db instance storing information 
+  about the database or NULL if no database is stored at given position.
+ */ 
 Image_info::Db* 
 Image_info::get_db(uint pos) const
 {
@@ -115,6 +147,8 @@ Image_info::get_db(uint pos) const
   
   The @c Snapshot_info object is not owned by @c Image_info instance - it must
   be deleted externally.
+
+  @returns Snapshot's number or -1 in case of error.
  */ 
 int Image_info::add_snapshot(Snapshot_info &snap)
 {
@@ -166,13 +200,79 @@ bool Image_info::has_db(const String &db_name)
   return FALSE;
 }
 
+/** 
+  Add per database object to the catalogue.
+
+  @param[in]  db  database to which this object belongs - this database must
+                  already be in the catalogue
+  @param[in] type type of the object
+  @param[in] name name of the object
+  @param[in] pos  position where the object will be stored inside database's
+                  object list
+
+  @returns Pointer to @c Image_info::Dbobj instance storing information 
+  about the object or NULL in case of error.
+
+  @note There is a specialized method @c add_table() for adding tables.
+
+  @see @c get_db_object().
+ */
+Image_info::Dbobj* Image_info::add_db_object(Db &db,
+                                             const enum_bstream_item_type type,
+                                             const ::String &name, ulong pos)
+{
+  Dbobj *o= new (&mem_root) Dbobj(db, type, name);
+
+  if (!o)
+    return NULL;  
+  
+  if (db.add_obj(*o, pos))
+    return NULL;
+    
+  o->base.pos= pos;
+
+  return o;
+}
+
+/**
+  Return per database object stored in catalogue.
+
+  This method is used only for non-table objects.
+
+  @param[in]  db_num  position of object's database in the catalogue 
+  @param[in]  pos     position of the object inside the database
+
+  @returns Pointer to @c Image_info::Dbobj instance storing information 
+  about the object or NULL if there is no object with given coordinates.
+ */
+Image_info::Dbobj* Image_info::get_db_object(uint db_num, ulong pos) const
+{
+  Db *db= get_db(db_num);
+
+  if (!db)
+    return NULL;
+
+  return db->get_obj(pos);
+}
+
 /**
   Add table to the catalogue.
-  
-  Table's data snapshot is added to the catalogue if it was not there already.
+
+  @param[in]  db  table's database - this database must already be in 
+                  the catalogue
+  @param[in] name name of the table
+  @param[in] snap snapshot containing table's data
+  @param[in] pos  table's position within the snapshot
+
+  @returns Pointer to @c Image_info::Table instance storing information 
+  about the table or NULL in case of error.
+
+  @note The snapshot is added to the catalogue if it was not there already.
+
+  @see @c get_table().
  */
 Image_info::Table* 
-Image_info::add_table(Db &db, const String &table_name, 
+Image_info::add_table(Db &db, const ::String &table_name, 
                       Snapshot_info &snap, ulong pos)
 {
   Table *t= new (&mem_root) Table(db, table_name);
@@ -187,20 +287,28 @@ Image_info::add_table(Db &db, const String &table_name,
     return NULL;
 
   if (!snap.m_num)
-    snap.m_num= add_snapshot(snap); // reports errors
+    snap.m_num= add_snapshot(snap);
 
   if (!snap.m_num)
    return NULL;
 
   t->snap_num= snap.m_num - 1;
   t->base.base.pos= pos;
-  t->base.db= &db;
 
   m_table_count++;
 
   return t;  
 }
 
+/**
+  Return table stored in the catalogue.
+
+  @param[in] snap_num position of table's snapshot within the catalogue
+  @param[in] pos      position of the table within the snapshot
+
+  @returns Pointer to @c Image_info::Table instance storing information 
+  about the table or NULL if there is no table with given coordinates.
+ */ 
 Image_info::Table* 
 Image_info::get_table(ushort snap_num, ulong pos) const
 {
@@ -216,7 +324,7 @@ Image_info::get_table(ushort snap_num, ulong pos) const
 }
 
 /**
-  Find object in a catalogue.
+  Find object in the catalogue.
   
   The object is identified by its coordinates stored in a 
   @c st_bstream_item_info structure. Normally these coordinates are
@@ -246,131 +354,16 @@ Image_info::Obj *find_obj(const Image_info &info,
   case BSTREAM_IT_SFUNC:
   case BSTREAM_IT_EVENT:
   case BSTREAM_IT_TRIGGER:
-    return get_db_object(item->pos);
+  {
+    const st_bstream_dbitem_info &it=
+                          reinterpret_cast<const st_bstream_dbitem_info&>(item);
+
+    return info.get_db_object(it.db->base.pos, item.pos);
+  }
 
   default:
     return NULL;
   }
-}
-
-/**
-  Store in Backup_image all objects enumerated by the iterator.
- */ 
-int Image_info::add_objects(Db_item &dbi,
-                            const enum_bstream_item_type type, 
-                            obs::ObjIterator &it)
-{
-  using namespace obs;
-  
-  Obj *obj;
-  
-  while ((obj= it.next()))
-    if (!add_db_object(dbi, type, *obj))
-    {
-      delete obj;
-      return TRUE;
-    }
-
-  return FALSE;
-}
-
-Image_info::PerDb_item* Image_info::add_db_object(Db_item &dbi,
-                                                  const enum_bstream_item_type type,
-                                                  obs::Obj &obj)
-{
-  ulong pos= m_items.size();
-  
-  PerDb_item *it= m_items.get_entry(pos);
-  
-  if (!it)
-    return NULL;
-    
-  *it= obj;
-  it->base.type= type;
-  it->base.pos= pos;
-  it->db= &dbi;
-
-  return it;
-}
-
-Image_info::PerDb_item* Image_info::add_db_object(Db_item &dbi,
-                                                  const enum_bstream_item_type type,
-                                                  const ::String &name)
-{
-  ulong pos= m_items.size();
-  
-  PerDb_item *it= m_items.get_entry(pos);
-  
-  if (!it)
-    return NULL;
-    
-  *it= name;
-  it->base.type= type;
-  it->base.pos= pos;
-  it->db= &dbi;
-  it->m_db_name= dbi.name();
-
-  return it;
-}
-
-obs::Obj* Image_info::PerDb_item::obj_ptr(uint ver, ::String &sdata)
-{ 
-  using namespace obs;
-
-  delete m_obj;
-  
-  switch (base.type) {
-  case BSTREAM_IT_VIEW:   
-    m_obj= materialize_view(&m_db_name, &m_name, ver, &sdata); break;
-  case BSTREAM_IT_SPROC:  
-    m_obj= materialize_stored_procedure(&m_db_name, &m_name, ver, &sdata); break;
-  case BSTREAM_IT_SFUNC:
-    m_obj= materialize_stored_function(&m_db_name, &m_name, ver, &sdata); break;
-  case BSTREAM_IT_EVENT:
-    m_obj= materialize_event(&m_db_name, &m_name, ver, &sdata); break;
-  case BSTREAM_IT_TRIGGER:   
-    m_obj= materialize_trigger(&m_db_name, &m_name, ver, &sdata); break;
-  default: m_obj= NULL;
-  }
-
-  return m_obj;
-}
-
-bool Image_info::Ditem_iterator::next()
-{
-  if (ptr)
-    ptr= ptr->next_table;
-    
-  if (ptr)
-    return TRUE;
-
-  bool more=TRUE;
-
-  // advance to next element in other list if we are inside it
-  if (other_list)
-     more= PerDb_iterator::next();
-
-  other_list= TRUE; // mark that we are now inside the other list
-
-  // return if there are no more elements in the other list
-  if (!more)
-    return FALSE;
-
-  // find an element belonging to our database  
-  do
-  {
-    PerDb_item *it= (PerDb_item*)PerDb_iterator::get_ptr();
-
-    if (!it)
-      return FALSE;
-    
-    if (it->m_db_name == db_name)
-      return TRUE;
-  }
-  while (PerDb_iterator::next());
-    
-  // we haven't found any object belonging to our database
-  return FALSE;
 }
 
 } // backup namespace

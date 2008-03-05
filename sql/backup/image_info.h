@@ -55,10 +55,12 @@ public: // public interface
    class Obj;   ///< Base for all object classes.
    class Db;    ///< Class representing a database.
    class Table; ///< Class representing a table.
+   class Dbobj; ///< Class representing a per-database object other than table.
 
    class Iterator;      ///< Base for all iterators.
    class Db_iterator;   ///< Iterates over all databases.
-   class DbObj_iterator;  ///< Iterates over tables in a database.
+   class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
+   class Dbobj_iterator;  ///< Iterates over tables in a database.
 
    virtual ~Image_info();
  
@@ -77,12 +79,14 @@ public: // public interface
    // Retrieve objects using their coordinates.
 
    Db*    get_db(uint pos) const;
+   Dbobj* get_db_object(uint db_num, ulong pos) const;
    Table* get_table(ushort snap_num, ulong pos) const;
 
    // Iterators for enumerating the contents of the archive.
 
    Db_iterator*    get_dbs();
-   DbObj_iterator* get_db_objects(const Db &db);
+   Perdb_iterator* get_perdb();
+   Dbobj_iterator* get_db_objects(const Db &db);
 
    /**
      Pointers to @c Snapshot_info objects corresponding to the snapshots
@@ -108,7 +112,9 @@ public: // public interface
   
   int    add_snapshot(Snapshot_info&);
   Db*    add_db(const String &db_name, uint pos);
-  Table* add_table(Db &db, const String &table_name, 
+  Dbobj* add_db_object(Db &db, const obj_type type,
+                       const ::String &name, ulong pos);
+  Table* add_table(Db &db, const ::String &table_name, 
                    Snapshot_info &snap, ulong pos);
 
  // IMPLEMENTATION
@@ -322,7 +328,7 @@ class Image_info::Obj: public Sql_alloc
   /**
     Create corresponding @c obs::Obj instance from a serialization string.
    */ 
-  virtual obs::Obj *materialize(uint ver, const String&) =0;
+  virtual obs::Obj *materialize(uint ver, const ::String&) =0;
 
   typedef Table_ref::describe_buf describe_buf;
   virtual const char* describe(describe_buf&) const =0;
@@ -354,14 +360,18 @@ class Image_info::Db
    public Image_info::Obj,
    public Db_ref
 {
-  ulong m_table_count;  ///< Number of tables in the database.
+  ulong m_obj_count;    ///< Number of non-table objects in the database.
 
  public:
 
-  Db(const String&);
+  Db(const ::String&);
 
   const st_bstream_item_info* info() const;
-  obs::Obj* materialize(uint ver, const String &sdata);
+  const st_bstream_db_info* db_info() const;
+  ulong obj_count() const;
+  obs::Obj* materialize(uint ver, const ::String &sdata);
+  result_t add_obj(Dbobj&, ulong pos);
+  Dbobj*   get_obj(ulong pos) const;
   result_t add_table(Table&);
   const char* describe(describe_buf&) const;
 
@@ -370,16 +380,60 @@ class Image_info::Db
   Table *first_table; ///< Pointer to the first table in database's table list. 
   Table *last_table;  ///< Pointer to the last table in database's table list.
 
-  friend class DbObj_iterator;
+  /**
+    For n-th object in this databse, @c m_objs[n] is a pointer to the
+    corresponding Dbobj instance.
+   */ 
+  Map<ulong, Dbobj> m_objs;
+
+  friend class Dbobj_iterator;
+  friend class Perdb_iterator;
 };
 
 inline
-Image_info::Db::Db(const String &name)
+Image_info::Db::Db(const ::String &name)
  :Db_ref(Image_info::Obj::m_name),
- m_table_count(0), first_table(NULL), last_table(NULL)
+  m_obj_count(0), first_table(NULL), last_table(NULL), m_objs(128)
 {
   bzero(&base, sizeof(base));
   base.type= BSTREAM_IT_DB;
+  store_name(name);
+}
+
+
+/**
+  Specialization of @c Image_info::Obj for storing info about a per-database
+  object.
+
+  @note For tables, there is dedicated class @c Image_info::Table.
+*/
+class Image_info::Dbobj
+  : public st_bstream_dbitem_info,
+    public Image_info::Obj,
+    public Table_ref
+{
+  const Db &m_db;     ///< The database to which this obj belongs.
+
+ public:
+
+  Dbobj(const Db &db, const obj_type type, const ::String &name);
+
+  const st_bstream_item_info* info() const;
+  obs::Obj* materialize(uint ver, const ::String &sdata);
+  const char* describe(Obj::describe_buf&) const;
+
+  friend class Db;
+  friend class Dbobj_iterator;
+};
+
+inline
+Image_info::Dbobj::Dbobj(const Db &db, const obj_type type,
+                         const ::String &name)
+  :Table_ref(db.name(), Image_info::Obj::m_name), m_db(db)
+{
+  bzero(&base, sizeof(base));
+  base.type= type;
+  st_bstream_dbitem_info::db= const_cast<st_bstream_db_info*>(m_db.db_info());
   store_name(name);
 }
 
@@ -397,22 +451,24 @@ class Image_info::Table
 
  public:
 
-  Table(const Db &db, const String &name);
+  Table(const Db &db, const ::String &name);
 
   const st_bstream_item_info* info() const;
-  obs::Obj* materialize(uint ver, const String &sdata);
+  obs::Obj* materialize(uint ver, const ::String &sdata);
   const char* describe(Obj::describe_buf&) const;
 
   friend class Db;
-  friend class DbObj_iterator;
+  friend class Dbobj_iterator;
 };
 
 inline
-Image_info::Table::Table(const Db &db, const String &name)
+Image_info::Table::Table(const Db &db, const ::String &name)
   :Table_ref(db.name(), Image_info::Obj::m_name), m_db(db), next_table(NULL)
 {
   bzero(&base, sizeof(base));
   base.base.type= BSTREAM_IT_TABLE;
+  base.db= const_cast<st_bstream_db_info*>(db.db_info());
+  snap_num= 0;
   store_name(name);
 }
 
@@ -480,6 +536,11 @@ Image_info::Iterator::~Iterator()
 
 /**
   Used to iterate over all databases stored in a backup image.
+
+  @note Backup stram library infers position of each database in the catalogue
+  from the order in which they are enumerated by this iterator. Therefore it
+  is important that databases are listed in correct order - first database at
+  position 0, then at position 1 and so on.
  */ 
 class Image_info::Db_iterator
  : public Image_info::Iterator
@@ -500,19 +561,21 @@ Image_info::Db_iterator::Db_iterator(const Image_info &info)
   :Iterator(info), pos(0)
 {}
 
+
 /**
-  Used to iterate over all objects belonging to a given database.
-  
-  Currently only tables are enumerated.
+  Used to iterate over all per database objects, except tables.
+
+  @todo Modify this iterator so that it enumerates objects in order
+  respecting dependencies.
  */ 
-class Image_info::DbObj_iterator
+class Image_info::Perdb_iterator
  : public Image_info::Db_iterator
 {
-  const Table *ptr;
+  ulong pos;
 
  public:
 
-  DbObj_iterator(const Image_info&, const Db&);
+  Perdb_iterator(const Image_info&);
 
  private:
 
@@ -521,8 +584,39 @@ class Image_info::DbObj_iterator
 };
 
 inline
-Image_info::DbObj_iterator::DbObj_iterator(const Image_info &info, const Db &db)
- :Db_iterator(info), ptr(db.first_table)
+Image_info::Perdb_iterator::Perdb_iterator(const Image_info &info)
+ :Db_iterator(info), pos(0)
+{}
+
+/**
+  Used to iterate over all objects belonging to a given database.
+
+  @note Backup stream library infers position of each non-table object within
+  database's catalogue from the order in which this iterator enumenrates them.
+  Therefore it is important that objects are listed in correct order - first
+  all tables should be listed, then the non-table object stored at position 0,
+  then at position 1 and so on.
+ */
+class Image_info::Dbobj_iterator
+ : public Image_info::Db_iterator
+{
+  const Db    &m_db;
+  const Table *ptr;
+  ulong pos;
+
+ public:
+
+  Dbobj_iterator(const Image_info&, const Db&);
+
+ private:
+
+  const Obj* get_ptr() const;
+  bool next();
+};
+
+inline
+Image_info::Dbobj_iterator::Dbobj_iterator(const Image_info &info, const Db &db)
+ :Db_iterator(info), m_db(db), ptr(db.first_table), pos(0)
 {}
 
 
@@ -614,9 +708,15 @@ Image_info::Db_iterator* Image_info::get_dbs()
 }
 
 inline
-Image_info::DbObj_iterator* Image_info::get_db_objects(const Db &db)
+Image_info::Perdb_iterator* Image_info::get_perdb()
 {
-  return new DbObj_iterator(*this, db);
+  return new Perdb_iterator(*this);
+}
+
+inline
+Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db)
+{
+  return new Dbobj_iterator(*this, db);
 }
 
 /********************************************************************
@@ -678,11 +778,18 @@ Image_info::obj_type  Image_info::Obj::type() const
   return info()->type;
 }
 
+
 /// Implementation of @c Image_info::Obj virtual method.
 inline
 const st_bstream_item_info* Image_info::Db::info() const 
 {
   return &base; 
+}
+
+inline
+const st_bstream_db_info* Image_info::Db::db_info() const 
+{
+  return this; 
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
@@ -691,6 +798,14 @@ const st_bstream_item_info* Image_info::Table::info() const
 {
   return &base.base; 
 }
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
+const st_bstream_item_info* Image_info::Dbobj::info() const 
+{
+  return &base; 
+}
+
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
@@ -709,17 +824,58 @@ const char* Image_info::Table::describe(Obj::describe_buf &buf) const
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
-obs::Obj* Image_info::Db::materialize(uint ver, const String &sdata)
+const char* Image_info::Dbobj::describe(Obj::describe_buf &buf) const
 {
+  return Table_ref::describe(buf);
+}
+
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
+obs::Obj* Image_info::Db::materialize(uint ver, const ::String &sdata)
+{
+  delete m_obj_ptr;
   return m_obj_ptr= obs::materialize_database(&name(), ver, &sdata); 
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
-obs::Obj* Image_info::Table::materialize(uint ver, const String &sdata)
+obs::Obj* Image_info::Table::materialize(uint ver, const ::String &sdata)
 {
+  delete m_obj_ptr;
   return m_obj_ptr= obs::materialize_table(&db().name(), &name(), ver, &sdata);
 }
+
+inline
+obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
+{ 
+  const ::String *db_name= &Table_ref::db().name();
+  const ::String *name= &Table_ref::name();
+
+  delete m_obj_ptr;
+  
+  switch (base.type) {
+  case BSTREAM_IT_VIEW:   
+    m_obj_ptr= obs::materialize_view(db_name, name, ver, &sdata);
+    break;
+  case BSTREAM_IT_SPROC:  
+    m_obj_ptr= obs::materialize_stored_procedure(db_name, name, ver, &sdata);
+    break;
+  case BSTREAM_IT_SFUNC:
+    m_obj_ptr= obs::materialize_stored_function(db_name, name, ver, &sdata); 
+    break;
+  case BSTREAM_IT_EVENT:
+    m_obj_ptr= obs::materialize_event(db_name, name, ver, &sdata);
+    break;
+  case BSTREAM_IT_TRIGGER:   
+    m_obj_ptr= obs::materialize_trigger(db_name, name, ver, &sdata);
+    break;
+  default: m_obj_ptr= NULL;
+  }
+
+  return m_obj_ptr;
+}
+
 
 /**
   Add table to a database.
@@ -739,9 +895,37 @@ result_t Image_info::Db::add_table(Table &tbl)
     last_table= &tbl;
   }
   
-  m_table_count++;
-    
   return OK;
+}
+
+/**
+  Add object other than table to a database.
+  
+  The object is stored in database's object list at given position.
+ */ 
+inline
+result_t Image_info::Db::add_obj(Dbobj &obj, ulong pos)
+{
+  if (m_objs.insert(pos, &obj))
+    return ERROR;
+
+  m_obj_count++;
+
+  return OK;
+}
+
+/// Get database object stored at given position.
+inline
+Image_info::Dbobj* Image_info::Db::get_obj(ulong pos) const
+{
+  return m_objs[pos];
+}
+
+/// Return number of objects, other than tables, belonging to database.
+inline
+ulong Image_info::Db::obj_count() const
+{
+  return m_obj_count;
 }
 
 
@@ -817,20 +1001,60 @@ bool Image_info::Db_iterator::next()
     return FALSE;
 }
 
+
 /// Implementation of @c Image_info::Iterator virtual method.
 inline
-const Image_info::Obj* Image_info::DbObj_iterator::get_ptr() const
+const Image_info::Obj* Image_info::Perdb_iterator::get_ptr() const
 {
-  return ptr;
+  const Db *db= static_cast<const Db*>(Db_iterator::get_ptr());
+
+  if (!db)
+    return NULL;
+
+  return db->m_objs[pos];
 }
 
 /// Implementation of @c Image_info::Iterator virtual method.
 inline
-bool Image_info::DbObj_iterator::next()
+bool Image_info::Perdb_iterator::next()
+{
+  while (TRUE)
+  {
+    const Db *db= static_cast<const Db*>(Db_iterator::get_ptr());
+  
+    if (!db)
+      return FALSE;
+
+    // Look for next non-NULL pointer in m_objs.
+    while (pos < db->obj_count() && !db->m_objs[++pos]);
+
+    // If next object found in the current database, return.
+    if (pos < db->obj_count())
+      return TRUE;
+
+    // Otherwise, move to next database.
+    Db_iterator::next();
+  }
+}
+
+
+/// Implementation of @c Image_info::Iterator virtual method.
+inline
+const Image_info::Obj* Image_info::Dbobj_iterator::get_ptr() const
+{
+  return ptr ? static_cast<const Obj*>(ptr) : m_db.get_obj(pos);
+}
+
+/// Implementation of @c Image_info::Iterator virtual method.
+inline
+bool Image_info::Dbobj_iterator::next()
 {
   if (ptr)
     ptr= ptr->next_table;
-  return ptr != NULL;
+  else
+    pos++;
+
+  return ptr != NULL || pos < m_db.obj_count();
 }
 
 } // backup namespace

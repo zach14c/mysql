@@ -109,6 +109,8 @@ Logger::~Logger()
   @param[in]  path  location of the backup image
   
   @returns 0 on success, error code otherwise.
+
+  @todo Decide what to do if @c report_ob_inti() signals errors.
  */ 
 inline
 int Logger::init(THD *thd, enum_type type, const LEX_STRING path)
@@ -250,6 +252,9 @@ void Logger::report_stop(time_t when, bool success)
  
   For possible states see definition of @c enum_backup_state in 
   backup_progress.h
+
+  @todo Consider reporting state changes in the server error log (as info
+  entries).
  */
 inline
 void Logger::report_state(enum_backup_state state)
@@ -269,7 +274,11 @@ void Logger::report_vp_time(time_t when)
   report_ob_vp_time(m_op_id, when);
 }
 
-/// Report binlog position at validity point.
+/** 
+  Report binlog position at validity point.
+
+  @todo Write binlog position also to server's error log (as info entry).
+ */
 inline
 void Logger::report_binlog_pos(const st_bstream_binlog_pos &pos)
 {

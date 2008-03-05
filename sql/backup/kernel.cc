@@ -124,10 +124,6 @@ execute_backup_command(THD *thd, LEX *lex)
 
   using namespace backup;
 
-  // FIXME: move this to the context class (if not there already)
-  mysql_reset_errors(thd, 0);
-  thd->no_warnings_for_error= FALSE;
-
   Backup_restore_ctx context(thd); // reports errors
   
   if (!context.is_valid())
@@ -360,6 +356,13 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   if (m_error)
     return m_error;
   
+  // Prepare error reporting context.
+  
+  mysql_reset_errors(m_thd, 0);
+  m_thd->no_warnings_for_error= FALSE;
+  save_errors();  
+
+
   /*
     Check access for SUPER rights. If user does not have SUPER, fail with error.
   */
@@ -460,8 +463,6 @@ Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
     return NULL;
   }
 
-  save_errors();  
-
   time_t when= my_time(0);
   report_start(when);
   
@@ -538,8 +539,6 @@ Restore_info* Backup_restore_ctx::prepare_for_restore(LEX_STRING location)
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
   }
-
-  save_errors();  
 
   time_t when= my_time(0);  
   report_start(when);
@@ -766,6 +765,8 @@ int Backup_restore_ctx::do_backup()
   @pre @c prepare_for_restore() method was called.
 
   @returns 0 on success, error code otherwise.
+
+  @todo Remove the @c reset_diagnostic_area() hack.
 */
 int Backup_restore_ctx::do_restore()
 {
@@ -798,6 +799,14 @@ int Backup_restore_ctx::do_restore()
 
   DBUG_PRINT("restore",("Restoring table data"));
 
+  /* 
+    FIXME: this call is here because object services doesn't clean the
+    statement execution context properly, which leads to assertion failure.
+    It should be fixed inside object services implementation and then the
+    following line should be removed.
+   */
+  m_thd->main_da.reset_diagnostics_area();
+
   // Here restore drivers are created to restore table data
   if (restore_table_data(m_thd, *this, info, s)) // reports errors
     DBUG_RETURN(send_error(*this, ER_BACKUP_RESTORE));
@@ -815,63 +824,6 @@ int Backup_restore_ctx::do_restore()
   DBUG_RETURN(0);
 }
 
-// FIXME: the code below should go to Backup_info::add_db() method.
-
-  delete it;  
-  it= get_db_stored_procedures(m_thd, &dbi.name());
-  
-  if (!it)
-  {
-    // TODO: report error
-    goto error;
-  }
-  
-  add_objects(dbi, BSTREAM_IT_SPROC, *it);
-
-  delete it;
-  it= get_db_stored_functions(m_thd, &dbi.name());
-
-  if (!it)
-  {
-    // TODO: report error
-    goto error;
-  }
-  
-  add_objects(dbi, BSTREAM_IT_SFUNC, *it);
-
-  delete it;
-  it= get_db_views(m_thd, &dbi.name());
-
-  if (!it)
-  {
-    // TODO: report error
-    goto error;
-  }
-  
-  add_objects(dbi, BSTREAM_IT_VIEW, *it);
-
-  delete it;
-  it= get_db_events(m_thd, &dbi.name());
-
-  if (!it)
-  {
-    // TODO: report error
-    goto error;
-  }
-  
-  add_objects(dbi, BSTREAM_IT_EVENT, *it);
-  
-  delete it;
-  it= get_db_triggers(m_thd, &dbi.name());
-
-  if (!it)
-  {
-    // TODO: report error
-    goto error;
-  }
-  
-  add_objects(dbi, BSTREAM_IT_TRIGGER, *it);
-  
 
 namespace backup {
 
@@ -1172,12 +1124,12 @@ int bcat_add_item(st_bstream_image_header *catalogue,
     
     DBUG_ASSERT(it->db);
     
-    Image_info::Db_item *db= (Image_info::Db_item*)
-                               info->locate_item((st_bstream_item_info*)it->db);
+    Image_info::Db *db= (Image_info::Db*) info->get_db(it->db->base.pos);
   
     DBUG_ASSERT(db);
     
-    Image_info::PerDb_item *it1= info->add_db_object(*db, item->type, name_str);
+    Image_info::Dbobj *it1= info->add_db_object(*db, item->type, name_str,
+                                                item->pos);
   
     if (!it1)
       return BSTREAM_ERROR;
@@ -1210,7 +1162,6 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 
   switch (type) {
 
-  case BSTREAM_IT_PERDB:    // per-db objects, except tables
   case BSTREAM_IT_PERTABLE: // per-table objects
     return &null_iter;
 
@@ -1220,6 +1171,19 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 
   case BSTREAM_IT_USER:     // users
     return &null_iter;
+
+  case BSTREAM_IT_PERDB:    // per-db objects, except tables
+  {
+    Backup_info::Perdb_iterator *it= info->get_perdb();
+  
+    if (!it)
+    {
+      info->m_ctx.fatal_error(ER_BACKUP_LIST_PERDB);
+      return NULL;
+    }
+
+    return it;
+  }
 
   case BSTREAM_IT_GLOBAL:   // all global objects
     // note: only global items (for which meta-data is stored) are databases
@@ -1321,7 +1285,7 @@ void* bcat_db_iterator_get(st_bstream_image_header *catalogue,
     return NULL;
   }
 
-  Backup_info::DbObj_iterator *it= info->get_db_objects(*db);
+  Backup_info::Dbobj_iterator *it= info->get_db_objects(*db);
 
   if (!it)
   {
@@ -1348,7 +1312,7 @@ void  bcat_db_iterator_free(st_bstream_image_header *catalogue,
                             st_bstream_db_info *db,
                             void *iter)
 {
-  delete (backup::Image_info::DbObj_iterator*)iter;
+  delete (backup::Image_info::Dbobj_iterator*)iter;
 }
 
 
@@ -1361,6 +1325,9 @@ void  bcat_db_iterator_free(st_bstream_image_header *catalogue,
 
 /**
   Create given item using serialization data read from backup image.
+
+  @todo Decide what to do if unknown item type is found. Right now we
+  bail out.
  */ 
 extern "C"
 int bcat_create_item(st_bstream_image_header *catalogue,
@@ -1381,6 +1348,11 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   
   case BSTREAM_IT_DB:     create_err= ER_BACKUP_CANT_RESTORE_DB; break;
   case BSTREAM_IT_TABLE:  create_err= ER_BACKUP_CANT_RESTORE_TABLE; break;
+  case BSTREAM_IT_VIEW:   create_err= ER_BACKUP_CANT_RESTORE_VIEW; break;
+  case BSTREAM_IT_SPROC:  create_err= ER_BACKUP_CANT_RESTORE_SROUT; break;
+  case BSTREAM_IT_SFUNC:  create_err= ER_BACKUP_CANT_RESTORE_SROUT; break;
+  case BSTREAM_IT_EVENT:  create_err= ER_BACKUP_CANT_RESTORE_EVENT; break;
+  case BSTREAM_IT_TRIGGER: create_err= ER_BACKUP_CANT_RESTORE_TRIGGER; break;
   
   /*
     TODO: Decide what to do when we come across unknown item:
@@ -1434,6 +1406,9 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   The catalogue should contain @c Image_info::Obj instance corresponding to the
   object described by @c item. This instance should contain pointer to 
   @c obs::Obj instance which can be used for getting the serialization string.
+
+  @todo Decide what to do with the serialization string buffer - is it 
+  acceptable to re-use a single buffer as it is done now?
  */ 
 extern "C"
 int bcat_get_item_create_query(st_bstream_image_header *catalogue,
@@ -1455,6 +1430,11 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
   
   case BSTREAM_IT_DB:     meta_err= ER_BACKUP_GET_META_DB; break;
   case BSTREAM_IT_TABLE:  meta_err= ER_BACKUP_GET_META_TABLE; break;
+  case BSTREAM_IT_VIEW:   meta_err= ER_BACKUP_GET_META_VIEW; break;
+  case BSTREAM_IT_SPROC:  meta_err= ER_BACKUP_GET_META_SROUT; break;
+  case BSTREAM_IT_SFUNC:  meta_err= ER_BACKUP_GET_META_SROUT; break;
+  case BSTREAM_IT_EVENT:  meta_err= ER_BACKUP_GET_META_EVENT; break;
+  case BSTREAM_IT_TRIGGER: meta_err= ER_BACKUP_GET_META_TRIGGER; break;
   
   /*
     This can't happen - the item was obtained from the backup kernel.

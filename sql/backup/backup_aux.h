@@ -225,7 +225,11 @@ Map<A,B>::~Map()
   hash_free(&m_hash);
 }
 
-/// Insert new mapping.
+/** 
+  Insert new mapping.
+
+  @todo Consider using mem_root for allocating hash nodes.
+ */
 template<class A, class B>
 inline
 int Map<A,B>::insert(const A &a, B *b)

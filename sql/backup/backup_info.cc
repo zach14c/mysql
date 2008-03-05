@@ -369,6 +369,30 @@ int Backup_info::add_all_dbs()
 
 
 /**
+  Store in Backup_image all objects enumerated by the iterator.
+
+  @param[in]  db  database to which objects belong - this database must already
+                  be in the catalogue
+  @param[in] type type of objects (only objects of the same type can be added)
+  @param[in] it   iterator enumerationg objects to be added
+
+  @returns 0 on success, error code otherwise.
+ */
+int Backup_info::add_objects(Db &db, const obj_type type, obs::ObjIterator &it)
+{
+  obs::Obj *obj;
+  
+  while ((obj= it.next()))
+    if (!add_db_object(db, type, obj)) // reports errors
+    {
+      delete obj;
+      return ERROR;
+    }
+
+  return 0;
+}
+
+/**
   Add to image all objects belonging to a given database.
 
   @returns 0 on success, error code otherwise.
@@ -376,6 +400,8 @@ int Backup_info::add_all_dbs()
 int Backup_info::add_db_items(Db &db)
 {
   using namespace obs;
+
+  // Add tables.
 
   ObjIterator *it= get_db_tables(m_ctx.m_thd, &db.name()); 
 
@@ -404,13 +430,70 @@ int Backup_info::add_db_items(Db &db)
       delete obj;
       goto error;
     }
-
-    /*
-      TODO: When we handle per-table objects, don't forget to add them here
-      to the catalogue.
-     */ 
   }
 
+  // Add other objects.
+
+  delete it;  
+  it= get_db_stored_procedures(m_ctx.m_thd, &db.name());
+  
+  if (!it)
+  {
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_SROUT, db.name().ptr());
+    goto error;
+  }
+  
+  if (add_objects(db, BSTREAM_IT_SPROC, *it))
+    goto error;
+
+  delete it;
+  it= get_db_stored_functions(m_ctx.m_thd, &db.name());
+
+  if (!it)
+  {
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_SROUT, db.name().ptr());
+    goto error;
+  }
+  
+  if (add_objects(db, BSTREAM_IT_SFUNC, *it))
+    goto error;
+
+  delete it;
+  it= get_db_views(m_ctx.m_thd, &db.name());
+
+  if (!it)
+  {
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_VIEWS, db.name().ptr());
+    goto error;
+  }
+  
+  if (add_objects(db, BSTREAM_IT_VIEW, *it))
+    goto error;
+
+  delete it;
+  it= get_db_events(m_ctx.m_thd, &db.name());
+
+  if (!it)
+  {
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_EVENTS, db.name().ptr());
+    goto error;
+  }
+  
+  if (add_objects(db, BSTREAM_IT_EVENT, *it))
+    goto error;
+  
+  delete it;
+  it= get_db_triggers(m_ctx.m_thd, &db.name());
+
+  if (!it)
+  {
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_TRIGGERS, db.name().ptr());
+    goto error;
+  }
+  
+  if (add_objects(db, BSTREAM_IT_TRIGGER, *it))
+    goto error;
+  
   goto finish;
 
  error:
@@ -477,10 +560,14 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
 
   ulong pos= snap->table_count();
   
-  tbl= Image_info::add_table(dbi, t.name(), *snap, pos);  // reports errors
+  tbl= Image_info::add_table(dbi, t.name(), *snap, pos);
   
   if (!tbl)
+  {
+    Tbl::describe_buf buf;
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, t.describe(buf));
     return NULL;
+  }
 
   tbl->m_obj_ptr= obj;
 
@@ -488,3 +575,60 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
                       t.name().ptr(), snap->name(), snap->m_num));
   return tbl;
 }
+
+/**
+  Select a per database object for backup.
+
+  This method is used for objects other than tables - tables are handled
+  by @c add_table(). The object is added at first available position. Pointer
+  to @c obj is stored for later usage.
+
+  @param[in] db   object's database - must already be in the catalogue
+  @param[in] type type of the object
+  @param[in] obj  the object
+
+  @returns Pointer to @c Image_info::Dbobj instance storing information 
+  about the object or NULL in case of error.  
+ */
+backup::Image_info::Dbobj* 
+Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
+{
+  int error;
+  ulong pos= db.obj_count();
+
+  DBUG_ASSERT(obj);
+  const ::String *name= obj->get_name();
+  DBUG_ASSERT(name);
+
+  switch (type) {
+
+  // Databases and tables should not be passed to this function.  
+  case BSTREAM_IT_DB:     DBUG_ASSERT(FALSE); break;
+  case BSTREAM_IT_TABLE:  DBUG_ASSERT(FALSE); break;
+
+  case BSTREAM_IT_VIEW:   error= ER_BACKUP_CATALOG_ADD_VIEW; break;
+  case BSTREAM_IT_SPROC:  error= ER_BACKUP_CATALOG_ADD_SROUT; break;
+  case BSTREAM_IT_SFUNC:  error= ER_BACKUP_CATALOG_ADD_SROUT; break;
+  case BSTREAM_IT_EVENT:  error= ER_BACKUP_CATALOG_ADD_EVENT; break;
+  case BSTREAM_IT_TRIGGER: error= ER_BACKUP_CATALOG_ADD_TRIGGER; break;
+  
+  // Only known types of objects should be added to the catalogue.
+  default: DBUG_ASSERT(FALSE);
+
+  }
+
+  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
+  
+  if (!o)
+  {
+    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    return NULL;
+  }
+
+  o->m_obj_ptr= obj;
+
+  DBUG_PRINT("backup",("Added object %s of type %d from database %s (pos=%lu)",
+                       name->ptr(), type, db.name().ptr(), pos));
+  return o;
+}
+

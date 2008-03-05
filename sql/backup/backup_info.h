@@ -53,9 +53,11 @@ class Backup_info: public backup::Image_info
   backup::Snapshot_info* find_backup_engine(const backup::Table_ref&);
 
   Db* add_db(obs::Obj*);
+  Dbobj* add_db_object(Db&, const obj_type, obs::Obj*);
   Table* add_table(Db&, obs::Obj*);
 
   int add_db_items(Db&);
+  int add_objects(Db&, const obj_type, obs::ObjIterator&);
   
   /**
     List of existing @c Snapshot_info objects.

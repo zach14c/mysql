@@ -177,8 +177,6 @@ class Table_ref
    much more space efficient implementations are possible, as for each table we 
    need to store only table's identity (db/table name). In any case, the 
    interface to the list remains the same, as defined by this class.
-
-   TODO: add iterators.
  */
 
 class Table_list
