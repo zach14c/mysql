@@ -399,7 +399,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
    */ 
 #if defined(__WIN__) || defined(__EMX__)  
 
-  bad_filename ||= check_if_legal_filename(location.str);
+  bad_filename = bad_filename || check_if_legal_filename(location.str);
   
 #endif
 
@@ -1227,8 +1227,8 @@ bcat_iterator_next(st_bstream_image_header *catalogue, void *iter)
   if (iter == &cset_iter)
   {
     switch (cset_iter) {
-      case 0: name.begin= (byte*)my_charset_utf8_bin.csname; break;
-      case 1: name.begin= (byte*)system_charset_info->csname; break;
+      case 0: name.begin= (backup::byte*)my_charset_utf8_bin.csname; break;
+      case 1: name.begin= (backup::byte*)system_charset_info->csname; break;
       default: name.begin= NULL; break;
     }
 

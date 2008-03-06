@@ -76,7 +76,7 @@ class Logger
     operation. Value of @c m_op_id is meaningful only after a successful 
     call to @c init(), when @m_state != CREATED.
    */ 
-  ulong m_op_id;
+  ulonglong m_op_id;
 
   int v_report_error(log_level::value, int, va_list);
   int v_write_message(log_level::value, int, const char*, va_list);

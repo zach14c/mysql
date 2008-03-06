@@ -90,7 +90,7 @@ class Backup_restore_ctx: public backup::Logger
          PREPARED_FOR_RESTORE,
          CLOSED } m_state;
 
-  ulong m_thd_options;  ///< For saving thd->options.
+  ulonglong m_thd_options;  ///< For saving thd->options.
   /**
     If backup/restore was interrupted by an error, this member stores the error 
     number.
