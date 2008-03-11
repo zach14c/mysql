@@ -60,7 +60,7 @@ public: // public interface
    class Iterator;      ///< Base for all iterators.
    class Db_iterator;   ///< Iterates over all databases.
    class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
-   class Dbobj_iterator;  ///< Iterates over tables in a database.
+   class Dbobj_iterator;  ///< Iterates over objects in a database.
 
    virtual ~Image_info();
  
@@ -300,7 +300,8 @@ Snapshot_info::~Snapshot_info()
   @c obs::Obj, to be used by server's objects services API. If @c m_obj_ptr is
   not NULL then it contains a pointer to the corresponding @c obs::Obj instance
   which was obtained earlier (either with @c materialize() or from server's 
-  object iterators).
+  object iterators). The @c Obj instance owns the server object and is 
+  responsible for deleting it.
 */
 class Image_info::Obj: public Sql_alloc
 {
@@ -350,7 +351,10 @@ Image_info::Obj::Obj() :m_obj_ptr(NULL)
 
 inline
 Image_info::Obj::~Obj()
-{}
+{
+  // Delete corresponding server object if present.
+  delete m_obj_ptr;
+}
 
 /**
   Specialization of @c Image_info::Obj for storing info about a database.

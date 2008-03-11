@@ -186,7 +186,6 @@ Backup_info::~Backup_info()
   After this call the @c Backup_info object is ready for use as a catalogue
   for backup stream functions such as @c bstream_wr_preamble().
  */
-inline
 int Backup_info::close()
 {
   if (!is_valid())

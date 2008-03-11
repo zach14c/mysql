@@ -51,48 +51,29 @@ Image_info::Image_info()
 
 Image_info::~Image_info()
 {
-  // Delete server table objects 
+  Db_iterator dbit(*this);
+  const Db *db;
+
+  /* 
+    We need to explicitly call destructors for all objects in the catalogue
+    since they are allocated using mem_root and thus destructors will not be
+    invoked when the mem_root is freed.
+  */
   
-  for (uint n=0; n<256; ++n)
+  while ((db= static_cast<const Db*>(dbit++)))
   {
-    Snapshot_info *snap= m_snap[n];
-    
-    if (!snap)
-      continue;
-    
-    for (ulong i=0; i < snap->table_count(); ++i)
-    {
-      Table *t= snap->get_table(i);
-      
-      if (!t)
-        continue;
-        
-      delete t->m_obj_ptr;
-    }
-  }
+    // iterate over objects in the database
 
-  // delete server database objects 
+    Dbobj_iterator it(*this,*db);
+    const Obj *o;
 
-  for (uint i=0; i < db_count(); ++i)
-  {
-    Db *db= get_db(i);
-    
-    if (!db)
-      continue;
-    
-    delete db->m_obj_ptr;
+    while ((o= it++))
+      o->~Obj();
 
-    // delete all server objects belonging to that database (except tables)
-    for (ulong j=0; j < db->obj_count(); ++j)
-    {
-      Dbobj *o= db->get_obj(j);
-      if (o)
-        delete o->m_obj_ptr;
-    }
-
-    // explicitly call destructor since this is mem_root allocated object
     db->~Db(); 
   }
+
+  free_root(&mem_root, MYF(0)); 
 }
 
 /**
