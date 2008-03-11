@@ -132,6 +132,7 @@ public: // public interface
 
   MEM_ROOT  mem_root;    ///< Memory root used to allocate @c Obj instances.
   Map<uint, Db>   m_dbs; ///< Pointers to Db instances.
+  String    m_binlog_file; ///< To store binlog file name at VP time.
 
   // friends
 
@@ -701,8 +702,13 @@ void Image_info::save_vp_time(const time_t time)
 inline
 void Image_info::save_binlog_pos(const ::LOG_INFO &li)
 {
+  // save current binlog file name
+  m_binlog_file.length(0);
+  m_binlog_file.append(li.log_file_name);
+
+  // store binlog coordinates
   binlog_pos.pos= (unsigned long int)li.pos;
-  binlog_pos.file= const_cast<char*>(li.log_file_name);
+  binlog_pos.file= const_cast<char*>(m_binlog_file.ptr());
 }
 
 inline
