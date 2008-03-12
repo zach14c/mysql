@@ -512,13 +512,13 @@ static int ndbcluster_reset_logs(THD *thd)
   DBUG_ENTER("ndbcluster_reset_logs");
 
   /*
-    Wait for all events orifinating from this mysql server has
+    Wait for all events originating from this mysql server has
     reached the binlog before continuing to reset
   */
   ndbcluster_binlog_wait(thd);
 
   char buf[1024];
-  char *end= strmov(buf, "DELETE FROM " NDB_REP_DB "." NDB_REP_TABLE);
+  char *end= strmov(buf, "TRUNCATE " NDB_REP_DB "." NDB_REP_TABLE);
 
   run_query(thd, buf, end, NULL, TRUE);
 
@@ -4627,6 +4627,20 @@ restart:
           Uint32 iter= 0;
           const NdbEventOperation *gci_op;
           Uint32 event_types;
+
+          if (!i_ndb->isConsistentGCI(gci))
+          {
+            char errmsg[64];
+            uint end= sprintf(&errmsg[0],
+                              "Detected missing data in GCI %llu, "
+                              "inserting GAP event", gci);
+            errmsg[end]= '\0';
+            DBUG_PRINT("info",
+                       ("Detected missing data in GCI %llu, "
+                        "inserting GAP event", gci));
+            LEX_STRING const msg= { C_STRING_WITH_LEN(errmsg) };
+            inj->record_incident(thd, INCIDENT_LOST_EVENTS, msg);
+          }
           while ((gci_op= i_ndb->getGCIEventOperations(&iter, &event_types))
                  != NULL)
           {
@@ -4850,6 +4864,19 @@ restart:
                               gci_timer.elapsed_ms(),
                               (1000*event_count) / gci_timer.elapsed_ms());
 #endif
+      }
+      if(!i_ndb->isConsistent(gci))
+      {
+        char errmsg[64];
+        uint end= sprintf(&errmsg[0],
+                          "Detected missing data in GCI %llu, "
+                          "inserting GAP event", gci);
+        errmsg[end]= '\0';
+        DBUG_PRINT("info",
+                   ("Detected missing data in GCI %llu, "
+                    "inserting GAP event", gci));
+        LEX_STRING const msg= { C_STRING_WITH_LEN(errmsg) };
+        inj->record_incident(thd, INCIDENT_LOST_EVENTS, msg);
       }
     }
 

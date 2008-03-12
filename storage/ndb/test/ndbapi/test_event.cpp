@@ -25,11 +25,14 @@
 
 #define GETNDB(ps) ((NDBT_NdbApiStep*)ps)->getNdb()
 
-static int createEvent(Ndb *pNdb, const NdbDictionary::Table &tab,
-                       bool merge_events = false)
+static int createEvent(Ndb *pNdb, 
+                       const NdbDictionary::Table &tab,
+                       NDBT_Context* ctx)
 {
   char eventName[1024];
   sprintf(eventName,"%s_EVENT",tab.getName());
+  bool merge_events = ctx->getProperty("MergeEvents");
+  bool report = ctx->getProperty("ReportSubscribe");
 
   NdbDictionary::Dictionary *myDict = pNdb->getDictionary();
 
@@ -47,6 +50,9 @@ static int createEvent(Ndb *pNdb, const NdbDictionary::Table &tab,
     myEvent.addEventColumn(a);
   }
   myEvent.mergeEvents(merge_events);
+
+  if (report)
+    myEvent.setReport(NdbDictionary::Event::ER_SUBSCRIBE);
 
   int res = myDict->createEvent(myEvent); // Add event to database
 
@@ -139,8 +145,7 @@ NdbEventOperation *createEventOperation(Ndb *ndb,
 
 static int runCreateEvent(NDBT_Context* ctx, NDBT_Step* step)
 {
-  bool merge_events = ctx->getProperty("MergeEvents");
-  if (createEvent(GETNDB(step),* ctx->getTab(), merge_events) != 0){
+  if (createEvent(GETNDB(step),* ctx->getTab(), ctx) != 0){
     return NDBT_FAILED;
   }
   return NDBT_OK;
@@ -1025,7 +1030,7 @@ static int createAllEvents(NDBT_Context* ctx, NDBT_Step* step)
   Ndb * ndb= GETNDB(step);
   for (int i= 0; pTabs[i]; i++)
   {
-    if (createEvent(ndb,*pTabs[i]))
+    if (createEvent(ndb,*pTabs[i], ctx))
     {
       DBUG_RETURN(NDBT_FAILED);
     }
@@ -1635,7 +1640,7 @@ static int runCreateDropNR(NDBT_Context* ctx, NDBT_Step* step)
   {
     result = NDBT_FAILED;
     const NdbDictionary::Table* pTab = ctx->getTab();
-    if (createEvent(ndb, *pTab))
+    if (createEvent(ndb, *pTab, ctx))
     {
       g_err << "createEvent failed" << endl;
       break;
@@ -1689,8 +1694,9 @@ runSubscribeUnsubscribe(NDBT_Context* ctx, NDBT_Step* step)
   sprintf(buf, "%s_EVENT", tab.getName());
   Ndb* ndb = GETNDB(step);
   int loops = 5 * ctx->getNumLoops();
+  int untilStopped = ctx->getProperty("SubscribeUntilStopped", (Uint32)0);
 
-  while (--loops)
+  while ((untilStopped || --loops) && !ctx->isTestStopped())
   {
     NdbEventOperation *pOp= ndb->createEventOperation(buf);
     if (pOp == 0)
@@ -1847,6 +1853,175 @@ runBug31701(NDBT_Context* ctx, NDBT_Step* step)
   return NDBT_OK;
 }
 
+int
+errorInjectBufferOverflow(NDBT_Context* ctx, NDBT_Step* step)
+{
+  Ndb * ndb= GETNDB(step);
+  NdbRestarter restarter;
+  const NdbDictionary::Table* pTab = ctx->getTab();
+  int result= NDBT_OK;
+  int res;
+  bool found_gap = false;
+  NdbEventOperation *pOp= createEventOperation(ndb, *pTab);
+  Uint64 gci;
+
+  if (pOp == 0)
+  {
+    g_err << "Failed to createEventOperation" << endl;
+    return NDBT_FAILED;
+  }
+
+  if (restarter.insertErrorInAllNodes(13036) != 0)
+  {
+    result = NDBT_FAILED;
+    goto cleanup;
+  }
+
+  res = ndb->pollEvents(5000);
+
+  if (ndb->getNdbError().code != 0)
+  {
+    g_err << "pollEvents failed: \n";
+    g_err << ndb->getNdbError().code << " "
+          << ndb->getNdbError().message << endl;
+    result = (ndb->getNdbError().code == 4720)?NDBT_OK:NDBT_FAILED;
+    goto cleanup;
+  }
+  if (res >= 0) {
+    NdbEventOperation *tmp;
+    while (!found_gap && (tmp= ndb->nextEvent()))
+    {
+      if (!ndb->isConsistent(gci))
+        found_gap = true;
+    }
+  }
+  if (!ndb->isConsistent(gci))
+    found_gap = true;
+  if (!found_gap)
+  {
+    g_err << "buffer overflow not detected\n";
+    result = NDBT_FAILED;
+    goto cleanup;
+  }
+
+cleanup:
+
+  if (ndb->dropEventOperation(pOp) != 0) {
+    g_err << "dropping event operation failed\n";
+    result = NDBT_FAILED;
+  }
+
+  return result;
+}
+
+int
+errorInjectStalling(NDBT_Context* ctx, NDBT_Step* step)
+{
+  Ndb * ndb= GETNDB(step);
+  NdbRestarter restarter;
+  const NdbDictionary::Table* pTab = ctx->getTab();
+  NdbEventOperation *pOp= createEventOperation(ndb, *pTab);
+  int result = NDBT_OK;
+  int res;
+  bool connected = true;
+
+  if (pOp == 0)
+  {
+    g_err << "Failed to createEventOperation" << endl;
+    return NDBT_FAILED;
+  }
+
+  if (restarter.insertErrorInAllNodes(13037) != 0)
+  {
+    result = NDBT_FAILED;
+    goto cleanup;
+  }
+
+  res = ndb->pollEvents(5000) > 0;
+
+  if (ndb->getNdbError().code != 0)
+  {
+    g_err << "pollEvents failed: \n";
+    g_err << ndb->getNdbError().code << " "
+          << ndb->getNdbError().message << endl;
+    result = NDBT_FAILED;
+    goto cleanup;
+  }
+
+  if (res > 0) {
+    NdbEventOperation *tmp;
+    int count = 0;
+    while (connected && (tmp= ndb->nextEvent()))
+    {
+      if (tmp != pOp)
+      {
+        printf("Found stray NdbEventOperation\n");
+        result = NDBT_FAILED;
+        goto cleanup;
+      }
+      switch (tmp->getEventType()) {
+      case NdbDictionary::Event::TE_CLUSTER_FAILURE:
+        connected = false;
+        break;
+      default:
+        count++;
+        break;
+      }
+    }
+    if (connected)
+    {
+      g_err << "failed to detect cluster disconnect\n";
+      result = NDBT_FAILED;
+      goto cleanup;
+    }
+  }
+
+cleanup:
+
+  if (ndb->dropEventOperation(pOp) != 0) {
+    g_err << "dropping event operation failed\n";
+    result = NDBT_FAILED;
+  }
+
+  // Reconnect by trying to start a transaction
+  uint retries = 100;
+  while (!connected && retries--)
+  {
+    HugoTransactions hugoTrans(* ctx->getTab());
+    if (hugoTrans.loadTable(ndb, 100) == 0)
+    {
+      connected = true;
+      result = NDBT_OK;
+    }
+    else
+    {
+      NdbSleep_MilliSleep(300);
+      result = NDBT_FAILED;
+    }
+  }
+
+  if (!connected)
+    g_err << "Failed to reconnect\n";
+
+  // Restart cluster with abort
+  if (restarter.restartAll(false, false, true) != 0){
+    ctx->stopTest();
+    return NDBT_FAILED;
+  }
+
+  // Stop the other thread
+  ctx->stopTest();
+
+  if (restarter.waitClusterStarted(300) != 0){
+    return NDBT_FAILED;
+  }
+
+  if (ndb->waitUntilReady() != 0){
+    return NDBT_FAILED;
+  }
+
+  return result;
+}
 int 
 runBug33793(NDBT_Context* ctx, NDBT_Step* step)
 {
@@ -1901,6 +2076,104 @@ runBug33793(NDBT_Context* ctx, NDBT_Step* step)
 }
 
 
+
+/** Telco 6.2 **/
+
+int
+runNFSubscribe(NDBT_Context* ctx, NDBT_Step* step)
+{
+  NdbRestarter restarter;
+
+  if (restarter.getNumDbNodes() < 2)
+  {
+    ctx->stopTest();
+    return NDBT_OK;
+  }
+
+  int codes[] = {
+    13013,
+    13019,
+    13020,
+    13041,
+    0,
+  };
+
+  int nr_codes[] = {
+    13039,
+    13040,
+    13042,
+    0
+  };
+
+  int loops = ctx->getNumLoops();
+  while (loops-- && !ctx->isTestStopped())
+  {
+    int i = 0;
+    while (codes[i] != 0)
+    {
+      int nodeId = restarter.getDbNodeId(rand() % restarter.getNumDbNodes());
+      int val2[] = { DumpStateOrd::CmvmiSetRestartOnErrorInsert, 1 };
+      if (restarter.dumpStateOneNode(nodeId, val2, 2))
+        return NDBT_FAILED;
+      
+      ndbout_c("Node %u error: %u", nodeId, codes[i]);
+      if (restarter.insertErrorInNode(nodeId, codes[i]))
+        return NDBT_FAILED;
+      
+      if (restarter.waitNodesNoStart(&nodeId, 1))
+        return NDBT_FAILED;
+      
+      if (restarter.startNodes(&nodeId, 1))
+        return NDBT_FAILED;
+      
+      if (restarter.waitClusterStarted())
+        return NDBT_FAILED;
+      
+      i++;
+    }
+    
+    int nodeId = restarter.getDbNodeId(rand() % restarter.getNumDbNodes());
+    if (restarter.restartOneDbNode(nodeId, false, true, true) != 0)
+      return NDBT_FAILED;
+    
+    if (restarter.waitNodesNoStart(&nodeId, 1))
+      return NDBT_FAILED;
+    
+    i = 0;
+    while (nr_codes[i] != 0)
+    {
+      int val2[] = { DumpStateOrd::CmvmiSetRestartOnErrorInsert, 1 };
+      if (restarter.dumpStateOneNode(nodeId, val2, 2))
+        return NDBT_FAILED;
+      
+      ndbout_c("Node %u error: %u", nodeId, nr_codes[i]);
+      if (restarter.insertErrorInNode(nodeId, nr_codes[i]))
+        return NDBT_FAILED;
+      
+      if (restarter.startNodes(&nodeId, 1))
+        return NDBT_FAILED;
+
+      NdbSleep_SecSleep(3);
+      
+      if (restarter.waitNodesNoStart(&nodeId, 1))
+        return NDBT_FAILED;
+      
+      i++;
+    }
+    
+    ndbout_c("Done..now starting %u", nodeId);
+    if (restarter.startNodes(&nodeId, 1))
+      return NDBT_FAILED;
+    
+    if (restarter.waitClusterStarted())
+      return NDBT_FAILED;
+  }  
+
+  ctx->stopTest();
+  return NDBT_OK;
+}
+
+/** Telco 6.3 **/
 
 NDBT_TESTSUITE(test_event);
 TESTCASE("BasicEventOperation", 
@@ -2038,6 +2311,27 @@ TESTCASE("Bug31701", ""){
   STEP(runBug31701);
   FINALIZER(runDropEvent);
   FINALIZER(runDropShadowTable);
+}
+TESTCASE("SubscribeNR", ""){
+  TC_PROPERTY("ReportSubscribe", 1);
+  TC_PROPERTY("SubscribeUntilStopped", 1);  
+  INITIALIZER(runCreateEvent);
+  STEPS(runSubscribeUnsubscribe, 5);
+  STEP(runNFSubscribe);
+  FINALIZER(runDropEvent);
+}
+TESTCASE("EventBufferOverflow",
+         "Simulating EventBuffer overflow while node restart"
+         "NOTE! No errors are allowed!" ){
+  INITIALIZER(runCreateEvent);
+  STEP(errorInjectBufferOverflow);
+  FINALIZER(runDropEvent);
+}
+TESTCASE("StallingSubscriber",
+         "Simulating slow subscriber that will become disconnected"
+         "NOTE! No errors are allowed!" ){
+  INITIALIZER(runCreateEvent);
+  STEP(errorInjectStalling);
 }
 TESTCASE("Bug33793", ""){
   INITIALIZER(runCreateEvent);
