@@ -61,7 +61,7 @@ class Backup_restore_ctx: public backup::Logger
   ~Backup_restore_ctx();
 
   bool is_valid() const;
-  ulong op_id() const;
+  ulonglong op_id() const;
 
   Backup_info*  prepare_for_backup(LEX_STRING location);
   Restore_info* prepare_for_restore(LEX_STRING location);  
@@ -128,7 +128,7 @@ bool Backup_restore_ctx::is_valid() const
 
 /// Return global id of the backup/restore operation.
 inline
-ulong Backup_restore_ctx::op_id() const
+ulonglong Backup_restore_ctx::op_id() const
 {
   return m_op_id; // inherited from Logger class
 }
