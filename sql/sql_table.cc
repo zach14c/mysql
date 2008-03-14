@@ -5069,6 +5069,8 @@ compare_tables(THD *thd,
   Create_field *new_field;
   KEY_PART_INFO *key_part;
   KEY_PART_INFO *end;
+  uint candidate_key_count= 0;
+  bool not_nullable= true;
   /*
     Remember if the new definition has new VARCHAR column;
     create_info->varchar will be reset in mysql_prepare_create_table.
@@ -5254,6 +5256,30 @@ compare_tables(THD *thd,
 
   DBUG_PRINT("info", ("index count old: %d  new: %d",
                       table->s->keys, ha_alter_info->key_count));
+
+  /* Count all candidate keys. */
+
+  for (table_key= table->key_info; table_key < table_key_end; table_key++)
+  {
+    KEY_PART_INFO *table_part;
+    KEY_PART_INFO *table_part_end= table_key->key_part + table_key->key_parts;
+
+    /*
+      Check if key is a candidate key, i.e. a unique index with no index
+      fields nullable, then key is either already primary key or could
+      be promoted to primary key if the original primary key is dropped.
+    */
+    not_nullable= true;
+    for (table_part= table_key->key_part;
+         table_part < table_part_end;
+         table_part++)
+    {
+      not_nullable= not_nullable && (! table_part->field->maybe_null());
+    }
+    if ((table_key->flags & HA_NOSAME) && not_nullable)
+      candidate_key_count++;
+  }
+
   /*
     Step through all keys of the old table and search matching new keys.
   */
@@ -5282,11 +5308,32 @@ compare_tables(THD *thd,
       if (table_key->flags & HA_NOSAME)
       {
         /* Unique key. Check for "PRIMARY". */
-        if (! my_strcasecmp(system_charset_info,
-                            table_key->name, primary_key_name))
+        if ((uint) (table_key - table->key_info) == table->s->primary_key)
+        {
           *alter_flags|= HA_DROP_PK_INDEX;
+          candidate_key_count--;
+        }
         else
+        {
+          bool is_not_null= true;
+
           *alter_flags|= HA_DROP_UNIQUE_INDEX;
+          key_part= table_key->key_part;
+          end= key_part + table_key->key_parts;
+
+         /*
+            Check if all fields in key are declared
+            NOT NULL and adjust candidate_key_count
+          */
+          for(; key_part != end; key_part++)
+          {
+            is_not_null=
+              (is_not_null && 
+               (!table->field[key_part->fieldnr-1]->maybe_null()));
+          }
+          if (is_not_null)
+            candidate_key_count--;
+        }
       }
       else
         *alter_flags|= HA_DROP_INDEX;
@@ -5303,9 +5350,8 @@ compare_tables(THD *thd,
     {
       if (table_key->flags & HA_NOSAME)
       {
-        // Unique key. Check for "PRIMARY".
-        if (! my_strcasecmp(system_charset_info,
-                            table_key->name, primary_key_name))
+        /* Unique key. Check for "PRIMARY". */
+        if ((uint) (table_key - table->key_info) == table->s->primary_key)
           *alter_flags|= HA_ALTER_PK_INDEX;
         else
           *alter_flags|= HA_ALTER_UNIQUE_INDEX;
@@ -5334,8 +5380,7 @@ compare_tables(THD *thd,
         if (table_key->flags & HA_NOSAME)
         {
           /* Unique key. Check for "PRIMARY" */
-          if (! my_strcasecmp(system_charset_info,
-                              table_key->name, primary_key_name))
+          if ((uint) (table_key - table->key_info) ==  table->s->primary_key)
             *alter_flags|= HA_ALTER_PK_INDEX;
           else
             *alter_flags|= HA_ALTER_UNIQUE_INDEX;
@@ -5383,6 +5428,10 @@ compare_tables(THD *thd,
     }
     if (table_key >= table_key_end)
     {
+      bool is_not_null= true;
+      bool no_pk= ((table->s->primary_key == MAX_KEY) ||
+                   alter_flags->is_set(HA_DROP_PK_INDEX));
+
       /* Key not found. Add the offset of the key to the add buffer. */
       ha_alter_info->index_add_buffer
            [ha_alter_info->index_add_count++]=
@@ -5394,12 +5443,41 @@ compare_tables(THD *thd,
         /* Mark field to be part of new key */
         if ((field= table->field[key_part->fieldnr]))
           field->flags|= FIELD_IN_ADD_INDEX;
+        /*
+          Check if all fields in key are declared
+          NOT NULL
+         */
+        if (key_part->fieldnr < table->s->fields)
+        {
+          is_not_null=
+            (is_not_null && 
+             (!table->field[key_part->fieldnr]->maybe_null()));
+        }
+        else
+        {
+          /* Index is defined over a newly added column */
+          List_iterator_fast<Create_field>
+            new_field_it(alter_info->create_list);
+          Create_field *new_field;
+          uint fieldnr;
+
+          for (fieldnr= 0, new_field= new_field_it++;
+               fieldnr != key_part->fieldnr;
+               fieldnr++, new_field= new_field_it++);
+          is_not_null=
+            (is_not_null && (new_field->flags & NOT_NULL_FLAG));
+        }
       }
       if (new_key->flags & HA_NOSAME)
       {
-        /* Unique key. Check for "PRIMARY" */
-        if (! my_strcasecmp(system_charset_info,
-                            new_key->name, primary_key_name))
+        /* Unique key. Check for "PRIMARY" 
+           or if adding first unique key
+           defined on non-nullable 
+        */
+        DBUG_PRINT("info",("no_pk %s, candidate_key_count %u, is_not_null %s", (no_pk)?"yes":"no", candidate_key_count, (is_not_null)?"yes":"no"));
+        if ((!my_strcasecmp(system_charset_info,
+                            new_key->name, primary_key_name)) ||
+            (no_pk && candidate_key_count == 0 && is_not_null))
           *alter_flags|= HA_ADD_PK_INDEX;
         else
         *alter_flags|= HA_ADD_UNIQUE_INDEX;
@@ -5716,7 +5794,7 @@ int mysql_fast_or_online_alter_table(THD *thd,
   */
   error= ha_autocommit_or_rollback(thd, 0);
 
-  if (ha_commit(thd))
+  if (end_active_trans(thd))
     error=1;
   if (error)
     goto err;

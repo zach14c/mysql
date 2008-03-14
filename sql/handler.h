@@ -2385,7 +2385,7 @@ extern TYPELIB tx_isolation_typelib;
 extern TYPELIB myisam_stats_method_typelib;
 extern ulong total_ha, total_ha_2pc;
 
-       /* Wrapper functions */
+/* Wrapper functions */
 #define ha_commit(thd) (ha_commit_trans((thd), TRUE))
 #define ha_rollback(thd) (ha_rollback_trans((thd), TRUE))
 
