@@ -68,6 +68,7 @@
 #include "be_default.h"
 #include "backup_aux.h"
 #include "rpl_record.h"
+#include "debug.h"
 
 namespace default_backup {
 
@@ -108,8 +109,8 @@ result_t Engine::get_backup(const uint32, const Table_list &tables,
   DBUG_RETURN(OK);
 }
 
-Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type): 
-               Backup_thread_driver(tables)
+Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type)
+  :Backup_thread_driver(tables)
 {
   DBUG_PRINT("default_backup",("Creating backup driver"));
   locking_thd->m_thd= t_thd;  /* save current thread */
@@ -289,7 +290,7 @@ result_t Backup::get_data(Buffer &buf)
   if (!locks_acquired)
   {
     buf.size= 0;
-    buf.table_no= 0; 
+    buf.table_num= 0; 
     buf.last= TRUE;
     switch (locking_thd->lock_state) {
     case LOCK_ERROR:             // Something ugly happened in locking
@@ -311,7 +312,7 @@ result_t Backup::get_data(Buffer &buf)
     }
   }
 
-  buf.table_no= tbl_num;
+  buf.table_num= tbl_num;
   buf.last= FALSE;
 
   /* 
@@ -340,14 +341,14 @@ result_t Backup::get_data(Buffer &buf)
     {
       buf.last= TRUE;
       buf.size= 0;
-      buf.table_no= 0;
+      buf.table_num= 0;
       DBUG_RETURN(OK);
     }
     else
     {
       start_tbl_read(cur_table);
       tbl_num++;
-      buf.table_no= tbl_num;
+      buf.table_num= tbl_num;
     }
   }
 
@@ -560,7 +561,7 @@ result_t Engine::get_restore(version_t, const uint32,
   DBUG_RETURN(OK);
 }
 
-Restore::Restore(const Table_list &tables, THD *t_thd): Restore_driver(tables)
+Restore::Restore(const Table_list &tables, THD *t_thd) :Restore_driver(tables)
 {
   DBUG_PRINT("default_backup",("Creating restore driver"));
   m_thd= t_thd;         /* save current thread */
@@ -718,7 +719,7 @@ result_t Restore::send_data(Buffer &buf)
 
   DBUG_ENTER("Restore::send_data");
   DBUG_PRINT("default_restore",("Got packet with %lu bytes from stream %u",
-                                (unsigned long)buf.size, buf.table_no));
+                                (unsigned long)buf.size, buf.table_num));
   
   /* 
     Determine mode of operation and execute mode.
@@ -746,7 +747,7 @@ result_t Restore::send_data(Buffer &buf)
       find the table in question. This is needed if any tables (more
       than MAX_RETRIES are empty!
     */
-    if ((tbl_num + 1) == buf.table_no) //do normal sequential lookup
+    if ((tbl_num + 1) == buf.table_num) //do normal sequential lookup
       res= next_table();
     else                                //do linear search
     {
@@ -759,14 +760,14 @@ result_t Restore::send_data(Buffer &buf)
         i++;
         res= next_table();
       }
-      while ((i != buf.table_no) && !res);
+      while ((i != buf.table_num) && !res);
       tbl_num= i - 1;
     }
     if (res)
     {
       buf.last= TRUE;
       buf.size= 0;
-      buf.table_no= 0;
+      buf.table_num= 0;
       DBUG_RETURN(OK);
     }
     else
@@ -789,7 +790,7 @@ result_t Restore::send_data(Buffer &buf)
       receiving data from the backup for a different table. Set the mode to
       get the next table in the list.
     */
-    if (tbl_num != buf.table_no)
+    if (tbl_num != buf.table_num)
     {
       mode= GET_NEXT_TABLE;
       DBUG_RETURN(PROCESSING);

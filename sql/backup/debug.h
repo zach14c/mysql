@@ -12,46 +12,6 @@
 # define DBUG_BACKUP
 #endif
 
-#ifdef DBUG_BACKUP
-
-/*
-  Macros for debugging error (or other) conditions. Usage:
-
-  TEST_ERROR_IF(<condition deciding if TEST_ERROR should be true>);
-
-  if (<other conditions> || TEST_ERROR)
-  {
-    <report error>
-  }
-
-  The additional TEST_ERROR condition will be set only if "backup_error_test"
-  error injection is set in the server.
-
-  Notes:
-   - Whenever TEST_ERROR is used in a condition, TEST_ERROR_IF() should
-     be called before - otherwise TEST_ERROR might be unintentionally TRUE.
-   - This mechanism is not thread safe.
- */
-
-namespace backup {
- extern bool test_error_flag;
-}
-
-#define TEST_ERROR  backup::test_error_flag
-// FIXME: DBUG_EXECUTE_IF below doesn't work
-#define TEST_ERROR_IF(X) \
- do { \
-   backup::test_error_flag= FALSE; \
-   DBUG_EXECUTE_IF("backup_error_test", backup::test_error_flag= (X);); \
- } while(0)
-
-#else
-
-//#define BACKUP_BREAKPOINT(S)
-#define TEST_ERROR  FALSE
-#define TEST_ERROR_IF(X)
-
-#endif
 
 /**
   @page BACKUP_BREAKPOINT Online Backup Breakpoints
@@ -265,7 +225,7 @@ namespace backup {
 #define BACKUP_BREAKPOINT(S) \
  do { \
   DBUG_PRINT("backup",("== breakpoint on '%s' ==",(S))); \
-  DBUG_EXECUTE_IF("backup_debug", DBUG_SYNC_POINT((S),BACKUP_BREAKPOINT_TIMEOUT);); \
+  DBUG_EXECUTE_IF("backup_debug", debug_sync_point((S),BACKUP_BREAKPOINT_TIMEOUT);); \
  } while (0)
 
 #endif

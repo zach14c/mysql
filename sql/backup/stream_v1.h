@@ -164,7 +164,12 @@ struct st_bstream_image_header
 
   /** number of table data snapshots in the image */
   unsigned short int        snap_count;
-  /** descriptions of table data snapshots */
+
+  /** 
+    Descriptions of table data snapshots.
+    
+    We have at most 256 snapshots because their number is stored using one byte. 
+   */
   struct st_bstream_snapshot_info snapshot[256];
 };
 
@@ -261,7 +266,7 @@ struct st_bstream_dbitem_info
 struct st_bstream_table_info
 {
   struct st_bstream_dbitem_info  base;  /**< data common to all per-db items */
-  unsigned short int  snap_no;  /**< snapshot where table's data is stored */
+  unsigned short int  snap_num;  /**< snapshot where table's data is stored */
 };
 
 /**
@@ -296,10 +301,10 @@ struct st_bstream_titem_info
 */
 struct st_bstream_data_chunk
 {
-  unsigned long int  table_no;  /**< table to which this data belongs */
+  unsigned long int  table_num;  /**< table to which this data belongs */
   bstream_blob       data;      /**< the data */
   unsigned short int flags;     /**< flags to be saved together with the chunk */
-  unsigned short int snap_no;   /**< which snapshot this chunk belongs to */
+  unsigned short int snap_num;   /**< which snapshot this chunk belongs to */
 };
 
 /** Indicates that given chunk is the last chunk of data for a given table */

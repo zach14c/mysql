@@ -2100,12 +2100,6 @@ mysql_execute_command(THD *thd)
 #endif
 #endif
 
-  case SQLCOM_SHOW_ARCHIVE:
-#ifdef EMBEDDED_LIBRARY
-    // Note: online backup code doesn't compile as embedded library yet.
-    my_error(ER_NOT_SUPPORTED_YET, MYF(0), "SHOW ARCHIVE");
-    goto error;
-#endif
   case SQLCOM_BACKUP:
 #ifdef EMBEDDED_LIBRARY
     my_error(ER_NOT_SUPPORTED_YET, MYF(0), "BACKUP");
