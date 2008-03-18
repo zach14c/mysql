@@ -899,11 +899,11 @@ int bstream_rd_item_type(backup_stream *s, enum enum_bstream_item_type *type)
 
   [optional item data] is used only for tables:
 
-  [optional item data (table)]= [ flags:1 ! snapshot no:1 ! pos ! 
+  [optional item data (table)]= [ flags:1 ! snapshot no.:1 ! pos !
                                   optional extra data ]
   @endverbatim
 
-  [snapshot no] tells which snapshot contains tables data and [pos] tells what
+  [snapshot no.] tells which snapshot contains tables data and [pos] tells what
   is the position of the table in this snapshot.
 
   Presence of extra data is indicated by a flag.
@@ -946,7 +946,7 @@ int bstream_wr_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
     if (item->base.type == BSTREAM_IT_TABLE)
     {
       CHECK_WR_RES(bstream_wr_byte(s,0x00)); /* flags: we don't use extra data */
-      CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_no));
+      CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_num));
       CHECK_WR_RES(bstream_wr_num(s,item->base.pos));
     }
   }
@@ -980,6 +980,7 @@ int bstream_rd_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
 {
   unsigned short int flags;
   struct st_bstream_table_info ti;
+  unsigned long int pos= 0;
   int ret;
 
   bzero(&ti,sizeof(ti));
@@ -1004,9 +1005,11 @@ int bstream_rd_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
         return BSTREAM_ERROR;
 
       CHECK_RD_OK(bstream_rd_byte(s,&flags)); /* flags are ignored currently */
-      CHECK_RD_OK(bstream_rd_byte(s,&ti.snap_no));
+      CHECK_RD_OK(bstream_rd_byte(s,&ti.snap_num));
       CHECK_RD_RES(bstream_rd_num(s,&ti.base.base.pos));
     }
+    else
+      ti.base.base.pos= pos++;
 
     if (bcat_add_item(cat, &ti.base.base) != BSTREAM_OK)
       return BSTREAM_ERROR;
@@ -1315,10 +1318,10 @@ int bstream_rd_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
   in which part of catalogue the entry lies.
   @verbatim
 
-  [item position (global)]= [db no]
-  [item position (table)]= [ snap no ! pos in snapshot's table list ]
-  [item position (other per-db item)]= [ pos in db item list ! db no ]
-  [item position (per-table item)] = [ pos in table's item list ! db no ! table pos ]
+  [item position (global)]= [db no.]
+  [item position (table)]= [ snap no. ! pos in snapshot's table list ]
+  [item position (other per-db item)]= [ pos in db item list ! db no. ]
+  [item position (per-table item)] = [ pos in table's item list ! db no. ! table pos ]
   @endverbatim
 
   Note that table is identified by its position inside the snapshot to which it
@@ -1353,7 +1356,7 @@ int bstream_wr_meta_item(backup_stream *s,
 
   if (kind == TABLE_ITEM)
   {
-    CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_no));
+    CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_num));
     return ret;
   }
 
@@ -1437,7 +1440,7 @@ int bstream_rd_meta_item(backup_stream *s,
     if (ret != BSTREAM_OK)
       return BSTREAM_ERROR;
 
-    CHECK_RD_RES(bstream_rd_byte(s,&item_buf.table.snap_no));
+    CHECK_RD_RES(bstream_rd_byte(s,&item_buf.table.snap_num));
       return ret;
   }
 
@@ -1587,7 +1590,7 @@ int read_and_create_items(backup_stream *s, struct st_bstream_image_header *cat,
 
   [table data]= [ table data chunk | ... | table data chunk ]
 
-  [table data chunk]= [ snapshot no:1 ! seq no:2 ! flags:1 ! table no ! data ]
+  [table data chunk]= [ snapshot no.:1 ! seq no.:2 ! flags:1 ! table no. ! data ]
   @endverbatim
 
   Data chunks of each snapshot are numbered by consecutive numbers. This can be
@@ -1609,10 +1612,10 @@ int bstream_wr_data_chunk(backup_stream *s,
 
   ASSERT(chunk);
 
-  CHECK_WR_RES(bstream_wr_byte(s,chunk->snap_no + 1));
+  CHECK_WR_RES(bstream_wr_byte(s,chunk->snap_num + 1));
   CHECK_WR_RES(bstream_wr_int2(s,0)); /* sequence number - not used now */
   CHECK_WR_RES(bstream_wr_byte(s,chunk->flags));
-  CHECK_WR_RES(bstream_wr_num(s,chunk->table_no));
+  CHECK_WR_RES(bstream_wr_num(s,chunk->table_num));
   CHECK_WR_RES(bstream_write_blob(s,chunk->data));
   CHECK_WR_RES(bstream_end_chunk(s));
 
@@ -1654,27 +1657,27 @@ int bstream_rd_data_chunk(backup_stream *s,
   blob *envelope;
   blob to_read;
   unsigned long int howmuch;
-  unsigned int seq_no;
+  unsigned int seq_num;
   int ret= BSTREAM_OK;
 
   ASSERT(chunk);
 
-  CHECK_RD_RES(bstream_rd_byte(s,&chunk->snap_no));
+  CHECK_RD_RES(bstream_rd_byte(s,&chunk->snap_num));
 
   /*
     Saved snapshot numbers start from 1 - if we read 0 it means that this is not
     a table data chunk
   */
-  if (chunk->snap_no == 0)
+  if (chunk->snap_num == 0)
     return BSTREAM_EOC;
   else if (ret != BSTREAM_OK)
     return BSTREAM_ERROR;
 
-  (chunk->snap_no)--;
+  (chunk->snap_num)--;
 
-  CHECK_RD_OK(bstream_rd_int2(s,&seq_no));  /* FIxME: handle sequence numbers */
+  CHECK_RD_OK(bstream_rd_int2(s,&seq_num));  /* FIxME: handle sequence numbers */
   CHECK_RD_OK(bstream_rd_byte(s,&chunk->flags));
-  CHECK_RD_OK(bstream_rd_num(s,&chunk->table_no));
+  CHECK_RD_OK(bstream_rd_num(s,&chunk->table_num));
 
   /*
     read rest of the chunk data into provided buffer or the internal buffer

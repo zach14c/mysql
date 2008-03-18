@@ -1,6 +1,6 @@
 #include "../mysql_priv.h"
 
-#include <backup_stream.h>
+#include "backup_stream.h"
 #include "stream.h"
 
 const unsigned char backup_magic_bytes[8]=
@@ -29,12 +29,12 @@ extern "C" int stream_write(void *instance, bstream_blob *buf, bstream_blob)
   int fd;
   int res;
 
-  DBUG_ENTER("backup::IStream::write");
+  DBUG_ENTER("backup::stream_write");
 
   DBUG_ASSERT(instance);
   DBUG_ASSERT(buf);
 
-  OStream *s= (OStream*)instance;
+  fd_stream *s= (fd_stream*)instance;
 
   fd= s->m_fd;
 
@@ -71,12 +71,12 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
   int fd;
   size_t howmuch;
 
-  DBUG_ENTER("backup::IStream::read");
+  DBUG_ENTER("backup::stream_read");
 
   DBUG_ASSERT(instance);
   DBUG_ASSERT(buf);
 
-  IStream *s= (IStream*)instance;
+  fd_stream *s= (fd_stream*)instance;
 
   fd= s->m_fd;
 
@@ -113,8 +113,8 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 }
 
 
-Stream::Stream(const ::String &name, int flags):
-  m_fd(-1), m_path(name), m_flags(flags)
+Stream::Stream(Logger &log, const ::String &name, int flags)
+  :m_path(name), m_flags(flags), m_block_size(0), m_log(log)
 {
   bzero(&stream, sizeof(stream));
   bzero(&buf, sizeof(buf));
@@ -127,7 +127,7 @@ Stream::Stream(const ::String &name, int flags):
 bool Stream::open()
 {
   close();
-  m_fd= my_open(m_path.c_ptr(),m_flags,MYF(0));
+  m_fd= my_open(m_path.c_ptr(), m_flags, MYF(0));
   return m_fd >= 0;
 }
 
@@ -135,19 +135,19 @@ void Stream::close()
 {
   if (m_fd >= 0)
   {
-    my_close(m_fd,MYF(0));
+    my_close(m_fd, MYF(0));
     m_fd= -1;
   }
 }
 
 bool Stream::rewind()
 {
-  return m_fd >= 0 && my_seek(m_fd,0,SEEK_SET,MYF(0)) == 0;
+  return m_fd >= 0 && my_seek(m_fd, 0, SEEK_SET, MYF(0)) == 0;
 }
 
 
-OStream::OStream(const ::String &name):
-  Stream(name,O_WRONLY|O_CREAT|O_EXCL|O_TRUNC), bytes(0)
+Output_stream::Output_stream(Logger &log, const ::String &name)
+  :Stream(log, name, O_WRONLY|O_CREAT|O_EXCL|O_TRUNC)
 {
   stream.write= stream_write;
   m_block_size=0; // use default block size provided by the backup stram library
@@ -160,13 +160,13 @@ OStream::OStream(const ::String &name):
 
   @return Number of bytes written or -1 if error.
 */
-int OStream::write_magic_and_version()
+int Output_stream::write_magic_and_version()
 {
   byte buf[10];
 
   DBUG_ASSERT(m_fd >= 0);
 
-  memmove(buf,backup_magic_bytes,8);
+  memmove(buf, backup_magic_bytes, 8);
   // format version = 1
   buf[8]= 0x01;
   buf[9]= 0x00;
@@ -180,6 +180,31 @@ int OStream::write_magic_and_version()
 }
 
 /**
+  Initialize backup stream after the underlying stream has been opened.
+ */ 
+bool Output_stream::init()
+{
+  // write magic bytes and format version
+  int len= write_magic_and_version();
+
+  if (len <= 0)
+  {
+    m_log.report_error(ER_BACKUP_WRITE_HEADER);
+    return FALSE;
+  }
+
+  bytes= 0;
+  
+  if (BSTREAM_OK != bstream_open_wr(this, m_block_size, len))
+  {
+    m_log.report_error(ER_BACKUP_OPEN_WR);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
   Open and initialize backup stream for writing.
 
   @retval TRUE  operation succeeded
@@ -187,28 +212,16 @@ int OStream::write_magic_and_version()
 
   @todo Report errors.
 */
-bool OStream::open()
+bool Output_stream::open()
 {
-  close(FALSE);
+  close();
 
   bool ret= Stream::open();
 
   if (!ret)
     return FALSE;
 
-  // write magic bytes and format version
-  int len= write_magic_and_version();
-
-  if (len <= 0)
-  {
-    // TODO: report errors
-    return FALSE;
-  }
-
-  bytes= 0;
-  ret= BSTREAM_OK == bstream_open_wr(this,m_block_size,len);
-  // TODO: report errors
-  return ret;
+  return init();
 }
 
 /**
@@ -216,16 +229,13 @@ bool OStream::open()
 
   If @c destroy is TRUE, the stream object is deleted.
 */
-void OStream::close(bool destroy)
+void Output_stream::close()
 {
-  if (m_fd<0)
+  if (m_fd < 0)
     return;
 
   bstream_close(this);
   Stream::close();
-
-  if (destroy)
-    delete this;
 }
 
 /**
@@ -235,7 +245,7 @@ void OStream::close(bool destroy)
   @retval TRUE  operation succeeded
   @retval FALSE operation failed
 */
-bool OStream::rewind()
+bool Output_stream::rewind()
 {
   bstream_close(this);
 
@@ -244,19 +254,12 @@ bool OStream::rewind()
   if (!ret)
     return FALSE;
 
-  int len= write_magic_and_version();
-
-  if (len <= 0)
-    return FALSE;
-
-  ret= BSTREAM_OK == bstream_open_wr(this,m_block_size,len);
-
-  return ret;
+  return init();
 }
 
 
-IStream::IStream(const ::String &name):
-  Stream(name,O_RDONLY), bytes(0)
+Input_stream::Input_stream(Logger &log, const ::String &name)
+  :Stream(log, name, O_RDONLY)
 {
   stream.read= stream_read;
 }
@@ -269,7 +272,7 @@ IStream::IStream(const ::String &name):
 
   @return Number of bytes read or -1 if error.
 */
-int IStream::check_magic_and_version()
+int Input_stream::check_magic_and_version()
 {
   byte buf[10];
 
@@ -280,7 +283,7 @@ int IStream::check_magic_and_version()
   if (ret)
     return -1; // couldn't read magic bytes
 
-  if (memcmp(buf,backup_magic_bytes,8))
+  if (memcmp(buf, backup_magic_bytes, 8))
     return -1; // wrong magic bytes
 
   unsigned int ver = buf[8] + (buf[9]<<8);
@@ -292,6 +295,30 @@ int IStream::check_magic_and_version()
 }
 
 /**
+  Initialize backup stream after the underlying stream has been opened.
+ */ 
+bool Input_stream::init()
+{
+  int len= check_magic_and_version();
+
+  if (len <= 0)
+  {
+    m_log.report_error(ER_BACKUP_BAD_MAGIC);
+    return FALSE;
+  }
+
+  bytes= 0;
+
+  if (BSTREAM_OK != bstream_open_rd(this, len))
+  {
+    m_log.report_error(ER_BACKUP_OPEN_RD);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
   Open backup stream for reading.
 
   @retval TRUE  operation succeeded
@@ -299,28 +326,16 @@ int IStream::check_magic_and_version()
 
   @todo Report errors.
 */
-bool IStream::open()
+bool Input_stream::open()
 {
-  close(FALSE);
+  close();
 
   bool ret= Stream::open();
 
   if (!ret)
     return FALSE;
 
-  int len= check_magic_and_version();
-
-  if (len <= 0)
-  {
-    // TODO: report errors
-    return FALSE;
-  }
-
-  bytes= 0;
-
-  ret= BSTREAM_OK == bstream_open_rd(this,len);
-  // TODO: report errors
-  return ret;
+  return init();
 }
 
 /**
@@ -328,16 +343,13 @@ bool IStream::open()
 
   If @c destroy is TRUE, the stream object is deleted.
 */
-void IStream::close(bool destroy)
+void Input_stream::close()
 {
-  if (m_fd<0)
+  if (m_fd < 0)
     return;
 
   bstream_close(this);
   Stream::close();
-
-  if (destroy)
-    delete this;
 }
 
 /**
@@ -346,27 +358,17 @@ void IStream::close(bool destroy)
   @retval TRUE  operation succeeded
   @retval FALSE operation failed
 */
-bool IStream::rewind()
+bool Input_stream::rewind()
 {
   bstream_close(this);
 
   bool ret= Stream::rewind();
 
-  if (!ret)
-    return FALSE;
-
-  int len= check_magic_and_version();
-
-  if (len < 0)
-    return FALSE;
-
-  ret= BSTREAM_OK == bstream_open_rd(this,len);
-
-  return ret;
+  return ret ? init() : FALSE;
 }
 
 /// Move to next chunk in the stream.
-int IStream::next_chunk()
+int Input_stream::next_chunk()
 {
   return bstream_next_chunk(this);
 }

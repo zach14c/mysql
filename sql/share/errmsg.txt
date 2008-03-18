@@ -6150,9 +6150,9 @@ ER_BACKUP_NOTHING_TO_BACKUP
 ER_BACKUP_CANNOT_INCLUDE_DB
         eng "Database '%-.64s' cannot be included in a backup"
 ER_BACKUP_BACKUP
-        eng "Error during backup operation - server's error log contains more information about the error"
+        eng "Error during backup operation - see SHOW WARNINGS for more information"
 ER_BACKUP_RESTORE
-        eng "Error during restore operation - server's error log contains more information about the error"
+        eng "Error during restore operation - see SHOW WARNINGS for more information"
 ER_BACKUP_RUNNING
         eng "Can't execute this command because another BACKUP/RESTORE operation is in progress"
 ER_BACKUP_BACKUP_PREPARE
@@ -6190,17 +6190,17 @@ ER_BACKUP_CREATE_BACKUP_DRIVER
 ER_BACKUP_CREATE_RESTORE_DRIVER
         eng "Can't create %-.64s restore driver"
 ER_BACKUP_TOO_MANY_IMAGES
-        eng "Found %d images in backup archive but maximum %d are supported"
+        eng "Backup image uses %d backup engines but maximum %d are supported"
 ER_BACKUP_WRITE_META
         eng "Error when saving meta-data of %-.64s"
 ER_BACKUP_READ_META
-        eng "Error when reading meta-data list"
+        eng "Error when reading meta-data"
 ER_BACKUP_CREATE_META
-        eng "Can't create %-.64s"
+        eng "Failed to obtain meta-data for %-.64s"
 ER_BACKUP_GET_BUF
         eng "Can't allocate buffer for image data transfer"
 ER_BACKUP_WRITE_DATA
-        eng "Error when writing %-.64s backup image data (for table #%d)"
+        eng "Error when writing data from %-.64s backup driver (data block for table #%d)"
 ER_BACKUP_READ_DATA
         eng "Error when reading data from backup stream"
 ER_BACKUP_NEXT_CHUNK
@@ -6217,7 +6217,7 @@ ER_BACKUP_STOP_RESTORE_DRIVERS
 ER_BACKUP_PREPARE_DRIVER
         eng "%-.64s backup driver can't prepare for synchronization"
 ER_BACKUP_CREATE_VP
-        eng	"%-.64s backup driver can't create its image validity point"
+        eng "%-.64s backup driver can't create its validity point"
 ER_BACKUP_UNLOCK_DRIVER
         eng "Can't unlock %-.64s backup driver after creating the validity point"
 ER_BACKUP_CANCEL_BACKUP
@@ -6225,9 +6225,9 @@ ER_BACKUP_CANCEL_BACKUP
 ER_BACKUP_CANCEL_RESTORE
         eng "%-.64s restore driver can't cancel its restore operation"
 ER_BACKUP_GET_DATA
-        eng "Error when polling %-.64s backup driver for its image data"
+        eng "Error when polling %-.64s backup driver for its data"
 ER_BACKUP_SEND_DATA
-        eng "Error when sending image data (for table #%d) to %-.64s restore driver"
+        eng "Error when sending data (for table #%d) to %-.64s restore driver"
 ER_BACKUP_SEND_DATA_RETRY
         eng "After %d attempts %-.64s restore driver still can't accept next block of data"
 
@@ -6248,3 +6248,84 @@ ER_SLAVE_HEARTBEAT_FAILURE
   eng "Unexpected master's heartbeat data: %s"
 ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE
   eng "The requested value for the heartbeat period %s %s"
+
+ER_BACKUP_CANT_FIND_SE
+	eng "Backup image contains data created by a native driver of %-.64s storage engine but this engine can not be found on this server"
+ER_BACKUP_NO_NATIVE_BE
+	eng "Backup image contains data created by a native driver of %-.64s storage engine but it has no native backup support on this server"
+ER_BACKUP_UNKNOWN_BE
+	eng "Backup engine #%d needed for restoring from backup image has unknown type"
+ER_BACKUP_WRONG_TABLE_BE
+	eng "Backup image specifies wrong backup engine #%d for one of the tables"
+ER_BACKUP_CANT_RESTORE_DB
+	eng "Could not restore database %-.64s"
+ER_BACKUP_CANT_RESTORE_TABLE
+	eng "Could not restore table %-.64s"
+ER_BACKUP_CANT_RESTORE_VIEW
+	eng "Could not restore view %-.64s"
+ER_BACKUP_CANT_RESTORE_SROUT
+	eng "Could not restore stored routine %-.64s"
+ER_BACKUP_CANT_RESTORE_EVENT
+	eng "Could not restore event %-.64s"
+ER_BACKUP_CANT_RESTORE_TRIGGER
+	eng "Could not restore trigger %-.64s"
+ER_BACKUP_CATALOG_ADD_DB
+	eng "Failed to add database %-.64s to the catalog"
+ER_BACKUP_CATALOG_ADD_TABLE
+	eng "Failed to add table %-.64s to the catalog"
+ER_BACKUP_CATALOG_ADD_VIEW
+	eng "Failed to add view `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_SROUT
+	eng "Failed to add stored routine `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_EVENT
+	eng "Failed to add event `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_TRIGGER
+	eng "Failed to add trigger `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_UNKNOWN_OBJECT
+	eng "Backup image refers to an object which could not be found in the catalog"
+ER_BACKUP_UNKNOWN_OBJECT_TYPE
+	eng "Backup image refers to an object of unknown type"
+ER_BACKUP_OPEN_WR
+	eng "Cannot open backup stream for writing"
+ER_BACKUP_OPEN_RD
+	eng "Cannot open backup stream for reading"
+ER_BACKUP_BAD_MAGIC
+	eng "Could not find correct signature at the beginning of backup stream"
+ER_BACKUP_CONTEXT_CREATE
+	eng "Cannot create backup/restore execution context"
+ER_BACKUP_CONTEXT_REMOVE
+	eng "Error when cleaning up after backup/restore operation"
+ER_BAD_PATH
+	eng "Malformed file path '%-128s'"
+ER_DDL_BLOCK
+	eng "Erorr when attempting to block DDLs"
+ER_BACKUP_LOGGER_INIT
+	eng "Could not initialize logging and reporting services"
+ER_BACKUP_WRITE_SUMMARY
+	eng "Error when writing summary section of backup image"
+ER_BACKUP_READ_SUMMARY
+	eng "Error when reading summary section of backup image"
+ER_BACKUP_GET_META_DB
+        eng "Failed to obtain meta-data for database %-.64s"
+ER_BACKUP_GET_META_TABLE
+        eng "Failed to obtain meta-data for table %-.64s"
+ER_BACKUP_GET_META_VIEW
+	eng "Failed to obtain meta-data for view %-.64s"
+ER_BACKUP_GET_META_SROUT
+	eng "Failed to obtain meta-data for stored routine %-.64s"
+ER_BACKUP_GET_META_EVENT
+	eng "Failed to obtain meta-data for event %-.64s"
+ER_BACKUP_GET_META_TRIGGER
+	eng "Failed to obtain meta-data for trigger %-.64s"
+ER_BACKUP_CREATE_BE
+	eng "Cannot create backup engine for storage engine %-.64s"
+ER_BACKUP_LIST_PERDB
+        eng "Can't enumerate per database objects"
+ER_BACKUP_LIST_DB_VIEWS
+	eng "Can't enumerate views in database `%-.64s`"
+ER_BACKUP_LIST_DB_SROUT
+	eng "Can't enumerate stored routines in database `%-.64s`"
+ER_BACKUP_LIST_DB_EVENTS
+	eng "Can't enumerate events in database `%-.64s`"
+ER_BACKUP_LIST_DB_TRIGGERS
+	eng "Can't enumerate triggers in database `%-.64s`"
