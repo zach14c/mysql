@@ -322,8 +322,8 @@ backup::Mem_allocator *Backup_restore_ctx::mem_alloc= NULL;
 
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
- :m_state(CREATED), m_thd(thd), m_thd_options(thd->options),
- m_error(0), m_remove_loc(FALSE), m_stream(NULL), m_catalog(NULL)
+ :m_thd(thd), m_state(CREATED), m_thd_options(thd->options),
+  m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL), m_catalog(NULL)
 {
   /*
     Check for progress tables.
@@ -1424,7 +1424,7 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
 
   Backup_info *info= static_cast<Backup_info*>(catalogue);
 
-  int meta_err;
+  int meta_err= 0;
 
   switch (item->type) {
   

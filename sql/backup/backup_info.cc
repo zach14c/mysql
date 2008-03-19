@@ -134,7 +134,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   @c find_backup_engine().
  */
 Backup_info::Backup_info(Backup_restore_ctx &ctx)
-  :m_state(ERROR), m_ctx(ctx), native_snapshots(8)
+  :m_ctx(ctx), m_state(Backup_info::ERROR), native_snapshots(8)
 {
   using namespace backup;
 
