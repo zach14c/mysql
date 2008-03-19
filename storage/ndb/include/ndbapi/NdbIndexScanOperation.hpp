@@ -210,6 +210,14 @@ public:
                const IndexBound& bound);
 
   /**
+   * Return size of data, in 32-bit words, that will be send to data nodes for
+   * all bounds added so far with setBound().
+   *
+   * This method is only available for NdbRecord index scans.
+   */
+  int getCurrentKeySize();
+
+  /**
    * Is current scan sorted?
    */
   bool getSorted() const { return m_ordered; }

@@ -669,6 +669,8 @@ private:
   };
   /* For read_multi_range scans, the get_range_no() of current row. */
   int m_current_range_no;
+  /* For multi range read, return from last mrr_funcs.next() call. */
+  int m_range_res;
   // NdbRecAttr has no reference to blob
   NdbValue m_value[NDB_MAX_ATTRIBUTES_IN_TABLE];
   Uint64 m_ref;
