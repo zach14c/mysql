@@ -4011,6 +4011,8 @@ double user_var_entry::val_real(my_bool *null_value)
   case ROW_RESULT:
     DBUG_ASSERT(1);				// Impossible
     break;
+  default:
+    break;
   }
   return 0.0;					// Impossible
 }
@@ -4041,6 +4043,8 @@ longlong user_var_entry::val_int(my_bool *null_value) const
   }
   case ROW_RESULT:
     DBUG_ASSERT(1);				// Impossible
+    break;
+  default:
     break;
   }
   return LL(0);					// Impossible
@@ -4074,6 +4078,8 @@ String *user_var_entry::val_str(my_bool *null_value, String *str,
   case ROW_RESULT:
     DBUG_ASSERT(1);				// Impossible
     break;
+  default:
+    break;
   }
   return(str);
 }
@@ -4100,6 +4106,8 @@ my_decimal *user_var_entry::val_decimal(my_bool *null_value, my_decimal *val)
     break;
   case ROW_RESULT:
     DBUG_ASSERT(1);				// Impossible
+    break;
+  default:
     break;
   }
   return(val);
