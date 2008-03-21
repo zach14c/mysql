@@ -6329,3 +6329,6 @@ ER_BACKUP_LIST_DB_EVENTS
 	eng "Can't enumerate events in database `%-.64s`"
 ER_BACKUP_LIST_DB_TRIGGERS
 	eng "Can't enumerate triggers in database `%-.64s`"
+
+ER_BACKUP_LOG_WRITE_ERROR
+        eng "Can't write to the online backup progress log %-.64s."

@@ -33,6 +33,11 @@ LEX_STRING GENERAL_LOG_NAME= {C_STRING_WITH_LEN("general_log")};
 /* SLOW_LOG name */
 LEX_STRING SLOW_LOG_NAME= {C_STRING_WITH_LEN("slow_log")};
 
+#ifndef EMBEDDED_LIBRARY
+extern LEX_STRING BACKUP_HISTORY_LOG_NAME;
+extern LEX_STRING BACKUP_PROGRESS_LOG_NAME;
+#endif
+
 	/* Functions defined in this file */
 
 void open_table_error(TABLE_SHARE *share, int error, int db_errno,
@@ -245,6 +250,25 @@ TABLE_CATEGORY get_table_category(const LEX_STRING *db, const LEX_STRING *name)
     {
       return TABLE_CATEGORY_PERFORMANCE;
     }
+
+#ifndef EMBEDDED_LIBRARY
+    if ((name->length == BACKUP_HISTORY_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_HISTORY_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_PROGRESS_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_PROGRESS_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+#endif
+
   }
 
   return TABLE_CATEGORY_USER;
