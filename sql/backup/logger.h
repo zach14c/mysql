@@ -44,9 +44,9 @@ class Logger
    enum enum_type { BACKUP, RESTORE } m_type;
    enum { CREATED, READY, RUNNING, DONE } m_state;
 
-   Logger();
+   Logger(THD*);
    ~Logger();
-   int init(THD*, enum_type, const LEX_STRING);
+   int init(enum_type, const LEX_STRING, const char*);
 
    int report_error(int error_code, ...);
    int report_error(log_level::value level, int error_code, ...);
@@ -69,6 +69,9 @@ class Logger
 
  protected:
 
+  /// Thread in which this logger is used.
+  THD *m_thd;
+
   /**
     Id of the backup or restore operation.
     
@@ -89,8 +92,9 @@ class Logger
 };
 
 inline
-Logger::Logger() 
-  :m_type(BACKUP), m_state(CREATED), m_op_id(0), m_save_errors(FALSE)
+Logger::Logger(THD *thd) 
+  :m_type(BACKUP), m_state(CREATED),
+   m_thd(thd), m_op_id(0), m_save_errors(FALSE)
 {}
 
 inline
@@ -107,13 +111,14 @@ Logger::~Logger()
   
   @param[in]  type  type of operation (backup or restore)
   @param[in]  path  location of the backup image
+  @param[in]  query backup or restore query starting the operation
   
   @returns 0 on success, error code otherwise.
 
-  @todo Decide what to do if @c report_ob_inti() signals errors.
+  @todo Decide what to do if @c report_ob_init() signals errors.
  */ 
 inline
-int Logger::init(THD *thd, enum_type type, const LEX_STRING path)
+int Logger::init(enum_type type, const LEX_STRING path, const char *query)
 {
   if (m_state != CREATED)
     return 0;
@@ -122,9 +127,9 @@ int Logger::init(THD *thd, enum_type type, const LEX_STRING path)
   m_state= READY;
 
   // TODO: how to detect and report errors in report_ob_init()?
-  m_op_id= report_ob_init(thd->id, BUP_STARTING, 
+  m_op_id= report_ob_init(m_thd, m_thd->id, BUP_STARTING, 
                           type == BACKUP ? OP_BACKUP : OP_RESTORE, 
-                          0, "", path.str, thd->query);  
+                          0, "", path.str, query);  
   BACKUP_BREAKPOINT("bp_starting_state");
   return 0;
 }
@@ -223,7 +228,7 @@ void Logger::report_start(time_t when)
   
   report_error(log_level::INFO, m_type == BACKUP ? ER_BACKUP_BACKUP_START
                                                  : ER_BACKUP_RESTORE_START);  
-  report_ob_time(m_op_id, when, 0);
+  report_ob_time(m_thd, m_op_id, when, 0);
   report_state(BUP_RUNNING);
 }
 
@@ -242,7 +247,7 @@ void Logger::report_stop(time_t when, bool success)
 
   report_error(log_level::INFO, m_type == BACKUP ? ER_BACKUP_BACKUP_DONE
                                                  : ER_BACKUP_RESTORE_DONE);  
-  report_ob_time(m_op_id, 0, when);
+  report_ob_time(m_thd, m_op_id, 0, when);
   report_state(success ? BUP_COMPLETE : BUP_ERRORS);
   m_state= DONE;
 }
@@ -262,7 +267,7 @@ void Logger::report_state(enum_backup_state state)
   DBUG_ASSERT(m_state == RUNNING);
   
   // TODO: info about state change in the log?
-  report_ob_state(m_op_id, state);
+  report_ob_state(m_thd, m_op_id, state);
 }
 
 /// Report validity point creation time.
@@ -271,7 +276,7 @@ void Logger::report_vp_time(time_t when)
 {
   DBUG_ASSERT(m_state == RUNNING);
   
-  report_ob_vp_time(m_op_id, when);
+  report_ob_vp_time(m_thd, m_op_id, when);
 }
 
 /** 
@@ -285,7 +290,7 @@ void Logger::report_binlog_pos(const st_bstream_binlog_pos &pos)
   DBUG_ASSERT(m_state == RUNNING);
   
   // TODO: write to the log
-  report_ob_binlog_info(m_op_id, pos.pos, pos.file);
+  report_ob_binlog_info(m_thd, m_op_id, pos.pos, pos.file);
 }
 
 /// Report name of a driver used in backup/restore operation.
@@ -294,7 +299,7 @@ void Logger::report_driver(const char *name)
 {
   DBUG_ASSERT(m_state == READY || m_state == RUNNING);
   
-  report_ob_engines(m_op_id, name);
+  report_ob_engines(m_thd, m_op_id, name);
 }
 
 } // backup namespace

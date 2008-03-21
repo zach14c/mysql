@@ -135,7 +135,7 @@ execute_backup_command(THD *thd, LEX *lex)
   {
     // prepare for backup operation
     
-    Backup_info *info= context.prepare_for_backup(lex->backup_dir);
+    Backup_info *info= context.prepare_for_backup(lex->backup_dir, thd->query);
                                                               // reports errors
 
     if (!info || !info->is_valid())
@@ -180,7 +180,7 @@ execute_backup_command(THD *thd, LEX *lex)
 
   case SQLCOM_RESTORE:
   {
-    Restore_info *info= context.prepare_for_restore(lex->backup_dir);
+    Restore_info *info= context.prepare_for_restore(lex->backup_dir, thd->query);
     
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE_PREPARE));
@@ -224,7 +224,7 @@ int send_error(Backup_restore_ctx &log, int error_code, ...)
 {
   MYSQL_ERROR *error= log.last_saved_error();
 
-  if (error && !util::report_mysql_error(log.m_thd, error, error_code))
+  if (error && !util::report_mysql_error(log.thd(), error, error_code))
   {
     if (error->code)
       error_code= error->code;
@@ -255,7 +255,7 @@ int send_error(Backup_restore_ctx &log, int error_code, ...)
 */
 int send_reply(Backup_restore_ctx &context)
 {
-  Protocol *protocol= context.m_thd->protocol;    // client comms
+  Protocol *protocol= context.thd()->protocol;    // client comms
   List<Item> field_list;                // list of fields to send
   char buf[255];                        // buffer for llstr
 
@@ -275,7 +275,7 @@ int send_reply(Backup_restore_ctx &context)
   protocol->store(buf, system_charset_info);
   protocol->write();
 
-  my_eof(context.m_thd);
+  my_eof(context.thd());
   DBUG_RETURN(0);
 }
 
@@ -322,7 +322,7 @@ backup::Mem_allocator *Backup_restore_ctx::mem_alloc= NULL;
 
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
- :m_thd(thd), m_state(CREATED), m_thd_options(thd->options),
+ :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
   m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL), m_catalog(NULL)
 {
   /*
@@ -439,6 +439,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   Prepare for backup operation.
   
   @param[in] location   path to the file where backup image should be stored
+  @param[in] query      BACKUP query starting the operation
   
   @returns Pointer to a @c Backup_info instance which can be used for selecting
   which objects to backup. NULL if an error was detected.
@@ -450,14 +451,15 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   change after the backup context has been prepared and before the actual backup
   is performed using @c do_backup() method.
  */ 
-Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
+Backup_info* 
+Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query)
 {
   using namespace backup;
   
   if (m_error)
     return NULL;
   
-  if (Logger::init(m_thd, BACKUP, location))
+  if (Logger::init(BACKUP, location, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -521,20 +523,22 @@ Backup_info* Backup_restore_ctx::prepare_for_backup(LEX_STRING location)
   Prepare for restore operation.
   
   @param[in] location   path to the file where backup image is stored
+  @param[in] query      RESTORE query starting the operation
   
   @returns Pointer to a @c Restore_info instance containing catalogue of the
   backup image (read from the image). NULL if errors were detected.
   
   @note This function reports errors.
  */ 
-Restore_info* Backup_restore_ctx::prepare_for_restore(LEX_STRING location)
+Restore_info* 
+Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
 {
   using namespace backup;  
 
   if (m_error)
     return NULL;
   
-  if (Logger::init(m_thd, RESTORE, location))
+  if (Logger::init(RESTORE, location, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;

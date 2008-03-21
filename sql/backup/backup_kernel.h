@@ -63,8 +63,8 @@ class Backup_restore_ctx: public backup::Logger
   bool is_valid() const;
   ulonglong op_id() const;
 
-  Backup_info*  prepare_for_backup(LEX_STRING location);
-  Restore_info* prepare_for_restore(LEX_STRING location);  
+  Backup_info*  prepare_for_backup(LEX_STRING location, const char*);
+  Restore_info* prepare_for_restore(LEX_STRING location, const char*);  
 
   int do_backup();
   int do_restore();
@@ -72,7 +72,7 @@ class Backup_restore_ctx: public backup::Logger
 
   int close();
 
-  THD *m_thd;
+  THD* thd() const { return m_thd; }
 
  private:
 
