@@ -592,7 +592,7 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
 backup::Image_info::Dbobj* 
 Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 {
-  int error;
+  int error= 0;
   ulong pos= db.obj_count();
 
   DBUG_ASSERT(obj);

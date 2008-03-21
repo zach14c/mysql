@@ -52,7 +52,7 @@ Image_info::Image_info()
 Image_info::~Image_info()
 {
   Db_iterator dbit(*this);
-  const Db *db;
+  Db *db;
 
   /* 
     We need to explicitly call destructors for all objects in the catalogue
@@ -60,12 +60,12 @@ Image_info::~Image_info()
     invoked when the mem_root is freed.
   */
   
-  while ((db= static_cast<const Db*>(dbit++)))
+  while ((db= static_cast<Db*>(dbit++)))
   {
     // iterate over objects in the database
 
     Dbobj_iterator it(*this,*db);
-    const Obj *o;
+    Obj *o;
 
     while ((o= it++))
       o->~Obj();

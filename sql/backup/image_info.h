@@ -508,7 +508,7 @@ class Image_info::Iterator
   Iterator(const Image_info &info);
   virtual ~Iterator();
 
-  const Obj* operator++(int);
+  Obj* operator++(int);
 
  protected:
 
@@ -521,7 +521,7 @@ class Image_info::Iterator
    
     Returns NULL if iterator is past the last object in the sequence.
    */
-  virtual const Obj* get_ptr() const =0;
+  virtual Obj* get_ptr() const =0;
   
   /** 
     Move iterator to next object.
@@ -557,7 +557,7 @@ class Image_info::Db_iterator
  protected:
 
   uint pos;
-  const Obj* get_ptr() const;
+  Obj* get_ptr() const;
   bool next();
 };
 
@@ -584,7 +584,7 @@ class Image_info::Perdb_iterator
 
  private:
 
-  const Obj* get_ptr() const;
+  Obj* get_ptr() const;
   bool next();
 };
 
@@ -606,7 +606,7 @@ class Image_info::Dbobj_iterator
  : public Image_info::Db_iterator
 {
   const Db    &m_db;
-  const Table *ptr;
+  Table *ptr;
   ulong pos;
 
  public:
@@ -615,7 +615,7 @@ class Image_info::Dbobj_iterator
 
  private:
 
-  const Obj* get_ptr() const;
+  Obj* get_ptr() const;
   bool next();
 };
 
@@ -978,16 +978,16 @@ ulong Snapshot_info::table_count() const
  ********************************************************************/ 
 
 inline
-const Image_info::Obj* Image_info::Iterator::operator++(int)
+Image_info::Obj* Image_info::Iterator::operator++(int)
 {
-  const Obj *obj= get_ptr();
+  Obj *obj= get_ptr();
   next();
   return obj; 
 }
 
 /// Implementation of @c Image_info::Iterator virtual method.
 inline
-const Image_info::Obj* Image_info::Db_iterator::get_ptr() const
+Image_info::Obj* Image_info::Db_iterator::get_ptr() const
 {
   /*
     There should be no "holes" in the sequence of databases. That is,
@@ -1014,7 +1014,7 @@ bool Image_info::Db_iterator::next()
 
 /// Implementation of @c Image_info::Iterator virtual method.
 inline
-const Image_info::Obj* Image_info::Perdb_iterator::get_ptr() const
+Image_info::Obj* Image_info::Perdb_iterator::get_ptr() const
 {
   const Db *db= static_cast<const Db*>(Db_iterator::get_ptr());
 
@@ -1050,9 +1050,9 @@ bool Image_info::Perdb_iterator::next()
 
 /// Implementation of @c Image_info::Iterator virtual method.
 inline
-const Image_info::Obj* Image_info::Dbobj_iterator::get_ptr() const
+Image_info::Obj* Image_info::Dbobj_iterator::get_ptr() const
 {
-  return ptr ? static_cast<const Obj*>(ptr) : m_db.get_obj(pos);
+  return ptr ? static_cast<Obj*>(ptr) : m_db.get_obj(pos);
 }
 
 /// Implementation of @c Image_info::Iterator virtual method.
