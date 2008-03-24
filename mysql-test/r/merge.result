@@ -940,4 +940,9 @@ m1	CREATE TABLE `m1` (
   `a` int(11) default NULL
 ) ENGINE=MRG_MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t1, m1;
+CREATE TABLE t1(a INT, KEY(a)) ENGINE=merge;
+SELECT MAX(a) FROM t1;
+MAX(a)
+NULL
+DROP TABLE t1;
 End of 5.0 tests
