@@ -150,7 +150,6 @@ bool backup_history_log_write(THD *thd,
   TABLE *table= NULL;
   bool result= TRUE;
   bool need_close= FALSE;
-  bool need_pop= FALSE;
   bool need_rnd_end= FALSE;
   Open_tables_state open_tables_backup;
   bool save_time_zone_used;
@@ -258,8 +257,8 @@ err:
   if (result && !thd->killed)
     push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_BACKUP_LOG_WRITE_ERROR,
-                        (ER(ER_BACKUP_LOG_WRITE_ERROR),
-                        "mysql.online_backup"));
+                        ER(ER_BACKUP_LOG_WRITE_ERROR),
+                        "mysql.online_backup");
 
   if (need_rnd_end)
   {
@@ -304,8 +303,6 @@ bool backup_history_log_update(THD *thd,
   TABLE *table= NULL;
   bool result= TRUE;
   bool need_close= FALSE;
-  bool need_pop= FALSE;
-  bool need_rnd_end= FALSE;
   Open_tables_state open_tables_backup;
   bool save_time_zone_used;
   int ret= 0;
@@ -393,6 +390,8 @@ bool backup_history_log_update(THD *thd,
       table->field[fld]->set_notnull();
       break;
     }
+    default:
+      goto err;
   }
 
   /*
@@ -407,8 +406,8 @@ err:
   if (result && !thd->killed)
     push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_BACKUP_LOG_WRITE_ERROR,
-                        (ER(ER_BACKUP_LOG_WRITE_ERROR),
-                        "mysql.online_backup"));
+                        ER(ER_BACKUP_LOG_WRITE_ERROR),
+                        "mysql.online_backup");
 
   if (need_close)
     close_performance_schema_table(thd, & open_tables_backup);
@@ -453,7 +452,6 @@ bool backup_progress_log_write(THD *thd,
   TABLE *table;
   bool result= TRUE;
   bool need_close= FALSE;
-  bool need_pop= FALSE;
   bool need_rnd_end= FALSE;
   Open_tables_state open_tables_backup;
   bool save_time_zone_used;
@@ -550,8 +548,8 @@ err:
   if (result && !thd->killed)
     push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_BACKUP_LOG_WRITE_ERROR,
-                        (ER(ER_BACKUP_LOG_WRITE_ERROR),
-                        "mysql.online_backup_progress"));
+                        ER(ER_BACKUP_LOG_WRITE_ERROR),
+                        "mysql.online_backup_progress");
 
   if (need_rnd_end)
   {
