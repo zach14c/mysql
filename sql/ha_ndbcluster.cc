@@ -8904,6 +8904,12 @@ ha_ndbcluster::release_completed_operations(NdbTransaction *trans)
  ***************************************************************************/
 
 
+/**
+   We will not attempt to deal with more than this many ranges in a single
+   MRR execute().
+*/
+#define MRR_MAX_RANGES 128
+
 /*
   Types of ranges during multi_range_read.
 
@@ -8918,12 +8924,17 @@ enum multi_range_types
   enum_skip_range               /// Empty range (eg. partition pruning)
 };
 
-/*
-  The entries stored in the generic multi-range buffer to hold per-range
-  data has the following format:
+/**
+  Usage of the MRR buffer is as follows:
 
-   - Upper layer custom char * obtained from RANGE_SEQ_IF::next() and returned
-     from multi_range_read_next().
+  First, N char * values, each being the custom value obtained from
+  RANGE_SEQ_IF::next() that needs to be returned from multi_range_read_next().
+  N is usually == total number of ranges, but never more than MRR_MAX_RANGES
+  (the MRR is split across several execute()s if necessary). N may be lower
+  that actual number of ranges in a single execute() in case of split for
+  other reasons.
+
+  This is followed by N variable-sized entries, each
 
    - 1 byte of multi_range_types for this range.
 
@@ -8932,19 +8943,39 @@ enum multi_range_types
      bytes of row data.
 */
 
-/* Return the entry size in HANDLER_BUFFER. */
+/* Return the needed size of the fixed array at start of HANDLER_BUFFER. */
+static ulong
+multi_range_fixed_size(int num_ranges)
+{
+  if (num_ranges > MRR_MAX_RANGES)
+    num_ranges= MRR_MAX_RANGES;
+  return num_ranges * sizeof(char *);
+}
+
+/* Return max number of ranges so that fixed part will still fit in buffer. */
+static int
+multi_range_max_ranges(int num_ranges, ulong bufsize)
+{
+  if (num_ranges > MRR_MAX_RANGES)
+    num_ranges= MRR_MAX_RANGES;
+  if (num_ranges * sizeof(char *) > bufsize)
+    num_ranges= bufsize / sizeof(char *);
+  return num_ranges;
+}
+
+/* Return the size in HANDLER_BUFFER of a variable-sized entry. */
 static ulong
 multi_range_entry_size(my_bool use_keyop, ulong reclength)
 {
-  /* Space for upper layer custom char * and type byte. */
-  ulong len= sizeof(char *) + 1;
+  /* Space for type byte. */
+  ulong len= 1;
   if (use_keyop)
     len+= reclength;
   return len;
 }
 
 /*
-  Return the maximum size of an entry in HANDLER_BUFFER.
+  Return the maximum size of a variable-sized entry in HANDLER_BUFFER.
 
   Actual size may depend on key values (whether the actual value can be
   converted to a hash key operation or needs to be done as an ordered index
@@ -8959,7 +8990,7 @@ multi_range_max_entry(NDB_INDEX_TYPE keytype, ulong reclength)
 static uchar &
 multi_range_entry_type(uchar *p)
 {
-  return p[sizeof(char *)];
+  return *p;
 }
 
 /* Find the start of the next entry in HANDLER_BUFFER. */
@@ -8975,22 +9006,22 @@ static uchar *
 multi_range_row(uchar *p)
 {
   DBUG_ASSERT(multi_range_entry_type(p) == enum_unique_range);
-  return p + sizeof(char *) + 1;
+  return p + 1;
 }
 
 /* Get and put upper layer custom char *, use memcpy() for unaligned access. */
 static char *
-multi_range_get_custom(uchar *p)
+multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no)
 {
-  char *result;
-  memcpy(&result, p, sizeof(result));
-  return result;
+  DBUG_ASSERT(range_no < MRR_MAX_RANGES);
+  return ((char **)(buffer->buffer))[range_no];
 }
 
 static void
-multi_range_put_custom(uchar *p, char *custom)
+multi_range_put_custom(HANDLER_BUFFER *buffer, int range_no, char *custom)
 {
-  memcpy(p, &custom, sizeof(custom));
+  DBUG_ASSERT(range_no < MRR_MAX_RANGES);
+  ((char **)(buffer->buffer))[range_no]= custom;
 }
 
 /*
@@ -9054,24 +9085,7 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
   uint save_bufsize= *bufsz;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_info_const");
 
-  /*
-    We request one extra buffer slot, even though we will never need it.
-
-    This is because in the loop in multi_range_start_retrievals(), we
-    have to decide if we have sufficient buffer _before_ calling
-    mrr_funcs.next(), which might then return "end of
-    ranges". Otherwise we may get stuck with a range which we cannot
-    deal with due to no buffer available.
-
-    ToDo: Fix this so that we can store the range from
-    mrr_funcs.next() temporarily while we execute the first part of
-    the MRR, and use it as the first range when we get to the second part.
-
-    This will also make other tests for the need to split the MRR
-    easier (eg. setBound() can return "no more room for bound in
-    KEYINFO", and we can split at that point).
-  */
-  total_bufsize= entry_size;
+  total_bufsize= multi_range_fixed_size(n_ranges_arg);
 
   seq_it= seq->init(seq_init_param, n_ranges, *flags);
   while (!seq->next(seq_it, &range))
@@ -9127,7 +9141,8 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
         all ranges. But we need at least sufficient buffer for one range to
         do MRR at all.
       */
-      if (save_bufsize < entry_size)
+      uint min_buf_size= entry_size + multi_range_fixed_size(1);
+      if (save_bufsize < min_buf_size)
       {
         if(*flags & HA_MRR_LIMITS)
         {
@@ -9138,7 +9153,7 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
         else
         {
           *flags&= ~HA_MRR_USE_DEFAULT_IMPL;
-          *bufsz= entry_size;
+          *bufsz= min_buf_size;
         }
       }
       else
@@ -9191,10 +9206,11 @@ ha_ndbcluster::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
   {
     ulong reclength= table_share->reclength;
     uint entry_size= multi_range_max_entry(key_type, reclength);
+    uint min_total_size= entry_size + multi_range_fixed_size(1);
     DBUG_PRINT("info", ("MRR bufsize suggested=%u want=%u limit=%d",
                         save_bufsize, (keys + 1) * entry_size,
                         (*flags & HA_MRR_LIMITS) != 0));
-    if (save_bufsize < entry_size)
+    if (save_bufsize < min_total_size)
     {
       if(*flags & HA_MRR_LIMITS)
       {
@@ -9205,17 +9221,14 @@ ha_ndbcluster::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
       else
       {
         *flags&= ~HA_MRR_USE_DEFAULT_IMPL;
-        *bufsz= entry_size;
+        *bufsz= min_total_size;
       }
     }
     else
     {
       *flags&= ~HA_MRR_USE_DEFAULT_IMPL;
-      /*
-        ToDo: We currently reserve one extra buffer slot, see comment
-        in multi_range_read_info_const().
-      */
-      *bufsz= min(save_bufsize, (keys + 1) * entry_size);
+      *bufsz= min(save_bufsize,
+                  keys * entry_size + multi_range_fixed_size(n_ranges));
     }
     DBUG_PRINT("info", ("MRR bufsize set to %u", *bufsz));
   }
@@ -9236,7 +9249,8 @@ int ha_ndbcluster::multi_range_read_init(RANGE_SEQ_IF *seq_funcs,
   ulong bufsize= buffer->buffer_end - buffer->buffer;
 
   if (mode & HA_MRR_USE_DEFAULT_IMPL
-      || bufsize < multi_range_max_entry(get_index_type(active_index),
+      || bufsize < multi_range_fixed_size(1) +
+                   multi_range_max_entry(get_index_type(active_index),
                                          table_share->reclength)
       || m_delete_cannot_batch || m_update_cannot_batch)
   {
@@ -9278,19 +9292,13 @@ int ha_ndbcluster::multi_range_read_init(RANGE_SEQ_IF *seq_funcs,
 }
 
 
-/**
-   We will not attempt to send more than this many key operations in a single
-   MRR execute().
-*/
-#define MRR_MAX_KEYOPS 128
-
 int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
 {
   KEY* key_info= table->key_info + active_index;
   ulong reclength= table_share->reclength;
   const NdbOperation* op;
   NDB_INDEX_TYPE cur_index_type= get_index_type(active_index);
-  const NdbOperation *oplist[MRR_MAX_KEYOPS];
+  const NdbOperation *oplist[MRR_MAX_RANGES];
   uint num_keyops= 0;
   DBUG_ENTER("multi_range_start_retrievals");
 
@@ -9320,14 +9328,34 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
   m_multi_cursor= 0;
   NdbOperation::LockMode lm= 
     (NdbOperation::LockMode)get_ndb_lock_type(m_lock.type, table->read_set);
-  uchar *row_buf= (uchar *)multi_range_buffer->buffer;
   const uchar *end_of_buffer= multi_range_buffer->buffer_end;
-  int range_no= -1;
+
+  /*
+    Normally we should have sufficient buffer for the whole fixed_sized part.
+    But we need to make sure we do not crash if upper layer gave us a _really_
+    small buffer.
+
+    We already checked (in multi_range_read_init()) that we got enough buffer
+    for at least one range.
+  */
+  uint min_entry_size=
+    multi_range_entry_size(!read_multi_needs_scan(cur_index_type, key_info,
+                                                  &mrr_cur_range), reclength);
+  ulong bufsize= end_of_buffer - multi_range_buffer->buffer;
+  uint max_range= multi_range_max_ranges(ranges_in_seq,
+                                         bufsize - min_entry_size);
+  DBUG_ASSERT(max_range > 0);
+  uchar *row_buf= multi_range_buffer->buffer + multi_range_fixed_size(max_range);
+  m_multi_range_result_ptr= row_buf;
+
+  int range_no= 0;
   int mrr_range_no= starting_range;
 
-  for (; !m_range_res; m_range_res= mrr_funcs.next(mrr_iter, &mrr_cur_range))
+  for (;
+       !m_range_res;
+       range_no++, m_range_res= mrr_funcs.next(mrr_iter, &mrr_cur_range))
   {
-    if (range_no >= NdbIndexScanOperation::MaxRangeNo)
+    if (range_no >= max_range)
       break;
     my_bool need_scan=
       read_multi_needs_scan(cur_index_type, key_info, &mrr_cur_range);
@@ -9335,6 +9363,8 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
       break;
     if (need_scan)
     {
+      if (range_no > NdbIndexScanOperation::MaxRangeNo)
+        break;
       /*
         Check how much KEYINFO data we already used for index bounds, and
         split the MRR here if it exceeds a certain limit. This way we avoid
@@ -9345,12 +9375,9 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
       if (m_multi_cursor && m_multi_cursor->getCurrentKeySize() >= 1000)
         break;
     }
-    else if (num_keyops >= MRR_MAX_KEYOPS)
-      break;
 
-    range_no++;
     mrr_range_no++;
-    multi_range_put_custom(row_buf, mrr_cur_range.ptr);
+    multi_range_put_custom(multi_range_buffer, range_no, mrr_cur_range.ptr);
 
     part_id_range part_spec;
     if (m_use_partition_pruning)
@@ -9494,9 +9521,9 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
   else
     multi_range_buffer->end_of_used_area= row_buf;
 
-  m_multi_range_result_ptr= (uchar*)multi_range_buffer->buffer;
   first_running_range= first_range_in_batch= starting_range;
   first_unstarted_range= mrr_range_no;
+  m_current_range_no= 0;
 
   /*
     Now we need to inspect all ranges that were converted to key operations.
@@ -9515,7 +9542,7 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
     if (type_loc >= enum_ordered_range)
       continue;
 
-    DBUG_ASSERT(op_idx < MRR_MAX_KEYOPS);
+    DBUG_ASSERT(op_idx < MRR_MAX_RANGES);
     const NdbError &error= oplist[op_idx]->getNdbError();
     if (error.code != 0)
     {
@@ -9559,6 +9586,7 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
     while (first_running_range < first_unstarted_range)
     {
       uchar *row_buf= m_multi_range_result_ptr;
+      int expected_range_no= first_running_range - first_range_in_batch;
 
       switch (multi_range_entry_type(row_buf))
       {
@@ -9585,7 +9613,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
           m_active_cursor= NULL;
 
           /* Return the record. */
-          *range_info= multi_range_get_custom(row_buf);
+          *range_info= multi_range_get_custom(multi_range_buffer,
+                                              expected_range_no);
           memcpy(table->record[0], multi_range_row(row_buf),
                  table_share->reclength);
           DBUG_RETURN(0);
@@ -9596,7 +9625,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             int res;
             if ((res= read_multi_range_fetch_next()) != 0)
             {
-              *range_info= multi_range_get_custom(row_buf);
+              *range_info= multi_range_get_custom(multi_range_buffer,
+                                                  expected_range_no);
               first_running_range++;
               m_multi_range_result_ptr=
                 multi_range_next_entry(m_multi_range_result_ptr,
@@ -9615,7 +9645,6 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
           else
           {
             int current_range_no= m_current_range_no;
-            int expected_range_no;
             /*
               For a sorted index scan, we will receive rows in increasing
               range_no order, so we can return ranges in order, pausing when
@@ -9626,11 +9655,10 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
               fragment followed by a low range_no from another fragment. So we
               need to process all index scan ranges together.
             */
-            if (!mrr_is_output_sorted ||
-                (expected_range_no= first_running_range - first_range_in_batch)
-                == current_range_no)
+            if (!mrr_is_output_sorted || expected_range_no == current_range_no)
             {
-              *range_info= multi_range_get_custom(row_buf);
+              *range_info= multi_range_get_custom(multi_range_buffer,
+                                                  current_range_no);
               /* Copy out data from the new row. */
               unpack_record(table->record[0], m_next_row);
               /*
