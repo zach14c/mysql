@@ -9342,8 +9342,8 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
     multi_range_entry_size(!read_multi_needs_scan(cur_index_type, key_info,
                                                   &mrr_cur_range), reclength);
   ulong bufsize= end_of_buffer - multi_range_buffer->buffer;
-  uint max_range= multi_range_max_ranges(ranges_in_seq,
-                                         bufsize - min_entry_size);
+  int max_range= multi_range_max_ranges(ranges_in_seq,
+                                        bufsize - min_entry_size);
   DBUG_ASSERT(max_range > 0);
   uchar *row_buf= multi_range_buffer->buffer + multi_range_fixed_size(max_range);
   m_multi_range_result_ptr= row_buf;
