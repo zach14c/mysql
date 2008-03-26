@@ -1959,7 +1959,6 @@ int ha_ndbcluster::ndb_pk_update_row(THD *thd,
       if (error != 0)
         ERR_RETURN(op->getNdbError());
     }
-
     if (execute_no_commit(this, trans) != 0)
     {
       table->status= STATUS_NOT_FOUND;
@@ -3255,7 +3254,6 @@ int ha_ndbcluster::update_row(const uchar *old_data, uchar *new_data)
     if (res != 0)
       DBUG_RETURN(res);
   }
-
   m_rows_changed++;
 
   /*
@@ -8896,6 +8894,7 @@ ha_ndbcluster::release_completed_operations(NdbTransaction *trans)
     */
     return;
   }
+  
   trans->releaseCompletedOperations();
 }
 
