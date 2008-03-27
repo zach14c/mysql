@@ -5085,7 +5085,7 @@ static bool mysql_rename_partitions(ALTER_PARTITION_PARAM_TYPE *lpt)
   DBUG_ENTER("mysql_rename_partitions");
 
   build_table_filename(path, sizeof(path), lpt->db, lpt->table_name, "", 0);
-  if ((error= lpt->table->file->ha_rename_partitions(path)))
+  if ((error= lpt->table->file->ha_rename_partitions(lpt->thd, path)))
   {
     if (error != 1)
       lpt->table->file->print_error(error, MYF(0));
@@ -5126,7 +5126,7 @@ static bool mysql_drop_partitions(ALTER_PARTITION_PARAM_TYPE *lpt)
   DBUG_ENTER("mysql_drop_partitions");
 
   build_table_filename(path, sizeof(path), lpt->db, lpt->table_name, "", 0);
-  if ((error= lpt->table->file->ha_drop_partitions(path)))
+  if ((error= lpt->table->file->ha_drop_partitions(lpt->thd, path)))
   {
     lpt->table->file->print_error(error, MYF(0));
     DBUG_RETURN(TRUE);

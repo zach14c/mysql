@@ -334,8 +334,6 @@ int get_byte(s)
   if (s->stream.avail_in == 0) 
   {
     errno = 0;
-    s->stream.avail_in= (uInt) my_read(s->file, (uchar *)s->inbuf,
-                                       AZ_BUFSIZE_READ, MYF(0));
     if (s->stream.avail_in == 0) 
     {
       s->z_eof = 1;
