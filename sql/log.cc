@@ -1015,7 +1015,7 @@ bool LOGGER::general_log_write(THD *thd, enum enum_server_command command,
                       thd->variables.character_set_client,0);
                         
   while (*current_handler)
-    error+= (*current_handler++)->
+    error|= (*current_handler++)->
       log_general(thd, current_time, user_host_buff,
                   user_host_len, id,
                   command_name[(uint) command].str,
@@ -2760,14 +2760,62 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
 
   for (;;)
   {
-    my_delete_allow_opened(linfo.log_file_name, MYF(MY_WME));
+    if ((error= my_delete_allow_opened(linfo.log_file_name, MYF(0))) != 0)
+    {
+      if (my_errno == ENOENT) 
+      {
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                            ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                            linfo.log_file_name);
+        sql_print_information("Failed to delete file '%s'",
+                              linfo.log_file_name);
+        my_errno= 0;
+        error= 0;
+      }
+      else
+      {
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+                            ER_BINLOG_PURGE_FATAL_ERR,
+                            "a problem with deleting %s; "
+                            "consider examining correspondence "
+                            "of your binlog index file "
+                            "to the actual binlog files",
+                            linfo.log_file_name);
+        error= 1;
+        goto err;
+      }
+    }
     if (find_next_log(&linfo, 0))
       break;
   }
 
   /* Start logging with a new file */
   close(LOG_CLOSE_INDEX);
-  my_delete_allow_opened(index_file_name, MYF(MY_WME));	// Reset (open will update)
+  if ((error= my_delete_allow_opened(index_file_name, MYF(0))))	// Reset (open will update)
+  {
+    if (my_errno == ENOENT) 
+    {
+      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                          index_file_name);
+      sql_print_information("Failed to delete file '%s'",
+                            index_file_name);
+      my_errno= 0;
+      error= 0;
+    }
+    else
+    {
+      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+                          ER_BINLOG_PURGE_FATAL_ERR,
+                          "a problem with deleting %s; "
+                          "consider examining correspondence "
+                          "of your binlog index file "
+                          "to the actual binlog files",
+                          index_file_name);
+      error= 1;
+      goto err;
+    }
+  }
   if (!thd->slave_thread)
     need_start_event=1;
   if (!open_index_file(index_file_name, 0))
@@ -2927,6 +2975,9 @@ int MYSQL_BIN_LOG::update_log_index(LOG_INFO* log_info, bool need_update_threads
     0			ok
   @retval
     LOG_INFO_EOF		to_log not found
+    LOG_INFO_EMFILE             too many files opened
+    LOG_INFO_FATAL              if any other than ENOENT error from
+                                my_stat() or my_delete()
 */
 
 int MYSQL_BIN_LOG::purge_logs(const char *to_log, 
@@ -2956,44 +3007,84 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
   while ((strcmp(to_log,log_info.log_file_name) || (exit_loop=included)) &&
          !log_in_use(log_info.log_file_name))
   {
-    ulong file_size= 0;
-    if (decrease_log_space) //stat the file we want to delete
+    MY_STAT s;
+    if (!my_stat(log_info.log_file_name, &s, MYF(0)))
     {
-      MY_STAT s;
-
-      /* 
-         If we could not stat, we can't know the amount
-         of space that deletion will free. In most cases,
-         deletion won't work either, so it's not a problem.
-      */
-      if (my_stat(log_info.log_file_name,&s,MYF(0)))
-        file_size= s.st_size;
-      else
-	sql_print_information("Failed to execute my_stat on file '%s'",
+      if (my_errno == ENOENT) 
+      {
+        /*
+          It's not fatal if we can't stat a log file that does not exist;
+          If we could not stat, we won't delete.
+        */     
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                            ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                            log_info.log_file_name);
+        sql_print_information("Failed to execute my_stat on file '%s'",
 			      log_info.log_file_name);
-    }
-    /*
-      It's not fatal if we can't delete a log file ;
-      if we could delete it, take its size into account
-    */
-    DBUG_PRINT("info",("purging %s",log_info.log_file_name));
-    if (!my_delete(log_info.log_file_name, MYF(0)) && decrease_log_space)
-      *decrease_log_space-= file_size;
-
-    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
-    if (current_thd->is_slave_error) {
-      DBUG_PRINT("info",("slave error: %d", current_thd->is_slave_error));
-      if (my_errno == EMFILE) {
-        DBUG_PRINT("info",("my_errno: %d, set ret = LOG_INFO_EMFILE", my_errno));
-        ret = LOG_INFO_EMFILE;
-        break;
+        my_errno= 0;
+      }
+      else
+      {
+        /*
+          Other than ENOENT are fatal
+        */
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+                            ER_BINLOG_PURGE_FATAL_ERR,
+                            "a problem with getting info on being purged %s; "
+                            "consider examining correspondence "
+                            "of your binlog index file "
+                            "to the actual binlog files",
+                            log_info.log_file_name);
+        error= LOG_INFO_FATAL;
+        goto err;
       }
     }
+    else
+    {
+      DBUG_PRINT("info",("purging %s",log_info.log_file_name));
+      if (!my_delete(log_info.log_file_name, MYF(0)))
+      {
+        if (decrease_log_space)
+          *decrease_log_space-= s.st_size;
+      }
+      else
+      {
+        if (my_errno == ENOENT) 
+        {
+          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                              ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                              log_info.log_file_name);
+          sql_print_information("Failed to delete file '%s'",
+                                log_info.log_file_name);
+          my_errno= 0;
+        }
+        else
+        {
+          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+                              ER_BINLOG_PURGE_FATAL_ERR,
+                              "a problem with deleting %s; "
+                              "consider examining correspondence "
+                              "of your binlog index file "
+                              "to the actual binlog files",
+                              log_info.log_file_name);
+          if (my_errno == EMFILE)
+          {
+            DBUG_PRINT("info",
+                       ("my_errno: %d, set ret = LOG_INFO_EMFILE", my_errno));
+            error= LOG_INFO_EMFILE;
+          }
+          error= LOG_INFO_FATAL;
+          goto err;
+        }
+      }
+    }
+
+    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
 
     if (find_next_log(&log_info, 0) || exit_loop)
       break;
   }
-
+  
   /*
     If we get killed -9 here, the sysadmin would have to edit
     the log index file after restart - otherwise, this should be safe
@@ -3024,6 +3115,8 @@ err:
     0				ok
   @retval
     LOG_INFO_PURGE_NO_ROTATE	Binary file that can't be rotated
+    LOG_INFO_FATAL              if any other than ENOENT error from
+                                my_stat() or my_delete()
 */
 
 int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
@@ -3047,14 +3140,67 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
   while (strcmp(log_file_name, log_info.log_file_name) &&
 	 !log_in_use(log_info.log_file_name))
   {
-    /* It's not fatal even if we can't delete a log file */
-    if (!my_stat(log_info.log_file_name, &stat_area, MYF(0)) ||
-	stat_area.st_mtime >= purge_time)
-      break;
-    my_delete(log_info.log_file_name, MYF(0));
-
-    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
-
+    if (!my_stat(log_info.log_file_name, &stat_area, MYF(0)))
+    {
+      if (my_errno == ENOENT) 
+      {
+        /*
+          It's not fatal if we can't stat a log file that does not exist.
+        */     
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                            ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                            log_info.log_file_name);
+	sql_print_information("Failed to execute my_stat on file '%s'",
+			      log_info.log_file_name);
+        my_errno= 0;
+      }
+      else
+      {
+        /*
+          Other than ENOENT are fatal
+        */
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+                            ER_BINLOG_PURGE_FATAL_ERR,
+                            "a problem with getting info on being purged %s; "
+                            "consider examining correspondence "
+                            "of your binlog index file "
+                            "to the actual binlog files",
+                            log_info.log_file_name);
+        error= LOG_INFO_FATAL;
+        goto err;
+      }
+    }
+    else
+    {
+      if (stat_area.st_mtime >= purge_time)
+        break;
+      if (my_delete(log_info.log_file_name, MYF(0)))
+      {
+        if (my_errno == ENOENT) 
+        {
+          /* It's not fatal even if we can't delete a log file */
+          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                              ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                              log_info.log_file_name);
+          sql_print_information("Failed to delete file '%s'",
+                                log_info.log_file_name);
+          my_errno= 0;
+        }
+        else
+        {
+          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+                              ER_BINLOG_PURGE_FATAL_ERR,
+                              "a problem with deleting %s; "
+                              "consider examining correspondence "
+                              "of your binlog index file "
+                              "to the actual binlog files",
+                              log_info.log_file_name);
+          error= LOG_INFO_FATAL;
+          goto err;
+        }
+      }
+      ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
+    }
     if (find_next_log(&log_info, 0))
       break;
   }

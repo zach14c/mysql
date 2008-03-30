@@ -104,3 +104,44 @@ group by a;
 drop table t1;
 
 
+
+let $nesting= 26;
+let $should_work_nesting= 5;
+let $start= select sum(a),a from t1 where a> ( select sum(a) from t1 ;
+let $end= )group by a ;
+let $start_app= where a> ( select sum(a) from t1 ;
+let $end_pre= )group by b limit 1 ;
+
+--disable_result_log
+--disable_query_log
+# At least 4 level nesting should work without errors
+while ($should_work_nesting)
+{
+--echo $should_work_nesting
+  eval $start $end;
+  eval explain $start $end;
+  let $start= $start
+  $start_app;
+  let $end= $end_pre
+  $end;
+  dec $should_work_nesting;
+}
+# Other may fail with the 'stack overrun error'
+while ($nesting)
+{
+--echo $nesting
+--error 0,1436
+  eval $start $end;
+--error 0,1436
+  eval explain $start $end;
+  let $start= $start
+  $start_app;
+  let $end= $end_pre
+  $end;
+  dec $nesting;
+}
+--enable_result_log
+--enable_query_log
+drop table t1;
+
+--echo End of tests
