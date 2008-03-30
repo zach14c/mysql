@@ -101,8 +101,6 @@ explain select sum(a),a from t1 where a> (
   )group by b limit 1)group by b limit 1)group by b limit 1
   )group by b limit 1)group by b limit 1)group by b limit 1) 
 group by a;
-drop table t1;
-
 
 
 let $nesting= 26;
