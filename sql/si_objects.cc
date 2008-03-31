@@ -456,12 +456,8 @@ public:
   DatabaseObj(const String *db_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_db_name; }
@@ -476,6 +472,8 @@ private:
   String m_db_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -498,12 +496,8 @@ public:
            bool table_is_view);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_table_name; }
@@ -520,6 +514,8 @@ private:
   bool m_table_is_view;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -545,12 +541,8 @@ public:
              const String *trigger_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_trigger_name; }
@@ -566,6 +558,8 @@ private:
   String m_trigger_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -587,12 +581,8 @@ public:
                 const String *stored_proc_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_stored_proc_name; }
@@ -608,6 +598,8 @@ private:
   String m_stored_proc_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -629,12 +621,8 @@ public:
                 const String *stored_func_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_stored_func_name; }
@@ -650,6 +638,8 @@ private:
   String m_stored_func_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -671,12 +661,8 @@ public:
            const String *event_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_event_name; }
@@ -692,6 +678,8 @@ private:
   String m_event_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -1481,7 +1469,7 @@ DatabaseObj::DatabaseObj(const String *db_name)
    @retval FALSE on success
    @retval TRUE on error
 */
-bool DatabaseObj::serialize(THD *thd, String *serialization)
+bool DatabaseObj::do_serialize(THD *thd, String *serialization)
 {
   HA_CREATE_INFO create;
   DBUG_ENTER("DatabaseObj::serialize()");
@@ -1553,7 +1541,7 @@ bool DatabaseObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool DatabaseObj::execute(THD *thd)
+bool DatabaseObj::do_execute(THD *thd)
 {
   DBUG_ENTER("DatabaseObj::execute()");
   drop(thd);
@@ -1624,7 +1612,7 @@ bool TableObj::serialize_view(THD *thd, String *serialization)
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TableObj::serialize(THD *thd, String *serialization)
+bool TableObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= 0;
   LEX_STRING tname, dbname;
@@ -1718,7 +1706,7 @@ bool TableObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TableObj::execute(THD *thd)
+bool TableObj::do_execute(THD *thd)
 {
   DBUG_ENTER("TableObj::execute()");
   drop(thd);
@@ -1781,7 +1769,7 @@ TriggerObj::TriggerObj(const String *db_name,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TriggerObj::serialize(THD *thd, String *serialization)
+bool TriggerObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   uint num_tables;
@@ -1907,7 +1895,7 @@ bool TriggerObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TriggerObj::execute(THD *thd)
+bool TriggerObj::do_execute(THD *thd)
 {
   DBUG_ENTER("TriggerObj::execute()");
   drop(thd);
@@ -1969,7 +1957,7 @@ StoredProcObj::StoredProcObj(const String *db_name,
 
   @returns Error status.
 */
-bool StoredProcObj::serialize(THD *thd, String *serialization)
+bool StoredProcObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   DBUG_ENTER("StoredProcObj::serialize()");
@@ -2015,7 +2003,7 @@ bool StoredProcObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool StoredProcObj::execute(THD *thd)
+bool StoredProcObj::do_execute(THD *thd)
 {
   DBUG_ENTER("StoredProcObj::execute()");
   drop(thd);
@@ -2079,7 +2067,7 @@ StoredFuncObj::StoredFuncObj(const String *db_name,
     @retval FALSE on success
     @retval TRUE on error
  */
-bool  StoredFuncObj::serialize(THD *thd, String *serialization)
+bool  StoredFuncObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   DBUG_ENTER("StoredFuncObj::serialize()");
@@ -2125,7 +2113,7 @@ bool StoredFuncObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool StoredFuncObj::execute(THD *thd)
+bool StoredFuncObj::do_execute(THD *thd)
 {
   DBUG_ENTER("StoredFuncObj::execute()");
   drop(thd);
@@ -2189,7 +2177,7 @@ EventObj::EventObj(const String *db_name,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool EventObj::serialize(THD *thd, String *serialization)
+bool EventObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   Open_tables_state open_tables_backup;
@@ -2291,7 +2279,7 @@ bool EventObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool EventObj::execute(THD *thd)
+bool EventObj::do_execute(THD *thd)
 {
   DBUG_ENTER("EventObj::execute()");
   drop(thd);

@@ -437,4 +437,90 @@ Running the client:
 
 Chuck@linux:~> mysql -uroot -p
 Enter password:
+SET sql_mode=ansi;
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+DROP DATABASE bup_default;
+RESTORE FROM 'bup_default.bak';
+backup_id
+#
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+SHOW TABLES IN bup_default;
+Tables_in_bup_default
+t1
+t1_blob
+t2
+wide
+SHOW CREATE TABLE bup_default.t1;
+Table	Create Table
+t1	CREATE TABLE "t1" (
+  "a" int(11) DEFAULT NULL
+)
+SELECT * FROM bup_default.t1;
+a
+1
+2
+3
+4
+SELECT * FROM bup_default.t2;
+a
+1
+2
+3
+4
+SELECT COUNT(*) FROM bup_default.t1_blob;
+COUNT(*)
+2
+SELECT COUNT(*) FROM bup_default.wide;
+COUNT(*)
+1
+BACKUP DATABASE bup_default TO 'bup_default.bak';
+backup_id
+#
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+SET sql_mode='';
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	
+DROP DATABASE bup_default;
+RESTORE FROM 'bup_default.bak';
+backup_id
+#
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	
+SHOW TABLES IN bup_default;
+Tables_in_bup_default
+t1
+t1_blob
+t2
+wide
+SHOW CREATE TABLE bup_default.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+SELECT * FROM bup_default.t1;
+a
+1
+2
+3
+4
+SELECT * FROM bup_default.t2;
+a
+1
+2
+3
+4
+SELECT COUNT(*) FROM bup_default.t1_blob;
+COUNT(*)
+2
+SELECT COUNT(*) FROM bup_default.wide;
+COUNT(*)
+1
 DROP DATABASE IF EXISTS bup_default;
