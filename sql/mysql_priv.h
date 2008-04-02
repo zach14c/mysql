@@ -1045,7 +1045,6 @@ bool login_connection(THD *thd);
 void prepare_new_connection_state(THD* thd);
 void end_connection(THD *thd);
 
-
 int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create, bool silent);
 bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create);
 bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent);
@@ -1116,7 +1115,9 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
 bool check_access(THD *thd, ulong access, const char *db, ulong *save_priv,
 		  bool no_grant, bool no_errors, bool schema_db);
 bool check_table_access(THD *thd, ulong want_access, TABLE_LIST *tables,
-			uint number, bool no_errors);
+                        bool no_errors,
+                        bool any_combination_of_privileges_will_do,
+			uint number);
 #else
 inline bool check_access(THD *thd, ulong access, const char *db,
                          ulong *save_priv, bool no_grant, bool no_errors,
@@ -1127,7 +1128,9 @@ inline bool check_access(THD *thd, ulong access, const char *db,
   return false;
 }
 inline bool check_table_access(THD *thd, ulong want_access, TABLE_LIST *tables,
-			uint number, bool no_errors)
+                        bool no_errors,
+                        bool any_combination_of_privileges_will_do,
+			uint number)
 { return false; }
 #endif /*NO_EMBEDDED_ACCESS_CHECKS*/
 
@@ -2276,6 +2279,7 @@ uint build_table_shadow_filename(char *buff, size_t bufflen,
 #define FN_TO_IS_TMP    (1 << 1)
 #define FN_IS_TMP       (FN_FROM_IS_TMP | FN_TO_IS_TMP)
 #define NO_FRM_RENAME   (1 << 2)
+#define FRM_ONLY     (1 << 3)
 
 /* from hostname.cc */
 char *ip_to_hostname(struct sockaddr_storage *in, int addrLen, uint *errors);
