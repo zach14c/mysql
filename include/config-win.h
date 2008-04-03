@@ -192,7 +192,7 @@ typedef uint rf_SetTimer;
 #define SIZEOF_CHARP		4
 #endif
 #define HAVE_BROKEN_NETINET_INCLUDES
-#ifdef __NT__
+#ifdef _WIN32
 #define HAVE_NAMED_PIPE			/* We can only create pipes on NT */
 #endif
 
@@ -307,7 +307,7 @@ inline double ulonglong2double(ulonglong value)
 #define strcasecmp stricmp
 #define strncasecmp strnicmp
 
-#ifndef __NT__
+#ifndef _WIN32
 #undef FILE_SHARE_DELETE
 #define FILE_SHARE_DELETE 0     /* Not implemented on Win 98/ME */
 #endif
@@ -359,7 +359,7 @@ inline double ulonglong2double(ulonglong value)
 #define thread_safe_increment(V,L) InterlockedIncrement((long*) &(V))
 #define thread_safe_decrement(V,L) InterlockedDecrement((long*) &(V))
 /* The following is only used for statistics, so it should be good enough */
-#ifdef __NT__  /* This should also work on Win98 but .. */
+#ifdef _WIN32  /* This should also work on Win98 but .. */
 #define thread_safe_add(V,C,L) InterlockedExchangeAdd((long*) &(V),(C))
 #define thread_safe_sub(V,C,L) InterlockedExchangeAdd((long*) &(V),-(long) (C))
 #endif

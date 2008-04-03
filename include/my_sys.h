@@ -616,7 +616,7 @@ extern File my_sopen(const char *path, int oflag, int shflag, int pmode);
 extern int check_if_legal_filename(const char *path);
 extern int check_if_legal_tablename(const char *path);
 
-#if defined(__WIN__) && defined(__NT__)
+#ifdef _WIN32
 extern int nt_share_delete(const char *name,myf MyFlags);
 #define my_delete_allow_opened(fname,flags)  nt_share_delete((fname),(flags))
 #else
