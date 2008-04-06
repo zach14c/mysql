@@ -341,19 +341,6 @@ SELECT Name FROM City
   WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
         City.Population > 100000;
 
-EXPLAIN
-SELECT Country.Name, IF(ISNULL(CountryLanguage.Country), NULL, CountryLanguage.Percentage)
-  FROM Country LEFT JOIN CountryLanguage ON
-       (CountryLanguage.Country=Country.Code AND Language='English')
-  WHERE 
-       Country.Population > 10000000;
-
-SELECT Country.Name, IF(ISNULL(CountryLanguage.Country), NULL, CountryLanguage.Percentage)
-  FROM Country LEFT JOIN CountryLanguage ON
-       (CountryLanguage.Country=Country.Code AND Language='English')
-  WHERE 
-       Country.Population > 10000000;
-
 set join_cache_level=default;
 set join_buffer_size=default;
 

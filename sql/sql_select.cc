@@ -8188,9 +8188,9 @@ void revise_cache_usage(JOIN_TAB *join_tab)
       end_tab= first_inner;
     }
   }
-  else if (tab->first_sj_inner_tab)
+  else if (join_tab->first_sj_inner_tab)
   {
-    first_inner= tab->first_sj_inner_tab;
+    first_inner= join_tab->first_sj_inner_tab;
     for (tab= join_tab-1; tab >= first_inner; tab--)
     {
       if (tab->first_sj_inner_tab == first_inner)
@@ -8310,7 +8310,6 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 
   for (i=join->const_tables ; i < join->tables ; i++)
   {
-    JOIN_TAB *first_revised;
     JOIN_TAB *tab=join->join_tab+i;
     TABLE *table=tab->table;
     bool using_join_cache;
@@ -17631,7 +17630,7 @@ bool JOIN_CACHE::put_record()
 bool JOIN_CACHE::get_record()
 { 
   bool res;
-  uchar *prev_rec_ptr;
+  uchar *prev_rec_ptr= 0;
   if (with_length)
     pos+= size_of_rec_len;
   if (prev_cache)
