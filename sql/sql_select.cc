@@ -7731,6 +7731,7 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
 	                            new Item_cond_and(cond_tab->select_cond,tmp);
           if (!cond_tab->select_cond)
 	    DBUG_RETURN(1);
+          cond_tab->select_cond->update_used_tables();
           cond_tab->select_cond->quick_fix_field();
         }       
       }
@@ -7785,6 +7786,7 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
                                 (ulong)cond_tab->select_cond));
             if (!cond_tab->select_cond)
 	      DBUG_RETURN(1);
+            cond_tab->select_cond->update_used_tables();
             cond_tab->select_cond->quick_fix_field();
             if (cond_tab->select)
               cond_tab->select->cond= cond_tab->select_cond; 
