@@ -647,7 +647,7 @@ ha_ndbcluster::copy_row_to_buffer(Thd_ndb *thd_ndb, const uchar *record)
   memcpy(row, record, table->s->reclength);
   return row;
 }
-  
+
 int g_get_ndb_blobs_value(NdbBlob *ndb_blob, void *arg)
 {
   ha_ndbcluster *ha= (ha_ndbcluster *)arg;
