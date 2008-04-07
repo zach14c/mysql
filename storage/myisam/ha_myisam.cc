@@ -1495,6 +1495,11 @@ int ha_myisam::index_end()
   return 0; 
 }
 
+int ha_myisam::rnd_end()
+{
+  ds_mrr.dsmrr_close();
+  return 0;
+}
 
 int ha_myisam::index_read_map(uchar *buf, const uchar *key,
                               key_part_map keypart_map,
@@ -1663,6 +1668,8 @@ int ha_myisam::info(uint flag)
     stats.max_data_file_length=  misam_info.max_data_file_length;
     stats.max_index_file_length= misam_info.max_index_file_length;
     stats.create_time= misam_info.create_time;
+    stats.mrr_length_per_rec= misam_info.reflength + sizeof(void*);
+
     ref_length= misam_info.reflength;
     share->db_options_in_use= misam_info.options;
     stats.block_size= myisam_block_size;        /* record block size */
