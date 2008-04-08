@@ -1293,6 +1293,7 @@ mysql-test/funcs_1.log
 mysql-test/funcs_1.tar
 mysql-test/gmon.out
 mysql-test/install_test_db
+mysql-test/lib/My/SafeProcess/my_safe_process
 mysql-test/lib/init_db.sql
 mysql-test/mtr
 mysql-test/mysql-test-run

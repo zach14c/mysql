@@ -1,4 +1,4 @@
-ndbd,1,localhost ndbd,2,localhost ndb_mgmd,3,localhost mysqld,4, mysqld,5, mysqld,6, mysqld,7, mysqld,8, mysqld,9, mysqld,10, mysqld,63, mysqld,127, mysqld,192, mysqld,228, mysqld,255,
+ndbd,1,localhost ndbd,2,localhost ndb_mgmd,3,localhost mysqld,4,localhost mysqld,5,localhost mysqld,6,localhost mysqld,7,localhost mysqld,8,localhost mysqld,9,localhost mysqld,10,localhost mysqld,63,localhost mysqld,127,localhost mysqld,192,localhost mysqld,228,localhost mysqld,255,localhost
 1,localhost,20971520,1048576 2,localhost,20971520,1048576
 1 localhost 20971520 1048576
 2 localhost 20971520 1048576

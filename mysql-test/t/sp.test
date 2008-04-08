@@ -703,7 +703,7 @@ drop procedure into_test4|
 --disable_warnings
 drop procedure if exists into_outfile|
 --enable_warnings
---replace_result $MYSQLTEST_VARDIR ..
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval create procedure into_outfile(x char(16), y int)
 begin
   insert into test.t1 values (x, y);
@@ -722,7 +722,7 @@ drop procedure into_outfile|
 --disable_warnings
 drop procedure if exists into_dumpfile|
 --enable_warnings
---replace_result $MYSQLTEST_VARDIR ..
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval create procedure into_dumpfile(x char(16), y int)
 begin
   insert into test.t1 values (x, y);

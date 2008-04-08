@@ -5766,6 +5766,7 @@ int ha_ndbcluster::create(const char *name,
           strcmp(m_tabname, NDB_SCHEMA_TABLE) == 0))
     {
       DBUG_PRINT("info", ("Schema distribution table not setup"));
+      DBUG_ASSERT(ndb_schema_share);
       DBUG_RETURN(HA_ERR_NO_CONNECTION);
     }
     single_user_mode = NdbDictionary::Table::SingleUserModeReadWrite;
