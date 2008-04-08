@@ -91,6 +91,12 @@ public:
   bool m_autoIncrement;
   Uint64 m_autoIncrementInitialValue;
   BaseString m_defaultValue;
+  /*
+   * Table holding the blob parts.
+   *
+   * Note that if getPartSize() is 0, there is no parts table, so
+   * m_blobTable==NULL.
+   */
   NdbTableImpl * m_blobTable;
 
   /**
@@ -103,6 +109,9 @@ public:
   Uint32 m_storageType;         // NDB_STORAGETYPE_MEMORY or _DISK
                                 // for blob, storage type of NDB$DATA
   bool m_dynamic;
+
+  bool m_indexSourced;          // Computed when column defined, or when
+                                // table schema read.  Not stored in kernel 
 
   /*
    * NdbTableImpl: if m_pk, 0-based index of key in m_attrId order
@@ -237,6 +246,18 @@ public:
   Uint8 m_noOfBlobs;
   Uint8 m_noOfDiskColumns;
   Uint8 m_replicaCount;
+
+  /**
+   * Default NdbRecord for this table or index
+   * Currently used by old-Api scans to use NdbRecord API internally.
+   */
+  NdbRecord *m_ndbrecord;
+
+  /**
+   * Bitmask describing PK column positions for this table
+   * Currently used by old-Api scans to use NdbRecord API internally.
+   */
+  const unsigned char * m_pkMask;
 
   /**
    * Equality/assign
@@ -647,8 +668,8 @@ public:
   int alterTableGlobal(NdbTableImpl &orig_impl, NdbTableImpl &impl);
   int dropTableGlobal(NdbTableImpl &);
   int dropIndexGlobal(NdbIndexImpl & impl);
-  int releaseTableGlobal(NdbTableImpl & impl, int invalidate);
-  int releaseIndexGlobal(NdbIndexImpl & impl, int invalidate);
+  int releaseTableGlobal(const NdbTableImpl & impl, int invalidate);
+  int releaseIndexGlobal(const NdbIndexImpl & impl, int invalidate);
 
   NdbTableImpl * getTable(const char * tableName, void **data= 0);
   NdbTableImpl * getBlobTable(const NdbTableImpl&, uint col_no);
@@ -685,6 +706,11 @@ public:
   static NdbDictionaryImpl & getImpl(NdbDictionary::Dictionary & t);
   static const NdbDictionaryImpl & getImpl(const NdbDictionary::Dictionary &t);
   NdbDictionary::Dictionary * m_facade;
+  int initialiseColumnData(bool isIndex,
+                           Uint32 flags,
+                           const NdbDictionary::RecordSpecification *recSpec,
+                           Uint32 colNum,
+                           NdbRecord *rec);
 
   NdbDictInterface m_receiver;
   Ndb & m_ndb;
@@ -697,19 +723,48 @@ public:
                               const BaseString& internalName);
 
 
+  int createDefaultNdbRecord(NdbTableImpl* tableOrIndex,
+                             const NdbTableImpl* baseTableForIndex);
+
   NdbRecord *createRecord(const NdbTableImpl *table,
                           const NdbDictionary::RecordSpecification *recSpec,
                           Uint32 length,
                           Uint32 elemSize,
                           Uint32 flags,
-                          const NdbTableImpl *base_table= 0);
-  NdbRecord *createRecord(const NdbIndexImpl *index,
-                          const NdbTableImpl *base_table,
-                          const NdbDictionary::RecordSpecification *recSpec,
-                          Uint32 length,
-                          Uint32 elemSize,
-                          Uint32 flags);
+                          bool defaultRecord);
   void releaseRecord_impl(NdbRecord *rec);
+
+  static NdbDictionary::RecordType 
+  getRecordType(const NdbRecord* record);
+  static const char* getRecordTableName(const NdbRecord* record);
+  static const char* getRecordIndexName(const NdbRecord* record);
+  static bool getNextAttrIdFrom(const NdbRecord* record,
+                                Uint32 startAttrId,
+                                Uint32& nextAttrId);
+  static bool getOffset(const NdbRecord* record,
+                        Uint32 attrId,
+                        Uint32& offset);
+  static bool getNullBitOffset(const NdbRecord* record,
+                               Uint32 attrId,
+                               Uint32& nullbit_byte_offset,
+                               Uint32& nullbit_bit_in_byte);
+  static const char* getValuePtr(const NdbRecord* record,
+                                 const char* row,
+                                 Uint32 attrId);
+  static char* getValuePtr(const NdbRecord* record,
+                           char* row,
+                           Uint32 attrId);
+  static bool isNull(const NdbRecord* record,
+                     const char* row,
+                     Uint32 attrId);
+  static int setNull(const NdbRecord* record,
+                     char* row,
+                     Uint32 attrId,
+                     bool value);
+  static Uint32 getRecordRowLength(const NdbRecord* record);
+
+  /* Empty NdbRecord column mask for user convenience */
+  static const Uint32 m_emptyMask[MAXNROFATTRIBUTESINWORDS];
 
 private:
   NdbTableImpl * fetchGlobalTableImplRef(const GlobalCacheInitObject &obj);
@@ -977,7 +1032,11 @@ public:
   {}
   int init(NdbTableImpl &tab) const
   {
-    return m_dict->getBlobTables(tab);
+    int res= m_dict->getBlobTables(tab);
+    if (res == 0)
+      res= m_dict->createDefaultNdbRecord(&tab, NULL);
+    
+    return res;
   }
 };
 
@@ -1066,7 +1125,9 @@ public:
           !idx->m_internalName.assign(m_name))
         DBUG_RETURN(4000);
       tab.m_index = idx;
-      DBUG_RETURN(0);
+
+      /* Finally, create default NdbRecord for this index */
+      DBUG_RETURN(m_dict->createDefaultNdbRecord(&tab, &m_prim));
     }
     DBUG_RETURN(1);
   }
@@ -1134,7 +1195,7 @@ NdbDictionaryImpl::getIndexGlobal(const char * index_name,
 }
 
 inline int
-NdbDictionaryImpl::releaseTableGlobal(NdbTableImpl & impl, int invalidate)
+NdbDictionaryImpl::releaseTableGlobal(const NdbTableImpl & impl, int invalidate)
 {
   DBUG_ENTER("NdbDictionaryImpl::releaseTableGlobal");
   DBUG_PRINT("enter", ("internal_name: %s", impl.m_internalName.c_str()));
@@ -1145,7 +1206,7 @@ NdbDictionaryImpl::releaseTableGlobal(NdbTableImpl & impl, int invalidate)
 }
 
 inline int
-NdbDictionaryImpl::releaseIndexGlobal(NdbIndexImpl & impl, int invalidate)
+NdbDictionaryImpl::releaseIndexGlobal(const NdbIndexImpl & impl, int invalidate)
 {
   DBUG_ENTER("NdbDictionaryImpl::releaseIndexGlobal");
   DBUG_PRINT("enter", ("internal_name: %s", impl.m_internalName.c_str()));
