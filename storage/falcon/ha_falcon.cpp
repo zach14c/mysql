@@ -2026,6 +2026,19 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 		[COMMENT [=] comment_text]
 		ENGINE [=] engine
 	*/
+	if (ts_info->data_file_name)
+		{
+		char buff[FN_REFLEN];
+		size_t dirname_part_length;
+		dirname_part(buff, ts_info->data_file_name, &dirname_part_length);
+		fn_format(buff, buff, mysql_real_data_home, "",
+			MY_RELATIVE_PATH | MY_UNPACK_FILENAME);
+		if (test_if_data_home_dir(buff))
+			{
+			my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATAFILE");
+			DBUG_RETURN(1);
+			}
+		}
 
 	switch (ts_info->ts_cmd_type)
 		{
