@@ -2633,7 +2633,7 @@ sub check_expected_crash_and_restart {
     my $expect_file= "$opt_vardir/tmp/".$mysqld->name().".expect";
     if ( -f $expect_file )
     {
-      mtr_verbose("Crash was expected, file $expect_file exists");
+      mtr_report("Crash was expected, file '$expect_file' exists");
       # Start server with same settings as last time
       mysqld_start($mysqld, $mysqld->{'started_opts'});
       unlink($expect_file);
@@ -3005,6 +3005,17 @@ sub server_need_restart {
       mtr_verbose_restart($server, "different timezone");
       return 1;
     }
+  }
+
+  # Temporary re-enable the "always restart slave" hack
+  # this should be removed asap, but will require that each rpl
+  # testcase cleanup better after itself - ie. stop and reset
+  # replication
+  # Use the "#!use-slave-opt" marker to detect that this is a "slave"
+  # server
+  if ( $server->option("#!use-slave-opt") ){
+    mtr_verbose_restart($server, "Always restart slave(s)");
+    return 1;
   }
 
   my $is_mysqld= grep ($server eq $_, mysqlds());
