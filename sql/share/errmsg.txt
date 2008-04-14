@@ -6123,6 +6123,8 @@ ER_SLAVE_CORRUPT_EVENT
   eng "Corrupted replication event was detected"
 ER_LOAD_DATA_INVALID_COLUMN
   eng "Invalid column reference (%-.64s) in LOAD DATA"
+ER_LOG_PURGE_NO_FILE
+  eng "Being purged log %s was not found"
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
         ger "Umgewandelt zu nicht-transaktionalen Sperren auf '%-.64s'"
@@ -6250,5 +6252,3 @@ ER_SLAVE_HEARTBEAT_FAILURE
   eng "Unexpected master's heartbeat data: %s"
 ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE
   eng "The requested value for the heartbeat period %s %s"
-ER_LOG_PURGE_NO_FILE  
-	eng "Being purged log %s was not found"
