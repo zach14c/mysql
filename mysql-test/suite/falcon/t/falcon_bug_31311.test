@@ -1,8 +1,8 @@
 --source include/have_falcon.inc
 #
-# Bug #31296: falcon does not remove associated tablespace file.
+# Bug #31311: TABLESPACE identifiers do not support special characters
 #
---echo *** Bug #31296 ***
+--echo *** Bug #31311 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -16,21 +16,21 @@ DROP TABLE IF EXISTS t1;
 eval DROP TABLESPACE ts1 ENGINE $engine;
 --enable_warnings
 
-eval CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE $engine;
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-eval DROP TABLESPACE ts1 ENGINE $engine;
-eval CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE $engine;
+eval CREATE TABLESPACE `ts 1` ADD DATAFILE 'ts2.fts' ENGINE $engine;
+CREATE TABLE t1(a int) TABLESPACE `ts 1`;
+SHOW CREATE TABLE t1;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
 # ----------------------------------------------------- #
-# Check is not suitable here.
-#SELECT count(*) FROM t1;
+SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
-eval DROP TABLESPACE ts1 ENGINE $engine;
+DROP TABLE t1;
+eval DROP TABLESPACE `ts 1` ENGINE $engine;

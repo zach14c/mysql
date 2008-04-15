@@ -1,8 +1,9 @@
 --source include/have_falcon.inc
 #
-# Bug #31296: falcon does not remove associated tablespace file.
+# Bug #31295: NULL alter table operation causes falcon table to lose it's
+#             tablespace assoc 
 #
---echo *** Bug #31296 ***
+--echo *** Bug #31295 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -17,20 +18,25 @@ eval DROP TABLESPACE ts1 ENGINE $engine;
 --enable_warnings
 
 eval CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE $engine;
+CREATE TABLE t1(a int);
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-eval DROP TABLESPACE ts1 ENGINE $engine;
-eval CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE $engine;
+SELECT * FROM INFORMATION_SCHEMA.FALCON_TABLES WHERE TABLE_NAME='t1';
+eval ALTER TABLE t1 TABLESPACE ts1 ENGINE $engine;
+SELECT * FROM INFORMATION_SCHEMA.FALCON_TABLES WHERE TABLE_NAME='t1';
+eval ALTER TABLE t1 ENGINE $engine;
+SELECT * FROM INFORMATION_SCHEMA.FALCON_TABLES WHERE TABLE_NAME='t1';
+
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
 # ----------------------------------------------------- #
-# Check is not suitable here.
-#SELECT count(*) FROM t1;
+SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
+DROP TABLE t1;
 eval DROP TABLESPACE ts1 ENGINE $engine;
