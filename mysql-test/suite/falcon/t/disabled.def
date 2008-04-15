@@ -46,6 +46,5 @@ falcon_bug_34351_B  : Bug#35656 2008-04-15 rafal after talking with Hakan on IRC
 falcon_bug_34892    : Bug#34892 2008-03-04 hakank (Some falcon tests fail sporadically)
 falcon_deadlock     : Bug#34182 2008-01-31 hakank Bug in SELECT ... FOR UPDATE
 falcon_record_cache_memory_leak2    : Bug#34894 2008-02-27 hakank Fails on Pushbuild Windows
-falcon_ts           : Bug#32993 2008-02-25 hakank Open bug
 ps_8falcon          : Bug#32683  Test ps_8falcon fails in 6.0
 read_many_rows_falcon : Bug#23783 2006-10-30 ML Get pushbuild green
