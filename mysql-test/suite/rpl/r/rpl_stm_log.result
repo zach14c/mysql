@@ -212,7 +212,7 @@ master-bin.000002	393
 start slave;
 show binary logs;
 Log_name	File_size
-slave-bin.000001	1448
+slave-bin.000001	1451
 slave-bin.000002	294
 show binlog events in 'slave-bin.000001' from 4;
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info
