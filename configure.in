@@ -2753,6 +2753,9 @@ case $SYSTEM_TYPE in
 esac
 AC_SUBST(MAKE_BINARY_DISTRIBUTION_OPTIONS)
 
+# Ensure that $(MYSQL_EXTRA_CXXFLAGS) is last
+CXXFLAGS="$CXXFLAGS \$(MYSQL_EXTRA_CXXFLAGS)"
+
 # Output results
 if test -d "$srcdir/pstack" ; then
   AC_CONFIG_FILES(pstack/Makefile pstack/aout/Makefile)
