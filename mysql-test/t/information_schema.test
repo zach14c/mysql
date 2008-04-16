@@ -530,8 +530,13 @@ flush privileges;
 # Bug #9404  information_schema: Weird error messages
 # with SELECT SUM() ... GROUP BY queries
 #
-SELECT table_schema, count(*) FROM information_schema.TABLES where table_name<>'ndb_binlog_index' AND table_name<>'ndb_apply_status' GROUP BY TABLE_SCHEMA;
-
+SELECT table_schema, count(*) FROM information_schema.TABLES 
+  WHERE table_name<>'ndb_binlog_index' AND 
+  table_name<>'ndb_apply_status' AND
+  table_name <> 'FALCON_TABLES' AND
+  table_name <> 'FALCON_TABLESPACE_FILES' AND
+  table_name <> 'FALCON_TABLESPACES'
+GROUP BY TABLE_SCHEMA;
 
 #
 # TRIGGERS table test
