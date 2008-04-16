@@ -326,6 +326,9 @@ sub mtr_report_stats ($) {
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
 		
+		# ignore warning generated when backup engine selection algorithm is tested
+		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
+		
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/Warning:\s+One can only use the --user.*root/ or
