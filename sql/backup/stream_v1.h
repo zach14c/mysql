@@ -224,6 +224,7 @@ enum enum_bstream_item_type {
    BSTREAM_IT_SFUNC,
    BSTREAM_IT_EVENT,
    BSTREAM_IT_TRIGGER,   
+   BSTREAM_IT_TABLESPACE,
    BSTREAM_IT_LAST
 };
 
@@ -235,6 +236,16 @@ struct st_bstream_item_info
   enum enum_bstream_item_type type;  /**< type of the item */
   bstream_blob name;     /**< name of the item */
   unsigned long int pos; /**< position of the item in image's catalogue */
+};
+
+/**
+  Describes tablespace item.
+
+  Currently no data specific to tablespace items is used.
+*/
+struct st_bstream_ts_info
+{
+  struct st_bstream_item_info  base;
 };
 
 /**
