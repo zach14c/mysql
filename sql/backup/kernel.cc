@@ -1167,6 +1167,7 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   switch (type) {
 
   case BSTREAM_IT_PERTABLE: // per-table objects
+  case BSTREAM_IT_TABLESPACE: // tablespaces - not supported yet
     return &null_iter;
 
   case BSTREAM_IT_CHARSET:  // character sets
