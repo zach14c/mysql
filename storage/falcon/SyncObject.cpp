@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <memory.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <windows.h>
