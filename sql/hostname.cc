@@ -231,7 +231,11 @@ char *ip_to_hostname(struct sockaddr_storage *in, int addrLen, uint *errors)
       this define is in this place for this reason.
     */
     DBUG_PRINT("error",("getaddrinfo returned %d", gxi_error));
+#ifdef EAI_NODATA
     if (gxi_error == EAI_NODATA )
+#else
+    if (gxi_error == EAI_NONAME )
+#endif
       add_wrong_ip(in);
 
     my_free(name,MYF(0));

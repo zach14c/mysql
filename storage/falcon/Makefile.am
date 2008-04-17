@@ -16,7 +16,7 @@
 SUBDIRS= TransformLib
 
 # Re-enable implicit templates and exceptions
-CXXFLAGS= @CXXFLAGS@ -fimplicit-templates @FALCON_CXXFLAGS@
+MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 
 DEFS= @DEFS@ \
       -D_REENTRANT -D_PTHREADS -DENGINE -DSTORAGE_ENGINE -DNAMESPACE=Nfs

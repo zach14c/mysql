@@ -295,7 +295,7 @@ AC_TRY_COMPILE([],
 AH_VERBATIM([HAVE_TIMERADD], [
 /* Define if timeradd is defined in <sys/time.h> */
 #undef HAVE_TIMERADD
-#ifndef HAVE_TIMERADD
+#if defined(HAVE_LIBEVENT) && !defined(HAVE_TIMERADD)
 #undef timersub
 #define timeradd(tvp, uvp, vvp)						\
 	do {								\
@@ -320,14 +320,14 @@ AH_VERBATIM([HAVE_TIMERADD], [
 
 AH_VERBATIM([HAVE_TIMERCLEAR], [
 #undef HAVE_TIMERCLEAR
-#ifndef HAVE_TIMERCLEAR
+#if defined(HAVE_LIBEVENT) && !defined(HAVE_TIMERCLEAR)
 #define	timerclear(tvp)	(tvp)->tv_sec = (tvp)->tv_usec = 0
 #endif
 ])
 
 AH_VERBATIM([HAVE_TIMERCMP], [
 #undef HAVE_TIMERCMP
-#ifndef HAVE_TIMERCMP
+#if defined(HAVE_LIBEVENT) && !defined(HAVE_TIMERCMP)
 #undef timercmp
 #define	timercmp(tvp, uvp, cmp)						\
 	(((tvp)->tv_sec == (uvp)->tv_sec) ?				\
@@ -338,7 +338,7 @@ AH_VERBATIM([HAVE_TIMERCMP], [
 
 AH_VERBATIM([HAVE_TIMERISSET], [
 #undef HAVE_TIMERISSET
-#ifndef HAVE_TIMERISSET
+#if defined(HAVE_LIBEVENT) && !defined(HAVE_TIMERISSET)
 #undef timerisset
 #define	timerisset(tvp)	((tvp)->tv_sec || (tvp)->tv_usec)
 #endif
@@ -347,7 +347,7 @@ AH_VERBATIM([HAVE_TIMERISSET], [
 AH_VERBATIM([HAVE_TAILQFOREACH], [
 /* Define if TAILQ_FOREACH is defined in <sys/queue.h> */
 #undef HAVE_TAILQFOREACH
-#ifndef HAVE_TAILQFOREACH
+#if defined(HAVE_LIBEVENT) && !defined(HAVE_TAILQFOREACH)
 #define	TAILQ_FIRST(head)		((head)->tqh_first)
 #define	TAILQ_END(head)			NULL
 #define	TAILQ_NEXT(elm, field)		((elm)->field.tqe_next)
