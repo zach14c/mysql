@@ -154,10 +154,7 @@ static int _mi_ck_real_delete(register MI_INFO *info, MI_KEYDEF *keyinfo,
   DBUG_ENTER("_mi_ck_real_delete");
 
   if ((old_root=*root) == HA_OFFSET_ERROR)
-  {
-    mi_print_error(info->s, HA_ERR_CRASHED);
-    DBUG_RETURN(my_errno=HA_ERR_CRASHED);
-  }
+    DBUG_RETURN(my_errno=HA_ERR_KEY_NOT_FOUND);
   if (!(root_buff= (uchar*) my_alloca((uint) keyinfo->block_length+
 				      MI_MAX_KEY_BUFF*2)))
   {
@@ -322,8 +319,7 @@ static int d_search(register MI_INFO *info, register MI_KEYDEF *keyinfo,
     if (!nod_flag)
     {
       DBUG_PRINT("error",("Didn't find key"));
-      mi_print_error(info->s, HA_ERR_CRASHED);
-      my_errno=HA_ERR_CRASHED;		/* This should newer happend */
+      my_errno=HA_ERR_KEY_NOT_FOUND;
       goto err;
     }
     save_flag=0;
