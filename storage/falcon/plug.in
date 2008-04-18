@@ -52,7 +52,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CACHE_CHECK([compiler flag to enable implicit templates],
                  falcon_cxx_enable_implicit_templates,[
     CXXFLAGS="$ac_save_CXXFLAGS -fimplicit-templates"
-    AC_TRY_COMPILE([],
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
       falcon_cxx_enable_implicit_templates="-fimplicit-templates",
@@ -63,7 +63,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CACHE_CHECK([compiler flag to enable exceptions],
                  falcon_cxx_enable_exceptions,[
     CXXFLAGS="$ac_save_CXXFLAGS -fexceptions"
-    AC_TRY_COMPILE([],
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
       falcon_cxx_enable_exceptions="-fexceptions",
@@ -74,7 +74,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CACHE_CHECK([compiler flag to silence offsetof warnings],
                  falcon_cxx_no_invalid_offsetof,[
     CXXFLAGS="$ac_save_CXXFLAGS -Wno-invalid-offsetof"
-    AC_TRY_COMPILE([],
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
       falcon_cxx_no_invalid_offsetof="-Wno-invalid-offsetof",

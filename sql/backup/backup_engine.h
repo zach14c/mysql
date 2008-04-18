@@ -50,7 +50,7 @@ class Engine
   virtual ~Engine() {}
 
   /// Return version of backup images created by this engine.
-  virtual const version_t version() const =0;
+  virtual version_t version() const =0;
 
   /**
    Create a backup driver.

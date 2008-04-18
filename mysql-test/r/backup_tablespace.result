@@ -1,4 +1,6 @@
 DROP DATABASE IF EXISTS backup_ts;
+DROP TABLE IF EXISTS backup_ts.not_ts;
+DROP TABLE IF EXISTS backup_ts.has_ts;
 CREATE DATABASE backup_ts;
 Test 1:
 Create a tablespace.
