@@ -141,8 +141,7 @@ int StorageTableShare::deleteTable(StorageConnection *storageConnection)
 		{
 		unRegisterTable();
 		
-		if (res == 0)
-			storageHandler->removeTable(this);
+		storageHandler->removeTable(this);
 			
 		delete this;
 		}

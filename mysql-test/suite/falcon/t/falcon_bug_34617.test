@@ -1,0 +1,18 @@
+--source include/have_falcon.inc
+
+#
+# BUG#33723 - ALTER TABLE into non-existing Falcon tablespace blocks
+#             further ALTERs
+# BUG#34048 - Falcon: after error with tablespace, I can't create table
+# BUG#34617 - Falcon assertion in StorageHandler::addTable, line 622
+#
+--error ER_CANT_CREATE_TABLE
+CREATE TABLE t1(a INT) ENGINE=Falcon TABLESPACE nosuchtablespace;
+CREATE TABLE t1(a INT) ENGINE=Falcon;
+--replace_regex /#sql-[0-9a-f_]*/#sql-temporary/
+--error ER_CANT_CREATE_TABLE
+ALTER TABLE t1 TABLESPACE nosuchtablespace;
+--replace_regex /#sql-[0-9a-f_]*/#sql-temporary/
+--error ER_CANT_CREATE_TABLE
+ALTER TABLE t1 TABLESPACE nosuchtablespace;
+DROP TABLE t1;
