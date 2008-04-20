@@ -1,0 +1,17 @@
+##############################################################################
+#
+#  List the test cases that are to be disabled temporarily.
+#
+#  Separate the test case name and the comment with ':'.
+#
+#    <testcasename> : BUG#<xxxx> <date disabled> <disabler> <comment>
+#
+#  Do not use any TAB characters for whitespace.
+#
+##############################################################################
+
+# If a test has side effects, then it can be disabled for local testing purposes.
+#
+# Attention: Never ever push disabled tests. This is for local purposes only.
+
+#falcon_bug_23945    : Bug#34892 2008-02-27 hakank Open bug
