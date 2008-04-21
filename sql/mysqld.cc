@@ -5111,7 +5111,7 @@ pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))
       struct sockaddr_storage dummy;
       dummyLen = sizeof(dummy);
       if (  getsockname(new_sock,(struct sockaddr *)&dummy, 
-                  (socklen_t *)&dummyLen) < 0  )
+                  (SOCKET_SIZE_TYPE *)&dummyLen) < 0  )
       {
 	sql_perror("Error on new connection socket");
 	(void) shutdown(new_sock, SHUT_RDWR);
