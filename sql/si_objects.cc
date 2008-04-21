@@ -710,12 +710,12 @@ public:
   TablespaceObj(const String *ts_name);
   
 public:
-  virtual bool serialize(THD *thd, String *serialization);
+  virtual bool do_serialize(THD *thd, String *serialization);
 
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
 
-  virtual bool execute(THD *thd);
+  virtual bool do_execute(THD *thd);
 
   const String *describe();
 
@@ -2433,7 +2433,7 @@ TablespaceObj::TablespaceObj(const String *ts_name)
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TablespaceObj::serialize(THD *thd, String *serialization)
+bool TablespaceObj::do_serialize(THD *thd, String *serialization)
 {
   DBUG_ENTER("TablespaceObj::serialize()");
   build_serialization();
@@ -2528,7 +2528,7 @@ const String *TablespaceObj::build_serialization()
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TablespaceObj::execute(THD *thd)
+bool TablespaceObj::do_execute(THD *thd)
 {
   DBUG_ENTER("TablespaceObj::execute()");
   build_serialization(); // Build the CREATE command.
