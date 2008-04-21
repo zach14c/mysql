@@ -1,8 +1,6 @@
 #ifndef _BACKUP_KERNEL_API_H
 #define _BACKUP_KERNEL_API_H
 
-#include <backup/backup_info.h>
-#include <backup/restore_info.h>
 #include <backup/logger.h>
 #include <backup/stream_services.h>
 
@@ -36,10 +34,15 @@ int execute_backup_command(THD*, LEX*);
 
 // forward declarations
 
+class Backup_info;
+class Restore_info;
+
 namespace backup {
 
 class Mem_allocator;
 class Stream;
+class Output_stream;
+class Input_stream;
 class Native_snapshot;
 
 int write_table_data(THD*, Logger&, Backup_info&, Output_stream&);
@@ -147,14 +150,18 @@ void Backup_restore_ctx::disable_fkey_constraints()
   cannot be normally used. It still can be examined for saved error messages.
   The code of the error reported here is saved in m_error member.
   
-  When called multiple time, later calls overwrite error code saved by
-  the previous ones.
+  Only one fatal error can be reported. If context is already in error
+  state when this method is called, it does nothing.
   
-  @returns error code given as input.
+  @return error code given as input or stored in the context object if
+  a fatal error was reported before.
  */ 
 inline
 int Backup_restore_ctx::fatal_error(int error_code, ...)
 {
+  if (m_error)
+    return m_error;
+
   va_list args;
 
   m_error= error_code;
@@ -166,5 +173,13 @@ int Backup_restore_ctx::fatal_error(int error_code, ...)
 
   return error_code;
 }
+
+/*
+  Now, when Backup_restore_ctx is defined, include definitions
+  of Backup_info and Restore_info classes.
+*/
+
+#include <backup/backup_info.h>
+#include <backup/restore_info.h>
 
 #endif

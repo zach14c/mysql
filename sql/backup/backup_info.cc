@@ -126,6 +126,47 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 
  *************************************************/
 
+/*
+  Definition of Backup_info::Ts_hash_node structure used by Backup_info::ts_hash
+  HASH.
+ */ 
+
+struct Backup_info::Ts_hash_node
+{
+  const String *name;	///< Name of the tablespace.
+  Ts *it;               ///< Catalogue entry holding the tablespace (if exists).
+
+  Ts_hash_node(const String*);
+
+  static uchar* get_key(const uchar *record, size_t *key_length, my_bool);
+  static void free(void *record);
+};
+
+inline
+Backup_info::Ts_hash_node::Ts_hash_node(const String *name) :name(name), it(NULL)
+{}
+
+void Backup_info::Ts_hash_node::free(void *record)
+{
+  delete (Ts_hash_node*)record;
+}
+
+uchar* Backup_info::Ts_hash_node::get_key(const uchar *record, 
+                                          size_t *key_length, 
+                                          my_bool)
+{
+  Ts_hash_node *n= (Ts_hash_node*)record;
+
+  // ts_hash entries are indexed by tablespace name.
+
+  if (n->name && key_length)
+    *key_length= n->name->length();
+
+  return (uchar*)(n->name->ptr());
+}
+
+
+
 /**
   Create @c Backup_info instance and prepare it for populating with objects.
  
@@ -141,6 +182,9 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
   Snapshot_info *snap;
 
   bzero(m_snap, sizeof(m_snap));
+
+  hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
+            Ts_hash_node::get_key, Ts_hash_node::free, MYF(0));
 
   /* 
     Create default and CS snapshot objects and add them to the snapshots list.
@@ -178,6 +222,8 @@ Backup_info::~Backup_info()
 
   while ((snap= it++))
     delete snap;
+
+  hash_free(&ts_hash);  
 }
 
 /**
@@ -204,6 +250,72 @@ int Backup_info::close()
 }  
 
 /**
+  Add tablespace to backup catalogue.
+
+  @param[in]	obj		sever object representing the tablespace
+  
+  If tablespace is already present in the catalogue, the existing catalogue entry
+  is returned. Otherwise a new entry is created and tablespace info stored in it.
+  
+  @return Pointer to (the new or existing) catalogue entry holding info about the
+  tablespace.  
+ */ 
+backup::Image_info::Ts* Backup_info::add_ts(obs::Obj *obj)
+{
+  const String *name;
+
+  DBUG_ASSERT(obj);
+  name= obj->get_name();
+  DBUG_ASSERT(name);
+
+  /* 
+    Check if tablespace with that name is already present in the catalogue using
+    ts_hash.
+  */
+
+  Ts_hash_node n0(name);
+  size_t klen;
+  uchar  *key= Ts_hash_node::get_key((const uchar*)&n0, &klen, TRUE);
+
+  Ts_hash_node *n1= (Ts_hash_node*) hash_search(&ts_hash, key, klen);
+
+  // if tablespace was found, return the catalogue entry stored in the hash
+  if (n1)
+    return n1->it;
+
+  // otherwise create a new catalogue entry
+
+  ulong pos= ts_count();
+
+  Ts *ts= Image_info::add_ts(*name, pos);
+
+  if (!ts)
+  {
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TS, name);
+    return NULL;
+  }
+
+  // store pointer to the server object instance
+
+  ts->m_obj_ptr= obj;
+
+  // add new entry to ts_hash
+
+  n1= new Ts_hash_node(n0);
+
+  if (!n1)
+  {
+    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    return NULL;
+  }
+
+  n1->it= ts;
+  my_hash_insert(&ts_hash, (uchar*)n1);
+
+  return ts;  
+}
+
+/**
   Select database object for backup.
   
   The object is added to the backup catalogue as an instance of 
@@ -218,11 +330,20 @@ backup::Image_info::Db* Backup_info::add_db(obs::Obj *obj)
   ulong pos= db_count();
   
   DBUG_ASSERT(obj);
+
+  const ::String *name= obj->get_name();
   
-  Db *db= Image_info::add_db(*obj->get_name(), pos);  // reports errors
+  DBUG_ASSERT(name);  
+
+  Db *db= Image_info::add_db(*name, pos);
   
-  if (db)
-    db->m_obj_ptr= obj;
+  if (!db)
+  {
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_DB, name->ptr());
+    return NULL;
+  }
+
+  db->m_obj_ptr= obj;
 
   return db;  
 }
@@ -429,6 +550,21 @@ int Backup_info::add_db_items(Db &db)
       delete obj;
       goto error;
     }
+
+    // If this table uses a tablespace, add this tablespace to the catalogue.
+
+    obj= get_tablespace_for_table(m_ctx.m_thd, &db.name(), &tbl->name());
+
+    if (obj)
+    {
+      Ts *ts= add_ts(obj); // reports errors
+
+      if (!ts)
+      {
+        delete obj;
+        goto error;
+      }
+    }
   }
 
   // Add other objects.
@@ -563,8 +699,8 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
   
   if (!tbl)
   {
-    Tbl::describe_buf buf;
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, t.describe(buf));
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, 
+                      dbi.name().ptr(), t.name().ptr());
     return NULL;
   }
 

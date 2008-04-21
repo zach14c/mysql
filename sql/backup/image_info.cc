@@ -14,7 +14,7 @@
 namespace backup {
 
 Image_info::Image_info()
-  :data_size(0), m_table_count(0), m_dbs(16, 16)
+  :data_size(0), m_table_count(0), m_dbs(16, 16), m_ts_map(16,16)
 {
   init_alloc_root(&mem_root, 4 * 1024, 0);
 
@@ -51,15 +51,25 @@ Image_info::Image_info()
 
 Image_info::~Image_info()
 {
-  Db_iterator dbit(*this);
-  Db *db;
-
   /* 
     We need to explicitly call destructors for all objects in the catalogue
     since they are allocated using mem_root and thus destructors will not be
     invoked when the mem_root is freed.
   */
-  
+
+  // first tablespaces
+
+  Ts_iterator tsit(*this);
+  Ts *ts;
+
+  while ((ts= static_cast<Ts*>(tsit++)))
+    ts->~Ts();
+
+  Db_iterator dbit(*this);
+  Db *db;
+
+  // then databases and all objects inside each database
+
   while ((db= static_cast<Db*>(dbit++)))
   {
     // iterate over objects in the database
@@ -95,6 +105,10 @@ Image_info::add_db(const String &db_name, uint pos)
   if (!db)
     return NULL;
   
+  // call destructor if position is occupied
+  if (m_dbs[pos])
+    m_dbs[pos]->~Db();
+
   if (m_dbs.insert(pos, db))
     return NULL;
   
@@ -104,17 +118,34 @@ Image_info::add_db(const String &db_name, uint pos)
 }
 
 /**
-  Return database stored in the catalogue.
+  Add tablespace to the catalogue.
 
-  @param[in]  pos positon of the database in the catalogue
+  @param[in] ts_name  name of the tablespace
+  @param[in] pos      position at which this database should be stored
 
-  @returns Pointer to @c Image_info::Db instance storing information 
-  about the database or NULL if no database is stored at given position.
- */ 
-Image_info::Db* 
-Image_info::get_db(uint pos) const
+  @returns Pointer to @c Image_info::Ts instance storing information 
+  about the tablespace or NULL in case of error.
+
+  @see @c get_ts().
+ */
+Image_info::Ts* 
+Image_info::add_ts(const String &ts_name, uint pos)
 {
-  return m_dbs[pos];
+  Ts *ts= new (&mem_root) Ts(ts_name);
+  
+  if (!ts)
+    return NULL;
+  
+  // call destructor if position is occupied
+  if (m_ts_map[pos])
+    m_ts_map[pos]->~Ts();
+
+  if (m_ts_map.insert(pos, ts))
+    return NULL;
+  
+  ts->base.pos= pos;
+  
+  return ts;
 }
 
 /**
@@ -318,6 +349,9 @@ Image_info::Obj *find_obj(const Image_info &info,
                           const st_bstream_item_info &item)
 {
   switch (item.type) {
+
+  case BSTREAM_IT_TABLESPACE:
+    return info.get_ts(item.pos);
 
   case BSTREAM_IT_DB:
     return info.get_db(item.pos);

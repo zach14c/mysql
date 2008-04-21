@@ -1,10 +1,10 @@
 #ifndef RESTORE_INFO_H_
 #define RESTORE_INFO_H_
 
+#include <backup_kernel.h>
 #include <backup/image_info.h>
 #include <backup/stream_services.h>
 
-class Backup_restore_ctx;
 class Restore_info;
 
 namespace backup {
@@ -40,6 +40,11 @@ class Restore_info: public backup::Image_info
 
   bool is_valid() const;
 
+  Image_info::Ts* add_ts(const ::String&, uint);
+  Image_info::Db* add_db(const ::String&, uint);
+  Image_info::Table* add_table(Image_info::Db&, const ::String&, 
+                               backup::Snapshot_info&, ulong);
+
  private:
 
   friend int backup::restore_table_data(THD*, backup::Logger&, Restore_info&, 
@@ -67,6 +72,46 @@ inline
 bool Restore_info::is_valid() const
 {
   return TRUE; 
+}
+
+/// Wrapper around Image_info method which reports errors.
+inline
+backup::Image_info::Ts* 
+Restore_info::add_ts(const ::String &name, uint pos)
+{
+  Ts *ts= Image_info::add_ts(name, pos);
+
+  if (!ts)
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TS, name.ptr());
+
+  return ts;
+}
+
+/// Wrapper around Image_info method which reports errors.
+inline
+backup::Image_info::Db* 
+Restore_info::add_db(const ::String &name, uint pos)
+{
+  Db *db= Image_info::add_db(name, pos);
+
+  if (!db)
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_DB, name.ptr());
+
+  return db;
+}
+
+/// Wrapper around Image_info method which reports errors.
+inline
+backup::Image_info::Table* 
+Restore_info::add_table(Image_info::Db &db, const ::String &name, 
+                        backup::Snapshot_info &snap, ulong pos)
+{
+  Table *t= Image_info::add_table(db, name, snap, pos);
+
+  if (!t)
+    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, db.name().ptr(), name.ptr());
+
+  return t;
 }
 
 #endif /*RESTORE_INFO_H_*/

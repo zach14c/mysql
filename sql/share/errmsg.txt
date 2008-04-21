@@ -6275,9 +6275,9 @@ ER_BACKUP_CANT_RESTORE_EVENT
 ER_BACKUP_CANT_RESTORE_TRIGGER
 	eng "Could not restore trigger %-.64s"
 ER_BACKUP_CATALOG_ADD_DB
-	eng "Failed to add database %-.64s to the catalog"
+	eng "Failed to add database `%-.64s` to the catalog"
 ER_BACKUP_CATALOG_ADD_TABLE
-	eng "Failed to add table %-.64s to the catalog"
+	eng "Failed to add table `%-.64s`.`%-.64s` to the catalog"
 ER_BACKUP_CATALOG_ADD_VIEW
 	eng "Failed to add view `%-.64s`.`%-.64s` to the catalog"
 ER_BACKUP_CATALOG_ADD_SROUT
@@ -6340,5 +6340,13 @@ ER_BACKUP_LOG_WRITE_ERROR
 ER_TABLESPACE_NOT_EMPTY
   eng "Tablespace '%-.192s' not empty"
 
+ER_BACKUP_CAT_ENUM
+        eng "Could not access the contents of the backup catalog when writing backup image preamble"
+ER_BACKUP_CANT_RESTORE_TS
+        eng "Could not create tablespace %-.64s needed by tables being restored."
 ER_BACKUP_TS_CHANGE
-        eng "Tablespace `%-.64s` needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
+        eng "Tablespace %-.64s needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
+ER_BACKUP_GET_META_TS
+        eng "Failed to obtain meta-data for tablespace %-.64s."
+ER_BACKUP_CATALOG_ADD_TS
+        eng "Failed to add tablespace `%-.64s` to the catalog"

@@ -53,12 +53,15 @@ public: // public interface
    typedef enum_bstream_item_type obj_type;
 
    class Obj;   ///< Base for all object classes.
+   class Ts;    ///< Class representing a tablespace.
    class Db;    ///< Class representing a database.
    class Table; ///< Class representing a table.
    class Dbobj; ///< Class representing a per-database object other than table.
 
    class Iterator;      ///< Base for all iterators.
+   class Ts_iterator;   ///< Iterates over all tablespaces.
    class Db_iterator;   ///< Iterates over all databases.
+   class Global_iterator; ///< Iterates over global items (for which meta-data is stored).
    class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
    class Dbobj_iterator;  ///< Iterates over objects in a database.
 
@@ -70,6 +73,7 @@ public: // public interface
 
    ulong      table_count() const;
    uint       db_count() const;
+   uint       ts_count() const;
    ushort     snap_count() const;
 
    // Examine contents of the catalogue.
@@ -79,14 +83,17 @@ public: // public interface
    // Retrieve objects using their coordinates.
 
    Db*    get_db(uint pos) const;
+   Ts*    get_ts(uint pos) const;
    Dbobj* get_db_object(uint db_num, ulong pos) const;
    Table* get_table(ushort snap_num, ulong pos) const;
 
    // Iterators for enumerating the contents of the archive.
 
-   Db_iterator*    get_dbs();
-   Perdb_iterator* get_perdb();
-   Dbobj_iterator* get_db_objects(const Db &db);
+   Db_iterator*     get_dbs() const;
+   Ts_iterator*     get_tablespaces() const;
+   Global_iterator* get_global() const;
+   Perdb_iterator*  get_perdb() const;
+   Dbobj_iterator*  get_db_objects(const Db &db) const;
 
    /**
      Pointers to @c Snapshot_info objects corresponding to the snapshots
@@ -112,6 +119,7 @@ public: // public interface
   
   int    add_snapshot(Snapshot_info&);
   Db*    add_db(const String &db_name, uint pos);
+  Ts*    add_ts(const String &db_name, uint pos);
   Dbobj* add_db_object(Db &db, const obj_type type,
                        const ::String &name, ulong pos);
   Table* add_table(Db &db, const ::String &table_name, 
@@ -132,6 +140,7 @@ public: // public interface
 
   MEM_ROOT  mem_root;    ///< Memory root used to allocate @c Obj instances.
   Map<uint, Db>   m_dbs; ///< Pointers to Db instances.
+  Map<uint, Ts>   m_ts_map; ///< Pointers to Ts instances.
   String    m_binlog_file; ///< To store binlog file name at VP time.
 
   // friends
@@ -357,6 +366,33 @@ Image_info::Obj::~Obj()
   delete m_obj_ptr;
 }
 
+
+/**
+  Specialization of @c Image_info::Obj for storing info about a tablespace.
+*/
+class Image_info::Ts
+ : public st_bstream_ts_info,
+   public Image_info::Obj
+{
+ public:
+
+  Ts(const ::String&);
+
+  const st_bstream_item_info* info() const;
+  const st_bstream_ts_info* ts_info() const;
+  obs::Obj* materialize(uint ver, const ::String &sdata);
+  const char* describe(describe_buf&) const;
+};
+
+inline
+Image_info::Ts::Ts(const ::String &name)
+{
+  bzero(&base, sizeof(base));
+  base.type= BSTREAM_IT_TABLESPACE;
+  store_name(name);
+}
+
+
 /**
   Specialization of @c Image_info::Obj for storing info about a database.
 */
@@ -539,6 +575,35 @@ inline
 Image_info::Iterator::~Iterator() 
 {}
 
+
+/**
+  Used to iterate over all tablespaces stored in a backup image.
+
+  @note Backup stream library infers position of each tablespace in the catalogue
+  from the order in which they are enumerated by this iterator. Therefore it
+  is important that tablespaces are listed in correct order - first tablespace 
+  at position 0, then at position 1 and so on.
+ */ 
+class Image_info::Ts_iterator
+ : public Image_info::Iterator
+{
+ public:
+
+  Ts_iterator(const Image_info&);
+
+ protected:
+
+  uint pos;
+  Obj* get_ptr() const;
+  bool next();
+};
+
+inline
+Image_info::Ts_iterator::Ts_iterator(const Image_info &info)
+  :Iterator(info), pos(0)
+{}
+
+
 /**
   Used to iterate over all databases stored in a backup image.
 
@@ -625,6 +690,93 @@ Image_info::Dbobj_iterator::Dbobj_iterator(const Image_info &info, const Db &db)
 {}
 
 
+/**
+  Used to iterate over all global objects for which we store information in the
+  neta-data section of backup image.
+
+  Currently only global objects handled are tablespaces and databases.
+ */
+class Image_info::Global_iterator
+ : public Image_info::Iterator
+{
+  /**
+    Indicates whether tablespaces or databases are being currently enumerated.
+   */ 
+  enum { TABLESPACES, DATABASES, DONE } mode;
+
+  Iterator *m_it;	///< Points at the currently used iterator.
+  Obj *m_obj;	        ///< Points at next object to be returned by this iterator.
+
+ public:
+
+  Global_iterator(const Image_info&);
+
+ private:
+
+  Obj* get_ptr() const;
+  bool next();
+};
+
+inline
+Image_info::Global_iterator::Global_iterator(const Image_info &info)
+ :Iterator(info), mode(TABLESPACES), m_it(NULL), m_obj(NULL)
+{
+  m_it= m_info.get_tablespaces();
+  next();
+}
+
+
+inline
+Image_info::Obj*
+Image_info::Global_iterator::get_ptr() const
+{
+  return m_obj;
+}
+
+inline
+bool
+Image_info::Global_iterator::next()
+{
+  if (mode == DONE)
+    return FALSE;
+
+  DBUG_ASSERT(m_it);
+
+  // get next object from the current iterator
+  m_obj= (*m_it)++;
+
+  if (m_obj)
+    return TRUE;
+
+  /*
+    If the current iterator has finished (m_obj == NULL) then, depending on
+    the mode, either switch to the next iterator or mark end of the sequence.
+  */
+
+  delete m_it;
+
+  switch (mode) {
+
+  case TABLESPACES:
+
+    // We have finished enumerating tablespaces, move on to databases.
+    mode= DATABASES;
+    m_it= m_info.get_dbs();
+    m_obj= (*m_it)++;
+    return m_obj != NULL;
+
+  case DATABASES:
+
+    mode= DONE;
+
+  case DONE:
+
+    break;
+  }
+
+  return FALSE;
+}
+
 /********************************************************************
  
    Inline members of Image_info class 
@@ -636,6 +788,13 @@ inline
 uint Image_info::db_count() const
 { 
   return m_dbs.count();
+}
+
+/// Returns number of tablespaces in the image.
+inline
+uint Image_info::ts_count() const
+{ 
+  return m_ts_map.count();
 }
 
 /// Returns total number of tables in the image.
@@ -651,6 +810,36 @@ ushort Image_info::snap_count() const
 { 
   return st_bstream_image_header::snap_count;
 }
+
+
+/**
+  Return database stored in the catalogue.
+
+  @param[in]  pos positon of the database in the catalogue
+
+  @returns Pointer to @c Image_info::Db instance storing information 
+  about the database or NULL if no database is stored at given position.
+ */ 
+inline
+Image_info::Db* Image_info::get_db(uint pos) const
+{
+  return m_dbs[pos];
+}
+
+/**
+  Return tablespace stored in the catalogue.
+
+  @param[in]  pos positon of the tablespace in the catalogue
+
+  @returns Pointer to @c Image_info::Ts instance storing information 
+  about the tablespace or NULL if no tablespace is stored at given position.
+ */ 
+inline
+Image_info::Ts* Image_info::get_ts(uint pos) const
+{
+  return m_ts_map[pos];
+}
+
 
 /**
   Save time inside a @c bstream_time_t structure (helper function).
@@ -711,22 +900,48 @@ void Image_info::save_binlog_pos(const ::LOG_INFO &li)
   binlog_pos.file= const_cast<char*>(m_binlog_file.ptr());
 }
 
+/// Returns an iterator enumerating all databases stored in backup catalogue.
 inline
-Image_info::Db_iterator* Image_info::get_dbs()
+Image_info::Db_iterator* Image_info::get_dbs() const
 {
   return new Db_iterator(*this);
 }
 
+/// Returns an iterator enumerating all tablespaces stored in backup catalogue.
 inline
-Image_info::Perdb_iterator* Image_info::get_perdb()
+Image_info::Ts_iterator* Image_info::get_tablespaces() const
+{
+  return new Ts_iterator(*this);
+}
+
+/** 
+  Returns an iterator enumerating all per-database objects (from all databases)
+  for which we store meta-data.
+  
+  @note This iterator enumerates only non-table objects - tables are handled
+  separately.
+ */
+inline
+Image_info::Perdb_iterator* Image_info::get_perdb() const
 {
   return new Perdb_iterator(*this);
 }
 
+/// Returns an iterator enumerating all objects in a given database.
 inline
-Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db)
+Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db) const
 {
   return new Dbobj_iterator(*this, db);
+}
+
+/** 
+  Returns an iterator enumerating all global objects for which we need to store
+  some meta-data.
+ */
+inline
+Image_info::Global_iterator* Image_info::get_global() const
+{
+  return new Global_iterator(*this);
 }
 
 /********************************************************************
@@ -804,6 +1019,20 @@ const st_bstream_db_info* Image_info::Db::db_info() const
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
+const st_bstream_item_info* Image_info::Ts::info() const 
+{
+  return &base; 
+}
+
+inline
+const st_bstream_ts_info* Image_info::Ts::ts_info() const 
+{
+  return this; 
+}
+
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
 const st_bstream_item_info* Image_info::Table::info() const 
 {
   return &base.base; 
@@ -816,6 +1045,14 @@ const st_bstream_item_info* Image_info::Dbobj::info() const
   return &base; 
 }
 
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
+const char* Image_info::Ts::describe(describe_buf &buf) const
+{
+  my_snprintf(buf, sizeof(buf), "`%s`", Obj::m_name.ptr());
+  return buf;
+}
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
@@ -839,6 +1076,14 @@ const char* Image_info::Dbobj::describe(Obj::describe_buf &buf) const
   return Table_ref::describe(buf);
 }
 
+
+/// Implementation of @c Image_info::Obj virtual method.
+inline
+obs::Obj* Image_info::Ts::materialize(uint ver, const ::String &sdata)
+{
+  delete m_obj_ptr;
+  return m_obj_ptr= obs::materialize_tablespace(&m_name, ver, &sdata); 
+}
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
@@ -1003,6 +1248,33 @@ inline
 bool Image_info::Db_iterator::next()
 {
   if (pos < m_info.db_count())
+  {
+    pos++;
+    return TRUE;
+  }
+  else
+    return FALSE;
+}
+
+
+/// Implementation of @c Image_info::Iterator virtual method.
+inline
+Image_info::Obj* Image_info::Ts_iterator::get_ptr() const
+{
+  /*
+    There should be no "holes" in the sequence of tablespaces. That is,
+    if there are N tablespaces in the catalogue then for i=0,1,..,N-1, 
+    m_info.m_ts_map[i] should store pointer to the i-th database.
+   */ 
+  DBUG_ASSERT(pos >= m_info.ts_count() || m_info.m_ts_map[pos]);
+  return m_info.m_ts_map[pos];
+}
+
+/// Implementation of @c Image_info::Iterator virtual method.
+inline
+bool Image_info::Ts_iterator::next()
+{
+  if (pos < m_info.ts_count())
   {
     pos++;
     return TRUE;

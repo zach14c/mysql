@@ -251,7 +251,7 @@ struct st_bstream_ts_info
 /**
   Describes database item.
 
-  Currently no data specific to database items is used.
+  Currently no data specific to database items are used.
 */
 struct st_bstream_db_info
 {

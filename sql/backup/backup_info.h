@@ -52,6 +52,7 @@ class Backup_info: public backup::Image_info
 
   backup::Snapshot_info* find_backup_engine(const backup::Table_ref&);
 
+  Ts* add_ts(obs::Obj*);
   Db* add_db(obs::Obj*);
   Dbobj* add_db_object(Db&, const obj_type, obs::Obj*);
   Table* add_table(Db&, obs::Obj*);
@@ -74,6 +75,16 @@ class Backup_info: public backup::Image_info
     can be quickly located if it was already created. 
    */ 
   Map<storage_engine_ref, backup::Native_snapshot > native_snapshots;
+
+  struct Ts_hash_node;	///< Hash nodes used in @c ts_hash.
+
+  /**
+    Hash storing all tablespaces added to the backup catalogue.
+    
+    Used for quickly determining if the catalogue contains a given
+    tablespace or not.
+   */ 
+  HASH   ts_hash;
 
   String serialization_buf; ///< Used to store serialization strings of objects.
   

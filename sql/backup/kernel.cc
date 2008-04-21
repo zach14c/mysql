@@ -61,6 +61,8 @@
 #include "../si_objects.h"
 
 #include "backup_kernel.h"
+#include "backup_info.h"
+#include "restore_info.h"
 #include "logger.h"
 #include "stream.h"
 #include "debug.h"
@@ -1072,14 +1074,18 @@ int bcat_add_item(st_bstream_image_header *catalogue,
 
   switch (item->type) {
 
+  case BSTREAM_IT_TABLESPACE:
+  {
+    Image_info::Ts *ts= info->add_ts(name_str, item->pos); // reports errors
+
+    return ts ? BSTREAM_OK : BSTREAM_ERROR;
+  }
+
   case BSTREAM_IT_DB:
   {
     Image_info::Db *db= info->add_db(name_str, item->pos); // reports errors
 
-    if (!db)
-      return BSTREAM_ERROR;
-
-    return BSTREAM_OK;
+    return db ? BSTREAM_OK : BSTREAM_ERROR;
   }
 
   case BSTREAM_IT_TABLE:
@@ -1112,10 +1118,7 @@ int bcat_add_item(st_bstream_image_header *catalogue,
     Image_info::Table *tbl= info->add_table(*db, name_str, *snap, item->pos); 
                                                              // reports errors
     
-    if (!tbl)
-      return BSTREAM_ERROR;
-
-    return BSTREAM_OK;
+    return tbl ? BSTREAM_OK : BSTREAM_ERROR;
   }
 
   case BSTREAM_IT_VIEW:
@@ -1167,7 +1170,6 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   switch (type) {
 
   case BSTREAM_IT_PERTABLE: // per-table objects
-  case BSTREAM_IT_TABLESPACE: // tablespaces - not supported yet
     return &null_iter;
 
   case BSTREAM_IT_CHARSET:  // character sets
@@ -1177,13 +1179,39 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   case BSTREAM_IT_USER:     // users
     return &null_iter;
 
+  case BSTREAM_IT_TABLESPACE:     // table spaces
+  {
+    Backup_info::Ts_iterator *it= info->get_tablespaces();
+  
+    if (!it)
+    {
+      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
+      return NULL;
+    }
+
+    return it;
+  }
+
+  case BSTREAM_IT_DB:       // all databases
+  {
+    Backup_info::Db_iterator *it= info->get_dbs();
+  
+    if (!it)
+    {
+      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
+      return NULL;
+    }
+
+    return it;
+  }
+  
   case BSTREAM_IT_PERDB:    // per-db objects, except tables
   {
     Backup_info::Perdb_iterator *it= info->get_perdb();
   
     if (!it)
     {
-      info->m_ctx.fatal_error(ER_BACKUP_LIST_PERDB);
+      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
       return NULL;
     }
 
@@ -1191,14 +1219,12 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   }
 
   case BSTREAM_IT_GLOBAL:   // all global objects
-    // note: only global items (for which meta-data is stored) are databases
-  case BSTREAM_IT_DB:       // all databases
   {
-    Backup_info::Db_iterator *it= info->get_dbs();
+    Backup_info::Global_iterator *it= info->get_global();
   
     if (!it)
     {
-      info->m_ctx.fatal_error(ER_BACKUP_LIST_DBS);
+      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
       return NULL;
     }
 
@@ -1347,6 +1373,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   DBUG_ASSERT(item);
 
   Restore_info *info= static_cast<Restore_info*>(catalogue);
+  THD *thd= info->m_ctx.thd();
   int create_err= 0;
 
   switch (item->type) {
@@ -1358,6 +1385,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   case BSTREAM_IT_SFUNC:  create_err= ER_BACKUP_CANT_RESTORE_SROUT; break;
   case BSTREAM_IT_EVENT:  create_err= ER_BACKUP_CANT_RESTORE_EVENT; break;
   case BSTREAM_IT_TRIGGER: create_err= ER_BACKUP_CANT_RESTORE_TRIGGER; break;
+  case BSTREAM_IT_TABLESPACE: create_err= ER_BACKUP_CANT_RESTORE_TS; break;
   
   /*
     TODO: Decide what to do when we come across unknown item:
@@ -1389,16 +1417,48 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   obs::Obj *sobj= obj->materialize(0, sdata);
 
   Image_info::Obj::describe_buf buf;
+  const char *desc= obj->describe(buf);
 
   if (!sobj)
   {
-    info->m_ctx.fatal_error(create_err, obj->describe(buf));
+    info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;
   }
 
-  if (sobj->execute(::current_thd))
+  // If we are to create a tablespace, first check if it already exists.
+
+  if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    info->m_ctx.fatal_error(create_err, obj->describe(buf));
+    // if the tablespace exists, there is nothing more to do
+    if (obs::tablespace_exists(thd, sobj))
+    {
+      DBUG_PRINT("restore",(" skipping tablespace which exists"));
+      return BSTREAM_OK;
+    }
+
+    /* 
+      If there is a different tablespace with the same name then we can't 
+      re-create the original tablespace used by tables being restored. We report 
+      this and cancel restore process.
+    */ 
+
+    Obj *ts= obs::is_tablespace(thd, sobj->get_name()); 
+
+    if (ts)
+    {
+      DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
+      info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc,
+                              obs::describe_tablespace(sobj)->ptr(),
+                              obs::describe_tablespace(ts)->ptr());
+      return BSTREAM_ERROR;
+    }
+  }
+
+  // Create the object.
+
+  if (sobj->execute(thd))
+  {
+    info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;
   }
   
@@ -1440,6 +1500,7 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
   case BSTREAM_IT_SFUNC:  meta_err= ER_BACKUP_GET_META_SROUT; break;
   case BSTREAM_IT_EVENT:  meta_err= ER_BACKUP_GET_META_EVENT; break;
   case BSTREAM_IT_TRIGGER: meta_err= ER_BACKUP_GET_META_TRIGGER; break;
+  case BSTREAM_IT_TABLESPACE: meta_err= ER_BACKUP_GET_META_TS; break;
   
   /*
     This can't happen - the item was obtained from the backup kernel.
@@ -1467,7 +1528,7 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
   ::String *buf= &(info->serialization_buf);
   buf->length(0);
 
-  if (obj->m_obj_ptr->serialize(::current_thd, buf))
+  if (obj->m_obj_ptr->serialize(info->m_ctx.thd(), buf))
   {
     Image_info::Obj::describe_buf dbuf;
 
