@@ -2708,6 +2708,17 @@ sub rm_ndbcluster_tables ($) {
 }
 
 
+sub rm_falcon_tables ($) {
+  my $dir=       shift;
+  foreach my $bin ( glob("$dir/*.fl1"),
+                    glob("$dir/*.fl2"),
+                    glob("$dir/*.fts"))
+  {
+    unlink($bin);
+  }
+}
+
+
 ##############################################################################
 #
 #  Run the benchmark suite
@@ -3998,6 +4009,7 @@ sub stop_all_servers () {
   foreach my $mysqld (@{$master}, @{$slave})
   {
     rm_ndbcluster_tables($mysqld->{'path_myddir'});
+    rm_falcon_tables($mysqld->{'path_myddir'});
   }
 }
 
@@ -4274,6 +4286,7 @@ sub run_testcase_stop_servers($$$) {
     {
       # Remove ndbcluster tables if server is stopped
       rm_ndbcluster_tables($mysqld->{'path_myddir'});
+      rm_falcon_tables($mysqld->{'path_myddir'});
     }
   }
 }
