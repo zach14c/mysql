@@ -54,6 +54,7 @@ public:
 	Connection*			getOpenConnection(void);
 	Connection*			createDatabase(void);
 	Table*				createTable(StorageConnection *storageConnection, const char* tableName, const char *schemaName, const char* sql, int64 autoIncrementValue);
+	Table*				upgradeTable(StorageConnection *storageConnection, const char* tableName, const char *schemaName, const char* sql, int64 autoIncrementValue);
 	int					savepointSet(Connection* connection);
 	int					savepointRelease(Connection* connection, int savePoint);
 	int					savepointRollback(Connection* connection, int savePoint);

@@ -69,6 +69,7 @@ public:
 	virtual void	clearRecord(void);
 	virtual void	clearBitmap(void);
 	virtual int		create(const char *sql, int64 autoIncrementValue);
+	virtual int		upgrade(const char *sql, int64 autoIncrementValue);
 	virtual int		open(void);
 	virtual int		deleteTable(void);
 	virtual int		deleteRow(int recordNumber);

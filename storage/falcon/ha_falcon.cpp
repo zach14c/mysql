@@ -107,6 +107,7 @@ static const ulonglong default_table_flags = (	  HA_REC_NOT_IN_SEQ
 												| HA_PARTIAL_COLUMN_READ
 												| HA_CAN_GEOMETRY
 												//| HA_AUTO_PART_KEY
+												| HA_ONLINE_ALTER
 												| HA_BINLOG_ROW_CAPABLE);
 
 static struct st_mysql_show_var falconStatus[] =
@@ -732,8 +733,7 @@ ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 }
 
 
-int StorageInterface::create(const char *mySqlName, TABLE *form,
-                            HA_CREATE_INFO *info)
+int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO *info)
 {
 	DBUG_ENTER("StorageInterface::create");
 	tempTable = (info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
@@ -768,32 +768,9 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 	CmdGen gen;
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
-	gen.gen("create table \"%s\".\"%s\" (\n", schemaName, tableName);
-	const char *sep = "";
-	char nameBuffer[129];
-
-	for (n = 0; n < form->s->fields; ++n)
-		{
-		Field *field = form->field[n];
-		CHARSET_INFO *charset = field->charset();
-
-		if (charset)
-			storageShare->registerCollation(charset->name, charset);
-
-		storageShare->cleanupFieldName(field->field_name, nameBuffer,
-										sizeof(nameBuffer));
-		gen.gen("%s  \"%s\" ", sep, nameBuffer);
-		int ret = genType(field, &gen);
-
-		if (ret)
-			DBUG_RETURN(ret);
-
-		if (!field->maybe_null())
-			gen.gen(" not null");
-
-		sep = ",\n";
-		}
-
+	//gen.gen("create table \"%s\".\"%s\" (\n", schemaName, tableName);
+	genTable(form, &gen);
+	
 	if (form->found_next_number_field) // && form->s->next_number_key_offset == 0)
 		{
 		incrementValue = info->auto_increment_value;
@@ -802,6 +779,7 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 			incrementValue = 1;
 		}
 
+	/***
 	if (form->s->primary_key < form->s->keys)
 		{
 		KEY *key = form->key_info + form->s->primary_key;
@@ -810,6 +788,7 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 		}
 
 	gen.gen (")");
+	***/
 	const char *tableSpace = NULL;
 
 	if (tempTable)
@@ -2052,6 +2031,94 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	DBUG_RETURN(getMySqlError(ret));
 }
 
+int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes)
+{
+	DBUG_ENTER("StorageInterface::check_if_supported_alter");
+	ulonglong bits = alter_flags->to_ulonglong();
+	
+	if (alter_flags->is_set(HA_ADD_COLUMN))
+		{
+		Field *field = altered_table->field[altered_table->s->fields - 1];
+
+		if (!field->maybe_null())
+			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+		
+		DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
+		}
+		
+   DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+}
+
+int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase1");
+ 	ulonglong bits = alter_flags->to_ulonglong();
+	
+	if (alter_flags->is_set(HA_ADD_COLUMN))
+		DBUG_RETURN(addColumn(thd, altered_table, create_info, alter_info, alter_flags));
+		
+   DBUG_RETURN(HA_ERR_UNSUPPORTED);
+}
+
+int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase2");
+	
+	DBUG_RETURN(0);
+}
+
+int StorageInterface::alter_table_phase3(THD* thd, TABLE* altered_table)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase3");
+	
+	DBUG_RETURN(0);
+}
+
+
+int StorageInterface::addColumn(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
+{
+	int ret;
+	int64 incrementValue = 0;
+	CmdGen gen;
+	genTable(alteredTable, &gen);
+	
+	/***
+	if (alteredTable->found_next_number_field)
+		{
+		incrementValue = alterInfo->auto_increment_value;
+
+		if (incrementValue == 0)
+			incrementValue = 1;
+		}
+	***/
+	
+	/***
+	if (alteredTable->s->primary_key < alteredTable->s->keys)
+		{
+		KEY *key = alteredTable->key_info + alteredTable->s->primary_key;
+		gen.gen(",\n  primary key ");
+		genKeyFields(key, &gen);
+		}
+
+	gen.gen (")");
+	***/
+	
+	if ((ret = storageTable->upgrade(gen.getString(), incrementValue)))
+		return (error(ret));
+
+	/***
+	for (n = 0; n < form->s->keys; ++n)
+		if (n != form->s->primary_key)
+			if ((ret = createIndex(schemaName, tableName, form->key_info + n, n)))
+				{
+				storageTable->deleteTable();
+
+				return (error(ret));
+				}
+	***/
+	
+	return 0;
+}
 uint StorageInterface::max_supported_key_length(void) const
 {
 	// Assume 4K page unless proven otherwise.
@@ -2116,6 +2183,47 @@ int StorageInterface::setIndexes(void)
 	return 0;
 }
 
+
+int StorageInterface::genTable(TABLE* table, CmdGen* gen)
+{
+	const char *tableName = storageTable->getName();
+	const char *schemaName = storageTable->getSchemaName();
+	gen->gen("upgrade table \"%s\".\"%s\" (\n", schemaName, tableName);
+	const char *sep = "";
+	char nameBuffer[129];
+
+	for (uint n = 0; n < table->s->fields; ++n)
+		{
+		Field *field = table->field[n];
+		CHARSET_INFO *charset = field->charset();
+
+		if (charset)
+			storageShare->registerCollation(charset->name, charset);
+
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		gen->gen("%s  \"%s\" ", sep, nameBuffer);
+		int ret = genType(field, gen);
+
+		if (ret)
+			return (ret);
+
+		if (!field->maybe_null())
+			gen->gen(" not null");
+
+		sep = ",\n";
+		}
+
+	if (table->s->primary_key < table->s->keys)
+		{
+		KEY *key = table->key_info + table->s->primary_key;
+		gen->gen(",\n  primary key ");
+		genKeyFields(key, gen);
+		}
+
+	gen->gen (")");
+
+	return 0;
+}
 
 int StorageInterface::genType(Field* field, CmdGen* gen)
 {

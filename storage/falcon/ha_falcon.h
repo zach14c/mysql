@@ -96,10 +96,17 @@ public:
 	virtual int		optimize(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		check(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		repair(THD* thd, HA_CHECK_OPT* check_opt);
+
+	virtual int		check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes);
+	virtual int		alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	virtual int		alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	virtual int		alter_table_phase3(THD* thd, TABLE* altered_table);
 	
 #ifdef TRUNCATE_ENABLED
 	virtual int		delete_all_rows(void);
 #endif
+
+	int				addColumn(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
 
 	void			getDemographics(void);
 	int				createIndex(const char *schemaName, const char *tableName,
@@ -111,6 +118,7 @@ public:
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
 	int				setIndexes(void);
+	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
 	void			encodeRecord(uchar *buf, bool updateFlag);
