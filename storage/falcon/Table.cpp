@@ -84,6 +84,7 @@ static const char *relatedTables [] = {
 #undef THIS_FILE
 static const char THIS_FILE[]=__FILE__;
 #endif
+static bool needUniqueCheck(Index *index, Record *record);
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -347,15 +348,6 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		// Make insert/update atomic, then check for unique index duplicats
 		
 		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
-		
-		if (indexes)
-			{
-			checkUniqueIndexes(transaction, record);
-
-			FOR_INDEXES(index, this);
-				index->insert(record, transaction);
-			END_FOR;
-			}
 
 		// Verify that record is valid
 
@@ -363,7 +355,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		transaction->addRecord(record);
 		insert(record, NULL, recordNumber);
 		inserted = true;
-		
+		insertIndexes(transaction, record);
 		updateInversion(record, transaction);
 		fireTriggers(transaction, PostInsert, NULL, record);
 		record->release();
@@ -999,7 +991,7 @@ Record* Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *tra
 			
 		recordToRollback->printRecord("Table::rollbackRecord");
 		insert(priorRecord, recordToRollback, recordToRollback->recordNumber);
-		ASSERT(false);
+		//ASSERT(false);
 		}
 
 	if (!priorRecord && recordToRollback->recordNumber >= 0)
@@ -1182,6 +1174,57 @@ void Table::makeNotSearchable(Field *field, Transaction *transaction)
 	database->flushInversion(transaction);
 }
 
+/**
+@brief		index update , combined with unique check (atomic)
+
+		Determine if the record we intend to write will have a duplicate conflict
+			with any pending or visible records.
+@details	For each  unique index, obtain an exclusive lock and check the index
+			update index if the search succeeded by not finding a duplicate.
+			Retry if a wait occurred.
+			If a duplicate is found, an exception should be caught by the caller.
+		non-unique indexes are  updated without any check
+**/
+void Table::updateIndexes(Transaction *transaction, RecordVersion *record, Record *oldRecord)
+{
+	if (indexes)
+	{
+	FOR_INDEXES(index, this);
+		Sync sync(&(index->syncUnique), "Table::updateIndexes");
+		if(needUniqueCheck(index,record))
+			for(;;)
+			{
+			sync.lock(Exclusive);
+			if (!checkUniqueIndex(index, transaction, record , &sync))
+				break;
+			}
+		index->update(oldRecord, record, transaction);
+	END_FOR;
+	}
+}
+
+/**
+@brief		Uniqueness check combined with index insert (atomic)
+**/
+void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
+{
+	if (indexes)
+	{
+	FOR_INDEXES(index, this);
+		Sync sync(&(index->syncUnique), "Table::insertIndexes");
+		if(needUniqueCheck(index,record))
+			for(;;)
+			{
+			sync.lock(Exclusive);
+			if(!checkUniqueIndex(index, transaction, record, &sync))
+				break;
+			}
+		index->insert(record, transaction);
+	END_FOR;
+	}
+}
+
+
 void Table::update(Transaction * transaction, Record * oldRecord, int numberFields, Field** updateFields, Value * * values)
 {
 	database->preUpdate();
@@ -1243,19 +1286,12 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		
 		// Make insert/update atomic, then check for unique index duplicats
 
-		if (indexes)
-			{
-			checkUniqueIndexes(transaction, record);
-
-			FOR_INDEXES(index, this);
-				index->update(oldRecord, record, transaction);
-			END_FOR;
-			}
 
 		scavenge.lock(Shared);
 		validateAndInsert(transaction, record);
 		transaction->addRecord(record);
 		updated = true;
+		updateIndexes(transaction, record, oldRecord);
 
 		updateInversion(record, transaction);
 		fireTriggers(transaction, PostUpdate, oldRecord, record);
@@ -2415,40 +2451,7 @@ bool Table::isDuplicate(Index *index, Record *record1, Record *record2)
 
 	return true;
 }
-/**
-@brief		Determine if the record we intend to write will have a duplicate conflict
-			with any pending or visible records.
-@details	For each index, call checkUniqueIndex.  
-			Return if the search succeeded by not finding a duplicate.
-			Retry if a wait occurred.
-			If a duplicate is found, an exception should be caught by the caller.
-**/
 
-void Table::checkUniqueIndexes(Transaction *transaction, RecordVersion *record)
-{
-	Record *oldRecord = record->getPriorVersion();
-	bool retry = true;
-
-	while (retry)
-		{
-		retry = false;
-		FOR_INDEXES(index, this);
-			{
-			if (INDEX_IS_UNIQUE(index->type) &&
-				(!oldRecord || index->changed(record, oldRecord)))
-				{
-				retry = checkUniqueIndex(index, transaction, record);
-				if (retry)
-					break;
-				}
-			if (retry)
-				break;
-			}
-		END_FOR;
-		}
-
-	return;
-}
 
 /**
 @brief		Determine if the record we intend to write will have a duplicate conflict
@@ -2458,7 +2461,7 @@ void Table::checkUniqueIndexes(Transaction *transaction, RecordVersion *record)
 			Return false if no duplicate was found.
 **/
 
-bool Table::checkUniqueIndex(Index *index, Transaction *transaction, RecordVersion *record)
+bool Table::checkUniqueIndex(Index *index, Transaction *transaction, RecordVersion *record, Sync *sync)
 {
 	Bitmap bitmap;
 	IndexKey indexKey(index);
@@ -2467,7 +2470,7 @@ bool Table::checkUniqueIndex(Index *index, Transaction *transaction, RecordVersi
 
 	for (int32 recordNumber = 0; (recordNumber = bitmap.nextSet(recordNumber)) >= 0; ++recordNumber)
 		{
-		int retry = checkUniqueRecordVersion(recordNumber, index, transaction, record);
+		int retry = checkUniqueRecordVersion(recordNumber, index, transaction, record, sync);
 		
 		if (retry)
 			return true;  // restart the search since a wait occurred.
@@ -2485,7 +2488,7 @@ bool Table::checkUniqueIndex(Index *index, Transaction *transaction, RecordVersi
 			Throw an exception if a duplicate WAS found
 **/
 
-bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transaction *transaction, RecordVersion *record)
+bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transaction *transaction, RecordVersion *record, Sync *syncUnique)
 {
 	Record *rec;
 	Record *oldRecord = record->getPriorVersion();
@@ -2578,7 +2581,8 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			if (state == Active)
 				{
 				syncPrior.unlock(); // release lock before wait
-				
+				syncUnique->unlock(); // release lock before wait
+
 				// Wait for that transaction, then restart checkUniqueIndexes()
 
 				state = transaction->getRelativeState(dup, WAIT_IF_ACTIVE);
@@ -2597,6 +2601,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			else if (activeTransaction)
 				{
 				syncPrior.unlock(); // release lock before wait
+				syncUnique->unlock(); // release lock before wait
 
 				state = transaction->getRelativeState(activeTransaction,
 						activeTransaction->transactionId, WAIT_IF_ACTIVE);
@@ -2998,21 +3003,15 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		
 		// Make insert/update atomic, then check for unique index duplicats
 
-		if (indexes)
-			{
-			checkUniqueIndexes(transaction, record);
-
-			FOR_INDEXES(index, this);
-				index->insert (record, transaction);
-			END_FOR;
-			}
 
 		// Do the actual insert
 
 		transaction->addRecord(record);
 		bool ret = insert(record, NULL, recordNumber);
-		ASSERT(ret);
 		inserted = true;
+		insertIndexes(transaction, record);
+		ASSERT(ret);
+
 
 		record->release();
 		}
@@ -3121,16 +3120,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 				attachment->preUpdate(this, record);
 		END_FOR;
 
-		// Make insert/update atomic, then check for unique index duplicats
 
-		if (indexes)
-			{
-			checkUniqueIndexes(transaction, record);
-
-			FOR_INDEXES(index, this);
-				index->update(oldRecord, record, transaction);
-			END_FOR;
-			}
 
 		//updateInversion(record, transaction);
 		scavenge.lock(Shared);
@@ -3144,6 +3134,8 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 			}
 
 		updated = true;
+		// Make insert/update atomic, then check for unique index duplicats
+		updateIndexes(transaction, record, oldRecord);
 		//fireTriggers(transaction, PostUpdate, oldRecord, record);
 
 		// If this is a re-update in the same transaction and the same savepoint,
@@ -3772,3 +3764,11 @@ SyncObject* Table::getSyncPrior(int recordNumber)
 	return syncPriorVersions + lockNumber;
 }
 
+
+static bool needUniqueCheck(Index *index, Record *record)
+{
+	Record *oldRecord = record->getPriorVersion();
+	return (INDEX_IS_UNIQUE(index->type) &&
+		(!oldRecord || index->changed(record, oldRecord)));
+
+}

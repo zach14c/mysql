@@ -103,8 +103,8 @@ public:
 	void		makeNotSearchable (Field *field, Transaction *transaction);
 	bool		dropForeignKey (int fieldCount, Field **fields, Table *references);
 	void		checkUniqueIndexes (Transaction *transaction, RecordVersion *record);
-	bool		checkUniqueIndex(Index *index, Transaction *transaction, RecordVersion *record);
-	bool		checkUniqueRecordVersion(int32 recordNumber, Index *index, Transaction *transaction, RecordVersion *record);
+	bool		checkUniqueIndex(Index *index, Transaction *transaction, RecordVersion *record, Sync *sync);
+	bool		checkUniqueRecordVersion(int32 recordNumber, Index *index, Transaction *transaction, RecordVersion *record, Sync *sync);
 	bool		isDuplicate (Index *index, Record *record1, Record *record2);
 	void		checkDrop();
 	Field*		findField (const WCString *fieldName);
@@ -208,9 +208,11 @@ public:
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
 	bool			insert (Record *record, Record *prior, int recordNumber);
+	void			insertIndexes(Transaction *transaction, RecordVersion *record);
 	
 	void			update (Transaction *transaction, Record *record, int numberFields, Field **fields, Value** values);
 	void			update(Transaction * transaction, Record *oldRecord, Stream *stream);
+	void			updateIndexes(Transaction *transaction, RecordVersion *record, Record *oldRecord);
 	
 	void			deleteRecord (Transaction *transaction, Record *record);
 	void			deleteRecord (int recordNumber);

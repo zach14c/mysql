@@ -152,6 +152,7 @@ public:
 	int			DIHashTableCounts;
 	int			DIHashTableSlotsUsed;
 	SyncObject	syncDIHash;
+	SyncObject	syncUnique;
 };
 
 #endif // !defined(AFX_INDEX_H__02AD6A44_A433_11D2_AB5B_0000C01D2301__INCLUDED_)
