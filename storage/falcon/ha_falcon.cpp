@@ -2035,8 +2035,9 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 {
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
 	ulonglong bits = alter_flags->to_ulonglong();
+	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
 	
-	if (alter_flags->is_set(HA_ADD_COLUMN))
+	if (!tempTable && alter_flags->is_set(HA_ADD_COLUMN))
 		{
 		Field *field = NULL;
 		
