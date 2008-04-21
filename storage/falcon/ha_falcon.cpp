@@ -2038,9 +2038,22 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		{
-		Field *field = altered_table->field[altered_table->s->fields - 1];
-
-		if (!field->maybe_null())
+		Field *field = NULL;
+		
+		for (uint n = 0; n < table->s->fields; ++n, field = NULL)
+			{
+			field = altered_table->s->field[n];
+			
+			if (strcmp(table->s->field[n]->field_name, field->field_name) != 0)
+				break;
+			}
+		
+		if (!field)
+			field = altered_table->field[altered_table->s->fields - 1];
+		else
+			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);	// temporary until field skipping gets implemented
+		
+		if (!field->real_maybe_null())
 			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 		
 		DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
