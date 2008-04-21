@@ -133,6 +133,17 @@ int StorageTableShare::create(StorageConnection *storageConnection, const char* 
 	return 0;
 }
 
+int StorageTableShare::upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue)
+{
+	if (!(table = storageDatabase->upgradeTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
+		return StorageErrorTableExits;
+	
+	if (autoIncrementValue)
+		sequence = storageDatabase->findSequence(name, schemaName);
+		
+	return 0;
+}
+
 int StorageTableShare::deleteTable(StorageConnection *storageConnection)
 {
 	int res = storageDatabase->deleteTable(storageConnection, this);

@@ -163,13 +163,13 @@ bool IO::openFile(const char * name, bool readOnly)
 #ifndef _WIN32
 	signal (SIGXFSZ, SIG_IGN);
 
-#ifndef STORAGE_ENGINE
+//#ifndef STORAGE_ENGINE
 	if (flock (fileId, (readOnly) ? LOCK_SH : LOCK_EX))
 		{
 		::close (fileId);
 		throw SQLEXCEPTION (CONNECTION_ERROR, "file \"%s\" in use by another process", name);
 		}
-#endif
+//#endif
 #endif
 
 	//Log::debug("IO::openFile %s (%d) fd: %d\n", (const char*) fileName, readOnly, fileId);

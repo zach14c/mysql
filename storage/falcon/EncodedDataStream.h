@@ -307,7 +307,7 @@ public:
 	virtual void encodeOpaque(int length, const char *string);
 	EncodedDataStream();
 	EncodedDataStream (Stream *stream);
-	EncodedDataStream(const unsigned char *data);
+	EncodedDataStream(const unsigned char *data, uint length);
 	virtual ~EncodedDataStream();
 
 	virtual void	encodeDouble (double dbl);
@@ -331,7 +331,7 @@ public:
 	virtual DataStreamType		decode();
 
 	void			setStream (Stream *newStream);
-	void			setData (const unsigned char *data);
+	void			setData (const unsigned char *data, uint length);
 	void			encode (int type, Value *value);
 	
 	static int		init(void);
@@ -366,6 +366,7 @@ public:
 
 	Stream				*stream;
 	const unsigned char	*ptr;
+	const unsigned char	*end;
 	DataStreamType		type;
 	int					scale;
 	BigInt				bigInt;

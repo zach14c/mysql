@@ -70,6 +70,11 @@ int StorageTable::create(const char* sql, int64 autoIncrementValue)
 	return share->create(storageConnection, sql, autoIncrementValue);
 }
 
+int StorageTable::upgrade(const char* sql, int64 autoIncrementValue)
+{
+	return share->upgrade(storageConnection, sql, autoIncrementValue);
+}
+
 int StorageTable::open(void)
 {
 	return share->open();
@@ -306,7 +311,12 @@ void StorageTable::setRecord(Record* newRecord, bool locked)
 	
 	record = newRecord;
 	recordLocked = locked;
-	dataStream.setData((const UCHAR*) record->getEncodedRecord());
+	
+	// The following is confusing because Record::getEncodeRecord returns pointer to
+	// the actual data fields while Record::getEncodedSize return length of the data fields plus
+	// a two byte format number.
+	
+	dataStream.setData((const UCHAR*) record->getEncodedRecord(), record->getEncodedSize() - sizeof(USHORT));
 }
 
 void StorageTable::clearRecord(void)

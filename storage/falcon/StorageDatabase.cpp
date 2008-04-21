@@ -216,6 +216,41 @@ Table* StorageDatabase::createTable(StorageConnection *storageConnection, const 
 	return findTable(tableName, schemaName);
 }
 
+Table* StorageDatabase::upgradeTable(StorageConnection *storageConnection, const char* tableName, const char *schemaName, const char* sql, int64 autoIncrementValue)
+{
+	Database *database = masterConnection->database;
+	
+	if (!user)
+		if ((user = database->findUser(ACCOUNT)))
+			user->addRef();		
+	
+	Statement *statement = masterConnection->createStatement();
+	
+	try
+		{
+		Table *table = database->findTable(schemaName, tableName);
+		statement->execute(sql);
+		
+		if (autoIncrementValue)
+			{
+			char buffer[1024];
+			snprintf(buffer, sizeof(buffer), "create sequence  %s.\"%s\" start with " I64FORMAT, schemaName, tableName, autoIncrementValue - 1);
+			statement->execute(buffer);
+			}
+			
+		statement->release();
+		}
+	catch (SQLException& exception)
+		{
+		statement->release();
+		storageConnection->setErrorText(&exception);
+		
+		return NULL;
+		}
+		
+	return findTable(tableName, schemaName);
+}
+
 Table* StorageDatabase::findTable(const char* tableName, const char *schemaName)
 {
 	return masterConnection->database->findTable(schemaName, tableName);
