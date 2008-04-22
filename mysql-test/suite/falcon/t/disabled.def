@@ -10,17 +10,5 @@
 #
 ##############################################################################
 
-#falcon_bug_22150    : Bug#34890 2008-02-27 hakank Open bug
-#falcon_bug_22173    : Bug#35656 2008-04-10 hakank Some Falcon tests fail sporadically
-#falcon_bug_22182    : Disabled until runtime team provides RENAME DATABASE replacement. See WL#4030
-#falcon_bug_22185    : Bug#34890 2008-03-07 hakank Bogus timeout problem
-#falcon_bug_26433    : Bug#32697 falcon_bug_26433.test fails randomly
-#falcon_bug_27951    : Bug#32731 falcon_bug_27951 fails randomly
-#falcon_bug_28095_I  : Bug#35656 2008-03-27 hakank Some Falcon tests fail sporadically
-#falcon_bug_28095_II : Bug#35656 2008-03-27 hakank Some Falcon tests fail sporadically
-#falcon_bug_29246    : Bug#29246 2007-06-21 hakank Currently failing
-#falcon_bug_30124    : Bug#35656 2008-03-27 hakank Some Falcon tests fail sporadically
-#falcon_bug_34351_B  : Bug#35656 2008-03-27 hakank Some Falcon tests fail sporadically
-#falcon_bug_34351_C  : Bug#35503 2008-03-22 hakank Times out from time to time
-#falcon_bug_34890    : Bug#34890 2008-02-11 klewis shows a faux lock timeout
-#falcon_record_cache_memory_leak2    : Bug#34894 2008-02-27 hakank Fails on Pushbuild Windows
+falcon_bug_28095_I  : Bug#xxxxx 2008-04-22 hakank Disabled until soft restart is in main tree
+falcon_bug_28095_II : Bug#xxxxx 2008-03-22 hakank Disabled until soft restart is in main tree
