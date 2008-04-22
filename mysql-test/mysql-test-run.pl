@@ -2046,6 +2046,11 @@ sub environment_setup () {
                         "$path_client_bindir/myisampack",
                         "$glob_basedir/storage/myisam/myisampack",
                         "$glob_basedir/myisam/myisampack"));
+  $ENV{'MYISAM_FTDUMP'}= mtr_native_path(mtr_exe_exists(
+                       vs_config_dirs('storage/myisam', 'myisam_ftdump'),
+                       vs_config_dirs('myisam', 'myisam_ftdump'),
+                       "$path_client_bindir/myisam_ftdump",
+                       "$glob_basedir/storage/myisam/myisam_ftdump"));
 
   # ----------------------------------------------------
   # We are nice and report a bit about our settings
