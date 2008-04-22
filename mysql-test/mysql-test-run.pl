@@ -735,17 +735,6 @@ sub command_line_setup {
     $opt_user= "root"; # We want to do FLUSH xxx commands
   }
 
-  # On QNX, /tmp/dir/master.sock and /tmp/dir//master.sock seem to be
-  # considered different, so avoid the extra slash (/) in the socket
-  # paths.
-  my $sockdir = $opt_tmpdir;
-  $sockdir =~ s|/+$||;
-
-  # On some operating systems, there is a limit to the length of a
-  # UNIX domain socket's path far below PATH_MAX, so try to avoid long
-  # socket path names.
-  $sockdir = tempdir(CLEANUP => 0) if ( length($sockdir) >= 70 );
-
   $path_testlog=         "$opt_vardir/log/mysqltest.log";
   $path_current_testlog= "$opt_vardir/log/current_test";
 
@@ -1186,6 +1175,7 @@ sub environment_setup {
   $ENV{'MYSQL_TEST_DIR'}=     $glob_mysql_test_dir;
   $ENV{'MYSQLTEST_VARDIR'}=   $opt_vardir;
   $ENV{'DEFAULT_MASTER_PORT'}= $mysqld_variables{'master-port'} || 3306;
+  $ENV{'MYSQL_TMP_DIR'}=      $opt_tmpdir;
 
   # ----------------------------------------------------
   # Setup env for NDB
@@ -1302,6 +1292,18 @@ sub remove_stale_vardir () {
   # Safety!
   mtr_error("No, don't remove the vardir when running with --extern")
     if using_extern();
+
+  my $tmpdir= "$opt_vardir/tmp";
+  if ( -l $tmpdir)
+  {
+    # var/tmp is a symlink
+    mtr_verbose("Removing " . readlink($tmpdir));
+    rmtree(readlink($tmpdir));
+
+    # Remove the "tmp" symlink
+    mtr_verbose("unlink($tmpdir)");
+    unlink($tmpdir);
+  }
 
   mtr_verbose("opt_vardir: $opt_vardir");
   if ( $opt_vardir eq $default_vardir )
@@ -1422,8 +1424,21 @@ sub setup_vardir() {
 
   mkpath("$opt_vardir/log");
   mkpath("$opt_vardir/run");
-  mkpath("$opt_vardir/tmp");
-  mkpath($opt_tmpdir) if $opt_tmpdir ne "$opt_vardir/tmp";
+
+  mkpath($opt_tmpdir);
+  if ($opt_tmpdir ne "$opt_vardir/tmp"){
+    mtr_report(" - symlinking 'var/tmp' to '$opt_tmpdir'");
+    symlink($opt_tmpdir, "$opt_vardir/tmp");
+  }
+
+  # On some operating systems, there is a limit to the length of a
+  # UNIX domain socket's path far below PATH_MAX.
+  # Don't allow that to happen
+  if (check_socket_path_length("$opt_tmpdir/testsocket.sock")){
+    mtr_error("Socket path '$opt_tmpdir' too long, it would be ",
+	      "truncated and thus not possible to use for connection to ",
+	      "MySQL Server. Set a shorter with --tmpdir=<path> option");
+  }
 
   # copy all files from std_data into var/std_data
   # and make them writable
@@ -2701,7 +2716,7 @@ sub after_test_failure ($) {
     }
   }
 
-  # Remove all files in var/tmp
+  # Remove all files in the tmpdir
   rmtree($opt_tmpdir);
   mkpath($opt_tmpdir);
 
