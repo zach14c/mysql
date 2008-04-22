@@ -16,4 +16,6 @@
 #    Only exception is for tests, which are considered as "won't fix" for long time.
 #    Also please keep the list sorted.
 
-#falcon_bug_23945    : Bug#34892 2008-02-27 hakank Open bug
+falcon_bug_22166	: Bug#22166 tests  for case-sensitive identifiers.Will probably never be fixed (besides , can never run on case-insensitive filesystems)  2008-04-21  vvaintroub 
+falcon_bug_22187	: Bug#22187 Tests for foreign key.Useless without FK implementation	2008-04-21  vvaintroub
+
