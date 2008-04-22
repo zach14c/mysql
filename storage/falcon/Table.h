@@ -163,7 +163,7 @@ public:
 	void		makeSearchable (Field *field, Transaction *transaction);
 	int32		getBlobId (Value *value, int32 oldId, bool cloneFlag, Transaction *transaction);
 	void		addFormat (Format *format);
-	Record*		rollbackRecord (RecordVersion *recordVersion, Transaction *transaction);
+	void		rollbackRecord (RecordVersion *recordVersion, Transaction *transaction);
 	Record*		fetch (int32 recordNumber);
 	void		init(int id, const char *schema, const char *tableName, TableSpace *tblSpace);
 	void		loadFields();

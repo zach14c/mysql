@@ -953,7 +953,7 @@ Record* Table::backlogFetch(int32 recordNumber)
 	return NULL;	
 }
 
-Record* Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transaction)
+void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transaction)
 {
 #ifdef CHECK_RECORD_ACTIVITY
 	recordToRollback->active = false;
@@ -962,15 +962,11 @@ Record* Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *tra
 	int priorState = recordToRollback->state;
 	recordToRollback->state = recRollback;
 
-	// Hold syncPrior long enough to get prior version and addRef. Unlock before insert().
-	
-	Sync syncPrior(getSyncPrior(recordToRollback), "Table::rollbackRecord");
-
-	if (!transaction->systemTransaction)
-		syncPrior.lock(Shared);
-
 	// Find the record that will become the current version.
-	
+	// syncPrior is not needed here. No other thread can change this
+	// priorVersion now. Changing the base record is protected by
+	// RecordLeaf::syncObject
+
 	Record *priorRecord = recordToRollback->getPriorVersion();
 
 	if (priorRecord)
@@ -978,16 +974,13 @@ Record* Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *tra
 		priorRecord->addRef();
 		priorRecord->setSuperceded(false);
 		}
-	
-	if (!transaction->systemTransaction)
-		syncPrior.unlock();
 
 	// Replace the current version of this record.
 
 	if (!insert(priorRecord, recordToRollback, recordToRollback->recordNumber))
 		{
 		if (priorRecord == NULL && priorState == recDeleted)
-			return priorRecord;
+			return;
 			
 		recordToRollback->printRecord("Table::rollbackRecord");
 		insert(priorRecord, recordToRollback, recordToRollback->recordNumber);
@@ -1004,8 +997,6 @@ Record* Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *tra
 	
 	if (priorRecord)
 		priorRecord->release();
-			
-	return priorRecord;
 }
 
 void Table::addFormat(Format * format)
@@ -1453,9 +1444,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 	database->preUpdate();
 	Sync scavenge(&syncScavenge, "Table::deleteRecord");
 
-	Sync syncPrior(getSyncPrior(orgRecord), "Table::deleteRecord");
-	syncPrior.lock(Shared);
-	
+    // syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
 	checkAncestor(candidate, orgRecord);
 	RecordVersion *record;
@@ -3265,17 +3254,18 @@ JString Table::getPrimaryKeyName(void)
 void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 {
 	Sync syncTable(&syncObject, "Table::validateAndInsert");
-	Sync syncPrior(getSyncPrior(record), "Table::validateAndInsert");
-	
+
+	// Do not need syncPrior here since this is a new record.
+	// No other thread can see this records priorVersion pointer.
+
 	Record *prior = record->getPriorVersion();
-	
+
 	for (int n = 0; n < 10; ++n)
 		{
 		if (prior)
 			{
 			syncTable.lock(Exclusive);
 			Record *current = fetch(record->recordNumber);
-			syncPrior.lock(Shared);
 
 			if (current)
 				{
@@ -3289,13 +3279,11 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 
 					TransId transId = current->getTransactionId();
 					current->release();
-					syncPrior.unlock();
 					syncTable.unlock();
 
 					if (transaction->waitForTransaction(transId))
 						{
 						current = fetch(record->recordNumber);
-						syncPrior.lock(Shared);
 						
 						if (current == prior)
 							current->release();
@@ -3739,7 +3727,7 @@ int32 Table::backlogRecord(RecordVersion* record)
 
 void Table::deleteRecordBacklog(int32 recordNumber)
 {
-	Sync sync(&syncObject, "Table::rollbackRecord");
+	Sync sync(&syncObject, "Table::deleteRecordBacklog");
 	sync.lock(Shared);
 	int32 backlogId = backloggedRecords->get(recordNumber);
 	
