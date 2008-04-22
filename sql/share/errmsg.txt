@@ -6255,3 +6255,5 @@ ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE
   eng "The requested value for the heartbeat period %s %s"
 ER_TABLESPACE_NOT_EMPTY
   eng "Tablespace '%-.192s' not empty"
+ER_TABLESPACE_DATAFILE_EXIST
+  eng "Tablespace data file '%-.192s' already exists"
