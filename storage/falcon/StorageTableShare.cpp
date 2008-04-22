@@ -60,6 +60,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	initialized = false;
 	table = NULL;
 	indexes = NULL;
+	format = NULL;
 	syncObject = new SyncObject;
 	syncObject->setName("StorageTableShare::syncObject");
 	sequence = NULL;
@@ -114,7 +115,10 @@ int StorageTableShare::open(void)
 	if (!table)
 		{
 		table = storageDatabase->findTable(name, schemaName);
-		format = table->getCurrentFormat();
+		
+		if (table)
+			format = table->getCurrentFormat();
+			
 		sequence = storageDatabase->findSequence(name, schemaName);
 		}
 	
