@@ -189,7 +189,7 @@ class Driver
   virtual void  free() {};
 
   /// Unknown size constant used for backup image size estimates.
-  static const size_t UNKNOWN_SIZE= static_cast<size_t>(-1);
+  static const size_t UNKNOWN_SIZE;
 
  protected:
 

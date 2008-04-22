@@ -2221,6 +2221,6 @@ void finish_backup_or_restore()
   a pure symbolic constant (no need to allocate memory). If someone knows
   how to achieve that and keep xlc happy, please let me know. /Rafal
 */ 
-const size_t Driver::UNKNOWN_SIZE;
+const size_t Driver::UNKNOWN_SIZE= static_cast<size_t>(-1);
 
 } // backup namespace
