@@ -1208,20 +1208,23 @@ void Table::updateIndexes(Transaction *transaction, RecordVersion *record, Recor
 **/
 void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
 {
-	if (indexes)
-	{
-	FOR_INDEXES(index, this);
-		Sync sync(&(index->syncUnique), "Table::insertIndexes");
-		if(needUniqueCheck(index,record))
-			for(;;)
-			{
-			sync.lock(Exclusive);
-			if(!checkUniqueIndex(index, transaction, record, &sync))
-				break;
-			}
-		index->insert(record, transaction);
-	END_FOR;
-	}
+    if (indexes)
+		{
+		FOR_INDEXES(index, this);
+			Sync sync(&index->syncUnique, "Table::insertIndexes");
+			
+			if (needUniqueCheck(index,record))
+				for(;;)
+					{
+					sync.lock(Exclusive);
+					
+					if(!checkUniqueIndex(index, transaction, record, &sync))
+						break;
+					}
+				
+			index->insert(record, transaction);
+		END_FOR;
+		}
 }
 
 

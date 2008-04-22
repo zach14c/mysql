@@ -46,6 +46,7 @@ class StorageDatabase;
 class Index;
 class Record;
 class SyncObject;
+class Format;
 
 struct StorageIndexDesc;
 
@@ -118,6 +119,7 @@ public:
 	StorageKey			*lowerBound;
 	StorageKey			*upperBound;
 	Record				*record;
+	Format				*format;
 	EncodedDataStream	dataStream;
 	Stream				insertStream;
 	int					searchFlags;

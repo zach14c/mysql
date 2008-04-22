@@ -125,6 +125,7 @@ public:
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
+	void			mapFields(TABLE *table);
 
 	static StorageConnection* getStorageConnection(THD* thd);
 	
@@ -166,6 +167,7 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
+	Field				**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
@@ -175,6 +177,7 @@ public:
 	int					nextRecord;
 	int					indexErrorId;
 	int					errorKey;
+	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
 	bool				haveStartKey;

@@ -25,6 +25,7 @@
 #include "Sequence.h"
 #include "Index.h"
 #include "Table.h"
+#include "Field.h"
 #include "Interlock.h"
 #include "CollationManager.h"
 #include "MySQLCollation.h"
@@ -113,6 +114,7 @@ int StorageTableShare::open(void)
 	if (!table)
 		{
 		table = storageDatabase->findTable(name, schemaName);
+		format = table->getCurrentFormat();
 		sequence = storageDatabase->findSequence(name, schemaName);
 		}
 	
@@ -127,6 +129,8 @@ int StorageTableShare::create(StorageConnection *storageConnection, const char* 
 	if (!(table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
 		return StorageErrorTableExits;
 	
+	format = table->getCurrentFormat();
+
 	if (autoIncrementValue)
 		sequence = storageDatabase->findSequence(name, schemaName);
 		
@@ -137,6 +141,8 @@ int StorageTableShare::upgrade(StorageConnection *storageConnection, const char*
 {
 	if (!(table = storageDatabase->upgradeTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
 		return StorageErrorTableExits;
+
+	format = table->getCurrentFormat();
 	
 	if (autoIncrementValue)
 		sequence = storageDatabase->findSequence(name, schemaName);
@@ -554,4 +560,14 @@ void StorageTableShare::clearTruncateLock(void)
 		syncTruncate->unlock();
 //		syncTruncate->unlock(NULL, Shared);
 		}
+}
+
+int StorageTableShare::getFieldId(const char* fieldName)
+{
+	Field *field = table->findField(fieldName);
+	
+	if (!field)
+		return -1;
+	
+	return field->id;
 }

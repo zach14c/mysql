@@ -33,6 +33,7 @@
 #include "StorageHandler.h"
 #include "CmdGen.h"
 #include "InfoTable.h"
+#include "Format.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -398,7 +399,8 @@ StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
 	activeBlobs = NULL;
 	freeBlobs = NULL;
 	errorText = NULL;
-
+	fieldMap = NULL;
+	
 	if (table_arg)
 		{
 		recordLength = table_arg->reclength;
@@ -435,7 +437,7 @@ StorageInterface::~StorageInterface(void)
 		storageConnection = NULL;
 		}
 
-	//delete [] dbName;
+	delete [] fieldMap;
 }
 
 int StorageInterface::rnd_init(bool scan)
@@ -505,6 +507,10 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 	thr_lock_data_init((THR_LOCK *)storageShare->impure, &lockData, NULL);
 
 	ret = setIndexes();
+	
+	if (table)
+		mapFields(table);
+	
 	if (ret)
 		DBUG_RETURN(error(ret));
 
@@ -823,6 +829,8 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 
 				DBUG_RETURN(error(ret));
 				}
+
+	mapFields(form);
 
 	DBUG_RETURN(0);
 }
@@ -1875,7 +1883,9 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			default:
 				break;
 			}
+			
 		int isolation = getTransactionIsolation(thd);
+		
 		if (thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
 			{
 			checkBinLog();
@@ -2051,8 +2061,6 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 		
 		if (!field)
 			field = altered_table->field[altered_table->s->fields - 1];
-		else
-			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);	// temporary until field skipping gets implemented
 		
 		if (!field->real_maybe_null())
 			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
@@ -2382,11 +2390,23 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 	my_ptrdiff_t ptrDiff = buf - table->record[0];
 	my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
 	EncodedDataStream *dataStream = &storageTable->dataStream;
+	FieldFormat *fieldFormat = storageShare->format->format;
+	int maxId = storageShare->format->maxId;
 	
-	for (uint n = 0; n < table->s->fields; ++n)
+	for (int n = 0; n < maxId; ++n, ++fieldFormat)
 		{
-		Field *field = table->field[n];
+		if (fieldFormat->fieldId < 0 || fieldFormat->offset == 0)
+			continue;
+			
+		Field *field = fieldMap[fieldFormat->fieldId];
 
+		if (!field)
+			{
+			dataStream->encodeNull();
+			
+			continue;
+			}
+		
 		if (ptrDiff)
 			field->move_field_offset(ptrDiff);
 
@@ -2544,12 +2564,24 @@ void StorageInterface::decodeRecord(uchar *buf)
 	my_ptrdiff_t ptrDiff = buf - table->record[0];
 	my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 	DBUG_ENTER("StorageInterface::decodeRecord");
-
-	for (uint n = 0; n < table->s->fields; ++n)
+	FieldFormat *fieldFormat = storageTable->format->format;
+	int maxId = storageTable->format->maxId;
+	
+	for (int n = 0; n < maxId; ++n, ++fieldFormat)
 		{
-		Field *field = table->field[n];
+		// If the format doesn't have an offset, the field doesn't exist in the record
+		
+		if (fieldFormat->fieldId < 0 || fieldFormat->offset == 0)
+			continue;
+			
 		dataStream->decode();
+		Field *field = fieldMap[fieldFormat->fieldId];
 
+		// If we don't a field for the physical field, just skip over it and don't worrry.
+		
+		if (field == NULL)
+			continue;
+				
 		if (ptrDiff)
 			field->move_field_offset(ptrDiff);
 
@@ -3340,17 +3372,37 @@ int StorageInterface::recover (handlerton * hton, XID *xids, uint length)
 	uint count = 0;
 	unsigned char xid[sizeof(XID)];
 
-	memset (xid, 0, sizeof(XID));
+	memset(xid, 0, sizeof(XID));
 
 	while (storageHandler->recoverGetNextLimbo(sizeof(XID), xid))
 		{
 		count++;
 		memcpy(xids++, xid, sizeof(XID));
+		
 		if (count >= length)
 			break;
 		}
 
 	DBUG_RETURN(count);
+}
+
+
+void StorageInterface::mapFields(TABLE *table)
+{
+	maxFields = storageShare->format->maxId;
+	fieldMap = new Field*[maxFields];
+	memset(fieldMap, 0, sizeof(fieldMap[0]) * maxFields);
+	char nameBuffer[129];
+
+	for (uint n = 0; n < table->s->fields; ++n)
+		{
+		Field *field = table->field[n];
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		int id = storageShare->getFieldId(nameBuffer);
+		
+		if (id >= 0)
+			fieldMap[id] = field;
+		}
 }
 
 static MYSQL_SYSVAR_STR(serial_log_dir, falcon_serial_log_dir,

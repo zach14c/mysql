@@ -311,6 +311,7 @@ void StorageTable::setRecord(Record* newRecord, bool locked)
 	
 	record = newRecord;
 	recordLocked = locked;
+	format = record->format;
 	
 	// The following is confusing because Record::getEncodeRecord returns pointer to
 	// the actual data fields while Record::getEncodedSize return length of the data fields plus

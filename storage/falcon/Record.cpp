@@ -180,7 +180,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 			data.record = (char*) NEW Value[format->count];
 			encoding = valueVector;
 		case valueVector:
-			((Value*) data.record)[format->format[id].index].setValue(value, copyFlag);
+			((Value*) data.record)[format->format[id].physicalId].setValue(value, copyFlag);
 			return;
 
 		case traditional:
@@ -364,7 +364,7 @@ void Record::getRawValue(int fieldId, Value * value)
 			return;
 
 		case valueVector:
-			value->setValue(((Value*) data.record) + format->format[fieldId].index, false);
+			value->setValue(((Value*) data.record) + format->format[fieldId].physicalId, false);
 			return;
 
 		case traditional:
@@ -630,7 +630,7 @@ void Record::getEncodedValue(int fieldId, Value *value)
 		{
 		case shortVector:
 			{
-			int index = format->format[fieldId].index;
+			int index = format->format[fieldId].physicalId;
 			USHORT *vector = (USHORT*) data.record;
 
 			if (highWater < index)
@@ -676,7 +676,7 @@ void Record::finalize(Transaction *transaction)
 		if (fld->offset == 0)
 			continue;
 
-		Value *value = values + fld->index;
+		Value *value = values + fld->physicalId;
 		encodedStream.encode(fld->type, value);
 		}
 
@@ -778,7 +778,7 @@ bool Record::isNull(int fieldId)
 		{
 		case shortVector:
 			{
-			int index = format->format[fieldId].index;
+			int index = format->format[fieldId].physicalId;
 			USHORT *vector = (USHORT*) data.record;
 
 			if (highWater < index)
@@ -799,7 +799,7 @@ bool Record::isNull(int fieldId)
 			}
 
 		case valueVector:
-			return ((Value**) data.record)[format->format[fieldId].index]->isNull();
+			return ((Value**) data.record)[format->format[fieldId].physicalId]->isNull();
 
 		case traditional:
 			{

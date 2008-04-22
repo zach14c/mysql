@@ -35,6 +35,7 @@ class Index;
 class SyncObject;
 class Sequence;
 class SyncObject;
+class Format;
 
 struct StorageSegment {
 	short			type;
@@ -145,9 +146,11 @@ public:
 	Table				*table;
 	StorageIndexDesc	**indexes;
 	Sequence			*sequence;
+	Format				*format;						// format for insertion
 	int					numberIndexes;
 	volatile INTERLOCK_TYPE	truncateLockCount;
 	bool				tempTable;
+	int getFieldId(const char* fieldName);
 };
 
 #endif
