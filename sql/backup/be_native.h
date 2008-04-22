@@ -97,7 +97,12 @@ int Native_snapshot::init(Logger &log, const storage_engine_ref se)
     if (m_be)
       m_be->free();
     m_be= NULL;
-    log.report_error(ER_BACKUP_CREATE_BE, m_name);
+    /*
+      We only report warning here because even if we failed to create native
+      backup engine it can be replaced by a built-in engine and the backup
+      operation might still succeed.  
+    */
+    log.report_error(log_level::WARNING, ER_BACKUP_CREATE_BE, m_name);
     return 1;
   }
   

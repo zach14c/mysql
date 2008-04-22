@@ -339,6 +339,9 @@ sub mtr_report_stats ($) {
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
 		) or
 		
+		# ignore warning generated when backup engine selection algorithm is tested
+		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
+		
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/One can only use the --user.*root/ or
