@@ -126,6 +126,8 @@ static const char *handler_error_messages[]=
   /* HA_ERR_NO_SUCH_TABLESPACE */
   "No such table space", /* TODO: get a better message */
   /* HA_ERR_TABLESPACE_NOT_EMPTY */
-  "Tablespace not empty" /* TODO: get a better message */
+  "Tablespace not empty", /* TODO: get a better message */
+  /* HA_ERR_TABLESPACE_DATAFILE_EXIST */
+  "Tablespace data file already exists" /* TODO: get a better message */
 };
 

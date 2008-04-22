@@ -514,6 +514,9 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 			
 		if (exception.getSqlcode() == TABLESPACE_NOT_EXIST_ERROR)
 			return StorageErrorTableSpaceNotExist;
+
+		if (exception.getSqlcode() == TABLESPACE_DATAFILE_EXIST_ERROR)
+			return StorageErrorTableSpaceDataFileExist;
 			
 		return StorageErrorTablesSpaceOperationFailed;
 		}

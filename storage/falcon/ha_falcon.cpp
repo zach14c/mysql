@@ -1820,6 +1820,10 @@ int StorageInterface::getMySqlError(int storageError)
 			DBUG_PRINT("info", ("StorageErrorTableNotEmpty"));
 			return HA_ERR_TABLESPACE_NOT_EMPTY;
 
+		case StorageErrorTableSpaceDataFileExist:
+			DBUG_PRINT("info", ("StorageErrorTableSpaceDataFileExist"));
+			return (HA_ERR_TABLESPACE_DATAFILE_EXIST);
+
 		default:
 			DBUG_PRINT("info", ("Unknown Falcon Error"));
 			return (200 - storageError);

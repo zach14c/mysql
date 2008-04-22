@@ -454,7 +454,8 @@ enum ha_base_keytype {
 #define HA_ERR_LOCK_OR_ACTIVE_TRANSACTION 177
 #define HA_ERR_NO_SUCH_TABLESPACE 178
 #define HA_ERR_TABLESPACE_NOT_EMPTY 179
-#define HA_ERR_LAST               179    /* Copy of last error nr */
+#define HA_ERR_TABLESPACE_DATAFILE_EXIST 180
+#define HA_ERR_LAST               180    /* Copy of last error nr */
 
 /* Number of different errors */
 #define HA_ERR_ERRORS            (HA_ERR_LAST - HA_ERR_FIRST + 1)
