@@ -163,13 +163,11 @@ bool IO::openFile(const char * name, bool readOnly)
 #ifndef _WIN32
 	signal (SIGXFSZ, SIG_IGN);
 
-#ifndef STORAGE_ENGINE
 	if (flock (fileId, (readOnly) ? LOCK_SH : LOCK_EX))
 		{
 		::close (fileId);
 		throw SQLEXCEPTION (CONNECTION_ERROR, "file \"%s\" in use by another process", name);
 		}
-#endif
 #endif
 
 	//Log::debug("IO::openFile %s (%d) fd: %d\n", (const char*) fileName, readOnly, fileId);
@@ -201,9 +199,7 @@ bool IO::createFile(const char *name, uint64 initialAllocation)
 
 	isReadOnly = false;
 #ifndef _WIN32
-#ifndef STORAGE_ENGINE
 	flock(fileId, LOCK_EX);
-#endif
 #endif
 
 	if (initialAllocation)
