@@ -116,12 +116,12 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		
 		TableSpaceInit tsInit;
 		/***
-		tsInit.initialSize	= resultSet->getLong(4);
-		tsInit.extentSize	= resultSet->getLong(5);
-		tsInit.autoExtendSize = resultSet->getLong(6);
-		tsInit.maxSize		= resultSet->getLong(7);
-		tsInit.nodegroup	= resultSet->getInt(8);
-		tsInit.wait			= resultSet->getInt(9);
+		tsInit.initialSize	= resultSet->getLong(n++);
+		tsInit.extentSize	= resultSet->getLong(n++);
+		tsInit.autoExtendSize = resultSet->getLong(n++);
+		tsInit.maxSize		= resultSet->getLong(n++);
+		tsInit.nodegroup	= resultSet->getInt(n++);
+		tsInit.wait			= resultSet->getInt(n++);
 		***/
 		tsInit.comment		= resultSet->getString(n++);
 		
