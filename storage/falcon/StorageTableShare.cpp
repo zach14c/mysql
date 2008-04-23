@@ -124,7 +124,22 @@ int StorageTableShare::open(void)
 
 int StorageTableShare::create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue)
 {
-	if (!(table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
+	try
+		{
+		table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue);
+		}
+	catch (SQLException& exception)
+		{
+		int sqlcode= exception.getSqlcode();
+		switch (sqlcode)
+			{
+			case TABLESPACE_NOT_EXIST_ERROR:
+				return StorageErrorTableSpaceNotExist;
+			default:
+				return StorageErrorTableExits;
+			}
+		}
+	if (!table)
 		return StorageErrorTableExits;
 	
 	if (autoIncrementValue)

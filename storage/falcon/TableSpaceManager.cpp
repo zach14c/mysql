@@ -150,7 +150,7 @@ TableSpace* TableSpaceManager::getTableSpace(const char *name)
 	TableSpace *tableSpace = findTableSpace(name);
 
 	if (!tableSpace)
-		throw SQLError(DDL_ERROR, "can't find table space \"%s\"", name);
+		throw SQLError(TABLESPACE_NOT_EXIST_ERROR, "can't find table space \"%s\"", name);
 
 	if (!tableSpace->active)
 		throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
