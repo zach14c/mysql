@@ -52,7 +52,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CACHE_CHECK([compiler flag to enable implicit templates],
                  falcon_cxx_enable_implicit_templates,[
     CXXFLAGS="$ac_save_CXXFLAGS -fimplicit-templates"
-    AC_TRY_COMPILE([],
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
       falcon_cxx_enable_implicit_templates="-fimplicit-templates",
@@ -62,11 +62,11 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
 
   AC_CACHE_CHECK([compiler flag to enable exceptions],
                  falcon_cxx_enable_exceptions,[
-    CXXFLAGS="$ac_save_CXXFLAGS -fexceptions"
-    AC_TRY_COMPILE([],
+    CXXFLAGS="$ac_save_CXXFLAGS -fexceptions -lstdc++"
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
-      falcon_cxx_enable_exceptions="-fexceptions",
+      falcon_cxx_enable_exceptions="-fexceptions -lstdc++",
       falcon_cxx_enable_exceptions=""
     )
   ])
@@ -74,7 +74,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CACHE_CHECK([compiler flag to silence offsetof warnings],
                  falcon_cxx_no_invalid_offsetof,[
     CXXFLAGS="$ac_save_CXXFLAGS -Wno-invalid-offsetof"
-    AC_TRY_COMPILE([],
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
       falcon_cxx_no_invalid_offsetof="-Wno-invalid-offsetof",
@@ -86,7 +86,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_LANG_POP([C++])
 
   # Falcon uses exceptions and STL.
-  CXXLDFLAGS="$CXXLDFLAGS $falcon_cxx_enable_exceptions -lstdc++"
+  CXXLDFLAGS="$CXXLDFLAGS $falcon_cxx_enable_exceptions"
   FALCON_CXXFLAGS="$falcon_cxx_no_invalid_offsetof $falcon_cxx_enable_implicit_templates $falcon_cxx_enable_exceptions"
   case "$with_debug" in
     yes)  FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG" ;;
