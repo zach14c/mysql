@@ -1750,24 +1750,19 @@ void Database::scavenge()
 
 void Database::retireRecords(bool forced)
 {
+	int cycle = scavengeCycle;
+	
+	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
+	syncScavenger.lock(Exclusive);
+
+	if (forced && scavengeCycle > cycle)
+		return;
+	
 	// Commit pending system transactions before proceeding
 	
 	if (!forced && systemConnection->transaction)
 		commitSystemTransaction();
 
-	Sync syncDDL(&syncSysDDL, "Database::retireRecords");
-	syncDDL.lock(Shared);
-
-	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
-	syncScavenger.lock(Exclusive);
-
-	int cycle = scavengeCycle;
-	
-	if (forced && scavengeCycle > cycle)
-		return;
-	
-	++scavengeCycle;
-	
 	if (forced)
 		Log::log("Forced record scavenge cycle\n");
 	
@@ -1840,7 +1835,9 @@ void Database::retireRecords(bool forced)
 		{
 		recordScavenge.scavengeGeneration = UNDEFINED;
 		cleanupRecords (&recordScavenge);
-		
+
+		++scavengeCycle;
+				
 		return;
 		}
 	else
@@ -1849,6 +1846,8 @@ void Database::retireRecords(bool forced)
 		cleanupRecords (&recordScavenge);
 		}
 
+	++scavengeCycle;
+	
 	lastRecordMemory = recordDataPool->activeMemory;
 	INTERLOCKED_INCREMENT (currentGeneration);
 }

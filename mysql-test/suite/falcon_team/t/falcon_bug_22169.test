@@ -1,4 +1,7 @@
 --source include/have_falcon.inc
+# This test takes rather long time so let us run it only in --big-test mode
+--source include/big_test.inc
+
 SET STORAGE_ENGINE='Falcon';
 #
 # Bug #22169: Crash with count(distinct)
@@ -24,6 +27,7 @@ while ($1)
   dec $1;
 }
 set @@read_buffer_size=2*1024*1024;
+set global falcon_record_memory_max=500*1024*2014;
 CREATE TABLE t2 SELECT * FROM t1;
 INSERT INTO t1 (id, grp, id_rev) SELECT id, grp, id_rev FROM t2;
 INSERT INTO t2 (id, grp, id_rev) SELECT id, grp, id_rev FROM t1;
@@ -61,3 +65,4 @@ SELECT COUNT(DISTINCT id) FROM t1 GROUP BY grp;
 DROP TABLE t1;
 
 set @@read_buffer_size=default;
+set global falcon_record_memory_max=default;
