@@ -15,7 +15,7 @@ AC_CACHE_CHECK([if Falcon Storage Engine is supported on $MACHINE_TYPE],
       AC_TRY_LINK([
 #include <stdlib.h>
 volatile int target= 0;
-int compare= 1,
+int compare= 1;
 int exchange= 2;
       ],[
   char ret;
