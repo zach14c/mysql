@@ -310,6 +310,11 @@ Record* Record::fetchVersion(Transaction * transaction)
 	return this;
 }
 
+Record* Record::fetchVersionRecursive(Transaction * transaction)
+{
+	return this;
+}
+
 void Record::getValue(int fieldId, Value * value)
 {
 	getRawValue(fieldId, value);
