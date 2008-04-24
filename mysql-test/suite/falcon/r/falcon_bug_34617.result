@@ -1,8 +1,8 @@
 CREATE TABLE t1(a INT) ENGINE=Falcon TABLESPACE nosuchtablespace;
-ERROR HY000: Can't create table 'test.t1' (errno: 156)
+ERROR HY000: Tablespace 'nosuchtablespace' doesn't exist
 CREATE TABLE t1(a INT) ENGINE=Falcon;
 ALTER TABLE t1 TABLESPACE nosuchtablespace;
-ERROR HY000: Can't create table 'test.#sql-temporary' (errno: 156)
+ERROR HY000: Tablespace 'nosuchtablespace' doesn't exist
 ALTER TABLE t1 TABLESPACE nosuchtablespace;
-ERROR HY000: Can't create table 'test.#sql-temporary' (errno: 156)
+ERROR HY000: Tablespace 'nosuchtablespace' doesn't exist
 DROP TABLE t1;
