@@ -16,6 +16,10 @@
 #ifndef __INTERLOCK_H
 #define __INTERLOCK_H
 
+#if defined(__sparcv8)  || defined(__sparcv9)
+#include <sys/atomic.h>
+#endif
+
 #define INTERLOCKED_INCREMENT(variable)		interlockedIncrement(&variable)
 #define INTERLOCKED_DECREMENT(variable)		interlockedDecrement(&variable)
 #define INTERLOCKED_EXCHANGE(ptr, value)	interlockedExchange(ptr, value)
@@ -116,6 +120,9 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
 		: "r" (compare), "r" (exchange), "b" (target)
 		: "cr0", "memory");
 	return ret;
+    /*
+       We are running gcc on SPARC.
+     */
 #elif defined(__sparc__)
 	char ret;
 	__asm__ __volatile__ (
@@ -131,6 +138,17 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
 		: "memory", "cc"
 		);
 	return ret;
+    /*
+       We are running Sun Studio on SPARC.
+       Todo: get assembler version of atomic_cas_uint().
+     */
+#elif defined(__sparcv8)  || defined(__sparcv9)
+#if defined(__SunOS_5_10)
+    return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
+#else
+#  error cas not defined. We need >= Solaris 10
+#endif
+
 #else
 #  error inline_cas not defined for this platform
 #endif
@@ -194,6 +212,9 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
 			);
 	}
 	return (char) (ret == compare);
+    /*
+       We are running gcc on SPARC.
+     */
 #elif defined(__sparc__)
 	char ret;
 	if (sizeof(void*) == 8)
@@ -227,6 +248,17 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
 			);
 	}
 	return ret;
+    /*
+       We are running Sun Studio on SPARC.
+       Todo: get assembler version of atomic_cas_ptr().
+     */
+#elif defined(__sparcv8)  || defined(__sparcv9)
+#if defined(__SunOS_5_10)
+    return (char)(compare == atomic_cas_ptr(target, compare, exchange));
+#else
+#  error cas not defined. We need >= Solaris 10
+#endif
+
 #else
 #  error inline_cas not defined for this platform
 #endif
@@ -356,19 +388,6 @@ inline INTERLOCK_TYPE interlockedAdd(volatile INTERLOCK_TYPE* addend,
 #endif
 }
 
-/***
-00134     LONG result;
-00135
-00136     __asm__ __volatile__(
-00137              "lock; xchgl %0,(%1)"
-00138              : "=r" (result)
-00139              : "r" (Target), "0" (Value)
-00140              : "memory"
-00141              );
-00142     return result;
-00143 }
-***/
-
 
 inline INTERLOCK_TYPE interlockedExchange(volatile INTERLOCK_TYPE* addend,
 										  INTERLOCK_TYPE value)
@@ -401,7 +420,7 @@ inline INTERLOCK_TYPE interlockedExchange(volatile INTERLOCK_TYPE* addend,
 		);
 	return ret;
 #elif defined(__sparc__)
-	INTERLOCK_TYPE ret;        
+	INTERLOCK_TYPE ret;
 	__asm__ __volatile__ (
 		"membar #LoadLoad | #LoadStore | #StoreLoad | #StoreStore\n\t"
 		"swap [%1],%0\n\t"
@@ -419,7 +438,6 @@ inline INTERLOCK_TYPE interlockedExchange(volatile INTERLOCK_TYPE* addend,
 	}
 #endif
 }
-
 
 
 #endif
