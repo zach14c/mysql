@@ -81,6 +81,13 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	savePoints = NULL;
 	freeSavePoints = NULL;
 	useCount = 1;
+	syncObject.setName("Transaction::syncObject");
+	syncActive.setName("Transaction::syncActive");
+	syncIndexes.setName("Transaction::syncIndexes");
+	syncIndexes.setName("Transaction::syncSavepoints");
+	firstRecord = NULL;
+	lastRecord = NULL;
+	dependencies = 0;
 	initialize(cnct, seq);
 }
 
@@ -90,6 +97,8 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	sync.lock(Exclusive);
 	ASSERT(savePoints == NULL);
 	ASSERT(freeSavePoints == NULL);
+	ASSERT(firstRecord == NULL);
+	ASSERT(dependencies == 0);
 	connection = cnct;
 	isolationLevel = connection->isolationLevel;
 	mySqlThreadId = connection->mySqlThreadId;
@@ -97,10 +106,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	TransactionManager *transactionManager = database->transactionManager;
 	systemTransaction = database->systemConnection == connection;
 	transactionId = seq;
-	firstRecord = NULL;
-	lastRecord = NULL;
 	chillPoint = &firstRecord;
-	dependencies = 0;
 	commitTriggers = false;
 	hasUpdates = false;
 	hasLocks = false;
@@ -128,11 +134,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	deletedRecords = 0;
 	inList = true;
 	thread = NULL;
-	syncObject.setName("Transaction::syncObject");
-	syncActive.setName("Transaction::syncActive");
-	syncIndexes.setName("Transaction::syncIndexes");
-	syncIndexes.setName("Transaction::syncSavepoints");
-	//scavenged = false;
 	
 	if (seq == 0)
 		{
@@ -341,36 +342,19 @@ void Transaction::commitNoUpdates(void)
 	syncActiveTransactions.lock(Shared);
 	state = CommittingReadOnly;
 	releaseDependencies();
+
+	if (xid)
+		{
+		delete [] xid;
+		xid = NULL;
+		xidLength = 0;
+		}
 	
 	Sync sync(&syncObject, "Transaction::commitNoUpdates");
 	sync.lock(Exclusive);
-	Thread *thread = NULL;
-	int wait = 1;
 	
-	for (int n = 0; dependencies && n < 10; ++n)
-		{
+	if (dependencies)
 		transactionManager->expungeTransaction(this);
-	
-		if (!dependencies)
-			break;
-			
-		// There is a tiny race condition between another thread releasing a dependency and
-		// TransactionManager::expungeTransaction doing the same thing.  So spin.
-		
-		if (thread)
-			{
-			thread->sleep(wait);
-			wait <<= 1;
-			}
-		else
-			thread = Thread::getThread("Transaction::commitNoUpdates");
-		}
-	
-	ASSERT(dependencies == 0);
-	sync.unlock();
-	delete [] xid;
-	xid = NULL;
-	xidLength = 0;
 	
 	// If there's no reason to stick around, just go away
 	
@@ -401,7 +385,6 @@ void Transaction::rollback()
 	releaseSavepoints();
 	TransactionManager *transactionManager = database->transactionManager;
 	Transaction *rollbackTransaction = transactionManager->rolledBackTransaction;
-	//state = RolledBack;
 	chillPoint = &firstRecord;
 	totalRecordData = 0;
 	totalRecords = 0;
@@ -452,9 +435,13 @@ void Transaction::rollback()
 		database->serialLog->preCommit(this);
 		
 	database->rollback(this);
-	delete [] xid;
-	xid = NULL;
-	xidLength = 0;
+	
+	if (xid)
+		{
+		delete [] xid;
+		xid = NULL;
+		xidLength = 0;
+		}
 	
 	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback");
 	syncActiveTransactions.lock (Exclusive);
@@ -467,7 +454,6 @@ void Transaction::rollback()
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
-	//sync.unlock();
 	release();
 }
 
@@ -579,8 +565,6 @@ int Transaction::thaw(RecordVersion * record)
 
 	if (debugThawedBytes >= database->configuration->recordChillThreshold)
 		{
-	//	Log::debug("%06ld Record Thaw/SRL:   recId:%8ld  addr:%p  vofs:%8llx  trxId:%6ld  total recs:%7ld  chilled:%7ld  thawed:%7ld  bytes:%8ld  commits:%6ld\n",
-	//				(uint32)clock(), record->recordNumber, record, record->virtualOffset, transactionId, totalRecords, chilledRecords, thawedRecords, (uint32)totalRecordData, committedRecords);
 		Log::log(LogInfo, "%d: Record thaw: transaction %ld, %ld records, %ld bytes\n", 
 				 database->deltaTime, transactionId, debugThawedRecords, debugThawedBytes);
 		debugThawedRecords = 0;
@@ -787,7 +771,7 @@ void Transaction::releaseDependencies()
 
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
-				ASSERT(transaction->transactionId == state->transactionId);
+				ASSERT(transaction->transactionId == state->transactionId || transaction->state == Available);
 				transaction->releaseDependency();
 				}
 			}
@@ -957,7 +941,6 @@ void Transaction::writeComplete(void)
 	ASSERT(state == Committed);
 	Sync sync(&syncIndexes, "Transaction::writeComplete");
 	sync.lock(Exclusive);
-	
 	releaseDeferredIndexes();
 
 	// Keep the synIndexes lock to avoid a race condition with dropTable
@@ -1032,7 +1015,6 @@ void Transaction::addRef()
 
 int Transaction::release()
 {
-	//ASSERT(useCount > dependencies);
 	int count = INTERLOCKED_DECREMENT(useCount);
 
 	if (count == 0)
@@ -1393,7 +1375,6 @@ void Transaction::releaseDependency(void)
 {
 	ASSERT(useCount >= 2);
 	ASSERT(dependencies > 0);
-	ASSERT(state != Available);
 	INTERLOCKED_DECREMENT(dependencies);
 
 	if ((dependencies == 0) && !writePending && firstRecord)

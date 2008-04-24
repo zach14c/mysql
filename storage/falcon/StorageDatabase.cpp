@@ -210,7 +210,7 @@ Table* StorageDatabase::createTable(StorageConnection *storageConnection, const 
 		statement->release();
 		storageConnection->setErrorText(&exception);
 		
-		return NULL;
+		throw;
 		}
 		
 	return findTable(tableName, schemaName);
