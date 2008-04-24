@@ -39,7 +39,24 @@ storage_engine_ref get_storage_engine(THD *thd, const backup::Table_ref &tbl)
   return se;
 }
 
-/// Determine if a given storage engine has native backup support.
+#ifndef DBUG_OFF
+
+/**
+  Dummy backup engine factory function.
+  
+  This factory function never creates any backup engines - it always returns
+  ERROR. It is used in @c has_native_backup() method for testing purposes.
+  
+  @return Always ERROR. 
+*/
+static
+Backup_result_t dummy_backup_engine_factory(handlerton*, Backup_engine* &eng)
+{
+  eng= NULL;
+  return backup::ERROR;
+}
+#endif
+
 static
 bool has_native_backup(storage_engine_ref se)
 {
@@ -76,25 +93,66 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
     DBUG_RETURN(NULL);
   }
   
+  /*
+    The code below is used to test the backup engine selection logic. 
+    
+    In case a storage engine defines the handlerton::get_backup_engine pointer 
+    but the factory function pointed by it refuses to create a backup engine, 
+    backup kernel should try to use built-in backup engines, the same as if 
+    handlerton::get_backup_engine was NULL.
+   
+    To test this behaviour, if "backup_test_dummy_be_factory" debug symbol is
+    defined (e.g., with --debug="d,backup_test_dummy_be_factory" option), we
+    set the get_backup_engine pointer for MyISAM handlerton to point at the 
+    dummy backup engine factory which never creates any engines.
+  */ 
+
+#ifndef DBUG_OFF
+  backup_factory *saved_factory; // to save hton->get_backup_engine
+
+  DBUG_EXECUTE_IF("backup_test_dummy_be_factory", 
+    {
+      handlerton *hton= se_hton(se);
+      saved_factory= hton->get_backup_engine;
+      if (hton == myisam_hton) 
+        hton->get_backup_engine= dummy_backup_engine_factory;
+    });
+#endif
+  
   snap= native_snapshots[se];
   
   if (!snap)
     if (has_native_backup(se))
     {
       Native_snapshot *nsnap= new Native_snapshot(m_ctx, se);
-      DBUG_ASSERT(nsnap);
-      snapshots.push_front(nsnap);
-      native_snapshots.insert(se, nsnap);
 
       /*
-        Question: Can native snapshot for a given storage engine not accept
-        a table using that engine? If yes, then what to do in that case - error 
-        or try other (default) snapshots?
-       */     
-      DBUG_ASSERT(nsnap->accept(tbl, se));
-      snap= nsnap;
+        Check if the snapshot object is valid - in particular has successfuly
+        created the native backup engine. If not, we will continue searching
+        for a backup engine, trying the built-in ones.
+      */
+      if (nsnap && nsnap->is_valid())
+      {
+        snapshots.push_front(nsnap);
+        native_snapshots.insert(se, nsnap);
+
+        if (nsnap->accept(tbl, se))        
+          snap= nsnap;
+      }
+      else
+        delete nsnap;
     }
   
+  /*
+    If "backup_test_dummy_be_factory" is used, the hton->get_backup_engine
+    pointer has been modified. Here we restore the originial value.
+   */ 
+  DBUG_EXECUTE_IF("backup_test_dummy_be_factory", 
+    {
+      handlerton *hton= se_hton(se);
+      hton->get_backup_engine= saved_factory;
+    });
+
   /* 
     If we couldn't locate native snapshot for that table - iterate over
     all existing snapshots and see if one of them can accept the table.
