@@ -20,6 +20,7 @@
 #include "Record.h"
 #include "Log.h"
 #include "MemMgr.h"
+#include "Sync.h"
 
 
 RecordScavenge::RecordScavenge(Database *db, TransId oldestTransaction, bool forced)
@@ -45,6 +46,9 @@ RecordScavenge::~RecordScavenge(void)
 
 void RecordScavenge::inventoryRecord(Record* record)
 {
+	Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
+	syncPrior.lock(Shared);
+
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{
 		++numberRecords;
