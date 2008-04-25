@@ -84,7 +84,7 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	syncObject.setName("Transaction::syncObject");
 	syncActive.setName("Transaction::syncActive");
 	syncIndexes.setName("Transaction::syncIndexes");
-	syncIndexes.setName("Transaction::syncSavepoints");
+	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
 	lastRecord = NULL;
 	dependencies = 0;

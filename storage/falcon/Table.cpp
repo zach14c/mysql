@@ -981,10 +981,12 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 		{
 		if (priorRecord == NULL && priorState == recDeleted)
 			return;
-			
-		recordToRollback->printRecord("Table::rollbackRecord");
-		insert(priorRecord, recordToRollback, recordToRollback->recordNumber);
-		//ASSERT(false);
+
+		// The store of this record into the record leaf failed. No way to recover.
+
+		recordToRollback->printRecord("Table::rollbackRecord failed");
+		//insert(priorRecord, recordToRollback, recordToRollback->recordNumber);
+		ASSERT(false);
 		}
 
 	if (!priorRecord && recordToRollback->recordNumber >= 0)

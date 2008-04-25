@@ -121,8 +121,8 @@ Record* RecordVersion::releaseNonRecursive()
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
 	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
-    if (priorVersion)
-        syncPrior.lock(Shared);
+	if (priorVersion)
+		syncPrior.lock(Shared);
 
 	return fetchVersionRecursive(trans);
 }
