@@ -162,12 +162,17 @@ bool IO::openFile(const char * name, bool readOnly)
 	
 #ifndef _WIN32
 	signal (SIGXFSZ, SIG_IGN);
-
-	if (flock (fileId, (readOnly) ? LOCK_SH : LOCK_EX))
+#ifndef __NETWARE__
+	struct flock lock;
+	lock.l_type= readOnly ? F_RDLCK : F_WRLCK;
+	lock.l_whence= SEEK_SET;
+	lock.l_start= lock.l_len= 0;
+	if (fcntl(fileId, F_SETLK, &lock) < 0)
 		{
 		::close (fileId);
-		throw SQLEXCEPTION (CONNECTION_ERROR, "file \"%s\" in use by another process", name);
+		throw SQLEXCEPTION (FILE_ACCESS_ERROR, "file \"%s\" in use by another process", name);
 		}
+#endif
 #endif
 
 	//Log::debug("IO::openFile %s (%d) fd: %d\n", (const char*) fileName, readOnly, fileId);
@@ -199,7 +204,14 @@ bool IO::createFile(const char *name, uint64 initialAllocation)
 
 	isReadOnly = false;
 #ifndef _WIN32
-	flock(fileId, LOCK_EX);
+#ifndef __NETWARE__
+	struct flock lock;
+	lock.l_type= F_WRLCK;
+	lock.l_whence= SEEK_SET;
+	lock.l_start= lock.l_len= 0;
+	// We assume that no other process had a chance to lock new file.
+	fcntl(fileId, F_SETLK, &lock);
+#endif
 #endif
 
 	if (initialAllocation)
