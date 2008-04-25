@@ -464,7 +464,3 @@ void RecordVersion::serialize(Serialize* stream)
 		stream->putInt(2);
 }
 
-SyncObject* RecordVersion::getSyncPrior()
-{
-	return format->table->getSyncPrior(this);
-}
