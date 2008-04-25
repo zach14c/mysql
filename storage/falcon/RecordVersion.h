@@ -56,7 +56,6 @@ public:
 	virtual void		print(void);
 	virtual int			getSize(void);
 	virtual void		serialize(Serialize* stream);
-	virtual SyncObject* getSyncPrior();
 
 	void				commit();
 

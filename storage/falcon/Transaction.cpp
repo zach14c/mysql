@@ -748,6 +748,9 @@ bool Transaction::needToLock(Record* record)
 {
 	// Find the first visible record version
 
+	Sync syncPrior(record->getSyncPrior(), "Transaction::needToLock");
+	syncPrior.lock(Shared);
+
 	for (Record* candidate = record; 
 		 candidate != NULL;
 		 candidate = candidate->getPriorVersion())

@@ -956,5 +956,5 @@ int Record::getSize(void)
 
 SyncObject* Record::getSyncPrior(void)
 {
-	return NULL;
+	return format->table->getSyncPrior(this);
 }
