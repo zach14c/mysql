@@ -2061,7 +2061,7 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes)
 {
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
-	ulonglong bits = alter_flags->to_ulonglong();
+	// ulonglong bits = alter_flags->to_ulonglong();
 	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
 	
 	if (!tempTable && alter_flags->is_set(HA_ADD_COLUMN))
@@ -2085,18 +2085,18 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 		DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 		}
 		
-   DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+	DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 }
 
 int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
 {
 	DBUG_ENTER("StorageInterface::alter_table_phase1");
- 	ulonglong bits = alter_flags->to_ulonglong();
+	// ulonglong bits = alter_flags->to_ulonglong();
 	
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		DBUG_RETURN(addColumn(thd, altered_table, create_info, alter_info, alter_flags));
 		
-   DBUG_RETURN(HA_ERR_UNSUPPORTED);
+	DBUG_RETURN(HA_ERR_UNSUPPORTED);
 }
 
 int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)

@@ -228,7 +228,7 @@ Table* StorageDatabase::upgradeTable(StorageConnection *storageConnection, const
 	
 	try
 		{
-		Table *table = database->findTable(schemaName, tableName);
+		//Table *table = database->findTable(schemaName, tableName);
 		statement->execute(sql);
 		
 		if (autoIncrementValue)
