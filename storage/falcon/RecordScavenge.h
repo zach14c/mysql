@@ -39,9 +39,9 @@ public:
 	uint64		overflowSpace;
 	uint64		totalSpace;
 	uint64		recordSpace;
-	bool		wasForced;
+	bool		forced;
 	
-	RecordScavenge(Database *db, TransId oldestTransaction, bool forced);
+	RecordScavenge(Database *db, TransId oldestTransaction, bool wasForced);
 	~RecordScavenge(void);
 
 	void		inventoryRecord(Record* record);

@@ -23,11 +23,11 @@
 #include "Sync.h"
 
 
-RecordScavenge::RecordScavenge(Database *db, TransId oldestTransaction, bool forced)
+RecordScavenge::RecordScavenge(Database *db, TransId oldestTransaction, bool wasForced)
 {
 	database = db;
 	transactionId = oldestTransaction;
-	wasForced = forced;
+	forced = wasForced;
 	baseGeneration = database->currentGeneration;
 	memset(ageGroups, 0, sizeof(ageGroups));
 	recordsReclaimed = 0;
@@ -83,7 +83,7 @@ int RecordScavenge::computeThreshold(uint64 target)
 
 	totalSpace += overflowSpace;
 
-	if (wasForced || (scavengeGeneration == 0 && totalSpace > target))
+	if (forced || (scavengeGeneration == 0 && totalSpace > target))
 		scavengeGeneration = baseGeneration + AGE_GROUPS;
 	
 	return scavengeGeneration;
