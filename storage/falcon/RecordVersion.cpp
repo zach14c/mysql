@@ -189,13 +189,15 @@ bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 	// 2. Record Version is older than the record version that was visible
 	//    to the oldest active transaction AND
 	// 3. Either the record generation is older than the current generation
+	//    OR the scavenge is forced
 	//    OR there is no record data associated with the record version.
 
 	if (	useCount == 1
 		&& !transaction
 		&& transactionId < recordScavenge->transactionId
 		&& (!hasRecord()
-			|| generation <= recordScavenge->scavengeGeneration))
+			|| generation <= recordScavenge->scavengeGeneration
+			|| recordScavenge->forced))
 		{
 		
 		// Expunge all record versions prior to this
@@ -213,7 +215,7 @@ bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 
 		// Scavenge criteria not met for this base record, so check prior versions.
 		
-		if (priorVersion && recordScavenge->scavengeGeneration != UNDEFINED)
+		if (priorVersion && (recordScavenge->forced || recordScavenge->scavengeGeneration != UNDEFINED))
 			{
 			
 			// Scavenge prior record versions only if we have an exclusive lock on

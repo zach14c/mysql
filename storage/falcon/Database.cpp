@@ -1787,8 +1787,9 @@ void Database::retireRecords(bool forced)
 		Table *table;
 		time_t scavengeStart = deltaTime;
 		
-		for (table = tableList; table; table = table->next)
-			table->inventoryRecords(&recordScavenge);
+		if (!forced)
+			for (table = tableList; table; table = table->next)
+				table->inventoryRecords(&recordScavenge);
 		
 		threshold = recordScavenge.computeThreshold(recordScavengeFloor);
 		recordScavenge.printRecordMemory();	
