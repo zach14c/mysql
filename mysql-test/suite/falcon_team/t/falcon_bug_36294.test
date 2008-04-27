@@ -1,9 +1,10 @@
 --source include/have_falcon.inc
 #
-# Bug#36294:
-# this test produces no output. It is only here to crash the server
-# Once insert/select runs into error 305 (record memory exhaused)
-# exact point is generally unpredictaböe , the next insert/select will crash
+# Bug#36294: Assertion in Cache::writePage
+#    This test produces no output. It is only here to crash the server
+#    once insert/select runs into error 305 (record memory exhaused).
+#    Exact point of crash is generally unpredictable.
+#
 let $engine = 'Falcon';
 eval SET @@storage_engine = $engine;
 
