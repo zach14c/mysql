@@ -50,7 +50,7 @@ hex(a)
 42
 4220
 4242
-CREATE TABLE t4 (s1 varchar(5) character set ucs2, key(s1)) engine=falcon;
+CREATE TABLE t4 (a varchar(5) character set ucs2, key(a)) engine=falcon;
 INSERT INTO t4 VALUES (0x00420000), (0x00420009), (0x0041001f), (0x0042), (0x00420020), (0x00420042);
 SELECT hex(a) FROM t4 WHERE a < 'a';
 hex(a)
