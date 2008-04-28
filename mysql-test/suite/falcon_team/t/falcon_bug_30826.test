@@ -27,7 +27,11 @@ INSERT INTO t1 (`id`, `field1`) VALUES('3','value3');
 INSERT INTO t1 (`id`, `field1`) VALUES('5','value5');
 INSERT INTO t1 (`id`, `field1`) VALUES('7','value7');
 
+#at the moment, alter table returns not implemented, will return 0 after WL#4176 is done
+--disable_result_log
+--error 0,ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 OPTIMIZE PARTITION `p1`;
+--enable_result_log
 
 # ----------------------------------------------------- #
 # --- Test 2 - optimize without records                --- #
@@ -40,7 +44,12 @@ CREATE TABLE  t1 (PRIMARY KEY  (`id`),
    PARTITION BY Hash (id) PARTITIONS 4;
 
 # This caused Falcon to crash...
+#at the moment, alter table returns not implemented, will return 0 after WL#4176 is done
+--disable_result_log
+--error 0,ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 OPTIMIZE PARTITION `p1`;
+--enable_result_log
+
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #

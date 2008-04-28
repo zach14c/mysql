@@ -18,4 +18,6 @@
 
 falcon_bug_22166	: Bug#22166 tests  for case-sensitive identifiers.Will probably never be fixed (besides , can never run on case-insensitive filesystems)  2008-04-21  vvaintroub 
 falcon_bug_22187	: Bug#22187 Tests for foreign key.Useless without FK implementation	2008-04-21  vvaintroub
+falcon_bug_28006  : Bug#28006 Not a Falcon-specific bug, innodb shows the same behaviour(see Bug#15491) to be fixed in Server. 2008-04-28 vvaintroub
+
 
