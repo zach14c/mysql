@@ -66,12 +66,14 @@ falcon_headers= Agent.h Alias.h Application.h \
 		Gopher.h \
 		ha_falcon.h \
 		Hdr.h HdrState.h Image.h ImageManager.h \
-		Images.h Index.h IndexKey.h \
+		Images.h Index.h \
+		IndexKey.h \
 		IndexNode.h \
-		Index2Node.h \
 		IndexPage.h \
-		Index2Page.h \
 		IndexRootPage.h \
+		IndexWalker.h \
+		Index2Node.h \
+		Index2Page.h \
 		Index2RootPage.h \
 		InfoTable.h \
 		Interlock.h InversionFilter.h \
@@ -191,6 +193,8 @@ falcon_headers= Agent.h Alias.h Application.h \
 		TriggerRecord.h \
 		Types.h Unicode.h UnTable.h User.h UserRole.h \
 		Validation.h ValueEx.h Value.h ValueSet.h Values.h View.h \
+		WalkIndex.h \
+		WalkDeferred.h \
 		WString.h
 falcon_sources= Agent.cpp Alias.cpp \
 		AsciiBlob.cpp \
@@ -235,10 +239,11 @@ falcon_sources= Agent.cpp Alias.cpp \
 		Hdr.cpp Image.cpp \
 		ImageManager.cpp Images.cpp Index.cpp IndexKey.cpp \
 		IndexNode.cpp \
-		Index2Node.cpp \
 		IndexPage.cpp \
-		Index2Page.cpp \
 		IndexRootPage.cpp \
+		IndexWalker.cpp \
+		Index2Node.cpp \
+		Index2Page.cpp \
 		Index2RootPage.cpp \
 		InfoTable.cpp \
 		Inversion.cpp \
@@ -358,7 +363,10 @@ falcon_sources= Agent.cpp Alias.cpp \
 		Trigger.cpp \
 		Unicode.cpp UnTable.cpp User.cpp \
 		UserRole.cpp Validation.cpp Value.cpp ValueEx.cpp Values.cpp \
-		ValueSet.cpp View.cpp WString.cpp
+		ValueSet.cpp View.cpp \
+		WalkIndex.cpp \
+		WalkDeferred.cpp \
+		WString.cpp
 
 noinst_HEADERS=	$(falcon_headers) \
 		falcon_probes.h

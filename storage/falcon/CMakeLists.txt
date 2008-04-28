@@ -103,6 +103,7 @@ ADD_LIBRARY(ha_falcon
 		IndexNode.cpp 
 		Index2Node.cpp 
 		IndexPage.cpp 
+		IndexWalker.cpp
 		Index2Page.cpp 
 		IndexRootPage.cpp 
 		Index2RootPage.cpp 
@@ -298,6 +299,8 @@ ADD_LIBRARY(ha_falcon
 		Values.cpp
 		ValueSet.cpp 
 		View.cpp 
+		WalkIndex.cpp
+		WalkDeferred.cpp
 		WString.cpp
 		AsciiBlob.h
 		BackLog.h 
@@ -369,10 +372,11 @@ ADD_LIBRARY(ha_falcon
 		Index.h 
 		IndexKey.h
 		IndexNode.h 
-		Index2Node.h 
 		IndexPage.h 
-		Index2Page.h 
 		IndexRootPage.h 
+		IndexWalker.h
+		Index2Node.h 
+		Index2Page.h 
 		Index2RootPage.h 
 		InfoTable.h
 		Interlock.h
@@ -578,6 +582,8 @@ ADD_LIBRARY(ha_falcon
 		Values.h
 		ValueSet.h 
 		View.h 
+		WalkIndex.h
+		WalkDeferred.h
 		WString.h
 		TransFormLib/Base64Transform.cpp  
 		TransFormLib/FileTransform.cpp  
