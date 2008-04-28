@@ -77,6 +77,8 @@ TEST_DIRS = t r include std_data std_data/parts \
 	suite/stress/include suite/stress/t suite/stress/r \
 	suite/ndb suite/ndb/t suite/ndb/r \
 	suite/rpl_ndb suite/rpl_ndb/t suite/rpl_ndb/r \
+	suite/falcon suite/falcon/t suite/falcon/r \
+	suite/falcon_team suite/falcon_team/t suite/falcon_team/r \
 	suite/parts suite/parts/t suite/parts/r suite/parts/inc
 
 # Used by dist-hook and install-data-local to copy all
