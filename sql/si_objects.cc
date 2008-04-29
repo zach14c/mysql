@@ -1318,6 +1318,7 @@ ViewBaseObjectsIterator::create(THD *thd,
                                const String *view_name,
                                IteratorType iterator_type)
 {
+  uint table_count; // Passed to open_tables(). Not used.
   THD *my_thd= new THD();
 
   my_thd->security_ctx= thd->security_ctx;
@@ -1333,8 +1334,9 @@ ViewBaseObjectsIterator::create(THD *thd,
                            ((String *) view_name)->c_ptr_safe(),
                            TL_READ);
 
-  if (open_and_lock_tables(my_thd, tl))
+  if (open_tables(my_thd, &tl, &table_count, 0))
   {
+    close_thread_tables(my_thd);
     delete my_thd;
     thd->store_globals();
 
@@ -1376,6 +1378,7 @@ ViewBaseObjectsIterator::create(THD *thd,
     }
   }
 
+  close_thread_tables(my_thd);
   delete my_thd;
 
   thd->store_globals();
