@@ -1646,6 +1646,7 @@ void ha_partition::update_create_info(HA_CREATE_INFO *create_info)
     create_info->auto_increment_value= stats.auto_increment_value;
 
   create_info->data_file_name= create_info->index_file_name = NULL;
+  create_info->tablespace= table_share->tablespace;
   return;
 }
 
@@ -1866,6 +1867,7 @@ int ha_partition::set_up_table_before_create(TABLE *tbl,
   }
   info->index_file_name= part_elem->index_file_name;
   info->data_file_name= part_elem->data_file_name;
+  info->tablespace= part_elem->tablespace_name;
   DBUG_RETURN(0);
 }
 
