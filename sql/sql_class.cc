@@ -527,6 +527,9 @@ THD::THD()
           when the DDL blocker is engaged.
   */
    DDL_exception(FALSE)
+#if defined(ENABLED_DEBUG_SYNC)
+   ,debug_sync_control(0)
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 {
   ulong tmp;
 
@@ -756,6 +759,11 @@ void THD::init(void)
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Initialize the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_init_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 }
 
 
@@ -835,6 +843,12 @@ void THD::cleanup(void)
     lock=locked_tables; locked_tables=0;
     close_thread_tables(this);
   }
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* End the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_end_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);

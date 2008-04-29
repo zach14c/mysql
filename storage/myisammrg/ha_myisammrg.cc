@@ -456,6 +456,8 @@ int ha_myisammrg::attach_children(void)
   DBUG_PRINT("myrg", ("test_if_locked: %u", this->test_if_locked));
   DBUG_ASSERT(!this->file->children_attached);
 
+  DEBUG_SYNC(current_thd, "before_myisammrg_attach");
+
   /*
     Initialize variables that are used, modified, and/or set by
     myisammrg_attach_children_callback().
@@ -925,6 +927,8 @@ THR_LOCK_DATA **ha_myisammrg::store_lock(THD *thd,
 					 enum thr_lock_type lock_type)
 {
   MYRG_TABLE *open_table;
+
+  DEBUG_SYNC(thd, "before_myisammrg_store_lock");
 
   /*
     This method can be called while another thread is attaching the

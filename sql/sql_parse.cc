@@ -2937,6 +2937,7 @@ end_with_restore_list:
       thd->first_successful_insert_id_in_cur_stmt=
         thd->first_successful_insert_id_in_prev_stmt;
 
+    DEBUG_SYNC(thd, "after_insert");
     break;
   }
   case SQLCOM_REPLACE_SELECT:

@@ -1813,6 +1813,11 @@ public:
   unsigned long audit_class_mask[MYSQL_AUDIT_CLASS_MASK_SIZE];
 #endif
 
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Debug Sync facility. See debug_sync.cc. */
+  struct st_debug_sync_control *debug_sync_control;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
   THD();
   ~THD();
 

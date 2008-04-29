@@ -4235,6 +4235,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
                               RTFC_WAIT_OTHER_THREAD_FLAG |
                               RTFC_CHECK_KILLED_FLAG);
       thd->exit_cond(old_message);
+      DEBUG_SYNC(thd, "after_admin_flush");
       DBUG_EXECUTE_IF("wait_in_mysql_admin_table", wait_for_kill_signal(thd););
       if (thd->killed)
 	goto err;

@@ -1032,6 +1032,7 @@ libmysqld/client.c
 libmysqld/client_settings.h
 libmysqld/cmake_dummy.c
 libmysqld/convert.cc
+libmysqld/debug_sync.cc
 libmysqld/derror.cc
 libmysqld/des_key_file.cc
 libmysqld/discover.cc
@@ -1145,6 +1146,7 @@ libmysqld/rpl_record_old.cc
 libmysqld/scheduler.cc
 libmysqld/set_var.cc
 libmysqld/sha2.cc
+libmysqld/si_objects.cc
 libmysqld/simple-test
 libmysqld/slave.cc
 libmysqld/sp.cc
@@ -3034,4 +3036,3 @@ win/vs8cache.txt
 ylwrap
 zlib/*.ds?
 zlib/*.vcproj
-libmysqld/si_objects.cc

@@ -80,6 +80,7 @@ sqlsources = derror.cc field.cc field_conv.cc strfunc.cc filesort.cc \
 	event_scheduler.cc events.cc event_data_objects.cc \
         event_queue.cc event_db_repository.cc \
 	rpl_filter.cc sql_partition.cc sql_builtin.cc sql_plugin.cc \
+	debug_sync.cc \
 	sql_tablespace.cc \
 	rpl_injector.cc my_user.c partition_info.cc \
 	sql_servers.cc ddl_blocker.cc si_objects.cc sql_audit.cc

@@ -6261,3 +6261,10 @@ ER_TABLESPACE_NOT_EMPTY
 
 ER_BACKUP_TS_CHANGE
         eng "Tablespace `%-.64s` needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
+ER_DEBUG_SYNC_TIMEOUT
+  eng "debug sync point wait timed out"
+  ger "Debug Sync Point Wartezeit überschritten"
+ER_DEBUG_SYNC_HIT_LIMIT
+  eng "debug sync point hit limit reached"
+  ger "Debug Sync Point Hit Limit erreicht"
+
