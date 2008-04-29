@@ -24,6 +24,7 @@ ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
 INSERT INTO x1 VALUES (0,3);
 # Switch to connection default
 ROLLBACK;
+# Switch to connection conn1
 UPDATE x1 SET x1 = 1, x2 = 4;
 ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
 SELECT * FROM x1;
