@@ -351,6 +351,7 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
     */
     reset_lock_data_and_free(&sql_lock);
 retry:
+    DEBUG_SYNC(thd, "mysql_lock_retry");
     if (flags & MYSQL_LOCK_NOTIFY_IF_NEED_REOPEN)
     {
       *need_reopen= TRUE;
@@ -1112,6 +1113,7 @@ bool wait_for_locked_table_names(THD *thd, TABLE_LIST *table_list)
       result=1;
       break;
     }
+    DEBUG_SYNC(thd, "before_wait_locked_tname");
     wait_for_condition(thd, &LOCK_open, &COND_refresh);
     pthread_mutex_lock(&LOCK_open);
   }

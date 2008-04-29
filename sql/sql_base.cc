@@ -1021,6 +1021,8 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
     close_old_data_files(thd,thd->open_tables,1,1);
     mysql_ha_flush(thd);
 
+    DEBUG_SYNC(thd, "after_flush_unlock");
+
     bool found=1;
     /* Wait until all threads has closed all the tables we had locked */
     DBUG_PRINT("info",
@@ -2898,6 +2900,8 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
       */
       if (table->in_use != thd)
       {
+        DEBUG_SYNC(thd, "before_open_table_wait_refresh");
+
         /* wait_for_conditionwill unlock LOCK_open for us */
         wait_for_condition(thd, &LOCK_open, &COND_refresh);
       }
@@ -4870,13 +4874,6 @@ bool open_and_lock_tables_derived(THD *thd, TABLE_LIST *tables, bool derived)
   {
     if (open_tables(thd, &tables, &counter, 0))
       DBUG_RETURN(-1);
-
-    DBUG_EXECUTE_IF("sleep_open_and_lock_after_open", {
-      const char *old_proc_info= thd->proc_info;
-      thd->proc_info= "DBUG sleep";
-      my_sleep(6000000);
-      thd->proc_info= old_proc_info;});
-
     if (!lock_tables(thd, tables, counter, &need_reopen))
       break;
     if (!need_reopen)
@@ -5170,6 +5167,8 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count, bool *need_reopen)
         thd->set_current_stmt_binlog_row_based_if_mixed();
       }
     }
+
+    DEBUG_SYNC(thd, "before_lock_tables_takes_lock");
 
     if (! (thd->lock= mysql_lock_tables(thd, start, (uint) (ptr - start),
                                         lock_flag, need_reopen)))

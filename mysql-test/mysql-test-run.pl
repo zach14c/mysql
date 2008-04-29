@@ -268,6 +268,7 @@ my @default_valgrind_args= ("--show-reachable=yes");
 my @valgrind_args;
 my $opt_valgrind_path;
 my $opt_callgrind;
+my $opt_debug_sync_timeout= 300; # Default timeout for WAIT_FOR actions.
 
 our $opt_stress=               "";
 our $opt_stress_suite=     "main";
@@ -617,6 +618,7 @@ sub command_line_setup () {
              'valgrind-option=s'        => \@valgrind_args,
              'valgrind-path=s'          => \$opt_valgrind_path,
 	     'callgrind'                => \$opt_callgrind,
+	     'debug-sync-timeout=i'     => \$opt_debug_sync_timeout,
 
              # Stress testing 
              'stress'                   => \$opt_stress,
@@ -3590,6 +3592,10 @@ sub mysqld_arguments ($$$$) {
   # see BUG#28359
   mtr_add_arg($args, "%s--connect-timeout=60", $prefix);
 
+  # Enable the debug sync facility, set default wait timeout.
+  # Facility stays disabled if timeout value is zero.
+  mtr_add_arg($args, "%s--loose-debug-sync-timeout=%s", $prefix,
+              $opt_debug_sync_timeout);
 
   # When mysqld is run by a root user(euid is 0), it will fail
   # to start unless we specify what user to run as. If not running
@@ -5024,6 +5030,8 @@ Options for coverage, profiling etc
                         can be specified more then once
   valgrind-path=[EXE]   Path to the valgrind executable
   callgrind             Instruct valgrind to use callgrind
+  debug-sync-timeout=NUM  Set default timeout for WAIT_FOR debug sync
+                        actions. Disable facility with NUM=0.
 
 Misc options
 

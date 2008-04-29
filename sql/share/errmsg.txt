@@ -6234,3 +6234,11 @@ ER_SLAVE_HEARTBEAT_FAILURE
   eng "Unexpected master's heartbeat data: %s"
 ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE
   eng "The requested value for the heartbeat period %s %s"
+
+ER_DEBUG_SYNC_TIMEOUT
+  eng "debug sync point wait timed out"
+  ger "Debug Sync Point Wartezeit überschritten"
+ER_DEBUG_SYNC_HIT_LIMIT
+  eng "debug sync point hit limit reached"
+  ger "Debug Sync Point Hit Limit erreicht"
+
