@@ -990,7 +990,7 @@ void StorageHandler::initialize(void)
 		
 		int err = e.getSqlcode();
 		
-		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR)
+		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR || err == VERSION_ERROR)
 			throw;
                
 		defaultDatabase->createDatabase();
