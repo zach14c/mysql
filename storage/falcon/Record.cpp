@@ -863,6 +863,7 @@ int Record::setRecordData(const UCHAR * dataIn, int dataLength)
 	memset(dataBuffer, 0, vectorLength);
 	memcpy(dataBuffer + vectorLength, dataIn, dataLength);
 	((USHORT*) dataBuffer)[0] = (USHORT) (vectorLength + sizeof(short));
+	highWater = 0;
 	char **ptr = &data.record;
 	
 	// If data.record has changed since allocating the new buffer, then free the new buffer
