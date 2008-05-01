@@ -184,6 +184,7 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_BINLOG_STMT_CAPABLE (LL(1) << 36)
 
 #define HA_ONLINE_ALTER        (LL(1) << 37)
+#define HA_CAN_READ_ORDER_IF_LIMIT (LL(1) << 38)
 
 /*
   Set of all binlog flags. Currently only contain the capabilities

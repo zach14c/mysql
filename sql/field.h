@@ -61,9 +61,23 @@ public:
   struct st_table *orig_table;		// Pointer to original table
   const char	**table_name, *field_name;
   LEX_STRING	comment;
-  /* Field is part of the following keys */
-  key_map	key_start, part_of_key, part_of_key_not_clustered;
+  /* Bitmap of indexes that start with this field */
+  key_map	key_start;
+  /* Bitmap of indexes allow HA_EXTRA_KEYREAD and cover the entire field */
+  key_map       part_of_key;
+  /* Same as above, but not counting the HA_PRIMARY_KEY_IN_READ_INDEX effect */
+  key_map       part_of_key_not_clustered;
+  /* 
+    Bitmap of indexes that allow HA_READ_ORDER and fully cover this field
+    Note: this is a non-constant characterstic for Falcon, grep for
+    FalconOrderByLimitHandling.
+  */
   key_map       part_of_sortkey;
+  /*
+    Bitmap of indexes that cover the field, both those that allow 
+    HA_EXTRA_KEYREAD and those that don't.
+  */
+  key_map       part_of_key_wo_keyread;
   /* 
     We use three additional unireg types for TIMESTAMP to overcome limitation 
     of current binary format of .frm file. We'd like to be able to support 

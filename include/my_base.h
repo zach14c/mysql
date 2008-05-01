@@ -203,7 +203,9 @@ enum ha_extra_function {
     begin and end of a statement.
   */
   HA_EXTRA_ATTACH_CHILDREN,
-  HA_EXTRA_DETACH_CHILDREN
+  HA_EXTRA_DETACH_CHILDREN,
+  HA_EXTRA_ORDERBY_LIMIT,
+  HA_EXTRA_NO_ORDERBY_LIMIT
 };
 
 /* Compatible option, to be deleted in 6.0 */
