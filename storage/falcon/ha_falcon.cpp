@@ -109,8 +109,8 @@ static const ulonglong default_table_flags = (	  HA_REC_NOT_IN_SEQ
 												| HA_CAN_GEOMETRY
 												//| HA_AUTO_PART_KEY
 												| HA_ONLINE_ALTER
-												| HA_BINLOG_ROW_CAPABLE
-												| HA_CAN_READ_ORDER_IF_LIMIT);
+												| HA_BINLOG_ROW_CAPABLE);
+//												| HA_CAN_READ_ORDER_IF_LIMIT);
 
 static struct st_mysql_show_var falconStatus[] =
 {
@@ -2741,29 +2741,29 @@ int StorageInterface::extra(ha_extra_function operation)
 	DBUG_ENTER("StorageInterface::extra");
 	if (operation == HA_EXTRA_ORDERBY_LIMIT)
 		{
-		/*
-		SQL Layer informs us that it is considering an ORDER BY .. LIMIT
-		query. It's time we could
-		1. start returning HA_READ_ORDER flag from index_flags() calls,
-			which will make the SQL layer consider using indexes to
-			satisfy ORDER BY ... LIMIT.
-		2. If doing #1, every index/range scan must return records in
-			index order.
-		*/
+		// SQL Layer informs us that it is considering an ORDER BY .. LIMIT
+		// query. It's time we could
+		//  1. start returning HA_READ_ORDER flag from index_flags() calls,
+		//     which will make the SQL layer consider using indexes to
+		//     satisfy ORDER BY ... LIMIT.
+		//  2. If doing #1, every index/range scan must return records in
+		//     index order.
+
 		fprintf(stderr, "ha_falcon->extra(HA_EXTRA_ORDERBY_LIMIT)\n");
 		ordered_index_reads= TRUE;
 		}
+
 	if (operation == HA_EXTRA_NO_ORDERBY_LIMIT)
 		{
-		/*
-		SQL Layer figured it won't be able to use index to resolve the 
-		ORDER BY ... LIMIT. This could happen for a number of reasons,
-		but the result is that we don't have to return records in index
-		order.
-		*/
+		// SQL Layer figured it won't be able to use index to resolve the 
+		// ORDER BY ... LIMIT. This could happen for a number of reasons,
+		// but the result is that we don't have to return records in index
+		// order.
+
 		fprintf(stderr, "ha_falcon->extra(HA_EXTRA_NO_ORDERBY_LIMIT)\n");
 		ordered_index_reads= FALSE;
 		}
+
 	DBUG_RETURN(0);
 }
 

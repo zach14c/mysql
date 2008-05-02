@@ -518,7 +518,7 @@ Record* Table::fetchNext(int32 start)
 				sync.unlock();
 				ASSERT(n < 2);
 				}
-					
+			
 			// Record has gotten lost; no serious cause for concern
 			
 			sync.lock(Shared);
@@ -3006,7 +3006,6 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		insertIndexes(transaction, record);
 		ASSERT(ret);
 
-
 		record->release();
 		}
 	catch (...)
@@ -3757,11 +3756,9 @@ SyncObject* Table::getSyncPrior(int recordNumber)
 	return syncPriorVersions + lockNumber;
 }
 
-
 static bool needUniqueCheck(Index *index, Record *record)
 {
 	Record *oldRecord = record->getPriorVersion();
 	return (INDEX_IS_UNIQUE(index->type) &&
 		(!oldRecord || index->changed(record, oldRecord)));
-
 }
