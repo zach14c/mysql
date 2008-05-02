@@ -185,6 +185,7 @@ public:
 	bool				tableLocked;
 	bool				tempTable;
 	bool				lockForUpdate;
+	bool				indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;

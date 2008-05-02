@@ -49,6 +49,7 @@
 #include "ScaledBinary.h"
 #include "Dbb.h"
 #include "CmdGen.h"
+#include "IndexWalker.h"
 //#include "SyncTest.h"
 
 #define ACCOUNT				"mysql"
@@ -450,24 +451,41 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 			candidate->release();
 
 		storageConnection->setErrorText(&exception);
-
 		int errorCode = exception.getSqlcode();
+		
 		switch (errorCode)
 			{
 			case UPDATE_CONFLICT:
 				return StorageErrorUpdateConflict;
+				
 			case OUT_OF_MEMORY_ERROR:
 				return StorageErrorOutOfMemory;
+				
 			case OUT_OF_RECORD_MEMORY_ERROR:
 				return StorageErrorOutOfRecordMemory;
+				
 			case DEADLOCK:
 				return StorageErrorDeadlock;
+				
 			case LOCK_TIMEOUT:
 				return StorageErrorLockTimeout;
 			}
 
 		return StorageErrorRecordNotFound;
 		}
+}
+
+
+int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate)
+{
+	Record *record = indexWalker->getNext(lockForUpdate);
+
+	if (!record)
+		return StorageErrorRecordNotFound;
+		
+	storageTable->setRecord(record, lockForUpdate);
+	
+	return record->recordNumber;
 }
 
 RecordVersion* StorageDatabase::lockRecord(StorageConnection* storageConnection, Table *table, Record* record)
@@ -771,6 +789,23 @@ Bitmap* StorageDatabase::indexScan(Index* index, StorageKey *lower, StorageKey *
 	return index->scanIndex((lower) ? &lower->indexKey : NULL,
 							(upper) ? &upper->indexKey : NULL, searchFlags, 
 							storageConnection->connection->getTransaction(), bitmap);
+}
+
+
+IndexWalker* StorageDatabase::indexPosition(Index* index, StorageKey* lower, StorageKey* upper, int searchFlags, StorageConnection* storageConnection)
+{
+	if (!index)
+		return NULL;
+
+	if (lower)
+		lower->indexKey.index = index;
+		
+	if (upper)
+		upper->indexKey.index = index;
+		
+	return index->positionIndex((lower) ? &lower->indexKey : NULL,
+								(upper) ? &upper->indexKey : NULL, searchFlags, 
+								storageConnection->connection->getTransaction());
 }
 
 int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey)

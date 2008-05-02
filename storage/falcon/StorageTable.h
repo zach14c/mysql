@@ -44,9 +44,11 @@ class StorageTableShare;
 class StorageInterface;
 class StorageDatabase;
 class Index;
+class IndexWalker;
 class Record;
 class SyncObject;
 class Format;
+class IndexWalker;
 
 struct StorageIndexDesc;
 
@@ -69,6 +71,7 @@ public:
 	virtual void	clearIndexBounds(void);
 	virtual void	clearRecord(void);
 	virtual void	clearBitmap(void);
+	virtual void	clearStatement(void);
 	virtual int		create(const char *sql, int64 autoIncrementValue);
 	virtual int		upgrade(const char *sql, int64 autoIncrementValue);
 	virtual int		open(void);
@@ -76,7 +79,7 @@ public:
 	virtual int		deleteRow(int recordNumber);
 	virtual int		truncateTable(void);
 	virtual int		setIndex(int numberIndexes, int indexId, StorageIndexDesc* storageIndex);
-	virtual int		indexScan();
+	virtual int		indexScan(int indexOrder);
 	virtual int		setIndex(int indexId);
 	virtual void	indexEnd(void);
 	virtual int		setIndexBound(const unsigned char* key, int keyLength, int which);
@@ -114,6 +117,7 @@ public:
 	StorageInterface	*localTable;
 	StorageIndexDesc	*currentIndex;
 	void				*bitmap;
+	IndexWalker			*indexWalker;
 	StorageKey			lowerKey;
 	StorageKey			upperKey;
 	StorageKey			*lowerBound;

@@ -400,6 +400,7 @@ StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
 	freeBlobs = NULL;
 	errorText = NULL;
 	fieldMap = NULL;
+	indexOrder = true;
 	
 	if (table_arg)
 		{
@@ -735,7 +736,9 @@ ulonglong StorageInterface::table_flags(void) const
 ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 {
 	DBUG_ENTER("StorageInterface::index_flags");
-	DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR);
+	ulong flags = HA_READ_RANGE | ((indexOrder) ? 0 : HA_KEY_SCAN_NOT_ROR);
+	
+	DBUG_RETURN(flags);
 }
 
 
@@ -1320,7 +1323,7 @@ int StorageInterface::index_read(uchar *buf, const uchar *keyBytes, uint key_len
 		if ((ret = storageTable->setIndexBound(key, key_len, which)))
 			DBUG_RETURN(error(ret));
 
-	if ((ret = storageTable->indexScan()))
+	if ((ret = storageTable->indexScan(indexOrder)))
 		DBUG_RETURN(error(ret));
 
 	nextRecord = 0;
@@ -1522,7 +1525,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 			DBUG_RETURN(error(ret));
 		}
 
-	storageTable->indexScan();
+	storageTable->indexScan(indexOrder);
 	nextRecord = 0;
 	lastRecord = -1;
 	eq_range = eq_range_arg;
@@ -1848,11 +1851,7 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageConnection->releaseVerb();
 
 		if (storageTable)
-			{
-			storageTable->clearRecord();
-			storageTable->clearBitmap();
-			storageTable->clearAlter();
-			}
+			storageTable->clearStatement();
 		}
 	else
 		{

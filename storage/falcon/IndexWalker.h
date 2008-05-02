@@ -16,15 +16,24 @@
 #ifndef _INDEX_WALKER_H_
 #define _INDEX_WALKER_H_
 
+#include "IndexKey.h"
+
 class Index;
+class Transaction;
+class Record;
 
 class IndexWalker
 {
 public:
-	IndexWalker(Index *index);
+	IndexWalker(Index *index, Transaction *transaction, int flags);
 	~IndexWalker(void);
 	
-	Index	*index;
+	virtual Record*		getNext(bool lockForUpdate);
+	
+	Index		*index;
+	Transaction	*transaction;
+	IndexKey	key;
+	int			searchFlags;
 };
 
 #endif
