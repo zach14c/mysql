@@ -2749,7 +2749,6 @@ int StorageInterface::extra(ha_extra_function operation)
 		//  2. If doing #1, every index/range scan must return records in
 		//     index order.
 
-		fprintf(stderr, "ha_falcon->extra(HA_EXTRA_ORDERBY_LIMIT)\n");
 		ordered_index_reads= TRUE;
 		}
 
@@ -2759,8 +2758,6 @@ int StorageInterface::extra(ha_extra_function operation)
 		// ORDER BY ... LIMIT. This could happen for a number of reasons,
 		// but the result is that we don't have to return records in index
 		// order.
-
-		fprintf(stderr, "ha_falcon->extra(HA_EXTRA_NO_ORDERBY_LIMIT)\n");
 		ordered_index_reads= FALSE;
 		}
 

@@ -5077,8 +5077,14 @@ int ha_partition::extra(enum ha_extra_function operation)
     /* Category 8) Parameters only used by NDB */
   case HA_EXTRA_DELETE_CANNOT_BATCH:
   case HA_EXTRA_UPDATE_CANNOT_BATCH:
-  {
     /* Currently only NDB use the *_CANNOT_BATCH */
+  {
+    break;
+  }
+  case HA_EXTRA_ORDERBY_LIMIT:
+  case HA_EXTRA_NO_ORDERBY_LIMIT:
+    /* ORDERBY_LIMIT is used by Falcon */
+  {
     break;
   }
   default:
