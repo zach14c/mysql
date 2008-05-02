@@ -737,7 +737,7 @@ ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 {
 	DBUG_ENTER("StorageInterface::index_flags");
 	DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR |
-			ordered_index_reads ? HA_READ_ORDER : 0);
+			(ordered_index_reads ? HA_READ_ORDER : 0));
 }
 
 
