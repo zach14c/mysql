@@ -142,7 +142,7 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
        We are running Sun Studio on SPARC or x86
        Todo: get assembler version of atomic_cas_uint().
      */
-#elif defined(__sparcv8) || defined(__sparcv9) || defined(__sun)
+#elif (defined(__sparcv8) || defined(__sparcv9) || defined(__sun)) && !defined(__GNUC__)
 #if defined(__SunOS_5_10)
     return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
 #else
@@ -252,7 +252,7 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
        We are running Sun Studio on SPARC or x86
        Todo: get assembler version of atomic_cas_ptr().
      */
-#elif defined(__sparcv8) || defined(__sparcv9) || defined(__sun)
+#elif (defined(__sparcv8) || defined(__sparcv9) || defined(__sun)) && !defined(__GNUC__)
 #if defined(__SunOS_5_10)
     return (char)(compare == atomic_cas_ptr(target, compare, exchange));
 #else
