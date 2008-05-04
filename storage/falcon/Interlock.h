@@ -89,7 +89,7 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
 	   Need to perform explicit type casting to make the compiler happy.
 	*/
 	return COMPARE_EXCHANGE((volatile long *) target, compare, exchange);
-#elif (defined(__i386) || defined(__x86_64__)) && !defined(__sun)
+#elif (defined(__i386) || defined(__x86_64__)) && defined(__GNUC__)
 	char ret;
 	__asm__ __volatile__ (
 		"lock\n\t"
@@ -159,7 +159,7 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
 {
 #ifdef _WIN32
 	return COMPARE_EXCHANGE_POINTER(target, compare, exchange);
-#elif (defined(__i386) || defined(__x86_64__)) && !defined(__sun)
+#elif (defined(__i386) || defined(__x86_64__)) && defined(__GNUC__)
 	char ret;
 	__asm__ __volatile__ (
 		"lock\n\t"
@@ -269,7 +269,7 @@ inline INTERLOCK_TYPE interlockedIncrement(volatile INTERLOCK_TYPE *ptr)
 {
 #ifdef _WIN32
 	return InterlockedIncrement ((long*) ptr);
-#elif (defined(__i386) || defined(__x86_64__)) && !defined(__sun)
+#elif (defined(__i386) || defined(__x86_64__)) && defined(__GNUC__)
 	INTERLOCK_TYPE ret = 1;
 	__asm__ __volatile__ (
 		"lock\n\t"
@@ -310,7 +310,7 @@ inline INTERLOCK_TYPE interlockedDecrement(volatile INTERLOCK_TYPE *ptr)
 {
 #ifdef _WIN32
 	return InterlockedDecrement ((long*) ptr);
-#elif (defined(__i386) || defined(__x86_64__)) && !defined(__sun)
+#elif (defined(__i386) || defined(__x86_64__)) && defined(__GNUC__)
 	INTERLOCK_TYPE ret = -1;
 	__asm__ __volatile__ (
 		"lock\n\t"
@@ -352,7 +352,7 @@ inline INTERLOCK_TYPE interlockedAdd(volatile INTERLOCK_TYPE* addend,
 {
 #ifdef _WIN32
 	return InterlockedExchangeAdd((long*) addend, value);
-#elif (defined(__i386) || defined(__x86_64__)) && !defined(__sun)
+#elif (defined(__i386) || defined(__x86_64__)) && defined(__GNUC__)
 	INTERLOCK_TYPE ret = value;
 	__asm__ __volatile__ (
 		"lock\n\t"
@@ -394,7 +394,7 @@ inline INTERLOCK_TYPE interlockedExchange(volatile INTERLOCK_TYPE* addend,
 {
 #ifdef _WIN32
 	return InterlockedExchange((long*) addend, value);
-#elif (defined(__i386) || defined(__x86_64__)) && !defined(__sun)
+#elif (defined(__i386) || defined(__x86_64__)) && defined(__GNUC__)
 	long ret = value;
 	__asm__ __volatile__ (
 		"lock\n\t"
