@@ -261,7 +261,7 @@ class Scheduler
   void remove_pump(Pump_iterator&);
   void cancel_backup();
 
-  friend int write_table_data(THD*, Logger&, Backup_info&, Output_stream&);
+  friend int write_table_data(THD*, Backup_info&, Output_stream&);
   friend class Pump_iterator;
 };
 
@@ -469,14 +469,14 @@ int unblock_commits(THD *thd)
 
   @returns 0 on success.
  */
-int write_table_data(THD* thd, Logger &log, Backup_info &info, Output_stream &s)
+int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 {
   DBUG_ENTER("backup::write_table_data");
 
   if (info.snap_count() == 0 || info.table_count() == 0) // nothing to backup
     DBUG_RETURN(0);
 
-  Scheduler   sch(s, &log);          // scheduler instance
+  Scheduler   sch(s, &info.m_ctx);          // scheduler instance
   List<Scheduler::Pump>  inactive;  // list of images not yet being created
 
   // keeps maximal init size for images in inactive list
@@ -499,7 +499,7 @@ int write_table_data(THD* thd, Logger &log, Backup_info &info, Output_stream &s)
 
     if (!p || !p->is_valid())
     {
-      log.report_error(ER_OUT_OF_RESOURCES);
+      info.m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
       goto error;
     }
 
@@ -607,7 +607,7 @@ int write_table_data(THD* thd, Logger &log, Backup_info &info, Output_stream &s)
 
     LOG_INFO binlog_pos;
     
-    log.report_state(BUP_VALIDITY_POINT);
+    info.m_ctx.report_state(BUP_VALIDITY_POINT);
     /*
       This breakpoint is used to assist in testing state changes for
       the backup progress. It is not to be used to indicate actual
@@ -658,15 +658,15 @@ int write_table_data(THD* thd, Logger &log, Backup_info &info, Output_stream &s)
     // Report and save information about VP
 
     info.save_vp_time(vp_time);
-    log.report_vp_time(vp_time);
+    info.m_ctx.report_vp_time(vp_time);
 
     if (mysql_bin_log.is_open())
     {
       info.save_binlog_pos(binlog_pos);
-      log.report_binlog_pos(info.binlog_pos);
+      info.m_ctx.report_binlog_pos(info.binlog_pos);
     }
 
-    log.report_state(BUP_RUNNING);
+    info.m_ctx.report_state(BUP_RUNNING);
     BACKUP_BREAKPOINT("bp_running_state");
 
     /**** VP creation (end) ********************************************/
@@ -1364,7 +1364,7 @@ namespace backup {
 /**
   Read backup image data from a backup stream and forward it to restore drivers.
  */
-int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
+int restore_table_data(THD*, Restore_info &info, Input_stream &s)
 {
   DBUG_ENTER("restore::restore_table_data");
 
@@ -1380,7 +1380,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
 
   if (info.snap_count() > 256)
   {
-    log.report_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count(), 256);
+    info.m_ctx.fatal_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count(), 256);
     DBUG_RETURN(ERROR);
   }
 
@@ -1400,7 +1400,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
     res= snap->get_restore_driver(drv[n]);
     if (res == backup::ERROR)
     {
-      log.report_error(ER_BACKUP_CREATE_RESTORE_DRIVER, snap->name());
+      info.m_ctx.fatal_error(ER_BACKUP_CREATE_RESTORE_DRIVER, snap->name());
       goto error;
     };
     
@@ -1423,7 +1423,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
     query_cache.invalidate_locked_for_write(table_list);
     if (open_and_lock_tables(::current_thd, table_list))
     {
-      log.report_error(ER_BACKUP_OPEN_TABLES, "restore");
+      info.m_ctx.fatal_error(ER_BACKUP_OPEN_TABLES, "restore");
       DBUG_RETURN(backup::ERROR);
     }
     if (table_list_last)
@@ -1436,7 +1436,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
     res= drv[n]->begin(0);
     if (res == backup::ERROR)
     {
-      log.report_error(ER_BACKUP_INIT_RESTORE_DRIVER, info.m_snap[n]->name());
+      info.m_ctx.fatal_error(ER_BACKUP_INIT_RESTORE_DRIVER, info.m_snap[n]->name());
       goto error;
     }
   }
@@ -1478,7 +1478,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
           break;
 
         case BSTREAM_ERROR:
-          log.report_error(ER_BACKUP_READ_DATA);
+          info.m_ctx.fatal_error(ER_BACKUP_READ_DATA);
         default:
           state= ERROR;
           goto error;
@@ -1533,7 +1533,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
         case backup::ERROR:
           if( errors > MAX_ERRORS )
           {
-            log.report_error(ER_BACKUP_SEND_DATA, buf.table_num, snap->name());
+            info.m_ctx.fatal_error(ER_BACKUP_SEND_DATA, buf.table_num, snap->name());
             state= ERROR;
             goto error;
           }
@@ -1545,7 +1545,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
         default:
           if( repeats > MAX_REPEATS )
           {
-            log.report_error(ER_BACKUP_SEND_DATA_RETRY, repeats, snap->name());
+            info.m_ctx.fatal_error(ER_BACKUP_SEND_DATA_RETRY, repeats, snap->name());
             state= ERROR;
             goto error;
           }
@@ -1588,7 +1588,7 @@ int restore_table_data(THD*, Logger &log, Restore_info &info, Input_stream &s)
     }
 
     if (!bad_drivers.is_empty())
-      log.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
+      info.m_ctx.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
   }
 
   /*

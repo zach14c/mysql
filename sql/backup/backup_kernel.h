@@ -45,8 +45,8 @@ class Output_stream;
 class Input_stream;
 class Native_snapshot;
 
-int write_table_data(THD*, Logger&, Backup_info&, Output_stream&);
-int restore_table_data(THD*, Logger&, Restore_info&, Input_stream&);
+int write_table_data(THD*, Backup_info&, Output_stream&);
+int restore_table_data(THD*, Restore_info&, Input_stream&);
 
 }
 

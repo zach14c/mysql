@@ -136,9 +136,20 @@ bool Obj::execute(THD *thd)
 {
   ulong saved_sql_mode= thd->variables.sql_mode;
   thd->variables.sql_mode= 0;
-  
+
+  set_var_collation_client saved_charset_settings(
+                             thd->variables.character_set_client,
+                             thd->variables.character_set_results,
+                             thd->variables.collation_connection);
+
+  set_var_collation_client new_charset_settings(::system_charset_info,
+                                                ::system_charset_info,
+                                                ::system_charset_info);
+  new_charset_settings.update(thd);
+
   bool ret= do_execute(thd);
 
+  saved_charset_settings.update(thd);
   thd->variables.sql_mode= saved_sql_mode;
 
   return ret;

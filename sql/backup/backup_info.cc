@@ -78,7 +78,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 {
   using namespace backup;
 
-  Table_ref::describe_buf buf;
+  Table_ref::name_buf buf;
   Snapshot_info *snap= NULL;
   
   DBUG_ENTER("Backup_info::find_backup_engine");

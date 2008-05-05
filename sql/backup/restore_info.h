@@ -12,7 +12,7 @@ namespace backup {
 class Logger;
 class Input_stream;
 
-int restore_table_data(THD*, backup::Logger&, Restore_info&, 
+int restore_table_data(THD*, Restore_info&, 
                        backup::Input_stream&);
 
 } // backup namespace
@@ -47,7 +47,7 @@ class Restore_info: public backup::Image_info
 
  private:
 
-  friend int backup::restore_table_data(THD*, backup::Logger&, Restore_info&, 
+  friend int backup::restore_table_data(THD*, Restore_info&, 
                                         backup::Input_stream&);
   friend int ::bcat_add_item(st_bstream_image_header*,
                              struct st_bstream_item_info*);

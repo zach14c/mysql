@@ -524,6 +524,30 @@ class Restore_driver: public Driver
 }; // Restore_driver
 
 
+/** 
+  Produce string identifying the table in internal format (as used by 
+  storage engines).
+*/
+inline
+const char* Table_ref::internal_name(char *buf, size_t len) const
+{
+  uint plen= build_table_filename(buf, len, 
+                                  db().name().ptr(), name().ptr(), 
+                                  "", /* no extension */ 
+                                  0 /* not a temporary table - do conversions */);
+  buf[plen]='\0';
+  return buf;    
+}
+
+/// Produce human readable string identifying the table (e.g. for error reporting)
+inline
+const char* Table_ref::describe(char *buf, size_t len) const
+{
+  my_snprintf(buf, len, "`%s`.`%s`", db().name().ptr(), name().ptr());
+  return buf;
+}
+
+
 } // backup namespace
 
 // export Backup/Restore_driver classes to global namespace
