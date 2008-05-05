@@ -912,6 +912,28 @@ select hex(a) from t1;
 hex(a)
 0010FFFF
 drop table t1;
+create table t1 (utf32 varchar(2) character set utf32);
+Wrong character with pad
+insert into t1 values (0x110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x11\x00\x00' for column 'utf32' at row 1
+Wrong chsaracter without pad
+insert into t1 values (0x00110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+Wrong character with pad followed by another wrong character
+insert into t1 values (0x11000000110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x11\x00\x00\x00\x11\x00...' for column 'utf32' at row 1
+Good character with pad followed by bad character
+insert into t1 values (0x10000000110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+Good character without pad followed by bad character
+insert into t1 values (0x0010000000110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+drop table t1;
 create table t1 (a char(10)) character set utf32;
 insert into t1 values ('a   ');
 select hex(a) from t1;
