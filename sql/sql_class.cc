@@ -90,7 +90,9 @@ extern "C" void free_user_var(user_var_entry *entry)
 
 bool Key_part_spec::operator==(const Key_part_spec& other) const
 {
-  return length == other.length && !strcmp(field_name, other.field_name);
+  return length == other.length &&
+         field_name.length == other.field_name.length &&
+         !strcmp(field_name.str, other.field_name.str);
 }
 
 /**
@@ -525,6 +527,9 @@ THD::THD()
           when the DDL blocker is engaged.
   */
    DDL_exception(FALSE)
+#if defined(ENABLED_DEBUG_SYNC)
+   ,debug_sync_control(0)
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 {
   ulong tmp;
 
@@ -754,6 +759,11 @@ void THD::init(void)
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Initialize the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_init_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 }
 
 
@@ -833,6 +843,12 @@ void THD::cleanup(void)
     lock=locked_tables; locked_tables=0;
     close_thread_tables(this);
   }
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* End the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_end_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);
@@ -1455,6 +1471,30 @@ void THD::rollback_item_tree_changes()
   change_list.empty();
   DBUG_VOID_RETURN;
 }
+
+
+#ifndef EMBEDDED_LIBRARY
+
+/**
+  Check that the endpoint is still available.
+*/
+
+bool THD::vio_is_connected()
+{
+  uint bytes= 0;
+
+  /* End of input is signaled by poll if the socket is aborted. */
+  if (vio_poll_read(net.vio, 0))
+    return TRUE;
+
+  /* Socket is aborted if signaled but no data is available. */
+  if (vio_peek_read(net.vio, &bytes))
+    return TRUE;
+
+  return bytes ? TRUE : FALSE;
+}
+
+#endif
 
 
 /*****************************************************************************

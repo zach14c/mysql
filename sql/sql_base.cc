@@ -341,25 +341,8 @@ TABLE_SHARE *get_table_share(THD *thd, TABLE_LIST *table_list, char *key,
 
   if (!(share= alloc_table_share(table_list, key, key_length)))
   {
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-    pthread_mutex_unlock(&LOCK_open);
-#endif
     DBUG_RETURN(0);
   }
-
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-  // We need a write lock to be able to add a new entry
-  pthread_mutex_unlock(&LOCK_open);
-  pthread_mutex_lock(&LOCK_open);
-  /* Check that another thread didn't insert the same table in between */
-  if ((old_share= hash_search(&table_def_cache, (uchar*) key, key_length)))
-  {
-    (void) pthread_mutex_lock(&share->mutex);
-    free_table_share(share);
-    share= old_share;
-    goto found;
-  }
-#endif
 
   /*
     Lock mutex to be able to read table definition from file without
@@ -384,29 +367,11 @@ TABLE_SHARE *get_table_share(THD *thd, TABLE_LIST *table_list, char *key,
 
   if (my_hash_insert(&table_def_cache, (uchar*) share))
   {
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-    pthread_mutex_unlock(&LOCK_open);    
-    (void) pthread_mutex_unlock(&share->mutex);
-#endif
     free_table_share(share);
     DBUG_RETURN(0);				// return error
   }
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-  pthread_mutex_unlock(&LOCK_open);
-#endif
   if (open_table_def(thd, share, db_flags))
   {
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-    /*
-      No such table or wrong table definition file
-      Lock first the table cache and then the mutex.
-      This will ensure that no other thread is using the share
-      structure.
-    */
-    (void) pthread_mutex_unlock(&share->mutex);
-    (void) pthread_mutex_lock(&LOCK_open);
-    (void) pthread_mutex_lock(&share->mutex);
-#endif
     *error= share->error;
     (void) hash_delete(&table_def_cache, (uchar*) share);
     DBUG_RETURN(0);
@@ -425,9 +390,6 @@ found:
 
   /* We must do a lock to ensure that the structure is initialized */
   (void) pthread_mutex_lock(&share->mutex);
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-  pthread_mutex_unlock(&LOCK_open);
-#endif
   if (share->error)
   {
     /* Table definition contained an error */
@@ -614,52 +576,6 @@ void release_table_share(TABLE_SHARE *share, enum release_type type)
   }
   pthread_mutex_unlock(&share->mutex);
   DBUG_VOID_RETURN;
-
-
-#ifdef WAITING_FOR_TABLE_DEF_CACHE_STAGE_3
-  if (to_be_deleted)
-  {
-    /*
-      We must try again with new locks as we must get LOCK_open
-      before share->mutex
-    */
-    pthread_mutex_unlock(&share->mutex);
-    pthread_mutex_lock(&LOCK_open);
-    pthread_mutex_lock(&share->mutex);
-    if (!share->ref_count)
-    {						// No one is using this now
-      TABLE_SHARE *name_lock;
-      if (share->replace_with_name_lock && (name_lock=get_name_lock(share)))
-      {
-	/*
-	  This code is execured when someone does FLUSH TABLES while on has
-	  locked tables.
-	 */
-	(void) hash_search(&def_cache,(uchar*) key,key_length);
-	hash_replace(&def_cache, def_cache.current_record,(uchar*) name_lock);
-      }
-      else
-      {
-	/* Remove table definition */
-	hash_delete(&def_cache,(uchar*) share);
-      }
-      pthread_mutex_unlock(&LOCK_open);
-      free_table_share(share);
-    }
-    else
-    {
-      pthread_mutex_unlock(&LOCK_open);
-      if (type == RELEASE_WAIT_FOR_DROP)
-	wait_for_table(share, "Waiting for close");
-      else
-	pthread_mutex_unlock(&share->mutex);
-    }
-  }
-  else if (type == RELEASE_WAIT_FOR_DROP)
-    wait_for_table(share, "Waiting for close");
-  else
-    pthread_mutex_unlock(&share->mutex);
-#endif
 }
 
 
@@ -796,7 +712,7 @@ OPEN_TABLE_LIST *list_open_tables(THD *thd, const char *db, const char *wild)
     table_list.table_name= share->table_name.str;
     table_list.grant.privilege=0;
 
-    if (check_table_access(thd,SELECT_ACL | EXTRA_ACL,&table_list, 1, TRUE))
+    if (check_table_access(thd, SELECT_ACL, &table_list, TRUE, TRUE, 1))
       continue;
     /* need to check if we haven't already listed it */
     for (table= open_list  ; table ; table=table->next)
@@ -1021,6 +937,8 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
 
     close_old_data_files(thd,thd->open_tables,1,1);
     mysql_ha_flush(thd);
+
+    DEBUG_SYNC(thd, "after_flush_unlock");
 
     bool found=1;
     /* Wait until all threads has closed all the tables we had locked */
@@ -2902,6 +2820,8 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
       */
       if (table->in_use != thd)
       {
+        DEBUG_SYNC(thd, "before_open_table_wait_refresh");
+
         /* wait_for_conditionwill unlock LOCK_open for us */
         wait_for_condition(thd, &LOCK_open, &COND_refresh);
       }
@@ -4878,13 +4798,6 @@ int open_and_lock_tables_derived(THD *thd, TABLE_LIST *tables, bool derived)
   {
     if (open_tables(thd, &tables, &counter, 0))
       DBUG_RETURN(-1);
-
-    DBUG_EXECUTE_IF("sleep_open_and_lock_after_open", {
-      const char *old_proc_info= thd->proc_info;
-      thd->proc_info= "DBUG sleep";
-      my_sleep(6000000);
-      thd->proc_info= old_proc_info;});
-
     if (!lock_tables(thd, tables, counter, &need_reopen))
       break;
     if (!need_reopen)
@@ -5175,6 +5088,8 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count, bool *need_reopen)
         thd->set_current_stmt_binlog_row_based_if_mixed();
       }
     }
+
+    DEBUG_SYNC(thd, "before_lock_tables_takes_lock");
 
     if (! (thd->lock= mysql_lock_tables(thd, start, (uint) (ptr - start),
                                         lock_flag, need_reopen)))

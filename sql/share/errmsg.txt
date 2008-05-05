@@ -6350,3 +6350,10 @@ ER_BACKUP_GET_META_TS
         eng "Failed to obtain meta-data for tablespace %-.64s."
 ER_BACKUP_CATALOG_ADD_TS
         eng "Failed to add tablespace `%-.64s` to the catalog"
+ER_DEBUG_SYNC_TIMEOUT
+  eng "debug sync point wait timed out"
+  ger "Debug Sync Point Wartezeit überschritten"
+ER_DEBUG_SYNC_HIT_LIMIT
+  eng "debug sync point hit limit reached"
+  ger "Debug Sync Point Hit Limit erreicht"
+

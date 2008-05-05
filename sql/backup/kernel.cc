@@ -948,7 +948,6 @@ extern "C"
 void bstream_free(bstream_byte *ptr)
 {
   using namespace backup;
-
   if (Backup_restore_ctx::mem_alloc)
     Backup_restore_ctx::mem_alloc->free(ptr);
 }
