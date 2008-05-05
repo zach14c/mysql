@@ -21,7 +21,7 @@
 class WalkDeferred : public IndexWalker
 {
 public:
-	WalkDeferred(Index *index);
+	WalkDeferred(Index *index, Transaction *transaction, int flags);
 	virtual ~WalkDeferred(void);
 };
 

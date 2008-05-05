@@ -17,12 +17,28 @@
 #define _WALK_INDEX_H_
 
 #include "IndexWalker.h"
+#include "IndexKey.h"
+#include "IndexNode.h"
+
+class Record;
+class Btn;
 
 class WalkIndex : public IndexWalker
 {
 public:
-	WalkIndex(Index *index);
+	WalkIndex(Index *index, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper);
 	virtual ~WalkIndex(void);
+	
+	void			setNodes(int32 nextPage, int length, Btn* stuff);
+	virtual Record* getNext(bool lockForUpdate);
+	
+	IndexKey	lowerBound;
+	IndexKey	upperBound;
+	Record		*record;
+	UCHAR		*nodes;
+	IndexNode	node;
+	Btn			*endNodes;
+	int32		nextPage;
 };
 
 #endif

@@ -16,11 +16,18 @@
 #include "Engine.h"
 #include "IndexWalker.h"
 
-IndexWalker::IndexWalker(Index *idx)
+IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 {
 	index = idx;
+	transaction = trans;
+	searchFlags = flags;
 }
 
 IndexWalker::~IndexWalker(void)
 {
+}
+
+Record* IndexWalker::getNext(bool lockForUpdate)
+{
+	return NULL;
 }

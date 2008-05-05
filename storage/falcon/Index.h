@@ -63,6 +63,7 @@ class Bitmap;
 class Database;
 class Transaction;
 class IndexKey;
+class IndexWalker;
 class DeferredIndex;
 class Dbb;
 class Connection;
@@ -153,6 +154,7 @@ public:
 	int			DIHashTableSlotsUsed;
 	SyncObject	syncDIHash;
 	SyncObject	syncUnique;
+	IndexWalker* positionIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, Transaction* transaction);
 };
 
 #endif // !defined(AFX_INDEX_H__02AD6A44_A433_11D2_AB5B_0000C01D2301__INCLUDED_)

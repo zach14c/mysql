@@ -16,7 +16,7 @@
 #include "Engine.h"
 #include "WalkDeferred.h"
 
-WalkDeferred::WalkDeferred(Index *index) : IndexWalker(index)
+WalkDeferred::WalkDeferred(Index *index, Transaction *transaction, int flags) : IndexWalker(index, transaction, flags)
 {
 }
 
