@@ -487,6 +487,9 @@ my_bool lower_case_file_system= 0;
 my_bool opt_large_pages= 0;
 my_bool opt_myisam_use_mmap= 0;
 uint    opt_large_page_size= 0;
+#if defined(ENABLED_DEBUG_SYNC)
+uint    opt_debug_sync_timeout= 0;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 my_bool opt_old_style_user_limits= 0, trust_function_creators= 0;
 /*
   True if there is at least one per-hour limit for some user, so we should
@@ -1369,6 +1372,10 @@ void clean_up(bool print_message)
 #ifdef USE_REGEX
   my_regex_end();
 #endif
+#if defined(ENABLED_DEBUG_SYNC)
+  /* End the debug sync facility. See debug_sync.cc. */
+  debug_sync_end();
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 
 #if !defined(EMBEDDED_LIBRARY)
   if (!opt_bootstrap)
@@ -2083,9 +2090,11 @@ static BOOL WINAPI console_event_handler( DWORD type )
        between main thread doing initialization and CTRL-C thread doing
        cleanup, which can result into crash.
      */
+#ifndef EMBEDDED_LIBRARY
      if(hEventShutdown)
        kill_mysql();
      else
+#endif
        sql_print_warning("CTRL-C ignored during startup");
      DBUG_RETURN(TRUE);
   }
@@ -2525,7 +2534,8 @@ and this may fail.\n\n");
   fprintf(stderr, "read_buffer_size=%ld\n", (long) global_system_variables.read_buff_size);
   fprintf(stderr, "max_used_connections=%lu\n", max_used_connections);
   fprintf(stderr, "max_threads=%u\n", thread_scheduler.max_threads);
-  fprintf(stderr, "threads_connected=%u\n", thread_count);
+  fprintf(stderr, "thread_count=%u\n", thread_count);
+  fprintf(stderr, "connection_count=%u\n", connection_count);
   fprintf(stderr, "It is possible that mysqld could use up to \n\
 key_buffer_size + (read_buffer_size + sort_buffer_size)*max_threads = %lu K\n\
 bytes of memory\n", ((ulong) dflt_key_cache->key_cache_mem_size +
@@ -2913,9 +2923,9 @@ static void check_data_home(const char *path)
   for the client.
 */
 /* ARGSUSED */
-extern "C" int my_message_sql(uint error, const char *str, myf MyFlags);
+extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 
-int my_message_sql(uint error, const char *str, myf MyFlags)
+void my_message_sql(uint error, const char *str, myf MyFlags)
 {
   THD *thd;
   DBUG_ENTER("my_message_sql");
@@ -2927,11 +2937,16 @@ int my_message_sql(uint error, const char *str, myf MyFlags)
   */
   if ((thd= current_thd))
   {
+    if (MyFlags & ME_FATALERROR)
+      thd->is_fatal_error= 1;
+
+#ifdef BUG_36098_FIXED
     mysql_audit_general(thd,MYSQL_AUDIT_GENERAL_ERROR,error,my_time(0),
                         0,0,str,str ? strlen(str) : 0,
                         thd->query,thd->query_length,
                         thd->variables.character_set_client,
                         thd->row_count);
+#endif
 
 
     /*
@@ -2940,7 +2955,7 @@ int my_message_sql(uint error, const char *str, myf MyFlags)
     */
     if (thd->handle_error(error, str,
                           MYSQL_ERROR::WARN_LEVEL_ERROR))
-      DBUG_RETURN(0);
+      DBUG_VOID_RETURN;
 
     thd->is_slave_error=  1; // needed to catch query errors during replication
 
@@ -2974,17 +2989,17 @@ int my_message_sql(uint error, const char *str, myf MyFlags)
       If a continue handler is found, the error message will be cleared
       by the stored procedures code.
     */
-    if (thd->spcont &&
+    if (!thd->is_fatal_error && thd->spcont &&
         thd->spcont->handle_error(error, MYSQL_ERROR::WARN_LEVEL_ERROR, thd))
     {
       /*
         Do not push any warnings, a handled error must be completely
         silenced.
       */
-      DBUG_RETURN(0);
+      DBUG_VOID_RETURN;
     }
 
-    if (!thd->no_warnings_for_error)
+    if (!thd->no_warnings_for_error && !thd->is_fatal_error)
     {
       /*
         Suppress infinite recursion if there a memory allocation error
@@ -2997,7 +3012,7 @@ int my_message_sql(uint error, const char *str, myf MyFlags)
   }
   if (!thd || MyFlags & ME_NOREFRESH)
     sql_print_error("%s: %s",my_progname,str); /* purecov: inspected */
-  DBUG_RETURN(0);
+  DBUG_VOID_RETURN;
 }
 
 
@@ -3521,6 +3536,12 @@ static int init_common_variables(const char *conf_file_name, int argc,
   s= opt_slow_logname ? opt_slow_logname : make_default_log_name(buff, "-slow.log");
   sys_var_slow_log_path.value= my_strdup(s, MYF(0));
   sys_var_slow_log_path.value_length= strlen(s);
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Initialize the debug sync facility. See debug_sync.cc. */
+  if (debug_sync_init())
+    return 1; /* purecov: tested */
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 
   if (use_temp_pool && bitmap_init(&temp_pool,0,1024,1))
     return 1;
@@ -4853,7 +4874,7 @@ void create_thread_to_handle_connection(THD *thd)
                               handle_one_connection,
                               (void*) thd)))
     {
-      /* purify: begin inspected */
+      /* purecov: begin inspected */
       DBUG_PRINT("error",
                  ("Can't create thread to handle request (error %d)",
                   error));
@@ -5661,6 +5682,9 @@ enum options_mysqld
   OPT_SECURE_FILE_PRIV,
   OPT_MIN_EXAMINED_ROW_LIMIT,
   OPT_LOG_SLOW_SLAVE_STATEMENTS,
+#if defined(ENABLED_DEBUG_SYNC)
+  OPT_DEBUG_SYNC_TIMEOUT,
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   OPT_OLD_MODE,
 #if HAVE_POOL_OF_THREADS == 1
   OPT_POOL_OF_THREADS,
@@ -6408,6 +6432,14 @@ log and this option does nothing anymore.",
    "Decision to use in heuristic recover process. Possible values are COMMIT or ROLLBACK.",
    (uchar**) &opt_tc_heuristic_recover, (uchar**) &opt_tc_heuristic_recover,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+#if defined(ENABLED_DEBUG_SYNC)
+  {"debug-sync-timeout", OPT_DEBUG_SYNC_TIMEOUT,
+   "Enable the debug sync facility "
+   "and optionally specify a default wait timeout in seconds. "
+   "A zero value keeps the facility disabled.",
+   (uchar**) &opt_debug_sync_timeout, 0,
+   0, GET_UINT, OPT_ARG, 0, 0, UINT_MAX, 0, 0, 0},
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   {"temp-pool", OPT_TEMP_POOL,
    "Using this option will cause most temporary files created to use a small set of names, rather than a unique name for each new file.",
    (uchar**) &use_temp_pool, (uchar**) &use_temp_pool, 0, GET_BOOL, NO_ARG, 1,
@@ -6960,13 +6992,6 @@ The minimum value for this variable is 4096.",
   {0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
 
-static int show_question(THD *thd, SHOW_VAR *var, char *buff)
-{
-  var->type= SHOW_LONGLONG;
-  var->value= (char *)&thd->query_id;
-  return 0;
-}
-
 static int show_net_compression(THD *thd, SHOW_VAR *var, char *buff)
 {
   var->type= SHOW_MY_BOOL;
@@ -7416,7 +7441,7 @@ SHOW_VAR status_vars[]= {
   {"Qcache_queries_in_cache",  (char*) &query_cache.queries_in_cache, SHOW_LONG_NOFLUSH},
   {"Qcache_total_blocks",      (char*) &query_cache.total_blocks, SHOW_LONG_NOFLUSH},
 #endif /*HAVE_QUERY_CACHE*/
-  {"Questions",                (char*) &show_question,            SHOW_FUNC},
+  {"Questions",                (char*) offsetof(STATUS_VAR, questions), SHOW_LONG_STATUS},
 #ifdef HAVE_REPLICATION
   {"Rpl_status",               (char*) &show_rpl_status,          SHOW_FUNC},
 #endif
@@ -7473,7 +7498,7 @@ SHOW_VAR status_vars[]= {
   {"Tc_log_page_waits",        (char*) &tc_log_page_waits,      SHOW_LONG},
 #endif
   {"Threads_cached",           (char*) &cached_thread_count,    SHOW_LONG_NOFLUSH},
-  {"Threads_connected",        (char*) &thread_count,           SHOW_INT},
+  {"Threads_connected",        (char*) &connection_count,       SHOW_INT},
   {"Threads_created",	       (char*) &thread_created,		SHOW_LONG_NOFLUSH},
   {"Threads_running",          (char*) &thread_running,         SHOW_INT},
   {"Uptime",                   (char*) &show_starttime,         SHOW_FUNC},
@@ -7601,6 +7626,9 @@ static void mysql_init_variables(void)
   bzero((uchar*) &mysql_tmpdir_list, sizeof(mysql_tmpdir_list));
   bzero((char *) &global_status_var, sizeof(global_status_var));
   opt_large_pages= 0;
+#if defined(ENABLED_DEBUG_SYNC)
+  opt_debug_sync_timeout= 0;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   key_map_full.set_all();
 
   /* Character sets */
@@ -8260,6 +8288,22 @@ mysqld_get_one_option(int optid,
     lower_case_table_names= argument ? atoi(argument) : 1;
     lower_case_table_names_used= 1;
     break;
+#if defined(ENABLED_DEBUG_SYNC)
+  case OPT_DEBUG_SYNC_TIMEOUT:
+    /*
+      Debug Sync Facility. See debug_sync.cc.
+      Default timeout for WAIT_FOR action.
+      Default value is zero (facility disabled).
+      If option is given without an argument, supply a non-zero value.
+    */
+    if (!argument)
+    {
+      /* purecov: begin tested */
+      opt_debug_sync_timeout= DEBUG_SYNC_DEFAULT_WAIT_TIMEOUT;
+      /* purecov: end */
+    }
+    break;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   }
   return 0;
 }

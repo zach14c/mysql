@@ -602,6 +602,27 @@ void debug_sync_point(const char* lock_name, uint lock_timeout);
 #define DBUG_SYNC_POINT(lock_name,lock_timeout)
 #endif /* EXTRA_DEBUG */
 
+/* Debug Sync Facility. */
+#if defined(ENABLED_DEBUG_SYNC)
+/* Macro to be put in the code at synchronization points. */
+#define DEBUG_SYNC(_thd_, _sync_point_name_)                            \
+          do { if (unlikely(opt_debug_sync_timeout))                    \
+               debug_sync(_thd_, STRING_WITH_LEN(_sync_point_name_));   \
+             } while (0)
+/* Command line option --debug-sync-timeout. See mysqld.cc. */
+extern uint opt_debug_sync_timeout;
+/* Default WAIT_FOR timeout if command line option is given without argument. */
+#define DEBUG_SYNC_DEFAULT_WAIT_TIMEOUT 300
+/* Debug Sync prototypes. See debug_sync.cc. */
+extern int  debug_sync_init(void);
+extern void debug_sync_end(void);
+extern void debug_sync_init_thread(THD *thd);
+extern void debug_sync_end_thread(THD *thd);
+extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
+#else /* defined(ENABLED_DEBUG_SYNC) */
+#define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1
@@ -1115,8 +1136,10 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 bool check_access(THD *thd, ulong access, const char *db, ulong *save_priv,
 		  bool no_grant, bool no_errors, bool schema_db);
-bool check_table_access(THD *thd, ulong want_access, TABLE_LIST *tables,
-			uint number, bool no_errors);
+bool check_table_access(THD *thd, ulong requirements, TABLE_LIST *tables,
+                        bool no_errors,
+                        bool any_combination_of_privileges_will_do,
+			uint number);
 #else
 inline bool check_access(THD *thd, ulong access, const char *db,
                          ulong *save_priv, bool no_grant, bool no_errors,
@@ -1127,7 +1150,9 @@ inline bool check_access(THD *thd, ulong access, const char *db,
   return false;
 }
 inline bool check_table_access(THD *thd, ulong want_access, TABLE_LIST *tables,
-			uint number, bool no_errors)
+                        bool no_errors,
+                        bool any_combination_of_privileges_will_do,
+			uint number)
 { return false; }
 #endif /*NO_EMBEDDED_ACCESS_CHECKS*/
 

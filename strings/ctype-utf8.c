@@ -2022,15 +2022,35 @@ my_mb_wc_utf8mb4(CHARSET_INFO *cs __attribute__((unused)),
            (my_wc_t) (s[2] ^ 0x80);
     return 3;
   }
-  else if (c < 0xf8)
+  else if (c < 0xf5)
   {
     if (s + 4 > e) /* We need 4 characters */
       return MY_CS_TOOSMALL4;
 
+    /*
+      UTF-8 quick four-byte mask:
+      11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+      Encoding allows to encode U+00010000..U+001FFFFF
+      
+      The maximum character defined in the Unicode standard is U+0010FFFF.
+      Higher characters U+00110000..U+001FFFFF are not used.
+      
+      11110000.10010000.10xxxxxx.10xxxxxx == F0.90.80.80 == U+00010000 (min)
+      11110100.10001111.10111111.10111111 == F4.8F.BF.BF == U+0010FFFF (max)
+      
+      Valid codes:
+      [F0][90..BF][80..BF][80..BF]
+      [F1][80..BF][80..BF][80..BF]
+      [F2][80..BF][80..BF][80..BF]
+      [F3][80..BF][80..BF][80..BF]
+      [F4][80..8F][80..BF][80..BF]
+    */
+
     if (!((s[1] ^ 0x80) < 0x40 &&
           (s[2] ^ 0x80) < 0x40 &&
           (s[3] ^ 0x80) < 0x40 &&
-          (c >= 0xf1 || s[1] >= 0x90)))
+          (c >= 0xf1 || s[1] >= 0x90) &&
+          (c <= 0xf3 || s[1] <= 0x8F)))
       return MY_CS_ILSEQ;
     *pwc = ((my_wc_t) (c & 0x07) << 18)    |
            ((my_wc_t) (s[1] ^ 0x80) << 12) |
@@ -2083,12 +2103,13 @@ my_mb_wc_utf8mb4_no_range(CHARSET_INFO *cs __attribute__((unused)),
 
     return 3;
   }
-  else if (c < 0xf8)
+  else if (c < 0xf5)
   {
     if (!((s[1] ^ 0x80) < 0x40 &&
           (s[2] ^ 0x80) < 0x40 &&
           (s[3] ^ 0x80) < 0x40 &&
-          (c >= 0xf1 || s[1] >= 0x90)))
+          (c >= 0xf1 || s[1] >= 0x90) &&
+          (c <= 0xf3 || s[1] <= 0x8F)))
       return MY_CS_ILSEQ;
     *pwc = ((my_wc_t) (c & 0x07) << 18)    |
            ((my_wc_t) (s[1] ^ 0x80) << 12) |
