@@ -61,7 +61,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 {
   using namespace backup;
 
-  Table_ref::describe_buf buf;
+  Table_ref::name_buf buf;
   Snapshot_info *snap= NULL;
   
   DBUG_ENTER("Backup_info::find_backup_engine");
@@ -563,7 +563,7 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
   
   if (!tbl)
   {
-    Tbl::describe_buf buf;
+    Tbl::name_buf buf;
     m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, t.describe(buf));
     return NULL;
   }

@@ -332,7 +332,7 @@ class Image_info::Obj: public Sql_alloc
    */ 
   virtual obs::Obj *materialize(uint ver, const ::String&) =0;
 
-  typedef Table_ref::describe_buf describe_buf;
+  typedef Table_ref::name_buf describe_buf;
   virtual const char* describe(describe_buf&) const =0;
 
  protected:

@@ -1751,8 +1751,24 @@ bool TableObj::do_serialize(THD *thd, String *serialization)
   */
   if (m_table_is_view)
   {
+    View_creation_ctx *creation_ctx= table_list->view_creation_ctx;
+
+    /*
+      append character set client charset information
+    */
+    serialization->append("SET CHARACTER_SET_CLIENT = '");
+    serialization->append(creation_ctx->get_client_cs()->csname);
+    serialization->append("'; ");
+
+    /*
+      append collation_connection information
+    */
+    serialization->append("SET COLLATION_CONNECTION = '");
+    serialization->append(creation_ctx->get_connection_cl()->name);
+    serialization->append("'; ");
+
     table_list->view_db= dbname;
-    serialization->set_charset(table_list->view_creation_ctx->get_client_cs());
+    serialization->set_charset(creation_ctx->get_client_cs());
   }
 
   /*

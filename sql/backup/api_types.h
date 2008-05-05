@@ -128,17 +128,17 @@ class Table_ref
   bool operator!=(const Table_ref &db) const
   { return ! this->operator==(db); }
 
-  typedef char describe_buf[512];
+  typedef char name_buf[FN_REFLEN];
 
-  /// Produce string identifying the table (e.g. for error reporting)
-  const char* describe(char *buf, size_t len) const
-  {
-    my_snprintf(buf, len, "`%s`.`%s`", db().name().ptr(), name().ptr());
-    return buf;
-  }
-
-  const char* describe(describe_buf &buf) const
+  // Produce string identifying the table (e.g. for error reporting)
+  const char* describe(char *buf, size_t len) const;
+  const char* describe(name_buf &buf) const
   { return describe(buf, sizeof(buf)); }
+
+  // Produce string identifying the table in internal format. 
+  const char* internal_name(char *buf, size_t len) const;
+  const char* internal_name(name_buf &buf) const
+  { return internal_name(buf, sizeof(buf)); };
   
  protected:
 

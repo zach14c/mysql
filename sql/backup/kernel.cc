@@ -743,7 +743,7 @@ int Backup_restore_ctx::do_backup()
 
   BACKUP_BREAKPOINT("backup_data");
 
-  if (write_table_data(m_thd, *this, info, s)) // reports errors
+  if (write_table_data(m_thd, info, s)) // reports errors
     DBUG_RETURN(send_error(*this, ER_BACKUP_BACKUP));
 
   DBUG_PRINT("backup",("Writing summary"));
@@ -812,8 +812,8 @@ int Backup_restore_ctx::do_restore()
   m_thd->main_da.reset_diagnostics_area();
 
   // Here restore drivers are created to restore table data
-  if (restore_table_data(m_thd, *this, info, s)) // reports errors
-    DBUG_RETURN(send_error(*this, ER_BACKUP_RESTORE));
+  if (restore_table_data(m_thd, info, s)) // reports errors
+    DBUG_RETURN(ER_BACKUP_RESTORE);
 
   DBUG_PRINT("restore",("Done."));
 
