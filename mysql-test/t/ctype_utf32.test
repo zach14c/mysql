@@ -613,6 +613,17 @@ insert into t1 values (0x0010000000110000);
 drop table t1;
 
 #
+# Bug#32394 Character sets: crash if comparison with 0xfffd
+#
+select _utf32'a' collate utf32_general_ci = 0xfffd;
+select hex(concat(_utf32 0x0410 collate utf32_general_ci, 0x61));
+create table t1 (s1 varchar(5) character set utf32);
+insert into t1 values (0xfffd);
+select case when s1 = 0xfffd then 1 else 0 end from t1;
+select hex(s1) from t1 where s1 = 0xfffd;
+drop table t1;
+
+#
 # Testing cs->cset->lengthsp()
 #
 create table t1 (a char(10)) character set utf32;
