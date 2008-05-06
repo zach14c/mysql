@@ -96,7 +96,7 @@ public:
 	virtual int		optimize(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		check(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		repair(THD* thd, HA_CHECK_OPT* check_opt);
-	virtual int		reset() { ordered_index_reads= false; return 0; }
+	virtual int		reset();
 
 	virtual int		check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes);
 	virtual int		alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
@@ -191,7 +191,6 @@ public:
 	key_range			endKey;
 	uint64				insertCount;
 	ulonglong			tableFlags;
-	bool			ordered_index_reads;
 };
 
 class NfsPluginHandler

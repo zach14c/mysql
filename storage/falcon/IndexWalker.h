@@ -21,6 +21,7 @@
 class Index;
 class Transaction;
 class Record;
+class Table;
 
 class IndexWalker
 {
@@ -29,11 +30,15 @@ public:
 	~IndexWalker(void);
 	
 	virtual Record*		getNext(bool lockForUpdate);
+	Record*				getValidatedRecord(int32 recordId, bool lockForUpdate);
 	
 	Index		*index;
 	Transaction	*transaction;
 	IndexKey	key;
+	Record		*currentRecord;
+	Table		*table;
 	int			searchFlags;
+	bool		first;
 };
 
 #endif

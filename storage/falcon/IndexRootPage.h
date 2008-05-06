@@ -47,6 +47,7 @@ public:
 									AddNodeResult addResult, IndexKey *indexKey, int recordNumber);
 	static void		scanIndex (Dbb *dbb, int32 indexId, int32 rootPage, IndexKey *low, IndexKey *high, int searchFlags, TransId transId, Bitmap *bitmap);
 	static void		positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkIndex* walkIndex);
+	static void		repositionIndex(Dbb* dbb, int indexId, WalkIndex* walkIndex);
 	static Bdb*		findRoot (Dbb *dbb, int32 indexId, int32 rootPage, LockType lockType, TransId transId);
 	static Bdb*		findLeaf (Dbb *dbb, int32 indexId, int32 rootPage, IndexKey *key, LockType lockType, TransId transId);
 	static Bdb*		findInsertionLeaf (Dbb *dbb, int32 indexId, IndexKey *key, int32 recordNumber, TransId transId);

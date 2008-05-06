@@ -1199,3 +1199,11 @@ void IndexRootPage::positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkInd
 	walkIndex->setNodes(page->nextPage, page->length - ((UCHAR*) node.node - (UCHAR*) page->nodes), node.node);
 	bdb->release(REL_HISTORY);
 }
+
+void IndexRootPage::repositionIndex(Dbb* dbb, int indexId, WalkIndex* walkIndex)
+{
+	Bdb *bdb = dbb->fetchPage(walkIndex->nextPage, PAGE_btree, Shared);
+	IndexPage *page = (IndexPage*) bdb->buffer;
+	walkIndex->setNodes(page->nextPage, page->length - OFFSET(IndexPage*, nodes), page->nodes);
+	bdb->release(REL_HISTORY);
+}

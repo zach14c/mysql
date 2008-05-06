@@ -22,6 +22,7 @@
 #include "Dbb.h"
 #include "WalkIndex.h"
 #include "WalkIndex.h"
+#include "IndexRootPage.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -41,7 +42,6 @@ WalkIndex::WalkIndex(Index *index, Transaction *transaction, int flags, IndexKey
 		upperBound.setKey(upper);
 	
 	nodes = new UCHAR[transaction->database->dbb->pageSize];
-	record = NULL;
 }
 
 WalkIndex::~WalkIndex(void)
@@ -49,14 +49,60 @@ WalkIndex::~WalkIndex(void)
 	delete [] nodes;
 }
 
-void WalkIndex::setNodes(int32 nextPage, int length, Btn* stuff)
+void WalkIndex::setNodes(int32 nextIndexPage, int length, Btn* stuff)
 {
 	memcpy(nodes, stuff, length);
 	endNodes = (Btn*) (nodes + length);
-	node.parseNode(stuff, endNodes);
+	node.parseNode((Btn*) nodes, endNodes);
+	nextPage = nextIndexPage;
 }
 
 Record* WalkIndex::getNext(bool lockForUpdate)
 {
-	return NULL;
+	for (;;)
+		{
+		int32 recordNumber = getNextNode();
+		
+		if (recordNumber < 0)
+			{
+			currentRecord = NULL;
+			
+			return NULL;
+			}
+		
+		if ( (currentRecord = getValidatedRecord(recordNumber, lockForUpdate)) )
+			return currentRecord;
+		}
+}
+
+int32 WalkIndex::getNextNode(void)
+{
+	for (;; first = true)
+		{
+		if (first)
+			{
+			first = false;
+			int32 recordNumber = node.getNumber();
+			
+			if (recordNumber >= 0)
+				return recordNumber;
+			}
+			
+		node.getNext(endNodes);
+		
+		if (node.node < endNodes)
+			{
+			int32 recordNumber = node.getNumber();
+			node.expandKey(&key);
+			
+			if (recordNumber >= 0)
+				return recordNumber;
+			}
+		
+		if (nextPage == 0)
+			return -1;
+			
+		IndexRootPage::repositionIndex(index->dbb, index->indexId, this);
+		}
+	
 }

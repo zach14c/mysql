@@ -15,12 +15,18 @@
 
 #include "Engine.h"
 #include "IndexWalker.h"
+#include "Record.h"
+#include "Table.h"
+#include "SQLError.h"
 
 IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 {
 	index = idx;
+	table = index->table;
 	transaction = trans;
 	searchFlags = flags;
+	currentRecord = NULL;
+	first = true;
 }
 
 IndexWalker::~IndexWalker(void)
@@ -30,4 +36,51 @@ IndexWalker::~IndexWalker(void)
 Record* IndexWalker::getNext(bool lockForUpdate)
 {
 	return NULL;
+}
+
+Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
+{
+	// Fetch record.  If it doesn't exist, that's ok.
+	
+	Record *candidate = table->fetch(recordId);
+
+	if (!candidate)
+		return NULL;
+	
+	// Get the correct version.  If this is select for update, get a lock record
+			
+	Record *record = (lockForUpdate) 
+				    ? table->fetchForUpdate(transaction, candidate, true)
+				    : candidate->fetchVersion(transaction);
+	
+	if (!record)
+		{
+		if (!lockForUpdate)
+			candidate->release();
+		
+		return NULL;
+		}
+	
+	// If we have a different record version, release the original
+	
+	if (!lockForUpdate && candidate != record)
+		{
+		record->addRef();
+		candidate->release();
+		}
+	
+	// Compute record key and compare against index key.  If there' different, punt
+	
+	IndexKey recordKey;
+	index->makeKey(record, &recordKey);
+	
+	if (recordKey.keyLength != key.keyLength ||
+		memcmp(recordKey.key, key.key, key.keyLength) != 0)
+		{
+		record->release();
+		
+		return NULL;
+		}
+	
+	return record;
 }

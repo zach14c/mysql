@@ -29,12 +29,13 @@ public:
 	WalkIndex(Index *index, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper);
 	virtual ~WalkIndex(void);
 	
-	void			setNodes(int32 nextPage, int length, Btn* stuff);
 	virtual Record* getNext(bool lockForUpdate);
+	
+	int32			getNextNode(void);
+	void			setNodes(int32 nextPage, int length, Btn* stuff);
 	
 	IndexKey	lowerBound;
 	IndexKey	upperBound;
-	Record		*record;
 	UCHAR		*nodes;
 	IndexNode	node;
 	Btn			*endNodes;
