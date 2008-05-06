@@ -68,6 +68,7 @@ public:
 					           enum ha_rkey_function find_flag);
 	virtual int		index_init(uint idx, bool sorted);
 	virtual int		index_end(void);
+	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
 	virtual int		index_next_same(uchar *buf, const uchar *key, uint key_len);
 

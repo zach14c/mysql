@@ -1564,6 +1564,12 @@ int StorageInterface::read_range_first(const key_range *start_key,
 		}
 }
 
+int StorageInterface::index_first(uchar* buf)
+{
+	storageTable->indexScan(indexOrder);
+
+	return index_next(buf);
+}
 
 int StorageInterface::index_next(uchar *buf)
 {
