@@ -30,15 +30,33 @@ public:
 	~IndexWalker(void);
 	
 	virtual Record*		getNext(bool lockForUpdate);
+
 	Record*				getValidatedRecord(int32 recordId, bool lockForUpdate);
+	int					compare(IndexWalker* node1, IndexWalker* node2);
+	void				addWalker(IndexWalker* walker);
+	bool				insert(IndexWalker* node);
+	void				rotateLeft(void);
+	void				rotateRight(void);
+	void				rebalance(void);
+	bool				rebalanceDelete();
+	IndexWalker*		getSuccessor(IndexWalker** parentPointer, bool *shallower);
+	void				remove(void);
+	void				rebalanceUpward(int delta);
 	
-	Index		*index;
-	Transaction	*transaction;
-	IndexKey	key;
-	Record		*currentRecord;
-	Table		*table;
-	int			searchFlags;
-	bool		first;
+	Index			*index;
+	Transaction		*transaction;
+	Record			*currentRecord;
+	Table			*table;
+	IndexWalker		*next;
+	IndexWalker		*higher;
+	IndexWalker		*lower;
+	IndexWalker		*parent;
+	UCHAR			*key;
+	int				keyLength;
+	int32			recordNumber;
+	int				balance;
+	int				searchFlags;
+	bool			first;
 };
 
 #endif

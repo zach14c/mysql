@@ -487,7 +487,7 @@ IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searc
 		
 	ASSERT (indexId != -1);
 	WalkIndex *walkIndex = new WalkIndex(this, transaction, searchFlags, lowKey, highKey);
-	IndexWalker *indexWalker = walkIndex;
+	IndexWalker *indexWalker = NULL;
 	
 	if (rootPage == 0)
 		getRootPage();
@@ -502,33 +502,26 @@ IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searc
 			ASSERT(false);
 		}
 		
-	/*** pending transmogrificaion
-	if (deferredIndexes.first)
+	if (transaction && deferredIndexes.first)
 		{
-		Sync sync(&deferredIndexes.syncObject, "Index::scanIndex");
+		Sync sync(&deferredIndexes.syncObject, "Index::positionIndex");
 		sync.lock(Shared);
 		
-		if (transaction)
-			{
-			for (DeferredIndex *deferredIndex = deferredIndexes.first; deferredIndex; deferredIndex = deferredIndex->next)
+		for (DeferredIndex *deferredIndex = deferredIndexes.first; deferredIndex; deferredIndex = deferredIndex->next)
+			if (transaction->visible(deferredIndex->transaction, deferredIndex->transactionId, FOR_WRITING))
 				{
-				if (transaction->visible(deferredIndex->transaction, deferredIndex->transactionId, FOR_WRITING))
+				if (!indexWalker)
 					{
-					deferredIndex->scanIndex(lowKey, highKey, searchFlags, bitmap);
-					
-					if (transaction->database->dbb->debug & (DEBUG_KEYS & DEBUG_DEFERRED_INDEX))
-						deferredIndex->print();
+					indexWalker = new IndexWalker(this, transaction, searchFlags);
+					indexWalker->addWalker(walkIndex);
 					}
+				
+				WalkDeferred *walkDeferred = new WalkDeferred(deferredIndex, transaction, searchFlags, &walkIndex->lowerBound, &walkIndex->upperBound);
+				indexWalker->addWalker(walkDeferred);
 				}
-			}
-		else
-			for (DeferredIndex *deferredIndex = deferredIndexes.first; deferredIndex; deferredIndex = deferredIndex->next)
-				deferredIndex->scanIndex(lowKey, highKey, searchFlags, bitmap);
 		}
-	***/
 	
-	
-	return indexWalker;
+	return (indexWalker) ? indexWalker : walkIndex;
 }
 
 void Index::setIndex(int32 id)

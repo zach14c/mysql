@@ -25,9 +25,11 @@ struct DINode;
 class DeferredIndexWalker
 {
 public:
+	DeferredIndexWalker();
 	DeferredIndexWalker(DeferredIndex *deferredIdx, IndexKey *indexKey, int searchFlags = 0);
 	~DeferredIndexWalker(void);
 	
+	void		initialize(DeferredIndex *deferredIdx, IndexKey *indexKey, int searchFlags = 0);
 	DINode		*next(void);
 
 	DeferredIndex	*deferredIndex;

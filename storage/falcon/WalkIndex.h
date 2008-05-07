@@ -38,6 +38,7 @@ public:
 	IndexKey	upperBound;
 	UCHAR		*nodes;
 	IndexNode	node;
+	IndexKey	indexKey;
 	Btn			*endNodes;
 	int32		nextPage;
 };

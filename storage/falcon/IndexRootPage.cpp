@@ -1138,7 +1138,7 @@ int32 IndexRootPage::getIndexRoot(Dbb* dbb, int indexId)
 
 void IndexRootPage::positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkIndex* walkIndex)
 {
-	IndexKey *key = &walkIndex->key;
+	IndexKey *key = &walkIndex->indexKey;
 	uint offset = 0;
 	IndexKey *lowKey = &walkIndex->lowerBound;
 	IndexKey *highKey = &walkIndex->upperBound;

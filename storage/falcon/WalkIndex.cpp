@@ -42,6 +42,7 @@ WalkIndex::WalkIndex(Index *index, Transaction *transaction, int flags, IndexKey
 		upperBound.setKey(upper);
 	
 	nodes = new UCHAR[transaction->database->dbb->pageSize];
+	key = indexKey.key;
 }
 
 WalkIndex::~WalkIndex(void)
@@ -70,6 +71,8 @@ Record* WalkIndex::getNext(bool lockForUpdate)
 			return NULL;
 			}
 		
+		keyLength = indexKey.keyLength;
+		
 		if ( (currentRecord = getValidatedRecord(recordNumber, lockForUpdate)) )
 			return currentRecord;
 		}
@@ -82,7 +85,7 @@ int32 WalkIndex::getNextNode(void)
 		if (first)
 			{
 			first = false;
-			int32 recordNumber = node.getNumber();
+			recordNumber = node.getNumber();
 			
 			if (recordNumber >= 0)
 				return recordNumber;
@@ -92,8 +95,8 @@ int32 WalkIndex::getNextNode(void)
 		
 		if (node.node < endNodes)
 			{
-			int32 recordNumber = node.getNumber();
-			node.expandKey(&key);
+			recordNumber = node.getNumber();
+			node.expandKey(&indexKey);
 			
 			if (recordNumber >= 0)
 				return recordNumber;
