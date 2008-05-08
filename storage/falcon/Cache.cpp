@@ -409,7 +409,7 @@ Bdb* Cache::findBuffer(Dbb *dbb, int pageNumber, LockType lockType)
 		if (!bdb)
 			throw SQLError(RUNTIME_ERROR, "buffer pool is exhausted\n");
 			
-		if (!(bdb->flags & BDB_dirty))
+		if (!bdb->isDirty)
 			break;
 			
 		writePage (bdb, WRITE_TYPE_REUSE);
@@ -503,7 +503,7 @@ void Cache::writePage(Bdb *bdb, int type)
 	Sync writer(&bdb->syncWrite, "Cache::writePage");
 	writer.lock(Exclusive);
 
-	if (!(bdb->flags & BDB_dirty))
+	if (!bdb->isDirty)
 		{
 		//Log::debug("Cache::writePage: page %d not dirty\n", bdb->pageNumber);
 		markClean (bdb);
@@ -511,7 +511,7 @@ void Cache::writePage(Bdb *bdb, int type)
 		return;
 		}
 
-	ASSERT(!(bdb->flags & BDB_write_pending));
+	//ASSERT(!(bdb->flags & BDB_write_pending));
 	Dbb *dbb = bdb->dbb;
 	ASSERT(database);
 	markClean (bdb);
@@ -572,11 +572,11 @@ void Cache::writePage(Bdb *bdb, int type)
 		Log::debug("writing page %d/%d\n", bdb->pageNumber, dbb->tableSpaceId);
 #endif
 
-	bdb->flags &= ~BDB_dirty;
-
-	if (pageWriter && (bdb->flags & BDB_writer))
+	bdb->isDirty = false;
+	
+	if (pageWriter && bdb->isRegistered)
 		{
-		bdb->flags &= ~(BDB_writer | BDB_register);
+		bdb->isRegistered = false;
 		pageWriter->pageWritten(bdb->dbb, bdb->pageNumber);
 		}
 
@@ -604,7 +604,7 @@ void Cache::analyze(Stream *stream)
 		{
 		++total;
 		
-		if (bdb->flags & BDB_dirty)
+		if (bdb->isDirty)
 			++dirty;
 			
 		if (bdb->useCount)
@@ -637,13 +637,13 @@ void Cache::freePage(Dbb *dbb, int32 pageNumber)
 	for (Bdb *bdb = hashTable [slot]; bdb; bdb = bdb->hash)
 		if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
 			{
-			if (bdb->flags & BDB_dirty)
+			if (bdb->isDirty)
 				{
 				sync.unlock();
 				markClean (bdb);
 				}
 				
-			bdb->flags &= ~BDB_dirty;
+			bdb->isDirty = false;
 			break;
 			}
 }
@@ -658,7 +658,7 @@ void Cache::flush(Dbb *dbb)
 	for (Bdb *bdb = bdbs; bdb < endBdbs; ++bdb)
 		if (bdb->dbb == dbb)
 			{
-			if (bdb->flags & BDB_dirty)
+			if (bdb->isDirty)
 				writePage(bdb, WRITE_TYPE_FORCE);
 
 			bdb->dbb = NULL;
@@ -750,7 +750,6 @@ void Cache::ioThread(void)
 	syncThread.lock(Shared);
 	Sync flushLock(&syncFlush, "Cache::ioThread");
 	Sync sync(&syncObject, "Cache::ioThread");
-	//Sync syncPIO(&database->syncSerialLogIO, "Cache::ioThread");
 	Priority priority(database->ioScheduler);
 	Thread *thread = Thread::getThread("Cache::ioThread");
 	UCHAR *rawBuffer = new UCHAR[ASYNC_BUFFER_SIZE];
@@ -777,7 +776,7 @@ void Cache::ioThread(void)
 			// Look for a page to flush.  Then get all his friends
 			
 			for (Bdb *bdb = hashTable[slot]; bdb; bdb = bdb->hash)
-				if (bdb->pageNumber == pageNumber && bdb->flushIt && (bdb->flags & BDB_dirty))
+				if (bdb->pageNumber == pageNumber && bdb->flushIt && bdb->isDirty)
 					{
 					hit = true;
 					count = 0;
@@ -797,20 +796,20 @@ void Cache::ioThread(void)
 						bdb->ioThreadNext = bdbList;
 						bdbList = bdb;
 						
-						ASSERT(!(bdb->flags & BDB_write_pending));
-						bdb->flags |= BDB_write_pending;
+						//ASSERT(!(bdb->flags & BDB_write_pending));
+						//bdb->flags |= BDB_write_pending;
 						memcpy(p, bdb->buffer, pageSize);
 						p += pageSize;
 						bdb->flushIt = false;
 						markClean(bdb);
-						bdb->flags &= ~BDB_dirty;
+						bdb->isDirty = false;
 						bdb->release(REL_HISTORY);
 						sync.lock(Shared);
 						
 						if ( !(bdb = findBdb(dbb, bdb->pageNumber + 1)) )
 							break;
 						
-						if (!(bdb->flags & BDB_dirty) && !continueWrite(bdb))
+						if (!bdb->isDirty && !continueWrite(bdb))
 							break;
 						}
 					
@@ -844,7 +843,7 @@ void Cache::ioThread(void)
 
 								for (bdb = bdbList; bdb; bdb = next)
 									{
-									bdb->flags &= ~BDB_write_pending;
+									//bdb->flags &= ~BDB_write_pending;
 									next = bdb->ioThreadNext;
 									bdb->syncWrite.unlock();
 									bdb->decrementUseCount(REL_HISTORY);
@@ -877,8 +876,8 @@ void Cache::ioThread(void)
 
 					for (bdb = bdbList; bdb; bdb = next)
 						{
-						ASSERT(bdb->flags & BDB_write_pending);
-						bdb->flags &= ~BDB_write_pending;
+						//ASSERT(bdb->flags & BDB_write_pending);
+						//bdb->flags &= ~BDB_write_pending;
 						next = bdb->ioThreadNext;
 						bdb->syncWrite.unlock();
 						bdb->decrementUseCount(REL_HISTORY);
@@ -943,7 +942,7 @@ bool Cache::continueWrite(Bdb* startingBdb)
 		if (!bdb)
 			return dirty >= clean;
 		
-		if (bdb->flags & BDB_dirty)
+		if (bdb->isDirty)
 			++dirty;
 		else
 			++clean;
@@ -1011,7 +1010,7 @@ void Cache::analyzeFlush(void)
 			
 			for (int max = pageNumber + 5; pageNumber < max && (bdb = findBdb(dbb, pageNumber)) && !bdb->flushIt; ++pageNumber)
 				{
-				if (bdb->flags & BDB_dirty)
+				if (bdb->isDirty)
 					fprintf(traceFile, "     %d dirty not flushed, type %d \n", pageNumber, bdb->buffer->pageType);
 				else
 					fprintf(traceFile,"      %d not dirty, type %d\n", pageNumber, bdb->buffer->pageType);
