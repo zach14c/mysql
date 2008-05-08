@@ -27,7 +27,7 @@ class IndexWalker
 {
 public:
 	IndexWalker(Index *index, Transaction *transaction, int flags);
-	~IndexWalker(void);
+	virtual ~IndexWalker(void);
 	
 	virtual Record*		getNext(bool lockForUpdate);
 
@@ -52,7 +52,7 @@ public:
 	IndexWalker		*lower;
 	IndexWalker		*parent;
 	UCHAR			*key;
-	int				keyLength;
+	uint			keyLength;
 	int32			recordNumber;
 	int				balance;
 	int				searchFlags;

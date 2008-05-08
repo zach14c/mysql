@@ -173,7 +173,9 @@ bool IndexWalker::insert(IndexWalker* newNode)
 {
 	// Find insertion point and insert new node as leaf
 	
-	for (IndexWalker *node = this; node;)
+	IndexWalker *node;
+	
+	for (node = this; node;)
 		{
 		int comparison = compare(newNode, node);
 		
