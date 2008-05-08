@@ -63,7 +63,7 @@ public:
 	bool		deleteSupernode(Btn *where);
 	Btn*		findSupernode(int level, UCHAR *key, size_t len, int32 recordNumber, Btn *after, bool *match);
 	Btn*		findPriorNodeForSupernode(Btn *where,IndexKey *priorKey);
-
+	Btn*		getEnd(void);
 
 	static int		computePrefix (IndexKey *key1, IndexKey *key2);
 	static Bdb*		findLevel (Dbb *dbb, int32 indexId, Bdb *bdb, int level, IndexKey *indexKey, int32 recordNumber);
@@ -86,7 +86,6 @@ public:
 	uint16	length;
 	short	superNodes[SUPERNODES];
 	Btn		nodes [1];
-	Btn* getEnd(void);
 };
 
 #endif // !defined(AFX_INDEXPAGE_H__5DD7F231_A406_11D2_AB5B_0000C01D2301__INCLUDED_)

@@ -17,12 +17,18 @@
 #define _WALK_DEFERRED_H_
 
 #include "IndexWalker.h"
+#include "DeferredIndexWalker.h"
 
 class WalkDeferred : public IndexWalker
 {
 public:
-	WalkDeferred(Index *index);
+	WalkDeferred(DeferredIndex *deferredIndex, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper);
 	virtual ~WalkDeferred(void);
+
+	virtual Record*		getNext(bool lockForUpdate);
+	
+	DeferredIndexWalker		walker;
+	DINode					*node;
 };
 
 #endif

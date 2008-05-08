@@ -109,8 +109,8 @@ static const ulonglong default_table_flags = (	  HA_REC_NOT_IN_SEQ
 												| HA_CAN_GEOMETRY
 												//| HA_AUTO_PART_KEY
 												| HA_ONLINE_ALTER
-												| HA_BINLOG_ROW_CAPABLE);
-//												| HA_CAN_READ_ORDER_IF_LIMIT);
+												| HA_BINLOG_ROW_CAPABLE
+												| HA_CAN_READ_ORDER_IF_LIMIT);
 
 static struct st_mysql_show_var falconStatus[] =
 {
@@ -221,11 +221,12 @@ int StorageInterface::falcon_init(void *p)
 
 	if (error)
 		{
-			// Cleanup after error
-			delete storageHandler;
-			storageHandler = 0;
-			DBUG_RETURN(1);
+		// Cleanup after error
+		delete storageHandler;
+		storageHandler = 0;
+		DBUG_RETURN(1);
 		}
+		
 	DBUG_RETURN(0);
 }
 
@@ -384,7 +385,7 @@ typedef longlong      dec2;
 //////////////////////////////////////////////////////////////////////
 
 StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
-  : handler(hton, table_arg), ordered_index_reads(false)
+  : handler(hton, table_arg)
 {
 	ref_length = sizeof(lastRecord);
 	stats.records = 1000;
@@ -401,6 +402,7 @@ StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
 	freeBlobs = NULL;
 	errorText = NULL;
 	fieldMap = NULL;
+	indexOrder = false;
 	
 	if (table_arg)
 		{
@@ -736,8 +738,10 @@ ulonglong StorageInterface::table_flags(void) const
 ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 {
 	DBUG_ENTER("StorageInterface::index_flags");
-	DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR |
-			(ordered_index_reads ? HA_READ_ORDER : 0));
+	ulong flags = HA_READ_RANGE | ((indexOrder) ? HA_READ_ORDER : HA_KEY_SCAN_NOT_ROR);
+	
+	DBUG_RETURN(flags);
+	//DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR | (indexOrder ? HA_READ_ORDER : 0));
 }
 
 
@@ -1322,7 +1326,7 @@ int StorageInterface::index_read(uchar *buf, const uchar *keyBytes, uint key_len
 		if ((ret = storageTable->setIndexBound(key, key_len, which)))
 			DBUG_RETURN(error(ret));
 
-	if ((ret = storageTable->indexScan()))
+	if ((ret = storageTable->indexScan(indexOrder)))
 		DBUG_RETURN(error(ret));
 
 	nextRecord = 0;
@@ -1524,7 +1528,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 			DBUG_RETURN(error(ret));
 		}
 
-	storageTable->indexScan();
+	storageTable->indexScan(indexOrder);
 	nextRecord = 0;
 	lastRecord = -1;
 	eq_range = eq_range_arg;
@@ -1560,6 +1564,12 @@ int StorageInterface::read_range_first(const key_range *start_key,
 		}
 }
 
+int StorageInterface::index_first(uchar* buf)
+{
+	storageTable->indexScan(indexOrder);
+
+	return index_next(buf);
+}
 
 int StorageInterface::index_next(uchar *buf)
 {
@@ -1830,6 +1840,16 @@ int StorageInterface::start_stmt(THD *thd, thr_lock_type lock_type)
 	DBUG_RETURN(0);
 }
 
+int StorageInterface::reset()
+{
+	DBUG_ENTER("StorageInterface::start_stmt");
+	indexOrder = false;
+
+	DBUG_RETURN(0);
+}
+
+ 
+ 
 int StorageInterface::external_lock(THD *thd, int lock_type)
 {
 	DBUG_ENTER("StorageInterface::external_lock");
@@ -1850,11 +1870,7 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageConnection->releaseVerb();
 
 		if (storageTable)
-			{
-			storageTable->clearRecord();
-			storageTable->clearBitmap();
-			storageTable->clearAlter();
-			}
+			storageTable->clearStatement();
 		}
 	else
 		{
@@ -2739,6 +2755,7 @@ void StorageInterface::decodeRecord(uchar *buf)
 int StorageInterface::extra(ha_extra_function operation)
 {
 	DBUG_ENTER("StorageInterface::extra");
+	
 	if (operation == HA_EXTRA_ORDERBY_LIMIT)
 		{
 		// SQL Layer informs us that it is considering an ORDER BY .. LIMIT
@@ -2749,7 +2766,7 @@ int StorageInterface::extra(ha_extra_function operation)
 		//  2. If doing #1, every index/range scan must return records in
 		//     index order.
 
-		ordered_index_reads= TRUE;
+		indexOrder = true;
 		}
 
 	if (operation == HA_EXTRA_NO_ORDERBY_LIMIT)
@@ -2758,7 +2775,8 @@ int StorageInterface::extra(ha_extra_function operation)
 		// ORDER BY ... LIMIT. This could happen for a number of reasons,
 		// but the result is that we don't have to return records in index
 		// order.
-		ordered_index_reads= FALSE;
+		
+		indexOrder = false;
 		}
 
 	DBUG_RETURN(0);

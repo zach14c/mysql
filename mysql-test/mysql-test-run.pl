@@ -4042,7 +4042,7 @@ sub run_testcase_need_master_restart($)
 	  $clusters->[0]->{'pid'} == 0 )
   {
     $do_restart= 1;           # Restart with cluster
-    mtr_verbose("Restart master: Test need cluster");
+    mtr_verbose("Restart master: Test needs cluster");
   }
   elsif( $tinfo->{'component_id'} eq 'im' )
   {
@@ -4128,7 +4128,7 @@ sub run_testcase_need_slave_restart($)
     }
     elsif ( $tinfo->{'slave_num'} )
     {
-      mtr_verbose("Restart slave: Test need slave");
+      mtr_verbose("Restart slave: Test needs slave");
       $do_slave_restart= 1;
     }
   }

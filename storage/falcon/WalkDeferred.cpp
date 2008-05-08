@@ -16,10 +16,34 @@
 #include "Engine.h"
 #include "WalkDeferred.h"
 
-WalkDeferred::WalkDeferred(Index *index) : IndexWalker(index)
+WalkDeferred::WalkDeferred(DeferredIndex *deferredIndex, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper) 
+	: IndexWalker(deferredIndex->index, transaction, flags)
 {
+	walker.initialize(deferredIndex, lower, flags);
 }
 
 WalkDeferred::~WalkDeferred(void)
 {
+}
+
+Record* WalkDeferred::getNext(bool lockForUpdate)
+{
+	for (;;)
+		{
+		node = walker.next();
+		
+		if (!node)
+			{
+			currentRecord = NULL;
+			
+			return NULL;
+			}
+
+		key = node->key;
+		keyLength = node->keyLength;
+		recordNumber = node->recordNumber;
+		
+		if ( (currentRecord = getValidatedRecord(recordNumber, lockForUpdate)) )
+			return currentRecord;
+		}
 }

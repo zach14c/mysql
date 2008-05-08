@@ -16,15 +16,47 @@
 #ifndef _INDEX_WALKER_H_
 #define _INDEX_WALKER_H_
 
+#include "IndexKey.h"
+
 class Index;
+class Transaction;
+class Record;
+class Table;
 
 class IndexWalker
 {
 public:
-	IndexWalker(Index *index);
-	~IndexWalker(void);
+	IndexWalker(Index *index, Transaction *transaction, int flags);
+	virtual ~IndexWalker(void);
 	
-	Index	*index;
+	virtual Record*		getNext(bool lockForUpdate);
+
+	Record*				getValidatedRecord(int32 recordId, bool lockForUpdate);
+	int					compare(IndexWalker* node1, IndexWalker* node2);
+	void				addWalker(IndexWalker* walker);
+	bool				insert(IndexWalker* node);
+	void				rotateLeft(void);
+	void				rotateRight(void);
+	void				rebalance(void);
+	bool				rebalanceDelete();
+	IndexWalker*		getSuccessor(IndexWalker** parentPointer, bool *shallower);
+	void				remove(void);
+	void				rebalanceUpward(int delta);
+	
+	Index			*index;
+	Transaction		*transaction;
+	Record			*currentRecord;
+	Table			*table;
+	IndexWalker		*next;
+	IndexWalker		*higher;
+	IndexWalker		*lower;
+	IndexWalker		*parent;
+	UCHAR			*key;
+	uint			keyLength;
+	int32			recordNumber;
+	int				balance;
+	int				searchFlags;
+	bool			first;
 };
 
 #endif
