@@ -110,9 +110,9 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 	if (resultSet->next())
 		{
 		int n = 1;
-		int id = resultSet->getInt(n++);
-		const char *fileName = resultSet->getString(n++);
-		int type = resultSet->getInt(n++);
+		int id = resultSet->getInt(n++);					// tablespace id
+		const char *fileName = resultSet->getString(n++);	// filename
+		int type = TABLESPACE_TYPE_TABLESPACE;				// type (forced)
 		
 		TableSpaceInit tsInit;
 		/***
@@ -123,9 +123,9 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		tsInit.nodegroup	= resultSet->getInt(n++);
 		tsInit.wait			= resultSet->getInt(n++);
 		***/
-		tsInit.comment		= resultSet->getString(n++);
+		tsInit.comment		= resultSet->getString(n++);	// comment
 		
-		tableSpace = new TableSpace(database, name, id, fileName, 0, &tsInit);
+		tableSpace = new TableSpace(database, name, id, fileName, type, &tsInit);
 
 		if (type != TABLESPACE_TYPE_REPOSITORY)
 			try
@@ -487,8 +487,8 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 		
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace_name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type
+		infoTable->putString(0, resultSet->getString(1));					// tablespace name
+		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
 		infoTable->putString(2, resultSet->getString(2));					// comment
 		infoTable->putRecord();
 		}
@@ -502,10 +502,10 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace_name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type
-		infoTable->putInt(2, 1);											// file_id
-		infoTable->putString(3, resultSet->getString(2));					// file_name
+		infoTable->putString(0, resultSet->getString(1));					// tablespace name
+		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
+		infoTable->putInt(2, 1);											// file id (unused for now)
+		infoTable->putString(3, resultSet->getString(2));					// file name
 		infoTable->putRecord();
 		}
 }
