@@ -1143,8 +1143,7 @@ void IndexRootPage::positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkInd
 	IndexKey *lowKey = &walkIndex->lowerBound;
 	IndexKey *highKey = &walkIndex->upperBound;
 	TransId transId = walkIndex->transaction->transactionId;
-	int searchFlags = walkIndex->searchFlags;
-	
+
 	if (dbb->debug & (DEBUG_KEYS | DEBUG_SCAN_INDEX))
 		{
 		LogLock logLock;
@@ -1169,7 +1168,6 @@ void IndexRootPage::positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkInd
 		
 	Btn *end = page->getEnd();
 	IndexNode node(page->findNodeInLeaf(lowKey, key), end);
-	UCHAR *endKey = (highKey) ? highKey->key + highKey->keyLength : 0;
 
 	/* If we didn't find it here, try the next page */
 
