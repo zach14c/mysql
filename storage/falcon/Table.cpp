@@ -1449,7 +1449,7 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 	database->preUpdate();
 	Sync scavenge(&syncScavenge, "Table::deleteRecord");
 
-    // syncPrior is not needed here.  It is handled in fetchVersion()
+	// syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
 	checkAncestor(candidate, orgRecord);
 	RecordVersion *record;
@@ -3448,7 +3448,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 		if (record->state != recLock)
 			return record;
 
-		Sync syncPrior(getSyncPrior(record), "Table::fetchForUpdate(1)");
+		Sync syncPrior(getSyncPrior(record), "Table::fetchForUpdate");
 		syncPrior.lock(Shared);
 	
 		Record *prior = record->getPriorVersion();

@@ -146,7 +146,7 @@ public:
 	Format		*format;
 	int			recordNumber;
 	int			size;
-	int			generation;
+	uint64		generation;
 	short		highWater;
 	UCHAR		encoding;
 	UCHAR		state;

@@ -325,8 +325,8 @@ void TransactionManager::reportStatistics(void)
 		if (transaction->state == Active)
 			{
 			++active;
-			time_t age = database->deltaTime - transaction->startTime;
-			maxTime = MAX(age, maxTime);
+			time_t ageTime = database->deltaTime - transaction->startTime;
+			maxTime = MAX(ageTime, maxTime);
 			}
 		else if (transaction->state == Available)
 			{

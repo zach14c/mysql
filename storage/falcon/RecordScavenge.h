@@ -16,8 +16,8 @@
 #ifndef _RECORD_SCAVENGE_H_
 #define _RECORD_SCAVENGE_H_
 
-static const int AGE_GROUPS = 20;
-static const int UNDEFINED = -1;
+static const uint64 AGE_GROUPS = 20;
+static const uint64 UNDEFINED = -1;
 
 class Database;
 class Record;
@@ -27,8 +27,8 @@ class RecordScavenge
 public:
 	Database	*database;
 	TransId		transactionId;
-	int			scavengeGeneration;
-	int			baseGeneration;
+	uint64		scavengeGeneration;
+	uint64		baseGeneration;
 	uint		recordsReclaimed;
 	uint		recordsRemaining;
 	uint		numberRecords;
@@ -45,8 +45,8 @@ public:
 	~RecordScavenge(void);
 
 	void		inventoryRecord(Record* record);
-	int computeThreshold(uint64 target);
-	void printRecordMemory(void);
+	uint64		computeThreshold(uint64 target);
+	void		printRecordMemory(void);
 };
 
 #endif
