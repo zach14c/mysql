@@ -219,14 +219,14 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 		if (loc != position)
 			throw SQLEXCEPTION (IO_ERROR, "serial lseek error on \"%s\": %s (%d)", 
 								(const char*) fileName, strerror (errno), errno);
-
 		}
 
 	uint32 n = ::write(handle, data, effectiveLength);
 	
+#endif
+
 	if (forceFsync)
 		fsync(handle);
-#endif
 
 	if (n != effectiveLength)
 		{
