@@ -1,7 +1,7 @@
 
 [cluster_config]
 MaxNoOfSavedMessages=          1000
-MaxNoOfConcurrentTransactions= 64
+MaxNoOfConcurrentTransactions= 2048
 MaxNoOfConcurrentOperations=   10000
 DataMemory=                    20M
 IndexMemory=                   1M
@@ -9,7 +9,8 @@ Diskless=                      0
 TimeBetweenWatchDogCheck=      30000
 MaxNoOfOrderedIndexes=         32
 MaxNoOfAttributes=             2048
-TimeBetweenGlobalCheckpoints=  500
+TimeBetweenGlobalCheckpoints=  3000
+TimeBetweenEpochs=             100
 NoOfFragmentLogFiles=          4
 FragmentLogFileSize=           12M
 DiskPageBufferMemory=          4M
