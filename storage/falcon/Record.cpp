@@ -825,7 +825,7 @@ bool Record::isNull(int fieldId)
 
 void Record::poke()
 {
-	int gen = format->table->database->currentGeneration;
+	uint64 gen = format->table->database->currentGeneration;
 	
 	if (generation != gen)
 		generation = gen;
@@ -898,7 +898,7 @@ void Record::deleteData(void)
 
 void Record::print(void)
 {
-	printf("  %p\tId %d, enc %d, state %d, use %d, grp %d\n",
+	printf("  %p\tId %d, enc %d, state %d, use %d, grp " I64FORMAT "\n",
 			this, recordNumber, encoding, state, useCount, generation);
 }
 

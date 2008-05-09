@@ -1768,7 +1768,6 @@ void Database::retireRecords(bool forced)
 	
 	transactionManager->purgeTransactions();
 	TransId oldestActiveTransaction = transactionManager->findOldestActive();
-	int threshold = 0;
 	uint64 total = recordDataPool->activeMemory;
 	RecordScavenge recordScavenge(this, oldestActiveTransaction, forced);
 	
@@ -1791,7 +1790,7 @@ void Database::retireRecords(bool forced)
 			for (table = tableList; table; table = table->next)
 				table->inventoryRecords(&recordScavenge);
 		
-		threshold = recordScavenge.computeThreshold(recordScavengeFloor);
+		recordScavenge.computeThreshold(recordScavengeFloor);
 		recordScavenge.printRecordMemory();	
 		int count = 0;
 		int skipped = 0;

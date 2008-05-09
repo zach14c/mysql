@@ -91,7 +91,7 @@ public:
 	Dbb				*dbb;
 	int32			pageNumber;
 	TransId			transactionId;
-	int				age;
+	uint64			age;
 	Page			*buffer;
 	Bdb				*prior;		/* position in LRU que */
 	Bdb				*next;
