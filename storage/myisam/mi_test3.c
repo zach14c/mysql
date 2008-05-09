@@ -169,7 +169,7 @@ void start_test(int id)
   MI_INFO *file,*file1,*file2=0,*lock;
 
   if (use_log)
-    mi_log(1);
+    mi_log(MI_LOG_ACTION_OPEN, MI_LOG_LOGICAL, NULL, NULL);
   if (!(file1=mi_open(filename,O_RDWR,HA_OPEN_WAIT_IF_LOCKED)) ||
       !(file2=mi_open(filename,O_RDWR,HA_OPEN_WAIT_IF_LOCKED)))
   {
@@ -214,7 +214,7 @@ void start_test(int id)
   mi_close(file1);
   mi_close(file2);
   if (use_log)
-    mi_log(0);
+    mi_log(MI_LOG_ACTION_CLOSE_INCONSISTENT, MI_LOG_LOGICAL, NULL, NULL);
   if (error)
   {
     printf("%2d: Aborted\n",id); fflush(stdout);

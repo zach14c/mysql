@@ -85,6 +85,7 @@ static SORT_KEY_BLOCKS	*alloc_key_blocks(MI_CHECK *param, uint blocks,
 					  uint buffer_length);
 static ha_checksum mi_byte_checksum(const uchar *buf, uint length);
 static void set_data_file_type(SORT_INFO *sort_info, MYISAM_SHARE *share);
+static int chsize_kfile(MI_INFO *info);
 
 void myisamchk_init(MI_CHECK *param)
 {
@@ -1667,7 +1668,7 @@ int mi_repair(MI_CHECK *param, register MI_INFO *info,
   {
     VOID(fputs("          \r",stdout)); VOID(fflush(stdout));
   }
-  if (my_chsize(share->kfile,info->state->key_file_length,0,MYF(0)))
+  if (chsize_kfile(info))
   {
     mi_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
@@ -1732,6 +1733,11 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile=new_file= -1;
+      /*
+        File change like this is not handled in physical log. filecopy() above
+        is also not handled.
+      */
+      DBUG_ASSERT(!share->physical_logging);
       if (change_to_newfile(share->data_file_name,MI_NAME_DEXT,
 			    DATA_TMP_EXT, share->base.raid_chunks,
 			    (param->testflag & T_BACKUP_DATA ?
@@ -1991,6 +1997,7 @@ int mi_sort_index(MI_CHECK *param, register MI_INFO *info, char * name)
   VOID(my_close(share->kfile,MYF(MY_WME)));
   share->kfile = -1;
   VOID(my_close(new_file,MYF(MY_WME)));
+  DBUG_ASSERT(!share->physical_logging);
   if (change_to_newfile(share->index_file_name,MI_NAME_IEXT,INDEX_TMP_EXT,0,
 			MYF(0)) ||
       mi_open_keyfile(share))
@@ -2096,6 +2103,7 @@ static int sort_one_index(MI_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
   /* Fill block with zero and write it to the new index file */
   length=mi_getint(buff);
   bzero((uchar*) buff+length,keyinfo->block_length-length);
+  DBUG_ASSERT(!info->s->physical_logging);
   if (my_pwrite(new_file,(uchar*) buff,(uint) keyinfo->block_length,
 		new_page_pos,MYF(MY_NABP | MY_WAIT_IF_FULL)))
   {
@@ -2158,7 +2166,7 @@ int lock_file(MI_CHECK *param, File file, my_off_t start, int lock_type,
 } /* lock_file */
 
 
-	/* Copy a block between two files */
+	/* Copy a block between two files. Not handled by physical logging. */
 
 int filecopy(MI_CHECK *param, File to,File from,my_off_t start,
 	     my_off_t length, const char *type)
@@ -2508,15 +2516,18 @@ int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
       skr=share->base.reloc*share->base.min_pack_length;
 #endif
     if (skr != sort_info.filelength && !info->s->base.raid_type)
+    {
+      DBUG_ASSERT(!share->physical_logging);
       if (my_chsize(info->dfile,skr,0,MYF(0)))
 	mi_check_print_warning(param,
 			       "Can't change size of datafile,  error: %d",
 			       my_errno);
+    }
   }
   if (param->testflag & T_CALC_CHECKSUM)
     info->state->checksum=param->glob_crc;
 
-  if (my_chsize(share->kfile,info->state->key_file_length,0,MYF(0)))
+  if (chsize_kfile(info))
     mi_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
 			   my_errno);
@@ -2545,6 +2556,7 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile=new_file= -1;
+      DBUG_ASSERT(!share->physical_logging);
       if (change_to_newfile(share->data_file_name,MI_NAME_DEXT,
 			    DATA_TMP_EXT, share->base.raid_chunks,
 			    (param->testflag & T_BACKUP_DATA ?
@@ -3028,15 +3040,18 @@ int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
       skr=share->base.reloc*share->base.min_pack_length;
 #endif
     if (skr != sort_info.filelength && !info->s->base.raid_type)
+    {
+      DBUG_ASSERT(!share->physical_logging);
       if (my_chsize(info->dfile,skr,0,MYF(0)))
 	mi_check_print_warning(param,
 			       "Can't change size of datafile,  error: %d",
 			       my_errno);
+    }
   }
   if (param->testflag & T_CALC_CHECKSUM)
     info->state->checksum=param->glob_crc;
 
-  if (my_chsize(share->kfile,info->state->key_file_length,0,MYF(0)))
+  if (chsize_kfile(info))
     mi_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d", my_errno);
 
@@ -3077,6 +3092,7 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile=new_file= -1;
+      DBUG_ASSERT(!share->physical_logging);
       if (change_to_newfile(share->data_file_name,MI_NAME_DEXT,
 			    DATA_TMP_EXT, share->base.raid_chunks,
 			    (param->testflag & T_BACKUP_DATA ?
@@ -4057,9 +4073,16 @@ static int sort_insert_key(MI_SORT_PARAM *sort_param,
     if (_mi_write_keypage(info, keyinfo, filepos, DFLT_INIT_HITS, anc_buff))
       DBUG_RETURN(1);
   }
-  else if (my_pwrite(info->s->kfile,(uchar*) anc_buff,
-		     (uint) keyinfo->block_length,filepos, param->myf_rw))
-    DBUG_RETURN(1);
+  else
+  {
+    if (my_pwrite(info->s->kfile, anc_buff,
+                  keyinfo->block_length, filepos, param->myf_rw))
+      DBUG_RETURN(1);
+    if (unlikely(mi_log_index_pages_physical &&
+                 mi_get_physical_logging_state(info->s)))
+      myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYI, info->s, anc_buff,
+                                 keyinfo->block_length, filepos);
+  }
   DBUG_DUMP("buff",(uchar*) anc_buff,mi_getint(anc_buff));
 
 	/* Write separator-key to block in next level */
@@ -4162,9 +4185,17 @@ int flush_pending_blocks(MI_SORT_PARAM *sort_param)
                             DFLT_INIT_HITS, key_block->buff))
 	DBUG_RETURN(1);
     }
-    else if (my_pwrite(info->s->kfile,(uchar*) key_block->buff,
-		       (uint) keyinfo->block_length,filepos, myf_rw))
-      DBUG_RETURN(1);
+    else
+    {
+      if (my_pwrite(info->s->kfile, key_block->buff,
+                    keyinfo->block_length,filepos, myf_rw))
+        DBUG_RETURN(1);
+      if (unlikely(mi_log_index_pages_physical &&
+                   mi_get_physical_logging_state(info->s)))
+        myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYI, info->s,
+                                   key_block->buff, keyinfo->block_length,
+                                   filepos);
+    }
     DBUG_DUMP("buff",(uchar*) key_block->buff,length);
     nod_flag=1;
   }
@@ -4444,7 +4475,7 @@ int update_state_info(MI_CHECK *param, MI_INFO *info,uint update)
     */
     if (info->lock_type == F_WRLCK)
       share->state.state= *info->state;
-    if (mi_state_info_write(share->kfile,&share->state,1+2))
+    if (mi_state_info_write(share, share->kfile, &share->state, 1+2))
       goto err;
     share->changed=0;
   }
@@ -4727,4 +4758,45 @@ set_data_file_type(SORT_INFO *sort_info, MYISAM_SHARE *share)
     mi_setup_functions(&tmp);
     share->delete_record=tmp.delete_record;
   }
+}
+
+/**
+  Changes the size of an index file, and logs the operation to the physical
+  log if needed.
+
+  The only known case when my_chsize(kfile) can happen on a table doing
+  physical logging, is when the table was empty, bulk insert on it has been
+  done, it's the end of bulk insert: we re-enable indices (mi_repair*()): thus
+  my_chsize() is in fact a void operation (file already has grown, starting
+  from empty, info->state->key_file_length is up-to-date and so file already
+  has the requested size). We however log the operation, in case there are
+  unknown cases.
+
+  @param  info            table
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    error
+*/
+
+static int chsize_kfile(MI_INFO *info)
+{
+  MYISAM_SHARE *share= info->s;
+  my_off_t new_length= info->state->key_file_length;
+  int ret;
+#ifndef DBUG_OFF
+  my_bool no_length_change=
+    (my_seek(share->kfile, 0L, MY_SEEK_END, MYF(0)) == new_length);
+#endif
+
+  ret= my_chsize(share->kfile, new_length, 0, MYF(0));
+
+  if (unlikely(mi_log_index_pages_physical &&
+               mi_get_physical_logging_state(share)))
+  {
+    DBUG_ASSERT(no_length_change);
+    myisam_log_chsize_kfile_physical(share, new_length);
+  }
+
+  return ret;
 }

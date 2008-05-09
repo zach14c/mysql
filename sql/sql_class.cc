@@ -1034,8 +1034,9 @@ void THD::awake(THD::killed_state state_to_set)
   if (mysys_var)
   {
     pthread_mutex_lock(&mysys_var->mutex);
-    if (!system_thread)		// Don't abort locks
-      mysys_var->abort=1;
+    if (system_thread == NON_SYSTEM_THREAD ||
+        system_thread == SYSTEM_THREAD_BACKUP)
+      mysys_var->abort= 1; // abort locks
     /*
       This broadcast could be up in the air if the victim thread
       exits the cond in the time between read and broadcast, but that is

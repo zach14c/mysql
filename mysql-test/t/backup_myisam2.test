@@ -1,0 +1,84 @@
+# Tests specific of MyISAM's online backup
+
+--source include/not_embedded.inc
+--source include/have_debug.inc
+
+#
+# Cleanup from former test cases
+#
+--disable_warnings
+drop database if exists mysqltest;
+--enable_warnings
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+
+connect (backup,localhost,root,,);
+connect (restore,localhost,root,,);
+
+# Dedicated connection for GET_LOCK(). BACKUP_BREAKPOINT, present in
+# various places like mysql_delete(), causes current lock to be
+# released, that's why GET_LOCK() and DELETE must not be made by the
+# same connection.
+connect (syncer,localhost,root,,);
+
+connection backup;
+
+create database mysqltest;
+use mysqltest;
+
+# test of long records (causing records' length to be stored in a long
+# format in the backup log)
+
+CREATE TABLE t1 (a longtext) engine=myisam;
+
+connection syncer;
+# make sure we can update MyISAM tables before the backup finishes,
+# to test backup in online conditions
+SELECT get_lock("data_prepare", 100);
+
+connection backup;
+# prepare to block:
+SET SESSION debug="+d,query,enter,info,query,backup_debug";
+
+send BACKUP DATABASE mysqltest TO 'test.ba';
+
+connection restore;
+# Must wait to know when backup has entered lock.
+let $wait_condition = SELECT state = "debug_sync_point: data_prepare"
+                      FROM INFORMATION_SCHEMA.PROCESSLIST
+                      WHERE info LIKE "backup database %";
+--source include/wait_condition.inc
+
+use mysqltest;
+insert into t1 values ("text");
+let $1=16;
+while ($1)
+{
+  update t1 set a=concat(a,a);
+  dec $1;
+}
+select length(a) from t1;
+checksum table t1;
+
+connection syncer;
+SELECT release_lock("data_prepare");
+
+connection backup;
+--replace_column 1 #
+reap;
+repair table t1 quick;
+DROP DATABASE mysqltest;
+
+--replace_column 1 #
+RESTORE FROM 'test.ba';
+
+select length(a) from t1;
+checksum table t1;
+
+#
+# Cleanup from this test case
+#
+drop database mysqltest;
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+
+SET SESSION debug="-d,query,enter,info,query,backup_debug";

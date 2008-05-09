@@ -17,6 +17,8 @@
 #   regardless of character set settings on backup and restore servers. 
 #
 
+--source include/not_embedded.inc
+
 disable_warnings;
 DROP DATABASE IF EXISTS backup_cs;
 error 0,1;

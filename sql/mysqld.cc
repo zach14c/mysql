@@ -711,7 +711,7 @@ static bool kill_in_progress, segfaulted;
 #ifdef HAVE_STACK_TRACE_ON_SEGV
 static my_bool opt_do_pstack;
 #endif /* HAVE_STACK_TRACE_ON_SEGV */
-static my_bool opt_bootstrap, opt_myisam_log;
+static my_bool opt_bootstrap, opt_myisam_logical_log;
 static int cleanup_done;
 static ulong opt_specialflag, opt_myisam_block_size;
 static char *opt_update_logname, *opt_binlog_index_name;
@@ -4155,8 +4155,8 @@ server.");
   pthread_attr_setstacksize(&connection_attrib, NW_THD_STACKSIZE);
 #endif
 
-  if (opt_myisam_log)
-    (void) mi_log(1);
+  if (opt_myisam_logical_log)
+    (void) mi_log(MI_LOG_ACTION_OPEN, MI_LOG_LOGICAL, NULL, NULL);
 
 #if defined(HAVE_MLOCKALL) && defined(MCL_CURRENT) && !defined(EMBEDDED_LIBRARY)
   if (locked_in_memory && !getuid())
@@ -5963,8 +5963,8 @@ Disable with --skip-large-pages.",
    (uchar**) &log_error_file_ptr, (uchar**) &log_error_file_ptr, 0, GET_STR,
    OPT_ARG, 0, 0, 0, 0, 0, 0},
   {"log-isam", OPT_ISAM_LOG, "Log all MyISAM changes to file.",
-   (uchar**) &myisam_log_filename, (uchar**) &myisam_log_filename, 0, GET_STR,
-   OPT_ARG, 0, 0, 0, 0, 0, 0},
+   (uchar**) &myisam_logical_log_filename, (uchar**)
+   &myisam_logical_log_filename, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
   {"log-long-format", '0',
    "Log some extra information to update log. Please note that this option is deprecated; see --log-short-format option.", 
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -7598,7 +7598,7 @@ static void mysql_init_variables(void)
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_secure_file_priv= 0;
-  opt_bootstrap= opt_myisam_log= 0;
+  opt_bootstrap= opt_myisam_logical_log= 0;
   mqh_used= 0;
   segfaulted= kill_in_progress= 0;
   cleanup_done= 0;
@@ -7885,7 +7885,7 @@ mysqld_get_one_option(int optid,
     thd_startup_options|=OPTION_BIG_TABLES;
     break;
   case (int) OPT_ISAM_LOG:
-    opt_myisam_log=1;
+    opt_myisam_logical_log=1;
     break;
   case (int) OPT_UPDATE_LOG:
     opt_update_log=1;

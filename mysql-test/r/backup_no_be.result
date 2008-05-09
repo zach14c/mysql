@@ -16,7 +16,7 @@ SELECT max(backup_id) INTO @id FROM mysql.online_backup
 WHERE command LIKE 'BACKUP DATABASE db1 %';
 SELECT engines FROM mysql.online_backup WHERE backup_id=@id;
 engines
-Default
+MyISAM
 SET SESSION debug="d,backup_test_dummy_be_factory";
 SELECT @@debug;
 @@debug

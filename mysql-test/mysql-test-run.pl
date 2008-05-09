@@ -142,6 +142,7 @@ our $exe_mysql;
 our $exe_mysqladmin;
 our $exe_mysql_upgrade;
 our $exe_mysqlbinlog;
+our $exe_myisamlog;
 our $exe_mysql_client_test;
 our $exe_bug25714;
 our $exe_mysqld;
@@ -1955,6 +1956,27 @@ sub environment_setup () {
       " --debug=d:t:A,$path_vardir_trace/log/mysqlbinlog.trace";
   }
   $ENV{'MYSQL_BINLOG'}= $cmdline_mysqlbinlog;
+
+  # ----------------------------------------------------
+  # Setup env so childs can execute myisamlog
+  # ----------------------------------------------------
+
+  my $myisam_path= mtr_file_exists(vs_config_dirs("storage/myisam", ""),
+                                   "$glob_basedir/storage/myisam",
+                                   "$glob_basedir/bin");
+
+  $exe_myisamlog=
+    mtr_exe_exists("$myisam_path/myisamlog");
+
+  my $cmdline_myisamlog=
+    mtr_native_path($exe_myisamlog);
+
+  if ( $opt_debug )
+  {
+    $cmdline_myisamlog .=
+      " -#d:t:A,$path_vardir_trace/log/myisamlog.trace";
+  }
+  $ENV{'MYISAMLOG'}= $cmdline_myisamlog;
 
   # ----------------------------------------------------
   # Setup env so childs can execute mysql

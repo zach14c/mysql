@@ -1,0 +1,53 @@
+drop database if exists mysqltest;
+create database mysqltest;
+use mysqltest;
+CREATE TABLE t1 (a longtext) engine=myisam;
+SELECT get_lock("data_prepare", 100);
+get_lock("data_prepare", 100)
+1
+SET SESSION debug="+d,query,enter,info,query,backup_debug";
+BACKUP DATABASE mysqltest TO 'test.ba';
+use mysqltest;
+insert into t1 values ("text");
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+update t1 set a=concat(a,a);
+select length(a) from t1;
+length(a)
+262144
+checksum table t1;
+Table	Checksum
+mysqltest.t1	1728069308
+SELECT release_lock("data_prepare");
+release_lock("data_prepare")
+1
+backup_id
+#
+repair table t1 quick;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	repair	status	OK
+DROP DATABASE mysqltest;
+RESTORE FROM 'test.ba';
+backup_id
+#
+select length(a) from t1;
+length(a)
+262144
+checksum table t1;
+Table	Checksum
+mysqltest.t1	1728069308
+drop database mysqltest;
+SET SESSION debug="-d,query,enter,info,query,backup_debug";

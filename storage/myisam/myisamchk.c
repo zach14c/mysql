@@ -1068,7 +1068,8 @@ static int myisamchk(MI_CHECK *param, char * filename)
 	error=mi_sort_index(param,info,filename);
       if (!error)
 	share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-				 STATE_CRASHED_ON_REPAIR);
+				 STATE_CRASHED_ON_REPAIR |
+                                 STATE_BAD_OPEN_COUNT);
       else
 	mi_mark_crashed(info);
     }
@@ -1124,7 +1125,8 @@ static int myisamchk(MI_CHECK *param, char * filename)
 	    (param->testflag & T_UPDATE_STATE))
 	  info->update|=HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
 	share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-				 STATE_CRASHED_ON_REPAIR);
+				 STATE_CRASHED_ON_REPAIR |
+                                 STATE_BAD_OPEN_COUNT);
       }
       else if (!mi_is_crashed(info) &&
 	       (param->testflag & T_UPDATE_STATE))

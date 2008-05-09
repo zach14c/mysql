@@ -342,6 +342,8 @@ sub mtr_report_stats ($) {
 		# ignore warning generated when backup engine selection algorithm is tested
 		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
 		
+                ($testname eq 'main.backup_myisam1') and
+                (/Backup: Can't initialize MyISAM backup driver/) or
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/One can only use the --user.*root/ or

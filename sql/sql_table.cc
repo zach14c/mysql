@@ -7245,7 +7245,10 @@ copy_data_between_tables(TABLE *from,TABLE *to,
                                               (SQL_SELECT *) 0, HA_POS_ERROR,
                                               1, &examined_rows)) ==
           HA_POS_ERROR)
+      {
+        to->file->ha_end_bulk_insert();
         goto err;
+      }
     }
   };
 
