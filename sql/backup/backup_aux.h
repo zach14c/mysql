@@ -116,7 +116,7 @@ inline int free_table_list(TABLE_LIST *all_tables)
   if (all_tables)
   {
     TABLE_LIST *tbl= all_tables;
-    TABLE_LIST *prev= tbl;
+    TABLE_LIST *prev;
     while (tbl != NULL)
     {
       prev= tbl;

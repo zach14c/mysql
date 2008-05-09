@@ -696,7 +696,7 @@ int load_buffer(backup_stream *s)
     for (i= 0; i<4; ++i)
     {
       block_size >>= 8;
-      block_size |= (*(s->buf.begin++)) << 3*8;
+      block_size |= ((unsigned long int)*(s->buf.begin++)) << 3*8;
     }
 
     /*
