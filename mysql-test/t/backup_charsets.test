@@ -1,3 +1,5 @@
+--source include/not_embedded.inc
+ 
 #
 # This test checks how online backup handles object names encoded using 
 # extended character sets (non-latin1)
