@@ -51,13 +51,6 @@
 	#define BDB_HISTORY(_bdb_)  {}
 #endif
 
-/*** replaced by individual booleans
-static const int BDB_dirty			= 1;
-static const int BDB_writer			= 4;		// PageWriter wants to hear about this
-static const int BDB_register		= 8;		// Register with PageWrite on next release
-static const int BDB_write_pending	= 16;		// Asynchronous write is pending
-****/
-
 class Page;
 class Cache;
 class Dbb;
@@ -104,10 +97,9 @@ public:
 	SyncObject		syncWrite;
 	time_t			lastMark;
 	LockType		lockType;
-	//short			flags;
-	bool			flushIt;
+	bool			flushIt;				// PageWriter wants to hear about this
 	bool			isDirty;
-	bool			isRegistered;			// page write cares
+	bool			isRegistered;			// Register with PageWrite on next release
 	volatile INTERLOCK_TYPE	useCount;
 
 #ifdef COLLECT_BDB_HISTORY
