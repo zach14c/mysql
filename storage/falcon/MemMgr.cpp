@@ -106,7 +106,7 @@ struct Client {
 	};
 
 #ifdef _DEBUG
-	void* MemMgrPoolAllocateDebug (MemMgr *pool, unsigned int s, const char *file, int line)
+	void* MemMgrPoolAllocateDebug (MemMgr *pool, size_t s, const char *file, int line)
 	{
 		void *object = pool->allocateDebug(s, file, line);
 
@@ -119,7 +119,7 @@ struct Client {
 		return object;
 	}
 
-	void* MemMgrAllocateDebug (unsigned int s, const char *file, int line)
+	void* MemMgrAllocateDebug (size_t s, const char *file, int line)
 	{
 		void *object = memoryManager.allocateDebug(s, file, line);
 
@@ -155,12 +155,12 @@ struct Client {
 		recordManager.releaseDebug (record);
 	}
 #else
-	void* MemMgrPoolAllocate (MemMgr *pool, unsigned int s)
+	void* MemMgrPoolAllocate (MemMgr *pool, size_t s)
 	{
 		return pool->allocate (s);
 	}
 
-	void* MemMgrAllocate (unsigned int s)
+	void* MemMgrAllocate (size_t s)
 	{
 		return memoryManager.allocate (s);
 	}
@@ -319,10 +319,11 @@ MemMgr::~MemMgr(void)
 		}
 }
 
-MemBlock* MemMgr::alloc(int length)
+MemBlock* MemMgr::alloc(size_t s)
 {
-	if (length <= 0)
-		throw SQLError (RUNTIME_ERROR, "illegal memory allocate for %d bytes", length);
+
+	ASSERT(s < INT_MAX);
+	int length = (int)s;
 
 	Sync sync (&mutex, "MemMgr::alloc");
 	sync.lock(Exclusive);
@@ -331,6 +332,7 @@ MemBlock* MemMgr::alloc(int length)
 
 	if (length <= threshold)
 		{
+
 		int slot = length / roundingSize;
 		MemBlock *block;
 
@@ -415,7 +417,7 @@ MemBlock* MemMgr::alloc(int length)
 
 		// If there isn't room to split off a new free block, allocate the whole thing
 
-		if (tail < (int) sizeof (MemFreeBlock))
+		if (tail <  sizeof (MemFreeBlock))
 			{
 			block->pool = this;
 			activeMemory += block->length;
@@ -447,12 +449,12 @@ MemBlock* MemMgr::alloc(int length)
 
 	// Didn't find existing space -- allocate new hunk
 
-	int hunkLength = sizeof (MemBigHunk) + sizeof(MemBigHeader) + length;
-	int freeSpace = 0;
+	int  hunkLength = sizeof (MemBigHunk) + sizeof(MemBigHeader) + length;
+	int  freeSpace = 0;
 
 	// If the hunk size is sufficient below minAllocation, allocate extra space
 
-	if (hunkLength + (int) sizeof(MemBigObject) + threshold < minAllocation)
+	if (hunkLength + sizeof(MemBigObject) + threshold < minAllocation)
 		{
 		hunkLength = minAllocation;
 		freeSpace = hunkLength - sizeof(MemBigHunk) - 2 * sizeof(MemBigHeader) - length;
@@ -495,9 +497,11 @@ MemBlock* MemMgr::alloc(int length)
 	return block;
 }
 
-void* MemMgr::allocate(int size)
+void* MemMgr::allocate(size_t size)
 {
-	int length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
+
+
+	size_t length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
 	MemBlock *memory;
 
 	if (signature)
@@ -511,7 +515,8 @@ void* MemMgr::allocate(int size)
 		length = ROUNDUP(size, defaultRounding) + OFFSET(MemBlock*, body) + sizeof(long);
 		memory = (MemBlock*) allocRaw(length);
 		memory->pool = NULL;
-		memory->length = length;
+		ASSERT(size < INT_MAX);
+		memory->length = (int32)length;
 		}
 
 #ifdef MEM_DEBUG
@@ -528,9 +533,9 @@ void* MemMgr::allocate(int size)
 	return &memory->body;
 }
 
-void* MemMgr::allocateDebug(int size, const char* fileName, int line)
+void* MemMgr::allocateDebug(size_t size, const char* fileName, int line)
 {
-	int length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
+	size_t length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
 	MemBlock *memory;
 
 	if (signature)
@@ -552,8 +557,8 @@ void* MemMgr::allocateDebug(int size, const char* fileName, int line)
 #endif
 
 	memset (&memory->body, INIT_BYTE, size);
-	int l = ABS(memory->length) - size - OFFSET(MemBlock*,body);
-	ASSERT(l >= guardBytes && l < length - size + guardBytes + (int) sizeof (MemFreeBlock));
+	size_t l = ABS(memory->length) - size - OFFSET(MemBlock*,body);
+	ASSERT(l >= guardBytes && l < length - size + guardBytes + sizeof (MemFreeBlock));
 	memset (&memory->body + size, GUARD_BYTE, l);
 	++blocksAllocated;
 	++blocksActive;
@@ -805,7 +810,7 @@ void MemMgr::insert(MemFreeBlock* freeBlock)
 	***/
 }
 
-void* MemMgr::allocRaw(int length)
+void* MemMgr::allocRaw(size_t length)
 {
 	if (memControl && !memControl->poolExtensionCheck(length))
 		throw SQLError(OUT_OF_RECORD_MEMORY_ERROR, "record memory is exhausted");

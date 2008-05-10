@@ -69,7 +69,7 @@ FsbSort::FsbSort(CompiledStatement *statement, NNode *expr, Fsb *source, SortTyp
 
 	int *ptr = contextIds;
 	getStreams(&ptr);
-	numberContexts = ptr - contextIds;
+	numberContexts = (int)(ptr - contextIds);
 }
 
 FsbSort::~FsbSort()

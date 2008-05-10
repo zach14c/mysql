@@ -157,5 +157,5 @@ int BlobReference::getReference(int size, UCHAR *buffer)
 	for (n = 0; n < 64; n += 8)
 		*q++ = (UCHAR) (blobId >> n);
 
-	return q - buffer;
+	return (int)(q - buffer);
 }

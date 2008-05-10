@@ -213,7 +213,7 @@ Configuration::Configuration(const char *configFile)
 			if (p == start)
 				continue;
 
-			JString parameter (start, p - start);
+			JString parameter (start, (int)(p - start));
 
 			while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':')
 				++p;
@@ -223,7 +223,7 @@ Configuration::Configuration(const char *configFile)
 			while (*p && *p != '#' && *p != '\n' && *p != '\r')
 				++p;
 
-			JString value = JString (start, p - start);
+			JString value = JString (start, (int)(p - start));
 
 			if (parameter.equalsNoCase ("classpath"))
 				classpath = value;

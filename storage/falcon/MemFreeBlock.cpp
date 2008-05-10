@@ -142,9 +142,9 @@ void MemFreeBlock::insert(MemFreeBlock *newNode)
 		}
 }
 
-MemFreeBlock* MemFreeBlock::findNextLargest(int size)
+MemFreeBlock* MemFreeBlock::findNextLargest(size_t size)
 {
-	ASSERT(size > 0);
+
 	MemFreeBlock *block = this;
 	
 	// Travse down the tree looking for a block that fits

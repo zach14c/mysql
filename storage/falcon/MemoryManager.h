@@ -41,35 +41,35 @@ class MemMgr;
 struct MemObject;
 
 #ifdef _DEBUG
-	extern void* MemMgrAllocateDebug (unsigned int s, const char *file, int line);
-	extern void* MemMgrPoolAllocateDebug (MemMgr *pool, unsigned int s, const char *file, int line);
+	extern void* MemMgrAllocateDebug (size_t s, const char *file, int line);
+	extern void* MemMgrPoolAllocateDebug (MemMgr *pool, size_t s, const char *file, int line);
 	
 	WINSTATIC ALWAYS_INLINE void* operator new(size_t s) THROWS_BAD_ALLOC
-		{ return MemMgrAllocateDebug ((unsigned int) s, __FILE__, __LINE__); }
+		{ return MemMgrAllocateDebug (s, __FILE__, __LINE__); }
 		
 	WINSTATIC ALWAYS_INLINE void* operator new(size_t s, const int  &n) 
-		{ return MemMgrAllocateDebug ((unsigned int) s, __FILE__, __LINE__); }
+		{ return MemMgrAllocateDebug (s, __FILE__, __LINE__); }
 		
 	WINSTATIC ALWAYS_INLINE void* operator new(size_t s, const char *file, int line) 
-		{ return MemMgrAllocateDebug ((unsigned int) s, file, line); }
+		{ return MemMgrAllocateDebug (s, file, line); }
 		
 	WINSTATIC ALWAYS_INLINE void* operator new[](size_t s) THROWS_BAD_ALLOC
-		{ return MemMgrAllocateDebug ((unsigned int) s, __FILE__, __LINE__); }
+		{ return MemMgrAllocateDebug (s, __FILE__, __LINE__); }
 		
 	WINSTATIC ALWAYS_INLINE void* operator new[](size_t s, const char *file, int line) THROWS_BAD_ALLOC
-		{ return MemMgrAllocateDebug ((unsigned int) s, file, line); }
+		{ return MemMgrAllocateDebug (s, file, line); }
 
 	WINSTATIC ALWAYS_INLINE void* operator new(size_t s, MemMgr *pool) THROWS_BAD_ALLOC
-		{ return MemMgrPoolAllocateDebug (pool, (unsigned int) s, __FILE__, __LINE__); }
+		{ return MemMgrPoolAllocateDebug (pool, s, __FILE__, __LINE__); }
 
 	WINSTATIC ALWAYS_INLINE void* operator new(size_t s, MemMgr *pool, const char *file, int line) 
-		{ return MemMgrPoolAllocateDebug (pool, (unsigned int) s, file, line); }
+		{ return MemMgrPoolAllocateDebug (pool, s, file, line); }
 		
 	WINSTATIC ALWAYS_INLINE void* operator new[](size_t s, MemMgr *pool) THROWS_BAD_ALLOC
-		{ return MemMgrPoolAllocateDebug (pool, (unsigned int) s, __FILE__, __LINE__); }
+		{ return MemMgrPoolAllocateDebug (pool, s, __FILE__, __LINE__); }
 
 	WINSTATIC ALWAYS_INLINE void* operator new[](size_t s, MemMgr *pool, const char *file, int line) 
-		{ return MemMgrPoolAllocateDebug (pool, (unsigned int) s, file, line); }
+		{ return MemMgrPoolAllocateDebug (pool, s, file, line); }
 
 #define POOL_NEW(arg) new(arg, THIS_FILE, __LINE__)
 #define NEW	new (THIS_FILE, __LINE__)
@@ -79,8 +79,8 @@ struct MemObject;
 #endif
 
 #else
-	extern void* MemMgrAllocate (unsigned int s);
-	extern void* MemMgrPoolAllocate (MemMgr *pool, unsigned int s);
+	extern void* MemMgrAllocate (size_t s);
+	extern void* MemMgrPoolAllocate (MemMgr *pool, size_t s);
 	
 	WINSTATIC ALWAYS_INLINE void* operator new(size_t s) THROWS_BAD_ALLOC
 		{ return MemMgrAllocate (s); }

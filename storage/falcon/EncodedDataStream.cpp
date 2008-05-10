@@ -1358,7 +1358,7 @@ void EncodedDataStream::encodeOpaque(int length, const char *string)
 void EncodedDataStream::encodeEncoding(const UCHAR *encodedValue)
 {
 	const UCHAR *p = skip(encodedValue);
-	stream->putSegment(p - encodedValue, (const char*) encodedValue, true);
+	stream->putSegment((int)(p - encodedValue), (const char*) encodedValue, true);
 }
 
 INT64 EncodedDataStream::getInt64(int requiredScale)

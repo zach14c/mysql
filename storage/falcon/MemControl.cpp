@@ -26,7 +26,7 @@ MemControl::~MemControl(void)
 {
 }
 
-bool MemControl::poolExtensionCheck(uint size)
+bool MemControl::poolExtensionCheck(uint64 size)
 {
 	uint64 inUse = size;
 	
