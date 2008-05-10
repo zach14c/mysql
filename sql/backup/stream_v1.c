@@ -933,7 +933,7 @@ int bstream_rd_item_type(backup_stream *s, enum enum_bstream_item_type *type)
   return ret;
 }
 
-/*
+/**
   @page stream_format
 
   @subsection db_catalogue Database catalogue
@@ -950,8 +950,11 @@ int bstream_rd_item_type(backup_stream *s, enum enum_bstream_item_type *type)
   @verbatim
 
   [db-item info]= [ type:2 ! name ! optional item data ]
+  @endverbatim
 
   [optional item data] is used only for tables:
+
+  @verbatim
 
   [optional item data (table)]= [ flags:1 ! snapshot no.:1 ! pos !
                                   optional extra data ]
