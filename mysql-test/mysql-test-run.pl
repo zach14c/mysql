@@ -987,6 +987,18 @@ sub client_arguments ($) {
 }
 
 
+sub mysqlbinlog_arguments () {
+  my $exe= mtr_exe_exists("$path_client_bindir/mysqlbinlog");
+
+  my $args;
+  mtr_init_args(\$args);
+  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
+  mtr_add_arg($args, "--local-load=%s", $opt_tmpdir);
+  client_debug_arg($args, "mysqlbinlog");
+  return mtr_args2str($exe, @$args);
+}
+
+
 sub mysqlslap_arguments () {
   my $exe= mtr_exe_maybe_exists("$path_client_bindir/mysqlslap");
   if ( $exe eq "" ) {
@@ -1218,7 +1230,7 @@ sub environment_setup {
   $ENV{'MYSQL_SLAP'}=               mysqlslap_arguments();
   $ENV{'MYSQL_IMPORT'}=             client_arguments("mysqlimport");
   $ENV{'MYSQL_SHOW'}=               client_arguments("mysqlshow");
-  $ENV{'MYSQL_BINLOG'}=             client_arguments("mysqlbinlog");
+  $ENV{'MYSQL_BINLOG'}=             mysqlbinlog_arguments();
   $ENV{'MYSQL'}=                    client_arguments("mysql");
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
   $ENV{'MYSQLADMIN'}=               native_path($exe_mysqladmin);
