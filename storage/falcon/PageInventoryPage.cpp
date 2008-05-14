@@ -298,8 +298,8 @@ void PageInventoryPage::validateInventory(Dbb *dbb, Validation *validation)
 								case PAGE_sections:
 									{
 									SectionPage *pg = (SectionPage*) page;
-									validation->warning("orphan section page %d/%d, section=%d, seq=%d, level=%d, flgs=%d", 
-														pageNumber, tableSpaceId, pg->section, pg->level, pg->flags);
+									validation->warning("orphan section page %d/%d, section=%d, seq=%d, level=%d, %sFull", 
+										pageNumber, tableSpaceId, pg->section, pg->level, (pg->isFull ? "is" : "not"));
 									}
 									break;
 

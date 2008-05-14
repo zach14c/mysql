@@ -33,8 +33,6 @@ class Bitmap;
 
 struct SectionAnalysis;
 
-#define SECTION_FULL		1
-
 class SectionPage : public Page  
 {
 public:
@@ -46,7 +44,7 @@ public:
 	int			section;
 	int			sequence;		/* sequence in level */			
 	short		level;			/*	0 = root; */
-	short		flags;
+	bool		isFull;
 	int32		pages [1];
 };
 
