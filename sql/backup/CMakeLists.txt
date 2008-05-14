@@ -26,7 +26,7 @@ SET(BACKUP_SOURCES stream.cc logger.cc kernel.cc
                image_info.cc backup_info.cc data_backup.cc
                be_default.cc buffer_iterator.cc
                be_snapshot.cc be_thread.cc backup_progress.cc
-               backup_test.cc)
+               backup_test.cc be_nodata.cc)
 
 IF(NOT SOURCE_SUBLIBS)
   ADD_LIBRARY(backup ${BACKUP_SOURCES})

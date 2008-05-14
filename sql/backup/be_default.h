@@ -222,8 +222,21 @@ class Default_snapshot: public Snapshot_info
   const char* name() const
   { return "Default"; }
 
-  bool accept(const Table_ref&, const storage_engine_ref)
-  { return TRUE; }; // accept all tables
+  bool accept(const backup::Table_ref &,const storage_engine_ref e)
+  { 
+    bool accepted= TRUE;
+    const char *ename= se_name(e);
+
+    /*
+      Do not accept nodata engines.
+    */
+    if ((my_strcasecmp(system_charset_info, "BLACKHOLE", ename) == 0) ||
+        (my_strcasecmp(system_charset_info, "EXAMPLE", ename) == 0) ||
+        (my_strcasecmp(system_charset_info, "FEDERATED", ename) == 0) ||
+        (my_strcasecmp(system_charset_info, "MRG_MYISAM", ename) == 0))
+      accepted= FALSE;
+    return (accepted);
+  }
 
   result_t get_backup_driver(Backup_driver* &ptr)
   { return (ptr= new default_backup::Backup(m_tables, ::current_thd,

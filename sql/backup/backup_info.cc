@@ -13,6 +13,7 @@
 #include "be_native.h"
 #include "be_default.h"
 #include "be_snapshot.h"
+#include "be_nodata.h"
 
 /// Return storage engine of a given table.
 static
@@ -245,10 +246,17 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
             Ts_hash_node::get_key, Ts_hash_node::free, MYF(0));
 
   /* 
-    Create default and CS snapshot objects and add them to the snapshots list.
-    Note that the default snapshot should be the last element on that list, as a
-    "catch all" entry. 
+    Create nodata, default, and CS snapshot objects and add them to the 
+    snapshots list. Note that the default snapshot should be the last 
+    element on that list, as a "catch all" entry. 
    */
+
+  snap= new Nodata_snapshot(m_ctx);  // reports errors
+
+  if (!snap || !snap->is_valid())
+    return;
+
+  snapshots.push_back(snap);
 
   snap= new CS_snapshot(m_ctx); // reports errors
 

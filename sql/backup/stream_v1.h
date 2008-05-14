@@ -114,7 +114,8 @@ struct st_bstream_engine_info
 enum enum_bstream_snapshot_type {
   BI_NATIVE,  /**< created by native backup driver of a storage engine */
   BI_DEFAULT, /**< created by built-in blocking backup driver */
-  BI_CS       /**< created by built-in driver using consistent read transaction */
+  BI_CS,      /**< created by built-in driver using consistent read transaction */
+  BI_NODATA   /**< created by built-in nodata backup driver */
 };
 
 /** Describes table data snapshot. */

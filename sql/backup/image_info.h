@@ -218,7 +218,9 @@ class Snapshot_info
     /** Snapshot created by built-in, blocking backup engine. */
     DEFAULT_SNAPSHOT= BI_DEFAULT,
     /** Snapshot created by built-in CS backup engine. */
-    CS_SNAPSHOT= BI_CS
+    CS_SNAPSHOT= BI_CS,
+    /** snapshot created by No data backup driver. */
+    NODATA_SNAPSHOT= BI_NODATA
   };
 
   virtual enum_snap_type type() const =0; 
