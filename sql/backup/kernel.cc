@@ -67,6 +67,7 @@
 #include "be_native.h"
 #include "be_default.h"
 #include "be_snapshot.h"
+#include "be_nodata.h"
 #include "ddl_blocker.h"
 #include "backup_progress.h"
 
@@ -1008,6 +1009,11 @@ int bcat_reset(st_bstream_image_header *catalogue)
                                                               // reports errors
       break;
     }
+
+    case BI_NODATA:
+      info->m_snap[n]= new Nodata_snapshot(info->m_ctx, snap->version);
+                                                              // reports errors
+      break;
 
     case BI_CS:
       info->m_snap[n]= new CS_snapshot(info->m_ctx, snap->version);

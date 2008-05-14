@@ -424,6 +424,7 @@ int bstream_rd_header(backup_stream *s, struct st_bstream_image_header *hdr)
   - 1 = snapshot created by built-in blocking driver (BI_DEFAULT),
   - 2 = snapshot created using created by built-in driver using consistent
       read transaction (BI_CS).
+  - 3 = snapshot created by built-in no data driver (BI_NODATA),
 
   Format of [backup engine info] depends on snapshot type. It is empty for the
   default and CS snapshots. For native snapshots it has format
@@ -446,7 +447,8 @@ int bstream_wr_snapshot_info(backup_stream *s, struct st_bstream_snapshot_info *
   case BI_NATIVE:  ret= bstream_wr_byte(s,0); break;
   case BI_DEFAULT: ret= bstream_wr_byte(s,1); break;
   case BI_CS:      ret= bstream_wr_byte(s,2); break;
-  default:         ret= bstream_wr_byte(s,3); break;
+  case BI_NODATA:  ret= bstream_wr_byte(s,3); break;
+  default:         ret= bstream_wr_byte(s,4); break;
   }
 
   CHECK_WR_RES(bstream_wr_int2(s,info->version));
@@ -495,6 +497,7 @@ int bstream_rd_image_info(backup_stream *s, struct st_bstream_snapshot_info *inf
   case 0: type= BI_NATIVE; break;
   case 1: type= BI_DEFAULT; break;
   case 2: type= BI_CS; break;
+  case 3: type= BI_NODATA; break;
   default: return BSTREAM_ERROR;
   }
 

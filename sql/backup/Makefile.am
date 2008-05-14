@@ -34,6 +34,7 @@ libbackup_la_SOURCES = \
   data_backup.cc \
   be_default.cc \
   be_snapshot.cc \
+  be_nodata.cc \
   buffer_iterator.cc \
   be_thread.cc \
   backup_progress.cc \
@@ -62,6 +63,7 @@ noinst_HEADERS = \
   be_native.h \
   be_default.h \
   be_snapshot.h \
+  be_nodata.h \
   buffer_iterator.h \
   be_thread.h \
   backup_progress.h \
