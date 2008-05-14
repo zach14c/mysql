@@ -363,6 +363,11 @@ result_t Backup::get_data(Buffer &buf)
     cur_blob= 0;
     cur_table->use_all_columns();
     last_read_res = hdl->rnd_next(cur_table->record[0]);
+    /*
+      Skip all records marked as deleted.
+    */
+    while (last_read_res == HA_ERR_RECORD_DELETED)
+      last_read_res= hdl->rnd_next(cur_table->record[0]);
     DBUG_EXECUTE_IF("SLEEP_DRIVER", sleep(4););
     /*
       If we are end of file, stop the read process and signal the
