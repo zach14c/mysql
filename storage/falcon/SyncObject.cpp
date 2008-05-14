@@ -50,10 +50,12 @@
 //#define STALL_THRESHOLD	1000
 
 #define BACKOFF	\
-		if (false)\
-			thread->sleep(1);\
+		if (thread)\
+			backoff(thread);\
 		else\
-			thread = Thread::getThread("SyncObject::lock")
+			{ thread = Thread::getThread("SyncObject::lock"); thread->backoff = BACKOFF_INTERVAL; }
+
+#define BACKOFF_INTERVAL	(thread->random % 100)
 
 #ifdef TRACE_SYNC_OBJECTS
 
@@ -109,6 +111,7 @@ SyncObject::SyncObject()
 
 #ifdef TRACE_SYNC_OBJECTS
 	sharedCount = 0;
+	collisionCount = 0;
 	exclusiveCount = 0;
 	waitCount = 0;
 	queueLength = 0;
@@ -163,6 +166,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 				return;
 				}
 				
+			BUMP_INTERLOCKED(collisionCount);
 			BACKOFF;
 			}
 
@@ -190,7 +194,8 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 			BACKOFF;
 			}
 
-		thread = Thread::getThread("SyncObject::lock");
+		if (!thread)
+			thread = Thread::getThread("SyncObject::lock");
 
 		if (thread == exclusiveThread)
 			{
@@ -205,6 +210,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	else
 		{
 		thread = Thread::getThread("SyncObject::lock");
+		thread->backoff = BACKOFF_INTERVAL;
 		ASSERT(thread);
 
 		if (thread == exclusiveThread)
@@ -717,4 +723,19 @@ void SyncObject::setName(const char* string)
 void SyncObject::timedout(int timeout)
 {
 	throw SQLError(LOCK_TIMEOUT, "lock timed out after %d milliseconds\n", timeout);
+}
+
+int SyncObject::getCollisionCount(void)
+{
+	return collisionCount;
+}
+
+void SyncObject::backoff(Thread* thread)
+{
+	//thread->sleep(1);
+
+	for (int n = 0; n < thread->backoff; ++n)
+		;
+	
+	thread->backoff += thread->backoff;
 }
