@@ -1572,9 +1572,7 @@ bool DatabaseObj::do_serialize(THD *thd, String *serialization)
   DBUG_ENTER("DatabaseObj::serialize()");
   DBUG_PRINT("DatabaseObj::serialize", ("name: %s", m_db_name.c_ptr()));
 
-  if ((m_db_name == String (INFORMATION_SCHEMA_NAME.str, system_charset_info))
-      ||
-      (my_strcasecmp(system_charset_info, m_db_name.c_ptr(), "mysql") == 0))
+  if (is_internal_db_name(&m_db_name))
   {
     DBUG_PRINT("backup",(" Skipping internal database %s", m_db_name.c_ptr()));
     DBUG_RETURN(TRUE);
@@ -2674,9 +2672,9 @@ Obj *materialize_tablespace(const String *ts_name,
 bool is_internal_db_name(const String *db_name)
 {
   return
-    my_strcasecmp(system_charset_info,
-                  ((String *) db_name)->c_ptr_safe(),
-                  "mysql") == 0 ||
+    my_strcasecmp(lower_case_table_names ? system_charset_info :
+                  &my_charset_bin, ((String *) db_name)->c_ptr_safe(),
+                  MYSQL_SCHEMA_NAME.str) == 0 ||
     my_strcasecmp(system_charset_info,
                   ((String *) db_name)->c_ptr_safe(),
                   "information_schema") == 0 ||
