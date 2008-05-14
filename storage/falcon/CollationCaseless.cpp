@@ -98,7 +98,7 @@ int CollationCaseless::makeKey(Value *value, IndexKey *key, int partialKey, int 
 	while (q > p && q [-1] == ' ')
 		--q;
 
-	l = (int)(q - p);
+	l = q - p;
 
 	for (int n = 0; n < l; ++n)
 		p [n] = caseTable [p [n]];

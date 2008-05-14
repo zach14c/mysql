@@ -28,7 +28,7 @@ public:
 	MemMgr	*pools[5];
 	int		count;
 	uint64	maxMemory;
-	virtual bool poolExtensionCheck(uint64 size);
+	virtual bool poolExtensionCheck(uint size);
 	void addPool(MemMgr* pool);
 	void setMaxSize(uint64 size);
 };

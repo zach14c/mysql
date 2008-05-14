@@ -133,12 +133,12 @@ public:
 	friend void  MemMgrLogDump();
 
 protected:
-	MemBlock*	alloc(size_t size);
+	MemBlock*	alloc(int size);
 	static void	corrupt(const char* text);
 	
 public:
-	void*		allocate(size_t size);
-	void*		allocateDebug(size_t size, const char* fileName, int line);
+	void*		allocate(int size);
+	void*		allocateDebug(int size, const char* fileName, int line);
 	void		releaseBlock(MemBlock *block);
 	void		validateBlock(MemBlock *block);
 	void		analyze (int mask, Stream *stream, InfoTable *summaryTable, InfoTable *detailTable);
@@ -149,7 +149,7 @@ public:
 	void		debugStop(void);
 	void		validateFreeList(void);
 	void		validateBigBlock(MemBigObject* block);
-	void*		allocRaw(size_t length);
+	void*		allocRaw(int length);
 //	void		releaseRaw(void *block);
 	void		releaseRaw(MemBlock **block);
 	void		releaseRaw(MemSmallHunk *block);

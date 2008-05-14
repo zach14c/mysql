@@ -35,7 +35,7 @@ public:
 	void			rotateLeft(void);
 	void			rotateRight(void);
 	void			insert(MemFreeBlock *node);
-	MemFreeBlock*	findNextLargest(size_t size);
+	MemFreeBlock*	findNextLargest(int size);
 	void			rebalance(void);
 	bool			rebalanceDelete();
 	MemFreeBlock*	getSuccessor(MemFreeBlock** parentPointer, bool* shallower);
