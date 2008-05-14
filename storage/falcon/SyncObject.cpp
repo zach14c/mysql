@@ -55,7 +55,7 @@
 		else\
 			{ thread = Thread::getThread("SyncObject::lock"); thread->backoff = BACKOFF_INTERVAL; }
 
-#define BACKOFF_INTERVAL	(thread->random % 100)
+#define BACKOFF_INTERVAL	(thread->random % 1000)
 
 #ifdef TRACE_SYNC_OBJECTS
 
@@ -733,9 +733,10 @@ int SyncObject::getCollisionCount(void)
 void SyncObject::backoff(Thread* thread)
 {
 	//thread->sleep(1);
+    int a = 0;
 
 	for (int n = 0; n < thread->backoff; ++n)
-		;
+		++a;
 	
-	thread->backoff += thread->backoff;
+	thread->backoff += a;
 }
