@@ -523,4 +523,39 @@ COUNT(*)
 SELECT COUNT(*) FROM bup_default.wide;
 COUNT(*)
 1
+create the database
+CREATE DATABASE bup_delete;
+create a table and populate it
+CREATE TABLE bup_delete.me(id int, ccode varchar(20)) ENGINE=MEMORY;
+INSERT INTO bup_delete.me VALUES (1,'aa'),(2,'bb'),(3,'cc'),(4,'dd');
+show the data
+SELECT * FROM bup_delete.me;
+id	ccode
+1	aa
+2	bb
+3	cc
+4	dd
+delete a row
+DELETE FROM bup_delete.me WHERE ccode='cc';
+do backup
+BACKUP DATABASE bup_delete TO 'bup_delete.bak';
+backup_id
+#
+show the data
+SELECT * FROM bup_delete.me;
+id	ccode
+1	aa
+2	bb
+4	dd
+do restore
+RESTORE FROM 'bup_delete.bak';
+backup_id
+#
+show the data
+SELECT * FROM bup_delete.me;
+id	ccode
+1	aa
+2	bb
+4	dd
+DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;

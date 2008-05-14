@@ -391,11 +391,43 @@ SELECT * FROM bup_default.t2;
 SELECT COUNT(*) FROM bup_default.t1_blob;
 SELECT COUNT(*) FROM bup_default.wide;
 
+#
+# BUG#35249 : Test backup when rows are deleted
+#
+
+--echo create the database
+CREATE DATABASE bup_delete;
+
+--echo create a table and populate it
+CREATE TABLE bup_delete.me(id int, ccode varchar(20)) ENGINE=MEMORY;
+INSERT INTO bup_delete.me VALUES (1,'aa'),(2,'bb'),(3,'cc'),(4,'dd');
+
+--echo show the data
+SELECT * FROM bup_delete.me;
+
+--echo delete a row
+DELETE FROM bup_delete.me WHERE ccode='cc';
+
+--echo do backup
+--replace_column 1 #
+BACKUP DATABASE bup_delete TO 'bup_delete.bak';
+
+--echo show the data
+SELECT * FROM bup_delete.me;
+
+--echo do restore
+--replace_column 1 #
+RESTORE FROM 'bup_delete.bak';
+
+--echo show the data
+SELECT * FROM bup_delete.me;
 
 --disable_warnings
+DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;
 --enable_warnings
 
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_delete.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/test.ba
