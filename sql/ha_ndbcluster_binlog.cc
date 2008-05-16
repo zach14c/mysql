@@ -513,13 +513,13 @@ static int ndbcluster_reset_logs(THD *thd)
   DBUG_ENTER("ndbcluster_reset_logs");
 
   /*
-    Wait for all events orifinating from this mysql server has
+    Wait for all events originating from this mysql server has
     reached the binlog before continuing to reset
   */
   ndbcluster_binlog_wait(thd);
 
   char buf[1024];
-  char *end= strmov(buf, "DELETE FROM " NDB_REP_DB "." NDB_REP_TABLE);
+  char *end= strmov(buf, "TRUNCATE " NDB_REP_DB "." NDB_REP_TABLE);
 
   run_query(thd, buf, end, NULL, TRUE);
 
@@ -2528,6 +2528,31 @@ static int open_ndb_binlog_index(THD *thd, TABLE_LIST *tables,
 
 
 /*
+  Check if ndb_binlog_index is lockable, if not close, to free for
+  other threads use
+*/
+
+static void
+ndb_check_ndb_binlog_index(THD *thd)
+{
+  if (!ndb_binlog_index)
+    return;
+
+  bool need_reopen;
+  if (lock_tables(thd, &binlog_tables, 1, &need_reopen))
+  {
+    ndb_binlog_index= 0;
+    close_thread_tables(thd);
+    ndb_binlog_index= 0;
+    return;
+  }
+
+  mysql_unlock_tables(thd, thd->lock);
+  thd->lock= 0;
+  return;
+}
+
+/*
   Insert one row in the ndb_binlog_index
 */
 
@@ -4449,9 +4474,6 @@ restart:
   {
     static char db[]= "";
     thd->db= db;
-    if (ndb_binlog_running)
-      open_ndb_binlog_index(thd, &binlog_tables, &ndb_binlog_index);
-    thd->db= db;
   }
   do_ndbcluster_binlog_close_connection= BCCC_running;
   for ( ; !((ndbcluster_binlog_terminating ||
@@ -4591,8 +4613,17 @@ restart:
       }
     }
 
+    /*
+      For each epoch atleast one check should be made to see if ndb_binlog_index
+      table is lockable.  Variable 'do_check_ndb_binlog_index' is used as a flag
+      to signal if a check is needed for current epoch.
+    */
+    int do_check_ndb_binlog_index= 1;
+
     if (res > 0)
     {
+      do_check_ndb_binlog_index= 1;
+
       DBUG_PRINT("info", ("pollEvents res: %d", res));
       THD_SET_PROC_INFO(thd, "Processing events");
       NdbEventOperation *pOp= i_ndb->nextEvent();
@@ -4628,6 +4659,20 @@ restart:
           Uint32 iter= 0;
           const NdbEventOperation *gci_op;
           Uint32 event_types;
+
+          if (!i_ndb->isConsistentGCI(gci))
+          {
+            char errmsg[64];
+            uint end= sprintf(&errmsg[0],
+                              "Detected missing data in GCI %llu, "
+                              "inserting GAP event", gci);
+            errmsg[end]= '\0';
+            DBUG_PRINT("info",
+                       ("Detected missing data in GCI %llu, "
+                        "inserting GAP event", gci));
+            LEX_STRING const msg= { C_STRING_WITH_LEN(errmsg) };
+            inj->record_incident(thd, INCIDENT_LOST_EVENTS, msg);
+          }
           while ((gci_op= i_ndb->getGCIEventOperations(&iter, &event_types))
                  != NULL)
           {
@@ -4837,10 +4882,20 @@ restart:
 
           DBUG_PRINT("info", ("COMMIT gci: %lu", (ulong) gci));
           if (ndb_update_ndb_binlog_index)
+          {
             ndb_add_ndb_binlog_index(thd, rows);
+            do_check_ndb_binlog_index= 0;
+          }
           ndb_latest_applied_binlog_epoch= gci;
         }
         ndb_latest_handled_binlog_epoch= gci;
+
+        if (do_check_ndb_binlog_index)
+        {
+          ndb_check_ndb_binlog_index(thd);
+          do_check_ndb_binlog_index= 0;
+        }
+
 #ifdef RUN_NDB_BINLOG_TIMER
         gci_timer.stop();
         sql_print_information("gci %ld event_count %d write time "
@@ -4852,6 +4907,19 @@ restart:
                               (1000*event_count) / gci_timer.elapsed_ms());
 #endif
       }
+      if(!i_ndb->isConsistent(gci))
+      {
+        char errmsg[64];
+        uint end= sprintf(&errmsg[0],
+                          "Detected missing data in GCI %llu, "
+                          "inserting GAP event", gci);
+        errmsg[end]= '\0';
+        DBUG_PRINT("info",
+                   ("Detected missing data in GCI %llu, "
+                    "inserting GAP event", gci));
+        LEX_STRING const msg= { C_STRING_WITH_LEN(errmsg) };
+        inj->record_incident(thd, INCIDENT_LOST_EVENTS, msg);
+      }
     }
 
     ndb_binlog_thread_handle_schema_event_post_epoch(thd,
@@ -4860,6 +4928,12 @@ restart:
     free_root(&mem_root, MYF(0));
     *root_ptr= old_root;
     ndb_latest_handled_binlog_epoch= ndb_latest_received_binlog_epoch;
+
+    if (do_check_ndb_binlog_index)
+    {
+      ndb_check_ndb_binlog_index(thd);
+      do_check_ndb_binlog_index= 0;
+    }
   }
   if (do_ndbcluster_binlog_close_connection == BCCC_restart)
   {

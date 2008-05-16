@@ -1112,9 +1112,6 @@ typedef struct st_range_seq_if
   uint (*next) (range_seq_t seq, KEY_MULTI_RANGE *range);
 } RANGE_SEQ_IF;
 
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx);
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx);
-
 class COST_VECT
 { 
 public:
@@ -2392,7 +2389,7 @@ extern TYPELIB tx_isolation_typelib;
 extern TYPELIB myisam_stats_method_typelib;
 extern ulong total_ha, total_ha_2pc;
 
-       /* Wrapper functions */
+/* Wrapper functions */
 #define ha_commit(thd) (ha_commit_trans((thd), TRUE))
 #define ha_rollback(thd) (ha_rollback_trans((thd), TRUE))
 
