@@ -43,7 +43,13 @@ class Backup_info: public backup::Image_info
 
   int close();
 
+  Iterator* get_global() const;
+  Iterator* get_perdb()  const;
+
  private:
+
+  class Global_iterator; ///< Iterates over global items (for which meta-data is stored).
+  class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
 
   /// State of the info structure.
   enum {CREATED,
@@ -59,6 +65,21 @@ class Backup_info: public backup::Image_info
 
   int add_db_items(Db&);
   int add_objects(Db&, const obj_type, obs::ObjIterator&);
+  int add_view_deps(obs::Obj&);
+
+  struct Dep_node;
+
+  int get_dep_node(const ::String&, const ::String&, Dep_node*&);
+  int add_to_dep_list(const obj_type, Dep_node*);
+
+  struct get_dep_node_res 
+  { 
+    enum value {
+      NEW_NODE,
+      EXISTING_NODE, 
+      ERROR 
+    };
+  };
   
   /**
     List of existing @c Snapshot_info objects.
@@ -85,6 +106,49 @@ class Backup_info: public backup::Image_info
     tablespace or not.
    */ 
   HASH   ts_hash;
+
+
+  /**
+    Pointer to the first element on the dependency list.
+    
+    Dependency list lists all per-database objects in the order which takes 
+    into account possible dependencies between them. The list is divided into 
+    three sections:
+    
+    -# stored routines (functions and procedures)
+    -# views
+    -# triggers
+    -# events
+   */ 
+  Dep_node  *m_dep_list;
+  Dep_node  *m_dep_end; ///< Pointer to the last element on the dependency list.
+
+  /** 
+    Points at the last element in the stored routines section of the dependency 
+    list. NuLL if this section is empty.
+   */
+  Dep_node  *m_srout_end;
+
+  /** 
+    Points at the last view on the dependency list. NuLL if views section is 
+    empty.
+   */
+  Dep_node  *m_view_end;
+
+  /** 
+    Points at the last trigger on the dependency list. NULL if triggers section
+    is empty.
+   */
+  Dep_node  *m_trigger_end;
+  
+  /**
+    Hash keeping all elements stored in the dependency list.
+
+    It is used to quickly check if a given object is on the list. Hash is
+    indexed by <database name, object name> pairs.
+   */ 
+  HASH dep_hash;
+
 
   String serialization_buf; ///< Used to store serialization strings of objects.
   
