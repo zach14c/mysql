@@ -1168,6 +1168,8 @@ static uint null_iter;  ///< Used to implement trivial empty iterator.
 extern "C"
 void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 {
+  typedef backup::Image_info::Iterator Iterator; // to save some typing
+
   DBUG_ASSERT(catalogue);
 
   Backup_info *info= static_cast<Backup_info*>(catalogue);
@@ -1186,7 +1188,7 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 
   case BSTREAM_IT_TABLESPACE:     // table spaces
   {
-    Backup_info::Ts_iterator *it= info->get_tablespaces();
+    Iterator *it= info->get_tablespaces();
   
     if (!it)
     {
@@ -1199,7 +1201,7 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 
   case BSTREAM_IT_DB:       // all databases
   {
-    Backup_info::Db_iterator *it= info->get_dbs();
+    Iterator *it= info->get_dbs();
   
     if (!it)
     {
@@ -1212,7 +1214,7 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   
   case BSTREAM_IT_PERDB:    // per-db objects, except tables
   {
-    Backup_info::Perdb_iterator *it= info->get_perdb();
+    Iterator *it= info->get_perdb();
   
     if (!it)
     {
@@ -1225,7 +1227,7 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
 
   case BSTREAM_IT_GLOBAL:   // all global objects
   {
-    Backup_info::Global_iterator *it= info->get_global();
+    Iterator *it= info->get_global();
   
     if (!it)
     {
@@ -1321,7 +1323,7 @@ void* bcat_db_iterator_get(st_bstream_image_header *catalogue,
     return NULL;
   }
 
-  Backup_info::Dbobj_iterator *it= info->get_db_objects(*db);
+  backup::Image_info::Iterator *it= info->get_db_objects(*db);
 
   if (!it)
   {
@@ -1348,7 +1350,7 @@ void  bcat_db_iterator_free(st_bstream_image_header *catalogue,
                             st_bstream_db_info *db,
                             void *iter)
 {
-  delete (backup::Image_info::Dbobj_iterator*)iter;
+  delete (backup::Image_info::Iterator*)iter;
 }
 
 

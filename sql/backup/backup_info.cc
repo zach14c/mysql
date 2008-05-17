@@ -224,6 +224,68 @@ uchar* Backup_info::Ts_hash_node::get_key(const uchar *record,
   return (uchar*)(n->name->ptr());
 }
 
+/**
+  Represents a node in the dependency list.
+  
+  Such node can be an empty placeholder or store a pointer to a catalogue item
+  in @c obj member. Dependency list nodes are kept in a hash and thus 
+  @c Dep_node contains all required infrastructure: the @c key member to store
+  a key string plus @c get_key() and @c free() functions used in @c HASH 
+  operations.
+ */ 
+struct Backup_info::Dep_node: public Sql_alloc
+{
+  Dep_node *next;
+  Dbobj *obj;
+  String key;
+
+  Dep_node(const ::String &db_name, const ::String &name);
+  Dep_node(const Dep_node&);
+
+  static uchar* get_key(const uchar *record, size_t *key_length, my_bool);
+  static void free(void *record);
+};
+
+/**
+  Create an empty dependency list node for a given per-database object.
+
+  The object is identified by its name and the name of the database to which
+  it belongs. 
+ */ 
+inline
+Backup_info::Dep_node::Dep_node(const ::String &db_name, const ::String &name)
+  :next(NULL), obj(NULL)
+{
+  key.length(0);
+  key.append(db_name);
+  key.append(".");
+  key.append(name);
+}
+
+inline
+Backup_info::Dep_node::Dep_node(const Dep_node &n)
+ :Sql_alloc(n), next(n.next), obj(n.obj)
+{
+  key.copy(n.key);
+}
+
+inline
+void Backup_info::Dep_node::free(void *record)
+{
+  ((Dep_node*)record)->~Dep_node();
+}
+
+inline
+uchar* 
+Backup_info::Dep_node::get_key(const uchar *record,
+                              size_t *key_length,
+                              my_bool) // not_used __attribute__((unused)))
+{
+  Dep_node *n= (Dep_node*)record;
+  if (key_length)
+    *key_length= n->key.length();
+  return (uchar*)n->key.ptr();
+}
 
 
 /**
@@ -234,7 +296,9 @@ uchar* Backup_info::Ts_hash_node::get_key(const uchar *record,
   @c find_backup_engine().
  */
 Backup_info::Backup_info(Backup_restore_ctx &ctx)
-  :m_ctx(ctx), m_state(Backup_info::ERROR), native_snapshots(8)
+  :m_ctx(ctx), m_state(Backup_info::ERROR), native_snapshots(8),
+   m_dep_list(NULL), m_dep_end(NULL), 
+   m_srout_end(NULL), m_view_end(NULL), m_trigger_end(NULL)
 {
   using namespace backup;
 
@@ -244,6 +308,8 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
 
   hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
             Ts_hash_node::get_key, Ts_hash_node::free, MYF(0));
+  hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
+            Dep_node::get_key, Dep_node::free, MYF(0));
 
   /* 
     Create nodata, default, and CS snapshot objects and add them to the 
@@ -271,7 +337,7 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
     return;
 
   snapshots.push_back(snap);
-  
+
   m_state= CREATED;
 }
 
@@ -290,6 +356,7 @@ Backup_info::~Backup_info()
     delete snap;
 
   hash_free(&ts_hash);  
+  hash_free(&dep_hash);
 }
 
 /**
@@ -778,6 +845,112 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
 }
 
 /**
+  For all views on which the given one depends directly or indirectly, add 
+  placeholders to the dependency list ensuring correct order among them.
+
+  The main view being processed in this function should be added to the 
+  dependency list after all the placeholders created here. This way if one of 
+  the views on which the given one depends is added to the list later, it will 
+  be placed at the correct position indicated by the placeholder.
+
+  @param[in]  obj   server object for the view to be processed
+
+  A recursive algorithm is used to insert placeholders in correct order.
+  That is, for each base view @c bv of the given one, @c add_view_deps(bv) 
+  is called to insert all dependencies of @c bv before @c bv itself is appended
+  to the list.
+  
+  Function @c get_dep_node() used to create a node to be inserted into the 
+  dependency list detects if the node was already created earlier. This ensures
+  correct behaviour of the algorithm even if the same view is visited several 
+  times during the depth-first walk of the dependency graph performed by the 
+  recursive algorithm. If it is detected that a node for a given view already
+  exists then this view is not processed for the second time.  
+
+  This also ensures termination of the algorithm even when there are
+  circular dependencies. Suppose that view @c v has itself as an (indirect) 
+  dependency. When processing @c v, a node will be created for it first 
+  and then its dependencies will be processed. When add_view_deps() comes across 
+  @c v for the second time it will see that a corresponding mode already 
+  exists and thus will break the recursion.
+
+  @return Non-zero value if an error happened.
+ */ 
+int Backup_info::add_view_deps(obs::Obj &obj)
+{
+  const ::String *name= obj.get_name();
+  const ::String *db_name= obj.get_db_name();
+
+  DBUG_ASSERT(name); 
+  DBUG_ASSERT(db_name); 
+  
+  // Get an iterator to iterate over base views of the given one.
+
+  obs::ObjIterator *it= obs::get_view_base_views(m_ctx.m_thd, db_name, name);
+
+  if (!it)
+    return ERROR;
+
+  /* 
+    Iterate over base views and for each of them add it and its dependencies 
+    to the dependency list (first its dependecies, then the base view).
+  */
+
+  obs::Obj *bv; 
+
+  while ((bv= it->next()))
+  {
+    Dep_node *n= NULL;
+    const ::String *name= bv->get_name();
+    const ::String *db_name= bv->get_db_name();
+  
+    DBUG_ASSERT(name); 
+    DBUG_ASSERT(db_name); 
+
+    // Locate or create a dependency list node for the base view.
+
+    int res= get_dep_node(*db_name, *name, n);
+
+    if (res == get_dep_node_res::ERROR)
+      goto error;
+
+    DBUG_ASSERT(n);
+
+    /*
+      If a node for this view already exists, the view has been processed 
+      (or is being processed now). Hence we skip it and continue with other
+      base views.
+     */ 
+    if (res == get_dep_node_res::EXISTING_NODE)
+      continue;
+
+    // Recursively add all dependencies of bv to the list.
+
+    if (add_view_deps(*bv))
+      goto error;
+
+    /* 
+      Now add bv itself to the list (we keep in n a pointer to the dep. list
+      node obtained earlier).
+     */
+    if (add_to_dep_list(BSTREAM_IT_VIEW, n))
+      goto error;      
+
+    delete bv; // Server object instance is not needed any more.
+  }
+
+  delete it;
+  return 0;
+
+error:
+
+  delete bv;
+  delete it;
+
+  return ERROR;
+}
+
+/**
   Select a per database object for backup.
 
   This method is used for objects other than tables - tables are handled
@@ -787,6 +960,10 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
   @param[in] db   object's database - must already be in the catalogue
   @param[in] type type of the object
   @param[in] obj  the object
+
+  The object is also added to the dependency list with @c add_to_dep_list() 
+  method. If it is a view, its dependencies are handled first using 
+  @c add_view_deps().
 
   @returns Pointer to @c Image_info::Dbobj instance storing information 
   about the object or NULL in case of error.  
@@ -828,8 +1005,359 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   o->m_obj_ptr= obj;
 
+  /* 
+    Add new object to the dependency list. If it is a view, add its
+    dependencies first.
+   */
+
+  Dep_node *n= NULL; /* Note: set to NULL to make sure that get_dep_node() has 
+                        set the pointer. */ 
+
+  // Get a dep. list node for the object.  
+
+  int res= get_dep_node(db.name(), *name, n);
+  
+  if (res == get_dep_node_res::ERROR)
+  {
+    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    return NULL;
+  }
+
+  /* 
+    Store a pointer to the catalogue item in the dep. list node. If this node
+    was a placeholder inserted into the list before, now it will be filled with
+    the object we are adding to the catalogue.
+   */
+
+  DBUG_ASSERT(n);
+  n->obj= o;  
+
+  /*
+    If a new node was created, it must be added to the dependency list with
+    add_to_dep_list(). However, if the object is a view, we must first add 
+    placeholders for all its dependencies which is done using add_view_deps().
+   */ 
+
+  if (res == get_dep_node_res::NEW_NODE)
+  {
+    if (type == BSTREAM_IT_VIEW)
+      if (add_view_deps(*obj))
+      {
+        m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+        return NULL;
+      } 
+
+    add_to_dep_list(type, n);
+  } 
+
   DBUG_PRINT("backup",("Added object %s of type %d from database %s (pos=%lu)",
                        name->ptr(), type, db.name().ptr(), pos));
   return o;
 }
 
+/**
+  Find or create a dependency list node for an object with a given name.
+  
+  @param[in]  db_name  name of the database to which this object belongs
+  @param[in]  name     name of the object
+  @param[out] node     pointer to the created or located node
+  
+  All nodes created using this function are keept inside @c dep_node HASH
+  indexed by <db_name, name> pairs. This is used to detect that a node for
+  a given object already exists. All created nodes are deleted when Backup_info
+  instance is destroyed.
+
+  The node created by this function is not placed on the dependency list. This
+  must be done explicitly using @c add_to_dep_list(). The node has @c obj member
+  set to NULL which means that it can be used as an empty placeholder in the 
+  dependency list.
+
+  @return A code indicating whether the node was found or created.
+  @retval NEW_NODE      a new node has been created
+  @retval EXISTING_NODE a node for this object was created before and @c node
+                        contains a pointer to it
+  @retval ERROR         it was not possible to create or locate the node
+ */ 
+int Backup_info::get_dep_node(const ::String &db_name, 
+                              const ::String &name, 
+                              Dep_node* &node)
+{
+  Dep_node n(db_name, name);
+  size_t klen;
+  uchar  *key= Dep_node::get_key((const uchar*)&n, &klen, TRUE);
+
+  node= (Dep_node*) hash_search(&dep_hash, key, klen);
+
+  // if we have found node in the hash there is nothing more to do
+  if (node)
+    return get_dep_node_res::EXISTING_NODE;
+  
+  /*
+    Otherwise insert node into the hash and return.
+   */
+
+  node= new (&mem_root) Dep_node(n);
+
+  if (!node)
+    return get_dep_node_res::ERROR;
+
+  return my_hash_insert(&dep_hash, (uchar*)node) ? 
+          get_dep_node_res::ERROR : get_dep_node_res::NEW_NODE;
+}
+
+/**
+  Append node to the correct section of the dependency list, based on the
+  type of the object.
+
+  @param[in]  type   type of the object indicating the section of the list 
+                     to which node will be appended
+  @param[in]  node   points at the node to be appended
+
+  The node is appended at the end of the corresponding section of the
+  dependency list. Pointers m_dep_list, m_end_dep and the ones indicating end of
+  each section are updated as necessary.
+  
+  A node added to the list is just a placeholder for an object from backup 
+  catalogue. To insert such object into the list a pointer to the corresponding
+  @c Dbobj instance should be stored in the @c obj member of a list node.
+ 
+  @return Non-zero value in case of error. Currently should always succeed. 
+ */ 
+int Backup_info::add_to_dep_list(const obj_type type, Dep_node *node)
+{
+  Dep_node* *end= NULL;
+
+  DBUG_ASSERT(node);
+
+  /*
+    Set end to point at m_srout_end, m_trigger_end or m_view_end depending on 
+    the type of the item.
+    
+    If the corresponding section is empty, the *end pointer is set up to point
+    at the node after which this section should start, or to NULL if section
+    should be at the beginning of the dependency list.
+    
+    After inserting the new node it becomes the last node in the section so
+    the pointer is updated to point at it.
+   */ 
+
+  switch (type) {
+
+  case BSTREAM_IT_SPROC:
+  case BSTREAM_IT_SFUNC:
+    end= &m_srout_end;
+  break; 
+
+  case BSTREAM_IT_VIEW:  
+    end= &m_view_end;
+    if (!m_view_end)
+      m_view_end= m_srout_end; 
+  break;
+
+  case BSTREAM_IT_TRIGGER:
+    end= &m_trigger_end;
+    if (!m_trigger_end)
+      m_trigger_end= m_view_end ? m_view_end : m_srout_end;
+  break;
+  
+  case BSTREAM_IT_EVENT: 
+    end= &m_dep_end;
+  break;
+   
+  default: DBUG_ASSERT(FALSE); // only known object types should be added   
+
+  }
+
+  DBUG_ASSERT(end); // end should point now at one of m_*_end pointers
+
+  /*
+    The new node should be inserted after the node pointed by end or at
+    the begginging of the list if end == NULL. 
+   */
+
+  if (*end)
+  {
+    node->next= (*end)->next;
+    (*end)->next= node;
+  }
+  else
+  {
+    node->next= m_dep_list;
+    m_dep_list= node;
+  }
+
+  /*
+    Update m_dep_end pointer if appending to the end of the dependency list.
+    
+    There are two cases:
+    
+    - either the list is empty in which case both m_dep_end and *end are NULL
+    - or it is not empty and *end points at the last node in the list.
+    
+    In either case *end equals m_dep_end.
+   */ 
+
+  if (*end == m_dep_end)
+    m_dep_end= node;
+
+  *end= node;
+
+  return 0;
+}
+
+
+/**
+  Used to iterate over all global objects for which we store information in the
+  neta-data section of backup image.
+
+  Currently only global objects handled are tablespaces and databases.
+ */
+class Backup_info::Global_iterator
+ : public Image_info::Iterator
+{
+  /**
+    Indicates whether tablespaces or databases are being currently enumerated.
+   */ 
+  enum { TABLESPACES, DATABASES, DONE } mode;
+
+  Iterator *m_it; ///< Points at the currently used iterator.
+  Obj *m_obj;         ///< Points at next object to be returned by this iterator.
+
+ public:
+
+  Global_iterator(const Image_info&);
+
+ private:
+
+  Obj* get_ptr() const;
+  bool next();
+};
+
+inline
+Backup_info::Global_iterator::Global_iterator(const Image_info &info)
+ :Iterator(info), mode(TABLESPACES), m_it(NULL), m_obj(NULL)
+{
+  m_it= m_info.get_tablespaces();
+  next();
+}
+
+
+inline
+backup::Image_info::Obj*
+Backup_info::Global_iterator::get_ptr() const
+{
+  return m_obj;
+}
+
+inline
+bool
+Backup_info::Global_iterator::next()
+{
+  if (mode == DONE)
+    return FALSE;
+
+  DBUG_ASSERT(m_it);
+
+  // get next object from the current iterator
+  m_obj= (*m_it)++;
+
+  if (m_obj)
+    return TRUE;
+
+  /*
+    If the current iterator has finished (m_obj == NULL) then, depending on
+    the mode, either switch to the next iterator or mark end of the sequence.
+  */
+
+  delete m_it;
+
+  switch (mode) {
+
+  case TABLESPACES:
+
+    // We have finished enumerating tablespaces, move on to databases.
+    mode= DATABASES;
+    m_it= m_info.get_dbs();
+    m_obj= (*m_it)++;
+    return m_obj != NULL;
+
+  case DATABASES:
+
+    // We have finished enumerating databases - nothing more to do.
+    mode= DONE;
+
+  case DONE:
+
+    break;
+  }
+
+  return FALSE;
+}
+
+/**
+  Used to iterate over all per database objects, except tables.
+
+  This iterator uses the dependency list maintained inside Backup_info
+  instance to list objects in a dependency-respecting order.
+ */ 
+class Backup_info::Perdb_iterator : public Image_info::Iterator
+{
+  Dep_node *ptr;
+
+ public:
+
+  Perdb_iterator(const Backup_info&);
+
+ private:
+
+  Obj* get_ptr() const;
+  bool next();
+};
+
+inline
+Backup_info::Perdb_iterator::Perdb_iterator(const Backup_info &info)
+ :Iterator(info), ptr(info.m_dep_list)
+{
+  // Find first non-empty node in the dependency list.
+
+  while (ptr && !ptr->obj)
+    ptr= ptr->next;
+}
+
+/// Implementation of @c Image_info::Iterator virtual method.
+inline
+backup::Image_info::Obj* Backup_info::Perdb_iterator::get_ptr() const
+{
+  return ptr ? ptr->obj : NULL;
+}
+
+/// Implementation of @c Image_info::Iterator virtual method.
+inline
+bool Backup_info::Perdb_iterator::next()
+{
+  // Return FALSE if we are at the end of dependency list.
+
+  if (!ptr)
+    return FALSE;
+
+  // Otherwise move ptr to the next non-empty node on the list.
+
+  do {
+    ptr= ptr->next;
+  } while (ptr && !ptr->obj);
+
+  return ptr != NULL;
+}
+
+
+/// Wrapper to return global iterator.
+backup::Image_info::Iterator* Backup_info::get_global() const
+{
+  return new Global_iterator(*this);
+}
+
+/// Wrapper to return iterator for per-database objects.
+backup::Image_info::Iterator* Backup_info::get_perdb()  const
+{
+  return new Perdb_iterator(*this);
+}

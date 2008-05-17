@@ -61,8 +61,6 @@ public: // public interface
    class Iterator;      ///< Base for all iterators.
    class Ts_iterator;   ///< Iterates over all tablespaces.
    class Db_iterator;   ///< Iterates over all databases.
-   class Global_iterator; ///< Iterates over global items (for which meta-data is stored).
-   class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
    class Dbobj_iterator;  ///< Iterates over objects in a database.
 
    virtual ~Image_info();
@@ -91,8 +89,6 @@ public: // public interface
 
    Db_iterator*     get_dbs() const;
    Ts_iterator*     get_tablespaces() const;
-   Global_iterator* get_global() const;
-   Perdb_iterator*  get_perdb() const;
    Dbobj_iterator*  get_db_objects(const Db &db) const;
 
    /**
@@ -131,14 +127,12 @@ public: // public interface
 
   Image_info();
   uint m_table_count;
+  MEM_ROOT  mem_root;    ///< Memory root for storage of catalogue items.
 
  private:
 
   class Tables; ///< Implementation of Table_list interface. 
 
-  // storage
-
-  MEM_ROOT  mem_root;    ///< Memory root used to allocate @c Obj instances.
   Map<uint, Db>   m_dbs; ///< Pointers to Db instances.
   Map<uint, Ts>   m_ts_map; ///< Pointers to Ts instances.
   String    m_binlog_file; ///< To store binlog file name at VP time.
@@ -635,32 +629,6 @@ Image_info::Db_iterator::Db_iterator(const Image_info &info)
 
 
 /**
-  Used to iterate over all per database objects, except tables.
-
-  @todo Modify this iterator so that it enumerates objects in order
-  respecting dependencies.
- */ 
-class Image_info::Perdb_iterator
- : public Image_info::Db_iterator
-{
-  ulong pos;
-
- public:
-
-  Perdb_iterator(const Image_info&);
-
- private:
-
-  Obj* get_ptr() const;
-  bool next();
-};
-
-inline
-Image_info::Perdb_iterator::Perdb_iterator(const Image_info &info)
- :Db_iterator(info), pos(0)
-{}
-
-/**
   Used to iterate over all objects belonging to a given database.
 
   @note Backup stream library infers position of each non-table object within
@@ -692,92 +660,6 @@ Image_info::Dbobj_iterator::Dbobj_iterator(const Image_info &info, const Db &db)
 {}
 
 
-/**
-  Used to iterate over all global objects for which we store information in the
-  neta-data section of backup image.
-
-  Currently only global objects handled are tablespaces and databases.
- */
-class Image_info::Global_iterator
- : public Image_info::Iterator
-{
-  /**
-    Indicates whether tablespaces or databases are being currently enumerated.
-   */ 
-  enum { TABLESPACES, DATABASES, DONE } mode;
-
-  Iterator *m_it;	///< Points at the currently used iterator.
-  Obj *m_obj;	        ///< Points at next object to be returned by this iterator.
-
- public:
-
-  Global_iterator(const Image_info&);
-
- private:
-
-  Obj* get_ptr() const;
-  bool next();
-};
-
-inline
-Image_info::Global_iterator::Global_iterator(const Image_info &info)
- :Iterator(info), mode(TABLESPACES), m_it(NULL), m_obj(NULL)
-{
-  m_it= m_info.get_tablespaces();
-  next();
-}
-
-
-inline
-Image_info::Obj*
-Image_info::Global_iterator::get_ptr() const
-{
-  return m_obj;
-}
-
-inline
-bool
-Image_info::Global_iterator::next()
-{
-  if (mode == DONE)
-    return FALSE;
-
-  DBUG_ASSERT(m_it);
-
-  // get next object from the current iterator
-  m_obj= (*m_it)++;
-
-  if (m_obj)
-    return TRUE;
-
-  /*
-    If the current iterator has finished (m_obj == NULL) then, depending on
-    the mode, either switch to the next iterator or mark end of the sequence.
-  */
-
-  delete m_it;
-
-  switch (mode) {
-
-  case TABLESPACES:
-
-    // We have finished enumerating tablespaces, move on to databases.
-    mode= DATABASES;
-    m_it= m_info.get_dbs();
-    m_obj= (*m_it)++;
-    return m_obj != NULL;
-
-  case DATABASES:
-
-    mode= DONE;
-
-  case DONE:
-
-    break;
-  }
-
-  return FALSE;
-}
 
 /********************************************************************
  
@@ -916,34 +798,11 @@ Image_info::Ts_iterator* Image_info::get_tablespaces() const
   return new Ts_iterator(*this);
 }
 
-/** 
-  Returns an iterator enumerating all per-database objects (from all databases)
-  for which we store meta-data.
-  
-  @note This iterator enumerates only non-table objects - tables are handled
-  separately.
- */
-inline
-Image_info::Perdb_iterator* Image_info::get_perdb() const
-{
-  return new Perdb_iterator(*this);
-}
-
 /// Returns an iterator enumerating all objects in a given database.
 inline
 Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db) const
 {
   return new Dbobj_iterator(*this, db);
-}
-
-/** 
-  Returns an iterator enumerating all global objects for which we need to store
-  some meta-data.
- */
-inline
-Image_info::Global_iterator* Image_info::get_global() const
-{
-  return new Global_iterator(*this);
 }
 
 /********************************************************************
@@ -980,7 +839,7 @@ Table_ref Image_info::Tables::operator[](ulong pos) const
 
 /********************************************************************
  
-   Inline members of Snapshot_info::Obj and derived classes.
+   Inline members of Image_info::Obj and derived classes.
  
  ********************************************************************/ 
 
@@ -1283,42 +1142,6 @@ bool Image_info::Ts_iterator::next()
   }
   else
     return FALSE;
-}
-
-
-/// Implementation of @c Image_info::Iterator virtual method.
-inline
-Image_info::Obj* Image_info::Perdb_iterator::get_ptr() const
-{
-  const Db *db= static_cast<const Db*>(Db_iterator::get_ptr());
-
-  if (!db)
-    return NULL;
-
-  return db->m_objs[pos];
-}
-
-/// Implementation of @c Image_info::Iterator virtual method.
-inline
-bool Image_info::Perdb_iterator::next()
-{
-  while (TRUE)
-  {
-    const Db *db= static_cast<const Db*>(Db_iterator::get_ptr());
-  
-    if (!db)
-      return FALSE;
-
-    // Look for next non-NULL pointer in m_objs.
-    while (pos < db->obj_count() && !db->m_objs[++pos]);
-
-    // If next object found in the current database, return.
-    if (pos < db->obj_count())
-      return TRUE;
-
-    // Otherwise, move to next database.
-    Db_iterator::next();
-  }
 }
 
 
