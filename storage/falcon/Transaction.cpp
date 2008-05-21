@@ -340,7 +340,6 @@ void Transaction::commitNoUpdates(void)
 
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates");
 	syncActiveTransactions.lock(Shared);
-	state = CommittingReadOnly;
 	releaseDependencies();
 
 	if (xid)
@@ -1381,7 +1380,13 @@ void Transaction::releaseDependency(void)
 	INTERLOCKED_DECREMENT(dependencies);
 
 	if ((dependencies == 0) && !writePending && firstRecord)
+		{
+		// The Sync is to avoid a race with writeComplete().  It looks whacko, but does the trick
+		
+		Sync sync(&syncIndexes, "Transaction::releaseDependency");
+		sync.lock(Exclusive);
 		commitRecords();
+		}
 		
 	releaseCommittedTransaction();
 }

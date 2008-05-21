@@ -497,7 +497,7 @@ Record* Table::fetchNext(int32 start)
 			
 			for (int n = 0; (record = databaseFetch(bitNumber)); ++n)
 				{
-				if (insert(record, NULL, recordNumber))
+				if (insert(record, NULL, bitNumber))
 					{
 					record->poke();
 					
