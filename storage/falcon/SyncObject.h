@@ -69,12 +69,14 @@ public:
 	void		grantLocks(void);
 	//void		assertionFailed(void);
 	int			getState(void);
+	int			getCollisionCount(void);
 	void		validate(LockType lockType);
 	void		unlock(void);
 	bool		ourExclusiveLock(void);
 	void		frequentStaller(Thread *thread, Sync *sync);
 	void		setName(const char* name);
 	void		timedout(int timeout);
+	void		backoff(Thread* thread);
 
 	virtual void	unlock (Sync *sync, LockType type);
 	virtual void	lock (Sync *sync, LockType type, int timeout = 0);
@@ -101,6 +103,7 @@ protected:
 #ifdef TRACE_SYNC_OBJECTS
 	int					objectId;
 	INTERLOCK_TYPE		sharedCount;
+	INTERLOCK_TYPE		collisionCount;
 	int					exclusiveCount;
 	int					waitCount;
 	int					queueLength;

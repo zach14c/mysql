@@ -43,10 +43,12 @@ void SyncTest::test()
 	
 	Sync sync(&starter, "SyncTest::test");
 	Threads *threadBarn = new Threads(NULL, MAX_THREADS);
+	int grandTotal = 0;
 		
 	for (int n = 1; n <= MAX_THREADS; ++n)
 		{
 		sync.lock(Exclusive);
+		int collisions = syncObject.getCollisionCount();
 		stop = false;
 		int thd;
 		
@@ -76,7 +78,7 @@ void SyncTest::test()
 			}
 			
 		sync.unlock();
-		Thread::sleep(1000);
+		Thread::sleep(5000);
 		stop = true;
 		threadBarn->waitForAll();
 		int total = 0;
@@ -84,14 +86,18 @@ void SyncTest::test()
 		for (thd = 0; thd < n; ++thd)
 			total += threads[thd].count;
 		
-		printf("%d threads, %d cycles:", n, total);
+		grandTotal += total;
+		printf("%d threads, %d cycles, %d collisions\n", n, total, syncObject.getCollisionCount() - collisions);
 
+		/***
 		for (thd = 0; thd < n; ++thd)
 			printf(" %d", threads[thd].count);
 					
 		printf("\n");
+		***/
 		}
 	
+	printf ("Average cycles %d\n", grandTotal / MAX_THREADS);
 	threadBarn->shutdownAll();
 	threadBarn->waitForAll();
 	threadBarn->release();

@@ -106,6 +106,8 @@ public:
 	bool			marked;
 	int				pageMarks;
 	int				eventNumber;		// for debugging
+	int				random;
+	int				backoff;
 	const char		*description;
 	const char		*where;
 	const TimeZone	*defaultTimeZone;
