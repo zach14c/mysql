@@ -55,6 +55,10 @@
   @todo Handle other types of meta-data in Backup_info methods.
   @todo Handle item dependencies when adding new items.
   @todo Handle other kinds of backup locations (far future).
+
+  @note This comment was added to show Jorgen and Oystein how to push patches 
+  into the team tree - please remove it if you see it. Second version of the 
+  patch, to show how to collapse/re-edit csets.
 */
 
 #include "../mysql_priv.h"
