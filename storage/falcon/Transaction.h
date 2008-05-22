@@ -62,8 +62,7 @@ enum State {
 	// And the remaining are for transactions pending reuse
 	
 	Available,				// 9
-	Initializing,			// 10
-	CommittingReadOnly		// 11
+	Initializing			// 10
 	};
 
 struct TransState {

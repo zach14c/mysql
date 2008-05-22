@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -76,6 +79,8 @@ static int initThreads()
 	threadIndex = TlsAlloc();
 #endif
 
+	srand((uint) time(NULL));
+	
 	return 1;
 }
 
@@ -113,6 +118,7 @@ void Thread::init(const char *desc)
 	lockGranted = false;
 	prior = NULL;
 	next = NULL;
+	random = rand();
 }
 
 Thread::~Thread()

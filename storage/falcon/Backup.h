@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2008 MySQL AB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,6 +13,23 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+#ifndef _BACKUP_H_
+#define _BACKUP_H_
 
-#define FALCON_VERSION	"T1.2-5"
-#define FALCON_DATE		"22 May, 2008"
+static const int BACKUP_page	= 1;
+
+class Database;
+class Dbb;
+class EncodedDataStream;
+
+class Backup
+{
+public:
+	Backup(Database *db);
+	~Backup(void);
+	void backupPage(Dbb* dbb, int32 pageNumber, EncodedDataStream* stream);
+	
+	Database*	database;
+};
+
+#endif
