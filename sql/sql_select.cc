@@ -2749,11 +2749,12 @@ JOIN::exec()
   /* 
     With EXPLAIN EXTENDED we have to restore original ref_array
     for a derived table which is always materialized.
-    Otherwise we would not be able to print the query  correctly.
+    We also need to do this when we have temp table(s).
+    Otherwise we would not be able to print the query correctly.
   */ 
-  if (items0 &&
-      (thd->lex->describe & DESCRIBE_EXTENDED) &&
-      select_lex->linkage == DERIVED_TABLE_TYPE)      
+  if (items0 && (thd->lex->describe & DESCRIBE_EXTENDED) &&
+      (select_lex->linkage == DERIVED_TABLE_TYPE ||
+       exec_tmp_table1 || exec_tmp_table2))
     set_items_ref_array(items0);
 
   DBUG_VOID_RETURN;
@@ -8313,13 +8314,16 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
             if (!tab->insideout_match_tab)
             {
               /*
-                See bug #26447: "Using the clustered index for a table scan
-                is always faster than using a secondary index".
-              */
+                It has turned out that the below change, while speeding things
+                up for disk-bound loads, slows them down for cases when the data
+                is in disk cache (see BUG#35850):
+              //  See bug #26447: "Using the clustered index for a table scan
+              //  is always faster than using a secondary index".
               if (table->s->primary_key != MAX_KEY &&
                   table->file->primary_key_is_clustered())
                 tab->index= table->s->primary_key;
               else
+	      */
                 tab->index=find_shortest_key(table, & table->covering_keys);
             }
 	    tab->read_first_record= join_read_first;

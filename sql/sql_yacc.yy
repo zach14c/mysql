@@ -42,7 +42,7 @@
 #include "sp_pcontext.h"
 #include "sp_rcontext.h"
 #include "sp.h"
-#include "event_data_objects.h"
+#include "event_parse_data.h"
 #include <myisam.h>
 #include <myisammrg.h>
 
@@ -1935,7 +1935,6 @@ event_tail:
             LEX *lex=Lex;
 
             lex->create_info.options= $2;
-
             if (!(lex->event_parse_data= Event_parse_data::new_instance(thd)))
               MYSQL_YYABORT;
             lex->event_parse_data->identifier= $3;
@@ -1992,17 +1991,17 @@ opt_ev_status:
           /* empty */ { $$= 0; }
         | ENABLE_SYM
           {
-            Lex->event_parse_data->status= Event_basic::ENABLED;
+            Lex->event_parse_data->status= Event_parse_data::ENABLED;
             $$= 1;
           }
         | DISABLE_SYM ON SLAVE
           {
-            Lex->event_parse_data->status= Event_basic::SLAVESIDE_DISABLED;
+            Lex->event_parse_data->status= Event_parse_data::SLAVESIDE_DISABLED;
             $$= 1;
           }
         | DISABLE_SYM
           {
-            Lex->event_parse_data->status= Event_basic::DISABLED;
+            Lex->event_parse_data->status= Event_parse_data::DISABLED;
             $$= 1;
           }
         ;
@@ -2035,13 +2034,13 @@ ev_on_completion:
           ON COMPLETION_SYM PRESERVE_SYM
           {
             Lex->event_parse_data->on_completion=
-                                  Event_basic::ON_COMPLETION_PRESERVE;
+                                  Event_parse_data::ON_COMPLETION_PRESERVE;
             $$= 1;
           }
         | ON COMPLETION_SYM NOT_SYM PRESERVE_SYM
           {
             Lex->event_parse_data->on_completion=
-                                  Event_basic::ON_COMPLETION_DROP;
+                                  Event_parse_data::ON_COMPLETION_DROP;
             $$= 1;
           }
         ;
@@ -3735,20 +3734,30 @@ create2:
         | LIKE table_ident
           {
             THD *thd= YYTHD;
+            TABLE_LIST *src_table;
             LEX *lex= thd->lex;
 
             lex->create_info.options|= HA_LEX_CREATE_TABLE_LIKE;
-            if (!lex->select_lex.add_table_to_list(thd, $2, NULL, 0, TL_READ))
+            src_table= lex->select_lex.add_table_to_list(thd, $2, NULL, 0,
+                                                         TL_READ);
+            if (! src_table)
               MYSQL_YYABORT;
+            /* CREATE TABLE ... LIKE is not allowed for views. */
+            src_table->required_type= FRMTYPE_TABLE;
           }
         | '(' LIKE table_ident ')'
           {
             THD *thd= YYTHD;
+            TABLE_LIST *src_table;
             LEX *lex= thd->lex;
 
             lex->create_info.options|= HA_LEX_CREATE_TABLE_LIKE;
-            if (!lex->select_lex.add_table_to_list(thd, $3, NULL, 0, TL_READ))
+            src_table= lex->select_lex.add_table_to_list(thd, $3, NULL, 0,
+                                                         TL_READ);
+            if (! src_table)
               MYSQL_YYABORT;
+            /* CREATE TABLE ... LIKE is not allowed for views. */
+            src_table->required_type= FRMTYPE_TABLE;
           }
         ;
 
