@@ -224,7 +224,7 @@ int mysql_update(THD *thd,
       break;
     if (!need_reopen)
       DBUG_RETURN(1);
-    close_tables_for_reopen(thd, &table_list);
+    close_tables_for_reopen(thd, &table_list, FALSE);
   }
 
   if (mysql_handle_derived(thd->lex, &mysql_derived_prepare) ||
@@ -1103,7 +1103,7 @@ reopen_tables:
     for (TABLE_LIST *tbl= table_list; tbl; tbl= tbl->next_global)
       tbl->cleanup_items();
 
-    close_tables_for_reopen(thd, &table_list);
+    close_tables_for_reopen(thd, &table_list, FALSE);
     goto reopen_tables;
   }
 

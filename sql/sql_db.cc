@@ -910,11 +910,6 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
   }
   else
   {
-    pthread_mutex_lock(&LOCK_open);
-    remove_db_from_cache(db);
-    pthread_mutex_unlock(&LOCK_open);
-
-    
     error= -1;
     if ((deleted= mysql_rm_known_files(thd, dirp, db, path, 0,
                                        &dropped_tables)) >= 0)

@@ -1715,3 +1715,37 @@ ERROR 42000: SELECT command denied to user 'mysqluser_35955'@'localhost' for tab
 DROP TABLE t1,t2;
 DROP DATABASE testdb1;
 DROP USER mysqluser_35955@localhost;
+USE test;
+#
+# Additional test for WL#3726 "DDL locking for all metadata objects"
+# To avoid possible deadlocks process of filling of I_S tables should
+# use high-priority metadata lock requests when opening tables.
+# Below we just test that we really use high-priority lock request
+# since reproducing a deadlock will require much more complex test.
+#
+drop tables if exists t1, t2, t3;
+create table t1 (i int);
+create table t2 (j int primary key auto_increment);
+# Switching to connection 'con3726_1'
+lock table t2 read;
+# Switching to connection 'con3726_2'
+# RENAME below will be blocked by 'lock table t2 read' above but
+# will add two pending requests for exclusive metadata locks.
+rename table t2 to t3;
+# Switching to connection 'default'
+# These statements should not be blocked by pending lock requests
+select table_name, column_name, data_type from information_schema.columns
+where table_schema = 'test' and table_name in ('t1', 't2');
+table_name	column_name	data_type
+t1	i	int
+t2	j	int
+select table_name, auto_increment from information_schema.tables
+where table_schema = 'test' and table_name in ('t1', 't2');
+table_name	auto_increment
+t1	NULL
+t2	1
+# Switching to connection 'con3726_1'
+unlock tables;
+# Switching to connection 'con3726_2'
+# Switching to connection 'default'
+drop tables t1, t3;

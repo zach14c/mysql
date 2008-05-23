@@ -214,10 +214,10 @@ Reprepare_observer::report_error(THD *thd)
 }
 
 
-Open_tables_state::Open_tables_state(ulong version_arg)
+Open_tables_state::Open_tables_state(THD *thd, ulong version_arg)
   :version(version_arg), state_flags(0U)
 {
-  reset_open_tables_state();
+  reset_open_tables_state(thd);
 }
 
 /*
@@ -513,7 +513,7 @@ Diagnostics_area::disable_status()
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
               /* statement id */ 0),
-   Open_tables_state(refresh_version), rli_fake(0),
+   Open_tables_state(this, refresh_version), rli_fake(0),
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
@@ -539,7 +539,8 @@ THD::THD()
           This is needed to ensure the restore (which uses DDL) is not blocked
           when the DDL blocker is engaged.
   */
-   DDL_exception(FALSE)
+   DDL_exception(FALSE),
+   mdl_el_root(NULL)
 {
   ulong tmp;
 
@@ -649,6 +650,8 @@ THD::THD()
   thr_lock_owner_init(&main_lock_id, &lock_info);
 
   m_internal_handler= NULL;
+
+  init_sql_alloc(&locked_tables_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
 }
 
 
@@ -918,6 +921,9 @@ THD::~THD()
   if (!cleanup_done)
     cleanup();
 
+  mdl_context_destroy(&mdl_context);
+  mdl_context_destroy(&handler_mdl_context);
+
   ha_close_connection(this);
   mysql_audit_release(this);
   plugin_thdvar_cleanup(this);
@@ -945,6 +951,7 @@ THD::~THD()
 #endif
 
   free_root(&main_mem_root, MYF(0));
+  free_root(&locked_tables_root, MYF(0));
   DBUG_VOID_RETURN;
 }
 
@@ -2831,7 +2838,7 @@ void THD::reset_n_backup_open_tables_state(Open_tables_state *backup)
 {
   DBUG_ENTER("reset_n_backup_open_tables_state");
   backup->set_open_tables_state(this);
-  reset_open_tables_state();
+  reset_open_tables_state(this);
   state_flags|= Open_tables_state::BACKUPS_AVAIL;
   DBUG_VOID_RETURN;
 }
@@ -2849,6 +2856,9 @@ void THD::restore_backup_open_tables_state(Open_tables_state *backup)
               lock == 0 && locked_tables == 0 &&
               prelocked_mode == NON_PRELOCKED &&
               m_reprepare_observer == NULL);
+  mdl_context_destroy(&mdl_context);
+  mdl_context_destroy(&handler_mdl_context);
+
   set_open_tables_state(backup);
   DBUG_VOID_RETURN;
 }

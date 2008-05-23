@@ -2967,7 +2967,7 @@ fill_schema_show_cols_or_idxs(THD *thd, TABLE_LIST *tables,
                                            table, res, db_name,
                                            table_name));
    thd->temporary_tables= 0;
-   close_tables_for_reopen(thd, &show_table_list);
+   close_tables_for_reopen(thd, &show_table_list, FALSE);
    DBUG_RETURN(error);
 }
 
@@ -3100,12 +3100,42 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
   int error;
   char key[MAX_DBKEY_LENGTH];
   uint key_length;
+  MDL_LOCK mdl_lock;
+  char mdlkey[MAX_DBKEY_LENGTH];
+  bool retry;
 
   bzero((char*) &table_list, sizeof(TABLE_LIST));
   bzero((char*) &tbl, sizeof(TABLE));
 
   table_list.table_name= table_name->str;
   table_list.db= db_name->str;
+  mdl_init_lock(&mdl_lock, mdlkey, 0, db_name->str, table_name->str);
+  table_list.mdl_lock= &mdl_lock;
+  mdl_add_lock(&thd->mdl_context, &mdl_lock);
+  mdl_set_lock_priority(&mdl_lock, MDL_HIGH_PRIO);
+
+  /*
+    TODO: investigate if in this particular situation we can get by
+          simply obtaining internal lock of data-dictionary (ATM it
+          is LOCK_open) instead of obtaning full-blown metadata lock.
+  */
+  while (1)
+  {
+    if (mdl_acquire_shared_lock(&mdl_lock, &retry))
+    {
+      if (!retry || mdl_wait_for_locks(&thd->mdl_context))
+      {
+        /*
+          Some error occured or we have been killed while waiting
+          for conflicting locks to go away, let the caller to handle
+          the situation.
+        */
+        return 1;
+      }
+      continue;
+    }
+    break;
+  }
 
   if (schema_table->i_s_requested_object & OPEN_TRIGGER_ONLY)
   {
@@ -3119,8 +3149,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
       delete tbl.triggers;
     }
     free_root(&tbl.mem_root, MYF(0));
-    thd->clear_error();
-    return res;
+    goto err;
   }
 
   key_length= create_table_def_key(thd, key, &table_list, 0);
@@ -3130,7 +3159,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
   if (!share)
   {
     res= 0;
-    goto err;
+    goto err_unlock;
   }
  
   if (share->is_view)
@@ -3139,7 +3168,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
     {
       /* skip view processing */
       res= 0;
-      goto err1;
+      goto err_share;
     }
     else if (schema_table->i_s_requested_object & OPEN_VIEW_FULL)
     {
@@ -3148,7 +3177,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
         open_normal_and_derived_tables()
       */
       res= 1;
-      goto err1;
+      goto err_share;
     }
   }
 
@@ -3160,11 +3189,11 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
                      READ_KEYINFO | COMPUTE_TYPES | EXTRA_RECORD |
                      OPEN_VIEW_NO_PARSE,
                      thd->open_options, &tbl, &table_list, thd->mem_root))
-      goto err1;
+      goto err_share;
     table_list.view= (st_lex*) share->is_view;
     res= schema_table->process_table(thd, &table_list, table,
                                      res, db_name, table_name);
-    goto err1;
+    goto err_share;
   }
 
   {
@@ -3175,11 +3204,14 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
                                      res, db_name, table_name);
   }
 
-err1:
+err_share:
   release_table_share(share, RELEASE_NORMAL);
 
-err:
+err_unlock:
   pthread_mutex_unlock(&LOCK_open);
+
+err:
+  mdl_release_lock(&thd->mdl_context, &mdl_lock);
   thd->clear_error();
   return res;
 }
@@ -3426,7 +3458,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
               res= schema_table->process_table(thd, show_table_list, table,
                                                res, &orig_db_name,
                                                &tmp_lex_string);
-              close_tables_for_reopen(thd, &show_table_list);
+              close_tables_for_reopen(thd, &show_table_list, FALSE);
             }
             DBUG_ASSERT(!lex->query_tables_own_last);
             if (res)
@@ -7369,6 +7401,8 @@ bool show_create_trigger(THD *thd, const sp_name *trg_name)
   */
 
   uint num_tables; /* NOTE: unused, only to pass to open_tables(). */
+
+  alloc_mdl_locks(lst, thd->mem_root);
 
   if (open_tables(thd, &lst, &num_tables, 0))
   {

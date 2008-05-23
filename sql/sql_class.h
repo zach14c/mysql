@@ -23,6 +23,7 @@
 #include <mysql/plugin_audit.h>
 #include "log.h"
 #include "rpl_tblmap.h"
+#include "mdl.h"
 
 /**
   An interface that is used to take an action when
@@ -987,26 +988,31 @@ public:
   */
   uint state_flags;
 
+  MDL_CONTEXT mdl_context;
+  MDL_CONTEXT handler_mdl_context;
+
   /*
     This constructor serves for creation of Open_tables_state instances
     which are used as backup storage.
   */
   Open_tables_state() : state_flags(0U) { }
 
-  Open_tables_state(ulong version_arg);
+  Open_tables_state(THD *thd, ulong version_arg);
 
   void set_open_tables_state(Open_tables_state *state)
   {
     *this= *state;
   }
 
-  void reset_open_tables_state()
+  void reset_open_tables_state(THD *thd)
   {
     open_tables= temporary_tables= handler_tables= derived_tables= 0;
     extra_lock= lock= locked_tables= 0;
     prelocked_mode= NON_PRELOCKED;
     state_flags= 0U;
     m_reprepare_observer= NULL;
+    mdl_context_init(&mdl_context, thd);
+    mdl_context_init(&handler_mdl_context, thd);
   }
 };
 
@@ -1874,6 +1880,9 @@ public:
   */
   unsigned long audit_class_mask[MYSQL_AUDIT_CLASS_MASK_SIZE];
 #endif
+
+  MEM_ROOT *mdl_el_root;
+  MEM_ROOT locked_tables_root;
 
   THD();
   ~THD();

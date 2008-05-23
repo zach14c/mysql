@@ -24,6 +24,7 @@ class st_select_lex;
 class partition_info;
 class COND_EQUAL;
 class Security_context;
+struct MDL_LOCK;
 
 /*************************************************************************/
 
@@ -256,9 +257,13 @@ typedef struct st_table_share
   pthread_cond_t cond;			/* To signal that share is ready */
   struct st_table_share *next,		/* Link to unused shares */
     **prev;
-#ifdef NOT_YET
-  struct st_table *open_tables;		/* link to open tables */
-#endif
+
+  /*
+    Doubly-linked (back-linked) lists of used and unused TABLE objects
+    for this share.
+  */
+  struct st_table *used_tables;
+  struct st_table *free_tables;
 
   /* The following is copied to each TABLE on OPEN */
   Field **field;
@@ -561,10 +566,8 @@ struct st_table {
 
   TABLE_SHARE	*s;
   handler	*file;
-#ifdef NOT_YET
-  struct st_table *used_next, **used_prev;	/* Link to used tables */
-  struct st_table *open_next, **open_prev;	/* Link to open tables */
-#endif
+  /* Link for the list of used/unused TABLE objects for this share. */
+  struct st_table *share_next, **share_prev;
   struct st_table *next, *prev;
 
   /* For the below MERGE related members see top comment in ha_myisammrg.cc */
@@ -750,6 +753,7 @@ struct st_table {
   partition_info *part_info;            /* Partition related information */
   bool no_partitions_used; /* If true, all partitions have been pruned away */
 #endif
+  MDL_LOCK *mdl_lock;
 
   bool fill_item_list(List<Item> *item_list) const;
   void reset_item_list(List<Item> *item_list) const;
@@ -1238,11 +1242,18 @@ struct TABLE_LIST
   */
   bool          prelocking_placeholder;
   /*
-    This TABLE_LIST object corresponds to the table to be created
-    so it is possible that it does not exist (used in CREATE TABLE
-    ... SELECT implementation).
+    This TABLE_LIST object corresponds to the table/view which requires
+    special handling/meta-data locking. For example this is a target
+    table in CREATE TABLE ... SELECT so it is possible that it does not
+    exist and we should take exclusive meta-data lock on it in this
+    case.
   */
-  bool          create;
+  enum {NORMAL_OPEN= 0, OPEN_OR_CREATE, TAKE_EXCLUSIVE_MDL} open_table_type;
+  /**
+     Indicates that for this table/view we need to take shared metadata
+     lock which should be upgradable to exclusive metadata lock.
+  */
+  bool mdl_upgradable;
   /* For transactional locking. */
   int           lock_timeout;           /* NOWAIT or WAIT [X]               */
   bool          lock_transactional;     /* If transactional lock requested. */
@@ -1292,6 +1303,9 @@ struct TABLE_LIST
   bool has_table_lookup_value;
   uint table_open_method;
   enum enum_schema_table_state schema_table_state;
+
+  MDL_LOCK *mdl_lock;
+
   void calc_md5(char *buffer);
   void set_underlying_merge();
   int view_check_option(THD *thd, bool ignore_failure);
@@ -1303,8 +1317,7 @@ struct TABLE_LIST
   */
   bool placeholder()
   {
-    return derived || view || schema_table || create && !table->db_stat ||
-           !table;
+    return derived || view || schema_table || !table;
   }
   void print(THD *thd, String *str, enum_query_type query_type);
   bool check_single_table(TABLE_LIST **table, table_map map,
@@ -1621,3 +1634,16 @@ static inline void dbug_tmp_restore_column_map(MY_BITMAP *bitmap,
 
 size_t max_row_length(TABLE *table, const uchar *data);
 
+
+void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root);
+
+/**
+   Helper function which allows to mark all elements in table list
+   as requiring upgradable metadata locks.
+*/
+
+inline void set_all_mdl_upgradable(TABLE_LIST *tables)
+{
+  for (; tables; tables= tables->next_global)
+    tables->mdl_upgradable= TRUE;
+}
