@@ -6981,6 +6981,7 @@ view_err:
     attached here it is safe to call close_temporary_table().
   */
   close_temporary_table(thd, new_table, 1, 0);
+  new_table= 0;
 
   /*
     Data is copied. Now we:
