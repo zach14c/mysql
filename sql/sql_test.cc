@@ -83,14 +83,17 @@ void print_cached_tables(void)
   for (idx=unused=0 ; idx < table_def_cache.records ; idx++)
   {
     share= (TABLE_SHARE*) hash_element(&table_def_cache, idx);
-    for (entry= share->used_tables; entry; entry= entry->share_next)
+
+    I_P_List_iterator<TABLE, TABLE_share> it(share->used_tables);
+    while ((entry= it++))
     {
       printf("%-14.14s %-32s%6ld%8ld%6d  %s\n",
              entry->s->db.str, entry->s->table_name.str, entry->s->version,
              entry->in_use->thread_id, entry->db_stat ? 1 : 0,
              lock_descriptions[(int)entry->reginfo.lock_type]);
     }
-    for (entry= share->free_tables; entry; entry= entry->share_next)
+    it.init(share->free_tables);
+    while ((entry= it++))
     {
       unused++;
       printf("%-14.14s %-32s%6ld%8ld%6d  %s\n",

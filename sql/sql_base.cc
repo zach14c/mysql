@@ -153,7 +153,9 @@ static void check_unused(void)
   for (idx=0 ; idx < table_def_cache.records ; idx++)
   {
     share= (TABLE_SHARE*) hash_element(&table_def_cache, idx);
-    for (entry= share->free_tables; entry; entry= entry->share_next)
+
+    I_P_List_iterator<TABLE, TABLE_share> it(share->free_tables);
+    while ((entry= it++))
     {
       if (entry->in_use)
       {
@@ -162,7 +164,8 @@ static void check_unused(void)
       count--;
       open_files++;
     }
-    for (entry= share->used_tables; entry; entry= entry->share_next)
+    it.init(share->used_tables);
+    while ((entry= it++))
     {
       if (!entry->in_use)
       {
@@ -252,29 +255,6 @@ static void table_def_free_entry(TABLE_SHARE *share)
 }
 
 
-/*
-  Auxiliary routines for handling per-share used/unused TABLE objects lists.
-  TODO: Use generic intrusive list template here, make functions more loaded.
-*/
-
-static void table_def_list_add_element(TABLE **list, TABLE *element)
-{
-  element->share_next= *list;
-  if (*list)
-    (*list)->share_prev= &element->share_next;
-  element->share_prev= list;
-  *list= element;
-}
-
-
-static void table_def_list_unlink_element(TABLE *element)
-{
-  *(element->share_prev)= element->share_next;
-  if (element->share_next)
-    element->share_next->share_prev= element->share_prev;
-}
-
-
 bool table_def_init(void)
 {
   table_def_inited= 1;
@@ -307,6 +287,128 @@ void table_def_free(void)
 uint cached_table_definitions(void)
 {
   return table_def_cache.records;
+}
+
+
+/*
+  Auxiliary routines for manipulating with per-share used/unused and
+  global unused lists of TABLE objects and table_cache_count counter.
+  Responsible for preserving invariants between those lists, counter
+  and TABLE::in_use member.
+  In fact those routines implement sort of implicit table cache as
+  part of table definition cache.
+*/
+
+
+/**
+   Add newly created TABLE object for table share which is going
+   to be used right away.
+*/
+
+static void table_def_add_used_table(THD *thd, TABLE *table)
+{
+  DBUG_ASSERT(table->in_use == thd);
+  table->s->used_tables.push_front(table);
+  table_cache_count++;
+}
+
+
+/**
+   Prepare used or unused TABLE instance for destruction by removing
+   it from share's and global list.
+*/
+
+static void table_def_remove_table(TABLE *table)
+{
+  if (table->in_use)
+  {
+    /* Remove from per-share chain of used TABLE objects. */
+    table->s->used_tables.remove(table);
+  }
+  else
+  {
+    /* Remove from per-share chain of unused TABLE objects. */
+    table->s->free_tables.remove(table);
+
+    /* And global unused chain. */
+    table->next->prev=table->prev;
+    table->prev->next=table->next;
+    if (table == unused_tables)
+    {
+      unused_tables=unused_tables->next;
+      if (table == unused_tables)
+	unused_tables=0;
+    }
+    check_unused();
+  }
+  table_cache_count--;
+}
+
+
+/**
+   Mark already existing TABLE instance as used.
+*/
+
+static void table_def_use_table(THD *thd, TABLE *table)
+{
+  DBUG_ASSERT(!table->in_use);
+
+  /* Unlink table from list of unused tables for this share. */
+  table->s->free_tables.remove(table);
+  /* Unlink able from global unused tables list. */
+  if (table == unused_tables)
+  {						// First unused
+    unused_tables=unused_tables->next;	        // Remove from link
+    if (table == unused_tables)
+      unused_tables=0;
+  }
+  table->prev->next=table->next;		/* Remove from unused list */
+  table->next->prev=table->prev;
+  check_unused();
+  /* Add table to list of used tables for this share. */
+  table->s->used_tables.push_front(table);
+  table->in_use= thd;
+}
+
+
+/**
+   Mark already existing used TABLE instance as unused.
+*/
+
+static void table_def_unuse_table(TABLE *table)
+{
+  DBUG_ASSERT(table->in_use);
+
+  table->in_use= 0;
+  /* Remove table from the list of tables used in this share. */
+  table->s->used_tables.remove(table);
+  /* Add table to the list of unused TABLE objects for this share. */
+  table->s->free_tables.push_front(table);
+  /* Also link it last in the global list of unused TABLE objects. */
+  if (unused_tables)
+  {
+    table->next=unused_tables;
+    table->prev=unused_tables->prev;
+    unused_tables->prev=table;
+    table->prev->next=table;
+  }
+  else
+    unused_tables=table->next=table->prev=table;
+  check_unused();
+}
+
+
+/**
+   Bind used TABLE instance to another table share.
+
+   @note Will go away once we refactor code responsible
+         for reopening tables under lock tables.
+*/
+
+static void table_def_change_share(TABLE *table, TABLE_SHARE *new_share)
+{
+  table->s->used_tables.remove(table);
+  new_share->used_tables.push_front(table);
 }
 
 
@@ -693,12 +795,10 @@ void close_handle_and_leave_table_as_lock(TABLE *table)
     detach_merge_children(table, FALSE);
   table->file->close();
   table->db_stat= 0;                            // Mark file closed
-  /* Unlink table from the used tables list for the share. */
-  table_def_list_unlink_element(table);
+  table_def_change_share(table, share);
   release_table_share(table->s, RELEASE_NORMAL);
   table->s= share;
   table->file->change_table_ptr(table, table->s);
-  table_def_list_add_element(&share->used_tables, table);
 
   DBUG_VOID_RETURN;
 }
@@ -763,7 +863,8 @@ OPEN_TABLE_LIST *list_open_tables(THD *thd, const char *db, const char *wild)
 		  share->db.str)+1,
 	   share->table_name.str);
     (*start_list)->in_use= 0;
-    for (TABLE *table= share->used_tables; table; table= table->share_next)
+    I_P_List_iterator<TABLE, TABLE_share> it(share->used_tables);
+    while (it++)
       ++(*start_list)->in_use;
     (*start_list)->locked= (share->version == 0) ? 1 : 0;
     start_list= &(*start_list)->next;
@@ -810,32 +911,12 @@ static void free_cache_entry(TABLE *table)
 
   /* Assert that MERGE children are not attached before final close. */
   DBUG_ASSERT(!table->is_children_attached());
-  table_cache_count--;
 
-  /*
-    Remove from either per-share chain of unused TABLE objects
-    or from similar chain of used objects. This should be done
-    before releasing table share.
-  */
-  table_def_list_unlink_element(table);
+  /* This should be done before releasing table share. */
+  table_def_remove_table(table);
 
   intern_close_table(table);
-  if (!table->in_use)
-  {
-    /*
-      If TABLE object was not used we should also remove it from
-      global unused chain.
-    */
-    table->next->prev=table->prev;
-    table->prev->next=table->next;
-    if (table == unused_tables)
-    {
-      unused_tables=unused_tables->next;
-      if (table == unused_tables)
-	unused_tables=0;
-    }
-    check_unused();				// consisty check
-  }
+
   my_free((uchar*) table,MYF(0));
   DBUG_VOID_RETURN;
 }
@@ -864,7 +945,9 @@ void free_io_cache(TABLE *table)
 
 static void kill_delayed_threads_for_table(TABLE_SHARE *share)
 {
-  for (TABLE *tab= share->used_tables; tab; tab= tab->share_next)
+  I_P_List_iterator<TABLE, TABLE_share> it(share->used_tables);
+  TABLE *tab;
+  while ((tab= it++))
   {
     THD *in_use= tab->in_use;
 
@@ -1252,7 +1335,6 @@ static void close_open_tables(THD *thd)
   /* Free tables to hold down open files */
   while (table_cache_count > table_cache_size && unused_tables)
     free_cache_entry(unused_tables);
-  check_unused();
   if (found_old_table)
   {
     /* Tell threads waiting for refresh that something has happened */
@@ -1431,7 +1513,6 @@ bool close_thread_table(THD *thd, TABLE **table_ptr)
 {
   bool found_old_table= 0;
   TABLE *table= *table_ptr;
-  TABLE_SHARE *share= table->s;
   DBUG_ENTER("close_thread_table");
   DBUG_ASSERT(table->key_read == 0);
   DBUG_ASSERT(!table->file || table->file->inited == handler::NONE);
@@ -1465,21 +1546,7 @@ bool close_thread_table(THD *thd, TABLE **table_ptr)
 
     /* Free memory and reset for next loop */
     table->file->ha_reset();
-    table->in_use=0;
-    /* Remove table from the list of tables used in this share. */
-    table_def_list_unlink_element(table);
-    /* Add table to the list of unused TABLE objects for this share. */
-    table_def_list_add_element(&share->free_tables, table);
-    /* Also link it last in the global list of unused TABLE objects. */
-    if (unused_tables)
-    {
-      table->next=unused_tables;
-      table->prev=unused_tables->prev;
-      unused_tables->prev=table;
-      table->prev->next=table;
-    }
-    else
-      unused_tables=table->next=table->prev=table;
+    table_def_unuse_table(table);
   }
   DBUG_RETURN(found_old_table);
 }
@@ -2355,11 +2422,8 @@ bool reopen_name_locked_table(THD* thd, TABLE_LIST* table_list)
   */
   share->version=0;
   table->in_use = thd;
-  check_unused();
 
-  ++table_cache_count;
-
-  table_def_list_add_element(&share->used_tables, table);
+  table_def_add_used_table(thd, table);
 
   table->next= thd->open_tables;
   thd->open_tables= table;
@@ -2880,24 +2944,10 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
     thd->version= share->version;
   }
 
-  if ((table= share->free_tables))
+  if (!share->free_tables.is_empty())
   {
-    /* Unlink table from list of unused tables for this share. */
-    table_def_list_unlink_element(table);
-    /* Unlink able from global unused tables list. */
-    if (table == unused_tables)
-    {						// First unused
-      unused_tables=unused_tables->next;	// Remove from link
-      if (table == unused_tables)
-	unused_tables=0;
-    }
-    table->prev->next=table->next;		/* Remove from unused list */
-    table->next->prev=table->prev;
-    /* Add table to list of used tables for this share. */
-    table_def_list_add_element(&share->used_tables, table);
-
-    table->in_use= thd;
-
+    table= share->free_tables.head();
+    table_def_use_table(thd, table);
     /* We need to release share as we have EXTRA reference to it in our hands. */
     release_table_share(share, RELEASE_NORMAL);
   }
@@ -2949,12 +2999,8 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
     }
 
     /* Add table to the share's used tables list. */
-    table_def_list_add_element(&share->used_tables, table);
-
-    table_cache_count++;
+    table_def_add_used_table(thd, table);
   }
-
-  check_unused();				// Debugging call
 
   pthread_mutex_unlock(&LOCK_open);
 
@@ -3151,7 +3197,11 @@ bool reopen_table(TABLE *table)
     goto end;
   }
   tmp.mdl_lock=         table->mdl_lock;
-  table_def_list_unlink_element(table);
+
+  table_def_change_share(table, tmp.s);
+  /* Avoid wiping out TABLE's position in new share's used tables list. */
+  tmp.share_next= table->share_next;
+  tmp.share_prev= table->share_prev;
 
   delete table->triggers;
   if (table->file)
@@ -3160,8 +3210,6 @@ bool reopen_table(TABLE *table)
   *table= tmp;
   table->default_column_bitmaps();
   table->file->change_table_ptr(table, table->s);
-
-  table_def_list_add_element(&table->s->used_tables, table);
 
   DBUG_ASSERT(table->alias != 0);
   for (field=table->field ; *field ; field++)
@@ -3580,7 +3628,8 @@ bool table_is_used(TABLE *table, bool wait_for_name_lock)
     /* Note that 'table' can use artificial TABLE_SHARE object. */
     TABLE_SHARE *share= (TABLE_SHARE*)hash_search(&table_def_cache,
                                                   (uchar*) key, key_length);
-    if (share && share->used_tables && share->version != refresh_version)
+    if (share && !share->used_tables.is_empty() &&
+        share->version != refresh_version)
       DBUG_RETURN(1);
   } while ((table=table->next));
   DBUG_RETURN(0);
@@ -8416,11 +8465,13 @@ bool remove_table_from_cache(THD *thd, const char *db, const char *table_name,
     if ((share= (TABLE_SHARE*)hash_search(&table_def_cache, (uchar*) key,
                                           key_length)))
     {
+      I_P_List_iterator<TABLE, TABLE_share> it(share->free_tables);
       share->version= 0;
-      for (table= share->free_tables; table; table= table->share_next)
+      while ((table= it++))
         relink_unused(table);
 
-      for (table= share->used_tables; table; table= table->share_next)
+      it.init(share->used_tables);
+      while ((table= it++))
       {
         THD *in_use= table->in_use;
         DBUG_ASSERT(in_use);
@@ -8611,9 +8662,10 @@ void expel_table_from_cache(THD *leave_thd, const char *db, const char *table_na
   if ((share= (TABLE_SHARE*) hash_search(&table_def_cache,(uchar*) key,
                                          key_length)))
   {
+    I_P_List_iterator<TABLE, TABLE_share> it(share->free_tables);
     share->version= 0;
 
-    for (table= share->free_tables; table; table= table->share_next)
+    while ((table= it++))
       relink_unused(table);
   }
 
@@ -8667,7 +8719,7 @@ static bool tdc_wait_for_old_versions(THD *thd, MDL_CONTEXT *context)
       if ((share= (TABLE_SHARE*) hash_search(&table_def_cache, (uchar*) key.str,
                                              key.length)) &&
           share->version != refresh_version &&
-          share->used_tables)
+          !share->used_tables.is_empty())
         break;
     }
     if (!l)

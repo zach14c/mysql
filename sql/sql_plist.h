@@ -104,6 +104,11 @@ class I_P_List_iterator
   T *current;
 public:
   I_P_List_iterator(I_P_List<T, B> &a) : list(&a), current(a.first) {}
+  inline void init(I_P_List<T, B> &a)
+  {
+    list= &a;
+    current= a.first;
+  }
   inline T* operator++(int)
   {
     T *result= current;

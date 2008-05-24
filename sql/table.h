@@ -14,6 +14,8 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 
+#include "sql_plist.h"
+
 /* Structs that defines the TABLE */
 
 class Item;				/* Needed by ORDER */
@@ -235,6 +237,9 @@ typedef enum enum_table_category TABLE_CATEGORY;
 TABLE_CATEGORY get_table_category(const LEX_STRING *db,
                                   const LEX_STRING *name);
 
+
+struct TABLE_share;
+
 /*
   This structure is shared between different table objects. There is one
   instance of table share per one table in the database.
@@ -262,8 +267,8 @@ typedef struct st_table_share
     Doubly-linked (back-linked) lists of used and unused TABLE objects
     for this share.
   */
-  struct st_table *used_tables;
-  struct st_table *free_tables;
+  I_P_List <TABLE, TABLE_share> used_tables;
+  I_P_List <TABLE, TABLE_share> free_tables;
 
   /* The following is copied to each TABLE on OPEN */
   Field **field;
@@ -566,8 +571,19 @@ struct st_table {
 
   TABLE_SHARE	*s;
   handler	*file;
-  /* Link for the list of used/unused TABLE objects for this share. */
+
+private:
+  /**
+     Links for the lists of used/unused TABLE objects for this share.
+     Declared as private to avoid direct manipulation with those objects.
+     One should use methods of I_P_List template instead.
+  */
   struct st_table *share_next, **share_prev;
+
+  friend struct TABLE_share;
+  friend bool reopen_table(st_table *table);
+
+public:
   struct st_table *next, *prev;
 
   /* For the below MERGE related members see top comment in ha_myisammrg.cc */
@@ -798,6 +814,25 @@ struct st_table {
   { return s->version != refresh_version; }
   bool is_children_attached(void);
 };
+
+
+/**
+   Helper class which specifies which members of TABLE are used for
+   participation in the list of used/unused TABLE objects for the share.
+*/
+
+struct TABLE_share
+{
+  static inline TABLE **next_ptr(TABLE *l)
+  {
+    return &l->share_next;
+  }
+  static inline TABLE ***prev_ptr(TABLE *l)
+  {
+    return &l->share_prev;
+  }
+};
+
 
 enum enum_schema_table_state
 { 
