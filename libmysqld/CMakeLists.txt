@@ -195,7 +195,7 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/partition_info.cc ../sql/sql_connect.cc 
            ../sql/scheduler.cc ../sql/sql_audit.cc ../sql/stacktrace.c
            ../sql/ddl_blocker.cc ../sql/si_objects.cc
-           ../sql/event_parse_data.cc
+           ../sql/event_parse_data.cc ../sql/mdl.cc
            ${GEN_SOURCES}
            ${LIB_SOURCES})
 
