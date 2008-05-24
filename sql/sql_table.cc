@@ -6916,10 +6916,10 @@ view_err:
     build_table_filename(path, sizeof(path), new_db, tmp_name, "",
                          FN_IS_TMP);
     /* Open our intermediate table */
-    new_table=open_temporary_table(thd, path, new_db, tmp_name, 0, OTM_OPEN);
+    new_table= open_temporary_table(thd, path, new_db, tmp_name, 1, OTM_OPEN);
   }
   if (!new_table)
-    goto err1;
+    goto err_new_table_cleanup;
 
   /* Copy the data if necessary. */
   thd->count_cuted_fields= CHECK_FIELD_WARN;	// calc cuted fields
@@ -6930,7 +6930,7 @@ view_err:
     We do not copy data for MERGE tables. Only the children have data.
     MERGE tables have HA_NO_COPY_ON_ALTER set.
   */
-  if (new_table && !(new_table->file->ha_table_flags() & HA_NO_COPY_ON_ALTER))
+  if (!(new_table->file->ha_table_flags() & HA_NO_COPY_ON_ALTER))
   {
     /* We don't want update TIMESTAMP fields during ALTER TABLE. */
     new_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
@@ -6944,7 +6944,7 @@ view_err:
   else
   {
     if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
-      goto err1;
+      goto err_new_table_cleanup;
     alter_table_manage_keys(table, table->file->indexes_are_disabled(),
                             alter_info->keys_onoff);
     error= ha_autocommit_or_rollback(thd, 0);
@@ -6953,11 +6953,11 @@ view_err:
   }
   thd->count_cuted_fields= CHECK_FIELD_IGNORE;
 
+  if (error)
+    goto err_new_table_cleanup;
+
   if (table->s->tmp_table != NO_TMP_TABLE)
   {
-    /* We changed a temporary table */
-    if (error)
-      goto err1;
     /* Close lock if this is a transactional table */
     if (thd->lock)
     {
@@ -6968,28 +6968,19 @@ view_err:
     close_temporary_table(thd, table, 1, 1);
     /* Should pass the 'new_name' as we store table name in the cache */
     if (rename_temporary_table(thd, new_table, new_db, new_name))
-      goto err1;
+      goto err_new_table_cleanup;
     /* We don't replicate alter table statement on temporary tables */
     if (!thd->current_stmt_binlog_row_based)
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
     goto end_temporary;
   }
 
-  if (new_table)
-  {
-    /*
-      Close the intermediate table that will be the new table.
-      Note that MERGE tables do not have their children attached here.
-    */
-    intern_close_table(new_table);
-    my_free(new_table,MYF(0));
-  }
-
-  if (error)
-  {
-    (void) quick_rm_table(new_db_type, new_db, tmp_name, FN_IS_TMP);
-    goto err;
-  }
+  /*
+    Close the intermediate table that will be the new table, but do
+    not delete it! Even altough MERGE tables do not have their children
+    attached here it is safe to call close_temporary_table().
+  */
+  close_temporary_table(thd, new_table, 1, 0);
 
   /*
     Data is copied. Now we:
@@ -7014,10 +7005,7 @@ view_err:
     my_casedn_str(files_charset_info, old_name);
 
   if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
-  {
-    (void) quick_rm_table(new_db_type, new_db, tmp_name, FN_IS_TMP);
-    goto err;
-  }
+    goto err_new_table_cleanup;
 
   pthread_mutex_lock(&LOCK_open);
 
@@ -7136,7 +7124,7 @@ end_temporary:
   thd->some_tables_deleted=0;
   DBUG_RETURN(FALSE);
 
-err1:
+err_new_table_cleanup:
   if (new_table)
   {
     /* close_temporary_table() frees the new_table pointer. */
