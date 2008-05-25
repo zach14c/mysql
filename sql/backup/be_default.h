@@ -86,7 +86,7 @@ class Backup: public Backup_thread_driver
   public:
     enum has_data_info { YES, WAIT, EOD };
     Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type);
-    virtual ~Backup() { backup::free_table_list(all_tables); }; 
+    virtual ~Backup();
     size_t size()  { return UNKNOWN_SIZE; };
     size_t init_size() { return 0; };
     result_t  begin(const size_t) { return backup::OK; };
