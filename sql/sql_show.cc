@@ -3205,7 +3205,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
   }
 
 err_share:
-  release_table_share(share, RELEASE_NORMAL);
+  release_table_share(share);
 
 err_unlock:
   pthread_mutex_unlock(&LOCK_open);

@@ -347,7 +347,6 @@ TABLE_SHARE *alloc_table_share(TABLE_LIST *table_list, char *key,
 
     memcpy((char*) &share->mem_root, (char*) &mem_root, sizeof(mem_root));
     pthread_mutex_init(&share->mutex, MY_MUTEX_INIT_FAST);
-    pthread_cond_init(&share->cond, NULL);
   }
   DBUG_RETURN(share);
 }
@@ -442,16 +441,9 @@ void free_table_share(TABLE_SHARE *share)
   */
   if (share->tmp_table == NO_TMP_TABLE)
   {
-    /* share->mutex is locked in release_table_share() */
-    while (share->waiting_on_cond)
-    {
-      pthread_cond_broadcast(&share->cond);
-      pthread_cond_wait(&share->cond, &share->mutex);
-    }
     /* No thread refers to this anymore */
     pthread_mutex_unlock(&share->mutex);
     pthread_mutex_destroy(&share->mutex);
-    pthread_cond_destroy(&share->cond);
   }
   hash_free(&share->name_hash);
   
@@ -2117,7 +2109,7 @@ int closefrm(register TABLE *table, bool free_share)
   if (free_share)
   {
     if (table->s->tmp_table == NO_TMP_TABLE)
-      release_table_share(table->s, RELEASE_NORMAL);
+      release_table_share(table->s);
     else
       free_table_share(table->s);
   }

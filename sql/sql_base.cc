@@ -631,29 +631,17 @@ static TABLE_SHARE
                               db_flags, error));
 }
 
+/**
+  Mark that we are not using table share anymore.
 
-/* 
-   Mark that we are not using table share anymore.
+  @param  share   Table share
 
-   SYNOPSIS
-     release_table_share()
-     share		Table share
-     release_type	How the release should be done:
-     			RELEASE_NORMAL
-                         - Release without checking
-                        RELEASE_WAIT_FOR_DROP
-                         - Don't return until we get a signal that the
-                           table is deleted or the thread is killed.
-
-   IMPLEMENTATION
-     If ref_count goes to zero and (we have done a refresh or if we have
-     already too many open table shares) then delete the definition.
-
-     If type == RELEASE_WAIT_FOR_DROP then don't return until we get a signal
-     that the table is deleted or the thread is killed.
+  If the share has no open tables and (we have done a refresh or
+  if we have already too many open table shares) then delete the
+  definition.
 */
 
-void release_table_share(TABLE_SHARE *share, enum release_type type)
+void release_table_share(TABLE_SHARE *share)
 {
   bool to_be_deleted= 0;
   DBUG_ENTER("release_table_share");
@@ -796,7 +784,7 @@ void close_handle_and_leave_table_as_lock(TABLE *table)
   table->file->close();
   table->db_stat= 0;                            // Mark file closed
   table_def_change_share(table, share);
-  release_table_share(table->s, RELEASE_NORMAL);
+  release_table_share(table->s);
   table->s= share;
   table->file->change_table_ptr(table, table->s);
 
@@ -2510,7 +2498,7 @@ bool check_if_table_exists(THD *thd, TABLE_LIST *table, bool *exists)
 void table_share_release_hook(void *share)
 {
   pthread_mutex_lock(&LOCK_open);
-  release_table_share((TABLE_SHARE*)share, RELEASE_NORMAL);
+  release_table_share((TABLE_SHARE*) share);
   broadcast_refresh();
   pthread_mutex_unlock(&LOCK_open);
 }
@@ -2860,7 +2848,7 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
         goto err_unlock;
 
       /* TODO: Don't free this */
-      release_table_share(share, RELEASE_NORMAL);
+      release_table_share(share);
 
       if (flags & OPEN_VIEW_NO_PARSE)
       {
@@ -2936,7 +2924,7 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
     {
       if (action)
         *action= OT_BACK_OFF_AND_RETRY;
-      release_table_share(share, RELEASE_NORMAL);
+      release_table_share(share);
       pthread_mutex_unlock(&LOCK_open);
       DBUG_RETURN(0);
     }
@@ -2949,7 +2937,7 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
     table= share->free_tables.head();
     table_def_use_table(thd, table);
     /* We need to release share as we have EXTRA reference to it in our hands. */
-    release_table_share(share, RELEASE_NORMAL);
+    release_table_share(share);
   }
   else
   {
@@ -3051,7 +3039,7 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
   DBUG_RETURN(table);
 
 err_unlock:
-  release_table_share(share, RELEASE_NORMAL);
+  release_table_share(share);
 err_unlock2:
   pthread_mutex_unlock(&LOCK_open);
   mdl_release_lock(&thd->mdl_context, mdl_lock);
@@ -3863,13 +3851,13 @@ bool tdc_open_view(THD *thd, TABLE_LIST *table_list, const char *alias,
                     flags, thd->open_options, &not_used, table_list,
                     mem_root))
   {
-    release_table_share(share, RELEASE_NORMAL);
+    release_table_share(share);
     pthread_mutex_unlock(&LOCK_open);
     return FALSE;
   }
 
   my_error(ER_WRONG_OBJECT, MYF(0), share->db.str, share->table_name.str, "VIEW");
-  release_table_share(share, RELEASE_NORMAL);
+  release_table_share(share);
 err:
   pthread_mutex_unlock(&LOCK_open);
   return TRUE;
@@ -3933,7 +3921,7 @@ retry:
     if (table_list->i_s_requested_object &  OPEN_TABLE_ONLY)
       goto err;
     /* Attempt to reopen view will bring havoc to upper layers anyway. */
-    release_table_share(share, RELEASE_NORMAL);
+    release_table_share(share);
     my_error(ER_WRONG_OBJECT, MYF(0), share->db.str, share->table_name.str,
              "BASE TABLE");
     DBUG_RETURN(1);
@@ -3966,7 +3954,7 @@ retry:
       if (share->ref_count != 1)
         goto err;
 
-      release_table_share(share, RELEASE_NORMAL);
+      release_table_share(share);
 
       if (ha_create_table_from_engine(thd, table_list->db,
                                       table_list->table_name))
@@ -3983,7 +3971,7 @@ retry:
     entry->s->version= 0;
 
     /* TODO: We don't need to release share here. */
-    release_table_share(share, RELEASE_NORMAL);
+    release_table_share(share);
     pthread_mutex_unlock(&LOCK_open);
     error= (int)auto_repair_table(thd, table_list);
     pthread_mutex_lock(&LOCK_open);
@@ -4003,7 +3991,7 @@ retry:
   DBUG_RETURN(0);
 
 err:
-  release_table_share(share, RELEASE_NORMAL);
+  release_table_share(share);
   DBUG_RETURN(1);
 }
 
@@ -4125,7 +4113,7 @@ static bool auto_repair_table(THD *thd, TABLE_LIST *table_list)
   pthread_mutex_lock(&LOCK_open);
 
 end_with_lock_open:
-  release_table_share(share, RELEASE_NORMAL);
+  release_table_share(share);
   pthread_mutex_unlock(&LOCK_open);
   return result;
 }

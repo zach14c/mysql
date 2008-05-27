@@ -259,7 +259,6 @@ typedef struct st_table_share
   TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
   pthread_mutex_t mutex;                /* For locking the share  */
-  pthread_cond_t cond;			/* To signal that share is ready */
   struct st_table_share *next,		/* Link to unused shares */
     **prev;
 
@@ -359,7 +358,6 @@ typedef struct st_table_share
   bool crashed;
   bool is_view;
   bool name_lock, replace_with_name_lock;
-  bool waiting_on_cond;                 /* Protection against free */
   ulong table_map_id;                   /* for row-based replication */
   ulonglong table_map_version;
 
