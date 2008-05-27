@@ -2563,7 +2563,7 @@ ndb_add_ndb_binlog_index(THD *thd, ndb_binlog_index_row *row)
       goto add_ndb_binlog_index_err;
     }
 
-    if (lock_tables(thd, &binlog_tables, 1, &need_reopen))
+    if (lock_tables(thd, &binlog_tables, 1, 0, &need_reopen))
     {
       if (need_reopen)
       {

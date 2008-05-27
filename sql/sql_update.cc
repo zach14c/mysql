@@ -220,7 +220,7 @@ int mysql_update(THD *thd,
       /* convert to multiupdate */
       DBUG_RETURN(2);
     }
-    if (!lock_tables(thd, table_list, table_count, &need_reopen))
+    if (!lock_tables(thd, table_list, table_count, 0, &need_reopen))
       break;
     if (!need_reopen)
       DBUG_RETURN(1);
@@ -1083,7 +1083,7 @@ reopen_tables:
   }
 
   /* now lock and fill tables */
-  if (lock_tables(thd, table_list, table_count, &need_reopen))
+  if (lock_tables(thd, table_list, table_count, 0, &need_reopen))
   {
     if (!need_reopen)
       DBUG_RETURN(TRUE);
