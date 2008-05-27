@@ -17,9 +17,11 @@
 #include "si_objects.h"
 #include "ddl_blocker.h"
 #include "sql_show.h"
+#ifdef HAVE_EVENT_SCHEDULER
 #include "events.h"
 #include "event_data_objects.h"
 #include "event_db_repository.h"
+#endif
 #include "sql_trigger.h"
 #include "sp.h"
 #include "sp_head.h" // for sp_add_to_query_tables().
@@ -89,13 +91,13 @@ int silent_exec(THD *thd, String *query)
       next_packet++;
       length--;
     }
-    VOID(pthread_mutex_lock(&LOCK_thread_count));
+    pthread_mutex_lock(&LOCK_thread_count);
     thd->query_length= length;
     thd->query= next_packet;
     thd->query_id= next_query_id();
     thd->set_time(); /* Reset the query start time. */
     /* TODO: set thd->lex->sql_command to SQLCOM_END here */
-    VOID(pthread_mutex_unlock(&LOCK_thread_count));
+    pthread_mutex_unlock(&LOCK_thread_count);
     mysql_parse(thd, next_packet, length, & found_semicolon);
   }
 
@@ -659,7 +661,7 @@ private:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
+#ifdef HAVE_EVENT_SCHEDULER
 /**
   @class EventObj
 
@@ -697,6 +699,7 @@ private:
   // These attributes are to be used only for materialization.
   String m_create_stmt;
 };
+#endif  // HAVE_EVENT_SCHEDULER
 
 /**
    @class TablespaceObj
@@ -805,6 +808,19 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
+class ObjIteratorDummyImpl : ObjIterator
+{
+public:
+  ObjIteratorDummyImpl() { return; }
+  virtual ~ObjIteratorDummyImpl() { return; }
+  virtual Obj *next() { return NULL; }
+
+protected:
+  virtual Obj *create_obj(TABLE *t) { return NULL; }
+
+};
+
+///////////////////////////////////////////////////////////////////////////
 class DatabaseIterator : public InformationSchemaIterator
 {
 public:
@@ -943,7 +959,7 @@ protected:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
+#ifdef HAVE_EVENT_SCHEDULER
 class DbEventIterator : public InformationSchemaIterator
 {
 public:
@@ -963,7 +979,7 @@ protected:
 private:
   String m_db_name;
 };
-
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1280,6 +1296,7 @@ Obj *DbStoredFuncIterator::create_sr_object(const String *db_name,
   return new StoredFuncObj(db_name, sr_name);
 }
 
+#ifdef HAVE_EVENT_SCHEDULER
 ///////////////////////////////////////////////////////////////////////////
 
 //
@@ -1287,7 +1304,6 @@ Obj *DbStoredFuncIterator::create_sr_object(const String *db_name,
 //
 
 ///////////////////////////////////////////////////////////////////////////
-
 EventObj *DbEventIterator::create_obj(TABLE *t)
 {
   String db_name;
@@ -1303,7 +1319,7 @@ EventObj *DbEventIterator::create_obj(TABLE *t)
 
   return new EventObj(&db_name, &event_name);
 }
-
+#endif
 ///////////////////////////////////////////////////////////////////////////
 
 //
@@ -1477,9 +1493,11 @@ template
 DbStoredFuncIterator *
 create_is_iterator<DbStoredFuncIterator>(THD *, enum_schema_tables, const String *);
 
+#ifdef HAVE_EVENT_SCHEDULER
 template
 DbEventIterator *
 create_is_iterator<DbEventIterator>(THD *, enum_schema_tables, const String *);
+#endif
 
 ObjIterator *get_db_tables(THD *thd, const String *db_name)
 {
@@ -1508,7 +1526,11 @@ ObjIterator *get_db_stored_functions(THD *thd, const String *db_name)
 
 ObjIterator *get_db_events(THD *thd, const String *db_name)
 {
+#ifdef HAVE_EVENT_SCHEDULER
   return create_is_iterator<DbEventIterator>(thd, SCH_EVENTS, db_name);
+#else
+  return (ObjIterator *)new ObjIteratorDummyImpl;
+#endif
 }
 
 
@@ -2262,7 +2284,7 @@ bool StoredFuncObj::drop(THD *thd)
 //
 
 /////////////////////////////////////////////////////////////////////////////
-
+#ifdef HAVE_EVENT_SCHEDULER
 EventObj::EventObj(const String *db_name,
                    const String *event_name)
 {
@@ -2420,6 +2442,7 @@ bool EventObj::drop(THD *thd)
                           &m_db_name,
                           &m_event_name));
 }
+#endif // HAVE_EVENT_SCHEDULER
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2592,8 +2615,13 @@ Obj *get_stored_function(const String *db_name,
 Obj *get_event(const String *db_name,
                const String *event_name)
 {
+#ifdef HAVE_EVENT_SCHEDULER
   return new EventObj(db_name, event_name);
+#else
+  return NULL;
+#endif
 }
+
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2662,6 +2690,7 @@ Obj *materialize_stored_function(const String *db_name,
   return obj;
 }
 
+#ifdef HAVE_EVENT_SCHEDULER
 Obj *materialize_event(const String *db_name,
                        const String *event_name,
                        uint serialization_version,
@@ -2672,6 +2701,7 @@ Obj *materialize_event(const String *db_name,
 
   return obj;
 }
+#endif
 
 Obj *materialize_tablespace(const String *ts_name,
                             uint serialization_version,
