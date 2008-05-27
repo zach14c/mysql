@@ -258,7 +258,7 @@ typedef struct st_table_share
   TYPELIB keynames;			/* Pointers to keynames */
   TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
-  pthread_mutex_t mutex;                /* For locking the share  */
+  pthread_mutex_t LOCK_ha_data;         /* To protect access to ha_data */
   struct st_table_share *next,		/* Link to unused shares */
     **prev;
 

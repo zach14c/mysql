@@ -103,7 +103,6 @@ uint  table_cache_count= 0;
 TABLE *unused_tables;
 HASH table_def_cache;
 static TABLE_SHARE *oldest_unused_share, end_of_unused_share;
-static pthread_mutex_t LOCK_table_share;
 static bool table_def_inited= 0;
 
 static bool check_and_update_table_version(THD *thd, TABLE_LIST *tables,
@@ -242,13 +241,12 @@ extern "C" uchar *table_def_key(const uchar *record, size_t *length,
 static void table_def_free_entry(TABLE_SHARE *share)
 {
   DBUG_ENTER("table_def_free_entry");
+  safe_mutex_assert_owner(&LOCK_open);
   if (share->prev)
   {
     /* remove from old_unused_share list */
-    pthread_mutex_lock(&LOCK_table_share);
     *share->prev= share->next;
     share->next->prev= share->prev;
-    pthread_mutex_unlock(&LOCK_table_share);
   }
   free_table_share(share);
   DBUG_VOID_RETURN;
@@ -258,7 +256,6 @@ static void table_def_free_entry(TABLE_SHARE *share)
 bool table_def_init(void)
 {
   table_def_inited= 1;
-  pthread_mutex_init(&LOCK_table_share, MY_MUTEX_INIT_FAST);
   oldest_unused_share= &end_of_unused_share;
   end_of_unused_share.prev= &oldest_unused_share;
 
@@ -276,7 +273,6 @@ void table_def_free(void)
     /* Free all open TABLEs first. */
     close_cached_tables(NULL, NULL, FALSE, FALSE);
     table_def_inited= 0;
-    pthread_mutex_destroy(&LOCK_table_share);
     /* Free table definitions. */
     hash_free(&table_def_cache);
   }
@@ -463,12 +459,6 @@ TABLE_SHARE *get_table_share(THD *thd, TABLE_LIST *table_list, char *key,
   }
 
   /*
-    Lock mutex to be able to read table definition from file without
-    conflicts
-  */
-  (void) pthread_mutex_lock(&share->mutex);
-
-  /*
     We assign a new table id under the protection of the LOCK_open and
     the share's own mutex.  We do this insted of creating a new mutex
     and using it for the sole purpose of serializing accesses to a
@@ -497,7 +487,6 @@ TABLE_SHARE *get_table_share(THD *thd, TABLE_LIST *table_list, char *key,
   share->ref_count++;				// Mark in use
   DBUG_PRINT("exit", ("share: %p  ref_count: %u",
                       share, share->ref_count));
-  (void) pthread_mutex_unlock(&share->mutex);
   DBUG_RETURN(share);
 
 found:
@@ -505,20 +494,15 @@ found:
      We found an existing table definition. Return it if we didn't get
      an error when reading the table definition from file.
   */
-
-  /* We must do a lock to ensure that the structure is initialized */
-  (void) pthread_mutex_lock(&share->mutex);
   if (share->error)
   {
     /* Table definition contained an error */
     open_table_error(share, share->error, share->open_errno, share->errarg);
-    (void) pthread_mutex_unlock(&share->mutex);
     DBUG_RETURN(0);
   }
   if (share->is_view && !(db_flags & OPEN_VIEW))
   {
     open_table_error(share, 1, ENOENT, 0);
-    (void) pthread_mutex_unlock(&share->mutex);
     DBUG_RETURN(0);
   }
 
@@ -529,22 +513,16 @@ found:
       Unlink share from this list
     */
     DBUG_PRINT("info", ("Unlinking from not used list"));
-    pthread_mutex_lock(&LOCK_table_share);
     *share->prev= share->next;
     share->next->prev= share->prev;
     share->next= 0;
     share->prev= 0;
-    pthread_mutex_unlock(&LOCK_table_share);
   }
-  (void) pthread_mutex_unlock(&share->mutex);
 
    /* Free cache if too big */
   while (table_def_cache.records > table_def_size &&
          oldest_unused_share->next)
-  {
-    pthread_mutex_lock(&oldest_unused_share->mutex);
     hash_delete(&table_def_cache, (uchar*) oldest_unused_share);
-  }
 
   DBUG_PRINT("exit", ("share: %p  ref_count: %u",
                       share, share->ref_count));
@@ -652,7 +630,6 @@ void release_table_share(TABLE_SHARE *share)
 
   safe_mutex_assert_owner(&LOCK_open);
 
-  pthread_mutex_lock(&share->mutex);
   if (!--share->ref_count)
   {
     if (share->version != refresh_version)
@@ -663,12 +640,10 @@ void release_table_share(TABLE_SHARE *share)
       DBUG_PRINT("info",("moving share to unused list"));
 
       DBUG_ASSERT(share->next == 0);
-      pthread_mutex_lock(&LOCK_table_share);
       share->prev= end_of_unused_share.prev;
       *end_of_unused_share.prev= share;
       end_of_unused_share.prev= &share->next;
       share->next= &end_of_unused_share;
-      pthread_mutex_unlock(&LOCK_table_share);
 
       to_be_deleted= (table_def_cache.records > table_def_size);
     }
@@ -678,9 +653,7 @@ void release_table_share(TABLE_SHARE *share)
   {
     DBUG_PRINT("info", ("Deleting share"));
     hash_delete(&table_def_cache, (uchar*) share);
-    DBUG_VOID_RETURN;
   }
-  pthread_mutex_unlock(&share->mutex);
   DBUG_VOID_RETURN;
 }
 
@@ -723,9 +696,8 @@ static void reference_table_share(TABLE_SHARE *share)
 {
   DBUG_ENTER("reference_table_share");
   DBUG_ASSERT(share->ref_count);
-  pthread_mutex_lock(&share->mutex);
+  safe_mutex_assert_owner(&LOCK_open);
   share->ref_count++;
-  pthread_mutex_unlock(&share->mutex);
   DBUG_PRINT("exit", ("share: 0x%lx  ref_count: %u",
                      (ulong) share, share->ref_count));
   DBUG_VOID_RETURN;
@@ -1021,10 +993,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
     free_cache_entry(unused_tables);
   /* Free table shares */
   while (oldest_unused_share->next)
-  {
-    pthread_mutex_lock(&oldest_unused_share->mutex);
     (void) hash_delete(&table_def_cache, (uchar*) oldest_unused_share);
-  }
 
   if (!wait_for_refresh)
   {
@@ -8525,10 +8494,7 @@ bool remove_table_from_cache(THD *thd, const char *db, const char *table_name,
       DBUG_PRINT("info", ("share version: %lu  ref_count: %u",
                           share->version, share->ref_count));
       if (share->ref_count == 0)
-      {
-        pthread_mutex_lock(&share->mutex);
         hash_delete(&table_def_cache, (uchar*) share);
-      }
     }
 
     if (result && (flags & RTFC_WAIT_OTHER_THREAD_FLAG))
@@ -8666,10 +8632,7 @@ void expel_table_from_cache(THD *leave_thd, const char *db, const char *table_na
   {
     DBUG_ASSERT(leave_thd || share->ref_count == 0);
     if (share->ref_count == 0)
-    {
-      pthread_mutex_lock(&share->mutex);
       hash_delete(&table_def_cache, (uchar*) share);
-    }
   }
 }
 
