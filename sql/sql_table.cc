@@ -5778,9 +5778,8 @@ int mysql_fast_or_online_alter_table(THD *thd,
   pthread_mutex_lock(&LOCK_open);
   alter_table_manage_keys(table, table->file->indexes_are_disabled(),
                           keys_onoff);
-  close_data_files_and_morph_locks(thd,
-                                   table->pos_in_table_list->db,
-                                   table->pos_in_table_list->table_name);
+  close_data_files_and_leave_as_placeholders(thd, table->pos_in_table_list->db,
+                                          table->pos_in_table_list->table_name);
   if (mysql_rename_table(NULL,
 			 altered_table->s->db.str,
                          altered_table->s->table_name.str,
@@ -5832,9 +5831,8 @@ int mysql_fast_or_online_alter_table(THD *thd,
       object to make it suitable for reopening.
     */
     DBUG_ASSERT(t_table == table);
-    table->open_placeholder= 1;
     pthread_mutex_lock(&LOCK_open);
-    close_handle_and_leave_table_as_lock(table);
+    close_handle_and_leave_table_as_placeholder(table);
     pthread_mutex_unlock(&LOCK_open);
   }
 
@@ -7005,7 +7003,7 @@ view_err:
 
   pthread_mutex_lock(&LOCK_open);
 
-  close_data_files_and_morph_locks(thd, db, table_name);
+  close_data_files_and_leave_as_placeholders(thd, db, table_name);
 
   error=0;
   save_old_db_type= old_db_type;

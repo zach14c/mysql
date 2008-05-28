@@ -1335,9 +1335,9 @@ bool fix_merge_after_open(TABLE_LIST *old_child_list, TABLE_LIST **old_last,
                           TABLE_LIST *new_child_list, TABLE_LIST **new_last);
 bool reopen_table(TABLE *table);
 bool reopen_tables(THD *thd, bool get_locks);
-void close_data_files_and_morph_locks(THD *thd, const char *db,
-                                      const char *table_name);
-void close_handle_and_leave_table_as_lock(TABLE *table);
+void close_data_files_and_leave_as_placeholders(THD *thd, const char *db,
+                                                const char *table_name);
+void close_handle_and_leave_table_as_placeholder(TABLE *table);
 bool open_new_frm(THD *thd, TABLE_SHARE *share, const char *alias,
                   uint db_stat, uint prgflag,
                   uint ha_open_flags, TABLE *outparam,
