@@ -4833,6 +4833,12 @@ retry:
   while (!(table= open_table(thd, table_list, thd->mem_root, &action, 0)) &&
          action)
   {
+    /*
+      Even altough we have failed to open table we still need to
+      call close_thread_tables() to release metadata locks which
+      might have been acquired successfully.
+    */
+    close_thread_tables(thd, (action == OT_BACK_OFF_AND_RETRY));
     if (handle_failed_open_table_attempt(thd, table_list, action))
       break;
   }
