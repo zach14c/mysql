@@ -830,7 +830,13 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       print_event_info->common_header_len=
         glob_description_event->common_header_len;
       ev->print(result_file, print_event_info);
-      ev->free_temp_buf(); // as the event ref is zeroed
+      if (!remote_opt)
+        ev->free_temp_buf(); // free memory allocated in dump_local_log_entries
+      else
+        /*
+          disassociate but not free dump_remote_log_entries time memory
+        */
+        ev->temp_buf= 0;
       /*
         We don't want this event to be deleted now, so let's hide it (I
         (Guilhem) should later see if this triggers a non-serious Valgrind
