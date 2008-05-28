@@ -261,7 +261,7 @@ static st_debug_sync_globals debug_sync_global; /* All globals in one object */
 /**
   Callback pointer from thr_lock.cc
 */
-extern void (*debug_sync_wait_for_lock_callback_ptr)(void);
+extern "C" void (*debug_sync_wait_for_lock_callback_ptr)(void);
 
 
 /**
@@ -815,7 +815,7 @@ static st_debug_sync_action *debug_sync_get_action(THD *thd,
   DBUG_ASSERT(name_len);
   DBUG_ASSERT(ds_control);
   DBUG_PRINT("debug_sync", ("sync_point: '%.*s'", (int) name_len, dsp_name));
-  DBUG_PRINT("debug_sync", ("active: %lu  allocated: %lu",
+  DBUG_PRINT("debug_sync", ("active: %u  allocated: %u",
                             ds_control->ds_active, ds_control->ds_allocated));
 
   /* There cannot be more active actions than allocated. */
@@ -829,7 +829,7 @@ static st_debug_sync_action *debug_sync_get_action(THD *thd,
                                dsp_name, name_len)))
   {
     /* Reuse an already active sync point action. */
-    DBUG_ASSERT((action - ds_control->ds_action) < ds_control->ds_active);
+    DBUG_ASSERT((uint)(action - ds_control->ds_action) < ds_control->ds_active);
     DBUG_PRINT("debug_sync", ("reuse action idx: %ld",
                               action - ds_control->ds_action));
   }
