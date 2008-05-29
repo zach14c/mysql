@@ -145,8 +145,8 @@ static void ndb_free_schema_object(NDB_SCHEMA_OBJECT **ndb_schema_object,
 */
 static TABLE *ndb_binlog_index= 0;
 static TABLE_LIST binlog_tables;
-static MDL_LOCK   binlog_mdl_lock;
-static char       binlog_mdlkey[MAX_DBKEY_LENGTH];
+static MDL_LOCK_DATA binlog_mdl_lock_data;
+static char binlog_mdlkey[MAX_DBKEY_LENGTH];
 
 /*
   Helper functions
@@ -2513,9 +2513,9 @@ static int open_ndb_binlog_index(THD *thd, TABLE **ndb_binlog_index)
   tables->db= repdb;
   tables->alias= tables->table_name= reptable;
   tables->lock_type= TL_WRITE;
-  mdl_init_lock(&binlog_mdl_lock, binlog_mdlkey, 0, tables->db,
+  mdl_init_lock(&binlog_mdl_lock_data, binlog_mdlkey, 0, tables->db,
                 tables->table_name);
-  tables->mdl_lock= &binlog_mdl_lock;
+  tables->mdl_lock= &binlog_mdl_lock_data;
   THD_SET_PROC_INFO(thd, "Opening " NDB_REP_DB "." NDB_REP_TABLE);
   tables->required_type= FRMTYPE_TABLE;
   uint counter;

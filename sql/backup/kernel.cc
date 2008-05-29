@@ -2108,12 +2108,12 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
   for( uint tno=0; tno < tables.count() ; tno++ )
   {
     TABLE_LIST *ptr;
-    MDL_LOCK *mdl_lock;
+    MDL_LOCK_DATA *mdl_lock_data;
     char *keybuff;
 
     my_multi_malloc(MYF(MY_WME), &ptr, sizeof(TABLE_LIST),
-                    &mdl_lock, sizeof(MDL_LOCK), &keybuff, MAX_DBKEY_LENGTH,
-                    NULL, 0);
+                    &mdl_lock_data, sizeof(MDL_LOCK_DATA),
+                    &keybuff, MAX_DBKEY_LENGTH, NULL, 0);
     DBUG_ASSERT(ptr);  // FIXME: report error instead
     bzero(ptr,sizeof(TABLE_LIST));
 
@@ -2122,8 +2122,8 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
     ptr->alias= ptr->table_name= const_cast<char*>(tbl.name().ptr());
     ptr->db= const_cast<char*>(tbl.db().name().ptr());
     ptr->lock_type= lock;
-    mdl_init_lock(mdl_lock, keybuff, 0, ptr->db, ptr->table_name);
-    ptr->mdl_lock= mdl_lock;
+    mdl_init_lock(mdl_lock_data, keybuff, 0, ptr->db, ptr->table_name);
+    ptr->mdl_lock_data= mdl_lock_data;
 
     // and add it to the list
 
