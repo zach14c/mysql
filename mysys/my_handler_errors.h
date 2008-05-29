@@ -60,7 +60,7 @@ static const char *handler_error_messages[]=
   /* HA_ERR_LOCK_WAIT_TIMEOUT */
   "Lock timed out; Retry transaction",
   /* HA_ERR_LOCK_TABLE_FULL */
-  "Lock table is full;  Restart program with a larger locktable",
+  "Lock table is full;  Restart program with a larger lock table",
   /* HA_ERR_READ_ONLY_TRANSACTION */
   "Updates are not allowed under a read only transactions",
   /* HA_ERR_LOCK_DEADLOCK */
@@ -88,11 +88,12 @@ static const char *handler_error_messages[]=
   /* HA_ERR_NO_PARTITION_FOUND */
   "There's no partition in table for the given value",
   /* HA_ERR_RBR_LOGGING_FAILED */
-  "Row-based binlogging of row failed",
+  "Row-based binary logging of row failed",
   /* HA_ERR_DROP_INDEX_FK */
   "Index needed in foreign key constraint",
   /* HA_ERR_FOREIGN_DUPLICATE_KEY */
   "Upholding foreign key constraints would lead to a duplicate key error in "
+  "some other table",
   /* HA_ERR_TABLE_NEEDS_UPGRADE */
   "Table needs to be upgraded before it can be used",
   /* HA_ERR_TABLE_READONLY */
@@ -114,11 +115,12 @@ static const char *handler_error_messages[]=
   /* HA_ERR_NEW_FILE */
   "The table is of a new format not supported by this version",
   /* HA_ERR_ROWS_EVENT_APPLY */
-  "The event could not be processed no other hanlder error happened",
+  "The event could not be processed no other handler error happened",
   /* HA_ERR_INITIALIZATION */
-  "Got a fatal error during initialzaction of handler",
+  "Got a fatal error during initialization of handler",
   /* HA_ERR_FILE_TOO_SHORT */
-  "File to short; Expected more data in file",
+  "File too short; Expected more data in file",
+
   /* HA_ERR_WRONG_CRC */
   "Read page with wrong checksum",
   /* HA_ERR_LOCK_OR_ACTIVE_TRANSACTION */

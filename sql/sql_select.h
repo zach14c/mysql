@@ -26,7 +26,6 @@
 #endif
 
 #include "procedure.h"
-#include <myisam.h>
 
 /* Values in optimize */
 #define KEY_OPTIMIZE_EXISTS		1
@@ -398,8 +397,8 @@ public:
 
   TABLE *tmp_table;
 
-  MI_COLUMNDEF *start_recinfo;
-  MI_COLUMNDEF *recinfo;
+  ENGINE_COLUMNDEF *start_recinfo;
+  ENGINE_COLUMNDEF *recinfo;
 
   /* Pointer to next table (next->start_idx > this->end_idx) */
   SJ_TMP_TABLE *next; 
@@ -704,10 +703,10 @@ bool setup_copy_fields(THD *thd, TMP_TABLE_PARAM *param,
 		       uint elements, List<Item> &fields);
 void copy_fields(TMP_TABLE_PARAM *param);
 void copy_funcs(Item **func_ptr);
-bool create_myisam_from_heap(THD *thd, TABLE *table,
-                             MI_COLUMNDEF *start_recinfo,
-                             MI_COLUMNDEF **recinfo, 
-			     int error, bool ignore_last_dupp_key_error);
+bool create_internal_tmp_table_from_heap(THD *thd, TABLE *table,
+                                         ENGINE_COLUMNDEF *start_recinfo,
+                                         ENGINE_COLUMNDEF **recinfo, 
+                                         int error, bool ignore_last_dupp_key_error);
 uint find_shortest_key(TABLE *table, const key_map *usable_keys);
 Field* create_tmp_field_from_field(THD *thd, Field* org_field,
                                    const char *name, TABLE *table,

@@ -649,7 +649,6 @@ enum enum_parsing_place
 
 struct st_table;
 
-#define thd_proc_info(thd, msg)  set_thd_proc_info(thd, msg, __func__, __FILE__, __LINE__)
 class THD;
 
 enum enum_check_fields
@@ -659,7 +658,6 @@ enum enum_check_fields
   CHECK_FIELD_ERROR_FOR_NULL
 };
 
-                                  
 /** Struct to handle simple linked lists. */
 typedef struct st_sql_list {
   uint elements;
@@ -949,7 +947,7 @@ inline bool check_and_unset_keyword(const char *dbug_str)
 {
   const char *extra_str= "-d,";
   char total_str[200];
-  if (_db_strict_keyword_ (dbug_str))
+  if (_db_keyword_ (0, dbug_str, 1))
   {
     strxmov(total_str, extra_str, dbug_str, NullS);
     DBUG_SET(total_str);
@@ -1009,7 +1007,7 @@ check_and_unset_inject_value(int value)
 #define SET_ERROR_INJECT_VALUE(x) \
   current_thd->error_inject_value= (x)
 #define ERROR_INJECT_CRASH(code) \
-  DBUG_EVALUATE_IF(code, (abort(), 0), 0)
+  DBUG_EVALUATE_IF(code, (DBUG_ABORT(), 0), 0)
 #define ERROR_INJECT_ACTION(code, action) \
   (check_and_unset_keyword(code) ? ((action), 0) : 0)
 #define ERROR_INJECT(code) \
@@ -1019,7 +1017,7 @@ check_and_unset_inject_value(int value)
 #define ERROR_INJECT_VALUE_ACTION(value,action) \
   (check_and_unset_inject_value(value) ? (action) : 0)
 #define ERROR_INJECT_VALUE_CRASH(value) \
-  ERROR_INJECT_VALUE_ACTION(value, (abort(), 0))
+  ERROR_INJECT_VALUE_ACTION(value, (DBUG_ABORT(), 0))
 
 #endif
 
@@ -2024,7 +2022,7 @@ extern FILE *stderror_file;
 extern pthread_key(MEM_ROOT**,THR_MALLOC);
 extern pthread_mutex_t LOCK_mysql_create_db,LOCK_Acl,LOCK_open, LOCK_lock_db,
        LOCK_thread_count,LOCK_mapped_file,LOCK_user_locks, LOCK_status,
-       LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_generator,
+       LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_short,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_slave_list, LOCK_active_mi, LOCK_manager, LOCK_global_read_lock,
        LOCK_global_system_variables, LOCK_user_conn,
@@ -2054,7 +2052,7 @@ extern struct system_variables global_system_variables;
 #ifdef MYSQL_SERVER
 extern struct system_variables max_system_variables;
 extern struct system_status_var global_status_var;
-extern struct rand_struct sql_rand;
+extern struct my_rnd_struct sql_rand;
 
 extern const char *opt_date_time_formats[];
 extern KNOWN_DATE_TIME_FORMAT known_date_time_formats[];
@@ -2073,9 +2071,9 @@ extern TYPELIB log_output_typelib;
 
 /* optional things, have_* variables */
 extern SHOW_COMP_OPTION have_community_features;
-
 extern handlerton *partition_hton;
 extern handlerton *myisam_hton;
+extern handlerton *maria_hton;
 extern handlerton *heap_hton;
 
 extern SHOW_COMP_OPTION have_ssl, have_symlink, have_dlopen;

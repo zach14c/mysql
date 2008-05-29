@@ -178,13 +178,22 @@ static signal_entry install_signal[]= {
 #endif
 };
 
+int skip_big_tests= 0;
+
 void
-plan(int const count)
+plan(int count)
 {
+  char *config= getenv("MYTAP_CONFIG");
+  size_t i;
+
+  if (config)
+    skip_big_tests= strcmp(config, "big");
+
+  setvbuf(tapout, 0, _IONBF, 0);  /* provide output at once */
   /*
     Install signal handler
   */
-  size_t i;
+
   for (i= 0; i < sizeof(install_signal)/sizeof(*install_signal); ++i)
     signal(install_signal[i].signo, install_signal[i].handler);
 
@@ -213,7 +222,7 @@ skip_all(char const *reason, ...)
 }
 
 void
-ok(int const pass, char const *fmt, ...)
+ok(int pass, char const *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
@@ -230,7 +239,7 @@ ok(int const pass, char const *fmt, ...)
 
 
 void
-skip(int how_many, char const *const fmt, ...)
+skip(int how_many, char const *fmt, ...)
 {
   char reason[80];
   if (fmt && *fmt)

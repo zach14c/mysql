@@ -1549,16 +1549,23 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
               YESNO(in_transaction),
               YESNO(thd->transaction.all.modified_non_trans_table),
               YESNO(thd->transaction.stmt.modified_non_trans_table)));
-  if (in_transaction &&
-      (all ||
-       (!trx_data->at_least_one_stmt &&
-        thd->transaction.stmt.modified_non_trans_table)) ||
-      !in_transaction && !all)
+  if (thd->options & OPTION_BIN_LOG)
   {
-    Query_log_event qev(thd, STRING_WITH_LEN("COMMIT"), TRUE, FALSE);
-    qev.error_code= 0; // see comment in MYSQL_LOG::write(THD, IO_CACHE)
-    int error= binlog_end_trans(thd, trx_data, &qev, all);
-    DBUG_RETURN(error);
+    if (in_transaction &&
+        (all ||
+         (!trx_data->at_least_one_stmt &&
+          thd->transaction.stmt.modified_non_trans_table)) ||
+        !in_transaction && !all)
+    {
+      Query_log_event qev(thd, STRING_WITH_LEN("COMMIT"), TRUE, FALSE);
+      qev.error_code= 0; // see comment in MYSQL_LOG::write(THD, IO_CACHE)
+      int error= binlog_end_trans(thd, trx_data, &qev, all);
+      DBUG_RETURN(error);
+    }
+  }
+  else
+  {
+    trx_data->reset();
   }
   DBUG_RETURN(0);
 }
@@ -4333,7 +4340,7 @@ bool MYSQL_BIN_LOG::write(THD *thd, IO_CACHE *cache, Log_event *commit_event)
         goto err;
       if (flush_and_sync())
         goto err;
-      DBUG_EXECUTE_IF("half_binlogged_transaction", abort(););
+      DBUG_EXECUTE_IF("half_binlogged_transaction", DBUG_ABORT(););
       if (cache->error)				// Error on read
       {
         sql_print_error(ER(ER_ERROR_ON_READ), cache->file_name, errno);
@@ -4693,8 +4700,7 @@ static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
 */
 
 #ifndef EMBEDDED_LIBRARY
-static void print_buffer_to_file(enum loglevel level, int error_code,
-                                 const char *buffer, size_t buffer_length)
+static void print_buffer_to_file(enum loglevel level, const char *buffer)
 {
   time_t skr;
   struct tm tm_tmp;
@@ -4729,13 +4735,13 @@ static void print_buffer_to_file(enum loglevel level, int error_code,
 int vprint_msg_to_log(enum loglevel level, const char *format, va_list args)
 {
   char   buff[1024];
-  size_t length;
-  int error_code= errno;
   DBUG_ENTER("vprint_msg_to_log");
 
-  length= my_vsnprintf(buff, sizeof(buff), format, args);
-
-  print_buffer_to_file(level, error_code, buff, length);
+#ifdef __NT__
+  size_t length=
+#endif
+    my_vsnprintf(buff, sizeof(buff), format, args);
+  print_buffer_to_file(level, buff);
 
 #ifdef __NT__
   print_buffer_to_nt_eventlog(level, buff, length, sizeof(buff));

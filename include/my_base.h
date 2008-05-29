@@ -246,7 +246,10 @@ enum ha_base_keytype {
 
 #define HA_MAX_KEYTYPE	31		/* Must be log2-1 */
 
-	/* These flags kan be OR:ed to key-flag */
+/*
+  These flags kan be OR:ed to key-flag
+  Note that these can only be up to 16 bits!
+*/
 
 #define HA_NOSAME		 1	/* Set if not dupplicated records */
 #define HA_PACK_KEY		 2	/* Pack string key to previous key */
@@ -316,8 +319,10 @@ enum ha_base_keytype {
 #define HA_OPTION_RELIES_ON_SQL_LAYER   512
 #define HA_OPTION_NULL_FIELDS		1024
 #define HA_OPTION_PAGE_CHECKSUM		2048
-#define HA_OPTION_TEMP_COMPRESS_RECORD	((uint) 16384)	/* set by isamchk */
-#define HA_OPTION_READ_ONLY_DATA	((uint) 32768)	/* Set by isamchk */
+#define HA_OPTION_TEMP_COMPRESS_RECORD  (1L << 15)      /* set by isamchk */
+#define HA_OPTION_READ_ONLY_DATA        (1L << 16)      /* Set by isamchk */
+#define HA_OPTION_NO_CHECKSUM           (1L << 17)
+#define HA_OPTION_NO_DELAY_KEY_WRITE    (1L << 18)
 
 	/* Bits in flag to create() */
 
@@ -440,21 +445,20 @@ enum ha_base_keytype {
 /* row not actually updated: new values same as the old values */
 #define HA_ERR_RECORD_IS_THE_SAME 169
 /* It is not possible to log this statement */
-#define HA_ERR_LOGGING_IMPOSSIBLE 170    /* It is not possible to log this
-                                            statement */
+#define HA_ERR_LOGGING_IMPOSSIBLE 170
 #define HA_ERR_TABLESPACE_EXIST   171
-#define HA_ERR_CORRUPT_EVENT      172    /* The event was corrupt, leading to
-                                            illegal data being read */
-#define HA_ERR_NEW_FILE	          172	 /* New file format */
-#define HA_ERR_ROWS_EVENT_APPLY   173    /* The event could not be processed
-                                            no other hanlder error happened */
-#define HA_ERR_INITIALIZATION     174    /* Error during initialization */
-#define HA_ERR_FILE_TOO_SHORT	  175	 /* File too short */
-#define HA_ERR_WRONG_CRC	  176	 /* Wrong CRC on page */
-#define HA_ERR_LOCK_OR_ACTIVE_TRANSACTION 177
-#define HA_ERR_NO_SUCH_TABLESPACE 178
-#define HA_ERR_TABLESPACE_NOT_EMPTY 179
-#define HA_ERR_LAST               179    /* Copy of last error nr */
+/* The event was corrupt, leading to illegal data being read */
+#define HA_ERR_CORRUPT_EVENT      172
+#define HA_ERR_NEW_FILE	          173	 /* New file format */
+/* The event could not be processed no other handler error happened */
+#define HA_ERR_ROWS_EVENT_APPLY   174
+#define HA_ERR_INITIALIZATION     175    /* Error during initialization */
+#define HA_ERR_FILE_TOO_SHORT	  176	 /* File too short */
+#define HA_ERR_WRONG_CRC	  177	 /* Wrong CRC on page */
+#define HA_ERR_LOCK_OR_ACTIVE_TRANSACTION 178
+#define HA_ERR_NO_SUCH_TABLESPACE 179
+#define HA_ERR_TABLESPACE_NOT_EMPTY 180
+#define HA_ERR_LAST               180    /* Copy of last error nr */
 
 /* Number of different errors */
 #define HA_ERR_ERRORS            (HA_ERR_LAST - HA_ERR_FIRST + 1)

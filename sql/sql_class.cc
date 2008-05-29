@@ -399,15 +399,12 @@ Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
                                 const char *message_arg)
 {
   DBUG_ASSERT(! is_set());
-#ifdef DBUG_OFF
   /*
     In production, refuse to overwrite an error or a custom response
     with an OK packet.
   */
   if (is_error() || is_disabled())
     return;
-#endif
-  /** Only allowed to report success if has not yet reported an error */
 
   m_server_status= thd->server_status;
   m_total_warn_count= thd->total_warn_count;
@@ -431,14 +428,12 @@ Diagnostics_area::set_eof_status(THD *thd)
   /** Only allowed to report eof if has not yet reported an error */
 
   DBUG_ASSERT(! is_set());
-#ifdef DBUG_OFF
   /*
     In production, refuse to overwrite an error or a custom response
     with an EOF packet.
   */
   if (is_error() || is_disabled())
     return;
-#endif
 
   m_server_status= thd->server_status;
   /*
@@ -630,7 +625,7 @@ THD::THD()
 
   tablespace_op=FALSE;
   tmp= sql_rnd_with_mutex();
-  randominit(&rand, tmp + (ulong) &rand, tmp + (ulong) ::global_query_id);
+  my_rnd_init(&rand, tmp + (ulong) &rand, tmp + (ulong) ::global_query_id);
   substitute_null_with_insert_id = FALSE;
   thr_lock_info_init(&lock_info); /* safety: will be reset after start */
   thr_lock_owner_init(&main_lock_id, &lock_info);
@@ -2139,8 +2134,7 @@ bool select_max_min_finder_subselect::send_data(List<Item> &items)
     if (!cache)
     {
       cache= Item_cache::get_cache(val_item);
-      switch (val_item->result_type())
-      {
+      switch (val_item->result_type()) {
       case REAL_RESULT:
 	op= &select_max_min_finder_subselect::cmp_real;
 	break;
@@ -2154,6 +2148,7 @@ bool select_max_min_finder_subselect::send_data(List<Item> &items)
         op= &select_max_min_finder_subselect::cmp_decimal;
         break;
       case ROW_RESULT:
+      case IMPOSSIBLE_RESULT:
         // This case should never be choosen
 	DBUG_ASSERT(0);
 	op= 0;
@@ -3671,11 +3666,10 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
       binlog_table_maps= 0;
       DBUG_RETURN(error);
     }
-    break;
 
   case THD::QUERY_TYPE_COUNT:
   default:
-    DBUG_ASSERT(0 <= qtype && qtype < QUERY_TYPE_COUNT);
+    DBUG_ASSERT(qtype < QUERY_TYPE_COUNT);
   }
   DBUG_RETURN(0);
 }

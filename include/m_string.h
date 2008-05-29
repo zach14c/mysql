@@ -300,6 +300,14 @@ typedef struct st_mysql_lex_string LEX_STRING;
 #define USTRING_WITH_LEN(X) ((uchar*) X), ((size_t) (sizeof(X) - 1))
 #define C_STRING_WITH_LEN(X) ((char *) (X)), ((size_t) (sizeof(X) - 1))
 
+/* A variant with const and unsigned */
+struct st_mysql_const_unsigned_lex_string
+{
+  const uchar *str;
+  size_t length;
+};
+typedef struct st_mysql_const_unsigned_lex_string LEX_CUSTRING;
+
 /* SPACE_INT is a word that contains only spaces */
 #if SIZEOF_INT == 4
 #define SPACE_INT 0x20202020
