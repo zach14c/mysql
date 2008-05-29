@@ -40,3 +40,12 @@ DataOverflowPage::~DataOverflowPage()
 
 }
 ***/
+
+
+void DataOverflowPage::backup(EncodedDataStream* stream)
+{
+}
+
+void DataOverflowPage::restore(EncodedDataStream* stream)
+{
+}

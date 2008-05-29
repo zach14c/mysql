@@ -54,6 +54,8 @@ public:
 	int		computeSpaceAvailable(int pageSize);
 	void	deletePage(Dbb *dbb, TransId transId);
 	void	print(void);
+	void	backup(EncodedDataStream* stream);
+	void	restore(EncodedDataStream* stream);
 
 	short		maxLine;
 	LineIndex	lineIndex [1];

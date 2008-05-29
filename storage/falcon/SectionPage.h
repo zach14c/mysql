@@ -33,18 +33,22 @@ class Bitmap;
 
 struct SectionAnalysis;
 
+#define SECTION_FULL		1
+
 class SectionPage : public Page  
 {
 public:
-	void analyze (Dbb *dbb, SectionAnalysis *analysis, int sectionId, int sequence, Bitmap *dataPages);
-	void validateIndexes (Dbb *dbb, Validation *validation, int base);
-	void validateSections (Dbb *dbb, Validation *validation, int base);
-	void validate (Dbb *dbb, Validation *validation, int sectionId, int sequence, Bitmap *dataPages);
+	void	analyze (Dbb *dbb, SectionAnalysis *analysis, int sectionId, int sequence, Bitmap *dataPages);
+	void	validateIndexes (Dbb *dbb, Validation *validation, int base);
+	void	validateSections (Dbb *dbb, Validation *validation, int base);
+	void	 validate (Dbb *dbb, Validation *validation, int sectionId, int sequence, Bitmap *dataPages);
+	void	backup(EncodedDataStream* stream);
+	void	restore(EncodedDataStream* stream);
 
 	int			section;
 	int			sequence;		/* sequence in level */			
 	short		level;			/*	0 = root; */
-	bool		isFull;
+	short		flags;
 	int32		pages [1];
 };
 

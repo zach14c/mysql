@@ -198,3 +198,10 @@ void SectionPage::analyze(Dbb *dbb, SectionAnalysis *analysis, int sectionId, in
 			}
 		}
 }
+void SectionPage::backup(EncodedDataStream* stream)
+{
+}
+
+void SectionPage::restore(EncodedDataStream* stream)
+{
+}

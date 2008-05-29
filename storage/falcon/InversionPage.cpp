@@ -611,3 +611,12 @@ void InversionPage::logPage(Bdb *bdb)
 												 page->length - OFFSET (IndexPage*, nodes), 
 												 (const UCHAR*) page->nodes);
 }
+
+
+void InversionPage::backup(EncodedDataStream* stream)
+{
+}
+
+void InversionPage::restore(EncodedDataStream* stream)
+{
+}

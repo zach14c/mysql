@@ -298,8 +298,8 @@ void PageInventoryPage::validateInventory(Dbb *dbb, Validation *validation)
 								case PAGE_sections:
 									{
 									SectionPage *pg = (SectionPage*) page;
-									validation->warning("orphan section page %d/%d, section=%d, seq=%d, level=%d, %sFull", 
-										pageNumber, tableSpaceId, pg->section, pg->level, (pg->isFull ? "is" : "not"));
+									validation->warning("orphan section page %d/%d, section=%d, seq=%d, level=%d, flgs=%d", 
+														pageNumber, tableSpaceId, pg->section, pg->level, pg->flags);
 									}
 									break;
 
@@ -468,4 +468,12 @@ void PageInventoryPage::analyzePages(Dbb* dbb, PagesAnalysis* pagesAnalysis)
 		if (clump & MASK(PIP_BITS - 1))
 			break;
 		}
+}
+
+void PageInventoryPage::backup(EncodedDataStream* stream)
+{
+}
+
+void PageInventoryPage::restore(EncodedDataStream* stream)
+{
 }

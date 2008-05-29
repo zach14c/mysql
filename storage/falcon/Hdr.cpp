@@ -27,6 +27,7 @@
 #include "Database.h"
 #include "DateTime.h"
 #include "Index.h"
+#include ".\hdr.h"
 
 
 #ifdef _DEBUG
@@ -142,4 +143,12 @@ void Hdr::putHeaderVariable(Dbb *dbb, HdrVariable variable, int size, const char
 				*--q = p [-n];
 			}
 		}
+}
+
+void Hdr::backup(EncodedDataStream* stream)
+{
+}
+
+void Hdr::restore(EncodedDataStream* stream)
+{
 }

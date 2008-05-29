@@ -45,11 +45,13 @@ public:
 	static Bdb*		allocPage (Dbb *dbb, PageType pageType, TransId transId);
 	static Bdb*		createInventoryPage (Dbb *dbb, int32 pageNumber, TransId transId);
 	static void		create (Dbb* dbb, TransId transId);
-	//PageInventoryPage();
-	//~PageInventoryPage();
+
+	void			backup(EncodedDataStream* stream);
+	void			restore(EncodedDataStream* stream);
+	
+	static void analyzePages(Dbb* dbb, PagesAnalysis* pagesAnalysis);
 
 	short		freePages [1];
-	static void analyzePages(Dbb* dbb, PagesAnalysis* pagesAnalysis);
 };
 
 #endif // !defined(AFX_PAGEINVENTORYPAGE_H__6A019C22_A340_11D2_AB5A_0000C01D2301__INCLUDED_)

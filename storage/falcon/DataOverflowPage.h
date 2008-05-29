@@ -31,8 +31,9 @@
 class DataOverflowPage : public Page  
 {
 public:
-	//DataOverflowPage();
-	//~DataOverflowPage();
+	void		backup(EncodedDataStream* stream);
+	void		restore(EncodedDataStream* stream);
+
 	int32		nextPage;
 	short		length;
 	short		section;
