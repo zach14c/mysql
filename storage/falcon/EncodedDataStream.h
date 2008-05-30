@@ -31,6 +31,7 @@ typedef long long	INT64;
 #endif
 
 #include "BigInt.h"
+#include "Engine.h"
 
 #define BYTES_POS(n)   ((n == 0) ? 0 : \
 						(n < (1<<7)) ? 1 : \
@@ -335,7 +336,7 @@ public:
 	void			encode (int type, Value *value);
 	
 	static int		init(void);
-	static const unsigned char* decode (const unsigned char *ptr, Value *value, bool copyFlag);
+	static const UCHAR* decode (const UCHAR *ptr, Value *value, bool copyFlag);
 
 	inline static const unsigned char* skip (const unsigned char *ptr)
 		{
