@@ -89,7 +89,7 @@ EncodedDataStream::EncodedDataStream(Stream *strm)
 	stream = strm;
 }
 
-EncodedDataStream::EncodedDataStream(const unsigned char *data, uint length)
+EncodedDataStream::EncodedDataStream(const UCHAR *data, uint length)
 {
 	ptr = data;
 	end = data + length;
