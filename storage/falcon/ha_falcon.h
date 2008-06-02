@@ -128,6 +128,7 @@ public:
 	void			unlockTable(void);
 	void			checkBinLog(void);
 	void			mapFields(TABLE *table);
+	void			unmapFields(void);
 
 	static StorageConnection* getStorageConnection(THD* thd);
 	
