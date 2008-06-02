@@ -54,7 +54,7 @@ my_bool check_ob_progress_tables(THD *thd)
   DBUG_ENTER("check_ob_progress_tables");
 
   /* Check mysql.online_backup */
-  tables.init_one_table("mysql", "online_backup", TL_READ);
+  tables.init_one_table("mysql", "online_backup", "online_backup", TL_READ);
   alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
@@ -65,7 +65,8 @@ my_bool check_ob_progress_tables(THD *thd)
   close_thread_tables(thd);
 
   /* Check mysql.online_backup_progress */
-  tables.init_one_table("mysql", "online_backup_progress", TL_READ);
+  tables.init_one_table("mysql", "online_backup_progress",
+                        "online_backup_progress", TL_READ);
   alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
