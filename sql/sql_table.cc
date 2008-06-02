@@ -6601,8 +6601,8 @@ view_err:
     {
       error= 0;
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
-			  ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
-			  table->alias);
+                          ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
+                          table->alias);
     }
 
     if (!error && (new_name != table_name || new_db != db))
@@ -6628,41 +6628,41 @@ view_err:
       */
       if (!access(new_name_buff,F_OK))
       {
-	my_error(ER_TABLE_EXISTS_ERROR, MYF(0), new_name);
-	error= -1;
+        my_error(ER_TABLE_EXISTS_ERROR, MYF(0), new_name);
+        error= -1;
       }
       else
       {
-	*fn_ext(new_name)=0;
+        *fn_ext(new_name)=0;
         pthread_mutex_lock(&LOCK_open);
-	if (mysql_rename_table(old_db_type,db,table_name,new_db,new_alias, 0))
-	  error= -1;
+        if (mysql_rename_table(old_db_type,db,table_name,new_db,new_alias, 0))
+          error= -1;
         else if (Table_triggers_list::change_table_name(thd, db, table_name,
                                                         new_db, new_alias))
         {
           (void) mysql_rename_table(old_db_type, new_db, new_alias, db,
-                                  table_name, 0);
+                                    table_name, 0);
           error= -1;
         }
         pthread_mutex_unlock(&LOCK_open);
+      }
     }
-  }
 
     if (error == HA_ERR_WRONG_COMMAND)
-  {
+    {
       error= 0;
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
-			  ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
-			  table->alias);
-  }
+                          ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
+                          table->alias);
+    }
 
     if (!error)
     {
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
       my_ok(thd);
-  }
+    }
     else if (error > 0)
-  {
+    {
       table->file->print_error(error, MYF(0));
       error= -1;
     }
@@ -6677,7 +6677,7 @@ view_err:
         them.
 
         TODO: Investigate what should be done with upgraded table-level
-              lock here...
+        lock here...
       */
       if (new_name != table_name || new_db != db)
         mdl_release_exclusive_locks(&thd->mdl_context);
@@ -6696,7 +6696,7 @@ view_err:
     goto err;
   }
 #endif
-    /*
+  /*
     If the old table had partitions and we are doing ALTER TABLE ...
     engine= <new_engine>, the new table must preserve the original
     partitioning. That means that the new engine is still the
@@ -6710,7 +6710,7 @@ view_err:
   new_db_type= create_info->db_type;
 
   if (mysql_prepare_alter_table(thd, table, create_info, alter_info))
-      goto err;
+    goto err;
 
   set_table_default_charset(thd, create_info, db);
 
