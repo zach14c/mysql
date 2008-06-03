@@ -2515,7 +2515,7 @@ static int open_ndb_binlog_index(THD *thd, TABLE **ndb_binlog_index)
   tables->lock_type= TL_WRITE;
   mdl_init_lock(&binlog_mdl_lock_data, binlog_mdlkey, 0, tables->db,
                 tables->table_name);
-  tables->mdl_lock= &binlog_mdl_lock_data;
+  tables->mdl_lock_data= &binlog_mdl_lock_data;
   THD_SET_PROC_INFO(thd, "Opening " NDB_REP_DB "." NDB_REP_TABLE);
   tables->required_type= FRMTYPE_TABLE;
   uint counter;
