@@ -30,7 +30,13 @@ typedef __int64		INT64;
 typedef long long	INT64;
 #endif
 
+#ifndef UCHAR_DEFINED
+#define UCHAR_DEFINED
+typedef unsigned char	UCHAR;
+#endif
+
 #include "BigInt.h"
+
 
 #define BYTES_POS(n)   ((n == 0) ? 0 : \
 						(n < (1<<7)) ? 1 : \
@@ -306,7 +312,7 @@ class EncodedDataStream
 public:
 	EncodedDataStream();
 	EncodedDataStream (Stream *stream);
-	EncodedDataStream(const unsigned char *data, uint length);
+	EncodedDataStream(const UCHAR* data, uint length);
 	virtual ~EncodedDataStream();
 
 	virtual void	encodeDouble (double dbl);
@@ -336,7 +342,7 @@ public:
 	void			encode (int type, Value *value);
 	
 	static int		init(void);
-	static const unsigned char* decode (const unsigned char *ptr, Value *value, bool copyFlag);
+	static const UCHAR* decode (const UCHAR *ptr, Value *value, bool copyFlag);
 
 	inline static const unsigned char* skip (const unsigned char *ptr)
 		{

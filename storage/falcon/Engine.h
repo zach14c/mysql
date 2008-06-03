@@ -110,7 +110,11 @@ typedef long			IPTR;
 typedef unsigned long	UIPTR;
 #endif
 
+#ifndef UCHAR_DEFINED
+#define UCHAR_DEFINED
 typedef unsigned char	UCHAR;
+#endif
+
 typedef unsigned long	ULONG;
 typedef unsigned short	USHORT;
 
