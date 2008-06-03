@@ -27,7 +27,6 @@
 #include "Database.h"
 #include "DateTime.h"
 #include "Index.h"
-#include ".\hdr.h"
 
 
 #ifdef _DEBUG
