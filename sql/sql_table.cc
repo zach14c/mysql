@@ -53,7 +53,6 @@ static bool
 mysql_prepare_alter_table(THD *thd, TABLE *table,
                           HA_CREATE_INFO *create_info,
                           Alter_info *alter_info);
-static bool close_cached_table(THD *thd, TABLE *table);
 
 #ifndef DBUG_OFF
 
@@ -3904,84 +3903,6 @@ mysql_rename_table(handlerton *base, const char *old_db,
 }
 
 
-/**
-   Force all other threads to stop using the table by upgrading
-   metadata lock on it and remove unused TABLE instances from cache.
-
-   @param thd      Thread handler
-   @param table    Table to remove from cache
-   @param function HA_EXTRA_PREPARE_FOR_DROP if table is to be deleted
-                   HA_EXTRA_FORCE_REOPEN if table is not be used
-                   HA_EXTRA_PREPARE_FOR_RENAME if table is to be renamed
-
-   @note When returning, the table will be unusable for other threads
-         until metadata lock is downgraded.
-
-   @retval FALSE Success.
-   @retval TRUE  Failure (e.g. because thread was killed).
-*/
-
-bool wait_while_table_is_used(THD *thd, TABLE *table,
-                              enum ha_extra_function function)
-{
-  enum thr_lock_type old_lock_type;
-
-  DBUG_ENTER("wait_while_table_is_used");
-  DBUG_PRINT("enter", ("table: '%s'  share: %p  db_stat: %u  version: %lu",
-                       table->s->table_name.str, table->s,
-                       table->db_stat, table->s->version));
-
-  (void) table->file->extra(function);
-
-  old_lock_type= table->reginfo.lock_type;
-  mysql_lock_abort(thd, table, TRUE);	/* end threads waiting on lock */
-
-  if (mdl_upgrade_shared_lock_to_exclusive(&thd->mdl_context,
-                                           table->mdl_lock_data))
-  {
-    mysql_lock_downgrade_write(thd, table, old_lock_type);
-    DBUG_RETURN(TRUE);
-  }
-
-  pthread_mutex_lock(&LOCK_open);
-  expel_table_from_cache(thd, table->s->db.str, table->s->table_name.str);
-  pthread_mutex_unlock(&LOCK_open);
-  DBUG_RETURN(FALSE);
-}
-
-
-/**
-   Upgrade metadata lock on the table and close all its instances.
-
-   @param thd   Thread handler
-   @param table Table to remove from cache
-
-   @retval FALSE Success.
-   @retval TRUE  Failure (e.g. because thread was killed).
-*/
-
-static bool close_cached_table(THD *thd, TABLE *table)
-{
-  DBUG_ENTER("close_cached_table");
-
-  /* FIXME: check if we pass proper parameters everywhere. */
-  if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
-    DBUG_RETURN(TRUE);
-
-  /* Close lock if this is not got with LOCK TABLES */
-  if (thd->lock)
-  {
-    mysql_unlock_tables(thd, thd->lock);
-    thd->lock=0;			// Start locked threads
-  }
-
-  pthread_mutex_lock(&LOCK_open);
-  /* Close all copies of 'table'.  This also frees all LOCK TABLES lock */
-  unlink_open_table(thd, table, TRUE);
-  pthread_mutex_unlock(&LOCK_open);
-  DBUG_RETURN(FALSE);
-}
-
 static int send_check_errmsg(THD *thd, TABLE_LIST* table,
 			     const char* operator_name, const char* errmsg)
 
@@ -6641,8 +6562,8 @@ view_err:
     {
       error= 0;
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
-			  ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
-			  table->alias);
+                          ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
+                          table->alias);
     }
 
     if (!error && (new_name != table_name || new_db != db))
@@ -6668,41 +6589,41 @@ view_err:
       */
       if (!access(new_name_buff,F_OK))
       {
-	my_error(ER_TABLE_EXISTS_ERROR, MYF(0), new_name);
-	error= -1;
+        my_error(ER_TABLE_EXISTS_ERROR, MYF(0), new_name);
+        error= -1;
       }
       else
       {
-	*fn_ext(new_name)=0;
+        *fn_ext(new_name)=0;
         pthread_mutex_lock(&LOCK_open);
-	if (mysql_rename_table(old_db_type,db,table_name,new_db,new_alias, 0))
-	  error= -1;
+        if (mysql_rename_table(old_db_type,db,table_name,new_db,new_alias, 0))
+          error= -1;
         else if (Table_triggers_list::change_table_name(thd, db, table_name,
                                                         new_db, new_alias))
         {
           (void) mysql_rename_table(old_db_type, new_db, new_alias, db,
-                                  table_name, 0);
+                                    table_name, 0);
           error= -1;
         }
         pthread_mutex_unlock(&LOCK_open);
+      }
     }
-  }
 
     if (error == HA_ERR_WRONG_COMMAND)
-  {
+    {
       error= 0;
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
-			  ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
-			  table->alias);
-  }
+                          ER_ILLEGAL_HA, ER(ER_ILLEGAL_HA),
+                          table->alias);
+    }
 
     if (!error)
     {
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
       my_ok(thd);
-  }
+    }
     else if (error > 0)
-  {
+    {
       table->file->print_error(error, MYF(0));
       error= -1;
     }
@@ -6717,7 +6638,7 @@ view_err:
         them.
 
         TODO: Investigate what should be done with upgraded table-level
-              lock here...
+        lock here...
       */
       if (new_name != table_name || new_db != db)
       {
@@ -6739,7 +6660,7 @@ view_err:
     goto err;
   }
 #endif
-    /*
+  /*
     If the old table had partitions and we are doing ALTER TABLE ...
     engine= <new_engine>, the new table must preserve the original
     partitioning. That means that the new engine is still the
@@ -6753,7 +6674,7 @@ view_err:
   new_db_type= create_info->db_type;
 
   if (mysql_prepare_alter_table(thd, table, create_info, alter_info))
-      goto err;
+    goto err;
 
   set_table_default_charset(thd, create_info, db);
 
