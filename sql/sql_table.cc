@@ -4158,7 +4158,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       if (view_operator_func == NULL)
         table->required_type=FRMTYPE_TABLE;
 
-      open_and_lock_tables(thd, table);
+      open_and_lock_tables_derived(thd, table, TRUE,
+                                   MYSQL_OPEN_TAKE_UPGRADABLE_MDL);
       thd->no_warnings_for_error= 0;
       table->next_global= save_next_global;
       table->next_local= save_next_local;
@@ -4521,7 +4522,6 @@ err:
 bool mysql_repair_table(THD* thd, TABLE_LIST* tables, HA_CHECK_OPT* check_opt)
 {
   DBUG_ENTER("mysql_repair_table");
-  set_all_mdl_upgradable(tables);
   DBUG_RETURN(mysql_admin_table(thd, tables, check_opt,
 				"repair", TL_WRITE, 1,
                                 test(check_opt->sql_flags & TT_USEFRM),
@@ -4534,7 +4534,6 @@ bool mysql_repair_table(THD* thd, TABLE_LIST* tables, HA_CHECK_OPT* check_opt)
 bool mysql_optimize_table(THD* thd, TABLE_LIST* tables, HA_CHECK_OPT* check_opt)
 {
   DBUG_ENTER("mysql_optimize_table");
-  set_all_mdl_upgradable(tables);
   DBUG_RETURN(mysql_admin_table(thd, tables, check_opt,
 				"optimize", TL_WRITE, 1,0,0,0,
 				&handler::ha_optimize, 0));
@@ -6403,9 +6402,8 @@ view_err:
     DBUG_RETURN(error);
   }
 
-  table_list->mdl_upgradable= TRUE;
-
-  if (!(table= open_n_lock_single_table(thd, table_list, TL_WRITE_ALLOW_READ)))
+  if (!(table= open_n_lock_single_table(thd, table_list, TL_WRITE_ALLOW_READ,
+                                        MYSQL_OPEN_TAKE_UPGRADABLE_MDL)))
     DBUG_RETURN(TRUE);
   table->use_all_columns();
   mdl_lock_data= table->mdl_lock_data;
@@ -7426,7 +7424,7 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 
     strxmov(table_name, table->db ,".", table->table_name, NullS);
 
-    t= table->table= open_n_lock_single_table(thd, table, TL_READ);
+    t= table->table= open_n_lock_single_table(thd, table, TL_READ, 0);
     thd->clear_error();			// these errors shouldn't get client
 
     protocol->prepare_for_resend();
