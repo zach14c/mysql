@@ -103,6 +103,10 @@ result_t Backup::get_data(Buffer &buf)
   if (!tables_open && (locking_thd->lock_state == LOCK_ACQUIRED))
   {
     BACKUP_BREAKPOINT("backup_cs_open_tables");
+    // The lex needs to be cleaned up between consecutive calls to 
+    // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
+    // previously opened views and crash.
+    locking_thd->m_thd->lex->cleanup_after_one_table_open();
     open_and_lock_tables(locking_thd->m_thd, locking_thd->tables_in_backup);
     tables_open= TRUE;
   }
