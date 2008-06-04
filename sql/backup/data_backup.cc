@@ -1421,6 +1421,11 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
   {
     table_list->lock_type= TL_WRITE;
     query_cache.invalidate_locked_for_write(table_list);
+
+    // The lex needs to be cleaned up between consecutive calls to 
+    // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
+    // previously opened views and crash.
+    ::current_thd->lex->cleanup_after_one_table_open();
     if (open_and_lock_tables(::current_thd, table_list))
     {
       info.m_ctx.fatal_error(ER_BACKUP_OPEN_TABLES, "restore");
