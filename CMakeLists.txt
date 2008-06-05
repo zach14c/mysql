@@ -169,9 +169,6 @@ IF(MSVC)
     SET(thread_stack_size 1048576)
     SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${thread_stack_size}")
     ADD_DEFINITIONS(-DPTHREAD_STACK_MIN=${thread_stack_size})
-    SET(thread_stack_size 1048576)
-    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${thread_stack_size}")
-    ADD_DEFINITIONS(-DPTHREAD_STACK_MIN=${thread_stack_size})
 
     # remove support for Exception handling
     STRING(REPLACE "/GX"   "" CMAKE_CXX_FLAGS            ${CMAKE_CXX_FLAGS})

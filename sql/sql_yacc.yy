@@ -11664,6 +11664,17 @@ table_lock_info:
           $$.lock_timeout=       -1;
           $$.lock_transactional= FALSE;
         }
+        | WRITE_SYM CONCURRENT
+        {
+#ifdef HAVE_QUERY_CACHE
+          if (Lex->sphead != 0)
+            $$.lock_type= TL_WRITE_DEFAULT;
+          else
+#endif
+            $$.lock_type= TL_WRITE_CONCURRENT_INSERT;
+          $$.lock_timeout=       -1;
+          $$.lock_transactional= FALSE;
+        }
         | LOW_PRIORITY WRITE_SYM
         {
           $$.lock_type=          TL_WRITE_LOW_PRIORITY;

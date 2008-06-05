@@ -54,7 +54,7 @@ static my_bool in_redo_phase;
 static my_bool trns_created;
 static ulong skipped_undo_phase;
 static ulonglong now; /**< for tracking execution time of phases */
-static int (*save_error_handler_hook)(uint, const char *,myf);
+static void (*save_error_handler_hook)(uint, const char *,myf);
 static uint recovery_warnings; /**< count of warnings */
 
 #define prototype_redo_exec_hook(R)                                          \
@@ -158,8 +158,8 @@ static enum recovery_message_type
 
 /* Hook to ensure we get nicer output if we get an error */
 
-int maria_recover_error_handler_hook(uint error, const char *str,
-                                     myf flags)
+void maria_recover_error_handler_hook(uint error, const char *str,
+                                      myf flags)
 {
   if (procent_printed)
   {
@@ -167,7 +167,7 @@ int maria_recover_error_handler_hook(uint error, const char *str,
     fputc('\n', stderr);
     fflush(stderr);
   }
-  return (*save_error_handler_hook)(error, str, flags);
+  (*save_error_handler_hook)(error, str, flags);
 }
 
 #define ALERT_USER() DBUG_ASSERT(0)
@@ -191,12 +191,12 @@ static void print_preamble()
      @retval !=0    Error
 */
 
-int maria_recover(void)
+int maria_recovery_from_log(void)
 {
   int res= 1;
   FILE *trace_file;
   uint warnings_count;
-  DBUG_ENTER("maria_recover");
+  DBUG_ENTER("maria_recovery_from_log");
 
   DBUG_ASSERT(!maria_in_recovery);
   maria_in_recovery= TRUE;
@@ -462,7 +462,12 @@ end:
                "Maria recovery failed. Please run maria_chk -r on all maria "
                "tables and delete all maria_log.######## files", MYF(0));
   procent_printed= 0;
-  /* we don't cleanly close tables if we hit some error (may corrupt them) */
+  /*
+    We don't cleanly close tables if we hit some error (may corrupt them by
+    flushing some wrong blocks made from wrong REDOs). It also leaves their
+    open_count>0, which ensures that --maria-recover, if used, will try to
+    repair them.
+  */
   DBUG_RETURN(error);
 }
 
@@ -1224,6 +1229,12 @@ static int new_table(uint16 sid, const char *name, LSN lsn_of_file_id)
            " maria_chk -r", share->open_file_name);
     error= -1; /* not fatal, try with other tables */
     goto end;
+    /*
+      Note that if a first recovery fails to apply a REDO, it marks the table
+      corrupted and stops the entire recovery. A second recovery will find the
+      table is marked corrupted and skip it (and thus possibly handle other
+      tables).
+    */
   }
   /* don't log any records for this work */
   _ma_tmp_disable_logging_for_table(info, FALSE);
@@ -2726,6 +2737,13 @@ static void prepare_table_for_close(MARIA_HA *info, TRANSLOG_ADDRESS horizon)
     share->state.is_of_horizon= horizon;
     _ma_state_info_write_sub(share->kfile.file, &share->state, 1);
   }
+
+  /*
+   Ensure that info->state is up to date as
+   _ma_renable_logging_for_table() is depending on this
+  */
+  *info->state= info->s->state.state;
+
   /*
     This leaves PAGECACHE_PLAIN_PAGE pages into the cache, while the table is
     going to switch back to transactional. So the table will be a mix of
@@ -3227,6 +3245,13 @@ my_bool _ma_reenable_logging_for_table(MARIA_HA *info, my_bool flush_pages)
   if ((share->now_transactional= share->base.born_transactional))
   {
     share->page_type= PAGECACHE_LSN_PAGE;
+
+    /*
+      Copy state information that where updated while the table was used
+      in not transactional mode
+    */
+    _ma_copy_nontrans_state_information(info);
+
     if (flush_pages)
     {
       /*

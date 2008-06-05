@@ -3031,8 +3031,11 @@ bool subselect_hash_sj_engine::init_permanent(List<Item> *tmp_columns)
   {
 #ifndef DBUG_OFF
     handlerton *tmp_table_hton= tmp_table->s->db_type();
-    DBUG_ASSERT((tmp_table_hton == myisam_hton) ||
-                (tmp_table_hton == maria_hton));
+    DBUG_ASSERT((tmp_table_hton == myisam_hton)
+#if defined(WITH_MARIA_STORAGE_ENGINE) && defined(USE_MARIA_FOR_TMP_TABLES)
+                || (tmp_table_hton == maria_hton)
+#endif
+                );
 #endif
     DBUG_ASSERT(
       tmp_table->s->uniques ||

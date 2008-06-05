@@ -488,6 +488,8 @@ int test_update(MI_INFO *file,int id,int lock_type)
   return 0;
 }
 
+#include "mi_extrafunc.h"
+
 #else /* __NETWARE__ || __WIN__*/
 
 #include <stdio.h>
@@ -500,4 +502,3 @@ int main()
 
 #endif /* __NETWARE__ || __WIN__ */
 
-#include "mi_extrafunc.h"

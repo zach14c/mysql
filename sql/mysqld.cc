@@ -3025,7 +3025,7 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     }
   }
 to_error_log:
-  if (!thd || MyFlags & ME_NOREFRESH)
+  if (!thd || (MyFlags & ME_NOREFRESH))
     (*func)("%s: %s", my_progname_short, str); /* purecov: inspected */
   DBUG_VOID_RETURN;
 }

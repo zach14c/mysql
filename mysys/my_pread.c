@@ -120,7 +120,7 @@ size_t my_pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset,
 {
   size_t readbytes;
   int error= 0;
-#ifndef HAVE_PREAD
+#if !defined (HAVE_PREAD) && !defined (__WIN__)
   int save_errno;
 #endif
 #ifndef DBUG_OFF

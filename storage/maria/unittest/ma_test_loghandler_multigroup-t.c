@@ -129,10 +129,10 @@ static my_bool read_and_check_content(TRANSLOG_HEADER_BUFFER *rec,
 }
 
 static const char *load_default_groups[]= {"ma_unit_loghandler", 0};
-#if defined(__WIN__)
-static const char *default_dbug_option= "d:t:i:O,\\ma_test_loghandler.trace";
-#else
-static const char *default_dbug_option= "d:t:i:o,/tmp/ma_test_loghandler.trace";
+#ifndef DBUG_OFF
+static const char *default_dbug_option=
+  IF_WIN("d:t:i:O,\\ma_test_loghandler.trace",
+         "d:t:i:o,/tmp/ma_test_loghandler.trace");
 #endif
 static const char *opt_wfile= NULL;
 static const char *opt_rfile= NULL;
@@ -263,7 +263,7 @@ int main(int argc __attribute__((unused)), char *argv[])
 
   bzero(long_tr_id, 6);
 
-  if (ma_control_file_open(TRUE))
+  if (ma_control_file_open(TRUE, TRUE))
   {
     fprintf(stderr, "Can't init control file (%d)\n", errno);
     exit(1);
@@ -430,7 +430,7 @@ int main(int argc __attribute__((unused)), char *argv[])
   end_pagecache(&pagecache, 1);
   ma_control_file_end();
 
-  if (ma_control_file_open(TRUE))
+  if (ma_control_file_open(TRUE,TRUE))
   {
     fprintf(stderr, "pass2: Can't init control file (%d)\n", errno);
     exit(1);

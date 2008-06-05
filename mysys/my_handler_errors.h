@@ -105,7 +105,7 @@ static const char *handler_error_messages[]=
   /* HA_ERR_GENERIC */
   "Unknown (generic) error from engine",
   /* HA_ERR_RECORD_IS_THE_SAME */
-  "Record is the same",
+  "Record was not update. Original values was same as new values",
   /* HA_ERR_LOGGING_IMPOSSIBLE */
   "It is not possible to log this statement",
   /* HA_ERR_TABLESPACE_EXIST */
@@ -115,7 +115,7 @@ static const char *handler_error_messages[]=
   /* HA_ERR_NEW_FILE */
   "The table is of a new format not supported by this version",
   /* HA_ERR_ROWS_EVENT_APPLY */
-  "The event could not be processed no other handler error happened",
+  "The event could not be processed. No other handler error happened",
   /* HA_ERR_INITIALIZATION */
   "Got a fatal error during initialization of handler",
   /* HA_ERR_FILE_TOO_SHORT */
@@ -128,6 +128,8 @@ static const char *handler_error_messages[]=
   /* HA_ERR_NO_SUCH_TABLESPACE */
   "No such table space", /* TODO: get a better message */
   /* HA_ERR_TABLESPACE_NOT_EMPTY */
-  "Tablespace not empty" /* TODO: get a better message */
+  "Tablespace not empty", /* TODO: get a better message */
+  /* HA_ERR_ROW_NOT_VISIBLE */
+  "Row is not visible by the current transaction"
 };
 

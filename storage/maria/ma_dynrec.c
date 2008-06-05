@@ -136,7 +136,7 @@ size_t _ma_mmap_pread(MARIA_HA *info, uchar *Buffer,
 		      size_t Count, my_off_t offset, myf MyFlags)
 {
   DBUG_PRINT("info", ("maria_read with mmap %d\n", info->dfile.file));
-  if (info->s->concurrent_insert)
+  if (info->s->lock_key_trees)
     rw_rdlock(&info->s->mmap_lock);
 
   /*
@@ -149,13 +149,13 @@ size_t _ma_mmap_pread(MARIA_HA *info, uchar *Buffer,
   if (info->s->mmaped_length >= offset + Count)
   {
     memcpy(Buffer, info->s->file_map + offset, Count);
-    if (info->s->concurrent_insert)
+    if (info->s->lock_key_trees)
       rw_unlock(&info->s->mmap_lock);
     return 0;
   }
   else
   {
-    if (info->s->concurrent_insert)
+    if (info->s->lock_key_trees)
       rw_unlock(&info->s->mmap_lock);
     return my_pread(info->dfile.file, Buffer, Count, offset, MyFlags);
   }
@@ -191,7 +191,7 @@ size_t _ma_mmap_pwrite(MARIA_HA *info, const uchar *Buffer,
 		       size_t Count, my_off_t offset, myf MyFlags)
 {
   DBUG_PRINT("info", ("maria_write with mmap %d\n", info->dfile.file));
-  if (info->s->concurrent_insert)
+  if (info->s->lock_key_trees)
     rw_rdlock(&info->s->mmap_lock);
 
   /*
@@ -204,14 +204,14 @@ size_t _ma_mmap_pwrite(MARIA_HA *info, const uchar *Buffer,
   if (info->s->mmaped_length >= offset + Count)
   {
     memcpy(info->s->file_map + offset, Buffer, Count);
-    if (info->s->concurrent_insert)
+    if (info->s->lock_key_trees)
       rw_unlock(&info->s->mmap_lock);
     return 0;
   }
   else
   {
     info->s->nonmmaped_inserts++;
-    if (info->s->concurrent_insert)
+    if (info->s->lock_key_trees)
       rw_unlock(&info->s->mmap_lock);
     return my_pwrite(info->dfile.file, Buffer, Count, offset, MyFlags);
   }
@@ -1017,12 +1017,12 @@ uint _ma_rec_pack(MARIA_HA *info, register uchar *to,
 	{
 	  if (column->length > 255 && new_length > 127)
 	  {
-	    to[0]=(char) ((new_length & 127)+128);
-	    to[1]=(char) (new_length >> 7);
+            to[0]= (uchar) ((new_length & 127) + 128);
+            to[1]= (uchar) (new_length >> 7);
 	    to+=2;
 	  }
 	  else
-	    *to++= (char) new_length;
+	    *to++= (uchar) new_length;
 	  memcpy((uchar*) to,pos,(size_t) new_length); to+=new_length;
 	  flag|=bit;
 	}
@@ -1056,7 +1056,7 @@ uint _ma_rec_pack(MARIA_HA *info, register uchar *to,
       }
       if ((bit= bit << 1) >= 256)
       {
-	*packpos++ = (char) (uchar) flag;
+	*packpos++ = (uchar) flag;
 	bit=1; flag=0;
       }
     }
@@ -1066,7 +1066,7 @@ uint _ma_rec_pack(MARIA_HA *info, register uchar *to,
     }
   }
   if (bit != 1)
-    *packpos= (char) (uchar) flag;
+    *packpos= (uchar) flag;
   if (info->s->calc_checksum)
     *to++= (uchar) info->cur_row.checksum;
   DBUG_PRINT("exit",("packed length: %d",(int) (to-startpos)));
@@ -1143,12 +1143,14 @@ my_bool _ma_rec_check(MARIA_HA *info,const uchar *record, uchar *rec_buff,
 	    goto err;
 	  if (column->length > 255 && new_length > 127)
 	  {
-	    if (to[0] != (char) ((new_length & 127)+128) ||
-		to[1] != (char) (new_length >> 7))
+            /* purecov: begin inspected */
+            if (to[0] != (uchar) ((new_length & 127) + 128) ||
+                to[1] != (uchar) (new_length >> 7))
 	      goto err;
 	    to+=2;
+            /* purecov: end */
 	  }
-	  else if (*to++ != (char) new_length)
+	  else if (*to++ != (uchar) new_length)
 	    goto err;
 	  to+=new_length;
 	}

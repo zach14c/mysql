@@ -66,6 +66,12 @@ int my_lock(File fd, int locktype, my_off_t start, my_off_t length,
     NXSOffset_t nxLength = length;
     unsigned long nxLockFlags = 0;
 
+    if ((MyFlags & MY_SHORT_WAIT))
+    {
+      /* not yet implemented */
+      MyFlags|= MY_NO_WAIT;
+    }
+
     if (length == F_TO_EOF)
     {
       /* EOF is interpreted as a very large length. */
@@ -91,7 +97,7 @@ int my_lock(File fd, int locktype, my_off_t start, my_off_t length,
         nxLockFlags = NX_RANGE_LOCK_EXCL;
       }
 
-      if (MyFlags & MY_DONT_WAIT)
+      if (MyFlags & MY_NO_WAIT)
       {
         /* Don't block on the lock. */
         nxLockFlags |= NX_RANGE_LOCK_TRYLOCK;
@@ -108,6 +114,12 @@ int my_lock(File fd, int locktype, my_off_t start, my_off_t length,
     DWORD dwFlags;
     OVERLAPPED ov= {0};
     HANDLE hFile= (HANDLE)_get_osfhandle(fd);
+
+    if ((MyFlags & MY_SHORT_WAIT))
+    {
+      /* not yet implemented */
+      MyFlags|= MY_NO_WAIT;
+    }
 
     lastError= 0;
 
@@ -132,7 +144,7 @@ int my_lock(File fd, int locktype, my_off_t start, my_off_t length,
         /* write lock is mapped to an exclusive lock. */
         dwFlags= LOCKFILE_EXCLUSIVE_LOCK;
 
-    if (MyFlags & MY_DONT_WAIT)
+    if (MyFlags & MY_NO_WAIT)
        dwFlags|= LOCKFILE_FAIL_IMMEDIATELY;
 
     if (LockFileEx(hFile, dwFlags, 0, liLength.LowPart, liLength.HighPart, &ov))

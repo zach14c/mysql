@@ -45,6 +45,7 @@ char file_name[FN_REFLEN];
 LSN    expect_checkpoint_lsn;
 uint32 expect_logno;
 TrID   expect_max_trid;
+uint8  expect_recovery_failures;
 
 static int delete_file(myf my_flags);
 /*
@@ -55,10 +56,11 @@ static int close_file(void); /* wraps ma_control_file_end */
 /* wraps ma_control_file_open_or_create */
 static int open_file(void);
 /* wraps ma_control_file_write_and_force */
-static int write_file(LSN checkpoint_lsn, uint32 logno, TrID trid);
+static int write_file(LSN checkpoint_lsn, uint32 logno, TrID trid,
+                      uint8 rec_failures);
 
 /* Tests */
-static int test_one_log(void);
+static int test_one_log_and_recovery_failures(void);
 static int test_five_logs_and_max_trid(void);
 static int test_3_checkpoints_and_2_logs(void);
 static int test_binary_content(void);
@@ -107,7 +109,7 @@ static CONTROL_FILE_ERROR local_ma_control_file_open(void)
 {
   CONTROL_FILE_ERROR error;
   error_handler_hook= my_ignore_message;
-  error= ma_control_file_open(TRUE);
+  error= ma_control_file_open(TRUE, TRUE);
   error_handler_hook= default_error_handler_hook;
   return error;
 }
@@ -132,7 +134,8 @@ int main(int argc,char *argv[])
   RET_ERR_UNLESS(0 == delete_file(0)); /* if fails, can't continue */
 
   diag("Tests of normal conditions");
-  ok(0 == test_one_log(), "test of creating one log");
+  ok(0 == test_one_log_and_recovery_failures(),
+     "test of creating one log and recording recovery failures");
   ok(0 == test_five_logs_and_max_trid(),
      "test of creating five logs and many transactions");
   ok(0 == test_3_checkpoints_and_2_logs(),
@@ -164,7 +167,7 @@ static int delete_file(myf my_flags)
   my_delete(file_name, my_flags);
   expect_checkpoint_lsn= LSN_IMPOSSIBLE;
   expect_logno= FILENO_IMPOSSIBLE;
-  expect_max_trid= 0;
+  expect_max_trid= expect_recovery_failures= 0;
 
   return 0;
 }
@@ -178,6 +181,7 @@ static int verify_module_values_match_expected(void)
   RET_ERR_UNLESS(last_logno == expect_logno);
   RET_ERR_UNLESS(last_checkpoint_lsn == expect_checkpoint_lsn);
   RET_ERR_UNLESS(max_trid_in_control_file == expect_max_trid);
+  RET_ERR_UNLESS(recovery_failures == expect_recovery_failures);
   return 0;
 }
 
@@ -212,21 +216,28 @@ static int open_file(void)
   return 0;
 }
 
-static int write_file(LSN checkpoint_lsn, uint32 logno, TrID trid)
+static int write_file(LSN checkpoint_lsn, uint32 logno, TrID trid,
+                      uint8 rec_failures)
 {
-  RET_ERR_UNLESS(ma_control_file_write_and_force(checkpoint_lsn, logno, trid)
+  RET_ERR_UNLESS(ma_control_file_write_and_force(checkpoint_lsn, logno, trid,
+                                                 rec_failures)
                  == 0);
   /* Check that the module reports expected information */
   RET_ERR_UNLESS(verify_module_values_match_expected() == 0);
   return 0;
 }
 
-static int test_one_log(void)
+static int test_one_log_and_recovery_failures(void)
 {
   RET_ERR_UNLESS(open_file() == CONTROL_FILE_OK);
   expect_logno= 123;
   RET_ERR_UNLESS(write_file(last_checkpoint_lsn, expect_logno,
-                            max_trid_in_control_file) == 0);
+                            max_trid_in_control_file,
+                            recovery_failures) == 0);
+  expect_recovery_failures= 158;
+  RET_ERR_UNLESS(write_file(last_checkpoint_lsn, expect_logno,
+                            max_trid_in_control_file,
+                            expect_recovery_failures) == 0);
   RET_ERR_UNLESS(close_file() == 0);
   return 0;
 }
@@ -242,7 +253,8 @@ static int test_five_logs_and_max_trid(void)
   {
     expect_logno*= 3;
     RET_ERR_UNLESS(write_file(last_checkpoint_lsn, expect_logno,
-                              expect_max_trid) == 0);
+                              expect_max_trid,
+                              recovery_failures) == 0);
   }
   RET_ERR_UNLESS(close_file() == 0);
   return 0;
@@ -257,23 +269,28 @@ static int test_3_checkpoints_and_2_logs(void)
   RET_ERR_UNLESS(open_file() == CONTROL_FILE_OK);
   expect_checkpoint_lsn= MAKE_LSN(5, 10000);
   RET_ERR_UNLESS(write_file(expect_checkpoint_lsn, expect_logno,
-                            max_trid_in_control_file) == 0);
+                            max_trid_in_control_file,
+                            recovery_failures) == 0);
 
   expect_logno= 17;
   RET_ERR_UNLESS(write_file(expect_checkpoint_lsn, expect_logno,
-                            max_trid_in_control_file) == 0);
+                            max_trid_in_control_file,
+                            recovery_failures) == 0);
 
   expect_checkpoint_lsn= MAKE_LSN(17, 20000);
   RET_ERR_UNLESS(write_file(expect_checkpoint_lsn, expect_logno,
-                            max_trid_in_control_file) == 0);
+                            max_trid_in_control_file,
+                            recovery_failures) == 0);
 
   expect_checkpoint_lsn= MAKE_LSN(17, 45000);
   RET_ERR_UNLESS(write_file(expect_checkpoint_lsn, expect_logno,
-                            max_trid_in_control_file) == 0);
+                            max_trid_in_control_file,
+                            recovery_failures) == 0);
 
   expect_logno= 19;
   RET_ERR_UNLESS(write_file(expect_checkpoint_lsn, expect_logno,
-                            max_trid_in_control_file) == 0);
+                            max_trid_in_control_file,
+                            recovery_failures) == 0);
   RET_ERR_UNLESS(close_file() == 0);
   return 0;
 }

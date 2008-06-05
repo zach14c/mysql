@@ -1801,6 +1801,7 @@ int set_handler_table_locks(THD *thd, TABLE_LIST *table_list,
                 (tlist->lock_type == TL_READ_NO_INSERT) ||
                 (tlist->lock_type == TL_WRITE_DEFAULT) ||
                 (tlist->lock_type == TL_WRITE) ||
+                (tlist->lock_type == TL_WRITE_CONCURRENT_INSERT) ||
                 (tlist->lock_type == TL_WRITE_LOW_PRIORITY));
 
     /*

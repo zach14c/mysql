@@ -88,15 +88,20 @@ int maria_delete_all_rows(MARIA_HA *info)
     there may be data blocks there. We need to throw them away or they may
     re-enter the emptied table or another table later.
   */
+
+#ifdef HAVE_MMAP
+  if (share->file_map)
+    _ma_unmap_file(info);
+#endif
+
   if (_ma_flush_table_files(info, MARIA_FLUSH_DATA|MARIA_FLUSH_INDEX,
                             FLUSH_IGNORE_CHANGED, FLUSH_IGNORE_CHANGED) ||
       my_chsize(info->dfile.file, 0, 0, MYF(MY_WME)) ||
-      my_chsize(share->kfile.file, share->base.keystart, 0, MYF(MY_WME))  )
+      my_chsize(share->kfile.file, share->base.keystart, 0, MYF(MY_WME)))
     goto err;
 
   if (_ma_initialize_data_file(share, info->dfile.file))
     goto err;
-
 
   if (log_record)
   {
@@ -119,10 +124,9 @@ int maria_delete_all_rows(MARIA_HA *info)
 
   (void)(_ma_writeinfo(info,WRITEINFO_UPDATE_KEYFILE));
 #ifdef HAVE_MMAP
-  /* Resize mmaped area */
-  rw_wrlock(&info->s->mmap_lock);
-  _ma_remap_file(info, (my_off_t)0);
-  rw_unlock(&info->s->mmap_lock);
+  /* Map again */
+  if (share->file_map)
+    _ma_dynmap_file(info, (my_off_t) 0);
 #endif
   allow_break();			/* Allow SIGHUP & SIGINT */
   DBUG_RETURN(0);
@@ -156,14 +160,17 @@ void _ma_reset_status(MARIA_HA *info)
   MARIA_STATE_INFO *state= &share->state;
   uint i;
 
-  info->state->records= info->state->del= state->split= 0;
+  state->split= 0;
+  state->state.records= state->state.del= 0;
   state->changed=  0;                            /* File is optimized */
   state->dellink= HA_OFFSET_ERROR;
   state->sortkey=  (ushort) ~0;
-  info->state->key_file_length= share->base.keystart;
-  info->state->data_file_length= 0;
-  info->state->empty= info->state->key_empty= 0;
-  info->state->checksum= 0;
+  state->state.key_file_length= share->base.keystart;
+  state->state.data_file_length= 0;
+  state->state.empty= state->state.key_empty= 0;
+  state->state.checksum= 0;
+
+  *info->state= state->state;
 
   /* Drop the delete key chain. */
   state->key_del= HA_OFFSET_ERROR;

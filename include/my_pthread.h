@@ -125,8 +125,6 @@ void pthread_exit(void *a);	 /* was #define pthread_exit(A) ExitThread(A)*/
 #define HAVE_LOCALTIME_R		1
 #define _REENTRANT			1
 #define HAVE_PTHREAD_ATTR_SETSTACKSIZE	1
-#define PTHREAD_STACK_MIN 65536
-
 
 /*
   Windows has two ways to use thread local storage. The most efficient
