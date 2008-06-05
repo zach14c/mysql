@@ -972,7 +972,8 @@ bool multi_delete::send_eof()
     normally can't safely do this.
   - We don't want an ok to be sent to the end user.
   - We don't want to log the truncate command
-  - If we want to have a name lock on the table on exit without errors.
+  - If we want to keep exclusive metadata lock on the table (obtained by
+    caller) on exit without errors.
 */
 
 bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
