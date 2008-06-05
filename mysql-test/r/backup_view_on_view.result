@@ -7,10 +7,10 @@ CREATE VIEW db1.v2 AS SELECT * FROM db1.v1;
 INSERT INTO db1.t1 VALUES (1),(2),(3),(5),(7),(11);
 BACKUP DATABASE db1 TO 'test.bak';
 backup_id
-1
+#
 RESTORE FROM 'test.bak';
 backup_id
-2
+#
 SELECT * FROM db1.v2;
 a
 1
