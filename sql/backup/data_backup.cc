@@ -1602,6 +1602,15 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
   if (table_list)
     close_thread_tables(::current_thd);
 
+  { // If auto commit is turned off, be sure to commit the transaction
+    THD *thd=::current_thd;
+    if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+    {
+      if (ha_autocommit_or_rollback(thd, 0)) state=ERROR;
+      if (end_active_trans(thd)) state=ERROR;
+    }
+  }
+
   DBUG_RETURN(state == ERROR ? backup::ERROR : 0);
 
  error:
