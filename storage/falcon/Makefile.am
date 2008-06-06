@@ -298,7 +298,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		Section.cpp \
 		SectionPage.cpp \
 		SectorBuffer.cpp \
-		SectorCache.cpph \
+		SectorCache.cpp \
 		Sequence.cpp \
 		SequenceManager.cpp SequenceResultSet.cpp \
 		Serialize.cpp \
