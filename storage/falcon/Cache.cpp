@@ -38,6 +38,7 @@
 #include "Database.h"
 #include "Bitmap.h"
 #include "Priority.h"
+#include "SectorCache.h"
 
 extern uint falcon_io_threads;
 
@@ -48,7 +49,7 @@ static FILE			*traceFile;
 
 static const uint64 cacheHunkSize		= 1024 * 1024 * 128;
 static const int	ASYNC_BUFFER_SIZE	= 1024000;
-
+static const int	sectorCacheSize		= 20000000;
 #ifdef _DEBUG
 #undef THIS_FILE
 static const char THIS_FILE[]=__FILE__;
@@ -74,7 +75,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageWriter = NULL;
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-
+	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
 	bufferHunks = new char* [numberHunks];
@@ -141,7 +142,8 @@ Cache::~Cache()
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
-
+	delete sectorCache;
+	
 	if (bufferHunks)
 		{
 		for (int n = 0; n < numberHunks; ++n)
@@ -257,7 +259,8 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			
 			Priority priority(database->ioScheduler);
 			priority.schedule(PRIORITY_MEDIUM);	
-			dbb->readPage(bdb);
+			//dbb->readPage(bdb);
+			sectorCache->readPage(bdb);
 			priority.finished();
 #ifdef HAVE_PAGE_NUMBER
 			ASSERT(bdb->buffer->pageNumber == pageNumber);
@@ -521,6 +524,7 @@ void Cache::writePage(Bdb *bdb, int type)
 
 	try
 		{
+		sectorCache->writePage(bdb);
 		dbb->writePage(bdb, type);
 		}
 	catch (SQLException& exception)
@@ -791,6 +795,7 @@ void Cache::ioThread(void)
 						bdb->incrementUseCount(ADD_HISTORY);
 						sync.unlock();
 						bdb->addRef(Shared  COMMA_ADD_HISTORY);
+						sectorCache->writePage(bdb);
 						
 						bdb->syncWrite.lock(NULL, Exclusive);
 						bdb->ioThreadNext = bdbList;
