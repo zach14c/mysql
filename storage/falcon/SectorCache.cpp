@@ -17,7 +17,7 @@
 #include "SectorCache.h"
 #include "SectorBuffer.h"
 #include "Dbb.h"
-#include "Bdb.h"
+#include "BDB.h"
 #include "Sync.h"
 
 #define SECTOR_BUFFER_ALIGNMENT	= 4096;

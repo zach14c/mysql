@@ -17,7 +17,7 @@
 #include "Engine.h"
 #include "SectorBuffer.h"
 #include "SectorCache.h"
-#include "Bdb.h"
+#include "BDB.h"
 #include "Dbb.h"
 
 SectorBuffer::SectorBuffer()
