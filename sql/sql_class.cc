@@ -846,11 +846,7 @@ void THD::cleanup(void)
     ha_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
-  if (locked_tables)
-  {
-    lock=locked_tables; locked_tables=0;
-    close_thread_tables(this);
-  }
+  unlock_locked_tables(this);
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);
@@ -1645,7 +1641,7 @@ bool select_send::send_eof()
   ha_release_temporary_latches(thd);
 
   /* Unlock tables before sending packet to gain some speed */
-  if (thd->lock)
+  if (thd->lock && ! thd->locked_tables_mode)
   {
     mysql_unlock_tables(thd, thd->lock);
     thd->lock=0;
@@ -2853,8 +2849,8 @@ void THD::restore_backup_open_tables_state(Open_tables_state *backup)
   */
   DBUG_ASSERT(open_tables == 0 && temporary_tables == 0 &&
               handler_tables == 0 && derived_tables == 0 &&
-              lock == 0 && locked_tables == 0 &&
-              prelocked_mode == NON_PRELOCKED &&
+              lock == 0 &&
+              locked_tables_mode == LTM_NONE &&
               m_reprepare_observer == NULL);
   mdl_context_destroy(&mdl_context);
   mdl_context_destroy(&handler_mdl_context);
@@ -3637,7 +3633,7 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
     If we are in prelocked mode, the flushing will be done inside the
     top-most close_thread_tables().
   */
-  if (this->prelocked_mode == NON_PRELOCKED)
+  if (this->locked_tables_mode <= LTM_LOCK_TABLES)
     if (int error= binlog_flush_pending_rows_event(TRUE))
       DBUG_RETURN(error);
 

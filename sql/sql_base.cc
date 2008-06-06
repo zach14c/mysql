@@ -1001,7 +1001,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
   DBUG_ASSERT(!have_lock);
   pthread_mutex_unlock(&LOCK_open);
 
-  if (thd->locked_tables)
+  if (thd->locked_tables_mode)
   {
     /*
       If we are under LOCK TABLES we need to reopen tables without
@@ -1115,7 +1115,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
   }
 
 err_with_reopen:
-  if (thd->locked_tables)
+  if (thd->locked_tables_mode)
   {
     pthread_mutex_lock(&LOCK_open);
     /*
@@ -1328,7 +1328,6 @@ void close_thread_tables(THD *thd,
                          bool skip_mdl)
 {
   TABLE *table;
-  prelocked_mode_type prelocked_mode= thd->prelocked_mode;
   DBUG_ENTER("close_thread_tables");
 
 #ifdef EXTRA_DEBUG
@@ -1386,11 +1385,12 @@ void close_thread_tables(THD *thd,
       Reset transaction state, but only if we're not inside a
       sub-statement of a prelocked statement.
     */
-    if (! prelocked_mode || thd->lex->requires_prelocking())
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES ||
+        thd->lex->requires_prelocking())
       thd->transaction.stmt.reset();
   }
 
-  if (thd->locked_tables || prelocked_mode)
+  if (thd->locked_tables_mode)
   {
 
     /* Ensure we are calling ha_reset() for all used tables */
@@ -1400,7 +1400,7 @@ void close_thread_tables(THD *thd,
       We are under simple LOCK TABLES or we're inside a sub-statement
       of a prelocked statement, so should not do anything else.
     */
-    if (!prelocked_mode || !thd->lex->requires_prelocking())
+    if (! thd->lex->requires_prelocking())
       DBUG_VOID_RETURN;
 
     /*
@@ -1408,18 +1408,19 @@ void close_thread_tables(THD *thd,
       so we have to leave the prelocked mode now with doing implicit
       UNLOCK TABLES if needed.
     */
-    DBUG_PRINT("info",("thd->prelocked_mode= NON_PRELOCKED"));
-    thd->prelocked_mode= NON_PRELOCKED;
+    if (thd->locked_tables_mode == LTM_PRELOCKED_UNDER_LOCK_TABLES)
+      thd->locked_tables_mode= LTM_LOCK_TABLES;
 
-    if (prelocked_mode == PRELOCKED_UNDER_LOCK_TABLES)
+    if (thd->locked_tables_mode == LTM_LOCK_TABLES)
       DBUG_VOID_RETURN;
+
+    thd->locked_tables_mode= LTM_NONE;
+    thd->options&= ~OPTION_TABLE_LOCK;
 
     /*
       Note that we are leaving prelocked mode so we don't need
       to care about THD::locked_tables_root.
     */
-    thd->lock= thd->locked_tables;
-    thd->locked_tables= 0;
     /* Fallthrough */
   }
 
@@ -1452,16 +1453,6 @@ void close_thread_tables(THD *thd,
   if (!skip_mdl)
   {
     mdl_remove_all_locks(&thd->mdl_context);
-  }
-
-  if (prelocked_mode == PRELOCKED)
-  {
-    /*
-      If we are here then we are leaving normal prelocked mode, so it is
-      good idea to turn off OPTION_TABLE_LOCK flag.
-    */
-    DBUG_ASSERT(thd->lex->requires_prelocking());
-    thd->options&= ~(OPTION_TABLE_LOCK);
   }
 
   DBUG_VOID_RETURN;
@@ -1887,9 +1878,10 @@ TABLE *find_temporary_table(THD *thd, TABLE_LIST *table_list)
   Try to locate the table in the list of thd->temporary_tables.
   If the table is found:
    - if the table is being used by some outer statement, fail.
-   - if the table is in thd->locked_tables, unlock it and
-     remove it from the list of locked tables. Currently only transactional
-     temporary tables are present in the locked_tables list.
+   - if the table is locked with LOCK TABLES or by prelocking,
+   unlock it and remove it from the list of locked tables
+   (THD::lock). Currently only transactional temporary tables
+   are locked.
    - Close the temporary table, remove its .FRM
    - remove the table from the list of temporary tables
 
@@ -1928,7 +1920,7 @@ int drop_temporary_table(THD *thd, TABLE_LIST *table_list)
     If LOCK TABLES list is not empty and contains this table,
     unlock the table and remove the table from this list.
   */
-  mysql_lock_remove(thd, thd->locked_tables, table, FALSE);
+  mysql_lock_remove(thd, thd->lock, table, FALSE);
   close_temporary_table(thd, table, 1, 1);
   DBUG_RETURN(0);
 }
@@ -2206,7 +2198,7 @@ bool close_cached_table(THD *thd, TABLE *table)
     DBUG_RETURN(TRUE);
 
   /* Close lock if this is not got with LOCK TABLES */
-  if (thd->lock)
+  if (! thd->locked_tables_mode)
   {
     mysql_unlock_tables(thd, thd->lock);
     thd->lock=0;			// Start locked threads
@@ -2258,8 +2250,8 @@ void unlink_open_table(THD *thd, TABLE *find, bool unlock)
     if (list->s->table_cache_key.length == key_length &&
 	!memcmp(list->s->table_cache_key.str, key, key_length))
     {
-      if (unlock && thd->locked_tables)
-        mysql_lock_remove(thd, thd->locked_tables,
+      if (unlock && thd->locked_tables_mode)
+        mysql_lock_remove(thd, thd->lock,
                           list->parent ? list->parent : list, TRUE);
 
       /* Prepare MERGE table for close. Close parent if necessary. */
@@ -2629,11 +2621,11 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
     open not pre-opened tables in pre-locked/LOCK TABLES mode.
     TODO: move this block into a separate function.
   */
-  if (thd->locked_tables || thd->prelocked_mode)
+  if (thd->locked_tables_mode)
   {						// Using table locks
     TABLE *best_table= 0;
     int best_distance= INT_MIN;
-    bool check_if_used= thd->prelocked_mode &&
+    bool check_if_used= thd->locked_tables_mode > LTM_LOCK_TABLES &&
                         ((int) table_list->lock_type >=
                          (int) TL_WRITE_ALLOW_WRITE);
     for (table=thd->open_tables; table ; table=table->next)
@@ -2660,7 +2652,8 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
         */
         if (!my_strcasecmp(system_charset_info, table->alias, alias) &&
             table->query_id != thd->query_id && /* skip tables already used */
-            !(thd->prelocked_mode && table->query_id) &&
+            (thd->locked_tables_mode == LTM_LOCK_TABLES ||
+             table->query_id == 0) &&
             !table->parent)
         {
           int distance= ((int) table->reginfo.lock_type -
@@ -2743,7 +2736,7 @@ TABLE *open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
       so we may only end up here if the table did not exist when
       locked tables list was created.
     */
-    if (thd->prelocked_mode == PRELOCKED)
+    if (thd->locked_tables_mode == LTM_PRELOCKED)
       my_error(ER_NO_SUCH_TABLE, MYF(0), table_list->db, table_list->alias);
     else
       my_error(ER_TABLE_NOT_LOCKED, MYF(0), alias);
@@ -3279,7 +3272,7 @@ void close_data_files_and_leave_as_placeholders(THD *thd, const char *db,
 
   safe_mutex_assert_owner(&LOCK_open);
 
-  if (thd->lock)
+  if (! thd->locked_tables_mode)
   {
     /*
       If we are not under LOCK TABLES we should have only one table
@@ -3294,7 +3287,7 @@ void close_data_files_and_leave_as_placeholders(THD *thd, const char *db,
     if (!strcmp(table->s->table_name.str, table_name) &&
 	!strcmp(table->s->db.str, db))
     {
-      if (thd->locked_tables)
+      if (thd->locked_tables_mode)
       {
         if (table->parent)
         {
@@ -3304,11 +3297,11 @@ void close_data_files_and_leave_as_placeholders(THD *thd, const char *db,
             the parent and close it. OTOH in most cases a MERGE table
             won't have multiple children with the same db.table_name.
           */
-          mysql_lock_remove(thd, thd->locked_tables, table->parent, TRUE);
+          mysql_lock_remove(thd, thd->lock, table->parent, TRUE);
           close_handle_and_leave_table_as_placeholder(table->parent);
         }
         else
-          mysql_lock_remove(thd, thd->locked_tables, table, TRUE);
+          mysql_lock_remove(thd, thd->lock, table, TRUE);
       }
       table->s->version= 0;
       close_handle_and_leave_table_as_placeholder(table);
@@ -3504,7 +3497,7 @@ bool reopen_tables(THD *thd, bool get_locks)
     if ((lock= mysql_lock_tables(thd, tables, (uint) (tables_ptr - tables),
                                  flags, &not_used)))
     {
-      thd->locked_tables=mysql_lock_merge(thd->locked_tables,lock);
+      thd->lock= mysql_lock_merge(thd->lock, lock);
     }
     else
     {
@@ -3537,17 +3530,22 @@ void unlock_locked_tables(THD *thd)
   DBUG_ASSERT(!thd->in_sub_stmt &&
               !(thd->state_flags & Open_tables_state::BACKUPS_AVAIL));
 
-  if (thd->locked_tables)
-  {
-    thd->lock= thd->locked_tables;
-    thd->locked_tables=0;
-    close_thread_tables(thd);
-    /*
-      After closing tables we can free memory used for storing lock
-      request objects for metadata locks
-     */
-    free_root(&thd->locked_tables_root, MYF(MY_MARK_BLOCKS_FREE));
-  }
+  /*
+    Sic: we must be careful to not close open tables if
+    we're not in LOCK TABLES mode: unlock_locked_tables() is
+    sometimes called implicitly, expecting no effect on
+    open tables, e.g. from begin_trans().
+  */
+  if (thd->locked_tables_mode != LTM_LOCK_TABLES)
+    return;
+
+  thd->locked_tables_mode= LTM_NONE;
+  close_thread_tables(thd);
+  /*
+    After closing tables we can free memory used for storing lock
+    request objects for metadata locks
+  */
+  free_root(&thd->locked_tables_root, MYF(MY_MARK_BLOCKS_FREE));
 }
 
 
@@ -4395,11 +4393,6 @@ bool fix_merge_after_open(TABLE_LIST *old_child_list, TABLE_LIST **old_last,
     prelocking it won't do such precaching and will simply reuse table list
     which is already built.
 
-    If any table has a trigger and start->trg_event_map is non-zero
-    the final lock will end up in thd->locked_tables, otherwise, the
-    lock will be placed in thd->lock. See also comments in
-    st_lex::set_trg_event_type_for_tables().
-
   RETURN
     0  - OK
     -1 - error
@@ -4444,10 +4437,10 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
     If we are not already executing prelocked statement and don't have
     statement for which table list for prelocking is already built, let
     us cache routines and try to build such table list.
-
   */
 
-  if (!thd->prelocked_mode && !thd->lex->requires_prelocking() &&
+  if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
+      !thd->lex->requires_prelocking() &&
       thd->lex->uses_stored_routines())
   {
     bool first_no_prelocking, need_prelocking;
@@ -4661,7 +4654,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
         If we lock table for reading we won't update it so there is no need to
         process its triggers since they never will be activated.
       */
-      if (!thd->prelocked_mode && !thd->lex->requires_prelocking() &&
+      if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
+          !thd->lex->requires_prelocking() &&
           tables->trg_event_map && tables->table->triggers &&
           tables->lock_type >= TL_WRITE_ALLOW_WRITE)
       {
@@ -4682,7 +4676,7 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
       free_root(&new_frm_mem, MYF(MY_KEEP_PREALLOC));
     }
 
-    if (tables->lock_type != TL_UNLOCK && ! thd->locked_tables)
+    if (tables->lock_type != TL_UNLOCK && ! thd->locked_tables_mode)
     {
       if (tables->lock_type == TL_WRITE_DEFAULT)
         tables->table->reginfo.lock_type= thd->update_lock_default;
@@ -4702,10 +4696,7 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
     DBUG_PRINT("tcache", ("is parent: %d  is child: %d",
                           test(tables->table->child_l),
                           test(tables->parent_l)));
-    DBUG_PRINT("tcache", ("in lock tables: %d  in prelock mode: %d",
-                          test(thd->locked_tables), test(thd->prelocked_mode)));
-    if (((!thd->locked_tables && !thd->prelocked_mode) ||
-         tables->table->s->tmp_table) &&
+    if ((!thd->locked_tables_mode || tables->table->s->tmp_table) &&
         ((tables->table->child_l &&
           add_merge_table_list(tables)) ||
          (tables->parent_l &&
@@ -4721,7 +4712,8 @@ process_view_routines:
       Again we may need cache all routines used by this view and add
       tables used by them to table list.
     */
-    if (tables->view && !thd->prelocked_mode &&
+    if (tables->view &&
+        thd->locked_tables_mode <= LTM_LOCK_TABLES &&
         !thd->lex->requires_prelocking() &&
         tables->view->uses_stored_routines())
     {
@@ -4929,7 +4921,7 @@ retry:
     table_list->lock_type= lock_type;
     table_list->table=	   table;
     table->grant= table_list->grant;
-    if (thd->locked_tables)
+    if (thd->locked_tables_mode)
     {
       if (check_lock_and_start_stmt(thd, table, lock_type))
 	table= 0;
@@ -5231,9 +5223,9 @@ int decide_logging_format(THD *thd, TABLE_LIST *tables)
     handling thr_lock gives us.  You most always get all needed locks at
     once.
 
-    If query for which we are calling this function marked as requring
-    prelocking, this function will do implicit LOCK TABLES and change
-    thd::prelocked_mode accordingly.
+    If query for which we are calling this function marked as requiring
+    prelocking, this function will change locked_tables_mode to
+    LTM_PRELOCKED.
 
   RETURN VALUES
    0	ok
@@ -5250,22 +5242,24 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
     We can't meet statement requiring prelocking if we already
     in prelocked mode.
   */
-  DBUG_ASSERT(!thd->prelocked_mode || !thd->lex->requires_prelocking());
+  DBUG_ASSERT(thd->locked_tables_mode <= LTM_LOCK_TABLES ||
+              !thd->lex->requires_prelocking());
   *need_reopen= FALSE;
 
   if (!tables && !thd->lex->requires_prelocking())
     DBUG_RETURN(decide_logging_format(thd, tables));
 
   /*
-    We need this extra check for thd->prelocked_mode because we want to avoid
-    attempts to lock tables in substatements. Checking for thd->locked_tables
-    is not enough in some situations. For example for SP containing
+    Check for thd->locked_tables_mode to avoid a redundant
+    and harmful attempt to lock the already locked tables again.
+    Checking for thd->lock is not enough in some situations. For example,
+    if a stored function contains
     "drop table t3; create temporary t3 ..; insert into t3 ...;"
-    thd->locked_tables may be 0 after drop tables, and without this extra
-    check insert will try to lock temporary table t3, that will lead
-    to memory leak...
+    thd->lock may be 0 after drop tables, whereas locked_tables_mode
+    is still on. In this situation an attempt to lock temporary
+    table t3 will lead to a memory leak.
   */
-  if (!thd->locked_tables && !thd->prelocked_mode)
+  if (! thd->locked_tables_mode)
   {
     DBUG_ASSERT(thd->lock == 0);	// You must lock everything at once
     TABLE **start,**ptr;
@@ -5315,15 +5309,8 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
         We just have done implicit LOCK TABLES, and now we have
         to emulate first open_and_lock_tables() after it.
 
-        Note that "LOCK TABLES" can also be marked as requiring prelocking
-        (e.g. if one locks view which uses functions). We should not emulate
-        such open_and_lock_tables() in this case. We also should not set
-        THD::prelocked_mode or first close_thread_tables() call will do
-        "UNLOCK TABLES".
       */
-      thd->locked_tables= thd->lock;
-      thd->lock= 0;
-      thd->in_lock_tables=0;
+      thd->in_lock_tables= 0;
 
       /*
         When open_and_lock_tables() is called for a single table out of
@@ -5346,8 +5333,7 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
               This was an attempt to enter prelocked mode so there is no
               need to care about THD::locked_tables_root here.
             */
-            mysql_unlock_tables(thd, thd->locked_tables);
-            thd->locked_tables= 0;
+            mysql_unlock_tables(thd, thd->lock);
             thd->options&= ~(OPTION_TABLE_LOCK);
             DBUG_RETURN(-1);
           }
@@ -5359,7 +5345,7 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
       */
       mark_real_tables_as_free_for_reuse(first_not_own);
       DBUG_PRINT("info",("prelocked_mode= PRELOCKED"));
-      thd->prelocked_mode= PRELOCKED;
+      thd->locked_tables_mode= LTM_PRELOCKED;
     }
   }
   else
@@ -5392,7 +5378,7 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
     {
       mark_real_tables_as_free_for_reuse(first_not_own);
       DBUG_PRINT("info", ("thd->prelocked_mode= PRELOCKED_UNDER_LOCK_TABLES"));
-      thd->prelocked_mode= PRELOCKED_UNDER_LOCK_TABLES;
+      thd->locked_tables_mode= LTM_PRELOCKED_UNDER_LOCK_TABLES;
     }
   }
 

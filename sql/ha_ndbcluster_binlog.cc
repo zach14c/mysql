@@ -270,7 +270,7 @@ static void run_query(THD *thd, char *buf, char *end,
   DBUG_PRINT("query", ("%s", thd->query));
 
   DBUG_ASSERT(!thd->in_sub_stmt);
-  DBUG_ASSERT(!thd->prelocked_mode);
+  DBUG_ASSERT(!thd->locked_tables_mode);
 
   mysql_parse(thd, thd->query, thd->query_length, &found_semicolon);
 
@@ -2625,8 +2625,12 @@ ndb_add_ndb_binlog_index(THD *thd, ndb_binlog_index_row *row)
     }
   } while (row);
 
-  mysql_unlock_tables(thd, thd->lock);
-  thd->lock= 0;
+
+  if (! thd->locked_tables_mode)                /* Is always TRUE */
+  {
+    mysql_unlock_tables(thd, thd->lock);
+    thd->lock= 0;
+  }
   thd->options= saved_options;
   return 0;
 add_ndb_binlog_index_err:

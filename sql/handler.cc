@@ -5165,9 +5165,7 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
    to the binary log.
 
    This function will generate and write table maps for all tables
-   that are locked by the thread 'thd'.  Either manually locked
-   (stored in THD::locked_tables) and automatically locked (stored
-   in THD::lock) are considered.
+   that are locked by the thread 'thd'.
 
    @param thd     Pointer to THD structure
 
@@ -5176,23 +5174,19 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
 
    @sa
        THD::lock
-       THD::locked_tables
 */
 
 static int write_locked_table_maps(THD *thd)
 {
   DBUG_ENTER("write_locked_table_maps");
-  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p  thd->locked_tables: %p  "
-                       "thd->extra_lock: %p",
-                       thd, thd->lock,
-                       thd->locked_tables, thd->extra_lock));
+  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
+                       thd, thd->lock, thd->extra_lock));
 
   if (thd->get_binlog_table_maps() == 0)
   {
-    MYSQL_LOCK *locks[3];
+    MYSQL_LOCK *locks[2];
     locks[0]= thd->extra_lock;
     locks[1]= thd->lock;
-    locks[2]= thd->locked_tables;
     for (uint i= 0 ; i < sizeof(locks)/sizeof(*locks) ; ++i )
     {
       MYSQL_LOCK const *const lock= locks[i];
