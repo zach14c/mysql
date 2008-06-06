@@ -22,6 +22,10 @@
 
 static int ncpus=0;
 
+#ifdef _WIN32
+typedef VOID (WINAPI *LPFN_GETNATIVESYSTEMINFO)(LPSYSTEM_INFO);
+#endif
+
 int my_getncpus()
 {
   if (!ncpus)
@@ -29,13 +33,21 @@ int my_getncpus()
 #ifdef _SC_NPROCESSORS_ONLN
     ncpus= sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(__WIN__)
-#ifdef REGGIE_WILL_FIX_IN_A_PORTABLE_WAY
     SYSTEM_INFO sysinfo;
-    GetSystemInfo(&sysinfo);
+	LPFN_GETNATIVESYSTEMINFO fnGetNativeSystemInfo;
+
+	/*
+	We use GetProcAddress because GetNativeSystemInfo is only available
+	starting with Windows XP and Windows Server 2003
+	*/
+    fnGetNativeSystemInfo = (LPFN_GETNATIVESYSTEMINFO)GetProcAddress(
+        GetModuleHandle(TEXT("kernel32")),"GetNativeSystemInfo");
+	if (NULL != fnGetNativeSystemInfo)
+		fnGetNativeSystemInfo(&sysinfo);
+	else
+		GetSystemInfo(&sysinfo);
+
     ncpus= sysinfo.dwNumberOfProcessors;
-#else
-    ncpus=2;
-#endif
 #else
 /* unknown so play safe: assume SMP and forbid uniprocessor build */
     ncpus= 2;
