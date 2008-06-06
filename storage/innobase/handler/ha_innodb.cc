@@ -5766,7 +5766,7 @@ ha_innobase::info(
 					* UNIV_PAGE_SIZE;
 		stats.delete_length = 0;
 		stats.check_time = 0;
-	        stats.mrr_length_per_rec= ref_length + sizeof(void*);
+	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 
 		if (stats.records == 0) {
 			stats.mean_rec_length = 0;
