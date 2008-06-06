@@ -23,9 +23,14 @@ use mysql_test;
 --echo chmod 000 mysql_test/t1.frm
 --chmod 0000 $MYSQLTEST_VARDIR/master-data/mysql_test/t1.frm
 
+# NOTE: ER_DB_DROP_RMDIR contains errno, which can be different on different
+# platforms.
+
 --echo
+--disable_result_log
 --error ER_DB_DROP_RMDIR
 DROP DATABASE mysql_test;
+--enable_result_log
 
 --echo
 SELECT DATABASE();
