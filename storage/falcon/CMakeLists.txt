@@ -204,6 +204,8 @@ SET(FALCON_SOURCES
 		SearchWords.cpp 
 		Section.cpp 
 		SectionPage.cpp 
+		SectorBuffer.cpp
+		SectorCache.cpp
 		Sequence.cpp
 		SequenceManager.cpp 
 		SequenceResultSet.cpp
@@ -480,6 +482,8 @@ SET(FALCON_SOURCES
 		SearchWords.h 
 		Section.h 
 		SectionPage.h 
+		SectorBuffer.h
+		SectorCache.h
 		Sequence.h
 		SequenceManager.h 
 		SequencePage.h 
