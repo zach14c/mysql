@@ -1772,6 +1772,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
         if ((thd_info->db=tmp->db))             // Safe test
           thd_info->db=thd->strdup(thd_info->db);
         thd_info->command=(int) tmp->command;
+        pthread_mutex_lock(&tmp->LOCK_delete);
         if ((mysys_var= tmp->mysys_var))
           pthread_mutex_lock(&mysys_var->mutex);
         thd_info->proc_info= (char*) (tmp->killed == THD::KILL_CONNECTION? "Killed" : 0);
@@ -1790,7 +1791,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
 #endif
         if (mysys_var)
           pthread_mutex_unlock(&mysys_var->mutex);
-
+        pthread_mutex_unlock(&tmp->LOCK_delete);
         thd_info->start_time= tmp->start_time;
         thd_info->query=0;
         if (tmp->query)
@@ -1889,6 +1890,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
         table->field[3]->set_notnull();
       }
 
+      pthread_mutex_lock(&tmp->LOCK_delete);
       if ((mysys_var= tmp->mysys_var))
         pthread_mutex_lock(&mysys_var->mutex);
       /* COMMAND */
@@ -1922,6 +1924,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
 
       if (mysys_var)
         pthread_mutex_unlock(&mysys_var->mutex);
+      pthread_mutex_unlock(&tmp->LOCK_delete);
 
       /* INFO */
       if (tmp->query)
