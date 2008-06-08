@@ -64,11 +64,22 @@ void Gopher::gopherThread(void)
 		
 		SerialLogTransaction *transaction = log->pending.first;
 		log->pending.remove(transaction);
+
+		
+		Sync serializeGophers(&log->syncSerializeGophers, "Gopher::gopherThread(4)");
+
+		if (transaction->allowConcurrentGophers)
+			serializeGophers.lock(Shared);
+		else
+			serializeGophers.lock(Exclusive);
+
 		sync.unlock();
 
 		transaction->doAction();
 
 		sync.lock(Exclusive);
+		serializeGophers.unlock();
+
 		log->inactions.append(transaction);
 		
 		if (log->pending.count > log->maxTransactions && !log->blocking)
