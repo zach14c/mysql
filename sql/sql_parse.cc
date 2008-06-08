@@ -3293,8 +3293,10 @@ end_with_restore_list:
       - no non-transactional locks exist (!thd->locked_tables_mode).
     */
     DBUG_PRINT("lock_info", ("lex->lock_transactional: %d  "
+                             "thd->locked_tables_mode: %d  "
                              "thd->lock: %p",
                              lex->lock_transactional,
+                             thd->locked_tables_mode,
                              thd->lock));
     if (lex->lock_transactional && !thd->locked_tables_mode)
     {
