@@ -7,6 +7,7 @@ part_supported_sql_func_ndb    : cannot create t1
 partition_alter1_1_ndb         : test works, but runs too long on PB
 partition_alter1_1_2_ndb       : test works, but runs too long on PB
 partition_alter1_2_ndb         : test works, but runs too long on PB
+partition_alter1_ndb           : timeout. Needs too much time.
 partition_alter2_ndb           : cannot create t1
 partition_basic_ndb            : cannot create t1
 partition_bit_ndb              : cannot create t1

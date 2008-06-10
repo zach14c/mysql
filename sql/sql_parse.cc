@@ -804,6 +804,7 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   DBUG_RETURN(FALSE);
 }
 
+
 /**
   Perform one connection-level (COM_XXXX) command.
 
@@ -3304,6 +3305,7 @@ end_with_restore_list:
                              "thd->locked_tables: %p",
                              lex->lock_transactional,
                              thd->locked_tables));
+
     if (lex->lock_transactional && !thd->locked_tables)
     {
       int rc;

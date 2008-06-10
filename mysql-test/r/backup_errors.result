@@ -1,3 +1,6 @@
+call mtr.add_supression("Backup:");
+call mtr.add_supression("Restore:");
+call mtr.add_supression("Can't open the online backup progress tables");
 DROP DATABASE IF EXISTS adb;
 DROP DATABASE IF EXISTS bdb;
 RESTORE FROM 'test.bak';

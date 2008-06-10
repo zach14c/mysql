@@ -54,6 +54,7 @@ while ($nesting)
 --enable_query_log
 drop table t1;
 
+<<<<<<< TREE
 --echo End of 5.1 tests
 
 #
@@ -68,3 +69,6 @@ SELECT * FROM v1;
 drop view v1;
 drop table t1;
 
+=======
+--echo End of tests
+>>>>>>> MERGE-SOURCE

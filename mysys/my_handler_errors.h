@@ -92,7 +92,7 @@ static const char *handler_error_messages[]=
   /* HA_ERR_DROP_INDEX_FK */
   "Index needed in foreign key constraint",
   /* HA_ERR_FOREIGN_DUPLICATE_KEY */
-  "Upholding foreign key constraints would lead to a duplicate key error in "
+  "Upholding foreign key constraints would lead to a duplicate key error in ",
   /* HA_ERR_TABLE_NEEDS_UPGRADE */
   "Table needs to be upgraded before it can be used",
   /* HA_ERR_TABLE_READONLY */
