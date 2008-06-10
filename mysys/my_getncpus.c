@@ -22,10 +22,6 @@
 
 static int ncpus=0;
 
-#ifdef _WIN32
-typedef VOID (WINAPI *LPFN_GETNATIVESYSTEMINFO)(LPSYSTEM_INFO);
-#endif
-
 int my_getncpus()
 {
   if (!ncpus)
@@ -34,18 +30,14 @@ int my_getncpus()
     ncpus= sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(__WIN__)
     SYSTEM_INFO sysinfo;
-	LPFN_GETNATIVESYSTEMINFO fnGetNativeSystemInfo;
 
 	/*
-	We use GetProcAddress because GetNativeSystemInfo is only available
-	starting with Windows XP and Windows Server 2003
+	* We are not calling GetNativeSystemInfo here because (1) we
+	* don't believe that they return different values for number
+	* of processors and (2) if WOW64 limits processors for Win32
+	* then we don't want to try to override that.
 	*/
-    fnGetNativeSystemInfo = (LPFN_GETNATIVESYSTEMINFO)GetProcAddress(
-        GetModuleHandle(TEXT("kernel32")),"GetNativeSystemInfo");
-	if (NULL != fnGetNativeSystemInfo)
-		fnGetNativeSystemInfo(&sysinfo);
-	else
-		GetSystemInfo(&sysinfo);
+	GetSystemInfo(&sysinfo);
 
     ncpus= sysinfo.dwNumberOfProcessors;
 #else
