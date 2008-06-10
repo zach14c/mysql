@@ -41,6 +41,7 @@
 #include "SRLDropTableSpace.h"
 #include "Log.h"
 #include "InfoTable.h"
+#include "Thread.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -57,6 +58,7 @@ TableSpaceManager::TableSpaceManager(Database *db)
 	memset(nameHash, 0, sizeof(nameHash));
 	memset(idHash, 0, sizeof(nameHash));
 	tableSpaces = NULL;
+	pendingDrops = 0;
 }
 
 TableSpaceManager::~TableSpaceManager()
@@ -168,10 +170,32 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
-	if (!repository && tableSpace->dbb->doesFileExist(fileName))
+	if (!repository)
 		{
-		delete tableSpace;
-		throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
+		bool fileExists;
+
+		// Check if table space file already exists.
+		// Take into account, that tablespace might have been already  dropped
+		// by another transaction, yet file can still be present on the disk,
+		// if log record is not yet fully committed by the gopher thread).
+		// So we'll wait for a few seconds if there are pending drops and 
+		// tablespace file exists.
+
+		for (int i=0; i < 10; i++)
+			{
+			fileExists = tableSpace->dbb->doesFileExist(fileName);
+
+			if (fileExists && pendingDrops > 0)
+				Thread::getThread("TableSpaceManager::createTableSpace")->sleep(1000);
+			else
+				break;
+			}
+
+		if (fileExists)
+			{
+			delete tableSpace;
+			throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
+			}
 		}
 		
 	try
@@ -302,6 +326,7 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 	statement->executeUpdate();
 	Transaction *transaction = database->getSystemTransaction();
 	transaction->hasUpdates = true;
+	pendingDrops++;
 	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
 
 	syncDDL.unlock();
@@ -386,6 +411,9 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 	sync.unlock();
 	tableSpace->dropTableSpace();
 	delete tableSpace;
+
+	sync.lock(Exclusive);
+	if(pendingDrops >0) pendingDrops--;
 }
 
 void TableSpaceManager::reportWrites(void)
