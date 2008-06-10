@@ -440,7 +440,7 @@ StorageInterface::~StorageInterface(void)
 		storageConnection = NULL;
 		}
 
-	delete [] fieldMap;
+	unmapFields();
 }
 
 int StorageInterface::rnd_init(bool scan)
@@ -533,6 +533,7 @@ int StorageInterface::close(void)
 	if (storageTable)
 		storageTable->clearTruncateLock();
 
+	unmapFields();
 	FALCON_CLOSE();
 
 	DBUG_RETURN(0);
@@ -3442,6 +3443,7 @@ int StorageInterface::recover (handlerton * hton, XID *xids, uint length)
 void StorageInterface::mapFields(TABLE *table)
 {
 	maxFields = storageShare->format->maxId;
+	unmapFields();
 	fieldMap = new Field*[maxFields];
 	memset(fieldMap, 0, sizeof(fieldMap[0]) * maxFields);
 	char nameBuffer[129];
@@ -3454,6 +3456,15 @@ void StorageInterface::mapFields(TABLE *table)
 		
 		if (id >= 0)
 			fieldMap[id] = field;
+		}
+}
+
+void StorageInterface::unmapFields(void)
+{
+	if (fieldMap)
+		{
+		delete []fieldMap;
+		fieldMap = NULL;
 		}
 }
 

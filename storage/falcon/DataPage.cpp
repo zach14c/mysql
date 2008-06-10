@@ -470,3 +470,12 @@ void DataPage::print(void)
 		}
 
 }
+
+
+void DataPage::backup(EncodedDataStream* stream)
+{
+}
+
+void DataPage::restore(EncodedDataStream* stream)
+{
+}

@@ -13,23 +13,35 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-#ifndef _BACKUP_H_
-#define _BACKUP_H_
+#ifndef _SECTOR_CACHE_H_
+#define _SECTOR_CACHE_H_
 
-static const int BACKUP_page	= 1;
+#include "SyncObject.h"
 
-class Database;
+static const int SECTOR_BUFFER_SIZE		= 65536;
+static const int SECTOR_HASH_SIZE		= 1024;
+
+class SectorBuffer;
 class Dbb;
-class EncodedDataStream;
+class Bdb;
 
-class Backup
+class SectorCache
 {
 public:
-	Backup(Database *db);
-	~Backup(void);
-	void backupPage(Dbb* dbb, int32 pageNumber, EncodedDataStream* stream);
+	SectorCache(int numberBuffers, int pageSize);
+	~SectorCache(void);
 	
-	Database*	database;
+	void readPage(Bdb* bdb);
+
+	SyncObject		syncObject;
+	SectorBuffer	*buffers;
+	SectorBuffer	*nextBuffer;
+	SectorBuffer	*hashTable[SECTOR_HASH_SIZE];
+	UCHAR			*bufferSpace;
+	int				numberBuffers;
+	int				pageSize;
+	int				pagesPerSector;
+	void writePage(Bdb* bdb);
 };
 
 #endif

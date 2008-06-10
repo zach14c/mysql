@@ -53,7 +53,7 @@ enum AddNodeResult
 
 class Validation;
 class Dbb;
-
+class EncodedDataStream;
 
 class Page  
 {

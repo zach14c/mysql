@@ -349,7 +349,7 @@ int32 Section::insertStub(TransId transId)
 			BDB_HISTORY(bdb);
 			SectionPage *pages = (SectionPage*) bdb->buffer;
 
-			if (pages->isFull)
+			if (pages->flags & SECTION_FULL)
 				{
 				bdb->release(REL_HISTORY);
 				bdb = NULL;
@@ -513,7 +513,8 @@ void Section::updateRecord(int32 recordNumber, Stream *stream, TransId transId, 
 	Bdb *bdb = getSectionPage (sequence, Shared, transId);
 	BDB_HISTORY(bdb);
 	SectionPage *sectionPage = (SectionPage*) bdb->buffer;
-	bool isFull = sectionPage->isFull;
+	//bool isFull = sectionPage->isFull;
+	bool isFull = (sectionPage->flags & SECTION_FULL) != 0;
 	int32 pageNumber = sectionPage->pages [slot % dbb->pagesPerSection];
 	ASSERT (pageNumber);
 	bdb = dbb->handoffPage (bdb, pageNumber, PAGE_record_locator, Exclusive);
@@ -1180,9 +1181,9 @@ void Section::markFull(bool isFull, int sequence, TransId transId)
 	SectionPage *pages = (SectionPage*) bdb->buffer;
 
 	if (isFull)
-		pages->isFull = true;
+		pages->flags |= SECTION_FULL;
 	else
-		pages->isFull = false;
+		pages->flags &= ~SECTION_FULL;
 		
 	bdb->release(REL_HISTORY);
 }

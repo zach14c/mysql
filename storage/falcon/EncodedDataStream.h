@@ -310,7 +310,6 @@ class BigInt;
 class EncodedDataStream  
 {
 public:
-	virtual void encodeOpaque(int length, const char *string);
 	EncodedDataStream();
 	EncodedDataStream (Stream *stream);
 	EncodedDataStream(const UCHAR* data, uint length);
@@ -333,6 +332,8 @@ public:
 	virtual void	encodeBinaryBlob (Value *value);
 	virtual void	encodeAsciiBlob (Value *value);
 	virtual void	encodeEncoding (const unsigned char *encodedValue);
+	virtual void	encodeOpaque(int length, const char *string);
+	
 	virtual INT64	getInt64 (int requiredScale);
 	virtual DataStreamType		decode();
 

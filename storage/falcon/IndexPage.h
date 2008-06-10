@@ -65,6 +65,9 @@ public:
 	Btn*		findPriorNodeForSupernode(Btn *where,IndexKey *priorKey);
 	Btn*		getEnd(void);
 
+	void		backup(EncodedDataStream* stream);
+	void		restore(EncodedDataStream* stream);
+
 	static int		computePrefix (IndexKey *key1, IndexKey *key2);
 	static Bdb*		findLevel (Dbb *dbb, int32 indexId, Bdb *bdb, int level, IndexKey *indexKey, int32 recordNumber);
 	static Bdb*		createNewLevel (Dbb* dbb, int level, int version, TransId transId);

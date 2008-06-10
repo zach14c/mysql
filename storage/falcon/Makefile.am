@@ -117,8 +117,11 @@ falcon_headers= Agent.h Alias.h Application.h \
 		ScaledBinary.h ScanDir.h \
 		Scan.h ScanType.h Scavenger.h Scheduled.h ScheduleElement.h \
 		Schedule.h Scheduler.h Schema.h Search.h SearchHit.h \
-		SearchWords.h Section.h \
+		SearchWords.h \
+		Section.h \
 		SectionPage.h \
+		SectorBuffer.h \
+		SectorCache.h \
 		Sequence.h SequenceManager.h SequencePage.h \
 		SequenceResultSet.h \
 		Serialize.h \
@@ -291,8 +294,12 @@ falcon_sources= Agent.cpp Alias.cpp \
 		ScaledBinary.cpp Scan.cpp \
 		ScanDir.cpp Scavenger.cpp Schedule.cpp Scheduled.cpp \
 		ScheduleElement.cpp Scheduler.cpp Schema.cpp Search.cpp \
-		SearchHit.cpp SearchWords.cpp Section.cpp \
-		SectionPage.cpp Sequence.cpp \
+		SearchHit.cpp SearchWords.cpp \
+		Section.cpp \
+		SectionPage.cpp \
+		SectorBuffer.cpp \
+		SectorCache.cpp \
+		Sequence.cpp \
 		SequenceManager.cpp SequenceResultSet.cpp \
 		Serialize.cpp \
 		SerialLogAction.cpp SerialLogControl.cpp SerialLog.cpp \

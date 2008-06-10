@@ -17,7 +17,7 @@
 #include "Backup.h"
 #include "Database.h"
 #include "Dbb.h"
-#include "Bdb.h"
+#include "BDB.h"
 #include "IndexPage.h"
 #include "RecordLocatorPage.h"
 #include "DataPage.h"
