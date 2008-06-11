@@ -1073,7 +1073,7 @@ protected:
   */ 
   ulong rem_space() 
   { 
-    return max((buff+buff_size-last_key_entry)-(end_pos-buff)-aux_buff_size,0);
+    return max(last_key_entry-end_pos-aux_buff_size,0);
   }
 
   /* 
