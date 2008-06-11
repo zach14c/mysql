@@ -1,23 +1,9 @@
-<<<<<<< TREE
-stop slave;
-drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
-reset master;
-reset slave;
-drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
-start slave;
-stop slave;
 DROP DATABASE IF EXISTS federated;
 CREATE DATABASE federated;
 DROP DATABASE IF EXISTS federated;
 CREATE DATABASE federated;
 SET @OLD_CONCURRENT_INSERT= @@GLOBAL.CONCURRENT_INSERT;
 SET @@GLOBAL.CONCURRENT_INSERT= 0;
-=======
-DROP DATABASE IF EXISTS federated;
-CREATE DATABASE federated;
-DROP DATABASE IF EXISTS federated;
-CREATE DATABASE federated;
->>>>>>> MERGE-SOURCE
 DROP TABLE IF EXISTS federated.t1;
 Warnings:
 Note	1051	Unknown table 't1'
