@@ -994,15 +994,14 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
       wait_for_refresh=0;			// Nothing to wait for
   }
 
-  if (!wait_for_refresh)
-  {
-    if (!have_lock)
-      pthread_mutex_unlock(&LOCK_open);
-    DBUG_RETURN(result);
-  }
+  if (!have_lock)
+    pthread_mutex_unlock(&LOCK_open);
 
+  if (!wait_for_refresh)
+    DBUG_RETURN(result);
+
+  /* Code below assume that LOCK_open is released. */
   DBUG_ASSERT(!have_lock);
-  pthread_mutex_unlock(&LOCK_open);
 
   if (thd->locked_tables_mode)
   {
