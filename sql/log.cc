@@ -34,7 +34,7 @@
 #include <stdarg.h>
 #include <m_ctype.h>				// For test_if_number
 
-#ifdef __NT__
+#ifdef _WIN32
 #include "message.h"
 #endif
 
@@ -1745,7 +1745,7 @@ err:
   DBUG_RETURN(-1);
 }
 
-#ifdef __NT__
+#ifdef _WIN32
 static int eventSource = 0;
 
 static void setup_windows_event_source()
@@ -1780,8 +1780,7 @@ static void setup_windows_event_source()
   RegCloseKey(hRegKey);
 }
 
-#endif /* __NT__ */
-
+#endif /* _WIN32 */
 
 /**
   Find a unique filename for 'filename.#'.
@@ -1911,7 +1910,7 @@ bool MYSQL_LOG::open(const char *log_name, enum_log_type log_type_arg,
 #ifdef EMBEDDED_LIBRARY
                         "embedded library\n",
                         my_progname, server_version, MYSQL_COMPILATION_COMMENT
-#elif __NT__
+#elif _WIN32
 			"started with:\nTCP Port: %d, Named Pipe: %s\n",
                         my_progname, server_version, MYSQL_COMPILATION_COMMENT,
                         mysqld_port, mysqld_unix_port
@@ -4647,7 +4646,7 @@ void MYSQL_BIN_LOG::signal_update()
   DBUG_VOID_RETURN;
 }
 
-#ifdef __NT__
+#ifdef _WIN32
 static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
                                         size_t length, size_t buffLen)
 {
@@ -4680,7 +4679,7 @@ static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
 
   DBUG_VOID_RETURN;
 }
-#endif /* __NT__ */
+#endif /* _WIN32 */
 
 
 /**
@@ -4745,7 +4744,7 @@ int vprint_msg_to_log(enum loglevel level, const char *format, va_list args)
 
   print_buffer_to_file(level, error_code, buff, length);
 
-#ifdef __NT__
+#ifdef _WIN32
   print_buffer_to_nt_eventlog(level, buff, length, sizeof(buff));
 #endif
 
