@@ -1641,7 +1641,7 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
     case -1:
       DBUG_ASSERT(thd->in_sub_stmt);
       error= 1;
-      goto err_with_placeholders;
+      goto err;
     default:
       // temporary table not found
       error= 0;
@@ -1678,18 +1678,19 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
     {
       if (thd->locked_tables_mode)
       {
-        if (close_cached_table(thd, table->table))
+        if (wait_while_table_is_used(thd, table->table, HA_EXTRA_FORCE_REOPEN))
         {
           error= -1;
-          goto err_with_placeholders;
+          goto err;
         }
+        close_all_tables_for_name(thd, table->table->s, TRUE);
         table->table= 0;
       }
 
       if (thd->killed)
       {
         error= -1;
-        goto err_with_placeholders;
+        goto err;
       }
       alias= (lower_case_table_names == 2) ? table->alias : table->table_name;
       /* remove .frm file and engine files */
@@ -1823,7 +1824,7 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
       */
     }
   }
-err_with_placeholders:
+err:
   if (!drop_temporary)
   {
     /*
@@ -1840,7 +1841,7 @@ err_with_placeholders:
     if (thd->locked_tables_mode &&
         thd->lock && thd->lock->table_count == 0 && non_temp_tables_count > 0)
     {
-      unlock_locked_tables(thd);
+      thd->locked_tables_list.unlock_locked_tables(thd);
       goto end;
     }
     for (table= tables; table; table= table->next_local)
@@ -3930,7 +3931,10 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
   const char **ext;
   MY_STAT stat_info;
   MDL_LOCK_DATA *mdl_lock_data;
+  enum enum_open_table_action ot_action_unused;
   DBUG_ENTER("prepare_for_repair");
+  uint reopen_for_repair_flags= (MYSQL_LOCK_IGNORE_FLUSH |
+                                 MYSQL_OPEN_HAS_MDL_LOCK);
 
   if (!(check_opt->sql_flags & TT_USEFRM))
     DBUG_RETURN(0);
@@ -3966,8 +3970,9 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
       pthread_mutex_unlock(&LOCK_open);
       DBUG_RETURN(0);                           // Out of memory
     }
-    table= &tmp_table;
     pthread_mutex_unlock(&LOCK_open);
+    table= &tmp_table;
+    table_list->mdl_lock_data= mdl_lock_data;
   }
   else
   {
@@ -4028,8 +4033,9 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
       Table was successfully open in mysql_admin_table(). Now we need
       to close it, but leave it protected by exclusive metadata lock.
     */
-    if (close_cached_table(thd, table))
+    if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
       goto end;
+    close_all_tables_for_name(thd, table_list->table->s, FALSE);
     table_list->table= 0;
   }
   /*
@@ -4057,21 +4063,24 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
     goto end;
   }
 
+  if (thd->locked_tables_list.reopen_tables(thd))
+    goto end;
+
   /*
     Now we should be able to open the partially repaired table
     to finish the repair in the handler later on.
   */
-  pthread_mutex_lock(&LOCK_open);
-  if (reopen_name_locked_table(thd, table_list))
+  if (! (table_list->table= open_table(thd, table_list, thd->mem_root,
+                                       &ot_action_unused,
+                                       reopen_for_repair_flags)))
   {
-    pthread_mutex_unlock(&LOCK_open);
     error= send_check_errmsg(thd, table_list, "repair",
                              "Failed to open partially repaired table");
     goto end;
   }
-  pthread_mutex_unlock(&LOCK_open);
 
 end:
+  thd->locked_tables_list.unlink_all_closed_tables();
   if (table == &tmp_table)
   {
     pthread_mutex_lock(&LOCK_open);
@@ -4767,6 +4776,11 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
                                           db, table_name, reg_ext, 0);
     if (!access(dst_path, F_OK))
       goto table_exists;
+    /*
+      Make the metadata lock available to open_table() called to
+      reopen the table down the road.
+    */
+    table->mdl_lock_data= target_lock_data;
   }
 
   DBUG_EXECUTE_IF("sleep_create_like_before_copy", my_sleep(6000000););
@@ -4874,20 +4888,18 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
         char buf[2048];
         String query(buf, sizeof(buf), system_charset_info);
         query.length(0);  // Have to zero it since constructor doesn't
-
+        enum enum_open_table_action ot_action_unused;
         /*
           Here we open the destination table, on which we already have
-          exclusive metada lock. This is needed for store_create_info()
-          to work. The table will be closed by unlink_open_table() at
-          the end of this function.
+          exclusive metadata lock. This is needed for store_create_info()
+          to work. The table will be closed by close_thread_table() at
+          the end of this branch.
         */
-        pthread_mutex_lock(&LOCK_open);
-        if (reopen_name_locked_table(thd, table))
-        {
-          pthread_mutex_unlock(&LOCK_open);
+        table->table= open_table(thd, table, thd->mem_root, &ot_action_unused,
+                                 MYSQL_OPEN_REOPEN);
+
+        if (! table->table)
           goto err;
-        }
-        pthread_mutex_unlock(&LOCK_open);
 
         IF_DBUG(int result=) store_create_info(thd, table, &query,
                                                create_info);
@@ -4895,8 +4907,14 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
         DBUG_ASSERT(result == 0); // store_create_info() always return 0
         write_bin_log(thd, TRUE, query.ptr(), query.length());
 
+        DBUG_ASSERT(thd->open_tables == table->table);
         pthread_mutex_lock(&LOCK_open);
-        unlink_open_table(thd, table->table, FALSE);
+        /*
+          When opening the table, we ignored the locked tables
+          (MYSQL_OPEN_GET_NEW_TABLE). Now we can close the table without
+          risking to close some locked table.
+        */
+        close_thread_table(thd, &thd->open_tables);
         pthread_mutex_unlock(&LOCK_open);
       }
       else                                      // Case 1
@@ -5666,95 +5684,88 @@ TABLE *create_altered_table(THD *thd,
 /*
   Perform a fast or on-line alter table
 
-  SYNOPSIS
-    mysql_fast_or_online_alter_table()
-      thd              Thread handle
-      table            The original table
-      altered_table    A temporary table showing how we will change table
-      create_info      Information from the parsing phase about new
-                       table properties.
-      alter_info       Storage place for data used during different phases
-      ha_alter_flags   Bitmask that shows what will be changed
-      keys_onoff       Specifies if keys are to be enabled/disabled
-  RETURN
-     0  OK
-    >0  An error occured during the on-line alter table operation
-    -1  Error when re-opening table
-  NOTES
-    If mysql_alter_table does not need to copy the table, it is
-    either a fast alter table where the storage engine does not
-    need to know about the change, only the frm will change,
-    or the storage engine supports performing the alter table
-    operation directly, on-line without mysql having to copy
-    the table.
-*/
-int mysql_fast_or_online_alter_table(THD *thd,
-                                     TABLE *table,
-                                     TABLE *altered_table,
-                                     HA_CREATE_INFO *create_info,
-                                     HA_ALTER_INFO *alter_info,
-                                     HA_ALTER_FLAGS *ha_alter_flags,
-                                     enum enum_enable_or_disable keys_onoff)
-{
-  int error= 0;
-  bool online= (table->file->ha_table_flags() & HA_ONLINE_ALTER)?true:false;
-  TABLE *t_table;
+  @param  thd            Thread handle
+  @param  table_list     The original table
+  @param  altered_table  A temporary table showing how we will change table
+  @param  create_info    Information from the parsing phase about new
+                         table properties.
+  @param  alter_info     Storage place for data used during different phases
+  @param  ha_alter_flags Bitmask that shows what will be changed
+  @param  keys_onoff     Specifies if keys are to be enabled/disabled
 
-  DBUG_ENTER(" mysql_fast_or_online_alter_table");
-  if (online)
+  If mysql_alter_table() does not need to copy the table, it is
+  either a fast alter table, where the storage engine does not
+  need to know about the change, only the frm will change,
+  or the storage engine supports performing the alter table
+  operation directly, on-line, without mysql having to copy
+  the table.
+
+  @retval  0  success
+  @retval  1  error, that happened before we took an
+              exclusive metadata lock
+  @retval  2  error, that happened after we took an
+              exclusive metadata lock
+*/
+
+int
+mysql_fast_or_online_alter_table(THD *thd,
+                                 TABLE_LIST *table_list,
+                                 TABLE *altered_table,
+                                 HA_CREATE_INFO *create_info,
+                                 HA_ALTER_INFO *alter_info,
+                                 HA_ALTER_FLAGS *ha_alter_flags,
+                                 enum enum_enable_or_disable keys_onoff)
+{
+  TABLE *table= table_list->table;
+  bool is_online_alter= table->file->ha_table_flags() & HA_ONLINE_ALTER;
+  int error;
+
+  DBUG_ENTER("mysql_fast_or_online_alter_table");
+
+  if (is_online_alter)
   {
-   /*
-      Tell the handler to prepare for the online alter
-    */
-    if ((error= table->file->alter_table_phase1(thd,
-                                                altered_table,
-                                                create_info,
-                                                alter_info,
-                                                ha_alter_flags)))
-    {
-      goto err;
-    }
+    /* Tell the storage engine to prepare for the online ALTER. */
+    if (table->file->alter_table_phase1(thd, altered_table,
+                                        create_info, alter_info,
+                                        ha_alter_flags))
+      DBUG_RETURN(1);
 
     /*
-       Tell the storage engine to perform the online alter table
-       TODO: 
-       if check_if_supported_alter() returned HA_ALTER_SUPPORTED_WAIT_LOCK
-       we need to wrap the next call with a DDL lock.
-     */
-    if ((error= table->file->alter_table_phase2(thd,
-                                                altered_table,
-                                                create_info,
-                                                alter_info,
-                                                ha_alter_flags)))
-    {
-      goto err;
-    }
+      Tell the storage engine to perform the online ALTER.
+      @todo If check_if_supported_alter() returns
+      HA_ALTER_SUPPORTED_WAIT_LOCK we need to wrap the next call
+      with a DDL lock.
+    */
+    if (table->file->alter_table_phase2(thd, altered_table,
+                                        create_info, alter_info,
+                                        ha_alter_flags))
+      DBUG_RETURN(1);
   }
+
   /*
-    The final .frm file is already created as a temporary file
-    and will be renamed to the original table name.
+    Upgrade the shared metadata lock to exclusive and close all
+    instances of the table in the TDC except those used in this thread.
   */
   if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
-  {
-    error= 1;
-    goto err;
-  }
-  pthread_mutex_lock(&LOCK_open);
+    DBUG_RETURN(1);
+
   alter_table_manage_keys(table, table->file->indexes_are_disabled(),
                           keys_onoff);
-  close_data_files_and_leave_as_placeholders(thd, table->pos_in_table_list->db,
-                                          table->pos_in_table_list->table_name);
-  if (mysql_rename_table(NULL,
-			 altered_table->s->db.str,
-                         altered_table->s->table_name.str,
-			 table->s->db.str,
-                         table->s->table_name.str, FN_FROM_IS_TMP))
-  {
-    error= 1;
-    pthread_mutex_unlock(&LOCK_open);
-    goto err;
-  }
-  broadcast_refresh();
+
+  /* Now close all open instances of the table in this thread */
+  close_all_tables_for_name(thd, table->s, FALSE);
+  table_list->table= 0;                         /* The table was closed */
+
+  /*
+    The final .frm file is already created as a temporary file.
+    Let's rename it to the original table name.
+  */
+  pthread_mutex_lock(&LOCK_open);
+  error= mysql_rename_table(NULL,
+                            altered_table->s->db.str,
+                            altered_table->s->table_name.str,
+                            table_list->db, table_list->table_name,
+                            FN_FROM_IS_TMP);
   pthread_mutex_unlock(&LOCK_open);
 
   /*
@@ -5764,45 +5775,38 @@ int mysql_fast_or_online_alter_table(THD *thd,
     with LOCK_open.
   */
   error= ha_autocommit_or_rollback(thd, 0);
-
   if (ha_commit(thd))
-    error=1;
-  if (error)
-    goto err;
-  if (online)
-  {
-    pthread_mutex_lock(&LOCK_open);
-    if (reopen_table(table))
-    {
-      error= -1;
-      goto err;
-    }
-    pthread_mutex_unlock(&LOCK_open);
-    t_table= table;
+    error= 1;
 
-   /*
-      Tell the handler that the changed frm is on disk and table
-      has been re-opened
-   */
-    if ((error= t_table->file->alter_table_phase3(thd, t_table)))
-    {
-      goto err;
-    }
+  if (error)
+    DBUG_RETURN(2);
+
+  if (is_online_alter)
+  {
+    enum enum_open_table_action ot_action_unused;
+    /*
+      Here we open the destination table, on which we already have
+      an exclusive metadata lock.
+    */
+    table= open_table(thd, table_list, thd->mem_root,
+                      &ot_action_unused, MYSQL_OPEN_REOPEN);
+
+    if (! table)
+      DBUG_RETURN(2);
 
     /*
-      We are going to reopen table down on the road, so we have to restore
-      state of the TABLE object which we used for obtaining of handler
-      object to make it suitable for reopening.
+      Tell the handler that the changed .frm is on disk and the
+      table has been re-opened successfully.
     */
-    DBUG_ASSERT(t_table == table);
+    if (table->file->alter_table_phase3(thd, table))
+      error= 2;
+
+    DBUG_ASSERT(thd->open_tables == table);
     pthread_mutex_lock(&LOCK_open);
-    close_handle_and_leave_table_as_placeholder(table);
+    close_thread_table(thd, &thd->open_tables);
     pthread_mutex_unlock(&LOCK_open);
   }
-
- err:
-  if (error)
-    DBUG_PRINT("info", ("Got error %u", error));
+  DBUG_ASSERT(table_list->table == 0);
   DBUG_RETURN(error);
 }
 
@@ -6575,13 +6579,14 @@ view_err:
       /*
         Then do a 'simple' rename of the table. First we need to close all
         instances of 'source' table.
-        Note that if close_cached_table() returns error here (i.e. if
+        Note that if wait_while_table_is_used() returns error here (i.e. if
         this thread was killed) then it must be that previous step of
-        simple rename did nothing and therefore we can safely reture
+        simple rename did nothing and therefore we can safely return
         without additional clean-up.
       */
-      if (close_cached_table(thd, table))
+      if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
         goto err;
+      close_all_tables_for_name(thd, table->s, TRUE);
       /*
         Then, we want check once again that target table does not exist.
         Actually the order of these two steps does not matter since
@@ -6810,32 +6815,24 @@ view_err:
     if (!need_copy_table)
     {
       error= mysql_fast_or_online_alter_table(thd,
-                                              table,
+                                              table_list,
                                               altered_table,
                                               create_info,
                                               &ha_alter_info,
                                               &ha_alter_flags,
                                               alter_info->keys_onoff);
-      if (thd->lock && !thd->locked_tables_mode)
-      {
-        mysql_unlock_tables(thd, thd->lock);
-        thd->lock=0;
-      }
       close_temporary_table(thd, altered_table, 1, 1);
 
-      if (error)
-      {
-        switch (error) {
-        case(-1):
-          goto err_with_placeholders;
-        default:
-          goto err;
-        }
-      }
-      else
-      {
-        pthread_mutex_lock(&LOCK_open);
+      switch (error) {
+      case 0:
         goto end_online;
+      case 1:
+        goto err;
+      case 2:
+        goto err_with_mdl;
+      default:
+        DBUG_ASSERT(0);
+        goto err;
       }
     }
 
@@ -6970,11 +6967,12 @@ view_err:
   if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     goto err_new_table_cleanup;
 
-  pthread_mutex_lock(&LOCK_open);
 
-  close_data_files_and_leave_as_placeholders(thd, db, table_name);
+  close_all_tables_for_name(thd, table->s,
+                            new_name != table_name || new_db != db);
 
   error=0;
+  table_list->table= table= 0;                  /* Safety */
   save_old_db_type= old_db_type;
 
   /*
@@ -6990,6 +6988,7 @@ view_err:
     table is renamed and the SE is also changed, then an intermediate table
     is created and the additional call will not take place.
   */
+  pthread_mutex_lock(&LOCK_open);
   if (mysql_rename_table(old_db_type, db, table_name, db, old_name,
                          FN_TO_IS_TMP))
   {
@@ -7010,24 +7009,17 @@ view_err:
                             FN_FROM_IS_TMP);
   }
 
-  if (error)
-  {
-    /* This shouldn't happen. But let us play it safe. */
-    goto err_with_placeholders;
-  }
-
+  if (! error)
   (void) quick_rm_table(old_db_type, db, old_name, FN_IS_TMP);
 
-end_online:
-  if (thd->locked_tables_mode && new_name == table_name && new_db == db)
-  {
-    thd->in_lock_tables= 1;
-    error= reopen_tables(thd, 1);
-    thd->in_lock_tables= 0;
-    if (error)
-      goto err_with_placeholders;
-  }
   pthread_mutex_unlock(&LOCK_open);
+
+  if (error)
+    goto err_with_mdl;
+
+end_online:
+  if (thd->locked_tables_list.reopen_tables(thd))
+    goto err_with_mdl;
 
   thd_proc_info(thd, "end");
 
@@ -7070,9 +7062,6 @@ end_online:
   {
     if ((new_name != table_name || new_db != db))
     {
-      pthread_mutex_lock(&LOCK_open);
-      unlink_open_table(thd, table, FALSE);
-      pthread_mutex_unlock(&LOCK_open);
       mdl_release_lock(&thd->mdl_context, target_lock_data);
       mdl_release_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
     }
@@ -7134,14 +7123,14 @@ err:
     mdl_release_lock(&thd->mdl_context, target_lock_data);
   DBUG_RETURN(TRUE);
 
-err_with_placeholders:
+err_with_mdl:
   /*
     An error happened while we were holding exclusive name metadata lock
-    on table being altered. To be safe under LOCK TABLES we should remove
-    placeholders from the list of open tables and relese metadata lock.
+    on table being altered. To be safe under LOCK TABLES we should
+    remove all references to the altered table from the list of locked
+    tables and release the exclusive metadata lock.
   */
-  unlink_open_table(thd, table, FALSE);
-  pthread_mutex_unlock(&LOCK_open);
+  thd->locked_tables_list.unlink_all_closed_tables();
   if (target_lock_data)
     mdl_release_lock(&thd->mdl_context, target_lock_data);
   mdl_release_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
