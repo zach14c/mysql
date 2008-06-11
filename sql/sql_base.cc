@@ -1328,6 +1328,7 @@ void close_thread_tables(THD *thd,
                          bool skip_mdl)
 {
   TABLE *table;
+  bool clear_table_lock_option= FALSE;
   DBUG_ENTER("close_thread_tables");
 
 #ifdef EXTRA_DEBUG
@@ -1399,6 +1400,11 @@ void close_thread_tables(THD *thd,
     /*
       We are under simple LOCK TABLES or we're inside a sub-statement
       of a prelocked statement, so should not do anything else.
+
+      Note that even if we are in LTM_LOCK_TABLES mode and statement
+      requires prelocking (e.g. when we are closing tables after
+      failing ot "open" all tables required for statement execution)
+      we will exit this function a few lines below.
     */
     if (! thd->lex->requires_prelocking())
       DBUG_VOID_RETURN;
@@ -1415,7 +1421,7 @@ void close_thread_tables(THD *thd,
       DBUG_VOID_RETURN;
 
     thd->locked_tables_mode= LTM_NONE;
-    thd->options&= ~OPTION_TABLE_LOCK;
+    clear_table_lock_option= TRUE;
 
     /*
       Note that we are leaving prelocked mode so we don't need
@@ -1454,6 +1460,9 @@ void close_thread_tables(THD *thd,
   {
     mdl_remove_all_locks(&thd->mdl_context);
   }
+
+  if (clear_table_lock_option)
+    thd->options&= ~OPTION_TABLE_LOCK;
 
   DBUG_VOID_RETURN;
 }
@@ -5324,6 +5333,7 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
               need to care about THD::locked_tables_root here.
             */
             mysql_unlock_tables(thd, thd->lock);
+            thd->lock= 0;
             thd->options&= ~(OPTION_TABLE_LOCK);
             DBUG_RETURN(-1);
           }
