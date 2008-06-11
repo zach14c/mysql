@@ -78,7 +78,7 @@ void SyncTest::test()
 			}
 			
 		sync.unlock();
-		Thread::sleep(5000);
+		Thread::sleep(1000);
 		stop = true;
 		threadBarn->waitForAll();
 		int total = 0;

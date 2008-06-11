@@ -92,7 +92,7 @@ public:
 	Threads			*threadBarn;
 	Thread			*next;				// next thread in "thread barn"
 	Thread			*prior;				// next thread in "thread barn"
-	Thread			*que;				// next thread in wait que (see SyncObject)
+	Thread			*queue;				// next thread in wait que (see SyncObject)
 	Thread			*srlQueue;			// serial log queue
 	LockType		lockType;			// requested lock type (see SyncObject)
 	LockType		wakeupType;			// used by SerialLog::flush
