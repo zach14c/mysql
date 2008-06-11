@@ -1588,7 +1588,7 @@ int mysql_rm_table_part2(THD *thd, TABLE_LIST *tables, bool if_exists,
         DBUG_RETURN(1);
       pthread_mutex_lock(&LOCK_open);
       for (table= tables; table; table= table->next_local)
-        expel_table_from_cache(0, table->db, table->table_name);
+        tdc_remove_table(thd, TDC_RT_REMOVE_ALL, table->db, table->table_name);
       pthread_mutex_unlock(&LOCK_open);
     }
     else
