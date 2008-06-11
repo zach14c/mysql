@@ -3175,6 +3175,49 @@ void Item_param::print(String *str, enum_query_type query_type)
 }
 
 
+/**
+  Preserve the original parameter types and values
+  when re-preparing a prepared statement.
+
+  @details Copy parameter type information and conversion
+  function pointers from a parameter of the old statement
+  to the corresponding parameter of the new one.
+
+  Move parameter values from the old parameters to the new
+  one. We simply "exchange" the values, which allows
+  to save on allocation and character set conversion in
+  case a parameter is a string or a blob/clob.
+
+  The old parameter gets the value of this one, which
+  ensures that all memory of this parameter is freed
+  correctly.
+
+  @param[in]  src   parameter item of the original
+                    prepared statement
+*/
+
+void
+Item_param::set_param_type_and_swap_value(Item_param *src)
+{
+  unsigned_flag= src->unsigned_flag;
+  param_type= src->param_type;
+  set_param_func= src->set_param_func;
+  item_type= src->item_type;
+  item_result_type= src->item_result_type;
+
+  collation.set(src->collation);
+  maybe_null= src->maybe_null;
+  null_value= src->null_value;
+  max_length= src->max_length;
+  decimals= src->decimals;
+  state= src->state;
+  value= src->value;
+
+  decimal_value.swap(src->decimal_value);
+  str_value.swap(src->str_value);
+  str_value_ptr.swap(src->str_value_ptr);
+}
+
 /****************************************************************************
   Item_copy_string
 ****************************************************************************/
@@ -4558,7 +4601,7 @@ Field *Item::make_string_field(TABLE *table)
   DBUG_ASSERT(collation.collation);
   if (max_length/collation.collation->mbmaxlen > CONVERT_IF_BIGGER_TO_BLOB)
     field= new Field_blob(max_length, maybe_null, name,
-                          collation.collation);
+                          collation.collation, TRUE);
   /* Item_type_holder holds the exact type, do not change it */
   else if (max_length > 0 &&
       (type() != Item::TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING))
@@ -5151,21 +5194,28 @@ Item_bin_string::Item_bin_string(const char *str, uint str_length)
   if (!ptr)
     return;
   str_value.set(ptr, max_length, &my_charset_bin);
-  ptr+= max_length - 1;
-  ptr[1]= 0;                     // Set end null for string
-  for (; end >= str; end--)
+
+  if (max_length > 0)
   {
-    if (power == 256)
+    ptr+= max_length - 1;
+    ptr[1]= 0;                     // Set end null for string
+    for (; end >= str; end--)
     {
-      power= 1;
-      *ptr--= bits;
-      bits= 0;     
+      if (power == 256)
+      {
+        power= 1;
+        *ptr--= bits;
+        bits= 0;
+      }
+      if (*end == '1')
+        bits|= power;
+      power<<= 1;
     }
-    if (*end == '1')
-      bits|= power; 
-    power<<= 1;
+    *ptr= (char) bits;
   }
-  *ptr= (char) bits;
+  else
+    ptr[0]= 0;
+
   collation.set(&my_charset_bin, DERIVATION_COERCIBLE);
   fixed= 1;
 }

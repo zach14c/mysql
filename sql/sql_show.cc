@@ -26,8 +26,10 @@
 #include "sql_trigger.h"
 #include "authors.h"
 #include "contributors.h"
+#ifdef HAVE_EVENT_SCHEDULER
 #include "events.h"
 #include "event_data_objects.h"
+#endif
 #include <my_dir.h>
 
 #define STR_OR_NIL(S) ((S) ? (S) : "<nil>")
@@ -288,7 +290,9 @@ static struct show_privileges_st sys_privileges[]=
   {"Create user", "Server Admin",  "To create new users"},
   {"Delete", "Tables",  "To delete existing rows"},
   {"Drop", "Databases,Tables", "To drop databases, tables, and views"},
+#ifdef HAVE_EVENT_SCHEDULER
   {"Event","Server Admin","To create, alter, drop and execute events"},
+#endif
   {"Execute", "Functions,Procedures", "To execute stored routines"},
   {"File", "File access on server",   "To read and write files on the server"},
   {"Grant option",  "Databases,Tables,Functions,Procedures", "To give to other users those privileges you possess"},
@@ -340,100 +344,6 @@ bool mysqld_show_privileges(THD *thd)
 }
 
 
-/***************************************************************************
-  List all column types
-***************************************************************************/
-
-struct show_column_type_st
-{
-  const char *type;
-  uint size;
-  const char *min_value;
-  const char *max_value;
-  uint precision;
-  uint scale;
-  const char *nullable;
-  const char *auto_increment;
-  const char *unsigned_attr;
-  const char *zerofill;
-  const char *searchable;
-  const char *case_sensitivity;
-  const char *default_value;
-  const char *comment;
-  const char *storage_type;
-  const char *column_format;
-};
-
-/* TODO: Add remaning types */
-
-static struct show_column_type_st sys_column_types[]=
-{
-  {"tinyint",
-    1,  "-128",  "127",  0,  0,  "YES",  "YES",
-    "NO",   "YES", "YES",  "NO",  "NULL,0",
-    "A very small integer", "Default", "Default"},
-  {"tinyint unsigned",
-    1,  "0"   ,  "255",  0,  0,  "YES",  "YES",
-    "YES",  "YES",  "YES",  "NO",  "NULL,0",
-    "A very small integer", "Default", "Default"},
-};
-
-bool mysqld_show_column_types(THD *thd)
-{
-  List<Item> field_list;
-  Protocol *protocol= thd->protocol;
-  DBUG_ENTER("mysqld_show_column_types");
-
-  field_list.push_back(new Item_empty_string("Type",30));
-  field_list.push_back(new Item_int("Size",(longlong) 1,
-                                    MY_INT64_NUM_DECIMAL_DIGITS));
-  field_list.push_back(new Item_empty_string("Min_Value",20));
-  field_list.push_back(new Item_empty_string("Max_Value",20));
-  field_list.push_back(new Item_return_int("Prec", 4, MYSQL_TYPE_SHORT));
-  field_list.push_back(new Item_return_int("Scale", 4, MYSQL_TYPE_SHORT));
-  field_list.push_back(new Item_empty_string("Nullable",4));
-  field_list.push_back(new Item_empty_string("Auto_Increment",4));
-  field_list.push_back(new Item_empty_string("Unsigned",4));
-  field_list.push_back(new Item_empty_string("Zerofill",4));
-  field_list.push_back(new Item_empty_string("Searchable",4));
-  field_list.push_back(new Item_empty_string("Case_Sensitive",4));
-  field_list.push_back(new Item_empty_string("Default",NAME_CHAR_LEN));
-  field_list.push_back(new Item_empty_string("Comment",NAME_CHAR_LEN));
-  field_list.push_back(new Item_empty_string("Storage",8));
-  field_list.push_back(new Item_empty_string("Format",8));
-
-  if (protocol->send_fields(&field_list,
-                            Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
-    DBUG_RETURN(TRUE);
-
-  /* TODO: Change the loop to not use 'i' */
-  for (uint i=0; i < sizeof(sys_column_types)/sizeof(sys_column_types[0]); i++)
-  {
-    protocol->prepare_for_resend();
-    protocol->store(sys_column_types[i].type, system_charset_info);
-    protocol->store((ulonglong) sys_column_types[i].size);
-    protocol->store(sys_column_types[i].min_value, system_charset_info);
-    protocol->store(sys_column_types[i].max_value, system_charset_info);
-    protocol->store_short((longlong) sys_column_types[i].precision);
-    protocol->store_short((longlong) sys_column_types[i].scale);
-    protocol->store(sys_column_types[i].nullable, system_charset_info);
-    protocol->store(sys_column_types[i].auto_increment, system_charset_info);
-    protocol->store(sys_column_types[i].unsigned_attr, system_charset_info);
-    protocol->store(sys_column_types[i].zerofill, system_charset_info);
-    protocol->store(sys_column_types[i].searchable, system_charset_info);
-    protocol->store(sys_column_types[i].case_sensitivity, system_charset_info);
-    protocol->store(sys_column_types[i].default_value, system_charset_info);
-    protocol->store(sys_column_types[i].comment, system_charset_info);
-    protocol->store(sys_column_types[i].storage_type, system_charset_info);
-    protocol->store(sys_column_types[i].column_format, system_charset_info);
-    if (protocol->write())
-      DBUG_RETURN(TRUE);
-  }
-  my_eof(thd);
-  DBUG_RETURN(FALSE);
-}
-
-
 /*
   find_files() - find files in a given directory.
 
@@ -467,11 +377,16 @@ find_files(THD *thd, List<LEX_STRING> *files, const char *db,
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   uint col_access=thd->col_access;
 #endif
+  uint wild_length= 0;
   TABLE_LIST table_list;
   DBUG_ENTER("find_files");
 
-  if (wild && !wild[0])
-    wild=0;
+  if (wild)
+  {
+    wild_length= strlen(wild);
+    if (!wild[0])
+      wild= 0;
+  }
 
   bzero((char*) &table_list,sizeof(table_list));
 
@@ -535,8 +450,11 @@ find_files(THD *thd, List<LEX_STRING> *files, const char *db,
       {
 	if (lower_case_table_names)
 	{
-	  if (wild_case_compare(files_charset_info, uname, wild))
-	    continue;
+          if (my_wildcmp(files_charset_info,
+                         uname, uname + file_name_len,
+                         wild, wild + wild_length,
+                         wild_prefix, wild_one,wild_many))
+            continue;
 	}
 	else if (wild_compare(uname, wild, 0))
 	  continue;
@@ -4080,7 +3998,6 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
   DBUG_RETURN(0);
 }
 
-
 int fill_schema_engines(THD *thd, TABLE_LIST *tables, COND *cond)
 {
   return plugin_foreach(thd, iter_schema_engines,
@@ -5360,7 +5277,7 @@ static interval_type get_real_interval_type(interval_type i_type)
 
 #endif
 
-
+#ifdef HAVE_EVENT_SCHEDULER
 /*
   Loads an event from mysql.event and copies it's data to a row of
   I_S.EVENTS
@@ -5480,14 +5397,14 @@ copy_event_to_schema_table(THD *thd, TABLE *sch_table, TABLE *event_table)
 
   switch (et.status)
   {
-    case Event_timed::ENABLED:
+    case Event_parse_data::ENABLED:
       sch_table->field[ISE_STATUS]->store(STRING_WITH_LEN("ENABLED"), scs);
       break;
-    case Event_timed::SLAVESIDE_DISABLED:
+    case Event_parse_data::SLAVESIDE_DISABLED:
       sch_table->field[ISE_STATUS]->store(STRING_WITH_LEN("SLAVESIDE_DISABLED"),
                                           scs);
       break;
-    case Event_timed::DISABLED:
+    case Event_parse_data::DISABLED:
       sch_table->field[ISE_STATUS]->store(STRING_WITH_LEN("DISABLED"), scs);
       break;
     default:
@@ -5496,7 +5413,7 @@ copy_event_to_schema_table(THD *thd, TABLE *sch_table, TABLE *event_table)
   sch_table->field[ISE_ORIGINATOR]->store(et.originator, TRUE);
 
   /* on_completion */
-  if (et.on_completion == Event_timed::ON_COMPLETION_DROP)
+  if (et.on_completion == Event_parse_data::ON_COMPLETION_DROP)
     sch_table->field[ISE_ON_COMPLETION]->
                                 store(STRING_WITH_LEN("NOT PRESERVE"), scs);
   else
@@ -5546,7 +5463,7 @@ copy_event_to_schema_table(THD *thd, TABLE *sch_table, TABLE *event_table)
 
   DBUG_RETURN(0);
 }
-
+#endif
 
 int fill_open_tables(THD *thd, TABLE_LIST *tables, COND *cond)
 {
@@ -6268,6 +6185,9 @@ bool get_schema_tables_result(JOIN *join,
       bool is_subselect= (&lex->unit != lex->current_select->master_unit() &&
                           lex->current_select->master_unit()->item);
 
+      /* A value of 0 indicates a dummy implementation */
+      if (table_list->schema_table->fill_table == 0)
+        continue;
 
       /* skip I_S optimizations specific to get_all_tables */
       if (thd->lex->describe &&
@@ -6974,8 +6894,13 @@ ST_SCHEMA_TABLE schema_tables[]=
    fill_schema_column_privileges, 0, 0, -1, -1, 0, 0},
   {"ENGINES", engines_fields_info, create_schema_table,
    fill_schema_engines, make_old_format, 0, -1, -1, 0, 0},
+#ifdef HAVE_EVENT_SCHEDULER
   {"EVENTS", events_fields_info, create_schema_table,
    Events::fill_schema_events, make_old_format, 0, -1, -1, 0, 0},
+#else
+  {"EVENTS", events_fields_info, create_schema_table,
+   0, make_old_format, 0, -1, -1, 0, 0},
+#endif
   {"FILES", files_fields_info, create_schema_table,
    fill_schema_files, 0, 0, -1, -1, 0, 0},
   {"GLOBAL_STATUS", variables_fields_info, create_schema_table,

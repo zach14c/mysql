@@ -227,13 +227,13 @@ INSERT INTO t2 VALUES ( 'a`', 'a`' );
 INSERT INTO t3 VALUES ( 'a`', 'a`', '1000-01-1' );
 DROP PROCEDURE IF EXISTS sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE test.sp1 does not exist
 DROP PROCEDURE IF EXISTS sp2;
 Warnings:
-Note	1305	PROCEDURE sp2 does not exist
+Note	1305	PROCEDURE test.sp2 does not exist
 DROP PROCEDURE IF EXISTS sp3;
 Warnings:
-Note	1305	PROCEDURE sp3 does not exist
+Note	1305	PROCEDURE test.sp3 does not exist
 CREATE PROCEDURE sp1()
 BEGIN
 DECLARE x NUMERIC ZEROFILL;
@@ -280,7 +280,6 @@ set @q = repeat('q', 256);
 set sql_mode = '';
 insert into t1 values(@c, @c, @c);
 Warnings:
-Note	1265	Data truncated for column 'c_char' at row 1
 Note	1265	Data truncated for column 'c_varchar' at row 1
 Note	1265	Data truncated for column 'c_tinytext' at row 1
 insert into t2 values(@c);
@@ -297,7 +296,6 @@ Warning	1265	Data truncated for column 'c_tinyblob' at row 1
 set sql_mode = 'traditional';
 insert into t1 values(@c, @c, @c);
 Warnings:
-Note	1265	Data truncated for column 'c_char' at row 1
 Note	1265	Data truncated for column 'c_varchar' at row 1
 Note	1265	Data truncated for column 'c_tinytext' at row 1
 insert into t2 values(@c);
