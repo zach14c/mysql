@@ -328,7 +328,7 @@ static const char *optimizer_switch_names[]=
 /* Corresponding defines are named OPTIMIZER_SWITCH_XXX */
 static const unsigned int optimizer_switch_names_len[]=
 {
-  /*no_materialization*/          19,
+  /*no_materialization*/          18,
   /*no_semijoin*/                 11,
   /*no_loosescan*/                12,
 };
