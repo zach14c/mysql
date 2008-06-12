@@ -41,7 +41,7 @@
 #include <thread.h>
 #endif
 
-//#define FAST_SHARED
+#define FAST_SHARED
 
 #include "Mutex.h"
 

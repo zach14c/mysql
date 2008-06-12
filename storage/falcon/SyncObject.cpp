@@ -318,7 +318,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	if (type == Shared)
 		{
 		thread = NULL;
-		BUMP_INTERLOCKED(sharedCount);
+		//BUMP_INTERLOCKED(sharedCount);
 
 		for(;;)
 			{
