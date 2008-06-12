@@ -33,7 +33,13 @@ static int lex_one_token(void *arg, void *yythd);
 
 sys_var *trg_new_row_fake_var= (sys_var*) 0x01;
 
+/**
+  LEX_STRING constant for null-string to be used in parser and other places.
+*/
+const LEX_STRING null_lex_str= {NULL, 0};
+
 /* Longest standard keyword name */
+
 #define TOCK_NAME_LENGTH 24
 
 /*
@@ -119,7 +125,7 @@ Lex_input_stream::Lex_input_stream(THD *thd,
   yylineno(1),
   yytoklen(0),
   yylval(NULL),
-  lookahead_token(END_OF_INPUT),
+  lookahead_token(-1),
   lookahead_yylval(NULL),
   m_ptr(buffer),
   m_tok_start(NULL),
@@ -374,7 +380,7 @@ void lex_start(THD *thd)
 void lex_end(LEX *lex)
 {
   DBUG_ENTER("lex_end");
-  DBUG_PRINT("enter", ("lex: 0x%lx", (long) lex));
+  DBUG_PRINT("enter", ("lex: %p", lex));
   if (lex->yacc_yyss)
   {
     my_free(lex->yacc_yyss, MYF(0));
@@ -730,14 +736,14 @@ int MYSQLlex(void *arg, void *yythd)
   YYSTYPE *yylval=(YYSTYPE*) arg;
   int token;
 
-  if (lip->lookahead_token != END_OF_INPUT)
+  if (lip->lookahead_token >= 0)
   {
     /*
       The next token was already parsed in advance,
       return it.
     */
     token= lip->lookahead_token;
-    lip->lookahead_token= END_OF_INPUT;
+    lip->lookahead_token= -1;
     *yylval= *(lip->lookahead_yylval);
     lip->lookahead_yylval= NULL;
     return token;
@@ -1376,23 +1382,8 @@ int lex_one_token(void *arg, void *yythd)
       lip->yySkip();
       return (SET_VAR);
     case MY_LEX_SEMICOLON:			// optional line terminator
-      if (lip->yyPeek())
-      {
-        if ((thd->client_capabilities & CLIENT_MULTI_STATEMENTS) && 
-            !lip->stmt_prepare_mode)
-        {
-	  lex->safe_to_cache_query= 0;
-          lip->found_semicolon= lip->get_ptr();
-          thd->server_status|= SERVER_MORE_RESULTS_EXISTS;
-          lip->next_state= MY_LEX_END;
-          lip->set_echo(TRUE);
-          return (END_OF_INPUT);
-        }
-        state= MY_LEX_CHAR;		// Return ';'
-	break;
-      }
-      lip->next_state=MY_LEX_END;       // Mark for next loop
-      return(END_OF_INPUT);
+      state= MY_LEX_CHAR;		// Return ';'
+      break;
     case MY_LEX_EOL:
       if (lip->eof())
       {
@@ -1411,7 +1402,7 @@ int lex_one_token(void *arg, void *yythd)
     case MY_LEX_END:
       lip->next_state=MY_LEX_END;
       return(0);			// We found end of input last time
-      
+
       /* Actually real shouldn't start with . but allow them anyhow */
     case MY_LEX_REAL_OR_POINT:
       if (my_isdigit(cs,lip->yyPeek()))
@@ -1926,7 +1917,7 @@ bool st_select_lex::add_order_to_list(THD *thd, Item *item, bool asc)
 bool st_select_lex::add_item_to_list(THD *thd, Item *item)
 {
   DBUG_ENTER("st_select_lex::add_item_to_list");
-  DBUG_PRINT("info", ("Item: 0x%lx", (long) item));
+  DBUG_PRINT("info", ("Item: %p", item));
   DBUG_RETURN(item_list.push_back(item));
 }
 

@@ -2114,6 +2114,7 @@ pthread_handler_t handle_slave_io(void *arg)
 
   pthread_detach_this_thread();
   thd->thread_stack= (char*) &thd; // remember where our stack is
+  mi->clear_error();
   if (init_slave_thread(thd, SLAVE_THD_IO))
   {
     pthread_cond_broadcast(&mi->start_cond);
@@ -2204,137 +2205,135 @@ connected:
   }
 
   DBUG_PRINT("info",("Starting reading binary log from master"));
+  thd_proc_info(thd, "Requesting binlog dump");
+  if (!io_slave_killed(thd,mi) && request_dump(mysql, mi, &suppress_warnings))
+  {
+    sql_print_error("Failed on request_dump()");
+    if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
+requesting master dump") ||
+        try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
+                         reconnect_messages[SLAVE_RECON_ACT_DUMP]))
+      goto err;
+    goto connected;
+  }
+  DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_DUMP", 
+                  if (!io_slave_killed(thd,mi) && !retry_count_dump)
+                  {
+                    retry_count_dump++;
+                    sql_print_information("Forcing to reconnect slave I/O thread");
+                    if (try_to_reconnect(thd, mysql, mi, &retry_count,
+                                         suppress_warnings,
+                                         reconnect_messages[SLAVE_RECON_ACT_DUMP]))
+                      goto err;
+                    goto connected;
+                  });
+  DBUG_ASSERT(mi->last_error().number == 0);
   while (!io_slave_killed(thd,mi))
   {
-    thd_proc_info(thd, "Requesting binlog dump");
-    if (request_dump(mysql, mi, &suppress_warnings))
-    {
-      sql_print_error("Failed on request_dump()");
-      if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
-requesting master dump") ||
-          try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                           reconnect_messages[SLAVE_RECON_ACT_DUMP]))
-        goto err;
-      goto connected;
-    }
-    DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_DUMP", 
-      if (!retry_count_dump)
-      {
-        retry_count_dump++;
-        sql_print_information("Forcing to reconnect slave I/O thread");
-        if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                             reconnect_messages[SLAVE_RECON_ACT_DUMP]))
-          goto err;
-        goto connected;
-      });
+    ulong event_len;
+    /*
+      We say "waiting" because read_event() will wait if there's nothing to
+      read. But if there's something to read, it will not wait. The
+      important thing is to not confuse users by saying "reading" whereas
+      we're in fact receiving nothing.
+    */
+    thd_proc_info(thd, "Waiting for master to send event");
+    event_len= read_event(mysql, mi, &suppress_warnings);
+    if (check_io_slave_killed(thd, mi,
+                              "Slave I/O thread killed while reading event"))
+      goto err;
+    DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_EVENT",
+                    if (!retry_count_event)
+                    {
+                      retry_count_event++;
+                      sql_print_information("Forcing to reconnect slave I/O thread");
+                      if (try_to_reconnect(thd, mysql, mi, &retry_count,
+                                           suppress_warnings,
+                                           reconnect_messages[SLAVE_RECON_ACT_EVENT]))
+                        goto err;
+                      goto connected;
+                    });
 
-    while (!io_slave_killed(thd,mi))
+    if (event_len == packet_error)
     {
-      ulong event_len;
-      /*
-         We say "waiting" because read_event() will wait if there's nothing to
-         read. But if there's something to read, it will not wait. The
-         important thing is to not confuse users by saying "reading" whereas
-         we're in fact receiving nothing.
-      */
-      thd_proc_info(thd, "Waiting for master to send event");
-      event_len= read_event(mysql, mi, &suppress_warnings);
-      if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
-reading event"))
-        goto err;
-      DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_EVENT",
-        if (!retry_count_event)
-        {
-          retry_count_event++;
-          sql_print_information("Forcing to reconnect slave I/O thread");
-          if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                               reconnect_messages[SLAVE_RECON_ACT_EVENT]))
-            goto err;
-          goto connected;
-        });
-
-      if (event_len == packet_error)
-      {
-        uint mysql_error_number= mysql_errno(mysql);
-        switch (mysql_error_number) {
-        case CR_NET_PACKET_TOO_LARGE:
-          sql_print_error("\
-Log entry on master is longer than max_allowed_packet (%ld) on \
+      uint mysql_error_number= mysql_errno(mysql);
+      switch (mysql_error_number) {
+      case CR_NET_PACKET_TOO_LARGE:
+        sql_print_error("\
+Log entry on master is longer than max_allowed_packet (%ld) on          \
 slave. If the entry is correct, restart the server with a higher value of \
 max_allowed_packet",
-                          thd->variables.max_allowed_packet);
-          goto err;
-        case ER_MASTER_FATAL_ERROR_READING_BINLOG:
-          sql_print_error(ER(mysql_error_number), mysql_error_number,
-                          mysql_error(mysql));
-          goto err;
-        case EE_OUTOFMEMORY:
-        case ER_OUTOFMEMORY:
-          sql_print_error("\
+                        thd->variables.max_allowed_packet);
+        goto err;
+      case ER_MASTER_FATAL_ERROR_READING_BINLOG:
+        sql_print_error(ER(mysql_error_number), mysql_error_number,
+                        mysql_error(mysql));
+        goto err;
+      case EE_OUTOFMEMORY:
+      case ER_OUTOFMEMORY:
+        sql_print_error("\
 Stopping slave I/O thread due to out-of-memory error from master");
-          goto err;
-        }
-        if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                             reconnect_messages[SLAVE_RECON_ACT_EVENT]))
-          goto err;
-        goto connected;
-      } // if (event_len == packet_error)
-
-      retry_count=0;                    // ok event, reset retry counter
-      thd_proc_info(thd, "Queueing master event to the relay log");
-      if (queue_event(mi,(const char*)mysql->net.read_pos + 1, event_len))
-      {
         goto err;
       }
-      if (flush_master_info(mi, 1))
-      {
-        sql_print_error("Failed to flush master info file");
+      if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
+                           reconnect_messages[SLAVE_RECON_ACT_EVENT]))
         goto err;
-      }
-      /*
-        See if the relay logs take too much space.
-        We don't lock mi->rli.log_space_lock here; this dirty read saves time
-        and does not introduce any problem:
-        - if mi->rli.ignore_log_space_limit is 1 but becomes 0 just after (so
-        the clean value is 0), then we are reading only one more event as we
-        should, and we'll block only at the next event. No big deal.
-        - if mi->rli.ignore_log_space_limit is 0 but becomes 1 just after (so
-        the clean value is 1), then we are going into wait_for_relay_log_space()
-        for no reason, but this function will do a clean read, notice the clean
-        value and exit immediately.
-      */
-#ifndef DBUG_OFF
-      {
-        char llbuf1[22], llbuf2[22];
-        DBUG_PRINT("info", ("log_space_limit=%s log_space_total=%s \
-ignore_log_space_limit=%d",
-                            llstr(rli->log_space_limit,llbuf1),
-                            llstr(rli->log_space_total,llbuf2),
-                            (int) rli->ignore_log_space_limit));
-      }
-#endif
-
-      if (rli->log_space_limit && rli->log_space_limit <
-          rli->log_space_total &&
-          !rli->ignore_log_space_limit)
-        if (wait_for_relay_log_space(rli))
-        {
-          sql_print_error("Slave I/O thread aborted while waiting for relay \
-log space");
-          goto err;
-        }
+      goto connected;
+    } // if (event_len == packet_error)
+    
+    retry_count=0;                    // ok event, reset retry counter
+    thd_proc_info(thd, "Queueing master event to the relay log");
+    if (queue_event(mi,(const char*)mysql->net.read_pos + 1, event_len))
+    {
+      goto err;
     }
+    if (flush_master_info(mi, 1))
+    {
+      sql_print_error("Failed to flush master info file");
+      goto err;
+    }
+    /*
+      See if the relay logs take too much space.
+      We don't lock mi->rli.log_space_lock here; this dirty read saves time
+      and does not introduce any problem:
+      - if mi->rli.ignore_log_space_limit is 1 but becomes 0 just after (so
+      the clean value is 0), then we are reading only one more event as we
+      should, and we'll block only at the next event. No big deal.
+      - if mi->rli.ignore_log_space_limit is 0 but becomes 1 just after (so
+      the clean value is 1), then we are going into wait_for_relay_log_space()
+      for no reason, but this function will do a clean read, notice the clean
+      value and exit immediately.
+    */
+#ifndef DBUG_OFF
+    {
+      char llbuf1[22], llbuf2[22];
+      DBUG_PRINT("info", ("log_space_limit=%s log_space_total=%s \
+ignore_log_space_limit=%d",
+                          llstr(rli->log_space_limit,llbuf1),
+                          llstr(rli->log_space_total,llbuf2),
+                          (int) rli->ignore_log_space_limit));
+    }
+#endif
+    
+    if (rli->log_space_limit && rli->log_space_limit <
+        rli->log_space_total &&
+        !rli->ignore_log_space_limit)
+      if (wait_for_relay_log_space(rli))
+      {
+        sql_print_error("Slave I/O thread aborted while waiting for relay \
+log space");
+        goto err;
+      }
   }
 
-  // error = 0;
 err:
   // print the current replication position
   sql_print_information("Slave I/O thread exiting, read up to log '%s', position %s",
                   IO_RPL_LOG_NAME, llstr(mi->master_log_pos,llbuff));
-  VOID(pthread_mutex_lock(&LOCK_thread_count));
+  pthread_mutex_lock(&LOCK_thread_count);
   thd->query = thd->db = 0; // extra safety
   thd->query_length= thd->db_length= 0;
-  VOID(pthread_mutex_unlock(&LOCK_thread_count));
+  pthread_mutex_unlock(&LOCK_thread_count);
   if (mysql)
   {
     /*
@@ -2617,7 +2616,7 @@ the slave SQL thread with \"SLAVE START\". We stopped at log \
     must "proactively" clear playgrounds:
   */
   rli->cleanup_context(thd, 1);
-  VOID(pthread_mutex_lock(&LOCK_thread_count));
+  pthread_mutex_lock(&LOCK_thread_count);
   /*
     Some extra safety, which should not been needed (normally, event deletion
     should already have done these assignments (each event which sets these
@@ -2625,7 +2624,7 @@ the slave SQL thread with \"SLAVE START\". We stopped at log \
   */
   thd->query= thd->db= thd->catalog= 0;
   thd->query_length= thd->db_length= 0;
-  VOID(pthread_mutex_unlock(&LOCK_thread_count));
+  pthread_mutex_unlock(&LOCK_thread_count);
   thd_proc_info(thd, "Waiting for slave mutex on exit");
   pthread_mutex_lock(&rli->run_lock);
   /* We need data_lock, at least to wake up any waiting master_pos_wait() */
@@ -3411,6 +3410,7 @@ static int connect_to_master(THD* thd, MYSQL* mysql, Master_info* mi,
 
   if (!slave_was_killed)
   {
+    mi->clear_error();
     if (reconnect)
     {
       if (!suppress_warnings && global_system_variables.log_warnings)

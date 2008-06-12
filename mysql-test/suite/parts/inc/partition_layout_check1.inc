@@ -1,21 +1,21 @@
 ################################################################################
-# inc/partition_layout_check1.inc                                          #
+# inc/partition_layout_check1.inc                                              #
 #                                                                              #
 # Purpose:                                                                     #
 #   Store the SHOW CREATE TABLE output and the list of files belonging to      #
 #   this table + print this into the protocol                                  #
 #   This script is only usefule when sourced within the partitioning tests.    #
 #                                                                              #
-# Attention: The routine inc/partition_layout_check2.inc is very similar   #
+# Attention: The routine inc/partition_layout_check2.inc is very similar       #
 #            to this one. So if something has to be changed here it            #
 #            might be necessary to do it also there                            #
 #                                                                              #
 #------------------------------------------------------------------------------#
 # Original Author: mleich                                                      #
 # Original Date: 2006-03-05                                                    #
-# Change Author:                                                               #
-# Change Date:                                                                 #
-# Change:                                                                      #
+# Change Author: pcrews                                                        #
+# Change Date: 2008-04-15                                                      #
+# Change: Added --replace_result to account for Windows' use of '\r'           #
 ################################################################################
 
 if ($no_debug)
@@ -35,32 +35,58 @@ let $MYSQLD_DATADIR= `select LEFT(@@datadir, LENGTH(@@datadir)-1)`;
 # - SHOW CREATE TABLE t1 is at least currently most probably more reliable than
 #   the corresponding SELECT on the INFORMATION_SCHEMA
 # - SHOW CREATE TABLE .. cannot write its out put into a file like SELECT
+<<<<<<< TREE
+let $show_file= $MYSQLTEST_VARDIR/master-data/test/tmp1;
+--exec echo "SHOW CREATE TABLE t1;" | $MYSQL_TEST > $show_file 2>&1 || true
+
+=======
 --exec echo "SHOW CREATE TABLE t1;" | $MYSQL_TEST > $MYSQLD_DATADIR/test/tmp1 2>&1 || true
+>>>>>>> MERGE-SOURCE
 if ($do_file_tests)
 {
 # List the files belonging to the table t1
+<<<<<<< TREE
+let $ls_file= $MYSQLTEST_VARDIR/master-data/test/tmp2;
+let $err_file= $MYSQLTEST_VARDIR/master-data/test/err2;
+--exec ls $MYSQLTEST_VARDIR/master-data/test/t1* > $ls_file 2>$err_file || true
+=======
 --exec ls $MYSQLD_DATADIR/test/t1* > $MYSQLD_DATADIR/test/tmp2 2>&1 || true
+>>>>>>> MERGE-SOURCE
 if ($with_directories)
 {
+<<<<<<< TREE
+--exec ls $MYSQLTEST_VARDIR/mysql-test-data-dir/t1* >> $ls_file 2>>$err_file || true
+--exec ls $MYSQLTEST_VARDIR/mysql-test-idx-dir/t1* >> $ls_file 2>>$err_file || true
+=======
 --exec ls $MYSQLTEST_VARDIR/mysql-test-data-dir/t1* >> $MYSQLD_DATADIR/test/tmp2 2>&1 || true
 --exec ls $MYSQLTEST_VARDIR/mysql-test-idx-dir/t1* >> $MYSQLD_DATADIR/test/tmp2 2>&1 || true
+>>>>>>> MERGE-SOURCE
 }
+<<<<<<< TREE
+eval SET @aux = load_file('$ls_file');
+=======
 eval SET @aux = CONCAT('load_file(''$MYSQLD_DATADIR','/test/tmp2''
 )');
 let $file_list= `SELECT @aux`;
+>>>>>>> MERGE-SOURCE
 }
 if (!$do_file_tests)
 {
-let $file_list= '--- not determined ---';
+SET @aux = '--- not determined ---';
 }
 
 # Insert the current definition of the table t1 into t0_definition
 eval INSERT INTO t0_definition SET state = 'old',
+<<<<<<< TREE
+     create_command = load_file('$show_file'),
+     file_list      = @aux;
+=======
      create_command = load_file('$MYSQLD_DATADIR/test/tmp1'),
      file_list      = $file_list;
+>>>>>>> MERGE-SOURCE
 
 # Print the create table statement into the protocol
---replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR '\r' ''
 SELECT create_command FROM t0_definition WHERE state = 'old';
 if ($do_file_tests)
 {
@@ -68,9 +94,15 @@ if ($do_file_tests)
    if ($ls)
    {
       # Print the list of files into the protocol
+<<<<<<< TREE
+      eval SELECT REPLACE(@aux,'$MYSQLTEST_VARDIR','\$MYSQLTEST_VARDIR')
+                  AS "unified filelist"
+           FROM t0_definition WHERE state = 'old';
+=======
       replace_result $MYSQLD_DATADIR MYSQLD_DATADIR $MYSQLTEST_VARDIR MYSQLTEST_VARDIR;
       SELECT file_list AS "unified filelist"
        FROM t0_definition WHERE state = 'old';
+>>>>>>> MERGE-SOURCE
    }
 }
 --enable_query_log

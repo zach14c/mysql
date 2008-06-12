@@ -117,14 +117,14 @@ sync_slave_with_master;
 --disable_warnings
 stop slave;
 --enable_warnings
---require r/slave-stopped.result
+--require r/rpl_slave-stopped.result
 show status like 'Slave_running';
 connection master;
 reset master;
 connection slave;
 reset slave;
 start slave;
---require r/slave-running.result
+--require r/rpl_slave-running.result
 show status like 'Slave_running';
 connection master;
 
@@ -207,14 +207,14 @@ sync_slave_with_master;
 --disable_warnings
 stop slave;
 --enable_warnings
---require r/slave-stopped.result
+--require r/rpl_slave-stopped.result
 show status like 'Slave_running';
 connection master;
 reset master;
 connection slave;
 reset slave;
 start slave;
---require r/slave-running.result
+--require r/rpl_slave-running.result
 show status like 'Slave_running';
 connection master;
 
@@ -273,7 +273,7 @@ select "--- Test 7 reading stdin w/position --" as "";
 --enable_query_log
 --replace_result $MYSQL_TEST_DIR MYSQL_TEST_DIR
 --exec $MYSQL_BINLOG --short-form --position=417 --stop-position=570 - < $MYSQLD_DATADIR/master-bin.000001
-
+       
 # Bug#16217 (mysql client did not know how not switch its internal charset)
 --disable_query_log
 select "--- Test 8 switch internal charset --" as "";
@@ -286,14 +286,14 @@ sync_slave_with_master;
 --disable_warnings
 stop slave;
 --enable_warnings
---require r/slave-stopped.result
+--require r/rpl_slave-stopped.result
 show status like 'Slave_running';
 connection master;
 reset master;
 connection slave;
 reset slave;
 start slave;
---require r/slave-running.result
+--require r/rpl_slave-running.result
 show status like 'Slave_running';
 connection master;
 

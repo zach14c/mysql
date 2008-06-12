@@ -61,7 +61,7 @@ void Item_subselect::init(st_select_lex *select_lex,
   */
 
   DBUG_ENTER("Item_subselect::init");
-  DBUG_PRINT("enter", ("select_lex: 0x%lx", (long) select_lex));
+  DBUG_PRINT("enter", ("select_lex: %p", select_lex));
   unit= select_lex->master_unit();
 
   if (unit->item)
@@ -2027,8 +2027,6 @@ subselect_union_engine::subselect_union_engine(st_select_lex_unit *u,
   :subselect_engine(item_arg, result_arg)
 {
   unit= u;
-  if (!result_arg)				//out of memory
-    current_thd->fatal_error();
   unit->item= item_arg;
 }
 
@@ -2066,10 +2064,7 @@ int subselect_single_select_engine::prepare()
   join= new JOIN(thd, select_lex->item_list,
 		 select_lex->options | SELECT_NO_UNLOCK, result);
   if (!join || !result)
-  {
-    thd->fatal_error();				//out of memory
-    return 1;
-  }
+    return 1; /* Fatal error is set already. */
   prepared= 1;
   SELECT_LEX *save_select= thd->lex->current_select;
   thd->lex->current_select= select_lex;
@@ -3176,7 +3171,8 @@ int subselect_hash_sj_engine::exec()
     int res= 0;
     SELECT_LEX *save_select= thd->lex->current_select;
     thd->lex->current_select= materialize_engine->select_lex;
-    if ((res= materialize_join->optimize()))
+    if ((res= materialize_join->flatten_subqueries()) || 
+        (res= materialize_join->optimize()))
       goto err;
     materialize_join->exec();
     if ((res= test(materialize_join->error || thd->is_fatal_error)))

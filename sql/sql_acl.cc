@@ -326,7 +326,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   init_sql_alloc(&mem, ACL_ALLOC_BLOCK_SIZE, 0);
   init_read_record(&read_record_info,thd,table= tables[0].table,NULL,1,0);
   table->use_all_columns();
-  VOID(my_init_dynamic_array(&acl_hosts,sizeof(ACL_HOST),20,50));
+  (void) my_init_dynamic_array(&acl_hosts,sizeof(ACL_HOST),20,50);
   while (!(read_record_info.read_record(&read_record_info)))
   {
     ACL_HOST host;
@@ -366,7 +366,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
 	host.access|=REFERENCES_ACL | INDEX_ACL | ALTER_ACL | CREATE_TMP_ACL;
     }
 #endif
-    VOID(push_dynamic(&acl_hosts,(uchar*) &host));
+    (void) push_dynamic(&acl_hosts,(uchar*) &host);
   }
   my_qsort((uchar*) dynamic_element(&acl_hosts,0,ACL_HOST*),acl_hosts.elements,
 	   sizeof(ACL_HOST),(qsort_cmp) acl_compare);
@@ -375,7 +375,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
 
   init_read_record(&read_record_info,thd,table=tables[1].table,NULL,1,0);
   table->use_all_columns();
-  VOID(my_init_dynamic_array(&acl_users,sizeof(ACL_USER),50,100));
+  (void) my_init_dynamic_array(&acl_users,sizeof(ACL_USER),50,100);
   password_length= table->field[2]->field_length /
     table->field[2]->charset()->mbmaxlen;
   if (password_length < SCRAMBLED_PASSWORD_CHAR_LENGTH_323)
@@ -550,7 +550,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
           user.access|= SUPER_ACL | EXECUTE_ACL;
 #endif
       }
-      VOID(push_dynamic(&acl_users,(uchar*) &user));
+      (void) push_dynamic(&acl_users,(uchar*) &user);
       if (!user.host.hostname ||
 	  (user.host.hostname[0] == wild_many && !user.host.hostname[1]))
         allow_all_hosts=1;			// Anyone can connect
@@ -563,7 +563,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
 
   init_read_record(&read_record_info,thd,table=tables[2].table,NULL,1,0);
   table->use_all_columns();
-  VOID(my_init_dynamic_array(&acl_dbs,sizeof(ACL_DB),50,100));
+  (void) my_init_dynamic_array(&acl_dbs,sizeof(ACL_DB),50,100);
   while (!(read_record_info.read_record(&read_record_info)))
   {
     ACL_DB db;
@@ -613,7 +613,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
 	db.access|=REFERENCES_ACL | INDEX_ACL | ALTER_ACL;
     }
 #endif
-    VOID(push_dynamic(&acl_dbs,(uchar*) &db));
+    (void) push_dynamic(&acl_dbs,(uchar*) &db);
   }
   my_qsort((uchar*) dynamic_element(&acl_dbs,0,ACL_DB*),acl_dbs.elements,
 	   sizeof(ACL_DB),(qsort_cmp) acl_compare);
@@ -695,6 +695,8 @@ my_bool acl_reload(THD *thd)
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[1].next_local= tables[1].next_global= tables+2;
   tables[0].lock_type=tables[1].lock_type=tables[2].lock_type=TL_READ;
+  tables[0].skip_temporary= tables[1].skip_temporary=
+    tables[2].skip_temporary= TRUE;
 
   if (simple_open_n_lock_tables(thd, tables))
   {
@@ -704,7 +706,7 @@ my_bool acl_reload(THD *thd)
   }
 
   if ((old_initialized=initialized))
-    VOID(pthread_mutex_lock(&acl_cache->lock));
+    pthread_mutex_lock(&acl_cache->lock);
 
   old_acl_hosts=acl_hosts;
   old_acl_users=acl_users;
@@ -731,7 +733,7 @@ my_bool acl_reload(THD *thd)
     delete_dynamic(&old_acl_dbs);
   }
   if (old_initialized)
-    VOID(pthread_mutex_unlock(&acl_cache->lock));
+    pthread_mutex_unlock(&acl_cache->lock);
 end:
   close_thread_tables(thd);
   DBUG_RETURN(return_val);
@@ -883,7 +885,7 @@ int acl_getroot(THD *thd, USER_RESOURCES  *mqh,
     DBUG_RETURN(0);
   }
 
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   /*
     Find acl entry in user database. Note, that find_acl_user is not the same,
@@ -1055,7 +1057,7 @@ int acl_getroot(THD *thd, USER_RESOURCES  *mqh,
     else
       *sctx->priv_host= 0;
   }
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   DBUG_RETURN(res);
 }
 
@@ -1102,7 +1104,7 @@ bool acl_getroot_no_password(Security_context *sctx, char *user, char *host,
     DBUG_RETURN(FALSE);
   }
 
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   sctx->master_access= 0;
   sctx->db_access= 0;
@@ -1156,7 +1158,7 @@ bool acl_getroot_no_password(Security_context *sctx, char *user, char *host,
     else
       *sctx->priv_host= 0;
   }
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   DBUG_RETURN(res);
 }
 
@@ -1245,7 +1247,7 @@ static void acl_insert_user(const char *user, const char *host,
 
   set_user_salt(&acl_user, password, password_len);
 
-  VOID(push_dynamic(&acl_users,(uchar*) &acl_user));
+  (void) push_dynamic(&acl_users,(uchar*) &acl_user);
   if (!acl_user.host.hostname ||
       (acl_user.host.hostname[0] == wild_many && !acl_user.host.hostname[1]))
     allow_all_hosts=1;		// Anyone can connect /* purecov: tested */
@@ -1311,7 +1313,7 @@ static void acl_insert_db(const char *user, const char *host, const char *db,
   acl_db.db=strdup_root(&mem,db);
   acl_db.access=privileges;
   acl_db.sort=get_sort(3,acl_db.host.hostname,acl_db.db,acl_db.user);
-  VOID(push_dynamic(&acl_dbs,(uchar*) &acl_db));
+  (void) push_dynamic(&acl_dbs,(uchar*) &acl_db);
   my_qsort((uchar*) dynamic_element(&acl_dbs,0,ACL_DB*),acl_dbs.elements,
 	   sizeof(ACL_DB),(qsort_cmp) acl_compare);
 }
@@ -1335,7 +1337,7 @@ ulong acl_get(const char *host, const char *ip,
   acl_entry *entry;
   DBUG_ENTER("acl_get");
 
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
   end=strmov((tmp_db=strmov(strmov(key, ip ? ip : "")+1,user)+1),db);
   if (lower_case_table_names)
   {
@@ -1347,7 +1349,7 @@ ulong acl_get(const char *host, const char *ip,
                                                               key_length)))
   {
     db_access=entry->access;
-    VOID(pthread_mutex_unlock(&acl_cache->lock));
+    pthread_mutex_unlock(&acl_cache->lock);
     DBUG_PRINT("exit", ("access: 0x%lx", db_access));
     DBUG_RETURN(db_access);
   }
@@ -1401,7 +1403,7 @@ exit:
     memcpy((uchar*) entry->key,key,key_length);
     acl_cache->add(entry);
   }
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   DBUG_PRINT("exit", ("access: 0x%lx", db_access & host_access));
   DBUG_RETURN(db_access & host_access);
 }
@@ -1417,10 +1419,10 @@ exit:
 static void init_check_host(void)
 {
   DBUG_ENTER("init_check_host");
-  VOID(my_init_dynamic_array(&acl_wild_hosts,sizeof(struct acl_host_and_ip),
-			  acl_users.elements,1));
-  VOID(hash_init(&acl_check_hosts,system_charset_info,acl_users.elements,0,0,
-		 (hash_get_key) check_get_key,0,0));
+  (void) my_init_dynamic_array(&acl_wild_hosts,sizeof(struct acl_host_and_ip),
+			  acl_users.elements,1);
+  (void) hash_init(&acl_check_hosts,system_charset_info,acl_users.elements,0,0,
+		 (hash_get_key) check_get_key,0,0);
   if (!allow_all_hosts)
   {
     for (uint i=0 ; i < acl_users.elements ; i++)
@@ -1481,12 +1483,12 @@ bool acl_check_host(const char *host, const char *ip)
 {
   if (allow_all_hosts)
     return 0;
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   if (host && hash_search(&acl_check_hosts,(uchar*) host,strlen(host)) ||
       ip && hash_search(&acl_check_hosts,(uchar*) ip, strlen(ip)))
   {
-    VOID(pthread_mutex_unlock(&acl_cache->lock));
+    pthread_mutex_unlock(&acl_cache->lock);
     return 0;					// Found host
   }
   for (uint i=0 ; i < acl_wild_hosts.elements ; i++)
@@ -1494,11 +1496,11 @@ bool acl_check_host(const char *host, const char *ip)
     acl_host_and_ip *acl=dynamic_element(&acl_wild_hosts,i,acl_host_and_ip*);
     if (compare_hostname(acl, host, ip))
     {
-      VOID(pthread_mutex_unlock(&acl_cache->lock));
+      pthread_mutex_unlock(&acl_cache->lock);
       return 0;					// Host ok
     }
   }
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   return 1;					// Host is not allowed
 }
 
@@ -1612,11 +1614,11 @@ bool change_password(THD *thd, const char *host, const char *user,
   if (!(table= open_ltable(thd, &tables, TL_WRITE, 0)))
     DBUG_RETURN(1);
 
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
   ACL_USER *acl_user;
   if (!(acl_user= find_acl_user(host, user, TRUE)))
   {
-    VOID(pthread_mutex_unlock(&acl_cache->lock));
+    pthread_mutex_unlock(&acl_cache->lock);
     my_message(ER_PASSWORD_NO_MATCH, ER(ER_PASSWORD_NO_MATCH), MYF(0));
     goto end;
   }
@@ -1628,12 +1630,12 @@ bool change_password(THD *thd, const char *host, const char *user,
 			acl_user->user ? acl_user->user : "",
 			new_password, new_password_len))
   {
-    VOID(pthread_mutex_unlock(&acl_cache->lock)); /* purecov: deadcode */
+    pthread_mutex_unlock(&acl_cache->lock); /* purecov: deadcode */
     goto end;
   }
 
   acl_cache->clear(1);				// Clear locked hostname cache
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   result= 0;
   if (mysql_bin_log.is_open())
   {
@@ -1673,9 +1675,9 @@ bool is_acl_user(const char *host, const char *user)
   if (!initialized)
     return TRUE;
 
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
   res= find_acl_user(host, user, TRUE) != NULL;
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   return res;
 }
 
@@ -3425,7 +3427,7 @@ bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
 
   /* go through users in user_list */
   rw_wrlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
   grant_version++;
 
   int result=0;
@@ -3457,7 +3459,7 @@ bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
       }
     }
   }
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
 
   if (!result)
   {
@@ -3537,7 +3539,7 @@ static my_bool grant_load_procs_priv(TABLE *p_table)
   bool check_no_resolve= specialflag & SPECIAL_NO_RESOLVE;
   MEM_ROOT **save_mem_root_ptr= my_pthread_getspecific_ptr(MEM_ROOT**,
                                                            THR_MALLOC);
-  DBUG_ENTER("grant_load");
+  DBUG_ENTER("grant_load_procs_priv");
   (void) hash_init(&proc_priv_hash,system_charset_info,
                    0,0,0, (hash_get_key) get_grant_table,
                    0,0);
@@ -3721,6 +3723,7 @@ static my_bool grant_reload_procs_priv(THD *thd)
   table.alias= table.table_name= (char*) "procs_priv";
   table.db= (char *) "mysql";
   table.lock_type= TL_READ;
+  table.skip_temporary= 1;
 
   if (simple_open_n_lock_tables(thd, &table))
   {
@@ -3786,7 +3789,7 @@ my_bool grant_reload(THD *thd)
   tables[0].db= tables[1].db= (char *) "mysql";
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type= tables[1].lock_type= TL_READ;
-
+  tables[0].skip_temporary= tables[1].skip_temporary= TRUE;
   /*
     To avoid deadlocks we should obtain table locks before
     obtaining LOCK_grant rwlock.
@@ -3834,40 +3837,51 @@ end:
   DBUG_RETURN(return_val);
 }
 
-/****************************************************************************
-  Check table level grants
+/**
+  @brief Check table level grants
 
-  SYNOPSIS
-   bool check_grant()
-   thd		Thread handler
-   want_access  Bits of privileges user needs to have
-   tables	List of tables to check. The user should have 'want_access'
-		to all tables in list.
-   show_table	<> 0 if we are in show table. In this case it's enough to have
-	        any privilege for the table
-   number	Check at most this number of tables.
-   no_errors	If 0 then we write an error. The error is sent directly to
-		the client
+  @param thd          Thread handler
+  @param want_access  Bits of privileges user needs to have.
+  @param tables       List of tables to check. The user should have
+                      'want_access' to all tables in list.
+  @param any_combination_will_do TRUE if it's enough to have any privilege for
+    any combination of the table columns.
+  @param number       Check at most this number of tables.
+  @param no_errors    TRUE if no error should be sent directly to the client.
 
-   RETURN
-     0  ok
-     1  Error: User did not have the requested privileges
+  If table->grant.want_privilege != 0 then the requested privileges where
+  in the set of COL_ACLS but access was not granted on the table level. As
+  a consequence an extra check of column privileges is required.
 
-   NOTE
-     This functions assumes that either number of tables to be inspected
+  Specifically if this function returns FALSE the user has some kind of 
+  privilege on a combination of columns in each table.
+
+  This function is usually preceeded by check_access which establish the
+  User-, Db- and Host access rights.
+
+  @see check_access
+  @see check_table_access
+
+  @note This functions assumes that either number of tables to be inspected
      by it is limited explicitly (i.e. is is not UINT_MAX) or table list
      used and thd->lex->query_tables_own_last value correspond to each
      other (the latter should be either 0 or point to next_global member
      of one of elements of this table list).
-****************************************************************************/
+
+   @return Access status
+     @retval FALSE Access granted; But column privileges might need to be
+      checked.
+     @retval TRUE The user did not have the requested privileges on any of the
+      tables.
+
+*/
 
 bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
-		 uint show_table, uint number, bool no_errors)
+                 bool any_combination_will_do, uint number, bool no_errors)
 {
   TABLE_LIST *table, *first_not_own_table= thd->lex->first_not_own_table();
   Security_context *sctx= thd->security_ctx;
   uint i;
-  ulong orig_want_access= want_access;
   DBUG_ENTER("check_grant");
   DBUG_ASSERT(number > 0);
 
@@ -3885,7 +3899,10 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
        i < number  && table != first_not_own_table;
        table= table->next_global, i++)
   {
-    /* Remove SHOW_VIEW_ACL, because it will be checked during making view */
+    /*
+      Save a copy of the privileges without the SHOW_VIEW_ACL attribute.
+      It will be checked during making view.
+    */
     table->grant.orig_want_privilege= (want_access & ~SHOW_VIEW_ACL);
   }
 
@@ -3898,7 +3915,6 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
     sctx = test(table->security_ctx) ?
       table->security_ctx : thd->security_ctx;
 
-    want_access= orig_want_access;
     want_access&= ~sctx->master_access;
     if (!want_access)
       continue;                                 // ok
@@ -3928,8 +3944,13 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
       want_access &= ~table->grant.privilege;
       goto err;					// No grants
     }
-    if (show_table)
-      continue;					// We have some priv on this
+
+    /*
+      For SHOW COLUMNS, SHOW INDEX it is enough to have some
+      privileges on any column combination on the table.
+    */
+    if (any_combination_will_do)
+      continue;
 
     table->grant.grant_table=grant_table;	// Remember for column test
     table->grant.version=grant_version;
@@ -3947,7 +3968,7 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
     }
   }
   rw_unlock(&LOCK_grant);
-  DBUG_RETURN(0);
+  DBUG_RETURN(FALSE);
 
 err:
   rw_unlock(&LOCK_grant);
@@ -3961,9 +3982,98 @@ err:
              sctx->host_or_ip,
              table ? table->table_name : "unknown");
   }
-  DBUG_RETURN(1);
+  DBUG_RETURN(TRUE);
 }
 
+
+/**
+  Check if all tables in the table list has any of the requested table level
+  privileges matching the current user.
+
+  @param thd              A pointer to the thread context.
+  @param required_access  Set of privileges to compare against.
+  @param tables[in,out]   A list of tables to be checked.
+
+  @note If the table grant hash contains any grant table, this table will be
+  attached to the corresponding TABLE_LIST object in 'tables'.
+
+  @return
+    @retval TRUE  There is a privilege on the table level granted to the 
+      current user.
+    @retval FALSE There are no privileges on the table level granted to the
+      current user.
+*/
+
+bool has_any_table_level_privileges(THD *thd, ulong required_access,
+                                    TABLE_LIST *tables)
+{
+
+    Security_context *sctx;
+    GRANT_TABLE *grant_table;
+    TABLE_LIST *table;
+
+    /* For each table in tables */
+    for (table= tables; table; table= table->next_global)
+    {
+      /*
+        If this table is a VIEW, then it will supply its own security context.
+        This is because VIEWs can have a DEFINER or an INVOKER security role.
+      */
+      sctx= table->security_ctx ? table->security_ctx : thd->security_ctx;
+
+      /*
+        Get privileges from table_priv and column_priv tables by searching
+        the cache.
+      */
+      rw_rdlock(&LOCK_grant);
+      grant_table= table_hash_search(sctx->host, sctx->ip,
+                                    table->db, sctx->priv_user,
+                                    table->table_name,0);
+      rw_unlock(&LOCK_grant);
+
+      /* Stop if there are no grants for the current user */
+      if (!grant_table)
+        return FALSE;
+
+      /*
+        Save a pointer to the found grant_table in the table object.
+        This pointer can later be used to verify other access requirements
+        without having to look up the grant table in the hash.
+      */
+      table->grant.grant_table= grant_table;
+      table->grant.version=     grant_version;
+      table->grant.privilege|=  grant_table->privs;
+      /*
+        Save all privileges which might be subject to column privileges
+        but not which aren't yet granted by table level ACLs.
+        This is can later be used for column privilege checks.
+      */
+      table->grant.want_privilege= ((required_access & COL_ACLS)
+                                    & ~table->grant.privilege);
+
+      /*
+        If the requested privileges share any intersection with the current
+        table privileges we have found at least one common privilege on the
+        table level.
+      */
+      if (grant_table->privs & required_access)
+        continue; /* Check next table */
+
+      /*
+        There are no table level privileges which satisfies any of the 
+        requested privileges. There might still be column privileges which
+        does though.
+      */
+      return FALSE;
+  }
+
+  /*
+    All tables in TABLE_LIST satisfy the requirement of having any
+    privilege on the table level.
+  */
+
+  return TRUE;
+}
 
 /*
   Check column rights in given security context
@@ -4491,12 +4601,12 @@ bool mysql_show_grants(THD *thd,LEX_USER *lex_user)
   }
 
   rw_rdlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   acl_user= find_acl_user(lex_user->host.str, lex_user->user.str, TRUE);
   if (!acl_user)
   {
-    VOID(pthread_mutex_unlock(&acl_cache->lock));
+    pthread_mutex_unlock(&acl_cache->lock);
     rw_unlock(&LOCK_grant);
 
     my_error(ER_NONEXISTING_GRANT, MYF(0),
@@ -4514,7 +4624,7 @@ bool mysql_show_grants(THD *thd,LEX_USER *lex_user)
   if (protocol->send_fields(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
   {
-    VOID(pthread_mutex_unlock(&acl_cache->lock));
+    pthread_mutex_unlock(&acl_cache->lock);
     rw_unlock(&LOCK_grant);
 
     DBUG_RETURN(TRUE);
@@ -4825,7 +4935,7 @@ bool mysql_show_grants(THD *thd,LEX_USER *lex_user)
   }
 
 end:
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   rw_unlock(&LOCK_grant);
 
   my_eof(thd);
@@ -5614,7 +5724,7 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list)
     DBUG_RETURN(result != 1);
 
   rw_wrlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   while ((tmp_user_name= user_list++))
   {
@@ -5644,7 +5754,7 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list)
     }
   }
 
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
 
   if (result)
     my_error(ER_CANNOT_USER, MYF(0), "CREATE USER", wrong_users.c_ptr_safe());
@@ -5693,7 +5803,7 @@ bool mysql_drop_user(THD *thd, List <LEX_USER> &list)
     DBUG_RETURN(result != 1);
 
   rw_wrlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   while ((tmp_user_name= user_list++))
   {
@@ -5715,7 +5825,7 @@ bool mysql_drop_user(THD *thd, List <LEX_USER> &list)
   /* Rebuild 'acl_check_hosts' since 'acl_users' has been modified */
   rebuild_check_host();
 
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
 
   if (result)
     my_error(ER_CANNOT_USER, MYF(0), "DROP USER", wrong_users.c_ptr_safe());
@@ -5765,7 +5875,7 @@ bool mysql_rename_user(THD *thd, List <LEX_USER> &list)
     DBUG_RETURN(result != 1);
 
   rw_wrlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   while ((tmp_user_from= user_list++))
   {
@@ -5799,7 +5909,7 @@ bool mysql_rename_user(THD *thd, List <LEX_USER> &list)
   /* Rebuild 'acl_check_hosts' since 'acl_users' has been modified */
   rebuild_check_host();
 
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
 
   if (result)
     my_error(ER_CANNOT_USER, MYF(0), "RENAME USER", wrong_users.c_ptr_safe());
@@ -5846,7 +5956,7 @@ bool mysql_revoke_all(THD *thd,  List <LEX_USER> &list)
     DBUG_RETURN(result != 1);
 
   rw_wrlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   LEX_USER *lex_user, *tmp_lex_user;
   List_iterator <LEX_USER> user_list(list);
@@ -5985,7 +6095,7 @@ bool mysql_revoke_all(THD *thd,  List <LEX_USER> &list)
     } while (revoked);
   }
 
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
 
   write_bin_log(thd, FALSE, thd->query, thd->query_length);
 
@@ -6086,7 +6196,7 @@ bool sp_revoke_privileges(THD *thd, const char *sp_db, const char *sp_name,
   thd->push_internal_handler(&error_handler);
 
   rw_wrlock(&LOCK_grant);
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -6124,7 +6234,7 @@ bool sp_revoke_privileges(THD *thd, const char *sp_db, const char *sp_name,
     }
   } while (revoked);
 
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   rw_unlock(&LOCK_grant);
   close_thread_tables(thd);
 
@@ -6165,7 +6275,7 @@ int sp_grant_privileges(THD *thd, const char *sp_db, const char *sp_name,
 
   combo->user.str= sctx->user;
 
-  VOID(pthread_mutex_lock(&acl_cache->lock));
+  pthread_mutex_lock(&acl_cache->lock);
 
   if ((au= find_acl_user(combo->host.str=(char*)sctx->host_or_ip,combo->user.str,FALSE)))
     goto found_acl;
@@ -6176,11 +6286,11 @@ int sp_grant_privileges(THD *thd, const char *sp_db, const char *sp_name,
   if((au= find_acl_user(combo->host.str=(char*)"%", combo->user.str, FALSE)))
     goto found_acl;
 
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
   DBUG_RETURN(TRUE);
 
  found_acl:
-  VOID(pthread_mutex_unlock(&acl_cache->lock));
+  pthread_mutex_unlock(&acl_cache->lock);
 
   bzero((char*)tables, sizeof(TABLE_LIST));
   user_list.empty();

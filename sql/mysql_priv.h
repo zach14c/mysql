@@ -49,10 +49,7 @@
 #endif
 #include "probes.h"
 
-/* Windows lacks a netdb.h */
-#ifdef __WIN__
-#include <Ws2tcpip.h>
-#else
+#ifndef __WIN__
 #include <netdb.h>
 #endif
 
@@ -302,6 +299,21 @@ enum open_table_mode
 #define USER_VARS_HASH_SIZE     16
 #define TABLE_OPEN_CACHE_MIN    64
 #define TABLE_OPEN_CACHE_DEFAULT 64
+#define TABLE_DEF_CACHE_DEFAULT 256
+/**
+  We must have room for at least 256 table definitions in the table
+  cache, since otherwise there is no chance prepared
+  statements that use these many tables can work.
+  Prepared statements use table definition cache ids (table_map_id)
+  as table version identifiers. If the table definition
+  cache size is less than the number of tables used in a statement,
+  the contents of the table definition cache is guaranteed to rotate
+  between a prepare and execute. This leads to stable validation
+  errors. In future we shall use more stable version identifiers,
+  for now the only solution is to ensure that the table definition
+  cache can contain at least all tables of a given statement.
+*/
+#define TABLE_DEF_CACHE_MIN     256
 
 /* 
  Value of 9236 discovered through binary search 2006-09-26 on Ubuntu Dapper
@@ -723,6 +735,31 @@ const char *set_thd_proc_info(THD *thd, const char *info,
                               const char *calling_file, 
                               const unsigned int calling_line);
 
+/**
+  Enumerate possible types of a table from re-execution
+  standpoint.
+  TABLE_LIST class has a member of this type.
+  At prepared statement prepare, this member is assigned a value
+  as of the current state of the database. Before (re-)execution
+  of a prepared statement, we check that the value recorded at
+  prepare matches the type of the object we obtained from the
+  table definition cache.
+
+  @sa check_and_update_table_version()
+  @sa Execute_observer
+  @sa Prepared_statement::reprepare()
+*/
+
+enum enum_table_ref_type
+{
+  /** Initial value set by the parser */
+  TABLE_REF_NULL= 0,
+  TABLE_REF_VIEW,
+  TABLE_REF_BASE_TABLE,
+  TABLE_REF_I_S_TABLE,
+  TABLE_REF_TMP_TABLE
+};
+
 /*
   External variables
 */
@@ -1115,8 +1152,10 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 bool check_access(THD *thd, ulong access, const char *db, ulong *save_priv,
 		  bool no_grant, bool no_errors, bool schema_db);
-bool check_table_access(THD *thd, ulong want_access, TABLE_LIST *tables,
-			uint number, bool no_errors);
+bool check_table_access(THD *thd, ulong requirements, TABLE_LIST *tables,
+                        bool no_errors,
+                        bool any_combination_of_privileges_will_do,
+			uint number);
 #else
 inline bool check_access(THD *thd, ulong access, const char *db,
                          ulong *save_priv, bool no_grant, bool no_errors,
@@ -1127,7 +1166,9 @@ inline bool check_access(THD *thd, ulong access, const char *db,
   return false;
 }
 inline bool check_table_access(THD *thd, ulong want_access, TABLE_LIST *tables,
-			uint number, bool no_errors)
+                        bool no_errors,
+                        bool any_combination_of_privileges_will_do,
+			uint number)
 { return false; }
 #endif /*NO_EMBEDDED_ACCESS_CHECKS*/
 

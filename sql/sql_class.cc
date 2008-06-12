@@ -90,7 +90,9 @@ extern "C" void free_user_var(user_var_entry *entry)
 
 bool Key_part_spec::operator==(const Key_part_spec& other) const
 {
-  return length == other.length && !strcmp(field_name, other.field_name);
+  return length == other.length &&
+         field_name.length == other.field_name.length &&
+         !strcmp(field_name.str, other.field_name.str);
 }
 
 /**
@@ -198,6 +200,19 @@ bool foreign_key_prefix(Key *a, Key *b)
 /****************************************************************************
 ** Thread specific functions
 ****************************************************************************/
+
+/** Push an error to the error stack and return TRUE for now. */
+
+bool
+Reprepare_observer::report_error(THD *thd)
+{
+  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
+
+  m_invalidated= TRUE;
+
+  return TRUE;
+}
+
 
 Open_tables_state::Open_tables_state(ulong version_arg)
   :version(version_arg), state_flags(0U)
@@ -887,6 +902,12 @@ THD::~THD()
   DBUG_ENTER("~THD()");
   /* Ensure that no one is using THD */
   pthread_mutex_lock(&LOCK_delete);
+  /*
+    resetting mysys_var is guarded by LOCK_delete
+    the same mutex as a killer thread acquires in order to get access
+    to the victim's mysys_var
+  */
+  mysys_var= NULL;
   pthread_mutex_unlock(&LOCK_delete);
   add_to_status(&global_status_var, &status_var);
 
@@ -914,7 +935,6 @@ THD::~THD()
 #ifdef USING_TRANSACTIONS
   free_root(&transaction.mem_root,MYF(0));
 #endif
-  mysys_var=0;					// Safety (shouldn't be needed)
   pthread_mutex_destroy(&LOCK_delete);
 #ifndef DBUG_OFF
   dbug_sentry= THD_SENTRY_GONE;
@@ -988,7 +1008,7 @@ void add_diff_to_status(STATUS_VAR *to_var, STATUS_VAR *from_var,
 void THD::awake(THD::killed_state state_to_set)
 {
   DBUG_ENTER("THD::awake");
-  DBUG_PRINT("enter", ("this: 0x%lx", (long) this));
+  DBUG_PRINT("enter", ("this: %p", this));
   THD_CHECK_SENTRY(this);
   safe_mutex_assert_owner(&LOCK_delete); 
 
@@ -1057,6 +1077,7 @@ void THD::awake(THD::killed_state state_to_set)
 
 bool THD::store_globals()
 {
+  DBUG_ENTER("THD::store_globals");
   /*
     Assert that thread_stack is initialized: it's necessary to be able
     to track stack overrun.
@@ -1065,7 +1086,15 @@ bool THD::store_globals()
 
   if (my_pthread_setspecific_ptr(THR_THD,  this) ||
       my_pthread_setspecific_ptr(THR_MALLOC, &mem_root))
-    return 1;
+    DBUG_RETURN(1);
+#ifndef EMBEDDED_LIBRARY
+  /*
+    mysys_var is concurrently readable by a killer thread.
+    LOCK_delete is not needed to lock while the pointer is
+    changing from NULL not non-NULL.
+  */
+  DBUG_ASSERT(mysys_var == NULL);
+#endif
   mysys_var=my_thread_var;
   /*
     Let mysqld define the thread id (not mysys)
@@ -1079,7 +1108,7 @@ bool THD::store_globals()
     created in another thread
   */
   thr_lock_info_init(&lock_info);
-  return 0;
+  DBUG_RETURN(0);
 }
 
 
@@ -1457,6 +1486,30 @@ void THD::rollback_item_tree_changes()
 }
 
 
+#ifndef EMBEDDED_LIBRARY
+
+/**
+  Check that the endpoint is still available.
+*/
+
+bool THD::vio_is_connected()
+{
+  uint bytes= 0;
+
+  /* End of input is signaled by poll if the socket is aborted. */
+  if (vio_poll_read(net.vio, 0))
+    return TRUE;
+
+  /* Socket is aborted if signaled but no data is available. */
+  if (vio_peek_read(net.vio, &bytes))
+    return TRUE;
+
+  return bytes ? TRUE : FALSE;
+}
+
+#endif
+
+
 /*****************************************************************************
 ** Functions to provide a interface to select results
 *****************************************************************************/
@@ -1571,19 +1624,19 @@ bool select_send::send_data(List<Item> &items)
   Item *item;
   while ((item=li++))
   {
-    if (item->send(protocol, &buffer))
+    if (item->send(protocol, &buffer) || thd->is_error())
     {
       protocol->free();				// Free used buffer
       my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
       break;
     }
   }
-  thd->sent_row_count++;
   if (thd->is_error())
   {
     protocol->remove_last_row();
     DBUG_RETURN(1);
   }
+  thd->sent_row_count++;
   if (thd->vio_ok())
     DBUG_RETURN(protocol->write());
   DBUG_RETURN(0);
@@ -2600,7 +2653,7 @@ bool select_dumpvar::send_eof()
 void TMP_TABLE_PARAM::init()
 {
   DBUG_ENTER("TMP_TABLE_PARAM::init");
-  DBUG_PRINT("enter", ("this: 0x%lx", (ulong)this));
+  DBUG_PRINT("enter", ("this: %p", this));
   field_count= sum_func_count= func_count= hidden_field_count= 0;
   group_parts= group_length= group_null_parts= 0;
   quick_group= 1;
@@ -2808,7 +2861,8 @@ void THD::restore_backup_open_tables_state(Open_tables_state *backup)
   DBUG_ASSERT(open_tables == 0 && temporary_tables == 0 &&
               handler_tables == 0 && derived_tables == 0 &&
               lock == 0 && locked_tables == 0 &&
-              prelocked_mode == NON_PRELOCKED);
+              prelocked_mode == NON_PRELOCKED &&
+              m_reprepare_observer == NULL);
   set_open_tables_state(backup);
   DBUG_VOID_RETURN;
 }

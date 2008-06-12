@@ -1639,7 +1639,7 @@ bool mysql_install_plugin(THD *thd, const LEX_STRING *name, const LEX_STRING *dl
   bzero(&tables, sizeof(tables));
   tables.db= (char *)"mysql";
   tables.table_name= tables.alias= (char *)"plugin";
-  if (check_table_access(thd, INSERT_ACL, &tables, 1, FALSE))
+  if (check_table_access(thd, INSERT_ACL, &tables, FALSE, FALSE, 1))
     DBUG_RETURN(TRUE);
 
   /* need to open before acquiring LOCK_plugin or it will deadlock */
@@ -2515,8 +2515,8 @@ static void plugin_vars_free_values(sys_var *vars)
     {
       /* Free the string from global_system_variables. */
       char **valptr= (char**) piv->real_value_ptr(NULL, OPT_GLOBAL);
-      DBUG_PRINT("plugin", ("freeing value for: '%s'  addr: 0x%lx",
-                            var->name, (long) valptr));
+      DBUG_PRINT("plugin", ("freeing value for: '%s'  addr: %p",
+                            var->name, valptr));
       my_free(*valptr, MYF(MY_WME | MY_FAE | MY_ALLOW_ZERO_PTR));
       *valptr= NULL;
     }

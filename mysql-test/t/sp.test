@@ -2937,7 +2937,6 @@ create procedure bug4902()
 begin
   show charset like 'foo';
   show collation like 'foo';
-  show column types;
   show create table t1;
   show create database test;
   show databases like 'foo';
@@ -2945,7 +2944,8 @@ begin
   show columns from t1;
   show keys from t1;
   show open tables like 'foo';
-  show privileges;
+  # Removed because result will differ in embedded mode.
+  #show privileges;
   show status like 'foo';
   show tables like 'foo';
   show variables like 'foo';

@@ -387,7 +387,7 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
       !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
     DBUG_RETURN(TRUE);
 
-  VOID(pthread_mutex_lock(&LOCK_open));
+  pthread_mutex_lock(&LOCK_open);
 
   if (!create)
   {
@@ -422,7 +422,7 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
     TABLE_LIST **save_query_tables_own_last= thd->lex->query_tables_own_last;
     thd->lex->query_tables_own_last= 0;
 
-    err_status= check_table_access(thd, TRIGGER_ACL, tables, 1, FALSE);
+    err_status= check_table_access(thd, TRIGGER_ACL, tables, FALSE, FALSE, 1);
 
     thd->lex->query_tables_own_last= save_query_tables_own_last;
 
@@ -510,7 +510,7 @@ end:
     write_bin_log(thd, TRUE, stmt_query.ptr(), stmt_query.length());
   }
 
-  VOID(pthread_mutex_unlock(&LOCK_open));
+  pthread_mutex_unlock(&LOCK_open);
 
   if (need_start_waiting)
     start_waiting_global_read_lock(thd);
@@ -1647,7 +1647,7 @@ bool Table_triggers_list::drop_all_triggers(THD *thd, char *db, char *name)
   DBUG_ENTER("drop_all_triggers");
 
   bzero(&table, sizeof(table));
-  init_alloc_root(&table.mem_root, 8192, 0);
+  init_sql_alloc(&table.mem_root, 8192, 0);
 
   if (Table_triggers_list::check_n_load(thd, db, name, &table, 1))
   {
@@ -1844,7 +1844,7 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
   DBUG_ENTER("change_table_name");
 
   bzero(&table, sizeof(table));
-  init_alloc_root(&table.mem_root, 8192, 0);
+  init_sql_alloc(&table.mem_root, 8192, 0);
 
   /*
     This method interfaces the mysql server code protected by

@@ -32,7 +32,7 @@ size_t vio_read(Vio * vio, uchar* buf, size_t size)
 {
   size_t r;
   DBUG_ENTER("vio_read");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %u", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %u", vio->sd, buf,
                        (uint) size));
 
   /* Ensure nobody uses vio_read_buff and vio_read simultaneously */
@@ -64,7 +64,7 @@ size_t vio_read_buff(Vio *vio, uchar* buf, size_t size)
   size_t rc;
 #define VIO_UNBUFFERED_READ_MIN_SIZE 2048
   DBUG_ENTER("vio_read_buff");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %u", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %u", vio->sd, buf,
                        (uint) size));
 
   if (vio->read_pos < vio->read_end)
@@ -103,7 +103,7 @@ size_t vio_write(Vio * vio, const uchar* buf, size_t size)
 {
   size_t r;
   DBUG_ENTER("vio_write");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %u", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %u", vio->sd, buf,
                        (uint) size));
 #ifdef __WIN__
   r = send(vio->sd, buf, size,0);
@@ -360,9 +360,26 @@ my_bool vio_peer_addr(Vio *vio, char *buf, uint16 *port, size_t buflen)
 
 my_bool vio_poll_read(Vio *vio,uint timeout)
 {
-#ifndef HAVE_POLL
-  return 0;
-#else
+#ifdef __WIN__
+  int res;
+  my_socket fd= vio->sd;
+  fd_set readfds, errorfds;
+  struct timeval tm;
+  DBUG_ENTER("vio_poll");
+  tm.tv_sec= timeout;
+  tm.tv_usec= 0;
+  FD_ZERO(&readfds);
+  FD_ZERO(&errorfds);
+  FD_SET(fd, &readfds);
+  FD_SET(fd, &errorfds);
+  /* The first argument is ignored on Windows, so a conversion to int is OK */
+  if ((res= select((int) fd, &readfds, NULL, &errorfds, &tm) <= 0))
+  {
+    DBUG_RETURN(res < 0 ? 0 : 1);
+  }
+  res= FD_ISSET(fd, &readfds) || FD_ISSET(fd, &errorfds);
+  DBUG_RETURN(!res);
+#elif defined(HAVE_POLL)
   struct pollfd fds;
   int res;
   DBUG_ENTER("vio_poll");
@@ -373,10 +390,36 @@ my_bool vio_poll_read(Vio *vio,uint timeout)
   {
     DBUG_RETURN(res < 0 ? 0 : 1);		/* Don't return 1 on errors */
   }
-  DBUG_RETURN(fds.revents & POLLIN ? 0 : 1);
+  DBUG_RETURN(fds.revents & (POLLIN | POLLERR | POLLHUP) ? 0 : 1);
+#else
+  return 0;
 #endif
 }
 
+
+my_bool vio_peek_read(Vio *vio, uint *bytes)
+{
+#ifdef __WIN__
+  int len;
+  if (ioctlsocket(vio->sd, FIONREAD, &len))
+    return TRUE;
+  *bytes= len;
+  return FALSE;
+#elif FIONREAD_IN_SYS_IOCTL
+  int len;
+  if (ioctl(vio->sd, FIONREAD, &len) < 0)
+    return TRUE;
+  *bytes= len;
+  return FALSE;
+#else
+  char buf[1024];
+  ssize_t res= recv(vio->sd, &buf, sizeof(buf), MSG_PEEK);
+  if (res < 0)
+    return TRUE;
+  *bytes= res;
+  return FALSE;
+#endif
+}
 
 void vio_timeout(Vio *vio, uint which, uint timeout)
 {
@@ -421,7 +464,7 @@ size_t vio_read_pipe(Vio * vio, uchar* buf, size_t size)
 {
   DWORD length;
   DBUG_ENTER("vio_read_pipe");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %u", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %u", vio->sd, buf,
                        (uint) size));
 
   if (!ReadFile(vio->hPipe, buf, size, &length, NULL))
@@ -436,7 +479,7 @@ size_t vio_write_pipe(Vio * vio, const uchar* buf, size_t size)
 {
   DWORD length;
   DBUG_ENTER("vio_write_pipe");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %u", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %u", vio->sd, buf,
                        (uint) size));
 
   if (!WriteFile(vio->hPipe, (char*) buf, size, &length, NULL))
@@ -481,7 +524,7 @@ size_t vio_read_shared_memory(Vio * vio, uchar* buf, size_t size)
   size_t remain_local;
   char *current_postion;
   DBUG_ENTER("vio_read_shared_memory");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %d", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %d", vio->sd, buf,
                        size));
 
   remain_local = size;
@@ -544,7 +587,7 @@ size_t vio_write_shared_memory(Vio * vio, const uchar* buf, size_t size)
   HANDLE pos;
   const uchar *current_postion;
   DBUG_ENTER("vio_write_shared_memory");
-  DBUG_PRINT("enter", ("sd: %d  buf: 0x%lx  size: %d", vio->sd, (long) buf,
+  DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %d", vio->sd, buf,
                        size));
 
   remain = size;
@@ -637,3 +680,27 @@ int vio_close_shared_memory(Vio * vio)
 }
 #endif /* HAVE_SMEM */
 #endif /* __WIN__ */
+
+
+/**
+  Number of bytes in the read buffer.
+
+  @return number of bytes in the read buffer or < 0 if error.
+*/
+
+ssize_t vio_pending(Vio *vio)
+{
+#ifdef HAVE_OPENSSL
+  SSL *ssl= (SSL*) vio->ssl_arg;
+#endif
+
+  if (vio->read_pos < vio->read_end)
+    return vio->read_end - vio->read_pos;
+
+#ifdef HAVE_OPENSSL
+  if (ssl)
+    return SSL_pending(ssl);
+#endif
+
+  return 0;
+}

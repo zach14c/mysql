@@ -128,7 +128,7 @@ bool servers_init(bool dont_read_servers_table)
   }
 
   /* Initialize the mem root for data */
-  init_alloc_root(&mem, ACL_ALLOC_BLOCK_SIZE, 0);
+  init_sql_alloc(&mem, ACL_ALLOC_BLOCK_SIZE, 0);
 
   if (dont_read_servers_table)
     goto end;
@@ -180,7 +180,7 @@ static bool servers_load(THD *thd, TABLE_LIST *tables)
 
   my_hash_reset(&servers_cache);
   free_root(&mem, MYF(0));
-  init_alloc_root(&mem, ACL_ALLOC_BLOCK_SIZE, 0);
+  init_sql_alloc(&mem, ACL_ALLOC_BLOCK_SIZE, 0);
 
   init_read_record(&read_record_info,thd,table=tables[0].table,NULL,1,0);
   while (!(read_record_info.read_record(&read_record_info)))
@@ -662,7 +662,7 @@ delete_server_record_in_cache(LEX_SERVER_OPTIONS *server_options)
                      server->server_name,
                      server->server_name_length));
 
-  VOID(hash_delete(&servers_cache, (uchar*) server));
+  hash_delete(&servers_cache, (uchar*) server);
   
   error= 0;
 
@@ -769,7 +769,7 @@ int update_server_record_in_cache(FOREIGN_SERVER *existing,
   /*
     delete the existing server struct from the server cache
   */
-  VOID(hash_delete(&servers_cache, (uchar*)existing));
+  hash_delete(&servers_cache, (uchar*)existing);
 
   /*
     Insert the altered server struct into the server cache

@@ -17,9 +17,11 @@
 #include "si_objects.h"
 #include "ddl_blocker.h"
 #include "sql_show.h"
+#ifdef HAVE_EVENT_SCHEDULER
 #include "events.h"
 #include "event_data_objects.h"
 #include "event_db_repository.h"
+#endif
 #include "sql_trigger.h"
 #include "sp.h"
 #include "sp_head.h" // for sp_add_to_query_tables().
@@ -89,13 +91,13 @@ int silent_exec(THD *thd, String *query)
       next_packet++;
       length--;
     }
-    VOID(pthread_mutex_lock(&LOCK_thread_count));
+    pthread_mutex_lock(&LOCK_thread_count);
     thd->query_length= length;
     thd->query= next_packet;
     thd->query_id= next_query_id();
     thd->set_time(); /* Reset the query start time. */
     /* TODO: set thd->lex->sql_command to SQLCOM_END here */
-    VOID(pthread_mutex_unlock(&LOCK_thread_count));
+    pthread_mutex_unlock(&LOCK_thread_count);
     mysql_parse(thd, next_packet, length, & found_semicolon);
   }
 
@@ -118,7 +120,7 @@ int silent_exec(THD *thd, String *query)
 /*
   This method gets the create statement for a procedure or function.
 */
-int serialize_routine(THD *thd,
+bool serialize_routine(THD *thd,
                      int type,
                       String db_name,
                       String r_name,
@@ -184,7 +186,7 @@ int serialize_routine(THD *thd,
   else
   {
     string->length(0);
-    ret= -1;
+    ret= TRUE;
   }
   if (type == TYPE_ENUM_PROCEDURE)
     thd->variables.max_sp_recursion_depth--;
@@ -273,6 +275,12 @@ bool drop_object(THD *thd, const char *obj_name, String *name1, String *name2)
 
   @param[in] thd  Thread context
   @param[in] st   Schema table enum
+  @param[in] db_list List of databases for select condition
+
+  @note: The select condition is designed to form a WHERE clause based on
+  the database/schema column of the information_schema views. Most views have
+  a database/schema column but for those that do not, you must ignore the 
+  selection condition by passing db_list = NULL.
 
   @retval TABLE* The schema table
 */
@@ -308,7 +316,13 @@ TABLE* open_schema_table(THD *thd, ST_SCHEMA_TABLE *st, List<LEX_STRING> *db_lis
 
   old_map= tmp_use_all_columns(t, t->read_set);
 
-  st->fill_table(thd, &arg, obs::create_db_select_condition(thd, t, db_list));
+  /*
+    Create a selection condition only if db_list is defined.
+  */
+  if (db_list)
+    st->fill_table(thd, &arg, obs::create_db_select_condition(thd, t, db_list));
+  else
+    st->fill_table(thd, &arg, NULL);
 
   tmp_restore_column_map(t->read_set, old_map);
 
@@ -657,7 +671,7 @@ private:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
+#ifdef HAVE_EVENT_SCHEDULER
 /**
   @class EventObj
 
@@ -692,6 +706,65 @@ private:
   String m_event_name;
 
   bool drop(THD *thd);
+
+private:
+  // These attributes are to be used only for materialization.
+  String m_create_stmt;
+};
+#endif  // HAVE_EVENT_SCHEDULER
+
+/**
+   @class TablespaceObj
+
+   This class provides an abstraction to a user object for creation and
+   capture of the creation data.
+*/
+class TablespaceObj : public Obj
+{
+public:
+  TablespaceObj(const String *ts_name);
+  
+public:
+  virtual bool serialize(THD *thd, String *serialization);
+
+  virtual bool materialize(uint serialization_version,
+                           const String *serialization);
+
+  virtual bool execute(THD *thd);
+
+  const String *describe();
+
+  const String *build_serialization();
+
+  /*
+    The get_db_name primitive is not used for tablespaces.
+  */
+  const String *get_db_name() { return 0; }
+
+  const String* get_name()
+  { return &m_ts_name; }
+
+  const String* get_datafile()
+  { return &m_datafile; }
+
+  const String* get_comments()
+  { return &m_comments; }
+
+  void set_datafile(const String *df)
+  { m_datafile.copy(*df); }
+
+  void set_comments(const String *c)
+  { m_comments.copy(*c); }
+
+private:
+  // These attributes are to be used only for serialization.
+  String m_ts_name;
+  String m_datafile;
+  String m_comments;
+
+  // Drop is not supported by this object.
+  bool drop(THD *thd)
+  { return 0; }
 
 private:
   // These attributes are to be used only for materialization.
@@ -747,6 +820,19 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
+class ObjIteratorDummyImpl : ObjIterator
+{
+public:
+  ObjIteratorDummyImpl() { return; }
+  virtual ~ObjIteratorDummyImpl() { return; }
+  virtual Obj *next() { return NULL; }
+
+protected:
+  virtual Obj *create_obj(TABLE *t) { return NULL; }
+
+};
+
+///////////////////////////////////////////////////////////////////////////
 class DatabaseIterator : public InformationSchemaIterator
 {
 public:
@@ -885,7 +971,7 @@ protected:
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
+#ifdef HAVE_EVENT_SCHEDULER
 class DbEventIterator : public InformationSchemaIterator
 {
 public:
@@ -905,6 +991,7 @@ protected:
 private:
   String m_db_name;
 };
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -962,8 +1049,31 @@ bool InformationSchemaIterator::prepare_is_table(
   enum_schema_tables is_table_idx,
   List<LEX_STRING> db_list)
 {
-  *is_table= open_schema_table(thd, get_schema_table(is_table_idx), &db_list);
-
+  ST_SCHEMA_TABLE *st;
+  /*
+    The falcon schema table does not conform to the older SHOW 
+    style fill methods nor does it use a wildcard condition.
+  */
+  switch (is_table_idx) {
+    case SCH_FALCON_TABLESPACES:
+    {
+      st= find_schema_table(thd, "FALCON_TABLESPACES");
+      *is_table= open_schema_table(thd, st, NULL);
+      break;
+    }
+    case SCH_FALCON_TABLESPACE_FILES:
+    {
+      st= find_schema_table(thd, "FALCON_TABLESPACE_FILES");
+      *is_table= open_schema_table(thd, st, NULL);
+      break;
+    }
+    default:
+    {
+      st= get_schema_table(is_table_idx);
+      *is_table= open_schema_table(thd, st, &db_list);
+      break;
+    }
+  }
   if (!*is_table)
     return TRUE;
 
@@ -1198,6 +1308,7 @@ Obj *DbStoredFuncIterator::create_sr_object(const String *db_name,
   return new StoredFuncObj(db_name, sr_name);
 }
 
+#ifdef HAVE_EVENT_SCHEDULER
 ///////////////////////////////////////////////////////////////////////////
 
 //
@@ -1205,7 +1316,6 @@ Obj *DbStoredFuncIterator::create_sr_object(const String *db_name,
 //
 
 ///////////////////////////////////////////////////////////////////////////
-
 EventObj *DbEventIterator::create_obj(TABLE *t)
 {
   String db_name;
@@ -1221,7 +1331,7 @@ EventObj *DbEventIterator::create_obj(TABLE *t)
 
   return new EventObj(&db_name, &event_name);
 }
-
+#endif
 ///////////////////////////////////////////////////////////////////////////
 
 //
@@ -1392,9 +1502,11 @@ template
 DbStoredFuncIterator *
 create_is_iterator<DbStoredFuncIterator>(THD *, enum_schema_tables, const String *);
 
+#ifdef HAVE_EVENT_SCHEDULER
 template
 DbEventIterator *
 create_is_iterator<DbEventIterator>(THD *, enum_schema_tables, const String *);
+#endif
 
 ObjIterator *get_db_tables(THD *thd, const String *db_name)
 {
@@ -1423,7 +1535,11 @@ ObjIterator *get_db_stored_functions(THD *thd, const String *db_name)
 
 ObjIterator *get_db_events(THD *thd, const String *db_name)
 {
+#ifdef HAVE_EVENT_SCHEDULER
   return create_is_iterator<DbEventIterator>(thd, SCH_EVENTS, db_name);
+#else
+  return (ObjIterator *)new ObjIteratorDummyImpl;
+#endif
 }
 
 
@@ -2163,7 +2279,7 @@ bool StoredFuncObj::drop(THD *thd)
 //
 
 /////////////////////////////////////////////////////////////////////////////
-
+#ifdef HAVE_EVENT_SCHEDULER
 EventObj::EventObj(const String *db_name,
                    const String *event_name)
 {
@@ -2321,6 +2437,138 @@ bool EventObj::drop(THD *thd)
                           &m_db_name,
                           &m_event_name));
 }
+#endif // HAVE_EVENT_SCHEDULER
+
+///////////////////////////////////////////////////////////////////////////
+
+//
+// Implementation: TablespaceObj class.
+//
+
+/////////////////////////////////////////////////////////////////////////////
+
+TablespaceObj::TablespaceObj(const String *ts_name)
+{
+  // copy strings to newly allocated memory
+  m_ts_name.copy(*ts_name);
+  m_datafile.length(0);
+  m_comments.length(0);
+}
+
+/**
+  Serialize the object.
+
+  This method produces the data necessary for materializing the object
+  on restore (creates object).
+
+  @param[in]  thd            Thread context.
+  @param[out] serialization  The data needed to recreate this object.
+
+  @returns Error status.
+    @retval FALSE on success
+    @retval TRUE on error
+*/
+bool TablespaceObj::serialize(THD *thd, String *serialization)
+{
+  DBUG_ENTER("TablespaceObj::serialize()");
+  build_serialization();
+  serialization->copy(m_create_stmt);
+  DBUG_RETURN(FALSE);
+}
+
+/**
+  Materialize the serialization string.
+
+  This method saves serialization string into a member variable.
+
+  @param[in]  serialization_version   version number of this interface
+  @param[in]  serialization           the string from serialize()
+
+  @todo take serialization_version into account
+
+  @returns Error status.
+    @retval FALSE on success
+    @retval TRUE on error
+*/
+bool TablespaceObj::materialize(uint serialization_version,
+                                const String *serialization)
+{
+  DBUG_ENTER("TablespaceObj::materialize()");
+  m_create_stmt.copy(*serialization);
+  DBUG_RETURN(FALSE);
+}
+
+/**
+  Get a description of the tablespace object.
+
+  This method returns the description of the object which is currently
+  the serialization string.
+
+  @returns Serialization string.
+*/
+const String *TablespaceObj::describe()
+{
+  DBUG_ENTER("TablespaceObj::describe()");
+  DBUG_RETURN(build_serialization());
+}
+
+/**
+  Build the serialization string.
+
+  This constructs the serialization string for identification
+  use in describing tablespace to the user and for creating the
+  tablespace.
+
+  @todo take serialization_version into account
+
+  @returns Serialization string.
+*/
+const String *TablespaceObj::build_serialization()
+{
+  DBUG_ENTER("TablespaceObj::build_serialization()");
+
+  if (m_create_stmt.length())
+    DBUG_RETURN(&m_create_stmt);
+
+  /*
+    Construct the CREATE TABLESPACE command from the variables.
+  */
+  m_create_stmt.length(0);
+  m_create_stmt.append("CREATE TABLESPACE ");
+  if (m_ts_name.length() > 0)
+  {
+    THD *thd= current_thd;
+    append_identifier(thd, &m_create_stmt, 
+      m_ts_name.c_ptr(), m_ts_name.length());  
+  }
+  m_create_stmt.append(" ADD DATAFILE '");
+  m_create_stmt.append(m_datafile);
+  if (m_comments.length())
+  {
+    m_create_stmt.append("' COMMENT = '");
+    m_create_stmt.append(m_comments);
+  }
+  m_create_stmt.append("' ENGINE=FALCON");
+  DBUG_RETURN(&m_create_stmt);
+}
+
+/**
+  Create the object.
+
+  This method uses serialization string in a query and executes it.
+
+  @param[in]  thd  Thread context.
+
+  @returns Error status.
+    @retval FALSE on success
+    @retval TRUE on error
+*/
+bool TablespaceObj::execute(THD *thd)
+{
+  DBUG_ENTER("TablespaceObj::execute()");
+  build_serialization(); // Build the CREATE command.
+  DBUG_RETURN(silent_exec(thd, &m_create_stmt));
+}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2362,8 +2610,13 @@ Obj *get_stored_function(const String *db_name,
 Obj *get_event(const String *db_name,
                const String *event_name)
 {
+#ifdef HAVE_EVENT_SCHEDULER
   return new EventObj(db_name, event_name);
+#else
+  return NULL;
+#endif
 }
+
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2432,12 +2685,24 @@ Obj *materialize_stored_function(const String *db_name,
   return obj;
 }
 
+#ifdef HAVE_EVENT_SCHEDULER
 Obj *materialize_event(const String *db_name,
                        const String *event_name,
                        uint serialization_version,
                        const String *serialialization)
 {
   Obj *obj= new EventObj(db_name, event_name);
+  obj->materialize(serialization_version, serialialization);
+
+  return obj;
+}
+#endif
+
+Obj *materialize_tablespace(const String *ts_name,
+                            uint serialization_version,
+                            const String *serialialization)
+{
+  Obj *obj= new TablespaceObj(ts_name);
   obj->materialize(serialization_version, serialialization);
 
   return obj;
@@ -2464,6 +2729,297 @@ bool is_internal_db_name(const String *db_name)
 bool check_db_existence(const String *db_name)
 {
   return check_db_dir_existence(((String *) db_name)->c_ptr_safe());
+}
+
+/**
+  Locate the row in the information_schema view for this tablespace.
+
+  This method returns a row from a tablespace information_schema view
+  that matches the tablespace name passed. 
+
+  @param[in]     thd           Thread context
+  @param[in]     is_table_idx  The information schema to search
+  @param[in]     ts_name       The name of the tablespace to find
+  @param[out]    datafile      The datafile for the tablespace
+  @param[out]    comments      The comments for the tablespace
+  
+  @retval FALSE if tablespace exists and no errors
+  @retval TRUE if tablespace does not exist or errors
+*/
+static bool find_tablespace_schema_row(THD *thd,
+                                       enum_schema_tables is_table_idx,
+                                       const String *ts_name,
+                                       String *datafile,
+                                       String *comments)
+{
+  int ret= 0;
+  TABLE *is_table;
+  handler *ha;
+  my_bitmap_map *orig_col;
+  LEX_STRING lex_ts_name;
+  String found_ts_name;
+  bool retval= FALSE;
+  String data;
+  List<LEX_STRING> ts_list;
+  DBUG_ENTER("obs::find_tablespace_schema_row()");
+
+  /*
+    First, open the IS table.
+  */
+  lex_ts_name.str= (char *)ts_name->ptr();
+  lex_ts_name.length= ts_name->length();
+  ts_list.push_back(&lex_ts_name);
+
+  if (InformationSchemaIterator::prepare_is_table(
+      thd, &is_table, &ha, &orig_col, is_table_idx, ts_list))
+    DBUG_RETURN(TRUE);
+
+  /*
+    Now read from the IS table.
+  */
+  if (ha->rnd_next(is_table->record[0]))
+  {
+    retval= TRUE;
+    goto end;
+  }
+
+  /*    
+    Attempt to locate the row in the tablespaces table.
+    If found, proceed to the retrieving the data.
+  */
+  is_table->field[0]->val_str(&found_ts_name);
+  while (!ret && found_ts_name.length() &&
+    (strncasecmp(found_ts_name.ptr(), ts_name->ptr(), 
+     ts_name->length()) != 0))
+  {
+    ret= ha->rnd_next(is_table->record[0]);
+    found_ts_name.length(0); // reset the length of the string
+    if (!ret)
+      is_table->field[0]->val_str(&found_ts_name);
+  }
+  if (ret || (found_ts_name.length() == 0))
+  {
+    retval= TRUE;
+    goto end;
+  }
+
+  /*
+    TS name is in col 0 in FALCON_TABLESPACES
+    TS comment is in col 2 in FALCON_TABLESPACES
+    TS datafile is in col 3 in FALCON_TABLESPACE_FILES
+  */
+  switch (is_table_idx) {
+    case SCH_FALCON_TABLESPACES:
+    {
+      is_table->field[2]->val_str(&data);
+      comments->copy(data);
+      break;
+    }
+    case SCH_FALCON_TABLESPACE_FILES:
+    {
+      is_table->field[3]->val_str(&data);
+      datafile->copy(data);
+      break;
+    }
+    default:
+    {
+      retval= TRUE;  //error
+      goto end;
+    }
+  }
+  DBUG_PRINT("find_tablespace_schema_row", (" Found tablespace %s", 
+    found_ts_name.ptr()));
+
+  /*
+    Cleanup
+  */
+end:
+  ha->ha_rnd_end();
+
+  dbug_tmp_restore_column_map(is_table->read_set, orig_col);
+  free_tmp_table(thd, is_table);
+  DBUG_RETURN(retval);
+}
+
+/**
+  Build a valid tablespace from the information_schema views.
+
+  This method builds a @c TablespaceObj object if the tablespace
+  exists on the server.
+
+  @param[in]     thd           Thread context.
+  @param[out]    TablespaceObj A pointer to a new tablespace object
+  @param[in]     ts_name       The name of the tablespace to find
+  
+  @note Caller is responsible for destroying the tablespace object.
+
+  @retval FALSE if tablespace exists and no errors
+  @retval TRUE if tablespace does not exist or errors
+*/
+static bool get_tablespace_from_schema(THD *thd,
+                                       TablespaceObj **ts, 
+                                       const String *ts_name)
+{
+  String datafile;
+  String comments;
+  DBUG_ENTER("obs::get_tablespace_from_schema()");
+
+  /*
+    Locate the row in FALCON_TABLESPACES and get the comments.
+  */
+  if (find_tablespace_schema_row(thd, SCH_FALCON_TABLESPACES, 
+      ts_name, &datafile, &comments))
+    DBUG_RETURN(TRUE);
+
+  /*
+    Locate the row in FALCON_TABLESPACE_FILES and get the datafile.
+  */
+  if (find_tablespace_schema_row(thd, SCH_FALCON_TABLESPACE_FILES, 
+      ts_name, &datafile, &comments))
+    DBUG_RETURN(TRUE);
+
+  /*
+    The datafile parameter is required.
+  */
+  if (datafile.length() == 0)
+    DBUG_RETURN(TRUE);
+
+  DBUG_PRINT("get_tablespace_from_schema", (" Found tablespace %s %s", 
+    ts_name->ptr(), datafile.ptr()));
+
+  TablespaceObj *ts_local= new TablespaceObj(ts_name);
+  *ts= ts_local;
+  ts_local->set_datafile(&datafile);
+  ts_local->set_comments(&comments);
+
+  DBUG_RETURN(FALSE);
+}
+
+/**
+  Retrieve the tablespace for a table if it exists
+  
+  This method returns a @c TablespaceObj object if the table has a tablespace.
+
+  @param[in]  thd       Thread context.
+  @param[in]  db_name   The database name for the table.
+  @param[in]  tbl_name  The table name.
+  
+  @note Caller is responsible for destroying the object.
+
+  @retval Tablespace object if table uses a tablespace 
+  @retval NULL if table does not use a tablespace
+*/
+Obj *get_tablespace_for_table(THD *thd, 
+                              const String *db_name, 
+                              const String *tbl_name)
+{
+  TablespaceObj *ts= NULL;
+  char path[FN_REFLEN];
+  String ts_name;
+  bool get_ts= FALSE;
+  const char *ts_name_str;
+  DBUG_ENTER("obs::get_tablespace_for_table()");
+  DBUG_PRINT("obs::get_tablespace_for_table", ("name: %s.%s", 
+             db_name->ptr(), tbl_name->ptr()));
+
+  const char *db= db_name->ptr();
+  const char *name= tbl_name->ptr();
+
+  build_table_filename(path, sizeof(path), db, name, "", 0);
+  ts_name.length(0);
+
+  TABLE *table= open_temporary_table(thd, path, db, name,
+                    FALSE /* don't link to thd->temporary_tables */,
+                    OTM_OPEN);
+
+  if (table)
+  {
+    get_ts= (table->s->db_type()->db_type == DB_TYPE_FALCON
+        && (ts_name_str= table->file->get_tablespace_name()));
+    if (get_ts)
+    {
+      ts_name.append(ts_name_str);
+      ts_name.set_charset(system_charset_info);
+    }
+    intern_close_table(table);
+    my_free(table, MYF(0));
+  }
+  else
+    goto end;
+
+  /*
+    Now open the information_schema table and get the tablespace information.
+  */
+  if (get_ts)
+    get_tablespace_from_schema(thd, &ts, &ts_name);
+end:
+  DBUG_RETURN(ts);
+}
+
+/**
+  Determine if tablespace exists.
+
+  This method determines if a materialized tablespace exists on the
+  system. This compares the name and all saved attributes of the 
+  tablespace. A FALSE return would mean either the tablespace does
+  not exist or the tablespace attributes are different.
+
+  @param[in]  Obj  The TablspaceObj pointer to compare.
+  
+  @retval TRUE if it exists
+  @retval FALSE if it does not exist
+*/
+bool tablespace_exists(THD *thd,
+                       Obj *ts)
+{
+  TablespaceObj *other_ts= NULL;
+  bool retval= FALSE;
+  DBUG_ENTER("obs::tablespace_exists()");
+  get_tablespace_from_schema(thd, &other_ts, ts->get_name());
+  if (!other_ts)
+    DBUG_RETURN(retval);
+  retval= (my_strcasecmp(system_charset_info, 
+           other_ts->build_serialization()->ptr(), 
+           ((TablespaceObj *)ts)->build_serialization()->ptr()) == 0);
+  delete other_ts;
+  DBUG_RETURN(retval);
+}
+
+/**
+  Is there a tablespace with the given name?
+  
+  This method determines if the tablespace referenced by name exists on the
+  system. Returns a TablespaceObj if it exists or NULL if it doesn't.
+
+  @param[in]  ts_name  The Tablspace name to compare.
+  
+  @note Caller is responsible for destroying the tablespace object.
+
+  @returns the tablespace if found or NULL if not found
+*/
+Obj *is_tablespace(THD *thd,
+                   const String *ts_name)
+{
+  TablespaceObj *other_ts= NULL;
+  DBUG_ENTER("obs::is_tablespace()");
+  get_tablespace_from_schema(thd, &other_ts, ts_name);
+  DBUG_RETURN(other_ts);
+}
+
+/**
+  Decribe a tablespace.
+
+  This method returns a description of the tablespace useful for communicating
+  with the user.
+
+  @param[in]  ts  The Tablspace to describe.
+  
+  @returns tablespace description
+*/
+const String *describe_tablespace(Obj *ts)
+{
+  DBUG_ENTER("obs::describe_tablespace()");
+  DBUG_RETURN(((TablespaceObj *)ts)->describe());
 }
 
 ///////////////////////////////////////////////////////////////////////////

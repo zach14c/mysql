@@ -1025,6 +1025,11 @@ public:
       cost Item::execution_cost(),
     where 'cost' is either 'double' or some structure of various cost
     parameters.
+
+    NOTE
+      This function is now used to prevent evaluation of materialized IN
+      subquery predicates before it is allowed. grep for 
+      DontEvaluateMaterializedSubqueryTooEarly to see the uses.
   */
   virtual bool is_expensive()
   {
@@ -1739,6 +1744,7 @@ public:
   bool eq(const Item *item, bool binary_cmp) const;
   /** Item is a argument to a limit clause. */
   bool limit_clause_param;
+  void set_param_type_and_swap_value(Item_param *from);
 };
 
 

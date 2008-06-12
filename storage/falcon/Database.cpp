@@ -322,8 +322,16 @@ static const char *createTableSpaces =
 		"tablespace varchar(128) not null primary key,"
 		"tablespace_id int not null,"
 		"filename varchar(512) not null,"
-		"status int,"
-		"max_size int)";
+		"type int,"
+		/***
+		"initial_size bigint,"
+		"extent_size bigint,"
+		"autoextend_size bigint,"
+		"max_size bigint,"
+		"nodegroup int,"
+		"wait int,"
+		***/
+		"comment text)";
 
 static const char *createTableSpaceSequence = 
 	"upgrade sequence tablespace_ids";
@@ -1767,7 +1775,7 @@ void Database::retireRecords(bool forced)
 	TransId oldestActiveTransaction = transactionManager->findOldestActive();
 	int threshold = 0;
 	uint64 total = recordDataPool->activeMemory;
-	RecordScavenge recordScavenge(this, oldestActiveTransaction);
+	RecordScavenge recordScavenge(this, oldestActiveTransaction, forced);
 	
 	// If we passed the upper limit, scavenge.  If we didn't pick up
 	// a significant amount of memory since the last cycle, don't bother
@@ -1830,14 +1838,14 @@ void Database::retireRecords(bool forced)
 		}
 	else if ((total - lastRecordMemory) < recordScavengeThreshold / AGE_GROUPS)
 		{
-		recordScavenge.scavengeGeneration = -1;
+		recordScavenge.scavengeGeneration = UNDEFINED;
 		cleanupRecords (&recordScavenge);
 		
 		return;
 		}
 	else
 		{
-		recordScavenge.scavengeGeneration = -1;
+		recordScavenge.scavengeGeneration = UNDEFINED;
 		cleanupRecords (&recordScavenge);
 		}
 
@@ -1857,7 +1865,7 @@ void Database::ticker()
 	while (!thread->shutdownInProgress)
 		{
 		timestamp = time(NULL);
-		deltaTime = timestamp - startTime;
+		deltaTime = (int) (timestamp - startTime);
 		thread->sleep(1000);
 
 #ifdef STORAGE_ENGINE
@@ -2326,6 +2334,16 @@ void Database::getSerialLogInfo(InfoTable* infoTable)
 void Database::getTransactionSummaryInfo(InfoTable* infoTable)
 {
 	transactionManager->getSummaryInfo(infoTable);
+}
+
+void Database::getTableSpaceInfo(InfoTable* infoTable)
+{
+	tableSpaceManager->getTableSpaceInfo(infoTable);
+}
+
+void Database::getTableSpaceFilesInfo(InfoTable* infoTable)
+{
+	tableSpaceManager->getTableSpaceFilesInfo(infoTable);
 }
 
 void Database::updateCardinalities(void)

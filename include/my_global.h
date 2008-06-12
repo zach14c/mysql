@@ -538,17 +538,6 @@ extern "C" int madvise(void *addr, size_t len, int behav);
 #define DONT_REMEMBER_SIGNAL
 #endif
 
-/* Define void to stop lint from generating "null effekt" comments */
-#ifndef DONT_DEFINE_VOID
-#ifdef _lint
-int	__void__;
-#define VOID(X)		(__void__ = (int) (X))
-#else
-#undef VOID
-#define VOID(X)		(X)
-#endif
-#endif /* DONT_DEFINE_VOID */
-
 #if defined(_lint) || defined(FORCE_INIT_OF_VARS)
 #define LINT_INIT(var)	var=0			/* No uninitialize-warning */
 #else
@@ -570,16 +559,49 @@ typedef unsigned short ushort;
 
 #define CMP_NUM(a,b)    (((a) < (b)) ? -1 : ((a) == (b)) ? 0 : 1)
 #define sgn(a)		(((a) < 0) ? -1 : ((a) > 0) ? 1 : 0)
-#define swap_variables(t, a, b) { register t dummy; dummy= a; a= b; b= dummy; }
+#define swap_variables(t, a, b) { t dummy; dummy= a; a= b; b= dummy; }
 #define test(a)		((a) ? 1 : 0)
 #define set_if_bigger(a,b)  do { if ((a) < (b)) (a)=(b); } while(0)
 #define set_if_smaller(a,b) do { if ((a) > (b)) (a)=(b); } while(0)
 #define test_all_bits(a,b) (((a) & (b)) == (b))
 #define set_bits(type, bit_count) (sizeof(type)*8 <= (bit_count) ? ~(type) 0 : ((((type) 1) << (bit_count)) - (type) 1))
 #define array_elements(A) ((uint) (sizeof(A)/sizeof(A[0])))
+
 #ifndef HAVE_RINT
-#define rint(A) floor((A)+(((A) < 0)? -0.5 : 0.5))
-#endif
+/**
+  All integers up to this number can be represented exactly as double precision
+  values (DBL_MANT_DIG == 53 for IEEE 754 hardware).
+*/
+#define MAX_EXACT_INTEGER ((1LL << DBL_MANT_DIG) - 1)
+
+/**
+  rint(3) implementation for platforms that do not have it.
+  Always rounds to the nearest integer with ties being rounded to the nearest
+  even integer to mimic glibc's rint() behavior in the "round-to-nearest"
+  FPU mode. Hardware-specific optimizations are possible (frndint on x86).
+  Unlike this implementation, hardware will also honor the FPU rounding mode.
+*/
+
+static inline double rint(double x)
+{
+  double f, i;
+  f = modf(x, &i);
+
+  /*
+    All doubles with absolute values > MAX_EXACT_INTEGER are even anyway,
+    no need to check it.
+  */
+  if (x > 0.0)
+    i += (double) ((f > 0.5) || (f == 0.5 &&
+                                 i <= (double) MAX_EXACT_INTEGER &&
+                                 (longlong) i % 2));
+  else
+    i -= (double) ((f < -0.5) || (f == -0.5 &&
+                                  i >= (double) -MAX_EXACT_INTEGER &&
+                                  (longlong) i % 2));
+  return i;
+}
+#endif /* HAVE_RINT */
 
 /* Define some general constants */
 #ifndef TRUE

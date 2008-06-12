@@ -14,8 +14,10 @@ connection con1;
 --echo 
 ##############################################################
 
+let $MYSQLD_DATADIR=`select @@datadir`;
+
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objects.bak
+--remove_file $MYSQLD_DATADIR/bup_objects.bak
 
 # Set SQL_MODE and client charset
 --echo Setting SQL_MODE = PIPES_AS_CONCAT
@@ -168,4 +170,4 @@ SELECT event_name FROM INFORMATION_SCHEMA.EVENTS
 --echo Cleanup
 DROP DATABASE bup_objects;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objects.bak
+--remove_file $MYSQLD_DATADIR/bup_objects.bak
