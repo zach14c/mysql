@@ -1087,12 +1087,14 @@ bool THD::store_globals()
   if (my_pthread_setspecific_ptr(THR_THD,  this) ||
       my_pthread_setspecific_ptr(THR_MALLOC, &mem_root))
     DBUG_RETURN(1);
+#ifndef EMBEDDED_LIBRARY
   /*
     mysys_var is concurrently readable by a killer thread.
     LOCK_delete is not needed to lock while the pointer is
     changing from NULL not non-NULL.
   */
   DBUG_ASSERT(mysys_var == NULL);
+#endif
   mysys_var=my_thread_var;
   /*
     Let mysqld define the thread id (not mysys)
