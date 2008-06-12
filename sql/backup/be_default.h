@@ -84,7 +84,11 @@ class Backup: public Backup_thread_driver
   public:
     enum has_data_info { YES, WAIT, EOD };
     Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type);
-    virtual ~Backup() { backup::free_table_list(all_tables); }; 
+    virtual ~Backup() 
+    { 
+      cleanup();
+      backup::free_table_list(all_tables); 
+    }; 
     size_t size()  { return UNKNOWN_SIZE; };
     size_t init_size() { return 0; };
     result_t  begin(const size_t) { return backup::OK; };
@@ -92,7 +96,12 @@ class Backup: public Backup_thread_driver
     result_t get_data(Buffer &buf);
     result_t lock() { return backup::OK; };
     result_t unlock() { return backup::OK; };
-    result_t cancel() { return backup::OK; };
+    result_t cancel() 
+    { 
+      mode= CANCEL;
+      cleanup();
+      return backup::OK;
+    }
     TABLE_LIST *get_table_list() { return all_tables; }
     void free() { delete this; };
     result_t prelock(); 
@@ -101,6 +110,9 @@ class Backup: public Backup_thread_driver
     TABLE *cur_table;              ///< The table currently being read.
     my_bool init_phase_complete;   ///< Used to identify end of init phase.
     my_bool locks_acquired;        ///< Used to help kernel synchronize drivers.
+    handler *hdl;                  ///< Pointer to table handler.
+    my_bool m_cleanup;             ///< Is call to cleanup() needed?
+    result_t end_tbl_read(); 
 
   private:
     /*
@@ -110,6 +122,7 @@ class Backup: public Backup_thread_driver
     */
     typedef enum {
       INITIALIZE,                  ///< Indicates time to initialize read
+      CANCEL,                      ///< Indicates time to cancel operation
       GET_NEXT_TABLE,              ///< Open next table in the list
       READ_RCD,                    ///< Reading rows from table mode
       READ_RCD_BUFFER,             ///< Buffer records mode
@@ -119,11 +132,9 @@ class Backup: public Backup_thread_driver
     } BACKUP_MODE;
 
     result_t start_tbl_read(TABLE *tbl);
-    result_t end_tbl_read();
     int next_table();
     BACKUP_MODE mode;              ///< Indicates which mode the code is in
     int tbl_num;                   ///< The index of the current table.
-    handler *hdl;                  ///< Pointer to table handler.
     uint *cur_blob;                ///< The current blob field.
     uint *last_blob_ptr;           ///< Position of last blob field.
     MY_BITMAP *read_set;           ///< The file read set.
@@ -132,6 +143,7 @@ class Backup: public Backup_thread_driver
     byte *ptr;                     ///< Pointer to blob data from record.
     TABLE_LIST *all_tables;        ///< Reference to list of tables used.
 
+    result_t cleanup();
     uint pack(byte *rcd, byte *packed_row);
 };
 
@@ -151,11 +163,20 @@ class Restore: public Restore_driver
   public:
     enum has_data_info { YES, WAIT, EOD };
     Restore(const Table_list &tables, THD *t_thd);
-    virtual ~Restore() { backup::free_table_list(all_tables); };
+    virtual ~Restore()
+    { 
+      cleanup();
+      backup::free_table_list(all_tables); 
+    }; 
     result_t  begin(const size_t) { return backup::OK; };
     result_t  end();
     result_t  send_data(Buffer &buf);
-    result_t  cancel() { return backup::OK; };
+    result_t  cancel()
+    { 
+      mode= CANCEL;
+      cleanup();
+      return backup::OK;
+    }
     TABLE_LIST *get_table_list() { return all_tables; }
     void free() { delete this; };
 
@@ -167,6 +188,7 @@ class Restore: public Restore_driver
     */
     typedef enum {
       INITIALIZE,                  ///< Indicates time to initialize read
+      CANCEL,                      ///< Indicates time to cancel operation
       GET_NEXT_TABLE,              ///< Open next table in the list
       WRITE_RCD,                   ///< Writing rows from table mode
       CHECK_BLOBS,                 ///< See if record has blobs
@@ -191,7 +213,9 @@ class Restore: public Restore_driver
     THD *m_thd;                    ///< Pointer to current thread struct.
     TABLE_LIST *all_tables;        ///< Reference to list of tables used.
     ulonglong num_rows;            ///< Number of rows in table
+    my_bool m_cleanup;             ///< Is call to cleanup() needed?
 
+    result_t cleanup();
     uint unpack(byte *packed_row);
 };
 } // default_backup namespace

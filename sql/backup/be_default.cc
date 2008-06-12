@@ -127,6 +127,31 @@ Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type)
   all_tables= locking_thd->tables_in_backup;
   init_phase_complete= FALSE;
   locks_acquired= FALSE;
+  hdl= NULL;
+  m_cleanup= TRUE;
+}
+
+/**
+  Cleanup backup
+
+  This method provides a means to stop a current backup by allowing
+  the driver to shutdown gracefully. The method call ends the current
+  table read then attempts to kill the locking thread if it is still
+  running.
+*/
+result_t Backup::cleanup()
+{
+  DBUG_ENTER("Default_backup::cleanup()");
+  DBUG_PRINT("backup",("Default driver - stop backup"));
+  if (m_cleanup)
+  {
+    m_cleanup= FALSE;
+    if (hdl)
+      end_tbl_read();
+    if (locking_thd)
+      locking_thd->kill_locking_thread();
+  }
+  DBUG_RETURN(OK);
 }
 
 /**
@@ -160,7 +185,10 @@ result_t Backup::start_tbl_read(TABLE *tbl)
   hdl= tbl->file;
   last_read_res= hdl->ha_rnd_init(1);
   if (last_read_res != 0)
+  {
+    hdl= NULL;
     DBUG_RETURN(ERROR);
+  }
   DBUG_RETURN(OK);
 }
 
@@ -177,7 +205,12 @@ result_t Backup::end_tbl_read()
   int last_read_res;
 
   DBUG_ENTER("Default_backup::end_tbl_read)");
+
+  if (!hdl)
+    DBUG_RETURN(OK);
+
   last_read_res= hdl->ha_rnd_end();
+  hdl= NULL;
   if (last_read_res != 0)
     DBUG_RETURN(ERROR);
   DBUG_RETURN(OK);
@@ -314,6 +347,11 @@ result_t Backup::get_data(Buffer &buf)
 
   buf.table_num= tbl_num;
   buf.last= FALSE;
+
+  /* 
+    get_data() should not be called after cancel has been called.
+  */
+  DBUG_ASSERT(mode != CANCEL);
 
   /* 
     Determine mode of operation and execute mode.
@@ -586,6 +624,25 @@ Restore::Restore(const Table_list &tables, THD *t_thd) :Restore_driver(tables)
 }
 
 /**
+  Cleanup restore
+
+  This method provides a means to stop a current restore by allowing
+  the driver to shutdown gracefully. The method call closes the
+  table list by calling end() method.
+*/
+result_t Restore::cleanup()
+{
+  DBUG_ENTER("Default_backup::cleanup()");
+  DBUG_PRINT("backup",("Default driver - stop restore"));
+  if (m_cleanup)
+  {
+    m_cleanup= FALSE;
+    end();
+  }
+  DBUG_RETURN(OK);
+}
+
+/**
   * @brief Truncate table.
   *
   * This method saves the handler for the table and deletes all rows in
@@ -726,6 +783,11 @@ result_t Restore::send_data(Buffer &buf)
   DBUG_PRINT("default_restore",("Got packet with %lu bytes from stream %u",
                                 (unsigned long)buf.size, buf.table_num));
   
+  /* 
+    get_data() should not be called after cancel has been called.
+  */
+  DBUG_ASSERT(mode != CANCEL);
+
   /* 
     Determine mode of operation and execute mode.
   */

@@ -77,6 +77,44 @@ result_t Engine::get_backup(const uint32, const Table_list &tables, Backup_drive
   DBUG_RETURN(OK);
 }
 
+/**
+  Cleanup backup
+
+  This method provides a means to stop a current backup by allowing
+  the driver to shutdown gracefully. The method call ends the current
+  transaction and closes the tables.
+*/
+result_t Backup::cleanup()
+{
+  DBUG_ENTER("Default_backup::cleanup()");
+  DBUG_PRINT("backup",("Snapshot driver - stop backup"));
+  if (m_cleanup)
+  {
+    m_cleanup= FALSE;
+    locking_thd->lock_state= LOCK_DONE; // set lock done so destructor won't wait
+    if (m_trans_start)
+    {
+      ha_autocommit_or_rollback(locking_thd->m_thd, 0);
+      end_active_trans(locking_thd->m_thd);
+      m_trans_start= FALSE;
+    }
+    if (tables_open)
+    {
+      if (hdl)
+        default_backup::Backup::end_tbl_read();
+      close_thread_tables(locking_thd->m_thd);
+      tables_open= FALSE;
+    }
+  }
+  DBUG_RETURN(OK);
+}
+
+/**
+  Lock the tables
+
+  This method creates the consistent read transaction and acquires the read
+  lock.
+*/
 result_t Backup::lock()
 {
   DBUG_ENTER("Snapshot_backup::lock()");
@@ -91,6 +129,7 @@ result_t Backup::lock()
   int res= begin_trans(locking_thd->m_thd);
   if (res)
     DBUG_RETURN(ERROR);
+  m_trans_start= TRUE;
   locking_thd->lock_state= LOCK_ACQUIRED;
   BACKUP_BREAKPOINT("backup_cs_locked");
   DBUG_RETURN(OK);
@@ -123,13 +162,8 @@ result_t Backup::get_data(Buffer &buf)
     being set to LOCK_SIGNAL from parent::get_data(). This is set
     after the last table is finished reading.
   */
-  if (locking_thd->lock_state == LOCK_SIGNAL)
-  {
-    locking_thd->lock_state= LOCK_DONE; // set lock done so destructor won't wait
-    ha_autocommit_or_rollback(locking_thd->m_thd, 0);
-    end_active_trans(locking_thd->m_thd);
-    close_thread_tables(locking_thd->m_thd);
-  }
+  if ((locking_thd->lock_state == LOCK_SIGNAL) || m_cancel)
+    cleanup();
   return(res);
 }
 

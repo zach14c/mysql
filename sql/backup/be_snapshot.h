@@ -59,24 +59,31 @@ class Backup: public default_backup::Backup
 {
   public:
     Backup(const Table_list &tables, THD *t_thd) 
-      :default_backup::Backup(tables, t_thd, TL_READ) { tables_open= FALSE; };
-    virtual ~Backup()
-    {
-      if (locking_thd->lock_state == LOCK_ACQUIRED)
-      {
-        end_active_trans(locking_thd->m_thd);
-        close_thread_tables(locking_thd->m_thd);
-      }
+      :default_backup::Backup(tables, t_thd, TL_READ) 
+    { 
+      tables_open= FALSE;
+      m_cancel= FALSE;
+      m_trans_start= FALSE;
     };
+    virtual ~Backup() { cleanup(); };
     result_t begin(const size_t) { return backup::OK; };
     result_t end() { return backup::OK; };
     result_t get_data(Buffer &buf);
     result_t prelock() { return backup::READY; }
     result_t lock();
     result_t unlock() { return backup::OK; };
-    result_t cancel() { return backup::OK; };
+    result_t cancel() 
+    { 
+      m_cancel= TRUE;
+      cleanup();
+      return backup::OK;
+    }
   private:
     my_bool tables_open;   ///< Indicates if tables are open
+    my_bool m_cancel;      ///< Cancel backup
+    my_bool m_trans_start; ///< Is transaction stated?
+
+   result_t cleanup();
 };
 
 /**
