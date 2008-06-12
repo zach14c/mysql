@@ -214,19 +214,19 @@ collation_connection	latin1_swedish_ci
 backup data
 BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview.bak';
 backup_id
-1
+#
 BACKUP DATABASE bup_db1 TO 'bup_objectview1.bak';
 backup_id
-2
+#
 BACKUP DATABASE bup_db2 TO 'bup_objectview2.bak';
 backup_id
-3
+#
 dropping  database.
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview.bak';
 backup_id
-4
+#
 showing objects and create statements
 SHOW CREATE DATABASE bup_db1;;
 Database	bup_db1
@@ -368,7 +368,7 @@ DROP DATABASE bup_db2;
 Restoring Database
 RESTORE FROM 'bup_objectview.bak';
 backup_id
-5
+#
 USE bup_db1;
 ALTER TABLE t1 CHANGE id id tinyint not null;
 SHOW CREATE TABLE t1;;
@@ -420,12 +420,12 @@ aa6	30	Doctor
 aa8	27	undergrad
 BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview3.bak';
 backup_id
-6
+#
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview3.bak';
 backup_id
-7
+#
 USE bup_db2;
 SELECT * FROM v3;
 name	age	education

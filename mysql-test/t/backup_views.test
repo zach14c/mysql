@@ -171,11 +171,13 @@ SELECT * FROM student_details; #view v4 is renamed as student_details
 
 #Backup and restore data.
 --echo backup data
-
+replace_column 1 #;
 BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview.bak';
 
+replace_column 1 #;
 BACKUP DATABASE bup_db1 TO 'bup_objectview1.bak';
 
+replace_column 1 #;
 BACKUP DATABASE bup_db2 TO 'bup_objectview2.bak';
 
 --echo dropping  database.
@@ -192,6 +194,7 @@ DROP DATABASE bup_db2;
 #--error 1146
 #RESTORE FROM 'bup_objectview2.bak';
 
+replace_column 1 #;
 RESTORE FROM 'bup_objectview.bak';
 
 #show data and create statements
@@ -237,6 +240,7 @@ DROP DATABASE bup_db2;
 
 --echo Restoring Database
 
+replace_column 1 #;
 RESTORE FROM 'bup_objectview.bak';
 
 USE bup_db1;
@@ -262,11 +266,13 @@ SELECT * FROM v3;
 #SELECT * FROM t2;
 #SELECT * FROM v3;
 
+replace_column 1 #;
 BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview3.bak';
 
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
+replace_column 1 #;
 RESTORE FROM 'bup_objectview3.bak';
 
 USE bup_db2;
