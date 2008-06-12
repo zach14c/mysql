@@ -213,6 +213,7 @@ class Restore: public Restore_driver
     THD *m_thd;                    ///< Pointer to current thread struct.
     TABLE_LIST *all_tables;        ///< Reference to list of tables used.
     ulonglong num_rows;            ///< Number of rows in table
+    timestamp_auto_set_type old_tm;///< Save old timestamp auto set type.
     my_bool m_cleanup;             ///< Is call to cleanup() needed?
 
     result_t cleanup();

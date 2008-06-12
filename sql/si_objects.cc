@@ -56,7 +56,7 @@ int silent_exec(THD *thd, String *query)
   thd->query=         query->c_ptr();
   thd->query_length=  query->length();
 
-  thd->set_time(time(NULL));
+  thd->set_time();
   pthread_mutex_lock(&::LOCK_thread_count);
   thd->query_id= ::next_query_id();
   pthread_mutex_unlock(&::LOCK_thread_count);

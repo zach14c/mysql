@@ -699,6 +699,11 @@ int Restore::next_table()
     cur_table= tables_in_backup->table;
   else
   {
+    /*
+      Restore original timestamp autoset type.
+    */
+    if (cur_table && cur_table->timestamp_field)
+      cur_table->timestamp_field_type= old_tm;
     tables_in_backup= tables_in_backup->next_global;
     if (tables_in_backup != NULL)
     {
@@ -711,6 +716,16 @@ int Restore::next_table()
       DBUG_RETURN(-1);
     }
   } 
+  /*
+    Save original timestamp autoset type and switch to TIMESTAMP_NO_AUTO_SET
+    so that any restored data with timestamp fields will not have their values
+    reset on write.
+  */
+  if (cur_table && cur_table->timestamp_field)
+  {
+    old_tm= cur_table->timestamp_field->get_auto_set_type();
+    cur_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
+  }
   DBUG_RETURN(0);
 }
 
