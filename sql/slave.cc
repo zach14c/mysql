@@ -2584,7 +2584,8 @@ Slave SQL thread aborted. Can't execute init_slave query");
         {
           if (err->code == ER_CANT_OPEN_LIBRARY)
             udf_error = true;
-          sql_print_warning("Slave: %s Error_code: %d",err->msg, err->code);
+          (sql_print_message_handlers[err->level])("Slave: %s Error_code: %d",
+                                                   err->msg, err->code);
         }
         if (udf_error)
           sql_print_error("Error loading user-defined library, slave SQL "
