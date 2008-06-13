@@ -97,7 +97,13 @@ Silence_log_table_errors::handle_error(uint /* sql_errno */,
   return TRUE;
 }
 
+/*
+  Array of warning report functions.
+  The functions are listed in the order defined by
+  MYSQL_ERROR::enum_warning_level.
 
+  @todo: merge the array with MYSQL_ERROR class
+*/
 sql_print_message_func sql_print_message_handlers[3] =
 {
   sql_print_information,
