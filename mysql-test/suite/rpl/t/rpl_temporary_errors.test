@@ -29,3 +29,5 @@ DROP TABLE t1;
 --echo **** On Master ****
 connection master;
 DROP TABLE t1;
+
+call mtr.add_supression("Slave: Deadlock found");
