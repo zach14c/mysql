@@ -102,6 +102,7 @@ public:
 	void		addRef();
 	void		waitForTransaction();
 	bool		waitForTransaction (TransId transId);
+	State		waitForTransaction (Transaction *transaction, TransId transId, bool *deadlock);
 	void		dropTable(Table* table);
 	void		truncateTable(Table* table);
 	bool		hasUncommittedRecords(Table* table);
@@ -145,7 +146,7 @@ public:
 	int				curSavePointId;
 	Transaction		*next;			// next in database
 	Transaction		*prior;			// next in database
-	Transaction		*waitingFor;
+	volatile	Transaction		*waitingFor;
 	SavePoint		*savePoints;
 	SavePoint		*freeSavePoints;
 	SavePoint		localSavePoints[LOCAL_SAVE_POINTS];
