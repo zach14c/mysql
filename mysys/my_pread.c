@@ -16,81 +16,11 @@
 #include "mysys_priv.h"
 #include "mysys_err.h"
 #include <errno.h>
-#if defined (HAVE_PREAD) && !defined(__WIN__)
+#if defined (HAVE_PREAD) && !defined(_WIN32)
 #include <unistd.h>
 #endif
 
-#ifdef __WIN__
-extern void  _dosmaperr(DWORD);
 
-/*
-  Positional read and write on Windows.
-
-  NOTE: 
-  - this functions require NT-based kernel.
-  - they can read/write at most 4GB at once.
-  - unlike Posix pread/pwrite, they change file pointer position.
-*/
-static size_t pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset)
-{
-  DWORD         nBytesRead;
-  HANDLE        hFile;
-  OVERLAPPED    ov={0};
-  LARGE_INTEGER li;
-
-  if(!Count)
-    return 0;
-#ifdef _WIN64
-  if(Count > UINT_MAX)
-    Count = UINT_MAX;
-#endif
-
-  hFile=         (HANDLE)_get_osfhandle(Filedes);
-  li.QuadPart=   offset;
-  ov.Offset=     li.LowPart;
-  ov.OffsetHigh= li.HighPart;
-
-  if(!ReadFile(hFile, Buffer, (DWORD)Count, &nBytesRead, &ov))
-  {
-    DWORD lastError = GetLastError();
-    if(lastError == ERROR_HANDLE_EOF)
-       return 0; /*return 0 at EOF*/
-    _dosmaperr(lastError);
-    return -1;
-  }
-  else
-    return nBytesRead;
-}
-
-static size_t pwrite(File Filedes, const uchar *Buffer, size_t Count, my_off_t offset)
-{
-  DWORD         nBytesWritten;
-  HANDLE        hFile;
-  OVERLAPPED    ov={0};
-  LARGE_INTEGER li;
-
-  if(!Count)
-    return 0;
-
-#ifdef _WIN64
-  if(Count > UINT_MAX)
-    Count = UINT_MAX;
-#endif
-
-  hFile=         (HANDLE)_get_osfhandle(Filedes);
-  li.QuadPart=   offset;
-  ov.Offset=     li.LowPart;
-  ov.OffsetHigh= li.HighPart;
-
-  if(!WriteFile(hFile, Buffer, (DWORD)Count, &nBytesWritten, &ov))
-  {
-    _dosmaperr(GetLastError());
-    return -1;
-  }
-  else
-    return nBytesWritten;
-}
-#endif
 
 /*
   Read a chunk of bytes from a file from a given position
@@ -124,19 +54,24 @@ size_t my_pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset,
                    MyFlags));
   for (;;)
   {
-#ifndef __WIN__
-    errno=0;					/* Linux doesn't reset this */
-#endif
-#if !defined (HAVE_PREAD) && !defined (__WIN__)
+    errno= 0;
+#if !defined (HAVE_PREAD) && !defined (_WIN32)
     pthread_mutex_lock(&my_file_info[Filedes].mutex);
     readbytes= (uint) -1;
     error= (lseek(Filedes, offset, MY_SEEK_SET) == (my_off_t) -1 ||
 	    (readbytes= read(Filedes, Buffer, Count)) != Count);
     pthread_mutex_unlock(&my_file_info[Filedes].mutex);
 #else
-    if ((error= ((readbytes= pread(Filedes, Buffer, Count, offset)) != Count)))
+#if defined(_WIN32)
+    readbytes= my_win_pread(Filedes, Buffer, Count, offset);
+#else 
+    readbytes= pread(Filedes, Buffer, Count, offset);
+#endif
+    error= (readbytes != Count);
+    if(error)
       my_errno= errno ? errno : -1;
 #endif
+
     if (error || readbytes != Count)
     {
       DBUG_PRINT("warning",("Read only %d bytes off %u from %d, errno: %d",
@@ -189,10 +124,10 @@ size_t my_pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset,
     #             Number of bytes read
 */
 
-size_t my_pwrite(int Filedes, const uchar *Buffer, size_t Count,
+size_t my_pwrite(File Filedes, const uchar *Buffer, size_t Count,
                  my_off_t offset, myf MyFlags)
 {
-  size_t writenbytes, written;
+  size_t writtenbytes, written;
   uint errors;
   DBUG_ENTER("my_pwrite");
   DBUG_PRINT("my",("Fd: %d  Seek: %lu  Buffer: %p  Count: %u  MyFlags: %d",
@@ -203,28 +138,31 @@ size_t my_pwrite(int Filedes, const uchar *Buffer, size_t Count,
 
   for (;;)
   {
-#if !defined (HAVE_PREAD) && !defined (__WIN__)
+#if !defined (HAVE_PREAD) && !defined (_WIN32)
     int error;
-    writenbytes= (size_t) -1;
+    writtenbytes= (size_t) -1;
     pthread_mutex_lock(&my_file_info[Filedes].mutex);
     error= (lseek(Filedes, offset, MY_SEEK_SET) != (my_off_t) -1 &&
-            (writenbytes = write(Filedes, Buffer, Count)) == Count);
+            (writtenbytes= write(Filedes, Buffer, Count)) == Count);
     pthread_mutex_unlock(&my_file_info[Filedes].mutex);
     if (error)
       break;
+#elif defined (_WIN32)
+    writtenbytes= my_win_pwrite(Filedes, Buffer, Count, offset);
 #else
-    if ((writenbytes= pwrite(Filedes, Buffer, Count,offset)) == Count)
+    writtenbytes= pwrite(Filedes, Buffer, Count, offset);
+#endif
+    if(writtenbytes == Count)
       break;
     my_errno= errno;
-#endif
-    if (writenbytes != (size_t) -1)
+    if (writtenbytes != (size_t) -1)
     {					/* Safegueard */
-      written+=writenbytes;
-      Buffer+=writenbytes;
-      Count-=writenbytes;
-      offset+=writenbytes;
+      written+= writtenbytes;
+      Buffer+= writtenbytes;
+      Count-= writtenbytes;
+      offset+= writtenbytes;
     }
-    DBUG_PRINT("error",("Write only %u bytes", (uint) writenbytes));
+    DBUG_PRINT("error",("Write only %u bytes", (uint) writtenbytes));
 #ifndef NO_BACKGROUND
 #ifdef THREAD
     if (my_thread_var->abort)
@@ -239,7 +177,7 @@ size_t my_pwrite(int Filedes, const uchar *Buffer, size_t Count,
       (void) sleep(MY_WAIT_FOR_USER_TO_FIX_PANIC);
       continue;
     }
-    if ((writenbytes && writenbytes != (size_t) -1) || my_errno == EINTR)
+    if ((writtenbytes && writtenbytes != (size_t) -1) || my_errno == EINTR)
       continue;					/* Retry */
 #endif
     if (MyFlags & (MY_NABP | MY_FNABP))
@@ -257,5 +195,5 @@ size_t my_pwrite(int Filedes, const uchar *Buffer, size_t Count,
   DBUG_EXECUTE_IF("check", my_seek(Filedes, -1, SEEK_SET, MYF(0)););
   if (MyFlags & (MY_NABP | MY_FNABP))
     DBUG_RETURN(0);			/* Want only errors */
-  DBUG_RETURN(writenbytes+written); /* purecov: inspected */
+  DBUG_RETURN(writtenbytes+written); /* purecov: inspected */
 } /* my_pwrite */

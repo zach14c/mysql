@@ -69,7 +69,11 @@ typedef struct my_stat
 
 #else
 
+#if(_MSC_VER)
+#define MY_STAT struct __stat64 /* 64 bit file size and timestamp */
+#else
 #define MY_STAT struct stat	/* Orginal struct have what we need */
+#endif
 
 #endif /* USE_MY_STAT_STRUCT */
 
