@@ -201,6 +201,19 @@ bool foreign_key_prefix(Key *a, Key *b)
 ** Thread specific functions
 ****************************************************************************/
 
+/** Push an error to the error stack and return TRUE for now. */
+
+bool
+Reprepare_observer::report_error(THD *thd)
+{
+  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
+
+  m_invalidated= TRUE;
+
+  return TRUE;
+}
+
+
 Open_tables_state::Open_tables_state(ulong version_arg)
   :version(version_arg), state_flags(0U)
 {
@@ -1599,19 +1612,19 @@ bool select_send::send_data(List<Item> &items)
   Item *item;
   while ((item=li++))
   {
-    if (item->send(protocol, &buffer))
+    if (item->send(protocol, &buffer) || thd->is_error())
     {
       protocol->free();				// Free used buffer
       my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
       break;
     }
   }
-  thd->sent_row_count++;
   if (thd->is_error())
   {
     protocol->remove_last_row();
     DBUG_RETURN(1);
   }
+  thd->sent_row_count++;
   if (thd->vio_ok())
     DBUG_RETURN(protocol->write());
   DBUG_RETURN(0);
@@ -2836,7 +2849,8 @@ void THD::restore_backup_open_tables_state(Open_tables_state *backup)
   DBUG_ASSERT(open_tables == 0 && temporary_tables == 0 &&
               handler_tables == 0 && derived_tables == 0 &&
               lock == 0 && locked_tables == 0 &&
-              prelocked_mode == NON_PRELOCKED);
+              prelocked_mode == NON_PRELOCKED &&
+              m_reprepare_observer == NULL);
   set_open_tables_state(backup);
   DBUG_VOID_RETURN;
 }

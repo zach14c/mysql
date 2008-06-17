@@ -285,7 +285,6 @@ static int emb_stmt_execute(MYSQL_STMT *stmt)
   my_bool res;
 
   int4store(header, stmt->stmt_id);
-  header[4]= (uchar) stmt->flags;
   thd= (THD*)stmt->mysql->thd;
   thd->client_param_count= stmt->param_count;
   thd->client_params= stmt->params;
@@ -1132,8 +1131,8 @@ bool Protocol::net_store_data(const uchar *from, size_t length)
 int vprint_msg_to_log(enum loglevel level __attribute__((unused)),
                        const char *format, va_list argsi)
 {
-  vsnprintf(mysql_server_last_error, sizeof(mysql_server_last_error),
-           format, argsi);
+  my_vsnprintf(mysql_server_last_error, sizeof(mysql_server_last_error),
+               format, argsi);
   mysql_server_last_errno= CR_UNKNOWN_ERROR;
   return 0;
 }

@@ -933,8 +933,6 @@ NULL	NULL
 DROP TABLE t1;
 CREATE TABLE t1 (col1 CHAR(5), col2 VARCHAR(6));
 INSERT INTO t1 VALUES ('hello', 'hello'),('he', 'he'),('hello   ', 'hello ');
-Warnings:
-Note	1265	Data truncated for column 'col1' at row 3
 INSERT INTO t1 (col1) VALUES ('hellobob');
 ERROR 22001: Data too long for column 'col1' at row 1
 INSERT INTO t1 (col2) VALUES ('hellobob');
@@ -1185,7 +1183,7 @@ drop table t1;
 create table t1 (col1 tinyint);
 drop procedure if exists t1;
 Warnings:
-Note	1305	PROCEDURE t1 does not exist
+Note	1305	PROCEDURE test.t1 does not exist
 create procedure t1 () begin declare exit handler for sqlexception
 select'a'; insert into t1 values (200); end;|
 call t1();
