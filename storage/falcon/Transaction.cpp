@@ -274,7 +274,6 @@ void Transaction::commit()
 	if (hasLocks)
 		releaseRecordLocks();
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit");
 	database->serialLog->preCommit(this);
 	state = Committed;
 	syncActive.unlock();
@@ -290,7 +289,12 @@ void Transaction::commit()
 
 	releaseDependencies();
 	database->flushInversion(this);
+
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit");
 	syncActiveTransactions.lock(Exclusive);
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit");
+	syncCommitted.lock(Exclusive);
+
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
 	
@@ -299,9 +303,6 @@ void Transaction::commit()
 			++record->format->table->cardinality;
 		else if (record->state == recDeleted && record->format->table->cardinality > 0)
 			--record->format->table->cardinality;
-			
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit");
-	syncCommitted.lock(Exclusive);
 	transactionManager->committedTransactions.append(this);
 	syncCommitted.unlock();
 	database->commit(this);
@@ -871,7 +872,7 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 		waitForTransaction(transaction, 0 , &isDeadlock);
 
 		if (isDeadlock)
-				return Deadlock;
+			return Deadlock;
 
 		return WasActive;			// caller will need to re-fetch
 		}
@@ -989,11 +990,13 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 		// transaction parameter is not given, find transaction using its ID.
 		for (transaction = transactionManager->activeTransactions.first; transaction;
 			 transaction = transaction->next)
+			{
 			if (transaction->transactionId == transId)
-					{
-					transaction->addRef();
-					break;
-					}
+				{
+				transaction->addRef();
+				break;
+				}
+			}
 		}
 
 	if (!transaction)
@@ -1014,8 +1017,8 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 	for (trans = transaction->waitingFor; trans; trans = trans->waitingFor)
 		if (trans == this)
 			{
-				*deadlock = true;
-				break;
+			*deadlock = true;
+			break;
 			}
 
 	if (!(*deadlock))
@@ -1031,8 +1034,8 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 	transaction->release();
 
 	return state;
-
 }
+
 void Transaction::waitForTransaction()
 {
 	/***

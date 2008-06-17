@@ -95,6 +95,8 @@ TransId TransactionManager::findOldestActive()
 
 Transaction* TransactionManager::findOldest(void)
 {
+	Sync sync (&activeTransactions.syncObject, "TransactionManager::findOldest");
+	sync.lock (Shared);
 	Transaction *oldest = NULL;
 	
 	for (Transaction *transaction = activeTransactions.first; transaction; transaction = transaction->next)
@@ -106,7 +108,7 @@ Transaction* TransactionManager::findOldest(void)
 
 Transaction* TransactionManager::startTransaction(Connection* connection)
 {
-	Sync sync (&activeTransactions.syncObject, "Database::startTransaction");
+	Sync sync (&activeTransactions.syncObject, "TransactionManager::startTransaction");
 	sync.lock (Shared);
 	Transaction *transaction;
 
