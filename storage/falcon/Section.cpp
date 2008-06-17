@@ -513,7 +513,6 @@ void Section::updateRecord(int32 recordNumber, Stream *stream, TransId transId, 
 	Bdb *bdb = getSectionPage (sequence, Shared, transId);
 	BDB_HISTORY(bdb);
 	SectionPage *sectionPage = (SectionPage*) bdb->buffer;
-	//bool isFull = sectionPage->isFull;
 	bool isFull = (sectionPage->flags & SECTION_FULL) != 0;
 	int32 pageNumber = sectionPage->pages [slot % dbb->pagesPerSection];
 	ASSERT (pageNumber);
