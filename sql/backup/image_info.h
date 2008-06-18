@@ -770,7 +770,9 @@ void Image_info::save_vp_time(const time_t time)
 }
 
 /**
-  Store validity point binlog position inside image's header.
+  Store validity point binlog position inside image's header. Also sets
+  BSTREAM_FLAG_BINLOG in @c flags bitmap to indicate that this
+  backup image contains a valid binlog position.
  */ 
 inline
 void Image_info::save_binlog_pos(const ::LOG_INFO &li)
@@ -782,6 +784,10 @@ void Image_info::save_binlog_pos(const ::LOG_INFO &li)
   // store binlog coordinates
   binlog_pos.pos= (unsigned long int)li.pos;
   binlog_pos.file= const_cast<char*>(m_binlog_file.ptr());
+
+  // make flags bitmap reflect that this backup image contains a valid
+  // binlog position
+  flags|= BSTREAM_FLAG_BINLOG;
 }
 
 /// Returns an iterator enumerating all databases stored in backup catalogue.

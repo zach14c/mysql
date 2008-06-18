@@ -8,7 +8,6 @@
 
   @brief Implements @c Image_info class and friends.
 
-  @todo Store endianess info in the image.
 */
 
 namespace backup {
@@ -44,7 +43,11 @@ Image_info::Image_info()
   server_version.extra.end= server_version.extra.begin +
                             strlen((const char*)server_version.extra.begin);
 
-  flags= 0;  // TODO: set BSTREAM_FLAG_BIG_ENDIAN flag accordingly
+  flags= 0;
+
+#ifdef WORDS_BIGENDIAN
+  flags|= BSTREAM_FLAG_BIG_ENDIAN;
+#endif
 
   bzero(m_snap, sizeof(m_snap));
 }
