@@ -413,7 +413,8 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 	delete tableSpace;
 
 	sync.lock(Exclusive);
-	if(pendingDrops >0) pendingDrops--;
+	if(pendingDrops >0)
+		pendingDrops--;
 }
 
 void TableSpaceManager::reportWrites(void)

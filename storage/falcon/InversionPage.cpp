@@ -612,7 +612,6 @@ void InversionPage::logPage(Bdb *bdb)
 												 (const UCHAR*) page->nodes);
 }
 
-
 void InversionPage::backup(EncodedDataStream* stream)
 {
 }

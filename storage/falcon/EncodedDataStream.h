@@ -37,7 +37,6 @@ typedef unsigned char	UCHAR;
 
 #include "BigInt.h"
 
-
 #define BYTES_POS(n)   ((n == 0) ? 0 : \
 						(n < (1<<7)) ? 1 : \
 						(n < (1<<15)) ? 2 : \
@@ -93,6 +92,8 @@ enum DataStreamType
 enum DataStreamCode
 	{
 	edsNull			= 1,
+
+	// codes 2 - 9 are reserved for what we have not thought of yet.
 
 	edsIntMinus10	= 10,
 	edsIntMinus9,

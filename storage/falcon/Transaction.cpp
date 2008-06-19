@@ -44,6 +44,8 @@
 #include "SRLSavepointRollback.h"
 #include "Bitmap.h"
 #include "BackLog.h"
+#include "Interlock.h"
+#include "Error.h"
 
 extern uint		falcon_lock_wait_timeout;
 
@@ -272,7 +274,6 @@ void Transaction::commit()
 	if (hasLocks)
 		releaseRecordLocks();
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit");
 	database->serialLog->preCommit(this);
 	state = Committed;
 	syncActive.unlock();
@@ -288,7 +289,12 @@ void Transaction::commit()
 
 	releaseDependencies();
 	database->flushInversion(this);
+
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit");
 	syncActiveTransactions.lock(Exclusive);
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit");
+	syncCommitted.lock(Exclusive);
+
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
 	
@@ -297,9 +303,6 @@ void Transaction::commit()
 			++record->format->table->cardinality;
 		else if (record->state == recDeleted && record->format->table->cardinality > 0)
 			--record->format->table->cardinality;
-			
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit");
-	syncCommitted.lock(Exclusive);
 	transactionManager->committedTransactions.append(this);
 	syncCommitted.unlock();
 	database->commit(this);
@@ -865,19 +868,11 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 		if (flags & DO_NOT_WAIT)
 			return Active;
 
-		// If waiting would cause a deadlock, don't try it
+		bool isDeadlock;
+		waitForTransaction(transaction, 0 , &isDeadlock);
 
-		for (Transaction *trans = transaction->waitingFor; trans; trans = trans->waitingFor)
-			if (trans == this)
-				return Deadlock;
-
-		// OK, add a reference to the transaction to keep the object around, then wait for it go go away
-
-		transaction->addRef();
-		waitingFor = transaction;
-		transaction->waitForTransaction();
-		waitingFor = NULL;
-		transaction->release();
+		if (isDeadlock)
+			return Deadlock;
 
 		return WasActive;			// caller will need to re-fetch
 		}
@@ -956,41 +951,89 @@ void Transaction::writeComplete(void)
 
 bool Transaction::waitForTransaction(TransId transId)
 {
+	bool deadlock;
+	State state = waitForTransaction(NULL, transId, &deadlock);
+	return (deadlock || state == Committed || state == Available);
+
+}
+
+// Wait for transaction, unless it would lead to deadlock.
+// Returns the state of transation.
+//
+// Note:
+// Deadlock check could use locking, because  there are potentially concurrent
+// threads checking and modifying the waitFor list.
+// Instead, it implements a fancy lock-free algorithm  that works reliably only
+// with full memory barriers. Thus "volatile"-specifier and COMPARE_EXCHANGE
+// are used  when traversing and modifying waitFor list. Maybe it is better to
+// use inline assembly or intrinsics to generate memory barrier instead of 
+// volatile. 
+
+State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
+										bool *deadlock)
+{
+
+
+	*deadlock = false;
+	State state;
+
+	if(transaction)
+		transaction->addRef();
+
 	TransactionManager *transactionManager = database->transactionManager;
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::waitForTransaction");
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
+		"Transaction::waitForTransaction");
 	syncActiveTransactions.lock(Shared);
-	Transaction *transaction;
-	
-	// If the transaction is still active, find it
 
-	for (transaction = transactionManager->activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->transactionId == transId)
-			break;
-	
-	// If the transction is no longer active, see if it is committed
-	
-	if (!transaction || transaction->state == Available)
-		return true;
-		
-	if (transaction->state == Committed)
-		return true;
+	if (!transaction)
+		{
+		// transaction parameter is not given, find transaction using its ID.
+		for (transaction = transactionManager->activeTransactions.first; transaction;
+			 transaction = transaction->next)
+			{
+			if (transaction->transactionId == transId)
+				{
+				transaction->addRef();
+				break;
+				}
+			}
+		}
 
-	// If waiting would cause a deadlock, don't try it
+	if (!transaction)
+		return Committed;
 
-	for (Transaction *trans = transaction->waitingFor; trans; trans = trans->waitingFor)
+	if (transaction->state == Available || transaction->state == Committed)
+	{
+		state = (State)transaction->state;
+		transaction->release();
+		return state;
+	}
+
+
+	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, NULL, transaction))
+		FATAL("waitingFor was not NULL");
+
+	volatile Transaction *trans;
+	for (trans = transaction->waitingFor; trans; trans = trans->waitingFor)
 		if (trans == this)
-			return true;
+			{
+			*deadlock = true;
+			break;
+			}
 
-	// OK, add a reference to the transaction to keep the object around, then wait for it to go away
+	if (!(*deadlock))
+		{
+		syncActiveTransactions.unlock();
+		transaction->waitForTransaction();
+		}
 
-	waitingFor = transaction;
-	transaction->addRef();
-	syncActiveTransactions.unlock();
-	transaction->waitForTransaction();
+	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))
+		FATAL("waitingFor was not %p",transaction);
+
+	state = (State)transaction->state;
 	transaction->release();
-	waitingFor = NULL;
 
-	return transaction->state == Committed;
+	return state;
 }
 
 void Transaction::waitForTransaction()

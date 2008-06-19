@@ -64,7 +64,6 @@ void Gopher::gopherThread(void)
 		
 		SerialLogTransaction *transaction = log->pending.first;
 		log->pending.remove(transaction);
-
 		
 		Sync serializeGophers(&log->syncSerializeGophers, "Gopher::gopherThread(4)");
 

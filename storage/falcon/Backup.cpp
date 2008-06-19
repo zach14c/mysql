@@ -17,7 +17,7 @@
 #include "Backup.h"
 #include "Database.h"
 #include "Dbb.h"
-#include "BDB.h"
+#include "Bdb.h"
 #include "IndexPage.h"
 #include "RecordLocatorPage.h"
 #include "DataPage.h"
@@ -89,6 +89,5 @@ void Backup::backupPage(Dbb* dbb, int32 pageNumber, EncodedDataStream* stream)
 			Log::debug ("Page %d is unknown type %d\n", pageNumber, page->pageType);
 		}
 
-		
 	bdb->release();
 }
