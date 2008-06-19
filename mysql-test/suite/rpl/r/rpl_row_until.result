@@ -26,11 +26,7 @@ Master_User	root
 Master_Port	MASTER_PORT
 Connect_Retry	1
 Master_Log_File	master-bin.000001
-<<<<<<< TREE
-Read_Master_Log_Pos	751
-=======
-Read_Master_Log_Pos	1161
->>>>>>> MERGE-SOURCE
+Read_Master_Log_Pos	1162
 Relay_Log_File	#
 Relay_Log_Pos	#
 Relay_Master_Log_File	master-bin.000001
@@ -45,11 +41,7 @@ Replicate_Wild_Ignore_Table
 Last_Errno	0
 Last_Error	
 Skip_Counter	0
-<<<<<<< TREE
-Exec_Master_Log_Pos	318
-=======
-Exec_Master_Log_Pos	454
->>>>>>> MERGE-SOURCE
+Exec_Master_Log_Pos	455
 Relay_Log_Space	#
 Until_Condition	Master
 Until_Log_File	master-bin.000001
@@ -80,11 +72,7 @@ Master_User	root
 Master_Port	MASTER_PORT
 Connect_Retry	1
 Master_Log_File	master-bin.000001
-<<<<<<< TREE
-Read_Master_Log_Pos	751
-=======
-Read_Master_Log_Pos	1161
->>>>>>> MERGE-SOURCE
+Read_Master_Log_Pos	1162
 Relay_Log_File	#
 Relay_Log_Pos	#
 Relay_Master_Log_File	master-bin.000001
@@ -99,11 +87,7 @@ Replicate_Wild_Ignore_Table
 Last_Errno	0
 Last_Error	
 Skip_Counter	0
-<<<<<<< TREE
-Exec_Master_Log_Pos	318
-=======
-Exec_Master_Log_Pos	454
->>>>>>> MERGE-SOURCE
+Exec_Master_Log_Pos	455
 Relay_Log_Space	#
 Until_Condition	Master
 Until_Log_File	master-no-such-bin.000001
@@ -120,11 +104,7 @@ Last_IO_Errno	#
 Last_IO_Error	#
 Last_SQL_Errno	0
 Last_SQL_Error	
-<<<<<<< TREE
-start slave until relay_log_file='slave-relay-bin.000003', relay_log_pos=728;
-=======
-start slave until relay_log_file='slave-relay-bin.000004', relay_log_pos=1014;
->>>>>>> MERGE-SOURCE
+start slave until relay_log_file='slave-relay-bin.000003', relay_log_pos=1014;
 select * from t2;
 n
 1
@@ -136,11 +116,7 @@ Master_User	root
 Master_Port	MASTER_PORT
 Connect_Retry	1
 Master_Log_File	master-bin.000001
-<<<<<<< TREE
-Read_Master_Log_Pos	751
-=======
-Read_Master_Log_Pos	1161
->>>>>>> MERGE-SOURCE
+Read_Master_Log_Pos	1162
 Relay_Log_File	#
 Relay_Log_Pos	#
 Relay_Master_Log_File	master-bin.000001
@@ -155,18 +131,10 @@ Replicate_Wild_Ignore_Table
 Last_Errno	0
 Last_Error	
 Skip_Counter	0
-<<<<<<< TREE
-Exec_Master_Log_Pos	595
-=======
-Exec_Master_Log_Pos	868
->>>>>>> MERGE-SOURCE
+Exec_Master_Log_Pos	869
 Relay_Log_Space	#
 Until_Condition	Relay
-<<<<<<< TREE
 Until_Log_File	slave-relay-bin.000003
-=======
-Until_Log_File	slave-relay-bin.000004
->>>>>>> MERGE-SOURCE
 Until_Log_Pos	1014
 Master_SSL_Allowed	No
 Master_SSL_CA_File	
@@ -190,11 +158,7 @@ Master_User	root
 Master_Port	MASTER_PORT
 Connect_Retry	1
 Master_Log_File	master-bin.000001
-<<<<<<< TREE
-Read_Master_Log_Pos	751
-=======
-Read_Master_Log_Pos	1161
->>>>>>> MERGE-SOURCE
+Read_Master_Log_Pos	1162
 Relay_Log_File	#
 Relay_Log_Pos	#
 Relay_Master_Log_File	master-bin.000001
@@ -209,11 +173,7 @@ Replicate_Wild_Ignore_Table
 Last_Errno	0
 Last_Error	
 Skip_Counter	0
-<<<<<<< TREE
-Exec_Master_Log_Pos	751
-=======
-Exec_Master_Log_Pos	1161
->>>>>>> MERGE-SOURCE
+Exec_Master_Log_Pos	1162
 Relay_Log_Space	#
 Until_Condition	Master
 Until_Log_File	master-bin.000001

@@ -54,9 +54,6 @@ while ($nesting)
 --enable_query_log
 drop table t1;
 
-<<<<<<< TREE
---echo End of 5.1 tests
-
 #
 # BUG#33245 "Crash on VIEW referencing FROM table in an IN clause"
 # (this is a second copy of testcase that uses disconnect/connect commands
@@ -69,6 +66,3 @@ SELECT * FROM v1;
 drop view v1;
 drop table t1;
 
-=======
---echo End of tests
->>>>>>> MERGE-SOURCE
