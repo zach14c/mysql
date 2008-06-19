@@ -457,7 +457,8 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 {
 	DBUG_ENTER("StorageInterface::open");
 
-	FALCON_OPEN();
+	// Temporarily comment out DTrace probes in Falcon, see bug #36403
+	// FALCON_OPEN();
 
 	if (!mySqlThread)
 		mySqlThread = current_thd;
@@ -534,7 +535,9 @@ int StorageInterface::close(void)
 		storageTable->clearTruncateLock();
 
 	unmapFields();
-	FALCON_CLOSE();
+
+	// Temporarily comment out DTrace probes in Falcon, see bug #36403
+	// FALCON_CLOSE();
 
 	DBUG_RETURN(0);
 }
