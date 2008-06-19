@@ -578,8 +578,6 @@ private:
   struct st_table *share_next, **share_prev;
 
   friend struct TABLE_share;
-  friend bool reopen_table(st_table *table);
-
 public:
   struct st_table *next, *prev;
 
