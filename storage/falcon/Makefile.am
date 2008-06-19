@@ -19,7 +19,7 @@ SUBDIRS= TransformLib
 MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 
 DEFS= @DEFS@ \
-      -D_REENTRANT -D_PTHREADS -DENGINE -DSTORAGE_ENGINE -DNAMESPACE=Nfs
+      -D_REENTRANT -D_PTHREADS -DFALCONDB -DSTORAGE_ENGINE -DNAMESPACE=Nfs
 
 INCLUDES= -I$(top_srcdir)/include -I$(top_builddir)/include \
 	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql \

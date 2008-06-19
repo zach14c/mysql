@@ -22,7 +22,7 @@
 
 #include <time.h>
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #define MEMORY_MANAGER
 #endif
 
@@ -136,7 +136,7 @@ typedef int64				RecordId;
 #define INTERLOCK_TYPE	int
 #endif
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Error.h"
 #endif
 

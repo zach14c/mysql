@@ -28,7 +28,7 @@
 #undef TRACE
 #endif
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #define TRACE
 #else
 #define ASSERT(b)
@@ -47,6 +47,7 @@
 #include "Stream.h"
 #include "InfoTable.h"
 
+#define FAST_SHARED
 //#define STALL_THRESHOLD	1000
 
 #define BACKOFF	\
@@ -153,7 +154,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	if (type == Shared)
 		{
 		thread = NULL;
-		//BUMP_INTERLOCKED(sharedCount);
+		BUMP_INTERLOCKED(sharedCount);
 		INTERLOCKED_INCREMENT(readers);
 		
 		// If there aren't any writers, we've got the lock.  Ducky.
@@ -247,7 +248,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 				if (readers)
 					{
 					if (queue && queue->lockType == Shared)
-					BUMP(exclusiveCount);
+						BUMP(exclusiveCount);
 					bumpWaiters(1);
 					wait(type, thread, sync, timeout);
 					}

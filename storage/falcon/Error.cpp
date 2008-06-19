@@ -59,7 +59,7 @@ void Error::error(const char * string, ...)
 	if (vsnprintf (buffer, sizeof (buffer) - 1, string, args) < 0)
 		buffer [sizeof (buffer) - 1] = 0;
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	Log::logBreak ("Bugcheck: %s\n", buffer);
 	//MemMgrLogDump();
 #endif
@@ -93,7 +93,7 @@ void Error::debugBreak()
 
 void Error::notYetImplemented(const char *fileName, int line)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Log::logBreak ("feature not yet implemented at line %d in file %s\n", line, fileName);
 #endif
 

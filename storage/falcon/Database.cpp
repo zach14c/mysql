@@ -1452,6 +1452,10 @@ void Database::dropTable(Table *table, Transaction *transaction)
 	
 	invalidateCompiledStatements(table);
 	table->drop(transaction);
+
+	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
+	Sync syncSections(&serialLog->syncSections, "Database::dropTable");
+	syncSections.lock(Exclusive);
 	table->expunge(getSystemTransaction());
 	delete table;
 }
@@ -1474,8 +1478,14 @@ void Database::truncateTable(Table *table, Sequence *sequence, Transaction *tran
 	Sync syncTbl(&syncTables, "Database::truncateTable");
 	syncTbl.lock(Shared);
 	
-	// No table access until truncate completes
+	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
+	//The lock order (serialLog->syncSections before table->syncObject) is 
+	//important
+
+	Sync syncSections(&serialLog->syncSections, "Database::truncateTable");
+	syncSections.lock(Exclusive);
 	
+	// No table access until truncate completes
 	Sync syncObj(&table->syncObject, "Database::truncateTable");
 	syncObj.lock(Exclusive);
 	

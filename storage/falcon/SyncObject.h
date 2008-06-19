@@ -41,8 +41,6 @@
 #include <thread.h>
 #endif
 
-#define FAST_SHARED
-
 #include "Mutex.h"
 
 #define TRACE_SYNC_OBJECTS

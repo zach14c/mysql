@@ -46,6 +46,7 @@ SerialLogTransaction::SerialLogTransaction(SerialLog *serialLog, TransId transId
 	window = NULL;
 	finished = false;
 	ordered = false;
+	allowConcurrentGophers = true;
 	transaction = NULL;
 	rolledBackSavepoints = NULL;
 	blockNumber = maxBlockNumber = minBlockNumber = physicalBlockNumber = 0;
