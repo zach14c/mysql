@@ -180,6 +180,10 @@ typedef fp_except fp_except_t;
 #endif
 #endif /* __FreeBSD__ && HAVE_IEEEFP_H */
 
+#ifdef HAVE_FENV_H
+#include <fenv.h>
+#endif
+
 #ifdef HAVE_FPU_CONTROL_H
 #include <fpu_control.h>
 #endif
@@ -205,6 +209,11 @@ inline void setup_fpu()
               FP_X_IMP));
 #endif /* __i386__ */
 #endif /* __FreeBSD__ && HAVE_IEEEFP_H */
+
+#ifdef HAVE_FESETROUND
+  /* Set FPU rounding mode to "round-to-nearest" */
+  fesetround(FE_TONEAREST);
+#endif /* HAVE_FESETROUND */
 
   /*
     x86 (32-bit) requires FPU precision to be explicitly set to 64 bit for
@@ -2976,6 +2985,7 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
       by the stored procedures code.
     */
     if (!thd->is_fatal_error && thd->spcont &&
+        ! (MyFlags & ME_NO_SP_HANDLER) &&
         thd->spcont->handle_error(error, MYSQL_ERROR::WARN_LEVEL_ERROR, thd))
     {
       /*
@@ -2985,7 +2995,8 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
       DBUG_VOID_RETURN;
     }
 
-    if (!thd->no_warnings_for_error && !thd->is_fatal_error)
+    if (!thd->is_fatal_error && !thd->no_warnings_for_error &&
+        !(MyFlags & ME_NO_WARNING_FOR_ERROR))
     {
       /*
         Suppress infinite recursion if there a memory allocation error
@@ -3179,7 +3190,6 @@ SHOW_VAR com_status_vars[]= {
   {"show_binlogs",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOGS]), SHOW_LONG_STATUS},
   {"show_charsets",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CHARSETS]), SHOW_LONG_STATUS},
   {"show_collations",      (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_COLLATIONS]), SHOW_LONG_STATUS},
-  {"show_column_types",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_COLUMN_TYPES]), SHOW_LONG_STATUS},
   {"show_contributors",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CONTRIBUTORS]), SHOW_LONG_STATUS},
   {"show_create_db",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CREATE_DB]), SHOW_LONG_STATUS},
   {"show_create_event",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CREATE_EVENT]), SHOW_LONG_STATUS},
@@ -3227,6 +3237,7 @@ SHOW_VAR com_status_vars[]= {
   {"stmt_execute",         (char*) offsetof(STATUS_VAR, com_stmt_execute), SHOW_LONG_STATUS},
   {"stmt_fetch",           (char*) offsetof(STATUS_VAR, com_stmt_fetch), SHOW_LONG_STATUS},
   {"stmt_prepare",         (char*) offsetof(STATUS_VAR, com_stmt_prepare), SHOW_LONG_STATUS},
+  {"stmt_reprepare",       (char*) offsetof(STATUS_VAR, com_stmt_reprepare), SHOW_LONG_STATUS},
   {"stmt_reset",           (char*) offsetof(STATUS_VAR, com_stmt_reset), SHOW_LONG_STATUS},
   {"stmt_send_long_data",  (char*) offsetof(STATUS_VAR, com_stmt_send_long_data), SHOW_LONG_STATUS},
   {"truncate",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_TRUNCATE]), SHOW_LONG_STATUS},
@@ -3315,7 +3326,7 @@ static int init_common_variables(const char *conf_file_name, int argc,
     We have few debug-only commands in com_status_vars, only visible in debug
     builds. for simplicity we enable the assert only in debug builds
 
-    There are 7 Com_ variables which don't have corresponding SQLCOM_ values:
+    There are 8 Com_ variables which don't have corresponding SQLCOM_ values:
     (TODO strictly speaking they shouldn't be here, should not have Com_ prefix
     that is. Perhaps Stmt_ ? Comstmt_ ? Prepstmt_ ?)
 
@@ -3324,6 +3335,7 @@ static int init_common_variables(const char *conf_file_name, int argc,
       Com_stmt_execute         => com_stmt_execute
       Com_stmt_fetch           => com_stmt_fetch
       Com_stmt_prepare         => com_stmt_prepare
+      Com_stmt_reprepare       => com_stmt_reprepare
       Com_stmt_reset           => com_stmt_reset
       Com_stmt_send_long_data  => com_stmt_send_long_data
 
@@ -3332,7 +3344,7 @@ static int init_common_variables(const char *conf_file_name, int argc,
     of SQLCOM_ constants.
   */
   compile_time_assert(sizeof(com_status_vars)/sizeof(com_status_vars[0]) - 1 ==
-                     SQLCOM_END + 7);
+                     SQLCOM_END + 8);
 #endif
 
   load_defaults(conf_file_name, groups, &argc, &argv);
@@ -3643,7 +3655,9 @@ static int init_thread_environment()
   DDL_blocker= DDL_blocker_class::get_DDL_blocker_class_instance();
 
   sp_cache_init();
+#ifdef HAVE_EVENT_SCHEDULER
   Events::init_mutexes();
+#endif
   /* Parameter for threads created for connections */
   (void) pthread_attr_init(&connection_attrib);
   (void) pthread_attr_setdetachstate(&connection_attrib,
@@ -6888,7 +6902,8 @@ The minimum value for this variable is 4096.",
   {"table_definition_cache", OPT_TABLE_DEF_CACHE,
    "The number of cached table definitions.",
    (uchar**) &table_def_size, (uchar**) &table_def_size,
-   0, GET_ULONG, REQUIRED_ARG, 128, 1, 512*1024L, 0, 1, 0},
+   0, GET_ULONG, REQUIRED_ARG, TABLE_DEF_CACHE_DEFAULT, TABLE_DEF_CACHE_MIN,
+   512*1024L, 0, 1, 0},
   {"table_open_cache", OPT_TABLE_OPEN_CACHE,
    "The number of cached open tables.",
    (uchar**) &table_cache_size, (uchar**) &table_cache_size, 0, GET_ULONG,
@@ -7983,8 +7998,12 @@ mysqld_get_one_option(int optid,
   }
 #endif
   case OPT_EVENT_SCHEDULER:
+#ifndef HAVE_EVENT_SCHEDULER
+    sql_perror("Event scheduler is not supported in embedded build.");
+#else
     if (Events::set_opt_event_scheduler(argument))
 	exit(1);
+#endif
     break;
   case (int) OPT_SKIP_NEW:
     opt_specialflag|= SPECIAL_NO_NEW_FUNC;

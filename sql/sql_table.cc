@@ -3975,6 +3975,13 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
     - Run a normal repair using the new index file and the old data file
   */
 
+  if (table->s->frm_version != FRM_VER_TRUE_VARCHAR)
+  {
+    error= send_check_errmsg(thd, table_list, "repair",
+                             "Failed repairing incompatible .frm file");
+    goto end;
+  }
+
   /*
     Check if this is a table type that stores index and data separately,
     like ISAM or MyISAM. We assume fixed order of engine file name
@@ -4708,9 +4715,6 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
 #endif
   DBUG_ENTER("mysql_create_like_table");
 
-
-  /* CREATE TABLE ... LIKE is not allowed for views. */
-  src_table->required_type= FRMTYPE_TABLE;
 
   /*
     By opening source table we guarantee that it exists and no concurrent
@@ -7547,8 +7551,14 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	    for (uint i= 0; i < t->s->fields; i++ )
 	    {
 	      Field *f= t->field[i];
-	      if ((f->type() == MYSQL_TYPE_BLOB) ||
-                  (f->type() == MYSQL_TYPE_VARCHAR))
+              enum_field_types field_type= f->type();
+              /*
+                BLOB and VARCHAR have pointers in their field, we must convert
+                to string; GEOMETRY is implemented on top of BLOB.
+              */
+	      if ((field_type == MYSQL_TYPE_BLOB) ||
+                  (field_type == MYSQL_TYPE_VARCHAR) ||
+                  (field_type == MYSQL_TYPE_GEOMETRY))
 	      {
 		String tmp;
 		f->val_str(&tmp);
