@@ -1853,7 +1853,8 @@ err:
           and locked and therefore have to remove several metadata lock
           requests associated with them.
         */
-        mdl_release_all_locks_for_name(&thd->mdl_context, table->mdl_lock_data);
+        mdl_release_and_remove_all_locks_for_name(&thd->mdl_context,
+                                                  table->mdl_lock_data);
       }
     }
   }
@@ -3692,13 +3693,27 @@ static bool lock_table_name_if_not_cached(THD *thd, const char *db,
                                           const char *table_name,
                                           MDL_LOCK_DATA **lock_data)
 {
+  bool conflict;
+
   if (!(*lock_data= mdl_alloc_lock(0, db, table_name, thd->mem_root)))
     return TRUE;
   mdl_set_lock_type(*lock_data, MDL_EXCLUSIVE);
   mdl_add_lock(&thd->mdl_context, *lock_data);
-  if (mdl_try_acquire_exclusive_lock(&thd->mdl_context, *lock_data))
+  if (mdl_try_acquire_exclusive_lock(&thd->mdl_context, *lock_data,
+                                     &conflict))
   {
-    *lock_data= 0;
+    /*
+      To simplify our life under LOCK TABLES we remove unsatisfied
+      lock request from the context.
+    */
+    mdl_remove_lock(&thd->mdl_context, *lock_data);
+    if (!conflict)
+    {
+      /* Probably OOM. */
+      return TRUE;
+    }
+    else
+      *lock_data= 0;
   }
   return FALSE;
 }
@@ -3768,7 +3783,10 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
 
 unlock:
   if (target_lock_data)
+  {
     mdl_release_lock(&thd->mdl_context, target_lock_data);
+    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+  }
   pthread_mutex_lock(&LOCK_lock_db);
   if (!--creating_table && creating_database)
     pthread_cond_signal(&COND_refresh);
@@ -3954,7 +3972,10 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
     mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
     mdl_add_lock(&thd->mdl_context, mdl_lock_data);
     if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+    {
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
       DBUG_RETURN(0);
+    }
 
     pthread_mutex_lock(&LOCK_open);
     if (!(share= (get_table_share(thd, table_list, key, key_length, 0,
@@ -4088,7 +4109,10 @@ end:
   }
   /* In case of a temporary table there will be no metadata lock. */
   if (error && mdl_lock_data)
+  {
     mdl_release_lock(&thd->mdl_context, mdl_lock_data);
+    mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+  }
   DBUG_RETURN(error);
 }
 
@@ -4942,7 +4966,10 @@ table_exists:
 
 err:
   if (target_lock_data)
+  {
     mdl_release_lock(&thd->mdl_context, target_lock_data);
+    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+  }
   DBUG_RETURN(res);
 }
 
@@ -6648,7 +6675,9 @@ view_err:
       if (new_name != table_name || new_db != db)
       {
         mdl_release_lock(&thd->mdl_context, target_lock_data);
-        mdl_release_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
+        mdl_remove_lock(&thd->mdl_context, target_lock_data);
+        mdl_release_and_remove_all_locks_for_name(&thd->mdl_context,
+                                                  mdl_lock_data);
       }
       else
         mdl_downgrade_exclusive_lock(&thd->mdl_context, mdl_lock_data);
@@ -7061,7 +7090,9 @@ end_online:
     if ((new_name != table_name || new_db != db))
     {
       mdl_release_lock(&thd->mdl_context, target_lock_data);
-      mdl_release_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
+      mdl_remove_lock(&thd->mdl_context, target_lock_data);
+      mdl_release_and_remove_all_locks_for_name(&thd->mdl_context,
+                                                mdl_lock_data);
     }
     else
       mdl_downgrade_exclusive_lock(&thd->mdl_context, mdl_lock_data);
@@ -7118,7 +7149,10 @@ err:
     thd->abort_on_warning= save_abort_on_warning;
   }
   if (target_lock_data)
+  {
     mdl_release_lock(&thd->mdl_context, target_lock_data);
+    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+  }
   DBUG_RETURN(TRUE);
 
 err_with_mdl:
@@ -7130,8 +7164,11 @@ err_with_mdl:
   */
   thd->locked_tables_list.unlink_all_closed_tables();
   if (target_lock_data)
+  {
     mdl_release_lock(&thd->mdl_context, target_lock_data);
-  mdl_release_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
+    mdl_remove_lock(&thd->mdl_context, target_lock_data);
+  }
+  mdl_release_and_remove_all_locks_for_name(&thd->mdl_context, mdl_lock_data);
   DBUG_RETURN(TRUE);
 }
 /* mysql_alter_table */
