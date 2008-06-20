@@ -585,7 +585,7 @@ int my_win_fclose(FILE *file)
   Patch file size, because size that fstat returns is not 
   reliable (may be outdated)
 */
-int my_win_fstat(File fd, struct _stat64 *buf)
+int my_win_fstat(File fd, struct _stati64 *buf)
 {
   int crt_fd;
   int retval;
@@ -615,7 +615,7 @@ int my_win_fstat(File fd, struct _stat64 *buf)
 
 
 
-int my_win_stat( const char *path, struct _stat64 *buf)
+int my_win_stat( const char *path, struct _stati64 *buf)
 {
   DBUG_ENTER("my_win_stat");
   if(_stati64( path, buf) == 0)
