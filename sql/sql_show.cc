@@ -3078,7 +3078,7 @@ static uint get_table_open_method(TABLE_LIST *tables,
    @param mdlkey         Pointer to the buffer for key for the lock request
                          (should be at least strlen(db) + strlen(name) + 2
                          bytes, or, if the lengths are not known,
-                         MAX_DBNAME_LENGTH)
+                         MAX_MDLKEY_LENGTH)
    @param table          Table list element for the table
 
    @note This is an auxiliary function to be used in cases when we want to
@@ -3151,7 +3151,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
   char key[MAX_DBKEY_LENGTH];
   uint key_length;
   MDL_LOCK_DATA mdl_lock_data;
-  char mdlkey[MAX_DBKEY_LENGTH];
+  char mdlkey[MAX_MDLKEY_LENGTH];
 
   bzero((char*) &table_list, sizeof(TABLE_LIST));
   bzero((char*) &tbl, sizeof(TABLE));

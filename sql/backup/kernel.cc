@@ -2113,7 +2113,7 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
 
     my_multi_malloc(MYF(MY_WME), &ptr, sizeof(TABLE_LIST),
                     &mdl_lock_data, sizeof(MDL_LOCK_DATA),
-                    &keybuff, MAX_DBKEY_LENGTH, NULL, 0);
+                    &keybuff, MAX_MDLKEY_LENGTH, NULL, 0);
     DBUG_ASSERT(ptr);  // FIXME: report error instead
     bzero(ptr,sizeof(TABLE_LIST));
 

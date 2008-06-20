@@ -146,7 +146,7 @@ static void ndb_free_schema_object(NDB_SCHEMA_OBJECT **ndb_schema_object,
 static TABLE *ndb_binlog_index= 0;
 static TABLE_LIST binlog_tables;
 static MDL_LOCK_DATA binlog_mdl_lock_data;
-static char binlog_mdlkey[MAX_DBKEY_LENGTH];
+static char binlog_mdlkey[MAX_MDLKEY_LENGTH];
 
 /*
   Helper functions
