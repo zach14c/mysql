@@ -44,9 +44,8 @@ ADD_DEFINITIONS(-DMYSQL_SERVER -D_CONSOLE -DHAVE_DLOPEN -DHAVE_EVENT_SCHEDULER)
 
 ADD_EXECUTABLE(mysqld
                ../sql-common/client.c derror.cc des_key_file.cc
-               discover.cc ../libmysql/errmsg.c field.cc  stacktrace.c stacktrace.h field_conv.cc 
-               filesort.cc gstream.cc sha2.cc
-               ha_partition.cc
+               discover.cc ../libmysql/errmsg.c field.cc field_conv.cc
+               filesort.cc gstream.cc sha2.cc ha_partition.cc
                handler.cc hash_filo.cc hash_filo.h 
                hostname.cc init.cc item.cc item_buff.cc item_cmpfunc.cc 
                item_create.cc item_func.cc item_geofunc.cc item_row.cc 
