@@ -1,16 +1,10 @@
 --source include/have_falcon.inc
 
 #
-# Bug #34617: Falcon assertion in StorageHandler::addTable, line 622
-# Bug #36927: Falcon: crash altering table's tablespace
-#
-# NOTE: #36927 is a duplicate.
-#
-# See also falcon_bug_33723.test
-# (ALTER TABLE into non-existing Falcon tablespace blocks further ALTERs)
+# Bug #33397: ALTER TABLE into non-existing Falcon tablespace causes vague error
 #
 
---echo *** Bug 34617 ***
+--echo *** Bug 33397 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -28,11 +22,6 @@ CREATE TABLE t1(a INT);
 # --- Test                                          --- #
 # ----------------------------------------------------- #
 
-## Should fail gracefully
---error ER_NO_SUCH_TABLESPACE
-ALTER TABLE t1 TABLESPACE nosuchtablespace;
-
-## Should fail with same error as above
 --error ER_NO_SUCH_TABLESPACE
 ALTER TABLE t1 TABLESPACE nosuchtablespace;
 

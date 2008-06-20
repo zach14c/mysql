@@ -36,7 +36,7 @@
 #include "Interlock.h"
 #include "Mutex.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Log.h"
 #define CHECK_RET(text,code)	if (ret) Error::error (text,code)
 #else
@@ -200,7 +200,7 @@ bool Synchronize::sleep(int milliseconds, Mutex *callersMutex)
 			}
 			
 		if (!wakeup)
-#ifdef ENGINE
+#ifdef FALCONDB
 			Log::debug ("Synchronize::sleep(milliseconds): unexpected wakeup, ret %d\n", ret);
 #else
 			printf ("Synchronize::sleep(milliseconds): unexpected wakeup, ret %d\n", ret);

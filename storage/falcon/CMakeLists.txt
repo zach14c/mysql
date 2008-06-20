@@ -14,7 +14,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 ADD_DEFINITIONS(-D_REENTRANT
-                -DENGINE -DSTORAGE_ENGINE -DMEM_DEBUG
+                -DFALCONDB -DSTORAGE_ENGINE -DMEM_DEBUG
                 -DNAMESPACE=Nfs
                 -DMYSQL_SERVER)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include

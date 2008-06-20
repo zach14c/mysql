@@ -78,7 +78,7 @@ void SyncTest::test()
 			}
 			
 		sync.unlock();
-		Thread::sleep(5000);
+		Thread::sleep(1000);
 		stop = true;
 		threadBarn->waitForAll();
 		int total = 0;
@@ -86,8 +86,12 @@ void SyncTest::test()
 		for (thd = 0; thd < n; ++thd)
 			total += threads[thd].count;
 		
-		grandTotal += total;
-		printf("%d threads, %d cycles, %d collisions\n", n, total, syncObject.getCollisionCount() - collisions);
+		if (n != 1)
+			grandTotal += total;
+			
+		printf("%d threads, %s cycles, %s collisions\n", n, 
+				(const char*) format(total), 
+				(const char*) format(syncObject.getCollisionCount() - collisions));
 
 		/***
 		for (thd = 0; thd < n; ++thd)
@@ -97,7 +101,7 @@ void SyncTest::test()
 		***/
 		}
 	
-	printf ("Average cycles %d\n", grandTotal / MAX_THREADS);
+	printf ("Average cycles %s\n", (const char*) format(grandTotal / (MAX_THREADS - 1)));
 	threadBarn->shutdownAll();
 	threadBarn->waitForAll();
 	threadBarn->release();
@@ -122,4 +126,41 @@ void SyncTest::testThread(void)
 		sync.lock(Shared);
 		sync.unlock();
 		}
+}
+
+JString SyncTest::format(long num)
+{
+	char temp[32];
+	long number = num;
+	char *p = temp + sizeof(temp);
+	*--p = 0;
+	
+	if (number == 0)
+		{
+		*--p = '0';
+		
+		return p;
+		}
+	
+	bool neg = false;
+	
+	if (number < 0)
+		{
+		neg = true;
+		number = -number;
+		}
+		
+	for (int n = 1; number; ++n)
+		{
+		*--p = (char) (number % 10) + '0';
+		number /= 10;
+				
+		if (number && (n % 3 == 0))
+			*--p = ',';
+		}
+	
+	if (neg)
+		*--p = '-';
+		
+	return JString(p);
 }

@@ -86,19 +86,20 @@ public:
 	static void		getSyncInfo(InfoTable* infoTable);
 	static void		dump(void);
 
-	inline Thread* getExclusiveThread()
+	inline Thread*	getExclusiveThread()
 		{ return exclusiveThread; };
 
 protected:
-	void wait(LockType type, Thread *thread, Sync *sync, int timeout);
+	void			wait(LockType type, Thread *thread, Sync *sync, int timeout);
 
-	int32				monitorCount;
-	Mutex				mutex;
-	Thread				*volatile que;
-	Thread				*volatile exclusiveThread;
-	volatile INTERLOCK_TYPE		waiters;
-	volatile INTERLOCK_TYPE		lockState;
-	int					stalls;
+	int32					monitorCount;
+	Mutex					mutex;
+	Thread					*volatile queue;
+	Thread					*volatile exclusiveThread;
+	volatile INTERLOCK_TYPE	readers;
+	volatile INTERLOCK_TYPE	waiters;
+	volatile INTERLOCK_TYPE	lockState;
+	int						stalls;
 
 #ifdef TRACE_SYNC_OBJECTS
 	int					objectId;
