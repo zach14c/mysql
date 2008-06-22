@@ -116,16 +116,14 @@ sync_slave_with_master;
 #(the server was started with skip-slave-start)
 --disable_warnings
 stop slave;
+--source include/wait_for_slave_to_stop.inc
 --enable_warnings
---require r/rpl_slave-stopped.result
-show status like 'Slave_running';
 connection master;
 reset master;
 connection slave;
 reset slave;
 start slave;
---require r/rpl_slave-running.result
-show status like 'Slave_running';
+--source include/wait_for_slave_to_start.inc
 connection master;
 
 # We should be clean at this point, now we will run in the file from above.
@@ -206,16 +204,14 @@ sync_slave_with_master;
 
 --disable_warnings
 stop slave;
+--source include/wait_for_slave_to_stop.inc
 --enable_warnings
---require r/rpl_slave-stopped.result
-show status like 'Slave_running';
 connection master;
 reset master;
 connection slave;
 reset slave;
 start slave;
---require r/rpl_slave-running.result
-show status like 'Slave_running';
+--source include/wait_for_slave_to_start.inc
 connection master;
 
 # We should be clean at this point, now we will run in the file from above.
@@ -285,16 +281,14 @@ sync_slave_with_master;
 
 --disable_warnings
 stop slave;
+--source include/wait_for_slave_to_stop.inc
 --enable_warnings
---require r/rpl_slave-stopped.result
-show status like 'Slave_running';
 connection master;
 reset master;
 connection slave;
 reset slave;
 start slave;
---require r/rpl_slave-running.result
-show status like 'Slave_running';
+--source include/wait_for_slave_to_start.inc
 connection master;
 
 create table t4 (f text character set utf8);

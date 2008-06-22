@@ -6,6 +6,8 @@
 # AUTO_INCREMENT_OFFSET variables and failover
 #############################################################
 --source include/have_innodb.inc
+# Use wait_for_slave_to_(start|stop) for current connections
+let $keep_connection= 1;
 
 # Set up circular ring and new names for servers
 --echo *** Set up circular ring by schema A->B->C->D->A *** 
@@ -155,7 +157,7 @@ SELECT 'Master D',a,b FROM t1 WHERE c = 3 ORDER BY a,b;
 --echo * Remove wrong event from C and restore B->C->D *
 --connection master_d
 STOP SLAVE;
---wait_for_slave_to_stop
+--source include/wait_for_slave_to_stop.inc
 --connection master_c
 DELETE FROM t1 WHERE a = 6;
 START SLAVE;

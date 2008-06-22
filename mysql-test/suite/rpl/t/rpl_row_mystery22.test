@@ -26,9 +26,11 @@ select * from t1 order by n;
 delete from t1 where n = 2;
 --disable_warnings
 start slave;
+--source include/wait_for_slave_to_start.inc
 --enable_warnings
 sync_with_master;
 stop slave;
+--source include/wait_for_slave_to_stop.inc
 connection master;
 create table t2(n int);
 drop table t2;
@@ -42,6 +44,7 @@ save_master_pos;
 connection slave;
 --disable_warnings
 start slave;
+--source include/wait_for_slave_to_start.inc
 --enable_warnings
 sync_with_master;
 select * from t1 order by n;

@@ -153,10 +153,7 @@ connection master;
 select id from information_schema.processlist where command='Binlog Dump' into @id;
 kill @id; # to stimulate reconnection by slave w/o timeout
 insert into t5 select * from t4;
-save_master_pos;
-
-connection slave;
-sync_with_master;
+sync_slave_with_master;
 select * from t5 /* must be 1 after reconnection */;
 
 connection master;

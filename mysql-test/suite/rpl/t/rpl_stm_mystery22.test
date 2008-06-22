@@ -33,11 +33,13 @@ select * from t1 order by n;
 delete from t1 where n = 2;
 --disable_warnings
 start slave;
+--source include/wait_for_slave_to_start.inc
 --enable_warnings
 sync_with_master;
 #now the buggy slave would be confused on the offset but it can replicate
 #in order to make it break, we need to stop/start the slave one more time
 stop slave;
+--source include/wait_for_slave_to_stop.inc
 connection master;
 # to be able to really confuse the slave, we need some non-auto-increment
 # events in the log
@@ -53,6 +55,7 @@ save_master_pos;
 connection slave;
 --disable_warnings
 start slave;
+--source include/wait_for_slave_to_start.inc
 --enable_warnings
 #now the truth comes out - if the slave is buggy, it will never sync because
 #the slave thread is not able to read events

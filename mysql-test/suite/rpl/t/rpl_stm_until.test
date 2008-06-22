@@ -8,9 +8,7 @@ let $VERSION=`select version()`;
 
 # stop slave before he will start replication also sync with master
 # for avoiding undetermenistic behaviour
-save_master_pos;
-connection slave;
-sync_with_master;
+sync_slave_with_master;
 stop slave;
 # Make sure the slave sql and io thread has stopped
 --source include/wait_for_slave_to_stop.inc
@@ -49,9 +47,7 @@ source include/show_slave_status2.inc;
 # clean up
 start slave;
 connection master;
-save_master_pos;
-connection slave;
-sync_with_master;
+sync_slave_with_master;
 stop slave;
 # Make sure the slave sql and io thread has stopped
 --source include/wait_for_slave_to_stop.inc
