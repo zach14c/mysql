@@ -10,7 +10,9 @@
 #         io and sql threads to stop
 #      3) If loops too long die.
 ####################################################
+if (!$keep_connection) {
 connection slave;
+}
 let $row_number= 1;
 let $run= 1;
 let $counter= 300;
