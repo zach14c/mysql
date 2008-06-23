@@ -38,6 +38,8 @@ public:
 	void write(int64 position, uint32 length, const SerialLogBlock *data);
 	void close();
 	void open (JString filename, bool creat);
+	void truncate(int64 size);
+	int64 size(void);
 	SerialLogFile(Database *db);
 	virtual ~SerialLogFile();
 

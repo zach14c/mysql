@@ -305,6 +305,57 @@ uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 #endif
 }
 
+void SerialLogFile::truncate(int64 size)
+{
+#ifdef _WIN32
+	LARGE_INTEGER oldPos, distance;
+	distance.QuadPart = 0;
+
+	// Get current position in file 
+	if (!SetFilePointerEx(handle, distance ,&oldPos,FILE_CURRENT))
+		throw SQLError(IO_ERROR, "SetFilePointerEx failed with %d", 
+						GetLastError());
+
+	// Position to the new end of file , set EOF marker there
+	distance.QuadPart = size;
+	if (!SetFilePointerEx(handle, distance, 0, FILE_BEGIN))
+		throw SQLError(IO_ERROR, "SetFilePointerEx failed with %d", 
+						GetLastError());
+
+	if (!SetEndOfFile(handle))
+		throw SQLError(IO_ERROR, "SetEndOfFile failed with %d", 
+						GetLastError());
+
+
+	// Restore file pointer
+	if (!SetFilePointerEx(handle, oldPos ,0,FILE_BEGIN))
+		throw SQLError(IO_ERROR, "SetFilePointerEx failed with %d", 
+						GetLastError());
+#else
+	if (ftruncate(handle, size))
+		throw SQLError(IO_ERROR, "ftruncate failed with %d", 
+						errno);
+#endif
+}
+
+int64 SerialLogFile::size(void)
+{
+#ifdef _WIN32
+	LARGE_INTEGER size;
+
+	if (!GetFileSizeEx(handle, &size))
+		throw SQLError(IO_ERROR, "GetFileSizeEx failed with %u", 
+						GetLastError());
+
+	return size.QuadPart;
+#else
+	struct stat buf;
+	if (fstat(handle, &buf))
+		throw SQLError(IO_ERROR, "stat failed with %d",
+						errno);
+	return  buf.st_size;
+#endif
+}
 
 void SerialLogFile::zap()
 {
