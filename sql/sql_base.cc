@@ -2769,7 +2769,6 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
                                      MYF(MY_WME));
     memcpy((char*) table->alias, alias, length);
   }
-  /* These variables are also set in reopen_table() */
   table->tablenr=thd->current_tablenr++;
   table->used_fields=0;
   table->const_table=0;
