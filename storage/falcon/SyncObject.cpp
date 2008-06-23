@@ -47,7 +47,7 @@
 #include "Stream.h"
 #include "InfoTable.h"
 
-#define FAST_SHARED
+//#define FAST_SHARED
 //#define STALL_THRESHOLD	1000
 
 #define BACKOFF	\
