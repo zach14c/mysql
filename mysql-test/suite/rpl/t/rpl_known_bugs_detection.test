@@ -41,7 +41,7 @@ reset master;
 drop table t1;
 connection slave;
 start slave;
---source include/wait_for_slave_to_stop.inc
+--source include/wait_for_slave_to_start.inc
 
 # testcase with INSERT SELECT
 connection master;
