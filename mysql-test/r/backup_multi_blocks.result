@@ -29,12 +29,14 @@ backup_id
 DROP DATABASE mysqltest;
 Performing restore ...
 RESTORE FROM 'test.ba';
-ERROR HY000: Error when reading summary section of backup image
+backup_id
+#;
 Checking contents of restore ...
 SELECT LENGTH(a) FROM t1;
 LENGTH(a)
+32768
 CHECKSUM TABLE t1;
 Table	Checksum
-mysqltest.t1	0
+mysqltest.t1	3394496868
 Clean-up
 DROP DATABASE mysqltest;

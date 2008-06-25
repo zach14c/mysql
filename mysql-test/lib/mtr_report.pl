@@ -333,13 +333,7 @@ sub mtr_report_stats ($) {
 		(
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
-
-                # Filter expected Restore error in backup_multi_blocks
-                ($testname eq 'main.backup_multi_blocks') and
-                (
-                 /Restore: Error when reading summary section of backup image/
-                ) or
-
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
 		(

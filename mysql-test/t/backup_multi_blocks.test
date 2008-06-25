@@ -1,14 +1,7 @@
 --source include/not_embedded.inc
---source include/have_debug.inc
-
-# Run test only on 64-bit platforms until BUG#36624 has been fixed.
---source include/have_64bit.inc
-
 
 # Test that it is possible to restore backups of tables with more than
-# a single block of data.  Until BUG#36624 is fixed, restore will fail
-# on 64-bit platforms.  Test is temporarily modified to expect this
-# failure.
+# a single block of data.
 
 --disable_warnings
 DROP DATABASE IF EXISTS mysqltest;
@@ -37,9 +30,9 @@ BACKUP DATABASE mysqltest TO 'test.ba';
 
 DROP DATABASE mysqltest;
 
-# Perform restore.  Will fail on 64-bit platforms due to BUG#36224
+# Perform restore.
 --echo Performing restore ...
---error ER_BACKUP_READ_SUMMARY
+--replace_column 1 #;
 RESTORE FROM 'test.ba';
 
 --echo Checking contents of restore ...
