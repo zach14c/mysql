@@ -3,6 +3,10 @@
 #include "backup_stream.h"
 #include "stream.h"
 
+#ifdef HAVE_COMPRESS
+#define ZBUF_SIZE 65536 // compression I/O buffer size
+#endif
+
 const unsigned char backup_magic_bytes[8]=
 {
   0xE0, // ###.....
@@ -23,6 +27,8 @@ namespace backup {
   Pointer to this function is stored in @c backup_stream::stream structure
   and then used by other stream library function for physical writing of
   data.
+
+  Performs stream compression if requested.
 */
 extern "C" int stream_write(void *instance, bstream_blob *buf, bstream_blob)
 {
@@ -46,12 +52,34 @@ extern "C" int stream_write(void *instance, bstream_blob *buf, bstream_blob)
   DBUG_ASSERT(buf->end);
 
   size_t howmuch = buf->end - buf->begin;
+#ifdef HAVE_COMPRESS
+  if (s->m_with_compression)
+  {
+    z_stream *zstream= &s->zstream;
+    zstream->next_in= buf->begin;
+    zstream->avail_in= howmuch;
+    do
+    {
+      if (!zstream->avail_out)
+      {
+        if (my_write(fd, s->zbuf, ZBUF_SIZE, MYF(MY_NABP)))
+          DBUG_RETURN(BSTREAM_ERROR);
+        zstream->next_out= s->zbuf;
+        zstream->avail_out= ZBUF_SIZE;
+      }
+      if (deflate(zstream, Z_NO_FLUSH) != Z_OK)
+        DBUG_RETURN(BSTREAM_ERROR);
+    } while (zstream->avail_in);
+  }
+  else
+#endif
+  {
+    res= my_write(fd, buf->begin, howmuch,
+                  MY_NABP /* error if not all bytes written */ );
 
-  res= my_write(fd, buf->begin, howmuch,
-                MY_NABP /* error if not all bytes written */ );
-
-  if (res)
-    DBUG_RETURN(BSTREAM_ERROR);
+    if (res)
+      DBUG_RETURN(BSTREAM_ERROR);
+  }
 
   s->bytes += howmuch;
 
@@ -65,6 +93,8 @@ extern "C" int stream_write(void *instance, bstream_blob *buf, bstream_blob)
   Pointer to this function is stored in @c backup_stream::stream structure
   and then used by other stream library function for physical reading of
   data.
+
+  Performs stream decompression if requested.
 */
 extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 {
@@ -88,8 +118,40 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
   DBUG_ASSERT(buf->end);
 
   howmuch= buf->end - buf->begin;
-
-  howmuch= my_read(fd, buf->begin, howmuch, MYF(0));
+#ifdef HAVE_COMPRESS
+  if (s->m_with_compression)
+  {
+    int zerr;
+    z_stream *zstream= &s->zstream;
+    zstream->next_out= buf->begin;
+    zstream->avail_out= howmuch;
+    do
+    {
+      if (!zstream->avail_in)
+      {
+        zstream->avail_in= my_read(fd, s->zbuf, ZBUF_SIZE, MYF(0));
+        if (zstream->avail_in == (size_t) -1)
+          DBUG_RETURN(BSTREAM_ERROR);
+        else if (!zstream->avail_in)
+          break;
+        zstream->next_in= s->zbuf;
+      }
+      zerr= inflate(zstream, Z_NO_FLUSH);
+      if (zerr == Z_STREAM_END)
+      {
+        howmuch= zstream->next_out - buf->begin;
+        break;
+      }
+      else if (zerr != Z_OK)
+        DBUG_RETURN(BSTREAM_ERROR);
+      howmuch= zstream->next_out - buf->begin;
+    } while (zstream->avail_out);
+  }
+  else
+#endif
+  {
+    howmuch= my_read(fd, buf->begin, howmuch, MYF(0));
+  }
 
   /*
    How to detect EOF when reading bytes with my_read().
@@ -142,13 +204,20 @@ void Stream::close()
 
 bool Stream::rewind()
 {
+#ifdef HAVE_COMPRESS
+  /* Compressed stream cannot be rewound */
+  if (m_with_compression)
+    return FALSE;
+#endif
   return m_fd >= 0 && my_seek(m_fd, 0, SEEK_SET, MYF(0)) == 0;
 }
 
 
-Output_stream::Output_stream(Logger &log, const ::String &name)
+Output_stream::Output_stream(Logger &log, const ::String &name,
+                             bool with_compression)
   :Stream(log, name, O_WRONLY|O_CREAT|O_EXCL|O_TRUNC)
 {
+  m_with_compression= with_compression;
   stream.write= stream_write;
   m_block_size=0; // use default block size provided by the backup stram library
 }
@@ -163,7 +232,7 @@ Output_stream::Output_stream(Logger &log, const ::String &name)
 int Output_stream::write_magic_and_version()
 {
   byte buf[10];
-
+  bstream_blob blob;
   DBUG_ASSERT(m_fd >= 0);
 
   memmove(buf, backup_magic_bytes, 8);
@@ -171,9 +240,10 @@ int Output_stream::write_magic_and_version()
   buf[8]= 0x01;
   buf[9]= 0x00;
 
-  int ret= my_write(m_fd, buf, 10,
-                    MY_NABP /* error if not all bytes written */ );
-  if (ret)
+  blob.begin= buf;
+  blob.end= buf + 10;
+  int ret= stream_write((fd_stream*)this, &blob, blob);
+  if (ret != BSTREAM_OK)
     return -1; // error when writing magic bytes
   else
     return 10;
@@ -221,6 +291,35 @@ bool Output_stream::open()
   if (!ret)
     return FALSE;
 
+  if (m_with_compression)
+  {
+#ifdef HAVE_COMPRESS
+    int zerr;
+    if (!(zbuf= (uchar*) my_malloc(ZBUF_SIZE, MYF(0))))
+    {
+      m_log.report_error(ER_OUTOFMEMORY, ZBUF_SIZE);
+      return FALSE;
+    }
+    zstream.zalloc= 0;
+    zstream.zfree= 0;
+    zstream.opaque= 0;
+    zstream.msg= 0;
+    zstream.next_out= zbuf;
+    zstream.avail_out= ZBUF_SIZE;
+    if ((zerr= deflateInit2(&zstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                            MAX_WBITS + 16, MAX_MEM_LEVEL,
+                            Z_DEFAULT_STRATEGY) != Z_OK))
+    {
+      m_log.report_error(ER_BACKUP_FAILED_TO_INIT_COMPRESSION,
+                         zerr, zstream.msg);
+      return FALSE;
+    }
+#else
+    m_log.report_error(ER_FEATURE_DISABLED, "compression", "--with-zlib-dir");
+    return FALSE;
+#endif
+  }
+
   return init();
 }
 
@@ -235,6 +334,34 @@ void Output_stream::close()
     return;
 
   bstream_close(this);
+#ifdef HAVE_COMPRESS
+  if (m_with_compression)
+  {
+    int zerr;
+    zstream.avail_in= 0;
+    zstream.next_in= 0;
+    do
+    {
+      zerr= deflate(&zstream, Z_FINISH);
+      if (zerr != Z_STREAM_END && zerr != Z_OK)
+      {
+        m_log.report_error(ER_GET_ERRMSG, zerr, zstream.msg, "deflate");
+        break;
+      }
+      if (my_write(m_fd, zbuf, ZBUF_SIZE - zstream.avail_out,
+                   MYF(MY_NABP)))
+      {
+        m_log.report_error(ER_GET_ERRMSG, my_errno, "", "my_write");
+        break;
+      }
+      zstream.next_out= zbuf;
+      zstream.avail_out= ZBUF_SIZE;
+    } while (zerr != Z_STREAM_END);
+    if ((zerr= deflateEnd(&zstream)) != Z_OK)
+      m_log.report_error(ER_GET_ERRMSG, zerr, zstream.msg, "deflateEnd");
+    my_free(zbuf, MYF(0));
+  }
+#endif
   Stream::close();
 }
 
@@ -274,19 +401,12 @@ Input_stream::Input_stream(Logger &log, const ::String &name)
 */
 int Input_stream::check_magic_and_version()
 {
-  byte buf[10];
-
   DBUG_ASSERT(m_fd >= 0);
 
-  int ret= my_read(m_fd, buf, 10,
-                   MY_NABP /* error if not all bytes read */ );
-  if (ret)
-    return -1; // couldn't read magic bytes
-
-  if (memcmp(buf, backup_magic_bytes, 8))
+  if (memcmp(m_header_buf, backup_magic_bytes, 8))
     return -1; // wrong magic bytes
 
-  unsigned int ver = buf[8] + (buf[9]<<8);
+  unsigned int ver = m_header_buf[8] + (m_header_buf[9]<<8);
 
   if (ver != 1)
     return -1; // unsupported format version
@@ -321,6 +441,14 @@ bool Input_stream::init()
 /**
   Open backup stream for reading.
 
+  @details This method can detect and open compressed streams. In that case
+  stream is initialized for decompression so that stream_read() function will
+  return decompressed data.
+
+  The first 10 bytes in the stream (whether compressed or not) are not
+  available for reading with stream_read(). Instead, they are stored in
+  m_header_buf member and examined by check_magic_and_version().
+
   @retval TRUE  operation succeeded
   @retval FALSE operation failed
 
@@ -334,6 +462,40 @@ bool Input_stream::open()
 
   if (!ret)
     return FALSE;
+
+  if (my_read(m_fd, m_header_buf, sizeof(m_header_buf),
+              MY_NABP /* error if not all bytes read */ ))
+    return FALSE;
+
+#ifdef HAVE_COMPRESS
+  if (!memcmp(m_header_buf, "\x1f\x8b\x08", 3))
+  {
+    int zerr;
+    bstream_blob blob;
+    if (!(zbuf= (uchar*) my_malloc(ZBUF_SIZE, MYF(0))))
+    {
+      m_log.report_error(ER_OUTOFMEMORY, ZBUF_SIZE);
+      return FALSE;
+    }
+    zstream.zalloc= 0;
+    zstream.zfree= 0;
+    zstream.opaque= 0;
+    zstream.msg= 0;
+    zstream.next_in= zbuf;
+    zstream.avail_in= 10;
+    memcpy(zbuf, m_header_buf, 10);
+    if ((zerr= inflateInit2(&zstream, MAX_WBITS + 16)) != Z_OK)
+    {
+      m_log.report_error(ER_GET_ERRMSG, zerr, zstream.msg, "inflateInit2");
+      return FALSE;
+    }
+    blob.begin= m_header_buf;
+    blob.end= m_header_buf + 10;
+    if (stream_read((fd_stream*) this, &blob, blob) != BSTREAM_OK ||
+        blob.begin != blob.end)
+      return FALSE;
+  }
+#endif
 
   return init();
 }
@@ -349,6 +511,15 @@ void Input_stream::close()
     return;
 
   bstream_close(this);
+#ifdef HAVE_COMPRESS
+  if (m_with_compression)
+  {
+    int zerr;
+    if ((zerr= inflateEnd(&zstream)) != Z_OK)
+      m_log.report_error(ER_GET_ERRMSG, zerr, zstream.msg, "inflateEnd");
+    my_free(zbuf, (MYF(0)));
+  }
+#endif
   Stream::close();
 }
 
