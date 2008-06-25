@@ -22,13 +22,15 @@ CREATE DATABASE bup_proc;
 USE bup_proc;
 
 CREATE PROCEDURE p1() SET @a=5;
-CREATE PROCEDURE p2() SET @a=5;
+CREATE PROCEDURE p2() SET @a=100;
 
 --echo
 --echo Check that procedures are there before the backup
 
 CALL p1();
+SELECT @a;
 CALL p2();
+SELECT @a;
 
 --echo
 --echo Backup and restore
@@ -43,7 +45,9 @@ RESTORE FROM 'bup_proc.bak';
 --echo Check that procedures are there after the restore
 
 CALL p1();
+SELECT @a;
 CALL p2();
+SELECT @a;
 
 --echo
 --echo Cleaning up
