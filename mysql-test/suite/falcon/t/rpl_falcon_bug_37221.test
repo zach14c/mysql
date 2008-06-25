@@ -4,7 +4,8 @@
 # is using the Falcon engine, but the problem is a generic case. See
 # binlog_implicit_commit.test for a more elaborate test.
 
-source include/master-slave.inc;
+--source include/have_falcon.inc
+--source include/master-slave.inc
 
 --echo [master]
 connection master;
