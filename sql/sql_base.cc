@@ -1288,7 +1288,6 @@ void close_thread_tables(THD *thd,
                          bool skip_mdl)
 {
   TABLE *table;
-  bool clear_table_lock_option= FALSE;
   DBUG_ENTER("close_thread_tables");
 
 #ifdef EXTRA_DEBUG
@@ -1381,7 +1380,6 @@ void close_thread_tables(THD *thd,
       DBUG_VOID_RETURN;
 
     thd->locked_tables_mode= LTM_NONE;
-    clear_table_lock_option= TRUE;
 
     /*
       Note that we are leaving prelocked mode so we don't need
@@ -1420,10 +1418,6 @@ void close_thread_tables(THD *thd,
   {
     mdl_remove_all_locks(&thd->mdl_context);
   }
-
-  if (clear_table_lock_option)
-    thd->options&= ~OPTION_TABLE_LOCK;
-
   DBUG_VOID_RETURN;
 }
 
@@ -4732,8 +4726,6 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
     /* We have to emulate LOCK TABLES if we are statement needs prelocking. */
     if (thd->lex->requires_prelocking())
     {
-      thd->in_lock_tables=1;
-      thd->options|= OPTION_TABLE_LOCK;
       /*
         If we have >= 2 different tables to update with auto_inc columns,
         statement-based binlogging won't work. We can solve this problem in
@@ -4749,14 +4741,7 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
 
     if (! (thd->lock= mysql_lock_tables(thd, start, (uint) (ptr - start),
                                         flags, need_reopen)))
-    {
-      if (thd->lex->requires_prelocking())
-      {
-        thd->options&= ~(OPTION_TABLE_LOCK);
-        thd->in_lock_tables=0;
-      }
       DBUG_RETURN(-1);
-    }
 
     if (thd->lex->requires_prelocking() &&
         thd->lex->sql_command != SQLCOM_LOCK_TABLES)
@@ -4766,10 +4751,6 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
         We just have done implicit LOCK TABLES, and now we have
         to emulate first open_and_lock_tables() after it.
 
-      */
-      thd->in_lock_tables= 0;
-
-      /*
         When open_and_lock_tables() is called for a single table out of
         a table list, the 'next_global' chain is temporarily broken. We
         may not find 'first_not_own' before the end of the "list".
@@ -4792,7 +4773,6 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
             */
             mysql_unlock_tables(thd, thd->lock);
             thd->lock= 0;
-            thd->options&= ~(OPTION_TABLE_LOCK);
             DBUG_RETURN(-1);
           }
         }
