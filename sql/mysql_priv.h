@@ -1326,9 +1326,6 @@ bool tdc_open_view(THD *thd, TABLE_LIST *table_list, const char *alias,
 TABLE *find_locked_table(TABLE *list, const char *db, const char *table_name);
 TABLE *find_write_locked_table(TABLE *list, const char *db,
                                const char *table_name);
-void detach_merge_children(TABLE *table, bool clear_refs);
-bool fix_merge_after_open(TABLE_LIST *old_child_list, TABLE_LIST **old_last,
-                          TABLE_LIST *new_child_list, TABLE_LIST **new_last);
 bool open_new_frm(THD *thd, TABLE_SHARE *share, const char *alias,
                   uint db_stat, uint prgflag,
                   uint ha_open_flags, TABLE *outparam,

@@ -4001,7 +4001,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
   }
 
   /* A MERGE table must not come here. */
-  DBUG_ASSERT(!table->child_l);
+  DBUG_ASSERT(table->file->ht->db_type != DB_TYPE_MRG_MYISAM);
 
   /*
     REPAIR TABLE ... USE_FRM for temporary tables makes little sense.
@@ -6928,10 +6928,6 @@ view_err:
   }
   else
   {
-    if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
-      goto err_new_table_cleanup;
-    alter_table_manage_keys(table, table->file->indexes_are_disabled(),
-                            alter_info->keys_onoff);
     error= ha_autocommit_or_rollback(thd, 0);
     if (end_active_trans(thd))
       error= 1;
