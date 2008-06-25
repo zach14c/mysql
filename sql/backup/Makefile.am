@@ -20,6 +20,7 @@
 noinst_LTLIBRARIES = libbackup.la libbackupstream.la
 
 INCLUDES = \
+  @ZLIB_INCLUDES@ \
   -I$(top_builddir)/include \
   -I$(top_srcdir)/include \
   -I$(top_srcdir)/sql \

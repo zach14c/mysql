@@ -7,6 +7,9 @@
 #include <backup/image_info.h>
 #include <backup/debug.h>        // for definition of DBUG_BACKUP
 #include <backup/logger.h>
+#ifdef HAVE_COMPRESS
+#include <zlib.h>
+#endif
 
 /**
   @file
@@ -55,6 +58,12 @@ struct fd_stream: public backup_stream
 {
   int m_fd;
   size_t bytes;
+  uchar m_header_buf[10];
+  bool m_with_compression;
+#ifdef HAVE_COMPRESS
+  z_stream zstream;
+  uchar *zbuf;
+#endif
   
   fd_stream() :m_fd(-1), bytes(0) {}
 };
@@ -101,7 +110,7 @@ class Output_stream:
 {
  public:
 
-  Output_stream(Logger&, const ::String&);
+  Output_stream(Logger&, const ::String&, bool);
 
   bool open();
   void close();
