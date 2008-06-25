@@ -6357,3 +6357,8 @@ ER_DEBUG_SYNC_HIT_LIMIT
   eng "debug sync point hit limit reached"
   ger "Debug Sync Point Hit Limit erreicht"
 
+ER_BACKUP_OBTAIN_NAME_LOCK_FAILED
+  eng "Restore failed to obtain the name locks on the tables."
+ER_BACKUP_RELEASE_NAME_LOCK_FAILED
+  eng "Restore failed to release the name locks on the tables."
+

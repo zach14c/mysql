@@ -3071,6 +3071,96 @@ void ddl_blocker_exception_off(THD *thd)
   DBUG_VOID_RETURN;
 }
 
+/**
+  Build a table list from a list of tables as class Obj.
+
+  This method creates a TABLE_LIST from a List<> of type Obj.
+
+  param[IN]  tables    The list of tables
+  param[IN]  lock      The desired lock type
+
+  @returns TABLE_LIST *
+
+  @note Caller must free memory.
+*/
+TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
+                                          thr_lock_type lock)
+{
+  TABLE_LIST *tl= NULL;
+  Obj *tbl= NULL;
+  DBUG_ENTER("Name_locker::build_table_list()");
+  
+  List_iterator<Obj> it(*tables);
+  while (tbl= it++)
+  {
+    TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
+    DBUG_ASSERT(ptr);  // FIXME: report error instead
+    bzero(ptr, sizeof(TABLE_LIST));
+
+    ptr->alias= ptr->table_name= const_cast<char*>(tbl->get_name()->ptr());
+    ptr->db= const_cast<char*>(tbl->get_db_name()->ptr());
+    ptr->lock_type= lock;
+
+    // and add it to the list
+
+    ptr->next_global= ptr->next_local=
+      ptr->next_name_resolution_table= tl;
+    tl= ptr;
+    tl->table= ptr->table;
+  }
+
+  DBUG_RETURN(tl);
+}
+
+/**
+  Gets name locks on table list.
+
+  This method attempts to take an exclusive name lock on each table in the
+  list. It does nothing if the table list is empty.
+
+  @param[IN] tables  The list of tables to lock.
+  @param[IN] lock    The type of lock to take.
+
+  @returns 0 if success, 1 if error
+*/
+int Name_locker::get_name_locks(List<Obj> *tables, thr_lock_type lock)
+{
+  int ret= 0;
+  DBUG_ENTER("Name_locker::get_name_locks()");
+  /*
+    Convert List<Obj> to TABLE_LIST *
+  */
+  m_table_list= build_table_list(tables, lock);
+  if (m_table_list)
+  {
+    pthread_mutex_lock(&LOCK_open);
+    if (lock_table_names_exclusively(m_thd, m_table_list))
+      ret= 1;
+    pthread_mutex_unlock(&LOCK_open);
+  }
+  DBUG_RETURN(ret);
+}
+
+/*
+  Releases name locks on table list.
+
+  This method releases the name locks on the table list. It does nothing if
+  the table list is empty.
+
+  @returns 0 if success, 1 if error
+*/
+int Name_locker::release_name_locks()
+{
+  DBUG_ENTER("Name_locker::release_name_locks()");
+  if (m_table_list)
+  {
+    pthread_mutex_lock(&LOCK_open);
+    unlock_table_names(m_thd, m_table_list, (TABLE_LIST*) 0);
+    pthread_mutex_unlock(&LOCK_open);
+ }
+  DBUG_RETURN(0);
+}
+
 } // obs namespace
 
 ///////////////////////////////////////////////////////////////////////////

@@ -132,9 +132,9 @@ public: // public interface
   Image_info();
   uint m_table_count;
 
- private:
-
   class Tables; ///< Implementation of Table_list interface. 
+
+ private:
 
   // storage
 
@@ -260,6 +260,8 @@ class Snapshot_info
   virtual result_t get_restore_driver(Restore_driver*&) =0;
 
   virtual ~Snapshot_info();
+
+  Image_info::Tables *get_table_list() { return &m_tables; }
 
  protected:
  
