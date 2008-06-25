@@ -69,7 +69,6 @@
 #include "restore_info.h"
 #include "logger.h"
 #include "stream.h"
-#include "debug.h"
 #include "be_native.h"
 #include "be_default.h"
 #include "be_snapshot.h"
@@ -127,8 +126,6 @@ execute_backup_command(THD *thd, LEX *lex)
   DBUG_ENTER("execute_backup_command");
   DBUG_ASSERT(thd && lex);
 
-  BACKUP_BREAKPOINT("backup_command");
-
   using namespace backup;
 
   Backup_restore_ctx context(thd); // reports errors
@@ -148,7 +145,7 @@ execute_backup_command(THD *thd, LEX *lex)
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_BACKUP_PREPARE));
 
-    BACKUP_BREAKPOINT("bp_running_state");
+    DEBUG_SYNC(thd, "after_backup_start_backup");
 
     // select objects to backup
 
@@ -181,7 +178,6 @@ execute_backup_command(THD *thd, LEX *lex)
     if (res)
       DBUG_RETURN(send_error(context, ER_BACKUP_BACKUP));
 
-    BACKUP_BREAKPOINT("bp_complete_state");
     break;
   }
 
@@ -192,7 +188,7 @@ execute_backup_command(THD *thd, LEX *lex)
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE_PREPARE));
     
-    BACKUP_BREAKPOINT("bp_running_state");
+    DEBUG_SYNC(thd, "after_backup_start_restore");
 
     res= context.do_restore();      
 
@@ -734,8 +730,6 @@ int Backup_restore_ctx::do_backup()
   Output_stream &s= *static_cast<Output_stream*>(m_stream);
   Backup_info   &info= *static_cast<Backup_info*>(m_catalog);
 
-  BACKUP_BREAKPOINT("backup_meta");
-
   report_stats_pre(info);
 
   DBUG_PRINT("backup",("Writing preamble"));
@@ -747,8 +741,6 @@ int Backup_restore_ctx::do_backup()
   }
 
   DBUG_PRINT("backup",("Writing table data"));
-
-  BACKUP_BREAKPOINT("backup_data");
 
   if (write_table_data(m_thd, info, s)) // reports errors
     DBUG_RETURN(send_error(*this, ER_BACKUP_BACKUP));
@@ -764,7 +756,6 @@ int Backup_restore_ctx::do_backup()
   report_stats_post(info);
 
   DBUG_PRINT("backup",("Backup done."));
-  BACKUP_BREAKPOINT("backup_done");
 
   DBUG_RETURN(0);
 }

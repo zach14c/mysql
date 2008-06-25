@@ -5,7 +5,6 @@
 
 #include <backup/api_types.h>    // for Buffer definition
 #include <backup/image_info.h>
-#include <backup/debug.h>        // for definition of DBUG_BACKUP
 #include <backup/logger.h>
 
 /**

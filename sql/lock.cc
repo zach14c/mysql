@@ -1423,9 +1423,33 @@ bool lock_global_read_lock(THD *thd)
   if (!thd->global_read_lock)
   {
     const char *old_message;
+    const char *new_message= "Waiting to get readlock";
     (void) pthread_mutex_lock(&LOCK_global_read_lock);
+
+#if defined(ENABLED_DEBUG_SYNC)
+    /*
+      The below sync point fires if we have to wait for
+      protect_against_global_read_lock.
+
+      WARNING: Beware to use WAIT_FOR with this sync point. We hold
+      LOCK_global_read_lock here.
+
+      Call the sync point before calling enter_cond() as it does use
+      enter_cond() and exit_cond() itself if a WAIT_FOR action is
+      executed in spite of the above warning.
+
+      Pre-set proc_info so that it is available immediately after the
+      sync point sends a SIGNAL. This makes tests more reliable.
+    */
+    if (protect_against_global_read_lock)
+    {
+      thd_proc_info(thd, new_message);
+      DEBUG_SYNC(thd, "wait_lock_global_read_lock");
+    }
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
     old_message=thd->enter_cond(&COND_global_read_lock, &LOCK_global_read_lock,
-                                "Waiting to get readlock");
+                                new_message);
     DBUG_PRINT("info",
 	       ("waiting_for: %d  protect_against: %d",
 		waiting_for_read_lock, protect_against_global_read_lock));
@@ -1501,6 +1525,8 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
   (void) pthread_mutex_lock(&LOCK_global_read_lock);
   if ((need_exit_cond= must_wait))
   {
+    const char *new_message= "Waiting for release of readlock";
+
     if (thd->global_read_lock)		// This thread had the read locks
     {
       if (is_not_commit)
@@ -1514,8 +1540,31 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
       */
       DBUG_RETURN(is_not_commit);
     }
+
+#if defined(ENABLED_DEBUG_SYNC)
+    /*
+      The below sync point fires if we have to wait for
+      global_read_lock.
+
+      WARNING: Beware to use WAIT_FOR with this sync point. We hold
+      LOCK_global_read_lock here.
+
+      Call the sync point before calling enter_cond() as it does use
+      enter_cond() and exit_cond() itself if a WAIT_FOR action is
+      executed in spite of the above warning.
+
+      Pre-set proc_info so that it is available immediately after the
+      sync point sends a SIGNAL. This makes tests more reliable.
+    */
+    if (must_wait)
+    {
+      thd_proc_info(thd, new_message);
+      DEBUG_SYNC(thd, "wait_if_global_read_lock");
+    }
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
     old_message=thd->enter_cond(&COND_global_read_lock, &LOCK_global_read_lock,
-				"Waiting for release of readlock");
+                                new_message);
     while (must_wait && ! thd->killed &&
 	   (!abort_on_refresh || thd->version == refresh_version))
     {
@@ -1527,7 +1576,11 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
       result=1;
   }
   if (!abort_on_refresh && !result)
+  {
     protect_against_global_read_lock++;
+    DBUG_PRINT("sql_lock", ("protect_against_global_read_lock incr: %u",
+                            protect_against_global_read_lock));
+  }
   /*
     The following is only true in case of a global read locks (which is rare)
     and if old_message is set
@@ -1550,6 +1603,8 @@ void start_waiting_global_read_lock(THD *thd)
   DBUG_ASSERT(protect_against_global_read_lock);
   tmp= (!--protect_against_global_read_lock &&
         (waiting_for_read_lock || global_read_lock_blocks_commit));
+  DBUG_PRINT("sql_lock", ("protect_against_global_read_lock decr: %u",
+                          protect_against_global_read_lock));
   (void) pthread_mutex_unlock(&LOCK_global_read_lock);
   if (tmp)
     pthread_cond_broadcast(&COND_global_read_lock);

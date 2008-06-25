@@ -1,5 +1,4 @@
 --source include/not_embedded.inc
---source include/have_debug.inc
 
 # Run test only on 64-bit platforms until BUG#36624 has been fixed.
 --source include/have_64bit.inc

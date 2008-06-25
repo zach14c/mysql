@@ -348,6 +348,8 @@ sub mtr_report_stats ($) {
 		
 		# ignore warning generated when backup engine selection algorithm is tested
 		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
+		# ignore warnings generated when backup privilege is tested
+		($testname eq 'main.backup_security') and /(Backup|Restore): Access denied; you need the SUPER/ or
 		
 		/Sort aborted/ or
 		/Time-out in NDB/ or

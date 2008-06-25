@@ -27,3 +27,6 @@ RESTORE FROM 'test.bak';
 SELECT * FROM db1.v2;
 SELECT * FROM db1.v1;
 SELECT * FROM db1.t1;
+
+DROP DATABASE db1;
+

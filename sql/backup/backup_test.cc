@@ -22,7 +22,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 {
   int res= 0;
 
-  DBUG_ENTER("execute_backup_command");
+  DBUG_ENTER("execute_backup_test_command");
   DBUG_ASSERT(thd);
 
   Protocol *protocol= thd->protocol;    // client comms
