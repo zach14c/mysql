@@ -113,6 +113,7 @@ class Backup_restore_ctx: public backup::Logger
 
   int prepare(LEX_STRING location);
   void disable_fkey_constraints();
+  int  restore_triggers_and_events();
   
   friend class Backup_info;
   friend class Restore_info;

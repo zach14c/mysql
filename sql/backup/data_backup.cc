@@ -1569,6 +1569,8 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
       DBUG_PRINT("restore",("state is %d", state));
   }
 
+  DEBUG_SYNC(::current_thd, "restore_table_data_before_end");
+  
   { // Shutting down drivers
 
     String bad_drivers;
