@@ -80,6 +80,7 @@ static StorageHandler	*storageHandler;
 
 ulonglong	falcon_record_memory_max;
 ulonglong	falcon_initial_allocation;
+ulonglong	falcon_serial_log_file_size;
 uint		falcon_allocation_extent;
 ulonglong	falcon_page_cache_size;
 char*		falcon_serial_log_dir;
@@ -3510,6 +3511,11 @@ static MYSQL_SYSVAR_ULONGLONG(initial_allocation, falcon_initial_allocation,
   "Initial allocation (in bytes) of falcon user tablespace.",
   NULL, NULL, 0, 0, LL(4000000000), LL(1)<<20);
 
+static MYSQL_SYSVAR_ULONGLONG(serial_log_file_size, falcon_serial_log_file_size,
+  PLUGIN_VAR_RQCMDARG,
+  "If serial log file grows larger than this value, it will be truncated when it is reused",
+  NULL, NULL , LL(10)<<20, LL(1)<<20,LL(0x7fffffffffffffff), LL(1)<<20);
+
 /***
 static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
@@ -3557,6 +3563,7 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	//MYSQL_SYSVAR(allocation_extent),
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),
+	MYSQL_SYSVAR(serial_log_file_size),
 	NULL
 };
 
