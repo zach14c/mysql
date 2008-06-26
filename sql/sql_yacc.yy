@@ -6329,7 +6329,7 @@ backup:
         ;
 
 opt_compression:
-          /* empty */ {}
+          /* empty */ { Lex->backup_compression= false; }
         | WITH COMPRESSION_SYM opt_compression_algorithm
           {
             Lex->backup_compression= true;
