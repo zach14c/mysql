@@ -16,6 +16,11 @@
 #ifndef _my_plugin_h
 #define _my_plugin_h
 
+/* size_t */
+#include <stdlib.h>
+
+typedef struct st_mysql MYSQL;
+
 #ifdef __cplusplus
 class THD;
 class Item;
@@ -66,7 +71,8 @@ typedef struct st_mysql_xid MYSQL_XID;
 #define MYSQL_DAEMON_PLUGIN          3  /* The daemon/raw plugin type */
 #define MYSQL_INFORMATION_SCHEMA_PLUGIN  4  /* The I_S plugin type */
 #define MYSQL_AUDIT_PLUGIN           5  /* The Audit plugin type        */
-#define MYSQL_MAX_PLUGIN_TYPE_NUM    6  /* The number of plugin types   */
+#define MYSQL_REPLICATION_PLUGIN     6	/* The replication plugin type */
+#define MYSQL_MAX_PLUGIN_TYPE_NUM    7  /* The number of plugin types   */
 
 /* We use the following strings to define licenses for plugins */
 #define PLUGIN_LICENSE_PROPRIETARY 0
@@ -461,6 +467,19 @@ struct handlerton;
 
 
 /*************************************************************************
+  API for Replication plugin. (MYSQL_REPLICATION_PLUGIN)
+*/
+#define MYSQL_REPLICATION_INTERFACE_VERSION 0x0100
+
+/**
+   Replication plugin descriptor
+*/
+struct Mysql_replication {
+  int interface_version;
+};
+
+
+/*************************************************************************
   st_mysql_value struct for reading values from mysqld.
   Used by server variables framework to parse user-provided values.
   Will be used for arguments when implementing UDFs.
@@ -610,6 +629,144 @@ void mysql_query_cache_invalidate4(MYSQL_THD thd,
                                    const char *key, unsigned int key_length,
                                    int using_trx);
 
+/**
+   Read a packet from the current thread connection.
+
+   @note The packet buffer will be allocated and freed automatically,
+   the memory pointed to by @a packet will be overwritten or freed by
+   the next read or write using current thread connection.
+
+   @param packet   return the pointer to the packet read
+   @param len      return the length of packet read
+
+   @retval 0 Success
+   @retval 1 Failure
+*/
+int thd_net_read(const unsigned char **packet, size_t *len);
+
+/**
+   Write a packet to the current thread connection.
+
+   @note The packet buffer will be allocated and freed automatically,
+   the memory pointed to by @a packet will be overwritten or freed by
+   the next read or write using current thread connection.
+
+   @param packet   packet to write to the connection
+   @param len      length of the packet
+
+   @retval 0 Success
+   @retval 1 Failure
+*/
+int thd_net_write(const unsigned char *packet, size_t len);
+
+/**
+   Flush write buffer of current thread connection.
+
+   @retval 0 Success
+   @retval 1 Failure
+*/
+int thd_net_flush();
+
+/**
+   Read a packet from the connection.
+
+   @note The packet buffer will be allocated and freed automatically,
+   the memory pointed to by @a packet will be overwritten or freed by
+   the next read or write using the same @a mysql connection.
+
+   @param mysql    mysql client connection
+   @param packet   return the pointer to the packet read
+   @param len      return the length of packet read
+
+   @retval 0 Success
+   @retval 1 Failure
+*/
+int mysql_net_read(MYSQL *mysql, const unsigned char **packet, size_t *len);
+
+/**
+   Write a packet to the connection.
+
+   @note The packet buffer will be allocated and freed automatically,
+   the memory pointed to by @a packet will be overwritten or freed by
+   the next read or write using the same @a mysql connection.
+
+   @param mysql    mysql client connection
+   @param packet   packet to write to the connection
+   @param len      length of the packet
+
+   @retval 0 Success
+   @retval 1 Failure
+*/
+int mysql_net_write(MYSQL *mysql, const unsigned char *packet, size_t len);
+
+/**
+   Flush write buffer of connection.
+
+   @param mysql    mysql client connection
+
+   @retval 0 Success
+   @retval 1 Failure
+*/
+int mysql_net_flush(MYSQL *mysql);
+
+/**
+   Get the value of user variable as an integer.
+
+   This function will return the value of variable @a name as an
+   integer. If the original value of the variable is not an integer,
+   the value will be converted into an integer.
+
+   @param name     user variable name
+   @param value    pointer to return the value
+   @param null_value if not NULL, the function will set it to true if
+   the value of variable is null, set to false if not
+
+   @retval 0 Success
+   @retval 1 Variable not found
+*/
+int get_user_var_int(const char *name,
+                     long long int *value, int *null_value);
+
+/**
+   Get the value of user variable as a double precision float number.
+
+   This function will return the value of variable @a name as real
+   number. If the original value of the variable is not a real number,
+   the value will be converted into a real number.
+
+   @param name     user variable name
+   @param value    pointer to return the value
+   @param null_value if not NULL, the function will set it to true if
+   the value of variable is null, set to false if not
+
+   @retval 0 Success
+   @retval 1 Variable not found
+*/
+int get_user_var_real(const char *name,
+                      double *value, int *null_value);
+
+/**
+   Get the value of user variable as a string.
+
+   This function will return the value of variable @a name as
+   string. If the original value of the variable is not a string,
+   the value will be converted into a string.
+
+   @param name     user variable name
+   @param value    pointer to the value buffer
+   @param len      length of the value buffer
+   @param precision precision of the value if it is a float number
+   @param null_value if not NULL, the function will set it to true if
+   the value of variable is null, set to false if not
+
+   @retval 0 Success
+   @retval 1 Variable not found
+*/
+int get_user_var_str(const char *name,
+                     char *value, unsigned long len,
+                     unsigned int precision, int *null_value);
+
+  
 #ifdef __cplusplus
 }
 #endif
