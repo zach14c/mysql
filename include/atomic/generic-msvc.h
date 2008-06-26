@@ -19,7 +19,39 @@
 /*
   We don't implement anything specific for MY_ATOMIC_MODE_DUMMY, always use
   intrinsics.
+  8 and 16-bit atomics are not implemented, but it can be done if necessary.
 */
+
+/*
+  x86 compilers (both VS2003 or VS2005) never use instrinsics, but generate 
+  function calls to kernel32 instead, even in the optimized build. 
+  We force intrinsics as described in MSDN documentation for 
+  _InterlockedCompareExchange.
+*/
+#ifdef _M_IX86
+
+#if (_MSC_VER >= 1400)
+#include <intrin.h>
+#else
+/*Visual Studio 2003 and earlier do not have prototypes for atomic intrinsics*/
+LONG _InterlockedExchange (LONG volatile *Target,LONG Value);
+LONG _InterlockedCompareExchange (LONG volatile *Target, LONG Value, LONG Comp);
+LONG _InterlockedExchangeAdd (LONG volatile *Addend, LONG Value);
+#pragma intrinsic(_InterlockedExchangeAdd)
+#pragma intrinsic(_InterlockedCompareExchange)
+#pragma intrinsic(_InterlockedExchange)
+#endif
+
+#define InterlockedExchange        _InterlockedExchange
+#define InterlockedExchangeAdd     _InterlockedExchangeAdd
+#define InterlockedCompareExchange _InterlockedCompareExchange
+/*
+ No need to do something special for InterlockedCompareExchangePointer
+ as it is a #define to InterlockedCompareExchange. The same applies to
+ InterlockedExchangePointer. 
+*/
+#endif /*_M_IX86*/
+
 #define MY_ATOMIC_MODE "msvc-intrinsics"
 #define IL_EXCHG_ADD32   InterlockedExchangeAdd
 #define IL_COMP_EXCHG32  InterlockedCompareExchange
@@ -38,6 +70,37 @@
   ret= 0; /* avoid compiler warning */ \
   ret= IL_COMP_EXCHG ## S (a, ret, ret);
 
+/*
+  my_yield_processor (equivalent of x86 PAUSE instruction) should be used
+  to improve performance on hyperthreaded CPUs. Intel recommends to use it in
+  spin loops also on non-HT machines to reduce power consumption (see e.g 
+  http://softwarecommunity.intel.com/articles/eng/2004.htm)
+
+  Running benchmarks for spinlocks implemented with InterlockedCompareExchange
+  and YieldProcessor shows that much better performance is achieved by calling
+  YieldProcessor in a loop - that is, yielding longer. On Intel boxes setting
+  loop count in the range 200-300 brought best results.
+ */
+#ifndef YIELD_LOOPS
+#define YIELD_LOOPS 200
+#endif
+
+static __inline int my_yield_processor()
+{
+  int i;
+  for(i=0; i<YIELD_LOOPS; i++)
+  {
+#if (_MSC_VER <= 1310)
+    /* On older compilers YieldProcessor is not available, use inline assembly*/
+    __asm { rep nop }
+#else
+    YieldProcessor();
+#endif
+  }
+  return 1;
+}
+
+#define LF_BACKOFF my_yield_processor()
 #else /* cleanup */
 
 #undef IL_EXCHG_ADD32

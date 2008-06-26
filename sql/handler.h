@@ -279,8 +279,6 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_LEX_CREATE_TMP_TABLE	1
 #define HA_LEX_CREATE_IF_NOT_EXISTS 2
 #define HA_LEX_CREATE_TABLE_LIKE 4
-#define HA_OPTION_NO_CHECKSUM	(1L << 17)
-#define HA_OPTION_NO_DELAY_KEY_WRITE (1L << 18)
 #define HA_MAX_REC_LENGTH	65535
 
 /* Table caching type */
@@ -760,6 +758,12 @@ struct handlerton
 };
 
 
+inline LEX_STRING *hton_name(const handlerton *hton)
+{
+  return &(hton2plugin[hton->slot]->name);
+}
+
+
 /* Possible flags of a handlerton (there can be 32 of them) */
 #define HTON_NO_FLAGS                 0
 #define HTON_CLOSE_CURSORS_AT_COMMIT (1 << 0)
@@ -811,6 +815,7 @@ struct THD_TRANS
   bool modified_non_trans_table;
 
   void reset() { no_2pc= FALSE; modified_non_trans_table= FALSE; }
+  THD_TRANS() {}                        /* Remove gcc warning */
 };
 
 
@@ -1052,10 +1057,9 @@ typedef class Item COND;
 typedef struct st_ha_check_opt
 {
   st_ha_check_opt() {}                        /* Remove gcc warning */
-  ulong sort_buffer_size;
   uint flags;       /* isam layer flags (e.g. for myisamchk) */
   uint sql_flags;   /* sql layer flags - for something myisamchk cannot do */
-  KEY_CACHE *key_cache;	/* new key cache when changing key cache */
+  KEY_CACHE *key_cache; /* new key cache when changing key cache */
   void init();
 } HA_CHECK_OPT;
 
@@ -1472,10 +1476,10 @@ public:
     estimation_rows_to_insert= rows;
     start_bulk_insert(rows);
   }
-  int ha_end_bulk_insert()
+  int ha_end_bulk_insert(bool abort)
   {
     estimation_rows_to_insert= 0;
-    return end_bulk_insert();
+    return end_bulk_insert(abort);
   }
   int ha_bulk_update_row(const uchar *old_data, uchar *new_data,
                          uint *dup_key_found);
@@ -1706,14 +1710,18 @@ public:
   virtual int rnd_pos_by_record(uchar *record);
   virtual int read_first_row(uchar *buf, uint primary_key);
   /**
-    The following function is only needed for tables that may be temporary
-    tables during joins.
+    The following 3 function is only needed for tables that may be
+    internal temporary tables during joins.
   */
-  virtual int restart_rnd_next(uchar *buf, uchar *pos)
+  virtual int remember_rnd_pos()
+    { return HA_ERR_WRONG_COMMAND; }
+  virtual int restart_rnd_next(uchar *buf)
     { return HA_ERR_WRONG_COMMAND; }
   virtual int rnd_same(uchar *buf, uint inx)
     { return HA_ERR_WRONG_COMMAND; }
-  virtual ha_rows records_in_range(uint inx, key_range *min_key, key_range *max_key)
+
+  virtual ha_rows records_in_range(uint inx, key_range *min_key,
+                                   key_range *max_key)
     { return (ha_rows) 10; }
   virtual void position(const uchar *record)=0;
   virtual int info(uint)=0; // see my_base.h for full description
@@ -1825,7 +1833,8 @@ public:
   */
   virtual const char **bas_ext() const =0;
 
-  virtual int get_default_no_partitions(HA_CREATE_INFO *info) { return 1;}
+  virtual int get_default_no_partitions(HA_CREATE_INFO *create_info)
+  { return 1;}
   virtual void set_auto_partitions(partition_info *part_info) { return; }
   virtual bool get_no_parts(const char *name,
                             uint *no_parts)
@@ -1870,11 +1879,9 @@ public:
   virtual bool is_crashed() const  { return 0; }
   virtual bool auto_repair() const { return 0; }
 
-
 #define CHF_CREATE_FLAG 0
 #define CHF_DELETE_FLAG 1
 #define CHF_RENAME_FLAG 2
-
 
   /**
     @note lock_count() can return > 1 if the table is MERGE or partitioned.
@@ -2100,6 +2107,7 @@ public:
   */
   virtual void use_hidden_primary_key();
 
+  LEX_STRING *engine_name() { return hton_name(ht); }
   /**
     Lock table.
 
@@ -2238,7 +2246,7 @@ private:
   virtual int repair(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
   virtual void start_bulk_insert(ha_rows rows) {}
-  virtual int end_bulk_insert() { return 0; }
+  virtual int end_bulk_insert(bool abort) { return 0; }
   virtual int index_read(uchar * buf, const uchar * key, uint key_len,
                          enum ha_rkey_function find_flag)
    { return  HA_ERR_WRONG_COMMAND; }
@@ -2415,7 +2423,7 @@ static inline enum legacy_db_type ha_legacy_type(const handlerton *db_type)
 
 static inline const char *ha_resolve_storage_engine_name(const handlerton *db_type)
 {
-  return db_type == NULL ? "UNKNOWN" : hton2plugin[db_type->slot]->name.str;
+  return db_type == NULL ? "UNKNOWN" : hton_name(db_type)->str;
 }
 
 static inline bool ha_check_storage_engine_flag(const handlerton *db_type, uint32 flag)

@@ -276,7 +276,7 @@ static sys_var_key_cache_long  sys_key_cache_age_threshold(&vars, "key_cache_age
 							      param_age_threshold));
 static sys_var_bool_ptr	sys_local_infile(&vars, "local_infile",
 					 &opt_local_infile);
-static sys_var_bool_ptr       
+static sys_var_bool_ptr
 sys_trust_function_creators(&vars, "log_bin_trust_function_creators",
                             &trust_function_creators);
 static sys_var_bool_ptr
@@ -427,10 +427,10 @@ static sys_var_thd_ulong	sys_trans_alloc_block_size(&vars, "transaction_alloc_bl
 static sys_var_thd_ulong	sys_trans_prealloc_size(&vars, "transaction_prealloc_size",
 						&SV::trans_prealloc_size,
 						0, fix_trans_mem_root);
-sys_var_enum_const      sys_thread_handling(&vars, "thread_handling",
-                                            &SV::thread_handling,
-                                            &thread_handling_typelib,
-                                            NULL);
+sys_var_enum_const        sys_thread_handling(&vars, "thread_handling",
+                                              &SV::thread_handling,
+                                              &thread_handling_typelib,
+                                              NULL);
 
 #ifdef HAVE_QUERY_CACHE
 static sys_var_long_ptr	sys_query_cache_limit(&vars, "query_cache_limit",
@@ -1170,6 +1170,7 @@ void fix_slave_exec_mode(enum_var_type type)
   }
   if (bit_is_set(slave_exec_mode_options, SLAVE_EXEC_MODE_IDEMPOTENT) == 0)
     bit_do_set(slave_exec_mode_options, SLAVE_EXEC_MODE_STRICT);
+  DBUG_VOID_RETURN;
 }
 
 bool sys_var_thd_binlog_format::is_readonly() const
@@ -1201,7 +1202,7 @@ bool sys_var_thd_binlog_format::is_readonly() const
   if (thd->in_sub_stmt)
   {
     my_error(ER_STORED_FUNCTION_PREVENTS_SWITCH_BINLOG_FORMAT, MYF(0));
-    return 1;    
+    return 1;
   }
   return sys_var_thd_enum::is_readonly();
 }
@@ -1432,7 +1433,6 @@ uchar *sys_var_enum::value_ptr(THD *thd, enum_var_type type, LEX_STRING *base)
   return (uchar*) enum_names->type_names[*value];
 }
 
-
 uchar *sys_var_enum_const::value_ptr(THD *thd, enum_var_type type,
                                      LEX_STRING *base)
 {
@@ -1512,7 +1512,7 @@ bool sys_var_thd_ha_rows::update(THD *thd, set_var *var)
   if (var->type == OPT_GLOBAL)
   {
     /* Lock is needed to make things safe on 32 bit systems */
-    pthread_mutex_lock(&LOCK_global_system_variables);    
+    pthread_mutex_lock(&LOCK_global_system_variables);
     global_system_variables.*offset= (ha_rows) tmp;
     pthread_mutex_unlock(&LOCK_global_system_variables);
   }
@@ -2227,9 +2227,8 @@ KEY_CACHE *get_key_cache(LEX_STRING *cache_name)
   if (!cache_name || ! cache_name->length)
     cache_name= &default_key_cache_base;
   return ((KEY_CACHE*) find_named(&key_caches,
-                                      cache_name->str, cache_name->length, 0));
+                                  cache_name->str, cache_name->length, 0));
 }
-
 
 uchar *sys_var_key_cache_param::value_ptr(THD *thd, enum_var_type type,
 					 LEX_STRING *base)
@@ -3662,7 +3661,7 @@ uchar *sys_var_thd_storage_engine::value_ptr(THD *thd, enum_var_type type,
   if (type == OPT_GLOBAL)
     plugin= my_plugin_lock(thd, &(global_system_variables.*offset));
   hton= plugin_data(plugin, handlerton*);
-  engine_name= &hton2plugin[hton->slot]->name;
+  engine_name= hton_name(hton);
   result= (uchar *) thd->strmake(engine_name->str, engine_name->length);
   if (type == OPT_GLOBAL)
     plugin_unlock(thd, plugin);
