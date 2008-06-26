@@ -214,12 +214,6 @@ Reprepare_observer::report_error(THD *thd)
 }
 
 
-Open_tables_state::Open_tables_state(THD *thd, ulong version_arg)
-  :version(version_arg), state_flags(0U)
-{
-  reset_open_tables_state(thd);
-}
-
 /*
   The following functions form part of the C plugin API
 */
@@ -513,7 +507,7 @@ Diagnostics_area::disable_status()
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
               /* statement id */ 0),
-   Open_tables_state(this, refresh_version), rli_fake(0),
+   rli_fake(0),
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
@@ -615,6 +609,9 @@ THD::THD()
   slave_net = 0;
   command=COM_CONNECT;
   *scramble= '\0';
+
+  /* Call to init() below requires fully initialized Open_tables_state. */
+  init_open_tables_state(this, refresh_version);
 
   init();
   /* Initialize sub structures */
