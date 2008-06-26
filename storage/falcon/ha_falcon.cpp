@@ -3384,7 +3384,7 @@ static void updateIndexChillThreshold(MYSQL_THD thd,
 {
 	falcon_index_chill_threshold = *(uint *)save;
 	if(storageHandler)
-		storageHandler->setIndexChillThreshold(falcon_index_chill_threshold * 1024 * 1024);
+		storageHandler->setIndexChillThreshold(falcon_index_chill_threshold);
 }
 
 static void updateRecordChillThreshold(MYSQL_THD thd,
@@ -3393,7 +3393,7 @@ static void updateRecordChillThreshold(MYSQL_THD thd,
 {
 	falcon_record_chill_threshold = *(uint *)save;
 	if(storageHandler)
-		storageHandler->setRecordChillThreshold(falcon_record_chill_threshold * 1024 * 1024);
+		storageHandler->setRecordChillThreshold(falcon_record_chill_threshold);
 }
 
 void StorageInterface::updateRecordMemoryMax(MYSQL_THD thd, struct st_mysql_sys_var* variable, void* var_ptr, const void* save)
