@@ -388,6 +388,7 @@ bool Output_stream::rewind()
 Input_stream::Input_stream(Logger &log, const ::String &name)
   :Stream(log, name, O_RDONLY)
 {
+  m_with_compression= false;
   stream.read= stream_read;
 }
 
@@ -487,8 +488,10 @@ bool Input_stream::open()
     if ((zerr= inflateInit2(&zstream, MAX_WBITS + 16)) != Z_OK)
     {
       m_log.report_error(ER_GET_ERRMSG, zerr, zstream.msg, "inflateInit2");
+      my_free(zbuf, MYF(0));
       return FALSE;
     }
+    m_with_compression= true;
     blob.begin= m_header_buf;
     blob.end= m_header_buf + 10;
     if (stream_read((fd_stream*) this, &blob, blob) != BSTREAM_OK ||
