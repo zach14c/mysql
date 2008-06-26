@@ -22,7 +22,7 @@
 #include "sql_repl.h"
 #include "rpl_filter.h"
 #include "repl_failsafe.h"
-#include "stacktrace.h"
+#include <my_stacktrace.h>
 #include "mysqld_suffix.h"
 #include "mysys_err.h"
 #include "events.h"
@@ -180,6 +180,10 @@ typedef fp_except fp_except_t;
 #endif
 #endif /* __FreeBSD__ && HAVE_IEEEFP_H */
 
+#ifdef HAVE_FENV_H
+#include <fenv.h>
+#endif
+
 #ifdef HAVE_FPU_CONTROL_H
 #include <fpu_control.h>
 #endif
@@ -205,6 +209,11 @@ inline void setup_fpu()
               FP_X_IMP));
 #endif /* __i386__ */
 #endif /* __FreeBSD__ && HAVE_IEEEFP_H */
+
+#ifdef HAVE_FESETROUND
+  /* Set FPU rounding mode to "round-to-nearest" */
+  fesetround(FE_TONEAREST);
+#endif /* HAVE_FESETROUND */
 
   /*
     x86 (32-bit) requires FPU precision to be explicitly set to 64 bit for
@@ -2167,7 +2176,7 @@ LONG WINAPI my_unhandler_exception_filter(EXCEPTION_POINTERS *ex_pointers)
 #endif /* DEBUG_UNHANDLED_EXCEPTION_FILTER */
   __try
   {
-    set_exception_pointers(ex_pointers);
+    my_set_exception_pointers(ex_pointers);
     handle_segfault(ex_pointers->ExceptionRecord->ExceptionCode);
   }
   __except(EXCEPTION_EXECUTE_HANDLER)
@@ -2551,8 +2560,8 @@ the thread stack. Please read http://dev.mysql.com/doc/mysql/en/linux.html\n\n",
 Attempting backtrace. You can use the following information to find out\n\
 where mysqld died. If you see no messages after this, something went\n\
 terribly wrong...\n");  
-    print_stacktrace(thd ? (uchar*) thd->thread_stack : (uchar*) 0,
-                     my_thread_stack_size);
+    my_print_stacktrace(thd ? (uchar*) thd->thread_stack : NULL,
+                        my_thread_stack_size);
   }
   if (thd)
   {
@@ -2576,7 +2585,7 @@ terribly wrong...\n");
     }
     fprintf(stderr, "Trying to get some variables.\n\
 Some pointers may be invalid and cause the dump to abort...\n");
-    safe_print_str("thd->query", thd->query, 1024);
+    my_safe_print_str("thd->query", thd->query, 1024);
     fprintf(stderr, "thd->thread_id=%lu\n", (ulong) thd->thread_id);
     fprintf(stderr, "thd->killed=%s\n", kreason);
   }
@@ -2623,7 +2632,7 @@ bugs.\n");
   {
     fprintf(stderr, "Writing a core file\n");
     fflush(stderr);
-    write_core(sig);
+    my_write_core(sig);
   }
 #endif
 
@@ -2657,7 +2666,9 @@ static void init_signals(void)
     sigemptyset(&sa.sa_mask);
     sigprocmask(SIG_SETMASK,&sa.sa_mask,NULL);
 
-    init_stacktrace();
+#ifdef HAVE_STACKTRACE
+    my_init_stacktrace();
+#endif
 #if defined(__amiga__)
     sa.sa_handler=(void(*)())handle_segfault;
 #else
@@ -3181,7 +3192,6 @@ SHOW_VAR com_status_vars[]= {
   {"show_binlogs",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOGS]), SHOW_LONG_STATUS},
   {"show_charsets",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CHARSETS]), SHOW_LONG_STATUS},
   {"show_collations",      (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_COLLATIONS]), SHOW_LONG_STATUS},
-  {"show_column_types",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_COLUMN_TYPES]), SHOW_LONG_STATUS},
   {"show_contributors",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CONTRIBUTORS]), SHOW_LONG_STATUS},
   {"show_create_db",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CREATE_DB]), SHOW_LONG_STATUS},
   {"show_create_event",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_CREATE_EVENT]), SHOW_LONG_STATUS},

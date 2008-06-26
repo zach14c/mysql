@@ -1,3 +1,4 @@
+SET @@session.sql_mode = 'NO_ENGINE_SUBSTITUTION';
 
 --source suite/funcs_1/storedproc/load_sp_tb.inc
 --------------------------------------------------------------------------------
@@ -140,7 +141,7 @@ END//
 ERROR 42000: Too big precision 256 specified for column ''. Maximum is 65.
 DROP PROCEDURE IF EXISTS sp1//
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 CREATE PROCEDURE sp1( f1 decimal(66, 30) ) language sql not deterministic sql security invoker comment 'this is simple'
 BEGIN
 set @v1 = f1;
@@ -149,7 +150,7 @@ END//
 ERROR 42000: Too big precision 66 specified for column ''. Maximum is 65.
 DROP PROCEDURE IF EXISTS sp1//
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 CREATE PROCEDURE sp1( f1 decimal(60, 30) ) language sql not deterministic sql security invoker comment 'this is simple'
 BEGIN
 set @v1 = f1;
@@ -1358,7 +1359,7 @@ CREATE PROCEDURE sp1 (f1 char(20) )
 SELECT * from t1 where f2 = f1;
 show CREATE PROCEDURE sp1;
 Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
-sp1		CREATE DEFINER=`root`@`localhost` PROCEDURE `sp1`(f1 char(20) )
+sp1	NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` PROCEDURE `sp1`(f1 char(20) )
 SELECT * from t1 where f2 = f1	latin1	modified	created
 DROP PROCEDURE sp1;
 
@@ -1371,7 +1372,7 @@ CREATE FUNCTION fn1 (s char(20)) returns char(50)
 return concat('hello, ', s, '!');
 show CREATE FUNCTION fn1;
 Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
-fn1		CREATE DEFINER=`root`@`localhost` FUNCTION `fn1`(s char(20)) RETURNS char(50) CHARSET latin1
+fn1	NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` FUNCTION `fn1`(s char(20)) RETURNS char(50) CHARSET latin1
 return concat('hello, ', s, '!')	latin1	modified	created
 DROP FUNCTION fn1;
 
@@ -1460,14 +1461,14 @@ db	name	type	specific_name	language	sql_data_access	is_deterministic	security_ty
 CREATE PROCEDURE sp9()SELECT * from t1;
 SELECT * from mysql.proc where specific_name='sp9';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
-db_storedproc	sp9	PROCEDURE	sp9	SQL	CONTAINS_SQL	NO	DEFINER			SELECT * from t1	root@localhost	created	modified			latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from t1
+db_storedproc	sp9	PROCEDURE	sp9	SQL	CONTAINS_SQL	NO	DEFINER			SELECT * from t1	root@localhost	created	modified	NO_ENGINE_SUBSTITUTION		latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from t1
 DROP PROCEDURE sp9;
 SELECT * from mysql.proc where specific_name='sp9';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
 CREATE PROCEDURE sp9()SELECT * from t1;
 SELECT * from mysql.proc where specific_name='sp9';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
-db_storedproc	sp9	PROCEDURE	sp9	SQL	CONTAINS_SQL	NO	DEFINER			SELECT * from t1	root@localhost	created	modified			latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from t1
+db_storedproc	sp9	PROCEDURE	sp9	SQL	CONTAINS_SQL	NO	DEFINER			SELECT * from t1	root@localhost	created	modified	NO_ENGINE_SUBSTITUTION		latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from t1
 DROP PROCEDURE IF EXISTS sp9;
 SELECT * from mysql.proc where specific_name='sp9';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
@@ -1484,14 +1485,14 @@ db	name	type	specific_name	language	sql_data_access	is_deterministic	security_ty
 CREATE FUNCTION fn10() returns int return 100;
 SELECT * from mysql.proc where specific_name='fn10' and type='function';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
-db_storedproc	fn10	FUNCTION	fn10	SQL	CONTAINS_SQL	NO	DEFINER		int(11)	return 100	root@localhost	created	modified			latin1	latin1_swedish_ci	latin1_swedish_ci	return 100
+db_storedproc	fn10	FUNCTION	fn10	SQL	CONTAINS_SQL	NO	DEFINER		int(11)	return 100	root@localhost	created	modified	NO_ENGINE_SUBSTITUTION		latin1	latin1_swedish_ci	latin1_swedish_ci	return 100
 DROP FUNCTION fn10;
 SELECT * from mysql.proc where specific_name='fn10' and type='function';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
 CREATE FUNCTION fn10() returns int return 100;
 SELECT * from mysql.proc where specific_name='fn10' and type='function';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
-db_storedproc	fn10	FUNCTION	fn10	SQL	CONTAINS_SQL	NO	DEFINER		int(11)	return 100	root@localhost	created	modified			latin1	latin1_swedish_ci	latin1_swedish_ci	return 100
+db_storedproc	fn10	FUNCTION	fn10	SQL	CONTAINS_SQL	NO	DEFINER		int(11)	return 100	root@localhost	created	modified	NO_ENGINE_SUBSTITUTION		latin1	latin1_swedish_ci	latin1_swedish_ci	return 100
 DROP FUNCTION IF EXISTS fn10;
 SELECT * from mysql.proc where specific_name='fn10' and type='function';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
@@ -1509,7 +1510,7 @@ Note	1051	Unknown table 't1'
 create table mysql.t1( f1 char );
 DROP PROCEDURE IF EXISTS sp11;
 Warnings:
-Note	1305	PROCEDURE sp11 does not exist
+Note	1305	PROCEDURE db_storedproc.sp11 does not exist
 CREATE PROCEDURE sp11() insert into mysql.t1 values('a');
 SELECT security_type from mysql.proc where specific_name='sp11';
 security_type
@@ -1576,7 +1577,7 @@ alter proc
 --------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS sp11;
 Warnings:
-Note	1305	PROCEDURE sp11 does not exist
+Note	1305	PROCEDURE db_storedproc.sp11 does not exist
 CREATE PROCEDURE sp11()
 SELECT * from t1;
 SELECT comment from mysql.proc where specific_name='sp11';
@@ -1594,7 +1595,7 @@ alter function
 --------------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS fn12;
 Warnings:
-Note	1305	FUNCTION fn12 does not exist
+Note	1305	FUNCTION db_storedproc.fn12 does not exist
 CREATE FUNCTION fn12() returns int
 return 100;
 SELECT comment from mysql.proc where specific_name='fn12';
@@ -2798,7 +2799,7 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 return f' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 char ) returns char
 return f1;
 DROP FUNCTION IF EXISTS fn1;
@@ -2807,7 +2808,7 @@ return f1;
 ERROR 42000: This version of MySQL doesn't yet support 'return value collation'
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 char ascii ) returns char ascii
 return f1;
 DROP FUNCTION IF EXISTS fn1;
@@ -2817,21 +2818,21 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 char binary not null ) returns char binary not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns char binary not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 char ascii not null ) returns char ascii not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns char ascii not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 tinytext ) returns tinytext
 return f1;
 DROP FUNCTION IF EXISTS fn1;
@@ -2850,28 +2851,28 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 text not null ) returns text not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns text not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 mediumtext not null ) returns mediumtext not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns mediumtext not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 longtext not null ) returns longtext not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns longtext not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 tinyblob ) returns tinyblob
 return f1;
 DROP FUNCTION IF EXISTS fn1;
@@ -2890,28 +2891,28 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 blob not null ) returns blob not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns blob not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 mediumblob not null ) returns mediumblob not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns mediumblob not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 longblob not null ) returns longblob not null
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'not null ) returns longblob not null
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 binary ) returns binary
 return f1;
 DROP FUNCTION IF EXISTS fn1;
@@ -2921,7 +2922,7 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 tinyint ) returns tinyint
 return f1;
 DROP FUNCTION IF EXISTS fn1;
@@ -3066,21 +3067,21 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 year(f1 4) ) returns year(4)
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'f1 4) ) returns year(4)
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 enum(f1 "1enum", "2enum") ) returns enum("1enum", "2enum")
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'f1 "1enum", "2enum") ) returns enum("1enum", "2enum")
 return f1' at line 1
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1(f1 set(f1 "1set", "2set") ) returns set("1set", "2set")
 return f1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'f1 "1set", "2set") ) returns set("1set", "2set")
@@ -3093,7 +3094,7 @@ appropriate error message
 --------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS sp16;
 Warnings:
-Note	1305	PROCEDURE sp16 does not exist
+Note	1305	PROCEDURE db_storedproc.sp16 does not exist
 CALL sp16( 'xyz' );
 ERROR 42000: PROCEDURE db_storedproc.sp16 does not exist
 CREATE DATABASE db1;
@@ -3117,10 +3118,10 @@ function with the same name, even in the same database
 USE db_storedproc;
 DROP FUNCTION IF EXISTS sp1;
 Warnings:
-Note	1305	FUNCTION sp1 does not exist
+Note	1305	FUNCTION db_storedproc.sp1 does not exist
 DROP PROCEDURE IF EXISTS sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 CREATE PROCEDURE sp1 ()
 BEGIN
 declare x enum( 'db1', 'test' ) default 'test';
@@ -3164,10 +3165,10 @@ a function with the same name, in the same database
 USE db_storedproc;
 DROP PROCEDURE IF EXISTS sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 DROP FUNCTION IF EXISTS sp1;
 Warnings:
-Note	1305	FUNCTION sp1 does not exist
+Note	1305	FUNCTION db_storedproc.sp1 does not exist
 set @x=null;
 set @y=null;
 CREATE PROCEDURE sp1()
@@ -3240,16 +3241,16 @@ set @x=null;
 set @y=null;
 DROP PROCEDURE IF EXISTS sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 DROP FUNCTION IF EXISTS sp1;
 Warnings:
-Note	1305	FUNCTION sp1 does not exist
+Note	1305	FUNCTION db_storedproc.sp1 does not exist
 DROP PROCEDURE IF EXISTS db_storedproc_3122.sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc_3122.sp1 does not exist
 DROP FUNCTION IF EXISTS db_storedproc_3122.sp1;
 Warnings:
-Note	1305	FUNCTION sp1 does not exist
+Note	1305	FUNCTION db_storedproc_3122.sp1 does not exist
 CREATE PROCEDURE sp1()
 BEGIN
 set @x= 1;
@@ -3324,12 +3325,12 @@ alter procedure sp1 sql security definer;
 alter function sp1 sql security definer;
 show CREATE PROCEDURE sp1;
 Procedure	sql_mode	Create Procedure	character_set_client	collation_connection	Database Collation
-sp1		CREATE DEFINER=`root`@`localhost` PROCEDURE `sp1`()
+sp1	NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` PROCEDURE `sp1`()
     COMMENT 'this is a procedure'
 set @x= 3	latin1	modified	created
 show CREATE FUNCTION sp1;
 Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
-sp1		CREATE DEFINER=`root`@`localhost` FUNCTION `sp1`() RETURNS int(11)
+sp1	NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` FUNCTION `sp1`() RETURNS int(11)
     COMMENT 'this is a function'
 return 4	latin1	modified	created
 USE db_storedproc;
@@ -3349,7 +3350,7 @@ DROP DATABASE IF EXISTS db1;
 CREATE DATABASE db1;
 DROP PROCEDURE IF EXISTS sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 CREATE PROCEDURE sp1 () set @x=1;
 CREATE PROCEDURE sp1 () set @x=2;
 ERROR 42000: PROCEDURE sp1 already exists
@@ -3388,7 +3389,7 @@ Note	1008	Can't drop database 'db1'; database doesn't exist
 CREATE DATABASE db1;
 DROP FUNCTION IF EXISTS fn1;
 Warnings:
-Note	1305	FUNCTION fn1 does not exist
+Note	1305	FUNCTION db_storedproc.fn1 does not exist
 CREATE FUNCTION fn1 () returns int return 1;
 CREATE FUNCTION fn1 () returns int return 2;
 ERROR 42000: FUNCTION fn1 already exists
@@ -3422,7 +3423,7 @@ set @x=null;
 set @y=null;
 DROP PROCEDURE IF EXISTS sp1;
 Warnings:
-Note	1305	PROCEDURE sp1 does not exist
+Note	1305	PROCEDURE db_storedproc.sp1 does not exist
 CREATE PROCEDURE sp1 () set @x= 1;
 DROP DATABASE IF EXISTS test3124;
 Warnings:
@@ -3451,7 +3452,7 @@ providing each resides in different databases.
 USE db_storedproc;
 DROP FUNCTION IF EXISTS f1;
 Warnings:
-Note	1305	FUNCTION f1 does not exist
+Note	1305	FUNCTION db_storedproc.f1 does not exist
 CREATE FUNCTION f1 () returns int return 1;
 DROP DATABASE IF EXISTS test3125;
 Warnings:
@@ -14224,6 +14225,8 @@ ERROR 42000: Bad SQLSTATE: '2005-03-03'
 Testcase 4.2.43:
 --------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS sp1;
+expect failure, SQLSTATE 00000 is not an acceptable value
+for an SP's handler
 CREATE PROCEDURE sp1()
 BEGIN
 declare cond1 condition for sqlstate '00000';
@@ -14232,6 +14235,10 @@ set @x=1;
 SELECT @var2;
 END//
 ERROR 42000: Bad SQLSTATE: '00000'
+ensure SP doesn't exist
+CALL sp1();
+ERROR 42000: PROCEDURE db_storedproc.sp1 does not exist
+DROP PROCEDURE IF EXISTS sp1;
 
 Testcase 4.2.45:
 --------------------------------------------------------------------------------
@@ -14300,6 +14307,7 @@ ERROR 42000: Bad SQLSTATE: '42s0200test'
 Testcase 4.2.48:
 --------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS sp1;
+This creation should fail, SQLSTATE 00000 is unacceptable
 CREATE PROCEDURE sp1()
 BEGIN
 declare continue handler for sqlstate '00000'  set @var2 = 1;
@@ -14307,6 +14315,11 @@ set @x=1;
 SELECT @var2;
 END//
 ERROR 42000: Bad SQLSTATE: '00000'
+Verify SP wasn't created
+CALL sp1();
+ERROR 42000: PROCEDURE db_storedproc.sp1 does not exist
+DROP PROCEDURE IF EXISTSsp1;
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'EXISTSsp1' at line 1
 
 Testcase 4.2.52:
 --------------------------------------------------------------------------------
@@ -15881,7 +15894,7 @@ CREATE PROCEDURE d1.sp4()
 SELECT * from d1.t43;
 SELECT * from mysql.proc where specific_name = 'sp4';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
-d1	sp4	PROCEDURE	sp4	SQL	CONTAINS_SQL	NO	DEFINER			SELECT * from d1.t43	root@localhost	modified	created			latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from d1.t43
+d1	sp4	PROCEDURE	sp4	SQL	CONTAINS_SQL	NO	DEFINER			SELECT * from d1.t43	root@localhost	modified	created	NO_ENGINE_SUBSTITUTION		latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from d1.t43
 USE db_storedproc;
 DROP DATABASE d1;
 CREATE DATABASE d1;
@@ -15931,7 +15944,7 @@ USE d2;
 alter procedure d1.sp8 sql security definer comment 'updated';
 SELECT * from mysql.proc where specific_name='sp8' and db='d1';
 db	name	type	specific_name	language	sql_data_access	is_deterministic	security_type	param_list	returns	body	definer	created	modified	sql_mode	comment	character_set_client	collation_connection	db_collation	body_utf8
-d1	sp8	PROCEDURE	sp8	SQL	CONTAINS_SQL	NO	DEFINER	 n char(20) 		SELECT * from t1 where t1.f1 = n	root@localhost	modified	created		updated	latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from t1 where t1.f1 = n
+d1	sp8	PROCEDURE	sp8	SQL	CONTAINS_SQL	NO	DEFINER	 n char(20) 		SELECT * from t1 where t1.f1 = n	root@localhost	modified	created	NO_ENGINE_SUBSTITUTION	updated	latin1	latin1_swedish_ci	latin1_swedish_ci	SELECT * from t1 where t1.f1 = n
 
 Testcase 4.4.9:
 --------------------------------------------------------------------------------
@@ -15952,7 +15965,7 @@ d1	fn2	FUNCTION	fn2	SQL	CONTAINS_SQL	NO	DEFINER	n int	int(11)	BEGIN
 declare a int;
 set a = 0.9 * n;
 return a;
-END	root@localhost	modified	created		updated	latin1	latin1_swedish_ci	latin1_swedish_ci	BEGIN
+END	root@localhost	modified	created	NO_ENGINE_SUBSTITUTION	updated	latin1	latin1_swedish_ci	latin1_swedish_ci	BEGIN
 declare a int;
 set a = 0.9 * n;
 return a;

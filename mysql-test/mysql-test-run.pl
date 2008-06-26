@@ -111,6 +111,7 @@ our $glob_basedir;
 
 our $path_charsetsdir;
 our $path_client_bindir;
+our $path_client_libdir;
 our $path_share;
 our $path_language;
 our $path_timefile;
@@ -242,7 +243,7 @@ our $opt_sleep;
 our $opt_testcase_timeout;
 our $opt_suite_timeout;
 my  $default_testcase_timeout=     15; # 15 min max
-my  $default_suite_timeout=       180; # 3 hours max
+my  $default_suite_timeout=       360; # 6 hours max
 
 our $opt_start_and_exit;
 our $opt_start_dirty;
@@ -639,6 +640,8 @@ sub command_line_setup () {
              'vardir=s'                 => \$opt_vardir,
              'benchdir=s'               => \$glob_mysql_bench_dir,
              'mem'                      => \$opt_mem,
+             'client-bindir=s'          => \$path_client_bindir,
+             'client-libdir=s'          => \$path_client_libdir,
 
              # Misc
              'report-features'          => \$opt_report_features,
@@ -765,12 +768,20 @@ sub command_line_setup () {
   #
 
   # Look for the client binaries directory
-  $path_client_bindir= mtr_path_exists("$glob_basedir/client_release",
-				       "$glob_basedir/client_debug",
-				       vs_config_dirs('client', ''),
-				       "$glob_basedir/client",
-				       "$glob_basedir/bin");
-
+  if ($path_client_bindir)
+  {
+    # --client-bindir=path set on command line, check that the path exists
+    $path_client_bindir= mtr_path_exists($path_client_bindir);
+  }
+  else
+  {
+    $path_client_bindir= mtr_path_exists("$glob_basedir/client_release",
+					 "$glob_basedir/client_debug",
+					 vs_config_dirs('client', ''),
+					 "$glob_basedir/client",
+					 "$glob_basedir/bin");
+  }
+  
   # Look for language files and charsetsdir, use same share
   $path_share=      mtr_path_exists("$glob_basedir/share/mysql",
                                     "$glob_basedir/sql/share",
@@ -1731,19 +1742,25 @@ sub environment_setup () {
 
   my @ld_library_paths;
 
-  # --------------------------------------------------------------------------
-  # Setup LD_LIBRARY_PATH so the libraries from this distro/clone
-  # are used in favor of the system installed ones
-  # --------------------------------------------------------------------------
-  if ( $source_dist )
+  if ($path_client_libdir)
   {
-    push(@ld_library_paths, "$glob_basedir/libmysql/.libs/",
-                            "$glob_basedir/libmysql_r/.libs/",
-                            "$glob_basedir/zlib.libs/");
+    # Use the --client-libdir passed on commandline
+    push(@ld_library_paths, "$path_client_libdir");
   }
   else
   {
-    push(@ld_library_paths, "$glob_basedir/lib");
+    # Setup LD_LIBRARY_PATH so the libraries from this distro/clone
+    # are used in favor of the system installed ones
+    if ( $source_dist )
+    {
+      push(@ld_library_paths, "$glob_basedir/libmysql/.libs/",
+	   "$glob_basedir/libmysql_r/.libs/",
+	   "$glob_basedir/zlib.libs/");
+    }
+    else
+    {
+      push(@ld_library_paths, "$glob_basedir/lib");
+    }
   }
 
  # --------------------------------------------------------------------------
@@ -1955,6 +1972,9 @@ sub environment_setup () {
   {
     $cmdline_mysqlbinlog .=" --character-sets-dir=$path_charsetsdir";
   }
+  # Always use the given tmpdir for the LOAD files created
+  # by mysqlbinlog
+  $cmdline_mysqlbinlog .=" --local-load=$opt_tmpdir";
 
   if ( $opt_debug )
   {
@@ -5052,6 +5072,8 @@ Misc options
   warnings | log-warnings Pass --log-warnings to mysqld
 
   sleep=SECONDS         Passed to mysqltest, will be used as fixed sleep time
+  client-bindir=PATH    Path to the directory where client binaries are located
+  client-libdir=PATH    Path to the directory where client libraries are located
 
 Deprecated options
   with-openssl          Deprecated option for ssl

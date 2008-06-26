@@ -79,6 +79,15 @@ emb_advanced_command(MYSQL *mysql, enum enum_server_command command,
   my_bool result= 1;
   THD *thd=(THD *) mysql->thd;
   NET *net= &mysql->net;
+  my_bool stmt_skip= stmt ? stmt->state != MYSQL_STMT_INIT_DONE : FALSE;
+
+  if (!thd)
+  {
+    /* Do "reconnect" if possible */
+    if (mysql_reconnect(mysql) || stmt_skip)
+      return 1;
+    thd= (THD *) mysql->thd;
+  }
 
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
@@ -1131,8 +1140,8 @@ bool Protocol::net_store_data(const uchar *from, size_t length)
 int vprint_msg_to_log(enum loglevel level __attribute__((unused)),
                        const char *format, va_list argsi)
 {
-  vsnprintf(mysql_server_last_error, sizeof(mysql_server_last_error),
-           format, argsi);
+  my_vsnprintf(mysql_server_last_error, sizeof(mysql_server_last_error),
+               format, argsi);
   mysql_server_last_errno= CR_UNKNOWN_ERROR;
   return 0;
 }
