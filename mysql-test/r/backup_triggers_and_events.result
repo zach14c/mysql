@@ -39,14 +39,8 @@ CALL trg_msg(OLD.a);
 ||
 USE test||
 DROP EVENT IF EXISTS ev||
-Warnings:
-Note	1305	Event ev does not exist
 DROP TABLE IF EXISTS t1||
-Warnings:
-Note	1051	Unknown table 't1'
 DROP TRIGGER IF EXISTS trg||
-Warnings:
-Note	1360	Trigger does not exist
 CREATE EVENT ev ON SCHEDULE EVERY 1 second DO
 BEGIN
 INSERT INTO test.logt(db, msg) VALUES ('test','Test event fired!');

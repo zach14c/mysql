@@ -88,7 +88,7 @@ CALL trg_msg(OLD.a);
 
 USE test||
 
---disable_warnigns
+--disable_warnings
 DROP EVENT IF EXISTS ev||
 DROP TABLE IF EXISTS t1||
 DROP TRIGGER IF EXISTS trg||
