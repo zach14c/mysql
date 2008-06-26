@@ -488,6 +488,8 @@ int test_update(MARIA_HA *file,int id,int lock_type)
   return 0;
 }
 
+#include "ma_check_standalone.h"
+
 #else /* __NETWARE__ || __WIN__ */
 
 #include <stdio.h>
@@ -499,5 +501,3 @@ int main()
 }
 
 #endif /* __NETWARE__|| __WIN__ */
-
-#include "ma_check_standalone.h"
