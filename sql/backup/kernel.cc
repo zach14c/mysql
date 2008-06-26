@@ -142,7 +142,8 @@ execute_backup_command(THD *thd, LEX *lex)
   {
     // prepare for backup operation
     
-    Backup_info *info= context.prepare_for_backup(lex->backup_dir, thd->query);
+    Backup_info *info= context.prepare_for_backup(lex->backup_dir, thd->query,
+                                                  lex->backup_compression);
                                                               // reports errors
 
     if (!info || !info->is_valid())
@@ -447,6 +448,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   
   @param[in] location   path to the file where backup image should be stored
   @param[in] query      BACKUP query starting the operation
+  @param[in] with_compression  backup image compression switch
   
   @returns Pointer to a @c Backup_info instance which can be used for selecting
   which objects to backup. NULL if an error was detected.
@@ -459,7 +461,8 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   is performed using @c do_backup() method.
  */ 
 Backup_info* 
-Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query)
+Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
+                                       bool with_compression)
 {
   using namespace backup;
   
@@ -488,7 +491,7 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query)
     Open output stream.
    */
 
-  Output_stream *s= new Output_stream(*this, path);
+  Output_stream *s= new Output_stream(*this, path, with_compression);
   
   if (!s)
   {

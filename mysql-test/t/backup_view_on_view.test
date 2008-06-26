@@ -1,9 +1,11 @@
 # Test case for bug#34758
 
+--source include/not_embedded.inc
+--source include/have_debug.inc
+--source include/have_innodb.inc
+
 # Setup the server to use the backup breakpoints
 SET GLOBAL debug="d,backup:d,backup_data";
-
---source include/have_innodb.inc
 
 --disable_warnings
 DROP DATABASE IF EXISTS db1;

@@ -333,6 +333,7 @@ sub mtr_report_stats ($) {
 		(
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
 		(

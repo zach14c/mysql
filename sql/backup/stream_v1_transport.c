@@ -696,7 +696,7 @@ int load_buffer(backup_stream *s)
     for (i= 0; i<4; ++i)
     {
       block_size >>= 8;
-      block_size |= (*(s->buf.begin++)) << 3*8;
+      block_size |= ((unsigned long int) *(s->buf.begin++)) << 3 * 8;
     }
 
     /*
@@ -1480,7 +1480,10 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     saved= *data;
     data->end= data->begin + howmuch;
 
-    as_read(&s->stream,data,buf);
+    if (as_read(&s->stream, data, buf) == BSTREAM_EOS)
+    {
+      s->state= EOS;
+    }
 
     s->buf.begin += data->begin - saved.begin;
     s->buf.pos= s->buf.begin;

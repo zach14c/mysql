@@ -6359,4 +6359,5 @@ ER_DEBUG_SYNC_TIMEOUT
 ER_DEBUG_SYNC_HIT_LIMIT
   eng "debug sync point hit limit reached"
   ger "Debug Sync Point Hit Limit erreicht"
-
+ER_BACKUP_FAILED_TO_INIT_COMPRESSION
+  eng "Could not initialize compression of backup image (function deflateInit2 returned error code %d: %-.64s)"
