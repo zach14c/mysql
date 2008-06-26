@@ -566,6 +566,77 @@ private:
 */
   virtual int do_save_field_metadata(uchar *metadata_ptr)
   { return 0; }
+
+protected:
+  /*
+    Helper function to pack()/unpack() int32 values
+  */
+  static void handle_int32(uchar *to, const uchar *from,
+                           bool low_byte_first_from, bool low_byte_first_to)
+  {
+    int32 val;
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_from)
+      val = sint4korr(from);
+    else
+#endif
+      longget(val, from);
+
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_to)
+      int4store(to, val);
+    else
+#endif
+      longstore(to, val);
+  }
+
+  /*
+    Helper function to pack()/unpack() int64 values
+  */
+  static void handle_int64(uchar* to, const uchar *from,
+                           bool low_byte_first_from, bool low_byte_first_to)
+  {
+    int64 val;
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_from)
+      val = sint8korr(from);
+    else
+#endif
+      longlongget(val, from);
+
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_to)
+      int8store(to, val);
+    else
+#endif
+      longlongstore(to, val);
+  }
+
+  uchar *pack_int32(uchar *to, const uchar *from, bool low_byte_first_to)
+  {
+    handle_int32(to, from, table->s->db_low_byte_first, low_byte_first_to);
+    return to  + sizeof(int32);
+  }
+
+  const uchar *unpack_int32(uchar* to, const uchar *from,
+                            bool low_byte_first_from)
+  {
+    handle_int32(to, from, low_byte_first_from, table->s->db_low_byte_first);
+    return from + sizeof(int32);
+  }
+
+  uchar *pack_int64(uchar* to, const uchar *from, bool low_byte_first_to)
+  {
+    handle_int64(to, from, table->s->db_low_byte_first, low_byte_first_to);
+    return to + sizeof(int64);
+  }
+
+  const uchar *unpack_int64(uchar* to, const uchar *from,
+                            bool low_byte_first_from)
+  {
+    handle_int64(to, from, low_byte_first_from, table->s->db_low_byte_first);
+    return from + sizeof(int64);
+  }
 };
 
 
@@ -953,43 +1024,16 @@ public:
   void sql_type(String &str) const;
   uint32 max_display_length() { return MY_INT32_NUM_DECIMAL_DIGITS; }
   virtual uchar *pack(uchar* to, const uchar *from,
-                      uint max_length, bool low_byte_first)
+                      uint max_length __attribute__((unused)),
+                      bool low_byte_first)
   {
-    int32 val;
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      val = sint4korr(from);
-    else
-#endif
-      longget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      int4store(to, val);
-    else
-#endif
-      longstore(to, val);
-    return to + sizeof(val);
+    return pack_int32(to, from, low_byte_first);
   }
-
   virtual const uchar *unpack(uchar* to, const uchar *from,
-                              uint param_data, bool low_byte_first)
+                              uint param_data __attribute__((unused)),
+                              bool low_byte_first)
   {
-    int32 val;
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      val = sint4korr(from);
-    else
-#endif
-      longget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      int4store(to, val);
-    else
-#endif
-      longstore(to, val);
-    return from + sizeof(val);
+    return unpack_int32(to, from, low_byte_first);
   }
 };
 
@@ -1034,43 +1078,16 @@ public:
   bool can_be_compared_as_longlong() const { return TRUE; }
   uint32 max_display_length() { return 20; }
   virtual uchar *pack(uchar* to, const uchar *from,
-                      uint max_length, bool low_byte_first)
+                      uint max_length  __attribute__((unused)),
+                      bool low_byte_first)
   {
-    int64 val;
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      val = sint8korr(from);
-    else
-#endif
-      longlongget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      int8store(to, val);
-    else
-#endif
-      longlongstore(to, val);
-    return to + sizeof(val);
+    return pack_int64(to, from, low_byte_first);
   }
-
   virtual const uchar *unpack(uchar* to, const uchar *from,
-                              uint param_data, bool low_byte_first)
+                              uint param_data __attribute__((unused)),
+                              bool low_byte_first)
   {
-    int64 val;
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      val = sint8korr(from);
-    else
-#endif
-      longlongget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      int8store(to, val);
-    else
-#endif
-      longlongstore(to, val);
-    return from + sizeof(val);
+    return unpack_int64(to, from, low_byte_first);
   }
 };
 #endif
@@ -1244,6 +1261,17 @@ public:
   bool get_date(MYSQL_TIME *ltime,uint fuzzydate);
   bool get_time(MYSQL_TIME *ltime);
   timestamp_auto_set_type get_auto_set_type() const;
+  uchar *pack(uchar *to, const uchar *from,
+              uint max_length __attribute__((unused)), bool low_byte_first)
+  {
+    return pack_int32(to, from, low_byte_first);
+  }
+  const uchar *unpack(uchar* to, const uchar *from,
+                      uint param_data __attribute__((unused)),
+                      bool low_byte_first)
+  {
+    return unpack_int32(to, from, low_byte_first);
+  }
 };
 
 
@@ -1298,6 +1326,17 @@ public:
   void sql_type(String &str) const;
   bool can_be_compared_as_longlong() const { return TRUE; }
   bool zero_pack() const { return 1; }
+  uchar *pack(uchar* to, const uchar *from,
+              uint max_length __attribute__((unused)), bool low_byte_first)
+  {
+    return pack_int32(to, from, low_byte_first);
+  }
+  const uchar *unpack(uchar* to, const uchar *from,
+                      uint param_data __attribute__((unused)),
+                      bool low_byte_first)
+  {
+    return unpack_int32(to, from, low_byte_first);
+  }
 };
 
 
@@ -1411,6 +1450,17 @@ public:
   bool zero_pack() const { return 1; }
   bool get_date(MYSQL_TIME *ltime,uint fuzzydate);
   bool get_time(MYSQL_TIME *ltime);
+  uchar *pack(uchar* to, const uchar *from,
+              uint max_length __attribute__((unused)), bool low_byte_first)
+  {
+    return pack_int64(to, from, low_byte_first);
+  }
+  const uchar *unpack(uchar* to, const uchar *from,
+                      uint param_data __attribute__((unused)),
+                      bool low_byte_first)
+  {
+    return unpack_int64(to, from, low_byte_first);
+  }
 };
 
 

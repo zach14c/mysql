@@ -2308,7 +2308,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
   }
   if (!(di->table->file->ha_table_flags() & HA_CAN_INSERT_DELAYED))
   {
-    my_error(ER_ILLEGAL_HA, MYF(ME_FATALERROR), di->table_list.table_name);
+    my_error(ER_DELAYED_NOT_SUPPORTED, MYF(ME_FATALERROR), di->table_list.table_name);
     goto err;
   }
   if (di->table->triggers)
