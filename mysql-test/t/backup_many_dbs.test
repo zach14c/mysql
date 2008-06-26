@@ -1,9 +1,7 @@
 ###########################################################################
 # Regression test for bug#33568
 ###############################################################################
---source include/have_innodb.inc
 --source include/not_embedded.inc
---source include/have_debug.inc
 
 ##############################################################
 --echo Starting regression test for bug 33568

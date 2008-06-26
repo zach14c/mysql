@@ -28,7 +28,6 @@
 #include "events.h"
 #include "sql_trigger.h"
 #include <ddl_blocker.h>
-#include "backup/debug.h"
 #include "sql_audit.h"
 
 #ifdef BACKUP_TEST
@@ -3870,10 +3869,7 @@ end_with_restore_list:
                xa_state_names[thd->transaction.xid_state.xa_state]);
       break;
     }
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "before_begin_trans");
     if (begin_trans(thd))
       goto error;
     my_ok(thd);
@@ -3882,10 +3878,7 @@ end_with_restore_list:
     if (end_trans(thd, lex->tx_release ? COMMIT_RELEASE :
                               lex->tx_chain ? COMMIT_AND_CHAIN : COMMIT))
       goto error;
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "after_commit");
     my_ok(thd);
     break;
   case SQLCOM_ROLLBACK:

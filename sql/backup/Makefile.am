@@ -53,7 +53,6 @@ noinst_HEADERS = \
   backup_kernel.h \
   backup_stream.h \
   stream_services.h \
-  debug.h \
   error.h \
   stream.h \
   backup_aux.h \

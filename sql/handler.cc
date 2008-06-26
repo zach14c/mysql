@@ -27,7 +27,6 @@
 #include "rpl_filter.h"
 #include <myisampack.h>
 #include <errno.h>
-#include "backup/debug.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -1104,10 +1103,7 @@ int ha_commit_trans(THD *thd, bool all)
       goto end;
     }
 
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("commit_blocker_step_1");
+    DEBUG_SYNC(thd, "within_ha_commit_trans");
 
     if (!trans->no_2pc && (rw_ha_count > 1))
     {

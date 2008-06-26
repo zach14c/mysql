@@ -44,7 +44,6 @@
 #include "backup_engine.h"
 #include "be_snapshot.h"
 #include "backup_aux.h"
-#include "debug.h"
 
 namespace snapshot_backup {
 
@@ -131,7 +130,8 @@ result_t Backup::lock()
     DBUG_RETURN(ERROR);
   m_trans_start= TRUE;
   locking_thd->lock_state= LOCK_ACQUIRED;
-  BACKUP_BREAKPOINT("backup_cs_locked");
+  DBUG_ASSERT(locking_thd->m_thd == current_thd);
+  DEBUG_SYNC(locking_thd->m_thd, "after_backup_cs_locked");
   DBUG_RETURN(OK);
 }
 
@@ -141,7 +141,6 @@ result_t Backup::get_data(Buffer &buf)
 
   if (!tables_open && (locking_thd->lock_state == LOCK_ACQUIRED))
   {
-    BACKUP_BREAKPOINT("backup_cs_open_tables");
     // The lex needs to be cleaned up between consecutive calls to 
     // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
     // previously opened views and crash.
@@ -151,7 +150,8 @@ result_t Backup::get_data(Buffer &buf)
   }
   if (locking_thd->lock_state == LOCK_ACQUIRED)
   {
-    BACKUP_BREAKPOINT("backup_cs_reading");
+    DBUG_ASSERT(locking_thd->m_thd == current_thd);
+    DEBUG_SYNC(locking_thd->m_thd, "when_backup_cs_reading");
   }
 
   res= default_backup::Backup::get_data(buf);
