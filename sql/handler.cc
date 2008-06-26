@@ -2836,20 +2836,13 @@ static bool update_frm_version(TABLE *table)
   if ((file= my_open(path, O_RDWR|O_BINARY, MYF(MY_WME))) >= 0)
   {
     uchar version[4];
-    char *key= table->s->table_cache_key.str;
-    uint key_length= table->s->table_cache_key.length;
-    TABLE *entry;
-    HASH_SEARCH_STATE state;
 
     int4store(version, MYSQL_VERSION_ID);
 
     if ((result= my_pwrite(file,(uchar*) version,4,51L,MYF_RW)))
       goto err;
 
-    for (entry=(TABLE*) hash_first(&open_cache,(uchar*) key,key_length, &state);
-         entry;
-         entry= (TABLE*) hash_next(&open_cache,(uchar*) key,key_length, &state))
-      entry->s->mysql_version= MYSQL_VERSION_ID;
+    table->s->mysql_version= MYSQL_VERSION_ID;
   }
 err:
   if (file >= 0)
@@ -3260,8 +3253,8 @@ handler::ha_create_handler_files(const char *name, const char *old_name,
 int
 handler::ha_change_partitions(HA_CREATE_INFO *create_info,
                      const char *path,
-                     ulonglong *copied,
-                     ulonglong *deleted,
+                     ulonglong * const copied,
+                     ulonglong * const deleted,
                      const uchar *pack_frm_data,
                      size_t pack_frm_len)
 {
@@ -5172,9 +5165,7 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
    to the binary log.
 
    This function will generate and write table maps for all tables
-   that are locked by the thread 'thd'.  Either manually locked
-   (stored in THD::locked_tables) and automatically locked (stored
-   in THD::lock) are considered.
+   that are locked by the thread 'thd'.
 
    @param thd     Pointer to THD structure
 
@@ -5183,23 +5174,19 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
 
    @sa
        THD::lock
-       THD::locked_tables
 */
 
 static int write_locked_table_maps(THD *thd)
 {
   DBUG_ENTER("write_locked_table_maps");
-  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p  thd->locked_tables: %p  "
-                       "thd->extra_lock: %p",
-                       thd, thd->lock,
-                       thd->locked_tables, thd->extra_lock));
+  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
+                       thd, thd->lock, thd->extra_lock));
 
   if (thd->get_binlog_table_maps() == 0)
   {
-    MYSQL_LOCK *locks[3];
+    MYSQL_LOCK *locks[2];
     locks[0]= thd->extra_lock;
     locks[1]= thd->lock;
-    locks[2]= thd->locked_tables;
     for (uint i= 0 ; i < sizeof(locks)/sizeof(*locks) ; ++i )
     {
       MYSQL_LOCK const *const lock= locks[i];

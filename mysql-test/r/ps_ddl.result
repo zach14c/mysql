@@ -1639,7 +1639,7 @@ SUCCESS
 
 drop temporary table t2;
 execute stmt;
-call p_verify_reprepare_count(1);
+call p_verify_reprepare_count(0);
 SUCCESS
 
 drop table t2;

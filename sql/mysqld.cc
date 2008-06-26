@@ -1313,9 +1313,9 @@ void clean_up(bool print_message)
   grant_free();
 #endif
   query_cache_destroy();
-  table_cache_free();
   table_def_free();
   hostname_cache_free();
+  mdl_destroy();
   item_user_lock_free();
   lex_free();				/* Free some memory */
   item_create_cleanup();
@@ -3799,7 +3799,8 @@ static int init_server_components()
     We need to call each of these following functions to ensure that
     all things are initialized so that unireg_abort() doesn't fail
   */
-  if (table_cache_init() | table_def_init() | hostname_cache_init())
+  mdl_init();
+  if (table_def_init() | hostname_cache_init())
     unireg_abort(1);
 
   query_cache_result_size_limit(query_cache_limit);

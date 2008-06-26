@@ -910,11 +910,6 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
   }
   else
   {
-    pthread_mutex_lock(&LOCK_open);
-    remove_db_from_cache(db);
-    pthread_mutex_unlock(&LOCK_open);
-
-    
     error= -1;
     if ((deleted= mysql_rm_known_files(thd, dirp, db, path, 0,
                                        &dropped_tables)) >= 0)
@@ -1930,8 +1925,8 @@ bool mysql_upgrade_db(THD *thd, LEX_STRING *old_db)
 
   /*
     Step7: drop the old database.
-    remove_db_from_cache(olddb) and query_cache_invalidate(olddb)
-    are done inside mysql_rm_db(), no needs to execute them again.
+    query_cache_invalidate(olddb) is done inside mysql_rm_db(), no need
+    to execute them again.
     mysql_rm_db() also "unuses" if we drop the current database.
   */
   error= mysql_rm_db(thd, old_db->str, 0, 1);

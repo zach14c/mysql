@@ -43,6 +43,7 @@ Warning	1615	Converted to non-transactional lock on 't2'
 LOCK TABLE v1 IN EXCLUSIVE MODE;
 Warnings:
 Warning	1615	Converted to non-transactional lock on 'v1'
+UNLOCK TABLES;
 DROP VIEW v1;
 #
 # Locking INFORMATION_SCHEMA fails on missing privileges.

@@ -63,6 +63,7 @@ public:
 
   result_t start_locking_thread(const char *tname);
   void kill_locking_thread();
+  void wait_until_locking_thread_dies();
 
 }; // Locking_thread_st
 
