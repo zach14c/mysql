@@ -19,7 +19,6 @@
 #include "backup_engine.h"
 #include "stream.h"
 #include "backup_progress.h"
-#include "debug.h"
 #include "be_default.h"  // needed for table locking code
 
 /***********************************************
@@ -409,7 +408,7 @@ int block_commits(THD *thd, TABLE_LIST *tables)
   /*
     Step 1 - global read lock.
   */
-  BACKUP_BREAKPOINT("commit_blocker_step_1");
+  DEBUG_SYNC(thd, "before_commit_block");
   if (lock_global_read_lock(thd))
     DBUG_RETURN(1);
 
@@ -425,14 +424,12 @@ int block_commits(THD *thd, TABLE_LIST *tables)
     that do not take lock tables. Thus, it should apply to write locked
     tables only and only to non-transactional engines.
 
-    BACKUP_BREAKPOINT("commit_blocker_step_2");
     result= close_cached_tables(thd, 0, tables);
   */
 
   /*
     Step 3 - make the global read lock to block commits.
   */
-  BACKUP_BREAKPOINT("commit_blocker_step_3");
   if (make_global_read_lock_block_commit(thd))
   {
     /* Don't leave things in a half-locked state */
@@ -455,7 +452,6 @@ int block_commits(THD *thd, TABLE_LIST *tables)
 int unblock_commits(THD *thd)
 {
   DBUG_ENTER("unblock_commits()");
-  BACKUP_BREAKPOINT("commit_blocker_step_5");
   unlock_global_read_lock(thd);
   DBUG_RETURN(0);
 }
@@ -529,7 +525,6 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
                             inactive.elements));
 
   DBUG_PRINT("backup_data",("-- INIT PHASE --"));
-  BACKUP_BREAKPOINT("data_init");
 
   /*
    Poll "at end" drivers activating inactive ones on the way.
@@ -592,7 +587,6 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 
     // prepare for VP
     DBUG_PRINT("backup_data",("-- PREPARE PHASE --"));
-    BACKUP_BREAKPOINT("data_prepare");
 
     if (sch.prepare())
       goto error;
@@ -613,7 +607,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       the backup progress. It is not to be used to indicate actual
       timing of the validity point.
     */
-    BACKUP_BREAKPOINT("bp_vp_state");
+    DEBUG_SYNC(thd, "after_backup_validated");
     
     /*
       Block commits.
@@ -627,7 +621,6 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     if (error)
       goto error;
 
-    BACKUP_BREAKPOINT("data_lock");
     if (sch.lock())
       goto error;
 
@@ -642,15 +635,14 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     */
     vp_time= my_time(0);
 
-    BACKUP_BREAKPOINT("commit_blocker_step_4");
-    BACKUP_BREAKPOINT("data_unlock");
+    DEBUG_SYNC(thd, "before_backup_data_unlock");
     if (sch.unlock())
       goto error;
 
     /*
       Unblock commits.
     */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "before_backup_unblock_commit");
     error= unblock_commits(thd);
     if (error)
       goto error;
@@ -667,13 +659,12 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     }
 
     info.m_ctx.report_state(BUP_RUNNING);
-    BACKUP_BREAKPOINT("bp_running_state");
+    DEBUG_SYNC(thd, "after_backup_binlog");
 
     /**** VP creation (end) ********************************************/
 
     // get final data from drivers
     DBUG_PRINT("backup_data",("-- FINISH PHASE --"));
-    BACKUP_BREAKPOINT("data_finish");
 
     while (sch.finish_count > 0)
     if (sch.step())
@@ -1569,6 +1560,8 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
       DBUG_PRINT("restore",("state is %d", state));
   }
 
+  DEBUG_SYNC(::current_thd, "restore_table_data_before_end");
+  
   { // Shutting down drivers
 
     String bad_drivers;

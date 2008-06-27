@@ -69,7 +69,6 @@
 #include "restore_info.h"
 #include "logger.h"
 #include "stream.h"
-#include "debug.h"
 #include "be_native.h"
 #include "be_default.h"
 #include "be_snapshot.h"
@@ -127,8 +126,6 @@ execute_backup_command(THD *thd, LEX *lex)
   DBUG_ENTER("execute_backup_command");
   DBUG_ASSERT(thd && lex);
 
-  BACKUP_BREAKPOINT("backup_command");
-
   using namespace backup;
 
   Backup_restore_ctx context(thd); // reports errors
@@ -142,13 +139,14 @@ execute_backup_command(THD *thd, LEX *lex)
   {
     // prepare for backup operation
     
-    Backup_info *info= context.prepare_for_backup(lex->backup_dir, thd->query);
+    Backup_info *info= context.prepare_for_backup(lex->backup_dir, thd->query,
+                                                  lex->backup_compression);
                                                               // reports errors
 
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_BACKUP_PREPARE));
 
-    BACKUP_BREAKPOINT("bp_running_state");
+    DEBUG_SYNC(thd, "after_backup_start_backup");
 
     // select objects to backup
 
@@ -181,7 +179,6 @@ execute_backup_command(THD *thd, LEX *lex)
     if (res)
       DBUG_RETURN(send_error(context, ER_BACKUP_BACKUP));
 
-    BACKUP_BREAKPOINT("bp_complete_state");
     break;
   }
 
@@ -192,7 +189,7 @@ execute_backup_command(THD *thd, LEX *lex)
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE_PREPARE));
     
-    BACKUP_BREAKPOINT("bp_running_state");
+    DEBUG_SYNC(thd, "after_backup_start_restore");
 
     res= context.do_restore();      
 
@@ -447,6 +444,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   
   @param[in] location   path to the file where backup image should be stored
   @param[in] query      BACKUP query starting the operation
+  @param[in] with_compression  backup image compression switch
   
   @returns Pointer to a @c Backup_info instance which can be used for selecting
   which objects to backup. NULL if an error was detected.
@@ -459,7 +457,8 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   is performed using @c do_backup() method.
  */ 
 Backup_info* 
-Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query)
+Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
+                                       bool with_compression)
 {
   using namespace backup;
   
@@ -488,7 +487,7 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query)
     Open output stream.
    */
 
-  Output_stream *s= new Output_stream(*this, path);
+  Output_stream *s= new Output_stream(*this, path, with_compression);
   
   if (!s)
   {
@@ -734,8 +733,6 @@ int Backup_restore_ctx::do_backup()
   Output_stream &s= *static_cast<Output_stream*>(m_stream);
   Backup_info   &info= *static_cast<Backup_info*>(m_catalog);
 
-  BACKUP_BREAKPOINT("backup_meta");
-
   report_stats_pre(info);
 
   DBUG_PRINT("backup",("Writing preamble"));
@@ -747,8 +744,6 @@ int Backup_restore_ctx::do_backup()
   }
 
   DBUG_PRINT("backup",("Writing table data"));
-
-  BACKUP_BREAKPOINT("backup_data");
 
   if (write_table_data(m_thd, info, s)) // reports errors
     DBUG_RETURN(send_error(*this, ER_BACKUP_BACKUP));
@@ -764,11 +759,85 @@ int Backup_restore_ctx::do_backup()
   report_stats_post(info);
 
   DBUG_PRINT("backup",("Backup done."));
-  BACKUP_BREAKPOINT("backup_done");
 
   DBUG_RETURN(0);
 }
 
+/**
+  Create all triggers and events from restore catalogue.
+
+  This helper method iterates over all triggers and events stored in the 
+  restore catalogue and creates them. When metadata section of the backup image 
+  is read, trigger and event objects are materialized and stored in the 
+  catalogue but they are not executed then (see @c bcat_create_item()). 
+  This method can be used to re-create the corresponding server objects after 
+  all other objects and table data have been restored.
+
+  Note that we first restore all triggers and then the events.
+
+  @returns 0 on success, error code otherwise.
+*/ 
+int Backup_restore_ctx::restore_triggers_and_events()
+{
+  using namespace backup;
+
+  DBUG_ASSERT(m_catalog);
+
+  Image_info::Iterator *dbit= m_catalog->get_dbs();
+  Image_info::Obj *obj;
+  List<Image_info::Obj> events;
+  Image_info::Obj::describe_buf buf;
+
+  DBUG_ENTER("restore_triggers_and_events");
+
+  // create all trigers and collect events in the events list
+  
+  while ((obj= (*dbit)++)) 
+  {
+    Image_info::Iterator *it= 
+                    m_catalog->get_db_objects(*static_cast<Image_info::Db*>(obj));
+
+    while ((obj= (*it)++))
+      switch (obj->type()) {
+      
+      case BSTREAM_IT_EVENT:
+        DBUG_ASSERT(obj->m_obj_ptr);
+        events.push_back(obj);
+        break;
+      
+      case BSTREAM_IT_TRIGGER:
+        DBUG_ASSERT(obj->m_obj_ptr);
+        if (obj->m_obj_ptr->execute(m_thd))
+        {
+          delete it;
+          delete dbit;
+          fatal_error(ER_BACKUP_CANT_RESTORE_TRIGGER,obj->describe(buf));
+          DBUG_RETURN(m_error);
+        }
+        break;
+
+      default: break;      
+      }
+
+    delete it;
+  }
+
+  delete dbit;
+
+  // now create all events
+
+  List_iterator<Image_info::Obj> it(events);
+  Image_info::Obj *ev;
+
+  while ((ev= it++)) 
+    if (ev->m_obj_ptr->execute(m_thd))
+    {
+      fatal_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
+      DBUG_RETURN(m_error);
+    };
+
+  DBUG_RETURN(0);
+}
 
 /**
   Restore objects saved in backup image.
@@ -829,6 +898,21 @@ int Backup_restore_ctx::do_restore()
     fatal_error(ER_BACKUP_READ_SUMMARY);
     DBUG_RETURN(m_error);
   }
+
+  /* 
+   Re-create all triggers and events (it was not done in @c bcat_create_item()).
+  */
+
+  if (restore_triggers_and_events())
+     DBUG_RETURN(ER_BACKUP_RESTORE);
+  
+  /* 
+    FIXME: this call is here because object services doesn't clean the
+    statement execution context properly, which leads to assertion failure.
+    It should be fixed inside object services implementation and then the
+    following line should be removed.
+   */
+  m_thd->main_da.reset_diagnostics_area();
 
   report_stats_post(info);
 
@@ -1434,6 +1518,22 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   {
     info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;
+  }
+
+  /*
+    If the item we are creating is an event or trigger, we don't execute it
+    yet. It will be done in @c Backup_restore_ctx::do_restore() after table
+    data has been restored.
+   */ 
+  
+  switch (item->type) {
+
+  case BSTREAM_IT_EVENT:
+  case BSTREAM_IT_TRIGGER:
+    return BSTREAM_OK;
+
+  default: break;
+  
   }
 
   // If we are to create a tablespace, first check if it already exists.

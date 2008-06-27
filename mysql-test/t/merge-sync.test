@@ -15,6 +15,12 @@ drop database if exists mysqltest;
 --enable_warnings
 
 #
+# With concurrent inserts enabled, SELECT does not always see rows inserted
+# by another session immediately before. Disable it to get stable results.
+#
+SET GLOBAL concurrent_insert= 0;
+
+#
 # Bug#26379 - Combination of FLUSH TABLE and REPAIR TABLE corrupts a MERGE table
 # Problem #1
 # A thread trying to lock a MERGE table performed busy waiting while
@@ -381,4 +387,9 @@ connection default;
 # Clear debug_sync signal.
 SET DEBUG_SYNC= 'RESET';
 DROP TABLE t1;
+
+#
+# Restore to default setting.
+#
+SET GLOBAL concurrent_insert= DEFAULT;
 

@@ -20,6 +20,7 @@
 noinst_LTLIBRARIES = libbackup.la libbackupstream.la
 
 INCLUDES = \
+  @ZLIB_INCLUDES@ \
   -I$(top_builddir)/include \
   -I$(top_srcdir)/include \
   -I$(top_srcdir)/sql \
@@ -52,7 +53,6 @@ noinst_HEADERS = \
   backup_kernel.h \
   backup_stream.h \
   stream_services.h \
-  debug.h \
   error.h \
   stream.h \
   backup_aux.h \

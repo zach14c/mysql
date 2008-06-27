@@ -66,7 +66,7 @@ class Backup_restore_ctx: public backup::Logger
   bool is_valid() const;
   ulonglong op_id() const;
 
-  Backup_info*  prepare_for_backup(LEX_STRING location, const char*);
+  Backup_info*  prepare_for_backup(LEX_STRING location, const char*, bool);
   Restore_info* prepare_for_restore(LEX_STRING location, const char*);  
 
   int do_backup();
@@ -113,6 +113,7 @@ class Backup_restore_ctx: public backup::Logger
 
   int prepare(LEX_STRING location);
   void disable_fkey_constraints();
+  int  restore_triggers_and_events();
   
   friend class Backup_info;
   friend class Restore_info;

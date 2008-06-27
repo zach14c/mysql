@@ -297,7 +297,7 @@ int Map<uint,T>::insert(ulong pos, T *ptr)
   uchar *entry;
   DYNAMIC_ARRAY *array= &this->array;
 
-  while (pos > Base::array.max_element)
+  while (pos >= Base::array.max_element)
   {
     entry= alloc_dynamic(array);
     if (!entry)
@@ -306,7 +306,7 @@ int Map<uint,T>::insert(ulong pos, T *ptr)
 
   clear_free_space();
 
-  if (pos > Base::array.max_element)
+  if (pos >= Base::array.max_element)
     return 1;
 
   if (pos >= Base::array.elements)

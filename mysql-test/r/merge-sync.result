@@ -1,6 +1,7 @@
 SET DEBUG_SYNC= 'RESET';
 drop table if exists t1,t2,t3,t4,t5,t6;
 drop database if exists mysqltest;
+SET GLOBAL concurrent_insert= 0;
 CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
 CREATE TABLE t2 (c1 INT) ENGINE= MRG_MYISAM UNION= (t1) INSERT_METHOD= LAST;
 connection con1
@@ -149,3 +150,4 @@ connection con1
 connection default;
 SET DEBUG_SYNC= 'RESET';
 DROP TABLE t1;
+SET GLOBAL concurrent_insert= DEFAULT;

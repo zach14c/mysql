@@ -1,9 +1,9 @@
 #ifndef _BACKUP_LOGGER_H
 #define _BACKUP_LOGGER_H
 
+#include "mysql_priv.h"
 #include <backup_stream.h>
 #include <backup/error.h>
-#include <backup/debug.h>
 #include <backup/backup_progress.h>
 
 
@@ -130,7 +130,7 @@ int Logger::init(enum_type type, const LEX_STRING path, const char *query)
   m_op_id= report_ob_init(m_thd, m_thd->id, BUP_STARTING, 
                           type == BACKUP ? OP_BACKUP : OP_RESTORE, 
                           0, "", path.str, query);  
-  BACKUP_BREAKPOINT("bp_starting_state");
+  DEBUG_SYNC(m_thd, "after_backup_log_init");
   return 0;
 }
 

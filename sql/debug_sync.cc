@@ -259,7 +259,7 @@ struct st_debug_sync_globals
 static st_debug_sync_globals debug_sync_global; /* All globals in one object */
 
 /**
-  Callback pointer from thr_lock.cc
+  Callback pointer from thr_lock.c
 */
 extern "C" void (*debug_sync_wait_for_lock_callback_ptr)(void);
 
@@ -1562,15 +1562,24 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
   {
     action->execute--;
 
+    /*
+      Protect copying of the signal string to the global string
+      to avoid race conditions during test case development.
+      After approaching a clean test case it should not happen
+      that two threads try to signal at the same time.
+
+      Do also acquire the mutex for a WAIT_FOR action. The sense is to
+      clamp SIGNAL and WAIT_FOR in the mutex. If we wake another thread
+      with the signal, it should not run until we set PROC_INFO in
+      enter_cond().
+
+      Note. When 'execute' is non-zero, at least one of SIGNAL, WAIT_FOR
+      is set.
+    */
+    pthread_mutex_lock(&debug_sync_global.ds_mutex);
+
     if (action->signal.length())
     {
-      /*
-        Protect copying of the signal string to the global string
-        to avoid race conditions during test case development.
-        After approaching a clean test case it should not happen
-        that two threads try to signal at the same time.
-      */
-      pthread_mutex_lock(&debug_sync_global.ds_mutex);
       /* Copy the signal to the global variable. */
       if (debug_sync_global.ds_signal.copy(action->signal))
       {
@@ -1585,8 +1594,6 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       DBUG_PRINT("debug_sync_exec", ("signal '%s'  at: '%s'",
                                      action->signal.c_ptr(),
                                      action->sync_point.c_ptr()));
-      pthread_mutex_unlock(&debug_sync_global.ds_mutex);
-
     } /* end if (action->signal.length()) */
 
     if (action->wait_for.length())
@@ -1594,11 +1601,13 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       const char      *old_proc_info;
       int             error= 0;
       struct timespec abstime;
+      String          proc_info;
 
-      pthread_mutex_lock(&debug_sync_global.ds_mutex);
+      proc_info.set("debug sync point: ", 18, system_charset_info);
+      proc_info.append(action->sync_point);
       old_proc_info= thd->enter_cond(&debug_sync_global.ds_cond,
                                      &debug_sync_global.ds_mutex,
-                                     action->sync_point.c_ptr());
+                                     proc_info.c_ptr());
 
       set_timespec(abstime, action->timeout);
       DBUG_PRINT("debug_sync_exec", ("wait for '%s'  at: '%s'  curr: '%s'",
@@ -1631,9 +1640,15 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
                                      action->wait_for.c_ptr(),
                                      action->sync_point.c_ptr()));
 
+      /* exit_cond() does also unlock the mutex. */
       thd->exit_cond(old_proc_info);
 
     } /* end if (action->wait_for.length()) */
+    else
+    {
+      /* Need explicit unlock of mutex as we don't use exit_cond() here. */
+      pthread_mutex_unlock(&debug_sync_global.ds_mutex);
+    }
 
   } /* end if (action->execute) */
 

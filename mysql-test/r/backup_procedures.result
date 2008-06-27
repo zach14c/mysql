@@ -1,0 +1,41 @@
+
+Starting regression test for 34868 - Backup: restore failure if two procedures
+
+Create database and procedures
+DROP DATABASE IF EXISTS bup_proc;
+CREATE DATABASE bup_proc;
+USE bup_proc;
+CREATE PROCEDURE p1() SET @a=5;
+CREATE PROCEDURE p2() SET @a=100;
+
+Check that procedures are there before the backup
+CALL p1();
+SELECT @a;
+@a
+5
+CALL p2();
+SELECT @a;
+@a
+100
+
+Backup and restore
+BACKUP DATABASE bup_proc to 'bup_proc.bak';
+backup_id
+#
+DROP DATABASE bup_proc;
+RESTORE FROM 'bup_proc.bak';
+backup_id
+#
+
+Check that procedures are there after the restore
+CALL p1();
+SELECT @a;
+@a
+5
+CALL p2();
+SELECT @a;
+@a
+100
+
+Cleaning up
+DROP DATABASE bup_proc;
