@@ -678,7 +678,15 @@ ha_ndbcluster::batch_copy_row_to_buffer(Thd_ndb *thd_ndb, const uchar *record,
 {
   uchar *row= copy_row_to_buffer(thd_ndb, record);
   if (unlikely(!row))
+  {
+    /*
+      Initialize this because otherwise gcc believes that it can be used
+      uninitialized by callers (does not realize that if we return NULL then
+      callers don't use batch_full).
+    */
+    batch_full= FALSE;
     return NULL;
+  }
   uint unsent= thd_ndb->m_unsent_bytes;
   unsent+= m_bytes_per_write;
   batch_full= unsent >= BATCH_FLUSH_SIZE;
@@ -693,7 +701,10 @@ ha_ndbcluster::batch_copy_key_to_buffer(Thd_ndb *thd_ndb, const uchar *key,
 {
   uchar *row= alloc_batch_row(thd_ndb, key_len);
   if (unlikely(!row))
+  {
+    batch_full= FALSE; // see batch_copy_row_to_buffer
     return NULL;
+  }
   memcpy(row, key, key_len);
   uint unsent= thd_ndb->m_unsent_bytes;
   unsent+= op_batch_size;
