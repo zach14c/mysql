@@ -3880,6 +3880,8 @@ end_with_restore_list:
     my_ok(thd);
     break;
   case SQLCOM_COMMIT:
+    DBUG_ASSERT(thd->lock == NULL ||
+                thd->locked_tables_mode == LTM_LOCK_TABLES);
     if (end_trans(thd, lex->tx_release ? COMMIT_RELEASE :
                               lex->tx_chain ? COMMIT_AND_CHAIN : COMMIT))
       goto error;
@@ -3890,6 +3892,8 @@ end_with_restore_list:
     my_ok(thd);
     break;
   case SQLCOM_ROLLBACK:
+    DBUG_ASSERT(thd->lock == NULL ||
+                thd->locked_tables_mode == LTM_LOCK_TABLES);
     if (end_trans(thd, lex->tx_release ? ROLLBACK_RELEASE :
                               lex->tx_chain ? ROLLBACK_AND_CHAIN : ROLLBACK))
       goto error;
