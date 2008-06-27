@@ -39,6 +39,7 @@
 #include <sql_common.h>
 #include <errmsg.h>
 #include <mysys_err.h>
+#include "rpl_handler.h"
 
 #ifdef HAVE_REPLICATION
 
@@ -1499,17 +1500,22 @@ static int safe_sleep(THD* thd, int sec, CHECK_KILLED_FUNC thread_killed,
 }
 
 
-static int request_dump(MYSQL* mysql, Master_info* mi,
-                        bool *suppress_warnings)
+static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
+			bool *suppress_warnings)
 {
   uchar buf[FN_REFLEN + 10];
   int len;
-  int binlog_flags = 0; // for now
+  ushort binlog_flags = 0; // for now
   char* logname = mi->master_log_name;
   DBUG_ENTER("request_dump");
   
   *suppress_warnings= FALSE;
 
+  if (RUN_HOOK(binlog_relay_io,
+               before_request_transmit,
+               (thd, mi, binlog_flags)))
+    DBUG_RETURN(1);
+  
   // TODO if big log files: Change next to int8store()
   int4store(buf, (ulong) mi->master_log_pos);
   int2store(buf + 4, binlog_flags);
@@ -2134,6 +2140,10 @@ pthread_handler_t handle_slave_io(void *arg)
                             mi->master_log_name,
                             llstr(mi->master_log_pos,llbuff)));
 
+
+  if (RUN_HOOK(binlog_relay_io, thread_start, (thd, mi)))
+    goto err;
+
   if (!(mi->mysql = mysql = mysql_init(NULL)))
   {
     mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
@@ -2208,7 +2218,7 @@ connected:
   while (!io_slave_killed(thd,mi))
   {
     thd_proc_info(thd, "Requesting binlog dump");
-    if (request_dump(mysql, mi, &suppress_warnings))
+    if (request_dump(thd, mysql, mi, &suppress_warnings))
     {
       sql_print_error("Failed on request_dump()");
       if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
@@ -2231,6 +2241,7 @@ requesting master dump") ||
 
     while (!io_slave_killed(thd,mi))
     {
+      const char* event_buf;
       ulong event_len;
       /*
          We say "waiting" because read_event() will wait if there's nothing to
@@ -2283,7 +2294,19 @@ Stopping slave I/O thread due to out-of-memory error from master");
 
       retry_count=0;                    // ok event, reset retry counter
       thd_proc_info(thd, "Queueing master event to the relay log");
-      if (queue_event(mi,(const char*)mysql->net.read_pos + 1, event_len))
+      event_buf= (const char*)mysql->net.read_pos + 1;
+      if (RUN_HOOK(binlog_relay_io, after_read_event,
+                   (thd, mi,(const char*)mysql->net.read_pos + 1,
+                    event_len, &event_buf, &event_len)))
+      {
+        sql_print_error("Failed to run 'after_read_event' hook");
+        goto err;
+      }
+
+      /* XXX: 'synced' should be updated by queue_event to indicate
+         whether event has been synced to disk */
+      bool synced= 0;
+      if (queue_event(mi, event_buf, event_len))
       {
         goto err;
       }
@@ -2292,6 +2315,11 @@ Stopping slave I/O thread due to out-of-memory error from master");
         sql_print_error("Failed to flush master info file");
         goto err;
       }
+
+      if (RUN_HOOK(binlog_relay_io, after_queue_event,
+                   (thd, mi, event_buf, event_len, synced)))
+        goto err;
+
       /*
         See if the relay logs take too much space.
         We don't lock mi->rli.log_space_lock here; this dirty read saves time
@@ -2333,6 +2361,7 @@ err:
   sql_print_information("Slave I/O thread exiting, read up to log '%s', position %s",
                   IO_RPL_LOG_NAME, llstr(mi->master_log_pos,llbuff));
   pthread_mutex_lock(&LOCK_thread_count);
+  RUN_HOOK(binlog_relay_io, thread_stop, (thd, mi));
   thd->query = thd->db = 0; // extra safety
   thd->query_length= thd->db_length= 0;
   pthread_mutex_unlock(&LOCK_thread_count);
