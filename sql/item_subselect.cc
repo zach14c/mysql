@@ -1073,9 +1073,9 @@ Item_in_subselect::single_value_transformer(JOIN *join,
     SELECT_LEX_UNIT *master_unit= select_lex->master_unit();
     substitution= optimizer;
 
-    SELECT_LEX *current= thd->lex->current_select, *up;
+    SELECT_LEX *current= thd->lex->current_select;
 
-    thd->lex->current_select= up= current->return_after_parsing();
+    thd->lex->current_select= current->return_after_parsing();
     //optimizer never use Item **ref => we can pass 0 as parameter
     if (!optimizer || optimizer->fix_left(thd, 0))
     {
@@ -1352,8 +1352,8 @@ Item_in_subselect::row_value_transformer(JOIN *join)
     SELECT_LEX_UNIT *master_unit= select_lex->master_unit();
     substitution= optimizer;
 
-    SELECT_LEX *current= thd->lex->current_select, *up;
-    thd->lex->current_select= up= current->return_after_parsing();
+    SELECT_LEX *current= thd->lex->current_select;
+    thd->lex->current_select= current->return_after_parsing();
     //optimizer never use Item **ref => we can pass 0 as parameter
     if (!optimizer || optimizer->fix_left(thd, 0))
     {
@@ -1641,7 +1641,7 @@ Item_subselect::trans_res
 Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
 {
   Query_arena *arena, backup;
-  SELECT_LEX *current= thd->lex->current_select, *up;
+  SELECT_LEX *current= thd->lex->current_select;
   const char *save_where= thd->where;
   Item_subselect::trans_res res= RES_ERROR;
   bool result;
@@ -1681,7 +1681,7 @@ Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
       goto err;
   }
 
-  thd->lex->current_select= up= current->return_after_parsing();
+  thd->lex->current_select= current->return_after_parsing();
   result= (!left_expr->fixed &&
            left_expr->fix_fields(thd, optimizer->arguments()));
   /* fix_fields can change reference to left_expr, we need reassign it */
@@ -3029,7 +3029,15 @@ bool subselect_hash_sj_engine::init_permanent(List<Item> *tmp_columns)
   */
   if (tmp_table->s->keys == 0)
   {
-    DBUG_ASSERT(tmp_table->s->db_type() == myisam_hton);
+#ifndef DBUG_OFF
+    handlerton *tmp_table_hton= tmp_table->s->db_type();
+#if defined(WITH_MARIA_STORAGE_ENGINE) && defined(USE_MARIA_FOR_TMP_TABLES)
+    DBUG_ASSERT((tmp_table_hton == myisam_hton) ||
+                (tmp_table_hton == maria_hton));
+#else
+    DBUG_ASSERT(tmp_table_hton == myisam_hton);
+#endif
+#endif
     DBUG_ASSERT(
       tmp_table->s->uniques ||
       tmp_table->key_info->key_length >= tmp_table->file->max_key_length() ||

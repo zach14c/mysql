@@ -3225,7 +3225,7 @@ check_and_update_table_version(THD *thd,
 
 #ifndef DBUG_OFF
   /* Spuriously reprepare each statement. */
-  if (_db_strict_keyword_("reprepare_each_statement") &&
+  if (_db_keyword_(0, "reprepare_each_statement", 1) &&
       thd->m_reprepare_observer && thd->stmt_arena->is_reprepared == FALSE)
   {
     thd->m_reprepare_observer->report_error(thd);
@@ -4658,7 +4658,7 @@ static void update_field_dependencies(THD *thd, Field *field, TABLE *table)
   DBUG_ENTER("update_field_dependencies");
   if (thd->mark_used_columns != MARK_COLUMNS_NONE)
   {
-    MY_BITMAP *current_bitmap, *other_bitmap;
+    MY_BITMAP *current_bitmap;
 
     /*
       We always want to register the used keys, as the column bitmap may have
@@ -4669,15 +4669,9 @@ static void update_field_dependencies(THD *thd, Field *field, TABLE *table)
     table->merge_keys.merge(field->part_of_key);
 
     if (thd->mark_used_columns == MARK_COLUMNS_READ)
-    {
       current_bitmap= table->read_set;
-      other_bitmap=   table->write_set;
-    }
     else
-    {
       current_bitmap= table->write_set;
-      other_bitmap=   table->read_set;
-    }
 
     if (bitmap_fast_test_and_set(current_bitmap, field->field_index))
     {

@@ -171,6 +171,7 @@ our @opt_combinations;
 our $opt_skip_combination;
 
 our @opt_extra_mysqld_opt;
+our @opt_extra_mysqltest_opt;
 
 our $opt_compress;
 our $opt_ssl;
@@ -424,7 +425,7 @@ sub main () {
     my $tests= collect_test_cases($opt_suites);
 
     # Turn off NDB and other similar options if no tests use it
-    my ($need_ndbcluster);
+    my ($need_ndbcluster, $need_debug);
     foreach my $test (@$tests)
     {
       next if $test->{skip};
@@ -432,6 +433,7 @@ sub main () {
       if (!$opt_extern)
       {
 	$need_ndbcluster||= $test->{ndb_test};
+        $need_debug||=$test->{need_debug};
 
 	# Count max number of slaves used by a test case
 	if ( $test->{slave_num} > $max_slave_num) {
@@ -454,6 +456,11 @@ sub main () {
     {
       $opt_skip_ndbcluster= 1;
       $opt_skip_ndbcluster_slave= 1;
+    }
+
+    if ( !$need_debug && !$opt_debug)
+    {
+      $opt_debug=0;
     }
 
     # Check if slave cluster can be skipped
@@ -582,6 +589,9 @@ sub command_line_setup () {
 
              # Extra options used when starting mysqld
              'mysqld=s'                 => \@opt_extra_mysqld_opt,
+
+             # Extra options used when starting mysqld
+             'mysqltest=s'                 => \@opt_extra_mysqltest_opt,
 
              # Run test on running server
              'extern'                   => \$opt_extern,
@@ -954,9 +964,9 @@ sub command_line_setup () {
   $opt_tmpdir=       "$opt_vardir/tmp" unless $opt_tmpdir;
   $opt_tmpdir =~ s,/+$,,;       # Remove ending slash if any
 
-# --------------------------------------------------------------------------
-# Record flag
-# --------------------------------------------------------------------------
+  # --------------------------------------------------------------------------
+  # Record flag
+  # --------------------------------------------------------------------------
   if ( $opt_record and ! @opt_cases )
   {
     mtr_error("Will not run in record mode without a specific test case");
@@ -1275,19 +1285,6 @@ sub command_line_setup () {
   $path_ndb_testrun_log= "$opt_vardir/log/ndb_testrun.log";
 
   $path_snapshot= "$opt_tmpdir/snapshot_$opt_master_myport/";
-
-  if ( $opt_valgrind and $opt_debug )
-  {
-    # When both --valgrind and --debug is selected, send
-    # all output to the trace file, making it possible to
-    # see the exact location where valgrind complains
-    foreach my $mysqld (@{$master}, @{$slave})
-    {
-      my $sidx= $mysqld->{idx} ? "$mysqld->{idx}" : "";
-      $mysqld->{path_myerr}=
-	"$opt_vardir/log/" . $mysqld->{type} . "$sidx.trace";
-    }
-  }
 }
 
 #
@@ -2027,7 +2024,10 @@ sub environment_setup () {
     $ENV{'MYSQL_FIX_SYSTEM_TABLES'}=  $cmdline_mysql_fix_system_tables;
 
   }
+  if ( !$opt_extern )
+  {
     $ENV{'MYSQL_FIX_PRIVILEGE_TABLES'}=  $file_mysql_fix_privilege_tables;
+  }
 
   # ----------------------------------------------------
   # Setup env so childs can execute my_print_defaults
@@ -2075,6 +2075,22 @@ sub environment_setup () {
                         "$path_client_bindir/myisampack",
                         "$glob_basedir/storage/myisam/myisampack",
                         "$glob_basedir/myisam/myisampack"));
+
+  # ----------------------------------------------------
+  # Setup env so childs can execute maria_pack and maria_chk
+  # ----------------------------------------------------
+  $ENV{'MARIA_CHK'}= mtr_native_path(mtr_exe_maybe_exists(
+                       vs_config_dirs('storage/maria', 'maria_chk'),
+                       vs_config_dirs('maria', 'maria_chk'),
+                       "$path_client_bindir/maria_chk",
+                       "$glob_basedir/storage/maria/maria_chk",
+                       "$glob_basedir/maria/maria_chk"));
+  $ENV{'MARIA_PACK'}= mtr_native_path(mtr_exe_maybe_exists(
+                        vs_config_dirs('storage/maria', 'maria_pack'),
+                        vs_config_dirs('maria', 'maria_pack'),
+                        "$path_client_bindir/maria_pack",
+                        "$glob_basedir/storage/maria/maria_pack",
+                        "$glob_basedir/maria/maria_pack"));
 
   # ----------------------------------------------------
   # We are nice and report a bit about our settings
@@ -2314,6 +2330,25 @@ sub setup_vardir() {
   foreach my $name (glob("r/*.progress r/*.log r/*.warnings"))
   {
     unlink($name);
+  }
+  if ( $opt_valgrind and $opt_debug )
+  {
+    # When both --valgrind and --debug is selected, send
+    # all output to the trace file, making it possible to
+    # see the exact location where valgrind complains
+    foreach my $mysqld (@{$master}, @{$slave})
+    {
+      my $sidx= $mysqld->{idx} ? "$mysqld->{idx}" : "";
+      my $trace_name= "$opt_vardir/log/" . $mysqld->{type} . "$sidx.trace";
+      open(LOG, ">$mysqld->{path_myerr}") or die "Can't create $mysqld->{path_myerr}\n";
+      print LOG "
+NOTE: When running with --valgrind --debug the output from the .err file is
+stored together with the trace file to make it easier to find the exact
+position for valgrind errors.
+See trace file $trace_name.\n";
+      close(LOG);
+      $mysqld->{path_myerr}= $trace_name;
+    }
   }
 }
 
@@ -2986,8 +3021,8 @@ sub install_db ($$) {
 
   mtr_report("Installing \u$type Database");
 
-
   my $args;
+  my $cmd_args;
   mtr_init_args(\$args);
   mtr_add_arg($args, "--no-defaults");
   mtr_add_arg($args, "--bootstrap");
@@ -2996,8 +3031,16 @@ sub install_db ($$) {
   mtr_add_arg($args, "--loose-skip-innodb");
   mtr_add_arg($args, "--loose-skip-ndbcluster");
   mtr_add_arg($args, "--loose-skip-falcon");
+  mtr_add_arg($args, "--disable-sync-frm");
+  mtr_add_arg($args, "--loose-disable-debug");
   mtr_add_arg($args, "--tmpdir=.");
   mtr_add_arg($args, "--core-file");
+
+  #
+  # Setup args for bootstrap.test
+  #
+  mtr_init_args(\$cmd_args);
+  mtr_add_arg($cmd_args, "--loose-skip-maria");
 
   if ( $opt_debug )
   {
@@ -3021,7 +3064,8 @@ sub install_db ($$) {
   # ----------------------------------------------------------------------
   # export MYSQLD_BOOTSTRAP_CMD variable containing <path>/mysqld <args>
   # ----------------------------------------------------------------------
-  $ENV{'MYSQLD_BOOTSTRAP_CMD'}= "$exe_mysqld_bootstrap " . join(" ", @$args);
+  $ENV{'MYSQLD_BOOTSTRAP_CMD'}= "$exe_mysqld_bootstrap " . join(" ", @$args) .
+    " " . join(" ", @$cmd_args);
 
   # ----------------------------------------------------------------------
   # Create the bootstrap.sql file
@@ -3650,6 +3694,7 @@ sub mysqld_arguments ($$$$) {
   mtr_add_arg($args, "%s--datadir=%s", $prefix,
 	      $mysqld->{'path_myddir'});
 
+  mtr_add_arg($args, "%s--disable-sync-frm", $prefix);  # Faster test
 
   if ( $mysql_version_id >= 50106 )
   {
@@ -3775,10 +3820,17 @@ sub mysqld_arguments ($$$$) {
     }
   } # end slave
 
-  if ( $opt_debug )
+  if ( $debug_compiled_binaries && defined $opt_debug )
   {
-    mtr_add_arg($args, "%s--debug=d:t:i:A,%s/log/%s%s.trace",
-                $prefix, $path_vardir_trace, $mysqld->{'type'}, $sidx);
+    if ( $opt_debug )
+    {
+      mtr_add_arg($args, "%s--debug=d:t:i:A,%s/log/%s%s.trace",
+                  $prefix, $path_vardir_trace, $mysqld->{'type'}, $sidx);
+    }
+    else
+    {
+      mtr_add_arg($args, "--disable-debug");
+    }
   }
 
   mtr_add_arg($args, "%s--key_buffer_size=1M", $prefix);
@@ -4610,6 +4662,11 @@ sub run_mysqltest ($) {
     mtr_add_arg($args, "--skip-ssl");
   }
 
+  foreach my $arg ( @opt_extra_mysqltest_opt )
+  {
+    mtr_add_arg($args, "%s", $arg);
+  }
+
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
   # ----------------------------------------------------------------------
@@ -4726,12 +4783,7 @@ sub gdb_arguments {
   {
     # write init file for mysqld
     mtr_tofile($gdb_init_file,
-	       "set args $str\n" .
-	       "break mysql_parse\n" .
-	       "commands 1\n" .
-	       "disable 1\n" .
-	       "end\n" .
-	       "run");
+	       "set args $str\n");
   }
 
   if ( $opt_manual_gdb )
@@ -4791,11 +4843,7 @@ sub ddd_arguments {
     # write init file for mysqld
     mtr_tofile($gdb_init_file,
 	       "file $$exe\n" .
-	       "set args $str\n" .
-	       "break mysql_parse\n" .
-	       "commands 1\n" .
-	       "disable 1\n" .
-	       "end");
+	       "set args $str\n");
   }
 
   if ( $opt_manual_ddd )
@@ -5006,6 +5054,7 @@ Options for test case authoring
 Options that pass on options
 
   mysqld=ARGS           Specify additional arguments to "mysqld"
+  mysqltest=ARGS        Specify additional arguments to "mysqltest"
 
 Options to run test on running server
 
