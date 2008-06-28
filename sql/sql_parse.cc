@@ -1409,17 +1409,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 
   /* If commit fails, we should be able to reset the OK status. */
   thd->main_da.can_overwrite_status= TRUE;
-  if (thd->transaction.stmt.ha_list)
-  {
-    ha_autocommit_or_rollback(thd, thd->is_error());
-  }
-  else
-  {
-    if (!thd->is_error())
-      RUN_HOOK(transaction, after_commit, (thd, 0));
-    else
-      RUN_HOOK(transaction, after_rollback, (thd, 0));
-  }
+  ha_autocommit_or_rollback(thd, thd->is_error());
   thd->main_da.can_overwrite_status= FALSE;
 
   thd->transaction.stmt.reset();
