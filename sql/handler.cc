@@ -1307,6 +1307,13 @@ int ha_autocommit_or_rollback(THD *thd, int error)
 
     thd->variables.tx_isolation=thd->session_tx_isolation;
   }
+  else
+  {
+    if (!thd->is_error())
+      RUN_HOOK(transaction, after_commit, (thd, 0));
+    else
+      RUN_HOOK(transaction, after_rollback, (thd, 0));
+  }
 #endif
   DBUG_RETURN(error);
 }
