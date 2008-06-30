@@ -163,7 +163,8 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_CAN_FULLTEXT        (1 << 21)
 #define HA_CAN_SQL_HANDLER     (1 << 22)
 #define HA_NO_AUTO_INCREMENT   (1 << 23)
-#define HA_HAS_CHECKSUM        (1 << 24)
+/* Has automatic checksums and uses the old checksum format */
+#define HA_HAS_OLD_CHECKSUM    (1 << 24)
 /* Table data are stored in separate files (for lower_case_table_names) */
 #define HA_FILE_BASED	       (1 << 26)
 #define HA_NO_VARCHAR	       (1 << 27)
@@ -184,6 +185,8 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_BINLOG_STMT_CAPABLE (LL(1) << 36)
 
 #define HA_ONLINE_ALTER        (LL(1) << 37)
+/* Has automatic checksums and uses the new checksum format */
+#define HA_HAS_NEW_CHECKSUM    (LL(1) << 38)
 
 /*
   Set of all binlog flags. Currently only contain the capabilities

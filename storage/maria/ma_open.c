@@ -601,6 +601,15 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
 	pos->null_bit=0;
 	pos->flag=0;					/* For purify */
 	pos++;
+
+        if ((share->keyinfo[i].flag & HA_NOSAME) && i != 0)
+        {
+          /*
+            We can't yet have versioning if there is more than one unique
+            key
+          */
+          versioning= 0;
+        }
       }
       for (i=0 ; i < uniques ; i++)
       {
@@ -1345,8 +1354,10 @@ static uchar *_ma_state_info_read(uchar *ptr, MARIA_STATE_INFO *state)
    @param  state           state which will be filled
 */
 
-uint _ma_state_info_read_dsk(File file, MARIA_STATE_INFO *state)
+uint _ma_state_info_read_dsk(File file __attribute__((unused)),
+                             MARIA_STATE_INFO *state __attribute__((unused)))
 {
+#ifdef EXTERNAL_LOCKING
   uchar	buff[MARIA_STATE_INFO_SIZE + MARIA_STATE_EXTRA_SIZE];
 
   /* trick to detect transactional tables */
@@ -1357,6 +1368,7 @@ uint _ma_state_info_read_dsk(File file, MARIA_STATE_INFO *state)
       return 1;
     _ma_state_info_read(buff, state);
   }
+#endif
   return 0;
 }
 

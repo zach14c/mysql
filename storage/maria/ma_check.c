@@ -99,6 +99,7 @@ static my_bool _ma_flush_table_files_before_swap(HA_CHECK *param,
                                                  MARIA_HA *info);
 static TrID max_trid_in_system(void);
 static void _ma_check_print_not_visible_error(HA_CHECK *param, TrID used_trid);
+void retry_if_quick(MARIA_SORT_PARAM *param, int error);
 
 
 /* Initialize check param with default values */
@@ -2233,6 +2234,10 @@ static int initialize_variables_for_repair(HA_CHECK *param,
 {
   MARIA_SHARE *share= info->s;
 
+  /* Repair code relies on share->state.state so we have to update it here */
+  if (share->lock.update_status)
+    (*share->lock.update_status)(info);
+
   bzero((char*) sort_info,  sizeof(*sort_info));
   bzero((char*) sort_param, sizeof(*sort_param));
 
@@ -3303,11 +3308,16 @@ static my_bool maria_zerofill_data(HA_CHECK *param, MARIA_HA *info,
         bzero(buff, LSN_SIZE);
       if (max_entry != 0)
       {
+        my_bool is_head_page= (page_type == HEAD_PAGE);
         dir= dir_entry_pos(buff, block_size, max_entry - 1);
         _ma_compact_block_page(buff, block_size, max_entry -1, 0,
-                               page_type == HEAD_PAGE ? ~(TrID) 0 : 0,
-                               page_type == HEAD_PAGE ?
+                               is_head_page ? ~(TrID) 0 : 0,
+                               is_head_page ?
                                share->base.min_block_length : 0);
+        /* compactation may have increased free space */
+        if (_ma_bitmap_set(info, page, is_head_page,
+                           uint2korr(buff + EMPTY_SPACE_OFFSET)))
+          goto err;
 
         /* Zerofill the not used part */
         offset= uint2korr(dir) + uint2korr(dir+2);
@@ -3329,10 +3339,9 @@ static my_bool maria_zerofill_data(HA_CHECK *param, MARIA_HA *info,
                              PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
                              LSN_IMPOSSIBLE, 1);
   }
-  if (flush_pagecache_blocks(share->pagecache, &info->dfile,
-                             FLUSH_FORCE_WRITE))
-    DBUG_RETURN(1);
-  DBUG_RETURN(0);
+  DBUG_RETURN(_ma_bitmap_flush(share) ||
+              flush_pagecache_blocks(share->pagecache, &info->dfile,
+                                     FLUSH_FORCE_WRITE));
 
 err:
   pagecache_unlock_by_link(share->pagecache, page_link.link,
@@ -4632,9 +4641,12 @@ static int sort_get_next_record(MARIA_SORT_PARAM *sort_param)
       }
       /* Retry only if wrong record, not if disk error */
       if (flag != HA_ERR_WRONG_IN_RECORD)
+      {
+        retry_if_quick(sort_param, flag);
         DBUG_RETURN(flag);
+      }
     }
-    break;
+    break;                                      /* Impossible */
   }
   case STATIC_RECORD:
     for (;;)
@@ -4644,8 +4656,7 @@ static int sort_get_next_record(MARIA_SORT_PARAM *sort_param)
       {
 	if (sort_param->read_cache.error)
 	  param->out_flag |= O_DATA_LOST;
-        param->retry_repair=1;
-        param->testflag|=T_RETRY_WITHOUT_QUICK;
+        retry_if_quick(sort_param, my_errno);
 	DBUG_RETURN(-1);
       }
       sort_param->start_recpos=sort_param->pos;
@@ -6632,5 +6643,24 @@ static void _ma_check_print_not_visible_error(HA_CHECK *param, TrID used_trid)
                             llstr(used_trid, buff),
                             llstr(param->max_trid, buff2));
     }
+  }
+}
+
+
+/**
+  Mark that we can retry normal repair if we used quick repair
+
+  We shouldn't do this in case of disk error as in this case we are likely
+  to loose much more than expected.
+*/
+
+void retry_if_quick(MARIA_SORT_PARAM *sort_param, int error)
+{
+  HA_CHECK *param=sort_param->sort_info->param;
+
+  if (!sort_param->fix_datafile && error >= HA_ERR_FIRST)
+  {
+    param->retry_repair=1;
+    param->testflag|=T_RETRY_WITHOUT_QUICK;
   }
 }
