@@ -620,6 +620,7 @@ Restore::Restore(const Table_list &tables, THD *t_thd) :Restore_driver(tables)
   for (int i=0; i < MAX_FIELDS; i++)
     blob_ptrs[i]= 0;
   blob_ptr_index= 0;
+  m_cleanup= TRUE;
 }
 
 /**
