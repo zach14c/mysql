@@ -509,7 +509,7 @@ int ha_ndbcluster::ndb_err(NdbTransaction *trans)
     bzero((char*) &table_list,sizeof(table_list));
     table_list.db= m_dbname;
     table_list.alias= table_list.table_name= m_tabname;
-    close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+    close_cached_tables(thd, &table_list, FALSE, FALSE);
     break;
   }
   default:
@@ -7769,6 +7769,20 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  /*
+    ndbcluster_find_files() may be called from I_S code and ndbcluster_binlog
+    thread in situations when some tables are already open. This means that
+    code below will try to obtain exclusive metadata lock on some table
+    while holding shared meta-data lock on other tables. This might lead to
+    a deadlock, and therefore is disallowed by assertions of the metadata
+    locking subsystem. In order to temporarily make the code work, we must
+    reset and backup the open tables state, thus hide the existing locks
+    from MDL asserts. But in the essence this is violation of metadata
+    locking protocol which has to be closed ASAP.
+  */
+  Open_tables_state open_tables_state_backup;
+  thd->reset_n_backup_open_tables_state(&open_tables_state_backup);
+
   if (!global_read_lock)
   {
     // Delete old files
@@ -7792,8 +7806,11 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  thd->restore_backup_open_tables_state(&open_tables_state_backup);
+
+  /* Lock mutex before creating .FRM files. */
   pthread_mutex_lock(&LOCK_open);
-  // Create new files
+  /* Create new files. */
   List_iterator_fast<char> it2(create_list);
   while ((file_name_str=it2++))
   {  
@@ -8650,7 +8667,7 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
     safe_mutex_assert_owner(&LOCK_open);
   else
     pthread_mutex_lock(&LOCK_open);    
-  close_cached_tables(thd, &table_list, TRUE, FALSE, FALSE);
+  close_cached_tables(thd, &table_list, TRUE, FALSE);
   if (!have_lock_open)
     pthread_mutex_unlock(&LOCK_open);    
 

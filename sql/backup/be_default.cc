@@ -128,6 +128,20 @@ Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type):
   locks_acquired= FALSE;
 }
 
+
+Backup::~Backup()
+{
+  /*
+    Since objects representing metadata lock requests for tables open
+    by locking thread use same chunks of memory as elements of
+    'all_tables' table list it is essential to ensure that locking
+    thread has finished before freeing elements of this table list.
+  */
+  locking_thd->wait_until_locking_thread_dies();
+  backup::free_table_list(all_tables);
+}
+
+
 /**
   * @brief Prelock call to setup locking.
   *
