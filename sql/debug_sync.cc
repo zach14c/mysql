@@ -590,13 +590,12 @@ static void debug_sync_print_actions(THD *thd)
 
   for (idx= 0; idx < ds_control->ds_active; idx++)
   {
+    const char *dsp_name= ds_control->ds_action[idx].sync_point.c_ptr();
     char action_string[256];
 
     debug_sync_action_string(action_string, sizeof(action_string),
                              ds_control->ds_action + idx);
-    DBUG_PRINT("debug_sync_list",
-               ("%s %s", ds_control->ds_action[idx].sync_point.c_ptr(),
-                action_string));
+    DBUG_PRINT("debug_sync_list", ("%s %s", dsp_name, action_string));
   }
 
   DBUG_VOID_RETURN;
@@ -928,16 +927,20 @@ static bool debug_sync_set_action(THD *thd, st_debug_sync_action *action)
   }
   else
   {
-    DBUG_PRINT("debug_sync",
-               ("sync_point: '%s'  activation_count: %lu  hit_limit: %lu  "
-                "execute: %lu  timeout: %lu  signal: '%s'  wait_for: '%s'",
-                action->sync_point.c_ptr(), action->activation_count,
-                action->hit_limit, action->execute, action->timeout,
-                action->signal.c_ptr(), action->wait_for.c_ptr()));
+    const char *dsp_name= action->sync_point.c_ptr();
+    DBUG_EXECUTE("debug_sync", {
+        /* Functions as DBUG_PRINT args can change keyword and line nr. */
+        const char *sig_emit= action->signal.c_ptr();
+        const char *sig_wait= action->wait_for.c_ptr();
+        DBUG_PRINT("debug_sync",
+                   ("sync_point: '%s'  activation_count: %lu  hit_limit: %lu  "
+                    "execute: %lu  timeout: %lu  signal: '%s'  wait_for: '%s'",
+                    dsp_name, action->activation_count,
+                    action->hit_limit, action->execute, action->timeout,
+                    sig_emit, sig_wait));});
 
     /* Check this before sorting the array. action may move. */
-    is_dsp_now= !my_strcasecmp(system_charset_info,
-                               action->sync_point.c_ptr(), "now");
+    is_dsp_now= !my_strcasecmp(system_charset_info, dsp_name, "now");
 
     if (action->need_sort)
     {
@@ -1544,39 +1547,40 @@ uchar *sys_var_debug_sync::value_ptr(THD *thd,
 
 static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
 {
+  IF_DBUG(const char *dsp_name= action->sync_point.c_ptr());
+  IF_DBUG(const char *sig_emit= action->signal.c_ptr());
+  IF_DBUG(const char *sig_wait= action->wait_for.c_ptr());
   DBUG_ENTER("debug_sync_execute");
   DBUG_ASSERT(thd);
   DBUG_ASSERT(action);
-  DBUG_PRINT("debug_sync", ("sync_point: '%s'  activation_count: %lu  "
-                            "hit_limit: %lu  execute: %lu  timeout: %lu  "
-                            "signal: '%s'  wait_for: '%s'",
-                            action->sync_point.c_ptr(),
-                            action->activation_count,
-                            action->hit_limit, action->execute, action->timeout,
-                            action->signal.c_ptr(), action->wait_for.c_ptr()));
+  DBUG_PRINT("debug_sync",
+             ("sync_point: '%s'  activation_count: %lu  hit_limit: %lu  "
+              "execute: %lu  timeout: %lu  signal: '%s'  wait_for: '%s'",
+              dsp_name, action->activation_count, action->hit_limit,
+              action->execute, action->timeout, sig_emit, sig_wait));
 
   DBUG_ASSERT(action->activation_count);
   action->activation_count--;
 
   if (action->execute)
   {
+    const char  *old_proc_info;
+    String      proc_info;
+
     action->execute--;
 
     /*
-      Protect copying of the signal string to the global string
-      to avoid race conditions during test case development.
-      After approaching a clean test case it should not happen
-      that two threads try to signal at the same time.
-
-      Do also acquire the mutex for a WAIT_FOR action. The sense is to
-      clamp SIGNAL and WAIT_FOR in the mutex. If we wake another thread
-      with the signal, it should not run until we set PROC_INFO in
-      enter_cond().
-
-      Note. When 'execute' is non-zero, at least one of SIGNAL, WAIT_FOR
-      is set.
+      If we will be going to wait, set proc_info for the PROCESSLIST table.
+      Do this before emitting the signal, so other threads can see it
+      if they awake before we enter_cond() below.
     */
-    pthread_mutex_lock(&debug_sync_global.ds_mutex);
+    if (action->wait_for.length())
+    {
+      proc_info.set(STRING_WITH_LEN("debug sync point: "), system_charset_info);
+      proc_info.append(action->sync_point);
+      old_proc_info= thd->get_proc_info();
+      thd_proc_info(thd, proc_info.c_ptr());
+    }
 
     if (action->signal.length())
     {
@@ -1592,28 +1596,34 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       /* Wake threads waiting in a sync point. */
       pthread_cond_broadcast(&debug_sync_global.ds_cond);
       DBUG_PRINT("debug_sync_exec", ("signal '%s'  at: '%s'",
-                                     action->signal.c_ptr(),
-                                     action->sync_point.c_ptr()));
+                                     sig_emit, dsp_name));
     } /* end if (action->signal.length()) */
 
     if (action->wait_for.length())
     {
-      const char      *old_proc_info;
+      pthread_mutex_t *old_mutex;
+      pthread_cond_t  *old_cond;
       int             error= 0;
       struct timespec abstime;
-      String          proc_info;
 
-      proc_info.set("debug sync point: ", 18, system_charset_info);
-      proc_info.append(action->sync_point);
-      old_proc_info= thd->enter_cond(&debug_sync_global.ds_cond,
-                                     &debug_sync_global.ds_mutex,
-                                     proc_info.c_ptr());
+      pthread_mutex_lock(&debug_sync_global.ds_mutex);
+      /*
+        We don't use enter_cond()/exit_cond(). They do not save old
+        mutex and cond. This would prohibit the use of DEBUG_SYNC
+        between other places of enter_cond() and exit_cond().
+      */
+      old_mutex= thd->mysys_var->current_mutex;
+      old_cond= thd->mysys_var->current_cond;
+      thd->mysys_var->current_mutex= &debug_sync_global.ds_mutex;
+      thd->mysys_var->current_cond= &debug_sync_global.ds_cond;
 
       set_timespec(abstime, action->timeout);
-      DBUG_PRINT("debug_sync_exec", ("wait for '%s'  at: '%s'  curr: '%s'",
-                                     action->wait_for.c_ptr(),
-                                     action->sync_point.c_ptr(),
-                                     debug_sync_global.ds_signal.c_ptr()));
+      DBUG_EXECUTE("debug_sync_exec", {
+          /* Functions as DBUG_PRINT args can change keyword and line nr. */
+          const char *sig_glob= debug_sync_global.ds_signal.c_ptr();
+          DBUG_PRINT("debug_sync_exec",
+                     ("wait for '%s'  at: '%s'  curr: '%s'",
+                      sig_wait, dsp_name, sig_glob));});
 
       /*
         Wait until global signal string matches the wait_for string.
@@ -1627,6 +1637,12 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
         error= pthread_cond_timedwait(&debug_sync_global.ds_cond,
                                       &debug_sync_global.ds_mutex,
                                       &abstime);
+        DBUG_EXECUTE("debug_sync", {
+            /* Functions as DBUG_PRINT args can change keyword and line nr. */
+            const char *sig_glob= debug_sync_global.ds_signal.c_ptr();
+            DBUG_PRINT("debug_sync",
+                       ("awoke from %s  global: %s  error: %d",
+                        sig_wait, sig_glob, error));});
         if (error == ETIMEDOUT || error == ETIME)
         {
           push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
@@ -1637,18 +1653,23 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       }
       DBUG_PRINT("debug_sync_exec", ("%s from '%s'  at: '%s'",
                                      error ? "timeout" : "resume",
-                                     action->wait_for.c_ptr(),
-                                     action->sync_point.c_ptr()));
+                                     sig_wait, dsp_name));
 
-      /* exit_cond() does also unlock the mutex. */
-      thd->exit_cond(old_proc_info);
+      /*
+        We don't use enter_cond()/exit_cond(). They do not save old
+        mutex and cond. This would prohibit the use of DEBUG_SYNC
+        between other places of enter_cond() and exit_cond(). The
+        protected mutex must always unlocked _before_ mysys_var->mutex
+        is locked. (See comment in THD::exit_cond().)
+      */
+      pthread_mutex_unlock(&debug_sync_global.ds_mutex);
+      pthread_mutex_lock(&thd->mysys_var->mutex);
+      thd->mysys_var->current_mutex= old_mutex;
+      thd->mysys_var->current_cond= old_cond;
+      thd_proc_info(thd, old_proc_info);
+      pthread_mutex_unlock(&thd->mysys_var->mutex);
 
     } /* end if (action->wait_for.length()) */
-    else
-    {
-      /* Need explicit unlock of mutex as we don't use exit_cond() here. */
-      pthread_mutex_unlock(&debug_sync_global.ds_mutex);
-    }
 
   } /* end if (action->execute) */
 
@@ -1661,8 +1682,7 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       my_error(ER_DEBUG_SYNC_HIT_LIMIT, MYF(0));
     }
     DBUG_PRINT("debug_sync_exec", ("hit_limit: %lu  at: '%s'",
-                                   action->hit_limit,
-                                   action->sync_point.c_ptr()));
+                                   action->hit_limit, dsp_name));
   }
 
   DBUG_VOID_RETURN;

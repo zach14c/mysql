@@ -125,6 +125,7 @@ execute_backup_command(THD *thd, LEX *lex)
   
   DBUG_ENTER("execute_backup_command");
   DBUG_ASSERT(thd && lex);
+  DEBUG_SYNC(thd, "before_backup_command");
 
   using namespace backup;
 
@@ -733,6 +734,8 @@ int Backup_restore_ctx::do_backup()
   Output_stream &s= *static_cast<Output_stream*>(m_stream);
   Backup_info   &info= *static_cast<Backup_info*>(m_catalog);
 
+  DEBUG_SYNC(m_thd, "before_backup_meta");
+
   report_stats_pre(info);
 
   DBUG_PRINT("backup",("Writing preamble"));
@@ -744,6 +747,8 @@ int Backup_restore_ctx::do_backup()
   }
 
   DBUG_PRINT("backup",("Writing table data"));
+
+  DEBUG_SYNC(m_thd, "before_backup_data");
 
   if (write_table_data(m_thd, info, s)) // reports errors
     DBUG_RETURN(send_error(*this, ER_BACKUP_BACKUP));
@@ -759,6 +764,7 @@ int Backup_restore_ctx::do_backup()
   report_stats_post(info);
 
   DBUG_PRINT("backup",("Backup done."));
+  DEBUG_SYNC(m_thd, "before_backup_done");
 
   DBUG_RETURN(0);
 }
