@@ -214,12 +214,6 @@ Reprepare_observer::report_error(THD *thd)
 }
 
 
-Open_tables_state::Open_tables_state(ulong version_arg)
-  :version(version_arg), state_flags(0U)
-{
-  reset_open_tables_state();
-}
-
 /*
   The following functions form part of the C plugin API
 */
@@ -513,7 +507,7 @@ Diagnostics_area::disable_status()
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
               /* statement id */ 0),
-   Open_tables_state(refresh_version), rli_fake(0),
+   rli_fake(0),
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
@@ -539,7 +533,8 @@ THD::THD()
           This is needed to ensure the restore (which uses DDL) is not blocked
           when the DDL blocker is engaged.
   */
-   DDL_exception(FALSE)
+   DDL_exception(FALSE),
+   locked_tables_root(NULL)
 {
   ulong tmp;
 
@@ -614,6 +609,9 @@ THD::THD()
   slave_net = 0;
   command=COM_CONNECT;
   *scramble= '\0';
+
+  /* Call to init() below requires fully initialized Open_tables_state. */
+  init_open_tables_state(this, refresh_version);
 
   init();
   /* Initialize sub structures */
@@ -843,11 +841,7 @@ void THD::cleanup(void)
     ha_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
-  if (locked_tables)
-  {
-    lock=locked_tables; locked_tables=0;
-    close_thread_tables(this);
-  }
+  locked_tables_list.unlock_locked_tables(this);
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);
@@ -917,6 +911,9 @@ THD::~THD()
   DBUG_ASSERT(lock_info.n_cursors == 0);
   if (!cleanup_done)
     cleanup();
+
+  mdl_context_destroy(&mdl_context);
+  mdl_context_destroy(&handler_mdl_context);
 
   ha_close_connection(this);
   mysql_audit_release(this);
@@ -1638,7 +1635,7 @@ bool select_send::send_eof()
   ha_release_temporary_latches(thd);
 
   /* Unlock tables before sending packet to gain some speed */
-  if (thd->lock)
+  if (thd->lock && ! thd->locked_tables_mode)
   {
     mysql_unlock_tables(thd, thd->lock);
     thd->lock=0;
@@ -2831,7 +2828,7 @@ void THD::reset_n_backup_open_tables_state(Open_tables_state *backup)
 {
   DBUG_ENTER("reset_n_backup_open_tables_state");
   backup->set_open_tables_state(this);
-  reset_open_tables_state();
+  reset_open_tables_state(this);
   state_flags|= Open_tables_state::BACKUPS_AVAIL;
   DBUG_VOID_RETURN;
 }
@@ -2846,9 +2843,12 @@ void THD::restore_backup_open_tables_state(Open_tables_state *backup)
   */
   DBUG_ASSERT(open_tables == 0 && temporary_tables == 0 &&
               handler_tables == 0 && derived_tables == 0 &&
-              lock == 0 && locked_tables == 0 &&
-              prelocked_mode == NON_PRELOCKED &&
+              lock == 0 &&
+              locked_tables_mode == LTM_NONE &&
               m_reprepare_observer == NULL);
+  mdl_context_destroy(&mdl_context);
+  mdl_context_destroy(&handler_mdl_context);
+
   set_open_tables_state(backup);
   DBUG_VOID_RETURN;
 }
@@ -3627,7 +3627,7 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
     If we are in prelocked mode, the flushing will be done inside the
     top-most close_thread_tables().
   */
-  if (this->prelocked_mode == NON_PRELOCKED)
+  if (this->locked_tables_mode <= LTM_LOCK_TABLES)
     if (int error= binlog_flush_pending_rows_event(TRUE))
       DBUG_RETURN(error);
 

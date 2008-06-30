@@ -972,7 +972,8 @@ bool multi_delete::send_eof()
     normally can't safely do this.
   - We don't want an ok to be sent to the end user.
   - We don't want to log the truncate command
-  - If we want to have a name lock on the table on exit without errors.
+  - If we want to keep exclusive metadata lock on the table (obtained by
+    caller) on exit without errors.
 */
 
 bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
@@ -982,6 +983,7 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
   TABLE *table;
   bool error;
   uint path_length;
+  MDL_LOCK_DATA *mdl_lock_data= 0;
   DBUG_ENTER("mysql_truncate");
 
   bzero((char*) &create_info,sizeof(create_info));
@@ -1032,8 +1034,24 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
                                       HTON_CAN_RECREATE))
       goto trunc_by_del;
 
-    if (lock_and_wait_for_table_name(thd, table_list))
+    /*
+      FIXME: Actually code of TRUNCATE breaks meta-data locking protocol since
+             tries to get table enging and therefore accesses table in some way
+             without holding any kind of meta-data lock.
+    */
+    mdl_lock_data= mdl_alloc_lock(0, table_list->db, table_list->table_name,
+                                  thd->mem_root);
+    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
+    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
+    if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+    {
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
       DBUG_RETURN(TRUE);
+    }
+    pthread_mutex_lock(&LOCK_open);
+    tdc_remove_table(thd, TDC_RT_REMOVE_ALL, table_list->db,
+                     table_list->table_name);
+    pthread_mutex_unlock(&LOCK_open);
   }
 
   // Remove the .frm extension AIX 5.2 64-bit compiler bug (BUG#16155): this
@@ -1058,15 +1076,19 @@ end:
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
       my_ok(thd);		// This should return record count
     }
-    pthread_mutex_lock(&LOCK_open);
-    unlock_table_name(thd, table_list);
-    pthread_mutex_unlock(&LOCK_open);
+    if (mdl_lock_data)
+    {
+      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+    }
   }
   else if (error)
   {
-    pthread_mutex_lock(&LOCK_open);
-    unlock_table_name(thd, table_list);
-    pthread_mutex_unlock(&LOCK_open);
+    if (mdl_lock_data)
+    {
+      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+    }
   }
   DBUG_RETURN(error);
 
