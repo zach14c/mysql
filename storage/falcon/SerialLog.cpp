@@ -610,8 +610,6 @@ void SerialLog::createNewWindow(void)
 			file->truncate((int64)falcon_serial_log_file_size);
 		}
 
-
-
 	writeWindow->deactivateWindow();
 	writeWindow = allocWindow(file, fileOffset);
 	writeWindow->firstBlockNumber = nextBlockNumber;
@@ -849,7 +847,7 @@ SerialLogTransaction* SerialLog::getTransaction(TransId transactionId)
 	if (transaction)
 		return transaction;
 
-	Sync sync (&pending.syncObject, "SerialLog::findTransaction");
+	Sync sync (&pending.syncObject, "SerialLog::getTransaction");
 	sync.lock(Exclusive);
 	
 	/***
