@@ -517,12 +517,15 @@ connect (flush,localhost,root,,);
 connection flush;
 --echo connection: flush
 --send flush tables;
-connection default;
---echo connection: default
+connect (waiter,localhost,root,,);
+connection waiter;
+--echo connection: waiter 
 let $wait_condition=
   select count(*) = 1 from information_schema.processlist
   where state = "Flushing tables";
 --source include/wait_condition.inc
+connection default;
+--echo connection: default
 handler t2 open;
 handler t2 read first;
 handler t1 read next;
@@ -549,12 +552,14 @@ connect (flush,localhost,root,,);
 connection flush;
 --echo connection: flush
 --send rename table t1 to t2;
-connection default;
---echo connection: default
+connection waiter;
+--echo connection: waiter 
 let $wait_condition=
   select count(*) = 1 from information_schema.processlist
   where state = "Waiting for table" and info = "rename table t1 to t2";
 --source include/wait_condition.inc
+connection default;
+--echo connection: default
 handler t2 open;
 handler t2 read first;
 --error ER_NO_SUCH_TABLE

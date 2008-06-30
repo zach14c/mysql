@@ -143,7 +143,7 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
        Todo: get assembler version of atomic_cas_uint().
      */
 #elif (defined(__sparcv8) || defined(__sparcv9) || defined(__sun)) && !defined(__GNUC__)
-#if defined(__SunOS_5_10)
+#if defined(__SunOS_5_10) || defined(__SunOS_5_11)
     return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
 #else
 #  error cas not defined. We need >= Solaris 10
@@ -253,7 +253,7 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
        Todo: get assembler version of atomic_cas_ptr().
      */
 #elif (defined(__sparcv8) || defined(__sparcv9) || defined(__sun)) && !defined(__GNUC__)
-#if defined(__SunOS_5_10)
+#if defined(__SunOS_5_10) || defined(__SunOS_5_11)
     return (char)(compare == atomic_cas_ptr(target, compare, exchange));
 #else
 #  error cas not defined. We need >= Solaris 10

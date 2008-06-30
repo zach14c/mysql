@@ -2881,7 +2881,7 @@ fill_schema_show_cols_or_idxs(THD *thd, TABLE_LIST *tables,
                                            table, res, db_name,
                                            table_name));
    thd->temporary_tables= 0;
-   close_tables_for_reopen(thd, &show_table_list);
+   close_tables_for_reopen(thd, &show_table_list, FALSE);
    DBUG_RETURN(error);
 }
 
@@ -2984,6 +2984,56 @@ static uint get_table_open_method(TABLE_LIST *tables,
 
 
 /**
+   Acquire high priority share metadata lock on a table.
+
+   @param thd            Thread context.
+   @param mdl_lock_data  Pointer to memory to be used for MDL_LOCK_DATA
+                         object for a lock request.
+   @param mdlkey         Pointer to the buffer for key for the lock request
+                         (should be at least strlen(db) + strlen(name) + 2
+                         bytes, or, if the lengths are not known,
+                         MAX_MDLKEY_LENGTH)
+   @param table          Table list element for the table
+
+   @note This is an auxiliary function to be used in cases when we want to
+         access table's description by looking up info in TABLE_SHARE without
+         going through full-blown table open.
+   @note This function assumes that there are no other metadata lock requests
+         in the current metadata locking context.
+
+   @retval FALSE  Success
+   @retval TRUE   Some error occured (probably thread was killed).
+*/
+
+static bool
+acquire_high_prio_shared_mdl_lock(THD *thd, MDL_LOCK_DATA *mdl_lock_data,
+                                  char *mdlkey, TABLE_LIST *table)
+{
+  bool retry;
+
+  mdl_init_lock(mdl_lock_data, mdlkey, 0, table->db, table->table_name);
+  table->mdl_lock_data= mdl_lock_data;
+  mdl_add_lock(&thd->mdl_context, mdl_lock_data);
+  mdl_set_lock_type(mdl_lock_data, MDL_SHARED_HIGH_PRIO);
+
+  while (1)
+  {
+    if (mdl_acquire_shared_lock(&thd->mdl_context, mdl_lock_data, &retry))
+    {
+      if (!retry || mdl_wait_for_locks(&thd->mdl_context))
+      {
+        mdl_remove_all_locks(&thd->mdl_context);
+        return TRUE;
+      }
+      continue;
+    }
+    break;
+  }
+  return FALSE;
+}
+
+
+/**
   @brief          Fill I_S table with data from FRM file only
 
   @param[in]      thd                      thread handler
@@ -3014,12 +3064,30 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
   int error;
   char key[MAX_DBKEY_LENGTH];
   uint key_length;
+  MDL_LOCK_DATA mdl_lock_data;
+  char mdlkey[MAX_MDLKEY_LENGTH];
 
   bzero((char*) &table_list, sizeof(TABLE_LIST));
   bzero((char*) &tbl, sizeof(TABLE));
 
   table_list.table_name= table_name->str;
   table_list.db= db_name->str;
+
+  /*
+    TODO: investigate if in this particular situation we can get by
+          simply obtaining internal lock of data-dictionary (ATM it
+          is LOCK_open) instead of obtaning full-blown metadata lock.
+  */
+  if (acquire_high_prio_shared_mdl_lock(thd, &mdl_lock_data, mdlkey,
+                                        &table_list))
+  {
+    /*
+      Some error occured (most probably we have been killed while
+      waiting for conflicting locks to go away), let the caller to
+      handle the situation.
+    */
+    return 1;
+  }
 
   if (schema_table->i_s_requested_object & OPEN_TRIGGER_ONLY)
   {
@@ -3033,8 +3101,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
       delete tbl.triggers;
     }
     free_root(&tbl.mem_root, MYF(0));
-    thd->clear_error();
-    return res;
+    goto err;
   }
 
   key_length= create_table_def_key(thd, key, &table_list, 0);
@@ -3044,7 +3111,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
   if (!share)
   {
     res= 0;
-    goto err;
+    goto err_unlock;
   }
  
   if (share->is_view)
@@ -3053,7 +3120,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
     {
       /* skip view processing */
       res= 0;
-      goto err1;
+      goto err_share;
     }
     else if (schema_table->i_s_requested_object & OPEN_VIEW_FULL)
     {
@@ -3062,7 +3129,7 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
         open_normal_and_derived_tables()
       */
       res= 1;
-      goto err1;
+      goto err_share;
     }
   }
 
@@ -3074,11 +3141,11 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
                      READ_KEYINFO | COMPUTE_TYPES | EXTRA_RECORD |
                      OPEN_VIEW_NO_PARSE,
                      thd->open_options, &tbl, &table_list, thd->mem_root))
-      goto err1;
+      goto err_share;
     table_list.view= (st_lex*) share->is_view;
     res= schema_table->process_table(thd, &table_list, table,
                                      res, db_name, table_name);
-    goto err1;
+    goto err_share;
   }
 
   {
@@ -3089,11 +3156,15 @@ static int fill_schema_table_from_frm(THD *thd,TABLE_LIST *tables,
                                      res, db_name, table_name);
   }
 
-err1:
-  release_table_share(share, RELEASE_NORMAL);
+err_share:
+  release_table_share(share);
+
+err_unlock:
+  pthread_mutex_unlock(&LOCK_open);
 
 err:
-  pthread_mutex_unlock(&LOCK_open);
+  mdl_release_lock(&thd->mdl_context, &mdl_lock_data);
+  mdl_remove_lock(&thd->mdl_context, &mdl_lock_data);
   thd->clear_error();
   return res;
 }
@@ -3153,7 +3224,8 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
   /*
     We should not introduce deadlocks even if we already have some
     tables open and locked, since we won't lock tables which we will
-    open and will ignore possible name-locks for these tables.
+    open and will ignore pending exclusive metadata locks for these
+    tables by using high-priority requests for shared metadata locks.
   */
   thd->reset_n_backup_open_tables_state(&open_tables_state_backup);
 
@@ -3340,7 +3412,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
               res= schema_table->process_table(thd, show_table_list, table,
                                                res, &orig_db_name,
                                                &tmp_lex_string);
-              close_tables_for_reopen(thd, &show_table_list);
+              close_tables_for_reopen(thd, &show_table_list, FALSE);
             }
             DBUG_ASSERT(!lex->query_tables_own_last);
             if (res)
@@ -7278,11 +7350,13 @@ bool show_create_trigger(THD *thd, const sp_name *trg_name)
     Open the table by name in order to load Table_triggers_list object.
 
     NOTE: there is race condition here -- the table can be dropped after
-    LOCK_open is released. It will be fixed later by introducing
-    acquire-shared-table-name-lock functionality.
+    LOCK_open is released. It will be fixed later by acquiring shared
+    metadata lock on trigger or table name.
   */
 
   uint num_tables; /* NOTE: unused, only to pass to open_tables(). */
+
+  alloc_mdl_locks(lst, thd->mem_root);
 
   if (open_tables(thd, &lst, &num_tables, 0))
   {

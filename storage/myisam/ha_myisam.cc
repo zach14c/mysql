@@ -942,7 +942,7 @@ int ha_myisam::repair(THD *thd, MI_CHECK &param, bool do_optimize)
   strmov(fixed_name,file->filename);
 
   // Don't lock tables if we have used LOCK TABLE
-  if (!thd->locked_tables && 
+  if (! thd->locked_tables_mode &&
       mi_lock_database(file, table->s->tmp_table ? F_EXTRA_LCK : F_WRLCK))
   {
     mi_check_print_error(&param,ER(ER_CANT_LOCK),my_errno);
@@ -1052,7 +1052,7 @@ int ha_myisam::repair(THD *thd, MI_CHECK &param, bool do_optimize)
     update_state_info(&param, file, 0);
   }
   thd_proc_info(thd, old_proc_info);
-  if (!thd->locked_tables)
+  if (! thd->locked_tables_mode)
     mi_lock_database(file,F_UNLCK);
   DBUG_RETURN(error ? HA_ADMIN_FAILED :
 	      !optimize_done ? HA_ADMIN_ALREADY_DONE : HA_ADMIN_OK);
@@ -1669,7 +1669,7 @@ int ha_myisam::info(uint flag)
 
     /* Update share */
     if (share->tmp_table == NO_TMP_TABLE)
-      pthread_mutex_lock(&share->mutex);
+      pthread_mutex_lock(&share->LOCK_ha_data);
     share->keys_in_use.set_prefix(share->keys);
     share->keys_in_use.intersect_extended(misam_info.key_map);
     share->keys_for_keyread.intersect(share->keys_in_use);
@@ -1679,7 +1679,7 @@ int ha_myisam::info(uint flag)
 	     (char*) misam_info.rec_per_key,
 	     sizeof(table->key_info[0].rec_per_key)*share->key_parts);
     if (share->tmp_table == NO_TMP_TABLE)
-      pthread_mutex_unlock(&share->mutex);
+      pthread_mutex_unlock(&share->LOCK_ha_data);
 
    /*
      Set data_file_name and index_file_name to point at the symlink value

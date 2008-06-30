@@ -1108,6 +1108,7 @@ Backup_info::add_table(Db_item &dbi, const Table_ref &t)
   // FIXME: table/db name mangling
   entry.db= const_cast<char*>(t.db().name().ptr());
   entry.alias= entry.table_name= const_cast<char*>(t.name().ptr());
+  alloc_mdl_locks(&entry, m_thd->mem_root);
 
   uint cnt;
   int res= ::open_tables(m_thd,&tl,&cnt,0);
@@ -2106,7 +2107,13 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
 
   for( uint tno=0; tno < tables.count() ; tno++ )
   {
-    TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
+    TABLE_LIST *ptr;
+    MDL_LOCK_DATA *mdl_lock_data;
+    char *keybuff;
+
+    my_multi_malloc(MYF(MY_WME), &ptr, sizeof(TABLE_LIST),
+                    &mdl_lock_data, sizeof(MDL_LOCK_DATA),
+                    &keybuff, MAX_MDLKEY_LENGTH, NULL, 0);
     DBUG_ASSERT(ptr);  // FIXME: report error instead
     bzero(ptr,sizeof(TABLE_LIST));
 
@@ -2115,6 +2122,8 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
     ptr->alias= ptr->table_name= const_cast<char*>(tbl.name().ptr());
     ptr->db= const_cast<char*>(tbl.db().name().ptr());
     ptr->lock_type= lock;
+    mdl_init_lock(mdl_lock_data, keybuff, 0, ptr->db, ptr->table_name);
+    ptr->mdl_lock_data= mdl_lock_data;
 
     // and add it to the list
 

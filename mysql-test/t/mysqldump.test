@@ -628,6 +628,9 @@ select '------ Testing with illegal database names ------' as test_sequence ;
 --exec $MYSQL_DUMP --compact --skip-comments "mysqld\ump_test_db" 2>&1
 
 drop table t1, t2, t3;
+# Temporary workaround to fix a regression introduced by WL#3726
+# Bug will be reported.
+flush tables;
 drop database mysqldump_test_db;
 use test;
 

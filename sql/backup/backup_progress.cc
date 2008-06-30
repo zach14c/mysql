@@ -54,7 +54,9 @@ my_bool check_ob_progress_tables(THD *thd)
   DBUG_ENTER("check_ob_progress_tables");
 
   /* Check mysql.online_backup */
-  tables.init_one_table("mysql", "online_backup", TL_READ);
+  tables.init_one_table("mysql", 5, "online_backup", 13,
+                        "online_backup", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
     ret= TRUE;
@@ -64,7 +66,9 @@ my_bool check_ob_progress_tables(THD *thd)
   close_thread_tables(thd);
 
   /* Check mysql.online_backup_progress */
-  tables.init_one_table("mysql", "online_backup_progress", TL_READ);
+  tables.init_one_table("mysql", 5, "online_backup_progress", 13,
+                        "online_backup_progress", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
     ret= TRUE;
@@ -164,6 +168,8 @@ bool backup_history_log_write(THD *thd,
 
   table_list.db= MYSQL_SCHEMA_NAME.str;
   table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  alloc_mdl_locks(&table_list, thd->mem_root);
 
   if (!(table= open_performance_schema_table(thd, & table_list,
                                              & open_tables_backup)))
@@ -317,6 +323,8 @@ bool backup_history_log_update(THD *thd,
   table_list.db= MYSQL_SCHEMA_NAME.str;
   table_list.db_length= MYSQL_SCHEMA_NAME.length;
 
+  alloc_mdl_locks(&table_list, thd->mem_root);
+
   if (!(table= open_performance_schema_table(thd, & table_list,
                                              & open_tables_backup)))
     goto err;
@@ -465,6 +473,8 @@ bool backup_progress_log_write(THD *thd,
 
   table_list.db= MYSQL_SCHEMA_NAME.str;
   table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  alloc_mdl_locks(&table_list, thd->mem_root);
 
   if (!(table= open_performance_schema_table(thd, & table_list,
                                              & open_tables_backup)))
