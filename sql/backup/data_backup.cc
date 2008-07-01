@@ -525,6 +525,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
                             inactive.elements));
 
   DBUG_PRINT("backup_data",("-- INIT PHASE --"));
+  DEBUG_SYNC(thd, "before_backup_data_init");
 
   /*
    Poll "at end" drivers activating inactive ones on the way.
@@ -587,6 +588,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 
     // prepare for VP
     DBUG_PRINT("backup_data",("-- PREPARE PHASE --"));
+    DEBUG_SYNC(thd, "before_backup_data_prepare");
 
     if (sch.prepare())
       goto error;
@@ -621,6 +623,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     if (error)
       goto error;
 
+    DEBUG_SYNC(thd, "before_backup_data_lock");
     if (sch.lock())
       goto error;
 
@@ -666,6 +669,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     // get final data from drivers
     DBUG_PRINT("backup_data",("-- FINISH PHASE --"));
 
+    DEBUG_SYNC(thd, "before_backup_data_finish");
     while (sch.finish_count > 0)
     if (sch.step())
       goto error;
