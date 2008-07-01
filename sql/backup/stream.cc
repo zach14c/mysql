@@ -1,4 +1,5 @@
 #include "../mysql_priv.h"
+#include "my_dir.h"
 
 #include "backup_stream.h"
 #include "stream.h"
@@ -129,8 +130,8 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
     {
       if (!zstream->avail_in)
       {
-        zstream->avail_in= my_read(fd, s->zbuf, ZBUF_SIZE, MYF(0));
-        if (zstream->avail_in == (size_t) -1)
+        zstream->avail_in= (uInt) my_read(fd, s->zbuf, ZBUF_SIZE, MYF(0));
+        if (zstream->avail_in == (uInt) -1)
           DBUG_RETURN(BSTREAM_ERROR);
         else if (!zstream->avail_in)
           break;
@@ -215,7 +216,7 @@ bool Stream::rewind()
 
 Output_stream::Output_stream(Logger &log, const ::String &name,
                              bool with_compression)
-  :Stream(log, name, O_WRONLY|O_CREAT|O_EXCL|O_TRUNC)
+  :Stream(log, name, 0)
 {
   m_with_compression= with_compression;
   stream.write= stream_write;
@@ -284,7 +285,15 @@ bool Output_stream::init()
 */
 bool Output_stream::open()
 {
+  MY_STAT stat_info;
   close();
+
+  /* Allow to write to existing named pipe */
+  if (my_stat(m_path.c_ptr(), &stat_info, MYF(0)) &&
+      MY_S_ISFIFO(stat_info.st_mode))
+    m_flags= O_WRONLY;
+  else
+    m_flags= O_WRONLY|O_CREAT|O_EXCL|O_TRUNC;
 
   bool ret= Stream::open();
 
