@@ -604,6 +604,38 @@ COND *create_db_select_condition(THD *thd,
                                  TABLE *t,
                                  List<LEX_STRING> *db_list);
 
+/*
+  The following class is used to manage name locks on a list of tables.
+
+  This class uses a list of type List<Obj> to establish the table list 
+  that will be used to manage locks on the tables.
+*/
+class Name_locker
+{
+public:
+  Name_locker(THD *thd) { m_thd= thd; }
+  ~Name_locker() { my_free(m_table_list, MYF(0)); }
+
+  /*
+    Gets name locks on table list.
+  */
+  int get_name_locks(List<Obj> *tables, thr_lock_type lock);
+
+  /*
+    Releases name locks on table list.
+  */
+  int release_name_locks();
+
+private:
+  TABLE_LIST *m_table_list; ///< The list of tables to obtain locks on.
+  THD *m_thd;               ///< Thread context.
+
+  /*
+    Builds a table list from the list of objects passed to constructor.
+  */
+  TABLE_LIST *build_table_list(List<Obj> *tables, thr_lock_type lock);
+};
+
 } // obs namespace
 
 #endif // SI_OBJECTS_H_

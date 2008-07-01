@@ -330,7 +330,7 @@ result_t Backup::get_data(Buffer &buf)
     case LOCK_ACQUIRED:          // First time lock ready for validity point
     {
       locks_acquired= TRUE;
-      DEBUG_SYNC(locking_thd->m_thd, "locking_thread_added");
+      DEBUG_SYNC(locking_thd->m_thd, "default_locking_thread_added");
       DBUG_RETURN(READY);
     }
     default:                     // If first call, signal end of init phase

@@ -170,7 +170,7 @@ int mi_update(register MI_INFO *info, const uchar *oldrec, uchar *newrec)
 
   info->update= (HA_STATE_CHANGED | HA_STATE_ROW_CHANGED | HA_STATE_AKTIV |
 		 key_changed);
-  myisam_log_record(MI_LOG_UPDATE,info,newrec,info->lastpos,0);
+  myisam_log_record_logical(MI_LOG_UPDATE, info, newrec, info->lastpos, 0);
   /*
     Every myisam function that updates myisam table must end with
     call to _mi_writeinfo(). If operation (second param of
@@ -185,8 +185,9 @@ int mi_update(register MI_INFO *info, const uchar *oldrec, uchar *newrec)
   allow_break();				/* Allow SIGHUP & SIGINT */
   if (info->invalidator != 0)
   {
-    DBUG_PRINT("info", ("invalidator... '%s' (update)", info->filename));
-    (*info->invalidator)(info->filename);
+    DBUG_PRINT("info", ("invalidator... '%s' (update)",
+                        info->s->unresolv_file_name));
+    (*info->invalidator)(info->s->unresolv_file_name);
     info->invalidator=0;
   }
   DBUG_RETURN(0);
@@ -231,8 +232,9 @@ err:
 		 key_changed);
 
  err_end:
-  myisam_log_record(MI_LOG_UPDATE,info,newrec,info->lastpos,my_errno);
-  (void) _mi_writeinfo(info,WRITEINFO_UPDATE_KEYFILE);
+  myisam_log_record_logical(MI_LOG_UPDATE, info, newrec,
+                            info->lastpos, my_errno);
+  (void) _mi_writeinfo(info, WRITEINFO_UPDATE_KEYFILE);
   allow_break();				/* Allow SIGHUP & SIGINT */
   if (save_errno == HA_ERR_KEY_NOT_FOUND)
   {

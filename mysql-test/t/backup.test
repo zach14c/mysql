@@ -106,7 +106,11 @@ UNLOCK TABLES;
 #
 connection backup;
 --echo backup: Activate synchronization points for BACKUP.
-SET DEBUG_SYNC= 'locking_thread_added SIGNAL bup_thread_added
+--echo Depending on the driver used, one of the sync points is used,
+--echo and the result differs in PROCESSLIST state and info.
+SET DEBUG_SYNC= 'default_locking_thread_added SIGNAL bup_thread_added
+                 WAIT_FOR finish';
+SET DEBUG_SYNC= 'myisam_locking_thread_added SIGNAL bup_thread_added
                  WAIT_FOR finish';
 --echo backup: Send the backup command.
 send BACKUP DATABASE db1,db2 TO 'test.ba';
@@ -118,7 +122,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR bup_thread_added';
 
 --replace_column 1 #
 query_vertical SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%" OR info LIKE "default driver locking thread%";
+WHERE info LIKE "BACKUP DATABASE%" OR state LIKE "%holding table locks%";
 
 --echo breakpoints: Sending finish signal to wake BACKUP.
 SET DEBUG_SYNC= 'now SIGNAL finish';

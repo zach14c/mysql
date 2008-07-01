@@ -345,6 +345,8 @@ sub mtr_report_stats ($) {
 		# ignore warnings generated when backup privilege is tested
 		($testname eq 'main.backup_security') and /(Backup|Restore): Access denied; you need the SUPER/ or
 		
+                ($testname eq 'main.backup_myisam1') and
+                (/Backup: Can't initialize MyISAM backup driver/) or
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/One can only use the --user.*root/ or

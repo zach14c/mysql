@@ -587,6 +587,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 
     // prepare for VP
     DBUG_PRINT("backup_data",("-- PREPARE PHASE --"));
+    DEBUG_SYNC(thd, "before_backup_prepare");
 
     if (sch.prepare())
       goto error;
@@ -1355,7 +1356,7 @@ namespace backup {
 /**
   Read backup image data from a backup stream and forward it to restore drivers.
  */
-int restore_table_data(THD*, Restore_info &info, Input_stream &s)
+int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
 {
   DBUG_ENTER("restore::restore_table_data");
 
@@ -1368,6 +1369,8 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
 
   TABLE_LIST *table_list= 0;
   TABLE_LIST *table_list_last= 0;
+  List<obs::Obj> tables_to_lock;
+  obs::Name_locker *table_name_locker= new obs::Name_locker(thd);
 
   if (info.snap_count() > 256)
   {
@@ -1403,6 +1406,15 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
         (snap->type() == Snapshot_info::CS_SNAPSHOT))
       get_default_snapshot_tables(NULL, (default_backup::Restore *)drv[n],
                                   &table_list, &table_list_last);
+    /*
+      Collect tables from all drivers for name locking.
+    */
+    Image_info::Tables *snap_table_list= snap->get_table_list();
+    for (uint i= 0; i < snap_table_list->count(); i++)
+    {
+      Image_info::Table *tbl= snap_table_list->get_table(i);
+      tables_to_lock.push_front(tbl->m_obj_ptr);
+    }
   }
 
   /*
@@ -1426,6 +1438,15 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
       table_list_last->next_global= NULL; // break lists
   }
 
+  /*
+    Apply name locks to all tables used.
+  */
+  if (table_name_locker->get_name_locks(&tables_to_lock, TL_WRITE))
+  {
+    info.m_ctx.fatal_error(ER_BACKUP_OBTAIN_NAME_LOCK_FAILED);
+    goto error;
+  }
+
   // Initialize the drivers.
   for (uint n=0; n < info.snap_count(); ++n)
   {
@@ -1437,6 +1458,7 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
     }
   }
 
+  DEBUG_SYNC(thd, "restore_in_progress");
   {
     Buffer  buf;
     uint    snap_num=0;
@@ -1590,6 +1612,13 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
   }
 
   /*
+    Release name locks on driver tables.
+  */
+  if (table_name_locker->release_name_locks())
+    info.m_ctx.fatal_error(ER_BACKUP_RELEASE_NAME_LOCK_FAILED);
+  delete table_name_locker;
+
+  /*
     Close all tables if default or snapshot driver used.
   */
   if (table_list)
@@ -1609,6 +1638,9 @@ int restore_table_data(THD*, Restore_info &info, Input_stream &s)
  error:
 
   DBUG_PRINT("restore",("Cancelling restore process"));
+
+  if (table_name_locker)
+    delete table_name_locker;
 
   for (uint n=0; n < info.snap_count(); ++n)
   {
