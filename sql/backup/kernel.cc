@@ -489,6 +489,7 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
    */
 
   Output_stream *s= new Output_stream(*this, path, with_compression);
+  m_stream= s;
   
   if (!s)
   {
@@ -501,8 +502,6 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
     fatal_error(ER_BACKUP_WRITE_LOC, path.ptr());
     return NULL;
   }
-
-  m_stream= s;
 
   /*
     Create backup catalogue.
@@ -567,6 +566,7 @@ Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
 
   backup::String path(location);
   Input_stream *s= new Input_stream(*this, path);
+  m_stream= s;
   
   if (!s)
   {
@@ -579,8 +579,6 @@ Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
     fatal_error(ER_BACKUP_READ_LOC, path.ptr());
     return NULL;
   }
-
-  m_stream= s;
 
   /*
     Create restore catalogue.

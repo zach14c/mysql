@@ -922,7 +922,10 @@ int Backup_info::add_view_deps(obs::Obj &obj)
       base views.
      */ 
     if (res == get_dep_node_res::EXISTING_NODE)
+    {
+      delete bv; // Need to delete the instance returned by it->next().
       continue;
+    }
 
     // Recursively add all dependencies of bv to the list.
 
