@@ -571,6 +571,10 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
     MI_EXTEND_BLOCK_LENGTH;
   if (! (flags & HA_DONT_TOUCH_DATA))
     share.state.create_time= (long) time((time_t*) 0);
+#ifdef THREAD
+  /* This rwlock is used in mi_state_info_write(). */
+  my_atomic_rwlock_init(&share.physical_logging_rwlock);
+#endif
 
   pthread_mutex_lock(&THR_LOCK_myisam);
 
@@ -838,6 +842,9 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   pthread_mutex_unlock(&THR_LOCK_myisam);
   if (my_close(file,MYF(0)))
     goto err;
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
   my_free((char*) rec_per_key_part,MYF(0));
   DBUG_RETURN(0);
 
@@ -862,6 +869,9 @@ err:
                                        MY_UNPACK_FILENAME | MY_APPEND_EXT),
 			     MYF(0));
   }
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
   my_free((char*) rec_per_key_part, MYF(0));
   DBUG_RETURN(my_errno=save_errno);		/* return the fatal errno */
 }
