@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
 		&create_info,create_flag))
     goto err;
   if (use_log)
-    mi_log(1);
+    mi_log(MI_LOG_ACTION_OPEN, MI_LOG_LOGICAL, NULL, NULL);
   if (!(file=mi_open(filename,2,HA_OPEN_ABORT_IF_LOCKED)))
     goto err;
   if (!silent)
@@ -657,10 +657,10 @@ int main(int argc, char *argv[])
       sprintf((char*) key2,"%6d",k);
 
       min_key.key= key;
-      min_key.length= USE_WHOLE_KEY;
+      min_key.keypart_map= HA_WHOLE_KEY;
       min_key.flag= HA_READ_AFTER_KEY;
       max_key.key= key2;
-      max_key.length= USE_WHOLE_KEY;
+      max_key.keypart_map= HA_WHOLE_KEY;
       max_key.flag= HA_READ_BEFORE_KEY;
       range_records= mi_records_in_range(file, 0, &min_key, &max_key);
       records=0;

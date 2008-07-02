@@ -1,5 +1,6 @@
 --source include/not_embedded.inc
 --source include/have_debug.inc
+--source include/not_embedded.inc
 
 #
 # This test script tests the behaviour reported in BUG#34721

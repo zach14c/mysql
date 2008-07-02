@@ -506,7 +506,7 @@ int ha_myisammrg::attach_children(void)
       DBUG_PRINT("error",("reclength: %lu  mean_rec_length: %lu",
                           table->s->reclength, stats.mean_rec_length));
       if (test_if_locked & HA_OPEN_FOR_REPAIR)
-        myrg_print_wrong_table(file->open_tables->table->filename);
+        myrg_print_wrong_table(file->open_tables->table->s->unresolv_file_name);
       error= HA_ERR_WRONG_MRG_TABLE_DEF;
       goto err;
     }
@@ -530,14 +530,14 @@ int ha_myisammrg::attach_children(void)
                            u_table->table->s->base.fields, false))
       {
         DBUG_PRINT("error", ("table definition mismatch: '%s'",
-                             u_table->table->filename));
+                             u_table->table->s->unresolv_file_name));
         error= HA_ERR_WRONG_MRG_TABLE_DEF;
         if (!(this->test_if_locked & HA_OPEN_FOR_REPAIR))
         {
           my_free((uchar*) recinfo, MYF(0));
           goto err;
         }
-        myrg_print_wrong_table(u_table->table->filename);
+        myrg_print_wrong_table(u_table->table->s->unresolv_file_name);
       }
     }
     my_free((uchar*) recinfo, MYF(0));
@@ -1009,7 +1009,7 @@ void ha_myisammrg::update_create_info(HA_CREATE_INFO *create_info)
 
       if (!(ptr = (TABLE_LIST *) thd->calloc(sizeof(TABLE_LIST))))
 	goto err;
-      split_file_name(open_table->table->filename, &db, &name);
+      split_file_name(open_table->table->s->unresolv_file_name, &db, &name);
       if (!(ptr->table_name= thd->strmake(name.str, name.length)))
 	goto err;
       if (db.length && !(ptr->db= thd->strmake(db.str, db.length)))
@@ -1127,7 +1127,7 @@ void ha_myisammrg::append_create_info(String *packet)
     LEX_STRING db, name;
     LINT_INIT(db.str);
 
-    split_file_name(open_table->table->filename, &db, &name);
+    split_file_name(open_table->table->s->unresolv_file_name, &db, &name);
     if (open_table != first)
       packet->append(',');
     /* Report database for mapped table if it isn't in current database */

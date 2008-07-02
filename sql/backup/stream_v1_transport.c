@@ -30,7 +30,7 @@
 
   @note Block size should be >= 8 bytes.
 */
-#define DEFAULT_BLOCK_SIZE  (32*1024)
+#define DEFAULT_BLOCK_SIZE  (16*1024)
 
 /**
   @brief Input buffer size.

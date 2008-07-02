@@ -129,9 +129,9 @@ public: // public interface
   uint m_table_count;
   MEM_ROOT  mem_root;    ///< Memory root for storage of catalogue items.
 
- private:
-
   class Tables; ///< Implementation of Table_list interface. 
+
+ private:
 
   Map<uint, Db>   m_dbs; ///< Pointers to Db instances.
   Map<uint, Ts>   m_ts_map; ///< Pointers to Ts instances.
@@ -256,6 +256,8 @@ class Snapshot_info
   virtual result_t get_restore_driver(Restore_driver*&) =0;
 
   virtual ~Snapshot_info();
+
+  Image_info::Tables *get_table_list() { return &m_tables; }
 
  protected:
  

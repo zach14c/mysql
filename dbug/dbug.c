@@ -1346,6 +1346,7 @@ static struct link *ListDel(struct link *head,
         free((void*) delme);
       }
     } while (*cur && *(cur=&((*cur)->next_link)));
+    ctlp++;
   }
   return head;
 }

@@ -111,6 +111,6 @@ static MYRG_TABLE *find_table(MYRG_TABLE *start, MYRG_TABLE *end,
       start=mid;
   }
   DBUG_PRINT("info",("offset: %lu, table: %s",
-		     (ulong) pos, start->table->filename));
+		     (ulong) pos, start->table->s->unresolv_file_name));
   DBUG_RETURN(start);
 }

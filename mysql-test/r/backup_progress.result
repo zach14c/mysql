@@ -72,7 +72,7 @@ backup_state	complete
 operation	backup
 error_num	0
 num_objects	4
-total_bytes	415
+total_bytes	3977
 validity_point_time	#
 start_time	#
 stop_time	#
@@ -81,7 +81,7 @@ username	root
 backup_file	backup_progress_orig.bak
 user_comment	
 command	BACKUP DATABASE backup_progress to 'backup_progress_orig.bak'
-engines	Default, Snapshot
+engines	MyISAM, Default, Snapshot
 SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_res AS t1 ON obp.backup_id = t1.id;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
@@ -129,7 +129,7 @@ backup_state	complete
 operation	restore
 error_num	0
 num_objects	4
-total_bytes	414
+total_bytes	1489
 validity_point_time	#
 start_time	#
 stop_time	#
@@ -138,7 +138,7 @@ username	root
 backup_file	backup_progress_orig.bak
 user_comment	
 command	RESTORE FROM 'backup_progress_orig.bak'
-engines	Default, Snapshot
+engines	MyISAM, Default, Snapshot
 SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_res AS t1 ON obp.backup_id = t1.id;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting

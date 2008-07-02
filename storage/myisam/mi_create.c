@@ -637,6 +637,14 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
     my_errno= HA_ERR_TABLE_EXIST;
     goto err;
   }
+  /*
+    TRUNCATE TABLE does not work with physical logging. If we changed TRUNCATE
+    to always use mi_delete_all_rows() (remove HTON_CAN_RECREATE from MyISAM)
+    this would solve the problem.
+ */
+  DBUG_ASSERT((options & HA_OPTION_TMP_TABLE) || !mi_log_tables_physical ||
+              !hash_search(mi_log_tables_physical, filename,
+                           strlen(filename)));
 
   if ((file= my_create_with_symlink(linkname_ptr, filename, 0, create_mode,
 				    MYF(MY_WME | create_flag))) < 0)
@@ -702,7 +710,7 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   }
 
   DBUG_PRINT("info", ("write state info and base info"));
-  if (mi_state_info_write(file, &share.state, 2) ||
+  if (mi_state_info_write(&share, file, &share.state, 2) ||
       mi_base_info_write(file, &share.base))
     goto err;
 #ifndef DBUG_OFF
