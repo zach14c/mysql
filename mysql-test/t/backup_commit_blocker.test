@@ -149,14 +149,32 @@ connection con1;
 
 #
 # We must start the backup and allow it to gather the metadata first.
-# We stop (with the lock) the backup after the metadata but before the
-# commit blocker.
+# We stop (with a sync point) the backup after the metadata but before
+# the commit blocker.
 #
 --echo con1: Activate synchronization points for BACKUP.
+# Before blocking commits, pause to show processlist state.
+# Before going to wait for the protection against global read lock to
+# disappear, signal about the wait, so that another thread can continue.
+# When COMMIT finishes, it releases the protection against global read lock,
+# which would allow BACKUP to continue while COMMIT also continues and
+# signals "commit_done". It is important that BACKUP does not run in
+# parallel and send another signal without waiting for the commit_done
+# signal to be processed. So BACKUP itself has to wait for that signal
+# after awaking and taking the global read lock. Only then BACKUP
+# can proceed and send a signal telling that it took the global read
+# lock. Unfortunately DEBUG_SYNC does not allow a sync point to emit a
+# signal after a wait_for action. So we need to send the signal in a later
+# sync point. For this test it is not important where this signal is sent,
+# as long as it is sent while BACKUP holds the global read lock.
+# Here we do it "before_backup_unblock_commit", where we have to
+# synchronize anyway.
 SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
                  WAIT_FOR bup_go_read_lock';
 SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
-SET DEBUG_SYNC= 'before_backup_unblock_commit WAIT_FOR finish';
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
+                 WAIT_FOR finish';
 --echo con1: Backing up database -- will block with lock
 send BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
 
@@ -173,8 +191,7 @@ connection con3;
 --echo con3: Activate synchronization points for COMMIT.
 SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
                  WAIT_FOR commit_go_done';
-SET DEBUG_SYNC= 'after_commit SIGNAL commit_done
-                 WAIT_FOR finish';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
 --echo con3: Starting commit -- will block on sync point
 send COMMIT;
 
@@ -193,10 +210,15 @@ INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "BACKUP DATABASE%";
 
 --echo con5: Let COMMIT continue until end of statement.
-SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR commit_done';
+--echo con5: The completed COMMIT implicitly wakes BACKUP.
+--echo con5: So wait for BACKUP to reach the next synchronization point.
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
 SELECT state, info FROM
 INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "COMMIT%";
+SELECT state, info FROM
+INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%";
 
 connection con4;
 
@@ -550,14 +572,31 @@ connection con1;
 
 #
 # We must start the backup and allow it to gather the metadata first.
-# We stop (with the lock) the backup after the metadata but before the
-# commit blocker.
+# We stop (with a sync point) the backup after the metadata but before
+# the commit blocker.
 #
 --echo con1: Activate synchronization points for BACKUP.
+# Before blocking commits, pause to show processlist state.
+# Before going to wait for the protection against global read lock to
+# disappear, signal about the wait, so that another thread can continue.
+# When COMMIT finishes, it releases the protection against global read lock,
+# which would allow BACKUP to continue while COMMIT also continues and
+# signals "commit_done". It is important that BACKUP does not run in
+# parallel and send another signal without waiting for the commit_done
+# signal to be processed. So BACKUP itself has to wait for that signal
+# after awaking and taking the global read lock. Only then BACKUP
+# can proceed and send a signal telling that it took the global read
+# lock. Unfortunately DEBUG_SYNC does not allow a sync point to emit a
+# signal after a wait_for action. So we need to send the signal in a later
+# sync point. For this test it is not important where this signal is sent,
+# as long as it is sent while BACKUP holds the global read lock.
+# Here we do it "before_backup_unblock_commit", where we have to
+# synchronize anyway.
 SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
                  WAIT_FOR bup_go_read_lock';
 SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
-SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_unblocking
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
                  WAIT_FOR finish';
 --echo con1: Backing up database -- will block with lock
 send BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
@@ -590,7 +629,7 @@ connection con3;
 --echo con3: Activate synchronization points for COMMIT.
 SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
                  WAIT_FOR commit_go_done';
-SET DEBUG_SYNC= 'after_commit WAIT_FOR finish';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
 --echo con3: Starting commit -- will block on sync point
 send COMMIT;
 
@@ -611,7 +650,7 @@ WHERE info LIKE "BACKUP DATABASE%";
 --echo con5: Let COMMIT continue until the sync point at its end.
 --echo con5: The completed COMMIT implicitly wakes BACKUP.
 --echo con5: So wait for BACKUP to reach the next synchronization point.
-SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_unblocking';
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
 SELECT state, info FROM
 INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "COMMIT%";

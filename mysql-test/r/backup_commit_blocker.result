@@ -59,7 +59,9 @@ con1: Activate synchronization points for BACKUP.
 SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
                  WAIT_FOR bup_go_read_lock';
 SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
-SET DEBUG_SYNC= 'before_backup_unblock_commit WAIT_FOR finish';
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
+                 WAIT_FOR finish';
 con1: Backing up database -- will block with lock
 BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
 con5: Wait for BACKUP to reach its synchronization point.
@@ -72,8 +74,7 @@ debug sync point: before_commit_block	BACKUP DATABASE bup_commit_blocker TO "bup
 con3: Activate synchronization points for COMMIT.
 SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
                  WAIT_FOR commit_go_done';
-SET DEBUG_SYNC= 'after_commit SIGNAL commit_done
-                 WAIT_FOR finish';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
 con3: Starting commit -- will block on sync point
 COMMIT;
 con5: Wait for COMMIT to reach its synchronization point.
@@ -91,12 +92,19 @@ WHERE info LIKE "BACKUP DATABASE%";
 state	info
 Waiting to get readlock	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
 con5: Let COMMIT continue until end of statement.
-SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR commit_done';
+con5: The completed COMMIT implicitly wakes BACKUP.
+con5: So wait for BACKUP to reach the next synchronization point.
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
 SELECT state, info FROM
 INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "COMMIT%";
 state	info
 debug sync point: after_commit	COMMIT
+SELECT state, info FROM
+INFORMATION_SCHEMA.PROCESSLIST
+WHERE info LIKE "BACKUP DATABASE%";
+state	info
+debug sync point: before_backup_unblock_commit	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
 con4: Activate synchronization point for BEGIN.
 SET DEBUG_SYNC= 'before_begin_trans SIGNAL begin_starting
                  WAIT_FOR finish';
@@ -350,7 +358,8 @@ con1: Activate synchronization points for BACKUP.
 SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
                  WAIT_FOR bup_go_read_lock';
 SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
-SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_unblocking
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
                  WAIT_FOR finish';
 con1: Backing up database -- will block with lock
 BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
@@ -364,7 +373,7 @@ debug sync point: before_commit_block	BACKUP DATABASE bup_commit_blocker TO "bup
 con3: Activate synchronization points for COMMIT.
 SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
                  WAIT_FOR commit_go_done';
-SET DEBUG_SYNC= 'after_commit WAIT_FOR finish';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
 con3: Starting commit -- will block on sync point
 COMMIT;
 con5: Wait for COMMIT to reach its synchronization point.
@@ -384,7 +393,7 @@ Waiting to get readlock	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocke
 con5: Let COMMIT continue until the sync point at its end.
 con5: The completed COMMIT implicitly wakes BACKUP.
 con5: So wait for BACKUP to reach the next synchronization point.
-SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_unblocking';
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
 SELECT state, info FROM
 INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "COMMIT%";
