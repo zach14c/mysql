@@ -88,14 +88,29 @@ class String: public ::String
   {}
 
   String(const ::LEX_STRING &s)
-    : ::String(s.str, s.length, &::my_charset_bin)
-  {}
+    : ::String(s.str, (uint32)s.length, &::my_charset_bin)
+  {
+    // Check that string fits.
+    DBUG_ASSERT(s.length <= ~((uint32)0));
+  }
 
   String(byte *begin, byte *end)
-    : ::String((char*)begin, end - begin, &::my_charset_bin)
+    : ::String((char*)begin, (uint32)(end - begin), &::my_charset_bin)
   {
+    // Check that string length is correct.
+    DBUG_ASSERT(begin <= end);
+    /* 
+      This complex expression checks that the pointer difference fits into
+      uint32 type reagardless of the size of pointer type and without generating
+      compiler warnings (hopefully).
+      
+      The idea is to check that in the difference (Which is positive) no bits
+      beyond the ones used by unit32 type are set.
+    */
+    DBUG_ASSERT(!((size_t)(end - begin) & ~((size_t)~((uint32)0))));
+
     if (!begin)
-     set((char*)NULL, 0, NULL);
+     set((char*)NULL, 0, NULL); // Note: explicit cast is needed to disambiguate.
   }
 
   String(const char *s)
