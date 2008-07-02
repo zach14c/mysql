@@ -91,6 +91,11 @@
 
 #define S_IROTH		S_IREAD		/* for my_lib */
 
+/* for MY_S_ISFIFO() macro from my_lib */
+#if defined (_S_IFIFO) && !defined (S_IFIFO)
+#define S_IFIFO _S_IFIFO
+#endif
+
 /* Winsock2 constant (Vista SDK and later)*/
 #define IPPROTO_IPV6 41
 #ifndef IPV6_V6ONLY

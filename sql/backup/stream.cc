@@ -58,7 +58,15 @@ extern "C" int stream_write(void *instance, bstream_blob *buf, bstream_blob)
   {
     z_stream *zstream= &s->zstream;
     zstream->next_in= buf->begin;
-    zstream->avail_in= howmuch;
+    /*
+      uInt is a type defined by zlib. zstream can't process blocks of data
+      whose size won't fit into uInt but theoretically buf can hold larger 
+      blocks. However, this is a remote possibility. So we assume here that
+      the size of buf fits into uInt, check our assumption with an ASSERT and
+      do an explicit cast.
+    */
+    DBUG_ASSERT(howmuch <= ~((uInt)0));
+    zstream->avail_in= (uInt)howmuch;
     do
     {
       if (!zstream->avail_out)
@@ -125,7 +133,13 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
     int zerr;
     z_stream *zstream= &s->zstream;
     zstream->next_out= buf->begin;
-    zstream->avail_out= howmuch;
+    /*
+      Zstream can process in one go a block whose size fits into uInt type.
+      If we have more space available in the buffer, we ignore the extra bytes.
+    */    
+    if (howmuch > ~((uInt)0))
+      howmuch= ~((uInt)0);
+    zstream->avail_out= (uInt)howmuch;
     do
     {
       if (!zstream->avail_in)
@@ -265,8 +279,14 @@ bool Output_stream::init()
   }
 
   bytes= 0;
-  
-  if (BSTREAM_OK != bstream_open_wr(this, m_block_size, len))
+
+  /*
+    The backup stream library uses unsigned long type for storing block size.
+    We assume here that the size fits into that type, check that assumption with
+    an ASSERT and do an explicit cast from size_t.
+  */
+  DBUG_ASSERT(m_block_size <= ~((unsigned long)0));
+  if (BSTREAM_OK != bstream_open_wr(this, (unsigned long)m_block_size, len))
   {
     m_log.report_error(ER_BACKUP_OPEN_WR);
     return FALSE;

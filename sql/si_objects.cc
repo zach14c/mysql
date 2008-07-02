@@ -1379,7 +1379,10 @@ ViewBaseObjectsIterator::create(THD *thd,
 
       if (iterator_type == GET_BASE_TABLES && tl2->view ||
           iterator_type == GET_BASE_VIEWS && !tl2->view)
+      {
+        delete tnk;
         continue;
+      }
 
       if (!hash_search(table_names,
                        (uchar *) tnk->key.c_ptr_safe(),
