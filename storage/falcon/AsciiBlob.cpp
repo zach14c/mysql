@@ -28,7 +28,7 @@
 #include "SQLException.h"
 #include "Dbb.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Dbb.h"
 #include "Repository.h"
 #include "Section.h"
@@ -74,7 +74,7 @@ AsciiBlob::AsciiBlob(Clob *clob)
 	copy (clob);
 }
 
-#ifdef ENGINE
+#ifdef FALCONDB
 AsciiBlob::AsciiBlob(Dbb * db, int32 recNumber, Section *blobSection)
 {
 	init (false);
@@ -160,7 +160,7 @@ void AsciiBlob::populate()
 
 	populated = true;
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	if (repository && isBlobReference())
 		try
 			{

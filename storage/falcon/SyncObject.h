@@ -69,12 +69,14 @@ public:
 	void		grantLocks(void);
 	//void		assertionFailed(void);
 	int			getState(void);
+	int			getCollisionCount(void);
 	void		validate(LockType lockType);
 	void		unlock(void);
 	bool		ourExclusiveLock(void);
 	void		frequentStaller(Thread *thread, Sync *sync);
 	void		setName(const char* name);
 	void		timedout(int timeout);
+	void		backoff(Thread* thread);
 
 	virtual void	unlock (Sync *sync, LockType type);
 	virtual void	lock (Sync *sync, LockType type, int timeout = 0);
@@ -84,23 +86,25 @@ public:
 	static void		getSyncInfo(InfoTable* infoTable);
 	static void		dump(void);
 
-	inline Thread* getExclusiveThread()
+	inline Thread*	getExclusiveThread()
 		{ return exclusiveThread; };
 
 protected:
-	void wait(LockType type, Thread *thread, Sync *sync, int timeout);
+	void			wait(LockType type, Thread *thread, Sync *sync, int timeout);
 
-	int32				monitorCount;
-	Mutex				mutex;
-	Thread				*volatile que;
-	Thread				*volatile exclusiveThread;
-	volatile INTERLOCK_TYPE		waiters;
-	volatile INTERLOCK_TYPE		lockState;
-	int					stalls;
+	int32					monitorCount;
+	Mutex					mutex;
+	Thread					*volatile queue;
+	Thread					*volatile exclusiveThread;
+	volatile INTERLOCK_TYPE	readers;
+	volatile INTERLOCK_TYPE	waiters;
+	volatile INTERLOCK_TYPE	lockState;
+	int						stalls;
 
 #ifdef TRACE_SYNC_OBJECTS
 	int					objectId;
 	INTERLOCK_TYPE		sharedCount;
+	INTERLOCK_TYPE		collisionCount;
 	int					exclusiveCount;
 	int					waitCount;
 	int					queueLength;

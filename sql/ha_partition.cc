@@ -1649,6 +1649,7 @@ void ha_partition::update_create_info(HA_CREATE_INFO *create_info)
     create_info->auto_increment_value= stats.auto_increment_value;
 
   create_info->data_file_name= create_info->index_file_name = NULL;
+  create_info->tablespace= table_share->tablespace;
   return;
 }
 
@@ -1869,6 +1870,7 @@ int ha_partition::set_up_table_before_create(TABLE *tbl,
   }
   info->index_file_name= part_elem->index_file_name;
   info->data_file_name= part_elem->data_file_name;
+  info->tablespace= part_elem->tablespace_name;
   DBUG_RETURN(0);
 }
 
@@ -3065,13 +3067,14 @@ void ha_partition::start_bulk_insert(ha_rows rows)
 
   SYNOPSIS
     end_bulk_insert()
+    abort		1 if table will be deleted (error condition)
 
   RETURN VALUE
     >0                      Error code
     0                       Success
 */
 
-int ha_partition::end_bulk_insert()
+int ha_partition::end_bulk_insert(bool abort)
 {
   int error= 0;
   handler **file;
@@ -3081,7 +3084,7 @@ int ha_partition::end_bulk_insert()
   do
   {
     int tmp;
-    if ((tmp= (*file)->ha_end_bulk_insert()))
+    if ((tmp= (*file)->ha_end_bulk_insert(abort)))
       error= tmp;
   } while (*(++file));
   DBUG_RETURN(error);
@@ -4745,7 +4748,7 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
   stat_info->update_time=          file->stats.update_time;
   stat_info->check_time=           file->stats.check_time;
   stat_info->check_sum= 0;
-  if (file->ha_table_flags() & HA_HAS_CHECKSUM)
+  if (file->ha_table_flags() & (HA_HAS_OLD_CHECKSUM | HA_HAS_NEW_CHECKSUM))
     stat_info->check_sum= file->checksum();
   return;
 }
@@ -5089,7 +5092,6 @@ int ha_partition::extra(enum ha_extra_function operation)
   /* Category 3), used by MyISAM handlers */
   case HA_EXTRA_PREPARE_FOR_RENAME:
     DBUG_RETURN(prepare_for_rename());
-    break;
   case HA_EXTRA_NORMAL:
   case HA_EXTRA_QUICK:
   case HA_EXTRA_NO_READCHECK:
@@ -5150,8 +5152,14 @@ int ha_partition::extra(enum ha_extra_function operation)
     /* Category 8) Operations only used by NDB */
   case HA_EXTRA_DELETE_CANNOT_BATCH:
   case HA_EXTRA_UPDATE_CANNOT_BATCH:
-  {
     /* Currently only NDB use the *_CANNOT_BATCH */
+  {
+    break;
+  }
+  case HA_EXTRA_ORDERBY_LIMIT:
+  case HA_EXTRA_NO_ORDERBY_LIMIT:
+    /* ORDERBY_LIMIT is used by Falcon */
+  {
     break;
   }
     /* Category 9) Operations only used by MERGE */

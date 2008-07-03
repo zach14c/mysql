@@ -1452,6 +1452,11 @@ void Database::dropTable(Table *table, Transaction *transaction)
 	
 	invalidateCompiledStatements(table);
 	table->drop(transaction);
+
+	// Lock sections (factored out of SRLDropTable to avoid a deadlock)
+
+	Sync syncSections(&serialLog->syncSections, "Database::dropTable");
+	syncSections.lock(Exclusive);
 	table->expunge(getSystemTransaction());
 	delete table;
 }
@@ -1473,6 +1478,13 @@ void Database::truncateTable(Table *table, Sequence *sequence, Transaction *tran
 	
 	Sync syncTbl(&syncTables, "Database::truncateTable");
 	syncTbl.lock(Shared);
+	
+	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
+	//The lock order (serialLog->syncSections before table->syncObject) is 
+	//important
+
+	Sync syncSections(&serialLog->syncSections, "Database::truncateTable");
+	syncSections.lock(Exclusive);
 	
 	// No table access until truncate completes
 	
@@ -1750,30 +1762,24 @@ void Database::scavenge()
 
 void Database::retireRecords(bool forced)
 {
+	int cycle = scavengeCycle;
+	
+	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
+	syncScavenger.lock(Exclusive);
+
+	if (forced && scavengeCycle > cycle)
+		return;
+	
 	// Commit pending system transactions before proceeding
 	
 	if (!forced && systemConnection->transaction)
 		commitSystemTransaction();
 
-	Sync syncDDL(&syncSysDDL, "Database::retireRecords");
-	syncDDL.lock(Shared);
-
-	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
-	syncScavenger.lock(Exclusive);
-
-	int cycle = scavengeCycle;
-	
-	if (forced && scavengeCycle > cycle)
-		return;
-	
-	++scavengeCycle;
-	
 	if (forced)
 		Log::log("Forced record scavenge cycle\n");
 	
 	transactionManager->purgeTransactions();
 	TransId oldestActiveTransaction = transactionManager->findOldestActive();
-	int threshold = 0;
 	uint64 total = recordDataPool->activeMemory;
 	RecordScavenge recordScavenge(this, oldestActiveTransaction, forced);
 	
@@ -1792,10 +1798,11 @@ void Database::retireRecords(bool forced)
 		Table *table;
 		time_t scavengeStart = deltaTime;
 		
-		for (table = tableList; table; table = table->next)
-			table->inventoryRecords(&recordScavenge);
+		if (!forced)
+			for (table = tableList; table; table = table->next)
+				table->inventoryRecords(&recordScavenge);
 		
-		threshold = recordScavenge.computeThreshold(recordScavengeFloor);
+		recordScavenge.computeThreshold(recordScavengeFloor);
 		recordScavenge.printRecordMemory();	
 		int count = 0;
 		int skipped = 0;
@@ -1840,7 +1847,9 @@ void Database::retireRecords(bool forced)
 		{
 		recordScavenge.scavengeGeneration = UNDEFINED;
 		cleanupRecords (&recordScavenge);
-		
+
+		++scavengeCycle;
+				
 		return;
 		}
 	else
@@ -1849,6 +1858,8 @@ void Database::retireRecords(bool forced)
 		cleanupRecords (&recordScavenge);
 		}
 
+	++scavengeCycle;
+	
 	lastRecordMemory = recordDataPool->activeMemory;
 	INTERLOCKED_INCREMENT (currentGeneration);
 }

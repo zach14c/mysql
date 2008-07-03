@@ -783,28 +783,28 @@ sub collect_one_test_case($$$$$$$$$) {
     if ( $tinfo->{'big_test'} and ! $::opt_big_test )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need 'big-test' option";
+      $tinfo->{'comment'}= "Test needs 'big-test' option";
       return;
     }
 
     if ( $tinfo->{'ndb_extra'} and ! $::opt_ndb_extra_test )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need 'ndb_extra' option";
+      $tinfo->{'comment'}= "Test needs 'ndb_extra' option";
       return;
     }
 
     if ( $tinfo->{'require_manager'} )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need the _old_ manager(to be removed)";
+      $tinfo->{'comment'}= "Test needs the _old_ manager(to be removed)";
       return;
     }
 
     if ( $tinfo->{'need_debug'} && ! $::debug_compiled_binaries )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need debug binaries";
+      $tinfo->{'comment'}= "Test needs debug binaries";
       return;
     }
 
@@ -857,7 +857,7 @@ sub collect_one_test_case($$$$$$$$$) {
       if (grep(/^--skip-log-bin/,  @::opt_extra_mysqld_opt) )
       {
 	$tinfo->{'skip'}= 1;
-	$tinfo->{'comment'}= "Test need binlog";
+	$tinfo->{'comment'}= "Test needs binlog";
 	return;
       }
     }

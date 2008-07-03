@@ -1307,7 +1307,8 @@ Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
    table(0), orig_table(0), table_name(0),
    field_name(field_name_arg),
    key_start(0), part_of_key(0), part_of_key_not_clustered(0),
-   part_of_sortkey(0), unireg_check(unireg_check_arg),
+   part_of_sortkey(0), part_of_key_wo_keyread(0), 
+   unireg_check(unireg_check_arg),
    field_length(length_arg), null_bit(null_bit_arg), 
    is_created_from_null_item(FALSE)
 {
@@ -2932,18 +2933,18 @@ int Field_tiny::store(double nr)
     }
     else if (nr > 255.0)
     {
-      *ptr=(char) 255;
+      *ptr= (uchar) 255;
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
       error= 1;
     }
     else
-      *ptr=(char) nr;
+      *ptr= (uchar) nr;
   }
   else
   {
     if (nr < -128.0)
     {
-      *ptr= (char) -128;
+      *ptr= (uchar) -128;
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
       error= 1;
     }
@@ -2954,7 +2955,7 @@ int Field_tiny::store(double nr)
       error= 1;
     }
     else
-      *ptr=(char) (int) nr;
+      *ptr=(uchar) (int) nr;
   }
   return error;
 }
@@ -5277,7 +5278,7 @@ int Field_year::store(const char *from, uint len,CHARSET_INFO *cs)
 
 int Field_year::store(double nr)
 {
-  if (nr < 0.0 || nr >= 2155.0)
+  if (nr < 0.0 || nr > 2155.0)
   {
     (void) Field_year::store((longlong) -1, FALSE);
     return 1;
@@ -5398,7 +5399,6 @@ int Field_date::store(const char *from, uint len,CHARSET_INFO *cs)
 int Field_date::store(double nr)
 {
   longlong tmp;
-  int error= 0;
   if (nr >= 19000000000000.0 && nr <= 99991231235959.0)
     nr=floor(nr/1000000.0);			// Timestamp to date
   if (nr < 0.0 || nr > 99991231.0)
@@ -5407,7 +5407,6 @@ int Field_date::store(double nr)
     set_datetime_warning(MYSQL_ERROR::WARN_LEVEL_WARN,
                          ER_WARN_DATA_OUT_OF_RANGE,
                          nr, MYSQL_TIMESTAMP_DATE);
-    error= 1;
   }
   else
     tmp= (longlong) rint(nr);

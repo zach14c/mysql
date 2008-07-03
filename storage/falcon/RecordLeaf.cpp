@@ -138,7 +138,7 @@ int RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSca
 				syncPrior.lock(Shared);
 	
 				if (record->scavenge(recordScavenge, Shared))
-				    break;
+					break;
 				else
 					++count;
 				}

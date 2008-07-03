@@ -30,6 +30,11 @@ typedef __int64		INT64;
 typedef long long	INT64;
 #endif
 
+#ifndef UCHAR_DEFINED
+#define UCHAR_DEFINED
+typedef unsigned char	UCHAR;
+#endif
+
 #include "BigInt.h"
 
 #define BYTES_POS(n)   ((n == 0) ? 0 : \
@@ -87,6 +92,8 @@ enum DataStreamType
 enum DataStreamCode
 	{
 	edsNull			= 1,
+
+	// codes 2 - 9 are reserved for what we have not thought of yet.
 
 	edsIntMinus10	= 10,
 	edsIntMinus9,
@@ -304,10 +311,9 @@ class BigInt;
 class EncodedDataStream  
 {
 public:
-	virtual void encodeOpaque(int length, const char *string);
 	EncodedDataStream();
 	EncodedDataStream (Stream *stream);
-	EncodedDataStream(const unsigned char *data);
+	EncodedDataStream(const UCHAR* data, uint length);
 	virtual ~EncodedDataStream();
 
 	virtual void	encodeDouble (double dbl);
@@ -327,15 +333,17 @@ public:
 	virtual void	encodeBinaryBlob (Value *value);
 	virtual void	encodeAsciiBlob (Value *value);
 	virtual void	encodeEncoding (const unsigned char *encodedValue);
+	virtual void	encodeOpaque(int length, const char *string);
+	
 	virtual INT64	getInt64 (int requiredScale);
 	virtual DataStreamType		decode();
 
 	void			setStream (Stream *newStream);
-	void			setData (const unsigned char *data);
+	void			setData (const unsigned char *data, uint length);
 	void			encode (int type, Value *value);
 	
 	static int		init(void);
-	static const unsigned char* decode (const unsigned char *ptr, Value *value, bool copyFlag);
+	static const UCHAR* decode (const UCHAR *ptr, Value *value, bool copyFlag);
 
 	inline static const unsigned char* skip (const unsigned char *ptr)
 		{
@@ -366,6 +374,7 @@ public:
 
 	Stream				*stream;
 	const unsigned char	*ptr;
+	const unsigned char	*end;
 	DataStreamType		type;
 	int					scale;
 	BigInt				bigInt;

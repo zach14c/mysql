@@ -1,0 +1,31 @@
+--source include/have_falcon.inc
+
+#
+# Bug #33397: ALTER TABLE into non-existing Falcon tablespace causes vague error
+#
+
+--echo *** Bug 33397 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1(a INT);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+--error ER_NO_SUCH_TABLESPACE
+ALTER TABLE t1 TABLESPACE nosuchtablespace;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

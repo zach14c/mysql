@@ -43,11 +43,11 @@ SET GLOBAL falcon_record_memory_max = 536870912;
 SELECT @@GLOBAL.falcon_record_memory_max;
 
 SELECT @@GLOBAL.falcon_index_chill_threshold INTO @previous_falcon_index_chill_threshold;
-SET GLOBAL falcon_index_chill_threshold = 1024;
+SET GLOBAL falcon_index_chill_threshold = 1073741824;
 SELECT @@GLOBAL.falcon_index_chill_threshold;
 
 SELECT @@GLOBAL.falcon_record_chill_threshold INTO @previous_falcon_record_chill_threshold;
-SET GLOBAL falcon_record_chill_threshold = 1024;
+SET GLOBAL falcon_record_chill_threshold = 1073741824;
 SELECT @@GLOBAL.falcon_record_chill_threshold;
 
 

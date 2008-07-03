@@ -25,6 +25,7 @@
 #include "Sequence.h"
 #include "Index.h"
 #include "Table.h"
+#include "Field.h"
 #include "Interlock.h"
 #include "CollationManager.h"
 #include "MySQLCollation.h"
@@ -59,6 +60,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	initialized = false;
 	table = NULL;
 	indexes = NULL;
+	format = NULL;
 	syncObject = new SyncObject;
 	syncObject->setName("StorageTableShare::syncObject");
 	sequence = NULL;
@@ -113,6 +115,10 @@ int StorageTableShare::open(void)
 	if (!table)
 		{
 		table = storageDatabase->findTable(name, schemaName);
+		
+		if (table)
+			format = table->getCurrentFormat();
+			
 		sequence = storageDatabase->findSequence(name, schemaName);
 		}
 	
@@ -124,8 +130,38 @@ int StorageTableShare::open(void)
 
 int StorageTableShare::create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue)
 {
-	if (!(table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
+	try
+		{
+		table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue);
+		}
+	catch (SQLException& exception)
+		{
+		int sqlcode= exception.getSqlcode();
+		switch (sqlcode)
+			{
+			case TABLESPACE_NOT_EXIST_ERROR:
+				return StorageErrorTableSpaceNotExist;
+			default:
+				return StorageErrorTableExits;
+			}
+		}
+	if (!table)
 		return StorageErrorTableExits;
+	
+	format = table->getCurrentFormat();
+
+	if (autoIncrementValue)
+		sequence = storageDatabase->findSequence(name, schemaName);
+		
+	return 0;
+}
+
+int StorageTableShare::upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue)
+{
+	if (!(table = storageDatabase->upgradeTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
+		return StorageErrorTableExits;
+
+	format = table->getCurrentFormat();
 	
 	if (autoIncrementValue)
 		sequence = storageDatabase->findSequence(name, schemaName);
@@ -141,8 +177,7 @@ int StorageTableShare::deleteTable(StorageConnection *storageConnection)
 		{
 		unRegisterTable();
 		
-		if (res == 0)
-			storageHandler->removeTable(this);
+		storageHandler->removeTable(this);
 			
 		delete this;
 		}
@@ -544,4 +579,14 @@ void StorageTableShare::clearTruncateLock(void)
 		syncTruncate->unlock();
 //		syncTruncate->unlock(NULL, Shared);
 		}
+}
+
+int StorageTableShare::getFieldId(const char* fieldName)
+{
+	Field *field = table->findField(fieldName);
+	
+	if (!field)
+		return -1;
+	
+	return field->id;
 }

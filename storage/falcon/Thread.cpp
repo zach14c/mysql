@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -76,6 +79,8 @@ static int initThreads()
 	threadIndex = TlsAlloc();
 #endif
 
+	srand((uint) time(NULL));
+	
 	return 1;
 }
 
@@ -113,11 +118,12 @@ void Thread::init(const char *desc)
 	lockGranted = false;
 	prior = NULL;
 	next = NULL;
+	random = rand();
 }
 
 Thread::~Thread()
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	//Log::log ("deleting thread %x: %s\n", threadId, description);
 #endif
 
@@ -189,7 +195,7 @@ void Thread::thread()
 		}
 	catch (SQLException& exception)
 		{
-#ifdef ENGINE
+#ifdef FALCONDB
 		Log::log ("Thread::thread: thread %d: %s\n", threadId, exception.getText());
 #endif
 		release();
@@ -197,7 +203,7 @@ void Thread::thread()
 		}
 	catch (...)
 		{
-#ifdef ENGINE
+#ifdef FALCONDB
 		Log::log ("Thread::thread: unexpected exception, rethrowing, thread %d\n", threadId);
 #endif
 		release();
@@ -207,7 +213,7 @@ void Thread::thread()
 	if (threadBarn)
 		setThreadBarn (NULL);
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	if (shutdownInProgress)
 		; //Log::log ("Thread::thread: %x exitting\n", threadId);
 	else
@@ -346,7 +352,7 @@ void Thread::createThread(void (*fn)(void *), void *arg)
 		if (threadBarn)
 			threadBarn->print();
 			
-#ifdef ENGINE
+#ifdef FALCONDB
 		MemMgrLogDump();
 #endif
 

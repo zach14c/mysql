@@ -2032,9 +2032,9 @@ void var_set_query_get_value(struct st_command *command, VAR *var)
   static DYNAMIC_STRING ds_col;
   static DYNAMIC_STRING ds_row;
   const struct command_arg query_get_value_args[] = {
-    "query", ARG_STRING, TRUE, &ds_query, "Query to run",
-    "column name", ARG_STRING, TRUE, &ds_col, "Name of column",
-    "row number", ARG_STRING, TRUE, &ds_row, "Number for row"
+    {"query", ARG_STRING, TRUE, &ds_query, "Query to run"},
+    {"column name", ARG_STRING, TRUE, &ds_col, "Name of column"},
+    {"row number", ARG_STRING, TRUE, &ds_row, "Number for row"},
   };
 
   DBUG_ENTER("var_set_query_get_value");
@@ -2271,7 +2271,7 @@ void do_source(struct st_command *command)
   }
 
   dynstr_free(&ds_filename);
-  return;
+  DBUG_VOID_RETURN;
 }
 
 
@@ -6902,6 +6902,7 @@ static void init_signal_handling(void)
 #endif
   sigaction(SIGILL, &sa, NULL);
   sigaction(SIGFPE, &sa, NULL);
+  DBUG_VOID_RETURN;
 }
 
 #endif /* !__WIN__ */
