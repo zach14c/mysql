@@ -24,7 +24,6 @@ connect (conn1,localhost,root,,);
 
 let $num=10000;
 --disable_query_log
---disable_abort_on_error
 while ($num)
 {
    connection conn1;
@@ -37,7 +36,6 @@ while ($num)
    --reap 
    dec $num;
 }
---enable_abort_on_error
 --enable_query_log
 
 # ----------------------------------------------------- #
