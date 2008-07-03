@@ -1514,6 +1514,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
           }
           if (handler_file->index_flags(key, i, 1) & HA_READ_ORDER)
             field->part_of_sortkey.set_bit(key);
+          field->part_of_key_wo_keyread.set_bit(key);
         }
         if (!(key_part->key_part_flag & HA_REVERSE_SORT) &&
             usable_parts == i)

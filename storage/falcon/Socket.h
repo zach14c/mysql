@@ -81,7 +81,7 @@ public:
 	bool getBoolean();
 	void putBoolean (bool value);
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	Protocol* acceptProtocol();
 #else
 	Socket*		acceptSocket();

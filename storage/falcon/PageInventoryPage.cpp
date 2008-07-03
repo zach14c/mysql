@@ -469,3 +469,11 @@ void PageInventoryPage::analyzePages(Dbb* dbb, PagesAnalysis* pagesAnalysis)
 			break;
 		}
 }
+
+void PageInventoryPage::backup(EncodedDataStream* stream)
+{
+}
+
+void PageInventoryPage::restore(EncodedDataStream* stream)
+{
+}

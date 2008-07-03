@@ -1649,6 +1649,7 @@ void ha_partition::update_create_info(HA_CREATE_INFO *create_info)
     create_info->auto_increment_value= stats.auto_increment_value;
 
   create_info->data_file_name= create_info->index_file_name = NULL;
+  create_info->tablespace= table_share->tablespace;
   return;
 }
 
@@ -1869,6 +1870,7 @@ int ha_partition::set_up_table_before_create(TABLE *tbl,
   }
   info->index_file_name= part_elem->index_file_name;
   info->data_file_name= part_elem->data_file_name;
+  info->tablespace= part_elem->tablespace_name;
   DBUG_RETURN(0);
 }
 
@@ -5150,8 +5152,14 @@ int ha_partition::extra(enum ha_extra_function operation)
     /* Category 8) Operations only used by NDB */
   case HA_EXTRA_DELETE_CANNOT_BATCH:
   case HA_EXTRA_UPDATE_CANNOT_BATCH:
-  {
     /* Currently only NDB use the *_CANNOT_BATCH */
+  {
+    break;
+  }
+  case HA_EXTRA_ORDERBY_LIMIT:
+  case HA_EXTRA_NO_ORDERBY_LIMIT:
+    /* ORDERBY_LIMIT is used by Falcon */
+  {
     break;
   }
     /* Category 9) Operations only used by MERGE */

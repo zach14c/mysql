@@ -119,8 +119,8 @@ Configuration::Configuration(const char *configFile)
 	allocationExtent			= falcon_allocation_extent;
 	serialLogWindows			= falcon_serial_log_buffers;
 	pageCacheSize				= falcon_page_cache_size;
-	indexChillThreshold			= falcon_index_chill_threshold * ONE_MB;
-	recordChillThreshold		= falcon_record_chill_threshold * ONE_MB;
+	indexChillThreshold			= falcon_index_chill_threshold;
+	recordChillThreshold		= falcon_record_chill_threshold;
 	maxTransactionBacklog		= falcon_max_transaction_backlog;
 	useDeferredIndexHash		= (falcon_use_deferred_index_hash != 0);
 	

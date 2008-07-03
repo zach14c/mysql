@@ -59,6 +59,10 @@ int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
         case HA_ERR_TABLESPACE_NOT_EMPTY:
           my_error(ER_TABLESPACE_NOT_EMPTY, MYF(0), ts_info->tablespace_name);
           break;
+        case HA_ERR_TABLESPACE_DATAFILE_EXIST:
+          my_error(ER_TABLESPACE_DATAFILE_EXIST, MYF(0),
+                   ts_info->data_file_name);
+          break;
         default:
           my_error(error, MYF(0));
       }

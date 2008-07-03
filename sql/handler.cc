@@ -3500,10 +3500,17 @@ int ha_create_table(THD *thd, const char *path,
 
   error= table.file->ha_create(name, &table, create_info);
   (void) closefrm(&table, 0);
-  if (error)
-  {
-    strxmov(name_buff, db, ".", table_name, NullS);
-    my_error(ER_CANT_CREATE_TABLE, MYF(ME_BELL+ME_WAITTANG), name_buff, error);
+  switch (error) {
+    case 0:
+      break;
+    case HA_ERR_NO_SUCH_TABLESPACE:
+      my_error(ER_NO_SUCH_TABLESPACE, MYF(0), create_info->tablespace);
+      break;
+    default:
+      strxmov(name_buff, db, ".", table_name, NullS);
+      my_error(ER_CANT_CREATE_TABLE, MYF(ME_BELL+ME_WAITTANG), name_buff,
+               error);
+      break;
   }
 err:
   free_table_share(&share);

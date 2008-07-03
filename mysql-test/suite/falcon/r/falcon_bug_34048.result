@@ -1,0 +1,7 @@
+*** Bug #34048 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT) TABLESPACE nosuchtablespace;
+ERROR HY000: Tablespace 'nosuchtablespace' doesn't exist
+CREATE TABLE t1(a INT);
+DROP TABLE t1;

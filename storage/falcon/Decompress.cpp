@@ -26,7 +26,7 @@
 #include "zlib.h"
 #include "zutil.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "JavaArchiveFile.h"
 #endif
 
@@ -85,7 +85,7 @@ void Decompress::decompress(UCHAR * compressed, int compressedSize, UCHAR * unco
 
 	err2 = inflateEnd(&stream);
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	ASSERT (compressedSize == (int) stream.total_in);
 	ASSERT (uncompressedSize == (int) stream.total_out);
 #endif
@@ -226,7 +226,7 @@ State Decompress::error(const char * msg)
 
 int Decompress::skipCompressed(JavaArchiveFile * archive)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Bytef input [1024], output [1024];
 	z_stream stream;
 	memset (&stream, 0, sizeof (stream));

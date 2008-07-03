@@ -247,7 +247,7 @@ void Protocol::putValue(Database *database, Value *value)
 			}
 			break;
 			
-#ifdef ENGINE
+#ifdef FALCONDB
 		default:
 			ASSERT (false);
 #endif
@@ -389,7 +389,7 @@ void Protocol::getValue(Value * value)
 			}
 			break;
 			
-#ifdef ENGINE
+#ifdef FALCONDB
 		default:
 			ASSERT (false);
 #endif
