@@ -20,7 +20,7 @@ connection slave;
 # Rows_log_event (out of 3) but should wait until the last one is
 # executed before stopping.
 
---source include/wait_for_slave_to_stop.inc
+--source include/wait_for_slave_sql_to_stop.inc
 
 # check that we inserted all rows (waited until the last Rows event)
 select count(*) from t1;
