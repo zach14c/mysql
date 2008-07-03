@@ -922,7 +922,7 @@ int ha_prepare(THD *thd)
   THD_TRANS *trans=all ? &thd->transaction.all : &thd->transaction.stmt;
   Ha_trx_info *ha_info= trans->ha_list;
   DBUG_ENTER("ha_prepare");
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     for (; ha_info; ha_info= ha_info->next())
@@ -948,7 +948,7 @@ int ha_prepare(THD *thd)
       }
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1069,7 +1069,7 @@ int ha_commit_trans(THD *thd, bool all)
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
     DBUG_RETURN(2);
   }
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     uint rw_ha_count;
@@ -1152,7 +1152,7 @@ end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1167,7 +1167,7 @@ int ha_commit_one_phase(THD *thd, bool all)
   bool is_real_trans=all || thd->transaction.all.ha_list == 0;
   Ha_trx_info *ha_info= trans->ha_list, *ha_info_next;
   DBUG_ENTER("ha_commit_one_phase");
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     for (; ha_info; ha_info= ha_info_next)
@@ -1197,7 +1197,7 @@ int ha_commit_one_phase(THD *thd, bool all)
       thd->transaction.cleanup();
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1230,7 +1230,7 @@ int ha_rollback_trans(THD *thd, bool all)
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
     DBUG_RETURN(1);
   }
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     /* Close all cursors that can not survive ROLLBACK */
@@ -1260,7 +1260,7 @@ int ha_rollback_trans(THD *thd, bool all)
       thd->transaction.cleanup();
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   if (all)
     thd->transaction_rollback_request= FALSE;
 
@@ -1295,7 +1295,7 @@ int ha_rollback_trans(THD *thd, bool all)
 int ha_autocommit_or_rollback(THD *thd, int error)
 {
   DBUG_ENTER("ha_autocommit_or_rollback");
-#ifdef USING_TRANSACTIONS
+
   if (thd->transaction.stmt.ha_list)
   {
     if (!error)
@@ -1312,7 +1312,7 @@ int ha_autocommit_or_rollback(THD *thd, int error)
 
     thd->variables.tx_isolation=thd->session_tx_isolation;
   }
-#endif
+
   DBUG_RETURN(error);
 }
 
@@ -1718,7 +1718,7 @@ int ha_savepoint(THD *thd, SAVEPOINT *sv)
                                         &thd->transaction.all);
   Ha_trx_info *ha_info= trans->ha_list;
   DBUG_ENTER("ha_savepoint");
-#ifdef USING_TRANSACTIONS
+
   for (; ha_info; ha_info= ha_info->next())
   {
     int err;
@@ -1742,7 +1742,7 @@ int ha_savepoint(THD *thd, SAVEPOINT *sv)
     engines are prepended to the beginning of the list.
   */
   sv->ha_list= trans->ha_list;
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 

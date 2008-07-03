@@ -1549,19 +1549,13 @@ public:
     {
       changed_tables= 0;
       savepoints= 0;
-#ifdef USING_TRANSACTIONS
       free_root(&mem_root,MYF(MY_KEEP_PREALLOC));
-#endif
     }
     st_transactions()
     {
-#ifdef USING_TRANSACTIONS
       bzero((char*)this, sizeof(*this));
       xid_state.xid.null();
       init_sql_alloc(&mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
-#else
-      xid_state.xa_state= XA_NOTR;
-#endif
     }
   } transaction;
   Field      *dup_field;
@@ -2078,11 +2072,7 @@ public:
   }
   inline bool active_transaction()
   {
-#ifdef USING_TRANSACTIONS
     return server_status & SERVER_STATUS_IN_TRANS;
-#else
-    return 0;
-#endif
   }
   inline bool fill_derived_tables()
   {
