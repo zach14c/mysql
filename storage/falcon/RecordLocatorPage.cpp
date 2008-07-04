@@ -439,3 +439,11 @@ void RecordLocatorPage::deleteDataPages(Dbb* dbb, TransId transId)
 		dbb->freePage(bdb, transId);
 		}
 }
+
+void RecordLocatorPage::backup(EncodedDataStream* stream)
+{
+}
+
+void RecordLocatorPage::restore(EncodedDataStream* stream)
+{
+}

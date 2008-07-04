@@ -32,6 +32,7 @@ public:
 	static void testThread(void* parameter);
 	void		test();
 	void		testThread(void);
+	JString		format(long number);
 	
 	bool		stop;
 	bool		ready;
@@ -41,7 +42,6 @@ public:
 	SyncTest	*parent;
 	SyncObject	starter;
 	SyncObject	syncObject;
-	
 };
 
 #endif

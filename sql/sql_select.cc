@@ -15774,6 +15774,18 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
   */
   usable_keys= *map;
 
+  /*
+    FalconOrderByLimitHandling: specially for Falcon, as requested by Jim:
+    tell Falcon that the query has "LIMIT n" clause and we need ordering.
+  */
+  bool handle_index_flag_change= FALSE;
+  if (table->file->ha_table_flags() &  HA_CAN_READ_ORDER_IF_LIMIT &&
+      select_limit != HA_POS_ERROR)
+  {
+    handle_index_flag_change= TRUE;
+    table->file->extra(HA_EXTRA_ORDERBY_LIMIT);
+  }
+
   for (ORDER *tmp_order=order; tmp_order ; tmp_order=tmp_order->next)
   {
     Item *item= (*tmp_order->item)->real_item();
@@ -15782,9 +15794,37 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
       usable_keys.clear_all();
       DBUG_RETURN(0);
     }
-    usable_keys.intersect(((Item_field*) item)->field->part_of_sortkey);
+    if (handle_index_flag_change)
+    {
+      /*
+        FalconOrderByLimitHandling part 2: find the bitmap of keys that cover
+        @item and support ordered reads.
+      */
+      key_map part_of_sort_key;
+      part_of_sort_key.clear_all();
+      key_map::Iterator it((((Item_field*)item)->field->part_of_key_wo_keyread));
+      uint fieldnr = ((Item_field*)item)->field->field_index;
+      int i;
+      while ((i= it.next_bit()) != key_map::Iterator::BITMAP_END)
+      {
+        KEY_PART_INFO *part_info= table->key_info[i].key_part;
+        for(uint part= 0; part < table->key_info[i].key_parts; part++)
+        {
+          if (part_info[part].field->field_index == fieldnr)
+          {
+            /* Do like open_binary_frm() does with field->part_of_sortkey */
+            if ((table->file->index_flags(i, part, 1)) & HA_READ_ORDER)
+              part_of_sort_key.set_bit(i);
+            break;
+          }
+        }
+      }
+      usable_keys.intersect(part_of_sort_key);
+    }
+    else
+      usable_keys.intersect(((Item_field*) item)->field->part_of_sortkey);
     if (usable_keys.is_clear_all())
-      DBUG_RETURN(0);					// No usable keys
+      goto use_filesort;					// No usable keys
   }
 
   ref_key= -1;
@@ -15794,7 +15834,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
     ref_key=	   tab->ref.key;
     ref_key_parts= tab->ref.key_parts;
     if (tab->type == JT_REF_OR_NULL || tab->type == JT_FT)
-      DBUG_RETURN(0);
+      goto use_filesort;
   }
   else if (select && select->quick)		// Range found by opt_range
   {
@@ -15809,7 +15849,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
     if (quick_type == QUICK_SELECT_I::QS_TYPE_INDEX_MERGE || 
         quick_type == QUICK_SELECT_I::QS_TYPE_ROR_UNION || 
         quick_type == QUICK_SELECT_I::QS_TYPE_ROR_INTERSECT)
-      DBUG_RETURN(0);
+      goto use_filesort;
     ref_key=	   select->quick->index;
     ref_key_parts= select->quick->used_key_parts;
   }
@@ -15853,7 +15893,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
 
           if (create_ref_for_key(tab->join, tab, keyuse, 
                                  tab->join->const_table_map))
-            DBUG_RETURN(0);
+            goto use_filesort;
 	}
 	else
 	{
@@ -15876,7 +15916,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
                                         tab->join->unit->select_limit_cnt,0,
                                         TRUE) <=
               0)
-            DBUG_RETURN(0);
+            goto use_filesort;
 	}
         ref_key= new_ref_key;
       }
@@ -15924,7 +15964,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
         index order and not using join cache
         */
       if (tab->type == JT_ALL && tab->join->tables > tab->join->const_tables + 1)
-        DBUG_RETURN(0);
+        goto use_filesort;
       keys= *table->file->keys_to_use_for_scanning();
       keys.merge(table->covering_keys);
 
@@ -16122,7 +16162,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
       order_direction= best_key_direction;
     }
     else
-      DBUG_RETURN(0); 
+      goto use_filesort; 
   } 
 
 check_reverse_order:                  
@@ -16146,7 +16186,7 @@ check_reverse_order:
         {
           tab->limit= 0;
           select->quick= save_quick;
-          DBUG_RETURN(0);                   // Use filesort
+          goto use_filesort;                   // Use filesort
         }
             
         /* ORDER BY range_key DESC */
@@ -16157,7 +16197,7 @@ check_reverse_order:
 	  delete tmp;
           select->quick= save_quick;
           tab->limit= 0;
-	  DBUG_RETURN(0);		// Reverse sort not supported
+	  goto use_filesort;		// Reverse sort not supported
 	}
 	select->quick=tmp;
       }
@@ -16178,6 +16218,9 @@ check_reverse_order:
   else if (select && select->quick)
     select->quick->sorted= 1;
   DBUG_RETURN(1);
+use_filesort:
+  table->file->extra(HA_EXTRA_NO_ORDERBY_LIMIT);
+  DBUG_RETURN(0);
 }
 
 

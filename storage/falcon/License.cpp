@@ -42,7 +42,7 @@
 #include "TransformUtil.h"
 #include "KeyGen.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Log.h"
 #endif
 
@@ -424,7 +424,7 @@ JString License::encrypt(const char *text, const char *encryptKey, const char *s
 
 bool License::invalidLicense(const char *why)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Log::log ("License %s invalid: %s\n", (const char*) id, why);
 #endif
 

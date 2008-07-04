@@ -1629,6 +1629,7 @@ static int compareSuper(IndexNode *node, UCHAR *key, size_t keylen, int recordNu
 // Given a key, find the maximum supernode smaller or equal to the search key
 // Optional parameter "after" tells to skip supernodes smaller than its value
 // Binary search is used for better speed
+
 Btn * IndexPage::findSupernode(int level, UCHAR *key, size_t keylen, int32 recordNumber, Btn *after, bool *found)
 {
 	*found = false;
@@ -1684,4 +1685,12 @@ Btn * IndexPage::findSupernode(int level, UCHAR *key, size_t keylen, int32 recor
 		return nodes;
 	
 	return nodes + superNodes[low-1];
+}
+
+void IndexPage::backup(EncodedDataStream* stream)
+{
+}
+
+void IndexPage::restore(EncodedDataStream* stream)
+{
 }

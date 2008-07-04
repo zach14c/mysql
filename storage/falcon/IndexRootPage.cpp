@@ -37,6 +37,7 @@
 #include "Transaction.h"
 #include "Index.h"
 #include "SRLUpdateIndex.h"
+#include "WalkIndex.h"
 
 static IndexKey dummyKey;
 
@@ -1133,4 +1134,74 @@ int32 IndexRootPage::getIndexRoot(Dbb* dbb, int indexId)
 	bdb->release(REL_HISTORY);
 	
 	return pageNumber;
+}
+
+void IndexRootPage::positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkIndex* walkIndex)
+{
+	IndexKey *key = &walkIndex->indexKey;
+	uint offset = 0;
+	IndexKey *lowKey = &walkIndex->lowerBound;
+	IndexKey *highKey = &walkIndex->upperBound;
+	TransId transId = walkIndex->transaction->transactionId;
+
+	if (dbb->debug & (DEBUG_KEYS | DEBUG_SCAN_INDEX))
+		{
+		LogLock logLock;
+		Btn::printKey ("lower: ", lowKey, 0, false);
+		Btn::printKey ("upper: ", highKey, 0, false);
+		}
+
+	if (!lowKey)
+		lowKey = &dummyKey;
+		
+	/* Find leaf page and position on page */
+
+	Bdb *bdb = findLeaf (dbb, indexId, rootPage, lowKey, Shared, transId);
+
+	if (!bdb)
+		throw SQLError (RUNTIME_ERROR, "can't find index %d", indexId);
+
+	IndexPage *page = (IndexPage*) bdb->buffer;
+	
+	if (dbb->debug & (DEBUG_PAGES | DEBUG_SCAN_INDEX))
+		page->printPage (bdb, false);
+		
+	Btn *end = page->getEnd();
+	IndexNode node(page->findNodeInLeaf(lowKey, key), end);
+
+	/* If we didn't find it here, try the next page */
+
+	while (node.node >= end)
+		{
+		if (!page->nextPage)
+			{
+			bdb->release(REL_HISTORY);
+			
+			return;
+			}
+			
+		bdb = dbb->handoffPage (bdb, page->nextPage, PAGE_btree, Shared);
+		BDB_HISTORY(bdb);
+		page = (IndexPage*) bdb->buffer;
+		end = page->getEnd();
+		node.parseNode(page->findNodeInLeaf(lowKey, key), end);
+		}
+
+	if (highKey && node.node < end)
+		{
+		ASSERT (node.offset + node.length < sizeof(lowKey->key));
+		node.expandKey (key);
+		offset = page->computePrefix (key, highKey);
+		}
+
+	walkIndex->setNodes(page->nextPage, page->length - ((UCHAR*) node.node - (UCHAR*) page->nodes), node.node);
+	bdb->release(REL_HISTORY);
+}
+
+void IndexRootPage::repositionIndex(Dbb* dbb, int indexId, WalkIndex* walkIndex)
+{
+	Bdb *bdb = dbb->fetchPage(walkIndex->nextPage, PAGE_btree, Shared);
+	IndexPage *page = (IndexPage*) bdb->buffer;
+	walkIndex->setNodes(page->nextPage, page->length - OFFSET(IndexPage*, nodes), page->nodes);
+	bdb->release(REL_HISTORY);
 }

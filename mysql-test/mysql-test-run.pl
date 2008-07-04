@@ -409,6 +409,11 @@ sub main () {
 	 "mysql-5.1-telco-6.2-merge"      => "ndb_team",
 	 "mysql-5.1-telco-6.3"            => "ndb_team",
 	 "mysql-6.0-ndb"                  => "ndb_team",
+	 "mysql-6.0-falcon"               => "falcon_team",
+	 "mysql-6.0-falcon-team"          => "falcon_team",
+	 "mysql-6.0-falcon-wlad"          => "falcon_team",
+	 "mysql-6.0-falcon-chris"         => "falcon_team",
+	 "mysql-6.0-falcon-kevin"         => "falcon_team",
 	);
 
       foreach my $dir ( reverse splitdir($glob_basedir) )
@@ -2761,6 +2766,17 @@ sub rm_ndbcluster_tables ($) {
 }
 
 
+sub rm_falcon_tables ($) {
+  my $dir=       shift;
+  foreach my $bin ( glob("$dir/*.fl1"),
+                    glob("$dir/*.fl2"),
+                    glob("$dir/*.fts"))
+  {
+    unlink($bin);
+  }
+}
+
+
 ##############################################################################
 #
 #  Run the benchmark suite
@@ -4068,6 +4084,7 @@ sub stop_all_servers () {
   foreach my $mysqld (@{$master}, @{$slave})
   {
     rm_ndbcluster_tables($mysqld->{'path_myddir'});
+    rm_falcon_tables($mysqld->{'path_myddir'});
   }
 }
 
@@ -4106,7 +4123,7 @@ sub run_testcase_need_master_restart($)
 	  $clusters->[0]->{'pid'} == 0 )
   {
     $do_restart= 1;           # Restart with cluster
-    mtr_verbose("Restart master: Test need cluster");
+    mtr_verbose("Restart master: Test needs cluster");
   }
   elsif( $tinfo->{'component_id'} eq 'im' )
   {
@@ -4192,7 +4209,7 @@ sub run_testcase_need_slave_restart($)
     }
     elsif ( $tinfo->{'slave_num'} )
     {
-      mtr_verbose("Restart slave: Test need slave");
+      mtr_verbose("Restart slave: Test needs slave");
       $do_slave_restart= 1;
     }
   }
@@ -4344,6 +4361,7 @@ sub run_testcase_stop_servers($$$) {
     {
       # Remove ndbcluster tables if server is stopped
       rm_ndbcluster_tables($mysqld->{'path_myddir'});
+      rm_falcon_tables($mysqld->{'path_myddir'});
     }
   }
 }

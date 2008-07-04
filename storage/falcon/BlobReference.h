@@ -44,7 +44,7 @@ public:
 	void setReference (int length, UCHAR *buffer);
 	int getReferenceLength();
 	void copy(BlobReference *source);
-#ifdef ENGINE
+#ifdef FALCONDB
 	virtual Stream* getStream();
 	void getReference (Stream *stream);
 	void setReference (int length, Stream *stream);

@@ -35,7 +35,6 @@
 #define ODS_MINOR_VERSION2	2		// Has SequencePages external to the section tree
 #define ODS_MINOR_VERSION3	3		// Switch to variable length record numbers in index
 #define ODS_MINOR_VERSION	ODS_MINOR_VERSION3
-//#define AGE_GROUPS			32
 
 #define COMBINED_VERSION(major,minor)	(major * 100 + minor)
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					

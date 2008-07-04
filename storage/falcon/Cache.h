@@ -36,6 +36,7 @@ class Sync;
 class Thread;
 class Database;
 class Bitmap;
+class SectorCache;
 
 class Cache  
 {
@@ -95,6 +96,7 @@ protected:
 	Bitmap		*flushBitmap;
 	char		**bufferHunks;
 	Thread		**ioThreads;
+	SectorCache	*sectorCache;
 	SyncObject	syncFlush;
 	SyncObject	syncDirty;
 	SyncObject	syncThreads;

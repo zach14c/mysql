@@ -2,8 +2,6 @@
 # Find string "NOTE NOTE NOTE" in order to find some 'unsure' tests
 #
 
-let $fixed_bug226= 1;
-
 --source include/have_falcon.inc
 
 #
@@ -1339,10 +1337,7 @@ explain select fld1 from t2 where fld1=250501 or fld1=250502 or fld1 >= 250505 a
 # If the like starts with a certain letter key will be used.
 #
 
-if ($fixed_bug226)
-{
 select fld1,fld3 from t2 where companynr = 37 and fld3 like 'f%' order by fld1;
-}
 select fld3 from t2 where fld3 like "L%" and fld3 = "ok";
 select fld3 from t2 where (fld3 like "C%" and fld3 = "Chantilly");
 select fld1,fld3 from t2 where fld1 like "25050%";
@@ -1358,18 +1353,26 @@ select fld1,fld3 from t2 where fld1 like "25050_";
 select distinct companynr from t2;
 select distinct companynr from t2 order by companynr;
 select distinct companynr from t2 order by companynr desc;
-if ($fixed_bug226)
-{
 select distinct t2.fld3,period from t2,t1 where companynr=37 and fld3 like "O%" order by fld3;
-}
 
 select distinct fld3 from t2 where companynr = 34 order by fld3;
 select distinct fld3 from t2 limit 10;
-select distinct fld3 from t2 having fld3 like "A%" limit 10;
-if ($fixed_bug226)
-{
+#
+# In Falcon a LIMIT without ORDER BY behaves different than
+# in MyISAM or InnoDB. Therefore we rewrote following statement to
+# two new ones covering the test. Advantage is that we get a
+# a deterministic test, even when optimzer changes it's access strategies.
+#
+# We have to do a subselect here, otherwise we get:
+#     mysqltest: At line 1371: query 'select count(distinct fld3) from t2 having fld3 like "A%" limit 10'
+#                failed: 1054: Unknown column 'fld3' in 'having clause'
+#
+# Original statement was:
+#     select distinct fld3 from t2 having fld3 like "A%" limit 10;
+select count(*) from (select distinct fld3 from t2 having fld3 like "A%" limit 10) as t10;
+select distinct fld3 from t2 having fld3 like "A%" order by fld3 limit 10;
+
 select count(distinct substring(fld3,1,3)) from t2 where fld3 like "A%";
-}
 select distinct substring(fld3,1,3) as a from t2 having a like "A%" order by a limit 10;
 select distinct substring(fld3,1,3) from t2 where fld3 like "A%" limit 10;
 select distinct substring(fld3,1,3) as a from t2 having a like "A%" limit 10;
@@ -1616,10 +1619,7 @@ select fld1 from t2 where fld1 in (250502,98005,98006,250503,250605,250606) and 
 
 select fld1 from t2 where fld1 between 250502 and 250504;
 
-if ($fixed_bug226)
-{
 select fld3 from t2 where (((fld3 like "_%L%" ) or (fld3 like "%ok%")) and ( fld3 like "L%" or fld3 like "G%")) and fld3 like "L%" order by fld3;
-}
 
 #
 # Group on one table.
@@ -1654,10 +1654,7 @@ select name,count(*) from t3 where name='cloakroom' group by name;
 select name,count(*) from t3 where name='cloakroom' and price>10 group by name;
 select count(*) from t3 where name='cloakroom' and price2=823742;
 select name,count(*) from t3 where name='cloakroom' and price2=823742 group by name;
-if ($fixed_bug226)
-{
 select name,count(*) from t3 where name >= "extramarital" and price <= 39654943 group by name order by name;
-}
 select t2.fld3,count(*) from t2,t3 where t2.fld1=158402 and t3.name=t2.fld3 group by t3.name;
 
 #

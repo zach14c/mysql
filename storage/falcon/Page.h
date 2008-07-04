@@ -42,7 +42,7 @@ static const int END_BUCKET	= -1;
 static const int END_LEVEL	= -2;
 
 enum AddNodeResult
-    {
+	{
 	NodeAdded = 0,
 	Duplicate,
 	SplitMiddle,
@@ -53,7 +53,7 @@ enum AddNodeResult
 
 class Validation;
 class Dbb;
-
+class EncodedDataStream;
 
 class Page  
 {

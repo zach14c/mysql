@@ -1,0 +1,38 @@
+stop slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+reset master;
+reset slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+start slave;
+[master]
+SET BINLOG_FORMAT = 'ROW';
+CREATE TABLE IF NOT EXISTS t1 (id INT) ENGINE = Falcon;
+SET AUTOCOMMIT=0;
+INSERT INTO t1 VALUES (1);
+SET AUTOCOMMIT=1;
+SELECT * FROM t1;
+id
+1
+[slave]
+SELECT * FROM t1;
+id
+1
+[master]
+BEGIN;
+INSERT INTO t1 VALUES (2);
+SET AUTOCOMMIT=1;
+[slave]
+SELECT * FROM t1 /* Should not contain 2 */;
+id
+1
+[master]
+INSERT INTO t1 VALUES (3);
+COMMIT;
+[slave]
+SELECT * FROM t1 /* Should contain 2 and 3 */;
+id
+1
+2
+3
+[master]
+DROP TABLE t1;

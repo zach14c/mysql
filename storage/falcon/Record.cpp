@@ -180,7 +180,7 @@ void Record::setValue(Transaction * transaction, int id, Value * value, bool clo
 			data.record = (char*) NEW Value[format->count];
 			encoding = valueVector;
 		case valueVector:
-			((Value*) data.record)[format->format[id].index].setValue(value, copyFlag);
+			((Value*) data.record)[format->format[id].physicalId].setValue(value, copyFlag);
 			return;
 
 		case traditional:
@@ -310,6 +310,11 @@ Record* Record::fetchVersion(Transaction * transaction)
 	return this;
 }
 
+Record* Record::fetchVersionRecursive(Transaction * transaction)
+{
+	return this;
+}
+
 void Record::getValue(int fieldId, Value * value)
 {
 	getRawValue(fieldId, value);
@@ -364,7 +369,7 @@ void Record::getRawValue(int fieldId, Value * value)
 			return;
 
 		case valueVector:
-			value->setValue(((Value*) data.record) + format->format[fieldId].index, false);
+			value->setValue(((Value*) data.record) + format->format[fieldId].physicalId, false);
 			return;
 
 		case traditional:
@@ -630,7 +635,7 @@ void Record::getEncodedValue(int fieldId, Value *value)
 		{
 		case shortVector:
 			{
-			int index = format->format[fieldId].index;
+			int index = format->format[fieldId].physicalId;
 			USHORT *vector = (USHORT*) data.record;
 
 			if (highWater < index)
@@ -676,7 +681,7 @@ void Record::finalize(Transaction *transaction)
 		if (fld->offset == 0)
 			continue;
 
-		Value *value = values + fld->index;
+		Value *value = values + fld->physicalId;
 		encodedStream.encode(fld->type, value);
 		}
 
@@ -778,7 +783,7 @@ bool Record::isNull(int fieldId)
 		{
 		case shortVector:
 			{
-			int index = format->format[fieldId].index;
+			int index = format->format[fieldId].physicalId;
 			USHORT *vector = (USHORT*) data.record;
 
 			if (highWater < index)
@@ -799,7 +804,7 @@ bool Record::isNull(int fieldId)
 			}
 
 		case valueVector:
-			return ((Value**) data.record)[format->format[fieldId].index]->isNull();
+			return ((Value**) data.record)[format->format[fieldId].physicalId]->isNull();
 
 		case traditional:
 			{
@@ -820,7 +825,7 @@ bool Record::isNull(int fieldId)
 
 void Record::poke()
 {
-	int gen = format->table->database->currentGeneration;
+	uint64 gen = format->table->database->currentGeneration;
 	
 	if (generation != gen)
 		generation = gen;
@@ -858,6 +863,7 @@ int Record::setRecordData(const UCHAR * dataIn, int dataLength)
 	memset(dataBuffer, 0, vectorLength);
 	memcpy(dataBuffer + vectorLength, dataIn, dataLength);
 	((USHORT*) dataBuffer)[0] = (USHORT) (vectorLength + sizeof(short));
+	highWater = 0;
 	char **ptr = &data.record;
 	
 	// If data.record has changed since allocating the new buffer, then free the new buffer
@@ -892,7 +898,7 @@ void Record::deleteData(void)
 
 void Record::print(void)
 {
-	printf("  %p\tId %d, enc %d, state %d, use %d, grp %d\n",
+	printf("  %p\tId %d, enc %d, state %d, use %d, grp " I64FORMAT "\n",
 			this, recordNumber, encoding, state, useCount, generation);
 }
 
@@ -956,5 +962,5 @@ int Record::getSize(void)
 
 SyncObject* Record::getSyncPrior(void)
 {
-	return NULL;
+	return format->table->getSyncPrior(this);
 }
