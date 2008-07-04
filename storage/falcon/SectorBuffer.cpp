@@ -39,7 +39,7 @@ void SectorBuffer::readPage(Bdb* bdb)
 
 void SectorBuffer::readSector()
 {
-	uint64 offset = sectorNumber * cache->pagesPerSector * cache->pageSize;
+	uint64 offset = (uint64)sectorNumber * (uint64)cache->pagesPerSector * (uint64)cache->pageSize;
 	activeLength = dbb->pread(offset, SECTOR_BUFFER_SIZE, buffer);
 }
 

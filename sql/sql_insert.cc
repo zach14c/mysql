@@ -561,6 +561,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   bool transactional_table, joins_freed= FALSE;
   bool changed;
   bool was_insert_delayed= (table_list->lock_type ==  TL_WRITE_DELAYED);
+  bool using_bulk_insert= 0;
   uint value_count;
   ulong counter = 1;
   ulonglong id;
@@ -740,8 +741,12 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
       Engines can't handle a bulk insert in parallel with a read form the
       same table in the same connection.
     */
-    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
+    if ((thd->locked_tables_mode <= LTM_LOCK_TABLES) &&
+        (values_list.elements > 1))
+    {
+      using_bulk_insert= 1;
       table->file->ha_start_bulk_insert(values_list.elements);
+    }
   }
 
   thd->abort_on_warning= (!ignore && (thd->variables.sql_mode &
@@ -856,8 +861,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
       auto_inc values from the delayed_insert thread as they share TABLE.
     */
     table->file->ha_release_auto_increment();
-    if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
-        table->file->ha_end_bulk_insert() && !error)
+    if (using_bulk_insert && table->file->ha_end_bulk_insert(0) && !error)
     {
       table->file->print_error(my_errno,MYF(0));
       error=1;
@@ -1192,7 +1196,7 @@ bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
   bool res= 0;
   table_map map= 0;
   DBUG_ENTER("mysql_prepare_insert");
-  DBUG_PRINT("enter", ("table_list %p, table %p, view %d",
+  DBUG_PRINT("enter", ("table_list %p table %p view %d",
 		       table_list, table,
 		       (int)insert_into_view));
   /* INSERT should have a SELECT or VALUES clause */
@@ -3185,8 +3189,8 @@ bool select_insert::send_eof()
   DBUG_PRINT("enter", ("trans_table=%d, table_type='%s'",
                        trans_table, table->file->table_type()));
 
-  error= (thd->locked_tables_mode <= LTM_LOCK_TABLES ?
-          table->file->ha_end_bulk_insert() : 0);
+  error= ((thd->locked_tables_mode <= LTM_LOCK_TABLES) ?
+          table->file->ha_end_bulk_insert(0) : 0);
   table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
   table->file->extra(HA_EXTRA_WRITE_CANNOT_REPLACE);
 
@@ -3261,7 +3265,7 @@ void select_insert::abort() {
       before.
     */
     if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
-      table->file->ha_end_bulk_insert();
+      table->file->ha_end_bulk_insert(0);
 
     /*
       If at least one row has been inserted/modified and will stay in

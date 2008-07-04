@@ -430,7 +430,7 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
                             set_fields, set_values, read_info,
 			    *enclosed, skip_lines, ignore);
     if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
-        table->file->ha_end_bulk_insert() && !error)
+        table->file->ha_end_bulk_insert(0) && !error)
     {
       table->file->print_error(my_errno, MYF(0));
       error= 1;
@@ -593,12 +593,9 @@ read_fixed_length(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
   List_iterator_fast<Item> it(fields_vars);
   Item_field *sql_field;
   TABLE *table= table_list->table;
-  ulonglong id;
   bool err;
   DBUG_ENTER("read_fixed_length");
 
-  id= 0;
- 
   while (!read_info.read_fixed_length())
   {
     if (thd->killed)
@@ -724,12 +721,10 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
   Item *item;
   TABLE *table= table_list->table;
   uint enclosed_length;
-  ulonglong id;
   bool err;
   DBUG_ENTER("read_sep_field");
 
   enclosed_length=enclosed.length();
-  id= 0;
 
   for (;;it.rewind())
   {

@@ -2,6 +2,11 @@
 # Test of MERGE TABLES
 #
 
+# MERGE tables require MyISAM tables
+let $default=`select @@global.storage_engine`;
+set global storage_engine=myisam;
+set session storage_engine=myisam;
+
 --disable_warnings
 drop table if exists t1,t2,t3,t4,t5,t6;
 drop database if exists mysqltest;
@@ -1765,3 +1770,9 @@ DROP TABLE tm1, t1, t2, t3, t4, t5;
 
 
 --echo End of 6.0 tests
+
+--disable_result_log
+--disable_query_log
+eval set global storage_engine=$default;
+--enable_result_log
+--enable_query_log

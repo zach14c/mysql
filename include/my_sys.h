@@ -61,12 +61,14 @@ extern int NEAR my_errno;		/* Last error in mysys */
 #define MY_HOLD_ORIGINAL_MODES 128  /* my_copy() holds to file modes */
 #define MY_REDEL_MAKE_BACKUP 256
 #define MY_SEEK_NOT_DONE 32	/* my_lock may have to do a seek */
-#define MY_DONT_WAIT	64	/* my_lock() don't wait if can't lock */
+#define MY_SHORT_WAIT	64	/* my_lock() don't wait if can't lock */
+#define MY_FORCE_LOCK   128     /* use my_lock() even if disable_locking */
+#define MY_NO_WAIT      256	/* my_lock() don't wait at all */
 #define MY_ZEROFILL	32	/* my_malloc(), fill array with zero */
 #define MY_ALLOW_ZERO_PTR 64	/* my_realloc() ; zero ptr -> malloc */
 #define MY_FREE_ON_ERROR 128	/* my_realloc() ; Free old ptr on error */
 #define MY_HOLD_ON_ERROR 256	/* my_realloc() ; Return old ptr on error */
-#define MY_DONT_OVERWRITE_FILE 1024	/* my_copy: Don't overwrite file */
+#define MY_DONT_OVERWRITE_FILE 2048 /* my_copy: Don't overwrite file */
 #define MY_THREADSAFE 2048      /* my_seek(): lock fd mutex */
 
 #define MY_CHECK_ERROR	1	/* Params to my_end; Check open-close */
@@ -92,6 +94,8 @@ extern int NEAR my_errno;		/* Last error in mysys */
 #define ME_FATALERROR   1024    /* Fatal statement error */
 #define ME_NO_WARNING_FOR_ERROR 2048 /* Don't push a warning for error */
 #define ME_NO_SP_HANDLER 4096 /* Don't call stored routine error handlers */
+#define ME_JUST_INFO    8192    /**< not error but just info */
+#define ME_JUST_WARNING 16384    /**< not error but just warning */
 
 	/* Bits in last argument to fn_format */
 #define MY_REPLACE_DIR		1	/* replace dir in name with 'dir' */
@@ -210,6 +214,7 @@ extern int errno;			/* declare errno */
 extern char NEAR errbuff[NRERRBUFFS][ERRMSGSIZE];
 extern char *home_dir;			/* Home directory for user */
 extern const char *my_progname;		/* program-name (printed in errors) */
+extern const char *my_progname_short;	/* like above but without directory */
 extern char NEAR curr_dir[];		/* Current directory for user */
 extern void (*error_handler_hook)(uint my_err, const char *str,myf MyFlags);
 extern void (*fatal_error_handler_hook)(uint my_err, const char *str,
@@ -287,7 +292,13 @@ enum flush_type
     As my_disable_flush_pagecache_blocks is always 0, the following option
     is strictly equivalent to FLUSH_KEEP
   */
-  FLUSH_FORCE_WRITE
+  FLUSH_FORCE_WRITE,
+  /**
+     @brief like FLUSH_KEEP but return immediately if file is already being
+     flushed (even partially) by another thread; only for page cache,
+     forbidden for key cache.
+  */
+  FLUSH_KEEP_LAZY
 };
 
 typedef struct st_record_cache	/* Used when cacheing records */
@@ -546,6 +557,7 @@ my_off_t my_b_safe_tell(IO_CACHE* info); /* picks the correct tell() */
 					  *(info)->current_pos)
 
 typedef uint32 ha_checksum;
+extern ha_checksum my_crc_dbug_check;
 
 /* Define the type of function to be passed to process_default_option_files */
 typedef int (*Process_option_func)(void *ctx, const char *group_name,
@@ -642,13 +654,16 @@ extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);
 extern int my_chsize(File fd,my_off_t newlength, int filler, myf MyFlags);
+extern int my_chmod(const char *name, mode_t mode, myf my_flags);
 extern int my_sync(File fd, myf my_flags);
 extern int my_sync_dir(const char *dir_name, myf my_flags);
 extern int my_sync_dir_by_file(const char *file_name, myf my_flags);
 extern void my_error _VARARGS((int nr,myf MyFlags, ...));
 extern void my_printf_error _VARARGS((uint my_err, const char *format,
                                       myf MyFlags, ...))
-				      ATTRIBUTE_FORMAT(printf, 2, 4);
+				    ATTRIBUTE_FORMAT(printf, 2, 4);
+extern void my_printv_error(uint error, const char *format, myf MyFlags,
+                            va_list ap);
 extern int my_error_register(const char **errmsgs, int first, int last);
 extern const char **my_error_unregister(int first, int last);
 extern void my_message(uint my_err, const char *str,myf MyFlags);
@@ -790,7 +805,7 @@ extern my_bool init_dynamic_array2(DYNAMIC_ARRAY *array,uint element_size,
 extern my_bool init_dynamic_array(DYNAMIC_ARRAY *array,uint element_size,
                                   uint init_alloc,uint alloc_increment
                                   CALLER_INFO_PROTO);
-extern my_bool insert_dynamic(DYNAMIC_ARRAY *array,uchar * element);
+extern my_bool insert_dynamic(DYNAMIC_ARRAY *array, const uchar * element);
 extern uchar *alloc_dynamic(DYNAMIC_ARRAY *array);
 extern uchar *pop_dynamic(DYNAMIC_ARRAY*);
 extern my_bool set_dynamic(DYNAMIC_ARRAY *array,uchar * element,uint array_index);
@@ -861,6 +876,12 @@ extern int unpackfrm(uchar **, size_t *, const uchar *);
 
 extern ha_checksum my_checksum(ha_checksum crc, const uchar *mem,
                                size_t count);
+#ifndef DBUG_OFF
+extern void my_debug_put_break_here(void);
+#else
+#define my_debug_put_break_here() do {} while(0)
+#endif
+
 extern void my_sleep(ulong m_seconds);
 extern ulong crc32(ulong crc, const uchar *buf, uint len);
 extern uint my_set_max_open_files(uint files);
@@ -918,6 +939,22 @@ int my_getpagesize(void);
 #endif
 
 int my_msync(int, void *, size_t, int);
+
+#define MY_UUID_SIZE 16
+#define MY_UUID_STRING_LENGTH (8+1+4+1+4+1+4+1+12)
+
+void my_uuid_init(ulong seed1, ulong seed2);
+void my_uuid(uchar *guid);
+void my_uuid2str(const uchar *guid, char *s);
+void my_uuid_end();
+
+struct my_rnd_struct {
+  unsigned long seed1,seed2,max_value;
+  double max_value_dbl;
+};
+
+void my_rnd_init(struct my_rnd_struct *rand_st, ulong seed1, ulong seed2);
+double my_rnd(struct my_rnd_struct *rand_st);
 
 /* character sets */
 extern uint get_charset_number(const char *cs_name, uint cs_flags);
