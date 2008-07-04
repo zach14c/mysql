@@ -4066,6 +4066,7 @@ int fill_schema_coll_charset_app(THD *thd, TABLE_LIST *tables, COND *cond)
     {
       CHARSET_INFO *tmp_cl= cl[0];
       if (!tmp_cl || !(tmp_cl->state & MY_CS_AVAILABLE) || 
+          (tmp_cl->state & MY_CS_HIDDEN) ||
           !my_charset_same(tmp_cs,tmp_cl))
 	continue;
       restore_record(table, s->default_values);

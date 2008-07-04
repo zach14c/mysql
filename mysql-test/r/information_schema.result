@@ -268,6 +268,19 @@ latin1_bin	latin1
 latin1_general_ci	latin1
 latin1_general_cs	latin1
 latin1_spanish_ci	latin1
+select collation_name from information_schema.collations
+where collation_name='filename';
+collation_name
+select collation_name from information_schema.collation_character_set_applicability
+where collation_name='filename';
+collation_name
+select character_set_name from information_schema.character_sets
+where character_set_name='filename';
+character_set_name
+show collation like 'filename';
+Collation	Charset	Id	Default	Compiled	Sortlen
+show character set like 'filename';
+Charset	Description	Default collation	Maxlen
 drop procedure if exists sel2;
 drop function if exists sub1;
 drop function if exists sub2;
