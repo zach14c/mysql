@@ -37,4 +37,5 @@ sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on 
 key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
 max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
 tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems
+backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
 backup_tablespace           : Bug#36973 2008-07-01 rafal

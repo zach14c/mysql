@@ -35,7 +35,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <malloc.h>
-#include <stat.h>
+#include <sys/stat.h>
 
 #define HAVE_SMEM 1
 
