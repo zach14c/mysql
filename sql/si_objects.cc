@@ -3122,7 +3122,7 @@ TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
   DBUG_ENTER("Name_locker::build_table_list()");
   
   List_iterator<Obj> it(*tables);
-  while (tbl= it++)
+  while ((tbl= it++))
   {
     TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
     DBUG_ASSERT(ptr);  // FIXME: report error instead
@@ -3141,6 +3141,18 @@ TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
   }
 
   DBUG_RETURN(tl);
+}
+
+void Name_locker::free_table_list(TABLE_LIST *tl)
+{
+  TABLE_LIST *ptr= tl;
+
+  while (ptr)
+  {
+    tl= tl->next_global;
+    my_free(ptr, MYF(0));
+    ptr= tl;
+  }
 }
 
 /**

@@ -614,7 +614,11 @@ class Name_locker
 {
 public:
   Name_locker(THD *thd) { m_thd= thd; }
-  ~Name_locker() { my_free(m_table_list, MYF(0)); }
+  ~Name_locker() 
+  { 
+    free_table_list(m_table_list);
+    m_table_list= NULL;
+  }
 
   /*
     Gets name locks on table list.
@@ -634,6 +638,7 @@ private:
     Builds a table list from the list of objects passed to constructor.
   */
   TABLE_LIST *build_table_list(List<Obj> *tables, thr_lock_type lock);
+  void free_table_list(TABLE_LIST*);
 };
 
 } // obs namespace
