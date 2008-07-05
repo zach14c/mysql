@@ -8,7 +8,7 @@
 
 --disable_warnings
 --error 0,1
---remove_file $MYSQL_TEST_DIR/var/master-data/db.bak
+remove_file $MYSQL_TEST_DIR/var/master-data/db.bak;
 --enable_warnings
 
 SET GLOBAL event_scheduler=off;
@@ -211,4 +211,4 @@ DROP TRIGGER test.trg;
 DROP TABLE test.logt;
 DROP TABLE test.t1;
 DROP DATABASE db;
---remove_file $MYSQL_TEST_DIR/var/master-data/db.bak
+remove_file $MYSQL_TEST_DIR/var/master-data/db.bak;
