@@ -1696,6 +1696,107 @@ result_t Table_restore::close()
   if ((dfile_restore.close_file() != backup::OK) |
       (kfile_restore.close_file() != backup::OK))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
+
+  /*
+    CAUTION! Ugliest hack ever!
+    This hack tries to recover from bypassing the MyISAM interface
+    by the MyISAM restore driver.
+    The situation is so:
+    The backup kernel opens and locks the tables in backup.
+    But the MyISAM restore driver does not use the open MI_INFO
+    instance. Instead it opens another instance, duplicates its
+    file descriptors, and closes the instance. Then it uses the
+    duplicate file descriptors to write directly ("physically")
+    to the data and index files.
+    Among the writes are chunks of data from the index file, which
+    overwrite the index header with the state info.
+    In this function, called after all data have been written, the
+    duplicate file descriptors are closed (above). Now the index
+    and data files have the contents they ought to have.
+    Everything would be fine if no instance of the table would be
+    open at the time. Then a new open would read all table info from
+    disk and everybody would be happy.
+    However, the backup kernel still has the table open. Parts of
+    the index file are cached in the open MYISAM_SHARE object.
+    If the backup kernel would close the tables, this old information
+    would be written to the index file, which crashes the table.
+    This hack tries to solve the problem by loading the share with
+    information from the index file. At first, we open a new MI_INFO
+    instance from the table. This open does not read the state info
+    from the file because another instance is already open from the
+    same table. But the open gives us access to the share.
+    We do then explicitly call mi_state_info_read_dsk(), which is
+    the function that loads the share from the index file at an
+    initial open. Well, not exactly. At open a similar function is
+    used, after the index header has been read by a direct read.
+    But the mentioned function includes both, read and share load.
+    Another small problem is that the function doesn't do anything
+    if external locking is disabled. It assumes that no external
+    (or bypassing) writes happen to the files. Since we did exactly
+    this, we must pretend that we are doing external locking. The
+    function uses the variable 'myisam_single_user' for the
+    decision. So we temporarily change it.
+    Now we can close the new table instance. This won't write the
+    state again, because is is not the last open instance.
+    But since the share does now cache the new values from the
+    index file, the backup kernel's close writes the correct
+    information back to the file.
+  */
+  {
+    MI_INFO      *mi_info;
+    MYISAM_SHARE *share;
+    my_bool      old_myisam_single_user;
+
+    mi_info= mi_open(file_name.ptr(), O_RDWR, HA_OPEN_FOR_REPAIR);
+    if (mi_info == NULL)
+      goto err;
+    share= mi_info->s;
+    DBUG_PRINT("myisam_backup", ("share data_file: %lu",
+                                 (ulong) share->state.state.data_file_length));
+    old_myisam_single_user= myisam_single_user;
+    myisam_single_user= FALSE;
+    if (mi_state_info_read_dsk(share->kfile,&share->state,1))
+    {
+      myisam_single_user= old_myisam_single_user;
+      goto err;
+    }
+    myisam_single_user= old_myisam_single_user;
+    DBUG_PRINT("myisam_backup", ("share data_file: %lu",
+                                 (ulong) share->state.state.data_file_length));
+    /*
+      Now follows the most dirty part of the hack.
+      We have correct information in the share, but the instance that
+      holds the lock on the table has a local copy of the state.
+      We must find this instance and fix the local info.
+      Fortunately there is a state pointer, which can be set to the
+      share. This invalidates the instance's local copy.
+      We need to acquire share->intern_lock when traversing the list
+      of open MyISAM instances.
+    */
+    {
+      LIST *list_element ;
+      pthread_mutex_lock(&share->intern_lock);
+      for (list_element= myisam_open_list;
+           list_element;
+           list_element= list_element->next)
+      {
+        MI_INFO *tmpinfo= (MI_INFO*) list_element->data;
+        if (tmpinfo->s == share)
+          tmpinfo->state= &share->state.state;
+      }
+      pthread_mutex_unlock(&share->intern_lock);
+    }
+    if (mi_close(mi_info))
+      goto err;
+    goto end;
+
+  err:
+    SET_STATE_TO_ERROR_AND_DBUG_RETURN;
+
+  end :
+    do {} while (0); /* Empty statement, syntactically required. */
+  }
+
   DBUG_RETURN(backup::OK);
 }
 
