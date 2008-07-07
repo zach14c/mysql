@@ -75,7 +75,11 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageWriter = NULL;
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
+	if(falcon_use_sectorcache)
+		sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
+	else
+		sectorCache = NULL;
+
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
 	bufferHunks = new char* [numberHunks];
@@ -142,7 +146,8 @@ Cache::~Cache()
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
-	delete sectorCache;
+	if(falcon_use_sectorcache)
+		delete sectorCache;
 	
 	if (bufferHunks)
 		{
@@ -259,8 +264,10 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			
 			Priority priority(database->ioScheduler);
 			priority.schedule(PRIORITY_MEDIUM);	
-			//dbb->readPage(bdb);
-			sectorCache->readPage(bdb);
+			if(falcon_use_sectorcache)
+				sectorCache->readPage(bdb);
+			else
+				dbb->readPage(bdb);
 			priority.finished();
 #ifdef HAVE_PAGE_NUMBER
 			ASSERT(bdb->buffer->pageNumber == pageNumber);
@@ -524,7 +531,8 @@ void Cache::writePage(Bdb *bdb, int type)
 
 	try
 		{
-		sectorCache->writePage(bdb);
+		if(falcon_use_sectorcache)
+			sectorCache->writePage(bdb);
 		dbb->writePage(bdb, type);
 		}
 	catch (SQLException& exception)
@@ -795,7 +803,8 @@ void Cache::ioThread(void)
 						bdb->incrementUseCount(ADD_HISTORY);
 						sync.unlock();
 						bdb->addRef(Shared  COMMA_ADD_HISTORY);
-						sectorCache->writePage(bdb);
+						if(falcon_use_sectorcache)
+							sectorCache->writePage(bdb);
 						
 						bdb->syncWrite.lock(NULL, Exclusive);
 						bdb->ioThreadNext = bdbList;
