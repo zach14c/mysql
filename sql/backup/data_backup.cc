@@ -288,58 +288,6 @@ class Scheduler::Pump: public Backup_pump
   { return start_pos + bytes_in; }
 };
 
-/*
-  Collect tables from default and snapshot for open and lock tables.
-  There should be at most only 1 of each driver.
-*/
-int get_default_snapshot_tables(backup::Backup_driver *backup_drv,
-                                backup::Restore_driver *restore_drv,
-                                TABLE_LIST **tables,
-                                TABLE_LIST **tables_last)
-{
-  TABLE_LIST *table_list= *tables;
-  TABLE_LIST *table_list_last= *tables_last;
-
-  DBUG_ENTER("backup::get_default_snapshot_tables");
-  /*
-    If the table list is defined and the last pointer is
-    defined then we are seeing a duplicate of either default
-    or snapshot drivers. There should be at most 1 of each.
-  */
-  if (table_list && table_list_last->next_global)
-  {
-    DBUG_PRINT("restore",("Duplicate default or snapshot subimage"));
-    DBUG_RETURN(ERROR);
-  }
-  /*
-    If the table list is empty, use the first one and loop
-    until the end then record the end of the first one.
-  */
-  if (!table_list)
-  {
-    if (backup_drv)
-      table_list= ((default_backup::Backup *)backup_drv)->get_table_list();
-    else if (restore_drv)
-      table_list= ((default_backup::Restore *)restore_drv)->get_table_list();
-    else
-      DBUG_RETURN(ERROR);
-    *tables= table_list;
-    table_list_last= table_list;
-    while (table_list_last->next_global != NULL)
-      table_list_last= table_list_last->next_global;
-    *tables_last= table_list_last;
-  }
-  else
-    if (backup_drv)
-     (*tables_last)->next_global=
-                      ((default_backup::Backup *)backup_drv)->get_table_list();
-    else if (restore_drv)
-     (*tables_last)->next_global=
-                    ((default_backup::Restore *)restore_drv)->get_table_list();
-    else
-      DBUG_RETURN(ERROR);
-  DBUG_RETURN(0);
-}
 
 /**
    Commit Blocker
@@ -1370,11 +1318,6 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
 
   Restore_driver* drv[256];
 
-  TABLE_LIST *table_list= 0;
-  TABLE_LIST *table_list_last= 0;
-  List<obs::Obj> tables_to_lock;
-  obs::Name_locker *table_name_locker= new obs::Name_locker(thd);
-
   if (info.snap_count() > 256)
   {
     info.m_ctx.fatal_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count(), 256);
@@ -1399,56 +1342,8 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
     {
       info.m_ctx.fatal_error(ER_BACKUP_CREATE_RESTORE_DRIVER, snap->name());
       goto error;
-    };
-    
-    /*
-      Collect tables from default and snapshot for open and lock tables.
-      There should be at most only 1 of each driver.
-    */
-    if ((snap->type() == Snapshot_info::DEFAULT_SNAPSHOT) ||
-        (snap->type() == Snapshot_info::CS_SNAPSHOT))
-      get_default_snapshot_tables(NULL, (default_backup::Restore *)drv[n],
-                                  &table_list, &table_list_last);
-    /*
-      Collect tables from all drivers for name locking.
-    */
-    Image_info::Tables *snap_table_list= snap->get_table_list();
-    for (uint i= 0; i < snap_table_list->count(); i++)
-    {
-      Image_info::Table *tbl= snap_table_list->get_table(i);
-      tables_to_lock.push_front(tbl->m_obj_ptr);
-    }
-  }
-
-  /*
-    Open tables for default and snapshot drivers.
-  */
-  if (table_list)
-  {
-    table_list->lock_type= TL_WRITE;
-    query_cache.invalidate_locked_for_write(table_list);
-
-    // The lex needs to be cleaned up between consecutive calls to 
-    // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
-    // previously opened views and crash.
-    ::current_thd->lex->cleanup_after_one_table_open();
-    if (open_and_lock_tables(::current_thd, table_list))
-    {
-      info.m_ctx.fatal_error(ER_BACKUP_OPEN_TABLES, "restore");
-      DBUG_RETURN(backup::ERROR);
-    }
-    if (table_list_last)
-      table_list_last->next_global= NULL; // break lists
-  }
-
-  /*
-    Apply name locks to all tables used.
-  */
-  if (table_name_locker->get_name_locks(&tables_to_lock, TL_WRITE))
-  {
-    info.m_ctx.fatal_error(ER_BACKUP_OBTAIN_NAME_LOCK_FAILED);
-    goto error;
-  }
+    };   
+ }
 
   // Initialize the drivers.
   for (uint n=0; n < info.snap_count(); ++n)
@@ -1614,36 +1509,11 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
       info.m_ctx.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
   }
 
-  /*
-    Release name locks on driver tables.
-  */
-  if (table_name_locker->release_name_locks())
-    info.m_ctx.fatal_error(ER_BACKUP_RELEASE_NAME_LOCK_FAILED);
-  delete table_name_locker;
-
-  /*
-    Close all tables if default or snapshot driver used.
-  */
-  if (table_list)
-    close_thread_tables(::current_thd);
-
-  { // If auto commit is turned off, be sure to commit the transaction
-    THD *thd=::current_thd;
-    if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-    {
-      if (ha_autocommit_or_rollback(thd, 0)) state=ERROR;
-      if (end_active_trans(thd)) state=ERROR;
-    }
-  }
-
   DBUG_RETURN(state == ERROR ? backup::ERROR : 0);
 
  error:
 
   DBUG_PRINT("restore",("Cancelling restore process"));
-
-  if (table_name_locker)
-    delete table_name_locker;
 
   for (uint n=0; n < info.snap_count(); ++n)
   {

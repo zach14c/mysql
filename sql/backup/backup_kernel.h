@@ -115,6 +115,14 @@ class Backup_restore_ctx: public backup::Logger
   void disable_fkey_constraints();
   int  restore_triggers_and_events();
   
+  /** 
+    Indicates if tables have been locked with @c lock_tables_for_restore()
+  */
+  bool m_tables_locked; 
+
+  int lock_tables_for_restore();
+  int unlock_tables();
+  
   friend class Backup_info;
   friend class Restore_info;
   friend int backup_init();

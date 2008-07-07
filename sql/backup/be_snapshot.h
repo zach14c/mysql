@@ -15,36 +15,6 @@ using backup::Table_ref;
 using backup::Buffer;
 
 /**
- * @class Engine
- *
- * @brief Encapsulates snapshot online backup/restore functionality.
- *
- * This class is used to initiate the snapshot backup algorithm, which is used
- * by the backup kernel to create a backup image of data stored in any
- * engine that does not have a native backup driver but supports consisten reads.
- * It may also be used as an option by the user.
- *
- * Using this class, the caller can create an instance of the snapshot backup
- * backup and restore class. The backup class is used to backup data for a
- * list of tables. The restore class is used to restore data from a
- * previously created snapshot backup image.
- */
-class Engine: public Backup_engine
-{
-  public:
-    Engine(THD *t_thd) { m_thd= t_thd; }
-
-    /// Return version of backup images created by this engine.
-    const version_t version() const { return 0; };
-    result_t get_backup(const uint32, const Table_list &tables, Backup_driver*
-&drv);
-    result_t get_restore(const version_t ver, const uint32, const Table_list &tables,
-                         Restore_driver* &drv);
-  private:
-    THD *m_thd;     ///< Pointer to the current thread.
-};
-
-/**
  * @class Backup
  *
  * @brief Contains the snapshot backup algorithm backup functionality.
@@ -100,8 +70,8 @@ class Backup: public default_backup::Backup
 class Restore: public default_backup::Restore
 {
   public:
-    Restore(const Table_list &tables, THD *t_thd)
-      :default_backup::Restore(tables, t_thd){};
+    Restore(const backup::Logical_snapshot &snap, THD *t_thd)
+      :default_backup::Restore(snap, t_thd){};
     virtual ~Restore(){};
     void free() { delete this; };
 };
@@ -117,13 +87,13 @@ class Restore: public default_backup::Restore
 namespace backup {
 
 
-class CS_snapshot: public Snapshot_info
+class CS_snapshot: public Logical_snapshot
 {
  public:
 
-  CS_snapshot(Logger&) :Snapshot_info(1) // current version number is 1
+  CS_snapshot(Logger&) :Logical_snapshot(1) // current version number is 1
   {}
-  CS_snapshot(Logger&, version_t ver) :Snapshot_info(ver)
+  CS_snapshot(Logger&, version_t ver) :Logical_snapshot(ver)
   {}
 
   enum_snap_type type() const
@@ -143,7 +113,7 @@ class CS_snapshot: public Snapshot_info
   { return (ptr= new snapshot_backup::Backup(m_tables, ::current_thd)) ? OK : ERROR; }
 
   result_t get_restore_driver(Restore_driver* &ptr)
-  { return (ptr= new snapshot_backup::Restore(m_tables, ::current_thd)) ? OK : ERROR; }
+  { return (ptr= new snapshot_backup::Restore(*this, ::current_thd)) ? OK : ERROR; }
 
   bool is_valid(){ return TRUE; };
 
