@@ -80,33 +80,6 @@ using backup::Buffer;
 
 using namespace backup;
 
-Engine::Engine(THD *t_thd)
-{
-  m_thd= t_thd;
-}
-
-/**
-  * Create a default backup backup driver.
-  *
-  * Given a list of tables to be backed-up, create instance of backup
-  * driver which will create backup image of these tables.
-  *
-  * @param  tables (in) list of tables to be backed-up.
-  * @param  eng    (out) pointer to backup driver instance.
-  *
-  * @retval  ERROR  if cannot create backup driver class.
-  * @retval  OK     on success.
-  */
-result_t Engine::get_backup(const uint32, const Table_list &tables,
-                            Backup_driver* &drv)
-{
-  DBUG_ENTER("Engine::get_backup");
-  Backup *ptr= new default_backup::Backup(tables, m_thd, TL_READ_NO_INSERT);
-  if (!ptr)
-    DBUG_RETURN(ERROR);
-  drv= ptr;
-  DBUG_RETURN(OK);
-}
 
 Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type)
   :Backup_thread_driver(tables)
@@ -122,8 +95,28 @@ Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type)
      Create a TABLE_LIST * list for iterating through the tables.
      Initialize the list for opening the tables in read mode.
   */
-  locking_thd->tables_in_backup= build_table_list(tables, lock_type);
-  all_tables= locking_thd->tables_in_backup;
+  all_tables= (TABLE_LIST*)my_malloc(tables.count()*sizeof(TABLE_LIST), MYF(MY_WME));
+  DBUG_ASSERT(all_tables); // TODO: report error instead
+  bzero(all_tables, tables.count()*sizeof(TABLE_LIST));
+
+  for (uint i=0; i < tables.count(); ++i)
+  {
+    Table_ref   tbl= tables[i];
+    TABLE_LIST &tl= all_tables[i];
+
+    tl.alias= tl.table_name= const_cast<char*>(tbl.name().ptr());
+    tl.db= const_cast<char*>(tbl.db().name().ptr());
+    tl.lock_type= lock_type;
+
+    // link previous entry to this one
+    if (i > 0)
+    {
+      all_tables[i-1].next_global= all_tables[i-1].next_local=
+      all_tables[i-1].next_name_resolution_table= &tl;
+    }    
+  }
+
+  locking_thd->tables_in_backup= all_tables;
   init_phase_complete= FALSE;
   locks_acquired= FALSE;
   hdl= NULL;
@@ -368,25 +361,22 @@ result_t Backup::get_data(Buffer &buf)
   */
   case GET_NEXT_TABLE:
   {
-    mode= READ_RCD;
-    int res= next_table();
-    /*
-      If no more tables in list, tell backup algorithm we're done else
-      fall through to reading mode.
-    */
-    if (res)
+    if (tbl_num >= m_tables.count())
     {
       buf.last= TRUE;
       buf.size= 0;
       buf.table_num= 0;
-      DBUG_RETURN(OK);
+      DBUG_RETURN(DONE);
     }
-    else
-    {
-      start_tbl_read(cur_table);
-      tbl_num++;
-      buf.table_num= tbl_num;
-    }
+
+    tbl_num++;
+    cur_table= all_tables[tbl_num - 1].table;
+    DBUG_ASSERT(cur_table); // tables should be opened at that time
+    read_set=  cur_table->read_set;
+    start_tbl_read(cur_table);
+
+    buf.table_num= tbl_num;
+    mode= READ_RCD;
   }
 
   /*
@@ -579,31 +569,9 @@ result_t Backup::get_data(Buffer &buf)
   DBUG_RETURN(OK); 
 }
 
-/**
-  * Create a default backup restore driver.
-  *
-  * Given a list of tables to be restored, create instance of restore
-  * driver which will restore these tables from a backup image.
-  *
-  * @param  version  (in) version of the backup image.
-  * @param  tables   (in) list of tables to be restored.
-  * @param  eng      (out) pointer to restore driver instance.
-  *
-  * @retval ERROR  if cannot create restore driver class.
-  * @retval OK     on success.
-  */
-result_t Engine::get_restore(version_t, const uint32, 
-                             const Table_list &tables, Restore_driver* &drv)
-{
-  DBUG_ENTER("Engine::get_restore");
-  Restore *ptr= new default_backup::Restore(tables, m_thd);
-  if (!ptr)
-    DBUG_RETURN(ERROR);
-  drv= ptr;
-  DBUG_RETURN(OK);
-}
 
-Restore::Restore(const Table_list &tables, THD *t_thd) :Restore_driver(tables)
+Restore::Restore(const backup::Logical_snapshot &snap, THD *t_thd) 
+  :Restore_driver(snap.get_table_list()), m_snap(snap)
 {
   DBUG_PRINT("default_backup",("Creating restore driver"));
   m_thd= t_thd;         /* save current thread */
@@ -611,12 +579,6 @@ Restore::Restore(const Table_list &tables, THD *t_thd) :Restore_driver(tables)
   tbl_num= 0;           /* set table number to 0 */
   mode= INITIALIZE;     /* initialize write */
 
-  /*
-     Create a TABLE_LIST * list for iterating through the tables.
-     Initialize the list for opening the tables in write mode.
-  */
-  tables_in_backup= build_table_list(tables, TL_WRITE);
-  all_tables= tables_in_backup;
   for (int i=0; i < MAX_FIELDS; i++)
     blob_ptrs[i]= 0;
   blob_ptr_index= 0;
@@ -651,23 +613,7 @@ result_t Restore::cleanup()
   * @retval OK     rows deleted.
   * @retval ERROR  problem with deleting rows.
   */
-result_t Restore::truncate_table(TABLE *tbl)
-{
-  int last_write_res; 
 
-  DBUG_ENTER("Default_backup::truncate_table)");
-  DBUG_ASSERT(tbl->file);
-  hdl= tbl->file;
-  last_write_res= cur_table->file->ha_delete_all_rows();
-  /*
-    Check to see if delete all rows was ok. Ignore if the handler
-    doesn't support it.
-  */
-  if ((last_write_res != 0) && (last_write_res != HA_ERR_WRONG_COMMAND))
-    DBUG_RETURN(ERROR);
-  num_rows= 0;
-  DBUG_RETURN(OK);
-}
 
 /**
   * @brief End restore process.
@@ -679,7 +625,6 @@ result_t Restore::truncate_table(TABLE *tbl)
 result_t Restore::end()
 {
   DBUG_ENTER("Restore::end");
-  close_thread_tables(m_thd);
   DBUG_RETURN(OK);
 }
 
@@ -692,42 +637,7 @@ result_t Restore::end()
   * @retval 0   no errors.
   * @retval -1  no more tables in list.
   */
-int Restore::next_table()
-{
-  DBUG_ENTER("Restore::next_table()");
-  if (cur_table == NULL)
-    cur_table= tables_in_backup->table;
-  else
-  {
-    /*
-      Restore original timestamp autoset type.
-    */
-    if (cur_table && cur_table->timestamp_field)
-      cur_table->timestamp_field_type= old_tm;
-    tables_in_backup= tables_in_backup->next_global;
-    if (tables_in_backup != NULL)
-    {
-      DBUG_ASSERT(tables_in_backup->table);
-      cur_table= tables_in_backup->table;
-    }
-    else
-    {
-      cur_table= NULL;
-      DBUG_RETURN(-1);
-    }
-  } 
-  /*
-    Save original timestamp autoset type and switch to TIMESTAMP_NO_AUTO_SET
-    so that any restored data with timestamp fields will not have their values
-    reset on write.
-  */
-  if (cur_table && cur_table->timestamp_field)
-  {
-    old_tm= cur_table->timestamp_field->get_auto_set_type();
-    cur_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
-  }
-  DBUG_RETURN(0);
-}
+
 
 /**
   * @brief Unpack the data for a row in the table.
@@ -759,7 +669,6 @@ uint Restore::unpack(byte *packed_row)
     error= unpack_row(NULL, cur_table, n_fields, packed_row, &cols, &cur_row_end, &length);
     if (!use_bitbuf)
       bitmap_free(&cols);
-    num_rows++;
   }
   DBUG_RETURN(error);
 }
@@ -809,55 +718,9 @@ result_t Restore::send_data(Buffer &buf)
   switch (mode) {
 
   /*
-    Nothing to do in Initialize, continue to GET_NEXT_TABLE.
+    Nothing to do in Initialize, continue to WRITE_RCD.
   */
   case INITIALIZE:
-
-  /*
-    If class has been initialized and we need to read the next table,
-    advance the current table pointer and initialize read process.
-  */
-  case GET_NEXT_TABLE:
-  {
-    int res;
-
-    mode= WRITE_RCD;
-    /*
-      It is possible for the backup system to send data to this
-      engine out of sequence from the table list. When a non-sequential
-      access is detected, start the table list at the beginning and
-      find the table in question. This is needed if any tables (more
-      than MAX_RETRIES are empty!
-    */
-    if ((tbl_num + 1) == buf.table_num) //do normal sequential lookup
-      res= next_table();
-    else                                //do linear search
-    {
-      uint i= 0;
-
-      cur_table= NULL;
-      tables_in_backup= all_tables;
-      do
-      {
-        i++;
-        res= next_table();
-      }
-      while ((i != buf.table_num) && !res);
-      tbl_num= i - 1;
-    }
-    if (res)
-    {
-      buf.last= TRUE;
-      buf.size= 0;
-      buf.table_num= 0;
-      DBUG_RETURN(OK);
-    }
-    else
-    {
-      truncate_table(cur_table); /* delete all rows from table */
-      tbl_num++;
-    }
-  }
 
   /*
     Write a row to the table from the data in the buffer.
@@ -867,17 +730,32 @@ result_t Restore::send_data(Buffer &buf)
     cur_blob= 0;
     max_blob_size= 0;
 
+    // We don't process any data on stream #0
+    if (buf.table_num == 0)
+      DBUG_RETURN(OK);
+
+    // We only proccess data for the tables we are restoring.
+    if (buf.table_num > m_tables.count())
+      DBUG_RETURN(OK);
+
     /*
-      If the table number is different from the stream number, we're
-      receiving data from the backup for a different table. Set the mode to
-      get the next table in the list.
+     Get the opened table instance corresponding to buf.table_num. Note that
+     tables are opened (and locked) by the kernel.
     */
-    if (tbl_num != buf.table_num)
-    {
-      mode= GET_NEXT_TABLE;
-      DBUG_RETURN(PROCESSING);
-    }
-    else
+    cur_table= m_snap.get_opened_table(buf.table_num - 1);
+    DBUG_ASSERT(cur_table); // All tables we are processing should be opened.
+
+    /*
+      Change timestamp autoset type to TIMESTAMP_NO_AUTO_SET
+      so that any restored data with timestamp fields will not have their values
+      reset on write.
+    */
+    if (cur_table->timestamp_field)
+      cur_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
+
+    hdl= cur_table->file;
+    DBUG_ASSERT(hdl); // table should be opened
+
     {
       uint32 size= buf.size - META_SIZE;
       block_type= *buf.data;

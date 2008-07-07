@@ -61,6 +61,7 @@ noinst_HEADERS = \
   backup_info.h \
   restore_info.h \
   be_native.h \
+  be_logical.h \
   be_default.h \
   be_snapshot.h \
   be_nodata.h \
