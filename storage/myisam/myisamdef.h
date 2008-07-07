@@ -510,7 +510,9 @@ extern pthread_mutex_t THR_LOCK_myisam_log;
 
 	/* Some extern variables */
 
+C_MODE_START
 extern LIST *myisam_open_list;
+C_MODE_END
 extern uchar NEAR myisam_file_magic[],NEAR myisam_pack_file_magic[];
 extern uint NEAR myisam_read_vec[],NEAR myisam_readnext_vec[];
 extern uint myisam_quick_table_bits;
