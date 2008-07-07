@@ -545,6 +545,8 @@ public:
   virtual uint8 table_cache_type();
   /* Calculate hash value for PARTITION BY KEY tables.  */
   uint32 calculate_key_hash_value(Field **field_array);
+  virtual ha_rows records();
+
   /*
     -------------------------------------------------------------------------
     MODULE print messages
