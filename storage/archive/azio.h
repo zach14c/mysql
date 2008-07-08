@@ -225,7 +225,7 @@ typedef enum {
 typedef enum {
   AZ_METHOD_BLOCK,
   AZ_METHOD_AIO,
-  AZ_METHOD_MAX,
+  AZ_METHOD_MAX
 } az_method;
 
 typedef struct azio_container_st azio_container_st;
