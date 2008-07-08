@@ -80,23 +80,11 @@ class Image_info: public st_bstream_image_header
 
    public:
 
-    Databases(): m_dbs(16,128)
-    {}
-
-    Db_item* operator[](uint pos) const
-    { return m_dbs[pos]; }
-
-    uint count() const
-    { return m_dbs.size(); }
-
-    /// Insert database at given location
+    Databases();
+    Db_item* operator[](uint pos) const;
+    uint count() const;
     Image_info::Db_item* add_db(const Db_ref &db, uint pos);
-
-    /// Insert database at first available position.
-    Image_info::Db_item* add_db(const Db_ref &db)
-    {
-      return add_db(db,count());
-    }
+    Image_info::Db_item* add_db(const Db_ref &db);
   };
 
   Databases m_db; ///< list of databases
@@ -173,6 +161,10 @@ class Image_info: public st_bstream_image_header
   
   // friends
 
+  friend class Db_iterator;
+  friend class Ts_iterator;
+  friend class PerDb_iterator;
+
   friend int ::bcat_add_item(st_bstream_image_header*, struct st_bstream_item_info*);
   friend int ::bcat_reset(st_bstream_image_header*);
   friend int ::bcat_get_item_create_query(st_bstream_image_header*,
@@ -193,25 +185,13 @@ class Tables: public Table_list
 
  public:
 
-  Tables(): m_tables(1024,1024)
-  {}
-
+  Tables();
+  ~Tables();
   backup::Table_ref operator[](uint) const;
-
-  uint count() const
-  { return m_tables.size(); }
-
+  uint count() const;
   Image_info::Table_item* add_table(const Image_info::Table_ref&, unsigned long int);
-
-  Image_info::Table_item* add_table(const Image_info::Table_ref &t)
-  {
-    return add_table(t,count());
-  }
-
-  Image_info::Table_item* get_table(unsigned long int pos)
-  {
-    return m_tables[pos];
-  }
+  Image_info::Table_item* add_table(const Image_info::Table_ref &t);
+  Image_info::Table_item* get_table(unsigned long int pos);
 };
 
 
@@ -454,7 +434,7 @@ Image_info::Ts_item::Ts_item() :m_obj_ptr(NULL)
 class Image_info::Db_item
  : public st_bstream_db_info,
    public Image_info::Item,
-   public Db_ref
+   public Image_info::Db_ref
 {
   Table_item *m_tables;
   Table_item *m_last_table;
@@ -512,7 +492,7 @@ class Image_info::Db_item
 class Image_info::Table_item
  : public st_bstream_table_info,
    public Image_info::Item,
-   public Table_ref
+   public Image_info::Table_ref
 {
   Table_item *next_table;
   String m_db_name;  // FIXME
@@ -765,6 +745,28 @@ Image_info::get_table(uint no, unsigned long int pos) const
   return NULL;
 }
 
+
+inline
+Image_info::Databases::Databases(): m_dbs(16,128)
+{}
+
+inline
+Image_info::Db_item* 
+Image_info::Databases::operator[](uint pos) const
+{ return m_dbs[pos]; }
+
+inline
+uint Image_info::Databases::count() const
+{ return m_dbs.size(); }
+
+/// Insert database at first available position.
+inline
+Image_info::Db_item* 
+Image_info::Databases::add_db(const Db_ref &db)
+{
+  return add_db(db,count());
+}
+
 /**
   Add database to the catalogue, storing it at given position.
 
@@ -788,6 +790,33 @@ Image_info::Databases::add_db(const Db_ref &db, uint pos)
   di->base.pos= pos;
   *di= db;
   return di;
+}
+
+
+inline
+Tables::Tables(): m_tables(1024,1024)
+{}
+
+inline
+Tables::~Tables()
+{}
+
+inline
+uint Tables::count() const
+{ return m_tables.size(); }
+
+inline
+Image_info::Table_item* 
+Tables::add_table(const Image_info::Table_ref &t)
+{
+  return add_table(t,count());
+}
+
+inline
+Image_info::Table_item* 
+Tables::get_table(unsigned long int pos)
+{
+  return m_tables[pos];
 }
 
 /**
@@ -980,6 +1009,9 @@ class Image_info::Ditem_iterator
 
   const Item* get_ptr() const
   { return ptr ? ptr : PerDb_iterator::get_ptr(); }
+
+  Item* get_ptr(ulong pos) const
+  { return PerDb_iterator::get_ptr(pos); }
 
   bool next();
 };
