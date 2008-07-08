@@ -380,7 +380,7 @@ noinst_HEADERS=	$(falcon_headers) \
 
 EXTRA_LTLIBRARIES=	ha_falcon.la
 pkglib_LTLIBRARIES=	@plugin_falcon_shared_target@
-ha_falcon_la_LDFLAGS=	-module -rpath $(pkglibdir) -lstdc++
+ha_falcon_la_LDFLAGS=	-module -rpath $(pkglibdir)
 ha_falcon_la_CXXFLAGS=	$(AM_CXXFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_CFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_LIBADD=	TransformLib/libtransform.la
