@@ -95,9 +95,9 @@ Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type)
      Create a TABLE_LIST * list for iterating through the tables.
      Initialize the list for opening the tables in read mode.
   */
-  all_tables= (TABLE_LIST*)my_malloc(tables.count()*sizeof(TABLE_LIST), MYF(MY_WME));
+  all_tables= (TABLE_LIST*)my_malloc(tables.count()*sizeof(TABLE_LIST), 
+                                     MYF(MY_WME | MY_ZEROFILL));
   DBUG_ASSERT(all_tables); // TODO: report error instead
-  bzero(all_tables, tables.count()*sizeof(TABLE_LIST));
 
   for (uint i=0; i < tables.count(); ++i)
   {
@@ -369,8 +369,7 @@ result_t Backup::get_data(Buffer &buf)
       DBUG_RETURN(DONE);
     }
 
-    tbl_num++;
-    cur_table= all_tables[tbl_num - 1].table;
+    cur_table= all_tables[tbl_num++].table;
     DBUG_ASSERT(cur_table); // tables should be opened at that time
     read_set=  cur_table->read_set;
     start_tbl_read(cur_table);

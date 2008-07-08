@@ -841,21 +841,14 @@ static my_bool cmp_filename(struct file_info *file_info, const char *name)
 
 
 /**
-  Closes a table but, if physical log, does not update its state on disk.
+  Closes a table but, if physical log, updates the share from disk first.
 
   mi_close() calls mi_state_info_write() if the table is corrupted.
   This can happen for example is the table is from an online backup which
   made a copy of its data file and only its index' header.
   But in that case, if we have executed some MI_LOG_WRITE_BYTES_MYI commands,
-  the state in memory is older than the state on disk, so we do not want to
-  call mi_state_info_write(), it would cancel what we have just done.
-  The solution is to mark the table as "read only" before mi_close().We have
-  no problem with updating the MYISAM_SHARE structure as we are not
-  multi-threaded (i.e. nobody uses the share while we are changing it to
-  read-only). It is also not a problem if this "read only" influences
-  next users of this same share, as a backup log contains all index header
-  writes logged, and so all next users can skip calling
-  mi_state_info_write() too.
+  the state in memory is older than the state on disk, so we update the
+  share from disk.
 
   @return Operation status
     @retval 0      ok
@@ -865,6 +858,15 @@ static my_bool cmp_filename(struct file_info *file_info, const char *name)
 static int mi_close_care_state(MI_INFO *info)
 {
   if (!update_index_on_close)
-    info->s->mode= O_RDONLY;
+  {
+    MYISAM_SHARE *share;
+    my_bool      old_myisam_single_user;
+
+    share= info->s;
+    old_myisam_single_user= myisam_single_user;
+    myisam_single_user= FALSE;
+    (void) mi_state_info_read_dsk(share->kfile, &share->state, 1);
+    myisam_single_user= old_myisam_single_user;
+  }
   return mi_close(info);
 }

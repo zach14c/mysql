@@ -666,7 +666,8 @@ int Backup_restore_ctx::lock_tables_for_restore()
 
     for (ulong t=0; t < snap->table_count(); ++t)
     {
-      TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
+      TABLE_LIST *ptr= (TABLE_LIST*)alloc_root(m_thd->mem_root, 
+                                               sizeof(TABLE_LIST)); 
       DBUG_ASSERT(ptr);  // FIXME: report error instead
       bzero(ptr, sizeof(TABLE_LIST));
 
@@ -710,34 +711,6 @@ int Backup_restore_ctx::unlock_tables()
     return 0;
 
   DBUG_PRINT("restore",("unlocking tables"));
-
-  /*
-    For tables processed by native restore drivers, their data has been
-    changed by the driver "behind the scenes", i.e. without notifying 
-    server about the changes. This can make server internal structures out
-    of sync with the current state of the tables.
-
-    We reset share->version for these tables so that server updates their
-    internal state on close_thread_tables().
-  */ 
-
-  for (uint s=0; s < m_catalog->snap_count(); ++s)
-  {
-    backup::Snapshot_info *snap= m_catalog->m_snap[s];
-
-    if (snap->type() != backup::Snapshot_info::NATIVE_SNAPSHOT)
-      continue;
- 
-    for (uint t=0; t < snap->table_count(); ++t)
-    {
-      backup::Image_info::Table *tbl= snap->get_table(t);
-      
-      if (!tbl->m_table)
-        continue;
-
-      tbl->m_table->table->s->version= 0;
-    }
-  }
 
   close_thread_tables(m_thd);
   m_tables_locked= FALSE;
