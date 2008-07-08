@@ -528,6 +528,17 @@ int IO::pread(int64 offset, int length, UCHAR* buffer)
 
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	ret = ::pread (fileId, buffer, length, offset);
+#elif defined(_WIN32)
+	HANDLE hFile = (HANDLE)_get_osfhandle(fileId);
+	OVERLAPPED overlapped = {0};
+	LARGE_INTEGER pos;
+
+	pos.QuadPart = offset;
+	overlapped.Offset = pos.LowPart;
+	overlapped.OffsetHigh = pos.HighPart;
+
+	if (!ReadFile(hFile, buffer, length, (DWORD *) &ret, &overlapped))
+		ret = -1;
 #else
 	Sync sync (&syncObject, "IO::pread");
 	sync.lock (Exclusive);
@@ -560,6 +571,20 @@ int IO::pwrite(int64 offset, int length, const UCHAR* buffer)
 	
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	ret = ::pwrite (fileId, buffer, length, offset);
+#elif defined(_WIN32)
+
+	ASSERT(length > 0);
+
+	HANDLE hFile = (HANDLE)_get_osfhandle(fileId);
+	OVERLAPPED overlapped = {0};
+	LARGE_INTEGER pos;
+
+	pos.QuadPart = offset;
+	overlapped.Offset = pos.LowPart;
+	overlapped.OffsetHigh = pos.HighPart;
+
+	if (!WriteFile(hFile, buffer, length, (DWORD *)&ret, &overlapped))
+		ret = -1;
 #else
 	Sync sync (&syncObject, "IO::pwrite");
 	sync.lock (Exclusive);
