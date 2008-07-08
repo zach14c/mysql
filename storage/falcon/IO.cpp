@@ -273,7 +273,7 @@ void IO::validateChecksum(Page *page, size_t pageSize, int64 fileOffset)
 		FATAL("Checksum error (expected %d, got %d) at page %d"
 			"file '%s', offset " I64FORMAT ", pagesize %d",
 			(int)chksum, (int)page->checksum, (int)(fileOffset/pageSize),
-			fileName, fileOffset, pageSize);
+			fileName.getString(), fileOffset, pageSize);
 }
 
 bool IO::trialRead(Bdb *bdb)
