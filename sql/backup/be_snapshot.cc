@@ -56,27 +56,6 @@ using backup::Buffer;
 using namespace backup;
 
 /**
- * Create a snapshot backup backup driver.
- *
- * Given a list of tables to be backed-up, create instance of backup
- * driver which will create backup image of these tables.
- *
- * @param  tables (in) list of tables to be backed-up.
- * @param  eng    (out) pointer to backup driver instance.
- *
- * @retval Error code or backup::OK on success.
- */
-result_t Engine::get_backup(const uint32, const Table_list &tables, Backup_driver* &drv)
-{
-  DBUG_ENTER("Engine::get_backup");
-  Backup *ptr= new snapshot_backup::Backup(tables, m_thd);
-  if (!ptr)
-    DBUG_RETURN(ERROR);
-  drv= (backup::Backup_driver *)ptr;
-  DBUG_RETURN(OK);
-}
-
-/**
   Cleanup backup
 
   This method provides a means to stop a current backup by allowing
@@ -165,29 +144,6 @@ result_t Backup::get_data(Buffer &buf)
   if ((locking_thd->lock_state == LOCK_SIGNAL) || m_cancel)
     cleanup();
   return(res);
-}
-
-/**
- * Create a snapshot backup restore driver.
- *
- * Given a list of tables to be restored, create instance of restore
- * driver which will restore these tables from a backup image.
- *
- * @param  version  (in) version of the backup image.
- * @param  tables   (in) list of tables to be restored.
- * @param  eng      (out) pointer to restore driver instance.
- *
- * @retval Error code or backup::OK on success.
- */
-result_t Engine::get_restore(version_t, const uint32, const Table_list &tables,
-Restore_driver* &drv)
-{
-  DBUG_ENTER("Engine::get_restore");
-  Restore *ptr= new snapshot_backup::Restore(tables, m_thd);
-  if (!ptr)
-    DBUG_RETURN(ERROR);
-  drv= ptr;
-  DBUG_RETURN(OK);
 }
 
 } /* snapshot_backup namespace */

@@ -5,6 +5,8 @@
 #include <backup_stream.h> // for st_bstream_* types
 #include <backup/backup_aux.h>  // for Map template
 
+class Backup_restore_ctx;
+
 namespace backup {
 
 /********************************************************************
@@ -13,8 +15,8 @@ namespace backup {
  
  ********************************************************************/ 
 
-
 class Snapshot_info;
+class Logical_snapshot;
 
 /**
   Describes contents of a backup image.
@@ -140,6 +142,7 @@ public: // public interface
   // friends
 
   friend class Snapshot_info;
+  friend class backup::Logical_snapshot; // needs access to Tables class
 };
 
 Image_info::Obj* find_obj(const Image_info &info, 
@@ -257,7 +260,7 @@ class Snapshot_info
 
   virtual ~Snapshot_info();
 
-  Image_info::Tables *get_table_list() { return &m_tables; }
+  Image_info::Table* get_table(ulong pos) const;
 
  protected:
  
@@ -268,8 +271,7 @@ class Snapshot_info
   // Methods for adding and accessing tables stored in the table list.
 
   int add_table(Image_info::Table &t, ulong pos);
-  Image_info::Table* get_table(ulong pos);
- 
+
   // IMPLEMENTATION
  
   Image_info::Tables m_tables; ///< List of tables stored in this image.
@@ -487,6 +489,7 @@ class Image_info::Table
 {
   const Db &m_db;     ///< The database to which this table belongs.
   Table  *next_table; ///< Used to crate a linked list of tables in a database.
+  TABLE_LIST  *m_table; ///< If not NULL, points at opened table.
 
  public:
 
@@ -498,11 +501,14 @@ class Image_info::Table
 
   friend class Db;
   friend class Dbobj_iterator;
+  friend class Logical_snapshot;     // reads m_table
+  friend class ::Backup_restore_ctx; // sets m_table
 };
 
 inline
 Image_info::Table::Table(const Db &db, const ::String &name)
-  :Table_ref(db.name(), Image_info::Obj::m_name), m_db(db), next_table(NULL)
+  :Table_ref(db.name(), Image_info::Obj::m_name), m_db(db), next_table(NULL),
+   m_table(NULL)
 {
   bzero(&base, sizeof(base));
   base.base.type= BSTREAM_IT_TABLE;
@@ -1073,7 +1079,7 @@ int Snapshot_info::add_table(Image_info::Table &t, ulong pos)
 
 /// Get table at a given position
 inline
-Image_info::Table* Snapshot_info::get_table(ulong pos)
+Image_info::Table* Snapshot_info::get_table(ulong pos) const
 {
   return m_tables.get_table(pos);
 }

@@ -1594,6 +1594,7 @@ result_t Log_restore::post_restore()
   mi_exl.max_files= open_files_limit;
   if (mi_examine_log(&mi_exl))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
+
   DBUG_RETURN(backup::OK);
 }
 

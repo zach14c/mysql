@@ -194,6 +194,8 @@ execute_backup_command(THD *thd, LEX *lex)
 
     res= context.do_restore();      
 
+    DEBUG_SYNC(thd, "restore_before_end");
+
     if (res)
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE));
     
@@ -328,7 +330,8 @@ backup::Mem_allocator *Backup_restore_ctx::mem_alloc= NULL;
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
-  m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL), m_catalog(NULL)
+  m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL),
+  m_catalog(NULL), m_tables_locked(FALSE)
 {
   /*
     Check for progress tables.
@@ -631,6 +634,91 @@ Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
   return info;
 }
 
+/*
+  Lock tables being restored.
+
+  Backup kernel ensures that all tables being restored are exclusively locked.
+
+  We use open_and_lock_tables() for locking. This is a temporary solution until
+  a better mechanism is devised - open_and_lock_tables() is not good if there
+  are many tables to be processed.
+
+  The built-in restore drivers need to open tables to write rows to them. Since
+  we have opened tables here, we store pointers to opened TABLE_LIST structures
+  in the restore catalogue so that the built-in drivers can access them later.
+
+  @todo Replace open_and_lock_tables() by a lighter solution.
+  @todo Hide table locking behind the server API.
+*/ 
+int Backup_restore_ctx::lock_tables_for_restore()
+{
+  TABLE_LIST *tables= NULL;
+
+  /*
+    Iterate over all tables in all snapshots and create a linked TABLE_LIST
+    for call to open_and_lock_tables(). Store pointers to TABLE_LIST structures
+    in the restore catalogue for later access to opened tables.
+  */ 
+
+  for (uint s= 0; s < m_catalog->snap_count(); ++s)
+  {
+    backup::Snapshot_info *snap= m_catalog->m_snap[s];
+
+    for (ulong t=0; t < snap->table_count(); ++t)
+    {
+      TABLE_LIST *ptr= (TABLE_LIST*)alloc_root(m_thd->mem_root, 
+                                               sizeof(TABLE_LIST)); 
+      DBUG_ASSERT(ptr);  // FIXME: report error instead
+      bzero(ptr, sizeof(TABLE_LIST));
+
+      backup::Image_info::Table *tbl= snap->get_table(t);
+
+      ptr->alias= ptr->table_name= const_cast<char*>(tbl->name().ptr());
+      ptr->db= const_cast<char*>(tbl->db().name().ptr());
+      ptr->lock_type= TL_WRITE;
+
+      tbl->m_table= ptr;
+
+      ptr->next_global= ptr->next_local= ptr->next_name_resolution_table= tables;
+      tables= ptr;
+    }
+  }
+
+  /*
+    Open and lock the tables.
+    
+    Note: simple_open_n_lock_tables() must be used here since we don't want
+    to do derived tables processing. Processing derived tables even leads 
+    to crashes as those reported in BUG#34758.
+  */ 
+  if (simple_open_n_lock_tables(m_thd,tables))
+  {
+    fatal_error(ER_BACKUP_OPEN_TABLES,"RESTORE");
+    return m_error;
+  }
+
+  m_tables_locked= TRUE;
+  return 0;
+}
+
+/**
+  Unlock tables which were locked by @c lock_tables_for_restore.
+ */ 
+int Backup_restore_ctx::unlock_tables()
+{
+  // Do nothing if tables are not locked.
+  if (!m_tables_locked)
+    return 0;
+
+  DBUG_PRINT("restore",("unlocking tables"));
+
+  close_thread_tables(m_thd);
+  m_tables_locked= FALSE;
+
+  return 0;
+}
+
+
 /**
   Destroy a backup/restore context.
   
@@ -651,6 +739,19 @@ int Backup_restore_ctx::close()
   using namespace backup;
 
   time_t when= my_time(0);
+
+  // If auto commit is turned off, be sure to commit the transaction
+  // TODO: move it to the big switch, case: MYSQLCOM_BACKUP?
+
+  if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+  {
+    ha_autocommit_or_rollback(m_thd, 0);
+    end_active_trans(m_thd);
+  }
+
+  // unlock tables if they are still locked
+
+  unlock_tables();
 
   // unfreeze meta-data
 
@@ -889,11 +990,27 @@ int Backup_restore_ctx::do_restore()
     It should be fixed inside object services implementation and then the
     following line should be removed.
    */
+  close_thread_tables(m_thd);
   m_thd->main_da.reset_diagnostics_area();
+
+  if (lock_tables_for_restore()) // reports errors
+    DBUG_RETURN(m_error);
 
   // Here restore drivers are created to restore table data
   if (restore_table_data(m_thd, info, s)) // reports errors
     DBUG_RETURN(ER_BACKUP_RESTORE);
+
+  unlock_tables();
+
+  /* 
+   Re-create all triggers and events (it was not done in @c bcat_create_item()).
+
+   Note: it is important to do that after tables are unlocked, otherwise 
+   creation of these objects will fail.
+  */
+
+  if (restore_triggers_and_events())
+     DBUG_RETURN(ER_BACKUP_RESTORE);
 
   DBUG_PRINT("restore",("Done."));
 
@@ -904,18 +1021,12 @@ int Backup_restore_ctx::do_restore()
   }
 
   /* 
-   Re-create all triggers and events (it was not done in @c bcat_create_item()).
-  */
-
-  if (restore_triggers_and_events())
-     DBUG_RETURN(ER_BACKUP_RESTORE);
-  
-  /* 
     FIXME: this call is here because object services doesn't clean the
     statement execution context properly, which leads to assertion failure.
     It should be fixed inside object services implementation and then the
     following line should be removed.
    */
+  close_thread_tables(m_thd);
   m_thd->main_da.reset_diagnostics_area();
 
   report_stats_post(info);
