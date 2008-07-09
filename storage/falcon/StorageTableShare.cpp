@@ -376,7 +376,7 @@ int StorageTableShare::haveIndexes(int indexCount)
 	if (indexes == NULL)
 		return false;
 		
-	if (indexCount > numberIndexes)
+	if (indexCount != numberIndexes)
 		return false;
 	
 	for (int n = 0; n < numberIndexes; ++n)
