@@ -95,25 +95,17 @@ Backup::Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type)
      Create a TABLE_LIST * list for iterating through the tables.
      Initialize the list for opening the tables in read mode.
   */
-  all_tables= (TABLE_LIST*)my_malloc(tables.count()*sizeof(TABLE_LIST), 
-                                     MYF(MY_WME | MY_ZEROFILL));
+  all_tables= (TABLE_LIST*)my_malloc(tables.count()*sizeof(TABLE_LIST), MYF(MY_WME));
   DBUG_ASSERT(all_tables); // TODO: report error instead
+  bzero(all_tables, tables.count()*sizeof(TABLE_LIST));
 
   for (uint i=0; i < tables.count(); ++i)
   {
-    Table_ref   tbl= tables[i];
-    TABLE_LIST &tl= all_tables[i];
-
-    tl.alias= tl.table_name= const_cast<char*>(tbl.name().ptr());
-    tl.db= const_cast<char*>(tbl.db().name().ptr());
-    tl.lock_type= lock_type;
+    backup::set_table_list(all_tables[i], tables[i], lock_type, t_thd->mem_root);
 
     // link previous entry to this one
     if (i > 0)
-    {
-      all_tables[i-1].next_global= all_tables[i-1].next_local=
-      all_tables[i-1].next_name_resolution_table= &tl;
-    }    
+      backup::link_table_list(all_tables[i-1], &all_tables[i]);
   }
 
   locking_thd->tables_in_backup= all_tables;
@@ -145,6 +137,21 @@ result_t Backup::cleanup()
   }
   DBUG_RETURN(OK);
 }
+
+
+Backup::~Backup()
+{
+  /*
+    Since objects representing metadata lock requests for tables open
+    by locking thread use same chunks of memory as elements of
+    'all_tables' table list it is essential to ensure that locking
+    thread has finished before freeing elements of this table list.
+  */
+  locking_thd->kill_locking_thread();
+  locking_thd->wait_until_locking_thread_dies();
+  my_free(all_tables, MYF(0)); 
+}
+
 
 /**
   * @brief Prelock call to setup locking.

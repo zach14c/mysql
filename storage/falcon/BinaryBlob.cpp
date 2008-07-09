@@ -28,7 +28,7 @@
 #include "SQLException.h"
 #include "Dbb.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Dbb.h"
 #include "Repository.h"
 #include "Section.h"
@@ -55,7 +55,7 @@ BinaryBlob::BinaryBlob(int minSegmentSize) : Stream (minSegmentSize)
 	init (true);
 }
 
-#ifdef ENGINE
+#ifdef FALCONDB
 BinaryBlob::BinaryBlob(Dbb * db, int32 recNumber, Section *blobSection)
 {
 	init (false);
@@ -165,7 +165,7 @@ void BinaryBlob::populate()
 
 	populated = true;
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	if (repository && isBlobReference())
 		try
 			{

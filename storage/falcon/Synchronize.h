@@ -39,7 +39,7 @@ extern INTERLOCK_TYPE synchronizeFreeze;
 #define DEBUG_FREEZE
 #endif
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #define LOG_DEBUG	Log::debug
 #define DEBUG_BREAK	Log::debugBreak
 #else

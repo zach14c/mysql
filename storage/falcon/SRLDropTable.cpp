@@ -46,9 +46,6 @@ SRLDropTable::~SRLDropTable()
 
 void SRLDropTable::append(Dbb *dbb, TransId transId, int section)
 {
-	Sync syncSections(&log->syncSections, "SRLDropTable::append");
-	syncSections.lock(Exclusive);
-
 	START_RECORD(srlDropTable, "SRLDropTable::append");
 	putInt(dbb->tableSpaceId);
 	log->getTransaction(transId);

@@ -1,0 +1,51 @@
+*** Bug #22189 ***
+SET @@storage_engine = 'Falcon';
+DROP DATABASE IF EXISTS db62;
+# Establish connection conn1 (user = root)
+SET @@storage_engine = 'Falcon';
+# Switch to connection default
+SET @@autocommit = 0;
+CREATE DATABASE db62;
+USE db62;
+CREATE TABLE x1 (x1 int primary key, x2 int);
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+START TRANSACTION;
+SELECT * FROM x1;
+x1	x2
+INSERT INTO x1 VALUES (0,0);
+# Switch to connection conn1
+SET @@autocommit = 1;
+USE db62;
+INSERT INTO x1 VALUES (1,1);
+# Switch to connection default
+INSERT INTO x1 VALUES (1,2);
+ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
+# Switch to connection conn1
+INSERT INTO x1 VALUES (0,3);
+# Switch to connection default
+ROLLBACK;
+# Switch to connection conn1
+UPDATE x1 SET x1 = 1, x2 = 4;
+ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
+SELECT * FROM x1;
+x1	x2
+0	3
+1	1
+# Switch to connection conn1
+UPDATE x1 SET x1 = 0, x2 = 5;
+INSERT INTO x1 VALUES (0,6);
+# Switch to connection default
+ROLLBACK;
+# Switch to connection conn1
+ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
+INSERT INTO x1 VALUES (0,6);
+ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
+INSERT INTO x1 VALUES (0,6);
+ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
+# Switch to connection default
+SELECT * FROM x1;
+x1	x2
+0	3
+1	1
+DROP DATABASE db62;
+USE test;

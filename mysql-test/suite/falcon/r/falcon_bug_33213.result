@@ -1,0 +1,4 @@
+CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+CREATE TABLESPACE ts2 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+ERROR HY000: Tablespace data file 'ts1.fts' already exists
+DROP TABLESPACE ts1 ENGINE=Falcon;

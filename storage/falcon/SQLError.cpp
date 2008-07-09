@@ -177,7 +177,7 @@ const char* SQLError::getTrace()
 
 void SQLError::error(const char *string)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	LogLock logLock;
 	Log::log(LogException, "Exception: %s\n", string);
 #endif

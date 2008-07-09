@@ -85,6 +85,8 @@ class ha_tina: public handler
   MEM_ROOT blobroot;
 
 private:
+  int curr_lock_type;
+
   bool get_write_pos(off_t *end_pos, tina_set *closest_hole);
   int open_update_temp_file_if_needed();
   int init_tina_writer();
@@ -98,6 +100,7 @@ public:
       my_free(chain, 0);
     if (file_buff)
       delete file_buff;
+    free_root(&blobroot, MYF(0));
   }
   const char *table_type() const { return "CSV"; }
   const char *index_type(uint inx) { return "NONE"; }
@@ -154,6 +157,8 @@ public:
   int create(const char *name, TABLE *form, HA_CREATE_INFO *create_info);
   bool check_if_incompatible_data(HA_CREATE_INFO *info,
                                   uint table_changes);
+
+  int external_lock(THD *thd, int lock_type);
 
   THR_LOCK_DATA **store_lock(THD *thd, THR_LOCK_DATA **to,
       enum thr_lock_type lock_type);

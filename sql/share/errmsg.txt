@@ -4879,7 +4879,7 @@ ER_ZLIB_Z_DATA_ERROR
         por "ZLIB: Dados de entrada est� corrupto"
         spa "ZLIB: Dato de entrada fu� corrompido para zlib"
 ER_CUT_VALUE_GROUP_CONCAT  
-        eng "%d line(s) were cut by GROUP_CONCAT()"
+        eng "Row %u was cut by GROUP_CONCAT()"
         ger "%d Zeile(n) durch GROUP_CONCAT() abgeschnitten"
         nla "%d regel(s) door GROUP_CONCAT() ingekort"
         por "%d linha(s) foram cortada(s) por GROUP_CONCAT()"
@@ -6127,8 +6127,13 @@ ER_LOAD_DATA_INVALID_COLUMN
 
 ER_LOG_PURGE_NO_FILE  
 	eng "Being purged log %s was not found"
+
 ER_NEED_REPREPARE
   eng "Prepared statement needs to be re-prepared"
+
+ER_DELAYED_NOT_SUPPORTED  
+  eng "DELAYED option not supported for table '%-.192s'"
+
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
         ger "Umgewandelt zu nicht-transaktionalen Sperren auf '%-.64s'"
@@ -6351,6 +6356,8 @@ ER_BACKUP_TS_CHANGE
         eng "Tablespace %-.64s needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
 ER_BACKUP_GET_META_TS
         eng "Failed to obtain meta-data for tablespace %-.64s."
+ER_TABLESPACE_DATAFILE_EXIST
+  eng "Tablespace data file '%-.192s' already exists"
 ER_BACKUP_CATALOG_ADD_TS
         eng "Failed to add tablespace `%-.64s` to the catalog"
 ER_DEBUG_SYNC_TIMEOUT
@@ -6365,4 +6372,3 @@ ER_BACKUP_OBTAIN_NAME_LOCK_FAILED
   eng "Restore failed to obtain the name locks on the tables."
 ER_BACKUP_RELEASE_NAME_LOCK_FAILED
   eng "Restore failed to release the name locks on the tables."
-

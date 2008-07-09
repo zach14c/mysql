@@ -450,7 +450,7 @@ void _myisam_log_record_logical(enum myisam_log_commands command,
   if (!info->s->base.blobs)
     length=info->s->base.reclength;
   else
-    length=info->s->base.reclength+ _my_calc_total_blob_length(info,record);
+    length=info->s->base.reclength+ _mi_calc_total_blob_length(info,record);
   DBUG_ASSERT(((uint)result) <= UINT_MAX16);
   if (info->dfile >= UINT_MAX16 || filepos >= UINT_MAX32 ||
       length >= UINT_MAX16)

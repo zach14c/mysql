@@ -45,6 +45,8 @@
 
   On architectures where these operations are really atomic, rwlocks will
   be optimized away.
+  8- and 16-bit atomics aren't implemented for windows (see generic-msvc.h),
+  but can be added, if necessary. 
 */
 
 #ifndef my_atomic_rwlock_init
@@ -83,6 +85,14 @@
 #endif
 #endif
 
+/*
+  transparent_union doesn't work in g++
+  Bug ?
+
+  Darwin's gcc doesn't want to put pointers in a transparent_union
+  when built with -arch ppc64. Complains:
+  warning: 'transparent_union' attribute ignored
+*/
 #if defined(__GNUC__) && !defined(__cplusplus) && \
       ! (defined(__APPLE__) && defined(_ARCH_PPC64))
 /*

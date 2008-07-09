@@ -1936,6 +1936,8 @@ bool TriggerObj::do_serialize(THD *thd, String *serialization)
   if (!lst)
     DBUG_RETURN(FALSE);
 
+  alloc_mdl_locks(lst, thd->mem_root);
+
   if (open_tables(thd, &lst, &num_tables, 0))
     DBUG_RETURN(FALSE);
 
@@ -3168,6 +3170,7 @@ void Name_locker::free_table_list(TABLE_LIST *tl)
 */
 int Name_locker::get_name_locks(List<Obj> *tables, thr_lock_type lock)
 {
+  TABLE_LIST *ltable= 0;
   int ret= 0;
   DBUG_ENTER("Name_locker::get_name_locks()");
   /*
@@ -3176,10 +3179,12 @@ int Name_locker::get_name_locks(List<Obj> *tables, thr_lock_type lock)
   m_table_list= build_table_list(tables, lock);
   if (m_table_list)
   {
-    pthread_mutex_lock(&LOCK_open);
-    if (lock_table_names_exclusively(m_thd, m_table_list))
+    if (lock_table_names(m_thd, m_table_list))
       ret= 1;
-    pthread_mutex_unlock(&LOCK_open);
+    pthread_mutex_lock(&LOCK_open);
+    for (ltable= m_table_list; ltable; ltable= ltable->next_local)
+      tdc_remove_table(m_thd, TDC_RT_REMOVE_ALL, ltable->db,
+                       ltable->table_name);
   }
   DBUG_RETURN(ret);
 }
@@ -3197,10 +3202,9 @@ int Name_locker::release_name_locks()
   DBUG_ENTER("Name_locker::release_name_locks()");
   if (m_table_list)
   {
-    pthread_mutex_lock(&LOCK_open);
-    unlock_table_names(m_thd, m_table_list, (TABLE_LIST*) 0);
     pthread_mutex_unlock(&LOCK_open);
- }
+    unlock_table_names(m_thd);
+  }
   DBUG_RETURN(0);
 }
 

@@ -128,7 +128,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
       Native_snapshot *nsnap= new Native_snapshot(m_ctx, se);
 
       /*
-        Check if the snapshot object is valid - in particular has successfuly
+        Check if the snapshot object is valid - in particular has successfully
         created the native backup engine. If not, we will continue searching
         for a backup engine, trying the built-in ones.
       */
@@ -146,7 +146,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   
   /*
     If "backup_test_dummy_be_factory" is used, the hton->get_backup_engine
-    pointer has been modified. Here we restore the originial value.
+    pointer has been modified. Here we restore the original value.
    */ 
   DBUG_EXECUTE_IF("backup_test_dummy_be_factory", 
     {

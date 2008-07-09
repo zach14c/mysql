@@ -14,7 +14,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 # Re-enable implicit templates and exceptions
-CXXFLAGS= @CXXFLAGS@ -fimplicit-templates -fexceptions
+MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 
 INCLUDES= -I$(srcdir)/.. @ZLIB_INCLUDES@
 

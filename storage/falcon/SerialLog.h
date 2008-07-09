@@ -188,6 +188,7 @@ public:
 	SyncObject			syncSections;
 	SyncObject			syncIndexes;
 	SyncObject			syncGopher;
+	SyncObject			syncSerializeGophers;
 	SyncObject			syncUpdateStall;
 	Stack				buffers;
 	UCHAR				*bufferSpace;
