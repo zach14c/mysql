@@ -48,6 +48,10 @@ static const char *DB_ROOT				= ".fts";
 static const char THIS_FILE[]=__FILE__;
 #endif
 
+#ifndef ONLINE_ALTER
+//#define ONLINE_ALTER
+#endif
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -281,15 +285,21 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexCount, int indexId, Stora
 {
 	// Rebuild array if indexes have been added or dropped. Assume StorageTableShare::lock(exclusive).
 	
+#ifdef ONLINE_ALTER
 	if (numberIndexes != indexCount)
 		{
+		// lock(true);
+		
 		for (int n = 0; n < numberIndexes; ++n)
 			delete indexes[n];
 			
 		delete [] indexes;
 		indexes = NULL;
+		
+		// unlock();
 		}
-
+#endif
+	
 	if (!indexes)
 		{
 		indexes = new StorageIndexDesc*[indexCount];
@@ -376,8 +386,10 @@ int StorageTableShare::haveIndexes(int indexCount)
 	if (indexes == NULL)
 		return false;
 		
+#ifdef ONLINE_ALTER
 	if (indexCount != numberIndexes)
 		return false;
+#endif	
 	
 	for (int n = 0; n < numberIndexes; ++n)
 		if (indexes[n]== NULL)

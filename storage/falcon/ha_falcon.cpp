@@ -53,6 +53,10 @@
 #define MAX(a,b)			((a >= b) ? (a) : (b))
 #endif
 
+#ifndef ONLINE_ALTER
+//#define ONLINE_ALTER
+#endif
+
 #ifdef DEBUG_BACKLOG
 static const uint LOAD_AUTOCOMMIT_RECORDS = 10000000;
 #else
@@ -2101,6 +2105,10 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 						**/
 	HA_ALTER_FLAGS notSupported = ~(supported);
 	
+#ifndef ONLINE_ALTER
+	DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+#endif	
+
 	if (tempTable || (*alter_flags & notSupported).is_set())
 		DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 
@@ -2208,8 +2216,10 @@ int StorageInterface::addColumn(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 {
 	int ret;
 	int64 incrementValue = 0;
+	/***
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
+	***/
 	CmdGen gen;
 	genTable(alteredTable, &gen);
 	
