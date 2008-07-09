@@ -37,6 +37,10 @@
 static const char *FALCON_TEMPORARY		= "/falcon_temporary";
 static const char *DB_ROOT				= ".fts";
 
+#ifndef ONLINE_ALTER
+#define ONLINE_ALTER
+#endif
+
 #if defined(_WIN32) && MYSQL_VERSION_ID < 0x50100
 #define IS_SLASH(c)	(c == '/' || c == '\\')
 #else
@@ -46,10 +50,6 @@ static const char *DB_ROOT				= ".fts";
 #ifdef _DEBUG
 #undef THIS_FILE
 static const char THIS_FILE[]=__FILE__;
-#endif
-
-#ifndef ONLINE_ALTER
-//#define ONLINE_ALTER
 #endif
 
 //////////////////////////////////////////////////////////////////////
@@ -286,17 +286,13 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexCount, int indexId, Stora
 	// Rebuild array if indexes have been added or dropped. Assume StorageTableShare::lock(exclusive).
 	
 #ifdef ONLINE_ALTER
-	if (numberIndexes != indexCount)
+	if (indexes && (numberIndexes != indexCount))
 		{
-		// lock(true);
-		
 		for (int n = 0; n < numberIndexes; ++n)
 			delete indexes[n];
 			
 		delete [] indexes;
 		indexes = NULL;
-		
-		// unlock();
 		}
 #endif
 	

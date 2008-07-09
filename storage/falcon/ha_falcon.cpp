@@ -54,7 +54,7 @@
 #endif
 
 #ifndef ONLINE_ALTER
-//#define ONLINE_ALTER
+#define ONLINE_ALTER
 #endif
 
 #ifdef DEBUG_BACKLOG
