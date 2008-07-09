@@ -61,6 +61,15 @@ connect (con5,localhost,root,,);
 connect (con6,localhost,root,,);
 connect (con7,localhost,root,,);
 
+#
+# Note: Originally we used SELECT ... FROM INFORMATION_SCHEMA.PROCESSLIST; to show status of 
+# the various connections participating in the test. But INFORMATION_SCHEMA.PROCESSLIST implementation
+# proved to be not relaiable. From time to time (nondeterminisrtically) test hanged on these SELECTs.
+# As showing the status is not essential for the test (we test correctness by checking the contents of
+# the created backup image), the selects are commented out now. They can be re-enabled when
+# I_S.PROCESSLIST is in a better shape.
+#
+
 connection con1;
 
 #
@@ -182,9 +191,9 @@ connection con5;
 
 --echo con5: Wait for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_commit_block';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con3;
 
@@ -199,26 +208,26 @@ connection con5;
 
 --echo con5: Wait for COMMIT to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR commit_read_locked';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
 
 --echo con5: Let BACKUP run until the next sync point.
 SET DEBUG_SYNC= 'now SIGNAL bup_go_read_lock WAIT_FOR bup_read_lock';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 --echo con5: Let COMMIT continue until end of statement.
 --echo con5: The completed COMMIT implicitly wakes BACKUP.
 --echo con5: So wait for BACKUP to reach the next synchronization point.
 SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con4;
 
@@ -233,9 +242,9 @@ connection con5;
 
 --echo con5: Wait for BEGIN to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR begin_starting';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BEGIN%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BEGIN%";
 
 --echo con5: Sending finish signal to wake them all.
 SET DEBUG_SYNC= 'now SIGNAL finish';
@@ -390,9 +399,9 @@ connection con5;
 
 --echo con5: Wait for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_data_unlock';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con7;
 
@@ -410,9 +419,9 @@ connection con5;
 
 --echo con5: Wait for UPDATE to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR upd_read_lock';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "UPDATE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "UPDATE%";
 
 --echo con5: Sending finish signal to wake them all.
 SET DEBUG_SYNC= 'now SIGNAL finish';
@@ -614,9 +623,9 @@ connection con5;
 
 --echo con5: Wait for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_commit_block';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 #--echo con5: Wait for INSERT to reach its synchronization point.
 #SET DEBUG_SYNC= 'now WAIT_FOR insert_table_locked';
@@ -637,26 +646,26 @@ connection con5;
 
 --echo con5: Wait for COMMIT to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR commit_read_locked';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
 
 --echo con5: Let BACKUP run until the next sync point.
 SET DEBUG_SYNC= 'now SIGNAL bup_go_read_lock WAIT_FOR bup_read_lock';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 --echo con5: Let COMMIT continue until the sync point at its end.
 --echo con5: The completed COMMIT implicitly wakes BACKUP.
 --echo con5: So wait for BACKUP to reach the next synchronization point.
 SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con4;
 
@@ -671,9 +680,9 @@ connection con5;
 
 --echo con5: Wait for BEGIN to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR begin_starting';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BEGIN%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BEGIN%";
 
 connection con7;
 
@@ -691,9 +700,9 @@ connection con5;
 
 --echo con5: Wait for DELETE to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR del_read_lock';
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DELETE%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "DELETE%";
 
 --echo con5: Sending finish signal to wake them all.
 SET DEBUG_SYNC= 'now SIGNAL finish';
