@@ -31,7 +31,8 @@ struct FieldFormat {
 	short	type;
 	short	nullPosition;
 	short	scale;
-	short	index;
+	short	physicalId;				// mapping from field id to physical id
+	short	fieldId;				// maping from physical id to field id
     int32	offset;
 	int32	length;
 	};

@@ -35,6 +35,7 @@ class Index;
 class SyncObject;
 class Sequence;
 class SyncObject;
+class Format;
 
 struct StorageSegment {
 	short			type;
@@ -80,7 +81,8 @@ enum StorageError {
 	StorageErrorTableSpaceExist		= -107,
 	StorageErrorTableNotEmpty		= -108,
 	StorageErrorTableSpaceNotExist	= -109,
-	StorageErrorDeviceFull			= -110
+	StorageErrorDeviceFull			= -110,
+	StorageErrorTableSpaceDataFileExist	= -111
 	};
 	
 static const int StoreErrorIndexShift	= 10;
@@ -110,6 +112,7 @@ public:
 
 	int					getIndexId(const char* schemaName, const char* indexName);
 	int					create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
+	int					upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
 	int					deleteTable(StorageConnection *storageConnection);
 	int					truncateTable(StorageConnection *storageConnection);
 	void				load(void);
@@ -144,9 +147,11 @@ public:
 	Table				*table;
 	StorageIndexDesc	**indexes;
 	Sequence			*sequence;
+	Format				*format;						// format for insertion
 	int					numberIndexes;
 	volatile INTERLOCK_TYPE	truncateLockCount;
 	bool				tempTable;
+	int getFieldId(const char* fieldName);
 };
 
 #endif

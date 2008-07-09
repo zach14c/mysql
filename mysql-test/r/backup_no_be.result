@@ -39,3 +39,4 @@ SHOW TABLES IN db1;
 Tables_in_db1
 t1
 DROP DATABASE db1;
+SET GLOBAL debug="d,";

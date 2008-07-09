@@ -509,7 +509,7 @@ int ha_ndbcluster::ndb_err(NdbTransaction *trans)
     bzero((char*) &table_list,sizeof(table_list));
     table_list.db= m_dbname;
     table_list.alias= table_list.table_name= m_tabname;
-    close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+    close_cached_tables(thd, &table_list, FALSE, FALSE);
     break;
   }
   default:
@@ -678,7 +678,15 @@ ha_ndbcluster::batch_copy_row_to_buffer(Thd_ndb *thd_ndb, const uchar *record,
 {
   uchar *row= copy_row_to_buffer(thd_ndb, record);
   if (unlikely(!row))
+  {
+    /*
+      Initialize this because otherwise gcc believes that it can be used
+      uninitialized by callers (does not realize that if we return NULL then
+      callers don't use batch_full).
+    */
+    batch_full= FALSE;
     return NULL;
+  }
   uint unsent= thd_ndb->m_unsent_bytes;
   unsent+= m_bytes_per_write;
   batch_full= unsent >= BATCH_FLUSH_SIZE;
@@ -693,7 +701,10 @@ ha_ndbcluster::batch_copy_key_to_buffer(Thd_ndb *thd_ndb, const uchar *key,
 {
   uchar *row= alloc_batch_row(thd_ndb, key_len);
   if (unlikely(!row))
+  {
+    batch_full= FALSE; // see batch_copy_row_to_buffer
     return NULL;
+  }
   memcpy(row, key, key_len);
   uint unsent= thd_ndb->m_unsent_bytes;
   unsent+= op_batch_size;
@@ -4641,10 +4652,9 @@ void ha_ndbcluster::start_bulk_insert(ha_rows rows)
 /**
   End of an insert.
 */
-int ha_ndbcluster::end_bulk_insert()
+int ha_ndbcluster::end_bulk_insert(bool abort)
 {
   int error= 0;
-
   DBUG_ENTER("end_bulk_insert");
   // Check if last inserts need to be flushed
 
@@ -4980,7 +4990,7 @@ int ha_ndbcluster::external_lock(THD *thd, int lock_type)
   Thd_ndb *thd_ndb= get_thd_ndb(thd);
   Ndb *ndb= thd_ndb->ndb;
 
-  DBUG_PRINT("enter", ("this: %p  thd: %p  thd_ndb: %lx  "
+  DBUG_PRINT("enter", ("this: %p  thd: %p  thd_ndb: 0x%lx  "
                        "thd_ndb->lock_count: %d",
                        this, thd, (long) thd_ndb,
                        thd_ndb->lock_count));
@@ -7769,6 +7779,20 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  /*
+    ndbcluster_find_files() may be called from I_S code and ndbcluster_binlog
+    thread in situations when some tables are already open. This means that
+    code below will try to obtain exclusive metadata lock on some table
+    while holding shared meta-data lock on other tables. This might lead to
+    a deadlock, and therefore is disallowed by assertions of the metadata
+    locking subsystem. In order to temporarily make the code work, we must
+    reset and backup the open tables state, thus hide the existing locks
+    from MDL asserts. But in the essence this is violation of metadata
+    locking protocol which has to be closed ASAP.
+  */
+  Open_tables_state open_tables_state_backup;
+  thd->reset_n_backup_open_tables_state(&open_tables_state_backup);
+
   if (!global_read_lock)
   {
     // Delete old files
@@ -7792,8 +7816,11 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  thd->restore_backup_open_tables_state(&open_tables_state_backup);
+
+  /* Lock mutex before creating .FRM files. */
   pthread_mutex_lock(&LOCK_open);
-  // Create new files
+  /* Create new files. */
   List_iterator_fast<char> it2(create_list);
   while ((file_name_str=it2++))
   {  
@@ -8650,7 +8677,7 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
     safe_mutex_assert_owner(&LOCK_open);
   else
     pthread_mutex_lock(&LOCK_open);    
-  close_cached_tables(thd, &table_list, TRUE, FALSE, FALSE);
+  close_cached_tables(thd, &table_list, TRUE, FALSE);
   if (!have_lock_open)
     pthread_mutex_unlock(&LOCK_open);    
 

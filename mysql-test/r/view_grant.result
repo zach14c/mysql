@@ -779,9 +779,9 @@ GRANT CREATE VIEW ON db26813.v2 TO u26813@localhost;
 GRANT DROP, CREATE VIEW ON db26813.v3 TO u26813@localhost;
 GRANT SELECT ON db26813.t1 TO u26813@localhost;
 ALTER VIEW v1 AS SELECT f2 FROM t1;
-ERROR 42000: Access denied; you need the SUPER privilege for this operation
+ERROR 42000: CREATE VIEW command denied to user 'u26813'@'localhost' for table 'v1'
 ALTER VIEW v2 AS SELECT f2 FROM t1;
-ERROR 42000: Access denied; you need the SUPER privilege for this operation
+ERROR 42000: DROP command denied to user 'u26813'@'localhost' for table 'v2'
 ALTER VIEW v3 AS SELECT f2 FROM t1;
 ERROR 42000: Access denied; you need the SUPER privilege for this operation
 SHOW CREATE VIEW v3;
@@ -947,4 +947,25 @@ Warnings:
 Warning	1356	View 'test.v1' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
 DROP VIEW v1;
 DROP TABLE t1;
+CREATE USER mysqluser1@localhost;
+CREATE DATABASE mysqltest1;
+USE mysqltest1;
+CREATE TABLE t1 ( a INT );
+CREATE TABLE t2 ( b INT );
+INSERT INTO t1 VALUES (1), (2);
+INSERT INTO t2 VALUES (1), (2);
+GRANT CREATE VIEW ON mysqltest1.* TO mysqluser1@localhost;
+GRANT SELECT ON t1 TO mysqluser1@localhost;
+GRANT INSERT ON t2 TO mysqluser1@localhost;
+This would lead to failed assertion.
+CREATE VIEW v1 AS SELECT a, b FROM t1, t2;
+SELECT * FROM v1;
+ERROR 42000: SELECT command denied to user 'mysqluser1'@'localhost' for table 'v1'
+SELECT b FROM v1;
+ERROR 42000: SELECT command denied to user 'mysqluser1'@'localhost' for table 'v1'
+DROP TABLE t1, t2;
+DROP VIEW v1;
+DROP DATABASE mysqltest1;
+DROP USER mysqluser1@localhost;
+USE test;
 End of 5.1 tests.

@@ -121,26 +121,45 @@ class String: public ::String
   {}
 };
 
-TABLE_LIST *build_table_list(const Table_list&, thr_lock_type);
-
-/*
-  Free the memory for the table list.
-*/
-inline int free_table_list(TABLE_LIST *all_tables)
+inline
+void set_table_list(TABLE_LIST &tl, const Table_ref &tbl, 
+                    thr_lock_type lock_type, MEM_ROOT *mem)
 {
-  if (all_tables)
-  {
-    TABLE_LIST *tbl= all_tables;
-    TABLE_LIST *prev;
-    while (tbl != NULL)
-    {
-      prev= tbl;
-      tbl= tbl->next_global;
-      my_free(prev, MYF(0));
-    }
-  }
-  return 0;
+  DBUG_ASSERT(mem);
+
+  tl.alias= tl.table_name= const_cast<char*>(tbl.name().ptr());
+  tl.db= const_cast<char*>(tbl.db().name().ptr());
+  tl.lock_type= lock_type;
+
+  tl.mdl_lock_data= mdl_alloc_lock(0, tl.db, tl.table_name, mem); 
 }
+
+inline
+TABLE_LIST* mk_table_list(const Table_ref &tbl, thr_lock_type lock_type, 
+                          MEM_ROOT *mem)
+{
+  DBUG_ASSERT(mem);
+
+  TABLE_LIST *ptr= (TABLE_LIST*)alloc_root(mem, sizeof(TABLE_LIST));
+
+  if (!ptr)
+     return NULL;
+
+  bzero(ptr, sizeof(TABLE_LIST));
+  set_table_list(*ptr, tbl, lock_type, mem);
+
+  return ptr;
+}
+
+inline
+TABLE_LIST* link_table_list(TABLE_LIST &tl, TABLE_LIST *next)
+{
+  tl.next_global= tl.next_local= tl.next_name_resolution_table= next;
+  return &tl;
+}
+
+TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock);
+void free_table_list(TABLE_LIST*);
 
 } // backup namespace
 

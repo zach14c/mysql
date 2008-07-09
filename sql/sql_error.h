@@ -30,6 +30,8 @@ public:
     if (msg_arg)
       set_msg(thd, msg_arg);
   }
+
+private:
   void set_msg(THD *thd, const char *msg_arg);
 };
 

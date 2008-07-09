@@ -91,4 +91,5 @@ SHOW TABLES IN db1;
 # Clean up.
 
 DROP DATABASE db1;
+SET GLOBAL debug="d,";
 --remove_file $MYSQLTEST_VARDIR/master-data/db1.bak

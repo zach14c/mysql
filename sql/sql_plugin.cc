@@ -644,7 +644,7 @@ static plugin_ref intern_plugin_lock(LEX *lex, plugin_ref rc CALLER_INFO_PROTO)
     *plugin= pi;
 #endif
     pi->ref_count++;
-    DBUG_PRINT("info",("thd: 0x%lx, plugin: \"%s\", ref_count: %d",
+    DBUG_PRINT("info",("thd: 0x%lx  plugin: \"%s\"  ref_count: %d",
                        (long) current_thd, pi->name.str, pi->ref_count));
 
     if (lex)
@@ -1344,6 +1344,7 @@ static void plugin_load(MEM_ROOT *tmp_root, int *argc, char **argv)
   tables.alias= tables.table_name= (char*)"plugin";
   tables.lock_type= TL_READ;
   tables.db= new_thd->db;
+  alloc_mdl_locks(&tables, tmp_root);
 
 #ifdef EMBEDDED_LIBRARY
   /*
@@ -1643,6 +1644,8 @@ bool mysql_install_plugin(THD *thd, const LEX_STRING *name, const LEX_STRING *dl
   if (check_table_access(thd, INSERT_ACL, &tables, FALSE, FALSE, 1))
     DBUG_RETURN(TRUE);
 
+  alloc_mdl_locks(&tables, thd->mem_root);
+
   /* need to open before acquiring LOCK_plugin or it will deadlock */
   if (! (table = open_ltable(thd, &tables, TL_WRITE, 0)))
     DBUG_RETURN(TRUE);
@@ -1699,6 +1702,7 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
   bzero(&tables, sizeof(tables));
   tables.db= (char *)"mysql";
   tables.table_name= tables.alias= (char *)"plugin";
+  alloc_mdl_locks(&tables, thd->mem_root);
 
   /* need to open before acquiring LOCK_plugin or it will deadlock */
   if (! (table= open_ltable(thd, &tables, TL_WRITE, 0)))
@@ -2594,7 +2598,7 @@ TYPELIB* sys_var_pluginvar::plugin_var_typelib(void)
   default:
     return NULL;
   }
-  return NULL;
+  return NULL;	/* Keep compiler happy */
 }
 
 

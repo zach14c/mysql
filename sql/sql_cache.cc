@@ -993,7 +993,7 @@ void Query_cache::store_query(THD *thd, TABLE_LIST *tables_used)
 
     See also a note on double-check locking usage above.
   */
-  if (thd->locked_tables || query_cache_size == 0)
+  if (thd->locked_tables_mode || query_cache_size == 0)
     DBUG_VOID_RETURN;
   uint8 tables_type= 0;
 
@@ -1192,7 +1192,10 @@ Query_cache::send_result_to_client(THD *thd, char *sql, uint query_length)
 {
   ulonglong engine_data;
   Query_cache_query *query;
-  Query_cache_block *first_result_block, *result_block;
+#ifndef EMBEDDED_LIBRARY
+  Query_cache_block *first_result_block;
+#endif
+  Query_cache_block *result_block;
   Query_cache_block_table *block_table, *block_table_end;
   ulong tot_length;
   Query_cache_query_flags flags;
@@ -1205,7 +1208,7 @@ Query_cache::send_result_to_client(THD *thd, char *sql, uint query_length)
 
     See also a note on double-check locking usage above.
   */
-  if (thd->locked_tables || thd->variables.query_cache_type == 0 ||
+  if (thd->locked_tables_mode || thd->variables.query_cache_type == 0 ||
       query_cache_size == 0)
     goto err;
 
@@ -1331,7 +1334,10 @@ def_week_frmt: %lu",
   BLOCK_LOCK_RD(query_block);
 
   query = query_block->query();
-  result_block= first_result_block= query->result();
+  result_block= query->result();
+#ifndef EMBEDDED_LIBRARY
+  first_result_block= result_block;
+#endif
 
   if (result_block == 0 || result_block->type != Query_cache_block::RESULT)
   {
@@ -2756,7 +2762,7 @@ my_bool Query_cache::register_all_tables(Query_cache_block *block,
 	 tmp++)
       unlink_table(tmp);
   }
-  return (n);
+  return test(n);
 }
 
 

@@ -178,13 +178,22 @@ static signal_entry install_signal[]= {
 #endif
 };
 
+int skip_big_tests= 0;
+
 void
 plan(int const count)
 {
+  char *config= getenv("MYTAP_CONFIG");
+  size_t i;
+
+  if (config)
+    skip_big_tests= strcmp(config, "big");
+
+  setvbuf(tapout, 0, _IONBF, 0);  /* provide output at once */
   /*
     Install signal handler
   */
-  size_t i;
+
   for (i= 0; i < sizeof(install_signal)/sizeof(*install_signal); ++i)
     signal(install_signal[i].signo, install_signal[i].handler);
 

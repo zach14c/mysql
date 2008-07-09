@@ -59,7 +59,11 @@ void Error::error(const char * string, ...)
 	if (vsnprintf (buffer, sizeof (buffer) - 1, string, args) < 0)
 		buffer [sizeof (buffer) - 1] = 0;
 
-#ifdef ENGINE
+#ifdef FALCONDB
+
+	// Always write unrecoverable error info to the error log
+
+	fprintf (stderr, "[Falcon] Error: %s\n", buffer);
 	Log::logBreak ("Bugcheck: %s\n", buffer);
 	//MemMgrLogDump();
 #endif
@@ -69,9 +73,9 @@ void Error::error(const char * string, ...)
 	throw SQLEXCEPTION (BUG_CHECK, buffer);
 }
 
-void Error::assertionFailed(const char * fileName, int line)
+void Error::assertionFailed(const char *text, const char * fileName, int line)
 {
-	error ("assertion failed at line %d in file %s\n", line, fileName);
+	error ("assertion (%s) failed at line %d in file %s\n", text, line, fileName);
 }
 
 void Error::validateHeap(const char *where)
@@ -93,7 +97,7 @@ void Error::debugBreak()
 
 void Error::notYetImplemented(const char *fileName, int line)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Log::logBreak ("feature not yet implemented at line %d in file %s\n", line, fileName);
 #endif
 

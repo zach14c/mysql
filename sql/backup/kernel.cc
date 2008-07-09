@@ -666,20 +666,14 @@ int Backup_restore_ctx::lock_tables_for_restore()
 
     for (ulong t=0; t < snap->table_count(); ++t)
     {
-      TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
-      DBUG_ASSERT(ptr);  // FIXME: report error instead
-      bzero(ptr, sizeof(TABLE_LIST));
-
       backup::Image_info::Table *tbl= snap->get_table(t);
+      DBUG_ASSERT(tbl); // All tables should be present in the catalogue.
 
-      ptr->alias= ptr->table_name= const_cast<char*>(tbl->name().ptr());
-      ptr->db= const_cast<char*>(tbl->db().name().ptr());
-      ptr->lock_type= TL_WRITE;
+      TABLE_LIST *ptr= backup::mk_table_list(*tbl, TL_WRITE, ::current_thd->mem_root);
+      DBUG_ASSERT(ptr);  // FIXME: report error instead
 
+      tables= backup::link_table_list(*ptr, tables);      
       tbl->m_table= ptr;
-
-      ptr->next_global= ptr->next_local= ptr->next_name_resolution_table= tables;
-      tables= ptr;
     }
   }
 
@@ -690,6 +684,7 @@ int Backup_restore_ctx::lock_tables_for_restore()
     to do derived tables processing. Processing derived tables even leads 
     to crashes as those reported in BUG#34758.
   */ 
+  m_thd->lex->cleanup_after_one_table_open();  
   if (simple_open_n_lock_tables(m_thd,tables))
   {
     fatal_error(ER_BACKUP_OPEN_TABLES,"RESTORE");
@@ -720,7 +715,7 @@ int Backup_restore_ctx::unlock_tables()
     We reset share->version for these tables so that server updates their
     internal state on close_thread_tables().
   */ 
-
+/*
   for (uint s=0; s < m_catalog->snap_count(); ++s)
   {
     backup::Snapshot_info *snap= m_catalog->m_snap[s];
@@ -738,7 +733,7 @@ int Backup_restore_ctx::unlock_tables()
       tbl->m_table->table->s->version= 0;
     }
   }
-
+*/
   close_thread_tables(m_thd);
   m_tables_locked= FALSE;
 
@@ -992,6 +987,7 @@ int Backup_restore_ctx::do_restore()
 
   using namespace backup;
 
+  int err;
   Input_stream &s= *static_cast<Input_stream*>(m_stream);
   Restore_info &info= *static_cast<Restore_info*>(m_catalog);
 
@@ -1024,10 +1020,12 @@ int Backup_restore_ctx::do_restore()
     DBUG_RETURN(m_error);
 
   // Here restore drivers are created to restore table data
-  if (restore_table_data(m_thd, info, s)) // reports errors
-    DBUG_RETURN(ER_BACKUP_RESTORE);
+  err= restore_table_data(m_thd, info, s); // reports errors
 
   unlock_tables();
+
+  if (err)
+    DBUG_RETURN(ER_BACKUP_RESTORE);
 
   /* 
    Re-create all triggers and events (it was not done in @c bcat_create_item()).
@@ -1054,6 +1052,7 @@ int Backup_restore_ctx::do_restore()
     following line should be removed.
    */
   close_thread_tables(m_thd);
+  m_thd->lex->cleanup_after_one_table_open();  
   m_thd->main_da.reset_diagnostics_area();
 
   report_stats_post(info);
@@ -1842,6 +1841,27 @@ const char* Table_ref::describe(char *buf, size_t len) const
   return buf;
 }
 
+/*
+  TODO: remove these functions. Currently they are only used by the myisam 
+  native backup engine.
+*/
+TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
+{
+  TABLE_LIST *tl= NULL;
+
+  for( uint tno=0; tno < tables.count() ; tno++ )
+  {
+    TABLE_LIST *ptr = mk_table_list(tables[tno], lock, ::current_thd->mem_root);
+    DBUG_ASSERT(ptr);
+    tl= link_table_list(*ptr,tl);
+  }
+
+  return tl;
+}
+
+void free_table_list(TABLE_LIST*)
+{}
+
 } // backup namespace
 
 
@@ -1862,31 +1882,6 @@ namespace backup {
   @todo Decide what to do if errors are detected. For example, how to react
   if memory for TABLE_LIST structure could not be allocated?
  */
-TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
-{
-  TABLE_LIST *tl= NULL;
 
-  for( uint tno=0; tno < tables.count() ; tno++ )
-  {
-    TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
-    DBUG_ASSERT(ptr);  // FIXME: report error instead
-    bzero(ptr, sizeof(TABLE_LIST));
-
-    Table_ref tbl= tables[tno];
-
-    ptr->alias= ptr->table_name= const_cast<char*>(tbl.name().ptr());
-    ptr->db= const_cast<char*>(tbl.db().name().ptr());
-    ptr->lock_type= lock;
-
-    // and add it to the list
-
-    ptr->next_global= ptr->next_local=
-      ptr->next_name_resolution_table= tl;
-    tl= ptr;
-    tl->table= ptr->table;
-  }
-
-  return tl;
-}
 
 } // backup namespace

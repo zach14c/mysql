@@ -1,0 +1,35 @@
+--source include/have_falcon.inc
+#
+# Bug #33212:DROP TABLESPACE does not fail on non-existing Falcon
+#             tablespace.
+#
+--echo *** Bug #33212 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--error ER_NO_SUCH_TABLESPACE
+eval DROP TABLESPACE ts1 ENGINE $engine;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+# Check not applicable here.
+#SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+# Cleanup not applicable here.
+#DROP TABLE t1;

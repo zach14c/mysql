@@ -532,7 +532,7 @@ int _my_b_read(register IO_CACHE *info, uchar *Buffer, size_t Count)
   {
     if (Count)
     {
-      info->error= left_length;		/* We only got this many char */
+      info->error= (int) left_length; /* We only got this many char */
       DBUG_RETURN(1);
     }
     length=0;				/* Didn't read any chars */
@@ -1260,7 +1260,7 @@ read_append_buffer:
     info->append_read_pos += copy_len;
     Count -= copy_len;
     if (Count)
-      info->error = save_count - Count;
+      info->error= (int) (save_count - Count);
 
     /* Fill read buffer with data from write buffer */
     memcpy(info->buffer, info->append_read_pos,
@@ -1868,6 +1868,9 @@ int end_io_cache(IO_CACHE *info)
     pthread_mutex_destroy(&info->append_buffer_lock);
 #endif
   }
+#ifdef THREAD
+  info->share= 0;
+#endif
   DBUG_RETURN(error);
 } /* end_io_cache */
 

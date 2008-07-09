@@ -19,7 +19,16 @@
 #include "IndexKey.h"
 #include "Index.h"
 
+DeferredIndexWalker::DeferredIndexWalker()
+{
+}
+
 DeferredIndexWalker::DeferredIndexWalker(DeferredIndex *deferredIdx, IndexKey *indexKey, int searchFlags)
+{
+	initialize(deferredIdx, indexKey, searchFlags);
+}
+
+void DeferredIndexWalker::initialize(DeferredIndex *deferredIdx, IndexKey *indexKey, int searchFlags)
 {
 	deferredIndex = deferredIdx;
 	currentNode = NULL;
