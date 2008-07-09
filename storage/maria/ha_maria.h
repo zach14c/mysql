@@ -159,5 +159,5 @@ public:
   {
     return file;
   }
-  static int implicit_commit(THD *thd);
+  static int implicit_commit(THD *thd, bool new_trn);
 };
