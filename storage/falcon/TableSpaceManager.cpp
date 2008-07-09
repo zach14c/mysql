@@ -326,11 +326,8 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 	statement->executeUpdate();
 	Transaction *transaction = database->getSystemTransaction();
 	transaction->hasUpdates = true;
-	pendingDrops++;
-	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
 
 	syncDDL.unlock();
-	database->commitSystemTransaction();
 	
 	int slot = tableSpace->name.hash(TS_HASH_SIZE);
 
@@ -342,7 +339,12 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 			break;
 			}
 			
+	pendingDrops++;
 	syncObj.unlock();
+
+	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
+	database->commitSystemTransaction();
+
 	tableSpace->active = false;
 }
 
