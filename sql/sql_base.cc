@@ -951,7 +951,6 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
       TABLE *table= find_locked_table(thd->open_tables, table_list->db,
                                       table_list->table_name);
 
-      DEBUG_SYNC(thd, "after_flush_unlock");
       /* May return NULL if this table has already been closed via an alias. */
       if (! table)
         continue;
@@ -975,6 +974,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
       To avoid self and other kinds of deadlock we have to flush open HANDLERs.
     */
     mysql_ha_flush(thd);
+    DEBUG_SYNC(thd, "after_flush_unlock");
 
     pthread_mutex_lock(&LOCK_open);
 
@@ -2520,7 +2520,10 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
   {
     if (open_table_get_mdl_lock(thd, table_list, mdl_lock_data, flags,
                                 action))
+    {
+      DEBUG_SYNC(thd, "before_open_table_wait_refresh");
       DBUG_RETURN(TRUE);
+    }
   }
 
   pthread_mutex_lock(&LOCK_open);
@@ -2578,10 +2581,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
         that it was a view when the statement was prepared.
       */
       if (check_and_update_table_version(thd, table_list, share))
-      {
-        DEBUG_SYNC(thd, "before_open_table_wait_refresh");
         goto err_unlock;
-      }
       if (table_list->i_s_requested_object &  OPEN_TABLE_ONLY)
         goto err_unlock;
 
