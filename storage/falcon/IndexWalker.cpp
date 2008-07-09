@@ -36,6 +36,7 @@ IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 	parent = NULL;
 	next = NULL;
 	first = true;
+	balance = 0;
 }
 
 IndexWalker::~IndexWalker(void)
