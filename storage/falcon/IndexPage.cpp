@@ -1436,7 +1436,7 @@ bool IndexPage::checkAddSuperNode(int pageSize, IndexNode* node, IndexKey *index
 	if (makeNextSuper)
 		*makeNextSuper = false;
 
-	if(!falcon_use_supernodes)
+	if (!falcon_use_supernodes)
 		return false;
 
 	if (insertionPoint == nodes) 

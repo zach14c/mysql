@@ -30,7 +30,5 @@ PARAMETER_UINT(serial_log_buffers, "The number of buffers allocated for Falcon s
 PARAMETER_UINT(serial_log_priority, "Whether or not serial log has write priority over other writes.", 0, 1, 1, 0, NULL)
 PARAMETER_BOOL(use_deferred_index_hash, "Use Deferred Index hash lookup", 0, 0, NULL)
 PARAMETER_BOOL(support_xa, "Enable XA two phase commit", 0, 0x0200, NULL)
-PARAMETER_BOOL(use_supernodes, "Use supernodes in Falcon index", 1, 0x0200, NULL)
-PARAMETER_BOOL(use_sectorcache, "Use sector cache", 1, 0x0200, NULL)
-
-// #define PARAMETER_BOOL(name, text, default, flags, update_function)
+PARAMETER_BOOL(use_supernodes, "Use supernodes in Falcon index", 1, 0x0000, NULL)
+PARAMETER_BOOL(use_sectorcache, "Use sector cache (on=disk reads are 64KB, off=disk reads are page size)", 1, 0x0000, NULL)

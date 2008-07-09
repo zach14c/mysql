@@ -40,6 +40,13 @@
 #include "Priority.h"
 #include "SectorCache.h"
 
+#define PARAMETER_UINT(_name, _text, _min, _default, _max, _flags, _update_function) \
+	extern uint falcon_##_name;
+#define PARAMETER_BOOL(_name, _text, _default, _flags, _update_function) \
+	extern char falcon_##_name;
+#include "StorageParameters.h"
+#undef PARAMETER_UINT
+#undef PARAMETER_BOOL
 extern uint falcon_io_threads;
 
 //#define STOP_PAGE		55
@@ -75,10 +82,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageWriter = NULL;
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-	if(falcon_use_sectorcache)
-		sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
-	else
-		sectorCache = NULL;
+	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
 
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
@@ -146,8 +150,7 @@ Cache::~Cache()
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
-	if(falcon_use_sectorcache)
-		delete sectorCache;
+	delete sectorCache;
 	
 	if (bufferHunks)
 		{
@@ -264,7 +267,7 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			
 			Priority priority(database->ioScheduler);
 			priority.schedule(PRIORITY_MEDIUM);	
-			if(falcon_use_sectorcache)
+			if (falcon_use_sectorcache)
 				sectorCache->readPage(bdb);
 			else
 				dbb->readPage(bdb);
@@ -531,7 +534,7 @@ void Cache::writePage(Bdb *bdb, int type)
 
 	try
 		{
-		if(falcon_use_sectorcache)
+		if (falcon_use_sectorcache)
 			sectorCache->writePage(bdb);
 		dbb->writePage(bdb, type);
 		}
@@ -803,7 +806,7 @@ void Cache::ioThread(void)
 						bdb->incrementUseCount(ADD_HISTORY);
 						sync.unlock();
 						bdb->addRef(Shared  COMMA_ADD_HISTORY);
-						if(falcon_use_sectorcache)
+						if (falcon_use_sectorcache)
 							sectorCache->writePage(bdb);
 						
 						bdb->syncWrite.lock(NULL, Exclusive);
