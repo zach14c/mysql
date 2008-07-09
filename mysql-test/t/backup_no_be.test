@@ -51,7 +51,7 @@ WHERE command LIKE 'BACKUP DATABASE db1 %';
 # native backup for MyISAM. But when it is added, the SELECT below should list native 
 # MYISAM engine.
 
-SELECT engines FROM mysql.online_backup WHERE backup_id=@id;
+SELECT drivers FROM mysql.online_backup WHERE backup_id=@id;
 
 # Now see what happens when injected code is activated and MyISAM uses the dummy
 # factory function.
@@ -79,7 +79,7 @@ SHOW WARNINGS;
 SELECT max(backup_id) INTO @id FROM mysql.online_backup 
 WHERE command LIKE 'BACKUP DATABASE db1 %';
 
-SELECT engines FROM mysql.online_backup WHERE backup_id=@id;
+SELECT drivers FROM mysql.online_backup WHERE backup_id=@id;
 
 # check that we can restore from the created image.
 

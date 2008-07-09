@@ -299,7 +299,7 @@ void Logger::report_driver(const char *name)
 {
   DBUG_ASSERT(m_state == READY || m_state == RUNNING);
   
-  report_ob_engines(m_thd, m_op_id, name);
+  report_ob_drivers(m_thd, m_op_id, name);
 }
 
 } // backup namespace

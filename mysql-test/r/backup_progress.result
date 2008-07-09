@@ -81,7 +81,7 @@ username	root
 backup_file	backup_progress_orig.bak
 user_comment	
 command	BACKUP DATABASE backup_progress to 'backup_progress_orig.bak'
-engines	MyISAM, Default, Snapshot
+drivers	MyISAM, Default, Snapshot
 SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_res AS t1 ON obp.backup_id = t1.id;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
@@ -138,7 +138,7 @@ username	root
 backup_file	backup_progress_orig.bak
 user_comment	
 command	RESTORE FROM 'backup_progress_orig.bak'
-engines	MyISAM, Default, Snapshot
+drivers	MyISAM, Default, Snapshot
 SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_res AS t1 ON obp.backup_id = t1.id;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
