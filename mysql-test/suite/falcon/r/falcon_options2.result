@@ -102,9 +102,3 @@ SELECT @@falcon_serial_log_priority;
 SELECT @@falcon_use_deferred_index_hash;
 @@falcon_use_deferred_index_hash
 0
-SELECT @@falcon_use_sectorcache;
-@@falcon_use_sectorcache
-1
-SELECT @@falcon_use_supernodes;
-@@falcon_use_supernodes
-1
