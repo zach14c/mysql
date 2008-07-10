@@ -113,7 +113,7 @@ NULL	mysql	online_backup	backup_state	5	NULL	NO	enum	14	14	NULL	NULL	latin1	lati
 NULL	mysql	online_backup	binlog_file	4	NULL	YES	char	64	64	NULL	NULL	latin1	latin1_swedish_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
 NULL	mysql	online_backup	binlog_pos	3	0	YES	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The recorded binlog position of backup/restore	Default	Default
 NULL	mysql	online_backup	command	17	NULL	YES	varchar	512	512	NULL	NULL	latin1	latin1_swedish_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
-NULL	mysql	online_backup	engines	18	NULL	YES	varchar	100	100	NULL	NULL	latin1	latin1_swedish_ci	varchar(100)			select,insert,update,references	The name of the storage engines used in the operation	Default	Default
+NULL	mysql	online_backup	drivers	18	NULL	YES	varchar	100	100	NULL	NULL	latin1	latin1_swedish_ci	varchar(100)			select,insert,update,references	The name of the storage engine backup drivers used in the operation	Default	Default
 NULL	mysql	online_backup	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
 NULL	mysql	online_backup	host_or_server_name	13	NULL	YES	char	30	30	NULL	NULL	latin1	latin1_swedish_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
 NULL	mysql	online_backup	num_objects	8	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The number of objects in the backup	Default	Default
@@ -436,7 +436,7 @@ NULL	mysql	online_backup	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
 1.0000	mysql	online_backup	backup_file	char	100	100	latin1	latin1_swedish_ci	char(100)
 1.0000	mysql	online_backup	user_comment	varchar	200	200	latin1	latin1_swedish_ci	varchar(200)
 1.0000	mysql	online_backup	command	varchar	512	512	latin1	latin1_swedish_ci	varchar(512)
-1.0000	mysql	online_backup	engines	varchar	100	100	latin1	latin1_swedish_ci	varchar(100)
+1.0000	mysql	online_backup	drivers	varchar	100	100	latin1	latin1_swedish_ci	varchar(100)
 NULL	mysql	online_backup_progress	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
 1.0000	mysql	online_backup_progress	object	char	30	30	latin1	latin1_swedish_ci	char(30)
 NULL	mysql	online_backup_progress	start_time	datetime	NULL	NULL	NULL	NULL	datetime
