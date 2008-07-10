@@ -2104,6 +2104,7 @@ mysql_execute_command(THD *thd)
     my_error(ER_FEATURE_DISABLED, MYF(0), "SHOW PROFILES", "enable-profiling");
     goto error;
 #endif
+    break;
   }
   case SQLCOM_SHOW_NEW_MASTER:
   {
