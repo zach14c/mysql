@@ -42,5 +42,6 @@ SELECT count(*) FROM t1;
 count(*)
 0
 # Disconnect conn1
+SET @@autocommit = DEFAULT;
 DROP TABLE t1;
 DROP PROCEDURE p1;
