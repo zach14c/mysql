@@ -197,5 +197,44 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	103	100.00	Using where; Using join buffer
 Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b` from `test`.`t10` join `test`.`t1` where ((`test`.`t1`.`a` = `test`.`t10`.`pk`) and (`test`.`t10`.`pk` < 3))
+
+BUG#37120 optimizer_switch allowable values not according to specification
+
+select @@optimizer_switch;
+@@optimizer_switch
+
+set optimizer_switch='no_materialization';
+select @@optimizer_switch;
+@@optimizer_switch
+no_materialization
+set optimizer_switch='no_semijoin';
+select @@optimizer_switch;
+@@optimizer_switch
+no_semijoin
+set optimizer_switch='no_loosescan';
+select @@optimizer_switch;
+@@optimizer_switch
+no_loosescan
+set optimizer_switch='no_semijoin,no_materialization';
+select @@optimizer_switch;
+@@optimizer_switch
+no_materialization,no_semijoin
+set optimizer_switch='no_materialization,no_semijoin';
+select @@optimizer_switch;
+@@optimizer_switch
+no_materialization,no_semijoin
+set optimizer_switch='no_semijoin,no_materialization,no_loosescan';
+select @@optimizer_switch;
+@@optimizer_switch
+no_materialization,no_semijoin,no_loosescan
+set optimizer_switch='no_semijoin,no_loosescan';
+select @@optimizer_switch;
+@@optimizer_switch
+no_semijoin,no_loosescan
+set optimizer_switch='no_materialization,no_loosescan';
+select @@optimizer_switch;
+@@optimizer_switch
+no_materialization,no_loosescan
+set optimizer_switch='';
 drop table t0, t1;
 drop table t10, t11, t12;
