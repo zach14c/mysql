@@ -89,5 +89,6 @@ SELECT count(*) FROM t1;
 # ----------------------------------------------------- #
 --echo # Disconnect conn1
 disconnect conn1;
+SET @@autocommit = DEFAULT;
 DROP TABLE t1;
 DROP PROCEDURE p1;

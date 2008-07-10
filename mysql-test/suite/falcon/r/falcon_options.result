@@ -27,6 +27,8 @@ falcon_serial_log_file_size	10485760
 falcon_serial_log_priority	1
 falcon_support_xa	OFF
 falcon_use_deferred_index_hash	OFF
+falcon_use_sectorcache	ON
+falcon_use_supernodes	ON
 SELECT @@GLOBAL.falcon_debug_server;
 @@GLOBAL.falcon_debug_server
 0
@@ -108,6 +110,8 @@ FALCON_SERIAL_LOG_FILE_SIZE	10485760
 FALCON_SERIAL_LOG_PRIORITY	1
 FALCON_SUPPORT_XA	OFF
 FALCON_USE_DEFERRED_INDEX_HASH	OFF
+FALCON_USE_SECTORCACHE	ON
+FALCON_USE_SUPERNODES	ON
 SET GLOBAL falcon_debug_mask = @previous_falcon_debug_mask;
 SET GLOBAL falcon_record_memory_max =  @previous_falcon_record_memory_max;
 SET GLOBAL falcon_index_chill_threshold = @previous_falcon_index_chill_threshold;

@@ -28,6 +28,8 @@ FALCON_SERIAL_LOG_FILE_SIZE	10485760
 FALCON_SERIAL_LOG_PRIORITY	1
 FALCON_SUPPORT_XA	OFF
 FALCON_USE_DEFERRED_INDEX_HASH	OFF
+FALCON_USE_SECTORCACHE	ON
+FALCON_USE_SUPERNODES	ON
 SELECT @@falcon_checkpoint_schedule;
 @@falcon_checkpoint_schedule
 7 * * * * *
@@ -100,3 +102,9 @@ SELECT @@falcon_serial_log_priority;
 SELECT @@falcon_use_deferred_index_hash;
 @@falcon_use_deferred_index_hash
 0
+SELECT @@falcon_use_sectorcache;
+@@falcon_use_sectorcache
+1
+SELECT @@falcon_use_supernodes;
+@@falcon_use_supernodes
+1
