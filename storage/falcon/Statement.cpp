@@ -2306,9 +2306,11 @@ void Statement::dropIndex(Syntax *syntax)
 
 	if (index)
 		{
+		Transaction *sysTransaction = database->getSystemTransaction();
 		table->dropIndex(index);
-		index->deleteIndex(transaction);
+		index->deleteIndex(sysTransaction); /* transaction */
 		delete index;
+		database->commitSystemTransaction();
 		}
 
 	Index::deleteIndex (database, schema, name);

@@ -1,6 +1,7 @@
 SHOW VARIABLES LIKE 'falcon_%';
 Variable_name	Value
 falcon_checkpoint_schedule	7 * * * * *
+falcon_checksums	ON
 falcon_consistent_read	ON
 falcon_debug_mask	0
 falcon_debug_server	OFF
@@ -83,6 +84,7 @@ SELECT * FROM INFORMATION_SCHEMA.global_variables
 WHERE variable_name LIKE 'falcon%';
 VARIABLE_NAME	VARIABLE_VALUE
 FALCON_CHECKPOINT_SCHEDULE	7 * * * * *
+FALCON_CHECKSUMS	ON
 FALCON_CONSISTENT_READ	ON
 FALCON_DEBUG_MASK	4096
 FALCON_DEBUG_SERVER	OFF

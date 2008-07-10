@@ -37,6 +37,10 @@
 static const char *FALCON_TEMPORARY		= "/falcon_temporary";
 static const char *DB_ROOT				= ".fts";
 
+#ifndef ONLINE_ALTER
+#define ONLINE_ALTER
+#endif
+
 #if defined(_WIN32) && MYSQL_VERSION_ID < 0x50100
 #define IS_SLASH(c)	(c == '/' || c == '\\')
 #else
@@ -250,6 +254,14 @@ int StorageTableShare::createIndex(StorageConnection *storageConnection, const c
 	return storageDatabase->createIndex(storageConnection, table, name, sql);
 }
 
+int StorageTableShare::dropIndex(StorageConnection *storageConnection, const char* name, const char* sql)
+{
+	if (!table)
+		open();
+
+	return storageDatabase->dropIndex(storageConnection, table, name, sql);
+}
+
 int StorageTableShare::renameTable(StorageConnection *storageConnection, const char* newName)
 {
 	char tableName[256];
@@ -271,6 +283,19 @@ int StorageTableShare::renameTable(StorageConnection *storageConnection, const c
 
 StorageIndexDesc* StorageTableShare::getIndex(int indexCount, int indexId, StorageIndexDesc* indexDesc)
 {
+	// Rebuild array if indexes have been added or dropped. Assume StorageTableShare::lock(exclusive).
+	
+#ifdef ONLINE_ALTER
+	if (indexes && (numberIndexes != indexCount))
+		{
+		for (int n = 0; n < numberIndexes; ++n)
+			delete indexes[n];
+			
+		delete [] indexes;
+		indexes = NULL;
+		}
+#endif
+	
 	if (!indexes)
 		{
 		indexes = new StorageIndexDesc*[indexCount];
@@ -352,10 +377,15 @@ int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
 	return -1;
 }
 
-int StorageTableShare::haveIndexes(void)
+int StorageTableShare::haveIndexes(int indexCount)
 {
 	if (indexes == NULL)
 		return false;
+		
+#ifdef ONLINE_ALTER
+	if (indexCount != numberIndexes)
+		return false;
+#endif	
 	
 	for (int n = 0; n < numberIndexes; ++n)
 		if (indexes[n]== NULL)
