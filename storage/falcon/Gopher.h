@@ -28,10 +28,12 @@ public:
 	~Gopher(void);
 
 	void		gopherThread(void);
+	void		setConcurrency(Sync *syncPending, bool allowConcurrentGophers);
+	void		releaseConcurrency(Sync *syncPending, bool allowConcurrentGophers);
 	void		start(void);
 	void		shutdown(void);
 	void		wakeup(void);
-	
+
 	static void gopherThread(void* arg);
 
 	SerialLog	*log;
