@@ -33,6 +33,7 @@
 #include "StorageHandler.h"
 #include "CmdGen.h"
 #include "InfoTable.h"
+#include "Format.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -79,6 +80,7 @@ static StorageHandler	*storageHandler;
 
 ulonglong	falcon_record_memory_max;
 ulonglong	falcon_initial_allocation;
+ulonglong	falcon_serial_log_file_size;
 uint		falcon_allocation_extent;
 ulonglong	falcon_page_cache_size;
 char*		falcon_serial_log_dir;
@@ -107,7 +109,9 @@ static const ulonglong default_table_flags = (	  HA_REC_NOT_IN_SEQ
 												| HA_PARTIAL_COLUMN_READ
 												| HA_CAN_GEOMETRY
 												//| HA_AUTO_PART_KEY
-												| HA_BINLOG_ROW_CAPABLE);
+												| HA_ONLINE_ALTER
+												| HA_BINLOG_ROW_CAPABLE
+												| HA_CAN_READ_ORDER_IF_LIMIT);
 
 static struct st_mysql_show_var falconStatus[] =
 {
@@ -218,11 +222,12 @@ int StorageInterface::falcon_init(void *p)
 
 	if (error)
 		{
-			// Cleanup after error
-			delete storageHandler;
-			storageHandler = 0;
-			DBUG_RETURN(1);
+		// Cleanup after error
+		delete storageHandler;
+		storageHandler = 0;
+		DBUG_RETURN(1);
 		}
+		
 	DBUG_RETURN(0);
 }
 
@@ -397,7 +402,9 @@ StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
 	activeBlobs = NULL;
 	freeBlobs = NULL;
 	errorText = NULL;
-
+	fieldMap = NULL;
+	indexOrder = false;
+	
 	if (table_arg)
 		{
 		recordLength = table_arg->reclength;
@@ -434,7 +441,7 @@ StorageInterface::~StorageInterface(void)
 		storageConnection = NULL;
 		}
 
-	//delete [] dbName;
+	unmapFields();
 }
 
 int StorageInterface::rnd_init(bool scan)
@@ -451,7 +458,8 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 {
 	DBUG_ENTER("StorageInterface::open");
 
-	FALCON_OPEN();
+	// Temporarily comment out DTrace probes in Falcon, see bug #36403
+	// FALCON_OPEN();
 
 	if (!mySqlThread)
 		mySqlThread = current_thd;
@@ -504,6 +512,10 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 	thr_lock_data_init((THR_LOCK *)storageShare->impure, &lockData, NULL);
 
 	ret = setIndexes();
+	
+	if (table)
+		mapFields(table);
+	
 	if (ret)
 		DBUG_RETURN(error(ret));
 
@@ -523,7 +535,10 @@ int StorageInterface::close(void)
 	if (storageTable)
 		storageTable->clearTruncateLock();
 
-	FALCON_CLOSE();
+	unmapFields();
+
+	// Temporarily comment out DTrace probes in Falcon, see bug #36403
+	// FALCON_CLOSE();
 
 	DBUG_RETURN(0);
 }
@@ -728,12 +743,14 @@ ulonglong StorageInterface::table_flags(void) const
 ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 {
 	DBUG_ENTER("StorageInterface::index_flags");
-	DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR);
+	ulong flags = HA_READ_RANGE | ((indexOrder) ? HA_READ_ORDER : HA_KEY_SCAN_NOT_ROR);
+	
+	DBUG_RETURN(flags);
+	//DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR | (indexOrder ? HA_READ_ORDER : 0));
 }
 
 
-int StorageInterface::create(const char *mySqlName, TABLE *form,
-                            HA_CREATE_INFO *info)
+int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO *info)
 {
 	DBUG_ENTER("StorageInterface::create");
 	tempTable = (info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
@@ -768,32 +785,9 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 	CmdGen gen;
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
-	gen.gen("create table \"%s\".\"%s\" (\n", schemaName, tableName);
-	const char *sep = "";
-	char nameBuffer[129];
-
-	for (n = 0; n < form->s->fields; ++n)
-		{
-		Field *field = form->field[n];
-		CHARSET_INFO *charset = field->charset();
-
-		if (charset)
-			storageShare->registerCollation(charset->name, charset);
-
-		storageShare->cleanupFieldName(field->field_name, nameBuffer,
-										sizeof(nameBuffer));
-		gen.gen("%s  \"%s\" ", sep, nameBuffer);
-		int ret = genType(field, &gen);
-
-		if (ret)
-			DBUG_RETURN(ret);
-
-		if (!field->maybe_null())
-			gen.gen(" not null");
-
-		sep = ",\n";
-		}
-
+	//gen.gen("create table \"%s\".\"%s\" (\n", schemaName, tableName);
+	genTable(form, &gen);
+	
 	if (form->found_next_number_field) // && form->s->next_number_key_offset == 0)
 		{
 		incrementValue = info->auto_increment_value;
@@ -802,6 +796,7 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 			incrementValue = 1;
 		}
 
+	/***
 	if (form->s->primary_key < form->s->keys)
 		{
 		KEY *key = form->key_info + form->s->primary_key;
@@ -810,6 +805,7 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 		}
 
 	gen.gen (")");
+	***/
 	const char *tableSpace = NULL;
 
 	if (tempTable)
@@ -844,6 +840,8 @@ int StorageInterface::create(const char *mySqlName, TABLE *form,
 
 				DBUG_RETURN(error(ret));
 				}
+
+	mapFields(form);
 
 	DBUG_RETURN(0);
 }
@@ -1333,7 +1331,7 @@ int StorageInterface::index_read(uchar *buf, const uchar *keyBytes, uint key_len
 		if ((ret = storageTable->setIndexBound(key, key_len, which)))
 			DBUG_RETURN(error(ret));
 
-	if ((ret = storageTable->indexScan()))
+	if ((ret = storageTable->indexScan(indexOrder)))
 		DBUG_RETURN(error(ret));
 
 	nextRecord = 0;
@@ -1535,7 +1533,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 			DBUG_RETURN(error(ret));
 		}
 
-	storageTable->indexScan();
+	storageTable->indexScan(indexOrder);
 	nextRecord = 0;
 	lastRecord = -1;
 	eq_range = eq_range_arg;
@@ -1571,6 +1569,12 @@ int StorageInterface::read_range_first(const key_range *start_key,
 		}
 }
 
+int StorageInterface::index_first(uchar* buf)
+{
+	storageTable->indexScan(indexOrder);
+
+	return index_next(buf);
+}
 
 int StorageInterface::index_next(uchar *buf)
 {
@@ -1820,6 +1824,10 @@ int StorageInterface::getMySqlError(int storageError)
 			DBUG_PRINT("info", ("StorageErrorTableNotEmpty"));
 			return HA_ERR_TABLESPACE_NOT_EMPTY;
 
+		case StorageErrorTableSpaceDataFileExist:
+			DBUG_PRINT("info", ("StorageErrorTableSpaceDataFileExist"));
+			return (HA_ERR_TABLESPACE_DATAFILE_EXIST);
+
 		default:
 			DBUG_PRINT("info", ("Unknown Falcon Error"));
 			return (200 - storageError);
@@ -1837,6 +1845,16 @@ int StorageInterface::start_stmt(THD *thd, thr_lock_type lock_type)
 	DBUG_RETURN(0);
 }
 
+int StorageInterface::reset()
+{
+	DBUG_ENTER("StorageInterface::start_stmt");
+	indexOrder = false;
+
+	DBUG_RETURN(0);
+}
+
+ 
+ 
 int StorageInterface::external_lock(THD *thd, int lock_type)
 {
 	DBUG_ENTER("StorageInterface::external_lock");
@@ -1857,11 +1875,7 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageConnection->releaseVerb();
 
 		if (storageTable)
-			{
-			storageTable->clearRecord();
-			storageTable->clearBitmap();
-			storageTable->clearAlter();
-			}
+			storageTable->clearStatement();
 		}
 	else
 		{
@@ -1896,7 +1910,9 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			default:
 				break;
 			}
+			
 		int isolation = getTransactionIsolation(thd);
+		
 		if (thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
 			{
 			checkBinLog();
@@ -2026,6 +2042,19 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 		[COMMENT [=] comment_text]
 		ENGINE [=] engine
 	*/
+	if (ts_info->data_file_name)
+		{
+		char buff[FN_REFLEN];
+		size_t dirname_part_length;
+		dirname_part(buff, ts_info->data_file_name, &dirname_part_length);
+		fn_format(buff, buff, mysql_real_data_home, "",
+			MY_RELATIVE_PATH | MY_UNPACK_FILENAME);
+		if (test_if_data_home_dir(buff))
+			{
+			my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATAFILE");
+			DBUG_RETURN(1);
+			}
+		}
 
 	switch (ts_info->ts_cmd_type)
 		{
@@ -2052,6 +2081,106 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	DBUG_RETURN(getMySqlError(ret));
 }
 
+int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes)
+{
+	DBUG_ENTER("StorageInterface::check_if_supported_alter");
+	// ulonglong bits = alter_flags->to_ulonglong();
+	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
+	
+	if (!tempTable && alter_flags->is_set(HA_ADD_COLUMN))
+		{
+		Field *field = NULL;
+		
+		for (uint n = 0; n < table->s->fields; ++n, field = NULL)
+			{
+			field = altered_table->s->field[n];
+			
+			if (strcmp(table->s->field[n]->field_name, field->field_name) != 0)
+				break;
+			}
+		
+		if (!field)
+			field = altered_table->field[altered_table->s->fields - 1];
+		
+		if (!field->real_maybe_null())
+			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+		
+		DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
+		}
+		
+	DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+}
+
+int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase1");
+	// ulonglong bits = alter_flags->to_ulonglong();
+	
+	if (alter_flags->is_set(HA_ADD_COLUMN))
+		DBUG_RETURN(addColumn(thd, altered_table, create_info, alter_info, alter_flags));
+		
+	DBUG_RETURN(HA_ERR_UNSUPPORTED);
+}
+
+int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase2");
+	
+	DBUG_RETURN(0);
+}
+
+int StorageInterface::alter_table_phase3(THD* thd, TABLE* altered_table)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase3");
+	
+	DBUG_RETURN(0);
+}
+
+
+int StorageInterface::addColumn(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
+{
+	int ret;
+	int64 incrementValue = 0;
+	CmdGen gen;
+	genTable(alteredTable, &gen);
+	
+	/***
+	if (alteredTable->found_next_number_field)
+		{
+		incrementValue = alterInfo->auto_increment_value;
+
+		if (incrementValue == 0)
+			incrementValue = 1;
+		}
+	***/
+	
+	/***
+	if (alteredTable->s->primary_key < alteredTable->s->keys)
+		{
+		KEY *key = alteredTable->key_info + alteredTable->s->primary_key;
+		gen.gen(",\n  primary key ");
+		genKeyFields(key, &gen);
+		}
+
+	gen.gen (")");
+	***/
+	
+	if ((ret = storageTable->upgrade(gen.getString(), incrementValue)))
+		return (error(ret));
+
+	/***
+	for (n = 0; n < form->s->keys; ++n)
+		if (n != form->s->primary_key)
+			if ((ret = createIndex(schemaName, tableName, form->key_info + n, n)))
+				{
+				storageTable->deleteTable();
+
+				return (error(ret));
+				}
+	***/
+	
+	return 0;
+}
 uint StorageInterface::max_supported_key_length(void) const
 {
 	// Assume 4K page unless proven otherwise.
@@ -2116,6 +2245,47 @@ int StorageInterface::setIndexes(void)
 	return 0;
 }
 
+
+int StorageInterface::genTable(TABLE* table, CmdGen* gen)
+{
+	const char *tableName = storageTable->getName();
+	const char *schemaName = storageTable->getSchemaName();
+	gen->gen("upgrade table \"%s\".\"%s\" (\n", schemaName, tableName);
+	const char *sep = "";
+	char nameBuffer[129];
+
+	for (uint n = 0; n < table->s->fields; ++n)
+		{
+		Field *field = table->field[n];
+		CHARSET_INFO *charset = field->charset();
+
+		if (charset)
+			storageShare->registerCollation(charset->name, charset);
+
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		gen->gen("%s  \"%s\" ", sep, nameBuffer);
+		int ret = genType(field, gen);
+
+		if (ret)
+			return (ret);
+
+		if (!field->maybe_null())
+			gen->gen(" not null");
+
+		sep = ",\n";
+		}
+
+	if (table->s->primary_key < table->s->keys)
+		{
+		KEY *key = table->key_info + table->s->primary_key;
+		gen->gen(",\n  primary key ");
+		genKeyFields(key, gen);
+		}
+
+	gen->gen (")");
+
+	return 0;
+}
 
 int StorageInterface::genType(Field* field, CmdGen* gen)
 {
@@ -2260,11 +2430,23 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 	my_ptrdiff_t ptrDiff = buf - table->record[0];
 	my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->read_set);
 	EncodedDataStream *dataStream = &storageTable->dataStream;
+	FieldFormat *fieldFormat = storageShare->format->format;
+	int maxId = storageShare->format->maxId;
 	
-	for (uint n = 0; n < table->s->fields; ++n)
+	for (int n = 0; n < maxId; ++n, ++fieldFormat)
 		{
-		Field *field = table->field[n];
+		if (fieldFormat->fieldId < 0 || fieldFormat->offset == 0)
+			continue;
+			
+		Field *field = fieldMap[fieldFormat->fieldId];
 
+		if (!field)
+			{
+			dataStream->encodeNull();
+			
+			continue;
+			}
+		
 		if (ptrDiff)
 			field->move_field_offset(ptrDiff);
 
@@ -2422,12 +2604,24 @@ void StorageInterface::decodeRecord(uchar *buf)
 	my_ptrdiff_t ptrDiff = buf - table->record[0];
 	my_bitmap_map *old_map = dbug_tmp_use_all_columns(table, table->write_set);
 	DBUG_ENTER("StorageInterface::decodeRecord");
-
-	for (uint n = 0; n < table->s->fields; ++n)
+	FieldFormat *fieldFormat = storageTable->format->format;
+	int maxId = storageTable->format->maxId;
+	
+	for (int n = 0; n < maxId; ++n, ++fieldFormat)
 		{
-		Field *field = table->field[n];
+		// If the format doesn't have an offset, the field doesn't exist in the record
+		
+		if (fieldFormat->fieldId < 0 || fieldFormat->offset == 0)
+			continue;
+			
 		dataStream->decode();
+		Field *field = fieldMap[fieldFormat->fieldId];
 
+		// If we don't a field for the physical field, just skip over it and don't worrry.
+		
+		if (field == NULL)
+			continue;
+				
 		if (ptrDiff)
 			field->move_field_offset(ptrDiff);
 
@@ -2479,11 +2673,6 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_TIMESTAMP:
 					{
 					int value = (int) (dataStream->value.integer64 / 1000);
-#ifdef _BIG_ENDIAN
-					if (table->s->db_low_byte_first)
-					int4store(field->ptr, value);
-					else
-#endif
 					longstore(field->ptr, value);
 					}
 					break;
@@ -2493,7 +2682,6 @@ void StorageInterface::decodeRecord(uchar *buf)
 					break;
 
 				case MYSQL_TYPE_NEWDATE:
-					//field->store(dataStream->getInt64(), false);
 					int3store(field->ptr, dataStream->getInt32());
 					break;
 
@@ -2502,7 +2690,6 @@ void StorageInterface::decodeRecord(uchar *buf)
 					break;
 
 				case MYSQL_TYPE_DATETIME:
-					//field->store(dataStream->getInt64(), false);
 					int8store(field->ptr, dataStream->getInt64());
 					break;
 
@@ -2566,6 +2753,30 @@ void StorageInterface::decodeRecord(uchar *buf)
 int StorageInterface::extra(ha_extra_function operation)
 {
 	DBUG_ENTER("StorageInterface::extra");
+	
+	if (operation == HA_EXTRA_ORDERBY_LIMIT)
+		{
+		// SQL Layer informs us that it is considering an ORDER BY .. LIMIT
+		// query. It's time we could
+		//  1. start returning HA_READ_ORDER flag from index_flags() calls,
+		//     which will make the SQL layer consider using indexes to
+		//     satisfy ORDER BY ... LIMIT.
+		//  2. If doing #1, every index/range scan must return records in
+		//     index order.
+
+		indexOrder = true;
+		}
+
+	if (operation == HA_EXTRA_NO_ORDERBY_LIMIT)
+		{
+		// SQL Layer figured it won't be able to use index to resolve the 
+		// ORDER BY ... LIMIT. This could happen for a number of reasons,
+		// but the result is that we don't have to return records in index
+		// order.
+		
+		indexOrder = false;
+		}
+
 	DBUG_RETURN(0);
 }
 
@@ -3173,7 +3384,7 @@ static void updateIndexChillThreshold(MYSQL_THD thd,
 {
 	falcon_index_chill_threshold = *(uint *)save;
 	if(storageHandler)
-		storageHandler->setIndexChillThreshold(falcon_index_chill_threshold * 1024 * 1024);
+		storageHandler->setIndexChillThreshold(falcon_index_chill_threshold);
 }
 
 static void updateRecordChillThreshold(MYSQL_THD thd,
@@ -3182,7 +3393,7 @@ static void updateRecordChillThreshold(MYSQL_THD thd,
 {
 	falcon_record_chill_threshold = *(uint *)save;
 	if(storageHandler)
-		storageHandler->setRecordChillThreshold(falcon_record_chill_threshold * 1024 * 1024);
+		storageHandler->setRecordChillThreshold(falcon_record_chill_threshold);
 }
 
 void StorageInterface::updateRecordMemoryMax(MYSQL_THD thd, struct st_mysql_sys_var* variable, void* var_ptr, const void* save)
@@ -3218,17 +3429,47 @@ int StorageInterface::recover (handlerton * hton, XID *xids, uint length)
 	uint count = 0;
 	unsigned char xid[sizeof(XID)];
 
-	memset (xid, 0, sizeof(XID));
+	memset(xid, 0, sizeof(XID));
 
 	while (storageHandler->recoverGetNextLimbo(sizeof(XID), xid))
 		{
 		count++;
 		memcpy(xids++, xid, sizeof(XID));
+		
 		if (count >= length)
 			break;
 		}
 
 	DBUG_RETURN(count);
+}
+
+
+void StorageInterface::mapFields(TABLE *table)
+{
+	maxFields = storageShare->format->maxId;
+	unmapFields();
+	fieldMap = new Field*[maxFields];
+	memset(fieldMap, 0, sizeof(fieldMap[0]) * maxFields);
+	char nameBuffer[129];
+
+	for (uint n = 0; n < table->s->fields; ++n)
+		{
+		Field *field = table->field[n];
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		int id = storageShare->getFieldId(nameBuffer);
+		
+		if (id >= 0)
+			fieldMap[id] = field;
+		}
+}
+
+void StorageInterface::unmapFields(void)
+{
+	if (fieldMap)
+		{
+		delete []fieldMap;
+		fieldMap = NULL;
+		}
 }
 
 static MYSQL_SYSVAR_STR(serial_log_dir, falcon_serial_log_dir,
@@ -3269,6 +3510,11 @@ static MYSQL_SYSVAR_ULONGLONG(initial_allocation, falcon_initial_allocation,
   PLUGIN_VAR_RQCMDARG, // | PLUGIN_VAR_READONLY,
   "Initial allocation (in bytes) of falcon user tablespace.",
   NULL, NULL, 0, 0, LL(4000000000), LL(1)<<20);
+
+static MYSQL_SYSVAR_ULONGLONG(serial_log_file_size, falcon_serial_log_file_size,
+  PLUGIN_VAR_RQCMDARG,
+  "If serial log file grows larger than this value, it will be truncated when it is reused",
+  NULL, NULL , LL(10)<<20, LL(1)<<20,LL(0x7fffffffffffffff), LL(1)<<20);
 
 /***
 static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
@@ -3317,6 +3563,7 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	//MYSQL_SYSVAR(allocation_extent),
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),
+	MYSQL_SYSVAR(serial_log_file_size),
 	NULL
 };
 

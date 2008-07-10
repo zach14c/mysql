@@ -76,7 +76,7 @@ ADD_EXECUTABLE(mysqld
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc 
                ddl_blocker.cc si_objects.cc
-               sql_profile.cc event_parse_data.cc
+               sql_profile.cc event_parse_data.cc mdl.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h
@@ -118,6 +118,9 @@ ENDIF(WITH_INNOBASE_STORAGE_ENGINE)
 IF(WITH_FALCON_STORAGE_ENGINE)
   TARGET_LINK_LIBRARIES(mysqld ha_falcon)
 ENDIF(WITH_FALCON_STORAGE_ENGINE)
+IF(WITH_MARIA_STORAGE_ENGINE)
+  TARGET_LINK_LIBRARIES(mysqld maria)
+ENDIF(WITH_MARIA_STORAGE_ENGINE)
 
 ADD_DEPENDENCIES(mysqld GenError)
 

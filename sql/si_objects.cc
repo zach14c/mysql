@@ -1928,6 +1928,8 @@ bool TriggerObj::serialize(THD *thd, String *serialization)
   if (!lst)
     DBUG_RETURN(FALSE);
 
+  alloc_mdl_locks(lst, thd->mem_root);
+
   if (open_tables(thd, &lst, &num_tables, 0))
     DBUG_RETURN(FALSE);
 

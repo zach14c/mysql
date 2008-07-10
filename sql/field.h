@@ -63,9 +63,23 @@ public:
   struct st_table *orig_table;		// Pointer to original table
   const char	**table_name, *field_name;
   LEX_STRING	comment;
-  /* Field is part of the following keys */
-  key_map	key_start, part_of_key, part_of_key_not_clustered;
+  /* Bitmap of indexes that start with this field */
+  key_map	key_start;
+  /* Bitmap of indexes allow HA_EXTRA_KEYREAD and cover the entire field */
+  key_map       part_of_key;
+  /* Same as above, but not counting the HA_PRIMARY_KEY_IN_READ_INDEX effect */
+  key_map       part_of_key_not_clustered;
+  /* 
+    Bitmap of indexes that allow HA_READ_ORDER and fully cover this field
+    Note: this is a non-constant characterstic for Falcon, grep for
+    FalconOrderByLimitHandling.
+  */
   key_map       part_of_sortkey;
+  /*
+    Bitmap of indexes that cover the field, both those that allow 
+    HA_EXTRA_KEYREAD and those that don't.
+  */
+  key_map       part_of_key_wo_keyread;
   /* 
     We use three additional unireg types for TIMESTAMP to overcome limitation 
     of current binary format of .frm file. We'd like to be able to support 
@@ -256,11 +270,11 @@ public:
     return test(record[(uint) (null_ptr -table->record[0])] &
 		null_bit);
   }
-  inline bool is_null_in_record_with_offset(my_ptrdiff_t offset)
+  inline bool is_null_in_record_with_offset(my_ptrdiff_t col_offset)
   {
     if (!null_ptr)
       return 0;
-    return test(null_ptr[offset] & null_bit);
+    return test(null_ptr[col_offset] & null_bit);
   }
   inline void set_null(my_ptrdiff_t row_offset= 0)
     { if (null_ptr) null_ptr[row_offset]|= null_bit; }
@@ -356,7 +370,7 @@ public:
       Number of copied bytes (excluding padded zero bytes -- see above).
   */
 
-  virtual uint get_key_image(uchar *buff, uint length, imagetype type)
+  virtual uint get_key_image(uchar *buff, uint length, imagetype type_arg)
   {
     get_image(buff, length, &my_charset_bin);
     return length;
@@ -527,7 +541,6 @@ public:
 
   /* Hash value */
   virtual void hash(ulong *nr, ulong *nr2);
-  friend bool reopen_table(THD *,struct st_table *,bool);
   friend int cre_myisam(char * name, register TABLE *form, uint options,
 			ulonglong auto_increment_value);
   friend class Copy_field;

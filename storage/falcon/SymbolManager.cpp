@@ -124,7 +124,9 @@ const char* SymbolManager::getSymbol(const char *string)
 
 	sync.unlock();
 	sync.lock (Exclusive);
-	symbol = (Symbol*) ((IPTR)(next + 3) & ~3);
+
+	// Allocate space for the new symbol with necessary address alignment
+	symbol = (Symbol*) (ROUNDUP(((IPTR)(next)), sizeof(void*)));
 	IPTR length = p - string;
 
 	if (symbol->symbol + length > sections->space + sizeof (sections->space))
@@ -180,7 +182,9 @@ const char* SymbolManager::getString(const char *string)
 
 	sync.unlock();
 	sync.lock (Exclusive);
-	symbol = (Symbol*) ((IPTR)(next + 3) & ~3);
+
+	// Allocate space for the new symbol with necessary address alignment
+	symbol = (Symbol*) (ROUNDUP(((IPTR)(next)), sizeof(void*)));
 	IPTR length = p - string;
 
 	if (symbol->symbol + length > sections->space + sizeof (sections->space))

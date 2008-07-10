@@ -44,6 +44,8 @@ public:
 	void		putHeaderVariable (Dbb *dbb, HdrVariable variable, int size, const char *buffer);
 	int			getHeaderVariable (Dbb *dbb, HdrVariable variable, int bufferSize, char *buffer);
 	static void create (Dbb *dbb, FileType fileType, TransId transId, const char *logRoot);
+	void		backup(EncodedDataStream* stream);
+	void		restore(EncodedDataStream* stream);
 
 	short		odsVersion;
 	int32		pageSize;

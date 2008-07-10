@@ -145,6 +145,8 @@ static void ndb_free_schema_object(NDB_SCHEMA_OBJECT **ndb_schema_object,
 */
 static TABLE *ndb_binlog_index= 0;
 static TABLE_LIST binlog_tables;
+static MDL_LOCK_DATA binlog_mdl_lock_data;
+static char binlog_mdlkey[MAX_MDLKEY_LENGTH];
 
 /*
   Helper functions
@@ -268,7 +270,7 @@ static void run_query(THD *thd, char *buf, char *end,
   DBUG_PRINT("query", ("%s", thd->query));
 
   DBUG_ASSERT(!thd->in_sub_stmt);
-  DBUG_ASSERT(!thd->prelocked_mode);
+  DBUG_ASSERT(!thd->locked_tables_mode);
 
   mysql_parse(thd, thd->query, thd->query_length, &found_semicolon);
 
@@ -288,7 +290,13 @@ static void run_query(THD *thd, char *buf, char *end,
                       thd_ndb->m_error_code,
                       (int) thd->is_error(), thd->is_slave_error);
   }
+
+  /*
+    After executing statement we should unlock and close tables open
+    by it as well as release meta-data locks obtained by it.
+  */
   close_thread_tables(thd);
+
   /*
     XXX: this code is broken. mysql_parse()/mysql_reset_thd_for_next_command()
     can not be called from within a statement, and
@@ -911,7 +919,7 @@ int ndbcluster_setup_binlog_table_shares(THD *thd)
     {
       if (ndb_extra_logging)
         sql_print_information("NDB Binlog: ndb tables writable");
-      close_cached_tables(NULL, NULL, TRUE, FALSE, FALSE);
+      close_cached_tables(NULL, NULL, TRUE, FALSE);
     }
     pthread_mutex_unlock(&LOCK_open);
     /* Signal injector thread that all is setup */
@@ -1729,7 +1737,7 @@ ndb_handle_schema_change(THD *thd, Ndb *ndb, NdbEventOperation *pOp,
     bzero((char*) &table_list,sizeof(table_list));
     table_list.db= (char *)dbname;
     table_list.alias= table_list.table_name= (char *)tabname;
-    close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+    close_cached_tables(thd, &table_list, FALSE, FALSE);
     /* ndb_share reference create free */
     DBUG_PRINT("NDB_SHARE", ("%s create free  use_count: %u",
                              share->key, share->use_count));
@@ -1862,7 +1870,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
             bzero((char*) &table_list,sizeof(table_list));
             table_list.db= schema->db;
             table_list.alias= table_list.table_name= schema->name;
-            close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+            close_cached_tables(thd, &table_list, FALSE, FALSE);
           }
           /* ndb_share reference temporary free */
           if (share)
@@ -1997,7 +2005,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
       pthread_mutex_unlock(&ndb_schema_share_mutex);
       /* end protect ndb_schema_share */
 
-      close_cached_tables(NULL, NULL, FALSE, FALSE, FALSE);
+      close_cached_tables(NULL, NULL, FALSE, FALSE);
       // fall through
     case NDBEVENT::TE_ALTER:
       ndb_handle_schema_change(thd, ndb, pOp, event_data);
@@ -2145,7 +2153,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           bzero((char*) &table_list,sizeof(table_list));
           table_list.db= schema->db;
           table_list.alias= table_list.table_name= schema->name;
-          close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+          close_cached_tables(thd, &table_list, FALSE, FALSE);
         }
         break;
       case SOT_RENAME_TABLE:
@@ -2163,7 +2171,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           bzero((char*) &table_list,sizeof(table_list));
           table_list.db= schema->db;
           table_list.alias= table_list.table_name= schema->name;
-          close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+          close_cached_tables(thd, &table_list, FALSE, FALSE);
         }
         {
           if (ndb_extra_logging > 9)
@@ -2205,7 +2213,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           bzero((char*) &table_list,sizeof(table_list));
           table_list.db= schema->db;
           table_list.alias= table_list.table_name= schema->name;
-          close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+          close_cached_tables(thd, &table_list, FALSE, FALSE);
         }
         if (share)
         {
@@ -2282,7 +2290,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
         bzero((char*) &table_list,sizeof(table_list));
         table_list.db= (char *)schema->db;
         table_list.alias= table_list.table_name= (char *)schema->name;
-        close_cached_tables(thd, &table_list, TRUE, FALSE, FALSE);
+        close_cached_tables(thd, &table_list, TRUE, FALSE);
 
         if (schema->node_id != g_ndb_cluster_connection->node_id())
         {
@@ -2494,17 +2502,20 @@ struct ndb_binlog_index_row {
 /*
   Open the ndb_binlog_index table
 */
-static int open_ndb_binlog_index(THD *thd, TABLE_LIST *tables,
-                                 TABLE **ndb_binlog_index)
+static int open_ndb_binlog_index(THD *thd, TABLE **ndb_binlog_index)
 {
   static char repdb[]= NDB_REP_DB;
   static char reptable[]= NDB_REP_TABLE;
   const char *save_proc_info= thd->proc_info;
+  TABLE_LIST *tables= &binlog_tables;
 
   bzero((char*) tables, sizeof(*tables));
   tables->db= repdb;
   tables->alias= tables->table_name= reptable;
   tables->lock_type= TL_WRITE;
+  mdl_init_lock(&binlog_mdl_lock_data, binlog_mdlkey, 0, tables->db,
+                tables->table_name);
+  tables->mdl_lock_data= &binlog_mdl_lock_data;
   THD_SET_PROC_INFO(thd, "Opening " NDB_REP_DB "." NDB_REP_TABLE);
   tables->required_type= FRMTYPE_TABLE;
   uint counter;
@@ -2546,18 +2557,18 @@ ndb_add_ndb_binlog_index(THD *thd, ndb_binlog_index_row *row)
 
   for ( ; ; ) /* loop for need_reopen */
   {
-    if (!ndb_binlog_index && open_ndb_binlog_index(thd, &binlog_tables, &ndb_binlog_index))
+    if (!ndb_binlog_index && open_ndb_binlog_index(thd, &ndb_binlog_index))
     {
       error= -1;
       goto add_ndb_binlog_index_err;
     }
 
-    if (lock_tables(thd, &binlog_tables, 1, &need_reopen))
+    if (lock_tables(thd, &binlog_tables, 1, 0, &need_reopen))
     {
       if (need_reopen)
       {
         TABLE_LIST *p_binlog_tables= &binlog_tables;
-        close_tables_for_reopen(thd, &p_binlog_tables);
+        close_tables_for_reopen(thd, &p_binlog_tables, FALSE);
         ndb_binlog_index= 0;
         continue;
       }
@@ -2614,8 +2625,12 @@ ndb_add_ndb_binlog_index(THD *thd, ndb_binlog_index_row *row)
     }
   } while (row);
 
-  mysql_unlock_tables(thd, thd->lock);
-  thd->lock= 0;
+
+  if (! thd->locked_tables_mode)                /* Is always TRUE */
+  {
+    mysql_unlock_tables(thd, thd->lock);
+    thd->lock= 0;
+  }
   thd->options= saved_options;
   return 0;
 add_ndb_binlog_index_err:
@@ -4444,13 +4459,13 @@ restart:
 
   if (ndb_extra_logging)
     sql_print_information("NDB Binlog: ndb tables writable");
-  close_cached_tables((THD*) 0, (TABLE_LIST*) 0, FALSE, FALSE, FALSE);
+  close_cached_tables((THD*) 0, 0, (TABLE_LIST*) 0, FALSE);
 
   {
     static char db[]= "";
     thd->db= db;
     if (ndb_binlog_running)
-      open_ndb_binlog_index(thd, &binlog_tables, &ndb_binlog_index);
+      open_ndb_binlog_index(thd, &ndb_binlog_index);
     thd->db= db;
   }
   do_ndbcluster_binlog_close_connection= BCCC_running;

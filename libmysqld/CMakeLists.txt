@@ -152,6 +152,12 @@ IF(WITH_FALCON_STORAGE_ENGINE)
     SET(LIB_SOURCES ${LIB_SOURCES} ../storage/falcon/${rpath})
   ENDFOREACH(rpath)
 ENDIF(WITH_FALCON_STORAGE_ENGINE)
+IF(WITH_MARIA_STORAGE_ENGINE)
+  INCLUDE(${CMAKE_SOURCE_DIR}/storage/maria/CMakeLists.txt)
+  FOREACH(rpath ${MARIA_SOURCES})
+    SET(LIB_SOURCES ${LIB_SOURCES} ../storage/maria/${rpath})
+  ENDFOREACH(rpath)
+ENDIF(WITH_MARIA_STORAGE_ENGINE)
 
 SET(SOURCE_SUBLIBS FALSE)
                             
@@ -195,7 +201,7 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/partition_info.cc ../sql/sql_connect.cc 
            ../sql/scheduler.cc ../sql/sql_audit.cc
            ../sql/ddl_blocker.cc ../sql/si_objects.cc
-           ../sql/event_parse_data.cc
+           ../sql/event_parse_data.cc ../sql/mdl.cc
            ${GEN_SOURCES}
            ${LIB_SOURCES})
 

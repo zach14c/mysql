@@ -1,0 +1,16 @@
+*** Bug #31311 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+DROP TABLESPACE ts1 ENGINE 'Falcon';
+CREATE TABLESPACE `ts 1` ADD DATAFILE 'ts2.fts' ENGINE 'Falcon';
+CREATE TABLE t1(a int) TABLESPACE `ts 1`;
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) /*!50100 TABLESPACE `ts 1` */ ENGINE=Falcon DEFAULT CHARSET=latin1
+SELECT count(*) FROM t1;
+count(*)
+0
+DROP TABLE t1;
+DROP TABLESPACE `ts 1` ENGINE 'Falcon';

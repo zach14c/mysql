@@ -71,6 +71,7 @@ public:
 	int						xidLength;
 	UCHAR					*xid;
 	bool					finished;
+	bool					allowConcurrentGophers;
 
 	SerialLog				*log;
 	SerialLogTransaction	*next;

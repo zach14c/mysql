@@ -111,7 +111,7 @@ public:
 	DIHunk			*hunks;
 	DINode			*minValue;
 	DINode			*maxValue;
-	UCHAR			initialSpace[500];
+	UCHAR			initialSpace[512];
 	UCHAR			*base;
 	void			*root;
 	uint			currentHunkOffset;
