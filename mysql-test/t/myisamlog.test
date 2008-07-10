@@ -24,6 +24,7 @@ truncate table t1;
 flush table t1;
 
 # look at log
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
 exec $MYISAMLOG $MYSQLTEST_VARDIR/master-data/myisam.log ;
 # should not have changed the table
 select * from t1;
@@ -31,6 +32,7 @@ flush table t1;
 
 # apply log to empty table
 --replace_result $MYSQLTEST_VARDIR VARDIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
 exec $MYISAMLOG -F $MYSQLTEST_VARDIR/master-data -u $MYSQLTEST_VARDIR/master-data/myisam.log ;
 
 # reopen the table and verify that content is back

@@ -148,92 +148,99 @@ DROP TABLE t1, t2;
 # In >= 5.0, when waiting after open_tables() one FLUSH is sufficient
 # to allow the INSERT to step in.
 #
-CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
-LOCK TABLE t1 WRITE;
-#
-    --echo connection con1
-    connect (con1,localhost,root,,);
-    # After open, wait for flush.
-    SET DEBUG_SYNC= 'before_lock_tables_takes_lock
-                     SIGNAL opened WAIT_FOR flushed';
-    # If bug is fixed, INSERT will go into wait_for_lock.
-    # Retain action after use. First used by general_log.
-    SET DEBUG_SYNC= 'wait_for_lock SIGNAL locked EXECUTE 2';
-    # Alternatively INSERT can wait for refresh in open_table().
-    SET DEBUG_SYNC= 'before_open_table_wait_refresh SIGNAL locked';
-    # If bug is not fixed, INSERT will succeed. Pretend locked.
-    SET DEBUG_SYNC= 'after_insert SIGNAL locked';
-    send INSERT INTO t1 VALUES (1);
-#
---echo connection default
-connection default;
-# Wait until INSERT opened the table.
-SET DEBUG_SYNC= 'now WAIT_FOR opened';
-#
-# Let INSERT exploit the gap when flush waits wthout lock
-# for other threads to close the tables.
-SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed';
-FLUSH TABLES;
-#
-# Wait until INSERT is locked (bug fixed) or finished (bug not fixed).
-SET DEBUG_SYNC= 'now WAIT_FOR locked';
-#
-# This should give no result. But it will if the bug exists.
-SELECT * FROM t1;
-UNLOCK TABLES;
-#
-    --echo connection con1
-    connection con1;
-    reap;
-    disconnect con1;
-#
---echo connection default
-connection default;
-# Clear debug_sync signal.
-SET DEBUG_SYNC= 'RESET';
-DROP TABLE t1;
-#
-# Show that truncate of child table waits while parent table is used.
-CREATE TABLE t1 (c1 REAL) ENGINE=MyISAM;
-CREATE TABLE t2 (c1 REAL) ENGINE=MyISAM;
-INSERT INTO t1 VALUES(0.1);
-INSERT INTO t2 VALUES(0.2);
-CREATE TABLE t3 (c1 REAL) ENGINE=MRG_MYISAM UNION=(t1,t2);
-#
-    --echo connection con1
-    connect (con1,localhost,root,,);
-    # When reaching acos(), send 'select' and wait for truncated.
-    SET DEBUG_SYNC= 'before_acos_function
-                     SIGNAL select WAIT_FOR truncated';
-    send SELECT ACOS(c1) FROM t3;
-#
---echo connection default
-connection default;
-# Wait for con1 to reach acos().
-SET DEBUG_SYNC= 'now WAIT_FOR select';
-#
-# With bug fix present, TRUNCATE runs into wait_for_locked_table_names().
-SET DEBUG_SYNC= 'before_wait_locked_tname SIGNAL truncated';
-TRUNCATE TABLE t1;
-#
-# With bug fix not present, we need to signal after TRUNCATE.
-SET DEBUG_SYNC= 'now SIGNAL truncated';
-#
-    --echo connection con1
-    connection con1;
-    # In non-debug server, the order of select and truncate is undetermined.
-    # So we may have one or two rows here.
-    --disable_result_log
-    reap;
-    --enable_result_log
-    disconnect con1;
-#
---echo connection default
-connection default;
-SELECT ACOS(c1) FROM t3;
-# Clear debug_sync signal.
-SET DEBUG_SYNC= 'RESET';
-DROP TABLE t1, t2, t3;
+# This test does not work in 6.0 because the table locking scheme
+# changed a lot. The above problem cannot happen any more.
+# Some of the places where the sync points were placed, don't exist
+# any more.
+if (0)
+{
+  CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
+  LOCK TABLE t1 WRITE;
+  #
+      --echo connection con1
+      connect (con1,localhost,root,,);
+      # After open, wait for flush.
+      SET DEBUG_SYNC= 'before_lock_tables_takes_lock
+                       SIGNAL opened WAIT_FOR flushed';
+      # If bug is fixed, INSERT will go into wait_for_lock.
+      # Retain action after use. First used by general_log.
+      SET DEBUG_SYNC= 'wait_for_lock SIGNAL locked EXECUTE 2';
+      # Alternatively INSERT can wait for refresh in open_table().
+      SET DEBUG_SYNC= 'before_open_table_wait_refresh SIGNAL locked';
+      # If bug is not fixed, INSERT will succeed. Pretend locked.
+      SET DEBUG_SYNC= 'after_insert SIGNAL locked';
+      send INSERT INTO t1 VALUES (1);
+  #
+  --echo connection default
+  connection default;
+  # Wait until INSERT opened the table.
+  SET DEBUG_SYNC= 'now WAIT_FOR opened';
+  #
+  # Let INSERT exploit the gap when flush waits wthout lock
+  # for other threads to close the tables.
+  SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed';
+  FLUSH TABLES;
+  #
+  # Wait until INSERT is locked (bug fixed) or finished (bug not fixed).
+  SET DEBUG_SYNC= 'now WAIT_FOR locked';
+  #
+  # This should give no result. But it will if the bug exists.
+  SELECT * FROM t1;
+  UNLOCK TABLES;
+  #
+      --echo connection con1
+      connection con1;
+      reap;
+      disconnect con1;
+  #
+  --echo connection default
+  connection default;
+  # Clear debug_sync signal.
+  SET DEBUG_SYNC= 'RESET';
+  DROP TABLE t1;
+  #
+  # Show that truncate of child table waits while parent table is used.
+  CREATE TABLE t1 (c1 REAL) ENGINE=MyISAM;
+  CREATE TABLE t2 (c1 REAL) ENGINE=MyISAM;
+  INSERT INTO t1 VALUES(0.1);
+  INSERT INTO t2 VALUES(0.2);
+  CREATE TABLE t3 (c1 REAL) ENGINE=MRG_MYISAM UNION=(t1,t2);
+  #
+      --echo connection con1
+      connect (con1,localhost,root,,);
+      # When reaching acos(), send 'select' and wait for truncated.
+      SET DEBUG_SYNC= 'before_acos_function
+                       SIGNAL select WAIT_FOR truncated';
+      send SELECT ACOS(c1) FROM t3;
+  #
+  --echo connection default
+  connection default;
+  # Wait for con1 to reach acos().
+  SET DEBUG_SYNC= 'now WAIT_FOR select';
+  #
+  # With bug fix present, TRUNCATE runs into wait_for_locked_table_names().
+  SET DEBUG_SYNC= 'before_wait_locked_tname SIGNAL truncated';
+  TRUNCATE TABLE t1;
+  #
+  # With bug fix not present, we need to signal after TRUNCATE.
+  SET DEBUG_SYNC= 'now SIGNAL truncated';
+  #
+      --echo connection con1
+      connection con1;
+      # In non-debug server, the order of select and truncate is undetermined.
+      # So we may have one or two rows here.
+      --disable_result_log
+      reap;
+      --enable_result_log
+      disconnect con1;
+  #
+  --echo connection default
+  connection default;
+  SELECT ACOS(c1) FROM t3;
+  # Clear debug_sync signal.
+  SET DEBUG_SYNC= 'RESET';
+  DROP TABLE t1, t2, t3;
+}
 
 #
 # In-depth test.
@@ -268,95 +275,110 @@ DROP TABLE m1, t1;
 # Bug#30273 - merge tables: Can't lock file (errno: 155)
 # Second test try to step in between lock_count() and store_lock().
 #
-CREATE TABLE t1 (c1 INT) ENGINE=MyISAM;
-CREATE TABLE m1 (c1 INT) ENGINE=MRG_MYISAM UNION=(t1) INSERT_METHOD=LAST;
-    --echo connection con1
-    connect (con1,localhost,root,,);
-    # When reaching attach_merge_children(), signal attach and
-    # wait for store_lock1 before attaching children.
-    # Then run through attach of children until store_lock().
-    # Signal store_lock2 and wait for flushed.
-    SET DEBUG_SYNC= 'before_myisammrg_attach
-                     SIGNAL attach WAIT_FOR store_lock1';
-    SET DEBUG_SYNC= 'before_myisammrg_store_lock
-                     SIGNAL store_lock2 WAIT_FOR flushed';
-    send INSERT INTO m1 VALUES (2);
---echo connection default;
-connection default;
 #
-# Wait for con1 to reach attach.
-SET DEBUG_SYNC= 'now WAIT_FOR attach';
-# Run until myisammrg store_lock(),
-# then signal store_lock1 and
-# wait for con1 to go through attach until store_lock() (store_lock2),
-# then flush and signal flushed.
-SET DEBUG_SYNC= 'before_myisammrg_store_lock
-                 SIGNAL store_lock1 WAIT_FOR store_lock2';
-SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed';
-FLUSH TABLE m1;
-#
-    --echo connection con1
-    connection con1;
-    reap;
-    disconnect con1;
---echo connection default;
-connection default;
-SELECT * FROM m1;
-# Clear debug_sync signal.
-SET DEBUG_SYNC= 'RESET';
-DROP TABLE m1, t1;
+# This test does not work in 6.0 because FLUSH TABLE does not use
+# table locks to find old tables. hence it does not call lock_count()
+# nor store_lock().
+if (0)
+{
+  CREATE TABLE t1 (c1 INT) ENGINE=MyISAM;
+  CREATE TABLE m1 (c1 INT) ENGINE=MRG_MYISAM UNION=(t1) INSERT_METHOD=LAST;
+      --echo connection con1
+      connect (con1,localhost,root,,);
+      # When reaching attach_merge_children(), signal attach and
+      # wait for store_lock1 before attaching children.
+      # Then run through attach of children until store_lock().
+      # Signal store_lock2 and wait for flushed.
+      SET DEBUG_SYNC= 'before_myisammrg_attach
+                       SIGNAL attach WAIT_FOR store_lock1';
+      SET DEBUG_SYNC= 'before_myisammrg_store_lock
+                       SIGNAL store_lock2 WAIT_FOR flushed';
+      send INSERT INTO m1 VALUES (2);
+  --echo connection default;
+  connection default;
+  #
+  # Wait for con1 to reach attach.
+  SET DEBUG_SYNC= 'now WAIT_FOR attach';
+  # Run until myisammrg store_lock(),
+  # then signal store_lock1 and
+  # wait for con1 to go through attach until store_lock() (store_lock2),
+  # then flush and signal flushed.
+  SET DEBUG_SYNC= 'before_myisammrg_store_lock
+                   SIGNAL store_lock1 WAIT_FOR store_lock2';
+  SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed';
+  FLUSH TABLE m1;
+  #
+      --echo connection con1
+      connection con1;
+      reap;
+      disconnect con1;
+  --echo connection default;
+  connection default;
+  SELECT * FROM m1;
+  # Clear debug_sync signal.
+  SET DEBUG_SYNC= 'RESET';
+  DROP TABLE m1, t1;
+}
 
 #
 # Coverage test for mysql_lock_retry hit limit.
 # Similar test as for Bug#26379, Problem #3.
 # But mysql_lock_retry hit limit set.
 #
-CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
-LOCK TABLE t1 WRITE;
 #
-    --echo connection con1
-    connect (con1,localhost,root,,);
-    SET DEBUG_SYNC= 'mysql_lock_retry HIT_LIMIT 1';
-    # After open, wait for flush.
-    SET DEBUG_SYNC= 'before_lock_tables_takes_lock
-                     SIGNAL opened WAIT_FOR flushed';
-    # If bug is not fixed, INSERT will succeed. Pretend locked.
-    SET DEBUG_SYNC= 'after_insert SIGNAL locked';
-    # If bug is fixed, INSERT will go into wait_for_lock.
-    # Retain action after use. First used by general_log.
-    SET DEBUG_SYNC= 'wait_for_lock SIGNAL locked EXECUTE 2';
-    # Alternatively INSERT can wait for refresh in open_table().
-    SET DEBUG_SYNC= 'before_open_table_wait_refresh SIGNAL locked';
-    send INSERT INTO t1 VALUES (1);
-#
---echo connection default;
-connection default;
-#
-# Wait until INSERT opened the table.
-SET DEBUG_SYNC= 'now WAIT_FOR opened';
-#
-# Let INSERT exploit the gap when flush waits wthout lock
-# for other threads to close the tables.
-SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed EXECUTE 2';
-FLUSH TABLES;
-#
-# Wait until INSERT is locked (bug fixed) or finished (bug not fixed).
-SET DEBUG_SYNC= 'now WAIT_FOR locked';
-UNLOCK TABLES;
-#
-    --echo connection con1
-    connection con1;
-    # Succeeds if DEBUG_SYNC is disabled
-    --error 0, ER_DEBUG_SYNC_HIT_LIMIT
-    reap;
-    disconnect con1;
-#
---echo connection default;
-connection default;
-#
-# Clear debug_sync signal.
-SET DEBUG_SYNC= 'RESET';
-DROP TABLE t1;
+# This test does not work in 6.0 because the table locking scheme
+# changed a lot. The above problem cannot happen any more.
+# Some of the places where the sync points were placed, don't exist
+# any more.
+if (0)
+{
+  CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
+  LOCK TABLE t1 WRITE;
+  #
+      --echo connection con1
+      connect (con1,localhost,root,,);
+      SET DEBUG_SYNC= 'mysql_lock_retry HIT_LIMIT 1';
+      # After open, wait for flush.
+      SET DEBUG_SYNC= 'before_lock_tables_takes_lock
+                       SIGNAL opened WAIT_FOR flushed';
+      # If bug is not fixed, INSERT will succeed. Pretend locked.
+      SET DEBUG_SYNC= 'after_insert SIGNAL locked';
+      # If bug is fixed, INSERT will go into wait_for_lock.
+      # Retain action after use. First used by general_log.
+      SET DEBUG_SYNC= 'wait_for_lock SIGNAL locked EXECUTE 2';
+      # Alternatively INSERT can wait for refresh in open_table().
+      SET DEBUG_SYNC= 'before_open_table_wait_refresh SIGNAL locked';
+      send INSERT INTO t1 VALUES (1);
+  #
+  --echo connection default;
+  connection default;
+  #
+  # Wait until INSERT opened the table.
+  SET DEBUG_SYNC= 'now WAIT_FOR opened';
+  #
+  # Let INSERT exploit the gap when flush waits wthout lock
+  # for other threads to close the tables.
+  SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed EXECUTE 2';
+  FLUSH TABLES;
+  #
+  # Wait until INSERT is locked (bug fixed) or finished (bug not fixed).
+  SET DEBUG_SYNC= 'now WAIT_FOR locked';
+  UNLOCK TABLES;
+  #
+      --echo connection con1
+      connection con1;
+      # Succeeds if DEBUG_SYNC is disabled
+      --error 0, ER_DEBUG_SYNC_HIT_LIMIT
+      reap;
+      disconnect con1;
+  #
+  --echo connection default;
+  connection default;
+  #
+  # Clear debug_sync signal.
+  SET DEBUG_SYNC= 'RESET';
+  DROP TABLE t1;
+}
 
 #
 # Coverage test for wait_for_lock.

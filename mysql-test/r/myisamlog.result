@@ -19,9 +19,9 @@ write                       4         0              0
 update                      1         0              0
 delete                      1         0              0
 close                       8         0              0
-extra                      72         0              0
+extra                       #         0              0
 lock                       48         0              0
-Total             150         0                0
+Total               #         0                0
 select * from t1;
 a	b
 flush table t1;
@@ -34,9 +34,9 @@ write                       4         0              0
 update                      1         0              0
 delete                      1         0              0
 close                       9         0              0
-extra                      75         0              0
+extra                       #         0              0
 lock                       50         0              0
-Total             157         0                0
+Total               #         0                0
 select * from t1;
 a	b
 1	life
