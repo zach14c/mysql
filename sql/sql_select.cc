@@ -3735,8 +3735,6 @@ int pull_out_semijoin_tables(JOIN *join)
           }
         }
       }
-        }
-      }
 
       /* Remove the sj-nest itself if we've removed everything from it*/
       if (!inner_tables)
