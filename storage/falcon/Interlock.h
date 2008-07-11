@@ -18,6 +18,12 @@
 
 #if defined(__sparcv8) || defined(__sparcv9) || defined(__sun)
 #include <sys/atomic.h>
+
+#if defined(__SunOS_5_9)
+extern "C" int compareswap(volatile int *target, int compare, int exchange);
+extern "C" char compareswapptr(volatile void **target, void *compare, void *exchange);
+#endif /* __SunOS_5_9 */
+
 #endif
 
 #define INTERLOCKED_INCREMENT(variable)		interlockedIncrement(&variable)
@@ -147,6 +153,10 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
     return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
 #else
 #  error cas not defined. We need >= Solaris 10
+	/* Not implemented yet - just an example of how to call inline assembly */
+	char ret = compareswap(target, compare, exchange);
+
+	return ret;
 #endif
 
 #else
@@ -257,6 +267,10 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
     return (char)(compare == atomic_cas_ptr(target, compare, exchange));
 #else
 #  error cas not defined. We need >= Solaris 10
+	/* Not implemented yet - just an example for calling inline assembly */
+	char ret = compareswapptr(target, compare, exchange);
+    
+	return ret;
 #endif
 
 #else
