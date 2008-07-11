@@ -5439,7 +5439,9 @@ best_access_path(JOIN      *join,
   uint sj_insideout_quick_max_sj_keypart;
   uint sj_inside_out_scan= MAX_KEY;
   DBUG_ENTER("best_access_path");
-
+  
+  LINT_INIT(best_sj_keyparts); // Protected by sj_inside_out_scan
+  LINT_INIT(sj_insideout_quick_max_sj_keypart); // Protected by sj_insideout_quick_*
   if (s->keyuse)
   {                                            /* Use key if possible */
     TABLE *table= s->table;
