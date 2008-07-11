@@ -206,30 +206,7 @@ enum ha_extra_function {
   HA_EXTRA_IS_ATTACHED_CHILDREN,
   HA_EXTRA_DETACH_CHILDREN,
   HA_EXTRA_ORDERBY_LIMIT,
-  HA_EXTRA_NO_ORDERBY_LIMIT,
-  /*
-    When a multiple key conflict happens in a REPLACE command mysql
-    expects the conflicts to be reported in the ascending order of
-    key names.
-
-    For e.g.
-
-    CREATE TABLE t1 (a INT, UNIQUE (a), b INT NOT NULL, UNIQUE (b), c INT NOT
-                     NULL, INDEX(c));
-
-    REPLACE INTO t1 VALUES (1,1,1),(2,2,2),(2,1,3);
-
-    MySQL expects the conflict with 'a' to be reported before the conflict with
-    'b'.
-
-    If the underlying storage engine does not report the conflicting keys in
-    ascending order, it causes unexpected errors when the REPLACE command is
-    executed.
-
-    This flag helps the underlying SE to inform the server that the keys are not
-    ordered.
-   */
-   HA_DUPLICATE_KEY_NOT_IN_ORDER
+  HA_EXTRA_NO_ORDERBY_LIMIT
 };
 
 /* Compatible option, to be deleted in 6.0 */
