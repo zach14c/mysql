@@ -4381,6 +4381,7 @@ void DsMrr_impl::dsmrr_close()
   DBUG_ENTER("DsMrr_impl::dsmrr_close");
   if (h2)
   {
+    h2->ha_index_or_rnd_end();
     h2->ha_external_lock(current_thd, F_UNLCK);
     h2->close();
     delete h2;
