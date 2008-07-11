@@ -31,4 +31,4 @@ PARAMETER_UINT(serial_log_priority, "Whether or not serial log has write priorit
 PARAMETER_BOOL(use_deferred_index_hash, "Use Deferred Index hash lookup", 0, 0, NULL)
 PARAMETER_BOOL(support_xa, "Enable XA two phase commit", 0, 0x0200, NULL)
 PARAMETER_BOOL(use_supernodes, "Use supernodes in Falcon index", 1, 0x0000, NULL)
-PARAMETER_BOOL(use_sectorcache, "Use sector cache (on=disk reads are 64KB, off=disk reads are page size)", 1, 0x0000, NULL)
+PARAMETER_BOOL(use_sectorcache, "Use sector cache (on=disk reads are 64KB, off=disk reads are page size)", 0, 0x0000, NULL)

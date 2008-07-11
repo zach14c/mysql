@@ -180,6 +180,7 @@ Configuration::Configuration(const char *configFile)
 	gcSchedule = "0,30 * * * * *";
 	useCount = 1;
 
+#ifndef STORAGE_ENGINE
 	// Handle initialization file
 
 	const char *fileName = (configFile) ? configFile : CONFIG_FILE;
@@ -259,6 +260,7 @@ Configuration::Configuration(const char *configFile)
 			
 		fclose (file);
 		}
+#endif
 
 	pageCacheSize = MAX(pageCacheSize, MIN_PAGE_CACHE);
 	setRecordMemoryMax(recordMemoryMax);
