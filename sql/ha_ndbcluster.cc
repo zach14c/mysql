@@ -11519,10 +11519,14 @@ static int ndbcluster_fill_is_table(handlerton *hton,
                                       COND *cond,
                                       enum enum_schema_tables schema_table_idx)
 {
+  int ret= 0;
+  
   if (schema_table_idx == SCH_FILES)
   {
-    ndbcluster_fill_files_table(hton, thd, tables, cond);
+    ret= ndbcluster_fill_files_table(hton, thd, tables, cond);
   }
+  
+  return ret;
 }
 
 static int ndbcluster_fill_files_table(handlerton *hton, 
