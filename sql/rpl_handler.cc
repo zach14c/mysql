@@ -29,46 +29,15 @@ Binlog_transmit_delegate *binlog_transmit_delegate;
 Binlog_relay_IO_delegate *binlog_relay_io_delegate;
 #endif /* HAVE_REPLICATION */
 
-int thd_net_read(const unsigned char **packet, size_t *len)
-{
-  THD *thd= current_thd;
-  ulong ret= my_net_read(&thd->net);
-  if (ret == packet_error)
-    return 1;
-  *len= ret;
-  *packet= thd->net.read_pos;
-  return 0;
-}
+/*
+  structure to save transaction log filename and position
+*/
+typedef struct Trans_binlog_info {
+  my_off_t log_pos;
+  char log_file[FN_REFLEN];
+} Trans_binlog_info;
 
-int thd_net_write(const unsigned char *packet, size_t len)
-{
-  return my_net_write(&current_thd->net, packet, len);
-}
-
-int thd_net_flush()
-{
-  return net_flush(&current_thd->net);
-}
-
-int mysql_net_read(MYSQL *mysql, const unsigned char **packet, size_t *len)
-{
-  ulong ret= my_net_read(&mysql->net);
-  if (ret == packet_error)
-    return 1;
-  *len= ret;
-  *packet= mysql->net.read_pos;
-  return 0;
-}
-
-int mysql_net_write(MYSQL *mysql, const unsigned char *packet, size_t len)
-{
-  return my_net_write(&mysql->net, packet, len);
-}
-
-int mysql_net_flush(MYSQL *mysql)
-{
-  return net_flush(&mysql->net);
-}
+static pthread_key(Trans_binlog_info*, RPL_TRANS_BINLOG_INFO);
 
 int get_user_var_int(const char *name,
                      long long int *value, int *null_value)
@@ -138,6 +107,9 @@ int delegates_init()
 #endif /* HAVE_REPLICATION */
       )
     return 1;
+
+  if (pthread_key_create(&RPL_TRANS_BINLOG_INFO, NULL))
+    return 1;
   return 0;
 }
 
@@ -159,7 +131,7 @@ void delegates_destroy()
   Add observer plugins to the thd->lex list, after each statement, all
   plugins add to thd->lex will be automatically unlocked.
  */
-#define FOREACH_OBSERVER(f, thd, args)                                  \
+#define FOREACH_OBSERVER(r, f, thd, args)                               \
   param.server_id= thd->server_id;                                      \
   read_lock();                                                          \
   Observer_info_iterator iter= observer_info_iter();                    \
@@ -170,36 +142,73 @@ void delegates_destroy()
       my_plugin_lock(thd, &info->plugin);                               \
     if (!plugin)                                                        \
     {                                                                   \
-      unlock();                                                         \
-      return 1;                                                         \
+      r= 1;                                                             \
+      break;                                                            \
     }                                                                   \
     if (((Observer *)info->observer)->f                                 \
         && ((Observer *)info->observer)->f args)                        \
     {                                                                   \
-      unlock();                                                         \
-      return 1;                                                         \
+      r= 1;                                                             \
+      break;                                                            \
     }                                                                   \
   }                                                                     \
-  unlock();                                                             \
-  return 0
+  unlock()
 
 
 int Trans_delegate::after_commit(THD *thd, bool all)
 {
   Trans_param param;
-  if (all || thd->transaction.all.ha_list == 0)
+  bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
+  if (is_real_trans)
     param.flags |= TRANS_IS_REAL_TRANS;
 
-  FOREACH_OBSERVER(after_commit, thd, (&param));
+  Trans_binlog_info *log_info=
+    my_pthread_getspecific_ptr(Trans_binlog_info*, RPL_TRANS_BINLOG_INFO);
+
+  param.log_file= log_info ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
+
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_commit, thd, (&param));
+
+  /*
+    This is the end of a real transaction or autocommit statement, we
+    can free the memory allocated for binlog file and position.
+  */
+  if (is_real_trans && log_info)
+  {
+    my_pthread_setspecific_ptr(RPL_TRANS_BINLOG_INFO, NULL);
+    my_free(log_info, MYF(0));
+  }
+  return ret;
 }
 
 int Trans_delegate::after_rollback(THD *thd, bool all)
 {
   Trans_param param;
-  if (all || thd->transaction.all.ha_list == 0)
+  bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
+  if (is_real_trans)
     param.flags |= TRANS_IS_REAL_TRANS;
 
-  FOREACH_OBSERVER(after_rollback, thd, (&param));
+  Trans_binlog_info *log_info=
+    my_pthread_getspecific_ptr(Trans_binlog_info*, RPL_TRANS_BINLOG_INFO);
+    
+  param.log_file= log_info ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
+
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_commit, thd, (&param));
+
+  /*
+    This is the end of a real transaction or autocommit statement, we
+    can free the memory allocated for binlog file and position.
+  */
+  if (is_real_trans && log_info)
+  {
+    my_pthread_setspecific_ptr(RPL_TRANS_BINLOG_INFO, NULL);
+    my_free(log_info, MYF(0));
+  }
+  return ret;
 }
 
 int Binlog_storage_delegate::after_flush(THD *thd,
@@ -212,7 +221,24 @@ int Binlog_storage_delegate::after_flush(THD *thd,
   if (synced)
     flags |= BINLOG_STORAGE_IS_SYNCED;
 
-  FOREACH_OBSERVER(after_flush, thd, (&param, log_file, log_pos, flags));
+  Trans_binlog_info *log_info=
+    my_pthread_getspecific_ptr(Trans_binlog_info*, RPL_TRANS_BINLOG_INFO);
+    
+  if (!log_info)
+  {
+    if(!(log_info=
+         (Trans_binlog_info *)my_malloc(sizeof(Trans_binlog_info), MYF(0))))
+      return 1;
+    my_pthread_setspecific_ptr(RPL_TRANS_BINLOG_INFO, log_info);
+  }
+    
+  strcpy(log_info->log_file, log_file+dirname_length(log_file));
+  log_info->log_pos = log_pos;
+  
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_flush, thd,
+                   (&param, log_info->log_file, log_info->log_pos, flags));
+  return ret;
 }
 
 #ifdef HAVE_REPLICATION
@@ -223,7 +249,9 @@ int Binlog_transmit_delegate::transmit_start(THD *thd, ushort flags,
   Binlog_transmit_param param;
   param.flags= flags;
 
-  FOREACH_OBSERVER(transmit_start, thd, (&param, log_file, log_pos));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, transmit_start, thd, (&param, log_file, log_pos));
+  return ret;
 }
 
 int Binlog_transmit_delegate::transmit_stop(THD *thd, ushort flags)
@@ -231,7 +259,9 @@ int Binlog_transmit_delegate::transmit_stop(THD *thd, ushort flags)
   Binlog_transmit_param param;
   param.flags= flags;
 
-  FOREACH_OBSERVER(transmit_stop, thd, (&param));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, transmit_stop, thd, (&param));
+  return ret;
 }
 
 int Binlog_transmit_delegate::reserve_header(THD *thd, ushort flags,
@@ -248,7 +278,8 @@ int Binlog_transmit_delegate::reserve_header(THD *thd, ushort flags,
   Binlog_transmit_param param;
   param.flags= flags;
   param.server_id= thd->server_id;
-  
+
+  int ret= 0;
   read_lock();
   Observer_info_iterator iter= observer_info_iter();
   Observer_info *info= iter++;
@@ -258,8 +289,8 @@ int Binlog_transmit_delegate::reserve_header(THD *thd, ushort flags,
       my_plugin_lock(thd, &info->plugin);
     if (!plugin)
     {
-      unlock();
-      return 1;
+      ret= 1;
+      break;
     }
     hlen= 0;
     if (((Observer *)info->observer)->reserve_header
@@ -268,19 +299,19 @@ int Binlog_transmit_delegate::reserve_header(THD *thd, ushort flags,
                                                         RESERVE_HEADER_SIZE,
                                                         &hlen))
     {
-      unlock();
-      return 1;
+      ret= 1;
+      break;
     }
     if (hlen == 0)
       continue;
     if (hlen > RESERVE_HEADER_SIZE || packet->append((char *)header, hlen))
     {
-      unlock();
-      return 1;
+      ret= 1;
+      break;
     }
   }
   unlock();
-  return 0;
+  return ret;
 }
 
 int Binlog_transmit_delegate::before_send_event(THD *thd, ushort flags,
@@ -291,9 +322,12 @@ int Binlog_transmit_delegate::before_send_event(THD *thd, ushort flags,
   Binlog_transmit_param param;
   param.flags= flags;
 
-  FOREACH_OBSERVER(before_send_event, thd,
+  int ret= 0;
+  FOREACH_OBSERVER(ret, before_send_event, thd,
                    (&param, (uchar *)packet->c_ptr(),
-                    packet->length(), log_file, log_pos));
+                    packet->length(),
+                    log_file+dirname_length(log_file), log_pos));
+  return ret;
 }
 
 int Binlog_transmit_delegate::after_send_event(THD *thd, ushort flags,
@@ -302,8 +336,10 @@ int Binlog_transmit_delegate::after_send_event(THD *thd, ushort flags,
   Binlog_transmit_param param;
   param.flags= flags;
 
-  FOREACH_OBSERVER(after_send_event, thd,
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_send_event, thd,
                    (&param, packet->c_ptr(), packet->length()));
+  return ret;
 }
 
 int Binlog_transmit_delegate::after_reset_master(THD *thd, ushort flags)
@@ -312,34 +348,42 @@ int Binlog_transmit_delegate::after_reset_master(THD *thd, ushort flags)
   Binlog_transmit_param param;
   param.flags= flags;
 
-  FOREACH_OBSERVER(after_reset_master, thd, (&param));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_reset_master, thd, (&param));
+  return ret;
+}
+
+void Binlog_relay_IO_delegate::init_param(Binlog_relay_IO_param *param,
+                                          Master_info *mi)
+{
+  param->mysql= mi->mysql;
+  param->user= mi->user;
+  param->host= mi->host;
+  param->port= mi->port;
+  param->master_log_name= mi->master_log_name;
+  param->master_log_pos= mi->master_log_pos;
 }
 
 int Binlog_relay_IO_delegate::thread_start(THD *thd, Master_info *mi)
 {
   Binlog_relay_IO_param param;
-  param.mysql= mi->mysql;
-  param.user= mi->user;
-  param.host= mi->host;
-  param.port= mi->port;
-  param.master_log_name= mi->master_log_name;
-  param.master_log_pos= mi->master_log_pos;
+  init_param(&param, mi);
 
-  FOREACH_OBSERVER(thread_start, thd, (&param));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, thread_start, thd, (&param));
+  return ret;
 }
+
 
 int Binlog_relay_IO_delegate::thread_stop(THD *thd, Master_info *mi)
 {
 
   Binlog_relay_IO_param param;
-  param.mysql= mi->mysql;
-  param.user= mi->user;
-  param.host= mi->host;
-  param.port= mi->port;
-  param.master_log_name= mi->master_log_name;
-  param.master_log_pos= mi->master_log_pos;
+  init_param(&param, mi);
 
-  FOREACH_OBSERVER(thread_stop, thd, (&param));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, thread_stop, thd, (&param));
+  return ret;
 }
 
 int Binlog_relay_IO_delegate::before_request_transmit(THD *thd,
@@ -347,14 +391,11 @@ int Binlog_relay_IO_delegate::before_request_transmit(THD *thd,
                                                       ushort flags)
 {
   Binlog_relay_IO_param param;
-  param.mysql= mi->mysql;
-  param.user= mi->user;
-  param.host= mi->host;
-  param.port= mi->port;
-  param.master_log_name= mi->master_log_name;
-  param.master_log_pos= mi->master_log_pos;
+  init_param(&param, mi);
 
-  FOREACH_OBSERVER(before_request_transmit, thd, (&param, (uint32)flags));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, before_request_transmit, thd, (&param, (uint32)flags));
+  return ret;
 }
 
 int Binlog_relay_IO_delegate::after_read_event(THD *thd, Master_info *mi,
@@ -363,15 +404,12 @@ int Binlog_relay_IO_delegate::after_read_event(THD *thd, Master_info *mi,
                                                ulong *event_len)
 {
   Binlog_relay_IO_param param;
-  param.mysql= mi->mysql;
-  param.user= mi->user;
-  param.host= mi->host;
-  param.port= mi->port;
-  param.master_log_name= mi->master_log_name;
-  param.master_log_pos= mi->master_log_pos;
+  init_param(&param, mi);
 
-  FOREACH_OBSERVER(after_read_event, thd,
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_read_event, thd,
                    (&param, packet, len, event_buf, event_len));
+  return ret;
 }
 
 int Binlog_relay_IO_delegate::after_queue_event(THD *thd, Master_info *mi,
@@ -380,33 +418,27 @@ int Binlog_relay_IO_delegate::after_queue_event(THD *thd, Master_info *mi,
                                                 bool synced)
 {
   Binlog_relay_IO_param param;
-  param.mysql= mi->mysql;
-  param.user= mi->user;
-  param.host= mi->host;
-  param.port= mi->port;
-  param.master_log_name= mi->master_log_name;
-  param.master_log_pos= mi->master_log_pos;
+  init_param(&param, mi);
 
   uint32 flags=0;
   if (synced)
     flags |= BINLOG_STORAGE_IS_SYNCED;
 
-  FOREACH_OBSERVER(after_queue_event, thd,
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_queue_event, thd,
                    (&param, event_buf, event_len, flags));
+  return ret;
 }
 
 int Binlog_relay_IO_delegate::after_reset_slave(THD *thd, Master_info *mi)
 
 {
   Binlog_relay_IO_param param;
-  param.mysql= mi->mysql;
-  param.user= mi->user;
-  param.host= mi->host;
-  param.port= mi->port;
-  param.master_log_name= mi->master_log_name;
-  param.master_log_pos= mi->master_log_pos;
+  init_param(&param, mi);
 
-  FOREACH_OBSERVER(after_reset_slave, thd, (&param));
+  int ret= 0;
+  FOREACH_OBSERVER(ret, after_reset_slave, thd, (&param));
+  return ret;
 }
 #endif /* HAVE_REPLICATION */
 

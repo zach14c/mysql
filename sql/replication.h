@@ -34,6 +34,16 @@ enum Trans_flags {
 typedef struct Trans_param {
   uint32 server_id;
   uint32 flags;
+
+  /*
+    The latest binary log file name and position written by current
+    transaction, if binary log is disabled or no log event has been
+    written into binary log file by current transaction (events
+    written into transaction log cache are not counted), these two
+    member will be zero.
+  */
+  const char *log_file;
+  my_off_t log_pos;
 } Trans_param;
 
 /**
@@ -244,7 +254,7 @@ typedef struct Binlog_relay_IO_param {
   /* Master host, user and port */
   char *host;
   char *user;
-  uint port;
+  unsigned int port;
 
   char *master_log_name;
   my_off_t master_log_pos;
@@ -422,6 +432,28 @@ int register_binlog_relay_io_observer(Binlog_relay_IO_observer *observer, void *
    @retval 1 Observer not exists
 */
 int unregister_binlog_relay_io_observer(Binlog_relay_IO_observer *observer, void *p);
+
+/**
+   Connect to master
+
+   This function can only used in the slave I/O thread context, and
+   will use the same master information to do the connection.
+
+   @code
+   MYSQL *mysql = mysql_init(NULL);
+   if (rpl_connect_master(mysql))
+   {
+     // do stuff with the connection
+   }
+   mysql_close(mysql); // close the connection
+   @endcode
+   
+   @param mysql address of MYSQL structure to use, pass NULL will
+   create a new one
+
+   @return address of MYSQL structure on success, NULL on failure
+*/
+MYSQL *rpl_connect_master(MYSQL *mysql);
 
 #ifdef __cplusplus
 }
