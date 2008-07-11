@@ -2,7 +2,6 @@
 #include <my_config.h>
 #include <pthread.h>
 #include <stdio.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <math.h>
@@ -10,7 +9,6 @@
 #include <float.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <sys/timeb.h>
 #include <sys/time.h>
 #include <time.h>
@@ -21,17 +19,10 @@
 #include <assert.h>
 #include <my_attribute.h>
 int __cxa_pure_virtual () __attribute__ ((weak));
-typedef char my_bool;
 #include <my_dbug.h>
-struct _db_stack_frame_ {
-  const char *func;
-  const char *file;
-  uint level;
-  struct _db_stack_frame_ *prev;
-};
 struct _db_code_state_;
-extern my_bool _dbug_on_;
-extern my_bool _db_keyword_(struct _db_code_state_ *, const char *, int);
+extern int _db_keyword_(struct _db_code_state_ *cs, const char *keyword);
+extern int _db_strict_keyword_(const char *keyword);
 extern int _db_explain_(struct _db_code_state_ *cs, char *buf, size_t len);
 extern int _db_explain_init_(char *buf, size_t len);
 extern int _db_is_pushed_(void);
@@ -40,11 +31,13 @@ extern void _db_longjmp_(void);
 extern void _db_process_(const char *name);
 extern void _db_push_(const char *control);
 extern void _db_pop_(void);
-extern void _db_set_(const char *control);
+extern void _db_set_(struct _db_code_state_ *cs, const char *control);
 extern void _db_set_init_(const char *control);
-extern void _db_enter_(const char *_func_, const char *_file_, uint _line_,
-                       struct _db_stack_frame_ *_stack_frame_);
-extern void _db_return_(uint _line_, struct _db_stack_frame_ *_stack_frame_);
+extern void _db_enter_(const char *_func_,const char *_file_,uint _line_,
+   const char **_sfunc_,const char **_sfile_,
+   uint *_slevel_, char ***);
+extern void _db_return_(uint _line_,const char **_sfunc_,const char **_sfile_,
+    uint *_slevel_);
 extern void _db_pargs_(uint _line_,const char *keyword);
 extern void _db_doprnt_ (const char *format,...)
   __attribute__((format(printf, 1, 2)));
@@ -54,7 +47,6 @@ extern void _db_end_(void);
 extern void _db_lock_file_(void);
 extern void _db_unlock_file_(void);
 extern FILE *_db_fp_(void);
-extern void _db_flush_();
 typedef int File;
 typedef int my_socket;
 typedef void (*sig_return)();
@@ -86,6 +78,7 @@ typedef off_t os_off_t;
 typedef uint8 int7;
 typedef short int15;
 typedef int myf;
+typedef char my_bool;
 typedef char bool;
 typedef union {
   double v;
@@ -105,12 +98,12 @@ extern void my_pthread_attr_setprio(pthread_attr_t *attr, int priority);
 typedef struct st_safe_mutex_t
 {
   pthread_mutex_t global,mutex;
-  const char *file, *name;
+  const char *file;
   uint line,count;
   pthread_t thread;
 } safe_mutex_t;
 int safe_mutex_init(safe_mutex_t *mp, const pthread_mutexattr_t *attr,
-                    const char *file, uint line, const char *name);
+                    const char *file, uint line);
 int safe_mutex_lock(safe_mutex_t *mp, my_bool try_lock, const char *file, uint line);
 int safe_mutex_unlock(safe_mutex_t *mp,const char *file, uint line);
 int safe_mutex_destroy(safe_mutex_t *mp,const char *file, uint line);
@@ -143,12 +136,10 @@ struct st_my_thread_var
   my_bool init;
   struct st_my_thread_var *next,**prev;
   void *opt_info;
-  uint lock_type;
   void *dbug;
   char name[10 +1];
 };
 extern struct st_my_thread_var *_my_thread_var(void) __attribute__ ((const));
-extern void **my_thread_var_dbug();
 extern uint my_thread_end_wait_time;
 extern uint thd_lib_detected;
 #include <m_ctype.h>
@@ -528,8 +519,8 @@ my_bool my_charset_is_ascii_compatible(CHARSET_INFO *cs);
 typedef struct st_used_mem
 {
   struct st_used_mem *next;
-  size_t left;
-  size_t size;
+  unsigned int left;
+  unsigned int size;
 } USED_MEM;
 typedef struct st_mem_root
 {
@@ -538,8 +529,8 @@ typedef struct st_mem_root
   USED_MEM *pre_alloc;
   size_t min_malloc;
   size_t block_size;
-  unsigned long block_num;
-  unsigned long first_block_usage;
+  unsigned int block_num;
+  unsigned int first_block_usage;
   void (*error_handler)(void);
 } MEM_ROOT;
 typedef struct st_typelib {
@@ -570,7 +561,6 @@ extern int errno;
 extern char errbuff[(2)][(256)];
 extern char *home_dir;
 extern const char *my_progname;
-extern const char *my_progname_short;
 extern char curr_dir[];
 extern void (*error_handler_hook)(uint my_err, const char *str,myf MyFlags);
 extern void (*fatal_error_handler_hook)(uint my_err, const char *str,
@@ -626,8 +616,7 @@ enum flush_type
   FLUSH_KEEP,
   FLUSH_RELEASE,
   FLUSH_IGNORE_CHANGED,
-  FLUSH_FORCE_WRITE,
-  FLUSH_KEEP_LAZY
+  FLUSH_FORCE_WRITE
 };
 typedef struct st_record_cache
 {
@@ -720,7 +709,6 @@ int my_b_copy_to_file(IO_CACHE *cache, FILE *file);
 my_off_t my_b_append_tell(IO_CACHE* info);
 my_off_t my_b_safe_tell(IO_CACHE* info);
 typedef uint32 ha_checksum;
-extern ha_checksum my_crc_dbug_check;
 typedef int (*Process_option_func)(void *ctx, const char *group_name,
                                    const char *option);
 #include <my_alloc.h>
@@ -789,15 +777,12 @@ extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);
 extern int my_chsize(File fd,my_off_t newlength, int filler, myf MyFlags);
-extern int my_chmod(const char *name, mode_t mode, myf my_flags);
 extern int my_sync(File fd, myf my_flags);
 extern int my_sync_dir(const char *dir_name, myf my_flags);
 extern int my_sync_dir_by_file(const char *file_name, myf my_flags);
 extern void my_error (int nr,myf MyFlags, ...);
 extern void my_printf_error (uint my_err, const char *format, myf MyFlags, ...)
-        __attribute__((format(printf, 2, 4)));
-extern void my_printv_error(uint error, const char *format, myf MyFlags,
-                            va_list ap);
+          __attribute__((format(printf, 2, 4)));
 extern int my_error_register(const char **errmsgs, int first, int last);
 extern const char **my_error_unregister(int first, int last);
 extern void my_message(uint my_err, const char *str,myf MyFlags);
@@ -910,7 +895,7 @@ extern my_bool init_dynamic_array2(DYNAMIC_ARRAY *array,uint element_size,
 extern my_bool init_dynamic_array(DYNAMIC_ARRAY *array,uint element_size,
                                   uint init_alloc,uint alloc_increment
                                   );
-extern my_bool insert_dynamic(DYNAMIC_ARRAY *array, const uchar * element);
+extern my_bool insert_dynamic(DYNAMIC_ARRAY *array,uchar * element);
 extern uchar *alloc_dynamic(DYNAMIC_ARRAY *array);
 extern uchar *pop_dynamic(DYNAMIC_ARRAY*);
 extern my_bool set_dynamic(DYNAMIC_ARRAY *array,uchar * element,uint array_index);
@@ -964,7 +949,6 @@ extern int packfrm(uchar *, size_t, uchar **, size_t *);
 extern int unpackfrm(uchar **, size_t *, const uchar *);
 extern ha_checksum my_checksum(ha_checksum crc, const uchar *mem,
                                size_t count);
-extern void my_debug_put_break_here(void);
 extern void my_sleep(ulong m_seconds);
 extern ulong crc32(ulong crc, const uchar *buf, uint len);
 extern uint my_set_max_open_files(uint files);
@@ -978,16 +962,6 @@ extern my_bool my_gethwaddr(uchar *to);
 extern int my_getncpus();
 #include <sys/mman.h>
 int my_msync(int, void *, size_t, int);
-void my_uuid_init(ulong seed1, ulong seed2);
-void my_uuid(uchar *guid);
-void my_uuid2str(const uchar *guid, char *s);
-void my_uuid_end();
-struct my_rnd_struct {
-  unsigned long seed1,seed2,max_value;
-  double max_value_dbl;
-};
-void my_rnd_init(struct my_rnd_struct *rand_st, ulong seed1, ulong seed2);
-double my_rnd(struct my_rnd_struct *rand_st);
 extern uint get_charset_number(const char *cs_name, uint cs_flags);
 extern uint get_collation_number(const char *name);
 extern const char *get_charset_name(uint cs_number);
@@ -1139,12 +1113,6 @@ struct st_mysql_lex_string
   size_t length;
 };
 typedef struct st_mysql_lex_string LEX_STRING;
-struct st_mysql_const_unsigned_lex_string
-{
-  const uchar *str;
-  size_t length;
-};
-typedef struct st_mysql_const_unsigned_lex_string LEX_CUSTRING;
 static inline const uchar *skip_trailing_space(const uchar *ptr,size_t len)
 {
   const uchar *end= ptr + len;
@@ -1268,12 +1236,11 @@ typedef struct st_thr_lock {
   struct st_lock_list write;
   ulong write_lock_count;
   uint read_no_write_count;
-  void (*get_status)(void*, my_bool);
+  void (*get_status)(void*, int);
   void (*copy_status)(void*,void*);
   void (*update_status)(void*);
   void (*restore_status)(void*);
   my_bool (*check_status)(void *);
-  my_bool allow_multiple_concurrent_insert;
 } THR_LOCK;
 extern LIST *thr_lock_thread_list;
 extern pthread_mutex_t THR_LOCK_lock;
@@ -1290,8 +1257,6 @@ void thr_unlock(THR_LOCK_DATA *data);
 enum enum_thr_lock_result thr_multi_lock(THR_LOCK_DATA **data,
                                          uint count, THR_LOCK_OWNER *owner);
 void thr_multi_unlock(THR_LOCK_DATA **data,uint count);
-void
-thr_lock_merge_status(THR_LOCK_DATA **data, uint count);
 void thr_abort_locks(THR_LOCK *lock, my_bool upgrade_lock);
 my_bool thr_abort_locks_for_thread(THR_LOCK *lock, my_thread_id thread);
 void thr_print_locks(void);
@@ -1397,12 +1362,8 @@ enum ha_extra_function {
   HA_EXTRA_UPDATE_CANNOT_BATCH,
   HA_EXTRA_INSERT_WITH_UPDATE,
   HA_EXTRA_PREPARE_FOR_RENAME,
-  HA_EXTRA_ADD_CHILDREN_LIST,
   HA_EXTRA_ATTACH_CHILDREN,
-  HA_EXTRA_IS_ATTACHED_CHILDREN,
-  HA_EXTRA_DETACH_CHILDREN,
-  HA_EXTRA_ORDERBY_LIMIT,
-  HA_EXTRA_NO_ORDERBY_LIMIT
+  HA_EXTRA_DETACH_CHILDREN
 };
 enum ha_panic_function {
   HA_PANIC_CLOSE,
@@ -1676,35 +1637,10 @@ public:
   ulonglong to_ulonglong() const
   {
     if (sizeof(buffer) >= 8)
-      return (*((const ulonglong *) (buffer)));
+      return (*((ulonglong *) (buffer)));
     assert(sizeof(buffer) >= 4);
-    return (ulonglong) (*((const uint32 *) (buffer)));
+    return (ulonglong) (*((uint32 *) (buffer)));
   }
-};
-class Table_map_iterator
-{
-  ulonglong bmp;
-  uint no;
-public:
-  Table_map_iterator(ulonglong t) : bmp(t), no(0) {}
-  int next_bit()
-  {
-    static const char last_bit[16]= {32, 0, 1, 0,
-                                      2, 0, 1, 0,
-                                      3, 0, 1, 0,
-                                      2, 0, 1, 0};
-    uint bit;
-    while ((bit= last_bit[bmp & 0xF]) == 32)
-    {
-      no += 4;
-      bmp= bmp >> 4;
-      if (!bmp)
-        return BITMAP_END;
-    }
-    bmp &= ~(1LL << bit);
-    return no + bit;
-  }
-  enum { BITMAP_END= 64 };
 };
 template <> class Bitmap<64>
 {
@@ -1740,11 +1676,31 @@ public:
   my_bool operator==(const Bitmap<64>& map2) const { return map == map2.map; }
   char *print(char *buf) const { ll2str((map),(buf),(16),1); return buf; }
   ulonglong to_ulonglong() const { return map; }
-  class Iterator : public Table_map_iterator
+};
+class Table_map_iterator
+{
+  ulonglong bmp;
+  uint no;
+public:
+  Table_map_iterator(ulonglong t) : bmp(t), no(0) {}
+  int next_bit()
   {
-  public:
-    Iterator(Bitmap<64> &bmp) : Table_map_iterator(bmp.map) {}
-  };
+    static const char last_bit[16]= {32, 0, 1, 0,
+                                      2, 0, 1, 0,
+                                      3, 0, 1, 0,
+                                      2, 0, 1, 0};
+    uint bit;
+    while ((bit= last_bit[bmp & 0xF]) == 32)
+    {
+      no += 4;
+      bmp= bmp >> 4;
+      if (!bmp)
+        return BITMAP_END;
+    }
+    bmp &= ~(1LL << bit);
+    return no + bit;
+  }
+  enum { BITMAP_END= 64 };
 };
 #include "sql_array.h"
 #include <my_sys.h>
@@ -1965,13 +1921,12 @@ int thd_in_lock_tables(const void* thd);
 int thd_tablespace_op(const void* thd);
 long long thd_test_options(const void* thd, long long test_options);
 int thd_sql_command(const void* thd);
+const char *thd_proc_info(void* thd, const char *info);
 void **thd_ha_data(const void* thd, const struct handlerton *hton);
 int thd_tx_isolation(const void* thd);
 char *thd_security_context(void* thd, char *buffer, unsigned int length,
                            unsigned int max_query_len);
 void thd_inc_row_count(void* thd);
-const char *set_thd_proc_info(void*, const char * info, const char *func,
-                              const char *file, const unsigned int line);
 int mysql_tmpfile(const char *prefix);
 int thd_killed(const void* thd);
 unsigned long thd_get_thread_id(const void* thd);
@@ -2173,11 +2128,12 @@ void my_net_set_read_timeout(NET *net, uint timeout);
 struct sockaddr;
 int my_connect(my_socket s, const struct sockaddr *name, unsigned int namelen,
         unsigned int timeout);
-struct my_rnd_struct;
-enum Item_result
-{
-  STRING_RESULT=0, REAL_RESULT, INT_RESULT, ROW_RESULT, DECIMAL_RESULT
+struct rand_struct {
+  unsigned long seed1,seed2,max_value;
+  double max_value_dbl;
 };
+enum Item_result {STRING_RESULT=0, REAL_RESULT, INT_RESULT, ROW_RESULT,
+                  DECIMAL_RESULT};
 typedef struct st_udf_args
 {
   unsigned int arg_count;
@@ -2198,8 +2154,10 @@ typedef struct st_udf_init
   my_bool const_item;
   void *extension;
 } UDF_INIT;
-void create_random_string(char *to, unsigned int length,
-                          struct my_rnd_struct *rand_st);
+void randominit(struct rand_struct *, unsigned long seed1,
+                unsigned long seed2);
+double my_rnd(struct rand_struct *);
+void create_random_string(char *to, unsigned int length, struct rand_struct *rand_st);
 void hash_password(unsigned long *to, const char *password, unsigned int password_len);
 void make_scrambled_password_323(char *to, const char *password);
 void scramble_323(char *to, const char *message, const char *password);
@@ -2476,21 +2434,29 @@ private:
   Discrete_interval *tail;
   Discrete_interval *current;
   uint elements;
-  void set_members(Discrete_interval *h, Discrete_interval *t,
-                   Discrete_interval *c, uint el)
+  void copy_(const Discrete_intervals_list& from)
   {
-    head= h;
-    tail= t;
-    current= c;
-    elements= el;
+    for (Discrete_interval *i= from.head; i; i= i->next)
+    {
+      Discrete_interval j= *i;
+      append(&j);
+    }
   }
-  void operator=(Discrete_intervals_list &);
-  Discrete_intervals_list(const Discrete_intervals_list &);
 public:
   Discrete_intervals_list() : head(NULL), current(NULL), elements(0) {};
+  Discrete_intervals_list(const Discrete_intervals_list& from)
+  {
+    copy_(from);
+  }
+  void operator=(const Discrete_intervals_list& from)
+  {
+    empty();
+    copy_(from);
+  }
   void empty_no_free()
   {
-    set_members(NULL, NULL, NULL, 0);
+    head= current= NULL;
+    elements= 0;
   }
   void empty()
   {
@@ -2501,24 +2467,6 @@ public:
       i= next;
     }
     empty_no_free();
-  }
-  void copy_shallow(const Discrete_intervals_list * dli)
-  {
-    head= dli->get_head();
-    tail= dli->get_tail();
-    current= dli->get_current();
-    elements= dli->nb_elements();
-  }
-  void swap (Discrete_intervals_list * dli)
-  {
-    Discrete_interval *h, *t, *c;
-    uint el;
-    h= dli->get_head();
-    t= dli->get_tail();
-    c= dli->get_current();
-    el= dli->nb_elements();
-    dli->copy_shallow(this);
-    set_members(h, t, c, el);
   }
   const Discrete_interval* get_next()
   {
@@ -2533,9 +2481,6 @@ public:
   ulonglong minimum() const { return (head ? head->minimum() : 0); };
   ulonglong maximum() const { return (head ? tail->maximum() : 0); };
   uint nb_elements() const { return elements; }
-  Discrete_interval* get_head() const { return head; };
-  Discrete_interval* get_tail() const { return tail; };
-  Discrete_interval* get_current() const { return current; };
 };
 void init_sql_alloc(MEM_ROOT *root, uint block_size, uint pre_alloc_size);
 void *sql_alloc(size_t);
@@ -2942,12 +2887,12 @@ public:
   }
   void q_append(double d)
   {
-    do { *((long *) (Ptr + str_length)) = ((const doubleget_union *)&(d))->m[0]; *(((long *) (Ptr + str_length))+1) = ((const doubleget_union *)&(d))->m[1]; } while (0);
+    do { *((long *) (Ptr + str_length)) = ((doubleget_union *)&(d))->m[0]; *(((long *) (Ptr + str_length))+1) = ((doubleget_union *)&(d))->m[1]; } while (0);
     str_length += 8;
   }
   void q_append(double *d)
   {
-    do { *((long *) (Ptr + str_length)) = ((const doubleget_union *)&(*d))->m[0]; *(((long *) (Ptr + str_length))+1) = ((const doubleget_union *)&(*d))->m[1]; } while (0);
+    do { *((long *) (Ptr + str_length)) = ((doubleget_union *)&(*d))->m[0]; *(((long *) (Ptr + str_length))+1) = ((doubleget_union *)&(*d))->m[1]; } while (0);
     str_length += 8;
   }
   void q_append(const char *data, uint32 data_len)
@@ -3154,9 +3099,9 @@ public:
   }
   inline void swap(base_list &rhs)
   {
-    { list_node * swap_dummy; swap_dummy= first; first= rhs.first; rhs.first= swap_dummy; };
-    { list_node ** swap_dummy; swap_dummy= last; last= rhs.last; rhs.last= swap_dummy; };
-    { uint swap_dummy; swap_dummy= elements; elements= rhs.elements; rhs.elements= swap_dummy; };
+    { list_node * dummy; dummy= first; first= rhs.first; rhs.first= dummy; };
+    { list_node ** dummy; dummy= last; last= rhs.last; rhs.last= dummy; };
+    { uint dummy; dummy= elements; elements= rhs.elements; rhs.elements= dummy; };
   }
   inline list_node* last_node() { return *last; }
   inline list_node* first_node() { return first;}
@@ -3546,8 +3491,8 @@ public:
   uint precision() const { return intg + frac; }
   void swap(my_decimal &rhs)
   {
-    { my_decimal swap_dummy; swap_dummy= *this; *this= rhs; rhs= swap_dummy; };
-    { decimal_digit_t * swap_dummy; swap_dummy= buf; buf= rhs.buf; rhs.buf= swap_dummy; };
+    { my_decimal dummy; dummy= *this; *this= rhs; rhs= dummy; };
+    { decimal_digit_t * dummy; dummy= buf; buf= rhs.buf; rhs.buf= dummy; };
   }
 };
 void print_decimal(const my_decimal *dec);
@@ -3769,12 +3714,12 @@ typedef struct st_HA_KEYSEG
   uint8 bit_start,bit_end;
   uint8 bit_length;
 } HA_KEYSEG;
-extern int ha_compare_text(CHARSET_INFO *, const uchar *, uint,
-                           const uchar *, uint , my_bool, my_bool);
-extern int ha_key_cmp(register HA_KEYSEG *keyseg, register const uchar *a,
-        register const uchar *b, uint key_length,
-                      uint32 nextflag, uint *diff_pos);
-extern HA_KEYSEG *ha_find_null(HA_KEYSEG *keyseg, const uchar *a);
+extern int ha_compare_text(CHARSET_INFO *, uchar *, uint, uchar *, uint ,
+      my_bool, my_bool);
+extern int ha_key_cmp(register HA_KEYSEG *keyseg, register uchar *a,
+        register uchar *b, uint key_length, uint nextflag,
+        uint *diff_pos);
+extern HA_KEYSEG *ha_find_null(HA_KEYSEG *keyseg, uchar *a);
 extern void my_handler_error_register(void);
 extern void my_handler_error_unregister(void);
 #include <ft_global.h>
@@ -3802,7 +3747,6 @@ int ft_init_stopwords(void);
 void ft_free_stopwords(void);
 FT_INFO *ft_init_search(uint,void *, uint, uchar *, uint,CHARSET_INFO *, uchar *);
 my_bool ft_boolean_check_syntax_string(const uchar *);
-extern const HA_KEYSEG ft_keysegs[2];
 #include <keycache.h>
 struct st_block_link;
 typedef struct st_block_link BLOCK_LINK;
@@ -3887,8 +3831,7 @@ extern int flush_key_blocks(KEY_CACHE *keycache,
 extern void end_key_cache(KEY_CACHE *keycache, my_bool cleanup);
 extern my_bool multi_keycache_init(void);
 extern void multi_keycache_free(void);
-extern KEY_CACHE *multi_key_cache_search(uchar *key, uint length,
-                                         KEY_CACHE *def);
+extern KEY_CACHE *multi_key_cache_search(uchar *key, uint length);
 extern my_bool multi_key_cache_set(const uchar *key, uint length,
        KEY_CACHE *key_cache);
 extern void multi_key_cache_change(KEY_CACHE *old_data,
@@ -4166,6 +4109,44 @@ class st_alter_tablespace : public Sql_alloc
   }
 };
 struct st_table;
+enum enum_schema_tables
+{
+  SCH_CHARSETS= 0,
+  SCH_COLLATIONS,
+  SCH_COLLATION_CHARACTER_SET_APPLICABILITY,
+  SCH_COLUMNS,
+  SCH_COLUMN_PRIVILEGES,
+  SCH_ENGINES,
+  SCH_EVENTS,
+  SCH_FILES,
+  SCH_GLOBAL_STATUS,
+  SCH_GLOBAL_VARIABLES,
+  SCH_KEY_COLUMN_USAGE,
+  SCH_OPEN_TABLES,
+  SCH_PARAMETERS,
+  SCH_PARTITIONS,
+  SCH_PLUGINS,
+  SCH_PROCESSLIST,
+  SCH_PROFILES,
+  SCH_REFERENTIAL_CONSTRAINTS,
+  SCH_PROCEDURES,
+  SCH_SCHEMATA,
+  SCH_SCHEMA_PRIVILEGES,
+  SCH_SESSION_STATUS,
+  SCH_SESSION_VARIABLES,
+  SCH_STATISTICS,
+  SCH_STATUS,
+  SCH_TABLES,
+  SCH_TABLE_CONSTRAINTS,
+  SCH_TABLE_NAMES,
+  SCH_TABLE_PRIVILEGES,
+  SCH_TRIGGERS,
+  SCH_USER_PRIVILEGES,
+  SCH_VARIABLES,
+  SCH_VIEWS,
+  SCH_FALCON_TABLESPACES,
+  SCH_FALCON_TABLESPACE_FILES
+};
 typedef struct st_table TABLE;
 typedef struct st_table_share TABLE_SHARE;
 struct st_foreign_key_info;
@@ -4232,6 +4213,9 @@ struct handlerton
    int (*fill_files_table)(handlerton *hton, THD *thd,
                            TABLE_LIST *tables,
                            class Item *cond);
+   int (*fill_is_table)(handlerton *hton, THD *thd, TABLE_LIST *tables,
+                        class Item *cond,
+                        enum enum_schema_tables);
    uint32 flags;
    int (*binlog_func)(handlerton *hton, THD *thd, enum_binlog_func fn, void *arg);
    void (*binlog_log_query)(handlerton *hton, THD *thd,
@@ -4257,10 +4241,6 @@ struct handlerton
    void *data;
    backup_factory *get_backup_engine;
 };
-inline LEX_STRING *hton_name(const handlerton *hton)
-{
-  return &(hton2plugin[hton->slot]->name);
-}
 class Ha_trx_info;
 struct THD_TRANS
 {
@@ -4268,7 +4248,6 @@ struct THD_TRANS
   Ha_trx_info *ha_list;
   In_C_you_should_use_my_bool_instead() modified_non_trans_table;
   void reset() { no_2pc= (0); modified_non_trans_table= (0); }
-  THD_TRANS() {}
 };
 class Ha_trx_info
 {
@@ -4417,6 +4396,7 @@ typedef class Item COND;
 typedef struct st_ha_check_opt
 {
   st_ha_check_opt() {}
+  ulong sort_buffer_size;
   uint flags;
   uint sql_flags;
   KEY_CACHE *key_cache;
@@ -4571,35 +4551,35 @@ public:
   int ha_index_init(uint idx, In_C_you_should_use_my_bool_instead() sorted)
   {
     int result;
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("ha_index_init","sql/handler.h",1425,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("ha_index_init","./sql/handler.h",1463,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     assert(inited==NONE);
     if (!(result= index_init(idx, sorted)))
       inited=INDEX;
     end_range= NULL;
-    do {_db_return_ (1430, &_db_stack_frame_); return(result);} while(0);
+    do {_db_return_ (1468, &_db_func_, &_db_file_, &_db_level_); return(result);} while(0);
   }
   int ha_index_end()
   {
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("ha_index_end","sql/handler.h",1434,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("ha_index_end","./sql/handler.h",1472,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     assert(inited==INDEX);
     inited=NONE;
     end_range= NULL;
-    do {_db_return_ (1438, &_db_stack_frame_); return(index_end());} while(0);
+    do {_db_return_ (1476, &_db_func_, &_db_file_, &_db_level_); return(index_end());} while(0);
   }
   int ha_rnd_init(In_C_you_should_use_my_bool_instead() scan)
   {
     int result;
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("ha_rnd_init","sql/handler.h",1443,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("ha_rnd_init","./sql/handler.h",1481,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     assert(inited==NONE || (inited==RND && scan));
     inited= (result= rnd_init(scan)) ? NONE: RND;
-    do {_db_return_ (1446, &_db_stack_frame_); return(result);} while(0);
+    do {_db_return_ (1484, &_db_func_, &_db_file_, &_db_level_); return(result);} while(0);
   }
   int ha_rnd_end()
   {
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("ha_rnd_end","sql/handler.h",1450,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("ha_rnd_end","./sql/handler.h",1488,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     assert(inited==RND);
     inited=NONE;
-    do {_db_return_ (1453, &_db_stack_frame_); return(rnd_end());} while(0);
+    do {_db_return_ (1491, &_db_func_, &_db_file_, &_db_level_); return(rnd_end());} while(0);
   }
   int ha_reset();
   int ha_index_or_rnd_end()
@@ -4620,10 +4600,10 @@ public:
     estimation_rows_to_insert= rows;
     start_bulk_insert(rows);
   }
-  int ha_end_bulk_insert(In_C_you_should_use_my_bool_instead() abort)
+  int ha_end_bulk_insert()
   {
     estimation_rows_to_insert= 0;
-    return end_bulk_insert(abort);
+    return end_bulk_insert();
   }
   int ha_bulk_update_row(const uchar *old_data, uchar *new_data,
                          uint *dup_key_found);
@@ -4754,14 +4734,11 @@ public:
   virtual int rnd_pos(uchar * buf, uchar *pos)=0;
   virtual int rnd_pos_by_record(uchar *record);
   virtual int read_first_row(uchar *buf, uint primary_key);
-  virtual int remember_rnd_pos()
-    { return 131; }
-  virtual int restart_rnd_next(uchar *buf)
+  virtual int restart_rnd_next(uchar *buf, uchar *pos)
     { return 131; }
   virtual int rnd_same(uchar *buf, uint inx)
     { return 131; }
-  virtual ha_rows records_in_range(uint inx, key_range *min_key,
-                                   key_range *max_key)
+  virtual ha_rows records_in_range(uint inx, key_range *min_key, key_range *max_key)
     { return (ha_rows) 10; }
   virtual void position(const uchar *record)=0;
   virtual int info(uint)=0;
@@ -4783,7 +4760,7 @@ public:
                                   ulonglong *nb_reserved_values);
   void set_next_insert_id(ulonglong id)
   {
-    do {_db_pargs_(1769,"info"); _db_doprnt_ ("auto_increment: next value %lu", (ulong)id);} while(0);
+    do {_db_pargs_(1803,"info"); _db_doprnt_ ("auto_increment: next value %lu", (ulong)id);} while(0);
     next_insert_id= id;
   }
   void restore_auto_increment(ulonglong prev_insert_id)
@@ -4815,8 +4792,7 @@ public:
   virtual void free_foreign_key_create_info(char* str) {}
   virtual const char *table_type() const =0;
   virtual const char **bas_ext() const =0;
-  virtual int get_default_no_partitions(HA_CREATE_INFO *create_info)
-  { return 1;}
+  virtual int get_default_no_partitions(HA_CREATE_INFO *info) { return 1;}
   virtual void set_auto_partitions(partition_info *part_info) { return; }
   virtual In_C_you_should_use_my_bool_instead() get_no_parts(const char *name,
                             uint *no_parts)
@@ -4885,12 +4861,12 @@ public:
                                       HA_ALTER_FLAGS *alter_flags,
                                       uint table_changes)
  {
-   struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("check_if_supported_alter","sql/handler.h",2041,&_db_stack_frame_);
+   const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("check_if_supported_alter","./sql/handler.h",2076,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
    if (this->check_if_incompatible_data(create_info, table_changes)
        == 1)
-     do {_db_return_ (2044, &_db_stack_frame_); return(2);} while(0);
+     do {_db_return_ (2079, &_db_func_, &_db_file_, &_db_level_); return(2);} while(0);
    else
-     do {_db_return_ (2046, &_db_stack_frame_); return(0);} while(0);
+     do {_db_return_ (2081, &_db_func_, &_db_file_, &_db_level_); return(0);} while(0);
  }
  virtual int alter_table_phase1(THD *thd,
                                 TABLE *altered_table,
@@ -4913,7 +4889,6 @@ public:
    return 138;
  }
   virtual void use_hidden_primary_key();
-  LEX_STRING *engine_name() { return hton_name(ht); }
   virtual int lock_table(THD *thd __attribute__((unused)),
                          int lock_type __attribute__((unused)),
                          int lock_timeout __attribute__((unused)))
@@ -4962,7 +4937,7 @@ private:
   virtual int repair(THD* thd, HA_CHECK_OPT* check_opt)
   { return -1; }
   virtual void start_bulk_insert(ha_rows rows) {}
-  virtual int end_bulk_insert(In_C_you_should_use_my_bool_instead() abort) { return 0; }
+  virtual int end_bulk_insert() { return 0; }
   virtual int index_read(uchar * buf, const uchar * key, uint key_len,
                          enum ha_rkey_function find_flag)
    { return 131; }
@@ -5074,7 +5049,7 @@ static inline enum legacy_db_type ha_legacy_type(const handlerton *db_type)
 }
 static inline const char *ha_resolve_storage_engine_name(const handlerton *db_type)
 {
-  return db_type == NULL ? "UNKNOWN" : hton_name(db_type)->str;
+  return db_type == NULL ? "UNKNOWN" : hton2plugin[db_type->slot]->name.str;
 }
 static inline In_C_you_should_use_my_bool_instead() ha_check_storage_engine_flag(const handlerton *db_type, uint32 flag)
 {
@@ -5192,67 +5167,6 @@ public:
      In_C_you_should_use_my_bool_instead() bad_format_errors);
 };
 #include "table.h"
-#include "sql_plist.h"
-#include <my_global.h>
-template <typename T, typename B> class I_P_List_iterator;
-template <typename T, typename B>
-class I_P_List
-{
-  T *first;
-public:
-  I_P_List() : first(NULL) { };
-  inline void empty() { first= NULL; }
-  inline In_C_you_should_use_my_bool_instead() is_empty() const { return (first == NULL); }
-  inline void push_front(T* a)
-  {
-    *B::next_ptr(a)= first;
-    if (first)
-      *B::prev_ptr(first)= B::next_ptr(a);
-    first= a;
-    *B::prev_ptr(a)= &first;
-  }
-  inline void remove(T *a)
-  {
-    T *next= *B::next_ptr(a);
-    if (next)
-      *B::prev_ptr(next)= *B::prev_ptr(a);
-    **B::prev_ptr(a)= next;
-  }
-  inline T* head() { return first; }
-  void swap(I_P_List<T,B> &rhs)
-  {
-    { T * swap_dummy; swap_dummy= first; first= rhs.first; rhs.first= swap_dummy; };
-    if (first)
-      *B::prev_ptr(first)= &first;
-    if (rhs.first)
-      *B::prev_ptr(rhs.first)= &rhs.first;
-  }
-  friend class I_P_List_iterator<T, B>;
-};
-template <typename T, typename B>
-class I_P_List_iterator
-{
-  I_P_List<T, B> *list;
-  T *current;
-public:
-  I_P_List_iterator(I_P_List<T, B> &a) : list(&a), current(a.first) {}
-  inline void init(I_P_List<T, B> &a)
-  {
-    list= &a;
-    current= a.first;
-  }
-  inline T* operator++(int)
-  {
-    T *result= current;
-    if (result)
-      current= *B::next_ptr(current);
-    return result;
-  }
-  inline void rewind()
-  {
-    current= list->first;
-  }
-};
 class Item;
 class Item_subselect;
 class GRANT_TABLE;
@@ -5261,7 +5175,6 @@ class st_select_lex;
 class partition_info;
 class COND_EQUAL;
 class Security_context;
-struct MDL_LOCK_DATA;
 class View_creation_ctx : public Default_object_creation_ctx,
                           public Sql_alloc
 {
@@ -5348,7 +5261,6 @@ enum enum_table_category
 typedef enum enum_table_category TABLE_CATEGORY;
 TABLE_CATEGORY get_table_category(const LEX_STRING *db,
                                   const LEX_STRING *name);
-struct TABLE_share;
 typedef struct st_table_share
 {
   st_table_share() {}
@@ -5358,11 +5270,10 @@ typedef struct st_table_share
   TYPELIB keynames;
   TYPELIB fieldnames;
   TYPELIB *intervals;
-  pthread_mutex_t LOCK_ha_data;
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
   struct st_table_share *next,
     **prev;
-  I_P_List <TABLE, TABLE_share> used_tables;
-  I_P_List <TABLE, TABLE_share> free_tables;
   Field **field;
   Field **found_next_number_field;
   Field *timestamp_field;
@@ -5429,6 +5340,8 @@ typedef struct st_table_share
   In_C_you_should_use_my_bool_instead() db_low_byte_first;
   In_C_you_should_use_my_bool_instead() crashed;
   In_C_you_should_use_my_bool_instead() is_view;
+  In_C_you_should_use_my_bool_instead() name_lock, replace_with_name_lock;
+  In_C_you_should_use_my_bool_instead() waiting_on_cond;
   ulong table_map_id;
   ulonglong table_map_version;
   int cached_row_logging_check;
@@ -5489,11 +5402,10 @@ struct st_table {
   st_table() {}
   TABLE_SHARE *s;
   handler *file;
-private:
-  struct st_table *share_next, **share_prev;
-  friend struct TABLE_share;
-public:
   struct st_table *next, *prev;
+  struct st_table *parent;
+  TABLE_LIST *child_l;
+  TABLE_LIST **child_last_l;
   THD *in_use;
   Field **field;
   uchar *record[2];
@@ -5510,7 +5422,6 @@ public:
   Field_timestamp *timestamp_field;
   Table_triggers_list *triggers;
   TABLE_LIST *pos_in_table_list;
-  TABLE_LIST *pos_in_locked_tables;
   ORDER *group;
   const char *alias;
   uchar *null_flags;
@@ -5540,6 +5451,7 @@ public:
   my_bool force_index;
   my_bool distinct,const_table,no_rows;
   my_bool key_read, no_keyread;
+  my_bool open_placeholder;
   my_bool locked_by_logger;
   my_bool no_replicate;
   my_bool locked_by_name;
@@ -5550,11 +5462,11 @@ public:
   my_bool insert_or_update;
   my_bool alias_name_used;
   my_bool get_fields_in_item_tree;
+  my_bool children_attached;
   REGINFO reginfo;
   MEM_ROOT mem_root;
   GRANT_INFO grant;
   FILESORT_INFO sort;
-  MDL_LOCK_DATA *mdl_lock_data;
   In_C_you_should_use_my_bool_instead() fill_item_list(List<Item> *item_list) const;
   void reset_item_list(List<Item> *item_list) const;
   void clear_column_bitmaps(void);
@@ -5589,19 +5501,10 @@ public:
     read_set= &def_read_set;
     write_set= &def_write_set;
   }
-  inline In_C_you_should_use_my_bool_instead() needs_reopen()
+  inline In_C_you_should_use_my_bool_instead() is_name_opened() { return db_stat || open_placeholder; }
+  inline In_C_you_should_use_my_bool_instead() needs_reopen_or_name_lock()
   { return s->version != refresh_version; }
-};
-struct TABLE_share
-{
-  static inline TABLE **next_ptr(TABLE *l)
-  {
-    return &l->share_next;
-  }
-  static inline TABLE ***prev_ptr(TABLE *l)
-  {
-    return &l->share_prev;
-  }
+  In_C_you_should_use_my_bool_instead() is_children_attached(void);
 };
 enum enum_schema_table_state
 {
@@ -5620,44 +5523,6 @@ typedef struct st_foreign_key_info
   List<LEX_STRING> foreign_fields;
   List<LEX_STRING> referenced_fields;
 } FOREIGN_KEY_INFO;
-enum enum_schema_tables
-{
-  SCH_CHARSETS= 0,
-  SCH_COLLATIONS,
-  SCH_COLLATION_CHARACTER_SET_APPLICABILITY,
-  SCH_COLUMNS,
-  SCH_COLUMN_PRIVILEGES,
-  SCH_ENGINES,
-  SCH_EVENTS,
-  SCH_FILES,
-  SCH_GLOBAL_STATUS,
-  SCH_GLOBAL_VARIABLES,
-  SCH_KEY_COLUMN_USAGE,
-  SCH_OPEN_TABLES,
-  SCH_PARAMETERS,
-  SCH_PARTITIONS,
-  SCH_PLUGINS,
-  SCH_PROCESSLIST,
-  SCH_PROFILES,
-  SCH_REFERENTIAL_CONSTRAINTS,
-  SCH_PROCEDURES,
-  SCH_SCHEMATA,
-  SCH_SCHEMA_PRIVILEGES,
-  SCH_SESSION_STATUS,
-  SCH_SESSION_VARIABLES,
-  SCH_STATISTICS,
-  SCH_STATUS,
-  SCH_TABLES,
-  SCH_TABLE_CONSTRAINTS,
-  SCH_TABLE_NAMES,
-  SCH_TABLE_PRIVILEGES,
-  SCH_TRIGGERS,
-  SCH_USER_PRIVILEGES,
-  SCH_VARIABLES,
-  SCH_VIEWS,
-  SCH_FALCON_TABLESPACES,
-  SCH_FALCON_TABLESPACE_FILES
-};
 typedef struct st_field_info
 {
   const char* field_name;
@@ -5715,18 +5580,12 @@ struct TABLE_LIST
 {
   TABLE_LIST() {}
   inline void init_one_table(const char *db_name_arg,
-                             size_t db_length_arg,
                              const char *table_name_arg,
-                             size_t table_name_length_arg,
-                             const char *alias_arg,
                              enum thr_lock_type lock_type_arg)
   {
     bzero((char*) this, sizeof(*this));
     db= (char*) db_name_arg;
-    db_length= db_length_arg;
-    table_name= (char*) table_name_arg;
-    table_name_length= table_name_length_arg;
-    alias= (char*) alias_arg;
+    table_name= alias= (char*) table_name_arg;
     lock_type= lock_type_arg;
   }
   TABLE_LIST *next_local;
@@ -5815,12 +5674,7 @@ struct TABLE_LIST
   handlerton *db_type;
   char timestamp_buffer[20];
   In_C_you_should_use_my_bool_instead() prelocking_placeholder;
-  enum
-  {
-    NORMAL_OPEN= 0,
-    OPEN_OR_CREATE,
-    TAKE_EXCLUSIVE_MDL
-  } open_type;
+  In_C_you_should_use_my_bool_instead() create;
   int lock_timeout;
   In_C_you_should_use_my_bool_instead() lock_transactional;
   In_C_you_should_use_my_bool_instead() internal_tmp_table;
@@ -5836,7 +5690,6 @@ struct TABLE_LIST
   In_C_you_should_use_my_bool_instead() has_table_lookup_value;
   uint table_open_method;
   enum enum_schema_table_state schema_table_state;
-  MDL_LOCK_DATA *mdl_lock_data;
   void calc_md5(char *buffer);
   void set_underlying_merge();
   int view_check_option(THD *thd, In_C_you_should_use_my_bool_instead() ignore_failure);
@@ -5844,7 +5697,8 @@ struct TABLE_LIST
   void cleanup_items();
   In_C_you_should_use_my_bool_instead() placeholder()
   {
-    return derived || view || schema_table || !table;
+    return derived || view || schema_table || create && !table->db_stat ||
+           !table;
   }
   void print(THD *thd, String *str, enum_query_type query_type);
   In_C_you_should_use_my_bool_instead() check_single_table(TABLE_LIST **table, table_map map,
@@ -6044,7 +5898,6 @@ static inline void dbug_tmp_restore_column_map(MY_BITMAP *bitmap,
   tmp_restore_column_map(bitmap, old);
 }
 size_t max_row_length(TABLE *table, const uchar *data);
-void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root);
 #include "sql_error.h"
 class MYSQL_ERROR: public Sql_alloc
 {
@@ -6061,7 +5914,6 @@ public:
     if (msg_arg)
       set_msg(thd, msg_arg);
   }
-private:
   void set_msg(THD *thd, const char *msg_arg);
 };
 MYSQL_ERROR *push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
@@ -6100,11 +5952,8 @@ public:
   struct st_table *orig_table;
   const char **table_name, *field_name;
   LEX_STRING comment;
-  key_map key_start;
-  key_map part_of_key;
-  key_map part_of_key_not_clustered;
+  key_map key_start, part_of_key, part_of_key_not_clustered;
   key_map part_of_sortkey;
-  key_map part_of_key_wo_keyread;
   enum utype { NONE,DATE,SHIELD,NOEMPTY,CASEUP,PNR,BGNR,PGNR,YES,NO,REL,
   CHECK,EMPTY,UNKNOWN_FIELD,CASEDN,NEXT_NUMBER,INTERVAL_FIELD,
                 BIT_FIELD, TIMESTAMP_OLD_FIELD, CAPITALIZE, BLOB_FIELD,
@@ -6210,11 +6059,11 @@ public:
       return 0;
     return ((record[(uint) (null_ptr -table->record[0])] & null_bit) ? 1 : 0);
   }
-  inline In_C_you_should_use_my_bool_instead() is_null_in_record_with_offset(my_ptrdiff_t col_offset)
+  inline In_C_you_should_use_my_bool_instead() is_null_in_record_with_offset(my_ptrdiff_t offset)
   {
     if (!null_ptr)
       return 0;
-    return ((null_ptr[col_offset] & null_bit) ? 1 : 0);
+    return ((null_ptr[offset] & null_bit) ? 1 : 0);
   }
   inline void set_null(my_ptrdiff_t row_offset= 0)
     { if (null_ptr) null_ptr[row_offset]|= null_bit; }
@@ -6227,7 +6076,7 @@ public:
   };
   size_t last_null_byte() const {
     size_t bytes= do_last_null_byte();
-    do {_db_pargs_(304,"debug"); _db_doprnt_ ("last_null_byte() ==> %ld", (long) bytes);} while(0);
+    do {_db_pargs_(290,"debug"); _db_doprnt_ ("last_null_byte() ==> %ld", (long) bytes);} while(0);
     assert(bytes <= table->s->null_bytes);
     return bytes;
   }
@@ -6257,7 +6106,7 @@ public:
     { memcpy(buff,ptr,length); }
   virtual void set_image(const uchar *buff,uint length, CHARSET_INFO *cs)
     { memcpy(ptr,buff,length); }
-  virtual uint get_key_image(uchar *buff, uint length, imagetype type_arg)
+  virtual uint get_key_image(uchar *buff, uint length, imagetype type)
   {
     get_image(buff, length, &my_charset_bin);
     return length;
@@ -6293,17 +6142,17 @@ public:
                       uint max_length, In_C_you_should_use_my_bool_instead() low_byte_first);
   uchar *pack(uchar *to, const uchar *from)
   {
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("Field::pack","sql/field.h",410,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("Field::pack","./sql/field.h",396,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     uchar *result= this->pack(to, from, UINT_MAX, table->s->db_low_byte_first);
-    do {_db_return_ (412, &_db_stack_frame_); return(result);} while(0);
+    do {_db_return_ (398, &_db_func_, &_db_file_, &_db_level_); return(result);} while(0);
   }
   virtual const uchar *unpack(uchar* to, const uchar *from,
                               uint param_data, In_C_you_should_use_my_bool_instead() low_byte_first);
   const uchar *unpack(uchar* to, const uchar *from)
   {
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("Field::unpack","sql/field.h",422,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("Field::unpack","./sql/field.h",408,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     const uchar *result= unpack(to, from, 0U, table->s->db_low_byte_first);
-    do {_db_return_ (424, &_db_stack_frame_); return(result);} while(0);
+    do {_db_return_ (410, &_db_func_, &_db_file_, &_db_level_); return(result);} while(0);
   }
   virtual uchar *pack_key(uchar* to, const uchar *from,
                           uint max_length, In_C_you_should_use_my_bool_instead() low_byte_first)
@@ -6403,6 +6252,7 @@ public:
     }
   }
   virtual void hash(ulong *nr, ulong *nr2);
+  friend In_C_you_should_use_my_bool_instead() reopen_table(THD *,struct st_table *,In_C_you_should_use_my_bool_instead());
   friend int cre_myisam(char * name, register TABLE *form, uint options,
    ulonglong auto_increment_value);
   friend class Copy_field;
@@ -6421,43 +6271,6 @@ private:
   virtual size_t do_last_null_byte() const;
   virtual int do_save_field_metadata(uchar *metadata_ptr)
   { return 0; }
-protected:
-  static void handle_int32(uchar *to, const uchar *from,
-                           In_C_you_should_use_my_bool_instead() low_byte_first_from, In_C_you_should_use_my_bool_instead() low_byte_first_to)
-  {
-    int32 val;
-      do { val = (*((const long *) (from))); } while(0);
-      *((long *) (to))= (long) (val);
-  }
-  static void handle_int64(uchar* to, const uchar *from,
-                           In_C_you_should_use_my_bool_instead() low_byte_first_from, In_C_you_should_use_my_bool_instead() low_byte_first_to)
-  {
-    int64 val;
-      memcpy(((uchar*) &val),((uchar*) (from)),(sizeof(ulonglong)));
-      memcpy(((uchar*) (to)),((uchar*) &val),(sizeof(ulonglong)));
-  }
-  uchar *pack_int32(uchar *to, const uchar *from, In_C_you_should_use_my_bool_instead() low_byte_first_to)
-  {
-    handle_int32(to, from, table->s->db_low_byte_first, low_byte_first_to);
-    return to + sizeof(int32);
-  }
-  const uchar *unpack_int32(uchar* to, const uchar *from,
-                            In_C_you_should_use_my_bool_instead() low_byte_first_from)
-  {
-    handle_int32(to, from, low_byte_first_from, table->s->db_low_byte_first);
-    return from + sizeof(int32);
-  }
-  uchar *pack_int64(uchar* to, const uchar *from, In_C_you_should_use_my_bool_instead() low_byte_first_to)
-  {
-    handle_int64(to, from, table->s->db_low_byte_first, low_byte_first_to);
-    return to + sizeof(int64);
-  }
-  const uchar *unpack_int64(uchar* to, const uchar *from,
-                            In_C_you_should_use_my_bool_instead() low_byte_first_from)
-  {
-    handle_int64(to, from, low_byte_first_from, table->s->db_low_byte_first);
-    return from + sizeof(int64);
-  }
 };
 class Field_num :public Field {
 public:
@@ -6702,7 +6515,7 @@ public:
                       uint max_length, In_C_you_should_use_my_bool_instead() low_byte_first)
   {
     int16 val;
-      do { val = (*((const int16 *) (from))); } while(0);
+      do { val = (*((int16 *) (from))); } while(0);
       *((uint16*) (to))= (uint16) (val);
     return to + sizeof(val);
   }
@@ -6710,7 +6523,7 @@ public:
                               uint param_data, In_C_you_should_use_my_bool_instead() low_byte_first)
   {
     int16 val;
-      do { val = (*((const int16 *) (from))); } while(0);
+      do { val = (*((int16 *) (from))); } while(0);
       *((uint16*) (to))= (uint16) (val);
     return from + sizeof(val);
   }
@@ -6786,16 +6599,20 @@ public:
   void sql_type(String &str) const;
   uint32 max_display_length() { return 11; }
   virtual uchar *pack(uchar* to, const uchar *from,
-                      uint max_length __attribute__((unused)),
-                      In_C_you_should_use_my_bool_instead() low_byte_first)
+                      uint max_length, In_C_you_should_use_my_bool_instead() low_byte_first)
   {
-    return pack_int32(to, from, low_byte_first);
+    int32 val;
+      do { val = (*((long *) (from))); } while(0);
+      *((long *) (to))= (long) (val);
+    return to + sizeof(val);
   }
   virtual const uchar *unpack(uchar* to, const uchar *from,
-                              uint param_data __attribute__((unused)),
-                              In_C_you_should_use_my_bool_instead() low_byte_first)
+                              uint param_data, In_C_you_should_use_my_bool_instead() low_byte_first)
   {
-    return unpack_int32(to, from, low_byte_first);
+    int32 val;
+      do { val = (*((long *) (from))); } while(0);
+      *((long *) (to))= (long) (val);
+    return from + sizeof(val);
   }
 };
 class Field_longlong :public Field_num {
@@ -6837,16 +6654,20 @@ public:
   In_C_you_should_use_my_bool_instead() can_be_compared_as_longlong() const { return (1); }
   uint32 max_display_length() { return 20; }
   virtual uchar *pack(uchar* to, const uchar *from,
-                      uint max_length __attribute__((unused)),
-                      In_C_you_should_use_my_bool_instead() low_byte_first)
+                      uint max_length, In_C_you_should_use_my_bool_instead() low_byte_first)
   {
-    return pack_int64(to, from, low_byte_first);
+    int64 val;
+      memcpy(((uchar*) &val),((uchar*) (from)),(sizeof(ulonglong)));
+      memcpy(((uchar*) (to)),((uchar*) &val),(sizeof(ulonglong)));
+    return to + sizeof(val);
   }
   virtual const uchar *unpack(uchar* to, const uchar *from,
-                              uint param_data __attribute__((unused)),
-                              In_C_you_should_use_my_bool_instead() low_byte_first)
+                              uint param_data, In_C_you_should_use_my_bool_instead() low_byte_first)
   {
-    return unpack_int64(to, from, low_byte_first);
+    int64 val;
+      memcpy(((uchar*) &val),((uchar*) (from)),(sizeof(ulonglong)));
+      memcpy(((uchar*) (to)),((uchar*) &val),(sizeof(ulonglong)));
+    return from + sizeof(val);
   }
 };
 class Field_float :public Field_real {
@@ -6987,7 +6808,7 @@ public:
     if ((*null_value= is_null()))
       return 0;
     long tmp;
-    do { tmp = (*((const long *) (ptr))); } while(0);
+    do { tmp = (*((long *) (ptr))); } while(0);
     return tmp;
   }
   inline void store_timestamp(my_time_t timestamp)
@@ -6997,17 +6818,6 @@ public:
   In_C_you_should_use_my_bool_instead() get_date(MYSQL_TIME *ltime,uint fuzzydate);
   In_C_you_should_use_my_bool_instead() get_time(MYSQL_TIME *ltime);
   timestamp_auto_set_type get_auto_set_type() const;
-  uchar *pack(uchar *to, const uchar *from,
-              uint max_length __attribute__((unused)), In_C_you_should_use_my_bool_instead() low_byte_first)
-  {
-    return pack_int32(to, from, low_byte_first);
-  }
-  const uchar *unpack(uchar* to, const uchar *from,
-                      uint param_data __attribute__((unused)),
-                      In_C_you_should_use_my_bool_instead() low_byte_first)
-  {
-    return unpack_int32(to, from, low_byte_first);
-  }
 };
 class Field_year :public Field_tiny {
 public:
@@ -7058,17 +6868,6 @@ public:
   void sql_type(String &str) const;
   In_C_you_should_use_my_bool_instead() can_be_compared_as_longlong() const { return (1); }
   In_C_you_should_use_my_bool_instead() zero_pack() const { return 1; }
-  uchar *pack(uchar* to, const uchar *from,
-              uint max_length __attribute__((unused)), In_C_you_should_use_my_bool_instead() low_byte_first)
-  {
-    return pack_int32(to, from, low_byte_first);
-  }
-  const uchar *unpack(uchar* to, const uchar *from,
-                      uint param_data __attribute__((unused)),
-                      In_C_you_should_use_my_bool_instead() low_byte_first)
-  {
-    return unpack_int32(to, from, low_byte_first);
-  }
 };
 class Field_newdate :public Field_str {
 public:
@@ -7174,17 +6973,6 @@ public:
   In_C_you_should_use_my_bool_instead() zero_pack() const { return 1; }
   In_C_you_should_use_my_bool_instead() get_date(MYSQL_TIME *ltime,uint fuzzydate);
   In_C_you_should_use_my_bool_instead() get_time(MYSQL_TIME *ltime);
-  uchar *pack(uchar* to, const uchar *from,
-              uint max_length __attribute__((unused)), In_C_you_should_use_my_bool_instead() low_byte_first)
-  {
-    return pack_int64(to, from, low_byte_first);
-  }
-  const uchar *unpack(uchar* to, const uchar *from,
-                      uint param_data __attribute__((unused)),
-                      In_C_you_should_use_my_bool_instead() low_byte_first)
-  {
-    return unpack_int64(to, from, low_byte_first);
-  }
 };
 class Field_string :public Field_longstr {
 public:
@@ -8059,7 +7847,7 @@ public:
     T *ret= NULL;
     if (first == NULL)
     {
-      do {_db_pargs_(114,"warning"); _db_doprnt_ ("tried to pop nonexistent item from Queue");} while(0);
+      do {_db_pargs_(135,"warning"); _db_doprnt_ ("tried to pop nonexistent item from Queue");} while(0);
       return NULL;
     }
     ret= old_item->payload;
@@ -8956,7 +8744,6 @@ public:
     if (orig_name)
       name= orig_name;
   }
-  Item_basic_constant() {}
 };
 class Item_sp_variable :public Item
 {
@@ -9637,9 +9424,9 @@ public:
 class Item_partition_func_safe_string: public Item_string
 {
 public:
-  Item_partition_func_safe_string(const char *name_arg, uint length,
+  Item_partition_func_safe_string(const char *name, uint length,
                                   CHARSET_INFO *cs= NULL):
-    Item_string(name_arg, length, cs)
+    Item_string(name, length, cs)
   {}
 };
 class Item_return_date_time :public Item_partition_func_safe_string
@@ -9655,8 +9442,8 @@ public:
 class Item_blob :public Item_partition_func_safe_string
 {
 public:
-  Item_blob(const char *name_arg, uint length) :
-    Item_partition_func_safe_string(name_arg, length, &my_charset_bin)
+  Item_blob(const char *name, uint length) :
+    Item_partition_func_safe_string(name, length, &my_charset_bin)
   { max_length= length; }
   enum Type type() const { return TYPE_HOLDER; }
   enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
@@ -9674,8 +9461,8 @@ class Item_return_int :public Item_int
   enum_field_types int_field_type;
 public:
   Item_return_int(const char *name_arg, uint length,
-    enum_field_types field_type_arg, longlong value_arg= 0)
-    :Item_int(name_arg, value_arg, length), int_field_type(field_type_arg)
+    enum_field_types field_type_arg, longlong value= 0)
+    :Item_int(name_arg, value, length), int_field_type(field_type_arg)
   {
     unsigned_flag=1;
   }
@@ -10316,13 +10103,13 @@ public:
   void keep_array() { save_array= 1; }
   void cleanup()
   {
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("Item_cache_row::cleanup","sql/item.h",2976,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("Item_cache_row::cleanup","./sql/item.h",2970,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     Item_cache::cleanup();
     if (save_array)
       bzero(values, item_count*sizeof(Item**));
     else
       values= 0;
-    do {_db_return_ (2982, &_db_stack_frame_); return;} while(0);
+    do {_db_return_ (2976, &_db_func_, &_db_file_, &_db_level_); return;} while(0);
   }
 };
 class Item_type_holder: public Item
@@ -10363,7 +10150,7 @@ extern my_decimal decimal_zero;
 void free_items(Item *item);
 void cleanup_items(Item *item);
 class THD;
-void close_thread_tables(THD *thd, In_C_you_should_use_my_bool_instead() skip_mdl= 0);
+void close_thread_tables(THD *thd);
 In_C_you_should_use_my_bool_instead() check_one_table_access(THD *thd, ulong privilege, TABLE_LIST *tables);
 In_C_you_should_use_my_bool_instead() check_single_table_access(THD *thd, ulong privilege,
       TABLE_LIST *tables, In_C_you_should_use_my_bool_instead() no_errors);
@@ -10648,11 +10435,11 @@ public:
   void harvest_bytes_written(ulonglong* counter)
   {
     char buf1[22],buf2[22];
-    struct _db_stack_frame_ _db_stack_frame_; _db_enter_ ("harvest_bytes_written","sql/log.h",321,&_db_stack_frame_);
+    const char *_db_func_, *_db_file_; uint _db_level_; char **_db_framep_; _db_enter_ ("harvest_bytes_written","./sql/log.h",321,&_db_func_,&_db_file_,&_db_level_, &_db_framep_);
     (*counter)+=bytes_written;
     do {_db_pargs_(324,"info"); _db_doprnt_ ("counter: %s  bytes_written: %s", llstr(*counter,buf1), llstr(bytes_written,buf2));} while(0);
     bytes_written=0;
-    do {_db_return_ (326, &_db_stack_frame_); return;} while(0);
+    do {_db_return_ (326, &_db_func_, &_db_file_, &_db_level_); return;} while(0);
   }
   void set_max_size(ulong max_size_arg);
   void signal_update();
@@ -10875,131 +10662,6 @@ private:
   entry *m_free;
   HASH m_table_ids;
 };
-#include "mdl.h"
-#include "sql_plist.h"
-#include <my_sys.h>
-#include <m_string.h>
-#include <mysql_com.h>
-class THD;
-struct MDL_LOCK_DATA;
-struct MDL_LOCK;
-struct MDL_CONTEXT;
-enum enum_mdl_type {MDL_SHARED=0, MDL_SHARED_HIGH_PRIO,
-                    MDL_SHARED_UPGRADABLE, MDL_EXCLUSIVE};
-enum enum_mdl_state {MDL_INITIALIZED=0, MDL_PENDING,
-                     MDL_ACQUIRED, MDL_PENDING_UPGRADE};
-struct MDL_LOCK_DATA
-{
-  char *key;
-  uint key_length;
-  enum enum_mdl_type type;
-  enum enum_mdl_state state;
-private:
-  MDL_LOCK_DATA *next_context;
-  MDL_LOCK_DATA **prev_context;
-  MDL_LOCK_DATA *next_lock;
-  MDL_LOCK_DATA **prev_lock;
-  friend struct MDL_LOCK_DATA_context;
-  friend struct MDL_LOCK_DATA_lock;
-public:
-  MDL_LOCK *lock;
-  MDL_CONTEXT *ctx;
-};
-struct MDL_LOCK_DATA_context
-{
-  static inline MDL_LOCK_DATA **next_ptr(MDL_LOCK_DATA *l)
-  {
-    return &l->next_context;
-  }
-  static inline MDL_LOCK_DATA ***prev_ptr(MDL_LOCK_DATA *l)
-  {
-    return &l->prev_context;
-  }
-};
-struct MDL_LOCK_DATA_lock
-{
-  static inline MDL_LOCK_DATA **next_ptr(MDL_LOCK_DATA *l)
-  {
-    return &l->next_lock;
-  }
-  static inline MDL_LOCK_DATA ***prev_ptr(MDL_LOCK_DATA *l)
-  {
-    return &l->prev_lock;
-  }
-};
-struct MDL_CONTEXT
-{
-  I_P_List <MDL_LOCK_DATA, MDL_LOCK_DATA_context> locks;
-  In_C_you_should_use_my_bool_instead() has_global_shared_lock;
-  THD *thd;
-};
-void mdl_init();
-void mdl_destroy();
-void mdl_context_init(MDL_CONTEXT *context, THD *thd);
-void mdl_context_destroy(MDL_CONTEXT *context);
-void mdl_context_backup_and_reset(MDL_CONTEXT *ctx, MDL_CONTEXT *backup);
-void mdl_context_restore(MDL_CONTEXT *ctx, MDL_CONTEXT *backup);
-void mdl_context_merge(MDL_CONTEXT *target, MDL_CONTEXT *source);
-void mdl_init_lock(MDL_LOCK_DATA *lock_data, char *key, int type,
-                   const char *db, const char *name);
-MDL_LOCK_DATA *mdl_alloc_lock(int type, const char *db, const char *name,
-                              MEM_ROOT *root);
-void mdl_add_lock(MDL_CONTEXT *context, MDL_LOCK_DATA *lock_data);
-void mdl_remove_lock(MDL_CONTEXT *context, MDL_LOCK_DATA *lock_data);
-void mdl_remove_all_locks(MDL_CONTEXT *context);
-inline void mdl_set_lock_type(MDL_LOCK_DATA *lock_data, enum_mdl_type lock_type)
-{
-  assert(lock_data->state == MDL_INITIALIZED);
-  lock_data->type= lock_type;
-}
-In_C_you_should_use_my_bool_instead() mdl_acquire_shared_lock(MDL_CONTEXT *context, MDL_LOCK_DATA *lock_data,
-                             In_C_you_should_use_my_bool_instead() *retry);
-In_C_you_should_use_my_bool_instead() mdl_acquire_exclusive_locks(MDL_CONTEXT *context);
-In_C_you_should_use_my_bool_instead() mdl_upgrade_shared_lock_to_exclusive(MDL_CONTEXT *context,
-                                          MDL_LOCK_DATA *lock_data);
-In_C_you_should_use_my_bool_instead() mdl_try_acquire_exclusive_lock(MDL_CONTEXT *context,
-                                    MDL_LOCK_DATA *lock_data,
-                                    In_C_you_should_use_my_bool_instead() *conflict);
-In_C_you_should_use_my_bool_instead() mdl_acquire_global_shared_lock(MDL_CONTEXT *context);
-In_C_you_should_use_my_bool_instead() mdl_wait_for_locks(MDL_CONTEXT *context);
-void mdl_release_locks(MDL_CONTEXT *context);
-void mdl_release_and_remove_all_locks_for_name(MDL_CONTEXT *context,
-                                               MDL_LOCK_DATA *lock_data);
-void mdl_release_lock(MDL_CONTEXT *context, MDL_LOCK_DATA *lock_data);
-void mdl_downgrade_exclusive_lock(MDL_CONTEXT *context,
-                                  MDL_LOCK_DATA *lock_data);
-void mdl_release_global_shared_lock(MDL_CONTEXT *context);
-In_C_you_should_use_my_bool_instead() mdl_is_exclusive_lock_owner(MDL_CONTEXT *context, int type, const char *db,
-                                 const char *name);
-In_C_you_should_use_my_bool_instead() mdl_is_lock_owner(MDL_CONTEXT *context, int type, const char *db,
-                       const char *name);
-In_C_you_should_use_my_bool_instead() mdl_has_pending_conflicting_lock(MDL_LOCK_DATA *lock_data);
-inline In_C_you_should_use_my_bool_instead() mdl_has_locks(MDL_CONTEXT *context)
-{
-  return !context->locks.is_empty();
-}
-inline I_P_List_iterator<MDL_LOCK_DATA, MDL_LOCK_DATA_context>
-mdl_get_locks(MDL_CONTEXT *ctx)
-{
-  I_P_List_iterator<MDL_LOCK_DATA, MDL_LOCK_DATA_context> result(ctx->locks);
-  return result;
-}
-inline void mdl_get_tdc_key(MDL_LOCK_DATA *lock_data, LEX_STRING *key)
-{
-  key->str= lock_data->key + 4;
-  key->length= lock_data->key_length - 4;
-}
-typedef void (* mdl_cached_object_release_hook)(void *);
-void* mdl_get_cached_object(MDL_LOCK_DATA *lock_data);
-void mdl_set_cached_object(MDL_LOCK_DATA *lock_data, void *cached_object,
-                           mdl_cached_object_release_hook release_hook);
-extern In_C_you_should_use_my_bool_instead() mysql_notify_thread_having_shared_lock(THD *thd, THD *in_use);
-extern void mysql_ha_flush(THD *thd);
-extern "C" const char *set_thd_proc_info(THD *thd, const char *info,
-                                         const char *calling_function,
-                                         const char *calling_file,
-                                         const unsigned int calling_line);
-extern pthread_mutex_t LOCK_open;
 class Reprepare_observer
 {
 public:
@@ -11202,7 +10864,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_SLAVE_HOSTS, SQLCOM_DELETE_MULTI, SQLCOM_UPDATE_MULTI,
   SQLCOM_SHOW_BINLOG_EVENTS, SQLCOM_SHOW_NEW_MASTER, SQLCOM_DO,
   SQLCOM_SHOW_WARNS, SQLCOM_EMPTY_QUERY, SQLCOM_SHOW_ERRORS,
-  SQLCOM_SHOW_STORAGE_ENGINES, SQLCOM_SHOW_PRIVILEGES,
+  SQLCOM_SHOW_COLUMN_TYPES, SQLCOM_SHOW_STORAGE_ENGINES, SQLCOM_SHOW_PRIVILEGES,
   SQLCOM_HELP, SQLCOM_CREATE_USER, SQLCOM_DROP_USER, SQLCOM_RENAME_USER,
   SQLCOM_REVOKE_ALL, SQLCOM_CHECKSUM,
   SQLCOM_CREATE_PROCEDURE, SQLCOM_CREATE_SPFUNCTION, SQLCOM_CALL,
