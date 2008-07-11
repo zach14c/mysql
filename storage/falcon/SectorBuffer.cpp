@@ -54,8 +54,6 @@ void SectorBuffer::readPage(Bdb* bdb)
 		page->checksum = NO_CHECKSUM_MAGIC;
 		}
 	memcpy(bdb->buffer, page, pageSize);
-
-
 }
 
 void SectorBuffer::readSector()

@@ -1,19 +1,17 @@
 *** Bug #37344 ***
 SET @@storage_engine = 'Falcon';
-set autocommit=1;
 DROP TABLE IF EXISTS A;
-Warnings:
-Note	1051	Unknown table 'a'
-CREATE TABLE A ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) ) ENGINE=Falcon;
 DROP TABLE IF EXISTS B;
-Warnings:
-Note	1051	Unknown table 'b'
-CREATE TABLE B ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) ) ENGINE=Falcon;
-INSERT INTO B ( int_nokey, int_key ) VALUES (0, 0);
 DROP TABLE IF EXISTS C;
-Warnings:
-Note	1051	Unknown table 'c'
-CREATE TABLE C ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) ) ENGINE=Falcon;
+DROP TABLE IF EXISTS D;
+DROP TABLE IF EXISTS E;
+CREATE TABLE A ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) );
+CREATE TABLE B ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) );
+CREATE TABLE C ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) );
+CREATE TABLE D ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) );
+CREATE TABLE E ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) );
+SET @@autocommit = 1;
+INSERT INTO B ( int_nokey, int_key ) VALUES (0, 0);
 INSERT INTO C ( int_nokey, int_key ) VALUES (5, 5);
 INSERT INTO C ( int_nokey, int_key ) VALUES (7, 7);
 INSERT INTO C ( int_nokey, int_key ) VALUES (3, 3);
@@ -24,10 +22,6 @@ INSERT INTO C ( int_nokey, int_key ) VALUES (7, 7);
 INSERT INTO C ( int_nokey, int_key ) VALUES (5, 5);
 INSERT INTO C ( int_nokey, int_key ) VALUES (0, 0);
 INSERT INTO C ( int_nokey, int_key ) VALUES (6, 6);
-DROP TABLE IF EXISTS D;
-Warnings:
-Note	1051	Unknown table 'd'
-CREATE TABLE D ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) ) ENGINE=Falcon;
 INSERT INTO D ( int_nokey, int_key ) VALUES (37, 37);
 INSERT INTO D ( int_nokey, int_key ) VALUES (7, 7);
 INSERT INTO D ( int_nokey, int_key ) VALUES (45, 45);
@@ -128,10 +122,6 @@ INSERT INTO D ( int_nokey, int_key ) VALUES (86, 86);
 INSERT INTO D ( int_nokey, int_key ) VALUES (15, 15);
 INSERT INTO D ( int_nokey, int_key ) VALUES (39, 39);
 INSERT INTO D ( int_nokey, int_key ) VALUES (85, 85);
-DROP TABLE IF EXISTS E;
-Warnings:
-Note	1051	Unknown table 'e'
-CREATE TABLE E ( pk INTEGER AUTO_INCREMENT, int_nokey INTEGER, int_key INTEGER, filler blob, PRIMARY KEY (pk), KEY (int_key) ) ENGINE=Falcon;
 INSERT INTO E ( int_nokey, int_key ) VALUES (84, 84);
 INSERT INTO E ( int_nokey, int_key ) VALUES (595, 595);
 INSERT INTO E ( int_nokey, int_key ) VALUES (552, 552);
@@ -1132,9 +1122,6 @@ INSERT INTO E ( int_nokey, int_key ) VALUES (955, 955);
 INSERT INTO E ( int_nokey, int_key ) VALUES (517, 517);
 INSERT INTO E ( int_nokey, int_key ) VALUES (972, 972);
 INSERT INTO E ( int_nokey, int_key ) VALUES (457, 457);
-;
-ERROR 42000: Query was empty
-set autocommit=1;
 SET AUTOCOMMIT=0;
 UPDATE C AS X SET pk = 9 , filler = REPEAT ( ' X ' , ( SELECT 90 FROM ( SELECT COUNT( pk ) FROM C AS X WHERE X . int_nokey < 92 LIMIT 20 ) AS X WHERE X . int_nokey < 76 LIMIT 1 ) ) WHERE X . pk < 58 ORDER BY RAND ( ) LIMIT 20;
 ERROR 23000: Duplicate entry '9' for key 'PRIMARY'
@@ -1251,6 +1238,10 @@ ERROR HY000: You can't specify target table 'X' for update in FROM clause
 UPDATE B AS X SET int_nokey = ( SELECT AVG( int_nokey ) FROM B AS X LEFT JOIN C AS Y ON ( X . int_nokey = Y . int_nokey ) WHERE X . int_nokey < 99 LIMIT 1 ) , filler = REPEAT ( ' X ' , 96 ) WHERE X . int_nokey < 5 ORDER BY RAND ( ) LIMIT 20;
 ERROR HY000: You can't specify target table 'X' for update in FROM clause
 UPDATE C AS X SET int_key = ( SELECT AVG( int_nokey ) FROM E AS X WHERE X . int_nokey < 69 GROUP BY int_key LIMIT 1 ) , filler = REPEAT ( ' X ' , 59 ) WHERE X . int_nokey < 60 ORDER BY RAND ( ) LIMIT 20;
+SELECT count(*) FROM A;
+count(*)
+2
+SET @@autocommit = DEFAULT;
 DROP TABLE A;
 DROP TABLE B;
 DROP TABLE C;
