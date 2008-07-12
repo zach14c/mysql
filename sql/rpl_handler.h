@@ -187,6 +187,8 @@ public:
                         const char *event_buf, ulong event_len,
                         bool synced);
   int after_reset_slave(THD *thd, Master_info *mi);
+private:
+  void init_param(Binlog_relay_IO_param *param, Master_info *mi);
 };
 #endif /* HAVE_REPLICATION */
 
@@ -200,7 +202,12 @@ extern Binlog_transmit_delegate *binlog_transmit_delegate;
 extern Binlog_relay_IO_delegate *binlog_relay_io_delegate;
 #endif /* HAVE_REPLICATION */
 
+/*
+  if there is no observers in the delegate, we can return 0
+  immediately.
+*/
 #define RUN_HOOK(group, hook, args)             \
-  group ##_delegate->hook args
+  (group ##_delegate->is_empty() ?              \
+   0 : group ##_delegate->hook args)
 
 #endif /* RPL_HANDLER_H */
