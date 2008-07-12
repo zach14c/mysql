@@ -56,7 +56,8 @@ Record* IndexWalker::getNext(bool lockForUpdate)
 		first = false;
 		higher = NULL;
 		lower = NULL;
-		
+		balance = 0;
+
 		for (IndexWalker *walker = next; walker; walker = walker->next)
 			while (walker->getNext(lockForUpdate))
 				{
@@ -97,6 +98,7 @@ Record* IndexWalker::getNext(bool lockForUpdate)
 			{
 			walker->higher = NULL;
 			walker->lower = NULL;
+			walker->balance = 0;
 			
 			if (higher)
 				{
@@ -168,10 +170,8 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 
 void IndexWalker::addWalker(IndexWalker* walker)
 {
-	validate();
 	walker->next = next;
 	next = walker;
-	validate();
 }
 
 bool IndexWalker::insert(IndexWalker* newNode)
@@ -179,12 +179,11 @@ bool IndexWalker::insert(IndexWalker* newNode)
 	// Find insertion point and insert new node as leaf
 	
 	IndexWalker *node;
-	validate();
+//	validate();
 
 	for (node = this; node;)
 		{
 		int comparison = compare(newNode, node);
-		validate();
 
 		if (comparison < 0)
 			{
@@ -197,11 +196,9 @@ bool IndexWalker::insert(IndexWalker* newNode)
 				
 				break;
 				}
-			validate();
 			}
 		else if (comparison > 0)
 			{
-			validate();
 			if (node->higher)
 				node = node->higher;
 			else
@@ -211,12 +208,12 @@ bool IndexWalker::insert(IndexWalker* newNode)
 				
 				break;
 				}
-			validate();
 			}
 		else
 			{
 			//printf("Duplicate %d\n", value);
-			
+
+//			validate();
 			return false;
 			}
 		}
@@ -229,8 +226,6 @@ bool IndexWalker::insert(IndexWalker* newNode)
 		{
 		if (nodeParent->lower == node)
 			{
-			validate();
-
 			if (--nodeParent->balance < -1)
 				{
 				nodeParent->rebalance();
@@ -239,15 +234,13 @@ bool IndexWalker::insert(IndexWalker* newNode)
 			}
 		else
 			{
-			validate();
-
 			if (++nodeParent->balance > +1)
 				{
 				nodeParent->rebalance();
 				break;
 				}
 			}
-		validate();
+//		validate();
 		}
 	
 	return true;
@@ -259,15 +252,13 @@ bool IndexWalker::insert(IndexWalker* newNode)
  
 void IndexWalker::rebalance(void)
 {
-	validate();
-
 	if (balance > 1)
 		{
 		if (higher->balance < 0)
 			higher->rotateRight();
 					
 		rotateLeft();
-		validate();
+//		validate();
 		}
 	else if (balance < 1)
 		{
@@ -275,7 +266,7 @@ void IndexWalker::rebalance(void)
 			lower->rotateLeft();
 			
 		rotateRight();
-		validate();
+//		validate();
         }
 }
 
@@ -286,21 +277,19 @@ void IndexWalker::rebalance(void)
  
 bool IndexWalker::rebalanceDelete()
 {
-	validate();
-
 	if (balance > 1)
 		{
 		if (higher->balance < 0)
 			{
 			higher->rotateRight();
 			rotateLeft();
-			validate();
+//			validate();
 
 			return true;
 			}
 					
 		rotateLeft();
-		validate();
+//		validate();
 
 		return parent->balance == 0;
 		}
@@ -311,13 +300,11 @@ bool IndexWalker::rebalanceDelete()
 			{
 			lower->rotateLeft();
 			rotateRight();
-			validate();
 
 			return true;
 			}
 			
 		rotateRight();
-		validate();
 
 		return parent->balance == 0;
 		}
@@ -352,7 +339,7 @@ void IndexWalker::rotateLeft(void)
 	root->parent = parent;
 	parent = root;
 
-	validate ();
+//	validate ();
 }
 
 /*
@@ -380,7 +367,7 @@ void IndexWalker::rotateRight(void)
 	RESET_PARENT(root);
 	root->parent = parent;
 	parent = root;
-	validate ();
+//	validate ();
 }
 
 /*
@@ -396,7 +383,6 @@ IndexWalker* IndexWalker::getSuccessor(IndexWalker** parentPointer, bool *shallo
 	
 	if (lower)
 		{
-		validate();
 		int was = balance;
 		IndexWalker *node = lower->getSuccessor(&lower, shallower);
 
@@ -408,9 +394,9 @@ IndexWalker* IndexWalker::getSuccessor(IndexWalker** parentPointer, bool *shallo
 				*shallower = rebalanceDelete();
 			else if (!was && (*parentPointer)->balance)
 				*shallower = false;
-			validate();
 			}
-		validate();	
+
+//		validate();	
 		return node;
 		}
 	
@@ -422,7 +408,7 @@ IndexWalker* IndexWalker::getSuccessor(IndexWalker** parentPointer, bool *shallo
 		higher->parent = parent;
 		
 	*shallower = true;
-	validate();
+//	validate();
 
 	return this;
 }
@@ -451,8 +437,6 @@ void IndexWalker::remove(void)
 {
 	// There are three cases a) No children, b) One child, c) Two children
 
-	validate();
-
 	if (!lower || !higher)
 		{
 		IndexWalker *next = (lower) ? lower : higher;
@@ -464,13 +448,11 @@ void IndexWalker::remove(void)
 			{
 			parent->lower = next;
 			parent->rebalanceUpward(+1);
-			validate();
 			}
 		else
 			{
 			parent->higher = next;
 			parent->rebalanceUpward(-1);
-			validate();
             }	
 		
 		return;	
@@ -482,14 +464,12 @@ void IndexWalker::remove(void)
 	bool shallower;
 	IndexWalker *node = higher->getSuccessor(&higher, &shallower);
 	
-	validate();
 	if ( (node->lower = lower) )
 		lower->parent = node;
 		
 	if ( (node->higher = higher) )
 		higher->parent = node;
 
-	validate ();
 	node->balance = balance;
 	node->parent = parent;
 	RESET_PARENT(node);
@@ -499,13 +479,13 @@ void IndexWalker::remove(void)
 	if (shallower)
 		node->rebalanceUpward(-1);
 
-	validate();
+//	validate();
 }
 
 void IndexWalker::rebalanceUpward(int delta)
 {
 	IndexWalker *node = this;
-	
+
 	for (;;)
 		{
 		IndexWalker *nodeParent = node->parent;
@@ -519,8 +499,6 @@ void IndexWalker::rebalanceUpward(int delta)
 		if (node->balance == delta)
 			break;
 
-		validate ();
-
 		if (node->balance > 1 || node->balance < -1)
 			if (!node->rebalanceDelete())
 				break;
@@ -528,6 +506,8 @@ void IndexWalker::rebalanceUpward(int delta)
 		delta = parentDelta;			
 		node = nodeParent;
 		}
+
+//	validate();
 }
 
 int IndexWalker::validate(void)
