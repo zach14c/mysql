@@ -42,6 +42,8 @@ public:
 	IndexWalker*		getSuccessor(IndexWalker** parentPointer, bool *shallower);
 	void				remove(void);
 	void				rebalanceUpward(int delta);
+	int					validate(void);
+	void				corrupt(const char *text);
 	
 	Index			*index;
 	Transaction		*transaction;
