@@ -317,7 +317,8 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
     pos = join->positions[i];
     table= pos.table->table;
     if (table)
-      fputs(table->s->table_name.str, DBUG_FILE);
+      fputs(table->alias, DBUG_FILE);
+      //fputs(table->s->table_name.str, DBUG_FILE);
     fputc(' ', DBUG_FILE);
   }
   fputc('\n', DBUG_FILE);
@@ -334,7 +335,8 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
       pos= join->best_positions[i];
       table= pos.table->table;
       if (table)
-        fputs(table->s->table_name.str, DBUG_FILE);
+        fputs(table->alias, DBUG_FILE);
+        //fputs(table->s->table_name.str, DBUG_FILE);
       fputc(' ', DBUG_FILE);
     }
   }

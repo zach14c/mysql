@@ -303,7 +303,8 @@ public:
      - (TABLE_LIST*)1 if the predicate is in the WHERE.
   */
   TABLE_LIST *expr_join_nest;
-
+  bool types_allow_materialization;
+  bool sjm_scan_allowed;
   /* The method chosen to execute the IN predicate.  */
   enum enum_exec_method {
     NOT_TRANSFORMED, /* No execution method was chosen for this IN. */

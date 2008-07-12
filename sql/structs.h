@@ -120,6 +120,7 @@ class SQL_SELECT;
 class THD;
 class handler;
 struct st_join_table;
+class Copy_field;
 
 typedef struct st_read_record {			/* Parameter to read_record */
   struct st_table *table;			/* Head-form */
@@ -137,6 +138,13 @@ typedef struct st_read_record {			/* Parameter to read_record */
   uchar	*cache,*cache_pos,*cache_end,*read_positions;
   IO_CACHE *io_cache;
   bool print_error, ignore_not_found_rows;
+
+  /* 
+    SJ-Materialization runtime may need to read fields from the materialized
+    table and unpack them into original table fields:
+  */
+  Copy_field *copy_field;
+  Copy_field *copy_field_end;
 } READ_RECORD;
 
 
