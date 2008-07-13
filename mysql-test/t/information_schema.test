@@ -117,6 +117,20 @@ where COLLATION_NAME like 'latin1%';
 # Test for information_schema.ROUTINES &
 #
 
+#
+# Bug#37554
+# Make sure that special purpose character set  and collation "filename"
+# is not displayed in meta-data queries.
+#
+select collation_name from information_schema.collations
+where collation_name='filename';
+select collation_name from information_schema.collation_character_set_applicability
+where collation_name='filename';
+select character_set_name from information_schema.character_sets
+where character_set_name='filename';
+show collation like 'filename';
+show character set like 'filename';
+
 --disable_warnings
 drop procedure if exists sel2;
 drop function if exists sub1;
