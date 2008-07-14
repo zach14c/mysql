@@ -38,7 +38,7 @@ static const char *FALCON_TEMPORARY		= "/falcon_temporary";
 static const char *DB_ROOT				= ".fts";
 
 #ifndef ONLINE_ALTER
-#define ONLINE_ALTER
+//#define ONLINE_ALTER
 #endif
 
 #if defined(_WIN32) && MYSQL_VERSION_ID < 0x50100
@@ -283,16 +283,26 @@ int StorageTableShare::renameTable(StorageConnection *storageConnection, const c
 
 StorageIndexDesc* StorageTableShare::getIndex(int indexCount, int indexId, StorageIndexDesc* indexDesc)
 {
-	// Rebuild array if indexes have been added or dropped. Assume StorageTableShare::lock(exclusive).
+	// Rebuild array if indexes have been added or dropped
 	
 #ifdef ONLINE_ALTER
+
+	// TODO: This does not work. It should be done at the time of index creation
+
 	if (indexes && (numberIndexes != indexCount))
 		{
+		Sync sync(syncObject, "StorageTableShare::getIndex");
+		sync.lock(Exclusive);
+		StorageIndexDesc **oldIndexes = indexes;
+		StorageIndexDesc **newIndexes = new StorageIndexDesc*[indexCount];
+		memset(newIndexes, 0, indexCount * sizeof(StorageIndexDesc*));
+		
 		for (int n = 0; n < numberIndexes; ++n)
-			delete indexes[n];
-			
-		delete [] indexes;
-		indexes = NULL;
+			newIndexes[n] = indexes[n];
+		
+		indexes = newIndexes;
+		numberIndexes = indexCount;
+		delete [] oldIndexes;
 		}
 #endif
 	
