@@ -98,7 +98,7 @@ int modify_defaults_file(const char *file_location, const char *option,
                      NEWLINE_LEN +              /* Space for newline */
                      RESERVE);                  /* Some additional space */
 
-  buffer_size= (file_stat.st_size +
+  buffer_size= (uint)(file_stat.st_size +
                 1);                             /* The ending zero */
 
   /*

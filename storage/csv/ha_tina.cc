@@ -177,7 +177,7 @@ static TINA_SHARE *get_share(const char *table_name, TABLE *table)
 
     if (my_stat(share->data_file_name, &file_stat, MYF(MY_WME)) == NULL)
       goto error;
-    share->saved_data_file_length= file_stat.st_size;
+    share->saved_data_file_length= (off_t)file_stat.st_size;
 
     if (my_hash_insert(&tina_open_tables, (uchar*) share))
       goto error;

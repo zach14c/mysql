@@ -655,7 +655,7 @@ int ha_archive::create(const char *name, TABLE *table_arg,
     {
       if (!my_fstat(frm_file, &file_stat, MYF(MY_WME)))
       {
-        frm_ptr= (uchar *)my_malloc(sizeof(uchar) * file_stat.st_size, MYF(0));
+        frm_ptr= (uchar *)my_malloc(sizeof(uchar) * (size_t)file_stat.st_size, MYF(0));
         if (frm_ptr)
         {
           my_read(frm_file, frm_ptr, file_stat.st_size, MYF(0));
