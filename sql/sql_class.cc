@@ -535,11 +535,11 @@ THD::THD()
           This is needed to ensure the restore (which uses DDL) is not blocked
           when the DDL blocker is engaged.
   */
-   locked_tables_root(NULL),
-   DDL_exception(FALSE)
+   DDL_exception(FALSE),
 #if defined(ENABLED_DEBUG_SYNC)
-   ,debug_sync_control(0)
+   debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
+   locked_tables_root(NULL)
 {
   ulong tmp;
 
