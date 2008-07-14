@@ -3443,6 +3443,8 @@ SELECT * FROM t2 WHERE b NOT IN (SELECT max(t.c) FROM t1, t1 t WHERE t.c>10);
 
 DROP TABLE t1,t2;
 
+--echo End of 5.0 tests.
+
 #
 # Bug#33204: INTO is allowed in subselect, causing inconsistent results
 #
