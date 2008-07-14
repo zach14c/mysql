@@ -63,6 +63,7 @@ Record* IndexWalker::getNext(bool lockForUpdate)
 				{
 				walker->higher = NULL;
 				walker->lower = NULL;
+				walker->balance = 0;
 			
 				if (higher)
 					{
