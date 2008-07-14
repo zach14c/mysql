@@ -4247,12 +4247,12 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     {
       DBUG_PRINT("admin", ("open table failed"));
       if (!thd->warn_list.elements)
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_CHECK_NO_SUCH_TABLE, ER(ER_CHECK_NO_SUCH_TABLE));
       /* if it was a view will check md5 sum */
       if (table->view &&
           view_checksum(thd, table) == HA_ADMIN_WRONG_CHECKSUM)
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_VIEW_CHECKSUM, ER(ER_VIEW_CHECKSUM));
       result_code= HA_ADMIN_CORRUPT;
       goto send_result;
@@ -7160,7 +7160,7 @@ err:
     }
     bool save_abort_on_warning= thd->abort_on_warning;
     thd->abort_on_warning= TRUE;
-    make_truncated_value_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    make_truncated_value_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                                  f_val, strlength(f_val), t_type,
                                  alter_info->datetime_field->field_name);
     thd->abort_on_warning= save_abort_on_warning;

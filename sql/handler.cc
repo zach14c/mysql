@@ -1933,7 +1933,7 @@ int ha_delete_table(THD *thd, handlerton *table_type, const char *path,
       XXX: should we convert *all* errors to warnings here?
       What if the error is fatal?
     */
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error,
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, error,
                 ha_delete_table_error_handler.buff);
   }
   delete file;

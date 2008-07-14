@@ -2875,7 +2875,7 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
       }
       else
       {
-        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_BINLOG_PURGE_FATAL_ERR,
                             "a problem with deleting %s; "
                             "consider examining correspondence "
@@ -2906,7 +2906,7 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
     }
     else
     {
-      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_BINLOG_PURGE_FATAL_ERR,
                           "a problem with deleting %s; "
                           "consider examining correspondence "
@@ -3129,7 +3129,7 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
         /*
           Other than ENOENT are fatal
         */
-        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_BINLOG_PURGE_FATAL_ERR,
                             "a problem with getting info on being purged %s; "
                             "consider examining correspondence "
@@ -3161,7 +3161,7 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
         }
         else
         {
-          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                               ER_BINLOG_PURGE_FATAL_ERR,
                               "a problem with deleting %s; "
                               "consider examining correspondence "
@@ -3260,7 +3260,7 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
         /*
           Other than ENOENT are fatal
         */
-        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_BINLOG_PURGE_FATAL_ERR,
                             "a problem with getting info on being purged %s; "
                             "consider examining correspondence "
@@ -3289,7 +3289,7 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
         }
         else
         {
-          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+          push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                               ER_BINLOG_PURGE_FATAL_ERR,
                               "a problem with deleting %s; "
                               "consider examining correspondence "
