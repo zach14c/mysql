@@ -131,8 +131,9 @@ protected:
 
 Myisam_table_ref::Myisam_table_ref(const Table_ref &tbl)
 {
-  const char *db_arg= tbl.db().name().ptr();
-  const char *name_arg= tbl.name().ptr();
+  int error= 0;
+  char path[FN_REFLEN];
+
   /**
     We keep local copies of the db and name. This is because during restore,
     the Table_ref is apparently modified before the Table_restore is done
@@ -143,22 +144,28 @@ Myisam_table_ref::Myisam_table_ref(const Table_ref &tbl)
     and this will save memory.
     As Rafal is changing relevant code now, it may go away.
   */
-  db.append(db_arg);
-  name.append(name_arg);
+  if (db.append(tbl.db().name()))
+    error= 1;
+  if (name.append(tbl.name()))
+    error= 1;
   /*
-    Note: this way below will break with non-ASCII characters;
-    what driver should be passed is what engine used to create the table, ie
-    output of build_table_filename().
-    Just replace "building" with "bûilding" in backup.test to see issues.
-    This is remembered in WL#4060.
-
-    But note, when we repair the table, we use open_temporary_table() which
-    requires db and table name separated.
+    Note: when we repair the table, we use open_temporary_table() which
+    requires db and table name separated. The internal_name is the
+    translated table name with ASCII characters only.
   */
-  file_name.append("./");
-  file_name.append(db_arg);
-  file_name.append("/");
-  file_name.append(name_arg);
+  (void) tbl.internal_name(path, sizeof(path));
+  if (file_name.append(path))
+    error= 1;
+  /*
+    If one of the string allocations failed, clear all. This should be
+    noticed later, when we try to use the information.
+  */
+  if (error)
+  {
+    db.set("", 0, system_charset_info);
+    name.set("", 0, system_charset_info);
+    file_name.set("", 0, system_charset_info);
+  }
 }
 
 
@@ -538,15 +545,20 @@ result_t Backup::begin(const size_t)
   /* Build the hash of tables for the MyISAM layer (mi_backup_log.c etc) */
   for (uint n=0 ; n < m_tables.count() ; n++ )
   {
+    char path[FN_REFLEN];
     char unique_file_name[FN_REFLEN], *str;
     size_t str_len;
     ::LEX_STRING *hash_key;
 
-    my_realpath(unique_file_name,
-                fn_format(unique_file_name,m_tables[n].name().ptr(),
-                          m_tables[n].db().name().ptr(),
-                          MI_NAME_IEXT,
-                          MY_UNPACK_FILENAME), MYF(MY_WME));
+    /*
+      The internal_name is the translated table name with ASCII
+      characters only.
+    */
+    (void) m_tables[n].internal_name(path, sizeof(path));
+    if (my_realpath(unique_file_name,
+                    fn_format(unique_file_name, path, "", MI_NAME_IEXT,
+                              MY_UNPACK_FILENAME), MYF(MY_WME)))
+        SET_STATE_TO_ERROR_AND_DBUG_RETURN;
     str_len= strlen(unique_file_name);
     my_multi_malloc(MYF(MY_WME),
                     &hash_key, sizeof(*hash_key),

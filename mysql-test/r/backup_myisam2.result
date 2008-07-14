@@ -56,6 +56,18 @@ Table	Checksum
 mysqltest.t1	1728069308
 
 connection default: cleanup
+SET DEBUG_SYNC= 'RESET';
+
+#
+# Bug#38045 - Backup, MyISAM and file system encoding
+#
+CREATE TABLE `הצüß£ו` (id SERIAL) ENGINE=MyISAM;
+BACKUP DATABASE mysqltest TO 'test.ba';
+backup_id
+#
+DROP TABLE `הצüß£ו`;
+
+# final cleanup
 USE test;
 DROP DATABASE mysqltest;
 SET DEBUG_SYNC= 'RESET';
