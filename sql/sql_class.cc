@@ -529,14 +529,14 @@ THD::THD()
    derived_tables_processing(FALSE),
    spcont(NULL),
    m_lip(NULL),
-   DDL_exception(FALSE),
   /*
     @todo The following is a work around for online backup and the DDL blocker.
           It should be removed when the generalized solution is in place.
           This is needed to ensure the restore (which uses DDL) is not blocked
           when the DDL blocker is engaged.
   */
-   locked_tables_root(NULL)
+   locked_tables_root(NULL),
+   DDL_exception(FALSE)
 #if defined(ENABLED_DEBUG_SYNC)
    ,debug_sync_control(0)
 #endif /* defined(ENABLED_DEBUG_SYNC) */
