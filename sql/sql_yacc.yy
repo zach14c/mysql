@@ -12740,7 +12740,6 @@ trigger_tail:
 
             lex->sql_command= SQLCOM_CREATE_TRIGGER;
             sp->set_stmt_end(YYTHD);
-
             sp->restore_thd_mem_root(YYTHD);
 
             if (sp->is_not_allowed_in_function("trigger"))
