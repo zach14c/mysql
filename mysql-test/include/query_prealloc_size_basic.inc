@@ -89,8 +89,8 @@ SELECT @@global.query_prealloc_size  ;
 SET @@session.query_prealloc_size   = 8192;
 SELECT @@session.query_prealloc_size  ;
 
-SET @@session.query_prealloc_size   = 4294967295;
-SELECT @@session.query_prealloc_size  ;
+#SET @@session.query_prealloc_size   = 4294967295;
+#SELECT @@session.query_prealloc_size  ;
 
 SET @@session.query_prealloc_size   = 655345;
 SELECT @@session.query_prealloc_size  ;
@@ -111,7 +111,6 @@ SELECT @@global.query_prealloc_size  ;
 
 SET @@global.query_prealloc_size   = 429496729533;
 SELECT @@global.query_prealloc_size  ;
-
 
 --Error ER_PARSE_ERROR
 SET @@global.query_prealloc_size   = 65530.34.;

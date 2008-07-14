@@ -40,19 +40,11 @@ SET @@global.transaction_prealloc_size = 60020;
 SELECT @@global.transaction_prealloc_size;
 @@global.transaction_prealloc_size
 59392
-SET @@global.transaction_prealloc_size = 4294966272;
-SELECT @@global.transaction_prealloc_size;
-@@global.transaction_prealloc_size
-4294966272
 '#--------------------FN_DYNVARS_005_04-------------------------#'
 SET @@session.transaction_prealloc_size = 1024;
 SELECT @@session.transaction_prealloc_size;
 @@session.transaction_prealloc_size
 1024
-SET @@session.transaction_prealloc_size =4294966272;
-SELECT @@session.transaction_prealloc_size;
-@@session.transaction_prealloc_size
-4294966272
 SET @@session.transaction_prealloc_size = 65535;
 SELECT @@session.transaction_prealloc_size;
 @@session.transaction_prealloc_size
