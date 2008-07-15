@@ -4,8 +4,7 @@
 --source include/not_embedded.inc
 
 #
-# This test fails on win platforms currently. Ingo is working on a fix - no bug
-# reported yet.
+# This test fails on win platforms currently. See BUG#38133.
 #
 --source include/not_windows.inc
 
