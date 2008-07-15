@@ -610,6 +610,10 @@ insert into t1 values (0x11000000110000);
 insert into t1 values (0x10000000110000);
 --echo Good character without pad followed by bad character
 insert into t1 values (0x0010000000110000);
+--echo Wrong character with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+--echo Wrong character with pad with the second byte higher than 0x10
+insert into t1 values (0x00800037);
 drop table t1;
 
 #
