@@ -28,6 +28,7 @@
 #define YYPARSE_PARAM yythd
 #define YYLEX_PARAM yythd
 #define YYTHD ((THD *)yythd)
+#define YYLIP (& YYTHD->m_parser_state->m_lip)
 
 #define MYSQL_YACC
 #define YYINITDEPTH 100
@@ -119,7 +120,7 @@ int yylex(void *yylval, void *yythd);
 void my_parse_error(const char *s)
 {
   THD *thd= current_thd;
-  Lex_input_stream *lip= thd->m_lip;
+  Lex_input_stream *lip= & thd->m_parser_state->m_lip;
 
   const char *yytext= lip->get_tok_start();
   /* Push an error into the error stack */
@@ -1467,11 +1468,11 @@ query:
               MYSQL_YYABORT;
             }
             thd->lex->sql_command= SQLCOM_EMPTY_QUERY;
-            thd->m_lip->found_semicolon= NULL;
+            YYLIP->found_semicolon= NULL;
           }
         | verb_clause
           {
-            Lex_input_stream *lip = YYTHD->m_lip;
+            Lex_input_stream *lip = YYLIP;
 
             if ((YYTHD->client_capabilities & CLIENT_MULTI_QUERIES) &&
                 ! lip->stmt_prepare_mode &&
@@ -1497,7 +1498,7 @@ query:
         | verb_clause END_OF_INPUT
           {
             /* Single query, not terminated. */
-            YYTHD->m_lip->found_semicolon= NULL;
+            YYLIP->found_semicolon= NULL;
           }
         ;
 
@@ -2069,7 +2070,7 @@ ev_sql_stmt:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
 
             /*
               This stops the following :
@@ -2726,7 +2727,7 @@ sp_proc_stmt_statement:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
 
             lex->sphead->reset_lex(thd);
             lex->sphead->m_tmp_query= lip->get_tok_start();
@@ -2735,7 +2736,7 @@ sp_proc_stmt_statement:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
             sp_head *sp= lex->sphead;
 
             sp->m_flags|= sp_get_flags_for_command(lex);
@@ -6825,17 +6826,13 @@ select_item:
 
 remember_name:
           {
-            THD *thd= YYTHD;
-            Lex_input_stream *lip= thd->m_lip;
-            $$= (char*) lip->get_cpp_tok_start();
+            $$= (char*) YYLIP->get_cpp_tok_start();
           }
         ;
 
 remember_end:
           {
-            THD *thd= YYTHD;
-            Lex_input_stream *lip= thd->m_lip;
-            $$= (char*) lip->get_cpp_tok_end();
+            $$= (char*) YYLIP->get_cpp_tok_end();
           }
         ;
 
@@ -10078,7 +10075,7 @@ load:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
 
             if (lex->sphead)
             {
@@ -10101,10 +10098,7 @@ load:
           }
           opt_duplicate INTO
           {
-            THD *thd= YYTHD;
-            LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
-            lex->fname_end= lip->get_ptr();
+            Lex->fname_end= YYLIP->get_ptr();
           }
           TABLE_SYM table_ident
           {
@@ -10348,7 +10342,7 @@ param_marker:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
             Item_param *item;
             if (! lex->parsing_options.allows_variable)
             {
@@ -10380,7 +10374,7 @@ literal:
         | NULL_SYM
           {
             $$ = new Item_null();
-            YYTHD->m_lip->next_state=MY_LEX_OPERATOR_OR_IDENT;
+            YYLIP->next_state= MY_LEX_OPERATOR_OR_IDENT;
           }
         | FALSE_SYM { $$= new Item_int((char*) "FALSE",0,1); }
         | TRUE_SYM { $$= new Item_int((char*) "TRUE",1,1); }
@@ -10510,7 +10504,7 @@ simple_ident:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
             sp_variable_t *spv;
             sp_pcontext *spc = lex->spcont;
             if (spc && (spv = spc->find_variable(&$1)))
@@ -11207,7 +11201,7 @@ option_type_value:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
 
             if (lex->sphead)
             {
@@ -11238,7 +11232,7 @@ option_type_value:
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
 
             if (lex->sphead)
             {
@@ -12612,19 +12606,17 @@ view_select:
           {
             THD *thd= YYTHD;
             LEX *lex= Lex;
-            Lex_input_stream *lip= thd->m_lip;
             lex->parsing_options.allows_variable= FALSE;
             lex->parsing_options.allows_select_into= FALSE;
             lex->parsing_options.allows_select_procedure= FALSE;
             lex->parsing_options.allows_derived= FALSE;
-            lex->create_view_select.str= (char *) lip->get_cpp_ptr();
+            lex->create_view_select.str= (char *) YYLIP->get_cpp_ptr();
           }
           view_select_aux view_check_option
           {
             THD *thd= YYTHD;
             LEX *lex= Lex;
-            Lex_input_stream *lip= thd->m_lip;
-            uint len= lip->get_cpp_ptr() - lex->create_view_select.str;
+            uint len= YYLIP->get_cpp_ptr() - lex->create_view_select.str;
             void *create_view_select= thd->memdup(lex->create_view_select.str, len);
             lex->create_view_select.length= len;
             lex->create_view_select.str= (char *) create_view_select;
@@ -12667,26 +12659,20 @@ trigger_tail:
           ON
           remember_name /* $7 */
           { /* $8 */
-            THD *thd= YYTHD;
-            LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
-            lex->raw_trg_on_table_name_begin= lip->get_tok_start();
+            Lex->raw_trg_on_table_name_begin= YYLIP->get_tok_start();
           }
           table_ident /* $9 */
           FOR_SYM
           remember_name /* $11 */
           { /* $12 */
-            THD *thd= YYTHD;
-            LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
-            lex->raw_trg_on_table_name_end= lip->get_tok_start();
+            Lex->raw_trg_on_table_name_end= YYLIP->get_tok_start();
           }
           EACH_SYM
           ROW_SYM
           { /* $15 */
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
             sp_head *sp;
 
             if (lex->sphead)
@@ -12790,7 +12776,7 @@ sf_tail:
           { /* $5 */
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
             sp_head *sp;
             const char* tmp_param_begin;
 
@@ -12818,11 +12804,7 @@ sf_tail:
           sp_fdparam_list /* $6 */
           ')' /* $7 */
           { /* $8 */
-            THD *thd= YYTHD;
-            LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
-
-            lex->sphead->m_param_end= lip->get_cpp_tok_start();
+            Lex->sphead->m_param_end= YYLIP->get_cpp_tok_start();
           }
           RETURNS_SYM /* $9 */
           { /* $10 */
@@ -12859,7 +12841,7 @@ sf_tail:
           { /* $14 */
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
+            Lex_input_stream *lip= YYLIP;
 
             lex->sphead->m_chistics= &lex->sp_chistics;
             lex->sphead->set_body_start(thd, lip->get_cpp_tok_start());
@@ -12944,33 +12926,28 @@ sp_tail:
           }
           '('
           {
-            THD *thd= YYTHD;
-            LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
             const char* tmp_param_begin;
 
-            tmp_param_begin= lip->get_cpp_tok_start();
+            tmp_param_begin= YYLIP->get_cpp_tok_start();
             tmp_param_begin++;
-            lex->sphead->m_param_begin= tmp_param_begin;
+            Lex->sphead->m_param_begin= tmp_param_begin;
           }
           sp_pdparam_list
           ')'
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
 
-            lex->sphead->m_param_end= lip->get_cpp_tok_start();
+            lex->sphead->m_param_end= YYLIP->get_cpp_tok_start();
             bzero((char *)&lex->sp_chistics, sizeof(st_sp_chistics));
           }
           sp_c_chistics
           {
             THD *thd= YYTHD;
             LEX *lex= thd->lex;
-            Lex_input_stream *lip= thd->m_lip;
 
             lex->sphead->m_chistics= &lex->sp_chistics;
-            lex->sphead->set_body_start(thd, lip->get_cpp_tok_start());
+            lex->sphead->set_body_start(thd, YYLIP->get_cpp_tok_start());
           }
           sp_proc_stmt
           {

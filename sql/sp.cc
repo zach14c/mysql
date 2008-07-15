@@ -539,12 +539,12 @@ static sp_head *sp_compile(THD *thd, String *defstr, ulong sql_mode,
   thd->variables.sql_mode= sql_mode;
   thd->variables.select_limit= HA_POS_ERROR;
 
-  Lex_input_stream lip(thd, defstr->c_ptr(), defstr->length());
+  Parser_state parser_state(thd, defstr->c_ptr(), defstr->length());
   lex_start(thd);
   thd->push_internal_handler(&warning_handler);
   thd->spcont= 0;
 
-  if (parse_sql(thd, &lip, creation_ctx) || thd->lex == NULL)
+  if (parse_sql(thd, & parser_state, creation_ctx) || thd->lex == NULL)
   {
     sp= thd->lex->sphead;
     delete sp;
