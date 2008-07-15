@@ -933,6 +933,14 @@ Good character without pad followed by bad character
 insert into t1 values (0x0010000000110000);
 Warnings:
 Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+Wrong character with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x80\x007' for column 'utf32' at row 1
+Wrong character with pad with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x80\x007' for column 'utf32' at row 1
 drop table t1;
 select _utf32'a' collate utf32_general_ci = 0xfffd;
 _utf32'a' collate utf32_general_ci = 0xfffd
