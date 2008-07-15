@@ -3702,6 +3702,9 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--pid-file=%s", $prefix,
 	      $mysqld->{'path_pid'});
+        
+   mtr_add_arg($args, "%s--log-err=%s", $prefix,
+	      $mysqld->{'path_myerr'});
 
   mtr_add_arg($args, "%s--port=%d", $prefix,
                 $mysqld->{'port'});

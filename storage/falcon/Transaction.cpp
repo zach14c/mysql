@@ -1023,8 +1023,17 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 
 	if (!(*deadlock))
 		{
-		syncActiveTransactions.unlock();
-		transaction->waitForTransaction();
+		try
+			{
+			syncActiveTransactions.unlock();
+			transaction->waitForTransaction();
+			}
+		catch(...)
+			{
+			if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))
+				FATAL("waitingFor was not %p",transaction);
+			throw;
+			}
 		}
 
 	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))

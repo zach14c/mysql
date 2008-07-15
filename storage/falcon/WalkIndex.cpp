@@ -89,6 +89,8 @@ int32 WalkIndex::getNextNode(void)
 			
 			if (recordNumber >= 0)
 				return recordNumber;
+			else if (recordNumber == END_LEVEL)
+				return -1;
 			}
 			
 		node.getNext(endNodes);
