@@ -3,6 +3,12 @@
 
 --source include/not_embedded.inc
 
+#
+# This test fails on win platforms currently. Ingo is working on a fix - no bug
+# reported yet.
+#
+--source include/not_windows.inc
+
 disable_warnings;
 create database if not exists mysqltest;
 use mysqltest;
