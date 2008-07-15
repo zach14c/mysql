@@ -227,7 +227,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 
 	if (deferredIndexes.count < transaction->deferredIndexCount)
 		{
-		Sync sync(&deferredIndexes.syncObject, "Index::insert");
+		Sync sync(&deferredIndexes.syncObject, "Index::getDeferredIndex(1)");
 		sync.lock(Shared);
 		for (deferredIndex = deferredIndexes.first; 
 			 deferredIndex; 
@@ -270,7 +270,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 
 	// Make a new one and attach to Index and Transaction.
 
-	Sync sync(&deferredIndexes.syncObject, "Index::insert");
+	Sync sync(&deferredIndexes.syncObject, "Index::getDeferredIndex(2)");
 	deferredIndex = new DeferredIndex(this, transaction);
 	sync.lock(Exclusive);
 	deferredIndexes.append(deferredIndex);
@@ -835,7 +835,7 @@ UCHAR Index::getPadByte(void)
 
 void Index::detachDeferredIndex(DeferredIndex *deferredIndex)
 {
-	Sync sync(&deferredIndexes.syncObject, "Index::detachDeferredIndex");
+	Sync sync(&deferredIndexes.syncObject, "Index::detachDeferredIndex(1)");
 	sync.lock(Exclusive);
 	deferredIndexes.remove(deferredIndex);
 	sync.unlock();
@@ -843,9 +843,9 @@ void Index::detachDeferredIndex(DeferredIndex *deferredIndex)
 	if (   (database->configuration->useDeferredIndexHash)
 		&& (INDEX_IS_UNIQUE(type)))
 		{
-		Sync syncHash(&syncDIHash, "Index::detachDeferredIndex");
+		Sync syncHash(&syncDIHash, "Index::detachDeferredIndex(2)");
 		syncHash.lock(Exclusive);
-		Sync syncDI(&deferredIndex->syncObject, "Index::detachDeferredIndex");
+		Sync syncDI(&deferredIndex->syncObject, "Index::detachDeferredIndex(3)");
 		syncDI.lock(Exclusive);
 
 		DeferredIndexWalker walker(deferredIndex, NULL);

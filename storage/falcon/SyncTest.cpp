@@ -115,10 +115,10 @@ void SyncTest::testThread(void* parameter)
 void SyncTest::testThread(void)
 {
 	count = 0;
-	Sync syncStart(&starter, "SyncTest::thread");
+	Sync syncStart(&starter, "SyncTest::testThread(1)");
 	ready = true;
 	syncStart.lock(Shared);
-	Sync sync(&parent->syncObject, "SyncTest::thread");
+	Sync sync(&parent->syncObject, "SyncTest::testThread(2)");
 	
 	while (!parent->stop)
 		{

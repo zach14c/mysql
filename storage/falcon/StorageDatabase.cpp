@@ -756,10 +756,10 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 			++numberIndexes;
 			}
 
-		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable");
+		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable(1)");
 		syncDDL.lock(Exclusive);
 		
-		Sync syncTables(&database->syncTables, "StorageDatabase::renameTable");
+		Sync syncTables(&database->syncTables, "StorageDatabase::renameTable(2)");
 		syncTables.lock(Exclusive);
 		
 		for (int n = firstIndex; n < numberIndexes; ++n)

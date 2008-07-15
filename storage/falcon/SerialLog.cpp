@@ -1366,7 +1366,7 @@ void SerialLog::reportStatistics(void)
 
 void SerialLog::getSerialLogInfo(InfoTable* tableInfo)
 {
-	Sync sync(&pending.syncObject, "SerialLog::getSerialLogInfo");
+	Sync sync(&pending.syncObject, "SerialLog::getSerialLogInfo(1)");
 	sync.lock(Shared);
 	int numberTransactions = 0;
 	uint64 minBlockNumber = writeBlock->blockNumber;
@@ -1382,7 +1382,7 @@ void SerialLog::getSerialLogInfo(InfoTable* tableInfo)
 	int64 delta = writeBlock->blockNumber - minBlockNumber;
 	sync.unlock();
 	
-	Sync syncWindows(&syncWrite, "SerialLog::getSerialLogInfo");
+	Sync syncWindows(&syncWrite, "SerialLog::getSerialLogInfo(1)");
 	syncWindows.lock(Shared);
 	int windows = 0;
 	int buffers = 0;
@@ -1439,13 +1439,13 @@ void SerialLog::preCommit(Transaction* transaction)
 	
 	if (!serialLogTransaction)
 		{
-		Sync writeSync(&syncWrite, "SerialLog::preCommit");
+		Sync writeSync(&syncWrite, "SerialLog::preCommit(1)");
 		writeSync.lock(Exclusive);
 		startRecord();
 		serialLogTransaction = getTransaction(transaction->transactionId);
 		}
 		
-	Sync sync (&pending.syncObject, "SerialLog::activate");
+	Sync sync (&pending.syncObject, "SerialLog::preCommit(2)");
 	sync.lock(Exclusive);
 	running.remove(serialLogTransaction);
 	pending.append(serialLogTransaction);

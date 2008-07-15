@@ -87,7 +87,7 @@ void CollationManager::add(Collation* collation)
 
 Collation* CollationManager::find(const char* collationName)
 {
-	Sync sync(&syncObject, "CollationManager::addCollation");
+	Sync sync(&syncObject, "CollationManager::find");
 	sync.lock(Shared);
 	int slot = JString::hash(collationName, COLLATION_HASH_SIZE);
 	

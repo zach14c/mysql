@@ -749,7 +749,7 @@ Bdb* Dbb::getSequencePage(int sequenceId, LockType lockType, TransId transId)
 	else
 	***/
 		{
-		Sync sync(&sequencesSyncObject, "Dbb::updateSequence");
+		Sync sync(&sequencesSyncObject, "Dbb::getSequencePage");
 		sync.lock(Shared);
 		int sequencePageSequence = sequenceId / sequencesPerPage;
 		int32 sequencePageNumber = sequencePages.get(sequencePageSequence);
