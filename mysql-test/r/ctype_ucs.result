@@ -1261,3 +1261,15 @@ FF9EFF9DFF9CFFDFFFDF
 select hex(weight_string('abc' as char(5) LEVEL 1 DESC REVERSE));
 hex(weight_string('abc' as char(5) LEVEL 1 DESC REVERSE))
 DFFFDFFF9CFF9DFF9EFF
+select hex(char(0x01 using ucs2));
+hex(char(0x01 using ucs2))
+0001
+select hex(char(0x0102 using ucs2));
+hex(char(0x0102 using ucs2))
+0102
+select hex(char(0x010203 using ucs2));
+hex(char(0x010203 using ucs2))
+00010203
+select hex(char(0x01020304 using ucs2));
+hex(char(0x01020304 using ucs2))
+01020304

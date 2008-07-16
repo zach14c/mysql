@@ -718,3 +718,16 @@ set collation_connection=utf32_general_ci;
 set names latin1;
 
 # TODO: add tests for all engines
+
+#
+# Bug #36418 Character sets: crash if char(256 using utf32)
+#
+select hex(char(0x01 using utf32));
+select hex(char(0x0102 using utf32));
+select hex(char(0x010203 using utf32));
+select hex(char(0x01020304 using utf32));
+create table t1 (s1 varchar(1) character set utf32, s2 text character set utf32);
+create index i on t1 (s1);
+insert into t1 values (char(256 using utf32), char(256 using utf32));
+select hex(s1), hex(s2) from t1;
+drop table t1;
