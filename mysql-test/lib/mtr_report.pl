@@ -333,12 +333,20 @@ sub mtr_report_stats ($) {
 		(
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
 		(
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
 		) or
 		
+		# ignore warning generated when backup engine selection algorithm is tested
+		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
+		# ignore warnings generated when backup privilege is tested
+		($testname eq 'main.backup_security') and /(Backup|Restore): Access denied; you need the SUPER/ or
+		
+                ($testname eq 'main.backup_myisam1') and
+                (/Backup: Can't initialize MyISAM backup driver/) or
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/One can only use the --user.*root/ or

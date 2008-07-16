@@ -1,0 +1,46 @@
+# Test of MyISAM logical logging and the myisamlog utility:
+# see if they can repopulate a table.
+
+--source include/not_embedded.inc
+
+#
+# This test fails on win platforms currently. See BUG#38133.
+#
+--source include/not_windows.inc
+
+disable_warnings;
+create database if not exists mysqltest;
+use mysqltest;
+drop table if exists t1;
+enable_warnings;
+# CREATE generates no entry in the logical log
+create table t1 (a int, b varchar(100)) engine=myisam;
+
+# we put some data into the table
+insert into t1 values(1,'life'), (2,'file');
+insert into t1 select a*5, concat("A ",b) from t1;
+update t1 set b="A knife" where a=5;
+delete from t1 where a=10;
+select * from t1;
+
+# wipe it out (TRUNCATE generates no entry in the logical log)
+truncate table t1;
+# close the table (as we are going to change it out of the server process)
+flush table t1;
+
+# look at log
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+exec $MYISAMLOG $MYSQLTEST_VARDIR/master-data/myisam.log ;
+# should not have changed the table
+select * from t1;
+flush table t1;
+
+# apply log to empty table
+--replace_result $MYSQLTEST_VARDIR VARDIR
+--replace_regex /extra......................../extra                       #/ /Total................/Total               #/
+exec $MYISAMLOG -F $MYSQLTEST_VARDIR/master-data -u $MYSQLTEST_VARDIR/master-data/myisam.log ;
+
+# reopen the table and verify that content is back
+select * from t1;
+check table t1 extended;
+drop database mysqltest;

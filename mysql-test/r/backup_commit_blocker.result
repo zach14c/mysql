@@ -1,6 +1,6 @@
+SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS bup_commit_blocker;
 CREATE DATABASE bup_commit_blocker;
-SET GLOBAL debug="d,backup_debug:d,backup";
 
 Starting Test 1
 
@@ -55,62 +55,50 @@ Assumption (b): TRX in commit is included in backup
 BEGIN;
 INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 04 Some data to test");
 INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 05 Some data to test");
-con5: Getting lock on commit blocker.
-SELECT get_lock("commit_blocker_step_1", 0);
-get_lock("commit_blocker_step_1", 0)
-1
+con1: Activate synchronization points for BACKUP.
+SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
+                 WAIT_FOR bup_go_read_lock';
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
+                 WAIT_FOR finish';
 con1: Backing up database -- will block with lock
 BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-state	info
-debug_sync_point: commit_blocker_step_1	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
-con3: Starting commit -- will block with lock
+con5: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_commit_block';
+con3: Activate synchronization points for COMMIT.
+SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
+                 WAIT_FOR commit_go_done';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
+con3: Starting commit -- will block on sync point
 COMMIT;
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
-state	info
-debug_sync_point: commit_blocker_step_1	COMMIT
-con5: Getting lock on commit blocker.
-SELECT get_lock("backup_commit_blocker", 0);
-get_lock("backup_commit_blocker", 0)
-1
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-state	info
-debug_sync_point: backup_commit_blocker	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
-state	info
-debug_sync_point: backup_commit_blocker	COMMIT
-con4: Starting begin -- will block with lock
+con5: Wait for COMMIT to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR commit_read_locked';
+con5: Let BACKUP run until the next sync point.
+SET DEBUG_SYNC= 'now SIGNAL bup_go_read_lock WAIT_FOR bup_read_lock';
+con5: Let COMMIT continue until end of statement.
+con5: The completed COMMIT implicitly wakes BACKUP.
+con5: So wait for BACKUP to reach the next synchronization point.
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
+con4: Activate synchronization point for BEGIN.
+SET DEBUG_SYNC= 'before_begin_trans SIGNAL begin_starting
+                 WAIT_FOR finish';
+con4: Starting begin -- will block on sync point
 Assumption (c): TRX not started is not included in backup
 BEGIN;
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BEGIN%";
-state	info
-debug_sync_point: backup_commit_blocker	BEGIN
-con5: Releasing lock
-SELECT release_lock("backup_commit_blocker");
-release_lock("backup_commit_blocker")
-1
+con5: Wait for BEGIN to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR begin_starting';
+con5: Sending finish signal to wake them all.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 con2: Completing transaction
 DELETE FROM bup_commit_blocker.t1 WHERE col_a LIKE '02%';
 COMMIT;
-con3: Completing transaction
+con3: Fetch COMMIT result
+con4: Fetch BEGIN result and completing transaction
 UPDATE bup_commit_blocker.t3 SET col_a = "con4: 05 CHANGED" WHERE col_a LIKE '05%';
 UPDATE bup_commit_blocker.t3 SET col_a = "con4: 06 CHANGED" WHERE col_a LIKE '06%';
 COMMIT;
+con1: Fetch BACKUP result
 backup_id
 #
 con1: Showing data after updates and backup
@@ -185,6 +173,7 @@ count(*)
 0
 con1: Cleanup
 DROP DATABASE bup_commit_blocker;
+SET DEBUG_SYNC= 'RESET';
 
 Starting Test 2
 
@@ -201,23 +190,13 @@ col_a
 30
 40
 50
-con5: Getting lock on commit blocker.
-SELECT get_lock("backup_commit_blocker", 0);
-get_lock("backup_commit_blocker", 0)
-1
-con5: Checking lock
+con1: Activate synchronization point for BACKUP.
+SET DEBUG_SYNC= 'before_backup_data_unlock SIGNAL bup_data_unlock
+                 WAIT_FOR finish';
 con1: Backing up database -- will block with lock
 BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
-con5: Getting lock on commit blocker.
-SELECT get_lock("commit_blocker_step_4", 0);
-get_lock("commit_blocker_step_4", 0)
-1
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-state	info
-debug_sync_point: commit_blocker_step_4	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
+con5: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_data_unlock';
 con7: Show that the statement in progress has executed before backup.
 SELECT * FROM bup_commit_blocker.t5;
 col_a
@@ -226,24 +205,17 @@ col_a
 30
 40
 50
-con7: Starting non-trx about to start -- will block with lock
+con7: Activate synchronization point for UPDATE.
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL upd_read_lock';
+con7: Starting non-trx about to start
 Assumption (e): non-TRX not started is not included in backup
 UPDATE bup_commit_blocker.t5 SET col_a = 333 WHERE col_a = 30;
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "UPDATE%";
-state	info
-Waiting for release of readlock	UPDATE bup_commit_blocker.t5 SET col_a = 333 WHERE col_a = 30
-con5: Releasing locks
-SELECT release_lock("commit_blocker_step_4");
-release_lock("commit_blocker_step_4")
-1
-SELECT release_lock("backup_commit_blocker");
-release_lock("backup_commit_blocker")
-NULL
-con6: Completing statement
-con7: Completing statement
+con5: Wait for UPDATE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR upd_read_lock';
+con5: Sending finish signal to wake them all.
+SET DEBUG_SYNC= 'now SIGNAL finish';
+con7: Fetch UPDATE result
+con1: Fetch BACKUP result
 backup_id
 #
 con1: Showing data after updates and backup
@@ -277,6 +249,7 @@ count(*)
 0
 con1: Cleanup
 DROP DATABASE bup_commit_blocker;
+SET DEBUG_SYNC= 'RESET';
 
 Starting Test 3
 
@@ -341,57 +314,39 @@ Assumption (b): TRX in commit is included in backup
 BEGIN;
 INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 04 Some data to test");
 INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 05 Some data to test");
-con5: Getting lock on commit blocker.
-SELECT get_lock("commit_blocker_step_1", 0);
-get_lock("commit_blocker_step_1", 0)
-1
+con1: Activate synchronization points for BACKUP.
+SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
+                 WAIT_FOR bup_go_read_lock';
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
+                 WAIT_FOR finish';
 con1: Backing up database -- will block with lock
 BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-state	info
-debug_sync_point: commit_blocker_step_1	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
-con3: Starting commit -- will block with lock
+con5: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_commit_block';
+con3: Activate synchronization points for COMMIT.
+SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
+                 WAIT_FOR commit_go_done';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
+con3: Starting commit -- will block on sync point
 COMMIT;
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
-state	info
-debug_sync_point: commit_blocker_step_1	COMMIT
-con5: Getting lock on commit blocker.
-SELECT get_lock("backup_commit_blocker", 0);
-get_lock("backup_commit_blocker", 0)
-1
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-state	info
-debug_sync_point: backup_commit_blocker	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
-state	info
-debug_sync_point: backup_commit_blocker	COMMIT
+con5: Wait for COMMIT to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR commit_read_locked';
+con5: Let BACKUP run until the next sync point.
+SET DEBUG_SYNC= 'now SIGNAL bup_go_read_lock WAIT_FOR bup_read_lock';
+con5: Let COMMIT continue until the sync point at its end.
+con5: The completed COMMIT implicitly wakes BACKUP.
+con5: So wait for BACKUP to reach the next synchronization point.
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
+con4: Activate synchronization point for BEGIN.
+SET DEBUG_SYNC= 'before_begin_trans SIGNAL begin_starting
+                 WAIT_FOR finish';
 con4: Starting begin -- will block with lock
 Assumption (c): TRX not started is not included in backup
 BEGIN;
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BEGIN%";
-state	info
-debug_sync_point: backup_commit_blocker	BEGIN
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-state	info
-debug_sync_point: backup_commit_blocker	BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak"
+con5: Wait for BEGIN to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR begin_starting';
 con7: Show that the statement in progress has executed before backup.
 SELECT * FROM bup_commit_blocker.t5;
 col_a
@@ -400,27 +355,25 @@ col_a
 30
 40
 50
+con7: Activate synchronization point for DELETE.
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL del_read_lock';
 con7: Starting non-trx about to start -- will block with lock
 Assumption (e): non-TRX not started is not included in backup
 DELETE FROM bup_commit_blocker.t5 WHERE col_a = 50;
-con5: Checking lock
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DELETE%";
-state	info
-Waiting for release of readlock	DELETE FROM bup_commit_blocker.t5 WHERE col_a = 50
-con5: Releasing lock
-SELECT release_lock("backup_commit_blocker");
-release_lock("backup_commit_blocker")
-1
+con5: Wait for DELETE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR del_read_lock';
+con5: Sending finish signal to wake them all.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 con2: Completing transaction
 DELETE FROM bup_commit_blocker.t2 WHERE col_a LIKE '02%';
 COMMIT;
-con3: Completing transaction
+con3: Fetch COMMIT result
+con4: Fetch BEGIN result and completing transaction
 UPDATE bup_commit_blocker.t3 SET col_a = "con4: 05 CHANGED" WHERE col_a LIKE '05%';
 UPDATE bup_commit_blocker.t3 SET col_a = "con4: 06 CHANGED" WHERE col_a LIKE '06%';
 COMMIT;
-con7: Completing statement
+con7: Fetch DELETE result
+con1: Fetch BACKUP result
 backup_id
 #
 con1: Showing data after updates and backup
@@ -513,3 +466,4 @@ count(*)
 1
 con1: Cleanup
 DROP DATABASE bup_commit_blocker;
+SET DEBUG_SYNC= 'RESET';

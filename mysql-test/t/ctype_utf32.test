@@ -597,6 +597,37 @@ select hex(a) from t1;
 drop table t1;
 
 #
+# Bug#32914 Character sets: illegal characters in utf8 and utf32 columns
+#
+create table t1 (utf32 varchar(2) character set utf32);
+--echo Wrong character with pad
+insert into t1 values (0x110000);
+--echo Wrong chsaracter without pad
+insert into t1 values (0x00110000);
+--echo Wrong character with pad followed by another wrong character
+insert into t1 values (0x11000000110000);
+--echo Good character with pad followed by bad character
+insert into t1 values (0x10000000110000);
+--echo Good character without pad followed by bad character
+insert into t1 values (0x0010000000110000);
+--echo Wrong character with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+--echo Wrong character with pad with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+drop table t1;
+
+#
+# Bug#32394 Character sets: crash if comparison with 0xfffd
+#
+select _utf32'a' collate utf32_general_ci = 0xfffd;
+select hex(concat(_utf32 0x0410 collate utf32_general_ci, 0x61));
+create table t1 (s1 varchar(5) character set utf32);
+insert into t1 values (0xfffd);
+select case when s1 = 0xfffd then 1 else 0 end from t1;
+select hex(s1) from t1 where s1 = 0xfffd;
+drop table t1;
+
+#
 # Testing cs->cset->lengthsp()
 #
 create table t1 (a char(10)) character set utf32;
@@ -716,5 +747,6 @@ drop table t1;
 set collation_connection=utf32_general_ci;
 --source include/ctype_regex.inc
 set names latin1;
+
 
 # TODO: add tests for all engines

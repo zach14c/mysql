@@ -1,0 +1,32 @@
+# Test case for bug#34758
+
+--source include/not_embedded.inc
+--source include/have_debug.inc
+--source include/have_innodb.inc
+
+# Setup the server to use the backup breakpoints
+SET GLOBAL debug="d,backup:d,backup_data";
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+--enable_warnings
+
+CREATE DATABASE db1;
+
+CREATE TABLE db1.t1(a int) ENGINE=INNODB;
+CREATE VIEW db1.v1 AS SELECT * FROM db1.t1;
+CREATE VIEW db1.v2 AS SELECT * FROM db1.v1;
+
+INSERT INTO db1.t1 VALUES (1),(2),(3),(5),(7),(11);
+
+replace_column 1 #;
+BACKUP DATABASE db1 TO 'test.bak';
+replace_column 1 #;
+RESTORE FROM 'test.bak';
+
+SELECT * FROM db1.v2;
+SELECT * FROM db1.v1;
+SELECT * FROM db1.t1;
+
+DROP DATABASE db1;
+

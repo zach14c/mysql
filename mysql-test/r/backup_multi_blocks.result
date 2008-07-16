@@ -1,0 +1,42 @@
+DROP DATABASE IF EXISTS mysqltest;
+Creating database and tables ...
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (a LONGTEXT) ENGINE=MYISAM;
+Inserting data ...
+USE mysqltest;
+INSERT INTO t1 VALUES ("text");
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+UPDATE t1 SET a=CONCAT(a,a);
+SELECT LENGTH(a) FROM t1;
+LENGTH(a)
+32768
+Performing backup ...
+BACKUP DATABASE mysqltest TO 'test.ba';
+backup_id
+#;
+DROP DATABASE mysqltest;
+Performing restore ...
+RESTORE FROM 'test.ba';
+backup_id
+#;
+Checking contents of restore ...
+SELECT LENGTH(a) FROM t1;
+LENGTH(a)
+32768
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	3394496868
+Clean-up
+DROP DATABASE mysqltest;
