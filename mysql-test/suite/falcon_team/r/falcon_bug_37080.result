@@ -1,5 +1,0 @@
-*** Bug #37080 ***
-SET @@storage_engine = 'Falcon';
-DROP TABLE IF EXISTS t;
-CREATE TABLE t(i int);
-DROP TABLE t;
