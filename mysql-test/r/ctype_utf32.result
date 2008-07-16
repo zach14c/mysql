@@ -1049,3 +1049,24 @@ NULL
 NULL
 drop table t1;
 set names latin1;
+select hex(char(0x01 using utf32));
+hex(char(0x01 using utf32))
+00000001
+select hex(char(0x0102 using utf32));
+hex(char(0x0102 using utf32))
+00000102
+select hex(char(0x010203 using utf32));
+hex(char(0x010203 using utf32))
+00010203
+select hex(char(0x01020304 using utf32));
+hex(char(0x01020304 using utf32))
+
+Warnings:
+Warning	1300	Invalid utf32 character string: '010203'
+create table t1 (s1 varchar(1) character set utf32, s2 text character set utf32);
+create index i on t1 (s1);
+insert into t1 values (char(256 using utf32), char(256 using utf32));
+select hex(s1), hex(s2) from t1;
+hex(s1)	hex(s2)
+00000100	00000100
+drop table t1;
