@@ -35,6 +35,10 @@
 #include "InfoTable.h"
 #include "CmdGen.h"
 #include "Dbb.h"
+#include "Database.h"
+#include "TableSpaceManager.h"
+
+
 
 #define DICTIONARY_ACCOUNT		"mysql"
 #define DICTIONARY_PW			"mysql"
@@ -493,10 +497,16 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 
 	if (!dictionaryConnection)
 		return StorageErrorTablesSpaceOperationFailed;
-		
-	//StorageDatabase *storageDatabase = NULL;
+
 	JString tableSpace = JString::upcase(tableSpaceName);
-	
+
+	TableSpaceManager *tableSpaceManager = 
+		dictionaryConnection->database->tableSpaceManager;
+
+	if (!tableSpaceManager->waitForPendingDrop(tableSpaceName, 10))
+		// file still exists after waiting for 10 seconds
+		return  StorageErrorTableSpaceExist;
+
 	try
 		{
 		JString cmd = genCreateTableSpace(tableSpaceName, filename, initialSize, extentSize,
