@@ -62,7 +62,6 @@
 extern uint64		max_memory_address;
 
 extern uint64		falcon_record_memory_max;
-extern uint64		falcon_initial_allocation;
 extern uint			falcon_allocation_extent;
 extern uint64		falcon_page_cache_size;
 //extern uint		falcon_debug_mask;
@@ -116,7 +115,6 @@ Configuration::Configuration(const char *configFile)
 	recordMemoryMax				= falcon_record_memory_max;
 	recordScavengeThresholdPct	= falcon_record_scavenge_threshold;
 	recordScavengeFloorPct		= falcon_record_scavenge_floor;
-	initialAllocation			= falcon_initial_allocation;
 	allocationExtent			= falcon_allocation_extent;
 	serialLogWindows			= falcon_serial_log_buffers;
 	pageCacheSize				= falcon_page_cache_size;
@@ -164,7 +162,6 @@ Configuration::Configuration(const char *configFile)
 	recordScavengeThreshold		= (recordMemoryMax * 100) / recordScavengeThresholdPct;
 	recordScavengeFloor			= (recordMemoryMax * 100) / recordScavengeFloorPct;
 	serialLogWindows			= 10;
-	initialAllocation			= 0;
 	allocationExtent			= 10;
 	pageCacheSize				= getMemorySize(PAGE_CACHE_MEMORY);
 	indexChillThreshold			= 4 * ONE_MB;

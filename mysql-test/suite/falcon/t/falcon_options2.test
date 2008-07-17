@@ -14,7 +14,6 @@ SELECT @@falcon_debug_trace;
 SELECT @@falcon_direct_io;
 SELECT @@falcon_gopher_threads;
 SELECT @@falcon_index_chill_threshold;
-SELECT @@falcon_initial_allocation;
 SELECT @@falcon_io_threads;
 SELECT @@falcon_large_blob_threshold;
 SELECT @@falcon_lock_wait_timeout;

@@ -63,7 +63,7 @@ public:
 	void	writePage (Bdb *buffer, int type);
 	void	writePages(int32 pageNumber, int length, const UCHAR* data, int type);
 	void	readPage (Bdb *page);
-	bool	createFile (const char *name, uint64 initialAllocation);
+	bool	createFile (const char *name);
 	bool	openFile (const char *name, bool readOnly);
 	void	longSeek(int64 offset);
 	void	read(int64 offset, int length, UCHAR* buffer);

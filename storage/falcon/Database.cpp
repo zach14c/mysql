@@ -323,14 +323,6 @@ static const char *createTableSpaces =
 		"tablespace_id int not null,"
 		"filename varchar(512) not null,"
 		"type int,"
-		/***
-		"initial_size bigint,"
-		"extent_size bigint,"
-		"autoextend_size bigint,"
-		"max_size bigint,"
-		"nodegroup int,"
-		"wait int,"
-		***/
 		"comment text)";
 
 static const char *createTableSpaceSequence = 
@@ -634,7 +626,7 @@ void Database::createDatabase(const char * filename)
 	int page_size = PAGE_SIZE;
 #endif
 
-	cache = dbb->create(filename, page_size, configuration->pageCacheSize, HdrDatabaseFile, 0, "", 0);
+	cache = dbb->create(filename, page_size, configuration->pageCacheSize, HdrDatabaseFile, 0, "");
 	
 	try
 		{

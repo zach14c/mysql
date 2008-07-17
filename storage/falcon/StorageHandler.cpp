@@ -51,7 +51,6 @@ struct StorageSavepoint {
 	int					savepoint;
 	};
 
-extern uint64		falcon_initial_allocation;
 
 static const char *createTempSpace = "upgrade tablespace " TEMPORARY_TABLESPACE " filename '" FALCON_TEMPORARY "'";
 //static const char *dropTempSpace = "drop tablespace " TEMPORARY_TABLESPACE;
@@ -464,29 +463,14 @@ Connection* StorageHandler::getDictionaryConnection(void)
 	return dictionaryConnection;
 }
 
-JString StorageHandler::genCreateTableSpace(const char* tableSpaceName, const char* filename,
-												unsigned long long initialSize,
-												unsigned long long extentSize,
-												unsigned long long autoextendSize,
-												unsigned long long maxSize,
-												int nodegroup, bool wait, const char* comment)
+JString StorageHandler::genCreateTableSpace(const char* tableSpaceName, const char* filename, const char* comment)
 {
 	CmdGen gen;
-	/***
-	gen.gen("create tablespace \"%s\" filename '%s' initial_size " I64FORMAT " extent_size " I64FORMAT 
-				" autoextend_size " I64FORMAT " max_size " I64FORMAT " nodegroup %d wait %d comment '%s'",
-				tableSpaceName, filename, initialSize, extentSize, autoextendSize, maxSize, nodegroup, (int)wait, comment ? comment : "");
-	***/
 	gen.gen("create tablespace \"%s\" filename '%s' comment '%s'", tableSpaceName, filename, comment ? comment : "");
 	return (gen.getString());
 }
 
-int StorageHandler::createTablespace(const char* tableSpaceName, const char* filename,
-										unsigned long long initialSize,
-										unsigned long long extentSize,
-										unsigned long long autoextendSize,
-										unsigned long long maxSize,
-										int nodegroup, bool wait, const char* comment)
+int StorageHandler::createTablespace(const char* tableSpaceName, const char* filename, const char* comment)
 {
 	if (!defaultDatabase)
 		initialize();
@@ -499,8 +483,7 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 	
 	try
 		{
-		JString cmd = genCreateTableSpace(tableSpaceName, filename, initialSize, extentSize,
-											autoextendSize, maxSize, nodegroup, wait, comment);
+		JString cmd = genCreateTableSpace(tableSpaceName, filename, comment);
 		Sync sync(&dictionarySyncObject, "StorageHandler::createTablespace");
 		sync.lock(Exclusive);
 		Statement *statement = dictionaryConnection->createStatement();
@@ -998,7 +981,7 @@ void StorageHandler::initialize(void)
 		IO::deleteFile(FALCON_TEMPORARY);
 		dictionaryConnection = defaultDatabase->getOpenConnection();
 		Statement *statement = dictionaryConnection->createStatement();
-		JString createTableSpace = genCreateTableSpace(DEFAULT_TABLESPACE, FALCON_USER, falcon_initial_allocation);
+		JString createTableSpace = genCreateTableSpace(DEFAULT_TABLESPACE, FALCON_USER);
 		statement->executeUpdate(createTableSpace);
 			
 		for (const char **ddl = falconSchema; *ddl; ++ddl)

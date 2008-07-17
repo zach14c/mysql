@@ -50,7 +50,7 @@ void DatabaseClone::createFile(const char* fileName)
 	shadow = new IO;
 	shadow->pageSize = dbb->pageSize;
 	shadow->dbb = dbb;
-	shadow->createFile(fileName, 0);
+	shadow->createFile(fileName);
 }
 
 const char* DatabaseClone::getFileName(void)

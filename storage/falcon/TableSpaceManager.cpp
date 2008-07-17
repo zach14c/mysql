@@ -117,14 +117,6 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		int type = TABLESPACE_TYPE_TABLESPACE;				// type (forced)
 		
 		TableSpaceInit tsInit;
-		/***
-		tsInit.initialSize	= resultSet->getLong(n++);
-		tsInit.extentSize	= resultSet->getLong(n++);
-		tsInit.autoExtendSize = resultSet->getLong(n++);
-		tsInit.maxSize		= resultSet->getLong(n++);
-		tsInit.nodegroup	= resultSet->getInt(n++);
-		tsInit.wait			= resultSet->getInt(n++);
-		***/
 		tsInit.comment		= resultSet->getString(n++);	// comment
 		
 		tableSpace = new TableSpace(database, name, id, fileName, type, &tsInit);
@@ -239,21 +231,9 @@ void TableSpaceManager::bootstrap(int sectionId)
 		p = EncodedDataStream::decode(p, &fileName, true);
 		p = EncodedDataStream::decode(p, &type, true);
 		/***
-		p = EncodedDataStream::decode(p, &initialSize, true);
-		p = EncodedDataStream::decode(p, &extentSsize, true);
-		p = EncodedDataStream::decode(p, &autoExtendSize, true);
-		p = EncodedDataStream::decode(p, &maxSize, true);
-		p = EncodedDataStream::decode(p, &nodegroup, true);
-		p = EncodedDataStream::decode(p, &wait, true);
 		p = EncodedDataStream::decode(p, &comment, true);
 
 		TableSpaceInit tsInit;
-		tsInit.initialSize	= initialSize.getQuad();
-		tsInit.extentSize	= extentSize.getQuad();
-		tsInit.autoExtendSize = autoExtendSize.getQuad();
-		tsInit.maxSize		= maxSize.getQuad();
-		tsInit.nodegroup	= nodegroup.getInt();
-		tsInit.wait			= wait.getInt();
 		tsInit.comment		= comment.getString();
 		***/
 		

@@ -184,7 +184,7 @@ bool IO::openFile(const char * name, bool readOnly)
 	return fileId != -1;
 }
 
-bool IO::createFile(const char *name, uint64 initialAllocation)
+bool IO::createFile(const char *name)
 {
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
@@ -217,26 +217,6 @@ bool IO::createFile(const char *name, uint64 initialAllocation)
 	fcntl(fileId, F_SETLK, &lock);
 #endif
 #endif
-
-	if (initialAllocation)
-		{
-		UCHAR *raw = new UCHAR[8192 * 257];
-		UCHAR *aligned = (UCHAR*) (((UIPTR) raw + 8191) / 8192 * 8192);
-		uint size = 8192 * 256;
-		memset(aligned, 0, size);
-		uint64 offset = 0;
-		
-		for (uint64 remaining = initialAllocation; remaining;)
-			{
-			uint n = (int) MIN(remaining, size);
-			write(offset, n, aligned);
-			offset += n;
-			remaining -= n;
-			}
-		
-		delete [] raw;
-		sync();
-		}
 
 	return fileId != -1;
 }

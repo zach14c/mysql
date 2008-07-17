@@ -49,7 +49,6 @@ public:
 	uint64		recordScavengeFloor;
 	int			recordScavengeThresholdPct;
 	int			recordScavengeFloorPct;
-	uint64		initialAllocation;
 	uint64		allocationExtent;
 	uint64		pageCacheSize;
 	int64		javaInitialAllocation;

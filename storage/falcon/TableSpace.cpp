@@ -50,15 +50,7 @@ TableSpace::TableSpace(Database *db, const char *spaceName, int spaceId, const c
 	
 	TableSpaceInit spaceInit;
 	TableSpaceInit *init = (tsInit ? tsInit : &spaceInit);
-	initialSize	= init->initialSize;
 	comment	= init->comment;
-	/***
-	extentSize	= init->extentSize;
-	autoExtendSize = init->autoExtendSize;
-	maxSize		= init->maxSize;
-	nodegroup	= init->nodegroup;
-	wait		= init->wait;
-	***/
 }
 
 TableSpace::~TableSpace()
@@ -132,7 +124,7 @@ void TableSpace::open()
 void TableSpace::create()
 {
 	dbb->createPath(filename);
-	dbb->create(filename, dbb->pageSize, 0, HdrTableSpace, 0, NULL, initialSize);
+	dbb->create(filename, dbb->pageSize, 0, HdrTableSpace, 0, NULL);
 	active = true;
 	dbb->flush();
 }
@@ -169,14 +161,6 @@ void TableSpace::save(void)
 	statement->setInt(n++, tableSpaceId);
 	statement->setString(n++, filename);
 	statement->setInt(n++, type);
-	/***
-	statement->setLong(n++, initialSize);
-	statement->setLong(n++, extentSize);
-	statement->setLong(n++, autoExtendSize);
-	statement->setLong(n++, maxSize);
-	statement->setInt(n++, nodegroup);
-	statement->setInt(n++, wait);
-	***/
 	statement->setString(n++, comment);
 	statement->executeUpdate();
 	needSave = false;
