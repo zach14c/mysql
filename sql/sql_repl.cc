@@ -1278,32 +1278,32 @@ void kill_zombie_dump_threads(uint32 slave_server_id)
   }
 }
 
-
 bool change_master(THD* thd, Master_info* mi)
 {
   int thread_mask;
   const char* errmsg= 0;
   bool need_relay_log_purge= 1;
+  bool ret= FALSE;
   DBUG_ENTER("change_master");
 
   lock_slave_threads(mi);
   init_thread_mask(&thread_mask,mi,0 /*not inverse*/);
+  LEX_MASTER_INFO* lex_mi= &thd->lex->mi;
   if (thread_mask) // We refuse if any slave thread is running
   {
     my_message(ER_SLAVE_MUST_STOP, ER(ER_SLAVE_MUST_STOP), MYF(0));
-    unlock_slave_threads(mi);
-    DBUG_RETURN(TRUE);
+    ret= TRUE;
+    goto err;
   }
 
   thd_proc_info(thd, "Changing master");
-  LEX_MASTER_INFO* lex_mi= &thd->lex->mi;
   // TODO: see if needs re-write
   if (init_master_info(mi, master_info_file, relay_log_info_file, 0,
 		       thread_mask))
   {
     my_message(ER_MASTER_INFO, ER(ER_MASTER_INFO), MYF(0));
-    unlock_slave_threads(mi);
-    DBUG_RETURN(TRUE);
+    ret= TRUE;
+    goto err;
   }
 
   /*
@@ -1348,6 +1348,34 @@ bool change_master(THD* thd, Master_info* mi)
     mi->heartbeat_period= (float) min(SLAVE_MAX_HEARTBEAT_PERIOD,
                                       (slave_net_timeout/2.0));
   mi->received_heartbeats= LL(0); // counter lives until master is CHANGEd
+  /*
+    reset the last time server_id list if the current CHANGE MASTER 
+    is mentioning IGNORE_SERVER_IDS= (...)
+  */
+  if (lex_mi->repl_ignore_server_ids_opt == LEX_MASTER_INFO::LEX_MI_ENABLE)
+    reset_dynamic(&mi->ignore_server_ids);
+  for (uint i= 0; i < lex_mi->repl_ignore_server_ids.elements; i++)
+  {
+    ulong s_id;
+    get_dynamic(&lex_mi->repl_ignore_server_ids, (uchar*) &s_id, i);
+    if (s_id == ::server_id && replicate_same_server_id)
+    {
+      my_error(ER_SLAVE_IGNORE_SERVER_IDS, MYF(0), s_id);
+      ret= TRUE;
+      goto err;
+    }
+    else
+    {
+      if (bsearch((const ulong *) &s_id,
+                  mi->ignore_server_ids.buffer,
+                  mi->ignore_server_ids.elements, sizeof(ulong),
+                  (int (*) (const void*, const void*))
+                  server_id_cmp) == NULL)
+        insert_dynamic(&mi->ignore_server_ids, (uchar*) &s_id);
+    }
+  }
+  sort_dynamic(&mi->ignore_server_ids, (qsort_cmp) server_id_cmp);
+
   if (lex_mi->ssl != LEX_MASTER_INFO::LEX_MI_UNCHANGED)
     mi->ssl= (lex_mi->ssl == LEX_MASTER_INFO::LEX_MI_ENABLE);
 
@@ -1425,8 +1453,8 @@ bool change_master(THD* thd, Master_info* mi)
   if (flush_master_info(mi, 0))
   {
     my_error(ER_RELAY_LOG_INIT, MYF(0), "Failed to flush master info file");
-    unlock_slave_threads(mi);
-    DBUG_RETURN(TRUE);
+    ret= TRUE;
+    goto err;
   }
   if (need_relay_log_purge)
   {
@@ -1437,8 +1465,8 @@ bool change_master(THD* thd, Master_info* mi)
 			 &errmsg))
     {
       my_error(ER_RELAY_LOG_FAIL, MYF(0), errmsg);
-      unlock_slave_threads(mi);
-      DBUG_RETURN(TRUE);
+      ret= TRUE;
+      goto err;
     }
   }
   else
@@ -1453,8 +1481,8 @@ bool change_master(THD* thd, Master_info* mi)
 			   &msg, 0))
     {
       my_error(ER_RELAY_LOG_INIT, MYF(0), msg);
-      unlock_slave_threads(mi);
-      DBUG_RETURN(TRUE);
+      ret= TRUE;
+      goto err;
     }
   }
   /*
@@ -1491,10 +1519,13 @@ bool change_master(THD* thd, Master_info* mi)
   pthread_cond_broadcast(&mi->data_cond);
   pthread_mutex_unlock(&mi->rli.data_lock);
 
+err:
   unlock_slave_threads(mi);
   thd_proc_info(thd, 0);
-  my_ok(thd);
-  DBUG_RETURN(FALSE);
+  if (ret == FALSE)
+    my_ok(thd);
+  delete_dynamic(&lex_mi->repl_ignore_server_ids); //freeing of parser-time alloc
+  DBUG_RETURN(ret);
 }
 
 int reset_master(THD* thd)
