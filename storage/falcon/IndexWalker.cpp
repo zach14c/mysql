@@ -334,7 +334,7 @@ void IndexWalker::rotateLeft(void)
 
 	root->lower = this;
 	balance -= (1 + MAX(root->balance, 0));
-	validate ();
+//	validate ();
 	root->balance -= (1 - MIN(balance, 0));
 	RESET_PARENT(root);
 	root->parent = parent;
@@ -363,7 +363,7 @@ void IndexWalker::rotateRight(void)
 	root->higher = this;
 	balance += (1 - MIN(root->balance, 0));
 
-	validate ();
+//	validate ();
 	root->balance += (1 + MAX(balance, 0));
 	RESET_PARENT(root);
 	root->parent = parent;
@@ -454,7 +454,7 @@ void IndexWalker::remove(void)
 			{
 			parent->higher = next;
 			parent->rebalanceUpward(-1);
-            }	
+			}	
 		
 		return;	
 		}

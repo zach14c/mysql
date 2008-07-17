@@ -191,7 +191,7 @@ void StorageHandler::databaseDropped(StorageDatabase *storageDatabase, StorageCo
 		
 	if (storageDatabase)
 		{
-		Sync syncHash(&hashSyncObject, "StorageHandler::dropDatabase");
+		Sync syncHash(&hashSyncObject, "StorageHandler::databaseDropped(1)");
 		int slot = JString::hash(storageDatabase->name, databaseHashSize);
 		syncHash.lock(Exclusive);
 		StorageDatabase **ptr;
@@ -214,7 +214,7 @@ void StorageHandler::databaseDropped(StorageDatabase *storageDatabase, StorageCo
 		storageDatabase->release();
 		}
 
-	Sync sync(&syncObject, "StorageHandler::~dropDatabase");
+	Sync sync(&syncObject, "StorageHandler::databaseDropped(2)");
 	sync.lock(Exclusive);
 
 	for (int n = 0; n < connectionHashSize; ++n)
@@ -424,7 +424,7 @@ StorageDatabase* StorageHandler::getStorageDatabase(const char* dbName, const ch
 
 void StorageHandler::closeDatabase(const char* path)
 {
-	Sync sync(&hashSyncObject, "StorageHandler::getStorageDatabase");
+	Sync sync(&hashSyncObject, "StorageHandler::closeDatabase");
 	int slot = JString::hash(path, databaseHashSize);
 	sync.lock(Exclusive);
 	
@@ -543,7 +543,7 @@ int StorageHandler::deleteTablespace(const char* tableSpaceName)
 		{
 		CmdGen gen;
 		gen.gen("drop tablespace \"%s\"", tableSpaceName);
-		Sync sync(&dictionarySyncObject, "StorageHandler::createTablespace");
+		Sync sync(&dictionarySyncObject, "StorageHandler::deleteTablespace");
 		sync.lock(Exclusive);
 		Statement *statement = dictionaryConnection->createStatement();
 		statement->executeUpdate(gen.getString());
@@ -664,7 +664,7 @@ StorageTableShare* StorageHandler::createTable(const char* pathname, const char 
 void StorageHandler::addTable(StorageTableShare* table)
 {
 	int slot = JString::hash(table->pathName, tableHashSize);
-	Sync sync(&hashSyncObject, "StorageHandler::add");
+	Sync sync(&hashSyncObject, "StorageHandler::addTable");
 	sync.lock(Exclusive);
 	table->collision = tables[slot];
 	tables[slot] = table;
@@ -674,7 +674,7 @@ void StorageHandler::addTable(StorageTableShare* table)
 
 void StorageHandler::removeTable(StorageTableShare* table)
 {
-	Sync sync(&hashSyncObject, "StorageHandler::deleteTable");
+	Sync sync(&hashSyncObject, "StorageHandler::removeTable");
 	sync.lock(Exclusive);
 	int slot = JString::hash(table->pathName, tableHashSize);
 	
@@ -688,7 +688,7 @@ void StorageHandler::removeTable(StorageTableShare* table)
 
 StorageConnection* StorageHandler::getStorageConnection(StorageTableShare* tableShare, THD* mySqlThread, int mySqlThdId, OpenOption createFlag)
 {
-	Sync sync(&syncObject, "StorageConnection::getStorageConnection");
+	Sync sync(&syncObject, "StorageHandler::getStorageConnection");
 	
 	if (!defaultDatabase)
 		initialize();
@@ -921,7 +921,7 @@ void StorageHandler::getTransactionInfo(InfoTable* infoTable)
 
 void StorageHandler::getSerialLogInfo(InfoTable* infoTable)
 {
-	Sync sync(&hashSyncObject, "StorageHandler::getTransactionInfo");
+	Sync sync(&hashSyncObject, "StorageHandler::getSerialLogInfo");
 	sync.lock(Shared);
 	
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
@@ -965,7 +965,7 @@ void StorageHandler::initialize(void)
 	if (initialized)
 		return;
 	
-	Sync sync(&syncObject, "StorageConnection::initialize");
+	Sync sync(&syncObject, "StorageHandler::initialize");
 	sync.lock(Exclusive);
 	
 	if (initialized)

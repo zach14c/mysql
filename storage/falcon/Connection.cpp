@@ -923,7 +923,7 @@ void Connection::openDatabase(const char* dbName, const char *filename, const ch
 	if (filename)
 		IO::expandFileName(filename, sizeof(dbFileName), dbFileName);
 	else
-		{ 
+		{
 		if (!registry.findDatabase (dbName, sizeof (dbFileName), dbFileName))
 			throw SQLEXCEPTION (CONNECTION_ERROR, "can't find database \"%s\"", dbName);
 		}
@@ -968,7 +968,7 @@ void Connection::createDatabase(const char * dbName, Parameters * parameters, Th
 	const char *password = parameters->findValue ("password", "");
 	char dbFileName [1024];
 	const char *dbFile = registry.findDatabase (dbName, sizeof (dbFileName), dbFileName);
-	Sync sync (&databaseList, "Connection::createDatabase");
+	Sync sync (&databaseList, "Connection::createDatabase(1)");
 	sync.lock (Exclusive);
 	
 	if (dbFile)
@@ -1027,7 +1027,7 @@ Database* Connection::createDatabase(const char *dbName, const char *fileName, c
 	if (database)
 		throw SQLEXCEPTION (CONNECTION_ERROR, "database is already open");
 
-	Sync sync (&databaseList, "Connection::createDatabase");
+	Sync sync (&databaseList, "Connection::createDatabase(2)");
 	sync.lock (Exclusive);
 
 #ifndef STORAGE_ENGINE
@@ -1042,7 +1042,7 @@ Database* Connection::createDatabase(const char *dbName, const char *fileName, c
 				}
 
 #ifdef STORAGE_ENGINE
-        strcpy(dbFileName, fileName);
+	strcpy(dbFileName, fileName);
 #else
 	registry.defineDatabase (dbName, fileName);
 	

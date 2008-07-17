@@ -16,17 +16,17 @@ CREATE TABLE t1 (
   FULLTEXT KEY (a)
 ) ENGINE=MyISAM;
 
-# two-level entry, second-level tree with depth 2
+# two-level entry
 --disable_query_log
-let $1=260;
+let $1=196;
 while ($1)
 {
   eval insert t1 (a) values ('aaaxxx');
   dec $1;
 }
 
-# two-level entry, second-level tree has only one page
-let $1=255;
+# two-level entry
+let $1=99;
 while ($1)
 {
   eval insert t1 (a) values ('aaazzz');
@@ -34,7 +34,7 @@ while ($1)
 }
 
 # one-level entry (entries)
-let $1=250;
+let $1=98;
 while ($1)
 {
   eval insert t1 (a) values ('aaayyy');
@@ -47,6 +47,10 @@ repair table t1 quick;
 check table t1;
 optimize table t1; # BUG#5327 - mi_sort_index() of 2-level tree
 check table t1;
+flush table t1;
+
+--replace_regex / +[0-9a-f]{4} / / / [0-9]+\.[0-9]+ / /
+--exec $MYISAM_FTDUMP -d $MYSQLTEST_VARDIR/master-data/test/t1 1
 
 select count(*) from t1 where match a against ('aaaxxx');
 select count(*) from t1 where match a against ('aaayyy');
@@ -110,7 +114,6 @@ CREATE TABLE t1 (
 # 2-level tree created by mi_write
 #
 
-# two-level entry, second-level tree with depth 2
 --disable_query_log
 let $1=260;
 while ($1)
@@ -131,6 +134,11 @@ while ($1)
   dec $1;
 }
 --enable_query_log
+
+flush table t1;
+
+--replace_regex / +[0-9a-f]{4} / / / [0-9]+\.[0-9]+ / /
+--exec $MYISAM_FTDUMP -d $MYSQLTEST_VARDIR/master-data/test/t1 1
 
 select count(*) from t1 where match a against ('aaaxxx');
 select count(*) from t1 where match a against ('aaayyy');

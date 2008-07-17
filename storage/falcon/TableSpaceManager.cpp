@@ -86,7 +86,7 @@ void TableSpaceManager::add(TableSpace *tableSpace)
 
 TableSpace* TableSpaceManager::findTableSpace(const char *name)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace");
+	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(1)");
 	syncObj.lock(Shared);
 	TableSpace *tableSpace;
 
@@ -101,7 +101,7 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		if (tableSpace->name == name)
 			return tableSpace;
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = database->prepareStatement(
@@ -314,10 +314,10 @@ void TableSpaceManager::dropDatabase(void)
 
 void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace");
+	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(1)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = database->prepareStatement(

@@ -1227,7 +1227,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 	RecordVersion *record = NULL;
 	bool updated = false;
 	int recordNumber = oldRecord->recordNumber;
-	Sync scavenge(&syncScavenge, "Table::update(2)");
+	Sync scavenge(&syncScavenge, "Table::update(1)");
 	//scavenge.lock(Shared);
 	
 	try
@@ -3064,7 +3064,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 
 	RecordVersion *record = NULL;
 	bool updated = false;
-	Sync scavenge(&syncScavenge, "Table::update");
+	Sync scavenge(&syncScavenge, "Table::update(2)");
 	//scavenge.lock(Shared);
 	
 	if (candidate->state == recLock && candidate->getTransaction() == transaction)

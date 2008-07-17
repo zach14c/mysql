@@ -90,7 +90,7 @@ void RepositoryVolume::storeBlob(BlobReference *blob, Transaction *transaction)
 
 void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *transaction)
 {
-	Sync sync (&syncObject, "RepositoryVolume::getBlob");
+	Sync sync (&syncObject, "RepositoryVolume::storeBlob");
 	sync.lock (Shared);
 
 	while (!isWritable)
@@ -216,7 +216,7 @@ void RepositoryVolume::makeWritable()
 	if (isWritable)
 		return;
 
-	Sync sync(&syncObject, "RepositoryVolume::getBlob");
+	Sync sync(&syncObject, "RepositoryVolume::makeWritable");
 	sync.lock(Exclusive);
 
 	if (isWritable)
@@ -399,7 +399,7 @@ int64 RepositoryVolume::getRepositorySize()
 
 void RepositoryVolume::deleteBlob(int64 blobId, Transaction *transaction)
 {
-	Sync sync (&syncObject, "RepositoryVolume::getBlob");
+	Sync sync (&syncObject, "RepositoryVolume::deleteBlob");
 	sync.lock (Shared);
 
 	while (!isWritable)
@@ -464,7 +464,7 @@ void RepositoryVolume::scavenge()
 	if (!isOpen || lastAccess + TIMEOUT > database->timestamp)
 		return;
 
-	Sync sync (&syncObject, "RepositoryVolume::getBlob");
+	Sync sync (&syncObject, "RepositoryVolume::scavenge");
 	sync.lock (Exclusive);
 
 	if (!isOpen || lastAccess + TIMEOUT > database->timestamp)

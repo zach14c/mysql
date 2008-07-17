@@ -56,7 +56,7 @@ int silent_exec(THD *thd, String *query)
   thd->query=         query->c_ptr();
   thd->query_length=  query->length();
 
-  thd->set_time(time(NULL));
+  thd->set_time();
   pthread_mutex_lock(&::LOCK_thread_count);
   thd->query_id= ::next_query_id();
   pthread_mutex_unlock(&::LOCK_thread_count);
@@ -470,12 +470,8 @@ public:
   DatabaseObj(const String *db_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_db_name; }
@@ -490,6 +486,8 @@ private:
   String m_db_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -512,12 +510,8 @@ public:
            bool table_is_view);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_table_name; }
@@ -534,6 +528,8 @@ private:
   bool m_table_is_view;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -559,12 +555,8 @@ public:
              const String *trigger_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_trigger_name; }
@@ -580,6 +572,8 @@ private:
   String m_trigger_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -601,12 +595,8 @@ public:
                 const String *stored_proc_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_stored_proc_name; }
@@ -622,6 +612,8 @@ private:
   String m_stored_proc_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -643,12 +635,8 @@ public:
                 const String *stored_func_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_stored_func_name; }
@@ -664,6 +652,8 @@ private:
   String m_stored_func_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -685,12 +675,8 @@ public:
            const String *event_name);
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
-
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
-
-  virtual bool execute(THD *thd);
 
   const String* get_name()
   { return &m_event_name; }
@@ -706,6 +692,8 @@ private:
   String m_event_name;
 
   bool drop(THD *thd);
+  virtual bool do_serialize(THD *thd, String *serialization);
+  virtual bool do_execute(THD *thd);
 
 private:
   // These attributes are to be used only for materialization.
@@ -725,12 +713,12 @@ public:
   TablespaceObj(const String *ts_name);
   
 public:
-  virtual bool serialize(THD *thd, String *serialization);
+  virtual bool do_serialize(THD *thd, String *serialization);
 
   virtual bool materialize(uint serialization_version,
                            const String *serialization);
 
-  virtual bool execute(THD *thd);
+  virtual bool do_execute(THD *thd);
 
   const String *describe();
 
@@ -1346,6 +1334,7 @@ ViewBaseObjectsIterator::create(THD *thd,
                                const String *view_name,
                                IteratorType iterator_type)
 {
+  uint table_count; // Passed to open_tables(). Not used.
   THD *my_thd= new THD();
 
   my_thd->security_ctx= thd->security_ctx;
@@ -1361,8 +1350,9 @@ ViewBaseObjectsIterator::create(THD *thd,
                            ((String *) view_name)->c_ptr_safe(),
                            TL_READ);
 
-  if (open_and_lock_tables(my_thd, tl))
+  if (open_tables(my_thd, &tl, &table_count, 0))
   {
+    close_thread_tables(my_thd);
     delete my_thd;
     thd->store_globals();
 
@@ -1389,7 +1379,10 @@ ViewBaseObjectsIterator::create(THD *thd,
 
       if (iterator_type == GET_BASE_TABLES && tl2->view ||
           iterator_type == GET_BASE_VIEWS && !tl2->view)
+      {
+        delete tnk;
         continue;
+      }
 
       if (!hash_search(table_names,
                        (uchar *) tnk->key.c_ptr_safe(),
@@ -1404,6 +1397,7 @@ ViewBaseObjectsIterator::create(THD *thd,
     }
   }
 
+  close_thread_tables(my_thd);
   delete my_thd;
 
   thd->store_globals();
@@ -1597,15 +1591,13 @@ DatabaseObj::DatabaseObj(const String *db_name)
    @retval FALSE on success
    @retval TRUE on error
 */
-bool DatabaseObj::serialize(THD *thd, String *serialization)
+bool DatabaseObj::do_serialize(THD *thd, String *serialization)
 {
   HA_CREATE_INFO create;
   DBUG_ENTER("DatabaseObj::serialize()");
   DBUG_PRINT("DatabaseObj::serialize", ("name: %s", m_db_name.c_ptr()));
 
-  if ((m_db_name == String (INFORMATION_SCHEMA_NAME.str, system_charset_info))
-      ||
-      (my_strcasecmp(system_charset_info, m_db_name.c_ptr(), "mysql") == 0))
+  if (is_internal_db_name(&m_db_name))
   {
     DBUG_PRINT("backup",(" Skipping internal database %s", m_db_name.c_ptr()));
     DBUG_RETURN(TRUE);
@@ -1669,7 +1661,7 @@ bool DatabaseObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool DatabaseObj::execute(THD *thd)
+bool DatabaseObj::do_execute(THD *thd)
 {
   DBUG_ENTER("DatabaseObj::execute()");
   drop(thd);
@@ -1740,7 +1732,7 @@ bool TableObj::serialize_view(THD *thd, String *serialization)
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TableObj::serialize(THD *thd, String *serialization)
+bool TableObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= 0;
   LEX_STRING tname, dbname;
@@ -1785,8 +1777,24 @@ bool TableObj::serialize(THD *thd, String *serialization)
   */
   if (m_table_is_view)
   {
+    View_creation_ctx *creation_ctx= table_list->view_creation_ctx;
+
+    /*
+      append character set client charset information
+    */
+    serialization->append("SET CHARACTER_SET_CLIENT = '");
+    serialization->append(creation_ctx->get_client_cs()->csname);
+    serialization->append("'; ");
+
+    /*
+      append collation_connection information
+    */
+    serialization->append("SET COLLATION_CONNECTION = '");
+    serialization->append(creation_ctx->get_connection_cl()->name);
+    serialization->append("'; ");
+
     table_list->view_db= dbname;
-    serialization->set_charset(table_list->view_creation_ctx->get_client_cs());
+    serialization->set_charset(creation_ctx->get_client_cs());
   }
 
   /*
@@ -1834,7 +1842,7 @@ bool TableObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TableObj::execute(THD *thd)
+bool TableObj::do_execute(THD *thd)
 {
   DBUG_ENTER("TableObj::execute()");
   drop(thd);
@@ -1897,7 +1905,7 @@ TriggerObj::TriggerObj(const String *db_name,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TriggerObj::serialize(THD *thd, String *serialization)
+bool TriggerObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   uint num_tables;
@@ -2025,7 +2033,7 @@ bool TriggerObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TriggerObj::execute(THD *thd)
+bool TriggerObj::do_execute(THD *thd)
 {
   DBUG_ENTER("TriggerObj::execute()");
   drop(thd);
@@ -2087,7 +2095,7 @@ StoredProcObj::StoredProcObj(const String *db_name,
 
   @returns Error status.
 */
-bool StoredProcObj::serialize(THD *thd, String *serialization)
+bool StoredProcObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   DBUG_ENTER("StoredProcObj::serialize()");
@@ -2133,7 +2141,7 @@ bool StoredProcObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool StoredProcObj::execute(THD *thd)
+bool StoredProcObj::do_execute(THD *thd)
 {
   DBUG_ENTER("StoredProcObj::execute()");
   drop(thd);
@@ -2197,7 +2205,7 @@ StoredFuncObj::StoredFuncObj(const String *db_name,
     @retval FALSE on success
     @retval TRUE on error
  */
-bool  StoredFuncObj::serialize(THD *thd, String *serialization)
+bool  StoredFuncObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   DBUG_ENTER("StoredFuncObj::serialize()");
@@ -2243,7 +2251,7 @@ bool StoredFuncObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool StoredFuncObj::execute(THD *thd)
+bool StoredFuncObj::do_execute(THD *thd)
 {
   DBUG_ENTER("StoredFuncObj::execute()");
   drop(thd);
@@ -2307,7 +2315,7 @@ EventObj::EventObj(const String *db_name,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool EventObj::serialize(THD *thd, String *serialization)
+bool EventObj::do_serialize(THD *thd, String *serialization)
 {
   bool ret= false;
   Open_tables_state open_tables_backup;
@@ -2409,7 +2417,7 @@ bool EventObj::materialize(uint serialization_version,
     @retval FALSE on success
     @retval TRUE on error
 */
-bool EventObj::execute(THD *thd)
+bool EventObj::do_execute(THD *thd)
 {
   DBUG_ENTER("EventObj::execute()");
   drop(thd);
@@ -2470,7 +2478,7 @@ TablespaceObj::TablespaceObj(const String *ts_name)
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TablespaceObj::serialize(THD *thd, String *serialization)
+bool TablespaceObj::do_serialize(THD *thd, String *serialization)
 {
   DBUG_ENTER("TablespaceObj::serialize()");
   build_serialization();
@@ -2565,7 +2573,7 @@ const String *TablespaceObj::build_serialization()
     @retval FALSE on success
     @retval TRUE on error
 */
-bool TablespaceObj::execute(THD *thd)
+bool TablespaceObj::do_execute(THD *thd)
 {
   DBUG_ENTER("TablespaceObj::execute()");
   build_serialization(); // Build the CREATE command.
@@ -2715,9 +2723,9 @@ Obj *materialize_tablespace(const String *ts_name,
 bool is_internal_db_name(const String *db_name)
 {
   return
-    my_strcasecmp(system_charset_info,
-                  ((String *) db_name)->c_ptr_safe(),
-                  "mysql") == 0 ||
+    my_strcasecmp(lower_case_table_names ? system_charset_info :
+                  &my_charset_bin, ((String *) db_name)->c_ptr_safe(),
+                  MYSQL_SCHEMA_NAME.str) == 0 ||
     my_strcasecmp(system_charset_info,
                   ((String *) db_name)->c_ptr_safe(),
                   "information_schema") == 0 ||
@@ -3043,14 +3051,15 @@ const String *describe_tablespace(Obj *ts)
 
    @param[in] thd  current thread
 
-   @retval my_bool success = TRUE, error = FALSE
+   @retval FALSE on success.
+   @retval TRUE on error.
   */
 bool ddl_blocker_enable(THD *thd)
 {
   DBUG_ENTER("ddl_blocker_enable()");
   if (!DDL_blocker->block_DDL(thd))
-    DBUG_RETURN(FALSE);
-  DBUG_RETURN(TRUE);
+    DBUG_RETURN(TRUE);
+  DBUG_RETURN(FALSE);
 }
 
 /**
@@ -3093,6 +3102,110 @@ void ddl_blocker_exception_off(THD *thd)
   DBUG_ENTER("ddl_blocker_exception_off()");
   thd->DDL_exception= FALSE;
   DBUG_VOID_RETURN;
+}
+
+/**
+  Build a table list from a list of tables as class Obj.
+
+  This method creates a TABLE_LIST from a List<> of type Obj.
+
+  param[IN]  tables    The list of tables
+  param[IN]  lock      The desired lock type
+
+  @returns TABLE_LIST *
+
+  @note Caller must free memory.
+*/
+TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
+                                          thr_lock_type lock)
+{
+  TABLE_LIST *tl= NULL;
+  Obj *tbl= NULL;
+  DBUG_ENTER("Name_locker::build_table_list()");
+  
+  List_iterator<Obj> it(*tables);
+  while ((tbl= it++))
+  {
+    TABLE_LIST *ptr= (TABLE_LIST*)my_malloc(sizeof(TABLE_LIST), MYF(MY_WME));
+    DBUG_ASSERT(ptr);  // FIXME: report error instead
+    bzero(ptr, sizeof(TABLE_LIST));
+
+    ptr->alias= ptr->table_name= const_cast<char*>(tbl->get_name()->ptr());
+    ptr->db= const_cast<char*>(tbl->get_db_name()->ptr());
+    ptr->lock_type= lock;
+
+    // and add it to the list
+
+    ptr->next_global= ptr->next_local=
+      ptr->next_name_resolution_table= tl;
+    tl= ptr;
+    tl->table= ptr->table;
+  }
+
+  DBUG_RETURN(tl);
+}
+
+void Name_locker::free_table_list(TABLE_LIST *tl)
+{
+  TABLE_LIST *ptr= tl;
+
+  while (ptr)
+  {
+    tl= tl->next_global;
+    my_free(ptr, MYF(0));
+    ptr= tl;
+  }
+}
+
+/**
+  Gets name locks on table list.
+
+  This method attempts to take an exclusive name lock on each table in the
+  list. It does nothing if the table list is empty.
+
+  @param[IN] tables  The list of tables to lock.
+  @param[IN] lock    The type of lock to take.
+
+  @returns 0 if success, 1 if error
+*/
+int Name_locker::get_name_locks(List<Obj> *tables, thr_lock_type lock)
+{
+  TABLE_LIST *ltable= 0;
+  int ret= 0;
+  DBUG_ENTER("Name_locker::get_name_locks()");
+  /*
+    Convert List<Obj> to TABLE_LIST *
+  */
+  m_table_list= build_table_list(tables, lock);
+  if (m_table_list)
+  {
+    if (lock_table_names(m_thd, m_table_list))
+      ret= 1;
+    pthread_mutex_lock(&LOCK_open);
+    for (ltable= m_table_list; ltable; ltable= ltable->next_local)
+      tdc_remove_table(m_thd, TDC_RT_REMOVE_ALL, ltable->db,
+                       ltable->table_name);
+  }
+  DBUG_RETURN(ret);
+}
+
+/*
+  Releases name locks on table list.
+
+  This method releases the name locks on the table list. It does nothing if
+  the table list is empty.
+
+  @returns 0 if success, 1 if error
+*/
+int Name_locker::release_name_locks()
+{
+  DBUG_ENTER("Name_locker::release_name_locks()");
+  if (m_table_list)
+  {
+    pthread_mutex_unlock(&LOCK_open);
+    unlock_table_names(m_thd);
+  }
+  DBUG_RETURN(0);
 }
 
 } // obs namespace

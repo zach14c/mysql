@@ -976,6 +976,24 @@ well_formed_copy_nchars(CHARSET_INFO *to_cs,
         uint pad_length= to_cs->mbminlen - from_offset;
         bzero(to, pad_length);
         memmove(to + pad_length, from, from_offset);
+        /*
+          In some cases left zero-padding can create an incorrect character.
+          For example:
+            INSERT INTO t1 (utf32_column) VALUES (0x110000);
+          We'll pad the value to 0x00110000, which is a wrong UTF32 sequence!
+          The valid characters range is limited to 0x00000000..0x0010FFFF.
+          
+          Make sure we didn't pad to an incorrect character.
+        */
+        if (to_cs->cset->well_formed_len(to_cs,
+                                         to, to + to_cs->mbminlen, 1,
+                                         &well_formed_error) !=
+                                         to_cs->mbminlen)
+        {
+          *from_end_pos= *well_formed_error_pos= from;
+          *cannot_convert_error_pos= NULL;
+          return 0;
+        }
         nchars--;
         from+= from_offset;
         from_length-= from_offset;

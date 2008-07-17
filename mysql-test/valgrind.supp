@@ -150,6 +150,14 @@
    fun:__errno_location
 }
 
+{
+    memory leak in dlclose called from from udf_free
+    Memcheck:Leak
+    fun:calloc
+    fun:_dlerror_run
+    fun:dlclose
+    fun:udf_free
+}
 
 #
 # Warnings in libz becasue it works with aligned memory(?)

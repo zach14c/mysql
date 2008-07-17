@@ -27,24 +27,13 @@
 #
 # TODO : Add a native driver to the test when one becomes available
 #
-# We use a breakpoint named "backup_commit_blocker" which is placed
-# strategically in the code to allow the threads to pause at the 
-# corresponding location for those goals above.
-#
-# Notes
-#   You must use a dedicated connection for getting and releasing locks.
-# Do not issue a get_lock() or release_lock() in the same connection
-# (thread) as code that calls BACKUP_BREAKPOINT(). Using the same connection
-# to get/release locks and run code that issues BACKUP_BREAKPOINTs will result
-# in an assertion using DEBUG_ASSERT(thd->ull == NULL) from debug_sync_point()
-# in item_func.cc.
-#
 
 --source include/have_innodb.inc
---source include/have_debug.inc
+--source include/have_debug_sync.inc
 --source include/not_embedded.inc
 
 --disable_warnings
+SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS bup_commit_blocker;
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
@@ -59,7 +48,7 @@ CREATE DATABASE bup_commit_blocker;
 # con2 - used for setting up transactions in progress
 # con3 - used for setting up transactions in commit
 # con4 - used for setting up transactions about to start
-# con5 - used for setting and releasing breakpoints
+# con5 - used to show status
 # con6 - used for setting up non-transactions in progress
 # con7 - used for setting up non-transactions about to start
 #
@@ -72,10 +61,16 @@ connect (con5,localhost,root,,);
 connect (con6,localhost,root,,);
 connect (con7,localhost,root,,);
 
-connection con1;
+#
+# Note: Originally we used SELECT ... FROM INFORMATION_SCHEMA.PROCESSLIST; to show status of 
+# the various connections participating in the test. But INFORMATION_SCHEMA.PROCESSLIST implementation
+# proved to be not relaiable. From time to time (nondeterminisrtically) test hanged on these SELECTs.
+# As showing the status is not essential for the test (we test correctness by checking the contents of
+# the created backup image), the selects are commented out now. They can be re-enabled when
+# I_S.PROCESSLIST is in a better shape.
+#
 
-# Setup the server to use the backup breakpoints
-SET GLOBAL debug="d,backup_debug:d,backup";
+connection con1;
 
 #
 # Test 1 - transactional statements only
@@ -96,16 +91,12 @@ SET GLOBAL debug="d,backup_debug:d,backup";
 #     |       |      BEGIN      |        |
 #     |       |     INSERT t2   |        |
 #     |       |     INSERT t2   |        |
-#     |       |        |        |  lock("commit_blocker_step_1");
+#     |       |        |        |    show status
 #   BACKUP    |        |        |        |
-#     |       |        |        |  <wait for locks>
 #     |       |      COMMIT     |        |
-#     |       |        |        |  <wait for locks>
-#     |       |        |        |  lock("backup_commit_blocker");
-#     |       |        |        |  <wait for locks>
+#     |       |        |        |    show status
 #     |       |        |      BEGIN      |
-#     |       |        |        |  <wait for locks>
-#     |       |        |        |  <release locks>
+#     |       |        |        |    show status
 #     |    DELETE t1   |        |        |
 #     |     COMMIT     |        |        |
 #     |       |      <...>      |        |
@@ -163,104 +154,102 @@ BEGIN;
   INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 04 Some data to test");
   INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 05 Some data to test");
 
-connection con5;
-
-# Set the breakpoint for the commit blocker.
---echo con5: Getting lock on commit blocker.
-SELECT get_lock("commit_blocker_step_1", 0);
-
-# Start the backup and allow it to break on lock.
-
 connection con1;
 
 #
 # We must start the backup and allow it to gather the metadata first.
-# We stop (with the lock) the backup after the metadata but before the
-# commit blocker.
+# We stop (with a sync point) the backup after the metadata but before
+# the commit blocker.
 #
+--echo con1: Activate synchronization points for BACKUP.
+# Before blocking commits, pause to show processlist state.
+# Before going to wait for the protection against global read lock to
+# disappear, signal about the wait, so that another thread can continue.
+# When COMMIT finishes, it releases the protection against global read lock,
+# which would allow BACKUP to continue while COMMIT also continues and
+# signals "commit_done". It is important that BACKUP does not run in
+# parallel and send another signal without waiting for the commit_done
+# signal to be processed. So BACKUP itself has to wait for that signal
+# after awaking and taking the global read lock. Only then BACKUP
+# can proceed and send a signal telling that it took the global read
+# lock. Unfortunately DEBUG_SYNC does not allow a sync point to emit a
+# signal after a wait_for action. So we need to send the signal in a later
+# sync point. For this test it is not important where this signal is sent,
+# as long as it is sent while BACKUP holds the global read lock.
+# Here we do it "before_backup_unblock_commit", where we have to
+# synchronize anyway.
+SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
+                 WAIT_FOR bup_go_read_lock';
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
+                 WAIT_FOR finish';
 --echo con1: Backing up database -- will block with lock
 send BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: commit_blocker_step_1"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+--echo con5: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_commit_block';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con3;
 
---echo con3: Starting commit -- will block with lock
+--echo con3: Activate synchronization points for COMMIT.
+SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
+                 WAIT_FOR commit_go_done';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
+--echo con3: Starting commit -- will block on sync point
 send COMMIT;
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: commit_blocker_step_1"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "COMMIT%";
---source include/wait_condition.inc
+--echo con5: Wait for COMMIT to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR commit_read_locked';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
 
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
+--echo con5: Let BACKUP run until the next sync point.
+SET DEBUG_SYNC= 'now SIGNAL bup_go_read_lock WAIT_FOR bup_read_lock';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
-# Set the breakpoint for the commit blocker.
---echo con5: Getting lock on commit blocker.
-SELECT get_lock("backup_commit_blocker", 0);
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "COMMIT%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
+--echo con5: Let COMMIT continue until end of statement.
+--echo con5: The completed COMMIT implicitly wakes BACKUP.
+--echo con5: So wait for BACKUP to reach the next synchronization point.
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con4;
 
---echo con4: Starting begin -- will block with lock
+--echo con4: Activate synchronization point for BEGIN.
+SET DEBUG_SYNC= 'before_begin_trans SIGNAL begin_starting
+                 WAIT_FOR finish';
+--echo con4: Starting begin -- will block on sync point
 --echo Assumption (c): TRX not started is not included in backup
 send BEGIN;
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BEGIN%";
---source include/wait_condition.inc
+--echo con5: Wait for BEGIN to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR begin_starting';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BEGIN%";
 
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BEGIN%";
+--echo con5: Sending finish signal to wake them all.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 
---echo con5: Releasing lock
-SELECT release_lock("backup_commit_blocker");
-
-# Reconnect to con2, con3, and con4 and allow them to finish.
+# Reconnect to connections and fetch their results.
 
 connection con2;
 
@@ -269,18 +258,21 @@ connection con2;
 COMMIT;
 
 connection con3;
---echo con3: Completing transaction
+
+--echo con3: Fetch COMMIT result
 reap;
 
 connection con4;
+
+--echo con4: Fetch BEGIN result and completing transaction
 reap;
   UPDATE bup_commit_blocker.t3 SET col_a = "con4: 05 CHANGED" WHERE col_a LIKE '05%';
   UPDATE bup_commit_blocker.t3 SET col_a = "con4: 06 CHANGED" WHERE col_a LIKE '06%';
 COMMIT;
 
-# Reconnect to con1 and let backup finish.
-
 connection con1;
+
+--echo con1: Fetch BACKUP result
 --replace_column 1 #
 reap;
 
@@ -324,6 +316,7 @@ SELECT count(*) FROM bup_commit_blocker.t3 WHERE col_a like 'con4%';
 DROP DATABASE bup_commit_blocker;
 
 remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
+SET DEBUG_SYNC= 'RESET';
 
 #
 # Test 2 - non-transactional statements only
@@ -333,23 +326,29 @@ remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
 --echo Starting Test 2
 --echo 
 
+# Ingo: DELETE was disabled before converting the test from
+#       BACKUP_BREAKPOINT to DEBUG_SYNC. I left it disabled
+#       as an attempt to enable it made an infinite loop in
+#       write_table_data() in the loop:
+#    while (sch.prepare_count > 0)
+#    if (sch.step())
+#      goto error;
+#        sch.prepare_count did not change from being 1.
+#        When this is fixed, please remove this comment.
+
 #
 # Test 2 sequence diagram (not UML)
 #
 #   con1     con2     con3     con4     con5     con6       con7
 #  (setup)    |        |        |        |        |          |
 #     |       |        |        |        |        |          |
-#     |       |        |        |  lock("backup_commit_blocker");
-#     |       |        |        |        |    DELETE t4      |
-#     |       |        |        |  <wait for locks>          |
+#     |       |        |        |        |   #DELETE t4      |
+#     |       |        |        |   #show status  |          |
 #   BACKUP    |        |        |        |        |          |
-#     |       |        |        |  <wait for locks>          |
-#     |       |        |        |  lock("commit_blocker_step_4");
-#     |       |        |        |  <wait for locks>          |
-#     |       |        |        |    (results)    |          |
+#     |       |        |        |    show status  |          |
+#     |       |        |        |        |        |       (results)
 #     |       |        |        |        |        |       UPDATE t5
-#     |       |        |        |  <wait for locks>          |
-#     |       |        |        |  <release locks>|          |
+#     |       |        |        |    show status  |          |
 #   <...>     |        |        |        |      <...>      <...>
 # (results)   |        |        |        |        |          |
 #
@@ -372,52 +371,37 @@ INSERT INTO bup_commit_blocker.t5 VALUES (10), (20), (30), (40), (50);
 #SELECT * FROM bup_commit_blocker.t4;
 SELECT * FROM bup_commit_blocker.t5;
 
-connection con5;
-
-# Set the breakpoint for the commit blocker.
---echo con5: Getting lock on commit blocker.
-SELECT get_lock("backup_commit_blocker", 0);
-
-connection con6;
-
+#connection con6;
+#
+#--echo con6: Activate synchronization point for DELETE.
+#SET DEBUG_SYNC= 'at_delete_end SIGNAL del_at_end WAIT_FOR finish';
 #--echo con6: Starting non-trx in progress -- will block with lock
 #--echo Assumption (d): non-TRX in progress is included in backup
 #send DELETE FROM bup_commit_blocker.t4 WHERE col_a <= 2;
-
-connection con5;
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-#let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-#                      FROM INFORMATION_SCHEMA.PROCESSLIST
-#                      WHERE info LIKE "DELETE%";
-#--source include/wait_condition.inc
+#
+#connection con5;
+#
+#--echo con5: Wait for DELETE to reach its synchronization point.
+#SET DEBUG_SYNC= 'now WAIT_FOR del_at_end';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "DELETE%";
 
 connection con1;
 
+--echo con1: Activate synchronization point for BACKUP.
+SET DEBUG_SYNC= 'before_backup_data_unlock SIGNAL bup_data_unlock
+                 WAIT_FOR finish';
 --echo con1: Backing up database -- will block with lock
 send BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
 
 connection con5;
 
-# Set the breakpoint for the commit blocker.
-#
-# This allows the statement that was inprogress to finish and unblock the 
-# backup which is waiting on open_and_lock_tables.
-#
---echo con5: Getting lock on commit blocker.
-SELECT get_lock("commit_blocker_step_4", 0);
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: commit_blocker_step_4"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+--echo con5: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_data_unlock';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con7;
 
@@ -425,41 +409,38 @@ connection con7;
 #SELECT * FROM bup_commit_blocker.t4;
 SELECT * FROM bup_commit_blocker.t5;
 
---echo con7: Starting non-trx about to start -- will block with lock
+--echo con7: Activate synchronization point for UPDATE.
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL upd_read_lock';
+--echo con7: Starting non-trx about to start
 --echo Assumption (e): non-TRX not started is not included in backup
 send UPDATE bup_commit_blocker.t5 SET col_a = 333 WHERE col_a = 30;
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "Waiting for release of readlock"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "UPDATE%";
---source include/wait_condition.inc
+--echo con5: Wait for UPDATE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR upd_read_lock';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "UPDATE%";
 
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "UPDATE%";
+--echo con5: Sending finish signal to wake them all.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 
---echo con5: Releasing locks
-SELECT release_lock("commit_blocker_step_4");
-SELECT release_lock("backup_commit_blocker");
+# Reconnect to con6 and con7 and fetch their results.
 
-# Reconnect to con6 and con7 and allow them to finish.
-
-connection con6;
-
---echo con6: Completing statement
+#connection con6;
+#
+#--echo con6: Fetch DELETE result
 #reap;
 
 connection con7;
---echo con7: Completing statement
+
+--echo con7: Fetch UPDATE result
 reap;
 
-# Reconnect to con1 and let backup finish.
-
 connection con1;
+
+--echo con1: Fetch BACKUP result
 --replace_column 1 #
 reap;
 
@@ -497,6 +478,7 @@ SELECT count(*) FROM bup_commit_blocker.t5 WHERE col_a = 333;
 DROP DATABASE bup_commit_blocker;
 
 remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
+SET DEBUG_SYNC= 'RESET';
 
 #
 # Test 3 - mix of both transactional and non-transactional statements
@@ -517,20 +499,17 @@ remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
 #     |       |      BEGIN      |        |        |          |
 #     |       |     INSERT t2   |        |        |          |
 #     |       |     INSERT t2   |        |        |          |
-#     |       |        |        |  lock("commit_blocker_step_1");
 #   BACKUP    |        |        |        |        |          |
-#     |       |        |        |        |     INSERT t4     |
-#     |       |        |        |  <wait for locks>          |
+#     |       |        |        |        |    #INSERT t4     |
+#     |       |        |        |    show status  |          |
 #     |       |      COMMIT     |        |        |          |
-#     |       |        |        |  <wait for locks>          |
-#     |       |        |        |  lock("backup_commit_blocker");
-#     |       |        |        |  <wait for locks>          |
+#     |       |        |        |    show status  |          |
 #     |       |        |      BEGIN      |        |          |
-#     |       |        |        |  <wait for locks>          |
+#     |       |        |        |    show status  |          |
 #     |       |        |        |        |        |      (results)
 #     |       |        |        |        |        |       DELETE t5
-#     |       |        |        |  <wait for locks>          |
-#     |       |        |        |  <release locks>|          |
+#     |       |        |        |    show status  |          |
+#     |       |        |        |     wake all    |          |
 #     |    DELETE t1   |        |        |        |          |
 #     |     COMMIT     |        |        |        |          |
 #     |       |      <...>      |        |        |          |
@@ -598,124 +577,112 @@ BEGIN;
   INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 04 Some data to test");
   INSERT INTO bup_commit_blocker.t2 VALUES ("con3: 05 Some data to test");
 
-connection con5;
-
-# Set the breakpoint for the commit blocker.
---echo con5: Getting lock on commit blocker.
-SELECT get_lock("commit_blocker_step_1", 0);
-
-# Start the backup and allow it to break on lock.
-
 connection con1;
 
 #
 # We must start the backup and allow it to gather the metadata first.
-# We stop (with the lock) the backup after the metadata but before the
-# commit blocker.
+# We stop (with a sync point) the backup after the metadata but before
+# the commit blocker.
 #
+--echo con1: Activate synchronization points for BACKUP.
+# Before blocking commits, pause to show processlist state.
+# Before going to wait for the protection against global read lock to
+# disappear, signal about the wait, so that another thread can continue.
+# When COMMIT finishes, it releases the protection against global read lock,
+# which would allow BACKUP to continue while COMMIT also continues and
+# signals "commit_done". It is important that BACKUP does not run in
+# parallel and send another signal without waiting for the commit_done
+# signal to be processed. So BACKUP itself has to wait for that signal
+# after awaking and taking the global read lock. Only then BACKUP
+# can proceed and send a signal telling that it took the global read
+# lock. Unfortunately DEBUG_SYNC does not allow a sync point to emit a
+# signal after a wait_for action. So we need to send the signal in a later
+# sync point. For this test it is not important where this signal is sent,
+# as long as it is sent while BACKUP holds the global read lock.
+# Here we do it "before_backup_unblock_commit", where we have to
+# synchronize anyway.
+SET DEBUG_SYNC= 'before_commit_block SIGNAL bup_commit_block
+                 WAIT_FOR bup_go_read_lock';
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL bup_read_lock';
+SET DEBUG_SYNC= 'before_backup_data_lock WAIT_FOR commit_done';
+SET DEBUG_SYNC= 'before_backup_unblock_commit SIGNAL bup_read_locked
+                 WAIT_FOR finish';
 --echo con1: Backing up database -- will block with lock
 send BACKUP DATABASE bup_commit_blocker TO "bup_commit_blocker.bak";
 
-connection con6;
-
+#connection con6;
+#
+#--echo con6: Activate synchronization point for INSERT.
+#SET DEBUG_SYNC= 'after_insert_locked_tables SIGNAL insert_table_locked
+#                 WAIT_FOR finish';
 #--echo con6: Starting non-trx in progress -- will block
 #--echo Assumption (d): non-TRX in progress is included in backup
 #send INSERT INTO bup_commit_blocker.t4 VALUES (31), (32), (33);
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: commit_blocker_step_1"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE%";
---source include/wait_condition.inc
+--echo con5: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_commit_block';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-
-# Wait for lock to be acquired and execution to reach breakpoint
-#--echo con5: Checking lock
-#let $wait_condition = SELECT state = "debug_sync_point: commit_blocker_step_1"
-#                      FROM INFORMATION_SCHEMA.PROCESSLIST
-#                      WHERE info LIKE "INSERT INTO bup_commit_blocker.t4%";
-#--source include/wait_condition.inc
+#--echo con5: Wait for INSERT to reach its synchronization point.
+#SET DEBUG_SYNC= 'now WAIT_FOR insert_table_locked';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con3;
 
---echo con3: Starting commit -- will block with lock
+--echo con3: Activate synchronization points for COMMIT.
+SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_read_locked
+                 WAIT_FOR commit_go_done';
+SET DEBUG_SYNC= 'after_commit SIGNAL commit_done WAIT_FOR finish';
+--echo con3: Starting commit -- will block on sync point
 send COMMIT;
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: commit_blocker_step_1"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "COMMIT%";
---source include/wait_condition.inc
+--echo con5: Wait for COMMIT to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR commit_read_locked';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
 
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
+--echo con5: Let BACKUP run until the next sync point.
+SET DEBUG_SYNC= 'now SIGNAL bup_go_read_lock WAIT_FOR bup_read_lock';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
-# Set the breakpoint for the commit blocker.
---echo con5: Getting lock on commit blocker.
-SELECT get_lock("backup_commit_blocker", 0);
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "COMMIT%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "COMMIT%";
+--echo con5: Let COMMIT continue until the sync point at its end.
+--echo con5: The completed COMMIT implicitly wakes BACKUP.
+--echo con5: So wait for BACKUP to reach the next synchronization point.
+SET DEBUG_SYNC= 'now SIGNAL commit_go_done WAIT_FOR bup_read_locked';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "COMMIT%";
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BACKUP DATABASE%";
 
 connection con4;
 
+--echo con4: Activate synchronization point for BEGIN.
+SET DEBUG_SYNC= 'before_begin_trans SIGNAL begin_starting
+                 WAIT_FOR finish';
 --echo con4: Starting begin -- will block with lock
 --echo Assumption (c): TRX not started is not included in backup
 send BEGIN;
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BEGIN%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BEGIN%";
-
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-
-let $wait_condition = SELECT state = "debug_sync_point: backup_commit_blocker"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE%";
---source include/wait_condition.inc
-
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%";
+--echo con5: Wait for BEGIN to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR begin_starting';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "BEGIN%";
 
 connection con7;
 
@@ -723,27 +690,24 @@ connection con7;
 #SELECT * FROM bup_commit_blocker.t4;
 SELECT * FROM bup_commit_blocker.t5;
 
+--echo con7: Activate synchronization point for DELETE.
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL del_read_lock';
 --echo con7: Starting non-trx about to start -- will block with lock
 --echo Assumption (e): non-TRX not started is not included in backup
 send DELETE FROM bup_commit_blocker.t5 WHERE col_a = 50;
 
 connection con5;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con5: Checking lock
-let $wait_condition = SELECT state = "Waiting for release of readlock"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "DELETE%";
---source include/wait_condition.inc
+--echo con5: Wait for DELETE to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR del_read_lock';
+#SELECT state, info FROM
+#INFORMATION_SCHEMA.PROCESSLIST
+#WHERE info LIKE "DELETE%";
 
-SELECT state, info FROM
-INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "DELETE%";
+--echo con5: Sending finish signal to wake them all.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 
---echo con5: Releasing lock
-SELECT release_lock("backup_commit_blocker");
-
-# Reconnect to con2, con3, con4, con6, and con7 and allow them to finish.
+# Reconnect to con2, con3, con4, con6, and con7 and fetch their results.
 
 connection con2;
 
@@ -752,10 +716,13 @@ connection con2;
 COMMIT;
 
 connection con3;
---echo con3: Completing transaction
+
+--echo con3: Fetch COMMIT result
 reap;
 
 connection con4;
+
+--echo con4: Fetch BEGIN result and completing transaction
 reap;
   UPDATE bup_commit_blocker.t3 SET col_a = "con4: 05 CHANGED" WHERE col_a LIKE '05%';
   UPDATE bup_commit_blocker.t3 SET col_a = "con4: 06 CHANGED" WHERE col_a LIKE '06%';
@@ -763,17 +730,17 @@ COMMIT;
 
 connection con6;
 
-#--echo con6: Completing statement
+#--echo con6: Fetch INSERT result
 #reap;
 
 connection con7;
 
---echo con7: Completing statement
+--echo con7: Fetch DELETE result
 reap;
 
-# Reconnect to con1 and let backup finish.
-
 connection con1;
+
+--echo con1: Fetch BACKUP result
 --replace_column 1 #
 reap;
 
@@ -829,5 +796,5 @@ SELECT count(*) FROM bup_commit_blocker.t5 WHERE col_a >= 50;
 DROP DATABASE bup_commit_blocker;
 
 remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
-
+SET DEBUG_SYNC= 'RESET';
 

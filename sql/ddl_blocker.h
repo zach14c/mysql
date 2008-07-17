@@ -4,7 +4,6 @@
   Header file for DDL blocker code.
  */
 #include "mysql_priv.h"
-#include "backup/debug.h"
 
 /**
    @class DDL_blocker_class

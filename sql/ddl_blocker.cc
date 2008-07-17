@@ -110,7 +110,7 @@ void DDL_blocker_class::end_DDL()
 my_bool DDL_blocker_class::check_DDL_blocker(THD *thd)
 {
   DBUG_ENTER("check_DDL_blocker()");
-  BACKUP_BREAKPOINT("DDL_not_blocked");
+  DEBUG_SYNC(thd, "before_check_ddl_blocked");
 
   /*
     Check the ddl blocker condition. Rest until ddl blocker is released.
@@ -122,7 +122,7 @@ my_bool DDL_blocker_class::check_DDL_blocker(THD *thd)
     pthread_cond_wait(&COND_DDL_blocker, &THR_LOCK_DDL_is_blocked);
   start_DDL();
   thd->exit_cond("DDL blocker: Ok to run DDL");
-  BACKUP_BREAKPOINT("DDL_in_progress");
+  DEBUG_SYNC(thd, "after_start_ddl");
   DBUG_RETURN(TRUE);
 }
 
@@ -143,7 +143,7 @@ my_bool DDL_blocker_class::block_DDL(THD *thd)
 {
   DBUG_ENTER("block_DDL()");
 
-  BACKUP_BREAKPOINT("DDL_in_progress");
+  DEBUG_SYNC(thd, "before_block_ddl");
 
   /*
     Only 1 DDL blocking operation can run at a time.
@@ -159,8 +159,6 @@ my_bool DDL_blocker_class::block_DDL(THD *thd)
   DDL_blocked= TRUE;
   thd->exit_cond("DDL blocker: Ok to block DDL");
 
-  BACKUP_BREAKPOINT("DDL_blocker_blocked");
-
   /*
     Check the ddl blocker condition. Rest until ddl blocker is released.
   */
@@ -171,7 +169,7 @@ my_bool DDL_blocker_class::block_DDL(THD *thd)
     pthread_cond_wait(&COND_process_blocked, &THR_LOCK_DDL_blocker);
   thd->exit_cond("DDL blocker: DDL is now blocked");
 
-  BACKUP_BREAKPOINT("DDL_blocked");
+  DEBUG_SYNC(thd, "after_block_ddl");
   DBUG_RETURN(TRUE);
 }
 

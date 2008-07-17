@@ -1959,7 +1959,7 @@ const char* Statement::getName(Syntax * syntax)
 void Statement::connectionClosed()
 {
 	addRef();
-	Sync sync (&syncObject, "Statement::close");
+	Sync sync (&syncObject, "Statement::connectionClosed");
 	sync.lock (Exclusive);
 
 	/***

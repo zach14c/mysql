@@ -56,7 +56,7 @@ SectorCache::~SectorCache(void)
 
 void SectorCache::readPage(Bdb* bdb)
 {
-	Sync sync(&syncObject, "SectorCache::readPage");
+	Sync sync(&syncObject, "SectorCache::readPage(1)");
 	sync.lock(Shared);
 	int sectorNumber = bdb->pageNumber / pagesPerSector;
 	int slot = sectorNumber % SECTOR_HASH_SIZE;
@@ -89,7 +89,7 @@ void SectorCache::readPage(Bdb* bdb)
 	
 	buffer = nextBuffer;
 	nextBuffer = buffer->next;
-	Sync syncBuffer(&buffer->syncObject, "SectorCache::readPage(3)");
+	Sync syncBuffer(&buffer->syncObject, "SectorCache::readPage(4)");
 	syncBuffer.lock(Exclusive);
 	
 	if (buffer->sectorNumber >= 0)
@@ -111,7 +111,7 @@ void SectorCache::readPage(Bdb* bdb)
 
 void SectorCache::writePage(Bdb* bdb)
 {
-	Sync sync(&syncObject, "SectorCache::writePage");
+	Sync sync(&syncObject, "SectorCache::writePage(1)");
 	sync.lock(Shared);
 	int sectorNumber = bdb->pageNumber / pagesPerSector;
 	int slot = sectorNumber % SECTOR_HASH_SIZE;

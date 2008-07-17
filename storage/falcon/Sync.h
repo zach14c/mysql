@@ -28,7 +28,7 @@
 
 class LinkedList;
 
-class Sync  
+class Sync
 {
 public:
 	Sync(SynchronizationObject *obj, const char *where);

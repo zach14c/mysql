@@ -209,7 +209,7 @@ int main(int argc, char *argv[])
 		&create_info,create_flag))
     goto err;
   if (use_log)
-    mi_log(1);
+    mi_log(MI_LOG_ACTION_OPEN, MI_LOG_LOGICAL, NULL, NULL);
   if (!(file=mi_open(filename,2,HA_OPEN_ABORT_IF_LOCKED)))
     goto err;
   if (!silent)
