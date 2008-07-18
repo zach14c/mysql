@@ -20,6 +20,7 @@ WalkDeferred::WalkDeferred(DeferredIndex *deferredIndex, Transaction *transactio
 	: IndexWalker(deferredIndex->index, transaction, flags)
 {
 	walker.initialize(deferredIndex, lower, flags);
+	node = NULL;
 }
 
 WalkDeferred::~WalkDeferred(void)
@@ -35,7 +36,6 @@ Record* WalkDeferred::getNext(bool lockForUpdate)
 		if (!node)
 			{
 			currentRecord = NULL;
-			
 			return NULL;
 			}
 

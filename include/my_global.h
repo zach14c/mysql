@@ -68,9 +68,11 @@
 #ifdef __cplusplus
 #define C_MODE_START    extern "C" {
 #define C_MODE_END	}
+#define STATIC_CAST(TYPE) static_cast<TYPE>
 #else
 #define C_MODE_START
 #define C_MODE_END
+#define STATIC_CAST(TYPE) (TYPE)
 #endif
 
 #if defined(_WIN32) || defined(_WIN64) || defined(__WIN32__) || defined(WIN32)
@@ -956,7 +958,7 @@ typedef long long	my_ptrdiff_t;
 #define my_offsetof(TYPE, MEMBER) \
         ((size_t)((char *)&(((TYPE *)0x10)->MEMBER) - (char*)0x10))
 
-#define NullS		(char *) 0
+#define NullS		STATIC_CAST(char *)(0)
 /* Nowdays we do not support MessyDos */
 #ifndef NEAR
 #define NEAR				/* Who needs segments ? */
@@ -1073,7 +1075,7 @@ typedef ulonglong my_off_t;
 #else
 typedef unsigned long my_off_t;
 #endif
-#define MY_FILEPOS_ERROR	(~(my_off_t) 0)
+#define MY_FILEPOS_ERROR	(~STATIC_CAST(my_off_t)(0))
 #if !defined(__WIN__)
 typedef off_t os_off_t;
 #endif
@@ -1109,7 +1111,7 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #define INT8(v)		(int8) (v)
 #define INT16(v)	(int16) (v)
 #define INT32(v)	(int32) (v)
-#define MYF(v)		(myf) (v)
+#define MYF(v)		STATIC_CAST(myf)(v)
 
 #ifndef LL
 #ifdef HAVE_LONG_LONG

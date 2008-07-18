@@ -1883,6 +1883,39 @@ select hex(_utf8 B'001111111111');
 ERROR HY000: Invalid utf8 character string: 'FF'
 select (_utf8 X'616263FF');
 ERROR HY000: Invalid utf8 character string: 'FF'
+create table t1 (utf8 char(1) character set utf8);
+Testing [F0][90..BF][80..BF][80..BF]
+insert into t1 values (0xF0908080);
+insert into t1 values (0xF0BFBFBF);
+insert into t1 values (0xF08F8080);
+Warnings:
+Warning	1366	Incorrect string value: '\xF0\x8F\x80\x80' for column 'utf8' at row 1
+select hex(utf8) from t1;
+hex(utf8)
+F0908080
+F0BFBFBF
+
+delete from t1;
+Testing [F2..F3][80..BF][80..BF][80..BF]
+insert into t1 values (0xF2808080);
+insert into t1 values (0xF2BFBFBF);
+select hex(utf8) from t1;
+hex(utf8)
+F2808080
+F2BFBFBF
+delete from t1;
+Testing [F4][80..8F][80..BF][80..BF]
+insert into t1 values (0xF4808080);
+insert into t1 values (0xF48F8080);
+insert into t1 values (0xF4908080);
+Warnings:
+Warning	1366	Incorrect string value: '\xF4\x90\x80\x80' for column 'utf8' at row 1
+select hex(utf8) from t1;
+hex(utf8)
+F4808080
+F48F8080
+
+drop table t1;
 DROP TABLE IF EXISTS t1;
 CREATE TABLE t1 (
 predicted_order int NOT NULL,

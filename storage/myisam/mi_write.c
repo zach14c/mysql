@@ -154,12 +154,13 @@ int mi_write(MI_INFO *info, uchar *record)
 		 HA_STATE_ROW_CHANGED);
   info->state->records++;
   info->lastpos=filepos;
-  myisam_log_record(MI_LOG_WRITE,info,record,filepos,0);
+  myisam_log_record_logical(MI_LOG_WRITE, info, record, filepos, 0);
   (void) _mi_writeinfo(info, WRITEINFO_UPDATE_KEYFILE);
   if (info->invalidator != 0)
   {
-    DBUG_PRINT("info", ("invalidator... '%s' (update)", info->filename));
-    (*info->invalidator)(info->filename);
+    DBUG_PRINT("info", ("invalidator... '%s' (update)",
+                        info->s->unresolv_file_name));
+    (*info->invalidator)(info->s->unresolv_file_name);
     info->invalidator=0;
   }
 
@@ -231,7 +232,7 @@ err:
   my_errno=save_errno;
 err2:
   save_errno=my_errno;
-  myisam_log_record(MI_LOG_WRITE,info,record,filepos,my_errno);
+  myisam_log_record_logical(MI_LOG_WRITE, info, record, filepos, my_errno);
   (void) _mi_writeinfo(info,WRITEINFO_UPDATE_KEYFILE);
   allow_break();			/* Allow SIGHUP & SIGINT */
   DBUG_RETURN(my_errno=save_errno);
@@ -537,11 +538,7 @@ int _mi_insert(register MI_INFO *info, register MI_KEYDEF *keyinfo,
       uint alen, blen, ft2len=info->s->ft2_keyinfo.keylength;
       /* the very first key on the page is always unpacked */
       DBUG_ASSERT((*b & 128) == 0);
-#if HA_FT_MAXLEN >= 127
       blen= mi_uint2korr(b); b+=2;
-#else
-      blen= *b++;
-#endif
       get_key_length(alen,a);
       DBUG_ASSERT(info->ft1_to_ft2==0);
       if (alen == blen &&

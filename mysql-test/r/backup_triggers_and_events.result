@@ -1,0 +1,196 @@
+SET GLOBAL event_scheduler=off;
+SET DEBUG_SYNC = 'RESET';
+Creating log table.
+DROP TABLE IF EXISTS test.logt;
+CREATE TABLE test.logt(ts timestamp, db char(8), msg text);
+Creating database db and its objects.
+DROP DATABASE IF EXISTS db;
+CREATE DATABASE db;
+USE db;
+CREATE TABLE t1 (a int);
+INSERT INTO t1 VALUES (0),(1),(2),(3),(4),(5),(6);
+CREATE EVENT ev ON SCHEDULE EVERY 1 second DO 
+BEGIN
+INSERT INTO test.logt(db, msg) VALUES ('db','Db event fired!');
+END;
+||
+CREATE PROCEDURE trg_msg(a int)
+BEGIN
+INSERT INTO test.logt(db, msg) VALUES ('db','Db trigger fired!');
+END;
+||
+CREATE TRIGGER after_ins AFTER INSERT ON t1 FOR EACH ROW 
+CALL trg_msg(NEW.a);
+||
+CREATE TRIGGER after_upd AFTER UPDATE ON t1 FOR EACH ROW 
+CALL trg_msg(NEW.a);
+||
+CREATE TRIGGER after_del AFTER DELETE ON t1 FOR EACH ROW 
+CALL trg_msg(OLD.a);
+||
+CREATE TRIGGER before_ins BEFORE INSERT ON t1 FOR EACH ROW 
+CALL trg_msg(NEW.a);
+||
+CREATE TRIGGER before_upd BEFORE UPDATE ON t1 FOR EACH ROW 
+CALL trg_msg(NEW.a);
+||
+CREATE TRIGGER before_del BEFORE DELETE ON t1 FOR EACH ROW 
+CALL trg_msg(OLD.a);
+||
+USE test||
+DROP EVENT IF EXISTS ev||
+DROP TABLE IF EXISTS t1||
+DROP TRIGGER IF EXISTS trg||
+CREATE EVENT ev ON SCHEDULE EVERY 1 second DO
+BEGIN
+INSERT INTO test.logt(db, msg) VALUES ('test','Test event fired!');
+END;
+||
+CREATE TABLE t1 (a int)||
+CREATE TRIGGER trg AFTER INSERT ON t1 FOR EACH ROW
+BEGIN
+INSERT INTO test.logt(db, msg) VALUES ('test','Test trigger fired');   
+END;
+||
+Backing-up database db and dropping it.
+BACKUP DATABASE db TO 'db.bak';
+backup_id
+#
+DROP DATABASE db;
+Enabling event scheduler.
+SET GLOBAL event_scheduler=on;
+con1: clearing log table and starting RESTORE operation.
+con1: RESTORE will pause after restoring table data.
+SET DEBUG_SYNC = 'restore_table_data_before_end SIGNAL waiting WAIT_FOR continue';
+DELETE FROM test.logt;
+RESTORE FROM 'db.bak';
+SELECT now() INTO @start;
+con2: checking that there are no triggers and events at the end of RESTORE execution.
+SET DEBUG_SYNC = 'now WAIT_FOR waiting';
+SHOW TRIGGERS FROM db;
+SHOW EVENTS IN db;
+con2: activating trigger in test database.
+INSERT INTO test.t1 VALUES (1);
+con2: ensuring that RESTORE takes at least 3 secs.
+SET DEBUG_SYNC = 'now SIGNAL continue';
+con1: finishing RESTORE operation.
+backup_id
+#
+SET GLOBAL event_scheduler=off;
+con2: checking that RESTORE took more than 2 secs.
+SELECT timediff(now(),@start) > 2;
+timediff(now(),@start) > 2
+1
+Checking that objects have been restored.
+USE db;
+SHOW TABLES IN db;
+Tables_in_db
+t1
+SELECT count(*) FROM db.t1;
+count(*)
+7
+SHOW TRIGGERS FROM db;
+Trigger	before_ins
+Event	INSERT
+Table	t1
+Statement	CALL trg_msg(NEW.a)
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	#
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	after_ins
+Event	INSERT
+Table	t1
+Statement	CALL trg_msg(NEW.a)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	#
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	before_upd
+Event	UPDATE
+Table	t1
+Statement	CALL trg_msg(NEW.a)
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	#
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	after_upd
+Event	UPDATE
+Table	t1
+Statement	CALL trg_msg(NEW.a)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	#
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	before_del
+Event	DELETE
+Table	t1
+Statement	CALL trg_msg(OLD.a)
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	#
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	after_del
+Event	DELETE
+Table	t1
+Statement	CALL trg_msg(OLD.a)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	#
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW EVENTS IN db;
+Db	db
+Name	ev
+Definer	root@localhost
+Time zone	SYSTEM
+Type	RECURRING
+Execute at	NULL
+Interval value	1
+Interval field	SECOND
+Starts	#
+Ends	NULL
+Status	ENABLED
+Originator	1
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Checking that no db event or trigger fired during RESTORE.
+SELECT * FROM test.logt WHERE db = 'db' AND timediff(ts,@start) < 2;
+ts	db	msg
+Checking that test event and trigger could fire.
+SELECT count(*) > 0 FROM test.logt 
+WHERE db = 'test'
+AND msg LIKE '%trigger fired%'
+AND timediff(ts,@start) < 2;
+count(*) > 0
+1
+SELECT count(*) > 0 FROM test.logt 
+WHERE db = 'test'
+AND msg LIKE '%event fired%'
+AND timediff(ts,@start) < 2;
+count(*) > 0
+1
+Cleaning up.
+DROP EVENT test.ev;
+DROP TRIGGER test.trg;
+DROP TABLE test.logt;
+DROP TABLE test.t1;
+DROP DATABASE db;

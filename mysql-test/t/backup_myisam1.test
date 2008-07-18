@@ -1,0 +1,28 @@
+# Test specific of MyISAM's online backup:
+# see if --external-locking=1 causes backup to fail as expected
+
+--source include/not_embedded.inc
+
+#
+# Cleanup from former test cases
+#
+--disable_warnings
+drop database if exists mysqltest;
+--enable_warnings
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+
+create database mysqltest;
+use mysqltest;
+CREATE TABLE t1 (a int) engine=myisam;
+
+--replace_column 1 #
+--error ER_GET_ERRMSG
+BACKUP DATABASE mysqltest TO 'test.ba';
+
+#
+# Cleanup from this test case
+#
+DROP DATABASE mysqltest;
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+

@@ -536,6 +536,9 @@ THD::THD()
           when the DDL blocker is engaged.
   */
    DDL_exception(FALSE),
+#if defined(ENABLED_DEBUG_SYNC)
+   debug_sync_control(0),
+#endif /* defined(ENABLED_DEBUG_SYNC) */
    locked_tables_root(NULL)
 {
   ulong tmp;
@@ -769,6 +772,11 @@ void THD::init(void)
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Initialize the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_init_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 }
 
 
@@ -844,6 +852,12 @@ void THD::cleanup(void)
     xid_cache_delete(&transaction.xid_state);
   }
   locked_tables_list.unlock_locked_tables(this);
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* End the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_end_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);
@@ -1032,8 +1046,9 @@ void THD::awake(THD::killed_state state_to_set)
   if (mysys_var)
   {
     pthread_mutex_lock(&mysys_var->mutex);
-    if (!system_thread)		// Don't abort locks
-      mysys_var->abort=1;
+    if (system_thread == NON_SYSTEM_THREAD ||
+        system_thread == SYSTEM_THREAD_BACKUP)
+      mysys_var->abort= 1; // abort locks
     /*
       This broadcast could be up in the air if the victim thread
       exits the cond in the time between read and broadcast, but that is
