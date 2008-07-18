@@ -54,8 +54,8 @@ public:
 	void	writeHeader (Hdr *header);
 	int		read(int length, UCHAR *buffer);
 	void	write(uint32 length, const UCHAR *data);
-	bool	doesFileExist(const char *fileName);
-	int		fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
+	static bool	doesFileExist(const char *fileName);
+	static int	fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
 	void	declareFatalError();
 	void	seek (int pageNumber);
 	void	closeFile();

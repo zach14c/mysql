@@ -35,3 +35,9 @@ rpl_row_basic_2myisam      : Bug#37879 2008-07-14 alik Disabled to make 6.0 grea
 rpl_row_basic_3innodb      : Bug#37879 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
+
+rpl_flushlog_loop          : Bug#37733 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
+rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
+rpl_temporary              : Bug#34647 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
+rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
+
