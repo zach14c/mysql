@@ -40,15 +40,16 @@ typedef uint  version_t;
    Classes @c Db_ref and @c Table_ref are used to identify databases and tables
    inside mysql server instance.
 
-   These classes abstract the way a table or database is identified inside mysqld,
-   so that when this changes (introduction of global db/table ids, introduction
-   of catalogues) it is easy to adapt backup code to the new identification schema.
+   These classes abstract the way a table or database is identified inside 
+   mysqld, so that when this changes (introduction of global db/table ids, 
+   introduction of catalogues) it is easy to adapt backup code to the new 
+   identification schema.
 
    Regardless of the internal representation, classes provide methods returning
-   db/table name as a @c String object. Also, each table belongs to some database
-   and a method returning @c Db_ref object identifying this database is present. 
-   For @c Db_ref objects there is @c catalog() method returning name of the 
-   catalogue, but currently it always returns null string.
+   db/table name as a @c String object. Also, each table belongs to some 
+   database and a method returning @c Db_ref object identifying this database is
+   present. For @c Db_ref objects there is @c catalog() method returning name of
+   the catalogue, but currently it always returns null string.
 
    Classes are implemented so that the memory for storing names can be allocated
    outside an instance. This allows for sharing space used e.g., to store 
@@ -68,7 +69,7 @@ class Db_ref
  public:
 
   // Construct invalid reference
-  Db_ref(): m_name(NULL)
+  Db_ref() :m_name(NULL)
   {}
 
   bool is_valid() const
@@ -81,17 +82,17 @@ class Db_ref
   { return my_null_string; }
 
   bool operator==(const Db_ref &db) const
-  { return stringcmp(m_name,&db.name())==0; }
+  { return stringcmp(m_name, &db.name()) == 0; }
 
   bool operator!=(const Db_ref &db) const
-  { return ! this->operator==(db); }
+  { return ! this->operator == (db); }
 
  protected:
 
   // Constructors are made protected as clients of this class are
   // not supposed to create instances (see comment inside Table_ref)
 
-  Db_ref(const String &name): m_name(&name)
+  Db_ref(const String &name) :m_name(&name)
   {}
 
   friend class Table_ref;
@@ -106,7 +107,7 @@ class Table_ref
  public:
 
   // Construct invalid reference
-  Table_ref(): m_name(NULL)
+  Table_ref() :m_name(NULL)
   {}
 
   bool is_valid() const
@@ -121,23 +122,23 @@ class Table_ref
   bool operator==(const Table_ref &t) const
   {
     return m_db == t.db() &&
-           stringcmp(m_name,&t.name()) == 0;
+           stringcmp(m_name, &t.name()) == 0;
   }
 
   bool operator!=(const Table_ref &db) const
   { return ! this->operator==(db); }
 
-  typedef char describe_buf[512];
+  typedef char name_buf[FN_REFLEN];
 
-  /// Produce string identifying the table (e.g. for error reporting)
-  const char* describe(char *buf, size_t len) const
-  {
-    my_snprintf(buf,len,"%s.%s",db().name().ptr(),name().ptr());
-    return buf;
-  }
+  // Produce string identifying the table (e.g. for error reporting)
+  const char* describe(char *buf, size_t len) const;
+  const char* describe(name_buf &buf) const
+  { return describe(buf, sizeof(buf)); }
 
-  const char* describe(describe_buf &buf) const
-  { return describe(buf,sizeof(buf)); }
+  // Produce string identifying the table in internal format. 
+  const char* internal_name(char *buf, size_t len) const;
+  const char* internal_name(name_buf &buf) const
+  { return internal_name(buf, sizeof(buf)); };
   
  protected:
 
@@ -148,8 +149,8 @@ class Table_ref
     when creating backup/restore driver.
   */
 
-  Table_ref(const String &db, const String &name):
-    m_db(db), m_name(&name)
+  Table_ref(const String &db, const String &name)
+    :m_db(db), m_name(&name)
   {}
 };
 
@@ -174,10 +175,8 @@ class Table_ref
    adds this interface to a list of tables represented by a linked list of
    @c TABLE_LIST structures as used elsewhere in the code. On the other hand, 
    much more space efficient implementations are possible, as for each table we 
-   need to store only table's identity (db/table name). In any case, the interface
-   to the list remains the same, as defined by this class.
-
-   TODO: add iterators.
+   need to store only table's identity (db/table name). In any case, the 
+   interface to the list remains the same, as defined by this class.
  */
 
 class Table_list
@@ -187,10 +186,10 @@ class Table_list
     virtual ~Table_list() {}
 
     /// Return reference to given list element. Elements are counted from 0.
-    virtual Table_ref operator[](uint pos) const =0;
+    virtual Table_ref operator[](ulong pos) const =0;
 
     /// Return number of elements in the list.
-    virtual uint  count() const =0;
+    virtual ulong count() const =0;
 };
 
 
@@ -200,23 +199,23 @@ class Table_list
   @brief Used for data transfers between backup kernel and backup/restore
   drivers.
 
-  Apart from allocated memory a @c Buffer structure contains fields informing about
-  its size and holding other information about contained data. Buffers are
+  Apart from allocated memory a @c Buffer structure contains fields informing 
+  about its size and holding other information about contained data. Buffers are
   created and memory is allocated by backup kernel. It is also kernel's
   responsibility to write contents of buffers to a backup stream.
 
   Data created by a backup driver is opaque to the kernel. However, to support
   selective restores, each block of data can be assigned to one of the tables
-  being backed-up. This is done by setting @c table_no member of the
+  being backed-up. This is done by setting @c table_num member of the
   buffer structure to the number of the table to which this data belongs. Tables
   are numbered from 1 according to their position in the list passed when driver
   is created (@c m_tables member of @c Driver class). If
   some of the data doesn't correspond to any particular table, then
-  @c table_no should be set to 0.
+  @c table_num should be set to 0.
 
   This way, driver can create several "streams" of data blocks. For each table
   there is a stream corresponding to that table and there is one "shared stream"
-  consisting of blocks with @c table_no set to 0. Upon restore, kernel
+  consisting of blocks with @c table_num set to 0. Upon restore, kernel
   sends to a restore driver only blocks corresponding to the tables being
   restored plus all the blocks from the shared stream.
 
@@ -256,17 +255,17 @@ class Table_list
 struct Buffer
 {
   size_t  size;       ///< size of the buffer (of memory block pointed by data).
-  uint    table_no;   ///< Number of the table to which data in the buffer belongs.
+  uint    table_num;  ///< Number of the table to which data in the buffer belongs.
   bool    last;       ///< TRUE if this is last block of data in the stream.
   byte    *data;      ///< Pointer to data area.
 
-  Buffer(): size(0),table_no(0),last(FALSE), data(NULL)
+  Buffer() :size(0), table_num(0), last(FALSE), data(NULL)
   {}
 
   void reset(size_t len)
   {
     size= len;
-    table_no= 0;
+    table_num= 0;
     last= FALSE;
   }
 };
@@ -280,7 +279,7 @@ class Restore_driver;
 
 typedef backup::result_t Backup_result_t;
 typedef backup::Engine   Backup_engine;
-typedef Backup_result_t backup_factory(::handlerton *,Backup_engine*&);
+typedef Backup_result_t backup_factory(::handlerton *, Backup_engine*&);
 
 #endif
 

@@ -139,7 +139,7 @@ class Driver
                   };
 
   /// Construct from list of tables. The list is stored for future use.
-  Driver(const Table_list &tables):m_tables(tables) {};
+  Driver(const Table_list &tables) :m_tables(tables) {};
 
   virtual ~Driver() {}; // We want to inherit from this class.
 
@@ -259,9 +259,9 @@ class Backup_driver: public Driver
 {
  public:
 
-  Backup_driver(const Table_list &tables):Driver(tables) {};
+  Backup_driver(const Table_list &tables) :Driver(tables) {};
 
-  virtual ~Backup_driver() {}; // Each specific implementation will derive from this class.
+  virtual ~Backup_driver() {}; // We will derive from this class.
 
  /**
    @fn result_t get_data(Buffer &buf)
@@ -284,7 +284,7 @@ class Backup_driver: public Driver
    as described in the documentation of Buffer class. It is possible to complete
    a request without putting any data in the buffer. In that case
    @c buf.size should be set to zero. The return value (OK or READY)
-   and the @c buf.table_no and @c buf.last members are
+   and the @c buf.table_num and @c buf.last members are
    interpreted as usual. However, no data is written to backup archive and such
    empty buffers are not sent back to restore driver.
 
@@ -297,7 +297,7 @@ class Backup_driver: public Driver
                the documentation of Buffer class.
 
    @retval OK  The request is completed - new data is in the buffer and
-               @c size, @c table_no and @c last members of the buffer structure
+               @c size, @c table_num and @c last members of the buffer structure
                are set accordingly.
 
    @retval READY Same as OK and additionally informs that the initial transfer
@@ -322,7 +322,7 @@ class Backup_driver: public Driver
    @note
    If backup kernel calls @c get_data() when there is no more data
    to be sent, the driver should:
-   -# set @c buf.size and @c buf.table_no to 0,
+   -# set @c buf.size and @c buf.table_num to 0,
    -# set @c buf.last to TRUE,
    -# return @c DONE.
 
@@ -465,7 +465,7 @@ class Restore_driver: public Driver
 {
  public:
 
-  Restore_driver(const Table_list &tables):Driver(tables) {};
+  Restore_driver(const Table_list &tables) :Driver(tables) {};
   virtual ~Restore_driver() {};
 
   /**
@@ -475,7 +475,7 @@ class Restore_driver: public Driver
    status of a previously accepted request.
 
    Upon restore, backup kernel calls this method periodically sending
-   consecutive blocks of data from the backup image. The @c table_no
+   consecutive blocks of data from the backup image. The @c table_num
    field in the buffer is set to indicate from which stream the data comes.
    Also, @c buf.last is TRUE if this is the last block
    in the stream.
@@ -496,7 +496,7 @@ class Restore_driver: public Driver
    call to @c get_data() with the same buffer as argument returns OK.
 
    @param  buf   (in) buffer filled with backup data. Fields @c size,
-                 @c table_no and @c last are set
+                 @c table_num and @c last are set
                  accordingly.
 
    @retval OK    The data has been successfully processed - the buffer can be
@@ -522,6 +522,8 @@ class Restore_driver: public Driver
   virtual result_t  send_data(Buffer &buf) =0;
 
 }; // Restore_driver
+
+
 
 
 } // backup namespace

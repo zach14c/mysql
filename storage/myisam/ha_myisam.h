@@ -173,3 +173,7 @@ private:
   friend my_bool index_cond_func_myisam(void *arg);
 };
 
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MYISAM_PHYSICAL_LOGGING)
+// If embedded, there is no online backup
+Backup_result_t myisam_backup_engine(handlerton *self, Backup_engine* &be);
+#endif

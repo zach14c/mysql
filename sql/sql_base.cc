@@ -974,6 +974,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
       To avoid self and other kinds of deadlock we have to flush open HANDLERs.
     */
     mysql_ha_flush(thd);
+    DEBUG_SYNC(thd, "after_flush_unlock");
 
     pthread_mutex_lock(&LOCK_open);
 
@@ -2519,7 +2520,10 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
   {
     if (open_table_get_mdl_lock(thd, table_list, mdl_lock_data, flags,
                                 action))
+    {
+      DEBUG_SYNC(thd, "before_open_table_wait_refresh");
       DBUG_RETURN(TRUE);
+    }
   }
 
   pthread_mutex_lock(&LOCK_open);
@@ -4099,7 +4103,6 @@ int open_and_lock_tables_derived(THD *thd, TABLE_LIST *tables, bool derived,
   {
     if (open_tables(thd, &tables, &counter, flags))
       DBUG_RETURN(-1);
-
     DBUG_EXECUTE_IF("sleep_open_and_lock_after_open", {
       const char *old_proc_info= thd->proc_info;
       thd->proc_info= "DBUG sleep";
@@ -4398,6 +4401,8 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
         thd->set_current_stmt_binlog_row_based_if_mixed();
       }
     }
+
+    DEBUG_SYNC(thd, "before_lock_tables_takes_lock");
 
     if (! (thd->lock= mysql_lock_tables(thd, start, (uint) (ptr - start),
                                         flags, need_reopen)))

@@ -414,7 +414,7 @@ int myrg_attach_children(MYRG_INFO *m_info, int handle_locking,
   while ((myisam= (*callback)(callback_param)))
   {
     DBUG_PRINT("myrg", ("child_nr: %u  table: '%s'",
-                        child_nr, myisam->filename));
+                        child_nr, myisam->s->unresolv_file_name));
     DBUG_ASSERT(child_nr < m_info->tables);
 
     /* Special handling when the first child is attached. */
@@ -441,12 +441,12 @@ int myrg_attach_children(MYRG_INFO *m_info, int handle_locking,
     if (m_info->reclength != myisam->s->base.reclength)
     {
       DBUG_PRINT("error", ("definition mismatch table: '%s'  repair: %d",
-                           myisam->filename,
+                           myisam->s->unresolv_file_name,
                            (handle_locking & HA_OPEN_FOR_REPAIR)));
       my_errno= HA_ERR_WRONG_MRG_TABLE_DEF;
       if (handle_locking & HA_OPEN_FOR_REPAIR)
       {
-        myrg_print_wrong_table(myisam->filename);
+        myrg_print_wrong_table(myisam->s->unresolv_file_name);
         continue;
       }
       goto err;

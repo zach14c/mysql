@@ -1,12 +1,11 @@
 #ifndef _DEFAULT_BACKUP_H
 #define _DEFAULT_BACKUP_H
 
-#include <backup/backup_engine.h>
-#include "catalog.h"  // to define default backup image class
-#include "buffer_iterator.h"
-#include "backup_aux.h"
-#include "mysql_priv.h"
-#include "be_thread.h"
+#include <backup_engine.h>
+#include <backup/image_info.h>  // to define default backup image class
+#include <backup/be_logical.h>
+#include <backup/buffer_iterator.h>
+#include <backup/be_thread.h>
 
 namespace default_backup {
 
@@ -33,42 +32,6 @@ const byte BLOB_FIRST= (3U<<1); // First data block in buffer for blob buffer
 const byte BLOB_DATA=  (3U<<2); // Intermediate data block for blob buffer
 const byte BLOB_LAST=  (3U<<3); // Last data block in buffer for blob buffer
 
-/**
- * @class Engine
- *
- * @brief Encapsulates default online backup/restore functionality.
- *
- * This class is used to initiate the default backup algorithm, which is used
- * by the backup kernel to create a backup image of data stored in any
- * engine that does not have a native backup driver. It may also be used as
- * an option by the user.
- *
- * Using this class, the caller can create an instance of the default backup
- * backup and restore class. The backup class is used to backup data for a
- * list of tables. The restore class is used to restore data from a
- * previously created default backup image.
- */
-class Engine: public Backup_engine
-{
-  public:
-    Engine(THD *t_thd);
-
-    /*
-      Return version of backup images created by this engine.
-    */
-    version_t version() const { return 0; };
-    result_t get_backup(const uint32, const Table_list &tables, 
-                        Backup_driver* &drv);
-    result_t get_restore(const version_t ver, const uint32, const Table_list &tables,
-                         Restore_driver* &drv);
-
-    /*
-     Free any resources allocated by the default backup engine.
-    */
-    void free() { delete this; }
-  private:
-    THD *m_thd; ///< Pointer to the current thread.
-};
 
 /**
  * @class Backup
@@ -86,7 +49,7 @@ class Backup: public Backup_thread_driver
   public:
     enum has_data_info { YES, WAIT, EOD };
     Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type);
-    virtual ~Backup();
+    virtual ~Backup(); 
     size_t size()  { return UNKNOWN_SIZE; };
     size_t init_size() { return 0; };
     result_t  begin(const size_t) { return backup::OK; };
@@ -94,7 +57,12 @@ class Backup: public Backup_thread_driver
     result_t get_data(Buffer &buf);
     result_t lock() { return backup::OK; };
     result_t unlock() { return backup::OK; };
-    result_t cancel() { return backup::OK; };
+    result_t cancel() 
+    { 
+      mode= CANCEL;
+      cleanup();
+      return backup::OK;
+    }
     TABLE_LIST *get_table_list() { return all_tables; }
     void free() { delete this; };
     result_t prelock(); 
@@ -103,6 +71,9 @@ class Backup: public Backup_thread_driver
     TABLE *cur_table;              ///< The table currently being read.
     my_bool init_phase_complete;   ///< Used to identify end of init phase.
     my_bool locks_acquired;        ///< Used to help kernel synchronize drivers.
+    handler *hdl;                  ///< Pointer to table handler.
+    my_bool m_cleanup;             ///< Is call to cleanup() needed?
+    result_t end_tbl_read(); 
 
   private:
     /*
@@ -112,6 +83,7 @@ class Backup: public Backup_thread_driver
     */
     typedef enum {
       INITIALIZE,                  ///< Indicates time to initialize read
+      CANCEL,                      ///< Indicates time to cancel operation
       GET_NEXT_TABLE,              ///< Open next table in the list
       READ_RCD,                    ///< Reading rows from table mode
       READ_RCD_BUFFER,             ///< Buffer records mode
@@ -121,11 +93,9 @@ class Backup: public Backup_thread_driver
     } BACKUP_MODE;
 
     result_t start_tbl_read(TABLE *tbl);
-    result_t end_tbl_read();
     int next_table();
     BACKUP_MODE mode;              ///< Indicates which mode the code is in
-    int tbl_num;                   ///< The index of the current table.
-    handler *hdl;                  ///< Pointer to table handler.
+    ulong tbl_num;                   ///< The index of the current table.
     uint *cur_blob;                ///< The current blob field.
     uint *last_blob_ptr;           ///< Position of last blob field.
     MY_BITMAP *read_set;           ///< The file read set.
@@ -134,6 +104,7 @@ class Backup: public Backup_thread_driver
     byte *ptr;                     ///< Pointer to blob data from record.
     TABLE_LIST *all_tables;        ///< Reference to list of tables used.
 
+    result_t cleanup();
     uint pack(byte *rcd, byte *packed_row);
 };
 
@@ -152,13 +123,20 @@ class Restore: public Restore_driver
 {
   public:
     enum has_data_info { YES, WAIT, EOD };
-    Restore(const Table_list &tables, THD *t_thd);
-    virtual ~Restore() { backup::free_table_list(all_tables); };
+    Restore(const backup::Logical_snapshot &info, THD *t_thd);
+    virtual ~Restore()
+    { 
+      cleanup();
+    }; 
     result_t  begin(const size_t) { return backup::OK; };
     result_t  end();
     result_t  send_data(Buffer &buf);
-    result_t  cancel() { return backup::OK; };
-    TABLE_LIST *get_table_list() { return all_tables; }
+    result_t  cancel()
+    { 
+      mode= CANCEL;
+      cleanup();
+      return backup::OK;
+    }
     void free() { delete this; };
 
  private:
@@ -169,6 +147,7 @@ class Restore: public Restore_driver
     */
     typedef enum {
       INITIALIZE,                  ///< Indicates time to initialize read
+      CANCEL,                      ///< Indicates time to cancel operation
       GET_NEXT_TABLE,              ///< Open next table in the list
       WRITE_RCD,                   ///< Writing rows from table mode
       CHECK_BLOBS,                 ///< See if record has blobs
@@ -176,8 +155,10 @@ class Restore: public Restore_driver
       WRITE_BLOB_BUFFER            ///< Buffer blobs mode
     } RESTORE_MODE;
 
-    result_t truncate_table(TABLE *tbl);
-    int next_table();
+    /**
+      Reference to the corresponding logical snapshot object.
+    */
+    const backup::Logical_snapshot &m_snap;  
     RESTORE_MODE mode;             ///< Indicates which mode the code is in
     uint tbl_num;                  ///< The index of the current table.
     uint32 max_blob_size;          ///< The total size (sum of parts) for the blob.
@@ -187,13 +168,13 @@ class Restore: public Restore_driver
     uint *last_blob_ptr;           ///< Position of last blob field.
     Buffer_iterator rec_buffer;    ///< Buffer iterator for windowing records
     Buffer_iterator blob_buffer;   ///< Buffer iterator for windowing BLOB fields
-    TABLE_LIST *tables_in_backup;  ///< List of tables used in backup.
     byte *blob_ptrs[MAX_FIELDS];   ///< List of blob pointers used
     int blob_ptr_index;            ///< Position in blob pointer list
     THD *m_thd;                    ///< Pointer to current thread struct.
-    TABLE_LIST *all_tables;        ///< Reference to list of tables used.
-    ulonglong num_rows;            ///< Number of rows in table
+    timestamp_auto_set_type old_tm;///< Save old timestamp auto set type.
+    my_bool m_cleanup;             ///< Is call to cleanup() needed?
 
+    result_t cleanup();
     uint unpack(byte *packed_row);
 };
 } // default_backup namespace
@@ -207,15 +188,16 @@ class Restore: public Restore_driver
 
 namespace backup {
 
+class Logger;
 
-class Default_snapshot: public Snapshot_info
+class Default_snapshot: public Logical_snapshot
 {
  public:
 
-  Default_snapshot()
-  {
-    version= 1;
-  }
+  Default_snapshot(Logger&) :Logical_snapshot(1) // current version number is 1
+  {}
+  Default_snapshot(Logger&, const version_t ver) :Logical_snapshot(ver)
+  {}
 
   enum_snap_type type() const
   { return DEFAULT_SNAPSHOT; }
@@ -223,18 +205,31 @@ class Default_snapshot: public Snapshot_info
   const char* name() const
   { return "Default"; }
 
-  bool accept(const Table_ref&, const ::handlerton*)
-  { return TRUE; }; // accept all tables
+  bool accept(const backup::Table_ref &,const storage_engine_ref e)
+  { 
+    bool accepted= TRUE;
+    const char *ename= se_name(e);
+
+    /*
+      Do not accept nodata engines.
+    */
+    if ((my_strcasecmp(system_charset_info, "BLACKHOLE", ename) == 0) ||
+        (my_strcasecmp(system_charset_info, "EXAMPLE", ename) == 0) ||
+        (my_strcasecmp(system_charset_info, "FEDERATED", ename) == 0) ||
+        (my_strcasecmp(system_charset_info, "MRG_MYISAM", ename) == 0))
+      accepted= FALSE;
+    return (accepted);
+  }
 
   result_t get_backup_driver(Backup_driver* &ptr)
-  { return (ptr= new default_backup::Backup(m_tables,::current_thd,
+  { return (ptr= new default_backup::Backup(m_tables, ::current_thd,
                                             TL_READ_NO_INSERT)) ? OK : ERROR; }
 
   result_t get_restore_driver(Restore_driver* &ptr)
-  { return (ptr= new default_backup::Restore(m_tables,::current_thd)) ? OK : ERROR; }
+  { return (ptr= new default_backup::Restore(*this, ::current_thd)) ? OK : ERROR; }
 
   bool is_valid(){ return TRUE; };
-
+  
 };
 
 } // backup namespace

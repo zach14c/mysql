@@ -2711,8 +2711,9 @@ Query_cache::register_tables_from_list(TABLE_LIST *tables_used,
         {
           char key[MAX_DBKEY_LENGTH];
           uint32 db_length;
-          uint key_length= filename_2_table_key(key, table->table->filename,
-                                                &db_length);
+          uint key_length=
+            filename_2_table_key(key, table->table->s->unresolv_file_name,
+                                 &db_length);
           (++block_table)->n= ++n;
           /*
             There are not callback function for for MyISAM, and engine data

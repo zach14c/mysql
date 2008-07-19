@@ -4,7 +4,11 @@
 #include <backup_stream.h>
 
 #include <backup/api_types.h>    // for Buffer definition
-#include "debug.h"        // for definition of DBUG_BACKUP
+#include <backup/image_info.h>
+#include <backup/logger.h>
+#ifdef HAVE_COMPRESS
+#include <zlib.h>
+#endif
 
 /**
   @file
@@ -49,73 +53,84 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob);
 
  ****************************************************/
 
+struct fd_stream: public backup_stream
+{
+  int m_fd;
+  size_t bytes;
+  uchar m_header_buf[10];
+  bool m_with_compression;
+#ifdef HAVE_COMPRESS
+  z_stream zstream;
+  uchar *zbuf;
+#endif
+  
+  fd_stream() :m_fd(-1), bytes(0) {}
+};
+
 /**
-  Base for @c OStream and @c IStream.
+  Base for @c Output_stream and @c Input_stream.
 
   It stores file descriptor and provides basic methods for operating on
   it. It also inherits from (and correctly fills) the backup_stream structure
   so that an instance of @c Stream class can be passed to backup stream library
   functions.
 */
-class Stream: public backup_stream
+class Stream: public fd_stream
 {
  public:
 
   bool open();
-  void close();
+  virtual void close();
   bool rewind();
 
   /// Check if stream is opened
   bool is_open() const
   { return m_fd>0; }
 
-  ~Stream()
+  virtual ~Stream()
   { close(); }
 
  protected:
 
-  Stream(const ::String&, int);
+  Stream(Logger&, const ::String&, int);
 
-  int     m_fd;
   String  m_path;
   int     m_flags;  ///< flags used when opening the file
   size_t  m_block_size;
+  Logger  m_log;
 
-  friend int stream_write(void*,bstream_blob*,bstream_blob);
-  friend int stream_read(void*,bstream_blob*,bstream_blob);
+  friend int stream_write(void*, bstream_blob*, bstream_blob);
+  friend int stream_read(void*, bstream_blob*, bstream_blob);
 };
 
 /// Used to write to backup stream.
-class OStream:
+class Output_stream:
   public Stream
 {
  public:
 
-  size_t bytes; ///< number of bytes written
-
-  OStream(const ::String&);
+  Output_stream(Logger&, const ::String&, bool);
 
   bool open();
-  void close(bool destroy=TRUE);
+  void close();
   bool rewind();
 
  private:
 
   int write_magic_and_version();
+  bool init();
 };
 
 /// Used to read from backup stream.
-class IStream:
+class Input_stream:
   public Stream
 {
  public:
 
-  size_t bytes; ///< number of bytes read
-
-  IStream(const ::String &name);
+  Input_stream(Logger&, const ::String &name);
 
   bool open();
-  void close(bool destroy=TRUE);
+  void close();
   bool rewind();
 
   int next_chunk();
@@ -123,7 +138,69 @@ class IStream:
  private:
 
   int check_magic_and_version();
+  bool init();
 };
+
+
+/*
+ Wrappers around backup stream functions which perform necessary type conversions.
+*/
+
+inline
+result_t
+write_preamble(const Image_info &info, Output_stream &s)
+{
+  const st_bstream_image_header *hdr;
+
+  hdr= static_cast<const st_bstream_image_header*>(&info);
+  int ret= bstream_wr_preamble(&s, const_cast<st_bstream_image_header*>(hdr));
+
+  return ret == BSTREAM_ERROR ? ERROR : OK;
+}
+
+inline
+result_t
+write_summary(const Image_info &info, Output_stream &s)
+{
+  const st_bstream_image_header *hdr;
+
+  hdr= static_cast<const st_bstream_image_header*>(&info);
+  int ret= bstream_wr_summary(&s, const_cast<st_bstream_image_header*>(hdr));
+
+  return ret == BSTREAM_ERROR ? ERROR : OK;
+}
+
+inline
+result_t
+read_header(Image_info &info, Input_stream &s)
+{
+  int ret= bstream_rd_header(&s, static_cast<st_bstream_image_header*>(&info));
+  return ret == BSTREAM_ERROR ? ERROR : OK;
+}
+
+inline
+result_t
+read_catalog(Image_info &info, Input_stream &s)
+{
+  int ret= bstream_rd_catalogue(&s, static_cast<st_bstream_image_header*>(&info));
+  return ret == BSTREAM_ERROR ? ERROR : OK;
+}
+
+inline
+result_t
+read_meta_data(Image_info &info, Input_stream &s)
+{
+  int ret= bstream_rd_meta_data(&s, static_cast<st_bstream_image_header*>(&info));
+  return ret == BSTREAM_ERROR ? ERROR : OK;
+}
+
+inline
+result_t
+read_summary(Image_info &info, Input_stream &s)
+{
+  int ret= bstream_rd_summary(&s, static_cast<st_bstream_image_header*>(&info));
+  return ret == BSTREAM_ERROR ? ERROR : OK;
+}
 
 } // backup namespace
 

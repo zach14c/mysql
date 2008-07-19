@@ -1,0 +1,15 @@
+*** Bug #37343***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (
+pk INTEGER AUTO_INCREMENT,
+int_key INTEGER,
+PRIMARY KEY (pk),
+KEY (int_key)
+) ENGINE=Falcon;
+SELECT * FROM t1 WHERE int_key < 5 ORDER BY int_key LIMIT 1;
+pk	int_key
+SELECT count(*) FROM t1;
+count(*)
+0
+DROP TABLE t1;

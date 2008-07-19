@@ -408,6 +408,14 @@ static inline my_bool have_specific_lock(THR_LOCK_DATA *data,
 
 static void wake_up_waiters(THR_LOCK *lock);
 
+#if defined(ENABLED_DEBUG_SYNC)
+/**
+  Global pointer to be set if callback function is defined
+  (e.g. in mysqld). See debug_sync.cc.
+*/
+void (*debug_sync_wait_for_lock_callback_ptr)(void);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
 
 static enum enum_thr_lock_result
 wait_for_lock(struct st_lock_list *wait, THR_LOCK_DATA *data,
@@ -419,6 +427,15 @@ wait_for_lock(struct st_lock_list *wait, THR_LOCK_DATA *data,
   enum enum_thr_lock_result result= THR_LOCK_ABORTED;
   my_bool can_deadlock= test(data->owner->info->n_cursors);
   DBUG_ENTER("wait_for_lock");
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /*
+    One can use this to signal when a thread is going to wait for a lock.
+    See debug_sync.cc.
+  */
+  if (debug_sync_wait_for_lock_callback_ptr)
+    (*debug_sync_wait_for_lock_callback_ptr)();
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 
   if (!in_wait_list)
   {

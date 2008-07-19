@@ -1714,7 +1714,10 @@ err:
    @param file  pointer to io-cache
    @return 0
 */
-int log_loaded_block(IO_CACHE* file)
+int log_loaded_block(IO_CACHE* file,
+                     const uchar *buffert __attribute__((unused)),
+                     uint count __attribute__((unused)),
+                     my_off_t filepos __attribute__((unused)))
 {
   DBUG_ENTER("log_loaded_block");
   LOAD_FILE_INFO *lf_info;

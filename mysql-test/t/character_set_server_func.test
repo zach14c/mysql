@@ -18,6 +18,12 @@
 #  server-system-variables.html                                               #
 #                                                                             #
 ###############################################################################
+
+# Preparatory cleanup.
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+--enable_warnings
+
 --echo '#--------------------FN_DYNVARS_009_01-------------------------#'
 ######################################################################
 # Check if setting character_set_server is changed in new connection # 
