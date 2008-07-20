@@ -114,7 +114,8 @@ struct st_bstream_engine_info
 enum enum_bstream_snapshot_type {
   BI_NATIVE,  /**< created by native backup driver of a storage engine */
   BI_DEFAULT, /**< created by built-in blocking backup driver */
-  BI_CS       /**< created by built-in driver using consistent read transaction */
+  BI_CS,      /**< created by built-in driver using consistent read transaction */
+  BI_NODATA   /**< created by built-in nodata backup driver */
 };
 
 /** Describes table data snapshot. */
@@ -251,7 +252,7 @@ struct st_bstream_ts_info
 /**
   Describes database item.
 
-  Currently no data specific to database items is used.
+  Currently no data specific to database items are used.
 */
 struct st_bstream_db_info
 {
@@ -277,7 +278,7 @@ struct st_bstream_dbitem_info
 struct st_bstream_table_info
 {
   struct st_bstream_dbitem_info  base;  /**< data common to all per-db items */
-  unsigned short int  snap_no;  /**< snapshot where table's data is stored */
+  unsigned short int  snap_num;  /**< snapshot where table's data is stored */
 };
 
 /**
@@ -312,10 +313,10 @@ struct st_bstream_titem_info
 */
 struct st_bstream_data_chunk
 {
-  unsigned long int  table_no;  /**< table to which this data belongs */
+  unsigned long int  table_num;  /**< table to which this data belongs */
   bstream_blob       data;      /**< the data */
   unsigned short int flags;     /**< flags to be saved together with the chunk */
-  unsigned short int snap_no;   /**< which snapshot this chunk belongs to */
+  unsigned short int snap_num;   /**< which snapshot this chunk belongs to */
 };
 
 /** Indicates that given chunk is the last chunk of data for a given table */

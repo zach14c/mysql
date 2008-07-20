@@ -13,6 +13,11 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+/**
+  @file
+  mysys library API
+*/
+
 #ifndef _my_sys_h
 #define _my_sys_h
 C_MODE_START
@@ -357,7 +362,10 @@ typedef struct st_dynamic_string
 } DYNAMIC_STRING;
 
 struct st_io_cache;
-typedef int (*IO_CACHE_CALLBACK)(struct st_io_cache*);
+/** Function called when certain events happen to an IO_CACHE */
+typedef int (*IO_CACHE_CALLBACK)(struct st_io_cache *cache,
+                                 const uchar *buffert, uint length,
+                                 my_off_t filepos);
 
 #ifdef THREAD
 typedef struct st_io_cache_share
@@ -456,21 +464,24 @@ typedef struct st_io_cache		/* Used when cacheing files */
   */
   enum cache_type type;
   /*
-    Callbacks when the actual read I/O happens. These were added and
-    are currently used for binary logging of LOAD DATA INFILE - when a
-    block is read from the file, we create a block create/append event, and
-    when IO_CACHE is closed, we create an end event. These functions could,
-    of course be used for other things
+    Callbacks were added and are currently used for binary logging of LOAD
+    DATA INFILE - when a block is read from the file, we create a block
+    create/append event, and when IO_CACHE is closed, we create an end event;
+    also used to write the MyISAM WRITE_CACHE blocks to the MyISAM physical
+    log. These functions could, of course be used for other things. Note: some
+    callbacks share the same argument ("arg").
   */
-  IO_CACHE_CALLBACK pre_read;
-  IO_CACHE_CALLBACK post_read;
-  IO_CACHE_CALLBACK pre_close;
+  IO_CACHE_CALLBACK pre_read;  /**< called before reading from disk */
+  IO_CACHE_CALLBACK post_read; /**< called after reading from disk */
+  IO_CACHE_CALLBACK pre_close; /**< called before ending the cache */
+  /** Called _after_ writing to disk; not honoured by SEQ_READ_APPEND */
+  IO_CACHE_CALLBACK post_write;
   /*
     Counts the number of times, when we were forced to use disk. We use it to
     increase the binlog_cache_disk_use status variable.
   */
   ulong disk_writes;
-  void* arg;				/* for use by pre/post_read */
+  void *arg;			     /**< used by pre/post_read,post_write */
   char *file_name;			/* if used with 'open_cached_file' */
   char *dir,*prefix;
   File file; /* file descriptor */
@@ -482,6 +493,11 @@ typedef struct st_io_cache		/* Used when cacheing files */
     partial.
   */
   int	seek_not_done,error;
+  /**
+     Cumulative 'error' since last [re]init_io_cache(). Useful if cache's user
+     polls for errors only once in a while.
+  */
+  int hard_write_error_in_the_past;
   /* buffer_length is memory size allocated for buffer or write_buffer */
   size_t	buffer_length;
   /* read_length is the same as buffer_length except when we use async io */

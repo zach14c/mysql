@@ -1166,8 +1166,7 @@ READ_INFO::READ_INFO(File file_par, uint tot_length, CHARSET_INFO *cs,
 	cache.read_function = _my_b_net_read;
 
       if (mysql_bin_log.is_open())
-	cache.pre_read = cache.pre_close =
-	  (IO_CACHE_CALLBACK) log_loaded_block;
+	cache.pre_read= cache.pre_close = log_loaded_block;
 #endif
     }
   }

@@ -24,6 +24,7 @@
          of byte?
   */
 
+#include "../mysql_priv.h"
 #include "backup_progress.h"
 #include "be_thread.h"
 
@@ -360,9 +361,9 @@ bool backup_history_log_update(THD *thd,
       }
       break;
     }    
-    case ET_OBH_FIELD_ENGINES:
+    case ET_OBH_FIELD_DRIVERS:
     {
-      String str;    // engines string
+      String str;    // drivers string
       str.length(0);
       table->field[fld]->val_str(&str);
       if (str.length() > 0)
@@ -814,9 +815,9 @@ int report_ob_vp_time(THD *thd,
 }
 
 /**
-   Update the engines string for the row that matches the backup_id.
+   Update the drivers string for the row that matches the backup_id.
 
-   This method updates the engines information for the backup operation
+   This method updates the drivers information for the backup operation
    identified by backup_id. This method appends to the those listed in the
    table for the backup_id.
 
@@ -827,15 +828,15 @@ int report_ob_vp_time(THD *thd,
    @retval 0  success
    @retval 1  failed to find row
   */
-int report_ob_engines(THD *thd,
+int report_ob_drivers(THD *thd,
                       ulonglong backup_id,
-                      const char *engine_name)
+                      const char *driver_name)
 {
   int ret= 0;  // return value
-  DBUG_ENTER("report_ob_engines()");
+  DBUG_ENTER("report_ob_drivers()");
 
-  ret= backup_history_log_update(thd, backup_id, ET_OBH_FIELD_ENGINES, 
-                                 0, 0, engine_name, 0);
+  ret= backup_history_log_update(thd, backup_id, ET_OBH_FIELD_DRIVERS, 
+                                 0, 0, driver_name, 0);
 
   DBUG_RETURN(ret);
 }

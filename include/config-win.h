@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <malloc.h>
+#include <sys/stat.h>
 
 #define HAVE_SMEM 1
 
@@ -91,6 +92,11 @@
 #define W_OK		2
 
 #define S_IROTH		S_IREAD		/* for my_lib */
+
+/* for MY_S_ISFIFO() macro from my_lib */
+#if defined (_S_IFIFO) && !defined (S_IFIFO)
+#define S_IFIFO _S_IFIFO
+#endif
 
 /* Winsock2 constant (Vista SDK and later)*/
 #define IPPROTO_IPV6 41

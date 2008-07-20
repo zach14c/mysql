@@ -1,0 +1,70 @@
+SET DEBUG_SYNC= 'RESET';
+drop table if exists t1,t2,t3,t4,t5,t6;
+drop database if exists mysqltest;
+SET GLOBAL concurrent_insert= 0;
+CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
+CREATE TABLE t2 (c1 INT) ENGINE= MRG_MYISAM UNION= (t1) INSERT_METHOD= LAST;
+connection con1
+SET DEBUG_SYNC= 'after_admin_flush
+                     SIGNAL admin_flush WAIT_FOR end_repair';
+REPAIR TABLE t1;
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR admin_flush';
+SET DEBUG_SYNC= 'mysql_lock_retry HIT_LIMIT 3';
+SET DEBUG_SYNC= 'before_open_table_wait_refresh SIGNAL end_repair';
+INSERT INTO t2 VALUES (1);
+SET DEBUG_SYNC= 'now SIGNAL end_repair';
+connection con1
+Table	Op	Msg_type	Msg_text
+test.t1	repair	status	OK
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1, t2;
+CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
+CREATE TABLE t2 (c1 INT) ENGINE= MRG_MYISAM UNION= (t1) INSERT_METHOD= LAST;
+LOCK TABLE t1 WRITE;
+REPAIR TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	repair	status	OK
+connection con1
+SET DEBUG_SYNC= 'mysql_lock_retry HIT_LIMIT 3';
+SET DEBUG_SYNC= 'after_insert SIGNAL end_repair';
+SET DEBUG_SYNC= 'before_open_table_wait_refresh SIGNAL end_repair';
+INSERT INTO t2 VALUES (1);
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR end_repair';
+UNLOCK TABLES;
+connection con1
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1, t2;
+CREATE TABLE t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE m1 (c1 INT) ENGINE=MRG_MYISAM UNION=(t1) INSERT_METHOD=LAST;
+connection con1
+SET DEBUG_SYNC= 'before_myisammrg_attach
+                     SIGNAL attach WAIT_FOR flushed';
+INSERT INTO m1 VALUES (2);
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR attach';
+SET DEBUG_SYNC= 'after_flush_unlock SIGNAL flushed';
+FLUSH TABLE m1;
+connection con1
+connection default;
+SELECT * FROM m1;
+c1
+2
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE m1, t1;
+CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
+LOCK TABLE t1 WRITE;
+connection con1
+SET DEBUG_SYNC= 'wait_for_lock SIGNAL locked';
+INSERT INTO t1 VALUES (1);
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+UNLOCK TABLES;
+connection con1
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+SET GLOBAL concurrent_insert= DEFAULT;

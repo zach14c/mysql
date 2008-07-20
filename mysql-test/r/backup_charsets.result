@@ -1,0 +1,50 @@
+DROP DATABASE IF EXISTS backup_cs;
+CREATE DATABASE backup_cs;
+USE backup_cs;
+SET NAMES utf8;
+CREATE TABLE `ｱｱｱ`(`ｷｷｷ` char(5))
+ENGINE = MEMORY
+DEFAULT CHARSET = utf8;
+SHOW TABLES;
+Tables_in_backup_cs
+ｱｱｱ
+SHOW CREATE TABLE `ｱｱｱ`;
+Table	Create Table
+ｱｱｱ	CREATE TABLE `ｱｱｱ` (
+  `ｷｷｷ` char(5) DEFAULT NULL
+) ENGINE=MEMORY DEFAULT CHARSET=utf8
+INSERT INTO `ｱｱｱ` VALUES ("ｱｱｱ");
+BACKUP DATABASE backup_cs TO "backup_cs.bak";
+backup_id
+#
+DROP DATABASE backup_cs;
+RESTORE FROM "backup_cs.bak";
+backup_id
+#
+USE backup_cs;
+SHOW CREATE TABLE `ｱｱｱ`;
+Table	Create Table
+ｱｱｱ	CREATE TABLE `ｱｱｱ` (
+  `ｷｷｷ` char(5) DEFAULT NULL
+) ENGINE=MEMORY DEFAULT CHARSET=utf8
+SELECT * FROM `ｱｱｱ`;
+ｷｷｷ
+ｱｱｱ
+SET NAMES latin2;
+DROP DATABASE backup_cs;
+RESTORE FROM "backup_cs.bak";
+backup_id
+#
+SHOW TABLES IN backup_cs;
+Tables_in_backup_cs
+???
+SELECT @@character_set_client;
+@@character_set_client
+latin2
+SELECT @@character_set_results;
+@@character_set_results
+latin2
+SELECT @@character_set_connection;
+@@character_set_connection
+latin2
+DROP DATABASE backup_cs;

@@ -1,0 +1,1137 @@
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE IF EXISTS bup_online;
+
+starting the test for backup
+
+CREATE DATABASE bup_online;
+Establishing connections
+** con1 to perform BACKUP AND RESTORE**
+** con2 and con2a to do INSERTS**
+** con3 to synchronize with BACKUP
+** con4 to do UPDATES**
+** con5 to do DELETES**
+** con6 to check table contents**
+
+con1: ***Creating Tables***
+CREATE TABLE t1(id int, details char(30))ENGINE=INNODB;
+INSERT INTO t1 VALUES(1,'testing1'),(2,'testing2'),(3,'testing3'),
+(4,'testing4'),(5,'testing5'),(6,'testing6'),(7,'tesing7'),(8,'testing8'),
+(9,'testing9'),(10,'testing10'),(11,'testing11'),(12,'testing12');
+CREATE TABLE t2(id int, info char(30))ENGINE=INNODB;
+INSERT INTO t2 VALUES(201, 'aa1'),(202,'aa2');
+CREATE TABLE t3(id int, name char(20))ENGINE=INNODB;
+INSERT INTO t3 VALUES(1,'xx1'),(2,'xx2'),(3,'xx3'),(4,'xx4'),(5,'xx5');
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+12
+SELECT COUNT(*) FROM t2;
+COUNT(*)
+2
+SELECT COUNT(*) FROM t3;
+COUNT(*)
+5
+
+**TEST1**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_data_init SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(100,'new value added100');
+INSERT INTO t1 VALUES(101,'new value added101');
+INSERT INTO t1 VALUES(102,'new value added102');
+
+con4: Updating Data
+UPDATE t2 SET info='updated values1' WHERE id=201;
+UPDATE t2 SET  info='updated values2' WHERE id=202;
+
+con5: Deleting Data
+DELETE FROM t1 WHERE id=11;
+DELETE FROM t1 WHERE id=12;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(500,'online500');
+INSERT INTO t1 VALUES(600,'online600');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINE1' WHERE id=10;
+
+con5: Deleting Data
+DELETE FROM t2 WHERE id=201;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	testing8
+9	testing9
+10	ONLINE1
+100	new value added100
+101	new value added101
+102	new value added102
+500	online500
+600	online600
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+15
+SELECT * FROM t2;
+id	info
+202	updated values2
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+1
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	testing8
+9	testing9
+10	testing10
+100	new value added100
+101	new value added101
+102	new value added102
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+13
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+2
+
+**TEST2**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online1.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(103,'new value added103');
+INSERT INTO t2 VALUES(203,'Updated Values3');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINETEST' WHERE id=10;
+
+con5: Deleting Data
+DELETE FROM t3 WHERE id=5;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(700,'online700');
+
+con4: Updating Data
+UPDATE t3 SET name='yy' WHERE id=3;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	testing8
+9	testing9
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+700	online700
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+15
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+3
+SELECT *FROM t3;
+id	name
+1	xx1
+2	xx2
+3	yy
+4	xx4
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+4
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online1.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	testing8
+9	testing9
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+14
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+3
+SELECT *FROM t3;
+id	name
+1	xx1
+2	xx2
+3	xx3
+4	xx4
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+4
+
+**TEST3**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_command SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(104,'new value added103');
+INSERT INTO t2 VALUES(204,'Updated Values3');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=9;
+
+con5: Deleting Data
+DELETE FROM t3 WHERE id=4;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(800,'online800');
+
+con4: Updating Data
+UPDATE t3 SET name='zz' WHERE id=2;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	testing8
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+800	online800
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+16
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+4
+SELECT *FROM t3;
+id	name
+1	xx1
+2	zz
+3	xx3
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+3
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	testing8
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+15
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+4
+SELECT *FROM t3;
+id	name
+1	xx1
+2	xx2
+3	xx3
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+3
+
+**TEST4**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_meta SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(105,'new value added105');
+INSERT INTO t2 VALUES(205,'Updated Values5');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=8;
+
+con5: Deleting Data
+DELETE FROM t3 WHERE id=3;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(900,'online900');
+
+con4: Updating Data
+UPDATE t3 SET name='tt' WHERE id=2;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+900	online900
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+17
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+5
+SELECT *FROM t3;
+id	name
+1	xx1
+2	tt
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+2
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	tesing7
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+16
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+5
+SELECT *FROM t3;
+id	name
+1	xx1
+2	xx2
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+2
+
+**TEST5**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_data SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(106,'new value added106');
+INSERT INTO t2 VALUES(206,'Updated Values6');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=7;
+
+con5: Deleting Data
+DELETE FROM t3 WHERE id=2;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(1000,'online1000');
+
+con4: Updating Data
+UPDATE t3 SET name='uu' WHERE id=1;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+1000	online1000
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+18
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	uu
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+17
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+**TEST6**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_data_lock SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Starting Insert Data
+INSERT INTO t1 VALUES(107,'new value added107');
+
+con2a: Starting Insert Data
+INSERT INTO t2 VALUES(207,'Updated Values7');
+
+con4: Starting Update data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=6;
+
+con5: Starting Delete data
+DELETE FROM t3 WHERE id=1;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Fetching result of INSERT and Insert more data
+INSERT INTO t1 VALUES(1010,'online1010');
+
+con2a: Fetching result of INSERT
+
+con4: Fetching result of UPDATE and Update more data
+UPDATE t2 SET info='t2 updated1' WHERE id=205;
+
+con5: Fetching result of DELETE
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	ONLINETEST1
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+107	new value added107
+1010	online1010
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+19
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	t2 updated1
+206	Updated Values6
+207	Updated Values7
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+7
+SELECT *FROM t3;
+id	name
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+0
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+17
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+**TEST7**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_data_unlock SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Starting Insert Data
+INSERT INTO t1 VALUES(108,'new value added108');
+
+con2a: Starting Insert Data
+INSERT INTO t3 VALUES(20,'zz20');
+
+con4: Starting Update data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=4;
+
+con5: Starting Delete data
+DELETE FROM t3 WHERE id=1;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Fetching result of INSERT and Insert more data
+INSERT INTO t1 VALUES(1020,'online1020');
+
+con2a: Fetching result of INSERT
+
+con4: Fetching result of UPDATE and Update more data
+UPDATE t2 SET info='t2 updated2' WHERE id=206;
+
+con5: Fetching result of DELETE
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	ONLINETEST1
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+108	new value added108
+1020	online1020
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+19
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	t2 updated2
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+20	zz20
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+17
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+**TEST8**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_data_finish SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(109,'new value added109');
+INSERT INTO t3 VALUES(30,'zz30');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=3;
+
+con5: Deleting Data
+DELETE FROM t3 WHERE id=20;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(1030,'online1030');
+
+con4: Updating Data
+UPDATE t2 SET info='t2 updated3' WHERE id=207;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	ONLINETEST1
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+109	new value added109
+1030	online1030
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+19
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+30	zz30
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+2
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+17
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+**TEST9**
+
+con1: Starting Backup Data
+SET DEBUG_SYNC= 'before_backup_done SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE bup_online TO 'bup_online.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(110,'new value added110');
+INSERT INTO t3 VALUES(40,'zz40');
+
+con4: Updating Data
+UPDATE t1 SET details='ONLINETEST1' WHERE id=2;
+
+con5: Deleting Data
+DELETE FROM t3 WHERE id=30;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+con1: Fetching result of BACKUP
+backup_id
+#
+
+con2: Inserting Data
+INSERT INTO t1 VALUES(1040,'online1040');
+
+con4: Updating Data
+UPDATE t2 SET info='t2 updated4' WHERE id=201;
+
+con6: **Checking the Data Contents before Restore**
+SELECT * FROM t1;
+id	details
+1	testing1
+2	ONLINETEST1
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+110	new value added110
+1040	online1040
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+19
+SELECT * FROM t2;
+id	info
+201	t2 updated4
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+40	zz40
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+2
+
+con1: Dropping the database
+DROP DATABASE bup_online;
+con1: Restoring the database
+RESTORE FROM 'bup_online.bak';
+backup_id
+#
+
+*** RESULT AFTER RESTORE ***
+
+SELECT * FROM t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+7	ONLINETEST1
+8	ONLINETEST1
+9	ONLINETEST1
+10	ONLINETEST
+100	new value added100
+101	new value added101
+102	new value added102
+103	new value added103
+104	new value added103
+105	new value added105
+106	new value added106
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+17
+SELECT * FROM t2;
+id	info
+201	updated values1
+202	updated values2
+203	Updated Values3
+204	Updated Values3
+205	Updated Values5
+206	Updated Values6
+SELECT  COUNT(*) FROM t2;
+COUNT(*)
+6
+SELECT *FROM t3;
+id	name
+1	xx1
+SELECT  COUNT(*) FROM t3;
+COUNT(*)
+1
+
+***  DROP bup_online DATABASE ****
+
+DROP DATABASE bup_online;

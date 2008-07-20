@@ -711,6 +711,31 @@ int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* ta
 	return 0;
 }
 
+int StorageDatabase::dropIndex(StorageConnection *storageConnection, Table* table, const char* indexName, const char* sql)
+{
+	Connection *connection = storageConnection->connection;
+	Statement *statement = connection->createStatement();
+	
+	try
+		{
+		statement->execute(sql);
+		}
+	catch (SQLException& exception)
+		{
+		storageConnection->setErrorText(&exception);
+		statement->release();
+		
+		if (exception.getSqlcode() == INDEX_OVERFLOW)
+			return StorageErrorIndexOverflow;
+		
+		return StorageErrorNoIndex;
+		}
+	
+	statement->release();
+	
+	return 0;
+}
+
 int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* table, const char* tableName, const char *schemaName)
 {
 	Connection *connection = storageConnection->connection;

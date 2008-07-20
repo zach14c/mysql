@@ -23,7 +23,8 @@ DEFS= @DEFS@ \
 
 INCLUDES= -I$(top_srcdir)/include -I$(top_builddir)/include \
 	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql \
-	  -I$(srcdir) -I$(srcdir)/TransformLib @ZLIB_INCLUDES@
+	  -I$(srcdir) -I$(srcdir)/TransformLib @ZLIB_INCLUDES@ \
+	  @FALCON_SPARC_ASSEMBLY@
 
 falcon_headers= Agent.h Alias.h Application.h \
 		AsciiBlob.h \

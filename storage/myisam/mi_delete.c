@@ -100,13 +100,15 @@ int mi_delete(MI_INFO *info,const uchar *record)
   info->state->records--;
 
   mi_sizestore(lastpos,info->lastpos);
-  myisam_log_command(MI_LOG_DELETE,info,(uchar*) lastpos,sizeof(lastpos),0);
+  myisam_log_command_logical(MI_LOG_DELETE, info,
+                             (uchar*) lastpos, sizeof(lastpos), 0);
   (void) _mi_writeinfo(info,WRITEINFO_UPDATE_KEYFILE);
   allow_break();			/* Allow SIGHUP & SIGINT */
   if (info->invalidator != 0)
   {
-    DBUG_PRINT("info", ("invalidator... '%s' (delete)", info->filename));
-    (*info->invalidator)(info->filename);
+    DBUG_PRINT("info", ("invalidator... '%s' (delete)",
+                        info->s->unresolv_file_name));
+    (*info->invalidator)(info->s->unresolv_file_name);
     info->invalidator=0;
   }
   DBUG_RETURN(0);
@@ -114,7 +116,8 @@ int mi_delete(MI_INFO *info,const uchar *record)
 err:
   save_errno=my_errno;
   mi_sizestore(lastpos,info->lastpos);
-  myisam_log_command(MI_LOG_DELETE,info,(uchar*) lastpos, sizeof(lastpos),0);
+  myisam_log_command_logical(MI_LOG_DELETE, info,
+                           (uchar*) lastpos, sizeof(lastpos), 0);
   if (save_errno != HA_ERR_RECORD_CHANGED)
   {
     mi_print_error(info->s, HA_ERR_CRASHED);
@@ -154,10 +157,7 @@ static int _mi_ck_real_delete(register MI_INFO *info, MI_KEYDEF *keyinfo,
   DBUG_ENTER("_mi_ck_real_delete");
 
   if ((old_root=*root) == HA_OFFSET_ERROR)
-  {
-    mi_print_error(info->s, HA_ERR_CRASHED);
-    DBUG_RETURN(my_errno=HA_ERR_CRASHED);
-  }
+    DBUG_RETURN(my_errno=HA_ERR_KEY_NOT_FOUND);
   if (!(root_buff= (uchar*) my_alloca((uint) keyinfo->block_length+
 				      HA_MAX_KEY_BUFF*2)))
   {
@@ -323,8 +323,7 @@ static int d_search(register MI_INFO *info, register MI_KEYDEF *keyinfo,
     if (!nod_flag)
     {
       DBUG_PRINT("error",("Didn't find key"));
-      mi_print_error(info->s, HA_ERR_CRASHED);
-      my_errno=HA_ERR_CRASHED;		/* This should newer happend */
+      my_errno=HA_ERR_KEY_NOT_FOUND;
       goto err;
     }
     save_flag=0;

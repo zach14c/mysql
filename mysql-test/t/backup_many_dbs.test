@@ -1,0 +1,131 @@
+###########################################################################
+# Regression test for bug#33568
+###############################################################################
+--source include/not_embedded.inc
+
+##############################################################
+--echo Starting regression test for bug 33568
+##############################################################
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_manydbs.bak
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+DROP DATABASE IF EXISTS db3;
+DROP DATABASE IF EXISTS db4;
+DROP DATABASE IF EXISTS db5;
+DROP DATABASE IF EXISTS db6;
+DROP DATABASE IF EXISTS db7;
+DROP DATABASE IF EXISTS db8;
+DROP DATABASE IF EXISTS db9;
+DROP DATABASE IF EXISTS db10;
+DROP DATABASE IF EXISTS db11;
+DROP DATABASE IF EXISTS db12;
+DROP DATABASE IF EXISTS db13;
+DROP DATABASE IF EXISTS db14;
+DROP DATABASE IF EXISTS db15;
+DROP DATABASE IF EXISTS db16;
+DROP DATABASE IF EXISTS db17;
+DROP DATABASE IF EXISTS db18;
+--enable_warnings
+
+##############################################################
+--echo Creating 18 databases
+##############################################################
+
+# Create 18 databases. This is the threashold for provoking the bug (16
+# dbs works, nbr 17 overruns memory, nbr 18 crashes server due to
+# overrun memory
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE DATABASE db3;
+CREATE DATABASE db4;
+CREATE DATABASE db5;
+CREATE DATABASE db6;
+CREATE DATABASE db7;
+CREATE DATABASE db8;
+CREATE DATABASE db9;
+CREATE DATABASE db10;
+CREATE DATABASE db11;
+CREATE DATABASE db12;
+CREATE DATABASE db13;
+CREATE DATABASE db14;
+CREATE DATABASE db15;
+CREATE DATABASE db16;
+CREATE DATABASE db17;
+CREATE DATABASE db18;
+
+
+##############################################################
+--echo Backing up the databases
+##############################################################
+
+#Backup and restore data.
+replace_column 1 #;
+BACKUP DATABASE db1, db2, db3, db4, db5, db6, db7, db8, db9, db10, db11, db12, db13, db14, db15, db16, db17, db18  
+TO 'bup_manydbs.bak';
+
+##############################################################
+--echo Dropping the databases
+##############################################################
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+DROP DATABASE db4;
+DROP DATABASE db5;
+DROP DATABASE db6;
+DROP DATABASE db7;
+DROP DATABASE db8;
+DROP DATABASE db9;
+DROP DATABASE db10;
+DROP DATABASE db11;
+DROP DATABASE db12;
+DROP DATABASE db13;
+DROP DATABASE db14;
+DROP DATABASE db15;
+DROP DATABASE db16;
+DROP DATABASE db17;
+DROP DATABASE db18;
+
+##############################################################
+--echo Restoring databases
+##############################################################
+
+replace_column 1 #;
+RESTORE FROM 'bup_manydbs.bak';
+
+##############################################################
+--echo Checking that all dbs are there
+##############################################################
+
+SHOW DATABASES LIKE 'db%'; 
+
+##############################################################
+--echo Cleaning up
+##############################################################
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP DATABASE db3;
+DROP DATABASE db4;
+DROP DATABASE db5;
+DROP DATABASE db6;
+DROP DATABASE db7;
+DROP DATABASE db8;
+DROP DATABASE db9;
+DROP DATABASE db10;
+DROP DATABASE db11;
+DROP DATABASE db12;
+DROP DATABASE db13;
+DROP DATABASE db14;
+DROP DATABASE db15;
+DROP DATABASE db16;
+DROP DATABASE db17;
+DROP DATABASE db18;
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_manydbs.bak
+
