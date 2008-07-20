@@ -12383,9 +12383,11 @@ err:
   SYNOPSIS
 
     create_duplicate_weedout_tmp_table()
-      thd
-      uniq_tuple_length_arg
-      SJ_TMP_TABLE 
+      thd                    Thread handle
+      uniq_tuple_length_arg  Length of the table's column
+      sjtbl                  Update sjtbl->[start_]recinfo values which 
+                             will be needed if we'll need to convert the 
+                             created temptable from HEAP to MyISAM/Maria.
 
   DESCRIPTION
     Create a temporary table to weed out duplicate rowid combinations. The
