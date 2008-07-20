@@ -1590,7 +1590,8 @@ sub executable_setup () {
     # Look for mysql_fix_privilege_tables.sql script
     $file_mysql_fix_privilege_tables=
       mtr_file_exists("$glob_basedir/scripts/mysql_fix_privilege_tables.sql",
-  		    "$glob_basedir/share/mysql_fix_privilege_tables.sql");
+  		    "$glob_basedir/share/mysql_fix_privilege_tables.sql",
+  		    "$glob_basedir/share/mysql/mysql_fix_privilege_tables.sql");
 
     if ( ! $opt_skip_ndbcluster and executable_setup_ndb())
     {
