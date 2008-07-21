@@ -1186,6 +1186,26 @@ explain
 select substr(Z.a,-1), Z.a from t1 as Y join t1 as Z on Y.a=Z.a order by 1;
 drop table t1;
 
+#
+# Bug #34349: Passing invalid parameter to CHAR() in an ORDER BY causes
+# MySQL to hang
+#
+
+SET CHARACTER SET utf8;
+SHOW VARIABLES LIKE 'character\_set\_%';
+CREATE DATABASE crashtest DEFAULT CHARACTER SET utf8 COLLATE utf8_bin;
+USE crashtest;
+CREATE TABLE crashtest (crash char(10)) DEFAULT CHARSET=utf8;
+INSERT INTO crashtest VALUES ('35'), ('36'), ('37');
+SELECT * FROM crashtest ORDER BY CHAR(crash USING utf8);
+INSERT INTO crashtest VALUES ('-1000');
+EXPLAIN SELECT * FROM crashtest ORDER BY CHAR(crash USING utf8);
+SELECT * FROM crashtest ORDER BY CHAR(crash USING utf8);
+DROP TABLE crashtest;
+DROP DATABASE crashtest;
+USE test;
+SET CHARACTER SET default;
+
 # End of 4.1 tests
 
 #
@@ -1439,6 +1459,30 @@ select hex(_utf8 X'616263FF');
 select hex(_utf8 B'001111111111');
 --error ER_INVALID_CHARACTER_STRING
 select (_utf8 X'616263FF');
+
+#
+# Bug#32914 Character sets: illegal characters in utf8 and utf32 columns
+#
+create table t1 (utf8 char(1) character set utf8);
+--echo Testing [F0][90..BF][80..BF][80..BF]
+insert into t1 values (0xF0908080);
+insert into t1 values (0xF0BFBFBF);
+insert into t1 values (0xF08F8080);
+select hex(utf8) from t1;
+delete from t1;
+
+--echo Testing [F2..F3][80..BF][80..BF][80..BF]
+insert into t1 values (0xF2808080);
+insert into t1 values (0xF2BFBFBF);
+select hex(utf8) from t1;
+delete from t1;
+
+--echo Testing [F4][80..8F][80..BF][80..BF]
+insert into t1 values (0xF4808080);
+insert into t1 values (0xF48F8080);
+insert into t1 values (0xF4908080);
+select hex(utf8) from t1;
+drop table t1;
 
 #
 # Bug#26474: Add Sinhala script (Sri Lanka) collation to MySQL

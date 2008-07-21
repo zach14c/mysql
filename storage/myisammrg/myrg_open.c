@@ -91,9 +91,9 @@ MYRG_INFO *myrg_open(const char *name, int mode, int handle_locking)
 
     if (!has_path(buff))
     {
-      VOID(strmake(name_buff+dir_length,buff,
-                   sizeof(name_buff)-1-dir_length));
-      VOID(cleanup_dirname(buff,name_buff));
+      (void) strmake(name_buff+dir_length,buff,
+                   sizeof(name_buff)-1-dir_length);
+      (void) cleanup_dirname(buff,name_buff);
     }
     else
       fn_format(buff, buff, "", "", 0);
@@ -171,9 +171,9 @@ MYRG_INFO *myrg_open(const char *name, int mode, int handle_locking)
   m_info->last_used_table=m_info->open_tables;
   m_info->children_attached= TRUE;
 
-  VOID(my_close(fd,MYF(0)));
+  (void) my_close(fd,MYF(0));
   end_io_cache(&file);
-  VOID(pthread_mutex_init(&m_info->mutex, MY_MUTEX_INIT_FAST));
+  pthread_mutex_init(&m_info->mutex, MY_MUTEX_INIT_FAST);
   m_info->open_list.data=(void*) m_info;
   pthread_mutex_lock(&THR_LOCK_open);
   myrg_open_list=list_add(myrg_open_list,&m_info->open_list);
@@ -192,7 +192,7 @@ err:
     end_io_cache(&file);
     /* Fall through */
   case 1:
-    VOID(my_close(fd,MYF(0)));
+    (void) my_close(fd,MYF(0));
   }
   my_errno=save_errno;
   DBUG_RETURN (NULL);
@@ -316,9 +316,9 @@ MYRG_INFO *myrg_parent_open(const char *parent_name,
 
     if (!has_path(child_name_buff))
     {
-      VOID(strmake(parent_name_buff + dir_length, child_name_buff,
-                   sizeof(parent_name_buff) - 1 - dir_length));
-      VOID(cleanup_dirname(child_name_buff, parent_name_buff));
+      (void) strmake(parent_name_buff + dir_length, child_name_buff,
+                   sizeof(parent_name_buff) - 1 - dir_length);
+      (void) cleanup_dirname(child_name_buff, parent_name_buff);
     }
     else
       fn_format(child_name_buff, child_name_buff, "", "", 0);
@@ -330,8 +330,8 @@ MYRG_INFO *myrg_parent_open(const char *parent_name,
   }
 
   end_io_cache(&file_cache);
-  VOID(my_close(fd, MYF(0)));
-  VOID(pthread_mutex_init(&m_info->mutex, MY_MUTEX_INIT_FAST));
+  (void) my_close(fd, MYF(0));
+  pthread_mutex_init(&m_info->mutex, MY_MUTEX_INIT_FAST);
 
   m_info->open_list.data= (void*) m_info;
   pthread_mutex_lock(&THR_LOCK_open);
@@ -351,7 +351,7 @@ MYRG_INFO *myrg_parent_open(const char *parent_name,
     end_io_cache(&file_cache);
     /* Fall through */
   case 1:
-    VOID(my_close(fd, MYF(0)));
+    (void) my_close(fd, MYF(0));
   }
   my_errno= save_errno;
   DBUG_RETURN (NULL);
@@ -414,7 +414,7 @@ int myrg_attach_children(MYRG_INFO *m_info, int handle_locking,
   while ((myisam= (*callback)(callback_param)))
   {
     DBUG_PRINT("myrg", ("child_nr: %u  table: '%s'",
-                        child_nr, myisam->filename));
+                        child_nr, myisam->s->unresolv_file_name));
     DBUG_ASSERT(child_nr < m_info->tables);
 
     /* Special handling when the first child is attached. */
@@ -441,12 +441,12 @@ int myrg_attach_children(MYRG_INFO *m_info, int handle_locking,
     if (m_info->reclength != myisam->s->base.reclength)
     {
       DBUG_PRINT("error", ("definition mismatch table: '%s'  repair: %d",
-                           myisam->filename,
+                           myisam->s->unresolv_file_name,
                            (handle_locking & HA_OPEN_FOR_REPAIR)));
       my_errno= HA_ERR_WRONG_MRG_TABLE_DEF;
       if (handle_locking & HA_OPEN_FOR_REPAIR)
       {
-        myrg_print_wrong_table(myisam->filename);
+        myrg_print_wrong_table(myisam->s->unresolv_file_name);
         continue;
       }
       goto err;

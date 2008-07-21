@@ -112,8 +112,8 @@ void mi_remap_file(MI_INFO *info, my_off_t size)
 {
   if (info->s->file_map)
   {
-    VOID(my_munmap((char*) info->s->file_map,
-                   (size_t) info->s->mmaped_length + MEMMAP_EXTRA_MARGIN));
+    (void) my_munmap((char*) info->s->file_map,
+                   (size_t) info->s->mmaped_length + MEMMAP_EXTRA_MARGIN);
     mi_dynmap_file(info, size);
   }
 }
@@ -193,9 +193,11 @@ size_t mi_nommap_pread(MI_INFO *info, uchar *Buffer,
 size_t mi_mmap_pwrite(MI_INFO *info, const uchar *Buffer,
                       size_t Count, my_off_t offset, myf MyFlags)
 {
+  MYISAM_SHARE *share= info->s;
+  uint ret;
   DBUG_PRINT("info", ("mi_write with mmap %d\n", info->dfile));
-  if (info->s->concurrent_insert)
-    rw_rdlock(&info->s->mmap_lock);
+  if (share->concurrent_insert)
+    rw_rdlock(&share->mmap_lock);
 
   /*
     The following test may fail in the following cases:
@@ -204,21 +206,24 @@ size_t mi_mmap_pwrite(MI_INFO *info, const uchar *Buffer,
     memory mapped area.
   */
 
-  if (info->s->mmaped_length >= offset + Count)
+  if (share->mmaped_length >= offset + Count)
   {
-    memcpy(info->s->file_map + offset, Buffer, Count); 
-    if (info->s->concurrent_insert)
-      rw_unlock(&info->s->mmap_lock);
-    return 0;
+    memcpy(share->file_map + offset, Buffer, Count);
+    if (share->concurrent_insert)
+      rw_unlock(&share->mmap_lock);
+    ret= 0;
   }
   else
   {
-    info->s->nonmmaped_inserts++;
-    if (info->s->concurrent_insert)
-      rw_unlock(&info->s->mmap_lock);
-    return my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
+    share->nonmmaped_inserts++;
+    if (share->concurrent_insert)
+      rw_unlock(&share->mmap_lock);
+    ret= my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
   }
-
+  if (unlikely(mi_get_physical_logging_state(share)))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYD,
+                               share, Buffer, Count, offset);
+  return ret;
 }
 
 
@@ -227,7 +232,12 @@ size_t mi_mmap_pwrite(MI_INFO *info, const uchar *Buffer,
 size_t mi_nommap_pwrite(MI_INFO *info, const uchar *Buffer,
                       size_t Count, my_off_t offset, myf MyFlags)
 {
-  return my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
+  MYISAM_SHARE *share= info->s;
+  uint ret= my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
+  if (unlikely(mi_get_physical_logging_state(share)))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYD,
+                               share, Buffer, Count, offset);
+  return ret;
 }
 
 
@@ -252,7 +262,7 @@ int _mi_write_blob_record(MI_INFO *info, const uchar *record)
   extra= (ALIGN_SIZE(MI_MAX_DYN_BLOCK_HEADER)+MI_SPLIT_LENGTH+
 	  MI_DYN_DELETE_BLOCK_HEADER+1);
   reclength= (info->s->base.pack_reclength +
-	      _my_calc_total_blob_length(info,record)+ extra);
+	      _mi_calc_total_blob_length(info,record)+ extra);
 #ifdef NOT_USED					/* We now support big rows */
   if (reclength > MI_DYN_MAX_ROW_LENGTH)
   {
@@ -286,7 +296,7 @@ int _mi_update_blob_record(MI_INFO *info, my_off_t pos, const uchar *record)
   extra= (ALIGN_SIZE(MI_MAX_DYN_BLOCK_HEADER)+MI_SPLIT_LENGTH+
 	  MI_DYN_DELETE_BLOCK_HEADER);
   reclength= (info->s->base.pack_reclength+
-	      _my_calc_total_blob_length(info,record)+ extra);
+	      _mi_calc_total_blob_length(info,record)+ extra);
 #ifdef NOT_USED					/* We now support big rows */
   if (reclength > MI_DYN_MAX_ROW_LENGTH)
   {
@@ -969,7 +979,7 @@ uint _mi_rec_pack(MI_INFO *info, register uchar *to,
 	else
 	{
 	  char *temp_pos;
-	  size_t tmp_length=length-mi_portable_sizeof_char_ptr;
+	  size_t tmp_length=length-portable_sizeof_char_ptr;
 	  memcpy((uchar*) to,from,tmp_length);
 	  memcpy_fixed(&temp_pos,from+tmp_length,sizeof(char*));
 	  memcpy(to+tmp_length,temp_pos,(size_t) blob->length);
@@ -1090,11 +1100,11 @@ my_bool _mi_rec_check(MI_INFO *info,const uchar *record, uchar *rec_buff,
       if (type == FIELD_BLOB)
       {
 	uint blob_length=
-	  _mi_calc_blob_length(length-mi_portable_sizeof_char_ptr,record);
+	  _mi_calc_blob_length(length-portable_sizeof_char_ptr,record);
 	if (!blob_length && !(flag & bit))
 	  goto err;
 	if (blob_length)
-	  to+=length - mi_portable_sizeof_char_ptr+ blob_length;
+	  to+=length - portable_sizeof_char_ptr+ blob_length;
       }
       else if (type == FIELD_SKIP_ZERO)
       {
@@ -1279,7 +1289,7 @@ ulong _mi_rec_unpack(register MI_INFO *info, register uchar *to, uchar *from,
       }
       else if (type == FIELD_BLOB)
       {
-	uint size_length=rec_length- mi_portable_sizeof_char_ptr;
+	uint size_length=rec_length- portable_sizeof_char_ptr;
 	ulong blob_length=_mi_calc_blob_length(size_length,from);
         ulong from_left= (ulong) (from_end - from);
         if (from_left < size_length ||
@@ -1320,8 +1330,8 @@ ulong _mi_rec_unpack(register MI_INFO *info, register uchar *to, uchar *from,
 
 err:
   my_errno= HA_ERR_WRONG_IN_RECORD;
-  DBUG_PRINT("error",("to_end: 0x%lx -> 0x%lx  from_end: 0x%lx -> 0x%lx",
-		      (long) to, (long) to_end, (long) from, (long) from_end));
+  DBUG_PRINT("error",("to_end: %p -> %p  from_end: %p -> %p",
+		      to, to_end, from, from_end));
   DBUG_DUMP("from",(uchar*) info->rec_buff,info->s->base.min_pack_length);
   DBUG_RETURN(MY_FILE_ERROR);
 } /* _mi_rec_unpack */
@@ -1329,7 +1339,7 @@ err:
 
 	/* Calc length of blob. Update info in blobs->length */
 
-ulong _my_calc_total_blob_length(MI_INFO *info, const uchar *record)
+ulong _mi_calc_total_blob_length(MI_INFO *info, const uchar *record)
 {
   ulong length;
   MI_BLOB *blob,*end;
@@ -1363,7 +1373,7 @@ ulong _mi_calc_blob_length(uint length, const uchar *pos)
 }
 
 
-void _my_store_blob_length(uchar *pos,uint pack_length,uint length)
+void _mi_store_blob_length(uchar *pos,uint pack_length,uint length)
 {
   switch (pack_length) {
   case 1:
@@ -1514,7 +1524,7 @@ int _mi_read_dynamic_record(MI_INFO *info, my_off_t filepos, uchar *buf)
 panic:
   my_errno=HA_ERR_WRONG_IN_RECORD;
 err:
-  VOID(_mi_writeinfo(info,0));
+  (void) _mi_writeinfo(info,0);
   DBUG_RETURN(-1);
 }
 
@@ -1576,7 +1586,7 @@ int _mi_cmp_dynamic_record(register MI_INFO *info, register const uchar *record)
     if (info->s->base.blobs)
     {
       if (!(buffer=(uchar*) my_alloca(info->s->base.pack_reclength+
-				     _my_calc_total_blob_length(info,record))))
+				     _mi_calc_total_blob_length(info,record))))
 	DBUG_RETURN(-1);
     }
     reclength=_mi_rec_pack(info,buffer,record);
@@ -1831,10 +1841,10 @@ int _mi_read_rnd_dynamic_record(MI_INFO *info, uchar *buf,
             block_info.filepos + block_info.data_len &&
             flush_io_cache(&info->rec_cache))
           goto err;
-	/* VOID(my_seek(info->dfile,filepos,MY_SEEK_SET,MYF(0))); */
+	/* my_seek(info->dfile,filepos,MY_SEEK_SET,MYF(0)); */
 	if (my_read(info->dfile,(uchar*) to,block_info.data_len,MYF(MY_NABP)))
 	{
-	  if (my_errno == -1)
+	  if (my_errno == HA_ERR_FILE_TOO_SHORT)
 	    my_errno= HA_ERR_WRONG_IN_RECORD;	/* Unexpected end of file */
 	  goto err;
 	}
@@ -1865,7 +1875,7 @@ panic:
   my_errno=HA_ERR_WRONG_IN_RECORD;		/* Something is fatal wrong */
 err:
   save_errno=my_errno;
-  VOID(_mi_writeinfo(info,0));
+  (void) _mi_writeinfo(info,0);
   DBUG_RETURN(my_errno=save_errno);
 }
 
@@ -1884,7 +1894,7 @@ uint _mi_get_block_info(MI_BLOCK_INFO *info, File file, my_off_t filepos)
       pointer set to the end of the header after this function.
       my_pread() may leave the file pointer untouched.
     */
-    VOID(my_seek(file,filepos,MY_SEEK_SET,MYF(0)));
+    my_seek(file,filepos,MY_SEEK_SET,MYF(0));
     if (my_read(file, header, sizeof(info->header),MYF(0)) !=
 	sizeof(info->header))
       goto err;

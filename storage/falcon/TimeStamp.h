@@ -33,12 +33,11 @@ class TimeStamp : public DateTime
 {
 public:
 	//DateTime getDate();
-	int compare (TimeStamp when);
-	void setNanos(int nanoseconds);
-	int getNanos();
-	int getString(int length, char * buffer);
-	TimeStamp& operator = (int32 value);
-	TimeStamp& operator = (DateTime value);
+	int		compare (TimeStamp when);
+	void	setNanos(int nanoseconds);
+	int		getNanos();
+	int		getString(int length, char * buffer);
+	void	setDate(DateTime dataTime);
 
 protected:
 	int32	nanos;					// nano seconds

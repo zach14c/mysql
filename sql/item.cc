@@ -255,11 +255,9 @@ my_decimal *Item::val_decimal_from_int(my_decimal *decimal_value)
 my_decimal *Item::val_decimal_from_string(my_decimal *decimal_value)
 {
   String *res;
-  char *end_ptr;
   if (!(res= val_str(&str_value)))
     return 0;                                   // NULL or EOM
 
-  end_ptr= (char*) res->ptr()+ res->length();
   if (str2my_decimal(E_DEC_FATAL_ERROR & ~E_DEC_BAD_NUM,
                      res->ptr(), res->length(), res->charset(),
                      decimal_value) & E_DEC_BAD_NUM)
@@ -383,7 +381,7 @@ Item::Item():
   maybe_null=null_value=with_sum_func=unsigned_flag=0;
   decimals= 0; max_length= 0;
   with_subselect= 0;
-  cmp_context= (Item_result)-1;
+  cmp_context= IMPOSSIBLE_RESULT;
 
   /* Put item in free list so that we can free all items at end */
   THD *thd= current_thd;
@@ -857,7 +855,7 @@ Item *Item_param::safe_charset_converter(CHARSET_INFO *tocs)
     cnvitem->max_length= cnvitem->str_value.numchars() * tocs->mbmaxlen;
     return cnvitem;
   }
-  return NULL;
+  return Item::safe_charset_converter(tocs);
 }
 
 
@@ -1199,7 +1197,7 @@ void Item_case_expr::print(String *str, enum_query_type)
 {
   if (str->reserve(MAX_INT_WIDTH + sizeof("case_expr@")))
     return;                                    /* purecov: inspected */
-  VOID(str->append(STRING_WITH_LEN("case_expr@")));
+  (void) str->append(STRING_WITH_LEN("case_expr@"));
   str->qs_append(m_case_expr_id);
 }
 
@@ -1481,7 +1479,9 @@ bool DTCollation::aggregate(DTCollation &dt, uint flags)
     if (collation == &my_charset_bin)
     {
       if (derivation <= dt.derivation)
-	; // Do nothing
+      {
+	/* Do nothing */
+      }
       else
       {
 	set(dt); 
@@ -1493,15 +1493,11 @@ bool DTCollation::aggregate(DTCollation &dt, uint flags)
       {
         set(dt);
       }
-      else
-      {
-        // Do nothing
-      }
     }
     else if ((flags & MY_COLL_ALLOW_SUPERSET_CONV) &&
              left_is_superset(this, &dt))
     {
-      // Do nothing
+      /* Do nothing */
     }
     else if ((flags & MY_COLL_ALLOW_SUPERSET_CONV) &&
              left_is_superset(&dt, this))
@@ -1512,7 +1508,7 @@ bool DTCollation::aggregate(DTCollation &dt, uint flags)
              derivation < dt.derivation &&
              dt.derivation >= DERIVATION_SYSCONST)
     {
-      // Do nothing;
+      /* Do nothing */
     }
     else if ((flags & MY_COLL_ALLOW_COERCIBLE_CONV) &&
              dt.derivation < derivation &&
@@ -1529,7 +1525,7 @@ bool DTCollation::aggregate(DTCollation &dt, uint flags)
   }
   else if (derivation < dt.derivation)
   {
-    // Do nothing
+    /* Do nothing */
   }
   else if (dt.derivation < derivation)
   {
@@ -1539,7 +1535,7 @@ bool DTCollation::aggregate(DTCollation &dt, uint flags)
   { 
     if (collation == dt.collation)
     {
-      // Do nothing
+      /* Do nothing */
     }
     else 
     {
@@ -1705,7 +1701,7 @@ bool agg_item_charsets(DTCollation &coll, const char *fname,
   {
     Item* conv;
     uint32 dummy_offset;
-    if (!String::needs_conversion(0, (*arg)->collation.collation,
+    if (!String::needs_conversion(1, (*arg)->collation.collation,
                                   coll.collation,
                                   &dummy_offset))
       continue;
@@ -3185,6 +3181,49 @@ void Item_param::print(String *str, enum_query_type query_type)
 }
 
 
+/**
+  Preserve the original parameter types and values
+  when re-preparing a prepared statement.
+
+  @details Copy parameter type information and conversion
+  function pointers from a parameter of the old statement
+  to the corresponding parameter of the new one.
+
+  Move parameter values from the old parameters to the new
+  one. We simply "exchange" the values, which allows
+  to save on allocation and character set conversion in
+  case a parameter is a string or a blob/clob.
+
+  The old parameter gets the value of this one, which
+  ensures that all memory of this parameter is freed
+  correctly.
+
+  @param[in]  src   parameter item of the original
+                    prepared statement
+*/
+
+void
+Item_param::set_param_type_and_swap_value(Item_param *src)
+{
+  unsigned_flag= src->unsigned_flag;
+  param_type= src->param_type;
+  set_param_func= src->set_param_func;
+  item_type= src->item_type;
+  item_result_type= src->item_result_type;
+
+  collation.set(src->collation);
+  maybe_null= src->maybe_null;
+  null_value= src->null_value;
+  max_length= src->max_length;
+  decimals= src->decimals;
+  state= src->state;
+  value= src->value;
+
+  decimal_value.swap(src->decimal_value);
+  str_value.swap(src->str_value);
+  str_value_ptr.swap(src->str_value_ptr);
+}
+
 /****************************************************************************
   Item_copy_string
 ****************************************************************************/
@@ -4027,9 +4066,9 @@ bool Item_field::fix_fields(THD *thd, Item **reference)
       }
       if ((ret= fix_outer_field(thd, &from_field, reference)) < 0)
         goto error;
-      else if (!ret)
-        return FALSE;
       outer_fixed= TRUE;
+      if (!ret)
+        goto mark_non_agg_field;
     }
     else if (!from_field)
       goto error;
@@ -4041,9 +4080,9 @@ bool Item_field::fix_fields(THD *thd, Item **reference)
       int ret;
       if ((ret= fix_outer_field(thd, &from_field, reference)) < 0)
         goto error;
-      if (!ret)
-        return FALSE;
       outer_fixed= 1;
+      if (!ret)
+        goto mark_non_agg_field;
     }
 
     /*
@@ -4126,6 +4165,26 @@ bool Item_field::fix_fields(THD *thd, Item **reference)
   {
     thd->lex->current_select->non_agg_fields.push_back(this);
     marker= thd->lex->current_select->cur_pos_in_select_list;
+  }
+mark_non_agg_field:
+  if (fixed && thd->variables.sql_mode & MODE_ONLY_FULL_GROUP_BY)
+  {
+    /*
+      Mark selects according to presence of non aggregated fields.
+      Fields from outer selects added to the aggregate function
+      outer_fields list as its unknown at the moment whether it's
+      aggregated or not.
+    */
+    if (!thd->lex->in_sum_func)
+      cached_table->select_lex->full_group_by_flag|= NON_AGG_FIELD_USED;
+    else
+    {
+      if (outer_fixed)
+        thd->lex->in_sum_func->outer_fields.push_back(this);
+      else if (thd->lex->in_sum_func->nest_level !=
+          thd->lex->current_select->nest_level)
+        cached_table->select_lex->full_group_by_flag|= NON_AGG_FIELD_USED;
+    }
   }
   return FALSE;
 
@@ -4248,9 +4307,14 @@ static void convert_zerofill_number_to_string(Item **item, Field_num *field)
   String tmp(buff,sizeof(buff), field->charset()), *res;
 
   res= (*item)->val_str(&tmp);
-  field->prepend_zeros(res);
-  pos= (char *) sql_strmake (res->ptr(), res->length());
-  *item= new Item_string(pos, res->length(), field->charset());
+  if ((*item)->is_null())
+    *item= new Item_null();
+  else
+  {
+    field->prepend_zeros(res);
+    pos= (char *) sql_strmake (res->ptr(), res->length());
+    *item= new Item_string(pos, res->length(), field->charset());
+  }
 }
 
 
@@ -4298,7 +4362,7 @@ Item *Item_field::equal_fields_propagator(uchar *arg)
     DATE/TIME represented as an int and as a string.
   */
   if (!item ||
-      (cmp_context != (Item_result)-1 && item->cmp_context != cmp_context))
+      (cmp_context != IMPOSSIBLE_RESULT && item->cmp_context != cmp_context))
     item= this;
   else if (field && (field->flags & ZEROFILL_FLAG) && IS_NUM(field->type()))
   {
@@ -4357,7 +4421,7 @@ Item *Item_field::replace_equal_field(uchar *arg)
     Item *const_item= item_equal->get_const();
     if (const_item)
     {
-      if (cmp_context != (Item_result)-1 &&
+      if (cmp_context != IMPOSSIBLE_RESULT &&
           const_item->cmp_context != cmp_context)
         return this;
       return const_item;
@@ -4543,7 +4607,7 @@ Field *Item::make_string_field(TABLE *table)
   DBUG_ASSERT(collation.collation);
   if (max_length/collation.collation->mbmaxlen > CONVERT_IF_BIGGER_TO_BLOB)
     field= new Field_blob(max_length, maybe_null, name,
-                          collation.collation);
+                          collation.collation, TRUE);
   /* Item_type_holder holds the exact type, do not change it */
   else if (max_length > 0 &&
       (type() != Item::TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING))
@@ -5136,21 +5200,28 @@ Item_bin_string::Item_bin_string(const char *str, uint str_length)
   if (!ptr)
     return;
   str_value.set(ptr, max_length, &my_charset_bin);
-  ptr+= max_length - 1;
-  ptr[1]= 0;                     // Set end null for string
-  for (; end >= str; end--)
+
+  if (max_length > 0)
   {
-    if (power == 256)
+    ptr+= max_length - 1;
+    ptr[1]= 0;                     // Set end null for string
+    for (; end >= str; end--)
     {
-      power= 1;
-      *ptr--= bits;
-      bits= 0;     
+      if (power == 256)
+      {
+        power= 1;
+        *ptr--= bits;
+        bits= 0;
+      }
+      if (*end == '1')
+        bits|= power;
+      power<<= 1;
     }
-    if (*end == '1')
-      bits|= power; 
-    power<<= 1;
+    *ptr= (char) bits;
   }
-  *ptr= (char) bits;
+  else
+    ptr[0]= 0;
+
   collation.set(&my_charset_bin, DERIVATION_COERCIBLE);
   fixed= 1;
 }

@@ -98,7 +98,8 @@ int main(int argc,char *argv[])
   if ((inx >= info->s->base.keys) ||
       !(info->s->keyinfo[inx].flag & HA_FULLTEXT))
   {
-    printf("Key %d in table %s is not a FULLTEXT key\n", inx, info->filename);
+    printf("Key %d in table %s is not a FULLTEXT key\n", inx,
+           info->s->unresolv_file_name);
     goto err;
   }
 

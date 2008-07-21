@@ -68,6 +68,7 @@ public:
 					           enum ha_rkey_function find_flag);
 	virtual int		index_init(uint idx, bool sorted);
 	virtual int		index_end(void);
+	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
 
 	// Multi Range Read interface
@@ -109,14 +110,24 @@ public:
 	virtual int		optimize(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		check(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		repair(THD* thd, HA_CHECK_OPT* check_opt);
+	virtual int		reset();
+
+	virtual int		check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes);
+	virtual int		alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	virtual int		alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	virtual int		alter_table_phase3(THD* thd, TABLE* altered_table);
 	
 #ifdef TRUNCATE_ENABLED
 	virtual int		delete_all_rows(void);
 #endif
 
+	int				addColumn(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	int				addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
+	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
+
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName,
-					            KEY *key, int indexNumber);
+	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
+	int				dropIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
 	void			getKeyDesc(KEY *keyInfo, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
@@ -124,16 +135,19 @@ public:
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
 	int				setIndexes(void);
+	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
 	void			encodeRecord(uchar *buf, bool updateFlag);
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
-	int				scanRange(const key_range *startKey,
-							   const key_range *endKey,
-							   bool eqRange);
-	int				fillMrrBitmap();
+	int			scanRange(const key_range *startKey,
+					  const key_range *endKey,
+					  bool eqRange);
+	int			fillMrrBitmap();
+	void			mapFields(TABLE *table);
+	void			unmapFields(void);
 
 	static StorageConnection* getStorageConnection(THD* thd);
 	
@@ -175,6 +189,7 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
+	Field				**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
@@ -184,6 +199,7 @@ public:
 	int					nextRecord;
 	int					indexErrorId;
 	int					errorKey;
+	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
 	bool				haveStartKey;
@@ -191,6 +207,7 @@ public:
 	bool				tableLocked;
 	bool				tempTable;
 	bool				lockForUpdate;
+	bool				indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;
@@ -207,47 +224,55 @@ public:
 	StorageConnection	*storageConnection;
 	StorageTable		*storageTable;
 
-	static int call_fillSystemMemoryDetailTable(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initSystemMemoryDetail(void *p);
-	static int deinitSystemMemoryDetail(void *p);
+	static int getSystemMemoryDetailInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initSystemMemoryDetailInfo(void *p);
+	static int deinitSystemMemoryDetailInfo(void *p);
 	
-	static int call_fillSystemMemorySummaryTable(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initSystemMemorySummary(void *p);
-	static int deinitSystemMemorySummary(void *p);
+	static int getSystemMemorySummaryInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initSystemMemorySummaryInfo(void *p);
+	static int deinitSystemMemorySummaryInfo(void *p);
 
-	static int call_fillRecordCacheDetailTable(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initRecordCacheDetail(void *p);
-	static int deinitRecordCacheDetail(void *p);
+	static int getRecordCacheDetailInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initRecordCacheDetailInfo(void *p);
+	static int deinitRecordCacheDetailInfo(void *p);
 
-	static int call_fillRecordCacheSummaryTable(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initRecordCacheSummary(void *p);
-	static int deinitRecordCacheSummary(void *p);
+	static int getRecordCacheSummaryInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initRecordCacheSummaryInfo(void *p);
+	static int deinitRecordCacheSummaryInfo(void *p);
 
-	static int call_fillDatabaseIOTable(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initDatabaseIO(void *p);
-	static int deinitDatabaseIO(void *p);
+	static int getTableSpaceIOInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initTableSpaceIOInfo(void *p);
+	static int deinitTableSpaceIOInfo(void *p);
 
-	static int callTransactionInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int getTransactionInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initTransactionInfo(void *p);
 	static int deinitTransactionInfo(void *p);
 
-	static int callTransactionSummaryInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int getTransactionSummaryInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initTransactionSummaryInfo(void *p);
 	static int deinitTransactionSummaryInfo(void *p);
 
-	static int callSerialLogInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int getSerialLogInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initSerialLogInfo(void *p);
 	static int deinitSerialLogInfo(void *p);
 
-	static int callFalconVersionInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int getFalconVersionInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initFalconVersionInfo(void *p);
 	static int deinitFalconVersionInfo(void *p);
 
-	static int callSyncInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int getSyncInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initSyncInfo(void *p);
 	static int deinitSyncInfo(void *p);
 
-	static int callTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int getTableSpaceInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initTableSpaceInfo(void *p);
+	static int deinitTableSpaceInfo(void *p);
+
+	static int getTableSpaceFilesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
+	static int initTableSpaceFilesInfo(void *p);
+	static int deinitTableSpaceFilesInfo(void *p);
+	
+	static int getTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initTablesInfo(void *p);
 	static int deinitTablesInfo(void *p);
 };

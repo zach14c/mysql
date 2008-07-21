@@ -7,7 +7,7 @@ create table tb1 (
 f1 char(0), 
 f2 char(0) binary, 
 f3 char(0) ascii, 
-f4 tinytext unicode, 
+f4 tinytext, 
 f5 text, 
 f6 mediumtext, 
 f7 longtext, 
@@ -64,6 +64,7 @@ f57 numeric (0) not null DEFAULT 99,
 f58 numeric (64) not null DEFAULT 99
 ) engine = falcon;
 
-
---replace_result $MYSQL_TEST_DIR MYSQL_TEST_DIR
-eval load data infile '$MYSQL_TEST_DIR/suite/funcs_1/data/innodb_tb1.txt' into table tb1 ;
+--replace_result $MYSQLTEST_VARDIR <MYSQLTEST_VARDIR>
+eval
+load data infile '$MYSQLTEST_VARDIR/std_data_ln/funcs_1/innodb_tb1.txt'
+into table tb1;

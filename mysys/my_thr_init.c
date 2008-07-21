@@ -13,8 +13,9 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/*
-  Functions to handle initializating and allocationg of all mysys & debug
+/**
+  @file
+  Functions for initialization and allocation of all mysys & debug
   thread variables.
 */
 
@@ -29,8 +30,12 @@ pthread_key(struct st_my_thread_var*, THR_KEY_mysys);
 pthread_key(struct st_my_thread_var, THR_KEY_mysys);
 #endif /* USE_TLS */
 pthread_mutex_t THR_LOCK_malloc,THR_LOCK_open,
-	        THR_LOCK_lock,THR_LOCK_isam,THR_LOCK_myisam,THR_LOCK_heap,
-                THR_LOCK_net, THR_LOCK_charset, THR_LOCK_threads, THR_LOCK_time;
+	        THR_LOCK_lock,THR_LOCK_isam,THR_LOCK_heap, THR_LOCK_net,
+                THR_LOCK_charset, THR_LOCK_threads, THR_LOCK_time;
+/** For insert/delete in the list of MyISAM open tables */
+pthread_mutex_t THR_LOCK_myisam;
+/** For writing to the MyISAM logs */
+pthread_mutex_t THR_LOCK_myisam_log;
 pthread_cond_t  THR_COND_threads;
 uint            THR_thread_count= 0;
 uint 		my_thread_end_wait_time= 5;
@@ -143,6 +148,7 @@ my_bool my_thread_global_init(void)
   pthread_mutex_init(&THR_LOCK_lock,MY_MUTEX_INIT_FAST);
   pthread_mutex_init(&THR_LOCK_isam,MY_MUTEX_INIT_SLOW);
   pthread_mutex_init(&THR_LOCK_myisam,MY_MUTEX_INIT_SLOW);
+  pthread_mutex_init(&THR_LOCK_myisam_log,MY_MUTEX_INIT_SLOW);
   pthread_mutex_init(&THR_LOCK_heap,MY_MUTEX_INIT_FAST);
   pthread_mutex_init(&THR_LOCK_net,MY_MUTEX_INIT_FAST);
   pthread_mutex_init(&THR_LOCK_charset,MY_MUTEX_INIT_FAST);
@@ -209,6 +215,7 @@ void my_thread_global_end(void)
   pthread_mutex_destroy(&THR_LOCK_lock);
   pthread_mutex_destroy(&THR_LOCK_isam);
   pthread_mutex_destroy(&THR_LOCK_myisam);
+  pthread_mutex_destroy(&THR_LOCK_myisam_log);
   pthread_mutex_destroy(&THR_LOCK_heap);
   pthread_mutex_destroy(&THR_LOCK_net);
   pthread_mutex_destroy(&THR_LOCK_time);
@@ -289,12 +296,12 @@ my_bool my_thread_init(void)
 #endif
   pthread_mutex_init(&tmp->mutex,MY_MUTEX_INIT_FAST);
   pthread_cond_init(&tmp->suspend, NULL);
-  tmp->init= 1;
 
   pthread_mutex_lock(&THR_LOCK_threads);
   tmp->id= ++thread_id;
   ++THR_thread_count;
   pthread_mutex_unlock(&THR_LOCK_threads);
+  tmp->init= 1;
 #ifndef DBUG_OFF
   /* Generate unique name for thread */
   (void) my_thread_name();
@@ -332,6 +339,10 @@ void my_thread_end(void)
     /* tmp->dbug is allocated inside DBUG library */
     if (tmp->dbug)
     {
+      /*
+        Frees memory allocated in SET DEBUG=...; does nothing if there were no
+        SET DEBUG in a thread.
+      */
       DBUG_POP();
       free(tmp->dbug);
       tmp->dbug=0;
@@ -348,6 +359,9 @@ void my_thread_end(void)
     tmp->init= 0;
 #endif
 
+#if !defined(__WIN__) || defined(USE_TLS)
+    pthread_setspecific(THR_KEY_mysys,0);
+#endif
     /*
       Decrement counter for number of running threads. We are using this
       in my_thread_global_end() to wait until all threads have called
@@ -360,10 +374,12 @@ void my_thread_end(void)
       pthread_cond_signal(&THR_COND_threads);
    pthread_mutex_unlock(&THR_LOCK_threads);
   }
-  /* The following free has to be done, even if my_thread_var() is 0 */
+  else
+  {
 #if !defined(__WIN__) || defined(USE_TLS)
-  pthread_setspecific(THR_KEY_mysys,0);
+    pthread_setspecific(THR_KEY_mysys,0);
 #endif
+  }
 }
 
 struct st_my_thread_var *_my_thread_var(void)
@@ -381,6 +397,16 @@ struct st_my_thread_var *_my_thread_var(void)
   return tmp;
 }
 
+#ifndef DBUG_OFF
+/* Return pointer to DBUG for holding current state */
+
+extern void **my_thread_var_dbug()
+{
+  struct st_my_thread_var *tmp=
+    my_pthread_getspecific(struct st_my_thread_var*,THR_KEY_mysys);
+  return tmp && tmp->init ? &tmp->dbug : 0;
+}
+#endif
 
 /****************************************************************************
   Get name of current thread.

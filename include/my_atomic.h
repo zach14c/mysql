@@ -45,6 +45,8 @@
 
   On architectures where these operations are really atomic, rwlocks will
   be optimized away.
+  8- and 16-bit atomics aren't implemented for windows (see generic-msvc.h),
+  but can be added, if necessary. 
 */
 
 #ifndef my_atomic_rwlock_init
@@ -83,6 +85,14 @@
 #endif
 #endif
 
+/*
+  transparent_union doesn't work in g++
+  Bug ?
+
+  Darwin's gcc doesn't want to put pointers in a transparent_union
+  when built with -arch ppc64. Complains:
+  warning: 'transparent_union' attribute ignored
+*/
 #if defined(__GNUC__) && !defined(__cplusplus) && \
       ! (defined(__APPLE__) && defined(_ARCH_PPC64))
 /*
@@ -170,19 +180,19 @@ STATIC_INLINE void my_atomic_store ## S(                        \
 #else /* no inline functions */
 
 #define make_atomic_add(S)                                      \
-extern int ## S my_atomic_add ## S(Uv_ ## S, U_ ## S);
+extern int ## S my_atomic_add ## S(Uv_ ## S U_a, U_ ## S U_v);
 
 #define make_atomic_fas(S)                                      \
-extern int ## S my_atomic_fas ## S(Uv_ ## S, U_ ## S);
+extern int ## S my_atomic_fas ## S(Uv_ ## S U_a, U_ ## S U_v);
 
 #define make_atomic_cas(S)                                      \
-extern int my_atomic_cas ## S(Uv_ ## S, Uv_ ## S, U_ ## S);
+extern int my_atomic_cas ## S(Uv_ ## S U_a, Uv_ ## S U_cmp, U_ ## S U_set);
 
 #define make_atomic_load(S)                                     \
-extern int ## S my_atomic_load ## S(Uv_ ## S);
+extern int ## S my_atomic_load ## S(Uv_ ## S U_a);
 
 #define make_atomic_store(S)                                    \
-extern void my_atomic_store ## S(Uv_ ## S, U_ ## S);
+extern void my_atomic_store ## S(Uv_ ## S U_a, U_ ## S U_v);
 
 #endif
 

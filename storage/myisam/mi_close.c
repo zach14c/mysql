@@ -27,8 +27,8 @@ int mi_close(register MI_INFO *info)
   int error=0,flag;
   MYISAM_SHARE *share=info->s;
   DBUG_ENTER("mi_close");
-  DBUG_PRINT("enter",("base: 0x%lx  reopen: %u  locks: %u",
-		      (long) info, (uint) share->reopen,
+  DBUG_PRINT("enter",("base: %p  reopen: %u  locks: %u",
+		      info, (uint) share->reopen,
                       (uint) share->tot_locks));
 
   pthread_mutex_lock(&THR_LOCK_myisam);
@@ -52,6 +52,8 @@ int mi_close(register MI_INFO *info)
   }
   if (info->opt_flag & (READ_CACHE_USED | WRITE_CACHE_USED))
   {
+    /* Logically there should not be a WRITE_CACHE at this stage */
+    DBUG_ASSERT(!(info->opt_flag & WRITE_CACHE_USED));
     if (end_io_cache(&info->rec_cache))
       error=my_errno;
     info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
@@ -67,7 +69,11 @@ int mi_close(register MI_INFO *info)
 	flush_key_blocks(share->key_cache, share->kfile,
 			 share->temporary ? FLUSH_IGNORE_CHANGED :
 			 FLUSH_RELEASE))
+    {
       error=my_errno;
+      mi_print_error(share, HA_ERR_CRASHED);
+      mi_mark_crashed(info);		/* Mark that table must be checked */
+    }
     if (share->kfile >= 0)
     {
       /*
@@ -75,9 +81,13 @@ int mi_close(register MI_INFO *info)
         not change the crashed state.
         We can NOT write the state in other cases as other threads
         may be using the file at this point
+        IF using --external-locking.
       */
       if (share->mode != O_RDONLY && mi_is_crashed(info))
-	mi_state_info_write(share->kfile, &share->state, 1);
+        mi_state_info_write(share, share->kfile, &share->state, 1);
+      if (share->MI_LOG_OPEN_stored_in_physical_log)
+        _myisam_log_command(&myisam_physical_log, MI_LOG_CLOSE, share,
+                            NULL, 0, error);
       if (my_close(share->kfile,MYF(0)))
         error = my_errno;
     }
@@ -92,13 +102,14 @@ int mi_close(register MI_INFO *info)
     }
 #ifdef THREAD
     thr_lock_delete(&share->lock);
-    VOID(pthread_mutex_destroy(&share->intern_lock));
+    pthread_mutex_destroy(&share->intern_lock);
+    my_atomic_rwlock_destroy(&share->physical_logging_rwlock);
     {
       int i,keys;
       keys = share->state.header.keys;
-      VOID(rwlock_destroy(&share->mmap_lock));
+      (void) rwlock_destroy(&share->mmap_lock);
       for(i=0; i<keys; i++) {
-	VOID(rwlock_destroy(&share->key_root_lock[i]));
+	(void) rwlock_destroy(&share->key_root_lock[i]);
       }
     }
 #endif
@@ -113,7 +124,7 @@ int mi_close(register MI_INFO *info)
   if (info->dfile >= 0 && my_close(info->dfile,MYF(0)))
     error = my_errno;
 
-  myisam_log_command(MI_LOG_CLOSE,info,NULL,0,error);
+  myisam_log_command_logical(MI_LOG_CLOSE, info, NULL, 0, error);
   my_free((uchar*) info,MYF(0));
 
   if (error)

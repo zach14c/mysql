@@ -79,6 +79,15 @@ emb_advanced_command(MYSQL *mysql, enum enum_server_command command,
   my_bool result= 1;
   THD *thd=(THD *) mysql->thd;
   NET *net= &mysql->net;
+  my_bool stmt_skip= stmt ? stmt->state != MYSQL_STMT_INIT_DONE : FALSE;
+
+  if (!thd)
+  {
+    /* Do "reconnect" if possible */
+    if (mysql_reconnect(mysql) || stmt_skip)
+      return 1;
+    thd= (THD *) mysql->thd;
+  }
 
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
@@ -285,7 +294,6 @@ static int emb_stmt_execute(MYSQL_STMT *stmt)
   my_bool res;
 
   int4store(header, stmt->stmt_id);
-  header[4]= stmt->flags;
   thd= (THD*)stmt->mysql->thd;
   thd->client_param_count= stmt->param_count;
   thd->client_params= stmt->params;
@@ -849,7 +857,7 @@ void Protocol_text::remove_last_row()
 {
   MYSQL_DATA *data= thd->cur_data;
   MYSQL_ROWS **last_row_hook= &data->data;
-  uint count= data->rows;
+  my_ulonglong count= data->rows;
   DBUG_ENTER("Protocol_text::remove_last_row");
   while (--count)
     last_row_hook= &(*last_row_hook)->next;
@@ -1125,12 +1133,15 @@ bool Protocol::net_store_data(const uchar *from, size_t length)
   return FALSE;
 }
 
+#if defined(_MSC_VER) && _MSC_VER < 1400
+#define vsnprintf _vsnprintf
+#endif
 
 int vprint_msg_to_log(enum loglevel level __attribute__((unused)),
                        const char *format, va_list argsi)
 {
   my_vsnprintf(mysql_server_last_error, sizeof(mysql_server_last_error),
-           format, argsi);
+               format, argsi);
   mysql_server_last_errno= CR_UNKNOWN_ERROR;
   return 0;
 }

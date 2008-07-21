@@ -40,13 +40,12 @@ SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/sql/message.rc
                             ${PROJECT_SOURCE_DIR}/include/sql_state.h 
                               PROPERTIES GENERATED 1)
 
-ADD_DEFINITIONS(-DMYSQL_SERVER -D_CONSOLE -DHAVE_DLOPEN)
+ADD_DEFINITIONS(-DMYSQL_SERVER -D_CONSOLE -DHAVE_DLOPEN -DHAVE_EVENT_SCHEDULER)
 
 ADD_EXECUTABLE(mysqld
                ../sql-common/client.c derror.cc des_key_file.cc
-               discover.cc ../libmysql/errmsg.c field.cc  stacktrace.c stacktrace.h field_conv.cc 
-               filesort.cc gstream.cc sha2.cc
-               ha_partition.cc
+               discover.cc ../libmysql/errmsg.c field.cc field_conv.cc
+               filesort.cc gstream.cc sha2.cc ha_partition.cc
                handler.cc hash_filo.cc hash_filo.h 
                hostname.cc init.cc item.cc item_buff.cc item_cmpfunc.cc 
                item_create.cc item_func.cc item_geofunc.cc item_row.cc 
@@ -66,6 +65,7 @@ ADD_EXECUTABLE(mysqld
                sql_error.cc sql_handler.cc sql_help.cc sql_insert.cc sql_lex.cc 
                sql_list.cc sql_load.cc sql_manager.cc sql_map.cc sql_parse.cc 
                sql_partition.cc sql_plugin.cc sql_prepare.cc sql_rename.cc 
+               debug_sync.cc
                sql_repl.cc sql_select.cc sql_show.cc sql_state.c sql_string.cc 
                sql_table.cc sql_test.cc sql_trigger.cc sql_udf.cc sql_union.cc
                sql_update.cc sql_view.cc strfunc.cc table.cc thr_malloc.cc 
@@ -77,7 +77,7 @@ ADD_EXECUTABLE(mysqld
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc 
                ddl_blocker.cc si_objects.cc
-               sql_profile.cc
+               sql_profile.cc event_parse_data.cc mdl.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h
@@ -89,7 +89,7 @@ ADD_EXECUTABLE(mysqld
 
 TARGET_LINK_LIBRARIES(mysqld
                       heap myisam myisammrg mysys yassl zlib debug dbug yassl 
-                      taocrypt strings vio regex wsock32 ws2_32)
+                      taocrypt strings vio regex ws2_32)
 
 TARGET_LINK_LIBRARIES(mysqld backup)
 
@@ -119,6 +119,9 @@ ENDIF(WITH_INNOBASE_STORAGE_ENGINE)
 IF(WITH_FALCON_STORAGE_ENGINE)
   TARGET_LINK_LIBRARIES(mysqld ha_falcon)
 ENDIF(WITH_FALCON_STORAGE_ENGINE)
+IF(WITH_MARIA_STORAGE_ENGINE)
+  TARGET_LINK_LIBRARIES(mysqld maria)
+ENDIF(WITH_MARIA_STORAGE_ENGINE)
 
 ADD_DEPENDENCIES(mysqld GenError)
 
@@ -144,7 +147,7 @@ ENDIF(WIN32)
 
 # Gen_lex_hash
 ADD_EXECUTABLE(gen_lex_hash gen_lex_hash.cc)
-TARGET_LINK_LIBRARIES(gen_lex_hash debug dbug mysqlclient wsock32)
+TARGET_LINK_LIBRARIES(gen_lex_hash debug dbug mysqlclient ws2_32)
 GET_TARGET_PROPERTY(GEN_LEX_HASH_EXE gen_lex_hash LOCATION)
 ADD_CUSTOM_COMMAND(
         OUTPUT ${PROJECT_SOURCE_DIR}/sql/lex_hash.h
@@ -167,7 +170,7 @@ SET_DIRECTORY_PROPERTIES(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES
 
 ADD_LIBRARY(udf_example MODULE udf_example.c udf_example.def)
 ADD_DEPENDENCIES(udf_example strings GenError)
-TARGET_LINK_LIBRARIES(udf_example strings wsock32)
+TARGET_LINK_LIBRARIES(udf_example strings ws2_32)
 
 ADD_SUBDIRECTORY(backup)
 

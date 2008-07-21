@@ -109,7 +109,7 @@ int pthread_create(pthread_t *thread_id, pthread_attr_t *attr,
     priority=  attr->priority;
   }
   if (StackSize == 0)
-    StackSize= 65535;
+    StackSize= PTHREAD_STACK_MIN;
   pthread_mutex_lock(&THR_LOCK_thread);
 #ifdef __BORLANDC__
   hThread=(HANDLE)_beginthread((void(_USERENTRY *)(void *)) pthread_start,
@@ -129,7 +129,7 @@ int pthread_create(pthread_t *thread_id, pthread_attr_t *attr,
 	       ("Can't create thread to handle request (error %d)",error));
     DBUG_RETURN(error ? error : -1);
   }
-  VOID(SetThreadPriority(hThread, priority)) ;
+  (void) SetThreadPriority(hThread, priority);
   DBUG_RETURN(0);
 }
 

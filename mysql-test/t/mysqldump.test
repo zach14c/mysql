@@ -196,7 +196,7 @@ DROP TABLE t1;
 --echo # Test for --insert-ignore
 --echo #
 
-CREATE TABLE t1 (a int);
+CREATE TABLE t1 (a int) ENGINE=MyISAM;
 INSERT INTO t1 VALUES (1),(2),(3);
 INSERT INTO t1 VALUES (4),(5),(6);
 --exec $MYSQL_DUMP --skip-comments --insert-ignore test t1
@@ -628,6 +628,9 @@ select '------ Testing with illegal database names ------' as test_sequence ;
 --exec $MYSQL_DUMP --compact --skip-comments "mysqld\ump_test_db" 2>&1
 
 drop table t1, t2, t3;
+# Temporary workaround to fix a regression introduced by WL#3726
+# Bug will be reported.
+flush tables;
 drop database mysqldump_test_db;
 use test;
 
@@ -1379,7 +1382,7 @@ insert into u1 values (4);
 create view v1 (c1) as select * from t1;
 
 # Backup should not fail for Bug #21527. Flush priviliges test begins.
---exec $MYSQL_DUMP --skip-comments --add-drop-table --flush-privileges --ignore-table=mysql.general_log --ignore-table=mysql.slow_log --databases mysqldump_myDB mysql > $MYSQLTEST_VARDIR/tmp/bug21527.sql
+--exec $MYSQL_DUMP --skip-comments --add-drop-table --flush-privileges --ignore-table=mysql.general_log --ignore-table=mysql.slow_log --ignore-table=mysql.online_backup --ignore-table=mysql.online_backup_progress --databases mysqldump_myDB mysql > $MYSQLTEST_VARDIR/tmp/bug21527.sql
 
 # Clean up
 connection root;
@@ -1460,8 +1463,8 @@ DROP TABLE t1;
 # Bug #25993: crashe with a merge table and -c
 #
 
-CREATE TABLE t2 (a int);
-CREATE TABLE t3 (a int);
+CREATE TABLE t2 (a int) ENGINE=MyISAM;
+CREATE TABLE t3 (a int) ENGINE=MyISAM;
 CREATE TABLE t1 (a int) ENGINE=merge UNION=(t2, t3);
 --exec $MYSQL_DUMP --skip-comments -c test
 DROP TABLE t1, t2, t3;

@@ -150,11 +150,11 @@ Item_func::fix_fields(THD *thd, Item **ref)
 {
   DBUG_ASSERT(fixed == 0);
   Item **arg,**arg_end;
-  void *save_thd_marker= thd->thd_marker;
+  TABLE_LIST *save_emb_on_expr_nest= thd->thd_marker.emb_on_expr_nest;
 #ifndef EMBEDDED_LIBRARY			// Avoid compiler warning
   uchar buff[STACK_BUFF_ALLOC];			// Max argument in function
 #endif
-  thd->thd_marker= 0;
+  thd->thd_marker.emb_on_expr_nest= NULL;
   used_tables_cache= not_null_tables_cache= 0;
   const_item_cache=1;
 
@@ -200,7 +200,7 @@ Item_func::fix_fields(THD *thd, Item **ref)
   if (thd->is_error()) // An error inside fix_length_and_dec occured
     return TRUE;
   fixed= 1;
-  thd->thd_marker= save_thd_marker;
+  thd->thd_marker.emb_on_expr_nest= save_emb_on_expr_nest;
   return FALSE;
 }
 
@@ -474,7 +474,6 @@ Field *Item_func::tmp_table_field(TABLE *table)
     break;
   case STRING_RESULT:
     return make_string_field(table);
-    break;
   case DECIMAL_RESULT:
     field= new Field_new_decimal(my_decimal_precision_to_length(decimal_precision(),
                                                                 decimals,
@@ -1689,6 +1688,8 @@ double Item_func_pow::val_real()
 double Item_func_acos::val_real()
 {
   DBUG_ASSERT(fixed == 1);
+  /* One can use this to defer SELECT processing. */
+  DEBUG_SYNC(current_thd, "before_acos_function");
   // the volatile's for BUG #2338 to calm optimizer down (because of gcc's bug)
   volatile double value= args[0]->val_real();
   if ((null_value=(args[0]->null_value || (value < -1.0 || value > 1.0))))
@@ -2135,7 +2136,7 @@ void Item_func_rand::seed_random(Item *arg)
     args[0] is a constant.
   */
   uint32 tmp= (uint32) arg->val_int();
-  randominit(rand, (uint32) (tmp*0x10001L+55555555L),
+  my_rnd_init(rand, (uint32) (tmp*0x10001L+55555555L),
              (uint32) (tmp*0x10000001L));
 }
 
@@ -2155,7 +2156,7 @@ bool Item_func_rand::fix_fields(THD *thd,Item **ref)
       No need to send a Rand log event if seed was given eg: RAND(seed),
       as it will be replicated in the query as such.
     */
-    if (!rand && !(rand= (struct rand_struct*)
+    if (!rand && !(rand= (struct my_rnd_struct*)
                    thd->stmt_arena->alloc(sizeof(*rand))))
       return TRUE;
 
@@ -2728,8 +2729,7 @@ longlong Item_func_find_in_set::val_int()
   }
   null_value=0;
 
-  int diff;
-  if ((diff=buffer->length() - find->length()) >= 0)
+  if ((int) (buffer->length() - find->length()) >= 0)
   {
     my_wc_t wc;
     CHARSET_INFO *cs= cmp_collation.collation;
@@ -3373,21 +3373,35 @@ longlong Item_master_pos_wait::val_int()
 }
 
 #ifdef EXTRA_DEBUG
+/**
+  When a connection con1 does a GET_LOCK() to synchronize with a another
+  connection con2 doing debug_sync_point(), con1 should not run any statements
+  after that until RELEASE_LOCK(). I.e.: con1 should dedicate itself to
+  synchronization only.
+ */
 void debug_sync_point(const char* lock_name, uint lock_timeout)
 {
   THD* thd=current_thd;
   User_level_lock* ull;
   struct timespec abstime;
   size_t lock_name_len;
+  DBUG_ENTER("debug_sync_point");
+  DBUG_PRINT("enter", ("lock_name: '%s'", lock_name));
   lock_name_len= strlen(lock_name);
+
+  /*
+    If thread already has a lock:
+    - we cannot automatically release it (it would likely cause
+    synchronization problems in tests, the test writer probably didn't want
+    this implicit release, as it cannot have inspected all code files to see
+    if one of them calls debug_sync_point())
+    - we cannot keep it either, because general user-level lock management
+    relies on one lock max per thread (THD::ull is not a list, GET_LOCK()
+    does an implicit release), and overwriting thd->ull is not ok.
+  */
+  DBUG_ASSERT(thd->ull == NULL);
+
   pthread_mutex_lock(&LOCK_user_locks);
-
-  if (thd->ull)
-  {
-    item_user_lock_release(thd->ull);
-    thd->ull=0;
-  }
-
   /*
     If the lock has not been aquired by some client, we do not want to
     create an entry for it, since we immediately release the lock. In
@@ -3399,7 +3413,7 @@ void debug_sync_point(const char* lock_name, uint lock_timeout)
                                              lock_name_len))))
   {
     pthread_mutex_unlock(&LOCK_user_locks);
-    return;
+    DBUG_VOID_RETURN;
   }
   ull->count++;
 
@@ -3451,9 +3465,52 @@ void debug_sync_point(const char* lock_name, uint lock_timeout)
     thd->ull=0;
   }
   pthread_mutex_unlock(&LOCK_user_locks);
+  DBUG_VOID_RETURN;
 }
 
 #endif
+
+
+/**
+  Wait for a given condition to be signaled within the specified timeout.
+
+  @param cond the condition variable to wait on
+  @param lock the associated mutex
+  @param abstime the amount of time in seconds to wait
+
+  @retval return value from pthread_cond_timedwait
+*/
+
+#define INTERRUPT_INTERVAL (5 * ULL(1000000000))
+
+static int interruptible_wait(THD *thd, pthread_cond_t *cond,
+                              pthread_mutex_t *lock, double time)
+{
+  int error;
+  struct timespec abstime;
+  ulonglong slice, timeout= (ulonglong) (time * 1000000000.0);
+
+  do
+  {
+    /* Wait for a fixed interval. */
+    if (timeout > INTERRUPT_INTERVAL)
+      slice= INTERRUPT_INTERVAL;
+    else
+      slice= timeout;
+
+    timeout-= slice;
+    set_timespec_nsec(abstime, slice);
+    error= pthread_cond_timedwait(cond, lock, &abstime);
+    if (error == ETIMEDOUT || error == ETIME)
+    {
+      /* Return error if timed out or connection is broken. */
+      if (!timeout || !thd->vio_is_connected())
+        break;
+    }
+  } while (error && timeout);
+
+  return error;
+}
 
 /**
   Get a user level lock.  If the thread has an old lock this is first released.
@@ -3470,8 +3527,7 @@ longlong Item_func_get_lock::val_int()
 {
   DBUG_ASSERT(fixed == 1);
   String *res=args[0]->val_str(&value);
-  longlong timeout=args[1]->val_int();
-  struct timespec abstime;
+  double timeout= args[1]->val_real();
   THD *thd=current_thd;
   User_level_lock *ull;
   int error;
@@ -3535,12 +3591,11 @@ longlong Item_func_get_lock::val_int()
   thd->mysys_var->current_mutex= &LOCK_user_locks;
   thd->mysys_var->current_cond=  &ull->cond;
 
-  set_timespec(abstime,timeout);
   error= 0;
   while (ull->locked && !thd->killed)
   {
     DBUG_PRINT("info", ("waiting on lock"));
-    error= pthread_cond_timedwait(&ull->cond,&LOCK_user_locks,&abstime);
+    error= interruptible_wait(thd, &ull->cond, &LOCK_user_locks, timeout);
     if (error == ETIMEDOUT || error == ETIME)
     {
       DBUG_PRINT("info", ("lock wait timeout"));
@@ -3735,13 +3790,13 @@ void Item_func_benchmark::print(String *str, enum_query_type query_type)
 longlong Item_func_sleep::val_int()
 {
   THD *thd= current_thd;
-  struct timespec abstime;
   pthread_cond_t cond;
+  double timeout;
   int error;
 
   DBUG_ASSERT(fixed == 1);
 
-  double time= args[0]->val_real();
+  timeout= args[0]->val_real();
   /*
     On 64-bit OSX pthread_cond_timedwait() waits forever
     if passed abstime time has already been exceeded by 
@@ -3751,10 +3806,8 @@ longlong Item_func_sleep::val_int()
     We assume that the lines between this test and the call 
     to pthread_cond_timedwait() will be executed in less than 0.00001 sec.
   */
-  if (time < 0.00001)
+  if (timeout < 0.00001)
     return 0;
-    
-  set_timespec_nsec(abstime, (ulonglong)(time * ULL(1000000000)));
 
   pthread_cond_init(&cond, NULL);
   pthread_mutex_lock(&LOCK_user_locks);
@@ -3766,7 +3819,7 @@ longlong Item_func_sleep::val_int()
   error= 0;
   while (!thd->killed)
   {
-    error= pthread_cond_timedwait(&cond, &LOCK_user_locks, &abstime);
+    error= interruptible_wait(thd, &cond, &LOCK_user_locks, timeout);
     if (error == ETIMEDOUT || error == ETIME)
       break;
     error= 0;
@@ -3798,7 +3851,7 @@ static user_var_entry *get_variable(HASH *hash, LEX_STRING &name,
     uint size=ALIGN_SIZE(sizeof(user_var_entry))+name.length+1+extra_size;
     if (!hash_inited(hash))
       return 0;
-    if (!(entry = (user_var_entry*) my_malloc(size,MYF(MY_WME))))
+    if (!(entry = (user_var_entry*) my_malloc(size,MYF(MY_WME | ME_FATALERROR))))
       return 0;
     entry->name.str=(char*) entry+ ALIGN_SIZE(sizeof(user_var_entry))+
       extra_size;
@@ -3914,6 +3967,8 @@ bool Item_func_set_user_var::register_field_in_read_map(uchar *arg)
   @param dv             derivation for new value
   @param unsigned_arg   indiates if a value of type INT_RESULT is unsigned
 
+  @note Sets error and fatal error if allocation fails.
+
   @retval
     false   success
   @retval
@@ -3957,7 +4012,8 @@ update_hash(user_var_entry *entry, bool set_null, void *ptr, uint length,
 	if (entry->value == pos)
 	  entry->value=0;
         entry->value= (char*) my_realloc(entry->value, length,
-                                         MYF(MY_ALLOW_ZERO_PTR | MY_WME));
+                                         MYF(MY_ALLOW_ZERO_PTR | MY_WME |
+                                             ME_FATALERROR));
         if (!entry->value)
 	  return 1;
       }
@@ -3994,7 +4050,6 @@ Item_func_set_user_var::update_hash(void *ptr, uint length,
   if (::update_hash(entry, (null_value= args[0]->null_value),
                     ptr, length, res_type, cs, dv, unsigned_arg))
   {
-    current_thd->fatal_error();     // Probably end of memory
     null_value= 1;
     return 1;
   }
@@ -4023,7 +4078,8 @@ double user_var_entry::val_real(my_bool *null_value)
   case STRING_RESULT:
     return my_atof(value);                      // This is null terminated
   case ROW_RESULT:
-    DBUG_ASSERT(1);				// Impossible
+  case IMPOSSIBLE_RESULT:
+    DBUG_ASSERT(0);				// Impossible
     break;
   default:
     break;
@@ -4056,7 +4112,8 @@ longlong user_var_entry::val_int(my_bool *null_value) const
     return my_strtoll10(value, (char**) 0, &error);// String is null terminated
   }
   case ROW_RESULT:
-    DBUG_ASSERT(1);				// Impossible
+  case IMPOSSIBLE_RESULT:
+    DBUG_ASSERT(0);				// Impossible
     break;
   default:
     break;
@@ -4089,8 +4146,10 @@ String *user_var_entry::val_str(my_bool *null_value, String *str,
   case STRING_RESULT:
     if (str->copy(value, length, collation.collation))
       str= 0;					// EOM error
+    break;
   case ROW_RESULT:
-    DBUG_ASSERT(1);				// Impossible
+  case IMPOSSIBLE_RESULT:
+    DBUG_ASSERT(0);				// Impossible
     break;
   default:
     break;
@@ -4119,7 +4178,8 @@ my_decimal *user_var_entry::val_decimal(my_bool *null_value, my_decimal *val)
     str2my_decimal(E_DEC_FATAL_ERROR, value, length, collation.collation, val);
     break;
   case ROW_RESULT:
-    DBUG_ASSERT(1);				// Impossible
+  case IMPOSSIBLE_RESULT:
+    DBUG_ASSERT(0);				// Impossible
     break;
   default:
     break;
@@ -4692,11 +4752,6 @@ void Item_func_get_user_var::fix_length_and_dec()
     m_cached_result_type= STRING_RESULT;
     max_length= MAX_BLOB_WIDTH;
   }
-
-  if (error)
-    thd->fatal_error();
-
-  return;
 }
 
 
@@ -4767,18 +4822,16 @@ bool Item_user_var_as_out_param::fix_fields(THD *thd, Item **ref)
 
 void Item_user_var_as_out_param::set_null_value(CHARSET_INFO* cs)
 {
-  if (::update_hash(entry, TRUE, 0, 0, STRING_RESULT, cs,
-                    DERIVATION_IMPLICIT, 0 /* unsigned_arg */))
-    current_thd->fatal_error();			// Probably end of memory
+  ::update_hash(entry, TRUE, 0, 0, STRING_RESULT, cs,
+                DERIVATION_IMPLICIT, 0 /* unsigned_arg */);
 }
 
 
 void Item_user_var_as_out_param::set_value(const char *str, uint length,
                                            CHARSET_INFO* cs)
 {
-  if (::update_hash(entry, FALSE, (void*)str, length, STRING_RESULT, cs,
-                    DERIVATION_IMPLICIT, 0 /* unsigned_arg */))
-    current_thd->fatal_error();			// Probably end of memory
+  ::update_hash(entry, FALSE, (void*)str, length, STRING_RESULT, cs,
+                DERIVATION_IMPLICIT, 0 /* unsigned_arg */);
 }
 
 
@@ -5719,12 +5772,13 @@ void uuid_short_init()
                (((ulonglong) server_start_time) << 24));
 }
 
+pthread_mutex_t LOCK_uuid_short;
 
 longlong Item_func_uuid_short::val_int()
 {
   ulonglong val;
-  pthread_mutex_lock(&LOCK_uuid_generator);
+  pthread_mutex_lock(&LOCK_uuid_short);
   val= uuid_value++;
-  pthread_mutex_unlock(&LOCK_uuid_generator);
+  pthread_mutex_unlock(&LOCK_uuid_short);
   return (longlong) val;
 }

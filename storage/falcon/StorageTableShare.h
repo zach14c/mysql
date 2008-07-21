@@ -35,6 +35,7 @@ class Index;
 class SyncObject;
 class Sequence;
 class SyncObject;
+class Format;
 
 struct StorageSegment {
 	short			type;
@@ -80,7 +81,8 @@ enum StorageError {
 	StorageErrorTableSpaceExist		= -107,
 	StorageErrorTableNotEmpty		= -108,
 	StorageErrorTableSpaceNotExist	= -109,
-	StorageErrorDeviceFull			= -110
+	StorageErrorDeviceFull			= -110,
+	StorageErrorTableSpaceDataFileExist	= -111
 	};
 	
 static const int StoreErrorIndexShift	= 10;
@@ -96,10 +98,11 @@ public:
 	virtual void		lock(bool exclusiveLock);
 	virtual void		unlock(void);
 	virtual int			createIndex(StorageConnection *storageConnection, const char* name, const char* sql);
+	virtual int			dropIndex(StorageConnection *storageConnection, const char* name, const char* sql);
 	virtual int			renameTable(StorageConnection *storageConnection, const char* newName);
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
-	virtual int			haveIndexes(void);
+	virtual int			haveIndexes(int indexCount);
 	virtual void		cleanupFieldName(const char* name, char* buffer, int bufferLength);
 	virtual void		setTablePath(const char* path, bool tempTable);
 	virtual void		registerCollation(const char* collationName, void* arg);
@@ -110,6 +113,7 @@ public:
 
 	int					getIndexId(const char* schemaName, const char* indexName);
 	int					create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
+	int					upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
 	int					deleteTable(StorageConnection *storageConnection);
 	int					truncateTable(StorageConnection *storageConnection);
 	void				load(void);
@@ -144,9 +148,11 @@ public:
 	Table				*table;
 	StorageIndexDesc	**indexes;
 	Sequence			*sequence;
+	Format				*format;						// format for insertion
 	int					numberIndexes;
 	volatile INTERLOCK_TYPE	truncateLockCount;
 	bool				tempTable;
+	int getFieldId(const char* fieldName);
 };
 
 #endif

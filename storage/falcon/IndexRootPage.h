@@ -34,6 +34,7 @@ class Bitmap;
 class Btn;
 class IndexKey;
 class SRLUpdateIndex;
+class WalkIndex;
 struct IndexAnalysis;
 
 class IndexRootPage : public RootPage  
@@ -45,6 +46,8 @@ public:
 	static bool		splitIndexPage (Dbb *dbb, int32 indexId, Bdb *bdb, TransId transId,
 									AddNodeResult addResult, IndexKey *indexKey, int recordNumber);
 	static void		scanIndex (Dbb *dbb, int32 indexId, int32 rootPage, IndexKey *low, IndexKey *high, int searchFlags, TransId transId, Bitmap *bitmap);
+	static void		positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkIndex* walkIndex);
+	static void		repositionIndex(Dbb* dbb, int indexId, WalkIndex* walkIndex);
 	static Bdb*		findRoot (Dbb *dbb, int32 indexId, int32 rootPage, LockType lockType, TransId transId);
 	static Bdb*		findLeaf (Dbb *dbb, int32 indexId, int32 rootPage, IndexKey *key, LockType lockType, TransId transId);
 	static Bdb*		findInsertionLeaf (Dbb *dbb, int32 indexId, IndexKey *key, int32 recordNumber, TransId transId);
@@ -56,7 +59,7 @@ public:
 	static void		analyzeIndex(Dbb* dbb, int indexId, IndexAnalysis *indexAnalysis);
 	static int32	getIndexRoot(Dbb* dbb, int indexId);
 
-	static void		redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPageNumber, int level, int32 prior, int32 next, int length, const UCHAR *data);
+	static void		redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPageNumber, int level, int32 prior, int32 next, int length, const UCHAR *data, bool haveSuperNodes);
 	static void		setIndexRoot(Dbb* dbb, int indexId, int32 pageNumber, TransId transId);
 	static void		redoIndexDelete(Dbb* dbb, int indexId);
 	static void		redoCreateIndex(Dbb* dbb, int indexId);

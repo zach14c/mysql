@@ -40,7 +40,9 @@
 #define MAX_SERVER_ARGS 64
 
 /* set default options */
+#ifdef NOT_USED
 static int   opt_testcase = 0;
+#endif
 static char *opt_db= 0;
 static char *opt_user= 0;
 static char *opt_password= 0;
@@ -662,6 +664,29 @@ int my_stmt_result(const char *buff)
   mysql_stmt_close(stmt);
 
   return row_count;
+}
+
+/* Print the total number of warnings and the warnings themselves.  */
+
+void my_process_warnings(MYSQL *conn, unsigned expected_warning_count)
+{
+  MYSQL_RES *result;
+  int rc;
+
+  if (!opt_silent)
+    fprintf(stdout, "\n total warnings: %u (expected: %u)\n",
+            mysql_warning_count(conn), expected_warning_count);
+
+  DIE_UNLESS(mysql_warning_count(mysql) == expected_warning_count);
+
+  rc= mysql_query(conn, "SHOW WARNINGS");
+  DIE_UNLESS(rc == 0);
+
+  result= mysql_store_result(conn);
+  mytest(result);
+
+  rc= my_process_result_set(result);
+  mysql_free_result(result);
 }
 
 
@@ -6668,10 +6693,10 @@ static void test_pure_coverage()
   check_execute_r(stmt, rc); /* unsupported buffer type */
 
   rc= mysql_stmt_store_result(stmt);
-  check_execute(stmt, rc);
+  DIE_UNLESS(rc);
 
   rc= mysql_stmt_store_result(stmt);
-  check_execute_r(stmt, rc); /* commands out of sync */
+  DIE_UNLESS(rc); /* Old error must be reset first */
 
   mysql_stmt_close(stmt);
 
@@ -8423,6 +8448,9 @@ static void test_fetch_offset()
   rc= mysql_stmt_fetch_column(stmt, my_bind, 0, 0);
   check_execute_r(stmt, rc);
 
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
   rc= mysql_stmt_bind_result(stmt, my_bind);
   check_execute(stmt, rc);
 
@@ -9901,7 +9929,7 @@ static void test_rename()
   MYSQL_STMT *stmt;
   const char *query= "rename table t1 to t2, t3 to t4";
   int rc;
-  myheader("test_table_manipulation");
+  myheader("test_table_rename");
 
   rc= mysql_query(mysql, "DROP TABLE IF EXISTS t1, t2, t3, t4");
   myquery(rc);
@@ -11132,7 +11160,7 @@ static void test_bug4236()
   int rc;
   MYSQL_STMT backup;
 
-  myheader("test_bug4296");
+  myheader("test_bug4236");
 
   stmt= mysql_stmt_init(mysql);
 
@@ -12488,7 +12516,7 @@ static void test_datetime_ranges()
 
   rc= mysql_stmt_execute(stmt);
   check_execute(stmt, rc);
-  DIE_UNLESS(mysql_warning_count(mysql) != 6);
+  my_process_warnings(mysql, 12);
 
   verify_col_data("t1", "year", "0000-00-00 00:00:00");
   verify_col_data("t1", "month", "0000-00-00 00:00:00");
@@ -12519,7 +12547,7 @@ static void test_datetime_ranges()
 
   rc= mysql_stmt_execute(stmt);
   check_execute(stmt, rc);
-  DIE_UNLESS(mysql_warning_count(mysql) != 3);
+  my_process_warnings(mysql, 6);
 
   verify_col_data("t1", "year", "0000-00-00 00:00:00");
   verify_col_data("t1", "month", "0000-00-00 00:00:00");
@@ -12558,7 +12586,7 @@ static void test_datetime_ranges()
 
   rc= mysql_stmt_execute(stmt);
   check_execute(stmt, rc);
-  DIE_UNLESS(mysql_warning_count(mysql) == 2);
+  my_process_warnings(mysql, 2);
 
   verify_col_data("t1", "day_ovfl", "838:59:59");
   verify_col_data("t1", "day", "828:30:30");
@@ -12645,7 +12673,7 @@ static void test_conversion()
   const char *stmt_text;
   int rc;
   MYSQL_BIND my_bind[1];
-  char buff[4];
+  uchar buff[4];
   ulong length;
 
   myheader("test_conversion");
@@ -12668,7 +12696,7 @@ static void test_conversion()
   check_execute(stmt, rc);
 
   bzero((char*) my_bind, sizeof(my_bind));
-  my_bind[0].buffer= buff;
+  my_bind[0].buffer= (char*) buff;
   my_bind[0].length= &length;
   my_bind[0].buffer_type= MYSQL_TYPE_STRING;
 
@@ -12693,7 +12721,7 @@ static void test_conversion()
   rc= mysql_stmt_fetch(stmt);
   DIE_UNLESS(rc == 0);
   DIE_UNLESS(length == 1);
-  DIE_UNLESS((uchar) buff[0] == 0xE0);
+  DIE_UNLESS(buff[0] == 0xE0);
   rc= mysql_stmt_fetch(stmt);
   DIE_UNLESS(rc == MYSQL_NO_DATA);
 
@@ -15922,11 +15950,10 @@ static void test_bug21206()
 
 static void test_status()
 {
-  const char *status;
   DBUG_ENTER("test_status");
   myheader("test_status");
 
-  if (!(status= mysql_stat(mysql)))
+  if (!mysql_stat(mysql))
   {
     myerror("mysql_stat failed");                 /* purecov: inspected */
     die(__FILE__, __LINE__, "mysql_stat failed"); /* purecov: inspected */
@@ -17387,6 +17414,420 @@ static void test_bug28386()
   DBUG_VOID_RETURN;
 }
 
+
+static void test_wl4166_1()
+{
+  MYSQL_STMT *stmt;
+  int        int_data;
+  char       str_data[50];
+  char       tiny_data;
+  short      small_data;
+  longlong   big_data;
+  float      real_data;
+  double     double_data;
+  ulong      length[7];
+  my_bool    is_null[7];
+  MYSQL_BIND my_bind[7];
+  int rc;
+  int i;
+
+  myheader("test_wl4166_1");
+
+  rc= mysql_query(mysql, "DROP TABLE IF EXISTS table_4166");
+  myquery(rc);
+
+  rc= mysql_query(mysql, "CREATE TABLE table_4166(col1 tinyint NOT NULL, "
+                         "col2 varchar(15), col3 int, "
+                         "col4 smallint, col5 bigint, "
+                         "col6 float, col7 double, "
+                         "colX varchar(10) default NULL)");
+  myquery(rc);
+
+  stmt= mysql_simple_prepare(mysql,
+    "INSERT INTO table_4166(col1, col2, col3, col4, col5, col6, col7) "
+    "VALUES(?, ?, ?, ?, ?, ?, ?)");
+  check_stmt(stmt);
+
+  verify_param_count(stmt, 7);
+
+  bzero(my_bind, sizeof(my_bind));
+  /* tinyint */
+  my_bind[0].buffer_type= MYSQL_TYPE_TINY;
+  my_bind[0].buffer= (void *)&tiny_data;
+  /* string */
+  my_bind[1].buffer_type= MYSQL_TYPE_STRING;
+  my_bind[1].buffer= (void *)str_data;
+  my_bind[1].buffer_length= 1000;                  /* Max string length */
+  /* integer */
+  my_bind[2].buffer_type= MYSQL_TYPE_LONG;
+  my_bind[2].buffer= (void *)&int_data;
+  /* short */
+  my_bind[3].buffer_type= MYSQL_TYPE_SHORT;
+  my_bind[3].buffer= (void *)&small_data;
+  /* bigint */
+  my_bind[4].buffer_type= MYSQL_TYPE_LONGLONG;
+  my_bind[4].buffer= (void *)&big_data;
+  /* float */
+  my_bind[5].buffer_type= MYSQL_TYPE_FLOAT;
+  my_bind[5].buffer= (void *)&real_data;
+  /* double */
+  my_bind[6].buffer_type= MYSQL_TYPE_DOUBLE;
+  my_bind[6].buffer= (void *)&double_data;
+
+  for (i= 0; i < (int) array_elements(my_bind); i++)
+  {
+    my_bind[i].length= &length[i];
+    my_bind[i].is_null= &is_null[i];
+    is_null[i]= 0;
+  }
+
+  rc= mysql_stmt_bind_param(stmt, my_bind);
+  check_execute(stmt, rc);
+
+  int_data= 320;
+  small_data= 1867;
+  big_data= 1000;
+  real_data= 2;
+  double_data= 6578.001;
+
+  /* now, execute the prepared statement to insert 10 records.. */
+  for (tiny_data= 0; tiny_data < 10; tiny_data++)
+  {
+    length[1]= my_sprintf(str_data, (str_data, "MySQL%d", int_data));
+    rc= mysql_stmt_execute(stmt);
+    check_execute(stmt, rc);
+    int_data += 25;
+    small_data += 10;
+    big_data += 100;
+    real_data += 1;
+    double_data += 10.09;
+  }
+
+  /* force a re-prepare with some DDL */
+
+  rc= mysql_query(mysql,
+    "ALTER TABLE table_4166 change colX colX varchar(20) default NULL");
+  myquery(rc);
+
+  /*
+    execute the prepared statement again,
+    without changing the types of parameters already bound.
+  */
+
+  for (tiny_data= 50; tiny_data < 60; tiny_data++)
+  {
+    length[1]= my_sprintf(str_data, (str_data, "MySQL%d", int_data));
+    rc= mysql_stmt_execute(stmt);
+    check_execute(stmt, rc);
+    int_data += 25;
+    small_data += 10;
+    big_data += 100;
+    real_data += 1;
+    double_data += 10.09;
+  }
+
+  mysql_stmt_close(stmt);
+
+  rc= mysql_query(mysql, "DROP TABLE table_4166");
+  myquery(rc);
+}
+
+
+static void test_wl4166_2()
+{
+  MYSQL_STMT *stmt;
+  int        c_int;
+  MYSQL_TIME d_date;
+  MYSQL_BIND bind_out[2];
+  int rc;
+
+  myheader("test_wl4166_2");
+
+  rc= mysql_query(mysql, "drop table if exists t1");
+  myquery(rc);
+  rc= mysql_query(mysql, "create table t1 (c_int int, d_date date)");
+  myquery(rc);
+  rc= mysql_query(mysql,
+                  "insert into t1 (c_int, d_date) values (42, '1948-05-15')");
+  myquery(rc);
+
+  stmt= mysql_simple_prepare(mysql, "select * from t1");
+  check_stmt(stmt);
+
+  bzero(bind_out, sizeof(bind_out));
+  bind_out[0].buffer_type= MYSQL_TYPE_LONG;
+  bind_out[0].buffer= (void*) &c_int;
+
+  bind_out[1].buffer_type= MYSQL_TYPE_DATE;
+  bind_out[1].buffer= (void*) &d_date;
+
+  rc= mysql_stmt_bind_result(stmt, bind_out);
+  check_execute(stmt, rc);
+
+  /* int -> varchar transition */
+
+  rc= mysql_query(mysql,
+                  "alter table t1 change column c_int c_int varchar(11)");
+  myquery(rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_fetch(stmt);
+  check_execute(stmt, rc);
+
+  DIE_UNLESS(c_int == 42);
+  DIE_UNLESS(d_date.year == 1948);
+  DIE_UNLESS(d_date.month == 5);
+  DIE_UNLESS(d_date.day == 15);
+
+  rc= mysql_stmt_fetch(stmt);
+  DIE_UNLESS(rc == MYSQL_NO_DATA);
+
+  /* varchar to int retrieval with truncation */
+
+  rc= mysql_query(mysql, "update t1 set c_int='abcde'");
+  myquery(rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_fetch(stmt);
+  check_execute_r(stmt, rc);
+
+  DIE_UNLESS(c_int == 0);
+
+  rc= mysql_stmt_fetch(stmt);
+  DIE_UNLESS(rc == MYSQL_NO_DATA);
+
+  /* alter table and increase the number of columns */
+  rc= mysql_query(mysql, "alter table t1 add column d_int int");
+  myquery(rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute_r(stmt, rc);
+
+  rc= mysql_stmt_reset(stmt);
+  check_execute(stmt, rc);
+
+  /* decrease the number of columns */
+  rc= mysql_query(mysql, "alter table t1 drop d_date, drop d_int");
+  myquery(rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute_r(stmt, rc);
+
+  mysql_stmt_close(stmt);
+  rc= mysql_query(mysql, "drop table t1");
+  myquery(rc);
+
+}
+
+
+/**
+  Test how warnings generated during assignment of parameters
+  are (currently not) preserve in case of reprepare.
+*/
+
+static void test_wl4166_3()
+{
+  int rc;
+  MYSQL_STMT *stmt;
+  MYSQL_BIND my_bind[1];
+  MYSQL_TIME tm[1];
+
+  myheader("test_wl4166_3");
+
+  rc= mysql_query(mysql, "drop table if exists t1");
+  myquery(rc);
+
+  rc= mysql_query(mysql, "create table t1 (year datetime)");
+  myquery(rc);
+
+  stmt= mysql_simple_prepare(mysql, "insert into t1 (year) values (?)");
+  check_stmt(stmt);
+  verify_param_count(stmt, 1);
+
+  bzero((char*) my_bind, sizeof(my_bind));
+  my_bind[0].buffer_type= MYSQL_TYPE_DATETIME;
+  my_bind[0].buffer= &tm[0];
+
+  rc= mysql_stmt_bind_param(stmt, my_bind);
+  check_execute(stmt, rc);
+
+  tm[0].year= 10000;
+  tm[0].month= 1; tm[0].day= 1;
+  tm[0].hour= 1; tm[0].minute= 1; tm[0].second= 1;
+  tm[0].second_part= 0; tm[0].neg= 0;
+
+  /* Cause a statement reprepare */
+  rc= mysql_query(mysql, "alter table t1 add column c int");
+  myquery(rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+  /*
+    Sic: only one warning, instead of two. The warning
+    about data truncation when assigning a parameter is lost.
+    This is a bug.
+  */
+  my_process_warnings(mysql, 1);
+
+  verify_col_data("t1", "year", "0000-00-00 00:00:00");
+
+  mysql_stmt_close(stmt);
+
+  rc= mysql_query(mysql, "drop table t1");
+  myquery(rc);
+}
+
+
+/**
+  Test that long data parameters, as well as parameters
+  that were originally in a different character set, are
+  preserved in case of reprepare.
+*/
+
+static void test_wl4166_4()
+{
+  MYSQL_STMT *stmt;
+  int rc;
+  const char *stmt_text;
+  MYSQL_BIND bind_array[2];
+
+  /* Represented as numbers to keep UTF8 tools from clobbering them. */
+  const char *koi8= "\xee\xd5\x2c\x20\xda\xc1\x20\xd2\xd9\xc2\xc1\xcc\xcb\xd5";
+  const char *cp1251= "\xcd\xf3\x2c\x20\xe7\xe0\x20\xf0\xfb\xe1\xe0\xeb\xea\xf3";
+  char buf1[16], buf2[16];
+  ulong buf1_len, buf2_len;
+
+  myheader("test_wl4166_4");
+
+  rc= mysql_query(mysql, "drop table if exists t1");
+  myquery(rc);
+
+  /*
+    Create table with binary columns, set session character set to cp1251,
+    client character set to koi8, and make sure that there is conversion
+    on insert and no conversion on select
+  */
+  rc= mysql_query(mysql,
+                  "create table t1 (c1 varbinary(255), c2 varbinary(255))");
+  myquery(rc);
+  rc= mysql_query(mysql, "set character_set_client=koi8r, "
+                         "character_set_connection=cp1251, "
+                         "character_set_results=koi8r");
+  myquery(rc);
+
+  bzero((char*) bind_array, sizeof(bind_array));
+
+  bind_array[0].buffer_type= MYSQL_TYPE_STRING;
+
+  bind_array[1].buffer_type= MYSQL_TYPE_STRING;
+  bind_array[1].buffer= (void *) koi8;
+  bind_array[1].buffer_length= strlen(koi8);
+
+  stmt= mysql_stmt_init(mysql);
+  check_stmt(stmt);
+
+  stmt_text= "insert into t1 (c1, c2) values (?, ?)";
+
+  rc= mysql_stmt_prepare(stmt, stmt_text, strlen(stmt_text));
+  check_execute(stmt, rc);
+
+  mysql_stmt_bind_param(stmt, bind_array);
+
+  mysql_stmt_send_long_data(stmt, 0, koi8, strlen(koi8));
+
+  /* Cause a reprepare at statement execute */
+  rc= mysql_query(mysql, "alter table t1 add column d int");
+  myquery(rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  stmt_text= "select c1, c2 from t1";
+
+  /* c1 and c2 are binary so no conversion will be done on select */
+  rc= mysql_stmt_prepare(stmt, stmt_text, strlen(stmt_text));
+  check_execute(stmt, rc);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  bind_array[0].buffer= buf1;
+  bind_array[0].buffer_length= sizeof(buf1);
+  bind_array[0].length= &buf1_len;
+
+  bind_array[1].buffer= buf2;
+  bind_array[1].buffer_length= sizeof(buf2);
+  bind_array[1].length= &buf2_len;
+
+  mysql_stmt_bind_result(stmt, bind_array);
+
+  rc= mysql_stmt_fetch(stmt);
+  check_execute(stmt, rc);
+
+  DIE_UNLESS(buf1_len == strlen(cp1251));
+  DIE_UNLESS(buf2_len == strlen(cp1251));
+  DIE_UNLESS(!memcmp(buf1, cp1251, buf1_len));
+  DIE_UNLESS(!memcmp(buf2, cp1251, buf1_len));
+
+  rc= mysql_stmt_fetch(stmt);
+  DIE_UNLESS(rc == MYSQL_NO_DATA);
+
+  mysql_stmt_close(stmt);
+
+  rc= mysql_query(mysql, "drop table t1");
+  myquery(rc);
+  rc= mysql_query(mysql, "set names default");
+  myquery(rc);
+}
+
+/**
+  Bug#36004 mysql_stmt_prepare resets the list of warnings
+*/
+
+static void test_bug36004()
+{
+  int rc, warning_count= 0;
+  MYSQL_STMT *stmt;
+
+  DBUG_ENTER("test_bug36004");
+  myheader("test_bug36004");
+
+  rc= mysql_query(mysql, "drop table if exists inexistant");
+  myquery(rc);
+
+  DIE_UNLESS(mysql_warning_count(mysql) == 1);
+  query_int_variable(mysql, "@@warning_count", &warning_count);
+  DIE_UNLESS(warning_count);
+
+  stmt= mysql_simple_prepare(mysql, "select 1");
+  check_stmt(stmt);
+
+  DIE_UNLESS(mysql_warning_count(mysql) == 0);
+  query_int_variable(mysql, "@@warning_count", &warning_count);
+  DIE_UNLESS(warning_count);
+
+  rc= mysql_stmt_execute(stmt);
+  check_execute(stmt, rc);
+
+  DIE_UNLESS(mysql_warning_count(mysql) == 0);
+  mysql_stmt_close(stmt);
+
+  query_int_variable(mysql, "@@warning_count", &warning_count);
+  DIE_UNLESS(warning_count);
+
+  stmt= mysql_simple_prepare(mysql, "drop table if exists inexistant");
+  check_stmt(stmt);
+
+  query_int_variable(mysql, "@@warning_count", &warning_count);
+  DIE_UNLESS(warning_count == 0);
+
+  DBUG_VOID_RETURN;
+}
+
 /*
   Read and parse arguments and MySQL options from my.cnf
 */
@@ -17693,6 +18134,11 @@ static struct my_tests_st my_tests[]= {
   { "test_bug31418", test_bug31418 },
   { "test_bug31669", test_bug31669 },
   { "test_bug28386", test_bug28386 },
+  { "test_wl4166_1", test_wl4166_1 },
+  { "test_wl4166_2", test_wl4166_2 },
+  { "test_wl4166_3", test_wl4166_3 },
+  { "test_wl4166_4", test_wl4166_4 },
+  { "test_bug36004", test_bug36004 },
   { 0, 0 }
 };
 
@@ -17706,7 +18152,9 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
     DBUG_PUSH(argument ? argument : default_dbug_option);
     break;
   case 'c':
+#ifdef NOT_USED
     opt_testcase = 1;
+#endif
     break;
   case 'p':
     if (argument)

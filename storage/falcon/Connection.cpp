@@ -923,7 +923,7 @@ void Connection::openDatabase(const char* dbName, const char *filename, const ch
 	if (filename)
 		IO::expandFileName(filename, sizeof(dbFileName), dbFileName);
 	else
-		{
+		{ 
 		if (!registry.findDatabase (dbName, sizeof (dbFileName), dbFileName))
 			throw SQLEXCEPTION (CONNECTION_ERROR, "can't find database \"%s\"", dbName);
 		}
@@ -1030,7 +1030,9 @@ Database* Connection::createDatabase(const char *dbName, const char *fileName, c
 	Sync sync (&databaseList, "Connection::createDatabase");
 	sync.lock (Exclusive);
 
+#ifndef STORAGE_ENGINE
 	if (!registry.findDatabase (dbName, sizeof (dbFileName), dbFileName))
+#endif
 		for (Database *db = firstDatabase; db; db = db->next)
 			if (db->matches (fileName))
 				{
@@ -1039,28 +1041,18 @@ Database* Connection::createDatabase(const char *dbName, const char *fileName, c
 				break;
 				}
 
-	try
-		{
-		registry.defineDatabase (dbName, fileName);
-		
-		if (!registry.findDatabase (dbName, sizeof (dbFileName), dbFileName))
-			strcpy(dbFileName, fileName);
-		}
-	catch(...)
-		{
 #ifdef STORAGE_ENGINE
-		strcpy(dbFileName, fileName);
+        strcpy(dbFileName, fileName);
 #else
-		throw;
+	registry.defineDatabase (dbName, fileName);
+	
+	if (!registry.findDatabase (dbName, sizeof (dbFileName), dbFileName))
+		strcpy(dbFileName, fileName);
+
 #endif
-		}
 
 	database = new Database (dbName, configuration, threads);
 
-#ifdef STORAGE_ENGINE
-	//strcpy(dbFileName, fileName);
-#endif
-	
 	try
 		{
 		database->createDatabase (dbFileName);

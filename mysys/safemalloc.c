@@ -193,7 +193,7 @@ void *_mymalloc(size_t size, const char *filename, uint lineno, myf MyFlags)
   if ((MyFlags & MY_ZEROFILL) || !sf_malloc_quick)
     bfill(data, size, (char) (MyFlags & MY_ZEROFILL ? 0 : ALLOC_VAL));
   /* Return a pointer to the real data */
-  DBUG_PRINT("exit",("ptr: 0x%lx", (long) data));
+  DBUG_PRINT("exit",("ptr: %p", data));
   if (sf_min_adress > data)
     sf_min_adress= data;
   if (sf_max_adress < data)
@@ -258,7 +258,7 @@ void _myfree(void *ptr, const char *filename, uint lineno, myf myflags)
 {
   struct st_irem *irem;
   DBUG_ENTER("_myfree");
-  DBUG_PRINT("enter",("ptr: 0x%lx", (long) ptr));
+  DBUG_PRINT("enter",("ptr: %p", ptr));
 
   if (!sf_malloc_quick)
     (void) _sanity (filename, lineno);
@@ -404,14 +404,16 @@ void TERMINATE(FILE *file, uint flag)
       if (file)
       {
 	fprintf(file,
-		"\t%6u bytes at 0x%09lx, allocated at line %4u in '%s'",
-		irem->datasize, (long) data, irem->linenum, irem->filename);
+		"\t%6lu bytes at 0x%09lx, allocated at line %4u in '%s'",
+		(ulong) irem->datasize, (long) data,
+                irem->linenum, irem->filename);
 	fprintf(file, "\n");
 	(void) fflush(file);
       }
       DBUG_PRINT("safe",
-		 ("%6u bytes at 0x%09lx, allocated at line %4d in '%s'",
-		  irem->datasize, (long) data, irem->linenum, irem->filename));
+		 ("%6lu bytes at 0x%09lx, allocated at line %4d in '%s'",
+		  (ulong) irem->datasize, (long) data,
+                  irem->linenum, irem->filename));
       irem= irem->next;
     }
   }
@@ -430,6 +432,29 @@ void TERMINATE(FILE *file, uint flag)
 }
 
 
+/*
+  Report where a piece of memory was allocated
+
+  This is usefull to call from withing a debugger
+*/
+
+void sf_malloc_report_allocated(void *memory)
+{
+  struct st_irem *irem;  
+  for (irem= sf_malloc_root ; irem ; irem=irem->next)
+  {
+    char *data= (((char*) irem) + ALIGN_SIZE(sizeof(struct st_irem)) +
+                 sf_malloc_prehunc);
+    if (data <= (char*) memory && (char*) memory <= data + irem->datasize)
+    {
+      printf("%lu bytes at 0x%lx, allocated at line %u in '%s'\n",
+             (ulong) irem->datasize, (long) data,
+             irem->linenum, irem->filename);
+      break;
+    }
+  }
+}
+
 	/* Returns 0 if chunk is ok */
 
 static int _checkchunk(register struct st_irem *irem, const char *filename,
@@ -447,8 +472,8 @@ static int _checkchunk(register struct st_irem *irem, const char *filename,
 	    irem->filename, irem->linenum);
     fprintf(stderr, " discovered at %s:%d\n", filename, lineno);
     (void) fflush(stderr);
-    DBUG_PRINT("safe",("Underrun at 0x%lx, allocated at %s:%d",
-		       (long) data, irem->filename, irem->linenum));
+    DBUG_PRINT("safe",("Underrun at %p, allocated at %s:%d",
+		       data, irem->filename, irem->linenum));
     flag=1;
   }
 
@@ -463,8 +488,8 @@ static int _checkchunk(register struct st_irem *irem, const char *filename,
 	    irem->filename, irem->linenum);
     fprintf(stderr, " discovered at '%s:%d'\n", filename, lineno);
     (void) fflush(stderr);
-    DBUG_PRINT("safe",("Overrun at 0x%lx, allocated at %s:%d",
-		       (long) data,
+    DBUG_PRINT("safe",("Overrun at %p, allocated at %s:%d",
+		       data,
 		       irem->filename,
 		       irem->linenum));
     flag=1;

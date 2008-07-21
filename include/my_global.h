@@ -68,9 +68,11 @@
 #ifdef __cplusplus
 #define C_MODE_START    extern "C" {
 #define C_MODE_END	}
+#define STATIC_CAST(TYPE) static_cast<TYPE>
 #else
 #define C_MODE_START
 #define C_MODE_END
+#define STATIC_CAST(TYPE) (TYPE)
 #endif
 
 #if defined(_WIN32) || defined(_WIN64) || defined(__WIN32__) || defined(WIN32)
@@ -156,9 +158,14 @@
 #define __builtin_expect(x, expected_value) (x)
 #endif
 
-#define likely(x)	__builtin_expect((x),1)
-#define unlikely(x)	__builtin_expect((x),0)
-
+/**
+  The semantics of builtin_expect() are that
+  1) its two arguments are long
+  2) it's likely that they are ==
+  Those of our likely(x) are that x can be bool/int/longlong/pointer.
+*/
+#define likely(x)	__builtin_expect(((x) != 0),1)
+#define unlikely(x)	__builtin_expect(((x) != 0),0)
 
 /*
   The macros below are useful in optimising places where it has been
@@ -410,6 +417,7 @@ C_MODE_END
 #ifndef stdin
 #include <stdio.h>
 #endif
+#include <stdarg.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
@@ -430,6 +438,9 @@ C_MODE_END
 #endif
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
 #endif
 #ifdef HAVE_SYS_TIMEB_H
 #include <sys/timeb.h>				/* Avoid warnings on SCO */
@@ -538,17 +549,6 @@ extern "C" int madvise(void *addr, size_t len, int behav);
 #define DONT_REMEMBER_SIGNAL
 #endif
 
-/* Define void to stop lint from generating "null effekt" comments */
-#ifndef DONT_DEFINE_VOID
-#ifdef _lint
-int	__void__;
-#define VOID(X)		(__void__ = (int) (X))
-#else
-#undef VOID
-#define VOID(X)		(X)
-#endif
-#endif /* DONT_DEFINE_VOID */
-
 #if defined(_lint) || defined(FORCE_INIT_OF_VARS)
 #define LINT_INIT(var)	var=0			/* No uninitialize-warning */
 #else
@@ -570,16 +570,49 @@ typedef unsigned short ushort;
 
 #define CMP_NUM(a,b)    (((a) < (b)) ? -1 : ((a) == (b)) ? 0 : 1)
 #define sgn(a)		(((a) < 0) ? -1 : ((a) > 0) ? 1 : 0)
-#define swap_variables(t, a, b) { register t dummy; dummy= a; a= b; b= dummy; }
+#define swap_variables(t, a, b) { t swap_dummy; swap_dummy= a; a= b; b= swap_dummy; }
 #define test(a)		((a) ? 1 : 0)
 #define set_if_bigger(a,b)  do { if ((a) < (b)) (a)=(b); } while(0)
 #define set_if_smaller(a,b) do { if ((a) > (b)) (a)=(b); } while(0)
 #define test_all_bits(a,b) (((a) & (b)) == (b))
 #define set_bits(type, bit_count) (sizeof(type)*8 <= (bit_count) ? ~(type) 0 : ((((type) 1) << (bit_count)) - (type) 1))
 #define array_elements(A) ((uint) (sizeof(A)/sizeof(A[0])))
+
 #ifndef HAVE_RINT
-#define rint(A) floor((A)+(((A) < 0)? -0.5 : 0.5))
-#endif
+/**
+  All integers up to this number can be represented exactly as double precision
+  values (DBL_MANT_DIG == 53 for IEEE 754 hardware).
+*/
+#define MAX_EXACT_INTEGER ((1LL << DBL_MANT_DIG) - 1)
+
+/**
+  rint(3) implementation for platforms that do not have it.
+  Always rounds to the nearest integer with ties being rounded to the nearest
+  even integer to mimic glibc's rint() behavior in the "round-to-nearest"
+  FPU mode. Hardware-specific optimizations are possible (frndint on x86).
+  Unlike this implementation, hardware will also honor the FPU rounding mode.
+*/
+
+static inline double rint(double x)
+{
+  double f, i;
+  f = modf(x, &i);
+
+  /*
+    All doubles with absolute values > MAX_EXACT_INTEGER are even anyway,
+    no need to check it.
+  */
+  if (x > 0.0)
+    i += (double) ((f > 0.5) || (f == 0.5 &&
+                                 i <= (double) MAX_EXACT_INTEGER &&
+                                 (longlong) i % 2));
+  else
+    i -= (double) ((f < -0.5) || (f == -0.5 &&
+                                  i >= (double) -MAX_EXACT_INTEGER &&
+                                  (longlong) i % 2));
+  return i;
+}
+#endif /* HAVE_RINT */
 
 /* Define some general constants */
 #ifndef TRUE
@@ -636,6 +669,7 @@ C_MODE_END
 #  endif
 #endif
 
+typedef char		my_bool; /* Small bool */
 #include <my_dbug.h>
 
 #define MIN_ARRAY_SIZE	0	/* Zero or One. Gcc allows zero*/
@@ -924,7 +958,7 @@ typedef long long	my_ptrdiff_t;
 #define my_offsetof(TYPE, MEMBER) \
         ((size_t)((char *)&(((TYPE *)0x10)->MEMBER) - (char*)0x10))
 
-#define NullS		(char *) 0
+#define NullS		STATIC_CAST(char *)(0)
 /* Nowdays we do not support MessyDos */
 #ifndef NEAR
 #define NEAR				/* Who needs segments ? */
@@ -1019,6 +1053,7 @@ typedef long long intptr;
 #endif
 
 #define MY_ERRPTR ((void*)(intptr)1)
+
 #ifdef USE_RAID
 /*
   The following is done with a if to not get problems with pre-processors
@@ -1040,7 +1075,7 @@ typedef ulonglong my_off_t;
 #else
 typedef unsigned long my_off_t;
 #endif
-#define MY_FILEPOS_ERROR	(~(my_off_t) 0)
+#define MY_FILEPOS_ERROR	(~STATIC_CAST(my_off_t)(0))
 #if !defined(__WIN__)
 typedef off_t os_off_t;
 #endif
@@ -1069,7 +1104,6 @@ typedef off_t os_off_t;
 typedef uint8		int7;	/* Most effective integer 0 <= x <= 127 */
 typedef short		int15;	/* Most effective integer 0 <= x <= 32767 */
 typedef int		myf;	/* Type of MyFlags in my_funcs */
-typedef char		my_bool; /* Small bool */
 #if !defined(bool) && (!defined(HAVE_BOOL) || !defined(__cplusplus))
 typedef char		bool;	/* Ordinary boolean values 0 1 */
 #endif
@@ -1077,7 +1111,7 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #define INT8(v)		(int8) (v)
 #define INT16(v)	(int16) (v)
 #define INT32(v)	(int32) (v)
-#define MYF(v)		(myf) (v)
+#define MYF(v)		STATIC_CAST(myf)(v)
 
 #ifndef LL
 #ifdef HAVE_LONG_LONG
@@ -1133,9 +1167,7 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #define SCALE_SEC	100
 #define SCALE_USEC	10000
 #define MY_HOW_OFTEN_TO_ALARM	2	/* How often we want info on screen */
-#define MY_HOW_OFTEN_TO_WRITE	1000	/* How often we want info on screen */
-
-
+#define MY_HOW_OFTEN_TO_WRITE	10000	/* How often we want info on screen */
 
 /*
   Define-funktions for reading and storing in machine independent format
@@ -1144,7 +1176,7 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 
 /* Optimized store functions for Intel x86 */
 #if defined(__i386__) || defined(_WIN32)
-#define sint2korr(A)	(*((int16 *) (A)))
+#define sint2korr(A)	(*((const int16 *) (A)))
 #define sint3korr(A)	((int32) ((((uchar) (A)[2]) & 128) ? \
 				  (((uint32) 255L << 24) | \
 				   (((uint32) (uchar) (A)[2]) << 16) |\
@@ -1153,8 +1185,8 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 				  (((uint32) (uchar) (A)[2]) << 16) |\
 				  (((uint32) (uchar) (A)[1]) << 8) | \
 				  ((uint32) (uchar) (A)[0])))
-#define sint4korr(A)	(*((long *) (A)))
-#define uint2korr(A)	(*((uint16 *) (A)))
+#define sint4korr(A)	(*((const long *) (A)))
+#define uint2korr(A)	(*((const uint16 *) (A)))
 #if defined(HAVE_purify) && !defined(_WIN32)
 #define uint3korr(A)	(uint32) (((uint32) ((uchar) (A)[0])) +\
 				  (((uint32) ((uchar) (A)[1])) << 8) +\
@@ -1166,9 +1198,9 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
     Please, note, uint3korr reads 4 bytes (not 3) !
     It means, that you have to provide enough allocated space !
 */
-#define uint3korr(A)	(long) (*((unsigned int *) (A)) & 0xFFFFFF)
+#define uint3korr(A)	(long) (*((const unsigned int *) (A)) & 0xFFFFFF)
 #endif /* HAVE_purify && !_WIN32 */
-#define uint4korr(A)	(*((uint32 *) (A)))
+#define uint4korr(A)	(*((const uint32 *) (A)))
 #define uint5korr(A)	((ulonglong)(((uint32) ((uchar) (A)[0])) +\
 				    (((uint32) ((uchar) (A)[1])) << 8) +\
 				    (((uint32) ((uchar) (A)[2])) << 16) +\
@@ -1180,8 +1212,8 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
                                      (((uint32)    ((uchar) (A)[3])) << 24)) + \
                          (((ulonglong) ((uchar) (A)[4])) << 32) +       \
                          (((ulonglong) ((uchar) (A)[5])) << 40))
-#define uint8korr(A)	(*((ulonglong *) (A)))
-#define sint8korr(A)	(*((longlong *) (A)))
+#define uint8korr(A)	(*((const ulonglong *) (A)))
+#define sint8korr(A)	(*((const longlong *) (A)))
 #define int2store(T,A)	*((uint16*) (T))= (uint16) (A)
 #define int3store(T,A)  do { *(T)=  (uchar) ((A));\
                             *(T+1)=(uchar) (((uint) (A) >> 8));\
@@ -1206,17 +1238,17 @@ typedef union {
 } doubleget_union;
 #define doubleget(V,M)	\
 do { doubleget_union _tmp; \
-     _tmp.m[0] = *((long*)(M)); \
-     _tmp.m[1] = *(((long*) (M))+1); \
+     _tmp.m[0] = *((const long*)(M)); \
+     _tmp.m[1] = *(((const long*) (M))+1); \
      (V) = _tmp.v; } while(0)
-#define doublestore(T,V) do { *((long *) T) = ((doubleget_union *)&V)->m[0]; \
-			     *(((long *) T)+1) = ((doubleget_union *)&V)->m[1]; \
+#define doublestore(T,V) do { *((long *) T) = ((const doubleget_union *)&V)->m[0]; \
+			     *(((long *) T)+1) = ((const doubleget_union *)&V)->m[1]; \
                          } while (0)
-#define float4get(V,M)   do { *((float *) &(V)) = *((float*) (M)); } while(0)
+#define float4get(V,M)   do { *((float *) &(V)) = *((const float*) (M)); } while(0)
 #define float8get(V,M)   doubleget((V),(M))
-#define float4store(V,M) memcpy((uchar*) V,(uchar*) (&M),sizeof(float))
-#define floatstore(T,V)  memcpy((uchar*)(T), (uchar*)(&V),sizeof(float))
-#define floatget(V,M)    memcpy((uchar*) &V,(uchar*) (M),sizeof(float))
+#define float4store(V,M) memcpy((uchar*) V,(const uchar*) (&M),sizeof(float))
+#define floatstore(T,V)  memcpy((uchar*)(T), (const uchar*)(&V),sizeof(float))
+#define floatget(V,M)    memcpy((uchar*) &V,(const uchar*) (M),sizeof(float))
 #define float8store(V,M) doublestore((V),(M))
 #else
 
@@ -1479,6 +1511,7 @@ do { doubleget_union _tmp; \
 #define dlerror() ""
 #endif
 
+
 #ifndef __NETWARE__
 /*
  *  Include standard definitions of operator new and delete.
@@ -1509,10 +1542,36 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #if !defined(max)
 #define max(a, b)	((a) > (b) ? (a) : (b))
 #define min(a, b)	((a) < (b) ? (a) : (b))
+#endif  
+/*
+  Only Linux is known to need an explicit sync of the directory to make sure a
+  file creation/deletion/renaming in(from,to) this directory durable.
+*/
+#ifdef TARGET_OS_LINUX
+#define NEED_EXPLICIT_SYNC_DIR 1
 #endif
 
 #if !defined(__cplusplus) && !defined(bool)
 #define bool In_C_you_should_use_my_bool_instead()
+#endif
+
+/* Provide __func__ macro definition for platforms that miss it. */
+#if __STDC_VERSION__ < 199901L
+#  if __GNUC__ >= 2
+#    define __func__ __FUNCTION__
+#  else
+#    define __func__ "<unknown>"
+#  endif
+#elif defined(_MSC_VER)
+#  if _MSC_VER < 1300
+#    define __func__ "<unknown>"
+#  else
+#    define __func__ __FUNCTION__
+#  endif
+#elif defined(__BORLANDC__)
+#  define __func__ __FUNC__
+#else
+#  define __func__ "<unknown>"
 #endif
 
 #endif /* my_global_h */

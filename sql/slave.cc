@@ -1021,7 +1021,8 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
       err_msg.append(query);
       err_msg.append("' failed;");
       err_msg.append(" error: ");
-      err_msg.qs_append(mysql_errno(mysql));
+      err_code= mysql_errno(mysql);
+      err_msg.qs_append(err_code);
       err_msg.append("  '");
       err_msg.append(mysql_error(mysql));
       err_msg.append("'");
@@ -2331,10 +2332,10 @@ err:
   // print the current replication position
   sql_print_information("Slave I/O thread exiting, read up to log '%s', position %s",
                   IO_RPL_LOG_NAME, llstr(mi->master_log_pos,llbuff));
-  VOID(pthread_mutex_lock(&LOCK_thread_count));
+  pthread_mutex_lock(&LOCK_thread_count);
   thd->query = thd->db = 0; // extra safety
   thd->query_length= thd->db_length= 0;
-  VOID(pthread_mutex_unlock(&LOCK_thread_count));
+  pthread_mutex_unlock(&LOCK_thread_count);
   if (mysql)
   {
     /*
@@ -2617,7 +2618,7 @@ the slave SQL thread with \"SLAVE START\". We stopped at log \
     must "proactively" clear playgrounds:
   */
   rli->cleanup_context(thd, 1);
-  VOID(pthread_mutex_lock(&LOCK_thread_count));
+  pthread_mutex_lock(&LOCK_thread_count);
   /*
     Some extra safety, which should not been needed (normally, event deletion
     should already have done these assignments (each event which sets these
@@ -2625,7 +2626,7 @@ the slave SQL thread with \"SLAVE START\". We stopped at log \
   */
   thd->query= thd->db= thd->catalog= 0;
   thd->query_length= thd->db_length= 0;
-  VOID(pthread_mutex_unlock(&LOCK_thread_count));
+  pthread_mutex_unlock(&LOCK_thread_count);
   thd_proc_info(thd, "Waiting for slave mutex on exit");
   pthread_mutex_lock(&rli->run_lock);
   /* We need data_lock, at least to wake up any waiting master_pos_wait() */
@@ -3943,9 +3944,18 @@ end:
    has a certain bug.
    @param rli Relay_log_info which tells the master's version
    @param bug_id Number of the bug as found in bugs.mysql.com
+   @param report bool report error message, default TRUE
+
+   @param pred Predicate function that will be called with @c param to
+   check for the bug. If the function return @c true, the bug is present,
+   otherwise, it is not.
+
+   @param param  State passed to @c pred function.
+
    @return TRUE if master has the bug, FALSE if it does not.
 */
-bool rpl_master_has_bug(Relay_log_info *rli, uint bug_id)
+bool rpl_master_has_bug(const Relay_log_info *rli, uint bug_id, bool report,
+                        bool (*pred)(const void *), const void *param)
 {
   struct st_version_range_for_one_bug {
     uint        bug_id;
@@ -3955,7 +3965,10 @@ bool rpl_master_has_bug(Relay_log_info *rli, uint bug_id)
   static struct st_version_range_for_one_bug versions_for_all_bugs[]=
   {
     {24432, { 5, 0, 24 }, { 5, 0, 38 } },
-    {24432, { 5, 1, 12 }, { 5, 1, 17 } }
+    {24432, { 5, 1, 12 }, { 5, 1, 17 } },
+    {33029, { 5, 0,  0 }, { 5, 0, 58 } },
+    {33029, { 5, 1,  0 }, { 5, 1, 12 } },
+    {37426, { 5, 1,  0 }, { 5, 1, 26 } },
   };
   const uchar *master_ver=
     rli->relay_log.description_event_for_exec->server_version_split;
@@ -3969,8 +3982,11 @@ bool rpl_master_has_bug(Relay_log_info *rli, uint bug_id)
       *fixed_in= versions_for_all_bugs[i].fixed_in;
     if ((versions_for_all_bugs[i].bug_id == bug_id) &&
         (memcmp(introduced_in, master_ver, 3) <= 0) &&
-        (memcmp(fixed_in,      master_ver, 3) >  0))
+        (memcmp(fixed_in,      master_ver, 3) >  0) &&
+        (pred == NULL || (*pred)(param)))
     {
+      if (!report)
+	return TRUE;
       // a short message for SHOW SLAVE STATUS (message length constraints)
       my_printf_error(ER_UNKNOWN_ERROR, "master may suffer from"
                       " http://bugs.mysql.com/bug.php?id=%u"
@@ -3998,6 +4014,27 @@ bool rpl_master_has_bug(Relay_log_info *rli, uint bug_id)
                       fixed_in[0], fixed_in[1], fixed_in[2]);
       return TRUE;
     }
+  }
+  return FALSE;
+}
+
+/**
+   BUG#33029, For all 5.0 up to 5.0.58 exclusive, and 5.1 up to 5.1.12
+   exclusive, if one statement in a SP generated AUTO_INCREMENT value
+   by the top statement, all statements after it would be considered
+   generated AUTO_INCREMENT value by the top statement, and a
+   erroneous INSERT_ID value might be associated with these statement,
+   which could cause duplicate entry error and stop the slave.
+
+   Detect buggy master to work around.
+ */
+bool rpl_master_erroneous_autoinc(THD *thd)
+{
+  if (active_mi && active_mi->rli.sql_thd == thd)
+  {
+    Relay_log_info *rli= &active_mi->rli;
+    DBUG_EXECUTE_IF("simulate_bug33029", return TRUE;);
+    return rpl_master_has_bug(rli, 33029, FALSE, NULL, NULL);
   }
   return FALSE;
 }

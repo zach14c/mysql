@@ -29,6 +29,7 @@
 
 static const int TS_HASH_SIZE = 101;
 
+struct TableSpaceInit;
 class TableSpace;
 class Database;
 class Transaction;
@@ -43,7 +44,7 @@ public:
 	TableSpace*		getTableSpace (int id);
 	TableSpace*		findTableSpace(int id);
 	void			bootstrap (int sectionId);
-	TableSpace*		createTableSpace (const char *name, const char *fileName, uint64 initialAllocation, bool repository);
+	TableSpace*		createTableSpace (const char *name, const char *fileName, bool repository, TableSpaceInit *tsInit);
 	TableSpace*		getTableSpace (const char *name);
 	TableSpace*		findTableSpace(const char *name);
 	void			add (TableSpace *tableSpace);
@@ -51,12 +52,15 @@ public:
 	void			dropDatabase(void);
 	void			dropTableSpace(TableSpace* tableSpace);
 	void			reportStatistics(void);
+	JString			tableSpaceType(JString name);
 	void			getIOInfo(InfoTable* infoTable);
+	void			getTableSpaceInfo(InfoTable* infoTable);
+	void			getTableSpaceFilesInfo(InfoTable* infoTable);
 	void			validate(int optionMask);
 	void			sync();
 	void			expungeTableSpace(int tableSpaceId);
 	void			reportWrites(void);
-	void			redoCreateTableSpace(int id, int nameLength, const char* name, int fileNameLength, const char* fileName, int type);
+	void			redoCreateTableSpace(int id, int nameLength, const char* name, int fileNameLength, const char* fileName, int type, TableSpaceInit* tsInit);
 	void			initialize(void);
 
 	Database	*database;
@@ -65,6 +69,7 @@ public:
 	TableSpace	*idHash[TS_HASH_SIZE];
 	SyncObject	syncObject;
 	void postRecovery(void);
+	int pendingDrops;
 };
 
 #endif // !defined(AFX_TABLESPACEMANAGER_H__BD1D39F6_2201_4136_899C_7CB106E99B8C__INCLUDED_)

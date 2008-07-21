@@ -269,9 +269,11 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
 
   while ((item= it++))
   {
-    if (item->type() == Item::FIELD_ITEM)
+    Item *real_item= item->real_item();
+
+    if (real_item->type() == Item::FIELD_ITEM)
     {
-      Field *field= ((Item_field*)item)->field;
+      Field *field= ((Item_field*)real_item)->field;
       if (field->flags & BLOB_FLAG)
       {
         use_blobs= 1;
@@ -280,7 +282,7 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
       else
         tot_length+= field->field_length;
     }
-    else
+    else if (item->type() == Item::STRING_ITEM)
       use_vars= 1;
   }
   if (use_blobs && !ex->line_term->length() && !field_term->length())
@@ -406,7 +408,7 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
         (!table->triggers ||
          !table->triggers->has_delete_triggers()))
         table->file->extra(HA_EXTRA_WRITE_CAN_REPLACE);
-    if (!thd->prelocked_mode)
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
       table->file->ha_start_bulk_insert((ha_rows) 0);
     table->copy_blobs=1;
 
@@ -427,7 +429,8 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
       error= read_sep_field(thd, info, table_list, fields_vars,
                             set_fields, set_values, read_info,
 			    *enclosed, skip_lines, ignore);
-    if (!thd->prelocked_mode && table->file->ha_end_bulk_insert() && !error)
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
+        table->file->ha_end_bulk_insert(0) && !error)
     {
       table->file->print_error(my_errno, MYF(0));
       error= 1;
@@ -590,12 +593,9 @@ read_fixed_length(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
   List_iterator_fast<Item> it(fields_vars);
   Item_field *sql_field;
   TABLE *table= table_list->table;
-  ulonglong id;
   bool err;
   DBUG_ENTER("read_fixed_length");
 
-  id= 0;
- 
   while (!read_info.read_fixed_length())
   {
     if (thd->killed)
@@ -721,12 +721,10 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
   Item *item;
   TABLE *table= table_list->table;
   uint enclosed_length;
-  ulonglong id;
   bool err;
   DBUG_ENTER("read_sep_field");
 
   enclosed_length=enclosed.length();
-  id= 0;
 
   for (;;it.rewind())
   {
@@ -742,6 +740,7 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
     {
       uint length;
       uchar *pos;
+      Item *real_item;
 
       if (read_info.read_field())
 	break;
@@ -753,14 +752,17 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
       pos=read_info.row_start;
       length=(uint) (read_info.row_end-pos);
 
+      real_item= item->real_item();
+
       if (!read_info.enclosed &&
 	  (enclosed_length && length == 4 &&
            !memcmp(pos, STRING_WITH_LEN("NULL"))) ||
 	  (length == 1 && read_info.found_null))
       {
-        if (item->type() == Item::FIELD_ITEM)
+
+        if (real_item->type() == Item::FIELD_ITEM)
         {
-          Field *field= ((Item_field *)item)->field;
+          Field *field= ((Item_field *)real_item)->field;
           if (field->reset())
           {
             my_error(ER_WARN_NULL_TO_NOTNULL, MYF(0), field->field_name,
@@ -777,25 +779,39 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
                                  ER_WARN_NULL_TO_NOTNULL, 1);
           }
 	}
-        else
+        else if (item->type() == Item::STRING_ITEM)
+        {
           ((Item_user_var_as_out_param *)item)->set_null_value(
                                                   read_info.read_charset);
+        }
+        else
+        {
+          my_error(ER_LOAD_DATA_INVALID_COLUMN, MYF(0), item->full_name());
+          DBUG_RETURN(1);
+        }
+
 	continue;
       }
 
-      if (item->type() == Item::FIELD_ITEM)
+      if (real_item->type() == Item::FIELD_ITEM)
       {
-
-        Field *field= ((Item_field *)item)->field;
+        Field *field= ((Item_field *)real_item)->field;
         field->set_notnull();
         read_info.row_end[0]=0;			// Safe to change end marker
         if (field == table->next_number_field)
           table->auto_increment_field_not_null= TRUE;
         field->store((char*) pos, length, read_info.read_charset);
       }
-      else
+      else if (item->type() == Item::STRING_ITEM)
+      {
         ((Item_user_var_as_out_param *)item)->set_value((char*) pos, length,
-                                                read_info.read_charset);
+                                                        read_info.read_charset);
+      }
+      else
+      {
+        my_error(ER_LOAD_DATA_INVALID_COLUMN, MYF(0), item->full_name());
+        DBUG_RETURN(1);
+      }
     }
     if (read_info.error)
       break;
@@ -811,9 +827,10 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
 	break;
       for (; item ; item= it++)
       {
-        if (item->type() == Item::FIELD_ITEM)
+        Item *real_item= item->real_item();
+        if (real_item->type() == Item::FIELD_ITEM)
         {
-          Field *field= ((Item_field *)item)->field;
+          Field *field= ((Item_field *)real_item)->field;
           if (field->reset())
           {
             my_error(ER_WARN_NULL_TO_NOTNULL, MYF(0),field->field_name,
@@ -833,9 +850,16 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
                               ER_WARN_TOO_FEW_RECORDS,
                               ER(ER_WARN_TOO_FEW_RECORDS), thd->row_count);
         }
-        else
+        else if (item->type() == Item::STRING_ITEM)
+        {
           ((Item_user_var_as_out_param *)item)->set_null_value(
                                                   read_info.read_charset);
+        }
+        else
+        {
+          my_error(ER_LOAD_DATA_INVALID_COLUMN, MYF(0), item->full_name());
+          DBUG_RETURN(1);
+        }
       }
     }
 
@@ -1142,8 +1166,7 @@ READ_INFO::READ_INFO(File file_par, uint tot_length, CHARSET_INFO *cs,
 	cache.read_function = _my_b_net_read;
 
       if (mysql_bin_log.is_open())
-	cache.pre_read = cache.pre_close =
-	  (IO_CACHE_CALLBACK) log_loaded_block;
+	cache.pre_read= cache.pre_close = log_loaded_block;
 #endif
     }
   }

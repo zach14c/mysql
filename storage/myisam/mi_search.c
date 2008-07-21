@@ -60,7 +60,7 @@ int _mi_search(register MI_INFO *info, register MI_KEYDEF *keyinfo,
   int error,flag;
   uint nod_flag;
   uchar *keypos,*maxpos;
-  uchar lastkey[MI_MAX_KEY_BUFF],*buff;
+  uchar lastkey[HA_MAX_KEY_BUFF],*buff;
   DBUG_ENTER("_mi_search");
   DBUG_PRINT("enter",("pos: %lu  nextflag: %u  lastpos: %lu",
                       (ulong) pos, nextflag, (ulong) info->lastpos));
@@ -242,7 +242,7 @@ int _mi_seq_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
 {
   int flag;
   uint nod_flag,length,not_used[2];
-  uchar t_buff[MI_MAX_KEY_BUFF],*end;
+  uchar t_buff[HA_MAX_KEY_BUFF],*end;
   DBUG_ENTER("_mi_seq_search");
 
   LINT_INIT(flag); LINT_INIT(length);
@@ -259,15 +259,15 @@ int _mi_seq_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
       mi_print_error(info->s, HA_ERR_CRASHED);
       my_errno=HA_ERR_CRASHED;
       DBUG_PRINT("error",
-                 ("Found wrong key:  length: %u  page: 0x%lx  end: 0x%lx",
-                  length, (long) page, (long) end));
+                 ("Found wrong key:  length: %u  page: %p  end: %p",
+                  length, page, end));
       DBUG_RETURN(MI_FOUND_WRONG_KEY);
     }
     if ((flag=ha_key_cmp(keyinfo->seg,t_buff,key,key_len,comp_flag,
                          not_used)) >= 0)
       break;
 #ifdef EXTRA_DEBUG
-    DBUG_PRINT("loop",("page: 0x%lx  key: '%s'  flag: %d", (long) page, t_buff,
+    DBUG_PRINT("loop",("page: %p  key: '%s'  flag: %d", page, t_buff,
                        flag));
 #endif
     memcpy(buff,t_buff,length);
@@ -276,7 +276,7 @@ int _mi_seq_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
   if (flag == 0)
     memcpy(buff,t_buff,length);                 /* Result is first key */
   *last_key= page == end;
-  DBUG_PRINT("exit",("flag: %d  ret_pos: 0x%lx", flag, (long) *ret_pos));
+  DBUG_PRINT("exit",("flag: %d  ret_pos: %p", flag, *ret_pos));
   DBUG_RETURN(flag);
 } /* _mi_seq_search */
 
@@ -296,7 +296,7 @@ int _mi_prefix_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
   int key_len_skip, seg_len_pack, key_len_left;
   uchar *end, *kseg, *vseg;
   uchar *sort_order=keyinfo->seg->charset->sort_order;
-  uchar tt_buff[MI_MAX_KEY_BUFF+2], *t_buff=tt_buff+2;
+  uchar tt_buff[HA_MAX_KEY_BUFF+2], *t_buff=tt_buff+2;
   uchar *saved_from, *saved_to, *saved_vseg;
   uint  saved_length=0, saved_prefix_len=0;
   uint  length_pack;
@@ -409,7 +409,7 @@ int _mi_prefix_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
       }
       from+=keyseg->length;
       page=from+nod_flag;
-      length=from-vseg;
+      length= (uint) (from-vseg);
     }
 
     if (page > end)
@@ -417,8 +417,8 @@ int _mi_prefix_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
       mi_print_error(info->s, HA_ERR_CRASHED);
       my_errno=HA_ERR_CRASHED;
       DBUG_PRINT("error",
-                 ("Found wrong key:  length: %u  page: 0x%lx  end: %lx",
-                  length, (long) page, (long) end));
+                 ("Found wrong key:  length: %u  page: %p  end: %lx",
+                  length, page, (long) end));
       DBUG_RETURN(MI_FOUND_WRONG_KEY);
     }
 
@@ -552,7 +552,7 @@ int _mi_prefix_search(MI_INFO *info, register MI_KEYDEF *keyinfo, uchar *page,
 
   *last_key= page == end;
 
-  DBUG_PRINT("exit",("flag: %d  ret_pos: 0x%lx", flag, (long) *ret_pos));
+  DBUG_PRINT("exit",("flag: %d  ret_pos: %p", flag, *ret_pos));
   DBUG_RETURN(flag);
 } /* _mi_prefix_search */
 
@@ -814,8 +814,8 @@ uint _mi_get_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
 	  if (length > keyseg->length)
 	  {
 	    DBUG_PRINT("error",
-                       ("Found too long null packed key: %u of %u at 0x%lx",
-                        length, keyseg->length, (long) *page_pos));
+                       ("Found too long null packed key: %u of %u at %p",
+                        length, keyseg->length, *page_pos));
 	    DBUG_DUMP("key",(uchar*) *page_pos,16);
             mi_print_error(keyinfo->share, HA_ERR_CRASHED);
 	    my_errno=HA_ERR_CRASHED;
@@ -871,8 +871,8 @@ uint _mi_get_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
       }
       if (length > (uint) keyseg->length)
       {
-        DBUG_PRINT("error",("Found too long packed key: %u of %u at 0x%lx",
-                            length, keyseg->length, (long) *page_pos));
+        DBUG_PRINT("error",("Found too long packed key: %u of %u at %p",
+                            length, keyseg->length, *page_pos));
         DBUG_DUMP("key",(uchar*) *page_pos,16);
         mi_print_error(keyinfo->share, HA_ERR_CRASHED);
         my_errno=HA_ERR_CRASHED;
@@ -920,7 +920,7 @@ uint _mi_get_binary_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
   DBUG_ENTER("_mi_get_binary_pack_key");
 
   page= *page_pos;
-  page_end=page+MI_MAX_KEY_BUFF+1;
+  page_end=page+HA_MAX_KEY_BUFF+1;
   start_key=key;
 
   /*
@@ -943,8 +943,8 @@ uint _mi_get_binary_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
     if (length > keyinfo->maxlength)
     {
       DBUG_PRINT("error",
-                 ("Found too long binary packed key: %u of %u at 0x%lx",
-                  length, keyinfo->maxlength, (long) *page_pos));
+                 ("Found too long binary packed key: %u of %u at %p",
+                  length, keyinfo->maxlength, *page_pos));
       DBUG_DUMP("key",(uchar*) *page_pos,16);
       mi_print_error(keyinfo->share, HA_ERR_CRASHED);
       my_errno=HA_ERR_CRASHED;
@@ -1001,8 +1001,8 @@ uint _mi_get_binary_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
       length-=tmp;
       from=page; from_end=page_end;
     }
-    DBUG_PRINT("info",("key: 0x%lx  from: 0x%lx  length: %u",
-		       (long) key, (long) from, length));
+    DBUG_PRINT("info",("key: %p  from: %p  length: %u",
+		       key, from, length));
     memmove((uchar*) key, (uchar*) from, (size_t) length);
     key+=length;
     from+=length;
@@ -1072,7 +1072,7 @@ uchar *_mi_get_key(MI_INFO *info, MI_KEYDEF *keyinfo, uchar *page,
       }
     }
   }
-  DBUG_PRINT("exit",("page: 0x%lx  length: %u", (long) page,
+  DBUG_PRINT("exit",("page: %p  length: %u", page,
                      *return_key_length));
   DBUG_RETURN(page);
 } /* _mi_get_key */
@@ -1125,8 +1125,8 @@ uchar *_mi_get_last_key(MI_INFO *info, MI_KEYDEF *keyinfo, uchar *page,
   uint nod_flag;
   uchar *lastpos;
   DBUG_ENTER("_mi_get_last_key");
-  DBUG_PRINT("enter",("page: 0x%lx  endpos: 0x%lx", (long) page,
-                      (long) endpos));
+  DBUG_PRINT("enter",("page: %p  endpos: %p", page,
+                      endpos));
 
   nod_flag=mi_test_if_nod(page);
   if (! (keyinfo->flag & (HA_VAR_LENGTH_KEY | HA_BINARY_PACK_KEY)))
@@ -1146,15 +1146,15 @@ uchar *_mi_get_last_key(MI_INFO *info, MI_KEYDEF *keyinfo, uchar *page,
       *return_key_length=(*keyinfo->get_key)(keyinfo,nod_flag,&page,lastkey);
       if (*return_key_length == 0)
       {
-        DBUG_PRINT("error",("Couldn't find last key:  page: 0x%lx",
-                            (long) page));
+        DBUG_PRINT("error",("Couldn't find last key:  page: %p",
+                            page));
         mi_print_error(info->s, HA_ERR_CRASHED);
         my_errno=HA_ERR_CRASHED;
         DBUG_RETURN(0);
       }
     }
   }
-  DBUG_PRINT("exit",("lastpos: 0x%lx  length: %u", (long) lastpos,
+  DBUG_PRINT("exit",("lastpos: %p  length: %u", lastpos,
                      *return_key_length));
   DBUG_RETURN(lastpos);
 } /* _mi_get_last_key */
@@ -1238,7 +1238,7 @@ int _mi_search_next(register MI_INFO *info, register MI_KEYDEF *keyinfo,
 {
   int error;
   uint nod_flag;
-  uchar lastkey[MI_MAX_KEY_BUFF];
+  uchar lastkey[HA_MAX_KEY_BUFF];
   DBUG_ENTER("_mi_search_next");
   DBUG_PRINT("enter",("nextflag: %u  lastpos: %lu  int_keypos: %lu",
                       nextflag, (ulong) info->lastpos,
@@ -1691,8 +1691,8 @@ _mi_calc_var_pack_key_length(MI_KEYDEF *keyinfo,uint nod_flag,uchar *next_key,
         ref_length=0;
         next_length_pack=0;
       }
-      DBUG_PRINT("test",("length: %d  next_key: 0x%lx", length,
-                         (long) next_key));
+      DBUG_PRINT("test",("length: %d  next_key: %p", length,
+                         next_key));
 
       {
         uint tmp_length;

@@ -26,8 +26,7 @@
 #include "mysql_priv.h"
 #include "rpl_filter.h"
 #include <myisampack.h>
-#include <errno.h>
-#include "backup/debug.h"
+#include "myisam.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -237,7 +236,7 @@ handler *get_new_handler(TABLE_SHARE *share, MEM_ROOT *alloc,
 {
   handler *file;
   DBUG_ENTER("get_new_handler");
-  DBUG_PRINT("enter", ("alloc: 0x%lx", (long) alloc));
+  DBUG_PRINT("enter", ("alloc: %p", alloc));
 
   if (db_type && db_type->state == SHOW_OPTION_YES && db_type->create)
   {
@@ -286,7 +285,8 @@ handler *get_ha_partition(partition_info *part_info)
   @retval
     !=0         Error
 */
-static int ha_init_errors(void)
+
+int ha_init_errors(void)
 {
 #define SETMSG(nr, msg) errmsgs[(nr) - HA_ERR_FIRST]= (msg)
   const char    **errmsgs;
@@ -370,8 +370,7 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   handlerton *hton= (handlerton *)plugin->data;
   DBUG_ENTER("ha_finalize_handlerton");
 
-  switch (hton->state)
-  {
+  switch (hton->state) {
   case SHOW_OPTION_NO:
   case SHOW_OPTION_DISABLED:
     break;
@@ -506,9 +505,6 @@ int ha_init()
 {
   int error= 0;
   DBUG_ENTER("ha_init");
-
-  if (ha_init_errors())
-    DBUG_RETURN(1);
 
   DBUG_ASSERT(total_ha < MAX_HA);
   /*
@@ -961,16 +957,21 @@ int ha_prepare(THD *thd)
   A helper function to evaluate if two-phase commit is mandatory.
   As a side effect, propagates the read-only/read-write flags
   of the statement transaction to its enclosing normal transaction.
+  
+  If we have at least two engines with read-write changes we must
+  run a two-phase commit. Otherwise we can run several independent
+  commits as the only transactional engine has read-write changes
+  and others are read-only.
 
-  @retval TRUE   we must run a two-phase commit. Returned
-                 if we have at least two engines with read-write changes.
-  @retval FALSE  Don't need two-phase commit. Even if we have two
-                 transactional engines, we can run two independent
-                 commits if changes in one of the engines are read-only.
+  @retval   0   All engines are read-only.
+  @retval   1   We have the only engine with read-write changes.
+  @retval   >1  More than one engine have read-write changes.
+                Note: return value might NOT be the exact number of
+                engines with read-write changes.
 */
 
 static
-bool
+uint
 ha_check_and_coalesce_trx_read_only(THD *thd, Ha_trx_info *ha_list,
                                     bool all)
 {
@@ -1007,7 +1008,7 @@ ha_check_and_coalesce_trx_read_only(THD *thd, Ha_trx_info *ha_list,
       break;
     }
   }
-  return rw_ha_count > 1;
+  return rw_ha_count;
 }
 
 
@@ -1070,19 +1071,30 @@ int ha_commit_trans(THD *thd, bool all)
 #ifdef USING_TRANSACTIONS
   if (ha_info)
   {
-    bool must_2pc;
+    uint rw_ha_count;
+    bool rw_trans;
 
-    if (is_real_trans && wait_if_global_read_lock(thd, 0, 0))
+    DBUG_EXECUTE_IF("crash_commit_before", abort(););
+
+    /* Close all cursors that can not survive COMMIT */
+    if (is_real_trans)                          /* not a statement commit */
+      thd->stmt_map.close_transient_cursors();
+
+    rw_ha_count= ha_check_and_coalesce_trx_read_only(thd, ha_info, all);
+    /* rw_trans is TRUE when we in a transaction changing data */
+    rw_trans= is_real_trans && (rw_ha_count > 0);
+
+    if (rw_trans &&
+        wait_if_global_read_lock(thd, 0, 0))
     {
       ha_rollback_trans(thd, all);
       DBUG_RETURN(1);
     }
 
-    if (   is_real_trans
-        && opt_readonly
-        && ! (thd->security_ctx->master_access & SUPER_ACL)
-        && ! thd->slave_thread
-       )
+    if (rw_trans &&
+        opt_readonly &&
+        !(thd->security_ctx->master_access & SUPER_ACL) &&
+        !thd->slave_thread)
     {
       my_error(ER_OPTION_PREVENTS_STATEMENT, MYF(0), "--read-only");
       ha_rollback_trans(thd, all);
@@ -1090,19 +1102,10 @@ int ha_commit_trans(THD *thd, bool all)
       goto end;
     }
 
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("commit_blocker_step_1");
-    DBUG_EXECUTE_IF("crash_commit_before", abort(););
+    DEBUG_SYNC(thd, "within_ha_commit_trans");
+    DBUG_EXECUTE_IF("crash_commit_before", DBUG_ABORT(););
 
-    /* Close all cursors that can not survive COMMIT */
-    if (is_real_trans)                          /* not a statement commit */
-      thd->stmt_map.close_transient_cursors();
-
-    must_2pc= ha_check_and_coalesce_trx_read_only(thd, ha_info, all);
-
-    if (!trans->no_2pc && must_2pc)
+    if (!trans->no_2pc && (rw_ha_count > 1))
     {
       for (; ha_info && !error; ha_info= ha_info->next())
       {
@@ -1126,7 +1129,7 @@ int ha_commit_trans(THD *thd, bool all)
         }
         status_var_increment(thd->status_var.ha_prepare_count);
       }
-      DBUG_EXECUTE_IF("crash_commit_after_prepare", abort(););
+      DBUG_EXECUTE_IF("crash_commit_after_prepare", DBUG_ABORT(););
       if (error || (is_real_trans && xid &&
                     (error= !(cookie= tc_log->log_xid(thd, xid)))))
       {
@@ -1134,15 +1137,15 @@ int ha_commit_trans(THD *thd, bool all)
         error= 1;
         goto end;
       }
-      DBUG_EXECUTE_IF("crash_commit_after_log", abort(););
+      DBUG_EXECUTE_IF("crash_commit_after_log", DBUG_ABORT(););
     }
     error=ha_commit_one_phase(thd, all) ? (cookie ? 2 : 1) : 0;
-    DBUG_EXECUTE_IF("crash_commit_before_unlog", abort(););
+    DBUG_EXECUTE_IF("crash_commit_before_unlog", DBUG_ABORT(););
     if (cookie)
       tc_log->unlog(cookie, xid);
-    DBUG_EXECUTE_IF("crash_commit_after", abort(););
+    DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
 end:
-    if (is_real_trans)
+    if (rw_trans)
       start_waiting_global_read_lock(thd);
   }
 #endif /* USING_TRANSACTIONS */
@@ -1445,7 +1448,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
     while ((got= hton->recover(hton, info->list, info->len)) > 0 )
     {
       sql_print_information("Found %d prepared transaction(s) in %s",
-                            got, ha_resolve_storage_engine_name(hton));
+                            got, hton_name(hton)->str);
       for (int i=0; i < got; i ++)
       {
         my_xid x=info->list[i].get_my_xid();
@@ -2419,8 +2422,8 @@ int handler::update_auto_increment()
 void handler::column_bitmaps_signal()
 {
   DBUG_ENTER("column_bitmaps_signal");
-  DBUG_PRINT("info", ("read_set: 0x%lx  write_set: 0x%lx", (long) table->read_set,
-                      (long) table->write_set));
+  DBUG_PRINT("info", ("read_set: %p  write_set: %p", table->read_set,
+                      table->write_set));
   DBUG_VOID_RETURN;
 }
 
@@ -2572,11 +2575,14 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_FOUND_DUPP_KEY:
   {
-    uint key_nr=get_dup_key(error);
-    if ((int) key_nr >= 0)
+    if (table)
     {
-      print_keydup_error(key_nr, ER(ER_DUP_ENTRY_WITH_KEY_NAME));
-      DBUG_VOID_RETURN;
+      uint key_nr=get_dup_key(error);
+      if ((int) key_nr >= 0)
+      {
+        print_keydup_error(key_nr, ER(ER_DUP_ENTRY_WITH_KEY_NAME));
+        DBUG_VOID_RETURN;
+      }
     }
     textno=ER_DUP_KEY;
     break;
@@ -2779,6 +2785,8 @@ int handler::ha_check_for_upgrade(HA_CHECK_OPT *check_opt)
       }
     }
   }
+  if (table->s->frm_version != FRM_VER_TRUE_VARCHAR)
+    return HA_ADMIN_NEEDS_ALTER;
   return check_for_upgrade(check_opt);
 }
 
@@ -2827,24 +2835,17 @@ static bool update_frm_version(TABLE *table)
   if ((file= my_open(path, O_RDWR|O_BINARY, MYF(MY_WME))) >= 0)
   {
     uchar version[4];
-    char *key= table->s->table_cache_key.str;
-    uint key_length= table->s->table_cache_key.length;
-    TABLE *entry;
-    HASH_SEARCH_STATE state;
 
     int4store(version, MYSQL_VERSION_ID);
 
     if ((result= my_pwrite(file,(uchar*) version,4,51L,MYF_RW)))
       goto err;
 
-    for (entry=(TABLE*) hash_first(&open_cache,(uchar*) key,key_length, &state);
-         entry;
-         entry= (TABLE*) hash_next(&open_cache,(uchar*) key,key_length, &state))
-      entry->s->mysql_version= MYSQL_VERSION_ID;
+    table->s->mysql_version= MYSQL_VERSION_ID;
   }
 err:
   if (file >= 0)
-    VOID(my_close(file,MYF(MY_WME)));
+    (void) my_close(file,MYF(MY_WME));
   DBUG_RETURN(result);
 }
 
@@ -3251,8 +3252,8 @@ handler::ha_create_handler_files(const char *name, const char *old_name,
 int
 handler::ha_change_partitions(HA_CREATE_INFO *create_info,
                      const char *path,
-                     ulonglong *copied,
-                     ulonglong *deleted,
+                     ulonglong * const copied,
+                     ulonglong * const deleted,
                      const uchar *pack_frm_data,
                      size_t pack_frm_len)
 {
@@ -3364,10 +3365,10 @@ handler::ha_repair_partitions(THD *thd)
 int ha_enable_transaction(THD *thd, bool on)
 {
   int error=0;
-
   DBUG_ENTER("ha_enable_transaction");
-  thd->transaction.on= on;
-  if (on)
+  DBUG_PRINT("enter", ("on: %d", (int) on));
+
+  if ((thd->transaction.on= on))
   {
     /*
       Now all storage engines should have transaction handling enabled.
@@ -3452,7 +3453,7 @@ void handler::get_dynamic_partition_info(PARTITION_INFO *stat_info,
   stat_info->update_time=          stats.update_time;
   stat_info->check_time=           stats.check_time;
   stat_info->check_sum=            0;
-  if (table_flags() & (ulong) HA_HAS_CHECKSUM)
+  if (table_flags() & (HA_HAS_OLD_CHECKSUM | HA_HAS_OLD_CHECKSUM))
     stat_info->check_sum= checksum();
   return;
 }
@@ -3494,11 +3495,18 @@ int ha_create_table(THD *thd, const char *path,
   name= check_lowercase_names(table.file, share.path.str, name_buff);
 
   error= table.file->ha_create(name, &table, create_info);
-  VOID(closefrm(&table, 0));
-  if (error)
-  {
-    strxmov(name_buff, db, ".", table_name, NullS);
-    my_error(ER_CANT_CREATE_TABLE, MYF(ME_BELL+ME_WAITTANG), name_buff, error);
+  (void) closefrm(&table, 0);
+  switch (error) {
+    case 0:
+      break;
+    case HA_ERR_NO_SUCH_TABLESPACE:
+      my_error(ER_NO_SUCH_TABLESPACE, MYF(0), create_info->tablespace);
+      break;
+    default:
+      strxmov(name_buff, db, ".", table_name, NullS);
+      my_error(ER_CANT_CREATE_TABLE, MYF(ME_BELL+ME_WAITTANG), name_buff,
+               error);
+      break;
   }
 err:
   free_table_share(&share);
@@ -3565,7 +3573,7 @@ int ha_create_table_from_engine(THD* thd, const char *db, const char *name)
 
   check_lowercase_names(table.file, path, path);
   error=table.file->ha_create(path, &table, &create_info);
-  VOID(closefrm(&table, 1));
+  (void) closefrm(&table, 1);
 
   DBUG_RETURN(error != 0);
 }
@@ -3573,7 +3581,6 @@ int ha_create_table_from_engine(THD* thd, const char *db, const char *name)
 void st_ha_check_opt::init()
 {
   flags= sql_flags= 0;
-  sort_buffer_size = current_thd->variables.myisam_sort_buff_size;
 }
 
 
@@ -5142,7 +5149,7 @@ bool ha_show_status(THD *thd, handlerton *db_type, enum ha_stat_type stat)
   {
     if (db_type->state != SHOW_OPTION_YES)
     {
-      const LEX_STRING *name=&hton2plugin[db_type->slot]->name;
+      const LEX_STRING *name= hton_name(db_type);
       result= stat_print(thd, name->str, name->length,
                          "", 0, "DISABLED", 8) ? 1 : 0;
     }
@@ -5193,9 +5200,7 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
    to the binary log.
 
    This function will generate and write table maps for all tables
-   that are locked by the thread 'thd'.  Either manually locked
-   (stored in THD::locked_tables) and automatically locked (stored
-   in THD::lock) are considered.
+   that are locked by the thread 'thd'.
 
    @param thd     Pointer to THD structure
 
@@ -5204,23 +5209,19 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
 
    @sa
        THD::lock
-       THD::locked_tables
 */
 
 static int write_locked_table_maps(THD *thd)
 {
   DBUG_ENTER("write_locked_table_maps");
-  DBUG_PRINT("enter", ("thd: 0x%lx  thd->lock: 0x%lx  thd->locked_tables: 0x%lx  "
-                       "thd->extra_lock: 0x%lx",
-                       (long) thd, (long) thd->lock,
-                       (long) thd->locked_tables, (long) thd->extra_lock));
+  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
+                       thd, thd->lock, thd->extra_lock));
 
   if (thd->get_binlog_table_maps() == 0)
   {
-    MYSQL_LOCK *locks[3];
+    MYSQL_LOCK *locks[2];
     locks[0]= thd->extra_lock;
     locks[1]= thd->lock;
-    locks[2]= thd->locked_tables;
     for (uint i= 0 ; i < sizeof(locks)/sizeof(*locks) ; ++i )
     {
       MYSQL_LOCK const *const lock= locks[i];

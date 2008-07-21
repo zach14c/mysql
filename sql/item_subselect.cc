@@ -61,7 +61,7 @@ void Item_subselect::init(st_select_lex *select_lex,
   */
 
   DBUG_ENTER("Item_subselect::init");
-  DBUG_PRINT("enter", ("select_lex: 0x%lx", (long) select_lex));
+  DBUG_PRINT("enter", ("select_lex: %p", select_lex));
   unit= select_lex->master_unit();
 
   if (unit->item)
@@ -276,6 +276,11 @@ bool Item_subselect::exec()
   if (thd->is_error())
   /* Do not execute subselect in case of a fatal error */
     return 1;
+  /*
+    Simulate a failure in sub-query execution. Used to test e.g.
+    out of memory or query being killed conditions.
+  */
+  DBUG_EXECUTE_IF("subselect_exec_fail", return 1;);
 
   res= engine->exec();
 
@@ -787,27 +792,48 @@ longlong Item_exists_subselect::val_int()
   return value;
 }
 
+
+/**
+  Return the result of EXISTS as a string value
+
+  Converts the true/false result into a string value.
+  Note that currently this cannot be NULL, so if the query exection fails
+  it will return 0.
+
+  @param decimal_value[out]    buffer to hold the resulting string value
+  @retval                      Pointer to the converted string.
+                               Can't be a NULL pointer, as currently
+                               EXISTS cannot return NULL.
+*/
+
 String *Item_exists_subselect::val_str(String *str)
 {
   DBUG_ASSERT(fixed == 1);
   if (exec())
-  {
     reset();
-    return 0;
-  }
   str->set((ulonglong)value,&my_charset_bin);
   return str;
 }
 
 
+/**
+  Return the result of EXISTS as a decimal value
+
+  Converts the true/false result into a decimal value.
+  Note that currently this cannot be NULL, so if the query exection fails
+  it will return 0.
+
+  @param decimal_value[out]    Buffer to hold the resulting decimal value
+  @retval                      Pointer to the converted decimal.
+                               Can't be a NULL pointer, as currently
+                               EXISTS cannot return NULL.
+*/
+
 my_decimal *Item_exists_subselect::val_decimal(my_decimal *decimal_value)
 {
   DBUG_ASSERT(fixed == 1);
   if (exec())
-  {
     reset();
-    return 0;
-  }
   int2my_decimal(E_DEC_FATAL_ERROR, value, 0, decimal_value);
   return decimal_value;
 }
@@ -1073,9 +1099,9 @@ Item_in_subselect::single_value_transformer(JOIN *join,
     SELECT_LEX_UNIT *master_unit= select_lex->master_unit();
     substitution= optimizer;
 
-    SELECT_LEX *current= thd->lex->current_select, *up;
+    SELECT_LEX *current= thd->lex->current_select;
 
-    thd->lex->current_select= up= current->return_after_parsing();
+    thd->lex->current_select= current->return_after_parsing();
     //optimizer never use Item **ref => we can pass 0 as parameter
     if (!optimizer || optimizer->fix_left(thd, 0))
     {
@@ -1352,8 +1378,8 @@ Item_in_subselect::row_value_transformer(JOIN *join)
     SELECT_LEX_UNIT *master_unit= select_lex->master_unit();
     substitution= optimizer;
 
-    SELECT_LEX *current= thd->lex->current_select, *up;
-    thd->lex->current_select= up= current->return_after_parsing();
+    SELECT_LEX *current= thd->lex->current_select;
+    thd->lex->current_select= current->return_after_parsing();
     //optimizer never use Item **ref => we can pass 0 as parameter
     if (!optimizer || optimizer->fix_left(thd, 0))
     {
@@ -1641,12 +1667,25 @@ Item_subselect::trans_res
 Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
 {
   Query_arena *arena, backup;
-  SELECT_LEX *current= thd->lex->current_select, *up;
+  SELECT_LEX *current= thd->lex->current_select;
   const char *save_where= thd->where;
   Item_subselect::trans_res res= RES_ERROR;
   bool result;
 
   DBUG_ENTER("Item_in_subselect::select_in_like_transformer");
+
+  {
+    /*
+      IN/SOME/ALL/ANY subqueries aren't support LIMIT clause. Without it
+      ORDER BY clause becomes meaningless thus we drop it here.
+    */
+    SELECT_LEX *sl= current->master_unit()->first_select();
+    for (; sl; sl= sl->next_select())
+    {
+      if (sl->join)
+        sl->join->order= 0;
+    }
+  }
 
   if (changed)
     DBUG_RETURN(RES_OK);
@@ -1668,7 +1707,7 @@ Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
       goto err;
   }
 
-  thd->lex->current_select= up= current->return_after_parsing();
+  thd->lex->current_select= current->return_after_parsing();
   result= (!left_expr->fixed &&
            left_expr->fix_fields(thd, optimizer->arguments()));
   /* fix_fields can change reference to left_expr, we need reassign it */
@@ -1685,6 +1724,7 @@ Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
   if (exec_method == NOT_TRANSFORMED)
     exec_method= IN_TO_EXISTS;
   arena= thd->activate_stmt_arena_if_needed(&backup);
+
   /*
     Both transformers call fix_fields() only for Items created inside them,
     and all those items do not make permanent changes in the current item arena
@@ -2013,8 +2053,6 @@ subselect_union_engine::subselect_union_engine(st_select_lex_unit *u,
   :subselect_engine(item_arg, result_arg)
 {
   unit= u;
-  if (!result_arg)				//out of memory
-    current_thd->fatal_error();
   unit->item= item_arg;
 }
 
@@ -2052,10 +2090,7 @@ int subselect_single_select_engine::prepare()
   join= new JOIN(thd, select_lex->item_list,
 		 select_lex->options | SELECT_NO_UNLOCK, result);
   if (!join || !result)
-  {
-    thd->fatal_error();				//out of memory
-    return 1;
-  }
+    return 1; /* Fatal error is set already. */
   prepared= 1;
   SELECT_LEX *save_select= thd->lex->current_select;
   thd->lex->current_select= select_lex;
@@ -3020,7 +3055,15 @@ bool subselect_hash_sj_engine::init_permanent(List<Item> *tmp_columns)
   */
   if (tmp_table->s->keys == 0)
   {
-    DBUG_ASSERT(tmp_table->s->db_type() == myisam_hton);
+#ifndef DBUG_OFF
+    handlerton *tmp_table_hton= tmp_table->s->db_type();
+#if defined(WITH_MARIA_STORAGE_ENGINE) && defined(USE_MARIA_FOR_TMP_TABLES)
+    DBUG_ASSERT((tmp_table_hton == myisam_hton) ||
+                (tmp_table_hton == maria_hton));
+#else
+    DBUG_ASSERT(tmp_table_hton == myisam_hton);
+#endif
+#endif
     DBUG_ASSERT(
       tmp_table->s->uniques ||
       tmp_table->key_info->key_length >= tmp_table->file->max_key_length() ||
@@ -3162,7 +3205,8 @@ int subselect_hash_sj_engine::exec()
     int res= 0;
     SELECT_LEX *save_select= thd->lex->current_select;
     thd->lex->current_select= materialize_engine->select_lex;
-    if ((res= materialize_join->optimize()))
+    if ((res= materialize_join->flatten_subqueries()) || 
+        (res= materialize_join->optimize()))
       goto err;
     materialize_join->exec();
     if ((res= test(materialize_join->error || thd->is_fatal_error)))

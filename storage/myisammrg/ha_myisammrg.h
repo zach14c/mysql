@@ -27,6 +27,9 @@ class ha_myisammrg: public handler
   MYRG_INFO *file;
 
  public:
+  MEM_ROOT      children_mem_root;      /* mem root for children list */
+  TABLE_LIST    *children_l;            /* children list */
+  TABLE_LIST    **children_last_l;      /* children list end */
   TABLE_LIST    *next_child_attach;     /* next child to attach */
   uint          test_if_locked;         /* flags from ::open() */
   bool          need_compat_check;      /* if need compatibility check */
@@ -42,6 +45,7 @@ class ha_myisammrg: public handler
             HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE |
 	    HA_NULL_IN_KEY | HA_CAN_INDEX_BLOBS | HA_FILE_BASED |
             HA_ANY_INDEX_MAY_BE_UNIQUE | HA_CAN_BIT_FIELD |
+            HA_HAS_RECORDS |
             HA_NO_COPY_ON_ALTER);
   }
   ulong index_flags(uint inx, uint part, bool all_parts) const
@@ -51,12 +55,13 @@ class ha_myisammrg: public handler
             HA_READ_ORDER | HA_KEYREAD_ONLY);
   }
   uint max_supported_keys()          const { return MI_MAX_KEY; }
-  uint max_supported_key_length()    const { return MI_MAX_KEY_LENGTH; }
-  uint max_supported_key_part_length() const { return MI_MAX_KEY_LENGTH; }
+  uint max_supported_key_length()    const { return HA_MAX_KEY_LENGTH; }
+  uint max_supported_key_part_length() const { return HA_MAX_KEY_LENGTH; }
   double scan_time()
   { return ulonglong2double(stats.data_file_length) / IO_SIZE + file->tables; }
 
   int open(const char *name, int mode, uint test_if_locked);
+  int add_children_list(void);
   int attach_children(void);
   int detach_children(void);
   int close(void);
@@ -94,4 +99,5 @@ class ha_myisammrg: public handler
   TABLE *table_ptr() { return table; }
   bool check_if_incompatible_data(HA_CREATE_INFO *info, uint table_changes);
   int check(THD* thd, HA_CHECK_OPT* check_opt);
+  ha_rows records();
 };

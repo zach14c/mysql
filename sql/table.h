@@ -14,6 +14,8 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 
+#include "sql_plist.h"
+
 /* Structs that defines the TABLE */
 
 class Item;				/* Needed by ORDER */
@@ -24,6 +26,7 @@ class st_select_lex;
 class partition_info;
 class COND_EQUAL;
 class Security_context;
+struct MDL_LOCK_DATA;
 
 /*************************************************************************/
 
@@ -234,6 +237,9 @@ typedef enum enum_table_category TABLE_CATEGORY;
 TABLE_CATEGORY get_table_category(const LEX_STRING *db,
                                   const LEX_STRING *name);
 
+
+struct TABLE_share;
+
 /*
   This structure is shared between different table objects. There is one
   instance of table share per one table in the database.
@@ -252,13 +258,16 @@ typedef struct st_table_share
   TYPELIB keynames;			/* Pointers to keynames */
   TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
-  pthread_mutex_t mutex;                /* For locking the share  */
-  pthread_cond_t cond;			/* To signal that share is ready */
+  pthread_mutex_t LOCK_ha_data;         /* To protect access to ha_data */
   struct st_table_share *next,		/* Link to unused shares */
     **prev;
-#ifdef NOT_YET
-  struct st_table *open_tables;		/* link to open tables */
-#endif
+
+  /*
+    Doubly-linked (back-linked) lists of used and unused TABLE objects
+    for this share.
+  */
+  I_P_List <TABLE, TABLE_share> used_tables;
+  I_P_List <TABLE, TABLE_share> free_tables;
 
   /* The following is copied to each TABLE on OPEN */
   Field **field;
@@ -313,6 +322,7 @@ typedef struct st_table_share
   char *tablespace;
   enum tmp_table_type tmp_table;
   enum ha_choice transactional;
+  enum ha_choice page_checksum;
 
   uint ref_count;                       /* How many TABLE objects uses this */
   uint open_count;			/* Number of tables in open list */
@@ -347,8 +357,6 @@ typedef struct st_table_share
   bool db_low_byte_first;		/* Portable row format */
   bool crashed;
   bool is_view;
-  bool name_lock, replace_with_name_lock;
-  bool waiting_on_cond;                 /* Protection against free */
   ulong table_map_id;                   /* for row-based replication */
   ulonglong table_map_version;
 
@@ -361,6 +369,7 @@ typedef struct st_table_share
   int cached_row_logging_check;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
+  /** @todo: Move into *ha_data for partitioning */
   bool auto_partitioned;
   const char *partition_info;
   uint  partition_info_len;
@@ -369,6 +378,9 @@ typedef struct st_table_share
   uint part_state_len;
   handlerton *default_part_db_type;
 #endif
+
+  /** place to store storage engine specific data */
+  void *ha_data;
 
 
   /*
@@ -439,6 +451,105 @@ typedef struct st_table_share
     return table_map_id;
   }
 
+  /**
+    Convert unrelated members of TABLE_SHARE to one enum
+    representing its type.
+
+    @todo perhaps we need to have a member instead of a function.
+  */
+  enum enum_table_ref_type get_table_ref_type() const
+  {
+    if (is_view)
+      return TABLE_REF_VIEW;
+    switch (tmp_table) {
+    case NO_TMP_TABLE:
+      return TABLE_REF_BASE_TABLE;
+    case SYSTEM_TMP_TABLE:
+      return TABLE_REF_I_S_TABLE;
+    default:
+      return TABLE_REF_TMP_TABLE;
+    }
+  }
+  /**
+    Return a table metadata version.
+     * for base tables, we return table_map_id.
+       It is assigned from a global counter incremented for each
+       new table loaded into the table definition cache (TDC).
+     * for temporary tables it's table_map_id again. But for
+       temporary tables table_map_id is assigned from
+       thd->query_id. The latter is assigned from a thread local
+       counter incremented for every new SQL statement. Since
+       temporary tables are thread-local, each temporary table
+       gets a unique id.
+     * for everything else (views, information schema tables),
+       the version id is zero.
+
+   This choice of version id is a large compromise
+   to have a working prepared statement validation in 5.1. In
+   future version ids will be persistent, as described in WL#4180.
+
+   Let's try to explain why and how this limited solution allows
+   to validate prepared statements.
+
+   Firstly, sets (in mathematical sense) of version numbers
+   never intersect for different table types. Therefore,
+   version id of a temporary table is never compared with
+   a version id of a view, and vice versa.
+
+   Secondly, for base tables, we know that each DDL flushes the
+   respective share from the TDC. This ensures that whenever
+   a table is altered or dropped and recreated, it gets a new
+   version id.
+   Unfortunately, since elements of the TDC are also flushed on
+   LRU basis, this choice of version ids leads to false positives.
+   E.g. when the TDC size is too small, we may have a SELECT
+   * FROM INFORMATION_SCHEMA.TABLES flush all its elements, which
+   in turn will lead to a validation error and a subsequent
+   reprepare of all prepared statements.  This is
+   considered acceptable, since as long as prepared statements are
+   automatically reprepared, spurious invalidation is only
+   a performance hit. Besides, no better simple solution exists.
+
+   For temporary tables, using thd->query_id ensures that if
+   a temporary table was altered or recreated, a new version id is
+   assigned. This suits validation needs very well and will perhaps
+   never change.
+
+   Metadata of information schema tables never changes.
+   Thus we can safely assume 0 for a good enough version id.
+
+   Views are a special and tricky case. A view is always inlined
+   into the parse tree of a prepared statement at prepare.
+   Thus, when we execute a prepared statement, the parse tree
+   will not get modified even if the view is replaced with another
+   view.  Therefore, we can safely choose 0 for version id of
+   views and effectively never invalidate a prepared statement
+   when a view definition is altered. Note, that this leads to
+   wrong binary log in statement-based replication, since we log
+   prepared statement execution in form Query_log_events
+   containing conventional statements. But since there is no
+   metadata locking for views, the very same problem exists for
+   conventional statements alone, as reported in Bug#25144. The only
+   difference between prepared and conventional execution is,
+   effectively, that for prepared statements the race condition
+   window is much wider.
+   In 6.0 we plan to support view metadata locking (WL#3726) and
+   extend table definition cache to cache views (WL#4298).
+   When this is done, views will be handled in the same fashion
+   as the base tables.
+
+   Finally, by taking into account table type, we always
+   track that a change has taken place when a view is replaced
+   with a base table, a base table is replaced with a temporary
+   table and so on.
+
+   @sa TABLE_LIST::is_table_ref_id_equal()
+  */
+  ulong get_table_ref_version() const
+  {
+    return (tmp_table == SYSTEM_TMP_TABLE || is_view) ? 0 : table_map_id;
+  }
+
 } TABLE_SHARE;
 
 
@@ -457,16 +568,18 @@ struct st_table {
 
   TABLE_SHARE	*s;
   handler	*file;
-#ifdef NOT_YET
-  struct st_table *used_next, **used_prev;	/* Link to used tables */
-  struct st_table *open_next, **open_prev;	/* Link to open tables */
-#endif
-  struct st_table *next, *prev;
 
-  /* For the below MERGE related members see top comment in ha_myisammrg.cc */
-  struct st_table *parent;          /* Set in MERGE child.  Ptr to parent */
-  TABLE_LIST      *child_l;         /* Set in MERGE parent. List of children */
-  TABLE_LIST      **child_last_l;   /* Set in MERGE parent. End of list */
+private:
+  /**
+     Links for the lists of used/unused TABLE objects for this share.
+     Declared as private to avoid direct manipulation with those objects.
+     One should use methods of I_P_List template instead.
+  */
+  struct st_table *share_next, **share_prev;
+
+  friend struct TABLE_share;
+public:
+  struct st_table *next, *prev;
 
   THD	*in_use;                        /* Which thread uses this */
   Field **field;			/* Pointer to fields */
@@ -506,6 +619,8 @@ struct st_table {
   /* Table's triggers, 0 if there are no of them */
   Table_triggers_list *triggers;
   TABLE_LIST *pos_in_table_list;/* Element referring to this table */
+  /* Position in thd->locked_table_list under LOCK TABLES */
+  TABLE_LIST *pos_in_locked_tables;
   ORDER		*group;
   const char	*alias;            	  /* alias or table name */
   uchar		*null_flags;
@@ -601,24 +716,6 @@ struct st_table {
   my_bool force_index;
   my_bool distinct,const_table,no_rows;
   my_bool key_read, no_keyread;
-  /*
-    Placeholder for an open table which prevents other connections
-    from taking name-locks on this table. Typically used with
-    TABLE_SHARE::version member to take an exclusive name-lock on
-    this table name -- a name lock that not only prevents other
-    threads from opening the table, but also blocks other name
-    locks. This is achieved by:
-    - setting open_placeholder to 1 - this will block other name
-      locks, as wait_for_locked_table_name will be forced to wait,
-      see table_is_used for details.
-    - setting version to 0 - this will force other threads to close
-      the instance of this table and wait (this is the same approach
-      as used for usual name locks).
-    An exclusively name-locked table currently can have no handler
-    object associated with it (db_stat is always 0), but please do
-    not rely on that.
-  */
-  my_bool open_placeholder;
   my_bool locked_by_logger;
   my_bool no_replicate;
   my_bool locked_by_name;
@@ -635,8 +732,6 @@ struct st_table {
   my_bool insert_or_update;             /* Can be used by the handler */
   my_bool alias_name_used;		/* true if table_name is alias */
   my_bool get_fields_in_item_tree;      /* Signal to fix_field */
-  /* If MERGE children attached to parent. See top comment in ha_myisammrg.cc */
-  my_bool children_attached;
 
   REGINFO reginfo;			/* field connections */
   MEM_ROOT mem_root;
@@ -646,6 +741,7 @@ struct st_table {
   partition_info *part_info;            /* Partition related information */
   bool no_partitions_used; /* If true, all partitions have been pruned away */
 #endif
+  MDL_LOCK_DATA *mdl_lock_data;
 
   bool fill_item_list(List<Item> *item_list) const;
   void reset_item_list(List<Item> *item_list) const;
@@ -681,15 +777,31 @@ struct st_table {
     read_set= &def_read_set;
     write_set= &def_write_set;
   }
-  /* Is table open or should be treated as such by name-locking? */
-  inline bool is_name_opened() { return db_stat || open_placeholder; }
   /*
-    Is this instance of the table should be reopen or represents a name-lock?
+    Is this instance of the table should be reopen?
   */
-  inline bool needs_reopen_or_name_lock()
+  inline bool needs_reopen()
   { return s->version != refresh_version; }
-  bool is_children_attached(void);
 };
+
+
+/**
+   Helper class which specifies which members of TABLE are used for
+   participation in the list of used/unused TABLE objects for the share.
+*/
+
+struct TABLE_share
+{
+  static inline TABLE **next_ptr(TABLE *l)
+  {
+    return &l->share_next;
+  }
+  static inline TABLE ***prev_ptr(TABLE *l)
+  {
+    return &l->share_prev;
+  }
+};
+
 
 enum enum_schema_table_state
 { 
@@ -748,7 +860,9 @@ enum enum_schema_tables
   SCH_TRIGGERS,
   SCH_USER_PRIVILEGES,
   SCH_VARIABLES,
-  SCH_VIEWS
+  SCH_VIEWS,
+  SCH_FALCON_TABLESPACES,
+  SCH_FALCON_TABLESPACE_FILES
 };
 
 
@@ -928,12 +1042,18 @@ struct TABLE_LIST
     simple_open_and_lock_tables
   */
   inline void init_one_table(const char *db_name_arg,
+                             size_t db_length_arg,
                              const char *table_name_arg,
+                             size_t table_name_length_arg,
+                             const char *alias_arg,
                              enum thr_lock_type lock_type_arg)
   {
     bzero((char*) this, sizeof(*this));
     db= (char*) db_name_arg;
-    table_name= alias= (char*) table_name_arg;
+    db_length= db_length_arg;
+    table_name= (char*) table_name_arg;
+    table_name_length= table_name_length_arg;
+    alias= (char*) alias_arg;
     lock_type= lock_type_arg;
   }
 
@@ -1131,12 +1251,26 @@ struct TABLE_LIST
     used for implicit LOCK TABLES only and won't be used in real statement.
   */
   bool          prelocking_placeholder;
-  /*
-    This TABLE_LIST object corresponds to the table to be created
-    so it is possible that it does not exist (used in CREATE TABLE
-    ... SELECT implementation).
+  /**
+     Indicates that if TABLE_LIST object corresponds to the table/view
+     which requires special handling/meta-data locking.
   */
-  bool          create;
+  enum
+  {
+    /* Normal open, shared metadata lock should be taken. */
+    NORMAL_OPEN= 0,
+    /*
+      It's target table of CREATE TABLE ... SELECT so we should
+      either open table if it exists (and take shared metadata lock)
+      or take exclusive metadata lock if it doesn't exist.
+    */
+    OPEN_OR_CREATE,
+    /*
+      It's target view of CREATE/ALTER VIEW. We should take exclusive
+      metadata lock for this table list element.
+    */
+    TAKE_EXCLUSIVE_MDL
+  } open_type;
   /* For transactional locking. */
   int           lock_timeout;           /* NOWAIT or WAIT [X]               */
   bool          lock_transactional;     /* If transactional lock requested. */
@@ -1186,6 +1320,9 @@ struct TABLE_LIST
   bool has_table_lookup_value;
   uint table_open_method;
   enum enum_schema_table_state schema_table_state;
+
+  MDL_LOCK_DATA *mdl_lock_data;
+
   void calc_md5(char *buffer);
   void set_underlying_merge();
   int view_check_option(THD *thd, bool ignore_failure);
@@ -1197,8 +1334,7 @@ struct TABLE_LIST
   */
   bool placeholder()
   {
-    return derived || view || schema_table || create && !table->db_stat ||
-           !table;
+    return derived || view || schema_table || !table;
   }
   void print(THD *thd, String *str, enum_query_type query_type);
   bool check_single_table(TABLE_LIST **table, table_map map,
@@ -1260,6 +1396,33 @@ struct TABLE_LIST
     child_def_version= ~0UL;
   }
 
+  /**
+    Compare the version of metadata from the previous execution
+    (if any) with values obtained from the current table
+    definition cache element.
+
+    @sa check_and_update_table_version()
+  */
+  inline
+  bool is_table_ref_id_equal(TABLE_SHARE *s) const
+  {
+    return (m_table_ref_type == s->get_table_ref_type() &&
+            m_table_ref_version == s->get_table_ref_version());
+  }
+
+  /**
+    Record the value of metadata version of the corresponding
+    table definition cache element in this parse tree node.
+
+    @sa check_and_update_table_version()
+  */
+  inline
+  void set_table_ref_id(TABLE_SHARE *s)
+  {
+    m_table_ref_type= s->get_table_ref_type();
+    m_table_ref_version= s->get_table_ref_version();
+  }
+
 private:
   bool prep_check_option(THD *thd, uint8 check_opt_type);
   bool prep_where(THD *thd, Item **conds, bool no_where_clause);
@@ -1270,6 +1433,10 @@ private:
 
   /* Remembered MERGE child def version.  See top comment in ha_myisammrg.cc */
   ulong         child_def_version;
+  /** See comments for set_metadata_id() */
+  enum enum_table_ref_type m_table_ref_type;
+  /** See comments for set_metadata_id() */
+  ulong m_table_ref_version;
 };
 
 class Item;
@@ -1483,4 +1650,7 @@ static inline void dbug_tmp_restore_column_map(MY_BITMAP *bitmap,
 }
 
 size_t max_row_length(TABLE *table, const uchar *data);
+
+
+void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root);
 

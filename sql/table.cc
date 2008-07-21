@@ -33,6 +33,11 @@ LEX_STRING GENERAL_LOG_NAME= {C_STRING_WITH_LEN("general_log")};
 /* SLOW_LOG name */
 LEX_STRING SLOW_LOG_NAME= {C_STRING_WITH_LEN("slow_log")};
 
+#ifndef EMBEDDED_LIBRARY
+extern LEX_STRING BACKUP_HISTORY_LOG_NAME;
+extern LEX_STRING BACKUP_PROGRESS_LOG_NAME;
+#endif
+
 	/* Functions defined in this file */
 
 void open_table_error(TABLE_SHARE *share, int error, int db_errno,
@@ -245,6 +250,25 @@ TABLE_CATEGORY get_table_category(const LEX_STRING *db, const LEX_STRING *name)
     {
       return TABLE_CATEGORY_PERFORMANCE;
     }
+
+#ifndef EMBEDDED_LIBRARY
+    if ((name->length == BACKUP_HISTORY_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_HISTORY_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_PROGRESS_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_PROGRESS_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+#endif
+
   }
 
   return TABLE_CATEGORY_USER;
@@ -318,9 +342,11 @@ TABLE_SHARE *alloc_table_share(TABLE_LIST *table_list, char *key,
     share->table_map_id= ~0UL;
     share->cached_row_logging_check= -1;
 
+    share->used_tables.empty();
+    share->free_tables.empty();
+
     memcpy((char*) &share->mem_root, (char*) &mem_root, sizeof(mem_root));
-    pthread_mutex_init(&share->mutex, MY_MUTEX_INIT_FAST);
-    pthread_cond_init(&share->cond, NULL);
+    pthread_mutex_init(&share->LOCK_ha_data, MY_MUTEX_INIT_FAST);
   }
   DBUG_RETURN(share);
 }
@@ -384,6 +410,9 @@ void init_tmp_table_share(THD *thd, TABLE_SHARE *share, const char *key,
   */
   share->table_map_id= (ulong) thd->query_id;
 
+  share->used_tables.empty();
+  share->free_tables.empty();
+
   DBUG_VOID_RETURN;
 }
 
@@ -406,25 +435,11 @@ void free_table_share(TABLE_SHARE *share)
   DBUG_PRINT("enter", ("table: %s.%s", share->db.str, share->table_name.str));
   DBUG_ASSERT(share->ref_count == 0);
 
-  /*
-    If someone is waiting for this to be deleted, inform it about this.
-    Don't do a delete until we know that no one is refering to this anymore.
-  */
+  /* The mutex is initialized only for shares that are part of the TDC */
   if (share->tmp_table == NO_TMP_TABLE)
-  {
-    /* share->mutex is locked in release_table_share() */
-    while (share->waiting_on_cond)
-    {
-      pthread_cond_broadcast(&share->cond);
-      pthread_cond_wait(&share->cond, &share->mutex);
-    }
-    /* No thread refers to this anymore */
-    pthread_mutex_unlock(&share->mutex);
-    pthread_mutex_destroy(&share->mutex);
-    pthread_cond_destroy(&share->cond);
-  }
+    pthread_mutex_destroy(&share->LOCK_ha_data);
   hash_free(&share->name_hash);
-  
+
   plugin_unlock(NULL, share->db_plugin);
   share->db_plugin= NULL;
 
@@ -516,7 +531,7 @@ int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags)
   int error, table_type;
   bool error_given;
   File file;
-  uchar head[64], *disk_buff;
+  uchar head[64];
   char	path[FN_REFLEN];
   MEM_ROOT **root_ptr, *old_root;
   DBUG_ENTER("open_table_def");
@@ -525,7 +540,6 @@ int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags)
 
   error= 1;
   error_given= 0;
-  disk_buff= NULL;
 
   strxmov(path, share->normalized_path.str, reg_ext, NullS);
   if ((file= my_open(path, O_RDONLY | O_SHARE, MYF(0))) < 0)
@@ -681,7 +695,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   error= 3;
   if (!(pos=get_form_pos(file,head,(TYPELIB*) 0)))
     goto err;                                   /* purecov: inspected */
-  VOID(my_seek(file,pos,MY_SEEK_SET,MYF(0)));
+  my_seek(file,pos,MY_SEEK_SET,MYF(0));
   if (my_read(file,forminfo,288,MYF(MY_NABP)))
     goto err;
 
@@ -719,7 +733,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   if (!head[32])				// New frm file in 3.23
   {
     share->avg_row_length= uint4korr(head+34);
-    share->transactional= (ha_choice) head[39];
+    share->transactional= (ha_choice) (head[39] & 3);
+    share->page_checksum= (ha_choice) ((head[39] >> 2) & 3);
     share->row_type= (row_type) head[40];
     share->table_charset= get_charset((uint) head[38],MYF(0));
     share->null_field_first= 1;
@@ -748,7 +763,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
 
   /* Read keyinformation */
   key_info_length= (uint) uint2korr(head+28);
-  VOID(my_seek(file,(ulong) uint2korr(head+6),MY_SEEK_SET,MYF(0)));
+  my_seek(file,(ulong) uint2korr(head+6),MY_SEEK_SET,MYF(0));
   if (read_string(file,(uchar**) &disk_buff,key_info_length))
     goto err;                                   /* purecov: inspected */
   if (disk_buff[0] & 0x80)
@@ -1091,7 +1106,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                record_offset, MYF(MY_NABP)))
     goto err;                                   /* purecov: inspected */
 
-  VOID(my_seek(file,pos+288,MY_SEEK_SET,MYF(0)));
+  my_seek(file,pos+288,MY_SEEK_SET,MYF(0));
 #ifdef HAVE_CRYPTED_FRM
   if (crypted)
   {
@@ -1499,6 +1514,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
           }
           if (handler_file->index_flags(key, i, 1) & HA_READ_ORDER)
             field->part_of_sortkey.set_bit(key);
+          field->part_of_key_wo_keyread.set_bit(key);
         }
         if (!(key_part->key_part_flag & HA_REVERSE_SORT) &&
             usable_parts == i)
@@ -1713,10 +1729,10 @@ int open_table_from_share(THD *thd, TABLE_SHARE *share, const char *alias,
   uchar *record, *bitmaps;
   Field **field_ptr;
   DBUG_ENTER("open_table_from_share");
-  DBUG_PRINT("enter",("name: '%s.%s'  form: 0x%lx, open mode:%s",
+  DBUG_PRINT("enter",("name: '%s.%s'  form: %p, open mode:%s",
                       share->db.str,
                       share->table_name.str,
-                      (long) outparam,
+                      outparam,
                       (open_mode == OTM_OPEN)?"open":
                       ((open_mode == OTM_CREATE)?"create":"alter")));
 
@@ -2052,7 +2068,7 @@ int closefrm(register TABLE *table, bool free_share)
   uint idx;
   KEY *key_info;
   DBUG_ENTER("closefrm");
-  DBUG_PRINT("enter", ("table: 0x%lx", (long) table));
+  DBUG_PRINT("enter", ("table: %p", table));
 
   if (table->db_stat)
     error=table->file->close();
@@ -2086,7 +2102,7 @@ int closefrm(register TABLE *table, bool free_share)
   if (free_share)
   {
     if (table->s->tmp_table == NO_TMP_TABLE)
-      release_table_share(table->s, RELEASE_NORMAL);
+      release_table_share(table->s);
     else
       free_table_share(table->s);
   }
@@ -2128,7 +2144,7 @@ ulong get_form_pos(File file, uchar *head, TYPELIB *save_names)
   if (names)
   {
     length=uint2korr(head+4);
-    VOID(my_seek(file,64L,MY_SEEK_SET,MYF(0)));
+    my_seek(file,64L,MY_SEEK_SET,MYF(0));
     if (!(buf= (uchar*) my_malloc((size_t) length+a_length+names*4,
 				  MYF(MY_WME))) ||
 	my_read(file, buf+a_length, (size_t) (length+names*4),
@@ -2207,17 +2223,17 @@ ulong make_new_entry(File file, uchar *fileinfo, TYPELIB *formnames,
 
     while (endpos > maxlength)
     {
-      VOID(my_seek(file,(ulong) (endpos-bufflength),MY_SEEK_SET,MYF(0)));
+      my_seek(file,(ulong) (endpos-bufflength),MY_SEEK_SET,MYF(0));
       if (my_read(file, buff, bufflength, MYF(MY_NABP+MY_WME)))
 	DBUG_RETURN(0L);
-      VOID(my_seek(file,(ulong) (endpos-bufflength+IO_SIZE),MY_SEEK_SET,
-		   MYF(0)));
+      my_seek(file,(ulong) (endpos-bufflength+IO_SIZE),MY_SEEK_SET,
+		   MYF(0));
       if ((my_write(file, buff,bufflength,MYF(MY_NABP+MY_WME))))
 	DBUG_RETURN(0);
       endpos-=bufflength; bufflength=IO_SIZE;
     }
     bzero(buff,IO_SIZE);			/* Null new block */
-    VOID(my_seek(file,(ulong) maxlength,MY_SEEK_SET,MYF(0)));
+    my_seek(file,(ulong) maxlength,MY_SEEK_SET,MYF(0));
     if (my_write(file,buff,bufflength,MYF(MY_NABP+MY_WME)))
 	DBUG_RETURN(0L);
     maxlength+=IO_SIZE;				/* Fix old ref */
@@ -2233,11 +2249,11 @@ ulong make_new_entry(File file, uchar *fileinfo, TYPELIB *formnames,
   if (n_length == 1 )
   {						/* First name */
     length++;
-    VOID(strxmov((char*) buff,"/",newname,"/",NullS));
+    (void) strxmov((char*) buff,"/",newname,"/",NullS);
   }
   else
-    VOID(strxmov((char*) buff,newname,"/",NullS)); /* purecov: inspected */
-  VOID(my_seek(file,63L+(ulong) n_length,MY_SEEK_SET,MYF(0)));
+    (void) strxmov((char*) buff,newname,"/",NullS); /* purecov: inspected */
+  my_seek(file,63L+(ulong) n_length,MY_SEEK_SET,MYF(0));
   if (my_write(file, buff, (size_t) length+1,MYF(MY_NABP+MY_WME)) ||
       (names && my_write(file,(uchar*) (*formnames->type_names+n_length-1),
 			 names*4, MYF(MY_NABP+MY_WME))) ||
@@ -2246,7 +2262,7 @@ ulong make_new_entry(File file, uchar *fileinfo, TYPELIB *formnames,
 
   int2store(fileinfo+8,names+1);
   int2store(fileinfo+4,n_length+length);
-  VOID(my_chsize(file, newpos, 0, MYF(MY_WME)));/* Append file with '\0' */
+  (void) my_chsize(file, newpos, 0, MYF(MY_WME));/* Append file with '\0' */
   DBUG_RETURN(newpos);
 } /* make_new_entry */
 
@@ -2574,7 +2590,9 @@ File create_frm(THD *thd, const char *name, const char *db,
     int2store(fileinfo+16,reclength);
     int4store(fileinfo+18,create_info->max_rows);
     int4store(fileinfo+22,create_info->min_rows);
+    /* fileinfo[26] is set in mysql_create_frm() */
     fileinfo[27]=2;				// Use long pack-fields
+    /* fileinfo[28 & 29] is set to key_info_length in mysql_create_frm() */
     create_info->table_options|=HA_OPTION_LONG_BLOB_PTR; // Use portable blob pointers
     int2store(fileinfo+30,create_info->table_options);
     fileinfo[32]=0;				// No filename anymore
@@ -2582,9 +2600,10 @@ File create_frm(THD *thd, const char *name, const char *db,
     int4store(fileinfo+34,create_info->avg_row_length);
     fileinfo[38]= (create_info->default_table_charset ?
 		   create_info->default_table_charset->number : 0);
-    fileinfo[39]= (uchar) create_info->transactional;
+    fileinfo[39]= (uchar) ((uint) create_info->transactional |
+                           ((uint) create_info->page_checksum << 2));
     fileinfo[40]= (uchar) create_info->row_type;
-    /* Next few bytes were for RAID support */
+    /* Next few bytes where for RAID support */
     fileinfo[41]= 0;
     fileinfo[42]= 0;
     fileinfo[43]= 0;
@@ -2605,8 +2624,8 @@ File create_frm(THD *thd, const char *name, const char *db,
     {
       if (my_write(file,fill, IO_SIZE, MYF(MY_WME | MY_NABP)))
       {
-	VOID(my_close(file,MYF(0)));
-	VOID(my_delete(name,MYF(0)));
+	(void) my_close(file,MYF(0));
+	(void) my_delete(name,MYF(0));
 	return(-1);
       }
     }
@@ -2637,6 +2656,8 @@ void update_create_info_from_table(HA_CREATE_INFO *create_info, TABLE *table)
   create_info->default_table_charset= share->table_charset;
   create_info->table_charset= 0;
   create_info->comment= share->comment;
+  create_info->transactional= share->transactional;
+  create_info->page_checksum= share->page_checksum;
 
   DBUG_VOID_RETURN;
 }
@@ -2645,8 +2666,8 @@ int
 rename_file_ext(const char * from,const char * to,const char * ext)
 {
   char from_b[FN_REFLEN],to_b[FN_REFLEN];
-  VOID(strxmov(from_b,from,ext,NullS));
-  VOID(strxmov(to_b,to,ext,NullS));
+  (void) strxmov(from_b,from,ext,NullS);
+  (void) strxmov(to_b,to,ext,NullS);
   return (my_rename(from_b,to_b,MYF(MY_WME)));
 }
 
@@ -4589,24 +4610,6 @@ void st_table::mark_columns_needed_for_insert()
 }
 
 
-/**
-  @brief Check if this is part of a MERGE table with attached children.
-
-  @return       status
-    @retval     TRUE            children are attached
-    @retval     FALSE           no MERGE part or children not attached
-
-  @detail
-    A MERGE table consists of a parent TABLE and zero or more child
-    TABLEs. Each of these TABLEs is called a part of a MERGE table.
-*/
-
-bool st_table::is_children_attached(void)
-{
-  return((child_l && children_attached) ||
-         (parent && parent->children_attached));
-}
-
 /*
   Cleanup this table for re-execution.
 
@@ -4841,6 +4844,21 @@ size_t max_row_length(TABLE *table, const uchar *data)
   }
   return length;
 }
+
+
+/**
+   Helper function which allows to allocate metadata lock request
+   objects for all elements of table list.
+*/
+
+void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root)
+{
+  for ( ; table_list ; table_list= table_list->next_global)
+    table_list->mdl_lock_data= mdl_alloc_lock(0, table_list->db,
+                                              table_list->table_name,
+                                              root);
+}
+
 
 /*****************************************************************************
 ** Instansiate templates

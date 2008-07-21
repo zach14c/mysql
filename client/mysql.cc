@@ -1283,12 +1283,12 @@ sig_handler handle_sigint(int sig)
 
   /* terminate if no query being executed, or we already tried interrupting */
   if (!executing_query || interrupted_query)
-    mysql_end(sig);
+    goto err;
 
   kill_mysql= mysql_init(kill_mysql);
   if (!mysql_real_connect(kill_mysql,current_host, current_user, opt_password,
                           "", opt_mysql_port, opt_mysql_unix_port,0))
-    mysql_end(sig);
+    goto err;
 
   /* kill_buffer is always big enough because max length of %lu is 15 */
   sprintf(kill_buffer, "KILL /*!50000 QUERY */ %lu", mysql_thread_id(&mysql));
@@ -1297,6 +1297,22 @@ sig_handler handle_sigint(int sig)
   tee_fprintf(stdout, "Query aborted by Ctrl+C\n");
 
   interrupted_query= 1;
+
+  return;
+
+err:
+#ifdef _WIN32
+  /*
+   When SIGINT is raised on Windows, the OS creates a new thread to handle the
+   interrupt. Once that thread completes, the main thread continues running 
+   only to find that it's resources have already been free'd when the sigint 
+   handler called mysql_end(). 
+  */
+  mysql_thread_end();
+  return;
+#else
+  mysql_end(sig);
+#endif  
 }
 
 
@@ -1832,7 +1848,7 @@ static int read_and_execute(bool interactive)
         the very beginning of a text file when
         you save the file using "Unicode UTF-8" format.
       */
-      if (!line_number &&
+      if (line && !line_number &&
            (uchar) line[0] == 0xEF &&
            (uchar) line[1] == 0xBB &&
            (uchar) line[2] == 0xBF)
@@ -2112,37 +2128,6 @@ static bool add_line(String &buffer,char *line,char *in_string,
 	continue;
       }
     }
-    else if (!*ml_comment && !*in_string &&
-             (end_of_line - pos) >= 10 &&
-             !my_strnncoll(charset_info, (uchar*) pos, 10,
-                           (const uchar*) "delimiter ", 10))
-    {
-      // Flush previously accepted characters
-      if (out != line)
-      {
-        buffer.append(line, (uint32) (out - line));
-        out= line;
-      }
-
-      // Flush possible comments in the buffer
-      if (!buffer.is_empty())
-      {
-        if (com_go(&buffer, 0) > 0) // < 0 is not fatal
-          DBUG_RETURN(1);
-        buffer.length(0);
-      }
-
-      /*
-        Delimiter wants the get rest of the given line as argument to
-        allow one to change ';' to ';;' and back
-      */
-      buffer.append(pos);
-      if (com_delimiter(&buffer, pos) > 0)
-        DBUG_RETURN(1);
-
-      buffer.length(0);
-      break;
-    }
     else if (!*ml_comment && !*in_string && is_prefix(pos, delimiter))
     {
       // Found a statement. Continue parsing after the delimiter
@@ -2187,7 +2172,14 @@ static bool add_line(String &buffer,char *line,char *in_string,
     }
     else if (!*ml_comment && (!*in_string && (inchar == '#' ||
 			      inchar == '-' && pos[1] == '-' &&
-			      my_isspace(charset_info,pos[2]))))
+                              /*
+                                The third byte is either whitespace or is the
+                                end of the line -- which would occur only
+                                because of the user sending newline -- which is
+                                itself whitespace and should also match.
+                              */
+			      (my_isspace(charset_info,pos[2]) ||
+                               !pos[2]))))
     {
       // Flush previously accepted characters
       if (out != line)

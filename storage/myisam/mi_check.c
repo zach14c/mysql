@@ -59,14 +59,14 @@
 
 	/* Functions defined in this file */
 
-static int check_k_link(MI_CHECK *param, MI_INFO *info,uint nr);
-static int chk_index(MI_CHECK *param, MI_INFO *info,MI_KEYDEF *keyinfo,
+static int check_k_link(HA_CHECK *param, MI_INFO *info,uint nr);
+static int chk_index(HA_CHECK *param, MI_INFO *info,MI_KEYDEF *keyinfo,
 		     my_off_t page, uchar *buff, ha_rows *keys,
 		     ha_checksum *key_checksum, uint level);
 static uint isam_key_length(MI_INFO *info,MI_KEYDEF *keyinfo);
 static ha_checksum calc_checksum(ha_rows count);
 static int writekeys(MI_SORT_PARAM *sort_param);
-static int sort_one_index(MI_CHECK *param, MI_INFO *info,MI_KEYDEF *keyinfo,
+static int sort_one_index(HA_CHECK *param, MI_INFO *info,MI_KEYDEF *keyinfo,
 			  my_off_t pagepos, File new_file);
 static int sort_key_read(MI_SORT_PARAM *sort_param,void *key);
 static int sort_ft_key_read(MI_SORT_PARAM *sort_param,void *key);
@@ -80,13 +80,14 @@ static int sort_insert_key(MI_SORT_PARAM  *sort_param,
                            reg1 SORT_KEY_BLOCKS *key_block,
 			   uchar *key, my_off_t prev_block);
 static int sort_delete_record(MI_SORT_PARAM *sort_param);
-/*static int flush_pending_blocks(MI_CHECK *param);*/
-static SORT_KEY_BLOCKS	*alloc_key_blocks(MI_CHECK *param, uint blocks,
+/*static int flush_pending_blocks(HA_CHECK *param);*/
+static SORT_KEY_BLOCKS	*alloc_key_blocks(HA_CHECK *param, uint blocks,
 					  uint buffer_length);
 static ha_checksum mi_byte_checksum(const uchar *buf, uint length);
-static void set_data_file_type(SORT_INFO *sort_info, MYISAM_SHARE *share);
+static void set_data_file_type(MI_SORT_INFO *sort_info, MYISAM_SHARE *share);
+static int chsize_kfile(MI_INFO *info);
 
-void myisamchk_init(MI_CHECK *param)
+void myisamchk_init(HA_CHECK *param)
 {
   bzero((uchar*) param,sizeof(*param));
   param->opt_follow_links=1;
@@ -108,7 +109,7 @@ void myisamchk_init(MI_CHECK *param)
 
 	/* Check the status flags for the table */
 
-int chk_status(MI_CHECK *param, register MI_INFO *info)
+int chk_status(HA_CHECK *param, register MI_INFO *info)
 {
   MYISAM_SHARE *share=info->s;
 
@@ -136,7 +137,7 @@ int chk_status(MI_CHECK *param, register MI_INFO *info)
 
 	/* Check delete links */
 
-int chk_del(MI_CHECK *param, register MI_INFO *info, uint test_flag)
+int chk_del(HA_CHECK *param, register MI_INFO *info, ulonglong test_flag)
 {
   reg2 ha_rows i;
   uint delete_link_length;
@@ -245,7 +246,7 @@ wrong:
 
 	/* Check delete links in index file */
 
-static int check_k_link(MI_CHECK *param, register MI_INFO *info, uint nr)
+static int check_k_link(HA_CHECK *param, register MI_INFO *info, uint nr)
 {
   my_off_t next_link;
   uint block_size=(nr+1)*MI_MIN_KEY_BLOCK_LENGTH;
@@ -323,7 +324,7 @@ static int check_k_link(MI_CHECK *param, register MI_INFO *info, uint nr)
 
 	/* Check sizes of files */
 
-int chk_size(MI_CHECK *param, register MI_INFO *info)
+int chk_size(HA_CHECK *param, register MI_INFO *info)
 {
   int error=0;
   register my_off_t skr,size;
@@ -399,7 +400,7 @@ int chk_size(MI_CHECK *param, register MI_INFO *info)
 
 	/* Check keys */
 
-int chk_key(MI_CHECK *param, register MI_INFO *info)
+int chk_key(HA_CHECK *param, register MI_INFO *info)
 {
   uint key,found_keys=0,full_text_keys=0,result=0;
   ha_rows keys;
@@ -584,7 +585,7 @@ do_stat:
 } /* chk_key */
 
 
-static int chk_index_down(MI_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
+static int chk_index_down(HA_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
                      my_off_t page, uchar *buff, ha_rows *keys,
                      ha_checksum *key_checksum, uint level)
 {
@@ -731,13 +732,13 @@ int mi_collect_stats_nonulls_next(HA_KEYSEG *keyseg, ulonglong *notnull,
 
 	/* Check if index is ok */
 
-static int chk_index(MI_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
+static int chk_index(HA_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
 		     my_off_t page, uchar *buff, ha_rows *keys,
 		     ha_checksum *key_checksum, uint level)
 {
   int flag;
   uint used_length,comp_flag,nod_flag,key_length=0;
-  uchar key[MI_MAX_POSSIBLE_KEY_BUFF],*temp_buff,*keypos,*old_keypos,*endpos;
+  uchar key[HA_MAX_POSSIBLE_KEY_BUFF],*temp_buff,*keypos,*old_keypos,*endpos;
   my_off_t next_page,record;
   char llbuff[22];
   uint diff_pos[2];
@@ -755,7 +756,10 @@ static int chk_index(MI_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
   }
 
   if (keyinfo->flag & HA_NOSAME)
-    comp_flag=SEARCH_FIND | SEARCH_UPDATE;	/* Not real duplicates */
+  {
+    /* Not real duplicates */
+    comp_flag= SEARCH_FIND | SEARCH_UPDATE | SEARCH_INSERT;
+  }
   else
     comp_flag=SEARCH_SAME;			/* Keys in positionorder */
   nod_flag=mi_test_if_nod(buff);
@@ -935,7 +939,7 @@ static uint isam_key_length(MI_INFO *info, register MI_KEYDEF *keyinfo)
 
 	/* Check that record-link is ok */
 
-int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
+int chk_data_link(HA_CHECK *param, MI_INFO *info, my_bool extend)
 {
   int	error,got_error,flag;
   uint	key,left_length,b_type,field;
@@ -945,7 +949,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
   uchar	*record= 0, *to;
   char llbuff[22],llbuff2[22],llbuff3[22];
   ha_checksum intern_record_checksum;
-  ha_checksum key_checksum[MI_MAX_POSSIBLE_KEY];
+  ha_checksum key_checksum[HA_MAX_POSSIBLE_KEY];
   my_bool static_row_size;
   MI_KEYDEF *keyinfo;
   MI_BLOCK_INFO block_info;
@@ -993,6 +997,9 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
     if (*killed_ptr(param))
       goto err2;
     switch (info->s->data_file_type) {
+    case BLOCK_RECORD:
+      DBUG_ASSERT(0);                           /* Impossible */
+      break;
     case STATIC_RECORD:
       if (my_b_read(&param->read_cache,(uchar*) record,
 		    info->s->base.pack_reclength))
@@ -1006,7 +1013,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
 	del_length+=info->s->base.pack_reclength;
 	continue;					/* Record removed */
       }
-      param->glob_crc+= mi_static_checksum(info,record);
+      param->glob_crc+= (*info->s->calc_check_checksum)(info,record);
       used+=info->s->base.pack_reclength;
       break;
     case DYNAMIC_RECORD:
@@ -1160,7 +1167,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
 	}
 	else
 	{
-	  info->checksum=mi_checksum(info,record);
+	  info->checksum= (*info->s->calc_check_checksum)(info,record);
 	  if (param->testflag & (T_EXTEND | T_MEDIUM | T_VERBOSE))
 	  {
 	    if (_mi_rec_check(info,record, info->rec_buff,block_info.rec_len,
@@ -1184,8 +1191,8 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
 	goto err;
       start_recpos=pos;
       splits++;
-      VOID(_mi_pack_get_block_info(info, &info->bit_buff, &block_info,
-                                   &info->rec_buff, -1, start_recpos));
+      (void) _mi_pack_get_block_info(info, &info->bit_buff, &block_info,
+                                   &info->rec_buff, -1, start_recpos);
       pos=block_info.filepos+block_info.rec_len;
       if (block_info.rec_len < (uint) info->s->min_pack_length ||
 	  block_info.rec_len > (uint) info->s->max_pack_length)
@@ -1206,10 +1213,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
 			     llstr(start_recpos,llbuff));
 	got_error=1;
       }
-      if (static_row_size)
-	param->glob_crc+= mi_static_checksum(info,record);
-      else
-	param->glob_crc+= mi_checksum(info,record);
+      param->glob_crc+= (*info->s->calc_check_checksum)(info,record);
       link_used+= (block_info.filepos - start_recpos);
       used+= (pos-start_recpos);
     } /* switch */
@@ -1219,7 +1223,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
       records++;
       if (param->testflag & T_WRITE_LOOP && records % WRITE_COUNT == 0)
       {
-	printf("%s\r", llstr(records,llbuff)); VOID(fflush(stdout));
+	printf("%s\r", llstr(records,llbuff)); (void) fflush(stdout);
       }
 
       /* Check if keys match the record */
@@ -1272,7 +1276,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
   }
   if (param->testflag & T_WRITE_LOOP)
   {
-    VOID(fputs("          \r",stdout)); VOID(fflush(stdout));
+    (void) fputs("          \r",stdout); (void) fflush(stdout);
   }
   if (records != info->state->records)
   {
@@ -1430,7 +1434,7 @@ int chk_data_link(MI_CHECK *param, MI_INFO *info,int extend)
     then recrate all indexes.
 */
 
-static int mi_drop_all_indexes(MI_CHECK *param, MI_INFO *info, my_bool force)
+static int mi_drop_all_indexes(HA_CHECK *param, MI_INFO *info, my_bool force)
 {
   MYISAM_SHARE *share= info->s;
   MI_STATE_INFO *state= &share->state;
@@ -1513,7 +1517,7 @@ static int mi_drop_all_indexes(MI_CHECK *param, MI_INFO *info, my_bool force)
 	/* Recover old table by reading each record and writing all keys */
 	/* Save new datafile-name in temp_filename */
 
-int mi_repair(MI_CHECK *param, register MI_INFO *info,
+int mi_repair(HA_CHECK *param, register MI_INFO *info,
 	      char * name, int rep_quick)
 {
   int error,got_error;
@@ -1522,7 +1526,7 @@ int mi_repair(MI_CHECK *param, register MI_INFO *info,
   File new_file;
   MYISAM_SHARE *share=info->s;
   char llbuff[22],llbuff2[22];
-  SORT_INFO sort_info;
+  MI_SORT_INFO sort_info;
   MI_SORT_PARAM sort_param;
   DBUG_ENTER("mi_repair");
 
@@ -1546,8 +1550,8 @@ int mi_repair(MI_CHECK *param, register MI_INFO *info,
     param->testflag|=T_CALC_CHECKSUM;
 
   if (!param->using_global_keycache)
-    VOID(init_key_cache(dflt_key_cache, param->key_cache_block_size,
-                        param->use_buffers, 0, 0));
+    (void) init_key_cache(dflt_key_cache, param->key_cache_block_size,
+                        param->use_buffers, 0, 0);
 
   if (init_io_cache(&param->read_cache,info->dfile,
 		    (uint) param->read_buffer_length,
@@ -1640,8 +1644,8 @@ int mi_repair(MI_CHECK *param, register MI_INFO *info,
 			  llstr(info->dupp_key_pos,llbuff2));
       if (param->testflag & T_VERBOSE)
       {
-	VOID(_mi_make_key(info,(uint) info->errkey,info->lastkey,
-			  sort_param.record,0L));
+	(void) _mi_make_key(info,(uint) info->errkey,info->lastkey,
+			  sort_param.record,0L);
 	_mi_print_key(stdout,share->keyinfo[info->errkey].seg,info->lastkey,
 		      USE_WHOLE_KEY);
       }
@@ -1663,9 +1667,9 @@ int mi_repair(MI_CHECK *param, register MI_INFO *info,
 
   if (param->testflag & T_WRITE_LOOP)
   {
-    VOID(fputs("          \r",stdout)); VOID(fflush(stdout));
+    (void) fputs("          \r",stdout); (void) fflush(stdout);
   }
-  if (my_chsize(share->kfile,info->state->key_file_length,0,MYF(0)))
+  if (chsize_kfile(info))
   {
     mi_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
@@ -1730,6 +1734,11 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile=new_file= -1;
+      /*
+        File change like this is not handled in physical log. filecopy() above
+        is also not handled.
+      */
+      DBUG_ASSERT(!share->physical_logging);
       if (change_to_newfile(share->data_file_name,MI_NAME_DEXT,
 			    DATA_TMP_EXT, share->base.raid_chunks,
 			    (param->testflag & T_BACKUP_DATA ?
@@ -1745,9 +1754,9 @@ err:
 		  llstr(sort_param.start_recpos,llbuff));
     if (new_file >= 0)
     {
-      VOID(my_close(new_file,MYF(0)));
-      VOID(my_raid_delete(param->temp_filename,info->s->base.raid_chunks,
-			  MYF(MY_WME)));
+      (void) my_close(new_file,MYF(0));
+      (void) my_raid_delete(param->temp_filename,info->s->base.raid_chunks,
+			  MYF(MY_WME));
       info->rec_cache.file=-1; /* don't flush data to new_file, it's closed */
     }
     mi_mark_crashed_on_repair(info);
@@ -1757,9 +1766,9 @@ err:
   my_free(mi_get_rec_buff_ptr(info, sort_param.record),
           MYF(MY_ALLOW_ZERO_PTR));
   my_free(sort_info.buff,MYF(MY_ALLOW_ZERO_PTR));
-  VOID(end_io_cache(&param->read_cache));
+  (void) end_io_cache(&param->read_cache);
   info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
-  VOID(end_io_cache(&info->rec_cache));
+  (void) end_io_cache(&info->rec_cache);
   got_error|=flush_blocks(param, share->key_cache, share->kfile);
   if (!got_error && param->testflag & T_UNPACK)
   {
@@ -1890,7 +1899,7 @@ int movepoint(register MI_INFO *info, uchar *record, my_off_t oldpos,
 
 	/* Tell system that we want all memory for our cache */
 
-void lock_memory(MI_CHECK *param __attribute__((unused)))
+void lock_memory(HA_CHECK *param __attribute__((unused)))
 {
 #ifdef SUN_OS				/* Key-cacheing thrases on sun 4.1 */
   if (param->opt_lock_memory)
@@ -1906,7 +1915,7 @@ void lock_memory(MI_CHECK *param __attribute__((unused)))
 
 	/* Flush all changed blocks to disk */
 
-int flush_blocks(MI_CHECK *param, KEY_CACHE *key_cache, File file)
+int flush_blocks(HA_CHECK *param, KEY_CACHE *key_cache, File file)
 {
   if (flush_key_blocks(key_cache, file, FLUSH_RELEASE))
   {
@@ -1921,12 +1930,12 @@ int flush_blocks(MI_CHECK *param, KEY_CACHE *key_cache, File file)
 
 	/* Sort index for more efficent reads */
 
-int mi_sort_index(MI_CHECK *param, register MI_INFO *info, char * name)
+int mi_sort_index(HA_CHECK *param, register MI_INFO *info, char * name)
 {
   reg2 uint key;
   reg1 MI_KEYDEF *keyinfo;
   File new_file;
-  my_off_t index_pos[MI_MAX_POSSIBLE_KEY];
+  my_off_t index_pos[HA_MAX_POSSIBLE_KEY];
   uint r_locks,w_locks;
   int old_lock;
   MYISAM_SHARE *share=info->s;
@@ -1986,9 +1995,10 @@ int mi_sort_index(MI_CHECK *param, register MI_INFO *info, char * name)
 	/* Put same locks as old file */
   share->r_locks= share->w_locks= share->tot_locks= 0;
   (void) _mi_writeinfo(info,WRITEINFO_UPDATE_KEYFILE);
-  VOID(my_close(share->kfile,MYF(MY_WME)));
+  (void) my_close(share->kfile,MYF(MY_WME));
   share->kfile = -1;
-  VOID(my_close(new_file,MYF(MY_WME)));
+  (void) my_close(new_file,MYF(MY_WME));
+  DBUG_ASSERT(!share->physical_logging);
   if (change_to_newfile(share->index_file_name,MI_NAME_IEXT,INDEX_TMP_EXT,0,
 			MYF(0)) ||
       mi_open_keyfile(share))
@@ -2012,21 +2022,21 @@ int mi_sort_index(MI_CHECK *param, register MI_INFO *info, char * name)
   DBUG_RETURN(0);
 
 err:
-  VOID(my_close(new_file,MYF(MY_WME)));
+  (void) my_close(new_file,MYF(MY_WME));
 err2:
-  VOID(my_delete(param->temp_filename,MYF(MY_WME)));
+  (void) my_delete(param->temp_filename,MYF(MY_WME));
   DBUG_RETURN(-1);
 } /* mi_sort_index */
 
 
 	 /* Sort records recursive using one index */
 
-static int sort_one_index(MI_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
+static int sort_one_index(HA_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
 			  my_off_t pagepos, File new_file)
 {
   uint length,nod_flag,used_length, key_length;
   uchar *buff,*keypos,*endpos;
-  uchar key[MI_MAX_POSSIBLE_KEY_BUFF];
+  uchar key[HA_MAX_POSSIBLE_KEY_BUFF];
   my_off_t new_page_pos,next_page;
   char llbuff[22];
   DBUG_ENTER("sort_one_index");
@@ -2094,6 +2104,7 @@ static int sort_one_index(MI_CHECK *param, MI_INFO *info, MI_KEYDEF *keyinfo,
   /* Fill block with zero and write it to the new index file */
   length=mi_getint(buff);
   bzero((uchar*) buff+length,keyinfo->block_length-length);
+  DBUG_ASSERT(!info->s->physical_logging);
   if (my_pwrite(new_file,(uchar*) buff,(uint) keyinfo->block_length,
 		new_page_pos,MYF(MY_NABP | MY_WAIT_IF_FULL)))
   {
@@ -2141,12 +2152,12 @@ int change_to_newfile(const char * filename, const char * old_ext,
 	/* Locks a whole file */
 	/* Gives an error-message if file can't be locked */
 
-int lock_file(MI_CHECK *param, File file, my_off_t start, int lock_type,
+int lock_file(HA_CHECK *param, File file, my_off_t start, int lock_type,
 	      const char *filetype, const char *filename)
 {
   if (my_lock(file,lock_type,start,F_TO_EOF,
 	      param->testflag & T_WAIT_FOREVER ? MYF(MY_SEEK_NOT_DONE) :
-	      MYF(MY_SEEK_NOT_DONE |  MY_DONT_WAIT)))
+	      MYF(MY_SEEK_NOT_DONE |  MY_SHORT_WAIT)))
   {
     mi_check_print_error(param," %d when locking %s '%s'",my_errno,filetype,filename);
     param->error_printed=2;		/* Don't give that data is crashed */
@@ -2156,9 +2167,9 @@ int lock_file(MI_CHECK *param, File file, my_off_t start, int lock_type,
 } /* lock_file */
 
 
-	/* Copy a block between two files */
+	/* Copy a block between two files. Not handled by physical logging. */
 
-int filecopy(MI_CHECK *param, File to,File from,my_off_t start,
+int filecopy(HA_CHECK *param, File to,File from,my_off_t start,
 	     my_off_t length, const char *type)
 {
   char tmp_buff[IO_SIZE],*buff;
@@ -2171,7 +2182,7 @@ int filecopy(MI_CHECK *param, File to,File from,my_off_t start,
     buff=tmp_buff; buff_length=IO_SIZE;
   }
 
-  VOID(my_seek(from,start,MY_SEEK_SET,MYF(0)));
+  my_seek(from,start,MY_SEEK_SET,MYF(0));
   while (length > buff_length)
   {
     if (my_read(from,(uchar*) buff,buff_length,MYF(MY_NABP)) ||
@@ -2209,7 +2220,7 @@ err:
     <>0	Error
 */
 
-int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
+int mi_repair_by_sort(HA_CHECK *param, register MI_INFO *info,
 		      const char * name, int rep_quick)
 {
   int got_error;
@@ -2223,7 +2234,7 @@ int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
   HA_KEYSEG *keyseg;
   ulong   *rec_per_key_part;
   char llbuff[22];
-  SORT_INFO sort_info;
+  MI_SORT_INFO sort_info;
   ulonglong key_map;
   DBUG_ENTER("mi_repair_by_sort");
   LINT_INIT(key_map);
@@ -2482,7 +2493,7 @@ int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
 
   if (param->testflag & T_WRITE_LOOP)
   {
-    VOID(fputs("          \r",stdout)); VOID(fflush(stdout));
+    (void) fputs("          \r",stdout); (void) fflush(stdout);
   }
 
   if (rep_quick && del+sort_info.dupp != info->state->del)
@@ -2495,7 +2506,7 @@ int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
     goto err;
   }
 
-  if (rep_quick & T_FORCE_UNIQUENESS)
+  if (rep_quick && (param->testflag & T_FORCE_UNIQUENESS))
   {
     my_off_t skr=info->state->data_file_length+
       (share->options & HA_OPTION_COMPRESS_RECORD ?
@@ -2506,15 +2517,18 @@ int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
       skr=share->base.reloc*share->base.min_pack_length;
 #endif
     if (skr != sort_info.filelength && !info->s->base.raid_type)
+    {
+      DBUG_ASSERT(!share->physical_logging);
       if (my_chsize(info->dfile,skr,0,MYF(0)))
 	mi_check_print_warning(param,
 			       "Can't change size of datafile,  error: %d",
 			       my_errno);
+    }
   }
   if (param->testflag & T_CALC_CHECKSUM)
     info->state->checksum=param->glob_crc;
 
-  if (my_chsize(share->kfile,info->state->key_file_length,0,MYF(0)))
+  if (chsize_kfile(info))
     mi_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
 			   my_errno);
@@ -2535,7 +2549,7 @@ int mi_repair_by_sort(MI_CHECK *param, register MI_INFO *info,
 
 err:
   got_error|= flush_blocks(param, share->key_cache, share->kfile);
-  VOID(end_io_cache(&info->rec_cache));
+  (void) end_io_cache(&info->rec_cache);
   if (!got_error)
   {
     /* Replace the actual file with the temporary file */
@@ -2543,6 +2557,7 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile=new_file= -1;
+      DBUG_ASSERT(!share->physical_logging);
       if (change_to_newfile(share->data_file_name,MI_NAME_DEXT,
 			    DATA_TMP_EXT, share->base.raid_chunks,
 			    (param->testflag & T_BACKUP_DATA ?
@@ -2557,9 +2572,9 @@ err:
       mi_check_print_error(param,"%d when fixing table",my_errno);
     if (new_file >= 0)
     {
-      VOID(my_close(new_file,MYF(0)));
-      VOID(my_raid_delete(param->temp_filename,share->base.raid_chunks,
-			  MYF(MY_WME)));
+      (void) my_close(new_file,MYF(0));
+      (void) my_raid_delete(param->temp_filename,share->base.raid_chunks,
+			  MYF(MY_WME));
       if (info->dfile == new_file)
 	info->dfile= -1;
     }
@@ -2576,7 +2591,7 @@ err:
   my_free((uchar*) sort_info.key_block,MYF(MY_ALLOW_ZERO_PTR));
   my_free((uchar*) sort_info.ft_buf, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sort_info.buff,MYF(MY_ALLOW_ZERO_PTR));
-  VOID(end_io_cache(&param->read_cache));
+  (void) end_io_cache(&param->read_cache);
   info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
   if (!got_error && (param->testflag & T_UNPACK))
   {
@@ -2628,7 +2643,7 @@ err:
     <>0	Error
 */
 
-int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
+int mi_repair_parallel(HA_CHECK *param, register MI_INFO *info,
 			const char * name, int rep_quick)
 {
 #ifndef THREAD
@@ -2647,7 +2662,7 @@ int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
   char llbuff[22];
   IO_CACHE new_data_cache; /* For non-quick repair. */
   IO_CACHE_SHARE io_share;
-  SORT_INFO sort_info;
+  MI_SORT_INFO sort_info;
   ulonglong key_map;
   pthread_attr_t thr_attr;
   ulong max_pack_reclength;
@@ -2672,14 +2687,14 @@ int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
   /*
     Quick repair (not touching data file, rebuilding indexes):
     {
-      Read  cache is (MI_CHECK *param)->read_cache using info->dfile.
+      Read  cache is (HA_CHECK *param)->read_cache using info->dfile.
     }
 
     Non-quick repair (rebuilding data file and indexes):
     {
       Master thread:
 
-        Read  cache is (MI_CHECK *param)->read_cache using info->dfile.
+        Read  cache is (HA_CHECK *param)->read_cache using info->dfile.
         Write cache is (MI_INFO   *info)->rec_cache  using new_file.
 
       Slave threads:
@@ -2927,8 +2942,8 @@ int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
     */
     sort_param[i].read_cache= ((rep_quick || !i) ? param->read_cache :
                                new_data_cache);
-    DBUG_PRINT("io_cache_share", ("thread: %u  read_cache: 0x%lx",
-                                  i, (long) &sort_param[i].read_cache));
+    DBUG_PRINT("io_cache_share", ("thread: %u  read_cache: %p",
+                                  i, &sort_param[i].read_cache));
 
     /*
       two approaches: the same amount of memory for each thread
@@ -3015,7 +3030,7 @@ int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
     goto err;
   }
 
-  if (rep_quick & T_FORCE_UNIQUENESS)
+  if (rep_quick && (param->testflag & T_FORCE_UNIQUENESS))
   {
     my_off_t skr=info->state->data_file_length+
       (share->options & HA_OPTION_COMPRESS_RECORD ?
@@ -3026,15 +3041,18 @@ int mi_repair_parallel(MI_CHECK *param, register MI_INFO *info,
       skr=share->base.reloc*share->base.min_pack_length;
 #endif
     if (skr != sort_info.filelength && !info->s->base.raid_type)
+    {
+      DBUG_ASSERT(!share->physical_logging);
       if (my_chsize(info->dfile,skr,0,MYF(0)))
 	mi_check_print_warning(param,
 			       "Can't change size of datafile,  error: %d",
 			       my_errno);
+    }
   }
   if (param->testflag & T_CALC_CHECKSUM)
     info->state->checksum=param->glob_crc;
 
-  if (my_chsize(share->kfile,info->state->key_file_length,0,MYF(0)))
+  if (chsize_kfile(info))
     mi_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d", my_errno);
 
@@ -3059,7 +3077,7 @@ err:
     the share by remove_io_thread() or it was not yet started (if the
     error happend before creating the thread).
   */
-  VOID(end_io_cache(&info->rec_cache));
+  (void) end_io_cache(&info->rec_cache);
   /*
     Destroy the new data cache in case of non-quick repair. All slave
     threads did either detach from the share by remove_io_thread()
@@ -3067,7 +3085,7 @@ err:
     creating the threads).
   */
   if (!rep_quick)
-    VOID(end_io_cache(&new_data_cache));
+    (void) end_io_cache(&new_data_cache);
   if (!got_error)
   {
     /* Replace the actual file with the temporary file */
@@ -3075,6 +3093,7 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile=new_file= -1;
+      DBUG_ASSERT(!share->physical_logging);
       if (change_to_newfile(share->data_file_name,MI_NAME_DEXT,
 			    DATA_TMP_EXT, share->base.raid_chunks,
 			    (param->testflag & T_BACKUP_DATA ?
@@ -3089,9 +3108,9 @@ err:
       mi_check_print_error(param,"%d when fixing table",my_errno);
     if (new_file >= 0)
     {
-      VOID(my_close(new_file,MYF(0)));
-      VOID(my_raid_delete(param->temp_filename,share->base.raid_chunks,
-			  MYF(MY_WME)));
+      (void) my_close(new_file,MYF(0));
+      (void) my_raid_delete(param->temp_filename,share->base.raid_chunks,
+			  MYF(MY_WME));
       if (info->dfile == new_file)
 	info->dfile= -1;
     }
@@ -3108,7 +3127,7 @@ err:
   my_free((uchar*) sort_info.key_block,MYF(MY_ALLOW_ZERO_PTR));
   my_free((uchar*) sort_param,MYF(MY_ALLOW_ZERO_PTR));
   my_free(sort_info.buff,MYF(MY_ALLOW_ZERO_PTR));
-  VOID(end_io_cache(&param->read_cache));
+  (void) end_io_cache(&param->read_cache);
   info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
   if (!got_error && (param->testflag & T_UNPACK))
   {
@@ -3124,7 +3143,7 @@ err:
 static int sort_key_read(MI_SORT_PARAM *sort_param, void *key)
 {
   int error;
-  SORT_INFO *sort_info=sort_param->sort_info;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
   MI_INFO *info=sort_info->info;
   DBUG_ENTER("sort_key_read");
 
@@ -3151,7 +3170,7 @@ static int sort_key_read(MI_SORT_PARAM *sort_param, void *key)
 static int sort_ft_key_read(MI_SORT_PARAM *sort_param, void *key)
 {
   int error;
-  SORT_INFO *sort_info=sort_param->sort_info;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
   MI_INFO *info=sort_info->info;
   FT_WORD *wptr=0;
   DBUG_ENTER("sort_ft_key_read");
@@ -3238,8 +3257,8 @@ static int sort_get_next_record(MI_SORT_PARAM *sort_param)
   my_off_t pos;
   uchar *to;
   MI_BLOCK_INFO block_info;
-  SORT_INFO *sort_info=sort_param->sort_info;
-  MI_CHECK *param=sort_info->param;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
+  HA_CHECK *param=sort_info->param;
   MI_INFO *info=sort_info->info;
   MYISAM_SHARE *share=info->s;
   char llbuff[22],llbuff2[22];
@@ -3249,6 +3268,9 @@ static int sort_get_next_record(MI_SORT_PARAM *sort_param)
     DBUG_RETURN(1);
 
   switch (share->data_file_type) {
+  case BLOCK_RECORD:
+    DBUG_ASSERT(0);                           /* Impossible */
+    break;
   case STATIC_RECORD:
     for (;;)
     {
@@ -3273,7 +3295,9 @@ static int sort_get_next_record(MI_SORT_PARAM *sort_param)
       {
 	if (sort_param->calc_checksum)
 	  param->glob_crc+= (info->checksum=
-			     mi_static_checksum(info,sort_param->record));
+                             (*info->s->calc_check_checksum)(info,
+                                                             sort_param->
+                                                             record));
 	DBUG_RETURN(0);
       }
       if (!sort_param->fix_datafile && sort_param->master)
@@ -3549,7 +3573,8 @@ static int sort_get_next_record(MI_SORT_PARAM *sort_param)
 	if (sort_param->read_cache.error < 0)
 	  DBUG_RETURN(1);
 	if (sort_param->calc_checksum)
-	  info->checksum= mi_checksum(info, sort_param->record);
+	  info->checksum= (*info->s->calc_check_checksum)(info,
+                                                          sort_param->record);
 	if ((param->testflag & (T_EXTEND | T_REP)) || searching)
 	{
 	  if (_mi_rec_check(info, sort_param->record, sort_param->rec_buff,
@@ -3634,11 +3659,13 @@ static int sort_get_next_record(MI_SORT_PARAM *sort_param)
       info->packed_length=block_info.rec_len;
       if (sort_param->calc_checksum)
 	param->glob_crc+= (info->checksum=
-                           mi_checksum(info, sort_param->record));
+                           (*info->s->calc_check_checksum)(info,
+                                                           sort_param->
+                                                           record));
       DBUG_RETURN(0);
     }
   }
-  DBUG_RETURN(1);		/* Impossible */
+  DBUG_RETURN(1);                               /* Impossible */
 }
 
 
@@ -3664,8 +3691,8 @@ int sort_write_record(MI_SORT_PARAM *sort_param)
   ulong block_length,reclength;
   uchar *from;
   uchar block_buff[8];
-  SORT_INFO *sort_info=sort_param->sort_info;
-  MI_CHECK *param=sort_info->param;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
+  HA_CHECK *param=sort_info->param;
   MI_INFO *info=sort_info->info;
   MYISAM_SHARE *share=info->s;
   DBUG_ENTER("sort_write_record");
@@ -3673,6 +3700,9 @@ int sort_write_record(MI_SORT_PARAM *sort_param)
   if (sort_param->fix_datafile)
   {
     switch (sort_info->new_data_file_type) {
+    case BLOCK_RECORD:
+      DBUG_ASSERT(0);                           /* Impossible */
+      break;
     case STATIC_RECORD:
       if (my_b_write(&info->rec_cache,sort_param->record,
 		     share->base.pack_reclength))
@@ -3682,7 +3712,6 @@ int sort_write_record(MI_SORT_PARAM *sort_param)
       }
       sort_param->filepos+=share->base.pack_reclength;
       info->s->state.split++;
-      /* sort_info->param->glob_crc+=mi_static_checksum(info, sort_param->record); */
       break;
     case DYNAMIC_RECORD:
       if (! info->blobs)
@@ -3691,7 +3720,7 @@ int sort_write_record(MI_SORT_PARAM *sort_param)
       {
 	/* must be sure that local buffer is big enough */
 	reclength=info->s->base.pack_reclength+
-	  _my_calc_total_blob_length(info,sort_param->record)+
+	  _mi_calc_total_blob_length(info,sort_param->record)+
 	  ALIGN_SIZE(MI_MAX_DYN_BLOCK_HEADER)+MI_SPLIT_LENGTH+
 	  MI_DYN_DELETE_BLOCK_HEADER;
 	if (sort_info->buff_length < reclength)
@@ -3705,10 +3734,9 @@ int sort_write_record(MI_SORT_PARAM *sort_param)
 	from= sort_info->buff+ALIGN_SIZE(MI_MAX_DYN_BLOCK_HEADER);
       }
       /* We can use info->checksum here as only one thread calls this. */
-      info->checksum=mi_checksum(info,sort_param->record);
+      info->checksum= (*info->s->calc_check_checksum)(info,sort_param->record);
       reclength=_mi_rec_pack(info,from,sort_param->record);
       flag=0;
-      /* sort_info->param->glob_crc+=info->checksum; */
 
       do
       {
@@ -3758,7 +3786,7 @@ int sort_write_record(MI_SORT_PARAM *sort_param)
     {
       char llbuff[22];
       printf("%s\r", llstr(info->state->records,llbuff));
-      VOID(fflush(stdout));
+      (void) fflush(stdout);
     }
   }
   DBUG_RETURN(0);
@@ -3780,24 +3808,26 @@ static int sort_key_write(MI_SORT_PARAM *sort_param, const void *a)
 {
   uint diff_pos[2];
   char llbuff[22],llbuff2[22];
-  SORT_INFO *sort_info=sort_param->sort_info;
-  MI_CHECK *param= sort_info->param;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
+  HA_CHECK *param= sort_info->param;
   int cmp;
 
   if (sort_info->key_block->inited)
   {
-    cmp=ha_key_cmp(sort_param->seg,sort_info->key_block->lastkey,
-		   (uchar*) a, USE_WHOLE_KEY,SEARCH_FIND | SEARCH_UPDATE,
+    cmp=ha_key_cmp(sort_param->seg, (uchar*) sort_info->key_block->lastkey,
+		   (uchar*) a, USE_WHOLE_KEY,
+                   SEARCH_FIND | SEARCH_UPDATE | SEARCH_INSERT,
 		   diff_pos);
     if (param->stats_method == MI_STATS_METHOD_NULLS_NOT_EQUAL)
-      ha_key_cmp(sort_param->seg,sort_info->key_block->lastkey,
+      ha_key_cmp(sort_param->seg, (uchar*) sort_info->key_block->lastkey,
                  (uchar*) a, USE_WHOLE_KEY, 
                  SEARCH_FIND | SEARCH_NULL_ARE_NOT_EQUAL, diff_pos);
     else if (param->stats_method == MI_STATS_METHOD_IGNORE_NULLS)
     {
       diff_pos[0]= mi_collect_stats_nonulls_next(sort_param->seg,
                                                  sort_param->notnull,
-                                                 sort_info->key_block->lastkey,
+                                                 (uchar*) sort_info->
+                                                 key_block->lastkey,
                                                  (uchar*)a);
     }
     sort_param->unique[diff_pos[0]-1]++;
@@ -3820,8 +3850,8 @@ static int sort_key_write(MI_SORT_PARAM *sort_param, const void *a)
 			   llstr(sort_info->info->lastpos,llbuff),
 			   llstr(get_record_for_key(sort_info->info,
 						    sort_param->keyinfo,
-						    sort_info->key_block->
-						    lastkey),
+						    (uchar*) sort_info->
+                                                    key_block->lastkey),
 				 llbuff2));
     param->testflag|=T_RETRY_WITHOUT_QUICK;
     if (sort_info->param->testflag & T_VERBOSE)
@@ -3842,7 +3872,7 @@ static int sort_key_write(MI_SORT_PARAM *sort_param, const void *a)
 
 int sort_ft_buf_flush(MI_SORT_PARAM *sort_param)
 {
-  SORT_INFO *sort_info=sort_param->sort_info;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
   SORT_KEY_BLOCKS *key_block=sort_info->key_block;
   MYISAM_SHARE *share=sort_info->info->s;
   uint val_off, val_len;
@@ -3852,19 +3882,19 @@ int sort_ft_buf_flush(MI_SORT_PARAM *sort_param)
 
   val_len=share->ft2_keyinfo.keylength;
   get_key_full_length_rdonly(val_off, ft_buf->lastkey);
-  to=ft_buf->lastkey+val_off;
+  to= (uchar*) ft_buf->lastkey+val_off;
 
   if (ft_buf->buf)
   {
     /* flushing first-level tree */
-    error=sort_insert_key(sort_param,key_block,ft_buf->lastkey,
+    error=sort_insert_key(sort_param,key_block, (uchar*) ft_buf->lastkey,
 			  HA_OFFSET_ERROR);
     for (from=to+val_len;
-         !error && from < ft_buf->buf;
+         !error && from < (uchar*) ft_buf->buf;
          from+= val_len)
     {
       memcpy(to, from, val_len);
-      error=sort_insert_key(sort_param,key_block,ft_buf->lastkey,
+      error=sort_insert_key(sort_param,key_block, (uchar*) ft_buf->lastkey,
 			    HA_OFFSET_ERROR);
     }
     return error;
@@ -3873,8 +3903,8 @@ int sort_ft_buf_flush(MI_SORT_PARAM *sort_param)
   error=flush_pending_blocks(sort_param);
   /* updating lastkey with second-level tree info */
   ft_intXstore(ft_buf->lastkey+val_off, -ft_buf->count);
-  _mi_dpointer(sort_info->info, ft_buf->lastkey+val_off+HA_FT_WLEN,
-      share->state.key_root[sort_param->key]);
+  _mi_dpointer(sort_info->info, (uchar*) ft_buf->lastkey+val_off+HA_FT_WLEN,
+               share->state.key_root[sort_param->key]);
   /* restoring first level tree data in sort_info/sort_param */
   sort_info->key_block=sort_info->key_block_end- sort_info->param->sort_key_blocks;
   sort_param->keyinfo=share->keyinfo+sort_param->key;
@@ -3882,14 +3912,14 @@ int sort_ft_buf_flush(MI_SORT_PARAM *sort_param)
   /* writing lastkey in first-level tree */
   return error ? error :
                  sort_insert_key(sort_param,sort_info->key_block,
-                                 ft_buf->lastkey,HA_OFFSET_ERROR);
+                                 (uchar*) ft_buf->lastkey,HA_OFFSET_ERROR);
 }
 
 static int sort_ft_key_write(MI_SORT_PARAM *sort_param, const void *a)
 {
   uint a_len, val_off, val_len, error;
   uchar *p;
-  SORT_INFO *sort_info=sort_param->sort_info;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
   SORT_FT_BUF *ft_buf=sort_info->ft_buf;
   SORT_KEY_BLOCKS *key_block=sort_info->key_block;
 
@@ -3919,9 +3949,9 @@ static int sort_ft_key_write(MI_SORT_PARAM *sort_param, const void *a)
   }
   get_key_full_length_rdonly(val_off, ft_buf->lastkey);
 
-  if (mi_compare_text(sort_param->seg->charset,
+  if (ha_compare_text(sort_param->seg->charset,
                       ((uchar *)a)+1,a_len-1,
-                      ft_buf->lastkey+1,val_off-1, 0, 0)==0)
+                      (uchar*) ft_buf->lastkey+1,val_off-1, 0, 0)==0)
   {
     if (!ft_buf->buf) /* store in second-level tree */
     {
@@ -3937,16 +3967,16 @@ static int sort_ft_key_write(MI_SORT_PARAM *sort_param, const void *a)
       return 0;
 
     /* converting to two-level tree */
-    p=ft_buf->lastkey+val_off;
+    p= (uchar*) ft_buf->lastkey+val_off;
 
     while (key_block->inited)
       key_block++;
     sort_info->key_block=key_block;
     sort_param->keyinfo=& sort_info->info->s->ft2_keyinfo;
-    ft_buf->count=(ft_buf->buf - p)/val_len;
+    ft_buf->count=((uchar*) ft_buf->buf - p)/val_len;
 
     /* flushing buffer to second-level tree */
-    for (error=0; !error && p < ft_buf->buf; p+= val_len)
+    for (error=0; !error && p < (uchar*) ft_buf->buf; p+= val_len)
       error=sort_insert_key(sort_param,key_block,p,HA_OFFSET_ERROR);
     ft_buf->buf=0;
     return error;
@@ -3994,13 +4024,13 @@ static int sort_insert_key(MI_SORT_PARAM *sort_param,
   MI_KEY_PARAM s_temp;
   MI_INFO *info;
   MI_KEYDEF *keyinfo=sort_param->keyinfo;
-  SORT_INFO *sort_info= sort_param->sort_info;
-  MI_CHECK *param=sort_info->param;
+  MI_SORT_INFO *sort_info= sort_param->sort_info;
+  HA_CHECK *param=sort_info->param;
   DBUG_ENTER("sort_insert_key");
 
-  anc_buff=key_block->buff;
+  anc_buff= (uchar*) key_block->buff;
   info=sort_info->info;
-  lastkey=key_block->lastkey;
+  lastkey= (uchar*) key_block->lastkey;
   nod_flag= (key_block == sort_info->key_block ? 0 :
 	     info->s->base.key_reflength);
 
@@ -4013,7 +4043,7 @@ static int sort_insert_key(MI_SORT_PARAM *sort_param,
       DBUG_RETURN(1);
     }
     a_length=2+nod_flag;
-    key_block->end_pos=anc_buff+2;
+    key_block->end_pos= (char*) anc_buff+2;
     lastkey=0;					/* No previous key in block */
   }
   else
@@ -4021,18 +4051,18 @@ static int sort_insert_key(MI_SORT_PARAM *sort_param,
 
 	/* Save pointer to previous block */
   if (nod_flag)
-    _mi_kpointer(info,key_block->end_pos,prev_block);
+    _mi_kpointer(info,(uchar*) key_block->end_pos,prev_block);
 
   t_length=(*keyinfo->pack_key)(keyinfo,nod_flag,
 				(uchar*) 0,lastkey,lastkey,key,
 				 &s_temp);
-  (*keyinfo->store_key)(keyinfo, key_block->end_pos+nod_flag,&s_temp);
+  (*keyinfo->store_key)(keyinfo, (uchar*) key_block->end_pos+nod_flag,&s_temp);
   a_length+=t_length;
   mi_putint(anc_buff,a_length,nod_flag);
   key_block->end_pos+=t_length;
   if (a_length <= keyinfo->block_length)
   {
-    VOID(_mi_move_key(keyinfo,key_block->lastkey,key));
+    (void) _mi_move_key(keyinfo,key_block->lastkey,key);
     key_block->last_length=a_length-t_length;
     DBUG_RETURN(0);
   }
@@ -4051,13 +4081,21 @@ static int sort_insert_key(MI_SORT_PARAM *sort_param,
     if (_mi_write_keypage(info, keyinfo, filepos, DFLT_INIT_HITS, anc_buff))
       DBUG_RETURN(1);
   }
-  else if (my_pwrite(info->s->kfile,(uchar*) anc_buff,
-		     (uint) keyinfo->block_length,filepos, param->myf_rw))
-    DBUG_RETURN(1);
+  else
+  {
+    if (my_pwrite(info->s->kfile, anc_buff,
+                  keyinfo->block_length, filepos, param->myf_rw))
+      DBUG_RETURN(1);
+    if (unlikely(mi_log_index_pages_physical &&
+                 mi_get_physical_logging_state(info->s)))
+      myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYI, info->s, anc_buff,
+                                 keyinfo->block_length, filepos);
+  }
   DBUG_DUMP("buff",(uchar*) anc_buff,mi_getint(anc_buff));
 
 	/* Write separator-key to block in next level */
-  if (sort_insert_key(sort_param,key_block+1,key_block->lastkey,filepos))
+  if (sort_insert_key(sort_param,key_block+1,(uchar*) key_block->lastkey,
+                      filepos))
     DBUG_RETURN(1);
 
 	/* clear old block and write new key in it */
@@ -4073,8 +4111,8 @@ static int sort_delete_record(MI_SORT_PARAM *sort_param)
   uint i;
   int old_file,error;
   uchar *key;
-  SORT_INFO *sort_info=sort_param->sort_info;
-  MI_CHECK *param=sort_info->param;
+  MI_SORT_INFO *sort_info=sort_param->sort_info;
+  HA_CHECK *param=sort_info->param;
   MI_INFO *info=sort_info->info;
   DBUG_ENTER("sort_delete_record");
 
@@ -4130,7 +4168,7 @@ int flush_pending_blocks(MI_SORT_PARAM *sort_param)
   uint nod_flag,length;
   my_off_t filepos,key_file_length;
   SORT_KEY_BLOCKS *key_block;
-  SORT_INFO *sort_info= sort_param->sort_info;
+  MI_SORT_INFO *sort_info= sort_param->sort_info;
   myf myf_rw=sort_info->param->myf_rw;
   MI_INFO *info=sort_info->info;
   MI_KEYDEF *keyinfo=sort_param->keyinfo;
@@ -4143,7 +4181,7 @@ int flush_pending_blocks(MI_SORT_PARAM *sort_param)
     key_block->inited=0;
     length=mi_getint(key_block->buff);
     if (nod_flag)
-      _mi_kpointer(info,key_block->end_pos,filepos);
+      _mi_kpointer(info,(uchar*) key_block->end_pos,filepos);
     key_file_length=info->state->key_file_length;
     bzero((uchar*) key_block->buff+length, keyinfo->block_length-length);
     if ((filepos=_mi_new(info,keyinfo,DFLT_INIT_HITS)) == HA_OFFSET_ERROR)
@@ -4153,12 +4191,20 @@ int flush_pending_blocks(MI_SORT_PARAM *sort_param)
     if (key_file_length == info->state->key_file_length)
     {
       if (_mi_write_keypage(info, keyinfo, filepos,
-                            DFLT_INIT_HITS, key_block->buff))
+                            DFLT_INIT_HITS, (uchar*) key_block->buff))
 	DBUG_RETURN(1);
     }
-    else if (my_pwrite(info->s->kfile,(uchar*) key_block->buff,
-		       (uint) keyinfo->block_length,filepos, myf_rw))
-      DBUG_RETURN(1);
+    else
+    {
+      if (my_pwrite(info->s->kfile, key_block->buff,
+                    keyinfo->block_length,filepos, myf_rw))
+        DBUG_RETURN(1);
+      if (unlikely(mi_log_index_pages_physical &&
+                   mi_get_physical_logging_state(info->s)))
+        myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYI, info->s,
+                                   key_block->buff, keyinfo->block_length,
+                                   filepos);
+    }
     DBUG_DUMP("buff",(uchar*) key_block->buff,length);
     nod_flag=1;
   }
@@ -4168,7 +4214,7 @@ int flush_pending_blocks(MI_SORT_PARAM *sort_param)
 
 	/* alloc space and pointers for key_blocks */
 
-static SORT_KEY_BLOCKS *alloc_key_blocks(MI_CHECK *param, uint blocks,
+static SORT_KEY_BLOCKS *alloc_key_blocks(HA_CHECK *param, uint blocks,
                                          uint buffer_length)
 {
   reg1 uint i;
@@ -4205,7 +4251,7 @@ int test_if_almost_full(MI_INFO *info)
 
 	/* Recreate table with bigger more alloced record-data */
 
-int recreate_table(MI_CHECK *param, MI_INFO **org_info, char *filename)
+int recreate_table(HA_CHECK *param, MI_INFO **org_info, char *filename)
 {
   int error;
   MI_INFO info;
@@ -4311,7 +4357,7 @@ int recreate_table(MI_CHECK *param, MI_INFO **org_info, char *filename)
   set_if_bigger(file_length,tmp_length);
   set_if_bigger(file_length,(ulonglong) share.base.max_data_file_length);
 
-  VOID(mi_close(*org_info));
+  (void) mi_close(*org_info);
   bzero((char*) &create_info,sizeof(create_info));
   create_info.max_rows=max(max_records,share.base.records);
   create_info.reloc_rows=share.base.reloc;
@@ -4352,7 +4398,7 @@ int recreate_table(MI_CHECK *param, MI_INFO **org_info, char *filename)
   }
   /* We are modifing */
   (*org_info)->s->options&= ~HA_OPTION_READ_ONLY_DATA;
-  VOID(_mi_readinfo(*org_info,F_WRLCK,0));
+  (void) _mi_readinfo(*org_info,F_WRLCK,0);
   (*org_info)->state->records=info.state->records;
   if (share.state.create_time)
     (*org_info)->s->state.create_time=share.state.create_time;
@@ -4378,7 +4424,7 @@ end:
 
 	/* write suffix to data file if neaded */
 
-int write_data_suffix(SORT_INFO *sort_info, my_bool fix_datafile)
+int write_data_suffix(MI_SORT_INFO *sort_info, my_bool fix_datafile)
 {
   MI_INFO *info=sort_info->info;
 
@@ -4399,7 +4445,7 @@ int write_data_suffix(SORT_INFO *sort_info, my_bool fix_datafile)
 
 	/* Update state and myisamchk_time of indexfile */
 
-int update_state_info(MI_CHECK *param, MI_INFO *info,uint update)
+int update_state_info(HA_CHECK *param, MI_INFO *info,uint update)
 {
   MYISAM_SHARE *share=info->s;
 
@@ -4438,7 +4484,7 @@ int update_state_info(MI_CHECK *param, MI_INFO *info,uint update)
     */
     if (info->lock_type == F_WRLCK)
       share->state.state= *info->state;
-    if (mi_state_info_write(share->kfile,&share->state,1+2))
+    if (mi_state_info_write(share, share->kfile, &share->state, 1+2))
       goto err;
     share->changed=0;
   }
@@ -4471,7 +4517,7 @@ err:
 	  param->auto_increment is bigger than the biggest key.
 	*/
 
-void update_auto_increment_key(MI_CHECK *param, MI_INFO *info,
+void update_auto_increment_key(HA_CHECK *param, MI_INFO *info,
 			       my_bool repair_only)
 {
   uchar *record= 0;
@@ -4703,7 +4749,7 @@ my_bool mi_test_if_sort_rep(MI_INFO *info, ha_rows rows,
 
 
 static void
-set_data_file_type(SORT_INFO *sort_info, MYISAM_SHARE *share)
+set_data_file_type(MI_SORT_INFO *sort_info, MYISAM_SHARE *share)
 {
   if ((sort_info->new_data_file_type=share->data_file_type) ==
       COMPRESSED_RECORD && sort_info->param->testflag & T_UNPACK)
@@ -4721,4 +4767,45 @@ set_data_file_type(SORT_INFO *sort_info, MYISAM_SHARE *share)
     mi_setup_functions(&tmp);
     share->delete_record=tmp.delete_record;
   }
+}
+
+/**
+  Changes the size of an index file, and logs the operation to the physical
+  log if needed.
+
+  The only known case when my_chsize(kfile) can happen on a table doing
+  physical logging, is when the table was empty, bulk insert on it has been
+  done, it's the end of bulk insert: we re-enable indices (mi_repair*()): thus
+  my_chsize() is in fact a void operation (file already has grown, starting
+  from empty, info->state->key_file_length is up-to-date and so file already
+  has the requested size). We however log the operation, in case there are
+  unknown cases.
+
+  @param  info            table
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    error
+*/
+
+static int chsize_kfile(MI_INFO *info)
+{
+  MYISAM_SHARE *share= info->s;
+  my_off_t new_length= info->state->key_file_length;
+  int ret;
+#ifndef DBUG_OFF
+  my_bool no_length_change=
+    (my_seek(share->kfile, 0L, MY_SEEK_END, MYF(0)) == new_length);
+#endif
+
+  ret= my_chsize(share->kfile, new_length, 0, MYF(0));
+
+  if (unlikely(mi_log_index_pages_physical &&
+               mi_get_physical_logging_state(share)))
+  {
+    DBUG_ASSERT(no_length_change);
+    myisam_log_chsize_kfile_physical(share, new_length);
+  }
+
+  return ret;
 }

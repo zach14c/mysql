@@ -31,10 +31,8 @@
 
 int mi_rrnd(MI_INFO *info, uchar *buf, register my_off_t filepos)
 {
-  my_bool skip_deleted_blocks;
+  my_bool skip_deleted_blocks= 0;
   DBUG_ENTER("mi_rrnd");
-
-  skip_deleted_blocks=0;
 
   if (filepos == HA_OFFSET_ERROR)
   {

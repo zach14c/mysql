@@ -1,6 +1,12 @@
 #include "../mysql_priv.h"
 
 #include "logger.h"
+#include "image_info.h"
+
+/** @file
+ 
+ @todo Log errors to progress tables
+ */ 
 
 namespace backup {
 
@@ -17,37 +23,52 @@ namespace backup {
                      for other messages set to 0
   @param msg         message text
 
+  @note It should be possible to use this method (and other error reporting
+  methods relying on it) right after creation of the Logger object instance.
+  The message should be written to these destinations which are available at
+  the moment. Destinations which are not ready/initialized yet should be 
+  silently ignored.
+
   @returns 0 on success.
  */
 int Logger::write_message(log_level::value level, int error_code,
                           const char *msg)
 {
-   const char *prefix= m_type == BACKUP ? "Backup" : "Restore";
    char buf[ERRMSGSIZE + 30];
+   const char *out= msg;
 
-   my_snprintf(buf,sizeof(buf),"%s: %s",prefix,msg);
-
+   if (m_state == READY || m_state == RUNNING)
+   {
+     my_snprintf(buf, sizeof(buf), "%s: %s", 
+                 m_type == BACKUP ? "Backup" : "Restore" , msg);
+     out= buf;
+   }
+   
    switch (level) {
    case log_level::ERROR:
      if (m_save_errors)
-       errors.push_front(new MYSQL_ERROR(::current_thd,error_code,
-                                         MYSQL_ERROR::WARN_LEVEL_ERROR,msg));
-     sql_print_error(buf);
+       errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
+                                         MYSQL_ERROR::WARN_LEVEL_ERROR, msg));
+     sql_print_error(out);
      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
                          error_code, msg);
-     DBUG_PRINT("backup_log",("[ERROR] %s",buf));
+     DBUG_PRINT("backup_log",("[ERROR] %s", out));
+     
+     if (m_state == READY || m_state == RUNNING)
+       report_ob_error(m_thd, m_op_id, error_code);
+     
      return 0;
 
    case log_level::WARNING:
-     sql_print_warning(buf);
+     sql_print_warning(out);
      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                          error_code, msg);
-     DBUG_PRINT("backup_log",("[Warning] %s",buf));
+     DBUG_PRINT("backup_log",("[Warning] %s", out));
      return 0;
 
    case log_level::INFO:
-     sql_print_information(buf);
-     DBUG_PRINT("backup_log",("[Info] %s",buf));
+     sql_print_information(out);
+     DBUG_PRINT("backup_log",("[Info] %s", out));
      return 0;
 
    default: return ERROR;
@@ -67,7 +88,7 @@ int Logger::write_message(log_level::value level, int error_code,
  */
 int Logger::v_report_error(log_level::value level, int error_code, va_list args)
 {
-  return v_write_message(level,error_code,ER_SAFE(error_code),args);
+  return v_write_message(level, error_code, ER_SAFE(error_code), args);
 }
 
 /**
@@ -82,9 +103,30 @@ int Logger::v_write_message(log_level::value level, int error_code,
 {
   char buf[ERRMSGSIZE + 20];
 
-  my_vsnprintf(buf,sizeof(buf),format,args);
-  return write_message(level,error_code,buf);
+  my_vsnprintf(buf, sizeof(buf), format, args);
+  return write_message(level, error_code, buf);
 }
 
+/**
+  Report statistics from backup/restore catalogue before the main operation
+  starts.
+ */ 
+void Logger::report_stats_pre(const Image_info &info)
+{
+  DBUG_ASSERT(m_state == RUNNING);
+  
+  report_ob_num_objects(m_thd, m_op_id, info.table_count());
+}
+
+/**
+  Report statistics from backup/restore catalogue after the operation is
+  completed.
+ */ 
+void Logger::report_stats_post(const Image_info &info)
+{
+  DBUG_ASSERT(m_state == RUNNING);
+  
+  report_ob_size(m_thd, m_op_id, info.data_size);
+}
 
 } // backup namespace

@@ -28,6 +28,7 @@
 #include "mysql_priv.h"
 #include "rpl_rli.h"
 #include "rpl_record.h"
+#include "slave.h"
 #include <my_bitmap.h>
 #include "log_event.h"
 #include "sql_audit.h"
@@ -200,11 +201,18 @@ bool foreign_key_prefix(Key *a, Key *b)
 ** Thread specific functions
 ****************************************************************************/
 
-Open_tables_state::Open_tables_state(ulong version_arg)
-  :version(version_arg), state_flags(0U)
+/** Push an error to the error stack and return TRUE for now. */
+
+bool
+Reprepare_observer::report_error(THD *thd)
 {
-  reset_open_tables_state();
+  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
+
+  m_invalidated= TRUE;
+
+  return TRUE;
 }
+
 
 /*
   The following functions form part of the C plugin API
@@ -371,6 +379,7 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
 void
 Diagnostics_area::reset_diagnostics_area()
 {
+  DBUG_ENTER("reset_diagnostics_area");
 #ifdef DBUG_OFF
   can_overwrite_status= FALSE;
   /** Don't take chances in production */
@@ -384,6 +393,7 @@ Diagnostics_area::reset_diagnostics_area()
   is_sent= FALSE;
   /** Tiny reset in debug mode to see garbage right away */
   m_status= DA_EMPTY;
+  DBUG_VOID_RETURN;
 }
 
 
@@ -397,16 +407,14 @@ Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
                                 ulonglong last_insert_id_arg,
                                 const char *message_arg)
 {
+  DBUG_ENTER("set_ok_status");
   DBUG_ASSERT(! is_set());
-#ifdef DBUG_OFF
   /*
     In production, refuse to overwrite an error or a custom response
     with an OK packet.
   */
   if (is_error() || is_disabled())
     return;
-#endif
-  /** Only allowed to report success if has not yet reported an error */
 
   m_server_status= thd->server_status;
   m_total_warn_count= thd->total_warn_count;
@@ -417,6 +425,7 @@ Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
   else
     m_message[0]= '\0';
   m_status= DA_OK;
+  DBUG_VOID_RETURN;
 }
 
 
@@ -427,17 +436,15 @@ Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
 void
 Diagnostics_area::set_eof_status(THD *thd)
 {
-  /** Only allowed to report eof if has not yet reported an error */
-
+  DBUG_ENTER("set_eof_status");
+  /* Only allowed to report eof if has not yet reported an error */
   DBUG_ASSERT(! is_set());
-#ifdef DBUG_OFF
   /*
     In production, refuse to overwrite an error or a custom response
     with an EOF packet.
   */
   if (is_error() || is_disabled())
     return;
-#endif
 
   m_server_status= thd->server_status;
   /*
@@ -448,6 +455,7 @@ Diagnostics_area::set_eof_status(THD *thd)
   m_total_warn_count= thd->spcont ? 0 : thd->total_warn_count;
 
   m_status= DA_EOF;
+  DBUG_VOID_RETURN;
 }
 
 /**
@@ -458,6 +466,7 @@ void
 Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
                                    const char *message_arg)
 {
+  DBUG_ENTER("set_error_status");
   /*
     Only allowed to report error if has not yet reported a success
     The only exception is when we flush the message to the client,
@@ -474,9 +483,10 @@ Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
 #endif
 
   m_sql_errno= sql_errno_arg;
-  strmake(m_message, message_arg, sizeof(m_message) - 1);
+  strmake(m_message, message_arg, sizeof(m_message)-1);
 
   m_status= DA_ERROR;
+  DBUG_VOID_RETURN;
 }
 
 
@@ -499,7 +509,7 @@ Diagnostics_area::disable_status()
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
               /* statement id */ 0),
-   Open_tables_state(refresh_version), rli_fake(0),
+   rli_fake(0),
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
@@ -525,7 +535,11 @@ THD::THD()
           This is needed to ensure the restore (which uses DDL) is not blocked
           when the DDL blocker is engaged.
   */
-   DDL_exception(FALSE)
+   DDL_exception(FALSE),
+#if defined(ENABLED_DEBUG_SYNC)
+   debug_sync_control(0),
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+   locked_tables_root(NULL)
 {
   ulong tmp;
 
@@ -587,6 +601,7 @@ THD::THD()
   cleanup_done= abort_on_warning= no_warnings_for_error= 0;
   peer_port= 0;					// For SHOW PROCESSLIST
   transaction.m_pending_rows_event= 0;
+  transaction.on= 1;
 #ifdef SIGNAL_WITH_VIO_CLOSE
   active_vio = 0;
 #endif
@@ -599,6 +614,9 @@ THD::THD()
   slave_net = 0;
   command=COM_CONNECT;
   *scramble= '\0';
+
+  /* Call to init() below requires fully initialized Open_tables_state. */
+  init_open_tables_state(this, refresh_version);
 
   init();
   /* Initialize sub structures */
@@ -628,7 +646,7 @@ THD::THD()
 
   tablespace_op=FALSE;
   tmp= sql_rnd_with_mutex();
-  randominit(&rand, tmp + (ulong) &rand, tmp + (ulong) ::global_query_id);
+  my_rnd_init(&rand, tmp + (ulong) &rand, tmp + (ulong) ::global_query_id);
   substitute_null_with_insert_id = FALSE;
   thr_lock_info_init(&lock_info); /* safety: will be reset after start */
   thr_lock_owner_init(&main_lock_id, &lock_info);
@@ -754,6 +772,11 @@ void THD::init(void)
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Initialize the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_init_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 }
 
 
@@ -828,11 +851,13 @@ void THD::cleanup(void)
     ha_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
-  if (locked_tables)
-  {
-    lock=locked_tables; locked_tables=0;
-    close_thread_tables(this);
-  }
+  locked_tables_list.unlock_locked_tables(this);
+
+#if defined(ENABLED_DEBUG_SYNC)
+  /* End the Debug Sync Facility. See debug_sync.cc. */
+  debug_sync_end_thread(this);
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);
@@ -902,6 +927,9 @@ THD::~THD()
   DBUG_ASSERT(lock_info.n_cursors == 0);
   if (!cleanup_done)
     cleanup();
+
+  mdl_context_destroy(&mdl_context);
+  mdl_context_destroy(&handler_mdl_context);
 
   ha_close_connection(this);
   mysql_audit_release(this);
@@ -988,7 +1016,7 @@ void add_diff_to_status(STATUS_VAR *to_var, STATUS_VAR *from_var,
 void THD::awake(THD::killed_state state_to_set)
 {
   DBUG_ENTER("THD::awake");
-  DBUG_PRINT("enter", ("this: 0x%lx", (long) this));
+  DBUG_PRINT("enter", ("this: %p", this));
   THD_CHECK_SENTRY(this);
   safe_mutex_assert_owner(&LOCK_delete); 
 
@@ -1018,8 +1046,9 @@ void THD::awake(THD::killed_state state_to_set)
   if (mysys_var)
   {
     pthread_mutex_lock(&mysys_var->mutex);
-    if (!system_thread)		// Don't abort locks
-      mysys_var->abort=1;
+    if (system_thread == NON_SYSTEM_THREAD ||
+        system_thread == SYSTEM_THREAD_BACKUP)
+      mysys_var->abort= 1; // abort locks
     /*
       This broadcast could be up in the air if the victim thread
       exits the cond in the time between read and broadcast, but that is
@@ -1457,6 +1486,30 @@ void THD::rollback_item_tree_changes()
 }
 
 
+#ifndef EMBEDDED_LIBRARY
+
+/**
+  Check that the endpoint is still available.
+*/
+
+bool THD::vio_is_connected()
+{
+  uint bytes= 0;
+
+  /* End of input is signaled by poll if the socket is aborted. */
+  if (vio_poll_read(net.vio, 0))
+    return TRUE;
+
+  /* Socket is aborted if signaled but no data is available. */
+  if (vio_peek_read(net.vio, &bytes))
+    return TRUE;
+
+  return bytes ? TRUE : FALSE;
+}
+
+#endif
+
+
 /*****************************************************************************
 ** Functions to provide a interface to select results
 *****************************************************************************/
@@ -1571,19 +1624,19 @@ bool select_send::send_data(List<Item> &items)
   Item *item;
   while ((item=li++))
   {
-    if (item->send(protocol, &buffer))
+    if (item->send(protocol, &buffer) || thd->is_error())
     {
       protocol->free();				// Free used buffer
       my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
       break;
     }
   }
-  thd->sent_row_count++;
   if (thd->is_error())
   {
     protocol->remove_last_row();
     DBUG_RETURN(1);
   }
+  thd->sent_row_count++;
   if (thd->vio_ok())
     DBUG_RETURN(protocol->write());
   DBUG_RETURN(0);
@@ -1599,7 +1652,7 @@ bool select_send::send_eof()
   ha_release_temporary_latches(thd);
 
   /* Unlock tables before sending packet to gain some speed */
-  if (thd->lock)
+  if (thd->lock && ! thd->locked_tables_mode)
   {
     mysql_unlock_tables(thd, thd->lock);
     thd->lock=0;
@@ -2113,8 +2166,7 @@ bool select_max_min_finder_subselect::send_data(List<Item> &items)
     if (!cache)
     {
       cache= Item_cache::get_cache(val_item);
-      switch (val_item->result_type())
-      {
+      switch (val_item->result_type()) {
       case REAL_RESULT:
 	op= &select_max_min_finder_subselect::cmp_real;
 	break;
@@ -2128,6 +2180,7 @@ bool select_max_min_finder_subselect::send_data(List<Item> &items)
         op= &select_max_min_finder_subselect::cmp_decimal;
         break;
       case ROW_RESULT:
+      case IMPOSSIBLE_RESULT:
         // This case should never be choosen
 	DBUG_ASSERT(0);
 	op= 0;
@@ -2602,7 +2655,7 @@ bool select_dumpvar::send_eof()
 void TMP_TABLE_PARAM::init()
 {
   DBUG_ENTER("TMP_TABLE_PARAM::init");
-  DBUG_PRINT("enter", ("this: 0x%lx", (ulong)this));
+  DBUG_PRINT("enter", ("this: %p", this));
   field_count= sum_func_count= func_count= hidden_field_count= 0;
   group_parts= group_length= group_null_parts= 0;
   quick_group= 1;
@@ -2794,7 +2847,7 @@ void THD::reset_n_backup_open_tables_state(Open_tables_state *backup)
 {
   DBUG_ENTER("reset_n_backup_open_tables_state");
   backup->set_open_tables_state(this);
-  reset_open_tables_state();
+  reset_open_tables_state(this);
   state_flags|= Open_tables_state::BACKUPS_AVAIL;
   DBUG_VOID_RETURN;
 }
@@ -2809,8 +2862,12 @@ void THD::restore_backup_open_tables_state(Open_tables_state *backup)
   */
   DBUG_ASSERT(open_tables == 0 && temporary_tables == 0 &&
               handler_tables == 0 && derived_tables == 0 &&
-              lock == 0 && locked_tables == 0 &&
-              prelocked_mode == NON_PRELOCKED);
+              lock == 0 &&
+              locked_tables_mode == LTM_NONE &&
+              m_reprepare_observer == NULL);
+  mdl_context_destroy(&mdl_context);
+  mdl_context_destroy(&handler_mdl_context);
+
   set_open_tables_state(backup);
   DBUG_VOID_RETURN;
 }
@@ -2901,6 +2958,18 @@ extern "C" void thd_mark_transaction_to_rollback(MYSQL_THD thd, bool all)
 void THD::reset_sub_statement_state(Sub_statement_state *backup,
                                     uint new_state)
 {
+#ifndef EMBEDDED_LIBRARY
+  /* BUG#33029, if we are replicating from a buggy master, reset
+     auto_inc_intervals_forced to prevent substatement
+     (triggers/functions) from using erroneous INSERT_ID value
+   */
+  if (rpl_master_erroneous_autoinc(this))
+  {
+    DBUG_ASSERT(backup->auto_inc_intervals_forced.nb_elements() == 0);
+    auto_inc_intervals_forced.swap(&backup->auto_inc_intervals_forced);
+  }
+#endif
+  
   backup->options=         options;
   backup->in_sub_stmt=     in_sub_stmt;
   backup->enable_slow_log= enable_slow_log;
@@ -2938,6 +3007,18 @@ void THD::reset_sub_statement_state(Sub_statement_state *backup,
 
 void THD::restore_sub_statement_state(Sub_statement_state *backup)
 {
+#ifndef EMBEDDED_LIBRARY
+  /* BUG#33029, if we are replicating from a buggy master, restore
+     auto_inc_intervals_forced so that the top statement can use the
+     INSERT_ID value set before this statement.
+   */
+  if (rpl_master_erroneous_autoinc(this))
+  {
+    backup->auto_inc_intervals_forced.swap(&auto_inc_intervals_forced);
+    DBUG_ASSERT(backup->auto_inc_intervals_forced.nb_elements() == 0);
+  }
+#endif
+
   /*
     To save resources we want to release savepoints which were created
     during execution of function or trigger before leaving their savepoint
@@ -3565,7 +3646,7 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
     If we are in prelocked mode, the flushing will be done inside the
     top-most close_thread_tables().
   */
-  if (this->prelocked_mode == NON_PRELOCKED)
+  if (this->locked_tables_mode <= LTM_LOCK_TABLES)
     if (int error= binlog_flush_pending_rows_event(TRUE))
       DBUG_RETURN(error);
 
@@ -3623,11 +3704,10 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
       binlog_table_maps= 0;
       DBUG_RETURN(error);
     }
-    break;
 
   case THD::QUERY_TYPE_COUNT:
   default:
-    DBUG_ASSERT(0 <= qtype && qtype < QUERY_TYPE_COUNT);
+    DBUG_ASSERT(qtype < QUERY_TYPE_COUNT);
   }
   DBUG_RETURN(0);
 }
@@ -3641,16 +3721,23 @@ bool Discrete_intervals_list::append(ulonglong start, ulonglong val,
   {
     /* it cannot, so need to add a new interval */
     Discrete_interval *new_interval= new Discrete_interval(start, val, incr);
-    if (unlikely(new_interval == NULL)) // out of memory
-      DBUG_RETURN(1);
-    DBUG_PRINT("info",("adding new auto_increment interval"));
-    if (head == NULL)
-      head= current= new_interval;
-    else
-      tail->next= new_interval;
-    tail= new_interval;
-    elements++;
+    DBUG_RETURN(append(new_interval));
   }
+  DBUG_RETURN(0);
+}
+
+bool Discrete_intervals_list::append(Discrete_interval *new_interval)
+{
+  DBUG_ENTER("Discrete_intervals_list::append");
+  if (unlikely(new_interval == NULL))
+    DBUG_RETURN(1);
+  DBUG_PRINT("info",("adding new auto_increment interval"));
+  if (head == NULL)
+    head= current= new_interval;
+  else
+    tail->next= new_interval;
+  tail= new_interval;
+  elements++;
   DBUG_RETURN(0);
 }
 

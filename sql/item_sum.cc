@@ -68,6 +68,7 @@ bool Item_sum::init_sum_func_check(THD *thd)
   aggr_sel= NULL;
   max_arg_level= -1;
   max_sum_func_level= -1;
+  outer_fields.empty();
   return FALSE;
 }
 
@@ -176,6 +177,7 @@ bool Item_sum::check_sum_func(THD *thd, Item **ref)
                MYF(0));
     return TRUE;
   }
+
   if (in_sum_func)
   {
     /*
@@ -196,6 +198,68 @@ bool Item_sum::check_sum_func(THD *thd, Item **ref)
       set_if_bigger(in_sum_func->max_sum_func_level, aggr_level);
     set_if_bigger(in_sum_func->max_sum_func_level, max_sum_func_level);
   }
+
+  /*
+    Check that non-aggregated fields and sum functions aren't mixed in the
+    same select in the ONLY_FULL_GROUP_BY mode.
+  */
+  if (outer_fields.elements)
+  {
+    Item_field *field;
+    /*
+      Here we compare the nesting level of the select to which an outer field
+      belongs to with the aggregation level of the sum function. All fields in
+      the outer_fields list are checked.
+
+      If the nesting level is equal to the aggregation level then the field is
+        aggregated by this sum function.
+      If the nesting level is less than the aggregation level then the field
+        belongs to an outer select. In this case if there is an embedding sum
+        function add current field to functions outer_fields list. If there is
+        no embedding function then the current field treated as non aggregated
+        and the select it belongs to is marked accordingly.
+      If the nesting level is greater than the aggregation level then it means
+        that this field was added by an inner sum function.
+        Consider an example:
+
+          select avg ( <-- we are here, checking outer.f1
+            select (
+              select sum(outer.f1 + inner.f1) from inner
+            ) from outer)
+          from most_outer;
+
+        In this case we check that no aggregate functions are used in the
+        select the field belongs to. If there are some then an error is
+        raised.
+    */
+    List_iterator<Item_field> of(outer_fields);
+    while ((field= of++))
+    {
+      SELECT_LEX *sel= field->cached_table->select_lex;
+      if (sel->nest_level < aggr_level)
+      {
+        if (in_sum_func)
+        {
+          /*
+            Let upper function decide whether this field is a non
+            aggregated one.
+          */
+          in_sum_func->outer_fields.push_back(field);
+        }
+        else
+          sel->full_group_by_flag|= NON_AGG_FIELD_USED;
+      }
+      if (sel->nest_level > aggr_level &&
+          (sel->full_group_by_flag & SUM_FUNC_USED) &&
+          !sel->group_list.elements)
+      {
+        my_message(ER_MIX_OF_GROUP_FUNC_AND_FIELDS,
+                   ER(ER_MIX_OF_GROUP_FUNC_AND_FIELDS), MYF(0));
+        return TRUE;
+      }
+    }
+  }
+  aggr_sel->full_group_by_flag|= SUM_FUNC_USED;
   update_used_tables();
   thd->lex->in_sum_func= in_sum_func;
   return FALSE;
@@ -3011,6 +3075,8 @@ int dump_leaf_key(uchar* key, element_count count __attribute__((unused)),
       result->append(*res);
   }
 
+  item->row_count++;
+
   /* stop if length of result more than max_length */
   if (result->length() > item->max_length)
   {
@@ -3029,8 +3095,10 @@ int dump_leaf_key(uchar* key, element_count count __attribute__((unused)),
                                           result->length(),
                                           &well_formed_error);
     result->length(old_length + add_length);
-    item->count_cut_values++;
     item->warning_for_row= TRUE;
+    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                        ER_CUT_VALUE_GROUP_CONCAT, ER(ER_CUT_VALUE_GROUP_CONCAT),
+                        item->row_count);
     return 1;
   }
   return 0;
@@ -3050,12 +3118,12 @@ Item_func_group_concat::
 Item_func_group_concat(Name_resolution_context *context_arg,
                        bool distinct_arg, List<Item> *select_list,
                        SQL_LIST *order_list, String *separator_arg)
-  :tmp_table_param(0), warning(0),
-   separator(separator_arg), tree(0), unique_filter(NULL), table(0),
+  :tmp_table_param(0), separator(separator_arg), tree(0),
+   unique_filter(NULL), table(0),
    order(0), context(context_arg),
    arg_count_order(order_list ? order_list->elements : 0),
    arg_count_field(select_list->elements),
-   count_cut_values(0),
+   row_count(0),
    distinct(distinct_arg),
    warning_for_row(FALSE),
    force_copy_fields(0), original(0)
@@ -3103,7 +3171,6 @@ Item_func_group_concat::Item_func_group_concat(THD *thd,
                                                Item_func_group_concat *item)
   :Item_sum(thd, item),
   tmp_table_param(item->tmp_table_param),
-  warning(item->warning),
   separator(item->separator),
   tree(item->tree),
   unique_filter(item->unique_filter),
@@ -3112,7 +3179,7 @@ Item_func_group_concat::Item_func_group_concat(THD *thd,
   context(item->context),
   arg_count_order(item->arg_count_order),
   arg_count_field(item->arg_count_field),
-  count_cut_values(item->count_cut_values),
+  row_count(item->row_count),
   distinct(item->distinct),
   warning_for_row(item->warning_for_row),
   always_null(item->always_null),
@@ -3129,15 +3196,6 @@ void Item_func_group_concat::cleanup()
 {
   DBUG_ENTER("Item_func_group_concat::cleanup");
   Item_sum::cleanup();
-
-  /* Adjust warning message to include total number of cut values */
-  if (warning)
-  {
-    char warn_buff[MYSQL_ERRMSG_SIZE];
-    sprintf(warn_buff, ER(ER_CUT_VALUE_GROUP_CONCAT), count_cut_values);
-    warning->set_msg(current_thd, warn_buff);
-    warning= 0;
-  }
 
   /*
     Free table and tree if they belong to this item (if item have not pointer
@@ -3162,15 +3220,8 @@ void Item_func_group_concat::cleanup()
         delete unique_filter;
         unique_filter= NULL;
       }
-      if (warning)
-      {
-        char warn_buff[MYSQL_ERRMSG_SIZE];
-        sprintf(warn_buff, ER(ER_CUT_VALUE_GROUP_CONCAT), count_cut_values);
-        warning->set_msg(thd, warn_buff);
-        warning= 0;
-      }
     }
-    DBUG_ASSERT(tree == 0 && warning == 0);
+    DBUG_ASSERT(tree == 0);
   }
   DBUG_VOID_RETURN;
 }
@@ -3191,7 +3242,7 @@ void Item_func_group_concat::clear()
   no_appended= TRUE;
   if (tree)
     reset_tree(tree);
-  if (distinct)
+  if (unique_filter)
     unique_filter->reset();
   /* No need to reset the table as we never call write_row */
 }
@@ -3453,17 +3504,6 @@ String* Item_func_group_concat::val_str(String* str)
     /* Tree is used for sorting as in ORDER BY */
     tree_walk(tree, (tree_walk_action)&dump_leaf_key, (void*)this,
               left_root_right);
-  if (count_cut_values && !warning)
-  {
-    /*
-      ER_CUT_VALUE_GROUP_CONCAT needs an argument, but this gets set in
-      Item_func_group_concat::cleanup().
-    */
-    DBUG_ASSERT(table);
-    warning= push_warning(table->in_use, MYSQL_ERROR::WARN_LEVEL_WARN,
-                          ER_CUT_VALUE_GROUP_CONCAT,
-                          ER(ER_CUT_VALUE_GROUP_CONCAT));
-  }
   return &result;
 }
 

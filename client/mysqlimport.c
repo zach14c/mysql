@@ -87,7 +87,7 @@ static struct my_option my_long_options[] =
    0, 0, 0},
   {"debug",'#', "Output debug log. Often this is 'd:t:o,filename'.", 0, 0, 0,
    GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
-  {"debug-check", OPT_DEBUG_CHECK, "Check memory and open file usage at exit .",
+  {"debug-check", OPT_DEBUG_CHECK, "Check memory and open file usage at exit.",
    (uchar**) &debug_check_flag, (uchar**) &debug_check_flag, 0,
    GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"debug-info", OPT_DEBUG_INFO, "Print some debug info at exit.",
@@ -601,8 +601,8 @@ int main(int argc, char **argv)
     pthread_attr_setdetachstate(&attr,
                                 PTHREAD_CREATE_DETACHED);
 
-    VOID(pthread_mutex_init(&counter_mutex, NULL));
-    VOID(pthread_cond_init(&count_threshhold, NULL));
+    pthread_mutex_init(&counter_mutex, NULL);
+    pthread_cond_init(&count_threshhold, NULL);
 
     for (counter= 0; *argv != NULL; argv++) /* Loop through tables */
     {
@@ -641,8 +641,8 @@ int main(int argc, char **argv)
       pthread_cond_timedwait(&count_threshhold, &counter_mutex, &abstime);
     }
     pthread_mutex_unlock(&counter_mutex);
-    VOID(pthread_mutex_destroy(&counter_mutex));
-    VOID(pthread_cond_destroy(&count_threshhold));
+    pthread_mutex_destroy(&counter_mutex);
+    pthread_cond_destroy(&count_threshhold);
     pthread_attr_destroy(&attr);
   }
   else

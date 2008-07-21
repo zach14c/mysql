@@ -241,7 +241,10 @@ static sys_var_long_ptr	sys_delayed_insert_timeout(&vars, "delayed_insert_timeou
 static sys_var_long_ptr	sys_delayed_queue_size(&vars, "delayed_queue_size",
 					       &delayed_queue_size);
 
+#ifdef HAVE_EVENT_SCHEDULER
 static sys_var_event_scheduler sys_event_scheduler(&vars, "event_scheduler");
+#endif
+
 static sys_var_long_ptr	sys_expire_logs_days(&vars, "expire_logs_days",
 					     &expire_logs_days);
 static sys_var_bool_ptr	sys_flush(&vars, "flush", &myisam_flush);
@@ -275,7 +278,7 @@ static sys_var_key_cache_long  sys_key_cache_age_threshold(&vars, "key_cache_age
 							      param_age_threshold));
 static sys_var_bool_ptr	sys_local_infile(&vars, "local_infile",
 					 &opt_local_infile);
-static sys_var_bool_ptr       
+static sys_var_bool_ptr
 sys_trust_function_creators(&vars, "log_bin_trust_function_creators",
                             &trust_function_creators);
 static sys_var_bool_ptr
@@ -426,10 +429,10 @@ static sys_var_thd_ulong	sys_trans_alloc_block_size(&vars, "transaction_alloc_bl
 static sys_var_thd_ulong	sys_trans_prealloc_size(&vars, "transaction_prealloc_size",
 						&SV::trans_prealloc_size,
 						0, fix_trans_mem_root);
-sys_var_enum_const      sys_thread_handling(&vars, "thread_handling",
-                                            &SV::thread_handling,
-                                            &thread_handling_typelib,
-                                            NULL);
+sys_var_enum_const        sys_thread_handling(&vars, "thread_handling",
+                                              &SV::thread_handling,
+                                              &thread_handling_typelib,
+                                              NULL);
 
 #ifdef HAVE_QUERY_CACHE
 static sys_var_long_ptr	sys_query_cache_limit(&vars, "query_cache_limit",
@@ -504,6 +507,12 @@ static sys_var_long_ptr	sys_table_cache_size(&vars, "table_open_cache",
 					     &table_cache_size);
 static sys_var_long_ptr	sys_table_lock_wait_timeout(&vars, "table_lock_wait_timeout",
                                                     &table_lock_wait_timeout);
+
+#if defined(ENABLED_DEBUG_SYNC)
+/* Debug Sync Facility. Implemented in debug_sync.cc. */
+static sys_var_debug_sync sys_debug_sync(&vars, "debug_sync");
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
 static sys_var_long_ptr	sys_thread_cache_size(&vars, "thread_cache_size",
 					      &thread_cache_size);
 #if HAVE_POOL_OF_THREADS == 1
@@ -725,7 +734,7 @@ static uchar *slave_get_report_port(THD *thd)
   return (uchar*) &thd->sys_var_tmp.long_value;
 }
 
-static sys_var_readonly    sys_repl_report_port(&vars, "report_port", OPT_GLOBAL, SHOW_INT, slave_get_report_port);
+static sys_var_readonly    sys_repl_report_port(&vars, "report_port", OPT_GLOBAL, SHOW_LONG, slave_get_report_port);
 
 #endif
 
@@ -822,7 +831,7 @@ static SHOW_VAR fixed_vars[]= {
 #ifdef HAVE_THR_SETCONCURRENCY
   {"thread_concurrency",      (char*) &concurrency,                 SHOW_LONG},
 #endif
-  {"thread_stack",            (char*) &thread_stack,                SHOW_LONG},
+  {"thread_stack",            (char*) &my_thread_stack_size,        SHOW_LONG},
 };
 
 
@@ -1169,6 +1178,7 @@ void fix_slave_exec_mode(enum_var_type type)
   }
   if (bit_is_set(slave_exec_mode_options, SLAVE_EXEC_MODE_IDEMPOTENT) == 0)
     bit_do_set(slave_exec_mode_options, SLAVE_EXEC_MODE_STRICT);
+  DBUG_VOID_RETURN;
 }
 
 bool sys_var_thd_binlog_format::is_readonly() const
@@ -1200,7 +1210,7 @@ bool sys_var_thd_binlog_format::is_readonly() const
   if (thd->in_sub_stmt)
   {
     my_error(ER_STORED_FUNCTION_PREVENTS_SWITCH_BINLOG_FORMAT, MYF(0));
-    return 1;    
+    return 1;
   }
   return sys_var_thd_enum::is_readonly();
 }
@@ -1431,7 +1441,6 @@ uchar *sys_var_enum::value_ptr(THD *thd, enum_var_type type, LEX_STRING *base)
   return (uchar*) enum_names->type_names[*value];
 }
 
-
 uchar *sys_var_enum_const::value_ptr(THD *thd, enum_var_type type,
                                      LEX_STRING *base)
 {
@@ -1511,7 +1520,7 @@ bool sys_var_thd_ha_rows::update(THD *thd, set_var *var)
   if (var->type == OPT_GLOBAL)
   {
     /* Lock is needed to make things safe on 32 bit systems */
-    pthread_mutex_lock(&LOCK_global_system_variables);    
+    pthread_mutex_lock(&LOCK_global_system_variables);
     global_system_variables.*offset= (ha_rows) tmp;
     pthread_mutex_unlock(&LOCK_global_system_variables);
   }
@@ -1676,6 +1685,14 @@ bool sys_var::check_set(THD *thd, set_var *var, TYPELIB *enum_names)
       strmov(buff, "NULL");
       goto err;
     }
+
+    if (!m_allow_empty_value &&
+        res->length() == 0)
+    {
+      buff[0]= 0;
+      goto err;
+    }
+
     var->save_result.ulong_value= ((ulong)
 				   find_set(enum_names, res->c_ptr(),
 					    res->length(),
@@ -1691,10 +1708,19 @@ bool sys_var::check_set(THD *thd, set_var *var, TYPELIB *enum_names)
   else
   {
     ulonglong tmp= var->value->val_int();
-   /*
-     For when the enum is made to contain 64 elements, as 1ULL<<64 is
-     undefined, we guard with a "count<64" test.
-   */
+
+    if (!m_allow_empty_value &&
+        tmp == 0)
+    {
+      buff[0]= '0';
+      buff[1]= 0;
+      goto err;
+    }
+
+    /*
+      For when the enum is made to contain 64 elements, as 1ULL<<64 is
+      undefined, we guard with a "count<64" test.
+    */
     if (unlikely((tmp >= ((ULL(1)) << enum_names->count)) &&
                  (enum_names->count < 64)))
     {
@@ -2209,9 +2235,8 @@ KEY_CACHE *get_key_cache(LEX_STRING *cache_name)
   if (!cache_name || ! cache_name->length)
     cache_name= &default_key_cache_base;
   return ((KEY_CACHE*) find_named(&key_caches,
-                                      cache_name->str, cache_name->length, 0));
+                                  cache_name->str, cache_name->length, 0));
 }
-
 
 uchar *sys_var_key_cache_param::value_ptr(THD *thd, enum_var_type type,
 					 LEX_STRING *base)
@@ -2394,32 +2419,51 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   MY_STAT f_stat;
   String str(buff, sizeof(buff), system_charset_info), *res;
   const char *log_file_str;
-      
+  size_t path_length;
+
   if (!(res= var->value->val_str(&str)))
     goto err;
 
   log_file_str= res->c_ptr();
   bzero(&f_stat, sizeof(MY_STAT));
 
-  (void) unpack_filename(path, log_file_str);
+  path_length= unpack_filename(path, log_file_str);
+
+  if (!path_length)
+  {
+    /* File name is empty. */
+
+    goto err;
+  }
+
   if (my_stat(path, &f_stat, MYF(0)))
   {
-    /* Check if argument is a file and we have 'write' permission */
+    /*
+      A file system object exists. Check if argument is a file and we have
+      'write' permission.
+    */
+
     if (!MY_S_ISREG(f_stat.st_mode) ||
         !(f_stat.st_mode & MY_S_IWRITE))
       goto err;
+
+    return 0;
   }
-  else
-  {
-    size_t path_length;
-    /*
-      Check if directory exists and 
-      we have permission to create file & write to file
-    */
-    (void) dirname_part(path, log_file_str, &path_length);
-    if (my_access(path, (F_OK|W_OK)))
-      goto err;
-  }
+
+  /* Get dirname of the file path. */
+  (void) dirname_part(path, log_file_str, &path_length);
+
+  /* Dirname is empty if file path is relative. */
+  if (!path_length)
+    return 0;
+
+  /*
+    Check if directory exists and we have permission to create file and
+    write to file.
+  */
+  if (my_access(path, (F_OK|W_OK)))
+    goto err;
+
   return 0;
 
 err:
@@ -2933,6 +2977,15 @@ static bool set_option_autocommit(THD *thd, set_var *var)
 
   ulonglong org_options= thd->options;
 
+  /*
+    If we are setting AUTOCOMMIT=1 and it was not already 1, then we
+    need to commit any outstanding transactions.
+   */
+  if (var->save_result.ulong_value != 0 &&
+      (thd->options & OPTION_NOT_AUTOCOMMIT) &&
+      ha_commit(thd))
+    return 1;
+
   if (var->save_result.ulong_value != 0)
     thd->options&= ~((sys_var_thd_bit*) var->var)->bit_flag;
   else
@@ -2946,8 +2999,6 @@ static bool set_option_autocommit(THD *thd, set_var *var)
       thd->options&= ~(ulonglong) (OPTION_BEGIN | OPTION_KEEP_LOG);
       thd->transaction.all.modified_non_trans_table= FALSE;
       thd->server_status|= SERVER_STATUS_AUTOCOMMIT;
-      if (ha_commit(thd))
-	return 1;
     }
     else
     {
@@ -3625,7 +3676,7 @@ uchar *sys_var_thd_storage_engine::value_ptr(THD *thd, enum_var_type type,
   if (type == OPT_GLOBAL)
     plugin= my_plugin_lock(thd, &(global_system_variables.*offset));
   hton= plugin_data(plugin, handlerton*);
-  engine_name= &hton2plugin[hton->slot]->name;
+  engine_name= hton_name(hton);
   result= (uchar *) thd->strmake(engine_name->str, engine_name->length);
   if (type == OPT_GLOBAL)
     plugin_unlock(thd, plugin);
@@ -3968,7 +4019,7 @@ bool sys_var_opt_readonly::update(THD *thd, set_var *var)
   DBUG_ENTER("sys_var_opt_readonly::update");
 
   /* Prevent self dead-lock */
-  if (thd->locked_tables || thd->active_transaction())
+  if (thd->locked_tables_mode || thd->active_transaction())
   {
     my_error(ER_LOCK_OR_ACTIVE_TRANSACTION, MYF(0));
     DBUG_RETURN(true);
@@ -4009,7 +4060,7 @@ bool sys_var_opt_readonly::update(THD *thd, set_var *var)
     can cause to wait on a read lock, it's required for the client application
     to unlock everything, and acceptable for the server to wait on all locks.
   */
-  if (result= close_cached_tables(thd, NULL, FALSE, TRUE, TRUE))
+  if (result= close_cached_tables(thd, NULL, FALSE, TRUE))
     goto end_with_read_lock;
 
   if (result= make_global_read_lock_block_commit(thd))
@@ -4052,12 +4103,11 @@ uchar *sys_var_thd_dbug::value_ptr(THD *thd, enum_var_type type, LEX_STRING *b)
   return (uchar*) thd->strdup(buf);
 }
 
-
+#ifdef HAVE_EVENT_SCHEDULER
 bool sys_var_event_scheduler::check(THD *thd, set_var *var)
 {
   return check_enum(thd, var, &Events::var_typelib);
 }
-
 
 /*
    The update method of the global variable event_scheduler.
@@ -4097,7 +4147,7 @@ uchar *sys_var_event_scheduler::value_ptr(THD *thd, enum_var_type type,
 {
   return (uchar *) Events::get_opt_event_scheduler_str();
 }
-
+#endif
 
 /****************************************************************************
   Used templates

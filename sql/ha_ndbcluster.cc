@@ -506,7 +506,7 @@ int ha_ndbcluster::ndb_err(NdbTransaction *trans)
     bzero((char*) &table_list,sizeof(table_list));
     table_list.db= m_dbname;
     table_list.alias= table_list.table_name= m_tabname;
-    close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+    close_cached_tables(thd, &table_list, FALSE, FALSE);
     break;
   }
   default:
@@ -727,8 +727,8 @@ int g_get_ndb_blobs_value(NdbBlob *ndb_blob, void *arg)
       uint32 len= ha->m_blobs_buffer_size - offset;
       if (ndb_blob->readData(buf, len) != 0)
           ERR_RETURN(ndb_blob->getNdbError());
-      DBUG_PRINT("info", ("[%u] offset: %u  buf: 0x%lx  len=%u",
-                          i, offset, (long) buf, len));
+      DBUG_PRINT("info", ("[%u] offset: %u  buf: %p  len=%u",
+                          i, offset, buf, len));
       DBUG_ASSERT(len == len64);
       if (ha->m_blob_destination_record)
       {
@@ -850,8 +850,8 @@ ha_ndbcluster::set_blob_values(const NdbOperation *ndb_op,
         blob_ptr= (uchar*)"";
       }
 
-      DBUG_PRINT("value", ("set blob ptr: 0x%lx  len: %u",
-                           (long) blob_ptr, blob_len));
+      DBUG_PRINT("value", ("set blob ptr: %p  len: %u",
+                           blob_ptr, blob_len));
       DBUG_DUMP("value", blob_ptr, min(blob_len, 26));
 
       /*
@@ -923,8 +923,8 @@ int get_ndb_blobs_value(TABLE* table, NdbValue* value_array,
           uint32 len= 0xffffffff;  // Max uint32
           if (ndb_blob->readData(buf, len) != 0)
             ERR_RETURN(ndb_blob->getNdbError());
-          DBUG_PRINT("info", ("[%u] offset: %u  buf: 0x%lx  len=%u  [ptrdiff=%d]",
-                              i, offset, (long) buf, len, (int)ptrdiff));
+          DBUG_PRINT("info", ("[%u] offset: %u  buf: %p  len=%u  [ptrdiff=%d]",
+                              i, offset, buf, len, (int)ptrdiff));
           DBUG_ASSERT(len == len64);
           // Ugly hack assumes only ptr needs to be changed
           field_blob->set_ptr_offset(ptrdiff, len, buf);
@@ -1228,8 +1228,8 @@ int ha_ndbcluster::add_index_handle(THD *thd, NDBDICT *dict, KEY *key_info,
       index= dict->getIndexGlobal(index_name, *m_table);
       if (!index)
         ERR_RETURN(dict->getNdbError());
-      DBUG_PRINT("info", ("index: 0x%lx  id: %d  version: %d.%d  status: %d",
-                          (long) index,
+      DBUG_PRINT("info", ("index: %p  id: %d  version: %d.%d  status: %d",
+                          index,
                           index->getObjectId(),
                           index->getObjectVersion() & 0xFFFFFF,
                           index->getObjectVersion() >> 24,
@@ -1272,8 +1272,8 @@ int ha_ndbcluster::add_index_handle(THD *thd, NDBDICT *dict, KEY *key_info,
       index= dict->getIndexGlobal(unique_index_name, *m_table);
       if (!index)
         ERR_RETURN(dict->getNdbError());
-      DBUG_PRINT("info", ("index: 0x%lx  id: %d  version: %d.%d  status: %d",
-                          (long) index,
+      DBUG_PRINT("info", ("index: %p  id: %d  version: %d.%d  status: %d",
+                          index,
                           index->getObjectId(),
                           index->getObjectVersion() & 0xFFFFFF,
                           index->getObjectVersion() >> 24,
@@ -4265,10 +4265,9 @@ void ha_ndbcluster::start_bulk_insert(ha_rows rows)
 /**
   End of an insert.
 */
-int ha_ndbcluster::end_bulk_insert()
+int ha_ndbcluster::end_bulk_insert(bool abort)
 {
   int error= 0;
-
   DBUG_ENTER("end_bulk_insert");
   // Check if last inserts need to be flushed
 
@@ -4573,8 +4572,8 @@ int ha_ndbcluster::init_handler_for_statement(THD *thd, Thd_ndb *thd_ndb)
       thd_ndb_share->stat.no_uncommitted_rows_count= 0;
       thd_ndb_share->stat.records= ~(ha_rows)0;
     }
-    DBUG_PRINT("exit", ("thd_ndb_share: 0x%lx  key: 0x%lx",
-                        (long) thd_ndb_share, (long) key));
+    DBUG_PRINT("exit", ("thd_ndb_share: %p  key: %p",
+                        thd_ndb_share, key));
     m_table_info= &thd_ndb_share->stat;
   }
   else
@@ -4603,9 +4602,9 @@ int ha_ndbcluster::external_lock(THD *thd, int lock_type)
   Thd_ndb *thd_ndb= get_thd_ndb(thd);
   Ndb *ndb= thd_ndb->ndb;
 
-  DBUG_PRINT("enter", ("this: 0x%lx  thd: 0x%lx  thd_ndb: %lx  "
+  DBUG_PRINT("enter", ("this: %p  thd: %p  thd_ndb: 0x%lx  "
                        "thd_ndb->lock_count: %d",
-                       (long) this, (long) thd, (long) thd_ndb,
+                       this, thd, (long) thd_ndb,
                        thd_ndb->lock_count));
 
   if (lock_type != F_UNLCK)
@@ -5412,7 +5411,7 @@ int ha_ndbcluster::create(const char *name,
     DBUG_RETURN(2);
   }
   DBUG_PRINT("info",
-             ("setFrm data: 0x%lx  len: %lu", (long) pack_data,
+             ("setFrm data: %p  len: %lu", pack_data,
               (ulong) pack_length));
   tab.setFrm(pack_data, pack_length);      
   my_free((char*)data, MYF(0));
@@ -7015,7 +7014,7 @@ int ndbcluster_drop_database_impl(THD *thd, const char *path)
   while ((tabname=it++))
   {
     tablename_to_filename(tabname, tmp, FN_REFLEN - (tmp - full_path)-1);
-    VOID(pthread_mutex_lock(&LOCK_open));
+    pthread_mutex_lock(&LOCK_open);
     if (ha_ndbcluster::delete_table(thd, 0, ndb, full_path, dbname, tabname))
     {
       const NdbError err= dict->getNdbError();
@@ -7025,7 +7024,7 @@ int ndbcluster_drop_database_impl(THD *thd, const char *path)
         ret= ndb_to_mysql_error(&err);
       }
     }
-    VOID(pthread_mutex_unlock(&LOCK_open));
+    pthread_mutex_unlock(&LOCK_open);
   }
   DBUG_RETURN(ret);      
 }
@@ -7382,6 +7381,20 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  /*
+    ndbcluster_find_files() may be called from I_S code and ndbcluster_binlog
+    thread in situations when some tables are already open. This means that
+    code below will try to obtain exclusive metadata lock on some table
+    while holding shared meta-data lock on other tables. This might lead to
+    a deadlock, and therefore is disallowed by assertions of the metadata
+    locking subsystem. In order to temporarily make the code work, we must
+    reset and backup the open tables state, thus hide the existing locks
+    from MDL asserts. But in the essence this is violation of metadata
+    locking protocol which has to be closed ASAP.
+  */
+  Open_tables_state open_tables_state_backup;
+  thd->reset_n_backup_open_tables_state(&open_tables_state_backup);
+
   if (!global_read_lock)
   {
     // Delete old files
@@ -7405,8 +7418,11 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  thd->restore_backup_open_tables_state(&open_tables_state_backup);
+
+  /* Lock mutex before creating .FRM files. */
   pthread_mutex_lock(&LOCK_open);
-  // Create new files
+  /* Create new files. */
   List_iterator_fast<char> it2(create_list);
   while ((file_name_str=it2++))
   {  
@@ -8272,10 +8288,10 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
   if (have_lock_open)
     safe_mutex_assert_owner(&LOCK_open);
   else
-    VOID(pthread_mutex_lock(&LOCK_open));    
-  close_cached_tables(thd, &table_list, TRUE, FALSE, FALSE);
+    pthread_mutex_lock(&LOCK_open);    
+  close_cached_tables(thd, &table_list, TRUE, FALSE);
   if (!have_lock_open)
-    VOID(pthread_mutex_unlock(&LOCK_open));    
+    pthread_mutex_unlock(&LOCK_open);    
 
   pthread_mutex_lock(&ndbcluster_mutex);
   /* ndb_share reference temporary free */

@@ -220,11 +220,11 @@ int mysql_update(THD *thd,
       /* convert to multiupdate */
       DBUG_RETURN(2);
     }
-    if (!lock_tables(thd, table_list, table_count, &need_reopen))
+    if (!lock_tables(thd, table_list, table_count, 0, &need_reopen))
       break;
     if (!need_reopen)
       DBUG_RETURN(1);
-    close_tables_for_reopen(thd, &table_list);
+    close_tables_for_reopen(thd, &table_list, FALSE);
   }
 
   if (mysql_handle_derived(thd->lex, &mysql_derived_prepare) ||
@@ -653,11 +653,13 @@ int mysql_update(THD *thd,
             If (ignore && error is ignorable) we don't have to
             do anything; otherwise...
           */
+          myf flags= 0;
+
           if (table->file->is_fatal_error(error, HA_CHECK_DUP_KEY))
-            thd->fatal_error(); /* Other handler errors are fatal */
+            flags|= ME_FATALERROR; /* Other handler errors are fatal */
 
           prepare_record_for_error_message(error, table);
-	  table->file->print_error(error,MYF(0));
+	  table->file->print_error(error,MYF(flags));
 	  error= 1;
 	  break;
 	}
@@ -748,9 +750,8 @@ int mysql_update(THD *thd,
     */
   {
     /* purecov: begin inspected */
-    thd->fatal_error();
     prepare_record_for_error_message(loc_error, table);
-    table->file->print_error(loc_error,MYF(0));
+    table->file->print_error(loc_error,MYF(ME_FATALERROR));
     error= 1;
     /* purecov: end */
   }
@@ -766,7 +767,7 @@ int mysql_update(THD *thd,
   end_read_record(&info);
   delete select;
   thd_proc_info(thd, "end");
-  VOID(table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY));
+  (void) table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
 
   /*
     Invalidate the table in the query cache if something changed.
@@ -859,8 +860,9 @@ bool mysql_prepare_update(THD *thd, TABLE_LIST *table_list,
 			 Item **conds, uint order_num, ORDER *order)
 {
   Item *fake_conds= 0;
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
   TABLE *table= table_list->table;
-  TABLE_LIST tables;
+#endif
   List<Item> all_fields;
   SELECT_LEX *select_lex= &thd->lex->select_lex;
   DBUG_ENTER("mysql_prepare_update");
@@ -884,9 +886,6 @@ bool mysql_prepare_update(THD *thd, TABLE_LIST *table_list,
   table_list->register_want_access(SELECT_ACL);
 #endif
 
-  bzero((char*) &tables,sizeof(tables));	// For ORDER BY
-  tables.table= table;
-  tables.alias= table_list->alias;
   thd->lex->allow_sum_func= 0;
 
   if (setup_tables_and_check_access(thd, &select_lex->context, 
@@ -963,7 +962,7 @@ int mysql_multi_update_prepare(THD *thd)
     count in open_tables()
   */
   uint  table_count= lex->table_count;
-  const bool using_lock_tables= thd->locked_tables != 0;
+  const bool using_lock_tables= thd->locked_tables_mode != LTM_NONE;
   bool original_multiupdate= (thd->lex->sql_command == SQLCOM_UPDATE_MULTI);
   bool need_reopen= FALSE;
   DBUG_ENTER("mysql_multi_update_prepare");
@@ -1084,7 +1083,7 @@ reopen_tables:
   }
 
   /* now lock and fill tables */
-  if (lock_tables(thd, table_list, table_count, &need_reopen))
+  if (lock_tables(thd, table_list, table_count, 0, &need_reopen))
   {
     if (!need_reopen)
       DBUG_RETURN(TRUE);
@@ -1104,7 +1103,7 @@ reopen_tables:
     for (TABLE_LIST *tbl= table_list; tbl; tbl= tbl->next_global)
       tbl->cleanup_items();
 
-    close_tables_for_reopen(thd, &table_list);
+    close_tables_for_reopen(thd, &table_list, FALSE);
     goto reopen_tables;
   }
 
@@ -1628,11 +1627,13 @@ bool multi_update::send_data(List<Item> &not_used_values)
               If (ignore && error == is ignorable) we don't have to
               do anything; otherwise...
             */
+            myf flags= 0;
+
             if (table->file->is_fatal_error(error, HA_CHECK_DUP_KEY))
-              thd->fatal_error(); /* Other handler errors are fatal */
+              flags|= ME_FATALERROR; /* Other handler errors are fatal */
 
             prepare_record_for_error_message(error, table);
-            table->file->print_error(error,MYF(0));
+            table->file->print_error(error,MYF(flags));
             DBUG_RETURN(1);
           }
         }
@@ -1675,6 +1676,12 @@ bool multi_update::send_data(List<Item> &not_used_values)
         tbl->file->position(tbl->record[0]);
         memcpy((char*) tmp_table->field[field_num]->ptr,
                (char*) tbl->file->ref, tbl->file->ref_length);
+        /*
+         For outer joins a rowid field may have no NOT_NULL_FLAG,
+         so we have to reset NULL bit for this field.
+         (set_notnull() resets NULL bit only if available).
+        */
+        tmp_table->field[field_num]->set_notnull();
         field_num++;
       } while ((tbl= tbl_it++));
 
@@ -1688,7 +1695,7 @@ bool multi_update::send_data(List<Item> &not_used_values)
       if (error != HA_ERR_FOUND_DUPP_KEY && error != HA_ERR_FOUND_DUPP_UNIQUE)
       {
         if (error &&
-            create_myisam_from_heap(thd, tmp_table,
+            create_internal_tmp_table_from_heap(thd, tmp_table,
                                          tmp_table_param[offset].start_recinfo,
                                          &tmp_table_param[offset].recinfo,
                                          error, 1))
@@ -1736,7 +1743,7 @@ void multi_update::abort()
          todo/fixme: do_update() is never called with the arg 1.
          should it change the signature to become argless?
       */
-      VOID(do_updates());
+      (void) do_updates();
     }
   }
   if (thd->transaction.stmt.modified_non_trans_table)
@@ -1910,9 +1917,8 @@ int multi_update::do_updates()
 
 err:
   {
-    thd->fatal_error();
     prepare_record_for_error_message(local_error, table);
-    table->file->print_error(local_error,MYF(0));
+    table->file->print_error(local_error,MYF(ME_FATALERROR));
   }
 
 err2:

@@ -322,8 +322,16 @@ static const char *createTableSpaces =
 		"tablespace varchar(128) not null primary key,"
 		"tablespace_id int not null,"
 		"filename varchar(512) not null,"
-		"status int,"
-		"max_size int)";
+		"type int,"
+		/***
+		"initial_size bigint,"
+		"extent_size bigint,"
+		"autoextend_size bigint,"
+		"max_size bigint,"
+		"nodegroup int,"
+		"wait int,"
+		***/
+		"comment text)";
 
 static const char *createTableSpaceSequence = 
 	"upgrade sequence tablespace_ids";
@@ -1444,6 +1452,11 @@ void Database::dropTable(Table *table, Transaction *transaction)
 	
 	invalidateCompiledStatements(table);
 	table->drop(transaction);
+
+	// Lock sections (factored out of SRLDropTable to avoid a deadlock)
+
+	Sync syncSections(&serialLog->syncSections, "Database::dropTable");
+	syncSections.lock(Exclusive);
 	table->expunge(getSystemTransaction());
 	delete table;
 }
@@ -1465,6 +1478,13 @@ void Database::truncateTable(Table *table, Sequence *sequence, Transaction *tran
 	
 	Sync syncTbl(&syncTables, "Database::truncateTable");
 	syncTbl.lock(Shared);
+	
+	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
+	//The lock order (serialLog->syncSections before table->syncObject) is 
+	//important
+
+	Sync syncSections(&serialLog->syncSections, "Database::truncateTable");
+	syncSections.lock(Exclusive);
 	
 	// No table access until truncate completes
 	
@@ -1742,32 +1762,26 @@ void Database::scavenge()
 
 void Database::retireRecords(bool forced)
 {
+	int cycle = scavengeCycle;
+	
+	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
+	syncScavenger.lock(Exclusive);
+
+	if (forced && scavengeCycle > cycle)
+		return;
+	
 	// Commit pending system transactions before proceeding
 	
 	if (!forced && systemConnection->transaction)
 		commitSystemTransaction();
 
-	Sync syncDDL(&syncSysDDL, "Database::retireRecords");
-	syncDDL.lock(Shared);
-
-	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
-	syncScavenger.lock(Exclusive);
-
-	int cycle = scavengeCycle;
-	
-	if (forced && scavengeCycle > cycle)
-		return;
-	
-	++scavengeCycle;
-	
 	if (forced)
 		Log::log("Forced record scavenge cycle\n");
 	
 	transactionManager->purgeTransactions();
 	TransId oldestActiveTransaction = transactionManager->findOldestActive();
-	int threshold = 0;
 	uint64 total = recordDataPool->activeMemory;
-	RecordScavenge recordScavenge(this, oldestActiveTransaction);
+	RecordScavenge recordScavenge(this, oldestActiveTransaction, forced);
 	
 	// If we passed the upper limit, scavenge.  If we didn't pick up
 	// a significant amount of memory since the last cycle, don't bother
@@ -1784,10 +1798,11 @@ void Database::retireRecords(bool forced)
 		Table *table;
 		time_t scavengeStart = deltaTime;
 		
-		for (table = tableList; table; table = table->next)
-			table->inventoryRecords(&recordScavenge);
+		if (!forced)
+			for (table = tableList; table; table = table->next)
+				table->inventoryRecords(&recordScavenge);
 		
-		threshold = recordScavenge.computeThreshold(recordScavengeFloor);
+		recordScavenge.computeThreshold(recordScavengeFloor);
 		recordScavenge.printRecordMemory();	
 		int count = 0;
 		int skipped = 0;
@@ -1830,17 +1845,21 @@ void Database::retireRecords(bool forced)
 		}
 	else if ((total - lastRecordMemory) < recordScavengeThreshold / AGE_GROUPS)
 		{
-		recordScavenge.scavengeGeneration = -1;
+		recordScavenge.scavengeGeneration = UNDEFINED;
 		cleanupRecords (&recordScavenge);
-		
+
+		++scavengeCycle;
+				
 		return;
 		}
 	else
 		{
-		recordScavenge.scavengeGeneration = -1;
+		recordScavenge.scavengeGeneration = UNDEFINED;
 		cleanupRecords (&recordScavenge);
 		}
 
+	++scavengeCycle;
+	
 	lastRecordMemory = recordDataPool->activeMemory;
 	INTERLOCKED_INCREMENT (currentGeneration);
 }
@@ -1857,7 +1876,7 @@ void Database::ticker()
 	while (!thread->shutdownInProgress)
 		{
 		timestamp = time(NULL);
-		deltaTime = timestamp - startTime;
+		deltaTime = (int) (timestamp - startTime);
 		thread->sleep(1000);
 
 #ifdef STORAGE_ENGINE
@@ -2326,6 +2345,16 @@ void Database::getSerialLogInfo(InfoTable* infoTable)
 void Database::getTransactionSummaryInfo(InfoTable* infoTable)
 {
 	transactionManager->getSummaryInfo(infoTable);
+}
+
+void Database::getTableSpaceInfo(InfoTable* infoTable)
+{
+	tableSpaceManager->getTableSpaceInfo(infoTable);
+}
+
+void Database::getTableSpaceFilesInfo(InfoTable* infoTable)
+{
+	tableSpaceManager->getTableSpaceFilesInfo(infoTable);
 }
 
 void Database::updateCardinalities(void)

@@ -22,7 +22,7 @@
 
 #include <time.h>
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #define MEMORY_MANAGER
 #endif
 
@@ -82,7 +82,9 @@ typedef unsigned int	uint;
 #define strcasecmp		stricmp
 #define strncasecmp		strnicmp
 #define snprintf		_snprintf
+#if (_MSC_VER < 1400)
 #define vsnprintf		_vsnprintf
+#endif
 #define QUAD_CONSTANT(x)	x##i64
 #define I64FORMAT			"%I64d"
 #endif
@@ -108,7 +110,11 @@ typedef long			IPTR;
 typedef unsigned long	UIPTR;
 #endif
 
+#ifndef UCHAR_DEFINED
+#define UCHAR_DEFINED
 typedef unsigned char	UCHAR;
+#endif
+
 typedef unsigned long	ULONG;
 typedef unsigned short	USHORT;
 
@@ -130,7 +136,7 @@ typedef int64				RecordId;
 #define INTERLOCK_TYPE	int
 #endif
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Error.h"
 #endif
 

@@ -1,10 +1,8 @@
 #ifndef _BACKUP_THREAD_H
 #define _BACKUP_THREAD_H
 
-#include "../mysql_priv.h"
-#include "catalog.h"
-#include "api_types.h"
-#include "backup_engine.h"
+#include <backup_engine.h>
+#include <backup/image_info.h>
 
 /**
    Macro for error handling.
@@ -63,6 +61,7 @@ public:
 
   result_t start_locking_thread(const char *tname);
   void kill_locking_thread();
+  void wait_until_locking_thread_dies();
 
 }; // Locking_thread_st
 
@@ -81,8 +80,8 @@ class Backup_thread_driver : public Backup_driver
 {
 public:
 
-  Backup_thread_driver(const backup::Table_list &tables):
-    Backup_driver(tables) { locking_thd = new Locking_thread_st(); }
+  Backup_thread_driver(const backup::Table_list &tables)
+    :Backup_driver(tables) { locking_thd = new Locking_thread_st(); }
   ~Backup_thread_driver() { delete locking_thd; }
 
   Locking_thread_st *locking_thd;

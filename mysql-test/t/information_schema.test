@@ -37,7 +37,10 @@ create table t3(a int, KEY a_data (a));
 create table mysqltest.t4(a int);
 create table t5 (id int auto_increment primary key);
 insert into t5 values (10);
-create view v1 (c) as select table_name from information_schema.TABLES where table_name<>'ndb_binlog_index' AND table_name<>'ndb_apply_status';
+create view v1 (c) as select table_name
+from information_schema.TABLES
+where table_name not like 'ndb_%' and
+      table_name not like 'falcon%';
 select * from v1;
 
 select c,table_name from v1 
@@ -518,7 +521,7 @@ grant select on test.* to mysqltest_4@localhost;
 connect (user10261,localhost,mysqltest_4,,);
 connection user10261;
 SELECT TABLE_NAME, COLUMN_NAME, PRIVILEGES FROM INFORMATION_SCHEMA.COLUMNS 
-where COLUMN_NAME='TABLE_NAME';
+WHERE COLUMN_NAME='TABLE_NAME' AND TABLE_NAME NOT LIKE 'FALCON%';
 connection default;
 delete from mysql.user where user='mysqltest_4';
 delete from mysql.db where user='mysqltest_4';
@@ -528,7 +531,8 @@ flush privileges;
 # Bug #9404  information_schema: Weird error messages
 # with SELECT SUM() ... GROUP BY queries
 #
-SELECT table_schema, count(*) FROM information_schema.TABLES where table_name<>'ndb_binlog_index' AND table_name<>'ndb_apply_status' GROUP BY TABLE_SCHEMA;
+SELECT table_schema, count(*) FROM information_schema.TABLES
+WHERE table_name NOT LIKE 'ndb_%' AND table_name NOT LIKE 'falcon%' GROUP BY TABLE_SCHEMA;
 
 
 #
@@ -894,39 +898,6 @@ DROP PROCEDURE p1;
 DROP USER mysql_bug20230@localhost;
 
 #
-# Bug#18925: subqueries with MIN/MAX functions on INFORMARTION_SCHEMA 
-#
-
-SELECT t.table_name, c1.column_name
-  FROM information_schema.tables t
-       INNER JOIN
-       information_schema.columns c1
-       ON t.table_schema = c1.table_schema AND
-          t.table_name = c1.table_name
-  WHERE t.table_schema = 'information_schema' AND
-        c1.ordinal_position =
-        ( SELECT COALESCE(MIN(c2.ordinal_position),1)
-            FROM information_schema.columns c2
-            WHERE c2.table_schema = t.table_schema AND
-                  c2.table_name = t.table_name AND
-                  c2.column_name LIKE '%SCHEMA%'
-        );
-SELECT t.table_name, c1.column_name
-  FROM information_schema.tables t
-       INNER JOIN
-       information_schema.columns c1
-       ON t.table_schema = c1.table_schema AND
-          t.table_name = c1.table_name
-  WHERE t.table_schema = 'information_schema' AND
-        c1.ordinal_position =
-        ( SELECT COALESCE(MIN(c2.ordinal_position),1)
-            FROM information_schema.columns c2
-            WHERE c2.table_schema = 'information_schema' AND
-                  c2.table_name = t.table_name AND
-                  c2.column_name LIKE '%SCHEMA%'
-        );
-
-#
 # Bug#21231: query with a simple non-correlated subquery over
 #            INFORMARTION_SCHEMA.TABLES 
 #
@@ -1014,7 +985,8 @@ select t.table_name, group_concat(t.table_schema, '.', t.table_name),
 from information_schema.tables t
 inner join information_schema.columns c1
 on t.table_schema = c1.table_schema AND t.table_name = c1.table_name
-where t.table_schema = 'information_schema' and
+where t.table_schema = 'information_schema' AND
+      t.table_name not like 'falcon%' AND
         c1.ordinal_position =
         (select isnull(c2.column_type) -
          isnull(group_concat(c2.table_schema, '.', c2.table_name)) +
@@ -1357,3 +1329,72 @@ from information_schema.routines;
 drop procedure p1;
 drop procedure p2;
 drop function f1;
+
+--echo #
+--echo # Bug#35955 Regression: I_S table cause reduced privilege requirements in SELECT.
+--echo #
+--disable_warnings
+DROP DATABASE IF EXISTS testdb1;
+--enable_warnings
+CREATE DATABASE testdb1;
+USE testdb1;
+CREATE TABLE t1 (c1 int);
+CREATE TABLE t2 (c2 int);
+GRANT SELECT ON testdb1.t1 TO mysqluser_35955@localhost;
+
+--connect (con_35955, localhost, mysqluser_35955, , testdb1)
+SELECT * FROM INFORMATION_SCHEMA.tables, t1;
+--error 1142
+SELECT * FROM t2;
+--error 1142
+SELECT * FROM t2, INFORMATION_SCHEMA.tables;
+--error 1142
+SELECT * FROM INFORMATION_SCHEMA.tables, t2;
+--connection default
+DROP TABLE t1,t2;
+DROP DATABASE testdb1;
+DROP USER mysqluser_35955@localhost;
+USE test;
+
+--echo #
+--echo # Additional test for WL#3726 "DDL locking for all metadata objects"
+--echo # To avoid possible deadlocks process of filling of I_S tables should
+--echo # use high-priority metadata lock requests when opening tables.
+--echo # Below we just test that we really use high-priority lock request
+--echo # since reproducing a deadlock will require much more complex test.
+--echo #
+--disable_warnings
+drop tables if exists t1, t2, t3;
+--enable_warnings
+create table t1 (i int);
+create table t2 (j int primary key auto_increment);
+connect (con3726_1,localhost,root,,test);
+--echo # Switching to connection 'con3726_1'
+connection con3726_1;
+lock table t2 read;
+connect (con3726_2,localhost,root,,test);
+--echo # Switching to connection 'con3726_2'
+connection con3726_2;
+--echo # RENAME below will be blocked by 'lock table t2 read' above but
+--echo # will add two pending requests for exclusive metadata locks.
+--send rename table t2 to t3
+--echo # Switching to connection 'default'
+connection default;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Waiting for table" and info like "rename table t2 to t3";
+--source include/wait_condition.inc
+--echo # These statements should not be blocked by pending lock requests
+select table_name, column_name, data_type from information_schema.columns
+  where table_schema = 'test' and table_name in ('t1', 't2');
+select table_name, auto_increment from information_schema.tables
+  where table_schema = 'test' and table_name in ('t1', 't2');
+--echo # Switching to connection 'con3726_1'
+connection con3726_1;
+unlock tables;
+--echo # Switching to connection 'con3726_2'
+connection con3726_2;
+--reap
+--echo # Switching to connection 'default'
+connection default;
+drop tables t1, t3;

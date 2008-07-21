@@ -109,7 +109,7 @@ static int tina_init_func(void *p)
   handlerton *tina_hton;
 
   tina_hton= (handlerton *)p;
-  VOID(pthread_mutex_init(&tina_mutex,MY_MUTEX_INIT_FAST));
+  pthread_mutex_init(&tina_mutex,MY_MUTEX_INIT_FAST);
   (void) hash_init(&tina_open_tables,system_charset_info,32,0,0,
                    (hash_get_key) tina_get_key,0,0);
   tina_hton->state= SHOW_OPTION_YES;
@@ -240,7 +240,7 @@ static int read_meta_file(File meta_file, ha_rows *rows)
 
   DBUG_ENTER("ha_tina::read_meta_file");
 
-  VOID(my_seek(meta_file, 0, MY_SEEK_SET, MYF(0)));
+  my_seek(meta_file, 0, MY_SEEK_SET, MYF(0));
   if (my_read(meta_file, (uchar*)meta_buffer, META_BUFFER_SIZE, 0)
       != META_BUFFER_SIZE)
     DBUG_RETURN(HA_ERR_CRASHED_ON_USAGE);
@@ -309,7 +309,7 @@ static int write_meta_file(File meta_file, ha_rows rows, bool dirty)
   ptr+= 3*sizeof(ulonglong);
   *ptr= (uchar)dirty;
 
-  VOID(my_seek(meta_file, 0, MY_SEEK_SET, MYF(0)));
+  my_seek(meta_file, 0, MY_SEEK_SET, MYF(0));
   if (my_write(meta_file, (uchar *)meta_buffer, META_BUFFER_SIZE, 0)
       != META_BUFFER_SIZE)
     DBUG_RETURN(-1);
@@ -446,12 +446,13 @@ ha_tina::ha_tina(handlerton *hton, TABLE_SHARE *table_arg)
   */
   current_position(0), next_position(0), local_saved_data_file_length(0),
   file_buff(0), chain_alloced(0), chain_size(DEFAULT_CHAIN_LENGTH),
-  local_data_file_version(0), records_is_known(0)
+  local_data_file_version(0), records_is_known(0), curr_lock_type(F_UNLCK)
 {
   /* Set our original buffers from pre-allocated memory */
   buffer.set((char*)byte_buffer, IO_SIZE, &my_charset_bin);
   chain= chain_buffer;
   file_buff= new Transparent_file();
+  init_alloc_root(&blobroot, BLOB_MEMROOT_ALLOC_SIZE, 0);;
 }
 
 
@@ -598,7 +599,7 @@ int ha_tina::find_current_row(uchar *buf)
   bool read_all;
   DBUG_ENTER("ha_tina::find_current_row");
 
-  free_root(&blobroot, MYF(MY_MARK_BLOCKS_FREE));
+  free_root(&blobroot, MYF(0));
 
   /*
     We do not read further then local_saved_data_file_length in order
@@ -734,7 +735,7 @@ const char **ha_tina::bas_ext() const
   for CSV engine. For more details see mysys/thr_lock.c
 */
 
-void tina_get_status(void* param, int concurrent_insert)
+void tina_get_status(void* param, my_bool concurrent_insert)
 {
   ha_tina *tina= (ha_tina*) param;
   tina->get_status();
@@ -1073,8 +1074,6 @@ int ha_tina::rnd_init(bool scan)
   records_is_known= 0;
   chain_ptr= chain;
 
-  init_alloc_root(&blobroot, BLOB_MEMROOT_ALLOC_SIZE, 0);
-
   DBUG_RETURN(0);
 }
 
@@ -1175,6 +1174,7 @@ int ha_tina::extra(enum ha_extra_function operation)
  }
   DBUG_RETURN(0);
 }
+
 
 /*
   Set end_pos to the last valid byte of continuous area, closest
@@ -1376,8 +1376,6 @@ int ha_tina::repair(THD* thd, HA_CHECK_OPT* check_opt)
   /* set current position to the beginning of the file */
   current_position= next_position= 0;
 
-  init_alloc_root(&blobroot, BLOB_MEMROOT_ALLOC_SIZE, 0);
-
   /* Read the file row-by-row. If everything is ok, repair is not needed. */
   while (!(rc= find_current_row(buf)))
   {
@@ -1484,6 +1482,14 @@ int ha_tina::delete_all_rows()
   DBUG_RETURN(rc);
 }
 
+int ha_tina::external_lock(THD *thd __attribute__((unused)), int lock_type)
+{
+  if (lock_type==F_UNLCK && curr_lock_type == F_WRLCK)
+    update_status();
+  curr_lock_type= lock_type;
+  return 0;
+}
+
 /*
   Called by the database to lock the table. Keep in mind that this
   is an internal lock.
@@ -1498,7 +1504,7 @@ THR_LOCK_DATA **ha_tina::store_lock(THD *thd,
   return to;
 }
 
-/* 
+/*
   Create a table. You do not want to leave the table open after a call to
   this (the database will call ::open() if it needs to).
 */
@@ -1566,8 +1572,6 @@ int ha_tina::check(THD* thd, HA_CHECK_OPT* check_opt)
   /* set current position to the beginning of the file */
   current_position= next_position= 0;
 
-  init_alloc_root(&blobroot, BLOB_MEMROOT_ALLOC_SIZE, 0);
-
   /* Read the file row-by-row. If everything is ok, repair is not needed. */
   while (!(rc= find_current_row(buf)))
   {
@@ -1575,7 +1579,7 @@ int ha_tina::check(THD* thd, HA_CHECK_OPT* check_opt)
     count--;
     current_position= next_position;
   }
-  
+
   free_root(&blobroot, MYF(0));
 
   my_free((char*)buf, MYF(0));

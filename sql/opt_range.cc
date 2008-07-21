@@ -1153,7 +1153,7 @@ QUICK_RANGE_SELECT::~QUICK_RANGE_SELECT()
       }
       if (free_file)
       {
-        DBUG_PRINT("info", ("Freeing separate handler 0x%lx (free: %d)", (long) file,
+        DBUG_PRINT("info", ("Freeing separate handler %p (free: %d)", file,
                             free_file));
         file->ha_external_lock(current_thd, F_UNLCK);
         file->close();
@@ -1292,7 +1292,7 @@ int QUICK_RANGE_SELECT::init_ror_merged_scan(bool reuse_handler)
   in_ror_merged_scan= 1;
   if (reuse_handler)
   {
-    DBUG_PRINT("info", ("Reusing handler 0x%lx", (long) file));
+    DBUG_PRINT("info", ("Reusing handler %p", file));
     if (init() || reset())
     {
       DBUG_RETURN(1);
@@ -2190,9 +2190,6 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
   quick=0;
   needed_reg.clear_all();
   quick_keys.clear_all();
-  if ((specialflag & SPECIAL_SAFE_MODE) && ! force_quick_range ||
-      !limit)
-    DBUG_RETURN(0); /* purecov: inspected */
   if (keys_to_use.is_clear_all())
     DBUG_RETURN(0);
   records= head->file->stats.records;
@@ -2218,7 +2215,13 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     KEY *key_info;
     PARAM param;
 
-    if (check_stack_overrun(thd, 2*STACK_MIN_SIZE, NULL))
+    /*
+      Use the 3 multiplier as range optimizer allocates big PARAM structure
+      and may evaluate a subquery expression
+      TODO During the optimization phase we should evaluate only inexpensive
+           single-lookup subqueries.
+    */
+    if (check_stack_overrun(thd, 3*STACK_MIN_SIZE, NULL))
       DBUG_RETURN(0);                           // Fatal error flag is set
 
     /* set up parameter that is passed to all functions */
@@ -2364,9 +2367,6 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
           table deletes.
         */
         if ((thd->lex->sql_command != SQLCOM_DELETE))
-#ifdef NOT_USED
-          if ((thd->lex->sql_command != SQLCOM_UPDATE))
-#endif
         {
           /*
             Get best non-covering ROR-intersection plan and prepare data for
@@ -4265,7 +4265,6 @@ static bool ror_intersect_add(ROR_INTERSECT_INFO *info,
   }
   
   info->out_rows *= selectivity_mult;
-  DBUG_PRINT("info", ("info->total_cost= %g", info->total_cost));
   
   if (is_cpk_scan)
   {
@@ -5334,8 +5333,12 @@ static SEL_TREE *get_mm_tree(RANGE_OPT_PARAM *param,COND *cond)
     }
     DBUG_RETURN(tree);
   }
-  /* Here when simple cond */
-  if (cond->const_item())
+  /* 
+    Here when simple cond 
+    There are limits on what kinds of const items we can evaluate, grep for
+    DontEvaluateMaterializedSubqueryTooEarly.
+  */
+  if (cond->const_item() & !cond->is_expensive())
   {
     /*
       During the cond->val_int() evaluation we can come across a subselect 
@@ -5674,52 +5677,70 @@ get_mm_leaf(RANGE_OPT_PARAM *param, COND *conf_func, Field *field,
        field->type() == MYSQL_TYPE_DATETIME))
     field->table->in_use->variables.sql_mode|= MODE_INVALID_DATES;
   err= value->save_in_field_no_warnings(field, 1);
-  if (err > 0 && field->cmp_type() != value->result_type())
+  if (err > 0)
   {
-    if ((type == Item_func::EQ_FUNC || type == Item_func::EQUAL_FUNC) &&
-	value->result_type() == item_cmp_type(field->result_type(),
-                                              value->result_type()))
-
+    if (field->cmp_type() != value->result_type())
     {
-      tree= new (alloc) SEL_ARG(field, 0, 0);
-      tree->type= SEL_ARG::IMPOSSIBLE;
-      goto end;
-    }
-    else
-    {
-      /*
-        TODO: We should return trees of the type SEL_ARG::IMPOSSIBLE
-        for the cases like int_field > 999999999999999999999999 as well.
-      */
-      tree= 0;
-      if (err == 3 && field->type() == FIELD_TYPE_DATE && 
-          (type == Item_func::GT_FUNC || type == Item_func::GE_FUNC || 
-           type == Item_func::LT_FUNC || type == Item_func::LE_FUNC) )
+      if ((type == Item_func::EQ_FUNC || type == Item_func::EQUAL_FUNC) &&
+          value->result_type() == item_cmp_type(field->result_type(),
+                                                value->result_type()))
       {
-        /*
-          We were saving DATETIME into a DATE column, the conversion went ok
-          but a non-zero time part was cut off.
-
-          In MySQL's SQL dialect, DATE and DATETIME are compared as datetime
-          values. Index over a DATE column uses DATE comparison. Changing 
-          from one comparison to the other is possible:
-
-          datetime(date_col)< '2007-12-10 12:34:55' -> date_col<='2007-12-10'
-          datetime(date_col)<='2007-12-10 12:34:55' -> date_col<='2007-12-10'
-
-          datetime(date_col)> '2007-12-10 12:34:55' -> date_col>='2007-12-10'
-          datetime(date_col)>='2007-12-10 12:34:55' -> date_col>='2007-12-10'
-
-          but we'll need to convert '>' to '>=' and '<' to '<='. This will
-          be done together with other types at the end of this function
-          (grep for field_is_equal_to_item)
-        */
+        tree= new (alloc) SEL_ARG(field, 0, 0);
+        tree->type= SEL_ARG::IMPOSSIBLE;
+        goto end;
       }
       else
-        goto end;
+      {
+        /*
+          TODO: We should return trees of the type SEL_ARG::IMPOSSIBLE
+          for the cases like int_field > 999999999999999999999999 as well.
+        */
+        tree= 0;
+        if (err == 3 && field->type() == FIELD_TYPE_DATE &&
+            (type == Item_func::GT_FUNC || type == Item_func::GE_FUNC ||
+             type == Item_func::LT_FUNC || type == Item_func::LE_FUNC) )
+        {
+          /*
+            We were saving DATETIME into a DATE column, the conversion went ok
+            but a non-zero time part was cut off.
+
+            In MySQL's SQL dialect, DATE and DATETIME are compared as datetime
+            values. Index over a DATE column uses DATE comparison. Changing 
+            from one comparison to the other is possible:
+
+            datetime(date_col)< '2007-12-10 12:34:55' -> date_col<='2007-12-10'
+            datetime(date_col)<='2007-12-10 12:34:55' -> date_col<='2007-12-10'
+
+            datetime(date_col)> '2007-12-10 12:34:55' -> date_col>='2007-12-10'
+            datetime(date_col)>='2007-12-10 12:34:55' -> date_col>='2007-12-10'
+
+            but we'll need to convert '>' to '>=' and '<' to '<='. This will
+            be done together with other types at the end of this function
+            (grep for field_is_equal_to_item)
+          */
+        }
+        else
+          goto end;
+      }
     }
-  } 
-  if (err < 0)
+
+    /*
+      guaranteed at this point:  err > 0; field and const of same type
+      If an integer got bounded (e.g. to within 0..255 / -128..127)
+      for < or >, set flags as for <= or >= (no NEAR_MAX / NEAR_MIN)
+    */
+    else if (err == 1 && field->result_type() == INT_RESULT)
+    {
+      if (type == Item_func::LT_FUNC && (value->val_int() > 0))
+        type = Item_func::LE_FUNC;
+      else if (type == Item_func::GT_FUNC &&
+               !((Field_num*)field)->unsigned_flag &&
+               !((Item_int*)value)->unsigned_flag &&
+               (value->val_int() < 0))
+        type = Item_func::GE_FUNC;
+    }
+  }
+  else if (err < 0)
   {
     field->table->in_use->variables.sql_mode= orig_sql_mode;
     /* This happens when we try to insert a NULL field in a not null column */
@@ -8627,6 +8648,10 @@ QUICK_SELECT_DESC::QUICK_SELECT_DESC(QUICK_RANGE_SELECT *q,
  :QUICK_RANGE_SELECT(*q), rev_it(rev_ranges)
 {
   QUICK_RANGE *r;
+  /* Reverse MRR scans are currently not supported */
+  mrr_buf_desc= NULL;
+  mrr_flags |= HA_MRR_USE_DEFAULT_IMPL;
+  mrr_buf_size= 0;
 
   QUICK_RANGE **pr= (QUICK_RANGE**)ranges.buffer;
   QUICK_RANGE **end_range= pr + ranges.elements;
@@ -11136,7 +11161,7 @@ static void print_sel_tree(PARAM *param, SEL_TREE *tree, key_map *tree_map,
   if (!tmp.length())
     tmp.append(STRING_WITH_LEN("(empty)"));
 
-  DBUG_PRINT("info", ("SEL_TREE: 0x%lx (%s)  scans: %s", (long) tree, msg, tmp.ptr()));
+  DBUG_PRINT("info", ("SEL_TREE: %p (%s)  scans: %s", tree, msg, tmp.ptr()));
 
   DBUG_VOID_RETURN;
 }

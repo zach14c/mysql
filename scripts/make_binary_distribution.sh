@@ -258,12 +258,6 @@ if [ x"$BASE_SYSTEM" != x"netware" ] ; then
   mkdir       $DEST/data $DEST/data/mysql $DEST/data/test
   chmod o-rwx $DEST/data $DEST/data/mysql $DEST/data/test
 
-  # FIXME mysqld-debug is handled seperately (see phase_save_server() in
-  # Do-compile)
-  if [ -f sql/mysqld-debug ] ; then
-    cp sql/mysqld-debug $DEST/bin/
-  fi
-
   # ----------------------------------------------------------------------
   # Create the result tar file
   # ----------------------------------------------------------------------
@@ -335,6 +329,7 @@ BIN_FILES="extra/comp_err$BS extra/replace$BS extra/perror$BS \
   storage/myisam/myisamlog$BS storage/myisam/myisam_ftdump$BS \
   sql/mysqld$BS sql/mysqld-debug$BS \
   sql/mysql_tzinfo_to_sql$BS \
+  server-tools/instance-manager/mysqlmanager$BS \
   client/mysql$BS client/mysqlshow$BS client/mysqladmin$BS \
   client/mysqlslap$BS \
   client/mysqldump$BS client/mysqlimport$BS \

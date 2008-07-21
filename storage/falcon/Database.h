@@ -35,7 +35,6 @@
 #define ODS_MINOR_VERSION2	2		// Has SequencePages external to the section tree
 #define ODS_MINOR_VERSION3	3		// Switch to variable length record numbers in index
 #define ODS_MINOR_VERSION	ODS_MINOR_VERSION3
-//#define AGE_GROUPS			32
 
 #define COMBINED_VERSION(major,minor)	(major * 100 + minor)
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
@@ -206,6 +205,8 @@ public:
 	void			commitByXid(int xidLength, const UCHAR* xid);
 	void			rollbackByXid(int xidLength, const UCHAR* xid);
 	void			getTransactionSummaryInfo(InfoTable* infoTable);
+	void			getTableSpaceInfo(InfoTable* infoTable);
+	void			getTableSpaceFilesInfo(InfoTable* infoTable);
 	void			updateCardinalities(void);
 	void			getIOInfo(InfoTable* infoTable);
 	void			getTransactionInfo(InfoTable* infoTable);
@@ -289,7 +290,7 @@ public:
 	MemMgr				*recordDataPool;
 	time_t				startTime;
 	
-	volatile time_t		deltaTime;
+	volatile int		deltaTime;
 	volatile time_t		timestamp;
 	volatile int		numberQueries;
 	volatile int		numberRecords;

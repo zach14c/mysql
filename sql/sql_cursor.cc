@@ -111,7 +111,8 @@ class Select_materialize: public select_union
   select_result *result; /**< the result object of the caller (PS or SP) */
 public:
   Materialized_cursor *materialized_cursor;
-  Select_materialize(select_result *result_arg) :result(result_arg) {}
+  Select_materialize(select_result *result_arg)
+    :result(result_arg), materialized_cursor(0) {}
   virtual bool send_fields(List<Item> &list, uint flags);
 };
 
@@ -274,7 +275,6 @@ Sensitive_cursor::Sensitive_cursor(THD *thd, select_result *result_arg)
   Save THD state into cursor.
 
   @todo
-    - XXX: thd->locked_tables is not changed.
     -  What problems can we have with it if cursor is open?
     - TODO: must be fixed because of the prelocked mode.
 */
@@ -327,7 +327,6 @@ Sensitive_cursor::post_open(THD *thd)
     }
   }
   /*
-    XXX: thd->locked_tables is not changed.
     What problems can we have with it if cursor is open?
     TODO: must be fixed because of the prelocked mode.
   */

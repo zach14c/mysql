@@ -20,7 +20,7 @@
 #include "Engine.h"
 #include "BlobReference.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Stream.h"
 #endif
 
@@ -62,7 +62,7 @@ void BlobReference::unsetBlobReference()
 }
 
 
-#ifdef ENGINE
+#ifdef FALCONDB
 void BlobReference::getReference(Stream *stream)
 {
 	stream->putSegment ((const char*) repositoryName);

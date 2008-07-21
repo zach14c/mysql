@@ -373,12 +373,12 @@ int main(int argc, char **argv)
 
   slap_connect(&mysql, FALSE);
 
-  VOID(pthread_mutex_init(&counter_mutex, NULL));
-  VOID(pthread_cond_init(&count_threshhold, NULL));
-  VOID(pthread_mutex_init(&sleeper_mutex, NULL));
-  VOID(pthread_cond_init(&sleep_threshhold, NULL));
-  VOID(pthread_mutex_init(&timer_alarm_mutex, NULL));
-  VOID(pthread_cond_init(&timer_alarm_threshold, NULL));
+  pthread_mutex_init(&counter_mutex, NULL);
+  pthread_cond_init(&count_threshhold, NULL);
+  pthread_mutex_init(&sleeper_mutex, NULL);
+  pthread_cond_init(&sleep_threshhold, NULL);
+  pthread_mutex_init(&timer_alarm_mutex, NULL);
+  pthread_cond_init(&timer_alarm_threshold, NULL);
 
 
   /* Main iterations loop */
@@ -414,12 +414,12 @@ burnin:
   if (opt_burnin)
     goto burnin;
 
-  VOID(pthread_mutex_destroy(&counter_mutex));
-  VOID(pthread_cond_destroy(&count_threshhold));
-  VOID(pthread_mutex_destroy(&sleeper_mutex));
-  VOID(pthread_cond_destroy(&sleep_threshhold));
-  VOID(pthread_mutex_destroy(&timer_alarm_mutex));
-  VOID(pthread_cond_destroy(&timer_alarm_threshold));
+  pthread_mutex_destroy(&counter_mutex);
+  pthread_cond_destroy(&count_threshhold);
+  pthread_mutex_destroy(&sleeper_mutex);
+  pthread_cond_destroy(&sleep_threshhold);
+  pthread_mutex_destroy(&timer_alarm_mutex);
+  pthread_cond_destroy(&timer_alarm_threshold);
 
   slap_close(&mysql);
 
@@ -615,13 +615,13 @@ static struct my_option my_long_options[] =
     OPT_ARG, 0, 0, 0, 0, 0, 0},
 #ifdef DBUG_OFF
   {"debug", '#', "This is a non-debug version. Catch this and exit.",
-    0, 0, 0, GET_DISABLED, OPT_ARG, 0, 0, 0, 0, 0, 0},
+   0, 0, 0, GET_DISABLED, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #else
   {"debug", '#', "Output debug log. Often this is 'd:t:o,filename'.",
     (uchar**) &default_dbug_option, (uchar**) &default_dbug_option, 0, GET_STR,
     OPT_ARG, 0, 0, 0, 0, 0, 0},
 #endif
-  {"debug-check", OPT_DEBUG_CHECK, "Check memory and open file usage at exit .",
+  {"debug-check", OPT_DEBUG_CHECK, "Check memory and open file usage at exit.",
    (uchar**) &debug_check_flag, (uchar**) &debug_check_flag, 0,
    GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"debug-info", 'T', "Print some debug info at exit.", (uchar**) &debug_info_flag,

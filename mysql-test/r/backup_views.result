@@ -1,0 +1,453 @@
+
+starting the test for backup
+
+DROP DATABASE IF EXISTS bup_db1;
+DROP DATABASE IF EXISTS bup_db2;
+CREATE DATABASE bup_db1;
+USE bup_db1;
+Creating Table t1
+CREATE TABLE t1(id int not null primary key, name char(10),city varchar(10));
+loading data
+INSERT INTO t1 VALUES 
+(1,'aa1','RR1'),(2,'aa2','RR2'),(3,'aa3','RR3'),(4,'aa4','RR4'),(5,'aa5','RR5'),(6,'aa6','RR6'),(7,'aa7','RR7'),(8,'aa8','RR8');
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+Creating Table t3
+CREATE TABLE t3(ccode int, District char(20) not null primary key, scode int, foreign key (scode) references t1(id));
+Loading Data
+INSERT INTO t3 VALUES
+(234, 'zuloa',1),(321,'yyy',2),(765,'iug',3),(124,'LKJ',4),(235,'uth',6);
+SELECT * FROM t3;
+ccode	District	scode
+234	zuloa	1
+321	yyy	2
+765	iug	3
+124	LKJ	4
+235	uth	6
+Creating Table t5
+CREATE TABLE t5(Gender char(5), cand_age int,foreign key(cand_age) references 
+bup_db2.t2(age));
+Loading data into table t5
+INSERT INTO t5 VALUES
+('F',23),('F',24),('M',19),('F',28),('M',43),('F',30),('M',31),('M',27);
+SELECT * FROM t5;
+Gender	cand_age
+F	23
+F	24
+M	19
+F	28
+M	43
+F	30
+M	31
+M	27
+*****Create views from the table t1 of bup_db1*******
+CREATE VIEW v1  AS SELECT * FROM t1;
+*****Creating views from 2 tables(t1 and t3) within same database******
+CREATE VIEW vcomb AS SELECT name, city, ccode FROM t1, t3 WHERE id=scode;
+CREATE DATABASE bup_db2;
+USE bup_db2;
+CREATE TABLE t2(idno int, age int primary key, education char(20) ,foreign key (idno) references bup_db1.t1(id));
+INSERT INTO t2 VALUES(1,23,'BS'),(2,24,'BE'),(3,19,'school'),(4,28,'MS'),(5,43,'PHD'),(6,30,'Doctor'),(7,31,'Lawyer'),(8,27,'undergrad');
+SELECT * FROM t2;
+idno	age	education
+1	23	BS
+2	24	BE
+3	19	school
+4	28	MS
+5	43	PHD
+6	30	Doctor
+7	31	Lawyer
+8	27	undergrad
+****Creating View****
+CREATE VIEW v2 AS SELECT age, education FROM t2;
+******Creating Views from combination of 2 databases*******
+CREATE VIEW v3 AS SELECT name, age, education FROM bup_db1.t1 , bup_db2.t2 WHERE id=idno;
+*********Creating View from another view ***********.
+*****Creating View from other Database********
+CREATE VIEW v4 AS SELECT * FROM bup_db1.t3;
+Rename the view name
+RENAME TABLE v4 to student_details;
+USE bup_db1;
+*******Creating View from database bup_db2**********
+CREATE VIEW v5 AS SELECT * FROM bup_db2.t2;
+******Creating View v6********
+USE bup_db1;
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+SELECT * FROM t3;
+ccode	District	scode
+234	zuloa	1
+321	yyy	2
+765	iug	3
+124	LKJ	4
+235	uth	6
+SELECT * FROM t5;
+Gender	cand_age
+F	23
+F	24
+M	19
+F	28
+M	43
+F	30
+M	31
+M	27
+SELECT * FROM v1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+SELECT * FROM vcomb;
+name	city	ccode
+aa1	RR1	234
+aa2	RR2	321
+aa3	RR3	765
+aa4	RR4	124
+aa6	RR6	235
+SELECT * FROM v5;
+idno	age	education
+1	23	BS
+2	24	BE
+3	19	school
+4	28	MS
+5	43	PHD
+6	30	Doctor
+7	31	Lawyer
+8	27	undergrad
+excercise objects of bup_db2
+USE bup_db2;
+SELECT * FROM t2;
+idno	age	education
+1	23	BS
+2	24	BE
+3	19	school
+4	28	MS
+5	43	PHD
+6	30	Doctor
+7	31	Lawyer
+8	27	undergrad
+SELECT * FROM v2;
+age	education
+23	BS
+24	BE
+19	school
+28	MS
+43	PHD
+30	Doctor
+31	Lawyer
+27	undergrad
+SELECT * FROM v3;
+name	age	education
+aa1	23	BS
+aa2	24	BE
+aa3	19	school
+aa4	28	MS
+aa5	43	PHD
+aa6	30	Doctor
+aa7	31	Lawyer
+aa8	27	undergrad
+SELECT * FROM student_details;
+ccode	District	scode
+234	zuloa	1
+321	yyy	2
+765	iug	3
+124	LKJ	4
+235	uth	6
+showing objects and create statements.
+SHOW FULL TABLES FROM bup_db1;;
+Tables_in_bup_db1	t1
+Table_type	BASE TABLE
+Tables_in_bup_db1	t3
+Table_type	BASE TABLE
+Tables_in_bup_db1	t5
+Table_type	BASE TABLE
+Tables_in_bup_db1	v1
+Table_type	VIEW
+Tables_in_bup_db1	v5
+Table_type	VIEW
+Tables_in_bup_db1	vcomb
+Table_type	VIEW
+SHOW FULL TABLES FROM bup_db2;;
+Tables_in_bup_db2	student_details
+Table_type	VIEW
+Tables_in_bup_db2	t2
+Table_type	BASE TABLE
+Tables_in_bup_db2	v2
+Table_type	VIEW
+Tables_in_bup_db2	v3
+Table_type	VIEW
+SHOW CREATE VIEW bup_db1.v1;;
+View	v1
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db1`.`v1` AS select `bup_db1`.`t1`.`id` AS `id`,`bup_db1`.`t1`.`name` AS `name`,`bup_db1`.`t1`.`city` AS `city` from `bup_db1`.`t1`
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+SHOW CREATE VIEW bup_db1.vcomb;;
+View	vcomb
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db1`.`vcomb` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db1`.`t1`.`city` AS `city`,`bup_db1`.`t3`.`ccode` AS `ccode` from (`bup_db1`.`t1` join `bup_db1`.`t3`) where (`bup_db1`.`t1`.`id` = `bup_db1`.`t3`.`scode`)
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+SHOW CREATE VIEW bup_db2.v3;;
+View	v3
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db2`.`v3` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db2`.`t2`.`age` AS `age`,`bup_db2`.`t2`.`education` AS `education` from (`bup_db1`.`t1` join `bup_db2`.`t2`) where (`bup_db1`.`t1`.`id` = `bup_db2`.`t2`.`idno`)
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+backup data
+BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview.bak';
+backup_id
+#
+BACKUP DATABASE bup_db1 TO 'bup_objectview1.bak';
+backup_id
+#
+BACKUP DATABASE bup_db2 TO 'bup_objectview2.bak';
+backup_id
+#
+dropping  database.
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+RESTORE FROM 'bup_objectview.bak';
+backup_id
+#
+showing objects and create statements
+SHOW CREATE DATABASE bup_db1;;
+Database	bup_db1
+Create Database	CREATE DATABASE `bup_db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW FULL TABLES FROM bup_db1;;
+Tables_in_bup_db1	t1
+Table_type	BASE TABLE
+Tables_in_bup_db1	t3
+Table_type	BASE TABLE
+Tables_in_bup_db1	t5
+Table_type	BASE TABLE
+Tables_in_bup_db1	v1
+Table_type	VIEW
+Tables_in_bup_db1	v5
+Table_type	VIEW
+Tables_in_bup_db1	vcomb
+Table_type	VIEW
+SHOW FULL TABLES FROM bup_db2;;
+Tables_in_bup_db2	student_details
+Table_type	VIEW
+Tables_in_bup_db2	t2
+Table_type	BASE TABLE
+Tables_in_bup_db2	v2
+Table_type	VIEW
+Tables_in_bup_db2	v3
+Table_type	VIEW
+SHOW CREATE VIEW bup_db1.v1;;
+View	v1
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db1`.`v1` AS select `bup_db1`.`t1`.`id` AS `id`,`bup_db1`.`t1`.`name` AS `name`,`bup_db1`.`t1`.`city` AS `city` from `bup_db1`.`t1`
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+SHOW CREATE VIEW bup_db1.vcomb;;
+View	vcomb
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db1`.`vcomb` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db1`.`t1`.`city` AS `city`,`bup_db1`.`t3`.`ccode` AS `ccode` from (`bup_db1`.`t1` join `bup_db1`.`t3`) where (`bup_db1`.`t1`.`id` = `bup_db1`.`t3`.`scode`)
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+SHOW CREATE VIEW bup_db2.v3;;
+View	v3
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `bup_db2`.`v3` AS select `bup_db1`.`t1`.`name` AS `name`,`bup_db2`.`t2`.`age` AS `age`,`bup_db2`.`t2`.`education` AS `education` from (`bup_db1`.`t1` join `bup_db2`.`t2`) where (`bup_db1`.`t1`.`id` = `bup_db2`.`t2`.`idno`)
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+****check for view contents after Restore*****
+USE bup_db1;
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+SELECT * FROM t3;
+ccode	District	scode
+234	zuloa	1
+321	yyy	2
+765	iug	3
+124	LKJ	4
+235	uth	6
+SELECT * FROM t5;
+Gender	cand_age
+F	23
+F	24
+M	19
+F	28
+M	43
+F	30
+M	31
+M	27
+SELECT * FROM v1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+SELECT * FROM vcomb;
+name	city	ccode
+aa1	RR1	234
+aa2	RR2	321
+aa3	RR3	765
+aa4	RR4	124
+aa6	RR6	235
+SELECT * FROM v5;
+idno	age	education
+1	23	BS
+2	24	BE
+3	19	school
+4	28	MS
+5	43	PHD
+6	30	Doctor
+7	31	Lawyer
+8	27	undergrad
+excercise objects of bup_db2
+use bup_db2;
+SELECT * FROM t2;
+idno	age	education
+1	23	BS
+2	24	BE
+3	19	school
+4	28	MS
+5	43	PHD
+6	30	Doctor
+7	31	Lawyer
+8	27	undergrad
+SELECT * FROM v2;
+age	education
+23	BS
+24	BE
+19	school
+28	MS
+43	PHD
+30	Doctor
+31	Lawyer
+27	undergrad
+SELECT * FROM v3;
+name	age	education
+aa1	23	BS
+aa2	24	BE
+aa3	19	school
+aa4	28	MS
+aa5	43	PHD
+aa6	30	Doctor
+aa7	31	Lawyer
+aa8	27	undergrad
+SELECT * FROM student_details;
+ccode	District	scode
+234	zuloa	1
+321	yyy	2
+765	iug	3
+124	LKJ	4
+235	uth	6
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+Restoring Database
+RESTORE FROM 'bup_objectview.bak';
+backup_id
+#
+USE bup_db1;
+ALTER TABLE t1 CHANGE id id tinyint not null;
+SHOW CREATE TABLE t1;;
+Table	t1
+Create Table	CREATE TABLE `t1` (
+  `id` tinyint(4) NOT NULL,
+  `name` char(10) DEFAULT NULL,
+  `city` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+DELETE FROM t1 WHERE id=7;
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+8	aa8	RR8
+SELECT * FROM v1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+8	aa8	RR8
+USE bup_db2;
+SELECT * FROM v3;
+name	age	education
+aa1	23	BS
+aa2	24	BE
+aa3	19	school
+aa4	28	MS
+aa5	43	PHD
+aa6	30	Doctor
+aa8	27	undergrad
+BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview3.bak';
+backup_id
+#
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+RESTORE FROM 'bup_objectview3.bak';
+backup_id
+#
+USE bup_db2;
+SELECT * FROM v3;
+name	age	education
+aa1	23	BS
+aa2	24	BE
+aa3	19	school
+aa4	28	MS
+aa5	43	PHD
+aa6	30	Doctor
+aa8	27	undergrad
+USE bup_db1;
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+8	aa8	RR8
+
+***  DROP bup_db1, bup_db2 DATABASE ****
+
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;

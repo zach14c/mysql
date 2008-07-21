@@ -31,7 +31,7 @@ typedef struct st_my_ft_parser_param
 
 static int FT_WORD_cmp(CHARSET_INFO* cs, FT_WORD *w1, FT_WORD *w2)
 {
-  return mi_compare_text(cs, (uchar*) w1->pos, w1->len,
+  return ha_compare_text(cs, (uchar*) w1->pos, w1->len,
                          (uchar*) w2->pos, w2->len, 0, 0);
 }
 
@@ -302,7 +302,7 @@ static int ft_parse_internal(MYSQL_FTPARSER_PARAM *param,
 }
 
 
-int ft_parse(TREE *wtree, uchar *doc, int doclen,
+int ft_parse(TREE *wtree, const uchar *doc, int doclen,
              struct st_mysql_ftparser *parser,
              MYSQL_FTPARSER_PARAM *param, MEM_ROOT *mem_root)
 {

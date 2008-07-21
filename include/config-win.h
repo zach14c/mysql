@@ -17,14 +17,12 @@
 
 #define BIG_TABLES
 
-#ifdef __WIN2000__
-/* We have to do this define before including windows.h to get the AWE API
-functions */
+/* 
+  Minimal version of Windows we should be able to run on.
+  Currently Windows 2000
+*/
 #define _WIN32_WINNT     0x0500
-#else
-/* Get NT 4.0 functions */
-#define _WIN32_WINNT     0x0400
-#endif
+
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400
 /* Avoid endless warnings about sprintf() etc. being unsafe. */
@@ -32,11 +30,13 @@ functions */
 #endif
 
 #include <sys/locking.h>
+#include <sys/stat.h>			/* chmod() constants*/
 #include <winsock2.h>
-#include <math.h>			/* Because of rint() */
+#include <Ws2tcpip.h>
 #include <fcntl.h>
 #include <io.h>
 #include <malloc.h>
+#include <sys/stat.h>
 
 #define HAVE_SMEM 1
 
@@ -93,10 +93,25 @@ functions */
 
 #define S_IROTH		S_IREAD		/* for my_lib */
 
+/* for MY_S_ISFIFO() macro from my_lib */
+#if defined (_S_IFIFO) && !defined (S_IFIFO)
+#define S_IFIFO _S_IFIFO
+#endif
+
 /* Winsock2 constant (Vista SDK and later)*/
+#define IPPROTO_IPV6 41
 #ifndef IPV6_V6ONLY
 #define IPV6_V6ONLY 27
 #endif
+
+/* 
+   Constants used by chmod. Note, that group/others is ignored
+   - because unsupported by Windows due to different access control model.
+*/
+#define S_IRWXU S_IREAD|S_IWRITE 
+#define S_IRWXG 0
+#define S_IRWXO 0
+typedef int mode_t; 
 
 #ifdef __BORLANDC__
 #define FILE_BINARY	O_BINARY	/* my_fopen in binary mode */
@@ -155,10 +170,21 @@ typedef __int64 os_off_t;
 #ifdef _WIN64
 typedef UINT_PTR rf_SetTimer;
 #else
-#ifndef HAVE_SIZE_T
-typedef unsigned int size_t;
-#endif
 typedef uint rf_SetTimer;
+#endif
+
+#ifndef HAVE_SIZE_T
+#ifndef _SIZE_T_DEFINED
+typedef SIZE_T size_t;
+#define _SIZE_T_DEFINED
+#endif
+#endif
+
+#ifndef HAVE_SSIZE_T
+#ifndef _SSIZE_T_DEFINED
+typedef SSIZE_T ssize_t;
+#define _SSIZE_T_DEFINED
+#endif
 #endif
 
 #define Socket_defined
@@ -233,13 +259,6 @@ typedef uint rf_SetTimer;
 #define inline __inline
 #endif /* __cplusplus */
 
-inline double rint(double nr)
-{
-  double f = floor(nr);
-  double c = ceil(nr);
-  return (((c-nr) >= (nr-f)) ? f :c);
-}
-
 #ifdef _WIN64
 #define ulonglong2double(A) ((double) (ulonglong) (A))
 #define my_off_t2double(A)  ((double) (my_off_t) (A))
@@ -260,8 +279,10 @@ inline double ulonglong2double(ulonglong value)
 #define tell(A) _telli64(A)
 #endif
 
-
 #define STACK_DIRECTION -1
+
+/* Difference between GetSystemTimeAsFileTime() and now() */
+#define OFFSET_TO_EPOCH ULL(116444736000000000)
 
 #define HAVE_PERROR
 #define HAVE_VFPRINT
@@ -283,7 +304,6 @@ inline double ulonglong2double(ulonglong value)
 #define HAVE_FLOAT_H
 #define HAVE_LIMITS_H
 #define HAVE_STDDEF_H
-#define HAVE_RINT		/* defined in this file */
 #define NO_FCNTL_NONBLOCK	/* No FCNTL */
 #define HAVE_ALLOCA
 #define HAVE_STRPBRK

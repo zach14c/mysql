@@ -405,7 +405,7 @@ void RecordLocatorPage::unlinkSpaceSlot(int slot)
 	
 	// If we're not a space management slot, the next guy isn't an index, either
 	
-	if (slot <= maxLine && elements[slot + 1].spaceAvailable < 0)
+	if (slot < maxLine && elements[slot + 1].spaceAvailable < 0)
 		elements[slot + 1].spaceAvailable = 0;
 		
 	linkSpaceSlot(priorSlot, (nextSlot >= 0) ? nextSlot : 0);
@@ -438,4 +438,12 @@ void RecordLocatorPage::deleteDataPages(Dbb* dbb, TransId transId)
 		dataPage->deletePage(dbb, transId);
 		dbb->freePage(bdb, transId);
 		}
+}
+
+void RecordLocatorPage::backup(EncodedDataStream* stream)
+{
+}
+
+void RecordLocatorPage::restore(EncodedDataStream* stream)
+{
 }

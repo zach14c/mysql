@@ -14,7 +14,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 ADD_DEFINITIONS(-D_REENTRANT
-                -DENGINE -DSTORAGE_ENGINE -DMEM_DEBUG
+                -DFALCONDB -DSTORAGE_ENGINE -DMEM_DEBUG
                 -DNAMESPACE=Nfs
                 -DMYSQL_SERVER)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
@@ -30,7 +30,8 @@ IF(CMAKE_GENERATOR MATCHES "Visual Studio 7" OR
   SET(CMAKE_CXX_FLAGS_DEBUG_INIT "${CMAKE_CXX_FLAGS_DEBUG_INIT} /EHsc")
 ENDIF(CMAKE_GENERATOR MATCHES "Visual Studio 7" OR
       CMAKE_GENERATOR MATCHES "Visual Studio 8")
-ADD_LIBRARY(ha_falcon
+
+SET(FALCON_SOURCES 
 		Agent.cpp 
 		Alias.cpp
 		AsciiBlob.cpp
@@ -103,6 +104,7 @@ ADD_LIBRARY(ha_falcon
 		IndexNode.cpp 
 		Index2Node.cpp 
 		IndexPage.cpp 
+		IndexWalker.cpp
 		Index2Page.cpp 
 		IndexRootPage.cpp 
 		Index2RootPage.cpp 
@@ -202,6 +204,8 @@ ADD_LIBRARY(ha_falcon
 		SearchWords.cpp 
 		Section.cpp 
 		SectionPage.cpp 
+		SectorBuffer.cpp
+		SectorCache.cpp
 		Sequence.cpp
 		SequenceManager.cpp 
 		SequenceResultSet.cpp
@@ -298,6 +302,8 @@ ADD_LIBRARY(ha_falcon
 		Values.cpp
 		ValueSet.cpp 
 		View.cpp 
+		WalkIndex.cpp
+		WalkDeferred.cpp
 		WString.cpp
 		AsciiBlob.h
 		BackLog.h 
@@ -369,10 +375,11 @@ ADD_LIBRARY(ha_falcon
 		Index.h 
 		IndexKey.h
 		IndexNode.h 
-		Index2Node.h 
 		IndexPage.h 
-		Index2Page.h 
 		IndexRootPage.h 
+		IndexWalker.h
+		Index2Node.h 
+		Index2Page.h 
 		Index2RootPage.h 
 		InfoTable.h
 		Interlock.h
@@ -475,6 +482,8 @@ ADD_LIBRARY(ha_falcon
 		SearchWords.h 
 		Section.h 
 		SectionPage.h 
+		SectorBuffer.h
+		SectorCache.h
 		Sequence.h
 		SequenceManager.h 
 		SequencePage.h 
@@ -578,6 +587,8 @@ ADD_LIBRARY(ha_falcon
 		Values.h
 		ValueSet.h 
 		View.h 
+		WalkIndex.h
+		WalkDeferred.h
 		WString.h
 		TransFormLib/Base64Transform.cpp  
 		TransFormLib/FileTransform.cpp  
@@ -598,4 +609,9 @@ ADD_LIBRARY(ha_falcon
 		TransFormLib/Transform.h
 		TransFormLib/TransformException.h
 		TransFormLib/TransformUtil.h
-		../../sql/handler.h)
+		../../sql/handler.h
+)
+IF(NOT SOURCE_SUBLIBS)
+	ADD_LIBRARY(ha_falcon ${FALCON_SOURCES} )
+	ADD_DEPENDENCIES(ha_falcon GenError)
+ENDIF(NOT SOURCE_SUBLIBS)

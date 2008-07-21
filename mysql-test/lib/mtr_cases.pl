@@ -773,31 +773,38 @@ sub collect_one_test_case($$$$$$$$$) {
 	if ( $::used_default_engine =~ /^innodb/i );
     }
 
+    #enable federated for this test
+    if ($tinfo->{'federated_test'})
+    {
+      push(@{$tinfo->{'master_opt'}}, "--loose-federated");
+      push(@{$tinfo->{'slave_opt'}}, "--loose-federated");
+    }
+
     if ( $tinfo->{'big_test'} and ! $::opt_big_test )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need 'big-test' option";
+      $tinfo->{'comment'}= "Test needs 'big-test' option";
       return;
     }
 
     if ( $tinfo->{'ndb_extra'} and ! $::opt_ndb_extra_test )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need 'ndb_extra' option";
+      $tinfo->{'comment'}= "Test needs 'ndb_extra' option";
       return;
     }
 
     if ( $tinfo->{'require_manager'} )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need the _old_ manager(to be removed)";
+      $tinfo->{'comment'}= "Test needs the _old_ manager(to be removed)";
       return;
     }
 
     if ( $tinfo->{'need_debug'} && ! $::debug_compiled_binaries )
     {
       $tinfo->{'skip'}= 1;
-      $tinfo->{'comment'}= "Test need debug binaries";
+      $tinfo->{'comment'}= "Test needs debug binaries";
       return;
     }
 
@@ -850,7 +857,7 @@ sub collect_one_test_case($$$$$$$$$) {
       if (grep(/^--skip-log-bin/,  @::opt_extra_mysqld_opt) )
       {
 	$tinfo->{'skip'}= 1;
-	$tinfo->{'comment'}= "Test need binlog";
+	$tinfo->{'comment'}= "Test needs binlog";
 	return;
       }
     }
@@ -891,6 +898,8 @@ our @tags=
  ["include/have_ndb_extra.inc", "ndb_extra", 1],
  ["include/ndb_master-slave.inc", "ndb_test", 1],
  ["require_manager", "require_manager", 1],
+ ["include/federated.inc", "federated_test", 1],
+ ["include/have_federated_db.inc", "federated_test", 1],
 );
 
 sub mtr_options_from_test_file($$) {

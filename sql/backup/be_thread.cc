@@ -24,6 +24,7 @@
   * calls easier for the driver code.
   */
 
+#include "../mysql_priv.h"
 #include "be_thread.h"
 
 /**
@@ -47,10 +48,7 @@ THD *create_new_thd()
 
   thd= new THD;
   if (unlikely(!thd))
-  {
-    delete thd;
     DBUG_RETURN(0);
-  }
   THD_CHECK_SENTRY(thd);
 
   thd->thread_stack = (char*)&thd; // remember where our stack is  
@@ -258,19 +256,7 @@ Locking_thread_st::~Locking_thread_st()
     the locking thread won't access them.
   */
   kill_locking_thread();
-  pthread_mutex_lock(&THR_LOCK_caller);
-  if (lock_state != LOCK_DONE)
-  {
-    m_thd->enter_cond(&COND_caller_wait, &THR_LOCK_caller,
-                    "Locking thread: waiting until locking thread is done");
-    while (lock_state != LOCK_DONE)
-      pthread_cond_wait(&COND_caller_wait, &THR_LOCK_caller);
-    m_thd->exit_cond("Locking thread: terminating");
-
-    DBUG_PRINT("info",("Locking thread's locking thread terminated"));
-  }
-  else
-    pthread_mutex_unlock(&THR_LOCK_caller);
+  wait_until_locking_thread_dies();
 
   /*
     Destroy the thread mutexes and cond variables.
@@ -333,3 +319,26 @@ void Locking_thread_st::kill_locking_thread()
   DBUG_VOID_RETURN;
 }
 
+
+/**
+   Wait until driver's lock thread finishes.
+
+   @note It is important to use this function before freeing memory
+         or destroying objects to which such thread might access.
+*/
+void Locking_thread_st::wait_until_locking_thread_dies()
+{
+  pthread_mutex_lock(&THR_LOCK_caller);
+  if (lock_state != LOCK_DONE)
+  {
+    m_thd->enter_cond(&COND_caller_wait, &THR_LOCK_caller,
+                    "Locking thread: waiting until locking thread is done");
+    while (lock_state != LOCK_DONE)
+      pthread_cond_wait(&COND_caller_wait, &THR_LOCK_caller);
+    m_thd->exit_cond("Locking thread: terminating");
+
+    DBUG_PRINT("info",("Locking thread's locking thread terminated"));
+  }
+  else
+    pthread_mutex_unlock(&THR_LOCK_caller);
+}

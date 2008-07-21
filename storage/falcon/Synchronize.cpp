@@ -34,8 +34,9 @@
 #include "Engine.h"
 #include "Synchronize.h"
 #include "Interlock.h"
+#include "Mutex.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Log.h"
 #define CHECK_RET(text,code)	if (ret) Error::error (text,code)
 #else
@@ -102,11 +103,14 @@ void Synchronize::sleep()
 		if (n != WAIT_TIMEOUT)
 			{
 			DEBUG_FREEZE;
+			
 			return;
 			}
 		}
 #else
+	sleeping = true;
 	sleep (INFINITE);
+	sleeping = false;
 #endif
 #endif
 
@@ -129,10 +133,22 @@ void Synchronize::sleep()
 
 bool Synchronize::sleep(int milliseconds)
 {
+	return sleep(milliseconds, NULL);
+}
+
+bool Synchronize::sleep(int milliseconds, Mutex *callersMutex)
+{
 	sleeping = true;
 
 #ifdef _WIN32
+	if (callersMutex)
+		callersMutex->release();
+		
 	int n = WaitForSingleObject(event, milliseconds);
+	
+	if (callersMutex)
+		callersMutex->lock();
+		
 	sleeping = false;
 	DEBUG_FREEZE;
 
@@ -142,7 +158,12 @@ bool Synchronize::sleep(int milliseconds)
 #ifdef _PTHREADS
 	int ret = pthread_mutex_lock (&mutex);
 	CHECK_RET("pthread_mutex_lock failed, errno %d", errno);
+	
+	if (callersMutex)
+		callersMutex->release();
+		
 	struct timespec nanoTime;
+
 #if _POSIX_TIMERS > 0
 	ret = clock_gettime(CLOCK_REALTIME, &nanoTime);
 	CHECK_RET("clock_gettime failed, errno %d", errno);
@@ -179,7 +200,7 @@ bool Synchronize::sleep(int milliseconds)
 			}
 			
 		if (!wakeup)
-#ifdef ENGINE
+#ifdef FALCONDB
 			Log::debug ("Synchronize::sleep(milliseconds): unexpected wakeup, ret %d\n", ret);
 #else
 			printf ("Synchronize::sleep(milliseconds): unexpected wakeup, ret %d\n", ret);
@@ -190,6 +211,10 @@ bool Synchronize::sleep(int milliseconds)
 	sleeping = false;
 	wakeup = false;
 	pthread_mutex_unlock(&mutex);
+	
+	if (callersMutex)
+		callersMutex->lock();
+
 	DEBUG_FREEZE;
 
 	return ret != ETIMEDOUT;

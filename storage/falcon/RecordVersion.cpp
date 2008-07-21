@@ -120,6 +120,15 @@ Record* RecordVersion::releaseNonRecursive()
 
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
+	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
+	if (priorVersion)
+		syncPrior.lock(Shared);
+
+	return fetchVersionRecursive(trans);
+}
+
+Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
+{
 	// Unless the record is at least as old as the transaction, it's not for us
 
 	Transaction *recTransaction = transaction;
@@ -144,15 +153,13 @@ Record* RecordVersion::fetchVersion(Transaction * trans)
 	if (!priorVersion)
 		return NULL;
 		
-	return priorVersion->fetchVersion(trans);
+	return priorVersion->fetchVersionRecursive(trans);
 }
 
-Record* RecordVersion::rollback(Transaction *transaction)
+void RecordVersion::rollback(Transaction *transaction)
 {
-	if (superceded)
-		return NULL;
-
-	return format->table->rollbackRecord (this, transaction);
+	if (!superceded)
+		format->table->rollbackRecord (this, transaction);
 }
 
 bool RecordVersion::isVersion()
@@ -172,27 +179,65 @@ void RecordVersion::commit()
 }
 
 // Scavenge record versions by the scavenger thread.  Return true if the
-// record is a scavenge candidate
+// record or any prior version of the record is a scavenge candidate.
 
-bool RecordVersion::scavenge(RecordScavenge *recordScavenge)
+bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 {
-	if (useCount != 1)
-		return false;
+	// Scavenge criteria:
+	// 
+	// 1. Use count == 1 AND
+	// 2. Record Version is older than the record version that was visible
+	//    to the oldest active transaction AND
+	// 3. Either the record generation is older than the current generation
+	//    OR the scavenge is forced
+	//    OR there is no record data associated with the record version.
 
-	if (transaction || (transactionId >= recordScavenge->transactionId))
+	if (	useCount == 1
+		&& !transaction
+		&& transactionId < recordScavenge->transactionId
+		&& (!hasRecord()
+			|| generation <= recordScavenge->scavengeGeneration
+			|| recordScavenge->forced))
 		{
+		
+		// Expunge all record versions prior to this
+
+		if (priorVersion && lockType == Exclusive)
+			format->table->expungeRecordVersions(this, recordScavenge);
+			
+		return true;
+		}
+	else
+		{
+		 // Signal Table::cleanupRecords() that there is work to do
+		 
 		format->table->activeVersions = true;
 
-		if (priorVersion)
-			priorVersion->scavenge(recordScavenge);
+		// Scavenge criteria not met for this base record, so check prior versions.
+		
+		if (priorVersion && (recordScavenge->forced || recordScavenge->scavengeGeneration != UNDEFINED))
+			{
+			
+			// Scavenge prior record versions only if we have an exclusive lock on
+			// the record leaf. Return 'false' because the base record is not scavengable. 
+			
+			if (lockType == Exclusive)
+				priorVersion->scavenge(recordScavenge, lockType);
+			else
 
-		return false;
+				// Scan the prior record versions and return 'true' if a scavenge
+				// candidate is found.
+				
+				for (Record *rec = priorVersion; rec; rec = rec->getPriorVersion())
+					if (	rec->useCount == 1
+						&& !rec->getTransaction()
+						&& rec->getTransactionId() < recordScavenge->transactionId
+						&& (!rec->hasRecord()
+							|| rec->generation <= recordScavenge->scavengeGeneration))
+						return true;
+			}
 		}
-
-	if (priorVersion)
-		format->table->expungeRecordVersions(this, recordScavenge);
-
-	return true;
+		return false;
 }
 
 // Scavenge record versions replaced within a savepoint.
@@ -202,6 +247,9 @@ void RecordVersion::scavenge(TransId targetTransactionId, int oldestActiveSavePo
 	if (!priorVersion)
 		return;
 
+	Sync syncPrior(getSyncPrior(), "RecordVersion::scavenge()-savepoint");
+	syncPrior.lock(Shared);
+	
 	Record *rec = priorVersion;
 	Record *ptr = NULL;
 	
@@ -229,6 +277,10 @@ void RecordVersion::scavenge(TransId targetTransactionId, int oldestActiveSavePo
 	
 	Record *prior = priorVersion;
 	prior->addRef();
+
+	syncPrior.unlock();
+	syncPrior.lock(Exclusive);
+	
 	setPriorVersion(rec);
 	//ptr->setPriorVersion(NULL);
 	ptr->state = recEndChain;
@@ -259,6 +311,16 @@ Transaction* RecordVersion::getTransaction()
 bool RecordVersion::isSuperceded()
 {
 	return superceded;
+}
+
+// Set the priorVersion to NULL and return its pointer.
+// The caller is responsivble for releasing the associated useCount.
+
+Record* RecordVersion::clearPriorVersion(void)
+{
+	Record * prior = priorVersion;
+	priorVersion = NULL;
+	return prior;
 }
 
 void RecordVersion::setPriorVersion(Record *oldVersion)
@@ -346,7 +408,8 @@ int RecordVersion::thaw()
 			
 			if (table->debugThawedBytes >= table->database->configuration->recordChillThreshold)
 				{
-				Log::debug("Record Thaw/Fetch: table=%-5ld records=%7ld  bytes=%8ld\n",table->tableId, table->debugThawedRecords, table->debugThawedBytes);
+				Log::debug("%d: Record thaw (fetch): table %d, %ld records, %ld bytes\n", this->format->table->database->deltaTime,
+							table->tableId, table->debugThawedRecords, table->debugThawedBytes);
 				table->debugThawedRecords = 0;
 				table->debugThawedBytes = 0;
 				}
@@ -402,3 +465,4 @@ void RecordVersion::serialize(Serialize* stream)
 	else
 		stream->putInt(2);
 }
+

@@ -398,8 +398,18 @@ public:
   {
     if (args[0]->type() == XPATH_NODESET)
     {
+      /*
+        a node-set is true if and only if it is non-empty,
+        i.e. consists of one or more elements
+      */
       String *flt= args[0]->val_nodeset(&tmp_value);
-      return flt->length() == sizeof(MY_XPATH_FLT) ? 1 : 0;
+      return flt->length() >= sizeof(MY_XPATH_FLT) ? 1 : 0;
+    }
+    if (args[0]->result_type() == STRING_RESULT)
+    {
+      /* a string is true if and only if its length is non-zero */
+      String *str= args[0]->val_str(&tmp_value);
+      return str && str->length() > 0 ? 1 : 0;
     }
     return args[0]->val_real() ? 1 : 0;
   }
@@ -2024,8 +2034,8 @@ static int my_xpath_parse_OrExpr(MY_XPATH *xpath)
     Item *prev= xpath->item;
     if (!my_xpath_parse_AndExpr(xpath))
     {
-      return 0;
       xpath->error= 1;
+      return 0;
     }
     xpath->item= new Item_cond_or(nodeset2bool(xpath, prev),
                                   nodeset2bool(xpath, xpath->item));

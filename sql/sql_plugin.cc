@@ -644,7 +644,7 @@ static plugin_ref intern_plugin_lock(LEX *lex, plugin_ref rc CALLER_INFO_PROTO)
     *plugin= pi;
 #endif
     pi->ref_count++;
-    DBUG_PRINT("info",("thd: 0x%lx, plugin: \"%s\", ref_count: %d",
+    DBUG_PRINT("info",("thd: 0x%lx  plugin: \"%s\"  ref_count: %d",
                        (long) current_thd, pi->name.str, pi->ref_count));
 
     if (lex)
@@ -1146,9 +1146,10 @@ int plugin_init(int *argc, char **argv, int flags)
   {
     for (plugin= *builtins; plugin->info; plugin++)
     {
-      /* by default, only ndbcluster is disabled */
+      /* by default, ndbcluster and federated are disabled */
       def_enabled=
-        my_strcasecmp(&my_charset_latin1, plugin->name, "NDBCLUSTER") != 0;
+        my_strcasecmp(&my_charset_latin1, plugin->name, "NDBCLUSTER") != 0 &&
+        my_strcasecmp(&my_charset_latin1, plugin->name, "FEDERATED") != 0;
       bzero(&tmp, sizeof(tmp));
       tmp.plugin= plugin;
       tmp.name.str= (char *)plugin->name;
@@ -1343,6 +1344,7 @@ static void plugin_load(MEM_ROOT *tmp_root, int *argc, char **argv)
   tables.alias= tables.table_name= (char*)"plugin";
   tables.lock_type= TL_READ;
   tables.db= new_thd->db;
+  alloc_mdl_locks(&tables, tmp_root);
 
 #ifdef EMBEDDED_LIBRARY
   /*
@@ -1450,10 +1452,7 @@ static bool plugin_load_list(MEM_ROOT *tmp_root, int *argc, char **argv,
 
             free_root(tmp_root, MYF(MY_MARK_BLOCKS_FREE));
             if (plugin_add(tmp_root, &name, &dl, argc, argv, REPORT_TO_LOG))
-            {
-              pthread_mutex_unlock(&LOCK_plugin);
               goto error;
-            }
           }
           plugin_dl_del(&dl); // reduce ref count
         }
@@ -1463,10 +1462,7 @@ static bool plugin_load_list(MEM_ROOT *tmp_root, int *argc, char **argv,
         free_root(tmp_root, MYF(MY_MARK_BLOCKS_FREE));
         pthread_mutex_lock(&LOCK_plugin);
         if (plugin_add(tmp_root, &name, &dl, argc, argv, REPORT_TO_LOG))
-        {
-          pthread_mutex_unlock(&LOCK_plugin);
           goto error;
-        }
       }
       pthread_mutex_unlock(&LOCK_plugin);
       name.length= dl.length= 0;
@@ -1489,6 +1485,7 @@ static bool plugin_load_list(MEM_ROOT *tmp_root, int *argc, char **argv,
   }
   DBUG_RETURN(FALSE);
 error:
+  pthread_mutex_unlock(&LOCK_plugin);
   sql_print_error("Couldn't load plugin named '%s' with soname '%s'.",
                   name.str, dl.str);
   DBUG_RETURN(TRUE);
@@ -1647,6 +1644,8 @@ bool mysql_install_plugin(THD *thd, const LEX_STRING *name, const LEX_STRING *dl
   if (check_table_access(thd, INSERT_ACL, &tables, FALSE, FALSE, 1))
     DBUG_RETURN(TRUE);
 
+  alloc_mdl_locks(&tables, thd->mem_root);
+
   /* need to open before acquiring LOCK_plugin or it will deadlock */
   if (! (table = open_ltable(thd, &tables, TL_WRITE, 0)))
     DBUG_RETURN(TRUE);
@@ -1703,6 +1702,7 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
   bzero(&tables, sizeof(tables));
   tables.db= (char *)"mysql";
   tables.table_name= tables.alias= (char *)"plugin";
+  alloc_mdl_locks(&tables, thd->mem_root);
 
   /* need to open before acquiring LOCK_plugin or it will deadlock */
   if (! (table= open_ltable(thd, &tables, TL_WRITE, 0)))
@@ -2520,8 +2520,8 @@ static void plugin_vars_free_values(sys_var *vars)
     {
       /* Free the string from global_system_variables. */
       char **valptr= (char**) piv->real_value_ptr(NULL, OPT_GLOBAL);
-      DBUG_PRINT("plugin", ("freeing value for: '%s'  addr: 0x%lx",
-                            var->name, (long) valptr));
+      DBUG_PRINT("plugin", ("freeing value for: '%s'  addr: %p",
+                            var->name, valptr));
       my_free(*valptr, MYF(MY_WME | MY_FAE | MY_ALLOW_ZERO_PTR));
       *valptr= NULL;
     }
@@ -2598,7 +2598,7 @@ TYPELIB* sys_var_pluginvar::plugin_var_typelib(void)
   default:
     return NULL;
   }
-  return NULL;
+  return NULL;	/* Keep compiler happy */
 }
 
 

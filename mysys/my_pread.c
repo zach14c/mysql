@@ -15,9 +15,83 @@
 
 #include "mysys_priv.h"
 #include "mysys_err.h"
+#include "my_base.h"
+#include <m_string.h>
 #include <errno.h>
-#ifdef HAVE_PREAD
+#if defined (HAVE_PREAD) && !defined(__WIN__)
 #include <unistd.h>
+#endif
+
+#ifdef __WIN__
+extern void  _dosmaperr(DWORD);
+
+/*
+  Positional read and write on Windows.
+
+  NOTE: 
+  - this functions require NT-based kernel.
+  - they can read/write at most 4GB at once.
+  - unlike Posix pread/pwrite, they change file pointer position.
+*/
+static size_t pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset)
+{
+  DWORD         nBytesRead;
+  HANDLE        hFile;
+  OVERLAPPED    ov={0};
+  LARGE_INTEGER li;
+
+  if(!Count)
+    return 0;
+#ifdef _WIN64
+  if(Count > UINT_MAX)
+    Count = UINT_MAX;
+#endif
+
+  hFile=         (HANDLE)_get_osfhandle(Filedes);
+  li.QuadPart=   offset;
+  ov.Offset=     li.LowPart;
+  ov.OffsetHigh= li.HighPart;
+
+  if(!ReadFile(hFile, Buffer, (DWORD)Count, &nBytesRead, &ov))
+  {
+    DWORD lastError = GetLastError();
+    if(lastError == ERROR_HANDLE_EOF)
+       return 0; /*return 0 at EOF*/
+    _dosmaperr(lastError);
+    return -1;
+  }
+  else
+    return nBytesRead;
+}
+
+static size_t pwrite(File Filedes, const uchar *Buffer, size_t Count, my_off_t offset)
+{
+  DWORD         nBytesWritten;
+  HANDLE        hFile;
+  OVERLAPPED    ov={0};
+  LARGE_INTEGER li;
+
+  if(!Count)
+    return 0;
+
+#ifdef _WIN64
+  if(Count > UINT_MAX)
+    Count = UINT_MAX;
+#endif
+
+  hFile=         (HANDLE)_get_osfhandle(Filedes);
+  li.QuadPart=   offset;
+  ov.Offset=     li.LowPart;
+  ov.OffsetHigh= li.HighPart;
+
+  if(!WriteFile(hFile, Buffer, (DWORD)Count, &nBytesWritten, &ov))
+  {
+    _dosmaperr(GetLastError());
+    return -1;
+  }
+  else
+    return nBytesWritten;
+}
 #endif
 
 /*
@@ -46,29 +120,39 @@ size_t my_pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset,
 {
   size_t readbytes;
   int error= 0;
+#if !defined (HAVE_PREAD) && !defined (__WIN__)
+  int save_errno;
+#endif
+#ifndef DBUG_OFF
+  char llbuf[22];
   DBUG_ENTER("my_pread");
-  DBUG_PRINT("my",("Fd: %d  Seek: %lu  Buffer: 0x%lx  Count: %u  MyFlags: %d",
-		   Filedes, (ulong) offset, (long) Buffer, (uint) Count,
-                   MyFlags));
+  DBUG_PRINT("my",("fd: %d  Seek: %s  Buffer: %p  Count: %lu  MyFlags: %d",
+		   Filedes, ullstr(offset, llbuf), Buffer,
+                   (ulong)Count, MyFlags));
+#endif
   for (;;)
   {
-#ifndef __WIN__
-    errno=0;					/* Linux doesn't reset this */
-#endif
-#ifndef HAVE_PREAD
+    errno=0;					/* Linux, Windows don't reset this on EOF/success */
+#if !defined (HAVE_PREAD) && !defined (__WIN__)
     pthread_mutex_lock(&my_file_info[Filedes].mutex);
     readbytes= (uint) -1;
     error= (lseek(Filedes, offset, MY_SEEK_SET) == (my_off_t) -1 ||
 	    (readbytes= read(Filedes, Buffer, Count)) != Count);
+    save_errno= errno;
     pthread_mutex_unlock(&my_file_info[Filedes].mutex);
+    if (error)
+    {
+      errno= save_errno;
 #else
     if ((error= ((readbytes= pread(Filedes, Buffer, Count, offset)) != Count)))
-      my_errno= errno;
-#endif
-    if (error || readbytes != Count)
     {
+#endif
+      my_errno= errno ? errno : -1;
+      if (errno == 0 || (readbytes != (size_t) -1 &&
+                         (MyFlags & (MY_NABP | MY_FNABP))))
+        my_errno= HA_ERR_FILE_TOO_SHORT;
       DBUG_PRINT("warning",("Read only %d bytes off %u from %d, errno: %d",
-			    (int) readbytes, (uint) Count,Filedes,my_errno));
+                            (int) readbytes, (uint) Count,Filedes,my_errno));
 #ifdef THREAD
       if ((readbytes == 0 || readbytes == (size_t) -1) && errno == EINTR)
       {
@@ -115,23 +199,26 @@ size_t my_pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset,
   RETURN
     (size_t) -1   Error
     #             Number of bytes read
- */
+*/
 
 size_t my_pwrite(int Filedes, const uchar *Buffer, size_t Count,
                  my_off_t offset, myf MyFlags)
 {
   size_t writenbytes, written;
   uint errors;
+#ifndef DBUG_OFF
+  char llbuf[22];
   DBUG_ENTER("my_pwrite");
-  DBUG_PRINT("my",("Fd: %d  Seek: %lu  Buffer: 0x%lx  Count: %u  MyFlags: %d",
-		   Filedes, (ulong) offset, (long) Buffer, (uint) Count,
-                   MyFlags));
+  DBUG_PRINT("my",("fd: %d  Seek: %s  Buffer: %p  Count: %lu  MyFlags: %d",
+		   Filedes, ullstr(offset, llbuf), Buffer,
+                   (ulong)Count, MyFlags));
+#endif
   errors= 0;
   written= 0;
 
   for (;;)
   {
-#ifndef HAVE_PREAD
+#if !defined (HAVE_PREAD) && !defined (__WIN__)
     int error;
     writenbytes= (size_t) -1;
     pthread_mutex_lock(&my_file_info[Filedes].mutex);
@@ -164,7 +251,7 @@ size_t my_pwrite(int Filedes, const uchar *Buffer, size_t Count,
       if (!(errors++ % MY_WAIT_GIVE_USER_A_MESSAGE))
 	my_error(EE_DISK_FULL,MYF(ME_BELL | ME_NOREFRESH),
 		 my_filename(Filedes),my_errno,MY_WAIT_FOR_USER_TO_FIX_PANIC);
-      VOID(sleep(MY_WAIT_FOR_USER_TO_FIX_PANIC));
+      (void) sleep(MY_WAIT_FOR_USER_TO_FIX_PANIC);
       continue;
     }
     if ((writenbytes && writenbytes != (size_t) -1) || my_errno == EINTR)

@@ -31,9 +31,6 @@
 #include "LogLock.h"
 #include "Sync.h"
 
-#ifdef _WIN32
-#define vsnprintf	_vsnprintf
-#endif
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -180,7 +177,7 @@ const char* SQLError::getTrace()
 
 void SQLError::error(const char *string)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	LogLock logLock;
 	Log::log(LogException, "Exception: %s\n", string);
 #endif

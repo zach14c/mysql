@@ -26,7 +26,7 @@ my_bool timed_mutexes= 0;
 
 	/* from my_init */
 char *	home_dir=0;
-const char      *my_progname=0;
+const char      *my_progname= NULL, *my_progname_short= NULL;
 char		NEAR curr_dir[FN_REFLEN]= {0},
 		NEAR home_dir_buff[FN_REFLEN]= {0};
 ulong		my_stream_opened=0,my_file_opened=0, my_tmp_file_created=0;
@@ -87,9 +87,9 @@ ulong my_time_to_wait_for_lock=2;	/* In seconds */
 char * NEAR globerrs[GLOBERRS];		/* my_error_messages is here */
 #endif
 void (*my_abort_hook)(int) = (void(*)(int)) exit;
-int (*error_handler_hook)(uint error,const char *str,myf MyFlags)=
+void (*error_handler_hook)(uint error,const char *str,myf MyFlags)=
     my_message_no_curses;
-int (*fatal_error_handler_hook)(uint error,const char *str,myf MyFlags)=
+void (*fatal_error_handler_hook)(uint error,const char *str,myf MyFlags)=
   my_message_no_curses;
 
 #ifdef __WIN__

@@ -42,6 +42,7 @@ static const int PostCommit	= 128;
 
 static const int BL_SIZE			= 128;
 static const int FORMAT_HASH_SIZE	= 20;
+static const int SYNC_VERSIONS_SIZE	= 16;
 
 #define FOR_FIELDS(field,table)	{for (Field *field=table->fields; field; field = field->next){
 #define FOR_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){
@@ -102,8 +103,8 @@ public:
 	void		makeNotSearchable (Field *field, Transaction *transaction);
 	bool		dropForeignKey (int fieldCount, Field **fields, Table *references);
 	void		checkUniqueIndexes (Transaction *transaction, RecordVersion *record);
-	bool		checkUniqueIndex(Index *index, Transaction *transaction, RecordVersion *record);
-	bool		checkUniqueRecordVersion(int32 recordNumber, Index *index, Transaction *transaction, RecordVersion *record);
+	bool		checkUniqueIndex(Index *index, Transaction *transaction, RecordVersion *record, Sync *sync);
+	bool		checkUniqueRecordVersion(int32 recordNumber, Index *index, Transaction *transaction, RecordVersion *record, Sync *sync);
 	bool		isDuplicate (Index *index, Record *record1, Record *record2);
 	void		checkDrop();
 	Field*		findField (const WCString *fieldName);
@@ -162,7 +163,7 @@ public:
 	void		makeSearchable (Field *field, Transaction *transaction);
 	int32		getBlobId (Value *value, int32 oldId, bool cloneFlag, Transaction *transaction);
 	void		addFormat (Format *format);
-	Record*		rollbackRecord (RecordVersion *recordVersion, Transaction *transaction);
+	void		rollbackRecord (RecordVersion *recordVersion, Transaction *transaction);
 	Record*		fetch (int32 recordNumber);
 	void		init(int id, const char *schema, const char *tableName, TableSpace *tblSpace);
 	void		loadFields();
@@ -207,20 +208,26 @@ public:
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
 	bool			insert (Record *record, Record *prior, int recordNumber);
+	void			insertIndexes(Transaction *transaction, RecordVersion *record);
 	
 	void			update (Transaction *transaction, Record *record, int numberFields, Field **fields, Value** values);
 	void			update(Transaction * transaction, Record *oldRecord, Stream *stream);
+	void			updateIndexes(Transaction *transaction, RecordVersion *record, Record *oldRecord);
 	
 	void			deleteRecord (Transaction *transaction, Record *record);
 	void			deleteRecord (int recordNumber);
 	void			deleteRecord (RecordVersion *record, Transaction *transaction);
+	
+	SyncObject*		getSyncPrior(Record* record);
+	SyncObject*		getSyncPrior(int recordNumber);
+	
 
 	Dbb				*dbb;
 	SyncObject		syncObject;
 	SyncObject		syncTriggers;
 	SyncObject		syncScavenge;
-	SyncObject		syncUpdate;
 	SyncObject		syncAlter;				// prevent concurrent Alter statements.
+	SyncObject		syncPriorVersions[SYNC_VERSIONS_SIZE];
 	Table			*collision;				// Hash collision in database
 	Table			*idCollision;			// mod(id) collision in database
 	Table			*next;					// next in database linked list

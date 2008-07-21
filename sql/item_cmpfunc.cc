@@ -845,12 +845,11 @@ int Arg_comparator::set_cmp_func(Item_bool_func2 *owner_arg,
                                         Item **a1, Item **a2,
                                         Item_result type)
 {
-  enum enum_date_cmp_type cmp_type;
   ulonglong const_value= (ulonglong)-1;
   a= a1;
   b= a2;
 
-  if ((cmp_type= can_compare_as_dates(*a, *b, &const_value)))
+  if (can_compare_as_dates(*a, *b, &const_value))
   {
     thd= current_thd;
     owner= owner_arg;
@@ -3174,7 +3173,7 @@ uchar *in_row::get_value(Item *item)
 void in_row::set(uint pos, Item *item)
 {
   DBUG_ENTER("in_row::set");
-  DBUG_PRINT("enter", ("pos: %u  item: 0x%lx", pos, (ulong) item));
+  DBUG_PRINT("enter", ("pos: %u  item: %p", pos, item));
   ((cmp_item_row*) base)[pos].store_value_by_template(&tmp, item);
   DBUG_VOID_RETURN;
 }
@@ -3312,7 +3311,7 @@ cmp_item* cmp_item_row::make_same()
 cmp_item_row::~cmp_item_row()
 {
   DBUG_ENTER("~cmp_item_row");
-  DBUG_PRINT("enter",("this: 0x%lx", (long) this));
+  DBUG_PRINT("enter",("this: %p", this));
   if (comparators)
   {
     for (uint i= 0; i < n; i++)
@@ -3910,7 +3909,7 @@ Item_cond::fix_fields(THD *thd, Item **ref)
   DBUG_ASSERT(fixed == 0);
   List_iterator<Item> li(list);
   Item *item;
-  void *orig_thd_marker= thd->thd_marker;
+  TABLE_LIST *save_emb_on_expr_nest= thd->thd_marker.emb_on_expr_nest;
 #ifndef EMBEDDED_LIBRARY
   uchar buff[sizeof(char*)];			// Max local vars in function
 #endif
@@ -3918,7 +3917,7 @@ Item_cond::fix_fields(THD *thd, Item **ref)
   const_item_cache= 1;
 
   if (functype() == COND_OR_FUNC)
-    thd->thd_marker= 0;
+    thd->thd_marker.emb_on_expr_nest= NULL;
   /*
     and_table_cache is the value that Item_cond_or() returns for
     not_null_tables()
@@ -3977,7 +3976,7 @@ Item_cond::fix_fields(THD *thd, Item **ref)
       maybe_null=1;
   }
   thd->lex->current_select->cond_count+= list.elements;
-  thd->thd_marker= orig_thd_marker;
+  thd->thd_marker.emb_on_expr_nest= save_emb_on_expr_nest;
   fix_length_and_dec();
   fixed= 1;
   return FALSE;
@@ -4220,7 +4219,7 @@ void Item_cond::neg_arguments(THD *thd)
       if (!(new_item= new Item_func_not(item)))
 	return;					// Fatal OEM error
     }
-    VOID(li.replace(new_item));
+    (void) li.replace(new_item);
   }
 }
 

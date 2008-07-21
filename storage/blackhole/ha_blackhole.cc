@@ -97,7 +97,7 @@ const char *ha_blackhole::index_type(uint key_number)
 int ha_blackhole::write_row(uchar * buf)
 {
   DBUG_ENTER("ha_blackhole::write_row");
-  DBUG_RETURN(0);
+  DBUG_RETURN(table->next_number_field ? update_auto_increment() : 0);
 }
 
 int ha_blackhole::rnd_init(bool scan)
@@ -303,7 +303,7 @@ static int blackhole_init(void *p)
   blackhole_hton->create= blackhole_create_handler;
   blackhole_hton->flags= HTON_CAN_RECREATE;
   
-  VOID(pthread_mutex_init(&blackhole_mutex, MY_MUTEX_INIT_FAST));
+  pthread_mutex_init(&blackhole_mutex, MY_MUTEX_INIT_FAST);
   (void) hash_init(&blackhole_open_tables, system_charset_info,32,0,0,
                    (hash_get_key) blackhole_get_key,
                    (hash_free_key) blackhole_free_key, 0);

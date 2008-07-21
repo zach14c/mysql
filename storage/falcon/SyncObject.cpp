@@ -18,6 +18,7 @@
 //////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
+#include <string.h>
 #include <memory.h>
 
 #ifdef _WIN32
@@ -27,7 +28,7 @@
 #undef TRACE
 #endif
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #define TRACE
 #else
 #define ASSERT(b)
@@ -46,13 +47,16 @@
 #include "Stream.h"
 #include "InfoTable.h"
 
+//#define FAST_SHARED
 //#define STALL_THRESHOLD	1000
 
 #define BACKOFF	\
-		if (false)\
-			thread->sleep(1);\
+		if (thread)\
+			backoff(thread);\
 		else\
-			thread = Thread::getThread("SyncObject::lock")
+			{ thread = Thread::getThread("SyncObject::lock"); thread->backoff = BACKOFF_INTERVAL; }
+
+#define BACKOFF_INTERVAL	(thread->random % 1000)
 
 #ifdef TRACE_SYNC_OBJECTS
 
@@ -99,15 +103,17 @@ int cas_emulation (volatile int *state, int compare, int exchange)
 
 SyncObject::SyncObject()
 {
+	readers = 0;
 	waiters = 0;
 	lockState = 0;
-	que = NULL;
+	queue = NULL;
 	monitorCount = 0;
 	stalls = 0;
 	exclusiveThread = NULL;
 
 #ifdef TRACE_SYNC_OBJECTS
 	sharedCount = 0;
+	collisionCount = 0;
 	exclusiveCount = 0;
 	waitCount = 0;
 	queueLength = 0;
@@ -127,8 +133,179 @@ SyncObject::~SyncObject()
 #ifdef TRACE_SYNC_OBJECTS
 	if (objectId < MAX_SYNC_OBJECTS)
 		syncObjects[objectId] = NULL;
+		
+	if (name)
+		delete [] name;
 #endif
 }
+
+#ifdef FAST_SHARED
+void SyncObject::lock(Sync *sync, LockType type, int timeout)
+{
+	Thread *thread;
+
+#ifdef TRACE_SYNC_OBJECTS
+	if (sync)
+		where = sync->where;
+#endif
+	
+	// Shared case
+	
+	if (type == Shared)
+		{
+		thread = NULL;
+		BUMP_INTERLOCKED(sharedCount);
+		INTERLOCKED_INCREMENT(readers);
+		
+		// If there aren't any writers, we've got the lock.  Ducky.
+		
+		if (lockState == 0)
+			{
+			DEBUG_FREEZE;
+			
+			return;
+			}
+
+		// See if we have already have the lock, in which case bump the monitor and get going
+		
+		if (!thread)
+			thread = Thread::getThread("SyncObject::lock");
+
+		if (thread == exclusiveThread)
+			{
+			INTERLOCKED_DECREMENT(readers);
+			++monitorCount;
+			DEBUG_FREEZE;
+			
+			return;
+			}
+
+		// We have contention.  Get the mutex and prepare the wait, but
+		// maybe we'll get lucky
+					
+		mutex.lock();
+
+		if (lockState == 0)
+			{
+			DEBUG_FREEZE;
+			
+			return;
+			}
+
+		// If there isn't an exclusive thread or the exclusive thread is stalled, we've got the lock
+		
+		if (!exclusiveThread || exclusiveThread == queue)
+			{
+			DEBUG_FREEZE;
+			
+			return;
+			}
+		
+		// There is an outstanding exclusive lock; wait
+		
+		INTERLOCKED_DECREMENT(readers);
+		bumpWaiters(1);
+		wait(type, thread, sync, timeout);
+		DEBUG_FREEZE;
+		
+		return;
+		}
+	
+	// Exclusive case
+	
+	thread = Thread::getThread("SyncObject::lock");
+	thread->backoff = BACKOFF_INTERVAL;
+	ASSERT(thread);
+
+	// If we're already the exclusive thread, just bump the monitor count and we're done
+	
+	if (thread == exclusiveThread)
+		{
+		++monitorCount;
+		BUMP(exclusiveCount);
+		DEBUG_FREEZE;
+		
+		return;
+		}
+
+	// If nothing is pending, go for the lock.
+	
+	while (readers == 0 && waiters == 0)
+		{
+		INTERLOCK_TYPE oldState = lockState;
+		
+		if (oldState != 0)
+			break;
+			
+		if (COMPARE_EXCHANGE(&lockState, oldState, -1))
+			{
+			exclusiveThread = thread;
+
+			if (readers)
+				{
+				mutex.lock();
+				
+				if (readers)
+					{
+					if (queue && queue->lockType == Shared)
+						BUMP(exclusiveCount);
+					bumpWaiters(1);
+					wait(type, thread, sync, timeout);
+					}
+				
+				}
+				
+			BUMP(exclusiveCount);
+			DEBUG_FREEZE;
+			
+			return; 
+			}
+		
+		BACKOFF;
+		}
+		
+	mutex.lock();
+	bumpWaiters(1);
+	BUMP(exclusiveCount);
+	
+	while (readers == 0 && queue == NULL)
+		{
+		INTERLOCK_TYPE oldState = lockState;
+		
+		if (oldState != 0)
+			break;
+			
+		if (COMPARE_EXCHANGE(&lockState, oldState, -1))
+			{
+			exclusiveThread = thread;
+
+			if (readers)
+				{
+				wait(type, thread, sync, timeout);
+				DEBUG_FREEZE;
+				
+				return;
+				}
+
+			bumpWaiters(-1);
+			mutex.release();
+			DEBUG_FREEZE;
+			
+			return;
+			}
+		
+		BACKOFF;
+		}
+
+	// mutex is held going into wait() It is released before coming out.
+
+	wait(type, thread, sync, timeout);
+	DEBUG_FREEZE;
+}
+
+#else	// FAST_SHARED
+
+// Old (aka working) version
 
 void SyncObject::lock(Sync *sync, LockType type, int timeout)
 {
@@ -142,7 +319,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	if (type == Shared)
 		{
 		thread = NULL;
-		BUMP_INTERLOCKED(sharedCount);
+		//BUMP_INTERLOCKED(sharedCount);
 
 		for(;;)
 			{
@@ -159,6 +336,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 				return;
 				}
 				
+			BUMP_INTERLOCKED(collisionCount);
 			BACKOFF;
 			}
 
@@ -186,7 +364,8 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 			BACKOFF;
 			}
 
-		thread = Thread::getThread("SyncObject::lock");
+		if (!thread)
+			thread = Thread::getThread("SyncObject::lock");
 
 		if (thread == exclusiveThread)
 			{
@@ -201,6 +380,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	else
 		{
 		thread = Thread::getThread("SyncObject::lock");
+		thread->backoff = BACKOFF_INTERVAL;
 		ASSERT(thread);
 
 		if (thread == exclusiveThread)
@@ -235,7 +415,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 		bumpWaiters(1);
 		BUMP(exclusiveCount);
 		
-		while (que == NULL)
+		while (queue == NULL)
 			{
 			INTERLOCK_TYPE oldState = lockState;
 			
@@ -256,10 +436,62 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 			}
 		}
 
+	// mutex is held going into wait() It is released before coming out.
+
 	wait(type, thread, sync, timeout);
 	DEBUG_FREEZE;
 }
+#endif // FAST_SHARED
 
+#ifdef FAST_SHARED
+void SyncObject::unlock(Sync *sync, LockType type)
+{
+	if (monitorCount)
+		{
+		//ASSERT (monitorCount > 0);
+		--monitorCount;
+		DEBUG_FREEZE;
+
+		return;
+		}
+	
+	if (type == Shared)
+		{
+		ASSERT(readers > 0);
+		
+		if (INTERLOCKED_DECREMENT(readers) == 0 && waiters)
+			grantLocks();
+			
+		return;
+		}
+	
+	ASSERT(lockState == -1 && exclusiveThread != queue);
+	Thread *thread = NULL;
+	
+	for (;;)
+		{
+		//ASSERT (type == Exclusive && lockState == -1);
+		long oldState = lockState;
+		long newState = (type == Shared) ? oldState - 1 : 0;
+		exclusiveThread = NULL;
+		
+		if (COMPARE_EXCHANGE(&lockState, oldState, newState))
+			{
+			DEBUG_FREEZE;
+
+			if (waiters)
+				grantLocks();
+				
+			return;
+			}
+			
+		BACKOFF;
+		}
+
+	DEBUG_FREEZE;
+}
+
+#else // FAST_SHARED
 void SyncObject::unlock(Sync *sync, LockType type)
 {
 	//ASSERT(lockState != 0);
@@ -297,6 +529,31 @@ void SyncObject::unlock(Sync *sync, LockType type)
 
 	DEBUG_FREEZE;
 }
+#endif
+
+#ifdef FAST_SHARED
+
+void SyncObject::downGrade(LockType type)
+{
+	ASSERT (monitorCount == 0);
+	ASSERT (type == Shared);
+	ASSERT (lockState == -1);
+	INTERLOCKED_INCREMENT(readers);
+	
+	for (;;)
+		if (COMPARE_EXCHANGE(&lockState, -1, 0))
+			{
+			exclusiveThread = NULL;
+			DEBUG_FREEZE;
+			
+			if (waiters)
+				grantLocks();
+
+			return;
+			}
+}
+
+#else // FAST_SHARED
 
 void SyncObject::downGrade(LockType type)
 {
@@ -316,9 +573,12 @@ void SyncObject::downGrade(LockType type)
 			return;
 			}
 }
+#endif //FAST_SHARED
 
 void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 {
+	// mutex is currently held
+
 	++stalls;
 	BUMP(waitCount);
 
@@ -329,7 +589,7 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 
 	Thread *volatile *ptr;
 	
-	for (ptr = &que; *ptr; ptr = &(*ptr)->que)
+	for (ptr = &queue; *ptr; ptr = &(*ptr)->queue)
 		{
 		BUMP(queueLength);
 		
@@ -337,7 +597,7 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 			{
 			LOG_DEBUG ("Apparent single thread deadlock for thread %d (%x)\n", thread->threadId, thread);
 			
-			for (Thread *thread = que; thread; thread = thread->que)
+			for (Thread *thread = queue; thread; thread = thread->queue)
 				thread->print();
 				
 			mutex.release();
@@ -345,62 +605,60 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 			}
 		}
 
-	thread->que = NULL;
+	thread->queue = NULL;
 	thread->lockType = type;
 	*ptr = thread;
 	thread->lockGranted = false;
 	thread->lockPending = sync;
 	++thread->activeLocks;
-	mutex.release();
+	bool wokeup = 0;
 
 	if (timeout)
-		for (;;)
+		while (!thread->lockGranted)
 			{
-			thread->sleep (timeout);
-			
-			if (thread->lockGranted)
-				return;
-			
-			mutex.lock();
+			wokeup = thread->sleep (timeout, &mutex);
 			
 			if (thread->lockGranted)
 				{
-				mutex.unlock();
-				
+				mutex.release();
 				return;
 				}
 			
-			for (ptr = &que; *ptr; ptr = &(*ptr)->que)
+			for (ptr = &queue; *ptr; ptr = &(*ptr)->queue)
 				if (*ptr == thread)
 					{
-					*ptr = thread->que;
+					*ptr = thread->queue;
 					--waiters;
 					break;
 					}
 			
-			mutex.unlock();
-			timedout(timeout);
+			if (!wokeup)
+				{
+				mutex.release();
+				timedout(timeout);
+				}
 			}
-		
 		
 	while (!thread->lockGranted)
 		{
-		bool wakeup = thread->sleep (10000);
+		wokeup = thread->sleep (10000, &mutex);
 		
 		if (thread->lockGranted)
 			{
-			if (!wakeup)
+			if (!wokeup)
 				Log::debug("Apparent lost thread wakeup\n");
 
 			break;
 			}
 			
-		if (!wakeup)
+		if (!wokeup)
 			{
 			stalled (thread);
 			break;
 			}
 		}
+
+	mutex.release();
 
 	while (!thread->lockGranted)
 		thread->sleep();
@@ -415,7 +673,7 @@ bool SyncObject::isLocked()
 void SyncObject::stalled(Thread *thread)
 {
 #ifdef TRACE
-	mutex.lock();
+	// assume mutex is already locked.
 	LogLock logLock;
 	LinkedList threads;
 	LinkedList syncObjects;
@@ -434,7 +692,6 @@ void SyncObject::stalled(Thread *thread)
 	END_FOR;
 
 	LOG_DEBUG ("------------------------------------\n");
-	mutex.release();
 #endif
 }
 
@@ -443,10 +700,10 @@ void SyncObject::findLocks(LinkedList &threads, LinkedList &syncObjects)
 #ifdef TRACE
 	if (syncObjects.appendUnique(this))
 		{
-		if (exclusiveThread)
+		if (exclusiveThread && exclusiveThread != queue)
 			exclusiveThread->findLocks(threads, syncObjects);
 
-		for (Thread *thread = que; thread; thread = thread->que)
+		for (Thread *thread = queue; thread; thread = thread->queue)
 			thread->findLocks(threads, syncObjects);
 		}
 #endif
@@ -455,13 +712,13 @@ void SyncObject::findLocks(LinkedList &threads, LinkedList &syncObjects)
 void SyncObject::print()
 {
 #ifdef TRACE
-	LOG_DEBUG ("  SyncObject %lx: state %d, monitor %d, waiters %d\n", 
-				this, lockState, monitorCount, waiters);
+	LOG_DEBUG ("  SyncObject %lx: state %d, readers %d, monitor %d, waiters %d\n", 
+				this, lockState, readers, monitorCount, waiters);
 
 	if (exclusiveThread)
 		exclusiveThread->print ("    Exclusive thread");
 
-	for (Thread *volatile thread = que; thread; thread = thread->que)
+	for (Thread *volatile thread = queue; thread; thread = thread->queue)
 		thread->print ("    Waiting thread");
 #endif
 }
@@ -489,18 +746,88 @@ void SyncObject::bumpWaiters(int delta)
 			}
 }
 
+#ifdef FAST_SHARED
 void SyncObject::grantLocks(void)
 {
 	mutex.lock();
-	ASSERT ((waiters && que) || (!waiters && !que));
+	ASSERT ((waiters && queue) || (!waiters && !queue));
 	const char *description = NULL;
 	Thread *thread = NULL;
 	
-	for (Thread *waiter = que, *prior = NULL, *next; waiter; waiter = next)
+	for (Thread *waiter = queue, *prior = NULL, *next; waiter; waiter = next)
 		{
 		description = waiter->description;
 		bool granted = false;
-		next = waiter->que;
+		next = waiter->queue;
+				
+		if (waiter->lockType == Shared)
+			{
+			INTERLOCKED_INCREMENT(readers);
+			granted = true;
+			}
+		else
+			{
+			ASSERT(waiter->lockType == Exclusive);
+			
+			if (exclusiveThread == waiter)
+				{
+				ASSERT(lockState == -1);
+				granted = true;
+				}
+			else
+				while (lockState == 0)
+					{
+					if (COMPARE_EXCHANGE(&lockState, 0, -1))
+						{
+						granted = true;
+						exclusiveThread = waiter;
+						break;
+						}
+					
+					BACKOFF;
+					}
+			}
+		
+		if (granted)
+			{
+			if (prior)
+				prior->queue = next;
+			else
+				queue = next;
+			
+			bool shutdownInProgress = waiter->shutdownInProgress;
+			
+			if (shutdownInProgress)
+				Thread::lockExitMutex();
+					
+			bumpWaiters(-1);
+			--waiter->activeLocks;
+			waiter->grantLock (this);
+			
+			if (shutdownInProgress)
+				Thread::unlockExitMutex();
+			}
+		else
+			prior = waiter;
+		}
+			
+	mutex.release();
+}
+
+#else // FAST_SHARED
+
+void SyncObject::grantLocks(void)
+{
+	mutex.lock();
+	ASSERT ((waiters && queue) || (!waiters && !queue));
+	const char *description = NULL;
+	Thread *thread = NULL;
+	
+	for (Thread *waiter = queue, *prior = NULL, *next; waiter; waiter = next)
+		{
+		description = waiter->description;
+		bool granted = false;
+		next = waiter->queue;
 				
 		if (waiter->lockType == Shared)
 			for (int oldState; (oldState = lockState) >= 0;)
@@ -536,9 +863,9 @@ void SyncObject::grantLocks(void)
 		if (granted)
 			{
 			if (prior)
-				prior->que = next;
+				prior->queue = next;
 			else
-				que = next;
+				queue = next;
 			
 			bool shutdownInProgress = waiter->shutdownInProgress;
 			
@@ -558,11 +885,37 @@ void SyncObject::grantLocks(void)
 			
 	mutex.release();
 }
+#endif // FAST_SHARED
 
 int SyncObject::getState(void)
 {
 	return lockState;
 }
+
+#ifdef FAST_SHARED
+
+void SyncObject::validate(LockType lockType)
+{
+	switch (lockType)
+		{
+		case None:
+			ASSERT (lockState == 0 && readers == 0);
+			break;
+		
+		case Shared:
+			ASSERT (readers > 0 && !(exclusiveThread && exclusiveThread != queue));
+			break;
+		
+		case Exclusive:
+			ASSERT (lockState == -1 && (readers == 0 || queue != NULL));
+			break;
+		
+		case Invalid:
+			break;
+		}
+}
+
+#else
 
 void SyncObject::validate(LockType lockType)
 {
@@ -584,6 +937,20 @@ void SyncObject::validate(LockType lockType)
 			break;
 		}
 }
+#endif // FAST_SHARED
+
+#ifdef FAST_SHARED
+void SyncObject::unlock(void)
+{
+	if (exclusiveThread && exclusiveThread != queue)
+		unlock(NULL, Exclusive);
+	else if (readers > 0)
+		unlock (NULL, Shared);
+	else
+		ASSERT(false);
+}
+
+#else //FAST_SHARED
 
 void SyncObject::unlock(void)
 {
@@ -594,6 +961,7 @@ void SyncObject::unlock(void)
 	else
 		ASSERT(false);
 }
+#endif //FAST_SHARED
 
 bool SyncObject::ourExclusiveLock(void)
 {
@@ -605,7 +973,7 @@ bool SyncObject::ourExclusiveLock(void)
 
 void SyncObject::frequentStaller(Thread *thread, Sync *sync)
 {
-	Thread *threadQue = thread->que;
+	Thread *threadQue = thread->queue;
 	LockType lockType = thread->lockType;
 	bool lockGranted = thread->lockGranted;
 	Sync *lockPending = thread->lockPending;
@@ -615,7 +983,7 @@ void SyncObject::frequentStaller(Thread *thread, Sync *sync)
 	else
 		LOG_DEBUG("Frequent stall from unknown\n");
 		
-	thread->que = threadQue;
+	thread->queue = threadQue;
 	thread->lockType = lockType;
 	thread->lockGranted = lockGranted;
 	thread->lockPending = lockPending;
@@ -692,11 +1060,39 @@ void SyncObject::getSyncInfo(InfoTable* infoTable)
 void SyncObject::setName(const char* string)
 {
 #ifdef TRACE_SYNC_OBJECTS
-	name = string;
+	if (name)
+		{
+		delete [] name;
+		name = NULL;
+		}
+	
+	if (string)
+		{
+		name = new char[strlen(string)+1];
+		strcpy(name, string);
+		}
+		
+	//name = string;
 #endif
 }
 
 void SyncObject::timedout(int timeout)
 {
 	throw SQLError(LOCK_TIMEOUT, "lock timed out after %d milliseconds\n", timeout);
+}
+
+int SyncObject::getCollisionCount(void)
+{
+	return collisionCount;
+}
+
+void SyncObject::backoff(Thread* thread)
+{
+	//thread->sleep(1);
+    int a = 0;
+
+	for (int n = 0; n < thread->backoff; ++n)
+		++a;
+	
+	thread->backoff += a;
 }

@@ -71,10 +71,10 @@ SET(CLIENT_SOURCES   ../mysys/array.c ../strings/bchange.c ../strings/bmove.c
                      ../strings/ctype-simple.c ../strings/ctype-sjis.c ../strings/ctype-tis620.c 
                      ../strings/ctype-uca.c ../strings/ctype-ucs2.c ../strings/ctype-ujis.c 
                      ../strings/ctype-utf8.c ../strings/ctype-win1250ch.c ../strings/ctype.c 
-                     ../mysys/default.c errmsg.c ../mysys/errors.c
+                     ../mysys/default.c errmsg.c ../mysys/errors.c ../mysys/my_sync.c
                      ../mysys/hash.c ../mysys/my_sleep.c ../mysys/default_modify.c
                      get_password.c ../strings/int2str.c ../strings/is_prefix.c 
-                     libmysql.c ../mysys/list.c ../strings/llstr.c
+                     libmysql.c ../mysys/list.c ../strings/llstr.c ../mysys/my_rnd.c
                      ../strings/longlong2str.c ../mysys/mf_arr_appstr.c ../mysys/mf_cache.c
                      ../mysys/mf_dirname.c ../mysys/mf_fn_ext.c ../mysys/mf_format.c 
                      ../mysys/mf_iocache.c ../mysys/mf_iocache2.c ../mysys/mf_loadpath.c 
@@ -98,7 +98,7 @@ SET(CLIENT_SOURCES   ../mysys/array.c ../strings/bchange.c ../strings/bmove.c
                      ../strings/strtoll.c ../strings/strtoull.c ../strings/strxmov.c ../strings/strxnmov.c 
                      ../mysys/thr_mutex.c ../mysys/typelib.c ../vio/vio.c ../vio/viosocket.c 
                      ../vio/viossl.c ../vio/viosslfactories.c ../strings/xml.c ../mysys/mf_qsort.c
-		     ../mysys/my_getsystime.c ${LIB_SOURCES})
+		     ../mysys/my_getsystime.c ../mysys/my_sync.c ${LIB_SOURCES})
 
 # Need to set USE_TLS for building the DLL, since __declspec(thread)
 # approach to thread local storage does not work properly in DLLs.
@@ -124,7 +124,7 @@ IF(WIN32)
   SET_TARGET_PROPERTIES(libmysql mysqlclient PROPERTIES COMPILE_FLAGS "-DUSE_TLS")
 ENDIF(WIN32)
 ADD_DEPENDENCIES(libmysql GenError)
-TARGET_LINK_LIBRARIES(libmysql wsock32)
+TARGET_LINK_LIBRARIES(libmysql ws2_32)
 
 IF(EMBED_MANIFESTS)
   MYSQL_EMBED_MANIFEST("myTest" "asInvoker")

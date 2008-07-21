@@ -320,12 +320,22 @@ private:
   */
   Discrete_interval        *current;
   uint                  elements; // number of elements
+  void set_members(Discrete_interval *h, Discrete_interval *t,
+                   Discrete_interval *c, uint el)
+  {  
+    head= h;
+    tail= t;
+    current= c;
+    elements= el;
+  }
+  void operator=(Discrete_intervals_list &);  /* prevent use of these */
+  Discrete_intervals_list(const Discrete_intervals_list &);
+
 public:
   Discrete_intervals_list() : head(NULL), current(NULL), elements(0) {};
   void empty_no_free()
   {
-    head= current= NULL;
-    elements= 0;
+    set_members(NULL, NULL, NULL, 0);
   }
   void empty()
   {
@@ -337,6 +347,24 @@ public:
     }
     empty_no_free();
   }
+  void copy_shallow(const Discrete_intervals_list * dli)
+  {
+    head= dli->get_head();
+    tail= dli->get_tail();
+    current= dli->get_current();
+    elements= dli->nb_elements();
+  }
+  void swap (Discrete_intervals_list * dli)
+  {
+    Discrete_interval *h, *t, *c;
+    uint el;
+    h= dli->get_head();
+    t= dli->get_tail();
+    c= dli->get_current();
+    el= dli->nb_elements();
+    dli->copy_shallow(this);
+    set_members(h, t, c, el);
+  }
   const Discrete_interval* get_next()
   {
     Discrete_interval *tmp= current;
@@ -346,7 +374,11 @@ public:
   }
   ~Discrete_intervals_list() { empty(); };
   bool append(ulonglong start, ulonglong val, ulonglong incr);
+  bool append(Discrete_interval *interval);
   ulonglong minimum()     const { return (head ? head->minimum() : 0); };
   ulonglong maximum()     const { return (head ? tail->maximum() : 0); };
   uint      nb_elements() const { return elements; }
+  Discrete_interval* get_head() const { return head; };
+  Discrete_interval* get_tail() const { return tail; };
+  Discrete_interval* get_current() const { return current; };
 };

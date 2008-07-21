@@ -158,30 +158,80 @@ enum enum_server_command
 #define CLIENT_SSL_VERIFY_SERVER_CERT (1UL << 30)
 #define CLIENT_REMEMBER_OPTIONS (1UL << 31)
 
+/* Gather all possible capabilites (flags) supported by the server */
+#define CLIENT_ALL_FLAGS  (CLIENT_LONG_PASSWORD | \
+                           CLIENT_FOUND_ROWS | \
+                           CLIENT_LONG_FLAG | \
+                           CLIENT_CONNECT_WITH_DB | \
+                           CLIENT_NO_SCHEMA | \
+                           CLIENT_COMPRESS | \
+                           CLIENT_ODBC | \
+                           CLIENT_LOCAL_FILES | \
+                           CLIENT_IGNORE_SPACE | \
+                           CLIENT_PROTOCOL_41 | \
+                           CLIENT_INTERACTIVE | \
+                           CLIENT_SSL | \
+                           CLIENT_IGNORE_SIGPIPE | \
+                           CLIENT_TRANSACTIONS | \
+                           CLIENT_RESERVED | \
+                           CLIENT_SECURE_CONNECTION | \
+                           CLIENT_MULTI_STATEMENTS | \
+                           CLIENT_MULTI_RESULTS | \
+                           CLIENT_SSL_VERIFY_SERVER_CERT | \
+                           CLIENT_REMEMBER_OPTIONS)
+
+/*
+  Switch off the flags that are optional and depending on build flags
+  If any of the optional flags is supported by the build it will be switched
+  on before sending to the client during the connection handshake.
+*/
+#define CLIENT_BASIC_FLAGS (((CLIENT_ALL_FLAGS & ~CLIENT_SSL) \
+                                               & ~CLIENT_COMPRESS) \
+                                               & ~CLIENT_SSL_VERIFY_SERVER_CERT)
+
 #define SERVER_STATUS_IN_TRANS     1	/* Transaction has started */
 #define SERVER_STATUS_AUTOCOMMIT   2	/* Server in auto_commit mode */
 #define SERVER_MORE_RESULTS_EXISTS 8    /* Multi query - next query exists */
 #define SERVER_QUERY_NO_GOOD_INDEX_USED 16
 #define SERVER_QUERY_NO_INDEX_USED      32
-/*
+/**
   The server was able to fulfill the clients request and opened a
   read-only non-scrollable cursor for a query. This flag comes
   in reply to COM_STMT_EXECUTE and COM_STMT_FETCH commands.
 */
 #define SERVER_STATUS_CURSOR_EXISTS 64
-/*
+/**
   This flag is sent when a read-only cursor is exhausted, in reply to
   COM_STMT_FETCH command.
 */
 #define SERVER_STATUS_LAST_ROW_SENT 128
 #define SERVER_STATUS_DB_DROPPED        256 /* A database was dropped */
 #define SERVER_STATUS_NO_BACKSLASH_ESCAPES 512
+/**
+  Sent to the client if after a prepared statement reprepare
+  we discovered that the new statement returns a different 
+  number of result set columns.
+*/
+#define SERVER_STATUS_METADATA_CHANGED 1024
 /*
   Tell clients that this query was logged to the slow query log.
   Not yet set in the server, but interface is defined for applications
   to use.  See WorkLog 4098.
 */
-#define SERVER_QUERY_WAS_SLOW           1024
+#define SERVER_QUERY_WAS_SLOW           2048
+
+/**
+  Server status flags that must be cleared when starting
+  execution of a new SQL statement.
+  Flags from this set are only added to the
+  current server status by the execution engine, but 
+  never removed -- the execution engine expects them 
+  to disappear automagically by the next command.
+*/
+#define SERVER_STATUS_CLEAR_SET (SERVER_QUERY_NO_GOOD_INDEX_USED| \
+                                 SERVER_QUERY_NO_INDEX_USED|\
+                                 SERVER_MORE_RESULTS_EXISTS|\
+                                 SERVER_STATUS_METADATA_CHANGED)
 
 #define MYSQL_ERRMSG_SIZE	512
 #define NET_READ_TIMEOUT	30		/* Timeout on read */
@@ -189,6 +239,7 @@ enum enum_server_command
 #define NET_WAIT_TIMEOUT	8*60*60		/* Wait for new query */
 
 #define ONLY_KILL_QUERY         1
+
 
 struct st_vio;					/* Only C */
 typedef struct st_vio Vio;
@@ -376,11 +427,7 @@ void my_net_set_read_timeout(NET *net, uint timeout);
 struct sockaddr;
 int my_connect(my_socket s, const struct sockaddr *name, unsigned int namelen,
 	       unsigned int timeout);
-
-struct rand_struct {
-  unsigned long seed1,seed2,max_value;
-  double max_value_dbl;
-};
+struct my_rnd_struct;
 
 #ifdef __cplusplus
 }
@@ -391,6 +438,9 @@ struct rand_struct {
 enum Item_result {STRING_RESULT=0, REAL_RESULT, INT_RESULT, ROW_RESULT,
                   DECIMAL_RESULT,
                   MAX_NO_ITEM_RESULTS /* Should always be last */
+#ifdef MYSQL_SERVER
+  ,IMPOSSIBLE_RESULT  /* Yes, we know this is ugly, don't tell us */
+#endif
 };
 
 typedef struct st_udf_args
@@ -436,10 +486,8 @@ extern "C" {
   implemented in sql/password.c
 */
 
-void randominit(struct rand_struct *, unsigned long seed1,
-                unsigned long seed2);
-double my_rnd(struct rand_struct *);
-void create_random_string(char *to, unsigned int length, struct rand_struct *rand_st);
+void create_random_string(char *to, unsigned int length,
+                          struct my_rnd_struct *rand_st);
 
 void hash_password(unsigned long *to, const char *password, unsigned int password_len);
 void make_scrambled_password_323(char *to, const char *password);
@@ -481,4 +529,5 @@ uchar *net_store_length(uchar *pkg, ulonglong length);
 #define MYSQL_STMT_HEADER       4
 #define MYSQL_LONG_DATA_HEADER  6
 
+#define NOT_FIXED_DEC           31
 #endif

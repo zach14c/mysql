@@ -64,7 +64,7 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			procedure.h sql_class.h sql_lex.h sql_list.h \
 			sql_map.h sql_string.h unireg.h \
 			sql_error.h field.h handler.h mysqld_suffix.h \
- 			sql_profile.h \
+			sql_profile.h \
 			ha_ndbcluster.h ha_ndbcluster_cond.h \
 			ha_ndbcluster_binlog.h ha_ndbcluster_tables.h \
 			ha_ndbcluster_connection.h ha_ndbcluster_connection.h \
@@ -77,18 +77,19 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			sql_repl.h slave.h rpl_filter.h rpl_injector.h \
 			log_event.h rpl_record.h \
 			log_event_old.h rpl_record_old.h \
-			stacktrace.h sql_sort.h sql_cache.h set_var.h \
+			sql_sort.h sql_cache.h set_var.h \
 			spatial.h gstream.h client_settings.h tzfile.h \
 			tztime.h my_decimal.h\
 			sp_head.h sp_pcontext.h sp_rcontext.h sp.h sp_cache.h \
 			parse_file.h sql_view.h	sql_trigger.h \
 			sql_array.h sql_cursor.h events.h scheduler.h \
                         event_db_repository.h event_queue.h \
-			sql_plugin.h authors.h \
+			sql_plugin.h authors.h event_parse_data.h \
 			event_data_objects.h event_scheduler.h \
 			sql_partition.h partition_info.h partition_element.h \
 			probes.h sql_audit.h \
-			contributors.h sql_servers.h ddl_blocker.h si_objects.h
+			contributors.h sql_servers.h ddl_blocker.h \
+			si_objects.h sql_plist.h mdl.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -114,6 +115,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			discover.cc time.cc opt_range.cc opt_sum.cc \
 		   	records.cc filesort.cc handler.cc \
 		        ha_partition.cc \
+			debug_sync.cc \
 			sql_db.cc sql_table.cc sql_rename.cc sql_crypt.cc \
 			sql_load.cc mf_iocache.cc field_conv.cc sql_show.cc \
 			sql_udf.cc sql_analyse.cc sql_analyse.h sql_cache.cc \
@@ -122,7 +124,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			rpl_reporting.cc \
                         sql_union.cc sql_derived.cc \
 			sql_client.cc \
-			stacktrace.c repl_failsafe.h repl_failsafe.cc \
+			repl_failsafe.h repl_failsafe.cc \
 			sql_olap.cc sql_view.cc \
 			gstream.cc spatial.cc sql_help.cc sql_cursor.cc \
 			tztime.cc my_decimal.cc\
@@ -133,7 +135,8 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc
+			ddl_blocker.cc si_objects.cc event_parse_data.cc \
+			mdl.cc
 
 if HAVE_DTRACE
   mysqld_SOURCES += probes.d
@@ -158,6 +161,7 @@ DEFS =			-DMYSQL_SERVER \
 			-DDATADIR="\"$(MYSQLDATAdir)\"" \
 			-DSHAREDIR="\"$(MYSQLSHAREdir)\"" \
 			-DPLUGINDIR="\"$(pkgplugindir)\"" \
+			-DHAVE_EVENT_SCHEDULER \
 			@DEFS@
 
 BUILT_MAINT_SRC =	sql_yacc.cc sql_yacc.h
@@ -202,6 +206,13 @@ probes.h: probes.d
 	mv probes.h probes.h.bak
 	sed "s/#include <unistd.h>//g" probes.h.bak > probes.h
 	rm probes.h.bak
+
+# We might have some stuff not built in this build, but that we want to install
+install-exec-hook:
+	$(mkinstalldirs) $(DESTDIR)$(libexecdir) $(DESTDIR)$(pkglibdir)
+	test ! -x mysqld-debug$(EXEEXT) || $(INSTALL_PROGRAM) mysqld-debug$(EXEEXT) $(DESTDIR)$(libexecdir)
+	test ! -f mysqld-debug.sym.gz   || $(INSTALL_DATA)    mysqld-debug.sym.gz   $(DESTDIR)$(pkglibdir)
+	test ! -f mysqld.sym.gz         || $(INSTALL_DATA)    mysqld.sym.gz         $(DESTDIR)$(pkglibdir)
 
 SUFFIXES : .d
 

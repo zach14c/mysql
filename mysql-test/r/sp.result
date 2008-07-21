@@ -1085,11 +1085,9 @@ select f0()|
 f0()
 100
 select * from v0|
-f0()
-100
+ERROR HY000: Table 'v0' was not locked with LOCK TABLES
 select *, f0() from v0, (select 123) as d1|
-f0()	123	f0()
-100	123	100
+ERROR HY000: Table 'v0' was not locked with LOCK TABLES
 select id, f3() from t1|
 ERROR HY000: Table 't1' was not locked with LOCK TABLES
 select f4()|
@@ -2438,7 +2436,6 @@ create procedure bug4902()
 begin
 show charset like 'foo';
 show collation like 'foo';
-show column types;
 show create table t1;
 show create database test;
 show databases like 'foo';
@@ -2446,7 +2443,8 @@ show errors;
 show columns from t1;
 show keys from t1;
 show open tables like 'foo';
-show privileges;
+# Removed because result will differ in embedded mode.
+#show privileges;
 show status like 'foo';
 show tables like 'foo';
 show variables like 'foo';
@@ -2455,9 +2453,6 @@ end|
 call bug4902()|
 Charset	Description	Default collation	Maxlen
 Collation	Charset	Id	Default	Compiled	Sortlen
-Type	Size	Min_Value	Max_Value	Prec	Scale	Nullable	Auto_Increment	Unsigned	Zerofill	Searchable	Case_Sensitive	Default	Comment	Storage	Format
-tinyint	1	-128	127	0	0	YES	YES	NO	YES	YES	NO	NULL,0	A very small integer	Default	Default
-tinyint unsigned	1	0	255	0	0	YES	YES	YES	YES	YES	NO	NULL,0	A very small integer	Default	Default
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `id` char(16) NOT NULL DEFAULT '',
@@ -2472,36 +2467,6 @@ id	char(16)	NO
 data	int(11)	NO		NULL	
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 Database	Table	In_use	Name_locked
-Privilege	Context	Comment
-Alter	Tables	To alter the table
-Alter routine	Functions,Procedures	To alter or drop stored functions/procedures
-Create	Databases,Tables,Indexes	To create new databases and tables
-Create routine	Functions,Procedures	To use CREATE FUNCTION/PROCEDURE
-Create temporary tables	Databases	To use CREATE TEMPORARY TABLE
-Create view	Tables	To create new views
-Create user	Server Admin	To create new users
-Delete	Tables	To delete existing rows
-Drop	Databases,Tables	To drop databases, tables, and views
-Event	Server Admin	To create, alter, drop and execute events
-Execute	Functions,Procedures	To execute stored routines
-File	File access on server	To read and write files on the server
-Grant option	Databases,Tables,Functions,Procedures	To give to other users those privileges you possess
-Index	Tables	To create or drop indexes
-Insert	Tables	To insert data into tables
-Lock tables	Databases	To use LOCK TABLES (together with SELECT privilege)
-Process	Server Admin	To view the plain text of currently executing queries
-References	Databases,Tables	To have references on tables
-Reload	Server Admin	To reload or refresh tables, logs and privileges
-Replication client	Server Admin	To ask where the slave or master servers are
-Replication slave	Server Admin	To read binary log events from the master
-Select	Tables	To retrieve rows from table
-Show databases	Server Admin	To see all databases with SHOW DATABASES
-Show view	Tables	To see views with SHOW CREATE VIEW
-Shutdown	Server Admin	To shut down the server
-Super	Server Admin	To use KILL thread, SET GLOBAL, CHANGE MASTER, etc.
-Trigger	Tables	To use triggers
-Update	Tables	To update existing rows
-Usage	Server Admin	No privileges - allow connect only
 Variable_name	Value
 Tables_in_test (foo)
 Variable_name	Value
@@ -2509,9 +2474,6 @@ Level	Code	Message
 call bug4902()|
 Charset	Description	Default collation	Maxlen
 Collation	Charset	Id	Default	Compiled	Sortlen
-Type	Size	Min_Value	Max_Value	Prec	Scale	Nullable	Auto_Increment	Unsigned	Zerofill	Searchable	Case_Sensitive	Default	Comment	Storage	Format
-tinyint	1	-128	127	0	0	YES	YES	NO	YES	YES	NO	NULL,0	A very small integer	Default	Default
-tinyint unsigned	1	0	255	0	0	YES	YES	YES	YES	YES	NO	NULL,0	A very small integer	Default	Default
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `id` char(16) NOT NULL DEFAULT '',
@@ -2526,36 +2488,6 @@ id	char(16)	NO
 data	int(11)	NO		NULL	
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 Database	Table	In_use	Name_locked
-Privilege	Context	Comment
-Alter	Tables	To alter the table
-Alter routine	Functions,Procedures	To alter or drop stored functions/procedures
-Create	Databases,Tables,Indexes	To create new databases and tables
-Create routine	Functions,Procedures	To use CREATE FUNCTION/PROCEDURE
-Create temporary tables	Databases	To use CREATE TEMPORARY TABLE
-Create view	Tables	To create new views
-Create user	Server Admin	To create new users
-Delete	Tables	To delete existing rows
-Drop	Databases,Tables	To drop databases, tables, and views
-Event	Server Admin	To create, alter, drop and execute events
-Execute	Functions,Procedures	To execute stored routines
-File	File access on server	To read and write files on the server
-Grant option	Databases,Tables,Functions,Procedures	To give to other users those privileges you possess
-Index	Tables	To create or drop indexes
-Insert	Tables	To insert data into tables
-Lock tables	Databases	To use LOCK TABLES (together with SELECT privilege)
-Process	Server Admin	To view the plain text of currently executing queries
-References	Databases,Tables	To have references on tables
-Reload	Server Admin	To reload or refresh tables, logs and privileges
-Replication client	Server Admin	To ask where the slave or master servers are
-Replication slave	Server Admin	To read binary log events from the master
-Select	Tables	To retrieve rows from table
-Show databases	Server Admin	To see all databases with SHOW DATABASES
-Show view	Tables	To see views with SHOW CREATE VIEW
-Shutdown	Server Admin	To shut down the server
-Super	Server Admin	To use KILL thread, SET GLOBAL, CHANGE MASTER, etc.
-Trigger	Tables	To use triggers
-Update	Tables	To update existing rows
-Usage	Server Admin	No privileges - allow connect only
 Variable_name	Value
 Tables_in_test (foo)
 Variable_name	Value
@@ -2824,10 +2756,10 @@ delete from t3|
 insert into t3 values(1)|
 drop procedure if exists bug7992_1|
 Warnings:
-Note	1305	PROCEDURE bug7992_1 does not exist
+Note	1305	PROCEDURE test.bug7992_1 does not exist
 drop procedure if exists bug7992_2|
 Warnings:
-Note	1305	PROCEDURE bug7992_2 does not exist
+Note	1305	PROCEDURE test.bug7992_2 does not exist
 create procedure bug7992_1()
 begin
 declare i int;

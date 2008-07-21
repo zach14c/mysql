@@ -67,7 +67,7 @@
 # define bcopy(s, d, n)		memcpy((d), (s), (n))
 # define bcmp(A,B,C)		memcmp((A),(B),(C))
 # define bzero(A,B)		memset((A),0,(B))
-# define bmove_align(A,B,C)    memcpy((A),(B),(C))
+# define bmove_align(A,B,C)     memcpy((A),(B),(C))
 #endif
 
 #if defined(__cplusplus)
@@ -126,6 +126,15 @@ extern	size_t bcmp(const uchar *s1,const uchar *s2,size_t len);
 extern	size_t my_bcmp(const uchar *s1,const uchar *s2,size_t len);
 #undef bcmp
 #define bcmp(A,B,C) my_bcmp((A),(B),(C))
+#define bzero_if_purify(A,B) bzero(A,B)
+#else
+#define bzero_if_purify(A,B)
+#endif /* HAVE_purify */
+
+#if defined(_lint) || defined(FORCE_INIT_OF_VARS)
+#define LINT_INIT_STRUCT(var) bzero(&var, sizeof(var)) /* No uninitialize-warning */
+#else
+#define LINT_INIT_STRUCT(var)
 #endif
 
 #ifndef bmove512
@@ -244,6 +253,7 @@ extern char *str2int(const char *src,int radix,long lower,long upper,
 			 long *val);
 longlong my_strtoll10(const char *nptr, char **endptr, int *error);
 #if SIZEOF_LONG == SIZEOF_LONG_LONG
+#define ll2str(A,B,C,D) int2str((A),(B),(C),(D))
 #define longlong2str(A,B,C) int2str((A),(B),(C),1)
 #define longlong10_to_str(A,B,C) int10_to_str((A),(B),(C))
 #undef strtoll
@@ -257,7 +267,8 @@ longlong my_strtoll10(const char *nptr, char **endptr, int *error);
 #endif
 #else
 #ifdef HAVE_LONG_LONG
-extern char *longlong2str(longlong val,char *dst,int radix);
+extern char *ll2str(longlong val,char *dst,int radix, int upcase);
+#define longlong2str(A,B,C) ll2str((A),(B),(C),1)
 extern char *longlong10_to_str(longlong val,char *dst,int radix);
 #if (!defined(HAVE_STRTOULL) || defined(NO_STRTOLL_PROTO))
 extern longlong strtoll(const char *str, char **ptr, int base);
@@ -294,6 +305,14 @@ typedef struct st_mysql_lex_string LEX_STRING;
 #define STRING_WITH_LEN(X) (X), ((size_t) (sizeof(X) - 1))
 #define USTRING_WITH_LEN(X) ((uchar*) X), ((size_t) (sizeof(X) - 1))
 #define C_STRING_WITH_LEN(X) ((char *) (X)), ((size_t) (sizeof(X) - 1))
+
+/* A variant with const and unsigned */
+struct st_mysql_const_unsigned_lex_string
+{
+  const uchar *str;
+  size_t length;
+};
+typedef struct st_mysql_const_unsigned_lex_string LEX_CUSTRING;
 
 /* SPACE_INT is a word that contains only spaces */
 #if SIZEOF_INT == 4
