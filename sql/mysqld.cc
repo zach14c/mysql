@@ -1686,7 +1686,7 @@ static void network_init(void)
 
   if (mysqld_port != 0 && !opt_disable_networking && !opt_bootstrap)
   {
-    struct addrinfo *ai;
+    struct addrinfo *ai, *a;
     struct addrinfo hints;
     int error;
     DBUG_PRINT("general",("IP Socket is %d",mysqld_port));
@@ -1705,9 +1705,12 @@ static void network_init(void)
       unireg_abort(1);				/* purecov: tested */
     }
 
-
-    ip_sock= socket(ai->ai_family, ai->ai_socktype,
-                    ai->ai_protocol);
+    for (a = ai; a != NULL; a = ai->ai_next)
+    {
+      ip_sock= socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+      if (ip_sock != INVALID_SOCKET)
+        break;
+    }
 
     if (ip_sock == INVALID_SOCKET)
     {
@@ -1731,7 +1734,7 @@ static void network_init(void)
        listen on both IPv6 and IPv4 wildcard addresses.
        Turn off IPV6_V6ONLY option.
      */
-    if (ai->ai_family == AF_INET6)
+    if (a->ai_family == AF_INET6)
     {
       arg= 0;      
       (void) setsockopt(ip_sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&arg,
@@ -1748,7 +1751,7 @@ static void network_init(void)
     */
     for (waited= 0, retry= 1; ; retry++, waited+= this_wait)
     {
-      if (((ret= bind(ip_sock, ai->ai_addr, ai->ai_addrlen)) >= 0 ) ||
+      if (((ret= bind(ip_sock, a->ai_addr, a->ai_addrlen)) >= 0 ) ||
           (socket_errno != SOCKET_EADDRINUSE) ||
           (waited >= mysqld_port_timeout))
         break;
@@ -5205,7 +5208,7 @@ pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))
       struct sockaddr_storage dummy;
       dummyLen = sizeof(dummy);
       if (  getsockname(new_sock,(struct sockaddr *)&dummy, 
-                  (socklen_t *)&dummyLen) < 0  )
+                  (SOCKET_SIZE_TYPE *)&dummyLen) < 0  )
       {
 	sql_perror("Error on new connection socket");
 	(void) shutdown(new_sock, SHUT_RDWR);
