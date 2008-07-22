@@ -117,14 +117,6 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		int type = TABLESPACE_TYPE_TABLESPACE;				// type (forced)
 		
 		TableSpaceInit tsInit;
-		/***
-		tsInit.initialSize	= resultSet->getLong(n++);
-		tsInit.extentSize	= resultSet->getLong(n++);
-		tsInit.autoExtendSize = resultSet->getLong(n++);
-		tsInit.maxSize		= resultSet->getLong(n++);
-		tsInit.nodegroup	= resultSet->getInt(n++);
-		tsInit.wait			= resultSet->getInt(n++);
-		***/
 		tsInit.comment		= resultSet->getString(n++);	// comment
 		
 		tableSpace = new TableSpace(database, name, id, fileName, type, &tsInit);
@@ -170,32 +162,10 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
-	if (!repository)
+	if (!repository && IO::doesFileExist(fileName))
 		{
-		bool fileExists;
-
-		// Check if table space file already exists.
-		// Take into account, that tablespace might have been already  dropped
-		// by another transaction, yet file can still be present on the disk,
-		// if log record is not yet fully committed by the gopher thread).
-		// So we'll wait for a few seconds if there are pending drops and 
-		// tablespace file exists.
-
-		for (int i=0; i < 10; i++)
-			{
-			fileExists = tableSpace->dbb->doesFileExist(fileName);
-
-			if (fileExists && pendingDrops > 0)
-				Thread::getThread("TableSpaceManager::createTableSpace")->sleep(1000);
-			else
-				break;
-			}
-
-		if (fileExists)
-			{
-			delete tableSpace;
-			throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
-			}
+		delete tableSpace;
+		throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
 		}
 		
 	try
@@ -239,21 +209,9 @@ void TableSpaceManager::bootstrap(int sectionId)
 		p = EncodedDataStream::decode(p, &fileName, true);
 		p = EncodedDataStream::decode(p, &type, true);
 		/***
-		p = EncodedDataStream::decode(p, &initialSize, true);
-		p = EncodedDataStream::decode(p, &extentSsize, true);
-		p = EncodedDataStream::decode(p, &autoExtendSize, true);
-		p = EncodedDataStream::decode(p, &maxSize, true);
-		p = EncodedDataStream::decode(p, &nodegroup, true);
-		p = EncodedDataStream::decode(p, &wait, true);
 		p = EncodedDataStream::decode(p, &comment, true);
 
 		TableSpaceInit tsInit;
-		tsInit.initialSize	= initialSize.getQuad();
-		tsInit.extentSize	= extentSize.getQuad();
-		tsInit.autoExtendSize = autoExtendSize.getQuad();
-		tsInit.maxSize		= maxSize.getQuad();
-		tsInit.nodegroup	= nodegroup.getInt();
-		tsInit.wait			= wait.getInt();
 		tsInit.comment		= comment.getString();
 		***/
 		
@@ -541,4 +499,26 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		}
 }
 
+
+// Wait for specified amount of time for a  file to be deleted.
+// Don't wait if pendingDrops count is 0.
+//
+// The function returns true, if wait was successfull, i.e file does not exist
+//(anymore)
+bool TableSpaceManager::waitForPendingDrop(const char  *filename, int seconds)
+{
+	bool fileExists;
+
+	do
+		{
+		fileExists = IO::doesFileExist(filename);
+		if (fileExists && pendingDrops > 0 && seconds-- > 0)
+			Thread::getThread("TransactionManager::waitForPendingDrop")->sleep(1000);
+		else
+			break;
+		}
+	while(true);
+
+	return !fileExists;
+}
 

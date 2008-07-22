@@ -253,6 +253,14 @@ extern "C" int gethostname(char *name, int namelen);
 #endif
 
 extern "C" sig_handler handle_segfault(int sig);
+/* 
+  Online backup initialization and shutdown functions - defined in 
+  backup/kernel.cc
+ */
+#ifndef EMBEDDED_LIBRARY
+int backup_init();
+void backup_shutdown();
+#endif
 
 /* Constants */
 
@@ -490,6 +498,9 @@ my_bool lower_case_file_system= 0;
 my_bool opt_large_pages= 0;
 my_bool opt_myisam_use_mmap= 0;
 uint    opt_large_page_size= 0;
+#if defined(ENABLED_DEBUG_SYNC)
+uint    opt_debug_sync_timeout= 0;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 my_bool opt_old_style_user_limits= 0, trust_function_creators= 0;
 /*
   True if there is at least one per-hour limit for some user, so we should
@@ -673,7 +684,6 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
 	        LOCK_global_system_variables,
                 LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
                 LOCK_connection_count;
-pthread_mutex_t LOCK_backup;
 
 /**
   The below lock protects access to two global server variables:
@@ -712,7 +722,7 @@ static bool kill_in_progress, segfaulted;
 #ifdef HAVE_STACK_TRACE_ON_SEGV
 static my_bool opt_do_pstack;
 #endif /* HAVE_STACK_TRACE_ON_SEGV */
-static my_bool opt_bootstrap, opt_myisam_log;
+static my_bool opt_bootstrap, opt_myisam_logical_log;
 static int cleanup_done;
 static ulong opt_specialflag, opt_myisam_block_size;
 static char *opt_update_logname, *opt_binlog_index_name;
@@ -1329,6 +1339,9 @@ void clean_up(bool print_message)
     udf_free();
 #endif
   }
+#ifndef EMBEDDED_LIBRARY
+  backup_shutdown();
+#endif
   plugin_shutdown();
   ha_end();
   if (tc_log)
@@ -1370,6 +1383,10 @@ void clean_up(bool print_message)
 #ifdef USE_REGEX
   my_regex_end();
 #endif
+#if defined(ENABLED_DEBUG_SYNC)
+  /* End the debug sync facility. See debug_sync.cc. */
+  debug_sync_end();
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 
 #if !defined(EMBEDDED_LIBRARY)
   if (!opt_bootstrap)
@@ -1443,7 +1460,6 @@ static void clean_up_mutexes()
   (void) pthread_mutex_destroy(&LOCK_bytes_sent);
   (void) pthread_mutex_destroy(&LOCK_bytes_received);
   (void) pthread_mutex_destroy(&LOCK_user_conn);
-  (void) pthread_mutex_destroy(&LOCK_backup);
   (void) pthread_mutex_destroy(&LOCK_connection_count);
   Events::destroy_mutexes();
 #ifdef HAVE_OPENSSL
@@ -1670,7 +1686,7 @@ static void network_init(void)
 
   if (mysqld_port != 0 && !opt_disable_networking && !opt_bootstrap)
   {
-    struct addrinfo *ai;
+    struct addrinfo *ai, *a;
     struct addrinfo hints;
     int error;
     DBUG_PRINT("general",("IP Socket is %d",mysqld_port));
@@ -1689,9 +1705,12 @@ static void network_init(void)
       unireg_abort(1);				/* purecov: tested */
     }
 
-
-    ip_sock= socket(ai->ai_family, ai->ai_socktype,
-                    ai->ai_protocol);
+    for (a = ai; a != NULL; a = ai->ai_next)
+    {
+      ip_sock= socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+      if (ip_sock != INVALID_SOCKET)
+        break;
+    }
 
     if (ip_sock == INVALID_SOCKET)
     {
@@ -1715,7 +1734,7 @@ static void network_init(void)
        listen on both IPv6 and IPv4 wildcard addresses.
        Turn off IPV6_V6ONLY option.
      */
-    if (ai->ai_family == AF_INET6)
+    if (a->ai_family == AF_INET6)
     {
       arg= 0;      
       (void) setsockopt(ip_sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&arg,
@@ -1732,7 +1751,7 @@ static void network_init(void)
     */
     for (waited= 0, retry= 1; ; retry++, waited+= this_wait)
     {
-      if (((ret= bind(ip_sock, ai->ai_addr, ai->ai_addrlen)) >= 0 ) ||
+      if (((ret= bind(ip_sock, a->ai_addr, a->ai_addrlen)) >= 0 ) ||
           (socket_errno != SOCKET_EADDRINUSE) ||
           (waited >= mysqld_port_timeout))
         break;
@@ -3215,7 +3234,6 @@ SHOW_VAR com_status_vars[]= {
   {"savepoint",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SAVEPOINT]), SHOW_LONG_STATUS},
   {"select",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SELECT]), SHOW_LONG_STATUS},
   {"set_option",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SET_OPTION]), SHOW_LONG_STATUS},
-  {"show_archive",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_ARCHIVE]), SHOW_LONG_STATUS},
   {"show_authors",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_AUTHORS]), SHOW_LONG_STATUS},
   {"show_binlog_events",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOG_EVENTS]), SHOW_LONG_STATUS},
   {"show_binlogs",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOGS]), SHOW_LONG_STATUS},
@@ -3567,6 +3585,12 @@ static int init_common_variables(const char *conf_file_name, int argc,
   sys_var_slow_log_path.value= my_strdup(s, MYF(0));
   sys_var_slow_log_path.value_length= strlen(s);
 
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Initialize the debug sync facility. See debug_sync.cc. */
+  if (debug_sync_init())
+    return 1; /* purecov: tested */
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
   if (use_temp_pool && bitmap_init(&temp_pool,0,1024,1))
     return 1;
   if (my_database_names_init())
@@ -3647,7 +3671,6 @@ static int init_thread_environment()
   (void) my_rwlock_init(&LOCK_system_variables_hash, NULL);
   (void) pthread_mutex_init(&LOCK_global_read_lock, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_prepared_stmt_count, MY_MUTEX_INIT_FAST);
-  (void) pthread_mutex_init(&LOCK_backup, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_uuid_short, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_connection_count, MY_MUTEX_INIT_FAST);
 #ifdef HAVE_OPENSSL
@@ -4024,6 +4047,14 @@ server.");
     unireg_abort(1);
   }
 
+#ifndef EMBEDDED_LIBRARY
+  if (backup_init())
+  {
+    sql_print_error("Failed to initialize online backup.");
+    unireg_abort(1);
+  }
+#endif
+
   if (opt_help)
     unireg_abort(0);
 
@@ -4186,8 +4217,8 @@ server.");
   pthread_attr_setstacksize(&connection_attrib, NW_THD_STACKSIZE);
 #endif
 
-  if (opt_myisam_log)
-    (void) mi_log(1);
+  if (opt_myisam_logical_log)
+    (void) mi_log(MI_LOG_ACTION_OPEN, MI_LOG_LOGICAL, NULL, NULL);
 
 #if defined(HAVE_MLOCKALL) && defined(MCL_CURRENT) && !defined(EMBEDDED_LIBRARY)
   if (locked_in_memory && !getuid())
@@ -4904,7 +4935,7 @@ void create_thread_to_handle_connection(THD *thd)
                               handle_one_connection,
                               (void*) thd)))
     {
-      /* purify: begin inspected */
+      /* purecov: begin inspected */
       DBUG_PRINT("error",
                  ("Can't create thread to handle request (error %d)",
                   error));
@@ -5177,7 +5208,7 @@ pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))
       struct sockaddr_storage dummy;
       dummyLen = sizeof(dummy);
       if (  getsockname(new_sock,(struct sockaddr *)&dummy, 
-                  (socklen_t *)&dummyLen) < 0  )
+                  (SOCKET_SIZE_TYPE *)&dummyLen) < 0  )
       {
 	sql_perror("Error on new connection socket");
 	(void) shutdown(new_sock, SHUT_RDWR);
@@ -5717,6 +5748,9 @@ enum options_mysqld
   OPT_SECURE_FILE_PRIV,
   OPT_MIN_EXAMINED_ROW_LIMIT,
   OPT_LOG_SLOW_SLAVE_STATEMENTS,
+#if defined(ENABLED_DEBUG_SYNC)
+  OPT_DEBUG_SYNC_TIMEOUT,
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   OPT_OLD_MODE,
 #if HAVE_POOL_OF_THREADS == 1
   OPT_POOL_OF_THREADS,
@@ -6001,8 +6035,8 @@ Disable with --skip-large-pages.",
    (uchar**) &log_error_file_ptr, (uchar**) &log_error_file_ptr, 0, GET_STR,
    OPT_ARG, 0, 0, 0, 0, 0, 0},
   {"log-isam", OPT_ISAM_LOG, "Log all MyISAM changes to file.",
-   (uchar**) &myisam_log_filename, (uchar**) &myisam_log_filename, 0, GET_STR,
-   OPT_ARG, 0, 0, 0, 0, 0, 0},
+   (uchar**) &myisam_logical_log_filename, (uchar**)
+   &myisam_logical_log_filename, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
   {"log-long-format", '0',
    "Log some extra information to update log. Please note that this option is deprecated; see --log-short-format option.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -6470,6 +6504,14 @@ log and this option does nothing anymore.",
    "Decision to use in heuristic recover process. Possible values are COMMIT or ROLLBACK.",
    (uchar**) &opt_tc_heuristic_recover, (uchar**) &opt_tc_heuristic_recover,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+#if defined(ENABLED_DEBUG_SYNC)
+  {"debug-sync-timeout", OPT_DEBUG_SYNC_TIMEOUT,
+   "Enable the debug sync facility "
+   "and optionally specify a default wait timeout in seconds. "
+   "A zero value keeps the facility disabled.",
+   (uchar**) &opt_debug_sync_timeout, 0,
+   0, GET_UINT, OPT_ARG, 0, 0, UINT_MAX, 0, 0, 0},
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   {"temp-pool", OPT_TEMP_POOL,
    "Using this option will cause most temporary files created to use a small set of names, rather than a unique name for each new file.",
    (uchar**) &use_temp_pool, (uchar**) &use_temp_pool, 0, GET_BOOL, NO_ARG, 1,
@@ -7628,7 +7670,7 @@ static void mysql_init_variables(void)
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_secure_file_priv= 0;
-  opt_bootstrap= opt_myisam_log= 0;
+  opt_bootstrap= opt_myisam_logical_log= 0;
   mqh_used= 0;
   segfaulted= kill_in_progress= 0;
   cleanup_done= 0;
@@ -7656,6 +7698,9 @@ static void mysql_init_variables(void)
   bzero((uchar*) &mysql_tmpdir_list, sizeof(mysql_tmpdir_list));
   bzero((char *) &global_status_var, sizeof(global_status_var));
   opt_large_pages= 0;
+#if defined(ENABLED_DEBUG_SYNC)
+  opt_debug_sync_timeout= 0;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   key_map_full.set_all();
 
   /* Character sets */
@@ -7923,7 +7968,7 @@ mysqld_get_one_option(int optid,
     thd_startup_options|=OPTION_BIG_TABLES;
     break;
   case (int) OPT_ISAM_LOG:
-    opt_myisam_log=1;
+    opt_myisam_logical_log=1;
     break;
   case (int) OPT_UPDATE_LOG:
     opt_update_log=1;
@@ -8330,6 +8375,22 @@ mysqld_get_one_option(int optid,
     lower_case_table_names= argument ? atoi(argument) : 1;
     lower_case_table_names_used= 1;
     break;
+#if defined(ENABLED_DEBUG_SYNC)
+  case OPT_DEBUG_SYNC_TIMEOUT:
+    /*
+      Debug Sync Facility. See debug_sync.cc.
+      Default timeout for WAIT_FOR action.
+      Default value is zero (facility disabled).
+      If option is given without an argument, supply a non-zero value.
+    */
+    if (!argument)
+    {
+      /* purecov: begin tested */
+      opt_debug_sync_timeout= DEBUG_SYNC_DEFAULT_WAIT_TIMEOUT;
+      /* purecov: end */
+    }
+    break;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   }
   return 0;
 }

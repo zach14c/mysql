@@ -111,7 +111,6 @@ our $glob_basedir;
 
 our $path_charsetsdir;
 our $path_client_bindir;
-our $path_client_libdir;
 our $path_share;
 our $path_language;
 our $path_timefile;
@@ -134,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "main,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
+our $opt_suites_default= "main,backup,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -143,6 +142,7 @@ our $exe_mysql;
 our $exe_mysqladmin;
 our $exe_mysql_upgrade;
 our $exe_mysqlbinlog;
+our $exe_myisamlog;
 our $exe_mysql_client_test;
 our $exe_bug25714;
 our $exe_mysqld;
@@ -263,6 +263,7 @@ my @default_valgrind_args= ("--show-reachable=yes");
 my @valgrind_args;
 my $opt_valgrind_path;
 my $opt_callgrind;
+my $opt_debug_sync_timeout= 300; # Default timeout for WAIT_FOR actions.
 
 our $opt_stress=               "";
 our $opt_stress_suite=     "main";
@@ -638,6 +639,7 @@ sub command_line_setup () {
              'valgrind-option=s'        => \@valgrind_args,
              'valgrind-path=s'          => \$opt_valgrind_path,
 	     'callgrind'                => \$opt_callgrind,
+	     'debug-sync-timeout=i'     => \$opt_debug_sync_timeout,
 
              # Stress testing 
              'stress'                   => \$opt_stress,
@@ -655,8 +657,6 @@ sub command_line_setup () {
              'vardir=s'                 => \$opt_vardir,
              'benchdir=s'               => \$glob_mysql_bench_dir,
              'mem'                      => \$opt_mem,
-             'client-bindir=s'          => \$path_client_bindir,
-             'client-libdir=s'          => \$path_client_libdir,
 
              # Misc
              'report-features'          => \$opt_report_features,
@@ -783,20 +783,12 @@ sub command_line_setup () {
   #
 
   # Look for the client binaries directory
-  if ($path_client_bindir)
-  {
-    # --client-bindir=path set on command line, check that the path exists
-    $path_client_bindir= mtr_path_exists($path_client_bindir);
-  }
-  else
-  {
-    $path_client_bindir= mtr_path_exists("$glob_basedir/client_release",
-					 "$glob_basedir/client_debug",
-					 vs_config_dirs('client', ''),
-					 "$glob_basedir/client",
-					 "$glob_basedir/bin");
-  }
-  
+  $path_client_bindir= mtr_path_exists("$glob_basedir/client_release",
+				       "$glob_basedir/client_debug",
+				       vs_config_dirs('client', ''),
+				       "$glob_basedir/client",
+				       "$glob_basedir/bin");
+
   # Look for language files and charsetsdir, use same share
   $path_share=      mtr_path_exists("$glob_basedir/share/mysql",
                                     "$glob_basedir/sql/share",
@@ -1744,25 +1736,19 @@ sub environment_setup () {
 
   my @ld_library_paths;
 
-  if ($path_client_libdir)
+  # --------------------------------------------------------------------------
+  # Setup LD_LIBRARY_PATH so the libraries from this distro/clone
+  # are used in favor of the system installed ones
+  # --------------------------------------------------------------------------
+  if ( $source_dist )
   {
-    # Use the --client-libdir passed on commandline
-    push(@ld_library_paths, "$path_client_libdir");
+    push(@ld_library_paths, "$glob_basedir/libmysql/.libs/",
+                            "$glob_basedir/libmysql_r/.libs/",
+                            "$glob_basedir/zlib.libs/");
   }
   else
   {
-    # Setup LD_LIBRARY_PATH so the libraries from this distro/clone
-    # are used in favor of the system installed ones
-    if ( $source_dist )
-    {
-      push(@ld_library_paths, "$glob_basedir/libmysql/.libs/",
-	   "$glob_basedir/libmysql_r/.libs/",
-	   "$glob_basedir/zlib.libs/");
-    }
-    else
-    {
-      push(@ld_library_paths, "$glob_basedir/lib");
-    }
+    push(@ld_library_paths, "$glob_basedir/lib");
   }
 
  # --------------------------------------------------------------------------
@@ -1974,9 +1960,6 @@ sub environment_setup () {
   {
     $cmdline_mysqlbinlog .=" --character-sets-dir=$path_charsetsdir";
   }
-  # Always use the given tmpdir for the LOAD files created
-  # by mysqlbinlog
-  $cmdline_mysqlbinlog .=" --local-load=$opt_tmpdir";
 
   if ( $opt_debug )
   {
@@ -1984,6 +1967,27 @@ sub environment_setup () {
       " --debug=d:t:A,$path_vardir_trace/log/mysqlbinlog.trace";
   }
   $ENV{'MYSQL_BINLOG'}= $cmdline_mysqlbinlog;
+
+  # ----------------------------------------------------
+  # Setup env so childs can execute myisamlog
+  # ----------------------------------------------------
+
+  my $myisam_path= mtr_file_exists(vs_config_dirs("storage/myisam", ""),
+                                   "$glob_basedir/storage/myisam",
+                                   "$glob_basedir/bin");
+
+  $exe_myisamlog=
+    mtr_exe_exists("$myisam_path/myisamlog");
+
+  my $cmdline_myisamlog=
+    mtr_native_path($exe_myisamlog);
+
+  if ( $opt_debug )
+  {
+    $cmdline_myisamlog .=
+      " -#d:t:A,$path_vardir_trace/log/myisamlog.trace";
+  }
+  $ENV{'MYISAMLOG'}= $cmdline_myisamlog;
 
   # ----------------------------------------------------
   # Setup env so childs can execute mysql
@@ -2080,6 +2084,11 @@ sub environment_setup () {
                         "$path_client_bindir/myisampack",
                         "$glob_basedir/storage/myisam/myisampack",
                         "$glob_basedir/myisam/myisampack"));
+  $ENV{'MYISAM_FTDUMP'}= mtr_native_path(mtr_exe_exists(
+                       vs_config_dirs('storage/myisam', 'myisam_ftdump'),
+                       vs_config_dirs('myisam', 'myisam_ftdump'),
+                       "$path_client_bindir/myisam_ftdump",
+                       "$glob_basedir/storage/myisam/myisam_ftdump"));
 
   # ----------------------------------------------------
   # Setup env so childs can execute maria_pack and maria_chk
@@ -3679,6 +3688,10 @@ sub mysqld_arguments ($$$$) {
   # see BUG#28359
   mtr_add_arg($args, "%s--connect-timeout=60", $prefix);
 
+  # Enable the debug sync facility, set default wait timeout.
+  # Facility stays disabled if timeout value is zero.
+  mtr_add_arg($args, "%s--loose-debug-sync-timeout=%s", $prefix,
+              $opt_debug_sync_timeout);
 
   # When mysqld is run by a root user(euid is 0), it will fail
   # to start unless we specify what user to run as, see BUG#30630
@@ -5122,6 +5135,8 @@ Options for coverage, profiling etc
                         can be specified more then once
   valgrind-path=[EXE]   Path to the valgrind executable
   callgrind             Instruct valgrind to use callgrind
+  debug-sync-timeout=NUM  Set default timeout for WAIT_FOR debug sync
+                        actions. Disable facility with NUM=0.
 
 Misc options
 
@@ -5142,8 +5157,6 @@ Misc options
   warnings | log-warnings Pass --log-warnings to mysqld
 
   sleep=SECONDS         Passed to mysqltest, will be used as fixed sleep time
-  client-bindir=PATH    Path to the directory where client binaries are located
-  client-libdir=PATH    Path to the directory where client libraries are located
 
 Deprecated options
   with-openssl          Deprecated option for ssl

@@ -1,0 +1,48 @@
+create database if not exists mysqltest;
+use mysqltest;
+drop table if exists t1;
+create table t1 (a int, b varchar(100)) engine=myisam;
+insert into t1 values(1,'life'), (2,'file');
+insert into t1 select a*5, concat("A ",b) from t1;
+update t1 set b="A knife" where a=5;
+delete from t1 where a=10;
+select * from t1;
+a	b
+1	life
+2	file
+5	A knife
+truncate table t1;
+flush table t1;
+Commands                         Used count    Errors Recover errors
+open                       16         0              0
+write                       4         0              0
+update                      1         0              0
+delete                      1         0              0
+close                       8         0              0
+extra                       #         0              0
+lock                       48         0              0
+Total               #         0                0
+select * from t1;
+a	b
+flush table t1;
+Trying to update MyISAM files according to log 'VARDIR/master-data/myisam.log'
+Tables updated successfully
+
+Commands                         Used count    Errors Recover errors
+open                       17         0              0
+write                       4         0              0
+update                      1         0              0
+delete                      1         0              0
+close                       9         0              0
+extra                       #         0              0
+lock                       50         0              0
+Total               #         0                0
+select * from t1;
+a	b
+1	life
+2	file
+5	A knife
+check table t1 extended;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	check	status	OK
+drop database mysqltest;

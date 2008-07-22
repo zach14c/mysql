@@ -2546,7 +2546,8 @@ my_well_formed_len_utf32(CHARSET_INFO *cs __attribute__((unused)),
   }
   for (; b < e; b+= 4)
   {
-    if (b[0] || b[1] > 0x10)
+    /* Don't accept characters greater than U+10FFFF */
+    if (b[0] || (uchar) b[1] > 0x10)
     {
       *error= 1;
       return b - b0;

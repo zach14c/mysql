@@ -32,7 +32,10 @@
 #endif
 
 #ifdef make_atomic_cas_body
-
+/*
+  Type not used so minimal size (emptry struct has different size between C
+  and C++, zero-length array is gcc-specific).
+*/
 typedef char my_atomic_rwlock_t __attribute__ ((unused));
 #define my_atomic_rwlock_destroy(name)
 #define my_atomic_rwlock_init(name)

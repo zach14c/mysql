@@ -33,10 +33,13 @@
 #if (_MSC_VER >= 1400)
 #include <intrin.h>
 #else
+C_MODE_START
 /*Visual Studio 2003 and earlier do not have prototypes for atomic intrinsics*/
 LONG _InterlockedExchange (LONG volatile *Target,LONG Value);
 LONG _InterlockedCompareExchange (LONG volatile *Target, LONG Value, LONG Comp);
 LONG _InterlockedExchangeAdd (LONG volatile *Addend, LONG Value);
+C_MODE_END
+
 #pragma intrinsic(_InterlockedExchangeAdd)
 #pragma intrinsic(_InterlockedCompareExchange)
 #pragma intrinsic(_InterlockedExchange)
@@ -53,11 +56,11 @@ LONG _InterlockedExchangeAdd (LONG volatile *Addend, LONG Value);
 #endif /*_M_IX86*/
 
 #define MY_ATOMIC_MODE "msvc-intrinsics"
-#define IL_EXCHG_ADD32   InterlockedExchangeAdd
-#define IL_COMP_EXCHG32  InterlockedCompareExchange
-#define IL_COMP_EXCHGptr InterlockedCompareExchangePointer
-#define IL_EXCHG32       InterlockedExchange
-#define IL_EXCHGptr      InterlockedExchangePointer
+#define IL_EXCHG_ADD32(A,B)    InterlockedExchangeAdd((LONG volatile*)A,B)
+#define IL_COMP_EXCHG32(A,B,C) InterlockedCompareExchange((LONG volatile*)A,B,C)
+#define IL_COMP_EXCHGptr       InterlockedCompareExchangePointer
+#define IL_EXCHG32(A,B)        InterlockedExchange((LONG volatile*)A,B)
+#define IL_EXCHGptr            InterlockedExchangePointer
 #define make_atomic_add_body(S) \
   v= IL_EXCHG_ADD ## S (a, v)
 #define make_atomic_cas_body(S)                                 \

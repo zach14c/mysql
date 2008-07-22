@@ -83,7 +83,6 @@ static StorageHandler	*storageHandler;
 #undef PARAMETER_BOOL
 
 ulonglong	falcon_record_memory_max;
-ulonglong	falcon_initial_allocation;
 ulonglong	falcon_serial_log_file_size;
 uint		falcon_allocation_extent;
 ulonglong	falcon_page_cache_size;
@@ -1140,9 +1139,6 @@ int StorageInterface::delete_row(const uchar* buf)
 	DBUG_ASSERT (lastRecord >= 0);
 	ha_statistic_increment(&SSV::ha_delete_count);
 
-	if (activeBlobs)
-		freeActiveBlobs();
-
 	int ret = storageTable->deleteRow(lastRecord);
 
 	if (ret < 0)
@@ -2044,16 +2040,22 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	/*
 	CREATE TABLESPACE tablespace
 		ADD DATAFILE 'file'
-		USE LOGFILE GROUP logfile_group
-		[EXTENT_SIZE [=] extent_size]
-		[INITIAL_SIZE [=] initial_size]
-		[AUTOEXTEND_SIZE [=] autoextend_size]
-		[MAX_SIZE [=] max_size]
-		[NODEGROUP [=] nodegroup_id]
-		[WAIT]
+		USE LOGFILE GROUP logfile_group         // NDB only
+		[EXTENT_SIZE [=] extent_size]           // Not supported
+		[INITIAL_SIZE [=] initial_size]         // Not supported
+		[AUTOEXTEND_SIZE [=] autoextend_size]   // Not supported
+		[MAX_SIZE [=] max_size]                 // Not supported
+		[NODEGROUP [=] nodegroup_id]            // NDB only
+		[WAIT]                                  // NDB only
 		[COMMENT [=] comment_text]
 		ENGINE [=] engine
+
+
+	Parameters EXTENT_SIZE, INITIAL,SIZE, AUTOEXTEND_SIZE and MAX_SIZE are
+	currently not supported by Falcon. LOGFILE GROUP, NODEGROUP and WAIT are
+	for NDB only.
 	*/
+
 	if (ts_info->data_file_name)
 		{
 		char buff[FN_REFLEN];
@@ -2071,15 +2073,7 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	switch (ts_info->ts_cmd_type)
 		{
 		case CREATE_TABLESPACE:
-			ret = storageHandler->createTablespace(	ts_info->tablespace_name,
-													ts_info->data_file_name,
-													ts_info->initial_size,
-													ts_info->extent_size,
-													ts_info->autoextend_size,
-													ts_info->max_size,
-													ts_info->nodegroup_id,
-													ts_info->wait_until_completed,
-													ts_info->ts_comment);
+			ret = storageHandler->createTablespace(	ts_info->tablespace_name, ts_info->data_file_name, ts_info->ts_comment);
 			break;
 
 		case DROP_TABLESPACE:
@@ -3630,11 +3624,6 @@ static MYSQL_SYSVAR_ULONGLONG(record_memory_max, falcon_record_memory_max,
   "The maximum size of the record memory cache.",
   NULL, StorageInterface::updateRecordMemoryMax, LL(250)<<20, 0, (ulonglong) max_memory_address, LL(1)<<20);
 
-static MYSQL_SYSVAR_ULONGLONG(initial_allocation, falcon_initial_allocation,
-  PLUGIN_VAR_RQCMDARG, // | PLUGIN_VAR_READONLY,
-  "Initial allocation (in bytes) of falcon user tablespace.",
-  NULL, NULL, 0, 0, LL(4000000000), LL(1)<<20);
-
 static MYSQL_SYSVAR_ULONGLONG(serial_log_file_size, falcon_serial_log_file_size,
   PLUGIN_VAR_RQCMDARG,
   "If serial log file grows larger than this value, it will be truncated when it is reused",
@@ -3683,7 +3672,6 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	MYSQL_SYSVAR(scavenge_schedule),
 	//MYSQL_SYSVAR(debug_mask),
 	MYSQL_SYSVAR(record_memory_max),
-	MYSQL_SYSVAR(initial_allocation),
 	//MYSQL_SYSVAR(allocation_extent),
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),

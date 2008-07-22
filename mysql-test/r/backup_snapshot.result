@@ -1,6 +1,9 @@
+SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS bup_snapshot;
+#
+# Setup for tests.
+#
 CREATE DATABASE bup_snapshot;
-SET GLOBAL debug="d,backup_debug:d,backup";
 CREATE TABLE bup_snapshot.t1 (word CHAR(20)) ENGINE=INNODB;
 INSERT INTO bup_snapshot.t1 VALUES ("01 Some data to test");
 INSERT INTO bup_snapshot.t1 VALUES ("02 Some data to test");
@@ -23,21 +26,20 @@ COUNT(*)
 SELECT COUNT(*) FROM bup_snapshot.t2;
 COUNT(*)
 5
-con3: Getting lock on driver.
-SELECT get_lock("backup_cs_locked", 100);
-get_lock("backup_cs_locked", 100)
-1
+#
+# Test 1: Check for consistent read prior to open and lock tables
+#
+con1: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_cs_locked SIGNAL locked WAIT_FOR inserting';
 con1: Backing up database. Spawn this and continue...
 BACKUP DATABASE bup_snapshot TO "bup_snapshot.bak";
-con3: Checking locks.
+con2: Wait for backup to have locked the transaction.
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+con2: Start an insert now that CS has a transaction 
+con2: Activate sync points for the insert statement.
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL inserting';
 INSERT INTO bup_snapshot.t1 VALUES("- Dave Mathews");
-con3: Checking locks.
-con3: Release lock on driver.
-SELECT release_lock("backup_cs_locked");
-release_lock("backup_cs_locked")
-1
-backup_id
-#
+con2: insert additional rows.
 INSERT INTO bup_snapshot.t1 VALUES("- Yes");
 INSERT INTO bup_snapshot.t1 VALUES("- Jethro Tull");
 DELETE FROM bup_snapshot.t1 WHERE word LIKE '10%';
@@ -50,6 +52,11 @@ word
 SELECT COUNT(*) FROM bup_snapshot.t1;
 COUNT(*)
 12
+con1: retrieve backup result.
+backup_id
+#
+# Now restore the database and then check to make sure the new rows
+# were not backed up.
 con1: Dropping the database
 DROP TABLE bup_snapshot.t1;
 con1: Restoring the database
@@ -65,19 +72,20 @@ COUNT(*)
 SELECT COUNT(*) FROM bup_snapshot.t2;
 COUNT(*)
 5
-con3: Getting lock on driver.
-SELECT get_lock("backup_cs_reading", 100);
-get_lock("backup_cs_reading", 100)
-1
+#
+# Test 2: Check for consistent read after open and lock tables
+#
+con1: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'when_backup_cs_reading SIGNAL reading WAIT_FOR inserting';
 con1: Backing up database. Spawn this and continue...
 BACKUP DATABASE bup_snapshot TO "bup_snapshot.bak";
-con3: Checking locks.
+con2: Wait for backup to start reading.
+SET DEBUG_SYNC= 'now WAIT_FOR reading';
+con2: Start an insert now that CS has a transaction 
+con2: Activate sync points for the insert statement.
+SET DEBUG_SYNC= 'after_insert_locked_tables SIGNAL inserting';
 INSERT INTO bup_snapshot.t1 VALUES("- Dave Mathews");
-con3: Checking locks.
-con3: Release lock on driver.
-SELECT release_lock("backup_cs_reading");
-release_lock("backup_cs_reading")
-1
+con2: insert additional rows.
 INSERT INTO bup_snapshot.t1 VALUES("- Yes");
 INSERT INTO bup_snapshot.t1 VALUES("- Jethro Tull");
 DELETE FROM bup_snapshot.t1 WHERE word LIKE '10%';
@@ -90,8 +98,11 @@ word
 SELECT COUNT(*) FROM bup_snapshot.t1;
 COUNT(*)
 12
+con1: retrieve backup result.
 backup_id
 #
+# Now restore the database and then check to make sure the new rows
+# were not backed up.
 con1: Dropping the database
 DROP TABLE bup_snapshot.t1;
 con1: Restoring the database
@@ -107,4 +118,5 @@ COUNT(*)
 SELECT COUNT(*) FROM bup_snapshot.t2;
 COUNT(*)
 5
+SET DEBUG_SYNC= 'reset';
 DROP DATABASE bup_snapshot;

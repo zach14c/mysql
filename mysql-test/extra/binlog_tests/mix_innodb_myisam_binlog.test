@@ -315,6 +315,7 @@ disconnect con3;
 
 connection con4;
 select get_lock("a",10); # wait for rollback to finish
+do release_lock("a");
 flush logs;
 
 # we check that the error code of the "ROLLBACK" event is 0 and not

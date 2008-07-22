@@ -8055,8 +8055,8 @@ void free_replace_regex()
     buf= (char*)my_realloc(buf,need_buf_len,MYF(MY_WME+MY_FAE));        \
     res_p= buf + off;                                                   \
     buf_len= need_buf_len;                                              \
-  }                                                                     \
-                                                                        \
+  }
+
 /*
   Performs a regex substitution
 

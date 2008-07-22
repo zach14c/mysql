@@ -232,7 +232,7 @@ void RepositoryVolume::makeWritable()
 void RepositoryVolume::create()
 {
 	IO::createPath (fileName);
-	dbb->create(fileName, dbb->pageSize, 0, HdrRepositoryFile, 0, NULL, 0);
+	dbb->create(fileName, dbb->pageSize, 0, HdrRepositoryFile, 0, NULL);
 	Sync syncDDL(&database->syncSysDDL, "RepositoryVolume::create");
 	Transaction *transaction = database->getSystemTransaction();
 	syncDDL.lock(Exclusive);

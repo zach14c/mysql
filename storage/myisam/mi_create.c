@@ -575,6 +575,10 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
     MI_EXTEND_BLOCK_LENGTH;
   if (! (flags & HA_DONT_TOUCH_DATA))
     share.state.create_time= (long) time((time_t*) 0);
+#ifdef THREAD
+  /* This rwlock is used in mi_state_info_write(). */
+  my_atomic_rwlock_init(&share.physical_logging_rwlock);
+#endif
 
   pthread_mutex_lock(&THR_LOCK_myisam);
 
@@ -641,6 +645,14 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
     my_errno= HA_ERR_TABLE_EXIST;
     goto err;
   }
+  /*
+    TRUNCATE TABLE does not work with physical logging. If we changed TRUNCATE
+    to always use mi_delete_all_rows() (remove HTON_CAN_RECREATE from MyISAM)
+    this would solve the problem.
+ */
+  DBUG_ASSERT((options & HA_OPTION_TMP_TABLE) || !mi_log_tables_physical ||
+              !hash_search(mi_log_tables_physical, filename,
+                           strlen(filename)));
 
   if ((file= my_create_with_symlink(linkname_ptr, filename, 0, create_mode,
 				    MYF(MY_WME | create_flag))) < 0)
@@ -706,7 +718,7 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   }
 
   DBUG_PRINT("info", ("write state info and base info"));
-  if (mi_state_info_write(file, &share.state, 2) ||
+  if (mi_state_info_write(&share, file, &share.state, 2) ||
       mi_base_info_write(file, &share.base))
     goto err;
 #ifndef DBUG_OFF
@@ -835,6 +847,9 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   res= 0;
   if (my_close(file,MYF(0)))
     res= my_errno;
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
   my_free((char*) rec_per_key_part,MYF(0));
   DBUG_RETURN(res);
 
@@ -861,6 +876,9 @@ err_no_lock:
                                        MY_UNPACK_FILENAME | MY_APPEND_EXT),
 			     MYF(0));
   }
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
   my_free((char*) rec_per_key_part, MYF(0));
   DBUG_RETURN(my_errno=save_errno);		/* return the fatal errno */
 }

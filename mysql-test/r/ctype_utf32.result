@@ -912,6 +912,51 @@ select hex(a) from t1;
 hex(a)
 0010FFFF
 drop table t1;
+create table t1 (utf32 varchar(2) character set utf32);
+Wrong character with pad
+insert into t1 values (0x110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x11\x00\x00' for column 'utf32' at row 1
+Wrong chsaracter without pad
+insert into t1 values (0x00110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+Wrong character with pad followed by another wrong character
+insert into t1 values (0x11000000110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x11\x00\x00\x00\x11\x00...' for column 'utf32' at row 1
+Good character with pad followed by bad character
+insert into t1 values (0x10000000110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+Good character without pad followed by bad character
+insert into t1 values (0x0010000000110000);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x11\x00\x00' for column 'utf32' at row 1
+Wrong character with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x80\x007' for column 'utf32' at row 1
+Wrong character with pad with the second byte higher than 0x10
+insert into t1 values (0x00800037);
+Warnings:
+Warning	1366	Incorrect string value: '\x00\x80\x007' for column 'utf32' at row 1
+drop table t1;
+select _utf32'a' collate utf32_general_ci = 0xfffd;
+_utf32'a' collate utf32_general_ci = 0xfffd
+0
+select hex(concat(_utf32 0x0410 collate utf32_general_ci, 0x61));
+hex(concat(_utf32 0x0410 collate utf32_general_ci, 0x61))
+0000041000000061
+create table t1 (s1 varchar(5) character set utf32);
+insert into t1 values (0xfffd);
+select case when s1 = 0xfffd then 1 else 0 end from t1;
+case when s1 = 0xfffd then 1 else 0 end
+1
+select hex(s1) from t1 where s1 = 0xfffd;
+hex(s1)
+0000FFFD
+drop table t1;
 create table t1 (a char(10)) character set utf32;
 insert into t1 values ('a   ');
 select hex(a) from t1;
