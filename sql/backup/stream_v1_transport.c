@@ -443,7 +443,9 @@ int close_current_fragment(backup_stream *s)
   int ret= BSTREAM_OK;
 
   /* blob describing data in the current fragment */
-  blob current_fragment= {buf->header+1, buf->pos};
+  blob current_fragment;
+  current_fragment.begin= buf->header+1;
+  current_fragment.end= buf->pos;
 
   /* nothing to do if current fragment is empty */
   if (buf->pos == buf->header)

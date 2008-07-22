@@ -50,7 +50,7 @@ class Engine
   virtual ~Engine() {}
 
   /// Return version of backup images created by this engine.
-  virtual const version_t version() const =0;
+  virtual version_t version() const =0;
 
   /**
    Create a backup driver.
@@ -189,7 +189,7 @@ class Driver
   virtual void  free() {};
 
   /// Unknown size constant used for backup image size estimates.
-  static const size_t UNKNOWN_SIZE= static_cast<size_t>(-1);
+  static const size_t UNKNOWN_SIZE;
 
  protected:
 

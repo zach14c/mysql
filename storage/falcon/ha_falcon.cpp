@@ -1140,9 +1140,6 @@ int StorageInterface::delete_row(const uchar* buf)
 	DBUG_ASSERT (lastRecord >= 0);
 	ha_statistic_increment(&SSV::ha_delete_count);
 
-	if (activeBlobs)
-		freeActiveBlobs();
-
 	int ret = storageTable->deleteRow(lastRecord);
 
 	if (ret < 0)

@@ -29,7 +29,6 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   List<Item> field_list;                // list of fields to send
   String     op_str;                    // operations string
   String str;
-  Item *i;
 
   {
     String tmp_db_name("qqq", 3, system_charset_info);
@@ -39,7 +38,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   /*
     Send field list.
   */
-  field_list.push_back(i= new Item_empty_string("db", 2));
+  field_list.push_back(new Item_empty_string("db", 2));
   field_list.push_back(new Item_empty_string("name", 5));
   field_list.push_back(new Item_empty_string("type", 4));
   field_list.push_back(new Item_empty_string("serialization", 13));
@@ -237,7 +236,6 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   delete it;
 
   my_eof(thd);
-//  delete i;
   DBUG_RETURN(res);
 }
 
