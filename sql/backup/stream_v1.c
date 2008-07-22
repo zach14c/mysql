@@ -1830,7 +1830,11 @@ int bstream_rd_data_chunk(backup_stream *s,
 int bstream_wr_byte(backup_stream *s, unsigned short int x)
 {
   byte buf= x & 0xFF;
-  blob b= { &buf, &buf + 1 };
+  blob b;
+
+  b.begin= &buf;
+  b.end= &buf + 1;
+
   return bstream_write_part(s,&b,b);
 }
 
@@ -1845,8 +1849,11 @@ int bstream_wr_byte(backup_stream *s, unsigned short int x)
 int bstream_rd_byte(backup_stream *s, unsigned short int *x)
 {
   byte buf;
-  blob b= { &buf, &buf+1 };
+  blob b;
   int ret;
+
+  b.begin= &buf;
+  b.end= &buf + 1;
 
   ret= bstream_read_part(s,&b,b);
 
@@ -1864,8 +1871,14 @@ int bstream_rd_byte(backup_stream *s, unsigned short int *x)
 */
 int bstream_wr_int2(backup_stream *s, unsigned int x)
 {
-  byte buf[2]= { x & 0xFF, (x >> 8) & 0xFF };
-  blob b= {buf, buf+2};
+  byte buf[2];
+  blob b;
+
+  buf[0]= x & 0xFF;
+  buf[1]= (x >> 8) & 0xFF;
+
+  b.begin= buf;
+  b.end= buf+2;
 
   return bstream_write_blob(s,b);
 }
@@ -1881,8 +1894,11 @@ int bstream_wr_int2(backup_stream *s, unsigned int x)
 int bstream_rd_int2(backup_stream *s, unsigned int *x)
 {
   byte buf[2];
-  blob b= {buf, buf+2};
+  blob b;
   int ret;
+
+  b.begin= buf;
+  b.end= buf+2;
 
   ret= bstream_read_blob(s,b);
   if (ret == BSTREAM_ERROR)
@@ -1899,8 +1915,11 @@ int bstream_rd_int2(backup_stream *s, unsigned int *x)
 int bstream_wr_int4(backup_stream *s, unsigned long int x)
 {
   byte buf[4];
-  blob b= {buf, buf+4};
+  blob b;
   int i;
+
+  b.begin= buf;
+  b.end= buf+4;
 
   for (i= 0; i < 4; i++)
   {
@@ -1922,8 +1941,11 @@ int bstream_wr_int4(backup_stream *s, unsigned long int x)
 int bstream_rd_int4(backup_stream *s, unsigned long int *x)
 {
   byte buf[4];
-  blob b= {buf, buf+4};
+  blob b;
   int ret;
+
+  b.begin= buf;
+  b.end= buf+4;
 
   ret= bstream_read_blob(s,b);
   if (ret == BSTREAM_ERROR)
@@ -2070,7 +2092,10 @@ int bstream_rd_string(backup_stream *s, bstream_blob *str)
 int bstream_wr_time(backup_stream *s, bstream_time_t *time)
 {
   byte buf[6];
-  blob b= {buf, buf+6};
+  blob b;
+
+  b.begin= buf;
+  b.end= buf+6;
 
   buf[0]= get_byte_uint(((time->year>>4) & 0xFF));
   buf[1]= (get_byte_uint(((time->year<<4) & 0xF0)) |
@@ -2094,8 +2119,11 @@ int bstream_wr_time(backup_stream *s, bstream_time_t *time)
 int bstream_rd_time(backup_stream *s, bstream_time_t *time)
 {
   byte buf[6];
-  blob b= {buf, buf+6};
+  blob b;
   int ret= BSTREAM_OK;
+
+  b.begin= buf;
+  b.end= buf+6;
 
   ret= bstream_read_blob(s,b);
 
