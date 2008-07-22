@@ -72,3 +72,4 @@ drop table t1;
 --echo [on master]
 connection master;
 drop table t1;
+

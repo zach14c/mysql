@@ -491,7 +491,7 @@ select * from t2 order by id;
 id
 3
 drop trigger kaboom;
-drop table t1;
+drop table t1, t2;
 create table t1 (
 a int not null primary key,
 b int

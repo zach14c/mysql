@@ -453,9 +453,7 @@ DROP FUNCTION IF EXISTS f1;
 --echo
 --echo ---> Synchronizing slave with master...
 
---save_master_pos
---connection slave
---sync_with_master
+--sync_slave_with_master
 
 --echo
 --echo ---> connection: master
@@ -479,9 +477,7 @@ SHOW CREATE FUNCTION f1;
 --echo
 --echo ---> Synchronizing slave with master...
 
---save_master_pos
---connection slave
---sync_with_master
+--sync_slave_with_master
 
 --echo ---> connection: master
 
@@ -503,9 +499,7 @@ SHOW CREATE FUNCTION f1;
 DROP PROCEDURE p1;
 DROP FUNCTION f1;
 
---save_master_pos
---connection slave
---sync_with_master
+--sync_slave_with_master
 --connection master
 
 
@@ -615,8 +609,9 @@ show function status like '%mysqltestbug36570%';
 
 connection master;
 flush logs;
+let $MYSQLD_DATADIR= `select @@datadir`;
 --replace_regex s/$MYSQL_TEST_DIR/MYSQL_TEST_DIR/ s/TIMESTAMP=[0-9]*/TIMESTAMP=t/
---exec $MYSQL_BINLOG --short-form $MYSQLTEST_VARDIR/log/master-bin.000001
+--exec $MYSQL_BINLOG --short-form $MYSQLD_DATADIR/master-bin.000001
 use test;
 drop procedure mysqltestbug36570_p1;
 drop procedure ` mysqltestbug36570_p2`;

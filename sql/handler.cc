@@ -32,6 +32,8 @@
 #include "ha_partition.h"
 #endif
 
+#include "rpl_handler.h"
+
 /*
   While we have legacy_db_type, we have this array to
   check for dups and to find handlerton from legacy_db_type.
@@ -1144,6 +1146,7 @@ int ha_commit_trans(THD *thd, bool all)
     if (cookie)
       tc_log->unlog(cookie, xid);
     DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
+    RUN_HOOK(transaction, after_commit, (thd, all));
 end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
@@ -1274,6 +1277,7 @@ int ha_rollback_trans(THD *thd, bool all)
     push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                  ER_WARNING_NOT_COMPLETE_ROLLBACK,
                  ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
+  RUN_HOOK(transaction, after_rollback, (thd, all));
   DBUG_RETURN(error);
 }
 
@@ -1307,6 +1311,13 @@ int ha_autocommit_or_rollback(THD *thd, int error)
     }
 
     thd->variables.tx_isolation=thd->session_tx_isolation;
+  }
+  else
+  {
+    if (!thd->is_error())
+      RUN_HOOK(transaction, after_commit, (thd, 0));
+    else
+      RUN_HOOK(transaction, after_rollback, (thd, 0));
   }
 #endif
   DBUG_RETURN(error);

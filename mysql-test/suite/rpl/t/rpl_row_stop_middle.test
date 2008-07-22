@@ -11,6 +11,7 @@ connection master;
 create table t1 (a int not null auto_increment primary key, b int, key(b));
 sync_slave_with_master;
 stop slave;
+--source include/wait_for_slave_to_stop.inc
 connection master;
 INSERT INTO t1 (a) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10);
 INSERT INTO t1 (a) SELECT null FROM t1;

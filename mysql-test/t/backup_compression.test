@@ -20,5 +20,6 @@ RESTORE FROM 'db2.bak.gz';
 SHOW TABLES FROM db1;
 
 DROP DATABASE db1;
---remove_file $MYSQLTEST_VARDIR/master-data/db1.bak.gz
---remove_file $MYSQLTEST_VARDIR/master-data/db2.bak.gz
+let $MYSQLD_DATADIR= `select @@datadir`;
+remove_file $MYSQLD_DATADIR/db1.bak.gz;
+remove_file $MYSQLD_DATADIR/db2.bak.gz;

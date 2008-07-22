@@ -12,7 +12,7 @@ create table t1(n int not null auto_increment primary key)ENGINE=NDB;
 insert into t1 values (NULL);
 drop table t1;
 create table t1 (word char(20) not null)ENGINE=NDB;
-load data infile '../std_data_ln/words.dat' into table t1 ignore 1 lines;
+load data infile 'LOAD_FILE' into table t1 ignore 1 lines;
 select count(*) from t1;
 count(*)
 69
@@ -304,6 +304,8 @@ Last_IO_Errno	#
 Last_IO_Error	#
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 show binlog events in 'slave-bin.000005' from 4;
 ERROR HY000: Error when executing command SHOW BINLOG EVENTS: Could not find target log
 DROP TABLE t1;

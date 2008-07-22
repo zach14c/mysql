@@ -16,6 +16,10 @@ source include/add_anonymous_users.inc;
 # (otherwise RESET MASTER may come too early).
 save_master_pos;
 connection slave;
+
+# Add supression for expected warning(s) in slaves error log
+call mtr.add_supression("Slave: Can\'t find record in \'user\' Error_code: 1032");
+
 sync_with_master;
 reset master;
 connection master;
@@ -149,10 +153,7 @@ connection master;
 select id from information_schema.processlist where command='Binlog Dump' into @id;
 kill @id; # to stimulate reconnection by slave w/o timeout
 insert into t5 select * from t4;
-save_master_pos;
-
-connection slave;
-sync_with_master;
+sync_slave_with_master;
 select * from t5 /* must be 1 after reconnection */;
 
 connection master;
