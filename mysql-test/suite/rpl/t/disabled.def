@@ -29,7 +29,6 @@ rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
 rpl_row_basic_7ndb         : BUG#33360 2007-12-19 mats rpl_ndb_idempotent fails due to null field for table on slave side
 rpl_redirect               : Failure is sporadic and and the test is superfluous (mats)
 rpl_innodb_bug28430        : Failure on Solaris Bug #36793
-
 rpl_row_basic_2myisam      : Bug#37879 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_row_basic_3innodb      : Bug#37879 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
@@ -38,4 +37,4 @@ rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 grea
 rpl_flushlog_loop          : Bug#37733 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
-
+rpl_temporary              : BUG#38269 2008-07-21 Sven valgrind error in pushbuild
