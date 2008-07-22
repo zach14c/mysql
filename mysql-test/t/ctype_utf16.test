@@ -708,5 +708,13 @@ set collation_connection=utf16_general_ci;
 set names latin1;
 
 #
+# Test how character set works with date/time
+#
+SET collation_connection=utf16_general_ci;
+--source include/ctype_datetime.inc
+SET NAMES latin1;
+
+
+#
 ## TODO: add tests for all engines
 #

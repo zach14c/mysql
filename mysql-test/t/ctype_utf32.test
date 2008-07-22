@@ -742,6 +742,13 @@ check table t1;
 drop table t1;
 
 #
+# Test how character set works with date/time
+#
+SET collation_connection=utf32_general_ci;
+--source include/ctype_datetime.inc
+SET NAMES latin1;
+
+#
 # Test basic regex functionality
 #
 set collation_connection=utf32_general_ci;
