@@ -556,7 +556,8 @@ ulong max_prepared_stmt_count;
 */
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
-ulong slow_launch_threads = 0, sync_binlog_period;
+ulong slow_launch_threads = 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -5686,7 +5687,8 @@ enum options_mysqld
 #if HAVE_POOL_OF_THREADS == 1
   OPT_POOL_OF_THREADS,
 #endif
-  OPT_SLAVE_EXEC_MODE
+  OPT_SLAVE_EXEC_MODE,
+  OPT_SYNC_RELAY_LOG
 };
 
 
@@ -6902,8 +6904,13 @@ The minimum value for this variable is 4096.",
   {"sync-binlog", OPT_SYNC_BINLOG,
    "Synchronously flush binary log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
-   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_ULONG,
-   REQUIRED_ARG, 0, 0, ULONG_MAX, 0, 1, 0},
+   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, UINT_MAX, 0, 1, 0},
+  {"sync-relay-log", OPT_SYNC_RELAY_LOG,
+   "Synchronously flush relay log to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
    0, 0, 0, 0},
