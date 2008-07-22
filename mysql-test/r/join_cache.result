@@ -1020,7 +1020,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -1327,7 +1327,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -1634,7 +1634,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -1941,7 +1941,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -2252,7 +2252,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -2466,7 +2466,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -2680,7 +2680,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
@@ -2894,7 +2894,7 @@ SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	Country	ALL	PRIMARY,Name	NULL	NULL	NULL	239	Using where
+1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
 1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND

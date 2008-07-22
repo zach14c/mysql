@@ -45,11 +45,11 @@ SELECT @start_session_value;
 #     Display the DEFAULT value of join_buffer_size            #
 ################################################################
 
-SET @@global.join_buffer_size = 8200;
+SET @@global.join_buffer_size = 136;
 SET @@global.join_buffer_size = DEFAULT;
 SELECT @@global.join_buffer_size;
 
-SET @@session.join_buffer_size = 8200;
+SET @@session.join_buffer_size = 136;
 SET @@session.join_buffer_size = DEFAULT;
 SELECT @@session.join_buffer_size;
 
@@ -71,8 +71,8 @@ SELECT @@session.join_buffer_size = 131072;
 # Change the value of join_buffer_size to a valid value for GLOBAL Scope #
 ##########################################################################
 
-SET @@global.join_buffer_size = 8200;
-SELECT @@global.join_buffer_size=8200 OR @@global.join_buffer_size= 8228;
+SET @@global.join_buffer_size = 136;
+SELECT @@global.join_buffer_size=136 OR @@global.join_buffer_size= 164;
 SET @@global.join_buffer_size = 65536;
 SELECT @@global.join_buffer_size;
 SET @@global.join_buffer_size = 4294967295;
@@ -85,8 +85,8 @@ echo 'Bug # 34837: Errors are not coming on assigning invalid values to variable
 # Change the value of join_buffer_size to a valid value for SESSION Scope #
 ###########################################################################
  
-SET @@session.join_buffer_size = 8200;
-SELECT @@session.join_buffer_size=8200 OR @@session.join_buffer_size= 8228;
+SET @@session.join_buffer_size = 136;
+SELECT @@session.join_buffer_size=136 OR @@session.join_buffer_size= 164;
 SET @@session.join_buffer_size = 65536;
 SELECT @@session.join_buffer_size;
 SET @@session.join_buffer_size = 4294967295;
@@ -100,11 +100,11 @@ echo 'Bug # 34837: Errors are not coming on assigning invalid values to variable
 ############################################################
 
 SET @@global.join_buffer_size = 0;
-SELECT @@global.join_buffer_size=8200 OR @@global.join_buffer_size= 8228;
+SELECT @@global.join_buffer_size=136 OR @@global.join_buffer_size= 164;
 SET @@global.join_buffer_size = -1024;
-SELECT @@global.join_buffer_size=8200 OR @@global.join_buffer_size= 8228;
-SET @@global.join_buffer_size = 8199;
-SELECT @@global.join_buffer_size=8200 OR @@global.join_buffer_size= 8228;
+SELECT @@global.join_buffer_size=136 OR @@global.join_buffer_size= 164;
+SET @@global.join_buffer_size = 135;
+SELECT @@global.join_buffer_size=136 OR @@global.join_buffer_size= 164;
 SET @@global.join_buffer_size = 42949672951;
 SELECT @@global.join_buffer_size;
 
@@ -116,11 +116,11 @@ SET @@global.join_buffer_size = test;
 SELECT @@global.join_buffer_size;
 
 SET @@session.join_buffer_size = 0;
-SELECT @@session.join_buffer_size=8200 OR @@session.join_buffer_size= 8228;
+SELECT @@session.join_buffer_size=136 OR @@session.join_buffer_size= 164;
 SET @@session.join_buffer_size = -2;
-SELECT @@session.join_buffer_size=8200 OR @@session.join_buffer_size= 8228;
-SET @@session.join_buffer_size = 8199;
-SELECT @@session.join_buffer_size=8200 OR @@session.join_buffer_size= 8228;
+SELECT @@session.join_buffer_size=136 OR @@session.join_buffer_size= 164;
+SET @@session.join_buffer_size = 135;
+SELECT @@session.join_buffer_size=136 OR @@session.join_buffer_size= 164;
 SET @@session.join_buffer_size = 42949672951;
 SELECT @@session.join_buffer_size;
 
@@ -160,9 +160,9 @@ WHERE VARIABLE_NAME='join_buffer_size';
 ####################################################################
 
 SET @@global.join_buffer_size = TRUE;
-SELECT @@global.join_buffer_size=8200 OR @@global.join_buffer_size= 8228;
+SELECT @@global.join_buffer_size=136 OR @@global.join_buffer_size= 164;
 SET @@global.join_buffer_size = FALSE;
-SELECT @@global.join_buffer_size=8200 OR @@global.join_buffer_size= 8228;
+SELECT @@global.join_buffer_size=136 OR @@global.join_buffer_size= 164;
 --echo 'Bug: Errors are not coming on assigning TRUE/FALSE to variable';
 
 
@@ -191,7 +191,7 @@ SELECT @@local.join_buffer_size = @@session.join_buffer_size;
 ##############################################################################
 
 SET join_buffer_size = 1;
-SELECT @@join_buffer_size=8200 OR @@join_buffer_size= 8228;
+SELECT @@join_buffer_size=136 OR @@join_buffer_size= 164;
 --Error ER_UNKNOWN_TABLE
 SELECT local.join_buffer_size;
 --Error ER_UNKNOWN_TABLE
