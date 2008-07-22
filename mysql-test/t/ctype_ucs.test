@@ -662,3 +662,12 @@ select hex(char(0x01 using ucs2));
 select hex(char(0x0102 using ucs2));
 select hex(char(0x010203 using ucs2));
 select hex(char(0x01020304 using ucs2));
+
+--echo Start of 6.0 tests
+#
+# Test how character set works with date/time
+#
+SET collation_connection=ucs2_general_ci;
+--source include/ctype_datetime.inc
+SET NAMES latin1;
+
