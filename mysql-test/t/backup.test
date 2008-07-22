@@ -13,9 +13,9 @@ connection backup;
 DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
 DROP DATABASE IF EXISTS db3;
---error 0,1
 
 let $MYSQLD_DATADIR= `select @@datadir`;
+--error 0,1
 remove_file $MYSQLD_DATADIR/bup_default.bak;
 --enable_warnings
 

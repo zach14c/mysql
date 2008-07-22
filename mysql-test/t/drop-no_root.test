@@ -19,9 +19,10 @@ CREATE TABLE mysql_test.t1(c INT);
 
 use mysql_test;
 
+let $MYSQLD_DATADIR= `select @@datadir`;
 --echo
 --echo chmod 000 mysql_test/t1.frm
---chmod 0000 $MYSQLTEST_VARDIR/master-data/mysql_test/t1.frm
+--chmod 0000 $MYSQLD_DATADIR/mysql_test/t1.frm
 
 # NOTE: ER_DB_DROP_RMDIR contains errno, which can be different on different
 # platforms.
@@ -35,10 +36,8 @@ DROP DATABASE mysql_test;
 --echo
 SELECT DATABASE();
 
---echo
---echo rm mysql_test/t1.MYD mysql_test/t1.MYI
---exec rm $MYSQLTEST_VARDIR/master-data/mysql_test/t1.MYD
---exec rm $MYSQLTEST_VARDIR/master-data/mysql_test/t1.MYI
+remove_file $MYSQLD_DATADIR/mysql_test/t1.MYD;
+remove_file $MYSQLD_DATADIR/mysql_test/t1.MYI;
 
 --echo
 DROP DATABASE mysql_test;

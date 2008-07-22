@@ -35,8 +35,8 @@
 --disable_warnings
 SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS bup_commit_blocker;
---error 0,1
 let $MYSQLD_DATADIR= `select @@datadir`;
+--error 0,1
 remove_file $MYSQLD_DATADIR/bup_commit_blocker.bak;
 --enable_warnings
 
