@@ -395,6 +395,7 @@ int flush_master_info(Master_info* mi, bool flush_relay_log_cache)
 {
   IO_CACHE* file = &mi->file;
   char lbuf[22];
+  int err= 0;
 
   DBUG_ENTER("flush_master_info");
   DBUG_PRINT("enter",("master_pos: %ld", (long) mi->master_log_pos));
@@ -411,9 +412,17 @@ int flush_master_info(Master_info* mi, bool flush_relay_log_cache)
     When we come to this place in code, relay log may or not be initialized;
     the caller is responsible for setting 'flush_relay_log_cache' accordingly.
   */
-  if (flush_relay_log_cache &&
-      flush_io_cache(mi->rli.relay_log.get_log_file()))
-    DBUG_RETURN(2);
+  if (flush_relay_log_cache)
+  {
+    IO_CACHE *log_file= mi->rli.relay_log.get_log_file();
+    if (flush_io_cache(log_file))
+      DBUG_RETURN(2);
+
+    /* Sync to disk if --sync-relay-log is set */
+    if (sync_relaylog_period &&
+        my_sync(log_file->file, MY_WME))
+      DBUG_RETURN(2);
+  }
 
   /*
     We flushed the relay log BEFORE the master.info file, because if we crash
@@ -467,7 +476,10 @@ int flush_master_info(Master_info* mi, bool flush_relay_log_cache)
               heartbeat_buf,
               ignore_server_ids_buf);
   my_free(ignore_server_ids_buf, MYF(0));
-  DBUG_RETURN(-flush_io_cache(file));
+  err= flush_io_cache(file);
+  if (sync_relaylog_period && !err)
+    err= my_sync(mi->fd, MYF(MY_WME));
+  DBUG_RETURN(-err);
 }
 
 
