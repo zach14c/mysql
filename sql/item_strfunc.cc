@@ -2982,7 +2982,13 @@ void Item_func_weight_string::fix_length_and_dec()
   CHARSET_INFO *cs= args[0]->collation.collation;
   collation.set(&my_charset_bin, args[0]->collation.derivation);
   flags= my_strxfrm_flag_normalize(flags, cs->levels_for_order);
-  max_length= cs->mbmaxlen * max(args[0]->max_length, nweights);
+  /* 
+    Use result_length if it was given explicitly in constructor,
+    otherwise calculate max_length using argument's max_length
+    and "nweights".
+  */
+  max_length= result_length ? result_length :
+              cs->mbmaxlen * max(args[0]->max_length, nweights);
   maybe_null= 1;
 }
 
@@ -2999,8 +3005,14 @@ String *Item_func_weight_string::val_str(String *str)
       !(res= args[0]->val_str(str)))
     goto nl;
   
-  tmp_length= cs->coll->strnxfrmlen(cs, cs->mbmaxlen *
-                                        max(res->length(), nweights));
+  /*
+    Use result_length if it was given in constructor
+    explicitly, otherwise calculate result length
+    from argument and "nweights".
+  */
+  tmp_length= result_length ? result_length :
+              cs->coll->strnxfrmlen(cs, cs->mbmaxlen *
+                                    max(res->length(), nweights));
 
   if (tmp_value.alloc(tmp_length))
     goto nl;

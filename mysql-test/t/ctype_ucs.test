@@ -649,10 +649,12 @@ select hex(char(0x41 using ucs2));
 
 set collation_connection=ucs2_general_ci;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set collation_connection=ucs2_bin;
--- source include/weight_string.inc
+--source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 #
