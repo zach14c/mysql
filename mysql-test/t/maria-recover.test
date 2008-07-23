@@ -2,7 +2,9 @@
 
 --source include/have_maria.inc
 
-let $MYSQLD_DATADIR= `select @@datadir`;
+# Note: we're setting an environment variable (not prefixing it by $),
+# so that the perl code below can access it.
+let MYSQLD_DATADIR= `select @@datadir`;
 
 select @@global.maria_recover;
 set global maria_recover=off;
