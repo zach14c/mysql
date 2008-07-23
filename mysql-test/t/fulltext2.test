@@ -49,8 +49,10 @@ optimize table t1; # BUG#5327 - mi_sort_index() of 2-level tree
 check table t1;
 flush table t1;
 
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
+
 --replace_regex / +[0-9a-f]{4} / / / [0-9]+\.[0-9]+ / /
---exec $MYISAM_FTDUMP -d $MYSQLTEST_VARDIR/master-data/test/t1 1
+--exec $MYISAM_FTDUMP -d $MYSQLD_DATADIR/test/t1 1
 
 select count(*) from t1 where match a against ('aaaxxx');
 select count(*) from t1 where match a against ('aaayyy');
@@ -138,7 +140,7 @@ while ($1)
 flush table t1;
 
 --replace_regex / +[0-9a-f]{4} / / / [0-9]+\.[0-9]+ / /
---exec $MYISAM_FTDUMP -d $MYSQLTEST_VARDIR/master-data/test/t1 1
+--exec $MYISAM_FTDUMP -d $MYSQLD_DATADIR/test/t1 1
 
 select count(*) from t1 where match a against ('aaaxxx');
 select count(*) from t1 where match a against ('aaayyy');

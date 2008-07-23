@@ -23,8 +23,10 @@
 
 disable_warnings;
 DROP DATABASE IF EXISTS backup_cs;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 error 0,1;
-remove_file $MYSQLTEST_VARDIR/master-data/backup_cs.bak;
+remove_file $MYSQLD_DATADIR/backup_cs.bak;
 enable_warnings;
 
 # TODO: Change to MyISAM when problems with this engine are fixed.

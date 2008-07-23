@@ -223,8 +223,5 @@ DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
 
---error 0, 1
-remove_file $MYSQLD_DATADIR/db1.bak
-
---error 0, 1
-remove_file $MYSQLD_DATADIR/db3.bak
+remove_file $MYSQLD_DATADIR/db1.bak;
+remove_file $MYSQLD_DATADIR/db3.bak;

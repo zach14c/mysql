@@ -16,6 +16,12 @@
 --disable_warnings
 DROP DATABASE IF EXISTS bup_nodata;
 DROP DATABASE IF EXISTS bup_data;
+
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
+--error 0,1
+remove_file $MYSQLD_DATADIR/bup_data.bak;
+--error 0,1
+remove_file $MYSQLD_DATADIR/bup_nodata.bak;
 --enable_warnings
 
 # Create data
@@ -159,8 +165,6 @@ SELECT * FROM bup_nodata.e1;
 DROP DATABASE bup_data;
 DROP DATABASE bup_nodata;
 
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_data.bak
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_nodata.bak
+remove_file $MYSQLD_DATADIR/bup_data.bak;
+remove_file $MYSQLD_DATADIR/bup_nodata.bak;
 
