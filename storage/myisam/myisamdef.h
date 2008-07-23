@@ -799,7 +799,8 @@ uint mi_state_info_write(MYISAM_SHARE *share, File file,
                          MI_STATE_INFO *state, uint pWrite);
 uchar *mi_state_info_read(uchar *ptr, MI_STATE_INFO *state);
 int mi_remap_file_and_write_state_for_unlock(MI_INFO *info);
-uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead);
+uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead,
+                            my_bool force);
 uint mi_base_info_write(File file, MI_BASE_INFO *base);
 uchar *mi_n_base_info_read(uchar *ptr, MI_BASE_INFO *base);
 int mi_keyseg_write(File file, const HA_KEYSEG *keyseg);
