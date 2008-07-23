@@ -14,6 +14,8 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 
+#include "sql_plist.h"
+
 /* Structs that defines the TABLE */
 
 class Item;				/* Needed by ORDER */
@@ -24,6 +26,7 @@ class st_select_lex;
 class partition_info;
 class COND_EQUAL;
 class Security_context;
+struct MDL_LOCK_DATA;
 
 /*************************************************************************/
 
@@ -234,6 +237,9 @@ typedef enum enum_table_category TABLE_CATEGORY;
 TABLE_CATEGORY get_table_category(const LEX_STRING *db,
                                   const LEX_STRING *name);
 
+
+struct TABLE_share;
+
 /*
   This structure is shared between different table objects. There is one
   instance of table share per one table in the database.
@@ -252,13 +258,16 @@ typedef struct st_table_share
   TYPELIB keynames;			/* Pointers to keynames */
   TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
-  pthread_mutex_t mutex;                /* For locking the share  */
-  pthread_cond_t cond;			/* To signal that share is ready */
+  pthread_mutex_t LOCK_ha_data;         /* To protect access to ha_data */
   struct st_table_share *next,		/* Link to unused shares */
     **prev;
-#ifdef NOT_YET
-  struct st_table *open_tables;		/* link to open tables */
-#endif
+
+  /*
+    Doubly-linked (back-linked) lists of used and unused TABLE objects
+    for this share.
+  */
+  I_P_List <TABLE, TABLE_share> used_tables;
+  I_P_List <TABLE, TABLE_share> free_tables;
 
   /* The following is copied to each TABLE on OPEN */
   Field **field;
@@ -348,8 +357,6 @@ typedef struct st_table_share
   bool db_low_byte_first;		/* Portable row format */
   bool crashed;
   bool is_view;
-  bool name_lock, replace_with_name_lock;
-  bool waiting_on_cond;                 /* Protection against free */
   ulong table_map_id;                   /* for row-based replication */
   ulonglong table_map_version;
 
@@ -561,16 +568,18 @@ struct st_table {
 
   TABLE_SHARE	*s;
   handler	*file;
-#ifdef NOT_YET
-  struct st_table *used_next, **used_prev;	/* Link to used tables */
-  struct st_table *open_next, **open_prev;	/* Link to open tables */
-#endif
-  struct st_table *next, *prev;
 
-  /* For the below MERGE related members see top comment in ha_myisammrg.cc */
-  struct st_table *parent;          /* Set in MERGE child.  Ptr to parent */
-  TABLE_LIST      *child_l;         /* Set in MERGE parent. List of children */
-  TABLE_LIST      **child_last_l;   /* Set in MERGE parent. End of list */
+private:
+  /**
+     Links for the lists of used/unused TABLE objects for this share.
+     Declared as private to avoid direct manipulation with those objects.
+     One should use methods of I_P_List template instead.
+  */
+  struct st_table *share_next, **share_prev;
+
+  friend struct TABLE_share;
+public:
+  struct st_table *next, *prev;
 
   THD	*in_use;                        /* Which thread uses this */
   Field **field;			/* Pointer to fields */
@@ -610,6 +619,8 @@ struct st_table {
   /* Table's triggers, 0 if there are no of them */
   Table_triggers_list *triggers;
   TABLE_LIST *pos_in_table_list;/* Element referring to this table */
+  /* Position in thd->locked_table_list under LOCK TABLES */
+  TABLE_LIST *pos_in_locked_tables;
   ORDER		*group;
   const char	*alias;            	  /* alias or table name */
   uchar		*null_flags;
@@ -705,24 +716,6 @@ struct st_table {
   my_bool force_index;
   my_bool distinct,const_table,no_rows;
   my_bool key_read, no_keyread;
-  /*
-    Placeholder for an open table which prevents other connections
-    from taking name-locks on this table. Typically used with
-    TABLE_SHARE::version member to take an exclusive name-lock on
-    this table name -- a name lock that not only prevents other
-    threads from opening the table, but also blocks other name
-    locks. This is achieved by:
-    - setting open_placeholder to 1 - this will block other name
-      locks, as wait_for_locked_table_name will be forced to wait,
-      see table_is_used for details.
-    - setting version to 0 - this will force other threads to close
-      the instance of this table and wait (this is the same approach
-      as used for usual name locks).
-    An exclusively name-locked table currently can have no handler
-    object associated with it (db_stat is always 0), but please do
-    not rely on that.
-  */
-  my_bool open_placeholder;
   my_bool locked_by_logger;
   my_bool no_replicate;
   my_bool locked_by_name;
@@ -739,8 +732,6 @@ struct st_table {
   my_bool insert_or_update;             /* Can be used by the handler */
   my_bool alias_name_used;		/* true if table_name is alias */
   my_bool get_fields_in_item_tree;      /* Signal to fix_field */
-  /* If MERGE children attached to parent. See top comment in ha_myisammrg.cc */
-  my_bool children_attached;
 
   REGINFO reginfo;			/* field connections */
   MEM_ROOT mem_root;
@@ -750,6 +741,7 @@ struct st_table {
   partition_info *part_info;            /* Partition related information */
   bool no_partitions_used; /* If true, all partitions have been pruned away */
 #endif
+  MDL_LOCK_DATA *mdl_lock_data;
 
   bool fill_item_list(List<Item> *item_list) const;
   void reset_item_list(List<Item> *item_list) const;
@@ -785,15 +777,31 @@ struct st_table {
     read_set= &def_read_set;
     write_set= &def_write_set;
   }
-  /* Is table open or should be treated as such by name-locking? */
-  inline bool is_name_opened() { return db_stat || open_placeholder; }
   /*
-    Is this instance of the table should be reopen or represents a name-lock?
+    Is this instance of the table should be reopen?
   */
-  inline bool needs_reopen_or_name_lock()
+  inline bool needs_reopen()
   { return s->version != refresh_version; }
-  bool is_children_attached(void);
 };
+
+
+/**
+   Helper class which specifies which members of TABLE are used for
+   participation in the list of used/unused TABLE objects for the share.
+*/
+
+struct TABLE_share
+{
+  static inline TABLE **next_ptr(TABLE *l)
+  {
+    return &l->share_next;
+  }
+  static inline TABLE ***prev_ptr(TABLE *l)
+  {
+    return &l->share_prev;
+  }
+};
+
 
 enum enum_schema_table_state
 { 
@@ -1034,12 +1042,18 @@ struct TABLE_LIST
     simple_open_and_lock_tables
   */
   inline void init_one_table(const char *db_name_arg,
+                             size_t db_length_arg,
                              const char *table_name_arg,
+                             size_t table_name_length_arg,
+                             const char *alias_arg,
                              enum thr_lock_type lock_type_arg)
   {
     bzero((char*) this, sizeof(*this));
     db= (char*) db_name_arg;
-    table_name= alias= (char*) table_name_arg;
+    db_length= db_length_arg;
+    table_name= (char*) table_name_arg;
+    table_name_length= table_name_length_arg;
+    alias= (char*) alias_arg;
     lock_type= lock_type_arg;
   }
 
@@ -1237,12 +1251,26 @@ struct TABLE_LIST
     used for implicit LOCK TABLES only and won't be used in real statement.
   */
   bool          prelocking_placeholder;
-  /*
-    This TABLE_LIST object corresponds to the table to be created
-    so it is possible that it does not exist (used in CREATE TABLE
-    ... SELECT implementation).
+  /**
+     Indicates that if TABLE_LIST object corresponds to the table/view
+     which requires special handling/meta-data locking.
   */
-  bool          create;
+  enum
+  {
+    /* Normal open, shared metadata lock should be taken. */
+    NORMAL_OPEN= 0,
+    /*
+      It's target table of CREATE TABLE ... SELECT so we should
+      either open table if it exists (and take shared metadata lock)
+      or take exclusive metadata lock if it doesn't exist.
+    */
+    OPEN_OR_CREATE,
+    /*
+      It's target view of CREATE/ALTER VIEW. We should take exclusive
+      metadata lock for this table list element.
+    */
+    TAKE_EXCLUSIVE_MDL
+  } open_type;
   /* For transactional locking. */
   int           lock_timeout;           /* NOWAIT or WAIT [X]               */
   bool          lock_transactional;     /* If transactional lock requested. */
@@ -1292,6 +1320,9 @@ struct TABLE_LIST
   bool has_table_lookup_value;
   uint table_open_method;
   enum enum_schema_table_state schema_table_state;
+
+  MDL_LOCK_DATA *mdl_lock_data;
+
   void calc_md5(char *buffer);
   void set_underlying_merge();
   int view_check_option(THD *thd, bool ignore_failure);
@@ -1303,8 +1334,7 @@ struct TABLE_LIST
   */
   bool placeholder()
   {
-    return derived || view || schema_table || create && !table->db_stat ||
-           !table;
+    return derived || view || schema_table || !table;
   }
   void print(THD *thd, String *str, enum_query_type query_type);
   bool check_single_table(TABLE_LIST **table, table_map map,
@@ -1620,4 +1650,7 @@ static inline void dbug_tmp_restore_column_map(MY_BITMAP *bitmap,
 }
 
 size_t max_row_length(TABLE *table, const uchar *data);
+
+
+void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root);
 

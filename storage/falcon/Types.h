@@ -43,7 +43,7 @@ enum Type {
 	Biginteger		// 17
 	};
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #define JDBC_TYPES
 #endif
 

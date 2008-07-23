@@ -646,4 +646,18 @@ int my_win_fsync(File fd)
 }
 
 
+
+int my_win_dup(File fd)
+{
+  HANDLE hDup;
+  DBUG_ENTER("my_win_dup");
+  if (DuplicateHandle(GetCurrentProcess(), my_get_osfhandle(fd),
+       GetCurrentProcess(), &hDup, 0, FALSE, DUPLICATE_SAME_ACCESS))
+  {
+     DBUG_RETURN(my_open_osfhandle(hDup, my_get_open_flags(fd)));
+  }
+  my_osmaperr(GetLastError());
+  DBUG_RETURN(-1);
+}
+
 #endif /*_WIN32*/

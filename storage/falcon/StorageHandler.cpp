@@ -514,6 +514,9 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 			
 		if (exception.getSqlcode() == TABLESPACE_NOT_EXIST_ERROR)
 			return StorageErrorTableSpaceNotExist;
+
+		if (exception.getSqlcode() == TABLESPACE_DATAFILE_EXIST_ERROR)
+			return StorageErrorTableSpaceDataFileExist;
 			
 		return StorageErrorTablesSpaceOperationFailed;
 		}
@@ -987,9 +990,9 @@ void StorageHandler::initialize(void)
 		
 		int err = e.getSqlcode();
 		
-		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR)
+		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR || err == VERSION_ERROR)
 			throw;
-               
+
 		defaultDatabase->createDatabase();
 		IO::deleteFile(FALCON_USER);
 		IO::deleteFile(FALCON_TEMPORARY);

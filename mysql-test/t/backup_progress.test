@@ -4,11 +4,15 @@
 #
 
 --source include/have_log_bin.inc
---source include/have_debug.inc
+--source include/have_debug_sync.inc
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
+#
+# Preparative cleanup.
+#
 --disable_warnings
+SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS backup_progress;
 DROP TABLE IF EXISTS backup_progress.t1_res;
 --error 0,1
@@ -17,9 +21,6 @@ DROP TABLE IF EXISTS backup_progress.t1_res;
 
 connect (con1,localhost,root,,);
 connect (con2,localhost,root,,);
-
-# Setup the server to use the backup breakpoints
-SET GLOBAL debug="d,backup_debug:d,backup";
 
 #
 # Test 1 - Check output of backup.
@@ -58,96 +59,47 @@ INSERT INTO backup_progress.t3 VALUES ("04 Test #1 - progress");
 
 --echo Do backup of database
 
-SELECT get_lock("bp_starting_state", 0);
-
 connection con2;
+
+--echo con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_log_init     SIGNAL started   WAIT_FOR do_run';
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL phase1    WAIT_FOR backup';
+SET DEBUG_SYNC= 'after_backup_validated    SIGNAL validated WAIT_FOR do_phase2';
+SET DEBUG_SYNC= 'after_backup_binlog       SIGNAL phase2    WAIT_FOR finish';
 
 --echo con2: Send backup command.
 send BACKUP DATABASE backup_progress to 'backup_progress_orig.bak';
 
 connection con1;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con1: Checking locks.
-let $wait_condition = SELECT state = "debug_sync_point: bp_starting_state"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE %";
---source include/wait_condition.inc
+--echo con1: Wait for the backup to be started.
+SET DEBUG_SYNC= 'now WAIT_FOR started';
 
-# Wait for row to be written to progress table.
---echo con1: Checking progress.
-let $wait_condition = SELECT backup_state = "starting"
-                      FROM mysql.online_backup
-                      WHERE command LIKE "BACKUP DATABASE backup_progress%";
---source include/wait_condition.inc
-
---echo: Display progress
+--echo con1: Display progress
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.online_backup WHERE command LIKE "BACKUP DATABASE backup_progress%";
 INSERT INTO backup_progress.t1_res (id) VALUES (@bup_id);
 SELECT backup_state FROM mysql.online_backup AS ob JOIN backup_progress.t1_res as t1 ON ob.backup_id = t1.id;
 
---echo con1: Advance the lock.
-SELECT get_lock("bp_running_state", 0);
+--echo con1: Let backup step to running state.
+SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR phase1';
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con1: Checking locks.
-let $wait_condition = SELECT state = "debug_sync_point: bp_running_state"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE %";
---source include/wait_condition.inc
-
-# Wait for row to be written to progress table.
---echo con1: Checking progress.
-let $wait_condition = SELECT backup_state = "running"
-                      FROM mysql.online_backup
-                      WHERE command LIKE "BACKUP DATABASE backup_progress%";
---source include/wait_condition.inc
-
---echo: Display progress
+--echo con1: Display progress
 SELECT backup_state FROM mysql.online_backup AS ob JOIN backup_progress.t1_res as t1 ON ob.backup_id = t1.id;
 
---echo con1: Advance the lock.
-SELECT get_lock("bp_vp_state", 0);
+--echo con1: Let backup do the backup phase1.
+SET DEBUG_SYNC= 'now SIGNAL backup WAIT_FOR validated';
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con1: Checking locks.
-let $wait_condition = SELECT state = "debug_sync_point: bp_vp_state"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE %";
---source include/wait_condition.inc
-
-# Wait for row to be written to progress table.
---echo con1: Checking progress.
-let $wait_condition = SELECT backup_state = "validity point"
-                      FROM mysql.online_backup
-                      WHERE command LIKE "BACKUP DATABASE backup_progress%";
---source include/wait_condition.inc
-
---echo: Display progress
+--echo con1: Display progress
 SELECT backup_state FROM mysql.online_backup AS ob JOIN backup_progress.t1_res as t1 ON ob.backup_id = t1.id;
 
---echo con1: Advance the lock.
-SELECT get_lock("bp_running_state", 0);
+--echo con1: Let backup do the backup phase2.
+SET DEBUG_SYNC= 'now SIGNAL do_phase2 WAIT_FOR phase2';
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con1: Checking locks.
-let $wait_condition = SELECT state = "debug_sync_point: bp_running_state"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "BACKUP DATABASE %";
---source include/wait_condition.inc
-
-# Wait for row to be written to progress table.
---echo con1: Checking progress.
-let $wait_condition = SELECT backup_state = "running"
-                      FROM mysql.online_backup
-                      WHERE command LIKE "BACKUP DATABASE backup_progress%";
---source include/wait_condition.inc
-
---echo: Display progress
+--echo con1: Display progress
 SELECT backup_state FROM mysql.online_backup AS ob JOIN backup_progress.t1_res as t1 ON ob.backup_id = t1.id;
 
---echo con1: Advance the lock.
-SELECT release_lock("bp_running_state");
+--echo con1: Let backup finish.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 
 connection con2;
 --echo con2: Finish backup command
@@ -164,59 +116,36 @@ connection con1;
 
 --echo Do restore of database
 
-SELECT get_lock("bp_starting_state", 0);
-
 connection con2;
 
 DELETE FROM backup_progress.t1_res;
+ 
+--echo con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_log_init      SIGNAL started WAIT_FOR do_run';
+SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR finish';
 
 --echo con2: Send restore command.
 send RESTORE FROM 'backup_progress_orig.bak';
 
 connection con1;
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con1: Checking locks.
-let $wait_condition = SELECT state = "debug_sync_point: bp_starting_state"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "RESTORE FROM 'backup_progress_orig.bak'%";
---source include/wait_condition.inc
+--echo con1: Wait for the restore to be started.
+SET DEBUG_SYNC= 'now WAIT_FOR started';
 
-# Wait for row to be written to progress table.
---echo con1: Checking progress.
-let $wait_condition = SELECT backup_state = "starting"
-                      FROM mysql.online_backup
-                      WHERE command LIKE "RESTORE FROM 'backup_progress_orig.bak'%";
---source include/wait_condition.inc
-
---echo: Display progress
+--echo con1: Display progress
 select * from backup_progress.t1_res;
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.online_backup WHERE command LIKE "RESTORE FROM%";
 INSERT INTO backup_progress.t1_res (id) VALUES (@bup_id);
 SELECT backup_state FROM mysql.online_backup AS ob JOIN backup_progress.t1_res as t1 ON ob.backup_id = t1.id;
 
---echo con1: Advance the lock.
-SELECT get_lock("bp_running_state", 0);
+--echo con1: Let restore step to running state.
+SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
 
-# Wait for lock to be acquired and execution to reach breakpoint
---echo con1: Checking locks.
-let $wait_condition = SELECT state = "debug_sync_point: bp_running_state"
-                      FROM INFORMATION_SCHEMA.PROCESSLIST
-                      WHERE info LIKE "RESTORE FROM 'backup_progress_orig.bak'%";
---source include/wait_condition.inc
-
-# Wait for row to be written to progress table.
---echo con1: Checking progress.
-let $wait_condition = SELECT backup_state = "running"
-                      FROM mysql.online_backup
-                      WHERE command LIKE "RESTORE FROM 'backup_progress_orig.bak'%";
---source include/wait_condition.inc
-
---echo: Display progress
+--echo con1: Display progress
 SELECT backup_state FROM mysql.online_backup AS ob JOIN backup_progress.t1_res as t1 ON ob.backup_id = t1.id;
 
---echo con1: Advance the lock.
-SELECT release_lock("bp_running_state");
+--echo con1: Let restore do its job and finish.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 
 connection con2;
 --echo con2: Finish restore command
@@ -234,6 +163,10 @@ SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_re
 
 connection con1;
 
+#
+# Cleanup.
+#
+SET DEBUG_SYNC= 'reset';
 DROP DATABASE backup_progress;
 --remove_file $MYSQLTEST_VARDIR/master-data/backup_progress_orig.bak
 

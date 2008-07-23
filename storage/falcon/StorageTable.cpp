@@ -21,6 +21,7 @@
 #include "Sync.h"
 #include "Bitmap.h"
 #include "Index.h"
+#include "IndexWalker.h"
 #include "SQLException.h"
 #include "Record.h"
 #include "Table.h"
@@ -46,6 +47,7 @@ StorageTable::StorageTable(StorageConnection *connection, StorageTableShare *tab
 	name = share->name;
 	currentIndex = NULL;
 	bitmap = NULL;
+	indexWalker = NULL;
 	upperBound = lowerBound = NULL;
 	record = NULL;
 	recordLocked = false;
@@ -63,11 +65,17 @@ StorageTable::~StorageTable(void)
 		clearRecord();
 		
 	storageConnection->remove(this);
+	delete indexWalker;
 }
 
 int StorageTable::create(const char* sql, int64 autoIncrementValue)
 {
 	return share->create(storageConnection, sql, autoIncrementValue);
+}
+
+int StorageTable::upgrade(const char* sql, int64 autoIncrementValue)
+{
+	return share->upgrade(storageConnection, sql, autoIncrementValue);
 }
 
 int StorageTable::open(void)
@@ -166,8 +174,12 @@ int StorageTable::next(int recordNumber, bool lockForUpdate)
 int StorageTable::nextIndexed(int recordNumber, bool lockForUpdate)
 {
 	recordLocked = false;
-
-	int ret = storageDatabase->nextIndexed(this, bitmap, recordNumber, lockForUpdate);
+	int ret;
+	
+	if (indexWalker)
+		ret = storageDatabase->nextIndexed(this, indexWalker, lockForUpdate);
+	else
+		ret = storageDatabase->nextIndexed(this, bitmap, recordNumber, lockForUpdate);
 
 	return ret;
 }
@@ -196,7 +208,7 @@ int StorageTable::setIndex(int numberIndexes, int indexId, StorageIndexDesc* sto
 	return 0;
 }
 
-int StorageTable::indexScan()
+int StorageTable::indexScan(int indexOrder)
 {
 	if (!currentIndex)
 		return StorageErrorNoIndex;
@@ -205,8 +217,11 @@ int StorageTable::indexScan()
 	
 	if (numberSegments != currentIndex->index->numberFields)
 		searchFlags |= Partial;
-		
-	bitmap = storageDatabase->indexScan(currentIndex->index, lowerBound, upperBound, searchFlags, storageConnection, (Bitmap*) bitmap);
+	
+	if (indexOrder)
+		indexWalker = storageDatabase->indexPosition(currentIndex->index, lowerBound, upperBound, searchFlags, storageConnection);
+	else	
+		bitmap = storageDatabase->indexScan(currentIndex->index, lowerBound, upperBound, searchFlags, storageConnection, (Bitmap*) bitmap);
 	
 	return 0;
 }
@@ -233,6 +248,12 @@ void StorageTable::indexEnd(void)
 {
 	if (bitmap)
 		clearBitmap();
+	
+	if (indexWalker)
+		{
+		delete indexWalker;
+		indexWalker = NULL;
+		}
 }
 
 int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int which)
@@ -306,7 +327,13 @@ void StorageTable::setRecord(Record* newRecord, bool locked)
 	
 	record = newRecord;
 	recordLocked = locked;
-	dataStream.setData((const UCHAR*) record->getEncodedRecord());
+	format = record->format;
+	
+	// The following is confusing because Record::getEncodeRecord returns pointer to
+	// the actual data fields while Record::getEncodedSize return length of the data fields plus
+	// a two byte format number.
+	
+	dataStream.setData((const UCHAR*) record->getEncodedRecord(), record->getEncodedSize() - sizeof(USHORT));
 }
 
 void StorageTable::clearRecord(void)
@@ -580,4 +607,13 @@ int StorageTable::optimize(void)
 void StorageTable::setLocalTable(StorageInterface* handler)
 {
 	localTable = handler;
+}
+
+void StorageTable::clearStatement(void)
+{
+	clearRecord();
+	clearBitmap();
+	clearAlter();
+	delete indexWalker;
+	indexWalker = NULL;
 }

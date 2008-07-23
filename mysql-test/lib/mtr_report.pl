@@ -220,7 +220,7 @@ sub mtr_report_stats ($) {
   # the "var/log/*.err" files. We save this info in "var/log/warnings"
   # ----------------------------------------------------------------------
 
-  if ( ! $::glob_use_running_server )
+  if ( ! $::glob_use_running_server && !$::opt_extern)
   {
     # Save and report if there was any fatal warnings/errors in err logs
 
@@ -333,12 +333,20 @@ sub mtr_report_stats ($) {
 		(
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
 		(
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
 		) or
 		
+		# ignore warning generated when backup engine selection algorithm is tested
+		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
+		# ignore warnings generated when backup privilege is tested
+		($testname eq 'main.backup_security') and /(Backup|Restore): Access denied; you need the SUPER/ or
+		
+                ($testname eq 'main.backup_myisam1') and
+                (/Backup: Can't initialize MyISAM backup driver/) or
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/One can only use the --user.*root/ or
@@ -398,33 +406,41 @@ sub mtr_report_stats ($) {
                 # BUG#32080 - Excessive warnings on Solaris: setrlimit could not
                 #             change the size of core files
                 /setrlimit could not change the size of core files to 'infinity'/ or
-		# rpl_idempotency.test produces warnings for the slave.
-		($testname eq 'rpl.rpl_idempotency' and
-		 (/Slave: Can\'t find record in \'t1\' Error_code: 1032/ or
-                  /Slave: Cannot add or update a child row: a foreign key constraint fails .* Error_code: 1452/
-		 )) or
-
-		# These tests does "kill" on queries, causing sporadic errors when writing to logs
-		(($testname eq 'rpl.rpl_skip_error' or
-		  $testname eq 'rpl.rpl_err_ignoredtable' or
-		  $testname eq 'binlog.binlog_killed_simulate' or
-		  $testname eq 'binlog.binlog_killed') and
-		 (/Failed to write to mysql\.\w+_log/
-		 )) or
+                # rpl_idempotency.test produces warnings for the slave.
+                ($testname eq 'rpl.rpl_idempotency' and
+                 (/Slave: Can\'t find record in \'t1\' Error_code: 1032/ or
+                   /Slave: Cannot add or update a child row: a foreign key constraint fails .* Error_code: 1452/
+                 )) or
+ 
+                # These tests does "kill" on queries, causing sporadic errors when writing to logs
+                (($testname eq 'rpl.rpl_skip_error' or
+                  $testname eq 'rpl.rpl_err_ignoredtable' or
+                  $testname eq 'binlog.binlog_killed_simulate' or
+                  $testname eq 'binlog.binlog_killed') and
+                 (/Failed to write to mysql\.\w+_log/
+                 )) or
 
 		# rpl_bug33931 has deliberate failures
 		($testname eq 'rpl.rpl_bug33931' and
 		 (/Failed during slave.*thread initialization/
 		  )) or
 
-		# rpl_temporary has an error on slave that can be ignored
-		($testname eq 'rpl.rpl_temporary' and
-		 (/Slave: Can\'t find record in \'user\' Error_code: 1032/
-		 )) or
-
+                # rpl_temporary has an error on slave that can be ignored
+                ($testname eq 'rpl.rpl_temporary' and
+                 (/Slave: Can\'t find record in \'user\' Error_code: 1032/
+                 )) or
                 # Test case for Bug#31590 produces the following error:
-                /Out of sort memory; increase server sort buffer size/
-		)
+                /Out of sort memory; increase server sort buffer size/ or
+                # maria-recovery.test has warning about missing log file
+                /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
+                # and about marked-corrupted table
+                /Table '.\/mysqltest\/t_corrupted1' is crashed, skipping it. Please repair it with maria_chk -r/ or
+                # maria-recover.test corrupts tables on purpose
+                /Checking table:   '.\/mysqltest\/t_corrupted2'/ or
+                /Recovering table: '.\/mysqltest\/t_corrupted2'/ or
+                /Table '.\/mysqltest\/t_corrupted2' is marked as crashed and should be repaired/ or
+                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/
+	       )
             {
               next;                       # Skip these lines
             }

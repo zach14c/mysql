@@ -53,6 +53,7 @@ static const char THIS_FILE[]=__FILE__;
 static const int TRACE_PAGE = 0;
 
 extern uint falcon_gopher_threads;
+extern uint64 falcon_serial_log_file_size;
 
 //static const int windowBuffers = 10;
 static bool debug;
@@ -126,6 +127,8 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	syncUpdateStall.setName("SerialLog::syncUpdateStall");
 	pending.syncObject.setName("SerialLog::pending transactions");
 	gophers = NULL;
+	wantToSerializeGophers = 0;
+	serializeGophers = 0;
 	
 	for (uint n = 0; n < falcon_gopher_threads; ++n)
 		{
@@ -597,8 +600,17 @@ void SerialLog::createNewWindow(void)
 			break;
 			}
 
-	if (fileOffset == 0 && Log::isActive(LogInfo))
-		Log::log(LogInfo, "%d: Switching log files (%d used)\n", database->deltaTime, file->highWater);
+	if (fileOffset == 0)
+		{
+		// Logfile switch, truncate file if required
+
+		if (Log::isActive(LogInfo))
+			Log::log(LogInfo, "%d: Switching log files (%d used)\n", 
+					database->deltaTime, file->highWater);
+
+		if((uint64)file->size() > falcon_serial_log_file_size)
+			file->truncate((int64)falcon_serial_log_file_size);
+		}
 
 	writeWindow->deactivateWindow();
 	writeWindow = allocWindow(file, fileOffset);
@@ -837,7 +849,7 @@ SerialLogTransaction* SerialLog::getTransaction(TransId transactionId)
 	if (transaction)
 		return transaction;
 
-	Sync sync (&pending.syncObject, "SerialLog::findTransaction");
+	Sync sync (&pending.syncObject, "SerialLog::getTransaction");
 	sync.lock(Exclusive);
 	
 	/***

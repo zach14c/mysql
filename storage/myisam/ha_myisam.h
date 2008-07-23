@@ -21,6 +21,7 @@
 /* class for the the myisam handler */
 
 #include <myisam.h>
+#include <myisamchk.h>
 #include <ft_global.h>
 
 #define HA_RECOVER_NONE		0	/* No automatic recover */
@@ -43,7 +44,7 @@ class ha_myisam: public handler
   ulonglong int_table_flags;
   char    *data_file_name, *index_file_name;
   bool can_enable_indexes;
-  int repair(THD *thd, MI_CHECK &param, bool optimize);
+  int repair(THD *thd, HA_CHECK &param, bool optimize);
 
  public:
   ha_myisam(handlerton *hton, TABLE_SHARE *table_arg);
@@ -63,8 +64,8 @@ class ha_myisam: public handler
             (keys_with_parts.is_set(inx)?0:HA_DO_INDEX_COND_PUSHDOWN));
   }
   uint max_supported_keys()          const { return MI_MAX_KEY; }
-  uint max_supported_key_length()    const { return MI_MAX_KEY_LENGTH; }
-  uint max_supported_key_part_length() const { return MI_MAX_KEY_LENGTH; }
+  uint max_supported_key_length()    const { return HA_MAX_KEY_LENGTH; }
+  uint max_supported_key_part_length() const { return HA_MAX_KEY_LENGTH; }
   uint checksum() const;
 
   int open(const char *name, int mode, uint test_if_locked);
@@ -100,7 +101,8 @@ class ha_myisam: public handler
   int rnd_init(bool scan);
   int rnd_next(uchar *buf);
   int rnd_pos(uchar * buf, uchar *pos);
-  int restart_rnd_next(uchar *buf, uchar *pos);
+  int remember_rnd_pos();
+  int restart_rnd_next(uchar *buf);
   void position(const uchar *record);
   int info(uint);
   int extra(enum ha_extra_function operation);
@@ -112,7 +114,7 @@ class ha_myisam: public handler
   int enable_indexes(uint mode);
   int indexes_are_disabled(void);
   void start_bulk_insert(ha_rows rows);
-  int end_bulk_insert();
+  int end_bulk_insert(bool abort);
   ha_rows records_in_range(uint inx, key_range *min_key, key_range *max_key);
   void update_create_info(HA_CREATE_INFO *create_info);
   int create(const char *name, TABLE *form, HA_CREATE_INFO *create_info);
@@ -124,6 +126,7 @@ class ha_myisam: public handler
                                   ulonglong *nb_reserved_values);
   int rename_table(const char * from, const char * to);
   int delete_table(const char *name);
+  int check_for_upgrade(HA_CHECK_OPT *check_opt);
   int check(THD* thd, HA_CHECK_OPT* check_opt);
   int analyze(THD* thd,HA_CHECK_OPT* check_opt);
   int repair(THD* thd, HA_CHECK_OPT* check_opt);
@@ -170,3 +173,7 @@ private:
   friend my_bool index_cond_func_myisam(void *arg);
 };
 
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MYISAM_PHYSICAL_LOGGING)
+// If embedded, there is no online backup
+Backup_result_t myisam_backup_engine(handlerton *self, Backup_engine* &be);
+#endif

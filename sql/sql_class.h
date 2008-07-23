@@ -23,6 +23,7 @@
 #include <mysql/plugin_audit.h>
 #include "log.h"
 #include "rpl_tblmap.h"
+#include "mdl.h"
 
 /**
   An interface that is used to take an action when
@@ -317,18 +318,18 @@ struct system_variables
 {
   /*
     How dynamically allocated system variables are handled:
-    
+
     The global_system_variables and max_system_variables are "authoritative"
     They both should have the same 'version' and 'size'.
     When attempting to access a dynamic variable, if the session version
     is out of date, then the session version is updated and realloced if
     neccessary and bytes copied from global to make up for missing data.
-  */ 
+  */
   ulong dynamic_variables_version;
   char* dynamic_variables_ptr;
   uint dynamic_variables_head;  /* largest valid variable offset */
   uint dynamic_variables_size;  /* how many bytes are in use */
-  
+
   ulonglong myisam_max_extra_sort_file_size;
   ulonglong myisam_max_sort_file_size;
   ulonglong max_heap_table_size;
@@ -402,9 +403,9 @@ struct system_variables
 
   my_bool low_priority_updates;
   my_bool new_mode;
-  /* 
+  /*
     compatibility option:
-      - index usage hints (USE INDEX without a FOR clause) behave as in 5.0 
+      - index usage hints (USE INDEX without a FOR clause) behave as in 5.0
   */
   my_bool old_mode;
   my_bool query_cache_wlock_invalidate;
@@ -639,7 +640,7 @@ class Server_side_cursor;
    - prepared, that is, contain placeholders,
    - opened as cursors. We maintain 1 to 1 relationship between
      statement and cursor - if user wants to create another cursor for his
-     query, we create another statement for it. 
+     query, we create another statement for it.
   To perform some action with statement we reset THD part to the state  of
   that statement, do the action, and then save back modified state from THD
   to the statement. It will be changed in near future, and Statement will
@@ -690,7 +691,7 @@ public:
       it. We will see the query_length field as either 0, or the right value
       for it.
     Assuming that the write and read of an n-bit memory field in an n-bit
-    computer is atomic, we can avoid races in the above way. 
+    computer is atomic, we can avoid races in the above way.
     This printing is needed at least in SHOW PROCESSLIST and SHOW INNODB
     STATUS.
   */
@@ -843,7 +844,7 @@ public:
   {
     return (*priv_host ? priv_host : (char *)"%");
   }
-  
+
   bool set_user(char *user_arg);
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
@@ -872,12 +873,17 @@ typedef I_List<Item_change_record> Item_change_list;
 
 
 /**
-  Type of prelocked mode.
-  See comment for THD::prelocked_mode for complete description.
+  Type of locked tables mode.
+  See comment for THD::locked_tables_mode for complete description.
 */
 
-enum prelocked_mode_type {NON_PRELOCKED= 0, PRELOCKED= 1,
-                          PRELOCKED_UNDER_LOCK_TABLES= 2};
+enum enum_locked_tables_mode
+{
+  LTM_NONE= 0,
+  LTM_LOCK_TABLES,
+  LTM_PRELOCKED,
+  LTM_PRELOCKED_UNDER_LOCK_TABLES
+};
 
 
 /**
@@ -930,19 +936,13 @@ public:
     statement ends.
     Manual mode comes into play when a user issues a 'LOCK TABLES'
     statement. In this mode the user can only use the locked tables.
-    Trying to use any other tables will give an error. The locked tables are
-    stored in 'locked_tables' member.  Manual locking is described in
+    Trying to use any other tables will give an error.
+    The locked tables are also stored in this member, however,
+    thd->locked_tables_mode is turned on.  Manual locking is described in
     the 'LOCK_TABLES' chapter of the MySQL manual.
     See also lock_tables() for details.
   */
   MYSQL_LOCK *lock;
-  /*
-    Tables that were locked with explicit or implicit LOCK TABLES.
-    (Implicit LOCK TABLES happens when we are prelocking tables for
-     execution of statement which uses stored routines. See description
-     THD::prelocked_mode for more info.)
-  */
-  MYSQL_LOCK *locked_tables;
 
   /*
     CREATE-SELECT keeps an extra lock for the table being
@@ -952,29 +952,34 @@ public:
   MYSQL_LOCK *extra_lock;
 
   /*
-    prelocked_mode_type enum and prelocked_mode member are used for
-    indicating whenever "prelocked mode" is on, and what type of
-    "prelocked mode" is it.
+    Enum enum_locked_tables_mode and locked_tables_mode member are
+    used to indicate whether the so-called "locked tables mode" is on,
+    and what kind of mode is active.
 
-    Prelocked mode is used for execution of queries which explicitly
-    or implicitly (via views or triggers) use functions, thus may need
-    some additional tables (mentioned in query table list) for their
-    execution.
+    Locked tables mode is used when it's necessary to open and
+    lock many tables at once, for usage across multiple
+    (sub-)statements.
+    This may be necessary either for queries that use stored functions
+    and triggers, in which case the statements inside functions and
+    triggers may be executed many times, or for implementation of
+    LOCK TABLES, in which case the opened tables are reused by all
+    subsequent statements until a call to UNLOCK TABLES.
 
-    First open_tables() call for such query will analyse all functions
-    used by it and add all additional tables to table its list. It will
-    also mark this query as requiring prelocking. After that lock_tables()
-    will issue implicit LOCK TABLES for the whole table list and change
-    thd::prelocked_mode to non-0. All queries called in functions invoked
-    by the main query will use prelocked tables. Non-0 prelocked_mode
-    will also surpress mentioned analysys in those queries thus saving
-    cycles. Prelocked mode will be turned off once close_thread_tables()
-    for the main query will be called.
-
-    Note: Since not all "tables" present in table list are really locked
-    thd::prelocked_mode does not imply thd::locked_tables.
+    The kind of locked tables mode employed for stored functions and
+    triggers is also called "prelocked mode".
+    In this mode, first open_tables() call to open the tables used
+    in a statement analyses all functions used by the statement
+    and adds all indirectly used tables to the list of tables to
+    open and lock.
+    It also marks the parse tree of the statement as requiring
+    prelocking. After that, lock_tables() locks the entire list
+    of tables and changes THD::locked_tables_modeto LTM_PRELOCKED.
+    All statements executed inside functions or triggers
+    use the prelocked tables, instead of opening their own ones.
+    Prelocked mode is turned off automatically once close_thread_tables()
+    of the main statement is called.
   */
-  prelocked_mode_type prelocked_mode;
+  enum enum_locked_tables_mode locked_tables_mode;
   ulong	version;
   uint current_tablenr;
 
@@ -987,26 +992,40 @@ public:
   */
   uint state_flags;
 
-  /*
-    This constructor serves for creation of Open_tables_state instances
-    which are used as backup storage.
+  MDL_CONTEXT mdl_context;
+  MDL_CONTEXT handler_mdl_context;
+
+  /**
+     This constructor initializes Open_tables_state instance which can only
+     be used as backup storage. To prepare Open_tables_state instance for
+     operations which open/lock/close tables (e.g. open_table()) one has to
+     call init_open_tables_state().
   */
   Open_tables_state() : state_flags(0U) { }
 
-  Open_tables_state(ulong version_arg);
+  /**
+     Prepare Open_tables_state instance for operations dealing with tables.
+  */
+  void init_open_tables_state(THD *thd, ulong version_arg)
+  {
+    reset_open_tables_state(thd);
+    version= version_arg;
+  }
 
   void set_open_tables_state(Open_tables_state *state)
   {
     *this= *state;
   }
 
-  void reset_open_tables_state()
+  void reset_open_tables_state(THD *thd)
   {
     open_tables= temporary_tables= handler_tables= derived_tables= 0;
-    extra_lock= lock= locked_tables= 0;
-    prelocked_mode= NON_PRELOCKED;
+    extra_lock= lock= 0;
+    locked_tables_mode= LTM_NONE;
     state_flags= 0U;
     m_reprepare_observer= NULL;
+    mdl_context_init(&mdl_context, thd);
+    mdl_context_init(&handler_mdl_context, thd);
   }
 };
 
@@ -1213,6 +1232,58 @@ private:
   */
 };
 
+/**
+  Tables that were locked with LOCK TABLES statement.
+
+  Encapsulates a list of TABLE_LIST instances for tables
+  locked by LOCK TABLES statement, memory root for metadata locks,
+  and, generally, the context of LOCK TABLES statement.
+
+  In LOCK TABLES mode, the locked tables are kept open between
+  statements.
+  Therefore, we can't allocate metadata locks on execution memory
+  root -- as well as tables, the locks need to stay around till
+  UNLOCK TABLES is called.
+  The locks are allocated in the memory root encapsulate in this
+  class.
+
+  Some SQL commands, like FLUSH TABLE or ALTER TABLE, demand that
+  the tables they operate on are closed, at least temporarily.
+  This class encapsulates a list of TABLE_LIST instances, one
+  for each base table from LOCK TABLES list,
+  which helps conveniently close the TABLEs when it's necessary
+  and later reopen them.
+
+  Implemented in sql_base.cc
+*/
+
+class Locked_tables_list
+{
+private:
+  MEM_ROOT m_locked_tables_root;
+  TABLE_LIST *m_locked_tables;
+  TABLE_LIST **m_locked_tables_last;
+public:
+  Locked_tables_list()
+    :m_locked_tables(NULL),
+    m_locked_tables_last(&m_locked_tables)
+  {
+    init_sql_alloc(&m_locked_tables_root, MEM_ROOT_BLOCK_SIZE, 0);
+  }
+  void unlock_locked_tables(THD *thd);
+  ~Locked_tables_list()
+  {
+    unlock_locked_tables(0);
+  }
+  bool init_locked_tables(THD *thd);
+  TABLE_LIST *locked_tables() { return m_locked_tables; }
+  MEM_ROOT *locked_tables_root() { return &m_locked_tables_root; }
+  void unlink_from_list(THD *thd, TABLE_LIST *table_list,
+                        bool remove_from_locked_tables);
+  void unlink_all_closed_tables();
+  bool reopen_tables(THD *thd);
+};
+
 
 /**
   Storage engine specific thread local data.
@@ -1292,7 +1363,7 @@ public:
   HASH    user_vars;			// hash for user variables
   String  packet;			// dynamic buffer for network I/O
   String  convert_buffer;               // buffer for charset conversions
-  struct  rand_struct rand;		// used for authentication
+  struct  my_rnd_struct rand;		// used for authentication
   struct  system_variables variables;	// Changeable local variables
   struct  system_status_var status_var; // Per thread statistic vars
   struct  system_status_var *initial_status_var; /* used by show status */
@@ -1368,7 +1439,7 @@ public:
   /*
     One thread can hold up to one named user-level lock. This variable
     points to a lock object if the lock is present. See item_func.cc and
-    chapter 'Miscellaneous functions', for functions GET_LOCK, RELEASE_LOCK. 
+    chapter 'Miscellaneous functions', for functions GET_LOCK, RELEASE_LOCK.
   */
   User_level_lock *ull;
 #ifndef DBUG_OFF
@@ -1387,7 +1458,7 @@ public:
   time_t     start_time, user_time;
   ulonglong  connect_utime, thr_create_utime; // track down slow pthread_create
   ulonglong  start_utime, utime_after_lock;
-  
+
   thr_lock_type update_lock_default;
   Delayed_insert *di;
 
@@ -1787,7 +1858,7 @@ public:
   */
   bool       is_slave_error;
   bool       bootstrap, cleanup_done;
-  
+
   /**  is set if some thread specific value(s) used in a statement. */
   bool       thread_specific_used;
   bool	     charset_is_system_charset, charset_is_collation_connection;
@@ -1819,10 +1890,10 @@ public:
     ulong     ulong_value;
     ulonglong ulonglong_value;
   } sys_var_tmp;
-  
+
   struct {
-    /* 
-      If true, mysql_bin_log::write(Log_event) call will not write events to 
+    /*
+      If true, mysql_bin_log::write(Log_event) call will not write events to
       binlog, and maintain 2 below variables instead (use
       mysql_bin_log.start_union_events to turn this on)
     */
@@ -1833,13 +1904,13 @@ public:
     */
     bool unioned_events;
     /*
-      If TRUE, at least one mysql_bin_log::write(Log_event e), where 
-      e.cache_stmt == TRUE call has been made after last 
+      If TRUE, at least one mysql_bin_log::write(Log_event e), where
+      e.cache_stmt == TRUE call has been made after last
       mysql_bin_log.start_union_events() call.
     */
     bool unioned_events_trans;
-    
-    /* 
+
+    /*
       'queries' (actually SP statements) that run under inside this binlog
       union have thd->query_id >= first_query_id.
     */
@@ -1863,6 +1934,8 @@ public:
   */
   my_bool DDL_exception; // Allow some DDL if there is an exception
 
+  Locked_tables_list locked_tables_list;
+
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   partition_info *work_part_info;
 #endif
@@ -1881,6 +1954,18 @@ public:
   unsigned long audit_class_mask[MYSQL_AUDIT_CLASS_MASK_SIZE];
 #endif
 
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Debug Sync facility. See debug_sync.cc. */
+  struct st_debug_sync_control *debug_sync_control;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+  /**
+    Points to the memory root of Locked_tables_list if
+    we're locking the tables for LOCK TABLES. Otherwise is NULL.
+    This is necessary to ensure that metadata locks allocated for
+    tables used in triggers will persist after statement end.
+  */
+  MEM_ROOT *locked_tables_root;
+
   THD();
   ~THD();
 
@@ -1892,7 +1977,7 @@ public:
     killing mysqld) where it's vital to not allocate excessive and not used
     memory. Note, that we still don't return error from init_for_queries():
     if preallocation fails, we should notice that at the first call to
-    alloc_root. 
+    alloc_root.
   */
   void init_for_queries();
   void change_user(void);
@@ -1922,12 +2007,12 @@ public:
       The query can be logged row-based or statement-based
     */
     ROW_QUERY_TYPE,
-    
+
     /*
       The query has to be logged statement-based
     */
     STMT_QUERY_TYPE,
-    
+
     /*
       The query represents a change to a table in the "mysql"
       database and is currently mapped to ROW_QUERY_TYPE.
@@ -1935,7 +2020,7 @@ public:
     MYSQL_QUERY_TYPE,
     QUERY_TYPE_COUNT
   };
-  
+
   int binlog_query(enum_binlog_query_type qtype,
                    char const *query, ulong query_len,
                    bool is_trans, bool suppress_use,
@@ -2185,7 +2270,7 @@ public:
     if ((temporary_tables == NULL) && (in_sub_stmt == 0) &&
         (system_thread != SYSTEM_THREAD_NDBCLUSTER_BINLOG))
     {
-      current_stmt_binlog_row_based= 
+      current_stmt_binlog_row_based=
         test(variables.binlog_format == BINLOG_FORMAT_ROW);
     }
   }
@@ -2570,10 +2655,19 @@ public:
   int prepare2(void) { return 0; }
 };
 
-#include <myisam.h>
 
-/* 
-  Param to create temporary tables when doing SELECT:s 
+#if defined(WITH_MARIA_STORAGE_ENGINE) && defined(USE_MARIA_FOR_TMP_TABLES)
+#include <maria.h>
+#define ENGINE_COLUMNDEF MARIA_COLUMNDEF
+#define ENGINE_UNIQUE_HASH_LENGTH MARIA_UNIQUE_HASH_LENGTH
+#else
+#include <myisam.h>
+#define ENGINE_COLUMNDEF MI_COLUMNDEF
+#define ENGINE_UNIQUE_HASH_LENGTH MI_UNIQUE_HASH_LENGTH
+#endif
+
+/*
+  Param to create temporary tables when doing SELECT:s
   NOTE
     This structure is copied using memcpy as a part of JOIN.
 */
@@ -2592,7 +2686,7 @@ public:
   Copy_field *save_copy_field, *save_copy_field_end;
   uchar	    *group_buff;
   Item	    **items_to_copy;			/* Fields in tmp table */
-  MI_COLUMNDEF *recinfo,*start_recinfo;
+  ENGINE_COLUMNDEF *recinfo, *start_recinfo;
   KEY *keyinfo;
   ha_rows end_write_records;
   uint	field_count,sum_func_count,func_count;
@@ -2601,8 +2695,8 @@ public:
   uint	quick_group;
   bool  using_indirect_summary_function;
   /* If >0 convert all blob fields to varchar(convert_blob_length) */
-  uint  convert_blob_length; 
-  CHARSET_INFO *table_charset; 
+  uint  convert_blob_length;
+  CHARSET_INFO *table_charset;
   bool schema_table;
   /*
     True if GROUP BY and its aggregate functions are already computed
@@ -2743,7 +2837,7 @@ public:
     else
       db= db_arg;
   }
-  inline Table_ident(LEX_STRING table_arg) 
+  inline Table_ident(LEX_STRING table_arg)
     :table(table_arg), sel((SELECT_LEX_UNIT *)0)
   {
     db.str=0;
@@ -2789,7 +2883,7 @@ class user_var_entry
 };
 
 /*
-   Unique -- class for unique (removing of duplicates). 
+   Unique -- class for unique (removing of duplicates).
    Puts all values to the TREE. If the tree becomes too big,
    it's dumped to the file. User can request sorted values, or
    just iterate through them. In the last case tree merging is performed in
@@ -2823,9 +2917,9 @@ public:
   }
 
   bool get(TABLE *table);
-  static double get_use_cost(uint *buffer, uint nkeys, uint key_size, 
+  static double get_use_cost(uint *buffer, uint nkeys, uint key_size,
                              ulonglong max_in_memory_size);
-  inline static int get_cost_calc_buff_size(ulong nkeys, uint key_size, 
+  inline static int get_cost_calc_buff_size(ulong nkeys, uint key_size,
                                             ulonglong max_in_memory_size)
   {
     register ulonglong max_elems_in_tree=
@@ -2886,7 +2980,7 @@ class multi_update :public select_result_interceptor
   uint table_count;
   /*
    List of tables referenced in the CHECK OPTION condition of
-   the updated view excluding the updated table. 
+   the updated view excluding the updated table.
   */
   List <TABLE> unupdated_check_opt_tables;
   Copy_field *copy_field;

@@ -1419,6 +1419,14 @@ Btn* IndexPage::getEnd(void)
 	return (Btn*) ((UCHAR*) this + length);
 }
 
+#define PARAMETER_UINT(_name, _text, _min, _default, _max, _flags, _update_function) \
+	extern uint falcon_##_name;
+#define PARAMETER_BOOL(_name, _text, _default, _flags, _update_function) \
+	extern char falcon_##_name;
+#include "StorageParameters.h"
+#undef PARAMETER_UINT
+#undef PARAMETER_BOOL
+
 /* During node insertion, check whether supernode should be added at insertion point */
 bool IndexPage::checkAddSuperNode(int pageSize, IndexNode* node, IndexKey *indexKey,
 				int recordNumber, int offset, bool *makeNextSuper)
@@ -1427,6 +1435,9 @@ bool IndexPage::checkAddSuperNode(int pageSize, IndexNode* node, IndexKey *index
 
 	if (makeNextSuper)
 		*makeNextSuper = false;
+
+	if (!falcon_use_supernodes)
+		return false;
 
 	if (insertionPoint == nodes) 
 		{
@@ -1629,6 +1640,7 @@ static int compareSuper(IndexNode *node, UCHAR *key, size_t keylen, int recordNu
 // Given a key, find the maximum supernode smaller or equal to the search key
 // Optional parameter "after" tells to skip supernodes smaller than its value
 // Binary search is used for better speed
+
 Btn * IndexPage::findSupernode(int level, UCHAR *key, size_t keylen, int32 recordNumber, Btn *after, bool *found)
 {
 	*found = false;
@@ -1684,4 +1696,12 @@ Btn * IndexPage::findSupernode(int level, UCHAR *key, size_t keylen, int32 recor
 		return nodes;
 	
 	return nodes + superNodes[low-1];
+}
+
+void IndexPage::backup(EncodedDataStream* stream)
+{
+}
+
+void IndexPage::restore(EncodedDataStream* stream)
+{
 }

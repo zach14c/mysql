@@ -221,7 +221,9 @@ public:
 	int32				traceRecord;
 	uint32				chilledRecords;
 	uint64				chilledBytes;
-	
+	int32				wantToSerializeGophers;
+	int32				serializeGophers;
+
 	TableSpaceInfo		*tableSpaces[SLT_HASH_SIZE];
 	TableSpaceInfo		*tableSpaceInfo;
 	SerialLogTransaction		*earliest;

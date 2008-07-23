@@ -13,7 +13,8 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/*
+/**
+  @file
   These functions handle keyblock cacheing for ISAM and MyISAM tables.
 
   One cache can handle many files.
@@ -36,7 +37,9 @@
   blocks_unused is the sum of never used blocks in the pool and of currently
   free blocks. blocks_used is the number of blocks fetched from the pool and
   as such gives the maximum number of in-use blocks at any time.
+*/
 
+/*
   Key Cache Locking
   =================
 
@@ -213,6 +216,7 @@ struct st_block_link
   uint hits_left;         /* number of hits left until promotion             */
   ulonglong last_hit_time; /* timestamp of the last hit                      */
   KEYCACHE_CONDVAR *condvar; /* condition variable for 'no readers' event    */
+  void                         *post_write_arg;   /**< post_write's argument*/
 };
 
 KEY_CACHE dflt_key_cache_var;
@@ -401,6 +405,7 @@ int init_key_cache(KEY_CACHE *keycache, uint key_cache_block_size,
     keycache->in_init= 0;
     pthread_mutex_init(&keycache->cache_lock, MY_MUTEX_INIT_FAST);
     keycache->resize_queue.last_thread= NULL;
+    keycache->post_write= NULL;
   }
 
   keycache->key_cache_mem_size= use_mem;
@@ -764,10 +769,35 @@ void end_key_cache(KEY_CACHE *keycache, my_bool cleanup)
   {
     pthread_mutex_destroy(&keycache->cache_lock);
     keycache->key_cache_inited= keycache->can_be_used= 0;
+    keycache->post_write= NULL;
     KEYCACHE_DEBUG_CLOSE;
   }
   DBUG_VOID_RETURN;
 } /* end_key_cache */
+
+
+/**
+  Does a my_pwrite() to the file and then calls callback. Arguments are those
+  of my_pwrite() plus the callback and its argument.
+
+  @note The callback is really POST-write; callers depend on this! So always
+  call it after writing to the file, not before.
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    write or callback failed
+*/
+
+static inline int key_cache_pwrite(int Filedes, const uchar *Buffer,
+                                   uint Count, my_off_t offset, myf MyFlags,
+                                   KEYCACHE_POST_WRITE_CALLBACK callback,
+                                   void *callback_arg)
+{
+  int ret= my_pwrite(Filedes, Buffer, Count, offset, MyFlags);
+  if (callback)
+    ret|= (*callback)(callback_arg, Buffer, Count, offset);
+  return ret;
+}
 
 
 #ifdef THREAD
@@ -2207,11 +2237,14 @@ restart:
                 The call is thread safe because only the current
                 thread might change the block->hash_link value
               */
-              error= my_pwrite(block->hash_link->file,
-                               block->buffer+block->offset,
-                               block->length - block->offset,
-                               block->hash_link->diskpos+ block->offset,
-                               MYF(MY_NABP | MY_WAIT_IF_FULL));
+              error= key_cache_pwrite(block->hash_link->file,
+                                      block->buffer + block->offset,
+                                      block->length - block->offset,
+                                      block->hash_link->diskpos +
+                                      block->offset,
+                                      MYF(MY_NABP | MY_WAIT_IF_FULL),
+                                      keycache->post_write,
+                                      block->post_write_arg);
               keycache_pthread_mutex_lock(&keycache->cache_lock);
 
               /* Block status must not have changed. */
@@ -2569,7 +2602,7 @@ uchar *key_cache_read(KEY_CACHE *keycache,
     do
     {
       /* Cache could be disabled in a later iteration. */
-
+      
       if (!keycache->can_be_used)
 	goto no_key_cache;
       /* Start reading at the beginning of the cache block. */
@@ -2954,6 +2987,8 @@ int key_cache_insert(KEY_CACHE *keycache,
       length              length of the buffer
       dont_write          if is 0 then all dirty pages involved in writing
                           should have been flushed from key cache
+      post_write_arg      argument which will be passed to key cache's
+                          post_write callback
 
   RETURN VALUE
     0 if a success, 1 - otherwise.
@@ -2973,7 +3008,8 @@ int key_cache_write(KEY_CACHE *keycache,
                     File file, my_off_t filepos, int level,
                     uchar *buff, uint length,
                     uint block_length  __attribute__((unused)),
-                    int dont_write)
+                    int dont_write,
+                    void *post_write_arg)
 {
   my_bool locked_and_incremented= FALSE;
   int error=0;
@@ -2991,7 +3027,9 @@ int key_cache_write(KEY_CACHE *keycache,
     /* Force writing from buff into disk. */
     keycache->global_cache_w_requests++;
     keycache->global_cache_write++;
-    if (my_pwrite(file, buff, length, filepos, MYF(MY_NABP | MY_WAIT_IF_FULL)))
+    if (key_cache_pwrite(file, buff, length, filepos,
+                         MYF(MY_NABP | MY_WAIT_IF_FULL),
+                         keycache->post_write, post_write_arg))
       DBUG_RETURN(1);
     /* purecov: end */
   }
@@ -3066,8 +3104,10 @@ int key_cache_write(KEY_CACHE *keycache,
           /* Used in the server. */
           keycache->global_cache_write++;
           keycache_pthread_mutex_unlock(&keycache->cache_lock);
-          if (my_pwrite(file, (uchar*) buff, read_length, filepos + offset,
-                        MYF(MY_NABP | MY_WAIT_IF_FULL)))
+          if (key_cache_pwrite(file, (uchar*) buff, read_length,
+                               filepos + offset,
+                               MYF(MY_NABP | MY_WAIT_IF_FULL),
+                               keycache->post_write, post_write_arg))
             error=1;
           keycache_pthread_mutex_lock(&keycache->cache_lock);
         }
@@ -3159,6 +3199,7 @@ int key_cache_write(KEY_CACHE *keycache,
       */
       if (!(block->status & BLOCK_ERROR))
       {
+        block->post_write_arg= post_write_arg;
 #if !defined(SERIALIZED_READ_FROM_CACHE)
         keycache_pthread_mutex_unlock(&keycache->cache_lock);
 #endif
@@ -3174,7 +3215,7 @@ int key_cache_write(KEY_CACHE *keycache,
 
       if (!dont_write)
       {
-	/* Not used in the server. buff has been written to disk at start. */
+        /* Not used in the server. buff has been written to disk at start. */
         if ((block->status & BLOCK_CHANGED) &&
             (!offset && read_length >= keycache->key_cache_block_size))
              link_to_file_list(keycache, block, block->hash_link->file, 1);
@@ -3234,8 +3275,9 @@ no_key_cache:
     keycache->global_cache_write++;
     if (locked_and_incremented)
       keycache_pthread_mutex_unlock(&keycache->cache_lock);
-    if (my_pwrite(file, (uchar*) buff, length, filepos,
-		  MYF(MY_NABP | MY_WAIT_IF_FULL)))
+    if (key_cache_pwrite(file, (uchar*) buff, length, filepos,
+                         MYF(MY_NABP | MY_WAIT_IF_FULL),
+                         keycache->post_write, post_write_arg))
       error=1;
     if (locked_and_incremented)
       keycache_pthread_mutex_lock(&keycache->cache_lock);
@@ -3461,11 +3503,12 @@ static int flush_cached_blocks(KEY_CACHE *keycache,
                   (BLOCK_READ | BLOCK_IN_FLUSH | BLOCK_CHANGED | BLOCK_IN_USE));
       block->status|= BLOCK_IN_FLUSHWRITE;
       keycache_pthread_mutex_unlock(&keycache->cache_lock);
-      error= my_pwrite(file,
-                       block->buffer+block->offset,
-                       block->length - block->offset,
-                       block->hash_link->diskpos+ block->offset,
-                       MYF(MY_NABP | MY_WAIT_IF_FULL));
+      error= key_cache_pwrite(file,
+                              block->buffer+block->offset,
+                              block->length - block->offset,
+                              block->hash_link->diskpos+ block->offset,
+                              MYF(MY_NABP | MY_WAIT_IF_FULL),
+                              keycache->post_write, block->post_write_arg);
       keycache_pthread_mutex_lock(&keycache->cache_lock);
       keycache->global_cache_write++;
       if (error)
@@ -3558,10 +3601,11 @@ static int flush_key_blocks_int(KEY_CACHE *keycache,
               file, keycache->blocks_used, keycache->blocks_changed));
 
 #if !defined(DBUG_OFF) && defined(EXTRA_DEBUG)
-    DBUG_EXECUTE("check_keycache",
-                 test_key_cache(keycache, "start of flush_key_blocks", 0););
+  DBUG_EXECUTE("check_keycache",
+               test_key_cache(keycache, "start of flush_key_blocks", 0););
 #endif
 
+  DBUG_ASSERT(type != FLUSH_KEEP_LAZY);
   cache= cache_buff;
   if (keycache->disk_blocks > 0 &&
       (!my_disable_flush_key_blocks || type != FLUSH_KEEP))

@@ -179,22 +179,15 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 		priority.schedule(PRIORITY_HIGH);
 		
 #ifdef _WIN32
-	
-	Sync sync(&syncObject, "SerialLogFile::write");
-	sync.lock(Exclusive);
-	
-	if (position != offset)
-		{
-		LARGE_INTEGER pos;
-		pos.QuadPart = position;
-
-		if (!SetFilePointerEx(handle, pos, NULL, FILE_BEGIN))
-			throw SQLError(IO_ERROR, "serial log SetFilePointerEx failed with %d", GetLastError());
-		}
+	LARGE_INTEGER pos;
+	pos.QuadPart = position;
+	OVERLAPPED overlapped = {0};
+	overlapped.Offset = pos.LowPart;
+	overlapped.OffsetHigh = pos.HighPart;
 
 	DWORD ret;
 	
-	if (!WriteFile(handle, data, effectiveLength, &ret, NULL))
+	if (!WriteFile(handle, data, effectiveLength, &ret, &overlapped))
 		{
 		int lastError = GetLastError();
 		
@@ -219,14 +212,14 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 		if (loc != position)
 			throw SQLEXCEPTION (IO_ERROR, "serial lseek error on \"%s\": %s (%d)", 
 								(const char*) fileName, strerror (errno), errno);
-
 		}
 
 	uint32 n = ::write(handle, data, effectiveLength);
 	
+#endif
+
 	if (forceFsync)
 		fsync(handle);
-#endif
 
 	if (n != effectiveLength)
 		{
@@ -259,18 +252,17 @@ uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 		priority.schedule(PRIORITY_HIGH);
 
 #ifdef _WIN32
-	Sync sync(&syncObject, "SerialLogFile::read");
-	sync.lock(Exclusive);
+
 	ASSERT(position < writePoint || writePoint == 0);
 	LARGE_INTEGER pos;
 	pos.QuadPart = position;
-	
-	if (!SetFilePointerEx(handle, pos, NULL, FILE_BEGIN))
-		throw SQLError(IO_ERROR, "serial log SetFilePointer failed with %d", GetLastError());
+	OVERLAPPED overlapped = {0};
+	overlapped.Offset = pos.LowPart;
+	overlapped.OffsetHigh = pos.HighPart;
 
 	DWORD ret;
 
-	if (!ReadFile(handle, data, effectiveLength, &ret, NULL))
+	if (!ReadFile(handle, data, effectiveLength, &ret, &overlapped))
 		throw SQLError(IO_ERROR, "serial log ReadFile failed with %d", GetLastError());
 
 	offset = position + effectiveLength;
@@ -305,6 +297,57 @@ uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 #endif
 }
 
+void SerialLogFile::truncate(int64 size)
+{
+#ifdef _WIN32
+	LARGE_INTEGER oldPos, distance;
+	distance.QuadPart = 0;
+
+	// Get current position in file 
+	if (!SetFilePointerEx(handle, distance ,&oldPos,FILE_CURRENT))
+		throw SQLError(IO_ERROR, "SetFilePointerEx failed with %d", 
+						GetLastError());
+
+	// Position to the new end of file , set EOF marker there
+	distance.QuadPart = size;
+	if (!SetFilePointerEx(handle, distance, 0, FILE_BEGIN))
+		throw SQLError(IO_ERROR, "SetFilePointerEx failed with %d", 
+						GetLastError());
+
+	if (!SetEndOfFile(handle))
+		throw SQLError(IO_ERROR, "SetEndOfFile failed with %d", 
+						GetLastError());
+
+
+	// Restore file pointer
+	if (!SetFilePointerEx(handle, oldPos ,0,FILE_BEGIN))
+		throw SQLError(IO_ERROR, "SetFilePointerEx failed with %d", 
+						GetLastError());
+#else
+	if (ftruncate(handle, size))
+		throw SQLError(IO_ERROR, "ftruncate failed with %d", 
+						errno);
+#endif
+}
+
+int64 SerialLogFile::size(void)
+{
+#ifdef _WIN32
+	LARGE_INTEGER size;
+
+	if (!GetFileSizeEx(handle, &size))
+		throw SQLError(IO_ERROR, "GetFileSizeEx failed with %u", 
+						GetLastError());
+
+	return size.QuadPart;
+#else
+	struct stat buf;
+	if (fstat(handle, &buf))
+		throw SQLError(IO_ERROR, "stat failed with %d",
+						errno);
+	return  buf.st_size;
+#endif
+}
 
 void SerialLogFile::zap()
 {

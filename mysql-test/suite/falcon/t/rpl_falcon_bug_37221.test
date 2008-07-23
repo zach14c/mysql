@@ -1,0 +1,54 @@
+# BUG#37221: SET AUTOCOMMIT=1 does not commit binary log
+
+# Regression test to ensure that the bug does not re-appear. The test
+# is using the Falcon engine, but the problem is a generic case. See
+# binlog_implicit_commit.test for a more elaborate test.
+
+--source include/have_falcon.inc
+--source include/master-slave.inc
+
+--echo [master]
+connection master;
+SET BINLOG_FORMAT = 'ROW';
+
+CREATE TABLE IF NOT EXISTS t1 (id INT) ENGINE = Falcon;
+
+# When switching to AUTOCOMMIT=1, there is an implicit commit if we
+# are outside a real transaction.
+
+SET AUTOCOMMIT=0;
+INSERT INTO t1 VALUES (1);
+SET AUTOCOMMIT=1;
+SELECT * FROM t1;
+--echo [slave]
+sync_slave_with_master;
+SELECT * FROM t1;
+
+# When inside a transaction, AUTOCOMMIT=1 should not commit the
+# transaction. This is hard to test for sure (since delays might cause
+# the transaction to not propagate fast enough), but it will not cause
+# any false negatives (just false positives).
+
+--echo [master]
+connection master;
+BEGIN;
+INSERT INTO t1 VALUES (2);
+SET AUTOCOMMIT=1;
+
+--echo [slave]
+connection slave;
+SELECT * FROM t1 /* Should not contain 2 */;
+
+--echo [master]
+connection master;
+INSERT INTO t1 VALUES (3);
+COMMIT;
+
+--echo [slave]
+sync_slave_with_master;
+SELECT * FROM t1 /* Should contain 2 and 3 */;
+
+--echo [master]
+connection master;
+DROP TABLE t1;
+sync_slave_with_master;

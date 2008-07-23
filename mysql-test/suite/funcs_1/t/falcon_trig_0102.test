@@ -1,4 +1,4 @@
-#### suite/funcs_1/t/falcon_triggers.test
+#### suite/funcs_1/t/falcon_trig_0102.test
 # created: 2007-11-02 by hhunger
 
 # Falcon tables should be used
@@ -8,10 +8,4 @@
 # 2. Set $engine_type
 let $engine_type= falcon;
 
-# Create some objects needed in many testcases
-USE test;
---source suite/funcs_1/include/falcon_tb3.inc
-
 --source suite/funcs_1/triggers/triggers_0102.inc
-DROP TABLE test.tb3;
-

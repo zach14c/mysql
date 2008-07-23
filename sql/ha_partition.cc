@@ -1649,6 +1649,7 @@ void ha_partition::update_create_info(HA_CREATE_INFO *create_info)
     create_info->auto_increment_value= stats.auto_increment_value;
 
   create_info->data_file_name= create_info->index_file_name = NULL;
+  create_info->tablespace= table_share->tablespace;
   return;
 }
 
@@ -1869,6 +1870,7 @@ int ha_partition::set_up_table_before_create(TABLE *tbl,
   }
   info->index_file_name= part_elem->index_file_name;
   info->data_file_name= part_elem->data_file_name;
+  info->tablespace= part_elem->tablespace_name;
   DBUG_RETURN(0);
 }
 
@@ -2402,7 +2404,7 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
     for the same table.
   */
   if (is_not_tmp_table)
-    pthread_mutex_lock(&table_share->mutex);
+    pthread_mutex_lock(&table_share->LOCK_ha_data);
   if (!table_share->ha_data)
   {
     HA_DATA_PARTITION *ha_data;
@@ -2416,7 +2418,7 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
     bzero(ha_data, sizeof(HA_DATA_PARTITION));
   }
   if (is_not_tmp_table)
-    pthread_mutex_unlock(&table_share->mutex);
+    pthread_mutex_unlock(&table_share->LOCK_ha_data);
   /*
     Some handlers update statistics as part of the open call. This will in
     some cases corrupt the statistics of the partition handler and thus
@@ -3065,13 +3067,14 @@ void ha_partition::start_bulk_insert(ha_rows rows)
 
   SYNOPSIS
     end_bulk_insert()
+    abort		1 if table will be deleted (error condition)
 
   RETURN VALUE
     >0                      Error code
     0                       Success
 */
 
-int ha_partition::end_bulk_insert()
+int ha_partition::end_bulk_insert(bool abort)
 {
   int error= 0;
   handler **file;
@@ -3081,7 +3084,7 @@ int ha_partition::end_bulk_insert()
   do
   {
     int tmp;
-    if ((tmp= (*file)->ha_end_bulk_insert()))
+    if ((tmp= (*file)->ha_end_bulk_insert(abort)))
       error= tmp;
   } while (*(++file));
   DBUG_RETURN(error);
@@ -4745,40 +4748,41 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
   stat_info->update_time=          file->stats.update_time;
   stat_info->check_time=           file->stats.check_time;
   stat_info->check_sum= 0;
-  if (file->ha_table_flags() & HA_HAS_CHECKSUM)
+  if (file->ha_table_flags() & (HA_HAS_OLD_CHECKSUM | HA_HAS_NEW_CHECKSUM))
     stat_info->check_sum= file->checksum();
   return;
 }
 
 
-/*
-  General function to prepare handler for certain behavior
+/**
+  General function to prepare handler for certain behavior.
 
-  SYNOPSIS
-    extra()
+  @param[in]    operation       operation to execute
     operation              Operation type for extra call
 
-  RETURN VALUE
-    >0                     Error code
-    0                      Success
+  @return       status
+    @retval     0               success
+    @retval     >0              error code
 
-  DESCRIPTION
+  @detail
+
   extra() is called whenever the server wishes to send a hint to
   the storage engine. The MyISAM engine implements the most hints.
 
   We divide the parameters into the following categories:
-  1) Parameters used by most handlers
-  2) Parameters used by some non-MyISAM handlers
-  3) Parameters used only by MyISAM
-  4) Parameters only used by temporary tables for query processing
-  5) Parameters only used by MyISAM internally
-  6) Parameters not used at all
-  7) Parameters only used by federated tables for query processing
-  8) Parameters only used by NDB
+  1) Operations used by most handlers
+  2) Operations used by some non-MyISAM handlers
+  3) Operations used only by MyISAM
+  4) Operations only used by temporary tables for query processing
+  5) Operations only used by MyISAM internally
+  6) Operations not used at all
+  7) Operations only used by federated tables for query processing
+  8) Operations only used by NDB
+  9) Operations only used by MERGE
 
   The partition handler need to handle category 1), 2) and 3).
 
-  1) Parameters used by most handlers
+  1) Operations used by most handlers
   -----------------------------------
   HA_EXTRA_RESET:
     This option is used by most handlers and it resets the handler state
@@ -4817,7 +4821,7 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
     ensure disk based tables are flushed at end of query execution.
     Currently is never used.
 
-  2) Parameters used by some non-MyISAM handlers
+  2) Operations used by some non-MyISAM handlers
   ----------------------------------------------
   HA_EXTRA_KEYREAD_PRESERVE_FIELDS:
     This is a strictly InnoDB feature that is more or less undocumented.
@@ -4836,7 +4840,7 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
     SQL constructs.
     Not used by MyISAM.
 
-  3) Parameters used only by MyISAM
+  3) Operations used only by MyISAM
   ---------------------------------
   HA_EXTRA_NORMAL:
     Only used in MyISAM to reset quick mode, not implemented by any other
@@ -4967,7 +4971,7 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
     Only used by MyISAM, called when altering table, closing tables to
     enforce a reopen of the table files.
 
-  4) Parameters only used by temporary tables for query processing
+  4) Operations only used by temporary tables for query processing
   ----------------------------------------------------------------
   HA_EXTRA_RESET_STATE:
     Same as reset() except that buffers are not released. If there is
@@ -4998,7 +5002,7 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
     tables used in query processing.
     Not handled by partition handler.
 
-  5) Parameters only used by MyISAM internally
+  5) Operations only used by MyISAM internally
   --------------------------------------------
   HA_EXTRA_REINIT_CACHE:
     This call reinitialises the READ CACHE described above if there is one
@@ -5033,19 +5037,19 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
   HA_EXTRA_CHANGE_KEY_TO_UNIQUE:
     Only used by MyISAM, never called.
 
-  6) Parameters not used at all
+  6) Operations not used at all
   -----------------------------
   HA_EXTRA_KEY_CACHE:
   HA_EXTRA_NO_KEY_CACHE:
     This parameters are no longer used and could be removed.
 
-  7) Parameters only used by federated tables for query processing
+  7) Operations only used by federated tables for query processing
   ----------------------------------------------------------------
   HA_EXTRA_INSERT_WITH_UPDATE:
     Inform handler that an "INSERT...ON DUPLICATE KEY UPDATE" will be
     executed. This condition is unset by HA_EXTRA_NO_IGNORE_DUP_KEY.
 
-  8) Parameters only used by NDB
+  8) Operations only used by NDB
   ------------------------------
   HA_EXTRA_DELETE_CANNOT_BATCH:
   HA_EXTRA_UPDATE_CANNOT_BATCH:
@@ -5053,6 +5057,14 @@ void ha_partition::get_dynamic_partition_info(PARTITION_INFO *stat_info,
     and should perform them immediately. This may be needed when table has 
     AFTER DELETE/UPDATE triggers which access to subject table.
     These flags are reset by the handler::extra(HA_EXTRA_RESET) call.
+
+  9) Operations only used by MERGE
+  ------------------------------
+  HA_EXTRA_ADD_CHILDREN_LIST:
+  HA_EXTRA_ATTACH_CHILDREN:
+  HA_EXTRA_IS_ATTACHED_CHILDREN:
+  HA_EXTRA_DETACH_CHILDREN:
+    Special actions for MERGE tables. Ignore.
 */
 
 int ha_partition::extra(enum ha_extra_function operation)
@@ -5080,7 +5092,6 @@ int ha_partition::extra(enum ha_extra_function operation)
   /* Category 3), used by MyISAM handlers */
   case HA_EXTRA_PREPARE_FOR_RENAME:
     DBUG_RETURN(prepare_for_rename());
-    break;
   case HA_EXTRA_NORMAL:
   case HA_EXTRA_QUICK:
   case HA_EXTRA_NO_READCHECK:
@@ -5138,11 +5149,26 @@ int ha_partition::extra(enum ha_extra_function operation)
     /* Category 7), used by federated handlers */
   case HA_EXTRA_INSERT_WITH_UPDATE:
     DBUG_RETURN(loop_extra(operation));
-    /* Category 8) Parameters only used by NDB */
+    /* Category 8) Operations only used by NDB */
   case HA_EXTRA_DELETE_CANNOT_BATCH:
   case HA_EXTRA_UPDATE_CANNOT_BATCH:
-  {
     /* Currently only NDB use the *_CANNOT_BATCH */
+  {
+    break;
+  }
+  case HA_EXTRA_ORDERBY_LIMIT:
+  case HA_EXTRA_NO_ORDERBY_LIMIT:
+    /* ORDERBY_LIMIT is used by Falcon */
+  {
+    break;
+  }
+    /* Category 9) Operations only used by MERGE */
+  case HA_EXTRA_ADD_CHILDREN_LIST:
+  case HA_EXTRA_ATTACH_CHILDREN:
+  case HA_EXTRA_IS_ATTACHED_CHILDREN:
+  case HA_EXTRA_DETACH_CHILDREN:
+  {
+    /* Special actions for MERGE tables. Ignore. */
     break;
   }
   default:
@@ -5490,6 +5516,34 @@ ha_rows ha_partition::estimate_rows_upper_bound()
         DBUG_RETURN(HA_POS_ERROR);
       tot_rows+= rows;
     }
+  } while (*(++file));
+  DBUG_RETURN(tot_rows);
+}
+
+
+/**
+  Number of rows in table. see handler.h
+
+  SYNOPSIS
+    records()
+
+  RETURN VALUE
+    Number of total rows in a partitioned table.
+*/
+
+ha_rows ha_partition::records()
+{
+  ha_rows rows, tot_rows= 0;
+  handler **file;
+  DBUG_ENTER("ha_partition::records");
+
+  file= m_file;
+  do
+  {
+    rows= (*file)->records();
+    if (rows == HA_POS_ERROR)
+      DBUG_RETURN(HA_POS_ERROR);
+    tot_rows+= rows;
   } while (*(++file));
   DBUG_RETURN(tot_rows);
 }

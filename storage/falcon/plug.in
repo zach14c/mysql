@@ -15,7 +15,7 @@ AC_CACHE_CHECK([if Falcon Storage Engine is supported on $MACHINE_TYPE],
       AC_TRY_LINK([
 #include <stdlib.h>
 volatile int target= 0;
-int compare= 1,
+int compare= 1;
 int exchange= 2;
       ],[
   char ret;
@@ -47,28 +47,67 @@ fi
 MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CONFIG_FILES(storage/falcon/TransformLib/Makefile)
 
+  AC_LANG_PUSH([C++])
+  ac_save_CXXFLAGS="$CXXFLAGS"
+  AC_CACHE_CHECK([compiler flag to enable implicit templates],
+                 falcon_cxx_enable_implicit_templates,[
+    CXXFLAGS="$ac_save_CXXFLAGS -fimplicit-templates"
+    AC_TRY_LINK([],
+      [int i = 0;
+       i++;],
+      falcon_cxx_enable_implicit_templates="-fimplicit-templates",
+      falcon_cxx_enable_implicit_templates=""
+    )
+  ])
+
+  AC_CACHE_CHECK([compiler flag to enable exceptions],
+                 falcon_cxx_enable_exceptions,[
+    CXXFLAGS="$ac_save_CXXFLAGS -fexceptions -lstdc++"
+    AC_TRY_LINK([],
+      [int i = 0;
+       i++;],
+      falcon_cxx_enable_exceptions="-fexceptions -lstdc++",
+      falcon_cxx_enable_exceptions=""
+    )
+  ])
+
   AC_CACHE_CHECK([compiler flag to silence offsetof warnings],
                  falcon_cxx_no_invalid_offsetof,[
-    AC_LANG_PUSH([C++])
-    ac_save_CXXFLAGS="$CXXFLAGS"
-    CXXFLAGS="$CXXFLAGS -Wno-invalid-offsetof"
-    AC_TRY_COMPILE([],
+    CXXFLAGS="$ac_save_CXXFLAGS -Wno-invalid-offsetof"
+    AC_TRY_LINK([],
       [int i = 0;
        i++;],
       falcon_cxx_no_invalid_offsetof="-Wno-invalid-offsetof",
       falcon_cxx_no_invalid_offsetof=""
     )
-    CXXFLAGS=$ac_save_CXXFLAGS
-    AC_LANG_POP([C++])
   ])
 
+  CXXFLAGS=$ac_save_CXXFLAGS
+  AC_LANG_POP([C++])
+
   # Falcon uses exceptions and STL.
-  CXXLDFLAGS="$CXXLDFLAGS -fexceptions -lstdc++"
-  FALCON_CXXFLAGS="$falcon_cxx_no_invalid_offsetof -fexceptions"
+  CXXLDFLAGS="$CXXLDFLAGS $falcon_cxx_enable_exceptions"
+  FALCON_CXXFLAGS="$falcon_cxx_no_invalid_offsetof $falcon_cxx_enable_implicit_templates $falcon_cxx_enable_exceptions"
   case "$with_debug" in
     yes)  FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG" ;;
     full) FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG -DMEM_DEBUG" ;;
   esac
 
   AC_SUBST([FALCON_CXXFLAGS])
+
+  # When compiling with Sun Studio compiler on SPARC assembly code for
+  # Interlock operations needs to be included. This has been implemented 
+  # as "inline templates" in a separate file
+  FALCON_SPARC_ASSEMBLY=""
+  case $host in
+    sparc-sun-solaris2.9)
+      case $CXX_VERSION in
+        *Sun*C++*)
+          FALCON_SPARC_ASSEMBLY="CompareAndSwapSparc.il"
+          ;;
+      esac
+      ;;
+  esac
+
+  AC_SUBST([FALCON_SPARC_ASSEMBLY])
 ])

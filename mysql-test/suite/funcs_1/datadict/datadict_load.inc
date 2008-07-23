@@ -59,6 +59,7 @@ let $SERVER_NAME= `SELECT DISTINCT host FROM mysql.user WHERE host NOT In ("loca
 ################################################################################
 
 eval SET @ENGINE_INNODB = IF( '$engine_type' = 'innodb', 1, 0);
+eval SET @ENGINE_FALCON = IF( '$engine_type' = 'falcon', 1, 0);
 eval SET @ENGINE_MEMORY = IF( '$engine_type' = 'memory', 1, 0);
 eval SET @ENGINE_MYISAM = IF( '$engine_type' = 'myisam', 1, 0);
 eval SET @ENGINE_NDB    = IF( '$engine_type' = 'ndb', 1, 0);
@@ -66,6 +67,7 @@ eval SET @ENGINE_NDB    = IF( '$engine_type' = 'ndb', 1, 0);
 
 let $engine_myisam= `SELECT @ENGINE_MYISAM = 1`;
 let $engine_innodb= `SELECT @ENGINE_INNODB = 1`;
+let $engine_falcon= `SELECT @ENGINE_FALCON = 1`;
 let $engine_memory= `SELECT @ENGINE_MEMORY = 1`;
 let $engine_ndb=    `SELECT @ENGINE_NDB    = 1`;
 # Note: The NDB variant with their own tb1 - tb4 tables is not ready for use.
@@ -79,12 +81,22 @@ USE test;
 
 if ($engine_innodb)
 {
-    --source suite/funcs_1/include/innodb_tb1.inc
-    --source suite/funcs_1/include/innodb_tb2.inc
-    --source suite/funcs_1/include/innodb_tb3.inc
-    --source suite/funcs_1/include/innodb_tb4.inc
-    USE test1;
-    --source suite/funcs_1/include/innodb_tb2.inc
+   --source suite/funcs_1/include/innodb_tb1.inc
+   --source suite/funcs_1/include/innodb_tb2.inc
+   --source suite/funcs_1/include/innodb_tb3.inc
+   --source suite/funcs_1/include/innodb_tb4.inc
+   USE test1;
+   --source suite/funcs_1/include/innodb_tb2.inc
+}
+
+if ($engine_falcon)
+{
+   --source suite/funcs_1/include/falcon_tb1.inc
+   --source suite/funcs_1/include/falcon_tb2.inc
+   --source suite/funcs_1/include/falcon_tb3.inc
+   --source suite/funcs_1/include/falcon_tb4.inc
+   USE test1;
+   --source suite/funcs_1/include/falcon_tb2.inc
 }
 
 if ($engine_memory)

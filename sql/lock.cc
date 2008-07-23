@@ -34,8 +34,8 @@
       This is followed by a call to thr_multi_lock() for all tables.
 
   - When statement is done, we call mysql_unlock_tables().
-    This will call thr_multi_unlock() followed by
-    table_handler->external_lock(thd, F_UNLCK) for each table.
+    table_handler->external_lock(thd, F_UNLCK) followed by
+    thr_multi_unlock() for each table.
 
   - Note that mysql_unlock_tables() may be called several times as
     MySQL in some cases can free some tables earlier than others.
@@ -93,31 +93,6 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table,uint count,
 static int lock_external(THD *thd, TABLE **table,uint count);
 static int unlock_external(THD *thd, TABLE **table,uint count);
 static void print_lock_error(int error, const char *);
-
-/*
-  Lock tables.
-
-  SYNOPSIS
-    mysql_lock_tables()
-    thd                         The current thread.
-    tables                      An array of pointers to the tables to lock.
-    count                       The number of tables to lock.
-    flags                       Options:
-      MYSQL_LOCK_IGNORE_GLOBAL_READ_LOCK      Ignore a global read lock
-      MYSQL_LOCK_IGNORE_GLOBAL_READ_ONLY      Ignore SET GLOBAL READ_ONLY
-      MYSQL_LOCK_IGNORE_FLUSH                 Ignore a flush tables.
-      MYSQL_LOCK_NOTIFY_IF_NEED_REOPEN        Instead of reopening altered
-                                              or dropped tables by itself,
-                                              mysql_lock_tables() should
-                                              notify upper level and rely
-                                              on caller doing this.
-    need_reopen                 Out parameter, TRUE if some tables were altered
-                                or deleted and should be reopened by caller.
-
-  RETURN
-    A lock structure pointer on success.
-    NULL on error or if some tables should be reopen.
-*/
 
 /* Map the return value of thr_lock to an error from errmsg.txt */
 static int thr_lock_errno_to_mysql[]=
@@ -232,6 +207,28 @@ static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
 }
 
 
+/**
+   Lock tables.
+
+   @param thd          The current thread.
+   @param tables       An array of pointers to the tables to lock.
+   @param count        The number of tables to lock.
+   @param flags        Options:
+                 MYSQL_LOCK_IGNORE_GLOBAL_READ_LOCK Ignore a global read lock
+                 MYSQL_LOCK_IGNORE_GLOBAL_READ_ONLY Ignore SET GLOBAL READ_ONLY
+                 MYSQL_LOCK_IGNORE_FLUSH            Ignore a flush tables.
+   @param need_reopen  Out parameter, TRUE if some tables were altered
+                       or deleted and should be reopened by caller.
+
+   @note Caller of this function should always be ready to handle request to
+         reopen table unless there are external invariants which guarantee
+         that such thing won't be needed (for example we are obtaining lock
+         on table on which we already have exclusive metadata lock).
+
+   @retval  A lock structure pointer on success.
+   @retval  NULL on error or if some tables should be reopen.
+*/
+
 MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
                               uint flags, bool *need_reopen)
 {
@@ -315,7 +312,7 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
       my_error(rc, MYF(0));
       break;
     }
-    else if (rc == 1)                           /* aborted */
+    else if (rc == 1)                           /* aborted or killed */
     {
       thd->some_tables_deleted=1;		// Try again
       sql_lock->lock_count= 0;                  // Locks are already freed
@@ -324,8 +321,9 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
     else if (!thd->some_tables_deleted || (flags & MYSQL_LOCK_IGNORE_FLUSH))
     {
       /*
-        Thread was killed or lock aborted. Let upper level close all
-        used tables and retry or give error.
+        Success and nobody set thd->some_tables_deleted to force reopen
+        or we were called with MYSQL_LOCK_IGNORE_FLUSH so such attempts
+        should be ignored.
       */
       break;
     }
@@ -351,13 +349,10 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
     */
     reset_lock_data_and_free(&sql_lock);
 retry:
-    if (flags & MYSQL_LOCK_NOTIFY_IF_NEED_REOPEN)
-    {
-      *need_reopen= TRUE;
-      break;
-    }
-    if (wait_for_tables(thd))
-      break;					// Couldn't open tables
+    DEBUG_SYNC(thd, "mysql_lock_retry");
+    /* Let upper level close all used tables and retry or give error. */
+    *need_reopen= TRUE;
+    break;
   }
   thd_proc_info(thd, 0);
   if (thd->killed)
@@ -415,10 +410,10 @@ static int lock_external(THD *thd, TABLE **tables, uint count)
 void mysql_unlock_tables(THD *thd, MYSQL_LOCK *sql_lock)
 {
   DBUG_ENTER("mysql_unlock_tables");
+  if (sql_lock->table_count)
+    (void)(unlock_external(thd,sql_lock->table,sql_lock->table_count));
   if (sql_lock->lock_count)
     thr_multi_unlock(sql_lock->locks,sql_lock->lock_count);
-  if (sql_lock->table_count)
-    (void) unlock_external(thd,sql_lock->table,sql_lock->table_count);
   my_free((uchar*) sql_lock,MYF(0));
   DBUG_VOID_RETURN;
 }
@@ -503,28 +498,15 @@ void mysql_unlock_read_tables(THD *thd, MYSQL_LOCK *sql_lock)
 /**
   Try to find the table in the list of locked tables.
   In case of success, unlock the table and remove it from this list.
-
-  @note This function has a legacy side effect: the table is
-  unlocked even if it is not found in the locked list.
-  It's not clear if this side effect is intentional or still
-  desirable. It might lead to unmatched calls to
-  unlock_external(). Moreover, a discrepancy can be left
-  unnoticed by the storage engine, because in
-  unlock_external() we call handler::external_lock(F_UNLCK) only
-  if table->current_lock is not F_UNLCK.
+  If a table has more than one lock instance, removes them all.
 
   @param  thd             thread context
   @param  locked          list of locked tables
   @param  table           the table to unlock
-  @param  always_unlock   specify explicitly if the legacy side
-                          effect is desired.
 */
 
-void mysql_lock_remove(THD *thd, MYSQL_LOCK *locked,TABLE *table,
-                       bool always_unlock)
+void mysql_lock_remove(THD *thd, MYSQL_LOCK *locked,TABLE *table)
 {
-  if (always_unlock == TRUE)
-    mysql_unlock_some_tables(thd, &table, /* table count */ 1);
   if (locked)
   {
     reg1 uint i;
@@ -538,9 +520,8 @@ void mysql_lock_remove(THD *thd, MYSQL_LOCK *locked,TABLE *table,
 
         DBUG_ASSERT(table->lock_position == i);
 
-        /* Unlock if not yet unlocked */
-        if (always_unlock == FALSE)
-          mysql_unlock_some_tables(thd, &table, /* table count */ 1);
+        /* Unlock the table. */
+        mysql_unlock_some_tables(thd, &table, /* table count */ 1);
 
         /* Decrement table_count in advance, making below expressions easier */
         old_tables= --locked->table_count;
@@ -692,6 +673,8 @@ MYSQL_LOCK *mysql_lock_merge(MYSQL_LOCK *a,MYSQL_LOCK *b)
   /* Delete old, not needed locks */
   my_free((uchar*) a,MYF(0));
   my_free((uchar*) b,MYF(0));
+
+  thr_lock_merge_status(sql_lock->locks, sql_lock->lock_count);
   DBUG_RETURN(sql_lock);
 }
 
@@ -745,7 +728,7 @@ TABLE_LIST *mysql_lock_have_duplicate(THD *thd, TABLE_LIST *needle,
     goto end;
 
   /* Get command lock or LOCK TABLES lock. Maybe empty for INSERT DELAYED. */
-  if (! (mylock= thd->lock ? thd->lock : thd->locked_tables))
+  if (! (mylock= thd->lock))
     goto end;
 
   /* If we have less than two tables, we cannot have duplicates. */
@@ -940,361 +923,59 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
 *****************************************************************************/
 
 /**
-  Lock and wait for the named lock.
+   Obtain exclusive metadata locks on the list of tables.
 
-  @param thd			Thread handler
-  @param table_list		Lock first table in this list
+   @param thd         Thread handle
+   @param table_list  List of tables to lock
 
+   @note This function assumes that no metadata locks were acquired
+         before calling it. Also it cannot be called while holding
+         LOCK_open mutex. Both these invariants are enforced by asserts
+         in mdl_acquire_exclusive_locks() functions.
 
-  @note
-    Works together with global read lock.
-
-  @retval
-    0	ok
-  @retval
-    1	error
-*/
-
-int lock_and_wait_for_table_name(THD *thd, TABLE_LIST *table_list)
-{
-  int lock_retcode;
-  int error= -1;
-  DBUG_ENTER("lock_and_wait_for_table_name");
-
-  if (wait_if_global_read_lock(thd, 0, 1))
-    DBUG_RETURN(1);
-  pthread_mutex_lock(&LOCK_open);
-  if ((lock_retcode = lock_table_name(thd, table_list, TRUE)) < 0)
-    goto end;
-  if (lock_retcode && wait_for_locked_table_names(thd, table_list))
-  {
-    unlock_table_name(thd, table_list);
-    goto end;
-  }
-  error=0;
-
-end:
-  pthread_mutex_unlock(&LOCK_open);
-  start_waiting_global_read_lock(thd);
-  DBUG_RETURN(error);
-}
-
-
-/**
-  Put a not open table with an old refresh version in the table cache.
-
-  @param thd			Thread handler
-  @param table_list		Lock first table in this list
-  @param check_in_use           Do we need to check if table already in use by us
-
-  @note
-    One must have a lock on LOCK_open!
-
-  @warning
-    If you are going to update the table, you should use
-    lock_and_wait_for_table_name instead of this function as this works
-    together with 'FLUSH TABLES WITH READ LOCK'
-
-  @note
-    This will force any other threads that uses the table to release it
-    as soon as possible.
-
-  @return
-    < 0 error
-  @return
-    == 0 table locked
-  @return
-    > 0  table locked, but someone is using it
-*/
-
-int lock_table_name(THD *thd, TABLE_LIST *table_list, bool check_in_use)
-{
-  TABLE *table;
-  char  key[MAX_DBKEY_LENGTH];
-  char *db= table_list->db;
-  uint  key_length;
-  bool  found_locked_table= FALSE;
-  HASH_SEARCH_STATE state;
-  DBUG_ENTER("lock_table_name");
-  DBUG_PRINT("enter",("db: %s  name: %s", db, table_list->table_name));
-
-  key_length= create_table_def_key(thd, key, table_list, 0);
-
-  if (check_in_use)
-  {
-    /* Only insert the table if we haven't insert it already */
-    for (table=(TABLE*) hash_first(&open_cache, (uchar*)key,
-                                   key_length, &state);
-         table ;
-         table = (TABLE*) hash_next(&open_cache,(uchar*) key,
-                                    key_length, &state))
-    {
-      if (table->reginfo.lock_type < TL_WRITE)
-      {
-        if (table->in_use == thd)
-          found_locked_table= TRUE;
-        continue;
-      }
-
-      if (table->in_use == thd)
-      {
-        DBUG_PRINT("info", ("Table is in use"));
-        table->s->version= 0;                  // Ensure no one can use this
-        table->locked_by_name= 1;
-        DBUG_RETURN(0);
-      }
-    }
-  }
-
-  if (thd->locked_tables && thd->locked_tables->table_count &&
-      ! find_temporary_table(thd, table_list->db, table_list->table_name))
-  {
-    if (found_locked_table)
-      my_error(ER_TABLE_NOT_LOCKED_FOR_WRITE, MYF(0), table_list->alias);
-    else
-      my_error(ER_TABLE_NOT_LOCKED, MYF(0), table_list->alias);
-
-    DBUG_RETURN(-1);
-  }
-
-  if (!(table= table_cache_insert_placeholder(thd, key, key_length)))
-    DBUG_RETURN(-1);
-
-  table_list->table=table;
-
-  /* Return 1 if table is in use */
-  DBUG_RETURN(test(remove_table_from_cache(thd, db, table_list->table_name,
-             check_in_use ? RTFC_NO_FLAG : RTFC_WAIT_OTHER_THREAD_FLAG)));
-}
-
-
-void unlock_table_name(THD *thd, TABLE_LIST *table_list)
-{
-  if (table_list->table)
-  {
-    hash_delete(&open_cache, (uchar*) table_list->table);
-    broadcast_refresh();
-  }
-}
-
-
-static bool locked_named_table(THD *thd, TABLE_LIST *table_list)
-{
-  for (; table_list ; table_list=table_list->next_local)
-  {
-    TABLE *table= table_list->table;
-    if (table)
-    {
-      TABLE *save_next= table->next;
-      bool result;
-      table->next= 0;
-      result= table_is_used(table_list->table, 0);
-      table->next= save_next;
-      if (result)
-        return 1;
-    }
-  }
-  return 0;					// All tables are locked
-}
-
-
-bool wait_for_locked_table_names(THD *thd, TABLE_LIST *table_list)
-{
-  bool result=0;
-  DBUG_ENTER("wait_for_locked_table_names");
-
-  safe_mutex_assert_owner(&LOCK_open);
-
-  while (locked_named_table(thd,table_list))
-  {
-    if (thd->killed)
-    {
-      result=1;
-      break;
-    }
-    wait_for_condition(thd, &LOCK_open, &COND_refresh);
-    pthread_mutex_lock(&LOCK_open);
-  }
-  DBUG_RETURN(result);
-}
-
-
-/**
-  Lock all tables in list with a name lock.
-
-  REQUIREMENTS
-  - One must have a lock on LOCK_open when calling this
-
-  @param thd			Thread handle
-  @param table_list		Names of tables to lock
-
-  @note
-    If you are just locking one table, you should use
-    lock_and_wait_for_table_name().
-
-  @retval
-    0	ok
-  @retval
-    1	Fatal error (end of memory ?)
+   @retval FALSE  Success.
+   @retval TRUE   Failure (OOM or thread was killed).
 */
 
 bool lock_table_names(THD *thd, TABLE_LIST *table_list)
 {
-  bool got_all_locks=1;
   TABLE_LIST *lock_table;
+  MDL_LOCK_DATA *mdl_lock_data;
 
+  DEBUG_SYNC(thd, "before_wait_locked_tname");
   for (lock_table= table_list; lock_table; lock_table= lock_table->next_local)
   {
-    int got_lock;
-    if ((got_lock=lock_table_name(thd,lock_table, TRUE)) < 0)
-      goto end;					// Fatal error
-    if (got_lock)
-      got_all_locks=0;				// Someone is using table
+    if (!(mdl_lock_data= mdl_alloc_lock(0, lock_table->db,
+                                        lock_table->table_name,
+                                        thd->mem_root)))
+      goto end;
+    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
+    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
+    lock_table->mdl_lock_data= mdl_lock_data;
   }
-
-  /* If some table was in use, wait until we got the lock */
-  if (!got_all_locks && wait_for_locked_table_names(thd, table_list))
+  if (mdl_acquire_exclusive_locks(&thd->mdl_context))
     goto end;
   return 0;
 
 end:
-  unlock_table_names(thd, table_list, lock_table);
+  mdl_remove_all_locks(&thd->mdl_context);
   return 1;
 }
 
 
 /**
-  Unlock all tables in list with a name lock.
+   Release all metadata locks previously obtained by lock_table_names().
 
-  @param thd        Thread handle.
-  @param table_list Names of tables to lock.
+   @param thd  Thread handle.
 
-  @note 
-    This function needs to be protected by LOCK_open. If we're 
-    under LOCK TABLES, this function does not work as advertised. Namely,
-    it does not exclude other threads from using this table and does not
-    put an exclusive name lock on this table into the table cache.
-
-  @see lock_table_names
-  @see unlock_table_names
-
-  @retval TRUE An error occured.
-  @retval FALSE Name lock successfully acquired.
+   @note Cannot be called while holding LOCK_open mutex.
 */
 
-bool lock_table_names_exclusively(THD *thd, TABLE_LIST *table_list)
-{
-  if (lock_table_names(thd, table_list))
-    return TRUE;
-
-  /*
-    Upgrade the table name locks from semi-exclusive to exclusive locks.
-  */
-  for (TABLE_LIST *table= table_list; table; table= table->next_global)
-  {
-    if (table->table)
-      table->table->open_placeholder= 1;
-  }
-  return FALSE;
-}
-
-
-/**
-  Test is 'table' is protected by an exclusive name lock.
-
-  @param[in] thd        The current thread handler
-  @param[in] table_list Table container containing the single table to be
-                        tested
-
-  @note Needs to be protected by LOCK_open mutex.
-
-  @return Error status code
-    @retval TRUE Table is protected
-    @retval FALSE Table is not protected
-*/
-
-bool
-is_table_name_exclusively_locked_by_this_thread(THD *thd,
-                                                TABLE_LIST *table_list)
-{
-  char  key[MAX_DBKEY_LENGTH];
-  uint  key_length;
-
-  key_length= create_table_def_key(thd, key, table_list, 0);
-
-  return is_table_name_exclusively_locked_by_this_thread(thd, (uchar *)key,
-                                                         key_length);
-}
-
-
-/**
-  Test is 'table key' is protected by an exclusive name lock.
-
-  @param[in] thd        The current thread handler.
-  @param[in] key
-  @param[in] key_length
-
-  @note Needs to be protected by LOCK_open mutex
-
-  @retval TRUE Table is protected
-  @retval FALSE Table is not protected
- */
-
-bool
-is_table_name_exclusively_locked_by_this_thread(THD *thd, uchar *key,
-                                                int key_length)
-{
-  HASH_SEARCH_STATE state;
-  TABLE *table;
-
-  for (table= (TABLE*) hash_first(&open_cache, key,
-                                  key_length, &state);
-       table ;
-       table= (TABLE*) hash_next(&open_cache, key,
-                                 key_length, &state))
-  {
-    if (table->in_use == thd &&
-        table->open_placeholder == 1 &&
-        table->s->version == 0)
-      return TRUE;
-  }
-
-  return FALSE;
-}
-
-/**
-  Unlock all tables in list with a name lock.
-
-  @param
-    thd			Thread handle
-  @param
-    table_list		Names of tables to unlock
-  @param
-    last_table		Don't unlock any tables after this one.
-			        (default 0, which will unlock all tables)
-
-  @note
-    One must have a lock on LOCK_open when calling this.
-
-  @note
-    This function will broadcast refresh signals to inform other threads
-    that the name locks are removed.
-
-  @retval
-    0	ok
-  @retval
-    1	Fatal error (end of memory ?)
-*/
-
-void unlock_table_names(THD *thd, TABLE_LIST *table_list,
-			TABLE_LIST *last_table)
+void unlock_table_names(THD *thd)
 {
   DBUG_ENTER("unlock_table_names");
-  for (TABLE_LIST *table= table_list;
-       table != last_table;
-       table= table->next_local)
-    unlock_table_name(thd,table);
-  broadcast_refresh();
+  mdl_release_locks(&thd->mdl_context);
+  mdl_remove_all_locks(&thd->mdl_context);
   DBUG_VOID_RETURN;
 }
 
@@ -1421,9 +1102,33 @@ bool lock_global_read_lock(THD *thd)
   if (!thd->global_read_lock)
   {
     const char *old_message;
+    const char *new_message= "Waiting to get readlock";
     (void) pthread_mutex_lock(&LOCK_global_read_lock);
+
+#if defined(ENABLED_DEBUG_SYNC)
+    /*
+      The below sync point fires if we have to wait for
+      protect_against_global_read_lock.
+
+      WARNING: Beware to use WAIT_FOR with this sync point. We hold
+      LOCK_global_read_lock here.
+
+      Call the sync point before calling enter_cond() as it does use
+      enter_cond() and exit_cond() itself if a WAIT_FOR action is
+      executed in spite of the above warning.
+
+      Pre-set proc_info so that it is available immediately after the
+      sync point sends a SIGNAL. This makes tests more reliable.
+    */
+    if (protect_against_global_read_lock)
+    {
+      thd_proc_info(thd, new_message);
+      DEBUG_SYNC(thd, "wait_lock_global_read_lock");
+    }
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
     old_message=thd->enter_cond(&COND_global_read_lock, &LOCK_global_read_lock,
-                                "Waiting to get readlock");
+                                new_message);
     DBUG_PRINT("info",
 	       ("waiting_for: %d  protect_against: %d",
 		waiting_for_read_lock, protect_against_global_read_lock));
@@ -1440,6 +1145,33 @@ bool lock_global_read_lock(THD *thd)
     thd->global_read_lock= GOT_GLOBAL_READ_LOCK;
     global_read_lock++;
     thd->exit_cond(old_message); // this unlocks LOCK_global_read_lock
+    /*
+      When we perform FLUSH TABLES or ALTER TABLE under LOCK TABLES,
+      tables being reopened are protected only by meta-data locks at
+      some point. To avoid sneaking in with our global read lock at
+      this moment we have to take global shared meta data lock.
+
+      TODO: We should change this code to acquire global shared metadata
+            lock before acquiring global read lock. But in order to do
+            this we have to get rid of all those places in which
+            wait_if_global_read_lock() is called before acquiring
+            metadata locks first. Also long-term we should get rid of
+            redundancy between metadata locks, global read lock and DDL
+            blocker (see WL#4399 and WL#4400).
+    */
+    if (mdl_acquire_global_shared_lock(&thd->mdl_context))
+    {
+      /* Our thread was killed -- return back to initial state. */
+      pthread_mutex_lock(&LOCK_global_read_lock);
+      if (!(--global_read_lock))
+      {
+        DBUG_PRINT("signal", ("Broadcasting COND_global_read_lock"));
+        pthread_cond_broadcast(&COND_global_read_lock);
+      }
+      pthread_mutex_unlock(&LOCK_global_read_lock);
+      thd->global_read_lock= 0;
+      DBUG_RETURN(1);
+    }
   }
   /*
     We DON'T set global_read_lock_blocks_commit now, it will be set after
@@ -1460,6 +1192,8 @@ void unlock_global_read_lock(THD *thd)
   DBUG_PRINT("info",
              ("global_read_lock: %u  global_read_lock_blocks_commit: %u",
               global_read_lock, global_read_lock_blocks_commit));
+
+  mdl_release_global_shared_lock(&thd->mdl_context);
 
   pthread_mutex_lock(&LOCK_global_read_lock);
   tmp= --global_read_lock;
@@ -1499,6 +1233,8 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
   (void) pthread_mutex_lock(&LOCK_global_read_lock);
   if ((need_exit_cond= must_wait))
   {
+    const char *new_message= "Waiting for release of readlock";
+
     if (thd->global_read_lock)		// This thread had the read locks
     {
       if (is_not_commit)
@@ -1512,8 +1248,31 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
       */
       DBUG_RETURN(is_not_commit);
     }
+
+#if defined(ENABLED_DEBUG_SYNC)
+    /*
+      The below sync point fires if we have to wait for
+      global_read_lock.
+
+      WARNING: Beware to use WAIT_FOR with this sync point. We hold
+      LOCK_global_read_lock here.
+
+      Call the sync point before calling enter_cond() as it does use
+      enter_cond() and exit_cond() itself if a WAIT_FOR action is
+      executed in spite of the above warning.
+
+      Pre-set proc_info so that it is available immediately after the
+      sync point sends a SIGNAL. This makes tests more reliable.
+    */
+    if (must_wait)
+    {
+      thd_proc_info(thd, new_message);
+      DEBUG_SYNC(thd, "wait_if_global_read_lock");
+    }
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
     old_message=thd->enter_cond(&COND_global_read_lock, &LOCK_global_read_lock,
-				"Waiting for release of readlock");
+                                new_message);
     while (must_wait && ! thd->killed &&
 	   (!abort_on_refresh || thd->version == refresh_version))
     {
@@ -1525,7 +1284,11 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
       result=1;
   }
   if (!abort_on_refresh && !result)
+  {
     protect_against_global_read_lock++;
+    DBUG_PRINT("sql_lock", ("protect_against_global_read_lock incr: %u",
+                            protect_against_global_read_lock));
+  }
   /*
     The following is only true in case of a global read locks (which is rare)
     and if old_message is set
@@ -1548,6 +1311,8 @@ void start_waiting_global_read_lock(THD *thd)
   DBUG_ASSERT(protect_against_global_read_lock);
   tmp= (!--protect_against_global_read_lock &&
         (waiting_for_read_lock || global_read_lock_blocks_commit));
+  DBUG_PRINT("sql_lock", ("protect_against_global_read_lock decr: %u",
+                          protect_against_global_read_lock));
   (void) pthread_mutex_unlock(&LOCK_global_read_lock);
   if (tmp)
     pthread_cond_broadcast(&COND_global_read_lock);
@@ -1677,7 +1442,7 @@ int try_transactional_lock(THD *thd, TABLE_LIST *table_list)
   /* We need to explicitly commit if autocommit mode is active. */
   (void) ha_autocommit_or_rollback(thd, 0);
   /* Close the tables. The locks (if taken) persist in the storage engines. */
-  close_tables_for_reopen(thd, &table_list);
+  close_tables_for_reopen(thd, &table_list, FALSE);
   thd->in_lock_tables= FALSE;
   DBUG_PRINT("lock_info", ("result: %d", result));
   DBUG_RETURN(result);
@@ -1801,6 +1566,7 @@ int set_handler_table_locks(THD *thd, TABLE_LIST *table_list,
                 (tlist->lock_type == TL_READ_NO_INSERT) ||
                 (tlist->lock_type == TL_WRITE_DEFAULT) ||
                 (tlist->lock_type == TL_WRITE) ||
+                (tlist->lock_type == TL_WRITE_CONCURRENT_INSERT) ||
                 (tlist->lock_type == TL_WRITE_LOW_PRIORITY));
 
     /*

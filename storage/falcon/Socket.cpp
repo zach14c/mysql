@@ -32,7 +32,7 @@
 #include <errno.h>
 #include "Log.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "SyncObject.h"
 #include "Sync.h"
 #endif
@@ -71,7 +71,7 @@
 
 static int foo = Socket::initialize();
 
-#ifdef ENGINE
+#ifdef FALCONDB
 SyncObject	hostSyncObject;
 #endif
 
@@ -121,7 +121,7 @@ Socket::~Socket()
 
 void Socket::bind(int ipAddress, int port)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	ASSERT (INADDR_ANY == 0);
 #endif
 	create();
@@ -139,7 +139,7 @@ void Socket::bind(int ipAddress, int port)
 
 }
 
-#ifndef ENGINE
+#ifndef FALCONDB
 Socket* Socket::acceptSocket()
 {
 	struct sockaddr_in	address;
@@ -343,13 +343,13 @@ void Socket::connect(const char * host, int port)
 	address.sin_family = AF_INET;
 	address.sin_port = htons (portNumber);
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	Sync sync (&hostSyncObject, "Socket::connect");
 #endif
 
 	if (host)
 		{
-#ifdef ENGINE
+#ifdef FALCONDB
 		sync.lock (Exclusive);
 #endif
 		struct hostent	*hp = gethostbyname (hostname);
@@ -608,7 +608,7 @@ int Socket::getLocalPort()
 
 JString Socket::getLocalName()
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Sync sync (&hostSyncObject, "Socket::getLocalName");
 	sync.lock (Exclusive);
 #endif
@@ -635,7 +635,7 @@ int32 Socket::getPartnerAddress()
 
 int32 Socket::translateAddress(const char *hostname)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Sync sync (&hostSyncObject, "Socket::translateAddress");
 	sync.lock (Exclusive);
 #endif

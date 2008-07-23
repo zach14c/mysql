@@ -408,7 +408,7 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
         (!table->triggers ||
          !table->triggers->has_delete_triggers()))
         table->file->extra(HA_EXTRA_WRITE_CAN_REPLACE);
-    if (!thd->prelocked_mode)
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
       table->file->ha_start_bulk_insert((ha_rows) 0);
     table->copy_blobs=1;
 
@@ -429,7 +429,8 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
       error= read_sep_field(thd, info, table_list, fields_vars,
                             set_fields, set_values, read_info,
 			    *enclosed, skip_lines, ignore);
-    if (!thd->prelocked_mode && table->file->ha_end_bulk_insert() && !error)
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES &&
+        table->file->ha_end_bulk_insert(0) && !error)
     {
       table->file->print_error(my_errno, MYF(0));
       error= 1;
@@ -592,12 +593,9 @@ read_fixed_length(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
   List_iterator_fast<Item> it(fields_vars);
   Item_field *sql_field;
   TABLE *table= table_list->table;
-  ulonglong id;
   bool err;
   DBUG_ENTER("read_fixed_length");
 
-  id= 0;
- 
   while (!read_info.read_fixed_length())
   {
     if (thd->killed)
@@ -723,12 +721,10 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
   Item *item;
   TABLE *table= table_list->table;
   uint enclosed_length;
-  ulonglong id;
   bool err;
   DBUG_ENTER("read_sep_field");
 
   enclosed_length=enclosed.length();
-  id= 0;
 
   for (;;it.rewind())
   {
@@ -1170,8 +1166,7 @@ READ_INFO::READ_INFO(File file_par, uint tot_length, CHARSET_INFO *cs,
 	cache.read_function = _my_b_net_read;
 
       if (mysql_bin_log.is_open())
-	cache.pre_read = cache.pre_close =
-	  (IO_CACHE_CALLBACK) log_loaded_block;
+	cache.pre_read= cache.pre_close = log_loaded_block;
 #endif
     }
   }

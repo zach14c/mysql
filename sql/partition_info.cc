@@ -963,6 +963,9 @@ bool partition_info::check_partition_info(THD *thd, handlerton **eng_type,
                        "INDEX DIRECTORY option ignored");
         part_elem->data_file_name= part_elem->index_file_name= NULL;
       }
+      if (!part_elem->tablespace_name)
+          part_elem->tablespace_name= info ? (char *)info->tablespace :
+                                      (char *)file->get_tablespace_name();
       if (!is_sub_partitioned())
       {
         if (part_elem->engine_type == NULL)
@@ -1004,6 +1007,8 @@ bool partition_info::check_partition_info(THD *thd, handlerton **eng_type,
               no_subparts_not_set++;
             }
           }
+          if (!sub_elem->tablespace_name)
+            sub_elem->tablespace_name= part_elem->tablespace_name;
           DBUG_PRINT("info", ("part = %d sub = %d engine = %s", i, j,
                      ha_resolve_storage_engine_name(sub_elem->engine_type)));
         } while (++j < no_subparts);
@@ -1205,13 +1210,11 @@ bool partition_info::set_up_charset_field_preps()
     i= 0;
     while ((field= *(ptr++)))
     {
-      CHARSET_INFO *cs;
       uchar *field_buf;
       LINT_INIT(field_buf);
 
       if (!field_is_partition_charset(field))
         continue;
-      cs= ((Field_str*)field)->charset();
       size= field->pack_length();
       if (!(field_buf= (uchar*) sql_calloc(size)))
         goto error;

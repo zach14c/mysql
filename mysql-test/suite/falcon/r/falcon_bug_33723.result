@@ -1,0 +1,10 @@
+*** Bug 33723 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT);
+CREATE TABLESPACE ts1 add datafile 'ts1.fts' Engine='Falcon';
+ALTER TABLE t1 TABLESPACE nosuchtablespace;
+ERROR HY000: Tablespace 'nosuchtablespace' doesn't exist
+ALTER TABLE t1 TABLESPACE ts1;
+DROP TABLE t1;
+DROP TABLESPACE ts1 Engine='Falcon';

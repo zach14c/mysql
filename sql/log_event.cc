@@ -2312,7 +2312,7 @@ int Query_log_event::do_apply_event(Relay_log_info const *rli,
   DBUG_PRINT("info", ("log_pos: %lu", (ulong) log_pos));
 
   clear_all_errors(thd, const_cast<Relay_log_info*>(rli));
-  const_cast<Relay_log_info*>(rli)->clear_tables_to_lock();
+  const_cast<Relay_log_info*>(rli)->slave_close_thread_tables(thd);
 
   /*
     Note:   We do not need to execute reset_one_shot_variables() if this
@@ -4592,8 +4592,9 @@ void User_var_log_event::pack_info(Protocol* protocol)
       }
       break;
     case ROW_RESULT:
+    case IMPOSSIBLE_RESULT:
     default:
-      DBUG_ASSERT(1);
+      DBUG_ASSERT(0);
       return;
     }
   }
@@ -4680,8 +4681,9 @@ bool User_var_log_event::write(IO_CACHE* file)
       pos= (uchar*) val;
       break;
     case ROW_RESULT:
+    case IMPOSSIBLE_RESULT:
     default:
-      DBUG_ASSERT(1);
+      DBUG_ASSERT(0);
       return 0;
     }
     int4store(buf1 + 2 + UV_CHARSET_NUMBER_SIZE, val_len);
@@ -4799,7 +4801,7 @@ void User_var_log_event::print(FILE* file, PRINT_EVENT_INFO* print_event_info)
       break;
     case ROW_RESULT:
     default:
-      DBUG_ASSERT(1);
+      DBUG_ASSERT(0);
       return;
     }
   }
@@ -4861,8 +4863,9 @@ int User_var_log_event::do_apply_event(Relay_log_info const *rli)
       it= new Item_string(val, val_len, charset);
       break;
     case ROW_RESULT:
+    case IMPOSSIBLE_RESULT:
     default:
-      DBUG_ASSERT(1);
+      DBUG_ASSERT(0);
       return 0;
     }
   }
@@ -4870,8 +4873,14 @@ int User_var_log_event::do_apply_event(Relay_log_info const *rli)
   /*
     Item_func_set_user_var can't substitute something else on its place =>
     0 can be passed as last argument (reference on item)
+
+    Fix_fields() can fail, in which case a call of update_hash() might
+    crash the server, so if fix fields fails, we just return with an
+    error.
   */
-  e.fix_fields(thd, 0);
+  if (e.fix_fields(thd, 0))
+    return 1;
+
   /*
     A variable can just be considered as a table with
     a single record and with a single column. Thus, like
@@ -6418,8 +6427,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
      */
     DBUG_ASSERT(get_flags(STMT_END_F));
 
-    const_cast<Relay_log_info*>(rli)->clear_tables_to_lock();
-    close_thread_tables(thd);
+    const_cast<Relay_log_info*>(rli)->slave_close_thread_tables(thd);
     thd->clear_error();
     DBUG_RETURN(0);
   }
@@ -6495,7 +6503,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
                      "unexpected success or fatal error"));
         thd->is_slave_error= 1;
       }
-      const_cast<Relay_log_info*>(rli)->clear_tables_to_lock();
+      const_cast<Relay_log_info*>(rli)->slave_close_thread_tables(thd);
       DBUG_RETURN(actual_error);
     }
 
@@ -6516,7 +6524,7 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
           mysql_unlock_tables(thd, thd->lock);
           thd->lock= 0;
           thd->is_slave_error= 1;
-          const_cast<Relay_log_info*>(rli)->clear_tables_to_lock();
+          const_cast<Relay_log_info*>(rli)->slave_close_thread_tables(thd);
           DBUG_RETURN(ERR_BAD_TABLE_DEF);
         }
       }
@@ -6715,12 +6723,6 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli)
     }
   } // if (table)
 
-  /*
-    We need to delay this clear until here bacause unpack_current_row() uses
-    master-side table definitions stored in rli.
-  */
-  if (rli->tables_to_lock && get_flags(STMT_END_F))
-    const_cast<Relay_log_info*>(rli)->clear_tables_to_lock();
   /* reset OPTION_ALLOW_BATCH as not affect later events */
   thd->options&= ~OPTION_ALLOW_BATCH;
   
@@ -7261,7 +7263,8 @@ Table_map_log_event::~Table_map_log_event()
 int Table_map_log_event::do_apply_event(Relay_log_info const *rli)
 {
   RPL_TABLE_LIST *table_list;
-  char *db_mem, *tname_mem;
+  char *db_mem, *tname_mem, *mdlkey;
+  MDL_LOCK_DATA *mdl_lock_data;
   size_t dummy_len;
   void *memory;
   DBUG_ENTER("Table_map_log_event::do_apply_event(Relay_log_info*)");
@@ -7276,6 +7279,8 @@ int Table_map_log_event::do_apply_event(Relay_log_info const *rli)
                                 &table_list, (uint) sizeof(RPL_TABLE_LIST),
                                 &db_mem, (uint) NAME_LEN + 1,
                                 &tname_mem, (uint) NAME_LEN + 1,
+                                &mdl_lock_data, sizeof(MDL_LOCK_DATA),
+                                &mdlkey, MAX_MDLKEY_LENGTH,
                                 NullS)))
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
@@ -7288,6 +7293,9 @@ int Table_map_log_event::do_apply_event(Relay_log_info const *rli)
   table_list->updating= 1;
   strmov(table_list->db, rpl_filter->get_rewrite_db(m_dbnam, &dummy_len));
   strmov(table_list->table_name, m_tblnam);
+  mdl_init_lock(mdl_lock_data, mdlkey, 0, table_list->db,
+                table_list->table_name);
+  table_list->mdl_lock_data= mdl_lock_data;
 
   int error= 0;
 
@@ -7546,7 +7554,7 @@ Write_rows_log_event::do_after_row_operations(const Slave_reporting_capability *
       ultimately. Still todo: fix
     */
   }
-  if ((local_error= m_table->file->ha_end_bulk_insert()))
+  if ((local_error= m_table->file->ha_end_bulk_insert(0)))
   {
     m_table->file->print_error(local_error, MYF(0));
   }
@@ -8511,7 +8519,6 @@ Incident_log_event::description() const
 
   DBUG_PRINT("info", ("m_incident: %d", m_incident));
 
-  DBUG_ASSERT(0 <= m_incident);
   DBUG_ASSERT((size_t) m_incident <= sizeof(description)/sizeof(*description));
 
   return description[m_incident];

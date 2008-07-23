@@ -898,41 +898,6 @@ DROP PROCEDURE p1;
 DROP USER mysql_bug20230@localhost;
 
 #
-# Bug#18925: subqueries with MIN/MAX functions on INFORMARTION_SCHEMA 
-#
-
-SELECT t.table_name, c1.column_name
-  FROM information_schema.tables t
-       INNER JOIN
-       information_schema.columns c1
-       ON t.table_schema = c1.table_schema AND
-          t.table_name = c1.table_name
-  WHERE t.table_schema = 'information_schema' AND
-        c1.ordinal_position =
-        ( SELECT COALESCE(MIN(c2.ordinal_position),1)
-            FROM information_schema.columns c2
-            WHERE c2.table_schema = t.table_schema AND
-                  c2.table_name = t.table_name AND
-                  c2.column_name LIKE '%SCHEMA%'
-        )
-  AND t.table_name NOT LIKE 'falcon%';
-SELECT t.table_name, c1.column_name
-  FROM information_schema.tables t
-       INNER JOIN
-       information_schema.columns c1
-       ON t.table_schema = c1.table_schema AND
-          t.table_name = c1.table_name
-  WHERE t.table_schema = 'information_schema' AND
-        c1.ordinal_position =
-        ( SELECT COALESCE(MIN(c2.ordinal_position),1)
-            FROM information_schema.columns c2
-            WHERE c2.table_schema = 'information_schema' AND
-                  c2.table_name = t.table_name AND
-                  c2.column_name LIKE '%SCHEMA%'
-        )
-  AND t.table_name NOT LIKE 'falcon%';
-
-#
 # Bug#21231: query with a simple non-correlated subquery over
 #            INFORMARTION_SCHEMA.TABLES 
 #
@@ -1389,3 +1354,47 @@ SELECT * FROM INFORMATION_SCHEMA.tables, t2;
 DROP TABLE t1,t2;
 DROP DATABASE testdb1;
 DROP USER mysqluser_35955@localhost;
+USE test;
+
+--echo #
+--echo # Additional test for WL#3726 "DDL locking for all metadata objects"
+--echo # To avoid possible deadlocks process of filling of I_S tables should
+--echo # use high-priority metadata lock requests when opening tables.
+--echo # Below we just test that we really use high-priority lock request
+--echo # since reproducing a deadlock will require much more complex test.
+--echo #
+--disable_warnings
+drop tables if exists t1, t2, t3;
+--enable_warnings
+create table t1 (i int);
+create table t2 (j int primary key auto_increment);
+connect (con3726_1,localhost,root,,test);
+--echo # Switching to connection 'con3726_1'
+connection con3726_1;
+lock table t2 read;
+connect (con3726_2,localhost,root,,test);
+--echo # Switching to connection 'con3726_2'
+connection con3726_2;
+--echo # RENAME below will be blocked by 'lock table t2 read' above but
+--echo # will add two pending requests for exclusive metadata locks.
+--send rename table t2 to t3
+--echo # Switching to connection 'default'
+connection default;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Waiting for table" and info like "rename table t2 to t3";
+--source include/wait_condition.inc
+--echo # These statements should not be blocked by pending lock requests
+select table_name, column_name, data_type from information_schema.columns
+  where table_schema = 'test' and table_name in ('t1', 't2');
+select table_name, auto_increment from information_schema.tables
+  where table_schema = 'test' and table_name in ('t1', 't2');
+--echo # Switching to connection 'con3726_1'
+connection con3726_1;
+unlock tables;
+--echo # Switching to connection 'con3726_2'
+connection con3726_2;
+--reap
+--echo # Switching to connection 'default'
+connection default;
+drop tables t1, t3;

@@ -75,7 +75,8 @@ public:
 	virtual TransId	getTransactionId();
 	virtual int		getSavePointId();
 	virtual void	setSuperceded (bool flag);
-	virtual Record*	fetchVersion (Transaction *transaction);
+	virtual Record*	fetchVersion (Transaction * transaction);
+	virtual Record*	fetchVersionRecursive (Transaction *transaction);
 	virtual bool	scavenge(RecordScavenge *recordScavenge, LockType lockType);
 	virtual void	scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
 	virtual bool	isVersion();
@@ -145,7 +146,7 @@ public:
 	Format		*format;
 	int			recordNumber;
 	int			size;
-	int			generation;
+	uint64		generation;
 	short		highWater;
 	UCHAR		encoding;
 	UCHAR		state;

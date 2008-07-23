@@ -3953,7 +3953,6 @@ set_engine_all_partitions(partition_info *part_info,
 
 static int fast_end_partition(THD *thd, ulonglong copied,
                               ulonglong deleted,
-                              TABLE *table,
                               TABLE_LIST *table_list, bool is_empty,
                               ALTER_PARTITION_PARAM_TYPE *lpt,
                               bool written_bin_log)
@@ -3972,11 +3971,7 @@ static int fast_end_partition(THD *thd, ulonglong copied,
     error= 1;
 
   if (error)
-  {
-    /* If error during commit, no need to rollback, it's done. */
-    table->file->print_error(error, MYF(0));
-    DBUG_RETURN(TRUE);
-  }
+    DBUG_RETURN(TRUE);                      /* The error has been reported */
 
   if ((!is_empty) && (!written_bin_log) &&
       (!thd->lex->no_write_to_binlog))
@@ -4154,7 +4149,7 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
           without any changes at all.
         */
         DBUG_RETURN(fast_end_partition(thd, ULL(0), ULL(0),
-                                       table, NULL,
+                                       NULL,
                                        TRUE, NULL, FALSE));
       }
       else if (new_part_no > curr_part_no)
@@ -5781,30 +5776,13 @@ static void release_log_entries(partition_info *part_info)
 */
 static void alter_partition_lock_handling(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
-  int err;
-  if (lpt->thd->locked_tables)
-  {
-    /*
-      When we have the table locked, it is necessary to reopen the table
-      since all table objects were closed and removed as part of the
-      ALTER TABLE of partitioning structure.
-    */
-    pthread_mutex_lock(&LOCK_open);
-    lpt->thd->in_lock_tables= 1;
-    err= reopen_tables(lpt->thd, 1, 1);
-    lpt->thd->in_lock_tables= 0;
-    if (err)
-    {
-      /*
-       Issue a warning since we weren't able to regain the lock again.
-       We also need to unlink table from thread's open list and from
-       table_cache
-     */
-      unlink_open_table(lpt->thd, lpt->table, FALSE);
-      sql_print_warning("We failed to reacquire LOCKs in ALTER TABLE");
-    }
-    pthread_mutex_unlock(&LOCK_open);
-  }
+  THD *thd= lpt->thd;
+
+  close_all_tables_for_name(thd, lpt->table->s, FALSE);
+  lpt->table= 0;
+  lpt->table_list->table= 0;
+  if (thd->locked_tables_list.reopen_tables(thd))
+    sql_print_warning("We failed to reacquire LOCKs in ALTER TABLE");
 }
 
 /*
@@ -5818,17 +5796,37 @@ static void alter_partition_lock_handling(ALTER_PARTITION_PARAM_TYPE *lpt)
 
 static int alter_close_tables(ALTER_PARTITION_PARAM_TYPE *lpt)
 {
+  TABLE_SHARE *share= lpt->table->s;
   THD *thd= lpt->thd;
-  const char *db= lpt->db;
-  const char *table_name= lpt->table_name;
+  TABLE *table;
   DBUG_ENTER("alter_close_tables");
   /*
-    We need to also unlock tables and close all handlers.
-    We set lock to zero to ensure we don't do this twice
-    and we set db_stat to zero to ensure we don't close twice.
+    We must keep LOCK_open while manipulating with thd->open_tables.
+    Another thread may be working on it.
   */
   pthread_mutex_lock(&LOCK_open);
-  close_data_files_and_morph_locks(thd, db, table_name);
+  /*
+    We can safely remove locks for all tables with the same name:
+    later they will all be closed anyway in
+    alter_partition_lock_handling().
+  */
+  for (table= thd->open_tables; table ; table= table->next)
+  {
+    if (!strcmp(table->s->table_name.str, share->table_name.str) &&
+	!strcmp(table->s->db.str, share->db.str))
+    {
+      mysql_lock_remove(thd, thd->lock, table);
+      table->file->close();
+      table->db_stat= 0;                        // Mark file closed
+      /*
+        Ensure that we won't end up with a crippled table instance
+        in the table cache if an error occurs before we reach
+        alter_partition_lock_handling() and the table is closed
+        by close_thread_tables() instead.
+      */
+      table->s->version= 0;
+    }
+  }
   pthread_mutex_unlock(&LOCK_open);
   DBUG_RETURN(0);
 }
@@ -5995,6 +5993,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
   DBUG_ENTER("fast_alter_partition_table");
 
   lpt->thd= thd;
+  lpt->table_list= table_list;
   lpt->part_info= part_info;
   lpt->alter_info= alter_info;
   lpt->create_info= create_info;
@@ -6132,10 +6131,10 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
       3) Lock the table in TL_WRITE_ONLY to ensure all other accesses to
          the table have completed. This ensures that other threads can not
          execute on the table in parallel.
-      4) Get a name lock on the table. This ensures that we can release all
-         locks on the table and since no one can open the table, there can
-         be no new threads accessing the table. They will be hanging on the
-         name lock.
+      4) Get an exclusive metadata lock on the table. This ensures that we
+         can release all other locks on the table and since no one can open
+         the table, there can be no new threads accessing the table. They
+         will be hanging on this exclusive lock.
       5) Close all tables that have already been opened but didn't stumble on
          the abort locked previously. This is done as part of the
          close_data_files_and_morph_locks call.
@@ -6168,7 +6167,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
         write_log_drop_partition(lpt) ||
         ERROR_INJECT_CRASH("crash_drop_partition_3") ||
         (not_completed= FALSE) ||
-        abort_and_upgrade_lock(lpt) || /* Always returns 0 */
+        abort_and_upgrade_lock(lpt) ||
         ERROR_INJECT_CRASH("crash_drop_partition_4") ||
         alter_close_tables(lpt) ||
         ERROR_INJECT_CRASH("crash_drop_partition_5") ||
@@ -6210,14 +6209,15 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
       3) Lock all partitions in TL_WRITE_ONLY to ensure that no users
          are still using the old partitioning scheme. Wait until all
          ongoing users have completed before progressing.
-      4) Get a name lock on the table. This ensures that we can release all
-         locks on the table and since no one can open the table, there can
-         be no new threads accessing the table. They will be hanging on the
-         name lock.
+      4) Get an exclusive metadata lock on the table. This ensures that we
+         can release all other locks on the table and since no one can open
+         the table, there can be no new threads accessing the table. They
+         will be hanging on this exclusive lock.
       5) Close all tables that have already been opened but didn't stumble on
          the abort locked previously. This is done as part of the
          close_data_files_and_morph_locks call.
-      6) Close all table handlers and unlock all handlers but retain name lock
+      6) Close all table handlers and unlock all handlers but retain
+         metadata lock.
       7) Write binlog
       8) Now the change is completed except for the installation of the
          new frm file. We thus write an action in the log to change to
@@ -6235,7 +6235,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
         ERROR_INJECT_CRASH("crash_add_partition_2") ||
         mysql_change_partitions(lpt) ||
         ERROR_INJECT_CRASH("crash_add_partition_3") ||
-        abort_and_upgrade_lock(lpt) || /* Always returns 0 */
+        abort_and_upgrade_lock(lpt) ||
         ERROR_INJECT_CRASH("crash_add_partition_4") ||
         alter_close_tables(lpt) ||
         ERROR_INJECT_CRASH("crash_add_partition_5") ||
@@ -6251,7 +6251,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
         ERROR_INJECT_CRASH("crash_add_partition_8") ||
         (write_log_completed(lpt, FALSE), FALSE) ||
         ERROR_INJECT_CRASH("crash_add_partition_9") ||
-        (alter_partition_lock_handling(lpt), FALSE)) 
+        (alter_partition_lock_handling(lpt), FALSE))
     {
       handle_alter_part_error(lpt, not_completed, FALSE, frm_install);
       goto err;
@@ -6298,23 +6298,18 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
          Copy from the reorganised partitions to the new partitions
       4) Log that operation is completed and log all complete actions
          needed to complete operation from here
-      5) Lock all partitions in TL_WRITE_ONLY to ensure that no users
-         are still using the old partitioning scheme. Wait until all
-         ongoing users have completed before progressing.
-      6) Get a name lock of the table
-      7) Close all tables opened but not yet locked, after this call we are
-         certain that no other thread is in the lock wait queue or has
-         opened the table. The name lock will ensure that they are blocked
-         on the open call.
-         This is achieved also by close_data_files_and_morph_locks call.
-      8) Close all partitions opened by this thread, but retain name lock.
-      9) Write bin log
-      10) Prepare handlers for rename and delete of partitions
-      11) Rename and drop the reorged partitions such that they are no
-          longer used and rename those added to their real new names.
-      12) Install the shadow frm file
-      13) Reopen the table if under lock tables
-      14) Complete query
+      5) Upgrade shared metadata lock on the table to an exclusive one.
+         After this we can be sure that there is no other connection
+         using this table (they will be waiting for metadata lock).
+      6) Close all table instances opened by this thread, but retain
+         exclusive metadata lock.
+      7) Write bin log
+      8) Prepare handlers for rename and delete of partitions
+      9) Rename and drop the reorged partitions such that they are no
+         longer used and rename those added to their real new names.
+      10) Install the shadow frm file
+      11) Reopen the table if under lock tables
+      12) Complete query
     */
     if (write_log_add_change_partition(lpt) ||
         ERROR_INJECT_CRASH("crash_change_partition_1") ||
@@ -6325,7 +6320,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
         write_log_final_change_partition(lpt) ||
         ERROR_INJECT_CRASH("crash_change_partition_4") ||
         (not_completed= FALSE) ||
-        abort_and_upgrade_lock(lpt) || /* Always returns 0 */
+        abort_and_upgrade_lock(lpt) ||
         ERROR_INJECT_CRASH("crash_change_partition_5") ||
         alter_close_tables(lpt) ||
         ERROR_INJECT_CRASH("crash_change_partition_6") ||
@@ -6353,7 +6348,7 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
     user
   */
   DBUG_RETURN(fast_end_partition(thd, lpt->copied, lpt->deleted,
-                                 table, table_list, FALSE, NULL,
+                                 table_list, FALSE, NULL,
                                  written_bin_log));
 err:
   close_thread_tables(thd);

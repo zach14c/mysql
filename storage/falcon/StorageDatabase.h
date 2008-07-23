@@ -36,6 +36,7 @@ class PreparedStatement;
 class Sequence;
 class Value;
 class Bitmap;
+class IndexWalker;
 
 CLASS(Field);
 
@@ -54,6 +55,7 @@ public:
 	Connection*			getOpenConnection(void);
 	Connection*			createDatabase(void);
 	Table*				createTable(StorageConnection *storageConnection, const char* tableName, const char *schemaName, const char* sql, int64 autoIncrementValue);
+	Table*				upgradeTable(StorageConnection *storageConnection, const char* tableName, const char *schemaName, const char* sql, int64 autoIncrementValue);
 	int					savepointSet(Connection* connection);
 	int					savepointRelease(Connection* connection, int savePoint);
 	int					savepointRollback(Connection* connection, int savePoint);
@@ -62,6 +64,7 @@ public:
 	int					createIndex(StorageConnection *storageConnection, Table* table, StorageIndexDesc* indexDesc);
 	int					renameTable(StorageConnection* storageConnection, Table* table, const char* newName, const char *schemaName);
 	Bitmap*				indexScan(Index* index, StorageKey *lower, StorageKey *upper, int searchFlags, StorageConnection* storageConnection, Bitmap *bitmap);
+	IndexWalker*		indexPosition(Index* index, StorageKey* lower, StorageKey* upper, int searchFlags, StorageConnection* storageConnection);
 	int					makeKey(StorageIndexDesc* index, const UCHAR* key, int keyLength, StorageKey* storageKey);
 	int					storeBlob(Connection* connection, Table* table, StorageBlob* blob);
 	void				getBlob(Table* table, int recordNumber, StorageBlob* blob);
@@ -72,12 +75,13 @@ public:
 	void				close(void);
 	void				validateCache(void);
 	int					createIndex(StorageConnection* storageConnection, Table* table, const char* indexName, const char* sql);
+	int					dropIndex(StorageConnection* storageConnection, Table* table, const char* indexName, const char* sql);
 	int					insert(Connection* connection, Table* table, Stream* stream);
 	
 	int					nextRow(StorageTable* storageTable, int recordNumber, bool lockForUpdate);
 	int					nextIndexed(StorageTable *storageTable, void* recordBitmap, int recordNumber, bool lockForUpdate);
+	int					nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate);
 	int					fetch(StorageConnection* storageConnection, StorageTable* storageTable, int recordNumber, bool lockForUpdate);
-	//bool				lockRecord(StorageTable* storageTable, Record* record);
 	RecordVersion*		lockRecord(StorageConnection* storageConnection, Table *table, Record* record);
 	
 	int					updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream);
@@ -93,6 +97,13 @@ public:
 	void				clearTransactions(void);
 	void				traceTransaction(int transId, int committed, int blockedBy, Stream *stream);
 
+	void				getIOInfo(InfoTable* infoTable);
+	void				getTransactionInfo(InfoTable* infoTable);
+	void				getSerialLogInfo(InfoTable* infoTable);
+	void				getTransactionSummaryInfo(InfoTable* infoTable);
+	void				getTableSpaceInfo(InfoTable* infoTable);
+	void				getTableSpaceFilesInfo(InfoTable* infoTable);
+
 	Connection			*masterConnection;
 	JString				name;
 	JString				filename;
@@ -105,12 +116,6 @@ public:
 	PreparedStatement	*lookupIndexAlias;
 	PreparedStatement	*insertTrace;
 	int					useCount;
-	void getIOInfo(InfoTable* infoTable);
-	void getTransactionInfo(InfoTable* infoTable);
-	void getSerialLogInfo(InfoTable* infoTable);
-	void getTransactionSummaryInfo(InfoTable* infoTable);
-	void getTableSpaceInfo(InfoTable* infoTable);
-	void getTableSpaceFilesInfo(InfoTable* infoTable);
 };
 
 #endif

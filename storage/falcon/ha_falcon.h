@@ -68,6 +68,7 @@ public:
 					           enum ha_rkey_function find_flag);
 	virtual int		index_init(uint idx, bool sorted);
 	virtual int		index_end(void);
+	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
 	virtual int		index_next_same(uchar *buf, const uchar *key, uint key_len);
 
@@ -96,14 +97,24 @@ public:
 	virtual int		optimize(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		check(THD* thd, HA_CHECK_OPT* check_opt);
 	virtual int		repair(THD* thd, HA_CHECK_OPT* check_opt);
+	virtual int		reset();
+
+	virtual int		check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes);
+	virtual int		alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	virtual int		alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	virtual int		alter_table_phase3(THD* thd, TABLE* altered_table);
 	
 #ifdef TRUNCATE_ENABLED
 	virtual int		delete_all_rows(void);
 #endif
 
+	int				addColumn(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	int				addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
+	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
+
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName,
-					            KEY *key, int indexNumber);
+	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
+	int				dropIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
 	void			getKeyDesc(KEY *keyInfo, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
@@ -111,12 +122,15 @@ public:
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
 	int				setIndexes(void);
+	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
 	void			encodeRecord(uchar *buf, bool updateFlag);
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
+	void			mapFields(TABLE *table);
+	void			unmapFields(void);
 
 	static StorageConnection* getStorageConnection(THD* thd);
 	
@@ -158,6 +172,7 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
+	Field				**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
@@ -167,6 +182,7 @@ public:
 	int					nextRecord;
 	int					indexErrorId;
 	int					errorKey;
+	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
 	bool				haveStartKey;
@@ -174,6 +190,7 @@ public:
 	bool				tableLocked;
 	bool				tempTable;
 	bool				lockForUpdate;
+	bool				indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;

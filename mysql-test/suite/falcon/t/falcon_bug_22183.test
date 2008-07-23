@@ -29,10 +29,6 @@ START TRANSACTION;
 
 --echo # Switch to connection default
 connection default;
-# We get a "multiple primary key defined", as the previous
-# DROP PRIMARY KEY did not worked.
---error ER_MULTIPLE_PRI_KEY
-ALTER TABLE t ADD PRIMARY KEY (s1);
 COMMIT;
 
 --echo # Switch to connection conn1
@@ -40,6 +36,19 @@ connection conn1;
 --error ER_DUP_ENTRY
 --reap
 COMMIT;
+
+
+# We get a "multiple primary key defined", as the previous
+# DROP PRIMARY KEY did not worked.
+--echo # Switch to connection default
+connection default;
+START TRANSACTION;
+--error ER_MULTIPLE_PRI_KEY
+ALTER TABLE t ADD PRIMARY KEY (s1);
+COMMIT;
+
+
+connection conn1;
 ALTER TABLE t DROP PRIMARY KEY;
 
 --echo # Switch to connection default

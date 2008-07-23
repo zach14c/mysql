@@ -29,6 +29,8 @@ const uint32 max_field_size= (uint32) 4294967295U;
 class Send_field;
 class Protocol;
 class Create_field;
+class Relay_log_info;
+
 struct st_cache_field;
 int field_conv(Field *to,Field *from);
 
@@ -61,9 +63,23 @@ public:
   struct st_table *orig_table;		// Pointer to original table
   const char	**table_name, *field_name;
   LEX_STRING	comment;
-  /* Field is part of the following keys */
-  key_map	key_start, part_of_key, part_of_key_not_clustered;
+  /* Bitmap of indexes that start with this field */
+  key_map	key_start;
+  /* Bitmap of indexes allow HA_EXTRA_KEYREAD and cover the entire field */
+  key_map       part_of_key;
+  /* Same as above, but not counting the HA_PRIMARY_KEY_IN_READ_INDEX effect */
+  key_map       part_of_key_not_clustered;
+  /* 
+    Bitmap of indexes that allow HA_READ_ORDER and fully cover this field
+    Note: this is a non-constant characterstic for Falcon, grep for
+    FalconOrderByLimitHandling.
+  */
   key_map       part_of_sortkey;
+  /*
+    Bitmap of indexes that cover the field, both those that allow 
+    HA_EXTRA_KEYREAD and those that don't.
+  */
+  key_map       part_of_key_wo_keyread;
   /* 
     We use three additional unireg types for TIMESTAMP to overcome limitation 
     of current binary format of .frm file. We'd like to be able to support 
@@ -161,7 +177,8 @@ public:
     table, which is located on disk).
   */
   virtual uint32 pack_length_in_rec() const { return pack_length(); }
-  virtual int compatible_field_size(uint field_metadata);
+  virtual int compatible_field_size(uint field_metadata,
+                                    const Relay_log_info *);
   virtual uint pack_length_from_metadata(uint field_metadata)
   { return field_metadata; }
   /*
@@ -253,11 +270,11 @@ public:
     return test(record[(uint) (null_ptr -table->record[0])] &
 		null_bit);
   }
-  inline bool is_null_in_record_with_offset(my_ptrdiff_t offset)
+  inline bool is_null_in_record_with_offset(my_ptrdiff_t col_offset)
   {
     if (!null_ptr)
       return 0;
-    return test(null_ptr[offset] & null_bit);
+    return test(null_ptr[col_offset] & null_bit);
   }
   inline void set_null(my_ptrdiff_t row_offset= 0)
     { if (null_ptr) null_ptr[row_offset]|= null_bit; }
@@ -353,7 +370,7 @@ public:
       Number of copied bytes (excluding padded zero bytes -- see above).
   */
 
-  virtual uint get_key_image(uchar *buff, uint length, imagetype type)
+  virtual uint get_key_image(uchar *buff, uint length, imagetype type_arg)
   {
     get_image(buff, length, &my_charset_bin);
     return length;
@@ -524,7 +541,6 @@ public:
 
   /* Hash value */
   virtual void hash(ulong *nr, ulong *nr2);
-  friend bool reopen_table(THD *,struct st_table *,bool);
   friend int cre_myisam(char * name, register TABLE *form, uint options,
 			ulonglong auto_increment_value);
   friend class Copy_field;
@@ -566,6 +582,77 @@ private:
 */
   virtual int do_save_field_metadata(uchar *metadata_ptr)
   { return 0; }
+
+protected:
+  /*
+    Helper function to pack()/unpack() int32 values
+  */
+  static void handle_int32(uchar *to, const uchar *from,
+                           bool low_byte_first_from, bool low_byte_first_to)
+  {
+    int32 val;
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_from)
+      val = sint4korr(from);
+    else
+#endif
+      longget(val, from);
+
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_to)
+      int4store(to, val);
+    else
+#endif
+      longstore(to, val);
+  }
+
+  /*
+    Helper function to pack()/unpack() int64 values
+  */
+  static void handle_int64(uchar* to, const uchar *from,
+                           bool low_byte_first_from, bool low_byte_first_to)
+  {
+    int64 val;
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_from)
+      val = sint8korr(from);
+    else
+#endif
+      longlongget(val, from);
+
+#ifdef WORDS_BIGENDIAN
+    if (low_byte_first_to)
+      int8store(to, val);
+    else
+#endif
+      longlongstore(to, val);
+  }
+
+  uchar *pack_int32(uchar *to, const uchar *from, bool low_byte_first_to)
+  {
+    handle_int32(to, from, table->s->db_low_byte_first, low_byte_first_to);
+    return to  + sizeof(int32);
+  }
+
+  const uchar *unpack_int32(uchar* to, const uchar *from,
+                            bool low_byte_first_from)
+  {
+    handle_int32(to, from, low_byte_first_from, table->s->db_low_byte_first);
+    return from + sizeof(int32);
+  }
+
+  uchar *pack_int64(uchar* to, const uchar *from, bool low_byte_first_to)
+  {
+    handle_int64(to, from, table->s->db_low_byte_first, low_byte_first_to);
+    return to + sizeof(int64);
+  }
+
+  const uchar *unpack_int64(uchar* to, const uchar *from,
+                            bool low_byte_first_from)
+  {
+    handle_int64(to, from, low_byte_first_from, table->s->db_low_byte_first);
+    return from + sizeof(int64);
+  }
 };
 
 
@@ -753,7 +840,8 @@ public:
   uint32 pack_length() const { return (uint32) bin_size; }
   uint pack_length_from_metadata(uint field_metadata);
   uint row_pack_length() { return pack_length(); }
-  int compatible_field_size(uint field_metadata);
+  int compatible_field_size(uint field_metadata,
+                            const Relay_log_info *rli);
   uint is_equal(Create_field *new_field);
   virtual const uchar *unpack(uchar* to, const uchar *from,
                               uint param_data, bool low_byte_first);
@@ -953,43 +1041,16 @@ public:
   void sql_type(String &str) const;
   uint32 max_display_length() { return MY_INT32_NUM_DECIMAL_DIGITS; }
   virtual uchar *pack(uchar* to, const uchar *from,
-                      uint max_length, bool low_byte_first)
+                      uint max_length __attribute__((unused)),
+                      bool low_byte_first)
   {
-    int32 val;
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      val = sint4korr(from);
-    else
-#endif
-      longget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      int4store(to, val);
-    else
-#endif
-      longstore(to, val);
-    return to + sizeof(val);
+    return pack_int32(to, from, low_byte_first);
   }
-
   virtual const uchar *unpack(uchar* to, const uchar *from,
-                              uint param_data, bool low_byte_first)
+                              uint param_data __attribute__((unused)),
+                              bool low_byte_first)
   {
-    int32 val;
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      val = sint4korr(from);
-    else
-#endif
-      longget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      int4store(to, val);
-    else
-#endif
-      longstore(to, val);
-    return from + sizeof(val);
+    return unpack_int32(to, from, low_byte_first);
   }
 };
 
@@ -1034,43 +1095,16 @@ public:
   bool can_be_compared_as_longlong() const { return TRUE; }
   uint32 max_display_length() { return 20; }
   virtual uchar *pack(uchar* to, const uchar *from,
-                      uint max_length, bool low_byte_first)
+                      uint max_length  __attribute__((unused)),
+                      bool low_byte_first)
   {
-    int64 val;
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      val = sint8korr(from);
-    else
-#endif
-      longlongget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      int8store(to, val);
-    else
-#endif
-      longlongstore(to, val);
-    return to + sizeof(val);
+    return pack_int64(to, from, low_byte_first);
   }
-
   virtual const uchar *unpack(uchar* to, const uchar *from,
-                              uint param_data, bool low_byte_first)
+                              uint param_data __attribute__((unused)),
+                              bool low_byte_first)
   {
-    int64 val;
-#ifdef WORDS_BIGENDIAN
-    if (low_byte_first)
-      val = sint8korr(from);
-    else
-#endif
-      longlongget(val, from);
-
-#ifdef WORDS_BIGENDIAN
-    if (table->s->db_low_byte_first)
-      int8store(to, val);
-    else
-#endif
-      longlongstore(to, val);
-    return from + sizeof(val);
+    return unpack_int64(to, from, low_byte_first);
   }
 };
 #endif
@@ -1244,6 +1278,17 @@ public:
   bool get_date(MYSQL_TIME *ltime,uint fuzzydate);
   bool get_time(MYSQL_TIME *ltime);
   timestamp_auto_set_type get_auto_set_type() const;
+  uchar *pack(uchar *to, const uchar *from,
+              uint max_length __attribute__((unused)), bool low_byte_first)
+  {
+    return pack_int32(to, from, low_byte_first);
+  }
+  const uchar *unpack(uchar* to, const uchar *from,
+                      uint param_data __attribute__((unused)),
+                      bool low_byte_first)
+  {
+    return unpack_int32(to, from, low_byte_first);
+  }
 };
 
 
@@ -1298,6 +1343,17 @@ public:
   void sql_type(String &str) const;
   bool can_be_compared_as_longlong() const { return TRUE; }
   bool zero_pack() const { return 1; }
+  uchar *pack(uchar* to, const uchar *from,
+              uint max_length __attribute__((unused)), bool low_byte_first)
+  {
+    return pack_int32(to, from, low_byte_first);
+  }
+  const uchar *unpack(uchar* to, const uchar *from,
+                      uint param_data __attribute__((unused)),
+                      bool low_byte_first)
+  {
+    return unpack_int32(to, from, low_byte_first);
+  }
 };
 
 
@@ -1411,6 +1467,17 @@ public:
   bool zero_pack() const { return 1; }
   bool get_date(MYSQL_TIME *ltime,uint fuzzydate);
   bool get_time(MYSQL_TIME *ltime);
+  uchar *pack(uchar* to, const uchar *from,
+              uint max_length __attribute__((unused)), bool low_byte_first)
+  {
+    return pack_int64(to, from, low_byte_first);
+  }
+  const uchar *unpack(uchar* to, const uchar *from,
+                      uint param_data __attribute__((unused)),
+                      bool low_byte_first)
+  {
+    return unpack_int64(to, from, low_byte_first);
+  }
 };
 
 
@@ -1462,7 +1529,14 @@ public:
   virtual const uchar *unpack(uchar* to, const uchar *from,
                               uint param_data, bool low_byte_first);
   uint pack_length_from_metadata(uint field_metadata)
-  { return (field_metadata & 0x00ff); }
+  {
+    DBUG_PRINT("debug", ("field_metadata: 0x%04x", field_metadata));
+    if (field_metadata == 0)
+      return row_pack_length();
+    return (((field_metadata >> 4) & 0x300) ^ 0x300) + (field_metadata & 0x00ff);
+  }
+  int compatible_field_size(uint field_metadata,
+                            const Relay_log_info *rli);
   uint row_pack_length() { return (field_length + 1); }
   int pack_cmp(const uchar *a,const uchar *b,uint key_length,
                my_bool insert_or_update);
@@ -1916,7 +1990,8 @@ public:
   uint pack_length_from_metadata(uint field_metadata);
   uint row_pack_length()
   { return (bytes_in_rec + ((bit_len > 0) ? 1 : 0)); }
-  int compatible_field_size(uint field_metadata);
+  int compatible_field_size(uint field_metadata,
+                            const Relay_log_info *rli);
   void sql_type(String &str) const;
   virtual uchar *pack(uchar *to, const uchar *from,
                       uint max_length, bool low_byte_first);

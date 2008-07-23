@@ -54,7 +54,6 @@ public:
 	INTERLOCK_TYPE	transactionSequence;
 	Database		*database;
 	SyncObject		syncObject;
-	//SyncObject	syncInitialize;
 	Transaction		*rolledBackTransaction;
 	int				committed;
 	int				rolledBack;

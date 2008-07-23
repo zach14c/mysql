@@ -45,7 +45,7 @@ bool Event::wait(int count)
 	Thread *thread = Thread::getThread("Event::wait");
 	Sync sync(&mutex, "Event::wait");
 	sync.lock(Exclusive);
-	thread->que = (Thread*) waiters;
+	thread->queue = (Thread*) waiters;
 	waiters = thread;
 	sync.unlock();
 
@@ -70,7 +70,7 @@ void Event::post()
 		{
 		Sync sync(&mutex, "Event::post");
 		sync.lock(Exclusive);
-		for (Thread *waiter = (Thread*) waiters; waiter; waiter = waiter->que)
+		for (Thread *waiter = (Thread*) waiters; waiter; waiter = waiter->queue)
 			waiter->wake();
 		}
 }
@@ -94,10 +94,10 @@ void Event::removeWaiter(Thread *thread)
 	Sync sync(&mutex, "Event::removeWaiter");
 	sync.lock(Exclusive);
 
-	for (Thread **ptr = (Thread**) &waiters; *ptr; ptr = &(*ptr)->que)
+	for (Thread **ptr = (Thread**) &waiters; *ptr; ptr = &(*ptr)->queue)
 		if (*ptr == thread)
 			{
-			*ptr = thread->que;
+			*ptr = thread->queue;
 			return;
 			}
 }

@@ -50,7 +50,8 @@ int myrg_status(MYRG_INFO *info,register MYMERGE_INFO *x,int flag)
       info->records+=file->table->s->state.state.records;
       info->del+=file->table->s->state.state.del;
       DBUG_PRINT("info2",("table: %s, offset: %lu",
-                  file->table->filename,(ulong) file->file_offset));
+                          file->table->s->unresolv_file_name,
+                          (ulong) file->file_offset));
     }
     x->records= info->records;
     x->deleted= info->del;

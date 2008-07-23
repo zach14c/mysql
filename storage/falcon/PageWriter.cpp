@@ -182,7 +182,7 @@ void PageWriter::writer()
 
 			if (bdb)
 				{
-				if (bdb->flags & BDB_dirty)
+				if (bdb->isDirty)
 					cache->writePage(bdb, WRITE_TYPE_PAGE_WRITER);
 
 				bdb->release(REL_HISTORY);

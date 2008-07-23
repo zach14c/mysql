@@ -1,0 +1,44 @@
+--source include/not_embedded.inc
+
+# Test that it is possible to restore backups of tables with more than
+# a single block of data.
+
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest;
+--enable_warnings
+
+--echo Creating database and tables ...
+CREATE DATABASE mysqltest;
+USE mysqltest;
+
+CREATE TABLE t1 (a LONGTEXT) ENGINE=MYISAM;
+
+--echo Inserting data ...
+USE mysqltest;
+INSERT INTO t1 VALUES ("text");
+LET $1=13;
+WHILE ($1)
+{
+  UPDATE t1 SET a=CONCAT(a,a);
+  DEC $1;
+}
+SELECT LENGTH(a) FROM t1;
+
+--echo Performing backup ...
+--replace_column 1 #;
+BACKUP DATABASE mysqltest TO 'test.ba';
+
+DROP DATABASE mysqltest;
+
+# Perform restore.
+--echo Performing restore ...
+--replace_column 1 #;
+RESTORE FROM 'test.ba';
+
+--echo Checking contents of restore ...
+SELECT LENGTH(a) FROM t1;
+CHECKSUM TABLE t1;
+
+--echo Clean-up
+DROP DATABASE mysqltest;
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba

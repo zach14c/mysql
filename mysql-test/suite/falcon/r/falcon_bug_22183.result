@@ -15,11 +15,14 @@ SET @@autocommit = 0;
 START TRANSACTION;
 INSERT INTO t VALUES (3,'b','b');
 # Switch to connection default
-ALTER TABLE t ADD PRIMARY KEY (s1);
-ERROR 42000: Multiple primary key defined
 COMMIT;
 # Switch to connection conn1
 ERROR 23000: Duplicate entry '3' for key 'PRIMARY'
+COMMIT;
+# Switch to connection default
+START TRANSACTION;
+ALTER TABLE t ADD PRIMARY KEY (s1);
+ERROR 42000: Multiple primary key defined
 COMMIT;
 ALTER TABLE t DROP PRIMARY KEY;
 # Switch to connection default

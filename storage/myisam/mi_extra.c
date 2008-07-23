@@ -19,7 +19,9 @@
 #endif
 
 static void mi_extra_keyflag(MI_INFO *info, enum ha_extra_function function);
-
+static int log_flushed_write_cache_physical(IO_CACHE *cache_to_table,
+                                            const uchar *buffert,
+                                            uint length, my_off_t offset);
 
 /*
   Set options and buffers to optimize table handling
@@ -144,6 +146,19 @@ int mi_extra(MI_INFO *info, enum ha_extra_function function, void *extra_arg)
 			 HA_STATE_WRITE_AT_END |
 			 HA_STATE_EXTEND_BLOCK);
       }
+#ifdef HAVE_MYISAM_PHYSICAL_LOGGING
+    if (!share->temporary)
+    {
+      /*
+        This is a post_write: physical_logging_state has to be checked after
+        doing the table write (see mi_log_start_physical()).
+        We set it now as physical logging may be requested later when the
+        cache has started being used.
+      */
+      info->rec_cache.post_write= log_flushed_write_cache_physical;
+      info->rec_cache.arg= share;
+    }
+#endif
     break;
   case HA_EXTRA_PREPARE_FOR_UPDATE:
     if (info->s->data_file_type != DYNAMIC_RECORD)
@@ -216,7 +231,7 @@ int mi_extra(MI_INFO *info, enum ha_extra_function function, void *extra_arg)
     info->lock_wait=0;
     break;
   case HA_EXTRA_NO_WAIT_LOCK:
-    info->lock_wait=MY_DONT_WAIT;
+    info->lock_wait= MY_SHORT_WAIT;
     break;
   case HA_EXTRA_NO_KEYS:
     if (info->lock_type == F_UNLCK)
@@ -248,7 +263,7 @@ int mi_extra(MI_INFO *info, enum ha_extra_function function, void *extra_arg)
 	}
       }
       share->state.state= *info->state;
-      error=mi_state_info_write(share->kfile,&share->state,1 | 2);
+      error= mi_state_info_write(share, share->kfile, &share->state, 1 | 2);
     }
     break;
   case HA_EXTRA_FORCE_REOPEN:
@@ -256,6 +271,7 @@ int mi_extra(MI_INFO *info, enum ha_extra_function function, void *extra_arg)
     share->last_version= 0L;			/* Impossible version */
     pthread_mutex_unlock(&THR_LOCK_myisam);
     break;
+  case HA_EXTRA_PREPARE_FOR_RENAME:
   case HA_EXTRA_PREPARE_FOR_DROP:
     pthread_mutex_lock(&THR_LOCK_myisam);
     share->last_version= 0L;			/* Impossible version */
@@ -263,8 +279,8 @@ int mi_extra(MI_INFO *info, enum ha_extra_function function, void *extra_arg)
     /* Close the isam and data files as Win32 can't drop an open table */
     pthread_mutex_lock(&share->intern_lock);
     if (flush_key_blocks(share->key_cache, share->kfile,
-			 (function == HA_EXTRA_FORCE_REOPEN ?
-			  FLUSH_RELEASE : FLUSH_IGNORE_CHANGED)))
+			 (function == HA_EXTRA_PREPARE_FOR_DROP ?
+                          FLUSH_IGNORE_CHANGED : FLUSH_RELEASE)))
     {
       error=my_errno;
       share->changed=1;
@@ -386,7 +402,7 @@ int mi_extra(MI_INFO *info, enum ha_extra_function function, void *extra_arg)
   {
     char tmp[1];
     tmp[0]=function;
-    myisam_log_command(MI_LOG_EXTRA,info,(uchar*) tmp,1,error);
+    myisam_log_command_logical(MI_LOG_EXTRA, info, (uchar*)tmp, 1, error);
   }
   DBUG_RETURN(error);
 } /* mi_extra */
@@ -436,6 +452,19 @@ int mi_reset(MI_INFO *info)
   */
   if (info->opt_flag & (READ_CACHE_USED | WRITE_CACHE_USED))
   {
+    /*
+      If there is a WRITE_CACHE here and we don't hold a write-lock or
+      intern_lock on the table, then mi_log_stop_physical() may be running
+      now in another thread and may be flushing the write cache now (and two
+      concurrent end_io_cache() will cause problems). For example when the
+      SQL layer unlocks tables and then calls ha_myisam::reset() we must not
+      come here. Temp tables are not concerned.
+    */
+    if (!share->temporary && (info->opt_flag & WRITE_CACHE_USED) &&
+        (info->lock.type <= TL_READ_NO_INSERT))
+    {
+      safe_mutex_assert_owner(&share->intern_lock);
+    }
     info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
     error= end_io_cache(&info->rec_cache);
   }
@@ -454,4 +483,32 @@ int mi_reset(MI_INFO *info)
   info->update= ((info->update & HA_STATE_CHANGED) | HA_STATE_NEXT_FOUND |
                  HA_STATE_PREV_FOUND);
   DBUG_RETURN(error);
+}
+
+
+/**
+  Logs when the WRITE_CACHE is flushed to the data file, to the physical
+  log.
+
+  @param  cache_for_table  pointer to the table's WRITE_CACHE IO_CACHE
+  @param  buffert          argument to the pwrite
+  @param  length           length of buffer
+  @param  filepos          offset in file where buffer was written
+
+  @return Operation status, always 0
+    @retval 0      ok. Yes, even if log write fails we return ok, don't want
+                   to make the table writer believe its table is now
+                   corrupted.
+*/
+
+static int log_flushed_write_cache_physical(IO_CACHE *cache_for_table,
+                                            const uchar *buffert,
+                                            uint length, my_off_t filepos)
+{
+  MYISAM_SHARE *share= (MYISAM_SHARE *)(cache_for_table->arg);
+  DBUG_ENTER("log_flushed_write_cache_physical");
+  if (unlikely(mi_get_physical_logging_state(share)))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYD, share, buffert,
+                               length, filepos);
+  DBUG_RETURN(0);
 }

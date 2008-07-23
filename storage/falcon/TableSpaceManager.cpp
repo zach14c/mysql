@@ -41,6 +41,7 @@
 #include "SRLDropTableSpace.h"
 #include "Log.h"
 #include "InfoTable.h"
+#include "Thread.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -57,6 +58,7 @@ TableSpaceManager::TableSpaceManager(Database *db)
 	memset(nameHash, 0, sizeof(nameHash));
 	memset(idHash, 0, sizeof(nameHash));
 	tableSpaces = NULL;
+	pendingDrops = 0;
 }
 
 TableSpaceManager::~TableSpaceManager()
@@ -110,22 +112,22 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 	if (resultSet->next())
 		{
 		int n = 1;
-		int id = resultSet->getInt(n++);
-		const char *fileName = resultSet->getString(n++);
-		int type = resultSet->getInt(n++);
+		int id = resultSet->getInt(n++);					// tablespace id
+		const char *fileName = resultSet->getString(n++);	// filename
+		int type = TABLESPACE_TYPE_TABLESPACE;				// type (forced)
 		
 		TableSpaceInit tsInit;
 		/***
-		tsInit.initialSize	= resultSet->getLong(4);
-		tsInit.extentSize	= resultSet->getLong(5);
-		tsInit.autoExtendSize = resultSet->getLong(6);
-		tsInit.maxSize		= resultSet->getLong(7);
-		tsInit.nodegroup	= resultSet->getInt(8);
-		tsInit.wait			= resultSet->getInt(9);
+		tsInit.initialSize	= resultSet->getLong(n++);
+		tsInit.extentSize	= resultSet->getLong(n++);
+		tsInit.autoExtendSize = resultSet->getLong(n++);
+		tsInit.maxSize		= resultSet->getLong(n++);
+		tsInit.nodegroup	= resultSet->getInt(n++);
+		tsInit.wait			= resultSet->getInt(n++);
 		***/
-		tsInit.comment		= resultSet->getString(n++);
+		tsInit.comment		= resultSet->getString(n++);	// comment
 		
-		tableSpace = new TableSpace(database, name, id, fileName, 0, &tsInit);
+		tableSpace = new TableSpace(database, name, id, fileName, type, &tsInit);
 
 		if (type != TABLESPACE_TYPE_REPOSITORY)
 			try
@@ -150,7 +152,7 @@ TableSpace* TableSpaceManager::getTableSpace(const char *name)
 	TableSpace *tableSpace = findTableSpace(name);
 
 	if (!tableSpace)
-		throw SQLError(DDL_ERROR, "can't find table space \"%s\"", name);
+		throw SQLError(TABLESPACE_NOT_EXIST_ERROR, "can't find table space \"%s\"", name);
 
 	if (!tableSpace->active)
 		throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
@@ -168,10 +170,32 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
-	if (!repository && tableSpace->dbb->doesFileExist(fileName))
+	if (!repository)
 		{
-		delete tableSpace;
-		throw SQLError(TABLESPACE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
+		bool fileExists;
+
+		// Check if table space file already exists.
+		// Take into account, that tablespace might have been already  dropped
+		// by another transaction, yet file can still be present on the disk,
+		// if log record is not yet fully committed by the gopher thread).
+		// So we'll wait for a few seconds if there are pending drops and 
+		// tablespace file exists.
+
+		for (int i=0; i < 10; i++)
+			{
+			fileExists = tableSpace->dbb->doesFileExist(fileName);
+
+			if (fileExists && pendingDrops > 0)
+				Thread::getThread("TableSpaceManager::createTableSpace")->sleep(1000);
+			else
+				break;
+			}
+
+		if (fileExists)
+			{
+			delete tableSpace;
+			throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
+			}
 		}
 		
 	try
@@ -302,10 +326,8 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 	statement->executeUpdate();
 	Transaction *transaction = database->getSystemTransaction();
 	transaction->hasUpdates = true;
-	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
 
 	syncDDL.unlock();
-	database->commitSystemTransaction();
 	
 	int slot = tableSpace->name.hash(TS_HASH_SIZE);
 
@@ -317,7 +339,12 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 			break;
 			}
 			
+	pendingDrops++;
 	syncObj.unlock();
+
+	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
+	database->commitSystemTransaction();
+
 	tableSpace->active = false;
 }
 
@@ -386,6 +413,10 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 	sync.unlock();
 	tableSpace->dropTableSpace();
 	delete tableSpace;
+
+	sync.lock(Exclusive);
+	if(pendingDrops >0)
+		pendingDrops--;
 }
 
 void TableSpaceManager::reportWrites(void)
@@ -487,8 +518,8 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 		
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace_name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type
+		infoTable->putString(0, resultSet->getString(1));					// tablespace name
+		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
 		infoTable->putString(2, resultSet->getString(2));					// comment
 		infoTable->putRecord();
 		}
@@ -502,10 +533,10 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace_name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type
-		infoTable->putInt(2, 1);											// file_id
-		infoTable->putString(3, resultSet->getString(2));					// file_name
+		infoTable->putString(0, resultSet->getString(1));					// tablespace name
+		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
+		infoTable->putInt(2, 1);											// file id (unused for now)
+		infoTable->putString(3, resultSet->getString(2));					// file name
 		infoTable->putRecord();
 		}
 }

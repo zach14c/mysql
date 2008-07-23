@@ -89,9 +89,10 @@ EncodedDataStream::EncodedDataStream(Stream *strm)
 	stream = strm;
 }
 
-EncodedDataStream::EncodedDataStream(const unsigned char *data)
+EncodedDataStream::EncodedDataStream(const UCHAR *data, uint length)
 {
 	ptr = data;
+	end = data + length;
 }
 
 EncodedDataStream::~EncodedDataStream()
@@ -738,6 +739,13 @@ void EncodedDataStream::unsupported(Value *value)
 
 DataStreamType EncodedDataStream::decode()
 {
+	if (ptr >= end)
+		{
+		type = edsTypeNull;
+		
+		return type;
+		}
+		
 	UCHAR code = *ptr++;
 	
 	switch(code)
@@ -1165,9 +1173,10 @@ void EncodedDataStream::skip()
 	ptr = skip(ptr);
 }
 
-void EncodedDataStream::setData(const UCHAR *data)
+void EncodedDataStream::setData(const UCHAR *data, uint length)
 {
 	ptr = data;
+	end = data + length;
 }
 
 void EncodedDataStream::encodeNull()

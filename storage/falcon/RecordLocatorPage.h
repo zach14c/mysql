@@ -55,6 +55,8 @@ public:
 	void	setIndexSlot(int slot, int32 page, int line, int availableSpace);
 	void	expungeDataPage(int32 pageNumber);
 	void	deleteDataPages(Dbb* dbb, TransId transId);
+	void	backup(EncodedDataStream* stream);
+	void	restore(EncodedDataStream* stream);
 
 protected:
 	void	insertSpaceSlot(int slot, int availableSpace);

@@ -1,4 +1,4 @@
-SET GLOBAL debug="d,backup_debug:d,backup";
+SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
 DROP DATABASE IF EXISTS db3;
@@ -42,28 +42,29 @@ CREATE TABLE `tasking` (
 LOCK TABLES `tasking` WRITE;
 INSERT INTO `tasking` VALUES ('333445555','405',23),('123763153','405',33.5),('921312388','601',44),('800122337','300',13),('820123637','300',9.5),('830132335','401',8.5),('333445555','300',11),('921312388','500',13),('800122337','300',44),('820123637','401',500.5),('830132335','400',12),('333445665','600',300.25),('123654321','607',444.75),('123456789','300',1000);
 UNLOCK TABLES;
-breakpoints: Getting lock "locking_thread_added"
-SELECT get_lock("locking_thread_added", 100);
-get_lock("locking_thread_added", 100)
-1
+backup: Activate synchronization points for BACKUP.
+Depending on the driver used, one of the sync points is used,
+and the result differs in PROCESSLIST state and info.
+SET DEBUG_SYNC= 'default_locking_thread_added SIGNAL bup_thread_added
+                 WAIT_FOR finish';
+SET DEBUG_SYNC= 'myisam_locking_thread_added SIGNAL bup_thread_added
+                 WAIT_FOR finish';
 backup: Send the backup command.
 BACKUP DATABASE db1,db2 TO 'test.ba';
-breakpoints: Check for lock in process list.
-breakpoints: Checking locks.
+breakpoints: Wait for BACKUP to reach its synchronization point.
+SET DEBUG_SYNC= 'now WAIT_FOR bup_thread_added';
 SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%" OR info LIKE "default driver locking thread%";
+WHERE info LIKE "BACKUP DATABASE%" OR state LIKE "%holding table locks%";
 id	#
 command	Daemon
-state	Locking thread: holding table locks
-info	default driver locking thread
+state	MyISAM backup: holding table locks
+info	MyISAM driver locking thread
 id	#
 command	Query
-state	debug_sync_point: locking_thread_added
+state	debug sync point: myisam_locking_thread_added
 info	BACKUP DATABASE db1,db2 TO 'test.ba'
-breakpoints: Release lock
-SELECT release_lock("locking_thread_added");
-release_lock("locking_thread_added")
-1
+breakpoints: Sending finish signal to wake BACKUP.
+SET DEBUG_SYNC= 'now SIGNAL finish';
 backup_id
 #
 DROP DATABASE db1;
@@ -134,6 +135,7 @@ tasking	CREATE TABLE `tasking` (
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
+SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS bup_default;
 CREATE DATABASE bup_default;
 CREATE TABLE bup_default.wide (
@@ -437,4 +439,174 @@ Running the client:
 
 Chuck@linux:~> mysql -uroot -p
 Enter password:
+SET sql_mode=ansi;
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+DROP DATABASE bup_default;
+RESTORE FROM 'bup_default.bak';
+backup_id
+#
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+SHOW TABLES IN bup_default;
+Tables_in_bup_default
+t1
+t1_blob
+t2
+wide
+SHOW CREATE TABLE bup_default.t1;
+Table	Create Table
+t1	CREATE TABLE "t1" (
+  "a" int(11) DEFAULT NULL
+)
+SELECT * FROM bup_default.t1;
+a
+1
+2
+3
+4
+SELECT * FROM bup_default.t2;
+a
+1
+2
+3
+4
+SELECT COUNT(*) FROM bup_default.t1_blob;
+COUNT(*)
+2
+SELECT COUNT(*) FROM bup_default.wide;
+COUNT(*)
+1
+BACKUP DATABASE bup_default TO 'bup_default.bak';
+backup_id
+#
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+SET sql_mode='';
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	
+DROP DATABASE bup_default;
+RESTORE FROM 'bup_default.bak';
+backup_id
+#
+SHOW VARIABLES LIKE 'sql_mode';
+Variable_name	Value
+sql_mode	
+SHOW TABLES IN bup_default;
+Tables_in_bup_default
+t1
+t1_blob
+t2
+wide
+SHOW CREATE TABLE bup_default.t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+SELECT * FROM bup_default.t1;
+a
+1
+2
+3
+4
+SELECT * FROM bup_default.t2;
+a
+1
+2
+3
+4
+SELECT COUNT(*) FROM bup_default.t1_blob;
+COUNT(*)
+2
+SELECT COUNT(*) FROM bup_default.wide;
+COUNT(*)
+1
+create the database
+CREATE DATABASE bup_delete;
+create a table and populate it
+CREATE TABLE bup_delete.me(id int, ccode varchar(20)) ENGINE=MEMORY;
+INSERT INTO bup_delete.me VALUES (1,'aa'),(2,'bb'),(3,'cc'),(4,'dd');
+show the data
+SELECT * FROM bup_delete.me;
+id	ccode
+1	aa
+2	bb
+3	cc
+4	dd
+delete a row
+DELETE FROM bup_delete.me WHERE ccode='cc';
+do backup
+BACKUP DATABASE bup_delete TO 'bup_delete.bak';
+backup_id
+#
+show the data
+SELECT * FROM bup_delete.me;
+id	ccode
+1	aa
+2	bb
+4	dd
+do restore
+RESTORE FROM 'bup_delete.bak';
+backup_id
+#
+show the data
+SELECT * FROM bup_delete.me;
+id	ccode
+1	aa
+2	bb
+4	dd
+DROP TABLE bup_default.t1;
+DROP TABLE bup_default.t2;
+DROP TABLE bup_default.t1_blob;
+DROP TABLE bup_default.wide;
+Create table with timestamp and populate.
+CREATE TABLE bup_default.time_t1 (a INT, b TIMESTAMP);
+Set known timestamp value and insert a row
+SET TIMESTAMP= UNIX_TIMESTAMP('2008-06-10 17:00:00');
+INSERT INTO bup_default.time_t1 VALUES (1, NULL);
+Set known timestamp value and insert a row
+SET TIMESTAMP= UNIX_TIMESTAMP('2008-06-11 08:15:21');
+INSERT INTO bup_default.time_t1 VALUES (2, NULL);
+Set known timestamp value and insert a row
+SET TIMESTAMP= UNIX_TIMESTAMP('2008-06-12 00:00:59');
+INSERT INTO bup_default.time_t1 VALUES (3, NULL);
+Show the data
+SELECT * FROM bup_default.time_t1;
+a	b
+1	2008-06-10 17:00:00
+2	2008-06-11 08:15:21
+3	2008-06-12 00:00:59
+Backup the database.
+BACKUP DATABASE bup_default TO 'bup_default_timestamp.bak';
+backup_id
+#
+Restore the database.
+RESTORE FROM 'bup_default_timestamp.bak';
+backup_id
+#
+Show data after restore (timestamp should be same as above).
+SELECT * FROM bup_default.time_t1;
+a	b
+1	2008-06-10 17:00:00
+2	2008-06-11 08:15:21
+3	2008-06-12 00:00:59
+Set known timestamp value and insert a row
+SET TIMESTAMP= UNIX_TIMESTAMP('2008-06-13 23:59:59');
+INSERT INTO bup_default.time_t1 VALUES (4, NULL);
+Set known timestamp value and insert a row
+SET TIMESTAMP= UNIX_TIMESTAMP('2008-04-01 00:00:01');
+INSERT INTO bup_default.time_t1 VALUES (5, NULL);
+Show data that was added after restore
+SELECT * FROM bup_default.time_t1;
+a	b
+1	2008-06-10 17:00:00
+2	2008-06-11 08:15:21
+3	2008-06-12 00:00:59
+4	2008-06-13 23:59:59
+5	2008-04-01 00:00:01
+DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;

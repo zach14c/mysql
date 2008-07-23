@@ -49,6 +49,7 @@
 #include "ScaledBinary.h"
 #include "Dbb.h"
 #include "CmdGen.h"
+#include "IndexWalker.h"
 //#include "SyncTest.h"
 
 #define ACCOUNT				"mysql"
@@ -194,6 +195,41 @@ Table* StorageDatabase::createTable(StorageConnection *storageConnection, const 
 		if (table)
 			database->dropTable(table, masterConnection->getTransaction());
 			
+		statement->execute(sql);
+		
+		if (autoIncrementValue)
+			{
+			char buffer[1024];
+			snprintf(buffer, sizeof(buffer), "create sequence  %s.\"%s\" start with " I64FORMAT, schemaName, tableName, autoIncrementValue - 1);
+			statement->execute(buffer);
+			}
+			
+		statement->release();
+		}
+	catch (SQLException& exception)
+		{
+		statement->release();
+		storageConnection->setErrorText(&exception);
+		
+		throw;
+		}
+		
+	return findTable(tableName, schemaName);
+}
+
+Table* StorageDatabase::upgradeTable(StorageConnection *storageConnection, const char* tableName, const char *schemaName, const char* sql, int64 autoIncrementValue)
+{
+	Database *database = masterConnection->database;
+	
+	if (!user)
+		if ((user = database->findUser(ACCOUNT)))
+			user->addRef();		
+	
+	Statement *statement = masterConnection->createStatement();
+	
+	try
+		{
+		//Table *table = database->findTable(schemaName, tableName);
 		statement->execute(sql);
 		
 		if (autoIncrementValue)
@@ -415,24 +451,41 @@ int StorageDatabase::nextIndexed(StorageTable *storageTable, void* recordBitmap,
 			candidate->release();
 
 		storageConnection->setErrorText(&exception);
-
 		int errorCode = exception.getSqlcode();
+		
 		switch (errorCode)
 			{
 			case UPDATE_CONFLICT:
 				return StorageErrorUpdateConflict;
+				
 			case OUT_OF_MEMORY_ERROR:
 				return StorageErrorOutOfMemory;
+				
 			case OUT_OF_RECORD_MEMORY_ERROR:
 				return StorageErrorOutOfRecordMemory;
+				
 			case DEADLOCK:
 				return StorageErrorDeadlock;
+				
 			case LOCK_TIMEOUT:
 				return StorageErrorLockTimeout;
 			}
 
 		return StorageErrorRecordNotFound;
 		}
+}
+
+
+int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate)
+{
+	Record *record = indexWalker->getNext(lockForUpdate);
+
+	if (!record)
+		return StorageErrorRecordNotFound;
+		
+	storageTable->setRecord(record, lockForUpdate);
+	
+	return record->recordNumber;
 }
 
 RecordVersion* StorageDatabase::lockRecord(StorageConnection* storageConnection, Table *table, Record* record)
@@ -658,6 +711,31 @@ int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* ta
 	return 0;
 }
 
+int StorageDatabase::dropIndex(StorageConnection *storageConnection, Table* table, const char* indexName, const char* sql)
+{
+	Connection *connection = storageConnection->connection;
+	Statement *statement = connection->createStatement();
+	
+	try
+		{
+		statement->execute(sql);
+		}
+	catch (SQLException& exception)
+		{
+		storageConnection->setErrorText(&exception);
+		statement->release();
+		
+		if (exception.getSqlcode() == INDEX_OVERFLOW)
+			return StorageErrorIndexOverflow;
+		
+		return StorageErrorNoIndex;
+		}
+	
+	statement->release();
+	
+	return 0;
+}
+
 int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* table, const char* tableName, const char *schemaName)
 {
 	Connection *connection = storageConnection->connection;
@@ -736,6 +814,23 @@ Bitmap* StorageDatabase::indexScan(Index* index, StorageKey *lower, StorageKey *
 	return index->scanIndex((lower) ? &lower->indexKey : NULL,
 							(upper) ? &upper->indexKey : NULL, searchFlags, 
 							storageConnection->connection->getTransaction(), bitmap);
+}
+
+
+IndexWalker* StorageDatabase::indexPosition(Index* index, StorageKey* lower, StorageKey* upper, int searchFlags, StorageConnection* storageConnection)
+{
+	if (!index)
+		return NULL;
+
+	if (lower)
+		lower->indexKey.index = index;
+		
+	if (upper)
+		upper->indexKey.index = index;
+		
+	return index->positionIndex((lower) ? &lower->indexKey : NULL,
+								(upper) ? &upper->indexKey : NULL, searchFlags, 
+								storageConnection->connection->getTransaction());
 }
 
 int StorageDatabase::makeKey(StorageIndexDesc* indexDesc, const UCHAR* key, int keyLength, StorageKey* storageKey)

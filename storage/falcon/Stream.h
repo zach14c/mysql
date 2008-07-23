@@ -71,7 +71,7 @@ public:
 	Segment*		allocSegment (int tail);
 	void			setMinSegment (int length);
 
-#ifdef ENGINE
+#ifdef FALCONDB
 	char*			decompress(int tableId, int recordNumber);
 	void			compress (int length, void *address);
 	void			printShorts (const char *msg, int length, short *data);

@@ -143,3 +143,11 @@ void Hdr::putHeaderVariable(Dbb *dbb, HdrVariable variable, int size, const char
 			}
 		}
 }
+
+void Hdr::backup(EncodedDataStream* stream)
+{
+}
+
+void Hdr::restore(EncodedDataStream* stream)
+{
+}

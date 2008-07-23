@@ -77,7 +77,7 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			sql_repl.h slave.h rpl_filter.h rpl_injector.h \
 			log_event.h rpl_record.h \
 			log_event_old.h rpl_record_old.h \
-			stacktrace.h sql_sort.h sql_cache.h set_var.h \
+			sql_sort.h sql_cache.h set_var.h \
 			spatial.h gstream.h client_settings.h tzfile.h \
 			tztime.h my_decimal.h\
 			sp_head.h sp_pcontext.h sp_rcontext.h sp.h sp_cache.h \
@@ -88,7 +88,8 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			event_data_objects.h event_scheduler.h \
 			sql_partition.h partition_info.h partition_element.h \
 			probes.h sql_audit.h \
-			contributors.h sql_servers.h ddl_blocker.h si_objects.h
+			contributors.h sql_servers.h ddl_blocker.h \
+			si_objects.h sql_plist.h mdl.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -114,6 +115,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			discover.cc time.cc opt_range.cc opt_sum.cc \
 		   	records.cc filesort.cc handler.cc \
 		        ha_partition.cc \
+			debug_sync.cc \
 			sql_db.cc sql_table.cc sql_rename.cc sql_crypt.cc \
 			sql_load.cc mf_iocache.cc field_conv.cc sql_show.cc \
 			sql_udf.cc sql_analyse.cc sql_analyse.h sql_cache.cc \
@@ -122,7 +124,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			rpl_reporting.cc \
                         sql_union.cc sql_derived.cc \
 			sql_client.cc \
-			stacktrace.c repl_failsafe.h repl_failsafe.cc \
+			repl_failsafe.h repl_failsafe.cc \
 			sql_olap.cc sql_view.cc \
 			gstream.cc spatial.cc sql_help.cc sql_cursor.cc \
 			tztime.cc my_decimal.cc\
@@ -133,7 +135,8 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc event_parse_data.cc
+			ddl_blocker.cc si_objects.cc event_parse_data.cc \
+			mdl.cc
 
 if HAVE_DTRACE
   mysqld_SOURCES += probes.d

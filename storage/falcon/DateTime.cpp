@@ -32,7 +32,7 @@
 #include "SQLError.h"
 #include "Log.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Thread.h"
 #endif
 
@@ -354,7 +354,7 @@ int init()
 	for (Alias *alias = aliasData; alias->alias; ++alias)
 		{
 		alias->timeZone = DateTime::findTimeZone (alias->name);
-#ifdef ENGINE
+#ifdef FALCONDB
 		ASSERT (alias->timeZone);
 #endif
 		int slot = JString::hash (alias->alias, HASH_SIZE);
@@ -1163,7 +1163,7 @@ const TimeZone* DateTime::findTimeZone(const char *string)
 
 const TimeZone* DateTime::getDefaultTimeZone()
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Thread *thread = Thread::findThread();
 
 	if (thread)

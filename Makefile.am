@@ -69,7 +69,7 @@ tags:
 .PHONY:	init-db bin-dist \
   test    test-force    test-full    test-force-full    test-force-mem \
   test-pl test-force-pl test-full-pl test-force-full-pl test-force-pl-mem \
-  test-unit test-ps test-nr test-pr test-ns test-binlog-statement \
+  test-unit test-unit-big test-ps test-nr test-pr test-ns test-binlog-statement \
   test-ext-funcs test-ext-rpl test-ext-partitions test-ext-jp \
   test-ext-stress test-ext test-embedded test-reprepare \
   test-fast test-fast-cursor test-fast-view test-fast-prepare \
@@ -84,7 +84,10 @@ tags:
 # making sure each user use different ports.
 
 test-unit:
-	cd unittest && $(MAKE) test
+	cd unittest; $(MAKE) test
+
+test-unit-big:
+	cd unittest; MYTAP_CONFIG=big $(MAKE) test
 
 test-ps:
 	cd mysql-test ; \
@@ -121,7 +124,7 @@ test-reprepare:
 	    @PERL@ ./mysql-test-run.pl $(force) $(mem) --ps-protocol \
 		--mysqld=--debug=+d,reprepare_each_statement
 
-test:	test-unit test-ns test-pr
+test:	test-ns test-pr
 
 test-full:	test test-nr test-ps
 
@@ -156,7 +159,7 @@ test-bt:
 	-cd mysql-test ; MTR_BUILD_THREAD=auto \
 	    @PERL@ ./mysql-test-run.pl --force --comment=falcon --suite=falcon
 	-cd mysql-test ; MTR_BUILD_THREAD=auto \
-	    @PERL@ ./mysql-test-run.pl --force --comment=funcs1+ps --ps-protocol --suite=funcs_1
+	    @PERL@ ./mysql-test-run.pl --force --comment=funcs1+ps --ps-protocol --reorder --suite=funcs_1
 	-cd mysql-test ; MTR_BUILD_THREAD=auto \
 	    @PERL@ ./mysql-test-run.pl --force --comment=funcs2 --suite=funcs_2
 	-cd mysql-test ; MTR_BUILD_THREAD=auto \
@@ -198,7 +201,7 @@ test-force-full-pl: test-force-full
 
 test-ext-funcs:
 	cd mysql-test ; \
-	    @PERL@ ./mysql-test-run.pl --force --suite=funcs_1 ; \
+	    @PERL@ ./mysql-test-run.pl --force --reorder --suite=funcs_1 ; \
 	    @PERL@ ./mysql-test-run.pl --force --suite=funcs_2
 
 test-ext-rpl:

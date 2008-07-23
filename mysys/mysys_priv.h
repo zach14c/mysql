@@ -62,6 +62,7 @@ extern FILE*    my_win_fdopen(File Filedes, const char *type);
 extern int      my_win_stat(const char *path, struct _stati64 *buf);
 extern int      my_win_fstat(File fd, struct _stati64 *buf);
 extern int      my_win_fsync(File fd);
+extern File     my_win_fsync(File fd);
 extern File     my_win_sopen(const char *path, int oflag, int shflag, int perm);
 extern File     my_open_osfhandle(HANDLE handle, int oflag);
 #endif

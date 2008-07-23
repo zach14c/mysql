@@ -43,6 +43,8 @@
 #include "Index2RootPage.h"
 #include "PStatement.h"
 #include "RSet.h"
+#include "WalkIndex.h"
+#include "WalkDeferred.h"
 
 #define SEGMENT_BYTE(segment,count)		((indexVersion >= INDEX_VERSION_1) ? count - segment : segment)
 #define PAD_BYTE(field)					((indexVersion >= INDEX_VERSION_1) ? field->indexPadByte : 0)
@@ -97,11 +99,11 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 	recordsPerSegment = new uint64[numberFields];
 	memset(recordsPerSegment, 0, sizeof(uint64) * numberFields);
 	deferredIndexes.syncObject.setName("Index::deferredIndexes");
-//* These kind of commented lines implement multiple DI hash sizes.
-//*	curHashTable = 0;
-//*	memset(DIHashTables, 0, sizeof(DIHashTables));
-//*	memset(DIHashTableCounts, 0, sizeof(DIHashTableCounts));
-//*	memset(DIHashTableSlotsUsed, 0, sizeof(DIHashTableSlotsUsed));
+	//* These kind of commented lines implement multiple DI hash sizes.
+	//*	curHashTable = 0;
+	//*	memset(DIHashTables, 0, sizeof(DIHashTables));
+	//*	memset(DIHashTableCounts, 0, sizeof(DIHashTableCounts));
+	//*	memset(DIHashTableSlotsUsed, 0, sizeof(DIHashTableSlotsUsed));
 	DIHashTable = NULL;
 	DIHashTableCounts =  0;
 	DIHashTableSlotsUsed =  0;
@@ -410,7 +412,6 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 		damageCheck();
 
 	ASSERT (indexId != -1);
-	//Bitmap *bitmap = new Bitmap;
 
 	if (bitmap)
 		bitmap->clear();
@@ -453,8 +454,6 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 	if (partialLengths)
 		searchFlags |= Partial;
 		
-	//database->scanIndex (indexId, indexVersion, lowKey, highKey, searchFlags, bitmap);
-	
 	if (rootPage == 0)
 		getRootPage();
 		
@@ -474,7 +473,55 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 	
 	if (transaction)
 		transaction->scanIndexCount++;
+		
 	return bitmap;
+}
+
+IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, Transaction* transaction)
+{
+	if (damaged)
+		damageCheck();
+
+	if (partialLengths)
+		searchFlags |= Partial;
+		
+	ASSERT (indexId != -1);
+	WalkIndex *walkIndex = new WalkIndex(this, transaction, searchFlags, lowKey, highKey);
+	IndexWalker *indexWalker = NULL;
+	
+	if (rootPage == 0)
+		getRootPage();
+		
+	switch (indexVersion)
+		{
+		case INDEX_VERSION_1:
+			IndexRootPage::positionIndex(dbb, indexId, rootPage, walkIndex);
+			break;
+		
+		default:
+			ASSERT(false);
+		}
+		
+	if (transaction && deferredIndexes.first)
+		{
+		Sync sync(&deferredIndexes.syncObject, "Index::positionIndex");
+		sync.lock(Shared);
+		
+		for (DeferredIndex *deferredIndex = deferredIndexes.first; deferredIndex; deferredIndex = deferredIndex->next)
+			if (transaction->visible(deferredIndex->transaction, deferredIndex->transactionId, FOR_WRITING))
+				{
+				if (!indexWalker)
+					{
+					indexWalker = new IndexWalker(this, transaction, searchFlags);
+					indexWalker->addWalker(walkIndex);
+					}
+				
+				WalkDeferred *walkDeferred = new WalkDeferred(deferredIndex, transaction, searchFlags, &walkIndex->lowerBound, &walkIndex->upperBound);
+				indexWalker->addWalker(walkDeferred);
+				}
+		}
+	
+	return (indexWalker) ? indexWalker : walkIndex;
 }
 
 void Index::setIndex(int32 id)
@@ -1086,4 +1133,3 @@ void Index::scanDIHash(IndexKey* scanKey, int searchFlags, Bitmap *bitmap)
 			}
 		}
 }
-//* These commented lines implement multiple DI hash sizes.

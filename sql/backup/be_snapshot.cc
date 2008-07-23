@@ -40,7 +40,7 @@
  * Please see <code> be_default.cc </code> for a complete description.
  */
 
-#include "mysql_priv.h"
+#include "../mysql_priv.h"
 #include "backup_engine.h"
 #include "be_snapshot.h"
 #include "backup_aux.h"
@@ -56,26 +56,43 @@ using backup::Buffer;
 using namespace backup;
 
 /**
- * Create a snapshot backup backup driver.
- *
- * Given a list of tables to be backed-up, create instance of backup
- * driver which will create backup image of these tables.
- *
- * @param  tables (in) list of tables to be backed-up.
- * @param  eng    (out) pointer to backup driver instance.
- *
- * @retval Error code or backup::OK on success.
- */
-result_t Engine::get_backup(const uint32, const Table_list &tables, Backup_driver* &drv)
+  Cleanup backup
+
+  This method provides a means to stop a current backup by allowing
+  the driver to shutdown gracefully. The method call ends the current
+  transaction and closes the tables.
+*/
+result_t Backup::cleanup()
 {
-  DBUG_ENTER("Engine::get_backup");
-  Backup *ptr= new snapshot_backup::Backup(tables, m_thd);
-  if (!ptr)
-    DBUG_RETURN(ERROR);
-  drv= (backup::Backup_driver *)ptr;
+  DBUG_ENTER("Default_backup::cleanup()");
+  DBUG_PRINT("backup",("Snapshot driver - stop backup"));
+  if (m_cleanup)
+  {
+    m_cleanup= FALSE;
+    locking_thd->lock_state= LOCK_DONE; // set lock done so destructor won't wait
+    if (m_trans_start)
+    {
+      ha_autocommit_or_rollback(locking_thd->m_thd, 0);
+      end_active_trans(locking_thd->m_thd);
+      m_trans_start= FALSE;
+    }
+    if (tables_open)
+    {
+      if (hdl)
+        default_backup::Backup::end_tbl_read();
+      close_thread_tables(locking_thd->m_thd);
+      tables_open= FALSE;
+    }
+  }
   DBUG_RETURN(OK);
 }
 
+/**
+  Lock the tables
+
+  This method creates the consistent read transaction and acquires the read
+  lock.
+*/
 result_t Backup::lock()
 {
   DBUG_ENTER("Snapshot_backup::lock()");
@@ -90,8 +107,10 @@ result_t Backup::lock()
   int res= begin_trans(locking_thd->m_thd);
   if (res)
     DBUG_RETURN(ERROR);
+  m_trans_start= TRUE;
   locking_thd->lock_state= LOCK_ACQUIRED;
-  BACKUP_BREAKPOINT("backup_cs_locked");
+  DBUG_ASSERT(locking_thd->m_thd == current_thd);
+  DEBUG_SYNC(locking_thd->m_thd, "after_backup_cs_locked");
   DBUG_RETURN(OK);
 }
 
@@ -101,13 +120,17 @@ result_t Backup::get_data(Buffer &buf)
 
   if (!tables_open && (locking_thd->lock_state == LOCK_ACQUIRED))
   {
-    BACKUP_BREAKPOINT("backup_cs_open_tables");
+    // The lex needs to be cleaned up between consecutive calls to 
+    // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
+    // previously opened views and crash.
+    locking_thd->m_thd->lex->cleanup_after_one_table_open();
     open_and_lock_tables(locking_thd->m_thd, locking_thd->tables_in_backup);
     tables_open= TRUE;
   }
   if (locking_thd->lock_state == LOCK_ACQUIRED)
   {
-    BACKUP_BREAKPOINT("backup_cs_reading");
+    DBUG_ASSERT(locking_thd->m_thd == current_thd);
+    DEBUG_SYNC(locking_thd->m_thd, "when_backup_cs_reading");
   }
 
   res= default_backup::Backup::get_data(buf);
@@ -118,37 +141,9 @@ result_t Backup::get_data(Buffer &buf)
     being set to LOCK_SIGNAL from parent::get_data(). This is set
     after the last table is finished reading.
   */
-  if (locking_thd->lock_state == LOCK_SIGNAL)
-  {
-    locking_thd->lock_state= LOCK_DONE; // set lock done so destructor won't wait
-    ha_autocommit_or_rollback(locking_thd->m_thd, 0);
-    end_active_trans(locking_thd->m_thd);
-    close_thread_tables(locking_thd->m_thd);
-  }
+  if ((locking_thd->lock_state == LOCK_SIGNAL) || m_cancel)
+    cleanup();
   return(res);
-}
-
-/**
- * Create a snapshot backup restore driver.
- *
- * Given a list of tables to be restored, create instance of restore
- * driver which will restore these tables from a backup image.
- *
- * @param  version  (in) version of the backup image.
- * @param  tables   (in) list of tables to be restored.
- * @param  eng      (out) pointer to restore driver instance.
- *
- * @retval Error code or backup::OK on success.
- */
-result_t Engine::get_restore(version_t, const uint32, const Table_list &tables,
-Restore_driver* &drv)
-{
-  DBUG_ENTER("Engine::get_restore");
-  Restore *ptr= new snapshot_backup::Restore(tables, m_thd);
-  if (!ptr)
-    DBUG_RETURN(ERROR);
-  drv= ptr;
-  DBUG_RETURN(OK);
 }
 
 } /* snapshot_backup namespace */

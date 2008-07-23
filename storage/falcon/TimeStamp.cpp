@@ -37,23 +37,6 @@
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-
-TimeStamp& TimeStamp::operator =(DateTime value)
-{
-	date = value.getMilliseconds();
-	nanos = 0;
-
-	return *this;
-}
-
-TimeStamp& TimeStamp::operator =(int32 value)
-{
-	date = value;
-	nanos = 0;
-
-	return *this;
-}
-
 int TimeStamp::getString(int length, char * buffer)
 {
 	//return DateTime::getString ("%Y-%m-%d %H:%M", length, buffer);
@@ -77,11 +60,6 @@ int TimeStamp::getNanos()
 
 void TimeStamp::setNanos(int nanoseconds)
 {
-	/***
-	if (nanoseconds > 999999999 || nanoseconds < 0)
-		throw SQLError (RUNTIME_ERROR, "illegal value for nanoseconds in Timestamp");
-	***/
-
 	nanos = nanoseconds;
 }
 
@@ -111,3 +89,9 @@ DateTime TimeStamp::getDate()
 }
 ***/
 
+
+void TimeStamp::setDate(DateTime value)
+{
+	date = value.getMilliseconds();
+	nanos = 0;
+}

@@ -112,6 +112,7 @@ connect (con100,localhost,ddicttestuser1,ddictpass,information_schema);
 --echo   SHOW/SELECT shows all processes/threads.
 --echo ####################################################################################
 connection default;
+--replace_result ENGINE=MyISAM "" ENGINE=MARIA "" " PAGE_CHECKSUM=1" "" " PAGE_CHECKSUM=0" ""
 eval SHOW CREATE TABLE $table;
 --replace_column 1 ID 3 HOST_NAME 6 TIME
 eval SHOW $table;
@@ -128,6 +129,7 @@ eval SELECT $columns FROM $table $select_where ORDER BY id;
 connection con100;
 --echo   SHOW/SELECT shows only the processes (1) of the user.
 --echo ####################################################################################
+--replace_result ENGINE=MyISAM "" ENGINE=MARIA "" " PAGE_CHECKSUM=1" "" " PAGE_CHECKSUM=0" ""
 eval SHOW CREATE TABLE $table;
 --replace_column 1 ID 3 HOST_NAME 6 TIME
 eval SHOW $table;

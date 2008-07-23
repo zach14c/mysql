@@ -23,7 +23,6 @@
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sql_trigger.h"
-#include "backup/debug.h"
 
 /**
   Implement DELETE SQL word.
@@ -400,13 +399,7 @@ cleanup:
   DBUG_ASSERT(transactional_table || !deleted || thd->transaction.stmt.modified_non_trans_table);
   free_underlaid_joins(thd, select_lex);
 
-  /*
-    Breakpoints for backup testing.
-  */
-  if (!table->file->has_transactions())
-  {
-    BACKUP_BREAKPOINT("backup_commit_blocker");
-  }
+  DEBUG_SYNC(thd, "at_delete_end");
 
   MYSQL_DELETE_END();
   if (error < 0 || (thd->lex->ignore && !thd->is_fatal_error))
@@ -972,7 +965,8 @@ bool multi_delete::send_eof()
     normally can't safely do this.
   - We don't want an ok to be sent to the end user.
   - We don't want to log the truncate command
-  - If we want to have a name lock on the table on exit without errors.
+  - If we want to keep exclusive metadata lock on the table (obtained by
+    caller) on exit without errors.
 */
 
 bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
@@ -982,9 +976,11 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
   TABLE *table;
   bool error;
   uint path_length;
+  MDL_LOCK_DATA *mdl_lock_data= 0;
   DBUG_ENTER("mysql_truncate");
 
   bzero((char*) &create_info,sizeof(create_info));
+
   /* If it is a temporary table, close and regenerate it */
   if (!dont_send_ok && (table= find_temporary_table(thd, table_list)))
   {
@@ -996,7 +992,8 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
       goto trunc_by_del;
 
     table->file->info(HA_STATUS_AUTO | HA_STATUS_NO_LOCK);
-    
+
+    create_info.options|= HA_LEX_CREATE_TMP_TABLE;
     close_temporary_table(thd, table, 0, 0);    // Don't free share
     ha_create_table(thd, share->normalized_path.str,
                     share->db.str, share->table_name.str, &create_info, 1);
@@ -1028,17 +1025,36 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
                table_list->db, table_list->table_name);
       DBUG_RETURN(TRUE);
     }
-    if (!ha_check_storage_engine_flag(ha_resolve_by_legacy_type(thd, table_type),
+    if (!ha_check_storage_engine_flag(ha_resolve_by_legacy_type(thd,
+                                                                table_type),
                                       HTON_CAN_RECREATE))
       goto trunc_by_del;
 
-    if (lock_and_wait_for_table_name(thd, table_list))
+    /*
+      FIXME: Actually code of TRUNCATE breaks meta-data locking protocol since
+             tries to get table enging and therefore accesses table in some way
+             without holding any kind of meta-data lock.
+    */
+    mdl_lock_data= mdl_alloc_lock(0, table_list->db, table_list->table_name,
+                                  thd->mem_root);
+    mdl_set_lock_type(mdl_lock_data, MDL_EXCLUSIVE);
+    mdl_add_lock(&thd->mdl_context, mdl_lock_data);
+    if (mdl_acquire_exclusive_locks(&thd->mdl_context))
+    {
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
       DBUG_RETURN(TRUE);
+    }
+    pthread_mutex_lock(&LOCK_open);
+    tdc_remove_table(thd, TDC_RT_REMOVE_ALL, table_list->db,
+                     table_list->table_name);
+    pthread_mutex_unlock(&LOCK_open);
   }
 
-  // Remove the .frm extension AIX 5.2 64-bit compiler bug (BUG#16155): this
-  // crashes, replacement works.  *(path + path_length - reg_ext_length)=
-  // '\0';
+  /*
+    Remove the .frm extension AIX 5.2 64-bit compiler bug (BUG#16155): this
+    crashes, replacement works.  *(path + path_length - reg_ext_length)=
+     '\0';
+  */
   path[path_length - reg_ext_length] = 0;
   pthread_mutex_lock(&LOCK_open);
   error= ha_create_table(thd, path, table_list->db, table_list->table_name,
@@ -1058,27 +1074,34 @@ end:
       write_bin_log(thd, TRUE, thd->query, thd->query_length);
       my_ok(thd);		// This should return record count
     }
-    pthread_mutex_lock(&LOCK_open);
-    unlock_table_name(thd, table_list);
-    pthread_mutex_unlock(&LOCK_open);
+    if (mdl_lock_data)
+    {
+      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+    }
   }
   else if (error)
   {
-    pthread_mutex_lock(&LOCK_open);
-    unlock_table_name(thd, table_list);
-    pthread_mutex_unlock(&LOCK_open);
+    if (mdl_lock_data)
+    {
+      mdl_release_lock(&thd->mdl_context, mdl_lock_data);
+      mdl_remove_lock(&thd->mdl_context, mdl_lock_data);
+    }
   }
   DBUG_RETURN(error);
 
 trunc_by_del:
   /* Probably InnoDB table */
   ulonglong save_options= thd->options;
+  bool save_binlog_row_based= thd->current_stmt_binlog_row_based;
+
   table_list->lock_type= TL_WRITE;
   thd->options&= ~(OPTION_BEGIN | OPTION_NOT_AUTOCOMMIT);
   ha_enable_transaction(thd, FALSE);
   mysql_init_select(thd->lex);
-  bool save_binlog_row_based= thd->current_stmt_binlog_row_based;
   thd->clear_current_stmt_binlog_row_based();
+
+  /* Delete all rows from table */
   error= mysql_delete(thd, table_list, (COND*) 0, (SQL_LIST*) 0,
                       HA_POS_ERROR, LL(0), TRUE);
   ha_enable_transaction(thd, TRUE);

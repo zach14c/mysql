@@ -20,13 +20,14 @@
 #include "Record.h"
 #include "Log.h"
 #include "MemMgr.h"
+#include "Sync.h"
 
 
-RecordScavenge::RecordScavenge(Database *db, TransId oldestTransaction, bool forced)
+RecordScavenge::RecordScavenge(Database *db, TransId oldestTransaction, bool wasForced)
 {
 	database = db;
 	transactionId = oldestTransaction;
-	wasForced = forced;
+	forced = wasForced;
 	baseGeneration = database->currentGeneration;
 	memset(ageGroups, 0, sizeof(ageGroups));
 	recordsReclaimed = 0;
@@ -45,17 +46,20 @@ RecordScavenge::~RecordScavenge(void)
 
 void RecordScavenge::inventoryRecord(Record* record)
 {
+	Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
+	syncPrior.lock(Shared);
+
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{
 		++numberRecords;
 		recordSpace += record->size;
-		int age = baseGeneration - record->generation;
+		uint64 age = baseGeneration - record->generation;
 		int size = record->size + sizeof(MemBigHeader);
 		
 		if (record->hasRecord() || (record->state == recChilled))
 			size += sizeof(MemBigHeader);
 			
-		if (age >= 0 && age < AGE_GROUPS)
+		if (age != UNDEFINED && age < AGE_GROUPS)
 			ageGroups[age] += size;
 		else if (age >= AGE_GROUPS)
 			overflowSpace += size;
@@ -64,12 +68,12 @@ void RecordScavenge::inventoryRecord(Record* record)
 		}
 }
 
-int RecordScavenge::computeThreshold(uint64 target)
+uint64 RecordScavenge::computeThreshold(uint64 target)
 {
 	totalSpace = 0;
 	scavengeGeneration = 0;
 	
-	for (int n = 0; n < AGE_GROUPS; ++n)
+	for (uint64 n = 0; n < AGE_GROUPS; ++n)
 		{
 		totalSpace += ageGroups[n];
 		
@@ -79,7 +83,7 @@ int RecordScavenge::computeThreshold(uint64 target)
 
 	totalSpace += overflowSpace;
 
-	if (wasForced || (scavengeGeneration == 0 && totalSpace > target))
+	if (forced || (scavengeGeneration == 0 && totalSpace > target))
 		scavengeGeneration = baseGeneration + AGE_GROUPS;
 	
 	return scavengeGeneration;
@@ -88,13 +92,13 @@ int RecordScavenge::computeThreshold(uint64 target)
 void RecordScavenge::printRecordMemory(void)
 {
 	Log::debug ("Record Memory usage for %s:\n", (const char*) database->name);
-	int max;
+	uint64 max;
 
 	for (max = AGE_GROUPS - 1; max > 0; --max)
 		if (ageGroups[max])
 			break;
 
-	for (int n = 0; n <= max; ++n)
+	for (uint64 n = 0; n <= max; ++n)
 		if (ageGroups [n])
 			Log::debug ("  %d. %d\n", baseGeneration - n, ageGroups[n]);
 

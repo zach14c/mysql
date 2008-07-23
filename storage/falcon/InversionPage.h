@@ -49,18 +49,18 @@ class IndexKey;
 class InversionPage : public Page  
 {
 public:
-	static void logPage (Bdb *bdb);
-	void analyze (int pageNumber);
-	void removeNode (Dbb * dbb, int keyLength, UCHAR * key);
-	void validate (Dbb *dbb, Validation *validation, Bitmap *pages);
-	void validate();
-	void printPage(Bdb *bdb);
-	Bdb* splitInversionPage (Dbb * dbb, Bdb *bdb, IndexKey *indexKey, TransId transId);
-	Inv* findNode (int keyLength, UCHAR *key, UCHAR* expandedKey, int *expandedKeyLength);
-	bool addNode (Dbb *dbb, IndexKey *indexKey);
-	int  computePrefix (int l1, UCHAR *v1, int l2, UCHAR *v2);
-	//InversionPage();
-	//virtual ~InversionPage();
+	static void	 logPage (Bdb *bdb);
+	void		analyze (int pageNumber);
+	void		removeNode (Dbb * dbb, int keyLength, UCHAR * key);
+	void		validate (Dbb *dbb, Validation *validation, Bitmap *pages);
+	void		validate();
+	void		printPage(Bdb *bdb);
+	Bdb*		splitInversionPage (Dbb * dbb, Bdb *bdb, IndexKey *indexKey, TransId transId);
+	Inv*		findNode (int keyLength, UCHAR *key, UCHAR* expandedKey, int *expandedKeyLength);
+	bool		addNode (Dbb *dbb, IndexKey *indexKey);
+	int			computePrefix (int l1, UCHAR *v1, int l2, UCHAR *v2);
+	void		backup(EncodedDataStream* stream);
+	void		restore(EncodedDataStream* stream);
 
 	int32	parentPage;
 	int32	priorPage;

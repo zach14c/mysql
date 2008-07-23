@@ -30,11 +30,13 @@
 #endif
 
 #include <sys/locking.h>
+#include <sys/stat.h>			/* chmod() constants*/
 #include <winsock2.h>
 #include <Ws2tcpip.h>
 #include <fcntl.h>
 #include <io.h>
 #include <malloc.h>
+#include <sys/stat.h>
 
 #define HAVE_SMEM 1
 
@@ -90,11 +92,25 @@
 
 #define S_IROTH		S_IREAD		/* for my_lib */
 
+/* for MY_S_ISFIFO() macro from my_lib */
+#if defined (_S_IFIFO) && !defined (S_IFIFO)
+#define S_IFIFO _S_IFIFO
+#endif
+
 /* Winsock2 constant (Vista SDK and later)*/
 #define IPPROTO_IPV6 41
 #ifndef IPV6_V6ONLY
 #define IPV6_V6ONLY 27
 #endif
+
+/* 
+   Constants used by chmod. Note, that group/others is ignored
+   - because unsupported by Windows due to different access control model.
+*/
+#define S_IRWXU S_IREAD|S_IWRITE 
+#define S_IRWXG 0
+#define S_IRWXO 0
+typedef int mode_t; 
 
 #ifdef __BORLANDC__
 #define FILE_BINARY	O_BINARY	/* my_fopen in binary mode */
