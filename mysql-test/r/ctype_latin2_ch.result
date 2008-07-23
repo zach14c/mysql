@@ -75,6 +75,60 @@ hex(weight_string('abc' as char(3)))
 select hex(weight_string('abc' as char(5)));
 hex(weight_string('abc' as char(5)))
 828384474701202020202001030303020201616263202000
+select hex(weight_string('abc', 1, 2, 0xC0));
+hex(weight_string('abc', 1, 2, 0xC0))
+82
+select hex(weight_string('abc', 2, 2, 0xC0));
+hex(weight_string('abc', 2, 2, 0xC0))
+8283
+select hex(weight_string('abc', 3, 2, 0xC0));
+hex(weight_string('abc', 3, 2, 0xC0))
+828301
+select hex(weight_string('abc', 4, 2, 0xC0));
+hex(weight_string('abc', 4, 2, 0xC0))
+82830120
+select hex(weight_string('abc', 5, 2, 0xC0));
+hex(weight_string('abc', 5, 2, 0xC0))
+8283012020
+select hex(weight_string('abc',25, 2, 0xC0));
+hex(weight_string('abc',25, 2, 0xC0))
+82830120200103030161620000000000000000000000000000
+select hex(weight_string('abc', 1, 3, 0xC0));
+hex(weight_string('abc', 1, 3, 0xC0))
+82
+select hex(weight_string('abc', 2, 3, 0xC0));
+hex(weight_string('abc', 2, 3, 0xC0))
+8283
+select hex(weight_string('abc', 3, 3, 0xC0));
+hex(weight_string('abc', 3, 3, 0xC0))
+828384
+select hex(weight_string('abc', 4, 3, 0xC0));
+hex(weight_string('abc', 4, 3, 0xC0))
+82838401
+select hex(weight_string('abc', 5, 3, 0xC0));
+hex(weight_string('abc', 5, 3, 0xC0))
+8283840120
+select hex(weight_string('abc',25, 3, 0xC0));
+hex(weight_string('abc',25, 3, 0xC0))
+82838401202020010303030161626300000000000000000000
+select hex(weight_string('abc', 1, 4, 0xC0));
+hex(weight_string('abc', 1, 4, 0xC0))
+82
+select hex(weight_string('abc', 2, 4, 0xC0));
+hex(weight_string('abc', 2, 4, 0xC0))
+8283
+select hex(weight_string('abc', 3, 4, 0xC0));
+hex(weight_string('abc', 3, 4, 0xC0))
+828384
+select hex(weight_string('abc', 4, 4, 0xC0));
+hex(weight_string('abc', 4, 4, 0xC0))
+82838447
+select hex(weight_string('abc', 5, 4, 0xC0));
+hex(weight_string('abc', 5, 4, 0xC0))
+8283844701
+select hex(weight_string('abc',25, 4, 0xC0));
+hex(weight_string('abc',25, 4, 0xC0))
+82838447012020202001030303020161626320000000000000
 select @@collation_connection;
 @@collation_connection
 latin2_czech_cs
@@ -132,6 +186,96 @@ hex(weight_string(cast(_latin1 0xDF6368 as char) as char(3)))
 select hex(weight_string(cast(_latin1 0xDF6368 as char) as char(4)));
 hex(weight_string(cast(_latin1 0xDF6368 as char) as char(4)))
 988B47470121202020010303020201DF63202000
+select hex(weight_string(cast(_latin1 0x6368DF as char), 1, 2, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 1, 2, 0xC0))
+8B
+select hex(weight_string(cast(_latin1 0x6368DF as char), 2, 2, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 2, 2, 0xC0))
+8B98
+select hex(weight_string(cast(_latin1 0x6368DF as char), 3, 2, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 3, 2, 0xC0))
+8B9801
+select hex(weight_string(cast(_latin1 0x6368DF as char), 4, 2, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 4, 2, 0xC0))
+8B980120
+select hex(weight_string(cast(_latin1 0x6368DF as char),25, 2, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char),25, 2, 0xC0))
+8B980120210103030163DF0000000000000000000000000000
+select hex(weight_string(cast(_latin1 0x6368DF as char), 1, 3, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 1, 3, 0xC0))
+8B
+select hex(weight_string(cast(_latin1 0x6368DF as char), 2, 3, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 2, 3, 0xC0))
+8B98
+select hex(weight_string(cast(_latin1 0x6368DF as char), 3, 3, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 3, 3, 0xC0))
+8B9847
+select hex(weight_string(cast(_latin1 0x6368DF as char), 4, 3, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 4, 3, 0xC0))
+8B984701
+select hex(weight_string(cast(_latin1 0x6368DF as char),25, 3, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char),25, 3, 0xC0))
+8B984701202120010303020163DF2000000000000000000000
+select hex(weight_string(cast(_latin1 0x6368DF as char), 1, 4, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 1, 4, 0xC0))
+8B
+select hex(weight_string(cast(_latin1 0x6368DF as char), 2, 4, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 2, 4, 0xC0))
+8B98
+select hex(weight_string(cast(_latin1 0x6368DF as char), 3, 4, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 3, 4, 0xC0))
+8B9847
+select hex(weight_string(cast(_latin1 0x6368DF as char), 4, 4, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char), 4, 4, 0xC0))
+8B984747
+select hex(weight_string(cast(_latin1 0x6368DF as char),25, 4, 0xC0));
+hex(weight_string(cast(_latin1 0x6368DF as char),25, 4, 0xC0))
+8B984747012021202001030302020163DF2020000000000000
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 1, 2,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 1, 2,0xC0))
+98
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 2, 2,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 2, 2,0xC0))
+988B
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 3, 2,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 3, 2,0xC0))
+988B01
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 4, 2,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 4, 2,0xC0))
+988B0121
+select hex(weight_string(cast(_latin1 0xDF6368 as char),25, 2,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char),25, 2,0xC0))
+988B01212001030301DF630000000000000000000000000000
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 1, 3,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 1, 3,0xC0))
+98
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 2, 3,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 2, 3,0xC0))
+988B
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 3, 3,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 3, 3,0xC0))
+988B47
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 4, 3,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 4, 3,0xC0))
+988B4701
+select hex(weight_string(cast(_latin1 0xDF6368 as char),25, 3,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char),25, 3,0xC0))
+988B47012120200103030201DF632000000000000000000000
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 1, 4,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 1, 4,0xC0))
+98
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 2, 4,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 2, 4,0xC0))
+988B
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 3, 4,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 3, 4,0xC0))
+988B47
+select hex(weight_string(cast(_latin1 0xDF6368 as char), 4, 4,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char), 4, 4,0xC0))
+988B4747
+select hex(weight_string(cast(_latin1 0xDF6368 as char),25, 4,0xC0));
+hex(weight_string(cast(_latin1 0xDF6368 as char),25, 4,0xC0))
+988B47470121202020010303020201DF632020000000000000
 select @@collation_connection;
 @@collation_connection
 latin2_czech_cs
@@ -404,4 +548,72 @@ l1	l2	l3	l4	name
 9B01	2701	0501	DC00	LATIN CAPITAL LETTER U WITH DIAERESIS
 9B01	2801	0301	FB00	LATIN SMALL LETTER U WITH DOUBLE ACUTE
 9B01	2801	0501	DB00	LATIN CAPITAL LETTER U WITH DOUBLE ACUTE
+drop table t1;
+set names utf8;
+create table t1 (
+ch varchar(1),
+name varchar(64)
+) character set latin2 collate latin2_czech_cs;
+insert into t1 values (0x4F,'LATIN CAPITAL LETTER O');
+insert into t1 values (0xD3,'LATIN CAPITAL LETTER O WITH ACUTE');
+insert into t1 values (0xD4,'LATIN CAPITAL LETTER O WITH CURCUMFLEX');
+insert into t1 values (0xD6,'LATIN CAPITAL LETTER O WITH DIAERESIS');
+insert into t1 values (0xD5,'LATIN CAPITAL LETTER O WITH DOUBLE ACUTE');
+insert into t1 values (0x75,'LATIN _SMALL_ LETTER U');
+insert into t1 values (0xFA,'LATIN _SMALL_ LETTER U WITH ACUTE');
+insert into t1 values (0xF9,'LATIN _SMALL_ LETTER U WITH RING ABOVE');
+insert into t1 values (0xFC,'LATIN _SMALL_ LETTER U WITH DIAERESIS');
+insert into t1 values (0xFB,'LATIN _SMALL_ LETTER U WITH DOUBLE ACUTE');
+select ch,
+hex(weight_string(ch level 1)) l1,
+hex(weight_string(ch level 2)) l2,
+hex(weight_string(ch level 3)) l3,
+hex(weight_string(ch level 4)) l4,
+name from t1 order by ch;
+ch	l1	l2	l3	l4	name
+O	9201	2001	0501	4F00	LATIN CAPITAL LETTER O
+Ó	9201	2201	0501	D300	LATIN CAPITAL LETTER O WITH ACUTE
+Ô	9201	2401	0501	D400	LATIN CAPITAL LETTER O WITH CURCUMFLEX
+Ö	9201	2701	0501	D600	LATIN CAPITAL LETTER O WITH DIAERESIS
+Ő	9201	2801	0501	D500	LATIN CAPITAL LETTER O WITH DOUBLE ACUTE
+u	9B01	2001	0301	7500	LATIN _SMALL_ LETTER U
+ú	9B01	2201	0301	FA00	LATIN _SMALL_ LETTER U WITH ACUTE
+ů	9B01	2601	0301	F900	LATIN _SMALL_ LETTER U WITH RING ABOVE
+ü	9B01	2701	0301	FC00	LATIN _SMALL_ LETTER U WITH DIAERESIS
+ű	9B01	2801	0301	FB00	LATIN _SMALL_ LETTER U WITH DOUBLE ACUTE
+alter table t1 modify ch char(1), modify name char(64);
+select ch,
+hex(weight_string(ch level 1)) l1,
+hex(weight_string(ch level 2)) l2,
+hex(weight_string(ch level 3)) l3,
+hex(weight_string(ch level 4)) l4,
+name from t1 order by ch;
+ch	l1	l2	l3	l4	name
+O	9201	2001	0501	4F00	LATIN CAPITAL LETTER O
+Ó	9201	2201	0501	D300	LATIN CAPITAL LETTER O WITH ACUTE
+Ô	9201	2401	0501	D400	LATIN CAPITAL LETTER O WITH CURCUMFLEX
+Ö	9201	2701	0501	D600	LATIN CAPITAL LETTER O WITH DIAERESIS
+Ő	9201	2801	0501	D500	LATIN CAPITAL LETTER O WITH DOUBLE ACUTE
+u	9B01	2001	0301	7500	LATIN _SMALL_ LETTER U
+ú	9B01	2201	0301	FA00	LATIN _SMALL_ LETTER U WITH ACUTE
+ů	9B01	2601	0301	F900	LATIN _SMALL_ LETTER U WITH RING ABOVE
+ü	9B01	2701	0301	FC00	LATIN _SMALL_ LETTER U WITH DIAERESIS
+ű	9B01	2801	0301	FB00	LATIN _SMALL_ LETTER U WITH DOUBLE ACUTE
+select ch,
+hex(weight_string(ch level 1)) l1,
+hex(weight_string(ch level 2)) l2,
+hex(weight_string(ch level 3)) l3,
+hex(weight_string(ch level 4)) l4,
+name from t1 order by concat(ch);
+ch	l1	l2	l3	l4	name
+O	9201	2001	0501	4F00	LATIN CAPITAL LETTER O
+Ó	9201	2201	0501	D300	LATIN CAPITAL LETTER O WITH ACUTE
+Ô	9201	2401	0501	D400	LATIN CAPITAL LETTER O WITH CURCUMFLEX
+Ö	9201	2701	0501	D600	LATIN CAPITAL LETTER O WITH DIAERESIS
+Ő	9201	2801	0501	D500	LATIN CAPITAL LETTER O WITH DOUBLE ACUTE
+u	9B01	2001	0301	7500	LATIN _SMALL_ LETTER U
+ú	9B01	2201	0301	FA00	LATIN _SMALL_ LETTER U WITH ACUTE
+ů	9B01	2601	0301	F900	LATIN _SMALL_ LETTER U WITH RING ABOVE
+ü	9B01	2701	0301	FC00	LATIN _SMALL_ LETTER U WITH DIAERESIS
+ű	9B01	2801	0301	FB00	LATIN _SMALL_ LETTER U WITH DOUBLE ACUTE
 drop table t1;

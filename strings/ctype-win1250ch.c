@@ -580,6 +580,12 @@ my_strnxfrm_win1250ch(CHARSET_INFO * cs  __attribute__((unused)),
       my_strxfrm_desc_and_reverse(dstl, dst, flags, level);
     }
   }
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && dst < de)
+  {
+    uint fill_length= de - dst;
+    cs->cset->fill(cs, (char*) dst, fill_length, 0);
+    dst= de;
+  }
   return dst - dst0;
 }
 

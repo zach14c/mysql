@@ -6518,9 +6518,13 @@ int Field_string::cmp(const uchar *a_ptr, const uchar *b_ptr)
 
 void Field_string::sort_string(uchar *to,uint length)
 {
-  IF_DBUG(uint tmp=) my_strnxfrm(field_charset,
-                                 to, length,
-                                 ptr, field_length);
+  IF_DBUG(uint tmp=) field_charset->coll->strnxfrm(field_charset,
+                                                   to, length,
+                                                   field_length /
+                                                   field_charset->mbmaxlen,
+                                                   ptr, field_length,
+                                                   MY_STRXFRM_PAD_WITH_SPACE |
+                                                   MY_STRXFRM_PAD_TO_MAXLEN);
   DBUG_ASSERT(tmp == length);
 }
 
@@ -7009,9 +7013,14 @@ void Field_varstring::sort_string(uchar *to,uint length)
     length-= length_bytes;
   }
  
-  tot_length= my_strnxfrm(field_charset,
-			  to, length, ptr + length_bytes,
-			  tot_length);
+  tot_length= field_charset->coll->strnxfrm(field_charset,
+                                            to, length,
+                                            field_length /
+                                            field_charset->mbmaxlen,
+                                            ptr + length_bytes,
+                                            tot_length,
+                                            MY_STRXFRM_PAD_WITH_SPACE |
+                                            MY_STRXFRM_PAD_TO_MAXLEN);
   DBUG_ASSERT(tot_length == length);
 }
 
@@ -7850,9 +7859,11 @@ void Field_blob::sort_string(uchar *to,uint length)
       }
     }
     memcpy_fixed(&blob,ptr+packlength,sizeof(char*));
-    
-    blob_length=my_strnxfrm(field_charset,
-                            to, length, blob, blob_length);
+    blob_length= field_charset->coll->strnxfrm(field_charset,
+                                  to, length, length,
+                                  blob, blob_length,
+                                  MY_STRXFRM_PAD_WITH_SPACE |
+                                  MY_STRXFRM_PAD_TO_MAXLEN);
     DBUG_ASSERT(blob_length == length);
   }
 }
