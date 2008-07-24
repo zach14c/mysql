@@ -89,6 +89,8 @@ Dbb::Dbb(Database *dbase)
 	tableSpaceSectionId = 0;
 	tableSpaceId = 0;
 	noLog = false;
+	syncClone.setName("Dbb::syncClone");
+	syncSequences.setName("Dbb::syncSequences");
 }
 
 
@@ -749,7 +751,7 @@ Bdb* Dbb::getSequencePage(int sequenceId, LockType lockType, TransId transId)
 	else
 	***/
 		{
-		Sync sync(&sequencesSyncObject, "Dbb::getSequencePage");
+		Sync sync(&syncSequences, "Dbb::getSequencePage");
 		sync.lock(Shared);
 		int sequencePageSequence = sequenceId / sequencesPerPage;
 		int32 sequencePageNumber = sequencePages.get(sequencePageSequence);
@@ -970,7 +972,7 @@ void Dbb::cloneFile(Database *database, const char *fileName, bool createShadow)
 /***
 void Dbb::cloneFile(DatabaseClone *shadow, bool isShadow)
 {
-	Sync sync (&cloneSyncObject, "Dbb::cloneFile(2)");
+	Sync sync (&syncClone, "Dbb::cloneFile(2)");
 	sync.lock (Exclusive);
 	shadow->next = shadows;
 	shadows = shadow;
@@ -1023,7 +1025,7 @@ void Dbb::cloneFile(DatabaseClone *shadow, bool isShadow)
 
 bool Dbb::deleteShadow(DatabaseCopy *shadow)
 {
-	Sync sync (&cloneSyncObject, "Dbb::deleteShadow");
+	Sync sync (&syncClone, "Dbb::deleteShadow");
 	sync.lock (Exclusive);
 
 	for (DatabaseCopy **ptr = &shadows; *ptr; ptr = &(*ptr)->next)
@@ -1352,7 +1354,7 @@ void Dbb::upgradeSequenceSection(void)
 
 void Dbb::addShadow(DatabaseCopy* shadow)
 {
-	Sync sync (&cloneSyncObject, "Dbb::addShadow");
+	Sync sync (&syncClone, "Dbb::addShadow");
 	sync.lock (Exclusive);
 	shadow->next = shadows;
 	shadows = shadow;

@@ -46,6 +46,7 @@ RepositoryManager::RepositoryManager(Database *db) : Schedule (schedule)
 {
 	database = db;
 	memset (repositories, 0, sizeof (repositories));
+	syncObject.setName("RepositoryManager::syncObject");
 }
 
 RepositoryManager::~RepositoryManager()

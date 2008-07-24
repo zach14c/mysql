@@ -37,7 +37,7 @@ Sync::Sync(SynchronizationObject *obj, const char *fromWhere)
 	ASSERT (obj);
 	state = None;
 	syncObject = obj;
-	where = fromWhere;
+	location = fromWhere;
 	prior = NULL;
 	marked = NULL;
 }
@@ -70,7 +70,7 @@ void Sync::lock(LockType type, int timeout)
 /***
 void Sync::lock(LockType type, const char *fromWhere)
 {
-	where = fromWhere;
+	location = fromWhere;
 	lock(type);
 }
 ***/
@@ -110,7 +110,7 @@ void Sync::findLocks(LinkedList &threads, LinkedList &syncObjects)
 void Sync::print(const char *label)
 {
 	LOG_DEBUG ("%s %s state %d (%d) syncObject %p\n", 
-			   label, where, state, request, syncObject);
+			   label, location, state, request, syncObject);
 }
 
 void Sync::mark(const char* text)

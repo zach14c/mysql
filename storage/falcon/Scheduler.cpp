@@ -66,6 +66,7 @@ Scheduler::Scheduler(Database *db)
 	events = NULL;
 	useCount = 1;
 	thread = NULL;
+	syncObject.setName("Scheduler::syncObject");
 }
 
 Scheduler::~Scheduler()

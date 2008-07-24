@@ -133,6 +133,7 @@ IO::IO()
 	forceFsync = true;
 	fatalError = false;
 	memset(writeTypes, 0, sizeof(writeTypes));
+	syncObject.setName("IO::syncObject");
 }
 
 IO::~IO()

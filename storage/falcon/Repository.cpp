@@ -61,6 +61,7 @@ Repository::Repository(const char *repositoryName, const char *repositorySchema,
 		setRollover (rollovers);
 
 	memset (volumes, 0, sizeof (volumes));
+	syncObject.setName("Repository::syncObject");
 }
 
 Repository::~Repository()

@@ -31,7 +31,7 @@ class LinkedList;
 class Sync
 {
 public:
-	Sync(SynchronizationObject *obj, const char *where);
+	Sync(SynchronizationObject *obj, const char *location);
 	virtual ~Sync();
 
 	void	print (const char* label);
@@ -40,14 +40,14 @@ public:
 	//void	print(int level);
 	void	setObject (SynchronizationObject *obj);
 	void	unlock();
-	void	lock (LockType type);
+	void	lock(LockType type);
 	void	lock(LockType type, int timeout);
 
 	SynchronizationObject	*syncObject;
 	LockType	state;
 	LockType	request;
 	Sync		*prior;
-	const char	*where;
+	const char	*location;
 	const char	*marked;
 	void mark(const char* text);
 };

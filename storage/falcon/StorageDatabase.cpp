@@ -100,6 +100,8 @@ StorageDatabase::StorageDatabase(StorageHandler *handler, const char *dbName, co
 		//SyncTest syncTest;
 		//syncTest.test();
 		}
+	syncObject.setName("StorageDatabase::syncObject");
+	syncTrace.setName("StorageDatabase::syncTrace");
 }
 
 StorageDatabase::~StorageDatabase(void)
@@ -1206,7 +1208,7 @@ void StorageDatabase::clearTransactions(void)
 {
 #ifdef TRACE_TRANSACTIONS
 
-	Sync sync(&traceSyncObject, "StorageDatabase::clearTransactions");
+	Sync sync(&syncTrace, "StorageDatabase::clearTransactions");
 	sync.lock(Exclusive);
 	Statement *statement = masterConnection->createStatement();
 	statement->execute(traceTable);
@@ -1224,7 +1226,7 @@ void StorageDatabase::traceTransaction(int transId, int committed, int blockedBy
 {
 	try
 		{
-		Sync sync(&traceSyncObject, "StorageDatabase::traceTransaction");
+		Sync sync(&syncTrace, "StorageDatabase::traceTransaction");
 		sync.lock(Exclusive);
 		char buffer [10000];
 		int length = stream->getSegment(0, sizeof(buffer) - 1, buffer);
