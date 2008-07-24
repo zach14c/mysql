@@ -10,11 +10,12 @@ let $MYSQLD_DATADIR= `SELECT @@datadir`;
 
 connection admin;
 -- echo * shut down mysqld, removed logs, restarted it
-append_file $MYSQLTEST_VARDIR/tmp/master0.expect;
+append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect;
 wait-maria_empty_logs.inc
 EOF
 
---exec $MYSQLADMIN --no-defaults -S $MASTER_MYSOCK -P $MASTER_MYPORT  -u root --password= shutdown 2>&1;
+# Shutdown server and kill it if not stopped within 60 secs
+shutdown_server 60;
 
 if (!$mel_keep_control_file)
 {
@@ -66,7 +67,7 @@ remove_file $MYSQLD_DATADIR/$MARIA_LOG/maria_log.00000020;
 -- error 0,1
 remove_file $MYSQLD_DATADIR/maria_recovery.trace;
 
-append_file $MYSQLTEST_VARDIR/tmp/master0.expect;
+append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect;
 restart-maria_empty_logs.inc
 EOF
 

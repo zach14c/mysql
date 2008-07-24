@@ -15,7 +15,6 @@
 # 3) set $mms_purpose to say what this copy is for (influences the naming
 # of the spare directory).
 
-let $MYSQLD_DATADIR= `SELECT @@datadir`;
 if ($mms_copy)
 {
   --echo * copied $mms_tname$mms_table_to_use for $mms_purpose
