@@ -1073,7 +1073,7 @@ sub tool_arguments ($$) {
 
 
 sub have_maria_support () {
-  my $maria_var= %mysqld_variables->{'maria'};
+  my $maria_var= $mysqld_variables{'maria'};
   return defined $maria_var and $maria_var eq 'TRUE';
 }
 
