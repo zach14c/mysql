@@ -31,7 +31,7 @@ class Engine: public Backup_engine
     /*
       Return version of backup images created by this engine.
     */
-    const version_t version() const { return 0; };
+    version_t version() const { return 0; };
     result_t get_backup(const uint32, const Table_list &tables, 
                         Backup_driver* &drv);
     result_t get_restore(const version_t ver, const uint32, const Table_list &tables,
