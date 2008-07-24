@@ -19,3 +19,6 @@ slave-net-timeout=120
 
 log-bin=mysqld-bin
 
+# Run tests faster
+disable-sync-frm
+

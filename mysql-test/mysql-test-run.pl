@@ -1072,6 +1072,12 @@ sub tool_arguments ($$) {
 }
 
 
+sub have_maria_support () {
+  my $maria_var= %mysqld_variables->{'maria'};
+  return defined $maria_var and $maria_var eq 'TRUE';
+}
+
+
 #
 # Set environment to be used by childs of this process for
 # things that are constant during the whole lifetime of mysql-test-run
@@ -1280,15 +1286,21 @@ sub environment_setup {
 
 
   # ----------------------------------------------------
-  # myisam and maria tools
+  # myisam tools
   # ----------------------------------------------------
   $ENV{'MYISAMLOG'}= tool_arguments("storage/myisam", "myisamlog", );
   $ENV{'MYISAMCHK'}= tool_arguments("storage/myisam", "myisamchk");
   $ENV{'MYISAMPACK'}= tool_arguments("storage/myisam", "myisampack");
   $ENV{'MYISAM_FTDUMP'}= tool_arguments("storage/myisam", "myisam_ftdump");
 
-  $ENV{'MARIA_CHK'}= tool_arguments("storage/maria", "maria_chk");
-  $ENV{'MARIA_PACK'}= tool_arguments("storage/maria", "maria_pack");
+  # ----------------------------------------------------
+  # maria tools
+  # ----------------------------------------------------
+  if (have_maria_support())
+  {
+    $ENV{'MARIA_CHK'}= tool_arguments("storage/maria", "maria_chk");
+    $ENV{'MARIA_PACK'}= tool_arguments("storage/maria", "maria_pack");
+  }
 
   # ----------------------------------------------------
   # perror
