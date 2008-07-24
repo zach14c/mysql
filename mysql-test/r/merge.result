@@ -279,7 +279,7 @@ t3	CREATE TABLE `t3` (
 drop table t3,t2,t1;
 create table t1 (a int not null, key(a)) engine=merge;
 select * from t1;
-ERROR HY000: Got error 124 from storage engine
+a
 drop table t1;
 create table t1 (a int not null, b int not null, key(a,b));
 create table t2 (a int not null, b int not null, key(a,b));
@@ -988,6 +988,11 @@ m1	CREATE TABLE `m1` (
   `a` int(11) DEFAULT NULL
 ) ENGINE=MRG_MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t1, m1;
+CREATE TABLE t1(a INT, KEY(a)) ENGINE=merge;
+SELECT MAX(a) FROM t1;
+MAX(a)
+NULL
+DROP TABLE t1;
 End of 5.0 tests
 create table t1 (c1 int, index(c1));
 create table t2 (c1 int, index(c1)) engine=merge union=(t1);
@@ -1093,31 +1098,6 @@ c1
 2
 UNLOCK TABLES;
 DROP TABLE t1, t2, t3, t4;
-CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
-CREATE TABLE t2 (c1 INT) ENGINE= MRG_MYISAM UNION= (t1) INSERT_METHOD= LAST;
-REPAIR TABLE t1;
-INSERT INTO t2 VALUES (1);
-Table	Op	Msg_type	Msg_text
-test.t1	repair	status	OK
-DROP TABLE t1, t2;
-CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
-CREATE TABLE t2 (c1 INT) ENGINE= MRG_MYISAM UNION= (t1) INSERT_METHOD= LAST;
-LOCK TABLE t1 WRITE;
-INSERT INTO t2 VALUES (1);
-REPAIR TABLE t1;
-Table	Op	Msg_type	Msg_text
-test.t1	repair	status	OK
-UNLOCK TABLES;
-DROP TABLE t1, t2;
-CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
-LOCK TABLE t1 WRITE;
-INSERT INTO t1 VALUES (1);
-FLUSH TABLES;
-FLUSH TABLES;
-SELECT * FROM t1;
-c1
-UNLOCK TABLES;
-DROP TABLE t1;
 #
 # Extra tests for Bug#26379 - Combination of FLUSH TABLE and
 #                             REPAIR TABLE corrupts a MERGE table
@@ -1635,6 +1615,7 @@ c1
 33
 DELETE FROM t4 WHERE c1 = 33;
 DROP TRIGGER t3_ai;
+UNLOCK TABLES;
 #
 # Trigger with table use on child
 DELETE FROM t4 WHERE c1 = 4;
@@ -1817,9 +1798,9 @@ ALTER TABLE t2 UNION=(t3,t1);
 SELECT * FROM t2;
 ERROR HY000: Table 't3' is differently defined or of non-MyISAM type or doesn't exist
 DROP TABLE t1, t2, t3;
-CREATE TABLE t1 (c1 INT) ENGINE= MyISAM;
-CREATE TABLE t2 (c1 INT) ENGINE= MyISAM;
-CREATE TABLE t3 (c1 INT) ENGINE= MRG_MYISAM UNION= (t1, t2);
+CREATE TABLE t1 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE t2 (c1 INT) ENGINE=MyISAM;
+CREATE TABLE t3 (c1 INT) ENGINE=MRG_MYISAM UNION=(t1,t2);
 INSERT INTO t1 VALUES (1);
 INSERT INTO t2 VALUES (2);
 SELECT * FROM t3;
@@ -1830,89 +1811,6 @@ TRUNCATE TABLE t1;
 SELECT * FROM t3;
 c1
 2
-DROP TABLE t1, t2, t3;
-CREATE TABLE t1 (id INTEGER, grp TINYINT, id_rev INTEGER);
-SET @rnd_max= 2147483647;
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-SET @rnd= RAND();
-SET @id = CAST(@rnd * @rnd_max AS UNSIGNED);
-SET @id_rev= @rnd_max - @id;
-SET @grp= CAST(127.0 * @rnd AS UNSIGNED);
-INSERT INTO t1 (id, grp, id_rev) VALUES (@id, @grp, @id_rev);
-set @@read_buffer_size=2*1024*1024;
-CREATE TABLE t2 SELECT * FROM t1;
-INSERT INTO t1 (id, grp, id_rev) SELECT id, grp, id_rev FROM t2;
-INSERT INTO t2 (id, grp, id_rev) SELECT id, grp, id_rev FROM t1;
-INSERT INTO t1 (id, grp, id_rev) SELECT id, grp, id_rev FROM t2;
-INSERT INTO t2 (id, grp, id_rev) SELECT id, grp, id_rev FROM t1;
-INSERT INTO t1 (id, grp, id_rev) SELECT id, grp, id_rev FROM t2;
-CREATE TABLE t3 (id INTEGER, grp TINYINT, id_rev INTEGER)
-ENGINE= MRG_MYISAM UNION= (t1, t2);
-SELECT COUNT(*) FROM t1;
-COUNT(*)
-130
-SELECT COUNT(*) FROM t2;
-COUNT(*)
-80
-SELECT COUNT(*) FROM t3;
-COUNT(*)
-210
-SELECT COUNT(DISTINCT a1.id) FROM t3 AS a1, t3 AS a2
-WHERE a1.id = a2.id GROUP BY a2.grp;
-TRUNCATE TABLE t1;
-SELECT COUNT(*) FROM t1;
-COUNT(*)
-0
-SELECT COUNT(*) FROM t2;
-COUNT(*)
-80
-SELECT COUNT(*) FROM t3;
-COUNT(*)
-80
 DROP TABLE t1, t2, t3;
 CREATE TABLE t1 (c1 INT) ENGINE=MyISAM;
 CREATE TABLE t2 (c1 INT) ENGINE=MRG_MYISAM UNION=(t1) INSERT_METHOD=LAST;

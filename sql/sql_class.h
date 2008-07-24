@@ -1948,6 +1948,10 @@ public:
   unsigned long audit_class_mask[MYSQL_AUDIT_CLASS_MASK_SIZE];
 #endif
 
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Debug Sync facility. See debug_sync.cc. */
+  struct st_debug_sync_control *debug_sync_control;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   /**
     Points to the memory root of Locked_tables_list if
     we're locking the tables for LOCK TABLES. Otherwise is NULL.

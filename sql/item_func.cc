@@ -1688,6 +1688,8 @@ double Item_func_pow::val_real()
 double Item_func_acos::val_real()
 {
   DBUG_ASSERT(fixed == 1);
+  /* One can use this to defer SELECT processing. */
+  DEBUG_SYNC(current_thd, "before_acos_function");
   // the volatile's for BUG #2338 to calm optimizer down (because of gcc's bug)
   volatile double value= args[0]->val_real();
   if ((null_value=(args[0]->null_value || (value < -1.0 || value > 1.0))))
@@ -3371,21 +3373,35 @@ longlong Item_master_pos_wait::val_int()
 }
 
 #ifdef EXTRA_DEBUG
+/**
+  When a connection con1 does a GET_LOCK() to synchronize with a another
+  connection con2 doing debug_sync_point(), con1 should not run any statements
+  after that until RELEASE_LOCK(). I.e.: con1 should dedicate itself to
+  synchronization only.
+ */
 void debug_sync_point(const char* lock_name, uint lock_timeout)
 {
   THD* thd=current_thd;
   User_level_lock* ull;
   struct timespec abstime;
   size_t lock_name_len;
+  DBUG_ENTER("debug_sync_point");
+  DBUG_PRINT("enter", ("lock_name: '%s'", lock_name));
   lock_name_len= strlen(lock_name);
+
+  /*
+    If thread already has a lock:
+    - we cannot automatically release it (it would likely cause
+    synchronization problems in tests, the test writer probably didn't want
+    this implicit release, as it cannot have inspected all code files to see
+    if one of them calls debug_sync_point())
+    - we cannot keep it either, because general user-level lock management
+    relies on one lock max per thread (THD::ull is not a list, GET_LOCK()
+    does an implicit release), and overwriting thd->ull is not ok.
+  */
+  DBUG_ASSERT(thd->ull == NULL);
+
   pthread_mutex_lock(&LOCK_user_locks);
-
-  if (thd->ull)
-  {
-    item_user_lock_release(thd->ull);
-    thd->ull=0;
-  }
-
   /*
     If the lock has not been aquired by some client, we do not want to
     create an entry for it, since we immediately release the lock. In
@@ -3397,7 +3413,7 @@ void debug_sync_point(const char* lock_name, uint lock_timeout)
                                              lock_name_len))))
   {
     pthread_mutex_unlock(&LOCK_user_locks);
-    return;
+    DBUG_VOID_RETURN;
   }
   ull->count++;
 
@@ -3449,6 +3465,7 @@ void debug_sync_point(const char* lock_name, uint lock_timeout)
     thd->ull=0;
   }
   pthread_mutex_unlock(&LOCK_user_locks);
+  DBUG_VOID_RETURN;
 }
 
 #endif

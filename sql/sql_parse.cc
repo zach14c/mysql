@@ -28,7 +28,6 @@
 #include "events.h"
 #include "sql_trigger.h"
 #include <ddl_blocker.h>
-#include "backup/debug.h"
 #include "sql_audit.h"
 
 #ifdef BACKUP_TEST
@@ -124,7 +123,7 @@ bool end_active_trans(THD *thd)
     if (ha_commit(thd))
       error=1;
 #ifdef WITH_MARIA_STORAGE_ENGINE
-    ha_maria::implicit_commit(thd);
+    ha_maria::implicit_commit(thd, TRUE);
 #endif
   }
   thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
@@ -1052,6 +1051,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     {
       char *beginning_of_next_stmt= (char*) end_of_stmt;
 
+#ifdef WITH_MARIA_STORAGE_ENGINE
+      ha_maria::implicit_commit(thd, FALSE);
+#endif
+
       net_end_statement(thd);
       query_cache_end_of_result(thd);
       /*
@@ -1420,6 +1423,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     thd->killed= THD::NOT_KILLED;
     thd->mysys_var->abort= 0;
   }
+
+#ifdef WITH_MARIA_STORAGE_ENGINE
+  ha_maria::implicit_commit(thd, FALSE);
+#endif
 
   net_end_statement(thd);
   query_cache_end_of_result(thd);
@@ -2105,6 +2112,7 @@ mysql_execute_command(THD *thd)
 #endif
     break;
   }
+  break;
   case SQLCOM_SHOW_NEW_MASTER:
   {
     if (check_global_access(thd, REPL_SLAVE_ACL))
@@ -2153,12 +2161,6 @@ mysql_execute_command(THD *thd)
 #endif
 #endif
 
-  case SQLCOM_SHOW_ARCHIVE:
-#ifdef EMBEDDED_LIBRARY
-    // Note: online backup code doesn't compile as embedded library yet.
-    my_error(ER_NOT_SUPPORTED_YET, MYF(0), "SHOW ARCHIVE");
-    goto error;
-#endif
   case SQLCOM_BACKUP:
 #ifdef EMBEDDED_LIBRARY
     my_error(ER_NOT_SUPPORTED_YET, MYF(0), "BACKUP");
@@ -2958,6 +2960,7 @@ end_with_restore_list:
       thd->first_successful_insert_id_in_cur_stmt=
         thd->first_successful_insert_id_in_prev_stmt;
 
+    DEBUG_SYNC(thd, "after_insert");
     break;
   }
   case SQLCOM_REPLACE_SELECT:
@@ -3882,10 +3885,7 @@ end_with_restore_list:
                xa_state_names[thd->transaction.xid_state.xa_state]);
       break;
     }
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "before_begin_trans");
     if (begin_trans(thd))
       goto error;
     my_ok(thd);
@@ -3896,10 +3896,7 @@ end_with_restore_list:
     if (end_trans(thd, lex->tx_release ? COMMIT_RELEASE :
                               lex->tx_chain ? COMMIT_AND_CHAIN : COMMIT))
       goto error;
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "after_commit");
     my_ok(thd);
     break;
   case SQLCOM_ROLLBACK:

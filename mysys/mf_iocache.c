@@ -129,6 +129,9 @@ init_functions(IO_CACHE* info)
 }
 
 
+/* FUNCTIONS TO SET UP OR RESET A CACHE */
+
+
 /*
   Initialize an IO_CACHE object
 
@@ -166,7 +169,7 @@ int init_io_cache(IO_CACHE *info, File file, size_t cachesize,
   info->file= file;
   info->type= TYPE_NOT_SET;	    /* Don't set it until mutex are created */
   info->pos_in_file= seek_offset;
-  info->pre_close = info->pre_read = info->post_read = 0;
+  info->pre_close= info->pre_read= info->post_read= info->post_write= NULL;
   info->arg = 0;
   info->alloced_buffer = 0;
   info->buffer=0;
@@ -278,7 +281,7 @@ int init_io_cache(IO_CACHE *info, File file, size_t cachesize,
 
   /* End_of_file may be changed by user later */
   info->end_of_file= end_of_file;
-  info->error=0;
+  info->error= info->hard_write_error_in_the_past= 0;
   info->type= type;
   init_functions(info);
 #ifdef HAVE_AIOWAIT
@@ -405,7 +408,7 @@ my_bool reinit_io_cache(IO_CACHE *info, enum cache_type type,
     }
   }
   info->type=type;
-  info->error=0;
+  info->error= info->hard_write_error_in_the_past= 0;
   init_functions(info);
 
 #ifdef HAVE_AIOWAIT
@@ -421,6 +424,8 @@ my_bool reinit_io_cache(IO_CACHE *info, enum cache_type type,
   DBUG_RETURN(0);
 } /* reinit_io_cache */
 
+
+/* FUNCTIONS TO DO READS FROM THE CACHE */
 
 
 /*
@@ -1471,13 +1476,18 @@ int _my_b_get(IO_CACHE *info)
   uchar buff;
   IO_CACHE_CALLBACK pre_read,post_read;
   if ((pre_read = info->pre_read))
-    (*pre_read)(info);
+    (*pre_read)(info, NULL, 0, 0);
   if ((*(info)->read_function)(info,&buff,1))
     return my_b_EOF;
   if ((post_read = info->post_read))
-    (*post_read)(info);
+    (*post_read)(info, NULL, 0, 0);
   return (int) (uchar) buff;
 }
+
+/* FUNCTIONS TO DO WRITES TO THE CACHE */
+
+#define set_hard_write_error(CACHE)                         \
+  ((CACHE)->error= (CACHE)->hard_write_error_in_the_past= -1)
 
 /* 
    Write a byte buffer to IO_CACHE and flush to disk
@@ -1496,7 +1506,7 @@ int _my_b_write(register IO_CACHE *info, const uchar *Buffer, size_t Count)
   if (info->pos_in_file+info->buffer_length > info->end_of_file)
   {
     my_errno=errno=EFBIG;
-    return info->error = -1;
+    return set_hard_write_error(info);
   }
 
   rest_length= (size_t) (info->write_end - info->write_pos);
@@ -1520,13 +1530,15 @@ int _my_b_write(register IO_CACHE *info, const uchar *Buffer, size_t Count)
       */
       if (my_seek(info->file,info->pos_in_file,MY_SEEK_SET,MYF(0)))
       {
-        info->error= -1;
+        set_hard_write_error(info);
         return (1);
       }
       info->seek_not_done=0;
     }
     if (my_write(info->file, Buffer, length, info->myflags | MY_NABP))
-      return info->error= -1;
+      return set_hard_write_error(info);
+    if (info->post_write)
+      (*(info->post_write))(info, Buffer, length, info->pos_in_file);
 
 #ifdef THREAD
     /*
@@ -1571,7 +1583,7 @@ int my_b_append(register IO_CACHE *info, const uchar *Buffer, size_t Count)
   */
   DBUG_ASSERT(!info->share);
 #endif
-
+  DBUG_ASSERT(info->post_write == NULL); /* unsupported */
   lock_append_buffer(info);
   rest_length= (size_t) (info->write_end - info->write_pos);
   if (Count <= rest_length)
@@ -1591,7 +1603,7 @@ int my_b_append(register IO_CACHE *info, const uchar *Buffer, size_t Count)
     if (my_write(info->file,Buffer, length, info->myflags | MY_NABP))
     {
       unlock_append_buffer(info);
-      return info->error= -1;
+      return set_hard_write_error(info);
     }
     Count-=length;
     Buffer+=length;
@@ -1644,12 +1656,21 @@ int my_block_write(register IO_CACHE *info, const uchar *Buffer, size_t Count,
   {
     /* Of no overlap, write everything without buffering */
     if (pos + Count <= info->pos_in_file)
-      return (int) my_pwrite(info->file, Buffer, Count, pos,
-                             info->myflags | MY_NABP);
+    {
+      int ret= my_pwrite(info->file, Buffer, Count, pos,
+                         info->myflags | MY_NABP);
+      if (unlikely(ret))
+        set_hard_write_error(info);
+      if (info->post_write)
+        (*(info->post_write))(info, Buffer, Count, pos);
+      return ret;
+    }
     /* Write the part of the block that is before buffer */
     length= (uint) (info->pos_in_file - pos);
     if (my_pwrite(info->file, Buffer, length, pos, info->myflags | MY_NABP))
-      info->error= error= -1;
+      error= set_hard_write_error(info);
+    if (info->post_write)
+      (*(info->post_write))(info, Buffer, length, pos);
     Buffer+=length;
     pos+=  length;
     Count-= length;
@@ -1711,7 +1732,7 @@ int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock)
     if (info->file == -1)
     {
       if (real_open_cached_file(info))
-	DBUG_RETURN((info->error= -1));
+	DBUG_RETURN(set_hard_write_error(info));
     }
     LOCK_APPEND_BUFFER;
 
@@ -1739,29 +1760,42 @@ int my_b_flush_io_cache(IO_CACHE *info, int need_append_buffer_lock)
 	    MY_FILEPOS_ERROR)
 	{
 	  UNLOCK_APPEND_BUFFER;
-	  DBUG_RETURN((info->error= -1));
+	  DBUG_RETURN(set_hard_write_error(info));
 	}
 	if (!append_cache)
 	  info->seek_not_done=0;
       }
-      if (!append_cache)
-	info->pos_in_file+=length;
       info->write_end= (info->write_buffer+info->buffer_length-
 			((pos_in_file+length) & (IO_SIZE-1)));
 
       if (my_write(info->file,info->write_buffer,length,
 		   info->myflags | MY_NABP))
-	info->error= -1;
+	set_hard_write_error(info);
       else
 	info->error= 0;
       if (!append_cache)
       {
+        /*
+          This post_write is really POST-write; callers depend on this! So
+          always call it after writing to the file, not before.
+        */
+        if (info->post_write)
+          (*(info->post_write))(info, info->write_buffer,
+                                length, info->pos_in_file);
+        /*
+          The addition below will make the info->pos_in_file be the end of
+          written block; whereas the value we needed in post_write is the
+          value before the addition. That's why we called post_write before
+          this.
+        */
+	info->pos_in_file+=length;
         set_if_bigger(info->end_of_file,(pos_in_file+length));
       }
       else
       {
 	info->end_of_file+=(info->write_pos-info->append_read_pos);
 	DBUG_ASSERT(info->end_of_file == my_tell(info->file,MYF(0)));
+        DBUG_ASSERT(info->post_write == NULL); /* unsupported */
       }
 
       info->append_read_pos=info->write_pos=info->write_buffer;
@@ -1815,7 +1849,7 @@ int end_io_cache(IO_CACHE *info)
 
   if ((pre_close=info->pre_close))
   {
-    (*pre_close)(info);
+    (*pre_close)(info, NULL, 0, 0);
     info->pre_close= 0;
   }
   if (info->alloced_buffer)

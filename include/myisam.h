@@ -13,7 +13,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/* This file should be included when using myisam_funktions */
+/**
+  @file
+  This file should be included when using MyISAM functions.
+*/
 
 #ifndef _myisam_h
 #define _myisam_h
@@ -33,6 +36,7 @@ extern "C" {
 #include "my_handler.h"
 #include <myisamchk.h>
 #include <mysql/plugin.h>
+#include <hash.h>
 
 /*
   Limit max keys according to HA_MAX_POSSIBLE_KEY; See myisamchk.h for details
@@ -44,8 +48,16 @@ extern "C" {
 #define MI_MAX_KEY                  MAX_INDEXES         /* Max allowed keys */
 #endif
 
+/*
+  The following defines can be increased if necessary.
+  But beware the dependency of MI_MAX_POSSIBLE_KEY_BUFF and MI_MAX_KEY_LENGTH.
+*/
+#define MI_MAX_KEY_LENGTH           1332            /* Max length in bytes */
+#define MI_MAX_KEY_SEG              16              /* Max segments for key */
+
 #define MI_MAX_POSSIBLE_KEY_BUFF    HA_MAX_POSSIBLE_KEY_BUFF
 
+#define MI_MAX_KEY_BUFF  (MI_MAX_KEY_LENGTH+MI_MAX_KEY_SEG*6+8+8)
 #define MI_MAX_MSG_BUF      1024 /* used in CHECK TABLE, REPAIR TABLE */
 #define MI_NAME_IEXT	".MYI"
 #define MI_NAME_DEXT	".MYD"
@@ -242,7 +254,9 @@ typedef struct st_columndef		/* column information */
 #endif
 } MI_COLUMNDEF;
 
-extern char * myisam_log_filename;		/* Name of logfile */
+/** Physical logging is always compiled in. Undefine if want to benchmark */
+#define HAVE_MYISAM_PHYSICAL_LOGGING 1
+extern char * myisam_logical_log_filename;
 extern ulong myisam_block_size;
 extern ulong myisam_concurrent_insert;
 extern my_bool myisam_flush,myisam_delay_key_write,myisam_single_user;
@@ -287,7 +301,15 @@ extern int mi_extra(struct st_myisam_info *file,
 extern int mi_reset(struct st_myisam_info *file);
 extern ha_rows mi_records_in_range(MI_INFO *info,int inx,
                                    key_range *min_key, key_range *max_key);
-extern int mi_log(int activate_log);
+/** Open/close actions allowed on a MyISAM log */
+enum enum_mi_log_action
+{
+  MI_LOG_ACTION_OPEN,
+  MI_LOG_ACTION_CLOSE_CONSISTENT, MI_LOG_ACTION_CLOSE_INCONSISTENT
+};
+enum enum_mi_log_type { MI_LOG_PHYSICAL, MI_LOG_LOGICAL };
+extern int mi_log(enum enum_mi_log_action action, enum enum_mi_log_type type,
+                  const char *log_filename, const HASH *tables);
 extern int mi_is_changed(struct st_myisam_info *info);
 extern int mi_delete_all_rows(struct st_myisam_info *info);
 extern ulong _mi_calc_blob_length(uint length , const uchar *pos);

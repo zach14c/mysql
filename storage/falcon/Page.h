@@ -58,8 +58,8 @@ class EncodedDataStream;
 class Page  
 {
 public:
-	short	pageType;
-	short	checksum;
+	int16	pageType;
+	uint16	checksum;
 
 #ifdef HAVE_PAGE_NUMBER
 	int32	pageNumber;

@@ -23,7 +23,6 @@
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sql_trigger.h"
-#include "backup/debug.h"
 
 /**
   Implement DELETE SQL word.
@@ -400,13 +399,7 @@ cleanup:
   DBUG_ASSERT(transactional_table || !deleted || thd->transaction.stmt.modified_non_trans_table);
   free_underlaid_joins(thd, select_lex);
 
-  /*
-    Breakpoints for backup testing.
-  */
-  if (!table->file->has_transactions())
-  {
-    BACKUP_BREAKPOINT("backup_commit_blocker");
-  }
+  DEBUG_SYNC(thd, "at_delete_end");
 
   MYSQL_DELETE_END();
   if (error < 0 || (thd->lex->ignore && !thd->is_fatal_error))
