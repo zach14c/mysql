@@ -1,0 +1,58 @@
+--source include/have_falcon.inc
+
+--echo # --
+--echo # -- WL#4300: Define privileges for tablespaces.
+--echo # --
+
+GRANT CREATE TABLESPACE ON *.* TO mysqltest_u1@localhost;
+GRANT SUPER ON *.* TO mysqltest_u2@localhost;
+
+--echo
+--echo # -- Connection: mysqltest_u1@localhost
+--echo
+--connect(con1, localhost, mysqltest_u1,,)
+
+--echo # -- Grants for mysqltest_u1@localhost:
+SHOW GRANTS;
+
+--echo
+--echo # -- Check CREATE TABLESPACE...
+CREATE TABLESPACE ts1
+ADD DATAFILE 'datafile.dat'
+ENGINE = Falcon;
+
+--echo
+--echo # -- Check DROP TABLESPACE...
+DROP TABLESPACE ts1 
+ENGINE = Falcon;
+
+--echo
+--echo # -- Connection: mysqltest_u2@localhost
+--echo
+--connect(con2, localhost, mysqltest_u2,,)
+
+--echo # -- Grants for mysqltest_u2@localhost:
+SHOW GRANTS;
+
+--echo
+--echo # -- Check CREATE TABLESPACE...
+--error ER_ACCESS_DENIED_ERROR
+CREATE TABLESPACE ts1
+ADD DATAFILE 'datafile.dat'
+ENGINE = Falcon;
+
+--echo
+--echo # -- Check DROP TABLESPACE...
+--error ER_ACCESS_DENIED_ERROR
+DROP TABLESPACE ts1 
+ENGINE = Falcon;
+
+--echo
+--echo # -- Connection: root@localhost
+--echo
+--connection default
+--disconnect con1
+--disconnect con2
+
+DROP USER mysqltest_u1@localhost;
+DROP USER mysqltest_u2@localhost;
