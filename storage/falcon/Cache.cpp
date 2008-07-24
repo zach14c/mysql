@@ -89,9 +89,12 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	bufferHunks = new char* [numberHunks];
 	memset(bufferHunks, 0, numberHunks * sizeof(char*));
 	syncObject.setName("Cache::syncObject");
-	syncDirty.setName("Cache::syncDirty");
 	syncFlush.setName("Cache::syncFlush");
+	syncDirty.setName("Cache::syncDirty");
+	syncThreads.setName("Cache::syncThreads");
 	syncWait.setName("Cache::syncWait");
+	bufferQueue.syncObject.setName("Cache::bufferQueue.syncObject");
+
 	flushBitmap = new Bitmap;
 	numberIoThreads = falcon_io_threads;
 	ioThreads = new Thread*[numberIoThreads];
@@ -597,7 +600,7 @@ void Cache::writePage(Bdb *bdb, int type)
 
 	if (dbb->shadows)
 		{
-		Sync sync (&dbb->cloneSyncObject, "Cache::writePage(2)");
+		Sync sync (&dbb->syncClone, "Cache::writePage(2)");
 		sync.lock (Shared);
 
 		for (DatabaseCopy *shadow = dbb->shadows; shadow; shadow = shadow->next)
@@ -667,7 +670,7 @@ void Cache::flush(Dbb *dbb)
 {
 	//Sync sync (&syncDirty, "Cache::flush(1)");
 	//sync.lock (Exclusive);
-	Sync sync (&syncObject, "Cache::flush(2)");
+	Sync sync (&syncObject, "Cache::flush(3)");
 	sync.lock (Shared);
 
 	for (Bdb *bdb = bdbs; bdb < endBdbs; ++bdb)

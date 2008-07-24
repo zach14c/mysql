@@ -144,6 +144,7 @@ Statement::Statement(Connection *pConnection, Database *db)
 	special = false;
 	active = false;
 	memset (&stats, 0, sizeof (stats));
+	syncObject.setName("Statement::syncObject");
 }
 
 Statement::~Statement()

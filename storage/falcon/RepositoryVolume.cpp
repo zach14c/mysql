@@ -75,6 +75,7 @@ RepositoryVolume::RepositoryVolume(Repository *repo, int volume, JString file)
 	lastAccess = 0;
 	rootPage = 0;
 	section = NULL;
+	syncObject.setName("RepositoryVolume::syncObject");
 }
 
 RepositoryVolume::~RepositoryVolume()

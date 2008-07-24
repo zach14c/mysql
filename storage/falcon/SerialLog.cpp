@@ -125,7 +125,9 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	syncIndexes.setName("SerialLog::syncIndexes");
 	syncGopher.setName("SerialLog::syncGopher");
 	syncUpdateStall.setName("SerialLog::syncUpdateStall");
-	pending.syncObject.setName("SerialLog::pending transactions");
+	pending.syncObject.setName("SerialLog::pending.syncObject");
+	inactions.syncObject.setName("SerialLog::inactions.syncObject");
+	running.syncObject.setName("SerialLog::running.syncObject");
 	gophers = NULL;
 	wantToSerializeGophers = 0;
 	serializeGophers = 0;
@@ -1292,11 +1294,12 @@ bool SerialLog::indexInUse(int indexId, int tableSpaceId)
 	TableSpaceInfo *info = getTableSpaceInfo(tableSpaceId);
 	return info->indexUseVector.get(indexId) > 0;
 }
-
+/*
 int SerialLog::getPageState(int32 pageNumber, int tableSpaceId)
 {
 	return recoveryPages->getCurrentState(pageNumber, tableSpaceId);
 }
+*/
 
 void SerialLog::redoFreePage(int32 pageNumber, int tableSpaceId)
 {

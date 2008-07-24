@@ -38,8 +38,6 @@
 #include "Database.h"
 #include "TableSpaceManager.h"
 
-
-
 #define DICTIONARY_ACCOUNT		"mysql"
 #define DICTIONARY_PW			"mysql"
 #define FALCON_USER				DEFAULT_TABLESPACE_PATH
@@ -125,6 +123,9 @@ StorageHandler::StorageHandler(int lockSize)
 	databaseList = NULL;
 	defaultDatabase = NULL;
 	initialized = false;
+	syncObject.setName("StorageHandler::syncObject");
+	hashSyncObject.setName("StorageHandler::hashSyncObject");
+	dictionarySyncObject.setName("StorageHandler::dictionarySyncObject");
 }
 
 StorageHandler::~StorageHandler(void)

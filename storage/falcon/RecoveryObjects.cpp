@@ -40,6 +40,8 @@ RecoveryObjects::RecoveryObjects(SerialLog *log)
 {
 	serialLog = log;
 	memset(recoveryObjects, 0, sizeof(recoveryObjects));
+	for (int n = 0; n < RPG_HASH_SIZE; n++)
+		syncArray[n].setName("RecoveryObjects::syncArray");
 }
 
 RecoveryObjects::~RecoveryObjects()
@@ -103,9 +105,9 @@ static inline RecoveryPage * findInHashBucket(RecoveryPage *head, int objectNumb
 	for (RecoveryPage *object = head ; object; object = object->collision)
 		if (object->objectNumber == objectNumber && object->tableSpaceId == tableSpaceId)
 			return object;
+
 	return NULL;
 }
-
 
 RecoveryPage* RecoveryObjects::findRecoveryObject(int objectNumber, int tableSpaceId)
 {

@@ -59,6 +59,7 @@ TableSpaceManager::TableSpaceManager(Database *db)
 	memset(idHash, 0, sizeof(nameHash));
 	tableSpaces = NULL;
 	pendingDrops = 0;
+	syncObject.setName("TableSpaceManager::syncObject");
 }
 
 TableSpaceManager::~TableSpaceManager()

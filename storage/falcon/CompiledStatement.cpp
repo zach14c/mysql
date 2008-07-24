@@ -96,6 +96,7 @@ CompiledStatement::CompiledStatement(Connection *cnct)
 	firstInstance = lastInstance = NULL;
 	select = NULL;
 	parse = NULL;
+	syncObject.setName("CompiledStatement::syncObject");
 }
 
 CompiledStatement::~CompiledStatement()

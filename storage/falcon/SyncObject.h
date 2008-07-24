@@ -108,7 +108,7 @@ protected:
 	int					exclusiveCount;
 	int					waitCount;
 	int					queueLength;
-	const char*			where;
+	const char*			location;
 	char*				name;
 #endif
 };

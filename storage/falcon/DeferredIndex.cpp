@@ -60,6 +60,7 @@ DeferredIndex::DeferredIndex(Index *idx, Transaction *trans)
 	haveMinValue = true;
 	haveMaxValue = true;
 	window = NULL;
+	syncObject.setName("DeferredIndex::syncObject");
 }
 
 DeferredIndex::~DeferredIndex(void)
