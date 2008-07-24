@@ -25,10 +25,20 @@ cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 subselect_notembedded  : Bug#35803, Bug#33506 2008-Apr-03 subselect_notembedded crashes the server
 status          : Bug#37481 status.test fails randomly
 maria-preload        : Bug#35107 crashes
+key_buffer_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
+rpl_recovery_rank_basic_64  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
+sort_buffer_size_basic_64   : Bug #36522: Some tests of system variables have diffs on 64bit platorms
 log_output_basic      : Bug#34820 log_output can be set to illegal value
+query_cache_size_basic_32   : Bug#36747: Allocating a large query cache is not deterministic
+query_cache_size_basic_64   : Bug#36747: Allocating a large query cache is not deterministic
+query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fails in pushbuild
 wait_timeout_func           : Bug #36873 wait_timeout_func.test fails randomly
 slow_launch_time_func       : Bug #36874 main.slow_launch_time_func test fails randomly
 timestamp_func              : Bug #37702 timestamp_func relies on sleep and is unstable in pushbuild
+sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on some systems
+key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
+max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
+tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems
 backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
 backup_tablespace           : Bug#36973 2008-07-01 rafal
 backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug

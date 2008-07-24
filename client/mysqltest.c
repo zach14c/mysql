@@ -442,7 +442,6 @@ VAR* var_get(const char *var_name, const char** var_name_end,
              my_bool raw, my_bool ignore_not_existing);
 void eval_expr(VAR* v, const char *p, const char** p_end);
 my_bool match_delimiter(int c, const char *delim, uint length);
-void dump_result_to_reject_file(char *buf, int size);
 void dump_result_to_log_file(char *buf, int size);
 void dump_warning_messages();
 void dump_progress();
