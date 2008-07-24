@@ -63,6 +63,8 @@ dist-hook:
 		--datadir=$(distdir)/win/data \
 		--srcdir=$(top_srcdir)
 
+all-local:		abi_check
+
 tags:
 	support-files/build-tags
 
@@ -266,9 +268,14 @@ TEST_PREPROCESSOR_HEADER = $(top_srcdir)/include/mysql/plugin.h \
 #    results in messages in stderr saying that these headers
 #    were not found. Redirect the stderr output to /dev/null
 #    to prevent seeing these messages.
-# 2) sed the output to remove blank lines and lines that begin
-#    with # (The header information is retained to enable easy
-#    analysis of abi diffs at a later stage).
+# 2) sed the output to 
+#    2.1) remove blank lines and lines that begin with "# "
+#         (The header information is retained to enable easy
+#         analysis of abi diffs at a later stage).
+#    2.2) When gcc -E is run in the Mac OS it introduces a line of output 
+#         that results in showing up as a difference between the .pp and 
+#         .out files. Remove this OS specific preprocessor text inserted by
+#         the preprocessor in the MAC OS. 
 # 3) diff the generated file and the canons (.pp files already in
 #    the repository).
 # 4) delete the .out file that is generated.
@@ -282,10 +289,10 @@ TEST_PREPROCESSOR_HEADER = $(top_srcdir)/include/mysql/plugin.h \
 # be replaced as the new .pp files.
 #
 # e.g. If include/mysql/plugin.h has an ABI change then this rule would
-# leave a include/mysql/plugin.out file.
+# leave a <build directory>/abi_check.out file.
 #
 # A developer with a justified API change will then do a
-# mv include/mysql/plugin.out include/mysql/plugin.pp 
+# mv <build directory>/abi_check.out include/mysql/plugin.pp 
 # to replace the old canons with the new ones.
 #
 
@@ -302,11 +309,16 @@ do_abi_check:
 	                  -I$(top_srcdir)/include \
 	                  -I$(top_srcdir)/include/mysql \
 	                  -I$(top_srcdir)/sql \
+	                  -I$(top_builddir)/include \
+	                  -I$(top_builddir)/include/mysql \
+	                  -I$(top_builddir)/sql \
 	                                 $$file 2>/dev/null | \
 	                  @SED@ -e '/^# /d' \
-	                            -e '/^[ 	]*$$/d' > $$file.out; \
-	                  @DIFF@ $$file.pp $$file.out; \
-	                  @RM@ $$file.out; \
+	                            -e '/^[ 	]*$$/d' \
+	                            -e '/^#pragma GCC set_debug_pwd/d' > \
+	                                       $(top_builddir)/abi_check.out; \
+	                  @DIFF@ -w $$file.pp $(top_builddir)/abi_check.out; \
+	                  @RM@ $(top_builddir)/abi_check.out; \
 	done
 
 # Don't update the files from bitkeeper
