@@ -410,7 +410,7 @@ char *get_charsets_dir(char *buf)
   DBUG_RETURN(res);
 }
 
-CHARSET_INFO *all_charsets[256];
+CHARSET_INFO *all_charsets[MY_ALL_CHARSETS_SIZE];
 CHARSET_INFO *default_charset_info = &my_charset_latin1;
 
 void add_compiled_collation(CHARSET_INFO *cs)
