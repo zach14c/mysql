@@ -1763,7 +1763,9 @@ int Field::store_time(MYSQL_TIME *ltime, timestamp_type type_arg)
   ASSERT_COLUMN_MARKED_FOR_WRITE;
   char buff[MAX_DATE_STRING_REP_LENGTH];
   uint length= (uint) my_TIME_to_str(ltime, buff);
-  return store(buff, length, &my_charset_bin);
+  return store(buff, length,
+               (charset()->state & MY_CS_NONASCII) ?
+               &my_charset_latin1 : &my_charset_bin);
 }
 
 
@@ -9583,7 +9585,7 @@ bool Create_field::init(THD *thd, char *fld_name, enum_field_types fld_type,
     }
     break;
   case MYSQL_TYPE_DATE:
-    /* Old date type. */
+    /* We don't support creation of MYSQL_TYPE_DATE anymore */
     sql_type= MYSQL_TYPE_NEWDATE;
     /* fall trough */
   case MYSQL_TYPE_NEWDATE:

@@ -117,7 +117,6 @@ enum enum_sql_command {
   SQLCOM_SHOW_CREATE_EVENT, SQLCOM_SHOW_EVENTS,
   SQLCOM_SHOW_CREATE_TRIGGER,
   SQLCOM_ALTER_DB_UPGRADE,
-  SQLCOM_SHOW_ARCHIVE,
   SQLCOM_BACKUP, SQLCOM_RESTORE,
 #ifdef BACKUP_TEST
   SQLCOM_BACKUP_TEST,
@@ -1527,6 +1526,7 @@ typedef struct st_lex : public Query_tables_list
   LEX_STRING name;
   char *help_arg;
   LEX_STRING backup_dir;				/* For RESTORE/BACKUP */
+  bool backup_compression;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
   char* x509_subject,*x509_issuer,*ssl_cipher;
   String *wild;
@@ -1536,7 +1536,6 @@ typedef struct st_lex : public Query_tables_list
   LEX_STRING comment, ident;
   LEX_USER *grant_user;
   XID *xid;
-  uchar* yacc_yyss, *yacc_yyvs;
   THD *thd;
 
   /* maintain a list of used plugins for this LEX */
@@ -1875,6 +1874,59 @@ typedef struct st_lex : public Query_tables_list
     return FALSE;
   }
 } LEX;
+
+
+/**
+  The internal state of the syntax parser.
+  This object is only available during parsing,
+  and is private to the syntax parser implementation (sql_yacc.yy).
+*/
+class Yacc_state
+{
+public:
+  Yacc_state()
+    : yacc_yyss(NULL), yacc_yyvs(NULL)
+  {}
+
+  ~Yacc_state();
+
+  /**
+    Bison internal state stack, yyss, when dynamically allocated using
+    my_yyoverflow().
+  */
+  uchar *yacc_yyss;
+
+  /**
+    Bison internal semantic value stack, yyvs, when dynamically allocated using
+    my_yyoverflow().
+  */
+  uchar *yacc_yyvs;
+
+  /*
+    TODO: move more attributes from the LEX structure here.
+  */
+};
+
+/**
+  Internal state of the parser.
+  The complete state consist of:
+  - state data used during lexical parsing,
+  - state data used during syntactic parsing.
+*/
+class Parser_state
+{
+public:
+  Parser_state(THD *thd, const char* buff, unsigned int length)
+    : m_lip(thd, buff, length), m_yacc()
+  {}
+
+  ~Parser_state()
+  {}
+
+  Lex_input_stream m_lip;
+  Yacc_state m_yacc;
+};
+
 
 struct st_lex_local: public st_lex
 {

@@ -61,7 +61,6 @@
 #include "sql_show.h"
 #include "slave.h"
 #include "rpl_mi.h"
-#include "backup/debug.h"
 #include "sql_audit.h"
 
 #ifndef EMBEDDED_LIBRARY
@@ -620,11 +619,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   }
   lock_type= table_list->lock_type;
 
-  /*
-    Breakpoints for backup testing.
-  */
-  BACKUP_BREAKPOINT("backup_cs_reading");
-  BACKUP_BREAKPOINT("commit_blocker_step_1");
+  DEBUG_SYNC(thd, "after_insert_locked_tables");
   thd_proc_info(thd, "init");
   thd->used_tables=0;
   values= its++;

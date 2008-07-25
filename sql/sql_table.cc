@@ -4295,6 +4295,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       if (wait_while_table_is_used(thd, table->table,
                                    HA_EXTRA_PREPARE_FOR_RENAME))
         goto err;
+      DEBUG_SYNC(thd, "after_admin_flush");
       DBUG_EXECUTE_IF("wait_in_mysql_admin_table",
                       wait_for_kill_signal(thd);
                       if (thd->killed)
@@ -7298,13 +7299,16 @@ copy_data_between_tables(TABLE *from,TABLE *to,
                                               (SQL_SELECT *) 0, HA_POS_ERROR,
                                               1, &examined_rows)) ==
           HA_POS_ERROR)
+      {
+        to->file->ha_end_bulk_insert(0);
         goto err;
+      }
     }
   };
 
   /* Tell handler that we have values for all columns in the to table */
   to->use_all_columns();
-  init_read_record(&info, thd, from, (SQL_SELECT *) 0, 1,1);
+  init_read_record(&info, thd, from, (SQL_SELECT *) 0, 1, 1, FALSE);
   errpos= 4;
   if (ignore)
     to->file->extra(HA_EXTRA_IGNORE_DUP_KEY);

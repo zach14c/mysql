@@ -77,7 +77,7 @@ class Load_log_event;
 class Slave_log_event;
 class sp_rcontext;
 class sp_cache;
-class Lex_input_stream;
+class Parser_state;
 class Rows_log_event;
 
 enum enum_enable_or_disable { LEAVE_AS_IS, ENABLE, DISABLE };
@@ -1918,13 +1918,11 @@ public:
   } binlog_evt_union;
 
   /**
-    Character input stream consumed by the lexical analyser,
-    used during parsing.
-    Note that since the parser is not re-entrant, we keep only one input
-    stream here. This member is valid only when executing code during parsing,
-    and may point to invalid memory after that.
+    Internal parser state.
+    Note that since the parser is not re-entrant, we keep only one parser
+    state here. This member is valid only when executing code during parsing.
   */
-  Lex_input_stream *m_lip;
+  Parser_state *m_parser_state;
 
   /*
     @todo The following is a work around for online backup and the DDL blocker.
@@ -1954,6 +1952,10 @@ public:
   unsigned long audit_class_mask[MYSQL_AUDIT_CLASS_MASK_SIZE];
 #endif
 
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Debug Sync facility. See debug_sync.cc. */
+  struct st_debug_sync_control *debug_sync_control;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   /**
     Points to the memory root of Locked_tables_list if
     we're locking the tables for LOCK TABLES. Otherwise is NULL.

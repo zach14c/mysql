@@ -506,9 +506,12 @@ static int compress(PACK_MRG_INFO *mrg,char *result_table)
   /* Create temporary or join file */
 
   if (backup)
-    (void) fn_format(org_name,isam_file->filename,"",MI_NAME_DEXT,2);
+    (void) fn_format(org_name,isam_file->s->unresolv_file_name,
+                     "", MI_NAME_DEXT, MY_REPLACE_EXT);
   else
-    (void) fn_format(org_name,isam_file->filename,"",MI_NAME_DEXT,2+4+16);
+    (void) fn_format(org_name,isam_file->s->unresolv_file_name,
+                     "", MI_NAME_DEXT,
+                     MY_REPLACE_EXT|MY_UNPACK_FILENAME|MY_RESOLVE_SYMLINKS);
   if (!test_only && result_table)
   {
     /* Make a new indexfile based on first file in list */
@@ -693,7 +696,9 @@ static int compress(PACK_MRG_INFO *mrg,char *result_table)
     {
       if (backup)
       {
-	if (my_rename(org_name,make_old_name(temp_name,isam_file->filename),
+	if (my_rename(org_name,
+                      make_old_name(temp_name,
+                                    isam_file->s->unresolv_file_name),
 		      MYF(MY_WME)))
 	  error=1;
 	else
@@ -2977,7 +2982,7 @@ static int save_state(MI_INFO *isam_file,PACK_MRG_INFO *mrg,my_off_t new_length,
   (void) my_chsize(share->kfile, share->base.keystart, 0, MYF(0));
   if (share->base.keys)
     isamchk_neaded=1;
-  DBUG_RETURN(mi_state_info_write(share->kfile,&share->state,1+2));
+  DBUG_RETURN(mi_state_info_write(share, share->kfile, &share->state, 1+2));
 }
 
 
@@ -3010,7 +3015,7 @@ static int save_state_mrg(File file,PACK_MRG_INFO *mrg,my_off_t new_length,
   if (isam_file->s->base.keys)
     isamchk_neaded=1;
   state.changed=STATE_CHANGED | STATE_NOT_ANALYZED; /* Force check of table */
-  DBUG_RETURN (mi_state_info_write(file,&state,1+2));
+  DBUG_RETURN (mi_state_info_write(isam_file->s, file, &state, 1+2));
 }
 
 

@@ -23,7 +23,6 @@
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sql_trigger.h"
-#include "backup/debug.h"
 
 /**
   Implement DELETE SQL word.
@@ -248,7 +247,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     goto err;
   }
   if (usable_index==MAX_KEY)
-    init_read_record(&info,thd,table,select,1,1);
+    init_read_record(&info, thd, table, select, 1, 1, FALSE);
   else
     init_read_record_idx(&info, thd, table, 1, usable_index);
 
@@ -400,13 +399,7 @@ cleanup:
   DBUG_ASSERT(transactional_table || !deleted || thd->transaction.stmt.modified_non_trans_table);
   free_underlaid_joins(thd, select_lex);
 
-  /*
-    Breakpoints for backup testing.
-  */
-  if (!table->file->has_transactions())
-  {
-    BACKUP_BREAKPOINT("backup_commit_blocker");
-  }
+  DEBUG_SYNC(thd, "at_delete_end");
 
   MYSQL_DELETE_END();
   if (error < 0 || (thd->lex->ignore && !thd->is_fatal_error))
@@ -851,7 +844,7 @@ int multi_delete::do_deletes()
     }
 
     READ_RECORD	info;
-    init_read_record(&info,thd,table,NULL,0,1);
+    init_read_record(&info, thd, table, NULL, 0, 1, FALSE);
     /*
       Ignore any rows not found in reference tables as they may already have
       been deleted by foreign key handling

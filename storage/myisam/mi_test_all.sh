@@ -135,8 +135,10 @@ echo "mi_test2$suffix $silent -L -K -R1 -m2000 ;  Should give error 135"
 ./mi_test2$suffix $silent -m10000 -e16384 -E16384 -K -L
 ./myisamchk$suffix -sm test2
 
+/bin/rm myisam.log
 ./mi_test2$suffix $silent -L -K -W -P -m50 -l
 ./myisamlog$suffix
+/bin/rm myisam.log
 ./mi_test2$suffix $silent -L -K -W -P -m50 -l -b100
 ./myisamlog$suffix
 time ./mi_test2$suffix $silent

@@ -60,7 +60,7 @@ typedef struct st_load_file_info
   bool wrote_create_file, log_delayed;
 } LOAD_FILE_INFO;
 
-int log_loaded_block(IO_CACHE* file);
+int log_loaded_block(IO_CACHE *, const uchar *, uint, my_off_t);
 int init_replication_sys_vars();
 
 #endif /* HAVE_REPLICATION */
