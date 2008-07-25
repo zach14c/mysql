@@ -637,14 +637,21 @@ size_t my_strnxfrm_tis620(CHARSET_INFO *cs,
                        uchar *dst, size_t dstlen, uint nweights,
                        const uchar *src, size_t srclen, uint flags)
 {
-  size_t len;
+  size_t len, dstlen0= dstlen;
   len= (uint) (strmake((char*) dst, (char*) src, min(dstlen, srclen)) -
 	               (char*) dst);
   len= thai2sortable(dst, len);
   set_if_smaller(dstlen, nweights);
   set_if_smaller(len, dstlen); 
-  return my_strxfrm_pad_desc_and_reverse(cs, dst, dst + len, dst + dstlen,
-                                         dstlen - len, flags, 0);
+  len= my_strxfrm_pad_desc_and_reverse(cs, dst, dst + len, dst + dstlen,
+                                       dstlen - len, flags, 0);
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && len < dstlen0)
+  {
+    uint fill_length= dstlen0 - len;
+    cs->cset->fill(cs, (char*) dst + len, fill_length, cs->pad_char);
+    len= dstlen0;
+  }
+  return len;
 }
 
 

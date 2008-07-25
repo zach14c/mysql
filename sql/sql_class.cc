@@ -528,7 +528,7 @@ THD::THD()
    bootstrap(0),
    derived_tables_processing(FALSE),
    spcont(NULL),
-   m_lip(NULL),
+   m_parser_state(NULL),
   /*
     @todo The following is a work around for online backup and the DDL blocker.
           It should be removed when the generalized solution is in place.

@@ -546,12 +546,14 @@ drop table t1;
 
 set collation_connection=utf32_general_ci;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 select hex(weight_string(_utf32 0x10000));
 select hex(weight_string(_utf32 0x10001));
 --source include/weight_string_l1.inc
 
 set collation_connection=utf32_bin;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set names latin1;
@@ -742,6 +744,13 @@ check table t1;
 drop table t1;
 
 #
+# Test how character set works with date/time
+#
+SET collation_connection=utf32_general_ci;
+--source include/ctype_datetime.inc
+SET NAMES latin1;
+
+#
 # Test basic regex functionality
 #
 set collation_connection=utf32_general_ci;
@@ -750,3 +759,32 @@ set names latin1;
 
 
 # TODO: add tests for all engines
+
+#
+# Bug #36418 Character sets: crash if char(256 using utf32)
+#
+select hex(char(0x01 using utf32));
+select hex(char(0x0102 using utf32));
+select hex(char(0x010203 using utf32));
+select hex(char(0x01020304 using utf32));
+create table t1 (s1 varchar(1) character set utf32, s2 text character set utf32);
+create index i on t1 (s1);
+insert into t1 values (char(256 using utf32), char(256 using utf32));
+select hex(s1), hex(s2) from t1;
+drop table t1;
+
+
+#
+# Bug#33073 Character sets: ordering fails with utf32
+#
+SET collation_connection=utf32_general_ci;
+CREATE TABLE t1 AS SELECT repeat('a',2) as s1 LIMIT 0;
+SHOW CREATE TABLE t1;
+INSERT INTO t1 VALUES ('ab'),('AE'),('ab'),('AE');
+SELECT * FROM t1 ORDER BY s1;
+SET max_sort_length=4;
+SELECT * FROM t1 ORDER BY s1;
+SELECT hex(weight_string(s1, 4, 2, 0)) FROM t1 ORDER BY s1;
+DROP TABLE t1;
+SET max_sort_length=DEFAULT;
+SET NAMES latin1;

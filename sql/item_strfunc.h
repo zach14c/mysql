@@ -787,9 +787,16 @@ class Item_func_weight_string :public Item_str_func
   String tmp_value;
   uint flags;
   uint nweights;
+  uint result_length;
 public:
-  Item_func_weight_string(Item *a, uint nweights_arg, uint flags_arg)
-  :Item_str_func(a) { nweights= nweights_arg; flags= flags_arg; }
+  Item_func_weight_string(Item *a, uint result_length_arg,
+                          uint nweights_arg, uint flags_arg)
+  :Item_str_func(a)
+  {
+    nweights= nweights_arg;
+    flags= flags_arg;
+    result_length= result_length_arg;
+  }
   const char *func_name() const { return "weight_string"; }
   String *val_str(String *);
   void fix_length_and_dec();

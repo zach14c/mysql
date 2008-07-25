@@ -2465,17 +2465,27 @@ String *Item_func_char::val_str(String *str)
     int32 num=(int32) args[i]->val_int();
     if (!args[i]->null_value)
     {
-      char char_num= (char) num;
-      if (num&0xFF000000L) {
-        str->append((char)(num>>24));
-        goto b2;
-      } else if (num&0xFF0000L) {
-    b2:        str->append((char)(num>>16));
-        goto b1;
-      } else if (num&0xFF00L) {
-    b1:        str->append((char)(num>>8));
+      char tmp[4];
+      if (num & 0xFF000000L)
+      {
+        mi_int4store(tmp, num);
+        str->append(tmp, 4, &my_charset_bin);
       }
-      str->append(&char_num, 1);
+      else if (num & 0xFF0000L)
+      {
+        mi_int3store(tmp, num);
+        str->append(tmp, 3, &my_charset_bin);
+      }
+      else if (num & 0xFF00L)
+      {
+        mi_int2store(tmp, num);
+        str->append(tmp, 2, &my_charset_bin);
+      }
+      else
+      {
+        tmp[0]= (char) num;
+        str->append(tmp, 1, &my_charset_bin);
+      }
     }
   }
   str->realloc(str->length());			// Add end 0 (for Purify)
@@ -2972,7 +2982,13 @@ void Item_func_weight_string::fix_length_and_dec()
   CHARSET_INFO *cs= args[0]->collation.collation;
   collation.set(&my_charset_bin, args[0]->collation.derivation);
   flags= my_strxfrm_flag_normalize(flags, cs->levels_for_order);
-  max_length= cs->mbmaxlen * max(args[0]->max_length, nweights);
+  /* 
+    Use result_length if it was given explicitly in constructor,
+    otherwise calculate max_length using argument's max_length
+    and "nweights".
+  */
+  max_length= result_length ? result_length :
+              cs->mbmaxlen * max(args[0]->max_length, nweights);
   maybe_null= 1;
 }
 
@@ -2989,8 +3005,14 @@ String *Item_func_weight_string::val_str(String *str)
       !(res= args[0]->val_str(str)))
     goto nl;
   
-  tmp_length= cs->coll->strnxfrmlen(cs, cs->mbmaxlen *
-                                        max(res->length(), nweights));
+  /*
+    Use result_length if it was given in constructor
+    explicitly, otherwise calculate result length
+    from argument and "nweights".
+  */
+  tmp_length= result_length ? result_length :
+              cs->coll->strnxfrmlen(cs, cs->mbmaxlen *
+                                    max(res->length(), nweights));
 
   if (tmp_value.alloc(tmp_length))
     goto nl;
