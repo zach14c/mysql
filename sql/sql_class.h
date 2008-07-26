@@ -3031,11 +3031,11 @@ public:
 
 /* Bits in sql_command_flags */
 
-#define CF_CHANGES_DATA		1
-#define CF_HAS_ROW_COUNT	2
-#define CF_STATUS_COMMAND	4
-#define CF_SHOW_TABLE_COMMAND	8
-#define CF_WRITE_LOGS_COMMAND  16
+#define CF_CHANGES_DATA           (1U << 0)
+#define CF_HAS_ROW_COUNT          (1U << 1)
+#define CF_STATUS_COMMAND         (1U << 2)
+#define CF_SHOW_TABLE_COMMAND     (1U << 3)
+#define CF_WRITE_LOGS_COMMAND     (1U << 4)
 /**
   Must be set for SQL statements that may contain
   Item expressions and/or use joins and tables.
@@ -3049,7 +3049,54 @@ public:
   reprepare. Consequently, complex item expressions and
   joins are currently prohibited in these statements.
 */
-#define CF_REEXECUTION_FRAGILE 32
+#define CF_REEXECUTION_FRAGILE    (1U << 5)
+/**
+  Implicitly commit before the SQL statement is executed.
+
+  Statements marked with this flag will cause any active
+  transaction to end (commit) before proceeding with the
+  command execution.
+
+  This flag should be set for statements that probably can't
+  be rolled back or that do not expect any previously metadata
+  locked tables.
+*/
+#define CF_IMPLICT_COMMIT_BEGIN   (1U << 6)
+/**
+  Implicitly commit after the SQL statement.
+
+  Statements marked with this flag are automatically committed
+  at the end of the statement.
+
+  This flag should be set for statements that will implicitly
+  open and take metadata locks on system tables that should not
+  be carried for the whole duration of a active transaction.
+*/
+#define CF_IMPLICIT_COMMIT_END    (1U << 7)
+/**
+  CF_IMPLICT_COMMIT_BEGIN and CF_IMPLICIT_COMMIT_END are used
+  to ensure that the active transaction is implicitly committed
+  before and after every DDL statement and any statement that
+  modifies our currently non-transactional system tables.
+*/
+#define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
+
+/* Bits in server_command_flags */
+
+/**
+  Skip the increase of the global query id counter. Commonly set for
+  commands that are stateless (won't cause any change on the server
+  internal states).
+*/
+#define CF_SKIP_QUERY_ID        (1U << 0)
+
+/**
+  Skip the increase of the number of statements that clients have
+  sent to the server. Commonly used for commands that will cause
+  a statement to be executed but the statement might have not been
+  sent by the user (ie: stored procedure).
+*/
+#define CF_SKIP_QUESTIONS       (1U << 1)
 
 /* Functions in sql_class.cc */
 
