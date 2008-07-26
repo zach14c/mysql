@@ -5995,7 +5995,8 @@ public:
     {
       best_loose_scan_key= quick->index;
       best_loose_scan_cost= quick->read_time;
-      best_loose_scan_records= quick->records; /* ok because idx == join->const_tables */
+      /* this is ok because idx == join->const_tables */
+      best_loose_scan_records= rows2double(quick->records);
       best_max_loose_keypart= quick_max_loose_keypart;
       best_loose_scan_start_key= NULL;
     }
@@ -7791,7 +7792,7 @@ get_best_combination(JOIN *join, table_map join_tables)
         Re-run best_access_path to produce best access methods that do not use
         join buffering
       */ 
-      for (uint idx= first; idx <= tablenr; i++)
+      for (uint idx= first; idx <= tablenr; idx++)
       {
         if (join->best_positions[idx].use_join_buffer || (idx == first))
         {
