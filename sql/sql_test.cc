@@ -318,7 +318,6 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
     table= pos.table->table;
     if (table)
       fputs(table->alias, DBUG_FILE);
-      //fputs(table->s->table_name.str, DBUG_FILE);
     fputc(' ', DBUG_FILE);
   }
   fputc('\n', DBUG_FILE);
@@ -336,7 +335,6 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
       table= pos.table->table;
       if (table)
         fputs(table->alias, DBUG_FILE);
-        //fputs(table->s->table_name.str, DBUG_FILE);
       fputc(' ', DBUG_FILE);
     }
   }
@@ -358,6 +356,28 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
 
   DBUG_UNLOCK_FILE;
 }
+
+
+#ifndef DBUG_OFF
+void print_sjm(SJ_MATERIALIZE_INFO *sjm)
+{
+  DBUG_LOCK_FILE;
+  fprintf(DBUG_FILE, "\nsemi-join nest{\n");
+  fprintf(DBUG_FILE, "  tables { \n");
+  for (uint i= 0;i < sjm->n_tables; i++)
+  {
+    fprintf(DBUG_FILE, "    %s%s\n", 
+            sjm->positions[i].table->table->alias,
+            (i == sjm->n_tables -1)? "": ",");
+  }
+  fprintf(DBUG_FILE, "  }\n");
+  fprintf(DBUG_FILE, "  materialize_cost= %g\n",
+          sjm->materialization_cost.total_cost());
+  fprintf(DBUG_FILE, "  rows= %g\n", sjm->rows);
+  fprintf(DBUG_FILE, "}\n");
+  DBUG_UNLOCK_FILE;
+}
+#endif 
 
 #endif
 

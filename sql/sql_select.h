@@ -362,58 +362,71 @@ typedef struct st_position
 
   /* If ref-based access is used: bitmap of tables this table depends on  */
   table_map ref_depend_map;
+  bool use_join_buffer; 
   
-  /* 
+  
+  /* These form a stack of partial join order costs and output sizes */
+  COST_VECT prefix_cost;
+  double    prefix_record_count;
+
+  /*
+    Current optimization state: Semi-join strategy to be used for this
+    and preceding join tables.
+    
+    Join optimizer sets this for the *last* join_tab in the
+    duplicate-generating range. That is, in order to interpret this field, 
+    one needs to traverse join->[best_]positions array from right to left.
+    When you see a join table with sj_strategy!= SJ_OPT_NONE, some other
+    field (depending on the strategy) tells how many preceding positions 
+    this applies to. The values of covered_preceding_positions->sj_strategy
+    must be ignored.
+  */
+  uint sj_strategy;
+
+  /* Current optimization state: Loose Scan strategy */
+  uint        first_loosescan_table;
+  table_map   loosescan_need_tables;
+  ;
+
+/* LooseScan strategy members */
+  /*
     keyno  - This is an insideout scan on this key. If keyuse is NULL then
               this is a full index scan, otherwise this is a ref + insideout
               scan (and keyno matches the KEUSE's)
     MAX_KEY - This is not an InsideOut scan
   */
-  uint insideout_key;
-  /* Number of key parts to be used by insideout */
-  uint insideout_parts;
+  uint loosescan_key;  // final (one for strategy instance )
+  uint loosescan_parts; /* Number of keyparts to be kept distinct */
   
+
+/* SJ-Materialization[-scan] strategy */
   /*
     0         - not using semi-join materialization
     sj_mat_*  - using semi-join materialization, the value specifies whether 
                 this is a first/last/just some inner tab.
   */
-  uint use_sj_mat;
-  /* TRUE <=> sj materialization plus scan */
-  //bool sj_mat_scan;
+  uint use_sj_mat;  // final(one for strategy instance)
 
-  bool use_join_buffer;
-  
-  /* cumulative fanout of all sj-inner tables */
-  //double sj_fanout;
-  
-  /*
-    Semi-join strategy to be used.
-    Join optimizer sets this for the *last* join tab in the
-    duplicate-generating range.
-  */
-  uint sj_strategy;
-  /* How many tables are covered by the above */
-  uint n_tables;
 
-  /* Semi-join's optimization stack space: */
-  uint cur_sj_strategy;
-  bool cur_disable_jbuf;
-  int first_firstmatch_table;
-  int first_firstmatch_rtbl;
-  
-  /* Stack of partial join order costs and fanout sizes */
-  COST_VECT prefix_cost;
-  double    prefix_record_count;
-  
-  table_map cur_fanout_generators;
+/* FirstMatch strategy */
+  uint first_firstmatch_table; //state
+  table_map first_firstmatch_rtbl; // state Tables before the firstmatch table
+  table_map firstmatch_need_tables; // state
+
+
+/* Duplicate Weedout strategy */
   table_map dupsweedout_tables;
   uint  first_dupsweedout_table;
- 
-  table_map cur_forks;
 
-  table_map sjm_scan_finish;
-  uint      sjm_scan_edge;
+/* SJM-Scan strategy */
+  // When all these tables are in the prefix, the fanout is gone?
+  table_map sjm_scan_need_tables; // state
+  uint      sjm_scan_last_inner;  // state
+  
+  /*
+    Used at plan refinement stage.
+  */
+  uint n_sj_tables;
 } POSITION;
 
 
@@ -468,6 +481,13 @@ public:
   SJ_TMP_TABLE *next; 
 };
 
+#define SJ_OPT_NONE 0
+#define SJ_OPT_DUPS_WEEDOUT 1
+#define SJ_OPT_LOOSE_SCAN   2
+#define SJ_OPT_FIRST_MATCH  3
+#define SJ_OPT_MATERIALIZE  4
+#define SJ_OPT_MATERIALIZE_SCAN  5
+
 
 class JOIN :public Sql_alloc
 {
@@ -517,9 +537,9 @@ public:
     NULL    - otherwise
   */
   TABLE_LIST *emb_sjm_nest;
-  
 
   POSITION positions[MAX_TABLES+1];
+  //POSITION loose_scan_pos;
   
   /*
     Bitmap of nested joins embedding the position at the end of the current 
@@ -528,16 +548,9 @@ public:
   nested_join_map cur_embedding_map;
 
   table_map cur_emb_sj_nests;
- // bool disable_join_buffering;
-#define SJ_OPT_NONE 0
-#define SJ_OPT_DUPS_WEEDOUT 1
-#define SJ_OPT_LOOSE_SCAN   2
-#define SJ_OPT_FIRST_MATCH  3
-#define SJ_OPT_MATERIALIZE  4
-#define SJ_OPT_MATERIALIZE_SCAN  5
+  table_map cur_unhandled_sj_fanout;
 
-  //int cur_sj_strategy;
-  //int first_firstmatch_table;
+  /* We also maintain a stack of join optimization states in * join->positions[] */
 /******* Join optimization members end *******/
 
 
@@ -631,8 +644,7 @@ public:
   
   Array<Item_in_subselect> sj_subselects;
 
-  /* Descriptions of temporary tables used to weed-out semi-join duplicates */
-  //SJ_TMP_TABLE  *sj_tmp_tables;
+  /* Temporary tables used to weed-out semi-join duplicates */
   List<TABLE> sj_tmp_tables;
 
   /* 
@@ -708,7 +720,6 @@ public:
     tmp_table_param.init();
     tmp_table_param.end_write_records= HA_POS_ERROR;
     rollup.state= ROLLUP::STATE_NONE;
-    //sj_tmp_tables= NULL;
 
     no_const_tables= FALSE;
     first_select= sub_select;
