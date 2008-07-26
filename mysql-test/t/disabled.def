@@ -24,7 +24,6 @@ ctype_latin2_ch      : BUG #33791 2008-01-18 mats Wrong ORDER BY with latin2_cze
 query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
 thread_cache_size_func: BUG#35988, BUG#36733 Due to not deterministic results
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-#subselect_notembedded  : Bug#35803, Bug#33506 2008-Apr-03 subselect_notembedded crashes the server
 user_limits     : Bug#23921 random failure of user_limits.test
 status          : Bug#37481 status.test fails randomly
 maria-preload        : Bug#35107 crashes
