@@ -468,6 +468,9 @@ public:
   TAB *tabs;
   TAB *tabs_end;
 
+  bool is_confluent;
+  bool seen;
+
   uint null_bits;
   uint null_bytes;
   uint rowid_len;

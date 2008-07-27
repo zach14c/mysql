@@ -1508,7 +1508,7 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
           //cur_map |= j->table->map;
         }
 
-        DBUG_ASSERT(jt_rowid_offset);
+        //DBUG_ASSERT(jt_rowid_offset);
         if (jt_rowid_offset) /* Temptable has at least one rowid */
         {
           SJ_TMP_TABLE *sjtbl;
@@ -1517,6 +1517,7 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
               !(sjtbl->tabs= (SJ_TMP_TABLE::TAB*) thd->alloc(tabs_size)))
             DBUG_RETURN(TRUE);
           memcpy(sjtbl->tabs, sjtabs, tabs_size);
+          sjtbl->is_confluent= FALSE;
           sjtbl->tabs_end= sjtbl->tabs + (last_tab - sjtabs);
           sjtbl->rowid_len= jt_rowid_offset;
           sjtbl->null_bits= jt_null_bits;
@@ -1529,6 +1530,19 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
           join->sj_tmp_tables.push_back(sjtbl->tmp_table);
           join->join_tab[first_table].flush_weedout_table= sjtbl;
           join->join_tab[i + pos->n_sj_tables - 1].check_weed_out_table= sjtbl;
+        }
+        else
+        {
+          /* 
+            This is confluent case where the entire subquery predicate does 
+            not depend on anything at all, ie this is 
+              WHERE const IN (uncorrelated select)
+          */
+          SJ_TMP_TABLE *sjtbl;
+          if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))))
+            DBUG_RETURN(TRUE);
+          sjtbl->is_confluent= TRUE;
+          sjtbl->seen= FALSE;
         }
         //tab= last_outer_tab + 1;
         //jump_to= last_outer_tab;
@@ -14097,7 +14111,7 @@ TABLE *create_duplicate_weedout_tmp_table(THD *thd,
   uchar *null_flags;
   uchar *pos;
   DBUG_ENTER("create_duplicate_weedout_tmp_table");
-  
+  DBUG_ASSERT(!sjtbl->is_confluent);
   /*
     STEP 1: Get temporary table name
   */
@@ -15535,8 +15549,17 @@ int do_sj_dups_weedout(THD *thd, SJ_TMP_TABLE *sjtbl)
   uchar *ptr= sjtbl->tmp_table->record[0] + 1;
   uchar *nulls_ptr= ptr;
   
+  if (sjtbl->is_confluent)
+  {
+    if (sjtbl->seen) 
+      return 1;
+    else
+    {
+      sjtbl->seen= 1;
+      return 0;
+    }
+  }
   /* Put the the rowids tuple into table->record[0]: */
-
   // 1. Store the length 
   if (((Field_varstring*)(sjtbl->tmp_table->field[0]))->length_bytes == 1)
   {
@@ -15599,6 +15622,7 @@ int do_sj_reset(SJ_TMP_TABLE *sj_tbl)
 {
   if (sj_tbl->tmp_table)
     return sj_tbl->tmp_table->file->ha_delete_all_rows();
+  sj_tbl->seen= FALSE;
   return 0;
 }
 
