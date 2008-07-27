@@ -3683,6 +3683,20 @@ bool JOIN::flatten_subqueries()
     (*in_subq)->sj_convert_priority= 
       (*in_subq)->is_correlated * MAX_TABLES + child_join->outer_tables;
   }
+  
+  // Temporary measure: disable semi-joins when they are together with outer
+  // joins.
+  for (TABLE_LIST *tbl= select_lex->leaf_tables; tbl; tbl=tbl->next_leaf)
+  {
+    TABLE_LIST *embedding= tbl->embedding;
+    if (tbl->on_expr || (tbl->embedding && !(embedding->sj_on_expr && 
+                                            !embedding->embedding)))
+    {
+      in_subq= sj_subselects.front();
+      arena= thd->activate_stmt_arena_if_needed(&backup);
+      goto skip_conversion;
+    }
+  }
 
   //dump_TABLE_LIST_struct(select_lex, select_lex->leaf_tables);
   /* 
@@ -3715,10 +3729,9 @@ bool JOIN::flatten_subqueries()
     if (convert_subq_to_sj(this, *in_subq))
       DBUG_RETURN(TRUE);
   }
-  if (arena)
-    thd->restore_active_arena(arena, &backup);
-
+skip_conversion:
   /* 3. Finalize those we didn't convert */
+  bool converted= FALSE;
   for (; in_subq!= in_subq_end; in_subq++)
   {
     JOIN *child_join= (*in_subq)->unit->first_select()->join;
@@ -3728,6 +3741,7 @@ bool JOIN::flatten_subqueries()
 
     SELECT_LEX *save_select_lex= thd->lex->current_select;
     thd->lex->current_select= (*in_subq)->unit->first_select();
+    converted= TRUE;
 
     res= (*in_subq)->select_transformer(child_join);
 
@@ -3746,7 +3760,22 @@ bool JOIN::flatten_subqueries()
     if (replace_where_subcondition(this, tree, *in_subq, substitute, 
                                    do_fix_fields))
       DBUG_RETURN(TRUE);
+   /* psergey-todo: remove this hack: */
+   (*in_subq)->substitution= NULL;
+     
+    if (!thd->stmt_arena->is_conventional())
+    {
+      tree= ((*in_subq)->emb_on_expr_nest == (TABLE_LIST*)1)?
+                     &select_lex->prep_where : &((*in_subq)->emb_on_expr_nest->prep_on_expr);
+
+      if (replace_where_subcondition(this, tree, *in_subq, substitute, 
+                                     FALSE))
+        DBUG_RETURN(TRUE);
+    }
   }
+
+  if (arena)
+    thd->restore_active_arena(arena, &backup);
   sj_subselects.clear();
   DBUG_RETURN(FALSE);
 }
@@ -5843,6 +5872,11 @@ public:
     quick_uses_applicable_index(FALSE)
   {
     LINT_INIT(quick_max_loose_keypart); // Protected by sj_insideout_quick_*
+    /* Protected by best_loose_scan_cost!= DBL_MAX */
+    LINT_INIT(best_loose_scan_key);
+    LINT_INIT(best_loose_scan_records);
+    LINT_INIT(best_max_loose_keypart);
+    LINT_INIT(best_loose_scan_start_key);
   }
   
   void init(JOIN *join, JOIN_TAB *s, table_map remaining_tables)
@@ -6018,11 +6052,14 @@ public:
 
   void save_to_position(POSITION *pos)
   {
-    pos->records_read=    best_loose_scan_records;
     pos->read_time=       best_loose_scan_cost;
-    pos->key=             best_loose_scan_start_key;
-    pos->loosescan_key=   best_loose_scan_key;
-    pos->loosescan_parts= best_max_loose_keypart + 1;
+    if (best_loose_scan_cost != DBL_MAX)
+    {
+      pos->records_read=    best_loose_scan_records;
+      pos->key=             best_loose_scan_start_key;
+      pos->loosescan_key=   best_loose_scan_key;
+      pos->loosescan_parts= best_max_loose_keypart + 1;
+    }
   }
 };
 
@@ -7741,6 +7778,7 @@ get_best_combination(JOIN *join, table_map join_tables)
     POSITION *pos= join->best_positions + tablenr;
     JOIN_TAB *s= pos->table;
     uint first;
+    LINT_INIT(first); // Set by every branch except SJ_OPT_NONE which doesn't use it
 
     if ((handled_tabs & s->table->map) || pos->sj_strategy == SJ_OPT_NONE)
       continue;
@@ -7754,6 +7792,7 @@ get_best_combination(JOIN *join, table_map join_tables)
              sizeof(POSITION) * sjm->n_tables);
       first= tablenr - sjm->n_tables + 1;
       join->best_positions[first].n_sj_tables= sjm->n_tables;
+      join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE;
     }
     else if (pos->sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
     {
@@ -7764,6 +7803,7 @@ get_best_combination(JOIN *join, table_map join_tables)
       first= pos->sjm_scan_last_inner - sjm->n_tables + 1;
       memcpy(join->best_positions + first, 
              sjm->positions, sizeof(POSITION) * sjm->n_tables);
+      join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
       join->best_positions[first].use_sj_mat |= SJ_MAT_SCAN;
       join->best_positions[first].n_sj_tables= sjm->n_tables;
     }
