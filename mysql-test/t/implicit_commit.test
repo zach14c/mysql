@@ -1,5 +1,5 @@
 source include/have_innodb.inc;
-source include/have_log_bin.inc;
+source include/not_embedded.inc;
 
 SET GLOBAL EVENT_SCHEDULER = OFF;
 SET BINLOG_FORMAT = STATEMENT;
@@ -879,9 +879,15 @@ source include/implicit_commit_helper.inc;
 --echo # SQLCOM_SHOW_PROC_CODE
 --echo #
 
+#
+# Available only on servers with debugging support.
+#
+
+--disable_abort_on_error
 let $statement=
   show procedure code p1;
 source include/implicit_commit_helper.inc;
+--enable_abort_on_error
 
 --echo #
 --echo # SQLCOM_DROP_PROCEDURE
@@ -935,9 +941,15 @@ source include/implicit_commit_helper.inc;
 --echo # SQLCOM_SHOW_FUNC_CODE
 --echo #
 
+#
+# Available only on servers with debugging support.
+#
+
+--disable_abort_on_error
 let $statement=
   show function code f1;
 source include/implicit_commit_helper.inc;
+--enable_abort_on_error
 
 --echo #
 --echo # SQLCOM_PREPARE
