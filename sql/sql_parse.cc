@@ -123,7 +123,7 @@ bool end_active_trans(THD *thd)
     if (ha_commit(thd))
       error=1;
 #ifdef WITH_MARIA_STORAGE_ENGINE
-    ha_maria::implicit_commit(thd);
+    ha_maria::implicit_commit(thd, TRUE);
 #endif
   }
   thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
@@ -1053,6 +1053,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     {
       char *beginning_of_next_stmt= (char*) end_of_stmt;
 
+#ifdef WITH_MARIA_STORAGE_ENGINE
+      ha_maria::implicit_commit(thd, FALSE);
+#endif
+
       net_end_statement(thd);
       query_cache_end_of_result(thd);
       /*
@@ -1421,6 +1425,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     thd->killed= THD::NOT_KILLED;
     thd->mysys_var->abort= 0;
   }
+
+#ifdef WITH_MARIA_STORAGE_ENGINE
+  ha_maria::implicit_commit(thd, FALSE);
+#endif
 
   net_end_statement(thd);
   query_cache_end_of_result(thd);
@@ -2106,6 +2114,7 @@ mysql_execute_command(THD *thd)
 #endif
     break;
   }
+  break;
   case SQLCOM_SHOW_NEW_MASTER:
   {
     if (check_global_access(thd, REPL_SLAVE_ACL))
