@@ -98,7 +98,7 @@ set max_heap_table_size= @save_max_heap_table_size;
 explain select * from t1 where a in (select b from t2);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	3	
-1	PRIMARY	t2	ref	b	b	5	test.t1.a	2	Using index; FirstMatch(t1)
+1	PRIMARY	t2	index	b	b	5	NULL	10	Using index; Materialize
 select * from t1;
 a	b
 1	1
@@ -342,7 +342,7 @@ WHERE t1.Code IN (
 SELECT t2.CountryCode FROM t2 WHERE Population > 5000000);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	PRIMARY	NULL	NULL	NULL	31	
-1	PRIMARY	t2	ref	CountryCode	CountryCode	3	test.t1.Code	18	Using where; FirstMatch(t1)
+1	PRIMARY	t2	ALL	CountryCode	NULL	NULL	NULL	545	Using where; Materialize
 SELECT Name FROM t1 
 WHERE t1.Code IN (
 SELECT t2.CountryCode FROM t2 WHERE Population > 5000000);
@@ -676,7 +676,7 @@ The following must use loose index scan over t3, key a:
 explain select count(a) from t2 where a in ( SELECT  a FROM t3);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	index	a	a	5	NULL	1000	Using index
-1	PRIMARY	t3	ref	a	a	5	test.t2.a	30	Using index; FirstMatch(t2)
+1	PRIMARY	t3	index	a	a	5	NULL	30000	Using index; Materialize
 select count(a) from t2 where a in ( SELECT  a FROM t3);
 count(a)
 1000

@@ -12203,6 +12203,9 @@ void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab,
                        test(i < no_jbuf_before), rec_count,
                        &pos, &loose_scan_pos);
     }
+    else 
+      pos= join->positions[i];
+
     if ((i == first_tab && first_alt))
       pos= loose_scan_pos;
 
@@ -12446,13 +12449,19 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
     {
       /* This is SJ-Materialization with lookups */
       COST_VECT prefix_cost; 
-      int first_tab= idx - mat_info->n_tables;
-      if (idx == join->const_tables)
+      signed int first_tab= (int)idx - mat_info->n_tables;
+      double prefix_rec_count;
+      if (first_tab < (int)join->const_tables)
+      {
         prefix_cost.zero();
+        prefix_rec_count= 1.0;
+      }
       else
+      {
         prefix_cost= join->positions[first_tab].prefix_cost;
+        prefix_rec_count= join->positions[first_tab].prefix_record_count;
+      }
 
-      double prefix_rec_count= join->positions[first_tab].prefix_record_count;
       double mat_read_time= prefix_cost.total_cost();
       mat_read_time += mat_info->materialization_cost.total_cost() +
                        prefix_rec_count * mat_info->lookup_cost.total_cost();
