@@ -65,15 +65,16 @@ int _mi_write_keypage(register MI_INFO *info, register MI_KEYDEF *keyinfo,
 		      my_off_t page, int level, uchar *buff)
 {
   reg3 uint length;
+  MYISAM_SHARE *share= info->s;
   DBUG_ENTER("_mi_write_keypage");
 
 #ifndef FAST					/* Safety check */
-  if (page < info->s->base.keystart ||
+  if (page < share->base.keystart ||
       page+keyinfo->block_length > info->state->key_file_length ||
       (page & (MI_MIN_KEY_BLOCK_LENGTH-1)))
   {
     DBUG_PRINT("error",("Trying to write inside key status region: key_start: %lu  length: %lu  page: %lu",
-			(long) info->s->base.keystart,
+			(long) share->base.keystart,
 			(long) info->state->key_file_length,
 			(long) page));
     my_errno=EINVAL;
@@ -93,11 +94,11 @@ int _mi_write_keypage(register MI_INFO *info, register MI_KEYDEF *keyinfo,
     length=keyinfo->block_length;
   }
 #endif
-  DBUG_RETURN((key_cache_write(info->s->key_cache,
-                         info->s->kfile,page, level, (uchar*) buff,length,
-			 (uint) keyinfo->block_length,
-			 (int) ((info->lock_type != F_UNLCK) ||
-				info->s->delay_key_write))));
+  DBUG_RETURN(key_cache_write(share->key_cache,
+                              share->kfile, page, level, (uchar*)buff, length,
+                              (uint) keyinfo->block_length,
+                              (int) ((info->lock_type != F_UNLCK) ||
+                                     share->delay_key_write), share));
 } /* mi_write_keypage */
 
 
@@ -108,18 +109,19 @@ int _mi_dispose(register MI_INFO *info, MI_KEYDEF *keyinfo, my_off_t pos,
 {
   my_off_t old_link;
   uchar buff[8];
+  MYISAM_SHARE *share= info->s;
   DBUG_ENTER("_mi_dispose");
   DBUG_PRINT("enter",("pos: %ld", (long) pos));
 
-  old_link= info->s->state.key_del[keyinfo->block_size_index];
-  info->s->state.key_del[keyinfo->block_size_index]= pos;
+  old_link= share->state.key_del[keyinfo->block_size_index];
+  share->state.key_del[keyinfo->block_size_index]= pos;
   mi_sizestore(buff,old_link);
-  info->s->state.changed|= STATE_NOT_SORTED_PAGES;
-  DBUG_RETURN(key_cache_write(info->s->key_cache,
-                              info->s->kfile, pos , level, buff,
-			      sizeof(buff),
-			      (uint) keyinfo->block_length,
-			      (int) (info->lock_type != F_UNLCK)));
+  share->state.changed|= STATE_NOT_SORTED_PAGES;
+  DBUG_RETURN(key_cache_write(share->key_cache,
+                              share->kfile, pos, level, buff,
+ 			      sizeof(buff),
+ 			      (uint) keyinfo->block_length,
+ 			      (int) (info->lock_type != F_UNLCK), share));
 } /* _mi_dispose */
 
 

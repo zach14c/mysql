@@ -1,0 +1,89 @@
+*** READ-COMMITTED and REPEATABLE-READ tests ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+SET @@tx_isolation = 'REPEATABLE-READ';
+SET @@autocommit = 0;
+CREATE TABLE t1 (a int);
+BEGIN;
+INSERT INTO t1 VALUES (1);
+SET @@storage_engine = 'Falcon';
+SET @@tx_isolation = 'REPEATABLE-READ';
+SET @@autocommit = 0;
+BEGIN;
+SELECT count(*) FROM t1;
+count(*)
+0
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+0
+BEGIN;
+INSERT INTO t1 VALUES (2);
+SELECT count(*) FROM t1;
+count(*)
+0
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+0
+COMMIT;
+BEGIN;
+SELECT count(*) FROM t1;
+count(*)
+2
+BEGIN;
+INSERT INTO t1 VALUES (2);
+SELECT count(*) FROM t1;
+count(*)
+2
+COMMIT;
+COMMIT;
+BEGIN;
+SELECT count(*) FROM t1;
+count(*)
+3
+COMMIT;
+BEGIN;
+DELETE FROM t1;
+BEGIN;
+SET tx_isolation = 'READ-COMMITTED';
+COMMIT;
+BEGIN;
+SELECT count(*) FROM t1;
+count(*)
+3
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+0
+BEGIN;
+INSERT INTO t1 VALUES (1);
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+1
+COMMIT;
+SET @@tx_isolation = 'REPEATABLE-READ';
+COMMIT;
+BEGIN;
+SELECT count(*) FROM t1;
+count(*)
+1
+BEGIN;
+INSERT INTO t1 values (2);
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+1
+COMMIT;
+BEGIN;
+SELECT count(*) FROM t1;
+count(*)
+2
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+2
+COMMIT;
+COMMIT;
+DROP TABLE t1;

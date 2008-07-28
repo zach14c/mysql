@@ -13,7 +13,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/* This file is included by all internal myisam files */
+/**
+  @file
+  This file is included by all internal myisam files
+*/
 
 #include "myisam.h"                     /* Structs & some defines */
 #include "myisampack.h"                 /* packing of keys */
@@ -21,6 +24,7 @@
 #ifdef THREAD
 #include <my_pthread.h>
 #include <thr_lock.h>
+#include <my_atomic.h>
 #else
 #include <my_no_pthread.h>
 #endif
@@ -157,6 +161,7 @@ typedef struct st_mi_isam_pack
 
 #define MAX_NONMAPPED_INSERTS 1000
 
+/** Information shared by all open instances of the same table */
 typedef struct st_mi_isam_share
 {                                       /* Shared between opens */
   MI_STATE_INFO state;
@@ -227,11 +232,33 @@ typedef struct st_mi_isam_share
   /* counter of writing in non-mmaped area */
   uint nonmmaped_inserts;
   rw_lock_t mmap_lock;
+  /**
+    If this table is doing physical logging (1) or not (0).
+    Set under MI_INFO::physical_logging_rwlock and THR_LOCK_myisam.
+    Read under either one of the two locks above.
+  */
+  volatile int32 physical_logging;
+  /** For protecting MYISAM_SHARE::physical_logging */
+  my_atomic_rwlock_t physical_logging_rwlock;
+  /**
+    File name before resolving any symlink or expanding directory.
+    Used by physical logging. In order to restore to a data directory with a
+    different path from the original one, we need unresolved relative names.
+  */
+  char *unresolv_file_name;
+  /**
+    If we already stored MI_LOG_OPEN in physical log for this share.
+    Set to TRUE only by writer thread under THR_LOCK_myisam_log atomically
+    with logging the MI_LOG_OPEN; set to FALSE only by mi_log_stop_physical()
+    after closing the log.
+  */
+  my_bool MI_LOG_OPEN_stored_in_physical_log;
 } MYISAM_SHARE;
 
 
 typedef my_bool (*index_cond_func_t)(void *param);
 
+/** Information local to the table's instance */
 struct st_myisam_info
 {
   MYISAM_SHARE *s;                      /* Shared between open:s */
@@ -244,7 +271,6 @@ struct st_myisam_info
   MEM_ROOT      ft_memroot;             /* used by the parser               */
   MYSQL_FTPARSER_PARAM *ftparser_param; /* share info between init/deinit   */
   LIST in_use;                          /* Thread using this table          */
-  char *filename;			/* parameter to open filename       */
   uchar *buff,				/* Temp area for key                */
 	*lastkey,*lastkey2;		/* Last used search key             */
   uchar *first_mbr_key;			/* Searhed spatial key              */
@@ -331,6 +357,11 @@ struct st_myisam_info
 #define STATE_NOT_ANALYZED      8
 #define STATE_NOT_OPTIMIZED_KEYS 16
 #define STATE_NOT_SORTED_PAGES  32
+/**
+   If open_count>0 the first time we opened this table; cleared after
+   successful check or repair
+*/
+#define STATE_BAD_OPEN_COUNT    64
 
 /* options to mi_read_cache */
 #define READING_NEXT    1
@@ -417,7 +448,7 @@ struct st_myisam_info
 #define mi_unique_store(A,B)    mi_int4store((A),(B))
 
 #ifdef THREAD
-extern pthread_mutex_t THR_LOCK_myisam;
+extern pthread_mutex_t THR_LOCK_myisam_log;
 #endif
 #if !defined(THREAD) || defined(DONT_USE_RW_LOCKS)
 #define rw_wrlock(A) {}
@@ -427,12 +458,14 @@ extern pthread_mutex_t THR_LOCK_myisam;
 
 /* Some extern variables */
 
+C_MODE_START
 extern LIST *myisam_open_list;
-extern uchar NEAR myisam_file_magic[], NEAR myisam_pack_file_magic[];
-extern uint NEAR myisam_read_vec[], NEAR myisam_readnext_vec[];
+C_MODE_END
+extern uchar NEAR myisam_file_magic[],NEAR myisam_pack_file_magic[];
+extern uint NEAR myisam_read_vec[],NEAR myisam_readnext_vec[];
 extern uint myisam_quick_table_bits;
-extern File myisam_log_file;
 extern ulong myisam_pid;
+extern const HASH *mi_log_tables_physical;
 
 /* This is used by _mi_calc_xxx_key_length och _mi_store_key */
 
@@ -638,16 +671,48 @@ typedef struct st_mi_block_info         /* Parameter to _mi_get_block_info */
 #define SORT_BUFFER_INIT        (2048L*1024L-MALLOC_OVERHEAD)
 #define MIN_SORT_BUFFER         (4096-MALLOC_OVERHEAD)
 
-enum myisam_log_commands
-{
-  MI_LOG_OPEN, MI_LOG_WRITE, MI_LOG_UPDATE, MI_LOG_DELETE, MI_LOG_CLOSE,
-    MI_LOG_EXTRA, MI_LOG_LOCK, MI_LOG_DELETE_ALL
+/** Commands storable in MyISAM logs (L/P= in logical/physical log) */
+enum myisam_log_commands {
+  MI_LOG_OPEN, /**< when mi_open() LP */
+  MI_LOG_WRITE, /**< when mi_write() L */
+  MI_LOG_UPDATE, /**< when mi_update() L */
+  MI_LOG_DELETE, /**< when mi_delete() L */
+  MI_LOG_CLOSE, /**< when mi_close() LP */
+  MI_LOG_EXTRA, /**< when mi_extra() L */
+  MI_LOG_LOCK, /**< when mi_lock_database() L */
+  MI_LOG_DELETE_ALL, /**< when mi_delete_all LP */
+  MI_LOG_WRITE_BYTES_MYD, /**< when MyISAM writes to the data file P */
+  MI_LOG_WRITE_BYTES_MYI, /**< when MyISAM writes to the index file P */
+  MI_LOG_CHSIZE_MYI,      /**< when MyISAM changes size of index file P */
+  MI_LOG_END_SENTINEL /**< keep this one unused and last */
 };
+extern const char *mi_log_command_name[];
+/** Logs a command if this log is open */
+#define myisam_log_command_logical(command, info_or_share, buffert, length, result) \
+  if (my_b_inited(&myisam_logical_log))                                 \
+    _myisam_log_command(&myisam_logical_log, command, info_or_share, \
+                        buffert, length, result)
+/** Logs a command involving a record if this log is open */
+#define myisam_log_record_logical(command, info, record, filepos, result) \
+  if (my_b_inited(&myisam_logical_log))                                 \
+    _myisam_log_record_logical(command, info, record, filepos, result)
+/** If log record stores numerical info in long format */
+#define MI_LOG_BIG_NUMBERS 128
 
-#define myisam_log(a,b,c,d) if (myisam_log_file >= 0) _myisam_log(a,b,c,d)
-#define myisam_log_command(a,b,c,d,e) if (myisam_log_file >= 0) _myisam_log_command(a,b,c,d,e)
-#define myisam_log_record(a,b,c,d,e) if (myisam_log_file >= 0) _myisam_log_record(a,b,c,d,e)
-
+/**
+  MyISAM-specific errors (not generic enough to be HA_ERR), sent to the
+  caller wrapped inside ER_GET_ERRMSG. Not yet stabilized, so not yet
+  exported to myisam.h.
+*/
+enum myisam_errors
+{
+  /* decrease, starting with -1 */
+  MYISAM_ERR_NO_BACKUP_WITH_EXTERNAL_LOCKING= -1,
+  MYISAM_ERR_BACKUP_TOO_RECENT= -2,
+  MYISAM_ERR_LAST=-3 /**< keep it last and unused */
+  /* use only numbers<0, to not collide with OS errors, ER_, HA_ERR etc */
+};
+#define MYISAM_ERR(errnumber) myisam_error_messages[-errnumber-1]
 #define fast_mi_writeinfo(INFO) if (!(INFO)->s->tot_locks) (void) _mi_writeinfo((INFO),0)
 #define fast_mi_readinfo(INFO) ((INFO)->lock_type == F_UNLCK) && _mi_readinfo((INFO),F_RDLCK,1)
 
@@ -662,12 +727,60 @@ extern uint _mi_pack_get_block_info(MI_INFO *myisam, MI_BIT_BUFF *bit_buff,
 extern void _mi_store_blob_length(uchar *pos, uint pack_length, uint length);
 extern void _myisam_log(enum myisam_log_commands command, MI_INFO *info,
                         const uchar *buffert, uint length);
-extern void _myisam_log_command(enum myisam_log_commands command,
-                                MI_INFO *info, const uchar *buffert,
+extern void _myisam_log_command(IO_CACHE *log,
+                                enum myisam_log_commands command,
+                                void *info, const uchar *buffert,
                                 uint length, int result);
+extern void _myisam_log_record_logical(enum myisam_log_commands command,
+                                       MI_INFO *info, const uchar *record,
+                                       my_off_t filepos, int result);
 extern void _myisam_log_record(enum myisam_log_commands command, MI_INFO *info,
                                const uchar *record, my_off_t filepos,
                                int result);
+extern void myisam_log_pwrite_physical(enum myisam_log_commands command,
+                                       MYISAM_SHARE *share,
+                                       const uchar *buffert, uint length,
+                                       my_off_t filepos);
+extern void myisam_log_chsize_kfile_physical(MYISAM_SHARE *share,
+                                             my_off_t new_length);
+#ifdef HAVE_MYISAM_PHYSICAL_LOGGING
+static inline int32 mi_get_physical_logging_state(MYISAM_SHARE *share)
+{
+  int32 ret;
+  my_atomic_rwlock_rdlock(&share->physical_logging_rwlock);
+  ret= my_atomic_load32(&share->physical_logging);
+  my_atomic_rwlock_rdunlock(&share->physical_logging_rwlock);
+  return ret;
+}
+static inline void
+mi_set_physical_logging_state(MYISAM_SHARE *share, int32 new_state)
+{
+  my_atomic_rwlock_wrlock(&share->physical_logging_rwlock);
+  my_atomic_store32(&share->physical_logging, new_state);
+  my_atomic_rwlock_wrunlock(&share->physical_logging_rwlock);
+}
+#else
+#define mi_get_physical_logging_state(share) 0
+#define mi_set_physical_logging_state(share, new_state)
+#endif
+/**
+  IN and OUT structure for instructing how to apply a MyISAM log and later
+  getting statistics about this log.
+*/
+typedef struct mi_examine_log_param
+{
+  uint verbose, update, max_files, re_open_count, recover, prefix_remove,
+    opt_processes;
+  ulong number_of_commands;
+  my_off_t start_offset,record_pos;
+  const char *log_filename, *filepath, *write_filename, *record_pos_file;
+  /** Count of commands found in log and their errors */
+  ulong com_count[MI_LOG_END_SENTINEL][3];
+  my_bool (*table_selection_hook)(const char *); /**< to filter tables */
+} MI_EXAMINE_LOG_PARAM;
+extern void mi_examine_log_param_init(MI_EXAMINE_LOG_PARAM *param);
+extern int mi_examine_log(MI_EXAMINE_LOG_PARAM *param);
+
 extern void mi_report_error(int errcode, const char *file_name);
 extern my_bool _mi_memmap_file(MI_INFO *info);
 extern void _mi_unmap_file(MI_INFO *info);
@@ -682,8 +795,10 @@ extern size_t mi_nommap_pread(MI_INFO *info, uchar *Buffer,
 extern size_t mi_nommap_pwrite(MI_INFO *info, const uchar *Buffer,
                                size_t Count, my_off_t offset, myf MyFlags);
 
-uint mi_state_info_write(File file, MI_STATE_INFO *state, uint pWrite);
+uint mi_state_info_write(MYISAM_SHARE *share, File file,
+                         MI_STATE_INFO *state, uint pWrite);
 uchar *mi_state_info_read(uchar *ptr, MI_STATE_INFO *state);
+int mi_remap_file_and_write_state_for_unlock(MI_INFO *info);
 uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead);
 uint mi_base_info_write(File file, MI_BASE_INFO *base);
 uchar *mi_n_base_info_read(uchar *ptr, MI_BASE_INFO *base);
@@ -744,6 +859,11 @@ int _create_index_by_sort(MI_SORT_PARAM *info,my_bool no_messages, ulong);
 extern void mi_set_index_cond_func(MI_INFO *info, index_cond_func_t func,
                                    void *func_arg);
 int flush_blocks(HA_CHECK *param, KEY_CACHE *key_cache, File file);
+extern const char *myisam_error_messages[];
+extern my_bool mi_log_index_pages_physical;
+extern IO_CACHE myisam_logical_log, myisam_physical_log;
+extern pthread_mutex_t THR_LOCK_myisam;
+
 #ifdef __cplusplus
 }
 #endif

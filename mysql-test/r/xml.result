@@ -1029,4 +1029,23 @@ SELECT 1 FROM t1 ORDER BY(UPDATEXML(a, '1', '1'));
 1
 1
 DROP TABLE t1;
+set @xml = '<r><n id="1">v</n><n id="2">v</n></r>';
+select ExtractValue(@xml,'boolean(//n)') as NonEmptyNodeSet_to_Boolean;
+NonEmptyNodeSet_to_Boolean
+1
+select ExtractValue(@xml,'boolean(//n[10])') as EmptyNodeSet_to_Boolean;
+EmptyNodeSet_to_Boolean
+0
+select ExtractValue(@xml,'boolean("00")') as NonEmptyString_to_Boolean;
+NonEmptyString_to_Boolean
+1
+select ExtractValue(@xml,'boolean("11")') as NonEmptyString_to_Boolean;
+NonEmptyString_to_Boolean
+1
+select ExtractValue(@xml,'boolean("")') as EmptyString_to_Boolean;
+EmptyString_to_Boolean
+0
+select ExtractValue(@xml,'boolean($@empty)') as NULLString_to_Boolean;
+NULLString_to_Boolean
+0
 End of 5.1 tests

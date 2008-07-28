@@ -134,7 +134,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "main,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
+our $opt_suites_default= "main,backup,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -143,6 +143,7 @@ our $exe_mysql;
 our $exe_mysqladmin;
 our $exe_mysql_upgrade;
 our $exe_mysqlbinlog;
+our $exe_myisamlog;
 our $exe_mysql_client_test;
 our $exe_bug25714;
 our $exe_mysqld;
@@ -263,6 +264,7 @@ my @default_valgrind_args= ("--show-reachable=yes");
 my @valgrind_args;
 my $opt_valgrind_path;
 my $opt_callgrind;
+my $opt_debug_sync_timeout= 300; # Default timeout for WAIT_FOR actions.
 
 our $opt_stress=               "";
 our $opt_stress_suite=     "main";
@@ -638,6 +640,7 @@ sub command_line_setup () {
              'valgrind-option=s'        => \@valgrind_args,
              'valgrind-path=s'          => \$opt_valgrind_path,
 	     'callgrind'                => \$opt_callgrind,
+	     'debug-sync-timeout=i'     => \$opt_debug_sync_timeout,
 
              # Stress testing 
              'stress'                   => \$opt_stress,
@@ -1986,6 +1989,27 @@ sub environment_setup () {
   $ENV{'MYSQL_BINLOG'}= $cmdline_mysqlbinlog;
 
   # ----------------------------------------------------
+  # Setup env so childs can execute myisamlog
+  # ----------------------------------------------------
+
+  my $myisam_path= mtr_file_exists(vs_config_dirs("storage/myisam", ""),
+                                   "$glob_basedir/storage/myisam",
+                                   "$glob_basedir/bin");
+
+  $exe_myisamlog=
+    mtr_exe_exists("$myisam_path/myisamlog");
+
+  my $cmdline_myisamlog=
+    mtr_native_path($exe_myisamlog);
+
+  if ( $opt_debug )
+  {
+    $cmdline_myisamlog .=
+      " -#d:t:A,$path_vardir_trace/log/myisamlog.trace";
+  }
+  $ENV{'MYISAMLOG'}= $cmdline_myisamlog;
+
+  # ----------------------------------------------------
   # Setup env so childs can execute mysql
   # ----------------------------------------------------
   my $cmdline_mysql=
@@ -2080,6 +2104,11 @@ sub environment_setup () {
                         "$path_client_bindir/myisampack",
                         "$glob_basedir/storage/myisam/myisampack",
                         "$glob_basedir/myisam/myisampack"));
+  $ENV{'MYISAM_FTDUMP'}= mtr_native_path(mtr_exe_exists(
+                       vs_config_dirs('storage/myisam', 'myisam_ftdump'),
+                       vs_config_dirs('myisam', 'myisam_ftdump'),
+                       "$path_client_bindir/myisam_ftdump",
+                       "$glob_basedir/storage/myisam/myisam_ftdump"));
 
   # ----------------------------------------------------
   # Setup env so childs can execute maria_pack and maria_chk
@@ -3679,6 +3708,10 @@ sub mysqld_arguments ($$$$) {
   # see BUG#28359
   mtr_add_arg($args, "%s--connect-timeout=60", $prefix);
 
+  # Enable the debug sync facility, set default wait timeout.
+  # Facility stays disabled if timeout value is zero.
+  mtr_add_arg($args, "%s--loose-debug-sync-timeout=%s", $prefix,
+              $opt_debug_sync_timeout);
 
   # When mysqld is run by a root user(euid is 0), it will fail
   # to start unless we specify what user to run as, see BUG#30630
@@ -3700,6 +3733,9 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--pid-file=%s", $prefix,
 	      $mysqld->{'path_pid'});
+        
+   mtr_add_arg($args, "%s--log-err=%s", $prefix,
+	      $mysqld->{'path_myerr'});
 
   mtr_add_arg($args, "%s--port=%d", $prefix,
                 $mysqld->{'port'});
@@ -5119,6 +5155,8 @@ Options for coverage, profiling etc
                         can be specified more then once
   valgrind-path=[EXE]   Path to the valgrind executable
   callgrind             Instruct valgrind to use callgrind
+  debug-sync-timeout=NUM  Set default timeout for WAIT_FOR debug sync
+                        actions. Disable facility with NUM=0.
 
 Misc options
 

@@ -17,12 +17,6 @@ lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 rpl_log_pos          : Bug#8693 Test 'rpl_log_pos' fails sometimes
 ctype_create         : Bug#32965 main.ctype_create fails
 user_limits          : Bug#23921 2007-12-16 random failure of user_limits.test
-backup                :BUG#34235 pending replacement of test facility with WL#4259
-backup_commit_blocker :BUG#34235 pending replacement of test facility with WL#4259
-backup_ddl_blocker    :BUG#34235 pending replacement of test facility with WL#4259
-backup_progress       :BUG#34235 pending replacement of test facility with WL#4259
-backup_security       :BUG#34235 pending replacement of test facility with WL#4259
-backup_snapshot       :BUG#34235 pending replacement of test facility with WL#4259
 backup_no_engine     : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
 backup_tablespace    : Bug #36973 backup_tablespace.test fails in pushbuild
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
@@ -30,7 +24,6 @@ ctype_latin2_ch      : BUG #33791 2008-01-18 mats Wrong ORDER BY with latin2_cze
 query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
 thread_cache_size_func: BUG#35988, BUG#36733 Due to not deterministic results
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-subselect_notembedded  : Bug#35803, Bug#33506 2008-Apr-03 subselect_notembedded crashes the server
 user_limits     : Bug#23921 random failure of user_limits.test
 status          : Bug#37481 status.test fails randomly
 maria-preload        : Bug#35107 crashes
@@ -48,3 +41,6 @@ sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on 
 key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
 max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
 tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems
+backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
+backup_tablespace           : Bug#36973 2008-07-01 rafal
+backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug

@@ -109,10 +109,12 @@ public:
 #endif
 
 	int				addColumn(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags);
+	int				addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
+	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName,
-					            KEY *key, int indexNumber);
+	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
+	int				dropIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
 	void			getKeyDesc(KEY *keyInfo, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);

@@ -21,7 +21,7 @@ CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
 
 # invalid location
---error ER_BACKUP_INVALID_LOC
+--error ER_BAD_PATH
 BACKUP DATABASE adb TO '';
 
 # don't overwrite existing files

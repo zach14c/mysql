@@ -53,6 +53,10 @@
 #define MAX(a,b)			((a >= b) ? (a) : (b))
 #endif
 
+#ifndef ONLINE_ALTER
+//#define ONLINE_ALTER
+#endif
+
 #ifdef DEBUG_BACKLOG
 static const uint LOAD_AUTOCOMMIT_RECORDS = 10000000;
 #else
@@ -739,7 +743,6 @@ ulonglong StorageInterface::table_flags(void) const
 	DBUG_RETURN(tableFlags);
 }
 
-
 ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 {
 	DBUG_ENTER("StorageInterface::index_flags");
@@ -748,7 +751,6 @@ ulong StorageInterface::index_flags(uint idx, uint part, bool all_parts) const
 	DBUG_RETURN(flags);
 	//DBUG_RETURN(HA_READ_RANGE | HA_KEY_SCAN_NOT_ROR | (indexOrder ? HA_READ_ORDER : 0));
 }
-
 
 int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO *info)
 {
@@ -865,6 +867,16 @@ int StorageInterface::createIndex(const char *schemaName, const char *tableName,
 	const char *sql = gen.getString();
 
 	return storageTable->share->createIndex(storageConnection, key->name, sql);
+}
+
+int StorageInterface::dropIndex(const char *schemaName, const char *tableName,
+                                 KEY *key, int indexNumber)
+{
+	CmdGen gen;
+	gen.gen("drop index %s.\"%s$%d\"", schemaName, tableName, indexNumber);
+	const char *sql = gen.getString();
+
+	return storageTable->share->dropIndex(storageConnection, key->name, sql);
 }
 
 #if 0
@@ -2084,42 +2096,106 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes)
 {
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
-	// ulonglong bits = alter_flags->to_ulonglong();
 	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
+	HA_ALTER_FLAGS supported;
+	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX;
+						/**
+						| HA_ADD_COLUMN | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX
+						| HA_COLUMN_STORAGE | HA_COLUMN_FORMAT;
+						**/
+	HA_ALTER_FLAGS notSupported = ~(supported);
 	
-	if (!tempTable && alter_flags->is_set(HA_ADD_COLUMN))
+#ifndef ONLINE_ALTER
+	DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+#endif	
+
+	if (tempTable || (*alter_flags & notSupported).is_set())
+		DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+
+	// TODO:
+	// 1. Check for supported ALTER combinations
+	// 2. Check for explicit default (altered_table->s->default_values)
+	
+	if (alter_flags->is_set(HA_ADD_COLUMN))
 		{
 		Field *field = NULL;
 		
-		for (uint n = 0; n < table->s->fields; ++n, field = NULL)
+		for (uint i = 0; i < altered_table->s->fields; i++)
 			{
-			field = altered_table->s->field[n];
+			field = altered_table->s->field[i];
+			bool found = false;
 			
-			if (strcmp(table->s->field[n]->field_name, field->field_name) != 0)
-				break;
+			for (uint n = 0; n < table->s->fields; n++)
+				if (found = (strcmp(table->s->field[n]->field_name, field->field_name) == 0))
+					break;
+		
+			if (field && !found)
+				if (!field->real_maybe_null())
+					{
+					DBUG_PRINT("info",("Online add column must be nullable"));
+					DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+					}
 			}
-		
-		if (!field)
-			field = altered_table->field[altered_table->s->fields - 1];
-		
-		if (!field->real_maybe_null())
-			DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
-		
-		DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 		}
 		
-	DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+	// TODO for Add Index:
+	// 1. Check for supported ALTER combinations
+	// 2. Can error message be improved for non-null columns?
+	
+	if (alter_flags->is_set(HA_ADD_INDEX))
+		{
+		for (unsigned int n = 0; n < altered_table->s->keys; n++)
+			{
+			if (n != altered_table->s->primary_key)
+				{
+				KEY *key = altered_table->key_info + n;
+				KEY *tableEnd = table->key_info + table->s->keys;
+				KEY *tableKey;
+				
+				// Determine if this is a new index
+
+				for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
+					if (!strcmp(tableKey->name, key->name))
+						break;
+				
+				// Verify that each part is nullable
+				
+				if (tableKey >= tableEnd)
+					for (uint p = 0; p < key->key_parts; p++)
+						{
+						KEY_PART_INFO *keyPart = key->key_part + p;
+						if (keyPart && !keyPart->field->real_maybe_null())
+							{
+							DBUG_PRINT("info",("Online add index columns must be nullable"));
+							DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+							}
+						}
+				}
+			}
+		}
+		
+	if (alter_flags->is_set(HA_DROP_INDEX))
+		{
+		}
+		
+	DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 }
 
 int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
 {
 	DBUG_ENTER("StorageInterface::alter_table_phase1");
-	// ulonglong bits = alter_flags->to_ulonglong();
+	int ret = 0;
 	
 	if (alter_flags->is_set(HA_ADD_COLUMN))
-		DBUG_RETURN(addColumn(thd, altered_table, create_info, alter_info, alter_flags));
+		ret = addColumn(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	DBUG_RETURN(HA_ERR_UNSUPPORTED);
+	if (alter_flags->is_set(HA_ADD_INDEX) && !ret)
+		ret = addIndex(thd, altered_table, create_info, alter_info, alter_flags);
+		
+	if (alter_flags->is_set(HA_DROP_INDEX) && !ret)
+		ret = dropIndex(thd, altered_table, create_info, alter_info, alter_flags);
+		
+	DBUG_RETURN(ret);
 }
 
 int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
@@ -2136,11 +2212,14 @@ int StorageInterface::alter_table_phase3(THD* thd, TABLE* altered_table)
 	DBUG_RETURN(0);
 }
 
-
 int StorageInterface::addColumn(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
 {
 	int ret;
 	int64 incrementValue = 0;
+	/***
+	const char *tableName = storageTable->getName();
+	const char *schemaName = storageTable->getSchemaName();
+	***/
 	CmdGen gen;
 	genTable(alteredTable, &gen);
 	
@@ -2168,19 +2247,66 @@ int StorageInterface::addColumn(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 	if ((ret = storageTable->upgrade(gen.getString(), incrementValue)))
 		return (error(ret));
 
-	/***
-	for (n = 0; n < form->s->keys; ++n)
-		if (n != form->s->primary_key)
-			if ((ret = createIndex(schemaName, tableName, form->key_info + n, n)))
-				{
-				storageTable->deleteTable();
+	return 0;
+}
 
+int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
+{
+	int ret;
+	const char *tableName = storageTable->getName();
+	const char *schemaName = storageTable->getSchemaName();
+
+	// Find indexes to be added by comparing table and alteredTable
+
+	for (unsigned int n = 0; n < alteredTable->s->keys; n++)
+		{
+		if (n != alteredTable->s->primary_key)
+			{
+			KEY *key = alteredTable->key_info + n;
+			KEY *tableEnd = table->key_info + table->s->keys;
+			KEY *tableKey;
+			
+			for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
+				if (!strcmp(tableKey->name, key->name))
+					break;
+					
+			if (tableKey >= tableEnd)
+				if ((ret = createIndex(schemaName, tableName, key, n)))
+					return (error(ret));
+			}
+		}
+	return 0;
+}
+
+int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
+{
+	int ret;
+	const char *tableName = storageTable->getName();
+	const char *schemaName = storageTable->getSchemaName();
+	
+	// Find indexes to be dropped by comparing table and alteredTable
+	
+	for (unsigned int n = 0; n < table->s->keys; n++)
+		{
+		if (n != table->s->primary_key)
+				{
+			KEY *key = table->key_info + n;
+			KEY *alterEnd = alteredTable->key_info + alteredTable->s->keys;
+			KEY *alterKey;
+			
+			for (alterKey = alteredTable->key_info; alterKey < alterEnd; alterKey++)
+				if (!strcmp(alterKey->name, key->name))
+					break;
+
+			if (alterKey >= alterEnd)
+				if ((ret = dropIndex(schemaName, tableName, key, n)))
 				return (error(ret));
 				}
-	***/
+		}
 	
 	return 0;
 }
+
 uint StorageInterface::max_supported_key_length(void) const
 {
 	// Assume 4K page unless proven otherwise.
@@ -2216,15 +2342,14 @@ void StorageInterface::logger(int mask, const char* text, void* arg)
 		}
 }
 
-
 int StorageInterface::setIndexes(void)
 {
-	if (!table || storageShare->haveIndexes())
+	if (!table || storageShare->haveIndexes(table->s->keys))
 		return 0;
 
 	storageShare->lock(true);
 
-	if (!storageShare->haveIndexes())
+	if (!storageShare->haveIndexes(table->s->keys))
 		{
 		StorageIndexDesc indexDesc;
 
@@ -2244,7 +2369,6 @@ int StorageInterface::setIndexes(void)
 	storageShare->unlock();
 	return 0;
 }
-
 
 int StorageInterface::genTable(TABLE* table, CmdGen* gen)
 {
@@ -2617,7 +2741,7 @@ void StorageInterface::decodeRecord(uchar *buf)
 		dataStream->decode();
 		Field *field = fieldMap[fieldFormat->fieldId];
 
-		// If we don't a field for the physical field, just skip over it and don't worrry.
+		// If we don't have a field for the physical field, just skip over it and don't worry
 		
 		if (field == NULL)
 			continue;

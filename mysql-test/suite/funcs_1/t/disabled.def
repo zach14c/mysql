@@ -11,8 +11,3 @@
 ##############################################################################
 
 ndb_trig_1011ext:  Bug#32656 NDB: Duplicate key error aborts transaction in handler. Doesn't talk back to SQL
-innodb_storedproc: Bug#37525 funcs_1: <engine>_storedproc.test fail
-falcon_storedproc: Bug#37525 funcs_1: <engine>_storedproc.test fail
-memory_storedproc: Bug#37525 funcs_1: <engine>_storedproc.test fail
-myisam_storedproc: Bug#37525 funcs_1: <engine>_storedproc.test fail
-ndb_storedproc: Bug#37525 funcs_1: <engine>_storedproc.test fail

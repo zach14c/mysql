@@ -94,4 +94,20 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   esac
 
   AC_SUBST([FALCON_CXXFLAGS])
+
+  # When compiling with Sun Studio compiler on SPARC assembly code for
+  # Interlock operations needs to be included. This has been implemented 
+  # as "inline templates" in a separate file
+  FALCON_SPARC_ASSEMBLY=""
+  case $host in
+    sparc-sun-solaris2.9)
+      case $CXX_VERSION in
+        *Sun*C++*)
+          FALCON_SPARC_ASSEMBLY="CompareAndSwapSparc.il"
+          ;;
+      esac
+      ;;
+  esac
+
+  AC_SUBST([FALCON_SPARC_ASSEMBLY])
 ])

@@ -54,6 +54,7 @@ int mi_panic(enum ha_panic_function flag)
 	  error=my_errno;
       if (info->opt_flag & READ_CACHE_USED)
       {
+        /* QQ Why do we flush a READ_CACHE? it's a no-op */
 	if (flush_io_cache(&info->rec_cache))
 	  error=my_errno;
 	reinit_io_cache(&info->rec_cache,READ_CACHE,0,
@@ -78,15 +79,17 @@ int mi_panic(enum ha_panic_function flag)
       {					/* Open closed files */
 	char name_buff[FN_REFLEN];
 	if (info->s->kfile < 0)
-	  if ((info->s->kfile= my_open(fn_format(name_buff,info->filename,"",
-					      N_NAME_IEXT,4),info->mode,
-				    MYF(MY_WME))) < 0)
+	  if ((info->s->kfile= my_open(fn_format(name_buff,
+                                                 info->s->unresolv_file_name,
+                                                 "", N_NAME_IEXT, 4),
+                                       info->mode, MYF(MY_WME))) < 0)
 	    error = my_errno;
 	if (info->dfile < 0)
 	{
-	  if ((info->dfile= my_open(fn_format(name_buff,info->filename,"",
-					      N_NAME_DEXT,4),info->mode,
-				    MYF(MY_WME))) < 0)
+	  if ((info->dfile= my_open(fn_format(name_buff,
+                                              info->s->unresolv_file_name,
+                                              "", N_NAME_DEXT, 4),
+                                    info->mode, MYF(MY_WME))) < 0)
 	    error = my_errno;
 	  info->rec_cache.file=info->dfile;
 	}
@@ -103,7 +106,8 @@ int mi_panic(enum ha_panic_function flag)
   }
   if (flag == HA_PANIC_CLOSE)
   {
-    (void) mi_log(0);				/* Close log if neaded */
+    /* Close log if needed */
+    mi_log(MI_LOG_ACTION_CLOSE_INCONSISTENT, MI_LOG_LOGICAL, NULL, NULL);
     ft_free_stopwords();
   }
   pthread_mutex_unlock(&THR_LOCK_myisam);

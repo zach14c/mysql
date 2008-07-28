@@ -36,9 +36,12 @@ static const int WRITE_TYPE_CLONE		= 4;
 static const int WRITE_TYPE_FLUSH		= 5;
 static const int WRITE_TYPE_MAX			= 6;
 
+static const uint16 NO_CHECKSUM_MAGIC = 0;
+
 class Bdb;
 class Hdr;
 class Dbb;
+class Page;
 
 class IO
 {
@@ -75,7 +78,8 @@ public:
 	static void		trace(int fd, int pageNumber, int pageType, int pageId);
 	static void		traceOpen(void);
 	static void		traceClose(void);
-	
+	static uint16	computeChecksum(Page *page, size_t pageSize);
+	void			validateChecksum(Page *page, size_t pageSize, int64 fileOffset);
 	static void		createPath (const char *fileName);
 	static const char *baseName(const char *path);
 	static void		expandFileName(const char *fileName, int length, char *buffer, const char **baseFileName = NULL);

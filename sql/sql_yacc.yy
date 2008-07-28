@@ -684,6 +684,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  COMPACT_SYM
 %token  COMPLETION_SYM
 %token  COMPRESSED_SYM
+%token  COMPRESSION_SYM
+%token  COMPRESSION_ALGORITHM_SYM
 %token  CONCURRENT
 %token  CONDITION_SYM                 /* SQL-2003-N */
 %token  CONNECTION_SYM
@@ -1407,7 +1409,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         install uninstall partition_entry binlog_base64_event
         init_key_options key_options key_opts key_opt key_using_alg
         server_def server_options_list server_option
-        definer_opt no_definer definer
+        definer_opt no_definer definer opt_compression
+        opt_compression_algorithm
 END_OF_INPUT
 
 %type <NONE> call sp_proc_stmts sp_proc_stmts1 sp_proc_stmt
@@ -6306,6 +6309,7 @@ backup:
           database_list
           TO_SYM
           TEXT_STRING_sys
+          opt_compression
           {
             LEX *lex= Lex;
             if (lex->sphead)
@@ -6322,6 +6326,26 @@ backup:
 #ifdef BACKUP_TEST
             Lex->sql_command = SQLCOM_BACKUP_TEST;
 #endif
+          }
+        ;
+
+opt_compression:
+          /* empty */ { Lex->backup_compression= false; }
+        | WITH COMPRESSION_SYM opt_compression_algorithm
+          {
+            Lex->backup_compression= true;
+          }
+        ;
+
+opt_compression_algorithm:
+          /* empty */ {}
+        | COMPRESSION_ALGORITHM_SYM opt_equal IDENT_sys
+          {
+            if (my_strcasecmp(system_charset_info, $3.str, "gzip"))
+            {
+              my_error(ER_WRONG_ARGUMENTS, MYF(0), "COMPRESSION_ALGORITHM");
+              MYSQL_YYABORT;
+            }
           }
         ;
 
@@ -9830,11 +9854,6 @@ show_param:
             Lex->spname= $3;
             Lex->sql_command = SQLCOM_SHOW_CREATE_EVENT;
           }
-        | BACKUP_SYM TEXT_STRING_sys
-          {
-            Lex->sql_command = SQLCOM_SHOW_ARCHIVE;
-            Lex->backup_dir = $2; 
-          }
         ;
 
 show_engine_param:
@@ -10939,6 +10958,8 @@ keyword_sp:
         | COMPACT_SYM              {}
         | COMPLETION_SYM           {}
         | COMPRESSED_SYM           {}
+        | COMPRESSION_SYM          {}
+        | COMPRESSION_ALGORITHM_SYM{}
         | CONCURRENT               {}
         | CONNECTION_SYM           {}
         | CONSISTENT_SYM           {}
@@ -12720,7 +12741,6 @@ trigger_tail:
 
             lex->sql_command= SQLCOM_CREATE_TRIGGER;
             sp->set_stmt_end(YYTHD);
-
             sp->restore_thd_mem_root(YYTHD);
 
             if (sp->is_not_allowed_in_function("trigger"))
