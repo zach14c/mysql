@@ -1400,6 +1400,13 @@ ViewBaseObjectsIterator::create(THD *thd,
   close_thread_tables(my_thd);
   delete my_thd;
 
+  /*
+    The mysys_var context is no longer valid and must be reset.
+  */
+  pthread_mutex_lock(&thd->LOCK_delete);
+  thd->mysys_var= NULL;
+  pthread_mutex_unlock(&thd->LOCK_delete);
+
   thd->store_globals();
 
   return new ViewBaseObjectsIterator(table_names);
