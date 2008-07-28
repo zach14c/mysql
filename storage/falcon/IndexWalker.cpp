@@ -39,6 +39,8 @@ IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 	balance = 0;
 	higher = NULL;
 	lower = NULL;
+	lastRecordNumber = NULL;
+	firstRecord = true;
 }
 
 IndexWalker::~IndexWalker(void)
@@ -124,6 +126,18 @@ Record* IndexWalker::getNext(bool lockForUpdate)
 
 Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 {
+	// If this is the same recordId as the last record we returned,
+	// then either we've got a duplicate copy because a deferred
+	// index has been merged with the main index and we read both
+	// or we're looking at a version we don't care about.
+
+	if (firstRecord)
+		firstRecord = false;
+	else if (recordId == lastRecordNumber)
+		return NULL;
+
+
+
 	// Fetch record.  If it doesn't exist, that's ok.
 	
 	Record *candidate = table->fetch(recordId);
@@ -165,7 +179,11 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 		
 		return NULL;
 		}
-	
+
+	// remember this record
+
+	lastRecordNumber = recordId;
+
 	return record;
 }
 
