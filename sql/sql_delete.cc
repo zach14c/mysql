@@ -247,7 +247,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     goto err;
   }
   if (usable_index==MAX_KEY)
-    init_read_record(&info,thd,table,select,1,1);
+    init_read_record(&info, thd, table, select, 1, 1, FALSE);
   else
     init_read_record_idx(&info, thd, table, 1, usable_index);
 
@@ -844,7 +844,7 @@ int multi_delete::do_deletes()
     }
 
     READ_RECORD	info;
-    init_read_record(&info,thd,table,NULL,0,1);
+    init_read_record(&info, thd, table, NULL, 0, 1, FALSE);
     /*
       Ignore any rows not found in reference tables as they may already have
       been deleted by foreign key handling
@@ -1105,12 +1105,6 @@ trunc_by_del:
   error= mysql_delete(thd, table_list, (COND*) 0, (SQL_LIST*) 0,
                       HA_POS_ERROR, LL(0), TRUE);
   ha_enable_transaction(thd, TRUE);
-  /*
-    Safety, in case the engine ignored ha_enable_transaction(FALSE)
-    above. Also clears thd->transaction.*.
-  */
-  error= ha_autocommit_or_rollback(thd, error);
-  ha_commit(thd);
   thd->options= save_options;
   thd->current_stmt_binlog_row_based= save_binlog_row_based;
   DBUG_RETURN(error);
