@@ -39,7 +39,7 @@ IndexWalker::IndexWalker(Index *idx, Transaction *trans, int flags)
 	balance = 0;
 	higher = NULL;
 	lower = NULL;
-	lastRecordNumber = NULL;
+	lastRecordNumber = 0;
 	firstRecord = true;
 }
 
