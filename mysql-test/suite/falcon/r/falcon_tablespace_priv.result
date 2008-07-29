@@ -1,0 +1,44 @@
+# --
+# -- WL#4300: Define privileges for tablespaces.
+# --
+GRANT CREATE TABLESPACE ON *.* TO mysqltest_u1@localhost;
+GRANT SUPER ON *.* TO mysqltest_u2@localhost;
+
+# -- Connection: mysqltest_u1@localhost
+
+# -- Grants for mysqltest_u1@localhost:
+SHOW GRANTS;
+Grants for mysqltest_u1@localhost
+GRANT CREATE TABLESPACE ON *.* TO 'mysqltest_u1'@'localhost'
+
+# -- Check CREATE TABLESPACE...
+CREATE TABLESPACE ts1
+ADD DATAFILE 'datafile.dat'
+ENGINE = Falcon;
+
+# -- Check DROP TABLESPACE...
+DROP TABLESPACE ts1 
+ENGINE = Falcon;
+
+# -- Connection: mysqltest_u2@localhost
+
+# -- Grants for mysqltest_u2@localhost:
+SHOW GRANTS;
+Grants for mysqltest_u2@localhost
+GRANT SUPER ON *.* TO 'mysqltest_u2'@'localhost'
+
+# -- Check CREATE TABLESPACE...
+CREATE TABLESPACE ts1
+ADD DATAFILE 'datafile.dat'
+ENGINE = Falcon;
+ERROR 42000: Access denied; you need the CREATE TABLESPACE privilege for this operation
+
+# -- Check DROP TABLESPACE...
+DROP TABLESPACE ts1 
+ENGINE = Falcon;
+ERROR 42000: Access denied; you need the CREATE TABLESPACE privilege for this operation
+
+# -- Connection: root@localhost
+
+DROP USER mysqltest_u1@localhost;
+DROP USER mysqltest_u2@localhost;
