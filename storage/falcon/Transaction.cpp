@@ -299,10 +299,12 @@ void Transaction::commit()
 	syncActiveTransactions.unlock();
 	
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
+		{
 		if (!record->getPriorVersion())
 			++record->format->table->cardinality;
-		else if (record->state == recDeleted && record->format->table->cardinality > 0)
+		if (record->state == recDeleted && record->format->table->cardinality > 0)
 			--record->format->table->cardinality;
+		}
 	transactionManager->committedTransactions.append(this);
 	syncCommitted.unlock();
 	database->commit(this);
