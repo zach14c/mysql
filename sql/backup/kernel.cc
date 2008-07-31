@@ -50,15 +50,22 @@
   } // if code jumps here, context destructor will do the clean-up automatically
   @endcode
 
+  @todo Fix error detection in places marked with "FIXME: detect errors...". 
+  These are places where functions or methods are called and if they can 
+  report errors it should be detected and appropriate action taken. If callee 
+  never reports errors or we want to ignore errors, a comment explaining this
+  should be added.
+
+  @todo Fix error logging in places marked with "FIXME: error logging...". In 
+  these places it should be decided if and how the error should be shown to the
+  user. If an error message should be logged, it can happen either in the place
+  where error was detected or somewhere up the call stack.
+
   @todo Use internal table name representation when passing tables to
         backup/restore drivers.
   @todo Handle other types of meta-data in Backup_info methods.
   @todo Handle item dependencies when adding new items.
   @todo Handle other kinds of backup locations (far future).
-
-  @note This comment was added to show Jorgen and Oystein how to push patches 
-  into the team tree - please remove it if you see it. Second version of the 
-  patch, to show how to collapse/re-edit csets.
 */
 
 #include "../mysql_priv.h"
@@ -271,17 +278,31 @@ int send_reply(Backup_restore_ctx &context)
   /*
     Send field list.
   */
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   field_list.push_back(new Item_empty_string(STRING_WITH_LEN("backup_id")));
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
   /*
     Send field data.
   */
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   protocol->prepare_for_resend();
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   llstr(context.op_id(), buf);
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   protocol->store(buf, system_charset_info);
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   protocol->write();
 
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   my_eof(context.thd());
   DBUG_RETURN(0);
 }
@@ -366,8 +387,12 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   
   // Prepare error reporting context.
   
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   mysql_reset_errors(m_thd, 0);
   m_thd->no_warnings_for_error= FALSE;
+  // FIXME: detect errors if  reported.
+  // FIXME: error logging.
   save_errors();  
 
 
@@ -669,9 +694,13 @@ int Backup_restore_ctx::lock_tables_for_restore()
       backup::Image_info::Table *tbl= snap->get_table(t);
       DBUG_ASSERT(tbl); // All tables should be present in the catalogue.
 
+      // FIXME: detect errors. Don't assert here but report error instead.
+      // FIXME: error logging.
       TABLE_LIST *ptr= backup::mk_table_list(*tbl, TL_WRITE, m_thd->mem_root);
-      DBUG_ASSERT(ptr);  // FIXME: report error instead
+      DBUG_ASSERT(ptr);
 
+      // FIXME: detect errors if reported.
+      // FIXME: error logging.
       tables= backup::link_table_list(*ptr, tables);      
       tbl->m_table= ptr;
     }
@@ -733,8 +762,10 @@ int Backup_restore_ctx::close()
   time_t when= my_time(0);
 
   // If auto commit is turned off, be sure to commit the transaction
-  // TODO: move it to the big switch, case: MYSQLCOM_BACKUP?
-
+  /* 
+    Note: this code needs to be refactored (see BUG#38261). When refactoring
+    make sure that errors are detected and reported.
+  */
   if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
   {
     ha_autocommit_or_rollback(m_thd, 0);
@@ -743,10 +774,13 @@ int Backup_restore_ctx::close()
 
   // unlock tables if they are still locked
 
+  // FIXME: detect errors if reported.
   unlock_tables();
 
   // unfreeze meta-data
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   obs::ddl_blocker_disable();
 
   // restore thread options
@@ -756,10 +790,12 @@ int Backup_restore_ctx::close()
   // close stream
 
   if (m_stream)
+    // FIXME: detect errors if reported.
+    // FIXME: error logging.
     m_stream->close();
 
   if (m_catalog)
-    m_catalog->save_end_time(when);
+    m_catalog->save_end_time(when); // Note: no errors.
 
   // destroy backup stream's memory allocator (this frees memory)
 
@@ -827,6 +863,8 @@ int Backup_restore_ctx::do_backup()
 
   DEBUG_SYNC(m_thd, "before_backup_meta");
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   report_stats_pre(info);
 
   DBUG_PRINT("backup",("Writing preamble"));
@@ -852,6 +890,8 @@ int Backup_restore_ctx::do_backup()
     DBUG_RETURN(m_error);
   }
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   report_stats_post(info);
 
   DBUG_PRINT("backup",("Backup done."));
@@ -880,6 +920,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   DBUG_ASSERT(m_catalog);
 
+  // FIXME: detect errors (when dbit==NULL). Perhaps just assert.
   Image_info::Iterator *dbit= m_catalog->get_dbs();
   Image_info::Obj *obj;
   List<Image_info::Obj> events;
@@ -891,6 +932,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   
   while ((obj= (*dbit)++)) 
   {
+    // FIXME: detect errors (when it==NULL). Perhaps just assert.
     Image_info::Iterator *it= 
                     m_catalog->get_db_objects(*static_cast<Image_info::Db*>(obj));
 
@@ -899,6 +941,8 @@ int Backup_restore_ctx::restore_triggers_and_events()
       
       case BSTREAM_IT_EVENT:
         DBUG_ASSERT(obj->m_obj_ptr);
+        // FIXME: detect errors if reported.
+        // FIXME: error logging.
         events.push_back(obj);
         break;
       
@@ -961,11 +1005,14 @@ int Backup_restore_ctx::do_restore()
   Input_stream &s= *static_cast<Input_stream*>(m_stream);
   Restore_info &info= *static_cast<Restore_info*>(m_catalog);
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   report_stats_pre(info);
 
   DBUG_PRINT("restore", ("Restoring meta-data"));
 
-  disable_fkey_constraints();
+  // FIXME: detect errors if reported.
+  disable_fkey_constraints();  // reports errors
 
   if (read_meta_data(info, s))
   {
@@ -973,6 +1020,7 @@ int Backup_restore_ctx::do_restore()
     DBUG_RETURN(m_error);
   }
 
+  // FIXME: detect errors.
   s.next_chunk();
 
   DBUG_PRINT("restore",("Restoring table data"));
@@ -983,7 +1031,11 @@ int Backup_restore_ctx::do_restore()
     It should be fixed inside object services implementation and then the
     following line should be removed.
    */
+  // FIXME: detect errors.
+  // FIXME: error logging.
   close_thread_tables(m_thd);
+  // FIXME: detect errors.
+  // FIXME: error logging.
   m_thd->main_da.reset_diagnostics_area();
 
   if (lock_tables_for_restore()) // reports errors
@@ -992,6 +1044,7 @@ int Backup_restore_ctx::do_restore()
   // Here restore drivers are created to restore table data
   err= restore_table_data(m_thd, info, s); // reports errors
 
+  // FIXME: detect errors if reported.
   unlock_tables();
 
   if (err)
@@ -1004,7 +1057,7 @@ int Backup_restore_ctx::do_restore()
    creation of these objects will fail.
   */
 
-  if (restore_triggers_and_events())
+  if (restore_triggers_and_events())    // reports errors
      DBUG_RETURN(ER_BACKUP_RESTORE);
 
   DBUG_PRINT("restore",("Done."));
@@ -1021,9 +1074,15 @@ int Backup_restore_ctx::do_restore()
     It should be fixed inside object services implementation and then the
     following line should be removed.
    */
+  // FIXME: detect errors.
+  // FIXME: error logging.
   close_thread_tables(m_thd);
+  // FIXME: detect errors.
+  // FIXME: error logging.
   m_thd->main_da.reset_diagnostics_area();
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   report_stats_post(info);
 
   DBUG_RETURN(0);

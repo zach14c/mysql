@@ -4,7 +4,18 @@
   Implementation of @c Backup_info class. Method @c find_backup_engine()
   implements algorithm for selecting backup engine used to backup
   given table.
- */
+  
+  @todo Fix error detection in places marked with "FIXME: detect errors...". 
+  These are places where functions or methods are called and if they can 
+  report errors it should be detected and appropriate action taken. If callee 
+  never reports errors or we want to ignore errors, a comment explaining this
+  should be added.
+
+  @todo Fix error logging in places marked with "FIXME: error logging...". In 
+  these places it should be decided if and how the error should be shown to the
+  user. If an error message should be logged, it can happen either in the place
+  where error was detected or somewhere up the call stack.
+*/
 
 #include "../mysql_priv.h"
 
@@ -306,8 +317,12 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
 
   bzero(m_snap, sizeof(m_snap));
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
             Ts_hash_node::get_key, Ts_hash_node::free, MYF(0));
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
             Dep_node::get_key, Dep_node::free, MYF(0));
 
@@ -319,23 +334,32 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
 
   snap= new Nodata_snapshot(m_ctx);  // reports errors
 
+  // FIXME: error logging (in case snap could not be allocated).
   if (!snap || !snap->is_valid())
     return;
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   snapshots.push_back(snap);
 
   snap= new CS_snapshot(m_ctx); // reports errors
 
+  // FIXME: error logging (in case snap could not be allocated).
   if (!snap || !snap->is_valid())
     return;
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   snapshots.push_back(snap);
 
   snap= new Default_snapshot(m_ctx);  // reports errors
 
+  // FIXME: error logging (in case snap could not be allocated).
   if (!snap || !snap->is_valid())
     return;
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   snapshots.push_back(snap);
 
   m_state= CREATED;
@@ -1240,8 +1264,9 @@ inline
 Backup_info::Global_iterator::Global_iterator(const Image_info &info)
  :Iterator(info), mode(TABLESPACES), m_it(NULL), m_obj(NULL)
 {
+  // FIXME: detect errors (if NULL returned).
   m_it= m_info.get_tablespaces();
-  next();
+  next();       // Note: next() doesn't report errors.
 }
 
 
