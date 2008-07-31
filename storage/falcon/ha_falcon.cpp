@@ -3243,48 +3243,6 @@ int NfsPluginHandler::deinitTableSpaceFilesInfo(void *p)
 
 //*****************************************************************************
 //
-// FALCON_TABLES
-//
-//*****************************************************************************
-
-int NfsPluginHandler::getTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond)
-{
-	InfoTableImpl infoTable(thd, tables, system_charset_info);
-
-	if (storageHandler)
-		storageHandler->getTablesInfo(&infoTable);
-
-	return infoTable.error;
-}
-
-ST_FIELD_INFO tablesFieldInfo[]=
-{
-	{"SCHEMA_NAME",	  127, MYSQL_TYPE_STRING,	0, 0, "Schema Name", SKIP_OPEN_TABLE},
-	{"TABLE_NAME",	  127, MYSQL_TYPE_STRING,	0, 0, "Table Name", SKIP_OPEN_TABLE},
-	{"PARTITION",	  127, MYSQL_TYPE_STRING,	0, 0, "Partition Name", SKIP_OPEN_TABLE},
-	{"TABLESPACE",	  127, MYSQL_TYPE_STRING,	0, 0, "Tablespace", SKIP_OPEN_TABLE},
-	{"INTERNAL_NAME", 127, MYSQL_TYPE_STRING,	0, 0, "Internal Name", SKIP_OPEN_TABLE},
-	{0,					0, MYSQL_TYPE_STRING,	0, 0, 0, SKIP_OPEN_TABLE}
-};
-
-int NfsPluginHandler::initTablesInfo(void *p)
-{
-	DBUG_ENTER("initTablesInfo");
-	ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *)p;
-	schema->fields_info = tablesFieldInfo;
-	schema->fill_table = NfsPluginHandler::getTablesInfo;
-
-	DBUG_RETURN(0);
-}
-
-int NfsPluginHandler::deinitTablesInfo(void *p)
-{
-	DBUG_ENTER("deinitTablesInfo");
-	DBUG_RETURN(0);
-}
-
-//*****************************************************************************
-//
 // FALCON_TRANSACTIONS
 //
 //*****************************************************************************
@@ -3691,7 +3649,6 @@ static st_mysql_information_schema falcon_syncobjects			=	{ MYSQL_INFORMATION_SC
 static st_mysql_information_schema falcon_serial_log_info		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_tablespaces			=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_tablespace_files		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
-static st_mysql_information_schema falcon_tables				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_version				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 
 mysql_declare_plugin(falcon)
@@ -3884,21 +3841,6 @@ mysql_declare_plugin(falcon)
 	PLUGIN_LICENSE_GPL,
 	NfsPluginHandler::initTableSpaceFilesInfo,	/* plugin init */
 	NfsPluginHandler::deinitTableSpaceFilesInfo,/* plugin deinit */
-	0x0005,
-	NULL,										/* status variables */
-	NULL,										/* system variables */
-	NULL										/* config options   */
-	},
-	
-	{
-	MYSQL_INFORMATION_SCHEMA_PLUGIN,
-	&falcon_tables,
-	"FALCON_TABLES",
-	"MySQL AB",
-	"Falcon Tables.",
-	PLUGIN_LICENSE_GPL,
-	NfsPluginHandler::initTablesInfo,			/* plugin init */
-	NfsPluginHandler::deinitTablesInfo,			/* plugin deinit */
 	0x0005,
 	NULL,										/* status variables */
 	NULL,										/* system variables */
