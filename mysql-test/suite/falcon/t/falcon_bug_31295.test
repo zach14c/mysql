@@ -8,7 +8,7 @@
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
 # ----------------------------------------------------- #
-let $engine = 'Falcon';
+let $engine = Falcon;
 eval SET @@storage_engine = $engine;
 
 --disable_warnings
@@ -23,12 +23,14 @@ CREATE TABLE t1(a int);
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-SELECT * FROM INFORMATION_SCHEMA.FALCON_TABLES WHERE TABLE_NAME='t1';
+--replace_result $engine ENGINE
+SHOW CREATE TABLE t1;
 eval ALTER TABLE t1 TABLESPACE ts1 ENGINE $engine;
-SELECT * FROM INFORMATION_SCHEMA.FALCON_TABLES WHERE TABLE_NAME='t1';
+--replace_result $engine ENGINE
+SHOW CREATE TABLE t1;
 eval ALTER TABLE t1 ENGINE $engine;
-SELECT * FROM INFORMATION_SCHEMA.FALCON_TABLES WHERE TABLE_NAME='t1';
-
+--replace_result $engine ENGINE
+SHOW CREATE TABLE t1;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
