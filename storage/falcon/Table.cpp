@@ -814,11 +814,11 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	primaryKey = NULL;
 	formats = NEW Format* [FORMAT_HASH_SIZE];
 
+	static char name[SYNC_VERSIONS_SIZE][64];
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
 		{
-		char name[64];
-		sprintf(name, "syncPriorVersions[%02d]", n);
-		syncPriorVersions[n].setName(name);
+		sprintf(name[n], "syncPriorVersions[%02d]", n);
+		syncPriorVersions[n].setName(name[n]);
 		}
 		
 	triggers = NULL;

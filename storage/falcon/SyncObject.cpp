@@ -133,9 +133,6 @@ SyncObject::~SyncObject()
 #ifdef TRACE_SYNC_OBJECTS
 	if (objectId < MAX_SYNC_OBJECTS)
 		syncObjects[objectId] = NULL;
-		
-	if (name)
-		delete [] name;
 #endif
 }
 
@@ -1060,19 +1057,7 @@ void SyncObject::getSyncInfo(InfoTable* infoTable)
 void SyncObject::setName(const char* string)
 {
 #ifdef TRACE_SYNC_OBJECTS
-	if (name)
-		{
-		delete [] name;
-		name = NULL;
-		}
-	
-	if (string)
-		{
-		name = new char[strlen(string)+1];
-		strcpy(name, string);
-		}
-		
-	//name = string;
+	name = string;
 #endif
 }
 

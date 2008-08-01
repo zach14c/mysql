@@ -109,7 +109,7 @@ protected:
 	int					waitCount;
 	int					queueLength;
 	const char*			location;
-	char*				name;
+	const char*			name;
 #endif
 };
 
