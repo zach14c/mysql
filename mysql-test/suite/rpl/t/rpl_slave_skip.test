@@ -114,8 +114,7 @@ DELIMITER ;|
 
 --echo **** On Slave ****
 sync_slave_with_master;
-STOP SLAVE;
-source include/wait_for_slave_to_stop.inc;
+source include/stop_slave.inc;
 
 --echo **** On Master ****
 connection master;
@@ -135,8 +134,7 @@ save_master_pos;
 --echo *** On Slave ***
 connection slave;
 SET GLOBAL SQL_SLAVE_SKIP_COUNTER=1;
-START SLAVE;
-source include/wait_for_slave_to_start.inc;
+source include/start_slave.inc;
 sync_with_master;
 
 SELECT * FROM t1 ORDER BY a;
@@ -160,8 +158,7 @@ CREATE TABLE t6 (a INT, b VARCHAR(20)) ENGINE=innodb;
 
 --echo **** On Slave ****
 sync_slave_with_master;
-STOP SLAVE;
-source include/wait_for_slave_to_stop.inc;
+source include/stop_slave.inc;
 
 --echo *** On Master ***
 connection master;
@@ -186,8 +183,7 @@ save_master_pos;
 --echo *** On Slave ***
 connection slave;
 SET GLOBAL SQL_SLAVE_SKIP_COUNTER=1;
-START SLAVE;
-source include/wait_for_slave_to_start.inc;
+source include/start_slave.inc;
 sync_with_master;
 
 SELECT * FROM t4 ORDER BY a;
@@ -198,8 +194,7 @@ SELECT * FROM t6 ORDER BY a;
 
 --echo **** On Slave ****
 connection slave;
-STOP SLAVE;
-source include/wait_for_slave_to_stop.inc;
+source include/stop_slave.inc;
 
 --echo *** On Master ***
 connection master;
@@ -224,8 +219,7 @@ save_master_pos;
 --echo *** On Slave ***
 connection slave;
 SET GLOBAL SQL_SLAVE_SKIP_COUNTER=10;
-START SLAVE;
-source include/wait_for_slave_to_start.inc;
+source include/start_slave.inc;
 sync_with_master;
 
 SELECT * FROM t4 ORDER BY a;
@@ -236,8 +230,7 @@ SELECT * FROM t6 ORDER BY a;
 # And the same, but with autocommit = 0
 #
 connection slave;
-STOP SLAVE;
-source include/wait_for_slave_to_stop.inc;
+source include/stop_slave.inc;
 
 connection master;
 SET AUTOCOMMIT=0;
@@ -261,8 +254,7 @@ save_master_pos;
 --echo *** On Slave ***
 connection slave;
 SET GLOBAL SQL_SLAVE_SKIP_COUNTER=1;
-START SLAVE;
-source include/wait_for_slave_to_start.inc;
+source include/start_slave.inc;
 sync_with_master;
 
 SELECT * FROM t4 ORDER BY a;
@@ -284,16 +276,14 @@ CREATE TABLE t10 (a INT, b VARCHAR(20)) ENGINE=myisam;
 
 --echo *** On Slave ***
 sync_slave_with_master;
-STOP SLAVE;
-source include/wait_for_slave_to_stop.inc;
+source include/stop_slave.inc;
 
 --echo *** On Master ***
 connection master;
 SET SESSION BINLOG_FORMAT=STATEMENT;
-exec cp ./suite/rpl/data/rpl_bug28618.dat $MYSQLTEST_VARDIR/tmp/;
+
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
-eval LOAD DATA INFILE '$MYSQLTEST_VARDIR/tmp/rpl_bug28618.dat' INTO TABLE t10 FIELDS TERMINATED BY '|';
-remove_file $MYSQLTEST_VARDIR/tmp/rpl_bug28618.dat;
+eval LOAD DATA INFILE '$MYSQLTEST_VARDIR/std_data/rpl_bug28618.dat' INTO TABLE t10 FIELDS TERMINATED BY '|';
 
 SELECT * FROM t10 ORDER BY a;
 
@@ -302,8 +292,7 @@ save_master_pos;
 --echo *** On Slave ***
 connection slave;
 SET GLOBAL SQL_SLAVE_SKIP_COUNTER=1;
-START SLAVE;
-source include/wait_for_slave_to_start.inc;
+source include/start_slave.inc;
 sync_with_master;
 
 SELECT * FROM t10 ORDER BY a;

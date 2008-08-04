@@ -1237,10 +1237,13 @@ sql/*.vcproj
 sql/.gdbinit
 sql/client.c
 sql/cscope.out
+sql/Doxyfile
 sql/f.c
 sql/gen_lex_hash
 sql/gmon.out
 sql/handlerton.cc
+sql/html
+sql/latex
 sql/lex_hash.h
 sql/link_sources
 sql/max/*
@@ -1289,6 +1292,8 @@ sql/share/slovak/
 sql/share/spanish/
 sql/share/swedish/
 sql/share/ukrainian/
+sql/share/norwegian-ny/errmsg.sys
+sql/share/norwegian/errmsg.sys
 sql/sql_builtin.cc
 sql/sql_select.cc.orig
 sql/sql_yacc.cc

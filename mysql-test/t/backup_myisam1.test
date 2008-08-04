@@ -3,6 +3,11 @@
 
 --source include/not_embedded.inc
 
+disable_query_log;
+call mtr.add_supression("Backup:");
+call mtr.add_supression("Restore:");
+enable_query_log;
+
 #
 # Cleanup from former test cases
 #

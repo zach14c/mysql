@@ -5,7 +5,6 @@ if (`select LENGTH("$MYSQL_BUG25714") = 0`)
 {
   skip Need bug25714 test program;
 }
-
 connection default;
 
 # Disable concurrent inserts to avoid test failures when reading
@@ -54,8 +53,8 @@ DROP TABLE federated.t1;
 connection slave;
 DROP TABLE federated.t1;
 
+
 source federated_cleanup.inc;
 
 connection default;
-
 SET @@GLOBAL.CONCURRENT_INSERT= @OLD_CONCURRENT_INSERT;

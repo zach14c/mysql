@@ -7,7 +7,7 @@
 #   since the call of inc/partition_layout_check1.inc                          #
 #   This script is only usefule when sourced within the partitioning tests.    #
 #                                                                              #
-# Attention: The routine inc/partition_layout_check1.inc is very similar       #
+# Attention: The routine inc/partition_layout_check1.inc is very similar   #
 #            to this one. So if something has to be changed here it            #
 #            might be necessary to do it also there                            #
 #                                                                              #

@@ -1035,6 +1035,23 @@ SELECT DISTINCT (SELECT a) FROM t1 LIMIT 100;
 DROP TABLE t1;
 
 #
+# Bug 2198
+#
+
+create table t1 (a int, b decimal(13, 3)); 
+insert into t1 values (1, 0.123);
+let $outfile_abs= $MYSQLTEST_VARDIR/tmp/subselect.out.file.1;
+let $outfile_rel= ../../tmp/subselect.out.file.1;
+--error 0,1
+--remove_file $outfile_abs
+eval select a, (select max(b) from t1) into outfile "$outfile_rel" from t1;
+delete from t1;
+eval load data infile "$outfile_rel" into table t1;
+--remove_file $outfile_abs
+select * from t1;
+drop table t1;
+
+#
 # Bug 2479
 #
 

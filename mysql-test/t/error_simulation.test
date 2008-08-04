@@ -31,5 +31,6 @@ SELECT MAX(a) FROM t1 GROUP BY a,b;
 
 set tmp_table_size=default;
 DROP TABLE t1;
-
-
+disable_query_log;
+set debug='';
+enable_query_log;

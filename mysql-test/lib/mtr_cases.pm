@@ -40,7 +40,7 @@ our $default_storage_engine;
 our $opt_with_ndbcluster_only;
 our $defaults_file;
 our $defaults_extra_file;
-our $reorder;
+our $reorder= 1;
 
 sub collect_option {
   my ($opt, $value)= @_;
@@ -56,6 +56,7 @@ use File::Spec::Functions qw / splitdir /;
 use IO::File();
 use My::Config;
 use My::Platform;
+use My::Test;
 use My::Find;
 
 require "mtr_misc.pl";
@@ -136,52 +137,16 @@ sub collect_test_cases ($$) {
     {
       my @criteria = ();
 
-      # Look for tests that must be run in a defined order - that is
-      # defined by test having the same name except for the ending digit
+      #
+      # Append the criteria for sorting, in order of importance.
+      #
+      push(@criteria, "ndb=" . ($tinfo->{'ndb_test'} ? "A" : "B"));
+      # Group test with equal options together.
+      # Ending with "~" makes empty sort later than filled
+      my $opts= $tinfo->{'master_opt'} ? $tinfo->{'master_opt'} : [];
+      push(@criteria, join("!", sort @{$opts}) . "~");
 
-      # Put variables into hash
-      my $test_name= $tinfo->{'name'};
-      my $depend_on_test_name;
-      if ( $test_name =~ /^([\D]+)([0-9]{1})$/ )
-      {
-	my $base_name= $1;
-	my $idx= $2;
-	mtr_verbose("$test_name =>  $base_name idx=$idx");
-	if ( $idx > 1 )
-	{
-	  $idx-= 1;
-	  $base_name= "$base_name$idx";
-	  mtr_verbose("New basename $base_name");
-	}
-
-	foreach my $tinfo2 (@$cases)
-	{
-	  if ( $tinfo2->{'name'} eq $base_name )
-	  {
-	    mtr_verbose("found dependent test $tinfo2->{'name'}");
-	    $depend_on_test_name=$base_name;
-	  }
-	}
-      }
-
-      if ( defined $depend_on_test_name )
-      {
-	mtr_verbose("Giving $test_name same critera as $depend_on_test_name");
-	$sort_criteria{$test_name} = $sort_criteria{$depend_on_test_name};
-      }
-      else
-      {
-	#
-	# Append the criteria for sorting, in order of importance.
-	#
-	push(@criteria, "ndb=" . ($tinfo->{'ndb_test'} ? "1" : "0"));
-	# Group test with equal options together.
-	# Ending with "~" makes empty sort later than filled
-	my $opts= $tinfo->{'master_opt'} ? $tinfo->{'master_opt'} : [];
-	push(@criteria, join("!", sort @{$opts}) . "~");
-
-	$sort_criteria{$test_name} = join(" ", @criteria);
-      }
+      $sort_criteria{$tinfo->{name}} = join(" ", @criteria);
     }
 
     @$cases = sort {
@@ -459,7 +424,7 @@ sub collect_one_suite($)
 	  }
 
 	  # Copy test options
-	  my $new_test= {};
+	  my $new_test= My::Test->new();
 	  while (my ($key, $value) = each(%$test)) {
 	    if (ref $value eq "ARRAY") {
 	      push(@{$new_test->{$key}}, @$value);
@@ -568,6 +533,26 @@ sub optimize_cases {
 	  $tinfo->{'comment'}=
 	    "Doesn't support --binlog-format='$test_binlog_format'";
 	  next;
+	}
+      }
+    }
+
+
+    # =======================================================
+    # Check that engine selected by
+    # --default-storage-engine=<engine> is supported
+    # =======================================================
+    foreach my $opt ( @{$tinfo->{master_opt}} ) {
+      my $default_engine=
+	mtr_match_prefix($opt, "--default-storage-engine=");
+
+      if (defined $default_engine){
+	if ( ! exists $::mysqld_variables{$default_engine} )
+	{
+	 $tinfo->{'skip'}= 1;
+	 $tinfo->{'comment'}=
+	 "'$default_engine' not supported";
+
 	}
       }
     }
@@ -687,13 +672,16 @@ sub collect_one_test_case {
   # ----------------------------------------------------------------------
   # Set defaults
   # ----------------------------------------------------------------------
-  my $tinfo= {};
-  $tinfo->{'name'}= $suitename . ".$tname";
-  $tinfo->{'path'}= "$testdir/$filename";
+  my $tinfo= My::Test->new
+    (
+     name          => "$suitename.$tname",
+     path          => "$testdir/$filename",
 
-  # TODO allow nonexistsing result file
-  # in that case .test must issue "exit" otherwise test should fail by default
-  $tinfo->{'result_file'}= "$resdir/$tname.result";
+     # TODO allow nonexistsing result file
+     # in that case .test must issue "exit" otherwise test
+     # should fail by default
+     result_file   => "$resdir/$tname.result",
+    );
 
   # ----------------------------------------------------------------------
   # Skip some tests but include in list, just mark them as skipped
@@ -874,9 +862,16 @@ sub collect_one_test_case {
     }
   }
 
+  if ($tinfo->{'federated_test'})
+  {
+    # This is a test that need federated, enable it
+    push(@{$tinfo->{'master_opt'}}, "--loose-federated");
+    push(@{$tinfo->{'slave_opt'}}, "--loose-federated");
+  }
+
   if ( $tinfo->{'innodb_test'} )
   {
-      # This is a test that need innodb
+    # This is a test that need innodb
     if ( $::mysqld_variables{'innodb'} ne "TRUE" )
     {
       # innodb is not supported, skip it
@@ -996,7 +991,7 @@ my @tags=
  ["include/master-slave.inc", "rpl_test", 1],
  ["include/ndb_master-slave.inc", "rpl_test", 1],
  ["include/ndb_master-slave.inc", "ndb_test", 1],
- ["include/federated.inc", "federated_test", 1],
+ ["federated.inc", "federated_test", 1],
  ["include/not_embedded.inc", "not_embedded", 1],
 );
 
@@ -1058,19 +1053,6 @@ sub unspace {
 }
 
 
-
-sub envsubst {
-  my $string= shift;
-
-  if ( ! defined $ENV{$string} )
-  {
-    mtr_error(".opt file references '$string' which is not set");
-  }
-
-  return $ENV{$string};
-}
-
-
 sub opts_from_file ($) {
   my $file=  shift;
 
@@ -1107,10 +1089,6 @@ sub opts_from_file ($) {
         or $arg =~ s/^([^\'\"]*)\"(.*)\"([^\'\"]*)$/$1$2$3/;
       $arg =~ s/\\\\/\\/g;
 
-      # Expand environment variables
-      $arg =~ s/\$\{(\w+)\}/envsubst($1)/ge;
-      $arg =~ s/\$(\w+)/envsubst($1)/ge;
-
       # Do not pass empty string since my_getopt is not capable to handle it.
       if (length($arg)) {
 	push(@args, $arg);
@@ -1126,17 +1104,7 @@ sub print_testcases {
 
   print "=" x 60, "\n";
   foreach my $test (@cases){
-    print "[", $test->{name}, "]", "\n";
-    while ((my ($key, $value)) = each(%$test)) {
-      print " ", $key, "= ";
-      if (ref $value eq "ARRAY") {
-	print "[", join(", ", @$value), "]";
-      } else {
-	print $value;
-      }
-      print "\n";
-    }
-    print "\n";
+    $test->print_test();
   }
   print "=" x 60, "\n";
 }

@@ -1345,13 +1345,12 @@ static bool get_unsigned(THD *thd, set_var *var)
 
 bool sys_var_int_ptr::check(THD *thd, set_var *var)
 {
-  var->save_result.ulong_value= (ulong) var->value->val_int();
-  return 0;
+  return get_unsigned(thd, var);
 }
 
 bool sys_var_int_ptr::update(THD *thd, set_var *var)
 {
-  *value= (uint) var->save_result.ulong_value;
+  *value= (uint) var->save_result.ulonglong_value;
   return 0;
 }
 
