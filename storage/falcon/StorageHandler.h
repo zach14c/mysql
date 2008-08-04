@@ -103,7 +103,6 @@ public:
 	virtual void		getTransactionSummaryInfo(InfoTable* infoTable);
 	virtual void		getTableSpaceInfo(InfoTable* infoTable);
 	virtual void		getTableSpaceFilesInfo(InfoTable* infoTable);
-	virtual void		getTablesInfo(InfoTable* infoTable);
 
 	virtual void		setIndexChillThreshold(uint value);
 	virtual void		setRecordChillThreshold(uint value);

@@ -61,11 +61,11 @@ static const int FillLevels = 5;
 
 struct SectionAnalysis 
 {
-   int32		recordLocatorPages;
-   int32		dataPages;
-   int32		overflowPages;
-   int32		spaceAvailable;
-   int32		records;
+	int32		recordLocatorPages;
+	int32		dataPages;
+	int32		overflowPages;
+	int32		spaceAvailable;
+	int32		records;
 };
 
 struct IndexAnalysis
@@ -214,8 +214,8 @@ public:
 	HdrState	priorState;
 	Inversion	*inversion;
 	DatabaseCopy *shadows;
-	SyncObject	cloneSyncObject;
-	SyncObject	sequencesSyncObject;
+	SyncObject	syncClone;
+	SyncObject	syncSequences;
 	SerialLog	*serialLog;
 	JString		logRoot;
 	SparseArray<int32, 100>	sequencePages;

@@ -46,6 +46,8 @@ SectorCache::SectorCache(int numBuffers, int pgSize)
 		buffer->cache = this;
 		buffer->buffer = p;
 		}
+
+	syncObject.setName("SectorCache::syncObject");
 }
 
 SectorCache::~SectorCache(void)

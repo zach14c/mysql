@@ -60,6 +60,8 @@ DeferredIndex::DeferredIndex(Index *idx, Transaction *trans)
 	haveMinValue = true;
 	haveMaxValue = true;
 	window = NULL;
+	syncObject.setName("DeferredIndex::syncObject");
+	useCount = 1;   // the transaction that created it
 }
 
 DeferredIndex::~DeferredIndex(void)
@@ -838,7 +840,7 @@ void DeferredIndex::detachTransaction(void)
 	else
 		sync.unlock();
 
-	delete this;
+	releaseRef();
 }
 
 void DeferredIndex::chill(Dbb *dbb)
@@ -873,4 +875,17 @@ DINode* DeferredIndex::findMaxValue(void)
 DINode* DeferredIndex::findMinValue(void)
 {
 	return NULL;
+}
+
+void DeferredIndex::addRef()
+{
+	INTERLOCKED_INCREMENT (useCount);
+}
+
+void DeferredIndex::releaseRef()
+{
+	INTERLOCKED_DECREMENT(useCount);
+
+	if (useCount == 0)
+		delete this;
 }

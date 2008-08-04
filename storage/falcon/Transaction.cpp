@@ -290,19 +290,21 @@ void Transaction::commit()
 	releaseDependencies();
 	database->flushInversion(this);
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(2)");
-	syncActiveTransactions.lock(Exclusive);
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(3)");
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
 	syncCommitted.lock(Exclusive);
 
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
+	syncActiveTransactions.lock(Exclusive);
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
 	
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
+		{
 		if (!record->getPriorVersion())
 			++record->format->table->cardinality;
-		else if (record->state == recDeleted && record->format->table->cardinality > 0)
+		if (record->state == recDeleted && record->format->table->cardinality > 0)
 			--record->format->table->cardinality;
+		}
 	transactionManager->committedTransactions.append(this);
 	syncCommitted.unlock();
 	database->commit(this);
@@ -982,7 +984,7 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 
 	TransactionManager *transactionManager = database->transactionManager;
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
-		"Transaction::waitForTransaction");
+		"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
 
 	if (!transaction)
@@ -1058,7 +1060,7 @@ void Transaction::waitForTransaction()
 		}
 	***/
 	
-	Sync sync(&syncActive, "Transaction::waitForTransaction");
+	Sync sync(&syncActive, "Transaction::waitForTransaction(2)");
 	sync.lock(Shared, falcon_lock_wait_timeout * 1000);
 }
 

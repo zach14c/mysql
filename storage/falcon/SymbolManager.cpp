@@ -55,6 +55,7 @@ SymbolManager::SymbolManager()
 	sections->next = NULL;
 	next = sections->space;
 	memset (hashTable, 0, sizeof (hashTable));
+	syncObject.setName("SymbolManager::syncObject");
 }
 
 SymbolManager::~SymbolManager()

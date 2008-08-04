@@ -107,6 +107,10 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 	DIHashTable = NULL;
 	DIHashTableCounts =  0;
 	DIHashTableSlotsUsed =  0;
+
+	syncDIHash.setName("Index::syncDIHash");
+	syncUnique.setName("Index::syncUnique");
+	deferredIndexes.syncObject.setName("Index::deferredIndexes.syncObject");
 }
 
 Index::~Index()
@@ -510,12 +514,14 @@ IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searc
 		for (DeferredIndex *deferredIndex = deferredIndexes.first; deferredIndex; deferredIndex = deferredIndex->next)
 			if (transaction->visible(deferredIndex->transaction, deferredIndex->transactionId, FOR_WRITING))
 				{
+				deferredIndex->addRef();
+
 				if (!indexWalker)
 					{
 					indexWalker = new IndexWalker(this, transaction, searchFlags);
 					indexWalker->addWalker(walkIndex);
 					}
-				
+
 				WalkDeferred *walkDeferred = new WalkDeferred(deferredIndex, transaction, searchFlags, &walkIndex->lowerBound, &walkIndex->upperBound);
 				indexWalker->addWalker(walkDeferred);
 				}

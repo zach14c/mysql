@@ -57,9 +57,11 @@ public:
 	UCHAR			*key;
 	uint			keyLength;
 	int32			recordNumber;
+	int32			lastRecordNumber;
 	int				balance;
 	int				searchFlags;
 	bool			first;
+	bool			firstRecord;
 };
 
 #endif

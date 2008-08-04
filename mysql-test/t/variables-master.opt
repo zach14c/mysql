@@ -6,6 +6,5 @@
 --loose-skip-plugin-falcon_syncobjects
 --loose-skip-plugin-falcon_system_memory_detail
 --loose-skip-plugin-falcon_system_memory_summary
---loose-skip-plugin-falcon_tables
 --loose-skip-plugin-falcon_transaction_summary
 --loose-skip-plugin-falcon_transactions

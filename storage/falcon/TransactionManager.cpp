@@ -52,6 +52,8 @@ TransactionManager::TransactionManager(Database *db)
 	rolledBackTransaction->state = RolledBack;
 	rolledBackTransaction->inList = false;
 	syncObject.setName("TransactionManager::syncObject");
+	activeTransactions.syncObject.setName("TransactionManager::activeTransactions");
+	committedTransactions.syncObject.setName("TransactionManager::committedTransactions");
 }
 
 TransactionManager::~TransactionManager(void)

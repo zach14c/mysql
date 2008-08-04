@@ -42,6 +42,7 @@ CollationManager::CollationManager()
 {
 	memset(hashTable, 0, sizeof(hashTable));
 	add(&collationCaseless);
+	syncObject.setName("CollationManager::syncObject");
 }
 
 CollationManager::~CollationManager()

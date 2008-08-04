@@ -396,10 +396,10 @@ Format* Table::getFormat(int version)
 		 if (format->version == version)
 			return format;
 
-	Sync syncObj(&syncObject, "Table::getFormat");
+	Sync syncObj(&syncObject, "Table::getFormat(1)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "Table::getFormat");
+	Sync syncDDL(&database->syncSysDDL, "Table::getFormat(2)");
 	syncDDL.lock(Shared);
 
 	PStatement statement = database->prepareStatement(
@@ -814,11 +814,11 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	primaryKey = NULL;
 	formats = NEW Format* [FORMAT_HASH_SIZE];
 
+	static char name[SYNC_VERSIONS_SIZE][64];
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
 		{
-		char name[64];
-		sprintf(name, "syncPriorVersions[%02d]", n);
-		syncPriorVersions[n].setName(name);
+		sprintf(name[n], "syncPriorVersions[%02d]", n);
+		syncPriorVersions[n].setName(name[n]);
 		}
 		
 	triggers = NULL;
@@ -836,6 +836,8 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncScavenge.setName("Table::syncScavenge");
 	syncAlter.setName("Table::syncAlter");
+	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
+		syncPriorVersions[n].setName("Table::syncPriorVersions");
 }
 
 Record* Table::fetch(int32 recordNumber)

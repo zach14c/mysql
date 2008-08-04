@@ -25,6 +25,7 @@ SectorBuffer::SectorBuffer()
 {
 	activeLength = 0;
 	sectorNumber = -1;
+	syncObject.setName("SectorBuffer::syncObject");
 }
 
 SectorBuffer::~SectorBuffer(void)
