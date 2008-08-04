@@ -64,8 +64,7 @@ public:
 	void			clearAlter(void);
 	bool			setAlter(void);
 	
-	void			clearTruncateLock(void);
-	void			setTruncateLock();
+
 	
 	virtual void	setConnection(StorageConnection* connection);
 	virtual void	clearIndexBounds(void);

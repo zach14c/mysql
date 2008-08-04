@@ -56,8 +56,6 @@ StorageTable::StorageTable(StorageConnection *connection, StorageTableShare *tab
 
 StorageTable::~StorageTable(void)
 {
-	clearTruncateLock();
-	
 	if (bitmap)
 		((Bitmap*) bitmap)->release();
 
@@ -85,7 +83,6 @@ int StorageTable::open(void)
 
 int StorageTable::deleteTable(void)
 {
-	clearTruncateLock();
 	int ret = share->deleteTable(storageConnection);
 	
 	if (ret == 0)
@@ -96,32 +93,12 @@ int StorageTable::deleteTable(void)
 
 int StorageTable::truncateTable(void)
 {
-	clearTruncateLock();
-	Sync sync(share->syncTruncate, "StorageTable::truncateTable");
-	sync.lock(Exclusive);
 	clearRecord();
 	int ret = share->truncateTable(storageConnection);
-	
 	return ret;
 }
 
-void StorageTable::clearTruncateLock(void)
-{
-	if (haveTruncateLock)
-		{
-		share->clearTruncateLock();
-		haveTruncateLock = false;
-		}
-}
 
-void StorageTable::setTruncateLock()
-{
-	if (!haveTruncateLock)
-		{
-		share->setTruncateLock();
-		haveTruncateLock = true;
-		}
-}
 
 int StorageTable::insert(void)
 {

@@ -31,8 +31,10 @@ while ($num)
    connection default;
    --send truncate table t1;
    connection conn1;
+   --error 0,ER_CANT_LOCK
    --reap
    connection default;
+   --error 0,ER_CANT_LOCK
    --reap 
    dec $num;
 }
