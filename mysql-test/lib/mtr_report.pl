@@ -340,6 +340,13 @@ sub mtr_report_stats ($) {
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
 		) or
 		
+		# The views test triggers errors below on purpose
+		($testname eq 'main.backup_views') and
+		(
+		  /Backup: Failed to add view/ or
+		  /Restore: Could not restore view/
+		) or
+ 	 
 		# ignore warning generated when backup engine selection algorithm is tested
 		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
 		# ignore warnings generated when backup privilege is tested

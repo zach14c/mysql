@@ -124,9 +124,7 @@ CREATE VIEW v5 AS SELECT * FROM bup_db2.t2;
 
 --echo ******Creating View v6********
 
-#Bug#36213 Restore fails for a database that has views created using another database .
-
-#CREATE VIEW v6 AS SELECT education,gender FROM bup_db2.v2, t5  WHERE cand_age=age;
+CREATE VIEW v6 AS SELECT education,gender FROM bup_db2.v2, t5  WHERE cand_age=age;
 
 #Excercise the objects of bup_db1
 
@@ -144,7 +142,7 @@ SELECT * FROM vcomb;
 
 SELECT * FROM v5;
 
-#SELECT * FROM v6;
+SELECT * FROM v6;
 
 --echo excercise objects of bup_db2
 
@@ -188,11 +186,21 @@ DROP DATABASE bup_db2;
 #RESTORE FROM bup_objectview.bak;
 
 #Individual databases cannot be restored because of VIEW DEPENDENCY
+--echo restore database with view dependency to other, non-existing db
 
-#--error 1146
-#RESTORE FROM 'bup_objectview1.bak';
-#--error 1146
-#RESTORE FROM 'bup_objectview2.bak';
+--error ER_NO_SUCH_TABLE
+RESTORE FROM 'bup_objectview1.bak'; 
+
+# An incomplete bup_db1 was created by the failing restore operation.
+# Remove it before trying restore of bup_db2.
+DROP DATABASE bup_db1;
+
+--error ER_NO_SUCH_TABLE
+RESTORE FROM 'bup_objectview2.bak';
+
+# An incomplete bup_db2 was created by the failing restore operation.
+# Remove it before reverting to the working backup image
+DROP DATABASE bup_db2;
 
 replace_column 1 #;
 RESTORE FROM 'bup_objectview.bak';
@@ -222,7 +230,7 @@ SELECT * FROM vcomb;
 
 SELECT * FROM v5;
 
-#SELECT * FROM v6;
+SELECT * FROM v6;
 --echo excercise objects of bup_db2
 use bup_db2;
 SELECT * FROM t2;
@@ -281,6 +289,58 @@ SELECT * FROM v3;
 USE bup_db1;
 SELECT * FROM t1;
 
+
+###############
+--echo 
+--echo *** ENTER Backup of database with missing view dependency should fail but not crash server
+--echo 
+
+--echo initializing test
+
+# start with the backed up database
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+
+replace_column 1 #;
+RESTORE FROM 'bup_objectview.bak';
+
+# check that table t1 and v1 are initially correct
+USE bup_db1;
+SELECT * FROM t1;
+SELECT * FROM v1;
+
+DROP TABLE t1;
+
+--echo
+--echo Testing backup with missing view dependency in same db
+--echo 
+
+# v1 selects from t1, and select now reports error
+--error ER_VIEW_INVALID
+SELECT * FROM v1;
+
+# try to backup - v1 selects from t1 and backup should now fail
+--error ER_BACKUP_CATALOG_ADD_VIEW
+BACKUP DATABASE bup_db1 TO 'bup_shouldfail1.bak';
+
+--echo
+--echo Testing backup with missing view dependency in other db
+--echo 
+
+USE bup_db2;
+--error ER_VIEW_INVALID
+SELECT * from v3;
+
+# try to backup - v3 selects from bup_db1.t1 and backup should now fail
+--error ER_BACKUP_CATALOG_ADD_VIEW
+BACKUP DATABASE bup_db2 TO 'bup_shouldfail2.bak';
+
+--echo 
+--echo *** EXIT Backup of database with missing view dependency
+--echo 
+
+###############
+
 # Test cleanup section
 
 --echo
@@ -298,4 +358,10 @@ DROP DATABASE bup_db2;
 
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview2.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview3.bak
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail1.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail2.bak
+
 #BUG#35249 Mysql server crash for delete operation followed by backup for Default Drivers.

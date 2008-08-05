@@ -79,6 +79,7 @@ USE bup_db1;
 *******Creating View from database bup_db2**********
 CREATE VIEW v5 AS SELECT * FROM bup_db2.t2;
 ******Creating View v6********
+CREATE VIEW v6 AS SELECT education,gender FROM bup_db2.v2, t5  WHERE cand_age=age;
 USE bup_db1;
 SELECT * FROM t1;
 id	name	city
@@ -134,6 +135,16 @@ idno	age	education
 6	30	Doctor
 7	31	Lawyer
 8	27	undergrad
+SELECT * FROM v6;
+education	gender
+BS	F
+BE	F
+school	M
+MS	F
+PHD	M
+Doctor	F
+Lawyer	M
+undergrad	M
 excercise objects of bup_db2
 USE bup_db2;
 SELECT * FROM t2;
@@ -185,6 +196,8 @@ Tables_in_bup_db1	v1
 Table_type	VIEW
 Tables_in_bup_db1	v5
 Table_type	VIEW
+Tables_in_bup_db1	v6
+Table_type	VIEW
 Tables_in_bup_db1	vcomb
 Table_type	VIEW
 SHOW FULL TABLES FROM bup_db2;;
@@ -224,6 +237,13 @@ backup_id
 dropping  database.
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
+restore database with view dependency to other, non-existing db
+RESTORE FROM 'bup_objectview1.bak';
+ERROR 42S02: Table 'bup_db2.t2' doesn't exist
+DROP DATABASE bup_db1;
+RESTORE FROM 'bup_objectview2.bak';
+ERROR 42S02: Table 'bup_db1.t3' doesn't exist
+DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview.bak';
 backup_id
 #
@@ -241,6 +261,8 @@ Table_type	BASE TABLE
 Tables_in_bup_db1	v1
 Table_type	VIEW
 Tables_in_bup_db1	v5
+Table_type	VIEW
+Tables_in_bup_db1	v6
 Table_type	VIEW
 Tables_in_bup_db1	vcomb
 Table_type	VIEW
@@ -324,6 +346,16 @@ idno	age	education
 6	30	Doctor
 7	31	Lawyer
 8	27	undergrad
+SELECT * FROM v6;
+education	gender
+BS	F
+BE	F
+school	M
+MS	F
+PHD	M
+Doctor	F
+Lawyer	M
+undergrad	M
 excercise objects of bup_db2
 use bup_db2;
 SELECT * FROM t2;
@@ -446,6 +478,55 @@ id	name	city
 5	aa5	RR5
 6	aa6	RR6
 8	aa8	RR8
+
+*** ENTER Backup of database with missing view dependency should fail but not crash server
+
+initializing test
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+RESTORE FROM 'bup_objectview.bak';
+backup_id
+#
+USE bup_db1;
+SELECT * FROM t1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+SELECT * FROM v1;
+id	name	city
+1	aa1	RR1
+2	aa2	RR2
+3	aa3	RR3
+4	aa4	RR4
+5	aa5	RR5
+6	aa6	RR6
+7	aa7	RR7
+8	aa8	RR8
+DROP TABLE t1;
+
+Testing backup with missing view dependency in same db
+
+SELECT * FROM v1;
+ERROR HY000: View 'bup_db1.v1' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
+BACKUP DATABASE bup_db1 TO 'bup_shouldfail1.bak';
+ERROR HY000: Failed to add view `bup_db1`.`v1` to the catalog
+
+Testing backup with missing view dependency in other db
+
+USE bup_db2;
+SELECT * from v3;
+ERROR HY000: View 'bup_db2.v3' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
+BACKUP DATABASE bup_db2 TO 'bup_shouldfail2.bak';
+ERROR HY000: Failed to add view `bup_db2`.`v3` to the catalog
+
+*** EXIT Backup of database with missing view dependency
+
 
 ***  DROP bup_db1, bup_db2 DATABASE ****
 

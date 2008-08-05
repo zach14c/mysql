@@ -988,9 +988,9 @@ error:
   @param[in] type type of the object
   @param[in] obj  the object
 
-  The object is also added to the dependency list with @c add_to_dep_list() 
-  method. If it is a view, its dependencies are handled first using 
-  @c add_view_deps().
+  The object is added both to the dependency list with @c
+  add_to_dep_list() method and to the catalogue. If it is a view, its
+  dependencies are handled first using @c add_view_deps().
 
   @returns Pointer to @c Image_info::Dbobj instance storing information 
   about the object or NULL in case of error.  
@@ -1022,16 +1022,6 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   }
 
-  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
-  
-  if (!o)
-  {
-    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
-    return NULL;
-  }
-
-  o->m_obj_ptr= obj;
-
   /* 
     Add new object to the dependency list. If it is a view, add its
     dependencies first.
@@ -1050,15 +1040,6 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     return NULL;
   }
 
-  /* 
-    Store a pointer to the catalogue item in the dep. list node. If this node
-    was a placeholder inserted into the list before, now it will be filled with
-    the object we are adding to the catalogue.
-   */
-
-  DBUG_ASSERT(n);
-  n->obj= o;  
-
   /*
     If a new node was created, it must be added to the dependency list with
     add_to_dep_list(). However, if the object is a view, we must first add 
@@ -1076,6 +1057,36 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
     add_to_dep_list(type, n);
   } 
+
+  /*
+    The object has now been added to the dependancy list. If it is a
+    view, all dependant objects have also been successfully added to
+    the dependency list. The object can now be added to the cataloge
+    and then be linked to from the node in the dep list. Adding to dep
+    list before adding to catalogue ensures that an object will not be
+    added to catalogue if there are problems with it's dependant
+    objects.
+   */
+
+  // Add object to catalogue
+  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
+  
+  if (!o)
+  {
+    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    return NULL;
+  }
+
+  o->m_obj_ptr= obj;
+
+  /* 
+    Store a pointer to the catalogue item in the dep. list node. If this node
+    was a placeholder inserted into the list before, now it will be filled with
+    the object we are adding to the catalogue.
+   */
+
+  DBUG_ASSERT(n);
+  n->obj= o;  
 
   DBUG_PRINT("backup",("Added object %s of type %d from database %s (pos=%lu)",
                        name->ptr(), type, db.name().ptr(), pos));
