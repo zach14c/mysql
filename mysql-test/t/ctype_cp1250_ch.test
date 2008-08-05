@@ -78,6 +78,7 @@ set names cp1250 collate cp1250_czech_cs;
 --source include/ctype_pad_space.inc
 --source include/ctype_filesort.inc
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_chde.inc
 --source include/weight_string_l1.inc
 --source include/weight_string_l2.inc
