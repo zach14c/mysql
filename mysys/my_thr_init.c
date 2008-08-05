@@ -24,11 +24,7 @@
 #include <signal.h>
 
 #ifdef THREAD
-#ifdef USE_TLS
 pthread_key(struct st_my_thread_var*, THR_KEY_mysys);
-#else
-pthread_key(struct st_my_thread_var, THR_KEY_mysys);
-#endif /* USE_TLS */
 pthread_mutex_t THR_LOCK_malloc,THR_LOCK_open,
 	        THR_LOCK_lock,THR_LOCK_isam,THR_LOCK_heap, THR_LOCK_net,
                 THR_LOCK_charset, THR_LOCK_threads, THR_LOCK_time;
@@ -265,7 +261,6 @@ my_bool my_thread_init(void)
           (ulong) pthread_self());
 #endif  
 
-#if !defined(__WIN__) || defined(USE_TLS)
   if (my_pthread_getspecific(struct st_my_thread_var *,THR_KEY_mysys))
   {
 #ifdef EXTRA_DEBUG_THREADS
@@ -280,15 +275,6 @@ my_bool my_thread_init(void)
     goto end;
   }
   pthread_setspecific(THR_KEY_mysys,tmp);
-
-#else /* defined(__WIN__) && !(defined(USE_TLS) */
-  /*
-    Skip initialization if the thread specific variable is already initialized
-  */
-  if (THR_KEY_mysys.id)
-    goto end;
-  tmp= &THR_KEY_mysys;
-#endif
 #if defined(__WIN__) && defined(EMBEDDED_LIBRARY)
   tmp->pthread_self= (pthread_t) getpid();
 #else
@@ -353,15 +339,8 @@ void my_thread_end(void)
     pthread_cond_destroy(&tmp->suspend);
 #endif
     pthread_mutex_destroy(&tmp->mutex);
-#if !defined(__WIN__) || defined(USE_TLS)
     free(tmp);
-#else
-    tmp->init= 0;
-#endif
-
-#if !defined(__WIN__) || defined(USE_TLS)
     pthread_setspecific(THR_KEY_mysys,0);
-#endif
     /*
       Decrement counter for number of running threads. We are using this
       in my_thread_global_end() to wait until all threads have called
@@ -376,9 +355,7 @@ void my_thread_end(void)
   }
   else
   {
-#if !defined(__WIN__) || defined(USE_TLS)
     pthread_setspecific(THR_KEY_mysys,0);
-#endif
   }
 }
 
@@ -386,14 +363,6 @@ struct st_my_thread_var *_my_thread_var(void)
 {
   struct st_my_thread_var *tmp=
     my_pthread_getspecific(struct st_my_thread_var*,THR_KEY_mysys);
-#if defined(USE_TLS)
-  /* This can only happen in a .DLL */
-  if (!tmp)
-  {
-    my_thread_init();
-    tmp=my_pthread_getspecific(struct st_my_thread_var*,THR_KEY_mysys);
-  }
-#endif
   return tmp;
 }
 
