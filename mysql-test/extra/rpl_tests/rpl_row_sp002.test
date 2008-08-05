@@ -56,6 +56,7 @@ delimiter ;|
 let $message=< -- test 1 call p1 -- >;
 --source include/show_msg.inc
 SET FOREIGN_KEY_CHECKS=1;
+--connection master
 call test.p1('texas');
 call test.p1('Live');
 call test.p1('next');
@@ -65,7 +66,7 @@ call test.p1('MySQL');
 
 let $message=< -- test 1 select master after p1 -- >;
 --source include/show_msg.inc
-
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -74,6 +75,7 @@ let $message=< -- test 1 select slave after p1 -- >;
 save_master_pos;
 connection slave;
 sync_with_master;
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -81,6 +83,7 @@ let $message=< -- test 1 call p2 & select master -- >;
 --source include/show_msg.inc
 connection master;
 call test.p2(4);
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -89,6 +92,7 @@ let $message=< -- test 1 select slave after p2 -- >;
 save_master_pos;
 connection slave;
 sync_with_master;
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -131,6 +135,7 @@ CALL test.p1(6,'MySQL');
 
 let $message=< -- test 2 select Master after p1 -- >;
 --source include/show_msg.inc
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -139,6 +144,7 @@ let $message=< -- test 2 select Slave after p1 -- >;
 save_master_pos;
 connection slave;
 sync_with_master;
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -148,6 +154,7 @@ connection master;
 CALL test.p2(2);
 CALL test.p2(4);
 CALL test.p2(6);
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -156,6 +163,7 @@ let $message=< -- test 1 select Slave after p2 -- >;
 save_master_pos;
 connection slave;
 sync_with_master;
+--sorted_result
 SELECT * FROM test.t1;
 SELECT * FROM test.t2;
 
@@ -194,11 +202,11 @@ while ($n)
 -- enable_query_log
 
 ROLLBACK;
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 save_master_pos;
 connection slave;
 sync_with_master;
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 
 connection master;
 START TRANSACTION;
@@ -215,11 +223,11 @@ while ($n>3)
 -- enable_query_log
 
 COMMIT;
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 save_master_pos;
 connection slave;
 sync_with_master;
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 
 connection master;
 #show binlog events from 1627;

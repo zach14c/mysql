@@ -17,8 +17,6 @@ SELECT DATABASE();
 DATABASE()
 mysql_test
 
-rm mysql_test/t1.MYD mysql_test/t1.MYI
-
 DROP DATABASE mysql_test;
 
 use test;

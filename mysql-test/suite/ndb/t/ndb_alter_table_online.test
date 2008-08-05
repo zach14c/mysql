@@ -681,12 +681,12 @@ b INT COLUMN_FORMAT FIXED)ROW_FORMAT=DYNAMIC ENGINE=NDB;
 --replace_regex /Length of frm data: [0-9]+/Length of frm data: (compressed frm size)//Version: [0-9]+/Version: #/
 --exec $NDB_TOOLS_DIR/ndb_desc --no-defaults -d test t1
 
+DROP TABLE t1;
+
 --echo ********************
 --echo * Cleanup Section
 --echo ********************
 
---exec rm $MYSQLTEST_VARDIR/master-data/test/tmp.dat || true
-DROP TABLE t1;
 DROP TABLE ndb_show_tables_results;
 # End of 5.1 Test Case
 

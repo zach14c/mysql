@@ -7,6 +7,11 @@
 
 --source include/not_embedded.inc
 
+disable_query_log;
+call mtr.add_supression("Backup:");
+call mtr.add_supression("Restore:");
+enable_query_log;
+
 --disable_warnings
 DROP DATABASE IF EXISTS backup_test;
 --enable_warnings
@@ -92,6 +97,7 @@ DROP USER bup_no_rights;
 DROP USER bup_with_rights;
 DROP DATABASE backup_test;
 
-remove_file $MYSQLTEST_VARDIR/master-data/bup_with_rights.bak;
-remove_file $MYSQLTEST_VARDIR/master-data/backup_test_orig.bak;
+let $MYSQLD_DATADIR= `select @@datadir`;
+remove_file $MYSQLD_DATADIR/bup_with_rights.bak;
+remove_file $MYSQLD_DATADIR/backup_test_orig.bak;
 

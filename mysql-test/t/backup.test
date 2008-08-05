@@ -13,8 +13,10 @@ connection backup;
 DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
 DROP DATABASE IF EXISTS db3;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
+remove_file $MYSQLD_DATADIR/bup_default.bak;
 --enable_warnings
 
 CREATE DATABASE db1;
@@ -143,7 +145,7 @@ USE mysql;
 --replace_column 1 #
 RESTORE FROM 'test.ba';
 
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 
 SHOW CREATE DATABASE db1;
 SHOW CREATE DATABASE db2;
@@ -355,7 +357,7 @@ SELECT * FROM bup_default.t2;
 SELECT COUNT(*) FROM bup_default.t1_blob;
 SELECT COUNT(*) FROM bup_default.wide;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
+remove_file $MYSQLD_DATADIR/bup_default.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_default TO 'bup_default.bak';
 
@@ -473,9 +475,9 @@ DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;
 --enable_warnings
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_delete.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default_timestamp.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
+remove_file $MYSQLD_DATADIR/bup_delete.bak;
+remove_file $MYSQLD_DATADIR/bup_default_timestamp.bak;
+remove_file $MYSQLD_DATADIR/bup_default.bak;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 

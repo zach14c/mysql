@@ -9,8 +9,9 @@
 --echo Starting regression test for 34868 - Backup: restore failure if two procedures
 
 
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_proc.bak
+remove_file $MYSQLD_DATADIR/bup_proc.bak;
 
 --echo
 --echo Create database and procedures
@@ -53,5 +54,4 @@ SELECT @a;
 --echo Cleaning up
 
 DROP DATABASE bup_proc;
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_proc.bak
+remove_file $MYSQLD_DATADIR/bup_proc.bak;

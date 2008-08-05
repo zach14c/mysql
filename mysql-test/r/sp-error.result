@@ -1,4 +1,5 @@
 drop table if exists t1, t2;
+SELECT * FROM mysql.proc INTO OUTFILE 'MYSQLTEST_VARDIR/tmp/proc.txt';
 delete from mysql.proc;
 create procedure syntaxerror(t int)|
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' at line 1
@@ -1636,3 +1637,4 @@ end|
 call p1(1);
 set @@max_sp_recursion_depth = @old_recursion_depth;
 drop procedure p1;
+LOAD DATA INFILE '../../tmp/proc.txt' INTO TABLE mysql.proc;

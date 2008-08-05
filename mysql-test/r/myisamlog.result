@@ -25,7 +25,7 @@ Total               #         0                0
 select * from t1;
 a	b
 flush table t1;
-Trying to update MyISAM files according to log 'VARDIR/master-data/myisam.log'
+Trying to update MyISAM files according to log 'MYSQLD_DATADIR/myisam.log'
 Tables updated successfully
 
 Commands                         Used count    Errors Recover errors

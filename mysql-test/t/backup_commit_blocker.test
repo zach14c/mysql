@@ -35,8 +35,9 @@
 --disable_warnings
 SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS bup_commit_blocker;
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
+remove_file $MYSQLD_DATADIR/bup_commit_blocker.bak;
 --enable_warnings
 
 CREATE DATABASE bup_commit_blocker;
@@ -315,7 +316,7 @@ SELECT count(*) FROM bup_commit_blocker.t3 WHERE col_a like 'con4%';
 --echo con1: Cleanup
 DROP DATABASE bup_commit_blocker;
 
-remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
+remove_file $MYSQLD_DATADIR/bup_commit_blocker.bak;
 SET DEBUG_SYNC= 'RESET';
 
 #
@@ -477,7 +478,7 @@ SELECT count(*) FROM bup_commit_blocker.t5 WHERE col_a = 333;
 --echo con1: Cleanup
 DROP DATABASE bup_commit_blocker;
 
-remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
+remove_file $MYSQLD_DATADIR/bup_commit_blocker.bak;
 SET DEBUG_SYNC= 'RESET';
 
 #
@@ -795,6 +796,6 @@ SELECT count(*) FROM bup_commit_blocker.t5 WHERE col_a >= 50;
 --echo con1: Cleanup
 DROP DATABASE bup_commit_blocker;
 
-remove_file $MYSQLTEST_VARDIR/master-data/bup_commit_blocker.bak;
+remove_file $MYSQLD_DATADIR/bup_commit_blocker.bak;
 SET DEBUG_SYNC= 'RESET';
 

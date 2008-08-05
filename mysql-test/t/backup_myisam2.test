@@ -9,8 +9,9 @@
 --disable_warnings
 SET DEBUG_SYNC= 'RESET';
 DROP DATABASE IF EXISTS mysqltest;
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 --enable_warnings
 
 #
@@ -78,7 +79,7 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
 --echo
 --echo connection default: cleanup
 connection default;
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 SET DEBUG_SYNC= 'RESET';
 
 
@@ -90,7 +91,7 @@ CREATE TABLE `הצüß£ו` (id SERIAL) ENGINE=MyISAM;
 --replace_column 1 #
 BACKUP DATABASE mysqltest TO 'test.ba';
 DROP TABLE `הצüß£ו`;
---remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+remove_file $MYSQLD_DATADIR/test.ba;
 
 
 #

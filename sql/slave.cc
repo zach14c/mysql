@@ -39,6 +39,7 @@
 #include <sql_common.h>
 #include <errmsg.h>
 #include <mysys_err.h>
+#include "rpl_handler.h"
 
 #ifdef HAVE_REPLICATION
 
@@ -66,6 +67,8 @@ ulonglong relay_log_space_limit = 0;
 
 int disconnect_slave_event_count = 0, abort_slave_event_count = 0;
 int events_till_abort = -1;
+
+static pthread_key(Master_info*, RPL_MASTER_INFO);
 
 enum enum_slave_reconnect_actions
 {
@@ -759,6 +762,94 @@ int init_floatvar_from_file(float* var, IO_CACHE* f, float default_val)
   DBUG_RETURN(1);
 }
 
+/**
+   A master info read method
+
+   This function is called from @c init_master_info() along with
+   init_{type}_from_file relatives to restore some of @c active_mi members.
+   Particularly, this function is responsible for restoring
+   IGNORE_SERVER_IDS list of servers whose events the slave is
+   going to ignore (to not log them in the relay log).
+   Items being read are supposed to be decimal output of values of a
+   type shorter or equal of @c long and separated by the single space.
+
+   @param arr         @c DYNAMIC_ARRAY pointer to storage for servers id
+   @param f           @c IO_CACHE pointer to the source file
+
+   @retval 0         All OK
+   @retval non-zero  An error
+*/
+
+int init_dynarray_intvar_from_file(DYNAMIC_ARRAY* arr, IO_CACHE* f)
+{
+  int ret= 0;
+  char buf[16 * (sizeof(long)*4 + 1)]; // static buffer to use most of times
+  char *buf_act= buf; // actual buffer can be dynamic if static is short
+  char *token, *last;
+  uint num_items;     // number of items of `arr'
+  size_t read_size;
+  DBUG_ENTER("init_dynarray_intvar_from_file");
+
+  if ((read_size= my_b_gets(f, buf_act, sizeof(buf))) == 0)
+  {
+    return 0; // no line in master.info
+  }
+  if (read_size + 1 == sizeof(buf) && buf[sizeof(buf) - 2] != '\n')
+  {
+    /*
+      short read happend; allocate sufficient memory and make the 2nd read
+    */
+    char buf_work[(sizeof(long)*3 + 1)*16];
+    memcpy(buf_work, buf, sizeof(buf_work));
+    num_items= atoi(strtok_r(buf_work, " ", &last));
+    size_t snd_size;
+    /*
+      max size lower bound approximate estimation bases on the formula:
+      (the items number + items themselves) * 
+          (decimal size + space) - 1 + `\n' + '\0'
+    */
+    size_t max_size= (1 + num_items) * (sizeof(long)*3 + 1) + 1;
+    buf_act= (char*) my_malloc(max_size, MYF(MY_WME));
+    memcpy(buf_act, buf, read_size);
+    snd_size= my_b_gets(f, buf_act + read_size, max_size - read_size);
+    if (snd_size == 0 ||
+        (snd_size + 1 == max_size - read_size) &&  buf[max_size - 2] != '\n')
+    {
+      /*
+        failure to make the 2nd read or short read again
+      */
+      ret= 1;
+      goto err;
+    }
+  }
+  token= strtok_r(buf_act, " ", &last);
+  if (token == NULL)
+  {
+    ret= 1;
+    goto err;
+  }
+  num_items= atoi(token);
+  for (uint i=0; i < num_items; i++)
+  {
+    token= strtok_r(NULL, " ", &last);
+    if (token == NULL)
+    {
+      ret= 1;
+      goto err;
+    }
+    else
+    {
+      ulong val= atol(token);
+      insert_dynamic(arr, (uchar *) &val);
+    }
+  }
+err:
+  if (buf_act != buf)
+    my_free(buf_act, MYF(0));
+  DBUG_RETURN(ret);
+}
+
+
 static bool check_io_slave_killed(THD *thd, Master_info *mi, const char *info)
 {
   if (io_slave_killed(thd, mi))
@@ -907,7 +998,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
       (master_res= mysql_store_result(mysql)))
   {
     if ((master_row= mysql_fetch_row(master_res)) &&
-        (::server_id == strtoul(master_row[1], 0, 10)) &&
+        (::server_id == (mi->master_id= strtoul(master_row[1], 0, 10))) &&
         !mi->rli.replicate_same_server_id)
     {
       errmsg=
@@ -923,7 +1014,14 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
     if (errmsg)
       goto err;
   }
-
+  if (mi->master_id == 0 && mi->ignore_server_ids.elements > 0)
+  {
+    errmsg="Slave configured with server id filtering could not detect the master server id.";
+    err_code= ER_SLAVE_FATAL_ERROR;
+    sprintf(err_buff, ER(err_code), errmsg);
+    err_msg.append(err_buff);
+    goto err;
+  }
   /*
     Check that the master's global character_set_server and ours are the same.
     Not fatal if query fails (old master?).
@@ -1021,8 +1119,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
       err_msg.append(query);
       err_msg.append("' failed;");
       err_msg.append(" error: ");
-      err_code= mysql_errno(mysql);
-      err_msg.qs_append(err_code);
+      err_msg.qs_append(mysql_errno(mysql));
       err_msg.append("  '");
       err_msg.append(mysql_error(mysql));
       err_msg.append("'");
@@ -1239,6 +1336,10 @@ bool show_master_info(THD* thd, Master_info* mi)
   field_list.push_back(new Item_empty_string("Last_IO_Error", 20));
   field_list.push_back(new Item_return_int("Last_SQL_Errno", 4, MYSQL_TYPE_LONG));
   field_list.push_back(new Item_empty_string("Last_SQL_Error", 20));
+  field_list.push_back(new Item_empty_string("Replicate_Ignore_Server_Ids",
+                                             FN_REFLEN));
+  field_list.push_back(new Item_return_int("Master_Server_Id", sizeof(ulong),
+                                           MYSQL_TYPE_LONG));
 
   if (protocol->send_fields(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
@@ -1358,6 +1459,32 @@ bool show_master_info(THD* thd, Master_info* mi)
     protocol->store(mi->rli.last_error().number);
     // Last_SQL_Error
     protocol->store(mi->rli.last_error().message, &my_charset_bin);
+    // Replicate_Ignore_Server_Ids
+    {
+      char buff[FN_REFLEN];
+      ulong i, cur_len;
+      for (i= 0, buff[0]= 0, cur_len= 0;
+           i < mi->ignore_server_ids.elements; i++)
+      {
+        ulong s_id, slen;
+        char sbuff[FN_REFLEN];
+        get_dynamic(&mi->ignore_server_ids, (uchar*) &s_id, i);
+        slen= my_sprintf(sbuff, (sbuff, (i==0? "%lu" : ", %lu"), s_id));
+        if (cur_len + slen + 4 > FN_REFLEN)
+        {
+          /*
+            break the loop whenever remained space could not fit
+            ellipses on the next cycle
+          */
+          my_sprintf(buff + cur_len, (buff + cur_len, "..."));
+          break;
+        }
+        cur_len += my_sprintf(buff + cur_len, (buff + cur_len, "%s", sbuff));
+      }
+      protocol->store(buff, &my_charset_bin);
+    }
+    // Master_Server_id
+    protocol->store((uint32) mi->master_id);
 
     pthread_mutex_unlock(&mi->rli.data_lock);
     pthread_mutex_unlock(&mi->data_lock);
@@ -1499,17 +1626,22 @@ static int safe_sleep(THD* thd, int sec, CHECK_KILLED_FUNC thread_killed,
 }
 
 
-static int request_dump(MYSQL* mysql, Master_info* mi,
-                        bool *suppress_warnings)
+static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
+			bool *suppress_warnings)
 {
   uchar buf[FN_REFLEN + 10];
   int len;
-  int binlog_flags = 0; // for now
+  ushort binlog_flags = 0; // for now
   char* logname = mi->master_log_name;
   DBUG_ENTER("request_dump");
   
   *suppress_warnings= FALSE;
 
+  if (RUN_HOOK(binlog_relay_io,
+               before_request_transmit,
+               (thd, mi, binlog_flags)))
+    DBUG_RETURN(1);
+  
   // TODO if big log files: Change next to int8store()
   int4store(buf, (ulong) mi->master_log_pos);
   int2store(buf + 4, binlog_flags);
@@ -2115,6 +2247,7 @@ pthread_handler_t handle_slave_io(void *arg)
 
   pthread_detach_this_thread();
   thd->thread_stack= (char*) &thd; // remember where our stack is
+  mi->clear_error();
   if (init_slave_thread(thd, SLAVE_THD_IO))
   {
     pthread_cond_broadcast(&mi->start_cond);
@@ -2133,6 +2266,12 @@ pthread_handler_t handle_slave_io(void *arg)
   DBUG_PRINT("master_info",("log_file_name: '%s'  position: %s",
                             mi->master_log_name,
                             llstr(mi->master_log_pos,llbuff)));
+
+  /* This must be called before run any binlog_relay_io hooks */
+  my_pthread_setspecific_ptr(RPL_MASTER_INFO, mi);
+
+  if (RUN_HOOK(binlog_relay_io, thread_start, (thd, mi)))
+    goto err;
 
   if (!(mi->mysql = mysql = mysql_init(NULL)))
   {
@@ -2205,134 +2344,152 @@ connected:
   }
 
   DBUG_PRINT("info",("Starting reading binary log from master"));
+  thd_proc_info(thd, "Requesting binlog dump");
+  if (!io_slave_killed(thd,mi) && request_dump(thd, mysql, mi, &suppress_warnings))
+  {
+    sql_print_error("Failed on request_dump()");
+    if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
+requesting master dump") ||
+        try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
+                         reconnect_messages[SLAVE_RECON_ACT_DUMP]))
+      goto err;
+    goto connected;
+  }
+  DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_DUMP", 
+                  if (!io_slave_killed(thd,mi) && !retry_count_dump)
+                  {
+                    retry_count_dump++;
+                    sql_print_information("Forcing to reconnect slave I/O thread");
+                    if (try_to_reconnect(thd, mysql, mi, &retry_count,
+                                         suppress_warnings,
+                                         reconnect_messages[SLAVE_RECON_ACT_DUMP]))
+                      goto err;
+                    goto connected;
+                  });
+  DBUG_ASSERT(mi->last_error().number == 0);
   while (!io_slave_killed(thd,mi))
   {
-    thd_proc_info(thd, "Requesting binlog dump");
-    if (request_dump(mysql, mi, &suppress_warnings))
-    {
-      sql_print_error("Failed on request_dump()");
-      if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
-requesting master dump") ||
-          try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                           reconnect_messages[SLAVE_RECON_ACT_DUMP]))
-        goto err;
-      goto connected;
-    }
-    DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_DUMP", 
-      if (!retry_count_dump)
-      {
-        retry_count_dump++;
-        sql_print_information("Forcing to reconnect slave I/O thread");
-        if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                             reconnect_messages[SLAVE_RECON_ACT_DUMP]))
-          goto err;
-        goto connected;
-      });
+    const char *event_buf;
+    ulong event_len;
+    /*
+      We say "waiting" because read_event() will wait if there's nothing to
+      read. But if there's something to read, it will not wait. The
+      important thing is to not confuse users by saying "reading" whereas
+      we're in fact receiving nothing.
+    */
+    thd_proc_info(thd, "Waiting for master to send event");
+    event_len= read_event(mysql, mi, &suppress_warnings);
+    if (check_io_slave_killed(thd, mi,
+                              "Slave I/O thread killed while reading event"))
+      goto err;
+    DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_EVENT",
+                    if (!retry_count_event)
+                    {
+                      retry_count_event++;
+                      sql_print_information("Forcing to reconnect slave I/O thread");
+                      if (try_to_reconnect(thd, mysql, mi, &retry_count,
+                                           suppress_warnings,
+                                           reconnect_messages[SLAVE_RECON_ACT_EVENT]))
+                        goto err;
+                      goto connected;
+                    });
 
-    while (!io_slave_killed(thd,mi))
+    if (event_len == packet_error)
     {
-      ulong event_len;
-      /*
-         We say "waiting" because read_event() will wait if there's nothing to
-         read. But if there's something to read, it will not wait. The
-         important thing is to not confuse users by saying "reading" whereas
-         we're in fact receiving nothing.
-      */
-      thd_proc_info(thd, "Waiting for master to send event");
-      event_len= read_event(mysql, mi, &suppress_warnings);
-      if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
-reading event"))
-        goto err;
-      DBUG_EXECUTE_IF("FORCE_SLAVE_TO_RECONNECT_EVENT",
-        if (!retry_count_event)
-        {
-          retry_count_event++;
-          sql_print_information("Forcing to reconnect slave I/O thread");
-          if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                               reconnect_messages[SLAVE_RECON_ACT_EVENT]))
-            goto err;
-          goto connected;
-        });
-
-      if (event_len == packet_error)
-      {
-        uint mysql_error_number= mysql_errno(mysql);
-        switch (mysql_error_number) {
-        case CR_NET_PACKET_TOO_LARGE:
-          sql_print_error("\
-Log entry on master is longer than max_allowed_packet (%ld) on \
+      uint mysql_error_number= mysql_errno(mysql);
+      switch (mysql_error_number) {
+      case CR_NET_PACKET_TOO_LARGE:
+        sql_print_error("\
+Log entry on master is longer than max_allowed_packet (%ld) on          \
 slave. If the entry is correct, restart the server with a higher value of \
 max_allowed_packet",
-                          thd->variables.max_allowed_packet);
-          goto err;
-        case ER_MASTER_FATAL_ERROR_READING_BINLOG:
-          sql_print_error(ER(mysql_error_number), mysql_error_number,
-                          mysql_error(mysql));
-          goto err;
-        case EE_OUTOFMEMORY:
-        case ER_OUTOFMEMORY:
-          sql_print_error("\
+                        thd->variables.max_allowed_packet);
+        goto err;
+      case ER_MASTER_FATAL_ERROR_READING_BINLOG:
+        sql_print_error(ER(mysql_error_number), mysql_error_number,
+                        mysql_error(mysql));
+        goto err;
+      case EE_OUTOFMEMORY:
+      case ER_OUTOFMEMORY:
+        sql_print_error("\
 Stopping slave I/O thread due to out-of-memory error from master");
-          goto err;
-        }
-        if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
-                             reconnect_messages[SLAVE_RECON_ACT_EVENT]))
-          goto err;
-        goto connected;
-      } // if (event_len == packet_error)
+        goto err;
+      }
+      if (try_to_reconnect(thd, mysql, mi, &retry_count, suppress_warnings,
+                           reconnect_messages[SLAVE_RECON_ACT_EVENT]))
+        goto err;
+      goto connected;
+    } // if (event_len == packet_error)
+    
 
       retry_count=0;                    // ok event, reset retry counter
       thd_proc_info(thd, "Queueing master event to the relay log");
-      if (queue_event(mi,(const char*)mysql->net.read_pos + 1, event_len))
+      event_buf= (const char*)mysql->net.read_pos + 1;
+      if (RUN_HOOK(binlog_relay_io, after_read_event,
+                   (thd, mi,(const char*)mysql->net.read_pos + 1,
+                    event_len, &event_buf, &event_len)))
       {
+        sql_print_error("Failed to run 'after_read_event' hook");
         goto err;
       }
-      if (flush_master_info(mi, 1))
-      {
-        sql_print_error("Failed to flush master info file");
-        goto err;
-      }
-      /*
-        See if the relay logs take too much space.
-        We don't lock mi->rli.log_space_lock here; this dirty read saves time
-        and does not introduce any problem:
-        - if mi->rli.ignore_log_space_limit is 1 but becomes 0 just after (so
-        the clean value is 0), then we are reading only one more event as we
-        should, and we'll block only at the next event. No big deal.
-        - if mi->rli.ignore_log_space_limit is 0 but becomes 1 just after (so
-        the clean value is 1), then we are going into wait_for_relay_log_space()
-        for no reason, but this function will do a clean read, notice the clean
-        value and exit immediately.
-      */
-#ifndef DBUG_OFF
-      {
-        char llbuf1[22], llbuf2[22];
-        DBUG_PRINT("info", ("log_space_limit=%s log_space_total=%s \
-ignore_log_space_limit=%d",
-                            llstr(rli->log_space_limit,llbuf1),
-                            llstr(rli->log_space_total,llbuf2),
-                            (int) rli->ignore_log_space_limit));
-      }
-#endif
 
-      if (rli->log_space_limit && rli->log_space_limit <
-          rli->log_space_total &&
-          !rli->ignore_log_space_limit)
-        if (wait_for_relay_log_space(rli))
-        {
-          sql_print_error("Slave I/O thread aborted while waiting for relay \
-log space");
-          goto err;
-        }
+      /* XXX: 'synced' should be updated by queue_event to indicate
+         whether event has been synced to disk */
+      bool synced= 0;
+      if (queue_event(mi, event_buf, event_len))
+      {
+        goto err;
+      }
+    if (flush_master_info(mi, 1))
+    {
+      sql_print_error("Failed to flush master info file");
+      goto err;
     }
+
+      if (RUN_HOOK(binlog_relay_io, after_queue_event,
+                   (thd, mi, event_buf, event_len, synced)))
+        goto err;
+
+    /*
+      See if the relay logs take too much space.
+      We don't lock mi->rli.log_space_lock here; this dirty read saves time
+      and does not introduce any problem:
+      - if mi->rli.ignore_log_space_limit is 1 but becomes 0 just after (so
+      the clean value is 0), then we are reading only one more event as we
+      should, and we'll block only at the next event. No big deal.
+      - if mi->rli.ignore_log_space_limit is 0 but becomes 1 just after (so
+      the clean value is 1), then we are going into wait_for_relay_log_space()
+      for no reason, but this function will do a clean read, notice the clean
+      value and exit immediately.
+    */
+#ifndef DBUG_OFF
+    {
+      char llbuf1[22], llbuf2[22];
+      DBUG_PRINT("info", ("log_space_limit=%s log_space_total=%s \
+ignore_log_space_limit=%d",
+                          llstr(rli->log_space_limit,llbuf1),
+                          llstr(rli->log_space_total,llbuf2),
+                          (int) rli->ignore_log_space_limit));
+    }
+#endif
+    
+    if (rli->log_space_limit && rli->log_space_limit <
+        rli->log_space_total &&
+        !rli->ignore_log_space_limit)
+      if (wait_for_relay_log_space(rli))
+      {
+        sql_print_error("Slave I/O thread aborted while waiting for relay \
+log space");
+        goto err;
+      }
   }
 
-  // error = 0;
 err:
   // print the current replication position
   sql_print_information("Slave I/O thread exiting, read up to log '%s', position %s",
                   IO_RPL_LOG_NAME, llstr(mi->master_log_pos,llbuff));
   pthread_mutex_lock(&LOCK_thread_count);
+  RUN_HOOK(binlog_relay_io, thread_stop, (thd, mi));
   thd->query = thd->db = 0; // extra safety
   thd->query_length= thd->db_length= 0;
   pthread_mutex_unlock(&LOCK_thread_count);
@@ -2586,7 +2743,8 @@ Slave SQL thread aborted. Can't execute init_slave query");
         {
           if (err->code == ER_CANT_OPEN_LIBRARY)
             udf_error = true;
-          sql_print_warning("Slave: %s Error_code: %d",err->msg, err->code);
+          (sql_print_message_handlers[err->level])("Slave: %s Error_code: %d",
+                                                   err->msg, err->code);
         }
         if (udf_error)
           sql_print_error("Error loading user-defined library, slave SQL "
@@ -3070,6 +3228,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   ulong inc_pos;
   Relay_log_info *rli= &mi->rli;
   pthread_mutex_t *log_lock= rli->relay_log.get_log_lock();
+  ulong s_id;
   DBUG_ENTER("queue_event");
 
   LINT_INIT(inc_pos);
@@ -3216,9 +3375,20 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   */
 
   pthread_mutex_lock(log_lock);
-
-  if ((uint4korr(buf + SERVER_ID_OFFSET) == ::server_id) &&
-      !mi->rli.replicate_same_server_id)
+  s_id= uint4korr(buf + SERVER_ID_OFFSET);
+  if ((s_id == ::server_id && !mi->rli.replicate_same_server_id) ||
+      /*
+        the following conjunction deals with IGNORE_SERVER_IDS, if set
+        If the master is on the ignore list, execution of
+        format description log events and rotate events is necessary.
+      */
+      (mi->ignore_server_ids.elements > 0 &&
+       mi->shall_ignore_server_id(s_id) &&
+       /* everything is filtered out from non-master */
+       (s_id != mi->master_id ||
+        /* for the master meta information is necessary */
+        buf[EVENT_TYPE_OFFSET] != FORMAT_DESCRIPTION_EVENT &&
+        buf[EVENT_TYPE_OFFSET] != ROTATE_EVENT)))
   {
     /*
       Do not write it to the relay log.
@@ -3233,10 +3403,14 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
       But events which were generated by this slave and which do not exist in
       the master's binlog (i.e. Format_desc, Rotate & Stop) should not increment
       mi->master_log_pos.
+      If the event is originated remotely and is being filtered out by
+      IGNORE_SERVER_IDS it increments mi->master_log_pos
+      as well as rli->group_relay_log_pos.
     */
-    if (buf[EVENT_TYPE_OFFSET]!=FORMAT_DESCRIPTION_EVENT &&
-        buf[EVENT_TYPE_OFFSET]!=ROTATE_EVENT &&
-        buf[EVENT_TYPE_OFFSET]!=STOP_EVENT)
+    if (!(s_id == ::server_id && !mi->rli.replicate_same_server_id) ||
+        buf[EVENT_TYPE_OFFSET] != FORMAT_DESCRIPTION_EVENT &&
+        buf[EVENT_TYPE_OFFSET] != ROTATE_EVENT &&
+        buf[EVENT_TYPE_OFFSET] != STOP_EVENT)
     {
       mi->master_log_pos+= inc_pos;
       memcpy(rli->ign_master_log_name_end, mi->master_log_name, FN_REFLEN);
@@ -3244,8 +3418,8 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
       rli->ign_master_log_pos_end= mi->master_log_pos;
     }
     rli->relay_log.signal_update(); // the slave SQL thread needs to re-check
-    DBUG_PRINT("info", ("master_log_pos: %lu, event originating from the same server, ignored",
-                        (ulong) mi->master_log_pos));
+    DBUG_PRINT("info", ("master_log_pos: %lu, event originating from %u server, ignored",
+                        (ulong) mi->master_log_pos, uint4korr(buf + SERVER_ID_OFFSET)));
   }
   else
   {
@@ -3412,6 +3586,7 @@ static int connect_to_master(THD* thd, MYSQL* mysql, Master_info* mi,
 
   if (!slave_was_killed)
   {
+    mi->clear_error();
     if (reconnect)
     {
       if (!suppress_warnings && global_system_variables.log_warnings)
@@ -3452,6 +3627,64 @@ static int safe_reconnect(THD* thd, MYSQL* mysql, Master_info* mi,
   DBUG_RETURN(connect_to_master(thd, mysql, mi, 1, suppress_warnings));
 }
 
+
+MYSQL *rpl_connect_master(MYSQL *mysql)
+{
+  THD *thd= current_thd;
+  Master_info *mi= my_pthread_getspecific_ptr(Master_info*, RPL_MASTER_INFO);
+  if (!mi)
+  {
+    sql_print_error("'rpl_connect_master' must be called in slave I/O thread context.");
+    return NULL;
+  }
+
+  bool allocated= false;
+  
+  if (!mysql)
+  {
+    if(!(mysql= mysql_init(NULL)))
+      return NULL;
+    allocated= true;
+  }
+
+  /*
+    XXX: copied from connect_to_master, this function should not
+    change the slave status, so we cannot use connect_to_master
+    directly
+    
+    TODO: make this part a seperate function to eliminate duplication
+  */
+  mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, (char *) &slave_net_timeout);
+  mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, (char *) &slave_net_timeout);
+
+#ifdef HAVE_OPENSSL
+  if (mi->ssl)
+  {
+    mysql_ssl_set(mysql,
+                  mi->ssl_key[0]?mi->ssl_key:0,
+                  mi->ssl_cert[0]?mi->ssl_cert:0,
+                  mi->ssl_ca[0]?mi->ssl_ca:0,
+                  mi->ssl_capath[0]?mi->ssl_capath:0,
+                  mi->ssl_cipher[0]?mi->ssl_cipher:0);
+    mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+                  &mi->ssl_verify_server_cert);
+  }
+#endif
+
+  mysql_options(mysql, MYSQL_SET_CHARSET_NAME, default_charset_info->csname);
+  /* This one is not strictly needed but we have it here for completeness */
+  mysql_options(mysql, MYSQL_SET_CHARSET_DIR, (char *) charsets_dir);
+
+  if (io_slave_killed(thd, mi)
+      || !mysql_real_connect(mysql, mi->host, mi->user, mi->password, 0,
+                             mi->port, 0, 0))
+  {
+    if (allocated)
+      mysql_close(mysql);                       // this will free the object
+    return NULL;
+  }
+  return mysql;
+}
 
 /*
   Store the file and position where the execute-slave thread are in the

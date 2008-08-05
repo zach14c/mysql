@@ -16,8 +16,10 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview.bak
+remove_file $MYSQLD_DATADIR/bup_objectview.bak;
 
 #Create Database and object view for this test.
 
@@ -291,11 +293,9 @@ DROP DATABASE bup_db1;
 
 DROP DATABASE bup_db2;
 
+remove_file $MYSQLD_DATADIR/bup_objectview.bak;
+remove_file $MYSQLD_DATADIR/bup_objectview1.bak;
+remove_file $MYSQLD_DATADIR/bup_objectview2.bak;
+remove_file $MYSQLD_DATADIR/bup_objectview3.bak;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview.bak
-
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview1.bak
-
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview2.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview3.bak
 #BUG#35249 Mysql server crash for delete operation followed by backup for Default Drivers.
