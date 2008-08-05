@@ -6633,13 +6633,6 @@ best_extension_by_limited_search(JOIN      *join,
       double current_record_count, current_read_time;
       advance_sj_state(remaining_tables, s);
 
-      /*
-        psergey-insideout-todo: 
-          when best_access_path() detects it could do an InsideOut scan or 
-          some other scan, have it return an insideout scan and a flag that 
-          requests to "fork" this loop iteration. (Q: how does that behave 
-          when the depth is insufficient??)
-      */
       /* Find the best access method from 's' to the current partial plan */
       best_access_path(join, s, thd, remaining_tables, idx,
                        record_count, read_time);
