@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
 }
 
 
-static int print_escaped_string(FILE *f, const char *str)
+static void print_escaped_string(FILE *f, const char *str)
 {
   const char *tmp = str;
 
