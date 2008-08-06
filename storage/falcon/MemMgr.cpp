@@ -72,8 +72,9 @@ static const int guardBytes = sizeof(long); // * 2048;
 const int validateMinutia	= 16;
 
 // Nominal memory limits at startup--final values set during initialization
+bool memoryManagerAlive;
 
-static MemMgr		memoryManager(defaultRounding, FREE_OBJECTS_SIZE, HEAP_SIZE);
+static MemMgr		memoryManager(defaultRounding, FREE_OBJECTS_SIZE, HEAP_SIZE,&memoryManagerAlive);
 static MemMgr		recordManager(defaultRounding, 2, HEAP_SIZE);
 //static MemMgr		recordObjectManager (defaultRounding, sizeof(RecordVersion) + 100, HEAP_SIZE);
 static MemControl	memControl;
@@ -121,6 +122,9 @@ struct Client {
 
 	void* MemMgrAllocateDebug (unsigned int s, const char *file, int line)
 	{
+		if(!memoryManagerAlive)
+			return malloc(s);
+
 		void *object = memoryManager.allocateDebug(s, file, line);
 
 		if (object == stopAddress)
@@ -134,6 +138,11 @@ struct Client {
 
 	void MemMgrRelease (void *object)
 	{
+		if (!memoryManagerAlive)
+			{
+			free(object);
+			return;
+			}
 		/***
 		if (object == stopAddress)
 			printf ("MemMgrRelease at %p\n", stopAddress);
@@ -162,12 +171,18 @@ struct Client {
 
 	void* MemMgrAllocate (unsigned int s)
 	{
-		return memoryManager.allocate (s);
+		if(!memoryManagerAlive)
+			return malloc(s);
+		else
+			return memoryManager.allocate (s);
 	}
 
 	void MemMgrRelease (void *object)
 	{
-		memoryManager.release (object);
+		if(!memoryManagerAlive)
+			free(object);
+		else
+			memoryManager.release (object);
 	}
 
 	void* MemMgrRecordAllocate (int size, const char *file, int line)
@@ -269,7 +284,7 @@ void MemMgrLogDump()
 }
 
 
-MemMgr::MemMgr(int rounding, int cutoff, int minAlloc)
+MemMgr::MemMgr(int rounding, int cutoff, int minAlloc, bool *alive)
 {
 	signature = defaultSignature;
 	roundingSize = rounding;
@@ -293,6 +308,11 @@ MemMgr::MemMgr(int rounding, int cutoff, int minAlloc)
 	//freeBlocks.nextLarger = freeBlocks.priorSmaller = &freeBlocks;
 	//freeBlockTree = NULL;
 	junk.larger = junk.smaller = &junk;
+	isAlive = alive;
+	if(alive)
+	{
+		*alive = true;
+	}
 }
 
 
@@ -317,6 +337,8 @@ MemMgr::~MemMgr(void)
 		bigHunks = bigHunk->nextHunk;
 		releaseRaw (bigHunk);
 		}
+	if (isAlive)
+		*isAlive = false;
 }
 
 MemBlock* MemMgr::alloc(int length)
@@ -500,19 +522,11 @@ void* MemMgr::allocate(int size)
 	int length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
 	MemBlock *memory;
 
-	if (signature)
-		{
-		length = ROUNDUP(length, sizeof (double));
-		memory = alloc (length);
-		memory->pool = this;
-		}
-	else
-		{
-		length = ROUNDUP(size, defaultRounding) + OFFSET(MemBlock*, body) + sizeof(long);
-		memory = (MemBlock*) allocRaw(length);
-		memory->pool = NULL;
-		memory->length = length;
-		}
+	ASSERT(signature == defaultSignature);
+	length = ROUNDUP(length, sizeof (double));
+	memory = alloc (length);
+	memory->pool = this;
+	
 
 #ifdef MEM_DEBUG
 	memset (&memory->body, INIT_BYTE, size);
@@ -533,19 +547,10 @@ void* MemMgr::allocateDebug(int size, const char* fileName, int line)
 	int length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
 	MemBlock *memory;
 
-	if (signature)
-		{
-		length = ROUNDUP(length, sizeof (double));
-		memory = alloc (length);
-		memory->pool = this;
-		}
-	else
-		{
-		length = ROUNDUP(size, defaultRounding) + OFFSET(MemBlock*, body) + sizeof(long);
-		memory = (MemBlock*) allocRaw(length);
-		memory->length = length;
-		memory->pool = NULL;
-		}
+	ASSERT(signature == defaultSignature);
+	length = ROUNDUP(length, sizeof (double));
+	memory = alloc (length);
+	memory->pool = this;
 
 #ifdef MEM_DEBUG
 	memory->fileName = fileName;

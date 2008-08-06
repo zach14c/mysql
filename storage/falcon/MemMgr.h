@@ -106,7 +106,8 @@ public:
 class MemMgr
 {
 public:
-	MemMgr(int rounding=defaultRounding, int cutoff=defaultCutoff, int minAllocation=defaultAllocation);
+	MemMgr(int rounding=defaultRounding, int cutoff=defaultCutoff, 
+		int minAllocation=defaultAllocation, bool *alive = NULL);
 	MemMgr(void* arg1, void* arg2);
 	virtual ~MemMgr(void);
 
@@ -129,6 +130,7 @@ public:
 	uint64			activeMemory;
 	int				blocksAllocated;
 	int				blocksActive;
+	bool			*isAlive;
 
 	friend void  MemMgrLogDump();
 
