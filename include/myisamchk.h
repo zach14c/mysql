@@ -148,7 +148,7 @@ typedef struct st_handler_check_param
   uint key_cache_block_size, pagecache_block_size;
   int tmpfile_createflag, err_count;
   myf myf_rw;
-  uint8 language;
+  uint16 language;
   my_bool using_global_keycache, opt_lock_memory, opt_follow_links;
   my_bool retry_repair, force_sort, calc_checksum, static_row_size;
   char temp_filename[FN_REFLEN];

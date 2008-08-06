@@ -132,18 +132,22 @@ select hex(cast(_ascii 0x7f as char(1) character set latin1));
 
 set @@collation_connection=latin1_swedish_ci;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set @@collation_connection=latin1_bin;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set @@collation_connection=latin1_general_cs;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set @@collation_connection=binary;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set names latin1;

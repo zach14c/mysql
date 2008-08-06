@@ -118,6 +118,7 @@ SELECT @@global.query_prealloc_size  ;
 #SET @@global.query_prealloc_size   = 429496729533;
 #SELECT @@global.query_prealloc_size  ;
 
+
 --Error ER_PARSE_ERROR
 SET @@global.query_prealloc_size   = 65530.34.;
 SELECT @@global.query_prealloc_size  ;

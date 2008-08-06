@@ -7473,17 +7473,22 @@ function_call_conflict:
         | WEEK_SYM '(' expr ',' expr ')'
           { $$= new (YYTHD->mem_root) Item_func_week($3,$5); }
         | WEIGHT_STRING_SYM '(' expr opt_ws_levels ')'
-          { $$= new (YYTHD->mem_root) Item_func_weight_string($3, 0, $4); }
+          { $$= new (YYTHD->mem_root) Item_func_weight_string($3, 0, 0, $4); }
         | WEIGHT_STRING_SYM '(' expr AS CHAR_SYM ws_nweights opt_ws_levels ')'
           {
             $$= new (YYTHD->mem_root)
-                Item_func_weight_string($3, $6, $7|MY_STRXFRM_PAD_WITH_SPACE);
+                Item_func_weight_string($3, 0, $6,
+                                        $7 | MY_STRXFRM_PAD_WITH_SPACE);
           }
         | WEIGHT_STRING_SYM '(' expr AS BINARY ws_nweights ')'
           {
             $3= create_func_char_cast(YYTHD, $3, $6, &my_charset_bin);
             $$= new (YYTHD->mem_root)
-                Item_func_weight_string($3, $6, MY_STRXFRM_PAD_WITH_SPACE);
+                Item_func_weight_string($3, 0, $6, MY_STRXFRM_PAD_WITH_SPACE);
+          }
+        | WEIGHT_STRING_SYM '(' expr ',' ulong_num ',' ulong_num ',' ulong_num ')'
+          {
+            $$= new (YYTHD->mem_root) Item_func_weight_string($3, $5, $7, $9);
           }
         | geometry_function
           {
@@ -11986,6 +11991,7 @@ object_privilege:
         | CREATE USER             { Lex->grant |= CREATE_USER_ACL; }
         | EVENT_SYM               { Lex->grant |= EVENT_ACL;}
         | TRIGGER_SYM             { Lex->grant |= TRIGGER_ACL; }
+        | CREATE TABLESPACE       { Lex->grant |= CREATE_TABLESPACE_ACL; }
         ;
 
 opt_and:
