@@ -42,3 +42,29 @@ ERROR 42000: Access denied; you need the CREATE TABLESPACE privilege for this op
 
 DROP USER mysqltest_u1@localhost;
 DROP USER mysqltest_u2@localhost;
+# --
+# -- Bug#31302: USE information_schema disables DROP tablespace
+# --
+GRANT CREATE TABLESPACE ON *.* TO mysqltest_u1@localhost;
+
+# -- Connection: mysqltest_u1@localhost
+
+# -- Grants for mysqltest_u1@localhost:
+SHOW GRANTS;
+Grants for mysqltest_u1@localhost
+GRANT CREATE TABLESPACE ON *.* TO 'mysqltest_u1'@'localhost'
+
+# -- CREATE TABLESPACE...
+CREATE TABLESPACE ts1
+ADD DATAFILE 'datafile.dat'
+ENGINE = Falcon;
+
+use INFORMATION_SCHEMA;
+
+# -- DROP TABLESPACE...
+DROP TABLESPACE ts1 
+ENGINE = Falcon;
+
+# -- Connection: root@localhost
+
+DROP USER mysqltest_u1@localhost;
