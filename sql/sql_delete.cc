@@ -1105,12 +1105,6 @@ trunc_by_del:
   error= mysql_delete(thd, table_list, (COND*) 0, (SQL_LIST*) 0,
                       HA_POS_ERROR, LL(0), TRUE);
   ha_enable_transaction(thd, TRUE);
-  /*
-    Safety, in case the engine ignored ha_enable_transaction(FALSE)
-    above. Also clears thd->transaction.*.
-  */
-  error= ha_autocommit_or_rollback(thd, error);
-  ha_commit(thd);
   thd->options= save_options;
   thd->current_stmt_binlog_row_based= save_binlog_row_based;
   DBUG_RETURN(error);
