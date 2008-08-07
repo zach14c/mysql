@@ -545,6 +545,7 @@ void* MemMgr::allocateDebug(int size, const char* fileName, int line)
 		memory = (MemBlock*) allocRaw(length);
 		memory->length = length;
 		memory->pool = NULL;
+		memory->length = length;
 		}
 
 #ifdef MEM_DEBUG
