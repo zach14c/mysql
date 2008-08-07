@@ -158,16 +158,16 @@ idno	age	education
 6	30	Doctor
 7	31	Lawyer
 5	43	PHD
-SELECT * FROM bup_db1.v6 ORDER BY gender;
+SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 education	gender
-MS	F
-Doctor	F
-BS	F
 BE	F
-Undergrad	M
+BS	F
+Doctor	F
 Lawyer	M
+MS	F
 PHD	M
 School	M
+Undergrad	M
 excercise objects of bup_db2
 SELECT * FROM bup_db2.t2 ORDER BY age;
 idno	age	education
@@ -385,13 +385,13 @@ idno	age	education
 6	30	Doctor
 7	31	Lawyer
 5	43	PHD
-SELECT * FROM bup_db1.v6 ORDER BY gender;
+SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 education	gender
-Doctor	F
-BS	F
 BE	F
-MS	F
+BS	F
+Doctor	F
 Lawyer	M
+MS	F
 PHD	M
 School	M
 Undergrad	M

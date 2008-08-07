@@ -158,7 +158,7 @@ SELECT * FROM bup_db1.t5 ORDER BY Gender;
 SELECT * FROM bup_db1.v1;
 SELECT * FROM bup_db1.vcomb ORDER BY name;
 SELECT * FROM bup_db1.v5 ORDER BY age;
-SELECT * FROM bup_db1.v6 ORDER BY gender;
+SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 
 --echo excercise objects of bup_db2
 
@@ -241,7 +241,7 @@ SELECT * FROM bup_db1.t5 ORDER BY Gender;
 SELECT * FROM bup_db1.v1;
 SELECT * FROM bup_db1.vcomb ORDER BY name;
 SELECT * FROM bup_db1.v5 ORDER BY age;
-SELECT * FROM bup_db1.v6 ORDER BY gender;
+SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 
 --echo excercise objects of bup_db2
 
