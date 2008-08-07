@@ -338,7 +338,7 @@ size_t normalize_dirname(char *to, const char *from)
    Length of new directory name (= length of to)
 */
 
-size_t unpack_dirname(char * to, const char *from)
+size_t unpack_dirname(char *to, const char *from)
 {
   size_t length, h_length;
   char buff[FN_REFLEN+1+4],*suffix,*tilde_expansion;

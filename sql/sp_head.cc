@@ -620,14 +620,14 @@ void
 sp_head::set_body_start(THD *thd, const char *begin_ptr)
 {
   m_body_begin= begin_ptr;
-  thd->m_lip->body_utf8_start(thd, begin_ptr);
+  thd->m_parser_state->m_lip.body_utf8_start(thd, begin_ptr);
 }
 
 
 void
 sp_head::set_stmt_end(THD *thd)
 {
-  Lex_input_stream *lip= thd->m_lip; /* shortcut */
+  Lex_input_stream *lip= & thd->m_parser_state->m_lip; /* shortcut */
   const char *end_ptr= lip->get_cpp_ptr(); /* shortcut */
 
   /* Make the string of parameters. */
@@ -1933,7 +1933,15 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
       we'll leave it here.
     */
     if (!thd->in_sub_stmt)
+    {
+      thd->lex->unit.cleanup();
+
+      thd_proc_info(thd, "closing tables");
       close_thread_tables(thd);
+      thd_proc_info(thd, 0);
+
+      thd->rollback_item_tree_changes();
+    }
 
     DBUG_PRINT("info",(" %.*s: eval args done",
                        (int) m_name.length, m_name.str));
