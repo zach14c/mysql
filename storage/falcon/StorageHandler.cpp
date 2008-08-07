@@ -488,7 +488,7 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 	TableSpaceManager *tableSpaceManager = 
 		dictionaryConnection->database->tableSpaceManager;
 
-	if (!tableSpaceManager->waitForPendingDrop(tableSpaceName, 10))
+	if (!tableSpaceManager->waitForPendingDrop(filename, 10))
 		// file still exists after waiting for 10 seconds
 		return  StorageErrorTableSpaceExist;
 
