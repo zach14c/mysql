@@ -794,8 +794,8 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	fields = NULL;
 	indexes = NULL;
 	fieldCount = 0;
-	blobSectionId = 0;
-	dataSectionId = 0;
+	blobSectionId = Section::INVALID_SECTION_ID;
+	dataSectionId = Section::INVALID_SECTION_ID;
 	blobSection = NULL;
 	dataSection = NULL;
 	backloggedRecords = NULL;
@@ -1371,7 +1371,7 @@ void Table::reIndexInversion(Transaction *transaction)
 
 bool Table::isCreated()
 {
-	return dataSectionId != 0;
+	return dataSectionId != Section::INVALID_SECTION_ID;
 }
 
 Index* Table::getPrimaryKey()
@@ -3232,13 +3232,17 @@ void Table::expunge(Transaction *transaction)
 	if (transaction)
 		transaction->hasUpdates = true;
 
-	if (dataSectionId || blobSectionId)
+	if (dataSectionId != Section::INVALID_SECTION_ID)
 		{
 		dbb->deleteSection(dataSectionId, TRANSACTION_ID(transaction));
-		dataSectionId = 0;
+		dataSectionId = Section::INVALID_SECTION_ID;
 		dataSection = NULL;
+		}
+
+	if (blobSectionId != Section::INVALID_SECTION_ID)
+		{
 		dbb->deleteSection(blobSectionId, TRANSACTION_ID(transaction));
-		blobSectionId = 0;
+		blobSectionId = Section::INVALID_SECTION_ID;
 		blobSection = NULL;
 		}
 }
@@ -3641,14 +3645,21 @@ Format* Table::getCurrentFormat(void)
 
 void Table::findSections(void)
 {
+	ASSERT(dataSectionId != Section::INVALID_SECTION_ID && 
+		blobSectionId != Section::INVALID_SECTION_ID);
+
 	if (!dataSection)
 		{
 		dataSection = dbb->findSection(dataSectionId);
 		dataSection->table = this;
 		}
+	ASSERT(dataSection->sectionId == dataSectionId);
 
 	if (!blobSection)
+		{
 		blobSection = dbb->findSection(blobSectionId);
+		}
+	ASSERT(blobSection->sectionId == blobSectionId);
 }
 
 bool Table::validateUpdate(int32 recordNumber, TransId transactionId)

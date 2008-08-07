@@ -490,7 +490,7 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 
 	if (!tableSpaceManager->waitForPendingDrop(filename, 10))
 		// file still exists after waiting for 10 seconds
-		return  StorageErrorTableSpaceExist;
+		return  StorageErrorTableSpaceDataFileExist;
 
 	try
 		{
