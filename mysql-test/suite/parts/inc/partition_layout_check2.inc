@@ -34,7 +34,7 @@ let $show_file= $MYSQLD_DATADIR/test/tmp1;
 
 if ($do_file_tests)
 {
-# List the files belonging to the table t1
+  # List the files belonging to the table t1
   let $ls_file= $MYSQLD_DATADIR/test/tmp2;
   --list_files_write_file $ls_file $MYSQLD_DATADIR/test t1*
   --chmod 0644 $ls_file
