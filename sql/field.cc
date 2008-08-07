@@ -2595,7 +2595,7 @@ int Field_new_decimal::store(const char *from, uint length,
     String from_as_str;
     from_as_str.copy(from, length, &my_charset_bin);
 
-    push_warning_printf(table->in_use, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(table->in_use, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                         ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                         "decimal", from_as_str.c_ptr(), field_name,
@@ -6198,11 +6198,9 @@ check_string_copy_error(Field_str *field,
     *t++= '.';
   }
   *t= '\0';
-  push_warning_printf(field->table->in_use, 
-                      field->table->in_use->abort_on_warning ?
-                      MYSQL_ERROR::WARN_LEVEL_ERROR :
+  push_warning_printf(field->table->in_use,
                       MYSQL_ERROR::WARN_LEVEL_WARN,
-                      ER_TRUNCATED_WRONG_VALUE_FOR_FIELD, 
+                      ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                       ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                       "string", tmp, field->field_name,
                       (ulong) field->table->in_use->row_count);
@@ -6239,7 +6237,7 @@ Field_longstr::report_if_important_data(const char *ptr, const char *end,
     if (test_if_important_data(field_charset, ptr, end))
     {
       if (table->in_use->abort_on_warning)
-        set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+        set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
       else
         set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, WARN_DATA_TRUNCATED, 1);
       return 2;
@@ -6309,7 +6307,7 @@ int Field_str::store(double nr)
   if (error)
   {
     if (table->in_use->abort_on_warning)
-      set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+      set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
     else
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, WARN_DATA_TRUNCATED, 1);
   }
@@ -8794,7 +8792,7 @@ int Field_bit::store(const char *from, uint length, CHARSET_INFO *cs)
     set_rec_bits((1 << bit_len) - 1, bit_ptr, bit_ofs, bit_len);
     memset(ptr, 0xff, bytes_in_rec);
     if (table->in_use->really_abort_on_warning())
-      set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+      set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
     else
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
     return 1;
@@ -9205,7 +9203,7 @@ int Field_bit_as_char::store(const char *from, uint length, CHARSET_INFO *cs)
     if (bits)
       *ptr&= ((1 << bits) - 1); /* set first uchar */
     if (table->in_use->really_abort_on_warning())
-      set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+      set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
     else
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
     return 1;
