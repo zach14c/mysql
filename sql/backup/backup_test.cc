@@ -42,7 +42,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   field_list.push_back(new Item_empty_string("name", 5));
   field_list.push_back(new Item_empty_string("type", 4));
   field_list.push_back(new Item_empty_string("serialization", 13));
-  protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
   obs::ObjIterator *it= obs::get_databases(thd);
 

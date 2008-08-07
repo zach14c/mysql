@@ -1405,7 +1405,7 @@ int THD::send_explain_fields(select_result *result)
   }
   item->maybe_null= 1;
   field_list.push_back(new Item_empty_string("Extra", 255, cs));
-  return (result->send_fields(field_list,
+  return (result->send_result_set_metadata(field_list,
                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF));
 }
 
@@ -1551,10 +1551,10 @@ sql_exchange::sql_exchange(char *name, bool flag,
   cs= NULL;
 }
 
-bool select_send::send_fields(List<Item> &list, uint flags)
+bool select_send::send_result_set_metadata(List<Item> &list, uint flags)
 {
   bool res;
-  if (!(res= thd->protocol->send_fields(&list, flags)))
+  if (!(res= thd->protocol->send_result_set_metadata(&list, flags)))
     is_result_set_started= 1;
   return res;
 }
@@ -1597,10 +1597,13 @@ void select_send::cleanup()
 
 bool select_send::send_data(List<Item> &items)
 {
+  Protocol *protocol= thd->protocol;
+  DBUG_ENTER("select_send::send_data");
+
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
     unit->offset_limit_cnt--;
-    return 0;
+    DBUG_RETURN(FALSE);
   }
 
   /*
@@ -1610,31 +1613,18 @@ bool select_send::send_data(List<Item> &items)
   */
   ha_release_temporary_latches(thd);
 
-  List_iterator_fast<Item> li(items);
-  Protocol *protocol= thd->protocol;
-  char buff[MAX_FIELD_WIDTH];
-  String buffer(buff, sizeof(buff), &my_charset_bin);
-  DBUG_ENTER("select_send::send_data");
-
   protocol->prepare_for_resend();
-  Item *item;
-  while ((item=li++))
-  {
-    if (item->send(protocol, &buffer) || thd->is_error())
-    {
-      protocol->free();				// Free used buffer
-      my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
-      break;
-    }
-  }
-  if (thd->is_error())
+  if (protocol->send_result_set_row(&items))
   {
     protocol->remove_last_row();
-    DBUG_RETURN(1);
+    DBUG_RETURN(TRUE);
   }
+
   thd->sent_row_count++;
+
   if (thd->vio_ok())
     DBUG_RETURN(protocol->write());
+
   DBUG_RETURN(0);
 }
 

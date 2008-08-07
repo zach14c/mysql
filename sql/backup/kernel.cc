@@ -272,7 +272,7 @@ int send_reply(Backup_restore_ctx &context)
     Send field list.
   */
   field_list.push_back(new Item_empty_string(STRING_WITH_LEN("backup_id")));
-  protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
   /*
     Send field data.
