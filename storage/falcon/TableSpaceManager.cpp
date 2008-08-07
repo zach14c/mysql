@@ -500,12 +500,12 @@ JString TableSpaceManager::tableSpaceType(JString name)
 	JString type;
 	
 	if (name == "FALCON_USER")
-		type = "FALCON_USER";
+		type = "DEFAULT";
 	else if (name == "FALCON_TEMPORARY")
-		type = "FALCON_TEMPORARY";
+		type = "TEMPORARY";
 	else if (name == "FALCON_SYSTEM_BASE") //cwp tbd: fix this
-		type = "SYSTEM_BASE";
-	else type = "USER_DEFINED";
+		type = "MASTER CATALOG";
+	else type = "USER DEFINED";
 	
 	return type;
 }
@@ -519,8 +519,16 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 	while (resultSet->next())
 		{
 		infoTable->putString(0, resultSet->getString(1));					// tablespace name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
-		infoTable->putString(2, resultSet->getString(2));					// comment
+		infoTable->putString(1, "Falcon");
+		infoTable->setNotNull(2);
+		infoTable->putString(2, tableSpaceType(resultSet->getString(1)));	// type based upon name
+		infoTable->setNull(3);
+		infoTable->setNull(4);
+		infoTable->setNull(5);
+		infoTable->setNull(6);
+		infoTable->setNull(7);
+		infoTable->setNotNull(8);
+		infoTable->putString(8, resultSet->getString(2));					// comment
 		infoTable->putRecord();
 		}
 }

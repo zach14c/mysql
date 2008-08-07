@@ -41,9 +41,6 @@ NULL	information_schema	FALCON_TABLES	PARTITION	3		NO	varchar	127	508	NULL	NULL	
 NULL	information_schema	FALCON_TABLES	SCHEMA_NAME	1		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
 NULL	information_schema	FALCON_TABLES	TABLESPACE	4		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
 NULL	information_schema	FALCON_TABLES	TABLE_NAME	2		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
-NULL	information_schema	FALCON_TABLESPACES	COMMENT	3		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
-NULL	information_schema	FALCON_TABLESPACES	TABLESPACE_NAME	1		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
-NULL	information_schema	FALCON_TABLESPACES	TYPE	2		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
 NULL	information_schema	FALCON_TABLESPACE_FILES	FILE_ID	3	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(127)			select		Default	Default
 NULL	information_schema	FALCON_TABLESPACE_FILES	FILE_NAME	4		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
 NULL	information_schema	FALCON_TABLESPACE_FILES	TABLESPACE_NAME	1		NO	varchar	127	508	NULL	NULL	utf8	utf8_general_ci	varchar(127)			select		Default	Default
@@ -166,9 +163,6 @@ NULL	information_schema	FALCON_SYSTEM_MEMORY_SUMMARY	UNIQUE_SIZES	int	NULL	NULL	
 4.0000	information_schema	FALCON_TABLES	PARTITION	varchar	127	508	utf8	utf8_general_ci	varchar(127)
 4.0000	information_schema	FALCON_TABLES	TABLESPACE	varchar	127	508	utf8	utf8_general_ci	varchar(127)
 4.0000	information_schema	FALCON_TABLES	INTERNAL_NAME	varchar	127	508	utf8	utf8_general_ci	varchar(127)
-4.0000	information_schema	FALCON_TABLESPACES	TABLESPACE_NAME	varchar	127	508	utf8	utf8_general_ci	varchar(127)
-4.0000	information_schema	FALCON_TABLESPACES	TYPE	varchar	127	508	utf8	utf8_general_ci	varchar(127)
-4.0000	information_schema	FALCON_TABLESPACES	COMMENT	varchar	127	508	utf8	utf8_general_ci	varchar(127)
 4.0000	information_schema	FALCON_TABLESPACE_FILES	TABLESPACE_NAME	varchar	127	508	utf8	utf8_general_ci	varchar(127)
 4.0000	information_schema	FALCON_TABLESPACE_FILES	TYPE	varchar	127	508	utf8	utf8_general_ci	varchar(127)
 NULL	information_schema	FALCON_TABLESPACE_FILES	FILE_ID	int	NULL	NULL	NULL	NULL	int(127)

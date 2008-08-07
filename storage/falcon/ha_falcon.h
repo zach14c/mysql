@@ -155,6 +155,7 @@ public:
 	static uint		alter_table_flags(uint flags);
 #endif
 	static int		alter_tablespace(handlerton* hton, THD* thd, st_alter_tablespace* ts_info);
+	static int		fill_is_table(handlerton *hton, THD *thd, TABLE_LIST *tables, class Item *cond, enum enum_schema_tables);
 
 	static int		commit_by_xid(handlerton* hton, XID* xid);
 	static int		rollback_by_xid(handlerton* hton, XID* xid);
@@ -245,10 +246,6 @@ public:
 	static int getSyncInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initSyncInfo(void *p);
 	static int deinitSyncInfo(void *p);
-
-	static int getTableSpaceInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTableSpaceInfo(void *p);
-	static int deinitTableSpaceInfo(void *p);
 
 	static int getTableSpaceFilesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initTableSpaceFilesInfo(void *p);

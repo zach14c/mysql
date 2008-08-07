@@ -1043,9 +1043,9 @@ bool InformationSchemaIterator::prepare_is_table(
     style fill methods nor does it use a wildcard condition.
   */
   switch (is_table_idx) {
-    case SCH_FALCON_TABLESPACES:
+    case SCH_TABLESPACES:
     {
-      st= find_schema_table(thd, "FALCON_TABLESPACES");
+      st= find_schema_table(thd, "TABLESPACES");
       *is_table= open_schema_table(thd, st, NULL);
       break;
     }
@@ -2797,7 +2797,7 @@ static bool find_tablespace_schema_row(THD *thd,
     Attempt to locate the row in the tablespaces table.
     If found, proceed to the retrieving the data.
   */
-  is_table->field[0]->val_str(&found_ts_name);
+  is_table->field[IS_TABLESPACES_TABLESPACE_NAME]->val_str(&found_ts_name);
   while (!ret && found_ts_name.length() &&
     (strncasecmp(found_ts_name.ptr(), ts_name->ptr(), 
      ts_name->length()) != 0))
@@ -2805,7 +2805,7 @@ static bool find_tablespace_schema_row(THD *thd,
     ret= ha->rnd_next(is_table->record[0]);
     found_ts_name.length(0); // reset the length of the string
     if (!ret)
-      is_table->field[0]->val_str(&found_ts_name);
+      is_table->field[IS_TABLESPACES_TABLESPACE_NAME]->val_str(&found_ts_name);
   }
   if (ret || (found_ts_name.length() == 0))
   {
@@ -2814,14 +2814,14 @@ static bool find_tablespace_schema_row(THD *thd,
   }
 
   /*
-    TS name is in col 0 in FALCON_TABLESPACES
-    TS comment is in col 2 in FALCON_TABLESPACES
+    TS name is in col IS_TABLESPACES_TABLESPACE_NAME in TABLESPACES
+    TS comment is in col IS_TABLESPACES_TABLESPACE_COMMENT in TABLESPACES
     TS datafile is in col 3 in FALCON_TABLESPACE_FILES
   */
   switch (is_table_idx) {
-    case SCH_FALCON_TABLESPACES:
+    case SCH_TABLESPACES:
     {
-      is_table->field[2]->val_str(&data);
+      is_table->field[IS_TABLESPACES_TABLESPACE_COMMENT]->val_str(&data);
       comments->copy(data);
       break;
     }
@@ -2875,9 +2875,9 @@ static bool get_tablespace_from_schema(THD *thd,
   DBUG_ENTER("obs::get_tablespace_from_schema()");
 
   /*
-    Locate the row in FALCON_TABLESPACES and get the comments.
+    Locate the row in TABLESPACES and get the comments.
   */
-  if (find_tablespace_schema_row(thd, SCH_FALCON_TABLESPACES, 
+  if (find_tablespace_schema_row(thd, SCH_TABLESPACES, 
       ts_name, &datafile, &comments))
     DBUG_RETURN(TRUE);
 
