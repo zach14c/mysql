@@ -216,7 +216,7 @@ bool mysqld_show_authors(THD *thd)
   field_list.push_back(new Item_empty_string("Location",40));
   field_list.push_back(new Item_empty_string("Comment",80));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -250,7 +250,7 @@ bool mysqld_show_contributors(THD *thd)
   field_list.push_back(new Item_empty_string("Location",40));
   field_list.push_back(new Item_empty_string("Comment",80));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -326,7 +326,7 @@ bool mysqld_show_privileges(THD *thd)
   field_list.push_back(new Item_empty_string("Context",15));
   field_list.push_back(new Item_empty_string("Comment",NAME_CHAR_LEN));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -563,7 +563,7 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
                                                max(buffer.length(),1024)));
   }
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
   protocol->prepare_for_resend();
@@ -641,7 +641,7 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
   field_list.push_back(new Item_empty_string("Database",NAME_CHAR_LEN));
   field_list.push_back(new Item_empty_string("Create Database",1024));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -691,7 +691,7 @@ mysqld_list_fields(THD *thd, TABLE_LIST *table_list, const char *wild)
   }
   restore_record(table, s->default_values);              // Get empty record
   table->use_all_columns();
-  if (thd->protocol->send_fields(&field_list, Protocol::SEND_DEFAULTS))
+  if (thd->protocol->send_result_set_metadata(&field_list, Protocol::SEND_DEFAULTS))
     DBUG_VOID_RETURN;
   my_eof(thd);
   DBUG_VOID_RETURN;
@@ -1657,7 +1657,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
   field->maybe_null=1;
   field_list.push_back(field=new Item_empty_string("Info",max_query_length));
   field->maybe_null=1;
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_VOID_RETURN;
 
@@ -7182,7 +7182,7 @@ static bool show_create_trigger_impl(THD *thd,
   fields.push_back(new Item_empty_string("Database Collation",
                                          MY_CS_NAME_SIZE));
 
-  if (p->send_fields(&fields, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+  if (p->send_result_set_metadata(&fields, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     return TRUE;
 
   /* Send data. */

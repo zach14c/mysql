@@ -635,7 +635,7 @@ public:
   bool alloc_func_list();
   bool flatten_subqueries();
   bool setup_subquery_materialization();
-  bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
+  bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_result_set_metadata,
 			  bool before_group_by, bool recompute= FALSE);
 
   inline void set_items_ref_array(Item **ptr)
