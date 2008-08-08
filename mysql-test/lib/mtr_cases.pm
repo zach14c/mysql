@@ -120,7 +120,7 @@ sub collect_test_cases ($$) {
       }
       if ( not $found )
       {
-	mtr_error("Could not find $tname in any suite");
+	mtr_error("Could not find '$tname' in '$suites' suite(s)");
       }
     }
   }
@@ -537,23 +537,36 @@ sub optimize_cases {
       }
     }
 
-
     # =======================================================
     # Check that engine selected by
     # --default-storage-engine=<engine> is supported
     # =======================================================
+    my %builtin_engines = ('myisam' => 1, 'memory' => 1);
+
     foreach my $opt ( @{$tinfo->{master_opt}} ) {
       my $default_engine=
 	mtr_match_prefix($opt, "--default-storage-engine=");
 
       if (defined $default_engine){
-	if ( ! exists $::mysqld_variables{$default_engine} )
-	{
-	 $tinfo->{'skip'}= 1;
-	 $tinfo->{'comment'}=
-	 "'$default_engine' not supported";
 
+	#print " $tinfo->{name}\n";
+	#print " - The test asked to use '$default_engine'\n";
+
+	#my $engine_value= $::mysqld_variables{$default_engine};
+	#print " - The mysqld_variables says '$engine_value'\n";
+
+	if ( ! exists $::mysqld_variables{$default_engine} and
+	     ! exists $builtin_engines{$default_engine} )
+	{
+	  $tinfo->{'skip'}= 1;
+	  $tinfo->{'comment'}=
+	    "'$default_engine' not supported";
 	}
+
+	$tinfo->{'ndb_test'}= 1
+	  if ( $default_engine =~ /^ndb/i );
+	$tinfo->{'innodb_test'}= 1
+	  if ( $default_engine =~ /^innodb/i );
       }
     }
   }
@@ -677,11 +690,15 @@ sub collect_one_test_case {
      name          => "$suitename.$tname",
      path          => "$testdir/$filename",
 
-     # TODO allow nonexistsing result file
-     # in that case .test must issue "exit" otherwise test
-     # should fail by default
-     result_file   => "$resdir/$tname.result",
     );
+
+  my $result_file= "$resdir/$tname.result";
+  if (-f $result_file) {
+    # Allow nonexistsing result file
+    # in that case .test must issue "exit" otherwise test
+    # should fail by default
+    $tinfo->{result_file}= $result_file;
+  }
 
   # ----------------------------------------------------------------------
   # Skip some tests but include in list, just mark them as skipped

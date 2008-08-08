@@ -32,7 +32,6 @@ ADD_EXECUTABLE(mysql_embedded ../../client/completion_hash.cc
 TARGET_LINK_LIBRARIES(mysql_embedded mysys yassl taocrypt zlib debug dbug regex strings ws2_32)
 ADD_DEPENDENCIES(mysql_embedded libmysqld)
 
-ADD_EXECUTABLE(mysqltest_embedded ../../client/mysqltest.c)
 TARGET_LINK_LIBRARIES(mysqltest_embedded mysys yassl taocrypt zlib debug dbug regex strings ws2_32)
 ADD_DEPENDENCIES(mysqltest_embedded libmysqld)
 
