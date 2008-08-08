@@ -1,3 +1,33 @@
+
+Checking character set for backup tables 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'online_backup' 
+AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+column_name	character_set_name
+backup_file	utf8
+backup_state	utf8
+binlog_file	utf8
+command	utf8
+drivers	utf8
+host_or_server_name	utf8
+operation	utf8
+username	utf8
+user_comment	utf8
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'online_backup_progress' 
+AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+column_name	character_set_name
+notes	utf8
+object	utf8
+
+Now starting real tests
+
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS backup_progress;
 DROP TABLE IF EXISTS backup_progress.t1_res;

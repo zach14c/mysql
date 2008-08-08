@@ -8,6 +8,30 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
+# bug#33836 backup tables should have charset utf8
+
+--echo 
+--echo Checking character set for backup tables 
+--echo 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'online_backup' 
+  AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+
+--echo 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'online_backup_progress' 
+  AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+
+--echo 
+--echo Now starting real tests
+--echo 
+
 #
 # Preparative cleanup.
 #
