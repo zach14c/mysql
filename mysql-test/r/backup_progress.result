@@ -108,7 +108,7 @@ start_time	#
 stop_time	#
 host_or_server_name	localhost
 username	root
-backup_file	backup_progress_orig.bak
+backup_file	#
 user_comment	
 command	BACKUP DATABASE backup_progress to 'backup_progress_orig.bak'
 drivers	MyISAM, Default, Snapshot
@@ -165,7 +165,7 @@ start_time	#
 stop_time	#
 host_or_server_name	localhost
 username	root
-backup_file	backup_progress_orig.bak
+backup_file	#
 user_comment	
 command	RESTORE FROM 'backup_progress_orig.bak'
 drivers	MyISAM, Default, Snapshot

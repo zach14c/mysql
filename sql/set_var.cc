@@ -149,6 +149,9 @@ static bool sys_update_general_log_path(THD *thd, set_var * var);
 static void sys_default_general_log_path(THD *thd, enum_var_type type);
 static bool sys_update_slow_log_path(THD *thd, set_var * var);
 static void sys_default_slow_log_path(THD *thd, enum_var_type type);
+static int sys_check_backupdir(THD *thd, set_var *var);
+static bool sys_update_backupdir(THD *thd, set_var * var);
+static void sys_default_backupdir(THD *thd, enum_var_type type);
 
 /*
   Variable definition list
@@ -778,6 +781,15 @@ sys_var_str sys_var_slow_log_path(&vars, "slow_query_log_file", sys_check_log_pa
 				  opt_slow_logname);
 static sys_var_log_output sys_var_log_output_state(&vars, "log_output", &log_output_options,
 					    &log_output_typelib, 0);
+
+/*
+  Create the backupdir dynamic variable.
+*/
+sys_var_str sys_var_backupdir(&vars, "backupdir",
+                              sys_check_backupdir,
+                              sys_update_backupdir,
+                              sys_default_backupdir,
+                               0);
 
 
 /*
@@ -2611,6 +2623,140 @@ uchar *sys_var_log_output::value_ptr(THD *thd, enum_var_type type,
   if ((length= tmp.length()))
     length--;
   return (uchar*) thd->strmake(tmp.ptr(), length);
+}
+
+/*
+  Functions for backupdir variable.
+*/
+
+/**
+  Set the default for the backupdir
+
+  @param[IN] buff Buffer to use for making string.
+
+  @returns pointer to string (buff)
+*/
+char *make_default_backupdir(char *buff)
+{
+  strmake(buff, mysql_data_home, FN_REFLEN-5);
+  return buff;
+}
+
+/**
+  Check the backupdir value for validity.
+
+  This method ensures the users is specifying a valid path
+  for the backupdir. Validity in this case means the path
+  is accessible to the user.
+
+  @param[IN] thd   Current thread context.
+  @param[IN] var   The new value set in set_var structure.
+
+  @returns 0 
+*/
+static int sys_check_backupdir(THD *thd, set_var *var)
+{
+  char path[FN_REFLEN], buff[FN_REFLEN];
+  MY_STAT f_stat;
+  String str(buff, sizeof(buff), system_charset_info), *res;
+  const char *log_file_str;
+  size_t path_length;
+
+  if (!(res= var->value->val_str(&str)))
+    goto err;
+
+  log_file_str= res->c_ptr();
+  bzero(&f_stat, sizeof(MY_STAT));
+
+  /* Get dirname of the file path. */
+  (void) dirname_part(path, log_file_str, &path_length);
+
+  /* Dirname is empty if file path is relative. */
+  if (!path_length)
+    return 0;
+
+  /*
+    Check if directory exists and we have permission to create file and
+    write to file.
+  */
+  if (my_access(path, (F_OK|W_OK)))
+    goto err;
+
+  return 0;
+
+err:
+  /*
+    We print a warning if backupdir is invalid but set it anyway.
+  */
+  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                      ER_BACKUP_BACKUPDIR, ER(ER_BACKUP_BACKUPDIR),
+                      var->value->str_value.c_ptr());
+  return 0;
+}
+
+/**
+  Update the backupdir variable 
+  
+  This method is used to change the backupdir variable.
+
+  @param[IN] thd   Current thread context.
+  @param[IN] var   The new value set in set_var structure.
+
+  @returns 0 valid, 1 invalid.
+*/
+static bool sys_update_backupdir(THD *thd, set_var * var)
+{
+  char buff[FN_REFLEN];
+  char *res= 0, *old_value=(char *)(var ? var->value->str_value.ptr() : 0);
+  bool result= 0;
+  uint str_length= (var ? var->value->str_value.length() : 0);
+
+  if (!old_value)
+  {
+    old_value= make_default_backupdir(buff);
+    str_length= strlen(old_value);
+  }
+  if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
+  {
+    result= 1;
+    goto err;
+  }
+
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  logger.lock_exclusive();
+  old_value= sys_var_backupdir.value;
+  sys_var_backupdir.value= res;
+  sys_var_backupdir.value_length= str_length;
+  logger.unlock();
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+
+  if (my_access(sys_var_backupdir.value, (F_OK|W_OK)))
+    goto err;
+
+  return result;
+
+err:
+  /*
+    We print a warning if backupdir is invalid but set it anyway.
+  */
+  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                      ER_BACKUP_BACKUPDIR, ER(ER_BACKUP_BACKUPDIR),
+                      var->value->str_value.c_ptr());
+  return result;
+}
+
+/**
+  Set the default value for the backupdir variable 
+  
+  This method is used to reset the backupdir variable to the
+  default by calling the update method without a path.
+
+  @param[IN] thd   Current thread context.
+  @param[IN] type  Ignored (needed for api).
+*/
+static void sys_default_backupdir(THD *thd, enum_var_type type)
+{
+  sys_update_backupdir(thd, 0);
 }
 
 

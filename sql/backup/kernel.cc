@@ -19,7 +19,8 @@
   {
   
    Backup_restore_ctx context(thd); // create context instance
-   Backup_info *info= context.prepare_for_backup(location); // prepare for backup
+   Backup_info *info= context.prepare_for_backup(location, 
+                                                 orig_loc); // prepare for backup
   
    // select objects to backup
    info->add_all_dbs();
@@ -41,7 +42,8 @@
   {
   
    Backup_restore_ctx context(thd); // create context instance
-   Restore_info *info= context.prepare_for_restore(location); // prepare for restore
+   Restore_info *info= context.prepare_for_restore(location,
+                                                   orig_loc); // prepare for restore
   
    context.do_restore(); // perform restore
    
@@ -118,7 +120,9 @@ static int send_reply(Backup_restore_ctx &context);
 /**
   Call backup kernel API to execute backup related SQL statement.
 
-  @param lex  results of parsing the statement.
+  @param[IN] thd        current thread object reference.
+  @param[IN] lex        results of parsing the statement.
+  @param[IN] backupdir  value of the backupdir variable from server.
 
   @note This function sends response to the client (ok, result set or error).
 
@@ -126,7 +130,7 @@ static int send_reply(Backup_restore_ctx &context);
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex)
+execute_backup_command(THD *thd, LEX *lex, String *backupdir)
 {
   int res= 0;
   
@@ -134,6 +138,7 @@ execute_backup_command(THD *thd, LEX *lex)
   DBUG_ASSERT(thd && lex);
   DEBUG_SYNC(thd, "before_backup_command");
 
+    
   using namespace backup;
 
   Backup_restore_ctx context(thd); // reports errors
@@ -141,13 +146,25 @@ execute_backup_command(THD *thd, LEX *lex)
   if (!context.is_valid())
     DBUG_RETURN(send_error(context, ER_BACKUP_CONTEXT_CREATE));
 
+  /*
+    Check backupdir for validity. This is needed since we cannot trust
+    that the path is still valid. Access could have changed or the
+    folders in the path could have been moved, deleted, etc.
+  */
+  if (backupdir->length() && my_access(backupdir->c_ptr(), (F_OK|W_OK)))
+  {
+    context.fatal_error(ER_BACKUP_BACKUPDIR, backupdir->c_ptr());
+    DBUG_RETURN(send_error(context, ER_BACKUP_BACKUPDIR, backupdir->c_ptr()));
+  }
+
   switch (lex->sql_command) {
 
   case SQLCOM_BACKUP:
   {
     // prepare for backup operation
     
-    Backup_info *info= context.prepare_for_backup(lex->backup_dir, thd->query,
+    Backup_info *info= context.prepare_for_backup(backupdir, lex->backup_dir, 
+                                                  thd->query,
                                                   lex->backup_compression);
                                                               // reports errors
 
@@ -192,7 +209,8 @@ execute_backup_command(THD *thd, LEX *lex)
 
   case SQLCOM_RESTORE:
   {
-    Restore_info *info= context.prepare_for_restore(lex->backup_dir, thd->query);
+    Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
+                                                    thd->query);
     
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE_PREPARE));
@@ -424,6 +442,11 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 
   // check if location is valid (we assume it is a file path)
 
+  /*
+    For this error to work correctly, we need to check original
+    file specified by the user rather than the path formed
+    using the backupdir.
+  */
   bool bad_filename= (location.length == 0);
   
   /*
@@ -433,7 +456,7 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 #if defined(__WIN__) || defined(__EMX__)  
 
   bad_filename = bad_filename || check_if_legal_filename(location.str);
-  
+
 #endif
 
   if (bad_filename)
@@ -471,7 +494,8 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 /**
   Prepare for backup operation.
   
-  @param[in] location   path to the file where backup image should be stored
+  @param[in] backupdir  path to the file where backup image should be stored
+  @param[in] orig_loc   path as specified on command line for backup image
   @param[in] query      BACKUP query starting the operation
   @param[in] with_compression  backup image compression switch
   
@@ -486,7 +510,9 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
   is performed using @c do_backup() method.
  */ 
 Backup_info* 
-Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
+Backup_restore_ctx::prepare_for_backup(String *backupdir, 
+                                       LEX_STRING orig_loc, 
+                                       const char *query,
                                        bool with_compression)
 {
   using namespace backup;
@@ -494,7 +520,7 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
   if (m_error)
     return NULL;
   
-  if (Logger::init(BACKUP, location, query))
+  if (Logger::init(BACKUP, orig_loc, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -507,16 +533,16 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
     Do preparations common to backup and restore operations. After call
     to prepare() all meta-data changes are blocked.
    */ 
-  if (prepare(location))
+  if (prepare(orig_loc))
     return NULL;
 
-  backup::String path(location);
-  
   /*
     Open output stream.
    */
-
-  Output_stream *s= new Output_stream(*this, path, with_compression);
+  Output_stream *s= new Output_stream(*this, 
+                                      backupdir, 
+                                      orig_loc,
+                                      with_compression);
   m_stream= s;
   
   if (!s)
@@ -527,7 +553,11 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
   
   if (!s->open())
   {
-    fatal_error(ER_BACKUP_WRITE_LOC, path.ptr());
+    /*
+      For this error, use the actual value returned instead of the
+      path complimented with backupdir.
+    */
+    fatal_error(ER_BACKUP_WRITE_LOC, orig_loc.str);
     return NULL;
   }
 
@@ -556,7 +586,8 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
 /**
   Prepare for restore operation.
   
-  @param[in] location   path to the file where backup image is stored
+  @param[in] backupdir  path to the file where backup image is stored
+  @param[in] orig_loc   path as specified on command line for backup image
   @param[in] query      RESTORE query starting the operation
   
   @returns Pointer to a @c Restore_info instance containing catalogue of the
@@ -565,14 +596,16 @@ Backup_restore_ctx::prepare_for_backup(LEX_STRING location, const char *query,
   @note This function reports errors.
  */ 
 Restore_info* 
-Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
+Backup_restore_ctx::prepare_for_restore(String *backupdir,
+                                        LEX_STRING orig_loc, 
+                                        const char *query)
 {
   using namespace backup;  
 
   if (m_error)
     return NULL;
   
-  if (Logger::init(RESTORE, location, query))
+  if (Logger::init(RESTORE, orig_loc, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -585,15 +618,14 @@ Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
     Do preparations common to backup and restore operations. After this call
     changes of meta-data are blocked.
    */ 
-  if (prepare(location))
+  if (prepare(orig_loc))
     return NULL;
   
   /*
     Open input stream.
    */
 
-  backup::String path(location);
-  Input_stream *s= new Input_stream(*this, path);
+  Input_stream *s= new Input_stream(*this, backupdir, orig_loc);
   m_stream= s;
   
   if (!s)
@@ -604,7 +636,11 @@ Backup_restore_ctx::prepare_for_restore(LEX_STRING location, const char *query)
   
   if (!s->open())
   {
-    fatal_error(ER_BACKUP_READ_LOC, path.ptr());
+    /*
+      For this error, use the actual value returned instead of the
+      path complimented with backupdir.
+    */
+    fatal_error(ER_BACKUP_READ_LOC, orig_loc.str);
     return NULL;
   }
 

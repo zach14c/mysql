@@ -333,6 +333,12 @@ sub mtr_report_stats ($) {
 		(
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
+
+		# backup_backupdir test is supposed to trigger backup related errors
+		($testname eq 'main.backup_backupdir') and
+		(
+		  /Backup:/ or /Can't write to backup location/
+		) or
                 
 		# backup_concurrent performs a backup that should fail
 		($testname eq 'main.backup_concurrent') and
