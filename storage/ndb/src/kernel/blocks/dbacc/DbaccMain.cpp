@@ -858,6 +858,7 @@ void Dbacc::releaseFragRecord(Signal* signal, FragmentrecPtr regFragPtr)
   regFragPtr.p->nextfreefrag = cfirstfreefrag;
   cfirstfreefrag = regFragPtr.i;
   initFragGeneral(regFragPtr);
+  RSS_OP_FREE(cnoOfFreeFragrec);
 }//Dbacc::releaseFragRecord()
 
 /* -------------------------------------------------------------------------- */
@@ -6175,6 +6176,7 @@ void Dbacc::initFragAdd(Signal* signal,
   regFragPtr.p->mytabptr = req->tableId;
   regFragPtr.p->roothashcheck = req->kValue + req->lhFragBits;
   regFragPtr.p->noOfElements = 0;
+  regFragPtr.p->m_commit_count = 0; // stable results
   for (Uint32 i = 0; i < MAX_PARALLEL_SCANS_PER_FRAG; i++) {
     regFragPtr.p->scan[i] = RNIL;
   }//for
@@ -8073,6 +8075,7 @@ void Dbacc::seizeDirrange(Signal* signal)
 /* --------------------------------------------------------------------------------- */
 void Dbacc::seizeFragrec(Signal* signal) 
 {
+  RSS_OP_ALLOC(cnoOfFreeFragrec);
   fragrecptr.i = cfirstfreefrag;
   ptrCheckGuard(fragrecptr, cfragmentsize, fragmentrec);
   cfirstfreefrag = fragrecptr.p->nextfreefrag;
@@ -8519,6 +8522,18 @@ Dbacc::execDUMP_STATE_ORD(Signal* signal)
     return;
   }//if
 #endif
+
+  if (signal->theData[0] == DumpStateOrd::SchemaResourceSnapshot)
+  {
+    RSS_OP_SNAPSHOT_SAVE(cnoOfFreeFragrec);
+    return;
+  }
+
+  if (signal->theData[0] == DumpStateOrd::SchemaResourceCheckLeak)
+  {
+    RSS_OP_SNAPSHOT_CHECK(cnoOfFreeFragrec);
+    return;
+  }
 }//Dbacc::execDUMP_STATE_ORD()
 
 void

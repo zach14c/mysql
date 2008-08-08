@@ -1,12 +1,12 @@
-Next QMGR 1
+Next QMGR 937
 Next NDBCNTR 1002
 Next NDBFS 2000
 Next DBACC 3002
 Next DBTUP 4029
-Next DBLQH 5050
+Next DBLQH 5051
 Next DBDICT 6008
-Next DBDIH 7202
-Next DBTC 8058
+Next DBDIH 7211
+Next DBTC 8064
 Next CMVMI 9000
 Next BACKUP 10041
 Next DBUTIL 11002
@@ -550,6 +550,11 @@ Dbdict:
 6004 Crash in participant @ CreateTabReq::Commit
 6005 Crash in participant @ CreateTabReq::CreateDrop
 6007 Fail on readTableFile for READ_TAB_FILE1 (28770)
+
+6200 Set error code after handleTabInfoInit in master
+6201 Set error code after handleTabInfoInit in master (index)
+6202 Set error code before CREATE_FRAGMENTATION in master
+6203 Set error code before CREATE_FRAGMENTATION in master (index)
 
 Dbtup:
 4014 - handleInsert - Out of undo buffer

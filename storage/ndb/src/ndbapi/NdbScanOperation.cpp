@@ -121,6 +121,11 @@ NdbScanOperation::init(const NdbTableImpl* tab, NdbTransaction* myConnection)
   m_executed = false;
   m_scanUsingOldApi= false;
   m_interpretedCodeOldApi= NULL;
+
+  m_api_receivers_count = 0;
+  m_current_api_receiver = 0;
+  m_sent_receivers_count = 0;
+  m_conf_receivers_count = 0;
   return 0;
 }
 
@@ -510,25 +515,58 @@ NdbIndexScanOperation::setDistKeyFromRange(const NdbRecord *key_record,
                                            const char *row,
                                            Uint32 distkeyMax)
 {
-  Uint64 tmp[1000];
+  const Uint32 MaxKeySizeInLongWords= (NDB_MAX_KEY_SIZE + 7) / 8; 
+  Uint64 tmp[ MaxKeySizeInLongWords ];
+  char* tmpshrink = (char*)tmp;
+  size_t tmplen = sizeof(tmp);
+  
   Ndb::Key_part_ptr ptrs[NDB_MAX_NO_OF_ATTRIBUTES_IN_KEY+1];
   Uint32 i;
   for (i = 0; i<key_record->distkey_index_length; i++)
   {
     const NdbRecord::Attr *col =
       &key_record->columns[key_record->distkey_indexes[i]];
-    ptrs[i].ptr = row + col->offset;
+    if (col->flags & NdbRecord::IsMysqldShrinkVarchar)
+    {
+      if (tmplen >= 256)
+      {
+        Uint32 len;
+        bool len_ok = col->shrink_varchar(row, len, tmpshrink);
+        if (!len_ok)
+        {
+          assert(false);
+          return;
+        }
+        ptrs[i].ptr = tmpshrink;
+        tmpshrink += len;
+        tmplen -= len;
+      }
+      else
+      {
+        // no buffer...
+        return;
+      }
+    }
+    else
+    {
+      ptrs[i].ptr = row + col->offset;
+    }
     ptrs[i].len = col->maxSize;
   }
   ptrs[i].ptr = 0;
   
   Uint32 hashValue;
   int ret = Ndb::computeHash(&hashValue, result_record->table,
-                             ptrs, tmp, sizeof(tmp));
+                             ptrs, tmpshrink, tmplen);
   if (ret == 0)
   {
     theDistributionKey= result_record->table->getPartitionId(hashValue);
     theDistrKeyIndicator_= 1;
+
+    ScanTabReq *req= CAST_PTR(ScanTabReq, theSCAN_TABREQ->getDataPtrSend());
+    ScanTabReq::setDistributionKeyFlag(req->requestInfo, 1);
+    req->distributionKey= theDistributionKey;
+    theSCAN_TABREQ->setLength(ScanTabReq::StaticLength + 1);
   }
 #ifdef VM_TRACE
   else
@@ -568,6 +606,14 @@ NdbIndexScanOperation::setBound(const NdbRecord *key_record,
   {
     setErrorCodeAbort(4285);
     /* NULL NdbRecord pointer */
+    return -1;
+  }
+
+  if (((bound.low_key == NULL) && (bound.high_key == NULL)) ||
+      ((bound.low_key_count == 0) && (bound.high_key_count == 0)))
+  {
+    /* IndexBound passed has no bound information */
+    setErrorCodeAbort(4541);
     return -1;
   }
 
@@ -1720,12 +1766,24 @@ int NdbScanOperation::finaliseScanOldApi()
   {
     assert(theOperationType == OpenRangeScanRequest);
     NdbIndexScanOperation *isop = 
-      reinterpret_cast<NdbIndexScanOperation*>(this);
+      static_cast<NdbIndexScanOperation*>(this);
 
     /* Prepare a single bound if necessary */
     NdbIndexScanOperation::IndexBound ib;
-    if (isop->buildIndexBoundOldApi(ib) != 0)
+    NdbIndexScanOperation::IndexBound* ib_ptr= NULL;
+
+    switch (isop->buildIndexBoundOldApi(ib)) {
+    case 0:
+      /* Bound was specified */
+      ib_ptr= &ib;
+      break;
+    case 1:
+      /* No bound was specified */
+      ib_ptr= NULL; 
+      break;
+    default:
       return -1;
+    }
 
     /* If this is an ordered scan, then we need
      * the pk columns in the mask, otherwise we
@@ -1733,14 +1791,14 @@ int NdbScanOperation::finaliseScanOldApi()
      */
     const unsigned char * resultMask= 
       ((m_savedScanFlagsOldApi & SF_OrderBy) !=0) ? 
-      m_currentTable->m_pkMask : 
+      m_accessTable->m_pkMask : 
       emptyMask;
 
     result= isop->scanIndexImpl(m_accessTable->m_ndbrecord,
                                 m_currentTable->m_ndbrecord,
                                 m_savedLockModeOldApi,
                                 resultMask,
-                                &ib,
+                                ib_ptr,
                                 &options,
                                 sizeof(ScanOptions));
 
@@ -2650,10 +2708,16 @@ NdbIndexScanOperation::setBound(const NdbColumnImpl* tAttrInfo,
 /* Method called just prior to scan execution to initialise
  * the passed in IndexBound for the scan using the information
  * stored by the old API's setBound() call.
+ * Return codes 
+ *  0 == bound present and built
+ *  1 == bound not present
+ * -1 == error
  */
 int
 NdbIndexScanOperation::buildIndexBoundOldApi(IndexBound& ib)
 {
+  int result= 1;
+
   if (lowBound.highestKey != 0)
   {
     /* Have a low bound 
@@ -2672,6 +2736,7 @@ NdbIndexScanOperation::buildIndexBoundOldApi(IndexBound& ib)
     ib.low_key= lowBound.keyRecAttr->aRef();
     ib.low_key_count= lowBound.highestKey;
     ib.low_inclusive= !lowBound.highestSoFarIsStrict;
+    result= 0;
   }
   else
   {
@@ -2697,6 +2762,7 @@ NdbIndexScanOperation::buildIndexBoundOldApi(IndexBound& ib)
     ib.high_key= highBound.keyRecAttr->aRef();
     ib.high_key_count= highBound.highestKey;
     ib.high_inclusive= !highBound.highestSoFarIsStrict;
+    result= 0;
   }
   else
   {
@@ -2707,7 +2773,7 @@ NdbIndexScanOperation::buildIndexBoundOldApi(IndexBound& ib)
 
   ib.range_no= 0;
 
-  return 0;
+  return result;
 }
 
 /* Method called to release any resources allocated by the old 
@@ -2789,7 +2855,7 @@ NdbIndexScanOperation::ndbrecord_insert_bound(const NdbRecord *key_record,
                                               const char *row,
                                               Uint32 bound_type)
 {
-  char buf[256];
+  char buf[NdbRecord::Attr::SHRINK_VARCHAR_BUFFSIZE];
   Uint32 currLen= theTotalNrOfKeyWordInSignal;
   Uint32 remaining= KeyInfo::DataLength - currLen;
   const NdbRecord::Attr *column= &key_record->columns[column_index];
@@ -2839,7 +2905,10 @@ NdbIndexScanOperation::ndbrecord_insert_bound(const NdbRecord *key_record,
     theTotalNrOfKeyWordInSignal= currLen + totalLen;
   } else {
     if(!aligned || !nobytes){
-      Uint32 tempData[2000];
+      /* Space for Bound type, Attr header and (possibly max-sized)
+       * key column
+       */
+      Uint32 tempData[ KeyInfo::MaxWordsPerBoundColumn ];
       if (len > sizeof(tempData))
         len= sizeof(tempData);
       tempData[0] = bound_type;

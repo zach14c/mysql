@@ -485,6 +485,10 @@ max-time: 1000
 cmd: testScan
 args: -n ScanVariants
 
+max-time: 500
+cmd: testScan
+args: -n Bug36124 T1
+
 max-time: 1000
 cmd: testNodeRestart
 args: -n Bug27003 T1
@@ -790,11 +794,15 @@ args:
 
 max-time: 600
 cmd: testBlobs
-args: -bug 27018
+args: -bug 27018 -skip p
 
 max-time: 600
 cmd: testBlobs
-args: -bug 27370
+args: -bug 27370 -skip p
+
+max-time: 600
+cmd: testBlobs
+args: -bug 36756 -skip p
 
 max-time: 5000
 cmd: testOIBasic
@@ -1090,3 +1098,40 @@ max-time: 600
 cmd: test_event
 args: -n Bug35208 T1
 
+# 2008-04-22
+max-time: 1500
+cmd: testNodeRestart
+args: -n MNF -l 15 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36199 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36246 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36247 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36276 T1
+
+# 2008-04-25
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36245 T1
+
+max-time: 300
+cmd: test_event
+args: -n Bug34853 T1
+
+# EOF 2008-04-25
+# 2008-05-29
+max-time: 1200
+cmd: testDict
+args: -l 1 -n FailAddFragment
+
+# EOF 2008-05-29
