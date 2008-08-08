@@ -344,15 +344,14 @@ class Mem_allocator
 
 // static members
 
-bool Backup_restore_ctx::is_running= FALSE;
+Backup_restore_ctx *Backup_restore_ctx::current_op= NULL;
 pthread_mutex_t Backup_restore_ctx::run_lock;
-backup::Mem_allocator *Backup_restore_ctx::mem_alloc= NULL;
 
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
   m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL),
-  m_catalog(NULL), m_tables_locked(FALSE)
+  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE)
 {
   /*
     Check for progress tables.
@@ -365,6 +364,7 @@ Backup_restore_ctx::~Backup_restore_ctx()
 {
   close();
   
+  delete mem_alloc;
   delete m_catalog;  
   delete m_stream;
 }
@@ -412,8 +412,8 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
 
   pthread_mutex_lock(&run_lock);
 
-  if (!is_running)
-    is_running= TRUE;
+  if (!current_op)
+    current_op= this;
   else
     fatal_error(ER_BACKUP_RUNNING);
 
@@ -802,10 +802,11 @@ int Backup_restore_ctx::close()
   delete mem_alloc;
   mem_alloc= NULL;
   
-  // deregister this operation
-
+  // deregister this operation if it was running
   pthread_mutex_lock(&run_lock);
-  is_running= FALSE;
+  if (current_op == this) {
+    current_op= NULL;
+  }
   pthread_mutex_unlock(&run_lock);
 
   /* 
@@ -1194,9 +1195,10 @@ bstream_byte* bstream_alloc(unsigned long int size)
 {
   using namespace backup;
 
-  DBUG_ASSERT(Backup_restore_ctx::mem_alloc);
+  DBUG_ASSERT(Backup_restore_ctx::current_op 
+              && Backup_restore_ctx::current_op->mem_alloc);
 
-  return (bstream_byte*)Backup_restore_ctx::mem_alloc->alloc(size);
+  return (bstream_byte*)Backup_restore_ctx::current_op->mem_alloc->alloc(size);
 }
 
 /**
@@ -1206,8 +1208,9 @@ extern "C"
 void bstream_free(bstream_byte *ptr)
 {
   using namespace backup;
-  if (Backup_restore_ctx::mem_alloc)
-    Backup_restore_ctx::mem_alloc->free(ptr);
+  if (Backup_restore_ctx::current_op 
+      && Backup_restore_ctx::current_op->mem_alloc)
+    Backup_restore_ctx::current_op->mem_alloc->free(ptr);
 }
 
 /**

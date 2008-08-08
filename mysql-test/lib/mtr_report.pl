@@ -334,6 +334,12 @@ sub mtr_report_stats ($) {
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
                 
+		# backup_concurrent performs a backup that should fail
+		($testname eq 'main.backup_concurrent') and
+		(
+		  /Can't execute this command because another BACKUP\/RESTORE operation is in progress/
+		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
 		(
