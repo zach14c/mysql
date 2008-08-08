@@ -103,9 +103,10 @@ result_t Backup::lock()
     state. 
   */
   locking_thd->m_thd->lex->sql_command= SQLCOM_SELECT; 
-  locking_thd->m_thd->lex->start_transaction_opt|=
+  locking_thd->m_thd->lex->start_transaction_opt=
     MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT;
-  int res= trans_begin(locking_thd->m_thd);
+  int res= trans_begin(locking_thd->m_thd,
+                       locking_thd->m_thd->lex->start_transaction_opt);
   if (res)
     DBUG_RETURN(ERROR);
   m_trans_start= TRUE;

@@ -3784,7 +3784,7 @@ end_with_restore_list:
 
   case SQLCOM_BEGIN:
     DEBUG_SYNC(thd, "before_begin_trans");
-    if (trans_begin(thd))
+    if (trans_begin(thd, lex->start_transaction_opt))
       goto error;
     my_ok(thd);
     break;

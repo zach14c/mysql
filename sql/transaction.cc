@@ -49,12 +49,13 @@ static bool trans_check(THD *thd)
         transaction and releases existing locks.
 
   @param thd     Current thread
+  @param flags   Transaction flags
 
   @retval FALSE  Success
   @retval TRUE   Failure
 */
 
-bool trans_begin(THD *thd)
+bool trans_begin(THD *thd, uint flags)
 {
   int res= FALSE;
   DBUG_ENTER("trans_begin");
@@ -70,8 +71,7 @@ bool trans_begin(THD *thd)
   thd->options|= OPTION_BEGIN;
   thd->server_status|= SERVER_STATUS_IN_TRANS;
 
-  if (thd->lex->start_transaction_opt &
-      MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT)
+  if (flags & MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT)
     res= ha_start_consistent_snapshot(thd);
 
   DBUG_RETURN(test(res));
