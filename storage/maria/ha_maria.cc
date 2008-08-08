@@ -2293,8 +2293,8 @@ int ha_maria::start_stmt(THD *thd, thr_lock_type lock_type)
 
   This can be considered a hack. When Maria loses HA_NO_TRANSACTIONS it will
   be participant in the connection's transaction and so the implicit commits
-  (ha_commit()) (like in end_active_trans()) will do the implicit commit
-  without need to call this function which can then be removed.
+  (ha_commit_trans()) (like in trans_commit_implicit()) will do the implicit
+  commit without need to call this function which can then be removed.
 
   @param  thd              THD object
   @param  new_trn          if a new transaction should be created; a new

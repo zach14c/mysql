@@ -22,6 +22,7 @@
 #include "sp_head.h"
 #include "sql_trigger.h"
 #include "sql_show.h"
+#include "transaction.h"
 
 #ifdef __WIN__
 #include <io.h>
@@ -4217,8 +4218,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       DBUG_PRINT("admin", ("calling prepare_func"));
       switch ((*prepare_func)(thd, table, check_opt)) {
       case  1:           // error, message written to net
-        ha_autocommit_or_rollback(thd, 1);
-        end_trans(thd, ROLLBACK);
+        trans_rollback_stmt(thd);
+        trans_rollback(thd);
         close_thread_tables(thd);
         DBUG_PRINT("admin", ("simple error, admin next table"));
         continue;
@@ -4276,8 +4277,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       length= my_snprintf(buff, sizeof(buff), ER(ER_OPEN_AS_READONLY),
                           table_name);
       protocol->store(buff, length, system_charset_info);
-      ha_autocommit_or_rollback(thd, 0);
-      end_trans(thd, COMMIT);
+      trans_commit_stmt(thd);
+      trans_commit(thd);
       close_thread_tables(thd);
       lex->reset_query_tables_list(FALSE);
       table->table=0;				// For query cache
@@ -4326,7 +4327,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
            HA_ADMIN_NEEDS_ALTER))
       {
         DBUG_PRINT("admin", ("recreating table"));
-        ha_autocommit_or_rollback(thd, 1);
+        trans_rollback_stmt(thd);
         close_thread_tables(thd);
         tmp_disable_binlog(thd); // binlogging is done by caller if wanted
         result_code= mysql_recreate_table(thd, table);
@@ -4439,7 +4440,7 @@ send_result_message:
         "try with alter", so here we close the table, do an ALTER TABLE,
         reopen the table and do ha_innobase::analyze() on it.
       */
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
       close_thread_tables(thd);
       TABLE_LIST *save_next_local= table->next_local,
                  *save_next_global= table->next_global;
@@ -4455,7 +4456,7 @@ send_result_message:
       */
       if (thd->main_da.is_ok())
         thd->main_da.reset_diagnostics_area();
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
       close_thread_tables(thd);
       if (!result_code) // recreation went ok
       {
@@ -4544,8 +4545,8 @@ send_result_message:
         query_cache_invalidate3(thd, table->table, 0);
       }
     }
-    ha_autocommit_or_rollback(thd, 0);
-    end_trans(thd, COMMIT);
+    trans_commit_stmt(thd);
+    trans_commit_implicit(thd);
     close_thread_tables(thd);
     table->table=0;				// For query cache
     if (protocol->write())
@@ -4556,8 +4557,8 @@ send_result_message:
   DBUG_RETURN(FALSE);
 
 err:
-  ha_autocommit_or_rollback(thd, 1);
-  end_trans(thd, ROLLBACK);
+  trans_rollback_stmt(thd);
+  trans_rollback(thd);
   close_thread_tables(thd);			// Shouldn't be needed
   if (table)
     table->table=0;
@@ -5049,15 +5050,15 @@ mysql_discard_or_import_tablespace(THD *thd,
   query_cache_invalidate3(thd, table_list, 0);
 
   /* The ALTER TABLE is always in its own transaction */
-  error = ha_autocommit_or_rollback(thd, 0);
-  if (end_active_trans(thd))
+  error= trans_commit_stmt(thd);
+  if (trans_commit_implicit(thd))
     error=1;
   if (error)
     goto err;
   write_bin_log(thd, FALSE, thd->query, thd->query_length);
 
 err:
-  ha_autocommit_or_rollback(thd, error);
+  trans_rollback_stmt(thd);
   thd->tablespace_op=FALSE;
 
   if (error == 0)
@@ -5814,8 +5815,8 @@ mysql_fast_or_online_alter_table(THD *thd,
     wait_if_global_read_lock(), which could create a deadlock if called
     with LOCK_open.
   */
-  error= ha_autocommit_or_rollback(thd, 0);
-  if (ha_commit(thd))
+  error= trans_commit_stmt(thd);
+  if (trans_commit_implicit(thd))
     error= 1;
 
   if (error)
@@ -6948,8 +6949,8 @@ view_err:
   }
   else
   {
-    error= ha_autocommit_or_rollback(thd, 0);
-    if (end_active_trans(thd))
+    error= trans_commit_stmt(thd);
+    if (trans_commit_implicit(thd))
       error= 1;
   }
   thd->count_cuted_fields= CHECK_FIELD_IGNORE;
@@ -7394,9 +7395,9 @@ err:
     Ensure that the new table is saved properly to disk so that we
     can do a rename
   */
-  if (ha_autocommit_or_rollback(thd, 0))
+  if (trans_commit_stmt(thd))
     error=1;
-  if (end_active_trans(thd))
+  if (trans_commit_implicit(thd))
     error=1;
 
   thd->variables.sql_mode= save_sql_mode;

@@ -29,6 +29,7 @@
 #include "sql_trigger.h"
 #include <ddl_blocker.h>
 #include "sql_audit.h"
+#include "transaction.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"
@@ -97,65 +98,6 @@ const char *xa_state_names[]={
 
 extern DDL_blocker_class *DDL_blocker;
 
-bool end_active_trans(THD *thd)
-{
-  int error=0;
-  DBUG_ENTER("end_active_trans");
-  if (unlikely(thd->in_sub_stmt))
-  {
-    my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
-    DBUG_RETURN(1);
-  }
-  if (thd->transaction.xid_state.xa_state != XA_NOTR)
-  {
-    my_error(ER_XAER_RMFAIL, MYF(0),
-             xa_state_names[thd->transaction.xid_state.xa_state]);
-    DBUG_RETURN(1);
-  }
-  if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN |
-		      OPTION_TABLE_LOCK))
-  {
-    DBUG_PRINT("info",("options: 0x%llx", thd->options));
-    /* Safety if one did "drop table" on locked tables */
-    if (!thd->locked_tables_mode)
-      thd->options&= ~OPTION_TABLE_LOCK;
-    thd->server_status&= ~SERVER_STATUS_IN_TRANS;
-    if (ha_commit(thd))
-      error=1;
-#ifdef WITH_MARIA_STORAGE_ENGINE
-    ha_maria::implicit_commit(thd, TRUE);
-#endif
-  }
-  thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
-  thd->transaction.all.modified_non_trans_table= FALSE;
-  DBUG_RETURN(error);
-}
-
-
-bool begin_trans(THD *thd)
-{
-  int error=0;
-  if (unlikely(thd->in_sub_stmt))
-  {
-    my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
-    return 1;
-  }
-
-  thd->locked_tables_list.unlock_locked_tables(thd);
-
-  if (end_active_trans(thd))
-    error= -1;
-  else
-  {
-    LEX *lex= thd->lex;
-    thd->options|= OPTION_BEGIN;
-    thd->server_status|= SERVER_STATUS_IN_TRANS;
-    if (lex->start_transaction_opt & MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT)
-      error= ha_start_consistent_snapshot(thd);
-  }
-  return error;
-}
-
 #ifdef HAVE_REPLICATION
 /**
   Returns true if all tables should be ignored.
@@ -216,9 +158,9 @@ static bool opt_implicit_commit(THD *thd, uint mask)
   if (!skip)
   {
     /* Commit or rollback the statement transaction. */
-    ha_autocommit_or_rollback(thd, thd->is_error());
+    thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
     /* Commit the normal transaction if one is active. */
-    res= end_active_trans(thd);
+    res= trans_commit_implicit(thd);
   }
 
   DBUG_RETURN(res);
@@ -627,81 +569,6 @@ void cleanup_items(Item *item)
   for (; item ; item=item->next)
     item->cleanup();
   DBUG_VOID_RETURN;
-}
-
-/**
-  Ends the current transaction and (maybe) begin the next.
-
-  @param thd            Current thread
-  @param completion     Completion type
-
-  @retval
-    0   OK
-*/
-
-int end_trans(THD *thd, enum enum_mysql_completiontype completion)
-{
-  bool do_release= 0;
-  int res= 0;
-  DBUG_ENTER("end_trans");
-
-  if (unlikely(thd->in_sub_stmt))
-  {
-    my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
-    DBUG_RETURN(1);
-  }
-  if (thd->transaction.xid_state.xa_state != XA_NOTR)
-  {
-    my_error(ER_XAER_RMFAIL, MYF(0),
-             xa_state_names[thd->transaction.xid_state.xa_state]);
-    DBUG_RETURN(1);
-  }
-  thd->lex->start_transaction_opt= 0; /* for begin_trans() */
-  switch (completion) {
-  case COMMIT:
-    /*
-     We don't use end_active_trans() here to ensure that this works
-     even if there is a problem with the OPTION_AUTO_COMMIT flag
-     (Which of course should never happen...)
-    */
-    thd->server_status&= ~SERVER_STATUS_IN_TRANS;
-    res= ha_commit(thd);
-    thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
-    thd->transaction.all.modified_non_trans_table= FALSE;
-    break;
-  case COMMIT_RELEASE:
-    do_release= 1; /* fall through */
-  case COMMIT_AND_CHAIN:
-    res= end_active_trans(thd);
-    if (!res && completion == COMMIT_AND_CHAIN)
-      res= begin_trans(thd);
-    break;
-  case ROLLBACK_RELEASE:
-    do_release= 1; /* fall through */
-  case ROLLBACK:
-  case ROLLBACK_AND_CHAIN:
-  {
-    thd->server_status&= ~SERVER_STATUS_IN_TRANS;
-    if (ha_rollback(thd))
-      res= -1;
-    thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
-    thd->transaction.all.modified_non_trans_table= FALSE;
-    if (!res && (completion == ROLLBACK_AND_CHAIN))
-      res= begin_trans(thd);
-    break;
-  }
-  default:
-    res= -1;
-    my_error(ER_UNKNOWN_COM_ERROR, MYF(0));
-    DBUG_RETURN(-1);
-  }
-
-  if (res < 0)
-    my_error(thd->killed_errno(), MYF(0));
-  else if ((res == 0) && do_release)
-    thd->killed= THD::KILL_CONNECTION;
-
-  DBUG_RETURN(res);
 }
 
 #ifndef EMBEDDED_LIBRARY
@@ -1326,14 +1193,14 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     bool not_used;
     status_var_increment(thd->status_var.com_stat[SQLCOM_FLUSH]);
     ulong options= (ulong) (uchar) packet[0];
-    if (end_active_trans(thd))
+    if (trans_commit_implicit(thd))
       break;
     if (check_global_access(thd,RELOAD_ACL))
       break;
     general_log_print(thd, command, NullS);
     if (reload_acl_and_cache(thd, options, (TABLE_LIST*) 0, &not_used))
       break;
-    if (end_active_trans(thd))
+    if (trans_commit_implicit(thd))
       break;
     my_ok(thd);
     break;
@@ -1483,7 +1350,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 
   /* If commit fails, we should be able to reset the OK status. */
   thd->main_da.can_overwrite_status= TRUE;
-  ha_autocommit_or_rollback(thd, thd->is_error());
+  thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
   thd->main_da.can_overwrite_status= FALSE;
 
   thd->transaction.stmt.reset();
@@ -3349,7 +3216,7 @@ end_with_restore_list:
     thd->locked_tables_list.unlock_locked_tables(thd);
     if (thd->options & OPTION_TABLE_LOCK)
     {
-      end_active_trans(thd);
+      trans_commit_implicit(thd);
       thd->options&= ~(OPTION_TABLE_LOCK);
     }
     if (thd->global_read_lock)
@@ -3403,7 +3270,7 @@ end_with_restore_list:
       goto error;
     thd->locked_tables_list.unlock_locked_tables(thd);
     /* we must end the trasaction first, regardless of anything */
-    if (end_active_trans(thd))
+    if (trans_commit_implicit(thd))
       goto error;
 
     alloc_mdl_locks(all_tables, thd->locked_tables_list.locked_tables_root());
@@ -3426,8 +3293,8 @@ end_with_restore_list:
         can free its locks if LOCK TABLES locked some tables before finding
         that it can't lock a table in its list
       */
-      ha_autocommit_or_rollback(thd, 1);
-      end_active_trans(thd);
+      trans_rollback_stmt(thd);
+      trans_commit_implicit(thd);
       thd->options&= ~(OPTION_TABLE_LOCK);
     }
     else
@@ -3916,129 +3783,52 @@ end_with_restore_list:
     break;
 
   case SQLCOM_BEGIN:
-    if (thd->transaction.xid_state.xa_state != XA_NOTR)
-    {
-      my_error(ER_XAER_RMFAIL, MYF(0),
-               xa_state_names[thd->transaction.xid_state.xa_state]);
-      break;
-    }
     DEBUG_SYNC(thd, "before_begin_trans");
-    if (begin_trans(thd))
+    if (trans_begin(thd))
       goto error;
     my_ok(thd);
     break;
   case SQLCOM_COMMIT:
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
-    if (end_trans(thd, lex->tx_release ? COMMIT_RELEASE :
-                              lex->tx_chain ? COMMIT_AND_CHAIN : COMMIT))
+    if (trans_commit(thd))
       goto error;
+    /* Begin transaction with the same isolation level. */
+    if (lex->tx_chain && trans_begin(thd))
+      goto error;
+    /* Disconnect the current client connection. */
+    if (lex->tx_release)
+      thd->killed= THD::KILL_CONNECTION;
     DEBUG_SYNC(thd, "after_commit");
     my_ok(thd);
     break;
   case SQLCOM_ROLLBACK:
     DBUG_ASSERT(thd->lock == NULL ||
                 thd->locked_tables_mode == LTM_LOCK_TABLES);
-    if (end_trans(thd, lex->tx_release ? ROLLBACK_RELEASE :
-                              lex->tx_chain ? ROLLBACK_AND_CHAIN : ROLLBACK))
+    if (trans_rollback(thd))
       goto error;
+    /* Begin transaction with the same isolation level. */
+    if (lex->tx_chain && trans_begin(thd))
+      goto error;
+    /* Disconnect the current client connection. */
+    if (lex->tx_release)
+      thd->killed= THD::KILL_CONNECTION;
     my_ok(thd);
     break;
   case SQLCOM_RELEASE_SAVEPOINT:
-  {
-    SAVEPOINT *sv;
-    for (sv=thd->transaction.savepoints; sv; sv=sv->prev)
-    {
-      if (my_strnncoll(system_charset_info,
-                       (uchar *)lex->ident.str, lex->ident.length,
-                       (uchar *)sv->name, sv->length) == 0)
-        break;
-    }
-    if (sv)
-    {
-      if (ha_release_savepoint(thd, sv))
-        res= TRUE; // cannot happen
-      else
-        my_ok(thd);
-      thd->transaction.savepoints=sv->prev;
-    }
-    else
-      my_error(ER_SP_DOES_NOT_EXIST, MYF(0), "SAVEPOINT", lex->ident.str);
+    if (trans_release_savepoint(thd, lex->ident))
+      goto error;
+    my_ok(thd);
     break;
-  }
   case SQLCOM_ROLLBACK_TO_SAVEPOINT:
-  {
-    SAVEPOINT *sv;
-    for (sv=thd->transaction.savepoints; sv; sv=sv->prev)
-    {
-      if (my_strnncoll(system_charset_info,
-                       (uchar *)lex->ident.str, lex->ident.length,
-                       (uchar *)sv->name, sv->length) == 0)
-        break;
-    }
-    if (sv)
-    {
-      if (ha_rollback_to_savepoint(thd, sv))
-        res= TRUE; // cannot happen
-      else
-      {
-        if (((thd->options & OPTION_KEEP_LOG) || 
-             thd->transaction.all.modified_non_trans_table) &&
-            !thd->slave_thread)
-          push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                       ER_WARNING_NOT_COMPLETE_ROLLBACK,
-                       ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
-        my_ok(thd);
-      }
-      thd->transaction.savepoints=sv;
-    }
-    else
-      my_error(ER_SP_DOES_NOT_EXIST, MYF(0), "SAVEPOINT", lex->ident.str);
+    if (trans_rollback_to_savepoint(thd, lex->ident))
+      goto error;
+    my_ok(thd);
     break;
-  }
   case SQLCOM_SAVEPOINT:
-    if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN) ||
-          thd->in_sub_stmt) || !opt_using_transactions)
-      my_ok(thd);
-    else
-    {
-      SAVEPOINT **sv, *newsv;
-      for (sv=&thd->transaction.savepoints; *sv; sv=&(*sv)->prev)
-      {
-        if (my_strnncoll(system_charset_info,
-                         (uchar *)lex->ident.str, lex->ident.length,
-                         (uchar *)(*sv)->name, (*sv)->length) == 0)
-          break;
-      }
-      if (*sv) /* old savepoint of the same name exists */
-      {
-        newsv=*sv;
-        ha_release_savepoint(thd, *sv); // it cannot fail
-        *sv=(*sv)->prev;
-      }
-      else if ((newsv=(SAVEPOINT *) alloc_root(&thd->transaction.mem_root,
-                                               savepoint_alloc_size)) == 0)
-      {
-        my_error(ER_OUT_OF_RESOURCES, MYF(0));
-        break;
-      }
-      newsv->name=strmake_root(&thd->transaction.mem_root,
-                               lex->ident.str, lex->ident.length);
-      newsv->length=lex->ident.length;
-      /*
-        if we'll get an error here, don't add new savepoint to the list.
-        we'll lose a little bit of memory in transaction mem_root, but it'll
-        be free'd when transaction ends anyway
-      */
-      if (ha_savepoint(thd, newsv))
-        res= TRUE;
-      else
-      {
-        newsv->prev=thd->transaction.savepoints;
-        thd->transaction.savepoints=newsv;
-        my_ok(thd);
-      }
-    }
+    if (trans_savepoint(thd, lex->ident))
+      goto error;
+    my_ok(thd);
     break;
   case SQLCOM_CREATE_PROCEDURE:
   case SQLCOM_CREATE_SPFUNCTION:
@@ -4380,7 +4170,7 @@ create_sp_error:
                                  lex->sql_command == SQLCOM_DROP_PROCEDURE, 0))
           goto error;
 
-        if (end_active_trans(thd)) 
+        if (trans_commit_implicit(thd))
           goto error;
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 	if (sp_automatic_privileges && !opt_noacl &&
@@ -4506,173 +4296,29 @@ create_sp_error:
     break;
   }
   case SQLCOM_XA_START:
-    if (thd->transaction.xid_state.xa_state == XA_IDLE &&
-        thd->lex->xa_opt == XA_RESUME)
-    {
-      if (! thd->transaction.xid_state.xid.eq(thd->lex->xid))
-      {
-        my_error(ER_XAER_NOTA, MYF(0));
-        break;
-      }
-      thd->transaction.xid_state.xa_state=XA_ACTIVE;
-      my_ok(thd);
-      break;
-    }
-    if (thd->lex->xa_opt != XA_NONE)
-    { // JOIN is not supported yet. TODO
-      my_error(ER_XAER_INVAL, MYF(0));
-      break;
-    }
-    if (thd->transaction.xid_state.xa_state != XA_NOTR)
-    {
-      my_error(ER_XAER_RMFAIL, MYF(0),
-               xa_state_names[thd->transaction.xid_state.xa_state]);
-      break;
-    }
-    if (thd->locked_tables_mode || thd->active_transaction())
-    {
-      my_error(ER_XAER_OUTSIDE, MYF(0));
-      break;
-    }
-    if (xid_cache_search(thd->lex->xid))
-    {
-      my_error(ER_XAER_DUPID, MYF(0));
-      break;
-    }
-    DBUG_ASSERT(thd->transaction.xid_state.xid.is_null());
-    thd->transaction.xid_state.xa_state=XA_ACTIVE;
-    thd->transaction.xid_state.xid.set(thd->lex->xid);
-    xid_cache_insert(&thd->transaction.xid_state);
-    thd->transaction.all.modified_non_trans_table= FALSE;
-    thd->options= ((thd->options & ~(OPTION_KEEP_LOG)) | OPTION_BEGIN);
-    thd->server_status|= SERVER_STATUS_IN_TRANS;
+    if (trans_xa_start(thd))
+      goto error;
     my_ok(thd);
     break;
   case SQLCOM_XA_END:
-    /* fake it */
-    if (thd->lex->xa_opt != XA_NONE)
-    { // SUSPEND and FOR MIGRATE are not supported yet. TODO
-      my_error(ER_XAER_INVAL, MYF(0));
-      break;
-    }
-    if (thd->transaction.xid_state.xa_state != XA_ACTIVE)
-    {
-      my_error(ER_XAER_RMFAIL, MYF(0),
-               xa_state_names[thd->transaction.xid_state.xa_state]);
-      break;
-    }
-    if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
-    {
-      my_error(ER_XAER_NOTA, MYF(0));
-      break;
-    }
-    thd->transaction.xid_state.xa_state=XA_IDLE;
+    if (trans_xa_end(thd))
+      goto error;
     my_ok(thd);
     break;
   case SQLCOM_XA_PREPARE:
-    if (thd->transaction.xid_state.xa_state != XA_IDLE)
-    {
-      my_error(ER_XAER_RMFAIL, MYF(0),
-               xa_state_names[thd->transaction.xid_state.xa_state]);
-      break;
-    }
-    if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
-    {
-      my_error(ER_XAER_NOTA, MYF(0));
-      break;
-    }
-    if (ha_prepare(thd))
-    {
-      my_error(ER_XA_RBROLLBACK, MYF(0));
-      xid_cache_delete(&thd->transaction.xid_state);
-      thd->transaction.xid_state.xa_state=XA_NOTR;
-      break;
-    }
-    thd->transaction.xid_state.xa_state=XA_PREPARED;
+    if (trans_xa_prepare(thd))
+      goto error;
     my_ok(thd);
     break;
   case SQLCOM_XA_COMMIT:
-    if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
-    {
-      XID_STATE *xs=xid_cache_search(thd->lex->xid);
-      if (!xs || xs->in_thd)
-        my_error(ER_XAER_NOTA, MYF(0));
-      else
-      {
-        ha_commit_or_rollback_by_xid(thd->lex->xid, 1);
-        xid_cache_delete(xs);
-        my_ok(thd);
-      }
-      break;
-    }
-    if (thd->transaction.xid_state.xa_state == XA_IDLE &&
-        thd->lex->xa_opt == XA_ONE_PHASE)
-    {
-      int r;
-      if ((r= ha_commit(thd)))
-        my_error(r == 1 ? ER_XA_RBROLLBACK : ER_XAER_RMERR, MYF(0));
-      else
-        my_ok(thd);
-    }
-    else if (thd->transaction.xid_state.xa_state == XA_PREPARED &&
-             thd->lex->xa_opt == XA_NONE)
-    {
-      if (wait_if_global_read_lock(thd, 0, 0))
-      {
-        ha_rollback(thd);
-        my_error(ER_XAER_RMERR, MYF(0));
-      }
-      else
-      {
-        if (ha_commit_one_phase(thd, 1))
-          my_error(ER_XAER_RMERR, MYF(0));
-        else
-          my_ok(thd);
-        start_waiting_global_read_lock(thd);
-      }
-    }
-    else
-    {
-      my_error(ER_XAER_RMFAIL, MYF(0),
-               xa_state_names[thd->transaction.xid_state.xa_state]);
-      break;
-    }
-    thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
-    thd->transaction.all.modified_non_trans_table= FALSE;
-    thd->server_status&= ~SERVER_STATUS_IN_TRANS;
-    xid_cache_delete(&thd->transaction.xid_state);
-    thd->transaction.xid_state.xa_state=XA_NOTR;
+    if (trans_xa_commit(thd))
+      goto error;
+    my_ok(thd);
     break;
   case SQLCOM_XA_ROLLBACK:
-    if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
-    {
-      XID_STATE *xs=xid_cache_search(thd->lex->xid);
-      if (!xs || xs->in_thd)
-        my_error(ER_XAER_NOTA, MYF(0));
-      else
-      {
-        ha_commit_or_rollback_by_xid(thd->lex->xid, 0);
-        xid_cache_delete(xs);
-        my_ok(thd);
-      }
-      break;
-    }
-    if (thd->transaction.xid_state.xa_state != XA_IDLE &&
-        thd->transaction.xid_state.xa_state != XA_PREPARED)
-    {
-      my_error(ER_XAER_RMFAIL, MYF(0),
-               xa_state_names[thd->transaction.xid_state.xa_state]);
-      break;
-    }
-    if (ha_rollback(thd))
-      my_error(ER_XAER_RMERR, MYF(0));
-    else
-      my_ok(thd);
-    thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
-    thd->transaction.all.modified_non_trans_table= FALSE;
-    thd->server_status&= ~SERVER_STATUS_IN_TRANS;
-    xid_cache_delete(&thd->transaction.xid_state);
-    thd->transaction.xid_state.xa_state=XA_NOTR;
+    if (trans_xa_rollback(thd))
+      goto error;
+    my_ok(thd);
     break;
   case SQLCOM_XA_RECOVER:
     res= mysql_xa_recover(thd);

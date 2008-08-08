@@ -75,6 +75,7 @@
 #include "be_nodata.h"
 #include "ddl_blocker.h"
 #include "backup_progress.h"
+#include "transaction.h"
 
 
 /** 
@@ -737,8 +738,8 @@ int Backup_restore_ctx::close()
 
   if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
   {
-    ha_autocommit_or_rollback(m_thd, 0);
-    end_active_trans(m_thd);
+    trans_commit_stmt(m_thd);
+    trans_commit_implicit(m_thd);
   }
 
   // unlock tables if they are still locked

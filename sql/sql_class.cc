@@ -42,6 +42,7 @@
 
 #include "sp_rcontext.h"
 #include "sp_cache.h"
+#include "transaction.h"
 
 /*
   The following is used to initialise Table_ident with a internal
@@ -846,7 +847,8 @@ void THD::cleanup(void)
   }
 #endif
   {
-    ha_rollback(this);
+    transaction.xid_state.xa_state= XA_NOTR;
+    trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
   locked_tables_list.unlock_locked_tables(this);

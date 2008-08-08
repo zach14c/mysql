@@ -44,6 +44,7 @@
 #include "backup_engine.h"
 #include "be_snapshot.h"
 #include "backup_aux.h"
+#include "transaction.h"
 
 namespace snapshot_backup {
 
@@ -72,8 +73,8 @@ result_t Backup::cleanup()
     locking_thd->lock_state= LOCK_DONE; // set lock done so destructor won't wait
     if (m_trans_start)
     {
-      ha_autocommit_or_rollback(locking_thd->m_thd, 0);
-      end_active_trans(locking_thd->m_thd);
+      trans_commit_stmt(locking_thd->m_thd);
+      trans_commit_implicit(locking_thd->m_thd);
       m_trans_start= FALSE;
     }
     if (tables_open)
@@ -104,7 +105,7 @@ result_t Backup::lock()
   locking_thd->m_thd->lex->sql_command= SQLCOM_SELECT; 
   locking_thd->m_thd->lex->start_transaction_opt|=
     MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT;
-  int res= begin_trans(locking_thd->m_thd);
+  int res= trans_begin(locking_thd->m_thd);
   if (res)
     DBUG_RETURN(ERROR);
   m_trans_start= TRUE;
