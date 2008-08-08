@@ -1600,9 +1600,9 @@ int mct_check_result(const char *result_file_name)
   my_fclose(mct_log_file, MYF(0));
   mct_log_file= NULL;
 
-  snprintf(diff_cmd, CMD_BUFFER_SIZE, "diff -u '%s' '%s'",
-           (const char *) result_file_path,
-           (const char *) mct_log_file_path);
+  my_snprintf(diff_cmd, CMD_BUFFER_SIZE, "diff -u '%s' '%s'",
+              (const char *) result_file_path,
+              (const char *) mct_log_file_path);
 
   puts("");
   fflush(stdout);
