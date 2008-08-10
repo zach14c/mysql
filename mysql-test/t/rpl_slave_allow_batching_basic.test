@@ -131,10 +131,7 @@ SELECT count(VARIABLE_VALUE) FROM INFORMATION_SCHEMA.SESSION_VARIABLES WHERE VAR
 SELECT @@global.slave_allow_batching = VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME='slave_allow_batching';
 SELECT @@global.slave_allow_batching;
 SELECT VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME='slave_allow_batching';
-<<<<<<< HEAD:mysql-test/t/rpl_slave_allow_batching_basic.test
 --echo 'Bug: value in information schema does not match'
-=======
->>>>>>> ccbd9be3264a01162bf5dd0436855cb6bd937ae7:mysql-test/t/slave_allow_batching_basic.test
 
 --echo '#---------------------FN_DYNVARS_145_08-------------------------#'
 ################################################################### 

@@ -1,5 +1,7 @@
 SET @global_start_value = @@global.slave_allow_batching;
-'Bug: This variable is not supported in mysql version 5.1.22'
+SELECT @global_start_value;
+@global_start_value
+0
 '#--------------------FN_DYNVARS_145_01------------------------#'
 SET @@global.slave_allow_batching = 1;
 SET @@global.slave_allow_batching = DEFAULT;
