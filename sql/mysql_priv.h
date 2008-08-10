@@ -685,8 +685,6 @@ enum enum_parsing_place
   IN_ON
 };
 
-struct st_table;
-
 class THD;
 
 enum enum_check_fields

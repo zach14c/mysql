@@ -2604,7 +2604,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
           VIEW not really opened, only frm were read.
           Set 1 as a flag here
         */
-        table_list->view= (st_lex*)1;
+        table_list->view= (LEX*)1;
       }
       else
       {

@@ -389,7 +389,7 @@ typedef longlong      dec2;
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
+StorageInterface::StorageInterface(handlerton *hton, TABLE_SHARE *table_arg)
   : handler(hton, table_arg)
 {
 	ref_length = sizeof(lastRecord);
@@ -1007,7 +1007,7 @@ int StorageInterface::delete_all_rows()
 		DBUG_RETURN(my_errno=HA_ERR_WRONG_COMMAND);
 
 	int ret = 0;
-	struct st_table_share *tableShare = table_share;
+	TABLE_SHARE *tableShare = table_share;
 	const char *tableName = tableShare->normalized_path.str;
 	
 	if (!storageShare)

@@ -3145,7 +3145,7 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
                      OPEN_VIEW_NO_PARSE,
                      thd->open_options, &tbl, &table_list, thd->mem_root))
       goto err_share;
-    table_list.view= (st_lex*) share->is_view;
+    table_list.view= (LEX*) share->is_view;
     res= schema_table->process_table(thd, &table_list, table,
                                      res, db_name, table_name);
     goto err_share;
@@ -3154,7 +3154,7 @@ static int fill_schema_table_from_frm(THD *thd, TABLE_LIST *tables,
   {
     tbl.s= share;
     table_list.table= &tbl;
-    table_list.view= (st_lex*) share->is_view;
+    table_list.view= (LEX*) share->is_view;
     res= schema_table->process_table(thd, &table_list, table,
                                      res, db_name, table_name);
   }

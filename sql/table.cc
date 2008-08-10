@@ -2997,7 +2997,7 @@ table_check_intact(TABLE *table, const uint table_f_count,
   Create Item_field for each column in the table.
 
   SYNPOSIS
-    st_table::fill_item_list()
+    TABLE::fill_item_list()
       item_list          a pointer to an empty list used to store items
 
   DESCRIPTION
@@ -3010,7 +3010,7 @@ table_check_intact(TABLE *table, const uint table_f_count,
     1                    out of memory
 */
 
-bool st_table::fill_item_list(List<Item> *item_list) const
+bool TABLE::fill_item_list(List<Item> *item_list) const
 {
   /*
     All Item_field's created using a direct pointer to a field
@@ -3030,7 +3030,7 @@ bool st_table::fill_item_list(List<Item> *item_list) const
   Fields of this table.
 
   SYNPOSIS
-    st_table::fill_item_list()
+    TABLE::fill_item_list()
       item_list          a non-empty list with Item_fields
 
   DESCRIPTION
@@ -3040,7 +3040,7 @@ bool st_table::fill_item_list(List<Item> *item_list) const
     is the same as the number of columns in the table.
 */
 
-void st_table::reset_item_list(List<Item> *item_list) const
+void TABLE::reset_item_list(List<Item> *item_list) const
 {
   List_iterator_fast<Item> it(*item_list);
   for (Field **ptr= field; *ptr; ptr++)
@@ -3966,7 +3966,7 @@ const char *Natural_join_column::db_name()
     return table_ref->view_db.str;
 
   /*
-    Test that TABLE_LIST::db is the same as st_table_share::db to
+    Test that TABLE_LIST::db is the same as TABLE_SHARE::db to
     ensure consistency. An exception are I_S schema tables, which
     are inconsistent in this respect.
   */
@@ -4185,7 +4185,7 @@ const char *Field_iterator_table_ref::db_name()
     return natural_join_it.column_ref()->db_name();
 
   /*
-    Test that TABLE_LIST::db is the same as st_table_share::db to
+    Test that TABLE_LIST::db is the same as TABLE_SHARE::db to
     ensure consistency. An exception are I_S schema tables, which
     are inconsistent in this respect.
   */
@@ -4357,7 +4357,7 @@ Field_iterator_table_ref::get_natural_column_ref()
 
 /* Reset all columns bitmaps */
 
-void st_table::clear_column_bitmaps()
+void TABLE::clear_column_bitmaps()
 {
   /*
     Reset column read/write usage. It's identical to:
@@ -4378,9 +4378,9 @@ void st_table::clear_column_bitmaps()
   key fields.
 */
 
-void st_table::prepare_for_position()
+void TABLE::prepare_for_position()
 {
-  DBUG_ENTER("st_table::prepare_for_position");
+  DBUG_ENTER("TABLE::prepare_for_position");
 
   if ((file->ha_table_flags() & HA_PRIMARY_KEY_IN_READ_INDEX) &&
       s->primary_key < MAX_KEY)
@@ -4399,14 +4399,14 @@ void st_table::prepare_for_position()
   NOTE:
     This changes the bitmap to use the tmp bitmap
     After this, you can't access any other columns in the table until
-    bitmaps are reset, for example with st_table::clear_column_bitmaps()
-    or st_table::restore_column_maps_after_mark_index()
+    bitmaps are reset, for example with TABLE::clear_column_bitmaps()
+    or TABLE::restore_column_maps_after_mark_index()
 */
 
-void st_table::mark_columns_used_by_index(uint index)
+void TABLE::mark_columns_used_by_index(uint index)
 {
   MY_BITMAP *bitmap= &tmp_set;
-  DBUG_ENTER("st_table::mark_columns_used_by_index");
+  DBUG_ENTER("TABLE::mark_columns_used_by_index");
 
   (void) file->extra(HA_EXTRA_KEYREAD);
   bitmap_clear_all(bitmap);
@@ -4427,9 +4427,9 @@ void st_table::mark_columns_used_by_index(uint index)
     when calling mark_columns_used_by_index
 */
 
-void st_table::restore_column_maps_after_mark_index()
+void TABLE::restore_column_maps_after_mark_index()
 {
-  DBUG_ENTER("st_table::restore_column_maps_after_mark_index");
+  DBUG_ENTER("TABLE::restore_column_maps_after_mark_index");
 
   key_read= 0;
   (void) file->extra(HA_EXTRA_NO_KEYREAD);
@@ -4443,7 +4443,7 @@ void st_table::restore_column_maps_after_mark_index()
   mark columns used by key, but don't reset other fields
 */
 
-void st_table::mark_columns_used_by_index_no_reset(uint index,
+void TABLE::mark_columns_used_by_index_no_reset(uint index,
                                                    MY_BITMAP *bitmap)
 {
   KEY_PART_INFO *key_part= key_info[index].key_part;
@@ -4462,7 +4462,7 @@ void st_table::mark_columns_used_by_index_no_reset(uint index,
     always set and sometimes read.
 */
 
-void st_table::mark_auto_increment_column()
+void TABLE::mark_auto_increment_column()
 {
   DBUG_ASSERT(found_next_number_field);
   /*
@@ -4495,7 +4495,7 @@ void st_table::mark_auto_increment_column()
     retrieve the row again.
 */
 
-void st_table::mark_columns_needed_for_delete()
+void TABLE::mark_columns_needed_for_delete()
 {
   if (triggers)
     triggers->mark_fields_used(TRG_EVENT_DELETE);
@@ -4548,7 +4548,7 @@ void st_table::mark_columns_needed_for_delete()
     retrieve the row again.
 */
 
-void st_table::mark_columns_needed_for_update()
+void TABLE::mark_columns_needed_for_update()
 {
   DBUG_ENTER("mark_columns_needed_for_update");
   if (triggers)
@@ -4594,7 +4594,7 @@ void st_table::mark_columns_needed_for_update()
   as changed.
 */
 
-void st_table::mark_columns_needed_for_insert()
+void TABLE::mark_columns_needed_for_insert()
 {
   if (triggers)
   {
@@ -4670,9 +4670,9 @@ Item_subselect *TABLE_LIST::containing_subselect()
   DESCRIPTION
     The parser collects the index hints for each table in a "tagged list" 
     (TABLE_LIST::index_hints). Using the information in this tagged list
-    this function sets the members st_table::keys_in_use_for_query, 
-    st_table::keys_in_use_for_group_by, st_table::keys_in_use_for_order_by,
-    st_table::force_index and st_table::covering_keys.
+    this function sets the members TABLE::keys_in_use_for_query, 
+    TABLE::keys_in_use_for_group_by, TABLE::keys_in_use_for_order_by,
+    TABLE::force_index and TABLE::covering_keys.
 
     Current implementation of the runtime does not allow mixing FORCE INDEX
     and USE INDEX, so this is checked here. Then the FORCE INDEX list 

@@ -17,8 +17,7 @@
 #define TABLE_MAPPING_H
 
 /* Forward declarations */
-struct st_table;
-typedef st_table TABLE;
+struct TABLE;
 
 /*
   CLASS table_mapping

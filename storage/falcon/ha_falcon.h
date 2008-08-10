@@ -28,14 +28,14 @@ static const int TRANSACTION_WRITE_COMMITTED  = 4;	// Dirty reads are prevented;
 static const int TRANSACTION_CONSISTENT_READ  = 8;	// Dirty reads and non-repeatable reads are prevented; phantom reads can occur.   
 static const int TRANSACTION_SERIALIZABLE     = 16;	// Dirty reads, non-repeatable reads and phantom reads are prevented.
 
-struct st_table_share;
+struct TABLE_SHARE;
 struct StorageIndexDesc;
 struct StorageBlob;
 
 class StorageInterface : public handler
 {
 public:
-	StorageInterface(handlerton *, st_table_share *table_arg);
+	StorageInterface(handlerton *, TABLE_SHARE *table_arg);
 	~StorageInterface(void);
 
 	virtual int		open(const char *name, int mode, uint test_if_locked);
@@ -176,7 +176,7 @@ public:
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
-	st_table_share		*share;
+	TABLE_SHARE *share;
 	uint				recordLength;
 	int					lastRecord;
 	int					nextRecord;
