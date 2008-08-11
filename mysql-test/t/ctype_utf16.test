@@ -502,12 +502,14 @@ drop table t1;
 
 set collation_connection=utf16_general_ci;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 select hex(weight_string(_utf16 0xD800DC00));
 select hex(weight_string(_utf16 0xD800DC01));
 --source include/weight_string_l1.inc
 
 set collation_connection=utf16_bin;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set names latin1;
@@ -706,6 +708,29 @@ drop table t1;
 set collation_connection=utf16_general_ci;
 --source include/ctype_regex.inc
 set names latin1;
+
+#
+# Test how character set works with date/time
+#
+SET collation_connection=utf16_general_ci;
+--source include/ctype_datetime.inc
+SET NAMES latin1;
+
+#
+# Bug#33073 Character sets: ordering fails with utf32
+#
+SET collation_connection=utf16_general_ci;
+CREATE TABLE t1 AS SELECT repeat('a',2) as s1 LIMIT 0;
+SHOW CREATE TABLE t1;
+INSERT INTO t1 VALUES ('ab'),('AE'),('ab'),('AE');
+SELECT * FROM t1 ORDER BY s1;
+SET max_sort_length=4;
+SELECT * FROM t1 ORDER BY s1;
+SELECT hex(weight_string(s1, 4, 2, 0)) FROM t1 ORDER BY s1;
+DROP TABLE t1;
+SET max_sort_length=DEFAULT;
+SET NAMES latin1;
+
 
 #
 ## TODO: add tests for all engines

@@ -233,8 +233,9 @@ extern uint    my_large_page_size;
 #endif
 
 /* charsets */
+#define MY_ALL_CHARSETS_SIZE 512
 extern CHARSET_INFO *default_charset_info;
-extern CHARSET_INFO *all_charsets[256];
+extern CHARSET_INFO *all_charsets[MY_ALL_CHARSETS_SIZE];
 extern CHARSET_INFO compiled_charsets[];
 
 /* statistics */
