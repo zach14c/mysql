@@ -44,6 +44,7 @@ Role::Role(Database *db, const char* roleSchema, const char* roleName) : Privile
 	setName (roleSchema, roleName);
 	useCount = 1;
 	memset (privileges, 0, sizeof (privileges));
+	syncObject.setName("Role::syncObject");
 }
 
 Role::~Role()

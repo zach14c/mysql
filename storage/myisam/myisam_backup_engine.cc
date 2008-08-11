@@ -177,7 +177,7 @@ class Engine: public Backup_engine
 {
   public:
     Engine() {}
-    virtual const version_t version() const { return MYISAM_BACKUP_VERSION; };
+    virtual version_t version() const { return MYISAM_BACKUP_VERSION; };
     virtual result_t get_backup(const uint32, const Table_list &,
                                 Backup_driver* &);
     virtual result_t get_restore(const version_t, const uint32,

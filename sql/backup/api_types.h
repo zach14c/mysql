@@ -72,7 +72,7 @@ class Db_ref
   Db_ref() :m_name(NULL)
   {}
 
-  const bool is_valid() const
+  bool is_valid() const
   { return m_name != NULL; }
 
   const String& name() const
@@ -110,7 +110,7 @@ class Table_ref
   Table_ref() :m_name(NULL)
   {}
 
-  const bool is_valid() const
+  bool is_valid() const
   { return m_name != NULL; }
 
   const Db_ref& db() const

@@ -213,6 +213,14 @@ class Backup_pump
 
 };
 
+/*
+  The constant is declared here (and memory allocated for it) because
+  IBM's xlc compiler requires that. However, the intention was to make it
+  a pure symbolic constant (no need to allocate memory). If someone knows
+  how to achieve that and keep xlc happy, please let me know. /Rafal
+*/ 
+const uint Backup_pump::get_buf_retries;
+
 /**
  @class Scheduler
 

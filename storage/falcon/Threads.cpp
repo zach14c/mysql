@@ -46,6 +46,7 @@ Threads::Threads(Threads *parentThreads, int maximumThreads)
 	threadsActive = 0;
 	firstPending = NULL;
 	lastPending = NULL;
+	syncObject.setName("Threads::syncObject");
 }
 
 Threads::~Threads()

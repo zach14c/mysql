@@ -103,7 +103,7 @@ public:
 	volatile INTERLOCK_TYPE	useCount;
 
 #ifdef COLLECT_BDB_HISTORY
-	SyncObject	historySyncObject;
+	SyncObject	syncHistory;
 	uint initCount;
 	uint historyCount;
 	struct bdb_history		history[MAX_BDB_HISTORY];

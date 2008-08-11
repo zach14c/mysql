@@ -72,6 +72,7 @@ Server::Server(Server *server, Protocol *proto)
 
 	protocol = proto;
 	threads = NULL;
+	syncObject.setName("Server::syncObject");
 }
 
 Server::Server(int requestedPort, const char *configFileName)

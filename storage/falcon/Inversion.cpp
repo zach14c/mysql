@@ -61,6 +61,7 @@ Inversion::Inversion(Dbb *db)
 	runs = 0;
 	inserting = true;
 	state = 0;
+	syncObject.setName("Inversion::syncObject");
 }
 
 Inversion::~Inversion()

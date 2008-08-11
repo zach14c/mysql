@@ -1,0 +1,48 @@
+--source include/have_falcon.inc
+
+#
+# Bug#37080: Falcon deadlock on parallel TRUNCATE  and INSERT
+#
+--echo *** Bug #37080 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1(a int);
+connect (conn1,localhost,root,,);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+let $num=10000;
+--disable_query_log
+while ($num)
+{
+   connection conn1;
+   --send insert into t1 values(1), (3), (5), (7) , (11);
+   connection default;
+   --send truncate table t1;
+   connection conn1;
+   --reap
+   connection default;
+   --reap 
+   dec $num;
+}
+--enable_query_log
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

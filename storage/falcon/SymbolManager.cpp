@@ -55,6 +55,7 @@ SymbolManager::SymbolManager()
 	sections->next = NULL;
 	next = sections->space;
 	memset (hashTable, 0, sizeof (hashTable));
+	syncObject.setName("SymbolManager::syncObject");
 }
 
 SymbolManager::~SymbolManager()
@@ -98,7 +99,7 @@ const char* SymbolManager::getSymbol(const char *string)
 		if (section->space <= string && string < section->space + sizeof (section->space))
 			return string;
 
-	Sync sync (&syncObject, "SymbolManager::getSymbol");
+	Sync sync (&syncObject, "SymbolManager::getSymbol(1)");
 	sync.lock (Shared);
 	int	value = 0, c;
 	const char *p;
@@ -156,7 +157,7 @@ const char* SymbolManager::getString(const char *string)
 		if (section->space <= string && string < section->space + sizeof (section->space))
 			return string;
 
-	Sync sync (&syncObject, "SymbolManager::getSymbol");
+	Sync sync (&syncObject, "SymbolManager::getString");
 	sync.lock (Shared);
 	int	value = 0, c;
 	const char *p;
@@ -218,7 +219,7 @@ bool SymbolManager::isSymbol(const char *string)
 
 const char* SymbolManager::getSymbol(const WCString *string)
 {
-	Sync sync (&syncObject, "SymbolManager::getSymbol(WC)");
+	Sync sync (&syncObject, "SymbolManager::getSymbol(2)");
 	sync.lock (Shared);
 	int	value = 0, c;
 	//int length = Unicode::getUtf8Length(string->count, (UCHAR*) string->string);

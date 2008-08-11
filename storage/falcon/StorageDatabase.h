@@ -111,7 +111,7 @@ public:
 	StorageDatabase		*next;
 	StorageHandler		*storageHandler;
 	SyncObject			syncObject;
-	SyncObject			traceSyncObject;
+	SyncObject			syncTrace;
 	User				*user;
 	PreparedStatement	*lookupIndexAlias;
 	PreparedStatement	*insertTrace;
