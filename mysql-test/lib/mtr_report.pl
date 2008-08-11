@@ -439,8 +439,10 @@ sub mtr_report_stats ($) {
                 /Checking table:   '.\/mysqltest\/t_corrupted2'/ or
                 /Recovering table: '.\/mysqltest\/t_corrupted2'/ or
                 /Table '.\/mysqltest\/t_corrupted2' is marked as crashed and should be repaired/ or
-                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/
-	       )
+                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/ or
+                # Bug#35161, test of auto repair --myisam-recover
+                /able.*_will_crash/
+              )
             {
               next;                       # Skip these lines
             }
