@@ -566,7 +566,33 @@ ERROR HY000: Failed to add view `bup_db2`.`student_details` to the catalog
 *** EXIT Backup of database with missing view dependency
 
 
+*** ENTER Backup of database with altered view should report error, not crash server
+Test for bug#34867
+initializing test
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+RESTORE FROM 'bup_objectview.bak';
+backup_id
+#
+USE bup_db1;
+CREATE VIEW alter1 AS SELECT 5;
+CREATE VIEW alter2 AS SELECT * FROM alter1;
+ALTER VIEW alter1 AS SELECT 6;
+
+Testing view selecting from altered view
+
+SELECT * FROM alter2;
+ERROR HY000: View 'bup_db1.alter2' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
+BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
+ERROR HY000: View 'bup_db1.alter2' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
+
+*** EXIT Backup of database with altered view
+
+
 ***  DROP bup_db1, bup_db2 DATABASE ****
 
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;

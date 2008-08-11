@@ -356,6 +356,7 @@ sub mtr_report_stats ($) {
 		($testname eq 'main.backup_views') and
 		(
 		  /Backup: Failed to add view/ or
+		  /Backup: Failed to obtain meta-data for view/ or
 		  /Restore: Could not restore view/
 		) or
  	 

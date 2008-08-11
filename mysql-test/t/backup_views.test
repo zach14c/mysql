@@ -327,6 +327,40 @@ BACKUP DATABASE bup_db2 TO 'bup_shouldfail2.bak';
 --echo *** EXIT Backup of database with missing view dependency
 --echo
 
+--echo 
+--echo *** ENTER Backup of database with altered view should report error, not crash server
+--echo Test for bug#34867
+
+--echo initializing test
+
+# start with the backed up database
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+
+replace_column 1 #;
+RESTORE FROM 'bup_objectview.bak';
+
+USE bup_db1;
+CREATE VIEW alter1 AS SELECT 5;
+CREATE VIEW alter2 AS SELECT * FROM alter1;
+ALTER VIEW alter1 AS SELECT 6;
+
+--echo
+--echo Testing view selecting from altered view
+--echo 
+
+--error ER_VIEW_INVALID
+SELECT * FROM alter2;
+
+#fails
+--error ER_VIEW_INVALID
+BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
+
+--echo 
+--echo *** EXIT Backup of database with altered view
+--echo 
+
+
 # Test cleanup section
 
 --echo
@@ -334,6 +368,9 @@ BACKUP DATABASE bup_db2 TO 'bup_shouldfail2.bak';
 --echo
 
 
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
@@ -345,4 +382,6 @@ DROP DATABASE bup_db2;
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail1.bak
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail2.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_alterview.bak
 
