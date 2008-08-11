@@ -12,4 +12,3 @@
 
 falcon_bug_28095_I  : Bug#xxxxx 2008-04-22 hakank Disabled until soft restart is in main tree
 falcon_bug_28095_II : Bug#xxxxx 2008-03-22 hakank Disabled until soft restart is in main tree
-falcon_bug_22165 : Bug#22165 2008-08-07 wlad Disabled temporarily, because it crashes. Work in progress

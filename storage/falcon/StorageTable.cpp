@@ -565,6 +565,11 @@ int StorageTable::alterCheck(void)
 	return 0;
 }
 
+void StorageTable::waitForWriteComplete(void)
+{
+	share->table->waitForWriteComplete();
+}
+
 void StorageTable::unlockRow(void)
 {
 	if (recordLocked)
