@@ -30,7 +30,7 @@ void backup_shutdown();
   Called from the big switch in mysql_execute_command() to execute
   backup related statement
 */
-int execute_backup_command(THD*, LEX*);
+int execute_backup_command(THD*, LEX*, String*);
 
 // forward declarations
 
@@ -66,8 +66,12 @@ class Backup_restore_ctx: public backup::Logger
   bool is_valid() const;
   ulonglong op_id() const;
 
-  Backup_info*  prepare_for_backup(LEX_STRING location, const char*, bool);
-  Restore_info* prepare_for_restore(LEX_STRING location, const char*);  
+  Backup_info*  prepare_for_backup(String *location, 
+                                   LEX_STRING orig_loc, 
+                                   const char*, bool);
+  Restore_info* prepare_for_restore(String *location, 
+                                   LEX_STRING orig_loc,
+                                   const char*);  
 
   int do_backup();
   int do_restore();
@@ -79,9 +83,11 @@ class Backup_restore_ctx: public backup::Logger
 
  private:
 
-  /** Indicates if a backup/restore operation is in progress. */
-  static bool is_running;
-  static pthread_mutex_t  run_lock; ///< To guard @c is_running flag.
+  /** @c current_op points to the @c Backup_restore_ctx for the
+      ongoing backup/restore operation.  If pointer is null, no
+      operation is currently running. */
+  static Backup_restore_ctx *current_op;
+  static pthread_mutex_t  run_lock; ///< To guard @c current_op.
 
   /** 
     @brief State of a context object. 
@@ -109,7 +115,7 @@ class Backup_restore_ctx: public backup::Logger
   backup::Image_info *m_catalog;  ///< Pointer to the image catalogue object.
 
   /** Memory allocator for backup stream library. */
-  static backup::Mem_allocator *mem_alloc;
+  backup::Mem_allocator *mem_alloc;
 
   int prepare(LEX_STRING location);
   void disable_fkey_constraints();
