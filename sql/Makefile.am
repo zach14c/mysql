@@ -89,7 +89,7 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			sql_partition.h partition_info.h partition_element.h \
 			probes.h sql_audit.h transaction.h \
 			contributors.h sql_servers.h ddl_blocker.h \
-			si_objects.h sql_plist.h mdl.h
+			si_objects.h sql_plist.h mdl.h records.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \

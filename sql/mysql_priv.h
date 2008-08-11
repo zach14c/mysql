@@ -916,6 +916,7 @@ bool general_log_write(THD *thd, enum enum_server_command command,
 #include "tztime.h"
 #ifdef MYSQL_SERVER
 #include "sql_servers.h"
+#include "records.h"
 #include "opt_range.h"
 
 #ifdef HAVE_QUERY_CACHE

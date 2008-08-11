@@ -624,6 +624,7 @@ struct handler_iterator {
   void *buffer;
 };
 
+struct handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
   to provide access to storage engine functionality that works on the
