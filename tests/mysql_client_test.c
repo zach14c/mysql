@@ -1502,6 +1502,7 @@ static void test_prepare_simple()
 /************************************************************************/
 
 #define FILE_PATH_SIZE 4096
+#define CMD_BUFFER_SIZE 8192
 
 char mct_log_file_path[FILE_PATH_SIZE];
 FILE *mct_log_file;
@@ -1561,7 +1562,6 @@ void mct_log(const char *format, ...)
 
 int mct_check_result(const char *result_file_name)
 {
-  const int CMD_BUFFER_SIZE= 8192;
   char diff_cmd[CMD_BUFFER_SIZE];
 
   const char *test_dir= getenv("MYSQL_TEST_DIR");
