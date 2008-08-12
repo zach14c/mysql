@@ -20,6 +20,9 @@
 #ifndef TRANSACTION_H
 #define TRANSACTION_H
 
+#include <my_global.h>
+#include <m_string.h>
+
 class THD;
 
 bool trans_begin(THD *thd, uint flags= 0);

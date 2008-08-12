@@ -18,8 +18,8 @@
 #pragma implementation                         // gcc: Class implementation
 #endif
 
-#include "mysql_priv.h"
 #include "transaction.h"
+#include "mysql_priv.h"
 
 #ifdef WITH_MARIA_STORAGE_ENGINE
 #include "../storage/maria/ha_maria.h"
