@@ -22,9 +22,8 @@ DEFS= @DEFS@ \
       -D_REENTRANT -D_PTHREADS -DFALCONDB -DSTORAGE_ENGINE -DNAMESPACE=Nfs
 
 INCLUDES= -I$(top_srcdir)/include -I$(top_builddir)/include \
-	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql \
-	  -I$(srcdir) -I$(srcdir)/TransformLib @ZLIB_INCLUDES@ \
-	  @FALCON_SPARC_ASSEMBLY@
+	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql -I$(srcdir) \
+	  -I$(srcdir)/TransformLib @ZLIB_INCLUDES@ @FALCON_SPARC_ASSEMBLY@
 
 falcon_headers= Agent.h Alias.h Application.h \
 		AsciiBlob.h \

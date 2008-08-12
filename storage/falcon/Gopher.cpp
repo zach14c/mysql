@@ -39,11 +39,11 @@ void Gopher::gopherThread(void* arg)
 
 void Gopher::gopherThread(void)
 {
-	Sync deadMan(&log->syncGopher, "Gopher::gopherThread");
+	Sync deadMan(&log->syncGopher, "Gopher::gopherThread(1)");
 	deadMan.lock(Shared);
 	workerThread = Thread::getThread("Gopher::gopherThread");
 	active = true;
-	Sync syncPending (&log->pending.syncObject, "Gopher::gopherThread pending");
+	Sync syncPending (&log->pending.syncObject, "Gopher::gopherThread(2)");
 	syncPending.lock(Exclusive);
 	
 	while (!workerThread->shutdownInProgress && !log->finishing)

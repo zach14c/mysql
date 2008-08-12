@@ -463,7 +463,7 @@ void StorageTableShare::registerTable(void)
 	
 	try
 		{
-		Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::save");
+		Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::registerTable");
 		sync.lock(Exclusive);
 		connection = storageHandler->getDictionaryConnection();
 		statement = connection->prepareStatement(
@@ -494,7 +494,7 @@ void StorageTableShare::registerTable(void)
 
 void StorageTableShare::unRegisterTable(void)
 {
-	Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::unsave");
+	Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::unRegisterTable");
 	sync.lock(Exclusive);
 	Connection *connection = storageHandler->getDictionaryConnection();
 	PreparedStatement *statement = connection->prepareStatement(

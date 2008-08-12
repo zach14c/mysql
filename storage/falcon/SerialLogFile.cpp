@@ -169,7 +169,7 @@ void SerialLogFile::close()
 void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *data)
 {
 	uint32 effectiveLength = ROUNDUP(length, sectorSize);
-    time_t start = database->timestamp;
+	time_t start = database->timestamp;
 	Priority priority(database->ioScheduler);
 	
 	if (!(position == writePoint || position == 0 || writePoint == 0))
@@ -202,7 +202,7 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	uint32 n = ::pwrite (handle, data, effectiveLength, position);
 #else
-	Sync sync (&syncObject, "IO::pwrite");
+	Sync sync (&syncObject, "SerialLogFile::write");
 	sync.lock (Exclusive);
 
 	if (position != offset)
@@ -244,7 +244,7 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 {
 	uint32 effectiveLength = ROUNDUP(length, sectorSize);
-	//Sync syncIO(&database->syncSerialLogIO, "SerialLogFile::read");
+	//Sync syncIO(&database->syncSerialLogIO, "SerialLogFile::read(1)");
 	Priority priority(database->ioScheduler);
 
 	if (falcon_serial_log_priority)
@@ -274,7 +274,7 @@ uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	int n = ::pread (handle, data, effectiveLength, position);
 #else
-	Sync sync(&syncObject, "SerialLogFile::read");
+	Sync sync(&syncObject, "SerialLogFile::read(2)");
 	sync.lock(Exclusive);
 	ASSERT(position < writePoint || writePoint == 0);
 	off_t loc = lseek(handle, position, SEEK_SET);

@@ -4705,11 +4705,15 @@ sub run_mysqltest ($) {
 
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
+  # and remove existing falcon tables
   # ----------------------------------------------------------------------
-
+  
   if ( $glob_use_embedded_server )
   {
     mysqld_arguments($args,$master->[0],$tinfo->{'master_opt'},[]);
+    #Remove  falcon tables before each test, otherwise every start might fail
+    #if there is an error in falcon recovery
+    rm_falcon_tables($master->[0]->{'path_myddir'});
   }
 
   # ----------------------------------------------------------------------

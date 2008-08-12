@@ -253,8 +253,4 @@ public:
 	static int getTableSpaceFilesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initTableSpaceFilesInfo(void *p);
 	static int deinitTableSpaceFilesInfo(void *p);
-	
-	static int getTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTablesInfo(void *p);
-	static int deinitTablesInfo(void *p);
 };

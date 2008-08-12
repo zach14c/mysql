@@ -22,13 +22,14 @@
 class WalkDeferred : public IndexWalker
 {
 public:
-	WalkDeferred(DeferredIndex *deferredIndex, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper);
+	WalkDeferred(DeferredIndex *deferredIdx, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper);
 	virtual ~WalkDeferred(void);
 
 	virtual Record*		getNext(bool lockForUpdate);
 	
 	DeferredIndexWalker		walker;
 	DINode					*node;
+	DeferredIndex			*deferredIndex;
 };
 
 #endif

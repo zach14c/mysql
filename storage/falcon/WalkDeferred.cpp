@@ -16,15 +16,17 @@
 #include "Engine.h"
 #include "WalkDeferred.h"
 
-WalkDeferred::WalkDeferred(DeferredIndex *deferredIndex, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper) 
-	: IndexWalker(deferredIndex->index, transaction, flags)
+WalkDeferred::WalkDeferred(DeferredIndex *deferredIdx, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper) 
+	: IndexWalker(deferredIdx->index, transaction, flags)
 {
+	deferredIndex = deferredIdx;
 	walker.initialize(deferredIndex, lower, flags);
 	node = NULL;
 }
 
 WalkDeferred::~WalkDeferred(void)
 {
+	deferredIndex->releaseRef();
 }
 
 Record* WalkDeferred::getNext(bool lockForUpdate)
