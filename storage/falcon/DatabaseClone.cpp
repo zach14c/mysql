@@ -50,7 +50,7 @@ void DatabaseClone::createFile(const char* fileName)
 	shadow = new IO;
 	shadow->pageSize = dbb->pageSize;
 	shadow->dbb = dbb;
-	shadow->createFile(fileName, 0);
+	shadow->createFile(fileName);
 }
 
 const char* DatabaseClone::getFileName(void)
@@ -78,7 +78,7 @@ void DatabaseClone::writePage(Bdb* bdb)
 
 void DatabaseClone::clone(void)
 {
-	Sync sync(&syncObject, "DatabaseClone::clone");
+	Sync sync(&syncObject, "DatabaseClone::clone(1)");
 	int n = 0;
 
 	for (;;)
@@ -111,7 +111,7 @@ void DatabaseClone::clone(void)
 			
 			//  In theory, we're done.  Lock the cache against changes, and check again
 			
-			Sync syncCache(&dbb->cache->syncObject, "Dbb::cloneFile");
+			Sync syncCache(&dbb->cache->syncObject, "DatabaseClone::clone(2)");
 			syncCache.lock(Exclusive);
 			lastPage = PageInventoryPage::getLastPage(dbb);
 

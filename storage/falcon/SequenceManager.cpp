@@ -54,6 +54,7 @@ SequenceManager::SequenceManager(Database *db)
 {
 	database = db;
 	memset (sequences, 0, sizeof (sequences));
+	syncObject.setName("SequenceManager::syncObject");
 }
 
 SequenceManager::~SequenceManager()

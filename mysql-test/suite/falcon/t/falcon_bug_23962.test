@@ -1,8 +1,9 @@
 --source include/have_falcon.inc
+
 #
-# Bug #22161: Duplicate key error with non-unique index after alter
+# Bug #23962: Wrong results with > search
 #
---echo *** Bug #22161 ***
+--echo *** Bug #23962 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -14,20 +15,14 @@ eval SET @@storage_engine = $engine;
 DROP TABLE IF EXISTS t1;
 --enable_warnings
 
-CREATE TABLE t1 (a text);
+CREATE TABLE t1 (a char(5), KEY (a));
+INSERT INTO t1 VALUES ('a'), ('aa'), ('aaa'), ('abc'), ('bbb');
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-INSERT INTO t1 VALUES (repeat('a',16384));
-ALTER TABLE t1 MODIFY COLUMN a varchar(30000);
-ALTER TABLE t1 MODIFY COLUMN a text;
---error ER_BLOB_USED_AS_KEY
-CREATE INDEX i1 ON t1 (a);
-ALTER TABLE t1 MODIFY COLUMN a varchar(30000);
---disable_warnings
-CREATE INDEX i1 ON t1 (a);
---enable_warnings
+SELECT * FROM t1 WHERE a > 'a'  ORDER BY a;
+SELECT * FROM t1 WHERE a > 'aa' ORDER BY a;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
