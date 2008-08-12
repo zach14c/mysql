@@ -48,6 +48,7 @@ typedef struct st_ha_data_partition
 } HA_DATA_PARTITION;
 
 #define PARTITION_BYTES_IN_POS 2
+#define PARTITION_MAX_MSG_BUF  1024   /**< used in CHECK TABLE, REPAIR TABLE */
 class ha_partition :public handler
 {
 private:

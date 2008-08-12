@@ -1007,7 +1007,7 @@ static bool print_admin_msg(THD* thd, const char* msg_type,
   va_list args;
   Protocol *protocol= thd->protocol;
   uint length, msg_length;
-  char msgbuf[MI_MAX_MSG_BUF];
+  char msgbuf[PARTITION_MAX_MSG_BUF];
   char name[NAME_LEN*2+2];
 
   va_start(args, fmt);
