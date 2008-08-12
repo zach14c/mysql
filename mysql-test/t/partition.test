@@ -15,6 +15,29 @@ drop table if exists t1, t2;
 --enable_warnings
 
 #
+# Bug#35765: ALTER TABLE produces wrong error when non-existent storage engine
+# used
+CREATE TABLE t1 (a INT)
+ENGINE=NonExistentEngine;
+DROP TABLE t1;
+CREATE TABLE t1 (a INT)
+ENGINE=NonExistentEngine
+PARTITION BY HASH (a);
+DROP TABLE t1;
+CREATE TABLE t1 (a INT)
+ENGINE=Memory;
+ALTER TABLE t1 ENGINE=NonExistentEngine;
+# OK to only specify one partitions engine, since it is already assigned at
+# table level (after create, it is specified on all levels and all parts).
+ALTER TABLE t1
+PARTITION BY HASH (a)
+(PARTITION p0 ENGINE=Memory,
+ PARTITION p1 ENGINE=NonExistentEngine);
+ALTER TABLE t1 ENGINE=NonExistentEngine;
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+#
 # Bug35931: Index search may return duplicates
 #
 CREATE TABLE t1 (
@@ -1357,11 +1380,9 @@ SHOW TABLE STATUS;
 DELETE from t1 where a = 1;
 --replace_column 9 0 12 NULL 13 NULL 14 NULL
 SHOW TABLE STATUS;
-# restore this after WL#4176 is completed
--- error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 OPTIMIZE PARTITION p0;
-#--replace_column 12 NULL 13 NULL 14 NULL
-#SHOW TABLE STATUS;
+--replace_column 12 NULL 13 NULL 14 NULL
+SHOW TABLE STATUS;
 DROP TABLE t1;
 
 #
@@ -1695,13 +1716,9 @@ PARTITION BY RANGE (a) (
 ALTER TABLE t1 OPTIMIZE PARTITION p1 EXTENDED;
 --error ER_PARSE_ERROR
 ALTER TABLE t1 ANALYZE PARTITION p1 EXTENDED;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 ANALYZE PARTITION p1;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 CHECK PARTITION p1;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 REPAIR PARTITION p1;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 OPTIMIZE PARTITION p1;
 DROP TABLE t1;
 

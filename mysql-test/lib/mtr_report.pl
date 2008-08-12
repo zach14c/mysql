@@ -350,7 +350,6 @@ sub mtr_report_stats ($) {
 		/Sort aborted/ or
 		/Time-out in NDB/ or
 		/One can only use the --user.*root/ or
-		/Setting lower_case_table_names=2/ or
 		/Table:.* on (delete|rename)/ or
 		/You have an error in your SQL syntax/ or
 		/deprecated/ or
@@ -439,8 +438,18 @@ sub mtr_report_stats ($) {
                 /Checking table:   '.\/mysqltest\/t_corrupted2'/ or
                 /Recovering table: '.\/mysqltest\/t_corrupted2'/ or
                 /Table '.\/mysqltest\/t_corrupted2' is marked as crashed and should be repaired/ or
-                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/
-	       )
+                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/ or
+                # Bug#35161, test of auto repair --myisam-recover
+                /able.*_will_crash/ or
+
+                # lowercase_table3 using case sensitive option on
+                # case insensitive filesystem (InnoDB error).
+                /Cannot find or open table test\/BUG29839 from/ or
+
+                # When trying to set lower_case_table_names = 2
+                # on a case sensitive file system. Bug#37402.
+                /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./
+              )
             {
               next;                       # Skip these lines
             }
