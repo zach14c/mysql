@@ -37,7 +37,12 @@
 #include "MemControl.h"
 
 #ifdef HAVE_purify
+#ifdef HAVE_CONFIG
+#include <config.h> 
+#endif
+#ifdef HAVE_VALGRIND_MEMCHECK_H
 #include <valgrind/memcheck.h>
+#endif
 #endif
 
 #ifndef VALGRIND_MAKE_MEM_UNDEFINED
