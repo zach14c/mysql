@@ -317,6 +317,7 @@ int
 NdbIndexScanOperation::setBound(const char* attr, int type, const void* value,
                                 Uint32 len)
 {
+  (void)len;  // unused
   return setBound(attr, type, value);
 }
 
@@ -325,6 +326,7 @@ int
 NdbIndexScanOperation::setBound(Uint32 anAttrId, int type, const void* value,
                                 Uint32 len)
 {
+  (void)len;  // unused
   return setBound(anAttrId, type, value);
 }
 
