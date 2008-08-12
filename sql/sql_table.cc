@@ -5787,7 +5787,7 @@ mysql_fast_or_online_alter_table(THD *thd,
     Upgrade the shared metadata lock to exclusive and close all
     instances of the table in the TDC except those used in this thread.
   */
-  if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
+  if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     DBUG_RETURN(1);
 
   alter_table_manage_keys(table, table->file->indexes_are_disabled(),
@@ -7010,7 +7010,6 @@ view_err:
 
   if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     goto err_new_table_cleanup;
-
 
   close_all_tables_for_name(thd, table->s,
                             new_name != table_name || new_db != db);

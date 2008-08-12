@@ -2029,8 +2029,6 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
                        table->s->table_name.str, table->s,
                        table->db_stat, table->s->version));
 
-  (void) table->file->extra(function);
-
   old_lock_type= table->reginfo.lock_type;
   mysql_lock_abort(thd, table, TRUE);	/* end threads waiting on lock */
 
@@ -2045,6 +2043,8 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
   tdc_remove_table(thd, TDC_RT_REMOVE_NOT_OWN,
                    table->s->db.str, table->s->table_name.str);
   pthread_mutex_unlock(&LOCK_open);
+  /* extra() call must come only after all instances above are closed */
+  (void) table->file->extra(function);
   DBUG_RETURN(FALSE);
 }
 

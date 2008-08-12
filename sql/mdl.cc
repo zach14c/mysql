@@ -19,6 +19,7 @@
 #include <hash.h>
 #include <mysqld_error.h>
 
+static bool mdl_initialized= 0;
 
 /**
    The lock context. Created internally for an acquired lock.
@@ -115,6 +116,7 @@ extern "C" uchar *mdl_locks_key(const uchar *record, size_t *length,
 
 void mdl_init()
 {
+  mdl_initialized= 1;
   pthread_mutex_init(&LOCK_mdl, NULL);
   pthread_cond_init(&COND_mdl, NULL);
   hash_init(&mdl_locks, &my_charset_bin, 16 /* FIXME */, 0, 0,
@@ -133,10 +135,14 @@ void mdl_init()
 
 void mdl_destroy()
 {
-  DBUG_ASSERT(!mdl_locks.records);
-  pthread_mutex_destroy(&LOCK_mdl);
-  pthread_cond_destroy(&COND_mdl);
-  hash_free(&mdl_locks);
+  if (mdl_initialized)
+  {
+    mdl_initialized= 0;
+    DBUG_ASSERT(!mdl_locks.records);
+    pthread_mutex_destroy(&LOCK_mdl);
+    pthread_cond_destroy(&COND_mdl);
+    hash_free(&mdl_locks);
+  }
 }
 
 
