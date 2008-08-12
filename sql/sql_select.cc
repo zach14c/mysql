@@ -12937,7 +12937,8 @@ static bool create_internal_tmp_table(TABLE *table, KEY *keyinfo,
 bool create_internal_tmp_table_from_heap(THD *thd, TABLE *table,
                                          ENGINE_COLUMNDEF *start_recinfo,
                                          ENGINE_COLUMNDEF **recinfo, 
-                                         int error, bool ignore_last_dupp_key_error)
+                                         int error,
+                                         bool ignore_last_dupp_key_error)
 {
   return create_internal_tmp_table_from_heap2(thd, table,
                                               start_recinfo, recinfo, error,
