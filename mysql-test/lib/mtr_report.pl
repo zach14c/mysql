@@ -441,6 +441,7 @@ sub mtr_report_stats ($) {
                 /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/ or
                 # Bug#35161, test of auto repair --myisam-recover
                 /able.*_will_crash/ or
+                /Got an error from unknown thread, ha_myisam.cc:/ or
 
                 # lowercase_table3 using case sensitive option on
                 # case insensitive filesystem (InnoDB error).
