@@ -24,6 +24,7 @@
   * calls easier for the driver code.
   */
 
+#include "../mysql_priv.h"
 #include "be_thread.h"
 
 /**
@@ -47,10 +48,7 @@ THD *create_new_thd()
 
   thd= new THD;
   if (unlikely(!thd))
-  {
-    delete thd;
     DBUG_RETURN(0);
-  }
   THD_CHECK_SENTRY(thd);
 
   thd->thread_stack = (char*)&thd; // remember where our stack is  

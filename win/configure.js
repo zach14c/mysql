@@ -50,6 +50,7 @@ try
             case "__NT__":
             case "CYBOZU":
             case "EXTRA_DEBUG":
+            case "ENABLED_DEBUG_SYNC":
             case "BACKUP_TEST":
             case "EMBED_MANIFESTS":
             case "WITH_EMBEDDED_SERVER":

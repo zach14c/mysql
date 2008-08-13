@@ -100,9 +100,13 @@ static  int getLinuxVersion();
 //#define SIMULATE_DISK_FULL					1000000;
 
 extern uint		falcon_direct_io;
+extern char		falcon_checksums;
 
 static const int TRACE_SYNC_START	= -1;
 static const int TRACE_SYNC_END		= -2;
+
+
+static const uint16 NON_ZERO_CHECKSUM_MAGIC = 0xAFFE;
 
 #ifdef SIMULATE_DISK_FULL
 static int simulateDiskFull = SIMULATE_DISK_FULL;
@@ -253,6 +257,23 @@ void IO::readPage(Bdb * bdb)
 		}
 
 	++reads;
+
+	if(falcon_checksums)
+		validateChecksum(bdb->buffer, pageSize, offset);
+}
+
+void IO::validateChecksum(Page *page, size_t pageSize, int64 fileOffset)
+{
+	if (page->checksum == NO_CHECKSUM_MAGIC)
+		return;
+
+	uint16 chksum = computeChecksum(page, pageSize);
+
+	if (page->checksum != chksum)
+		FATAL("Checksum error (expected %d, got %d) at page %d"
+			"file '%s', offset " I64FORMAT ", pagesize %d",
+			(int)chksum, (int)page->checksum, (int)(fileOffset/pageSize),
+			fileName.getString(), fileOffset, pageSize);
 }
 
 bool IO::trialRead(Bdb *bdb)
@@ -278,23 +299,7 @@ void IO::writePage(Bdb * bdb, int type)
 
 	ASSERT(bdb->pageNumber != HEADER_PAGE || ((Page*)(bdb->buffer))->pageType == PAGE_header);
 	tracePage(bdb);
-	SEEK_OFFSET offset = (int64) bdb->pageNumber * pageSize;
-	int length = pwrite (offset, pageSize, (UCHAR *)bdb->buffer);
-
-	if (length != pageSize)
-		{
-		if (errno == ENOSPC)
-			throw SQLError(DEVICE_FULL, "device full error on %s, page %d\n", (const char*) fileName, bdb->pageNumber);
-
-		declareFatalError();
-		FATAL ("write error on page %d (%d/%d/%d) of \"%s\": %s (%d)",
-				bdb->pageNumber, length, pageSize, fileId,
-				(const char*) fileName, strerror (errno), errno);
-		}
-
-	++writes;
-	++writesSinceSync;
-	++writeTypes[type];
+	writePages(bdb->pageNumber, pageSize, (UCHAR *)bdb->buffer, type);
 }
 
 void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
@@ -308,7 +313,17 @@ void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 	if (simulateDiskFull && offset + length > simulateDiskFull)
 		throw SQLError(DEVICE_FULL, "device full error on %s, page %d\n", (const char*) fileName, pageNumber);
 #endif
-	
+
+	Page *page = (Page *)data;
+
+	for (int i = 0;i < length/pageSize; i++ ,page = (Page *)((UCHAR *)page + pageSize))
+		{
+		if (falcon_checksums)
+			page->checksum = computeChecksum(page, pageSize);
+ 		else
+			page->checksum = NO_CHECKSUM_MAGIC;
+		}
+
 	int ret = pwrite (offset, length, data);
 
 	if (ret != length)
@@ -330,15 +345,20 @@ void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 
 void IO::readHeader(Hdr * header)
 {
+	static const int maxPageSize = 32*1024;
 	static const int sectorSize = 4096;
-	UCHAR temp[sectorSize * 2];
-	UCHAR *buffer = (UCHAR*) (((UIPTR) temp + sectorSize - 1) / sectorSize * sectorSize);
+	UCHAR temp[maxPageSize + sectorSize];
+	UCHAR *buffer = ALIGN(temp, sectorSize);
 	int n = lseek (fileId, 0, SEEK_SET);
-	n = ::read (fileId, buffer, sectorSize);
+	n = ::read (fileId, buffer, maxPageSize);
 
 	if (n < (int) sizeof (Hdr))
 		FATAL ("read error on database header");
-	
+
+	Hdr* hdr = (Hdr*) buffer;
+	if (falcon_checksums && hdr->pageSize <= n)
+		validateChecksum((Page*) buffer, hdr->pageSize, 0);
+
 	memcpy(header, buffer, sizeof(Hdr));
 }
 
@@ -508,6 +528,17 @@ int IO::pread(int64 offset, int length, UCHAR* buffer)
 
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	ret = ::pread (fileId, buffer, length, offset);
+#elif defined(_WIN32)
+	HANDLE hFile = (HANDLE)_get_osfhandle(fileId);
+	OVERLAPPED overlapped = {0};
+	LARGE_INTEGER pos;
+
+	pos.QuadPart = offset;
+	overlapped.Offset = pos.LowPart;
+	overlapped.OffsetHigh = pos.HighPart;
+
+	if (!ReadFile(hFile, buffer, length, (DWORD *) &ret, &overlapped))
+		ret = -1;
 #else
 	Sync sync (&syncObject, "IO::pread");
 	sync.lock (Exclusive);
@@ -540,6 +571,20 @@ int IO::pwrite(int64 offset, int length, const UCHAR* buffer)
 	
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	ret = ::pwrite (fileId, buffer, length, offset);
+#elif defined(_WIN32)
+
+	ASSERT(length > 0);
+
+	HANDLE hFile = (HANDLE)_get_osfhandle(fileId);
+	OVERLAPPED overlapped = {0};
+	LARGE_INTEGER pos;
+
+	pos.QuadPart = offset;
+	overlapped.Offset = pos.LowPart;
+	overlapped.OffsetHigh = pos.HighPart;
+
+	if (!WriteFile(hFile, buffer, length, (DWORD *)&ret, &overlapped))
+		ret = -1;
 #else
 	Sync sync (&syncObject, "IO::pwrite");
 	sync.lock (Exclusive);
@@ -679,3 +724,52 @@ static int getLinuxVersion()
 	return vers = KERNEL_VERSION(major,minor,release);
 }
 #endif
+
+
+
+/*
+  Calculate checksum for a page.
+  The algorithm somewhat resembles fletcher checksum , but it is performed
+  on 64 bit integers and two's complement arithmetic, without taking care
+  of overflow.
+
+  Also,
+  - Calculation skips 3rd and 4th bytes in the page 
+   (which is checksum field in the page header)
+  - Returned result is never 0
+*/
+uint16 IO::computeChecksum(Page *page, size_t len)
+{
+	uint64 sum1,sum2;
+	uint64 *data = (uint64 *)page;
+	uint64 *end  = data + len/8;
+
+	ASSERT(len >=8 && OFFSET(Page*,checksum)==2 && sizeof(page->checksum)==2);
+
+	// Initialize sums, mask out checksum bytes in the page header
+	static uint16 endian = 1;
+	uint64 mask = *(char *)(&endian)?0xFFFFFFFF0000FFFFLL:0xFFFF0000FFFFFFFFLL;
+	
+	sum1 = sum2 = *data & mask;
+
+	data++;
+
+	while(data < end)
+		{
+		sum1 += *data++;
+		sum2 += sum1;
+		}
+
+	uint64 sum = sum1 + sum2;
+
+	// Fold the result to 16 bit
+	while(sum >> 16)
+		sum = (sum & 0xFFFF) + (sum >> 16);
+
+	if(sum == 0)
+		sum = NON_ZERO_CHECKSUM_MAGIC;
+
+	return (uint16) sum;
+
+}
+

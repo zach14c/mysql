@@ -28,7 +28,6 @@
 #include "events.h"
 #include "sql_trigger.h"
 #include <ddl_blocker.h>
-#include "backup/debug.h"
 #include "sql_audit.h"
 
 #ifdef BACKUP_TEST
@@ -2113,6 +2112,7 @@ mysql_execute_command(THD *thd)
     my_error(ER_FEATURE_DISABLED, MYF(0), "SHOW PROFILES", "enable-profiling");
     goto error;
 #endif
+    break;
   }
   break;
   case SQLCOM_SHOW_NEW_MASTER:
@@ -2163,12 +2163,6 @@ mysql_execute_command(THD *thd)
 #endif
 #endif
 
-  case SQLCOM_SHOW_ARCHIVE:
-#ifdef EMBEDDED_LIBRARY
-    // Note: online backup code doesn't compile as embedded library yet.
-    my_error(ER_NOT_SUPPORTED_YET, MYF(0), "SHOW ARCHIVE");
-    goto error;
-#endif
   case SQLCOM_BACKUP:
 #ifdef EMBEDDED_LIBRARY
     my_error(ER_NOT_SUPPORTED_YET, MYF(0), "BACKUP");
@@ -2968,6 +2962,7 @@ end_with_restore_list:
       thd->first_successful_insert_id_in_cur_stmt=
         thd->first_successful_insert_id_in_prev_stmt;
 
+    DEBUG_SYNC(thd, "after_insert");
     break;
   }
   case SQLCOM_REPLACE_SELECT:
@@ -3892,10 +3887,7 @@ end_with_restore_list:
                xa_state_names[thd->transaction.xid_state.xa_state]);
       break;
     }
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "before_begin_trans");
     if (begin_trans(thd))
       goto error;
     my_ok(thd);
@@ -3906,10 +3898,7 @@ end_with_restore_list:
     if (end_trans(thd, lex->tx_release ? COMMIT_RELEASE :
                               lex->tx_chain ? COMMIT_AND_CHAIN : COMMIT))
       goto error;
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "after_commit");
     my_ok(thd);
     break;
   case SQLCOM_ROLLBACK:

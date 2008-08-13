@@ -614,6 +614,27 @@ void debug_sync_point(const char* lock_name, uint lock_timeout);
 #define DBUG_SYNC_POINT(lock_name,lock_timeout)
 #endif /* EXTRA_DEBUG */
 
+/* Debug Sync Facility. */
+#if defined(ENABLED_DEBUG_SYNC)
+/* Macro to be put in the code at synchronization points. */
+#define DEBUG_SYNC(_thd_, _sync_point_name_)                            \
+          do { if (unlikely(opt_debug_sync_timeout))                    \
+               debug_sync(_thd_, STRING_WITH_LEN(_sync_point_name_));   \
+             } while (0)
+/* Command line option --debug-sync-timeout. See mysqld.cc. */
+extern uint opt_debug_sync_timeout;
+/* Default WAIT_FOR timeout if command line option is given without argument. */
+#define DEBUG_SYNC_DEFAULT_WAIT_TIMEOUT 300
+/* Debug Sync prototypes. See debug_sync.cc. */
+extern int  debug_sync_init(void);
+extern void debug_sync_end(void);
+extern void debug_sync_init_thread(THD *thd);
+extern void debug_sync_end_thread(THD *thd);
+extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
+#else /* defined(ENABLED_DEBUG_SYNC) */
+#define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1
@@ -2473,7 +2494,7 @@ inline bool is_user_table(TABLE * table)
   This will be slightly slower and perhaps a tiny bit less accurate than
   doing it the IEEE754 way but log2() should be available on C99 systems.
 */
-static inline double log2(double x)
+inline double log2(double x)
 {
   return (log(x) / M_LN2);
 }

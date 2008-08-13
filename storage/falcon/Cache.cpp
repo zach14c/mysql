@@ -40,6 +40,13 @@
 #include "Priority.h"
 #include "SectorCache.h"
 
+#define PARAMETER_UINT(_name, _text, _min, _default, _max, _flags, _update_function) \
+	extern uint falcon_##_name;
+#define PARAMETER_BOOL(_name, _text, _default, _flags, _update_function) \
+	extern char falcon_##_name;
+#include "StorageParameters.h"
+#undef PARAMETER_UINT
+#undef PARAMETER_BOOL
 extern uint falcon_io_threads;
 
 //#define STOP_PAGE		55
@@ -76,6 +83,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
 	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
+
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
 	bufferHunks = new char* [numberHunks];
@@ -259,8 +267,10 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			
 			Priority priority(database->ioScheduler);
 			priority.schedule(PRIORITY_MEDIUM);	
-			//dbb->readPage(bdb);
-			sectorCache->readPage(bdb);
+			if (falcon_use_sectorcache)
+				sectorCache->readPage(bdb);
+			else
+				dbb->readPage(bdb);
 			priority.finished();
 #ifdef HAVE_PAGE_NUMBER
 			ASSERT(bdb->buffer->pageNumber == pageNumber);
@@ -524,7 +534,8 @@ void Cache::writePage(Bdb *bdb, int type)
 
 	try
 		{
-		sectorCache->writePage(bdb);
+		if (falcon_use_sectorcache)
+			sectorCache->writePage(bdb);
 		dbb->writePage(bdb, type);
 		}
 	catch (SQLException& exception)
@@ -795,7 +806,8 @@ void Cache::ioThread(void)
 						bdb->incrementUseCount(ADD_HISTORY);
 						sync.unlock();
 						bdb->addRef(Shared  COMMA_ADD_HISTORY);
-						sectorCache->writePage(bdb);
+						if (falcon_use_sectorcache)
+							sectorCache->writePage(bdb);
 						
 						bdb->syncWrite.lock(NULL, Exclusive);
 						bdb->ioThreadNext = bdbList;

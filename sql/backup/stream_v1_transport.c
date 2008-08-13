@@ -30,7 +30,7 @@
 
   @note Block size should be >= 8 bytes.
 */
-#define DEFAULT_BLOCK_SIZE  (32*1024)
+#define DEFAULT_BLOCK_SIZE  (16*1024)
 
 /**
   @brief Input buffer size.
@@ -443,7 +443,9 @@ int close_current_fragment(backup_stream *s)
   int ret= BSTREAM_OK;
 
   /* blob describing data in the current fragment */
-  blob current_fragment= {buf->header+1, buf->pos};
+  blob current_fragment;
+  current_fragment.begin= buf->header+1;
+  current_fragment.end= buf->pos;
 
   /* nothing to do if current fragment is empty */
   if (buf->pos == buf->header)
@@ -696,7 +698,7 @@ int load_buffer(backup_stream *s)
     for (i= 0; i<4; ++i)
     {
       block_size >>= 8;
-      block_size |= (*(s->buf.begin++)) << 3*8;
+      block_size |= ((unsigned long int) *(s->buf.begin++)) << 3 * 8;
     }
 
     /*
@@ -1480,7 +1482,10 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     saved= *data;
     data->end= data->begin + howmuch;
 
-    as_read(&s->stream,data,buf);
+    if (as_read(&s->stream, data, buf) == BSTREAM_EOS)
+    {
+      s->state= EOS;
+    }
 
     s->buf.begin += data->begin - saved.begin;
     s->buf.pos= s->buf.begin;

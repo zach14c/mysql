@@ -492,6 +492,7 @@ libmysqld/client.c
 libmysqld/client_settings.h
 libmysqld/cmake_dummy.c
 libmysqld/convert.cc
+libmysqld/debug_sync.cc
 libmysqld/derror.cc
 libmysqld/des_key_file.cc
 libmysqld/discover.cc

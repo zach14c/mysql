@@ -1,0 +1,57 @@
+###########################################################################
+# Purpose: Regression test for 34868 - "Backup: restore failure if two
+#          procedures". Test added because the bug has been fixed by 
+#          an unknown patch.
+###############################################################################
+--source include/not_embedded.inc
+
+--echo
+--echo Starting regression test for 34868 - Backup: restore failure if two procedures
+
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_proc.bak
+
+--echo
+--echo Create database and procedures
+--disable_warnings
+DROP DATABASE IF EXISTS bup_proc;
+--enable_warnings
+
+CREATE DATABASE bup_proc;
+USE bup_proc;
+
+CREATE PROCEDURE p1() SET @a=5;
+CREATE PROCEDURE p2() SET @a=100;
+
+--echo
+--echo Check that procedures are there before the backup
+
+CALL p1();
+SELECT @a;
+CALL p2();
+SELECT @a;
+
+--echo
+--echo Backup and restore
+
+--replace_column 1 #
+BACKUP DATABASE bup_proc to 'bup_proc.bak';
+DROP DATABASE bup_proc;
+--replace_column 1 #
+RESTORE FROM 'bup_proc.bak';
+
+--echo
+--echo Check that procedures are there after the restore
+
+CALL p1();
+SELECT @a;
+CALL p2();
+SELECT @a;
+
+--echo
+--echo Cleaning up
+
+DROP DATABASE bup_proc;
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_proc.bak

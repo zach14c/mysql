@@ -789,7 +789,8 @@ int ha_myisam::check(THD* thd, HA_CHECK_OPT* check_opt)
       file->update|=HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
       pthread_mutex_lock(&share->intern_lock);
       share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-			       STATE_CRASHED_ON_REPAIR);
+			       STATE_CRASHED_ON_REPAIR |
+                               STATE_BAD_OPEN_COUNT);
       if (!(table->db_stat & HA_READ_ONLY))
 	error=update_state_info(&param,file,UPDATE_TIME | UPDATE_OPEN_COUNT |
 				UPDATE_STAT);
@@ -955,7 +956,7 @@ int ha_myisam::repair(THD *thd, HA_CHECK &param, bool do_optimize)
   param.thd= thd;
   param.tmpdir= &mysql_tmpdir_list;
   param.out_flag= 0;
-  strmov(fixed_name,file->filename);
+  strmov(fixed_name,file->s->unresolv_file_name);
 
   // Don't lock tables if we have used LOCK TABLE
   if (! thd->locked_tables_mode &&
@@ -1035,7 +1036,8 @@ int ha_myisam::repair(THD *thd, HA_CHECK &param, bool do_optimize)
     if ((share->state.changed & STATE_CHANGED) || mi_is_crashed(file))
     {
       share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-			       STATE_CRASHED_ON_REPAIR);
+			       STATE_CRASHED_ON_REPAIR |
+                               STATE_BAD_OPEN_COUNT);
       file->update|=HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
     }
     /*
@@ -1709,11 +1711,11 @@ int ha_myisam::info(uint flag)
      if table is symlinked (Ie;  Real name is not same as generated name)
    */
     data_file_name= index_file_name= 0;
-    fn_format(name_buff, file->filename, "", MI_NAME_DEXT,
+    fn_format(name_buff, file->s->unresolv_file_name, "", MI_NAME_DEXT,
               MY_APPEND_EXT | MY_UNPACK_FILENAME);
     if (strcmp(name_buff, misam_info.data_file_name))
       data_file_name=misam_info.data_file_name;
-    fn_format(name_buff, file->filename, "", MI_NAME_IEXT,
+    fn_format(name_buff, file->s->unresolv_file_name, "", MI_NAME_IEXT,
               MY_APPEND_EXT | MY_UNPACK_FILENAME);
     if (strcmp(name_buff, misam_info.index_file_name))
       index_file_name=misam_info.index_file_name;
@@ -2021,6 +2023,9 @@ static int myisam_init(void *p)
   myisam_hton->create= myisam_create_handler;
   myisam_hton->panic= myisam_panic;
   myisam_hton->flags= HTON_CAN_RECREATE | HTON_SUPPORT_LOG_TABLES;
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MYISAM_PHYSICAL_LOGGING)
+  myisam_hton->get_backup_engine= myisam_backup_engine;
+#endif
   return 0;
 }
 
@@ -2108,8 +2113,8 @@ mysql_declare_plugin_end;
   @brief Register a named table with a call back function to the query cache.
 
   @param thd The thread handle
-  @param table_key A pointer to the table name in the table cache
-  @param key_length The length of the table name
+  @param table_name A pointer to the table name in the table cache
+  @param table_name_len The length of the table name
   @param[out] engine_callback The pointer to the storage engine call back
     function, currently 0
   @param[out] engine_data Engine data will be set to 0.

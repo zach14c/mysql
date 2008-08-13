@@ -75,6 +75,7 @@ public:
 	void				close(void);
 	void				validateCache(void);
 	int					createIndex(StorageConnection* storageConnection, Table* table, const char* indexName, const char* sql);
+	int					dropIndex(StorageConnection* storageConnection, Table* table, const char* indexName, const char* sql);
 	int					insert(Connection* connection, Table* table, Stream* stream);
 	
 	int					nextRow(StorageTable* storageTable, int recordNumber, bool lockForUpdate);
