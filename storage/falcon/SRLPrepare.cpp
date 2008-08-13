@@ -43,7 +43,7 @@ SRLPrepare::~SRLPrepare()
 
 void SRLPrepare::append(TransId transId, int xidLength, const UCHAR *xid)
 {
-	START_RECORD(srlPrepare, "");
+	START_RECORD(srlPrepare, "SRLPrepare::append");
 	putInt(transId);
 	putInt(xidLength);
 	putData(xidLength, xid);

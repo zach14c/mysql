@@ -1,0 +1,18 @@
+*** Bug #38039 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (a_int INT) Engine = Falcon;
+ALTER TABLE t1 ADD KEY (a_int);
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	1	a_int	1	a_int	NULL	1	NULL	NULL	YES	BTREE		
+ALTER TABLE t1 ADD KEY (a_int);
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	1	a_int	1	a_int	NULL	1	NULL	NULL	YES	BTREE		
+t1	1	a_int_2	1	a_int	NULL	1	NULL	NULL	YES	BTREE		
+ALTER TABLE t1 DROP KEY a_int;
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	1	a_int_2	1	a_int	NULL	1	NULL	NULL	YES	BTREE		
+DROP TABLE t1;

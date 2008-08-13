@@ -144,6 +144,7 @@ Statement::Statement(Connection *pConnection, Database *db)
 	special = false;
 	active = false;
 	memset (&stats, 0, sizeof (stats));
+	syncObject.setName("Statement::syncObject");
 }
 
 Statement::~Statement()
@@ -1959,7 +1960,7 @@ const char* Statement::getName(Syntax * syntax)
 void Statement::connectionClosed()
 {
 	addRef();
-	Sync sync (&syncObject, "Statement::close");
+	Sync sync (&syncObject, "Statement::connectionClosed");
 	sync.lock (Exclusive);
 
 	/***
@@ -2965,26 +2966,6 @@ void Statement::createTableSpace(Syntax *syntax)
 
 		switch (child->type)
 			{
-			/***
-			case nod_initial_size:
-				tsInit.initial_size = child->getChild(0)->getQuad();
-				break;
-			case nod_extent_size:
-				tsInit.extent_size = child->getChild(0)->getQuad();
-				break;
-			case nod_autoextend_size:
-				tsInit.autoextend_size = child->getChild(0)->getQuad();
-				break;
-			case nod_max_size:
-				tsInit.maxSize = child->getChild(0)->getQuad();
-				break;
-			case nod_nodegroup:
-				tsInit.nodegroup = child->getChild(0)->getNumber();
-				break;
-			case nod_wait:
-				tsInit.wait = child->getChild(0)->getNumber();
-				break;
-			***/
 			case nod_comment:
 				tsInit.comment = child->getChild(0)->getString();
 				break;

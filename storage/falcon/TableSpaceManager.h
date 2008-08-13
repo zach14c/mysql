@@ -62,6 +62,7 @@ public:
 	void			reportWrites(void);
 	void			redoCreateTableSpace(int id, int nameLength, const char* name, int fileNameLength, const char* fileName, int type, TableSpaceInit* tsInit);
 	void			initialize(void);
+	bool			waitForPendingDrop(const char *filename, int seconds);
 
 	Database	*database;
 	TableSpace	*tableSpaces;

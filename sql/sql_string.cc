@@ -407,11 +407,25 @@ bool String::append(const char *s)
 
 bool String::append(const char *s,uint32 arg_length, CHARSET_INFO *cs)
 {
-  uint32 dummy_offset;
+  uint32 offset;
   
-  if (needs_conversion(arg_length, cs, str_charset, &dummy_offset))
+  if (needs_conversion(arg_length, cs, str_charset, &offset))
   {
-    uint32 add_length= arg_length / cs->mbminlen * str_charset->mbmaxlen;
+    uint32 add_length;
+    if ((cs == &my_charset_bin) && offset)
+    {
+      DBUG_ASSERT(str_charset->mbminlen > offset);
+      offset= str_charset->mbminlen - offset; // How many characters to pad
+      add_length= arg_length + offset;
+      if (realloc(str_length + add_length))
+        return TRUE;
+      bzero((char*) Ptr + str_length, offset);
+      memcpy(Ptr + str_length + offset, s, arg_length);
+      str_length+= add_length;
+      return FALSE;
+    }
+
+    add_length= arg_length / cs->mbminlen * str_charset->mbmaxlen;
     uint dummy_errors;
     if (realloc(str_length + add_length)) 
       return TRUE;

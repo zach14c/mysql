@@ -168,9 +168,9 @@ public:
 	bool			writePending;
 	bool			pendingPageWrites;
 	bool			hasLocks;
+	SyncObject		syncObject;
 	SyncObject		syncActive;
 	SyncObject		syncIndexes;
-	SyncObject		syncObject;
 	SyncObject		syncSavepoints;
 	uint64			totalRecordData;	// total bytes of record data for this transaction (unchilled + thawed)
 	uint32			totalRecords;		// total record count

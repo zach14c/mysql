@@ -75,6 +75,7 @@ RepositoryVolume::RepositoryVolume(Repository *repo, int volume, JString file)
 	lastAccess = 0;
 	rootPage = 0;
 	section = NULL;
+	syncObject.setName("RepositoryVolume::syncObject");
 }
 
 RepositoryVolume::~RepositoryVolume()
@@ -90,7 +91,7 @@ void RepositoryVolume::storeBlob(BlobReference *blob, Transaction *transaction)
 
 void RepositoryVolume::storeBlob(int64 blobId, Stream *stream, Transaction *transaction)
 {
-	Sync sync (&syncObject, "RepositoryVolume::getBlob");
+	Sync sync (&syncObject, "RepositoryVolume::storeBlob");
 	sync.lock (Shared);
 
 	while (!isWritable)
@@ -216,7 +217,7 @@ void RepositoryVolume::makeWritable()
 	if (isWritable)
 		return;
 
-	Sync sync(&syncObject, "RepositoryVolume::getBlob");
+	Sync sync(&syncObject, "RepositoryVolume::makeWritable");
 	sync.lock(Exclusive);
 
 	if (isWritable)
@@ -232,7 +233,7 @@ void RepositoryVolume::makeWritable()
 void RepositoryVolume::create()
 {
 	IO::createPath (fileName);
-	dbb->create(fileName, dbb->pageSize, 0, HdrRepositoryFile, 0, NULL, 0);
+	dbb->create(fileName, dbb->pageSize, 0, HdrRepositoryFile, 0, NULL);
 	Sync syncDDL(&database->syncSysDDL, "RepositoryVolume::create");
 	Transaction *transaction = database->getSystemTransaction();
 	syncDDL.lock(Exclusive);
@@ -399,7 +400,7 @@ int64 RepositoryVolume::getRepositorySize()
 
 void RepositoryVolume::deleteBlob(int64 blobId, Transaction *transaction)
 {
-	Sync sync (&syncObject, "RepositoryVolume::getBlob");
+	Sync sync (&syncObject, "RepositoryVolume::deleteBlob");
 	sync.lock (Shared);
 
 	while (!isWritable)
@@ -464,7 +465,7 @@ void RepositoryVolume::scavenge()
 	if (!isOpen || lastAccess + TIMEOUT > database->timestamp)
 		return;
 
-	Sync sync (&syncObject, "RepositoryVolume::getBlob");
+	Sync sync (&syncObject, "RepositoryVolume::scavenge");
 	sync.lock (Exclusive);
 
 	if (!isOpen || lastAccess + TIMEOUT > database->timestamp)

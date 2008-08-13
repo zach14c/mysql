@@ -96,6 +96,7 @@ CompiledStatement::CompiledStatement(Connection *cnct)
 	firstInstance = lastInstance = NULL;
 	select = NULL;
 	parse = NULL;
+	syncObject.setName("CompiledStatement::syncObject");
 }
 
 CompiledStatement::~CompiledStatement()
@@ -1093,7 +1094,7 @@ bool CompiledStatement::addFilter(TableFilter *filter)
 
 int CompiledStatement::countInstances()
 {
-	Sync sync (&syncObject, "CompiledStatement::addInstance");
+	Sync sync (&syncObject, "CompiledStatement::countInstances");
 	sync.lock (Shared);
 	int count = 0;
 
@@ -1163,7 +1164,7 @@ Type CompiledStatement::getType(Syntax *syntax)
 
 void CompiledStatement::invalidate()
 {
-	Sync sync (&syncObject, "CompiledStatement::addInstance");
+	Sync sync (&syncObject, "CompiledStatement::invalidate");
 	sync.lock (Shared);
 
 	for (Statement *instance = firstInstance; instance; instance = instance->next)

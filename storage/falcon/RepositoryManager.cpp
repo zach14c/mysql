@@ -46,6 +46,7 @@ RepositoryManager::RepositoryManager(Database *db) : Schedule (schedule)
 {
 	database = db;
 	memset (repositories, 0, sizeof (repositories));
+	syncObject.setName("RepositoryManager::syncObject");
 }
 
 RepositoryManager::~RepositoryManager()
@@ -113,7 +114,7 @@ Repository* RepositoryManager::getRepository(const char *schema, const char *nam
 
 Repository* RepositoryManager::createRepository(const char *name, const char *schema, Sequence *sequence, const char *fileName, int volume, const char *rolloverString)
 {
-	Sync sync (&syncObject, "RepositoryManager::getRepository");
+	Sync sync (&syncObject, "RepositoryManager::createRepository");
 	sync.lock (Exclusive);
 	Repository *repository = findRepository (schema, database->getSymbol (name));
 
@@ -135,7 +136,7 @@ Repository* RepositoryManager::createRepository(const char *name, const char *sc
 void RepositoryManager::deleteRepository(Repository *repository)
 {
 	repository->drop();
-	Sync sync (&syncObject, "RepositoryManager::getRepository");
+	Sync sync (&syncObject, "RepositoryManager::deleteRepository");
 	sync.lock (Exclusive);
 	int slot = HASH (repository->schema, REPOSITORY_HASH_SIZE);
 
