@@ -38,3 +38,4 @@ rpl_flushlog_loop          : Bug#37733 2008-07-17 alik Disabled to make 6.0 grea
 rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_temporary              : BUG#38269 2008-07-21 Sven valgrind error in pushbuild
+rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main

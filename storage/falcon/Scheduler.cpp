@@ -66,6 +66,7 @@ Scheduler::Scheduler(Database *db)
 	events = NULL;
 	useCount = 1;
 	thread = NULL;
+	syncObject.setName("Scheduler::syncObject");
 }
 
 Scheduler::~Scheduler()
@@ -210,10 +211,10 @@ void Scheduler::start()
 
 void Scheduler::updateSchedule(const char *appName, const char *eventName, User *user, const char *schedule)
 {
-	Sync syncDDL (&database->syncSysDDL, "Scheduler::updateSchedule(2)");
+	Sync syncDDL (&database->syncSysDDL, "Scheduler::updateSchedule(1)");
 	syncDDL.lock (Exclusive);
 
-	Sync syncObj(&syncObject, "Scheduler::updateSchedule");
+	Sync syncObj(&syncObject, "Scheduler::updateSchedule(2)");
 	syncObj.lock(Exclusive);
 
 	// Ditch old event

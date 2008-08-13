@@ -21942,9 +21942,9 @@ END	latin1	latin1_swedish_ci	latin1_swedish_ci
 set @@sql_mode='';
 CALL sp4();
 Level	Code	Message
-Error	1365	Division by 0
+Warning	1365	Division by 0
 Warnings:
-Error	1365	Division by 0
+Warning	1365	Division by 0
 DROP PROCEDURE sp4;
 set @@sql_mode='';
 

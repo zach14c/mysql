@@ -1,0 +1,86 @@
+--source include/have_falcon.inc
+
+#
+# Bug #35939: Drift in Falcon row count reported by SHOW TABLE STATUS
+#
+--echo *** Bug #35939 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+CREATE TABLE t1(i int);
+INSERT INTO t1(i) VALUES (1),(2),(3),(4);
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+# Expect 4 rows
+UPDATE t1 set i=i+1;
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+# Expect 4 rows, nothing added or deleted
+DELETE FROM t1 WHERE i=2;
+# One row deleted, expect count=3
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+
+# insert/delete on the same row, count does not change
+SET AUTOCOMMIT=OFF;
+# Next tests are transactional
+BEGIN;
+INSERT INTO t1(i) VALUES(42);
+DELETE FROM t1 WHERE i=42;
+COMMIT;
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+# Count should not be changed,count=3
+
+#delete/insert, count does not change
+BEGIN;
+DELETE FROM t1 WHERE i=4;
+INSERT INTO t1(i) VALUES(4);
+COMMIT;
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+# Count should not be changed,count=3
+
+# insert/update/delete on the same row, count does not change
+BEGIN;
+INSERT INTO t1(i) VALUES(42);
+UPDATE t1 SET i=43 WHERE i=42;
+DELETE FROM t1 WHERE i=43;
+COMMIT;
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+# Count should not be changed,count=3
+
+#delete/insert/update/update, count does not change
+BEGIN;
+DELETE FROM t1 WHERE i=4;
+INSERT INTO t1(i) VALUES(4);
+UPDATE t1 SET i=42 WHERE i=4;
+UPDATE t1 SET i=4 WHERE i=42;
+COMMIT;
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+# Count should not be changed,count=3
+
+# same as before, but with rollback
+BEGIN;
+INSERT INTO t1(i) VALUES(42);
+UPDATE t1 SET i=43 WHERE i=42;
+DELETE FROM t1 WHERE i=43;
+ROLLBACK;
+SELECT TABLE_ROWS  FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+SET AUTOCOMMIT=ON;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

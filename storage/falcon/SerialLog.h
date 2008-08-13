@@ -132,7 +132,7 @@ public:
 	bool			bumpSectionIncarnation (int sectionId, int tableSpaceId, int state);
 	bool			bumpPageIncarnation (int32 pageNumber, int tableSpaceId, int state);
 
-	int				getPageState(int32 pageNumber, int tableSpaceId);
+//	int				getPageState(int32 pageNumber, int tableSpaceId);
 	void			redoFreePage(int32 pageNumber, int tableSpaceId);
 	
 	bool			indexInUse(int indexId, int tableSpaceId);

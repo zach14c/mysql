@@ -9,7 +9,6 @@ falcon_debug_trace	0
 falcon_direct_io	1
 falcon_gopher_threads	5
 falcon_index_chill_threshold	4194304
-falcon_initial_allocation	0
 falcon_io_threads	2
 falcon_large_blob_threshold	160000
 falcon_lock_wait_timeout	50
@@ -92,7 +91,6 @@ FALCON_DEBUG_TRACE	0
 FALCON_DIRECT_IO	1
 FALCON_GOPHER_THREADS	5
 FALCON_INDEX_CHILL_THRESHOLD	1073741824
-FALCON_INITIAL_ALLOCATION	0
 FALCON_IO_THREADS	2
 FALCON_LARGE_BLOB_THRESHOLD	160000
 FALCON_LOCK_WAIT_TIMEOUT	50

@@ -310,7 +310,7 @@ void Thread::validateLocks()
 		{
 		LOG_DEBUG ("thread %d has active locks:\n", thread->threadId);
 		for (Sync *sync = thread->locks; sync; sync = sync->prior)
-			LOG_DEBUG ("   %s\n", sync->where);
+			LOG_DEBUG ("   %s\n", sync->location);
 		}
 
 }
@@ -381,7 +381,7 @@ void Thread::setLock(Sync *sync)
 	ASSERT (sync->request == Shared || sync->request == Exclusive);
 	sync->prior = locks;
 	locks = sync;
-	where = locks->where;
+	where = locks->location;
 }
 
 void Thread::clearLock(Sync *sync)
@@ -396,7 +396,7 @@ void Thread::clearLock(Sync *sync)
 	if ( (locks = sync->prior) )
 		{
 		ASSERT (locks->state == Shared || locks->state == Exclusive);
-		where = locks->where;
+		where = locks->location;
 		}
 }
 
@@ -467,8 +467,8 @@ void Thread::print(const char *label)
 
 const char* Thread::getWhere()
 {
-	if (lockPending && lockPending->where)
-		return lockPending->where;
+	if (lockPending && lockPending->location)
+		return lockPending->location;
 
 	return "";
 }
