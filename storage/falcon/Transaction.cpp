@@ -934,7 +934,7 @@ void Transaction::truncateTable(Table* table)
 bool Transaction::hasRecords(Table* table)
 {
 	// This lock is to avoid race with writeComplete
-	Sync sync(&syncIndexes, "Transaction::releaseDependency");
+	Sync sync(&syncIndexes, "Transaction::hasRecords");
 	sync.lock(Exclusive);
 	for (RecordVersion *rec = firstRecord; rec; rec = rec->nextInTrans)
 		if (rec->format->table == table)

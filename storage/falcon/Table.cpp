@@ -3333,7 +3333,7 @@ bool Table::hasUncommittedRecords(Transaction* transaction)
 
 void Table::waitForWriteComplete()
 {
-	return database->waitForWriteComplete(this);
+	database->waitForWriteComplete(this);
 }
 
 RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
