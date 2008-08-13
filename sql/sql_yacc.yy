@@ -590,10 +590,10 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 
 %pure_parser                                    /* We have threads */
 /*
-  Currently there are 172 shift/reduce conflicts.
+  Currently there are 169 shift/reduce conflicts.
   We should not introduce new conflicts any more.
 */
-%expect 172
+%expect 169
 
 /*
    Comments for TOKENS.
@@ -4859,10 +4859,6 @@ key_def:
             /* Only used for ALTER TABLE. Ignored otherwise. */
             lex->alter_info.flags|= ALTER_FOREIGN_KEY;
           }
-        | constraint opt_check_constraint
-          {
-            Lex->col_list.empty(); /* Alloced by sql_alloc */
-          }
         | opt_constraint check_constraint
           {
             Lex->col_list.empty(); /* Alloced by sql_alloc */
@@ -4875,7 +4871,7 @@ opt_check_constraint:
         ;
 
 check_constraint:
-          CHECK_SYM expr
+          CHECK_SYM '(' expr ')'
         ;
 
 opt_constraint:
