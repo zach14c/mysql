@@ -3331,6 +3331,11 @@ bool Table::hasUncommittedRecords(Transaction* transaction)
 	return database->hasUncommittedRecords(this, transaction);
 }
 
+void Table::waitForWriteComplete()
+{
+	return database->waitForWriteComplete(this);
+}
+
 RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
 {
 	Record *current = fetch(record->recordNumber);

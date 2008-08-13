@@ -1893,6 +1893,7 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 					DBUG_RETURN(error(ret));
 					}
 				}
+				storageTable->waitForWriteComplete();
 				break;
 			default:
 				break;
