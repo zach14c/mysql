@@ -2635,6 +2635,11 @@ sp_hcond_element:
 sp_cond:
           ulong_num
           { /* mysql errno */
+            if ($1 == 0)
+            {
+              my_error(ER_WRONG_VALUE, MYF(0), "CONDITION", "0");
+              MYSQL_YYABORT;
+            }
             $$= (sp_cond_type_t *)YYTHD->alloc(sizeof(sp_cond_type_t));
             if ($$ == NULL)
               MYSQL_YYABORT;
