@@ -437,7 +437,7 @@ const char* IO::baseName(const char *path)
 void IO::expandFileName(const char *fileName, int length, char *buffer, const char **baseFileName)
 {
 	char expandedName[PATH_MAX+1];
-	char *path;
+	const char *path;
 	JString fname = getPath(fileName);
 	fileName = fname.getString();
 
