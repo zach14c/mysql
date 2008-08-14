@@ -17888,6 +17888,7 @@ static void test_wl4284_1()
 static void test_bug38486(void)
 {
   MYSQL_STMT *stmt;
+  const char *stmt_text;
   unsigned long type= CURSOR_TYPE_READ_ONLY;
 
   DBUG_ENTER("test_bug38486");
