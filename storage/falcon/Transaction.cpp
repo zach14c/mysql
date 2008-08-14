@@ -783,7 +783,8 @@ void Transaction::releaseDependencies()
 
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
-				ASSERT(transaction->transactionId == state->transactionId || transaction->state == Available);
+				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
+				ASSERT(transaction->state != Initializing);
 				transaction->releaseDependency();
 				}
 			}
@@ -933,7 +934,7 @@ void Transaction::truncateTable(Table* table)
 bool Transaction::hasRecords(Table* table)
 {
 	// This lock is to avoid race with writeComplete
-	Sync sync(&syncIndexes, "Transaction::releaseDependency");
+	Sync sync(&syncIndexes, "Transaction::hasRecords");
 	sync.lock(Exclusive);
 	for (RecordVersion *rec = firstRecord; rec; rec = rec->nextInTrans)
 		if (rec->format->table == table)

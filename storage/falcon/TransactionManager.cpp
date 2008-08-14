@@ -183,7 +183,7 @@ void TransactionManager::waitForWriteComplete(Table* table)
 		{
 		bool again = false;
 		Sync committedTrans (&committedTransactions.syncObject,
-			"waitForWriteComplete");
+			"TransactionManager::waitForWriteComplete");
 		committedTrans.lock (Shared);
 
 		for (Transaction *trans = committedTransactions.first; trans; 
@@ -200,7 +200,7 @@ void TransactionManager::waitForWriteComplete(Table* table)
 			return;
 
 		committedTrans.unlock();
-		Thread::getThread("waitForWriteComplete")->sleep(500);
+		Thread::getThread("TransactionManager::waitForWriteComplete")->sleep(10);
 		}
 }
 void TransactionManager::commitByXid(int xidLength, const UCHAR* xid)

@@ -1,8 +1,6 @@
 --source include/have_falcon.inc
 
-SHOW VARIABLES LIKE 'falcon_%';
-
---real_sleep 1
+SHOW VARIABLES where variable_name LIKE 'falcon_%' and variable_name <>'falcon_serial_log_dir';
 
 # Test that these server variables are READ ONLY.
 
@@ -10,7 +8,6 @@ SELECT @@GLOBAL.falcon_debug_server;
 --error ER_INCORRECT_GLOBAL_LOCAL_VAR
 SET GLOBAL falcon_debug_server = TRUE;
 
-SELECT @@GLOBAL.falcon_serial_log_dir;
 --error ER_INCORRECT_GLOBAL_LOCAL_VAR
 SET GLOBAL falcon_serial_log_dir = '/foo';
 
@@ -49,7 +46,7 @@ SELECT @@GLOBAL.falcon_record_chill_threshold;
 # Test INFORMATION_SCHEMA access to variables.
 --sorted_result
 SELECT * FROM INFORMATION_SCHEMA.global_variables
-  WHERE variable_name LIKE 'falcon%';
+  WHERE variable_name LIKE 'falcon%' and variable_name <> 'falcon_serial_log_dir';
 
 # Final cleanup.
 SET GLOBAL falcon_debug_mask = @previous_falcon_debug_mask;
