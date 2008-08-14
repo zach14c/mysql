@@ -808,7 +808,7 @@ static SHOW_VAR fixed_vars[]= {
   {"lower_case_file_system",  (char*) &lower_case_file_system,      SHOW_MY_BOOL},
   {"lower_case_table_names",  (char*) &lower_case_table_names,      SHOW_INT},
   {"myisam_recover_options",  (char*) &myisam_recover_options_str,  SHOW_CHAR_PTR},
-#ifdef __NT__
+#ifdef _WIN32  
   {"named_pipe",	      (char*) &opt_enable_named_pipe,       SHOW_MY_BOOL},
 #endif
   {"open_files_limit",	      (char*) &open_files_limit,	    SHOW_LONG},
