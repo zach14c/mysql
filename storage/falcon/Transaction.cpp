@@ -783,9 +783,8 @@ void Transaction::releaseDependencies()
 
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
-				//ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
-				ASSERT(transaction->transactionId == state->transactionId || transaction->state == Available);
-				//ASSERT(transaction->state == Active || transaction->state == Available);
+				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
+				ASSERT(transaction->state != Initializing);
 				transaction->releaseDependency();
 				}
 			}
