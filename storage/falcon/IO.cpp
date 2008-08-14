@@ -113,7 +113,7 @@ static int simulateDiskFull = SIMULATE_DISK_FULL;
 #endif
 	
 static FILE	*traceFile;
-static JString baseDir;
+static char baseDir[PATH_MAX+1]={0};
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -157,16 +157,23 @@ static bool isAbsolutePath(const char *name)
 
 void IO::setBaseDirectory(const char *directory)
 {
-	baseDir = directory;
-	if (baseDir[baseDir.length()-1] != SEPARATOR)
-		baseDir += SEPARATOR;
+
+	strncpy(baseDir, directory, PATH_MAX);
+	size_t len = strlen(baseDir);
+	// Append path separator
+	if (baseDir[len-1] != SEPARATOR)
+	{
+		baseDir[len] = SEPARATOR;
+		baseDir[len+1] = 0;
+	}
+
 }
 
 static JString getPath(const char *filename)
 {
-	if(!baseDir || isAbsolutePath(filename))
+	if(baseDir[0] == 0 || isAbsolutePath(filename))
 		return JString(filename);
-	return baseDir + filename;
+	return JString(baseDir) + filename;
 }
 
 bool IO::openFile(const char * name, bool readOnly)
