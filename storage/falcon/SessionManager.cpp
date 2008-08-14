@@ -454,7 +454,7 @@ void SessionManager::purged(Session *session)
 
 void SessionManager::removeSession(Session *session)
 {
-	Sync sync (&syncObject, "SessionManager::close");
+	Sync sync (&syncObject, "SessionManager::removeSession");
 	sync.lock (Exclusive);
 
 	// If it's in a queue, take it out now
@@ -485,7 +485,7 @@ LicenseToken* SessionManager::waitForLicense(Session *target)
 	// If somebody else if waiting, and we're unwilling to
 	// wait, just say no.
 
-	Sync sync (&syncObject, "SessionManager::getLicenseToken");
+	Sync sync (&syncObject, "SessionManager::waitForLicense");
 	sync.lock (Exclusive);
 
 	if (waiting.first && !target)
@@ -495,7 +495,7 @@ LicenseToken* SessionManager::waitForLicense(Session *target)
 
 	if (target)
 		{
-		target->thread = Thread::getThread("SessionManager::getLicenseToken");
+		target->thread = Thread::getThread("SessionManager::waitForLicense");
 		waiting.insert (target);
 		}
 

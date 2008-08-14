@@ -1,0 +1,43 @@
+--source include/have_falcon.inc
+
+#
+# Bug #38039: Assertion lockState == 0 failed in StorageTableShare::deleteTable SyncObject
+#
+
+--echo *** Bug #38039 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1 (a_int INT) Engine = Falcon;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+## SHOW INDEXES is not required to reproduce the bug, but
+## is included here to verify correct behavior.
+
+ALTER TABLE t1 ADD KEY (a_int);
+SHOW INDEXES FROM t1;
+
+ALTER TABLE t1 ADD KEY (a_int);
+SHOW INDEXES FROM t1;
+
+ALTER TABLE t1 DROP KEY a_int;
+SHOW INDEXES FROM t1;
+
+DROP TABLE t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+
+## None, DROP TABLE is part of the test.

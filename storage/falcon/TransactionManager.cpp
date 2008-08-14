@@ -52,6 +52,8 @@ TransactionManager::TransactionManager(Database *db)
 	rolledBackTransaction->state = RolledBack;
 	rolledBackTransaction->inList = false;
 	syncObject.setName("TransactionManager::syncObject");
+	activeTransactions.syncObject.setName("TransactionManager::activeTransactions");
+	committedTransactions.syncObject.setName("TransactionManager::committedTransactions");
 }
 
 TransactionManager::~TransactionManager(void)
@@ -69,7 +71,7 @@ TransactionManager::~TransactionManager(void)
 
 TransId TransactionManager::findOldestActive()
 {
-	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::findOldestActive");
+	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::findOldestActive(1)");
 	syncCommitted.lock(Shared);
 	TransId oldestActive = transactionSequence;
 	
@@ -77,7 +79,7 @@ TransId TransactionManager::findOldestActive()
 		oldestActive = MIN(trans->transactionId, oldestActive);
 
 	syncCommitted.unlock();
-	Sync sync(&activeTransactions.syncObject, "TransactionManager::findOldestActive");
+	Sync sync(&activeTransactions.syncObject, "TransactionManager::findOldestActive(2)");
 	sync.lock(Shared);
 	Transaction *oldest = findOldest();
 
@@ -216,9 +218,9 @@ void TransactionManager::rollbackByXid(int xidLength, const UCHAR* xid)
 
 void TransactionManager::print(void)
 {
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::print");
+	Sync sync (&activeTransactions.syncObject, "TransactionManager::print(1)");
 	sync.lock (Exclusive);
-	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::print");
+	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::print(2)");
 	committedTrans.lock (Exclusive);
 	Transaction *transaction;
 	Log::debug("Active Transaction:\n");
@@ -235,9 +237,9 @@ void TransactionManager::print(void)
 
 void TransactionManager::getTransactionInfo(InfoTable* infoTable)
 {
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::getTransactionInfo");
+	Sync sync (&activeTransactions.syncObject, "TransactionManager::getTransactionInfo(1)");
 	sync.lock (Exclusive);
-	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::getTransactionInfo");
+	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::getTransactionInfo(2)");
 	committedTrans.lock (Exclusive);
 	Transaction *transaction;
 	
@@ -250,7 +252,7 @@ void TransactionManager::getTransactionInfo(InfoTable* infoTable)
 
 void TransactionManager::purgeTransactions()
 {
-	Sync syncCommitted(&committedTransactions.syncObject, "Transaction::commit");
+	Sync syncCommitted(&committedTransactions.syncObject, "Transaction::purgeTransactions");
 	syncCommitted.lock(Exclusive);
 	
 	// And, while we're at it, check for any fully mature transactions to ditch
@@ -276,9 +278,9 @@ void TransactionManager::purgeTransactions()
 
 void TransactionManager::getSummaryInfo(InfoTable* infoTable)
 {
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::getSummaryInfo");
+	Sync sync (&activeTransactions.syncObject, "TransactionManager::getSummaryInfo(1)");
 	sync.lock (Exclusive);
-	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::getSummaryInfo");
+	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::getSummaryInfo(2)");
 	committedTrans.lock (Exclusive);
 	int numberCommitted = committed;
 	int numberRolledBack = rolledBack;
@@ -371,7 +373,7 @@ void TransactionManager::expungeTransaction(Transaction *transaction)
 
 Transaction* TransactionManager::findTransaction(TransId transactionId)
 {
-	Sync syncActiveTrans(&activeTransactions.syncObject, "TransactionManager::findTransaction");
+	Sync syncActiveTrans(&activeTransactions.syncObject, "TransactionManager::findTransaction(1)");
 	syncActiveTrans.lock(Shared);
 	Transaction *transaction;
 
@@ -392,7 +394,7 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 
 void TransactionManager::validateDependencies(void)
 {
-	Sync sync(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies");
+	Sync sync(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies(1)");
 	sync.lock(Shared);
 	Transaction *transaction;
 
@@ -401,7 +403,7 @@ void TransactionManager::validateDependencies(void)
 			transaction->validateDependencies(false);
 			
 	sync.unlock();
-	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies");
+	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies(2)");
 	syncCommitted.lock(Shared);
 
 	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
@@ -412,7 +414,7 @@ void TransactionManager::removeTransaction(Transaction* transaction)
 {
 	if (transaction->state == Committed)
 		{
-		Sync sync(&committedTransactions.syncObject, "TransactionManager::removeTransaction");
+		Sync sync(&committedTransactions.syncObject, "TransactionManager::removeTransaction(1)");
 		sync.lock(Exclusive);
 		
 		for (Transaction *trans = committedTransactions.first; trans; trans = trans->next)
@@ -424,7 +426,7 @@ void TransactionManager::removeTransaction(Transaction* transaction)
 		}
 	else
 		{
-		Sync sync(&activeTransactions.syncObject, "TransactionManager::removeTransaction");
+		Sync sync(&activeTransactions.syncObject, "TransactionManager::removeTransaction(2)");
 		sync.lock(Exclusive);
 		
 		for (Transaction *trans = activeTransactions.first; trans; trans = trans->next)
