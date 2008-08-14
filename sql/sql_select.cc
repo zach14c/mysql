@@ -4354,6 +4354,41 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 
         sjm->materialization_cost.set_double(subjoin_read_time);
         sjm->rows= subjoin_out_rows;
+
+        List<Item> &right_expr_list= 
+          sj_nest->sj_subq_pred->unit->first_select()->item_list;
+        /*
+          Adjust output cardinality estimates. If the subquery has form
+
+           ... oe IN (SELECT t1.colX, t2.colY, func(X,Y,Z) )
+
+           then the number of distinct output record combinations has an
+           upper bound of product of number of records matching the tables 
+           that are used by the SELECT clause.
+           (TODO: functional dependencies may make this number even less)
+        */
+        {
+          //for (i=0 ; i < join->tables ; i++)
+          //  join->map2table[join->join_tab[i].table->tablenr]=join->join_tab+i;
+          for (i=0 ; i < join->const_tables + sjm->n_tables ; i++)
+          {
+            JOIN_TAB *tab= join->best_positions[i].table;
+            join->map2table[tab->table->tablenr]= tab;
+          }
+          List_iterator<Item> it(right_expr_list);
+          Item *item;
+          table_map map= 0;
+          while ((item= it++))
+            map |= item->used_tables();
+          map= map & ~PSEUDO_TABLE_BITS;
+          Table_map_iterator tm_it(map);
+          int tableno;
+          double rows= 1.0;
+          while ((tableno = tm_it.next_bit()) != Table_map_iterator::BITMAP_END)
+            rows *= join->map2table[tableno]->table->quick_condition_rows;
+          sjm->rows= min(sjm->rows, rows);
+        }
+
         memcpy(sjm->positions, join->best_positions + join->const_tables, 
                sizeof(POSITION) * n_tables);
 
@@ -4365,22 +4400,21 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
         /*
           Calculate temporary table parameters
         */
-        uint rowlen= get_tmp_table_rec_length(sj_nest->sj_subq_pred->unit->
-                                              first_select()->item_list);
+        uint rowlen= get_tmp_table_rec_length(right_expr_list);
         double lookup_cost;
         if (rowlen * subjoin_out_rows< join->thd->variables.max_heap_table_size)
         {
-          sjm->materialization_cost.add_io(0.05, subjoin_out_rows);
+          sjm->materialization_cost.add_io(subjoin_out_rows, 0.05);
           sjm->scan_cost.zero();
-          sjm->scan_cost.add_io(0.05, subjoin_out_rows);
+          sjm->scan_cost.add_io(sjm->rows, 0.05);
           lookup_cost= 0.05;
         }
         else
         {
-          sjm->materialization_cost.add_io(1.0, subjoin_out_rows);
+          sjm->materialization_cost.add_io(subjoin_out_rows, 1.0);
           lookup_cost= 1;
           sjm->scan_cost.zero();
-          sjm->scan_cost.add_io(1.0, subjoin_out_rows);
+          sjm->scan_cost.add_io(sjm->rows, 1.0);
         }
         sjm->lookup_cost.set_double(lookup_cost);
         sj_nest->sj_mat_info= sjm;
@@ -5790,7 +5824,7 @@ public:
     }
   }
 
-  void save_to_position(POSITION *pos)
+  void save_to_position(JOIN_TAB *tab, POSITION *pos)
   {
     pos->read_time=       best_loose_scan_cost;
     if (best_loose_scan_cost != DBL_MAX)
@@ -5799,6 +5833,10 @@ public:
       pos->key=             best_loose_scan_start_key;
       pos->loosescan_key=   best_loose_scan_key;
       pos->loosescan_parts= best_max_loose_keypart + 1;
+      pos->use_sj_mat=      0;
+      pos->use_join_buffer= FALSE;
+      pos->table=           tab;
+      // todo need ref_depend_map ?
     }
   }
 };
@@ -5821,15 +5859,12 @@ public:
   @param thd              thread for the connection that submitted the query
   @param remaining_tables set of tables not included into the partial plan yet
   @param idx              the length of the partial plan
+  @param disable_jbuf     TRUE<=> Don't use join buffering
   @param record_count     estimate for the number of records returned by the
                           partial plan
-  @param read_time        the cost of the partial plan
- 
- TODO: do we need to add this:
-  @param loose_scan_keys  if non-NULL but points to (key_map) - check if we
-                          can use loose scan
-                          IN   TRUE <=> can consider loosescan for semi-join
-                          OUT  TRUE <=> Picked loose scan.
+  @param pos              OUT Table access plan
+  @param loose_scan_pos   OUT Table plan that uses loosescan, or set cost to 
+                              DBL_MAX if not possible.
 
   @return
     None
@@ -6367,7 +6402,7 @@ best_access_path(JOIN      *join,
   pos->use_sj_mat= 0;
   pos->use_join_buffer= best_uses_jbuf;
    
-  loose_scan_opt.save_to_position(loose_scan_pos);
+  loose_scan_opt.save_to_position(s, loose_scan_pos);
 
   if (!best_key &&
       idx == join->const_tables &&
@@ -6488,7 +6523,7 @@ choose_plan(JOIN *join, table_map join_tables)
     if (search_depth == MAX_TABLES+2)
     { /*
         TODO: 'MAX_TABLES+2' denotes the old implementation of find_best before
-        the greedy version. Will be removed when greedy_search is approved.
+        the greedy version. Will be removed when greedy_search is apppostqueueroved.
       */
       join->best_read= DBL_MAX;
       if (find_best(join, join_tables, join->const_tables, 1.0, 0.0))
@@ -6972,10 +7007,10 @@ void get_partial_join_cost(JOIN *join, uint n_tables, double *read_time_arg,
   double read_time= 0.0;
   for (uint i= join->const_tables; i < n_tables + join->const_tables ; i++)
   {
-    if (join->positions[i].records_read)
+    if (join->best_positions[i].records_read) //!!psergey psergey fix AA BB
     {
-      record_count *= join->positions[i].records_read;
-      read_time += join->positions[i].read_time;
+      record_count *= join->best_positions[i].records_read;
+      read_time += join->best_positions[i].read_time;
     }
   }
   *read_time_arg= read_time;// + record_count / TIME_FOR_COMPARE;
@@ -7511,7 +7546,7 @@ get_best_combination(JOIN *join, table_map join_tables)
   /*
     Prepare semi-join processing info for plan refimenent stage:
   */
-  table_map remaining_tables= join_tables;
+  table_map remaining_tables= 0;//join_tables;
   table_map handled_tabs= 0;
   for (tablenr= table_count - 1 ; tablenr != join->const_tables - 1; tablenr--)
   {
@@ -7521,7 +7556,10 @@ get_best_combination(JOIN *join, table_map join_tables)
     LINT_INIT(first); // Set by every branch except SJ_OPT_NONE which doesn't use it
 
     if ((handled_tabs & s->table->map) || pos->sj_strategy == SJ_OPT_NONE)
+    {
+      remaining_tables |= s->table->map;
       continue;
+    }
     
     if (pos->sj_strategy == SJ_OPT_MATERIALIZE)
     {
@@ -7546,6 +7584,33 @@ get_best_combination(JOIN *join, table_map join_tables)
       join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
       join->best_positions[first].use_sj_mat |= SJ_MAT_SCAN;
       join->best_positions[first].n_sj_tables= sjm->n_tables;
+      /* 
+        Do what advance_sj_state did: re-run best_access_path for every table
+        in the [last_inner_table + 1; pos..) range
+      */
+      double prefix_rec_count;
+      /* Get the prefix record count */
+      if (first == join->const_tables)
+        prefix_rec_count= 1.0;
+      else
+        prefix_rec_count= join->best_positions[first-1].prefix_record_count;
+      
+      /* Add materialization record count*/
+      prefix_rec_count *= sjm->rows;
+      
+      uint i;
+      table_map rem_tables= remaining_tables;
+      for (i= tablenr; i != (first + sjm->n_tables - 1); i--)
+        rem_tables |= join->best_positions[i].table->table->map;
+
+      POSITION curpos, dummy;
+      for (i= first + sjm->n_tables; i <= tablenr; i++)
+      {
+        best_access_path(join, join->best_positions[i].table, rem_tables, i, FALSE,
+                         prefix_rec_count, join->best_positions + i, &dummy);
+        prefix_rec_count *= curpos.records_read;
+        rem_tables &= ~join->best_positions[i].table->table->map;
+      }
     }
  
     if (pos->sj_strategy == SJ_OPT_FIRST_MATCH)
@@ -7556,19 +7621,25 @@ get_best_combination(JOIN *join, table_map join_tables)
       POSITION dummy; // For loose scan paths
       double record_count= (first== join->const_tables)? 1.0: 
                            join->best_positions[tablenr - 1].prefix_record_count;
+      
+      table_map rem_tables= remaining_tables;
+      uint idx;
+      for (idx= first; idx <= tablenr; idx++)
+        rem_tables |= join->best_positions[idx].table->table->map;
       /*
         Re-run best_access_path to produce best access methods that do not use
         join buffering
       */ 
-      for (uint idx= first; idx <= tablenr; idx++)
+      for (idx= first; idx <= tablenr; idx++)
       {
         if (join->best_positions[idx].use_join_buffer)
         {
            best_access_path(join, join->best_positions[idx].table, 
-                            remaining_tables, idx, TRUE /* no jbuf */,
+                            rem_tables, idx, TRUE /* no jbuf */,
                             record_count, join->best_positions + idx, &dummy);
         }
         record_count *= join->best_positions[idx].records_read;
+        rem_tables &= ~join->best_positions[idx].table->table->map;
       }
     }
 
@@ -7576,29 +7647,34 @@ get_best_combination(JOIN *join, table_map join_tables)
     {
       first= pos->first_loosescan_table;
       POSITION *first_pos= join->best_positions + first;
-      first_pos->sj_strategy= SJ_OPT_LOOSE_SCAN;
-      first_pos->n_sj_tables= my_count_bits(first_pos->table->emb_sj_nest->sj_inner_tables);
       POSITION loose_scan_pos; // For loose scan paths
       double record_count= (first== join->const_tables)? 1.0: 
                            join->best_positions[tablenr - 1].prefix_record_count;
       
+      table_map rem_tables= remaining_tables;
+      uint idx;
+      for (idx= first; idx <= tablenr; idx++)
+        rem_tables |= join->best_positions[idx].table->table->map;
       /*
         Re-run best_access_path to produce best access methods that do not use
         join buffering
       */ 
-      for (uint idx= first; idx <= tablenr; idx++)
+      for (idx= first; idx <= tablenr; idx++)
       {
         if (join->best_positions[idx].use_join_buffer || (idx == first))
         {
            best_access_path(join, join->best_positions[idx].table,
-                            remaining_tables, idx, TRUE /* no jbuf */,
+                            rem_tables, idx, TRUE /* no jbuf */,
                             record_count, join->best_positions + idx,
                             &loose_scan_pos);
            if (idx==first)
              join->best_positions[idx]= loose_scan_pos;
         }
+        rem_tables &= ~join->best_positions[idx].table->table->map;
         record_count *= join->best_positions[idx].records_read;
       }
+      first_pos->sj_strategy= SJ_OPT_LOOSE_SCAN;
+      first_pos->n_sj_tables= my_count_bits(first_pos->table->emb_sj_nest->sj_inner_tables);
     }
 
     if (pos->sj_strategy == SJ_OPT_DUPS_WEEDOUT)
@@ -7616,6 +7692,7 @@ get_best_combination(JOIN *join, table_map join_tables)
     for (uint i= first; i < i_end; i++)
       handled_tabs |= join->best_positions[i].table->table->map;
 
+    remaining_tables |= s->table->map;
   }
 
   for (j=join_tab, tablenr=0 ; tablenr < table_count ; tablenr++,j++)
@@ -7641,7 +7718,9 @@ get_best_combination(JOIN *join, table_map join_tables)
     if (j->type == JT_SYSTEM)
       continue;
     
-    if (j->keys.is_clear_all() || !(keyuse= join->best_positions[tablenr].key))
+    if (j->keys.is_clear_all() || !(keyuse= join->best_positions[tablenr].key) || 
+        (join->best_positions[0].sj_strategy == SJ_OPT_LOOSE_SCAN /* &&
+        psergey-todo TODO*/))
     {
       j->type=JT_ALL;
       j->index= join->best_positions[tablenr].loosescan_key;
@@ -12230,29 +12309,45 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
       join->positions[pos->sjm_scan_last_inner].table->emb_sj_nest;
     SJ_MATERIALIZE_INFO *mat_info= mat_nest->sj_mat_info;
 
-    COST_VECT prefix_cost;
+    double prefix_cost;
     double prefix_rec_count;
-    int first_tab;
-    if ((first_tab= pos->sjm_scan_last_inner - mat_info->n_tables) + 1 != 
-        (int)join->const_tables)
+    int first_tab= pos->sjm_scan_last_inner + 1 - mat_info->n_tables;
+    /* Get the prefix cost */
+    if (first_tab == (int)join->const_tables)
     {
-      prefix_cost= join->positions[first_tab].prefix_cost;
-      prefix_rec_count= join->positions[first_tab].prefix_record_count;
+      prefix_rec_count= 1.0;
+      prefix_cost= 0.0;
     }
     else
     {
-      prefix_rec_count= 1.0;
-      prefix_cost.zero();
+      prefix_cost= join->positions[first_tab - 1].prefix_cost.total_cost();
+      prefix_rec_count= join->positions[first_tab - 1].prefix_record_count;
     }
 
-    double mat_read_time= prefix_cost.total_cost();
-    mat_read_time += mat_info->materialization_cost.total_cost() +
-                     prefix_rec_count * mat_info->scan_cost.total_cost();
-    //psergey-todo: add costs for tables that are after the inner tables!
-    if (mat_read_time < *current_read_time)
+    /* Add materialization cost */
+    prefix_cost += mat_info->materialization_cost.total_cost() +
+                   prefix_rec_count * mat_info->scan_cost.total_cost();
+    prefix_rec_count *= mat_info->rows;
+    
+    uint i;
+    table_map rem_tables= remaining_tables;
+    for (i= idx; i != (first_tab + mat_info->n_tables - 1); i--)
+      rem_tables |= join->positions[i].table->table->map;
+
+    POSITION curpos, dummy;
+    /* Need to re-run best-access-path as we prefix_rec_count has changed */
+    for (i= first_tab + mat_info->n_tables; i <= idx; i++)
+    {
+      best_access_path(join, join->positions[i].table, rem_tables, i, FALSE,
+                       prefix_rec_count, &curpos, &dummy);
+      prefix_rec_count *= curpos.records_read;
+      prefix_cost += curpos.read_time;
+    }
+
+    if (prefix_cost < *current_read_time || join->cur_unhandled_sj_fanout)
     {
       pos->sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
-      *current_read_time=    mat_read_time;
+      *current_read_time=    prefix_cost;
       *current_record_count= prefix_rec_count;
       join->cur_unhandled_sj_fanout&= ~mat_nest->sj_inner_tables;
 
@@ -12341,7 +12436,9 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
 
       double write_cost= join->positions[first_tab].prefix_record_count* 
                          sj_outer_fanout * (is_disk_table? 1.0: 0.05);
-      double lookup_cost= *current_record_count * (is_disk_table? 1.0:0.05);
+      double lookup_cost= join->positions[first_tab].prefix_record_count* 
+                         sj_outer_fanout* sj_inner_fanout * 
+                         (is_disk_table? 1.0:0.05);
       dups_cost += write_cost + lookup_cost;
       
       /*
