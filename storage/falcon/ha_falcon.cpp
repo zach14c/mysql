@@ -162,9 +162,11 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton = (handlerton *)p;
 	my_bool error = false;
 
+	StorageHandler::setDataDirectory(mysql_real_data_home);
+
 	if (!storageHandler)
 		storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
-
+	
 	falcon_hton->state = SHOW_OPTION_YES;
 	falcon_hton->db_type = DB_TYPE_FALCON;
 	falcon_hton->savepoint_offset = sizeof(void*);
@@ -177,6 +179,8 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->create = falcon_create_handler;
 	falcon_hton->drop_database  = StorageInterface::dropDatabase;
 	falcon_hton->panic  = StorageInterface::panic;
+
+
 #if 0
 	falcon_hton->alter_table_flags  = StorageInterface::alter_table_flags;
 #endif
@@ -3525,7 +3529,7 @@ void StorageInterface::unmapFields(void)
 static MYSQL_SYSVAR_STR(serial_log_dir, falcon_serial_log_dir,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,
   "Falcon serial log file directory.",
-  NULL, NULL, NULL);
+  NULL, NULL, mysql_real_data_home);
 
 static MYSQL_SYSVAR_STR(checkpoint_schedule, falcon_checkpoint_schedule,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,

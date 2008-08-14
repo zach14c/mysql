@@ -37,6 +37,7 @@
 #include "Dbb.h"
 #include "Database.h"
 #include "TableSpaceManager.h"
+#include "IOx.h"
 
 #define DICTIONARY_ACCOUNT		"mysql"
 #define DICTIONARY_PW			"mysql"
@@ -112,6 +113,10 @@ StorageHandler*	getFalconStorageHandler(int lockSize)
 	return storageHandler;
 }
 
+void StorageHandler::setDataDirectory(const char *directory)
+{
+	IO::setBaseDirectory(directory);
+}
 
 StorageHandler::StorageHandler(int lockSize)
 {
