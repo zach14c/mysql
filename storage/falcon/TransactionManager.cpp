@@ -200,7 +200,7 @@ void TransactionManager::waitForWriteComplete(Table* table)
 			return;
 
 		committedTrans.unlock();
-		Thread::getThread("TransactionManager::waitForWriteComplete")->sleep(500);
+		Thread::getThread("TransactionManager::waitForWriteComplete")->sleep(10);
 		}
 }
 void TransactionManager::commitByXid(int xidLength, const UCHAR* xid)
