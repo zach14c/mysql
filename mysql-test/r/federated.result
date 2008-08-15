@@ -2141,6 +2141,8 @@ de
 abc
 DROP TABLE federated.t1;
 DROP TABLE federated.t1;
+CREATE TABLE t1 (a INT) ENGINE=federated CONNECTION='foo';
+ERROR HY000: The foreign server name you are trying to reference does not exist. Data source error:  server name: 'foo' doesn't exist!
 End of 6.0 tests
 DROP TABLE IF EXISTS federated.t1;
 DROP DATABASE IF EXISTS federated;
