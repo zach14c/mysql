@@ -2868,6 +2868,7 @@ int ha_partition::write_row(uchar * buf)
   my_bitmap_map *old_map;
   HA_DATA_PARTITION *ha_data= (HA_DATA_PARTITION*) table_share->ha_data;
   THD *thd= ha_thd();
+  timestamp_auto_set_type orig_timestamp_type= table->timestamp_field_type;
 #ifdef NOT_NEEDED
   uchar *rec0= m_rec0;
 #endif
@@ -2877,6 +2878,7 @@ int ha_partition::write_row(uchar * buf)
   /* If we have a timestamp column, update it to the current time */
   if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_INSERT)
     table->timestamp_field->set_time();
+  table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
 
   /*
     If we have an auto_increment column and we are writing a changed row
@@ -2932,6 +2934,7 @@ int ha_partition::write_row(uchar * buf)
     set_auto_increment_if_higher();
   reenable_binlog(thd);
 exit:
+  table->timestamp_field_type= orig_timestamp_type;
   DBUG_RETURN(error);
 }
 
@@ -2982,10 +2985,8 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
     inside m_file[*]->update_row() methods
   */
   if (orig_timestamp_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
-  {
     table->timestamp_field->set_time();
-    table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
-  }
+  table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
 
   if ((error= get_parts_for_update(old_data, new_data, table->record[0],
                                    m_part_info, &old_part_id, &new_part_id,
