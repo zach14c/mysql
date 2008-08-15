@@ -22,7 +22,7 @@ connect (conn1,localhost,root,,);
 # --- Test                                          --- #
 # ----------------------------------------------------- #
 
-let $num=10000;
+let $num=1000;
 --disable_query_log
 while ($num)
 {

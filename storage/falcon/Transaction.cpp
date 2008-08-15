@@ -275,38 +275,43 @@ void Transaction::commit()
 		releaseRecordLocks();
 
 	database->serialLog->preCommit(this);
-	state = Committed;
 	syncActive.unlock();
 
+	
+
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
+	{
+		Table * table = record->format->table;
+
 		if (!record->isSuperceded() && record->state != recLock)
-			record->format->table->updateRecord (record);
+			{
+			table->updateRecord (record);
+			if (commitTriggers)
+				table->postCommit (this, record);
+			}
 
-	if (commitTriggers)
-		for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
-			if (!record->isSuperceded() && record->state != recLock)
-				record->format->table->postCommit (this, record);
-
+		if (!record->getPriorVersion())
+			++table->cardinality;
+		if (record->state == recDeleted && table->cardinality > 0)
+			--table->cardinality;
+	}
+	
 	releaseDependencies();
 	database->flushInversion(this);
 
+	// Transfer transaction from active list to committed list, set committed state
 	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
-	syncCommitted.lock(Exclusive);
-
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
+	syncCommitted.lock(Exclusive);
 	syncActiveTransactions.lock(Exclusive);
+
 	transactionManager->activeTransactions.remove(this);
-	syncActiveTransactions.unlock();
-	
-	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
-		{
-		if (!record->getPriorVersion())
-			++record->format->table->cardinality;
-		if (record->state == recDeleted && record->format->table->cardinality > 0)
-			--record->format->table->cardinality;
-		}
 	transactionManager->committedTransactions.append(this);
+	state = Committed;
+
+	syncActiveTransactions.unlock();
 	syncCommitted.unlock();
+
 	database->commit(this);
 
 	delete [] xid;
@@ -778,7 +783,8 @@ void Transaction::releaseDependencies()
 
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
-				ASSERT(transaction->transactionId == state->transactionId || transaction->state == Available);
+				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
+				ASSERT(transaction->state != Initializing);
 				transaction->releaseDependency();
 				}
 			}
@@ -925,8 +931,11 @@ void Transaction::truncateTable(Table* table)
 			ptr = &rec->nextInTrans;
 }
 
-bool Transaction::hasUncommittedRecords(Table* table)
+bool Transaction::hasRecords(Table* table)
 {
+	// This lock is to avoid race with writeComplete
+	Sync sync(&syncIndexes, "Transaction::hasRecords");
+	sync.lock(Exclusive);
 	for (RecordVersion *rec = firstRecord; rec; rec = rec->nextInTrans)
 		if (rec->format->table == table)
 			return true;

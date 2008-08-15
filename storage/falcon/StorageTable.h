@@ -61,6 +61,7 @@ public:
 	void			transactionEnded(void);
 	void			setRecord(Record* record, bool locked);
 	int				alterCheck(void);
+	void			waitForWriteComplete();
 	void			clearAlter(void);
 	bool			setAlter(void);
 	
