@@ -51,8 +51,17 @@ static int win_lock(File fd, int locktype, my_off_t start, my_off_t length,
 
   if (locktype == F_UNLCK)
   {
-    if(UnlockFileEx(hFile, 0, liLength.LowPart, liLength.HighPart, &ov))
+    if (UnlockFileEx(hFile, 0, liLength.LowPart, liLength.HighPart, &ov))
       DBUG_RETURN(0);
+    /*
+      For compatibility with fcntl implementation, ignore error,
+      if region was not locked
+    */
+    if (GetLastError() == ERROR_NOT_LOCKED)
+    {
+      SetLastError(0);
+      DBUG_RETURN(0);
+    }
     goto error;
   }
   else if (locktype == F_RDLCK)
