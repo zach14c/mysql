@@ -62,8 +62,7 @@ enum State {
 	// And the remaining are for transactions pending reuse
 	
 	Available,				// 9
-	Initializing,			// 10
-	CommittingReadOnly		// 11
+	Initializing			// 10
 	};
 
 struct TransState {
@@ -103,6 +102,7 @@ public:
 	void		addRef();
 	void		waitForTransaction();
 	bool		waitForTransaction (TransId transId);
+	State		waitForTransaction (Transaction *transaction, TransId transId, bool *deadlock);
 	void		dropTable(Table* table);
 	void		truncateTable(Table* table);
 	bool		hasUncommittedRecords(Table* table);
@@ -146,7 +146,7 @@ public:
 	int				curSavePointId;
 	Transaction		*next;			// next in database
 	Transaction		*prior;			// next in database
-	Transaction		*waitingFor;
+	volatile	Transaction		*waitingFor;
 	SavePoint		*savePoints;
 	SavePoint		*freeSavePoints;
 	SavePoint		localSavePoints[LOCAL_SAVE_POINTS];
@@ -168,9 +168,9 @@ public:
 	bool			writePending;
 	bool			pendingPageWrites;
 	bool			hasLocks;
+	SyncObject		syncObject;
 	SyncObject		syncActive;
 	SyncObject		syncIndexes;
-	SyncObject		syncObject;
 	SyncObject		syncSavepoints;
 	uint64			totalRecordData;	// total bytes of record data for this transaction (unchilled + thawed)
 	uint32			totalRecords;		// total record count

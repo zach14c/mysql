@@ -1046,8 +1046,9 @@ TimeStamp Value::getTimestamp()
 		return data.timestamp;
 
 	TimeStamp timestamp;
-	timestamp = getDate();
-
+	//timestamp = getDate();
+	timestamp.setDate(getDate());
+	
 	return timestamp;
 }
 

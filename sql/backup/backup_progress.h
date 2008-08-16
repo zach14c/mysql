@@ -22,10 +22,6 @@
    Data Dictionary related operations of Online Backup.
 */
 
-#include "my_global.h"
-#include "my_time.h"
-#include "mysql_priv.h"
-
 /**
    List of fields for online backup table.
   */
@@ -48,7 +44,7 @@ enum enum_backup_history_table_field
   ET_OBH_FIELD_BACKUP_FILE,
   ET_OBH_FIELD_COMMENT,
   ET_OBH_FIELD_COMMAND,
-  ET_OBH_FIELD_ENGINES,
+  ET_OBH_FIELD_DRIVERS,
   ET_OBH_FIELD_COUNT /* a cool trick to count the number of fields :) */
 };
 
@@ -222,13 +218,13 @@ int report_ob_vp_time(THD *thd,
                       time_t vp_time);
 
 /*
-  This method updates the engines information for the backup operation
+  This method updates the drivers information for the backup operation
   identified by backup_id. This method appends to the those listed in the
   table for the backup_id.
 */
-int report_ob_engines(THD *thd,
+int report_ob_drivers(THD *thd,
                       ulonglong backup_id,
-                      const char *engine_name);
+                      const char *driver_name);
 
 /*
   This method inserts a new row in the progress table.

@@ -8,7 +8,7 @@ extern "C" {
 
 // We use version 1 of the stream format.
 
-#include "stream_v1.h"
+#include <backup/stream_v1.h>
 
 }
 

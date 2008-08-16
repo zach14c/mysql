@@ -91,7 +91,7 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
           width= width * 10 + (uint)(*fmt - '0');
     }
     else
-      width= ~0;
+      width= SIZE_T_MAX;
     if (*fmt == 'l')
     {
       fmt++;
@@ -132,10 +132,10 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
     else if (*fmt == 'f' || *fmt == 'g')
     {
       double d= va_arg(ap, double);
-      if (width == 0)
-        width= FLT_DIG;
-      else if (width > NOT_FIXED_DEC)
-        width= NOT_FIXED_DEC; /* max.precision for my_fcvt() */
+      if (width == SIZE_T_MAX)
+        width= FLT_DIG; /* width not set, use default */
+      else if (width >= NOT_FIXED_DEC)
+        width= NOT_FIXED_DEC - 1; /* max.precision for my_fcvt() */
       width= min(width, (size_t)(end-to) - 1);
 
       if (*fmt == 'f')

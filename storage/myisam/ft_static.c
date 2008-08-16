@@ -30,8 +30,8 @@ const HA_KEYSEG ft_keysegs[FT_SEGS]={
   0,                                            /* Bit pos */
   HA_VAR_LENGTH_PART | HA_PACK_KEY,             /* flag */
   HA_FT_MAXBYTELEN,                             /* length */
-  HA_KEYTYPE_VARTEXT2,                          /* type */
   63,                                           /* language (will be overwritten) */
+  HA_KEYTYPE_VARTEXT2,                          /* type */
   0,                                            /* null_bit */
   2, 0, 0                                       /* bit_start, bit_end, bit_length */
 },
@@ -41,7 +41,7 @@ const HA_KEYSEG ft_keysegs[FT_SEGS]={
       be packed in any way, otherwise w_search() won't be able to
       update key entry 'in vivo'
     */
-  0, 0, 0, 0, HA_NO_SORT, HA_FT_WLEN, HA_FT_WTYPE, 63, 0, 0, 0, 0
+  0, 0, 0, 0, HA_NO_SORT, HA_FT_WLEN, 63, HA_FT_WTYPE, 0, 0, 0, 0
 }
 };
 
@@ -53,20 +53,6 @@ const struct _ft_vft _ft_vft_boolean = {
   ft_boolean_read_next, ft_boolean_find_relevance, ft_boolean_close_search,
   ft_boolean_get_relevance,  ft_boolean_reinit_search
 };
-
-
-FT_INFO *ft_init_search(uint flags, void *info, uint keynr,
-                        uchar *query, uint query_len, CHARSET_INFO *cs,
-                        uchar *record)
-{
-  FT_INFO *res;
-  if (flags & FT_BOOL)
-    res= ft_init_boolean_search((MI_INFO *)info, keynr, query, query_len,cs);
-  else
-    res= ft_init_nlq_search((MI_INFO *)info, keynr, query, query_len, flags,
-			    record);
-  return res;
-}
 
 const char *ft_stopword_file = 0;
 const char *ft_precompiled_stopwords[] = {

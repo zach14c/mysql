@@ -39,12 +39,12 @@ void Gopher::gopherThread(void* arg)
 
 void Gopher::gopherThread(void)
 {
-	Sync deadMan(&log->syncGopher, "Gopher::gopherThread");
+	Sync deadMan(&log->syncGopher, "Gopher::gopherThread(1)");
 	deadMan.lock(Shared);
 	workerThread = Thread::getThread("Gopher::gopherThread");
 	active = true;
-	Sync sync (&log->pending.syncObject, "Gopher::gopherThread pending");
-	sync.lock(Exclusive);
+	Sync syncPending (&log->pending.syncObject, "Gopher::gopherThread(2)");
+	syncPending.lock(Exclusive);
 	
 	while (!workerThread->shutdownInProgress && !log->finishing)
 		{
@@ -53,22 +53,26 @@ void Gopher::gopherThread(void)
 			if (log->blocking)
 				log->unblockUpdates();
 
-			sync.unlock();
+			syncPending.unlock();
 			active = false;
 			workerThread->sleep();
 			active = true;
-			sync.lock(Exclusive);
+			syncPending.lock(Exclusive);
 
 			continue;
 			}
 		
 		SerialLogTransaction *transaction = log->pending.first;
 		log->pending.remove(transaction);
-		sync.unlock();
+
+		setConcurrency(&syncPending, transaction->allowConcurrentGophers);
+		syncPending.unlock();
 
 		transaction->doAction();
 
-		sync.lock(Exclusive);
+		syncPending.lock(Exclusive);
+		releaseConcurrency(&syncPending, transaction->allowConcurrentGophers);
+
 		log->inactions.append(transaction);
 		
 		if (log->pending.count > log->maxTransactions && !log->blocking)
@@ -77,6 +81,60 @@ void Gopher::gopherThread(void)
 
 	active = false;
 	workerThread = NULL;
+}
+
+void Gopher::setConcurrency(Sync *syncPending, bool allowConcurrentGophers)
+{
+	// Assume that syncPending is locked exclusively.
+
+	if (allowConcurrentGophers)
+		{
+		while (log->serializeGophers < 0)
+			{
+			syncPending->unlock();
+			workerThread->sleep(10);
+			syncPending->lock(Exclusive);
+			}
+
+		log->serializeGophers++;
+		}
+	else
+		{
+		log->wantToSerializeGophers++;
+		while (log->serializeGophers)
+			{
+			syncPending->unlock();
+			workerThread->sleep(10);
+			syncPending->lock(Exclusive);
+			}
+
+		log->serializeGophers = -1;
+		}
+}
+
+void Gopher::releaseConcurrency(Sync *syncPending, bool allowConcurrentGophers)
+{
+	if (allowConcurrentGophers)
+		{
+		ASSERT(log->serializeGophers > 0);
+		log->serializeGophers--;
+		}
+	else
+		{
+		ASSERT(log->serializeGophers == -1);
+		log->wantToSerializeGophers--;
+		log->serializeGophers = 0;
+		}
+
+	// If there is another thread that needs to serialize the gophers, 
+	// wait here until it is done.
+
+	while (log->wantToSerializeGophers)
+		{
+		syncPending->unlock();
+		workerThread->sleep(10);
+		syncPending->lock(Exclusive);
+		}
 }
 
 void Gopher::start(void)

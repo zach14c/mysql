@@ -1,0 +1,73 @@
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE IF EXISTS mysqltest;
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (c1 LONGTEXT) ENGINE=MyISAM;
+
+connection backup: Start backup
+SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
+                     WAIT_FOR bup_finish';
+BACKUP DATABASE mysqltest TO 'test.ba';
+
+connection default: Wait for BACKUP to reach its sync point
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+Insert data
+INSERT INTO t1 VALUES ("text");
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+UPDATE t1 SET c1=concat(c1,c1);
+SELECT LENGTH(c1) FROM t1;
+LENGTH(c1)
+262144
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	1728069308
+Signal BACKUP to finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+connection backup: Fetch result
+backup_id
+#
+REPAIR TABLE t1 QUICK;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	repair	status	OK
+DROP DATABASE mysqltest;
+RESTORE FROM 'test.ba';
+backup_id
+#
+SELECT LENGTH(c1) FROM t1;
+LENGTH(c1)
+262144
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	1728069308
+
+connection default: cleanup
+SET DEBUG_SYNC= 'RESET';
+
+#
+# Bug#38045 - Backup, MyISAM and file system encoding
+#
+CREATE TABLE `äöüß£å` (id SERIAL) ENGINE=MyISAM;
+BACKUP DATABASE mysqltest TO 'test.ba';
+backup_id
+#
+DROP TABLE `äöüß£å`;
+
+# final cleanup
+USE test;
+DROP DATABASE mysqltest;
+SET DEBUG_SYNC= 'RESET';

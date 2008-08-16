@@ -25,6 +25,7 @@
 #include "Sequence.h"
 #include "Index.h"
 #include "Table.h"
+#include "Field.h"
 #include "Interlock.h"
 #include "CollationManager.h"
 #include "MySQLCollation.h"
@@ -35,6 +36,10 @@
 
 static const char *FALCON_TEMPORARY		= "/falcon_temporary";
 static const char *DB_ROOT				= ".fts";
+
+#ifndef ONLINE_ALTER
+//#define ONLINE_ALTER
+#endif
 
 #if defined(_WIN32) && MYSQL_VERSION_ID < 0x50100
 #define IS_SLASH(c)	(c == '/' || c == '\\')
@@ -59,6 +64,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	initialized = false;
 	table = NULL;
 	indexes = NULL;
+	format = NULL;
 	syncObject = new SyncObject;
 	syncObject->setName("StorageTableShare::syncObject");
 	sequence = NULL;
@@ -113,6 +119,10 @@ int StorageTableShare::open(void)
 	if (!table)
 		{
 		table = storageDatabase->findTable(name, schemaName);
+		
+		if (table)
+			format = table->getCurrentFormat();
+			
 		sequence = storageDatabase->findSequence(name, schemaName);
 		}
 	
@@ -124,8 +134,38 @@ int StorageTableShare::open(void)
 
 int StorageTableShare::create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue)
 {
-	if (!(table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
+	try
+		{
+		table = storageDatabase->createTable(storageConnection, name, schemaName, sql, autoIncrementValue);
+		}
+	catch (SQLException& exception)
+		{
+		int sqlcode= exception.getSqlcode();
+		switch (sqlcode)
+			{
+			case TABLESPACE_NOT_EXIST_ERROR:
+				return StorageErrorTableSpaceNotExist;
+			default:
+				return StorageErrorTableExits;
+			}
+		}
+	if (!table)
 		return StorageErrorTableExits;
+	
+	format = table->getCurrentFormat();
+
+	if (autoIncrementValue)
+		sequence = storageDatabase->findSequence(name, schemaName);
+		
+	return 0;
+}
+
+int StorageTableShare::upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue)
+{
+	if (!(table = storageDatabase->upgradeTable(storageConnection, name, schemaName, sql, autoIncrementValue)))
+		return StorageErrorTableExits;
+
+	format = table->getCurrentFormat();
 	
 	if (autoIncrementValue)
 		sequence = storageDatabase->findSequence(name, schemaName);
@@ -141,8 +181,7 @@ int StorageTableShare::deleteTable(StorageConnection *storageConnection)
 		{
 		unRegisterTable();
 		
-		if (res == 0)
-			storageHandler->removeTable(this);
+		storageHandler->removeTable(this);
 			
 		delete this;
 		}
@@ -215,6 +254,14 @@ int StorageTableShare::createIndex(StorageConnection *storageConnection, const c
 	return storageDatabase->createIndex(storageConnection, table, name, sql);
 }
 
+int StorageTableShare::dropIndex(StorageConnection *storageConnection, const char* name, const char* sql)
+{
+	if (!table)
+		open();
+
+	return storageDatabase->dropIndex(storageConnection, table, name, sql);
+}
+
 int StorageTableShare::renameTable(StorageConnection *storageConnection, const char* newName)
 {
 	char tableName[256];
@@ -236,6 +283,29 @@ int StorageTableShare::renameTable(StorageConnection *storageConnection, const c
 
 StorageIndexDesc* StorageTableShare::getIndex(int indexCount, int indexId, StorageIndexDesc* indexDesc)
 {
+	// Rebuild array if indexes have been added or dropped
+	
+#ifdef ONLINE_ALTER
+
+	// TODO: This does not work. It should be done at the time of index creation
+
+	if (indexes && (numberIndexes != indexCount))
+		{
+		Sync sync(syncObject, "StorageTableShare::getIndex");
+		sync.lock(Exclusive);
+		StorageIndexDesc **oldIndexes = indexes;
+		StorageIndexDesc **newIndexes = new StorageIndexDesc*[indexCount];
+		memset(newIndexes, 0, indexCount * sizeof(StorageIndexDesc*));
+		
+		for (int n = 0; n < numberIndexes; ++n)
+			newIndexes[n] = indexes[n];
+		
+		indexes = newIndexes;
+		numberIndexes = indexCount;
+		delete [] oldIndexes;
+		}
+#endif
+	
 	if (!indexes)
 		{
 		indexes = new StorageIndexDesc*[indexCount];
@@ -317,10 +387,15 @@ int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
 	return -1;
 }
 
-int StorageTableShare::haveIndexes(void)
+int StorageTableShare::haveIndexes(int indexCount)
 {
 	if (indexes == NULL)
 		return false;
+		
+#ifdef ONLINE_ALTER
+	if (indexCount != numberIndexes)
+		return false;
+#endif	
 	
 	for (int n = 0; n < numberIndexes; ++n)
 		if (indexes[n]== NULL)
@@ -388,7 +463,7 @@ void StorageTableShare::registerTable(void)
 	
 	try
 		{
-		Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::save");
+		Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::registerTable");
 		sync.lock(Exclusive);
 		connection = storageHandler->getDictionaryConnection();
 		statement = connection->prepareStatement(
@@ -419,7 +494,7 @@ void StorageTableShare::registerTable(void)
 
 void StorageTableShare::unRegisterTable(void)
 {
-	Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::unsave");
+	Sync sync(&storageHandler->dictionarySyncObject, "StorageTableShare::unRegisterTable");
 	sync.lock(Exclusive);
 	Connection *connection = storageHandler->getDictionaryConnection();
 	PreparedStatement *statement = connection->prepareStatement(
@@ -544,4 +619,14 @@ void StorageTableShare::clearTruncateLock(void)
 		syncTruncate->unlock();
 //		syncTruncate->unlock(NULL, Shared);
 		}
+}
+
+int StorageTableShare::getFieldId(const char* fieldName)
+{
+	Field *field = table->findField(fieldName);
+	
+	if (!field)
+		return -1;
+	
+	return field->id;
 }

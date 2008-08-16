@@ -1,8 +1,36 @@
 #ifndef _BACKUP_AUX_H
 #define _BACKUP_AUX_H
 
-#include <backup/api_types.h>
-#include <backup_stream.h>
+typedef st_plugin_int* storage_engine_ref;
+
+// Macro which transforms plugin_ref to storage_engine_ref
+#ifdef DBUG_OFF
+#define plugin_ref_to_se_ref(A) (A)
+#define se_ref_to_plugin_ref(A) (A)
+#else
+#define plugin_ref_to_se_ref(A) ((A) ? *(A) : NULL)
+#define se_ref_to_plugin_ref(A) &(A)
+#endif
+
+inline
+const char* se_name(storage_engine_ref se)
+{ return se->name.str; }
+
+inline
+uint se_version(storage_engine_ref se)
+{ return se->plugin->version; }  // Q: Or, should it be A->plugin_dl->version?
+
+inline
+handlerton* se_hton(storage_engine_ref se)
+{ return (handlerton*)(se->data); }
+
+inline
+storage_engine_ref get_se_by_name(const LEX_STRING name)
+{ 
+  plugin_ref plugin= ::ha_resolve_by_name(::current_thd, &name);
+  return plugin_ref_to_se_ref(plugin); 
+}
+
 
 namespace backup {
 
@@ -47,169 +75,303 @@ struct LEX_STRING: public ::LEX_STRING
   }
 };
 
+/**
+  Local version of String class.
+
+  Defines various constructors for convenience.
+ */
 class String: public ::String
 {
  public:
 
-  String(const ::String &s): ::String(s)
+  String(const ::String &s) : ::String(s)
   {}
 
-  String(const ::LEX_STRING &s):
-    ::String(s.str,s.length,&::my_charset_bin) // FIXME: charset info
-  {}
-
-  String(byte *begin, byte *end):
-    ::String((char*)begin,end-begin,&::my_charset_bin) // FIXME: charset info
+  String(const ::LEX_STRING &s)
+    : ::String(s.str, (uint32)s.length, &::my_charset_bin)
   {
-    if (!begin)
-     set((char*)NULL,0,NULL);
+    // Check that string fits.
+    DBUG_ASSERT(s.length <= ~((uint32)0));
   }
 
-  String(const char *s):
-    ::String(s,&::my_charset_bin)
+  String(byte *begin, byte *end)
+    : ::String((char*)begin, (uint32)(end - begin), &::my_charset_bin)
+  {
+    // Check that string length is correct.
+    DBUG_ASSERT(begin <= end);
+    /* 
+      This complex expression checks that the pointer difference fits into
+      uint32 type reagardless of the size of pointer type and without generating
+      compiler warnings (hopefully).
+      
+      The idea is to check that in the difference (Which is positive) no bits
+      beyond the ones used by unit32 type are set.
+    */
+    DBUG_ASSERT(!((size_t)(end - begin) & ~((size_t)~((uint32)0))));
+
+    if (!begin)
+     set((char*)NULL, 0, NULL); // Note: explicit cast is needed to disambiguate.
+  }
+
+  String(const char *s)
+    : ::String(s, &::my_charset_bin)
   {}
 
-  String(): ::String()
+  String() : ::String()
   {}
 };
 
-
-/*
-
-  Dynamic_array<Foo> array;
-
-  new (array.get_entry(7)) Foo(....);
-
-  if (foo = array[7])
-  {
-    foo->...
-  }
-
- TODO: Look at similar class in sql_array.h
-*/
-
-template<class X>
-class Dynamic_array
+inline
+void set_table_list(TABLE_LIST &tl, const Table_ref &tbl, 
+                    thr_lock_type lock_type, MEM_ROOT *mem)
 {
-   ::DYNAMIC_ARRAY m_array;
+  DBUG_ASSERT(mem);
 
+  tl.alias= tl.table_name= const_cast<char*>(tbl.name().ptr());
+  tl.db= const_cast<char*>(tbl.db().name().ptr());
+  tl.lock_type= lock_type;
+
+  tl.mdl_lock_data= mdl_alloc_lock(0, tl.db, tl.table_name, mem); 
+}
+
+inline
+TABLE_LIST* mk_table_list(const Table_ref &tbl, thr_lock_type lock_type, 
+                          MEM_ROOT *mem)
+{
+  DBUG_ASSERT(mem);
+
+  TABLE_LIST *ptr= (TABLE_LIST*)alloc_root(mem, sizeof(TABLE_LIST));
+
+  if (!ptr)
+     return NULL;
+
+  bzero(ptr, sizeof(TABLE_LIST));
+  set_table_list(*ptr, tbl, lock_type, mem);
+
+  return ptr;
+}
+
+inline
+TABLE_LIST* link_table_list(TABLE_LIST &tl, TABLE_LIST *next)
+{
+  tl.next_global= tl.next_local= tl.next_name_resolution_table= next;
+  return &tl;
+}
+
+TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock);
+void free_table_list(TABLE_LIST*);
+
+} // backup namespace
+
+/**
+  Implements a dynamic map from A to B* (also known as hash array).
+  
+  An instance @map of calss @c Map<A,B> can store mappings from values of 
+  type @c A to pointers of type @c B*. Such mappings are added with
+  @code
+   A a;
+   B *ptr;
+   
+   map.insert(a,ptr);
+  @endcode
+  
+  Later, one can examine the pointer assigned to a given value using operator[]
+  @code
+   A a
+   B *ptr= map[a]
+  @endcode
+  
+  If no mapping for the value a was defined, then returned pointer is NULL. 
+  
+  In case type @c A is @c int we obtain a dynamic array where pointers are 
+  stored at indicated positions.
+  @code
+  
+  Map<uint,B> map;
+  
+  B x,y;
+  
+  map.insert(1,&x);
+  map.insert(7,&y);
+  
+  B *p1= map[1];  // p1 points at x
+  B *p2= map[2];  // p2 is NULL
+  @endcode
+  
+  However, it is also possible to have the pointers indexed by more complex
+  values.
+
+  @note We assume that type A has (fast) copy constructor.
+ */ 
+template<class A, class B>
+class Map
+{
+  HASH m_hash;
+  
  public:
 
-   Dynamic_array(uint init_size, uint alloc_increment)
-   {
-     my_init_dynamic_array(&m_array,1+sizeof(X),init_size,alloc_increment);
-     clear_free_space();
-   }
+  Map(size_t);
+  ~Map();
 
-   ~Dynamic_array()
-   {
-     for (uint pos=0; pos < m_array.elements; ++pos)
-     {
-       X *ptr= const_cast<X*>((*this)[pos]);
-       if (ptr)
-         ptr->~X();
-     }
+  int insert(const A&, B*);
+  B* operator[](const A&) const;
+  
+ private:
+ 
+  struct Node;
+};
 
-     delete_dynamic(&m_array);
-   }
+/*****************************************************************
+ 
+  Implementation of Map template using HASH type.
+ 
+ *****************************************************************/
 
-   X* operator[](uint pos) const
-   {
-     if (pos >= m_array.elements)
-       return NULL;
+/// Nodes inserted into HASH table
+template<class A, class B>
+struct Map<A,B>::Node
+{
+  /* 
+    Note: key member must be first for correct key offset value in HASH 
+    initialization.
+   */
+  A key;  
+  B *ptr;
 
-     uchar *ptr= dynamic_array_ptr(&m_array,pos);
+  Node(const A &a, B *b) :key(a), ptr(b) {}
+  
+  static void del_key(void *node)
+  { delete (Node*) node; }
+};
 
-     return *ptr == 0xFF ? (X*)(ptr+1) : NULL;
-   }
+template<class A, class B>
+inline
+Map<A,B>::Map(size_t init_size)
+{
+  hash_init(&m_hash, &::my_charset_bin, init_size, 
+            0, sizeof(A), NULL, Node::del_key, MYF(0));
+}
 
-   X* get_entry(uint pos)
-   {
-     uchar *entry;
+template<class A, class B>
+inline
+Map<A,B>::~Map()
+{
+  hash_free(&m_hash);
+}
 
-     while (pos > m_array.max_element)
-     {
-       entry= alloc_dynamic(&m_array);
-       if (!entry)
-        break;
-     }
+/** 
+  Insert new mapping.
 
-     clear_free_space();
+  @todo Consider using mem_root for allocating hash nodes.
+ */
+template<class A, class B>
+inline
+int Map<A,B>::insert(const A &a, B *b)
+{
+  Node *n= new Node(a, b); // TODO: use mem root (?)
 
-     if (pos > m_array.max_element)
-      return NULL;
+  return my_hash_insert(&m_hash, (uchar*) n);
+}
 
-     if (pos >= m_array.elements)
-       m_array.elements= pos+1;
+/// Get pointer corresponding to the given value.
+template<class A, class B>
+inline
+B* Map<A,B>::operator[](const A &a) const
+{
+  Node *n= (Node*) hash_search(&m_hash, (uchar*) &a, sizeof(A));
+  
+  return n ? n->ptr : NULL;
+}
 
-     entry= dynamic_array_ptr(&m_array,pos);
-     X *ptr= (X*)(entry+1);
 
-     if (*entry == 0xFF)
-       ptr->~X();
+/**
+  Specialization of Map template with integer indexes implemented as a 
+  Dynamic_array.
+ */ 
+template<class T>
+class Map<uint,T>: public ::Dynamic_array< T* >
+{
+  typedef Dynamic_array< T* > Base;
+  
+ public:
 
-     *entry= 0xFF;
-     return new (ptr) X();
-   }
+   Map(uint init_size, uint increment);
 
-   uint size() const
-   { return m_array.elements; }
+   T* operator[](ulong pos) const;
+   int insert(ulong pos, T *ptr);
+   ulong count() const;
 
  private:
 
-   void clear_free_space()
-   {
-     uchar *start= dynamic_array_ptr(&m_array,m_array.elements);
-     uchar *end= dynamic_array_ptr(&m_array,m_array.max_element);
-     if (end > start)
-       bzero(start, end - start);
-   }
+   void clear_free_space();
 };
 
-TABLE_LIST *build_table_list(const Table_list&,thr_lock_type);
-
-
-/// Check if a database exists.
-
+template<class T>
 inline
-bool db_exists(const Db_ref &db)
+Map<uint,T>::Map(uint init_size, uint increment) :Base(init_size, increment)
 {
-  //  This is how database existence is checked inside mysql_change_db().
-  return ! ::check_db_dir_existence(db.name().ptr());
+  clear_free_space();
 }
 
+template<class T>
 inline
-bool change_db(THD *thd, const Db_ref &db)
+void Map<uint,T>::clear_free_space()
 {
-  LEX_STRING db_name= db.name();
-
-  return 0 == ::mysql_change_db(thd,&db_name,TRUE);
+   DYNAMIC_ARRAY *array= &this->array;
+   uchar *start= dynamic_array_ptr(array, array->elements);
+   uchar *end= dynamic_array_ptr(array, array->max_element);
+   if (end > start)
+     bzero(start, end - start);
 }
 
-/*
-  Free the memory for the table list.
-*/
-inline int free_table_list(TABLE_LIST *all_tables)
+template<class T>
+inline
+int Map<uint,T>::insert(ulong pos, T *ptr)
 {
-  if (all_tables)
+  uchar *entry;
+  DYNAMIC_ARRAY *array= &this->array;
+
+  while (pos >= Base::array.max_element)
   {
-    TABLE_LIST *tbl= all_tables;
-    TABLE_LIST *prev= tbl;
-    while (tbl != NULL)
-    {
-      prev= tbl;
-      tbl= tbl->next_global;
-      my_free(prev, MYF(0));
-    }
+    entry= alloc_dynamic(array);
+    if (!entry)
+     break;
   }
+
+  clear_free_space();
+
+  if (pos >= Base::array.max_element)
+    return 1;
+
+  if (pos >= Base::array.elements)
+    Base::array.elements= pos + 1;
+
+  entry= dynamic_array_ptr(array, pos);
+  *(T**)entry= ptr;
+   
   return 0;
 }
+ 
+template<class T>
+inline
+T* Map<uint,T>::operator[](ulong pos) const
+{
+  if (pos >= Base::elements())
+    return NULL;
 
-// These functions are implemented in kernel.cc
+  return Base::at(pos);
+}
 
-int silent_exec_query(THD*, ::String&);
-void save_current_time(bstream_time_t &buf);
+/** 
+  Return number of entries in the dynamic array.
+ 
+  @note Some of the entries can store NULL pointers as no mapping was
+  defined for them.
+ */
+template<class T>
+inline
+ulong Map<uint,T>::count() const
+{ return Base::array.elements; }
 
-} // backup namespace
 
 #endif

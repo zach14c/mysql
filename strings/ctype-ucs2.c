@@ -1362,40 +1362,6 @@ my_strnncollsp_utf16(CHARSET_INFO *cs,
 }
 
 
-static size_t
-my_strnxfrm_utf16(CHARSET_INFO *cs, 
-                  uchar *dst, size_t dstlen, uint nweights,
-                  const uchar *src, size_t srclen, uint flags)
-{
-  my_wc_t wc;
-  int res;
-  uchar *de= dst + dstlen;
-  uchar *d0= dst;
-  const uchar *se= src + srclen;
-  MY_UNICASE_INFO **uni_plane= (cs->state & MY_CS_BINSORT) ?
-                               NULL : cs->caseinfo;
-  LINT_INIT(wc);
-
-  for (; src < se && dst < de && nweights; nweights--)
-  {
-    if ((res= my_utf16_uni(cs,&wc, src, se))<0)
-      break;
-    src+= res;
-    
-    if (uni_plane)
-      my_tosort_utf16(uni_plane, &wc);
-    
-    if (dst + 2 >= de)
-      break;
-    
-    *dst++= (uchar) (wc >> 8);
-    *dst++= (uchar) (wc & 0xFF);
-  }
-  return my_strxfrm_pad_desc_and_reverse(cs, d0, dst, de,
-                                         nweights, flags, 0);
-}
-
-
 static uint
 my_ismbchar_utf16(CHARSET_INFO *cs __attribute__((unused)),
                   const char *b __attribute__((unused)),
@@ -1607,22 +1573,6 @@ my_strnncollsp_utf16_bin(CHARSET_INFO *cs,
 }
 
 
-static size_t
-my_strnxfrm_utf16_bin(CHARSET_INFO *cs,
-                      uchar *dst, size_t dstlen, uint nweights,
-                      const uchar *src, size_t srclen, uint flags)
-{
-  /* TODO */
-  uint frmlen;
-  if ((frmlen= min(dstlen, nweights * 2)) > srclen)
-    frmlen= srclen;
-  if (dst != src)
-    memcpy(dst, src, frmlen);
-  return my_strxfrm_pad_desc_and_reverse(cs, dst, dst + frmlen, dst + dstlen,
-                                         nweights - frmlen / 2, flags, 0);
-}
-
-
 static void
 my_hash_sort_utf16_bin(CHARSET_INFO *cs __attribute__((unused)),
                        const uchar *key, size_t len,ulong *nr1, ulong *nr2)
@@ -1740,7 +1690,7 @@ static MY_COLLATION_HANDLER my_collation_utf16_general_ci_handler =
   NULL,                /* init */
   my_strnncoll_utf16,
   my_strnncollsp_utf16,
-  my_strnxfrm_utf16,
+  my_strnxfrm_unicode,
   my_strnxfrmlen_simple,
   my_like_range_utf16,
   my_wildcmp_utf16_ci,
@@ -1756,7 +1706,7 @@ static MY_COLLATION_HANDLER my_collation_utf16_bin_handler =
   NULL,                /* init */
   my_strnncoll_utf16_bin,
   my_strnncollsp_utf16_bin,
-  my_strnxfrm_utf16_bin,
+  my_strnxfrm_unicode,
   my_strnxfrmlen_simple,
   my_like_range_utf16,
   my_wildcmp_utf16_bin,
@@ -2192,39 +2142,6 @@ my_strxfrm_pad_desc_and_reverse_utf32(CHARSET_INFO *cs,
 }
 
 
-static size_t
-my_strnxfrm_utf32(CHARSET_INFO *cs, 
-                  uchar *dst, size_t dstlen, uint nweights,
-                  const uchar *src, size_t srclen, uint flags)
-{
-  my_wc_t wc;
-  int res;
-  uchar *de= dst + dstlen;
-  uchar *d0= dst;
-  const uchar *se= src + srclen;
-  MY_UNICASE_INFO **uni_plane= (cs->state & MY_CS_BINSORT) ?
-                               NULL : cs->caseinfo;
-
-  for (; src < se && dst < de && nweights; nweights--)
-  {
-    if ((res= my_utf32_uni(cs,&wc, src, se))<0)
-      break;
-    src+= res;
-    
-    if (uni_plane)
-      my_tosort_utf32(uni_plane, &wc);
-    
-    if (dst + 2 >= de)
-      break;
-    
-    *dst++= (uchar) (wc >> 8);
-    *dst++= (uchar) (wc & 0xFF);
-  }
-  return my_strxfrm_pad_desc_and_reverse_utf32(cs, d0, dst, de,
-                                               nweights, flags, 0);
-}
-
-
 static uint
 my_ismbchar_utf32(CHARSET_INFO *cs __attribute__((unused)),
                   const char *b __attribute__((unused)),
@@ -2546,7 +2463,8 @@ my_well_formed_len_utf32(CHARSET_INFO *cs __attribute__((unused)),
   }
   for (; b < e; b+= 4)
   {
-    if (b[0] || b[1] > 0x10)
+    /* Don't accept characters greater than U+10FFFF */
+    if (b[0] || (uchar) b[1] > 0x10)
     {
       *error= 1;
       return b - b0;
@@ -2841,7 +2759,7 @@ static MY_COLLATION_HANDLER my_collation_utf32_general_ci_handler =
   NULL, /* init */
   my_strnncoll_utf32,
   my_strnncollsp_utf32,
-  my_strnxfrm_utf32,
+  my_strnxfrm_unicode,
   my_strnxfrmlen_utf32,
   my_like_range_utf32,
   my_wildcmp_utf32_ci,
@@ -2857,7 +2775,7 @@ static MY_COLLATION_HANDLER my_collation_utf32_bin_handler =
   NULL, /* init */
   my_strnncoll_utf32_bin,
   my_strnncollsp_utf32_bin,
-  my_strnxfrm_utf32,
+  my_strnxfrm_unicode,
   my_strnxfrmlen_utf32,
   my_like_range_utf32,
   my_wildcmp_utf32_bin,
@@ -3243,41 +3161,6 @@ static int my_strnncollsp_ucs2(CHARSET_INFO *cs __attribute__((unused)),
 }
 
 
-static size_t
-my_strnxfrm_ucs2(CHARSET_INFO *cs, 
-                 uchar *dst, size_t dstlen, uint nweights,
-                 const uchar *src, size_t srclen, uint flags)
-{
-  my_wc_t wc;
-  int res;
-  int plane;
-  uchar *de= dst + dstlen;
-  uchar *d0= dst;
-  const uchar *se= src + srclen;
-  MY_UNICASE_INFO **uni_plane= cs->caseinfo;
-
-  for (; src < se && dst < de && nweights; nweights--)
-  {
-    if ((res=my_ucs2_uni(cs,&wc, src, se))<0)
-    {
-      break;
-    }
-    src+=res;
-    srclen-=res;
-    
-    plane=(wc>>8) & 0xFF;
-    wc = uni_plane[plane] ? uni_plane[plane][wc & 0xFF].sort : wc;
-    
-    if ((res=my_uni_ucs2(cs,wc,dst,de)) <0)
-    {
-      break;
-    }
-    dst+=res;
-  }
-  return my_strxfrm_pad_desc_and_reverse(cs, d0, dst, de, nweights, flags, 0);
-}
-
-
 static uint my_ismbchar_ucs2(CHARSET_INFO *cs __attribute__((unused)),
                              const char *b __attribute__((unused)),
                              const char *e __attribute__((unused)))
@@ -3424,21 +3307,6 @@ static int my_strnncollsp_ucs2_bin(CHARSET_INFO *cs __attribute__((unused)),
     }
   }
   return 0;
-}
-
-
-static
-size_t my_strnxfrm_ucs2_bin(CHARSET_INFO *cs,
-                            uchar *dst, size_t dstlen, uint nweights,
-                            const uchar *src, size_t srclen, uint flags)
-{
-  uint frmlen;
-  if ((frmlen= min(dstlen, nweights * 2)) > srclen)
-    frmlen= srclen;
-  if (dst != src)
-    memcpy(dst, src, frmlen);
-  return my_strxfrm_pad_desc_and_reverse(cs, dst, dst + frmlen, dst + dstlen,
-                                         nweights - frmlen / 2, flags, 0);
 }
 
 
@@ -3593,7 +3461,7 @@ static MY_COLLATION_HANDLER my_collation_ucs2_general_ci_handler =
     NULL,		/* init */
     my_strnncoll_ucs2,
     my_strnncollsp_ucs2,
-    my_strnxfrm_ucs2,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_simple,
     my_like_range_ucs2,
     my_wildcmp_ucs2_ci,
@@ -3609,7 +3477,7 @@ static MY_COLLATION_HANDLER my_collation_ucs2_bin_handler =
     NULL,		/* init */
     my_strnncoll_ucs2_bin,
     my_strnncollsp_ucs2_bin,
-    my_strnxfrm_ucs2_bin,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_simple,
     my_like_range_ucs2,
     my_wildcmp_ucs2_bin,

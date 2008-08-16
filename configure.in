@@ -9,7 +9,7 @@ AC_CANONICAL_SYSTEM
 # remember to also update version.c in ndb
 # When changing major version number please also check switch statement
 # in mysqlbinlog::check_master_version().
-AM_INIT_AUTOMAKE(mysql, 6.0.6-alpha)
+AM_INIT_AUTOMAKE(mysql, 6.0.7-alpha)
 AM_CONFIG_HEADER([include/config.h:config.h.in])
 
 NDB_VERSION_MAJOR=6
@@ -835,9 +835,9 @@ AC_TYPE_SIZE_T
 AC_HEADER_DIRENT
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(fcntl.h fenv.h float.h floatingpoint.h fpu_control.h ieeefp.h \
+AC_CHECK_HEADERS(fcntl.h fenv.h float.h floatingpoint.h fpu_control.h \
  limits.h memory.h pwd.h select.h \
- stdlib.h stddef.h sys/fpu.h \
+ stdlib.h stddef.h sys/fpu.h sys/stat.h \
  strings.h string.h synch.h sys/mman.h sys/socket.h netinet/in.h arpa/inet.h \
  sys/timeb.h sys/types.h sys/un.h sys/vadvise.h sys/wait.h term.h \
  unistd.h utime.h sys/utime.h termio.h termios.h sched.h crypt.h alloca.h \
@@ -1711,6 +1711,23 @@ else
   CXXFLAGS="$OPTIMIZE_CXXFLAGS $CXXFLAGS"
 fi
 
+# Debug Sync Facility. NOTE: depends on 'with_debug'. Must be behind it.
+AC_MSG_CHECKING(if Debug Sync Facility should be enabled.)
+AC_ARG_ENABLE(debug_sync,
+              AS_HELP_STRING([--enable-debug-sync],
+                             [Build a version with Debug Sync Facility]),
+              [ enable_debug_sync=$enableval ],
+              [ enable_debug_sync=$with_debug ])
+
+if test "$enable_debug_sync" != "no"
+then
+  AC_DEFINE([ENABLED_DEBUG_SYNC], [1],
+            [If Debug Sync Facility should be enabled])
+  AC_MSG_RESULT([yes]) 
+else
+  AC_MSG_RESULT([no])
+fi
+
 # If we should allow error injection tests
 AC_ARG_WITH(error-inject,
     AC_HELP_STRING([--with-error-inject],[Enable error injection in MySQL Server]),
@@ -1775,7 +1792,7 @@ AC_CACHE_CHECK([whether the compiler provides atomic builtins],
    [mysql_cv_gcc_atomic_builtins=no],
    [mysql_cv_gcc_atomic_builtins=no])])
 
-if test "x$mysql_cv_gcc_atomic_builtins" = xyes; then
+if test "x$mysql_cv_gcc_atomic_builtins" = disabled_xyes; then
   AC_DEFINE(HAVE_GCC_ATOMIC_BUILTINS, 1,
             [Define to 1 if compiler provides atomic builtins.])
 fi
@@ -2067,7 +2084,7 @@ AC_CHECK_FUNCS(alarm bcmp bfill bmove bsearch bzero \
   pthread_setprio_np pthread_setschedparam pthread_sigmask readlink \
   realpath rename rint rwlock_init setupterm \
   shmget shmat shmdt shmctl sigaction sigemptyset sigaddset \
-  sighold sigset sigthreadmask port_create sleep \
+  sighold sigset sigthreadmask port_create sleep thr_yield \
   snprintf socket stpcpy strcasecmp strerror strsignal strnlen strpbrk strstr \
   strtol strtoll strtoul strtoull tell tempnam thr_setconcurrency vidattr \
   posix_fallocate backtrace backtrace_symbols backtrace_symbols_fd)
@@ -2362,10 +2379,31 @@ then
 fi
 AC_MSG_RESULT("$netinet_inc")
 
+AC_CACHE_CHECK([support for weak symbols], mysql_cv_weak_symbol,
+[AC_TRY_LINK([],[
+  extern void __attribute__((weak)) foo(void);
+], [mysql_cv_weak_symbol=yes], [mysql_cv_weak_symbol=no])])
+
+if test "x$mysql_cv_weak_symbol" = xyes; then
+  AC_DEFINE(HAVE_WEAK_SYMBOL, 1,
+            [Define to 1 if compiler supports weak symbol attribute.])
+fi
+
+AC_CACHE_CHECK([whether __bss_start is defined], mysql_cv_bss_start,
+[AC_TRY_LINK([],[
+  extern char *__bss_start;
+  return __bss_start ? 1 : 0;
+], [mysql_cv_bss_start=yes], [mysql_cv_bss_start=no])])
+
+if test "x$mysql_cv_bss_start" = xyes; then
+  AC_DEFINE(HAVE_BSS_START, 1,
+            [Define to 1 if compiler defines __bss_start.])
+fi
+
 AC_LANG_SAVE
 AC_LANG_CPLUSPLUS
 AC_CHECK_HEADERS(cxxabi.h)
-AC_CACHE_CHECK([checking for abi::__cxa_demangle], mysql_cv_cxa_demangle,
+AC_CACHE_CHECK([for abi::__cxa_demangle], mysql_cv_cxa_demangle,
 [AC_TRY_LINK([#include <cxxabi.h>], [
   char *foo= 0; int bar= 0;
   foo= abi::__cxa_demangle(foo, foo, 0, &bar);
@@ -2393,12 +2431,23 @@ MYSQL_CHECK_LIBEVENT
 # functions tested above
 #--------------------------------------------------------------------
 
+# MyISAM is declared here,not in storage/myisam/plug.in
+# because we want it to be the first in the list of plugins,
+# Maria needs it. When it'll be fixed the declaration below can
+# be removed and restored (uncommented) in storage/myisam/plug.in
+MYSQL_STORAGE_ENGINE(myisam,no, [MyISAM Storage Engine],
+        [Traditional non-transactional MySQL tables])
+MYSQL_PLUGIN_DIRECTORY(myisam,  [storage/myisam])
+MYSQL_PLUGIN_STATIC(myisam,     [libmyisam.a])
+MYSQL_PLUGIN_MANDATORY(myisam)  dnl Default
+MYSQL_PLUGIN_DEPENDS_ON_MYSQL_INTERNALS(myisam, [ha_myisam.cc])
+
 MYSQL_STORAGE_ENGINE(partition, partition, [Partition Support],
         [MySQL Partitioning Support], [max,max-no-ndb])
 
 dnl -- ndbcluster requires partition to be enabled
 
-MYSQL_CONFIGURE_PLUGINS([none])
+MYSQL_CONFIGURE_PLUGINS([default])
 
 # Only build client code?
 AC_ARG_WITH(server,
@@ -2606,8 +2655,6 @@ AC_SUBST(readline_basedir)
 AC_SUBST(readline_link)
 AC_SUBST(readline_h_ln_cmd)
 
-
-
 # Include man pages, if desired, adapted to the configured parts.
 if test X"$with_man" = Xyes
 then
@@ -2754,6 +2801,9 @@ case $SYSTEM_TYPE in
     ;;
 esac
 AC_SUBST(MAKE_BINARY_DISTRIBUTION_OPTIONS)
+
+# Ensure that $(MYSQL_EXTRA_CXXFLAGS) is last
+CXXFLAGS="$CXXFLAGS \$(MYSQL_EXTRA_CXXFLAGS)"
 
 # Output results
 if test -d "$srcdir/pstack" ; then

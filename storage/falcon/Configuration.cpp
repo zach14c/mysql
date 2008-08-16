@@ -62,7 +62,6 @@
 extern uint64		max_memory_address;
 
 extern uint64		falcon_record_memory_max;
-extern uint64		falcon_initial_allocation;
 extern uint			falcon_allocation_extent;
 extern uint64		falcon_page_cache_size;
 //extern uint		falcon_debug_mask;
@@ -99,7 +98,7 @@ static const uint64 MIN_PAGE_CACHE			= 2097152;
 static const uint64 MIN_RECORD_MEMORY		= 5000000;
 static const int	MIN_SCAVENGE_THRESHOLD	= 10;
 static const int	MIN_SCAVENGE_FLOOR		= 10;
-static const uint64 MAX_TRANSACTION_BACKLOG	= 10000;
+static const uint64 MAX_TRANSACTION_BACKLOG	= 1000;
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -110,18 +109,17 @@ Configuration::Configuration(const char *configFile)
 	checkpointSchedule = "7,37 * * * * *";
 	scavengeSchedule = "15,45 * * * * *";
 	serialLogBlockSize			= falcon_serial_log_block_size;
+	maxTransactionBacklog		        = MAX_TRANSACTION_BACKLOG;
 
 #ifdef STORAGE_ENGINE
 	recordMemoryMax				= falcon_record_memory_max;
 	recordScavengeThresholdPct	= falcon_record_scavenge_threshold;
 	recordScavengeFloorPct		= falcon_record_scavenge_floor;
-	initialAllocation			= falcon_initial_allocation;
 	allocationExtent			= falcon_allocation_extent;
 	serialLogWindows			= falcon_serial_log_buffers;
 	pageCacheSize				= falcon_page_cache_size;
-	indexChillThreshold			= falcon_index_chill_threshold * ONE_MB;
-	recordChillThreshold		= falcon_record_chill_threshold * ONE_MB;
-	maxTransactionBacklog		= falcon_max_transaction_backlog;
+	indexChillThreshold			= falcon_index_chill_threshold;
+	recordChillThreshold		= falcon_record_chill_threshold;
 	useDeferredIndexHash		= (falcon_use_deferred_index_hash != 0);
 	
 	if (falcon_checkpoint_schedule)
@@ -164,12 +162,10 @@ Configuration::Configuration(const char *configFile)
 	recordScavengeThreshold		= (recordMemoryMax * 100) / recordScavengeThresholdPct;
 	recordScavengeFloor			= (recordMemoryMax * 100) / recordScavengeFloorPct;
 	serialLogWindows			= 10;
-	initialAllocation			= 0;
 	allocationExtent			= 10;
 	pageCacheSize				= getMemorySize(PAGE_CACHE_MEMORY);
 	indexChillThreshold			= 4 * ONE_MB;
 	recordChillThreshold		= 5 * ONE_MB;
-	maxTransactionBacklog		= MAX_TRANSACTION_BACKLOG;
 	falcon_lock_wait_timeout	= 0;
 #endif
 
@@ -181,6 +177,7 @@ Configuration::Configuration(const char *configFile)
 	gcSchedule = "0,30 * * * * *";
 	useCount = 1;
 
+#ifndef STORAGE_ENGINE
 	// Handle initialization file
 
 	const char *fileName = (configFile) ? configFile : CONFIG_FILE;
@@ -260,6 +257,7 @@ Configuration::Configuration(const char *configFile)
 			
 		fclose (file);
 		}
+#endif
 
 	pageCacheSize = MAX(pageCacheSize, MIN_PAGE_CACHE);
 	setRecordMemoryMax(recordMemoryMax);

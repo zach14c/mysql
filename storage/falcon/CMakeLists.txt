@@ -14,7 +14,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 ADD_DEFINITIONS(-D_REENTRANT
-                -DENGINE -DSTORAGE_ENGINE -DMEM_DEBUG
+                -DFALCONDB -DSTORAGE_ENGINE -DMEM_DEBUG
                 -DNAMESPACE=Nfs
                 -DMYSQL_SERVER)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
@@ -104,6 +104,7 @@ SET(FALCON_SOURCES
 		IndexNode.cpp 
 		Index2Node.cpp 
 		IndexPage.cpp 
+		IndexWalker.cpp
 		Index2Page.cpp 
 		IndexRootPage.cpp 
 		Index2RootPage.cpp 
@@ -203,6 +204,8 @@ SET(FALCON_SOURCES
 		SearchWords.cpp 
 		Section.cpp 
 		SectionPage.cpp 
+		SectorBuffer.cpp
+		SectorCache.cpp
 		Sequence.cpp
 		SequenceManager.cpp 
 		SequenceResultSet.cpp
@@ -299,6 +302,8 @@ SET(FALCON_SOURCES
 		Values.cpp
 		ValueSet.cpp 
 		View.cpp 
+		WalkIndex.cpp
+		WalkDeferred.cpp
 		WString.cpp
 		AsciiBlob.h
 		BackLog.h 
@@ -370,10 +375,11 @@ SET(FALCON_SOURCES
 		Index.h 
 		IndexKey.h
 		IndexNode.h 
-		Index2Node.h 
 		IndexPage.h 
-		Index2Page.h 
 		IndexRootPage.h 
+		IndexWalker.h
+		Index2Node.h 
+		Index2Page.h 
 		Index2RootPage.h 
 		InfoTable.h
 		Interlock.h
@@ -476,6 +482,8 @@ SET(FALCON_SOURCES
 		SearchWords.h 
 		Section.h 
 		SectionPage.h 
+		SectorBuffer.h
+		SectorCache.h
 		Sequence.h
 		SequenceManager.h 
 		SequencePage.h 
@@ -579,6 +587,8 @@ SET(FALCON_SOURCES
 		Values.h
 		ValueSet.h 
 		View.h 
+		WalkIndex.h
+		WalkDeferred.h
 		WString.h
 		TransFormLib/Base64Transform.cpp  
 		TransFormLib/FileTransform.cpp  

@@ -24,6 +24,7 @@
          of byte?
   */
 
+#include "../mysql_priv.h"
 #include "backup_progress.h"
 #include "be_thread.h"
 
@@ -54,7 +55,9 @@ my_bool check_ob_progress_tables(THD *thd)
   DBUG_ENTER("check_ob_progress_tables");
 
   /* Check mysql.online_backup */
-  tables.init_one_table("mysql", "online_backup", TL_READ);
+  tables.init_one_table("mysql", 5, "online_backup", 13,
+                        "online_backup", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
     ret= TRUE;
@@ -64,7 +67,9 @@ my_bool check_ob_progress_tables(THD *thd)
   close_thread_tables(thd);
 
   /* Check mysql.online_backup_progress */
-  tables.init_one_table("mysql", "online_backup_progress", TL_READ);
+  tables.init_one_table("mysql", 5, "online_backup_progress", 13,
+                        "online_backup_progress", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
     ret= TRUE;
@@ -164,6 +169,8 @@ bool backup_history_log_write(THD *thd,
 
   table_list.db= MYSQL_SCHEMA_NAME.str;
   table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  alloc_mdl_locks(&table_list, thd->mem_root);
 
   if (!(table= open_performance_schema_table(thd, & table_list,
                                              & open_tables_backup)))
@@ -317,6 +324,8 @@ bool backup_history_log_update(THD *thd,
   table_list.db= MYSQL_SCHEMA_NAME.str;
   table_list.db_length= MYSQL_SCHEMA_NAME.length;
 
+  alloc_mdl_locks(&table_list, thd->mem_root);
+
   if (!(table= open_performance_schema_table(thd, & table_list,
                                              & open_tables_backup)))
     goto err;
@@ -352,9 +361,9 @@ bool backup_history_log_update(THD *thd,
       }
       break;
     }    
-    case ET_OBH_FIELD_ENGINES:
+    case ET_OBH_FIELD_DRIVERS:
     {
-      String str;    // engines string
+      String str;    // drivers string
       str.length(0);
       table->field[fld]->val_str(&str);
       if (str.length() > 0)
@@ -465,6 +474,8 @@ bool backup_progress_log_write(THD *thd,
 
   table_list.db= MYSQL_SCHEMA_NAME.str;
   table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  alloc_mdl_locks(&table_list, thd->mem_root);
 
   if (!(table= open_performance_schema_table(thd, & table_list,
                                              & open_tables_backup)))
@@ -804,9 +815,9 @@ int report_ob_vp_time(THD *thd,
 }
 
 /**
-   Update the engines string for the row that matches the backup_id.
+   Update the drivers string for the row that matches the backup_id.
 
-   This method updates the engines information for the backup operation
+   This method updates the drivers information for the backup operation
    identified by backup_id. This method appends to the those listed in the
    table for the backup_id.
 
@@ -817,15 +828,15 @@ int report_ob_vp_time(THD *thd,
    @retval 0  success
    @retval 1  failed to find row
   */
-int report_ob_engines(THD *thd,
+int report_ob_drivers(THD *thd,
                       ulonglong backup_id,
-                      const char *engine_name)
+                      const char *driver_name)
 {
   int ret= 0;  // return value
-  DBUG_ENTER("report_ob_engines()");
+  DBUG_ENTER("report_ob_drivers()");
 
-  ret= backup_history_log_update(thd, backup_id, ET_OBH_FIELD_ENGINES, 
-                                 0, 0, engine_name, 0);
+  ret= backup_history_log_update(thd, backup_id, ET_OBH_FIELD_DRIVERS, 
+                                 0, 0, driver_name, 0);
 
   DBUG_RETURN(ret);
 }

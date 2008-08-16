@@ -45,7 +45,7 @@
 #define VALGRIND_MAKE_MEM_UNDEFINED(address, length)
 #endif
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Log.h"
 #include "LogStream.h"
 #endif
@@ -262,7 +262,7 @@ MemMgr*	MemMgrGetFixedPool (int id)
 
 void MemMgrLogDump()
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	LogStream stream;
 	MemMgrAnalyze (0, &stream);
 #endif
@@ -543,7 +543,9 @@ void* MemMgr::allocateDebug(int size, const char* fileName, int line)
 		{
 		length = ROUNDUP(size, defaultRounding) + OFFSET(MemBlock*, body) + sizeof(long);
 		memory = (MemBlock*) allocRaw(length);
+		memory->length = length;
 		memory->pool = NULL;
+		memory->length = length;
 		}
 
 #ifdef MEM_DEBUG
@@ -678,7 +680,7 @@ void MemMgr::releaseBlock(MemBlock *block)
 
 void MemMgr::corrupt(const char* text)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Log::logBreak ("Memory pool corrupted: %s\n", text);
 #endif
 
@@ -688,7 +690,7 @@ void MemMgr::corrupt(const char* text)
 
 void* MemMgr::memoryIsExhausted(void)
 {
-#ifdef ENGINE
+#ifdef FALCONDB
 	Log::logBreak ("Memory is exhausted\n");
 #endif
 
@@ -969,7 +971,7 @@ void MemMgr::analyze(int mask, Stream *stream, InfoTable *summaryTable, InfoTabl
 
 				if (!client || client >= endClients)
 					{
-#ifdef ENGINE
+#ifdef FALCONDB
 					Log::debugBreak ("MemMgr::analyze: analysis space exhausted");
 #endif
 					free (memory);
@@ -1028,7 +1030,7 @@ void MemMgr::analyze(int mask, Stream *stream, InfoTable *summaryTable, InfoTabl
 
 					if (client >= endClients)
 						{
-#ifdef ENGINE
+#ifdef FALCONDB
 						Log::debugBreak ("MemMgr::analyze: analysis space exhausted");
 #endif
 						free (memory);

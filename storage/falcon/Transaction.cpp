@@ -44,6 +44,8 @@
 #include "SRLSavepointRollback.h"
 #include "Bitmap.h"
 #include "BackLog.h"
+#include "Interlock.h"
+#include "Error.h"
 
 extern uint		falcon_lock_wait_timeout;
 
@@ -81,15 +83,24 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	savePoints = NULL;
 	freeSavePoints = NULL;
 	useCount = 1;
+	syncObject.setName("Transaction::syncObject");
+	syncActive.setName("Transaction::syncActive");
+	syncIndexes.setName("Transaction::syncIndexes");
+	syncSavepoints.setName("Transaction::syncSavepoints");
+	firstRecord = NULL;
+	lastRecord = NULL;
+	dependencies = 0;
 	initialize(cnct, seq);
 }
 
 void Transaction::initialize(Connection* cnct, TransId seq)
 {
-	Sync sync(&syncObject, "Transaction::initialize");
+	Sync sync(&syncObject, "Transaction::initialize(1)");
 	sync.lock(Exclusive);
 	ASSERT(savePoints == NULL);
 	ASSERT(freeSavePoints == NULL);
+	ASSERT(firstRecord == NULL);
+	ASSERT(dependencies == 0);
 	connection = cnct;
 	isolationLevel = connection->isolationLevel;
 	mySqlThreadId = connection->mySqlThreadId;
@@ -97,10 +108,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	TransactionManager *transactionManager = database->transactionManager;
 	systemTransaction = database->systemConnection == connection;
 	transactionId = seq;
-	firstRecord = NULL;
-	lastRecord = NULL;
 	chillPoint = &firstRecord;
-	dependencies = 0;
 	commitTriggers = false;
 	hasUpdates = false;
 	hasLocks = false;
@@ -128,11 +136,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	deletedRecords = 0;
 	inList = true;
 	thread = NULL;
-	syncObject.setName("Transaction::syncObject");
-	syncActive.setName("Transaction::syncActive");
-	syncIndexes.setName("Transaction::syncIndexes");
-	syncIndexes.setName("Transaction::syncSavepoints");
-	//scavenged = false;
 	
 	if (seq == 0)
 		{
@@ -152,7 +155,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	
 	startTime = database->deltaTime;
 	blockingRecord = NULL;
-	thread = Thread::getThread("Transaction::init");
+	thread = Thread::getThread("Transaction::initialize");
 	syncActive.lock(NULL, Exclusive);
 	Transaction *oldest = transactionManager->findOldest();
 	oldestActive = (oldest) ? oldest->transactionId : transactionId;
@@ -171,7 +174,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 				 !transaction->systemTransaction &&
 				 transaction->transactionId < transactionId)
 				{
-				Sync syncDependency(&transaction->syncObject, "Transaction::initialize");
+				Sync syncDependency(&transaction->syncObject, "Transaction::initialize(2)");
 				syncDependency.lock(Shared);
 
 				if (transaction->isActive() && 
@@ -251,7 +254,7 @@ void Transaction::commit()
 
 	if (state == Active)
 		{
-		Sync sync(&syncIndexes, "Transaction::commit");
+		Sync sync(&syncIndexes, "Transaction::commit(1)");
 		sync.lock(Shared);
 		
 		for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -271,7 +274,6 @@ void Transaction::commit()
 	if (hasLocks)
 		releaseRecordLocks();
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit");
 	database->serialLog->preCommit(this);
 	state = Committed;
 	syncActive.unlock();
@@ -287,18 +289,22 @@ void Transaction::commit()
 
 	releaseDependencies();
 	database->flushInversion(this);
+
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
+	syncCommitted.lock(Exclusive);
+
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
 	syncActiveTransactions.lock(Exclusive);
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
 	
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
+		{
 		if (!record->getPriorVersion())
 			++record->format->table->cardinality;
-		else if (record->state == recDeleted && record->format->table->cardinality > 0)
+		if (record->state == recDeleted && record->format->table->cardinality > 0)
 			--record->format->table->cardinality;
-			
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit");
-	syncCommitted.lock(Exclusive);
+		}
 	transactionManager->committedTransactions.append(this);
 	syncCommitted.unlock();
 	database->commit(this);
@@ -329,7 +335,7 @@ void Transaction::commitNoUpdates(void)
 	
 	if (deferredIndexes)
 		{
-		Sync sync(&syncIndexes, "Transaction::commitNoUpdates");
+		Sync sync(&syncIndexes, "Transaction::commitNoUpdates(1)");
 		sync.lock(Exclusive);
 		releaseDeferredIndexes();
 		}
@@ -337,40 +343,22 @@ void Transaction::commitNoUpdates(void)
 	if (hasLocks)
 		releaseRecordLocks();
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates");
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates(2)");
 	syncActiveTransactions.lock(Shared);
-	state = CommittingReadOnly;
 	releaseDependencies();
-	
-	Sync sync(&syncObject, "Transaction::commitNoUpdates");
-	sync.lock(Exclusive);
-	Thread *thread = NULL;
-	int wait = 1;
-	
-	for (int n = 0; dependencies && n < 10; ++n)
+
+	if (xid)
 		{
-		transactionManager->expungeTransaction(this);
-	
-		if (!dependencies)
-			break;
-			
-		// There is a tiny race condition between another thread releasing a dependency and
-		// TransactionManager::expungeTransaction doing the same thing.  So spin.
-		
-		if (thread)
-			{
-			thread->sleep(wait);
-			wait <<= 1;
-			}
-		else
-			thread = Thread::getThread("Transaction::commitNoUpdates");
+		delete [] xid;
+		xid = NULL;
+		xidLength = 0;
 		}
 	
-	ASSERT(dependencies == 0);
-	sync.unlock();
-	delete [] xid;
-	xid = NULL;
-	xidLength = 0;
+	Sync sync(&syncObject, "Transaction::commitNoUpdates(3)");
+	sync.lock(Exclusive);
+	
+	if (dependencies)
+		transactionManager->expungeTransaction(this);
 	
 	// If there's no reason to stick around, just go away
 	
@@ -393,7 +381,7 @@ void Transaction::rollback()
 
 	if (deferredIndexes)
 		{
-		Sync sync(&syncIndexes, "Transaction::rollback");
+		Sync sync(&syncIndexes, "Transaction::rollback(1)");
 		sync.lock(Exclusive);
 		releaseDeferredIndexes();
 		}
@@ -401,7 +389,6 @@ void Transaction::rollback()
 	releaseSavepoints();
 	TransactionManager *transactionManager = database->transactionManager;
 	Transaction *rollbackTransaction = transactionManager->rolledBackTransaction;
-	//state = RolledBack;
 	chillPoint = &firstRecord;
 	totalRecordData = 0;
 	totalRecords = 0;
@@ -452,11 +439,15 @@ void Transaction::rollback()
 		database->serialLog->preCommit(this);
 		
 	database->rollback(this);
-	delete [] xid;
-	xid = NULL;
-	xidLength = 0;
 	
-	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback");
+	if (xid)
+		{
+		delete [] xid;
+		xid = NULL;
+		xidLength = 0;
+		}
+	
+	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(2)");
 	syncActiveTransactions.lock (Exclusive);
 	++transactionManager->rolledBack;
 	
@@ -467,7 +458,6 @@ void Transaction::rollback()
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
-	//sync.unlock();
 	release();
 }
 
@@ -579,8 +569,6 @@ int Transaction::thaw(RecordVersion * record)
 
 	if (debugThawedBytes >= database->configuration->recordChillThreshold)
 		{
-	//	Log::debug("%06ld Record Thaw/SRL:   recId:%8ld  addr:%p  vofs:%8llx  trxId:%6ld  total recs:%7ld  chilled:%7ld  thawed:%7ld  bytes:%8ld  commits:%6ld\n",
-	//				(uint32)clock(), record->recordNumber, record, record->virtualOffset, transactionId, totalRecords, chilledRecords, thawedRecords, (uint32)totalRecordData, committedRecords);
 		Log::log(LogInfo, "%d: Record thaw: transaction %ld, %ld records, %ld bytes\n", 
 				 database->deltaTime, transactionId, debugThawedRecords, debugThawedBytes);
 		debugThawedRecords = 0;
@@ -748,6 +736,9 @@ bool Transaction::needToLock(Record* record)
 {
 	// Find the first visible record version
 
+	Sync syncPrior(record->getSyncPrior(), "Transaction::needToLock");
+	syncPrior.lock(Shared);
+
 	for (Record* candidate = record; 
 		 candidate != NULL;
 		 candidate = candidate->getPriorVersion())
@@ -787,7 +778,7 @@ void Transaction::releaseDependencies()
 
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
-				ASSERT(transaction->transactionId == state->transactionId);
+				ASSERT(transaction->transactionId == state->transactionId || transaction->state == Available);
 				transaction->releaseDependency();
 				}
 			}
@@ -879,19 +870,11 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 		if (flags & DO_NOT_WAIT)
 			return Active;
 
-		// If waiting would cause a deadlock, don't try it
+		bool isDeadlock;
+		waitForTransaction(transaction, 0 , &isDeadlock);
 
-		for (Transaction *trans = transaction->waitingFor; trans; trans = trans->waitingFor)
-			if (trans == this)
-				return Deadlock;
-
-		// OK, add a reference to the transaction to keep the object around, then wait for it go go away
-
-		transaction->addRef();
-		waitingFor = transaction;
-		transaction->waitForTransaction();
-		waitingFor = NULL;
-		transaction->release();
+		if (isDeadlock)
+			return Deadlock;
 
 		return WasActive;			// caller will need to re-fetch
 		}
@@ -957,7 +940,6 @@ void Transaction::writeComplete(void)
 	ASSERT(state == Committed);
 	Sync sync(&syncIndexes, "Transaction::writeComplete");
 	sync.lock(Exclusive);
-	
 	releaseDeferredIndexes();
 
 	// Keep the synIndexes lock to avoid a race condition with dropTable
@@ -971,41 +953,98 @@ void Transaction::writeComplete(void)
 
 bool Transaction::waitForTransaction(TransId transId)
 {
+	bool deadlock;
+	State state = waitForTransaction(NULL, transId, &deadlock);
+	return (deadlock || state == Committed || state == Available);
+
+}
+
+// Wait for transaction, unless it would lead to deadlock.
+// Returns the state of transation.
+//
+// Note:
+// Deadlock check could use locking, because  there are potentially concurrent
+// threads checking and modifying the waitFor list.
+// Instead, it implements a fancy lock-free algorithm  that works reliably only
+// with full memory barriers. Thus "volatile"-specifier and COMPARE_EXCHANGE
+// are used  when traversing and modifying waitFor list. Maybe it is better to
+// use inline assembly or intrinsics to generate memory barrier instead of 
+// volatile. 
+
+State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
+										bool *deadlock)
+{
+
+
+	*deadlock = false;
+	State state;
+
+	if(transaction)
+		transaction->addRef();
+
 	TransactionManager *transactionManager = database->transactionManager;
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::waitForTransaction");
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
+		"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
-	Transaction *transaction;
-	
-	// If the transaction is still active, find it
 
-	for (transaction = transactionManager->activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->transactionId == transId)
-			break;
-	
-	// If the transction is no longer active, see if it is committed
-	
-	if (!transaction || transaction->state == Available)
-		return true;
-		
-	if (transaction->state == Committed)
-		return true;
+	if (!transaction)
+		{
+		// transaction parameter is not given, find transaction using its ID.
+		for (transaction = transactionManager->activeTransactions.first; transaction;
+			 transaction = transaction->next)
+			{
+			if (transaction->transactionId == transId)
+				{
+				transaction->addRef();
+				break;
+				}
+			}
+		}
 
-	// If waiting would cause a deadlock, don't try it
+	if (!transaction)
+		return Committed;
 
-	for (Transaction *trans = transaction->waitingFor; trans; trans = trans->waitingFor)
+	if (transaction->state == Available || transaction->state == Committed)
+	{
+		state = (State)transaction->state;
+		transaction->release();
+		return state;
+	}
+
+
+	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, NULL, transaction))
+		FATAL("waitingFor was not NULL");
+
+	volatile Transaction *trans;
+	for (trans = transaction->waitingFor; trans; trans = trans->waitingFor)
 		if (trans == this)
-			return true;
+			{
+			*deadlock = true;
+			break;
+			}
 
-	// OK, add a reference to the transaction to keep the object around, then wait for it to go away
+	if (!(*deadlock))
+		{
+		try
+			{
+			syncActiveTransactions.unlock();
+			transaction->waitForTransaction();
+			}
+		catch(...)
+			{
+			if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))
+				FATAL("waitingFor was not %p",transaction);
+			throw;
+			}
+		}
 
-	waitingFor = transaction;
-	transaction->addRef();
-	syncActiveTransactions.unlock();
-	transaction->waitForTransaction();
+	if (!COMPARE_EXCHANGE_POINTER(&waitingFor, transaction, NULL))
+		FATAL("waitingFor was not %p",transaction);
+
+	state = (State)transaction->state;
 	transaction->release();
-	waitingFor = NULL;
 
-	return transaction->state == Committed;
+	return state;
 }
 
 void Transaction::waitForTransaction()
@@ -1021,7 +1060,7 @@ void Transaction::waitForTransaction()
 		}
 	***/
 	
-	Sync sync(&syncActive, "Transaction::waitForTransaction");
+	Sync sync(&syncActive, "Transaction::waitForTransaction(2)");
 	sync.lock(Shared, falcon_lock_wait_timeout * 1000);
 }
 
@@ -1032,7 +1071,6 @@ void Transaction::addRef()
 
 int Transaction::release()
 {
-	//ASSERT(useCount > dependencies);
 	int count = INTERLOCKED_DECREMENT(useCount);
 
 	if (count == 0)
@@ -1393,11 +1431,16 @@ void Transaction::releaseDependency(void)
 {
 	ASSERT(useCount >= 2);
 	ASSERT(dependencies > 0);
-	ASSERT(state != Available);
 	INTERLOCKED_DECREMENT(dependencies);
 
 	if ((dependencies == 0) && !writePending && firstRecord)
+		{
+		// The Sync is to avoid a race with writeComplete().  It looks whacko, but does the trick
+		
+		Sync sync(&syncIndexes, "Transaction::releaseDependency");
+		sync.lock(Exclusive);
 		commitRecords();
+		}
 		
 	releaseCommittedTransaction();
 }

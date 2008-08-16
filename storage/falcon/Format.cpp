@@ -51,8 +51,8 @@ Format::Format(Table *tbl, int newVersion)
 		++count;
 	END_FOR;
 
-	format = new FieldFormat [++maxId];
-	memset (format, 0, sizeof (struct FieldFormat) * maxId);
+	format = new FieldFormat[++maxId];
+	memset(format, 0, sizeof (struct FieldFormat) * maxId);
 	int offset = sizeof (short) + (count + 7) / 8;
 	int index = 0;
 	//printf ("Table %s.%s\n", table->schemaName, table->name);
@@ -66,7 +66,8 @@ Format::Format(Table *tbl, int newVersion)
 		ff->offset = offset;
 		ff->length = field->getPhysicalLength();
 		ff->scale = field->scale;
-		ff->index = index++;
+		format[index].fieldId = id;
+		ff->physicalId = index++;
 		//printf ("  %s offset %d, length %d\n", field->name, ff->offset, ff->length);
 		offset += ff->length;			
 	END_FOR;
@@ -84,7 +85,7 @@ Format::Format(Table *tbl, int newVersion)
 	length = offset;
 }
 
-Format::Format(Table *tbl, ResultSet * resultSet)
+Format::Format(Table *tbl, ResultSet *resultSet)
 {
 	table = tbl;
 	format = NULL;
@@ -92,37 +93,43 @@ Format::Format(Table *tbl, ResultSet * resultSet)
 
 	while (resultSet->next())
 		{
-		int id = resultSet->getInt (2);
+		int id = resultSet->getInt(2);
 
 		if (!format)
 			{
-			maxId = resultSet->getInt (7);
-			format = new FieldFormat [maxId];
-			memset (format, 0, sizeof (struct FieldFormat) * maxId);
-			version = resultSet->getInt (1);
+			maxId = resultSet->getInt(7);
+			format = new FieldFormat[maxId];
+			memset(format, 0, sizeof (struct FieldFormat) * maxId);
+			version = resultSet->getInt(1);
 			}
 
 		FieldFormat *ff = format + id;
-		ff->type = (Type) resultSet->getInt (3);
-		ff->offset = resultSet->getInt (4);
-		ff->length = resultSet->getInt (5);
-		ff->scale = (short) resultSet->getInt (6);
+		ff->type = (Type) resultSet->getInt(3);
+		ff->offset = resultSet->getInt(4);
+		ff->length = resultSet->getInt(5);
+		ff->scale = (short) resultSet->getInt(6);
 		}
+
+	int n;
+	
+	for (n = 0; n < maxId; ++n)
+		format[n].fieldId = -1;
 
 	ASSERT (format != NULL);
 	length = 0;
 	int position = 0;
 	count = 0;
 
-	for (int n = 0; n < maxId; ++n)
+	for (n = 0; n < maxId; ++n)
 		{
 		FieldFormat *ff = format + n;
 
 		if (ff->offset != 0)
 			{
 			ff->nullPosition = position++;
-			length = MAX (length, ff->offset + ff->length);
-			ff->index = count++;
+			length = MAX(length, ff->offset + ff->length);
+			format[count].fieldId = n;
+			ff->physicalId = count++;
 			}
 		}
 }

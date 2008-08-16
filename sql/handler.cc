@@ -26,8 +26,7 @@
 #include "mysql_priv.h"
 #include "rpl_filter.h"
 #include <myisampack.h>
-#include <errno.h>
-#include "backup/debug.h"
+#include "myisam.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -371,8 +370,7 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   handlerton *hton= (handlerton *)plugin->data;
   DBUG_ENTER("ha_finalize_handlerton");
 
-  switch (hton->state)
-  {
+  switch (hton->state) {
   case SHOW_OPTION_NO:
   case SHOW_OPTION_DISABLED:
     break;
@@ -923,7 +921,7 @@ int ha_prepare(THD *thd)
   THD_TRANS *trans=all ? &thd->transaction.all : &thd->transaction.stmt;
   Ha_trx_info *ha_info= trans->ha_list;
   DBUG_ENTER("ha_prepare");
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     for (; ha_info; ha_info= ha_info->next())
@@ -949,7 +947,7 @@ int ha_prepare(THD *thd)
       }
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1070,7 +1068,7 @@ int ha_commit_trans(THD *thd, bool all)
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
     DBUG_RETURN(2);
   }
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     uint rw_ha_count;
@@ -1104,10 +1102,8 @@ int ha_commit_trans(THD *thd, bool all)
       goto end;
     }
 
-    /*
-      Breakpoints for backup testing.
-    */
-    BACKUP_BREAKPOINT("commit_blocker_step_1");
+    DEBUG_SYNC(thd, "within_ha_commit_trans");
+    DBUG_EXECUTE_IF("crash_commit_before", DBUG_ABORT(););
 
     if (!trans->no_2pc && (rw_ha_count > 1))
     {
@@ -1133,7 +1129,7 @@ int ha_commit_trans(THD *thd, bool all)
         }
         status_var_increment(thd->status_var.ha_prepare_count);
       }
-      DBUG_EXECUTE_IF("crash_commit_after_prepare", abort(););
+      DBUG_EXECUTE_IF("crash_commit_after_prepare", DBUG_ABORT(););
       if (error || (is_real_trans && xid &&
                     (error= !(cookie= tc_log->log_xid(thd, xid)))))
       {
@@ -1141,18 +1137,18 @@ int ha_commit_trans(THD *thd, bool all)
         error= 1;
         goto end;
       }
-      DBUG_EXECUTE_IF("crash_commit_after_log", abort(););
+      DBUG_EXECUTE_IF("crash_commit_after_log", DBUG_ABORT(););
     }
     error=ha_commit_one_phase(thd, all) ? (cookie ? 2 : 1) : 0;
-    DBUG_EXECUTE_IF("crash_commit_before_unlog", abort(););
+    DBUG_EXECUTE_IF("crash_commit_before_unlog", DBUG_ABORT(););
     if (cookie)
       tc_log->unlog(cookie, xid);
-    DBUG_EXECUTE_IF("crash_commit_after", abort(););
+    DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
 end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1167,7 +1163,7 @@ int ha_commit_one_phase(THD *thd, bool all)
   bool is_real_trans=all || thd->transaction.all.ha_list == 0;
   Ha_trx_info *ha_info= trans->ha_list, *ha_info_next;
   DBUG_ENTER("ha_commit_one_phase");
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     for (; ha_info; ha_info= ha_info_next)
@@ -1197,7 +1193,7 @@ int ha_commit_one_phase(THD *thd, bool all)
       thd->transaction.cleanup();
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1230,7 +1226,7 @@ int ha_rollback_trans(THD *thd, bool all)
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
     DBUG_RETURN(1);
   }
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     /* Close all cursors that can not survive ROLLBACK */
@@ -1260,7 +1256,7 @@ int ha_rollback_trans(THD *thd, bool all)
       thd->transaction.cleanup();
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   if (all)
     thd->transaction_rollback_request= FALSE;
 
@@ -1295,7 +1291,7 @@ int ha_rollback_trans(THD *thd, bool all)
 int ha_autocommit_or_rollback(THD *thd, int error)
 {
   DBUG_ENTER("ha_autocommit_or_rollback");
-#ifdef USING_TRANSACTIONS
+
   if (thd->transaction.stmt.ha_list)
   {
     if (!error)
@@ -1312,7 +1308,7 @@ int ha_autocommit_or_rollback(THD *thd, int error)
 
     thd->variables.tx_isolation=thd->session_tx_isolation;
   }
-#endif
+
   DBUG_RETURN(error);
 }
 
@@ -1452,7 +1448,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
     while ((got= hton->recover(hton, info->list, info->len)) > 0 )
     {
       sql_print_information("Found %d prepared transaction(s) in %s",
-                            got, ha_resolve_storage_engine_name(hton));
+                            got, hton_name(hton)->str);
       for (int i=0; i < got; i ++)
       {
         my_xid x=info->list[i].get_my_xid();
@@ -1634,23 +1630,23 @@ bool mysql_xa_recover(THD *thd)
   @return
     always 0
 */
-static my_bool release_temporary_latches(THD *thd, plugin_ref plugin,
-                                 void *unused)
-{
-  handlerton *hton= plugin_data(plugin, handlerton *);
-
-  if (hton->state == SHOW_OPTION_YES && hton->release_temporary_latches)
-    hton->release_temporary_latches(hton, thd);
-
-  return FALSE;
-}
-
 
 int ha_release_temporary_latches(THD *thd)
 {
-  plugin_foreach(thd, release_temporary_latches, MYSQL_STORAGE_ENGINE_PLUGIN, 
-                 NULL);
+  Ha_trx_info *info;
 
+  /*
+    Note that below we assume that only transactional storage engines
+    may need release_temporary_latches(). If this will ever become false,
+    we could iterate on thd->open_tables instead (and remove duplicates
+    as if (!seen[hton->slot]) { seen[hton->slot]=1; ... }).
+  */
+  for (info= thd->transaction.stmt.ha_list; info; info= info->next())
+  {
+    handlerton *hton= info->ht();
+    if (hton && hton->release_temporary_latches)
+        hton->release_temporary_latches(hton, thd);
+  }
   return 0;
 }
 
@@ -1718,7 +1714,7 @@ int ha_savepoint(THD *thd, SAVEPOINT *sv)
                                         &thd->transaction.all);
   Ha_trx_info *ha_info= trans->ha_list;
   DBUG_ENTER("ha_savepoint");
-#ifdef USING_TRANSACTIONS
+
   for (; ha_info; ha_info= ha_info->next())
   {
     int err;
@@ -1742,7 +1738,7 @@ int ha_savepoint(THD *thd, SAVEPOINT *sv)
     engines are prepended to the beginning of the list.
   */
   sv->ha_list= trans->ha_list;
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1933,7 +1929,7 @@ int ha_delete_table(THD *thd, handlerton *table_type, const char *path,
       XXX: should we convert *all* errors to warnings here?
       What if the error is fatal?
     */
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error,
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, error,
                 ha_delete_table_error_handler.buff);
   }
   delete file;
@@ -2579,11 +2575,14 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_FOUND_DUPP_KEY:
   {
-    uint key_nr=get_dup_key(error);
-    if ((int) key_nr >= 0)
+    if (table)
     {
-      print_keydup_error(key_nr, ER(ER_DUP_ENTRY_WITH_KEY_NAME));
-      DBUG_VOID_RETURN;
+      uint key_nr=get_dup_key(error);
+      if ((int) key_nr >= 0)
+      {
+        print_keydup_error(key_nr, ER(ER_DUP_ENTRY_WITH_KEY_NAME));
+        DBUG_VOID_RETURN;
+      }
     }
     textno=ER_DUP_KEY;
     break;
@@ -2836,20 +2835,13 @@ static bool update_frm_version(TABLE *table)
   if ((file= my_open(path, O_RDWR|O_BINARY, MYF(MY_WME))) >= 0)
   {
     uchar version[4];
-    char *key= table->s->table_cache_key.str;
-    uint key_length= table->s->table_cache_key.length;
-    TABLE *entry;
-    HASH_SEARCH_STATE state;
 
     int4store(version, MYSQL_VERSION_ID);
 
     if ((result= my_pwrite(file,(uchar*) version,4,51L,MYF_RW)))
       goto err;
 
-    for (entry=(TABLE*) hash_first(&open_cache,(uchar*) key,key_length, &state);
-         entry;
-         entry= (TABLE*) hash_next(&open_cache,(uchar*) key,key_length, &state))
-      entry->s->mysql_version= MYSQL_VERSION_ID;
+    table->s->mysql_version= MYSQL_VERSION_ID;
   }
 err:
   if (file >= 0)
@@ -3260,8 +3252,8 @@ handler::ha_create_handler_files(const char *name, const char *old_name,
 int
 handler::ha_change_partitions(HA_CREATE_INFO *create_info,
                      const char *path,
-                     ulonglong *copied,
-                     ulonglong *deleted,
+                     ulonglong * const copied,
+                     ulonglong * const deleted,
                      const uchar *pack_frm_data,
                      size_t pack_frm_len)
 {
@@ -3461,7 +3453,7 @@ void handler::get_dynamic_partition_info(PARTITION_INFO *stat_info,
   stat_info->update_time=          stats.update_time;
   stat_info->check_time=           stats.check_time;
   stat_info->check_sum=            0;
-  if (table_flags() & (ulong) HA_HAS_CHECKSUM)
+  if (table_flags() & (HA_HAS_OLD_CHECKSUM | HA_HAS_OLD_CHECKSUM))
     stat_info->check_sum= checksum();
   return;
 }
@@ -3504,10 +3496,17 @@ int ha_create_table(THD *thd, const char *path,
 
   error= table.file->ha_create(name, &table, create_info);
   (void) closefrm(&table, 0);
-  if (error)
-  {
-    strxmov(name_buff, db, ".", table_name, NullS);
-    my_error(ER_CANT_CREATE_TABLE, MYF(ME_BELL+ME_WAITTANG), name_buff, error);
+  switch (error) {
+    case 0:
+      break;
+    case HA_ERR_NO_SUCH_TABLESPACE:
+      my_error(ER_NO_SUCH_TABLESPACE, MYF(0), create_info->tablespace);
+      break;
+    default:
+      strxmov(name_buff, db, ".", table_name, NullS);
+      my_error(ER_CANT_CREATE_TABLE, MYF(ME_BELL+ME_WAITTANG), name_buff,
+               error);
+      break;
   }
 err:
   free_table_share(&share);
@@ -3582,7 +3581,6 @@ int ha_create_table_from_engine(THD* thd, const char *db, const char *name)
 void st_ha_check_opt::init()
 {
   flags= sql_flags= 0;
-  sort_buffer_size = current_thd->variables.myisam_sort_buff_size;
 }
 
 
@@ -4386,6 +4384,7 @@ void DsMrr_impl::dsmrr_close()
   DBUG_ENTER("DsMrr_impl::dsmrr_close");
   if (h2)
   {
+    h2->ha_index_or_rnd_end();
     h2->ha_external_lock(current_thd, F_UNLCK);
     h2->close();
     delete h2;
@@ -5128,7 +5127,7 @@ bool ha_show_status(THD *thd, handlerton *db_type, enum ha_stat_type stat)
   {
     if (db_type->state != SHOW_OPTION_YES)
     {
-      const LEX_STRING *name=&hton2plugin[db_type->slot]->name;
+      const LEX_STRING *name= hton_name(db_type);
       result= stat_print(thd, name->str, name->length,
                          "", 0, "DISABLED", 8) ? 1 : 0;
     }
@@ -5179,9 +5178,7 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
    to the binary log.
 
    This function will generate and write table maps for all tables
-   that are locked by the thread 'thd'.  Either manually locked
-   (stored in THD::locked_tables) and automatically locked (stored
-   in THD::lock) are considered.
+   that are locked by the thread 'thd'.
 
    @param thd     Pointer to THD structure
 
@@ -5190,23 +5187,19 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table)
 
    @sa
        THD::lock
-       THD::locked_tables
 */
 
 static int write_locked_table_maps(THD *thd)
 {
   DBUG_ENTER("write_locked_table_maps");
-  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p  thd->locked_tables: %p  "
-                       "thd->extra_lock: %p",
-                       thd, thd->lock,
-                       thd->locked_tables, thd->extra_lock));
+  DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
+                       thd, thd->lock, thd->extra_lock));
 
   if (thd->get_binlog_table_maps() == 0)
   {
-    MYSQL_LOCK *locks[3];
+    MYSQL_LOCK *locks[2];
     locks[0]= thd->extra_lock;
     locks[1]= thd->lock;
-    locks[2]= thd->locked_tables;
     for (uint i= 0 ; i < sizeof(locks)/sizeof(*locks) ; ++i )
     {
       MYSQL_LOCK const *const lock= locks[i];

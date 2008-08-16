@@ -1,5 +1,5 @@
-DROP DATABASE IF EXISTS db_datadict;
-CREATE DATABASE db_datadict;
+DROP DATABASE IF EXISTS test1;
+CREATE DATABASE test1;
 SELECT *,
 LEFT( table_comment,
 IF(INSTR(table_comment,'InnoDB free') = 0
@@ -131,29 +131,6 @@ Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYSTEM_MEMORY_SUMMARY
-TABLE_TYPE	SYSTEM VIEW
-ENGINE	MEMORY
-VERSION	10
-ROW_FORMAT	Fixed
-TABLE_ROWS	#TBLR#
-AVG_ROW_LENGTH	#ARL#
-DATA_LENGTH	#DL#
-MAX_DATA_LENGTH	#MDL#
-INDEX_LENGTH	#IL#
-DATA_FREE	#DF#
-AUTO_INCREMENT	NULL
-CREATE_TIME	#CRT#
-UPDATE_TIME	#UT#
-CHECK_TIME	#CT#
-TABLE_COLLATION	utf8_general_ci
-CHECKSUM	NULL
-CREATE_OPTIONS	#CO#
-TABLE_COMMENT	#TC#
-user_comment	
-Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
-TABLE_SCHEMA	information_schema
-TABLE_NAME	FALCON_TABLES
 TABLE_TYPE	SYSTEM VIEW
 ENGINE	MEMORY
 VERSION	10
@@ -314,7 +291,7 @@ user_comment
 Separator	-----------------------------------------------------
 DROP   USER testuser1@localhost;
 CREATE USER testuser1@localhost;
-GRANT SELECT ON db_datadict.* TO testuser1@localhost;
+GRANT SELECT ON test1.* TO testuser1@localhost;
 # Establish connection testuser1 (user=testuser1)
 SELECT *,
 LEFT( table_comment,
@@ -447,29 +424,6 @@ Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
 TABLE_SCHEMA	information_schema
 TABLE_NAME	FALCON_SYSTEM_MEMORY_SUMMARY
-TABLE_TYPE	SYSTEM VIEW
-ENGINE	MEMORY
-VERSION	10
-ROW_FORMAT	Fixed
-TABLE_ROWS	#TBLR#
-AVG_ROW_LENGTH	#ARL#
-DATA_LENGTH	#DL#
-MAX_DATA_LENGTH	#MDL#
-INDEX_LENGTH	#IL#
-DATA_FREE	#DF#
-AUTO_INCREMENT	NULL
-CREATE_TIME	#CRT#
-UPDATE_TIME	#UT#
-CHECK_TIME	#CT#
-TABLE_COLLATION	utf8_general_ci
-CHECKSUM	NULL
-CREATE_OPTIONS	#CO#
-TABLE_COMMENT	#TC#
-user_comment	
-Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
-TABLE_SCHEMA	information_schema
-TABLE_NAME	FALCON_TABLES
 TABLE_TYPE	SYSTEM VIEW
 ENGINE	MEMORY
 VERSION	10
@@ -630,4 +584,4 @@ user_comment
 Separator	-----------------------------------------------------
 # Switch to connection default and close connection testuser1
 DROP USER testuser1@localhost;
-DROP DATABASE db_datadict;
+DROP DATABASE test1;

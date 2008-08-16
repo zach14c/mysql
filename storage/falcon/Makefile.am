@@ -16,14 +16,14 @@
 SUBDIRS= TransformLib
 
 # Re-enable implicit templates and exceptions
-CXXFLAGS= @CXXFLAGS@ -fimplicit-templates @FALCON_CXXFLAGS@
+MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 
 DEFS= @DEFS@ \
-      -D_REENTRANT -D_PTHREADS -DENGINE -DSTORAGE_ENGINE -DNAMESPACE=Nfs
+      -D_REENTRANT -D_PTHREADS -DFALCONDB -DSTORAGE_ENGINE -DNAMESPACE=Nfs
 
 INCLUDES= -I$(top_srcdir)/include -I$(top_builddir)/include \
-	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql \
-	  -I$(srcdir) -I$(srcdir)/TransformLib @ZLIB_INCLUDES@
+	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql -I$(srcdir) \
+	  -I$(srcdir)/TransformLib @ZLIB_INCLUDES@ @FALCON_SPARC_ASSEMBLY@
 
 falcon_headers= Agent.h Alias.h Application.h \
 		AsciiBlob.h \
@@ -66,12 +66,14 @@ falcon_headers= Agent.h Alias.h Application.h \
 		Gopher.h \
 		ha_falcon.h \
 		Hdr.h HdrState.h Image.h ImageManager.h \
-		Images.h Index.h IndexKey.h \
+		Images.h Index.h \
+		IndexKey.h \
 		IndexNode.h \
-		Index2Node.h \
 		IndexPage.h \
-		Index2Page.h \
 		IndexRootPage.h \
+		IndexWalker.h \
+		Index2Node.h \
+		Index2Page.h \
 		Index2RootPage.h \
 		InfoTable.h \
 		Interlock.h InversionFilter.h \
@@ -115,8 +117,11 @@ falcon_headers= Agent.h Alias.h Application.h \
 		ScaledBinary.h ScanDir.h \
 		Scan.h ScanType.h Scavenger.h Scheduled.h ScheduleElement.h \
 		Schedule.h Scheduler.h Schema.h Search.h SearchHit.h \
-		SearchWords.h Section.h \
+		SearchWords.h \
+		Section.h \
 		SectionPage.h \
+		SectorBuffer.h \
+		SectorCache.h \
 		Sequence.h SequenceManager.h SequencePage.h \
 		SequenceResultSet.h \
 		Serialize.h \
@@ -191,6 +196,8 @@ falcon_headers= Agent.h Alias.h Application.h \
 		TriggerRecord.h \
 		Types.h Unicode.h UnTable.h User.h UserRole.h \
 		Validation.h ValueEx.h Value.h ValueSet.h Values.h View.h \
+		WalkIndex.h \
+		WalkDeferred.h \
 		WString.h
 falcon_sources= Agent.cpp Alias.cpp \
 		AsciiBlob.cpp \
@@ -235,10 +242,11 @@ falcon_sources= Agent.cpp Alias.cpp \
 		Hdr.cpp Image.cpp \
 		ImageManager.cpp Images.cpp Index.cpp IndexKey.cpp \
 		IndexNode.cpp \
-		Index2Node.cpp \
 		IndexPage.cpp \
-		Index2Page.cpp \
 		IndexRootPage.cpp \
+		IndexWalker.cpp \
+		Index2Node.cpp \
+		Index2Page.cpp \
 		Index2RootPage.cpp \
 		InfoTable.cpp \
 		Inversion.cpp \
@@ -286,8 +294,12 @@ falcon_sources= Agent.cpp Alias.cpp \
 		ScaledBinary.cpp Scan.cpp \
 		ScanDir.cpp Scavenger.cpp Schedule.cpp Scheduled.cpp \
 		ScheduleElement.cpp Scheduler.cpp Schema.cpp Search.cpp \
-		SearchHit.cpp SearchWords.cpp Section.cpp \
-		SectionPage.cpp Sequence.cpp \
+		SearchHit.cpp SearchWords.cpp \
+		Section.cpp \
+		SectionPage.cpp \
+		SectorBuffer.cpp \
+		SectorCache.cpp \
+		Sequence.cpp \
 		SequenceManager.cpp SequenceResultSet.cpp \
 		Serialize.cpp \
 		SerialLogAction.cpp SerialLogControl.cpp SerialLog.cpp \
@@ -358,14 +370,17 @@ falcon_sources= Agent.cpp Alias.cpp \
 		Trigger.cpp \
 		Unicode.cpp UnTable.cpp User.cpp \
 		UserRole.cpp Validation.cpp Value.cpp ValueEx.cpp Values.cpp \
-		ValueSet.cpp View.cpp WString.cpp
+		ValueSet.cpp View.cpp \
+		WalkIndex.cpp \
+		WalkDeferred.cpp \
+		WString.cpp
 
 noinst_HEADERS=	$(falcon_headers) \
 		falcon_probes.h
 
 EXTRA_LTLIBRARIES=	ha_falcon.la
 pkglib_LTLIBRARIES=	@plugin_falcon_shared_target@
-ha_falcon_la_LDFLAGS=	-module -rpath $(pkglibdir) -lstdc++
+ha_falcon_la_LDFLAGS=	-module -rpath $(pkglibdir)
 ha_falcon_la_CXXFLAGS=	$(AM_CXXFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_CFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_LIBADD=	TransformLib/libtransform.la

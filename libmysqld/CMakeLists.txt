@@ -152,6 +152,12 @@ IF(WITH_FALCON_STORAGE_ENGINE)
     SET(LIB_SOURCES ${LIB_SOURCES} ../storage/falcon/${rpath})
   ENDFOREACH(rpath)
 ENDIF(WITH_FALCON_STORAGE_ENGINE)
+IF(WITH_MARIA_STORAGE_ENGINE)
+  INCLUDE(${CMAKE_SOURCE_DIR}/storage/maria/CMakeLists.txt)
+  FOREACH(rpath ${MARIA_SOURCES})
+    SET(LIB_SOURCES ${LIB_SOURCES} ../storage/maria/${rpath})
+  ENDFOREACH(rpath)
+ENDIF(WITH_MARIA_STORAGE_ENGINE)
 
 SET(SOURCE_SUBLIBS FALSE)
                             
@@ -184,6 +190,7 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/sql_list.cc ../sql/sql_load.cc ../sql/sql_locale.cc 
            ../sql/sql_binlog.cc ../sql/sql_manager.cc ../sql/sql_map.cc 
            ../sql/sql_parse.cc ../sql/sql_partition.cc ../sql/sql_plugin.cc 
+           ../sql/debug_sync.cc
            ../sql/sql_prepare.cc ../sql/sql_rename.cc ../sql/sql_repl.cc 
            ../sql/sql_select.cc ../sql/sql_servers.cc
            ../sql/sql_show.cc ../sql/sql_state.c ../sql/sql_string.cc
@@ -193,9 +200,9 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/strfunc.cc ../sql/table.cc ../sql/thr_malloc.cc
            ../sql/time.cc ../sql/tztime.cc ../sql/uniques.cc ../sql/unireg.cc
            ../sql/partition_info.cc ../sql/sql_connect.cc 
-           ../sql/scheduler.cc ../sql/sql_audit.cc ../sql/stacktrace.c
+           ../sql/scheduler.cc ../sql/sql_audit.cc
            ../sql/ddl_blocker.cc ../sql/si_objects.cc
-           ../sql/event_parse_data.cc
+           ../sql/event_parse_data.cc ../sql/mdl.cc
            ${GEN_SOURCES}
            ${LIB_SOURCES})
 

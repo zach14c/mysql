@@ -21,7 +21,7 @@
 #include "Engine.h"
 #include "Bitmap.h"
 
-#ifndef ENGINE
+#ifndef FALCONDB
 #define ASSERT(n)
 #endif
 

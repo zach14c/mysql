@@ -1308,12 +1308,14 @@ select f3()|
 select id, f3() from t1 as t11 order by id|
 # Degenerate cases work too :)
 select f0()|
+# But these should not (particularly views should be locked explicitly).
+--error ER_TABLE_NOT_LOCKED
 select * from v0|
+--error ER_TABLE_NOT_LOCKED
 select *, f0() from v0, (select 123) as d1|
-# But these should not !
---error 1100
+--error ER_TABLE_NOT_LOCKED
 select id, f3() from t1|
---error 1100
+--error ER_TABLE_NOT_LOCKED
 select f4()|
 unlock tables|
 
@@ -1323,9 +1325,9 @@ lock tables v2 read, mysql.proc read|
 select * from v2|
 select * from v1|
 # These should not work as we have too little instances of tables locked
---error 1100
+--error ER_TABLE_NOT_LOCKED
 select * from v1, t1|
---error 1100
+--error ER_TABLE_NOT_LOCKED
 select f4()|
 unlock tables|
 

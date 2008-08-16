@@ -10,7 +10,7 @@ ENGINE=NDB;
 ERROR HY000: Failed to create LOGFILE GROUP
 show warnings;
 Level	Code	Message
-Error	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
+Warning	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
 Error	1528	Failed to create LOGFILE GROUP
 create table t1 (a int key, b int unique, c int) engine ndb;
 CREATE LOGFILE GROUP lg1
@@ -26,14 +26,14 @@ ENGINE NDB;
 ERROR HY000: Failed to create TABLESPACE
 show warnings;
 Level	Code	Message
-Error	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
+Warning	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
 Error	1528	Failed to create TABLESPACE
 DROP LOGFILE GROUP lg1 
 ENGINE =NDB;
 ERROR HY000: Failed to drop LOGFILE GROUP
 show warnings;
 Level	Code	Message
-Error	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
+Warning	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
 Error	1529	Failed to drop LOGFILE GROUP
 CREATE TABLESPACE ts1
 ADD DATAFILE 'datafile.dat'
@@ -46,7 +46,7 @@ ENGINE NDB;
 ERROR HY000: Failed to alter:  DROP DATAFILE
 show warnings;
 Level	Code	Message
-Error	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
+Warning	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
 Error	1533	Failed to alter:  DROP DATAFILE
 ALTER TABLESPACE ts1
 DROP DATAFILE 'datafile.dat'
@@ -56,7 +56,7 @@ ENGINE NDB;
 ERROR HY000: Failed to drop TABLESPACE
 show warnings;
 Level	Code	Message
-Error	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
+Warning	1296	Got error 299 'Operation not allowed or aborted due to single user mode' from NDB
 Error	1529	Failed to drop TABLESPACE
 DROP TABLESPACE ts1
 ENGINE NDB;

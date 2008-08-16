@@ -220,11 +220,11 @@ int mysql_update(THD *thd,
       /* convert to multiupdate */
       DBUG_RETURN(2);
     }
-    if (!lock_tables(thd, table_list, table_count, &need_reopen))
+    if (!lock_tables(thd, table_list, table_count, 0, &need_reopen))
       break;
     if (!need_reopen)
       DBUG_RETURN(1);
-    close_tables_for_reopen(thd, &table_list);
+    close_tables_for_reopen(thd, &table_list, FALSE);
   }
 
   if (mysql_handle_derived(thd->lex, &mysql_derived_prepare) ||
@@ -459,7 +459,7 @@ int mysql_update(THD *thd,
       */
 
       if (used_index == MAX_KEY || (select && select->quick))
-        init_read_record(&info,thd,table,select,0,1);
+        init_read_record(&info, thd, table, select, 0, 1, FALSE);
       else
         init_read_record_idx(&info, thd, table, 1, used_index);
 
@@ -525,7 +525,7 @@ int mysql_update(THD *thd,
   if (select && select->quick && select->quick->reset())
     goto err;
   table->file->try_semi_consistent_read(1);
-  init_read_record(&info,thd,table,select,0,1);
+  init_read_record(&info, thd, table, select, 0, 1, FALSE);
 
   updated= found= 0;
   /* Generate an error when trying to set a NOT NULL field to NULL. */
@@ -962,7 +962,7 @@ int mysql_multi_update_prepare(THD *thd)
     count in open_tables()
   */
   uint  table_count= lex->table_count;
-  const bool using_lock_tables= thd->locked_tables != 0;
+  const bool using_lock_tables= thd->locked_tables_mode != LTM_NONE;
   bool original_multiupdate= (thd->lex->sql_command == SQLCOM_UPDATE_MULTI);
   bool need_reopen= FALSE;
   DBUG_ENTER("mysql_multi_update_prepare");
@@ -1083,7 +1083,7 @@ reopen_tables:
   }
 
   /* now lock and fill tables */
-  if (lock_tables(thd, table_list, table_count, &need_reopen))
+  if (lock_tables(thd, table_list, table_count, 0, &need_reopen))
   {
     if (!need_reopen)
       DBUG_RETURN(TRUE);
@@ -1103,7 +1103,7 @@ reopen_tables:
     for (TABLE_LIST *tbl= table_list; tbl; tbl= tbl->next_global)
       tbl->cleanup_items();
 
-    close_tables_for_reopen(thd, &table_list);
+    close_tables_for_reopen(thd, &table_list, FALSE);
     goto reopen_tables;
   }
 
@@ -1695,7 +1695,7 @@ bool multi_update::send_data(List<Item> &not_used_values)
       if (error != HA_ERR_FOUND_DUPP_KEY && error != HA_ERR_FOUND_DUPP_UNIQUE)
       {
         if (error &&
-            create_myisam_from_heap(thd, tmp_table,
+            create_internal_tmp_table_from_heap(thd, tmp_table,
                                          tmp_table_param[offset].start_recinfo,
                                          &tmp_table_param[offset].recinfo,
                                          error, 1))

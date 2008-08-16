@@ -1,0 +1,4 @@
+set names cp866;
+--source include/ctype_ascii_order.inc
+
+--echo End of 6.0 tests.

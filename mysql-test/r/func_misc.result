@@ -173,7 +173,7 @@ WHERE attempt = 4 - 1 + 1;
 UPDATE t_history SET end_cached = 0
 WHERE attempt = 4 - 1 + 1;
 # Test 1: Does the query with SLEEP need a reasonable time?
-SELECT COUNT(*) > 4 - 1 INTO @aux1 FROM t_history
+SELECT COUNT(*) >= 4 - 1 INTO @aux1 FROM t_history
 WHERE TIMEDIFF(end_ts,start_ts) - @sleep_time_per_result_row * @row_count
 BETWEEN 0 AND @max_acceptable_delay;
 SELECT @aux1 AS "Expect 1";
@@ -181,7 +181,7 @@ Expect 1
 1
 # Test 2: Does the query with SLEEP need a reasonable time even in case
 #         of the non first execution?
-SELECT COUNT(*) > 4 - 1 - 1 INTO @aux2 FROM t_history
+SELECT COUNT(*) >= 4 - 1 - 1 INTO @aux2 FROM t_history
 WHERE TIMEDIFF(end_ts,start_ts) - @sleep_time_per_result_row * @row_count
 BETWEEN 0 AND @max_acceptable_delay
 AND attempt > 1;
@@ -310,6 +310,21 @@ drop table t1;
 SELECT NAME_CONST('var', 'value') COLLATE latin1_general_cs;
 NAME_CONST('var', 'value') COLLATE latin1_general_cs
 value
+select @@session.time_zone into @save_tz;
+set @@session.time_zone='UTC';
+select uuid() into @my_uuid;
+select mid(@my_uuid,15,1);
+mid(@my_uuid,15,1)
+1
+select 24 * 60 * 60 * 1000 * 1000 * 10 into @my_uuid_one_day;
+select concat('0',mid(@my_uuid,16,3),mid(@my_uuid,10,4),left(@my_uuid,8)) into
+@my_uuidate;
+select floor(conv(@my_uuidate,16,10)/@my_uuid_one_day) into @my_uuid_date;
+select 141427 + datediff(curdate(),'1970-01-01') into @my_uuid_synthetic;
+select @my_uuid_date - @my_uuid_synthetic;
+@my_uuid_date - @my_uuid_synthetic
+0
+set @@session.time_zone=@save_tz;
 End of 5.0 tests
 select connection_id() > 0;
 connection_id() > 0

@@ -241,11 +241,11 @@ static int ndb_to_mysql_error(const NdbError *ndberr)
     - Used by replication to see if the error was temporary
   */
   if (ndberr->status == NdbError::TemporaryError)
-    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_GET_TEMPORARY_ERRMSG, ER(ER_GET_TEMPORARY_ERRMSG),
 			ndberr->code, ndberr->message, "NDB");
   else
-    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
 			ndberr->code, ndberr->message, "NDB");
   return error;
@@ -479,7 +479,7 @@ static void set_ndb_err(THD *thd, const NdbError &err)
   {
     char buf[FN_REFLEN];
     ndb_error_string(thd_ndb->m_error_code, buf, sizeof(buf));
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
 			thd_ndb->m_error_code, buf, "NDB");
   }
@@ -508,7 +508,7 @@ int ha_ndbcluster::ndb_err(NdbTransaction *trans)
     bzero((char*) &table_list,sizeof(table_list));
     table_list.db= m_dbname;
     table_list.alias= table_list.table_name= m_tabname;
-    close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+    close_cached_tables(thd, &table_list, FALSE, FALSE);
     break;
   }
   default:
@@ -4266,10 +4266,9 @@ void ha_ndbcluster::start_bulk_insert(ha_rows rows)
 /**
   End of an insert.
 */
-int ha_ndbcluster::end_bulk_insert()
+int ha_ndbcluster::end_bulk_insert(bool abort)
 {
   int error= 0;
-
   DBUG_ENTER("end_bulk_insert");
   // Check if last inserts need to be flushed
 
@@ -4604,7 +4603,7 @@ int ha_ndbcluster::external_lock(THD *thd, int lock_type)
   Thd_ndb *thd_ndb= get_thd_ndb(thd);
   Ndb *ndb= thd_ndb->ndb;
 
-  DBUG_PRINT("enter", ("this: %p  thd: %p  thd_ndb: %lx  "
+  DBUG_PRINT("enter", ("this: %p  thd: %p  thd_ndb: 0x%lx  "
                        "thd_ndb->lock_count: %d",
                        this, thd, (long) thd_ndb,
                        thd_ndb->lock_count));
@@ -5483,7 +5482,7 @@ int ha_ndbcluster::create(const char *name,
   else if (create_info->tablespace && 
            create_info->default_storage_media == HA_SM_MEMORY)
   {
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_ILLEGAL_HA_CREATE_OPTION,
                         ER(ER_ILLEGAL_HA_CREATE_OPTION),
                         ndbcluster_hton_name,
@@ -5506,7 +5505,7 @@ int ha_ndbcluster::create(const char *name,
     {
       if (key_part->field->field_storage_type() == HA_SM_DISK)
       {
-        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_ILLEGAL_HA_CREATE_OPTION,
                             ER(ER_ILLEGAL_HA_CREATE_OPTION),
                             ndbcluster_hton_name,
@@ -5762,7 +5761,7 @@ int ha_ndbcluster::create_index(THD *thd, const char *name, KEY *key_info,
   case ORDERED_INDEX:
     if (key_info->algorithm == HA_KEY_ALG_HASH)
     {
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			  ER_ILLEGAL_HA_CREATE_OPTION,
 			  ER(ER_ILLEGAL_HA_CREATE_OPTION),
 			  ndbcluster_hton_name,
@@ -5835,7 +5834,7 @@ int ha_ndbcluster::create_ndb_index(THD *thd, const char *name,
     Field *field= key_part->field;
     if (field->field_storage_type() == HA_SM_DISK)
     {
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_ILLEGAL_HA_CREATE_OPTION,
                           ER(ER_ILLEGAL_HA_CREATE_OPTION),
                           ndbcluster_hton_name,
@@ -7430,6 +7429,20 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  /*
+    ndbcluster_find_files() may be called from I_S code and ndbcluster_binlog
+    thread in situations when some tables are already open. This means that
+    code below will try to obtain exclusive metadata lock on some table
+    while holding shared meta-data lock on other tables. This might lead to
+    a deadlock, and therefore is disallowed by assertions of the metadata
+    locking subsystem. In order to temporarily make the code work, we must
+    reset and backup the open tables state, thus hide the existing locks
+    from MDL asserts. But in the essence this is violation of metadata
+    locking protocol which has to be closed ASAP.
+  */
+  Open_tables_state open_tables_state_backup;
+  thd->reset_n_backup_open_tables_state(&open_tables_state_backup);
+
   if (!global_read_lock)
   {
     // Delete old files
@@ -7453,8 +7466,11 @@ int ndbcluster_find_files(handlerton *hton, THD *thd,
     }
   }
 
+  thd->restore_backup_open_tables_state(&open_tables_state_backup);
+
+  /* Lock mutex before creating .FRM files. */
   pthread_mutex_lock(&LOCK_open);
-  // Create new files
+  /* Create new files. */
   List_iterator_fast<char> it2(create_list);
   while ((file_name_str=it2++))
   {  
@@ -8349,7 +8365,7 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
     safe_mutex_assert_owner(&LOCK_open);
   else
     pthread_mutex_lock(&LOCK_open);    
-  close_cached_tables(thd, &table_list, TRUE, FALSE, FALSE);
+  close_cached_tables(thd, &table_list, TRUE, FALSE);
   if (!have_lock_open)
     pthread_mutex_unlock(&LOCK_open);    
 
@@ -8404,17 +8420,9 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
     }
   }
 
-  DBUG_PRINT("info", ("NDB_SHARE: %s already exists use_count=%d, op=0x%lx.",
-                      share->key, share->use_count, (long) share->op));
-  /* 
-     Ignore table shares only opened by util thread
-   */
-  if (!((share->use_count == 1) && share->util_thread))
-  {
-    sql_print_warning("NDB_SHARE: %s already exists use_count=%d."
-                      " Moving away for safety, but possible memleak.",
-                      share->key, share->use_count);
-  }
+  sql_print_warning("NDB_SHARE: %s already exists  use_count=%d."
+                    " Moving away for safety, but possible memleak.",
+                    share->key, share->use_count);
   dbug_print_open_tables();
 
   /*
@@ -10076,7 +10084,6 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
 #endif /* HAVE_NDB_BINLOG */
       /* ndb_share reference temporary, free below */
       share->use_count++; /* Make sure the table can't be closed */
-      share->util_thread= true;
       DBUG_PRINT("NDB_SHARE", ("%s temporary  use_count: %u",
                                share->key, share->use_count));
       DBUG_PRINT("ndb_util_thread",
@@ -10102,11 +10109,7 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
         /* ndb_share reference temporary free */
         DBUG_PRINT("NDB_SHARE", ("%s temporary free  use_count: %u",
                                  share->key, share->use_count));
-        
-        pthread_mutex_lock(&ndbcluster_mutex);
-        share->util_thread= false;
-        free_share(&share, true);
-        pthread_mutex_unlock(&ndbcluster_mutex);
+        free_share(&share);
         continue;
       }
 #endif /* HAVE_NDB_BINLOG */
@@ -10156,10 +10159,7 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
       /* ndb_share reference temporary free */
       DBUG_PRINT("NDB_SHARE", ("%s temporary free  use_count: %u",
                                share->key, share->use_count));
-      pthread_mutex_lock(&ndbcluster_mutex);
-      share->util_thread= false;
-      free_share(&share, true);
-      pthread_mutex_unlock(&ndbcluster_mutex);
+      free_share(&share);
     }
 next:
     /* Calculate new time to wake up */
@@ -10577,7 +10577,7 @@ uint ha_ndbcluster::set_up_partition_info(partition_info *part_info,
   {
     if (!current_thd->variables.new_mode)
     {
-      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_ILLEGAL_HA_CREATE_OPTION,
                           ER(ER_ILLEGAL_HA_CREATE_OPTION),
                           ndbcluster_hton_name,
@@ -11044,6 +11044,7 @@ int ha_ndbcluster::alter_frm(THD *thd, const char *file,
   /* ndb_share reference schema(?) free */
   DBUG_PRINT("NDB_SHARE", ("%s binlog schema(?) free  use_count: %u",
                            m_share->key, m_share->use_count));
+  free_share(&m_share); // Decrease ref_count
 
   DBUG_RETURN(error);
 }
@@ -11083,8 +11084,8 @@ int ha_ndbcluster::alter_table_phase2(THD *thd,
     /* ndb_share reference schema free */
     DBUG_PRINT("NDB_SHARE", ("%s binlog schema free  use_count: %u",
                              m_share->key, m_share->use_count));
+    free_share(&m_share); // Decrease ref_count
   }
-  free_share(&m_share); // Decrease ref_count
   delete alter_data;
   DBUG_RETURN(error);
 }

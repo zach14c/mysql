@@ -1,0 +1,10 @@
+--source include/have_falcon.inc
+
+#
+# BUG#33213 - Wrong CREATE TABLESPACE error when using existing DATAFILE
+#
+
+CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+--error ER_TABLESPACE_DATAFILE_EXIST
+CREATE TABLESPACE ts2 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+DROP TABLESPACE ts1 ENGINE=Falcon;

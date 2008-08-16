@@ -21,6 +21,7 @@
 
 template <class Elem> class Dynamic_array
 {
+protected:
   DYNAMIC_ARRAY  array;
 public:
   Dynamic_array(uint prealloc=16, uint increment=16)
@@ -33,17 +34,17 @@ public:
     my_init_dynamic_array(&array, sizeof(Elem), prealloc, increment);
   }
 
-  Elem& at(int idx)
+  Elem& at(ulong idx) const
   {
     return *(((Elem*)array.buffer) + idx);
   }
 
-  Elem *front()
+  Elem *front() const
   {
     return (Elem*)array.buffer;
   }
 
-  Elem *back()
+  Elem *back() const
   {
     return ((Elem*)array.buffer) + array.elements;
   }
@@ -53,7 +54,7 @@ public:
     return (insert_dynamic(&array, (uchar*)&el));
   }
 
-  int elements()
+  ulong elements() const
   {
     return array.elements;
   }

@@ -41,6 +41,7 @@
 #include "SRLDropTableSpace.h"
 #include "Log.h"
 #include "InfoTable.h"
+#include "Thread.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -57,6 +58,8 @@ TableSpaceManager::TableSpaceManager(Database *db)
 	memset(nameHash, 0, sizeof(nameHash));
 	memset(idHash, 0, sizeof(nameHash));
 	tableSpaces = NULL;
+	pendingDrops = 0;
+	syncObject.setName("TableSpaceManager::syncObject");
 }
 
 TableSpaceManager::~TableSpaceManager()
@@ -84,7 +87,7 @@ void TableSpaceManager::add(TableSpace *tableSpace)
 
 TableSpace* TableSpaceManager::findTableSpace(const char *name)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace");
+	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(1)");
 	syncObj.lock(Shared);
 	TableSpace *tableSpace;
 
@@ -99,7 +102,7 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		if (tableSpace->name == name)
 			return tableSpace;
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = database->prepareStatement(
@@ -110,22 +113,14 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 	if (resultSet->next())
 		{
 		int n = 1;
-		int id = resultSet->getInt(n++);
-		const char *fileName = resultSet->getString(n++);
-		int type = resultSet->getInt(n++);
+		int id = resultSet->getInt(n++);					// tablespace id
+		const char *fileName = resultSet->getString(n++);	// filename
+		int type = TABLESPACE_TYPE_TABLESPACE;				// type (forced)
 		
 		TableSpaceInit tsInit;
-		/***
-		tsInit.initialSize	= resultSet->getLong(4);
-		tsInit.extentSize	= resultSet->getLong(5);
-		tsInit.autoExtendSize = resultSet->getLong(6);
-		tsInit.maxSize		= resultSet->getLong(7);
-		tsInit.nodegroup	= resultSet->getInt(8);
-		tsInit.wait			= resultSet->getInt(9);
-		***/
-		tsInit.comment		= resultSet->getString(n++);
+		tsInit.comment		= resultSet->getString(n++);	// comment
 		
-		tableSpace = new TableSpace(database, name, id, fileName, 0, &tsInit);
+		tableSpace = new TableSpace(database, name, id, fileName, type, &tsInit);
 
 		if (type != TABLESPACE_TYPE_REPOSITORY)
 			try
@@ -150,7 +145,7 @@ TableSpace* TableSpaceManager::getTableSpace(const char *name)
 	TableSpace *tableSpace = findTableSpace(name);
 
 	if (!tableSpace)
-		throw SQLError(DDL_ERROR, "can't find table space \"%s\"", name);
+		throw SQLError(TABLESPACE_NOT_EXIST_ERROR, "can't find table space \"%s\"", name);
 
 	if (!tableSpace->active)
 		throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
@@ -168,10 +163,10 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
-	if (!repository && tableSpace->dbb->doesFileExist(fileName))
+	if (!repository && IO::doesFileExist(fileName))
 		{
 		delete tableSpace;
-		throw SQLError(TABLESPACE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
+		throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
 		}
 		
 	try
@@ -215,21 +210,9 @@ void TableSpaceManager::bootstrap(int sectionId)
 		p = EncodedDataStream::decode(p, &fileName, true);
 		p = EncodedDataStream::decode(p, &type, true);
 		/***
-		p = EncodedDataStream::decode(p, &initialSize, true);
-		p = EncodedDataStream::decode(p, &extentSsize, true);
-		p = EncodedDataStream::decode(p, &autoExtendSize, true);
-		p = EncodedDataStream::decode(p, &maxSize, true);
-		p = EncodedDataStream::decode(p, &nodegroup, true);
-		p = EncodedDataStream::decode(p, &wait, true);
 		p = EncodedDataStream::decode(p, &comment, true);
 
 		TableSpaceInit tsInit;
-		tsInit.initialSize	= initialSize.getQuad();
-		tsInit.extentSize	= extentSize.getQuad();
-		tsInit.autoExtendSize = autoExtendSize.getQuad();
-		tsInit.maxSize		= maxSize.getQuad();
-		tsInit.nodegroup	= nodegroup.getInt();
-		tsInit.wait			= wait.getInt();
 		tsInit.comment		= comment.getString();
 		***/
 		
@@ -290,10 +273,10 @@ void TableSpaceManager::dropDatabase(void)
 
 void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace");
+	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(1)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = database->prepareStatement(
@@ -302,10 +285,8 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 	statement->executeUpdate();
 	Transaction *transaction = database->getSystemTransaction();
 	transaction->hasUpdates = true;
-	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
 
 	syncDDL.unlock();
-	database->commitSystemTransaction();
 	
 	int slot = tableSpace->name.hash(TS_HASH_SIZE);
 
@@ -317,7 +298,12 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 			break;
 			}
 			
+	pendingDrops++;
 	syncObj.unlock();
+
+	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
+	database->commitSystemTransaction();
+
 	tableSpace->active = false;
 }
 
@@ -386,6 +372,10 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 	sync.unlock();
 	tableSpace->dropTableSpace();
 	delete tableSpace;
+
+	sync.lock(Exclusive);
+	if(pendingDrops >0)
+		pendingDrops--;
 }
 
 void TableSpaceManager::reportWrites(void)
@@ -487,8 +477,8 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 		
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace_name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type
+		infoTable->putString(0, resultSet->getString(1));					// tablespace name
+		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
 		infoTable->putString(2, resultSet->getString(2));					// comment
 		infoTable->putRecord();
 		}
@@ -502,12 +492,34 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace_name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type
-		infoTable->putInt(2, 1);											// file_id
-		infoTable->putString(3, resultSet->getString(2));					// file_name
+		infoTable->putString(0, resultSet->getString(1));					// tablespace name
+		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
+		infoTable->putInt(2, 1);											// file id (unused for now)
+		infoTable->putString(3, resultSet->getString(2));					// file name
 		infoTable->putRecord();
 		}
 }
 
+
+// Wait for specified amount of time for a  file to be deleted.
+// Don't wait if pendingDrops count is 0.
+//
+// The function returns true, if wait was successfull, i.e file does not exist
+//(anymore)
+bool TableSpaceManager::waitForPendingDrop(const char  *filename, int seconds)
+{
+	bool fileExists;
+
+	do
+		{
+		fileExists = IO::doesFileExist(filename);
+		if (fileExists && pendingDrops > 0 && seconds-- > 0)
+			Thread::getThread("TransactionManager::waitForPendingDrop")->sleep(1000);
+		else
+			break;
+		}
+	while(true);
+
+	return !fileExists;
+}
 

@@ -33,7 +33,7 @@
 #include "Blob.h"
 #include "Log.h"
 
-#ifdef ENGINE
+#ifdef FALCONDB
 #include "Record.h"
 #else
 #undef ASSERT
@@ -246,7 +246,7 @@ char* Stream::getString()
 	return string;
 }
 
-#ifdef ENGINE
+#ifdef FALCONDB
 void Stream::compress(int length, void * address)
 {
 	//printShorts ("Original data", (length + 1) / 2, (short*) address);
@@ -328,7 +328,7 @@ char* Stream::decompress(int tableId, int recordNumber)
 		while (p < end)
 			{
 			short n = *p++;
-//#ifdef ENGINE
+//#ifdef FALCONDB
 			if (n == 0 && run == 0)
 				{
 				Log::log ("corrupted record (zero run), table %d, record %d\n", tableId, recordNumber);
@@ -350,7 +350,7 @@ char* Stream::decompress(int tableId, int recordNumber)
 				
 				if (q + run > limit)
 					{
-//#ifdef ENGINE
+//#ifdef FALCONDB
 					Log::log ("corrupted record (overrun), table %d, record %d\n", tableId, recordNumber);
 					printShorts ("Compressed", (segment->length + 1)/2, (short*) segment->address);
 					printChars ("Compressed", segment->length, segment->address);
@@ -538,7 +538,7 @@ void Stream::putSegment(Stream * stream)
 
 	if (seg.remaining > 0)
 		seg.copy (alloc (seg.remaining), seg.remaining);
-#ifdef ENGINE
+#ifdef FALCONDB
 	else if (seg.remaining < 0)
 		Log::debug ("Stream::putSegment: apparent blob overflow\n");
 #endif

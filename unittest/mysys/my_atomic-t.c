@@ -313,7 +313,7 @@ int main()
     stacksize= PTHREAD_STACK_MIN;
 
 #ifdef MY_ATOMIC_MODE_RWLOCKS
-#ifdef HPUX11 /* showed to be very slow (scheduler-related) */
+#if defined(HPUX11) || defined(__POWERPC__) /* showed to be very slow (scheduler-related) */
 #define CYCLES 300
 #else
 #define CYCLES 3000

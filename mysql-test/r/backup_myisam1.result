@@ -1,0 +1,7 @@
+drop database if exists mysqltest;
+create database mysqltest;
+use mysqltest;
+CREATE TABLE t1 (a int) engine=myisam;
+BACKUP DATABASE mysqltest TO 'test.ba';
+ERROR HY000: Got error -1 'online backup impossible with --external-locking' from MyISAM
+DROP DATABASE mysqltest;

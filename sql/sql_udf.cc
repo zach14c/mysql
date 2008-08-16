@@ -142,6 +142,7 @@ void udf_init()
   tables.alias= tables.table_name= (char*) "func";
   tables.lock_type = TL_READ;
   tables.db= db;
+  alloc_mdl_locks(&tables, new_thd->mem_root);
 
   if (simple_open_n_lock_tables(new_thd, &tables))
   {
@@ -152,7 +153,7 @@ void udf_init()
   }
 
   table= tables.table;
-  init_read_record(&read_record_info, new_thd, table, NULL,1,0);
+  init_read_record(&read_record_info, new_thd, table, NULL,1,0,FALSE);
   table->use_all_columns();
   while (!(error= read_record_info.read_record(&read_record_info)))
   {
@@ -480,6 +481,7 @@ int mysql_create_function(THD *thd,udf_func *udf)
   bzero((char*) &tables,sizeof(tables));
   tables.db= (char*) "mysql";
   tables.table_name= tables.alias= (char*) "func";
+  alloc_mdl_locks(&tables, thd->mem_root);
   /* Allow creation of functions even if we can't open func table */
   if (!(table = open_ltable(thd, &tables, TL_WRITE, 0)))
     goto err;
@@ -558,6 +560,7 @@ int mysql_drop_function(THD *thd,const LEX_STRING *udf_name)
   bzero((char*) &tables,sizeof(tables));
   tables.db=(char*) "mysql";
   tables.table_name= tables.alias= (char*) "func";
+  alloc_mdl_locks(&tables, thd->mem_root);
   if (!(table = open_ltable(thd, &tables, TL_WRITE, 0)))
     goto err;
   table->use_all_columns();

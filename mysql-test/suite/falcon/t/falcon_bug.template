@@ -1,5 +1,7 @@
+--source include/have_falcon.inc
+
 #
-# Bug #<xyz>: <Bug desscription>
+# Bug #<xyz>: <Bug description>
 #
 --echo *** Bug #<xyz> ***
 

@@ -113,7 +113,7 @@ NULL	mysql	online_backup	backup_state	5	NULL	NO	enum	14	14	NULL	NULL	latin1	lati
 NULL	mysql	online_backup	binlog_file	4	NULL	YES	char	64	64	NULL	NULL	latin1	latin1_swedish_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
 NULL	mysql	online_backup	binlog_pos	3	0	YES	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The recorded binlog position of backup/restore	Default	Default
 NULL	mysql	online_backup	command	17	NULL	YES	varchar	512	512	NULL	NULL	latin1	latin1_swedish_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
-NULL	mysql	online_backup	engines	18	NULL	YES	varchar	100	100	NULL	NULL	latin1	latin1_swedish_ci	varchar(100)			select,insert,update,references	The name of the storage engines used in the operation	Default	Default
+NULL	mysql	online_backup	drivers	18	NULL	YES	varchar	100	100	NULL	NULL	latin1	latin1_swedish_ci	varchar(100)			select,insert,update,references	The name of the storage engine backup drivers used in the operation	Default	Default
 NULL	mysql	online_backup	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
 NULL	mysql	online_backup	host_or_server_name	13	NULL	YES	char	30	30	NULL	NULL	latin1	latin1_swedish_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
 NULL	mysql	online_backup	num_objects	8	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The number of objects in the backup	Default	Default
@@ -209,6 +209,7 @@ NULL	mysql	user	Alter_priv	17	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum(
 NULL	mysql	user	Alter_routine_priv	28	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Create_priv	8	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Create_routine_priv	27	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
+NULL	mysql	user	Create_tablespace_priv	32	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Create_tmp_table_priv	20	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Create_user_priv	29	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Create_view_priv	25	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
@@ -222,10 +223,10 @@ NULL	mysql	user	Host	1		NO	char	60	240	NULL	NULL	utf8	utf8_bin	char(60)	PRI		sel
 NULL	mysql	user	Index_priv	16	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Insert_priv	5	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Lock_tables_priv	21	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
-NULL	mysql	user	max_connections	38	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
-NULL	mysql	user	max_questions	36	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
-NULL	mysql	user	max_updates	37	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
-NULL	mysql	user	max_user_connections	39	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
+NULL	mysql	user	max_connections	39	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
+NULL	mysql	user	max_questions	37	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
+NULL	mysql	user	max_updates	38	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
+NULL	mysql	user	max_user_connections	40	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11) unsigned			select,insert,update,references		Default	Default
 NULL	mysql	user	Password	3		NO	char	41	41	NULL	NULL	latin1	latin1_bin	char(41)			select,insert,update,references		Default	Default
 NULL	mysql	user	Process_priv	12	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	References_priv	15	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
@@ -236,14 +237,14 @@ NULL	mysql	user	Select_priv	4	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum(
 NULL	mysql	user	Show_db_priv	18	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Show_view_priv	26	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Shutdown_priv	11	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
-NULL	mysql	user	ssl_cipher	33	NULL	NO	blob	65535	65535	NULL	NULL	NULL	NULL	blob			select,insert,update,references		Default	Default
-NULL	mysql	user	ssl_type	32		NO	enum	9	36	NULL	NULL	utf8	utf8_general_ci	enum('','ANY','X509','SPECIFIED')			select,insert,update,references		Default	Default
+NULL	mysql	user	ssl_cipher	34	NULL	NO	blob	65535	65535	NULL	NULL	NULL	NULL	blob			select,insert,update,references		Default	Default
+NULL	mysql	user	ssl_type	33		NO	enum	9	36	NULL	NULL	utf8	utf8_general_ci	enum('','ANY','X509','SPECIFIED')			select,insert,update,references		Default	Default
 NULL	mysql	user	Super_priv	19	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Trigger_priv	31	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	Update_priv	6	N	NO	enum	1	4	NULL	NULL	utf8	utf8_general_ci	enum('N','Y')			select,insert,update,references		Default	Default
 NULL	mysql	user	User	2		NO	char	16	64	NULL	NULL	utf8	utf8_bin	char(16)	PRI		select,insert,update,references		Default	Default
-NULL	mysql	user	x509_issuer	34	NULL	NO	blob	65535	65535	NULL	NULL	NULL	NULL	blob			select,insert,update,references		Default	Default
-NULL	mysql	user	x509_subject	35	NULL	NO	blob	65535	65535	NULL	NULL	NULL	NULL	blob			select,insert,update,references		Default	Default
+NULL	mysql	user	x509_issuer	35	NULL	NO	blob	65535	65535	NULL	NULL	NULL	NULL	blob			select,insert,update,references		Default	Default
+NULL	mysql	user	x509_subject	36	NULL	NO	blob	65535	65535	NULL	NULL	NULL	NULL	blob			select,insert,update,references		Default	Default
 ##########################################################################
 # Show the quotient of CHARACTER_OCTET_LENGTH and CHARACTER_MAXIMUM_LENGTH
 ##########################################################################
@@ -436,7 +437,7 @@ NULL	mysql	online_backup	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
 1.0000	mysql	online_backup	backup_file	char	100	100	latin1	latin1_swedish_ci	char(100)
 1.0000	mysql	online_backup	user_comment	varchar	200	200	latin1	latin1_swedish_ci	varchar(200)
 1.0000	mysql	online_backup	command	varchar	512	512	latin1	latin1_swedish_ci	varchar(512)
-1.0000	mysql	online_backup	engines	varchar	100	100	latin1	latin1_swedish_ci	varchar(100)
+1.0000	mysql	online_backup	drivers	varchar	100	100	latin1	latin1_swedish_ci	varchar(100)
 NULL	mysql	online_backup_progress	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
 1.0000	mysql	online_backup_progress	object	char	30	30	latin1	latin1_swedish_ci	char(30)
 NULL	mysql	online_backup_progress	start_time	datetime	NULL	NULL	NULL	NULL	datetime
@@ -548,6 +549,7 @@ NULL	mysql	time_zone_transition_type	Is_DST	tinyint	NULL	NULL	NULL	NULL	tinyint(
 4.0000	mysql	user	Create_user_priv	enum	1	4	utf8	utf8_general_ci	enum('N','Y')
 4.0000	mysql	user	Event_priv	enum	1	4	utf8	utf8_general_ci	enum('N','Y')
 4.0000	mysql	user	Trigger_priv	enum	1	4	utf8	utf8_general_ci	enum('N','Y')
+4.0000	mysql	user	Create_tablespace_priv	enum	1	4	utf8	utf8_general_ci	enum('N','Y')
 4.0000	mysql	user	ssl_type	enum	9	36	utf8	utf8_general_ci	enum('','ANY','X509','SPECIFIED')
 1.0000	mysql	user	ssl_cipher	blob	65535	65535	NULL	NULL	blob
 1.0000	mysql	user	x509_issuer	blob	65535	65535	NULL	NULL	blob

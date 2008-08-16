@@ -845,12 +845,11 @@ int Arg_comparator::set_cmp_func(Item_bool_func2 *owner_arg,
                                         Item **a1, Item **a2,
                                         Item_result type)
 {
-  enum enum_date_cmp_type cmp_type;
   ulonglong const_value= (ulonglong)-1;
   a= a1;
   b= a2;
 
-  if ((cmp_type= can_compare_as_dates(*a, *b, &const_value)))
+  if (can_compare_as_dates(*a, *b, &const_value))
   {
     thd= current_thd;
     owner= owner_arg;
@@ -2228,8 +2227,11 @@ Item_func_ifnull::fix_length_and_dec()
 
 uint Item_func_ifnull::decimal_precision() const
 {
-  int max_int_part=max(args[0]->decimal_int_part(),args[1]->decimal_int_part());
-  return min(max_int_part + decimals, DECIMAL_MAX_PRECISION);
+  int arg0_int_part= args[0]->decimal_int_part();
+  int arg1_int_part= args[1]->decimal_int_part();
+  int max_int_part= max(arg0_int_part, arg1_int_part);
+  int precision= max_int_part + decimals;
+  return min(precision, DECIMAL_MAX_PRECISION);
 }
 
 
@@ -2410,8 +2412,9 @@ Item_func_if::fix_length_and_dec()
 
 uint Item_func_if::decimal_precision() const
 {
-  int precision=(max(args[1]->decimal_int_part(),args[2]->decimal_int_part())+
-                 decimals);
+  int arg1_prec= args[1]->decimal_int_part();
+  int arg2_prec= args[2]->decimal_int_part();
+  int precision=max(arg1_prec,arg2_prec) + decimals;
   return min(precision, DECIMAL_MAX_PRECISION);
 }
 
@@ -3823,6 +3826,7 @@ longlong Item_func_in::val_int()
     return (longlong) (!null_value && tmp != negated);
   }
 
+  have_null= 0;
   for (uint i= 1 ; i < arg_count ; i++)
   {
     Item_result cmp_type= item_cmp_type(left_result_type, args[i]->result_type());
@@ -3831,9 +3835,8 @@ longlong Item_func_in::val_int()
     if (!(value_added_map & (1 << (uint)cmp_type)))
     {
       in_item->store_value(args[0]);
-      if ((null_value=args[0]->null_value))
+      if ((null_value= args[0]->null_value))
         return 0;
-      have_null= 0;
       value_added_map|= 1 << (uint)cmp_type;
     }
     if (!in_item->cmp(args[i]) && !args[i]->null_value)

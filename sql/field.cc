@@ -1309,7 +1309,8 @@ Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
    table(0), orig_table(0), table_name(0),
    field_name(field_name_arg),
    key_start(0), part_of_key(0), part_of_key_not_clustered(0),
-   part_of_sortkey(0), unireg_check(unireg_check_arg),
+   part_of_sortkey(0), part_of_key_wo_keyread(0), 
+   unireg_check(unireg_check_arg),
    field_length(length_arg), null_bit(null_bit_arg), 
    is_created_from_null_item(FALSE)
 {
@@ -1762,7 +1763,9 @@ int Field::store_time(MYSQL_TIME *ltime, timestamp_type type_arg)
   ASSERT_COLUMN_MARKED_FOR_WRITE;
   char buff[MAX_DATE_STRING_REP_LENGTH];
   uint length= (uint) my_TIME_to_str(ltime, buff);
-  return store(buff, length, &my_charset_bin);
+  return store(buff, length,
+               (charset()->state & MY_CS_NONASCII) ?
+               &my_charset_latin1 : &my_charset_bin);
 }
 
 
@@ -2592,7 +2595,7 @@ int Field_new_decimal::store(const char *from, uint length,
     String from_as_str;
     from_as_str.copy(from, length, &my_charset_bin);
 
-    push_warning_printf(table->in_use, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(table->in_use, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                         ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                         "decimal", from_as_str.c_ptr(), field_name,
@@ -2936,18 +2939,18 @@ int Field_tiny::store(double nr)
     }
     else if (nr > 255.0)
     {
-      *ptr=(char) 255;
+      *ptr= (uchar) 255;
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
       error= 1;
     }
     else
-      *ptr=(char) nr;
+      *ptr= (uchar) nr;
   }
   else
   {
     if (nr < -128.0)
     {
-      *ptr= (char) -128;
+      *ptr= (uchar) -128;
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
       error= 1;
     }
@@ -2958,7 +2961,7 @@ int Field_tiny::store(double nr)
       error= 1;
     }
     else
-      *ptr=(char) (int) nr;
+      *ptr=(uchar) (int) nr;
   }
   return error;
 }
@@ -5279,7 +5282,7 @@ int Field_year::store(const char *from, uint len,CHARSET_INFO *cs)
 
 int Field_year::store(double nr)
 {
-  if (nr < 0.0 || nr >= 2155.0)
+  if (nr < 0.0 || nr > 2155.0)
   {
     (void) Field_year::store((longlong) -1, FALSE);
     return 1;
@@ -5400,7 +5403,6 @@ int Field_date::store(const char *from, uint len,CHARSET_INFO *cs)
 int Field_date::store(double nr)
 {
   longlong tmp;
-  int error= 0;
   if (nr >= 19000000000000.0 && nr <= 99991231235959.0)
     nr=floor(nr/1000000.0);			// Timestamp to date
   if (nr < 0.0 || nr > 99991231.0)
@@ -5409,7 +5411,6 @@ int Field_date::store(double nr)
     set_datetime_warning(MYSQL_ERROR::WARN_LEVEL_WARN,
                          ER_WARN_DATA_OUT_OF_RANGE,
                          nr, MYSQL_TIMESTAMP_DATE);
-    error= 1;
   }
   else
     tmp= (longlong) rint(nr);
@@ -6197,11 +6198,9 @@ check_string_copy_error(Field_str *field,
     *t++= '.';
   }
   *t= '\0';
-  push_warning_printf(field->table->in_use, 
-                      field->table->in_use->abort_on_warning ?
-                      MYSQL_ERROR::WARN_LEVEL_ERROR :
+  push_warning_printf(field->table->in_use,
                       MYSQL_ERROR::WARN_LEVEL_WARN,
-                      ER_TRUNCATED_WRONG_VALUE_FOR_FIELD, 
+                      ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                       ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                       "string", tmp, field->field_name,
                       (ulong) field->table->in_use->row_count);
@@ -6238,7 +6237,7 @@ Field_longstr::report_if_important_data(const char *ptr, const char *end,
     if (test_if_important_data(field_charset, ptr, end))
     {
       if (table->in_use->abort_on_warning)
-        set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+        set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
       else
         set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, WARN_DATA_TRUNCATED, 1);
       return 2;
@@ -6308,7 +6307,7 @@ int Field_str::store(double nr)
   if (error)
   {
     if (table->in_use->abort_on_warning)
-      set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+      set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
     else
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, WARN_DATA_TRUNCATED, 1);
   }
@@ -6476,7 +6475,7 @@ check_field_for_37426(const void *param_arg)
                        param->field->row_pack_length()));
   return param->field->row_pack_length() > 255;
 }
-#endif
+#endif//HAVE_REPLICATION
 
 int Field_string::compatible_field_size(uint field_metadata,
                                         const Relay_log_info *rli_arg)
@@ -6516,9 +6515,13 @@ int Field_string::cmp(const uchar *a_ptr, const uchar *b_ptr)
 
 void Field_string::sort_string(uchar *to,uint length)
 {
-  IF_DBUG(uint tmp=) my_strnxfrm(field_charset,
-                                 to, length,
-                                 ptr, field_length);
+  IF_DBUG(uint tmp=) field_charset->coll->strnxfrm(field_charset,
+                                                   to, length,
+                                                   field_length /
+                                                   field_charset->mbmaxlen,
+                                                   ptr, field_length,
+                                                   MY_STRXFRM_PAD_WITH_SPACE |
+                                                   MY_STRXFRM_PAD_TO_MAXLEN);
   DBUG_ASSERT(tmp == length);
 }
 
@@ -7007,9 +7010,14 @@ void Field_varstring::sort_string(uchar *to,uint length)
     length-= length_bytes;
   }
  
-  tot_length= my_strnxfrm(field_charset,
-			  to, length, ptr + length_bytes,
-			  tot_length);
+  tot_length= field_charset->coll->strnxfrm(field_charset,
+                                            to, length,
+                                            field_length /
+                                            field_charset->mbmaxlen,
+                                            ptr + length_bytes,
+                                            tot_length,
+                                            MY_STRXFRM_PAD_WITH_SPACE |
+                                            MY_STRXFRM_PAD_TO_MAXLEN);
   DBUG_ASSERT(tot_length == length);
 }
 
@@ -7848,9 +7856,11 @@ void Field_blob::sort_string(uchar *to,uint length)
       }
     }
     memcpy_fixed(&blob,ptr+packlength,sizeof(char*));
-    
-    blob_length=my_strnxfrm(field_charset,
-                            to, length, blob, blob_length);
+    blob_length= field_charset->coll->strnxfrm(field_charset,
+                                  to, length, length,
+                                  blob, blob_length,
+                                  MY_STRXFRM_PAD_WITH_SPACE |
+                                  MY_STRXFRM_PAD_TO_MAXLEN);
     DBUG_ASSERT(blob_length == length);
   }
 }
@@ -8781,7 +8791,7 @@ int Field_bit::store(const char *from, uint length, CHARSET_INFO *cs)
     set_rec_bits((1 << bit_len) - 1, bit_ptr, bit_ofs, bit_len);
     memset(ptr, 0xff, bytes_in_rec);
     if (table->in_use->really_abort_on_warning())
-      set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+      set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
     else
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
     return 1;
@@ -9192,7 +9202,7 @@ int Field_bit_as_char::store(const char *from, uint length, CHARSET_INFO *cs)
     if (bits)
       *ptr&= ((1 << bits) - 1); /* set first uchar */
     if (table->in_use->really_abort_on_warning())
-      set_warning(MYSQL_ERROR::WARN_LEVEL_ERROR, ER_DATA_TOO_LONG, 1);
+      set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_DATA_TOO_LONG, 1);
     else
       set_warning(MYSQL_ERROR::WARN_LEVEL_WARN, ER_WARN_DATA_OUT_OF_RANGE, 1);
     return 1;
@@ -9583,7 +9593,7 @@ bool Create_field::init(THD *thd, char *fld_name, enum_field_types fld_type,
     }
     break;
   case MYSQL_TYPE_DATE:
-    /* Old date type. */
+    /* We don't support creation of MYSQL_TYPE_DATE anymore */
     sql_type= MYSQL_TYPE_NEWDATE;
     /* fall trough */
   case MYSQL_TYPE_NEWDATE:

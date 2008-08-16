@@ -24,6 +24,7 @@
 #include "SRLVersion.h"
 #include "SerialLogControl.h"
 #include "Transaction.h"
+#include "SerialLogTransaction.h"
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -42,7 +43,12 @@ SRLDropTableSpace::~SRLDropTableSpace()
 void SRLDropTableSpace::append(TableSpace *tableSpace, Transaction *transaction)
 {
 	START_RECORD(srlDropTableSpace, "SRLDropTableSpace::append");
-	log->getTransaction(transaction->transactionId);
+
+	SerialLogTransaction* serialLogTransaction 
+		= log->getTransaction(transaction->transactionId);
+
+	serialLogTransaction->allowConcurrentGophers = false;
+
 	putInt(tableSpace->tableSpaceId);
 	putInt(transaction->transactionId);
 }

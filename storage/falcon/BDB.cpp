@@ -48,7 +48,8 @@ Bdb::Bdb()
 	prior = NULL;
 	hash = NULL;
 	buffer = NULL;
-	flags = 0;
+	isDirty = false;
+	isRegistered = false;
 	pageNumber = -1;
 	useCount = 0;
 	age = 0;
@@ -56,8 +57,11 @@ Bdb::Bdb()
 	priorDirty = nextDirty = NULL;
 	flushIt = false;
 	dbb = NULL;
+	syncObject.setName("Bdb::syncObject");
+	syncWrite.setName("Bdb::syncWrite");
 
 #ifdef COLLECT_BDB_HISTORY
+	syncHistory.setName("Bdb::syncHistory");
 	lockType = None;
 	initCount = 0;
 	historyCount = 0;
@@ -91,10 +95,10 @@ void Bdb::mark(TransId transId)
 		++markingThread->pageMarks;
 		}
 
-	if (!(flags & BDB_dirty))
+	if (!isDirty)
 		{
-		flags |= BDB_dirty;
-		cache->markDirty (this);
+		isDirty = true;
+		cache->markDirty(this);
 		}
 }
 
@@ -117,10 +121,10 @@ void Bdb::release()
 		markingThread = NULL;
 		}
 
-	if (flags & BDB_register)
+	if (isRegistered)
 		{
+		isRegistered = false;
 		cache->pageWriter->writePage(dbb, pageNumber, transactionId);
-		flags &= ~BDB_register;
 		}
 
 	syncObject.unlock (NULL, lockType);
@@ -164,7 +168,7 @@ void Bdb::decrementUseCount()
 
 void Bdb::setWriter()
 {
-	flags |= BDB_writer | BDB_register;
+	isRegistered = true;
 }
 
 #ifdef COLLECT_BDB_HISTORY
@@ -202,7 +206,7 @@ void Bdb::initHistory()
 
 void Bdb::addHistory(int delta, const char *file, int line)
 {
-	Sync sync (&historySyncObject, "Bdb::addHistory");
+	Sync sync (&syncHistory, "Bdb::addHistory");
 	sync.lock (Exclusive);
 	unsigned int historyOffset = historyCount++ % MAX_BDB_HISTORY;
 

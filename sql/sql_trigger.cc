@@ -328,6 +328,7 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
   bool result= TRUE;
   String stmt_query;
   bool need_start_waiting= FALSE;
+  bool lock_upgrade_done= FALSE;
 
   DBUG_ENTER("mysql_create_or_drop_trigger");
 
@@ -383,11 +384,9 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
     LOCK_open is not enough because global read lock is held without holding
     LOCK_open).
   */
-  if (!thd->locked_tables &&
+  if (!thd->locked_tables_mode &&
       !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
     DBUG_RETURN(TRUE);
-
-  pthread_mutex_lock(&LOCK_open);
 
   if (!create)
   {
@@ -444,28 +443,32 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
   tables->required_type= FRMTYPE_TABLE;
 
   /* Keep consistent with respect to other DDL statements */
-  mysql_ha_rm_tables(thd, tables, TRUE);
+  mysql_ha_rm_tables(thd, tables);
 
-  if (thd->locked_tables)
+  if (thd->locked_tables_mode)
   {
-    /* Table must be write locked */
-    if (name_lock_locked_table(thd, tables))
+    /* Under LOCK TABLES we must only accept write locked tables. */
+    if (!(tables->table= find_write_locked_table(thd->open_tables, tables->db,
+                                                 tables->table_name)))
       goto end;
+    /* Later on we will need it to downgrade the lock */
+    tables->mdl_lock_data= tables->table->mdl_lock_data;
   }
   else
   {
-    /* Grab the name lock and insert the placeholder*/
-    if (lock_table_names(thd, tables))
+    tables->table= open_n_lock_single_table(thd, tables,
+                                            TL_WRITE_ALLOW_READ,
+                                            MYSQL_OPEN_TAKE_UPGRADABLE_MDL);
+    if (! tables->table)
       goto end;
-
-    /* Convert the placeholder to a real table */
-    if (reopen_name_locked_table(thd, tables, TRUE))
-    {
-      unlock_table_name(thd, tables);
-      goto end;
-    }
+    tables->table->use_all_columns();
   }
   table= tables->table;
+
+  if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
+    goto end;
+
+  lock_upgrade_done= TRUE;
 
   if (!table->triggers)
   {
@@ -479,38 +482,37 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
       goto end;
   }
 
+  pthread_mutex_lock(&LOCK_open);
   result= (create ?
            table->triggers->create_trigger(thd, tables, &stmt_query):
            table->triggers->drop_trigger(thd, tables, &stmt_query));
+  pthread_mutex_unlock(&LOCK_open);
 
-  /* Under LOCK TABLES we must reopen the table to activate the trigger. */
-  if (!result && thd->locked_tables)
-  {
-    /* Make table suitable for reopening */
-    close_data_files_and_morph_locks(thd, tables->db, tables->table_name);
-    thd->in_lock_tables= 1;
-    if (reopen_tables(thd, 1, 1))
-    {
-      /* To be safe remove this table from the set of LOCKED TABLES */
-      unlink_open_table(thd, tables->table, FALSE);
+  if (result)
+    goto end;
 
-      /*
-        Ignore reopen_tables errors for now. It's better not leave master/slave
-        in a inconsistent state.
-      */
-      thd->clear_error();
-    }
-    thd->in_lock_tables= 0;
-  }
+  close_all_tables_for_name(thd, table->s, FALSE);
+  /*
+    Reopen the table if we were under LOCK TABLES.
+    Ignore the return value for now. It's better to
+    keep master/slave in consistent state.
+  */
+  thd->locked_tables_list.reopen_tables(thd);
 
 end:
-
   if (!result)
   {
     write_bin_log(thd, TRUE, stmt_query.ptr(), stmt_query.length());
   }
 
-  pthread_mutex_unlock(&LOCK_open);
+  /*
+    If we are under LOCK TABLES we should restore original state of meta-data
+    locks. Otherwise call to close_thread_tables() will take care about both
+    TABLE instance created by open_n_lock_single_table() and metadata lock.
+  */
+  if (thd->locked_tables_mode && tables && lock_upgrade_done)
+    mdl_downgrade_exclusive_lock(&thd->mdl_context,
+                                 tables->mdl_lock_data);
 
   if (need_start_waiting)
     start_waiting_global_read_lock(thd);
@@ -1287,7 +1289,9 @@ bool Table_triggers_list::check_n_load(THD *thd, const char *db,
 
         thd->variables.sql_mode= (ulong)*trg_sql_mode;
 
-        Lex_input_stream lip(thd, trg_create_str->str, trg_create_str->length);
+        Parser_state parser_state(thd,
+                                  trg_create_str->str,
+                                  trg_create_str->length);
 
         Trigger_creation_ctx *creation_ctx=
           Trigger_creation_ctx::create(thd,
@@ -1300,7 +1304,7 @@ bool Table_triggers_list::check_n_load(THD *thd, const char *db,
         lex_start(thd);
         thd->spcont= NULL;
 
-        if (parse_sql(thd, &lip, creation_ctx))
+        if (parse_sql(thd, & parser_state, creation_ctx))
         {
           /* Currently sphead is always deleted in case of a parse error */
           DBUG_ASSERT(lex.sphead == 0);
@@ -1827,7 +1831,7 @@ Table_triggers_list::change_table_name_in_trignames(const char *db_name,
     i.e. it either will complete successfully, or will fail leaving files
     in their initial state.
     Also this method assumes that subject table is not renamed to itself.
-    This method needs to be called under an exclusive table name lock.
+    This method needs to be called under an exclusive table metadata lock.
 
   @retval FALSE Success
   @retval TRUE  Error
@@ -1848,15 +1852,11 @@ bool Table_triggers_list::change_table_name(THD *thd, const char *db,
 
   /*
     This method interfaces the mysql server code protected by
-    either LOCK_open mutex or with an exclusive table name lock.
-    In the future, only an exclusive table name lock will be enough.
+    either LOCK_open mutex or with an exclusive metadata lock.
+    In the future, only an exclusive metadata lock will be enough.
   */
 #ifndef DBUG_OFF
-  uchar key[MAX_DBKEY_LENGTH];
-  uint key_length= (uint) (strmov(strmov((char*)&key[0], db)+1,
-                    old_table)-(char*)&key[0])+1;
-
-  if (!is_table_name_exclusively_locked_by_this_thread(thd, key, key_length))
+  if (mdl_is_exclusive_lock_owner(&thd->mdl_context, 0, db, old_table))
     safe_mutex_assert_owner(&LOCK_open);
 #endif
 

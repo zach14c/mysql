@@ -1,22 +1,14 @@
-SET storage_engine = Falcon;
+*** READ-COMMITTED and REPEATABLE-READ tests ***
+SET @@storage_engine = 'Falcon';
 DROP TABLE IF EXISTS t1;
-CREATE TABLE t1 (a int);
-SHOW CREATE TABLE t1;
-Table	Create Table
-t1	CREATE TABLE `t1` (
-  `a` int(11) DEFAULT NULL
-) ENGINE=Falcon DEFAULT CHARSET=latin1
-DROP TABLE t1;
-SET storage_engine = Falcon;
 SET @@tx_isolation = 'REPEATABLE-READ';
-SET @@autocommit=0;
-SET @@tx_isolation = 'REPEATABLE-READ';
-SET @@autocommit=0;
-BEGIN;
+SET @@autocommit = 0;
 CREATE TABLE t1 (a int);
-COMMIT;
 BEGIN;
 INSERT INTO t1 VALUES (1);
+SET @@storage_engine = 'Falcon';
+SET @@tx_isolation = 'REPEATABLE-READ';
+SET @@autocommit = 0;
 BEGIN;
 SELECT count(*) FROM t1;
 count(*)
@@ -88,5 +80,10 @@ BEGIN;
 SELECT count(*) FROM t1;
 count(*)
 2
+COMMIT;
+SELECT count(*) FROM t1;
+count(*)
+2
+COMMIT;
 COMMIT;
 DROP TABLE t1;

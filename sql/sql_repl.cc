@@ -1648,7 +1648,7 @@ bool show_binlogs(THD* thd)
   if (!mysql_bin_log.is_open())
   {
     my_message(ER_NO_BINARY_LOGGING, ER(ER_NO_BINARY_LOGGING), MYF(0));
-    return 1;
+    DBUG_RETURN(TRUE);
   }
 
   field_list.push_back(new Item_empty_string("Log_name", 255));
@@ -1715,7 +1715,10 @@ err:
    @param file  pointer to io-cache
    @return 0
 */
-int log_loaded_block(IO_CACHE* file)
+int log_loaded_block(IO_CACHE* file,
+                     const uchar *buffert __attribute__((unused)),
+                     uint count __attribute__((unused)),
+                     my_off_t filepos __attribute__((unused)))
 {
   DBUG_ENTER("log_loaded_block");
   LOAD_FILE_INFO *lf_info;

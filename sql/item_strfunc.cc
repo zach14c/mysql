@@ -249,7 +249,7 @@ String *Item_func_sha2::val_str(String *str)
   default:
     if (!args[1]->const_item())
       push_warning_printf(current_thd,
-        MYSQL_ERROR::WARN_LEVEL_ERROR,
+        MYSQL_ERROR::WARN_LEVEL_WARN,
         ER_WRONG_PARAMETERS_TO_NATIVE_FCT,
         ER(ER_WRONG_PARAMETERS_TO_NATIVE_FCT), "sha2");
     null_value= TRUE;
@@ -276,7 +276,7 @@ String *Item_func_sha2::val_str(String *str)
 
 #else
   push_warning_printf(current_thd,
-    MYSQL_ERROR::WARN_LEVEL_ERROR,
+    MYSQL_ERROR::WARN_LEVEL_WARN,
     ER_FEATURE_DISABLED,
     ER(ER_FEATURE_DISABLED),
     "sha2", "--with-ssl");
@@ -314,7 +314,7 @@ void Item_func_sha2::fix_length_and_dec()
 #endif
   default:
     push_warning_printf(current_thd,
-      MYSQL_ERROR::WARN_LEVEL_ERROR,
+      MYSQL_ERROR::WARN_LEVEL_WARN,
       ER_WRONG_PARAMETERS_TO_NATIVE_FCT,
       ER(ER_WRONG_PARAMETERS_TO_NATIVE_FCT), "sha2");
   }
@@ -333,7 +333,7 @@ void Item_func_sha2::fix_length_and_dec()
       DERIVATION_COERCIBLE);
 #else
   push_warning_printf(current_thd,
-    MYSQL_ERROR::WARN_LEVEL_ERROR,
+    MYSQL_ERROR::WARN_LEVEL_WARN,
     ER_FEATURE_DISABLED,
     ER(ER_FEATURE_DISABLED),
     "sha2", "--with-ssl");
@@ -671,11 +671,11 @@ String *Item_func_des_encrypt::val_str(String *str)
   return &tmp_value;
 
 error:
-  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,
+  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,
                           code, ER(code),
                           "des_encrypt");
 #else
-  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,
+  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,
                       ER_FEATURE_DISABLED, ER(ER_FEATURE_DISABLED),
                       "des_encrypt", "--with-ssl");
 #endif	/* HAVE_OPENSSL */
@@ -748,12 +748,12 @@ String *Item_func_des_decrypt::val_str(String *str)
   return &tmp_value;
 
 error:
-  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,
+  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,
                           code, ER(code),
                           "des_decrypt");
 wrong_key:
 #else
-  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,
+  push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,
                       ER_FEATURE_DISABLED, ER(ER_FEATURE_DISABLED),
                       "des_decrypt", "--with-ssl");
 #endif	/* HAVE_OPENSSL */
@@ -2465,17 +2465,27 @@ String *Item_func_char::val_str(String *str)
     int32 num=(int32) args[i]->val_int();
     if (!args[i]->null_value)
     {
-      char char_num= (char) num;
-      if (num&0xFF000000L) {
-        str->append((char)(num>>24));
-        goto b2;
-      } else if (num&0xFF0000L) {
-    b2:        str->append((char)(num>>16));
-        goto b1;
-      } else if (num&0xFF00L) {
-    b1:        str->append((char)(num>>8));
+      char tmp[4];
+      if (num & 0xFF000000L)
+      {
+        mi_int4store(tmp, num);
+        str->append(tmp, 4, &my_charset_bin);
       }
-      str->append(&char_num, 1);
+      else if (num & 0xFF0000L)
+      {
+        mi_int3store(tmp, num);
+        str->append(tmp, 3, &my_charset_bin);
+      }
+      else if (num & 0xFF00L)
+      {
+        mi_int2store(tmp, num);
+        str->append(tmp, 2, &my_charset_bin);
+      }
+      else
+      {
+        tmp[0]= (char) num;
+        str->append(tmp, 1, &my_charset_bin);
+      }
     }
   }
   str->realloc(str->length());			// Add end 0 (for Purify)
@@ -2972,7 +2982,13 @@ void Item_func_weight_string::fix_length_and_dec()
   CHARSET_INFO *cs= args[0]->collation.collation;
   collation.set(&my_charset_bin, args[0]->collation.derivation);
   flags= my_strxfrm_flag_normalize(flags, cs->levels_for_order);
-  max_length= cs->mbmaxlen * max(args[0]->max_length, nweights);
+  /* 
+    Use result_length if it was given explicitly in constructor,
+    otherwise calculate max_length using argument's max_length
+    and "nweights".
+  */
+  max_length= result_length ? result_length :
+              cs->mbmaxlen * max(args[0]->max_length, nweights);
   maybe_null= 1;
 }
 
@@ -2989,8 +3005,14 @@ String *Item_func_weight_string::val_str(String *str)
       !(res= args[0]->val_str(str)))
     goto nl;
   
-  tmp_length= cs->coll->strnxfrmlen(cs, cs->mbmaxlen *
-                                        max(res->length(), nweights));
+  /*
+    Use result_length if it was given in constructor
+    explicitly, otherwise calculate result length
+    from argument and "nweights".
+  */
+  tmp_length= result_length ? result_length :
+              cs->coll->strnxfrmlen(cs, cs->mbmaxlen *
+                                    max(res->length(), nweights));
 
   if (tmp_value.alloc(tmp_length))
     goto nl;
@@ -3466,7 +3488,7 @@ String *Item_func_compress::val_str(String *str)
 		     (const Bytef*)res->ptr(), res->length())) != Z_OK)
   {
     code= err==Z_MEM_ERROR ? ER_ZLIB_Z_MEM_ERROR : ER_ZLIB_Z_BUF_ERROR;
-    push_warning(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,code,ER(code));
+    push_warning(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,code,ER(code));
     null_value= 1;
     return 0;
   }
@@ -3504,7 +3526,7 @@ String *Item_func_uncompress::val_str(String *str)
   /* If length is less than 4 bytes, data is corrupt */
   if (res->length() <= 4)
   {
-    push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_ZLIB_Z_DATA_ERROR,
 			ER(ER_ZLIB_Z_DATA_ERROR));
     goto err;
@@ -3514,7 +3536,7 @@ String *Item_func_uncompress::val_str(String *str)
   new_size= uint4korr(res->ptr()) & 0x3FFFFFFF;
   if (new_size > current_thd->variables.max_allowed_packet)
   {
-    push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_TOO_BIG_FOR_UNCOMPRESS,
 			ER(ER_TOO_BIG_FOR_UNCOMPRESS),
                         current_thd->variables.max_allowed_packet);
@@ -3532,7 +3554,7 @@ String *Item_func_uncompress::val_str(String *str)
 
   code= ((err == Z_BUF_ERROR) ? ER_ZLIB_Z_BUF_ERROR :
 	 ((err == Z_MEM_ERROR) ? ER_ZLIB_Z_MEM_ERROR : ER_ZLIB_Z_DATA_ERROR));
-  push_warning(current_thd,MYSQL_ERROR::WARN_LEVEL_ERROR,code,ER(code));
+  push_warning(current_thd,MYSQL_ERROR::WARN_LEVEL_WARN,code,ER(code));
 
 err:
   null_value= 1;
@@ -3540,115 +3562,17 @@ err:
 }
 #endif
 
-/*
-  UUID, as in
-    DCE 1.1: Remote Procedure Call,
-    Open Group Technical Standard Document Number C706, October 1997,
-    (supersedes C309 DCE: Remote Procedure Call 8/1994,
-    which was basis for ISO/IEC 11578:1996 specification)
-*/
-
-static struct rand_struct uuid_rand;
-static uint nanoseq;
-static ulonglong uuid_time=0;
-static char clock_seq_and_node_str[]="-0000-000000000000";
-
-/**
-  number of 100-nanosecond intervals between
-  1582-10-15 00:00:00.00 and 1970-01-01 00:00:00.00.
-*/
-#define UUID_TIME_OFFSET ((ulonglong) 141427 * 24 * 60 * 60 * 1000 * 10 )
-
-#define UUID_VERSION      0x1000
-#define UUID_VARIANT      0x8000
-
-static void tohex(char *to, uint from, uint len)
-{
-  to+= len;
-  while (len--)
-  {
-    *--to= _dig_vec_lower[from & 15];
-    from >>= 4;
-  }
-}
-
-static void set_clock_seq_str()
-{
-  uint16 clock_seq= ((uint)(my_rnd(&uuid_rand)*16383)) | UUID_VARIANT;
-  tohex(clock_seq_and_node_str+1, clock_seq, 4);
-  nanoseq= 0;
-}
 
 String *Item_func_uuid::val_str(String *str)
 {
   DBUG_ASSERT(fixed == 1);
-  char *s;
-  THD *thd= current_thd;
+  uchar guid[MY_UUID_SIZE];
 
-  pthread_mutex_lock(&LOCK_uuid_generator);
-  if (! uuid_time) /* first UUID() call. initializing data */
-  {
-    ulong tmp=sql_rnd_with_mutex();
-    uchar mac[6];
-    int i;
-    if (my_gethwaddr(mac))
-    {
-      /* purecov: begin inspected */
-      /*
-        generating random "hardware addr"
-        and because specs explicitly specify that it should NOT correlate
-        with a clock_seq value (initialized random below), we use a separate
-        randominit() here
-      */
-      randominit(&uuid_rand, tmp + (ulong) thd, tmp + (ulong)global_query_id);
-      for (i=0; i < (int)sizeof(mac); i++)
-        mac[i]=(uchar)(my_rnd(&uuid_rand)*255);
-      /* purecov: end */    
-    }
-    s=clock_seq_and_node_str+sizeof(clock_seq_and_node_str)-1;
-    for (i=sizeof(mac)-1 ; i>=0 ; i--)
-    {
-      *--s=_dig_vec_lower[mac[i] & 15];
-      *--s=_dig_vec_lower[mac[i] >> 4];
-    }
-    randominit(&uuid_rand, tmp + (ulong) server_start_time,
-	       tmp + (ulong) thd->status_var.bytes_sent);
-    set_clock_seq_str();
-  }
-
-  ulonglong tv=my_getsystime() + UUID_TIME_OFFSET + nanoseq;
-  if (unlikely(tv < uuid_time))
-    set_clock_seq_str();
-  else if (unlikely(tv == uuid_time))
-  {
-    /* special protection from low-res system clocks */
-    nanoseq++;
-    tv++;
-  }
-  else
-  {
-    if (nanoseq)
-    {
-      tv-=nanoseq;
-      nanoseq=0;
-    }
-    DBUG_ASSERT(tv > uuid_time);
-  }
-  uuid_time=tv;
-  pthread_mutex_unlock(&LOCK_uuid_generator);
-
-  uint32 time_low=            (uint32) (tv & 0xFFFFFFFF);
-  uint16 time_mid=            (uint16) ((tv >> 32) & 0xFFFF);
-  uint16 time_hi_and_version= (uint16) ((tv >> 48) | UUID_VERSION);
-
-  str->realloc(UUID_LENGTH+1);
-  str->length(UUID_LENGTH);
+  str->realloc(MY_UUID_STRING_LENGTH+1);
+  str->length(MY_UUID_STRING_LENGTH);
   str->set_charset(system_charset_info);
-  s=(char *) str->ptr();
-  s[8]=s[13]='-';
-  tohex(s, time_low, 8);
-  tohex(s+9, time_mid, 4);
-  tohex(s+14, time_hi_and_version, 4);
-  strmov(s+18, clock_seq_and_node_str);
+  my_uuid(guid);
+  my_uuid2str(guid, (char *)str->ptr());
+
   return str;
 }

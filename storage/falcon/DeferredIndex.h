@@ -102,6 +102,7 @@ public:
 	DINode*			findMinValue(void);
 
 	SyncObject		syncObject;	
+	volatile INTERLOCK_TYPE useCount;
 	DeferredIndex	*next;
 	DeferredIndex	*prior;
 	DeferredIndex	*nextInTransaction;
@@ -111,7 +112,7 @@ public:
 	DIHunk			*hunks;
 	DINode			*minValue;
 	DINode			*maxValue;
-	UCHAR			initialSpace[500];
+	UCHAR			initialSpace[512];
 	UCHAR			*base;
 	void			*root;
 	uint			currentHunkOffset;
@@ -123,6 +124,8 @@ public:
 	uint64			virtualOffset;		// virtual offset into the serial log where this DI was flushed.
 	uint64			virtualOffsetAtEnd;
 	SerialLogWindow	*window;
+	void			addRef();
+	void			releaseRef();
 };
 
 #endif

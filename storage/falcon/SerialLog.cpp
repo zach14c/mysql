@@ -53,6 +53,7 @@ static const char THIS_FILE[]=__FILE__;
 static const int TRACE_PAGE = 0;
 
 extern uint falcon_gopher_threads;
+extern uint64 falcon_serial_log_file_size;
 
 //static const int windowBuffers = 10;
 static bool debug;
@@ -124,8 +125,12 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	syncIndexes.setName("SerialLog::syncIndexes");
 	syncGopher.setName("SerialLog::syncGopher");
 	syncUpdateStall.setName("SerialLog::syncUpdateStall");
-	pending.syncObject.setName("SerialLog::pending transactions");
+	pending.syncObject.setName("SerialLog::pending.syncObject");
+	inactions.syncObject.setName("SerialLog::inactions.syncObject");
+	running.syncObject.setName("SerialLog::running.syncObject");
 	gophers = NULL;
+	wantToSerializeGophers = 0;
+	serializeGophers = 0;
 	
 	for (uint n = 0; n < falcon_gopher_threads; ++n)
 		{
@@ -597,8 +602,17 @@ void SerialLog::createNewWindow(void)
 			break;
 			}
 
-	if (fileOffset == 0 && Log::isActive(LogInfo))
-		Log::log(LogInfo, "%d: Switching log files (%d used)\n", database->deltaTime, file->highWater);
+	if (fileOffset == 0)
+		{
+		// Logfile switch, truncate file if required
+
+		if (Log::isActive(LogInfo))
+			Log::log(LogInfo, "%d: Switching log files (%d used)\n", 
+					database->deltaTime, file->highWater);
+
+		if((uint64)file->size() > falcon_serial_log_file_size)
+			file->truncate((int64)falcon_serial_log_file_size);
+		}
 
 	writeWindow->deactivateWindow();
 	writeWindow = allocWindow(file, fileOffset);
@@ -837,7 +851,7 @@ SerialLogTransaction* SerialLog::getTransaction(TransId transactionId)
 	if (transaction)
 		return transaction;
 
-	Sync sync (&pending.syncObject, "SerialLog::findTransaction");
+	Sync sync (&pending.syncObject, "SerialLog::getTransaction");
 	sync.lock(Exclusive);
 	
 	/***
@@ -1280,11 +1294,12 @@ bool SerialLog::indexInUse(int indexId, int tableSpaceId)
 	TableSpaceInfo *info = getTableSpaceInfo(tableSpaceId);
 	return info->indexUseVector.get(indexId) > 0;
 }
-
+/*
 int SerialLog::getPageState(int32 pageNumber, int tableSpaceId)
 {
 	return recoveryPages->getCurrentState(pageNumber, tableSpaceId);
 }
+*/
 
 void SerialLog::redoFreePage(int32 pageNumber, int tableSpaceId)
 {
@@ -1354,7 +1369,7 @@ void SerialLog::reportStatistics(void)
 
 void SerialLog::getSerialLogInfo(InfoTable* tableInfo)
 {
-	Sync sync(&pending.syncObject, "SerialLog::getSerialLogInfo");
+	Sync sync(&pending.syncObject, "SerialLog::getSerialLogInfo(1)");
 	sync.lock(Shared);
 	int numberTransactions = 0;
 	uint64 minBlockNumber = writeBlock->blockNumber;
@@ -1370,7 +1385,7 @@ void SerialLog::getSerialLogInfo(InfoTable* tableInfo)
 	int64 delta = writeBlock->blockNumber - minBlockNumber;
 	sync.unlock();
 	
-	Sync syncWindows(&syncWrite, "SerialLog::getSerialLogInfo");
+	Sync syncWindows(&syncWrite, "SerialLog::getSerialLogInfo(1)");
 	syncWindows.lock(Shared);
 	int windows = 0;
 	int buffers = 0;
@@ -1427,13 +1442,13 @@ void SerialLog::preCommit(Transaction* transaction)
 	
 	if (!serialLogTransaction)
 		{
-		Sync writeSync(&syncWrite, "SerialLog::preCommit");
+		Sync writeSync(&syncWrite, "SerialLog::preCommit(1)");
 		writeSync.lock(Exclusive);
 		startRecord();
 		serialLogTransaction = getTransaction(transaction->transactionId);
 		}
 		
-	Sync sync (&pending.syncObject, "SerialLog::activate");
+	Sync sync (&pending.syncObject, "SerialLog::preCommit(2)");
 	sync.lock(Exclusive);
 	running.remove(serialLogTransaction);
 	pending.append(serialLogTransaction);

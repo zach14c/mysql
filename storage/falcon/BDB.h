@@ -51,13 +51,6 @@
 	#define BDB_HISTORY(_bdb_)  {}
 #endif
 
-static const int BDB_dirty			= 1;
-//static const int BDB_new			= 2;
-static const int BDB_writer			= 4;		// PageWriter wants to hear about this
-static const int BDB_register		= 8;		// Register with PageWrite on next release
-static const int BDB_write_pending	= 16;		// Asynchronous write is pending
-//static const int BDB_marked			= (BDB_dirty | BDB_new);
-
 class Page;
 class Cache;
 class Dbb;
@@ -91,7 +84,7 @@ public:
 	Dbb				*dbb;
 	int32			pageNumber;
 	TransId			transactionId;
-	int				age;
+	uint64			age;
 	Page			*buffer;
 	Bdb				*prior;		/* position in LRU que */
 	Bdb				*next;
@@ -104,12 +97,13 @@ public:
 	SyncObject		syncWrite;
 	time_t			lastMark;
 	LockType		lockType;
-	short			flags;
-	bool			flushIt;
+	bool			flushIt;				// PageWriter wants to hear about this
+	bool			isDirty;
+	bool			isRegistered;			// Register with PageWrite on next release
 	volatile INTERLOCK_TYPE	useCount;
 
 #ifdef COLLECT_BDB_HISTORY
-	SyncObject	historySyncObject;
+	SyncObject	syncHistory;
 	uint initCount;
 	uint historyCount;
 	struct bdb_history		history[MAX_BDB_HISTORY];

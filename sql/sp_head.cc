@@ -468,7 +468,7 @@ sp_head::operator new(size_t size) throw()
   init_sql_alloc(&own_root, MEM_ROOT_BLOCK_SIZE, MEM_ROOT_PREALLOC);
   sp= (sp_head *) alloc_root(&own_root, size);
   if (sp == NULL)
-    return NULL;
+    DBUG_RETURN(NULL);
   sp->main_mem_root= own_root;
   DBUG_PRINT("info", ("mem_root %p", &sp->mem_root));
   DBUG_RETURN(sp);
@@ -620,14 +620,14 @@ void
 sp_head::set_body_start(THD *thd, const char *begin_ptr)
 {
   m_body_begin= begin_ptr;
-  thd->m_lip->body_utf8_start(thd, begin_ptr);
+  thd->m_parser_state->m_lip.body_utf8_start(thd, begin_ptr);
 }
 
 
 void
 sp_head::set_stmt_end(THD *thd)
 {
-  Lex_input_stream *lip= thd->m_lip; /* shortcut */
+  Lex_input_stream *lip= & thd->m_parser_state->m_lip; /* shortcut */
   const char *end_ptr= lip->get_cpp_ptr(); /* shortcut */
 
   /* Make the string of parameters. */
@@ -1232,7 +1232,7 @@ sp_head::execute(THD *thd)
       Will write this SP statement into binlog separately
       (TODO: consider changing the condition to "not inside event union")
     */
-    if (thd->prelocked_mode == NON_PRELOCKED)
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
       thd->user_var_events_alloc= thd->mem_root;
 
     err_status= i->execute(thd, &ip);
@@ -1244,7 +1244,7 @@ sp_head::execute(THD *thd)
       If we've set thd->user_var_events_alloc to mem_root of this SP
       statement, clean all the events allocated in it.
     */
-    if (thd->prelocked_mode == NON_PRELOCKED)
+    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
     {
       reset_dynamic(&thd->user_var_events);
       thd->user_var_events_alloc= NULL;//DEBUG
@@ -1933,7 +1933,15 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
       we'll leave it here.
     */
     if (!thd->in_sub_stmt)
+    {
+      thd->lex->unit.cleanup();
+
+      thd_proc_info(thd, "closing tables");
       close_thread_tables(thd);
+      thd_proc_info(thd, 0);
+
+      thd->rollback_item_tree_changes();
+    }
 
     DBUG_PRINT("info",(" %.*s: eval args done",
                        (int) m_name.length, m_name.str));
@@ -2686,7 +2694,7 @@ sp_lex_keeper::reset_lex_and_exec_core(THD *thd, uint *nextp,
   thd->query_id= next_query_id();
   pthread_mutex_unlock(&LOCK_thread_count);
 
-  if (thd->prelocked_mode == NON_PRELOCKED)
+  if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
   {
     /*
       This statement will enter/leave prelocked mode on its own.
@@ -3932,6 +3940,10 @@ sp_head::add_used_tables_to_table_list(THD *thd,
       table->prelocking_placeholder= 1;
       table->belong_to_view= belong_to_view;
       table->trg_event_map= stab->trg_event_map;
+      table->mdl_lock_data= mdl_alloc_lock(0, table->db, table->table_name,
+                                           thd->locked_tables_root ?
+                                           thd->locked_tables_root :
+                                           thd->mem_root);
 
       /* Everyting else should be zeroed */
 
@@ -3975,6 +3987,9 @@ sp_add_to_query_tables(THD *thd, LEX *lex,
   table->lock_transactional= 1; /* allow transactional locks */
   table->select_lex= lex->current_select;
   table->cacheable_table= 1;
+  table->mdl_lock_data= mdl_alloc_lock(0, table->db, table->table_name,
+                                       thd->locked_tables_root ?
+                                       thd->locked_tables_root : thd->mem_root);
 
   lex->add_to_query_tables(table);
   return table;

@@ -30,7 +30,7 @@
 #undef ERROR
 #undef ASSERT
 #define FATAL	Error::error
-#define ASSERT(f)	while (!(f)) Error::assertionFailed (__FILE__, __LINE__)
+#define ASSERT(f)	while (!(f)) Error::assertionFailed (#f, __FILE__, __LINE__)
 #define NOT_YET_IMPLEMENTED	Error::notYetImplemented (__FILE__, __LINE__)
 
 class Error  
@@ -39,7 +39,7 @@ public:
 	static void notYetImplemented(const char *fileName, int line);
 	static void debugBreak();
 	static void validateHeap (const char *where);
-	static void assertionFailed (const char *fileName, int line);
+	static void assertionFailed (const char *text, const char *fileName, int line);
 	static void error (const char *text, ...);
 };
 

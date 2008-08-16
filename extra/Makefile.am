@@ -24,7 +24,8 @@ BUILT_SOURCES=		$(top_builddir)/include/mysqld_error.h \
                         $(top_builddir)/include/sql_state.h \
                         $(top_builddir)/include/mysqld_ername.h
 pkginclude_HEADERS=	$(BUILT_SOURCES)
-DISTCLEANFILES =	$(BUILT_SOURCES)
+EXTRA_PROGRAMS =	comp_err
+DISTCLEANFILES =	$(BUILT_SOURCES) $(EXTRA_PROGRAMS)
 SUBDIRS =		@yassl_dir@ @libevent_dir@
 DIST_SUBDIRS =		yassl libevent
 
@@ -48,7 +49,6 @@ bin_PROGRAMS =		replace perror resolveip my_print_defaults \
 			resolve_stack_dump mysql_waitpid innochecksum
 			
 noinst_PROGRAMS =	charset2html
-EXTRA_PROGRAMS =	comp_err
 EXTRA_DIST =		CMakeLists.txt
 
 perror.o: perror.c 

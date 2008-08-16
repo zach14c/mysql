@@ -109,7 +109,7 @@ if [ "x$warning_mode" != "xpedantic" ]; then
 else
   warnings="-W -Wall -ansi -pedantic -Wno-long-long -Wno-unused -D_POSIX_SOURCE"
   c_warnings="$warnings"
-  cxx_warnings="$warnings -std=c++98"
+  cxx_warnings="$warnings"
 # NOTE: warning mode should not influence optimize/debug mode.
 # Please feel free to add a separate option if you don't feel it's an overkill.
   debug_extra_cflags="-O0"
@@ -147,6 +147,7 @@ base_configs="--prefix=$prefix --enable-assembler "
 base_configs="$base_configs --with-extra-charsets=complex "
 base_configs="$base_configs --enable-thread-safe-client "
 base_configs="$base_configs --with-big-tables"
+base_configs="$base_configs --with-plugin-maria --with-maria-tmp-tables"
 
 if test -d "$path/../cmd-line-utils/readline"
 then

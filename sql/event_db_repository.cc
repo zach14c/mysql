@@ -452,7 +452,7 @@ Event_db_repository::table_scan_all_for_i_s(THD *thd, TABLE *schema_table,
   READ_RECORD read_record_info;
   DBUG_ENTER("Event_db_repository::table_scan_all_for_i_s");
 
-  init_read_record(&read_record_info, thd, event_table, NULL, 1, 0);
+  init_read_record(&read_record_info, thd, event_table, NULL, 1, 0, FALSE);
 
   /*
     rr_sequential, in read_record(), returns 137==HA_ERR_END_OF_FILE,
@@ -552,7 +552,8 @@ Event_db_repository::open_event_table(THD *thd, enum thr_lock_type lock_type,
   TABLE_LIST tables;
   DBUG_ENTER("Event_db_repository::open_event_table");
 
-  tables.init_one_table("mysql", "event", lock_type);
+  tables.init_one_table("mysql", 5, "event", 5, "event", lock_type);
+  alloc_mdl_locks(&tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, &tables))
   {
@@ -925,7 +926,7 @@ Event_db_repository::drop_events_by_field(THD *thd,
     DBUG_VOID_RETURN;
 
   /* only enabled events are in memory, so we go now and delete the rest */
-  init_read_record(&read_record_info, thd, table, NULL, 1, 0);
+  init_read_record(&read_record_info, thd, table, NULL, 1, 0, FALSE);
   while (!ret && !(read_record_info.read_record(&read_record_info)) )
   {
     char *et_field= get_field(thd->mem_root, table->field[field]);
@@ -1094,7 +1095,8 @@ Event_db_repository::check_system_tables(THD *thd)
 
 
   /* Check mysql.db */
-  tables.init_one_table("mysql", "db", TL_READ);
+  tables.init_one_table("mysql", 5, "db", 2, "db", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, &tables))
   {
@@ -1111,7 +1113,8 @@ Event_db_repository::check_system_tables(THD *thd)
     close_thread_tables(thd);
   }
   /* Check mysql.user */
-  tables.init_one_table("mysql", "user", TL_READ);
+  tables.init_one_table("mysql", 5, "user", 4, "user", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, &tables))
   {
@@ -1131,7 +1134,8 @@ Event_db_repository::check_system_tables(THD *thd)
     close_thread_tables(thd);
   }
   /* Check mysql.event */
-  tables.init_one_table("mysql", "event", TL_READ);
+  tables.init_one_table("mysql", 5, "event", 5, "event", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, &tables))
   {

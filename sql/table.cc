@@ -342,9 +342,11 @@ TABLE_SHARE *alloc_table_share(TABLE_LIST *table_list, char *key,
     share->table_map_id= ~0UL;
     share->cached_row_logging_check= -1;
 
+    share->used_tables.empty();
+    share->free_tables.empty();
+
     memcpy((char*) &share->mem_root, (char*) &mem_root, sizeof(mem_root));
-    pthread_mutex_init(&share->mutex, MY_MUTEX_INIT_FAST);
-    pthread_cond_init(&share->cond, NULL);
+    pthread_mutex_init(&share->LOCK_ha_data, MY_MUTEX_INIT_FAST);
   }
   DBUG_RETURN(share);
 }
@@ -408,6 +410,9 @@ void init_tmp_table_share(THD *thd, TABLE_SHARE *share, const char *key,
   */
   share->table_map_id= (ulong) thd->query_id;
 
+  share->used_tables.empty();
+  share->free_tables.empty();
+
   DBUG_VOID_RETURN;
 }
 
@@ -430,25 +435,11 @@ void free_table_share(TABLE_SHARE *share)
   DBUG_PRINT("enter", ("table: %s.%s", share->db.str, share->table_name.str));
   DBUG_ASSERT(share->ref_count == 0);
 
-  /*
-    If someone is waiting for this to be deleted, inform it about this.
-    Don't do a delete until we know that no one is refering to this anymore.
-  */
+  /* The mutex is initialized only for shares that are part of the TDC */
   if (share->tmp_table == NO_TMP_TABLE)
-  {
-    /* share->mutex is locked in release_table_share() */
-    while (share->waiting_on_cond)
-    {
-      pthread_cond_broadcast(&share->cond);
-      pthread_cond_wait(&share->cond, &share->mutex);
-    }
-    /* No thread refers to this anymore */
-    pthread_mutex_unlock(&share->mutex);
-    pthread_mutex_destroy(&share->mutex);
-    pthread_cond_destroy(&share->cond);
-  }
+    pthread_mutex_destroy(&share->LOCK_ha_data);
   hash_free(&share->name_hash);
-  
+
   plugin_unlock(NULL, share->db_plugin);
   share->db_plugin= NULL;
 
@@ -540,7 +531,7 @@ int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags)
   int error, table_type;
   bool error_given;
   File file;
-  uchar head[64], *disk_buff;
+  uchar head[64];
   char	path[FN_REFLEN];
   MEM_ROOT **root_ptr, *old_root;
   DBUG_ENTER("open_table_def");
@@ -549,7 +540,6 @@ int open_table_def(THD *thd, TABLE_SHARE *share, uint db_flags)
 
   error= 1;
   error_given= 0;
-  disk_buff= NULL;
 
   strxmov(path, share->normalized_path.str, reg_ext, NullS);
   if ((file= my_open(path, O_RDONLY | O_SHARE, MYF(0))) < 0)
@@ -747,7 +737,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     share->transactional= (ha_choice) (head[39] & 3);
     share->page_checksum= (ha_choice) ((head[39] >> 2) & 3);
     share->row_type= (row_type) head[40];
-    share->table_charset= get_charset((uint) head[38],MYF(0));
+    share->table_charset= get_charset((((uint) head[41]) << 8) + 
+                                        (uint) head[38],MYF(0));
     share->null_field_first= 1;
   }
   if (!share->table_charset)
@@ -1274,12 +1265,13 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       }
       else
       {
-        if (!strpos[14])
+        uint csid= strpos[14] + (((uint) strpos[11]) << 8);
+        if (!csid)
           charset= &my_charset_bin;
-        else if (!(charset=get_charset((uint) strpos[14], MYF(0))))
+        else if (!(charset= get_charset(csid, MYF(0))))
         {
           error= 5; // Unknown or unavailable charset
-          errarg= (int) strpos[14];
+          errarg= (int) csid;
           goto err;
         }
       }
@@ -1352,7 +1344,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                       "Please do \"ALTER TABLE '%s' FORCE\" to fix it!",
                       share->fieldnames.type_names[i], share->table_name.str,
                       share->table_name.str);
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_CRASHED_ON_USAGE,
                           "Found incompatible DECIMAL field '%s' in %s; "
                           "Please do \"ALTER TABLE '%s' FORCE\" to fix it!",
@@ -1515,6 +1507,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
           }
           if (handler_file->index_flags(key, i, 1) & HA_READ_ORDER)
             field->part_of_sortkey.set_bit(key);
+          field->part_of_key_wo_keyread.set_bit(key);
         }
         if (!(key_part->key_part_flag & HA_REVERSE_SORT) &&
             usable_parts == i)
@@ -1554,7 +1547,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                             "Please do \"ALTER TABLE '%s' FORCE \" to fix it!",
                             share->table_name.str,
                             share->table_name.str);
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                                 ER_CRASHED_ON_USAGE,
                                 "Found wrong key definition in %s; "
                                 "Please do \"ALTER TABLE '%s' FORCE\" to fix "
@@ -2102,7 +2095,7 @@ int closefrm(register TABLE *table, bool free_share)
   if (free_share)
   {
     if (table->s->tmp_table == NO_TMP_TABLE)
-      release_table_share(table->s, RELEASE_NORMAL);
+      release_table_share(table->s);
     else
       free_table_share(table->s);
   }
@@ -2122,6 +2115,28 @@ void free_blobs(register TABLE *table)
     ((Field_blob*) table->field[*ptr])->free();
 }
 
+
+/**
+  Reclaim temporary blob storage which is bigger than 
+  a threshold.
+ 
+  @param table A handle to the TABLE object containing blob fields
+  @param size The threshold value.
+ 
+*/
+
+void free_field_buffers_larger_than(TABLE *table, uint32 size)
+{
+  uint *ptr, *end;
+  for (ptr= table->s->blob_field, end=ptr + table->s->blob_fields ;
+       ptr != end ;
+       ptr++)
+  {
+    Field_blob *blob= (Field_blob*) table->field[*ptr];
+    if (blob->get_field_buffer_size() > size)
+        blob->free();
+  }
+}
 
 	/* Find where a form starts */
 	/* if formname is NullS then only formnames is read */
@@ -2548,8 +2563,7 @@ File create_frm(THD *thd, const char *name, const char *db,
 
   if ((file= my_create(name, CREATE_MODE, create_flags, MYF(0))) >= 0)
   {
-    uint key_length, tmp_key_length;
-    uint tmp;
+    uint key_length, tmp_key_length, tmp, csid;
     bzero((char*) fileinfo,64);
     /* header */
     fileinfo[0]=(uchar) 254;
@@ -2598,13 +2612,14 @@ File create_frm(THD *thd, const char *name, const char *db,
     fileinfo[32]=0;				// No filename anymore
     fileinfo[33]=5;                             // Mark for 5.0 frm file
     int4store(fileinfo+34,create_info->avg_row_length);
-    fileinfo[38]= (create_info->default_table_charset ?
-		   create_info->default_table_charset->number : 0);
+    csid= (create_info->default_table_charset ?
+           create_info->default_table_charset->number : 0);
+    fileinfo[38]= (uchar) csid;
     fileinfo[39]= (uchar) ((uint) create_info->transactional |
                            ((uint) create_info->page_checksum << 2));
     fileinfo[40]= (uchar) create_info->row_type;
     /* Next few bytes where for RAID support */
-    fileinfo[41]= 0;
+    fileinfo[41]= (uchar) (csid >> 8);
     fileinfo[42]= 0;
     fileinfo[43]= 0;
     fileinfo[44]= 0;
@@ -2656,6 +2671,8 @@ void update_create_info_from_table(HA_CREATE_INFO *create_info, TABLE *table)
   create_info->default_table_charset= share->table_charset;
   create_info->table_charset= 0;
   create_info->comment= share->comment;
+  create_info->transactional= share->transactional;
+  create_info->page_checksum= share->page_checksum;
 
   DBUG_VOID_RETURN;
 }
@@ -3495,7 +3512,7 @@ int TABLE_LIST::view_check_option(THD *thd, bool ignore_failure)
     TABLE_LIST *main_view= top_table();
     if (ignore_failure)
     {
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_VIEW_CHECK_FAILED, ER(ER_VIEW_CHECK_FAILED),
                           main_view->view_db.str, main_view->view_name.str);
       return(VIEW_CHECK_SKIP);
@@ -4608,24 +4625,6 @@ void st_table::mark_columns_needed_for_insert()
 }
 
 
-/**
-  @brief Check if this is part of a MERGE table with attached children.
-
-  @return       status
-    @retval     TRUE            children are attached
-    @retval     FALSE           no MERGE part or children not attached
-
-  @detail
-    A MERGE table consists of a parent TABLE and zero or more child
-    TABLEs. Each of these TABLEs is called a part of a MERGE table.
-*/
-
-bool st_table::is_children_attached(void)
-{
-  return((child_l && children_attached) ||
-         (parent && parent->children_attached));
-}
-
 /*
   Cleanup this table for re-execution.
 
@@ -4860,6 +4859,21 @@ size_t max_row_length(TABLE *table, const uchar *data)
   }
   return length;
 }
+
+
+/**
+   Helper function which allows to allocate metadata lock request
+   objects for all elements of table list.
+*/
+
+void alloc_mdl_locks(TABLE_LIST *table_list, MEM_ROOT *root)
+{
+  for ( ; table_list ; table_list= table_list->next_global)
+    table_list->mdl_lock_data= mdl_alloc_lock(0, table_list->db,
+                                              table_list->table_name,
+                                              root);
+}
+
 
 /*****************************************************************************
 ** Instansiate templates

@@ -22,7 +22,7 @@
 #include "StreamSegment.h"
 #include "Stream.h"
 
-#ifndef ENGINE
+#ifndef FALCONDB
 #undef ASSERT
 #define ASSERT(a)
 #endif

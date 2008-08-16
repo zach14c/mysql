@@ -1,6 +1,8 @@
 SET @@storage_engine = Falcon;
 *** Bug #26828 ***
 DROP SCHEMA IF EXISTS db1;
+SELECT @@GLOBAL.falcon_consistent_read INTO @previous_falcon_consistent_read;
+SET GLOBAL falcon_consistent_read = off;
 CREATE SCHEMA db1;
 USE db1;
 CREATE TABLE t1 (a int)
@@ -27,6 +29,7 @@ CALL p1();
 # Switch to connection conn1
 CALL p1();
 # Switch to connection default
+SET GLOBAL falcon_consistent_read = @previous_falcon_consistent_read;
 DROP TABLE t1;
 DROP SCHEMA db1;
 USE test;

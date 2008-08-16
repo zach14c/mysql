@@ -162,8 +162,7 @@ bool mysql_create_frm(THD *thd, const char *file_name,
   reclength=uint2korr(forminfo+266);
 
   /* Calculate extra data segment length */
-  str_db_type.str= (char *) ha_resolve_storage_engine_name(create_info->db_type);
-  str_db_type.length= strlen(str_db_type.str);
+  str_db_type= *hton_name(create_info->db_type);
   /* str_db_type */
   create_info->extra_size= (2 + str_db_type.length +
                             2 + create_info->connect_string.length);
@@ -590,7 +589,7 @@ static uint pack_keys(uchar *keybuff, uint key_count, KEY *keyinfo,
     int2store(pos+6, key->block_size);
     pos+=8;
     key_parts+=key->key_parts;
-    DBUG_PRINT("loop", ("flags: %lu  key_parts: %d at %p",
+    DBUG_PRINT("loop", ("flags: %lu  key_parts: %d  key_part: %p",
                         key->flags, key->key_parts,
                         key->key_part));
     for (key_part=key->key_part,key_part_end=key_part+key->key_parts ;
@@ -875,20 +874,27 @@ static bool pack_fields(File file, List<Create_field> &create_fields,
     recpos= field->offset+1 + (uint) data_offset;
     int3store(buff+5,recpos);
     int2store(buff+8,field->pack_flag);
-    int2store(buff+10,field->unireg_check);
+    DBUG_ASSERT(field->unireg_check < 256);
+    buff[10]= (uchar) field->unireg_check;
     buff[12]= (uchar) field->interval_id;
     buff[13]= (uchar) field->sql_type; 
     if (field->sql_type == MYSQL_TYPE_GEOMETRY)
     {
+      buff[11]= 0;
       buff[14]= (uchar) field->geom_type;
 #ifndef HAVE_SPATIAL
       DBUG_ASSERT(0);                           // Should newer happen
 #endif
     }
     else if (field->charset) 
+    {
+      buff[11]= (uchar) (field->charset->number >> 8);
       buff[14]= (uchar) field->charset->number;
+    }
     else
-      buff[14]= 0;				// Numerical
+    {
+      buff[11]= buff[14]= 0;			// Numerical
+    }
     int2store(buff+15, field->comment.length);
     comment_length+= field->comment.length;
     set_if_bigger(int_count,field->interval_id);

@@ -31,10 +31,10 @@ int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
   {
     hton= ha_default_handlerton(thd);
     if (ts_info->storage_engine != 0)
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_WARN_USING_OTHER_HANDLER,
                           ER(ER_WARN_USING_OTHER_HANDLER),
-                          ha_resolve_storage_engine_name(hton),
+                          hton_name(hton)->str,
                           ts_info->tablespace_name ? ts_info->tablespace_name
                                                 : ts_info->logfile_group_name);
   }
@@ -47,6 +47,7 @@ int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
         case 1:
           DBUG_RETURN(1);
         case HA_ADMIN_NOT_IMPLEMENTED:
+
           my_error(ER_CHECK_NOT_IMPLEMENTED, MYF(0), "");
           break;
         case HA_ERR_TABLESPACE_EXIST:
@@ -58,6 +59,10 @@ int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
         case HA_ERR_TABLESPACE_NOT_EMPTY:
           my_error(ER_TABLESPACE_NOT_EMPTY, MYF(0), ts_info->tablespace_name);
           break;
+        case HA_ERR_TABLESPACE_DATAFILE_EXIST:
+          my_error(ER_TABLESPACE_DATAFILE_EXIST, MYF(0),
+                   ts_info->data_file_name);
+          break;
         default:
           my_error(error, MYF(0));
       }
@@ -67,7 +72,7 @@ int mysql_alter_tablespace(THD *thd, st_alter_tablespace *ts_info)
   else
   {
     my_error(ER_ILLEGAL_HA_CREATE_OPTION, MYF(0),
-             ha_resolve_storage_engine_name(hton),
+                        hton_name(hton)->str,
              "TABLESPACE or LOGFILE GROUP");
     DBUG_RETURN(HA_ADMIN_NOT_IMPLEMENTED);
   }

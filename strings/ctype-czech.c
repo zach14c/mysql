@@ -483,7 +483,12 @@ my_strnxfrm_czech(CHARSET_INFO * cs  __attribute__((unused)),
         *dst++= level < 3 ? 1 : 0;
     }
   }
-
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && dst < de)
+  {
+    uint fill_length= de - dst;
+    cs->cset->fill(cs, (char*) dst, fill_length, 0);
+    dst= de;
+  }
   return dst - dst0;
 }
 

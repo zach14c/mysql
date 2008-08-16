@@ -120,6 +120,15 @@ Record* RecordVersion::releaseNonRecursive()
 
 Record* RecordVersion::fetchVersion(Transaction * trans)
 {
+	Sync syncPrior(format->table->getSyncPrior(this), "RecordVersion::fetchVersion");
+	if (priorVersion)
+		syncPrior.lock(Shared);
+
+	return fetchVersionRecursive(trans);
+}
+
+Record* RecordVersion::fetchVersionRecursive(Transaction * trans)
+{
 	// Unless the record is at least as old as the transaction, it's not for us
 
 	Transaction *recTransaction = transaction;
@@ -144,15 +153,13 @@ Record* RecordVersion::fetchVersion(Transaction * trans)
 	if (!priorVersion)
 		return NULL;
 		
-	return priorVersion->fetchVersion(trans);
+	return priorVersion->fetchVersionRecursive(trans);
 }
 
-Record* RecordVersion::rollback(Transaction *transaction)
+void RecordVersion::rollback(Transaction *transaction)
 {
-	if (superceded)
-		return NULL;
-
-	return format->table->rollbackRecord (this, transaction);
+	if (!superceded)
+		format->table->rollbackRecord (this, transaction);
 }
 
 bool RecordVersion::isVersion()
@@ -182,13 +189,15 @@ bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 	// 2. Record Version is older than the record version that was visible
 	//    to the oldest active transaction AND
 	// 3. Either the record generation is older than the current generation
+	//    OR the scavenge is forced
 	//    OR there is no record data associated with the record version.
 
 	if (	useCount == 1
 		&& !transaction
 		&& transactionId < recordScavenge->transactionId
 		&& (!hasRecord()
-			|| generation <= recordScavenge->scavengeGeneration))
+			|| generation <= recordScavenge->scavengeGeneration
+			|| recordScavenge->forced))
 		{
 		
 		// Expunge all record versions prior to this
@@ -206,7 +215,7 @@ bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 
 		// Scavenge criteria not met for this base record, so check prior versions.
 		
-		if (priorVersion && recordScavenge->scavengeGeneration != UNDEFINED)
+		if (priorVersion && (recordScavenge->forced || recordScavenge->scavengeGeneration != UNDEFINED))
 			{
 			
 			// Scavenge prior record versions only if we have an exclusive lock on
@@ -238,7 +247,7 @@ void RecordVersion::scavenge(TransId targetTransactionId, int oldestActiveSavePo
 	if (!priorVersion)
 		return;
 
-	Sync syncPrior(getSyncPrior(), "RecordVersion::scavenge(2)");
+	Sync syncPrior(getSyncPrior(), "RecordVersion::scavenge");
 	syncPrior.lock(Shared);
 	
 	Record *rec = priorVersion;
@@ -457,7 +466,3 @@ void RecordVersion::serialize(Serialize* stream)
 		stream->putInt(2);
 }
 
-SyncObject* RecordVersion::getSyncPrior()
-{
-	return format->table->getSyncPrior(this);
-}

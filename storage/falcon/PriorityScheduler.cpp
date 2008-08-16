@@ -51,7 +51,7 @@ void PriorityScheduler::schedule(int priority)
 		}
 	
 	Thread *thread = Thread::getThread("PriorityScheduler::schedule");
-	thread->que = waitingThreads[priority];
+	thread->queue = waitingThreads[priority];
 	waitingThreads[priority] = thread;
 	thread->wakeupType = None;
 	sync.unlock();
@@ -83,7 +83,7 @@ void PriorityScheduler::finished(int priority)
 			for (Thread *thread; (thread = waitingThreads[currentPriority]);)
 				{
 				++count;
-				waitingThreads[currentPriority] = thread->que;
+				waitingThreads[currentPriority] = thread->queue;
 				thread->wakeupType = Exclusive;
 				thread->wake();
 				}

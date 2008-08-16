@@ -25,6 +25,7 @@
  * It can also be used to recombine the data from smaller windows.
   */
 
+#include "../mysql_priv.h"
 #include "buffer_iterator.h"
 
 /**

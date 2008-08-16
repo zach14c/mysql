@@ -324,7 +324,8 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   acl_cache->clear(1);				// Clear locked hostname cache
 
   init_sql_alloc(&mem, ACL_ALLOC_BLOCK_SIZE, 0);
-  init_read_record(&read_record_info,thd,table= tables[0].table,NULL,1,0);
+  init_read_record(&read_record_info,thd,table= tables[0].table,NULL,1,0, 
+                   FALSE);
   table->use_all_columns();
   (void) my_init_dynamic_array(&acl_hosts,sizeof(ACL_HOST),20,50);
   while (!(read_record_info.read_record(&read_record_info)))
@@ -373,7 +374,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   end_read_record(&read_record_info);
   freeze_size(&acl_hosts);
 
-  init_read_record(&read_record_info,thd,table=tables[1].table,NULL,1,0);
+  init_read_record(&read_record_info,thd,table=tables[1].table,NULL,1,0,FALSE);
   table->use_all_columns();
   (void) my_init_dynamic_array(&acl_users,sizeof(ACL_USER),50,100);
   password_length= table->field[2]->field_length /
@@ -561,7 +562,7 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
   end_read_record(&read_record_info);
   freeze_size(&acl_users);
 
-  init_read_record(&read_record_info,thd,table=tables[2].table,NULL,1,0);
+  init_read_record(&read_record_info,thd,table=tables[2].table,NULL,1,0,FALSE);
   table->use_all_columns();
   (void) my_init_dynamic_array(&acl_dbs,sizeof(ACL_DB),50,100);
   while (!(read_record_info.read_record(&read_record_info)))
@@ -676,12 +677,8 @@ my_bool acl_reload(THD *thd)
   my_bool return_val= 1;
   DBUG_ENTER("acl_reload");
 
-  if (thd->locked_tables)
-  {					// Can't have locked tables here
-    thd->lock=thd->locked_tables;
-    thd->locked_tables=0;
-    close_thread_tables(thd);
-  }
+  /* Can't have locked tables here. */
+  thd->locked_tables_list.unlock_locked_tables(thd);
 
   /*
     To avoid deadlocks we should obtain table locks before
@@ -697,6 +694,7 @@ my_bool acl_reload(THD *thd)
   tables[0].lock_type=tables[1].lock_type=tables[2].lock_type=TL_READ;
   tables[0].skip_temporary= tables[1].skip_temporary=
     tables[2].skip_temporary= TRUE;
+  alloc_mdl_locks(tables, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, tables))
   {
@@ -1592,6 +1590,7 @@ bool change_password(THD *thd, const char *host, const char *user,
   bzero((char*) &tables, sizeof(tables));
   tables.alias= tables.table_name= (char*) "user";
   tables.db= (char*) "mysql";
+  alloc_mdl_locks(&tables, thd->mem_root);
 
 #ifdef HAVE_REPLICATION
   /*
@@ -3025,6 +3024,7 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
 			    ? tables+2 : 0);
   tables[0].lock_type=tables[1].lock_type=tables[2].lock_type=TL_WRITE;
   tables[0].db=tables[1].db=tables[2].db=(char*) "mysql";
+  alloc_mdl_locks(tables, thd->mem_root);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -3250,6 +3250,7 @@ bool mysql_routine_grant(THD *thd, TABLE_LIST *table_list, bool is_proc,
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type=tables[1].lock_type=TL_WRITE;
   tables[0].db=tables[1].db=(char*) "mysql";
+  alloc_mdl_locks(tables, thd->mem_root);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -3391,6 +3392,7 @@ bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &list,
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type=tables[1].lock_type=TL_WRITE;
   tables[0].db=tables[1].db=(char*) "mysql";
+  alloc_mdl_locks(tables, thd->mem_root);
 
   /*
     This statement will be replicated as a statement, even when using
@@ -3724,6 +3726,7 @@ static my_bool grant_reload_procs_priv(THD *thd)
   table.db= (char *) "mysql";
   table.lock_type= TL_READ;
   table.skip_temporary= 1;
+  alloc_mdl_locks(&table, thd->mem_root);
 
   if (simple_open_n_lock_tables(thd, &table))
   {
@@ -3790,6 +3793,8 @@ my_bool grant_reload(THD *thd)
   tables[0].next_local= tables[0].next_global= tables+1;
   tables[0].lock_type= tables[1].lock_type= TL_READ;
   tables[0].skip_temporary= tables[1].skip_temporary= TRUE;
+  alloc_mdl_locks(tables, thd->mem_root);
+
   /*
     To avoid deadlocks we should obtain table locks before
     obtaining LOCK_grant rwlock.
@@ -4560,13 +4565,13 @@ static const char *command_array[]=
   "ALTER", "SHOW DATABASES", "SUPER", "CREATE TEMPORARY TABLES",
   "LOCK TABLES", "EXECUTE", "REPLICATION SLAVE", "REPLICATION CLIENT",
   "CREATE VIEW", "SHOW VIEW", "CREATE ROUTINE", "ALTER ROUTINE",
-  "CREATE USER", "EVENT", "TRIGGER"
+  "CREATE USER", "EVENT", "TRIGGER", "CREATE TABLESPACE"
 };
 
 static uint command_lengths[]=
 {
   6, 6, 6, 6, 6, 4, 6, 8, 7, 4, 5, 10, 5, 5, 14, 5, 23, 11, 7, 17, 18, 11, 9,
-  14, 13, 11, 5, 7
+  14, 13, 11, 5, 7, 17
 };
 
 
@@ -5117,6 +5122,7 @@ int open_grant_tables(THD *thd, TABLE_LIST *tables)
     (tables+4)->lock_type= TL_WRITE;
   tables->db= (tables+1)->db= (tables+2)->db= 
     (tables+3)->db= (tables+4)->db= (char*) "mysql";
+  alloc_mdl_locks(tables, thd->mem_root);
 
 #ifdef HAVE_REPLICATION
   /*
@@ -5705,7 +5711,6 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list)
 {
   int result;
   String wrong_users;
-  ulong sql_mode;
   LEX_USER *user_name, *tmp_user_name;
   List_iterator <LEX_USER> user_list(list);
   TABLE_LIST tables[GRANT_TABLES];
@@ -5746,7 +5751,6 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list)
     }
 
     some_users_created= TRUE;
-    sql_mode= thd->variables.sql_mode;
     if (replace_user_table(thd, tables[0].table, *user_name, 0, 0, 1, 0))
     {
       append_user(&wrong_users, user_name);
@@ -5807,7 +5811,6 @@ bool mysql_drop_user(THD *thd, List <LEX_USER> &list)
 
   while ((tmp_user_name= user_list++))
   {
-    user_name= get_current_user(thd, tmp_user_name);
     if (!(user_name= get_current_user(thd, tmp_user_name)))
     {
       result= TRUE;

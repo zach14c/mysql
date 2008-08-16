@@ -45,8 +45,6 @@ extern my_bool opt_ndb_log_updated_only;
 #include "ha_ndbcluster_tables.h"
 #define NDB_APPLY_TABLE_FILE "./" NDB_REP_DB "/" NDB_APPLY_TABLE
 #define NDB_SCHEMA_TABLE_FILE "./" NDB_REP_DB "/" NDB_SCHEMA_TABLE
-static char repdb[]= NDB_REP_DB;
-static char reptable[]= NDB_REP_TABLE;
 
 /*
   Timeout for syncing schema events between
@@ -141,6 +139,9 @@ static NDB_SCHEMA_OBJECT *ndb_get_schema_object(const char *key,
                                                 my_bool have_lock);
 static void ndb_free_schema_object(NDB_SCHEMA_OBJECT **ndb_schema_object,
                                    bool have_lock);
+
+static MDL_LOCK_DATA binlog_mdl_lock_data;
+static char binlog_mdlkey[MAX_MDLKEY_LENGTH];
 
 /*
   Helper functions
@@ -264,7 +265,7 @@ static void run_query(THD *thd, char *buf, char *end,
   DBUG_PRINT("query", ("%s", thd->query));
 
   DBUG_ASSERT(!thd->in_sub_stmt);
-  DBUG_ASSERT(!thd->prelocked_mode);
+  DBUG_ASSERT(!thd->locked_tables_mode);
 
   mysql_parse(thd, thd->query, thd->query_length, &found_semicolon);
 
@@ -284,7 +285,13 @@ static void run_query(THD *thd, char *buf, char *end,
                       thd_ndb->m_error_code,
                       (int) thd->is_error(), thd->is_slave_error);
   }
+
+  /*
+    After executing statement we should unlock and close tables open
+    by it as well as release meta-data locks obtained by it.
+  */
   close_thread_tables(thd);
+
   /*
     XXX: this code is broken. mysql_parse()/mysql_reset_thd_for_next_command()
     can not be called from within a statement, and
@@ -295,10 +302,7 @@ static void run_query(THD *thd, char *buf, char *end,
     is called from ndbcluster_reset_logs(), which is called from
     mysql_flush().
   */
-  if (!thd->main_da.is_error())
-  {
-    thd->main_da.reset_diagnostics_area();
-  }
+  thd->main_da.reset_diagnostics_area();
 
   thd->options= save_thd_options;
   thd->query_length= save_thd_query_length;
@@ -508,34 +512,11 @@ static int ndbcluster_reset_logs(THD *thd)
   */
   ndbcluster_binlog_wait(thd);
 
-  /*
-    Could use run_query() here, but it is actually wrong,
-    see comment in run_query()
-  */
-  TABLE_LIST table;
-  bzero((char*) &table, sizeof(table));
-  table.db= repdb;
-  table.alias= table.table_name= reptable;
-  mysql_truncate(thd, &table, 0);
+  char buf[1024];
+  char *end= strmov(buf, "TRUNCATE " NDB_REP_DB "." NDB_REP_TABLE);
 
-  /*
-    Calling function only expects and handles error cases,
-    so reset state if not an error as not to hit asserts
-    in upper layers
-  */
-  while (thd->main_da.is_error())
-  {
-    if (thd->main_da.sql_errno() == ER_NO_SUCH_TABLE)
-    {
-      /*
-        If table does not exist ignore the error as it
-        is a consistant behavior
-      */
-      break;
-    }
-    DBUG_RETURN(1);
-  }
-  thd->main_da.reset_diagnostics_area();
+  run_query(thd, buf, end, NULL, TRUE);
+
   DBUG_RETURN(0);
 }
 
@@ -560,15 +541,6 @@ ndbcluster_binlog_index_purge_file(THD *thd, const char *file)
                                   " WHERE File='"), file), "'");
 
   run_query(thd, buf, end, NULL, TRUE);
-  if (thd->main_da.is_error() &&
-      thd->main_da.sql_errno() == ER_NO_SUCH_TABLE)
-  {
-    /*
-      If table does not exist ignore the error as it
-      is a consistant behavior
-    */
-    thd->main_da.reset_diagnostics_area();
-  }
 
   DBUG_RETURN(0);
 }
@@ -686,16 +658,6 @@ static void ndbcluster_reset_slave(THD *thd)
   char buf[1024];
   char *end= strmov(buf, "DELETE FROM " NDB_REP_DB "." NDB_APPLY_TABLE);
   run_query(thd, buf, end, NULL, TRUE);
-  if (thd->main_da.is_error() &&
-      thd->main_da.sql_errno() == ER_NO_SUCH_TABLE)
-  {
-    /*
-      If table does not exist ignore the error as it
-      is a consistant behavior
-    */
-    thd->main_da.reset_diagnostics_area();
-  }
-
   DBUG_VOID_RETURN;
 }
 
@@ -721,7 +683,8 @@ static int ndbcluster_binlog_func(handlerton *hton, THD *thd,
   switch(fn)
   {
   case BFN_RESET_LOGS:
-    return ndbcluster_reset_logs(thd);
+    ndbcluster_reset_logs(thd);
+    break;
   case BFN_RESET_SLAVE:
     ndbcluster_reset_slave(thd);
     break;
@@ -832,8 +795,6 @@ static int ndbcluster_create_ndb_apply_status_table(THD *thd)
       end= strmov(buf, "FLUSH TABLE " NDB_REP_DB "." NDB_APPLY_TABLE);
       const int no_print_error[1]= {0};
       run_query(thd, buf, end, no_print_error, TRUE);
-      /* always reset here */
-      thd->main_da.reset_diagnostics_area();
     }
   }
 
@@ -856,8 +817,6 @@ static int ndbcluster_create_ndb_apply_status_table(THD *thd)
                                 4009,
                                 0}; // do not print error 701 etc
   run_query(thd, buf, end, no_print_error, TRUE);
-  /* always reset here */
-  thd->main_da.reset_diagnostics_area();
 
   DBUG_RETURN(0);
 }
@@ -909,8 +868,6 @@ static int ndbcluster_create_schema_table(THD *thd)
       end= strmov(buf, "FLUSH TABLE " NDB_REP_DB "." NDB_SCHEMA_TABLE);
       const int no_print_error[1]= {0};
       run_query(thd, buf, end, no_print_error, TRUE);
-      /* always reset here */
-      thd->main_da.reset_diagnostics_area();
     }
   }
 
@@ -937,8 +894,6 @@ static int ndbcluster_create_schema_table(THD *thd)
                                 4009,
                                 0}; // do not print error 701 etc
   run_query(thd, buf, end, no_print_error, TRUE);
-  /* always reset here */
-  thd->main_da.reset_diagnostics_area();
 
   DBUG_RETURN(0);
 }
@@ -982,7 +937,7 @@ int ndbcluster_setup_binlog_table_shares(THD *thd)
     {
       if (ndb_extra_logging)
         sql_print_information("NDB Binlog: ndb tables writable");
-      close_cached_tables(NULL, NULL, TRUE, FALSE, FALSE);
+      close_cached_tables(NULL, NULL, TRUE, FALSE);
     }
     pthread_mutex_unlock(&LOCK_open);
     /* Signal injector thread that all is setup */
@@ -1259,7 +1214,7 @@ ndbcluster_update_slock(THD *thd,
   }
 
   if (ndb_error)
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                         ndb_error->code,
                         ndb_error->message,
@@ -1608,7 +1563,7 @@ err:
   }
 end:
   if (ndb_error)
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                         ndb_error->code,
                         ndb_error->message,
@@ -1803,7 +1758,7 @@ ndb_handle_schema_change(THD *thd, Ndb *ndb, NdbEventOperation *pOp,
     bzero((char*) &table_list,sizeof(table_list));
     table_list.db= (char *)dbname;
     table_list.alias= table_list.table_name= (char *)tabname;
-    close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+    close_cached_tables(thd, &table_list, FALSE, FALSE);
     /* ndb_share reference create free */
     DBUG_PRINT("NDB_SHARE", ("%s create free  use_count: %u",
                              share->key, share->use_count));
@@ -1933,8 +1888,6 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
                       schema->query + schema->query_length,
                       no_print_error, //   /* don't print error */
                       TRUE); //  /* don't binlog the query */
-            /* always reset here */
-            thd->main_da.reset_diagnostics_area();
 
             /* binlog dropping table after any table operations */
             post_epoch_log_list->push_back(schema, mem_root);
@@ -1974,7 +1927,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
             bzero((char*) &table_list,sizeof(table_list));
             table_list.db= schema->db;
             table_list.alias= table_list.table_name= schema->name;
-            close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+            close_cached_tables(thd, &table_list, FALSE, FALSE);
           }
           /* ndb_share reference temporary free */
           if (share)
@@ -2022,8 +1975,6 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
                       schema->query + schema->query_length,
                       no_print_error,    /* print error */
                       TRUE);   /* don't binlog the query */
-            /* always reset here */
-            thd->main_da.reset_diagnostics_area();
             /* binlog dropping database after any table operations */
             post_epoch_log_list->push_back(schema, mem_root);
             /* acknowledge this query _after_ epoch completion */
@@ -2051,8 +2002,6 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
                     schema->query + schema->query_length,
                     no_print_error,    /* print error */
                     TRUE);   /* don't binlog the query */
-          /* always reset here */
-          thd->main_da.reset_diagnostics_area();
           log_query= 1;
           break;
         }
@@ -2115,7 +2064,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
       pthread_mutex_unlock(&ndb_schema_share_mutex);
       /* end protect ndb_schema_share */
 
-      close_cached_tables(NULL, NULL, FALSE, FALSE, FALSE);
+      close_cached_tables(NULL, NULL, FALSE, FALSE);
       // fall through
     case NDBEVENT::TE_ALTER:
       ndb_handle_schema_change(thd, ndb, pOp, event_data);
@@ -2263,7 +2212,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           bzero((char*) &table_list,sizeof(table_list));
           table_list.db= schema->db;
           table_list.alias= table_list.table_name= schema->name;
-          close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+          close_cached_tables(thd, &table_list, FALSE, FALSE);
         }
         break;
       case SOT_RENAME_TABLE:
@@ -2281,7 +2230,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           bzero((char*) &table_list,sizeof(table_list));
           table_list.db= schema->db;
           table_list.alias= table_list.table_name= schema->name;
-          close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+          close_cached_tables(thd, &table_list, FALSE, FALSE);
         }
         {
           if (ndb_extra_logging > 9)
@@ -2323,7 +2272,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           bzero((char*) &table_list,sizeof(table_list));
           table_list.db= schema->db;
           table_list.alias= table_list.table_name= schema->name;
-          close_cached_tables(thd, &table_list, FALSE, FALSE, FALSE);
+          close_cached_tables(thd, &table_list, FALSE, FALSE);
         }
         if (share)
         {
@@ -2400,7 +2349,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
         bzero((char*) &table_list,sizeof(table_list));
         table_list.db= (char *)schema->db;
         table_list.alias= table_list.table_name= (char *)schema->name;
-        close_cached_tables(thd, &table_list, TRUE, FALSE, FALSE);
+        close_cached_tables(thd, &table_list, TRUE, FALSE);
 
         if (schema->node_id != g_ndb_cluster_connection->node_id())
         {
@@ -2615,6 +2564,8 @@ struct ndb_binlog_index_row {
 static int open_and_lock_ndb_binlog_index(THD *thd, TABLE_LIST *tables,
                                           TABLE **ndb_binlog_index)
 {
+  static char repdb[]= NDB_REP_DB;
+  static char reptable[]= NDB_REP_TABLE;
   const char *save_proc_info= thd->proc_info;
 
   bzero((char*) tables, sizeof(*tables));
@@ -2624,6 +2575,9 @@ static int open_and_lock_ndb_binlog_index(THD *thd, TABLE_LIST *tables,
   THD_SET_PROC_INFO(thd, "Opening " NDB_REP_DB "." NDB_REP_TABLE);
   tables->required_type= FRMTYPE_TABLE;
   thd->clear_error();
+  mdl_init_lock(&binlog_mdl_lock_data, binlog_mdlkey, 0, tables->db,
+                tables->table_name);
+  tables->mdl_lock_data= &binlog_mdl_lock_data;
   if (simple_open_n_lock_tables(thd, tables))
   {
     if (thd->killed)
@@ -3050,7 +3004,7 @@ ndbcluster_create_event(THD *thd, Ndb *ndb, const NDBTAB *ndbtab,
                       "with BLOB attribute and no PK is not supported",
                       share->key);
       if (push_warning)
-        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_ILLEGAL_HA_CREATE_OPTION,
                             ER(ER_ILLEGAL_HA_CREATE_OPTION),
                             ndbcluster_hton_name,
@@ -3102,7 +3056,7 @@ ndbcluster_create_event(THD *thd, Ndb *ndb, const NDBTAB *ndbtab,
         failed, print a warning
       */
       if (push_warning > 1)
-        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                             dict->getNdbError().code,
                             dict->getNdbError().message, "NDB");
@@ -3130,7 +3084,7 @@ ndbcluster_create_event(THD *thd, Ndb *ndb, const NDBTAB *ndbtab,
         dict->dropEvent(my_event.getName(), 1))
     {
       if (push_warning > 1)
-        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                             dict->getNdbError().code,
                             dict->getNdbError().message, "NDB");
@@ -3149,7 +3103,7 @@ ndbcluster_create_event(THD *thd, Ndb *ndb, const NDBTAB *ndbtab,
     if (dict->createEvent(my_event))
     {
       if (push_warning > 1)
-        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                             dict->getNdbError().code,
                             dict->getNdbError().message, "NDB");
@@ -3162,7 +3116,7 @@ ndbcluster_create_event(THD *thd, Ndb *ndb, const NDBTAB *ndbtab,
       DBUG_RETURN(-1);
     }
 #ifdef NDB_BINLOG_EXTRA_WARNINGS
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                         0, "NDB Binlog: Removed trailing event",
                         "NDB");
@@ -3276,7 +3230,7 @@ ndbcluster_create_event_ops(THD *thd, NDB_SHARE *share,
     {
       sql_print_error("NDB Binlog: Creating NdbEventOperation failed for"
                       " %s",event_name);
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                           ndb->getNdbError().code,
                           ndb->getNdbError().message,
@@ -3338,7 +3292,7 @@ ndbcluster_create_event_ops(THD *thd, NDB_SHARE *share,
             sql_print_error("NDB Binlog: Creating NdbEventOperation"
                             " blob field %u handles failed (code=%d) for %s",
                             j, op->getNdbError().code, event_name);
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                                 ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                                 op->getNdbError().code,
                                 op->getNdbError().message,
@@ -3379,7 +3333,7 @@ ndbcluster_create_event_ops(THD *thd, NDB_SHARE *share,
         retries= 0;
       if (retries == 0)
       {
-        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                             ER_GET_ERRMSG, ER(ER_GET_ERRMSG), 
                             op->getNdbError().code, op->getNdbError().message,
                             "NDB");
@@ -3456,7 +3410,7 @@ ndbcluster_drop_event(THD *thd, Ndb *ndb, NDB_SHARE *share,
     if (dict->getNdbError().code != 4710)
     {
       /* drop event failed for some reason, issue a warning */
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_GET_ERRMSG, ER(ER_GET_ERRMSG),
                           dict->getNdbError().code,
                           dict->getNdbError().message, "NDB");
@@ -4543,7 +4497,7 @@ restart:
 
   if (ndb_extra_logging)
     sql_print_information("NDB Binlog: ndb tables writable");
-  close_cached_tables((THD*) 0, (TABLE_LIST*) 0, FALSE, FALSE, FALSE);
+  close_cached_tables((THD*) 0, (TABLE_LIST*) 0, FALSE, FALSE);
 
   {
     static char db[]= "";

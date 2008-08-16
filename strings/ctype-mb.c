@@ -525,26 +525,22 @@ my_strnxfrm_mb(CHARSET_INFO *cs,
     A thourough loop, checking all possible limits:
     "se", "nweights" and "de".
   */
-  for (; src < se && nweights; nweights--)
+  for (; src < se && nweights && dst < de; nweights--)
   {
     int chlen;
     if (*src < 128 ||
         !(chlen= cs->cset->ismbchar(cs, (const char*) src, (const char*) se)))
     {
       /* Single byte character */
-      if (dst >= de)
-        break;
       *dst++= sort_order ? sort_order[*src++] : *src++;
     }
     else
     {
       /* Multi-byte character */
-      if (dst + chlen > de)
-        break;
-      *dst++= *src++;
-      *dst++= *src++;
-      if (chlen == 3)
-        *dst++= *src++;
+      int len= (dst + chlen <= de) ? chlen : de - dst;
+      memcpy(dst, src, len);
+      dst+= len;
+      src+= len;
     }
   }
 

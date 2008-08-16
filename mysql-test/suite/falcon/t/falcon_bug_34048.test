@@ -1,0 +1,29 @@
+--source include/have_falcon.inc
+
+#
+# Bug #34048: Falcon: after error with tablespace, I can't create table
+#
+--echo *** Bug #34048 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+--error ER_NO_SUCH_TABLESPACE
+CREATE TABLE t1(a INT) TABLESPACE nosuchtablespace;
+CREATE TABLE t1(a INT);
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

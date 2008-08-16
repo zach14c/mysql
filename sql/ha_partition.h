@@ -329,7 +329,7 @@ public:
   virtual int delete_row(const uchar * buf);
   virtual int delete_all_rows(void);
   virtual void start_bulk_insert(ha_rows rows);
-  virtual int end_bulk_insert();
+  virtual int end_bulk_insert(bool);
 
   virtual bool is_fatal_error(int error, uint flags)
   {
@@ -545,6 +545,8 @@ public:
   virtual uint8 table_cache_type();
   /* Calculate hash value for PARTITION BY KEY tables.  */
   uint32 calculate_key_hash_value(Field **field_array);
+  virtual ha_rows records();
+
   /*
     -------------------------------------------------------------------------
     MODULE print messages
@@ -861,7 +863,7 @@ private:
     if(table_share->tmp_table == NO_TMP_TABLE)
     {
       auto_increment_lock= TRUE;
-      pthread_mutex_lock(&table_share->mutex);
+      pthread_mutex_lock(&table_share->LOCK_ha_data);
     }
   }
   virtual void unlock_auto_increment()
@@ -874,7 +876,7 @@ private:
     */
     if(auto_increment_lock && !auto_increment_safe_stmt_log_lock)
     {
-      pthread_mutex_unlock(&table_share->mutex);
+      pthread_mutex_unlock(&table_share->LOCK_ha_data);
       auto_increment_lock= FALSE;
     }
   }

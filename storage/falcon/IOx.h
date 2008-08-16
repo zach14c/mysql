@@ -36,9 +36,12 @@ static const int WRITE_TYPE_CLONE		= 4;
 static const int WRITE_TYPE_FLUSH		= 5;
 static const int WRITE_TYPE_MAX			= 6;
 
+static const uint16 NO_CHECKSUM_MAGIC = 0;
+
 class Bdb;
 class Hdr;
 class Dbb;
+class Page;
 
 class IO
 {
@@ -51,8 +54,8 @@ public:
 	void	writeHeader (Hdr *header);
 	int		read(int length, UCHAR *buffer);
 	void	write(uint32 length, const UCHAR *data);
-	bool	doesFileExist(const char *fileName);
-	int		fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
+	static bool	doesFileExist(const char *fileName);
+	static int	fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
 	void	declareFatalError();
 	void	seek (int pageNumber);
 	void	closeFile();
@@ -60,7 +63,7 @@ public:
 	void	writePage (Bdb *buffer, int type);
 	void	writePages(int32 pageNumber, int length, const UCHAR* data, int type);
 	void	readPage (Bdb *page);
-	bool	createFile (const char *name, uint64 initialAllocation);
+	bool	createFile (const char *name);
 	bool	openFile (const char *name, bool readOnly);
 	void	longSeek(int64 offset);
 	void	read(int64 offset, int length, UCHAR* buffer);
@@ -75,7 +78,8 @@ public:
 	static void		trace(int fd, int pageNumber, int pageType, int pageId);
 	static void		traceOpen(void);
 	static void		traceClose(void);
-	
+	static uint16	computeChecksum(Page *page, size_t pageSize);
+	void			validateChecksum(Page *page, size_t pageSize, int64 fileOffset);
 	static void		createPath (const char *fileName);
 	static const char *baseName(const char *path);
 	static void		expandFileName(const char *fileName, int length, char *buffer, const char **baseFileName = NULL);

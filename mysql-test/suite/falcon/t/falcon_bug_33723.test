@@ -1,0 +1,41 @@
+--source include/have_falcon.inc
+
+#
+# Bug #33723: ALTER TABLE into non-existing Falcon tablespace blocks further ALTERs
+#
+# See also: falcon_bug_33397.test,
+#           falcon_bug_34048.test,
+#           falcon_bug_34617.test
+#
+
+--echo *** Bug 33723 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1(a INT);
+
+## CREATE TABLESPACE requires explicit Engine
+eval CREATE TABLESPACE ts1 add datafile 'ts1.fts' Engine=$engine;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+--error ER_NO_SUCH_TABLESPACE
+ALTER TABLE t1 TABLESPACE nosuchtablespace;
+ALTER TABLE t1 TABLESPACE ts1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+## DROP TABLESPACE requires explicit Engine
+eval DROP TABLESPACE ts1 Engine=$engine;

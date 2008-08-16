@@ -16,106 +16,30 @@ show_check      : Bug #32682    Test show_check fails in 6.0
 lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 rpl_log_pos          : Bug#8693 Test 'rpl_log_pos' fails sometimes
 ctype_create         : Bug#32965 main.ctype_create fails
-user_limits          : Bug#23921 2007-12-16 random failure of user_limits.test
-backup                :BUG#34235 pending replacement of test facility with WL#4259
-backup_commit_blocker :BUG#34235 pending replacement of test facility with WL#4259
-backup_ddl_blocker    :BUG#34235 pending replacement of test facility with WL#4259
-backup_progress       :BUG#34235 pending replacement of test facility with WL#4259
-backup_security       :BUG#34235 pending replacement of test facility with WL#4259
-backup_snapshot       :BUG#34235 pending replacement of test facility with WL#4259
 backup_no_engine     : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
+backup_tablespace    : Bug #36973 backup_tablespace.test fails in pushbuild
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
-ctype_latin2_ch      : BUG #33791 2008-01-18 mats Wrong ORDER BY with latin2_czech_cs
 query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
 thread_cache_size_func: BUG#35988, BUG#36733 Due to not deterministic results
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 subselect_notembedded  : Bug#35803, Bug#33506 2008-Apr-03 subselect_notembedded crashes the server
+status          : Bug#37481 status.test fails randomly
+maria-preload        : Bug#35107 crashes
+key_buffer_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
+rpl_recovery_rank_basic_64  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
+sort_buffer_size_basic_64   : Bug #36522: Some tests of system variables have diffs on 64bit platorms
 log_output_basic      : Bug#34820 log_output can be set to illegal value
+query_cache_size_basic_32   : Bug#36747: Allocating a large query cache is not deterministic
+query_cache_size_basic_64   : Bug#36747: Allocating a large query cache is not deterministic
+query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fails in pushbuild
 wait_timeout_func           : Bug #36873 wait_timeout_func.test fails randomly
 slow_launch_time_func       : Bug #36874 main.slow_launch_time_func test fails randomly
-thread_cache_size_func : Bug#36733 main.thread_cache_size_func fails randomly
-binlog_cache_size_basic_32            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-bulk_insert_buffer_size_basic_32      : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-delayed_insert_limit_basic_32         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-delayed_queue_size_basic_32           : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-innodb_concurrency_tickets_basic_32   : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-innodb_max_purge_lag_basic_32         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-innodb_sync_spin_loops_basic_32       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-join_buffer_size_basic_32             : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_buffer_size_basic_32              : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_cache_age_threshold_basic_32      : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_cache_block_size_basic_32         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_cache_division_limit_basic_32     : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-log_warnings_basic_32                 : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_binlog_cache_size_basic_32        : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_connect_errors_basic_32           : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_heap_table_size_basic_32          : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_seeks_for_key_basic_32            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_tmp_tables_basic_32               : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_write_lock_count_basic_32         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-min_examined_row_limit_basic_32       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-multi_range_count_basic_32            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-myisam_max_sort_file_size_basic_32    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-myisam_repair_threads_basic_32        : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-myisam_sort_buffer_size_basic_32      : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-net_retry_count_basic_32              : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_alloc_block_size_basic_32       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_limit_basic_32            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_min_res_unit_basic_32     : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_size_basic_32             : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_prealloc_size_basic_32          : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-range_alloc_block_size_basic_32       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-rpl_recovery_rank_basic_32            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-server_id_basic_32                    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-slave_transaction_retries_basic_32    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-sort_buffer_size_basic_32             : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-sync_binlog_basic_32                  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-timestamp_basic_32                    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-tmp_table_size_basic_32               : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-transaction_alloc_block_size_basic_32 : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-transaction_prealloc_size_basic_32    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-wait_timeout_basic_32                 : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-binlog_cache_size_basic_64            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-bulk_insert_buffer_size_basic_64      : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-delayed_insert_limit_basic_64         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-delayed_queue_size_basic_64           : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-innodb_concurrency_tickets_basic_64   : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-innodb_max_purge_lag_basic_64         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-innodb_sync_spin_loops_basic_64       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-join_buffer_size_basic_64             : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_buffer_size_basic_64              : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_cache_age_threshold_basic_64      : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_cache_block_size_basic_64         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-key_cache_division_limit_basic_64     : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-log_warnings_basic_64                 : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_binlog_cache_size_basic_64        : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_connect_errors_basic_64           : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_heap_table_size_basic_64          : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_seeks_for_key_basic_64            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_tmp_tables_basic_64               : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-max_write_lock_count_basic_64         : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-min_examined_row_limit_basic_64       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-multi_range_count_basic_64            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-myisam_max_sort_file_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-myisam_repair_threads_basic_64        : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-myisam_sort_buffer_size_basic_64      : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-net_retry_count_basic_64              : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_alloc_block_size_basic_64       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_limit_basic_64            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_min_res_unit_basic_64     : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_cache_size_basic_64             : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-query_prealloc_size_basic_64          : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-range_alloc_block_size_basic_64       : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-rpl_recovery_rank_basic_64            : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-server_id_basic_64                    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-slave_transaction_retries_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-sort_buffer_size_basic_64             : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-sync_binlog_basic_64                  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-timestamp_basic_64                    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-tmp_table_size_basic_64               : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-transaction_alloc_block_size_basic_64 : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-transaction_prealloc_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-wait_timeout_basic_64                 : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-log_tables.test                       : Bug #37798: main.log_tables fails randomly on powermacg5 and windows
-slow_query_log_func.test              : Bug #37962: *_func tests containing sleeps/race conditions
-
+timestamp_func              : Bug #37702 timestamp_func relies on sleep and is unstable in pushbuild
+sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on some systems
+key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
+max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
+tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems
+backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
+backup_tablespace           : Bug#36973 2008-07-01 rafal
+backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
+user_limits                 : Bug#23921 2008-07-25 joro random failure of user_limits.test

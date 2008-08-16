@@ -27,6 +27,11 @@
 %{?_with_yassl:%define YASSL_BUILD 1}
 %{!?_with_yassl:%define YASSL_BUILD 0}
 
+# use "rpmbuild --with maria" or "rpm --define '_with_maria 1'" (for RPM 3.x)
+# to build with maria support (off by default)
+%{?_with_maria:%define MARIA_BUILD 1}
+%{!?_with_maria:%define MARIA_BUILD 0}
+
 # use "rpmbuild --with cluster" or "rpm --define '_with_cluster 1'" (for RPM 3.x)
 # to build with cluster support (off by default)
 %{?_with_cluster:%define CLUSTER_BUILD 1}
@@ -352,6 +357,10 @@ BuildMySQL "--enable-shared \
 %else
 		--without-falcon \
 %endif
+%if %{MARIA_BUILD}
+		--with-plugin-maria \
+		--with-maria-tmp-tables \
+%endif
 		--with-partition \
 		--with-big-tables \
 		--with-comment=\"MySQL Community Server - Debug (GPL)\"")
@@ -392,6 +401,10 @@ BuildMySQL "--enable-shared \
 		--with-falcon \
 %else
 		--without-falcon \
+%endif
+%if %{MARIA_BUILD}
+		--with-plugin-maria \
+		--with-maria-tmp-tables \
 %endif
 		--with-partition \
 		--with-embedded-server \
