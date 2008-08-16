@@ -921,7 +921,7 @@ int ha_prepare(THD *thd)
   THD_TRANS *trans=all ? &thd->transaction.all : &thd->transaction.stmt;
   Ha_trx_info *ha_info= trans->ha_list;
   DBUG_ENTER("ha_prepare");
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     for (; ha_info; ha_info= ha_info->next())
@@ -947,7 +947,7 @@ int ha_prepare(THD *thd)
       }
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1068,7 +1068,7 @@ int ha_commit_trans(THD *thd, bool all)
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
     DBUG_RETURN(2);
   }
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     uint rw_ha_count;
@@ -1148,7 +1148,7 @@ end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1163,7 +1163,7 @@ int ha_commit_one_phase(THD *thd, bool all)
   bool is_real_trans=all || thd->transaction.all.ha_list == 0;
   Ha_trx_info *ha_info= trans->ha_list, *ha_info_next;
   DBUG_ENTER("ha_commit_one_phase");
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     for (; ha_info; ha_info= ha_info_next)
@@ -1193,7 +1193,7 @@ int ha_commit_one_phase(THD *thd, bool all)
       thd->transaction.cleanup();
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1226,7 +1226,7 @@ int ha_rollback_trans(THD *thd, bool all)
     my_error(ER_COMMIT_NOT_ALLOWED_IN_SF_OR_TRG, MYF(0));
     DBUG_RETURN(1);
   }
-#ifdef USING_TRANSACTIONS
+
   if (ha_info)
   {
     /* Close all cursors that can not survive ROLLBACK */
@@ -1256,7 +1256,7 @@ int ha_rollback_trans(THD *thd, bool all)
       thd->transaction.cleanup();
     }
   }
-#endif /* USING_TRANSACTIONS */
+
   if (all)
     thd->transaction_rollback_request= FALSE;
 
@@ -1291,7 +1291,7 @@ int ha_rollback_trans(THD *thd, bool all)
 int ha_autocommit_or_rollback(THD *thd, int error)
 {
   DBUG_ENTER("ha_autocommit_or_rollback");
-#ifdef USING_TRANSACTIONS
+
   if (thd->transaction.stmt.ha_list)
   {
     if (!error)
@@ -1308,7 +1308,7 @@ int ha_autocommit_or_rollback(THD *thd, int error)
 
     thd->variables.tx_isolation=thd->session_tx_isolation;
   }
-#endif
+
   DBUG_RETURN(error);
 }
 
@@ -1630,23 +1630,23 @@ bool mysql_xa_recover(THD *thd)
   @return
     always 0
 */
-static my_bool release_temporary_latches(THD *thd, plugin_ref plugin,
-                                 void *unused)
-{
-  handlerton *hton= plugin_data(plugin, handlerton *);
-
-  if (hton->state == SHOW_OPTION_YES && hton->release_temporary_latches)
-    hton->release_temporary_latches(hton, thd);
-
-  return FALSE;
-}
-
 
 int ha_release_temporary_latches(THD *thd)
 {
-  plugin_foreach(thd, release_temporary_latches, MYSQL_STORAGE_ENGINE_PLUGIN, 
-                 NULL);
+  Ha_trx_info *info;
 
+  /*
+    Note that below we assume that only transactional storage engines
+    may need release_temporary_latches(). If this will ever become false,
+    we could iterate on thd->open_tables instead (and remove duplicates
+    as if (!seen[hton->slot]) { seen[hton->slot]=1; ... }).
+  */
+  for (info= thd->transaction.stmt.ha_list; info; info= info->next())
+  {
+    handlerton *hton= info->ht();
+    if (hton && hton->release_temporary_latches)
+        hton->release_temporary_latches(hton, thd);
+  }
   return 0;
 }
 
@@ -1714,7 +1714,7 @@ int ha_savepoint(THD *thd, SAVEPOINT *sv)
                                         &thd->transaction.all);
   Ha_trx_info *ha_info= trans->ha_list;
   DBUG_ENTER("ha_savepoint");
-#ifdef USING_TRANSACTIONS
+
   for (; ha_info; ha_info= ha_info->next())
   {
     int err;
@@ -1738,7 +1738,7 @@ int ha_savepoint(THD *thd, SAVEPOINT *sv)
     engines are prepended to the beginning of the list.
   */
   sv->ha_list= trans->ha_list;
-#endif /* USING_TRANSACTIONS */
+
   DBUG_RETURN(error);
 }
 
@@ -1929,7 +1929,7 @@ int ha_delete_table(THD *thd, handlerton *table_type, const char *path,
       XXX: should we convert *all* errors to warnings here?
       What if the error is fatal?
     */
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error,
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, error,
                 ha_delete_table_error_handler.buff);
   }
   delete file;
@@ -4396,6 +4396,7 @@ void DsMrr_impl::dsmrr_close()
   DBUG_ENTER("DsMrr_impl::dsmrr_close");
   if (h2)
   {
+    h2->ha_index_or_rnd_end();
     h2->ha_external_lock(current_thd, F_UNLCK);
     h2->close();
     delete h2;

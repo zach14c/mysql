@@ -83,7 +83,6 @@ static StorageHandler	*storageHandler;
 #undef PARAMETER_BOOL
 
 ulonglong	falcon_record_memory_max;
-ulonglong	falcon_initial_allocation;
 ulonglong	falcon_serial_log_file_size;
 uint		falcon_allocation_extent;
 ulonglong	falcon_page_cache_size;
@@ -2173,16 +2172,22 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	/*
 	CREATE TABLESPACE tablespace
 		ADD DATAFILE 'file'
-		USE LOGFILE GROUP logfile_group
-		[EXTENT_SIZE [=] extent_size]
-		[INITIAL_SIZE [=] initial_size]
-		[AUTOEXTEND_SIZE [=] autoextend_size]
-		[MAX_SIZE [=] max_size]
-		[NODEGROUP [=] nodegroup_id]
-		[WAIT]
+		USE LOGFILE GROUP logfile_group         // NDB only
+		[EXTENT_SIZE [=] extent_size]           // Not supported
+		[INITIAL_SIZE [=] initial_size]         // Not supported
+		[AUTOEXTEND_SIZE [=] autoextend_size]   // Not supported
+		[MAX_SIZE [=] max_size]                 // Not supported
+		[NODEGROUP [=] nodegroup_id]            // NDB only
+		[WAIT]                                  // NDB only
 		[COMMENT [=] comment_text]
 		ENGINE [=] engine
+
+
+	Parameters EXTENT_SIZE, INITIAL,SIZE, AUTOEXTEND_SIZE and MAX_SIZE are
+	currently not supported by Falcon. LOGFILE GROUP, NODEGROUP and WAIT are
+	for NDB only.
 	*/
+
 	if (ts_info->data_file_name)
 		{
 		char buff[FN_REFLEN];
@@ -2200,15 +2205,7 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	switch (ts_info->ts_cmd_type)
 		{
 		case CREATE_TABLESPACE:
-			ret = storageHandler->createTablespace(	ts_info->tablespace_name,
-													ts_info->data_file_name,
-													ts_info->initial_size,
-													ts_info->extent_size,
-													ts_info->autoextend_size,
-													ts_info->max_size,
-													ts_info->nodegroup_id,
-													ts_info->wait_until_completed,
-													ts_info->ts_comment);
+			ret = storageHandler->createTablespace(	ts_info->tablespace_name, ts_info->data_file_name, ts_info->ts_comment);
 			break;
 
 		case DROP_TABLESPACE:
@@ -3378,48 +3375,6 @@ int NfsPluginHandler::deinitTableSpaceFilesInfo(void *p)
 
 //*****************************************************************************
 //
-// FALCON_TABLES
-//
-//*****************************************************************************
-
-int NfsPluginHandler::getTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond)
-{
-	InfoTableImpl infoTable(thd, tables, system_charset_info);
-
-	if (storageHandler)
-		storageHandler->getTablesInfo(&infoTable);
-
-	return infoTable.error;
-}
-
-ST_FIELD_INFO tablesFieldInfo[]=
-{
-	{"SCHEMA_NAME",	  127, MYSQL_TYPE_STRING,	0, 0, "Schema Name", SKIP_OPEN_TABLE},
-	{"TABLE_NAME",	  127, MYSQL_TYPE_STRING,	0, 0, "Table Name", SKIP_OPEN_TABLE},
-	{"PARTITION",	  127, MYSQL_TYPE_STRING,	0, 0, "Partition Name", SKIP_OPEN_TABLE},
-	{"TABLESPACE",	  127, MYSQL_TYPE_STRING,	0, 0, "Tablespace", SKIP_OPEN_TABLE},
-	{"INTERNAL_NAME", 127, MYSQL_TYPE_STRING,	0, 0, "Internal Name", SKIP_OPEN_TABLE},
-	{0,					0, MYSQL_TYPE_STRING,	0, 0, 0, SKIP_OPEN_TABLE}
-};
-
-int NfsPluginHandler::initTablesInfo(void *p)
-{
-	DBUG_ENTER("initTablesInfo");
-	ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *)p;
-	schema->fields_info = tablesFieldInfo;
-	schema->fill_table = NfsPluginHandler::getTablesInfo;
-
-	DBUG_RETURN(0);
-}
-
-int NfsPluginHandler::deinitTablesInfo(void *p)
-{
-	DBUG_ENTER("deinitTablesInfo");
-	DBUG_RETURN(0);
-}
-
-//*****************************************************************************
-//
 // FALCON_TRANSACTIONS
 //
 //*****************************************************************************
@@ -3759,11 +3714,6 @@ static MYSQL_SYSVAR_ULONGLONG(record_memory_max, falcon_record_memory_max,
   "The maximum size of the record memory cache.",
   NULL, StorageInterface::updateRecordMemoryMax, LL(250)<<20, 0, (ulonglong) max_memory_address, LL(1)<<20);
 
-static MYSQL_SYSVAR_ULONGLONG(initial_allocation, falcon_initial_allocation,
-  PLUGIN_VAR_RQCMDARG, // | PLUGIN_VAR_READONLY,
-  "Initial allocation (in bytes) of falcon user tablespace.",
-  NULL, NULL, 0, 0, LL(4000000000), LL(1)<<20);
-
 static MYSQL_SYSVAR_ULONGLONG(serial_log_file_size, falcon_serial_log_file_size,
   PLUGIN_VAR_RQCMDARG,
   "If serial log file grows larger than this value, it will be truncated when it is reused",
@@ -3812,7 +3762,6 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	MYSQL_SYSVAR(scavenge_schedule),
 	//MYSQL_SYSVAR(debug_mask),
 	MYSQL_SYSVAR(record_memory_max),
-	MYSQL_SYSVAR(initial_allocation),
 	//MYSQL_SYSVAR(allocation_extent),
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),
@@ -3832,7 +3781,6 @@ static st_mysql_information_schema falcon_syncobjects			=	{ MYSQL_INFORMATION_SC
 static st_mysql_information_schema falcon_serial_log_info		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_tablespaces			=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_tablespace_files		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
-static st_mysql_information_schema falcon_tables				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_version				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 
 mysql_declare_plugin(falcon)
@@ -4025,21 +3973,6 @@ mysql_declare_plugin(falcon)
 	PLUGIN_LICENSE_GPL,
 	NfsPluginHandler::initTableSpaceFilesInfo,	/* plugin init */
 	NfsPluginHandler::deinitTableSpaceFilesInfo,/* plugin deinit */
-	0x0005,
-	NULL,										/* status variables */
-	NULL,										/* system variables */
-	NULL										/* config options   */
-	},
-	
-	{
-	MYSQL_INFORMATION_SCHEMA_PLUGIN,
-	&falcon_tables,
-	"FALCON_TABLES",
-	"MySQL AB",
-	"Falcon Tables.",
-	PLUGIN_LICENSE_GPL,
-	NfsPluginHandler::initTablesInfo,			/* plugin init */
-	NfsPluginHandler::deinitTablesInfo,			/* plugin deinit */
 	0x0005,
 	NULL,										/* status variables */
 	NULL,										/* system variables */

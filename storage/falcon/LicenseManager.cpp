@@ -130,7 +130,7 @@ void LicenseManager::initialize()
 LicenseProduct* LicenseManager::getProduct(const char *name)
 {
 	int slot = JString::hash (name, HASH_SIZE);
-    LicenseProduct *product;
+	LicenseProduct *product;
 
 	for (product = hashTable [slot]; product; product->collision)
 		if (product->product.equalsNoCase (name))

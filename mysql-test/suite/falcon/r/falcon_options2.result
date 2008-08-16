@@ -10,7 +10,6 @@ FALCON_DEBUG_TRACE	0
 FALCON_DIRECT_IO	1
 FALCON_GOPHER_THREADS	5
 FALCON_INDEX_CHILL_THRESHOLD	4194304
-FALCON_INITIAL_ALLOCATION	0
 FALCON_IO_THREADS	2
 FALCON_LARGE_BLOB_THRESHOLD	160000
 FALCON_LOCK_WAIT_TIMEOUT	50
@@ -54,9 +53,6 @@ SELECT @@falcon_gopher_threads;
 SELECT @@falcon_index_chill_threshold;
 @@falcon_index_chill_threshold
 4194304
-SELECT @@falcon_initial_allocation;
-@@falcon_initial_allocation
-0
 SELECT @@falcon_io_threads;
 @@falcon_io_threads
 2
