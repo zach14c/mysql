@@ -310,6 +310,7 @@ static struct show_privileges_st sys_privileges[]=
   {"Shutdown","Server Admin", "To shut down the server"},
   {"Super","Server Admin","To use KILL thread, SET GLOBAL, CHANGE MASTER, etc."},
   {"Trigger","Tables", "To use triggers"},
+  {"Create tablespace", "Server Admin", "To create/alter/drop tablespaces"},
   {"Update", "Tables",  "To update existing rows"},
   {"Usage","Server Admin","No privileges - allow connect only"},
   {NullS, NullS, NullS}
@@ -3999,7 +4000,9 @@ int fill_schema_charsets(THD *thd, TABLE_LIST *tables, COND *cond)
   TABLE *table= tables->table;
   CHARSET_INFO *scs= system_charset_info;
 
-  for (cs= all_charsets ; cs < all_charsets+255 ; cs++)
+  for (cs= all_charsets ;
+       cs < all_charsets + array_elements(all_charsets) ;
+       cs++)
   {
     CHARSET_INFO *tmp_cs= cs[0];
     if (tmp_cs && (tmp_cs->state & MY_CS_PRIMARY) &&
@@ -4078,7 +4081,9 @@ int fill_schema_collation(THD *thd, TABLE_LIST *tables, COND *cond)
   const char *wild= thd->lex->wild ? thd->lex->wild->ptr() : NullS;
   TABLE *table= tables->table;
   CHARSET_INFO *scs= system_charset_info;
-  for (cs= all_charsets ; cs < all_charsets+255 ; cs++ )
+  for (cs= all_charsets ;
+       cs < all_charsets + array_elements(all_charsets)  ;
+       cs++ )
   {
     CHARSET_INFO **cl;
     CHARSET_INFO *tmp_cs= cs[0];
@@ -4086,7 +4091,9 @@ int fill_schema_collation(THD *thd, TABLE_LIST *tables, COND *cond)
          (tmp_cs->state & MY_CS_HIDDEN) ||
         !(tmp_cs->state & MY_CS_PRIMARY))
       continue;
-    for (cl= all_charsets; cl < all_charsets+255 ;cl ++)
+    for (cl= all_charsets;
+         cl < all_charsets + array_elements(all_charsets)  ;
+         cl ++)
     {
       CHARSET_INFO *tmp_cl= cl[0];
       if (!tmp_cl || !(tmp_cl->state & MY_CS_AVAILABLE) ||
@@ -4119,14 +4126,18 @@ int fill_schema_coll_charset_app(THD *thd, TABLE_LIST *tables, COND *cond)
   CHARSET_INFO **cs;
   TABLE *table= tables->table;
   CHARSET_INFO *scs= system_charset_info;
-  for (cs= all_charsets ; cs < all_charsets+255 ; cs++ )
+  for (cs= all_charsets ;
+       cs < all_charsets + array_elements(all_charsets) ;
+       cs++ )
   {
     CHARSET_INFO **cl;
     CHARSET_INFO *tmp_cs= cs[0];
     if (!tmp_cs || !(tmp_cs->state & MY_CS_AVAILABLE) ||
         !(tmp_cs->state & MY_CS_PRIMARY))
       continue;
-    for (cl= all_charsets; cl < all_charsets+255 ;cl ++)
+    for (cl= all_charsets;
+         cl < all_charsets + array_elements(all_charsets) ;
+         cl ++)
     {
       CHARSET_INFO *tmp_cl= cl[0];
       if (!tmp_cl || !(tmp_cl->state & MY_CS_AVAILABLE) ||

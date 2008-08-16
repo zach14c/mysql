@@ -233,8 +233,9 @@ extern uint    my_large_page_size;
 #endif
 
 /* charsets */
+#define MY_ALL_CHARSETS_SIZE 512
 extern CHARSET_INFO *default_charset_info;
-extern CHARSET_INFO *all_charsets[256];
+extern CHARSET_INFO *all_charsets[MY_ALL_CHARSETS_SIZE];
 extern CHARSET_INFO compiled_charsets[];
 
 /* statistics */
@@ -722,6 +723,7 @@ extern char * fn_format(char * to,const char *name,const char *dir,
 			   const char *form, uint flag);
 extern size_t strlength(const char *str);
 extern void pack_dirname(char * to,const char *from);
+extern size_t normalize_dirname(char * to, const char *from);
 extern size_t unpack_dirname(char * to,const char *from);
 extern size_t cleanup_dirname(char * to,const char *from);
 extern size_t system_filename(char * to,const char *from);

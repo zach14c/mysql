@@ -54,8 +54,8 @@ public:
 	void	writeHeader (Hdr *header);
 	int		read(int length, UCHAR *buffer);
 	void	write(uint32 length, const UCHAR *data);
-	bool	doesFileExist(const char *fileName);
-	int		fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
+	static bool	doesFileExist(const char *fileName);
+	static int	fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
 	void	declareFatalError();
 	void	seek (int pageNumber);
 	void	closeFile();
@@ -63,7 +63,7 @@ public:
 	void	writePage (Bdb *buffer, int type);
 	void	writePages(int32 pageNumber, int length, const UCHAR* data, int type);
 	void	readPage (Bdb *page);
-	bool	createFile (const char *name, uint64 initialAllocation);
+	bool	createFile (const char *name);
 	bool	openFile (const char *name, bool readOnly);
 	void	longSeek(int64 offset);
 	void	read(int64 offset, int length, UCHAR* buffer);

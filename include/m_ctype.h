@@ -106,7 +106,7 @@ extern MY_UNI_CTYPE my_uni_ctype[256];
 #define MY_STRXFRM_NLEVELS         6          /* Number of possible levels*/
 
 #define MY_STRXFRM_PAD_WITH_SPACE  0x00000040 /* if pad result with spaces */
-#define MY_STRXFRM_UNUSED_00000080 0x00000080 /* for future extensions     */
+#define MY_STRXFRM_PAD_TO_MAXLEN   0x00000080 /* if pad tail(for filesort) */
 
 #define MY_STRXFRM_DESC_LEVEL1     0x00000100 /* if desc order for level1 */
 #define MY_STRXFRM_DESC_LEVEL2     0x00000200 /* if desc order for level2 */
@@ -544,6 +544,10 @@ void my_hash_sort_mb_bin(CHARSET_INFO *cs __attribute__((unused)),
 size_t my_strnxfrm_mb(CHARSET_INFO *,
                       uchar *dst, size_t dstlen, uint nweights,
                       const uchar *src, size_t srclen, uint flags);
+
+size_t my_strnxfrm_unicode(CHARSET_INFO *,
+                           uchar *dst, size_t dstlen, uint nweights,
+                           const uchar *src, size_t srclen, uint flags);
 
 int my_wildcmp_unicode(CHARSET_INFO *cs,
                        const char *str, const char *str_end,
