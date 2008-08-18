@@ -33,13 +33,10 @@
 #include "PreparedStatement.h"
 #include "ResultSet.h"
 #include "SQLException.h"
+#include "CmdGen.h"
 
 static const char *FALCON_TEMPORARY		= "/falcon_temporary";
 static const char *DB_ROOT				= ".fts";
-
-#ifndef ONLINE_ALTER
-//#define ONLINE_ALTER
-#endif
 
 #if defined(_WIN32) && MYSQL_VERSION_ID < 0x50100
 #define IS_SLASH(c)	(c == '/' || c == '\\')
@@ -63,13 +60,15 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	impure = new UCHAR[lockSize];
 	initialized = false;
 	table = NULL;
-	indexes = NULL;
 	format = NULL;
 	syncObject = new SyncObject;
 	syncObject->setName("StorageTableShare::syncObject");
+	syncIndexes = new SyncObject;
+	syncIndexes->setName("StorageTableShare::syncIndexes");
 	sequence = NULL;
 	tempTable = tempTbl;
 	setPath(path);
+	numberIndexes = 0;
 
 	if (tempTable)
 		tableSpace = TEMPORARY_TABLESPACE;
@@ -82,29 +81,37 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 StorageTableShare::~StorageTableShare(void)
 {
 	delete syncObject;
+	delete syncIndexes;
 	delete [] impure;
 	
 	if (storageDatabase)
 		storageDatabase->release();
 		
-	if (indexes)
-		{
-		for (int n = 0; n < numberIndexes; ++n)
-			delete indexes[n];
-			
-		delete [] indexes;
-		indexes = NULL;
-		}
+	for (uint n = 0; n < indexes.length; n++)
+		if (indexes.vector[n])
+			delete indexes.get(n);
 }
 
 void StorageTableShare::lock(bool exclusiveLock)
 {
-	syncObject->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
+	//syncObject->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
+	syncIndexes->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
 }
 
 void StorageTableShare::unlock(void)
 {
-	syncObject->unlock();
+	//syncObject->unlock();
+	syncIndexes->unlock();
+}
+
+void StorageTableShare::lockIndexes(bool exclusiveLock)
+{
+	syncIndexes->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
+}
+
+void StorageTableShare::unlockIndexes(void)
+{
+	syncIndexes->unlock();
 }
 
 int StorageTableShare::open(void)
@@ -189,7 +196,7 @@ int StorageTableShare::truncateTable(StorageConnection *storageConnection)
 	return res;
 }
 
-void StorageTableShare::cleanupFieldName(const char* name, char* buffer, int bufferLength)
+const char* StorageTableShare::cleanupFieldName(const char* name, char* buffer, int bufferLength)
 {
 	char *q = buffer;
 	char *end = buffer + bufferLength - 1;
@@ -211,6 +218,8 @@ void StorageTableShare::cleanupFieldName(const char* name, char* buffer, int buf
 		}
 
 	*q = 0;
+	
+	return buffer;
 }
 
 const char* StorageTableShare::cleanupTableName(const char* name, char* buffer, int bufferLength, char *schema, int schemaLength)
@@ -239,20 +248,54 @@ const char* StorageTableShare::cleanupTableName(const char* name, char* buffer, 
 	return buffer;
 }
 
-int StorageTableShare::createIndex(StorageConnection *storageConnection, const char* name, const char* sql)
+char* StorageTableShare::createIndexName(const char *rawName, char *indexName)
 {
-	if (!table)
-		open();
-
-	return storageDatabase->createIndex(storageConnection, table, name, sql);
+	char nameBuffer[indexNameSize];
+	cleanupFieldName(rawName, nameBuffer, sizeof(nameBuffer));
+	sprintf(indexName, "%s$%s", name.getString(), nameBuffer);
+	return indexName;
 }
 
-int StorageTableShare::dropIndex(StorageConnection *storageConnection, const char* name, const char* sql)
+int StorageTableShare::createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, int indexCount, const char *sql)
 {
 	if (!table)
 		open();
 
-	return storageDatabase->dropIndex(storageConnection, table, name, sql);
+	// Always get syncIndexes before syncObject
+	
+	Sync syncIndex(syncIndexes, "StorageTableShare::createIndex(1)");
+	syncIndex.lock(Exclusive);
+	
+	Sync syncObj(syncObject, "StorageTableShare::createIndex(2)");
+	syncObj.lock(Exclusive);
+	
+	int ret = storageDatabase->createIndex(storageConnection, table, sql);
+	
+	if (!ret)
+		ret = setIndex(indexCount, indexDesc);
+		
+	return ret;
+}
+
+int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql)
+{
+	if (!table)
+		open();
+
+	// Always get syncIndexes before syncObject
+
+	Sync syncIndex(syncIndexes, "StorageTableShare::dropIndex(1)");
+	syncIndex.lock(Exclusive);
+	
+	Sync syncObj(syncObject, "StorageTableShare::dropIndex(2)");
+	syncObj.lock(Exclusive);
+	
+	int ret = storageDatabase->dropIndex(storageConnection, table, sql);
+	
+	if (!ret)
+		clearIndex(indexDesc);
+				
+	return ret;
 }
 
 int StorageTableShare::renameTable(StorageConnection *storageConnection, const char* newName)
@@ -274,72 +317,132 @@ int StorageTableShare::renameTable(StorageConnection *storageConnection, const c
 	return ret;
 }
 
-StorageIndexDesc* StorageTableShare::getIndex(int indexCount, int indexId, StorageIndexDesc* indexDesc)
+void StorageTableShare::resizeIndexes(int indexCount)
 {
-	// Rebuild array if indexes have been added or dropped
+	if (indexCount <= 0)
+		return;
 	
-#ifdef ONLINE_ALTER
+	if ((uint)indexCount > indexes.length)
+		indexes.extend(indexCount + 5);
 
-	// TODO: This does not work. It should be done at the time of index creation
+	numberIndexes = indexCount;
+}
 
-	if (indexes && (numberIndexes != indexCount))
+int StorageTableShare::setIndex(int indexCount, const StorageIndexDesc *indexInfo)
 		{
-		Sync sync(syncObject, "StorageTableShare::getIndex");
-		sync.lock(Exclusive);
-		StorageIndexDesc **oldIndexes = indexes;
-		StorageIndexDesc **newIndexes = new StorageIndexDesc*[indexCount];
-		memset(newIndexes, 0, indexCount * sizeof(StorageIndexDesc*));
+	int indexId = indexInfo->id;
 		
-		for (int n = 0; n < numberIndexes; ++n)
-			newIndexes[n] = indexes[n];
+	if ((uint)indexId >= indexes.length || numberIndexes < indexCount)
+		resizeIndexes(indexCount);
 		
-		indexes = newIndexes;
-		numberIndexes = indexCount;
-		delete [] oldIndexes;
-		}
-#endif
+	// Allocate a new index if necessary
 	
-	if (!indexes)
-		{
-		indexes = new StorageIndexDesc*[indexCount];
-		memset(indexes, 0, indexCount * sizeof(StorageIndexDesc*));
-		numberIndexes = indexCount;
-		}
+	StorageIndexDesc *indexDesc = indexes.get(indexId);
 	
-	if (indexId >= numberIndexes)
-		return NULL;
+	if (!indexDesc)
+		indexes.vector[indexId] = indexDesc = new StorageIndexDesc(indexId);
 	
-	StorageIndexDesc *index = indexes[indexId];
+	// Copy index description info
 	
-	if (index)
-		return index;
+	*indexDesc = *indexInfo;
 
-	indexes[indexId] = index = new StorageIndexDesc;
-	*index = *indexDesc;
+	// Find the corresponding Falcon index
 	
 	if (indexDesc->primaryKey)
-		index->index = table->primaryKey;
+		indexDesc->index = table->primaryKey;
 	else
 		{
-		char indexName[150];
-		sprintf(indexName, "%s$%d", (const char*) name, indexId);
-		index->index = storageDatabase->findIndex(table, indexName);
+		char indexName[indexNameSize];
+		sprintf(indexName, "%s$%s", name.getString(), indexDesc->name.getString());
+		indexDesc->index = table->findIndex(indexName);
 		}
 
-	if (index->index)
-		index->segmentRecordCounts = index->index->recordsPerSegment;
-	else
-		index = NULL;
+	int ret = 0;
 	
-	return index;
+	if (indexDesc->index)
+		indexDesc->segmentRecordCounts = indexDesc->index->recordsPerSegment;
+	else
+		ret = StorageErrorNoIndex;
+	
+	ASSERT((!ret ? validateIndexes() : true));
+		
+	return ret;
+}
+
+void StorageTableShare::clearIndex(StorageIndexDesc *indexDesc)
+{
+	if (numberIndexes > 0)
+		{
+		for (int n = indexDesc->id; n < numberIndexes-1; n++)
+			{
+			indexes.vector[n] = indexes.vector[n+1];
+			indexes.vector[n]->id = n; // assume that index id will match server
+			}
+			
+		indexes.zap(numberIndexes-1);
+		numberIndexes--;
+		}
+		
+	ASSERT(validateIndexes());
+}
+
+bool StorageTableShare::validateIndexes()
+{
+	for (int n = 0; n < numberIndexes; n++)
+		{
+		StorageIndexDesc *indexDesc = indexes.get(n);
+		if (indexDesc && indexDesc->id != n)
+			return false;
+		}
+			
+	return true;
 }
 
 StorageIndexDesc* StorageTableShare::getIndex(int indexId)
 {
-	if (!indexes || indexId >= numberIndexes)
+	if (!indexes.length || indexId >= numberIndexes)
 		return NULL;
 	
-	return indexes[indexId];
+	ASSERT(validateIndexes());
+	
+	return indexes.get(indexId);
+}
+
+StorageIndexDesc* StorageTableShare::getIndex(int indexId, StorageIndexDesc *indexDesc)
+{
+	StorageIndexDesc *index;
+	
+	if (!indexes.length || indexId >= numberIndexes)
+		index = NULL;
+	else
+		{
+		Sync sync(syncObject, "StorageTableShare::getIndex");
+		sync.lock(Shared);
+	
+		ASSERT(validateIndexes());
+
+		index = indexes.get(indexId);
+	
+		if (index)
+			*indexDesc = *index;
+		}
+		
+	return index;
+}
+
+StorageIndexDesc* StorageTableShare::getIndex(const char *name)
+{
+	Sync sync(syncObject, "StorageTableShare::getIndex(name)");
+	sync.lock(Shared);
+	
+	for (int i = 0; i < numberIndexes; i++)
+		{
+		StorageIndexDesc *indexDesc = indexes.get(i);
+		if (indexDesc && indexDesc->name == name)
+			return indexDesc;
+		}
+
+	return NULL;
 }
 
 INT64 StorageTableShare::getSequenceValue(int delta)
@@ -365,16 +468,22 @@ int StorageTableShare::setSequenceValue(INT64 value)
 	return 0;
 }
 
+// Get index id using the internal (Falcon) index name
+
 int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
 {
-	if (indexes)
+	if (indexes.length > 0)
 		for (int n = 0; n < numberIndexes; ++n)
 			{
-			Index *index = indexes[n]->index;
+			Index *index = indexes.get(n)->index;
 			
 			if (strcmp(index->getIndexName(), indexName) == 0 &&
 				strcmp(index->getSchemaName(), schemaName) == 0)
+				{
+//				if (n != indexes.get(n)->id) //debug
+//					return n;
 				return n;
+			}
 			}
 		
 	return -1;
@@ -382,17 +491,21 @@ int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
 
 int StorageTableShare::haveIndexes(int indexCount)
 {
-	if (indexes == NULL)
+	if (indexes.length == 0)
 		return false;
 		
-#ifdef ONLINE_ALTER
-	if (indexCount != numberIndexes)
+	if (indexCount > numberIndexes)
 		return false;
-#endif	
 	
 	for (int n = 0; n < numberIndexes; ++n)
-		if (indexes[n]== NULL)
+		{
+		StorageIndexDesc* index = indexes.get(n);
+		if (!index)
 			return false;
+			
+		if (index && !index->index)
+			return false;
+		}
 	
 	return true;
 }

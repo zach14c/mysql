@@ -688,7 +688,7 @@ int StorageDatabase::updateRow(StorageConnection* storageConnection, Table* tabl
 	return 0;
 }
 
-int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* table, const char* indexName, const char* sql)
+int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* table, const char* sql)
 {
 	Connection *connection = storageConnection->connection;
 	Statement *statement = connection->createStatement();
@@ -713,7 +713,7 @@ int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* ta
 	return 0;
 }
 
-int StorageDatabase::dropIndex(StorageConnection *storageConnection, Table* table, const char* indexName, const char* sql)
+int StorageDatabase::dropIndex(StorageConnection *storageConnection, Table* table, const char* sql)
 {
 	Connection *connection = storageConnection->connection;
 	Statement *statement = connection->createStatement();
@@ -746,17 +746,6 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 		{
 		Database *database = connection->database;
 		Sequence *sequence = connection->findSequence(schemaName, table->name);
-		int numberIndexes = 0;
-		int firstIndex = 0;
-		Index *index;
-
-		for (index = table->indexes; index; index = index->next)
-			{
-			if (index->type == PrimaryKey)
-				firstIndex = 1;
-
-			++numberIndexes;
-			}
 
 		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable(1)");
 		syncDDL.lock(Exclusive);
@@ -764,19 +753,6 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 		Sync syncTables(&database->syncTables, "StorageDatabase::renameTable(2)");
 		syncTables.lock(Exclusive);
 		
-		for (int n = firstIndex; n < numberIndexes; ++n)
-			{
-			char indexName[256];
-			sprintf(indexName, "%s$%d", (const char*) table->name, n);
-			Index *index = table->findIndex(indexName);
-
-			if (index)
-				{
-				sprintf(indexName, "%s$%d", tableName, n);
-				index->rename(indexName);
-				}
-			}
-
 		table->rename(schemaName, tableName);
 
 		if (sequence)

@@ -300,17 +300,19 @@ void Transaction::commit()
 	database->flushInversion(this);
 
 	// Transfer transaction from active list to committed list, set committed state
+
 	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
-	syncCommitted.lock(Exclusive);
+
 	syncActiveTransactions.lock(Exclusive);
+	syncCommitted.lock(Exclusive);
 
 	transactionManager->activeTransactions.remove(this);
 	transactionManager->committedTransactions.append(this);
 	state = Committed;
 
-	syncActiveTransactions.unlock();
 	syncCommitted.unlock();
+	syncActiveTransactions.unlock();
 
 	database->commit(this);
 

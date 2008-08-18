@@ -18,6 +18,7 @@
 
 #include "JString.h"
 #include "SyncObject.h"
+#include "DenseArray.h"
 
 #ifndef _WIN32
 #define __int64			long long
@@ -26,6 +27,7 @@
 typedef __int64			INT64;
 
 static const int MaxIndexSegments	= 16;
+static const int indexNameSize		= 257;
 
 class StorageDatabase;
 class StorageConnection;
@@ -47,11 +49,17 @@ struct StorageSegment {
 	void			*mysql_charset;
 	};
 
-struct StorageIndexDesc {
+class StorageIndexDesc
+{
+public:
+	StorageIndexDesc(int indexId=0) : id (indexId), unique(0), primaryKey(0), numberSegments(0), /*name(NULL),*/ index(NULL), segmentRecordCounts(NULL){};
+	
+	int			id;//cwp
 	int			unique;
 	int			primaryKey;
 	int			numberSegments;
-	const char	*name;
+	JString		name;			// clean name
+	JString		rawName;		// original name
 	Index		*index;
 	uint64		*segmentRecordCounts;
 	StorageSegment segments[MaxIndexSegments];
@@ -95,22 +103,28 @@ public:
 	StorageTableShare(StorageHandler *handler, const char * path, const char *tableSpaceName, int lockSize, bool tempTbl);
 	virtual ~StorageTableShare(void);
 	
-	virtual void		lock(bool exclusiveLock);
+	virtual void		lock(bool exclusiveLock=false);
 	virtual void		unlock(void);
-	virtual int			createIndex(StorageConnection *storageConnection, const char* name, const char* sql);
-	virtual int			dropIndex(StorageConnection *storageConnection, const char* name, const char* sql);
+	virtual void		lockIndexes(bool exclusiveLock=false);
+	virtual void		unlockIndexes(void);
+	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, int indexCount, const char *sql);
+	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
 	virtual int			renameTable(StorageConnection *storageConnection, const char* newName);
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
 	virtual int			haveIndexes(int indexCount);
-	virtual void		cleanupFieldName(const char* name, char* buffer, int bufferLength);
+	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength);
 	virtual void		setTablePath(const char* path, bool tempTable);
 	virtual void		registerCollation(const char* collationName, void* arg);
 
 	int					open(void);
-	StorageIndexDesc*	getIndex(int indexCount, int indexId, StorageIndexDesc* indexDesc);
+	void				resizeIndexes(int indexCount);
+	int					setIndex(int indexCount, const StorageIndexDesc* indexInfo);
+	void				clearIndex(StorageIndexDesc *indexDesc);
+	bool				validateIndexes();
 	StorageIndexDesc*	getIndex(int indexId);
-
+	StorageIndexDesc*	getIndex(int indexId, StorageIndexDesc *indexDesc);
+	StorageIndexDesc*	getIndex(const char *name);
 	int					getIndexId(const char* schemaName, const char* indexName);
 	int					create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
 	int					upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
@@ -129,6 +143,7 @@ public:
 
 	static const char*	getDefaultRoot(void);
 	static const char*	cleanupTableName(const char* name, char* buffer, int bufferLength, char *schema, int schemaLength);
+	char*				createIndexName(const char *rawName, char *indexName);
 	
 	JString				name;
 	JString				schemaName;
@@ -140,10 +155,11 @@ public:
 	unsigned char		*impure;
 	int					initialized;
 	SyncObject			*syncObject;
+	SyncObject			*syncIndexes;
 	StorageDatabase		*storageDatabase;
 	StorageHandler		*storageHandler;
 	Table				*table;
-	StorageIndexDesc	**indexes;
+	DenseArray<StorageIndexDesc *,10> indexes;
 	Sequence			*sequence;
 	Format				*format;						// format for insertion
 	int					numberIndexes;

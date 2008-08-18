@@ -49,8 +49,7 @@ class Record;
 class SyncObject;
 class Format;
 class IndexWalker;
-
-struct StorageIndexDesc;
+class StorageIndexDesc;
 
 class StorageTable
 {
@@ -65,8 +64,6 @@ public:
 	void			clearAlter(void);
 	bool			setAlter(void);
 	
-
-	
 	virtual void	setConnection(StorageConnection* connection);
 	virtual void	clearIndexBounds(void);
 	virtual void	clearRecord(void);
@@ -78,9 +75,10 @@ public:
 	virtual int		deleteTable(void);
 	virtual int		deleteRow(int recordNumber);
 	virtual int		truncateTable(void);
-	virtual int		setIndex(int numberIndexes, int indexId, StorageIndexDesc* storageIndex);
 	virtual int		indexScan(int indexOrder);
-	virtual int		setIndex(int indexId);
+	virtual int		setCurrentIndex(int indexId);
+	virtual int		clearCurrentIndex();
+	virtual int		setIndex(int indexCount, StorageIndexDesc* indexDesc);
 	virtual void	indexEnd(void);
 	virtual int		setIndexBound(const unsigned char* key, int keyLength, int which);
 	virtual int		storeBlob(StorageBlob* blob);
@@ -96,6 +94,8 @@ public:
 	virtual int		fetch(int recordNumber, bool lockForUpdate);
 	
 	virtual int		updateRow(int recordNumber);
+	virtual int		createIndex(StorageIndexDesc *indexDesc, int indexCount, const char *sql);
+	virtual int		dropIndex(StorageIndexDesc *indexDesc, const char *sql);
 	virtual const unsigned char* getEncoding(int fieldIndex);
 	virtual const char*			 getName(void);
 	virtual const char*			 getSchemaName(void);
@@ -128,7 +128,7 @@ public:
 	Stream				insertStream;
 	int					searchFlags;
 	bool				recordLocked;
-	bool				haveTruncateLock;
+	bool				indexesLocked;
 };
 
 #endif

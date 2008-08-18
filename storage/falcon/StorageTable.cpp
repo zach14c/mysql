@@ -51,11 +51,13 @@ StorageTable::StorageTable(StorageConnection *connection, StorageTableShare *tab
 	upperBound = lowerBound = NULL;
 	record = NULL;
 	recordLocked = false;
-	haveTruncateLock = false;
+	indexesLocked = false;
 }
 
 StorageTable::~StorageTable(void)
 {
+	clearCurrentIndex();
+	
 	if (bitmap)
 		((Bitmap*) bitmap)->release();
 
@@ -98,8 +100,6 @@ int StorageTable::truncateTable(void)
 	return ret;
 }
 
-
-
 int StorageTable::insert(void)
 {
 	try
@@ -139,6 +139,16 @@ int StorageTable::updateRow(int recordNumber)
 	return 0;
 }
 
+int StorageTable::createIndex(StorageIndexDesc *indexDesc, int indexCount, const char *sql)
+{
+	return share->createIndex(storageConnection, indexDesc, indexCount, sql);
+}
+
+int StorageTable::dropIndex(StorageIndexDesc *indexDesc, const char *sql)
+{
+	return share->dropIndex(storageConnection, indexDesc, sql);
+}
+
 int StorageTable::next(int recordNumber, bool lockForUpdate)
 {
 	recordLocked = false;
@@ -174,21 +184,66 @@ void StorageTable::transactionEnded(void)
 {
 }
 
-int StorageTable::setIndex(int numberIndexes, int indexId, StorageIndexDesc* storageIndex)
+int StorageTable::setCurrentIndex(int indexId)
 {
-	if (!(currentIndex = share->getIndex(numberIndexes, indexId, storageIndex)))
+	if (!indexesLocked)
+		{
+		share->lockIndexes();
+		indexesLocked = true;
+		}
+	
+	if (!(currentIndex = share->getIndex(indexId)))
+{
+		clearCurrentIndex();
 		return StorageErrorNoIndex;
+		}
+		
+	/*** debug
+	if (currentIndex->index)
+		currentIndex->index->addRef();
+	else
+		currentIndex->index = NULL;
+	***/
 
 	upperBound = lowerBound = NULL;
 	searchFlags = 0;
-	
 	return 0;
+}
+	
+int StorageTable::clearCurrentIndex()
+{
+	/*** debug
+	if (currentIndex)
+		if (currentIndex->index)
+			currentIndex->index->release();
+		else
+			currentIndex->index = NULL;
+	***/
+	
+	if (indexesLocked)
+		{
+		share->unlockIndexes();
+		indexesLocked = false;
+		}
+
+	currentIndex = NULL;
+	upperBound = lowerBound = NULL;
+	searchFlags = 0;
+	return 0;
+}
+
+int StorageTable::setIndex(int indexCount, StorageIndexDesc* indexDesc)
+{
+	return share->setIndex(indexCount, indexDesc);
 }
 
 int StorageTable::indexScan(int indexOrder)
 {
 	if (!currentIndex)
+		{
+		clearCurrentIndex();
 		return StorageErrorNoIndex;
+		}
 	
 	int numberSegments = (upperBound) ?  upperBound->numberSegments : (lowerBound) ? lowerBound->numberSegments : 0;
 	
@@ -203,26 +258,16 @@ int StorageTable::indexScan(int indexOrder)
 	return 0;
 }
 
-
 void StorageTable::clearBitmap(void)
 {
 	if (bitmap)
 		((Bitmap*) bitmap)->clear();
 }
 
-int StorageTable::setIndex(int indexId)
-{
-	if (!(currentIndex = share->getIndex(indexId)))
-		return StorageErrorNoIndex;
-	
-	upperBound = lowerBound = NULL;
-	searchFlags = 0;
-	
-	return 0;
-}
-
 void StorageTable::indexEnd(void)
 {
+	clearCurrentIndex();
+	
 	if (bitmap)
 		clearBitmap();
 	
@@ -236,7 +281,10 @@ void StorageTable::indexEnd(void)
 int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int which)
 {
 	if (!currentIndex)
+		{
+		clearCurrentIndex();
 		return StorageErrorNoIndex;
+		}
 
 	if (which & LowerBound)
 		{

@@ -29,7 +29,7 @@ static const int TRANSACTION_CONSISTENT_READ  = 8;	// Dirty reads and non-repeat
 static const int TRANSACTION_SERIALIZABLE     = 16;	// Dirty reads, non-repeatable reads and phantom reads are prevented.
 
 struct st_table_share;
-struct StorageIndexDesc;
+class StorageIndexDesc;
 struct StorageBlob;
 
 class StorageInterface : public handler
@@ -113,14 +113,16 @@ public:
 	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
-	int				dropIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
-	void			getKeyDesc(KEY *keyInfo, StorageIndexDesc *indexInfo);
+//	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexId);
+	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
 	int				threadSwitchError(void);
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
+	int				setIndex(TABLE *table, int indexId);
 	int				setIndexes(void);
 	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);

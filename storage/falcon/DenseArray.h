@@ -47,17 +47,35 @@ public:
 		if (newLength < length)
 			return;
 			
+		T *newVector = new T[newLength];
+		T *oldVector = vector;
+		memcpy((void*) newVector, (void*) vector, length * sizeof(T));
+		memset((void*) (newVector + length), 0, (newLength - length) * sizeof(T));
+		vector = newVector;
+		int oldLength = length;
+		length = newLength;
+		memset((void*) oldVector, 0xbc, oldLength * sizeof(T));
+		delete [] oldVector;
+		
+		/**		
 		T *oldVector = vector;
 		vector = new T[newLength];
 		memcpy((void*) vector, (void*) oldVector, length * sizeof(T));
 		memset((void*) (vector + length), 0, (newLength - length) * sizeof(T));
 		length = newLength;
+		**/
 		};
 	
 	void zap ()
 		{
 		memset((void*) vector, 0, length * sizeof(T));
 		};
+		
+	void zap (uint n)
+		{
+		if (n < length)
+			memset(vector + n, 0, sizeof(T));
+		}
 	
 	T get (uint index)
 		{

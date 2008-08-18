@@ -26,6 +26,7 @@
 
 #include "Types.h"
 #include "Queue.h"
+//#include "SyncObject.h" // debug
 
 static const int INDEX_VERSION_0		= 0;
 static const int INDEX_VERSION_1		= 1;
@@ -127,6 +128,15 @@ public:
 	Index(Table *tbl, const char *indexName, int count, int typ);
 	Index(Table *tbl, const char *indexName, int indexType, int id, int numberFields);
 	virtual ~Index();
+
+	/*** debug
+	virtual void	lock(bool exclusiveLock);
+	virtual void	unlock(void);
+	void			release();
+	void			addRef();
+	SyncObject	syncObject; // debug
+	volatile INTERLOCK_TYPE useCount;
+	***/
 
 	Table		*table;
 	Database	*database;
