@@ -4104,6 +4104,7 @@ sub stop_all_servers () {
     rm_ndbcluster_tables($mysqld->{'path_myddir'});
     rm_falcon_tables($mysqld->{'path_myddir'});
   }
+
 }
 
 
@@ -4423,22 +4424,6 @@ sub run_testcase_start_servers($) {
 	 $tinfo->{'master_num'} > 1 )
     {
       # Test needs cluster, start an extra mysqld connected to cluster
-
-      if ( $mysql_version_id >= 50100 )
-      {
-	# First wait for first mysql server to have created ndb system
-	# tables ok FIXME This is a workaround so that only one mysqld
-	# create the tables
-	if ( ! sleep_until_file_created(
-		  "$master->[0]->{'path_myddir'}/mysql/ndb_apply_status.ndb",
-					$master->[0]->{'start_timeout'},
-					$master->[0]->{'pid'}))
-	{
-
-	  $tinfo->{'comment'}= "Failed to create 'mysql/ndb_apply_status' table";
-	  return 1;
-	}
-      }
       mysqld_start($master->[1],$tinfo->{'master_opt'},[]);
     }
 
@@ -4705,15 +4690,11 @@ sub run_mysqltest ($) {
 
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
-  # and remove existing falcon tables
   # ----------------------------------------------------------------------
-  
+
   if ( $glob_use_embedded_server )
   {
     mysqld_arguments($args,$master->[0],$tinfo->{'master_opt'},[]);
-    #Remove  falcon tables before each test, otherwise every start might fail
-    #if there is an error in falcon recovery
-    rm_falcon_tables($master->[0]->{'path_myddir'});
   }
 
   # ----------------------------------------------------------------------

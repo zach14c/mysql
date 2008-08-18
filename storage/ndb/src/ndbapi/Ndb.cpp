@@ -550,7 +550,8 @@ Ndb::startTransaction(const NdbDictionary::Table *table,
       Uint32 hashValue;
       {
 	Uint32 buf[4];
-        Uint64 tmp[1000];
+        const Uint32 MaxKeySizeInLongWords= (NDB_MAX_KEY_SIZE + 7) / 8;
+        Uint64 tmp[ MaxKeySizeInLongWords ];
 
         if (keyLen >= sizeof(tmp))
         {
@@ -1893,11 +1894,9 @@ Uint64 Ndb::getLatestGCI()
 
 void Ndb::setReportThreshEventGCISlip(unsigned thresh)
 {
- if (theEventBuffer->m_free_thresh != thresh)
+ if (theEventBuffer->m_gci_slip_thresh != thresh)
  {
-   theEventBuffer->m_free_thresh= thresh;
-   theEventBuffer->m_min_free_thresh= thresh;
-   theEventBuffer->m_max_free_thresh= 100;
+   theEventBuffer->m_gci_slip_thresh= thresh;
  }
 }
 

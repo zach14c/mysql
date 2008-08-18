@@ -1103,6 +1103,7 @@ bool login_connection(THD *thd);
 void prepare_new_connection_state(THD* thd);
 void end_connection(THD *thd);
 
+
 int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create, bool silent);
 bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create);
 bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent);

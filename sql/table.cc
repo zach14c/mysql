@@ -683,7 +683,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   const char **interval_array;
   enum legacy_db_type legacy_db_type;
   my_bitmap_map *bitmaps;
-  uchar *buff= 0;
+  uchar *buffbuff= 0; // rename to cause compile error if automerged stuff
+                      // as scope of variable has changed
   uchar *field_extra_info= 0;
   DBUG_ENTER("open_binary_frm");
 
@@ -880,14 +881,14 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     /* Read extra data segment */
     uchar *next_chunk, *buff_end;
     DBUG_PRINT("info", ("extra segment size is %u bytes", n_length));
-    if (!(next_chunk= buff= (uchar*) my_malloc(n_length, MYF(MY_WME))))
+    if (!(next_chunk= buffbuff= (uchar*) my_malloc(n_length, MYF(MY_WME))))
       goto err;
-    if (my_pread(file, buff, n_length, record_offset + share->reclength,
+    if (my_pread(file, buffbuff, n_length, record_offset + share->reclength,
                  MYF(MY_NABP)))
     {
       goto err;
     }
-    share->connect_string.length= uint2korr(buff);
+    share->connect_string.length= uint2korr(buffbuff);
     if (!(share->connect_string.str= strmake_root(&share->mem_root,
                                                   (char*) next_chunk + 2,
                                                   share->connect_string.
@@ -896,7 +897,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       goto err;
     }
     next_chunk+= share->connect_string.length + 2;
-    buff_end= buff + n_length;
+    buff_end= buffbuff + n_length;
     if (next_chunk + 2 < buff_end)
     {
       uint str_db_type_length= uint2korr(next_chunk);
@@ -913,7 +914,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                 plugin_data(tmp_plugin, handlerton *)))
         {
           /* bad file, legacy_db_type did not match the name */
-          my_free(buff, MYF(0));
           goto err;
         }
         /*
@@ -949,7 +949,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
         /* purecov: begin inspected */
         error= 8;
         my_error(ER_UNKNOWN_STORAGE_ENGINE, MYF(0), name.str);
-        my_free(buff, MYF(0));
         goto err;
         /* purecov: end */
       }
@@ -1031,20 +1030,18 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       {
           DBUG_PRINT("error",
                      ("long table comment is not defined in .frm"));
-          my_free(buff, MYF(0));
           goto err;
       }
       share->comment.length = uint2korr(next_chunk);
       if (! (share->comment.str= strmake_root(&share->mem_root,
                                (char*)next_chunk + 2, share->comment.length)))
       {
-          my_free(buff, MYF(0));
           goto err;
       }
       next_chunk+= 2 + share->comment.length;
     }
     DBUG_ASSERT (next_chunk <= buff_end);
-    if (share->mysql_version >= MYSQL_VERSION_TABLESPACE_IN_FRM_CGE)
+    if (share->mysql_version >= MYSQL_VERSION_TABLESPACE_IN_FRM)
     {
       /*
        New frm format in mysql_version 5.2.5 (originally in
@@ -1085,12 +1082,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
         field_extra_info= next_chunk + format_section_header_size + tablespace_len + 1;
         next_chunk+= format_section_len;
       }
-    }
-    DBUG_ASSERT (next_chunk <= buff_end);
-    if (next_chunk > buff_end)
-    {
-      DBUG_PRINT("error", ("Buffer overflow in field extra info"));
-      goto err;
     }
   }
   share->key_block_size= uint2korr(head+62);
@@ -1673,13 +1664,13 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   if (use_hash)
     (void) hash_check(&share->name_hash);
 #endif
-  if (buff)
-    my_free(buff, MYF(0));
+  if (buffbuff)
+    my_free(buffbuff, MYF(0));
   DBUG_RETURN (0);
 
  err:
-  if (buff)
-    my_free(buff, MYF(0));
+  if (buffbuff)
+    my_free(buffbuff, MYF(0));
   share->error= error;
   share->open_errno= my_errno;
   share->errarg= errarg;

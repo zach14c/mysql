@@ -36,7 +36,7 @@
 
 extern bool g_StopServer;
 extern bool g_RestartServer;
-extern EventLogger g_eventLogger;
+extern EventLogger * g_eventLogger;
 
 static const unsigned int MAX_READ_TIMEOUT = 1000 ;
 static const unsigned int MAX_WRITE_TIMEOUT = 100 ;
@@ -298,7 +298,7 @@ MgmApiSession::MgmApiSession(class MgmtSrvr & mgm, NDB_SOCKET_TYPE sock, Uint64 
 {
   DBUG_ENTER("MgmApiSession::MgmApiSession");
   m_input = new SocketInputStream(sock, 30000);
-  m_output = new SocketOutputStream(sock, 30000);
+  m_output = new BufferedSockOutputStream(sock, 30000);
   m_parser = new Parser_t(commands, *m_input, true, true, true);
   m_allocated_resources= new MgmtSrvr::Allocated_resources(m_mgmsrv);
   m_stopSelf= 0;
@@ -365,7 +365,11 @@ MgmApiSession::runSession()
 
     stop= m_stop;
     NdbMutex_Unlock(m_mutex);
-  };
+
+    // Send output from command to the client
+    m_output->flush();
+
+  }
 
   NdbMutex_Lock(m_mutex);
   m_ctx= NULL;
@@ -548,7 +552,7 @@ MgmApiSession::get_nodeid(Parser_t::Context &,
   m_allocated_resources->reserve_node(tmp, timeout*1000);
   
   if (name)
-    g_eventLogger.info("Node %d: %s", tmp, name);
+    g_eventLogger->info("Node %d: %s", tmp, name);
 
   return;
 }

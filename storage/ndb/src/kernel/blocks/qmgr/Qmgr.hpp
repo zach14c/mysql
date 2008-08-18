@@ -421,6 +421,7 @@ private:
   Uint16 cnoPrepFailedNodes;
   Uint16 cnoCommitFailedNodes;
   Uint16 cactivateApiCheck;
+  Uint16 c_allow_api_connect;
   UintR chbApiDelay;
 
   UintR ccommitFailureNr;
@@ -454,10 +455,6 @@ private:
   
   StopReq c_stopReq;
   bool check_multi_node_shutdown(Signal* signal);
-
-#ifdef ERROR_INSERT
-  Uint32 c_error_insert_extra;
-#endif
 
   void recompute_version_info(Uint32 type);
   void recompute_version_info(Uint32 type, Uint32 version);

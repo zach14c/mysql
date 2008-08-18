@@ -6482,7 +6482,6 @@ check_field_for_37426(const void *param_arg)
 }
 #endif//HAVE_REPLICATION
 
-
 int Field_string::compatible_field_size(uint field_metadata,
                                         const Relay_log_info *rli_arg)
 {

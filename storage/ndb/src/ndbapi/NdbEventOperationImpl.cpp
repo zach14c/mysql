@@ -44,7 +44,7 @@
 #include "ndb_internal.hpp"
 
 #include <EventLogger.hpp>
-extern EventLogger g_eventLogger;
+extern EventLogger * g_eventLogger;
 
 static Gci_container_pod g_empty_gci_container;
 
@@ -1046,10 +1046,10 @@ NdbEventBuffer::NdbEventBuffer(Ndb *ndb) :
   m_ndb(ndb),
   m_latestGCI(0), m_latest_complete_GCI(0),
   m_total_alloc(0),
-  m_free_thresh(10),
-  m_min_free_thresh(10),
-  m_max_free_thresh(100),
-  m_gci_slip_thresh(3),
+  m_free_thresh(0),
+  m_min_free_thresh(0),
+  m_max_free_thresh(0),
+  m_gci_slip_thresh(0),
   m_dropped_ev_op(0),
   m_active_op_count(0),
   m_add_drop_mutex(0)
@@ -1220,8 +1220,8 @@ NdbEventBuffer::flushIncompleteEvents(Uint64 gci)
   Uint32 minpos = m_min_gci_index;
   Uint32 maxpos = m_max_gci_index;
 
-  g_eventLogger.info("Flushing incomplete GCI:s < %u/%u",
-                     Uint32(gci >> 32), Uint32(gci));
+  g_eventLogger->info("Flushing incomplete GCI:s < %u/%u",
+                      Uint32(gci >> 32), Uint32(gci));
   while (minpos != maxpos && array[minpos] < gci)
   {
     Gci_container* tmp = find_bucket(array[minpos]);
@@ -1929,11 +1929,11 @@ NdbEventBuffer::execSUB_GCP_COMPLETE_REP(const SubGcpCompleteRep * const rep,
         goto do_complete;
       }
       /** out of order something */
-      g_eventLogger.info("out of order bucket: %d gci: %u/%u minGCI: %u/%u m_latestGCI: %u/%u",
-                         (int)(bucket-(Gci_container*)m_active_gci.getBase()),
-                         Uint32(gci >> 32), Uint32(gci),
-                         Uint32(minGCI >> 32), Uint32(minGCI),
-                         Uint32(m_latestGCI >> 32), Uint32(m_latestGCI));
+      g_eventLogger->info("out of order bucket: %d gci: %u/%u minGCI: %u/%u m_latestGCI: %u/%u",
+                          (int)(bucket-(Gci_container*)m_active_gci.getBase()),
+                          Uint32(gci >> 32), Uint32(gci),
+                          Uint32(minGCI >> 32), Uint32(minGCI),
+                          Uint32(m_latestGCI >> 32), Uint32(m_latestGCI));
       bucket->m_state = Gci_container::GC_COMPLETE;
       bucket->m_gcp_complete_rep_count = 1; // Prevent from being reused
       m_latest_complete_GCI = gci;
@@ -1957,14 +1957,14 @@ NdbEventBuffer::complete_outof_order_gcis()
   Uint64 stop_gci = m_latest_complete_GCI;
 
   Uint64 start_gci = array[minpos];
-  g_eventLogger.info("complete_outof_order_gcis from: %u/%u to: %u/%u",
-                     Uint32(start_gci >> 32), Uint32(start_gci),
-                     Uint32(stop_gci >> 32), Uint32(stop_gci));
+  g_eventLogger->info("complete_outof_order_gcis from: %u/%u(%u) to: %u/%u(%u)",
+                      Uint32(start_gci >> 32), Uint32(start_gci), minpos,
+                      Uint32(stop_gci >> 32), Uint32(stop_gci), maxpos);
 
   assert(start_gci <= stop_gci);
   do
   {
-    Uint64 start_gci = array[minpos];
+    start_gci = array[minpos];
     Gci_container* bucket = find_bucket(start_gci);
     assert(bucket);
     assert(maxpos == m_max_gci_index);
@@ -1978,10 +1978,10 @@ NdbEventBuffer::complete_outof_order_gcis()
 
 #ifdef VM_TRACE
     ndbout_c("complete_outof_order_gcis - completing %u/%u rows: %u",
-             Uint32(start_gci), Uint32(start_gci), bucket->m_data.m_count);
+             Uint32(start_gci >> 32), Uint32(start_gci), bucket->m_data.m_count);
 #else
     ndbout_c("complete_outof_order_gcis - completing %u/%u",
-             Uint32(start_gci), Uint32(start_gci));
+             Uint32(start_gci >> 32), Uint32(start_gci));
 #endif
     
     complete_bucket(bucket);
@@ -3277,28 +3277,32 @@ NdbEventBuffer::reportStatus()
   else
     apply_gci= latest_gci;
 
-  if (100*(Uint64)m_free_data_sz < m_min_free_thresh*(Uint64)m_total_alloc &&
-      m_total_alloc > 1024*1024)
+  if (m_free_thresh)
   {
-    /* report less free buffer than m_free_thresh,
-       next report when more free than 2 * m_free_thresh
-    */
-    m_min_free_thresh= 0;
-    m_max_free_thresh= 2 * m_free_thresh;
-    goto send_report;
-  }
+    if (100*(Uint64)m_free_data_sz < m_min_free_thresh*(Uint64)m_total_alloc &&
+        m_total_alloc > 1024*1024)
+    {
+      /* report less free buffer than m_free_thresh,
+         next report when more free than 2 * m_free_thresh
+      */
+      m_min_free_thresh= 0;
+      m_max_free_thresh= 2 * m_free_thresh;
+      goto send_report;
+    }
   
-  if (100*(Uint64)m_free_data_sz > m_max_free_thresh*(Uint64)m_total_alloc &&
-      m_total_alloc > 1024*1024)
-  {
-    /* report more free than 2 * m_free_thresh
-       next report when less free than m_free_thresh
-    */
-    m_min_free_thresh= m_free_thresh;
-    m_max_free_thresh= 100;
-    goto send_report;
+    if (100*(Uint64)m_free_data_sz > m_max_free_thresh*(Uint64)m_total_alloc &&
+        m_total_alloc > 1024*1024)
+    {
+      /* report more free than 2 * m_free_thresh
+         next report when less free than m_free_thresh
+      */
+      m_min_free_thresh= m_free_thresh;
+      m_max_free_thresh= 100;
+      goto send_report;
+    }
   }
-  if (latest_gci-apply_gci >=  m_gci_slip_thresh)
+  if (m_gci_slip_thresh &&
+      (latest_gci-apply_gci >= m_gci_slip_thresh))
   {
     goto send_report;
   }

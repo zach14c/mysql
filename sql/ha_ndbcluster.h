@@ -152,6 +152,7 @@ typedef struct st_ndbcluster_share {
   char *table_name;
   Ndb::TupleIdRange tuple_id_range;
   struct Ndb_statistics stat;
+  bool util_thread; // if opened by util thread
 #ifdef HAVE_NDB_BINLOG
   uint32 connect_count;
   uint32 flags;
@@ -574,6 +575,7 @@ private:
   }
   uchar *get_buffer(Thd_ndb *thd_ndb, uint size);
   uchar *copy_row_to_buffer(Thd_ndb *thd_ndb, const uchar *record);
+  
 
   int get_blob_values(const NdbOperation *ndb_op, uchar *dst_record,
                       const MY_BITMAP *bitmap);

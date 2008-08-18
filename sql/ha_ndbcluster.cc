@@ -152,6 +152,7 @@ static int ndb_get_table_statistics(ha_ndbcluster*, bool, Ndb*, const NDBTAB *,
 static int ndb_get_table_statistics(ha_ndbcluster*, bool, Ndb*,
                                     const NdbRecord *, struct Ndb_statistics *);
 
+THD *injector_thd= 0;
 
 // Util thread variables
 pthread_t ndb_util_thread;
@@ -202,6 +203,7 @@ SHOW_VAR ndb_status_variables[]= {
   {"config_from_port",    (char*) &g_ndb_status.connected_port,       SHOW_LONG},
 //{"number_of_replicas",  (char*) &g_ndb_status.number_of_replicas,   SHOW_LONG},
   {"number_of_data_nodes",(char*) &g_ndb_status.number_of_data_nodes, SHOW_LONG},
+  {"cluster_connection_pool",(char*) &opt_ndb_cluster_connection_pool, SHOW_LONG},
   {NullS, NullS, SHOW_LONG}
 };
 
@@ -647,7 +649,7 @@ ha_ndbcluster::copy_row_to_buffer(Thd_ndb *thd_ndb, const uchar *record)
   memcpy(row, record, table->s->reclength);
   return row;
 }
-  
+
 int g_get_ndb_blobs_value(NdbBlob *ndb_blob, void *arg)
 {
   ha_ndbcluster *ha= (ha_ndbcluster *)arg;
@@ -4624,21 +4626,26 @@ int ha_ndbcluster::external_lock(THD *thd, int lock_type)
   {
     DBUG_PRINT("info", ("lock_type == F_UNLCK"));
 
-    if (ndb_cache_check_time && m_rows_changed)
+    if (m_rows_changed)
     {
-      DBUG_PRINT("info", ("Rows has changed and util thread is running"));
+      DBUG_PRINT("info", ("Rows has changed"));
+
       if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
       {
-        DBUG_PRINT("info", ("Add share to list of tables to be invalidated"));
+        DBUG_PRINT("info", ("Add share to list of changed tables"));
         /* NOTE push_back allocates memory using transactions mem_root! */
-        thd_ndb->changed_tables.push_back(m_share, &thd->transaction.mem_root);
+        thd_ndb->changed_tables.push_back(m_share,
+                                          &thd->transaction.mem_root);
       }
 
-      pthread_mutex_lock(&m_share->mutex);
-      DBUG_PRINT("info", ("Invalidating commit_count"));
-      m_share->commit_count= 0;
-      m_share->commit_count_lock++;
-      pthread_mutex_unlock(&m_share->mutex);
+      if (ndb_cache_check_time)
+      {
+        pthread_mutex_lock(&m_share->mutex);
+        DBUG_PRINT("info", ("Invalidating commit_count"));
+        m_share->commit_count= 0;
+        m_share->commit_count_lock++;
+        pthread_mutex_unlock(&m_share->mutex);
+      }
     }
 
     if (!--thd_ndb->lock_count)
@@ -5958,6 +5965,17 @@ int ha_ndbcluster::rename_table(const char *from, const char *to)
 
   DBUG_ENTER("ha_ndbcluster::rename_table");
   DBUG_PRINT("info", ("Renaming %s to %s", from, to));
+
+  if (thd == injector_thd)
+  {
+    /*
+      Table was renamed remotely is already
+      renamed inside ndb.
+      Just rename .ndb file.
+     */
+    DBUG_RETURN(handler::rename_table(from, to));
+  }
+
   set_dbname(from, old_dbname);
   set_dbname(to, new_dbname);
   set_tabname(from);
@@ -6032,7 +6050,7 @@ int ha_ndbcluster::rename_table(const char *from, const char *to)
 #endif
     ERR_RETURN(ndb_error);
   }
-  
+
   // Rename .ndb file
   if ((result= handler::rename_table(from, to)))
   {
@@ -6334,8 +6352,21 @@ retry_temporary_error1:
 int ha_ndbcluster::delete_table(const char *name)
 {
   THD *thd= current_thd;
+  Ndb *ndb;
+  int error= 0;
   DBUG_ENTER("ha_ndbcluster::delete_table");
   DBUG_PRINT("enter", ("name: %s", name));
+
+  if (thd == injector_thd)
+  {
+    /*
+      Table was dropped remotely is already
+      dropped inside ndb.
+      Just drop local files.
+     */
+    DBUG_RETURN(handler::delete_table(name));
+  }
+
   set_dbname(name);
   set_tabname(name);
 
@@ -6348,17 +6379,35 @@ int ha_ndbcluster::delete_table(const char *name)
   {
     DBUG_PRINT("info", ("Schema distribution table not setup"));
     DBUG_ASSERT(ndb_schema_share);
-    DBUG_RETURN(HA_ERR_NO_CONNECTION);
+    error= HA_ERR_NO_CONNECTION;
+    goto err;
   }
 #endif
 
   if (check_ndb_connection(thd))
-    DBUG_RETURN(HA_ERR_NO_CONNECTION);
+  {
+    error= HA_ERR_NO_CONNECTION;
+    goto err;
+  }
 
-  /* Call ancestor function to delete .ndb file */
-  handler::delete_table(name);
+  ndb= get_ndb(thd);
+  /*
+    Drop table in ndb.
+    If it was already gone it might have been dropped
+    remotely, give a warning and then drop .ndb file.
+   */
+  if (!(error= delete_table(thd, this, ndb, name,
+                            m_dbname, m_tabname)) ||
+      error == HA_ERR_NO_SUCH_TABLE)
+  {
+    /* Call ancestor function to delete .ndb file */
+    int error1= handler::delete_table(name);
+    if (!error)
+      error= error1;
+  }
 
-  DBUG_RETURN(delete_table(thd, this, get_ndb(thd), name, m_dbname, m_tabname));
+err:
+  DBUG_RETURN(error);
 }
 
 
@@ -8087,20 +8136,34 @@ ndbcluster_cache_retrieval_allowed(THD *thd,
                                    ulonglong *engine_data)
 {
   Uint64 commit_count;
-  bool is_autocommit= !(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
   char *dbname= full_name;
   char *tabname= dbname+strlen(dbname)+1;
 #ifndef DBUG_OFF
   char buff[22], buff2[22];
 #endif
   DBUG_ENTER("ndbcluster_cache_retrieval_allowed");
-  DBUG_PRINT("enter", ("dbname: %s, tabname: %s, is_autocommit: %d",
-                       dbname, tabname, is_autocommit));
+  DBUG_PRINT("enter", ("dbname: %s, tabname: %s",
+                       dbname, tabname));
 
-  if (!is_autocommit)
+  if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
   {
-    DBUG_PRINT("exit", ("No, don't use cache in transaction"));
-    DBUG_RETURN(FALSE);
+    /* Don't allow qc to be used if table has been previously
+       modified in transaction */
+    Thd_ndb *thd_ndb= get_thd_ndb(thd);
+    if (!thd_ndb->changed_tables.is_empty())
+    {
+      NDB_SHARE* share;
+      List_iterator_fast<NDB_SHARE> it(thd_ndb->changed_tables);
+      while ((share= it++))
+      {
+        if (strcmp(share->table_name, tabname) == 0 &&
+            strcmp(share->db, dbname) == 0)
+        {
+          DBUG_PRINT("exit", ("No, transaction has changed table"));
+          DBUG_RETURN(FALSE);
+        }
+      }
+    }
   }
 
   if (ndb_get_commitcount(thd, dbname, tabname, &commit_count))
@@ -8162,15 +8225,29 @@ ha_ndbcluster::register_query_cache_table(THD *thd,
 #ifndef DBUG_OFF
   char buff[22];
 #endif
-  bool is_autocommit= !(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
   DBUG_ENTER("ha_ndbcluster::register_query_cache_table");
-  DBUG_PRINT("enter",("dbname: %s, tabname: %s, is_autocommit: %d",
-		      m_dbname, m_tabname, is_autocommit));
+  DBUG_PRINT("enter",("dbname: %s, tabname: %s",
+		      m_dbname, m_tabname));
 
-  if (!is_autocommit)
+  if (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
   {
-    DBUG_PRINT("exit", ("Can't register table during transaction"));
-    DBUG_RETURN(FALSE);
+    /* Don't allow qc to be used if table has been previously
+       modified in transaction */
+    Thd_ndb *thd_ndb= get_thd_ndb(thd);
+    if (!thd_ndb->changed_tables.is_empty())
+    {
+      DBUG_ASSERT(m_share);
+      NDB_SHARE* share;
+      List_iterator_fast<NDB_SHARE> it(thd_ndb->changed_tables);
+      while ((share= it++))
+      {
+        if (m_share == share)
+        {
+          DBUG_PRINT("exit", ("No, transaction has changed table"));
+          DBUG_RETURN(FALSE);
+        }
+      }
+    }
   }
 
   if (ndb_get_commitcount(thd, m_dbname, m_tabname, &commit_count))
@@ -8344,9 +8421,17 @@ int handle_trailing_share(THD *thd, NDB_SHARE *share, int have_lock_open)
     }
   }
 
-  sql_print_warning("NDB_SHARE: %s already exists  use_count=%d."
-                    " Moving away for safety, but possible memleak.",
-                    share->key, share->use_count);
+  DBUG_PRINT("info", ("NDB_SHARE: %s already exists use_count=%d, op=0x%lx.",
+                      share->key, share->use_count, (long) share->op));
+  /* 
+     Ignore table shares only opened by util thread
+   */
+  if (!((share->use_count == 1) && share->util_thread))
+  {
+    sql_print_warning("NDB_SHARE: %s already exists use_count=%d."
+                      " Moving away for safety, but possible memleak.",
+                      share->key, share->use_count);
+  }
   dbug_print_open_tables();
 
   /*
@@ -10013,6 +10098,7 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
 #endif /* HAVE_NDB_BINLOG */
       /* ndb_share reference temporary, free below */
       share->use_count++; /* Make sure the table can't be closed */
+      share->util_thread= true;
       DBUG_PRINT("NDB_SHARE", ("%s temporary  use_count: %u",
                                share->key, share->use_count));
       DBUG_PRINT("ndb_util_thread",
@@ -10038,7 +10124,11 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
         /* ndb_share reference temporary free */
         DBUG_PRINT("NDB_SHARE", ("%s temporary free  use_count: %u",
                                  share->key, share->use_count));
-        free_share(&share);
+        
+        pthread_mutex_lock(&ndbcluster_mutex);
+        share->util_thread= false;
+        free_share(&share, true);
+        pthread_mutex_unlock(&ndbcluster_mutex);
         continue;
       }
 #endif /* HAVE_NDB_BINLOG */
@@ -10088,7 +10178,10 @@ pthread_handler_t ndb_util_thread_func(void *arg __attribute__((unused)))
       /* ndb_share reference temporary free */
       DBUG_PRINT("NDB_SHARE", ("%s temporary free  use_count: %u",
                                share->key, share->use_count));
-      free_share(&share);
+      pthread_mutex_lock(&ndbcluster_mutex);
+      share->util_thread= false;
+      free_share(&share, true);
+      pthread_mutex_unlock(&ndbcluster_mutex);
     }
 next:
     /* Calculate new time to wake up */
@@ -10973,7 +11066,6 @@ int ha_ndbcluster::alter_frm(THD *thd, const char *file,
   /* ndb_share reference schema(?) free */
   DBUG_PRINT("NDB_SHARE", ("%s binlog schema(?) free  use_count: %u",
                            m_share->key, m_share->use_count));
-  free_share(&m_share); // Decrease ref_count
 
   DBUG_RETURN(error);
 }
@@ -11013,8 +11105,8 @@ int ha_ndbcluster::alter_table_phase2(THD *thd,
     /* ndb_share reference schema free */
     DBUG_PRINT("NDB_SHARE", ("%s binlog schema free  use_count: %u",
                              m_share->key, m_share->use_count));
-    free_share(&m_share); // Decrease ref_count
   }
+  free_share(&m_share); // Decrease ref_count
   delete alter_data;
   DBUG_RETURN(error);
 }

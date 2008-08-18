@@ -467,10 +467,6 @@ args: -n ScanReadWhileNodeIsDown D1 D2
 
 max-time: 500
 cmd: testScan
-args: -n ScanRestart T1 D1 D2 
-
-max-time: 500
-cmd: testScan
 args: -l 100 -n Scan-bug8262 T6 D1 D2
 
 max-time: 500
@@ -484,6 +480,10 @@ args: -n Bug24447 T1
 max-time: 1000
 cmd: testScan
 args: -n ScanVariants
+
+max-time: 500
+cmd: testScan
+args: -n Bug36124 T1
 
 max-time: 1000
 cmd: testNodeRestart
@@ -790,11 +790,15 @@ args:
 
 max-time: 600
 cmd: testBlobs
-args: -bug 27018
+args: -bug 27018 -skip p
 
 max-time: 600
 cmd: testBlobs
-args: -bug 27370
+args: -bug 27370 -skip p
+
+max-time: 600
+cmd: testBlobs
+args: -bug 36756 -skip p
 
 max-time: 5000
 cmd: testOIBasic
@@ -1082,7 +1086,7 @@ max-time: 600
 cmd: test_event
 args: -l 1 -n SubscribeNR T1
 
-max-time: 300
+max-time: 600
 cmd: testNodeRestart
 args: -n Bug34702 T1
 
@@ -1090,3 +1094,76 @@ max-time: 600
 cmd: test_event
 args: -n Bug35208 T1
 
+max-time: 300
+cmd: test_event
+args: -n Bug37279 T1
+
+max-time: 300
+cmd: test_event
+args: -n Bug37338 T1
+
+max-time: 300
+cmd: test_event
+args: -n Bug37442 T1
+
+# 2008-04-22
+max-time: 1500
+cmd: testNodeRestart
+args: -n MNF -l 15 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36199 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36246 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36247 T1
+
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36276 T1
+
+# 2008-04-25
+max-time: 300
+cmd: testNodeRestart
+args: -n Bug36245 T1
+
+max-time: 300
+cmd: test_event
+args: -n Bug34853 T1
+
+# EOF 2008-04-25
+# 2008-05-29
+max-time: 1200
+cmd: testDict
+args: -l 1 -n FailAddFragment
+
+# EOF 2008-05-29
+# 2008-06-03
+max-time: 1200
+cmd: testNdbApi
+args: -l 100 -n Bug37158
+
+# EOF 2008-06-03
+
+max-time: 500
+cmd: test_event
+args -n bug37672 T1
+
+#EOF 2008-07-04
+
+max-time: 500
+cmd: testScanFilter
+args: 
+
+#EOF 2008-07-09
+
+max-time: 600
+cmd: test_event
+args -r 5000 -n Bug30780 T1
+
+#EOF 2008-08-11

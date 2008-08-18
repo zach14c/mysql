@@ -5893,8 +5893,9 @@ mysql_fast_or_online_alter_table(THD *thd,
     with LOCK_open.
   */
   error= ha_autocommit_or_rollback(thd, 0);
-  if (end_active_trans(thd))
-    error=1;
+  if (ha_commit(thd))
+    error= 1;
+
   if (error)
     DBUG_RETURN(2);
 

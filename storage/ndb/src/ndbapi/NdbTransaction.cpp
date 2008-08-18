@@ -307,8 +307,30 @@ NdbTransaction::execute(ExecType aTypeOfExec,
    * NdbBlob::postExecute() for more info.
    */
 
-  ExecType tExecType;
   NdbOperation* tPrepOp;
+
+  if (abortOption != NdbOperation::DefaultAbortOption)
+  {
+    DBUG_PRINT("info", ("Forcing operations to take execute() abortOption %d",
+                        abortOption));
+    /* For Blobs, we have to execute with DefaultAbortOption
+     * If the user supplied a non default AbortOption to execute()
+     * then we need to make sure that all of the operations in their
+     * batch are set to use the supplied AbortOption so that the 
+     * expected behaviour is obtained when executing below
+     */
+    tPrepOp= theFirstOpInList;
+    while(tPrepOp != NULL)
+    {
+      DBUG_PRINT("info", ("Changing abortOption from %d", 
+                          tPrepOp->m_abortOption));
+      tPrepOp->m_abortOption= abortOption;
+      tPrepOp= tPrepOp->next();
+    }
+  }
+
+
+  ExecType tExecType;
   NdbOperation* tCompletedFirstOp = NULL;
   NdbOperation* tCompletedLastOp = NULL;
 
@@ -524,14 +546,14 @@ NdbTransaction::executeNoBlobs(NdbTransaction::ExecType aTypeOfExec,
          * We behave rather similarly in both places.
          * Hitting this is certainly a bug though...
          */
-        g_eventLogger.error("WARNING: Timeout in executeNoBlobs() waiting for "
-                            "response from NDB data nodes. This should NEVER "
-                            "occur. You have likely hit a NDB Bug. Please "
-                            "file a bug.");
+        g_eventLogger->error("WARNING: Timeout in executeNoBlobs() waiting for "
+                             "response from NDB data nodes. This should NEVER "
+                             "occur. You have likely hit a NDB Bug. Please "
+                             "file a bug.");
         DBUG_PRINT("error",("This timeout should never occure, execute()"));
-        g_eventLogger.error("Forcibly trying to rollback txn (%p"
-                            ") to try to clean up data node resources.",
-                            this);
+        g_eventLogger->error("Forcibly trying to rollback txn (%p"
+                             ") to try to clean up data node resources.",
+                             this);
         executeNoBlobs(NdbTransaction::Rollback);
         theError.code = 4012;
         theError.status= NdbError::PermanentError;
@@ -935,7 +957,7 @@ NdbTransaction::sendROLLBACK()      // Send a TCROLLBACKREQ signal;
     tSignal.setData(tTransId2, 3);
     if(theError.code == 4012)
     {
-      g_eventLogger.error("Sending TCROLLBACKREQ with Bad flag");
+      g_eventLogger->error("Sending TCROLLBACKREQ with Bad flag");
       tSignal.setLength(tSignal.getLength() + 1); // + flags
       tSignal.setData(0x1, 4); // potentially bad data
     }
@@ -1904,28 +1926,24 @@ from other transactions.
       tGCI_lo = 0;
     }
     Uint64 tGCI = Uint64(tGCI_lo) | (Uint64(tGCI_hi) << 32);
-    if (tCommitFlag == 1) {
+    if (tCommitFlag == 1) 
+    {
       theCommitStatus = Committed;
       theGlobalCheckpointId = tGCI;
       if (tGCI) // Read(dirty) only transaction doesnt get GCI
       {
 	*p_latest_trans_gci = tGCI;
       }
-    } else if ((tNoComp >= tNoSent) &&
-               (theLastExecOpInList->theCommitIndicator == 1)){
-      
-      
-/**********************************************************************/
-// We sent the transaction with Commit flag set and received a CONF with
-// no Commit flag set. This is clearly an anomaly.
-/**********************************************************************/
-      theError.code = 4011;
-      theCompletionStatus = CompletedFailure;
-      theReturnStatus = NdbTransaction::ReturnFailure;
-      theCommitStatus = Aborted;
-      return 0;
+    } 
+    else if (theLastExecOpInList->theCommitIndicator == 1)
+    {  
+      /**
+       * We're waiting for a commit reply...
+       */
+      return -1;
     }//if
-    if (tNoComp >= tNoSent) {
+    if (tNoComp >= tNoSent) 
+    {
       return 0;	// No more operations to wait for
     }//if
      // Not completed the reception yet.
@@ -2085,27 +2103,25 @@ NdbTransaction::receiveTCINDXCONF(const TcIndxConf * indxConf,
     Uint64 tGCI = Uint64(tGCI_lo) | (Uint64(tGCI_hi) << 32);
 
     theNoOfOpCompleted = tNoComp;
-    if (tCommitFlag == 1) {
+    if (tCommitFlag == 1) 
+    {
       theCommitStatus = Committed;
       theGlobalCheckpointId = tGCI;
       if (tGCI) // Read(dirty) only transaction doesnt get GCI
       {
 	*p_latest_trans_gci = tGCI;
       }
-    } else if ((tNoComp >= tNoSent) &&
-               (theLastExecOpInList->theCommitIndicator == 1)){
-
-      /**********************************************************************/
-      // We sent the transaction with Commit flag set and received a CONF with
-      // no Commit flag set. This is clearly an anomaly.
-      /**********************************************************************/
-      theError.code = 4011;
-      theCompletionStatus = NdbTransaction::CompletedFailure;
-      theCommitStatus = NdbTransaction::Aborted;
-      theReturnStatus = NdbTransaction::ReturnFailure;
-      return 0;
+    }
+    else if (theLastExecOpInList->theCommitIndicator == 1)
+    {  
+      /**
+       * We're waiting for a commit reply...
+       */
+      return -1;
     }//if
-    if (tNoComp >= tNoSent) {
+
+    if (tNoComp >= tNoSent) 
+    {
       return 0;	// No more operations to wait for
     }//if
      // Not completed the reception yet.
@@ -2567,6 +2583,8 @@ NdbTransaction::scanTable(const NdbRecord *result_record,
     DBUG_RETURN(NULL);
   }
 
+  op_idx->m_scanUsingOldApi= false;
+
   /* The real work is done in NdbScanOperation */
   if (op_idx->scanTableImpl(result_record,
                             lock_mode,
@@ -2605,6 +2623,8 @@ NdbTransaction::scanIndex(const NdbRecord *key_record,
     setOperationErrorCodeAbort(4000);
     return NULL;
   }
+
+  op->m_scanUsingOldApi= false;
 
   /* Defer the rest of the work to NdbIndexScanOperation */
   if (op->scanIndexImpl(key_record,

@@ -2367,9 +2367,8 @@ Backup::stopBackupReply(Signal* signal, BackupRecordPtr ptr, Uint32 nodeId)
 void
 Backup::initReportStatus(Signal *signal, BackupRecordPtr ptr)
 {
-  struct timeval the_time;
-  gettimeofday(&the_time, 0);
-  ptr.p->m_next_report = the_time.tv_sec + m_backup_report_frequency;
+  Uint64 now = NdbTick_CurrentMillisecond() / 1000;
+  ptr.p->m_next_report = now + m_backup_report_frequency;
 }
 
 void
@@ -2378,12 +2377,11 @@ Backup::checkReportStatus(Signal *signal, BackupRecordPtr ptr)
   if (m_backup_report_frequency == 0)
     return;
 
-  struct timeval the_time;
-  gettimeofday(&the_time, 0);
-  if (the_time.tv_sec > ptr.p->m_next_report)
+  Uint64 now = NdbTick_CurrentMillisecond() / 1000;
+  if (now > ptr.p->m_next_report)
   {
     reportStatus(signal, ptr);
-    ptr.p->m_next_report = the_time.tv_sec + m_backup_report_frequency;
+    ptr.p->m_next_report = now + m_backup_report_frequency;
   }
 }
 
@@ -2813,6 +2811,8 @@ Backup::backupAllData(Signal* signal, BackupRecordPtr ptr)
   req->senderRef = reference();
   req->senderData = ptr.i;
   req->requestData = 0;
+  req->tableId = 0;
+  req->tableType = 0;
   sendSignal(DBDICT_REF, GSN_LIST_TABLES_REQ, signal, 
 	     ListTablesReq::SignalLength, JBB);
 }
@@ -2821,56 +2821,68 @@ void
 Backup::execLIST_TABLES_CONF(Signal* signal)
 {
   jamEntry();
-  
+  Uint32 fragInfo = signal->header.m_fragmentInfo;
   ListTablesConf* conf = (ListTablesConf*)signal->getDataPtr();
+  Uint32 noOfTables = conf->noOfTables;
 
   BackupRecordPtr ptr LINT_SET_PTR;
   c_backupPool.getPtr(ptr, conf->senderData);
-  
-  const Uint32 len = signal->length() - ListTablesConf::HeaderLength;
-  for(unsigned int i = 0; i<len; i++) {
-    jam();
-    Uint32 tableId = ListTablesConf::getTableId(conf->tableData[i]);
-    Uint32 tableType = ListTablesConf::getTableType(conf->tableData[i]);
-    Uint32 state= ListTablesConf::getTableState(conf->tableData[i]);
 
-    if (! (DictTabInfo::isTable(tableType) ||
-	   DictTabInfo::isIndex(tableType) ||
-	   DictTabInfo::isFilegroup(tableType) ||
-	   DictTabInfo::isFile(tableType)))
-    {
-      jam();
-      continue;
-    }
-    
-    if (state != DictTabInfo::StateOnline)
-    {
-      jam();
-      continue;
-    }
-    
-    TablePtr tabPtr;
-    ptr.p->tables.seize(tabPtr);
-    if(tabPtr.i == RNIL) {
-      jam();
-      defineBackupRef(signal, ptr, DefineBackupRef::FailedToAllocateTables);
-      return;
-    }//if
-    tabPtr.p->tableId = tableId;
-    tabPtr.p->tableType = tableType;
-  }//for
-  
-  if(len == ListTablesConf::DataLength) {
-    jam();
-    /**
-     * Not finished...
-     */
-    return;
-  }//if
+  if (noOfTables > 0)
+  {
+    ndbassert(signal->getNoOfSections() > 0);
+    ListTablesData ltd;
+    const Uint32 listTablesDataSizeInWords = (sizeof(ListTablesData) + 3) / 4;
+    SegmentedSectionPtr tableDataPtr;
+    signal->getSection(tableDataPtr, ListTablesConf::TABLE_DATA);
+    SimplePropertiesSectionReader
+      tableDataReader(tableDataPtr, getSectionSegmentPool());
 
-  /**
-   * All tables fetched
+    tableDataReader.reset();
+    for(unsigned int i = 0; i<noOfTables; i++) {
+      jam();
+      tableDataReader.getWords((Uint32 *)&ltd, listTablesDataSizeInWords);
+      Uint32 tableId = ltd.getTableId();
+      Uint32 tableType = ltd.getTableType();
+      Uint32 state= ltd.getTableState();
+
+      if (! (DictTabInfo::isTable(tableType) ||
+             DictTabInfo::isIndex(tableType) ||
+             DictTabInfo::isFilegroup(tableType) ||
+             DictTabInfo::isFile(tableType)))
+      {
+        jam();
+        continue;
+      }
+
+      if (state != DictTabInfo::StateOnline)
+      {
+        jam();
+        continue;
+      }
+
+      TablePtr tabPtr;
+      ptr.p->tables.seize(tabPtr);
+      if(tabPtr.i == RNIL) {
+        jam();
+        defineBackupRef(signal, ptr, DefineBackupRef::FailedToAllocateTables);
+        releaseSections(signal);
+        return;
+      }//if
+      tabPtr.p->tableId = tableId;
+      tabPtr.p->tableType = tableType;
+    }//for
+    releaseSections(signal);
+  }
+
+  /*
+    If first or not last signal
+    then keep accumulating table data
    */
+  if ((fragInfo == 1) || (fragInfo == 2))
+  {
+    return;
+  }
   openFiles(signal, ptr);
 }
 

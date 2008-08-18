@@ -6146,9 +6146,8 @@ void Dblqh::execCOMPLETE(Signal* signal)
     errorReport(signal, 1);
     return;
   }//if
-  if (ERROR_INSERTED(5042)) {
-    ndbrequire(false);
-  }
+  CRASH_INSERTION(5042);
+
   if (ERROR_INSERTED(5013)) {
     CLEAR_ERROR_INSERT_VALUE;
     sendSignalWithDelay(cownref, GSN_COMPLETE, signal, 2000, 3);
@@ -7687,6 +7686,22 @@ void Dblqh::lqhTransNextLab(Signal* signal)
        *
        * now scan markers
        */
+      if (ERROR_INSERTED(5050))
+      {
+        ndbout_c("send ZSCAN_MARKERS with 5s delay and killing master");
+        CLEAR_ERROR_INSERT_VALUE;
+        signal->theData[0] = ZSCAN_MARKERS;
+        signal->theData[1] = tcNodeFailptr.i;
+        signal->theData[2] = 0;
+        signal->theData[3] = RNIL;
+        sendSignalWithDelay(cownref, GSN_CONTINUEB, signal, 5000, 4);
+        
+        signal->theData[0] = 9999;
+        sendSignal(numberToRef(CMVMI, 
+                               refToNode(tcNodeFailptr.p->newTcBlockref)), 
+                   GSN_NDB_TAMPER, signal, 1, JBB);
+        return;
+      }
       scanMarkers(signal, tcNodeFailptr.i, 0, RNIL);
       return;
     }//if
@@ -7772,6 +7787,20 @@ Dblqh::scanMarkers(Signal* signal,
   tcNodeFailPtr.i = tcNodeFail;
   ptrCheckGuard(tcNodeFailPtr, ctcNodeFailrecFileSize, tcNodeFailRecord);
   const Uint32 crashedTcNodeId = tcNodeFailPtr.p->oldNodeId;
+
+  if (tcNodeFailPtr.p->tcFailStatus == TcNodeFailRecord::TC_STATE_BREAK)
+  {
+    jam();
+    
+    /* ----------------------------------------------------------------------
+     *  AN INTERRUPTION TO THIS NODE FAIL HANDLING WAS RECEIVED AND A NEW 
+     *  TC HAVE BEEN ASSIGNED TO TAKE OVER THE FAILED TC. PROBABLY THE OLD 
+     *  NEW TC HAVE FAILED.
+     * ---------------------------------------------------------------------- */
+    tcNodeFailptr = tcNodeFailPtr;
+    lqhTransNextLab(signal);
+    return;
+  }
   
   CommitAckMarkerIterator iter;
   if(i == RNIL){
@@ -8925,7 +8954,7 @@ Dblqh::copy_bounds(Uint32 * dst, TcConnectionrec* tcPtrP)
     
     if(len < left)
     {
-      offset = len;
+      offset = tcPtrP->m_offset_current_keybuf + len;
     }
     else
     {
@@ -19694,6 +19723,18 @@ Dblqh::execDUMP_STATE_ORD(Signal* signal)
 			   tcRec.p->transid[0], tcRec.p->transid[1], key.c_str());
       infoEvent(buf);
     }
+  }
+  
+  if (arg == DumpStateOrd::SchemaResourceSnapshot)
+  {
+    RSS_AP_SNAPSHOT_SAVE(c_fragment_pool);
+    return;
+  }
+
+  if (arg == DumpStateOrd::SchemaResourceCheckLeak)
+  {
+    RSS_AP_SNAPSHOT_CHECK(c_fragment_pool);
+    return;
   }
 }//Dblqh::execDUMP_STATE_ORD()
 
