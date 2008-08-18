@@ -156,7 +156,9 @@ Connection* StorageDatabase::createDatabase(void)
 	try
 		{
 		masterConnection = getConnection();
+#ifndef FALCONDB
 		IO::createPath(filename);
+#endif
 		masterConnection->createDatabase(name, filename, ACCOUNT, PASSWORD, threads);
 		Statement *statement = masterConnection->createStatement();
 		

@@ -411,13 +411,17 @@ void IO::declareFatalError()
 	fatalError = true;
 }
 
+
+#ifndef ENOSYS
+#define ENOSYS EEXIST
+#endif
+
+// Make sure parent directories for file exist
 void IO::createPath(const char *fileName)
 {
-	// First, better make sure directories exists
 	JString fname = getPath(fileName);
 
 	char directory [256], *q = directory;
-
 	for (const char *p = fname.getString(); *p;)
 		{
 		char c = *p++;
@@ -427,9 +431,14 @@ void IO::createPath(const char *fileName)
 			*q = 0;
 			
 			if (q > directory && q [-1] != ':')
-				if (MKDIR (directory) && errno != EEXIST)
+				{
+				if (MKDIR (directory) && errno != EEXIST && errno != ENOSYS)
+					// ENOSYS is a Solaris speficic workaround, mkdir returns it
+					// on existing automounted NFS directories, instead
+					// of EEXIST.
 					throw SQLError (IO_ERROR, 
 					"can't create directory \"%s\"\n", directory);
+				}
 			}
 		*q++ = c;
 		}
