@@ -398,12 +398,12 @@ bool StorageTableShare::validateIndexes()
 	return true;
 }
 
+// Assumes syncIndexes is locked
+
 StorageIndexDesc* StorageTableShare::getIndex(int indexId)
 {
 	if (!indexes.length || indexId >= numberIndexes)
 		return NULL;
-	
-	ASSERT(validateIndexes());
 	
 	return indexes.get(indexId);
 }
@@ -416,11 +416,9 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexId, StorageIndexDesc *ind
 		index = NULL;
 	else
 		{
-		Sync sync(syncObject, "StorageTableShare::getIndex");
+		Sync sync(syncIndexes, "StorageTableShare::getIndex");
 		sync.lock(Shared);
 	
-		ASSERT(validateIndexes());
-
 		index = indexes.get(indexId);
 	
 		if (index)
@@ -432,7 +430,7 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexId, StorageIndexDesc *ind
 
 StorageIndexDesc* StorageTableShare::getIndex(const char *name)
 {
-	Sync sync(syncObject, "StorageTableShare::getIndex(name)");
+	Sync sync(syncIndexes, "StorageTableShare::getIndex(name)");
 	sync.lock(Shared);
 	
 	for (int i = 0; i < numberIndexes; i++)
@@ -479,11 +477,7 @@ int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
 			
 			if (strcmp(index->getIndexName(), indexName) == 0 &&
 				strcmp(index->getSchemaName(), schemaName) == 0)
-				{
-//				if (n != indexes.get(n)->id) //debug
-//					return n;
 				return n;
-			}
 			}
 		
 	return -1;
@@ -500,6 +494,7 @@ int StorageTableShare::haveIndexes(int indexCount)
 	for (int n = 0; n < numberIndexes; ++n)
 		{
 		StorageIndexDesc* index = indexes.get(n);
+		
 		if (!index)
 			return false;
 			

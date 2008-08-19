@@ -45,7 +45,6 @@
 #include "RSet.h"
 #include "WalkIndex.h"
 #include "WalkDeferred.h"
-// #include "Interlock.h" // debug
 
 #define SEGMENT_BYTE(segment,count)		((indexVersion >= INDEX_VERSION_1) ? count - segment : segment)
 #define PAD_BYTE(field)					((indexVersion >= INDEX_VERSION_1) ? field->indexPadByte : 0)
@@ -111,17 +110,10 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 	syncDIHash.setName("Index::syncDIHash");
 	syncUnique.setName("Index::syncUnique");
 	deferredIndexes.syncObject.setName("Index::deferredIndexes.syncObject");
-
-	/*** debug
-	useCount = 1;
-	syncObject.setName("Index::syncObject");
-	***/
 }
 
 Index::~Index()
 {
-	// ASSERT(useCount <= 2); // debug
-	
 	if (deferredIndexes.first)
 		{
 		Sync sync(&deferredIndexes.syncObject, "Index::~Index");
@@ -1146,35 +1138,3 @@ void Index::scanDIHash(IndexKey* scanKey, int searchFlags, Bitmap *bitmap)
 			}
 		}
 }
-
-#if 0 //debug
-void Index::lock(bool exclusiveLock)
-{
-	syncObject.lock(NULL, (exclusiveLock) ? Exclusive : Shared);
-}
-
-void Index::unlock(void)
-{
-	syncObject.unlock();
-}
-
-void Index::addRef()
-{
-	INTERLOCKED_INCREMENT(useCount);
-}
-
-void Index::release()
-{
-	ASSERT (useCount > 0);
-
-	if (INTERLOCKED_DECREMENT(useCount) == 0)
-		{
-		/*** debugging only
-		int cnt = useCount;
-		Table *t = table;
-		const char *tableName = table->name;
-		***/
-		//delete this; // disabled for debug
-		}
-}
-#endif
