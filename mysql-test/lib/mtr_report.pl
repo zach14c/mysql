@@ -449,7 +449,11 @@ sub mtr_report_stats ($) {
 
                 # When trying to set lower_case_table_names = 2
                 # on a case sensitive file system. Bug#37402.
-                /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./
+                /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./ or
+
+                # Bug#20129 test of crashed tables
+                /Got an error from thread_id=.*, ha_myisam.cc:/ or
+                /MySQL thread id .*, query id .* Checking table/
               )
             {
               next;                       # Skip these lines

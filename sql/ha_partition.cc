@@ -2533,6 +2533,8 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
 err_handler:
   while (file-- != m_file)
     (*file)->close();
+  if (!is_clone)
+    bitmap_free(&(m_part_info->used_partitions));
 
   DBUG_RETURN(error);
 }
