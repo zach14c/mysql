@@ -198,13 +198,6 @@ int StorageTable::setCurrentIndex(int indexId)
 		return StorageErrorNoIndex;
 		}
 		
-	/*** debug
-	if (currentIndex->index)
-		currentIndex->index->addRef();
-	else
-		currentIndex->index = NULL;
-	***/
-
 	upperBound = lowerBound = NULL;
 	searchFlags = 0;
 	return 0;
@@ -212,14 +205,6 @@ int StorageTable::setCurrentIndex(int indexId)
 	
 int StorageTable::clearCurrentIndex()
 {
-	/*** debug
-	if (currentIndex)
-		if (currentIndex->index)
-			currentIndex->index->release();
-		else
-			currentIndex->index = NULL;
-	***/
-	
 	if (indexesLocked)
 		{
 		share->unlockIndexes();
