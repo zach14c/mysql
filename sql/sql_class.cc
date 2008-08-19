@@ -536,6 +536,7 @@ THD::THD()
           when the DDL blocker is engaged.
   */
    DDL_exception(FALSE),
+   backup_wait_timeout(50),
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */

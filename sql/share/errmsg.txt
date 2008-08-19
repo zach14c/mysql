@@ -6374,3 +6374,5 @@ ER_BACKUP_RELEASE_NAME_LOCK_FAILED
   eng "Restore failed to release the name locks on the tables."
 ER_BACKUP_BACKUPDIR
   eng "The path specified for the system variable backupdir cannot be accessed or is invalid. ref: %-.64s"
+ER_DDL_TIMEOUT
+   eng "The backup wait timeout has expired for query '%-64s'."
