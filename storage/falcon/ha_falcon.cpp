@@ -216,13 +216,13 @@ int StorageInterface::falcon_init(void *p)
 		}
 	catch(SQLException &e)
 		{
-		sql_print_error("Falcon : exception '%s'during initialization",
+		sql_print_error("Falcon: Exception '%s' during initialization",
 			e.getText());
 		error = true;
 		}
 	catch(...)
 		{
-		sql_print_error(" Falcon : general exception in initialization");
+		sql_print_error(" Falcon: General exception in initialization");
 		error = true;
 		}
 
