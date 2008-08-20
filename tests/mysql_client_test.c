@@ -16261,7 +16261,7 @@ static void test_bug32265()
   metadata= mysql_stmt_result_metadata(stmt);
   field= mysql_fetch_field(metadata);
   DIE_UNLESS(strcmp(field->table, "v1") == 0);
-  DIE_UNLESS(strcmp(field->org_table, "t1") == 0);
+  DIE_UNLESS(strcmp(field->org_table, "v1") == 0);
   DIE_UNLESS(strcmp(field->db, "client_test_db") == 0);
   mysql_free_result(metadata);
   mysql_stmt_close(stmt);
@@ -16273,7 +16273,7 @@ static void test_bug32265()
   metadata= mysql_stmt_result_metadata(stmt);
   field= mysql_fetch_field(metadata);
   DIE_UNLESS(strcmp(field->table, "v1") == 0);
-  DIE_UNLESS(strcmp(field->org_table, "t1") == 0);
+  DIE_UNLESS(strcmp(field->org_table, "v1") == 0);
   DIE_UNLESS(strcmp(field->db, "client_test_db") == 0);
   mysql_free_result(metadata);
   mysql_stmt_close(stmt);
