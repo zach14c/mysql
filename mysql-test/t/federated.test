@@ -520,6 +520,7 @@ SELECT * FROM federated.t1 WHERE id < 3 AND id > 7;
 SELECT * FROM federated.t1 WHERE id < 3 OR id > 7; 
 SELECT * FROM federated.t1 WHERE col2 = 'three Three'; 
 SELECT * FROM federated.t1 WHERE col2 > 'one'; 
+--sorted_result
 SELECT * FROM federated.t1 WHERE col2 LIKE 's%'; 
 SELECT * FROM federated.t1 WHERE col2 LIKE 'si%'; 
 SELECT * FROM federated.t1 WHERE col2 LIKE 'se%'; 
@@ -1882,6 +1883,7 @@ connection default;
 
 create server 's1' foreign data wrapper 'mysql' options (port 3306);
 drop server 's1';
+
 --echo End of 5.1 tests
 
 
