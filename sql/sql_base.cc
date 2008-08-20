@@ -3149,9 +3149,10 @@ Locked_tables_list::reopen_tables(THD *thd)
 
     share->table_map_id is not ~0UL.
  */
+static ulong last_table_id= ~0UL;
+
 void assign_new_table_id(TABLE_SHARE *share)
 {
-  static ulong last_table_id= ~0UL;
 
   DBUG_ENTER("assign_new_table_id");
 
@@ -3175,6 +3176,12 @@ void assign_new_table_id(TABLE_SHARE *share)
   DBUG_VOID_RETURN;
 }
 
+void reset_table_id_sequence()
+{
+  pthread_mutex_lock(&LOCK_open);
+  last_table_id= ~0UL;
+  pthread_mutex_unlock(&LOCK_open);
+}
 
 /**
   Compare metadata versions of an element obtained from the table
