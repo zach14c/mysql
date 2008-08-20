@@ -694,7 +694,7 @@ void MemMgr::corrupt(const char* text)
 #endif
 
 	MemMgrLogDump();
-	throw SQLError (BUG_CHECK, "memory is corrupt: %s", text);
+	FATAL("memory is corrupt: %s", text);
 }
 
 void* MemMgr::memoryIsExhausted(void)
