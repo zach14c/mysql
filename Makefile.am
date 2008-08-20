@@ -63,7 +63,7 @@ dist-hook:
 		--datadir=$(distdir)/win/data \
 		--srcdir=$(top_srcdir)
 
-all-local:		abi_check
+all-local:		@ABI_CHECK@	
 
 tags:
 	support-files/build-tags
@@ -270,8 +270,6 @@ TEST_PREPROCESSOR_HEADER = $(top_srcdir)/include/mysql/plugin.h \
 #    to prevent seeing these messages.
 # 2) sed the output to 
 #    2.1) remove blank lines and lines that begin with "# "
-#         (The header information is retained to enable easy
-#         analysis of abi diffs at a later stage).
 #    2.2) When gcc -E is run on the Mac OS  and solaris sparc platforms it 
 #         introduces a line of output that shows up as a difference between
 #         the .pp and .out files. Remove these OS specific preprocessor text
