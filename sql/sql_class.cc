@@ -391,6 +391,7 @@ Diagnostics_area::reset_diagnostics_area()
   m_total_warn_count= 0;
 #endif
   is_sent= FALSE;
+  is_quit= FALSE;
   /** Tiny reset in debug mode to see garbage right away */
   m_status= DA_EMPTY;
   DBUG_VOID_RETURN;

@@ -2231,11 +2231,12 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         if (!trnman_decrement_locked_tables(trn))
         {
           /*
-            OK should not have been sent to client yet (ACID).
+            OK should not have been sent to client yet (ACID),
+            exception: connection is closed by client.
             This is a bit excessive, ACID requires this only if there are some
             changes to commit (rollback shouldn't be tested).
           */
-          DBUG_ASSERT(!thd->main_da.is_sent);
+          DBUG_ASSERT(!thd->main_da.is_sent || thd->main_da.is_quit);
           /* autocommit ? rollback a transaction */
 #ifdef MARIA_CANNOT_ROLLBACK
           if (ma_commit(trn))
