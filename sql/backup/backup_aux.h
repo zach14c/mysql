@@ -50,7 +50,7 @@ namespace backup {
   Constants for appending uniqueness to privileges in backup catalog.
 */
 #define UNIQUE_PRIV_KEY_LEN 9
-#define UNIQUE_PRIV_KEY_FORMAT "%08d"
+#define UNIQUE_PRIV_KEY_FORMAT "%08lu"
 
 /**
   Local version of LEX_STRING structure.
