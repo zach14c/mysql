@@ -403,6 +403,9 @@ void Transaction::rollback()
 	// Rollback pending record versions from newest to oldest in case
 	// there are multiple record versions on a prior record chain
 
+	Sync sync(&syncIndexes, "Transaction::rollback(1.5)");
+	sync.lock(Exclusive);
+
 	while (firstRecord)
 		{
 		record = firstRecord;
@@ -428,6 +431,8 @@ void Transaction::rollback()
 		record->transaction = rollbackTransaction;
 		record->release();
 		}
+	firstRecord = NULL;
+	sync.unlock();
 
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->backloggedRecords)
