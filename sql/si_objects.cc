@@ -2000,7 +2000,7 @@ bool DatabaseObj::do_serialize(THD *thd, String *serialization)
   if (check_db_dir_existence(m_db_name.c_ptr()))
   {
     my_error(ER_BAD_DB_ERROR, MYF(0), m_db_name.c_ptr());
-    DBUG_RETURN(FALSE);
+    DBUG_RETURN(TRUE);
   }
 
   load_db_opt_by_name(thd, m_db_name.c_ptr(), &create);
@@ -2334,8 +2334,9 @@ bool TriggerObj::do_serialize(THD *thd, String *serialization)
 
   alloc_mdl_locks(lst, thd->mem_root);
 
+  DBUG_EXECUTE_IF("backup_fail_add_trigger", DBUG_RETURN(TRUE););
   if (open_tables(thd, &lst, &num_tables, 0))
-    DBUG_RETURN(FALSE);
+    DBUG_RETURN(TRUE);
 
   DBUG_ASSERT(num_tables == 1);
   Table_triggers_list *triggers= lst->table->triggers;

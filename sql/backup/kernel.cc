@@ -905,6 +905,7 @@ int Backup_restore_ctx::do_backup()
   report_stats_pre(info);
 
   DBUG_PRINT("backup",("Writing preamble"));
+  DEBUG_SYNC(m_thd, "backup_before_write_preamble");
 
   if (write_preamble(info, s))
   {
