@@ -1599,7 +1599,7 @@ JOIN::optimize()
     /* Handle the case where we have an OUTER JOIN without a WHERE */
     conds=new Item_int((longlong) 1,1);	// Always true
   }
-  select_= make_select(all_tables, const_table_map,
+  select_= make_select(*all_tables, const_table_map,
                       const_table_map, conds, 1, &error);
   if (error)
   {						/* purecov: inspected */
@@ -15075,15 +15075,6 @@ do_select(JOIN *join,List<Item> *fields,TABLE *table,Procedure *procedure)
   DBUG_RETURN(join->thd->is_error() ? -1 : rc);
 }
 
-//////////////////////////
-  if (rc)
-  {
-    DBUG_PRINT("error",("Error: do_select() failed"));
-  }
-#endif
-  DBUG_RETURN(join->thd->is_error() ? -1 : rc);
-}
-
 
 int rr_sequential_and_unpack(READ_RECORD *info)
 {
@@ -15158,7 +15149,7 @@ sub_select_sjm(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
 
       /* Initialize full scan of the materialized table */
       init_read_record(&last_tab->read_record, join->thd, 
-                       sjm->table, NULL, 1, 1);
+                       sjm->table, NULL, TRUE, TRUE, FALSE);
 
       DBUG_ASSERT(last_tab->read_record.read_record= rr_sequential);
       last_tab->read_first_record= join_read_record_no_init;
@@ -15184,7 +15175,6 @@ sub_select_sjm(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
     return res;
   }
   else
-    rc= -1;
   {
     /* Do index lookup in the materialized table */
     if ((res= join_read_key2(join_tab, sjm->table, sjm->tab_ref)) == 1)
@@ -15196,7 +15186,6 @@ sub_select_sjm(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   return (*join_tab[sjm->n_tables - 1].next_select)(join,
                                                     join_tab + sjm->n_tables,
                                                     FALSE);
-  //return NESTED_LOOP_OK;
 }
 
 
