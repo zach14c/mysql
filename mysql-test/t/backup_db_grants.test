@@ -3,6 +3,7 @@
 #
 
 --source include/not_embedded.inc
+--source include/have_sjis.inc
 
 --disable_warnings
 DROP DATABASE IF EXISTS bup_db_grants;
@@ -104,7 +105,7 @@ SHOW GRANTS FOR 'no_user'@'%';
 
 --echo Now demonstrate what happens when grants are altered in backup image.
 
---exec perl -pi -e 's/ON bup/ON boo/' $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak 
+--exec perl -pi -e "s/ON bup/ON boo/" $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak 
 --echo Run Restore
 --error ER_BACKUP_GRANT_WRONG_DB
 RESTORE FROM 'bup_db_grants.bak';
