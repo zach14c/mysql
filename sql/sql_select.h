@@ -500,7 +500,7 @@ public:
   JOIN_TAB *join_tab,**best_ref;
   JOIN_TAB **map2table;    ///< mapping between table indexes and JOIN_TABs
   JOIN_TAB *join_tab_save; ///< saved join_tab for subquery reexecution
-  TABLE    **table,**all_tables;
+  TABLE    **all_tables;
   /**
     The table which has an index that allows to produce the requried ordering.
     A special value of 0x1 means that the ordering will be produced by
@@ -673,7 +673,7 @@ public:
        select_result *result_arg)
   {
     join_tab= join_tab_save= 0;
-    table= 0;
+    all_tables= 0;
     tables= 0;
     const_tables= 0;
     join_list= 0;

@@ -96,6 +96,7 @@ void ResultSet::init(int count)
 	javaStatementCount = 0;
 	connection = NULL;
 	database = NULL;
+	syncObject.setName("ResultSet::syncObject");
 }
 
 ResultSet::~ResultSet()

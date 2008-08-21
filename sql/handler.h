@@ -30,8 +30,6 @@
 #define NO_HASH				/* Not yet implemented */
 #endif
 
-#define USING_TRANSACTIONS
-
 // the following is for checking tables
 
 #define HA_ADMIN_ALREADY_DONE	  1
@@ -1419,7 +1417,7 @@ public:
   virtual ~handler(void)
   {
     DBUG_ASSERT(locked == FALSE);
-    /* TODO: DBUG_ASSERT(inited == NONE); */
+    DBUG_ASSERT(inited == NONE);
   }
   virtual handler *clone(MEM_ROOT *mem_root);
   /** This is called after create to allow us to set up cached variables */

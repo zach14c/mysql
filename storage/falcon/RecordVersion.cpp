@@ -247,7 +247,7 @@ void RecordVersion::scavenge(TransId targetTransactionId, int oldestActiveSavePo
 	if (!priorVersion)
 		return;
 
-	Sync syncPrior(getSyncPrior(), "RecordVersion::scavenge()-savepoint");
+	Sync syncPrior(getSyncPrior(), "RecordVersion::scavenge");
 	syncPrior.lock(Shared);
 	
 	Record *rec = priorVersion;

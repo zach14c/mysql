@@ -1593,13 +1593,13 @@ JOIN::optimize()
   }
   if (const_tables && !thd->locked_tables_mode &&
       !(select_options & SELECT_NO_UNLOCK))
-    mysql_unlock_some_tables(thd, table, const_tables);
+    mysql_unlock_some_tables(thd, all_tables, const_tables);
   if (!conds && outer_join)
   {
     /* Handle the case where we have an OUTER JOIN without a WHERE */
     conds=new Item_int((longlong) 1,1);	// Always true
   }
-  select_= make_select(*table, const_table_map,
+  select_= make_select(all_tables, const_table_map,
                       const_table_map, conds, 1, &error);
   if (error)
   {						/* purecov: inspected */
@@ -4316,7 +4316,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 
   join->join_tab=stat;
   join->map2table=stat_ref;
-  join->table= join->all_tables=table_vector;
+  join->all_tables= table_vector;
   join->const_tables=const_count;
   join->found_const_table_map=found_const_table_map;
 
@@ -7699,7 +7699,7 @@ get_best_combination(JOIN *join, table_map join_tables)
   {
     TABLE *form;
     *j= *join->best_positions[tablenr].table;
-    form=join->table[tablenr]=j->table;
+    form=join->all_tables[tablenr]=j->table;
     used_tables|= form->map;
     form->reginfo.join_tab=j;
     if (!*j->on_expr_ref)
@@ -7986,7 +7986,7 @@ make_simple_join(JOIN *join,TABLE *tmp_table)
   join_tab= join->join_tab_reexec;
 
   join->join_tab=join_tab;
-  join->table=tableptr; tableptr[0]=tmp_table;
+  join->all_tables=tableptr; tableptr[0]=tmp_table;
   join->tables=1;
   join->const_tables=0;
   join->const_table_map=0;
@@ -9762,24 +9762,23 @@ void JOIN::cleanup(bool full)
 {
   DBUG_ENTER("JOIN::cleanup");
 
-  if (table)
+  if (all_tables)
   {
     JOIN_TAB *tab,*end;
     /*
       Only a sorted table may be cached.  This sorted table is always the
-      first non const table in join->table
+      first non const table in join->all_tables
     */
     if (tables > const_tables) // Test for not-const tables
     {
-      free_io_cache(table[const_tables]);
-      filesort_free_buffers(table[const_tables],full);
+      free_io_cache(all_tables[const_tables]);
+      filesort_free_buffers(all_tables[const_tables],full);
     }
 
     if (full)
     {
       for (tab= join_tab, end= tab+tables; tab != end; tab++)
 	tab->cleanup();
-      table= 0;
     }
     else
     {
@@ -9799,6 +9798,12 @@ void JOIN::cleanup(bool full)
     if (tmp_join)
       tmp_table_param.copy_field= 0;
     group_fields.delete_elements();
+    /* 
+      Ensure that the above delete_elements() would not be called
+      twice for the same list.
+    */
+    if (tmp_join && tmp_join != this)
+      tmp_join->group_fields= group_fields;
     /*
       We can't call delete_elements() on copy_funcs as this will cause
       problems in free_elements() as some of the elements are then deleted.
@@ -10099,7 +10104,7 @@ static void clear_tables(JOIN *join)
     are not re-calculated.
   */
   for (uint i=join->const_tables ; i < join->tables ; i++)
-    mark_as_null_row(join->table[i]);		// All fields are NULL
+    mark_as_null_row(join->all_tables[i]);		// All fields are NULL
 }
 
 /*****************************************************************************
@@ -15021,26 +15026,7 @@ do_select(JOIN *join,List<Item> *fields,TABLE *table,Procedure *procedure)
   if (error == NESTED_LOOP_NO_MORE_ROWS)
     error= NESTED_LOOP_OK;
 
-  if (error == NESTED_LOOP_OK)
-  {
-    /*
-      Sic: this branch works even if rc != 0, e.g. when
-      send_data above returns an error.
-    */
-    if (!table)					// If sending data to client
-    {
-      /*
-	The following will unlock all cursors if the command wasn't an
-	update command
-      */
-      join->join_free();			// Unlock all cursors
-      if (join->result->send_eof())
-	rc= 1;                                  // Don't send error
-    }
-    DBUG_PRINT("info",("%ld records output", (long) join->send_records));
-  }
-  else
-    rc= -1;
+
   if (table)
   {
     int tmp, new_errno= 0;
@@ -15057,7 +15043,39 @@ do_select(JOIN *join,List<Item> *fields,TABLE *table,Procedure *procedure)
     if (new_errno)
       table->file->print_error(new_errno,MYF(0));
   }
+  else
+  {
+    /*
+      The following will unlock all cursors if the command wasn't an
+      update command
+    */
+    join->join_free();			// Unlock all cursors
+  }
+  if (error == NESTED_LOOP_OK)
+  {
+    /*
+      Sic: this branch works even if rc != 0, e.g. when
+      send_data above returns an error.
+    */
+    if (!table)					// If sending data to client
+    {
+      if (join->result->send_eof())
+	rc= 1;                                  // Don't send error
+    }
+    DBUG_PRINT("info",("%ld records output", (long) join->send_records));
+  }
+  else
+    rc= -1;
 #ifndef DBUG_OFF
+  if (rc)
+  {
+    DBUG_PRINT("error",("Error: do_select() failed"));
+  }
+#endif
+  DBUG_RETURN(join->thd->is_error() ? -1 : rc);
+}
+
+//////////////////////////
   if (rc)
   {
     DBUG_PRINT("error",("Error: do_select() failed"));
@@ -15166,6 +15184,7 @@ sub_select_sjm(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
     return res;
   }
   else
+    rc= -1;
   {
     /* Do index lookup in the materialized table */
     if ((res= join_read_key2(join_tab, sjm->table, sjm->tab_ref)) == 1)
@@ -16230,10 +16249,8 @@ join_init_quick_read_record(JOIN_TAB *tab)
 }
 
 
-int rr_sequential(READ_RECORD *info);
-int init_read_record_seq(JOIN_TAB *tab)
+int read_first_record_seq(JOIN_TAB *tab)
 {
-  tab->read_record.read_record= rr_sequential;
   if (tab->read_record.file->ha_rnd_init(1))
     return 1;
   return (*tab->read_record.read_record)(&tab->read_record);
@@ -16256,7 +16273,7 @@ join_init_read_record(JOIN_TAB *tab)
   if (tab->select && tab->select->quick && tab->select->quick->reset())
     return 1;
   init_read_record(&tab->read_record, tab->join->thd, tab->table,
-		   tab->select,1,1);
+		   tab->select,1,1, FALSE);
   return (*tab->read_record.read_record)(&tab->read_record);
 }
 
@@ -17285,6 +17302,9 @@ part_of_refkey(TABLE *table,Field *field)
   @note
     used_key_parts is set to correct key parts used if return value != 0
     (On other cases, used_key_part may be changed)
+    Note that the value may actually be greater than the number of index 
+    key parts. This can happen for storage engines that have the primary 
+    key parts as a suffix for every secondary key.
 
   @retval
     1   key is ok.
@@ -17357,11 +17377,27 @@ static int test_if_order_by_key(ORDER *order, TABLE *table, uint idx,
     reverse=flag;				// Remember if reverse
     key_part++;
   }
-  *used_key_parts= on_primary_key ? table->key_info[idx].key_parts :
-    (uint) (key_part - table->key_info[idx].key_part);
-  if (reverse == -1 && !(table->file->index_flags(idx, *used_key_parts-1, 1) &
-                         HA_READ_PREV))
-    reverse= 0;                                 // Index can't be used
+  if (on_primary_key)
+  {
+    uint used_key_parts_secondary= table->key_info[idx].key_parts;
+    uint used_key_parts_pk=
+      (uint) (key_part - table->key_info[table->s->primary_key].key_part);
+    *used_key_parts= used_key_parts_pk + used_key_parts_secondary;
+
+    if (reverse == -1 &&
+        (!(table->file->index_flags(idx, used_key_parts_secondary - 1, 1) &
+           HA_READ_PREV) ||
+         !(table->file->index_flags(table->s->primary_key,
+                                    used_key_parts_pk - 1, 1) & HA_READ_PREV)))
+      reverse= 0;                               // Index can't be used
+  }
+  else
+  {
+    *used_key_parts= (uint) (key_part - table->key_info[idx].key_part);
+    if (reverse == -1 && 
+        !(table->file->index_flags(idx, *used_key_parts-1, 1) & HA_READ_PREV))
+      reverse= 0;                               // Index can't be used
+  }
   DBUG_RETURN(reverse);
 }
 

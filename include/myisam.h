@@ -168,7 +168,7 @@ typedef struct st_mi_create_info
   ulonglong data_file_length;
   ulonglong key_file_length;
   uint old_options;
-  uint8 language;
+  uint16 language;
   my_bool with_auto_increment;
 } MI_CREATE_INFO;
 

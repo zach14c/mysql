@@ -31,6 +31,7 @@ DatabaseCopy::DatabaseCopy(Dbb *db)
 	rewrittenPages = NULL;
 	highWater = 0;
 	atEnd = false;
+	syncObject.setName("DatabaseCopy::syncObject");
 }
 
 DatabaseCopy::~DatabaseCopy(void)

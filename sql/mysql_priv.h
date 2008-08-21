@@ -53,6 +53,8 @@
 #include <netdb.h>
 #endif
 
+class Parser_state;
+
 /**
   Query type constants.
 
@@ -885,8 +887,8 @@ inline bool check_identifier_name(LEX_STRING *str)
 bool test_if_data_home_dir(const char *dir);
 
 bool parse_sql(THD *thd,
-               class Lex_input_stream *lip,
-               class Object_creation_ctx *creation_ctx);
+               Parser_state *parser_state,
+               Object_creation_ctx *creation_ctx);
 
 enum enum_mysql_completiontype {
   ROLLBACK_RELEASE=-2, ROLLBACK=1,  ROLLBACK_AND_CHAIN=7,
@@ -2112,8 +2114,8 @@ extern struct my_option my_long_options[];
 extern const LEX_STRING view_type;
 extern scheduler_functions thread_scheduler;
 extern TYPELIB thread_handling_typelib;
-extern uint8 uc_update_queries[SQLCOM_END+1];
 extern uint sql_command_flags[];
+extern uint server_command_flags[];
 extern TYPELIB log_output_typelib;
 
 /* optional things, have_* variables */
@@ -2233,6 +2235,7 @@ int writefrm(const char* name, const uchar* data, size_t len);
 int closefrm(TABLE *table, bool free_share);
 int read_string(File file, uchar* *to, size_t length);
 void free_blobs(TABLE *table);
+void free_field_buffers_larger_than(TABLE *table, uint32 size);
 int set_zone(int nr,int min_zone,int max_zone);
 ulong convert_period_to_month(ulong period);
 ulong convert_month_to_period(ulong month);
@@ -2278,8 +2281,8 @@ ulonglong get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
 int test_if_number(char *str,int *res,bool allow_wildcards);
 void change_byte(uchar *,uint,char,char);
 void init_read_record(READ_RECORD *info, THD *thd, TABLE *reg_form,
-		      SQL_SELECT *select,
-		      int use_record_cache, bool print_errors);
+		      SQL_SELECT *select, int use_record_cache, 
+                      bool print_errors, bool disable_rr_cache);
 void init_read_record_idx(READ_RECORD *info, THD *thd, TABLE *table, 
                           bool print_error, uint idx);
 void end_read_record(READ_RECORD *info);
@@ -2496,7 +2499,7 @@ inline bool is_user_table(TABLE * table)
   This will be slightly slower and perhaps a tiny bit less accurate than
   doing it the IEEE754 way but log2() should be available on C99 systems.
 */
-static inline double log2(double x)
+inline double log2(double x)
 {
   return (log(x) / M_LN2);
 }
