@@ -78,7 +78,7 @@ public:
 	virtual int		indexScan(int indexOrder);
 	virtual int		setCurrentIndex(int indexId);
 	virtual int		clearCurrentIndex();
-	virtual int		setIndex(int indexCount, StorageIndexDesc* indexDesc);
+	virtual int		setIndex(StorageIndexDesc* indexDesc);
 	virtual void	indexEnd(void);
 	virtual int		setIndexBound(const unsigned char* key, int keyLength, int which);
 	virtual int		storeBlob(StorageBlob* blob);
@@ -94,7 +94,7 @@ public:
 	virtual int		fetch(int recordNumber, bool lockForUpdate);
 	
 	virtual int		updateRow(int recordNumber);
-	virtual int		createIndex(StorageIndexDesc *indexDesc, int indexCount, const char *sql);
+	virtual int		createIndex(StorageIndexDesc *indexDesc, const char *sql);
 	virtual int		dropIndex(StorageIndexDesc *indexDesc, const char *sql);
 	virtual const unsigned char* getEncoding(int fieldIndex);
 	virtual const char*			 getName(void);
