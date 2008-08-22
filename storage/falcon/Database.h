@@ -200,6 +200,7 @@ public:
 	virtual void	createDatabase (const char *filename);
 	void			renameTable(Table* table, const char* newSchema, const char* newName);
 	bool			hasUncommittedRecords(Table* table, Transaction *transaction);
+	void			waitForWriteComplete(Table *table);
 	void			validateCache(void);
 	int				recoverGetNextLimbo(int xidSize, unsigned char *xid);
 	void			commitByXid(int xidLength, const UCHAR* xid);

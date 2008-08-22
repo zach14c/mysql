@@ -162,9 +162,11 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton = (handlerton *)p;
 	my_bool error = false;
 
+	StorageHandler::setDataDirectory(mysql_real_data_home);
+
 	if (!storageHandler)
 		storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
-
+	
 	falcon_hton->state = SHOW_OPTION_YES;
 	falcon_hton->db_type = DB_TYPE_FALCON;
 	falcon_hton->savepoint_offset = sizeof(void*);
@@ -177,6 +179,8 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->create = falcon_create_handler;
 	falcon_hton->drop_database  = StorageInterface::dropDatabase;
 	falcon_hton->panic  = StorageInterface::panic;
+
+
 #if 0
 	falcon_hton->alter_table_flags  = StorageInterface::alter_table_flags;
 #endif
@@ -420,9 +424,6 @@ StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
 
 StorageInterface::~StorageInterface(void)
 {
-	if (storageTable)
-		storageTable->clearTruncateLock();
-
 	if (activeBlobs)
 		freeActiveBlobs();
 
@@ -534,10 +535,6 @@ StorageConnection* StorageInterface::getStorageConnection(THD* thd)
 int StorageInterface::close(void)
 {
 	DBUG_ENTER("StorageInterface::close");
-
-	if (storageTable)
-		storageTable->clearTruncateLock();
-
 	unmapFields();
 
 	// Temporarily comment out DTrace probes in Falcon, see bug #36403
@@ -917,7 +914,9 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 		if (    (lock_type >= TL_WRITE_CONCURRENT_INSERT && lock_type <= TL_WRITE)
 		    && !(thd_in_lock_tables(thd) && sql_command == SQLCOM_LOCK_TABLES)
 		    && !(thd_tablespace_op(thd))
-		  //  &&  (sql_command != SQLCOM_TRUNCATE)
+		    &&  (sql_command != SQLCOM_ALTER_TABLE)
+		    &&  (sql_command != SQLCOM_DROP_TABLE)
+		    &&  (sql_command != SQLCOM_TRUNCATE)
 		    &&  (sql_command != SQLCOM_OPTIMIZE)
 		    &&  (sql_command != SQLCOM_CREATE_TABLE)
 		   )
@@ -1020,7 +1019,7 @@ int StorageInterface::delete_all_rows()
 	if (!storageTable)
 		storageTable = storageConnection->getStorageTable(storageShare);
 		
-	storageTable->truncateTable();
+	ret = storageTable->truncateTable();
 		
 	DBUG_RETURN(ret);
 }
@@ -1262,10 +1261,6 @@ void StorageInterface::startTransaction(void)
 	if (!storageConnection->transactionActive)
 		{
 		storageConnection->startTransaction(isolation);
-		
-		if (storageTable)
-			storageTable->setTruncateLock();
-				
 		trans_register_ha(mySqlThread, true, falcon_hton);
 		}
 
@@ -1873,12 +1868,7 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 		storageConnection->setCurrentStatement(NULL);
 
 		if (!thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-			{
-			if (storageTable)
-				storageTable->clearTruncateLock();
-		
 			storageConnection->endImplicitTransaction();
-			}
 		else
 			storageConnection->releaseVerb();
 
@@ -1891,10 +1881,11 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageConnection->setCurrentStatement(thd->query);
 
 		insertCount = 0;
-		bool isTruncate = false;
-		
+
 		switch (thd_sql_command(thd))
 			{
+			case SQLCOM_TRUNCATE:
+			case SQLCOM_DROP_TABLE:
 			case SQLCOM_ALTER_TABLE:
 			case SQLCOM_DROP_INDEX:
 			case SQLCOM_CREATE_INDEX:
@@ -1903,18 +1894,11 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 
 				if (ret)
 					{
-					if (storageTable)
-						storageTable->clearTruncateLock();
-						
 					DBUG_RETURN(error(ret));
 					}
 				}
+				storageTable->waitForWriteComplete();
 				break;
-
-			case SQLCOM_TRUNCATE:
-				isTruncate = true;
-				break;
-				
 			default:
 				break;
 			}
@@ -1927,9 +1911,6 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			
 			if (storageConnection->startTransaction(isolation))
 				{
-				if (!isTruncate && storageTable)
-					storageTable->setTruncateLock();
-				
 				trans_register_ha(thd, true, falcon_hton);
 				}
 
@@ -1942,9 +1923,6 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			
 			if (storageConnection->startImplicitTransaction(isolation))
 				{
-				if (!isTruncate && storageTable)
-					storageTable->setTruncateLock();
-				
 				trans_register_ha(thd, false, falcon_hton);
 				}
 			}
@@ -3551,7 +3529,7 @@ void StorageInterface::unmapFields(void)
 static MYSQL_SYSVAR_STR(serial_log_dir, falcon_serial_log_dir,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,
   "Falcon serial log file directory.",
-  NULL, NULL, NULL);
+  NULL, NULL, mysql_real_data_home);
 
 static MYSQL_SYSVAR_STR(checkpoint_schedule, falcon_checkpoint_schedule,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,

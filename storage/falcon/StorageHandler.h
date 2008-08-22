@@ -141,6 +141,7 @@ public:
 	Connection			*dictionaryConnection;
 	int					mySqlLockSize;
 	bool				initialized;
+	static void			setDataDirectory(const char *directory);
 };
 
 #endif
