@@ -2246,7 +2246,7 @@ int StorageInterface::addColumn(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 
 int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
 {
-	int ret;
+	int ret = 0;
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
 
@@ -2288,7 +2288,7 @@ int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* cr
 
 int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
 {
-	int ret;
+	int ret = 0;
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
 	
