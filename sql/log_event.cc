@@ -1763,17 +1763,20 @@ Rows_log_event::print_verbose_one_row(IO_CACHE *file, table_def *td,
   const uchar *value0= value;
   const uchar *null_bits= value;
   char typestr[64]= "";
+  size_t i, mbits;
   
   value+= (m_width + 7) / 8;
   
   my_b_printf(file, "%s", prefix);
   
-  for (size_t i= 0; i < td->size(); i ++)
+  for (i= 0, mbits= 0; i < td->size(); i ++)
   {
-    int is_null= (null_bits[i / 8] >> (i % 8))  & 0x01;
+    int is_null= (null_bits[mbits / 8] >> (mbits % 8))  & 0x01;
 
     if (bitmap_is_set(cols_bitmap, i) == 0)
       continue;
+    
+    mbits++;
     
     if (is_null)
     {
@@ -1910,14 +1913,17 @@ void Log_event::print_base64(IO_CACHE* file,
     DBUG_ASSERT(0);
   }
 
-  if (my_b_tell(file) == 0)
-    my_b_printf(file, "\nBINLOG '\n");
+  if (print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS)
+  {
+    if (my_b_tell(file) == 0)
+      my_b_printf(file, "\nBINLOG '\n");
 
-  my_b_printf(file, "%s\n", tmp_str);
+    my_b_printf(file, "%s\n", tmp_str);
 
-  if (!more)
-    my_b_printf(file, "'%s\n", print_event_info->delimiter);
-
+    if (!more)
+      my_b_printf(file, "'%s\n", print_event_info->delimiter);
+  }
+  
   if (print_event_info->verbose)
   {
     Rows_log_event *ev= NULL;
@@ -3249,7 +3255,8 @@ void Start_log_event_v3::print(FILE* file, PRINT_EVENT_INFO* print_event_info)
       print_event_info->base64_output_mode != BASE64_OUTPUT_NEVER &&
       !print_event_info->short_form)
   {
-    my_b_printf(&cache, "BINLOG '\n");
+    if (print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS)
+      my_b_printf(&cache, "BINLOG '\n");
     print_base64(&cache, print_event_info, FALSE);
     print_event_info->printed_fd_event= TRUE;
   }

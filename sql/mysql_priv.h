@@ -1159,7 +1159,6 @@ bool append_file_to_dir(THD *thd, const char **filename_ptr,
 bool table_def_init(void);
 void table_def_free(void);
 void assign_new_table_id(TABLE_SHARE *share);
-void reset_table_id_sequence();
 uint cached_open_tables(void);
 uint cached_table_definitions(void);
 void kill_mysql(void);

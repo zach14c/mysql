@@ -495,10 +495,10 @@ c15	0000000000
 c16	-9223372036854775808
 c17	0
 c18	00000000000000000000
-c19	-3.40282e+38
+c19	-3.40282e38
 c20	1.17549e-38
 c21	000000000000
-c22	-1.7976931348623e+308
+c22	-1.7976931348623e308
 c23	2.2250738585072e-308
 c24	0000000000000000000000
 c25	-9999999999
@@ -574,12 +574,12 @@ c15	4294967295
 c16	9223372036854775807
 c17	18446744073709551615
 c18	18446744073709551615
-c19	3.40282e+38
-c20	3.40282e+38
-c21	03.40282e+38
-c22	1.7976931348623e+308
-c23	1.7976931348623e+308
-c24	001.7976931348623e+308
+c19	3.40282e38
+c20	3.40282e38
+c21	003.40282e38
+c22	1.7976931348623e308
+c23	1.7976931348623e308
+c24	0001.7976931348623e308
 c25	9999999999
 c26	9999999999
 c27	9999999999
@@ -1557,12 +1557,12 @@ c15	4294967295
 c16	9223372036854775807
 c17	18446744073709551615
 c18	18446744073709551615
-c19	3.40282e+38
-c20	3.40282e+38
-c21	03.40282e+38
-c22	1.7976931348623e+308
-c23	1.7976931348623e+308
-c24	001.7976931348623e+308
+c19	3.40282e38
+c20	3.40282e38
+c21	003.40282e38
+c22	1.7976931348623e308
+c23	1.7976931348623e308
+c24	0001.7976931348623e308
 c25	9999999999
 c26	9999999999
 c27	9999999999
@@ -1636,10 +1636,10 @@ c15	0000000000
 c16	-9223372036854775808
 c17	0
 c18	00000000000000000000
-c19	-3.40282e+38
+c19	-3.40282e38
 c20	1.17549e-38
 c21	000000000000
-c22	-1.7976931348623e+308
+c22	-1.7976931348623e308
 c23	2.2250738585072e-308
 c24	0000000000000000000000
 c25	-9999999999
@@ -2249,12 +2249,8 @@ FLUSH LOGS;
 /*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
 DELIMITER /*!*/;
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v 5.1.28-debug-log created 010909  4:46:40 at startup
+#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v #.##.## created 010909  4:46:40 at startup
 ROLLBACK/*!*/;
-BINLOG '
-AMqaOw8BAAAAZgAAAGoAAAAAAAQANS4xLjI4LWRlYnVnLWxvZwAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAypo7EzgNAAgAEgAEBAQEEgAAUwAEGggAAAAICAgC
-'/*!*/;
 # at #
 #010909  4:46:40 server id 1  end_log_pos # 	Query	thread_id=#	exec_time=#	error_code=0
 use test/*!*/;
@@ -2264,7 +2260,7 @@ SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=1, @@session.uniq
 SET @@session.sql_mode=0/*!*/;
 SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
 /*!\C utf8 *//*!*/;
-SET @@session.character_set_client=33,@@session.collation_connection=33,@@session.collation_server=8/*!*/;
+SET @@session.character_set_client=45,@@session.collation_connection=45,@@session.collation_server=8/*!*/;
 SET @@session.lc_time_names=0/*!*/;
 SET @@session.collation_database=DEFAULT/*!*/;
 CREATE TABLE t1 (
@@ -2365,29 +2361,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAC4IAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxcBAAAAAQMAAC8LAAAQAAAAAAAAAAEAT/////////////8AAAAAAAAAAACAAAAAAAAAAAAA
-gAAAAACAAAAAAAAAgAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAP//
-f/8AAIAAAAAAALD//////+///f//////DwAAAAAAAAAAAHbEZTYAgAAAAACAAAAAACHQB0DDd1QY
-CQAAUScBAFkKgAEAAAAAAAAAAAABAAABAP0BACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAQAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t1
 ### SET
 ###   @1=b'0' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -2426,10 +2401,10 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAQAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -2439,9 +2414,9 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAQAAAA==
 ###   @47='' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -2481,118 +2456,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAKgMAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxcBAAAAzBYAAHQjAAAQAAAAAAAAAAEAT/////////////8AAAAAAAAAAACAAf//////////
-f///Af9/////////f////////////3////////////////////9/////////////////////////
-f3///39///9/f7D//////+9/sP//////73+w///////vf4k7msn/iTuayf+JO5rJ/58fTneH0QXx
-WgAAT1Xxf6f1f/8B/wAB////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////8D77+/AAPvv7/9Au+/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/vwL//wAC///+Af//////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////wAB////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//8FAf//////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////wAD77+//QLvv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv78PA++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/vwAC
-///+Af//////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/woC////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////Af8AAf//////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////AAH/////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////wUB////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////CHRp
-bnlibG9iCHRpbnl0ZXh0GgB0AGkAbgB5AHQAZQB4AHQALQB1AGMAcwAyBABibG9iBAB0ZXh0EgAA
-dABlAHgAdAAtAHUAYwBzADIKAABtZWRpdW1ibG9iCgAAbWVkaXVtdGV4dB4AAABtAGUAZABpAHUA
-bQB0AGUAeAB0AC0AdQBjAHMAMggAAABsb25nYmxvYggAAABsb25ndGV4dBoAAAAAbABvAG4AZwB0
-AGUAeAB0AC0AdQBjAHMAMgMHAgAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t1
 ### SET
 ###   @1=b'1' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -2631,10 +2496,10 @@ AGUAeAB0AC0AdQBjAHMAMgMHAgAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='�' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -2644,9 +2509,9 @@ AGUAeAB0AC0AdQBjAHMAMgMHAgAAAA==
 ###   @47='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='￿' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='￿' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='��' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -2687,16 +2552,9 @@ BEGIN
 # at #
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAO0kAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxcBAAAAOAAAACUlAAAAAAAAAAAAAAAAT//////////////////f//////+/AMqaOwMAAAA=
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t1
 ### SET
 ###   @1=NULL /* type=16 meta=1 nullable=1 is_null=1 */
@@ -2735,10 +2593,10 @@ AMqaOxcBAAAAOAAAACUlAAAAAAAAAAAAAAAAT//////////////////f//////+/AMqaOwMAAAA=
 ###   @34=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @35=NULL /* TIMESTAMP meta=65025 nullable=1 is_null=1 */
 ###   @36=NULL /* TIMESTAMP meta=65279 nullable=1 is_null=1 */
-###   @37=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
+###   @37=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
 ###   @38=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
-###   @39=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
-###   @40=NULL /* TIMESTAMP meta=57085 nullable=1 is_null=1 */
+###   @39=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
+###   @40=NULL /* TIMESTAMP meta=52988 nullable=1 is_null=1 */
 ###   @41=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
 ###   @42=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @43=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
@@ -2748,9 +2606,9 @@ AMqaOxcBAAAAOAAAACUlAAAAAAAAAAAAAAAAT//////////////////f//////+/AMqaOwMAAAA=
 ###   @47=NULL /* TIMESTAMP meta=255 nullable=1 is_null=1 */
 ###   @48=NULL /* TIMESTAMP meta=261 nullable=1 is_null=1 */
 ###   @49=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
-###   @50=NULL /* TIMESTAMP meta=3 nullable=1 is_null=1 */
-###   @51=NULL /* TIMESTAMP meta=765 nullable=1 is_null=1 */
-###   @52=NULL /* TIMESTAMP meta=783 nullable=1 is_null=1 */
+###   @50=NULL /* TIMESTAMP meta=4 nullable=1 is_null=1 */
+###   @51=NULL /* TIMESTAMP meta=1020 nullable=1 is_null=1 */
+###   @52=NULL /* TIMESTAMP meta=1044 nullable=1 is_null=1 */
 ###   @53=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
 ###   @54=NULL /* TIMESTAMP meta=2 nullable=1 is_null=1 */
 ###   @55=NULL /* TIMESTAMP meta=510 nullable=1 is_null=1 */
@@ -2778,96 +2636,6 @@ AMqaOxcBAAAAOAAAACUlAAAAAAAAAAAAAAAAT//////////////////f//////+/AMqaOwMAAAA=
 ###   @77=NULL /* TIMESTAMP meta=63233 nullable=1 is_null=1 */
 ###   @78=NULL /* TIMESTAMP meta=63489 nullable=1 is_null=1 */
 ###   @79=3 /* INT meta=0 nullable=1 is_null=0 */
-AMqaOxcBAAAAxhMAAOs4AAAQAAAAAAAAAAEAT/////////////8AAAAAAAAAAACAAf//////////
-fwABAf9/AAABAP//fwAAAAEAAP///38AAAAAAQAAAP////////9/AAAAAAAAAAABAAAAAAAAAAAA
-gIAAAIAAAACAP/3//////w+A/f//////DwAAAAAAAADwP3bEZTYAiTuayf+AAAAAAQSxDw7pMm1D
-EgAAoAGXSDd4AmwBYQABZf9paWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWkCw6QAAsO2/gHDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7wCAOQAAgD2
-/gEA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-AWH/ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlBQFpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWkAAsOk/gHDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7YKAsO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvAACAOT+AQD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9goCAPwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8ATAAATH/MTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExAAFi/2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYwUBJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnCHRpbnlibG9iCHRpbnl0ZXh0GgB0AGkAbgB5AHQAZQB4AHQA
-LQB1AGMAcwAyBABibG9iBAB0ZXh0EgAAdABlAHgAdAAtAHUAYwBzADIKAABtZWRpdW1ibG9iCgAA
-bWVkaXVtdGV4dB4AAABtAGUAZABpAHUAbQB0AGUAeAB0AC0AdQBjAHMAMggAAABsb25nYmxvYggA
-AABsb25ndGV4dBoAAAAAbABvAG4AZwB0AGUAeAB0AC0AdQBjAHMAMgIGBAAAAA==
-'/*!*/;
 ### INSERT INTO test.t1
 ### SET
 ###   @1=b'1' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -2906,10 +2674,10 @@ AABsb25ndGV4dBoAAAAAbABvAG4AZwB0AGUAeAB0AC0AdQBjAHMAMgIGBAAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='e' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='ä' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='ä' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='ö' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='ö' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -2919,9 +2687,9 @@ AABsb25ndGV4dBoAAAAAbABvAG4AZwB0AGUAeAB0AC0AdQBjAHMAMgIGBAAAAA==
 ###   @47='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='ä' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='ä' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='\x00�' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -2961,131 +2729,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAGQ6AAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxgBAAAAsRkAABVUAAAQAAAAAAAAAAEAT///////////////////////////AAAAAAAAAAAA
-gAAAAAAAAAAAAIAAAAAAgAAAAAAAAIAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAA
-AAAAAAAAAAD//3//AACAAAAAAACw///////v//3//////w8AAAAAAAAAAAB2xGU2AIAAAAAAgAAA
-AAAh0AdAw3dUGAkAAFEnAQBZCoABAAAAAAAAAAAAAQAAAQD9AQAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEAAAAAAAAAAAAAAACAAf//////////
-f///Af9/////////f////////////3////////////////////9/////////////////////////
-f3///39///9/f7D//////+9/sP//////73+w///////vf4k7msn/iTuayf+JO5rJ/58fTneH0QXx
-WgAAT1Xxf6f1f/8B/wAB////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////8D77+/AAPvv7/9Au+/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/vwL//wAC///+Af//////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////wAB////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//8FAf//////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////wAD77+//QLvv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv78PA++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/vwAC
-///+Af//////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/woC////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////Af8AAf//////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////AAH/////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////wUB////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////CHRp
-bnlibG9iCHRpbnl0ZXh0GgB0AGkAbgB5AHQAZQB4AHQALQB1AGMAcwAyBABibG9iBAB0ZXh0EgAA
-dABlAHgAdAAtAHUAYwBzADIKAABtZWRpdW1ibG9iCgAAbWVkaXVtdGV4dB4AAABtAGUAZABpAHUA
-bQB0AGUAeAB0AC0AdQBjAHMAMggAAABsb25nYmxvYggAAABsb25ndGV4dBoAAAAAbABvAG4AZwB0
-AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id # flags: STMT_END_F
 ### UPDATE test.t1
 ### WHERE
 ###   @1=b'0' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -3124,10 +2769,10 @@ AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -3137,9 +2782,9 @@ AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
 ###   @47='' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -3204,10 +2849,10 @@ AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='�' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -3217,9 +2862,9 @@ AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
 ###   @47='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='￿' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='￿' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='��' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -3259,131 +2904,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAI5VAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxgBAAAAsRkAAD9vAAAQAAAAAAAAAAEAT///////////////////////////AAAAAAAAAAAA
-gAH//////////3///wH/f////////3////////////9/////////////////////f///////////
-/////////////39///9/f///f3+w///////vf7D//////+9/sP//////73+JO5rJ/4k7msn/iTua
-yf+fH053h9EF8VoAAE9V8X+n9X//Af8AAf//////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////A++/
-vwAD77+//QLvv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv78C//8AAv///gH/////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////8AAf//////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////BQH/////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////8AA++/v/0C77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/77+/
-77+/77+/77+/77+/77+/77+/77+/DwPvv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv78AAv///gH/////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////8KAv//////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////wH/AAH/////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////wAB
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////8FAf//////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////wh0aW55YmxvYgh0aW55dGV4dBoAdABpAG4AeQB0AGUAeAB0AC0AdQBjAHMAMgQAYmxv
-YgQAdGV4dBIAAHQAZQB4AHQALQB1AGMAcwAyCgAAbWVkaXVtYmxvYgoAAG1lZGl1bXRleHQeAAAA
-bQBlAGQAaQB1AG0AdABlAHgAdAAtAHUAYwBzADIIAAAAbG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAA
-AGwAbwBuAGcAdABlAHgAdAAtAHUAYwBzADIDBwIAAAAAAAAAAAAAAACAAAAAAAAAAAAAgAAAAACA
-AAAAAAAAgAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAP//f/8AAIAA
-AAAAALD//////+///f//////DwAAAAAAAAAAAHbEZTYAgAAAAACAAAAAACHQB0DDd1QYCQAAUScB
-AFkKgAEAAAAAAAAAAAABAAABAP0BACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id # flags: STMT_END_F
 ### UPDATE test.t1
 ### WHERE
 ###   @1=b'1' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -3422,10 +2944,10 @@ AAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='�' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -3435,9 +2957,9 @@ AAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
 ###   @47='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='￿' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='￿' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='��' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -3502,10 +3024,10 @@ AAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -3515,9 +3037,9 @@ AAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
 ###   @47='' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -3557,105 +3079,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAALhwAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxgBAAAA4hMAAJqEAAAQAAAAAAAAAAEAT///////////////////////////////3///////
-vwDKmjsDAAAAAAAAAAAAAAAAgAH//////////38AAQH/fwAAAQD//38AAAABAAD///9/AAAAAAEA
-AAD/////////fwAAAAAAAAAAAQAAAAAAAAAAAICAAACAAAAAgD/9//////8PgP3//////w8AAAAA
-AAAA8D92xGU2AIk7msn/gAAAAAEEsQ8O6TJtQxIAAKABl0g3eAJsAWEAAWX/aWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpAsOkAALDtv4Bw7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8AgDkAAIA9v4BAPwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8AAFh/2VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZQUBaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpAALDpP4Bw7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2CgLDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7wAAgDk/gEA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYKAgD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AEwAAEx/zExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMQABYv9jY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2MFAScnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJwh0aW55Ymxv
-Ygh0aW55dGV4dBoAdABpAG4AeQB0AGUAeAB0AC0AdQBjAHMAMgQAYmxvYgQAdGV4dBIAAHQAZQB4
-AHQALQB1AGMAcwAyCgAAbWVkaXVtYmxvYgoAAG1lZGl1bXRleHQeAAAAbQBlAGQAaQB1AG0AdABl
-AHgAdAAtAHUAYwBzADIIAAAAbG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAAAGwAbwBuAGcAdABlAHgA
-dAAtAHUAYwBzADICBgMAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id # flags: STMT_END_F
 ### UPDATE test.t1
 ### WHERE
 ###   @1=NULL /* type=16 meta=1 nullable=1 is_null=1 */
@@ -3694,10 +3119,10 @@ dAAtAHUAYwBzADICBgMAAAA=
 ###   @34=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @35=NULL /* TIMESTAMP meta=65025 nullable=1 is_null=1 */
 ###   @36=NULL /* TIMESTAMP meta=65279 nullable=1 is_null=1 */
-###   @37=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
+###   @37=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
 ###   @38=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
-###   @39=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
-###   @40=NULL /* TIMESTAMP meta=57085 nullable=1 is_null=1 */
+###   @39=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
+###   @40=NULL /* TIMESTAMP meta=52988 nullable=1 is_null=1 */
 ###   @41=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
 ###   @42=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @43=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
@@ -3707,9 +3132,9 @@ dAAtAHUAYwBzADICBgMAAAA=
 ###   @47=NULL /* TIMESTAMP meta=255 nullable=1 is_null=1 */
 ###   @48=NULL /* TIMESTAMP meta=261 nullable=1 is_null=1 */
 ###   @49=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
-###   @50=NULL /* TIMESTAMP meta=3 nullable=1 is_null=1 */
-###   @51=NULL /* TIMESTAMP meta=765 nullable=1 is_null=1 */
-###   @52=NULL /* TIMESTAMP meta=783 nullable=1 is_null=1 */
+###   @50=NULL /* TIMESTAMP meta=4 nullable=1 is_null=1 */
+###   @51=NULL /* TIMESTAMP meta=1020 nullable=1 is_null=1 */
+###   @52=NULL /* TIMESTAMP meta=1044 nullable=1 is_null=1 */
 ###   @53=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
 ###   @54=NULL /* TIMESTAMP meta=2 nullable=1 is_null=1 */
 ###   @55=NULL /* TIMESTAMP meta=510 nullable=1 is_null=1 */
@@ -3774,10 +3199,10 @@ dAAtAHUAYwBzADICBgMAAAA=
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='e' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='ä' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='ä' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='ö' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='ö' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -3787,9 +3212,9 @@ dAAtAHUAYwBzADICBgMAAAA=
 ###   @47='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='ä' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='ä' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='\x00�' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -3829,105 +3254,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAABOGAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxgBAAAA4hMAAPWZAAAQAAAAAAAAAAEAT///////////////////////////AAAAAAAAAAAA
-gAH//////////38AAQH/fwAAAQD//38AAAABAAD///9/AAAAAAEAAAD/////////fwAAAAAAAAAA
-AQAAAAAAAAAAAICAAACAAAAAgD/9//////8PgP3//////w8AAAAAAAAA8D92xGU2AIk7msn/gAAA
-AAEEsQ8O6TJtQxIAAKABl0g3eAJsAWEAAWX/aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpAsOk
-AALDtv4Bw7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8AgDkAAIA9v4BAPwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8AAFh/2VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZQUBaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpAALDpP4Bw7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2CgLDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7wAAgDk/gEA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYKAgD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AEwAAEx/zExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMQABYv9jY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MFAScn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJwh0aW55YmxvYgh0aW55dGV4dBoAdABpAG4A
-eQB0AGUAeAB0AC0AdQBjAHMAMgQAYmxvYgQAdGV4dBIAAHQAZQB4AHQALQB1AGMAcwAyCgAAbWVk
-aXVtYmxvYgoAAG1lZGl1bXRleHQeAAAAbQBlAGQAaQB1AG0AdABlAHgAdAAtAHUAYwBzADIIAAAA
-bG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAAAGwAbwBuAGcAdABlAHgAdAAtAHUAYwBzADICBgQAAAD/
-///f//////+/AMqaOwQAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id # flags: STMT_END_F
 ### UPDATE test.t1
 ### WHERE
 ###   @1=b'1' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -3966,10 +3294,10 @@ bG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAAAGwAbwBuAGcAdABlAHgAdAAtAHUAYwBzADICBgQAAAD/
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='e' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='ä' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='ä' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='ö' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='ö' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -3979,9 +3307,9 @@ bG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAAAGwAbwBuAGcAdABlAHgAdAAtAHUAYwBzADICBgQAAAD/
 ###   @47='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='ä' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='ä' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='\x00�' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -4046,10 +3374,10 @@ bG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAAAGwAbwBuAGcAdABlAHgAdAAtAHUAYwBzADICBgQAAAD/
 ###   @34=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @35=NULL /* TIMESTAMP meta=65025 nullable=1 is_null=1 */
 ###   @36=NULL /* TIMESTAMP meta=65279 nullable=1 is_null=1 */
-###   @37=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
+###   @37=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
 ###   @38=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
-###   @39=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
-###   @40=NULL /* TIMESTAMP meta=57085 nullable=1 is_null=1 */
+###   @39=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
+###   @40=NULL /* TIMESTAMP meta=52988 nullable=1 is_null=1 */
 ###   @41=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
 ###   @42=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @43=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
@@ -4059,9 +3387,9 @@ bG9uZ2Jsb2IIAAAAbG9uZ3RleHQaAAAAAGwAbwBuAGcAdABlAHgAdAAtAHUAYwBzADICBgQAAAD/
 ###   @47=NULL /* TIMESTAMP meta=255 nullable=1 is_null=1 */
 ###   @48=NULL /* TIMESTAMP meta=261 nullable=1 is_null=1 */
 ###   @49=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
-###   @50=NULL /* TIMESTAMP meta=3 nullable=1 is_null=1 */
-###   @51=NULL /* TIMESTAMP meta=765 nullable=1 is_null=1 */
-###   @52=NULL /* TIMESTAMP meta=783 nullable=1 is_null=1 */
+###   @50=NULL /* TIMESTAMP meta=4 nullable=1 is_null=1 */
+###   @51=NULL /* TIMESTAMP meta=1020 nullable=1 is_null=1 */
+###   @52=NULL /* TIMESTAMP meta=1044 nullable=1 is_null=1 */
 ###   @53=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
 ###   @54=NULL /* TIMESTAMP meta=2 nullable=1 is_null=1 */
 ###   @55=NULL /* TIMESTAMP meta=510 nullable=1 is_null=1 */
@@ -4101,118 +3429,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAG6bAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxkBAAAAzBYAADqyAAAQAAAAAAAAAAEAT/////////////8AAAAAAAAAAACAAf//////////
-f///Af9/////////f////////////3////////////////////9/////////////////////////
-f3///39///9/f7D//////+9/sP//////73+w///////vf4k7msn/iTuayf+JO5rJ/58fTneH0QXx
-WgAAT1Xxf6f1f/8B/wAB////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////8D77+/AAPvv7/9Au+/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/vwL//wAC///+Af//////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////wAB////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-//8FAf//////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////wAD77+//QLvv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/vv7/v
-v7/vv7/vv7/vv78PA++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/
-v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/v++/vwAC
-///+Af//////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/woC////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////Af8AAf//////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////AAH/////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-/////////////////////////wUB////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////CHRp
-bnlibG9iCHRpbnl0ZXh0GgB0AGkAbgB5AHQAZQB4AHQALQB1AGMAcwAyBABibG9iBAB0ZXh0EgAA
-dABlAHgAdAAtAHUAYwBzADIKAABtZWRpdW1ibG9iCgAAbWVkaXVtdGV4dB4AAABtAGUAZABpAHUA
-bQB0AGUAeAB0AC0AdQBjAHMAMggAAABsb25nYmxvYggAAABsb25ndGV4dBoAAAAAbABvAG4AZwB0
-AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id # flags: STMT_END_F
 ### DELETE FROM test.t1
 ### WHERE
 ###   @1=b'1' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -4251,10 +3469,10 @@ AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='�' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='￿' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='￿' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='��' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -4264,9 +3482,9 @@ AGUAeAB0AC0AdQBjAHMAMgMHAQAAAA==
 ###   @47='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='���������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='￿' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='￿' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='��' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������������' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -4306,29 +3524,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAALOzAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxkBAAAAAQMAALS2AAAQAAAAAAAAAAEAT/////////////8AAAAAAAAAAACAAAAAAAAAAAAA
-gAAAAACAAAAAAAAAgAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAP//
-f/8AAIAAAAAAALD//////+///f//////DwAAAAAAAAAAAHbEZTYAgAAAAACAAAAAACHQB0DDd1QY
-CQAAUScBAFkKgAEAAAAAAAAAAAABAAABAP0BACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAA
-IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg
-ACAAIAAgACAAIAAgACAAIAAgACAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id # flags: STMT_END_F
 ### DELETE FROM test.t1
 ### WHERE
 ###   @1=b'0' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -4367,10 +3564,10 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -4380,9 +3577,9 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAgAAAA==
 ###   @47='' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -4422,104 +3619,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAC24AAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxkBAAAAxhMAAPPLAAAQAAAAAAAAAAEAT/////////////8AAAAAAAAAAACAAf//////////
-fwABAf9/AAABAP//fwAAAAEAAP///38AAAAAAQAAAP////////9/AAAAAAAAAAABAAAAAAAAAAAA
-gIAAAIAAAACAP/3//////w+A/f//////DwAAAAAAAADwP3bEZTYAiTuayf+AAAAAAQSxDw7pMm1D
-EgAAoAGXSDd4AmwBYQABZf9paWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWkCw6QAAsO2/gHDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7wCAOQAAgD2
-/gEA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-AWH/ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl
-ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlBQFpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp
-aWlpaWlpaWkAAsOk/gHDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2
-w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bDtsO2w7bD
-tsO2w7bDtsO2w7YKAsO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zD
-vMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8
-w7zDvMO8w7zDvMO8w7zDvMO8w7zDvAACAOT+AQD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2
-APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA9gD2APYA
-9gD2APYA9gD2APYA9gD2APYA9gD2APYA9goCAPwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA
-/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8
-APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8APwA/AD8ATAAATH/MTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEx
-MTExMTExMTExMTExAAFi/2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj
-Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYwUBJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycn
-JycnJycnJycnJycnJycnJycnJycnCHRpbnlibG9iCHRpbnl0ZXh0GgB0AGkAbgB5AHQAZQB4AHQA
-LQB1AGMAcwAyBABibG9iBAB0ZXh0EgAAdABlAHgAdAAtAHUAYwBzADIKAABtZWRpdW1ibG9iCgAA
-bWVkaXVtdGV4dB4AAABtAGUAZABpAHUAbQB0AGUAeAB0AC0AdQBjAHMAMggAAABsb25nYmxvYggA
-AABsb25ndGV4dBoAAAAAbABvAG4AZwB0AGUAeAB0AC0AdQBjAHMAMgIGAwAAAA==
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id # flags: STMT_END_F
 ### DELETE FROM test.t1
 ### WHERE
 ###   @1=b'1' /* BIT(1) meta=1 nullable=1 is_null=0 */
@@ -4558,10 +3659,10 @@ AABsb25ndGV4dBoAAAAAbABvAG4AZwB0AGUAeAB0AC0AdQBjAHMAMgIGAwAAAA==
 ###   @34='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @35='e' /* STRING(1) meta=65025 nullable=1 is_null=0 */
 ###   @36='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* STRING(255) meta=65279 nullable=1 is_null=0 */
-###   @37='ä' /* STRING(3) meta=65027 nullable=1 is_null=0 */
+###   @37='ä' /* STRING(4) meta=65028 nullable=1 is_null=0 */
 ###   @38='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
-###   @39='ö' /* STRING(3) meta=65027 nullable=1 is_null=0 */
-###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(765) meta=57085 nullable=1 is_null=0 */
+###   @39='ö' /* STRING(4) meta=65028 nullable=1 is_null=0 */
+###   @40='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* STRING(1020) meta=52988 nullable=1 is_null=0 */
 ###   @41='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
 ###   @42='' /* STRING(0) meta=65024 nullable=1 is_null=0 */
 ###   @43='\x00�' /* STRING(2) meta=65026 nullable=1 is_null=0 */
@@ -4571,9 +3672,9 @@ AABsb25ndGV4dBoAAAAAbABvAG4AZwB0AGUAeAB0AC0AdQBjAHMAMgIGAwAAAA==
 ###   @47='eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @48='iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' /* VARSTRING(261) meta=261 nullable=1 is_null=0 */
 ###   @49='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
-###   @50='ä' /* VARSTRING(3) meta=3 nullable=1 is_null=0 */
-###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(765) meta=765 nullable=1 is_null=0 */
-###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(783) meta=783 nullable=1 is_null=0 */
+###   @50='ä' /* VARSTRING(4) meta=4 nullable=1 is_null=0 */
+###   @51='ööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööööö' /* VARSTRING(1020) meta=1020 nullable=1 is_null=0 */
+###   @52='üüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüüü' /* VARSTRING(1044) meta=1044 nullable=1 is_null=0 */
 ###   @53='' /* VARSTRING(0) meta=0 nullable=1 is_null=0 */
 ###   @54='\x00�' /* VARSTRING(2) meta=2 nullable=1 is_null=0 */
 ###   @55='\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�\x00�' /* VARSTRING(510) meta=510 nullable=1 is_null=0 */
@@ -4613,16 +3714,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAA4AAAAGTNAAAAAAAAAAAAAAAABHRlc3QAAnQxAE8QEAEBAQECAgIJCQkDAwMICAgE
-BAQFBQX29vYKDAcLDf7+/v7+/v7+/v7+/g8PDw8PDw8PDw8PD/7+/v4PDw8P/Pz8/Pz8/Pz8/Pz8
-/v4DYAEAAAgEBAQICAgKAAoACgD+Af4A/gH+//4D/gD+A979/gL+AP4C7v4AAAEA/wAFAQAAAwD9
-Ag8DAAACAP4BCgL+Af4A/gH+/wAAAQD/AAUBAQEBAgICAwMDBAQE9wH4Af///9///////38=
-AMqaOxkBAAAAOAAAAJzNAAAQAAAAAAAAAAEAT//////////////////f//////+/AMqaOwQAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id # flags: STMT_END_F
 ### DELETE FROM test.t1
 ### WHERE
 ###   @1=NULL /* type=16 meta=1 nullable=1 is_null=1 */
@@ -4661,10 +3754,10 @@ AMqaOxkBAAAAOAAAAJzNAAAQAAAAAAAAAAEAT//////////////////f//////+/AMqaOwQAAAA=
 ###   @34=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @35=NULL /* TIMESTAMP meta=65025 nullable=1 is_null=1 */
 ###   @36=NULL /* TIMESTAMP meta=65279 nullable=1 is_null=1 */
-###   @37=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
+###   @37=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
 ###   @38=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
-###   @39=NULL /* TIMESTAMP meta=65027 nullable=1 is_null=1 */
-###   @40=NULL /* TIMESTAMP meta=57085 nullable=1 is_null=1 */
+###   @39=NULL /* TIMESTAMP meta=65028 nullable=1 is_null=1 */
+###   @40=NULL /* TIMESTAMP meta=52988 nullable=1 is_null=1 */
 ###   @41=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
 ###   @42=NULL /* TIMESTAMP meta=65024 nullable=1 is_null=1 */
 ###   @43=NULL /* TIMESTAMP meta=65026 nullable=1 is_null=1 */
@@ -4674,9 +3767,9 @@ AMqaOxkBAAAAOAAAAJzNAAAQAAAAAAAAAAEAT//////////////////f//////+/AMqaOwQAAAA=
 ###   @47=NULL /* TIMESTAMP meta=255 nullable=1 is_null=1 */
 ###   @48=NULL /* TIMESTAMP meta=261 nullable=1 is_null=1 */
 ###   @49=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
-###   @50=NULL /* TIMESTAMP meta=3 nullable=1 is_null=1 */
-###   @51=NULL /* TIMESTAMP meta=765 nullable=1 is_null=1 */
-###   @52=NULL /* TIMESTAMP meta=783 nullable=1 is_null=1 */
+###   @50=NULL /* TIMESTAMP meta=4 nullable=1 is_null=1 */
+###   @51=NULL /* TIMESTAMP meta=1020 nullable=1 is_null=1 */
+###   @52=NULL /* TIMESTAMP meta=1044 nullable=1 is_null=1 */
 ###   @53=NULL /* TIMESTAMP meta=0 nullable=1 is_null=1 */
 ###   @54=NULL /* TIMESTAMP meta=2 nullable=1 is_null=1 */
 ###   @55=NULL /* TIMESTAMP meta=510 nullable=1 is_null=1 */
@@ -4801,12 +3894,8 @@ FLUSH LOGS;
 /*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
 DELIMITER /*!*/;
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v 5.1.28-debug-log created 010909  4:46:40 at startup
+#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v #.##.## created 010909  4:46:40 at startup
 ROLLBACK/*!*/;
-BINLOG '
-AMqaOw8BAAAAZgAAAGoAAAAAAAQANS4xLjI4LWRlYnVnLWxvZwAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAypo7EzgNAAgAEgAEBAQEEgAAUwAEGggAAAAICAgC
-'/*!*/;
 # at #
 #010909  4:46:40 server id 1  end_log_pos # 	Query	thread_id=#	exec_time=#	error_code=0
 use test/*!*/;
@@ -4816,7 +3905,7 @@ SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=1, @@session.uniq
 SET @@session.sql_mode=0/*!*/;
 SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
 /*!\C utf8 *//*!*/;
-SET @@session.character_set_client=33,@@session.collation_connection=33,@@session.collation_server=8/*!*/;
+SET @@session.character_set_client=45,@@session.collation_connection=45,@@session.collation_server=8/*!*/;
 SET @@session.lc_time_names=0/*!*/;
 SET @@session.collation_database=DEFAULT/*!*/;
 CREATE TABLE t1 (
@@ -4832,16 +3921,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAAIMBAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMKDwMCGAAH
-AMqaOxcBAAAAyAAAAEsCAAAQAAAAAAAAAAEAA//4AbEPClZBUkNIQVItMDEBAAAA+AKxDwpWQVJD
-SEFSLTAyAgAAAPgDsQ8KVkFSQ0hBUi0wMwMAAAD4BLEPClZBUkNIQVItMDQEAAAA+AWxDwpWQVJD
-SEFSLTA1BQAAAPgGsQ8KVkFSQ0hBUi0wNgYAAAD4B7EPClZBUkNIQVItMDcHAAAA+AixDwpWQVJD
-SEFSLTA4CAAAAPgJsQ8KVkFSQ0hBUi0wOQkAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t1
 ### SET
 ###   @1='2008:08:01' /* DATE meta=0 nullable=1 is_null=0 */
@@ -4899,18 +3980,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAAAEDAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMKDwMCGAAH
-AMqaOxgBAAAAKAEAACkEAAAQAAAAAAAAAAEAA///+AGxDwpWQVJDSEFSLTAxAQAAAPgLsQ8KVkFS
-Q0hBUi0wMQEAAAD4ArEPClZBUkNIQVItMDICAAAA+AyxDwpWQVJDSEFSLTAyAgAAAPgDsQ8KVkFS
-Q0hBUi0wMwMAAAD4DbEPClZBUkNIQVItMDMDAAAA+ASxDwpWQVJDSEFSLTA0BAAAAPgOsQ8KVkFS
-Q0hBUi0wNAQAAAD4BbEPClZBUkNIQVItMDUFAAAA+A+xDwpWQVJDSEFSLTA1BQAAAPgGsQ8KVkFS
-Q0hBUi0wNgYAAAD4ELEPClZBUkNIQVItMDYGAAAA+AexDwpWQVJDSEFSLTA3BwAAAPgRsQ8KVkFS
-Q0hBUi0wNwcAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id # flags: STMT_END_F
 ### UPDATE test.t1
 ### WHERE
 ###   @1='2008:08:01' /* DATE meta=0 nullable=1 is_null=0 */
@@ -4986,15 +4057,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAAN8EAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMKDwMCGAAH
-AMqaOxkBAAAAogAAAIEFAAAQAAAAAAAAAAEAA//4C7EPClZBUkNIQVItMDEBAAAA+AyxDwpWQVJD
-SEFSLTAyAgAAAPgNsQ8KVkFSQ0hBUi0wMwMAAAD4DrEPClZBUkNIQVItMDQEAAAA+A+xDwpWQVJD
-SEFSLTA1BQAAAPgQsQ8KVkFSQ0hBUi0wNgYAAAD4EbEPClZBUkNIQVItMDcHAAAA
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id # flags: STMT_END_F
 ### DELETE FROM test.t1
 ### WHERE
 ###   @1='2008:08:11' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5203,12 +4267,8 @@ FLUSH LOGS;
 /*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
 DELIMITER /*!*/;
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v 5.1.28-debug-log created 010909  4:46:40 at startup
+#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v #.##.## created 010909  4:46:40 at startup
 ROLLBACK/*!*/;
-BINLOG '
-AMqaOw8BAAAAZgAAAGoAAAAAAAQANS4xLjI4LWRlYnVnLWxvZwAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAypo7EzgNAAgAEgAEBAQEEgAAUwAEGggAAAAICAgC
-'/*!*/;
 # at #
 #010909  4:46:40 server id 1  end_log_pos # 	Query	thread_id=#	exec_time=#	error_code=0
 use test/*!*/;
@@ -5218,7 +4278,7 @@ SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=1, @@session.uniq
 SET @@session.sql_mode=0/*!*/;
 SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
 /*!\C utf8 *//*!*/;
-SET @@session.character_set_client=33,@@session.collation_connection=33,@@session.collation_server=8/*!*/;
+SET @@session.character_set_client=45,@@session.collation_connection=45,@@session.collation_server=8/*!*/;
 SET @@session.lc_time_names=0/*!*/;
 SET @@session.collation_database=DEFAULT/*!*/;
 CREATE TABLE t1 (
@@ -5252,16 +4312,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAAOgCAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMKDwMC/wAH
-AMqaOxcBAAAA4wAAAMsDAAAQAAAAAAAAAAEAA//4IbAPDVZBUkNIQVItMDEtMDELAAAA+CKwDw1W
-QVJDSEFSLTAxLTAyAgAAAPgjsA8NVkFSQ0hBUi0wMS0wMwMAAAD4JLAPDVZBUkNIQVItMDEtMDQE
-AAAA+CWwDw1WQVJDSEFSLTAxLTA1BQAAAPgmsA8NVkFSQ0hBUi0wMS0wNgYAAAD4J7APDVZBUkNI
-QVItMDEtMDcHAAAA+CiwDw1WQVJDSEFSLTAxLTA4EgAAAPgpsA8NVkFSQ0hBUi0wMS0wORMAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t1
 ### SET
 ###   @1='2008:01:01' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5319,16 +4371,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t2` mapped to number 1
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 1 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAAIEEAAAAAAEAAAAAAAAABHRlc3QAAnQyAAMKDwMC/wAH
-AMqaOxcBAAAA4wAAAGQFAAAQAAEAAAAAAAEAA//4QbAPDVZBUkNIQVItMDItMDEVAAAA+EKwDw1W
-QVJDSEFSLTAyLTAyAgAAAPhDsA8NVkFSQ0hBUi0wMi0wMwMAAAD4RLAPDVZBUkNIQVItMDItMDQE
-AAAA+EWwDw1WQVJDSEFSLTAyLTA1BQAAAPhGsA8NVkFSQ0hBUi0wMi0wNgYAAAD4R7APDVZBUkNI
-QVItMDItMDcHAAAA+EiwDw1WQVJDSEFSLTAyLTA4HAAAAPhJsA8NVkFSQ0hBUi0wMi0wOR0AAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t2` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t2
 ### SET
 ###   @1='2008:02:01' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5386,16 +4430,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t3` mapped to number 2
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 2 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAABoGAAAAAAIAAAAAAAAABHRlc3QAAnQzAAMKDwMC/wAH
-AMqaOxcBAAAA4wAAAP0GAAAQAAIAAAAAAAEAA//4YbAPDVZBUkNIQVItMDMtMDEfAAAA+GKwDw1W
-QVJDSEFSLTAzLTAyAgAAAPhjsA8NVkFSQ0hBUi0wMy0wMwMAAAD4ZLAPDVZBUkNIQVItMDMtMDQE
-AAAA+GWwDw1WQVJDSEFSLTAzLTA1BQAAAPhmsA8NVkFSQ0hBUi0wMy0wNgYAAAD4Z7APDVZBUkNI
-QVItMDMtMDcHAAAA+GiwDw1WQVJDSEFSLTAzLTA4JgAAAPhpsA8NVkFSQ0hBUi0wMy0wOScAAAA=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t3` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t3
 ### SET
 ###   @1='2008:03:01' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5457,23 +4493,12 @@ BEGIN
 # at #
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t2` mapped to number 1
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t3` mapped to number 2
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 0
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 1
-#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id 2 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAALMHAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMKDwMC/wAH
-AMqaOxMBAAAALQAAAOAHAAAAAAEAAAAAAAAABHRlc3QAAnQyAAMKDwMC/wAH
-AMqaOxMBAAAALQAAAA0IAAAAAAIAAAAAAAAABHRlc3QAAnQzAAMKDwMC/wAH
-AMqaOxgBAAAAJgEAADMJAAAAAAAAAAAAAAAAA///+CKwDw1WQVJDSEFSLTAxLTAyAgAAAPgixA8N
-VkFSQ0hBUi0wMS0wMgIAAAD4I7APDVZBUkNIQVItMDEtMDMDAAAA+CPEDw1WQVJDSEFSLTAxLTAz
-AwAAAPgksA8NVkFSQ0hBUi0wMS0wNAQAAAD4JMQPDVZBUkNIQVItMDEtMDQEAAAA+CWwDw1WQVJD
-SEFSLTAxLTA1BQAAAPglxA8NVkFSQ0hBUi0wMS0wNQUAAAD4JrAPDVZBUkNIQVItMDEtMDYGAAAA
-+CbEDw1WQVJDSEFSLTAxLTA2BgAAAPgnsA8NVkFSQ0hBUi0wMS0wNwcAAAD4J8QPDVZBUkNIQVIt
-MDEtMDcHAAAA
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t2` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t3` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id #
+#010909  4:46:40 server id 1  end_log_pos # 	Update_rows: table id # flags: STMT_END_F
 ### UPDATE test.t1
 ### WHERE
 ###   @1='2008:01:02' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5528,12 +4553,6 @@ MDEtMDcHAAAA
 ###   @1='2018:01:07' /* DATE meta=0 nullable=1 is_null=0 */
 ###   @2='VARCHAR-01-07' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @3=7 /* INT meta=0 nullable=1 is_null=0 */
-AMqaOxgBAAAAJgEAAFkKAAAAAAEAAAAAAAAAA///+EKwDw1WQVJDSEFSLTAyLTAyAgAAAPhC2A8N
-VkFSQ0hBUi0wMi0wMgIAAAD4Q7APDVZBUkNIQVItMDItMDMDAAAA+EPYDw1WQVJDSEFSLTAyLTAz
-AwAAAPhEsA8NVkFSQ0hBUi0wMi0wNAQAAAD4RNgPDVZBUkNIQVItMDItMDQEAAAA+EWwDw1WQVJD
-SEFSLTAyLTA1BQAAAPhF2A8NVkFSQ0hBUi0wMi0wNQUAAAD4RrAPDVZBUkNIQVItMDItMDYGAAAA
-+EbYDw1WQVJDSEFSLTAyLTA2BgAAAPhHsA8NVkFSQ0hBUi0wMi0wNwcAAAD4R9gPDVZBUkNIQVIt
-MDItMDcHAAAA
 ### UPDATE test.t2
 ### WHERE
 ###   @1='2008:02:02' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5588,13 +4607,6 @@ MDItMDcHAAAA
 ###   @1='2028:02:07' /* DATE meta=0 nullable=1 is_null=0 */
 ###   @2='VARCHAR-02-07' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @3=7 /* INT meta=0 nullable=1 is_null=0 */
-AMqaOxgBAAAAJgEAAH8LAAAQAAIAAAAAAAEAA///+GKwDw1WQVJDSEFSLTAzLTAyAgAAAPhi7A8N
-VkFSQ0hBUi0wMy0wMgIAAAD4Y7APDVZBUkNIQVItMDMtMDMDAAAA+GPsDw1WQVJDSEFSLTAzLTAz
-AwAAAPhksA8NVkFSQ0hBUi0wMy0wNAQAAAD4ZOwPDVZBUkNIQVItMDMtMDQEAAAA+GWwDw1WQVJD
-SEFSLTAzLTA1BQAAAPhl7A8NVkFSQ0hBUi0wMy0wNQUAAAD4ZrAPDVZBUkNIQVItMDMtMDYGAAAA
-+GbsDw1WQVJDSEFSLTAzLTA2BgAAAPhnsA8NVkFSQ0hBUi0wMy0wNwcAAAD4Z+wPDVZBUkNIQVIt
-MDMtMDcHAAAA
-'/*!*/;
 ### UPDATE test.t3
 ### WHERE
 ###   @1='2008:03:02' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5665,20 +4677,12 @@ BEGIN
 # at #
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t2` mapped to number 1
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t3` mapped to number 2
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 0
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 1
-#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id 2 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAADUMAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMKDwMC/wAH
-AMqaOxMBAAAALQAAAGIMAAAAAAEAAAAAAAAABHRlc3QAAnQyAAMKDwMC/wAH
-AMqaOxMBAAAALQAAAI8MAAAAAAIAAAAAAAAABHRlc3QAAnQzAAMKDwMC/wAH
-AMqaOxkBAAAAoQAAADANAAAAAAAAAAAAAAAAA//4IsQPDVZBUkNIQVItMDEtMDICAAAA+CPEDw1W
-QVJDSEFSLTAxLTAzAwAAAPgkxA8NVkFSQ0hBUi0wMS0wNAQAAAD4JcQPDVZBUkNIQVItMDEtMDUF
-AAAA+CbEDw1WQVJDSEFSLTAxLTA2BgAAAPgnxA8NVkFSQ0hBUi0wMS0wNwcAAAA=
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t2` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t3` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id #
+#010909  4:46:40 server id 1  end_log_pos # 	Delete_rows: table id # flags: STMT_END_F
 ### DELETE FROM test.t1
 ### WHERE
 ###   @1='2018:01:02' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5709,9 +4713,6 @@ AAAA+CbEDw1WQVJDSEFSLTAxLTA2BgAAAPgnxA8NVkFSQ0hBUi0wMS0wNwcAAAA=
 ###   @1='2018:01:07' /* DATE meta=0 nullable=1 is_null=0 */
 ###   @2='VARCHAR-01-07' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @3=7 /* INT meta=0 nullable=1 is_null=0 */
-AMqaOxkBAAAAoQAAANENAAAAAAEAAAAAAAAAA//4QtgPDVZBUkNIQVItMDItMDICAAAA+EPYDw1W
-QVJDSEFSLTAyLTAzAwAAAPhE2A8NVkFSQ0hBUi0wMi0wNAQAAAD4RdgPDVZBUkNIQVItMDItMDUF
-AAAA+EbYDw1WQVJDSEFSLTAyLTA2BgAAAPhH2A8NVkFSQ0hBUi0wMi0wNwcAAAA=
 ### DELETE FROM test.t2
 ### WHERE
 ###   @1='2028:02:02' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5742,10 +4743,6 @@ AAAA+EbYDw1WQVJDSEFSLTAyLTA2BgAAAPhH2A8NVkFSQ0hBUi0wMi0wNwcAAAA=
 ###   @1='2028:02:07' /* DATE meta=0 nullable=1 is_null=0 */
 ###   @2='VARCHAR-02-07' /* VARSTRING(255) meta=255 nullable=1 is_null=0 */
 ###   @3=7 /* INT meta=0 nullable=1 is_null=0 */
-AMqaOxkBAAAAoQAAAHIOAAAQAAIAAAAAAAEAA//4YuwPDVZBUkNIQVItMDMtMDICAAAA+GPsDw1W
-QVJDSEFSLTAzLTAzAwAAAPhk7A8NVkFSQ0hBUi0wMy0wNAQAAAD4ZewPDVZBUkNIQVItMDMtMDUF
-AAAA+GbsDw1WQVJDSEFSLTAzLTA2BgAAAPhn7A8NVkFSQ0hBUi0wMy0wNwcAAAA=
-'/*!*/;
 ### DELETE FROM test.t3
 ### WHERE
 ###   @1='2038:03:02' /* DATE meta=0 nullable=1 is_null=0 */
@@ -5841,12 +4838,8 @@ FLUSH LOGS;
 /*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
 DELIMITER /*!*/;
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v 5.1.28-debug-log created 010909  4:46:40 at startup
+#010909  4:46:40 server id 1  end_log_pos # 	Start: binlog v 4, server v #.##.## created 010909  4:46:40 at startup
 ROLLBACK/*!*/;
-BINLOG '
-AMqaOw8BAAAAZgAAAGoAAAAAAAQANS4xLjI4LWRlYnVnLWxvZwAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAypo7EzgNAAgAEgAEBAQEEgAAUwAEGggAAAAICAgC
-'/*!*/;
 # at #
 #010909  4:46:40 server id 1  end_log_pos # 	Query	thread_id=#	exec_time=#	error_code=0
 use test/*!*/;
@@ -5856,7 +4849,7 @@ SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=1, @@session.uniq
 SET @@session.sql_mode=0/*!*/;
 SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
 /*!\C utf8 *//*!*/;
-SET @@session.character_set_client=33,@@session.collation_connection=33,@@session.collation_server=8/*!*/;
+SET @@session.character_set_client=45,@@session.collation_connection=45,@@session.collation_server=8/*!*/;
 SET @@session.lc_time_names=0/*!*/;
 SET @@session.collation_database=DEFAULT/*!*/;
 CREATE TABLE t1 (
@@ -5872,14 +4865,8 @@ BEGIN
 /*!*/;
 # at #
 # at #
-#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number 0
-#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id 0 flags: STMT_END_F
-
-BINLOG '
-AMqaOxMBAAAALQAAAH0BAAAAAAAAAAAAAAAABHRlc3QAAnQxAAMDAw8CPAAH
-AMqaOxcBAAAARAAAAMEBAAAQAAAAAAAAAAEAA//4AQAAAAIAAAADV293+AMAAAAEAAAAA1dvd/gF
-AAAABgAAAANXb3c=
-'/*!*/;
+#010909  4:46:40 server id 1  end_log_pos # 	Table_map: `test`.`t1` mapped to number #
+#010909  4:46:40 server id 1  end_log_pos # 	Write_rows: table id # flags: STMT_END_F
 ### INSERT INTO test.t1
 ### SET
 ###   @1=1 /* INT meta=0 nullable=1 is_null=0 */
