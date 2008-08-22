@@ -113,6 +113,7 @@ static int simulateDiskFull = SIMULATE_DISK_FULL;
 #endif
 	
 static FILE	*traceFile;
+static char baseDir[PATH_MAX+1]={0};
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -133,6 +134,7 @@ IO::IO()
 	forceFsync = true;
 	fatalError = false;
 	memset(writeTypes, 0, sizeof(writeTypes));
+	syncObject.setName("IO::syncObject");
 }
 
 IO::~IO()
@@ -141,9 +143,42 @@ IO::~IO()
 	closeFile();
 }
 
+static bool isAbsolutePath(const char *name)
+{
+#ifdef _WIN32
+	size_t len = strlen(name);
+	if(len < 2)
+		return false;
+	return (name[0]=='\\' || name[1]==':');
+#else
+	return (name[0]=='/');
+#endif
+}
+
+void IO::setBaseDirectory(const char *directory)
+{
+
+	strncpy(baseDir, directory, PATH_MAX);
+	size_t len = strlen(baseDir);
+	// Append path separator
+	if (baseDir[len-1] != SEPARATOR)
+	{
+		baseDir[len] = SEPARATOR;
+		baseDir[len+1] = 0;
+	}
+
+}
+
+static JString getPath(const char *filename)
+{
+	if(baseDir[0] == 0 || isAbsolutePath(filename))
+		return JString(filename);
+	return JString(baseDir) + filename;
+}
+
 bool IO::openFile(const char * name, bool readOnly)
 {
-	fileName = name;
+	fileName = getPath(name);
 	
 	for (int attempt = 0; attempt < 3; ++attempt)
 		{
@@ -184,11 +219,11 @@ bool IO::openFile(const char * name, bool readOnly)
 	return fileId != -1;
 }
 
-bool IO::createFile(const char *name, uint64 initialAllocation)
+bool IO::createFile(const char *name)
 {
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
-	fileName = name;
+	fileName = getPath(name);
 	
 	for (int attempt = 0; attempt < 3; ++attempt)
 		{
@@ -217,26 +252,6 @@ bool IO::createFile(const char *name, uint64 initialAllocation)
 	fcntl(fileId, F_SETLK, &lock);
 #endif
 #endif
-
-	if (initialAllocation)
-		{
-		UCHAR *raw = new UCHAR[8192 * 257];
-		UCHAR *aligned = (UCHAR*) (((UIPTR) raw + 8191) / 8192 * 8192);
-		uint size = 8192 * 256;
-		memset(aligned, 0, size);
-		uint64 offset = 0;
-		
-		for (uint64 remaining = initialAllocation; remaining;)
-			{
-			uint n = (int) MIN(remaining, size);
-			write(offset, n, aligned);
-			offset += n;
-			remaining -= n;
-			}
-		
-		delete [] raw;
-		sync();
-		}
 
 	return fileId != -1;
 }
@@ -399,10 +414,11 @@ void IO::declareFatalError()
 void IO::createPath(const char *fileName)
 {
 	// First, better make sure directories exists
+	JString fname = getPath(fileName);
 
 	char directory [256], *q = directory;
 
-	for (const char *p = fileName; *p;)
+	for (const char *p = fname.getString(); *p;)
 		{
 		char c = *p++;
 		
@@ -412,7 +428,8 @@ void IO::createPath(const char *fileName)
 			
 			if (q > directory && q [-1] != ':')
 				if (MKDIR (directory) && errno != EEXIST)
-					throw SQLError (IO_ERROR, "can't create directory \"%s\"\n", directory);
+					throw SQLError (IO_ERROR, 
+					"can't create directory \"%s\"\n", directory);
 			}
 		*q++ = c;
 		}
@@ -428,6 +445,9 @@ void IO::expandFileName(const char *fileName, int length, char *buffer, const ch
 {
 	char expandedName[PATH_MAX+1];
 	const char *path;
+	JString fname = getPath(fileName);
+	fileName = fname.getString();
+
 #ifdef _WIN32
 	char *base;
 	
@@ -484,7 +504,8 @@ bool IO::doesFileExist(const char *fileName)
 int IO::fileStat(const char *fileName, struct stat *fileStats, int *errnum)
 {
 	struct stat stats;
-	int retCode = stat(fileName, &stats);
+	JString path = getPath(fileName);
+	int retCode = stat(path.getString(), &stats);
 	
 	if (fileStats)
 		*fileStats = stats;
@@ -640,7 +661,8 @@ void IO::sync(void)
 
 void IO::deleteFile(const char* fileName)
 {
-	unlink(fileName);
+	JString path = getPath(fileName);
+	unlink(path.getString());
 }
 
 void IO::tracePage(Bdb* bdb)
@@ -772,4 +794,3 @@ uint16 IO::computeChecksum(Page *page, size_t len)
 	return (uint16) sum;
 
 }
-

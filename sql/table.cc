@@ -736,7 +736,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     share->transactional= (ha_choice) (head[39] & 3);
     share->page_checksum= (ha_choice) ((head[39] >> 2) & 3);
     share->row_type= (row_type) head[40];
-    share->table_charset= get_charset((uint) head[38],MYF(0));
+    share->table_charset= get_charset((((uint) head[41]) << 8) + 
+                                        (uint) head[38],MYF(0));
     share->null_field_first= 1;
   }
   if (!share->table_charset)
@@ -1273,12 +1274,13 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       }
       else
       {
-        if (!strpos[14])
+        uint csid= strpos[14] + (((uint) strpos[11]) << 8);
+        if (!csid)
           charset= &my_charset_bin;
-        else if (!(charset=get_charset((uint) strpos[14], MYF(0))))
+        else if (!(charset= get_charset(csid, MYF(0))))
         {
           error= 5; // Unknown or unavailable charset
-          errarg= (int) strpos[14];
+          errarg= (int) csid;
           goto err;
         }
       }
@@ -2123,6 +2125,28 @@ void free_blobs(register TABLE *table)
 }
 
 
+/**
+  Reclaim temporary blob storage which is bigger than 
+  a threshold.
+ 
+  @param table A handle to the TABLE object containing blob fields
+  @param size The threshold value.
+ 
+*/
+
+void free_field_buffers_larger_than(TABLE *table, uint32 size)
+{
+  uint *ptr, *end;
+  for (ptr= table->s->blob_field, end=ptr + table->s->blob_fields ;
+       ptr != end ;
+       ptr++)
+  {
+    Field_blob *blob= (Field_blob*) table->field[*ptr];
+    if (blob->get_field_buffer_size() > size)
+        blob->free();
+  }
+}
+
 	/* Find where a form starts */
 	/* if formname is NullS then only formnames is read */
 
@@ -2548,8 +2572,7 @@ File create_frm(THD *thd, const char *name, const char *db,
 
   if ((file= my_create(name, CREATE_MODE, create_flags, MYF(0))) >= 0)
   {
-    uint key_length, tmp_key_length;
-    uint tmp;
+    uint key_length, tmp_key_length, tmp, csid;
     bzero((char*) fileinfo,64);
     /* header */
     fileinfo[0]=(uchar) 254;
@@ -2598,13 +2621,14 @@ File create_frm(THD *thd, const char *name, const char *db,
     fileinfo[32]=0;				// No filename anymore
     fileinfo[33]=5;                             // Mark for 5.0 frm file
     int4store(fileinfo+34,create_info->avg_row_length);
-    fileinfo[38]= (create_info->default_table_charset ?
-		   create_info->default_table_charset->number : 0);
+    csid= (create_info->default_table_charset ?
+           create_info->default_table_charset->number : 0);
+    fileinfo[38]= (uchar) csid;
     fileinfo[39]= (uchar) ((uint) create_info->transactional |
                            ((uint) create_info->page_checksum << 2));
     fileinfo[40]= (uchar) create_info->row_type;
     /* Next few bytes where for RAID support */
-    fileinfo[41]= 0;
+    fileinfo[41]= (uchar) (csid >> 8);
     fileinfo[42]= 0;
     fileinfo[43]= 0;
     fileinfo[44]= 0;

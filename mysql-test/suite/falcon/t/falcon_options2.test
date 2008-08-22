@@ -4,7 +4,7 @@
 
 --sorted_result
 SELECT * FROM INFORMATION_SCHEMA.global_variables
-         WHERE variable_name LiKE 'falcon_%';
+         WHERE variable_name LiKE 'falcon_%' AND variable_name <> 'falcon_serial_log_dir';
 
 SELECT @@falcon_checkpoint_schedule;
 SELECT @@falcon_consistent_read;
@@ -14,7 +14,6 @@ SELECT @@falcon_debug_trace;
 SELECT @@falcon_direct_io;
 SELECT @@falcon_gopher_threads;
 SELECT @@falcon_index_chill_threshold;
-SELECT @@falcon_initial_allocation;
 SELECT @@falcon_io_threads;
 SELECT @@falcon_large_blob_threshold;
 SELECT @@falcon_lock_wait_timeout;
@@ -27,7 +26,6 @@ SELECT @@falcon_record_scavenge_threshold;
 SELECT @@falcon_scavenge_schedule;
 SELECT @@falcon_serial_log_block_size;
 SELECT @@falcon_serial_log_buffers;
-SELECT @@falcon_serial_log_dir;
 SELECT @@falcon_serial_log_priority;
 SELECT @@falcon_use_deferred_index_hash;
 SELECT @@falcon_use_sectorcache;

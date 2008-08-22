@@ -137,7 +137,6 @@ typedef struct st_read_record {			/* Parameter to read_record */
   uchar	*cache,*cache_pos,*cache_end,*read_positions;
   IO_CACHE *io_cache;
   bool print_error, ignore_not_found_rows;
-  struct st_join_table *do_insideout_scan;
 } READ_RECORD;
 
 

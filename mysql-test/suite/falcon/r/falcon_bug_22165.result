@@ -1,0 +1,24 @@
+*** Bug #22165 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+DROP PROCEDURE IF EXISTS p1;
+CREATE TABLE t1 (a bigint, b varchar(1000), c timestamp);
+CREATE PROCEDURE p1 ()
+begin
+declare v int default 0;
+declare continue handler for sqlexception
+begin
+declare continue handler for sqlexception begin end;
+ALTER TABLE t1 MODIFY COLUMN c timestamp;
+end;
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+while v < 10 do
+START TRANSACTION;
+INSERT INTO t1 (a, b) VALUES (v, 'a');
+UPDATE t1 SET c = current_timestamp WHERE a = v;
+COMMIT;
+SET v = v + 1;
+end while;
+end//
+DROP PROCEDURE p1;
+DROP TABLE t1;

@@ -83,7 +83,6 @@ static StorageHandler	*storageHandler;
 #undef PARAMETER_BOOL
 
 ulonglong	falcon_record_memory_max;
-ulonglong	falcon_initial_allocation;
 ulonglong	falcon_serial_log_file_size;
 uint		falcon_allocation_extent;
 ulonglong	falcon_page_cache_size;
@@ -163,9 +162,11 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton = (handlerton *)p;
 	my_bool error = false;
 
+	StorageHandler::setDataDirectory(mysql_real_data_home);
+
 	if (!storageHandler)
 		storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
-
+	
 	falcon_hton->state = SHOW_OPTION_YES;
 	falcon_hton->db_type = DB_TYPE_FALCON;
 	falcon_hton->savepoint_offset = sizeof(void*);
@@ -178,6 +179,8 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->create = falcon_create_handler;
 	falcon_hton->drop_database  = StorageInterface::dropDatabase;
 	falcon_hton->panic  = StorageInterface::panic;
+
+
 #if 0
 	falcon_hton->alter_table_flags  = StorageInterface::alter_table_flags;
 #endif
@@ -421,9 +424,6 @@ StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
 
 StorageInterface::~StorageInterface(void)
 {
-	if (storageTable)
-		storageTable->clearTruncateLock();
-
 	if (activeBlobs)
 		freeActiveBlobs();
 
@@ -535,10 +535,6 @@ StorageConnection* StorageInterface::getStorageConnection(THD* thd)
 int StorageInterface::close(void)
 {
 	DBUG_ENTER("StorageInterface::close");
-
-	if (storageTable)
-		storageTable->clearTruncateLock();
-
 	unmapFields();
 
 	// Temporarily comment out DTrace probes in Falcon, see bug #36403
@@ -918,7 +914,9 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 		if (    (lock_type >= TL_WRITE_CONCURRENT_INSERT && lock_type <= TL_WRITE)
 		    && !(thd_in_lock_tables(thd) && sql_command == SQLCOM_LOCK_TABLES)
 		    && !(thd_tablespace_op(thd))
-		  //  &&  (sql_command != SQLCOM_TRUNCATE)
+		    &&  (sql_command != SQLCOM_ALTER_TABLE)
+		    &&  (sql_command != SQLCOM_DROP_TABLE)
+		    &&  (sql_command != SQLCOM_TRUNCATE)
 		    &&  (sql_command != SQLCOM_OPTIMIZE)
 		    &&  (sql_command != SQLCOM_CREATE_TABLE)
 		   )
@@ -1021,7 +1019,7 @@ int StorageInterface::delete_all_rows()
 	if (!storageTable)
 		storageTable = storageConnection->getStorageTable(storageShare);
 		
-	storageTable->truncateTable();
+	ret = storageTable->truncateTable();
 		
 	DBUG_RETURN(ret);
 }
@@ -1263,10 +1261,6 @@ void StorageInterface::startTransaction(void)
 	if (!storageConnection->transactionActive)
 		{
 		storageConnection->startTransaction(isolation);
-		
-		if (storageTable)
-			storageTable->setTruncateLock();
-				
 		trans_register_ha(mySqlThread, true, falcon_hton);
 		}
 
@@ -1874,12 +1868,7 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 		storageConnection->setCurrentStatement(NULL);
 
 		if (!thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-			{
-			if (storageTable)
-				storageTable->clearTruncateLock();
-		
 			storageConnection->endImplicitTransaction();
-			}
 		else
 			storageConnection->releaseVerb();
 
@@ -1892,10 +1881,11 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageConnection->setCurrentStatement(thd->query);
 
 		insertCount = 0;
-		bool isTruncate = false;
-		
+
 		switch (thd_sql_command(thd))
 			{
+			case SQLCOM_TRUNCATE:
+			case SQLCOM_DROP_TABLE:
 			case SQLCOM_ALTER_TABLE:
 			case SQLCOM_DROP_INDEX:
 			case SQLCOM_CREATE_INDEX:
@@ -1904,18 +1894,11 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 
 				if (ret)
 					{
-					if (storageTable)
-						storageTable->clearTruncateLock();
-						
 					DBUG_RETURN(error(ret));
 					}
 				}
+				storageTable->waitForWriteComplete();
 				break;
-
-			case SQLCOM_TRUNCATE:
-				isTruncate = true;
-				break;
-				
 			default:
 				break;
 			}
@@ -1928,9 +1911,6 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			
 			if (storageConnection->startTransaction(isolation))
 				{
-				if (!isTruncate && storageTable)
-					storageTable->setTruncateLock();
-				
 				trans_register_ha(thd, true, falcon_hton);
 				}
 
@@ -1943,9 +1923,6 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			
 			if (storageConnection->startImplicitTransaction(isolation))
 				{
-				if (!isTruncate && storageTable)
-					storageTable->setTruncateLock();
-				
 				trans_register_ha(thd, false, falcon_hton);
 				}
 			}
@@ -2041,16 +2018,22 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	/*
 	CREATE TABLESPACE tablespace
 		ADD DATAFILE 'file'
-		USE LOGFILE GROUP logfile_group
-		[EXTENT_SIZE [=] extent_size]
-		[INITIAL_SIZE [=] initial_size]
-		[AUTOEXTEND_SIZE [=] autoextend_size]
-		[MAX_SIZE [=] max_size]
-		[NODEGROUP [=] nodegroup_id]
-		[WAIT]
+		USE LOGFILE GROUP logfile_group         // NDB only
+		[EXTENT_SIZE [=] extent_size]           // Not supported
+		[INITIAL_SIZE [=] initial_size]         // Not supported
+		[AUTOEXTEND_SIZE [=] autoextend_size]   // Not supported
+		[MAX_SIZE [=] max_size]                 // Not supported
+		[NODEGROUP [=] nodegroup_id]            // NDB only
+		[WAIT]                                  // NDB only
 		[COMMENT [=] comment_text]
 		ENGINE [=] engine
+
+
+	Parameters EXTENT_SIZE, INITIAL,SIZE, AUTOEXTEND_SIZE and MAX_SIZE are
+	currently not supported by Falcon. LOGFILE GROUP, NODEGROUP and WAIT are
+	for NDB only.
 	*/
+
 	if (ts_info->data_file_name)
 		{
 		char buff[FN_REFLEN];
@@ -2068,15 +2051,7 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	switch (ts_info->ts_cmd_type)
 		{
 		case CREATE_TABLESPACE:
-			ret = storageHandler->createTablespace(	ts_info->tablespace_name,
-													ts_info->data_file_name,
-													ts_info->initial_size,
-													ts_info->extent_size,
-													ts_info->autoextend_size,
-													ts_info->max_size,
-													ts_info->nodegroup_id,
-													ts_info->wait_until_completed,
-													ts_info->ts_comment);
+			ret = storageHandler->createTablespace(	ts_info->tablespace_name, ts_info->data_file_name, ts_info->ts_comment);
 			break;
 
 		case DROP_TABLESPACE:
@@ -3246,48 +3221,6 @@ int NfsPluginHandler::deinitTableSpaceFilesInfo(void *p)
 
 //*****************************************************************************
 //
-// FALCON_TABLES
-//
-//*****************************************************************************
-
-int NfsPluginHandler::getTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond)
-{
-	InfoTableImpl infoTable(thd, tables, system_charset_info);
-
-	if (storageHandler)
-		storageHandler->getTablesInfo(&infoTable);
-
-	return infoTable.error;
-}
-
-ST_FIELD_INFO tablesFieldInfo[]=
-{
-	{"SCHEMA_NAME",	  127, MYSQL_TYPE_STRING,	0, 0, "Schema Name", SKIP_OPEN_TABLE},
-	{"TABLE_NAME",	  127, MYSQL_TYPE_STRING,	0, 0, "Table Name", SKIP_OPEN_TABLE},
-	{"PARTITION",	  127, MYSQL_TYPE_STRING,	0, 0, "Partition Name", SKIP_OPEN_TABLE},
-	{"TABLESPACE",	  127, MYSQL_TYPE_STRING,	0, 0, "Tablespace", SKIP_OPEN_TABLE},
-	{"INTERNAL_NAME", 127, MYSQL_TYPE_STRING,	0, 0, "Internal Name", SKIP_OPEN_TABLE},
-	{0,					0, MYSQL_TYPE_STRING,	0, 0, 0, SKIP_OPEN_TABLE}
-};
-
-int NfsPluginHandler::initTablesInfo(void *p)
-{
-	DBUG_ENTER("initTablesInfo");
-	ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *)p;
-	schema->fields_info = tablesFieldInfo;
-	schema->fill_table = NfsPluginHandler::getTablesInfo;
-
-	DBUG_RETURN(0);
-}
-
-int NfsPluginHandler::deinitTablesInfo(void *p)
-{
-	DBUG_ENTER("deinitTablesInfo");
-	DBUG_RETURN(0);
-}
-
-//*****************************************************************************
-//
 // FALCON_TRANSACTIONS
 //
 //*****************************************************************************
@@ -3596,7 +3529,7 @@ void StorageInterface::unmapFields(void)
 static MYSQL_SYSVAR_STR(serial_log_dir, falcon_serial_log_dir,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,
   "Falcon serial log file directory.",
-  NULL, NULL, NULL);
+  NULL, NULL, mysql_real_data_home);
 
 static MYSQL_SYSVAR_STR(checkpoint_schedule, falcon_checkpoint_schedule,
   PLUGIN_VAR_RQCMDARG| PLUGIN_VAR_READONLY | PLUGIN_VAR_MEMALLOC,
@@ -3626,11 +3559,6 @@ static MYSQL_SYSVAR_ULONGLONG(record_memory_max, falcon_record_memory_max,
   PLUGIN_VAR_RQCMDARG, // | PLUGIN_VAR_READONLY,
   "The maximum size of the record memory cache.",
   NULL, StorageInterface::updateRecordMemoryMax, LL(250)<<20, 0, (ulonglong) max_memory_address, LL(1)<<20);
-
-static MYSQL_SYSVAR_ULONGLONG(initial_allocation, falcon_initial_allocation,
-  PLUGIN_VAR_RQCMDARG, // | PLUGIN_VAR_READONLY,
-  "Initial allocation (in bytes) of falcon user tablespace.",
-  NULL, NULL, 0, 0, LL(4000000000), LL(1)<<20);
 
 static MYSQL_SYSVAR_ULONGLONG(serial_log_file_size, falcon_serial_log_file_size,
   PLUGIN_VAR_RQCMDARG,
@@ -3680,7 +3608,6 @@ static struct st_mysql_sys_var* falconVariables[]= {
 	MYSQL_SYSVAR(scavenge_schedule),
 	//MYSQL_SYSVAR(debug_mask),
 	MYSQL_SYSVAR(record_memory_max),
-	MYSQL_SYSVAR(initial_allocation),
 	//MYSQL_SYSVAR(allocation_extent),
 	MYSQL_SYSVAR(page_cache_size),
 	MYSQL_SYSVAR(consistent_read),
@@ -3700,7 +3627,6 @@ static st_mysql_information_schema falcon_syncobjects			=	{ MYSQL_INFORMATION_SC
 static st_mysql_information_schema falcon_serial_log_info		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_tablespaces			=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_tablespace_files		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
-static st_mysql_information_schema falcon_tables				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_version				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 
 mysql_declare_plugin(falcon)
@@ -3893,21 +3819,6 @@ mysql_declare_plugin(falcon)
 	PLUGIN_LICENSE_GPL,
 	NfsPluginHandler::initTableSpaceFilesInfo,	/* plugin init */
 	NfsPluginHandler::deinitTableSpaceFilesInfo,/* plugin deinit */
-	0x0005,
-	NULL,										/* status variables */
-	NULL,										/* system variables */
-	NULL										/* config options   */
-	},
-	
-	{
-	MYSQL_INFORMATION_SCHEMA_PLUGIN,
-	&falcon_tables,
-	"FALCON_TABLES",
-	"MySQL AB",
-	"Falcon Tables.",
-	PLUGIN_LICENSE_GPL,
-	NfsPluginHandler::initTablesInfo,			/* plugin init */
-	NfsPluginHandler::deinitTablesInfo,			/* plugin deinit */
 	0x0005,
 	NULL,										/* status variables */
 	NULL,										/* system variables */

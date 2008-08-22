@@ -40,7 +40,7 @@ SRLUpdateIndex::~SRLUpdateIndex(void)
 
 void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 {
-	Sync syncIndexes(&log->syncIndexes, "SRLUpdateIndex::append");
+	Sync syncIndexes(&log->syncIndexes, "SRLUpdateIndex::append(1)");
 	syncIndexes.lock(Shared);
 
 	Transaction *transaction = deferredIndex->transaction;
@@ -57,7 +57,7 @@ void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 
 	for (DINode *node = walker.next(); node;)
 		{
-		START_RECORD(srlUpdateIndex, "SRLUpdateIndex::append");
+		START_RECORD(srlUpdateIndex, "SRLUpdateIndex::append(2)");
 		log->updateIndexUseVector(indexId, tableSpaceId, 1);
 		SerialLogTransaction *srlTrans = log->getTransaction(transaction->transactionId);
 		srlTrans->setTransaction(transaction);

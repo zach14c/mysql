@@ -1474,13 +1474,15 @@ sub executable_setup_ndb () {
 
   $exe_ndbd=
     mtr_exe_maybe_exists("$ndb_path/src/kernel/ndbd",
-			 "$ndb_path/ndbd");
+			 "$ndb_path/ndbd",
+			 "$glob_basedir/libexec/ndbd");
   $exe_ndb_mgm=
     mtr_exe_maybe_exists("$ndb_path/src/mgmclient/ndb_mgm",
 			 "$ndb_path/ndb_mgm");
   $exe_ndb_mgmd=
     mtr_exe_maybe_exists("$ndb_path/src/mgmsrv/ndb_mgmd",
-			 "$ndb_path/ndb_mgmd");
+			 "$ndb_path/ndb_mgmd",
+			 "$glob_basedir/libexec/ndb_mgmd");
   $exe_ndb_waiter=
     mtr_exe_maybe_exists("$ndb_path/tools/ndb_waiter",
 			 "$ndb_path/ndb_waiter");
@@ -4703,11 +4705,15 @@ sub run_mysqltest ($) {
 
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
+  # and remove existing falcon tables
   # ----------------------------------------------------------------------
-
+  
   if ( $glob_use_embedded_server )
   {
     mysqld_arguments($args,$master->[0],$tinfo->{'master_opt'},[]);
+    #Remove  falcon tables before each test, otherwise every start might fail
+    #if there is an error in falcon recovery
+    rm_falcon_tables($master->[0]->{'path_myddir'});
   }
 
   # ----------------------------------------------------------------------

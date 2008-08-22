@@ -95,7 +95,7 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 
 void Transaction::initialize(Connection* cnct, TransId seq)
 {
-	Sync sync(&syncObject, "Transaction::initialize");
+	Sync sync(&syncObject, "Transaction::initialize(1)");
 	sync.lock(Exclusive);
 	ASSERT(savePoints == NULL);
 	ASSERT(freeSavePoints == NULL);
@@ -155,7 +155,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	
 	startTime = database->deltaTime;
 	blockingRecord = NULL;
-	thread = Thread::getThread("Transaction::init");
+	thread = Thread::getThread("Transaction::initialize");
 	syncActive.lock(NULL, Exclusive);
 	Transaction *oldest = transactionManager->findOldest();
 	oldestActive = (oldest) ? oldest->transactionId : transactionId;
@@ -174,7 +174,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 				 !transaction->systemTransaction &&
 				 transaction->transactionId < transactionId)
 				{
-				Sync syncDependency(&transaction->syncObject, "Transaction::initialize");
+				Sync syncDependency(&transaction->syncObject, "Transaction::initialize(2)");
 				syncDependency.lock(Shared);
 
 				if (transaction->isActive() && 
@@ -254,7 +254,7 @@ void Transaction::commit()
 
 	if (state == Active)
 		{
-		Sync sync(&syncIndexes, "Transaction::commit");
+		Sync sync(&syncIndexes, "Transaction::commit(1)");
 		sync.lock(Shared);
 		
 		for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -275,36 +275,45 @@ void Transaction::commit()
 		releaseRecordLocks();
 
 	database->serialLog->preCommit(this);
-	state = Committed;
 	syncActive.unlock();
 
+	
+
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
+	{
+		Table * table = record->format->table;
+
 		if (!record->isSuperceded() && record->state != recLock)
-			record->format->table->updateRecord (record);
+			{
+			table->updateRecord (record);
+			if (commitTriggers)
+				table->postCommit (this, record);
+			}
 
-	if (commitTriggers)
-		for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
-			if (!record->isSuperceded() && record->state != recLock)
-				record->format->table->postCommit (this, record);
-
+		if (!record->getPriorVersion())
+			++table->cardinality;
+		if (record->state == recDeleted && table->cardinality > 0)
+			--table->cardinality;
+	}
+	
 	releaseDependencies();
 	database->flushInversion(this);
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit");
+	// Transfer transaction from active list to committed list, set committed state
+
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
+
 	syncActiveTransactions.lock(Exclusive);
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit");
 	syncCommitted.lock(Exclusive);
 
 	transactionManager->activeTransactions.remove(this);
-	syncActiveTransactions.unlock();
-	
-	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
-		if (!record->getPriorVersion())
-			++record->format->table->cardinality;
-		else if (record->state == recDeleted && record->format->table->cardinality > 0)
-			--record->format->table->cardinality;
 	transactionManager->committedTransactions.append(this);
+	state = Committed;
+
 	syncCommitted.unlock();
+	syncActiveTransactions.unlock();
+
 	database->commit(this);
 
 	delete [] xid;
@@ -333,7 +342,7 @@ void Transaction::commitNoUpdates(void)
 	
 	if (deferredIndexes)
 		{
-		Sync sync(&syncIndexes, "Transaction::commitNoUpdates");
+		Sync sync(&syncIndexes, "Transaction::commitNoUpdates(1)");
 		sync.lock(Exclusive);
 		releaseDeferredIndexes();
 		}
@@ -341,7 +350,7 @@ void Transaction::commitNoUpdates(void)
 	if (hasLocks)
 		releaseRecordLocks();
 
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates");
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates(2)");
 	syncActiveTransactions.lock(Shared);
 	releaseDependencies();
 
@@ -352,7 +361,7 @@ void Transaction::commitNoUpdates(void)
 		xidLength = 0;
 		}
 	
-	Sync sync(&syncObject, "Transaction::commitNoUpdates");
+	Sync sync(&syncObject, "Transaction::commitNoUpdates(3)");
 	sync.lock(Exclusive);
 	
 	if (dependencies)
@@ -379,7 +388,7 @@ void Transaction::rollback()
 
 	if (deferredIndexes)
 		{
-		Sync sync(&syncIndexes, "Transaction::rollback");
+		Sync sync(&syncIndexes, "Transaction::rollback(1)");
 		sync.lock(Exclusive);
 		releaseDeferredIndexes();
 		}
@@ -445,7 +454,7 @@ void Transaction::rollback()
 		xidLength = 0;
 		}
 	
-	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback");
+	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(2)");
 	syncActiveTransactions.lock (Exclusive);
 	++transactionManager->rolledBack;
 	
@@ -776,7 +785,8 @@ void Transaction::releaseDependencies()
 
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
-				ASSERT(transaction->transactionId == state->transactionId || transaction->state == Available);
+				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
+				ASSERT(transaction->state != Initializing);
 				transaction->releaseDependency();
 				}
 			}
@@ -923,8 +933,11 @@ void Transaction::truncateTable(Table* table)
 			ptr = &rec->nextInTrans;
 }
 
-bool Transaction::hasUncommittedRecords(Table* table)
+bool Transaction::hasRecords(Table* table)
 {
+	// This lock is to avoid race with writeComplete
+	Sync sync(&syncIndexes, "Transaction::hasRecords");
+	sync.lock(Exclusive);
 	for (RecordVersion *rec = firstRecord; rec; rec = rec->nextInTrans)
 		if (rec->format->table == table)
 			return true;
@@ -982,7 +995,7 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 
 	TransactionManager *transactionManager = database->transactionManager;
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
-		"Transaction::waitForTransaction");
+		"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
 
 	if (!transaction)
@@ -1058,7 +1071,7 @@ void Transaction::waitForTransaction()
 		}
 	***/
 	
-	Sync sync(&syncActive, "Transaction::waitForTransaction");
+	Sync sync(&syncActive, "Transaction::waitForTransaction(2)");
 	sync.lock(Shared, falcon_lock_wait_timeout * 1000);
 }
 

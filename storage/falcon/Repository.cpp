@@ -61,6 +61,7 @@ Repository::Repository(const char *repositoryName, const char *repositorySchema,
 		setRollover (rollovers);
 
 	memset (volumes, 0, sizeof (volumes));
+	syncObject.setName("Repository::syncObject");
 }
 
 Repository::~Repository()
@@ -339,7 +340,7 @@ void Repository::setVolume(int volume)
 
 void Repository::save()
 {
-	Sync syncDDL(&database->syncSysDDL, "Repository::update");
+	Sync syncDDL(&database->syncSysDDL, "Repository::save");
 	syncDDL.lock (Shared);
 	PreparedStatement *statement = database->prepareStatement (
 		"replace into system.repositories (repositoryName,schema,sequenceName,filename,rollovers,currentVolume)"

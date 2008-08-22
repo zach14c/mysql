@@ -56,3 +56,39 @@ ENGINE = Falcon;
 
 DROP USER mysqltest_u1@localhost;
 DROP USER mysqltest_u2@localhost;
+
+--echo # --
+--echo # -- Bug#31302: USE information_schema disables DROP tablespace
+--echo # --
+
+GRANT CREATE TABLESPACE ON *.* TO mysqltest_u1@localhost;
+
+--echo
+--echo # -- Connection: mysqltest_u1@localhost
+--echo
+--connect(con1, localhost, mysqltest_u1,,)
+
+--echo # -- Grants for mysqltest_u1@localhost:
+SHOW GRANTS;
+
+--echo
+--echo # -- CREATE TABLESPACE...
+CREATE TABLESPACE ts1
+ADD DATAFILE 'datafile.dat'
+ENGINE = Falcon;
+
+--echo
+use INFORMATION_SCHEMA;
+
+--echo
+--echo # -- DROP TABLESPACE...
+DROP TABLESPACE ts1 
+ENGINE = Falcon;
+
+--echo
+--echo # -- Connection: root@localhost
+--echo
+--connection default
+--disconnect con1
+
+DROP USER mysqltest_u1@localhost;
