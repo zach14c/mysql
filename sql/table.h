@@ -716,9 +716,7 @@ public:
   my_bool force_index;
   my_bool distinct,const_table,no_rows;
   my_bool key_read, no_keyread;
-  my_bool locked_by_logger;
   my_bool no_replicate;
-  my_bool locked_by_name;
   my_bool fulltext_searched;
   my_bool no_cache;
   /* To signal that the table is associated with a HANDLER statement */
