@@ -17623,7 +17623,6 @@ static void test_wl4166_2()
 
 }
 
-
 /**
   Test how warnings generated during assignment of parameters
   are (currently not) preserve in case of reprepare.

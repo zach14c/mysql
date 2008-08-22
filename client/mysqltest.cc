@@ -480,7 +480,7 @@ void free_all_replace(){
 class LogFile {
   FILE* m_file;
   char m_file_name[FN_REFLEN];
-  uint m_bytes_written;
+  size_t m_bytes_written;
 public:
   LogFile() : m_file(NULL), m_bytes_written(0) {
     bzero(m_file_name, sizeof(m_file_name));
@@ -491,7 +491,7 @@ public:
   }
 
   const char* file_name() const { return m_file_name; }
-  uint bytes_written() const { return m_bytes_written; }
+  size_t bytes_written() const { return m_bytes_written; }
 
   void open(const char* dir, const char* name, const char* ext)
   {
@@ -510,7 +510,7 @@ public:
 
     DBUG_PRINT("info", ("file_name: %s", m_file_name));
 
-    if ((m_file= fopen(m_file_name, "w+")) == NULL)
+    if ((m_file= fopen(m_file_name, "wb+")) == NULL)
       die("Failed to open log file %s, errno: %d", m_file_name, errno);
 
     DBUG_VOID_RETURN;
@@ -539,8 +539,8 @@ public:
     DBUG_ASSERT(ds->str);
 
     if (fwrite(ds->str, 1, ds->length, m_file) != ds->length)
-      die("Failed to write %d bytes to '%s', errno: %d",
-          ds->length, m_file_name, errno);
+      die("Failed to write %lu bytes to '%s', errno: %d",
+          (unsigned long)ds->length, m_file_name, errno);
     m_bytes_written+= ds->length;
     DBUG_VOID_RETURN;
   }
@@ -578,7 +578,8 @@ public:
         DBUG_VOID_RETURN;
       }
 
-      DBUG_PRINT("info", ("Read %d bytes from file, buf: %s", bytes, buf));
+      DBUG_PRINT("info", ("Read %lu bytes from file, buf: %s",
+                          (unsigned long)bytes, buf));
 
       char* show_from= buf + bytes;
       while(show_from > buf && lines > 0 )
@@ -2284,7 +2285,7 @@ void eval_expr(VAR *v, const char *p, const char **p_end)
     const char* end= *p_end + 1;
     if (end < expected_end)
       die("Found junk '%.*s' after $variable in expression",
-          expected_end - end - 1, end);
+          (int)(expected_end - end - 1), end);
 
     DBUG_VOID_RETURN;
   }
@@ -4136,7 +4137,7 @@ void do_shutdown_server(struct st_command *command)
   /* Check that server dies */
   while(timeout--){
     if (my_kill(0, pid) < 0){
-      DBUG_PRINT("info", ("Sleeping, timeout: %d", timeout));
+      DBUG_PRINT("info", ("Process %d does not exist anymore", pid));
       break;
     }
     DBUG_PRINT("info", ("Sleeping, timeout: %d", timeout));
@@ -5934,7 +5935,7 @@ void fix_win_paths(const char *val, int len)
     DBUG_PRINT("info", ("pattern: %s", *pattern));
 
     /* Search for the path in string */
-    while ((p= strstr(val, *pattern)))
+    while ((p= strstr((char*)val, *pattern)))
     {
       DBUG_PRINT("info", ("Found %s in val p: %s", *pattern, p));
 

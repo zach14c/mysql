@@ -4871,3 +4871,15 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 SELECT * FROM t1 WHERE a IN ( SELECT 1 INTO @v );
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'INTO @v )' at line 1
 DROP TABLE t1, t2;
+CREATE TABLE t1(pk int PRIMARY KEY, a int, INDEX idx(a));
+INSERT INTO t1 VALUES (1, 10), (3, 30), (2, 20);
+CREATE TABLE t2(pk int PRIMARY KEY, a int, b int, INDEX idxa(a));
+INSERT INTO t2 VALUES (2, 20, 700), (1, 10, 200), (4, 10, 100);
+SELECT * FROM t1
+WHERE EXISTS (SELECT DISTINCT a FROM t2 WHERE t1.a < t2.a ORDER BY b);
+pk	a
+1	10
+3	30
+2	20
+DROP TABLE t1,t2;
+End of 5.1 tests.
