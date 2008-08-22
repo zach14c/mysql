@@ -570,6 +570,7 @@ enum open_table_mode
 /* @@optimizer_switch flags */
 #define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
 #define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
+#define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
 
 
 /*

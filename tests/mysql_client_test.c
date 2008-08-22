@@ -37,6 +37,7 @@
 #define VER "2.1"
 #define MAX_TEST_QUERY_LENGTH 300 /* MAX QUERY BUFFER LENGTH */
 #define MAX_KEY MAX_INDEXES
+#define MAX_KEY_LENGTH_DECIMAL_WIDTH 4          /* strlen("4096") */
 #define MAX_SERVER_ARGS 64
 
 /* set default options */
@@ -7871,10 +7872,16 @@ static void test_explain_bug()
     verify_prepare_field(result, 6, "key_len", "", MYSQL_TYPE_LONGLONG, "",
                          "", "", 3, 0);
   }
-  else
+  else if (mysql_get_server_version(mysql) <= 60000)
   {
     verify_prepare_field(result, 6, "key_len", "", MYSQL_TYPE_VAR_STRING, "", 
                          "", "", NAME_CHAR_LEN*MAX_KEY, 0);
+  }
+  else
+  {
+    verify_prepare_field(result, 6, "key_len", "", MYSQL_TYPE_VAR_STRING, "", 
+                         "", "", 
+                          (MAX_KEY_LENGTH_DECIMAL_WIDTH + 1) * MAX_KEY, 0);
   }
 
   verify_prepare_field(result, 7, "ref", "", MYSQL_TYPE_VAR_STRING,

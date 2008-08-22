@@ -2317,6 +2317,7 @@ private:
 };
 
 
+bool key_uses_partial_cols(TABLE *table, uint keyno);
 
 /**
   A Disk-Sweep MRR interface implementation
@@ -2377,7 +2378,6 @@ public:
                             void *seq_init_param, uint n_ranges, uint *bufsz,
                             uint *flags, COST_VECT *cost);
 private:
-  bool key_uses_partial_cols(uint keyno);
   bool choose_mrr_impl(uint keyno, ha_rows rows, uint *flags, uint *bufsz, 
                        COST_VECT *cost);
   bool get_disk_sweep_mrr_cost(uint keynr, ha_rows rows, uint flags, 
