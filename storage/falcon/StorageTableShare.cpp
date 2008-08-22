@@ -70,10 +70,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	sequence = NULL;
 	tempTable = tempTbl;
 	setPath(path);
-	syncTruncate = new SyncObject;
-	syncTruncate->setName("StorageTableShare::syncTruncate");
-	truncateLockCount = 0;
-	
+
 	if (tempTable)
 		tableSpace = TEMPORARY_TABLESPACE;
 	else if (tableSpaceName && tableSpaceName[0])
@@ -84,11 +81,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 
 StorageTableShare::~StorageTableShare(void)
 {
-	while (truncateLockCount > 0)
-		clearTruncateLock();
-
 	delete syncObject;
-	delete syncTruncate;
 	delete [] impure;
 	
 	if (storageDatabase)
@@ -605,21 +598,6 @@ JString StorageTableShare::lookupPathName(void)
 	return path;
 }
 
-void StorageTableShare::setTruncateLock(void)
-{
-	INTERLOCKED_INCREMENT(truncateLockCount);
-	syncTruncate->lock(NULL, Shared);
-}
-
-void StorageTableShare::clearTruncateLock(void)
-{
-	if (truncateLockCount > 0)
-		{
-		INTERLOCKED_DECREMENT(truncateLockCount);
-		syncTruncate->unlock();
-//		syncTruncate->unlock(NULL, Shared);
-		}
-}
 
 int StorageTableShare::getFieldId(const char* fieldName)
 {

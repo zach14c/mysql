@@ -27,6 +27,7 @@
 #include "Log.h"
 #include "LogLock.h"
 #include "Synchronize.h"
+#include "Thread.h"
 
 static const int EXTRA_TRANSACTIONS = 10;
 
@@ -168,12 +169,40 @@ bool TransactionManager::hasUncommittedRecords(Table* table, Transaction* transa
 	syncTrans.lock (Shared);
 	
 	for (Transaction *trans = activeTransactions.first; trans; trans = trans->next)
-		if (trans != transaction && trans->isActive() && trans->hasUncommittedRecords(table))
+		if (trans != transaction && trans->isActive() && trans->hasRecords(table))
 			return true;
 
 	return false;
 }
 
+// Wait until all committed records for a table are purged by gophers
+// (their transaction become write complete)
+void TransactionManager::waitForWriteComplete(Table* table)
+{
+	for(;;)
+		{
+		bool again = false;
+		Sync committedTrans (&committedTransactions.syncObject,
+			"TransactionManager::waitForWriteComplete");
+		committedTrans.lock (Shared);
+
+		for (Transaction *trans = committedTransactions.first; trans; 
+			 trans = trans->next)
+			{
+				if (trans->hasRecords(table)&& trans->writePending)
+				{
+				again = true;
+				break;
+				}
+			}
+
+		if(!again)
+			return;
+
+		committedTrans.unlock();
+		Thread::getThread("TransactionManager::waitForWriteComplete")->sleep(10);
+		}
+}
 void TransactionManager::commitByXid(int xidLength, const UCHAR* xid)
 {
 	Sync sync (&activeTransactions.syncObject, "TransactionManager::commitByXid");
