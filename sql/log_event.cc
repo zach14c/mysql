@@ -1865,7 +1865,7 @@ void Rows_log_event::print_verbose(IO_CACHE *file,
                       map->get_db_name(), map->get_table_name());
     /* Print the first image */
     if (!(length= print_verbose_one_row(file, td, print_event_info,
-                                  &m_cols_ai, value,
+                                  &m_cols, value,
                                   (const uchar*) sql_clause1)))
       goto end;
     value+= length;
@@ -1874,7 +1874,7 @@ void Rows_log_event::print_verbose(IO_CACHE *file,
     if (sql_clause2)
     {
       if (!(length= print_verbose_one_row(file, td, print_event_info,
-                                      &m_cols, value,
+                                      &m_cols_ai, value,
                                       (const uchar*) sql_clause2)))
         goto end;
       value+= length;
