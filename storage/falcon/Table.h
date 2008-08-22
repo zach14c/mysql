@@ -185,6 +185,7 @@ public:
 	int			getFormatVersion();
 	void		validateAndInsert(Transaction *transaction, RecordVersion *record);
 	bool		hasUncommittedRecords(Transaction* transaction);
+	void		waitForWriteComplete();
 	void		checkAncestor(Record* current, Record* oldRecord);
 	int64		estimateCardinality(void);
 	void		optimize(Connection *connection);
