@@ -49,6 +49,43 @@ static const char *DB_ROOT				= ".fts";
 static const char THIS_FILE[]=__FILE__;
 #endif
 
+StorageIndexDesc::StorageIndexDesc()
+{
+	id = 0;
+	unique = 0;
+	primaryKey = 0;
+	numberSegments = 0;
+	index = NULL;
+	segmentRecordCounts = NULL;
+	next = NULL;
+	name[0] = '\0';
+	rawName[0] = '\0';
+};
+
+StorageIndexDesc::StorageIndexDesc(const StorageIndexDesc *indexInfo)
+{
+	if (indexInfo)
+		*this = *indexInfo;
+	else
+		{
+		id = 0;
+		unique = 0;
+		primaryKey = 0;
+		numberSegments = 0;
+		segmentRecordCounts = NULL;
+		name[0] = '\0';
+		rawName[0] = '\0';
+		}
+		
+	index = NULL;
+	next = NULL;
+	prev = NULL;
+};
+
+StorageIndexDesc::~StorageIndexDesc(void)
+{
+}
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -68,7 +105,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	sequence = NULL;
 	tempTable = tempTbl;
 	setPath(path);
-	numberIndexes = 0;
+	indexes = NULL;
 
 	if (tempTable)
 		tableSpace = TEMPORARY_TABLESPACE;
@@ -87,21 +124,21 @@ StorageTableShare::~StorageTableShare(void)
 	if (storageDatabase)
 		storageDatabase->release();
 		
-	for (uint n = 0; n < indexes.length; n++)
-		if (indexes.vector[n])
-			delete indexes.get(n);
+	for (StorageIndexDesc *indexDesc; (indexDesc = indexes);)
+		{
+		indexes = indexDesc->next;
+		delete indexDesc;
+		}
 }
 
 void StorageTableShare::lock(bool exclusiveLock)
 {
-	//syncObject->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
-	syncIndexes->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
+	syncObject->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
 }
 
 void StorageTableShare::unlock(void)
 {
-	//syncObject->unlock();
-	syncIndexes->unlock();
+	syncObject->unlock();
 }
 
 void StorageTableShare::lockIndexes(bool exclusiveLock)
@@ -256,12 +293,12 @@ char* StorageTableShare::createIndexName(const char *rawName, char *indexName)
 	return indexName;
 }
 
-int StorageTableShare::createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, int indexCount, const char *sql)
+int StorageTableShare::createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql)
 {
 	if (!table)
 		open();
 
-	// Always get syncIndexes before syncObject
+	// Lock out other clients before locking the table
 	
 	Sync syncIndex(syncIndexes, "StorageTableShare::createIndex(1)");
 	syncIndex.lock(Exclusive);
@@ -272,9 +309,42 @@ int StorageTableShare::createIndex(StorageConnection *storageConnection, Storage
 	int ret = storageDatabase->createIndex(storageConnection, table, sql);
 	
 	if (!ret)
-		ret = setIndex(indexCount, indexDesc);
+		ret = setIndex(indexDesc);
 		
 	return ret;
+}
+
+void StorageTableShare::addIndex(StorageIndexDesc *indexDesc)
+{
+	if (!getIndex(indexDesc->id))
+		{
+		if (indexes)
+			{
+			indexDesc->next = indexes;
+			indexDesc->prev = NULL;
+			indexes->prev = indexDesc;
+			}
+		
+		indexes = indexDesc;
+		}
+}
+
+void StorageTableShare::deleteIndex(int indexId)
+{
+	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next)
+		if (indexDesc->id == indexId)
+			{
+			if (indexDesc->prev)
+				indexDesc->prev->next = indexDesc->next;
+			else
+				indexes = indexDesc->next;
+				
+			if (indexDesc->next)
+				indexDesc->next->prev = indexDesc->prev;
+				
+			delete indexDesc;	
+			break;
+			}
 }
 
 int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql)
@@ -282,7 +352,7 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 	if (!table)
 		open();
 
-	// Always get syncIndexes before syncObject
+	// Lock out other clients before locking the table
 
 	Sync syncIndex(syncIndexes, "StorageTableShare::dropIndex(1)");
 	syncIndex.lock(Exclusive);
@@ -293,9 +363,18 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 	int ret = storageDatabase->dropIndex(storageConnection, table, sql);
 	
 	if (!ret)
-		clearIndex(indexDesc);
+		deleteIndex(indexDesc->id);
 				
 	return ret;
+}
+
+void StorageTableShare::deleteIndexes()
+{
+	for (StorageIndexDesc *indexDesc; (indexDesc = indexes);)
+		{
+		indexes = indexDesc->next;
+		delete indexDesc;
+		}
 }
 
 int StorageTableShare::renameTable(StorageConnection *storageConnection, const char* newName)
@@ -317,34 +396,14 @@ int StorageTableShare::renameTable(StorageConnection *storageConnection, const c
 	return ret;
 }
 
-void StorageTableShare::resizeIndexes(int indexCount)
+int StorageTableShare::setIndex(const StorageIndexDesc *indexInfo)
 {
-	if (indexCount <= 0)
-		return;
-	
-	if ((uint)indexCount > indexes.length)
-		indexes.extend(indexCount + 5);
+	int ret = 0;
 
-	numberIndexes = indexCount;
-}
-
-int StorageTableShare::setIndex(int indexCount, const StorageIndexDesc *indexInfo)
+	if (!getIndex(indexInfo->id))
 		{
-	int indexId = indexInfo->id;
-		
-	if ((uint)indexId >= indexes.length || numberIndexes < indexCount)
-		resizeIndexes(indexCount);
-		
-	// Allocate a new index if necessary
-	
-	StorageIndexDesc *indexDesc = indexes.get(indexId);
-	
-	if (!indexDesc)
-		indexes.vector[indexId] = indexDesc = new StorageIndexDesc(indexId);
-	
-	// Copy index description info
-	
-	*indexDesc = *indexInfo;
+		StorageIndexDesc *indexDesc = new StorageIndexDesc(indexInfo);
+		addIndex(indexDesc);
 
 	// Find the corresponding Falcon index
 	
@@ -353,94 +412,93 @@ int StorageTableShare::setIndex(int indexCount, const StorageIndexDesc *indexInf
 	else
 		{
 		char indexName[indexNameSize];
-		sprintf(indexName, "%s$%s", name.getString(), indexDesc->name.getString());
+			sprintf(indexName, "%s$%s", name.getString(), indexDesc->name);
 		indexDesc->index = table->findIndex(indexName);
 		}
 
-	int ret = 0;
-	
 	if (indexDesc->index)
 		indexDesc->segmentRecordCounts = indexDesc->index->recordsPerSegment;
 	else
 		ret = StorageErrorNoIndex;
-	
-	ASSERT((!ret ? validateIndexes() : true));
+		}
 		
 	return ret;
 }
 
-void StorageTableShare::clearIndex(StorageIndexDesc *indexDesc)
-{
-	if (numberIndexes > 0)
-		{
-		for (int n = indexDesc->id; n < numberIndexes-1; n++)
-			{
-			indexes.vector[n] = indexes.vector[n+1];
-			indexes.vector[n]->id = n; // assume that index id will match server
-			}
-			
-		indexes.zap(numberIndexes-1);
-		numberIndexes--;
-		}
-		
-	ASSERT(validateIndexes());
-}
-
-bool StorageTableShare::validateIndexes()
-{
-	for (int n = 0; n < numberIndexes; n++)
-		{
-		StorageIndexDesc *indexDesc = indexes.get(n);
-		if (indexDesc && indexDesc->id != n)
-			return false;
-		}
-			
-	return true;
-}
-
-// Assumes syncIndexes is locked
-
 StorageIndexDesc* StorageTableShare::getIndex(int indexId)
 {
-	if (!indexes.length || indexId >= numberIndexes)
+	if (!indexes)
 		return NULL;
-	
-	return indexes.get(indexId);
+			
+	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next)
+		if (indexDesc->id == indexId)
+			return indexDesc;
+		
+	return NULL;
 }
 
 StorageIndexDesc* StorageTableShare::getIndex(int indexId, StorageIndexDesc *indexDesc)
 {
-	StorageIndexDesc *index;
+	if (!indexes)
+		return NULL;
 	
-	if (!indexes.length || indexId >= numberIndexes)
-		index = NULL;
-	else
-		{
-		Sync sync(syncIndexes, "StorageTableShare::getIndex");
-		sync.lock(Shared);
+	Sync sync(syncIndexes, "StorageTableShare::getIndex");
+	sync.lock(Shared);
 	
-		index = indexes.get(indexId);
-	
-		if (index)
-			*indexDesc = *index;
-		}
+	StorageIndexDesc *index = getIndex(indexId);
+			
+	if (index)
+		*indexDesc = *index;
 		
 	return index;
 }
 
 StorageIndexDesc* StorageTableShare::getIndex(const char *name)
 {
+	if (!indexes)
+		return NULL;
+	
 	Sync sync(syncIndexes, "StorageTableShare::getIndex(name)");
 	sync.lock(Shared);
 	
-	for (int i = 0; i < numberIndexes; i++)
-		{
-		StorageIndexDesc *indexDesc = indexes.get(i);
-		if (indexDesc && indexDesc->name == name)
+	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next)
+		if (indexDesc->name == name)
 			return indexDesc;
+			
+	return NULL;
+}
+
+int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
+{
+	if (!indexes)
+		return -1;
+	
+	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next)
+		{
+		Index *index = indexDesc->index;
+	
+		if (index)
+			if (strcmp(index->getIndexName(), indexName) == 0 &&
+				strcmp(index->getSchemaName(), schemaName) == 0)
+				return indexDesc->id;
+		}
+		
+	return -1;
+}
+
+int StorageTableShare::haveIndexes(int indexCount)
+{
+	if (!indexes)
+		return false;
+	
+	int n = 0;
+	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next, n++)
+		{
+		if (!indexDesc->index)
+			return false;
 		}
 
-	return NULL;
+	return (n == indexCount);
 }
 
 INT64 StorageTableShare::getSequenceValue(int delta)
@@ -464,45 +522,6 @@ int StorageTableShare::setSequenceValue(INT64 value)
 		sequence->update(value - current, NULL);
 
 	return 0;
-}
-
-// Get index id using the internal (Falcon) index name
-
-int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)
-{
-	if (indexes.length > 0)
-		for (int n = 0; n < numberIndexes; ++n)
-			{
-			Index *index = indexes.get(n)->index;
-			
-			if (strcmp(index->getIndexName(), indexName) == 0 &&
-				strcmp(index->getSchemaName(), schemaName) == 0)
-				return n;
-			}
-		
-	return -1;
-}
-
-int StorageTableShare::haveIndexes(int indexCount)
-{
-	if (indexes.length == 0)
-		return false;
-		
-	if (indexCount > numberIndexes)
-		return false;
-	
-	for (int n = 0; n < numberIndexes; ++n)
-		{
-		StorageIndexDesc* index = indexes.get(n);
-		
-		if (!index)
-			return false;
-			
-		if (index && !index->index)
-			return false;
-		}
-	
-	return true;
 }
 
 void StorageTableShare::setTablePath(const char* path, bool tmp)

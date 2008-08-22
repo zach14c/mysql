@@ -124,6 +124,7 @@ public:
 	void			freeActiveBlobs(void);
 	int				setIndex(TABLE *table, int indexId);
 	int				setIndexes(void);
+	int				remapIndexes(TABLE *table);
 	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);

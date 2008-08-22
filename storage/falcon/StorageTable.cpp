@@ -96,6 +96,8 @@ int StorageTable::deleteTable(void)
 int StorageTable::truncateTable(void)
 {
 	clearRecord();
+	clearCurrentIndex();
+	
 	int ret = share->truncateTable(storageConnection);
 	return ret;
 }
@@ -139,9 +141,9 @@ int StorageTable::updateRow(int recordNumber)
 	return 0;
 }
 
-int StorageTable::createIndex(StorageIndexDesc *indexDesc, int indexCount, const char *sql)
+int StorageTable::createIndex(StorageIndexDesc *indexDesc, const char *sql)
 {
-	return share->createIndex(storageConnection, indexDesc, indexCount, sql);
+	return share->createIndex(storageConnection, indexDesc, sql);
 }
 
 int StorageTable::dropIndex(StorageIndexDesc *indexDesc, const char *sql)
@@ -217,9 +219,9 @@ int StorageTable::clearCurrentIndex()
 	return 0;
 }
 
-int StorageTable::setIndex(int indexCount, StorageIndexDesc* indexDesc)
+int StorageTable::setIndex(StorageIndexDesc* indexDesc)
 {
-	return share->setIndex(indexCount, indexDesc);
+	return share->setIndex(indexDesc);
 }
 
 int StorageTable::indexScan(int indexOrder)

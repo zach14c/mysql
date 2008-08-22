@@ -18,7 +18,6 @@
 
 #include "JString.h"
 #include "SyncObject.h"
-#include "DenseArray.h"
 
 #ifndef _WIN32
 #define __int64			long long
@@ -49,20 +48,25 @@ struct StorageSegment {
 	void			*mysql_charset;
 	};
 
+// StorageIndexDesc maps a server-side index to a Falcon index
 class StorageIndexDesc
 {
 public:
-	StorageIndexDesc(int indexId=0) : id (indexId), unique(0), primaryKey(0), numberSegments(0), /*name(NULL),*/ index(NULL), segmentRecordCounts(NULL){};
+	StorageIndexDesc();
+	StorageIndexDesc(const StorageIndexDesc *indexInfo);
+	virtual ~StorageIndexDesc(void);
 	
-	int			id;//cwp
+	int			id;
 	int			unique;
 	int			primaryKey;
 	int			numberSegments;
-	JString		name;			// clean name
-	JString		rawName;		// original name
+	char		name[indexNameSize];		// clean name
+	char		rawName[indexNameSize];		// original name
 	Index		*index;
 	uint64		*segmentRecordCounts;
 	StorageSegment segments[MaxIndexSegments];
+	StorageIndexDesc *next;
+	StorageIndexDesc *prev;
 	};
 
 
@@ -107,8 +111,9 @@ public:
 	virtual void		unlock(void);
 	virtual void		lockIndexes(bool exclusiveLock=false);
 	virtual void		unlockIndexes(void);
-	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, int indexCount, const char *sql);
+	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
 	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
+	virtual void		deleteIndexes();
 	virtual int			renameTable(StorageConnection *storageConnection, const char* newName);
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
@@ -118,10 +123,10 @@ public:
 	virtual void		registerCollation(const char* collationName, void* arg);
 
 	int					open(void);
-	void				resizeIndexes(int indexCount);
-	int					setIndex(int indexCount, const StorageIndexDesc* indexInfo);
+	void				addIndex(StorageIndexDesc *indexDesc);
+	void				deleteIndex(int indexId);
+	int					setIndex(const StorageIndexDesc* indexInfo);
 	void				clearIndex(StorageIndexDesc *indexDesc);
-	bool				validateIndexes();
 	StorageIndexDesc*	getIndex(int indexId);
 	StorageIndexDesc*	getIndex(int indexId, StorageIndexDesc *indexDesc);
 	StorageIndexDesc*	getIndex(const char *name);
@@ -159,10 +164,9 @@ public:
 	StorageDatabase		*storageDatabase;
 	StorageHandler		*storageHandler;
 	Table				*table;
-	DenseArray<StorageIndexDesc *,10> indexes;
+	StorageIndexDesc	*indexes;
 	Sequence			*sequence;
 	Format				*format;						// format for insertion
-	int					numberIndexes;
 	bool				tempTable;
 	int getFieldId(const char* fieldName);
 };

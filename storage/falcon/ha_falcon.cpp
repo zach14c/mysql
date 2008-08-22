@@ -869,11 +869,11 @@ int StorageInterface::add_index(TABLE* table_arg, KEY* key_info, uint num_of_key
 int StorageInterface::createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId)
 {
 	KEY *key = table->key_info + indexId;
-	StorageIndexDesc indexDesc(indexId);
+	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 	
 	char indexName[indexNameSize];
-	storageShare->createIndexName(indexDesc.name.getString(), indexName);
+	storageShare->createIndexName(indexDesc.name, indexName);
 
 	CmdGen gen;
 	const char *unique = (key->flags & HA_NOSAME) ? "unique " : "";
@@ -881,16 +881,16 @@ int StorageInterface::createIndex(const char *schemaName, const char *tableName,
 	genKeyFields(key, &gen);
 	const char *sql = gen.getString();
 
-	return storageTable->createIndex(&indexDesc, table->s->keys, sql);
+	return storageTable->createIndex(&indexDesc, sql);
 }
 
 int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId)
 {
-	StorageIndexDesc indexDesc(indexId);
+	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 	
 	char indexName[indexNameSize];
-	storageShare->createIndexName(indexDesc.name.getString(), indexName);
+	storageShare->createIndexName(indexDesc.name, indexName);
 
 	CmdGen gen;
 	gen.gen("drop index %s.\"%s\"", schemaName, indexName);
@@ -940,6 +940,8 @@ THR_LOCK_DATA **StorageInterface::store_lock(THD *thd, THR_LOCK_DATA **to,
 		    && !(thd_tablespace_op(thd))
 		    &&  (sql_command != SQLCOM_ALTER_TABLE)
 		    &&  (sql_command != SQLCOM_DROP_TABLE)
+		    &&  (sql_command != SQLCOM_CREATE_INDEX)
+		    &&  (sql_command != SQLCOM_DROP_INDEX)
 		    &&  (sql_command != SQLCOM_TRUNCATE)
 		    &&  (sql_command != SQLCOM_OPTIMIZE)
 		    &&  (sql_command != SQLCOM_CREATE_TABLE)
@@ -987,7 +989,10 @@ int StorageInterface::delete_table(const char *tableName)
 
 	if (storageShare)
 		{
-//		storageShare->lockIndexes(true);
+		
+		// Lock out other clients before locking the table
+		
+		storageShare->lockIndexes(true);
 		storageShare->lock(true);
 
 		if (storageShare->initialized)
@@ -998,7 +1003,7 @@ int StorageInterface::delete_table(const char *tableName)
 			}
 
 		storageShare->unlock();
-//		storageShare->unlockIndexes();
+		storageShare->unlockIndexes();
 		}
 
 	int res = storageTable->deleteTable();
@@ -1395,6 +1400,12 @@ int StorageInterface::index_init(uint idx, bool sorted)
 	int ret = storageTable->setCurrentIndex(idx);
 
 	if (ret)
+		{
+		setIndex(table, idx);
+		ret = storageTable->setCurrentIndex(idx);
+		}
+		
+	if (ret)
 		DBUG_RETURN(error(ret));
 
 	DBUG_RETURN(ret);
@@ -1458,9 +1469,16 @@ void StorageInterface::getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *i
 	int numberKeys = keyInfo->key_parts;
 	char nameBuffer[indexNameSize];
 	
-	indexDesc->rawName		  = keyInfo->name;
+	// Clean up the index name for internal use
+	
+	strncpy(indexDesc->rawName, (const char*)keyInfo->name, MIN(indexNameSize, (int)strlen(keyInfo->name)+1));
 	storageShare->cleanupFieldName(indexDesc->rawName, nameBuffer, sizeof(nameBuffer));
-	indexDesc->name			  = nameBuffer;
+	indexDesc->rawName[indexNameSize-1] = '\0';
+	
+	strncpy(indexDesc->name, (const char*)nameBuffer, MIN(indexNameSize, (int)strlen(nameBuffer)+1));
+	indexDesc->name[indexNameSize-1] = '\0';
+
+	indexDesc->id			  = indexId;
 	indexDesc->numberSegments = numberKeys;
 	indexDesc->unique		  = (keyInfo->flags & HA_NOSAME);
 	indexDesc->primaryKey	  = (table->s->primary_key == (uint)indexId);
@@ -2232,6 +2250,11 @@ int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* cr
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
 
+	// Lock out other clients before locking the table
+	
+	storageShare->lockIndexes(true);
+	storageShare->lock(true);
+
 	// Find indexes to be added by comparing table and alteredTable
 
 	for (unsigned int n = 0; n < alteredTable->s->keys; n++)
@@ -2248,11 +2271,19 @@ int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* cr
 					
 			if (tableKey >= tableEnd)
 				if ((ret = createIndex(schemaName, tableName, alteredTable, n)))
-					return (error(ret));
+					break;
 			}
 		}
 		
-	return 0;
+	// The server indexes may have been reordered, so remap to the Falcon indexes
+	
+	if (!ret)
+		remapIndexes(alteredTable);
+	
+	storageShare->unlock();
+	storageShare->unlockIndexes();
+	
+	return error(ret);
 }
 
 int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags)
@@ -2260,6 +2291,11 @@ int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 	int ret;
 	const char *tableName = storageTable->getName();
 	const char *schemaName = storageTable->getSchemaName();
+	
+	// Lock out other clients before locking the table
+	
+	storageShare->lockIndexes(true);
+	storageShare->lock(true);
 	
 	// Find indexes to be dropped by comparing table and alteredTable
 	
@@ -2277,11 +2313,19 @@ int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 
 			if (alterKey >= alterEnd)
 				if ((ret = dropIndex(schemaName, tableName, table, n)))
-				return (error(ret));
+					break;
 				}
 		}
 	
-	return 0;
+	// The server indexes have been reordered, so remap to the Falcon indexes
+	
+	if (!ret)
+		remapIndexes(alteredTable);
+	
+	storageShare->unlock();
+	storageShare->unlockIndexes();
+	
+	return error(ret);
 }
 
 uint StorageInterface::max_supported_key_length(void) const
@@ -2319,10 +2363,10 @@ void StorageInterface::logger(int mask, const char* text, void* arg)
 
 int StorageInterface::setIndex(TABLE *table, int indexId)
 {
-	StorageIndexDesc indexDesc(indexId);
+	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 
-	return storageTable->setIndex(table->s->keys, &indexDesc);
+	return storageTable->setIndex(&indexDesc);
 }
 
 int StorageInterface::setIndexes(void)
@@ -2340,6 +2384,22 @@ int StorageInterface::setIndexes(void)
 				break;
 
 	storageShare->unlockIndexes();
+
+	return ret;
+}
+
+int StorageInterface::remapIndexes(TABLE *table)
+{
+	int ret = 0;
+	
+	if (!table)
+		return ret;
+		
+	storageShare->deleteIndexes();
+
+	for (uint n = 0; n < table->s->keys; ++n)
+		if ((ret = setIndex(table, n)))
+			break;
 
 	return ret;
 }

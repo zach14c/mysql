@@ -72,21 +72,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	database = db;
 	panicShutdown = false;
 	pageSize = pageSz;
-
-	unsigned int highBit;
-	for (highBit=0x01; highBit < (uint32)hashSz; highBit= highBit << 1) { }
-
-	// if there are more than 4096 buckets then lets round down
-	// else lets round up
-	if (highBit >= 0x00001000) {
-		// KEL use power of two rounded down
-		hashSize = highBit << 1;
-	} else {
-		// KEL use power of two rounded up
-		hashSize = highBit;
-	}
-
-	hashMask = hashSize - 1;
+	hashSize = hashSz;
 	numberBuffers = numBuffers;
 	upperFraction = numberBuffers / 4;
 	bufferAge = 0;
@@ -94,21 +80,8 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	lastDirty = NULL;
 	numberDirtyPages = 0;
 	pageWriter = NULL;
-	hashTable = new Bdb* [hashSize];
+	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-#ifdef DEBUG_SYNC_HASH_TABLE_SIZE
-    syncHashTable = new SyncObject [DEBUG_SYNC_HASH_TABLE_SIZE];
-	for (int loop = 0; loop < DEBUG_SYNC_HASH_TABLE_SIZE; loop ++)
-		syncHashTable[loop].setName("Cache::syncHashTable");
-#else /* DEBUG_SYNC_HASH_TABLE_SIZE */
-    syncHashTable = new SyncObject [hashSize];
-	for (int loop = 0; loop < hashSize; loop ++)
-		{
-		char tmpName[128];
-		snprintf(tmpName,120,"Cache::syncHashTable[%d]",loop);
-		syncHashTable[loop].setName(tmpName);
-		}
-#endif /* DEBUG_SYNC_HASH_TABLE_SIZE */
 	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
 
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
@@ -130,7 +103,6 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	
 	try
 		{
-		// non-protected access to bdbs,endBdbs is OK during initialization
 		bdbs = new Bdb [numberBuffers];
 		endBdbs = bdbs + numberBuffers;
 		int remaining = 0;
@@ -149,7 +121,6 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 				}
 
 			bdb->cache = this;
-			// non-protected access to bufferQueue is OK during initialization
 			bufferQueue.append(bdb);
 			bdb->buffer = (Page*) stuff;
 			stuff += pageSize;
@@ -179,7 +150,6 @@ Cache::~Cache()
 		closeTraceFile();
 
 	delete [] hashTable;
-	delete [] syncHashTable;
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
@@ -197,16 +167,14 @@ Cache::~Cache()
 Bdb* Cache::probePage(Dbb *dbb, int32 pageNumber)
 {
 	ASSERT (pageNumber >= 0);
-	int slot = PAGENUM_2_SLOT(pageNumber);
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::probePage");
-	lockHash.lock (Shared);
-	Bdb *bdb;
+	Sync sync (&syncObject, "Cache::probePage");
+	sync.lock (Shared);
+	Bdb *bdb = findBdb(dbb, pageNumber);
 	
-	bdb = findBdb(dbb, pageNumber, slot);
 	if (bdb)
 		{
 		bdb->incrementUseCount(ADD_HISTORY);
-		lockHash.unlock();
+		sync.unlock();
 
 		if (bdb->buffer->pageType == PAGE_free)
 			{
@@ -221,57 +189,15 @@ Bdb* Cache::probePage(Dbb *dbb, int32 pageNumber)
 		return bdb;
 		}
 
-	lockHash.unlock();
-	return NULL;
-}
-
-Bdb* Cache::findBdb(Dbb* dbb, int32 pageNumber, int slot)
-{
-	for (Bdb *bdb = hashTable [slot]; bdb; bdb = bdb->hash)
-{
-		if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
-			{
-			return bdb;
-			}
-		}
-
 	return NULL;
 }
 
 Bdb* Cache::findBdb(Dbb* dbb, int32 pageNumber)
 {
-	return (findBdb(dbb, pageNumber, PAGENUM_2_SLOT(pageNumber)));
-}
-
-Bdb* Cache::lockFindBdbIncrementUseCount(Dbb* dbb, int32 pageNumber)
-{
-	int slot = PAGENUM_2_SLOT(pageNumber);
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::lockFindBdbIncrementUseCount");
-	lockHash.lock (Shared);
-	Bdb *bdb;
-
-	bdb = findBdb(dbb, pageNumber, slot);
-	if (bdb != NULL)
-		bdb->incrementUseCount(ADD_HISTORY);
-
-	lockHash.unlock();
-	return bdb;
-}
-
-Bdb* Cache::lockFindBdbIncrementUseCount(int32 pageNumber, int slot)
-{
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::lockFindBdbIncrementUseCount");
-	lockHash.lock (Shared);
-
-	for (Bdb *bdb = hashTable [slot]; bdb; bdb = bdb->hash)
-		if (bdb->pageNumber == pageNumber)
-		{
-			bdb->incrementUseCount(ADD_HISTORY);
-			lockHash.unlock();
+	for (Bdb *bdb = hashTable [pageNumber % hashSize]; bdb; bdb = bdb->hash)
+		if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
 			return bdb;
-		}
 
-	lockHash.unlock();
 	return NULL;
 }
 
@@ -291,46 +217,51 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 #endif
 
 	ASSERT (pageNumber >= 0);
-	int slot = PAGENUM_2_SLOT(pageNumber);
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::fetchPage");
+	int slot = pageNumber % hashSize;
+	LockType actual = lockType;
+	Sync sync (&syncObject, "Cache::fetchPage");
+	sync.lock (Shared);
+	int hit = 0;
 
-	lockHash.lock (Shared);
+	/* If we already have a buffer for this go, we're done */
+
 	Bdb *bdb;
 
-	bdb = findBdb(dbb, pageNumber, slot);
-	if (!bdb)
+	for (bdb = hashTable [slot]; bdb; bdb = bdb->hash)
+		if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
 			{
-		lockHash.unlock();
-		// get getFreeBuffer() locks a hash bucket to remove the candidate bdb
-		// if we locked out hash bucket before the call then we could have
-		// a deadlock
-		// thus we get the free buffer before we lock the hash bucket we will
-		// be inserting into.  This avoids a dead lock but generates a race
-		// we take care of the race by reversing the getFreeBuffer() work
-		// when we lose the race
-		Bdb *bdbAvailable;
-		bdbAvailable = getFreeBuffer();
-		lockHash.lock(Exclusive);
+			//syncObject.validateShared("Cache::fetchPage");
+			bdb->incrementUseCount(ADD_HISTORY);
+			sync.unlock();
+			bdb->addRef(lockType  COMMA_ADD_HISTORY);
+			bdb->decrementUseCount(REL_HISTORY);
+			hit = 1;
+			break;
+			}
 
-		bdb = findBdb(dbb, pageNumber, slot);
 	if (!bdb)
 		{
-			// we won the race so lets use the free bdb
-			/* Set new page number and relink into hash table */
-			bdbAvailable->addRef (Exclusive  COMMA_ADD_HISTORY);
-			bdbAvailable->decrementUseCount(REL_HISTORY);
+		sync.unlock();
+		actual = Exclusive;
+		sync.lock(Exclusive);
 
-			bdbAvailable->hash = hashTable [slot];
-			hashTable [slot] = bdbAvailable;
-			bdbAvailable->pageNumber = pageNumber;
-			bdbAvailable->dbb = dbb;
+		for (bdb = hashTable [slot]; bdb; bdb = bdb->hash)
+			if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
+				{
+				//syncObject.validateExclusive("Cache::fetchPage (retry)");
+				bdb->incrementUseCount(ADD_HISTORY);
+				sync.unlock();
+				bdb->addRef(lockType  COMMA_ADD_HISTORY);
+				bdb->decrementUseCount(REL_HISTORY);
+				hit = 2;
+				break;
+				}
 
-#ifdef COLLECT_BDB_HISTORY
-			bdbAvailable->initHistory();
-#endif
-			bdb = bdbAvailable;
+		if (!bdb)
+			{
+			bdb = findBuffer(dbb, pageNumber, actual);
 			moveToHead(bdb);
-			lockHash.unlock();
+			sync.unlock();
 
 #ifdef STOP_PAGE			
 			if (bdb->pageNumber == STOP_PAGE)
@@ -347,30 +278,9 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 #ifdef HAVE_PAGE_NUMBER
 			ASSERT(bdb->buffer->pageNumber == pageNumber);
 #endif			
-			if (Exclusive != lockType)
+			if (actual != lockType)
 				bdb->downGrade(lockType);
 			}
-			else
-			{
-			// lost a race.  put our available back to useable
-			bdbAvailable->pageNumber = -1;
-			bdbAvailable->dbb = NULL;
-			bdbAvailable->decrementUseCount(REL_HISTORY);
-
-			//syncObject.validateExclusive("Cache::fetchPage (retry)");
-			bdb->incrementUseCount(ADD_HISTORY);
-			lockHash.unlock();
-			bdb->addRef(lockType  COMMA_ADD_HISTORY);
-			bdb->decrementUseCount(REL_HISTORY);
-			}
-		}
-		else
-		{
-		//syncObject.validateShared("Cache::fetchPage");
-		bdb->incrementUseCount(ADD_HISTORY);
-		lockHash.unlock();
-		bdb->addRef(lockType  COMMA_ADD_HISTORY);
-		bdb->decrementUseCount(REL_HISTORY);
 		}
 
 	Page *page = bdb->buffer;
@@ -394,9 +304,9 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 
 	// If buffer has moved out of the upper "fraction" of the LRU queue, move it back up
 	
-	// non-protected access to age is harmless since it is fuzzy anyway
 	if (bdb->age < bufferAge - (uint64) upperFraction)
 		{
+		sync.lock (Exclusive);
 		moveToHead (bdb);
 		}
 		
@@ -409,10 +319,9 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 
 Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 {
-	int	slot = PAGENUM_2_SLOT(pageNumber);
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::fakePage");
-	lockHash.lock(Exclusive);
-	Bdb *bdb;
+	Sync sync(&syncObject, "Cache::fakePage");
+	sync.lock(Exclusive);
+	int	slot = pageNumber % hashSize;
 
 #ifdef STOP_PAGE			
 	if (pageNumber == STOP_PAGE)
@@ -421,64 +330,25 @@ Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 
 	/* If we already have a buffer for this, we're done */
 
-	bdb = findBdb(dbb, pageNumber, slot);
-	if (!bdb)
-			{
-		lockHash.unlock();
-		// get getFreeBuffer() locks a hash bucket to remove the candidate bdb
-		// if we locked out hash bucket before the call then we could have
-		// a deadlock
-		// thus we get the free buffer before we lock the hash bucket we will
-		// be inserting into.  This avoids a dead lock but generates a race
-		// we take care of the race by reversing the getFreeBuffer() work
-		// when we lose the race
-		Bdb *bdbAvailable;
-		bdbAvailable = getFreeBuffer();
-		lockHash.lock(Exclusive);
+	Bdb *bdb;
 
-		bdb = findBdb(dbb, pageNumber, slot);
-		if (!bdb)
+	for (bdb = hashTable [slot]; bdb; bdb = bdb->hash)
+		if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
+			{
+			if (bdb->syncObject.isLocked())
 				{
-			// we won the race so lets use the free bdb
-			/* Set new page number and relink into hash table */
-			bdbAvailable->addRef (Exclusive  COMMA_ADD_HISTORY);
-			bdbAvailable->decrementUseCount(REL_HISTORY);
+				// The pageWriter may still be cleaning up this freed page with a shared lock
+				ASSERT(bdb->buffer->pageType == PAGE_free);
+				ASSERT(bdb->syncObject.getState() >= 0);
+				}
 				
-			bdbAvailable->hash = hashTable [slot];
-			hashTable [slot] = bdbAvailable;
-			bdbAvailable->pageNumber = pageNumber;
-			bdbAvailable->dbb = dbb;
-
-#ifdef COLLECT_BDB_HISTORY
-			bdbAvailable->initHistory();
-#endif
-			bdb = bdbAvailable;
-			moveToHead(bdb);
-			lockHash.unlock();
-			
-			}
-			else
-			{
-			// lost a race.  put our available back to useable
-			bdbAvailable->pageNumber = -1;
-			bdbAvailable->dbb = NULL;
-			bdbAvailable->decrementUseCount(REL_HISTORY);
-
-			//syncObject.validateExclusive("Cache::fakePage (retry)");
-			bdb->incrementUseCount(ADD_HISTORY);
-			lockHash.unlock();
 			bdb->addRef(Exclusive  COMMA_ADD_HISTORY);
-			bdb->decrementUseCount(REL_HISTORY);
+			
+			break;
 			}
-		}
-		else
-		{
-		//syncObject.validateShared("Cache::fakePage");
-		bdb->incrementUseCount(ADD_HISTORY);
-		lockHash.unlock();
-		bdb->addRef(Exclusive  COMMA_ADD_HISTORY);
-		bdb->decrementUseCount(REL_HISTORY);
-		}
+
+	if (!bdb)
+		bdb = findBuffer(dbb, pageNumber, Exclusive);
 
 	if (!dbb->isReadOnly)
 		bdb->mark(transId);
@@ -493,14 +363,14 @@ Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 void Cache::flush(int64 arg)
 {
 	Sync flushLock(&syncFlush, "Cache::flush(1)");
-	Sync dirtyLock(&syncDirty, "Cache::flush(2)");
+	Sync sync(&syncDirty, "Cache::flush(2)");
 	flushLock.lock(Exclusive);
 	
 	if (flushing)
 		return;
 
 	syncWait.lock(NULL, Exclusive);
-	dirtyLock.lock(Shared);
+	sync.lock(Shared);
 	//Log::debug(%d: "Initiating flush\n", dbb->deltaTime);
 	flushArg = arg;
 	flushPages = 0;
@@ -518,7 +388,7 @@ void Cache::flush(int64 arg)
 
 	flushStart = database->timestamp;
 	flushing = true;
-	dirtyLock.unlock();
+	sync.unlock();
 	flushLock.unlock();
 	
 	for (int n = 0; n < numberIoThreads; ++n)
@@ -528,92 +398,69 @@ void Cache::flush(int64 arg)
 
 void Cache::moveToHead(Bdb * bdb)
 {
-	Sync bufferQueueLock (&bufferQueue.syncObject, "Cache::moveToHead");
-
-	bufferQueueLock.lock (Exclusive);
 	bdb->age = bufferAge++;
 	bufferQueue.remove(bdb);
 	bufferQueue.prepend(bdb);
 	//validateUnique (bdb);
 }
 
-Bdb* Cache::getFreeBuffer(void)
+Bdb* Cache::findBuffer(Dbb *dbb, int pageNumber, LockType lockType)
 {
-	Sync bufferQueueLock (&bufferQueue.syncObject, "Cache::getFreeBuffer");
-	unsigned int count;
+	//syncObject.validateExclusive("Cache::findBuffer");
+	int	slot = pageNumber % hashSize;
+	Sync sync(&syncDirty, "Cache::findBuffer");
+	
+	/* Find least recently used, not-in-use buffer */
+
 	Bdb *bdb;
 
 	// Find a candidate BDB.
+	
 	for (;;)
 		{
-		bufferQueueLock.lock (Exclusive);
-		// find a candidate that is NOT in use and NOT dirty and in the tail fraction of the LRU
-		for (count = 0, bdb = bufferQueue.last; bdb && count < upperFraction; bdb = bdb->prior, count++)
+		for (bdb = bufferQueue.last; bdb; bdb = bdb->prior)
 			if (bdb->useCount == 0)
-				{
-				if (!bdb->isDirty)
-					{
-					bdb->incrementUseCount(REL_HISTORY);
-					break;
-					}
-				}
-				else
-				{
-					moveToHead(bdb);
-				}
-		if (!bdb)
-			// find a candidate that is NOT in use, could be dirty
-			for (bdb = bufferQueue.last; bdb; bdb = bdb->prior)
-				if (bdb->useCount == 0)
-					{
-					bdb->incrementUseCount(REL_HISTORY);
-					break;
-					}
-		bufferQueueLock.unlock();
+				break;
 
 		if (!bdb)
 			throw SQLError(RUNTIME_ERROR, "buffer pool is exhausted\n");
 			
-		if (bdb->pageNumber >= 0)
-		{
-			int	slotRemove = PAGENUM_2_SLOT(bdb->pageNumber);
-			Sync lockHashRemove (&syncHashTable[PAGENUM_2_LOCK_INDEX(bdb->pageNumber, slotRemove)], "Cache::getFreeBuffer");
-			lockHashRemove.lock(Exclusive);
+		if (!bdb->isDirty)
+			break;
+			
+		writePage (bdb, WRITE_TYPE_REUSE);
+		}
 
-			if (bdb->useCount != 1)
+	/* Unlink its old incarnation from the page/hash table */
+
+	if (bdb->pageNumber >= 0)
+		for (Bdb **ptr = hashTable + bdb->pageNumber % hashSize;; ptr = &(*ptr)->hash)
+			if (*ptr == bdb)
 				{
-				// we lost a race try again
-				bdb->decrementUseCount(REL_HISTORY);
-				lockHashRemove.unlock();
-				continue;
+				*ptr = bdb->hash;
+				break;
 				}
+			else
+				ASSERT (*ptr);
 
-			if (bdb->isDirty)
-				writePage (bdb, WRITE_TYPE_REUSE);
+	bdb->addRef (lockType  COMMA_ADD_HISTORY);
 
-			/* Unlink its old incarnation from the page/hash table */
-			for (Bdb **ptr = hashTable + PAGENUM_2_SLOT(bdb->pageNumber) ;; ptr = &(*ptr)->hash)
-				if (*ptr == bdb)
-					{
-					*ptr = bdb->hash;
-					break;
-					}
-				else
-					ASSERT (*ptr);
-		}
+	/* Set new page number and relink into hash table */
 
-		break;
-		}
+	bdb->hash = hashTable [slot];
+	hashTable [slot] = bdb;
+	bdb->pageNumber = pageNumber;
+	bdb->dbb = dbb;
+
+#ifdef COLLECT_BDB_HISTORY
+	bdb->initHistory();
+#endif
 
 	return bdb;
 }
 
 void Cache::validate()
 {
-	//Sync bufferQueueLock (&bufferQueue.syncObject, "Cache::moveToHead");
-
-	//bufferQueueLock.lock (Shared);
-	// non-protected access to bufferQueue is DANGEROUS...
 	for (Bdb *bdb = bufferQueue.last; bdb; bdb = bdb->prior)
 		{
 		//IndexPage *page = (IndexPage*) bdb->buffer;
@@ -623,8 +470,8 @@ void Cache::validate()
 
 void Cache::markDirty(Bdb *bdb)
 {
-	Sync dirtyLock (&syncDirty, "Cache::markDirty");
-	dirtyLock.lock (Exclusive);
+	Sync sync (&syncDirty, "Cache::markDirty");
+	sync.lock (Exclusive);
 	bdb->nextDirty = NULL;
 	bdb->priorDirty = lastDirty;
 
@@ -640,8 +487,8 @@ void Cache::markDirty(Bdb *bdb)
 
 void Cache::markClean(Bdb *bdb)
 {
-	Sync dirtyLock (&syncDirty, "Cache::markClean");
-	dirtyLock.lock (Exclusive);
+	Sync sync (&syncDirty, "Cache::markClean");
+	sync.lock (Exclusive);
 
 	/***
 	if (bdb->flushIt)
@@ -753,8 +600,8 @@ void Cache::writePage(Bdb *bdb, int type)
 
 	if (dbb->shadows)
 		{
-		Sync cloneLock (&dbb->syncClone, "Cache::writePage(2)");
-		cloneLock.lock (Shared);
+		Sync sync (&dbb->syncClone, "Cache::writePage(2)");
+		sync.lock (Shared);
 
 		for (DatabaseCopy *shadow = dbb->shadows; shadow; shadow = shadow->next)
 			shadow->rewritePage(bdb);
@@ -763,15 +610,14 @@ void Cache::writePage(Bdb *bdb, int type)
 
 void Cache::analyze(Stream *stream)
 {
-	Sync dirtyLock (&syncDirty, "Cache::analyze");
-	dirtyLock.lock (Shared);
+	Sync sync (&syncDirty, "Cache::analyze");
+	sync.lock (Shared);
 	int inUse = 0;
 	int dirty = 0;
 	int dirtyList = 0;
 	int total = 0;
 	Bdb *bdb;
 
-	// non-protected access to bdbs,endBdbs is DANGEROUS...
 	for (bdb = bdbs; bdb < endBdbs; ++bdb)
 		{
 		++total;
@@ -792,18 +638,17 @@ void Cache::analyze(Stream *stream)
 
 void Cache::validateUnique(Bdb *target)
 {
-	int	slot = PAGENUM_2_SLOT(target->pageNumber);
+	int	slot = target->pageNumber % hashSize;
 
-	// WARNING: unlocked walk of hash table.... DANGEROUS
 	for (Bdb *bdb = hashTable [slot]; bdb; bdb = bdb->hash)
 		ASSERT (bdb == target || !(bdb->pageNumber == target->pageNumber && bdb->dbb == target->dbb));
 }
 
 void Cache::freePage(Dbb *dbb, int32 pageNumber)
 {
-	int slot = PAGENUM_2_SLOT(pageNumber);
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::freePage");
-	lockHash.lock(Shared);
+	Sync sync (&syncObject, "Cache::freePage");
+	sync.lock (Shared);
+	int	slot = pageNumber % hashSize;
 
 	// If page exists in cache (usual case), clean it up
 
@@ -812,7 +657,7 @@ void Cache::freePage(Dbb *dbb, int32 pageNumber)
 			{
 			if (bdb->isDirty)
 				{
-				lockHash.unlock();
+				sync.unlock();
 				markClean (bdb);
 				}
 				
@@ -825,8 +670,8 @@ void Cache::flush(Dbb *dbb)
 {
 	//Sync sync (&syncDirty, "Cache::flush(1)");
 	//sync.lock (Exclusive);
-	Sync objectLock (&syncObject, "Cache::flush(3)");
-	objectLock.lock (Shared);
+	Sync sync (&syncObject, "Cache::flush(3)");
+	sync.lock (Shared);
 
 	for (Bdb *bdb = bdbs; bdb < endBdbs; ++bdb)
 		if (bdb->dbb == dbb)
@@ -840,8 +685,8 @@ void Cache::flush(Dbb *dbb)
 
 bool Cache::hasDirtyPages(Dbb *dbb)
 {
-	Sync dirtyLock (&syncDirty, "Cache::hasDirtyPages");
-	dirtyLock.lock (Shared);
+	Sync sync (&syncDirty, "Cache::hasDirtyPages");
+	sync.lock (Shared);
 
 	for (Bdb *bdb = firstDirty; bdb; bdb = bdb->nextDirty)
 		if (bdb->dbb == dbb)
@@ -872,21 +717,25 @@ Bdb* Cache::trialFetch(Dbb* dbb, int32 pageNumber, LockType lockType)
 		}
 
 	ASSERT (pageNumber >= 0);
-	int	slot = PAGENUM_2_SLOT(pageNumber);
-	Sync lockHash (&syncHashTable[PAGENUM_2_LOCK_INDEX(pageNumber, slot)], "Cache::trialFetch");
-	lockHash.lock(Shared);
-	Bdb *bdb;
+	int	slot = pageNumber % hashSize;
+	Sync sync (&syncObject, "Cache::trialFetch");
+	sync.lock (Shared);
+	int hit = 0;
 
 	/* If we already have a buffer for this go, we're done */
 
-	bdb = findBdb(dbb, pageNumber, slot);
-	if (bdb)
+	Bdb *bdb;
+
+	for (bdb = hashTable [slot]; bdb; bdb = bdb->hash)
+		if (bdb->pageNumber == pageNumber && bdb->dbb == dbb)
 			{
 			//syncObject.validateShared("Cache::trialFetch");
 			bdb->incrementUseCount(ADD_HISTORY);
-		lockHash.unlock();
+			sync.unlock();
 			bdb->addRef(lockType  COMMA_ADD_HISTORY);
 			bdb->decrementUseCount(REL_HISTORY);
+			hit = 1;
+			break;
 			}
 
 	return bdb;
@@ -915,9 +764,10 @@ void Cache::ioThread(void* arg)
 
 void Cache::ioThread(void)
 {
-	Sync syncThread(&syncThreads, "Cache::ioThread");
+	Sync syncThread(&syncThreads, "Cache::ioThread(1)");
 	syncThread.lock(Shared);
-	Sync flushLock(&syncFlush, "Cache::ioThread");
+	Sync flushLock(&syncFlush, "Cache::ioThread(2)");
+	Sync sync(&syncObject, "Cache::ioThread(3)");
 	Priority priority(database->ioScheduler);
 	Thread *thread = Thread::getThread("Cache::ioThread");
 	UCHAR *rawBuffer = new UCHAR[ASYNC_BUFFER_SIZE];
@@ -931,135 +781,137 @@ void Cache::ioThread(void)
 		{
 		int32 pageNumber = flushBitmap->nextSet(0);
 		int count;
+		Dbb *dbb;
 		
 		if (pageNumber >= 0)
 			{
-			Bdb *bdb;
-			Dbb *dbb;
-			int	slot = PAGENUM_2_SLOT(pageNumber);
+			int	slot = pageNumber % hashSize;
 			bool hit = false;
 			Bdb *bdbList = NULL;
 			UCHAR *p = buffer;
+			sync.lock(Shared);
 			
-			// Look for the page to flush.
-			bdb = lockFindBdbIncrementUseCount(pageNumber, slot);
-			if (bdb && bdb->flushIt && bdb->isDirty)
-				{
-				hit = true;
-				count = 0;
-				dbb = bdb->dbb;
-				
-				flushBitmap->clear(pageNumber);
-				
-				// get all his friends
-				while (p < end)
+			// Look for a page to flush.  Then get all his friends
+			
+			for (Bdb *bdb = hashTable[slot]; bdb; bdb = bdb->hash)
+				if (bdb->pageNumber == pageNumber && bdb->flushIt && bdb->isDirty)
 					{
-					++count;
-					bdb->addRef(Shared  COMMA_ADD_HISTORY);
+					hit = true;
+					count = 0;
+					dbb = bdb->dbb;
 					
-					bdb->syncWrite.lock(NULL, Exclusive);
-					bdb->ioThreadNext = bdbList;
-					bdbList = bdb;
+					if (!bdb->hash)
+						flushBitmap->clear(pageNumber);
 					
-					//ASSERT(!(bdb->flags & BDB_write_pending));
-					//bdb->flags |= BDB_write_pending;
-					memcpy(p, bdb->buffer, pageSize);
-					p += pageSize;
-					bdb->flushIt = false;
-					markClean(bdb);
-					bdb->isDirty = false;
-					bdb->release(REL_HISTORY);
-					
-					bdb = lockFindBdbIncrementUseCount(dbb, bdb->pageNumber + 1);
-					if (!bdb)
-						break;
-					
-					if (!bdb->isDirty && !continueWrite(bdb))
+					while (p < end)
 						{
-						bdb->decrementUseCount(REL_HISTORY);
-						break;
+						++count;
+						bdb->incrementUseCount(ADD_HISTORY);
+						sync.unlock();
+						bdb->addRef(Shared  COMMA_ADD_HISTORY);
+						if (falcon_use_sectorcache)
+							sectorCache->writePage(bdb);
+						
+						bdb->syncWrite.lock(NULL, Exclusive);
+						bdb->ioThreadNext = bdbList;
+						bdbList = bdb;
+						
+						//ASSERT(!(bdb->flags & BDB_write_pending));
+						//bdb->flags |= BDB_write_pending;
+						memcpy(p, bdb->buffer, pageSize);
+						p += pageSize;
+						bdb->flushIt = false;
+						markClean(bdb);
+						bdb->isDirty = false;
+						bdb->release(REL_HISTORY);
+						sync.lock(Shared);
+						
+						if ( !(bdb = findBdb(dbb, bdb->pageNumber + 1)) )
+							break;
+						
+						if (!bdb->isDirty && !continueWrite(bdb))
+							break;
 						}
-					}
-				
-				flushLock.unlock();
-				//Log::debug(" %d Writing %s %d pages: %d - %d\n", thread->threadId, (const char*) dbb->fileName, count, pageNumber, pageNumber + count - 1);
-				int length = (int)(p - buffer);
-				priority.schedule(PRIORITY_LOW);
-				
-				try
-					{
+					
+					if (sync.state != None)
+						sync.unlock();
+						
+					flushLock.unlock();
+					//Log::debug(" %d Writing %s %d pages: %d - %d\n", thread->threadId, (const char*) dbb->fileName, count, pageNumber, pageNumber + count - 1);
+					int length = p - buffer;
 					priority.schedule(PRIORITY_LOW);
-					dbb->writePages(pageNumber, length, buffer, WRITE_TYPE_FLUSH);
-					}
-				catch (SQLException& exception)
-					{
-					priority.finished();
 					
-					if (exception.getSqlcode() != DEVICE_FULL)
-						throw;
-					
-					database->setIOError(&exception);
-					
-					for (bool error = true; error;)
+					try
 						{
-						if (thread->shutdownInProgress)
+						priority.schedule(PRIORITY_LOW);
+						dbb->writePages(pageNumber, length, buffer, WRITE_TYPE_FLUSH);
+						}
+					catch (SQLException& exception)
+						{
+						priority.finished();
+						
+						if (exception.getSqlcode() != DEVICE_FULL)
+							throw;
+						
+						database->setIOError(&exception);
+						
+						for (bool error = true; error;)
 							{
-							Bdb *next;
-
-							for (bdb = bdbList; bdb; bdb = next)
+							if (thread->shutdownInProgress)
 								{
-								//bdb->flags &= ~BDB_write_pending;
-								next = bdb->ioThreadNext;
-								bdb->syncWrite.unlock();
-								bdb->decrementUseCount(REL_HISTORY);
+								Bdb *next;
+
+								for (bdb = bdbList; bdb; bdb = next)
+									{
+									//bdb->flags &= ~BDB_write_pending;
+									next = bdb->ioThreadNext;
+									bdb->syncWrite.unlock();
+									bdb->decrementUseCount(REL_HISTORY);
+									}
+									
+								return;
 								}
-								
-							return;
-							}
-						
-						thread->sleep(1000);
-						
-						try
-							{
-							priority.schedule(PRIORITY_LOW);
-							dbb->writePages(pageNumber, length, buffer, WRITE_TYPE_FLUSH);
-							error = false;
-							database->clearIOError();
-							}
-						catch (SQLException& exception2)
-							{
-							priority.finished();
 							
-							if (exception2.getSqlcode() != DEVICE_FULL)
-								throw;
+							thread->sleep(1000);
+							
+							try
+								{
+								priority.schedule(PRIORITY_LOW);
+								dbb->writePages(pageNumber, length, buffer, WRITE_TYPE_FLUSH);
+								error = false;
+								database->clearIOError();
+								}
+							catch (SQLException& exception2)
+								{
+								priority.finished();
+								
+								if (exception2.getSqlcode() != DEVICE_FULL)
+									throw;
+								}
 							}
 						}
-					}
 
-				priority.finished();
-				Bdb *next;
+					priority.finished();
+					Bdb *next;
 
-				for (bdb = bdbList; bdb; bdb = next)
-					{
-					//ASSERT(bdb->flags & BDB_write_pending);
-					//bdb->flags &= ~BDB_write_pending;
-					next = bdb->ioThreadNext;
-					bdb->syncWrite.unlock();
-					bdb->decrementUseCount(REL_HISTORY);
-					}
-				
-				flushLock.lock(Exclusive);
-				++physicalWrites;
-				
-				}
-			else
-				{
-					if (bdb)
+					for (bdb = bdbList; bdb; bdb = next)
+						{
+						//ASSERT(bdb->flags & BDB_write_pending);
+						//bdb->flags &= ~BDB_write_pending;
+						next = bdb->ioThreadNext;
+						bdb->syncWrite.unlock();
 						bdb->decrementUseCount(REL_HISTORY);
-				}
+						}
+					
+					flushLock.lock(Exclusive);
+					++physicalWrites;
+					
+					break;
+					}
 			
 			if (!hit)
 				{
+				sync.unlock();
 				flushBitmap->clear(pageNumber);
 				}
 			}
@@ -1088,8 +940,8 @@ void Cache::ioThread(void)
 
 			thread->sleep();
 			flushLock.lock(Exclusive);
+			}
 		}
-		} // for ever
 	
 	delete [] rawBuffer;			
 }
@@ -1122,8 +974,8 @@ bool Cache::continueWrite(Bdb* startingBdb)
 void Cache::shutdown(void)
 {
 	shutdownThreads();
-	Sync dirtyLock (&syncDirty, "Cache::shutdown");
-	dirtyLock.lock (Exclusive);
+	Sync sync (&syncDirty, "Cache::shutdown");
+	sync.lock (Exclusive);
 
 	for (Bdb *bdb = firstDirty; bdb; bdb = bdb->nextDirty)
 		bdb->dbb->writePage(bdb, WRITE_TYPE_SHUTDOWN);
@@ -1143,8 +995,8 @@ void Cache::shutdownThreads(void)
 		ioThreads[n] = 0;
 		}
 	
-	Sync lockThreads(&syncThreads, "Cache::shutdownThreads");
-	lockThreads.lock(Exclusive);
+	Sync sync(&syncThreads, "Cache::shutdownThreads");
+	sync.lock(Exclusive);
 }
 
 void Cache::analyzeFlush(void)
@@ -1196,7 +1048,7 @@ void Cache::openTraceFile(void)
 	if (traceFile)
 		closeTraceFile();
 		
-	traceFile = fopen(TRACE_FILE, "a+");
+	traceFile = fopen(TRACE_FILE, "w");
 #endif
 }
 
@@ -1213,6 +1065,6 @@ void Cache::closeTraceFile(void)
 
 void Cache::flushWait(void)
 {
-	Sync waitLock(&syncWait, "Cache::flushWait");
-	waitLock.lock(Shared);
+	Sync sync(&syncWait, "Cache::flushWait");
+	sync.lock(Shared);
 }
