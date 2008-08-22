@@ -53,6 +53,7 @@ use My::SysInfo;
 use mtr_cases;
 use mtr_report;
 use mtr_match;
+use mtr_unique;
 use IO::Socket::INET;
 use IO::Select;
 
@@ -60,7 +61,6 @@ require "lib/mtr_process.pl";
 require "lib/mtr_io.pl";
 require "lib/mtr_gcov.pl";
 require "lib/mtr_misc.pl";
-require "lib/mtr_unique.pl";
 
 $SIG{INT}= sub { mtr_error("Got ^C signal"); };
 
@@ -144,7 +144,7 @@ our $opt_client_debugger;
 my $config; # The currently running config
 my $current_config_name; # The currently running config file template
 
-my $opt_baseport;
+my $baseport;
 my $opt_build_thread= $ENV{'MTR_BUILD_THREAD'} || "auto";
 
 my $opt_record;
@@ -1192,24 +1192,26 @@ sub set_build_thread_ports($) {
 
   if ( lc($build_thread) eq 'auto' ) {
     mtr_report("Requesting build thread... ");
-    $build_thread=
-      mtr_require_unique_id_and_wait("/tmp/mysql-test-ports", 200, 299);
+    $build_thread= mtr_get_unique_id(250, 299);
+    if ( !defined $build_thread ) {
+      mtr_error("Could not get a unique build thread id");
+    }
     mtr_report(" - got $build_thread");
   }
   $ENV{MTR_BUILD_THREAD}= $build_thread;
   $opt_build_thread= $build_thread;
 
   # Calculate baseport
-  $opt_baseport= $build_thread * 10 + 10000;
-  if ( $opt_baseport < 5001 or $opt_baseport + 9 >= 32767 )
+  $baseport= $build_thread * 10 + 10000;
+  if ( $baseport < 5001 or $baseport + 9 >= 32767 )
   {
     mtr_error("MTR_BUILD_THREAD number results in a port",
               "outside 5001 - 32767",
-              "($opt_baseport - $opt_baseport + 9)");
+              "($baseport - $baseport + 9)");
   }
 
   mtr_report("Using MTR_BUILD_THREAD $build_thread,",
-	     "with reserved ports $opt_baseport..".($opt_baseport+9));
+	     "with reserved ports $baseport..".($baseport+9));
 
 }
 
@@ -2328,7 +2330,7 @@ sub kill_leftovers ($) {
 sub check_ports_free
 {
   my @ports_to_check;
-  for ($opt_baseport..$opt_baseport+9){
+  for ($baseport..$baseport+9){
     push(@ports_to_check, $_);
   }
   mtr_report("Checking ports...");
@@ -2979,7 +2981,7 @@ sub run_testcase ($) {
 	   extra_template_path => $tinfo->{extra_template_path},
 	   vardir          => $opt_vardir,
 	   tmpdir          => $opt_tmpdir,
-	   baseport        => $opt_baseport,
+	   baseport        => $baseport,
 	   #hosts          => [ 'host1', 'host2' ],
 	   user            => $opt_user,
 	   password        => '',

@@ -28,7 +28,6 @@ sub mtr_grab_file($);
 sub mtr_printfile($);
 sub mtr_lastlinefromfile($);
 
-
 # Read a whole file, stripping leading and trailing whitespace.
 sub mtr_fromfile ($) {
   my $file=  shift;
