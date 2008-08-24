@@ -61,11 +61,11 @@ public:
 	void			transactionEnded(void);
 	void			setRecord(Record* record, bool locked);
 	int				alterCheck(void);
+	void			waitForWriteComplete();
 	void			clearAlter(void);
 	bool			setAlter(void);
 	
-	void			clearTruncateLock(void);
-	void			setTruncateLock();
+
 	
 	virtual void	setConnection(StorageConnection* connection);
 	virtual void	clearIndexBounds(void);

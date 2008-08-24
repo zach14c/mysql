@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS t2;
 --enable_warnings
 
 --source include/have_falcon.inc
+--source include/have_ucs2.inc
 SET storage_engine=falcon;
 
 # Verify that setting storage engine worked

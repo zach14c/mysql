@@ -6372,3 +6372,5 @@ ER_BACKUP_OBTAIN_NAME_LOCK_FAILED
   eng "Restore failed to obtain the name locks on the tables."
 ER_BACKUP_RELEASE_NAME_LOCK_FAILED
   eng "Restore failed to release the name locks on the tables."
+ER_BACKUP_BACKUPDIR
+  eng "The path specified for the system variable backupdir cannot be accessed or is invalid. ref: %-.64s"

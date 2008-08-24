@@ -41,7 +41,7 @@
   @defgroup Runtime_Environment Runtime Environment
   @{
 */
-int execute_backup_command(THD*,LEX*);
+int execute_backup_command(THD*, LEX*, String*);
 
 /* Used in error handling only */
 #define SP_TYPE_STRING(LP) \
@@ -2263,10 +2263,21 @@ mysql_execute_command(THD *thd)
 #else
   {
     /*
+      Create a string from the backupdir system variable and pass
+      to backup system.
+    */
+    String backupdir;
+
+    backupdir.alloc(sys_var_backupdir.value_length);
+    backupdir.set_ascii(sys_var_backupdir.value, 
+                        sys_var_backupdir.value_length);
+    backupdir.length(sys_var_backupdir.value_length);
+
+    /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
-     */  
-    if (execute_backup_command(thd,lex))
+     */ 
+    if (execute_backup_command(thd, lex, &backupdir))
       goto error;
     break;
   }

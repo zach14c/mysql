@@ -105,7 +105,7 @@ public:
 	State		waitForTransaction (Transaction *transaction, TransId transId, bool *deadlock);
 	void		dropTable(Table* table);
 	void		truncateTable(Table* table);
-	bool		hasUncommittedRecords(Table* table);
+	bool		hasRecords(Table* table);
 	void		writeComplete(void);
 	void		releaseDependency(void);
 	int			createSavepoint();
