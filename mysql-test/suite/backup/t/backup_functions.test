@@ -1,0 +1,273 @@
+###########################################################################
+# Author: Hema
+# Date: 2008-03-11
+# Purpose: To test the metadata consistency of  object (stored functions)
+# after backup and Restore.
+###############################################################################
+--source include/not_embedded.inc
+--source suite/backup/include/backup_engine.inc
+--source include/have_debug.inc
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_sfs.bak
+
+#Create Database and object stored function for this test.
+
+--disable_warnings
+DROP DATABASE IF EXISTS bup_sfs;
+--enable_warnings
+
+CREATE DATABASE bup_sfs;
+USE bup_sfs;
+
+SET SQL_MODE=TRADITIONAL;
+
+#Create table and load with data.
+
+--echo Creating table
+
+CREATE TABLE bup_sfs.players(
+playerno INT not null PRIMARY KEY,
+name CHAR(10),
+Bdate DATE,
+sex CHAR(2),
+joined YEAR
+);
+
+CREATE TABLE bup_sfs.teams(
+teamno INT NOT NULL PRIMARY KEY,
+playerno INT,
+division CHAR(10),
+FOREIGN KEY(playerno) REFERENCES players(playerno)
+);
+
+CREATE TABLE bup_sfs.matches(
+Matchno INT NOT NULL PRIMARY KEY,
+teamno INT ,
+playerno INT,
+won INT,
+lost INT,
+FOREIGN KEY(teamno) REFERENCES teams(teamno),
+FOREIGN KEY(playerno) REFERENCES players(playerno)
+);
+
+CREATE TABLE bup_sfs.penalties(
+paymentno INT not null PRIMARY KEY,
+playerno INT,
+paymentdate DATE,
+amount FLOAT,
+FOREIGN KEY(playerno) REFERENCES players(playerno)
+);
+
+--echo Load Data in tables
+
+INSERT INTO bup_sfs.players VALUES
+(1,'aa1','1948-10-09','M','1960'),(2,'aa2','1950-05-09','M','1965'),
+(3,'aa3','1953-10-10','F','1970'),(4,'aa4','1970-10-19','M','1985'),
+(5,'aa5','1972-04-28','F','1994'),(6,'aa6','1945-01-26','M','1960');
+
+INSERT INTO bup_sfs.teams VALUES(1,3,'first'),(2,4,'division');
+
+INSERT INTO bup_sfs.matches VALUES
+(1,1,2,3,1),(2,2,1,4,2),(3,1,5,0,1),(4,2,4,3,0),(5,2,5,2,2),
+(6,1,3,3,1),(7,2,1,4,2),(8,1,5,0,1),(9,2,2,3,0),(10,2,2,2,2);
+
+INSERT INTO bup_sfs.penalties VALUES
+(1,5,'1980-10-10',100.23),(2,3,'1967-12-10',123.23),
+(3,3,'1983-05-25',25.25), (4,4,'1981-11-10',210.23) ,
+(5,5,'1980-12-12',300), (6,1,'1984-07-02',10),
+(7,1,'1985-10-10',23.90);
+
+#Create stored functions for the table
+
+delimiter ||;
+CREATE FUNCTION number_of_players() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END;
+||
+
+CREATE FUNCTION number_of_players1() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM players WHERE playerno > 2);
+END;
+||
+
+CREATE FUNCTION fcount() RETURNS INTEGER
+BEGIN
+  DECLARE v_out INT;
+  SELECT count(*) FROM matches INTO v_out;
+  RETURN v_out;
+END;
+||
+
+CREATE FUNCTION dollars(amount FLOAT(7,2)) RETURNS FLOAT(7,2)
+BEGIN
+  RETURN amount * (1/0.8);
+END;
+||
+
+delimiter ;||
+
+#Excercise the objects
+
+SELECT number_of_players();
+SELECT number_of_players1();
+SELECT fcount();
+SELECT paymentno,amount, dollars(amount) FROM penalties;
+--echo creating stored functions which is not dependent on table
+#BUG#34868 Backup: restore failure if two procedures but this doesn't happen for
+#  procedures in database, which has atleast one table
+
+
+CREATE FUNCTION square_area(side tinyINT)
+RETURNS FLOAT
+RETURN side * side;
+
+#excercise function
+
+SELECT square_area(11);
+
+#Show data and create statements.
+--echo showing objects and create statements.
+--query_vertical SHOW CREATE FUNCTION number_of_players;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE players;
+describe penalties;
+--replace_column  4 # 5 # 6 #
+--query_vertical SHOW FUNCTION STATUS;
+
+#Backup and restore data.
+--echo backup data
+--replace_column 1 #
+BACKUP DATABASE bup_sfs TO 'bup_sfs.bak';
+
+--echo dropping  database.
+DROP DATABASE bup_sfs;
+
+--echo Restoring Database
+
+# BUG#35118 Backup:Restore fails if previous create Procedure/Function/Trigger
+# command fails
+
+--replace_column 1 #
+RESTORE FROM 'bup_sfs.bak';
+SELECT @@SQL_MODE;
+
+#show data and create statements
+--echo showing objects and create statements
+--query_vertical SHOW CREATE DATABASE bup_sfs;
+--query_vertical SHOW CREATE FUNCTION number_of_players;
+describe penalties;
+describe matches;
+--replace_column  4 # 5 # 6 #
+
+--query_vertical SHOW FUNCTION STATUS;
+
+#Again calling function to check if Sf are backed up and restored properly or
+# not.
+
+INSERT INTO bup_sfs.players VALUES
+(57,'brown','1971-08-17','M','1985'),(95,'Miller','1963-05-14','M','1972');
+INSERT INTO bup_sfs.matches VALUES(11,2,6,0,3);
+
+SELECT square_area(12);
+SELECT number_of_players();
+SELECT number_of_players1();
+SELECT fcount();
+SELECT paymentno,amount, dollars(amount) FROM penalties WHERE paymentno<=3;
+
+#dropping Database again.
+DROP DATABASE bup_sfs;
+
+--echo change SQL_MODE and then perform RESTORE operation
+
+SET SQL_MODE=ANSI;
+--replace_column 1 #
+RESTORE FROM 'bup_sfs.bak';
+
+SELECT @@SQL_MODE;
+
+#show data and create statements
+--echo showing objects and create statements
+--query_vertical SHOW CREATE DATABASE bup_sfs;
+--query_vertical SHOW CREATE FUNCTION number_of_players;
+--replace_column  4 # 5 # 6 #
+
+--query_vertical SHOW FUNCTION STATUS;
+
+#Again calling function to check if Sf are backed up and restored
+#properly or not.
+
+SELECT square_area(13);
+SELECT number_of_players();
+SELECT fcount();
+DROP DATABASE bup_sfs;
+
+--echo change SQL_MODE and then perform RESTORE
+
+SET SQL_MODE=MAXDB;
+--replace_column 1 #
+RESTORE FROM 'bup_sfs.bak';
+
+SELECT @@SQL_MODE;
+
+#show data and create statements
+--echo showing objects and create statements
+--query_vertical SHOW CREATE DATABASE bup_sfs;
+--query_vertical SHOW CREATE FUNCTION number_of_players;
+--replace_column  4 # 5 # 6 #
+--query_vertical SHOW FUNCTION STATUS;
+
+#Again calling function to check if Sf are backed up and restored properly
+#or not.
+
+SELECT square_area(14);
+SELECT number_of_players();
+SELECT fcount();
+SELECT paymentno,amount, dollars(amount) FROM penalties WHERE paymentno >=3;
+DROP DATABASE bup_sfs;
+--echo change SQL_MODE and then perform RESTORE
+
+SET SQL_MODE=' ';
+--replace_column 1 #
+RESTORE FROM 'bup_sfs.bak';
+
+SELECT @@SQL_MODE;
+#show data and create statements
+--echo showing objects and create statements
+--query_vertical SHOW CREATE DATABASE bup_sfs;
+--query_vertical SHOW CREATE FUNCTION number_of_players;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE players;
+describe matches;
+--replace_column  4 # 5 # 6 #
+--query_vertical SHOW FUNCTION STATUS;
+
+#Again calling function to check if Sf are backed up and restored properly
+# ornot
+
+SELECT square_area(20);
+SELECT number_of_players();
+SELECT fcount();
+SELECT paymentno,amount, dollars(amount) FROM penalties;
+
+# Test cleanup section
+
+--echo
+--echo ***  DROP bup_sfs DATABASE ****
+--echo
+
+DROP DATABASE bup_sfs;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_sfs.bak
+
