@@ -1055,11 +1055,40 @@ uchar *mi_state_info_read(uchar *ptr, MI_STATE_INFO *state)
 }
 
 
-uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead)
+/**
+  Read state info from file.
+
+  @param[in]        file        index file descriptor
+  @param[in,out]    state       state info to update from file
+  @param[in]        pRead       if to use my_pread() instaed of my_read()
+  @param[in]        force       force read
+
+  @return           status
+    @retval         0           ok
+    @retval         1           error
+
+  Normally this function does not read the state info from file if
+  'myisam_single_user' is true. This means that mysqld is the only
+  program that works on the table files. No other program modifies the
+  files. Hence the in-memory state is expected to be current.
+
+  If there are other programs tampering with the files, mysqld must be
+  started with --external-locking. This makes 'myisam_single_user'
+  false. In this case this function does indeed read the state from
+  disk.
+
+  In cases like restore, we modify the table files directly,
+  bypassing the MyISAM interface. We do this inside of mysqld, so
+  --external-locking need not be specified. We support this case by the
+  'force' parameter.
+*/
+
+uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead,
+                            my_bool force)
 {
   uchar	buff[MI_STATE_INFO_SIZE + MI_STATE_EXTRA_SIZE];
 
-  if (!myisam_single_user)
+  if (!myisam_single_user || force)
   {
     if (pRead)
     {
