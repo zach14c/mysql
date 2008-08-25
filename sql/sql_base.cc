@@ -1242,15 +1242,15 @@ close_all_tables_for_name(THD *thd, TABLE_SHARE *share,
     if (table->s->table_cache_key.length == key_length &&
         !memcmp(table->s->table_cache_key.str, key, key_length))
     {
+      /* Inform handler that table will be dropped after close */
+      if (table->db_stat)
+        table->file->extra(HA_EXTRA_PREPARE_FOR_DROP);
+
       /*
         Does nothing if the table is not locked.
         This allows one to use this function after a table
         has been unlocked, e.g. in partition management.
       */
-
-      /* Inform handler that table will be dropped after close */
-      table->file->extra(HA_EXTRA_PREPARE_FOR_DROP);
-
       mysql_lock_remove(thd, thd->lock, table);
 
       thd->locked_tables_list.unlink_from_list(thd,
