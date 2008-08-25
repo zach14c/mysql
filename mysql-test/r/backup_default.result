@@ -44,15 +44,6 @@ INSERT INTO partition_table VALUES (5,'jTfSg');
 INSERT INTO partition_table VALUES (20,'UezFi');
 INSERT INTO partition_table VALUES (25,'cxmeH');
 INSERT INTO partition_table VALUES (65,'lIuNS');
-backup on partitioned falcon
-BACKUP DATABASE db1 to 'bup_falcon.bak';
-backup_id
-#
-DROP DATABASE db1;
-restore on partitioned falcon
-RESTORE FROM 'bup_falcon.bak';
-backup_id
-#
 testing content in restored tables
 SELECT * FROM partition_table ORDER BY int_column;
 int_column	char_column

@@ -62,15 +62,18 @@ INSERT INTO partition_table VALUES (20,'UezFi');
 INSERT INTO partition_table VALUES (25,'cxmeH');
 INSERT INTO partition_table VALUES (65,'lIuNS');
 
---echo backup on partitioned falcon
---replace_column 1 #
-BACKUP DATABASE db1 to 'bup_falcon.bak';
-
-DROP DATABASE db1;
-
---echo restore on partitioned falcon
---replace_column 1 #
-RESTORE FROM 'bup_falcon.bak';
+#
+# This portion of the test has been disabled. See BUG#39017
+#
+#--echo backup on partitioned falcon
+#--replace_column 1 #
+#BACKUP DATABASE db1 to 'bup_falcon.bak';
+#
+#DROP DATABASE db1;
+#
+#--echo restore on partitioned falcon
+#--replace_column 1 #
+#RESTORE FROM 'bup_falcon.bak';
 
 --echo testing content in restored tables
 SELECT * FROM partition_table ORDER BY int_column;
@@ -125,6 +128,6 @@ SELECT * FROM myisam_table ORDER BY i;
 DROP DATABASE db1;
 
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_csv.bak
---remove_file $MYSQLTEST_VARDIR/master-data/bup_falcon.bak
+#--remove_file $MYSQLTEST_VARDIR/master-data/bup_falcon.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_mixed.bak
 

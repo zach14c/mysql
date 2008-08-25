@@ -115,11 +115,6 @@ SHOW GRANTS FOR 'bup_user3'@'%';
 ERROR 42000: There is no such grant defined for user 'bup_user3' on host '%'
 SHOW GRANTS FOR 'no_user'@'%';
 ERROR 42000: There is no such grant defined for user 'no_user' on host '%'
-Now demonstrate what happens when grants are altered in backup image.
-Run Restore
-RESTORE FROM 'bup_db_grants.bak';
-ERROR HY000: The grant 'GRANT SELECT ON boo_db_grants.* TO 'bup_user1'@'%' failed. Database not included in the backup image.
-FLUSH PRIVILEGES;
 Cleanup
 DROP USER 'bup_user1'@'%';
 DROP USER 'bup_user1'@'nosuchhost';

@@ -103,14 +103,17 @@ SHOW GRANTS FOR 'bup_user3'@'%';
 --error ER_NONEXISTING_GRANT
 SHOW GRANTS FOR 'no_user'@'%';
 
---echo Now demonstrate what happens when grants are altered in backup image.
-
---exec perl -pi.bak -e "s/ON bup/ON boo/" $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak 
---echo Run Restore
---error ER_BACKUP_GRANT_WRONG_DB
-RESTORE FROM 'bup_db_grants.bak';
-
-FLUSH PRIVILEGES;
+#
+# Section of test disabled due to errors in PB. See BUG#39016
+#
+#--echo Now demonstrate what happens when grants are altered in backup image.
+#
+#--exec perl -pi.bak -e "s/ON bup/ON boo/" $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak 
+#--echo Run Restore
+#--error ER_BACKUP_GRANT_WRONG_DB
+#RESTORE FROM 'bup_db_grants.bak';
+#
+#FLUSH PRIVILEGES;
 
 --echo Cleanup
 
@@ -127,7 +130,7 @@ FLUSH PRIVILEGES;
 
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak.bak
+#--remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak.bak
 
 --echo Now test for encoded user names with an x40 in the middle.
 
