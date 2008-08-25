@@ -1242,7 +1242,6 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     general_log_print(thd, command, NullS);
     net->error=0;				// Don't give 'abort' message
     thd->main_da.disable_status();              // Don't send anything back
-    thd->main_da.is_quit= TRUE;                 // Connection is closed
     error=TRUE;					// End server
     break;
 
@@ -1317,7 +1316,6 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                       (long) pos);
       mysql_binlog_send(thd, thd->strdup(packet + 10), (my_off_t) pos, flags);
       unregister_slave(thd,1,1);
-      thd->main_da.is_quit= TRUE;                 // Connection is closed
       /*  fake COM_QUIT -- if we get here, the thread needs to terminate */
       error = TRUE;
       break;
@@ -1366,7 +1364,6 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     my_eof(thd);
     close_thread_tables(thd);			// Free before kill
     kill_mysql();
-    thd->main_da.is_quit= TRUE;                 // Connection is closed
     error=TRUE;
     break;
   }
