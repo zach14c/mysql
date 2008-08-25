@@ -612,8 +612,7 @@ enum enum_schema_tables
   SCH_TRIGGERS,
   SCH_USER_PRIVILEGES,
   SCH_VARIABLES,
-  SCH_VIEWS,
-  SCH_FALCON_TABLESPACE_FILES
+  SCH_VIEWS
 };
 
 typedef struct st_table TABLE;

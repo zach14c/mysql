@@ -1663,7 +1663,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
       this and cancel restore process.
     */ 
 
-    Obj *ts= obs::is_tablespace(thd, sobj->get_name()); 
+    Obj *ts= obs::is_tablespace(thd, sobj); 
 
     if (ts)
     {
