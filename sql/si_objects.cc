@@ -1809,7 +1809,7 @@ bool TableObj::do_serialize(THD *thd, String *serialization)
   */
   ret= m_table_is_view ?
     view_store_create_info(thd, table_list, serialization) :
-    store_create_info(thd, table_list, serialization, NULL);
+    store_create_info(thd, table_list, serialization, NULL, FALSE);
   close_thread_tables(thd);
   serialization->set_charset(system_charset_info);
   thd->lex->select_lex.table_list.empty();

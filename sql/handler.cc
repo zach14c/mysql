@@ -5199,6 +5199,8 @@ static int write_locked_table_maps(THD *thd)
   DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
                        thd, thd->lock, thd->extra_lock));
 
+  DBUG_PRINT("debug", ("get_binlog_table_maps(): %d", thd->get_binlog_table_maps()));
+
   if (thd->get_binlog_table_maps() == 0)
   {
     MYSQL_LOCK *locks[2];
