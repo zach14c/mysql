@@ -1515,6 +1515,20 @@ connection default;
 --reap
 drop table t1;
 
+#
+# BUG#38606  test suite
+#
+create table t1 (a int) engine=maria transactional=1;
+insert into t1 values (1);
+lock table t1 write concurrent;
+# should be fixed with fully implemented versioning
+--error ER_CHECK_NOT_IMPLEMENTED
+delete from t1;
+--error 1099
+drop table t1;
+unlock tables;
+drop table t1;
+
 --disable_result_log
 --disable_query_log
 eval set global storage_engine=$default_engine, maria_page_checksum=$default_checksum;

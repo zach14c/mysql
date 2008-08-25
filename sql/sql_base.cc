@@ -1247,6 +1247,10 @@ close_all_tables_for_name(THD *thd, TABLE_SHARE *share,
         This allows one to use this function after a table
         has been unlocked, e.g. in partition management.
       */
+
+      /* Inform handler that table will be dropped after close */
+      table->file->extra(HA_EXTRA_PREPARE_FOR_DROP);
+
       mysql_lock_remove(thd, thd->lock, table);
 
       thd->locked_tables_list.unlink_from_list(thd,
@@ -2074,6 +2078,7 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
 void drop_open_table(THD *thd, TABLE *table, const char *db_name,
                      const char *table_name)
 {
+  DBUG_ENTER("drop_open_table");
   if (table->s->tmp_table)
     close_temporary_table(thd, table, 1, 1);
   else
@@ -2085,10 +2090,12 @@ void drop_open_table(THD *thd, TABLE *table, const char *db_name,
     table->s->version= 0;
 
     pthread_mutex_lock(&LOCK_open);
+    table->file->extra(HA_EXTRA_PREPARE_FOR_DROP);
     close_thread_table(thd, &thd->open_tables);
     quick_rm_table(table_type, db_name, table_name, 0);
     pthread_mutex_unlock(&LOCK_open);
   }
+  DBUG_VOID_RETURN;
 }
 
 
