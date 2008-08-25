@@ -1141,8 +1141,6 @@ public:
   };
   /** True if status information is sent to the client. */
   bool is_sent;
-  /** True if connection is closed */
-  bool is_quit;
   /** Set to make set_error_status after set_{ok,eof}_status possible. */
   bool can_overwrite_status;
 
