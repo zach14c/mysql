@@ -1320,9 +1320,16 @@ static void destroy_sj_tmp_tables(JOIN *join)
   TABLE *table;
   while ((table= it++))
   {
+    /* 
+      SJ-Materialization tables are initialized for sequential reading or
+      index lookup, DuplicateWeedout tables are not initialized (we only
+      write to them). Close whatever read we have open:
+    */
+    table->file->ha_index_or_rnd_end();
     free_tmp_table(join->thd, table);
   }
   join->sj_tmp_tables.empty();
+  join->sjm_info_list.empty();
 }
 
 
@@ -1346,6 +1353,13 @@ static int clear_sj_tmp_tables(JOIN *join)
   {
     if ((res= table->file->ha_delete_all_rows()))
       return res;
+  }
+
+  SJ_MATERIALIZE_INFO *sjm;
+  List_iterator<SJ_MATERIALIZE_INFO> it2(join->sjm_info_list);
+  while ((sjm= it2++))
+  {
+    sjm->materialized= FALSE;
   }
   return 0;
 }
@@ -7719,7 +7733,7 @@ get_best_combination(JOIN *join, table_map join_tables)
       continue;
     
     if (j->keys.is_clear_all() || !(keyuse= join->best_positions[tablenr].key) || 
-        (join->best_positions[0].sj_strategy == SJ_OPT_LOOSE_SCAN /* &&
+        (join->best_positions[tablenr].sj_strategy == SJ_OPT_LOOSE_SCAN /* &&
         psergey-todo TODO*/))
     {
       j->type=JT_ALL;
@@ -9219,6 +9233,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
   sjm->table->file->extra(HA_EXTRA_WRITE_CACHE);
   sjm->table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
   tab->join->sj_tmp_tables.push_back(sjm->table);
+  tab->join->sjm_info_list.push_back(sjm);
   
   sjm->materialized= FALSE;
   if (!sjm->is_sj_scan)

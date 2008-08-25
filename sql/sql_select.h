@@ -649,6 +649,7 @@ public:
 
   /* Temporary tables used to weed-out semi-join duplicates */
   List<TABLE> sj_tmp_tables;
+  List<SJ_MATERIALIZE_INFO> sjm_info_list;
 
   /* 
     storage for caching buffers allocated during query execution. 
