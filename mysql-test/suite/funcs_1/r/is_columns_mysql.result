@@ -107,28 +107,28 @@ NULL	mysql	ndb_binlog_index	orig_server_id	8	NULL	NO	int	NULL	NULL	10	0	NULL	NUL
 NULL	mysql	ndb_binlog_index	Position	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references		Default	Default
 NULL	mysql	ndb_binlog_index	schemaops	7	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references		Default	Default
 NULL	mysql	ndb_binlog_index	updates	5	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references		Default	Default
-NULL	mysql	online_backup	backup_file	15	NULL	YES	char	100	100	NULL	NULL	latin1	latin1_swedish_ci	char(100)			select,insert,update,references	The name of the file	Default	Default
+NULL	mysql	online_backup	backup_file	15	NULL	YES	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	The name of the file	Default	Default
 NULL	mysql	online_backup	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned	PRI	auto_increment	select,insert,update,references	Surrogate key for (near) duplicate entries	Default	Default
-NULL	mysql	online_backup	backup_state	5	NULL	NO	enum	14	14	NULL	NULL	latin1	latin1_swedish_ci	enum('complete','starting','validity point','running','error','cancel')			select,insert,update,references	Status of current operation	Default	Default
-NULL	mysql	online_backup	binlog_file	4	NULL	YES	char	64	64	NULL	NULL	latin1	latin1_swedish_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
+NULL	mysql	online_backup	backup_state	5	NULL	NO	enum	14	56	NULL	NULL	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')			select,insert,update,references	Status of current operation	Default	Default
+NULL	mysql	online_backup	binlog_file	4	NULL	YES	char	64	256	NULL	NULL	utf8	utf8_general_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
 NULL	mysql	online_backup	binlog_pos	3	0	YES	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The recorded binlog position of backup/restore	Default	Default
-NULL	mysql	online_backup	command	17	NULL	YES	varchar	512	512	NULL	NULL	latin1	latin1_swedish_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
-NULL	mysql	online_backup	drivers	18	NULL	YES	varchar	100	100	NULL	NULL	latin1	latin1_swedish_ci	varchar(100)			select,insert,update,references	The name of the storage engine backup drivers used in the operation	Default	Default
+NULL	mysql	online_backup	command	17	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
+NULL	mysql	online_backup	drivers	18	NULL	YES	varchar	100	400	NULL	NULL	utf8	utf8_general_ci	varchar(100)			select,insert,update,references	The name of the storage engine backup drivers used in the operation	Default	Default
 NULL	mysql	online_backup	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
-NULL	mysql	online_backup	host_or_server_name	13	NULL	YES	char	30	30	NULL	NULL	latin1	latin1_swedish_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
+NULL	mysql	online_backup	host_or_server_name	13	NULL	YES	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
 NULL	mysql	online_backup	num_objects	8	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The number of objects in the backup	Default	Default
-NULL	mysql	online_backup	operation	6	NULL	NO	enum	7	7	NULL	NULL	latin1	latin1_swedish_ci	enum('backup','restore')			select,insert,update,references	Type of operation	Default	Default
+NULL	mysql	online_backup	operation	6	NULL	NO	enum	7	28	NULL	NULL	utf8	utf8_general_ci	enum('backup','restore')			select,insert,update,references	Type of operation	Default	Default
 NULL	mysql	online_backup	process_id	2	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The process id that operation ran as	Default	Default
 NULL	mysql	online_backup	start_time	11	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of start of operation	Default	Default
 NULL	mysql	online_backup	stop_time	12	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
 NULL	mysql	online_backup	total_bytes	9	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The size of the backup repository in bytes	Default	Default
-NULL	mysql	online_backup	username	14	NULL	YES	char	30	30	NULL	NULL	latin1	latin1_swedish_ci	char(30)			select,insert,update,references	The user name who ran the operation	Default	Default
-NULL	mysql	online_backup	user_comment	16	NULL	YES	varchar	200	200	NULL	NULL	latin1	latin1_swedish_ci	varchar(200)			select,insert,update,references	The comment from user entered at command line	Default	Default
+NULL	mysql	online_backup	username	14	NULL	YES	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The user name who ran the operation	Default	Default
+NULL	mysql	online_backup	user_comment	16	NULL	YES	varchar	200	800	NULL	NULL	utf8	utf8_general_ci	varchar(200)			select,insert,update,references	The comment from user entered at command line	Default	Default
 NULL	mysql	online_backup	validity_point_time	10	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The time of the validity point.	Default	Default
 NULL	mysql	online_backup_progress	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	Key for online_backup table entries	Default	Default
 NULL	mysql	online_backup_progress	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
-NULL	mysql	online_backup_progress	notes	8	NULL	YES	char	100	100	NULL	NULL	latin1	latin1_swedish_ci	char(100)			select,insert,update,references	Commentary from the backup engine	Default	Default
-NULL	mysql	online_backup_progress	object	2	NULL	NO	char	30	30	NULL	NULL	latin1	latin1_swedish_ci	char(30)			select,insert,update,references	The object being operated on	Default	Default
+NULL	mysql	online_backup_progress	notes	8	NULL	YES	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	Commentary from the backup engine	Default	Default
+NULL	mysql	online_backup_progress	object	2	NULL	NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The object being operated on	Default	Default
 NULL	mysql	online_backup_progress	progress	6	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The number of bytes processed	Default	Default
 NULL	mysql	online_backup_progress	start_time	3	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of start of operation	Default	Default
 NULL	mysql	online_backup_progress	stop_time	4	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
@@ -262,7 +262,6 @@ COL_CML	DATA_TYPE	CHARACTER_SET_NAME	COLLATION_NAME
 1.0000	longblob	NULL	NULL
 1.0000	char	latin1	latin1_bin
 1.0000	char	latin1	latin1_swedish_ci
-1.0000	enum	latin1	latin1_swedish_ci
 1.0000	varchar	latin1	latin1_swedish_ci
 1.0000	mediumtext	utf8	utf8_general_ci
 1.0000	text	utf8	utf8_general_ci
@@ -423,29 +422,29 @@ NULL	mysql	ndb_binlog_index	gci	int	NULL	NULL	NULL	NULL	int(10) unsigned
 NULL	mysql	online_backup	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
 NULL	mysql	online_backup	process_id	int	NULL	NULL	NULL	NULL	int(10) unsigned
 NULL	mysql	online_backup	binlog_pos	int	NULL	NULL	NULL	NULL	int(10) unsigned
-1.0000	mysql	online_backup	binlog_file	char	64	64	latin1	latin1_swedish_ci	char(64)
-1.0000	mysql	online_backup	backup_state	enum	14	14	latin1	latin1_swedish_ci	enum('complete','starting','validity point','running','error','cancel')
-1.0000	mysql	online_backup	operation	enum	7	7	latin1	latin1_swedish_ci	enum('backup','restore')
+4.0000	mysql	online_backup	binlog_file	char	64	256	utf8	utf8_general_ci	char(64)
+4.0000	mysql	online_backup	backup_state	enum	14	56	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')
+4.0000	mysql	online_backup	operation	enum	7	28	utf8	utf8_general_ci	enum('backup','restore')
 NULL	mysql	online_backup	error_num	int	NULL	NULL	NULL	NULL	int(11)
 NULL	mysql	online_backup	num_objects	int	NULL	NULL	NULL	NULL	int(10) unsigned
 NULL	mysql	online_backup	total_bytes	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
 NULL	mysql	online_backup	validity_point_time	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	mysql	online_backup	start_time	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	mysql	online_backup	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
-1.0000	mysql	online_backup	host_or_server_name	char	30	30	latin1	latin1_swedish_ci	char(30)
-1.0000	mysql	online_backup	username	char	30	30	latin1	latin1_swedish_ci	char(30)
-1.0000	mysql	online_backup	backup_file	char	100	100	latin1	latin1_swedish_ci	char(100)
-1.0000	mysql	online_backup	user_comment	varchar	200	200	latin1	latin1_swedish_ci	varchar(200)
-1.0000	mysql	online_backup	command	varchar	512	512	latin1	latin1_swedish_ci	varchar(512)
-1.0000	mysql	online_backup	drivers	varchar	100	100	latin1	latin1_swedish_ci	varchar(100)
+4.0000	mysql	online_backup	host_or_server_name	char	30	120	utf8	utf8_general_ci	char(30)
+4.0000	mysql	online_backup	username	char	30	120	utf8	utf8_general_ci	char(30)
+4.0000	mysql	online_backup	backup_file	char	100	400	utf8	utf8_general_ci	char(100)
+4.0000	mysql	online_backup	user_comment	varchar	200	800	utf8	utf8_general_ci	varchar(200)
+4.0000	mysql	online_backup	command	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
+4.0000	mysql	online_backup	drivers	varchar	100	400	utf8	utf8_general_ci	varchar(100)
 NULL	mysql	online_backup_progress	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
-1.0000	mysql	online_backup_progress	object	char	30	30	latin1	latin1_swedish_ci	char(30)
+4.0000	mysql	online_backup_progress	object	char	30	120	utf8	utf8_general_ci	char(30)
 NULL	mysql	online_backup_progress	start_time	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	mysql	online_backup_progress	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	mysql	online_backup_progress	total_bytes	bigint	NULL	NULL	NULL	NULL	bigint(20)
 NULL	mysql	online_backup_progress	progress	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
 NULL	mysql	online_backup_progress	error_num	int	NULL	NULL	NULL	NULL	int(11)
-1.0000	mysql	online_backup_progress	notes	char	100	100	latin1	latin1_swedish_ci	char(100)
+4.0000	mysql	online_backup_progress	notes	char	100	400	utf8	utf8_general_ci	char(100)
 4.0000	mysql	plugin	name	char	64	256	utf8	utf8_bin	char(64)
 4.0000	mysql	plugin	dl	char	128	512	utf8	utf8_bin	char(128)
 4.0000	mysql	proc	db	char	64	256	utf8	utf8_bin	char(64)
