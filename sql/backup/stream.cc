@@ -190,15 +190,161 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 }
 
 
-Stream::Stream(Logger &log, const ::String &name, int flags)
-  :m_path(name), m_flags(flags), m_block_size(0), m_log(log)
+Stream::Stream(Logger &log, ::String *backupdir, 
+               LEX_STRING orig_loc, int flags)
+  :m_flags(flags), m_block_size(0), m_log(log)
 {
+  prepare_path(backupdir, orig_loc);
   bzero(&stream, sizeof(stream));
   bzero(&buf, sizeof(buf));
   bzero(&mem, sizeof(mem));
   bzero(&data_buf, sizeof(data_buf));
   block_size= 0;
   state= CLOSED;
+}
+
+/**
+  Make a relative path.
+
+  This method takes the backupdir and the path specified on the backup command
+  (orig_loc) and forms a combined path. It walks the backupdir from the right
+  and the orig_loc from the left to position the paths for concatenation. Output
+  is written to new_path.
+
+  @param[OUT] new_path   The newly combined path + file name.
+  @param[IN]  orig_loc   The path + file name specified in the backup command.
+  @param[IN]  backupdir  The backupdir system variable value.
+
+  For example, if backupdir = '/dev/tmp' and orig_log = '../backup.bak', the 
+  combined path is = '/dev/backup.bak'.
+
+  @returns 
+    0 if success
+    1 if cannot be combined. Note: m_path is set to '' when this occurs to
+      trigger error in call stack.
+*/
+int Stream::make_relative_path(char *new_path, 
+                               char *orig_loc, 
+                               ::String *backupdir)
+{
+  char fixed_base[FN_LEN];
+  char fixed_rel[FN_LEN];
+  cleanup_dirname(fixed_base, backupdir->c_ptr());
+  cleanup_dirname(fixed_rel, orig_loc);
+  char *rel;
+  char *base= fixed_base;
+  bool done= FALSE;
+  char *found= fixed_rel;
+  int j= backupdir->length() - 1;
+  new_path[0]= 0;  // initialize the new path to an empty string
+
+  /*
+    For each '../' in orig_loc, move the pointer to the right for rel.
+    For each '../' in orig_loc, move pointer to the left for base.
+  */
+  while (!done)
+  {
+    rel= found; // save last known position
+    // find location of next level in relative path
+    found= strstr(found, FN_PARENTDIR);
+    if (found)
+    {
+      found+= 2;   // move past '..\'
+      if (base[j] == FN_LIBCHAR)
+        j--;       // move past last '\'
+      if (j == 0)  // We are trying to move too far down the path
+        return 1;
+      /*
+        Look for the next level down.
+      */
+      while ((base[j] != FN_LIBCHAR) && j)
+        j--;       
+    }
+    else
+      done= TRUE;
+  }
+  strcpy (new_path, base);
+  strcpy (new_path + j, rel);
+  return 0;
+}
+
+/**
+  Prepare path for access.
+
+  This method takes the backupdir and the file name specified on the backup
+  command (orig_loc) and forms a combined path + file name as follows:
+
+    1. If orig_loc has a relative path, make it relative to backupdir
+    2. If orig_loc has a hard path, use it.
+    3. If orig_loc has no path, append to backupdir
+
+  @param[IN]  backupdir  The backupdir system variable value.
+  @param[IN]  orig_loc   The path + file name specified in the backup command.
+
+  @returns 0
+*/
+int Stream::prepare_path(::String *backupdir, 
+                         LEX_STRING orig_loc)
+{
+  int path_len= 0;
+
+  /*
+    Prepare the path using the backupdir iff no relative path
+    or no hard path included.
+
+    Relative paths are formed from the backupdir system variable.
+  */
+  if (is_prefix(orig_loc.str, FN_PARENTDIR))
+  {
+    /* 
+      Case 1: Backup image file name has relative path. 
+              Make relative to backupdir.
+
+      Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
+              If backupdir = '/dev/daily/backup' then the
+              calculated path becomes
+              '/dev/monthly/backup/dec.bak'
+    */
+    char new_path[FN_LEN];
+    if (make_relative_path(new_path, orig_loc.str, backupdir))
+      m_path.length(0);
+    path_len= strlen(new_path) + 1;
+    m_path.alloc(path_len);
+    m_path.length(0);
+    m_path.append(new_path);
+  }
+  else if (!test_if_hard_path(orig_loc.str))
+  {
+    /* 
+      Case 2: Backup image file name has hard path. 
+
+      Example BACKUP DATATBASE ... TO '/dev/dec.bak'
+              If backupdir = '/dev/daily/backup' then the
+              calculated path becomes
+              '/dev/dec.bak'
+    */
+    path_len=backupdir->length() + orig_loc.length + 1;
+    m_path.alloc(path_len);
+    fn_format(m_path.c_ptr(), orig_loc.str, backupdir->c_ptr(), "",
+              MY_UNPACK_FILENAME);
+  }
+  else 
+  {
+    /* 
+      Case 3: Backup image file name has no path. 
+
+      Example BACKUP DATATBASE ... TO 'week2.bak'
+              If backupdir = '/dev/weekly/backup' then the
+              calculated path becomes
+              '/dev/weekly/week2.bak'
+    */
+    path_len= orig_loc.length + 1;
+    m_path.alloc(path_len);
+    m_path.length(0);
+    m_path.append(orig_loc.str);
+  }
+  m_path.length(path_len);
+  return 0;
 }
 
 bool Stream::open()
@@ -228,9 +374,10 @@ bool Stream::rewind()
 }
 
 
-Output_stream::Output_stream(Logger &log, const ::String &name,
+Output_stream::Output_stream(Logger &log, ::String *backupdir,
+                             LEX_STRING orig_loc,
                              bool with_compression)
-  :Stream(log, name, 0)
+  :Stream(log, backupdir, orig_loc, 0)
 {
   m_with_compression= with_compression;
   stream.write= stream_write;
@@ -414,8 +561,9 @@ bool Output_stream::rewind()
 }
 
 
-Input_stream::Input_stream(Logger &log, const ::String &name)
-  :Stream(log, name, O_RDONLY)
+Input_stream::Input_stream(Logger &log, ::String *backupdir, 
+                           LEX_STRING orig_loc)
+  :Stream(log, backupdir, orig_loc, O_RDONLY)
 {
   m_with_compression= false;
   stream.read= stream_read;

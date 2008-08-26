@@ -1742,7 +1742,7 @@ int _mi_read_rnd_dynamic_record(MI_INFO *info, uchar *buf,
       {						/* Check if changed */
 	info_read=1;
 	info->rec_cache.seek_not_done=1;
-	if (mi_state_info_read_dsk(share->kfile,&share->state,1))
+	if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
 	  goto panic;
       }
       if (filepos >= info->state->data_file_length)

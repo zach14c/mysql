@@ -274,7 +274,6 @@ SET(FALCON_SOURCES
 		StreamSegment.cpp 
 		SymbolManager.cpp 
 		Sync.cpp 
-		SyncWait.cpp 
 		Synchronize.cpp
 		SyncObject.cpp 
 		SyncTest.cpp 

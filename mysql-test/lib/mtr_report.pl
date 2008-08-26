@@ -333,6 +333,18 @@ sub mtr_report_stats ($) {
 		(
 		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
 		) or
+
+		# backup_backupdir test is supposed to trigger backup related errors
+		($testname eq 'main.backup_backupdir') and
+		(
+		  /Backup:/ or /Can't write to backup location/
+		) or
+                
+		# backup_concurrent performs a backup that should fail
+		($testname eq 'main.backup_concurrent') and
+		(
+		  /Can't execute this command because another BACKUP\/RESTORE operation is in progress/
+		) or
                 
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
@@ -340,6 +352,14 @@ sub mtr_report_stats ($) {
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
 		) or
 		
+		# The views test triggers errors below on purpose
+		($testname eq 'main.backup_views') and
+		(
+		  /Backup: Failed to add view/ or
+		  /Backup: Failed to obtain meta-data for view/ or
+		  /Restore: Could not restore view/
+		) or
+ 	 
 		# ignore warning generated when backup engine selection algorithm is tested
 		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
 		# ignore warnings generated when backup privilege is tested
