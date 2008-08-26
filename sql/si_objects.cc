@@ -1769,8 +1769,11 @@ bool TableObj::do_serialize(THD *thd, String *serialization)
   /*
     Open the view and its base tables or views
   */
-  if (open_normal_and_derived_tables(thd, table_list, 0))
-    DBUG_RETURN(FALSE);
+  if (open_normal_and_derived_tables(thd, table_list, 0)) {
+    close_thread_tables(thd);
+    thd->lex->select_lex.table_list.empty();
+    DBUG_RETURN(TRUE);
+  }
 
   /*
     Setup view specific variables and settings
