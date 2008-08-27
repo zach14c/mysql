@@ -331,7 +331,7 @@ sub mtr_report_stats ($) {
 		# backup_errors test is supposed to trigger lots of backup related errors
 		($testname eq 'main.backup_errors') and
 		(
-		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
+		  /Backup:/ or /Restore:/ or /Can't open the backup log tables/
 		) or
 
 		# backup_backupdir test is supposed to trigger backup related errors
