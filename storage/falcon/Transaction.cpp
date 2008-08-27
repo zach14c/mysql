@@ -275,7 +275,6 @@ void Transaction::commit()
 		releaseRecordLocks();
 
 	database->serialLog->preCommit(this);
-	syncActive.unlock();
 
 	
 
@@ -303,10 +302,9 @@ void Transaction::commit()
 	database->flushInversion(this);
 
 	// Transfer transaction from active list to committed list, set committed state
-
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
-
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
+	
 	syncActiveTransactions.lock(Exclusive);
 	syncCommitted.lock(Exclusive);
 
@@ -316,6 +314,8 @@ void Transaction::commit()
 
 	syncCommitted.unlock();
 	syncActiveTransactions.unlock();
+	
+	syncActive.unlock(); // signal waiting transactions
 
 	database->commit(this);
 
