@@ -29,7 +29,7 @@
 #include "sp_pcontext.h"
 
 
-sp_rcontext::sp_rcontext(sp_pcontext *root_parsing_ctx,
+sp_rcontext::sp_rcontext(MEM_ROOT *cond_root, sp_pcontext *root_parsing_ctx,
                          Field *return_value_fld,
                          sp_rcontext *prev_runtime_ctx)
   :m_root_parsing_ctx(root_parsing_ctx),
@@ -44,7 +44,8 @@ sp_rcontext::sp_rcontext(sp_pcontext *root_parsing_ctx,
    m_hfound(-1),
    m_ccount(0),
    m_case_expr_holders(0),
-   m_prev_runtime_ctx(prev_runtime_ctx)
+   m_prev_runtime_ctx(prev_runtime_ctx),
+   m_cond_root(cond_root)
 {
 }
 
@@ -68,6 +69,8 @@ sp_rcontext::~sp_rcontext()
 
 bool sp_rcontext::init(THD *thd)
 {
+  uint handler_count= m_root_parsing_ctx->max_handler_index();
+
   in_sub_stmt= thd->in_sub_stmt;
 
   if (init_var_table(thd) || init_var_items())
@@ -75,14 +78,14 @@ bool sp_rcontext::init(THD *thd)
 
   return
     !(m_handler=
-      (sp_handler_t*)thd->alloc(m_root_parsing_ctx->max_handler_index() *
-                                sizeof(sp_handler_t))) ||
+      (sp_handler_t*)thd->alloc(handler_count * sizeof(sp_handler_t))) ||
+    !(m_raised_conditions=
+      (SQL_condition**)thd->calloc(handler_count * sizeof(SQL_condition*))) ||
     !(m_hstack=
-      (uint*)thd->alloc(m_root_parsing_ctx->max_handler_index() *
-                        sizeof(uint))) ||
+      (uint*)thd->alloc(handler_count * sizeof(uint))) ||
     !(m_in_handler=
-      (uint*)thd->alloc(m_root_parsing_ctx->max_handler_index() *
-                        sizeof(uint))) ||
+      (sp_active_handler_t*)thd->alloc(handler_count *
+                                       sizeof(sp_active_handler_t))) ||
     !(m_cstack=
       (sp_cursor**)thd->alloc(m_root_parsing_ctx->max_cursor_index() *
                               sizeof(sp_cursor*))) ||
@@ -194,13 +197,15 @@ sp_rcontext::set_return_value(THD *thd, Item **return_value_item)
 */
 
 bool
-sp_rcontext::find_handler(THD *thd, uint sql_errno,
-                          MYSQL_ERROR::enum_warning_level level)
+sp_rcontext::find_handler(THD *thd, const SQL_condition *cond)
 {
   if (m_hfound >= 0)
     return 1;			// Already got one
 
-  const char *sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  uint sql_errno= cond->get_sql_errno();
+  MYSQL_ERROR::enum_warning_level level= cond->get_level();
+
+  const char *sqlstate= cond->get_sqlstate();
   int i= m_hcount, found= -1;
 
   /*
@@ -220,7 +225,7 @@ sp_rcontext::find_handler(THD *thd, uint sql_errno,
 
     /* Check active handlers, to avoid invoking one recursively */
     while (j--)
-      if (m_in_handler[j] == m_handler[i].handler)
+      if (m_in_handler[j].ip == m_handler[i].handler)
 	break;
     if (j >= 0)
       continue;                 // Already executing this handler
@@ -264,10 +269,18 @@ sp_rcontext::find_handler(THD *thd, uint sql_errno,
     */
     if (m_prev_runtime_ctx && IS_EXCEPTION_CONDITION(sqlstate) &&
         level == MYSQL_ERROR::WARN_LEVEL_ERROR)
-      return m_prev_runtime_ctx->find_handler(thd, sql_errno, level);
+      return m_prev_runtime_ctx->find_handler(thd, cond);
     return FALSE;
   }
+
   m_hfound= found;
+
+  SQL_condition *raised;
+  raised= SQL_condition::deep_copy(thd, m_cond_root, cond) ;
+  DBUG_ASSERT(m_hfound >= 0);
+  DBUG_ASSERT(m_hfound < m_root_parsing_ctx->max_handler_index());
+  m_raised_conditions[m_hfound]= raised;
+
   return TRUE;
 }
 
@@ -293,22 +306,22 @@ sp_rcontext::find_handler(THD *thd, uint sql_errno,
     FALSE      if no handler was found.
 */
 bool
-sp_rcontext::handle_error(uint sql_errno,
-                          MYSQL_ERROR::enum_warning_level level,
-                          THD *thd)
+sp_rcontext::handle_condition(THD *thd, const SQL_condition *cond)
 {
-  MYSQL_ERROR::enum_warning_level elevated_level= level;
-
-
   /* Depending on the sql_mode of execution,
      warnings may be considered errors */
-  if ((level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
+  if ((cond->m_level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
       thd->really_abort_on_warning())
   {
-    elevated_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+    SQL_condition elevated_cond(thd->mem_root);
+    elevated_cond.set(thd, cond->m_sql_errno,
+                      cond->get_message_text(),
+                      MYSQL_ERROR::WARN_LEVEL_ERROR,
+                      MYF(0));
+    return find_handler(thd, & elevated_cond);
   }
 
-  return find_handler(thd, sql_errno, elevated_level);
+  return find_handler(thd, cond);
 }
 
 void
@@ -335,7 +348,7 @@ sp_rcontext::pop_cursors(uint count)
 }
 
 void
-sp_rcontext::push_handler(struct sp_cond_type *cond, uint h, int type, uint f)
+sp_rcontext::push_handler(struct sp_cond_type *cond, uint h, int type)
 {
   DBUG_ENTER("sp_rcontext::push_handler");
   DBUG_ASSERT(m_hcount < m_root_parsing_ctx->max_handler_index());
@@ -343,7 +356,6 @@ sp_rcontext::push_handler(struct sp_cond_type *cond, uint h, int type, uint f)
   m_handler[m_hcount].cond= cond;
   m_handler[m_hcount].handler= h;
   m_handler[m_hcount].type= type;
-  m_handler[m_hcount].foffset= f;
   m_hcount+= 1;
 
   DBUG_PRINT("info", ("m_hcount: %d", m_hcount));
@@ -382,11 +394,13 @@ sp_rcontext::pop_hstack()
 }
 
 void
-sp_rcontext::enter_handler(int hid)
+sp_rcontext::enter_handler(uint hip, uint hindex)
 {
   DBUG_ENTER("sp_rcontext::enter_handler");
   DBUG_ASSERT(m_ihsp < m_root_parsing_ctx->max_handler_index());
-  m_in_handler[m_ihsp++]= hid;
+  m_in_handler[m_ihsp].ip= hip;
+  m_in_handler[m_ihsp].index= hindex;
+  m_ihsp++;
   DBUG_PRINT("info", ("m_ihsp: %d", m_ihsp));
   DBUG_VOID_RETURN;
 }
@@ -396,9 +410,30 @@ sp_rcontext::exit_handler()
 {
   DBUG_ENTER("sp_rcontext::exit_handler");
   DBUG_ASSERT(m_ihsp);
+  uint hindex= m_in_handler[m_ihsp-1].index;
+  DBUG_ASSERT(m_raised_conditions[hindex]);
+  delete m_raised_conditions[hindex];
+  m_raised_conditions[hindex]= NULL;
   m_ihsp-= 1;
   DBUG_PRINT("info", ("m_ihsp: %d", m_ihsp));
   DBUG_VOID_RETURN;
+}
+
+SQL_condition*
+sp_rcontext::raised_condition() const
+{
+  if (m_ihsp > 0)
+  {
+    uint hindex= m_in_handler[m_ihsp - 1].index;
+    SQL_condition *raised= m_raised_conditions[hindex];
+    DBUG_ASSERT(raised);
+    return raised;
+  }
+
+  if (m_prev_runtime_ctx)
+    return m_prev_runtime_ctx->raised_condition();
+
+  return NULL;
 }
 
 

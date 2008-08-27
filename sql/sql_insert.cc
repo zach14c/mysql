@@ -2314,8 +2314,8 @@ pthread_handler_t handle_delayed_insert(void *arg)
   if (my_thread_init())
   {
     /* Can't use my_error since store_globals has not yet been called */
-    thd->main_da.set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+    thd->main_da.set_default_error_status(thd, ER_OUT_OF_RESOURCES,
+                                          ER(ER_OUT_OF_RESOURCES));
     goto end;
   }
 #endif
@@ -2325,8 +2325,8 @@ pthread_handler_t handle_delayed_insert(void *arg)
   if (init_thr_lock() || thd->store_globals())
   {
     /* Can't use my_error since store_globals has perhaps failed */
-    thd->main_da.set_error_status(thd, ER_OUT_OF_RESOURCES,
-                                  ER(ER_OUT_OF_RESOURCES));
+    thd->main_da.set_default_error_status(thd, ER_OUT_OF_RESOURCES,
+                                          ER(ER_OUT_OF_RESOURCES));
     thd->fatal_error();
     goto err;
   }

@@ -1,0 +1,63 @@
+# Copyright (C) 2008 Sun Microsystems, Inc
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 2 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+
+# Tests for SIGNAL, RESIGNAL and GET DIAGNOSTICS
+
+--source include/have_utf32.inc
+
+--disable_warnings
+drop procedure if exists test_signal;
+--enable_warnings
+
+delimiter $$;
+
+create procedure test_signal()
+begin
+  DECLARE something CONDITION FOR SQLSTATE "01000";
+  SIGNAL something SET MESSAGE_TEXT =
+    _utf32 'a';
+end $$
+
+call test_signal() $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE something CONDITION FOR SQLSTATE "01000";
+  SIGNAL something SET MESSAGE_TEXT =
+    _utf32 X'00000048000000450000004C0000004C0000004F';
+end $$
+
+call test_signal() $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  declare continue handler for sqlexception
+  begin
+    declare msg varchar(128);
+    set msg= repeat(_utf32 0x000100cc, 128);
+    resignal set message_text = msg;
+  end;
+
+  signal sqlstate '77777';
+end $$
+
+--error ER_SIGNAL_EXCEPTION
+call test_signal() $$
+drop procedure test_signal $$
+
+delimiter ;$$
+

@@ -1263,9 +1263,9 @@ sp_head::execute(THD *thd)
     */
     if (ctx)
     {
-      uint hf;
+      uint handler_index;
 
-      switch (ctx->found_handler(&hip, &hf)) {
+      switch (ctx->found_handler(& hip, & handler_index)) {
       case SP_HANDLER_NONE:
         break;
       case SP_HANDLER_CONTINUE:
@@ -1274,16 +1274,20 @@ sp_head::execute(THD *thd)
         ctx->push_hstack(i->get_cont_dest());
         /* Fall through */
       default:
+        if (thd->end_partial_result_set)
+          thd->protocol->end_partial_result_set(thd);
         ip= hip;
         err_status= FALSE;
         ctx->clear_handler();
-        ctx->enter_handler(hip);
+        ctx->enter_handler(hip, handler_index);
         thd->clear_error();
         thd->is_fatal_error= 0;
         thd->killed= THD::NOT_KILLED;
         thd->mysys_var->abort= 0;
         continue;
       }
+
+      thd->end_partial_result_set= FALSE;
     }
   } while (!err_status && !thd->killed && !thd->is_fatal_error);
 
@@ -1525,7 +1529,7 @@ sp_head::execute_trigger(THD *thd,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0);
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= new sp_rcontext(m_pcont, 0, octx)) ||
+  if (!(nctx= new sp_rcontext(mem_root, m_pcont, 0, octx)) ||
       nctx->init(thd))
   {
     err_status= TRUE;
@@ -1642,7 +1646,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0);
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= new sp_rcontext(m_pcont, return_value_fld, octx)) ||
+  if (!(nctx= new sp_rcontext(mem_root, m_pcont, return_value_fld, octx)) ||
       nctx->init(thd))
   {
     thd->restore_active_arena(&call_arena, &backup_arena);
@@ -1846,7 +1850,7 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
   save_spcont= octx= thd->spcont;
   if (! octx)
   {				// Create a temporary old context
-    if (!(octx= new sp_rcontext(m_pcont, NULL, octx)) ||
+    if (!(octx= new sp_rcontext(mem_root, m_pcont, NULL, octx)) ||
         octx->init(thd))
     {
       delete octx; /* Delete octx if it was init() that failed. */
@@ -1862,7 +1866,7 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
     thd->spcont->callers_arena= thd;
   }
 
-  if (!(nctx= new sp_rcontext(m_pcont, NULL, octx)) ||
+  if (!(nctx= new sp_rcontext(mem_root, m_pcont, NULL, octx)) ||
       nctx->init(thd))
   {
     delete nctx; /* Delete nctx if it was init() that failed. */
@@ -3218,7 +3222,7 @@ sp_instr_hpush_jump::execute(THD *thd, uint *nextp)
   sp_cond_type_t *p;
 
   while ((p= li++))
-    thd->spcont->push_handler(p, m_ip+1, m_type, m_frame);
+    thd->spcont->push_handler(p, m_ip+1, m_type);
 
   *nextp= m_dest;
   DBUG_RETURN(0);

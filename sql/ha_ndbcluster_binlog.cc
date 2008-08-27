@@ -962,6 +962,20 @@ struct Cluster_schema
   uint32 any_value;
 };
 
+void print_could_not_discover_error(THD *thd, const Cluster_schema *schema)
+{
+  sql_print_error("NDB Binlog: Could not discover table '%s.%s' from "
+                  "binlog schema event '%s' from node %d. "
+                  "my_errno: %d",
+                   schema->db, schema->name, schema->query,
+                  schema->node_id, my_errno);
+  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  SQL_condition *cond;
+  while ((cond= it++))
+    sql_print_warning("NDB Binlog: (%d)%s", cond->get_sql_errno(),
+                      cond->get_message_text());
+}
+
 /*
   Transfer schema table data into corresponding struct
 */
@@ -1894,15 +1908,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
           }
           else if (ndb_create_table_from_engine(thd, schema->db, schema->name))
           {
-            sql_print_error("NDB Binlog: Could not discover table '%s.%s' from "
-                            "binlog schema event '%s' from node %d. "
-                            "my_errno: %d",
-                            schema->db, schema->name, schema->query,
-                            schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-            MYSQL_ERROR *err;
-            while ((err= it++))
-              sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
+            print_could_not_discover_error(thd, schema);
           }
           pthread_mutex_unlock(&LOCK_open);
           log_query= 1;
@@ -2255,14 +2261,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           }
           else if (ndb_create_table_from_engine(thd, schema->db, schema->name))
           {
-            sql_print_error("NDB Binlog: Could not discover table '%s.%s' from "
-                            "binlog schema event '%s' from node %d. my_errno: %d",
-                            schema->db, schema->name, schema->query,
-                            schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-            MYSQL_ERROR *err;
-            while ((err= it++))
-              sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
+            print_could_not_discover_error(thd, schema);
           }
           pthread_mutex_unlock(&LOCK_open);
         }
@@ -2434,14 +2433,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
           }
           else if (ndb_create_table_from_engine(thd, schema->db, schema->name))
           {
-            sql_print_error("NDB Binlog: Could not discover table '%s.%s' from "
-                            "binlog schema event '%s' from node %d. my_errno: %d",
-                            schema->db, schema->name, schema->query,
-                            schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-            MYSQL_ERROR *err;
-            while ((err= it++))
-              sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
+            print_could_not_discover_error(thd, schema);
           }
           pthread_mutex_unlock(&LOCK_open);
         }

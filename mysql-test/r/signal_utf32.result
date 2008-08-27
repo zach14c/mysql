@@ -1,0 +1,34 @@
+drop procedure if exists test_signal;
+create procedure test_signal()
+begin
+DECLARE something CONDITION FOR SQLSTATE "01000";
+SIGNAL something SET MESSAGE_TEXT =
+_utf32 'a';
+end $$
+call test_signal() $$
+Warnings:
+Warning	1727	a
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE something CONDITION FOR SQLSTATE "01000";
+SIGNAL something SET MESSAGE_TEXT =
+_utf32 X'00000048000000450000004C0000004C0000004F';
+end $$
+call test_signal() $$
+Warnings:
+Warning	1727	HELLO
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+declare continue handler for sqlexception
+begin
+declare msg varchar(128);
+set msg= repeat(_utf32 0x000100cc, 128);
+resignal set message_text = msg;
+end;
+signal sqlstate '77777';
+end $$
+call test_signal() $$
+ERROR 77777: 面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面面
+drop procedure test_signal $$

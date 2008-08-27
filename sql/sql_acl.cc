@@ -6132,9 +6132,7 @@ public:
   virtual ~Silence_routine_definer_errors()
   {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
-                            MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+  virtual bool handle_condition(THD *thd, const SQL_condition *cond);
 
   bool has_errors() { return is_grave; }
 
@@ -6143,18 +6141,17 @@ private:
 };
 
 bool
-Silence_routine_definer_errors::handle_error(uint sql_errno,
-                                       const char *message,
-                                       MYSQL_ERROR::enum_warning_level level,
-                                       THD *thd)
+Silence_routine_definer_errors::handle_condition(THD *thd,
+                                                 const SQL_condition *cond)
 {
-  if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)
+  if (cond->get_level() == MYSQL_ERROR::WARN_LEVEL_ERROR)
   {
-    switch (sql_errno)
+    switch (cond->get_sql_errno())
     {
       case ER_NONEXISTING_PROC_GRANT:
         /* Convert the error into a warning. */
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, sql_errno, message);
+        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                     cond->get_sql_errno(), cond->get_message_text());
         return TRUE;
       default:
         is_grave= TRUE;

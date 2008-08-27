@@ -74,14 +74,17 @@ void MYSQL_ERROR::set_msg(THD *thd, const char *msg_arg)
 void mysql_reset_errors(THD *thd, bool force)
 {
   DBUG_ENTER("mysql_reset_errors");
+
+  if (thd->main_da.m_stmt_area.is_read_only())
+    DBUG_VOID_RETURN;
+
   if (thd->query_id != thd->warn_id || force)
   {
     thd->warn_id= thd->query_id;
+    thd->main_da.m_stmt_area.clear();
     free_root(&thd->warn_root,MYF(0));
-    bzero((char*) thd->warn_count, sizeof(thd->warn_count));
     if (force)
       thd->total_warn_count= 0;
-    thd->warn_list.empty();
     thd->row_count= 1; // by default point to row 1
   }
   DBUG_VOID_RETURN;
@@ -99,62 +102,27 @@ void mysql_reset_errors(THD *thd, bool force)
     msg			Clear error message
 */
 
-void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level, 
-                          uint code, const char *msg)
+void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
+                  uint code, const char *msg)
 {
-  MYSQL_ERROR *err= 0;
   DBUG_ENTER("push_warning");
   DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
 
-  if (level == MYSQL_ERROR::WARN_LEVEL_NOTE &&
-      !(thd->options & OPTION_SQL_NOTES))
-    DBUG_VOID_RETURN;
-
-  if (thd->query_id != thd->warn_id && !thd->spcont)
-    mysql_reset_errors(thd, 0);
-  thd->got_warning= 1;
-
-  /* Abort if we are using strict mode and we are not using IGNORE */
-  if ((int) level >= (int) MYSQL_ERROR::WARN_LEVEL_WARN &&
-      thd->really_abort_on_warning())
+  switch(level)
   {
-    /* Avoid my_message() calling push_warning */
-    bool no_warnings_for_error= thd->no_warnings_for_error;
-    sp_rcontext *spcont= thd->spcont;
-
-    thd->no_warnings_for_error= 1;
-    thd->spcont= NULL;
-
-    thd->killed= THD::KILL_BAD_DATA;
-    my_message(code, msg, MYF(0));
-
-    thd->spcont= spcont;
-    thd->no_warnings_for_error= no_warnings_for_error;
-    /* Store error in error list (as my_message() didn't do it) */
-    level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+  case MYSQL_ERROR::WARN_LEVEL_NOTE:
+    thd->raise_note(code, msg);
+    break;
+  case MYSQL_ERROR::WARN_LEVEL_WARN:
+    thd->raise_warning(code, msg);
+    break;
+  default:
+    DBUG_ASSERT(FALSE);
   }
 
-  if (thd->handle_error(code, msg, level))
-    DBUG_VOID_RETURN;
-
-  if (thd->spcont &&
-      thd->spcont->handle_error(code, level, thd))
-  {
-    DBUG_VOID_RETURN;
-  }
-  query_cache_abort(&thd->query_cache_tls);
-
-
-  if (thd->warn_list.elements < thd->variables.max_error_count)
-  {
-    /* We have to use warn_root, as mem_root is freed after each query */
-    if ((err= new (&thd->warn_root) MYSQL_ERROR(thd, code, level, msg)))
-      thd->warn_list.push_back(err, &thd->warn_root);
-  }
-  thd->warn_count[(uint) level]++;
-  thd->total_warn_count++;
   DBUG_VOID_RETURN;
 }
+
 
 /*
   Push the warning/error to error list if there is still room in the list
@@ -208,9 +176,11 @@ const LEX_STRING warning_level_names[]=
 };
 
 bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
-{  
+{
   List<Item> field_list;
   DBUG_ENTER("mysqld_show_warnings");
+
+  DBUG_ASSERT(thd->main_da.m_stmt_area.is_read_only());
 
   field_list.push_back(new Item_empty_string("Level", 7));
   field_list.push_back(new Item_return_int("Code",4, MYSQL_TYPE_LONG));
@@ -220,7 +190,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
                                  Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
-  MYSQL_ERROR *err;
+  SQL_condition *cond;
   SELECT_LEX *sel= &thd->lex->select_lex;
   SELECT_LEX_UNIT *unit= &thd->lex->unit;
   ha_rows idx= 0;
@@ -228,24 +198,30 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
 
   unit->set_limit(sel);
 
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-  while ((err= it++))
+  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  while ((cond= it++))
   {
     /* Skip levels that the user is not interested in */
-    if (!(levels_to_show & ((ulong) 1 << err->level)))
+    if (!(levels_to_show & ((ulong) 1 << cond->get_level())))
       continue;
     if (++idx <= unit->offset_limit_cnt)
       continue;
     if (idx > unit->select_limit_cnt)
       break;
     protocol->prepare_for_resend();
-    protocol->store(warning_level_names[err->level].str,
-		    warning_level_names[err->level].length, system_charset_info);
-    protocol->store((uint32) err->code);
-    protocol->store(err->msg, strlen(err->msg), system_charset_info);
+    protocol->store(warning_level_names[cond->get_level()].str,
+		    warning_level_names[cond->get_level()].length,
+                    system_charset_info);
+    protocol->store((uint32) cond->get_sql_errno());
+    protocol->store(cond->get_message_text(),
+                    cond->get_message_octet_length(),
+                    system_charset_info);
     if (protocol->write())
       DBUG_RETURN(TRUE);
   }
   my_eof(thd);
+
+  thd->main_da.m_stmt_area.set_read_only(FALSE);
+
   DBUG_RETURN(FALSE);
 }

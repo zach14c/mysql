@@ -81,19 +81,14 @@ public:
 
   virtual ~Silence_log_table_errors() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
-                            MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+  virtual bool handle_condition(THD *thd, const SQL_condition *cond);
   const char *message() const { return m_message; }
 };
 
 bool
-Silence_log_table_errors::handle_error(uint /* sql_errno */,
-                                       const char *message_arg,
-                                       MYSQL_ERROR::enum_warning_level /* level */,
-                                       THD * /* thd */)
+Silence_log_table_errors::handle_condition(THD *, const SQL_condition *cond)
 {
-  strmake(m_message, message_arg, sizeof(m_message)-1);
+  strmake(m_message, cond->get_message_text(), sizeof(m_message)-1);
   return TRUE;
 }
 

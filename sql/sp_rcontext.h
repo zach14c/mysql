@@ -34,12 +34,21 @@ class sp_instr_cpush;
 
 typedef struct
 {
+  /** Condition caught by this HANDLER. */
   struct sp_cond_type *cond;
-  uint handler;			// Location of handler
+  /** Location (instruction pointer) of the handler code. */
+  uint handler;
+  /** Handler type (EXIT, CONTINUE). */
   int type;
-  uint foffset;			// Frame offset for the handlers declare level
 } sp_handler_t;
 
+typedef struct
+{
+  /** Instruction pointer of the active handler. */
+  uint ip;
+  /** Handler index of the active handler. */
+  uint index;
+} sp_active_handler_t;
 
 /*
   This class is a runtime context of a Stored Routine. It is used in an
@@ -83,8 +92,8 @@ class sp_rcontext : public Sql_alloc
   sp_head *sp;
 #endif
 
-  sp_rcontext(sp_pcontext *root_parsing_ctx, Field *return_value_fld,
-              sp_rcontext *prev_runtime_ctx);
+  sp_rcontext(MEM_ROOT *cond_root, sp_pcontext *root_parsing_ctx,
+              Field *return_value_fld, sp_rcontext *prev_runtime_ctx);
   bool init(THD *thd);
 
   ~sp_rcontext();
@@ -107,30 +116,30 @@ class sp_rcontext : public Sql_alloc
     return m_return_value_set;
   }
 
-  void push_handler(struct sp_cond_type *cond, uint h, int type, uint f);
+  void push_handler(struct sp_cond_type *cond, uint h, int type);
 
   void pop_handlers(uint count);
 
   // Returns 1 if a handler was found, 0 otherwise.
   bool
-  find_handler(THD *thd, uint sql_errno,MYSQL_ERROR::enum_warning_level level);
+  find_handler(THD *thd, const SQL_condition *cond);
 
   // If there is an error handler for this error, handle it and return TRUE.
-  bool
-  handle_error(uint sql_errno,
-               MYSQL_ERROR::enum_warning_level level,
-               THD *thd);
+  bool handle_condition(THD *thd, const SQL_condition *cond);
+
 
   // Returns handler type and sets *ip to location if one was found
   inline int
-  found_handler(uint *ip, uint *fp)
+  found_handler(uint *ip, uint *index)
   {
     if (m_hfound < 0)
       return SP_HANDLER_NONE;
     *ip= m_handler[m_hfound].handler;
-    *fp= m_handler[m_hfound].foffset;
+    *index= m_hfound;
     return m_handler[m_hfound].type;
   }
+
+  SQL_condition* raised_condition() const;
 
   // Returns true if we found a handler in this context
   inline bool
@@ -150,7 +159,12 @@ class sp_rcontext : public Sql_alloc
 
   uint pop_hstack();
 
-  void enter_handler(int hid);
+  /**
+    Enter a SQL exception handler.
+    @param hip the handler instruction pointer
+    @param index the handler index
+  */
+  void enter_handler(uint hip, uint index);
 
   void exit_handler();
 
@@ -214,10 +228,18 @@ private:
   bool in_sub_stmt;
 
   sp_handler_t *m_handler;      // Visible handlers
+
+  /**
+    SQL conditions caught by each handler.
+    This is an array indexed by handler index.
+  */
+  SQL_condition ** m_raised_conditions;
+
   uint m_hcount;                // Stack pointer for m_handler
   uint *m_hstack;               // Return stack for continue handlers
   uint m_hsp;                   // Stack pointer for m_hstack
-  uint *m_in_handler;           // Active handler, for recursion check
+  /** Active handler stack. */
+  sp_active_handler_t *m_in_handler;
   uint m_ihsp;                  // Stack pointer for m_in_handler
   int m_hfound;                 // Set by find_handler; -1 if not found
 
@@ -228,6 +250,9 @@ private:
 
   /* Previous runtime context (NULL if none) */
   sp_rcontext *m_prev_runtime_ctx;
+
+  /** Memory root to use for SQL_condition caught by handlers. */
+  MEM_ROOT *m_cond_root;
 
 private:
   bool init_var_table(THD *thd);

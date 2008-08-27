@@ -665,6 +665,7 @@ MY_BITMAP temp_pool;
 CHARSET_INFO *system_charset_info, *files_charset_info ;
 CHARSET_INFO *national_charset_info, *table_alias_charset;
 CHARSET_INFO *character_set_filesystem;
+CHARSET_INFO *error_message_charset_info;
 
 MY_LOCALE *my_default_lc_time_names;
 
@@ -1902,7 +1903,10 @@ void close_connection(THD *thd, uint errcode, bool lock)
   if ((vio= thd->net.vio) != 0)
   {
     if (errcode)
-      net_send_error(thd, errcode, ER(errcode)); /* purecov: inspected */
+    {
+      const char* sqlstate= mysql_errno_to_sqlstate(errcode);
+      net_send_error(thd, errcode, ER(errcode), sqlstate); /* purecov: inspected */
+    }
     vio_close(vio);			/* vio is freed in delete thd */
   }
   if (lock)
@@ -2952,8 +2956,6 @@ extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 void my_message_sql(uint error, const char *str, myf MyFlags)
 {
   THD *thd;
-  MYSQL_ERROR::enum_warning_level level;
-  sql_print_message_func func;
   DBUG_ENTER("my_message_sql");
   DBUG_PRINT("error", ("error: %u  message: '%s'", error, str));
   /*
@@ -2961,106 +2963,37 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     will be fixed
     DBUG_ASSERT(error != 0);
   */
+
+  /*
+    TODO: ME_JUST_INFO and ME_JUST_WARNING are back doors used in
+    storage/maria to print to the server log files.
+    my_error/my_message_sql should not be used for this, since we
+    don't want the exception handlers / SIGNAL / RESIGNAL to interfere
+    with the error handling in this case.
+    Instead, the server should expose a clean interface to the storage
+    engines for printing into the server logs (sql/log.cc),
+    and the storage engine should call that interface (see ma_message_end_user)
+    See Bug#38781
+  */
+
   if (MyFlags & ME_JUST_INFO)
   {
-    level= MYSQL_ERROR::WARN_LEVEL_NOTE;
-    func= sql_print_information;
+    sql_print_information("%s: %s", my_progname, str);
+    DBUG_VOID_RETURN;
   }
-  else if (MyFlags & ME_JUST_WARNING)
+
+  if (MyFlags & ME_JUST_WARNING)
   {
-    level= MYSQL_ERROR::WARN_LEVEL_WARN;
-    func= sql_print_warning;
-  }
-  else
-  {
-    level= MYSQL_ERROR::WARN_LEVEL_ERROR;
-    func= sql_print_error;
+    sql_print_warning("%s: %s", my_progname, str);
+    DBUG_VOID_RETURN;
   }
 
   if ((thd= current_thd))
   {
-    if (MyFlags & ME_FATALERROR)
-      thd->is_fatal_error= 1;
-
-#ifdef BUG_36098_FIXED
-    mysql_audit_general(thd,MYSQL_AUDIT_GENERAL_ERROR,error,my_time(0),
-                        0,0,str,str ? strlen(str) : 0,
-                        thd->query,thd->query_length,
-                        thd->variables.character_set_client,
-                        thd->row_count);
-#endif
-
-
-    /*
-      TODO: There are two exceptions mechanism (THD and sp_rcontext),
-      this could be improved by having a common stack of handlers.
-    */
-    if (thd->handle_error(error, str, level))
-      DBUG_VOID_RETURN;
-
-    if (level == MYSQL_ERROR::WARN_LEVEL_WARN)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, error, str);
-    if (level != MYSQL_ERROR::WARN_LEVEL_ERROR)
-      goto to_error_log;
-
-    thd->is_slave_error=  1; // needed to catch query errors during replication
-
-    /*
-      thd->lex->current_select == 0 if lex structure is not inited
-      (not query command (COM_QUERY))
-    */
-    if (thd->lex->current_select &&
-	thd->lex->current_select->no_error && !thd->is_fatal_error)
-    {
-      DBUG_PRINT("error",
-                 ("Error converted to warning: current_select: no_error %d  "
-                  "fatal_error: %d",
-                  (thd->lex->current_select ?
-                   thd->lex->current_select->no_error : 0),
-                  (int) thd->is_fatal_error));
-    }
-    else
-    {
-      if (! thd->main_da.is_error())            // Return only first message
-      {
-        if (error == 0)
-          error= ER_UNKNOWN_ERROR;
-        if (str == NULL)
-          str= ER(error);
-        thd->main_da.set_error_status(thd, error, str);
-      }
-      query_cache_abort(&thd->query_cache_tls);
-    }
-    /*
-      If a continue handler is found, the error message will be cleared
-      by the stored procedures code.
-    */
-    if (!thd->is_fatal_error && thd->spcont &&
-        ! (MyFlags & ME_NO_SP_HANDLER) &&
-        thd->spcont->handle_error(error, MYSQL_ERROR::WARN_LEVEL_ERROR, thd))
-    {
-      /*
-        Do not push any warnings, a handled error must be completely
-        silenced.
-      */
-      DBUG_VOID_RETURN;
-    }
-
-    if (!thd->is_fatal_error && !thd->no_warnings_for_error &&
-        !(MyFlags & ME_NO_WARNING_FOR_ERROR))
-    {
-      /*
-        Suppress infinite recursion if there a memory allocation error
-        inside push_warning.
-      */
-      thd->no_warnings_for_error= TRUE;
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error, str);
-      thd->no_warnings_for_error= FALSE;
-    }
+    thd->raise_error(error, str, MyFlags);
   }
-to_error_log:
-  if (!thd || (MyFlags & ME_NOREFRESH))
-    (*func)("%s: %s", my_progname_short, str); /* purecov: inspected */
+  if (!thd || MyFlags & ME_NOREFRESH)
+    sql_print_error("%s: %s", my_progname, str); /* purecov: inspected */
   DBUG_VOID_RETURN;
 }
 
@@ -3228,6 +3161,7 @@ SHOW_VAR com_status_vars[]= {
   {"replace",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REPLACE]), SHOW_LONG_STATUS},
   {"replace_select",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REPLACE_SELECT]), SHOW_LONG_STATUS},
   {"reset",                (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESET]), SHOW_LONG_STATUS},
+  {"resignal",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESIGNAL]), SHOW_LONG_STATUS},
   {"restore",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESTORE]), SHOW_LONG_STATUS},
   {"revoke",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE]), SHOW_LONG_STATUS},
   {"revoke_all",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE_ALL]), SHOW_LONG_STATUS},
@@ -3236,6 +3170,7 @@ SHOW_VAR com_status_vars[]= {
   {"savepoint",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SAVEPOINT]), SHOW_LONG_STATUS},
   {"select",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SELECT]), SHOW_LONG_STATUS},
   {"set_option",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SET_OPTION]), SHOW_LONG_STATUS},
+  {"signal",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SIGNAL]), SHOW_LONG_STATUS},
   {"show_authors",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_AUTHORS]), SHOW_LONG_STATUS},
   {"show_binlog_events",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOG_EVENTS]), SHOW_LONG_STATUS},
   {"show_binlogs",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SHOW_BINLOGS]), SHOW_LONG_STATUS},
@@ -4937,6 +4872,8 @@ void create_thread_to_handle_connection(THD *thd)
                               handle_one_connection,
                               (void*) thd)))
     {
+      const char* sqlstate;
+
       /* purecov: begin inspected */
       DBUG_PRINT("error",
                  ("Can't create thread to handle request (error %d)",
@@ -4953,7 +4890,8 @@ void create_thread_to_handle_connection(THD *thd)
       /* Can't use my_error() since store_globals has not been called. */
       my_snprintf(error_message_buff, sizeof(error_message_buff),
                   ER(ER_CANT_CREATE_THREAD), error);
-      net_send_error(thd, ER_CANT_CREATE_THREAD, error_message_buff);
+      sqlstate= mysql_errno_to_sqlstate(ER_CANT_CREATE_THREAD);
+      net_send_error(thd, ER_CANT_CREATE_THREAD, error_message_buff, sqlstate);
       (void) pthread_mutex_lock(&LOCK_thread_count);
       close_connection(thd,0,0);
       delete thd;

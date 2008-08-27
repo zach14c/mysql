@@ -154,6 +154,10 @@ char* query_table_status(THD *thd,const char *db,const char *table_name);
 extern CHARSET_INFO *system_charset_info, *files_charset_info ;
 extern CHARSET_INFO *national_charset_info, *table_alias_charset;
 
+/**
+  Character set of the buildin error messages loaded from errmsg.sys.
+*/
+extern CHARSET_INFO *error_message_charset_info;
 
 enum Derivation
 {
@@ -792,6 +796,7 @@ typedef my_bool (*qc_engine_callback)(THD *thd, char *table_key,
                                       uint key_length,
                                       ulonglong *engine_data);
 #include "sql_string.h"
+#include "sql_fixstring.h"
 #include "sql_list.h"
 #include "sql_map.h"
 #include "my_decimal.h"

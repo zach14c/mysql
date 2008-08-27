@@ -3537,7 +3537,7 @@ bool mysql_create_table_no_lock(THD *thd,
 
   /* Give warnings for not supported table options */
   if (create_info->transactional && !file->ht->commit)
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_ILLEGAL_HA_CREATE_OPTION,
                         ER(ER_ILLEGAL_HA_CREATE_OPTION),
                         file->engine_name()->str,
@@ -4244,7 +4244,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     if (!table->table)
     {
       DBUG_PRINT("admin", ("open table failed"));
-      if (!thd->warn_list.elements)
+      if (!thd->main_da.m_stmt_area.warn_list.elements)
         push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_CHECK_NO_SUCH_TABLE, ER(ER_CHECK_NO_SUCH_TABLE));
       /* if it was a view will check md5 sum */
@@ -4352,17 +4352,17 @@ send_result:
     lex->cleanup_after_one_table_open();
     thd->clear_error();  // these errors shouldn't get client
     {
-      List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-      MYSQL_ERROR *err;
-      while ((err= it++))
+      List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+      SQL_condition *cond;
+      while ((cond= it++))
       {
         protocol->prepare_for_resend();
         protocol->store(table_name, system_charset_info);
         protocol->store((char*) operator_name, system_charset_info);
-        protocol->store(warning_level_names[err->level].str,
-                        warning_level_names[err->level].length,
+        protocol->store(warning_level_names[cond->get_level()].str,
+                        warning_level_names[cond->get_level()].length,
                         system_charset_info);
-        protocol->store(err->msg, system_charset_info);
+        protocol->store(cond->get_message_text(), system_charset_info);
         if (protocol->write())
           goto err;
       }

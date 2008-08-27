@@ -320,8 +320,8 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_SHOW_AUTHORS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_CONTRIBUTORS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_PRIVILEGES]= CF_STATUS_COMMAND;
-  sql_command_flags[SQLCOM_SHOW_WARNS]= CF_STATUS_COMMAND;
-  sql_command_flags[SQLCOM_SHOW_ERRORS]= CF_STATUS_COMMAND;
+  sql_command_flags[SQLCOM_SHOW_WARNS]= CF_STATUS_COMMAND | CF_DIAGNOSTIC_STMT;
+  sql_command_flags[SQLCOM_SHOW_ERRORS]= CF_STATUS_COMMAND | CF_DIAGNOSTIC_STMT;
   sql_command_flags[SQLCOM_SHOW_ENGINE_STATUS]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_ENGINE_MUTEX]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_ENGINE_LOGS]= CF_STATUS_COMMAND;
@@ -1942,8 +1942,16 @@ mysql_execute_command(THD *thd)
     variables, but for now this is probably good enough.
     Don't reset warnings when executing a stored routine.
   */
-  if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
-    mysql_reset_errors(thd, 0);
+  if ((sql_command_flags[lex->sql_command] & CF_DIAGNOSTIC_STMT) != 0)
+  {
+    thd->main_da.m_stmt_area.set_read_only(TRUE);
+  }
+  else
+  {
+    thd->main_da.m_stmt_area.set_read_only(FALSE);
+    if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
+      mysql_reset_errors(thd, 0);
+  }
 
 #ifdef HAVE_REPLICATION
   if (unlikely(thd->slave_thread))
@@ -4229,7 +4237,7 @@ create_sp_error:
           If warnings have been cleared, we have to clear total_warn_count
           too, otherwise the clients get confused.
 	 */
-	if (thd->warn_list.is_empty())
+	if (thd->main_da.m_stmt_area.warn_list.is_empty())
 	  thd->total_warn_count= 0;
 
 	thd->variables.select_limit= select_limit;
@@ -4780,6 +4788,11 @@ create_sp_error:
     my_ok(thd, 1);
     break;
   }
+  case SQLCOM_SIGNAL:
+  case SQLCOM_RESIGNAL:
+    DBUG_ASSERT(lex->m_stmt != NULL);
+    res= lex->m_stmt->execute(thd);
+    break;
   default:
 #ifndef EMBEDDED_LIBRARY
     DBUG_ASSERT(0);                             /* Impossible */

@@ -44,9 +44,7 @@ public:
 
   virtual ~Prelock_error_handler() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
-                            MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+  virtual bool handle_condition(THD *thd, const SQL_condition *cond);
 
   bool safely_trapped_errors();
 
@@ -57,12 +55,9 @@ private:
 
 
 bool
-Prelock_error_handler::handle_error(uint sql_errno,
-                                    const char * /* message */,
-                                    MYSQL_ERROR::enum_warning_level /* level */,
-                                    THD * /* thd */)
+Prelock_error_handler::handle_condition(THD *, const SQL_condition *cond)
 {
-  if (sql_errno == ER_NO_SUCH_TABLE)
+  if (cond->get_sql_errno() == ER_NO_SUCH_TABLE)
   {
     m_handled_errors++;
     return TRUE;
@@ -2390,7 +2385,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
 
   if (flags & MYSQL_OPEN_TEMPORARY_ONLY)
   {
-    my_error(ER_NO_SUCH_TABLE, MYF(0), table_list->db, table_list->table_name);
+    thd->raise_ER_NO_SUCH_TABLE(table_list->db, table_list->table_name);
     DBUG_RETURN(TRUE);
   }
 
@@ -2513,7 +2508,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
       locked tables list was created.
     */
     if (thd->locked_tables_mode == LTM_PRELOCKED)
-      my_error(ER_NO_SUCH_TABLE, MYF(0), table_list->db, table_list->alias);
+      thd->raise_ER_NO_SUCH_TABLE(table_list->db, table_list->alias);
     else
       my_error(ER_TABLE_NOT_LOCKED, MYF(0), alias);
     DBUG_RETURN(TRUE);

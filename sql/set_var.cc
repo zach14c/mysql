@@ -3205,16 +3205,16 @@ static int check_pseudo_thread_id(THD *thd, set_var *var)
 static uchar *get_warning_count(THD *thd)
 {
   thd->sys_var_tmp.long_value=
-    (thd->warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_NOTE] +
-     thd->warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR] +
-     thd->warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_WARN]);
+    (thd->main_da.m_stmt_area.warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_NOTE] +
+     thd->main_da.m_stmt_area.warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR] +
+     thd->main_da.m_stmt_area.warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_WARN]);
   return (uchar*) &thd->sys_var_tmp.long_value;
 }
 
 static uchar *get_error_count(THD *thd)
 {
-  thd->sys_var_tmp.long_value= 
-    thd->warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR];
+  thd->sys_var_tmp.long_value=
+    thd->main_da.m_stmt_area.warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR];
   return (uchar*) &thd->sys_var_tmp.long_value;
 }
 

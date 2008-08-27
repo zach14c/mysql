@@ -29,7 +29,8 @@
 
 static const unsigned int PACKET_BUFFER_EXTRA_ALLOC= 1024;
 /* Declared non-static only because of the embedded library. */
-void net_send_error_packet(THD *thd, uint sql_errno, const char *err);
+void net_send_error_packet(THD *thd, uint sql_errno, const char *err,
+                           const char* sqlstate);
 void net_send_ok(THD *, uint, uint, ha_rows, ulonglong, const char *);
 void net_send_eof(THD *thd, uint server_status, uint total_warn_count);
 #ifndef EMBEDDED_LIBRARY
@@ -128,13 +129,14 @@ bool Protocol::net_store_data(const uchar *from, size_t length,
   critical that every error that can be intercepted is issued in one
   place only, my_message_sql.
 */
-void net_send_error(THD *thd, uint sql_errno, const char *err)
+void net_send_error(THD *thd, uint sql_errno, const char *err,
+                    const char* sqlstate)
 {
   DBUG_ENTER("net_send_error");
 
   DBUG_ASSERT(!thd->spcont);
   DBUG_ASSERT(sql_errno);
-  DBUG_ASSERT(err && err[0]);
+  DBUG_ASSERT(err);
 
   DBUG_PRINT("enter",("sql_errno: %d  err: %s", sql_errno, err));
 
@@ -147,7 +149,7 @@ void net_send_error(THD *thd, uint sql_errno, const char *err)
   /* Abort multi-result sets */
   thd->server_status&= ~SERVER_MORE_RESULTS_EXISTS;
 
-  net_send_error_packet(thd, sql_errno, err);
+  net_send_error_packet(thd, sql_errno, err, sqlstate);
 
   thd->main_da.can_overwrite_status= FALSE;
 
@@ -318,7 +320,8 @@ bool send_old_password_request(THD *thd)
 }
 
 
-void net_send_error_packet(THD *thd, uint sql_errno, const char *err)
+void net_send_error_packet(THD *thd, uint sql_errno, const char *err,
+                           const char* sqlstate)
 {
   NET *net= &thd->net;
   uint length;
@@ -345,7 +348,7 @@ void net_send_error_packet(THD *thd, uint sql_errno, const char *err)
   {
     /* The first # is to make the protocol backward compatible */
     buff[2]= '#';
-    pos= (uchar*) strmov((char*) buff+3, mysql_errno_to_sqlstate(sql_errno));
+    pos= (uchar*) strmov((char*) buff+3, sqlstate);
   }
   length= (uint) (strmake((char*) pos, err, MYSQL_ERRMSG_SIZE-1) -
                   (char*) buff);
@@ -445,7 +448,8 @@ void net_end_statement(THD *thd)
     /* The query failed, send error to log and abort bootstrap. */
     net_send_error(thd,
                    thd->main_da.sql_errno(),
-                   thd->main_da.message());
+                   thd->main_da.message(),
+                   thd->main_da.get_sqlstate());
     break;
   case Diagnostics_area::DA_EOF:
     net_send_eof(thd,

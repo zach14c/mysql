@@ -132,17 +132,18 @@ static void inline slave_rows_error_report(enum loglevel level, int ha_error,
   char buff[MAX_SLAVE_ERRMSG], *slider;
   const char *buff_end= buff + sizeof(buff);
   uint len;
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-  MYSQL_ERROR *err;
+  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  SQL_condition *cond;
   buff[0]= 0;
 
-  for (err= it++, slider= buff; err && slider < buff_end - 1;
-       slider += len, err= it++)
+  for (cond= it++, slider= buff; cond && slider < buff_end - 1;
+       slider += len, cond= it++)
   {
     len= my_snprintf(slider, buff_end - slider,
-                     " %s, Error_code: %d;", err->msg, err->code);
+                     " %s, Error_code: %d;", cond->get_message_text(),
+                     cond->get_sql_errno());
   }
-  
+
   rli->report(level, thd->is_error()? thd->main_da.sql_errno() : 0,
               "Could not execute %s event on table %s.%s;"
               "%s handler error %s; "

@@ -1854,23 +1854,17 @@ static const char *check_lowercase_names(handler *file, const char *path,
 struct Ha_delete_table_error_handler: public Internal_error_handler
 {
 public:
-  virtual bool handle_error(uint sql_errno,
-                            const char *message,
-                            MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+  virtual bool handle_condition(THD *thd, const SQL_condition *cond);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
 
 bool
 Ha_delete_table_error_handler::
-handle_error(uint sql_errno,
-             const char *message,
-             MYSQL_ERROR::enum_warning_level level,
-             THD *thd)
+handle_condition(THD *, const SQL_condition *cond)
 {
   /* Grab the error message */
-  strmake(buff, message, sizeof(buff)-1);
+  strmake(buff, cond->get_message_text(), sizeof(buff)-1);
   return TRUE;
 }
 

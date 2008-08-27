@@ -1660,12 +1660,13 @@ static int has_temporary_error(THD *thd)
   /*
     currently temporary error set in ndbcluster
   */
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-  MYSQL_ERROR *err;
-  while ((err= it++))
+  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  SQL_condition *cond;
+  while ((cond= it++))
   {
-    DBUG_PRINT("info", ("has warning %d %s", err->code, err->msg));
-    switch (err->code)
+    DBUG_PRINT("info", ("has condition %d %s", cond->get_sql_errno(),
+                        cond->get_message_text()));
+    switch (cond->get_sql_errno())
     {
     case ER_GET_TEMPORARY_ERRMSG:
       DBUG_RETURN(1);
@@ -2575,18 +2576,19 @@ Slave SQL thread aborted. Can't execute init_slave query");
         }
 
         /* Print any warnings issued */
-        List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
-        MYSQL_ERROR *err;
+        List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+        SQL_condition *cond;
         /*
           Added controlled slave thread cancel for replication
           of user-defined variables.
         */
         bool udf_error = false;
-        while ((err= it++))
+        while ((cond= it++))
         {
-          if (err->code == ER_CANT_OPEN_LIBRARY)
+          if (cond->get_sql_errno() == ER_CANT_OPEN_LIBRARY)
             udf_error = true;
-          sql_print_warning("Slave: %s Error_code: %d",err->msg, err->code);
+          sql_print_warning("Slave: %s Error_code: %d",
+                            cond->get_message_text(), cond->get_sql_errno());
         }
         if (udf_error)
           sql_print_error("Error loading user-defined library, slave SQL "

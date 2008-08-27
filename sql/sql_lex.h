@@ -122,6 +122,7 @@ enum enum_sql_command {
   SQLCOM_BACKUP_TEST,
 #endif
   SQLCOM_SHOW_PROFILE, SQLCOM_SHOW_PROFILES,
+  SQLCOM_SIGNAL, SQLCOM_RESIGNAL,
 
   /*
     When a command is added here, be sure it's also added in mysqld.cc
@@ -1510,6 +1511,64 @@ public:
   CHARSET_INFO *m_underscore_cs;
 };
 
+struct st_lex;
+
+/**
+  Abstract representation of a statement.
+  This class is an interface between the parser and the runtime.
+  The parser builds the appropriate sub classes of SQLCOM_statement
+  to represent a SQL statement in the parsed tree.
+  The execute() method in the sub classes contain the runtime implementation.
+  Note that this interface is used for SQL statement recently implemented,
+  the code for older statements tend to load the LEX structure with more
+  attributes instead.
+  The recommended way to implement new statements is to sub-class
+  SQLCOM_statement, as this improves code modularity (see the 'big switch' in
+  dispatch_command()), and decrease the total size of the LEX structure
+  (therefore saving memory in stored programs).
+*/
+class SQLCOM_statement : public Sql_alloc
+{
+public:
+  /**
+    Execute this SQL statement.
+    @param thd the current thread.
+    @return 0 on success.
+  */
+  virtual int execute(THD *thd) = 0;
+
+protected:
+  /**
+    Constructor.
+    @param lex the LEX structure that represents parts of this statement.
+  */
+  SQLCOM_statement(struct st_lex *lex)
+    : m_lex(lex)
+  {}
+
+  /** Destructor. */
+  virtual ~SQLCOM_statement()
+  {
+    /*
+      SQLCOM_statement objects are allocated in thd->mem_root.
+      In MySQL, the C++ destructor is never called, the underlying MEM_ROOT is
+      simply destroyed instead.
+      Do not rely on the destructor for any cleanup.
+    */
+    DBUG_ASSERT(FALSE);
+  }
+
+protected:
+  /**
+    The legacy LEX structure for this statement.
+    The LEX structure contains the existing properties of the parsed tree.
+    TODO: with time, attributes from LEX should move to sub classes of
+    SQLCOM_statement, so that the parser only builds SQLCOM_statement objects
+    with the minimum set of attributes, instead of a LEX structure that
+    contains the collection of every possible attribute.
+  */
+  struct st_lex *m_lex;
+};
 
 /* The state of the lex parsing. This is saved in the THD struct */
 
@@ -1612,6 +1671,9 @@ typedef struct st_lex : public Query_tables_list
   */
   nesting_map allow_sum_func;
   enum_sql_command sql_command;
+
+  SQLCOM_statement *m_stmt;
+
   /*
     Usually `expr` rule of yacc is quite reused but some commands better
     not support subqueries which comes standard with this rule, like
@@ -1877,6 +1939,36 @@ typedef struct st_lex : public Query_tables_list
 
 
 /**
+  Set_signal_information is a container used in the parsed tree to represent
+  the collection of assignments to condition items in the SIGNAL and RESIGNAL
+  statements.
+*/
+class Set_signal_information
+{
+public:
+  /** Constructor. */
+  Set_signal_information();
+
+  /** Copy constructor. */
+  Set_signal_information(const Set_signal_information& set);
+
+  /** Destructor. */
+  ~Set_signal_information()
+  {}
+
+  /** Clear all items. */
+  void clear();
+
+  /**
+    For each contition item assignment, m_item[] contains the parsed tree
+    that represents the expression assigned, if any.
+    m_item[] is an array indexed by Diag_condition_item_name.
+  */
+  Item *m_item[LAST_DIAG_SET_PROPERTY+1];
+};
+
+
+/**
   The internal state of the syntax parser.
   This object is only available during parsing,
   and is private to the syntax parser implementation (sql_yacc.yy).
@@ -1901,6 +1993,12 @@ public:
     my_yyoverflow().
   */
   uchar *yacc_yyvs;
+
+  /**
+    Fragments of parsed tree,
+    used during the parsing of SIGNAL and RESIGNAL.
+  */
+  Set_signal_information m_set_signal_info;
 
   /*
     TODO: move more attributes from the LEX structure here.

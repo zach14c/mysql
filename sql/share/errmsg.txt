@@ -6374,3 +6374,28 @@ ER_BACKUP_RELEASE_NAME_LOCK_FAILED
   eng "Restore failed to release the name locks on the tables."
 ER_BACKUP_BACKUPDIR
   eng "The path specified for the system variable backupdir cannot be accessed or is invalid. ref: %-.64s"
+
+ER_DUP_SIGNAL_SET 42000
+        eng "Duplicate condition information item '%s'"
+
+ER_SIGNAL_WARN 01000
+        eng "Unhandled user-defined warning"
+
+ER_SIGNAL_NOT_FOUND 02000
+        eng "Unhandled user-defined not found"
+
+ER_SIGNAL_EXCEPTION HY000
+        eng "Unhandled user-defined exception"
+
+ER_RESIGNAL_NO_HANDLER 0K000
+        eng "RESIGNAL when handler not active"
+
+ER_SIGNAL_BAD_CONDITION_TYPE
+        eng "SIGNAL/RESIGNAL can only use a CONDITION defined with SQLSTATE"
+
+WARN_COND_ITEM_TRUNCATED
+        eng "Data truncated for condition item '%s'"
+
+ER_COND_ITEM_TOO_LONG
+        eng "Data too long for condition item '%s'"
+

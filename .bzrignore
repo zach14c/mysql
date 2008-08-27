@@ -1891,3 +1891,5 @@ zlib/*.vcproj
 extra/libevent/event-config.h
 libmysqld/ddl_blocker.cc
 libmysqld/mdl.cc
+libmysqld/sql_fixstring.cc
+libmysqld/sql_signal.cc
