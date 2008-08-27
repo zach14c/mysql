@@ -86,6 +86,7 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	syncObject.setName("Transaction::syncObject");
 	syncActive.setName("Transaction::syncActive");
 	syncIndexes.setName("Transaction::syncIndexes");
+	syncRecords.setName("Transaction::syncRecords");
 	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
 	lastRecord = NULL;
@@ -216,20 +217,19 @@ Transaction::~Transaction()
 	delete backloggedRecords;
 	chillPoint = &firstRecord;
 
+	// We modify record list without locking.
+	// It is a destructor and if somebody accesses the list
+	// at this point, he is already lost.
 	for (RecordVersion *record; (record = firstRecord);)
 		{
-		removeRecord(record);
+		removeRecordNoLock(record);
 		}
+	firstRecord = NULL;
 	
 	releaseSavepoints();
 	
 	if (deferredIndexes)
-		{
-		Sync sync(&syncIndexes, "Transaction::~Transaction");
-		sync.lock(Exclusive);
-
 		releaseDeferredIndexes();
-		}
 }
 
 void Transaction::commit()
@@ -279,6 +279,8 @@ void Transaction::commit()
 
 	
 
+	Sync syncRec(&syncRecords,"Transaction::commit(1.5)");
+	syncRec.lock(Shared);
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
 	{
 		Table * table = record->format->table;
@@ -295,7 +297,8 @@ void Transaction::commit()
 		if (record->state == recDeleted && table->cardinality > 0)
 			--table->cardinality;
 	}
-	
+	syncRec.unlock();
+
 	releaseDependencies();
 	database->flushInversion(this);
 
@@ -341,11 +344,7 @@ void Transaction::commitNoUpdates(void)
 	++transactionManager->committed;
 	
 	if (deferredIndexes)
-		{
-		Sync sync(&syncIndexes, "Transaction::commitNoUpdates(1)");
-		sync.lock(Exclusive);
 		releaseDeferredIndexes();
-		}
 
 	if (hasLocks)
 		releaseRecordLocks();
@@ -387,11 +386,7 @@ void Transaction::rollback()
 		throw SQLEXCEPTION (RUNTIME_ERROR, "transaction is not active");
 
 	if (deferredIndexes)
-		{
-		Sync sync(&syncIndexes, "Transaction::rollback(1)");
-		sync.lock(Exclusive);
 		releaseDeferredIndexes();
-		}
 		
 	releaseSavepoints();
 	TransactionManager *transactionManager = database->transactionManager;
@@ -402,6 +397,9 @@ void Transaction::rollback()
 
 	// Rollback pending record versions from newest to oldest in case
 	// there are multiple record versions on a prior record chain
+
+	Sync syncRec(&syncRecords, "Transaction::rollback(1.5)");
+	syncRec.lock(Exclusive);
 
 	while (firstRecord)
 		{
@@ -428,6 +426,8 @@ void Transaction::rollback()
 		record->transaction = rollbackTransaction;
 		record->release();
 		}
+	firstRecord = NULL;
+	syncRec.unlock();
 
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->backloggedRecords)
@@ -621,6 +621,8 @@ void Transaction::addRecord(RecordVersion * record)
 
 	record->addRef();
 	
+	Sync syncRec(&syncRecords,"Transaction::addRecord");
+	syncRec.lock(Exclusive);
 	if ( (record->prevInTrans = lastRecord) )
 		lastRecord->nextInTrans = record;
 	else
@@ -628,12 +630,19 @@ void Transaction::addRecord(RecordVersion * record)
 		
 	record->nextInTrans = NULL;
 	lastRecord = record;
+	syncRec.unlock();
 	
 	if (database->lowMemory && deletedRecords > MAX_LOW_MEMORY_RECORDS)
 		backlogRecords();
 }
 
 void Transaction::removeRecord(RecordVersion *record)
+{
+	Sync syncRec(&syncRecords,"Transaction::removeRecord");
+	syncRec.lock(Exclusive);
+	removeRecordNoLock(record);
+}
+void Transaction::removeRecordNoLock(RecordVersion *record)
 {
 	RecordVersion **ptr;
 
@@ -800,6 +809,8 @@ void Transaction::releaseDependencies()
 
 void Transaction::commitRecords()
 {
+	Sync syncRec(&syncRecords,"Transaction::commitRecords");
+	syncRec.lock(Exclusive);
 	for (RecordVersion *recordList; (recordList = firstRecord);)
 		{
 		if (recordList && COMPARE_EXCHANGE_POINTER(&firstRecord, recordList, NULL))
@@ -903,13 +914,10 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 
 void Transaction::dropTable(Table* table)
 {
-	Sync sync(&syncIndexes, "Transaction::dropTable");
-	sync.lock(Exclusive);
-
 	releaseDeferredIndexes(table);
 
-	// Keep exclusive lock to avoid race condition with writeComplete
-	
+	Sync syncRec(&syncRecords,"Transaction::dropTable(2)");
+	syncRec.lock(Exclusive);
 	for (RecordVersion **ptr = &firstRecord, *rec; (rec = *ptr);)
 		if (rec->format->table == table)
 			removeRecord(rec);
@@ -919,13 +927,9 @@ void Transaction::dropTable(Table* table)
 
 void Transaction::truncateTable(Table* table)
 {
-	Sync sync(&syncIndexes, "Transaction::truncateTable");
-	sync.lock(Exclusive);
-
 	releaseDeferredIndexes(table);
-
-	// Keep exclusive lock to avoid race condition with writeComplete
-	
+	Sync syncRec(&syncRecords,"Transaction::truncateTable(2)");
+	syncRec.lock(Exclusive);
 	for (RecordVersion **ptr = &firstRecord, *rec; (rec = *ptr);)
 		if (rec->format->table == table)
 			removeRecord(rec);
@@ -935,9 +939,8 @@ void Transaction::truncateTable(Table* table)
 
 bool Transaction::hasRecords(Table* table)
 {
-	// This lock is to avoid race with writeComplete
-	Sync sync(&syncIndexes, "Transaction::hasRecords");
-	sync.lock(Exclusive);
+	Sync syncRec(&syncRecords, "Transaction::hasRecords");
+	syncRec.lock(Shared);
 	for (RecordVersion *rec = firstRecord; rec; rec = rec->nextInTrans)
 		if (rec->format->table == table)
 			return true;
@@ -949,17 +952,12 @@ void Transaction::writeComplete(void)
 {
 	ASSERT(writePending);
 	ASSERT(state == Committed);
-	Sync sync(&syncIndexes, "Transaction::writeComplete");
-	sync.lock(Exclusive);
 	releaseDeferredIndexes();
-
-	// Keep the synIndexes lock to avoid a race condition with dropTable
 	
 	if (dependencies == 0)
 		commitRecords();
 
 	writePending = false;
-	sync.unlock();
 }
 
 bool Transaction::waitForTransaction(TransId transId)
@@ -1243,6 +1241,7 @@ void Transaction::rollbackSavepoint(int savePointId)
 
 	savePoint = savePoints;
 	
+
 	while (savePoint)
 		{
 		//validateRecords();
@@ -1251,6 +1250,8 @@ void Transaction::rollbackSavepoint(int savePointId)
 			break;
 
 		// Purge out records from this savepoint
+		Sync syncRec(&syncRecords,"Transaction::rollbackSavepoint(2)");
+		syncRec.lock(Exclusive);
 
 		RecordVersion *record = *savePoint->records;
 		RecordVersion *stack = NULL;
@@ -1290,6 +1291,7 @@ void Transaction::rollbackSavepoint(int savePointId)
 			rec->transaction = NULL;
 			rec->release();
 			}
+		syncRec.unlock();
 
 		// Handle any backlogged records
 		
@@ -1335,6 +1337,8 @@ void Transaction::releaseRecordLocks(void)
 	RecordVersion **ptr;
 	RecordVersion *record;
 
+	Sync syncRec(&syncRecords,"Transaction::releaseRecordLocks");
+	syncRec.lock(Exclusive);
 	for (ptr = &firstRecord; (record = *ptr);)
 		if (record->state == recLock)
 			{
@@ -1343,6 +1347,7 @@ void Transaction::releaseRecordLocks(void)
 			}
 		else
 			ptr = &record->nextInTrans;
+	syncRec.unlock();
 }
 
 void Transaction::print(void)
@@ -1360,6 +1365,8 @@ void Transaction::printBlocking(int level)
 	int deletes = 0;
 	RecordVersion *record;
 
+	Sync syncRec(&syncRecords,"Transaction::printBlocking");
+	syncRec.lock(Shared);
 	for (record = firstRecord; record; record = record->nextInTrans)
 		if (record->state == recLock)
 			++locks;
@@ -1407,7 +1414,7 @@ void Transaction::printBlocking(int level)
 				   record->recordNumber,
 				   what);
 		}
-
+	syncRec.unlock();
 	database->transactionManager->printBlocking(this, level);
 }
 
@@ -1445,14 +1452,7 @@ void Transaction::releaseDependency(void)
 	INTERLOCKED_DECREMENT(dependencies);
 
 	if ((dependencies == 0) && !writePending && firstRecord)
-		{
-		// The Sync is to avoid a race with writeComplete().  It looks whacko, but does the trick
-		
-		Sync sync(&syncIndexes, "Transaction::releaseDependency");
-		sync.lock(Exclusive);
 		commitRecords();
-		}
-		
 	releaseCommittedTransaction();
 }
 
@@ -1497,6 +1497,8 @@ void Transaction::printBlockage(void)
 
 void Transaction::releaseDeferredIndexes(void)
 {
+	Sync sync(&syncIndexes, "Transaction::releaseDeferredIndexes");
+	sync.lock(Exclusive);
 	for (DeferredIndex *deferredIndex; (deferredIndex = deferredIndexes);)
 		{
 		ASSERT(deferredIndex->transaction == this);
@@ -1554,7 +1556,8 @@ void Transaction::backlogRecords(void)
 void Transaction::validateRecords(void)
 {
 	RecordVersion *record;
-	
+	Sync syncRec(&syncRecords,"Transaction::validateRecords");
+	syncRec.lock(Shared);
 	for (record = firstRecord; record && record->nextInTrans; record = record->nextInTrans)
 		;
 	
