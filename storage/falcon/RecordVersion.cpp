@@ -368,8 +368,6 @@ int RecordVersion::thaw()
 	// true, then the record data can be restored from the serial log. If writePending
 	// is false, then the record data has been written to the data pages.
 	
-	bool wasWritePending = (trans) ? trans->writePending : false;
-
 	if (trans && trans->writePending)
 		{
 		trans->addRef();
