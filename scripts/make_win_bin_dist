@@ -146,7 +146,10 @@ mkdir $DESTDIR/bin
 cp client/$TARGET/*.exe                                  $DESTDIR/bin/
 cp extra/$TARGET/*.exe                                   $DESTDIR/bin/
 cp storage/myisam/$TARGET/*.exe                          $DESTDIR/bin/
-cp storage/maria/$TARGET/*.exe                           $DESTDIR/bin/
+# Maria engine is optional, so clients might not exist
+if ls storage/maria/$TARGET/*.exe > /dev/null 2>&1; then
+  cp storage/maria/$TARGET/*.exe                         $DESTDIR/bin/
+fi
 if [ x"$TARGET" != x"release" ] ; then
   cp client/$TARGET/mysql.pdb                            $DESTDIR/bin/
   cp client/$TARGET/mysqladmin.pdb                       $DESTDIR/bin/
