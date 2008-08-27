@@ -148,7 +148,7 @@ bool Backup_restore_ctx::is_valid() const
 inline
 ulonglong Backup_restore_ctx::op_id() const
 {
-  return m_op_id; // inherited from Logger class
+  return get_op_id(); // inherited from Logger class
 }
 
 /// Disable foreign key constraint checks (needed during restore).

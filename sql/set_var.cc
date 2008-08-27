@@ -147,8 +147,15 @@ static uchar *get_tmpdir(THD *thd);
 static int  sys_check_log_path(THD *thd,  set_var *var);
 static bool sys_update_general_log_path(THD *thd, set_var * var);
 static void sys_default_general_log_path(THD *thd, enum_var_type type);
+static bool sys_update_backup_history_log_path(THD *thd, set_var * var);
+static void sys_default_backup_history_log_path(THD *thd, enum_var_type type);
+static bool sys_update_backup_progress_log_path(THD *thd, set_var * var);
+static void sys_default_backup_progress_log_path(THD *thd, enum_var_type type);
 static bool sys_update_slow_log_path(THD *thd, set_var * var);
 static void sys_default_slow_log_path(THD *thd, enum_var_type type);
+static int sys_check_backupdir(THD *thd, set_var *var);
+static bool sys_update_backupdir(THD *thd, set_var * var);
+static void sys_default_backupdir(THD *thd, enum_var_type type);
 static int sys_check_backupdir(THD *thd, set_var *var);
 static bool sys_update_backupdir(THD *thd, set_var * var);
 static void sys_default_backupdir(THD *thd, enum_var_type type);
@@ -764,6 +771,12 @@ static sys_var_const_str	sys_license(&vars, "license", STRINGIFY_ARG(LICENSE));
 /* Global variables which enable|disable logging */
 static sys_var_log_state sys_var_general_log(&vars, "general_log", &opt_log,
                                       QUERY_LOG_GENERAL);
+static sys_var_log_state sys_var_backup_history_log(&vars, "backup_history_log", 
+                                                    &opt_backup_history_log,
+                                                    BACKUP_HISTORY_LOG);
+static sys_var_log_state sys_var_backup_progress_log(&vars, "backup_progress_log",
+                                                     &opt_backup_progress_log,
+                                                     BACKUP_PROGRESS_LOG);
 /* Synonym of "general_log" for consistency with SHOW VARIABLES output */
 static sys_var_log_state sys_var_log(&vars, "log", &opt_log,
                                       QUERY_LOG_GENERAL);
@@ -776,13 +789,19 @@ sys_var_str sys_var_general_log_path(&vars, "general_log_file", sys_check_log_pa
 				     sys_update_general_log_path,
 				     sys_default_general_log_path,
 				     opt_logname);
-sys_var_str sys_var_slow_log_path(&vars, "slow_query_log_file", sys_check_log_path,
-				  sys_update_slow_log_path, 
-				  sys_default_slow_log_path,
-				  opt_slow_logname);
-static sys_var_log_output sys_var_log_output_state(&vars, "log_output", &log_output_options,
-					    &log_output_typelib, 0);
-
+/*
+  Added new variables for backup log file paths.
+*/
+sys_var_str sys_var_backup_history_log_path(&vars, "backup_history_log_file", 
+                                            sys_check_log_path,
+                                            sys_update_backup_history_log_path,
+                                            sys_default_backup_history_log_path,
+                                            opt_logname);
+sys_var_str sys_var_backup_progress_log_path(&vars, "backup_progress_log_file", 
+                                            sys_check_log_path,
+                                            sys_update_backup_progress_log_path,
+                                            sys_default_backup_progress_log_path,
+                                            opt_logname);
 /*
   Create the backupdir dynamic variable.
 */
@@ -791,6 +810,18 @@ sys_var_str sys_var_backupdir(&vars, "backupdir",
                               sys_update_backupdir,
                               sys_default_backupdir,
                                0);
+
+sys_var_str sys_var_slow_log_path(&vars, "slow_query_log_file", sys_check_log_path,
+				  sys_update_slow_log_path, 
+				  sys_default_slow_log_path,
+				  opt_slow_logname);
+static sys_var_log_output sys_var_log_output_state(&vars, "log_output", &log_output_options,
+					    &log_output_typelib, 0);
+/*
+  Defines variable for specifying the backup log output.
+*/
+static sys_var_log_backup_output sys_var_log_backup_output_state(&vars, "log_backup_output",
+              &log_backup_output_options, &log_output_typelib, 0);
 
 
 /*
@@ -2476,8 +2507,18 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   return 0;
 
 err:
-  my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), var->var->name, 
-           res ? log_file_str : "NULL");
+  /*
+    If this is one of the backup logs, process the backup specific
+    error message.
+  */
+  if ((my_strcasecmp(system_charset_info, var->var->name, 
+       "backup_history_log_file") == 0) ||
+      (my_strcasecmp(system_charset_info, var->var->name,
+       "backup_progress_log_file") == 0))
+    my_error(ER_BACKUP_LOGPATH_INVALID, MYF(0), var->var->name, path); 
+  else
+    my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), var->var->name, 
+             res ? log_file_str : "NULL");
   return 1;
 }
 
@@ -2487,11 +2528,15 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
 			     bool log_state, uint log_type)
 {
   MYSQL_QUERY_LOG *file_log;
+  MYSQL_BACKUP_LOG *backup_log;
   char buff[FN_REFLEN];
   char *res= 0, *old_value=(char *)(var ? var->value->str_value.ptr() : 0);
   bool result= 0;
   uint str_length= (var ? var->value->str_value.length() : 0);
 
+  /*
+    Added support for backup log types.
+  */
   switch (log_type) {
   case QUERY_LOG_SLOW:
     file_log= logger.get_slow_log_file_handler();
@@ -2499,13 +2544,38 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   case QUERY_LOG_GENERAL:
     file_log= logger.get_log_file_handler();
     break;
+  /* 
+    Check the backup logs to update their paths.
+  */
+  case BACKUP_HISTORY_LOG:
+    backup_log= logger.get_backup_history_log_file_handler();
+    break;
+  case BACKUP_PROGRESS_LOG:
+    backup_log= logger.get_backup_progress_log_file_handler();
+    break;
   default:
     assert(0);                                  // Impossible
   }
 
   if (!old_value)
   {
-    old_value= make_default_log_name(buff, log_ext);
+    /*
+      Added support for backup log types.
+    */
+    switch (log_type) {
+    case QUERY_LOG_SLOW:
+    case QUERY_LOG_GENERAL:
+      old_value= make_default_log_name(buff, log_ext);
+      break;
+    case BACKUP_HISTORY_LOG:
+      old_value= make_backup_log_name(buff, BACKUP_HISTORY_LOG_NAME.str, log_ext);
+      break;
+    case BACKUP_PROGRESS_LOG:
+      old_value= make_backup_log_name(buff, BACKUP_PROGRESS_LOG_NAME.str, log_ext);
+      break;
+    default:
+      assert(0);                                  // Impossible
+    }
     str_length= strlen(old_value);
   }
   if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
@@ -2517,20 +2587,50 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
 
-  if (file_log && log_state)
-    file_log->close(0);
+  /*
+    Added support for backup log types.
+  */
+  switch (log_type) {
+  case QUERY_LOG_SLOW:
+  case QUERY_LOG_GENERAL:
+    if (file_log && log_state)
+      file_log->close(0);
+    break;
+  /*
+    Close the backup logs if specified.
+  */
+  case BACKUP_HISTORY_LOG:
+  case BACKUP_PROGRESS_LOG:
+    if (backup_log && log_state)
+      backup_log->close(0);
+    break;
+  default:
+    assert(0);                                  // Impossible
+  }
   old_value= var_str->value;
   var_str->value= res;
   var_str->value_length= str_length;
   my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
   if (file_log && log_state)
   {
+    /*
+      Added support for backup log types.
+    */
     switch (log_type) {
     case QUERY_LOG_SLOW:
       file_log->open_slow_log(sys_var_slow_log_path.value);
       break;
     case QUERY_LOG_GENERAL:
       file_log->open_query_log(sys_var_general_log_path.value);
+      break;
+    /*
+      Open the backup logs if specified.
+    */
+    case BACKUP_HISTORY_LOG:
+      backup_log->open_backup_history_log(sys_var_backup_history_log_path.value);
+      break;
+    case BACKUP_PROGRESS_LOG:
+      backup_log->open_backup_progress_log(sys_var_backup_progress_log_path.value);
       break;
     default:
       DBUG_ASSERT(0);
@@ -2556,6 +2656,63 @@ static void sys_default_general_log_path(THD *thd, enum_var_type type)
 {
   (void) update_sys_var_str_path(thd, &sys_var_general_log_path,
 				 0, ".log", opt_log, QUERY_LOG_GENERAL);
+}
+
+
+/*
+  Update the backup history log path variable.
+*/
+static bool sys_update_backup_history_log_path(THD *thd, set_var * var)
+{
+  char buff[STRING_BUFFER_USUAL_SIZE];
+  String str(buff,sizeof(buff), system_charset_info), *res;
+
+  res= var->value->val_str(&str);
+  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+      sys_var_backup_progress_log_path.value) == 0)
+  {
+    my_error(ER_BACKUP_LOGPATHS, MYF(0));
+    return 1;
+  }
+  return update_sys_var_str_path(thd, &sys_var_backup_history_log_path, 
+                                 var, ".log", opt_log, BACKUP_HISTORY_LOG);
+}
+
+/*
+  Set the default for backup history log path variable.
+*/
+static void sys_default_backup_history_log_path(THD *thd, enum_var_type type)
+{
+  (void) update_sys_var_str_path(thd, &sys_var_backup_history_log_path,
+				 0, ".log", opt_log, BACKUP_HISTORY_LOG);
+}
+
+/*
+  Update the backup progress log path variable.
+*/
+static bool sys_update_backup_progress_log_path(THD *thd, set_var * var)
+{
+  char buff[STRING_BUFFER_USUAL_SIZE];
+  String str(buff,sizeof(buff), system_charset_info), *res;
+
+  res= var->value->val_str(&str);
+  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+      sys_var_backup_history_log_path.value) == 0)
+  {
+    my_error(ER_BACKUP_LOGPATHS, MYF(0));
+    return 1;
+  }
+  return update_sys_var_str_path(thd, &sys_var_backup_progress_log_path, 
+                                 var, ".log", opt_log, BACKUP_PROGRESS_LOG);
+}
+
+/*
+  Set the default for backup progress log path variable.
+*/
+static void sys_default_backup_progress_log_path(THD *thd, enum_var_type type)
+{
+  (void) update_sys_var_str_path(thd, &sys_var_backup_progress_log_path,
+				 0, ".log", opt_log, BACKUP_PROGRESS_LOG);
 }
 
 
@@ -2602,6 +2759,62 @@ void sys_var_log_output::set_default(THD *thd, enum_var_type type)
 
 uchar *sys_var_log_output::value_ptr(THD *thd, enum_var_type type,
                                     LEX_STRING *base)
+{
+  char buff[256];
+  String tmp(buff, sizeof(buff), &my_charset_latin1);
+  ulong length;
+  ulong val= *value;
+
+  tmp.length(0);
+  for (uint i= 0; val; val>>= 1, i++)
+  {
+    if (val & 1)
+    {
+      tmp.append(log_output_typelib.type_names[i],
+                 log_output_typelib.type_lengths[i]);
+      tmp.append(',');
+    }
+  }
+
+  if ((length= tmp.length()))
+    length--;
+  return (uchar*) thd->strmake(tmp.ptr(), length);
+}
+
+/*
+  Allow update of the log-backup-output variable.
+*/
+bool sys_var_log_backup_output::update(THD *thd, set_var *var)
+{
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  logger.lock_exclusive();
+  logger.init_backup_history_log(var->save_result.ulong_value);
+  logger.init_backup_progress_log(var->save_result.ulong_value);
+  *value= var->save_result.ulong_value;
+  logger.unlock();
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+  return 0;
+}
+
+/*
+  Set the default for the log-backup-output variable.
+*/
+void sys_var_log_backup_output::set_default(THD *thd, enum_var_type type)
+{
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  logger.lock_exclusive();
+  logger.init_backup_history_log(LOG_TABLE);
+  logger.init_backup_progress_log(LOG_TABLE);
+  *value= LOG_TABLE;
+  logger.unlock();
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+}
+
+/*
+  Allow reading of the log-backup-output variable.
+*/
+uchar *sys_var_log_backup_output::value_ptr(THD *thd, enum_var_type type,
+                                            LEX_STRING *base)
 {
   char buff[256];
   String tmp(buff, sizeof(buff), &my_charset_latin1);

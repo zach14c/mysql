@@ -83,7 +83,6 @@
 #include "be_snapshot.h"
 #include "be_nodata.h"
 #include "ddl_blocker.h"
-#include "backup_progress.h"
 
 
 /** 
@@ -322,6 +321,7 @@ int send_reply(Backup_restore_ctx &context)
   // FIXME: detect errors if  reported.
   // FIXME: error logging.
   my_eof(context.thd());
+  context.report_cleanup();
   DBUG_RETURN(0);
 }
 
@@ -374,7 +374,8 @@ Backup_restore_ctx::Backup_restore_ctx(THD *thd)
   /*
     Check for progress tables.
   */
-  if (check_ob_progress_tables(thd))
+  MYSQL_BACKUP_LOG *backup_log= logger.get_backup_history_log_file_handler();
+  if (backup_log->check_backup_logs(thd))
     m_error= ER_BACKUP_PROGRESS_TABLES;
 }
 

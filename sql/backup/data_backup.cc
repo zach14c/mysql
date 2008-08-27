@@ -29,7 +29,6 @@
 #include "backup_kernel.h"
 #include "backup_engine.h"
 #include "stream.h"
-#include "backup_progress.h"
 #include "be_default.h"  // needed for table locking code
 
 /***********************************************

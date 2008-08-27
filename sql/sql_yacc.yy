@@ -9996,6 +9996,8 @@ flush_option:
           { Lex->type|= REFRESH_GRANT; }
         | LOGS_SYM
           { Lex->type|= REFRESH_LOG; }
+        | BACKUP_SYM LOGS_SYM
+          { Lex->type|= REFRESH_BACKUP_LOG; }
         | STATUS_SYM
           { Lex->type|= REFRESH_STATUS; }
         | SLAVE
