@@ -490,6 +490,37 @@ sub optimize_cases {
       # Save binlog format for dynamic switching
       $tinfo->{binlog_format}= $test_binlog_format;
     }
+
+      # =======================================================
+      # Check that engine selected by
+      # --default-storage-engine=<engine> is supported
+      # =======================================================
+      my %builtin_engines = ('myisam' => 1, 'memory' => 1);
+
+      foreach my $opt ( @{$tinfo->{master_opt}} ) {
+      my $default_engine=
+        mtr_match_prefix($opt, "--default-storage-engine=");
+
+      if (defined $default_engine){
+
+
+        my $engine_value= $::mysqld_variables{$default_engine};
+
+        if ( ! exists $::mysqld_variables{$default_engine} and
+             ! exists $builtin_engines{$default_engine} )
+        {
+          $tinfo->{'skip'}= 1;
+          $tinfo->{'comment'}=
+            "'$default_engine' not supported";
+        }
+
+        $tinfo->{'ndb_test'}= 1
+          if ( $default_engine =~ /^ndb/i );
+        $tinfo->{'innodb_test'}= 1
+          if ( $default_engine =~ /^innodb/i );
+      }
+    }
+
   }
 }
 
