@@ -141,6 +141,12 @@ class Backup_info: public backup::Image_info
    */
   Dep_node  *m_trigger_end;
   
+  /** 
+    Points at the last event on the dependency list. NULL if events section
+    is empty.
+   */
+  Dep_node  *m_event_end;
+  
   /**
     Hash keeping all elements stored in the dependency list.
 

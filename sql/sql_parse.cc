@@ -2422,7 +2422,11 @@ mysql_execute_command(THD *thd)
       TABLE in the same way. That way we avoid that a new table is
       created during a gobal read lock.
     */
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+    {
+      res= 1;
+      goto ddl_blocker_err;
+    }
     if (!thd->locked_tables_mode &&
         !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
     {
@@ -2548,6 +2552,7 @@ mysql_execute_command(THD *thd)
     /* put tables back for PS rexecuting */
 end_with_restore_list:
     DDL_blocker->end_DDL();
+ddl_blocker_err:
     lex->link_first_table_back(create_table, link_to_local);
     break;
   }
@@ -2563,7 +2568,8 @@ end_with_restore_list:
     table without having to do a full rebuild.
   */
   {
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     /* Prepare stack copies to be re-execution safe */
     HA_CREATE_INFO create_info;
     Alter_info alter_info(lex->alter_info, thd->mem_root);
@@ -2631,7 +2637,8 @@ end_with_restore_list:
 
   case SQLCOM_ALTER_TABLE:
     {
-      DDL_blocker->check_DDL_blocker(thd);
+      if (!DDL_blocker->check_DDL_blocker(thd))
+        goto error;
       ulong priv=0;
       ulong priv_needed= ALTER_ACL;
 
@@ -2743,7 +2750,8 @@ end_with_restore_list:
         goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     if (mysql_rename_tables(thd, first_table, 0))
     {
       DDL_blocker->end_DDL();
@@ -2843,7 +2851,8 @@ end_with_restore_list:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_repair_table(thd, first_table, &lex->check_opt);
     DDL_blocker->end_DDL();
     /* ! we write after unlocking the table */
@@ -2895,7 +2904,8 @@ end_with_restore_list:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= (specialflag & (SPECIAL_SAFE_MODE | SPECIAL_NO_NEW_FUNC)) ?
       mysql_recreate_table(thd, first_table) :
       mysql_optimize_table(thd, first_table, &lex->check_opt);
@@ -3136,7 +3146,8 @@ end_with_restore_list:
       goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_truncate(thd, first_table, 0);
     DDL_blocker->end_DDL();
 
@@ -3239,7 +3250,8 @@ end_with_restore_list:
       /* So that DROP TEMPORARY TABLE gets to binlog at commit/rollback */
       thd->options|= OPTION_KEEP_LOG;
     }
-      DDL_blocker->check_DDL_blocker(thd);
+      if (!DDL_blocker->check_DDL_blocker(thd))
+        goto error;
     /* DDL and binlog write order protected by LOCK_open */
     res= mysql_rm_table(thd, first_table, lex->drop_if_exists,
 			lex->drop_temporary);
@@ -3485,7 +3497,8 @@ end_with_restore_list:
     if (check_access(thd,CREATE_ACL,lex->name.str, 0, 1, 0,
                      is_schema_db(lex->name.str)))
       break;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_create_db(thd,(lower_case_table_names == 2 ? alias :
                               lex->name.str), &create_info, 0);
     DDL_blocker->end_DDL();
@@ -3523,7 +3536,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_rm_db(thd, lex->name.str, lex->drop_if_exists, 0);
     DDL_blocker->end_DDL();
     break;
@@ -3561,7 +3575,8 @@ end_with_restore_list:
       goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_upgrade_db(thd, db);
     DDL_blocker->end_DDL();
     if (!res)
@@ -3601,7 +3616,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_alter_db(thd, db->str, &create_info);
     DDL_blocker->end_DDL();
     break;

@@ -101,16 +101,24 @@ void DDL_blocker_class::end_DDL()
 /**
     check_DDL_blocker
 
-    Check to see if we are blocked from continuing. If so,
-    wait until the blocked process signals the condition.
+    Check to see if we are blocked from continuing. If so, wait until block is 
+    removed or the timeout specified by backup_wait_timeout variable occurs.
+    
+    @param[in] thd        The THD object from the caller.
 
-    @param thd The THD object from the caller.
-    @returns TRUE
+    @note: This operation blocks DDL operations until end_ddl() is called.
+
+    @returns TRUE if not blocked
+    @returns FALSE if ddl is blocked and timeout occurs
   */
 my_bool DDL_blocker_class::check_DDL_blocker(THD *thd)
 {
+  int ret = 0;
+  struct timespec ddl_timeout;
   DBUG_ENTER("check_DDL_blocker()");
   DEBUG_SYNC(thd, "before_check_ddl_blocked");
+
+  set_timespec(ddl_timeout, thd->backup_wait_timeout);
 
   /*
     Check the ddl blocker condition. Rest until ddl blocker is released.
@@ -118,12 +126,24 @@ my_bool DDL_blocker_class::check_DDL_blocker(THD *thd)
   pthread_mutex_lock(&THR_LOCK_DDL_is_blocked);
   thd->enter_cond(&COND_DDL_blocker, &THR_LOCK_DDL_is_blocked,
                   "DDL blocker: DDL is blocked");
-  while (DDL_blocked && !thd->DDL_exception)
-    pthread_cond_wait(&COND_DDL_blocker, &THR_LOCK_DDL_is_blocked);
-  start_DDL();
-  thd->exit_cond("DDL blocker: Ok to run DDL");
-  DEBUG_SYNC(thd, "after_start_ddl");
-  DBUG_RETURN(TRUE);
+  while (DDL_blocked && !thd->DDL_exception && (ret == 0))
+  {
+    if (thd->backup_wait_timeout == 0)
+      ret = -1;
+    else
+      ret= pthread_cond_timedwait(&COND_DDL_blocker, &THR_LOCK_DDL_is_blocked,
+                                  &ddl_timeout);
+  }
+  thd->exit_cond("DDL blocker: DDL is not blocked");
+  if (ret == 0)
+  {
+    start_DDL();
+    DEBUG_SYNC(thd, "after_start_ddl");
+  }
+  else
+    my_error(ER_DDL_TIMEOUT, MYF(0), thd->query);
+
+  DBUG_RETURN(ret == 0);
 }
 
 /**

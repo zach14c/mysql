@@ -277,10 +277,10 @@ DROP DATABASE bup_db2;
 Restore database.
 restore database with view dependency to other, non-existing db
 RESTORE FROM 'bup_objectview1.bak';
-ERROR 42S02: Table 'bup_db2.t2' doesn't exist
+ERROR HY000: Could not restore view `bup_db1`.`v5`. Please check the view definition for possible missing dependencies.
 DROP DATABASE bup_db1;
 RESTORE FROM 'bup_objectview2.bak';
-ERROR 42S02: Table 'bup_db1.t3' doesn't exist
+ERROR HY000: Could not restore view `bup_db2`.`student_details`. Please check the view definition for possible missing dependencies.
 DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview.bak';
 backup_id
