@@ -1059,6 +1059,28 @@ sub command_line_setup {
       mtr_error("Can't use --extern with --embedded-server");
     }
 
+
+    if ($opt_gdb)
+    {
+      mtr_warning("Silently converting --gdb to --client-gdb in embedded mode");
+      $opt_client_gdb= $opt_gdb;
+      $opt_gdb= undef;
+    }
+
+    if ($opt_ddd)
+    {
+      mtr_warning("Silently converting --ddd to --client-ddd in embedded mode");
+      $opt_client_ddd= $opt_ddd;
+      $opt_ddd= undef;
+    }
+
+    if ($opt_debugger)
+    {
+      mtr_warning("Silently converting --debugger to --client-debugger in embedded mode");
+      $opt_client_debugger= $opt_debugger;
+      $opt_debugger= undef;
+    }
+
     if ( $opt_gdb || $opt_ddd || $opt_manual_gdb || $opt_manual_ddd ||
 	 $opt_manual_debug || $opt_debugger )
     {
@@ -3534,12 +3556,21 @@ sub report_failure_and_restart ($) {
   if ( !defined $tinfo->{logfile} )
   {
     my $logfile= $path_current_testlog;
-    if ( defined $logfile and -f $logfile )
+    if ( defined $logfile )
     {
-      # Test failure was detected by test tool and its report
-      # about what failed has been saved to file. Save the report
-      # in tinfo
-      $tinfo->{logfile}= mtr_fromfile($logfile);
+      if ( -f $logfile )
+      {
+	# Test failure was detected by test tool and its report
+	# about what failed has been saved to file. Save the report
+	# in tinfo
+	$tinfo->{logfile}= mtr_fromfile($logfile);
+      }
+      else
+      {
+	# The test tool report didn't exist, display an
+	# error message
+	$tinfo->{logfile}= "Could not open test tool report '$logfile'";
+      }
     }
   }
 
