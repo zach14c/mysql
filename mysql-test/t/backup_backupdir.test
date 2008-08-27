@@ -4,6 +4,8 @@
 
 --source include/not_embedded.inc
 
+let $MYSQLD_DATADIR= `select @@datadir`;
+
 --echo Reset backupdir 
 SET @@global.backupdir = @@global.datadir;
 
@@ -29,7 +31,7 @@ rmdir $MYSQLTEST_VARDIR/tmp/backup;
 mkdir $MYSQLTEST_VARDIR/tmp/backup;
 
 --echo Reset backupdir 
-SET @@global.backupdir = '../tmp/backup';
+SET @@global.backupdir = '../../tmp/backup';
 
 --echo Perform backup
 --replace_column 1 #
@@ -64,7 +66,7 @@ BACKUP DATABASE bup_backupdir TO '../../bup_backupdir3.bak';
 --file_exists $MYSQLTEST_VARDIR/bup_backupdir3.bak
 
 --echo Reset backupdir with ending /
-SET @@global.backupdir = '../tmp/backup/';
+SET @@global.backupdir = '../../tmp/backup/';
 
 --echo Perform backup
 --replace_column 1 #
@@ -93,17 +95,10 @@ SET @@global.backupdir = @@global.datadir;
 
 DROP DATABASE bup_backupdir;
 
---error 0,1
---remove_file $MYSQLTEST_VARDIR/tmp/bup_backupdir1.bak
-
---error 0,1
---remove_file $MYSQLTEST_VARDIR/tmp/backup/bup_backupdir2.bak
-
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_backupdir3.bak
-
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_backupdir4.bak
+remove_file $MYSQLTEST_VARDIR/tmp/bup_backupdir1.bak;
+remove_file $MYSQLTEST_VARDIR/tmp/backup/bup_backupdir2.bak;
+remove_file $MYSQLD_DATADIR/bup_backupdir3.bak;
+remove_file $MYSQLD_DATADIR/bup_backupdir4.bak;
 
 --error 0,1
 rmdir $MYSQLTEST_VARDIR/tmp/backup;

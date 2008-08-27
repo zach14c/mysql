@@ -52,12 +52,12 @@ extern "C" {
   The following defines can be increased if necessary.
   But beware the dependency of MI_MAX_POSSIBLE_KEY_BUFF and MI_MAX_KEY_LENGTH.
 */
-#define MI_MAX_KEY_LENGTH           1332            /* Max length in bytes */
-#define MI_MAX_KEY_SEG              16              /* Max segments for key */
+#define MI_MAX_KEY_LENGTH           HA_MAX_KEY_LENGTH /* Max length in bytes */
+#define MI_MAX_KEY_SEG              HA_MAX_KEY_SEG   /* Max segments for key */
 
-#define MI_MAX_POSSIBLE_KEY_BUFF    HA_MAX_POSSIBLE_KEY_BUFF
+#define MI_MAX_POSSIBLE_KEY_BUFF HA_MAX_POSSIBLE_KEY_BUFF /* For mi_check */
 
-#define MI_MAX_KEY_BUFF  (MI_MAX_KEY_LENGTH+MI_MAX_KEY_SEG*6+8+8)
+#define MI_MAX_KEY_BUFF             HA_MAX_KEY_BUFF
 #define MI_MAX_MSG_BUF      1024 /* used in CHECK TABLE, REPAIR TABLE */
 #define MI_NAME_IEXT	".MYI"
 #define MI_NAME_DEXT	".MYD"
@@ -68,6 +68,8 @@ extern "C" {
 #define MI_KEY_BLOCK_LENGTH	1024	/* default key block length */
 #define MI_MIN_KEY_BLOCK_LENGTH	1024	/* Min key block length */
 #define MI_MAX_KEY_BLOCK_LENGTH	16384
+
+#define mi_portable_sizeof_char_ptr 8
 
 /*
   In the following macros '_keyno_' is 0 .. keys-1.

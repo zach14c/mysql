@@ -1,11 +1,9 @@
-stop slave;
-drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
 reset master;
 reset slave;
-drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+call mtr.add_supression("Failed during slave.*thread initialization");
+SET GLOBAL debug="d,simulate_io_slave_error_on_init,simulate_sql_slave_error_on_init";
 start slave;
-"Failed while waiting for slave to start"
-SHOW SLAVE STATUS;
+show slave status;
 Slave_IO_State	#
 Master_Host	127.0.0.1
 Master_User	root
@@ -44,3 +42,6 @@ Last_IO_Errno	0
 Last_IO_Error	
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	0
+SET GLOBAL debug="";

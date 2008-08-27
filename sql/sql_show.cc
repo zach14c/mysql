@@ -541,7 +541,8 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
 
   if ((table_list->view ?
        view_store_create_info(thd, table_list, &buffer) :
-       store_create_info(thd, table_list, &buffer, NULL)))
+       store_create_info(thd, table_list, &buffer, NULL,
+                         FALSE /* show_database */)))
     DBUG_RETURN(TRUE);
 
   List<Item> field_list;
@@ -697,6 +698,34 @@ mysqld_list_fields(THD *thd, TABLE_LIST *table_list, const char *wild)
   DBUG_VOID_RETURN;
 }
 
+
+int
+mysqld_dump_create_info(THD *thd, TABLE_LIST *table_list, int fd)
+{
+  Protocol *protocol= thd->protocol;
+  String *packet= protocol->storage_packet();
+  DBUG_ENTER("mysqld_dump_create_info");
+  DBUG_PRINT("enter",("table: %s",table_list->table->s->table_name.str));
+
+  protocol->prepare_for_resend();
+  if (store_create_info(thd, table_list, packet, NULL,
+                        FALSE /* show_database */))
+    DBUG_RETURN(-1);
+
+  if (fd < 0)
+  {
+    if (protocol->write())
+      DBUG_RETURN(-1);
+    protocol->flush();
+  }
+  else
+  {
+    if (my_write(fd, (const uchar*) packet->ptr(), packet->length(),
+		 MYF(MY_WME)))
+      DBUG_RETURN(-1);
+  }
+  DBUG_RETURN(0);
+}
 
 /*
   Go through all character combinations and ensure that sql_lex.cc can
@@ -932,7 +961,7 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
  */
 
 int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
-                      HA_CREATE_INFO *create_info_arg)
+                      HA_CREATE_INFO *create_info_arg, bool show_database)
 {
   List<Item> field_list;
   char tmp[MAX_FIELD_WIDTH], *for_str, buff[128], def_value_buf[MAX_FIELD_WIDTH];
@@ -980,6 +1009,25 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
       alias= share->table_name.str;
     }
   }
+
+  /*
+    Print the database before the table name if told to do that. The
+    database name is only printed in the event that it is different
+    from the current database.  The main reason for doing this is to
+    avoid having to update gazillions of tests and result files, but
+    it also saves a few bytes of the binary log.
+   */
+  if (show_database)
+  {
+    const LEX_STRING *const db=
+      table_list->schema_table ? &INFORMATION_SCHEMA_NAME : &table->s->db;
+    if (strcmp(db->str, thd->db) != 0)
+    {
+      append_identifier(thd, packet, db->str, db->length);
+      packet->append(STRING_WITH_LEN("."));
+    }
+  }
+
   append_identifier(thd, packet, alias, strlen(alias));
   packet->append(STRING_WITH_LEN(" (\n"));
   /*
@@ -1693,6 +1741,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
         if ((thd_info->db=tmp->db))             // Safe test
           thd_info->db=thd->strdup(thd_info->db);
         thd_info->command=(int) tmp->command;
+        pthread_mutex_lock(&tmp->LOCK_delete);
         if ((mysys_var= tmp->mysys_var))
           pthread_mutex_lock(&mysys_var->mutex);
         thd_info->proc_info= (char*) (tmp->killed == THD::KILL_CONNECTION? "Killed" : 0);
@@ -1711,7 +1760,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
 #endif
         if (mysys_var)
           pthread_mutex_unlock(&mysys_var->mutex);
-
+        pthread_mutex_unlock(&tmp->LOCK_delete);
         thd_info->start_time= tmp->start_time;
         thd_info->query=0;
         if (tmp->query)
@@ -1810,6 +1859,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
         table->field[3]->set_notnull();
       }
 
+      pthread_mutex_lock(&tmp->LOCK_delete);
       if ((mysys_var= tmp->mysys_var))
         pthread_mutex_lock(&mysys_var->mutex);
       /* COMMAND */
@@ -1843,6 +1893,7 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
 
       if (mysys_var)
         pthread_mutex_unlock(&mysys_var->mutex);
+      pthread_mutex_unlock(&tmp->LOCK_delete);
 
       /* INFO */
       if (tmp->query)
@@ -4141,6 +4192,7 @@ int fill_schema_coll_charset_app(THD *thd, TABLE_LIST *tables, COND *cond)
     {
       CHARSET_INFO *tmp_cl= cl[0];
       if (!tmp_cl || !(tmp_cl->state & MY_CS_AVAILABLE) ||
+          (tmp_cl->state & MY_CS_HIDDEN) ||
           !my_charset_same(tmp_cs,tmp_cl))
 	continue;
       restore_record(table, s->default_values);

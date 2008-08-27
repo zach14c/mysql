@@ -6126,7 +6126,7 @@ ER_LOAD_DATA_INVALID_COLUMN
   eng "Invalid column reference (%-.64s) in LOAD DATA"
 
 ER_LOG_PURGE_NO_FILE  
-	eng "Being purged log %s was not found"
+  eng "Being purged log %s was not found"
 
 ER_NEED_REPREPARE
   eng "Prepared statement needs to be re-prepared"
@@ -6261,6 +6261,8 @@ ER_SLAVE_HEARTBEAT_FAILURE
   eng "Unexpected master's heartbeat data: %s"
 ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE
   eng "The requested value for the heartbeat period %s %s"
+ER_SLAVE_IGNORE_SERVER_IDS
+  eng "The requested server id %d clashes with the slave startup option --replicate-same-server-id"
 
 ER_BACKUP_CANT_FIND_SE
 	eng "Backup image contains data created by a native driver of %-.64s storage engine but this engine can not be found on this server"

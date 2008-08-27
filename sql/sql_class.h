@@ -442,7 +442,6 @@ struct system_variables
   DATE_TIME_FORMAT *datetime_format;
   DATE_TIME_FORMAT *time_format;
   my_bool sysdate_is_now;
-
 };
 
 
@@ -1071,6 +1070,22 @@ enum enum_thread_type
   SYSTEM_THREAD_BACKUP= 64
 };
 
+inline char const *
+show_system_thread(enum_thread_type thread)
+{
+#define RETURN_NAME_AS_STRING(NAME) case (NAME): return #NAME
+  switch (thread) {
+    RETURN_NAME_AS_STRING(NON_SYSTEM_THREAD);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_DELAYED_INSERT);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_SLAVE_IO);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_SLAVE_SQL);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_NDBCLUSTER_BINLOG);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_SCHEDULER);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_WORKER);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_BACKUP);
+  }
+#undef RETURN_NAME_AS_STRING
+}
 
 /**
   This class represents the interface for internal error handlers.
@@ -1587,6 +1602,13 @@ public:
     Note: in the parser, stmt_arena == thd, even for PS/SP.
   */
   Query_arena *stmt_arena;
+
+  /*
+    map for tables that will be updated for a multi-table update query
+    statement, for other query statements, this will be zero.
+  */
+  table_map table_map_for_update;
+
   /* Tells if LAST_INSERT_ID(#) was called for the current statement */
   bool arg_of_last_insert_id_function;
   /*
@@ -2255,6 +2277,10 @@ public:
 
       Don't reset binlog format for NDB binlog injector thread.
     */
+    DBUG_PRINT("debug",
+               ("temporary_tables: %s, in_sub_stmt: %s, system_thread: %s",
+                YESNO(temporary_tables), YESNO(in_sub_stmt),
+                show_system_thread(system_thread)));
     if ((temporary_tables == NULL) && (in_sub_stmt == 0) &&
         (system_thread != SYSTEM_THREAD_NDBCLUSTER_BINLOG))
     {

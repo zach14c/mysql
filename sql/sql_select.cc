@@ -930,7 +930,7 @@ static bool sj_table_is_included(JOIN *join, JOIN_TAB *join_tab)
   {
     table_map depends_on= 0;
     uint idx;
-    
+
     for (uint kp= 0; kp < join_tab->ref.key_parts; kp++)
       depends_on |= join_tab->ref.items[kp]->used_tables();
 

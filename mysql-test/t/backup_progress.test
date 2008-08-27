@@ -39,8 +39,10 @@ ORDER BY column_name;
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS backup_progress;
 DROP TABLE IF EXISTS backup_progress.t1_res;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/backup_progress_orig.bak;
+remove_file $MYSQLD_DATADIR/backup_progress_orig.bak;
 --enable_warnings
 
 connect (con1,localhost,root,,);
@@ -192,5 +194,5 @@ connection con1;
 #
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE backup_progress;
---remove_file $MYSQLTEST_VARDIR/master-data/backup_progress_orig.bak
+remove_file $MYSQLD_DATADIR/backup_progress_orig.bak;
 

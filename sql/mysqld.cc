@@ -33,6 +33,8 @@
 
 #include "rpl_injector.h"
 
+#include "rpl_handler.h"
+
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
@@ -568,7 +570,8 @@ ulong max_prepared_stmt_count;
 */
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
-ulong slow_launch_threads = 0, sync_binlog_period;
+ulong slow_launch_threads = 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -991,6 +994,7 @@ static void close_connections(void)
 
     tmp->killed= THD::KILL_CONNECTION;
     thread_scheduler.post_kill_notification(tmp);
+    pthread_mutex_lock(&tmp->LOCK_delete);
     if (tmp->mysys_var)
     {
       tmp->mysys_var->abort=1;
@@ -1003,6 +1007,7 @@ static void close_connections(void)
       }
       pthread_mutex_unlock(&tmp->mysys_var->mutex);
     }
+    pthread_mutex_unlock(&tmp->LOCK_delete);
   }
   (void) pthread_mutex_unlock(&LOCK_thread_count); // For unlink from list
 
@@ -1347,6 +1352,7 @@ void clean_up(bool print_message)
   ha_end();
   if (tc_log)
     tc_log->close();
+  delegates_destroy();
   xid_cache_free();
   delete_elements(&key_caches, (void (*)(const char*, uchar*)) free_key_cache);
   multi_keycache_free();
@@ -3904,6 +3910,13 @@ static int init_server_components()
     unireg_abort(1);
   }
 
+  /* initialize delegates for extension observers */
+  if (delegates_init())
+  {
+    sql_print_error("Initialize extension delegates failed");
+    unireg_abort(1);
+  }
+
   /* need to configure logging before initializing storage engines */
   if (opt_update_log)
   {
@@ -5758,7 +5771,8 @@ enum options_mysqld
   OPT_POOL_OF_THREADS,
 #endif
   OPT_DEBUG_CRC, OPT_DEBUG_ON,
-  OPT_SLAVE_EXEC_MODE
+  OPT_SLAVE_EXEC_MODE,
+  OPT_SYNC_RELAY_LOG
 };
 
 
@@ -6986,8 +7000,13 @@ The minimum value for this variable is 4096.",
   {"sync-binlog", OPT_SYNC_BINLOG,
    "Synchronously flush binary log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
-   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_ULONG,
-   REQUIRED_ARG, 0, 0, (longlong) ULONG_MAX, 0, 1, 0},
+   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-relay-log", OPT_SYNC_RELAY_LOG,
+   "Synchronously flush relay log to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
    0, 0, 0, 0},

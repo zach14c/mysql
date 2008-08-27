@@ -1400,6 +1400,13 @@ ViewBaseObjectsIterator::create(THD *thd,
   close_thread_tables(my_thd);
   delete my_thd;
 
+  /*
+    The mysys_var context is no longer valid and must be reset.
+  */
+  pthread_mutex_lock(&thd->LOCK_delete);
+  thd->mysys_var= NULL;
+  pthread_mutex_unlock(&thd->LOCK_delete);
+
   thd->store_globals();
 
   return new ViewBaseObjectsIterator(table_names);
@@ -1805,7 +1812,7 @@ bool TableObj::do_serialize(THD *thd, String *serialization)
   */
   ret= m_table_is_view ?
     view_store_create_info(thd, table_list, serialization) :
-    store_create_info(thd, table_list, serialization, NULL);
+    store_create_info(thd, table_list, serialization, NULL, FALSE);
   close_thread_tables(thd);
   serialization->set_charset(system_charset_info);
   thd->lex->select_lex.table_list.empty();

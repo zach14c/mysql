@@ -16,6 +16,12 @@
 class MYSQL_ERROR: public Sql_alloc
 {
 public:
+  /*
+    Enumeration value describing the severity of the error.
+
+    Note that these enumeration values must correspond to the indices
+    of the sql_print_message_handlers array.
+  */
   enum enum_warning_level
   { WARN_LEVEL_NOTE, WARN_LEVEL_WARN, WARN_LEVEL_ERROR, WARN_LEVEL_END};
 

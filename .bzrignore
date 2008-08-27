@@ -757,6 +757,7 @@ mysql-test/funcs_1-ps.log
 mysql-test/funcs_1.log
 mysql-test/funcs_1.tar
 mysql-test/install_test_db
+mysql-test/lib/My/SafeProcess/my_safe_process
 mysql-test/lib/init_db.sql
 mysql-test/linux_sys_vars.inc
 mysql-test/load_sysvars.inc
@@ -1236,9 +1237,13 @@ sql/*.vcproj
 sql/.gdbinit
 sql/client.c
 sql/cscope.out
+sql/Doxyfile
 sql/f.c
 sql/gen_lex_hash
+sql/gmon.out
 sql/handlerton.cc
+sql/html
+sql/latex
 sql/lex_hash.h
 sql/link_sources
 sql/max/*
@@ -1287,6 +1292,8 @@ sql/share/slovak/
 sql/share/spanish/
 sql/share/swedish/
 sql/share/ukrainian/
+sql/share/norwegian-ny/errmsg.sys
+sql/share/norwegian/errmsg.sys
 sql/sql_builtin.cc
 sql/sql_select.cc.orig
 sql/sql_yacc.cc
@@ -1854,8 +1861,17 @@ tools/mysqlmngd
 tools/mysqltestmanager
 tools/mysys_priv.h
 unittest/examples/*.t
+unittest/examples/.deps/no_plan-t.Po
+unittest/examples/.deps/simple-t.Po
+unittest/examples/.deps/skip-t.Po
+unittest/examples/.deps/skip_all-t.Po
+unittest/examples/.deps/todo-t.Po
 unittest/maria_control
 unittest/mysys/*.t
+unittest/mysys/.deps/base64-t.Po
+unittest/mysys/.deps/bitmap-t.Po
+unittest/mysys/.deps/my_atomic-t.Po
+unittest/mytap/.deps/tap.Po
 unittest/mysys/mf_pagecache_consist_1k-t-big
 unittest/mysys/mf_pagecache_consist_1kHC-t-big
 unittest/mysys/mf_pagecache_consist_1kRD-t-big
@@ -1866,6 +1882,7 @@ unittest/mysys/mf_pagecache_consist_64kRD-t-big
 unittest/mysys/mf_pagecache_consist_64kWR-t-big
 unittest/mysys/mf_pagecache_single_64k-t-big
 unittest/mytap/t/*.t
+unittest/mytap/t/.deps/basic-t.Po
 unittest/page_cache_test_file_1
 unittest/pagecache_debug.log
 unittest/tmp/*

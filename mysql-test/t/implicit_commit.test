@@ -156,7 +156,7 @@ source include/implicit_commit_helper.inc;
 create table t4 (a varchar(100));
 
 let $statement=
-  load data infile '../std_data_ln/words.dat' into table t4;
+  load data infile '../../std_data/words.dat' into table t4;
 source include/implicit_commit_helper.inc;
 
 drop table t4;

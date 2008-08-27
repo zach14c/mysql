@@ -37,10 +37,11 @@ create table t3(a int, KEY a_data (a));
 create table mysqltest.t4(a int);
 create table t5 (id int auto_increment primary key);
 insert into t5 values (10);
-create view v1 (c) as select table_name
-from information_schema.TABLES
-where table_name not like 'ndb_%' and
-      table_name not like 'falcon%';
+CREATE VIEW v1 (c) AS select table_name
+FROM information_schema.TABLES
+WHERE table_schema IN ('mysql', 'INFORMATION_SCHEMA', 'test', 'mysqltest') AND
+table_name NOT LIKE 'ndb_%' AND
+table_name NOT LIKE 'falcon%';
 select * from v1;
 
 select c,table_name from v1 
@@ -116,6 +117,20 @@ where COLLATION_NAME like 'latin1%';
 # Test for information_schema.ROUTINES &
 #
 
+#
+# Bug#37554
+# Make sure that special purpose character set  and collation "filename"
+# is not displayed in meta-data queries.
+#
+select collation_name from information_schema.collations
+where collation_name='filename';
+select collation_name from information_schema.collation_character_set_applicability
+where collation_name='filename';
+select character_set_name from information_schema.character_sets
+where character_set_name='filename';
+show collation like 'filename';
+show character set like 'filename';
+
 --disable_warnings
 drop procedure if exists sel2;
 drop function if exists sub1;
@@ -136,25 +151,25 @@ delimiter ;|
 # Bug#7222 information_schema: errors in "routines"
 #
 select parameter_style, sql_data_access, dtd_identifier 
-from information_schema.routines;
+from information_schema.routines where routine_schema='test';
 
 --replace_column 5 # 6 #
-show procedure status;
+show procedure status where db='test';
 --replace_column 5 # 6 #
-show function status;
+show function status where db='test';
 select a.ROUTINE_NAME from information_schema.ROUTINES a,
 information_schema.SCHEMATA b where
-a.ROUTINE_SCHEMA = b.SCHEMA_NAME;
+a.ROUTINE_SCHEMA = b.SCHEMA_NAME AND b.SCHEMA_NAME='test';
 --replace_column 3 #
 explain select a.ROUTINE_NAME from information_schema.ROUTINES a,
 information_schema.SCHEMATA b where
 a.ROUTINE_SCHEMA = b.SCHEMA_NAME;
 
 select a.ROUTINE_NAME, b.name from information_schema.ROUTINES a,
-mysql.proc b where a.ROUTINE_NAME = convert(b.name using utf8) order by 1;
-select count(*) from information_schema.ROUTINES;
+mysql.proc b where a.ROUTINE_NAME = convert(b.name using utf8) AND a.ROUTINE_SCHEMA='test' order by 1;
+select count(*) from information_schema.ROUTINES where routine_schema='test';
 
-create view v1 as select routine_schema, routine_name from information_schema.routines 
+create view v1 as select routine_schema, routine_name from information_schema.routines where routine_schema='test'
 order by routine_schema, routine_name;
 select * from v1;
 drop view v1;
@@ -532,7 +547,10 @@ flush privileges;
 # with SELECT SUM() ... GROUP BY queries
 #
 SELECT table_schema, count(*) FROM information_schema.TABLES
-WHERE table_name NOT LIKE 'ndb_%' AND table_name NOT LIKE 'falcon%' GROUP BY TABLE_SCHEMA;
+WHERE table_schema IN ('mysql', 'INFORMATION_SCHEMA', 'test', 'mysqltest') AND
+table_name NOT LIKE 'ndb_%' AND table_name NOT LIKE 'falcon%'
+GROUP BY TABLE_SCHEMA;
+
 
 
 #
@@ -561,7 +579,7 @@ begin
 end|
 delimiter ;|
 show triggers;
-select * from information_schema.triggers;
+select * from information_schema.triggers where trigger_schema in ('mysql', 'information_schema', 'test', 'mysqltest');
 
 drop trigger trg1;
 drop trigger trg2;
@@ -731,7 +749,7 @@ BEGIN
   SELECT 'foo' FROM DUAL;
 END |
 delimiter ;|
-select  ROUTINE_NAME from routines;
+select  ROUTINE_NAME from routines where ROUTINE_SCHEMA='information_schema';
 #
 # Bug #10734 Grant of privileges other than 'select' and 'create view' should fail on schema
 #
@@ -831,7 +849,7 @@ use mysql;
 INSERT INTO `proc` VALUES ('test','','PROCEDURE','','SQL','CONTAINS_SQL',
 'NO','DEFINER','','','BEGIN\r\n  \r\nEND','root@%','2006-03-02 18:40:03',
 '2006-03-02 18:40:03','','','utf8','utf8_general_ci','utf8_general_ci','n/a');
-select routine_name from information_schema.routines;
+select routine_name from information_schema.routines where ROUTINE_SCHEMA='test';
 delete from proc where name='';
 use test;
 
@@ -878,13 +896,13 @@ CREATE USER mysql_bug20230@localhost;
 GRANT EXECUTE ON PROCEDURE p1 TO mysql_bug20230@localhost;
 GRANT EXECUTE ON FUNCTION f1 TO mysql_bug20230@localhost;
 
-SELECT ROUTINE_NAME, ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES;
+SELECT ROUTINE_NAME, ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA='test';
 SHOW CREATE PROCEDURE p1;
 SHOW CREATE FUNCTION f1;
 
 connect (conn1, localhost, mysql_bug20230,,);
 
-SELECT ROUTINE_NAME, ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES;
+SELECT ROUTINE_NAME, ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA='test';
 SHOW CREATE PROCEDURE p1;
 SHOW CREATE FUNCTION f1;
 CALL p1();
@@ -902,10 +920,10 @@ DROP USER mysql_bug20230@localhost;
 #            INFORMARTION_SCHEMA.TABLES 
 #
 
-SELECT MAX(table_name) FROM information_schema.tables;
+SELECT MAX(table_name) FROM information_schema.tables WHERE table_schema IN ('mysql', 'INFORMATION_SCHEMA', 'test');
 SELECT table_name from information_schema.tables
   WHERE table_name=(SELECT MAX(table_name)
-                      FROM information_schema.tables);
+                      FROM information_schema.tables WHERE table_schema IN ('mysql', 'INFORMATION_SCHEMA', 'test'));
 #
 # Bug #23037: Bug in field "Default" of query "SHOW COLUMNS FROM table"
 #
@@ -1320,12 +1338,12 @@ create function f1 (p1 int, p2 datetime, p3 decimal(10,2))
 returns char(10) return null;
 create procedure p1 (p1 float(8,5), p2 char(32), p3 varchar(10)) begin end;
 create procedure p2 (p1 enum('c', 's'), p2 blob, p3 text) begin end;
-select * from information_schema.parameters;
+select * from information_schema.parameters where specific_schema='test';
 select data_type, character_maximum_length,
        character_octet_length, numeric_precision,
        numeric_scale, character_set_name,
        collation_name, dtd_identifier
-from information_schema.routines;
+from information_schema.routines where routine_schema='test';
 drop procedure p1;
 drop procedure p2;
 drop function f1;

@@ -513,6 +513,7 @@ THD::THD()
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
+   table_map_for_update(0),
    arg_of_last_insert_id_function(FALSE),
    first_successful_insert_id_in_prev_stmt(0),
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
@@ -910,6 +911,12 @@ THD::~THD()
   DBUG_ENTER("~THD()");
   /* Ensure that no one is using THD */
   pthread_mutex_lock(&LOCK_delete);
+  /*
+    resetting mysys_var is guarded by LOCK_delete
+    the same mutex as a killer thread acquires in order to get access
+    to the victim's mysys_var
+  */
+  mysys_var= NULL;
   pthread_mutex_unlock(&LOCK_delete);
   add_to_status(&global_status_var, &status_var);
 
@@ -1082,6 +1089,7 @@ void THD::awake(THD::killed_state state_to_set)
 
 bool THD::store_globals()
 {
+  DBUG_ENTER("THD::store_globals");
   /*
     Assert that thread_stack is initialized: it's necessary to be able
     to track stack overrun.
@@ -1090,7 +1098,15 @@ bool THD::store_globals()
 
   if (my_pthread_setspecific_ptr(THR_THD,  this) ||
       my_pthread_setspecific_ptr(THR_MALLOC, &mem_root))
-    return 1;
+    DBUG_RETURN(1);
+#ifndef EMBEDDED_LIBRARY
+  /*
+    mysys_var is concurrently readable by a killer thread.
+    LOCK_delete is not needed to lock while the pointer is
+    changing from NULL not non-NULL.
+  */
+  DBUG_ASSERT(mysys_var == NULL);
+#endif
   mysys_var=my_thread_var;
   /*
     Let mysqld define the thread id (not mysys)
@@ -1104,7 +1120,7 @@ bool THD::store_globals()
     created in another thread
   */
   thr_lock_info_init(&lock_info);
-  return 0;
+  DBUG_RETURN(0);
 }
 
 
@@ -1156,6 +1172,8 @@ void THD::cleanup_after_query()
   free_items();
   /* Reset where. */
   where= THD::DEFAULT_WHERE;
+  /* reset table map for multi-table update */
+  table_map_for_update= 0;
 }
 
 
@@ -3536,6 +3554,26 @@ int THD::binlog_flush_pending_rows_event(bool stmt_end)
 }
 
 
+#ifndef DBUG_OFF
+static const char *
+show_query_type(THD::enum_binlog_query_type qtype)
+{
+  switch (qtype) {
+    static char buf[64];
+  case THD::ROW_QUERY_TYPE:
+    return "ROW";
+  case THD::STMT_QUERY_TYPE:
+    return "STMT";
+  case THD::MYSQL_QUERY_TYPE:
+    return "MYSQL";
+  default:
+    sprintf(buf, "UNKNOWN#%d", qtype);
+    return buf;
+  }
+}
+#endif
+
+
 /*
   Member function that will log query, either row-based or
   statement-based depending on the value of the 'current_stmt_binlog_row_based'
@@ -3564,7 +3602,8 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
                       THD::killed_state killed_status_arg)
 {
   DBUG_ENTER("THD::binlog_query");
-  DBUG_PRINT("enter", ("qtype: %d  query: '%s'", qtype, query_arg));
+  DBUG_PRINT("enter", ("qtype: %s  query: '%s'",
+                       show_query_type(qtype), query_arg));
   DBUG_ASSERT(query_arg && mysql_bin_log.is_open());
 
   /*
@@ -3603,6 +3642,9 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
 
   switch (qtype) {
   case THD::ROW_QUERY_TYPE:
+    DBUG_PRINT("debug",
+               ("current_stmt_binlog_row_based: %d",
+                current_stmt_binlog_row_based));
     if (current_stmt_binlog_row_based)
       DBUG_RETURN(0);
     /* Otherwise, we fall through */

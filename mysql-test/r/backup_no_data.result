@@ -13,6 +13,7 @@ DROP DATABASE other_db;
 SHOW DATABASES;
 Database
 information_schema
+mtr
 mysql
 test
 RESTORE FROM 'all.bak';
@@ -22,6 +23,7 @@ SHOW DATABASES;
 Database
 information_schema
 empty_db
+mtr
 mysql
 other_db
 test
@@ -34,6 +36,7 @@ SHOW DATABASES;
 Database
 information_schema
 empty_db
+mtr
 mysql
 test
 SHOW TABLES IN empty_db;
@@ -45,6 +48,7 @@ SHOW DATABASES;
 Database
 information_schema
 empty_db
+mtr
 mysql
 other_db
 test
@@ -63,6 +67,7 @@ SHOW DATABASES;
 Database
 information_schema
 empty_db
+mtr
 mysql
 other_db
 test

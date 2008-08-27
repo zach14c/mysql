@@ -28,17 +28,19 @@ truncate table t1;
 # close the table (as we are going to change it out of the server process)
 flush table t1;
 
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
+
 # look at log
 --replace_regex /extra......................../extra                       #/ /Total................/Total               #/
-exec $MYISAMLOG $MYSQLTEST_VARDIR/master-data/myisam.log ;
+exec $MYISAMLOG $MYSQLD_DATADIR/myisam.log ;
 # should not have changed the table
 select * from t1;
 flush table t1;
 
 # apply log to empty table
---replace_result $MYSQLTEST_VARDIR VARDIR
+--replace_result $MYSQLD_DATADIR MYSQLD_DATADIR
 --replace_regex /extra......................../extra                       #/ /Total................/Total               #/
-exec $MYISAMLOG -F $MYSQLTEST_VARDIR/master-data -u $MYSQLTEST_VARDIR/master-data/myisam.log ;
+exec $MYISAMLOG -F $MYSQLD_DATADIR -u $MYSQLD_DATADIR/myisam.log ;
 
 # reopen the table and verify that content is back
 select * from t1;

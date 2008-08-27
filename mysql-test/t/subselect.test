@@ -1032,6 +1032,23 @@ SELECT DISTINCT (SELECT a) FROM t1 LIMIT 100;
 DROP TABLE t1;
 
 #
+# Bug 2198
+#
+
+create table t1 (a int, b decimal(13, 3)); 
+insert into t1 values (1, 0.123);
+let $outfile_abs= $MYSQLTEST_VARDIR/tmp/subselect.out.file.1;
+let $outfile_rel= ../../tmp/subselect.out.file.1;
+--error 0,1
+--remove_file $outfile_abs
+eval select a, (select max(b) from t1) into outfile "$outfile_rel" from t1;
+delete from t1;
+eval load data infile "$outfile_rel" into table t1;
+--remove_file $outfile_abs
+select * from t1;
+drop table t1;
+
+#
 # Bug 2479
 #
 
@@ -2995,6 +3012,53 @@ SELECT ((a1,a2) IN (SELECT * FROM t2 WHERE b2 > 0)) IS NULL FROM t1;
 DROP TABLE t1, t2;
 
 #
+# Bug31048: Many nested subqueries may cause server crash.
+#
+#create table t1(a int,b int,key(a),key(b));
+#insert into t1(a,b) values (1,2),(2,1),(2,3),(3,4),(5,4),(5,5),
+#  (6,7),(7,4),(5,3);
+#  TODO: enable the test after fixing 33266 in 6.0
+
+#let $nesting= 26;
+#let $should_work_nesting= 5;
+#let $start= select sum(a),a from t1 where a> ( select sum(a) from t1 ;
+#let $end= )group by a ;
+#let $start_app= where a> ( select sum(a) from t1 ;
+#let $end_pre= )group by b limit 1 ;
+
+#--disable_result_log
+#--disable_query_log
+# At least 4 level nesting should work without errors
+#while ($should_work_nesting)
+#{
+#--echo $should_work_nesting
+#  eval $start $end;
+#  eval explain $start $end;
+#  let $start= $start
+#  $start_app;
+#  let $end= $end_pre
+#  $end;
+#  dec $should_work_nesting;
+#}
+# Other may fail with the 'stack overrun error'
+#while ($nesting)
+#{
+#--echo $nesting
+#--error 0,1436
+#  eval $start $end;
+#--error 0,1436
+#  eval explain $start $end;
+#  let $start= $start
+#  $start_app;
+#  let $end= $end_pre
+#  $end;
+#  dec $nesting;
+#}
+#--enable_result_log
+#--enable_query_log
+#drop table t1;
+
+#
 # Bug #28076: inconsistent binary/varbinary comparison
 #
 
@@ -3437,6 +3501,7 @@ SELECT * FROM t2 WHERE b NOT IN (SELECT max(t.c) FROM t1, t1 t WHERE t.c>10);
 
 DROP TABLE t1,t2;
 
+--echo End of 5.0 tests.
 
 #
 # Bug #38191: Server crash with subquery containing DISTINCT and ORDER BY
@@ -3449,8 +3514,6 @@ INSERT INTO t2 VALUES (2, 20, 700), (1, 10, 200), (4, 10, 100);
 SELECT * FROM t1
    WHERE EXISTS (SELECT DISTINCT a FROM t2 WHERE t1.a < t2.a ORDER BY b);
 DROP TABLE t1,t2;
-
---echo End of 5.1 tests.
 
 
 #
@@ -3679,3 +3742,5 @@ SELECT * FROM t1 WHERE EXISTS ( SELECT 1 INTO @v );
 SELECT * FROM t1 WHERE a IN ( SELECT 1 INTO @v );
 
 DROP TABLE t1, t2;
+
+--echo End of 5.1 tests.
