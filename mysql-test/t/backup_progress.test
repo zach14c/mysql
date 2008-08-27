@@ -8,6 +8,30 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
+# bug#33836 backup tables should have charset utf8
+
+--echo 
+--echo Checking character set for backup tables 
+--echo 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'online_backup' 
+  AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+
+--echo 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'online_backup_progress' 
+  AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+
+--echo 
+--echo Now starting real tests
+--echo 
+
 #
 # Preparative cleanup.
 #
@@ -107,7 +131,7 @@ connection con2;
 reap;
 
 #Show results
---replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 #
+--replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 #
 --query_vertical SELECT ob.* FROM mysql.online_backup AS ob JOIN backup_progress.t1_res AS t1 ON ob.backup_id = t1.id;
 --replace_column 1 # 3 # 4 #
 SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_res AS t1 ON obp.backup_id = t1.id;
@@ -156,7 +180,7 @@ reap;
 DELETE FROM backup_progress.t1_res;
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.online_backup WHERE command LIKE "RESTORE FROM%";
 INSERT INTO backup_progress.t1_res (id) VALUES (@bup_id);
---replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 #
+--replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 #
 --query_vertical SELECT ob.* FROM mysql.online_backup AS ob JOIN backup_progress.t1_res AS t1 ON ob.backup_id = t1.id;
 --replace_column 1 # 3 # 4 #
 SELECT obp.* FROM mysql.online_backup_progress AS obp JOIN backup_progress.t1_res AS t1 ON obp.backup_id = t1.id;

@@ -1555,14 +1555,30 @@ int bstream_wr_item_def(backup_stream *s,
   blob data;
   int ret=BSTREAM_OK;
 
-  if (bcat_get_item_create_query(cat,item,&query) == BSTREAM_OK)
+  /* initialize variables */
+  data.begin= 0;
+  data.end= 0;
+  query.begin= 0;
+  query.end= 0;
+  ret= bcat_get_item_create_query(cat,item,&query);
+  if (ret == BSTREAM_OK) 
     flags |= BSTREAM_FLAG_HAS_CREATE_STMT;
+  else if (ret == BSTREAM_ERROR) 
+    goto wr_error;
 
-  if (bcat_get_item_create_data(cat,item,&data) == BSTREAM_OK)
+  /* bcat_get_item_create_data not in use yet. */
+  /*
+  ret= bcat_get_item_create_data(cat,item,&data);
+  if (ret == BSTREAM_OK)
     flags |= BSTREAM_FLAG_HAS_EXTRA_DATA;
-
+  else if (ret == BSTREAM_ERROR) 
+    goto wr_error;
+  */
+  
   ret= bstream_wr_meta_item(s,kind,flags,item);
-
+  if (ret == BSTREAM_ERROR) 
+    goto wr_error;
+  
   /* save create query and/or create data */
 
   if (flags & BSTREAM_FLAG_HAS_EXTRA_DATA)
