@@ -416,11 +416,9 @@ int RecordVersion::thaw()
 			}
 		}
 		
-	if (bytesRestored <= 0)
-		Log::debug("RecordVersion::thaw: writePending %d, was %d, recordFetched %d, data %p\n",
-					trans->writePending, wasWritePending, recordFetched, data.record);
-
-	ASSERT(bytesRestored > 0 || data.record == NULL);
+	if (state == recChilled)
+		ASSERT(bytesRestored > 0 || data.record == NULL);
+		
 	state = recData;
 		
 	return bytesRestored;
