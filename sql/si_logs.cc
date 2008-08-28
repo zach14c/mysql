@@ -31,7 +31,6 @@ Backup_log::Backup_log(THD *thd,
                        const LEX_STRING path, 
                        const char *query)
 {
-  ulonglong backup_id= 0;
   m_thd= thd;
 
   bzero(&m_op_hist, sizeof(st_backup_history));

@@ -289,8 +289,6 @@ void Logger::report_driver(const char *driver)
 inline
 int Logger::init(enum_type type, const LEX_STRING path, const char *query)
 {
-  ulonglong backup_id= 0;
-
   if (m_state != CREATED)
     return 0;
 

@@ -3516,7 +3516,6 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
 {
   ulonglong id= 0;
   char buff[FN_REFLEN], *file_path;
-  int error= 0;
   File file= 0;
 
   /*
@@ -3565,8 +3564,7 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
     {
       ulonglong read_id= 0;
       my_seek(file, 0, 0, MYF(MY_WME));
-      size_t read_len= my_read(file, (uchar *)&read_id, sizeof(ulonglong), 
-        MYF(MY_WME|MY_NABP));
+      my_read(file, (uchar *)&read_id, sizeof(ulonglong), MYF(MY_WME|MY_NABP));
       id= uint8korr(&read_id);
       id++;
     }
@@ -3601,7 +3599,7 @@ err:
 err_end:
   m_next_id= id;
   pthread_mutex_unlock(&LOCK_backupid);
-  DBUG_PRINT("backup_log",("The next id is %lu.\n", id));
+  DBUG_PRINT("backup_log",("The next id is %lu.\n", (ulong)id));
   return id;
 }
 

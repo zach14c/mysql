@@ -60,7 +60,7 @@ CREATE DATABASE backup_logs;
 CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
-CREATE TABLE backup_logs.t1_res (id INT) ENGINE=MEMORY;
+CREATE TABLE backup_logs.t1_res (id bigint(20)) ENGINE=MEMORY;
 
 INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress"); 
 INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress"); 
