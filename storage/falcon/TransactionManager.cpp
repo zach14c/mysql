@@ -74,26 +74,25 @@ TransId TransactionManager::findOldestActive()
 {
 	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::findOldestActive(1)");
 	syncCommitted.lock(Shared);
-	TransId oldestActive = transactionSequence;
+	TransId oldestCommitted = transactionSequence;
 	
 	for (Transaction *trans = committedTransactions.first; trans; trans = trans->next)
-		oldestActive = MIN(trans->transactionId, oldestActive);
+		oldestCommitted = MIN(trans->transactionId, oldestCommitted);
 
 	syncCommitted.unlock();
-	Sync sync(&activeTransactions.syncObject, "TransactionManager::findOldestActive(2)");
-	sync.lock(Shared);
+
 	Transaction *oldest = findOldest();
 
 	if (oldest)
 		{
-		//Log::debug("Oldest transaction %d, oldest ancestor %d, oldest committed %d\n",  oldest->transactionId, oldest->oldestActive, oldestActive);
-					
-		return MIN(oldest->oldestActive, oldestActive);
+		//Log::debug("Oldest transaction %d, oldest ancestor %d, oldest committed %d\n",  oldest->transactionId, oldest->oldestActive, oldestCommitted);
+
+		return MIN(oldest->oldestActive, oldestCommitted);
 		}
 	
 	//Log::debug("No active, current %d, oldest committed %d\n", transactionSequence, oldestActive);
 	
-	return oldestActive;
+	return oldestCommitted;
 }
 
 Transaction* TransactionManager::findOldest(void)
@@ -247,16 +246,20 @@ void TransactionManager::rollbackByXid(int xidLength, const UCHAR* xid)
 
 void TransactionManager::print(void)
 {
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::print(1)");
-	sync.lock (Exclusive);
-	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::print(2)");
-	committedTrans.lock (Exclusive);
+	Sync syncActive (&activeTransactions.syncObject, "TransactionManager::print(1)");
+	syncActive.lock (Exclusive);
+
+	Sync syncCommitted (&committedTransactions.syncObject, "TransactionManager::print(2)");
+	syncCommitted.lock (Exclusive);
+
 	Transaction *transaction;
 	Log::debug("Active Transaction:\n");
 	
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		transaction->print();
-		
+
+	syncActive.unlock();
+
 	Log::debug("Committed Transaction:\n");
 	
 	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
@@ -266,15 +269,19 @@ void TransactionManager::print(void)
 
 void TransactionManager::getTransactionInfo(InfoTable* infoTable)
 {
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::getTransactionInfo(1)");
-	sync.lock (Exclusive);
-	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::getTransactionInfo(2)");
-	committedTrans.lock (Exclusive);
+	Sync syncActive (&activeTransactions.syncObject, "TransactionManager::getTransactionInfo(2)");
+	syncActive.lock (Exclusive);
+
+	Sync syncCommitted (&committedTransactions.syncObject, "TransactionManager::getTransactionInfo(1)");
+	syncCommitted.lock (Exclusive);
+
 	Transaction *transaction;
 	
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		transaction->getInfo(infoTable);
-	
+
+	syncActive.unlock();
+
 	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
 		transaction->getInfo(infoTable);
 }
@@ -307,10 +314,12 @@ void TransactionManager::purgeTransactions()
 
 void TransactionManager::getSummaryInfo(InfoTable* infoTable)
 {
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::getSummaryInfo(1)");
-	sync.lock (Exclusive);
-	Sync committedTrans (&committedTransactions.syncObject, "TransactionManager::getSummaryInfo(2)");
-	committedTrans.lock (Exclusive);
+	Sync syncActive (&activeTransactions.syncObject, "TransactionManager::getSummaryInfo(2)");
+	syncActive.lock (Exclusive);
+
+	Sync syncCommitted (&committedTransactions.syncObject, "TransactionManager::getSummaryInfo(1)");
+	syncCommitted.lock (Exclusive);
+
 	int numberCommitted = committed;
 	int numberRolledBack = rolledBack;
 	int numberActive = 0;
@@ -327,14 +336,14 @@ void TransactionManager::getSummaryInfo(InfoTable* infoTable)
 		if (transaction->state == Committed)
 			++numberPendingCommit;
 		}
+	syncActive.unlock();
 
 	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->writePending)
 			++numberPendingCompletion;
 	
-	committedTrans.unlock();
-	sync.unlock();
-	
+	syncCommitted.unlock();
+
 	int n = 0;
 	infoTable->putInt(n++, numberCommitted);
 	infoTable->putInt(n++, numberRolledBack);
@@ -402,15 +411,16 @@ void TransactionManager::expungeTransaction(Transaction *transaction)
 
 Transaction* TransactionManager::findTransaction(TransId transactionId)
 {
-	Sync syncActiveTrans(&activeTransactions.syncObject, "TransactionManager::findTransaction(1)");
-	syncActiveTrans.lock(Shared);
+	Sync syncActive(&activeTransactions.syncObject, "TransactionManager::findTransaction(1)");
+	syncActive.lock(Shared);
 	Transaction *transaction;
 
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->transactionId == transactionId)
 			return transaction;
 	
-	syncActiveTrans.unlock();
+	syncActive.unlock();
+
 	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::findTransaction(2)");
 	syncCommitted.lock(Shared);
 
@@ -418,20 +428,21 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 		if (transaction->transactionId == transactionId)
 			return transaction;
 	
-	return NULL;	
+	return NULL;
 }
 
 void TransactionManager::validateDependencies(void)
 {
-	Sync sync(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies(1)");
-	sync.lock(Shared);
+	Sync syncActive(&activeTransactions.syncObject, "TransactionManager::validateDepedendencies(1)");
+	syncActive.lock(Shared);
 	Transaction *transaction;
 
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
 		if (transaction->isActive())
 			transaction->validateDependencies(false);
 			
-	sync.unlock();
+	syncActive.unlock();
+
 	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies(2)");
 	syncCommitted.lock(Shared);
 
