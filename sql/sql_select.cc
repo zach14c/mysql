@@ -7706,6 +7706,8 @@ get_best_combination(JOIN *join, table_map join_tables)
     for (uint i= first; i < i_end; i++)
       handled_tabs |= join->best_positions[i].table->table->map;
 
+    if (tablenr != first)
+      pos->sj_strategy= SJ_OPT_NONE;
     remaining_tables |= s->table->map;
   }
 
