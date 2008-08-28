@@ -180,6 +180,8 @@ public:
 	void		create (const char *tableType, Transaction *transaction);
 	const char* getName();
 	Index*		addIndex (const char *name, int numberFields, int type);
+	void		dropIndex(const char* name, Transaction* transaction);
+	void		renameIndexes(const char *newTableName);
 	Field*		addField (const char *name, Type type, int length, int precision, int scale, int flags);
 	Field*		findField (const char *name);
 	int			getFormatVersion();
