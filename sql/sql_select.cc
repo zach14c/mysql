@@ -16044,8 +16044,9 @@ join_read_const(JOIN_TAB *tab)
       tab  JOIN_TAB of the accessed table
 
   DESCRIPTION
-    This is "read_fist" function for the "ref" access method. The difference
-    from "ref" is that it has a one-element "cache" (see cmp_buffer_with_ref)
+    This is "read_fist" function for the eq_ref access method. The difference
+    from ref access function is that is that it has a one-element lookup 
+    cache (see cmp_buffer_with_ref)
 
   RETURN
     0  - Ok
@@ -16057,40 +16058,12 @@ static int
 join_read_key(JOIN_TAB *tab)
 {
   return join_read_key2(tab, tab->table, &tab->ref);
-#if 0
-  int error;
-  TABLE *table= tab->table;
-
-  if (!table->file->inited)
-  {
-    table->file->ha_index_init(tab->ref.key, tab->sorted);
-  }
-
-  /* TODO: Why don't we do "Late NULLs Filtering" here? */
-  if (cmp_buffer_with_ref(tab->join->thd, table, tab->ref) ||
-      (table->status & (STATUS_GARBAGE | STATUS_NO_PARENT | STATUS_NULL_ROW)))
-  {
-    if (tab->ref.key_err)
-    {
-      table->status=STATUS_NOT_FOUND;
-      return -1;
-    }
-    error=table->file->index_read_map(table->record[0],
-                                      tab->ref.key_buff,
-                                      make_prev_keypart_map(tab->ref.key_parts),
-                                      HA_READ_KEY_EXACT);
-    if (error && error != HA_ERR_KEY_NOT_FOUND && error != HA_ERR_END_OF_FILE)
-      return report_error(table, error);
-  }
-  table->null_row=0;
-  return table->status ? -1 : 0;
-#endif
 }
 
 
 /* 
-  ref access handler but genericized a bit to support TABLE and TABLE_REF
-  not from the join_tab
+  eq_ref access handler but genericized a bit to support TABLE and TABLE_REF
+  not from the join_tab. See join_read_key for detailed synopsis.
 */
 static int
 join_read_key2(JOIN_TAB *tab, TABLE *table, TABLE_REF *table_ref)
