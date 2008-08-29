@@ -278,7 +278,7 @@ sp_rcontext::find_handler(THD *thd, const SQL_condition *cond)
   SQL_condition *raised;
   raised= SQL_condition::deep_copy(thd, m_cond_root, cond) ;
   DBUG_ASSERT(m_hfound >= 0);
-  DBUG_ASSERT(m_hfound < m_root_parsing_ctx->max_handler_index());
+  DBUG_ASSERT((uint) m_hfound < m_root_parsing_ctx->max_handler_index());
   m_raised_conditions[m_hfound]= raised;
 
   return TRUE;
