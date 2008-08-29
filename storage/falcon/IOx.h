@@ -55,6 +55,7 @@ public:
 	int		read(int length, UCHAR *buffer);
 	void	write(uint32 length, const UCHAR *data);
 	static bool	doesFileExist(const char *fileName);
+	static bool isDirectory(const char *path);
 	static int	fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
 	void	declareFatalError();
 	void	seek (int pageNumber);

@@ -456,12 +456,10 @@ void IO::expandFileName(const char *fileName, int length, char *buffer, const ch
 	const char *path;
 	JString fname = getPath(fileName);
 	fileName = fname.getString();
-
 #ifdef _WIN32
 	char *base;
-	
+
 	GetFullPathName(fileName, sizeof (expandedName), expandedName, &base);
-	
 	path = expandedName;
 #else
 	const char *base;
@@ -508,6 +506,43 @@ bool IO::doesFileExist(const char *fileName)
 	int errnum;
 	
 	return fileStat(fileName, &stats, &errnum) == 0;
+}
+
+bool IO::isDirectory(const char *path)
+{
+	struct stat buf;
+	char tmpPath[PATH_MAX+1];
+
+#ifdef _WIN32	
+	strncpy(tmpPath, path, MIN(PATH_MAX, (int)strlen(path)+1));
+	tmpPath[PATH_MAX] = '\0';
+	char *last = tmpPath + strlen(tmpPath) - 1;
+	
+	// Win32 stat() fails for paths with a terminating backslash
+	// If this is a non-empty string, then zap the trailing backslash
+	
+	if (last > tmpPath)
+		{
+		if (*last == '\\')
+			*last = '\0';
+		
+		if (!stat(tmpPath, &buf))
+			return ((buf.st_mode & S_IFDIR) != 0);
+		}
+		
+	return false;
+#else
+	const char *resolvedPath;
+	resolvedPath = realpath (path, tmpPath);
+
+	if (!resolvedPath)
+		return false;
+
+	if (stat(resolvedPath, &buf))
+		return false;
+		
+	return S_ISDIR (buf.st_mode);
+#endif
 }
 
 int IO::fileStat(const char *fileName, struct stat *fileStats, int *errnum)

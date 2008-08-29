@@ -146,10 +146,7 @@ Configuration::Configuration(const char *configFile)
 	
 		// Verify that the directory exists
 		
-		ScanDir scanDir(serialLogDir, "*.*");
-		scanDir.next();
-		
-		if (!scanDir.isDirectory())
+		if (!io.isDirectory(serialLogDir.getString()))
 			{
 			fprintf(stderr, 
 					"Falcon: The specified serial log directory, \"%s\", "

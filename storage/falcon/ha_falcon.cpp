@@ -692,7 +692,7 @@ void StorageInterface::getDemographics(void)
 			{
 			ha_rows rows = 1 << indexDesc->numberSegments;
 
-			for (uint segment = 0; segment < indexDesc->numberSegments /*key->key_parts*/; ++segment, rows >>= 1)
+			for (uint segment = 0; segment < (uint)indexDesc->numberSegments /*key->key_parts*/; ++segment, rows >>= 1)
 				{
 				ha_rows recordsPerSegment = (ha_rows)indexDesc->segmentRecordCounts[segment];
 				key->rec_per_key[segment] = (ulong) MAX(recordsPerSegment, rows);
