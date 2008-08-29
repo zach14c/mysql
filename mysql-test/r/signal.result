@@ -551,13 +551,13 @@ SIGNAL foo;
 ERROR 42000: Undefined CONDITION: foo
 SIGNAL SQLSTATE '01000';
 Warnings:
-Warning	1727	Unhandled user-defined warning
+Warning	1727	Unhandled user-defined warning condition
 SIGNAL SQLSTATE '02000';
-ERROR 02000: Unhandled user-defined not found
+ERROR 02000: Unhandled user-defined not found condition
 SIGNAL SQLSTATE '23000';
-ERROR 23000: Unhandled user-defined exception
+ERROR 23000: Unhandled user-defined exception condition
 SIGNAL SQLSTATE VALUE '23000';
-ERROR 23000: Unhandled user-defined exception
+ERROR 23000: Unhandled user-defined exception condition
 SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = 65536;
 ERROR 42000: Variable 'MYSQL_ERRNO' can't be set to the value of '65536'
 SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = 99999;
@@ -569,7 +569,7 @@ ERROR 42000: Variable 'MYSQL_ERRNO' can't be set to the value of '0'
 SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = -1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '-1' at line 1
 SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = 65535;
-ERROR HY000: Unhandled user-defined exception
+ERROR HY000: Unhandled user-defined exception condition
 RESIGNAL;
 ERROR 0K000: RESIGNAL when handler not active
 RESIGNAL foo;
@@ -585,7 +585,7 @@ DECLARE foo CONDITION FOR SQLSTATE 'AABBB';
 SIGNAL foo SET MYSQL_ERRNO = 65535;
 end $$
 call test_signal() $$
-ERROR AABBB: Unhandled user-defined exception
+ERROR AABBB: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -603,7 +603,7 @@ DECLARE foo CONDITION FOR SQLSTATE '99999';
 SIGNAL foo SET MYSQL_ERRNO = 9999;
 end $$
 call test_signal() $$
-ERROR 99999: Unhandled user-defined exception
+ERROR 99999: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -613,7 +613,7 @@ SIGNAL too_few_records SET MYSQL_ERRNO = 1261;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1261	Unhandled user-defined warning
+Warning	1261	Unhandled user-defined warning condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -622,7 +622,7 @@ DECLARE sp_fetch_no_data CONDITION FOR SQLSTATE '02000';
 SIGNAL sp_fetch_no_data SET MYSQL_ERRNO = 1329;
 end $$
 call test_signal() $$
-ERROR 02000: Unhandled user-defined not found
+ERROR 02000: Unhandled user-defined not found condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -631,7 +631,7 @@ DECLARE sp_cursor_already_open CONDITION FOR SQLSTATE '24000';
 SIGNAL sp_cursor_already_open SET MYSQL_ERRNO = 1325;
 end $$
 call test_signal() $$
-ERROR 24000: Unhandled user-defined exception
+ERROR 24000: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -640,7 +640,7 @@ DECLARE lock_deadlock CONDITION FOR SQLSTATE '40001';
 SIGNAL lock_deadlock SET MYSQL_ERRNO = 1213;
 end $$
 call test_signal() $$
-ERROR 40001: Unhandled user-defined exception
+ERROR 40001: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -649,7 +649,7 @@ DECLARE foo CONDITION FOR SQLSTATE "99999";
 SIGNAL foo;
 end $$
 call test_signal() $$
-ERROR 99999: Unhandled user-defined exception
+ERROR 99999: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -659,7 +659,7 @@ SIGNAL warn;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	Unhandled user-defined warning
+Warning	1727	Unhandled user-defined warning condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -669,7 +669,7 @@ SIGNAL warn;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	Unhandled user-defined warning
+Warning	1727	Unhandled user-defined warning condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -678,7 +678,7 @@ DECLARE not_found CONDITION FOR SQLSTATE "02000";
 SIGNAL not_found;
 end $$
 call test_signal() $$
-ERROR 02000: Unhandled user-defined not found
+ERROR 02000: Unhandled user-defined not found condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -687,7 +687,7 @@ DECLARE not_found CONDITION FOR SQLSTATE "02XXX";
 SIGNAL not_found;
 end $$
 call test_signal() $$
-ERROR 02XXX: Unhandled user-defined not found
+ERROR 02XXX: Unhandled user-defined not found condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -696,7 +696,7 @@ DECLARE error CONDITION FOR SQLSTATE "12000";
 SIGNAL error;
 end $$
 call test_signal() $$
-ERROR 12000: Unhandled user-defined exception
+ERROR 12000: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -705,7 +705,7 @@ DECLARE error CONDITION FOR SQLSTATE "12ABC";
 SIGNAL error;
 end $$
 call test_signal() $$
-ERROR 12ABC: Unhandled user-defined exception
+ERROR 12ABC: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -714,7 +714,7 @@ DECLARE error CONDITION FOR SQLSTATE "40000";
 SIGNAL error;
 end $$
 call test_signal() $$
-ERROR 40000: Unhandled user-defined exception
+ERROR 40000: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -723,7 +723,7 @@ DECLARE error CONDITION FOR SQLSTATE "40001";
 SIGNAL error;
 end $$
 call test_signal() $$
-ERROR 40001: Unhandled user-defined exception
+ERROR 40001: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -734,7 +734,7 @@ end;
 SIGNAL foo SET MYSQL_ERRNO=9999; /* outer */
 end $$
 call test_signal() $$
-ERROR 99999: Unhandled user-defined exception
+ERROR 99999: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -745,7 +745,7 @@ SIGNAL foo SET MYSQL_ERRNO=8888; /* inner */
 end;
 end $$
 call test_signal() $$
-ERROR 88888: Unhandled user-defined exception
+ERROR 88888: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -753,7 +753,7 @@ DECLARE foo CONDITION FOR SQLSTATE '99999';
 SIGNAL foo SET MYSQL_ERRNO = 1111;
 end $$
 call test_signal() $$
-ERROR 99999: Unhandled user-defined exception
+ERROR 99999: Unhandled user-defined exception condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -762,7 +762,7 @@ SIGNAL warn SET MYSQL_ERRNO = 1111;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1111	Unhandled user-defined warning
+Warning	1111	Unhandled user-defined warning condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -770,7 +770,7 @@ DECLARE not_found CONDITION FOR SQLSTATE "02000";
 SIGNAL not_found SET MYSQL_ERRNO = 1111;
 end $$
 call test_signal() $$
-ERROR 02000: Unhandled user-defined not found
+ERROR 02000: Unhandled user-defined not found condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -778,7 +778,7 @@ DECLARE error CONDITION FOR SQLSTATE "55000";
 SIGNAL error SET MYSQL_ERRNO = 1111;
 end $$
 call test_signal() $$
-ERROR 55000: Unhandled user-defined exception
+ERROR 55000: Unhandled user-defined exception condition
 drop procedure test_signal $$
 SIGNAL SQLSTATE '77777' SET MESSAGE_TEXT='' $$
 ERROR 77777: 

@@ -6379,13 +6379,13 @@ ER_DUP_SIGNAL_SET 42000
         eng "Duplicate condition information item '%s'"
 
 ER_SIGNAL_WARN 01000
-        eng "Unhandled user-defined warning"
+        eng "Unhandled user-defined warning condition"
 
 ER_SIGNAL_NOT_FOUND 02000
-        eng "Unhandled user-defined not found"
+        eng "Unhandled user-defined not found condition"
 
 ER_SIGNAL_EXCEPTION HY000
-        eng "Unhandled user-defined exception"
+        eng "Unhandled user-defined exception condition"
 
 ER_RESIGNAL_NO_HANDLER 0K000
         eng "RESIGNAL when handler not active"
