@@ -4,7 +4,18 @@
   Implementation of @c Backup_info class. Method @c find_backup_engine()
   implements algorithm for selecting backup engine used to backup
   given table.
- */
+  
+  @todo Fix error detection in places marked with "FIXME: detect errors...". 
+  These are places where functions or methods are called and if they can 
+  report errors it should be detected and appropriate action taken. If callee 
+  never reports errors or we want to ignore errors, a comment explaining this
+  should be added.
+
+  @todo Fix error logging in places marked with "FIXME: error logging...". In 
+  these places it should be decided if and how the error should be shown to the
+  user. If an error message should be logged, it can happen either in the place
+  where error was detected or somewhere up the call stack.
+*/
 
 #include "../mysql_priv.h"
 
@@ -306,8 +317,12 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
 
   bzero(m_snap, sizeof(m_snap));
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
             Ts_hash_node::get_key, Ts_hash_node::free, MYF(0));
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
             Dep_node::get_key, Dep_node::free, MYF(0));
 
@@ -319,23 +334,32 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
 
   snap= new Nodata_snapshot(m_ctx);  // reports errors
 
+  // FIXME: error logging (in case snap could not be allocated).
   if (!snap || !snap->is_valid())
     return;
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   snapshots.push_back(snap);
 
   snap= new CS_snapshot(m_ctx); // reports errors
 
+  // FIXME: error logging (in case snap could not be allocated).
   if (!snap || !snap->is_valid())
     return;
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   snapshots.push_back(snap);
 
   snap= new Default_snapshot(m_ctx);  // reports errors
 
+  // FIXME: error logging (in case snap could not be allocated).
   if (!snap || !snap->is_valid())
     return;
 
+  // FIXME: detect errors if reported.
+  // FIXME: error logging.
   snapshots.push_back(snap);
 
   m_state= CREATED;
@@ -964,9 +988,9 @@ error:
   @param[in] type type of the object
   @param[in] obj  the object
 
-  The object is also added to the dependency list with @c add_to_dep_list() 
-  method. If it is a view, its dependencies are handled first using 
-  @c add_view_deps().
+  The object is added both to the dependency list with @c
+  add_to_dep_list() method and to the catalogue. If it is a view, its
+  dependencies are handled first using @c add_view_deps().
 
   @returns Pointer to @c Image_info::Dbobj instance storing information 
   about the object or NULL in case of error.  
@@ -998,16 +1022,6 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   }
 
-  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
-  
-  if (!o)
-  {
-    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
-    return NULL;
-  }
-
-  o->m_obj_ptr= obj;
-
   /* 
     Add new object to the dependency list. If it is a view, add its
     dependencies first.
@@ -1026,15 +1040,6 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     return NULL;
   }
 
-  /* 
-    Store a pointer to the catalogue item in the dep. list node. If this node
-    was a placeholder inserted into the list before, now it will be filled with
-    the object we are adding to the catalogue.
-   */
-
-  DBUG_ASSERT(n);
-  n->obj= o;  
-
   /*
     If a new node was created, it must be added to the dependency list with
     add_to_dep_list(). However, if the object is a view, we must first add 
@@ -1052,6 +1057,36 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
     add_to_dep_list(type, n);
   } 
+
+  /*
+    The object has now been added to the dependancy list. If it is a
+    view, all dependant objects have also been successfully added to
+    the dependency list. The object can now be added to the cataloge
+    and then be linked to from the node in the dep list. Adding to dep
+    list before adding to catalogue ensures that an object will not be
+    added to catalogue if there are problems with it's dependant
+    objects.
+   */
+
+  // Add object to catalogue
+  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
+  
+  if (!o)
+  {
+    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    return NULL;
+  }
+
+  o->m_obj_ptr= obj;
+
+  /* 
+    Store a pointer to the catalogue item in the dep. list node. If this node
+    was a placeholder inserted into the list before, now it will be filled with
+    the object we are adding to the catalogue.
+   */
+
+  DBUG_ASSERT(n);
+  n->obj= o;  
 
   DBUG_PRINT("backup",("Added object %s of type %d from database %s (pos=%lu)",
                        name->ptr(), type, db.name().ptr(), pos));
@@ -1240,8 +1275,9 @@ inline
 Backup_info::Global_iterator::Global_iterator(const Image_info &info)
  :Iterator(info), mode(TABLESPACES), m_it(NULL), m_obj(NULL)
 {
+  // FIXME: detect errors (if NULL returned).
   m_it= m_info.get_tablespaces();
-  next();
+  next();       // Note: next() doesn't report errors.
 }
 
 

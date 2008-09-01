@@ -79,6 +79,9 @@ my_bool _ma_setup_live_state(MARIA_HA *info)
 
   pthread_mutex_lock(&share->intern_lock);
   share->in_trans++;
+  DBUG_PRINT("info", ("share: 0x%lx  in_trans: %d",
+                      (ulong) share, share->in_trans));
+
   history= share->state_history;
 
   /*
@@ -359,19 +362,20 @@ my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
 {
   my_bool error= 0;
   MARIA_USED_TABLES *tables, *next;
+  DBUG_ENTER("_ma_trnman_end_trans_hook");
   
   for (tables= (MARIA_USED_TABLES*) trn->used_tables;
        tables;
        tables= next)
   {
+    MARIA_SHARE *share= tables->share;
     next= tables->next;
     if (commit)
     {
-      MARIA_SHARE *share= tables->share;
       MARIA_STATE_HISTORY *history;
 
       pthread_mutex_lock(&share->intern_lock);
-      if (active_transactions &&
+      if (active_transactions && share->now_transactional &&
           trnman_exists_active_transactions(share->state_history->trid,
                                             trn->commit_trid, 1))
       {
@@ -405,14 +409,67 @@ my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
         /* Remove not visible states */
         share->state_history= _ma_remove_not_visible_states(history, 0, 1);
       }
+      DBUG_PRINT("info", ("share: 0x%lx  in_trans: %d",
+                          (ulong) share, share->in_trans));
       share->in_trans--;
       pthread_mutex_unlock(&share->intern_lock);
+    }
+    else
+    {
+#ifndef DBUG_OFF
+      /*
+        We need to keep share->in_trans correct in the debug library
+        because of the assert in maria_close()
+      */
+      pthread_mutex_lock(&share->intern_lock);
+      share->in_trans--;
+      pthread_mutex_unlock(&share->intern_lock);
+#endif
     }
     my_free(tables, MYF(0));
   }
   trn->used_tables= 0;
-  return error;
+  DBUG_RETURN(error);
 }
+
+
+/**
+   Remove table from trnman_list
+
+   @notes
+     This is used when we unlock a table from a group of locked tables
+     just before doing a rename or drop table.
+
+     share->internal_lock must be locked when function is called
+*/
+
+void _ma_remove_table_from_trnman(MARIA_SHARE *share, TRN *trn)
+{
+  MARIA_USED_TABLES *tables, **prev;
+  DBUG_ENTER("_ma_remove_table_from_trnman");
+  DBUG_PRINT("enter", ("share: 0x%lx  in_trans: %d",
+                       (ulong) share, share->in_trans));
+
+  safe_mutex_assert_owner(&share->intern_lock);
+  
+  for (prev= (MARIA_USED_TABLES**) &trn->used_tables, tables= *prev;
+       tables;
+       tables= *prev)
+  {
+    if (tables->share == share)
+    {
+      *prev= tables->next;
+      share->in_trans--;
+      DBUG_PRINT("info", ("in_trans: %d", share->in_trans));
+      my_free(tables, MYF(0));
+      break;
+    }
+    prev= &tables->next;
+  }
+  DBUG_VOID_RETURN;
+}
+
+
 
 
 /****************************************************************************
@@ -506,6 +563,23 @@ void _ma_copy_nontrans_state_information(MARIA_HA *info)
 {
   info->s->state.state.records=          info->state->records;
   info->s->state.state.checksum=         info->state->checksum;
+}
+
+
+void _ma_reset_history(MARIA_SHARE *share)
+{
+  MARIA_STATE_HISTORY *history, *next;
+
+  share->state_history->trid= 0;          /* Visibly by all */
+  share->state_history->state= share->state.state;
+  history= share->state_history->next;
+  share->state_history->next= 0;
+
+  for (; history; history= next)
+  {
+    next= history->next;
+    my_free(history, MYF(0));
+  }
 }
 
 

@@ -5864,7 +5864,7 @@ mysql_fast_or_online_alter_table(THD *thd,
     Upgrade the shared metadata lock to exclusive and close all
     instances of the table in the TDC except those used in this thread.
   */
-  if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
+  if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     DBUG_RETURN(1);
 
   alter_table_manage_keys(table, table->file->indexes_are_disabled(),
@@ -7088,7 +7088,6 @@ view_err:
   if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     goto err_new_table_cleanup;
 
-
   close_all_tables_for_name(thd, table->s,
                             new_name != table_name || new_db != db);
 
@@ -7461,7 +7460,7 @@ err:
   if (errpos >= 3 && to->file->ha_end_bulk_insert(error > 1) && error <= 0)
   {
     to->file->print_error(my_errno,MYF(0));
-    error=1;
+    error= 1;
   }
   to->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
 
@@ -7484,6 +7483,8 @@ err:
   to->file->ha_release_auto_increment();
   if (errpos >= 2 && to->file->ha_external_lock(thd,F_UNLCK))
     error=1;
+  if (error < 0 && to->file->extra(HA_EXTRA_PREPARE_FOR_RENAME))
+    error= 1;
   DBUG_RETURN(error > 0 ? -1 : 0);
 }
 
