@@ -5217,13 +5217,14 @@ compare_tables(THD *thd,
   Create_field *new_field, *tmp_new_field;
   KEY_PART_INFO *key_part;
   KEY_PART_INFO *end;
-  uint candidate_key_count= 0;
-  bool not_nullable= true;
   /*
     Remember if the new definition has new VARCHAR column;
     create_info->varchar will be reset in mysql_prepare_create_table.
   */
   bool varchar= create_info->varchar;
+  uint candidate_key_count= 0;
+  bool not_nullable= true;
+
   /*
     Create a copy of alter_info.
     To compare the new and old table definitions, we need to "prepare"
@@ -5246,13 +5247,13 @@ compare_tables(THD *thd,
 
   /* Create the prepared information. */
   if (mysql_prepare_create_table(thd, create_info,
-                                  &tmp_alter_info,
-                                  (table->s->tmp_table != NO_TMP_TABLE),
-                                  &db_options,
-                                  table->file,
-                                  &ha_alter_info->key_info_buffer,
-                                  &ha_alter_info->key_count,
-                                  /* select_field_count */ 0))
+                                 &tmp_alter_info,
+                                 (table->s->tmp_table != NO_TMP_TABLE),
+                                 &db_options,
+                                 table->file,
+                                 &ha_alter_info->key_info_buffer,
+                                 &ha_alter_info->key_count,
+                                 /* select_field_count */ 0))
     DBUG_RETURN(TRUE);
   /* Allocate result buffers. */
   if (! (ha_alter_info->index_drop_buffer=
@@ -5362,9 +5363,10 @@ compare_tables(THD *thd,
       new_field->charset= create_info->default_table_charset;
 
     /* Don't pack rows in old tables if the user has requested this. */
-    if ((tmp_new_field->flags & BLOB_FLAG) ||
-        tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
-        create_info->row_type != ROW_TYPE_FIXED)
+    if (create_info->row_type == ROW_TYPE_DYNAMIC ||
+	(tmp_new_field->flags & BLOB_FLAG) ||
+	tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
+	create_info->row_type != ROW_TYPE_FIXED)
       create_info->table_options|= HA_OPTION_PACK_RECORD;
 
     /* Check how fields have been modified */

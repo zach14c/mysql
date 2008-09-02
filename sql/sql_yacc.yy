@@ -5218,7 +5218,7 @@ attribute:
             Lex->default_value=$2; 
             Lex->alter_info.flags|= ALTER_COLUMN_DEFAULT;
           }
-        | ON UPDATE_SYM NOW_SYM optional_braces 
+        | ON UPDATE_SYM NOW_SYM optional_braces
           {
             Item *item= new (YYTHD->mem_root) Item_func_now_local();
             if (item == NULL)

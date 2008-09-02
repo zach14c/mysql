@@ -1162,7 +1162,7 @@ int MgmtSrvr::sendSTOP_REQ(const Vector<NodeId> &node_ids,
 	CAST_CONSTPTR(NodeFailRep, signal->getDataPtr());
       NdbNodeBitmask mask;
       mask.assign(NdbNodeBitmask::Size, rep->theNodes);
-      mask.bitAND(notstarted);
+      mask.bitANDC(notstarted);
       nodes.bitANDC(mask);
       
       if (singleUserNodeId == 0)
@@ -2339,6 +2339,7 @@ MgmtSrvr::alloc_node_id(NodeId * nodeId,
 			  "or specifying unique host names in config file,\n"
 			  "or specifying just one mgmt server in config file.",
 			  tmp);
+      NdbMutex_Unlock(m_configMutex);
       error_code = NDB_MGM_ALLOCID_CONFIG_MISMATCH;
       DBUG_RETURN(false);
     }

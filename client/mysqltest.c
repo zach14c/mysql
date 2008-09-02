@@ -374,6 +374,7 @@ const char *command_names[]=
   "list_files_write_file",
   "list_files_append_file",
   "result_format",
+  "result_format",
   0
 };
 

@@ -1216,6 +1216,7 @@ int chk_data_link(HA_CHECK *param, MI_INFO *info, my_bool extend)
       param->glob_crc+= (*info->s->calc_check_checksum)(info,record);
       link_used+= (block_info.filepos - start_recpos);
       used+= (pos-start_recpos);
+      break;
     } /* switch */
     if (! got_error)
     {
