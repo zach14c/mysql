@@ -357,6 +357,12 @@ sub mtr_report_stats ($) {
 		(
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
 		) or
+                
+		# The backup_securefilepriv test triggers error below on purpose
+		($testname eq 'main.backup_securefilepriv') and
+		(
+		  /Backup: The MySQL server is running with the /
+		) or
 		
 		# The views test triggers errors below on purpose
 		($testname eq 'main.backup_views') and

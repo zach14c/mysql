@@ -129,6 +129,8 @@ class Backup_restore_ctx: public backup::Logger
   int lock_tables_for_restore();
   int unlock_tables();
   
+  int report_stream_open_failure(int open_error, const LEX_STRING *location);
+
   friend class Backup_info;
   friend class Restore_info;
   friend int backup_init();
