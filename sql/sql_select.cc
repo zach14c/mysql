@@ -7617,12 +7617,12 @@ get_best_combination(JOIN *join, table_map join_tables)
       for (i= tablenr; i != (first + sjm->n_tables - 1); i--)
         rem_tables |= join->best_positions[i].table->table->map;
 
-      POSITION curpos, dummy;
+      POSITION dummy;
       for (i= first + sjm->n_tables; i <= tablenr; i++)
       {
         best_access_path(join, join->best_positions[i].table, rem_tables, i, FALSE,
                          prefix_rec_count, join->best_positions + i, &dummy);
-        prefix_rec_count *= curpos.records_read;
+        prefix_rec_count *= join->best_positions[i].records_read;
         rem_tables &= ~join->best_positions[i].table->table->map;
       }
     }
