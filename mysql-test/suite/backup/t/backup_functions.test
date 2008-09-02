@@ -145,7 +145,7 @@ SELECT square_area(11);
 --query_vertical SHOW CREATE TABLE players;
 describe penalties;
 --replace_column  4 # 5 # 6 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Backup and restore data.
 --echo backup data
@@ -172,7 +172,7 @@ describe penalties;
 describe matches;
 --replace_column  4 # 5 # 6 #
 
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored properly or
 # not.
@@ -204,7 +204,7 @@ SELECT @@SQL_MODE;
 --query_vertical SHOW CREATE FUNCTION number_of_players;
 --replace_column  4 # 5 # 6 #
 
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored
 #properly or not.
@@ -227,7 +227,7 @@ SELECT @@SQL_MODE;
 --query_vertical SHOW CREATE DATABASE bup_sfs;
 --query_vertical SHOW CREATE FUNCTION number_of_players;
 --replace_column  4 # 5 # 6 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored properly
 #or not.
@@ -252,7 +252,7 @@ SELECT @@SQL_MODE;
 --query_vertical SHOW CREATE TABLE players;
 describe matches;
 --replace_column  4 # 5 # 6 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored properly
 # ornot

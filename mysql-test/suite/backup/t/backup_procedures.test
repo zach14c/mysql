@@ -77,7 +77,7 @@ SELECT @x;
 --replace_result $ENGINE ENGINE
 --query_vertical SHOW CREATE TABLE country;
 --replace_column 4 # 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db <> 'mtr';
 
 #Backup and restore data.
 
@@ -99,7 +99,7 @@ RESTORE FROM 'bup_sp.bak';
 --replace_result $ENGINE ENGINE
 --query_vertical SHOW CREATE TABLE country;
 --replace_column 4 # 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db <> 'mtr';
 
 
 #Excercise the objects after restore to make sure if objects are backedup and

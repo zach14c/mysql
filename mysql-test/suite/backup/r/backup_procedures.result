@@ -65,7 +65,7 @@ Create Table	CREATE TABLE `country` (
   `ccode` char(10) DEFAULT NULL,
   `city` varchar(10) DEFAULT NULL
 ) ENGINE=ENGINE DEFAULT CHARSET=latin1
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db <> 'mtr';;
 Db	bup_sp
 Name	countryinfo
 Type	PROCEDURE
@@ -116,7 +116,7 @@ Create Table	CREATE TABLE `country` (
   `ccode` char(10) DEFAULT NULL,
   `city` varchar(10) DEFAULT NULL
 ) ENGINE=ENGINE DEFAULT CHARSET=latin1
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db <> 'mtr';;
 Db	bup_sp
 Name	countryinfo
 Type	PROCEDURE
