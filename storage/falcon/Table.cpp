@@ -209,6 +209,34 @@ Index* Table::addIndex(const char * name, int numberFields, int type)
 	return index;
 }
 
+void Table::dropIndex(const char* indexName, Transaction* transaction)
+{
+	Sync sync(&syncObject, "Table::dropIndex");
+	sync.lock(Exclusive);
+	
+	Index *index = findIndex(indexName);
+		
+	if (index)
+		deleteIndex(index, transaction);
+}
+
+void Table::renameIndexes(const char *newTableName)
+{
+	for (Index *index = indexes; index; index = index->next)
+		{
+		if (index->type != PrimaryKey)
+			{
+
+			// Assume that index name is <table>$<index>
+
+			char newIndexName[256];
+			const char *p = strchr((const char*)index->name, '$');
+			sprintf(newIndexName, "%s%s", newTableName, (const char *)p);
+			index->rename(newIndexName);
+			}
+		}
+}
+
 const char* Table::getName()
 {
 	return name;
@@ -1706,6 +1734,19 @@ void Table::addIndex(Index * index)
 	*ptr = index;
 }
 
+void Table::dropIndex(Index *index)
+{
+	Sync sync(&syncObject, "Table::dropIndex");
+	sync.lock(Exclusive);
+
+	for (Index **ptr = &indexes; *ptr; ptr = &(*ptr)->next)
+		if (*ptr == index)
+			{
+			*ptr = index->next;
+			break;
+			}
+}
+
 void Table::addAttachment(TableAttachment * attachment)
 {
 	attachments.appendUnique(attachment);
@@ -2226,15 +2267,6 @@ void Table::dropTrigger(Trigger *trigger)
 #endif
 }
 
-void Table::dropIndex(Index *index)
-{
-	for (Index **ptr = &indexes; *ptr; ptr = &(*ptr)->next)
-		if (*ptr == index)
-			{
-			*ptr = index->next;
-			break;
-			}
-}
 
 int Table::nextColumnId(int previous)
 {
@@ -3196,6 +3228,8 @@ void Table::rename(const char *newSchema, const char *newName)
 		Index *primaryKey = getPrimaryKey();
 		database->renameTable(this, newSchema, newName);
 		
+		renameIndexes(newName);
+		
 		if (primaryKey)
 			primaryKey->rename(getPrimaryKeyName());
 		}
@@ -3491,7 +3525,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 
 				ASSERT(IS_CONSISTENT_READ(transaction->isolationLevel));
 				record->release();
-				Log::debug("Table::fetchForUpdate: Update Conflict: TransId=%d, RecordNumber=%d, Table %s.%s", 
+				Log::debug("Table::fetchForUpdate: Update Conflict: TransId=%d, RecordNumber=%d, Table %s.%s\n", 
 					transaction->transactionId, record->recordNumber, schemaName, name);
 				throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s", schemaName, name);
 
