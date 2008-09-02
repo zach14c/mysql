@@ -559,10 +559,12 @@ con6: Resume all.
 SET DEBUG_SYNC= 'now SIGNAL status_shown2';
 con2: Completing DDL
 Table	Op	Msg_type	Msg_text
+bup_ddl_blocker.t1	optimize	note	Table does not support optimize, doing recreate + analyze instead
 bup_ddl_blocker.t1	optimize	status	OK
 con3: Completing DDL
 con4: Completing DDL
 Table	Op	Msg_type	Msg_text
+bup_ddl_blocker.t3	optimize	note	Table does not support optimize, doing recreate + analyze instead
 bup_ddl_blocker.t3	optimize	status	OK
 con5: Completing DDL
 backup_id
@@ -679,10 +681,12 @@ con6: Resume all.
 SET DEBUG_SYNC= 'now SIGNAL status_shown2';
 con2: Completing DDL
 Table	Op	Msg_type	Msg_text
+bup_ddl_blocker.t1	optimize	note	Table does not support optimize, doing recreate + analyze instead
 bup_ddl_blocker.t1	optimize	status	OK
 con3: Completing DDL
 con4: Completing DDL
 Table	Op	Msg_type	Msg_text
+bup_ddl_blocker.t3	optimize	note	Table does not support optimize, doing recreate + analyze instead
 bup_ddl_blocker.t3	optimize	status	OK
 con5: Completing DDL
 backup_id

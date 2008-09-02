@@ -47,3 +47,27 @@ create table t_illegal (a int, b int, constraint abc check a>b);
 --error ER_PARSE_ERROR
 create table t_illegal (a int, b int, constraint abc);
 
+#
+# Bug#11714 (Non-sensical ALTER TABLE ADD CONSTRAINT allowed)
+#
+
+--disable_warnings
+drop table if exists t_11714;
+--enable_warnings
+
+create table t_11714(a int, b int);
+
+--error ER_PARSE_ERROR
+alter table t_11714 add constraint cons1;
+
+drop table t_11714;
+
+#
+# Bug#38696 (CREATE TABLE ... CHECK ... allows illegal syntax)
+
+--error ER_PARSE_ERROR
+CREATE TABLE t_illegal (col_1 INT CHECK something (whatever));
+
+--error ER_PARSE_ERROR
+CREATE TABLE t_illegal (col_1 INT CHECK something);
+
