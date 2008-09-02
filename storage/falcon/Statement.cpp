@@ -144,7 +144,6 @@ Statement::Statement(Connection *pConnection, Database *db)
 	special = false;
 	active = false;
 	memset (&stats, 0, sizeof (stats));
-	syncObject.setName("Statement::syncObject");
 }
 
 Statement::~Statement()
@@ -2303,16 +2302,10 @@ void Statement::dropIndex(Syntax *syntax)
 		throw SQLEXCEPTION (DDL_ERROR, "table %s.%s not defined", (const char*) tableName, schema);
 
 	checkAlterPriv (table);
-	Index *index = table->findIndex (name);
 
-	if (index)
-		{
 		Transaction *sysTransaction = database->getSystemTransaction();
-		table->dropIndex(index);
-		index->deleteIndex(sysTransaction); /* transaction */
-		delete index;
+	table->dropIndex(name, sysTransaction);
 		database->commitSystemTransaction();
-		}
 
 	Index::deleteIndex (database, schema, name);
 	database->commitSystemTransaction();
