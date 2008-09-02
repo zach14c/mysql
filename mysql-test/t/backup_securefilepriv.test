@@ -7,6 +7,8 @@
 # backupdir        is MYSQLTEST_VARDIR/master-data/
 # secure-file-priv is MYSQLTEST_VARDIR/master-data/securefilepriv_path/
 
+--source include/not_embedded.inc
+
 --echo Initializing tests
 
 --error 0,1
