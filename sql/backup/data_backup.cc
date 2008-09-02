@@ -450,7 +450,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 
   // add unknown "at end" drivers to scheduler, rest to inactive list
 
-  for (uint n=0; n < 256; ++n)
+  for (uint n=0; n < info.snap_count(); ++n)
   {
     Snapshot_info *i= info.m_snap[n];
 
