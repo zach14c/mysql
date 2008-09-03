@@ -191,6 +191,7 @@ void StorageHandler::shutdownHandler(void)
 	connection->shutdown();
 	connection->close();
 	***/
+	delete this;
 }
 
 void StorageHandler::databaseDropped(StorageDatabase *storageDatabase, StorageConnection* storageConnection)

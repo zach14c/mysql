@@ -113,7 +113,6 @@ public:
 	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-//	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexId);
 	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
 	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
 	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);

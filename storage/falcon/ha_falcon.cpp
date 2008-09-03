@@ -180,7 +180,6 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->drop_database  = StorageInterface::dropDatabase;
 	falcon_hton->panic  = StorageInterface::panic;
 
-
 #if 0
 	falcon_hton->alter_table_flags  = StorageInterface::alter_table_flags;
 #endif
@@ -243,7 +242,10 @@ int StorageInterface::falcon_init(void *p)
 int StorageInterface::falcon_deinit(void *p)
 {
 	if(storageHandler)
+		{
 		storageHandler->shutdownHandler();
+		storageHandler = NULL;
+		}
 
 	return 0;
 }
@@ -487,7 +489,6 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 		if (!storageShare->initialized)
 			{
-//			storageShare->lockIndexes(true);
 			storageShare->lock(true);
 
 			if (!storageShare->initialized)
@@ -511,7 +512,6 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 				}
 
 			storageShare->unlock();
-//			storageShare->unlockIndexes();
 			}
 		}
 
@@ -2014,13 +2014,19 @@ void StorageInterface::freeActiveBlobs(void)
 void StorageInterface::shutdown(handlerton *htons)
 {
 	if(storageHandler)
+		{
 		storageHandler->shutdownHandler();
+		storageHandler = NULL;
+		}
 }
 
 int StorageInterface::panic(handlerton* hton, ha_panic_function flag)
 {
 	if(storageHandler)
+		{
 		storageHandler->shutdownHandler();
+		storageHandler = NULL;
+		}
 
 	return 0;
 }
