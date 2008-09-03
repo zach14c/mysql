@@ -488,6 +488,13 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 	if (!dictionaryConnection)
 		return StorageErrorTablesSpaceOperationFailed;
 
+	if (   !strcasecmp(tableSpaceName, MASTER_NAME)
+		|| !strcasecmp(tableSpaceName, DEFAULT_TABLESPACE)
+		|| !strcasecmp(tableSpaceName, TEMPORARY_TABLESPACE))
+		{
+		return StorageErrorTableSpaceExist;
+		}
+
 	JString tableSpace = JString::upcase(tableSpaceName);
 
 	TableSpaceManager *tableSpaceManager = 

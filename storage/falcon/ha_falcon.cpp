@@ -1261,6 +1261,8 @@ int StorageInterface::start_consistent_snapshot(handlerton *hton, THD *thd)
 {
 	DBUG_ENTER("StorageInterface::start_consistent_snapshot");
 	int ret = storageHandler->startTransaction(thd, TRANSACTION_CONSISTENT_READ);
+ 	if (!ret)
+		trans_register_ha(thd, true, hton);
 	DBUG_RETURN(ret);
 
 }
