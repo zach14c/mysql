@@ -31,6 +31,7 @@ begin declare v1 int default 0;
 declare v2 int;
 declare continue handler for 1020 begin end;
 declare continue handler for 1213 begin end;
+declare continue handler for 1015 begin end;
 while v1 < 2500 do
   /* SELECT 'insert', v1; */
   INSERT INTO t1 VALUES (v1);
@@ -52,7 +53,6 @@ delimiter ;//
 
 --echo # Switch to connection conn1
 connection conn1;
---real_sleep 1
 call p1();
 
 --echo # Switch to connection default

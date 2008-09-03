@@ -552,12 +552,16 @@ bool IndexRootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId 
 		page->addNode(dbb, &dummy, END_LEVEL);
 		page->addNode(dbb, &leftKey, leftBdb->pageNumber);
 		page->addNode(dbb, &splitKey, splitBdb->pageNumber);
-		
+
 		leftPage->parentPage = bdb->pageNumber;
 		splitPage->parentPage = bdb->pageNumber;
-		IndexPage::logIndexPage(bdb, transId);
+
+		// the order of adding these to the serial log is important.
+		// Recovery must write them in this order incase recovery itself crashes.
+
 		IndexPage::logIndexPage(splitBdb, transId);
 		IndexPage::logIndexPage(leftBdb, transId);
+		IndexPage::logIndexPage(bdb, transId);
 		
 		/***
 		IndexPage::printPage(bdb, false);

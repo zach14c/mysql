@@ -369,6 +369,8 @@ void Dbb::expungeRecord(Section *section, int32 recordId)
 
 Section* Dbb::findSection(int32 sectionId)
 {
+	ASSERT(sectionId != Section::INVALID_SECTION_ID);
+
 	int slot = sectionId % SECTION_HASH_SIZE;
 	Section *section;
 

@@ -113,6 +113,7 @@ static int simulateDiskFull = SIMULATE_DISK_FULL;
 #endif
 	
 static FILE	*traceFile;
+static char baseDir[PATH_MAX+1]={0};
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -142,9 +143,42 @@ IO::~IO()
 	closeFile();
 }
 
+static bool isAbsolutePath(const char *name)
+{
+#ifdef _WIN32
+	size_t len = strlen(name);
+	if(len < 2)
+		return false;
+	return (name[0]=='\\' || name[1]==':');
+#else
+	return (name[0]=='/');
+#endif
+}
+
+void IO::setBaseDirectory(const char *directory)
+{
+
+	strncpy(baseDir, directory, PATH_MAX);
+	size_t len = strlen(baseDir);
+	// Append path separator
+	if (baseDir[len-1] != SEPARATOR)
+	{
+		baseDir[len] = SEPARATOR;
+		baseDir[len+1] = 0;
+	}
+
+}
+
+static JString getPath(const char *filename)
+{
+	if(baseDir[0] == 0 || isAbsolutePath(filename))
+		return JString(filename);
+	return JString(baseDir) + filename;
+}
+
 bool IO::openFile(const char * name, bool readOnly)
 {
-	fileName = name;
+	fileName = getPath(name);
 	
 	for (int attempt = 0; attempt < 3; ++attempt)
 		{
@@ -189,7 +223,7 @@ bool IO::createFile(const char *name)
 {
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
-	fileName = name;
+	fileName = getPath(name);
 	
 	for (int attempt = 0; attempt < 3; ++attempt)
 		{
@@ -377,13 +411,18 @@ void IO::declareFatalError()
 	fatalError = true;
 }
 
+
+#ifndef ENOSYS
+#define ENOSYS EEXIST
+#endif
+
+// Make sure parent directories for file exist
 void IO::createPath(const char *fileName)
 {
-	// First, better make sure directories exists
+	JString fname = getPath(fileName);
 
 	char directory [256], *q = directory;
-
-	for (const char *p = fileName; *p;)
+	for (const char *p = fname.getString(); *p;)
 		{
 		char c = *p++;
 		
@@ -392,8 +431,14 @@ void IO::createPath(const char *fileName)
 			*q = 0;
 			
 			if (q > directory && q [-1] != ':')
-				if (MKDIR (directory) && errno != EEXIST)
-					throw SQLError (IO_ERROR, "can't create directory \"%s\"\n", directory);
+				{
+				if (MKDIR (directory) && errno != EEXIST && errno != ENOSYS)
+					// ENOSYS is a Solaris speficic workaround, mkdir returns it
+					// on existing automounted NFS directories, instead
+					// of EEXIST.
+					throw SQLError (IO_ERROR, 
+					"can't create directory \"%s\"\n", directory);
+				}
 			}
 		*q++ = c;
 		}
@@ -409,6 +454,9 @@ void IO::expandFileName(const char *fileName, int length, char *buffer, const ch
 {
 	char expandedName[PATH_MAX+1];
 	const char *path;
+	JString fname = getPath(fileName);
+	fileName = fname.getString();
+
 #ifdef _WIN32
 	char *base;
 	
@@ -465,7 +513,8 @@ bool IO::doesFileExist(const char *fileName)
 int IO::fileStat(const char *fileName, struct stat *fileStats, int *errnum)
 {
 	struct stat stats;
-	int retCode = stat(fileName, &stats);
+	JString path = getPath(fileName);
+	int retCode = stat(path.getString(), &stats);
 	
 	if (fileStats)
 		*fileStats = stats;
@@ -621,7 +670,8 @@ void IO::sync(void)
 
 void IO::deleteFile(const char* fileName)
 {
-	unlink(fileName);
+	JString path = getPath(fileName);
+	unlink(path.getString());
 }
 
 void IO::tracePage(Bdb* bdb)
@@ -753,4 +803,3 @@ uint16 IO::computeChecksum(Page *page, size_t len)
 	return (uint16) sum;
 
 }
-

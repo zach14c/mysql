@@ -21,7 +21,6 @@ csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows 
 query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
 thread_cache_size_func: BUG#35988, BUG#36733 Due to not deterministic results
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-subselect_notembedded  : Bug#35803, Bug#33506 2008-Apr-03 subselect_notembedded crashes the server
 status          : Bug#37481 status.test fails randomly
 maria-preload        : Bug#35107 crashes
 key_buffer_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms

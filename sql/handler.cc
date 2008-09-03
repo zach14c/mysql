@@ -4585,7 +4585,7 @@ ha_rows DsMrr_impl::dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq,
   @retval FALSE  No
 */
 
-bool DsMrr_impl::key_uses_partial_cols(uint keyno)
+bool key_uses_partial_cols(TABLE *table, uint keyno)
 {
   KEY_PART_INFO *kp= table->key_info[keyno].key_part;
   KEY_PART_INFO *kp_end= kp + table->key_info[keyno].key_parts;
@@ -4596,7 +4596,6 @@ bool DsMrr_impl::key_uses_partial_cols(uint keyno)
   }
   return FALSE;
 }
-
 
 /**
   DS-MRR Internals: Choose between Default MRR implementation and DS-MRR
@@ -4631,7 +4630,7 @@ bool DsMrr_impl::choose_mrr_impl(uint keyno, ha_rows rows, uint *flags,
       (*flags & HA_MRR_INDEX_ONLY) || (*flags & HA_MRR_SORTED) ||
       (keyno == table->s->primary_key && 
        h->primary_key_is_clustered()) || 
-       key_uses_partial_cols(keyno))
+       key_uses_partial_cols(table, keyno))
   {
     /* Use the default implementation */
     *flags |= HA_MRR_USE_DEFAULT_IMPL;

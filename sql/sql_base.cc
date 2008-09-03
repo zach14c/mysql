@@ -1242,6 +1242,10 @@ close_all_tables_for_name(THD *thd, TABLE_SHARE *share,
     if (table->s->table_cache_key.length == key_length &&
         !memcmp(table->s->table_cache_key.str, key, key_length))
     {
+      /* Inform handler that table will be dropped after close */
+      if (table->db_stat)
+        table->file->extra(HA_EXTRA_PREPARE_FOR_DROP);
+
       /*
         Does nothing if the table is not locked.
         This allows one to use this function after a table
@@ -1466,6 +1470,8 @@ bool close_thread_table(THD *thd, TABLE **table_ptr)
     table->file->extra(HA_EXTRA_DETACH_CHILDREN);
 
     /* Free memory and reset for next loop */
+    free_field_buffers_larger_than(table,MAX_TDC_BLOB_SIZE);
+    
     table->file->ha_reset();
     table_def_unuse_table(table);
   }
@@ -2030,8 +2036,6 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
                        table->s->table_name.str, table->s,
                        table->db_stat, table->s->version));
 
-  (void) table->file->extra(function);
-
   old_lock_type= table->reginfo.lock_type;
   mysql_lock_abort(thd, table, TRUE);	/* end threads waiting on lock */
 
@@ -2046,6 +2050,8 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
   tdc_remove_table(thd, TDC_RT_REMOVE_NOT_OWN,
                    table->s->db.str, table->s->table_name.str);
   pthread_mutex_unlock(&LOCK_open);
+  /* extra() call must come only after all instances above are closed */
+  (void) table->file->extra(function);
   DBUG_RETURN(FALSE);
 }
 
@@ -2072,6 +2078,7 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
 void drop_open_table(THD *thd, TABLE *table, const char *db_name,
                      const char *table_name)
 {
+  DBUG_ENTER("drop_open_table");
   if (table->s->tmp_table)
     close_temporary_table(thd, table, 1, 1);
   else
@@ -2083,10 +2090,12 @@ void drop_open_table(THD *thd, TABLE *table, const char *db_name,
     table->s->version= 0;
 
     pthread_mutex_lock(&LOCK_open);
+    table->file->extra(HA_EXTRA_PREPARE_FOR_DROP);
     close_thread_table(thd, &thd->open_tables);
     quick_rm_table(table_type, db_name, table_name, 0);
     pthread_mutex_unlock(&LOCK_open);
   }
+  DBUG_VOID_RETURN;
 }
 
 
@@ -3147,9 +3156,10 @@ Locked_tables_list::reopen_tables(THD *thd)
 
     share->table_map_id is not ~0UL.
  */
+static ulong last_table_id= ~0UL;
+
 void assign_new_table_id(TABLE_SHARE *share)
 {
-  static ulong last_table_id= ~0UL;
 
   DBUG_ENTER("assign_new_table_id");
 
@@ -3172,7 +3182,6 @@ void assign_new_table_id(TABLE_SHARE *share)
 
   DBUG_VOID_RETURN;
 }
-
 
 /**
   Compare metadata versions of an element obtained from the table
