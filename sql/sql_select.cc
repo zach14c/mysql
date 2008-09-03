@@ -4465,6 +4465,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
     }
   }
   join->emb_sjm_nest= NULL;
+  DBUG_RETURN(0);
 }
 
 
