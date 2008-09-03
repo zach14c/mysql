@@ -53,6 +53,7 @@ struct st_sargable_param;
 static void optimize_keyuse(JOIN *join, DYNAMIC_ARRAY *keyuse_array);
 static bool make_join_statistics(JOIN *join, TABLE_LIST *leaves, COND *conds,
 				 DYNAMIC_ARRAY *keyuse);
+static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map);
 static bool update_ref_and_keys(THD *thd, DYNAMIC_ARRAY *keyuse,
                                 JOIN_TAB *join_tab,
                                 uint tables, COND *conds,
@@ -4336,107 +4337,9 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 
   if (join->const_tables != join->tables)
     optimize_keyuse(join, keyuse_array);
-  /* Process semi-join nests that could be run with sj-materialization */
-  {
-    List_iterator<TABLE_LIST> sj_list_it(join->select_lex->sj_nests);
-    TABLE_LIST *sj_nest;
-    while ((sj_nest= sj_list_it++))
-    {
-      sj_nest->sj_mat_info= NULL;
-      if (sj_nest->sj_inner_tables && /* not everything was pulled out */
-          !sj_nest->sj_subq_pred->is_correlated && 
-           sj_nest->sj_subq_pred->types_allow_materialization)
-      {
-        join->emb_sjm_nest= sj_nest;
-        if (choose_plan(join, all_table_map))
-          DBUG_RETURN(TRUE);
-        /*
-          The best plan to run the subquery is now in join->best_positions,
-          save it.
-        */
-        uint n_tables= my_count_bits(sj_nest->sj_inner_tables);
-        SJ_MATERIALIZE_INFO* sjm;
-        if (!(sjm= new SJ_MATERIALIZE_INFO) ||
-            !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
-                                                          n_tables)))
-          DBUG_RETURN(TRUE);
-        sjm->n_tables= n_tables;
-        sjm->is_used= FALSE;
-        double subjoin_out_rows, subjoin_read_time;
-        get_partial_join_cost(join, n_tables,
-                              &subjoin_read_time, &subjoin_out_rows);
-
-        sjm->materialization_cost.set_double(subjoin_read_time);
-        sjm->rows= subjoin_out_rows;
-
-        List<Item> &right_expr_list= 
-          sj_nest->sj_subq_pred->unit->first_select()->item_list;
-        /*
-          Adjust output cardinality estimates. If the subquery has form
-
-           ... oe IN (SELECT t1.colX, t2.colY, func(X,Y,Z) )
-
-           then the number of distinct output record combinations has an
-           upper bound of product of number of records matching the tables 
-           that are used by the SELECT clause.
-           (TODO: functional dependencies may make this number even less)
-        */
-        {
-          //for (i=0 ; i < join->tables ; i++)
-          //  join->map2table[join->join_tab[i].table->tablenr]=join->join_tab+i;
-          for (i=0 ; i < join->const_tables + sjm->n_tables ; i++)
-          {
-            JOIN_TAB *tab= join->best_positions[i].table;
-            join->map2table[tab->table->tablenr]= tab;
-          }
-          List_iterator<Item> it(right_expr_list);
-          Item *item;
-          table_map map= 0;
-          while ((item= it++))
-            map |= item->used_tables();
-          map= map & ~PSEUDO_TABLE_BITS;
-          Table_map_iterator tm_it(map);
-          int tableno;
-          double rows= 1.0;
-          while ((tableno = tm_it.next_bit()) != Table_map_iterator::BITMAP_END)
-            rows *= join->map2table[tableno]->table->quick_condition_rows;
-          sjm->rows= min(sjm->rows, rows);
-        }
-
-        memcpy(sjm->positions, join->best_positions + join->const_tables, 
-               sizeof(POSITION) * n_tables);
-
-        for (uint j= 0; j < sjm->n_tables ; j++)
-          sjm->positions[j].use_sj_mat= SJ_MAT_INNER;
-        sjm->positions[0].use_sj_mat |= SJ_MAT_FIRST;
-        sjm->positions[sjm->n_tables - 1].use_sj_mat |= SJ_MAT_LAST;
-
-        /*
-          Calculate temporary table parameters
-        */
-        uint rowlen= get_tmp_table_rec_length(right_expr_list);
-        double lookup_cost;
-        if (rowlen * subjoin_out_rows< join->thd->variables.max_heap_table_size)
-        {
-          sjm->materialization_cost.add_io(subjoin_out_rows, 0.05);
-          sjm->scan_cost.zero();
-          sjm->scan_cost.add_io(sjm->rows, 0.05);
-          lookup_cost= 0.05;
-        }
-        else
-        {
-          sjm->materialization_cost.add_io(subjoin_out_rows, 1.0);
-          lookup_cost= 1;
-          sjm->scan_cost.zero();
-          sjm->scan_cost.add_io(sjm->rows, 1.0);
-        }
-        sjm->lookup_cost.set_double(lookup_cost);
-        sj_nest->sj_mat_info= sjm;
-        DBUG_EXECUTE("opt", print_sjm(sjm););
-      }
-    }
-    join->emb_sjm_nest= NULL;
-  }
+   
+  if (optimize_semijoin_nests(join, all_table_map))
+    DBUG_RETURN(TRUE);
 
   /* Find an optimal join order of the non-constant tables. */
   if (join->const_tables != join->tables)
@@ -4454,6 +4357,114 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
   DBUG_RETURN(join->thd->killed || 
               get_best_combination(join, all_table_map & 
                                          ~join->const_table_map));
+}
+
+
+/* Process semi-join nests that could be run with sj-materialization */
+static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
+{
+  DBUG_ENTER("optimize_semijoin_nests");
+  List_iterator<TABLE_LIST> sj_list_it(join->select_lex->sj_nests);
+  TABLE_LIST *sj_nest;
+  while ((sj_nest= sj_list_it++))
+  {
+    sj_nest->sj_mat_info= NULL;
+    if (sj_nest->sj_inner_tables && /* not everything was pulled out */
+        !sj_nest->sj_subq_pred->is_correlated && 
+         sj_nest->sj_subq_pred->types_allow_materialization)
+    {
+      join->emb_sjm_nest= sj_nest;
+      if (choose_plan(join, all_table_map))
+        DBUG_RETURN(TRUE);
+      /*
+        The best plan to run the subquery is now in join->best_positions,
+        save it.
+      */
+      uint n_tables= my_count_bits(sj_nest->sj_inner_tables);
+      SJ_MATERIALIZE_INFO* sjm;
+      if (!(sjm= new SJ_MATERIALIZE_INFO) ||
+          !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
+                                                        n_tables)))
+        DBUG_RETURN(TRUE);
+      sjm->n_tables= n_tables;
+      sjm->is_used= FALSE;
+      double subjoin_out_rows, subjoin_read_time;
+      get_partial_join_cost(join, n_tables,
+                            &subjoin_read_time, &subjoin_out_rows);
+
+      sjm->materialization_cost.set_double(subjoin_read_time);
+      sjm->rows= subjoin_out_rows;
+
+      List<Item> &right_expr_list= 
+        sj_nest->sj_subq_pred->unit->first_select()->item_list;
+      /*
+        Adjust output cardinality estimates. If the subquery has form
+
+         ... oe IN (SELECT t1.colX, t2.colY, func(X,Y,Z) )
+
+         then the number of distinct output record combinations has an
+         upper bound of product of number of records matching the tables 
+         that are used by the SELECT clause.
+         TODO:
+           We can get a more precise estimate if we
+            - use rec_per_key cardinality estimates. For simple cases like 
+              "oe IN (SELECT t.key ...)" it is trivial. 
+            - Functional dependencies between the tables in the semi-join
+              nest (the payoff is probably less here?)
+      */
+      {
+        for (uint i=0 ; i < join->const_tables + sjm->n_tables ; i++)
+        {
+          JOIN_TAB *tab= join->best_positions[i].table;
+          join->map2table[tab->table->tablenr]= tab;
+        }
+        List_iterator<Item> it(right_expr_list);
+        Item *item;
+        table_map map= 0;
+        while ((item= it++))
+          map |= item->used_tables();
+        map= map & ~PSEUDO_TABLE_BITS;
+        Table_map_iterator tm_it(map);
+        int tableno;
+        double rows= 1.0;
+        while ((tableno = tm_it.next_bit()) != Table_map_iterator::BITMAP_END)
+          rows *= join->map2table[tableno]->table->quick_condition_rows;
+        sjm->rows= min(sjm->rows, rows);
+      }
+
+      memcpy(sjm->positions, join->best_positions + join->const_tables, 
+             sizeof(POSITION) * n_tables);
+
+      for (uint j= 0; j < sjm->n_tables ; j++)
+        sjm->positions[j].use_sj_mat= SJ_MAT_INNER;
+      sjm->positions[0].use_sj_mat |= SJ_MAT_FIRST;
+      sjm->positions[sjm->n_tables - 1].use_sj_mat |= SJ_MAT_LAST;
+
+      /*
+        Calculate temporary table parameters
+      */
+      uint rowlen= get_tmp_table_rec_length(right_expr_list);
+      double lookup_cost;
+      if (rowlen * subjoin_out_rows< join->thd->variables.max_heap_table_size)
+      {
+        sjm->materialization_cost.add_io(subjoin_out_rows, 0.05);
+        sjm->scan_cost.zero();
+        sjm->scan_cost.add_io(sjm->rows, 0.05);
+        lookup_cost= 0.05;
+      }
+      else
+      {
+        sjm->materialization_cost.add_io(subjoin_out_rows, 1.0);
+        lookup_cost= 1;
+        sjm->scan_cost.zero();
+        sjm->scan_cost.add_io(sjm->rows, 1.0);
+      }
+      sjm->lookup_cost.set_double(lookup_cost);
+      sj_nest->sj_mat_info= sjm;
+      DBUG_EXECUTE("opt", print_sjm(sjm););
+    }
+  }
+  join->emb_sjm_nest= NULL;
 }
 
 
