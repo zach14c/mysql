@@ -9,6 +9,6 @@ partition_value_myisam         : Bug#30581 partition_value tests use disallowed 
 partition_value_ndb            : Bug#30581 partition_value tests use disallowed CAST() function
 partition_alter4_myisam        : Bug#20129 / WL#4176
 partition_alter4_innodb        : Bug#20129 / WL#4176
-partition_auto_increment_falcon : Bug#36595 2008-05-08 test crashes
+# partition_auto_increment_falcon : Bug#36595 2008-05-08 test crashes (2008-09-03 not any more)
 
 ndb_dd_backuprestore           : Bug#32659 2008-07-14 alik  Disabled to make 6.0 greaner (the test fails too often)
