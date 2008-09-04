@@ -1770,9 +1770,9 @@ ha_rows StorageInterface::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *
 }
 
 
-int StorageInterface::multi_range_read_info(uint keyno, uint n_ranges, 
-                                            uint keys, uint *bufsz, 
-                                            uint *flags, COST_VECT *cost)
+ha_rows StorageInterface::multi_range_read_info(uint keyno, uint n_ranges, 
+												uint keys, uint *bufsz, 
+												uint *flags, COST_VECT *cost)
 {
 	ha_rows res;
 	bool native_requested = test(*flags & HA_MRR_USE_DEFAULT_IMPL || 
