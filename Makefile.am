@@ -63,7 +63,8 @@ dist-hook:
 		--datadir=$(distdir)/win/data \
 		--srcdir=$(top_srcdir)
 
-all-local:		abi_check
+# TODO: uncomment abi_check (next line) if you get a merge conflict here.
+#all-local:		abi_check
 
 tags:
 	support-files/build-tags
