@@ -6253,7 +6253,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
             (key_info->flags & HA_SPATIAL) ||
             (cfield->field->field_length == key_part_length &&
              !f_is_blob(key_part->key_type)) ||
-            (cfield->length && ((f_is_blob(key_part->key_type) ? 
+            (cfield->length && (((cfield->sql_type >= MYSQL_TYPE_TINY_BLOB &&
+                                  cfield->sql_type <= MYSQL_TYPE_BLOB) ? 
                                 blob_length_by_type(cfield->sql_type) :
                                 cfield->length) <
 	     key_part_length / key_part->field->charset()->mbmaxlen)))
