@@ -541,8 +541,7 @@ bool tablespace_exists(THD *thd,
   This method determines if the tablespace referenced by name exists on the
   system. Returns a TablespaceObj if it exists or NULL if it doesn't.
 */
-Obj *is_tablespace(THD *thd,
-                   const String *ts_name);
+Obj *is_tablespace(THD *thd, Obj *ts);
 
 /*
   This method returns a description of the tablespace useful for communicating

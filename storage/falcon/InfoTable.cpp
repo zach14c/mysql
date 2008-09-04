@@ -63,3 +63,13 @@ void InfoTableImpl::putString(int column, unsigned int stringLength, const char 
 {
 	table->field[column]->store(string, stringLength, charSetInfo);
 }
+
+void InfoTableImpl::setNull(int column)
+{
+	table->field[column]->set_null();
+}
+
+void InfoTableImpl::setNotNull(int column)
+{
+	table->field[column]->set_notnull();
+}

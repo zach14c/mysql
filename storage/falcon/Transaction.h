@@ -170,7 +170,7 @@ public:
 	bool			pendingPageWrites;
 	bool			hasLocks;
 	SyncObject		syncObject;
-	SyncObject		syncActive;
+	SyncObject		syncIsActive;  // locked while transaction is active
 	SyncObject		syncIndexes;
 	SyncObject		syncRecords;
 	SyncObject		syncSavepoints;

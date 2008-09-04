@@ -459,12 +459,12 @@ JString TableSpaceManager::tableSpaceType(JString name)
 	JString type;
 	
 	if (name == "FALCON_USER")
-		type = "FALCON_USER";
+		type = "DEFAULT";
 	else if (name == "FALCON_TEMPORARY")
-		type = "FALCON_TEMPORARY";
+		type = "TEMPORARY";
 	else if (name == "FALCON_SYSTEM_BASE") //cwp tbd: fix this
-		type = "SYSTEM_BASE";
-	else type = "USER_DEFINED";
+		type = "MASTER CATALOG";
+	else type = "USER DEFINED";
 	
 	return type;
 }
@@ -477,9 +477,26 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 		
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
-		infoTable->putString(2, resultSet->getString(2));					// comment
+		// TABLESPACE_NAME NOT NULL
+		infoTable->putString(0, resultSet->getString(1));
+		// ENGINE NOT NULL
+		infoTable->putString(1, "Falcon");
+		// TABLESPACE_TYPE (based upon name)
+		infoTable->setNotNull(2);
+		infoTable->putString(2, tableSpaceType(resultSet->getString(1)));
+		// LOGFILE_GROUP_NAME
+		infoTable->setNull(3);
+		// EXTENT_SIZE
+		infoTable->setNull(4);
+		// AUTOEXTEND_SIZE
+		infoTable->setNull(5);
+		// MAXIMUM_SIZE
+		infoTable->setNull(6);
+		// NODEGROUP_ID
+		infoTable->setNull(7);
+		// TABLESPACE_COMMENT
+		infoTable->setNotNull(8);
+		infoTable->putString(8, resultSet->getString(2));
 		infoTable->putRecord();
 		}
 }
@@ -492,10 +509,46 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
-		infoTable->putInt(2, 1);											// file id (unused for now)
-		infoTable->putString(3, resultSet->getString(2));					// file name
+		infoTable->putInt(0, 0);		// FILE_ID NOT NULL, unused for now
+		infoTable->setNotNull(1);		// FILE_NAME
+		infoTable->putString(1, resultSet->getString(2));
+		infoTable->putString(2, "DATAFILE");	// FILE_TYPE NOT NULL
+		infoTable->setNotNull(3);		// TABLESPACE_NAME
+		infoTable->putString(3, resultSet->getString(1));
+		infoTable->setNull(4);			// TABLE_CATALOG
+		infoTable->setNull(5);			// TABLE_SCHEMA
+		infoTable->setNull(6);			// TABLE_NAME
+		infoTable->setNull(7);			// LOGFILE_GROUP_NAME
+		infoTable->setNull(8);			// LOGFILE_GROUP_NUMBER
+		infoTable->putString(9, "Falcon");	// ENGINE NOT NULL
+		infoTable->setNull(10);			// FULLTEXT_KEYS
+		infoTable->setNull(11);			// DELETED_ROWS
+		infoTable->setNull(12);			// UPDATE_COUNT
+		infoTable->setNull(13);			// FREE_EXTENTS
+		infoTable->setNull(14);			// TOTAL_EXTENTS
+		infoTable->putInt(15, 0);		// EXTENT_SIZE NOT NULL
+		infoTable->setNull(16);			// INITIAL_SIZE
+		infoTable->setNull(17);			// MAXIMUM_SIZE
+		infoTable->setNull(18);			// AUTOEXTEND_SIZE
+		infoTable->setNull(19);			// CREATION_TIME
+		infoTable->setNull(20);			// LAST_UPDATE_TIME
+		infoTable->setNull(21);			// LAST_ACCESS_TIME
+		infoTable->setNull(22);			// RECOVER_TIME
+		infoTable->setNull(23);			// TRANSACTION_COUNTER
+		infoTable->setNull(24);			// VERSION
+		infoTable->setNull(25);			// ROW_FORMAT
+		infoTable->setNull(26);			// TABLE_ROWS
+		infoTable->setNull(27);			// AVG_ROW_LENGTH
+		infoTable->setNull(28);			// DATA_LENGTH
+		infoTable->setNull(29);			// MAX_DATA_LENGTH
+		infoTable->setNull(30);			// INDEX_LENGTH
+		infoTable->setNull(31);			// DATA_FREE
+		infoTable->setNull(32);			// CREATE_TIME
+		infoTable->setNull(33);			// UPDATE_TIME
+		infoTable->setNull(34);			// CHECK_TIME
+		infoTable->setNull(35);			// CHECKSUM
+		infoTable->putString(36, "NORMAL");	// STATUS NOT NULL
+		infoTable->setNull(37);			// EXTRA
 		infoTable->putRecord();
 		}
 }

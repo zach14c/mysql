@@ -412,7 +412,7 @@ int StorageTableShare::setIndex(const StorageIndexDesc *indexInfo)
 	else
 		{
 		char indexName[indexNameSize];
-			sprintf(indexName, "%s$%s", name.getString(), indexDesc->name);
+		sprintf(indexName, "%s$%s", name.getString(), indexDesc->name);
 		indexDesc->index = table->findIndex(indexName);
 		}
 
