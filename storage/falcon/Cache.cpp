@@ -76,7 +76,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageSize = pageSz;
 
 	unsigned int highBit;
-	for (highBit=0x01; highBit < hashSz; highBit= highBit << 1) { }
+	for (highBit=0x01; highBit < (unsigned int)hashSz; highBit= highBit << 1) { }
 
 	// if there are more than 4096 buckets then lets round down
 	// else lets round up
