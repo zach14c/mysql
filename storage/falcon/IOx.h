@@ -107,9 +107,11 @@ public:
 	bool		fatalError;
 	bool		isReadOnly;
 	bool		forceFsync;
+	bool		created;
 
 //private:
 	Dbb			*dbb;						// this is a crock and should be phased out
 };
-
+extern bool deleteFilesOnExit;
+extern bool inCreateDatabase;
 #endif // !defined(AFX_IO_H__6A019C19_A340_11D2_AB5A_0000C01D2301__INCLUDED_)

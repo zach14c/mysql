@@ -679,11 +679,10 @@ void Database::createDatabase(const char * filename)
 		}
 	catch (...)
 		{
-		dbb->closeFile();
-		dbb->deleteFile();
-		
+		deleteFilesOnExit = true;
 		throw;
 		}
+
 }
 
 void Database::openDatabase(const char * filename)
@@ -705,34 +704,18 @@ void Database::openDatabase(const char * filename)
 			{
 			if (dbb->logLength)
 				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-
-			try
-				{
-				serialLog->open(dbb->logRoot, false);
-				}
-			catch (SQLException&)
-				{
-				const char *p = strrchr(filename, '.');
-				JString logRoot = (p) ? JString(filename, (int) (p - filename)) : name;
-				bool failed = true;
-				
-				try
-					{
-					serialLog->open(logRoot, false);
-					failed = false;
-					}
-				catch (...)
-					{
-					}
-				
-				if (failed)
-					throw;
-				}
-			
+			serialLog->open(dbb->logRoot, false);
 			if (dbb->tableSpaceSectionId)
 				tableSpaceManager->bootstrap(dbb->tableSpaceSectionId);
 
-			serialLog->recover();
+			try 
+				{
+				serialLog->recover();
+				}
+			catch(SQLError &e)
+				{
+				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+				}
 			tableSpaceManager->postRecovery();
 			serialLog->start();
 			}

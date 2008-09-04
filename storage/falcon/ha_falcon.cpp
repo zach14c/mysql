@@ -72,7 +72,7 @@ static const char *falcon_extensions[] = {
 	NullS
 };
 
-static StorageHandler	*storageHandler;
+extern StorageHandler	*storageHandler;
 
 #define PARAMETER_UINT(_name, _text, _min, _default, _max, _flags, _update_function) \
 	uint falcon_##_name;
@@ -164,8 +164,7 @@ int StorageInterface::falcon_init(void *p)
 
 	StorageHandler::setDataDirectory(mysql_real_data_home);
 
-	if (!storageHandler)
-		storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
+	storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
 	
 	falcon_hton->state = SHOW_OPTION_YES;
 	falcon_hton->db_type = DB_TYPE_FALCON;
@@ -216,13 +215,12 @@ int StorageInterface::falcon_init(void *p)
 		}
 	catch(SQLException &e)
 		{
-		sql_print_error("Falcon: Exception '%s' during initialization",
-			e.getText());
+		sql_print_error("Falcon: %s", e.getText());
 		error = true;
 		}
 	catch(...)
 		{
-		sql_print_error(" Falcon: General exception in initialization");
+		sql_print_error("Falcon: General exception in initialization");
 		error = true;
 		}
 
@@ -230,8 +228,7 @@ int StorageInterface::falcon_init(void *p)
 	if (error)
 		{
 		// Cleanup after error
-		delete storageHandler;
-		storageHandler = 0;
+		falcon_deinit(0);
 		DBUG_RETURN(1);
 		}
 		
@@ -242,8 +239,10 @@ int StorageInterface::falcon_init(void *p)
 int StorageInterface::falcon_deinit(void *p)
 {
 	if(storageHandler)
+		{
 		storageHandler->shutdownHandler();
-
+		freeFalconStorageHandler();
+		}
 	return 0;
 }
 
@@ -2010,16 +2009,12 @@ void StorageInterface::freeActiveBlobs(void)
 
 void StorageInterface::shutdown(handlerton *htons)
 {
-	if(storageHandler)
-		storageHandler->shutdownHandler();
+	falcon_deinit(0);
 }
 
 int StorageInterface::panic(handlerton* hton, ha_panic_function flag)
 {
-	if(storageHandler)
-		storageHandler->shutdownHandler();
-
-	return 0;
+	return falcon_deinit(0);
 }
 
 int StorageInterface::closeConnection(handlerton *hton, THD *thd)

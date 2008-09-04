@@ -114,6 +114,8 @@ static int simulateDiskFull = SIMULATE_DISK_FULL;
 	
 static FILE	*traceFile;
 static char baseDir[PATH_MAX+1]={0};
+bool deleteFilesOnExit = false;
+bool inCreateDatabase = false;
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -133,6 +135,7 @@ IO::IO()
 	dbb = NULL;
 	forceFsync = true;
 	fatalError = false;
+	created = false;
 	memset(writeTypes, 0, sizeof(writeTypes));
 	syncObject.setName("IO::syncObject");
 }
@@ -141,6 +144,8 @@ IO::~IO()
 {
 	traceClose();
 	closeFile();
+	if(created && deleteFilesOnExit)
+		deleteFile();
 }
 
 static bool isAbsolutePath(const char *name)
@@ -178,6 +183,8 @@ static JString getPath(const char *filename)
 
 bool IO::openFile(const char * name, bool readOnly)
 {
+	ASSERT(!inCreateDatabase);
+
 	fileName = getPath(name);
 	
 	for (int attempt = 0; attempt < 3; ++attempt)
@@ -198,6 +205,7 @@ bool IO::openFile(const char * name, bool readOnly)
 		}
 
 	isReadOnly = readOnly;
+	created = false;
 	
 #ifndef _WIN32
 	signal (SIGXFSZ, SIG_IGN);
@@ -227,8 +235,8 @@ bool IO::createFile(const char *name)
 	
 	for (int attempt = 0; attempt < 3; ++attempt)
 		{
-		fileId = ::open (fileName,
-						getWriteMode(attempt) | O_CREAT | O_RDWR | O_RANDOM | O_TRUNC | O_BINARY,
+		fileId = ::open (fileName.getString(),
+						getWriteMode(attempt) | O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY,
 						S_IREAD | S_IWRITE | S_IRGRP | S_IWGRP);
 
 		if (fileId >= 0)
@@ -252,7 +260,7 @@ bool IO::createFile(const char *name)
 	fcntl(fileId, F_SETLK, &lock);
 #endif
 #endif
-
+	created = true;
 	return fileId != -1;
 }
 
