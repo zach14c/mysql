@@ -5,6 +5,7 @@ SET GLOBAL EVENT_SCHEDULER = OFF;
 SET BINLOG_FORMAT = STATEMENT;
 
 LET $OLD_DB= `SELECT DATABASE()`;
+LET $MYSQLD_DATADIR= `SELECT @@datadir`;
 
 CREATE DATABASE db1;
 USE db1;
@@ -1139,7 +1140,7 @@ let $statement=
   restore from 'backup_db1.ba';
 source include/implicit_commit_helper.inc;
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_db1.ba
+--remove_file $MYSQLD_DATADIR/backup_db1.ba
 
 --echo #
 --echo # SQLCOM_BACKUP_TEST

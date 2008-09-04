@@ -4,6 +4,12 @@
 
 --source include/not_embedded.inc
 
+# Suppress warning about expected backup/restore errors
+disable_query_log;
+call mtr.add_supression("Backup:");
+call mtr.add_supression("Restore:");
+enable_query_log;
+
 let $MYSQLD_DATADIR= `select @@datadir`;
 
 --echo Reset backupdir 
@@ -95,10 +101,10 @@ SET @@global.backupdir = @@global.datadir;
 
 DROP DATABASE bup_backupdir;
 
-remove_file $MYSQLTEST_VARDIR/tmp/bup_backupdir1.bak;
-remove_file $MYSQLTEST_VARDIR/tmp/backup/bup_backupdir2.bak;
-remove_file $MYSQLD_DATADIR/bup_backupdir3.bak;
-remove_file $MYSQLD_DATADIR/bup_backupdir4.bak;
+remove_file $MYSQLTEST_VARDIR/tmp/backup/bup_backupdir1.bak;
+remove_file $MYSQLTEST_VARDIR/tmp/bup_backupdir2.bak;
+remove_file $MYSQLTEST_VARDIR/bup_backupdir3.bak;
+remove_file $MYSQLTEST_VARDIR/bup_backupdir4.bak;
 
 --error 0,1
 rmdir $MYSQLTEST_VARDIR/tmp/backup;

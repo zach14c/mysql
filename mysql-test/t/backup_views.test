@@ -10,6 +10,12 @@
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
 
+# Suppress warning about expected backup/restore errors
+disable_query_log;
+call mtr.add_supression("Backup:");
+call mtr.add_supression("Restore:");
+enable_query_log;
+
 ##############################################################
 --echo
 --echo starting the test for backup
@@ -380,7 +386,3 @@ remove_file $MYSQLD_DATADIR/bup_objectview.bak;
 remove_file $MYSQLD_DATADIR/bup_objectview1.bak;
 remove_file $MYSQLD_DATADIR/bup_objectview2.bak;
 remove_file $MYSQLD_DATADIR/bup_objectview3.bak;
-remove_file $MYSQLD_DATADIR/bup_shouldfail1.bak;
-remove_file $MYSQLD_DATADIR/bup_shouldfail2.bak;
-remove_file $MYSQLD_DATADIR/bup_alterview.bak;
-

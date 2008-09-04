@@ -1,4 +1,4 @@
--- Initialize tables for the test
+# Initialize tables for the test
 
 --disable_warnings
 drop table if exists x1;
@@ -20,8 +20,8 @@ insert into x2 values
     (21,   20,   null),
     (30,   null, 30);
 
--- Test various IN and EXISTS queries with NULL values and UNKNOWN
--- Q1 T=(10, 20) U=(21,30) F=(40)
+# Test various IN and EXISTS queries with NULL values and UNKNOWN
+# Q1 T=(10, 20) U=(21,30) F=(40)
 select *
 from x1
 where (d1, d2) in (select d1, d2
@@ -39,7 +39,7 @@ from x1
 where (d1, d2) in (select d1, d2
                    from x2) is unknown;
 
--- Q2 T=(10, 20) U=(30) F=(21, 40)
+# Q2 T=(10, 20) U=(30) F=(21, 40)
 select *
 from x1
 where d1 in (select d1
@@ -61,7 +61,7 @@ where d1 in (select d1
              from x2
              where x1.d2=x2.d2) is unknown;
 
--- Q3 T=(10, 20) U=() F=(21, 30, 40)
+# Q3 T=(10, 20) U=() F=(21, 30, 40)
 select *
 from x1
 where 1 in (select 1
@@ -83,7 +83,7 @@ where 1 in (select 1
             from x2
             where x1.d1=x2.d1 and x1.d2=x2.d2) is unknown;
 
--- Q4 T=(10, 20) F=(21, 30, 40)
+# Q4 T=(10, 20) F=(21, 30, 40)
 select *
 from x1
 where exists (select *

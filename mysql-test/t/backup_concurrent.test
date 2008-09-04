@@ -6,6 +6,12 @@
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
 
+# Suppress warning about expected backup/restore errors
+disable_query_log;
+call mtr.add_supression("Backup:");
+call mtr.add_supression("Restore:");
+enable_query_log;
+
 #Create Database and object view for this test.
 
 --disable_warnings
@@ -125,6 +131,6 @@ reap;
 DROP DATABASE backup_concurrent;
 SET DEBUG_SYNC= 'reset';
 
-remove_file $MYSQLTEST_DATADIR/backup1;
-remove_file $MYSQLTEST_DATADIR/backup3;
+remove_file $MYSQLD_DATADIR/backup1;
+remove_file $MYSQLD_DATADIR/backup3;
 

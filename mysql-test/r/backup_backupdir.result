@@ -7,7 +7,7 @@ CREATE TABLE bup_backupdir.t1(a INT);
 INSERT INTO bup_backupdir.t1 VALUES (1), (2), (3);
 Create a directory for backup images
 Reset backupdir 
-SET @@global.backupdir = '../tmp/backup';
+SET @@global.backupdir = '../../tmp/backup';
 Perform backup
 BACKUP DATABASE bup_backupdir TO 'bup_backupdir1.bak';
 backup_id
@@ -34,7 +34,7 @@ backup_id
 #
 Ensure backup image file went to the correct location
 Reset backupdir with ending /
-SET @@global.backupdir = '../tmp/backup/';
+SET @@global.backupdir = '../../tmp/backup/';
 Perform backup
 BACKUP DATABASE bup_backupdir TO '../../bup_backupdir4.bak';
 backup_id
@@ -48,8 +48,8 @@ BACKUP DATABASE bup_backupdir TO '/dev/not/there/either/bup_backupdir6.bak';
 ERROR HY000: Can't write to backup location '/dev/not/there/either/bup_backupdir6.bak' (file already exists?)
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
 Warnings:
-Warning	1725	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
-Warning	1725	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1726	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1726	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
 Cleanup
 Reset backupdir 
 SET @@global.backupdir = @@global.datadir;
