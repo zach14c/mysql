@@ -25,140 +25,148 @@ connect (breakpoints,localhost,root,,);
 DROP DATABASE IF EXISTS bup_db1;
 DROP DATABASE IF EXISTS bup_db2;
 
-
-#We are creating 2 databases bup_db1 and bup_db2 to accomplish wide testing of  views in order to check their consistency    #  after BACKUP AND RESTORE.
+#
+# We are creating 2 databases bup_db1 and bup_db2 to accomplish wide testing
+# of views in order to check their consistency after BACKUP AND RESTORE.
 # In bup_db1 DATABASE consists of tables :t1 t3 t5
-# and views v1(based on t1 alone), vcomb(based on t1 and t3), v5( based on bup_db2.t2), v6(based on bup_db2.v2,bup_db1.t5)
+# and views v1(based on t1 alone), vcomb(based on t1 and t3), 
+# v5( based on bup_db2.t2), v6(based on bup_db2.v2,bup_db1.t5)
 #
 # In bup_db2,it consists table t2
-# views v2(based on t2), v3( based on combination of bup_db1 and bup_db2),v4( based on  bup_db1.t3), vv( based on v3)
+# views v2(based on t2), v3( based on combination of bup_db1 and bup_db2),
+# v4( based on  bup_db1.t3), vv( based on v3)
 #
 
 --enable_warnings
-
 CREATE DATABASE bup_db1;
 USE bup_db1;
 
 #Create table and load with data.
 
 --echo Creating Table t1
-CREATE TABLE t1(id int not null primary key, name char(10),city varchar(10));
+CREATE TABLE bup_db1.t1(
+id INT NOT NULL PRIMARY KEY, 
+name CHAR(10),
+city VARCHAR(10)
+)ENGINE=INNODB;
 
 --echo loading data
-INSERT INTO t1 VALUES 
-(1,'aa1','RR1'),(2,'aa2','RR2'),(3,'aa3','RR3'),(4,'aa4','RR4'),(5,'aa5','RR5'),(6,'aa6','RR6'),(7,'aa7','RR7'),(8,'aa8','RR8');
+INSERT INTO bup_db1.t1 VALUES
+(1,'aa1','RR1'),(2,'aa2','RR2'),(3,'aa3','RR3'),(4,'aa4','RR4'),
+(5,'aa5','RR5'),(6,'aa6','RR6'),(7,'aa7','RR7'),(8,'aa8','RR8');
 
-SELECT * FROM t1;
+SELECT * FROM bup_db1.t1 ORDER BY id;
 
 --echo Creating Table t3
 
-CREATE TABLE t3(ccode int, District char(20) not null primary key, scode int, foreign key (scode) references t1(id));
+CREATE TABLE bup_db1.t3(
+ccode INT, 
+District CHAR(20) NOT NULL PRIMARY KEY, 
+scode INT, 
+FOREIGN KEY (scode) REFERENCES bup_db1.t1(id)
+)ENGINE=INNODB;
 
 --echo Loading Data
 
 INSERT INTO t3 VALUES
-(234, 'zuloa',1),(321,'yyy',2),(765,'iug',3),(124,'LKJ',4),(235,'uth',6);
+(234, 'zuloa',1),(321,'yyy',2),(765,'iug',3),
+(124,'LKJ',4),(235,'uth',6);
 
-SELECT * FROM t3;
+SELECT * FROM bup_db1.t3 ORDER BY scode;
 
---echo Creating Table t5
+--echo *****Create view from the table bup_db1.t1*******
 
-CREATE TABLE t5(Gender char(5), cand_age int,foreign key(cand_age) references 
-bup_db2.t2(age));
+CREATE VIEW bup_db1.v1 AS SELECT * FROM bup_db1.t1;
 
---echo Loading data into table t5
+--echo ***Create views from 2 tables(t1 and t3) within same DB bup_db1****
 
-INSERT INTO t5 VALUES
-('F',23),('F',24),('M',19),('F',28),('M',43),('F',30),('M',31),('M',27);
-
-SELECT * FROM t5;
-
---echo *****Create views from the table t1 of bup_db1*******
-
-CREATE VIEW v1  AS SELECT * FROM t1;
-
---echo *****Creating views from 2 tables(t1 and t3) within same database******
-
-CREATE VIEW vcomb AS SELECT name, city, ccode FROM t1, t3 WHERE id=scode;
-
+CREATE VIEW bup_db1.vcomb AS 
+SELECT name, city, ccode FROM bup_db1.t1, bup_db1.t3 WHERE id=scode;
 
 CREATE DATABASE bup_db2;
-USE bup_db2;
 
-CREATE TABLE t2(idno int, age int primary key, education char(20) ,foreign key (idno) references bup_db1.t1(id));
+CREATE TABLE bup_db2.t2(
+idno INT, 
+age INT PRIMARY KEY, 
+education CHAR(20) ,
+FOREIGN KEY (idno) REFERENCES bup_db1.t1(id)
+)ENGINE=INNODB;
 
-INSERT INTO t2 VALUES(1,23,'BS'),(2,24,'BE'),(3,19,'school'),(4,28,'MS'),(5,43,'PHD'),(6,30,'Doctor'),(7,31,'Lawyer'),(8,27,'undergrad');
+INSERT INTO bup_db2.t2 VALUES
+(1,23,'BS'),(2,24,'BE'),(3,19,'School'),(4,28,'MS'),
+(5,43,'PHD'),(6,30,'Doctor'),(7,31,'Lawyer'),(8,27,'Undergrad');
 
+SELECT * FROM bup_db2.t2 ORDER BY age;
 
-SELECT * FROM t2;
+--echo ****Create view in bup_db2****
 
---echo ****Creating View****
+CREATE VIEW bup_db2.v2 AS SELECT age, education FROM bup_db2.t2;
 
-CREATE VIEW v2 AS SELECT age, education FROM t2;
+--echo ******Create views from combination of 2 databases*******
 
---echo ******Creating Views from combination of 2 databases*******
+CREATE VIEW bup_db2.v3 AS SELECT name, age, education 
+FROM bup_db1.t1 , bup_db2.t2 WHERE id=idno;
 
-CREATE VIEW v3 AS SELECT name, age, education FROM bup_db1.t1 , bup_db2.t2 WHERE id=idno;
+--echo *********Create view from another view in bup_db2***********.
 
---echo *********Creating View from another view ***********.
-
-#Bug#35347 Mysql Server crash while doing restore with views for default  driver
+# Bug#35347 Mysql Server crash while doing restore with views for default driver
 # BUG#34758 Server crashes if database with views backed up using CS driver
-#Creatig view from another view is possible if bug#35347 and bug#34758 is fixed.
+#Creating view from another view is possible if bug#35347 and bug#34758is fixed.
 
-#CREATE VIEW vv (N, A, E) AS SELECT * FROM v3;
+CREATE VIEW bup_db2.vv (N, A, E) AS SELECT * FROM bup_db2.v3;
 
---echo *****Creating View from other Database********
+--echo *****Create view from other Database********
 
-CREATE VIEW v4 AS SELECT * FROM bup_db1.t3;
+CREATE VIEW bup_db2.v4 AS SELECT * FROM bup_db1.t3;
 
 --echo Rename the view name
 
-RENAME TABLE v4 to student_details;
+RENAME TABLE bup_db2.v4 to bup_db2.student_details;
 
-USE bup_db1;
+--echo *******Create view from database bup_db2**********
 
---echo *******Creating View from database bup_db2**********
+CREATE VIEW bup_db1.v5 AS SELECT * FROM bup_db2.t2;
 
-CREATE VIEW v5 AS SELECT * FROM bup_db2.t2;
+--echo Creating Table t5
 
---echo ******Creating View v6********
+CREATE TABLE bup_db1.t5(
+Gender CHAR(5),
+cand_age INT,
+FOREIGN KEY(cand_age) REFERENCES bup_db2.t2(age)
+)ENGINE=INNODB;
 
-#Bug#36213 Restore fails for a database that has views created using another database .
+--echo Loading data into table t5
 
-#CREATE VIEW v6 AS SELECT education,gender FROM bup_db2.v2, t5  WHERE cand_age=age;
+INSERT INTO bup_db1.t5 VALUES
+('F',23),('F',24),('M',19),('F',28),
+('M',43),('F',30),('M',31),('M',27);
+
+SELECT * FROM bup_db1.t5 ORDER BY Gender;
+
+#Bug#36213 Restore fails for a database that has views created using 
+#another database .
+
+--echo ******Create view v6********
+CREATE VIEW bup_db1.v6 AS SELECT education,gender 
+FROM bup_db2.v2, bup_db1.t5  WHERE cand_age=age;
 
 #Excercise the objects of bup_db1
 
-USE bup_db1;
-
-SELECT * FROM t1;
-
-SELECT * FROM t3;
-
-SELECT * FROM t5;
-
-SELECT * FROM v1;
-
-SELECT * FROM vcomb;
-
-SELECT * FROM v5;
-
-#SELECT * FROM v6;
+SELECT * FROM bup_db1.t1 ORDER BY id;
+SELECT * FROM bup_db1.t3 ORDER BY scode;
+SELECT * FROM bup_db1.t5 ORDER BY Gender;
+SELECT * FROM bup_db1.v1;
+SELECT * FROM bup_db1.vcomb ORDER BY name;
+SELECT * FROM bup_db1.v5 ORDER BY age;
+SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 
 --echo excercise objects of bup_db2
 
-USE bup_db2;
-
-SELECT * FROM t2;
-
-SELECT * FROM v2;
-
-SELECT * FROM v3;
-
-#SELECT * FROM vv;
-
-SELECT * FROM student_details; #view v4 is renamed as student_details
+SELECT * FROM bup_db2.t2 ORDER BY age;
+SELECT * FROM bup_db2.v2 ORDER BY age;
+SELECT * FROM bup_db2.v3 ORDER BY age;
+SELECT * FROM bup_db2.vv;
+SELECT * FROM bup_db2.student_details; #view v4 is renamed as student_details
 
 #Show the data and Create statements
 
@@ -170,7 +178,8 @@ SELECT * FROM student_details; #view v4 is renamed as student_details
 --query_vertical SHOW CREATE VIEW bup_db2.v3;
 
 #Backup and restore data.
---echo backup data
+--echo backup database
+
 replace_column 1 #;
 BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview.bak';
 
@@ -181,18 +190,34 @@ replace_column 1 #;
 BACKUP DATABASE bup_db2 TO 'bup_objectview2.bak';
 
 --echo dropping  database.
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
-
 DROP DATABASE bup_db2;
 
-#RESTORE FROM bup_objectview.bak;
+--echo Restore database.
 
-#Individual databases cannot be restored because of VIEW DEPENDENCY
+# Individual databases cannot be restored because of VIEW DEPENDENCY
+# For restoring we need base tables in the database, otherwise the 
+# Restore will fail. Once this bug is fixed, we can remove the '#'
+# for the restore below.
 
-#--error 1146
-#RESTORE FROM 'bup_objectview1.bak';
-#--error 1146
-#RESTORE FROM 'bup_objectview2.bak';
+--echo restore database with view dependency to other, non-existing db
+
+--error ER_NO_SUCH_TABLE
+RESTORE FROM 'bup_objectview1.bak';
+
+# An incomplete bup_db1 was created by the failing restore operation.
+# Remove it before trying restore of bup_db2.
+DROP DATABASE bup_db1;
+
+--error ER_NO_SUCH_TABLE
+RESTORE FROM 'bup_objectview2.bak';
+
+# An incomplete bup_db2 was created by the failing restore operation.
+# Remove it before reverting to the working backup image
+DROP DATABASE bup_db2;
 
 replace_column 1 #;
 RESTORE FROM 'bup_objectview.bak';
@@ -209,77 +234,132 @@ RESTORE FROM 'bup_objectview.bak';
 --echo ****check for view contents after Restore*****
 
 #Excercise the objects of bup_db1
-USE bup_db1;
-SELECT * FROM t1;
 
-SELECT * FROM t3;
+SELECT * FROM bup_db1.t1 ORDER BY id;
+SELECT * FROM bup_db1.t3 ORDER BY scode;
+SELECT * FROM bup_db1.t5 ORDER BY Gender;
+SELECT * FROM bup_db1.v1;
+SELECT * FROM bup_db1.vcomb ORDER BY name;
+SELECT * FROM bup_db1.v5 ORDER BY age;
+SELECT * FROM bup_db1.v6 ORDER BY education, gender;
 
-SELECT * FROM t5;
-
-SELECT * FROM v1;
-
-SELECT * FROM vcomb;
-
-SELECT * FROM v5;
-
-#SELECT * FROM v6;
 --echo excercise objects of bup_db2
-use bup_db2;
-SELECT * FROM t2;
 
-SELECT * FROM v2;
-
-SELECT * FROM v3;
-
-#SELECT * FROM vv;
-
-SELECT * FROM student_details;
-
-DROP DATABASE bup_db1;
-DROP DATABASE bup_db2;
-
---echo Restoring Database
-
-replace_column 1 #;
-RESTORE FROM 'bup_objectview.bak';
-
-USE bup_db1;
+SELECT * FROM bup_db2.t2 ORDER BY age;
+SELECT * FROM bup_db2.v2 ORDER BY age;
+SELECT * FROM bup_db2.v3 ORDER BY age;
+SELECT * FROM bup_db2.vv;
+SELECT * FROM bup_db2.student_details;
 
 #Alter table t1 and take BACKUP to see if view is not affected.
 
-ALTER TABLE t1 CHANGE id id tinyint not null;
---query_vertical SHOW CREATE TABLE t1;
-
-SELECT * FROM t1;
-
-DELETE FROM t1 WHERE id=7;
-SELECT * FROM t1;
-
-SELECT * FROM v1;
-
-USE bup_db2;
-SELECT * FROM v3;
-
-#BUG#35249 Mysql server crash for delete operation followed by backup for Default Drivers.
-
-#DELETE FROM t2 WHERE age=24;
-#SELECT * FROM t2;
-#SELECT * FROM v3;
+ALTER TABLE bup_db1.t1 CHANGE name name VARCHAR(10);
+DESCRIBE bup_db1.t1;
+SELECT * FROM bup_db1.t1 ORDER BY id;
+SELECT * FROM bup_db1.v1;
+SELECT * FROM bup_db2.v3 ORDER BY age;
 
 replace_column 1 #;
 BACKUP DATABASE bup_db1, bup_db2 TO 'bup_objectview3.bak';
 
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
 DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
 replace_column 1 #;
 RESTORE FROM 'bup_objectview3.bak';
 
+SELECT * FROM bup_db2.v3 ORDER BY age;
+SELECT * FROM bup_db1.t1 ORDER BY id;
+
+--echo
+--echo *** ENTER Backup of database with missing view dependency 
+--echo *** should fail but not crash server 
+--echo *** Test for bug#34902 ***
+
+--echo initializing test
+
+# start with the backed up database
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+
+replace_column 1 #;
+RESTORE FROM 'bup_objectview.bak';
+
+# check that table t1 and v1 are initially correct
+SELECT * FROM bup_db1.t1;
+SELECT * FROM bup_db1.v1;
+
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
+DROP TABLE bup_db1.t1;
+
+--echo
+--echo Testing backup with missing view dependency in same db
+--echo
+
+# v1 selects from t1, and select now reports error
+--error ER_VIEW_INVALID
+SELECT * FROM bup_db1.v1;
+
+# try to backup - v1 selects from t1 and backup should now fail
+--error ER_BACKUP_CATALOG_ADD_VIEW
+BACKUP DATABASE bup_db1 TO 'bup_shouldfail1.bak';
+
+--echo
+--echo Testing backup with missing view dependency in other db
+--echo
+
 USE bup_db2;
-SELECT * FROM v3;
+--error ER_VIEW_INVALID
+SELECT * from bup_db2.v3;
+# try to backup - v3 selects from bup_db1.t1 and backup should now fail
+--error ER_BACKUP_CATALOG_ADD_VIEW
+BACKUP DATABASE bup_db2 TO 'bup_shouldfail2.bak';
+
+--echo
+--echo *** EXIT Backup of database with missing view dependency
+--echo
+
+--echo 
+--echo *** ENTER Backup of database with altered view should report error, not crash server
+--echo Test for bug#34867
+
+--echo initializing test
+
+# start with the backed up database
+DROP DATABASE bup_db1;
+DROP DATABASE bup_db2;
+
+replace_column 1 #;
+RESTORE FROM 'bup_objectview.bak';
 
 USE bup_db1;
-SELECT * FROM t1;
+CREATE VIEW alter1 AS SELECT 5;
+CREATE VIEW alter2 AS SELECT * FROM alter1;
+ALTER VIEW alter1 AS SELECT 6;
+
+--echo
+--echo Testing view selecting from altered view
+--echo 
+
+--error ER_VIEW_INVALID
+SELECT * FROM alter2;
+
+#fails
+--error ER_VIEW_INVALID
+BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
+
+--echo 
+--echo *** EXIT Backup of database with altered view
+--echo 
+
 
 # Test cleanup section
 
@@ -287,15 +367,21 @@ SELECT * FROM t1;
 --echo ***  DROP bup_db1, bup_db2 DATABASE ****
 --echo
 
-DROP DATABASE bup_db1;
 
+DROP TABLE bup_db1.t3;
+DROP TABLE bup_db1.t5;
+DROP TABLE bup_db2.t2;
+DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
-
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview.bak
-
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview1.bak
-
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview2.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_objectview3.bak
-#BUG#35249 Mysql server crash for delete operation followed by backup for Default Drivers.
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail1.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_shouldfail2.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_alterview.bak
+

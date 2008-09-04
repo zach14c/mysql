@@ -1,0 +1,298 @@
+
+##################################################################
+# Author: Hema
+# Date: 2008-05-28
+# Purpose: To test the metadata consistency of object trigger for all
+#  storage engines
+###################################################################
+
+--source include/not_embedded.inc
+--source suite/backup/include/backup_engine.inc
+--source include/have_debug.inc
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_ts.bak
+
+--error 0,1
+--disable_warnings
+#Create Database and object trigger for this test.
+
+DROP DATABASE IF EXISTS bup_ts;
+--enable_warnings
+
+CREATE DATABASE bup_ts;
+USE bup_ts;
+
+#Create table and load with data.
+SELECT @@SQL_MODE;
+--echo *****Creating table cap ******
+
+CREATE TABLE bup_ts.cap(
+id SMALLINT,
+country CHAR(20),
+city VARCHAR(20),
+population BIGINT,
+capital CHAR(20)
+);
+
+--echo ******* Creating table city*****.
+
+CREATE TABLE bup_ts.city(
+id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(20),
+ccode CHAR(10),
+population bigint
+);
+
+--echo *******Creating table dropcity *****
+
+CREATE TABLE bup_ts.dropcity(
+id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(20)
+);
+
+--echo ******Create Trigger for the table*******
+# BUG#35118 Restore fails if previous create Procedure/Function/Trigger
+# command fails
+
+delimiter ||;
+
+--echo *******creating trigger with event before insert**********
+#BUG#34759 Server crash when backing-up database with after insert
+# trigger with event delete.
+
+CREATE TRIGGER cap_tri BEFORE INSERT ON cap FOR EACH ROW
+SET new.population= if(new.population<0,0,truncate(new.population,-3));||
+
+--echo ********creating trigger with event before Update******
+CREATE  TRIGGER capu_tri BEFORE UPDATE ON cap FOR EACH ROW
+BEGIN
+ SET @country=old.country;
+ SET @capital_old=old.capital;
+ SET @capital_new=new.capital;
+END;
+||
+
+--echo *****creating trigger with event after delete********
+
+CREATE TRIGGER cityin_d AFTER
+DELETE ON city FOR EACH ROW
+INSERT INTO dropcity(id, name) VALUES(old.id, old.name);||
+
+--echo Creating Tables
+delimiter ;||
+
+CREATE TABLE bup_ts.t2(a CHAR(4));
+CREATE TABLE bup_ts.t3(a CHAR(4));
+CREATE TABLE bup_ts.t4(a CHAR(4));
+
+--echo Creating Triggers
+
+--echo Creating trigger with event after insert
+#BUG#34759 Server crash when backing-up database with after insert trigger with
+# event delete.
+
+delimiter ||;
+
+CREATE TRIGGER trai AFTER INSERT ON t2 FOR EACH ROW
+BEGIN
+ INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END;
+||
+
+--echo Creating trigger with event after Update
+
+CREATE TRIGGER trau AFTER UPDATE ON t2 FOR EACH ROW
+BEGIN
+ INSERT INTO t4 VALUES('J'),('O'),('B');
+END;
+||
+
+delimiter ;||
+
+--echo Load data in to table
+--echo ********Inserting Values in tables*********
+
+INSERT INTO bup_ts.cap VALUES
+(1,'IND','chn',87874646468,'deli'),(2,'US','Austin',-6466547,'DC'),
+(3,'Russia','moscow',76487623235682,'moscow'),(4,'IND','bang',-83875477,'deli'),
+(5,'US','sacramento',-388348,'DC'),(6,'IND','jammu',3848488,'deli'),
+(7,'Russia','xx',-373788,'moscow'),(8,'IND','hyd',647747,'deli');
+
+INSERT INTO bup_ts.city VALUES
+(1,'aa','AD',263768),(2,'bb','PO',8839898),(3,'cc','KL',898778),
+(4,'dd','IK',73287328),(5,'ee','YU',89399),(6,'ff','IL',90880),
+(7,'gg','TY',345),(8,'hh','WE',9239084);
+
+--echo  Updating the table to fire trigger with event update
+
+UPDATE cap SET capital='Delhi' WHERE country='Ind';
+UPDATE cap SET capital='Washington DC' WHERE country='US';
+SELECT @country as country, @capital_old as 'old capital',
+@capital_new as 'new capital';
+
+--echo showing the tables to check the trigger is fired  with event insert
+
+SELECT * FROM bup_ts.cap ORDER BY city;
+
+--echo selecting data from table city
+
+SELECT * FROM bup_ts.city ORDER BY name;
+
+--echo deleting few rows from table city to fire trigger with event delete.
+#*****Bug#35249******
+#Here memory storage engine crashes if trigger is created
+# with event delete and executed.
+
+DELETE FROM bup_ts.city WHERE name='dd';
+DELETE FROM bup_ts.city WHERE name='bb';
+
+--echo
+--echo Checking table contents of city and dropcity to verify if trigger is
+--echo fired for event delete.
+SELECT * FROM city ORDER BY name;
+SELECT * FROM dropcity ORDER BY id;
+
+--echo ******Firing Trigger after insert and after update *********
+
+INSERT INTO bup_ts.t2 values('a'),('k'),('*'),('i');
+SELECT * FROM bup_ts.t3;
+UPDATE t2 SET a='*' WHERE a='k';
+SELECT * FROM bup_ts.t4;
+
+--echo Show the data and Create statements
+
+--echo showing objects and create statements.
+--query_vertical SHOW TRIGGERS;
+--query_vertical SHOW CREATE TRIGGER cap_tri;
+--query_vertical SHOW CREATE TRIGGER capu_tri;
+--query_vertical SHOW CREATE TRIGGER cityin_d;
+--query_vertical SHOW CREATE TRIGGER trai;
+--query_vertical SHOW CREATE TRIGGER trau;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE city;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE t2;
+
+
+#Backup and restore data.
+--echo backup data
+--replace_column 1 #
+
+BACKUP DATABASE bup_ts TO 'bup_ts.bak';
+
+--echo dropping  database.
+DROP DATABASE bup_ts;
+
+--echo perform restore
+--replace_column 1 #
+
+RESTORE FROM 'bup_ts.bak';
+
+--echo show data and create statements after Restore
+--echo showing objects and create statements
+--query_vertical SHOW CREATE DATABASE bup_ts;
+--query_vertical SHOW CREATE TRIGGER cap_tri;
+--query_vertical SHOW CREATE TRIGGER cityin_d;
+--query_vertical SHOW CREATE TRIGGER trai;
+--query_vertical SHOW CREATE TRIGGER trau;
+--query_vertical SHOW TRIGGERS;
+--echo  Inserting some more values in the table to check the trigger with event insert
+
+INSERT INTO bup_ts.cap VALUES
+(9,'US','houston',-33399587677866656555655555655,'texas');
+
+SELECT * FROM bup_ts.cap ORDER BY city;
+
+--echo Deleting some rows from city to check the trigger with event delete
+
+DELETE FROM city WHERE name='aa';
+
+--echo Checking table city and drop city
+
+SELECT * FROM bup_ts.city ORDER BY name;
+SELECT * FROM bup_ts.dropcity ORDER BY id;
+INSERT INTO bup_ts.t2 VALUES('m'),('s1'),('s'),('q'),('l');
+SELECT * FROM bup_ts.t3;
+UPDATE t2 SET a='y' WHERE a='s1';
+SELECT * FROM bup_ts.t4;
+DROP DATABASE bup_ts;
+
+--echo Change sql mode and perform Restore and check the table contents.
+
+SET SQL_MODE=TRADITIONAL;
+--replace_column 1 #
+RESTORE FROM 'bup_ts.bak';
+
+--query_vertical SHOW TRIGGERS;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE t2;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE city;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE cap;
+--echo Check contents after Restore and change of SQL mode
+
+INSERT INTO bup_ts.cap VALUES(10,'India','Daund',36637782899,'maharashtra');
+SELECT * FROM bup_ts.cap ORDER BY city;
+INSERT INTO bup_ts.t2 VALUES('i'),('w');
+SELECT * FROM t3;
+UPDATE t2 SET a='^' WHERE a='w';
+SELECT * FROM t4;
+
+DROP DATABASE bup_ts;
+
+--echo change of SQL mode
+
+SET SQL_MODE=MAXDB;
+--replace_column 1 #
+RESTORE FROM 'bup_ts.bak';
+
+--echo Check contents after Restore and change of SQL mode
+
+INSERT INTO bup_ts.cap VALUES(11,'UK','Edenburg',-36637782899,'london');
+SELECT * FROM bup_ts.cap ORDER BY city;
+INSERT INTO bup_ts.t2 VALUES('i'),('w'),('h');
+SELECT * FROM bup_ts.t3;
+UPDATE t2 SET a='p' WHERE a='h';
+SELECT * FROM bup_ts.t4;
+
+DROP DATABASE bup_ts;
+--echo Chnage SQL mode and then perform Restore.
+
+SET SQL_MODE=ANSI;
+--replace_column 1 #
+
+RESTORE FROM 'bup_ts.bak';
+
+--echo Check contents after Restore and change of SQL mode
+
+INSERT INTO bup_ts.cap VALUES(12,'India','vooty',789,'Tamilnadu');
+
+SELECT * FROM bup_ts.cap ORDER BY city;
+INSERT INTO bup_ts.t2 VALUES('i'),('w'),('h'),('b');
+
+SELECT * FROM bup_ts.t3;
+UPDATE bup_ts.t2 SET a='#' WHERE a='w';
+
+SELECT * FROM bup_ts.t4;
+
+# Test cleanup section
+--echo
+--echo ***  DROP bup_ts DATABASE ****
+--echo
+
+DROP DATABASE bup_ts;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_ts.bak
+
+

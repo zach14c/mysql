@@ -799,7 +799,8 @@ uint mi_state_info_write(MYISAM_SHARE *share, File file,
                          MI_STATE_INFO *state, uint pWrite);
 uchar *mi_state_info_read(uchar *ptr, MI_STATE_INFO *state);
 int mi_remap_file_and_write_state_for_unlock(MI_INFO *info);
-uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead);
+uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead,
+                            my_bool force);
 uint mi_base_info_write(File file, MI_BASE_INFO *base);
 uchar *mi_n_base_info_read(uchar *ptr, MI_BASE_INFO *base);
 int mi_keyseg_write(File file, const HA_KEYSEG *keyseg);
@@ -834,7 +835,9 @@ void mi_disable_non_unique_index(MI_INFO *info, ha_rows rows);
 
 extern MI_INFO *test_if_reopen(char *filename);
 my_bool check_table_is_closed(const char *name, const char *where);
-int mi_open_datafile(MI_INFO *info, MYISAM_SHARE *share, File file_to_dup);
+int mi_open_datafile(MI_INFO *info, MYISAM_SHARE *share, const char *orn_name,
+                     File file_to_dup);
+
 int mi_open_keyfile(MYISAM_SHARE *share);
 void mi_setup_functions(register MYISAM_SHARE *share);
 my_bool mi_dynmap_file(MI_INFO *info, my_off_t size);

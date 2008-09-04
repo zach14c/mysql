@@ -330,15 +330,16 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
-  "no_materialization", "no_semijoin",
+  "no_materialization", "no_semijoin", "no_loosescan",
   NullS
 };
 
 /* Corresponding defines are named OPTIMIZER_SWITCH_XXX */
 static const unsigned int optimizer_switch_names_len[]=
 {
-  /*no_materialization*/          19,
-  /*no_semijoin*/                 11
+  /*no_materialization*/          18,
+  /*no_semijoin*/                 11,
+  /*no_loosescan*/                12,
 };
 
 TYPELIB optimizer_switch_typelib= { array_elements(optimizer_switch_names)-1,"",
@@ -616,6 +617,7 @@ char mysql_real_data_home[FN_REFLEN],
      *opt_init_file, *opt_tc_log_file,
      def_ft_boolean_syntax[sizeof(ft_boolean_syntax)];
 char mysql_unpacked_real_data_home[FN_REFLEN];
+int mysql_unpacked_real_data_home_len;
 uint reg_ext_length;
 const key_map key_map_empty(0);
 key_map key_map_full(0);                        // Will be initialized later
@@ -1364,6 +1366,7 @@ void clean_up(bool print_message)
   my_free(sys_init_slave.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_var_general_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_var_slow_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_backupdir.value, MYF(MY_ALLOW_ZERO_PTR));
   free_tmpdir(&mysql_tmpdir_list);
 #ifdef HAVE_REPLICATION
   my_free(slave_load_tmpdir,MYF(MY_ALLOW_ZERO_PTR));
@@ -5796,6 +5799,8 @@ struct my_option my_long_options[] =
    "Creating and dropping stored procedures alters ACLs. Disable with --skip-automatic-sp-privileges.",
    (uchar**) &sp_automatic_privileges, (uchar**) &sp_automatic_privileges,
    0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
+  {"backupdir", 'B', "Path used to store backup data.", (uchar**) &sys_var_backupdir.value,
+   (uchar**) &sys_var_backupdir.value, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"basedir", 'b',
    "Path to installation directory. All paths are usually resolved relative to this.",
    (uchar**) &mysql_home_ptr, (uchar**) &mysql_home_ptr, 0, GET_STR, REQUIRED_ARG,
@@ -7661,6 +7666,7 @@ static void mysql_init_variables(void)
   /* Things reset to zero */
   opt_skip_slave_start= opt_reckless_slave = 0;
   mysql_home[0]= pidfile_name[0]= log_error_file[0]= 0;
+  myisam_test_invalid_symlink= test_if_data_home_dir;
   opt_log= opt_slow_log= 0;
   opt_update_log= 0;
   log_output_options= find_bit_type(log_output_str, &log_output_typelib);
@@ -7919,6 +7925,21 @@ mysqld_get_one_option(int optid,
   case 'l':
     opt_log=1;
     break;
+  case 'B':
+  {
+    /*
+      Check if directory exists and we have permission to create file and
+      write to file.
+    */
+    if (my_access(argument, (F_OK|W_OK)))
+    {
+      sql_print_warning("The path specified for the variable backupdir cannot"
+        " be accessed or is invalid. ref:'%s'\n", argument);
+    }
+    sys_var_backupdir.value= my_strdup(argument, MYF(0));
+    sys_var_backupdir.value_length= strlen(sys_var_backupdir.value);
+    break;
+  }
   case 'h':
     strmake(mysql_real_data_home,argument, sizeof(mysql_real_data_home)-1);
     /* Correct pointer set by my_getopt (for embedded library) */
@@ -8622,12 +8643,25 @@ static void fix_paths(void)
     pos[1]= 0;
   }
   convert_dirname(mysql_real_data_home,mysql_real_data_home,NullS);
-  (void) fn_format(buff, mysql_real_data_home, "", "",
-                   (MY_RETURN_REAL_PATH|MY_RESOLVE_SYMLINKS));
-  (void) unpack_dirname(mysql_unpacked_real_data_home, buff);
+  my_realpath(mysql_unpacked_real_data_home, mysql_real_data_home, MYF(0));
+  mysql_unpacked_real_data_home_len= strlen(mysql_unpacked_real_data_home);
+  if (mysql_unpacked_real_data_home[mysql_unpacked_real_data_home_len-1] == FN_LIBCHAR)
+    --mysql_unpacked_real_data_home_len;
+
+
   convert_dirname(language,language,NullS);
   (void) my_load_path(mysql_home,mysql_home,""); // Resolve current dir
   (void) my_load_path(mysql_real_data_home,mysql_real_data_home,mysql_home);
+ 
+  /*
+    Set backupdir if datadir set on command line but not otherwise set.
+  */
+  if (!sys_var_backupdir.value)
+  {
+    sys_var_backupdir.value= my_strdup(mysql_real_data_home, MYF(0));
+    sys_var_backupdir.value_length= strlen(mysql_real_data_home);
+  }
+
   (void) my_load_path(pidfile_name,pidfile_name,mysql_real_data_home);
   (void) my_load_path(opt_plugin_dir, opt_plugin_dir_ptr ? opt_plugin_dir_ptr :
                                       get_relative_path(PLUGINDIR), mysql_home);

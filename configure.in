@@ -835,7 +835,7 @@ AC_TYPE_SIZE_T
 AC_HEADER_DIRENT
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(fcntl.h fenv.h float.h floatingpoint.h fpu_control.h \
+AC_CHECK_HEADERS(fcntl.h fenv.h float.h floatingpoint.h fpu_control.h ieeefp.h \
  limits.h memory.h pwd.h select.h \
  stdlib.h stddef.h sys/fpu.h sys/stat.h \
  strings.h string.h synch.h sys/mman.h sys/socket.h netinet/in.h arpa/inet.h \
@@ -846,6 +846,7 @@ AC_CHECK_HEADERS(fcntl.h fenv.h float.h floatingpoint.h fpu_control.h \
  execinfo.h)
 
 AC_CHECK_HEADERS([xfs/xfs.h])
+AC_CHECK_HEADERS([valgrind/memcheck.h])
 
 #--------------------------------------------------------------------
 # Check for system libraries. Adds the library to $LIBS
@@ -1795,6 +1796,9 @@ if test "x$mysql_cv_gcc_atomic_builtins" = disabled_xyes; then
   AC_DEFINE(HAVE_GCC_ATOMIC_BUILTINS, 1,
             [Define to 1 if compiler provides atomic builtins.])
 fi
+
+# Check if we have the atomic_* functions on Solaris
+AC_CHECK_FUNC(atomic_cas_32, AC_DEFINE([HAVE_SOLARIS_ATOMIC], [1], [Define to 1 if Solaris support atomic functions.]))
 
 # Force static compilation to avoid linking problems/get more speed
 AC_ARG_WITH(mysqld-ldflags,
