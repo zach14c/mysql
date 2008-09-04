@@ -4488,7 +4488,6 @@ send_result_message:
                       system_charset_info);
       if (protocol->write())
         goto err;
-      ha_autocommit_or_rollback(thd, 0);
       close_thread_tables(thd);
       DBUG_PRINT("info", ("HA_ADMIN_TRY_ALTER, trying analyze..."));
       TABLE_LIST *save_next_local= table->next_local,
