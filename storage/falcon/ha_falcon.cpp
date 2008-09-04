@@ -2056,6 +2056,9 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	for NDB only.
 	*/
 
+        /*
+           Sergey Vojtovich is to reconsider this code
+
 	if (ts_info->data_file_name)
 		{
 		char buff[FN_REFLEN];
@@ -2069,6 +2072,7 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 			DBUG_RETURN(1);
 			}
 		}
+        */
 
 	switch (ts_info->ts_cmd_type)
 		{
