@@ -562,7 +562,14 @@ Bdb* Cache::getFreeBuffer(void)
 				else
 				{
 					// get this one out of the way so we don't search it every time
-					moveToHeadAlreadyLocked(bdb,count);
+					moveToHeadAlreadyLocked(bdb);
+#ifdef CHECK_STALLED_BDB
+					bdb->stallCount++;
+					if ((bdb->stallCount & 0x03) == 0x03) {
+						Log::debug("Page %d is in use and aged %d times\n",
+								bdb->pageNumber, bdb->stallCount);
+					}
+#endif // CHECK_STALLED_BDB
 				}
 			}
 		if (!bdb)
@@ -609,6 +616,9 @@ Bdb* Cache::getFreeBuffer(void)
 
 		break;
 		}
+#ifdef CHECK_STALLED_BDB
+		bdb->stallCount = 0;
+#endif // CHECK_STALLED_BDB
 
 	return bdb;
 }
