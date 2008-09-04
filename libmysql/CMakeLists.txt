@@ -98,9 +98,18 @@ SET(CLIENT_SOURCES   ../mysys/array.c ../strings/bchange.c ../strings/bmove.c
                      ../strings/strtoll.c ../strings/strtoull.c ../strings/strxmov.c ../strings/strxnmov.c 
                      ../mysys/thr_mutex.c ../mysys/typelib.c ../vio/vio.c ../vio/viosocket.c 
                      ../vio/viossl.c ../vio/viosslfactories.c ../strings/xml.c ../mysys/mf_qsort.c
-		     ../mysys/my_getsystime.c ../mysys/my_sync.c ../mysys/my_winerr.c ../mysys/my_winfile.c ${LIB_SOURCES})
+                     ../mysys/my_getsystime.c ../mysys/my_sync.c ../mysys/my_winerr.c ../mysys/my_winfile.c ${LIB_SOURCES})
 
-
+# Need to set USE_TLS for building the DLL, since __declspec(thread)
+# approach to thread local storage does not work properly in DLLs.
+#
+# The static library might be used to form another DLL, as is the case
+# with the ODBC driver, so it has to be compiled with USE_TLS as well.
+#
+# We create a third library without USE_TLS for internal use. We can't
+# be sure that some client application part of this build doesn't go
+# beond the documented API, and try access the Thread Local Storage.
+# The "_notls" means no Tls*() functions used, i.e. "static" TLS.
 
 ADD_LIBRARY(mysqlclient       STATIC ${CLIENT_SOURCES})
 ADD_DEPENDENCIES(mysqlclient GenError)
