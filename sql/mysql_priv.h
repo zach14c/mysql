@@ -638,6 +638,8 @@ extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
 #define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+#define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
+
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1

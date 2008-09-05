@@ -904,6 +904,7 @@ int Backup_restore_ctx::do_backup()
   report_stats_pre(info);
 
   DBUG_PRINT("backup",("Writing preamble"));
+  DEBUG_SYNC(m_thd, "backup_before_write_preamble");
 
   if (write_preamble(info, s))
   {
@@ -1052,6 +1053,10 @@ int Backup_restore_ctx::do_restore()
 
   if (read_meta_data(info, s))
   {
+    // FIXME: detect errors.
+    // FIXME: error logging.
+    m_thd->main_da.reset_diagnostics_area();
+
     fatal_error(ER_BACKUP_READ_META);
     DBUG_RETURN(m_error);
   }
@@ -1426,6 +1431,7 @@ int bcat_add_item(st_bstream_image_header *catalogue,
   case BSTREAM_IT_SFUNC:
   case BSTREAM_IT_EVENT:
   case BSTREAM_IT_TRIGGER:
+  case BSTREAM_IT_PRIVILEGE:
   {
     st_bstream_dbitem_info *it= (st_bstream_dbitem_info*)item;
     
@@ -1437,7 +1443,6 @@ int bcat_add_item(st_bstream_image_header *catalogue,
     
     Image_info::Dbobj *it1= info->add_db_object(*db, item->type, name_str,
                                                 item->pos);
-  
     if (!it1)
       return BSTREAM_ERROR;
     
@@ -1688,6 +1693,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   case BSTREAM_IT_EVENT:  create_err= ER_BACKUP_CANT_RESTORE_EVENT; break;
   case BSTREAM_IT_TRIGGER: create_err= ER_BACKUP_CANT_RESTORE_TRIGGER; break;
   case BSTREAM_IT_TABLESPACE: create_err= ER_BACKUP_CANT_RESTORE_TS; break;
+  case BSTREAM_IT_PRIVILEGE: create_err= ER_BACKUP_CANT_RESTORE_PRIV; break;
   
   /*
     TODO: Decide what to do when we come across unknown item:
@@ -1774,6 +1780,48 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   // Create the object.
 
+  /*
+    We need to check to see if the user exists (grantee) and if not, 
+    do not execute the grant. 
+  */
+  if (item->type == BSTREAM_IT_PRIVILEGE)
+  {
+    /*
+      Issue warning to the user that grant was skipped. 
+
+      @todo Replace write_message() call with the result of the revised
+            error handling work in WL#4384 with possible implementation
+            via a related bug report.
+    */
+    if (!obs::user_exists(thd, sobj->get_name()))
+    {
+      info->m_ctx.write_message(log_level::WARNING, 
+                                ER(ER_BACKUP_GRANT_SKIPPED),
+                                create_stmt);
+      return BSTREAM_OK; 
+    }
+    /*
+      We need to check the grant against the database list to ensure the
+      grants have not been altered to apply to another database.
+    */
+    ::String db_name;  // db name extracted from grant statement
+    char *start;
+    char *end;
+    int size= 0;
+
+    start= strstr((char *)create_stmt.begin, "ON ") + 3;
+    end= strstr(start, ".");
+    size= end - start;
+    db_name.alloc(size);
+    db_name.length(0);
+    db_name.append(start, size);
+    if (!info->has_db(db_name))
+    {
+      info->m_ctx.fatal_error(ER_BACKUP_GRANT_WRONG_DB, create_stmt);
+      return BSTREAM_ERROR;
+    }
+  }
+
   if (sobj->execute(thd))
   {
     info->m_ctx.fatal_error(create_err, desc);
@@ -1819,6 +1867,7 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
   case BSTREAM_IT_EVENT:  meta_err= ER_BACKUP_GET_META_EVENT; break;
   case BSTREAM_IT_TRIGGER: meta_err= ER_BACKUP_GET_META_TRIGGER; break;
   case BSTREAM_IT_TABLESPACE: meta_err= ER_BACKUP_GET_META_TS; break;
+  case BSTREAM_IT_PRIVILEGE: meta_err= ER_BACKUP_GET_META_PRIV; break;
   
   /*
     This can't happen - the item was obtained from the backup kernel.

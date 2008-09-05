@@ -44,14 +44,20 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   field_list.push_back(new Item_empty_string("serialization", 13));
   protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
-  obs::ObjIterator *it= obs::get_databases(thd);
-
-  if (it)
+  //obs::ObjIterator *it= obs::get_databases(thd);
+  List_iterator<LEX_STRING> it(*db_list);
+  
+  //if (it)
   {
     obs::Obj *db;
 
-    while ((db= it->next()))
+    //while ((db= it->next()))
+    LEX_STRING *dbname;
+    while ((dbname= it++))
     {
+      String dir;
+      dir.copy(dbname->str, dbname->length, system_charset_info);
+      db= get_database(&dir);
 
       if (is_internal_db_name(db->get_db_name()))
           continue;
@@ -223,18 +229,42 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 
           delete event;
         }
-
-        delete tit;
       }
 
-      // That's it.
+      //
+      // List db grants.
+      //
+      tit= obs::get_all_db_grants(thd, db->get_name());
 
-      delete db;
+      if (tit)
+      {
+        obs::Obj *grant;
+
+        while ((grant= tit->next()))
+        {
+          String serial;
+          serial.length(0);
+          protocol->prepare_for_resend();
+          protocol->store(const_cast<String*>(db->get_name()));
+          protocol->store(const_cast<String*>(grant->get_name()));
+          String user;
+          String host;
+          String *user_host= (String *)grant->get_name();
+          user_exists(thd, user_host);
+          protocol->store(C_STRING_WITH_LEN("GRANT"),
+                          system_charset_info);
+          grant->serialize(thd, &serial);
+          protocol->store(&serial);
+          protocol->write();
+
+          delete grant;
+        }
+
+      delete tit;
+      }
     }
   }
-
-  delete it;
-
+  thd->main_da.reset_diagnostics_area();
   my_eof(thd);
   DBUG_RETURN(res);
 }

@@ -1931,6 +1931,7 @@ public:
           when the DDL blocker is engaged.
   */
   my_bool DDL_exception; // Allow some DDL if there is an exception
+  ulong backup_wait_timeout;
 
   Locked_tables_list locked_tables_list;
 

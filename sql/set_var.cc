@@ -231,6 +231,7 @@ static sys_var_long_ptr	sys_concurrent_insert(&vars, "concurrent_insert",
 static sys_var_long_ptr	sys_connect_timeout(&vars, "connect_timeout",
 					    &connect_timeout);
 static sys_var_const_str       sys_datadir(&vars, "datadir", mysql_real_data_home);
+static sys_var_backup_wait_timeout sys_backup_wait_timeout(&vars, "backup_wait_timeout");
 #ifndef DBUG_OFF
 static sys_var_thd_dbug        sys_dbug(&vars, "debug");
 #endif
@@ -2834,6 +2835,61 @@ bool sys_var_insert_id::update(THD *thd, set_var *var)
 {
   thd->force_one_auto_inc_interval(var->save_result.ulonglong_value);
   return 0;
+}
+
+
+/**
+  Get value.
+
+  Returns the value for the backup_wait_timeout session variable.
+
+  @param[IN] thd    Thread object
+  @param[IN] type   Type of variable
+  @param[IN] base   Not used 
+
+  @returns value of variable
+*/
+uchar *sys_var_backup_wait_timeout::value_ptr(THD *thd, enum_var_type type,
+				   LEX_STRING *base)
+{
+  thd->sys_var_tmp.ulong_value= thd->backup_wait_timeout;
+  return (uchar*) &thd->sys_var_tmp.ulonglong_value;
+}
+
+
+/**
+  Update value.
+
+  Set the backup_wait_timeout variable.
+
+  @param[IN] thd    Thread object
+  @param[IN] var    Pointer to value from command.
+
+  @returns 0
+*/
+bool sys_var_backup_wait_timeout::update(THD *thd, set_var *var)
+{
+  if (var->save_result.ulong_value > (LONG_MAX/1000))
+    thd->backup_wait_timeout= LONG_MAX/1000;
+  else
+    thd->backup_wait_timeout= var->save_result.ulong_value;
+  return 0;
+}
+
+
+/**
+  Set default value.
+
+  Set the backup_wait_timeout variable to the default value.
+
+  @param[IN] thd    Thread object
+  @param[IN] type   Type of variable
+
+  @returns 0
+*/
+void sys_var_backup_wait_timeout::set_default(THD *thd, enum_var_type type)
+{ 
+  thd->backup_wait_timeout= BACKUP_WAIT_TIMEOUT_DEFAULT; 
 }
 
 

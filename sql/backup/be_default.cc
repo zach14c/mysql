@@ -381,6 +381,14 @@ result_t Backup::get_data(Buffer &buf)
     read_set=  cur_table->read_set;
     start_tbl_read(cur_table);
 
+    // The first time the table is accessed after opening it,
+    // cur_table->in_use points to the locking thread. It has to point
+    // to the backup thread before the table can be read
+    if (cur_table->in_use != locking_thd->m_thd) {
+      DBUG_ASSERT(cur_table->in_use == locking_thd->lock_thd);
+      cur_table->in_use= locking_thd->m_thd;
+    }
+
     buf.table_num= tbl_num;
     mode= READ_RCD;
   }
