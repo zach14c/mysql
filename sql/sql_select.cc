@@ -15910,7 +15910,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
       if (table->covering_keys.is_set(ref_key))
 	usable_keys.intersect(table->covering_keys);
       if (tab->pre_idx_push_select_cond)
-        tab->select_cond= tab->select->cond= tab->pre_idx_push_select_cond;
+        tab->select_cond= tab->pre_idx_push_select_cond;
       if ((new_ref_key= test_if_subkey(order, table, ref_key, ref_key_parts,
 				       &usable_keys)) < MAX_KEY)
       {
@@ -16170,7 +16170,7 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
             table->file->extra(HA_EXTRA_KEYREAD);
           }
           if (tab->pre_idx_push_select_cond)
-            tab->select_cond= tab->select->cond= tab->pre_idx_push_select_cond;
+            tab->select_cond= tab->pre_idx_push_select_cond;
           table->file->ha_index_or_rnd_end();
           if (join->select_options & SELECT_DESCRIBE)
           {
