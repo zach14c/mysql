@@ -15,6 +15,29 @@ drop table if exists t1, t2;
 --enable_warnings
 
 #
+# Bug#35765: ALTER TABLE produces wrong error when non-existent storage engine
+# used
+CREATE TABLE t1 (a INT)
+ENGINE=NonExistentEngine;
+DROP TABLE t1;
+CREATE TABLE t1 (a INT)
+ENGINE=NonExistentEngine
+PARTITION BY HASH (a);
+DROP TABLE t1;
+CREATE TABLE t1 (a INT)
+ENGINE=Memory;
+ALTER TABLE t1 ENGINE=NonExistentEngine;
+# OK to only specify one partitions engine, since it is already assigned at
+# table level (after create, it is specified on all levels and all parts).
+ALTER TABLE t1
+PARTITION BY HASH (a)
+(PARTITION p0 ENGINE=Memory,
+ PARTITION p1 ENGINE=NonExistentEngine);
+ALTER TABLE t1 ENGINE=NonExistentEngine;
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+#
 # Bug35931: Index search may return duplicates
 #
 CREATE TABLE t1 (
@@ -1357,11 +1380,9 @@ SHOW TABLE STATUS;
 DELETE from t1 where a = 1;
 --replace_column 9 0 12 NULL 13 NULL 14 NULL
 SHOW TABLE STATUS;
-# restore this after WL#4176 is completed
--- error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 OPTIMIZE PARTITION p0;
-#--replace_column 12 NULL 13 NULL 14 NULL
-#SHOW TABLE STATUS;
+--replace_column 12 NULL 13 NULL 14 NULL
+SHOW TABLE STATUS;
 DROP TABLE t1;
 
 #
@@ -1614,13 +1635,15 @@ drop table t;
 #
 
 USE mysql;
+TRUNCATE TABLE general_log;
+SET @old_general_log_state = @@global.general_log;
 SET GLOBAL general_log = 0;
 ALTER TABLE general_log ENGINE = MyISAM;
 --error ER_WRONG_USAGE
 ALTER TABLE general_log PARTITION BY RANGE (TO_DAYS(event_time))
   (PARTITION p0 VALUES LESS THAN (733144), PARTITION p1 VALUES LESS THAN (3000000));
 ALTER TABLE general_log ENGINE = CSV;
-SET GLOBAL general_log = default;
+SET GLOBAL general_log = @old_general_log_state;
 use test;
 
 #
@@ -1695,13 +1718,9 @@ PARTITION BY RANGE (a) (
 ALTER TABLE t1 OPTIMIZE PARTITION p1 EXTENDED;
 --error ER_PARSE_ERROR
 ALTER TABLE t1 ANALYZE PARTITION p1 EXTENDED;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 ANALYZE PARTITION p1;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 CHECK PARTITION p1;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 REPAIR PARTITION p1;
---error ER_CHECK_NOT_IMPLEMENTED
 ALTER TABLE t1 OPTIMIZE PARTITION p1;
 DROP TABLE t1;
 
@@ -1790,4 +1809,34 @@ while ($n)
 --enable_query_log
 show create table t1;
 drop table t1;
+
+#
+# Bug #38272 timestamps fields incorrectly defaulted on update accross partitions.
+#
+
+CREATE TABLE  t1 (
+  `ID` bigint(20) NOT NULL AUTO_INCREMENT,
+  `createdDate` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `number` int,
+  PRIMARY KEY (`ID`, number)
+)
+PARTITION BY RANGE (number) (
+    PARTITION p0 VALUES LESS THAN (6),
+    PARTITION p1 VALUES LESS THAN (11)
+);
+
+create table t2 (
+  `ID` bigint(20),
+  `createdDate` TIMESTAMP,
+  `number` int
+);
+
+INSERT INTO t1 SET number=1;
+insert into t2 select * from t1;
+SELECT SLEEP(1);
+UPDATE t1 SET number=6;
+select count(*) from t1, t2 where t1.createdDate = t2.createdDate;
+
+drop table t1, t2;
+
 --echo End of 5.1 tests
