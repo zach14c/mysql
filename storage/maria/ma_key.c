@@ -625,6 +625,40 @@ int _ma_read_key_record(MARIA_HA *info, uchar *buf, MARIA_RECORD_POS filepos)
 }
 
 
+
+/*
+  Save current key tuple to record and call index condition check function
+
+  SYNOPSIS
+    ma_check_index_cond()
+      info    MyISAM handler
+      keynr   Index we're running a scan on
+      record  Record buffer to use (it is assumed that index check function 
+              will look for column values there)
+
+  RETURN
+    -1  Error 
+    0   Index condition is not satisfied, continue scanning
+    1   Index condition is satisfied
+    2   Index condition is not satisfied, end the scan. 
+*/
+
+int ma_check_index_cond(register MARIA_HA *info, uint keynr, uchar *record)
+{
+  if (info->index_cond_func)
+  {
+    if (_ma_put_key_in_record(info, keynr, record))
+    {
+      maria_print_error(info->s, HA_ERR_CRASHED);
+      my_errno=HA_ERR_CRASHED;
+      return -1;
+    }
+    return info->index_cond_func(info->index_cond_func_arg);
+  }
+  return 1;
+}
+
+
 /*
   Retrieve auto_increment info
 
