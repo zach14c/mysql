@@ -79,7 +79,7 @@ public:
 												void *seq_init_param, 
 												uint n_ranges, uint *bufsz,
 												uint *flags, COST_VECT *cost);
-	virtual int		multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+	virtual ha_rows	multi_range_read_info(uint keyno, uint n_ranges, uint keys,
 										  uint *bufsz, uint *flags, COST_VECT *cost);
 	// Multi Range Read interface ends
 

@@ -330,15 +330,16 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
-  "no_materialization", "no_semijoin",
+  "no_materialization", "no_semijoin", "no_loosescan",
   NullS
 };
 
 /* Corresponding defines are named OPTIMIZER_SWITCH_XXX */
 static const unsigned int optimizer_switch_names_len[]=
 {
-  /*no_materialization*/          19,
-  /*no_semijoin*/                 11
+  /*no_materialization*/          18,
+  /*no_semijoin*/                 11,
+  /*no_loosescan*/                12,
 };
 
 TYPELIB optimizer_switch_typelib= { array_elements(optimizer_switch_names)-1,"",
@@ -676,11 +677,11 @@ SHOW_COMP_OPTION have_community_features;
 
 pthread_key(MEM_ROOT**,THR_MALLOC);
 pthread_key(THD*, THR_THD);
-pthread_mutex_t LOCK_mysql_create_db, LOCK_Acl, LOCK_open, LOCK_thread_count,
+pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_thread_count,
 		LOCK_mapped_file, LOCK_status, LOCK_global_read_lock,
 		LOCK_error_log,
 		LOCK_delayed_insert, LOCK_delayed_status, LOCK_delayed_create,
-		LOCK_crypt, LOCK_bytes_sent, LOCK_bytes_received,
+		LOCK_crypt,
 	        LOCK_global_system_variables,
                 LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
                 LOCK_connection_count;
@@ -1445,7 +1446,6 @@ static void clean_up_mutexes()
 {
   (void) pthread_mutex_destroy(&LOCK_mysql_create_db);
   (void) pthread_mutex_destroy(&LOCK_lock_db);
-  (void) pthread_mutex_destroy(&LOCK_Acl);
   (void) rwlock_destroy(&LOCK_grant);
   (void) pthread_mutex_destroy(&LOCK_open);
   (void) pthread_mutex_destroy(&LOCK_thread_count);
@@ -1457,8 +1457,6 @@ static void clean_up_mutexes()
   (void) pthread_mutex_destroy(&LOCK_delayed_create);
   (void) pthread_mutex_destroy(&LOCK_manager);
   (void) pthread_mutex_destroy(&LOCK_crypt);
-  (void) pthread_mutex_destroy(&LOCK_bytes_sent);
-  (void) pthread_mutex_destroy(&LOCK_bytes_received);
   (void) pthread_mutex_destroy(&LOCK_user_conn);
   (void) pthread_mutex_destroy(&LOCK_connection_count);
   Events::destroy_mutexes();
@@ -3652,7 +3650,6 @@ static int init_thread_environment()
 {
   (void) pthread_mutex_init(&LOCK_mysql_create_db,MY_MUTEX_INIT_SLOW);
   (void) pthread_mutex_init(&LOCK_lock_db,MY_MUTEX_INIT_SLOW);
-  (void) pthread_mutex_init(&LOCK_Acl,MY_MUTEX_INIT_SLOW);
   (void) pthread_mutex_init(&LOCK_open, NULL);
   (void) pthread_mutex_init(&LOCK_thread_count,MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_mapped_file,MY_MUTEX_INIT_SLOW);
@@ -3663,8 +3660,6 @@ static int init_thread_environment()
   (void) pthread_mutex_init(&LOCK_delayed_create,MY_MUTEX_INIT_SLOW);
   (void) pthread_mutex_init(&LOCK_manager,MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_crypt,MY_MUTEX_INIT_FAST);
-  (void) pthread_mutex_init(&LOCK_bytes_sent,MY_MUTEX_INIT_FAST);
-  (void) pthread_mutex_init(&LOCK_bytes_received,MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_user_conn, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_active_mi, MY_MUTEX_INIT_FAST);
   (void) pthread_mutex_init(&LOCK_global_system_variables, MY_MUTEX_INIT_FAST);

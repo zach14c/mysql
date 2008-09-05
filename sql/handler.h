@@ -1558,8 +1558,8 @@ public:
                                               void *seq_init_param, 
                                               uint n_ranges, uint *bufsz,
                                               uint *flags, COST_VECT *cost);
-  virtual int multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                    uint *bufsz, uint *flags, COST_VECT *cost);
+  virtual ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                        uint *bufsz, uint *flags, COST_VECT *cost);
   virtual int multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                     uint n_ranges, uint mode,
                                     HANDLER_BUFFER *buf);
@@ -2348,6 +2348,7 @@ private:
 };
 
 
+bool key_uses_partial_cols(TABLE *table, uint keyno);
 
 /**
   A Disk-Sweep MRR interface implementation
@@ -2401,14 +2402,13 @@ public:
   int dsmrr_fill_buffer(handler *h);
   int dsmrr_next(handler *h, char **range_info);
 
-  int dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
-                 uint *flags, COST_VECT *cost);
+  ha_rows dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
+                     uint *flags, COST_VECT *cost);
 
   ha_rows dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq, 
                             void *seq_init_param, uint n_ranges, uint *bufsz,
                             uint *flags, COST_VECT *cost);
 private:
-  bool key_uses_partial_cols(uint keyno);
   bool choose_mrr_impl(uint keyno, ha_rows rows, uint *flags, uint *bufsz, 
                        COST_VECT *cost);
   bool get_disk_sweep_mrr_cost(uint keynr, ha_rows rows, uint flags, 

@@ -1993,7 +1993,6 @@ int ha_maria::index_end()
 
 int ha_maria::rnd_init(bool scan)
 {
-//  ds_mrr.dsmrr_close();
   if (scan)
     return maria_scan_init(file);
   return maria_reset(file);                        // Free buffers
@@ -3157,8 +3156,9 @@ ha_rows ha_maria::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                  flags, cost);
 }
 
-int ha_maria::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                     uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows ha_maria::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                        uint *bufsz, uint *flags, 
+                                        COST_VECT *cost)
 {
   ds_mrr.init(this, table);
   return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);

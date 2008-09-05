@@ -49,7 +49,6 @@ public:
 };
 
 static hash_filo *hostname_cache;
-static pthread_mutex_t LOCK_hostname;
 
 void hostname_cache_refresh()
 {
@@ -66,7 +65,6 @@ bool hostname_cache_init()
 				     &my_charset_bin)))
     return 1;
   hostname_cache->clear();
-  (void) pthread_mutex_init(&LOCK_hostname,MY_MUTEX_INIT_SLOW);
 
   return 0;
 }
@@ -75,7 +73,6 @@ void hostname_cache_free()
 {
   if (hostname_cache)
   {
-    (void) pthread_mutex_destroy(&LOCK_hostname);
     delete hostname_cache;
     hostname_cache= 0;
   }
