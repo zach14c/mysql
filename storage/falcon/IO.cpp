@@ -186,24 +186,16 @@ bool IO::openFile(const char * name, bool readOnly)
 	ASSERT(!inCreateDatabase);
 
 	fileName = getPath(name);
-	
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		fileId = ::open (fileName, (readOnly) ? O_RDONLY | O_BINARY : getWriteMode(attempt) | O_RDWR | O_BINARY);
-		
-		if (fileId >= 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
+	fileId = ::open (fileName, (readOnly) ? (O_RDONLY | O_BINARY) : (O_RDWR | O_BINARY));
 
 	if (fileId < 0)
 		{
 			int sqlError = (errno == EACCES )? FILE_ACCESS_ERROR :CONNECTION_ERROR;
-			throw SQLEXCEPTION (sqlError, "can't open file \"%s\": %s (%d)", name, strerror (errno), errno);
+			throw SQLEXCEPTION (sqlError, "can't open file \"%s\": %s (%d)", 
+								fileName.getString(), strerror (errno), errno);
 		}
 
+	setWriteFlags(fileId, &forceFsync);
 	isReadOnly = readOnly;
 	created = false;
 	
@@ -227,28 +219,37 @@ bool IO::openFile(const char * name, bool readOnly)
 	return fileId != -1;
 }
 
+void IO::setWriteFlags(int fileId, bool *forceFsync)
+{
+#ifndef _WIN32
+	int flags = fcntl(fileId, F_GETFL);
+
+	for (int attempt = 0; attempt < 2; attempt++)
+		{
+		if (fcntl(fileId, F_SETFL, flags|getWriteMode(attempt)) == 0)
+			break;
+		if(attempt == 1)
+			*forceFsync = true;
+		}
+#else
+	*forceFsync = true;
+#endif
+}
+
 bool IO::createFile(const char *name)
 {
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
 	fileName = getPath(name);
-	
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		fileId = ::open (fileName.getString(),
-						getWriteMode(attempt) | O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY,
+	fileId = ::open (fileName.getString(),O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY|
 						S_IREAD | S_IWRITE | S_IRGRP | S_IWGRP);
 
-		if (fileId >= 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
 
 	if (fileId < 0)
-		throw SQLEXCEPTION (CONNECTION_ERROR,"can't create file \"%s\", %s (%d)", name, strerror (errno), errno);
+		throw SQLEXCEPTION (CONNECTION_ERROR,"can't create file \"%s\", %s (%d)", 
+			fileName.getString(), strerror (errno), errno);
 
+	setWriteFlags(fileId, &forceFsync);
 	isReadOnly = false;
 #ifndef _WIN32
 #ifndef __NETWARE__

@@ -66,6 +66,7 @@ public:
 	void	readPage (Bdb *page);
 	bool	createFile (const char *name);
 	static	void setBaseDirectory(const char *path);
+	static	void setWriteFlags(int fileId, bool *forceFsync);
 	bool	openFile (const char *name, bool readOnly);
 	void	longSeek(int64 offset);
 	void	read(int64 offset, int length, UCHAR* buffer);

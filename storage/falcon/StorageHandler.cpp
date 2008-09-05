@@ -115,8 +115,11 @@ StorageHandler*	getFalconStorageHandler(int lockSize)
 
 void freeFalconStorageHandler(void)
 {
-	delete storageHandler;
-	storageHandler = 0;
+	if (storageHandler)
+		{
+		delete storageHandler;
+		storageHandler = 0;
+		}
 }
 void StorageHandler::setDataDirectory(const char *directory)
 {
@@ -198,7 +201,6 @@ void StorageHandler::shutdownHandler(void)
 	connection->shutdown();
 	connection->close();
 	***/
-	delete this;
 }
 
 void StorageHandler::databaseDropped(StorageDatabase *storageDatabase, StorageConnection* storageConnection)

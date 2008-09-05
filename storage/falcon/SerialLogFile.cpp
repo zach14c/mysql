@@ -125,25 +125,19 @@ void SerialLogFile::open(JString filename, bool create)
 
 	sectorSize = MAX(bytesPerSector, database->serialLogBlockSize);
 #else
+	
 
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		if (create)
-			handle = ::open(filename,  IO::getWriteMode(attempt) | O_RDWR | O_BINARY | O_CREAT|O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-		else
-			handle = ::open(filename, IO::getWriteMode(attempt) | O_RDWR | O_BINARY);
+	if (create)
+		handle = ::open(filename, O_RDWR | O_BINARY | O_CREAT|O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+	else
+		handle = ::open(filename, O_RDWR | O_BINARY);
 
-		if (handle > 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
 
 	if (handle <= 0)		
 		throw SQLEXCEPTION (IO_ERROR, "can't open file \"%s\": %s (%d)", 
 							(const char*) filename, strerror (errno), errno);
 
+	IO::setWriteFlags(handle, &forceFsync);
 	fileName = filename;
 	struct stat statBuffer;
 	fstat(handle, &statBuffer);
