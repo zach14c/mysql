@@ -384,6 +384,7 @@ Image_info::Obj *find_obj(const Image_info &info,
   case BSTREAM_IT_SFUNC:
   case BSTREAM_IT_EVENT:
   case BSTREAM_IT_TRIGGER:
+  case BSTREAM_IT_PRIVILEGE:
   {
     const st_bstream_dbitem_info &it=
                           reinterpret_cast<const st_bstream_dbitem_info&>(item);

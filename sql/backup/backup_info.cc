@@ -309,7 +309,7 @@ Backup_info::Dep_node::get_key(const uchar *record,
 Backup_info::Backup_info(Backup_restore_ctx &ctx)
   :m_ctx(ctx), m_state(Backup_info::ERROR), native_snapshots(8),
    m_dep_list(NULL), m_dep_end(NULL), 
-   m_srout_end(NULL), m_view_end(NULL), m_trigger_end(NULL)
+   m_srout_end(NULL), m_view_end(NULL), m_trigger_end(NULL), m_event_end(NULL)
 {
   using namespace backup;
 
@@ -786,6 +786,18 @@ int Backup_info::add_db_items(Db &db)
   if (add_objects(db, BSTREAM_IT_TRIGGER, *it))
     goto error;
   
+  delete it;
+  it= get_all_db_grants(m_ctx.m_thd, &db.name());
+
+  if (!it)
+  {
+    m_ctx.fatal_error(ER_BACKUP_LIST_DB_PRIV, db.name().ptr());
+    goto error;
+  }
+
+  if (add_objects(db, BSTREAM_IT_PRIVILEGE, *it))
+    goto error;
+
   goto finish;
 
  error:
@@ -1002,7 +1014,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
   ulong pos= db.obj_count();
 
   DBUG_ASSERT(obj);
-  const ::String *name= obj->get_name();
+  String *name= (String *)obj->get_name();
   DBUG_ASSERT(name);
 
   switch (type) {
@@ -1016,10 +1028,27 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
   case BSTREAM_IT_SFUNC:  error= ER_BACKUP_CATALOG_ADD_SROUT; break;
   case BSTREAM_IT_EVENT:  error= ER_BACKUP_CATALOG_ADD_EVENT; break;
   case BSTREAM_IT_TRIGGER: error= ER_BACKUP_CATALOG_ADD_TRIGGER; break;
+  case BSTREAM_IT_PRIVILEGE: error= ER_BACKUP_CATALOG_ADD_PRIV; break;
   
   // Only known types of objects should be added to the catalogue.
   default: DBUG_ASSERT(FALSE);
 
+  }
+
+  /*
+    Generate a unique name for the privilege (grant) objects.
+    Note: this name does not alter the mechanics of the
+          grant objects in si_objects.cc
+  */
+  if (type == BSTREAM_IT_PRIVILEGE)
+  {
+    String new_name;
+    char buff[10];
+    sprintf(buff, UNIQUE_PRIV_KEY_FORMAT, pos);
+    new_name.append(*name);
+    new_name.append(" ");
+    new_name.append(buff);
+    name->copy(new_name);
   }
 
   /* 
@@ -1068,9 +1097,8 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     objects.
    */
 
-  // Add object to catalogue
   Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
-  
+ 
   if (!o)
   {
     m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
@@ -1199,6 +1227,12 @@ int Backup_info::add_to_dep_list(const obj_type type, Dep_node *node)
   break;
   
   case BSTREAM_IT_EVENT: 
+    end= &m_event_end;
+    if (!m_event_end)
+      m_event_end= m_trigger_end ? m_trigger_end : m_view_end ? m_view_end : m_srout_end;
+  break;
+
+  case BSTREAM_IT_PRIVILEGE:
     end= &m_dep_end;
   break;
    
