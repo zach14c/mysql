@@ -75,6 +75,7 @@
 #include "RecordScavenge.h"
 #include "LogStream.h"
 #include "SyncTest.h"
+#include "SyncHandler.h"
 #include "PriorityScheduler.h"
 #include "Sequence.h"
 #include "BackLog.h"
@@ -462,6 +463,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	zombieTables = NULL;
 	updateCardinality = NULL;
 	backLog = NULL;
+	syncHandler = getFalconSyncHandler();
 	ioScheduler = new PriorityScheduler;
 	lastScavenge = 0;
 	scavengeCycle = 0;
@@ -610,6 +612,8 @@ Database::~Database()
 	delete transactionManager;
 	delete ioScheduler;
 	delete backLog;
+	if (syncHandler)
+		delete syncHandler;
 }
 
 void Database::createDatabase(const char * filename)
@@ -1543,7 +1547,7 @@ void Database::shutdown()
 
 	if (shuttingDown)
 		return;
-	
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
@@ -2462,6 +2466,10 @@ void Database::debugTrace(void)
 	if (falcon_debug_trace & FALC0N_SYNC_OBJECTS)
 		SyncObject::dump();
 	
+	if (falcon_debug_trace & FALC0N_SYNC_HANDLER)
+		if (syncHandler) 
+			syncHandler->dump();
+
 	if (falcon_debug_trace & FALC0N_REPORT_WRITES)
 		tableSpaceManager->reportWrites();
 	
