@@ -241,7 +241,7 @@ bool IO::createFile(const char *name)
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
 	fileName = getPath(name);
-	fileId = ::open (fileName.getString(),O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY|
+	fileId = ::open (fileName.getString(),O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY,
 						S_IREAD | S_IWRITE | S_IRGRP | S_IWGRP);
 
 
