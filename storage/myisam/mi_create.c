@@ -200,7 +200,7 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
   pack_bytes= (packed+7)/8;
   if (pack_reclength != INT_MAX32)
     pack_reclength+= reclength+packed +
-      test(test_all_bits(options, HA_OPTION_CHECKSUM | HA_PACK_RECORD));
+      test(test_all_bits(options, HA_OPTION_CHECKSUM | HA_OPTION_PACK_RECORD));
   min_pack_length+= pack_bytes;
 
   if (!ci->data_file_length && ci->max_rows)
@@ -863,7 +863,7 @@ err_no_lock:
     (void) my_close(dfile,MYF(0));
     /* fall through */
   case 2:
-    /* QQ: Tõnu should add a call to my_raid_delete() here */
+    /* QQ: Tï¿½nu should add a call to my_raid_delete() here */
   if (! (flags & HA_DONT_TOUCH_DATA))
     my_delete_with_symlink(fn_format(filename,name,"",MI_NAME_DEXT,
                                      MY_UNPACK_FILENAME | MY_APPEND_EXT),
