@@ -13,8 +13,7 @@ sync_slave_with_master;
 source include/stop_slave.inc;
 reset master;
 reset slave;
-start slave;
---source include/wait_for_slave_to_start.inc
+source include/start_slave.inc;
 
 let $VERSION=`select version()`;
 
@@ -71,7 +70,6 @@ select * from t1 order by 1 asc;
 
 save_master_pos;
 connection slave;
-source include/start_slave.inc;
 
 sync_with_master;
 #check t1 on slave to ensure whether it's identical with on master
