@@ -1825,9 +1825,9 @@ uint my_strxfrm_flag_normalize(uint flags, uint maximum)
     for (maximum--, flags= 0, i= 0; i < MY_STRXFRM_NLEVELS; i++)
     {
       uint src_bit= 1 << i;
-      uint dst_bit= 1 << min(i, maximum);
       if (flag_lev & src_bit)
       {
+        uint dst_bit= 1 << min(i, maximum);
         flags|= dst_bit;
         flags|= (flag_dsc & dst_bit) << MY_STRXFRM_DESC_SHIFT;
         flags|= (flag_rev & dst_bit) << MY_STRXFRM_REVERSE_SHIFT;

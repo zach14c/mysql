@@ -2282,6 +2282,11 @@ bool Database::hasUncommittedRecords(Table* table, Transaction *transaction)
 	return transactionManager->hasUncommittedRecords(table, transaction);
 }
 
+void Database::waitForWriteComplete(Table *table)
+{
+	transactionManager->waitForWriteComplete(table);
+}
+
 void Database::commitByXid(int xidLength, const UCHAR* xid)
 {
 	serialLog->commitByXid(xidLength, xid);

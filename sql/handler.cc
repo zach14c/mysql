@@ -1826,8 +1826,8 @@ bool ha_flush_logs(handlerton *db_type)
   return FALSE;
 }
 
-static const char *check_lowercase_names(handler *file, const char *path,
-                                         char *tmp_path)
+const char *get_canonical_filename(handler *file, const char *path,
+                                   char *tmp_path)
 {
   if (lower_case_table_names != 2 || (file->ha_table_flags() & HA_FILE_BASED))
     return path;
@@ -1898,7 +1898,7 @@ int ha_delete_table(THD *thd, handlerton *table_type, const char *path,
       ! (file=get_new_handler((TABLE_SHARE*)0, thd->mem_root, table_type)))
     DBUG_RETURN(ENOENT);
 
-  path= check_lowercase_names(file, path, tmp_path);
+  path= get_canonical_filename(file, path, tmp_path);
   if ((error= file->ha_delete_table(path)) && generate_warning)
   {
     /*
@@ -3295,66 +3295,6 @@ handler::ha_rename_partitions(THD *thd, const char *path)
 
 
 /**
-  Optimize partitions: public interface.
-
-  @sa handler::optimize_partitions()
-*/
-
-int
-handler::ha_optimize_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return optimize_partitions(thd);
-}
-
-
-/**
-  Analyze partitions: public interface.
-
-  @sa handler::analyze_partitions()
-*/
-
-int
-handler::ha_analyze_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return analyze_partitions(thd);
-}
-
-
-/**
-  Check partitions: public interface.
-
-  @sa handler::check_partitions()
-*/
-
-int
-handler::ha_check_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return check_partitions(thd);
-}
-
-
-/**
-  Repair partitions: public interface.
-
-  @sa handler::repair_partitions()
-*/
-
-int
-handler::ha_repair_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return repair_partitions(thd);
-}
-
-
-/**
   Tell the storage engine that it is allowed to "disable transaction" in the
   handler. It is a hint that ACID is not required - it is used in NDB for
   ALTER TABLE, for example, when data are copied to temporary table.
@@ -3492,7 +3432,7 @@ int ha_create_table(THD *thd, const char *path,
   if (update_create_info)
     update_create_info_from_table(create_info, &table);
 
-  name= check_lowercase_names(table.file, share.path.str, name_buff);
+  name= get_canonical_filename(table.file, share.path.str, name_buff);
 
   error= table.file->ha_create(name, &table, create_info);
   (void) closefrm(&table, 0);
@@ -3571,7 +3511,7 @@ int ha_create_table_from_engine(THD* thd, const char *db, const char *name)
   update_create_info_from_table(&create_info, &table);
   create_info.table_options|= HA_OPTION_CREATE_FROM_ENGINE;
 
-  check_lowercase_names(table.file, path, path);
+  get_canonical_filename(table.file, path, path);
   error=table.file->ha_create(path, &table, &create_info);
   (void) closefrm(&table, 1);
 
@@ -4322,6 +4262,13 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
 
   /* Create a separate handler object to do rndpos() calls. */
   THD *thd= current_thd;
+
+  /*
+    ::clone() takes up a lot of stack, especially on 64 bit platforms.
+    The constant 5 is an empiric result.
+  */
+  if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
+    DBUG_RETURN(1);
   if (!(new_h2= h->clone(thd->mem_root)) || 
       new_h2->ha_external_lock(thd, F_RDLCK))
   {
@@ -4585,7 +4532,7 @@ ha_rows DsMrr_impl::dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq,
   @retval FALSE  No
 */
 
-bool DsMrr_impl::key_uses_partial_cols(uint keyno)
+bool key_uses_partial_cols(TABLE *table, uint keyno)
 {
   KEY_PART_INFO *kp= table->key_info[keyno].key_part;
   KEY_PART_INFO *kp_end= kp + table->key_info[keyno].key_parts;
@@ -4596,7 +4543,6 @@ bool DsMrr_impl::key_uses_partial_cols(uint keyno)
   }
   return FALSE;
 }
-
 
 /**
   DS-MRR Internals: Choose between Default MRR implementation and DS-MRR
@@ -4631,7 +4577,7 @@ bool DsMrr_impl::choose_mrr_impl(uint keyno, ha_rows rows, uint *flags,
       (*flags & HA_MRR_INDEX_ONLY) || (*flags & HA_MRR_SORTED) ||
       (keyno == table->s->primary_key && 
        h->primary_key_is_clustered()) || 
-       key_uses_partial_cols(keyno))
+       key_uses_partial_cols(table, keyno))
   {
     /* Use the default implementation */
     *flags |= HA_MRR_USE_DEFAULT_IMPL;
