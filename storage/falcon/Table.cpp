@@ -166,7 +166,7 @@ Table::~Table()
 
 Field* Table::findField(const char * fieldName)
 {
-	const char *name = database->getSymbol(fieldName);
+	const char *name = database->getString(fieldName);
 	Sync sync(&syncObject, "Table::findField");
 	sync.lock(Shared);
 
