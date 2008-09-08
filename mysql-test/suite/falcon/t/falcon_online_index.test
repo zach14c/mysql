@@ -57,14 +57,18 @@ CREATE TABLE t2 (
 );
 
 # Populate t2, 33 rows
+# Disable query log for populating t2 in order to avoid large test result file.
+--disable_query_log
 let $i=33;
 let $r=0;
+--echo #-------- Inserting $i rows into t2 (query log disabled) --------#
 while ($i)
 {
   eval INSERT INTO t2 VALUES ($r, $r*2, $r+1, 'SomeString $r for testing');
   dec $i;
   inc $r;
 }
+--enable_query_log
 
 # Need this to test with default values, nullable, non-nullable columns...
 CREATE TABLE t3 (
@@ -75,15 +79,20 @@ CREATE TABLE t3 (
     e VARCHAR(65)
 );
 
-# Populate t3, 1000 rows
+# Populate t3, 1000 rows. Disable query log for this operation in order to avoid
+# huge test result file.
+--disable_query_log
+
 let $i=1000;
 let $r=0;
+--echo #-------- Inserting $i rows into t3... (query log disabled) --------#
 while ($i)
 {
   eval INSERT INTO t3 (b, c, d, e) VALUES ($r*2, $r+1, $r-1, 'SomeVarchar $r for testing');
   dec $i;
   inc $r;
 }
+--enable_query_log
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
@@ -123,33 +132,80 @@ DROP INDEX ix_cd ON t3;
 
 # Test that ONLINE keyword is accepted (or not, depending on statement):
 
---echo #-------- Testing ONLINE keyword --------#
+--echo #-------- Testing ONLINE keyword... --------#
 
-# Test ALTER ONLINE ADD/DROP INDEX
+--echo #-------- ONLINE: ALTER ADD/DROP INDEX --------#
+
 ALTER ONLINE TABLE t1 ADD INDEX ix_b (b);
 ALTER ONLINE TABLE t1 DROP INDEX ix_b;
 
-# Test ALTER ONLINE ADD/DROP KEY
+--echo #-------- ONLINE: ALTER ADD/DROP KEY --------#
+
 ALTER ONLINE TABLE t1 ADD KEY ix_b (b);
 ALTER ONLINE TABLE t1 DROP KEY ix_b;
 
-# Test CREATE/DROP ONLINE INDEX
+--echo #-------- ONLINE: CREATE/DROP INDEX --------#
+
 CREATE ONLINE INDEX ix_c ON t1 (c);
 DROP ONLINE INDEX ix_c ON t1;
+
+--echo #-------- ONLINE: ADD INDEX default name --------#
+
+ALTER ONLINE TABLE t1 ADD INDEX (b);
+ALTER ONLINE TABLE t1 DROP INDEX b;
+
+--echo #-------- ONLINE: ALTER ADD nullable with default --------#
 
 # Test ALTER ... ADD ... with ONLINE for nullable column having default value
 ALTER ONLINE TABLE t3 ADD INDEX ix_b (b);
 SELECT * from t3 where b > 555 ORDER BY a LIMIT 5;
 ALTER ONLINE TABLE t3 DROP INDEX ix_b;
 
+--echo #-------- ONLINE: ALTER ADD not-null with default --------#
+
 # Test that ALTER ONLINE ... ADD INDEX fails with ONLINE for non-nullable column having default value
 --error ER_NOT_SUPPORTED_YET
 ALTER ONLINE TABLE t3 ADD INDEX ix_c (c);
+
+--echo #-------- ONLINE: ALTER ADD not-null --------#
 
 # Test that ALTER ONLINE ... ADD INDEX fails with ONLINE for non-nullable columns
 --error ER_NOT_SUPPORTED_YET
 ALTER ONLINE TABLE t3 ADD INDEX ix_d (d);
 
+--echo #-------- ONLINE: ALTER ADD same key multiple times --------#
+
+# Test adding the same key more than once (should fail but not crash)
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+--error ER_DUP_KEYNAME
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+--error ER_DUP_KEYNAME
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+SHOW INDEXES FROM t1;
+
+--echo #-------- ONLINE: ALTER DROP same key multiple times --------#
+
+# Test dropping the same key more than once (dropping key added in previous segment).
+# Should fail but not crash.
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+--error ER_CANT_DROP_FIELD_OR_KEY
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+--error ER_CANT_DROP_FIELD_OR_KEY
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+SHOW INDEXES FROM t1;
+
+--echo #-------- ONLINE: ALTER ADD/DROP PRIMARY KEY --------#
+
+# Adding/dropping PRIMARY KEY is not supposed to work ONLINE
+--error ER_NOT_SUPPORTED_YET
+ALTER ONLINE TABLE t1 DROP PRIMARY KEY;
+# Now drop primary key (offline) on 'a' temporarily in order to try adding one online
+ALTER TABLE t1 DROP PRIMARY KEY;
+--error ER_NOT_SUPPORTED_YET
+ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c);
+SHOW INDEXES FROM t1;
+# Re-set primary key on 'a'
+ALTER TABLE t1 ADD PRIMARY KEY (a);
 
 ##
 ## Testing some statement variations using ADD/DROP INDEX
@@ -168,7 +224,6 @@ DROP ONLINE INDEX ix_unique_c ON t2;
 --echo #-------- Test: DESC --------#
 
 ## Test using DESC keyword (parsed but not used)
-## TODO: Check DESC; ASC
 ALTER ONLINE TABLE t3 ADD INDEX ix_desc_b (b DESC);
 ALTER ONLINE TABLE t3 ADD INDEX ix_asc_b (b ASC);
 SHOW INDEXES FROM t3;
@@ -177,7 +232,7 @@ DROP ONLINE INDEX ix_asc_b ON t3;
 
 --echo #-------- Test: KEY_BLOCK_SIZE --------#
 
-## Test adding index and specifying KEY_BLOCK_SIZE
+## Test adding index and specifying KEY_BLOCK_SIZE.
 ## KEY _BLOCK_SIZE 0 indicates that the default should be used.
 ALTER ONLINE TABLE t1 ADD INDEX ix_keyblock_b (b) KEY_BLOCK_SIZE = 0;
 EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
