@@ -1,21 +1,28 @@
-*** Bug #22972 ***
+*** Bug #24024 ***
 SET @@storage_engine = 'Falcon';
 DROP TABLE IF EXISTS t1;
-CREATE TABLE t1(a int);
-# Establish connection conn1 (root)
-# Switch to connection conn1
-START TRANSACTION;
-INSERT INTO t1 VALUES(1);
+CREATE TABLE t1(a int, b int, primary key(a));
+INSERT INTO t1(a) VALUES (1);
+COMMIT;
+# Establish connection conn1 (user=root)
 # Switch to connection default
+SET @@autocommit = 0;
+UPDATE t1 SET b = 5 WHERE a = 1;
+# Switch to connection conn1
+INSERT INTO t1(a) VALUES(7);
+COMMIT;
+SELECT * FROM t1;
+a	b
+1	NULL
+7	NULL
 DROP TABLE t1;
 ERROR 42S02: Unknown table 't1'
 SHOW WARNINGS;
 Level	Code	Message
 Warning	178	Can't execute the given command because you have active locked tables or an active transaction
-# Switch to connection conn1
-COMMIT;
 SELECT count(*) FROM t1;
 count(*)
-1
+2
 # Switch to connection default
+COMMIT;
 DROP TABLE t1;

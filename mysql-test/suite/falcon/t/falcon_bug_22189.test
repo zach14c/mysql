@@ -68,8 +68,10 @@ SELECT * FROM x1;
 
 --echo # Switch to connection conn1
 connection conn1;
---send UPDATE x1 SET x1 = 0, x2 = 5
---send INSERT INTO x1 VALUES (0,6)
+--error ER_DUP_ENTRY
+UPDATE x1 SET x1 = 0, x2 = 5;
+--error ER_DUP_ENTRY
+INSERT INTO x1 VALUES (0,6);
 
 --echo # Switch to connection default
 connection default;
@@ -77,8 +79,6 @@ ROLLBACK;
 
 --echo # Switch to connection conn1
 connection conn1;
---error ER_DUP_ENTRY
---reap
 --error ER_DUP_ENTRY
 INSERT INTO x1 VALUES (0,6);
 --error ER_DUP_ENTRY
