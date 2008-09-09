@@ -902,6 +902,7 @@ int end_trans(THD *thd, enum enum_mysql_completiontype completion);
 Item *negate_expression(THD *thd, Item *expr);
 
 /* log.cc */
+
 int vprint_msg_to_log(enum loglevel level, const char *format, va_list args);
 void sql_print_error(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 void sql_print_warning(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
@@ -1446,6 +1447,9 @@ extern LEX_STRING INFORMATION_SCHEMA_NAME;
 extern LEX_STRING MYSQL_SCHEMA_NAME;
 extern LEX_STRING GENERAL_LOG_NAME;
 extern LEX_STRING SLOW_LOG_NAME;
+extern LEX_STRING BACKUP_HISTORY_LOG_NAME;
+extern LEX_STRING BACKUP_PROGRESS_LOG_NAME;
+extern LEX_STRING BACKUP_SETTINGS_NAME;
 
 extern const LEX_STRING partition_keywords[];
 ST_SCHEMA_TABLE *find_schema_table(THD *thd, const char* table_name);
@@ -1648,6 +1652,7 @@ bool rename_temporary_table(THD* thd, TABLE *table, const char *new_db,
 void flush_tables();
 bool is_equal(const LEX_STRING *a, const LEX_STRING *b);
 char *make_default_log_name(char *buff,const char* log_ext);
+char *make_backup_log_name(char *buff, const char *name, const char* log_ext);
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 uint fast_alter_partition_table(THD *thd, TABLE *table,
@@ -2032,7 +2037,10 @@ extern bool mysqld_embedded;
 extern bool using_update_log, opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_log, opt_slow_log;
+extern my_bool opt_backup_history_log;
+extern my_bool opt_backup_progress_log;
 extern ulong log_output_options;
+extern ulong log_backup_output_options;
 extern my_bool opt_log_queries_not_using_indexes;
 extern bool opt_disable_networking, opt_skip_show_db;
 extern my_bool opt_character_set_client_handshake;
@@ -2061,11 +2069,15 @@ extern uint opt_large_page_size;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern char *opt_logname, *opt_slow_logname;
-extern const char *log_output_str;
+extern char *opt_backup_history_logname, *opt_backup_progress_logname,
+            *opt_backup_settings_name;
+extern const char *og_output_str;
+extern const char *log_backup_output_str;
 
 extern MYSQL_BIN_LOG mysql_bin_log;
 extern LOGGER logger;
-extern TABLE_LIST general_log, slow_log;
+extern TABLE_LIST general_log, slow_log, 
+       backup_history_log, backup_progress_log;
 extern FILE *bootstrap_file;
 extern int bootstrap_error;
 extern FILE *stderror_file;

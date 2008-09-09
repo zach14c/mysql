@@ -8,7 +8,7 @@
 # Test uses error injection activated with 'backup_test_dummy_be_factory' keyword.
 # The code is injected into has_native_backup() function in backup_info.cc.
 # When activated, it overwrites the native MyISAM backup factory with a dummy one 
-# which never creates an engine. This change is permanent and can not be reversed by 
+# which never creates a driver. This change is permanent and can not be reversed by 
 # disabling the error injection code. The only way to restore the original situation 
 # is by restarting the server. Therefore:
 #
@@ -44,14 +44,14 @@ SHOW WARNINGS;
 
 # See what engines were used for BACKUP
 
-SELECT max(backup_id) INTO @id FROM mysql.online_backup 
+SELECT max(backup_id) INTO @id FROM mysql.backup_history 
 WHERE command LIKE 'BACKUP DATABASE db1 %';
 
 # Note: right now default engine will be used (as below) because there is no
 # native backup for MyISAM. But when it is added, the SELECT below should list native 
 # MYISAM engine.
 
-SELECT drivers FROM mysql.online_backup WHERE backup_id=@id;
+SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 
 # Now see what happens when injected code is activated and MyISAM uses the dummy
 # factory function.
@@ -60,7 +60,7 @@ SET SESSION debug="d,backup_test_dummy_be_factory";
 SELECT @@debug;
 
 # The following BACKUP command should generate a warning but otherwise
-# should complete using the default backup engine.
+# should complete using the default backup driver.
 # We disable warnings temporarily and show them with SHOW WARNINGS instead. This is to 
 # avoid showing message codes (which change sometimes)
 
@@ -76,10 +76,10 @@ SHOW WARNINGS;
 
 # See what engines were used for BACKUP
 
-SELECT max(backup_id) INTO @id FROM mysql.online_backup 
+SELECT max(backup_id) INTO @id FROM mysql.backup_history 
 WHERE command LIKE 'BACKUP DATABASE db1 %';
 
-SELECT drivers FROM mysql.online_backup WHERE backup_id=@id;
+SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 
 # check that we can restore from the created image.
 

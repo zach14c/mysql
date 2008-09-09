@@ -331,7 +331,7 @@ sub mtr_report_stats ($) {
 		# backup_errors test is supposed to trigger lots of backup related errors
 		($testname eq 'main.backup_errors') and
 		(
-		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
+		  /Backup:/ or /Restore:/ or /Can't open the backup log tables/
 		) or
 
 		# backup_backupdir test is supposed to trigger backup related errors
@@ -356,6 +356,12 @@ sub mtr_report_stats ($) {
 		($testname eq 'main.backup_tablespace') and
 		(
 		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
+		) or
+                
+		# The backup_securefilepriv test triggers error below on purpose
+		($testname eq 'main.backup_securefilepriv') and
+		(
+		  /Backup: The MySQL server is running with the /
 		) or
 		
 		# The views test triggers errors below on purpose
