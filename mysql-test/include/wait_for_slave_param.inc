@@ -80,7 +80,10 @@ while (`SELECT NOT('$_show_slave_status_value' $_slave_param_comparison '$slave_
       connection master;
       query_vertical SHOW MASTER STATUS;
       SHOW PROCESSLIST;
-      eval SHOW BINLOG EVENTS IN '$master_binlog_name_sql';
+      if ($master_binlog_name_sql)
+      {
+        eval SHOW BINLOG EVENTS IN '$master_binlog_name_sql';
+      }
       if (`SELECT '$master_binlog_name_io' != '$master_binlog_name_sql'`)
       {
         eval SHOW BINLOG EVENTS IN '$master_binlog_name_io';
