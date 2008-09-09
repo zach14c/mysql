@@ -62,7 +62,7 @@ TEST_DIRS = t r include std_data std_data/parts \
 	std_data/ndb_backup51_data_be std_data/ndb_backup51_data_le \
         std_data/ndb_backup51_d2_be std_data/ndb_backup51_d2_le \
 	extra/binlog_tests/ extra/rpl_tests \
-	suite/backup suite/backup/t suite/backup/r \
+	suite/backup suite/backup/t suite/backup/r suite/backup/include \
 	suite/binlog suite/binlog/t suite/binlog/r suite/binlog/std_data \
 	suite/bugs/data suite/bugs/t suite/bugs/r \
 	suite/federated \
