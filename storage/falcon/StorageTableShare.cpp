@@ -62,10 +62,10 @@ StorageIndexDesc::StorageIndexDesc()
 	rawName[0] = '\0';
 };
 
-StorageIndexDesc::StorageIndexDesc(const StorageIndexDesc *indexInfo)
+StorageIndexDesc::StorageIndexDesc(const StorageIndexDesc *indexDesc)
 {
-	if (indexInfo)
-		*this = *indexInfo;
+	if (indexDesc)
+		*this = *indexDesc;
 	else
 		{
 		id = 0;
@@ -85,6 +85,35 @@ StorageIndexDesc::StorageIndexDesc(const StorageIndexDesc *indexInfo)
 StorageIndexDesc::~StorageIndexDesc(void)
 {
 }
+
+bool StorageIndexDesc::operator==(const StorageIndexDesc &indexDesc) const
+{
+	if ( !(id			  == indexDesc.id
+		&& unique		  == indexDesc.unique
+		&& primaryKey 	  == indexDesc.primaryKey
+		&& numberSegments == indexDesc.numberSegments))
+		return false;
+
+	if (strcmp(indexDesc.name, name) != 0)
+		return false;
+	
+	/***
+	const char *q = indexDesc.name;
+	const char *p = name;
+	
+	for (; (*p && *q); ++p, ++q)
+		if (*p != *q)
+			return false;
+	***/
+
+	return true;
+}
+
+bool StorageIndexDesc::operator!=(const StorageIndexDesc &indexDesc) const
+{
+	return !(*this == indexDesc);
+}
+
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -285,11 +314,17 @@ const char* StorageTableShare::cleanupTableName(const char* name, char* buffer, 
 	return buffer;
 }
 
-char* StorageTableShare::createIndexName(const char *rawName, char *indexName)
+char* StorageTableShare::createIndexName(const char *rawName, char *indexName, bool primary)
 {
-	char nameBuffer[indexNameSize];
-	cleanupFieldName(rawName, nameBuffer, sizeof(nameBuffer));
-	sprintf(indexName, "%s$%s", name.getString(), nameBuffer);
+	if (primary)
+		strcpy(indexName, table->getPrimaryKeyName().getString());
+	else
+		{
+		char nameBuffer[indexNameSize];
+		cleanupFieldName(rawName, nameBuffer, sizeof(nameBuffer));
+		sprintf(indexName, "%s$%s", name.getString(), nameBuffer);
+		}
+	
 	return indexName;
 }
 
@@ -362,10 +397,33 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 	
 	int ret = storageDatabase->dropIndex(storageConnection, table, sql);
 	
-	if (!ret)
-		deleteIndex(indexDesc->id);
+	deleteIndex(indexDesc->id);
 				
 	return ret;
+}
+
+bool StorageTableShare::validateIndex(int indexId, StorageIndexDesc *indexTarget)
+{
+	StorageIndexDesc *indexDesc = getIndex(indexId);
+	
+	if (!indexDesc || *indexDesc != *indexTarget)
+		return false;
+	
+	Index *index = table->findIndex(indexDesc->name);
+	
+	if (!index)
+		return false;
+	
+	if (index != indexDesc->index)
+		return false;
+	
+	if (indexTarget->primaryKey && index->type != PrimaryKey)
+		return false;
+			
+	if (index->recordsPerSegment != indexDesc->segmentRecordCounts)
+		return false;
+	
+	return true;
 }
 
 void StorageTableShare::deleteIndexes()
@@ -375,6 +433,16 @@ void StorageTableShare::deleteIndexes()
 		indexes = indexDesc->next;
 		delete indexDesc;
 		}
+}
+
+int StorageTableShare::numberIndexes()
+{
+	int indexCount = 0;
+	
+	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next, indexCount++)
+		;
+	
+	return indexCount;
 }
 
 int StorageTableShare::renameTable(StorageConnection *storageConnection, const char* newName)
@@ -402,24 +470,25 @@ int StorageTableShare::setIndex(const StorageIndexDesc *indexInfo)
 
 	if (!getIndex(indexInfo->id))
 		{
-		StorageIndexDesc *indexDesc = new StorageIndexDesc(indexInfo);
-		addIndex(indexDesc);
 
-	// Find the corresponding Falcon index
-	
-	if (indexDesc->primaryKey)
-		indexDesc->index = table->primaryKey;
-	else
-		{
-		char indexName[indexNameSize];
-		sprintf(indexName, "%s$%s", name.getString(), indexDesc->name);
-		indexDesc->index = table->findIndex(indexName);
-		}
+		// Find the corresponding Falcon index else fail
 
-	if (indexDesc->index)
-		indexDesc->segmentRecordCounts = indexDesc->index->recordsPerSegment;
-	else
-		ret = StorageErrorNoIndex;
+		Index *index;
+		
+		if (indexInfo->primaryKey)
+			index = table->primaryKey;
+		else
+			index = table->findIndex(indexInfo->name);
+		
+		if (index)
+			{
+			StorageIndexDesc *indexDesc = new StorageIndexDesc(indexInfo);
+			indexDesc->index = index;
+			indexDesc->segmentRecordCounts = indexDesc->index->recordsPerSegment;
+			addIndex(indexDesc);
+			}
+		else
+			ret = StorageErrorNoIndex;
 		}
 		
 	return ret;
@@ -432,7 +501,10 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexId)
 			
 	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next)
 		if (indexDesc->id == indexId)
+			{
+			ASSERT(indexDesc->index != NULL);
 			return indexDesc;
+			}
 		
 	return NULL;
 }
@@ -451,21 +523,6 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexId, StorageIndexDesc *ind
 		*indexDesc = *index;
 		
 	return index;
-}
-
-StorageIndexDesc* StorageTableShare::getIndex(const char *name)
-{
-	if (!indexes)
-		return NULL;
-	
-	Sync sync(syncIndexes, "StorageTableShare::getIndex(name)");
-	sync.lock(Shared);
-	
-	for (StorageIndexDesc *indexDesc = indexes; indexDesc; indexDesc = indexDesc->next)
-		if (indexDesc->name == name)
-			return indexDesc;
-			
-	return NULL;
 }
 
 int StorageTableShare::getIndexId(const char* schemaName, const char* indexName)

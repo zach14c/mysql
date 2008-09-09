@@ -518,10 +518,10 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 	thr_lock_data_init((THR_LOCK *)storageShare->impure, &lockData, NULL);
 
-	ret = setIndexes();
-	
 	if (table)
 		mapFields(table);
+	
+	setIndexes(table);
 	
 	if (ret)
 		DBUG_RETURN(error(ret));
@@ -850,6 +850,8 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 				}
 
 	mapFields(form);
+	
+	setIndexes(table);
 
 	DBUG_RETURN(0);
 }
@@ -868,12 +870,9 @@ int StorageInterface::createIndex(const char *schemaName, const char *tableName,
 	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 	
-	char indexName[indexNameSize];
-	storageShare->createIndexName(indexDesc.name, indexName);
-
 	CmdGen gen;
 	const char *unique = (key->flags & HA_NOSAME) ? "unique " : "";
-	gen.gen("create %sindex \"%s\" on %s.\"%s\" ", unique, indexName, schemaName, tableName);
+	gen.gen("create %sindex \"%s\" on %s.\"%s\" ", unique, indexDesc.name, schemaName, tableName);
 	genKeyFields(key, &gen);
 	const char *sql = gen.getString();
 
@@ -885,11 +884,8 @@ int StorageInterface::dropIndex(const char *schemaName, const char *tableName, T
 	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 	
-	char indexName[indexNameSize];
-	storageShare->createIndexName(indexDesc.name, indexName);
-
 	CmdGen gen;
-	gen.gen("drop index %s.\"%s\"", schemaName, indexName);
+	gen.gen("drop index %s.\"%s\"", schemaName, indexDesc.name);
 	const char *sql = gen.getString();
 
 	return storageTable->dropIndex(&indexDesc, sql);
@@ -1394,14 +1390,17 @@ int StorageInterface::index_init(uint idx, bool sorted)
 	nextRecord = 0;
 	haveStartKey = false;
 	haveEndKey = false;
+	int ret = 0;
 
-	int ret = storageTable->setCurrentIndex(idx);
+	ret = storageTable->setCurrentIndex(idx);
 
 	if (ret)
 		{
 		setIndex(table, idx);
 		ret = storageTable->setCurrentIndex(idx);
 		}
+		
+	// validateIndexes(table);
 		
 	if (ret)
 		DBUG_RETURN(error(ret));
@@ -1465,22 +1464,18 @@ void StorageInterface::getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *i
 {
 	KEY *keyInfo = table->key_info + indexId;
 	int numberKeys = keyInfo->key_parts;
-	char nameBuffer[indexNameSize];
 	
-	// Clean up the index name for internal use
-	
-	strncpy(indexDesc->rawName, (const char*)keyInfo->name, MIN(indexNameSize, (int)strlen(keyInfo->name)+1));
-	storageShare->cleanupFieldName(indexDesc->rawName, nameBuffer, sizeof(nameBuffer));
-	indexDesc->rawName[indexNameSize-1] = '\0';
-	
-	strncpy(indexDesc->name, (const char*)nameBuffer, MIN(indexNameSize, (int)strlen(nameBuffer)+1));
-	indexDesc->name[indexNameSize-1] = '\0';
-
 	indexDesc->id			  = indexId;
 	indexDesc->numberSegments = numberKeys;
 	indexDesc->unique		  = (keyInfo->flags & HA_NOSAME);
 	indexDesc->primaryKey	  = (table->s->primary_key == (uint)indexId);
-
+	
+	// Clean up the index name for internal use
+	
+	strncpy(indexDesc->rawName, (const char*)keyInfo->name, MIN(indexNameSize, (int)strlen(keyInfo->name)+1));
+	indexDesc->rawName[indexNameSize-1] = '\0';
+	storageShare->createIndexName(indexDesc->rawName, indexDesc->name, indexDesc->primaryKey);
+	
 	for (int n = 0; n < numberKeys; ++n)
 		{
 		StorageSegment *segment = indexDesc->segments + n;
@@ -1519,8 +1514,17 @@ int StorageInterface::rename_table(const char *from, const char *to)
 	if (ret)
 		DBUG_RETURN(error(ret));
 
+	storageTable->clearCurrentIndex();
+	storageShare->lockIndexes(true);
+	storageShare->lock(true);
+
 	ret = storageShare->renameTable(storageConnection, to);
 	
+	remapIndexes(table);
+	
+	storageShare->unlock();
+	storageShare->unlockIndexes();
+
 	if (ret)
 		DBUG_RETURN(error(ret));
 
@@ -1541,6 +1545,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 	storageTable->clearIndexBounds();
 	haveStartKey = false;
 	haveEndKey = false;
+	int ret = 0;
 
 	if (start_key && !storageTable->isKeyNull((const unsigned char*) start_key->key, start_key->length))
 		{
@@ -1563,7 +1568,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 		if (end_key->flag == HA_READ_BEFORE_KEY)
 			storageTable->setReadBeforeKey();
 
-		int ret = storageTable->setIndexBound((const unsigned char*) end_key->key,
+		ret = storageTable->setIndexBound((const unsigned char*) end_key->key,
 												end_key->length, UpperBound);
 		if (ret)
 			DBUG_RETURN(error(ret));
@@ -2109,10 +2114,9 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
 	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
 	HA_ALTER_FLAGS supported;
-	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX;
+	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX;
 						/**
-						| HA_ADD_COLUMN | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX
-						| HA_COLUMN_STORAGE | HA_COLUMN_FORMAT;
+						| HA_ADD_COLUMN | HA_COLUMN_STORAGE | HA_COLUMN_FORMAT;
 						**/
 	HA_ALTER_FLAGS notSupported = ~(supported);
 	
@@ -2153,7 +2157,7 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	// 1. Check for supported ALTER combinations
 	// 2. Can error message be improved for non-null columns?
 	
-	if (alter_flags->is_set(HA_ADD_INDEX))
+	if (alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX))
 		{
 		for (unsigned int n = 0; n < altered_table->s->keys; n++)
 			{
@@ -2185,7 +2189,7 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 			}
 		}
 		
-	if (alter_flags->is_set(HA_DROP_INDEX))
+	if (alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX))
 		{
 		}
 		
@@ -2200,10 +2204,10 @@ int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREA
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		ret = addColumn(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	if (alter_flags->is_set(HA_ADD_INDEX) && !ret)
+	if ((alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX)) && !ret)
 		ret = addIndex(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	if (alter_flags->is_set(HA_DROP_INDEX) && !ret)
+	if ((alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX)) && !ret)
 		ret = dropIndex(thd, altered_table, create_info, alter_info, alter_flags);
 		
 	DBUG_RETURN(ret);
@@ -2386,7 +2390,7 @@ int StorageInterface::setIndex(TABLE *table, int indexId)
 	return storageTable->setIndex(&indexDesc);
 }
 
-int StorageInterface::setIndexes(void)
+int StorageInterface::setIndexes(TABLE *table)
 {
 	int ret = 0;
 	
@@ -2394,14 +2398,14 @@ int StorageInterface::setIndexes(void)
 		return ret;
 
 	storageShare->lockIndexes(true);
+	storageShare->lock(true);
 
-	if (!storageShare->haveIndexes(table->s->keys))
-		for (uint n = 0; n < table->s->keys; ++n)
-			if ((ret = setIndex(table, n)))
-				break;
+	ret = remapIndexes(table);
+	// validateIndexes(table, true);
 
+	storageShare->unlock();
 	storageShare->unlockIndexes();
-
+	
 	return ret;
 }
 
@@ -2409,14 +2413,40 @@ int StorageInterface::remapIndexes(TABLE *table)
 {
 	int ret = 0;
 	
+	storageShare->deleteIndexes();
+
 	if (!table)
 		return ret;
 		
-	storageShare->deleteIndexes();
-
 	for (uint n = 0; n < table->s->keys; ++n)
 		if ((ret = setIndex(table, n)))
 			break;
+
+	return ret;
+}
+
+bool StorageInterface::validateIndexes(TABLE *table, bool exclusiveLock)
+{
+	bool ret = true;
+	
+	if (!table)
+		return false;
+	
+	storageShare->lockIndexes(exclusiveLock);
+		
+	for (uint n = 0; (n < table->s->keys) && ret; ++n)
+		{
+		StorageIndexDesc indexDesc;
+		getKeyDesc(table, n, &indexDesc);
+		
+		if (!storageShare->validateIndex(n, &indexDesc))
+			ret = false;
+		}
+	
+	if (ret && (table->s->keys != (uint)storageShare->numberIndexes()))
+		ret = false;
+	
+	storageShare->unlockIndexes();
 
 	return ret;
 }

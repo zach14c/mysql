@@ -122,8 +122,9 @@ public:
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
 	int				setIndex(TABLE *table, int indexId);
-	int				setIndexes(void);
+	int				setIndexes(TABLE *table);
 	int				remapIndexes(TABLE *table);
+	bool			validateIndexes(TABLE *table, bool exclusiveLock = false);
 	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
