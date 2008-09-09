@@ -2093,7 +2093,7 @@ public:
     @param    thd               The thread handle
     @param    table             The altered table, re-opened
  */
- virtual int alter_table_phase3(THD *thd, TABLE *table)
+ virtual int alter_table_phase3(THD *, TABLE *)
  {
    return HA_ERR_UNSUPPORTED;
  }

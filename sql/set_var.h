@@ -655,6 +655,31 @@ public:
 };
 
 
+/**
+  Backup_wait_timeout system variable class.
+
+  This class consolidates the mechanism to manage the backup_wait_timeout
+  system variable. It is a session only variable thus we check the type for
+  check_type() and check_default() to ensure it isn't accessed as a global.
+
+  A set_default() method is provided to allow the SET command :
+  SET backup_wait_TIMEOUT = DEFAULT; 
+*/
+class sys_var_backup_wait_timeout :public sys_var
+{
+public:
+  sys_var_backup_wait_timeout(sys_var_chain *chain, const char *name_arg)
+    :sys_var(name_arg)
+  { chain_sys_var(chain); }
+  bool update(THD *thd, set_var *var);
+  bool check_type(enum_var_type type) { return type == OPT_GLOBAL; }
+  bool check_default(enum_var_type type) { return type == OPT_GLOBAL; }
+  SHOW_TYPE show_type() { return SHOW_LONG; }
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+  void set_default(THD *thd, enum_var_type type);
+};
+
+
 class sys_var_insert_id :public sys_var
 {
 public:
@@ -1345,7 +1370,8 @@ CHARSET_INFO *get_old_charset_by_name(const char *old_name);
 uchar* find_named(I_List<NAMED_LIST> *list, const char *name, uint length,
 		NAMED_LIST **found);
 
-extern sys_var_str sys_var_general_log_path, sys_var_slow_log_path;
+extern sys_var_str sys_var_general_log_path, sys_var_slow_log_path,
+       sys_var_backupdir;
 
 /* key_cache functions */
 KEY_CACHE *get_key_cache(LEX_STRING *cache_name);

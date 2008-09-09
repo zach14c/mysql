@@ -4262,6 +4262,13 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
 
   /* Create a separate handler object to do rndpos() calls. */
   THD *thd= current_thd;
+
+  /*
+    ::clone() takes up a lot of stack, especially on 64 bit platforms.
+    The constant 5 is an empiric result.
+  */
+  if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
+    DBUG_RETURN(1);
   if (!(new_h2= h->clone(thd->mem_root)) || 
       new_h2->ha_external_lock(thd, F_RDLCK))
   {

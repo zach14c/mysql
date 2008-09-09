@@ -41,7 +41,7 @@
   @defgroup Runtime_Environment Runtime Environment
   @{
 */
-int execute_backup_command(THD*,LEX*);
+int execute_backup_command(THD*, LEX*, String*);
 
 /* Used in error handling only */
 #define SP_TYPE_STRING(LP) \
@@ -1920,6 +1920,10 @@ mysql_execute_command(THD *thd)
   TABLE_LIST *all_tables;
   /* most outer SELECT_LEX_UNIT of query */
   SELECT_LEX_UNIT *unit= &lex->unit;
+#ifdef HAVE_REPLICATION
+  /* have table map for update for multi-update statement (BUG#37051) */
+  bool have_table_map_for_update= FALSE;
+#endif
   /* Saved variable value */
   DBUG_ENTER("mysql_execute_command");
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -1984,6 +1988,48 @@ mysql_execute_command(THD *thd)
       
       // force searching in slave.cc:tables_ok() 
       all_tables->updating= 1;
+    }
+
+    /*
+      For fix of BUG#37051, the master stores the table map for update
+      in the Query_log_event, and the value is assigned to
+      thd->variables.table_map_for_update before executing the update
+      query.
+
+      If thd->variables.table_map_for_update is set, then we are
+      replicating from a new master, we can use this value to apply
+      filter rules without opening all the tables. However If
+      thd->variables.table_map_for_update is not set, then we are
+      replicating from an old master, so we just skip this and
+      continue with the old method. And of course, the bug would still
+      exist for old masters.
+    */
+    if (lex->sql_command == SQLCOM_UPDATE_MULTI &&
+        thd->table_map_for_update)
+    {
+      have_table_map_for_update= TRUE;
+      table_map table_map_for_update= thd->table_map_for_update;
+      uint nr= 0;
+      TABLE_LIST *table;
+      for (table=all_tables; table; table=table->next_global, nr++)
+      {
+        if (table_map_for_update & ((table_map)1 << nr))
+          table->updating= TRUE;
+        else
+          table->updating= FALSE;
+      }
+
+      if (all_tables_not_ok(thd, all_tables))
+      {
+        /* we warn the slave SQL thread */
+        my_message(ER_SLAVE_IGNORED_TABLE, ER(ER_SLAVE_IGNORED_TABLE), MYF(0));
+        if (thd->one_shot_set)
+          reset_one_shot_variables(thd);
+        DBUG_RETURN(0);
+      }
+      
+      for (table=all_tables; table; table=table->next_global)
+        table->updating= TRUE;
     }
     
     /*
@@ -2274,10 +2320,21 @@ mysql_execute_command(THD *thd)
 #else
   {
     /*
+      Create a string from the backupdir system variable and pass
+      to backup system.
+    */
+    String backupdir;
+
+    backupdir.alloc(sys_var_backupdir.value_length);
+    backupdir.set_ascii(sys_var_backupdir.value, 
+                        sys_var_backupdir.value_length);
+    backupdir.length(sys_var_backupdir.value_length);
+
+    /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
-     */  
-    if (execute_backup_command(thd,lex))
+     */ 
+    if (execute_backup_command(thd, lex, &backupdir))
       goto error;
     break;
   }
@@ -2425,7 +2482,11 @@ mysql_execute_command(THD *thd)
       TABLE in the same way. That way we avoid that a new table is
       created during a gobal read lock.
     */
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+    {
+      res= 1;
+      goto ddl_blocker_err;
+    }
     if (!thd->locked_tables_mode &&
         !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
     {
@@ -2551,6 +2612,7 @@ mysql_execute_command(THD *thd)
     /* put tables back for PS rexecuting */
 end_with_restore_list:
     DDL_blocker->end_DDL();
+ddl_blocker_err:
     lex->link_first_table_back(create_table, link_to_local);
     break;
   }
@@ -2566,7 +2628,8 @@ end_with_restore_list:
     table without having to do a full rebuild.
   */
   {
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     /* Prepare stack copies to be re-execution safe */
     HA_CREATE_INFO create_info;
     Alter_info alter_info(lex->alter_info, thd->mem_root);
@@ -2634,7 +2697,8 @@ end_with_restore_list:
 
   case SQLCOM_ALTER_TABLE:
     {
-      DDL_blocker->check_DDL_blocker(thd);
+      if (!DDL_blocker->check_DDL_blocker(thd))
+        goto error;
       ulong priv=0;
       ulong priv_needed= ALTER_ACL;
 
@@ -2746,7 +2810,8 @@ end_with_restore_list:
         goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     if (mysql_rename_tables(thd, first_table, 0))
     {
       DDL_blocker->end_DDL();
@@ -2846,7 +2911,8 @@ end_with_restore_list:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_repair_table(thd, first_table, &lex->check_opt);
     DDL_blocker->end_DDL();
     /* ! we write after unlocking the table */
@@ -2898,7 +2964,8 @@ end_with_restore_list:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= (specialflag & (SPECIAL_SAFE_MODE | SPECIAL_NO_NEW_FUNC)) ?
       mysql_recreate_table(thd, first_table) :
       mysql_optimize_table(thd, first_table, &lex->check_opt);
@@ -2949,7 +3016,7 @@ end_with_restore_list:
 
 #ifdef HAVE_REPLICATION
     /* Check slave filtering rules */
-    if (unlikely(thd->slave_thread))
+    if (unlikely(thd->slave_thread && !have_table_map_for_update))
     {
       if (all_tables_not_ok(thd, all_tables))
       {
@@ -3139,7 +3206,8 @@ end_with_restore_list:
       goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_truncate(thd, first_table, 0);
     DDL_blocker->end_DDL();
 
@@ -3242,7 +3310,8 @@ end_with_restore_list:
       /* So that DROP TEMPORARY TABLE gets to binlog at commit/rollback */
       thd->options|= OPTION_KEEP_LOG;
     }
-      DDL_blocker->check_DDL_blocker(thd);
+      if (!DDL_blocker->check_DDL_blocker(thd))
+        goto error;
     /* DDL and binlog write order protected by LOCK_open */
     res= mysql_rm_table(thd, first_table, lex->drop_if_exists,
 			lex->drop_temporary);
@@ -3488,7 +3557,8 @@ end_with_restore_list:
     if (check_access(thd,CREATE_ACL,lex->name.str, 0, 1, 0,
                      is_schema_db(lex->name.str)))
       break;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_create_db(thd,(lower_case_table_names == 2 ? alias :
                               lex->name.str), &create_info, 0);
     DDL_blocker->end_DDL();
@@ -3526,7 +3596,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_rm_db(thd, lex->name.str, lex->drop_if_exists, 0);
     DDL_blocker->end_DDL();
     break;
@@ -3564,7 +3635,8 @@ end_with_restore_list:
       goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_upgrade_db(thd, db);
     DDL_blocker->end_DDL();
     if (!res)
@@ -3604,7 +3676,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_alter_db(thd, db->str, &create_info);
     DDL_blocker->end_DDL();
     break;
@@ -7689,11 +7762,12 @@ bool check_identifier_name(LEX_STRING *str, uint max_char_length,
     0	ok
     1	error  
 */
+C_MODE_START
 
-bool test_if_data_home_dir(const char *dir)
+int test_if_data_home_dir(const char *dir)
 {
-  char path[FN_REFLEN], conv_path[FN_REFLEN];
-  uint dir_len, home_dir_len= strlen(mysql_unpacked_real_data_home);
+  char path[FN_REFLEN];
+  int dir_len;
   DBUG_ENTER("test_if_data_home_dir");
 
   if (!dir)
@@ -7701,23 +7775,29 @@ bool test_if_data_home_dir(const char *dir)
 
   (void) fn_format(path, dir, "", "",
                    (MY_RETURN_REAL_PATH|MY_RESOLVE_SYMLINKS));
-  dir_len= unpack_dirname(conv_path, dir);
-
-  if (home_dir_len < dir_len)
+  dir_len= strlen(path);
+  if (mysql_unpacked_real_data_home_len<= dir_len)
   {
+    if (dir_len > mysql_unpacked_real_data_home_len &&
+        path[mysql_unpacked_real_data_home_len] != FN_LIBCHAR)
+      DBUG_RETURN(0);
+
     if (lower_case_file_system)
     {
-      if (!my_strnncoll(character_set_filesystem,
-                        (const uchar*) conv_path, home_dir_len,
+      if (!my_strnncoll(default_charset_info, (const uchar*) path,
+                        mysql_unpacked_real_data_home_len,
                         (const uchar*) mysql_unpacked_real_data_home,
-                        home_dir_len))
+                        mysql_unpacked_real_data_home_len))
         DBUG_RETURN(1);
     }
-    else if (!memcmp(conv_path, mysql_unpacked_real_data_home, home_dir_len))
+    else if (!memcmp(path, mysql_unpacked_real_data_home,
+                     mysql_unpacked_real_data_home_len))
       DBUG_RETURN(1);
   }
   DBUG_RETURN(0);
 }
+
+C_MODE_END
 
 
 extern int MYSQLparse(void *thd); // from sql_yacc.cc

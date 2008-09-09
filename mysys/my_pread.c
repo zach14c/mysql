@@ -58,7 +58,7 @@ size_t my_pread(File Filedes, uchar *Buffer, size_t Count, my_off_t offset,
              Filedes, (ulonglong)offset, Buffer, (ulong)Count, MyFlags));
   for (;;)
   {
-    errno=0;               /* Linux, Windows don't reset this on EOF/success */
+    errno= 0;    /* Linux, Windows don't reset this on EOF/success */
 #if !defined (HAVE_PREAD) && !defined (_WIN32)
     pthread_mutex_lock(&my_file_info[Filedes].mutex);
     readbytes= (uint) -1;

@@ -396,7 +396,7 @@ inline INTERLOCK_TYPE interlockedAdd(volatile INTERLOCK_TYPE* addend,
 	{
 		INTERLOCK_TYPE current= *addend;
 		INTERLOCK_TYPE ret= current + value;
-		if (COMPARE_EXCHANGE_POINTER(addend, current, ret))
+		if (COMPARE_EXCHANGE(addend, current, ret))
 			return ret;
 	}
 #endif

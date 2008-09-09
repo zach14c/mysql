@@ -638,6 +638,8 @@ extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
 #define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+#define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
+
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1
@@ -883,8 +885,6 @@ inline bool check_identifier_name(LEX_STRING *str)
 {
   return check_identifier_name(str, NAME_CHAR_LEN, 0, "");
 }
-
-bool test_if_data_home_dir(const char *dir);
 
 bool parse_sql(THD *thd,
                Parser_state *parser_state,
@@ -1950,6 +1950,7 @@ extern CHARSET_INFO *character_set_filesystem;
 #ifdef MYSQL_SERVER
 extern char *opt_mysql_tmpdir, mysql_charsets_dir[],
             def_ft_boolean_syntax[sizeof(ft_boolean_syntax)];
+extern int mysql_unpacked_real_data_home_len;
 #define mysql_tmpdir (my_tmpdir(&mysql_tmpdir_list))
 extern MY_TMPDIR mysql_tmpdir_list;
 extern const LEX_STRING command_name[];
@@ -2589,6 +2590,8 @@ bool load_collation(MEM_ROOT *mem_root,
                     CHARSET_INFO **cl);
 
 #endif /* MYSQL_SERVER */
+extern "C" int test_if_data_home_dir(const char *dir);
+
 #endif /* MYSQL_CLIENT */
 
 #endif /* MYSQL_PRIV_H */

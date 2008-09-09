@@ -1,0 +1,198 @@
+#
+# Test the backup of database grants
+#
+
+--source include/not_embedded.inc
+--source include/have_sjis.inc
+
+--disable_warnings
+DROP DATABASE IF EXISTS bup_db_grants;
+DROP DATABASE IF EXISTS db2;
+--enable_warnings
+
+--echo Create two databases and two tables.
+CREATE DATABASE bup_db_grants;
+CREATE DATABASE db2;
+CREATE TABLE bup_db_grants.t1(a INT);
+CREATE TABLE bup_db_grants.s1(b INT);
+INSERT INTO bup_db_grants.t1 VALUES (1), (2), (3), (4);
+INSERT INTO bup_db_grants.s1 VALUES (10), (20), (30), (40);
+
+--echo Now create users and assign various rights to the databases
+CREATE USER 'bup_user1'@'%';
+CREATE USER bup_user2;
+CREATE USER 'bup_user3'@'%';
+REVOKE ALL ON *.* FROM 'bup_user1'@'%';
+REVOKE ALL ON *.* FROM bup_user2;
+GRANT ALL ON db2.* TO 'bup_user1'@'%';
+GRANT SELECT ON bup_db_grants.* TO 'bup_user1'@'%';
+GRANT INSERT ON bup_db_grants.* TO bup_user2;
+GRANT ALL ON bup_db_grants.* TO 'no_user'@'%';
+GRANT SELECT (a) ON bup_db_grants.t1 TO 'bup_user1'@'%';
+GRANT SELECT (b), INSERT (b) ON bup_db_grants.s1 TO bup_user2;
+FLUSH PRIVILEGES;
+
+--echo Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+SHOW GRANTS FOR bup_user2;
+SHOW GRANTS FOR 'bup_user3'@'%';
+SHOW GRANTS FOR 'no_user'@'%';
+
+--echo Run backup
+--replace_column 1 #
+BACKUP DATABASE bup_db_grants TO 'bup_db_grants.bak';
+
+--echo Drop users and recreate them (removes grants completely).
+DROP USER 'bup_user1'@'%';
+DROP USER bup_user2;
+DROP USER 'bup_user3'@'%';
+DROP USER 'no_user'@'%';
+
+FLUSH PRIVILEGES;
+
+CREATE USER 'bup_user1'@'%';
+CREATE USER bup_user2;
+CREATE USER 'bup_user3'@'%';
+
+FLUSH PRIVILEGES;
+
+--echo Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+SHOW GRANTS FOR bup_user2;
+SHOW GRANTS FOR 'bup_user3'@'%';
+
+--echo Run Restore
+--replace_column 1 #
+RESTORE FROM 'bup_db_grants.bak';
+
+SHOW TABLES FROM bup_db_grants;
+
+--echo Demonstrate rights of the users.
+# Note: Since db2 was not in the backup and the user was deleted prior to 
+# the restore, that privilege will not appear here.
+SHOW GRANTS FOR 'bup_user1'@'%';
+SHOW GRANTS FOR bup_user2;
+SHOW GRANTS FOR 'bup_user3'@'%';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR 'no_user'@'%';
+
+--echo Now test what happens on backup if users are deleted.
+
+--echo Drop users and recreate one of them (removes grants completely).
+DROP USER 'bup_user1'@'%';
+DROP USER bup_user2;
+DROP USER 'bup_user3'@'%';
+
+FLUSH PRIVILEGES;
+
+CREATE USER 'bup_user1'@'%';
+CREATE USER 'bup_user1'@'nosuchhost';
+
+--echo Run Restore
+--replace_column 1 #
+RESTORE FROM 'bup_db_grants.bak';
+
+SHOW TABLES FROM bup_db_grants;
+
+--echo Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR bup_user2;
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR 'bup_user3'@'%';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR 'no_user'@'%';
+
+#
+# Section of test disabled due to errors in PB. See BUG#39016
+#
+#--echo Now demonstrate what happens when grants are altered in backup image.
+#
+#--exec perl -pi.bak -e "s/ON bup/ON boo/" $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak 
+#--echo Run Restore
+#--error ER_BACKUP_GRANT_WRONG_DB
+#RESTORE FROM 'bup_db_grants.bak';
+#
+#FLUSH PRIVILEGES;
+
+--echo Cleanup
+
+DROP USER 'bup_user1'@'%';
+DROP USER 'bup_user1'@'nosuchhost';
+--error ER_CANNOT_USER
+DROP USER bup_user2;
+--error ER_CANNOT_USER
+DROP USER 'bup_user3'@'%';
+--error ER_CANNOT_USER
+DROP USER 'no_user'@'%';
+
+FLUSH PRIVILEGES;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak
+
+#--remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak.bak
+
+--echo Now test for encoded user names with an x40 in the middle.
+
+SET NAMES sjis;
+
+DROP DATABASE bup_db_grants;
+
+--echo Create a database and some tables.
+CREATE DATABASE bup_db_grants;
+CREATE TABLE bup_db_grants.t1(a INT);
+CREATE TABLE bup_db_grants.s1(b INT);
+
+--echo Create a user with multibyte username with @ in the middle.
+SET @name = CONVERT(0x8340 using sjis);
+SELECT @name;
+SET @cmd = CONCAT('CREATE USER ', @name);
+PREPARE stmt1 FROM @cmd;
+EXECUTE stmt1;
+
+--echo Grant privileges to user.
+SET @cmd = CONCAT('GRANT SELECT ON bup_db_grants.* TO ', @name);
+PREPARE stmt2 from @cmd;
+EXECUTE stmt2;
+
+FLUSH PRIVILEGES;
+
+--echo Show existing grants.
+SET @cmd = CONCAT('SHOW GRANTS FOR ', @name);
+PREPARE stmt3 FROM @cmd;
+EXECUTE stmt3;
+
+--echo Backup database.
+--replace_column 1 #
+BACKUP DATABASE bup_db_grants TO 'bup_db_grants.bak';
+
+--echo Remove privileges from user.
+SET @cmd = CONCAT('REVOKE ALL ON bup_db_grants.* FROM ', @name);
+PREPARE stmt4 FROM @cmd;
+EXECUTE stmt4;
+
+FLUSH PRIVILEGES;
+
+--echo Show existing grants -- should only USAGE.
+EXECUTE stmt3;
+
+--echo Run restore.
+--replace_column 1 #
+RESTORE FROM 'bup_db_grants.bak';
+
+FLUSH PRIVILEGES;
+
+--echo Ensure grants have been restored.
+EXECUTE stmt3;
+
+SET @cmd = CONCAT('DROP USER ', @name);
+PREPARE stmt5 FROM @cmd;
+EXECUTE stmt5;
+
+SET NAMES latin1;
+
+DROP DATABASE bup_db_grants;
+DROP DATABASE db2;
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_db_grants.bak

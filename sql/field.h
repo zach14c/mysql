@@ -160,7 +160,7 @@ public:
   virtual bool eq(Field *field)
   {
     return (ptr == field->ptr && null_ptr == field->null_ptr &&
-            null_bit == field->null_bit);
+            null_bit == field->null_bit && field->type() == type());
   }
   virtual bool eq_def(Field *field);
   
@@ -2011,7 +2011,6 @@ public:
   bool eq(Field *field)
   {
     return (Field::eq(field) &&
-            field->type() == type() &&
             bit_ptr == ((Field_bit *)field)->bit_ptr &&
             bit_ofs == ((Field_bit *)field)->bit_ofs);
   }
