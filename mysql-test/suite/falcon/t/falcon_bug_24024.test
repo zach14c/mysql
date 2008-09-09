@@ -39,6 +39,9 @@ INSERT INTO t1(a) VALUES(7);
 COMMIT;
 SELECT * FROM t1;
 
+--echo !!! Error message is total crap!
+--echo !!! Something like "Cannot drop locked table" or similar would be fine,
+--echo !!! But never the misleading    ERROR 42S02: Unknown table 't1'.
 --error ER_BAD_TABLE_ERROR
 DROP TABLE t1;
 SHOW WARNINGS;
