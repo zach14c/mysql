@@ -1,0 +1,19 @@
+stop slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+reset master;
+reset slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+start slave;
+
+* shutdown master *
+* slave status*
+Slave_IO_Running = No
+Slave_SQL_Running = Yes
+Last_IO_Errno = 2013
+Last_IO_Error = error reconnecting to master 
+* start master *
+* slave status *
+Slave_IO_Running = Yes
+Slave_SQL_Running = No
+Last_SQL_Errno = 1590
+Last_SQL_Error = The incident LOST_EVENTS occured on the master. Message: mysqld startup

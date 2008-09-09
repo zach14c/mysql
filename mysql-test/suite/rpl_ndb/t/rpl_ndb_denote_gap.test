@@ -1,0 +1,66 @@
+#############################################################
+# Author:  Serge Kozlov <skozlov@mysql.com>
+# Date:    08/25/2008
+# Purpose: Testing replication event to denote gap 
+# (LOST_EVENTS) in cluster replication if master mysqld is
+# restarted
+# Scenario:
+# 1) Stop master
+# 2) Wait while slave IO thread lost connection
+# 3) Start master
+# 4) Wait while slave SQL thread stops with LOST_EVENTS
+#    error
+#############################################################
+--source include/have_ndb.inc
+--source include/ndb_master-slave.inc
+--echo
+
+# Stop master mysql server
+--echo * shutdown master *
+--connection master
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.1.expect
+wait
+EOF
+--shutdown_server 10
+--source include/wait_until_disconnected.inc
+
+# Wait while slave lost connection to master
+--connection slave
+--source include/wait_for_slave_io_to_stop.inc
+--echo * slave status*
+let $io_run= query_get_value("SHOW SLAVE STATUS", Slave_IO_Running, 1);
+echo Slave_IO_Running = $io_run;
+let $sql_run= query_get_value("SHOW SLAVE STATUS", Slave_SQL_Running, 1);
+echo Slave_SQL_Running = $sql_run;
+let $errno= query_get_value("SHOW SLAVE STATUS", Last_IO_Errno, 1);
+echo Last_IO_Errno = $errno;
+let $error= query_get_value("SHOW SLAVE STATUS", Last_IO_Error, 1);
+#--eval SELECT SUBSTRING_INDEX('$error', 'master', -1)
+let $error= `SELECT SUBSTRING_INDEX("$error", "'", 1)`;
+echo Last_IO_Error = $error;
+
+# Start master server again
+--echo * start master *
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.1.expect
+restart
+EOF
+
+# Reconnect to master
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+# Wait for stop slave SQL thread with error LOST EVENTS
+--connection slave
+--source include/wait_for_slave_sql_to_stop.inc
+--echo * slave status *
+let $io_run= query_get_value("SHOW SLAVE STATUS", Slave_IO_Running, 1);
+echo Slave_IO_Running = $io_run;
+let $sql_run= query_get_value("SHOW SLAVE STATUS", Slave_SQL_Running, 1);
+echo Slave_SQL_Running = $sql_run;
+let $errno= query_get_value("SHOW SLAVE STATUS", Last_SQL_Errno, 1);
+echo Last_SQL_Errno = $errno;
+let $error= query_get_value("SHOW SLAVE STATUS", Last_SQL_Error, 1);
+echo Last_SQL_Error = $error;
+
+# End of test 6.0
+
