@@ -1,0 +1,359 @@
+--source include/have_falcon.inc
+
+#
+# Test for ONLINE ADD/DROP INDEX.
+# See also: falcon_index_datatypes
+#
+# ONLINE ADD/DROP was added to Falcon as part of
+# Worklog 4048 - "Falcon: On-line add attribute, Falcon handler part"
+# and is implicit for those statements where ONLINE functionality is supported 
+# by the storage engine (and the server).
+# 
+# This test is testing that:
+#
+#    a) ONLINE is used for some selected ALTER TABLE ... ADD INDEX statements
+#       where neither ONLINE nor OFFLINE is specified.
+#    b) Alternative syntax works with the ONLINE keyword, for example
+#       CREATE ONLINE INDEX
+#       ALTER ONLINE TABLE ... ADD KEY
+#    c) ONLINE ADD/DROP INDEX works where expected.
+#    d) Statements using ONLINE keyword are rejected if the storage engine does
+#       not support doing this online.
+#
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+DROP TABLE IF EXISTS t3;
+--enable_warnings
+
+CREATE TABLE t1 (
+    a int PRIMARY KEY, 
+    b VARCHAR(255), 
+    c int,
+    d CHAR(10)
+);
+
+# Populate t1, 20 rows
+let $i=20;
+let $r=0;
+while ($i < 20)
+{
+  eval INSERT INTO t1 VALUES ($r, 'TestRow$r', $r*2, 'Char$r');
+  dec $i;
+  inc $r;
+}
+
+CREATE TABLE t2 (
+    a int PRIMARY KEY, 
+    b int,
+    c int,
+    d VARCHAR(65)
+);
+
+# Populate t2, 33 rows
+# Disable query log for populating t2 in order to avoid large test result file.
+--disable_query_log
+let $i=33;
+let $r=0;
+--echo #-------- Inserting $i rows into t2 (query log disabled) --------#
+while ($i)
+{
+  eval INSERT INTO t2 VALUES ($r, $r*2, $r+1, 'SomeString $r for testing');
+  dec $i;
+  inc $r;
+}
+--enable_query_log
+
+# Need this to test with default values, nullable, non-nullable columns...
+CREATE TABLE t3 (
+    a int PRIMARY KEY AUTO_INCREMENT, 
+    b int DEFAULT 9999,
+    c int DEFAULT 8888 NOT NULL,
+    d int NOT NULL,
+    e VARCHAR(65)
+);
+
+# Populate t3, 1000 rows. Disable query log for this operation in order to avoid
+# huge test result file.
+--disable_query_log
+
+let $i=1000;
+let $r=0;
+--echo #-------- Inserting $i rows into t3... (query log disabled) --------#
+while ($i)
+{
+  eval INSERT INTO t3 (b, c, d, e) VALUES ($r*2, $r+1, $r-1, 'SomeVarchar $r for testing');
+  dec $i;
+  inc $r;
+}
+--enable_query_log
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+# Do implicit online checking by verifying the number of affected rows from
+# ALTER statement (0 if online, > 0 if offline), hence --enable_info.
+--enable_info
+
+--echo #-------- Testing implicit ONLINE --------#
+
+# Test that ALTER TABLE ADD INDEX is online for nullable column
+ALTER TABLE t1 ADD INDEX ix_b (b);
+DROP INDEX ix_b ON t1;
+
+# Test that CREATE INDEX is online for nullable column
+CREATE INDEX ix_c ON t1 (c);
+DROP INDEX ix_c ON t1;
+
+# Test that ALTER TABLE ADD INDEX is online for nullable column having default value
+ALTER TABLE t3 ADD INDEX ix_b (b);
+SELECT * from t3 where b > 555 ORDER BY a LIMIT 5;
+DROP INDEX ix_b ON t3;
+
+--echo #-------- Testing implicit OFFLINE --------#
+
+# Test that ALTER TABLE ADD INDEX is offline for non-nullable column having default value
+ALTER TABLE t3 ADD INDEX ix_c (c);
+DROP INDEX ix_c ON t3;
+
+# Test that ALTER TABLE ADD INDEX is offline for non-nullable columns
+ALTER TABLE t3 ADD INDEX ix_cd (c, d);
+DROP INDEX ix_cd ON t3;
+
+--disable_info
+
+
+# Test that ONLINE keyword is accepted (or not, depending on statement):
+
+--echo #-------- Testing ONLINE keyword... --------#
+
+--echo #-------- ONLINE: ALTER ADD/DROP INDEX --------#
+
+ALTER ONLINE TABLE t1 ADD INDEX ix_b (b);
+ALTER ONLINE TABLE t1 DROP INDEX ix_b;
+
+--echo #-------- ONLINE: ALTER ADD/DROP KEY --------#
+
+ALTER ONLINE TABLE t1 ADD KEY ix_b (b);
+ALTER ONLINE TABLE t1 DROP KEY ix_b;
+
+--echo #-------- ONLINE: CREATE/DROP INDEX --------#
+
+CREATE ONLINE INDEX ix_c ON t1 (c);
+DROP ONLINE INDEX ix_c ON t1;
+
+--echo #-------- ONLINE: ADD INDEX default name --------#
+
+ALTER ONLINE TABLE t1 ADD INDEX (b);
+ALTER ONLINE TABLE t1 DROP INDEX b;
+
+--echo #-------- ONLINE: ALTER ADD nullable with default --------#
+
+# Test ALTER ... ADD ... with ONLINE for nullable column having default value
+ALTER ONLINE TABLE t3 ADD INDEX ix_b (b);
+SELECT * from t3 where b > 555 ORDER BY a LIMIT 5;
+ALTER ONLINE TABLE t3 DROP INDEX ix_b;
+
+--echo #-------- ONLINE: ALTER ADD not-null with default --------#
+
+# Test that ALTER ONLINE ... ADD INDEX fails with ONLINE for non-nullable column having default value
+--error ER_NOT_SUPPORTED_YET
+ALTER ONLINE TABLE t3 ADD INDEX ix_c (c);
+
+--echo #-------- ONLINE: ALTER ADD not-null --------#
+
+# Test that ALTER ONLINE ... ADD INDEX fails with ONLINE for non-nullable columns
+--error ER_NOT_SUPPORTED_YET
+ALTER ONLINE TABLE t3 ADD INDEX ix_d (d);
+
+--echo #-------- ONLINE: ALTER ADD same key multiple times --------#
+
+# Test adding the same key more than once (should fail but not crash)
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+--error ER_DUP_KEYNAME
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+--error ER_DUP_KEYNAME
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+SHOW INDEXES FROM t1;
+
+--echo #-------- ONLINE: ALTER DROP same key multiple times --------#
+
+# Test dropping the same key more than once (dropping key added in previous segment).
+# Should fail but not crash.
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+--error ER_CANT_DROP_FIELD_OR_KEY
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+--error ER_CANT_DROP_FIELD_OR_KEY
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+SHOW INDEXES FROM t1;
+
+--echo #-------- ONLINE: ALTER ADD/DROP PRIMARY KEY --------#
+
+# Adding/dropping PRIMARY KEY is not supposed to work ONLINE
+--error ER_NOT_SUPPORTED_YET
+ALTER ONLINE TABLE t1 DROP PRIMARY KEY;
+# Now drop primary key (offline) on 'a' temporarily in order to try adding one online
+ALTER TABLE t1 DROP PRIMARY KEY;
+--error ER_NOT_SUPPORTED_YET
+ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c);
+SHOW INDEXES FROM t1;
+# Re-set primary key on 'a'
+ALTER TABLE t1 ADD PRIMARY KEY (a);
+
+##
+## Testing some statement variations using ADD/DROP INDEX
+## 
+
+--echo #-------- Test: UNIQUE --------#
+
+## Test adding UNIQUE index
+ALTER ONLINE TABLE t2 ADD INDEX ix_unique_c (c);
+EXPLAIN SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
+SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
+SHOW INDEXES FROM t2;
+DESCRIBE t2;
+DROP ONLINE INDEX ix_unique_c ON t2;
+
+--echo #-------- Test: DESC --------#
+
+## Test using DESC keyword (parsed but not used)
+ALTER ONLINE TABLE t3 ADD INDEX ix_desc_b (b DESC);
+ALTER ONLINE TABLE t3 ADD INDEX ix_asc_b (b ASC);
+SHOW INDEXES FROM t3;
+DROP ONLINE INDEX ix_desc_b ON t3;
+DROP ONLINE INDEX ix_asc_b ON t3;
+
+--echo #-------- Test: KEY_BLOCK_SIZE --------#
+
+## Test adding index and specifying KEY_BLOCK_SIZE.
+## KEY _BLOCK_SIZE 0 indicates that the default should be used.
+ALTER ONLINE TABLE t1 ADD INDEX ix_keyblock_b (b) KEY_BLOCK_SIZE = 0;
+EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+SHOW INDEXES FROM t1;
+ALTER ONLINE TABLE t1 DROP INDEX ix_keyblock_b;
+
+--echo #-------- Test: COMMENT --------#
+
+## Test adding index and specifying a comment
+ALTER ONLINE TABLE t1 ADD INDEX ix_b (b) COMMENT 'Test comment';
+EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+SHOW INDEXES FROM t1;
+ALTER ONLINE TABLE t1 DROP INDEX ix_b;
+
+--echo #-------- Test: Multiple columns --------#
+
+## Test ADD INDEX on multiple columns
+ALTER ONLINE TABLE t1 ADD INDEX index_multicol (b, c, d);
+SHOW INDEXES FROM t1;
+## Query using the two left-most keys
+EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow3%' AND c = 6 ORDER BY b, c, d;
+SELECT * FROM t1 WHERE b LIKE 'TestRow3%' AND c = 6 ORDER BY b, c, d;
+DROP INDEX index_multicol ON t1;
+
+--echo #-------- Test: Multiple ADD INDEX on same column --------#
+
+ALTER ONLINE TABLE t1 ADD INDEX index_1d (d);
+ALTER ONLINE TABLE t1 ADD INDEX index_2d (d);
+CREATE ONLINE INDEX index_3d ON t1 (d);
+SHOW INDEXES FROM t1;
+DROP ONLINE INDEX index_1d ON t1;
+DROP ONLINE INDEX index_2d ON t1;
+DROP ONLINE INDEX index_3d ON t1;
+
+--echo #-------- Test: Multiple ADD INDEX in a single statement --------#
+
+ALTER TABLE t1 
+    ADD INDEX index_varchar (b), 
+    ADD INDEX index_int (c);
+ALTER TABLE t3 
+    ADD INDEX index_int (b), 
+    ADD INDEX index_multi (b,e), 
+    ADD INDEX index_varchar (e);
+SHOW INDEXES FROM t1;
+SHOW INDEXES FROM t3;
+
+--echo #-------- Test: Multiple DROP INDEX in a single statement --------#
+
+## Depends on indexes added in previous test segment.
+ALTER TABLE t1 
+    DROP INDEX index_varchar, 
+    DROP INDEX index_int;
+ALTER TABLE t3 
+    DROP INDEX index_int, 
+    DROP INDEX index_multi,
+    DROP INDEX index_varchar;
+SHOW INDEXES FROM t1;
+SHOW INDEXES FROM t3;
+
+--echo #-------- Test: Combined ADD/DROP INDEX in a single statement --------#
+
+ALTER TABLE t1 ADD INDEX index_int (c);
+ALTER TABLE t1 ADD INDEX index_char (d), DROP INDEX index_int;
+SHOW INDEXES FROM t1;
+ALTER TABLE t1 DROP INDEX index_char;
+
+--echo #-------- Test: ADD INDEX followed by some complex queries --------#
+
+# First index added offline (non-nullable column), others online.
+ALTER TABLE t1 ADD INDEX ix_a (a);
+ALTER ONLINE TABLE t1 ADD INDEX ix_b (b);
+ALTER ONLINE TABLE t1 ADD INDEX ix_c (c);
+
+ALTER ONLINE TABLE t2
+    ADD INDEX ix_b (b),
+    ADD INDEX ix_d (d);
+
+ALTER ONLINE TABLE t3 ADD INDEX ix_b (b);
+
+## Two keys, existing values
+EXPLAIN SELECT * FROM t1 WHERE a = 3 OR (c > 10 AND a < 15) ORDER BY a;
+SELECT * FROM t1 WHERE a = 3 OR (c > 10 AND a < 15) ORDER BY a;
+
+## Two keys, one non-existing and one existing value
+EXPLAIN SELECT * FROM t1 WHERE a = 99 OR b LIKE 'TestRow7%';
+SELECT * FROM t1 WHERE a = 99 OR b LIKE 'TestRow7%';
+
+## Two keys and a non-key
+EXPLAIN SELECT * FROM t1 WHERE (a = 10 OR b LIKE 'TestRow11') AND d LIKE 'Char%' ORDER BY a;
+SELECT * FROM t1 WHERE (a = 10 OR b LIKE 'TestRow11') AND d LIKE 'Char%' ORDER BY a;
+
+## Two tables, keys in both, compare key to non-key
+EXPLAIN SELECT * FROM t1, t2 WHERE (t1.a IN (1,2) OR t1.b LIKE 'TestRow1%') AND t1.c=t2.c;
+SELECT * FROM t1, t2 WHERE (t1.a IN (1,2) OR t1.b LIKE 'TestRow1%') AND t1.c=t2.c;
+EXPLAIN SELECT * FROM t1, t3 WHERE t3.b=2 AND (t1.c = t3.c OR t1.a=t3.d);
+SELECT * FROM t1, t3 WHERE t3.b=2 AND (t1.c = t3.c OR t1.a=t3.d);
+
+ALTER ONLINE TABLE t1 
+    DROP INDEX ix_a,
+    DROP INDEX ix_b,
+    DROP INDEX ix_c;
+
+ALTER ONLINE TABLE t2
+    DROP INDEX ix_b,
+    DROP INDEX ix_d;
+
+ALTER ONLINE TABLE t3 DROP INDEX ix_b;
+
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SHOW INDEXES FROM t1;
+SHOW INDEXES FROM t2;
+SHOW INDEXES FROM t3;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;

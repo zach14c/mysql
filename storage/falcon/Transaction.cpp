@@ -370,8 +370,8 @@ void Transaction::commitNoUpdates(void)
 	connection = NULL;
 	transactionId = 0;
 	writePending = false;
-	syncActiveTransactions.unlock();
 	state = Available;
+	syncActiveTransactions.unlock();
 	syncIsActive.unlock();
 	release();
 }
@@ -436,10 +436,8 @@ void Transaction::rollback()
 		database->backLog->rollbackRecords(backloggedRecords, this);
 
 	ASSERT(writePending);
-	state = RolledBack;
 	writePending = false;
 	releaseDependencies();
-	syncIsActive.unlock();
 	
 	if (hasUpdates)
 		database->serialLog->preCommit(this);
@@ -464,6 +462,8 @@ void Transaction::rollback()
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
+	state = RolledBack;
+	syncIsActive.unlock();
 	release();
 }
 
