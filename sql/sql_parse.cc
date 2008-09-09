@@ -5397,8 +5397,8 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
     if ((sctx->master_access & want_access) ==
         want_access && thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->db,&tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
