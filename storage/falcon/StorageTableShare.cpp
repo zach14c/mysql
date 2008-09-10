@@ -129,8 +129,8 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 	format = NULL;
 	syncObject = new SyncObject;
 	syncObject->setName("StorageTableShare::syncObject");
-	syncIndexes = new SyncObject;
-	syncIndexes->setName("StorageTableShare::syncIndexes");
+	syncIndexMap = new SyncObject;
+	syncIndexMap->setName("StorageTableShare::syncIndexMap");
 	sequence = NULL;
 	tempTable = tempTbl;
 	setPath(path);
@@ -147,7 +147,7 @@ StorageTableShare::StorageTableShare(StorageHandler *handler, const char * path,
 StorageTableShare::~StorageTableShare(void)
 {
 	delete syncObject;
-	delete syncIndexes;
+	delete syncIndexMap;
 	delete [] impure;
 	
 	if (storageDatabase)
@@ -172,12 +172,12 @@ void StorageTableShare::unlock(void)
 
 void StorageTableShare::lockIndexes(bool exclusiveLock)
 {
-	syncIndexes->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
+	syncIndexMap->lock(NULL, (exclusiveLock) ? Exclusive : Shared);
 }
 
 void StorageTableShare::unlockIndexes(void)
 {
-	syncIndexes->unlock();
+	syncIndexMap->unlock();
 }
 
 int StorageTableShare::open(void)
@@ -335,7 +335,7 @@ int StorageTableShare::createIndex(StorageConnection *storageConnection, Storage
 
 	// Lock out other clients before locking the table
 	
-	Sync syncIndex(syncIndexes, "StorageTableShare::createIndex(1)");
+	Sync syncIndex(syncIndexMap, "StorageTableShare::createIndex(1)");
 	syncIndex.lock(Exclusive);
 	
 	Sync syncObj(syncObject, "StorageTableShare::createIndex(2)");
@@ -389,7 +389,7 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 
 	// Lock out other clients before locking the table
 
-	Sync syncIndex(syncIndexes, "StorageTableShare::dropIndex(1)");
+	Sync syncIndex(syncIndexMap, "StorageTableShare::dropIndex(1)");
 	syncIndex.lock(Exclusive);
 	
 	Sync syncObj(syncObject, "StorageTableShare::dropIndex(2)");
@@ -514,7 +514,7 @@ StorageIndexDesc* StorageTableShare::getIndex(int indexId, StorageIndexDesc *ind
 	if (!indexes)
 		return NULL;
 	
-	Sync sync(syncIndexes, "StorageTableShare::getIndex");
+	Sync sync(syncIndexMap, "StorageTableShare::getIndex");
 	sync.lock(Shared);
 	
 	StorageIndexDesc *index = getIndex(indexId);

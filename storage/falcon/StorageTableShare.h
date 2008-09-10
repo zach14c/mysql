@@ -163,7 +163,7 @@ public:
 	unsigned char		*impure;
 	int					initialized;
 	SyncObject			*syncObject;
-	SyncObject			*syncIndexes;
+	SyncObject			*syncIndexMap;
 	StorageDatabase		*storageDatabase;
 	StorageHandler		*storageHandler;
 	Table				*table;

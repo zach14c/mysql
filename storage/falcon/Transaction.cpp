@@ -85,7 +85,7 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	useCount = 1;
 	syncObject.setName("Transaction::syncObject");
 	syncIsActive.setName("Transaction::syncActive");
-	syncIndexes.setName("Transaction::syncIndexes");
+	syncDeferredIndexes.setName("Transaction::syncDeferredIndexes");
 	syncRecords.setName("Transaction::syncRecords");
 	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
@@ -254,7 +254,7 @@ void Transaction::commit()
 
 	if (state == Active)
 		{
-		Sync sync(&syncIndexes, "Transaction::commit(1)");
+		Sync sync(&syncDeferredIndexes, "Transaction::commit(1)");
 		sync.lock(Shared);
 		
 		for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -502,7 +502,7 @@ void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 	state = Limbo;
 	database->dbb->prepareTransaction(transactionId, xidLength, xid);
 
-	Sync sync(&syncIndexes, "Transaction::prepare");
+	Sync sync(&syncDeferredIndexes, "Transaction::prepare");
 	sync.lock(Shared);
 	
 	for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -1314,9 +1314,10 @@ void Transaction::rollbackSavepoint(int savePointId)
 
 void Transaction::add(DeferredIndex* deferredIndex)
 {
-	Sync sync(&syncIndexes, "Transaction::add");
+	Sync sync(&syncDeferredIndexes, "Transaction::add");
 	sync.lock(Exclusive);
 
+	deferredIndex->addRef();
 	deferredIndex->nextInTransaction = deferredIndexes;
 	deferredIndexes = deferredIndex;
 	deferredIndexCount++;
@@ -1495,25 +1496,37 @@ void Transaction::printBlockage(void)
 
 void Transaction::releaseDeferredIndexes(void)
 {
-	Sync sync(&syncIndexes, "Transaction::releaseDeferredIndexes");
+	Sync sync(&syncDeferredIndexes, "Transaction::releaseDeferredIndexes");
 	sync.lock(Exclusive);
+	
 	for (DeferredIndex *deferredIndex; (deferredIndex = deferredIndexes);)
 		{
-		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
-		deferredIndex->detachTransaction();
+
+		if (deferredIndex->transaction)
+			{
+			ASSERT(deferredIndex->transaction == this);
+			deferredIndex->detachTransaction();
+			}
+
+		deferredIndex->releaseRef();
 		deferredIndexCount--;
 		}
 }
 
 void Transaction::releaseDeferredIndexes(Table* table)
 {
+	Sync sync(&syncDeferredIndexes, "Transaction::releaseDeferredIndexes(Table *)");
+	sync.lock(Exclusive);
+
 	for (DeferredIndex **ptr = &deferredIndexes, *deferredIndex; (deferredIndex = *ptr);)
 		{
 		if (deferredIndex->index && (deferredIndex->index->table == table))
 			{
 			*ptr = deferredIndex->nextInTransaction;
-			deferredIndex->detachTransaction();
+			if (deferredIndex->transaction)
+				deferredIndex->detachTransaction();
+			deferredIndex->releaseRef();
 			--deferredIndexCount;
 			}
 		else
