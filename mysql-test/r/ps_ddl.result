@@ -1610,6 +1610,18 @@ SQL statement where it is needed.
 #
 # SQLCOM_SELECT
 #
+drop table if exists t1;
+create table t1 (a int);
+prepare stmt from "select 1 as res from dual where (1) in (select * from t1)";
+drop table t1;
+create table t1 (x int);
+execute stmt;
+res
+drop table t1;
+deallocate prepare stmt;
+call p_verify_reprepare_count(1);
+SUCCESS
+
 #
 # SQLCOM_CREATE_TABLE
 #

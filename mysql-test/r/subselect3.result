@@ -789,3 +789,10 @@ a	b
 1	0.123
 drop table t1;
 End of 5.0 tests
+#  
+# BUG#36896: Server crash on SELECT FROM DUAL
+# 
+create table t1 (a int);
+select 1 as res from dual where (1) in (select * from t1);
+res
+drop table t1;
