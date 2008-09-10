@@ -884,6 +884,8 @@ void DeferredIndex::addRef()
 
 void DeferredIndex::releaseRef()
 {
+	ASSERT(useCount > 0);
+	
 	INTERLOCKED_DECREMENT(useCount);
 
 	if (useCount == 0)

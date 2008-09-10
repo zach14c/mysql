@@ -42,7 +42,6 @@
 #include "SQLError.h"
 #include "Log.h"
 #include "IOx.h"
-#include "ScanDir.h"
 
 #ifndef ULL
 #define ULL(a)		((uint64) a)

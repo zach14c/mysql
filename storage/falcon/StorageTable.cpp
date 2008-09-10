@@ -195,7 +195,7 @@ int StorageTable::setCurrentIndex(int indexId)
 		}
 	
 	if (!(currentIndex = share->getIndex(indexId)))
-{
+		{
 		clearCurrentIndex();
 		return StorageErrorNoIndex;
 		}
