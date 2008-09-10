@@ -149,17 +149,6 @@ Configuration::Configuration(const char *configFile)
 		ScanDir scanDir(serialLogDir, "*.*");
 		scanDir.next();
 		
-		if (!scanDir.isDirectory())
-			{
-			fprintf(stderr, 
-					"Falcon: The specified serial log directory, \"%s\", "
-					"does not exist.\n"
-					"Falcon: The serial log directory must be created by "
-					"the user before initializing Falcon.\n", 
-					falcon_serial_log_dir
-				);
-			throw SQLEXCEPTION (FILE_ACCESS_ERROR, "Invalid serial log directory path \"%s\"", falcon_serial_log_dir);
-			}
 		}
 #else
 	recordMemoryMax				= getMemorySize(RECORD_MEMORY_UPPER);
