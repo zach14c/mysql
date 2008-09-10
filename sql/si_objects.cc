@@ -1341,6 +1341,10 @@ ViewBaseObjectsIterator::create(THD *thd,
 
   my_thd->thread_stack= (char*) &my_thd;
   my_thd->store_globals();
+  
+  /* after store_globals(), my_thd->mysys_var and thd->mysys_var
+     should point to the same instance */
+  DBUG_ASSERT(my_thd->mysys_var == thd->mysys_var);
   lex_start(my_thd);
 
   TABLE_LIST *tl =
@@ -1354,6 +1358,14 @@ ViewBaseObjectsIterator::create(THD *thd,
   {
     close_thread_tables(my_thd);
     delete my_thd;
+
+    /* my_thd->mysys_var and thd->mysys_var points to the same
+       instance, after deletion of my_thd, my_thd->mysys_var is freed,
+       so thd->mysys_var is no long valid and must be set to NULL */
+    pthread_mutex_lock(&thd->LOCK_delete);
+    thd->mysys_var= NULL;
+    pthread_mutex_unlock(&thd->LOCK_delete);
+
     thd->store_globals();
 
     return NULL;
