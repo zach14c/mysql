@@ -31,6 +31,7 @@ DeferredIndexWalker::DeferredIndexWalker(DeferredIndex *deferredIdx, IndexKey *i
 void DeferredIndexWalker::initialize(DeferredIndex *deferredIdx, IndexKey *indexKey, int searchFlags)
 {
 	deferredIndex = deferredIdx;
+	deferredIndex->addRef();
 	currentNode = NULL;
 	DIBucket *bucket = (DIBucket*) deferredIndex->root;
 	nodePending = true;
@@ -94,6 +95,8 @@ void DeferredIndexWalker::initialize(DeferredIndex *deferredIdx, IndexKey *index
 
 DeferredIndexWalker::~DeferredIndexWalker(void)
 {
+	if (deferredIndex)
+		deferredIndex->releaseRef();
 }
 
 DINode* DeferredIndexWalker::next(void)
