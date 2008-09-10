@@ -1502,6 +1502,7 @@ void Transaction::releaseDeferredIndexes(void)
 		{
 		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
+		deferredIndex->detachTransaction();
 		deferredIndexCount--;
 		}
 }
