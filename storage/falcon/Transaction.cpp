@@ -1317,6 +1317,7 @@ void Transaction::add(DeferredIndex* deferredIndex)
 	Sync sync(&syncDeferredIndexes, "Transaction::add");
 	sync.lock(Exclusive);
 
+	deferredIndex->addRef();
 	deferredIndex->nextInTransaction = deferredIndexes;
 	deferredIndexes = deferredIndex;
 	deferredIndexCount++;
@@ -1502,6 +1503,8 @@ void Transaction::releaseDeferredIndexes(void)
 		{
 		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
+		deferredIndex->detachTransaction();
+		deferredIndex->releaseRef();
 		deferredIndexCount--;
 		}
 }
@@ -1517,6 +1520,7 @@ void Transaction::releaseDeferredIndexes(Table* table)
 			{
 			*ptr = deferredIndex->nextInTransaction;
 			deferredIndex->detachTransaction();
+			deferredIndex->releaseRef();
 			--deferredIndexCount;
 			}
 		else

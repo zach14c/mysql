@@ -840,7 +840,7 @@ void DeferredIndex::detachTransaction(void)
 	else
 		sync.unlock();
 
-	releaseRef();
+	//releaseRef();
 }
 
 void DeferredIndex::chill(Dbb *dbb)
@@ -891,3 +891,4 @@ void DeferredIndex::releaseRef()
 	if (useCount == 0)
 		delete this;
 }
+
