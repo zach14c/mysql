@@ -141,10 +141,10 @@ SHOW INDEXES FROM t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 ALTER TABLE t1 ADD PRIMARY KEY (a);
 #-------- Test: UNIQUE --------#
-ALTER ONLINE TABLE t2 ADD INDEX ix_unique_c (c);
+ALTER ONLINE TABLE t2 ADD UNIQUE INDEX ix_unique_c (c);
 EXPLAIN SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	range	ix_unique_c	ix_unique_c	5	NULL	11	Using where; Using filesort
+1	SIMPLE	t2	range	ix_unique_c	ix_unique_c	5	NULL	1	Using where; Using filesort
 SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
 a	b	c	d
 20	40	21	SomeString 20 for testing
@@ -154,14 +154,17 @@ a	b	c	d
 SHOW INDEXES FROM t2;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 t2	0	PRIMARY	1	a	NULL	16	NULL	NULL		BTREE		
-t2	1	ix_unique_c	1	c	NULL	16	NULL	NULL	YES	BTREE		
+t2	0	ix_unique_c	1	c	NULL	16	NULL	NULL	YES	BTREE		
 DESCRIBE t2;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	NO	PRI	NULL	
 b	int(11)	YES		NULL	
-c	int(11)	YES	MUL	NULL	
+c	int(11)	YES	UNI	NULL	
 d	varchar(65)	YES		NULL	
 DROP ONLINE INDEX ix_unique_c ON t2;
+SHOW INDEXES FROM t2;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t2	0	PRIMARY	1	a	NULL	16	NULL	NULL		BTREE		
 #-------- Test: DESC --------#
 ALTER ONLINE TABLE t3 ADD INDEX ix_desc_b (b DESC);
 ALTER ONLINE TABLE t3 ADD INDEX ix_asc_b (b ASC);

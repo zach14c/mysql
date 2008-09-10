@@ -214,12 +214,13 @@ ALTER TABLE t1 ADD PRIMARY KEY (a);
 --echo #-------- Test: UNIQUE --------#
 
 ## Test adding UNIQUE index
-ALTER ONLINE TABLE t2 ADD INDEX ix_unique_c (c);
+ALTER ONLINE TABLE t2 ADD UNIQUE INDEX ix_unique_c (c);
 EXPLAIN SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
 SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
 SHOW INDEXES FROM t2;
 DESCRIBE t2;
 DROP ONLINE INDEX ix_unique_c ON t2;
+SHOW INDEXES FROM t2;
 
 --echo #-------- Test: DESC --------#
 
