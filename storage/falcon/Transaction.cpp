@@ -1501,14 +1501,8 @@ void Transaction::releaseDeferredIndexes(void)
 	
 	for (DeferredIndex *deferredIndex; (deferredIndex = deferredIndexes);)
 		{
+		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
-
-		if (deferredIndex->transaction)
-			{
-			ASSERT(deferredIndex->transaction == this);
-			deferredIndex->detachTransaction();
-			}
-
 		deferredIndex->releaseRef();
 		deferredIndexCount--;
 		}
@@ -1524,8 +1518,7 @@ void Transaction::releaseDeferredIndexes(Table* table)
 		if (deferredIndex->index && (deferredIndex->index->table == table))
 			{
 			*ptr = deferredIndex->nextInTransaction;
-			if (deferredIndex->transaction)
-				deferredIndex->detachTransaction();
+			deferredIndex->detachTransaction();
 			deferredIndex->releaseRef();
 			--deferredIndexCount;
 			}
