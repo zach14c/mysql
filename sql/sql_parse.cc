@@ -2111,13 +2111,15 @@ mysql_execute_command(THD *thd)
 #endif
   case SQLCOM_SHOW_STATUS_PROC:
   case SQLCOM_SHOW_STATUS_FUNC:
-    res= execute_sqlcom_select(thd, all_tables);
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+      res= execute_sqlcom_select(thd, all_tables);
     break;
   case SQLCOM_SHOW_STATUS:
   {
     system_status_var old_status_var= thd->status_var;
     thd->initial_status_var= &old_status_var;
-    res= execute_sqlcom_select(thd, all_tables);
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+      res= execute_sqlcom_select(thd, all_tables);
     /* Don't log SHOW STATUS commands to slow query log */
     thd->server_status&= ~(SERVER_QUERY_NO_INDEX_USED |
                            SERVER_QUERY_NO_GOOD_INDEX_USED);
@@ -4992,6 +4994,8 @@ bool check_single_table_access(THD *thd, ulong privilege,
   /* Show only 1 table for check_grant */
   if (!(all_tables->belong_to_view &&
         (thd->lex->sql_command == SQLCOM_SHOW_FIELDS)) &&
+      !(all_tables->view &&
+        all_tables->effective_algorithm == VIEW_ALGORITHM_TMPTABLE) &&
       check_grant(thd, privilege, all_tables, 0, 1, no_errors))
     goto deny;
 
@@ -5388,15 +5392,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
       continue;
     }
 
-    if (tables->derived ||
+    if (tables->is_anonymous_derived_table() ||
         (tables->table && tables->table->s && (int)tables->table->s->tmp_table))
       continue;
     thd->security_ctx= sctx;
     if ((sctx->master_access & want_access) ==
         want_access && thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->db,&tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
