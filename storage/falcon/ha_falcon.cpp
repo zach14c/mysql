@@ -157,11 +157,33 @@ void flushFalconLogFile()
 		fflush(falcon_log_file);
 }
 
+bool checkExceptionSupport()
+{
+    // Validate that the code has been compiled with support for exceptions
+    // by throwing and catching an exception. If the executable does not
+    // support exceptions we will reach the return false statement
+	try
+		{
+		throw 1;
+		}
+	catch (int) 
+		{
+		return true;
+		}
+	return false;
+}
+
 int StorageInterface::falcon_init(void *p)
 {
 	DBUG_ENTER("falcon_init");
 	falcon_hton = (handlerton *)p;
 	my_bool error = false;
+
+	if (!checkExceptionSupport()) 
+		{
+		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work");
+		DBUG_RETURN(1);
+		}
 
 	StorageHandler::setDataDirectory(mysql_real_data_home);
 
