@@ -178,7 +178,7 @@ while ($counter) {
  dec $counter;
 }
 --enable_query_log
-SELECT COUNT(*) FROM t1;
+SELECT COUNT(*)=2000 FROM t1;
 
 --sync_slave_with_master
 let $counter=2000;
@@ -197,8 +197,11 @@ while ($counter) {
  dec $counter;
 }
 --enable_query_log
-SELECT b,COUNT(*) FROM t1 GROUP BY b ORDER BY b;
-SELECT b,COUNT(*) FROM t2 GROUP BY b ORDER BY b;
+# We don't know how many memory used and can't check exact values so need to check following 
+# conditions
+SELECT COUNT(*)=2000 FROM t1 WHERE b='master' GROUP BY b ORDER BY b;
+SELECT COUNT(*)<2000 AND COUNT(*)>0 FROM t1 WHERE b='slave' GROUP BY b ORDER BY b;
+SELECT COUNT(*)<2000 AND COUNT(*)>0 FROM t2 WHERE b='slave' GROUP BY b ORDER BY b;
 
 --connection master
 --disable_warnings
