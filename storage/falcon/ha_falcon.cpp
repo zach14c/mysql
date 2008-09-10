@@ -34,6 +34,7 @@
 #include "CmdGen.h"
 #include "InfoTable.h"
 #include "Format.h"
+#include "Error.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -2641,13 +2642,7 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 			continue;
 			
 		Field *field = fieldMap[fieldFormat->fieldId];
-
-		if (!field)
-			{
-			dataStream->encodeNull();
-			
-			continue;
-			}
+		ASSERT(field);
 		
 		if (ptrDiff)
 			field->move_field_offset(ptrDiff);
