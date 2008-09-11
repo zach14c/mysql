@@ -3537,7 +3537,7 @@ bool mysql_create_table_no_lock(THD *thd,
 
   /* Give warnings for not supported table options */
   if (create_info->transactional && !file->ht->commit)
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_ILLEGAL_HA_CREATE_OPTION,
                         ER(ER_ILLEGAL_HA_CREATE_OPTION),
                         file->engine_name()->str,
@@ -4209,6 +4209,46 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       table->next_global= save_next_global;
       table->next_local= save_next_local;
       thd->open_options&= ~extra_open_options;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+      if (table->table && table->table->part_info)
+      {
+        /*
+          Set up which partitions that should be processed
+          if ALTER TABLE t ANALYZE/CHECK/OPTIMIZE/REPAIR PARTITION ..
+        */
+        Alter_info *alter_info= &lex->alter_info;
+
+        if (alter_info->flags & ALTER_ANALYZE_PARTITION ||
+            alter_info->flags & ALTER_CHECK_PARTITION ||
+            alter_info->flags & ALTER_OPTIMIZE_PARTITION ||
+            alter_info->flags & ALTER_REPAIR_PARTITION)
+        {
+          uint no_parts_found;
+          uint no_parts_opt= alter_info->partition_names.elements;
+          no_parts_found= set_part_state(alter_info, table->table->part_info,
+                                         PART_CHANGED);
+          if (no_parts_found != no_parts_opt &&
+              (!(alter_info->flags & ALTER_ALL_PARTITION)))
+          {
+            char buff[FN_REFLEN + MYSQL_ERRMSG_SIZE];
+            uint length;
+            DBUG_PRINT("admin", ("sending non existent partition error"));
+            protocol->prepare_for_resend();
+            protocol->store(table_name, system_charset_info);
+            protocol->store(operator_name, system_charset_info);
+            protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+            length= my_snprintf(buff, sizeof(buff),
+                                ER(ER_DROP_PARTITION_NON_EXISTENT),
+                                table_name);
+            protocol->store(buff, length, system_charset_info);
+            if(protocol->write())
+              goto err;
+            my_eof(thd);
+            goto err;
+          }
+        }
+      }
+#endif
     }
     DBUG_PRINT("admin", ("table: %p", table->table));
 
@@ -4438,9 +4478,17 @@ send_result_message:
         This is currently used only by InnoDB. ha_innobase::optimize() answers
         "try with alter", so here we close the table, do an ALTER TABLE,
         reopen the table and do ha_innobase::analyze() on it.
+        We have to end the row, so analyze could return more rows.
       */
+      protocol->store(STRING_WITH_LEN("note"), system_charset_info);
+      protocol->store(STRING_WITH_LEN(
+          "Table does not support optimize, doing recreate + analyze instead"),
+                      system_charset_info);
+      if (protocol->write())
+        goto err;
       ha_autocommit_or_rollback(thd, 0);
       close_thread_tables(thd);
+      DBUG_PRINT("info", ("HA_ADMIN_TRY_ALTER, trying analyze..."));
       TABLE_LIST *save_next_local= table->next_local,
                  *save_next_global= table->next_global;
       table->next_local= table->next_global= 0;
@@ -4463,6 +4511,10 @@ send_result_message:
             ((result_code= table->table->file->ha_analyze(thd, check_opt)) > 0))
           result_code= 0; // analyze went ok
       }
+      /* Start a new row for the final status row */
+      protocol->prepare_for_resend();
+      protocol->store(table_name, system_charset_info);
+      protocol->store(operator_name, system_charset_info);
       if (result_code) // either mysql_recreate_table or analyze failed
       {
         DBUG_ASSERT(thd->is_error());
@@ -4478,7 +4530,8 @@ send_result_message:
             /* Hijack the row already in-progress. */
             protocol->store(STRING_WITH_LEN("error"), system_charset_info);
             protocol->store(err_msg, system_charset_info);
-            (void)protocol->write();
+            if (protocol->write())
+              goto err;
             /* Start off another row for HA_ADMIN_FAILED */
             protocol->prepare_for_resend();
             protocol->store(table_name, system_charset_info);

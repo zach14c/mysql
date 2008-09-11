@@ -638,6 +638,8 @@ extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
 #define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+#define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
+
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1
@@ -883,8 +885,6 @@ inline bool check_identifier_name(LEX_STRING *str)
 {
   return check_identifier_name(str, NAME_CHAR_LEN, 0, "");
 }
-
-bool test_if_data_home_dir(const char *dir);
 
 bool parse_sql(THD *thd,
                Parser_state *parser_state,
@@ -1657,6 +1657,8 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
                                 char *db,
                                 const char *table_name,
                                 uint fast_alter_partition);
+uint set_part_state(Alter_info *alter_info, partition_info *tab_part_info,
+                    enum partition_state part_state);
 uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
                            HA_CREATE_INFO *create_info,
                            handlerton *old_db_type,
@@ -1948,6 +1950,7 @@ extern CHARSET_INFO *character_set_filesystem;
 #ifdef MYSQL_SERVER
 extern char *opt_mysql_tmpdir, mysql_charsets_dir[],
             def_ft_boolean_syntax[sizeof(ft_boolean_syntax)];
+extern int mysql_unpacked_real_data_home_len;
 #define mysql_tmpdir (my_tmpdir(&mysql_tmpdir_list))
 extern MY_TMPDIR mysql_tmpdir_list;
 extern const LEX_STRING command_name[];
@@ -2329,6 +2332,8 @@ uint tablename_to_filename(const char *from, char *to, uint to_length);
 #ifdef MYSQL_SERVER
 uint build_table_filename(char *buff, size_t bufflen, const char *db,
                           const char *table, const char *ext, uint flags);
+const char *get_canonical_filename(handler *file, const char *path,
+                                   char *tmp_path);
 
 #define MYSQL50_TABLE_NAME_PREFIX         "#mysql50#"
 #define MYSQL50_TABLE_NAME_PREFIX_LENGTH  9
@@ -2596,6 +2601,8 @@ bool load_collation(MEM_ROOT *mem_root,
                     CHARSET_INFO **cl);
 
 #endif /* MYSQL_SERVER */
+extern "C" int test_if_data_home_dir(const char *dir);
+
 #endif /* MYSQL_CLIENT */
 
 #endif /* MYSQL_PRIV_H */
