@@ -37,11 +37,6 @@
 %{?_with_cluster:%define CLUSTER_BUILD 1}
 %{!?_with_cluster:%define CLUSTER_BUILD 0}
 
-# use "rpmbuild --with federated" or "rpm --define '_with_federated 1'" (for RPM 3.x)
-# to build with federated support (off by default)
-%{?_with_federated:%define FEDERATED_BUILD 1}
-%{!?_with_federated:%define FEDERATED_BUILD 0}
-
 %if %{STATIC_BUILD}
 %define release 0
 %else
@@ -347,11 +342,7 @@ BuildMySQL "--enable-shared \
 		--with-archive-storage-engine \
 		--with-csv-storage-engine \
 		--with-blackhole-storage-engine \
-%if %{FEDERATED_BUILD}
 		--with-federated-storage-engine \
-%else
-		--without-federated-storage-engine \
-%endif
 %ifarch i386 x86_64
 		--with-falcon \
 %else
@@ -392,11 +383,7 @@ BuildMySQL "--enable-shared \
 		--with-archive-storage-engine \
 		--with-csv-storage-engine \
 		--with-blackhole-storage-engine \
-%if %{FEDERATED_BUILD}
 		--with-federated-storage-engine \
-%else
-		--without-federated-storage-engine \
-%endif
 %ifarch i386 x86_64
 		--with-falcon \
 %else
@@ -864,6 +851,10 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
+
+- Removed the "Federated" storage engine option, and enabled in all
+
 * Tue Aug 26 2008 Joerg Bruehe <joerg@mysql.com>
 
 - Get rid of the "warning: Installed (but unpackaged) file(s) found:"
