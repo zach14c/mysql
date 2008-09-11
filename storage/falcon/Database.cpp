@@ -691,7 +691,20 @@ void Database::createDatabase(const char * filename)
 
 void Database::openDatabase(const char * filename)
 {
-	cache = dbb->open (filename, configuration->pageCacheSize, 0);
+	try 
+		{
+		cache = dbb->open (filename, configuration->pageCacheSize, 0);
+		}
+	catch(SQLException& e)
+		{
+		// Master cannot be opened - throw OPEN_MASTER error to initiate
+		// create database. Don't do it if file exists, but there is a problem
+		// with permissions and/or locking.
+		if(e.getSqlcode() != FILE_ACCESS_ERROR)
+			throw SQLError(OPEN_MASTER_ERROR, e.getText());
+		else
+			throw;
+		}
 	start();
 
 	if (   dbb->logRoot.IsEmpty()

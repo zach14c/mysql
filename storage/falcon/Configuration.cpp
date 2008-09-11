@@ -130,33 +130,16 @@ Configuration::Configuration(const char *configFile)
 		
 	if (falcon_serial_log_dir)
 		{
-		char fullLogPath[PATH_MAX];
-		const char *baseName;
-	
-		// Fully qualify the serial log path using a dummy file name
-		
-		JString tempLogDir(falcon_serial_log_dir);
-		tempLogDir += "/test.fl1";
-		IO io;
-		io.expandFileName(tempLogDir, sizeof(fullLogPath), fullLogPath, &baseName);
+		char fullPath[PATH_MAX];
+		IO::expandFileName(falcon_serial_log_dir, sizeof(fullPath),
+			fullPath, NULL);
+		serialLogDir = fullPath;
 
-		// Set the path, remove the file name
-		
-		serialLogDir = JString(fullLogPath, (int)(baseName - fullLogPath));
-	
-		// Verify that the directory exists
-		
-		if (!io.isDirectory(serialLogDir.getString()))
-			{
-			fprintf(stderr, 
-					"Falcon: The specified serial log directory, \"%s\", "
-					"does not exist.\n"
-					"Falcon: The serial log directory must be created by "
-					"the user before initializing Falcon.\n", 
-					falcon_serial_log_dir
-				);
-			throw SQLEXCEPTION (FILE_ACCESS_ERROR, "Invalid serial log directory path \"%s\"", falcon_serial_log_dir);
-			}
+		// Append path separator, if missing
+		size_t len = strlen(fullPath);
+
+		if (len && (fullPath[len - 1] != SEPARATOR))
+			serialLogDir += SEPARATOR;
 		}
 #else
 	recordMemoryMax				= getMemorySize(RECORD_MEMORY_UPPER);

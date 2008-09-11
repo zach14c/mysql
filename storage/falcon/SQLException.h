@@ -70,7 +70,8 @@ enum SqlCode {
 	DEVICE_FULL					= -36,
 	FILE_ACCESS_ERROR			= -37,
 	TABLESPACE_DATAFILE_EXIST_ERROR	= -38,
-	RECOVERY_ERROR				= -39
+	RECOVERY_ERROR				= -39,
+	OPEN_MASTER_ERROR		= -40
 	};
 
 class DllExport SQLException {

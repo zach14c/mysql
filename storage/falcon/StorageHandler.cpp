@@ -1003,8 +1003,7 @@ void StorageHandler::initialize(void)
 
 		// If got one of following errors, just rethrow. No point in 
 		// trying to create database.
-		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR ||
-			err == VERSION_ERROR || err == RECOVERY_ERROR)
+		if (err != OPEN_MASTER_ERROR)
 			throw;
 
 		try
