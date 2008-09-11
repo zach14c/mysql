@@ -585,6 +585,10 @@ void Output_stream::close()
   if (m_fd < 0)
     return;
 
+  /*
+   Note: Even if bstream_close() fails we want to do the lower level clean-up.
+   This is why errors from bstream_close() are ignored.
+  */ 
   bstream_close(this);
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
@@ -626,7 +630,8 @@ void Output_stream::close()
 */
 bool Output_stream::rewind()
 {
-  bstream_close(this);
+  if (bstream_close(this) != BSTREAM_OK)
+    return FALSE;
 
   bool ret= Stream::rewind();
 
@@ -771,6 +776,10 @@ void Input_stream::close()
   if (m_fd < 0)
     return;
 
+  /*
+   Note: Even if bstream_close() fails we want to do the lower level clean-up.
+   This is why errors from bstream_close() are ignored.
+  */ 
   bstream_close(this);
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
@@ -792,7 +801,8 @@ void Input_stream::close()
 */
 bool Input_stream::rewind()
 {
-  bstream_close(this);
+  if (bstream_close(this) != BSTREAM_OK)
+    return FALSE;
 
   bool ret= Stream::rewind();
 
