@@ -64,8 +64,8 @@ dist-hook:
 		--srcdir=$(top_srcdir)
 	storage/myisam/myisamchk --silent --fast $(distdir)/win/data/mysql/*.MYI
 
-# TODO: uncomment abi_check (next line) if you get a merge conflict here.
-#all-local:		abi_check
+
+all-local:		@ABI_CHECK@	
 
 tags:
 	support-files/build-tags
@@ -272,12 +272,10 @@ TEST_PREPROCESSOR_HEADER = $(top_srcdir)/include/mysql/plugin.h \
 #    to prevent seeing these messages.
 # 2) sed the output to 
 #    2.1) remove blank lines and lines that begin with "# "
-#         (The header information is retained to enable easy
-#         analysis of abi diffs at a later stage).
-#    2.2) When gcc -E is run in the Mac OS it introduces a line of output 
-#         that results in showing up as a difference between the .pp and 
-#         .out files. Remove this OS specific preprocessor text inserted by
-#         the preprocessor in the MAC OS. 
+#    2.2) When gcc -E is run on the Mac OS  and solaris sparc platforms it 
+#         introduces a line of output that shows up as a difference between
+#         the .pp and .out files. Remove these OS specific preprocessor text
+#         inserted by the preprocessor. 
 # 3) diff the generated file and the canons (.pp files already in
 #    the repository).
 # 4) delete the .out file that is generated.
@@ -317,7 +315,8 @@ do_abi_check:
 	                                 $$file 2>/dev/null | \
 	                  @SED@ -e '/^# /d' \
 	                            -e '/^[ 	]*$$/d' \
-	                            -e '/^#pragma GCC set_debug_pwd/d' > \
+	                            -e '/^#pragma GCC set_debug_pwd/d' \
+	                            -e '/^#ident/d' > \
 	                                       $(top_builddir)/abi_check.out; \
 	                  @DIFF@ -w $$file.pp $(top_builddir)/abi_check.out; \
 	                  @RM@ $(top_builddir)/abi_check.out; \
