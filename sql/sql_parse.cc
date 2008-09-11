@@ -413,6 +413,12 @@ void execute_init_command(THD *thd, sys_var_str *init_command_var,
   Vio* save_vio;
   ulong save_client_capabilities;
 
+#if defined(ENABLED_PROFILING) && defined(COMMUNITY_SERVER)
+  thd->profiling.start_new_query();
+  thd->profiling.set_query_source(init_command_var->value,
+                                  init_command_var->value_length);
+#endif
+
   thd_proc_info(thd, "Execution of init_command");
   /*
     We need to lock init_command_var because
@@ -434,6 +440,10 @@ void execute_init_command(THD *thd, sys_var_str *init_command_var,
   rw_unlock(var_mutex);
   thd->client_capabilities= save_client_capabilities;
   thd->net.vio= save_vio;
+
+#if defined(ENABLED_PROFILING) && defined(COMMUNITY_SERVER)
+  thd->profiling.finish_current_query();
+#endif
 }
 
 
@@ -540,6 +550,10 @@ pthread_handler_t handle_bootstrap(void *arg)
 
     bootstrap_error= thd->is_error();
     net_end_statement(thd);
+
+#if defined(ENABLED_PROFILING) && defined(COMMUNITY_SERVER)
+    thd->profiling.finish_current_query();
+#endif
 
     if (bootstrap_error)
       break;
@@ -1906,6 +1920,10 @@ mysql_execute_command(THD *thd)
   TABLE_LIST *all_tables;
   /* most outer SELECT_LEX_UNIT of query */
   SELECT_LEX_UNIT *unit= &lex->unit;
+#ifdef HAVE_REPLICATION
+  /* have table map for update for multi-update statement (BUG#37051) */
+  bool have_table_map_for_update= FALSE;
+#endif
   /* Saved variable value */
   DBUG_ENTER("mysql_execute_command");
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -1970,6 +1988,48 @@ mysql_execute_command(THD *thd)
       
       // force searching in slave.cc:tables_ok() 
       all_tables->updating= 1;
+    }
+
+    /*
+      For fix of BUG#37051, the master stores the table map for update
+      in the Query_log_event, and the value is assigned to
+      thd->variables.table_map_for_update before executing the update
+      query.
+
+      If thd->variables.table_map_for_update is set, then we are
+      replicating from a new master, we can use this value to apply
+      filter rules without opening all the tables. However If
+      thd->variables.table_map_for_update is not set, then we are
+      replicating from an old master, so we just skip this and
+      continue with the old method. And of course, the bug would still
+      exist for old masters.
+    */
+    if (lex->sql_command == SQLCOM_UPDATE_MULTI &&
+        thd->table_map_for_update)
+    {
+      have_table_map_for_update= TRUE;
+      table_map table_map_for_update= thd->table_map_for_update;
+      uint nr= 0;
+      TABLE_LIST *table;
+      for (table=all_tables; table; table=table->next_global, nr++)
+      {
+        if (table_map_for_update & ((table_map)1 << nr))
+          table->updating= TRUE;
+        else
+          table->updating= FALSE;
+      }
+
+      if (all_tables_not_ok(thd, all_tables))
+      {
+        /* we warn the slave SQL thread */
+        my_message(ER_SLAVE_IGNORED_TABLE, ER(ER_SLAVE_IGNORED_TABLE), MYF(0));
+        if (thd->one_shot_set)
+          reset_one_shot_variables(thd);
+        DBUG_RETURN(0);
+      }
+      
+      for (table=all_tables; table; table=table->next_global)
+        table->updating= TRUE;
     }
     
     /*
@@ -2956,7 +3016,7 @@ ddl_blocker_err:
 
 #ifdef HAVE_REPLICATION
     /* Check slave filtering rules */
-    if (unlikely(thd->slave_thread))
+    if (unlikely(thd->slave_thread && !have_table_map_for_update))
     {
       if (all_tables_not_ok(thd, all_tables))
       {
@@ -4467,10 +4527,10 @@ create_sp_error:
       }
       break;
     }
-#ifndef DBUG_OFF
   case SQLCOM_SHOW_PROC_CODE:
   case SQLCOM_SHOW_FUNC_CODE:
     {
+#ifndef DBUG_OFF
       sp_head *sp;
 
       if (lex->sql_command == SQLCOM_SHOW_PROC_CODE)
@@ -4487,8 +4547,12 @@ create_sp_error:
         goto error;
       }
       break;
-    }
+#else
+      my_error(ER_FEATURE_DISABLED, MYF(0),
+               "SHOW PROCEDURE|FUNCTION CODE", "--with-debug");
+      goto error;
 #endif // ifndef DBUG_OFF
+    }
   case SQLCOM_SHOW_CREATE_TRIGGER:
     {
       if (lex->spname->m_name.length > NAME_LEN)
@@ -6694,15 +6758,24 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       thd->store_globals();
       lex_start(thd);
     }
+    
     if (thd)
     {
-      if (acl_reload(thd))
+      bool reload_acl_failed= acl_reload(thd);
+      bool reload_grants_failed= grant_reload(thd);
+      bool reload_servers_failed= servers_reload(thd);
+      
+      if (reload_acl_failed || reload_grants_failed || reload_servers_failed)
+      {
         result= 1;
-      if (grant_reload(thd))
-        result= 1;
-      if (servers_reload(thd))
-        result= 1; /* purecov: inspected */
+        /*
+          When an error is returned, my_message may have not been called and
+          the client will hang waiting for a response.
+        */
+        my_error(ER_UNKNOWN_ERROR, MYF(0), "FLUSH PRIVILEGES failed");
+      }
     }
+
     if (tmp_thd)
     {
       delete tmp_thd;
@@ -6790,8 +6863,10 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       tmp_write_to_binlog= 0;
       if (lock_global_read_lock(thd))
 	return 1;                               // Killed
-      result= close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE);
+      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
+                                  FALSE : TRUE))
+          result= 1;
+      
       if (make_global_read_lock_block_commit(thd)) // Killed
       {
         /* Don't leave things in a half-locked state */
@@ -6853,8 +6928,8 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
 #ifdef OPENSSL
    if (options & REFRESH_DES_KEY_FILE)
    {
-     if (des_key_file)
-       result=load_des_key_file(des_key_file);
+     if (des_key_file && load_des_key_file(des_key_file))
+         result= 1;
    }
 #endif
 #ifdef HAVE_REPLICATION
@@ -7694,11 +7769,12 @@ bool check_identifier_name(LEX_STRING *str, uint max_char_length,
     0	ok
     1	error  
 */
+C_MODE_START
 
-bool test_if_data_home_dir(const char *dir)
+int test_if_data_home_dir(const char *dir)
 {
-  char path[FN_REFLEN], conv_path[FN_REFLEN];
-  uint dir_len, home_dir_len= strlen(mysql_unpacked_real_data_home);
+  char path[FN_REFLEN];
+  int dir_len;
   DBUG_ENTER("test_if_data_home_dir");
 
   if (!dir)
@@ -7706,23 +7782,29 @@ bool test_if_data_home_dir(const char *dir)
 
   (void) fn_format(path, dir, "", "",
                    (MY_RETURN_REAL_PATH|MY_RESOLVE_SYMLINKS));
-  dir_len= unpack_dirname(conv_path, dir);
-
-  if (home_dir_len < dir_len)
+  dir_len= strlen(path);
+  if (mysql_unpacked_real_data_home_len<= dir_len)
   {
+    if (dir_len > mysql_unpacked_real_data_home_len &&
+        path[mysql_unpacked_real_data_home_len] != FN_LIBCHAR)
+      DBUG_RETURN(0);
+
     if (lower_case_file_system)
     {
-      if (!my_strnncoll(character_set_filesystem,
-                        (const uchar*) conv_path, home_dir_len,
+      if (!my_strnncoll(default_charset_info, (const uchar*) path,
+                        mysql_unpacked_real_data_home_len,
                         (const uchar*) mysql_unpacked_real_data_home,
-                        home_dir_len))
+                        mysql_unpacked_real_data_home_len))
         DBUG_RETURN(1);
     }
-    else if (!memcmp(conv_path, mysql_unpacked_real_data_home, home_dir_len))
+    else if (!memcmp(path, mysql_unpacked_real_data_home,
+                     mysql_unpacked_real_data_home_len))
       DBUG_RETURN(1);
   }
   DBUG_RETURN(0);
 }
+
+C_MODE_END
 
 
 extern int MYSQLparse(void *thd); // from sql_yacc.cc

@@ -371,11 +371,17 @@ int Stream::prepare_path(::String *backupdir,
               '/dev/dec.bak'
     */
     path_len= orig_loc.length + 1;
+    int dn_length= dirname_length(orig_loc.str);
+
     m_path.alloc(path_len);
     m_path.length(0);
-    m_path.append(orig_loc.str);
+    m_path.append(orig_loc.str, dn_length); // Append directory-part only
+
     // Convert directory name to fit this system
-    convert_dirname(m_path.c_ptr(), orig_loc.str, NullS);
+    convert_dirname(m_path.c_ptr(), m_path.c_ptr(), m_path.c_ptr() + dn_length);
+
+    // Append filename now that directory name has been converted
+    m_path.append(orig_loc.str + dn_length);
   }
   m_path.length(path_len);
   return 0;

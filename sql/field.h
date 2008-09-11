@@ -13,7 +13,6 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-
 /*
   Because of the function new_field() all field classes that have static
   variables must declare the size_of() member function.
@@ -50,7 +49,8 @@ class Field
   Field(const Item &);				/* Prevent use of these */
   void operator=(Field &);
 public:
-  static void *operator new(size_t size) {return sql_alloc(size); }
+  static void *operator new(size_t size) throw ()
+  { return sql_alloc(size); }
   static void operator delete(void *ptr_arg, size_t size) { TRASH(ptr_arg, size); }
 
   uchar		*ptr;			// Position to field in record
@@ -160,7 +160,7 @@ public:
   virtual bool eq(Field *field)
   {
     return (ptr == field->ptr && null_ptr == field->null_ptr &&
-            null_bit == field->null_bit);
+            null_bit == field->null_bit && field->type() == type());
   }
   virtual bool eq_def(Field *field);
   
@@ -1720,6 +1720,7 @@ public:
   }
   int reset(void) { bzero(ptr, packlength+sizeof(uchar*)); return 0; }
   void reset_fields() { bzero((uchar*) &value,sizeof(value)); }
+  uint32 get_field_buffer_size(void) { return value.alloced_length(); }
 #ifndef WORDS_BIGENDIAN
   static
 #endif
@@ -1758,6 +1759,18 @@ public:
     {
       memcpy_fixed((uchar*) str,ptr+packlength+row_offset,sizeof(char*));
     }
+
+  /**
+     Copy value in data to the field ptr. 
+
+     NOTE
+     If the null_bit for this field is set, @c
+     set_notnull(my_ptrdiff_t) needs to be called for set_ptr to have
+     any effect when inserting a record.
+
+     @param length  Length of data
+     @param data    The value of the field
+  */
   inline void set_ptr(uchar *length, uchar *data)
     {
       memcpy(ptr,length,packlength);
@@ -2010,7 +2023,6 @@ public:
   bool eq(Field *field)
   {
     return (Field::eq(field) &&
-            field->type() == type() &&
             bit_ptr == ((Field_bit *)field)->bit_ptr &&
             bit_ofs == ((Field_bit *)field)->bit_ofs);
   }

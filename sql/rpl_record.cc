@@ -51,12 +51,19 @@
                    record[0] or @c record[1], but no such check is
                    made since the code does not rely on that.
 
+   @param pack_blobs Whether or not blob fields are packed. If true,
+                     row_data has to be big enough to store all blobs
+                     in this record. If false, the blobs are not
+                     stored in row_data but should instead be fetched
+                     by calling @c get_ptr
+
    @return The number of bytes written at @c row_data.
  */
 #if !defined(MYSQL_CLIENT)
 size_t
 pack_row(TABLE *table, MY_BITMAP const* cols,
-         uchar *row_data, const uchar *record)
+         uchar *row_data, const uchar *record,
+         bool pack_blobs)
 {
   Field **p_field= table->field, *field;
   int const null_byte_count= (bitmap_bits_set(cols) + 7) / 8;
@@ -91,6 +98,11 @@ pack_row(TABLE *table, MY_BITMAP const* cols,
                              null_mask, null_bits));
         offset= def_offset;
         null_bits |= null_mask;
+      }
+      else if (!pack_blobs && field->unireg_check==Field::BLOB_FIELD)
+      {
+        // The field is not empty. Fetch by calling get_ptr()
+        null_bits &= ~null_mask;
       }
       else
       {
@@ -179,6 +191,10 @@ pack_row(TABLE *table, MY_BITMAP const* cols,
                   Pointer to variable that will be set to the length of the
                   record on the master side
 
+   @param unpack_blobs Whether or not blob fields are unpacked. If
+                       false, the blobs must be added by calling
+                       @c set_ptr() and @c set_notnull().
+
    @retval 0 No error
 
    @retval ER_NO_DEFAULT_FOR_FIELD
@@ -191,7 +207,8 @@ int
 unpack_row(Relay_log_info const *rli,
            TABLE *table, uint const colcnt,
            uchar const *const row_data, MY_BITMAP const *cols,
-           uchar const **const row_end, ulong *const master_reclength)
+           uchar const **const row_end, ulong *const master_reclength,
+           bool unpack_blobs)
 {
   DBUG_ENTER("unpack_row");
   DBUG_ASSERT(row_data);
@@ -253,6 +270,11 @@ unpack_row(Relay_log_info const *rli,
         DBUG_PRINT("debug", ("Was NULL; null mask: 0x%x; null bits: 0x%x",
                              null_mask, null_bits));
 
+        f->set_null();
+      }
+      else if (!unpack_blobs && f->unireg_check==Field::BLOB_FIELD)
+      {
+        DBUG_PRINT("debug", ("Not unpacking BLOB; field_ptr: %p", field_ptr));
         f->set_null();
       }
       else

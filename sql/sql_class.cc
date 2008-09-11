@@ -513,6 +513,7 @@ THD::THD()
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
+   table_map_for_update(0),
    arg_of_last_insert_id_function(FALSE),
    first_successful_insert_id_in_prev_stmt(0),
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
@@ -1157,6 +1158,8 @@ void THD::cleanup_after_query()
   free_items();
   /* Reset where. */
   where= THD::DEFAULT_WHERE;
+  /* reset table map for multi-table update */
+  table_map_for_update= 0;
 }
 
 
@@ -1654,6 +1657,12 @@ bool select_send::send_eof()
     mysql_unlock_tables(thd, thd->lock);
     thd->lock=0;
   }
+  /* 
+    Don't send EOF if we're in error condition (which implies we've already
+    sent or are sending an error)
+  */
+  if (thd->is_error())
+    return TRUE;
   ::my_eof(thd);
   is_result_set_started= 0;
   return FALSE;
@@ -3419,7 +3428,7 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
 
   uchar *row_data= memory.slot(0);
 
-  size_t const len= pack_row(table, table->write_set, row_data, record);
+  size_t const len= pack_row(table, table->write_set, row_data, record, TRUE);
 
   Rows_log_event* const ev=
     binlog_prepare_pending_rows_event(table, server_id, len, is_trans,
@@ -3448,9 +3457,9 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
   uchar *after_row= row_data.slot(1);
 
   size_t const before_size= pack_row(table, table->read_set, before_row,
-                                        before_record);
+                                     before_record, TRUE);
   size_t const after_size= pack_row(table, table->write_set, after_row,
-                                       after_record);
+                                    after_record, TRUE);
 
   /*
     Don't print debug messages when running valgrind since they can
@@ -3492,7 +3501,7 @@ int THD::binlog_delete_row(TABLE* table, bool is_trans,
   uchar *row_data= memory.slot(0);
 
   DBUG_DUMP("table->read_set", (uchar*) table->read_set->bitmap, (table->s->fields + 7) / 8);
-  size_t const len= pack_row(table, table->read_set, row_data, record);
+  size_t const len= pack_row(table, table->read_set, row_data, record, TRUE);
 
   Rows_log_event* const ev=
     binlog_prepare_pending_rows_event(table, server_id, len, is_trans,
