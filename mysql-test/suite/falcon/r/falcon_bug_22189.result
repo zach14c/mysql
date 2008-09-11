@@ -33,11 +33,12 @@ x1	x2
 1	1
 # Switch to connection conn1
 UPDATE x1 SET x1 = 0, x2 = 5;
+ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
 INSERT INTO x1 VALUES (0,6);
+ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
 # Switch to connection default
 ROLLBACK;
 # Switch to connection conn1
-ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
 INSERT INTO x1 VALUES (0,6);
 ERROR 23000: Duplicate entry '0' for key 'PRIMARY'
 INSERT INTO x1 VALUES (0,6);

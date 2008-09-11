@@ -249,7 +249,6 @@ Bdb* Cache::lockFindBdbIncrementUseCount(Dbb* dbb, int32 pageNumber)
 	if (bdb != NULL)
 		bdb->incrementUseCount(ADD_HISTORY);
 
-	lockHash.unlock();
 	return bdb;
 }
 
@@ -262,11 +261,9 @@ Bdb* Cache::lockFindBdbIncrementUseCount(int32 pageNumber, int slot)
 		if (bdb->pageNumber == pageNumber)
 		{
 			bdb->incrementUseCount(ADD_HISTORY);
-			lockHash.unlock();
 			return bdb;
 		}
 
-	lockHash.unlock();
 	return NULL;
 }
 
@@ -292,8 +289,8 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 	bdb = lockFindBdbIncrementUseCount(dbb, pageNumber);
 	if (!bdb)
 		{
-		// get getFreeBuffer() locks a hash bucket to remove the candidate bdb
-		// if we locked out hash bucket before the call then we could have
+		// getFreeBuffer() locks a hash bucket to remove the candidate bdb
+		// if we locked our hash bucket before the call then we could have
 		// a deadlock
 		// thus we get the free buffer before we lock the hash bucket we will
 		// be inserting into.  This avoids a dead lock but generates a race
@@ -305,15 +302,8 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 
 		bdbAvailable = getFreeBuffer();
 		/* assume we'll be inserting this new BDB.  Set new page number. */
-		bdbAvailable->addRef (Exclusive  COMMA_ADD_HISTORY);
-		bdbAvailable->decrementUseCount(REL_HISTORY);
-
-		bdbAvailable->hash = hashTable [slot];
 		bdbAvailable->pageNumber = pageNumber;
 		bdbAvailable->dbb = dbb;
-#ifdef COLLECT_BDB_HISTORY
-		bdbAvailable->initHistory();
-#endif
 
 		lockHash.lock(Exclusive);
 		bdb = findBdb(dbb, pageNumber, slot);
@@ -321,6 +311,7 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			{
 			// we won the race so lets use the free bdb
 			// relink into hash table
+			bdbAvailable->hash = hashTable [slot];
 			hashTable [slot] = bdbAvailable;
 			lockHash.unlock();
 
@@ -345,19 +336,19 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 			}
 			else
 			{
-			// lost a race.  put our available back to useable
-			// side effect, bdbAvailable will have to age again before we re-use it.
-			bdbAvailable->hash = NULL;
-			bdbAvailable->pageNumber = -1;
-			bdbAvailable->dbb = NULL;
-			bdbAvailable->release();
-
 			//syncObject.validateExclusive("Cache::fetchPage (retry)");
 			bdb->incrementUseCount(ADD_HISTORY);
 			lockHash.unlock();
 			bdb->addRef(lockType  COMMA_ADD_HISTORY);
 			bdb->decrementUseCount(REL_HISTORY);
 			moveToHead(bdb);
+
+			// lost a race.  put our available back to useable
+			// side effect, bdbAvailable will have to age again before we re-use it.
+			bdbAvailable->hash = NULL;
+			bdbAvailable->pageNumber = -1;
+			bdbAvailable->dbb = NULL;
+			bdbAvailable->release(REL_HISTORY);
 			}
 		}
 		else
@@ -378,7 +369,7 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 	if (pageType && page->pageType != pageType)
 		{
 		/*** future code
-		bdb->release();
+		bdb->release(REL_HISTORY);
 		throw SQLError (DATABASE_CORRUPTION, "page %d wrong page type, expected %d got %d\n",
 						pageNumber, pageType, page->pageType);
 		***/
@@ -406,8 +397,8 @@ Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 	bdb = lockFindBdbIncrementUseCount(dbb, pageNumber);
 	if (!bdb)
 		{
-		// get getFreeBuffer() locks a hash bucket to remove the candidate bdb
-		// if we locked out hash bucket before the call then we could have
+		// getFreeBuffer() locks a hash bucket to remove the candidate bdb
+		// if we locked our hash bucket before the call then we could have
 		// a deadlock
 		// thus we get the free buffer before we lock the hash bucket we will
 		// be inserting into.  This avoids a dead lock but generates a race
@@ -419,15 +410,8 @@ Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 
 		bdbAvailable = getFreeBuffer();
 		/* assume we'll be inserting this new BDB.  Set new page number. */
-		bdbAvailable->addRef (Exclusive  COMMA_ADD_HISTORY);
-		bdbAvailable->decrementUseCount(REL_HISTORY);
-
-		bdbAvailable->hash = hashTable [slot];
 		bdbAvailable->pageNumber = pageNumber;
 		bdbAvailable->dbb = dbb;
-#ifdef COLLECT_BDB_HISTORY
-		bdbAvailable->initHistory();
-#endif
 
 		lockHash.lock(Exclusive);
 		bdb = findBdb(dbb, pageNumber, slot);
@@ -435,6 +419,7 @@ Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 			{
 			// we won the race so lets use the free bdb
 			// relink into hash table
+			bdbAvailable->hash = hashTable [slot];
 			hashTable [slot] = bdbAvailable;
 			lockHash.unlock();
 
@@ -442,19 +427,19 @@ Bdb* Cache::fakePage(Dbb *dbb, int32 pageNumber, PageType type, TransId transId)
 			}
 			else
 			{
-			// lost a race.  put our available back to useable
-			// side effect, bdbAvailable will have to age again before we re-use it.
-			bdbAvailable->hash = NULL;
-			bdbAvailable->pageNumber = -1;
-			bdbAvailable->dbb = NULL;
-			bdbAvailable->release();
-
 			//syncObject.validateExclusive("Cache::fetchPage (retry)");
 			bdb->incrementUseCount(ADD_HISTORY);
 			lockHash.unlock();
 			bdb->addRef(Exclusive  COMMA_ADD_HISTORY);
 			bdb->decrementUseCount(REL_HISTORY);
 			moveToHead(bdb);
+
+			// lost a race.  put our available back to useable
+			// side effect, bdbAvailable will have to age again before we re-use it.
+			bdbAvailable->hash = NULL;
+			bdbAvailable->pageNumber = -1;
+			bdbAvailable->dbb = NULL;
+			bdbAvailable->release(REL_HISTORY);
 			}
 		}
 		else
@@ -617,8 +602,14 @@ Bdb* Cache::getFreeBuffer(void)
 		break;
 		}
 #ifdef CHECK_STALLED_BDB
-		bdb->stallCount = 0;
+	bdb->stallCount = 0;
 #endif // CHECK_STALLED_BDB
+
+#ifdef COLLECT_BDB_HISTORY
+	bdb->initHistory();
+#endif
+	bdb->addRef (Exclusive  COMMA_ADD_HISTORY);
+	bdb->decrementUseCount(REL_HISTORY);
 
 	return bdb;
 }
@@ -826,7 +817,6 @@ void Cache::freePage(Dbb *dbb, int32 pageNumber)
 			{
 			if (bdb->isDirty)
 				{
-				lockHash.unlock();
 				markClean (bdb);
 				}
 				
@@ -860,10 +850,8 @@ bool Cache::hasDirtyPages(Dbb *dbb)
 	for (Bdb *bdb = firstDirty; bdb; bdb = bdb->nextDirty)
 		if (bdb->dbb == dbb)
 			{
-			dirtyLock.unlock();
 			return true;
 			}
-	dirtyLock.unlock();
 
 	return false;
 }

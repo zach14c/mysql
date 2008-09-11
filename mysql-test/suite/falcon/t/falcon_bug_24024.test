@@ -1,9 +1,12 @@
 --source include/have_falcon.inc
 
 #
-# Bug #22972: Falcon: Partitioned table with pending transaction leads to strange error
+# Bug #24024: wrong error message when drop table (used by pending transaction) fails
 #
---echo *** Bug #22972 ***
+# This test is a derivate of a subtestcase in mix2.inc.
+# Therefore please delete this test when mix2_falcon is pushed.
+#
+--echo *** Bug #24024 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -15,27 +18,33 @@ eval SET @@storage_engine = $engine;
 DROP TABLE IF EXISTS t1;
 --enable_warnings
 
-CREATE TABLE t1(a int);
+CREATE TABLE t1(a int, b int, primary key(a));
+INSERT INTO t1(a) VALUES (1);
+COMMIT;
 
---echo # Establish connection conn1 (root)
+--echo # Establish connection conn1 (user=root)
 connect (conn1,localhost,root,,);
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
---echo # Switch to connection conn1
-START TRANSACTION;
-INSERT INTO t1 VALUES(1);
-
 --echo # Switch to connection default
 connection default;
---error ER_BAD_TABLE_ERROR
-DROP TABLE t1;
-SHOW WARNINGS;
+SET @@autocommit = 0;
+UPDATE t1 SET b = 5 WHERE a = 1;
 
 --echo # Switch to connection conn1
 connection conn1;
+INSERT INTO t1(a) VALUES(7);
 COMMIT;
+SELECT * FROM t1;
+
+--echo !!! Error message is total crap!
+--echo !!! Something like "Cannot drop locked table" or similar would be fine,
+--echo !!! But never the misleading    ERROR 42S02: Unknown table 't1'.
+--error ER_BAD_TABLE_ERROR
+DROP TABLE t1;
+SHOW WARNINGS;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
@@ -48,4 +57,5 @@ SELECT count(*) FROM t1;
 --echo # Switch to connection default
 connection default;
 disconnect conn1;
+COMMIT;
 DROP TABLE t1;
