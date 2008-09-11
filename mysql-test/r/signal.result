@@ -551,7 +551,7 @@ SIGNAL foo;
 ERROR 42000: Undefined CONDITION: foo
 SIGNAL SQLSTATE '01000';
 Warnings:
-Warning	1727	Unhandled user-defined warning condition
+Warning	1734	Unhandled user-defined warning condition
 SIGNAL SQLSTATE '02000';
 ERROR 02000: Unhandled user-defined not found condition
 SIGNAL SQLSTATE '23000';
@@ -659,7 +659,7 @@ SIGNAL warn;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	Unhandled user-defined warning condition
+Warning	1734	Unhandled user-defined warning condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -669,7 +669,7 @@ SIGNAL warn;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	Unhandled user-defined warning condition
+Warning	1734	Unhandled user-defined warning condition
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -809,7 +809,7 @@ SIGNAL warn SET MESSAGE_TEXT = "Something bad happened";
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	Something bad happened
+Warning	1734	Something bad happened
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -834,7 +834,7 @@ SIGNAL something SET MESSAGE_TEXT = _utf8 "This is a UTF8 text";
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	This is a UTF8 text
+Warning	1734	This is a UTF8 text
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -843,7 +843,7 @@ SIGNAL something SET MESSAGE_TEXT = "";
 end $$
 call test_signal() $$
 Warnings:
-Warning	1727	
+Warning	1734	
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -1103,17 +1103,17 @@ MYSQL_ERRNO = 10000;
 end $$
 call test_signal() $$
 Warnings:
-Warning	1732	Data truncated for condition item 'CLASS_ORIGIN'
-Warning	1732	Data truncated for condition item 'SUBCLASS_ORIGIN'
-Warning	1732	Data truncated for condition item 'CONSTRAINT_CATALOG'
-Warning	1732	Data truncated for condition item 'CONSTRAINT_SCHEMA'
-Warning	1732	Data truncated for condition item 'CONSTRAINT_NAME'
-Warning	1732	Data truncated for condition item 'CATALOG_NAME'
-Warning	1732	Data truncated for condition item 'SCHEMA_NAME'
-Warning	1732	Data truncated for condition item 'TABLE_NAME'
-Warning	1732	Data truncated for condition item 'COLUMN_NAME'
-Warning	1732	Data truncated for condition item 'CURSOR_NAME'
-Warning	1732	Data truncated for condition item 'MESSAGE_TEXT'
+Warning	1739	Data truncated for condition item 'CLASS_ORIGIN'
+Warning	1739	Data truncated for condition item 'SUBCLASS_ORIGIN'
+Warning	1739	Data truncated for condition item 'CONSTRAINT_CATALOG'
+Warning	1739	Data truncated for condition item 'CONSTRAINT_SCHEMA'
+Warning	1739	Data truncated for condition item 'CONSTRAINT_NAME'
+Warning	1739	Data truncated for condition item 'CATALOG_NAME'
+Warning	1739	Data truncated for condition item 'SCHEMA_NAME'
+Warning	1739	Data truncated for condition item 'TABLE_NAME'
+Warning	1739	Data truncated for condition item 'COLUMN_NAME'
+Warning	1739	Data truncated for condition item 'CURSOR_NAME'
+Warning	1739	Data truncated for condition item 'MESSAGE_TEXT'
 Warning	10000	11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111112222222222222222222288888888
 drop procedure test_signal $$
 create procedure test_signal()

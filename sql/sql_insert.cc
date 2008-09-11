@@ -1306,6 +1306,23 @@ bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
 
 static int last_uniq_key(TABLE *table,uint keynr)
 {
+  /*
+    When an underlying storage engine informs that the unique key
+    conflicts are not reported in the ascending order by setting
+    the HA_DUPLICATE_KEY_NOT_IN_ORDER flag, we cannot rely on this
+    information to determine the last key conflict.
+   
+    The information about the last key conflict will be used to
+    do a replace of the new row on the conflicting row, rather
+    than doing a delete (of old row) + insert (of new row).
+   
+    Hence check for this flag and disable replacing the last row
+    by returning 0 always. Returning 0 will result in doing
+    a delete + insert always.
+   */
+  if (table->file->ha_table_flags() & HA_DUPLICATE_KEY_NOT_IN_ORDER)
+    return 0;
+
   while (++keynr < table->s->keys)
     if (table->key_info[keynr].flags & HA_NOSAME)
       return 0;
@@ -3589,7 +3606,8 @@ select_create::prepare(List<Item> &values, SELECT_LEX_UNIT *u)
     temporary table, we need to start a statement transaction.
   */
   if ((thd->lex->create_info.options & HA_LEX_CREATE_TMP_TABLE) == 0 &&
-      thd->current_stmt_binlog_row_based)
+      thd->current_stmt_binlog_row_based &&
+      mysql_bin_log.is_open())
   {
     thd->binlog_start_trans_and_stmt();
   }
@@ -3685,10 +3703,11 @@ select_create::binlog_show_create_table(TABLE **tables, uint count)
   result= store_create_info(thd, &tmp_table_list, &query, create_info);
   DBUG_ASSERT(result == 0); /* store_create_info() always return 0 */
 
-  thd->binlog_query(THD::STMT_QUERY_TYPE,
-                    query.ptr(), query.length(),
-                    /* is_trans */ TRUE,
-                    /* suppress_use */ FALSE);
+  if (mysql_bin_log.is_open())
+    thd->binlog_query(THD::STMT_QUERY_TYPE,
+                      query.ptr(), query.length(),
+                      /* is_trans */ TRUE,
+                      /* suppress_use */ FALSE);
 }
 
 void select_create::store_values(List<Item> &values)

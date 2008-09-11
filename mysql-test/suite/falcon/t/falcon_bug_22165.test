@@ -30,7 +30,10 @@ begin
     START TRANSACTION;
     INSERT INTO t1 (a, b) VALUES (v, 'a');
     UPDATE t1 SET c = current_timestamp WHERE a = v;
-    COMMIT;
+	IF (v < 5)  
+	  	THEN COMMIT;
+	  	ELSE ROLLBACK; 
+ 	END IF;
     SET v = v + 1;
   end while;
 end//
@@ -57,7 +60,7 @@ while ($i)
   --reap
   connection conn2;
   --reap
-  
+
   dec $i;
 }
 --enable_query_log
