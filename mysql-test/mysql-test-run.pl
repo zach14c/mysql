@@ -2800,8 +2800,8 @@ sub check_testcase($$)
     else {
       # Unknown process returned, most likley a crash, abort everything
       $tinfo->{comment}=
-	"Unexpected process $proc returned during ".
-	"check testcase $mode test";
+	"The server $proc crashed while running ".
+	"'check testcase $mode test'";
       $result= 3;
     }
 
@@ -2912,8 +2912,7 @@ sub run_on_all($$)
     else {
       # Unknown process returned, most likley a crash, abort everything
       $tinfo->{comment}.=
-	"Unexpected process $proc returned during ".
-	"execution of '$run'";
+	"The server $proc crashed while running '$run'";
     }
 
     # Kill any check processes still running
@@ -3400,8 +3399,7 @@ sub check_warnings ($) {
     else {
       # Unknown process returned, most likley a crash, abort everything
       $tinfo->{comment}=
-	"Unexpected process $proc returned during ".
-	"check warnings";
+	"The server $proc crashed while running 'check warnings'";
       $result= 3;
     }
 
