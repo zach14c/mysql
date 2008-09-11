@@ -2111,13 +2111,15 @@ mysql_execute_command(THD *thd)
 #endif
   case SQLCOM_SHOW_STATUS_PROC:
   case SQLCOM_SHOW_STATUS_FUNC:
-    res= execute_sqlcom_select(thd, all_tables);
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+      res= execute_sqlcom_select(thd, all_tables);
     break;
   case SQLCOM_SHOW_STATUS:
   {
     system_status_var old_status_var= thd->status_var;
     thd->initial_status_var= &old_status_var;
-    res= execute_sqlcom_select(thd, all_tables);
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+      res= execute_sqlcom_select(thd, all_tables);
     /* Don't log SHOW STATUS commands to slow query log */
     thd->server_status&= ~(SERVER_QUERY_NO_INDEX_USED |
                            SERVER_QUERY_NO_GOOD_INDEX_USED);
@@ -2482,7 +2484,11 @@ mysql_execute_command(THD *thd)
       TABLE in the same way. That way we avoid that a new table is
       created during a gobal read lock.
     */
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+    {
+      res= 1;
+      goto ddl_blocker_err;
+    }
     if (!thd->locked_tables_mode &&
         !(need_start_waiting= !wait_if_global_read_lock(thd, 0, 1)))
     {
@@ -2608,6 +2614,7 @@ mysql_execute_command(THD *thd)
     /* put tables back for PS rexecuting */
 end_with_restore_list:
     DDL_blocker->end_DDL();
+ddl_blocker_err:
     lex->link_first_table_back(create_table, link_to_local);
     break;
   }
@@ -2623,7 +2630,8 @@ end_with_restore_list:
     table without having to do a full rebuild.
   */
   {
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     /* Prepare stack copies to be re-execution safe */
     HA_CREATE_INFO create_info;
     Alter_info alter_info(lex->alter_info, thd->mem_root);
@@ -2691,7 +2699,8 @@ end_with_restore_list:
 
   case SQLCOM_ALTER_TABLE:
     {
-      DDL_blocker->check_DDL_blocker(thd);
+      if (!DDL_blocker->check_DDL_blocker(thd))
+        goto error;
       ulong priv=0;
       ulong priv_needed= ALTER_ACL;
 
@@ -2803,7 +2812,8 @@ end_with_restore_list:
         goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     if (mysql_rename_tables(thd, first_table, 0))
     {
       DDL_blocker->end_DDL();
@@ -2903,7 +2913,8 @@ end_with_restore_list:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_repair_table(thd, first_table, &lex->check_opt);
     DDL_blocker->end_DDL();
     /* ! we write after unlocking the table */
@@ -2955,7 +2966,8 @@ end_with_restore_list:
     if (check_table_access(thd, SELECT_ACL | INSERT_ACL, all_tables, FALSE, FALSE, UINT_MAX))
       goto error; /* purecov: inspected */
     thd->enable_slow_log= opt_log_slow_admin_statements;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= (specialflag & (SPECIAL_SAFE_MODE | SPECIAL_NO_NEW_FUNC)) ?
       mysql_recreate_table(thd, first_table) :
       mysql_optimize_table(thd, first_table, &lex->check_opt);
@@ -3196,7 +3208,8 @@ end_with_restore_list:
       goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_truncate(thd, first_table, 0);
     DDL_blocker->end_DDL();
 
@@ -3299,7 +3312,8 @@ end_with_restore_list:
       /* So that DROP TEMPORARY TABLE gets to binlog at commit/rollback */
       thd->options|= OPTION_KEEP_LOG;
     }
-      DDL_blocker->check_DDL_blocker(thd);
+      if (!DDL_blocker->check_DDL_blocker(thd))
+        goto error;
     /* DDL and binlog write order protected by LOCK_open */
     res= mysql_rm_table(thd, first_table, lex->drop_if_exists,
 			lex->drop_temporary);
@@ -3545,7 +3559,8 @@ end_with_restore_list:
     if (check_access(thd,CREATE_ACL,lex->name.str, 0, 1, 0,
                      is_schema_db(lex->name.str)))
       break;
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_create_db(thd,(lower_case_table_names == 2 ? alias :
                               lex->name.str), &create_info, 0);
     DDL_blocker->end_DDL();
@@ -3583,7 +3598,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_rm_db(thd, lex->name.str, lex->drop_if_exists, 0);
     DDL_blocker->end_DDL();
     break;
@@ -3621,7 +3637,8 @@ end_with_restore_list:
       goto error;
     }
 
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_upgrade_db(thd, db);
     DDL_blocker->end_DDL();
     if (!res)
@@ -3661,7 +3678,8 @@ end_with_restore_list:
                  ER(ER_LOCK_OR_ACTIVE_TRANSACTION), MYF(0));
       goto error;
     }
-    DDL_blocker->check_DDL_blocker(thd);
+    if (!DDL_blocker->check_DDL_blocker(thd))
+      goto error;
     res= mysql_alter_db(thd, db->str, &create_info);
     DDL_blocker->end_DDL();
     break;
@@ -4992,6 +5010,8 @@ bool check_single_table_access(THD *thd, ulong privilege,
   /* Show only 1 table for check_grant */
   if (!(all_tables->belong_to_view &&
         (thd->lex->sql_command == SQLCOM_SHOW_FIELDS)) &&
+      !(all_tables->view &&
+        all_tables->effective_algorithm == VIEW_ALGORITHM_TMPTABLE) &&
       check_grant(thd, privilege, all_tables, 0, 1, no_errors))
     goto deny;
 
@@ -5388,15 +5408,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
       continue;
     }
 
-    if (tables->derived ||
+    if (tables->is_anonymous_derived_table() ||
         (tables->table && tables->table->s && (int)tables->table->s->tmp_table))
       continue;
     thd->security_ctx= sctx;
     if ((sctx->master_access & want_access) ==
         want_access && thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->db,&tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;

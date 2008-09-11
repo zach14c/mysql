@@ -2535,7 +2535,7 @@ void handler::print_keydup_error(uint key_nr, const char *msg)
       str.append(STRING_WITH_LEN("..."));
     }
     my_printf_error(ER_DUP_ENTRY, msg,
-		    MYF(0), str.c_ptr(), table->key_info[key_nr].name);
+		    MYF(0), str.c_ptr_safe(), table->key_info[key_nr].name);
   }
 }
 
@@ -2606,7 +2606,7 @@ void handler::print_error(int error, myf errflag)
         str.append(STRING_WITH_LEN("..."));
       }
       my_error(ER_FOREIGN_DUPLICATE_KEY, MYF(0), table_share->table_name.str,
-        str.c_ptr(), key_nr+1);
+        str.c_ptr_safe(), key_nr+1);
       DBUG_VOID_RETURN;
     }
     textno= ER_DUP_KEY;
@@ -4262,6 +4262,13 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
 
   /* Create a separate handler object to do rndpos() calls. */
   THD *thd= current_thd;
+
+  /*
+    ::clone() takes up a lot of stack, especially on 64 bit platforms.
+    The constant 5 is an empiric result.
+  */
+  if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
+    DBUG_RETURN(1);
   if (!(new_h2= h->clone(thd->mem_root)) || 
       new_h2->ha_external_lock(thd, F_RDLCK))
   {
