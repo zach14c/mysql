@@ -7,6 +7,8 @@
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
 
+let MYSQLD_DATADIR= `select @@datadir`;
+
 SET DEBUG_SYNC= 'reset';
 
 #
@@ -96,7 +98,7 @@ reap;
 --echo Part B
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+--remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak
 
 connection con1;
 
@@ -159,4 +161,4 @@ SHOW VARIABLES LIKE 'backup_wait%';
 
 DROP DATABASE bup_ddl_blocker;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+--remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak

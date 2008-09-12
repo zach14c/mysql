@@ -251,8 +251,8 @@ SET DEBUG_SYNC='now WAIT_FOR running';
 --echo delete database files so that check_db_dir_exists will fail in 
 --echo si_objects.cc @ DatabaseObj::do_serialize
 
---remove_file $MYSQLTEST_VARDIR/master-data/db1/db.opt
---rmdir $MYSQLTEST_VARDIR/master-data/db1
+--remove_file $MYSQLD_DATADIR/db1/db.opt
+--rmdir $MYSQLD_DATADIR/db1
 
 SET DEBUG_SYNC='now SIGNAL db_will_fail';
 
@@ -295,5 +295,6 @@ BACKUP DATABASE db1 TO 'bup_db1.bak';
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
 
+SET SESSION DEBUG='';
 --echo
 --echo Done testing for Bug#38624

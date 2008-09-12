@@ -134,5 +134,6 @@ BACKUP DATABASE db1 TO 'bup_db1.bak';
 ERROR HY000: Failed to obtain meta-data for trigger `db1`.`trg`
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
+SET SESSION DEBUG='';
 
 Done testing for Bug#38624
