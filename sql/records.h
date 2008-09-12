@@ -24,7 +24,7 @@ struct st_join_table;
 class handler;
 struct TABLE;
 class THD;
-struct SQL_SELECT;
+class SQL_SELECT;
 
 /**
   A context for reading through a single table using a chosen access method:
