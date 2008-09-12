@@ -1920,6 +1920,8 @@ static void test_wl4435()
       mct_log("mysql_stmt_next_result(): %d; field_count: %d\n",
               (int) rc, (int) mysql->field_count);
 
+      free(rs_bind);
+      mysql_free_result(rs);
       if (rc > 0)
       {
         printf("Error: %s (errno: %d)\n",
@@ -1937,7 +1939,6 @@ static void test_wl4435()
       }
     }
 
-    free(rs_bind);
   }
 
   mysql_stmt_close(stmt);
@@ -18366,6 +18367,7 @@ static void test_bug36004()
 
   query_int_variable(mysql, "@@warning_count", &warning_count);
   DIE_UNLESS(warning_count == 0);
+  mysql_stmt_close(stmt);
 
   DBUG_VOID_RETURN;
 }
