@@ -1,0 +1,124 @@
+###########################################################################
+# Author: Hema
+# Date: 2008-03-11
+# Purpose: To test the metadata consistency object stored procedures  for all
+#  storage engines.
+###############################################################################
+--source include/not_embedded.inc
+--source suite/backup/include/backup_engine.inc
+--source include/have_debug.inc
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_sp.bak
+
+# Multiple instances of stored routines without atleast one table in
+# database results in failure.
+# BUG#34868
+
+--disable_warnings
+DROP DATABASE IF EXISTS bup_sp;
+--enable_warnings
+
+CREATE DATABASE bup_sp;
+USE bup_sp;
+
+#Create table with all storage engines and load with data.
+
+--echo *******Creating table******
+
+CREATE TABLE bup_sp.country(
+ccode CHAR(10),
+city VARCHAR(10)
+);
+
+--echo *********loading data*********
+INSERT INTO bup_sp.country VALUES
+('IND','chennai'),('US','sfo'),('US','austin'),
+('IND','Bomb'),('US','Richmond'),('IND','hyd');
+
+SELECT * FROM bup_sp.country ORDER BY ccode, city;
+
+#Create stored procedures for the table
+
+delimiter ||;
+CREATE PROCEDURE countryinfo (IN loc CHAR(5))
+BEGIN
+  SELECT * FROM country WHERE ccode=loc;
+END;
+||
+
+CREATE PROCEDURE dorepeat(p1 INT)
+ BEGIN
+ SET @x = 0;
+ REPEAT SET @x = @x + 1; UNTIL @x > p1 END REPEAT;
+ END ;||
+delimiter ;||
+
+#Excercise the objects
+
+CALL countryinfo('US');
+CALL countryinfo('IND');
+CALL dorepeat(1000);
+SELECT @x;
+#Show the data and Create statements
+
+--echo showing objects and create statements.
+--query_vertical SHOW CREATE PROCEDURE countryinfo;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE country;
+--replace_column 4 # 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS;
+
+#Backup and restore data.
+
+--echo backup data
+--echo
+--replace_column 1 #
+BACKUP DATABASE bup_sp TO 'bup_sp.bak';
+--echo dropping  database.
+DROP DATABASE bup_sp;
+
+#RESTORE FROM bup_sp.bak;
+--echo
+--replace_column 1 #
+RESTORE FROM 'bup_sp.bak';
+
+#show data and create statements
+--echo showing objects and create statements
+--query_vertical SHOW CREATE PROCEDURE countryinfo;
+--replace_result $ENGINE ENGINE
+--query_vertical SHOW CREATE TABLE country;
+--replace_column 4 # 5 # 6 # 7 #
+--query_vertical SHOW PROCEDURE STATUS;
+
+
+#Excercise the objects after restore to make sure if objects are backedup and
+#restored properly.
+
+INSERT INTO bup_sp.country VALUES
+('US','boston'),('IND','jaipur'),('US','natick');
+SELECT * FROM bup_sp.country ORDER BY  ccode, city;
+CALL countryinfo('IND');
+CALL countryinfo('US');
+CALL dorepeat(99);
+SELECT @x;
+
+# Test cleanup section
+
+--echo
+--echo ***  DROP bup_sp DATABASE ****
+--echo
+
+DROP DATABASE bup_sp;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_sp.bak
+

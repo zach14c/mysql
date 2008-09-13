@@ -1,6 +1,15 @@
 #ifndef CATALOG_H_
 #define CATALOG_H_
 
+/**
+  @file
+  
+  @todo Fix error logging in places marked with "FIXME: error logging...". In 
+  these places it should be decided if and how the error should be shown to the
+  user. If an error message should be logged, it can happen either in the place
+  where error was detected or somewhere up the call stack.
+*/ 
+
 #include <si_objects.h>
 #include <backup_stream.h> // for st_bstream_* types
 #include <backup/backup_aux.h>  // for Map template
@@ -802,6 +811,7 @@ void Image_info::save_binlog_pos(const ::LOG_INFO &li)
 inline
 Image_info::Db_iterator* Image_info::get_dbs() const
 {
+  // FIXME: error logging (in case allocation fails).
   return new Db_iterator(*this);
 }
 
@@ -809,6 +819,7 @@ Image_info::Db_iterator* Image_info::get_dbs() const
 inline
 Image_info::Ts_iterator* Image_info::get_tablespaces() const
 {
+  // FIXME: error logging (in case allocation fails).
   return new Ts_iterator(*this);
 }
 
@@ -816,6 +827,7 @@ Image_info::Ts_iterator* Image_info::get_tablespaces() const
 inline
 Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db) const
 {
+  // FIXME: error logging (in case allocation fails).
   return new Dbobj_iterator(*this, db);
 }
 
@@ -1000,6 +1012,17 @@ obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
   case BSTREAM_IT_TRIGGER:   
     m_obj_ptr= obs::materialize_trigger(db_name, name, ver, &sdata);
     break;
+  case BSTREAM_IT_PRIVILEGE:
+  {
+    /*
+      Here we undo the uniqueness suffix for grants.
+    */
+    String new_name;
+    new_name.copy(*name);
+    new_name.length(new_name.length() - UNIQUE_PRIV_KEY_LEN);
+    m_obj_ptr= obs::materialize_db_grant(db_name, &new_name, ver, &sdata);
+    break;
+  }
   default: m_obj_ptr= NULL;
   }
 

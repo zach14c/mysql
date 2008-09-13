@@ -3643,8 +3643,7 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
 
     if(file)
     {
-      file->info(HA_STATUS_VARIABLE | HA_STATUS_TIME | HA_STATUS_AUTO |
-                 HA_STATUS_NO_LOCK);
+      file->info(HA_STATUS_VARIABLE | HA_STATUS_TIME | HA_STATUS_AUTO);
       enum row_type row_type = file->get_row_type();
       switch (row_type) {
       case ROW_TYPE_NOT_USED:
@@ -6330,8 +6329,9 @@ static my_bool run_hton_fill_schema_files(THD *thd, plugin_ref plugin,
   struct run_hton_fill_schema_files_args *args=
     (run_hton_fill_schema_files_args *) arg;
   handlerton *hton= plugin_data(plugin, handlerton *);
-  if(hton->fill_files_table && hton->state == SHOW_OPTION_YES)
-    hton->fill_files_table(hton, thd, args->tables, args->cond);
+  if(hton->fill_is_table && hton->state == SHOW_OPTION_YES)
+    hton->fill_is_table(hton, thd, args->tables, args->cond,
+            get_schema_table_idx(args->tables->schema_table));
   return false;
 }
 
@@ -7070,17 +7070,15 @@ int initialize_schema_table(st_plugin_int *plugin)
     {
       sql_print_error("Plugin '%s' init function returned error.",
                       plugin->name.str);
-      goto err;
+      plugin->data= NULL;
+      my_free(schema_table, MYF(0));
+      DBUG_RETURN(1);
     }
 
     /* Make sure the plugin name is not set inside the init() function. */
     schema_table->table_name= plugin->name.str;
   }
-
   DBUG_RETURN(0);
-err:
-  my_free(schema_table, MYF(0));
-  DBUG_RETURN(1);
 }
 
 int finalize_schema_table(st_plugin_int *plugin)
