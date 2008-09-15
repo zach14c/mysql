@@ -3515,6 +3515,8 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
 ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
 {
   ulonglong id= 0;
+  uchar *read_id= 0;
+  uchar *write_id= 0;
   char buff[FN_REFLEN], *file_path;
   File file= 0;
 
@@ -3538,7 +3540,6 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
     file= my_open(file_path, O_RDWR|O_BINARY|O_CREAT, MYF(MY_WME));
     if (!file)
       goto err_end; 
-
     if (my_fstat(file, &state, MYF(0)))
       goto err;
     /*
@@ -3562,10 +3563,10 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
     // else .... we read the next value in the file!
     else
     {
-      ulonglong read_id= 0;
       my_seek(file, 0, 0, MYF(MY_WME));
-      my_read(file, (uchar *)&read_id, sizeof(ulonglong), MYF(MY_WME|MY_NABP));
-      id= uint8korr(&read_id);
+      read_id= (uchar *)my_malloc(sizeof(ulonglong), MYF(MY_ZEROFILL));
+      my_read(file, read_id, sizeof(ulonglong), MYF(MY_WME|MY_NABP));
+      id= uint8korr(read_id);
       id++;
     }
   }
@@ -3579,8 +3580,6 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
   */
   if ((m_next_id != id) && id)
   {
-    ulonglong write_id= 0;
-
     if (!file)
     {
       file_path= make_backup_log_name(buff, BACKUP_SETTINGS_NAME.str, ".obx");
@@ -3589,8 +3588,9 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
         goto err_end; 
     }
     my_seek(file, 0, 0, MYF(MY_WME));
-    int8store(&write_id, id);
-    my_write(file, (uchar *)&write_id, sizeof(ulonglong), MYF(MY_WME));
+    write_id= (uchar *)my_malloc(sizeof(ulonglong), MYF(MY_ZEROFILL));
+    int8store(write_id, id);
+    my_write(file, write_id, sizeof(ulonglong), MYF(MY_WME));
   }
 err:
   if (file > 0)
@@ -3600,6 +3600,10 @@ err_end:
   m_next_id= id;
   pthread_mutex_unlock(&LOCK_backupid);
   DBUG_PRINT("backup_log",("The next id is %lu.\n", (ulong)id));
+  if(read_id)
+    my_free(read_id, MYF(0));
+  if(write_id)
+    my_free(write_id, MYF(0));
   return id;
 }
 

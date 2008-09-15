@@ -24,6 +24,11 @@
 #endif
 
 /**
+  @brief Set stream to error state and return BSTREAM_ERROR
+*/
+#define SERROR(S)  ((S)->state= ERROR, BSTREAM_ERROR)
+
+/**
   @brief Default size of a stream block.
 
   When opening stream for writing a different size can be specified.
@@ -386,7 +391,11 @@ int write_buffer(backup_stream *s)
   int ret= BSTREAM_OK;
 
   if (s->buf.pos > s->buf.begin)
+  {
     ret= as_write_all(&s->stream,*(bstream_blob*)&s->buf,s->mem);
+    if (ret != BSTREAM_OK)
+      return SERROR(s);
+  }
 
   /*
     Now buffer should be empty. If whole block has been written, reset buffer
@@ -398,7 +407,7 @@ int write_buffer(backup_stream *s)
   else
     s->buf.begin= s->buf.header= s->buf.pos; /* now invariant should hold */
 
-  return ret;
+  return BSTREAM_OK;
 }
 
 /**
@@ -408,18 +417,16 @@ int write_buffer(backup_stream *s)
   is left for fragment`s header.
 */
 static
-int append_to_buffer(backup_stream *s, blob *b)
+void append_to_buffer(backup_stream *s, blob *b)
 {
   if (b->begin >= b->end) /* no data to append */
-    return BSTREAM_OK;
+    return;
 
   if(s->buf.pos == s->buf.header) /* current fragment empty */
     s->buf.pos++;
 
   while ((s->buf.pos < s->buf.end) && (b->begin < b->end))
    *(s->buf.pos++)= *(b->begin++);
-
-  return BSTREAM_OK;
 }
 
 /**
@@ -480,7 +487,7 @@ int close_current_fragment(backup_stream *s)
 
       ret= write_buffer(s); /* this empties the buffer */
       if (ret != BSTREAM_OK)
-        return ret;
+        return SERROR(s);
 
       buf->pos= current_fragment.end;
 
@@ -657,6 +664,8 @@ int load_buffer(backup_stream *s)
     data.end= s->buf.pos + howmuch;
 
     ret= as_read(&s->stream,&data,s->mem);
+    if (ret == BSTREAM_ERROR)
+      return SERROR(s);
 
     s->buf.pos= data.begin;
 
@@ -715,8 +724,7 @@ int load_buffer(backup_stream *s)
     }
     else if (block_size != s->block_size)
     {
-      s->state= ERROR;
-      return BSTREAM_ERROR;
+      return SERROR(s);
     }
     else
       s->init_block_count--;
@@ -751,6 +759,7 @@ int load_buffer(backup_stream *s)
   @retval BSTREAM_OK   next fragment has been entered
   @retval BSTREAM_EOC  the entered fragment is the last fragment of a chunk
   @retval BSTREAM_EOS  there are no more fragments in the stream
+  @retval BSTREAM_ERROR error when reading from underlying stream
 */
 static
 int load_next_fragment(backup_stream *s)
@@ -766,7 +775,7 @@ int load_next_fragment(backup_stream *s)
 
   s->state= NORMAL; /* default, unless changed below */
 
-  ret= read_fragment_header(&s->buf.header);
+  ret= read_fragment_header(&s->buf.header);    // Never errors.
 
   /*
     If buf.header was not moved, it means that the fragment extends to
@@ -916,6 +925,11 @@ int bstream_close(backup_stream *s)
 
   if (s->mode == WRITING)
   {
+    /*
+      Note: even if bstream_end_chunk() or bstream_flush() fail we still try
+      to write the EOS marker and continue with other clean-up. In case of
+      failure s->state will be set to ERROR which is detected later.
+    */ 
     bstream_end_chunk(s);
     bstream_flush(s);
     /* write EOS marker */
@@ -999,7 +1013,7 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   {
     ret= bstream_flush(s);
     if (ret != BSTREAM_OK)
-      return ret;
+      return BSTREAM_ERROR;
   }
 
   ASSERT(s->buf.pos < s->buf.end);
@@ -1044,7 +1058,7 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
 
     ret= write_buffer(s);
     if (ret != BSTREAM_OK)
-      return ret;
+      return BSTREAM_ERROR;
 
     /* write bytes from data blob to fill the block */
     saved_end= data->end;
@@ -1052,7 +1066,7 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
 
     ret= as_write_all(&s->stream,*data,buf);
     if (ret != BSTREAM_OK)
-      return ret;
+      return SERROR(s);
 
     data->begin= data->end;
     data->end= saved_end;
@@ -1081,13 +1095,15 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     /* write contents of the output buffer */
     ret= write_buffer(s);
     if (ret != BSTREAM_OK)
-      return ret;
+      return BSTREAM_ERROR;
 
     /* write remainder of the fragment from data blob */
     saved_end= data->end;
     data->end= data->begin + (fragment.begin - s->buf.pos);
 
     ret= as_write_all(&s->stream,*data,*data);
+    if (ret != BSTREAM_OK)
+      return SERROR(s);
 
     data->begin= data->end;
     data->end= saved_end;
@@ -1112,7 +1128,7 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     If nothing else worked, we just append the data to the output buffer
     and return.
    */
-  append_to_buffer(s,data);
+  append_to_buffer(s,data);  // Never errors.
   return BSTREAM_OK;
 }
 
@@ -1185,6 +1201,8 @@ int bstream_end_chunk(backup_stream *s)
   else
   {
     ret= close_current_fragment(s);
+    if (ret != BSTREAM_OK)
+      return BSTREAM_ERROR;
 
     /*
       If the last fragment in the buffer is a small fragment, we can mark it as
@@ -1270,7 +1288,7 @@ int bstream_flush(backup_stream *s)
   /* Otherwise close the current fragment to set its header */
   ret= close_current_fragment(s);
   if (ret != BSTREAM_OK)
-    return ret;
+    return BSTREAM_ERROR;
 
   /*
     If there is only one byte left to the end of block, we fill this byte with
@@ -1335,7 +1353,6 @@ int check_end(backup_stream *s)
     if (s->buf.begin == s->buf.pos)
     {
       ret= load_buffer(s);
-
       if (ret != BSTREAM_OK)
         return ret;
     }
@@ -1423,7 +1440,6 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   if ((s->buf.begin == s->buf.end) || (s->buf.begin == s->buf.header))
   {
     ret= load_buffer(s);
-
     if (ret != BSTREAM_OK)
       return ret;
   }
@@ -1482,10 +1498,11 @@ int bstream_read_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     saved= *data;
     data->end= data->begin + howmuch;
 
-    if (as_read(&s->stream, data, buf) == BSTREAM_EOS)
-    {
+    ret= as_read(&s->stream, data, buf);
+    if (ret == BSTREAM_ERROR)
+      return SERROR(s);
+    if (ret == BSTREAM_EOS)
       s->state= EOS;
-    }
 
     s->buf.begin += data->begin - saved.begin;
     s->buf.pos= s->buf.begin;
@@ -1570,7 +1587,6 @@ int bstream_next_chunk(backup_stream *s)
   if (s->buf.begin == s->buf.end)
   {
     ret= load_buffer(s);
-
     if (ret != BSTREAM_OK)
       return ret;
   }
@@ -1592,7 +1608,10 @@ int bstream_next_chunk(backup_stream *s)
     else
     {
       howmuch= s->buf.header - s->buf.pos;
-      as_forward(&s->stream, &howmuch);
+      ret= as_forward(&s->stream, &howmuch);   
+      if (ret != BSTREAM_OK)
+        return SERROR(s);
+
       s->buf.begin= s->buf.pos= s->buf.header;
     }
   }
@@ -1611,7 +1630,6 @@ int bstream_next_chunk(backup_stream *s)
   if (s->buf.pos == s->buf.begin)
   {
     ret= load_buffer(s);
-
     if (ret != BSTREAM_OK)
       return ret;
   }
@@ -1620,7 +1638,8 @@ int bstream_next_chunk(backup_stream *s)
   ASSERT(s->buf.pos > s->buf.header);
 
   ret= load_next_fragment(s);
-
+  if (ret == BSTREAM_ERROR)     // To avoid invariant check below.
+    return BSTREAM_ERROR;
   /* if we hit EOC marker here, we treat it as empty chunk */
   if (ret == BSTREAM_EOC)
     ret= BSTREAM_OK;
@@ -1638,5 +1657,9 @@ int bstream_next_chunk(backup_stream *s)
 */
 int bstream_skip(backup_stream *s, unsigned long int howmuch)
 {
-  return as_forward(&s->stream, &howmuch);
+  int ret= as_forward(&s->stream, &howmuch);
+  if (ret != BSTREAM_OK)
+    return SERROR(s);
+
+  return BSTREAM_OK;
 }
