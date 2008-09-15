@@ -461,21 +461,28 @@ Item* handle_sql2003_note184_exception(THD *thd, Item* left, bool equal,
 
    Sets up and initializes a SELECT_LEX structure for a query once the parser
    discovers a UNION token. The current SELECT_LEX is pushed on the stack and
-   the new SELECT_LEX becomes the current one..=
+   the new SELECT_LEX becomes the current one.
 
-   @lex The parser state.
+   @param lex The parser state.
 
-   @is_union_distinct True if the union preceding the new select statement
+   @param is_union_distinct True if the union preceding the new select statement
    uses UNION DISTINCT.
+
+   @param is_top_level This should be @c TRUE if the newly created SELECT_LEX
+   is a non-nested statement.
 
    @return <code>false</code> if successful, <code>true</code> if an error was
    reported. In the latter case parsing should stop.
  */
-bool add_select_to_union_list(LEX *lex, bool is_union_distinct)
+bool add_select_to_union_list(LEX *lex, bool is_union_distinct, 
+                              bool is_top_level)
 {
-  if (lex->result)
+  /* 
+     Only the last SELECT can have INTO. Since the grammar won't allow INTO in
+     a nested SELECT, we make this check only when creating a top-level SELECT.
+  */
+  if (is_top_level && lex->result)
   {
-    /* Only the last SELECT can have  INTO...... */
     my_error(ER_WRONG_USAGE, MYF(0), "UNION", "INTO");
     return TRUE;
   }
@@ -8955,7 +8962,7 @@ select_derived_union:
           UNION_SYM
           union_option
           {
-            if (add_select_to_union_list(Lex, (bool)$3))
+            if (add_select_to_union_list(Lex, (bool)$3, FALSE))
               MYSQL_YYABORT;
           }
           query_specification
@@ -13332,7 +13339,7 @@ union_clause:
 union_list:
           UNION_SYM union_option
           {
-            if (add_select_to_union_list(Lex, (bool)$2))
+            if (add_select_to_union_list(Lex, (bool)$2, TRUE))
               MYSQL_YYABORT;
           }
           select_init
@@ -13402,7 +13409,7 @@ query_expression_body:
         | query_expression_body
           UNION_SYM union_option 
           {
-            if (add_select_to_union_list(Lex, (bool)$3))
+            if (add_select_to_union_list(Lex, (bool)$3, FALSE))
               MYSQL_YYABORT;
           }
           query_specification
