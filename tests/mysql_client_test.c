@@ -1534,7 +1534,7 @@ void mct_start_logging(const char *test_case_name)
               (const char *) tmp_dir,
               (const char *) test_case_name);
 
-  mct_log_file= my_fopen(mct_log_file_path, O_WRONLY, MYF(MY_WME));
+  mct_log_file= my_fopen(mct_log_file_path, O_WRONLY | O_BINARY, MYF(MY_WME));
 
   if (!mct_log_file)
   {
@@ -1808,10 +1808,10 @@ static void test_wl4435()
     {
       MYSQL_FIELD *fields;
 
-      MYSQL_RES *rs= mysql_stmt_result_metadata(stmt);
+      MYSQL_RES *rs_metadata= mysql_stmt_result_metadata(stmt);
 
-      num_fields= mysql_num_fields(rs);
-      fields= mysql_fetch_fields(rs);
+      num_fields= mysql_num_fields(rs_metadata);
+      fields= mysql_fetch_fields(rs_metadata);
 
       rs_bind= (MYSQL_BIND *) malloc(sizeof (MYSQL_BIND) * num_fields);
       bzero(rs_bind, sizeof (MYSQL_BIND) * num_fields);
@@ -1921,7 +1921,8 @@ static void test_wl4435()
               (int) rc, (int) mysql->field_count);
 
       free(rs_bind);
-      mysql_free_result(rs);
+      mysql_free_result(rs_metadata);
+
       if (rc > 0)
       {
         printf("Error: %s (errno: %d)\n",
