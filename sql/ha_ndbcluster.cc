@@ -84,8 +84,8 @@ static int ndbcluster_alter_tablespace(handlerton *hton,
                                        THD* thd, 
                                        st_alter_tablespace *info);
 static int ndbcluster_fill_is_table(handlerton *hton,
-                                    THD *thd, 
-                                    TABLE_LIST *tables, 
+                                    THD *thd,
+                                    TABLE_LIST *tables,
                                     COND *cond,
                                     enum enum_schema_tables);
 static int ndbcluster_fill_files_table(handlerton *hton,
@@ -11504,33 +11504,33 @@ bool ha_ndbcluster::get_no_parts(const char *name, uint *no_parts)
 
 /**
    Used to fill in INFORMATION_SCHEMA* tables.
-   
+
    @param hton handle to the handlerton structure
    @param thd the thread/connection descriptor
    @param[in,out] tables the information schema table that is filled up
    @param cond used for conditional pushdown to storage engine
    @param schema_table_idx the table id that distinguishes the type of table
-   
+
    @return Operation status
  */
 static int ndbcluster_fill_is_table(handlerton *hton,
-                                      THD *thd,
-                                      TABLE_LIST *tables,
-                                      COND *cond,
-                                      enum enum_schema_tables schema_table_idx)
+                                    THD *thd,
+                                    TABLE_LIST *tables,
+                                    COND *cond,
+                                    enum enum_schema_tables schema_table_idx)
 {
   int ret= 0;
-  
+
   if (schema_table_idx == SCH_FILES)
   {
     ret= ndbcluster_fill_files_table(hton, thd, tables, cond);
   }
-  
+
   return ret;
 }
 
-static int ndbcluster_fill_files_table(handlerton *hton, 
-                                       THD *thd, 
+static int ndbcluster_fill_files_table(handlerton *hton,
+                                       THD *thd,
                                        TABLE_LIST *tables,
                                        COND *cond)
 {
@@ -11552,7 +11552,7 @@ static int ndbcluster_fill_files_table(handlerton *hton,
     NdbDictionary::Dictionary::List::Element& elt = dflist.elements[i];
     Ndb_cluster_connection_node_iter iter;
     uint id;
-    
+
     g_ndb_cluster_connection->init_get_next_node(iter);
 
     while ((id= g_ndb_cluster_connection->get_next_node(iter)))
