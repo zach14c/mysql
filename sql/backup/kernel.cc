@@ -83,6 +83,7 @@
 #include "be_snapshot.h"
 #include "be_nodata.h"
 #include "ddl_blocker.h"
+#include "transaction.h"
 
 
 /** 
@@ -298,9 +299,7 @@ int send_reply(Backup_restore_ctx &context)
   // FIXME: detect errors if  reported.
   // FIXME: error logging.
   field_list.push_back(new Item_empty_string(STRING_WITH_LEN("backup_id")));
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
   /*
     Send field data.
@@ -799,8 +798,8 @@ int Backup_restore_ctx::close()
   */
   if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
   {
-    ha_autocommit_or_rollback(m_thd, 0);
-    end_active_trans(m_thd);
+    trans_commit_stmt(m_thd);
+    trans_commit_implicit(m_thd);
   }
 
   // unlock tables if they are still locked
