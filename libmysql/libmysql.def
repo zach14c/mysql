@@ -142,3 +142,4 @@ EXPORTS
 	mysql_get_character_set_info
 	get_defaults_options
 	modify_defaults_file
+        mysql_stmt_next_result
