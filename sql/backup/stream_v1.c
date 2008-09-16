@@ -1813,7 +1813,7 @@ int bstream_rd_data_chunk(backup_stream *s,
         envelope= buf;
       }
 
-      // update chunk->data to point to the new buffer
+ /* update chunk->data to point to the new buffer */
       chunk->data= *buf;
 
       /* update to_read blob to indicate free space left */
