@@ -1972,6 +1972,8 @@ event_tail:
             if (!(lex->event_parse_data= Event_parse_data::new_instance(thd)))
               MYSQL_YYABORT;
             lex->event_parse_data->identifier= $3;
+            lex->event_parse_data->on_completion=
+                                  Event_parse_data::ON_COMPLETION_DROP;
 
             lex->sql_command= SQLCOM_CREATE_EVENT;
             /* We need that for disallowing subqueries */
@@ -8490,11 +8492,13 @@ variable:
 variable_aux:
           ident_or_text SET_VAR expr
           {
-            $$= new (YYTHD->mem_root) Item_func_set_user_var($1, $3);
+            Item_func_set_user_var *item;
+            $$= item= new (YYTHD->mem_root) Item_func_set_user_var($1, $3);
             if ($$ == NULL)
               MYSQL_YYABORT;
             LEX *lex= Lex;
             lex->uncacheable(UNCACHEABLE_RAND);
+            lex->set_var_list.push_back(item);
           }
         | ident_or_text
           {
