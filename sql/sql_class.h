@@ -2433,6 +2433,7 @@ public:
   CHARSET_INFO *cs;
   sql_exchange(char *name, bool dumpfile_flag,
                enum_filetype filetype_arg= FILETYPE_CSV);
+  bool escaped_given(void);
 };
 
 #include "log_event.h"
