@@ -3338,6 +3338,8 @@ bool MYSQL_BACKUP_LOG::write(THD *thd, st_backup_history *history_data)
       goto err;
     if (write_str(user))
       goto err;
+    if (write_str(history_data->backup_file))
+      goto err;
     if (write_str(history_data->user_comment))
       goto err;
     if (write_str(history_data->command))
