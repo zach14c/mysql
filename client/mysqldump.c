@@ -3684,6 +3684,7 @@ static int dump_tablespaces(char* ts_where)
                       " EXTRA"
                       " FROM INFORMATION_SCHEMA.FILES"
                       " WHERE FILE_TYPE = 'UNDO LOG'"
+                      " AND ENGINE != 'Falcon'"
                       " AND FILE_NAME IS NOT NULL",
                       256, 1024);
   if(ts_where)
@@ -3780,7 +3781,8 @@ static int dump_tablespaces(char* ts_where)
                       " INITIAL_SIZE,"
                       " ENGINE"
                       " FROM INFORMATION_SCHEMA.FILES"
-                      " WHERE FILE_TYPE = 'DATAFILE'",
+                      " WHERE FILE_TYPE = 'DATAFILE'"
+                      " AND ENGINE != 'Falcon'",
                       256, 1024);
 
   if(ts_where)

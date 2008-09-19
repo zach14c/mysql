@@ -81,7 +81,7 @@ static const char *falconSchema [] = {
 class Server;
 extern Server*	startServer(int port, const char *configFile);
 
-static StorageHandler *storageHandler;
+StorageHandler *storageHandler;
 
 static char charTable[256];
 static int init();
@@ -113,6 +113,14 @@ StorageHandler*	getFalconStorageHandler(int lockSize)
 	return storageHandler;
 }
 
+void freeFalconStorageHandler(void)
+{
+	if (storageHandler)
+		{
+		delete storageHandler;
+		storageHandler = 0;
+		}
+}
 void StorageHandler::setDataDirectory(const char *directory)
 {
 	IO::setBaseDirectory(directory);
@@ -131,6 +139,8 @@ StorageHandler::StorageHandler(int lockSize)
 	syncObject.setName("StorageHandler::syncObject");
 	hashSyncObject.setName("StorageHandler::hashSyncObject");
 	dictionarySyncObject.setName("StorageHandler::dictionarySyncObject");
+	inCreateDatabase=false;
+	deleteFilesOnExit=false;
 }
 
 StorageHandler::~StorageHandler(void)
@@ -487,6 +497,13 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 
 	if (!dictionaryConnection)
 		return StorageErrorTablesSpaceOperationFailed;
+
+	if (   !strcasecmp(tableSpaceName, MASTER_NAME)
+		|| !strcasecmp(tableSpaceName, DEFAULT_TABLESPACE)
+		|| !strcasecmp(tableSpaceName, TEMPORARY_TABLESPACE))
+		{
+		return StorageErrorTableSpaceExist;
+		}
 
 	JString tableSpace = JString::upcase(tableSpaceName);
 
@@ -982,30 +999,48 @@ void StorageHandler::initialize(void)
 		}
 	catch (SQLException &e)
 		{
-		// No point in creating a database if we got memory error.
-		// On FILE_ACCESS_ERROR, an external application can temporarily lock the file.
-		// In this both cases, trying to create database in this case could eventually
-		// lead to "recreate" and data loss.
-		
 		int err = e.getSqlcode();
-		
-		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR || err == VERSION_ERROR)
+
+		// If got one of following errors, just rethrow. No point in 
+		// trying to create database.
+		if (err != OPEN_MASTER_ERROR)
 			throw;
 
-		defaultDatabase->createDatabase();
-		IO::deleteFile(FALCON_USER);
-		IO::deleteFile(FALCON_TEMPORARY);
-		dictionaryConnection = defaultDatabase->getOpenConnection();
-		Statement *statement = dictionaryConnection->createStatement();
-		JString createTableSpace = genCreateTableSpace(DEFAULT_TABLESPACE, FALCON_USER);
-		statement->executeUpdate(createTableSpace);
-			
-		for (const char **ddl = falconSchema; *ddl; ++ddl)
-			statement->executeUpdate(*ddl);
-		
-		statement->close();
-		dictionaryConnection->commit();
+		try
+			{
+			createDatabase();
+			}
+		catch(SQLException &e2)
+			{
+			deleteFilesOnExit = true; 	// Cleanup created files
+
+			throw SQLError(e2.getSqlcode(),
+				"create database failed : %s \n" \
+				"prior open database failure was: %s",
+				e2.getText(),e.getText());
+			}
+		catch(...)
+			{
+			deleteFilesOnExit = true;
+			}
 		}
+}
+
+void StorageHandler::createDatabase(void)
+{
+	// Check all files are properly opened with O_CREAT
+	inCreateDatabase = true;
+	defaultDatabase->createDatabase();
+	dictionaryConnection = defaultDatabase->getOpenConnection();
+	Statement *statement = dictionaryConnection->createStatement();
+	JString createTableSpace = genCreateTableSpace(DEFAULT_TABLESPACE, FALCON_USER);
+	statement->executeUpdate(createTableSpace);
+
+	for (const char **ddl = falconSchema; *ddl; ++ddl)
+		statement->executeUpdate(*ddl);
+	statement->close();
+	dictionaryConnection->commit();
+	inCreateDatabase = false;
 }
 
 void StorageHandler::dropTempTables(void)
