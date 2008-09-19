@@ -245,9 +245,9 @@ struct TABLE_share;
   instance of table share per one table in the database.
 */
 
-typedef struct st_table_share
+struct TABLE_SHARE
 {
-  st_table_share() {}                    /* Remove gcc warning */
+  TABLE_SHARE() {}                    /* Remove gcc warning */
 
   /** Category of this table. */
   TABLE_CATEGORY table_category;
@@ -259,8 +259,7 @@ typedef struct st_table_share
   TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
   pthread_mutex_t LOCK_ha_data;         /* To protect access to ha_data */
-  struct st_table_share *next,		/* Link to unused shares */
-    **prev;
+  TABLE_SHARE *next, **prev;            /* Link to unused shares */
 
   /*
     Doubly-linked (back-linked) lists of used and unused TABLE objects
@@ -550,7 +549,7 @@ typedef struct st_table_share
     return (tmp_table == SYSTEM_TMP_TABLE || is_view) ? 0 : table_map_id;
   }
 
-} TABLE_SHARE;
+};
 
 
 extern ulong refresh_version;
@@ -563,8 +562,9 @@ enum index_hint_type
   INDEX_HINT_FORCE
 };
 
-struct st_table {
-  st_table() {}                               /* Remove gcc warning */
+struct TABLE
+{
+  TABLE() {}                               /* Remove gcc warning */
 
   TABLE_SHARE	*s;
   handler	*file;
@@ -575,11 +575,11 @@ private:
      Declared as private to avoid direct manipulation with those objects.
      One should use methods of I_P_List template instead.
   */
-  struct st_table *share_next, **share_prev;
+  TABLE *share_next, **share_prev;
 
   friend struct TABLE_share;
 public:
-  struct st_table *next, *prev;
+  TABLE *next, *prev;
 
   THD	*in_use;                        /* Which thread uses this */
   Field **field;			/* Pointer to fields */
@@ -716,9 +716,7 @@ public:
   my_bool force_index;
   my_bool distinct,const_table,no_rows;
   my_bool key_read, no_keyread;
-  my_bool locked_by_logger;
   my_bool no_replicate;
-  my_bool locked_by_name;
   my_bool fulltext_searched;
   my_bool no_cache;
   /* To signal that the table is associated with a HANDLER statement */
@@ -729,7 +727,6 @@ public:
     Used only in the MODE_NO_AUTO_VALUE_ON_ZERO mode.
   */
   my_bool auto_increment_field_not_null;
-  my_bool insert_or_update;             /* Can be used by the handler */
   my_bool alias_name_used;		/* true if table_name is alias */
   my_bool get_fields_in_item_tree;      /* Signal to fix_field */
 
@@ -911,7 +908,6 @@ typedef struct st_schema_table
 /** The threshold size a blob field buffer before it is freed */
 #define MAX_TDC_BLOB_SIZE 65536
 
-struct st_lex;
 class select_union;
 class TMP_TABLE_PARAM;
 
@@ -991,6 +987,7 @@ public:
        ;
 */
 
+struct LEX;
 class Index_hint;
 struct TABLE_LIST
 {
@@ -1106,7 +1103,7 @@ struct TABLE_LIST
   TMP_TABLE_PARAM *schema_table_param;
   /* link to select_lex where this table was used */
   st_select_lex	*select_lex;
-  st_lex	*view;			/* link on VIEW lex for merging */
+  LEX *view;                    /* link on VIEW lex for merging */
   Field_translator *field_translation;	/* array of VIEW fields */
   /* pointer to element after last one in translation table above */
   Field_translator *field_translation_end;
@@ -1335,9 +1332,9 @@ struct TABLE_LIST
   Item_subselect *containing_subselect();
 
   /* 
-    Compiles the tagged hints list and fills up st_table::keys_in_use_for_query,
-    st_table::keys_in_use_for_group_by, st_table::keys_in_use_for_order_by,
-    st_table::force_index and st_table::covering_keys.
+    Compiles the tagged hints list and fills up TABLE::keys_in_use_for_query,
+    TABLE::keys_in_use_for_group_by, TABLE::keys_in_use_for_order_by,
+    TABLE::force_index and TABLE::covering_keys.
   */
   bool process_index_hints(TABLE *table);
 
