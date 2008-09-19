@@ -1,0 +1,407 @@
+--source include/have_falcon.inc
+
+#
+# Test for ADD/DROP INDEX.
+#
+# ONLINE ADD/DROP is part of Worklog 4048, and is implicit.
+# Hence, this test will test ONLINE ADD/DROP INDEX if
+# it is supported by the engine. Otherwise, OFFLINE ADD/DROP
+# is used. See also falcon_online_index test.
+#
+# Note:
+# By using --enable_info command we can check if default 
+# ALTER TABLE ... ADD INDEX is online or offline. 
+# If ONLINE, affected rows is always 0. 
+# If OFFLINE, and the table is non-empty, affected rows is > 0, since the 
+# ALTER involved a table copy.
+#
+# This test is focusing on adding/dropping indexes to/from columns of various
+# data types.
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+--enable_warnings
+
+##
+## Should test adding/dropping index for as many supported datatypes as 
+## possible.
+##
+## Falcon does not support indexes on the types BLOB, MEDIUMBLOB, LONGBLOB
+## and TEXT. Falcon (supposedly) supports TINYBLOB indexes (because 
+## TINYBLOB is mapped to VARCHAR), but this distinction is not visible from
+## the MySQL server.
+##
+## BIT type is handled differently than the rest, as it requires special 
+## treatment in SELECTs for the output to be readable.
+## 
+## Omitting synonym types. Using mostly default settings.
+##
+## Default CREATE clauses for TIMESTAMP columns are 
+## "NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP".
+## To avoid having to filter out ever-changing timestamps, we are using 
+## "NOT NULL DEFAULT 0" instead.
+##
+
+
+CREATE TABLE t1 (
+    a_int       INT                 NOT NULL AUTO_INCREMENT PRIMARY KEY, 
+    a_tinyint   TINYINT,
+    a_bigint    BIGINT,
+    a_float     FLOAT,
+    a_double    DOUBLE,
+    a_decimal   DECIMAL(10,2),
+    a_date      DATE,
+    a_time      TIME,
+    a_datetime  DATETIME,
+    a_timestamp TIMESTAMP           NOT NULL DEFAULT 0,
+    a_year      YEAR,
+    a_char      CHAR(10),
+    a_varchar   VARCHAR(255),
+    a_binary    BINARY(8),
+    a_varbinary VARBINARY(255),
+    a_enum      ENUM('enumValueOne', 'enumValueTwo', 'enumValueThree')
+);
+
+SHOW CREATE TABLE t1;
+
+## BITs are special (binary), hence a separate table t2 so that we can do
+## simple SELECT * on t1.
+
+CREATE TABLE t2 (
+    a_int       INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    a_bit       BIT(8));
+
+SHOW CREATE TABLE t2;
+
+## Insert some example values. Should have 5 or more values to test LIMIT 
+## with indexes. Values may start at either max or min, but are basically 
+## randomly chosen (but sortable by humans).
+
+INSERT INTO t1 (
+    a_tinyint, a_bigint, 
+    a_float, a_double, a_decimal, a_date,
+    a_time, a_datetime, a_timestamp, a_year,
+    a_char, a_varchar, a_binary, a_varbinary,
+    a_enum) 
+    VALUES 
+    (
+    127, 9223372036854775807,
+    999.99, 999.123456789, 111.99, '2008-07-09', 
+    '11:30:00', '2008-07-09 11:30:00', '2008-07-09 11:30:00', '2008',
+    'aTestChar', 'aTestVarChar', 'aTestBin', 'aTestVarBinary', 
+    'enumValueOne'
+    ),
+    (
+    126, 9223372036854775806,
+    998.88, 999.234567891, 112.00, '2008-07-10', 
+    '12:30:10', '2008-07-10 12:30:10', '2008-07-10 12:30:10', '2009',
+    'bTestChar', 'bTestVarChar', 'bTestBin', 'bTestVarBinary', 
+    'enumValueTwo'
+    ),
+    (
+    125, 9223372036854775805,
+    997.77, 999.345678912, 112.01, '2008-07-11', 
+    '13:30:20', '2008-07-11 13:30:20', '2008-07-11 13:30:20', '2010',
+    'cTestChar', 'cTestVarChar', 'cTestBin', 'cTestVarBinary', 
+    'enumValueThree'
+    ),
+    (
+    124, 9223372036854775804,
+    996.66, 999.456789123, 112.02, '2008-07-12', 
+    '14:30:30', '2008-07-12 14:30:30', '2008-07-12 14:30:30', '2011',
+    'dTestChar', 'dTestVarChar', 'dTestBin', 'dTestVarBinary', 
+    'enumValueOne'
+    ),
+    (
+    123, 9223372036854775803,
+    995.55, 999.567891234, 112.03, '2008-07-13', 
+    '15:30:40', '2008-07-13 15:30:40', '2008-07-13 15:30:40', '2012',
+    'eTestChar', 'eTestVarChar', 'eTestBin', 'eTestVarBinary', 
+    'enumValueTwo'
+    );
+
+INSERT INTO t2 (a_bit) VALUES (b'0'), (b'1'), (b'10'), (b'11'), (b'100');
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+SELECT * FROM t1;
+SELECT a_int, BIN(a_bit+0) FROM t2;
+
+## Using the following procedure for each non-indexed data type/column:
+##  1. Add INDEX for the specific column
+##  2. Check index metadata (Falcon and server and user must agree)
+##  3. Insert new value in indexed column
+##  4. Update a value in indexed column
+##  4. Check that all values are still there
+##  5. Use a LIMIT query to excercise alternative index implementation
+##  6. Add additional index on the same column
+##  7. Drop newly added INDEX for the specified column
+##  8. Check index metadata (Falcon and server and user must agree)
+##  9. Check that the values are still there
+
+--echo #-------- Test: BIT --------#
+
+## BIT column, t2:
+ALTER TABLE t2 ADD INDEX index_bit (a_bit);
+SHOW INDEXES FROM t2;
+INSERT INTO t2 SET a_bit = b'11111';
+UPDATE t2 SET a_bit = b'101010' where a_int > b'101';
+SELECT a_int, BIN(a_bit+0) FROM t2;
+SELECT a_int, BIN(a_bit+0) FROM t2 WHERE a_bit > b'1' LIMIT 1;
+ALTER TABLE t2 DROP INDEX index_bit;
+SHOW INDEXES FROM t2;
+SELECT a_int, BIN(a_bit+0) FROM t2;
+
+--echo #-------- Test: TINYINT --------#
+
+ALTER TABLE t1 ADD INDEX index_tinyint (a_tinyint);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_tinyint = 99;
+UPDATE t1 SET a_tinyint = 88 where a_tinyint = 99;
+SELECT * FROM t1 ORDER BY a_tinyint;
+SELECT * FROM t1 WHERE a_tinyint > 1 LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_tinyint;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: BIGINT --------#
+
+ALTER TABLE t1 ADD INDEX index_bigint (a_bigint);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_bigint = 9223372036854775804;
+UPDATE t1 SET a_bigint = 911111111111111111 where a_bigint = 9223372036854775804;
+SELECT * FROM t1 ORDER BY a_bigint;
+SELECT * FROM t1 WHERE a_bigint > 1 LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_bigint;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: FLOAT --------#
+
+ALTER TABLE t1 ADD INDEX index_float (a_float);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_float = 994.44;
+UPDATE t1 SET a_float = 993.33 where a_float > 994 AND a_float < 994.5;
+SELECT * FROM t1 ORDER BY a_float;
+SELECT * FROM t1 WHERE a_float > 1 LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_float;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: DOUBLE --------#
+
+ALTER TABLE t1 ADD INDEX index_double (a_double);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_double = 999.678912345;
+UPDATE t1 SET a_double = 999.998877665 where a_double = 999.678912345;
+SELECT * FROM t1 ORDER BY a_double;
+SELECT * FROM t1 WHERE a_double > 1 LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_double;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: DECIMAL --------#
+
+ALTER TABLE t1 ADD INDEX index_decimal (a_decimal);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_decimal = 112.04;
+UPDATE t1 SET a_decimal = 112.05 where a_decimal = 112.04;
+SELECT * FROM t1 ORDER BY a_decimal;
+SELECT * FROM t1 WHERE a_decimal > 1 LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_decimal;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: DATE --------#
+
+ALTER TABLE t1 ADD INDEX index_date (a_date);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_date = '2008-07-14';
+UPDATE t1 SET a_date = '2008-08-14' where a_date = '2008-07-14';
+SELECT * FROM t1 ORDER BY a_date;
+SELECT * FROM t1 WHERE a_date > '2008-01-01' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_date;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: TIME --------#
+
+ALTER TABLE t1 ADD INDEX index_time (a_time);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_time = '16:30:50';
+UPDATE t1 SET a_time = '17:31:00' where a_time = '16:30:50';
+SELECT * FROM t1 ORDER BY a_time;
+SELECT * FROM t1 WHERE a_time > '11:00:00' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_time;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: DATETIME --------#
+
+ALTER TABLE t1 ADD INDEX index_datetime (a_datetime);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_datetime = '2008-07-14 16:30:50';
+UPDATE t1 SET a_datetime = '2008-08-14 17:31:00' where a_datetime = '2008-07-14 16:30:50';
+SELECT * FROM t1 ORDER BY a_datetime;
+SELECT * FROM t1 WHERE a_datetime > '2008-07-10 00:00:00' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_datetime;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: TIMESTAMP --------#
+
+ALTER TABLE t1 ADD INDEX index_timestamp (a_timestamp);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_timestamp = '2008-07-14 16:30:50';
+UPDATE t1 SET a_timestamp = '2008-08-14 19:20:21' where a_timestamp = '2008-07-14 16:30:50';
+SELECT * FROM t1 ORDER BY a_timestamp;
+SELECT * FROM t1 WHERE a_timestamp > '2008-07-10 00:00:00' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_timestamp;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: YEAR --------#
+
+ALTER TABLE t1 ADD INDEX index_year (a_year);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_year = '2013';
+UPDATE t1 SET a_year = '2020' where a_year LIKE '2013';
+SELECT * FROM t1 ORDER BY a_year;
+SELECT * FROM t1 WHERE a_year > '1999' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_year;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: CHAR --------#
+
+ALTER TABLE t1 ADD INDEX index_char (a_char);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_char = 'fTestChar';
+UPDATE t1 SET a_char = 'gTestChar' where a_char = 'fTestChar';
+SELECT * FROM t1 ORDER BY a_char;
+SELECT * FROM t1 WHERE a_char > 'afalcon' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_char;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: VARCHAR --------#
+
+ALTER TABLE t1 ADD INDEX index_varchar (a_varchar);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_varchar = 'fTestVarChar';
+UPDATE t1 SET a_varchar = 'gTestVarChar' where a_varchar = 'fTestVarChar';
+SELECT * FROM t1 ORDER BY a_varchar;
+SELECT * FROM t1 WHERE a_varchar > 'afalcon' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_varchar;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: BINARY --------#
+
+ALTER TABLE t1 ADD INDEX index_binary (a_binary);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_binary = 'fTestBin';
+UPDATE t1 SET a_binary = 'gTestBin' where a_binary = 'fTestBin';
+SELECT * FROM t1 ORDER BY a_binary;
+SELECT * FROM t1 WHERE a_binary > 'afalcon' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_binary;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: VARBINARY --------#
+
+ALTER TABLE t1 ADD INDEX index_varbinary (a_varbinary);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_varbinary = 'fTestVarBinary';
+UPDATE t1 SET a_varbinary = 'gTestVarBinary' where a_varbinary = 'fTestVarBinary';
+SELECT * FROM t1 ORDER BY a_varbinary;
+SELECT * FROM t1 WHERE a_varbinary > 'afalcon' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_varbinary;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: ENUM --------#
+
+ALTER TABLE t1 ADD INDEX index_enum (a_binary);
+SHOW INDEXES FROM t1;
+INSERT INTO t1 SET a_enum = 'enumValueThree';
+UPDATE t1 SET a_enum = 'enumValueOne' where a_enum = 'enumValueThree';
+SELECT * FROM t1 ORDER BY a_enum;
+SELECT * FROM t1 WHERE a_enum > 'afalcon' LIMIT 1;
+ALTER TABLE t1 DROP INDEX index_enum;
+SHOW INDEXES FROM t1;
+SELECT * FROM t1;
+
+--echo #-------- Test: Alternative CREATE INDEX --------#
+
+## Try adding all indexes once again using alternative syntax (CREATE...)
+CREATE INDEX index_int on t1 (a_int);
+CREATE INDEX index_bit on t2 (a_bit);
+CREATE INDEX index_tinyint on t1 (a_tinyint);
+CREATE INDEX index_bigint on t1 (a_bigint);
+CREATE INDEX index_float on t1 (a_float);
+CREATE INDEX index_double on t1 (a_double);
+CREATE INDEX index_decimal on t1 (a_decimal);
+CREATE INDEX index_date on t1 (a_date);
+CREATE INDEX index_datetime on t1 (a_datetime);
+CREATE INDEX index_timestamp on t1 (a_timestamp);
+CREATE INDEX index_year on t1 (a_year);
+CREATE INDEX index_char on t1 (a_char);
+CREATE INDEX index_varchar on t1 (a_varchar);
+CREATE INDEX index_binary on t1 (a_binary);
+CREATE INDEX index_varbinary on t1 (a_varbinary);
+CREATE INDEX index_enum on t1 (a_enum);
+
+
+SHOW INDEXES FROM t1;
+SELECT * FROM t1 ORDER BY a_int;
+
+SHOW INDEXES FROM t2;
+SELECT a_int, BIN(a_bit+0) FROM t2 ORDER BY a_int;
+
+## Try dropping all indexes using alternative syntax
+
+--echo #-------- Test: Alternative DROP INDEX --------#
+
+DROP INDEX index_int on t1;
+DROP INDEX index_bit on t2;
+DROP INDEX index_tinyint on t1;
+DROP INDEX index_bigint on t1;
+DROP INDEX index_float on t1;
+DROP INDEX index_double on t1;
+DROP INDEX index_decimal on t1;
+DROP INDEX index_date on t1;
+DROP INDEX index_datetime on t1;
+DROP INDEX index_timestamp on t1;
+DROP INDEX index_year on t1;
+DROP INDEX index_char on t1;
+DROP INDEX index_varchar on t1;
+DROP INDEX index_binary on t1;
+DROP INDEX index_varbinary on t1;
+DROP INDEX index_enum on t1;
+
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SHOW INDEXES FROM t1;
+SELECT * FROM t1 ORDER BY a_int;
+
+SHOW INDEXES FROM t2;
+SELECT a_int, BIN(a_bit+0) FROM t2 ORDER BY a_int;
+
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+DROP TABLE t2;
