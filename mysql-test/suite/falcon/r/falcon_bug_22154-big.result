@@ -3023,8 +3023,8 @@ update	v
 update	498
 update	v
 update	499
-SELECT count(*) FROM t1;
+SELECT count(*) FROM tj9;
 count(*)
-500
+499
 DROP TABLE tj9;
 DROP PROCEDURE pj9;
