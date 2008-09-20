@@ -688,8 +688,6 @@ enum enum_parsing_place
   IN_ON
 };
 
-struct st_table;
-
 class THD;
 
 enum enum_check_fields
@@ -890,15 +888,6 @@ bool parse_sql(THD *thd,
                Parser_state *parser_state,
                Object_creation_ctx *creation_ctx);
 
-enum enum_mysql_completiontype {
-  ROLLBACK_RELEASE=-2, ROLLBACK=1,  ROLLBACK_AND_CHAIN=7,
-  COMMIT_RELEASE=-1,   COMMIT=0,    COMMIT_AND_CHAIN=6
-};
-
-bool begin_trans(THD *thd);
-bool end_active_trans(THD *thd);
-int end_trans(THD *thd, enum enum_mysql_completiontype completion);
-
 Item *negate_expression(THD *thd, Item *expr);
 
 /* log.cc */
@@ -928,6 +917,7 @@ bool general_log_write(THD *thd, enum enum_server_command command,
 #include "tztime.h"
 #ifdef MYSQL_SERVER
 #include "sql_servers.h"
+#include "records.h"
 #include "opt_range.h"
 
 #ifdef HAVE_QUERY_CACHE

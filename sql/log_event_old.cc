@@ -6,6 +6,7 @@
 #endif
 #include "log_event_old.h"
 #include "rpl_record_old.h"
+#include "transaction.h"
 
 #if !defined(MYSQL_CLIENT) && defined(HAVE_REPLICATION)
 
@@ -1827,7 +1828,7 @@ Old_rows_log_event::do_update_pos(Relay_log_info *rli)
       are involved, commit the transaction and flush the pending event to the
       binlog.
     */
-    error= ha_autocommit_or_rollback(thd, 0);
+    error= trans_commit_stmt(thd);
 
     /*
       Now what if this is not a transactional engine? we still need to

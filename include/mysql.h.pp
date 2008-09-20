@@ -612,4 +612,5 @@ my_bool mysql_rollback(MYSQL * mysql);
 my_bool mysql_autocommit(MYSQL * mysql, my_bool auto_mode);
 my_bool mysql_more_results(MYSQL *mysql);
 int mysql_next_result(MYSQL *mysql);
+int mysql_stmt_next_result(MYSQL_STMT *stmt);
 void mysql_close(MYSQL *sock);

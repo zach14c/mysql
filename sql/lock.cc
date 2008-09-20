@@ -74,6 +74,7 @@
 */
 
 #include "mysql_priv.h"
+#include "transaction.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -1440,7 +1441,7 @@ int try_transactional_lock(THD *thd, TABLE_LIST *table_list)
 
  err:
   /* We need to explicitly commit if autocommit mode is active. */
-  (void) ha_autocommit_or_rollback(thd, 0);
+  trans_commit_stmt(thd);
   /* Close the tables. The locks (if taken) persist in the storage engines. */
   close_tables_for_reopen(thd, &table_list, FALSE);
   thd->in_lock_tables= FALSE;
