@@ -145,6 +145,7 @@ mkdir $DESTDIR
 mkdir $DESTDIR/bin
 cp client/$TARGET/*.exe                                  $DESTDIR/bin/
 cp extra/$TARGET/*.exe                                   $DESTDIR/bin/
+cp storage/maria/$TARGET/*.exe                           $DESTDIR/bin/ || true
 cp storage/myisam/$TARGET/*.exe                          $DESTDIR/bin/
 if [ x"$TARGET" != x"release" ] ; then
   cp client/$TARGET/mysql.pdb                            $DESTDIR/bin/
