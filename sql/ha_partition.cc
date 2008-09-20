@@ -3767,7 +3767,7 @@ int ha_partition::common_index_read(uchar *buf, bool have_start_key)
   uint key_len;
   bool reverse_order= FALSE;
   DBUG_ENTER("ha_partition::common_index_read");
-  LINT_INIT(key_len); /* used iff have_start_key==TRUE */
+  LINT_INIT(key_len); /* used if have_start_key==TRUE */
 
   if (have_start_key)
   {
@@ -4098,7 +4098,7 @@ int ha_partition::read_range_next()
 
 
 /*
-  Common routine to set up index scans scans
+  Common routine to set up index scans
 
   SYNOPSIS
     ha_partition::partition_scan_set_up()
