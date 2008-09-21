@@ -12,9 +12,9 @@ backup_id
 #
 SHOW WARNINGS;
 Level	Code	Message
-SELECT max(backup_id) INTO @id FROM mysql.online_backup 
+SELECT max(backup_id) INTO @id FROM mysql.backup_history 
 WHERE command LIKE 'BACKUP DATABASE db1 %';
-SELECT drivers FROM mysql.online_backup WHERE backup_id=@id;
+SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 drivers
 MyISAM
 SET SESSION debug="d,backup_test_dummy_be_factory";
@@ -27,9 +27,9 @@ backup_id
 SHOW WARNINGS;
 Level	Code	Message
 Warning	#	Cannot create backup engine for storage engine MyISAM
-SELECT max(backup_id) INTO @id FROM mysql.online_backup 
+SELECT max(backup_id) INTO @id FROM mysql.backup_history 
 WHERE command LIKE 'BACKUP DATABASE db1 %';
-SELECT drivers FROM mysql.online_backup WHERE backup_id=@id;
+SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 drivers
 Default
 RESTORE FROM 'db1.bak';

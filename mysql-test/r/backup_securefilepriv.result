@@ -1,0 +1,60 @@
+Initializing tests
+Create directories for backup images
+Creating database and populating tables
+DROP DATABASE IF EXISTS mysqltest;
+CREATE DATABASE mysqltest;
+CREATE TABLE mysqltest.t1 (i int);
+INSERT INTO mysqltest.t1 VALUES (1),(2),(3),(4),(5),(10),(15),(100);
+
+Starting tests
+
+Backup to path specified by --secure-file-priv option
+(MYSQLTEST_VARDIR/master-data/securefilepriv_path)
+BACKUP DATABASE mysqltest TO 'securefilepriv_path/bup_sfp1.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+
+Backup to subpath of path specified by --secure-file-priv option
+(MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath)
+BACKUP DATABASE mysqltest TO 'securefilepriv_path/subpath/bup_sfp2.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+
+Change backupdir to securefilepriv_path/subpath 
+(MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath)
+SET @@global.backupdir = 'securefilepriv_path/subpath';
+
+Backup to subpath of path specified by --secure-file-priv option, 
+no dir in backup file name
+(MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath)
+BACKUP DATABASE mysqltest TO 'bup_sfp3.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+
+Backup to path specified by --secure-file-priv, 
+relative path in backup file name
+(MYSQLTEST_VARDIR/master-data/securefilepriv_path)
+BACKUP DATABASE mysqltest TO '../bup_sfp4.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+
+Backup to relative path outside path specified by --secure-file-priv 
+option should fail
+BACKUP DATABASE mysqltest TO '../../bup_sfp_fail1.bak';
+ERROR HY000: The MySQL server is running with the --secure-file-priv option so it cannot execute this statement
+
+Reset backupdir to MYSQLTEST_VARDIR/master-data/
+SET @@global.backupdir = @@global.datadir;
+
+Backup to other path than specified by --secure-file-priv should fail
+BACKUP DATABASE mysqltest TO 'bup_sfp_fail2.bak';
+ERROR HY000: The MySQL server is running with the --secure-file-priv option so it cannot execute this statement
+
+Cleanup
+
+DROP TABLE mysqltest.t1;
+DROP DATABASE mysqltest;

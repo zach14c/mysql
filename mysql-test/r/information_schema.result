@@ -69,6 +69,8 @@ TABLE_PRIVILEGES
 TRIGGERS
 USER_PRIVILEGES
 VIEWS
+backup_history
+backup_progress
 columns_priv
 db
 event
@@ -79,8 +81,6 @@ help_keyword
 help_relation
 help_topic
 host
-online_backup
-online_backup_progress
 plugin
 proc
 procs_priv
@@ -810,15 +810,15 @@ TABLES	CREATE_TIME	datetime
 TABLES	UPDATE_TIME	datetime
 TABLES	CHECK_TIME	datetime
 TRIGGERS	CREATED	datetime
+backup_history	validity_point_time	datetime
+backup_history	start_time	datetime
+backup_history	stop_time	datetime
+backup_progress	start_time	datetime
+backup_progress	stop_time	datetime
 event	execute_at	datetime
 event	last_executed	datetime
 event	starts	datetime
 event	ends	datetime
-online_backup	validity_point_time	datetime
-online_backup	start_time	datetime
-online_backup	stop_time	datetime
-online_backup_progress	start_time	datetime
-online_backup_progress	stop_time	datetime
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES A
 WHERE NOT EXISTS 
 (SELECT * FROM INFORMATION_SCHEMA.COLUMNS B
@@ -1290,7 +1290,6 @@ select 1 as f1 from information_schema.tables  where "CHARACTER_SETS"=
 (select cast(table_name as char)  from information_schema.tables
 order by table_name limit 1) limit 1;
 f1
-1
 select t.table_name, group_concat(t.table_schema, '.', t.table_name),
 count(*) as num1
 from information_schema.tables t
