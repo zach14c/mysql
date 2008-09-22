@@ -17,6 +17,8 @@
 package My::Platform;
 
 use strict;
+use File::Basename;
+use My::File::Path; # Patched version of File::Path
 
 use base qw(Exporter);
 our @EXPORT= qw(IS_CYGWIN IS_WINDOWS IS_WIN32PERL
@@ -102,14 +104,27 @@ sub check_socket_path_length {
 
   require IO::Socket::UNIX;
 
-  my $sock = new IO::Socket::UNIX
-  (
-   Local => $path,
-   Listen => 1,
-  );
+  my $sock;
+  eval {
+    # Create the directories where the
+    # socket till be created
+    mkpath(dirname($path));
+
+    $sock= new IO::Socket::UNIX
+      (
+       Local => $path,
+       Listen => 1,
+      );
+
+  };
+  if ($@)
+  {
+    print $@, '\n';
+    return 2;
+  }
   if (!defined $sock){
-    # Could not create a UNIX domain socket
-    return 0; # Ok, will not be used by mysqld either    
+    #print "Could not create UNIX domain socket: $!\n";
+    return 3;
   }
   if ($path ne $sock->hostpath()){
     # Path was truncated

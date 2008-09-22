@@ -1,4 +1,6 @@
 --source include/not_embedded.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
 
 # Check that BACKUP/RESTORE commands correctly report errors 
 #
@@ -216,3 +218,83 @@ CREATE TABLE mysql.online_backup_progress LIKE test.obp_copy;
 DROP TABLE test.obp_copy;
 
 DROP DATABASE test_ob_error;
+
+
+--echo
+--echo Bug#38624
+--echo Test that backup fails with error if database files are removed 
+--echo after backup starts
+
+SET DEBUG_SYNC= 'reset';
+
+connect (con1,localhost,root,,);
+connect (con2,localhost,root,,);
+
+connection con1;
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+
+CREATE DATABASE db1;
+
+connection con2;
+
+--echo start backup but stop just before adding metadata to backup image
+SET DEBUG_SYNC= 'backup_before_write_preamble SIGNAL running WAIT_FOR db_will_fail';
+
+send BACKUP DATABASE db1 TO 'bup_db1.bak';
+
+connection con1;
+
+SET DEBUG_SYNC='now WAIT_FOR running';
+
+--echo delete database files so that check_db_dir_exists will fail in 
+--echo si_objects.cc @ DatabaseObj::do_serialize
+
+--remove_file $MYSQLD_DATADIR/db1/db.opt
+--rmdir $MYSQLD_DATADIR/db1
+
+SET DEBUG_SYNC='now SIGNAL db_will_fail';
+
+connection con2;
+--echo Database has been deleted, backup will fail
+--error ER_BAD_DB_ERROR
+reap;
+
+--echo
+--echo Test that backup fails with error if a table used by 
+--echo a trigger cannot be opened
+
+SET DEBUG_SYNC= 'reset';
+
+connection con1;
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+
+CREATE DATABASE db1;
+CREATE TABLE db1.t1 (i int);
+CREATE TABLE db1.t2 (v varchar (20));
+
+DELIMITER ||;
+CREATE TRIGGER db1.trg AFTER INSERT ON db1.t1 FOR EACH ROW
+BEGIN
+  INSERT INTO db1.t2(v) VALUES ('Test trigger fired');   
+END;||
+DELIMITER ;||
+
+SET DEBUG_SYNC= 'reset';
+
+--echo Setting debug point that will make backup fail when adding the
+--echo trigger metadata
+
+SET SESSION DEBUG='+d,backup_fail_add_trigger';
+--error ER_BACKUP_GET_META_TRIGGER
+BACKUP DATABASE db1 TO 'bup_db1.bak';
+
+SET DEBUG_SYNC= 'reset';
+DROP DATABASE db1;
+
+SET SESSION DEBUG='';
+--echo
+--echo Done testing for Bug#38624

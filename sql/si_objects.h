@@ -115,6 +115,12 @@ private:
   friend Obj *materialize_tablespace(const String *,
                                      uint,
                                      const String *);
+
+  friend Obj *materialize_db_grant(const String *,
+                                   const String *,
+                                   uint,
+                                   const String *);
+
 };
 
 
@@ -220,6 +226,39 @@ public:
   virtual ~ObjIterator()
   { }
 
+};
+
+/**
+  GrantObjIternator is an encapsulation of the three iterators for each level
+  of grant supported: database-, table- and routine-, and column-level.
+*/
+class GrantObjIterator : public ObjIterator
+{
+public:
+  GrantObjIterator(THD *thd, const String *db_name);
+
+  ~GrantObjIterator() 
+  {
+    delete db_grants;
+    delete tbl_grants;
+    delete col_grants;
+  }
+
+  /**
+    This operation returns a pointer to the next object in an enumeration.
+    It returns NULL if there is no more objects.
+
+    The client is responsible to destroy the returned object.
+
+    @return a pointer to the object
+      @retval NULL if there is no more objects in an enumeration.
+  */
+  Obj *next();
+
+private:
+  ObjIterator *db_grants;  ///< database-level grants
+  ObjIterator *tbl_grants; ///< table- and routine-level grants
+  ObjIterator *col_grants; ///< column-level grants
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -429,6 +468,14 @@ ObjIterator *get_db_stored_functions(THD *thd, const String *db_name);
 
 ObjIterator *get_db_events(THD *thd, const String *db_name);
 
+/*
+  Creates a high-level iterator that iterates over database-, table-,
+  routine-, and column-level privileges which shall permit a single
+  iterator from the si_objects to retrieve all of the privileges for 
+  a given database.
+*/
+ObjIterator *get_all_db_grants(THD *thd, const String *db_name);
+
 ///////////////////////////////////////////////////////////////////////////
 
 // The functions are intended to enumerate dependent objects.
@@ -506,6 +553,11 @@ Obj *materialize_tablespace(const String *ts_name,
                             uint serialization_version,
                             const String *serialialization);
 
+Obj *materialize_db_grant(const String *grantee,
+                          const String *db_name,
+                          uint serialization_version,
+                          const String *serialization);
+
 ///////////////////////////////////////////////////////////////////////////
 
 bool is_internal_db_name(const String *db_name);
@@ -520,6 +572,11 @@ bool is_internal_db_name(const String *db_name);
     @retval TRUE on error (the database either not exists, or not accessible).
 */
 bool check_db_existence(const String *db_name);
+
+/*
+  Returns TRUE if user is defined on the system.
+*/
+bool user_exists(THD *thd, const String *grantee);
 
 /*
   This method returns a @c TablespaceObj object if the table has a tablespace.

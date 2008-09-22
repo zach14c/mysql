@@ -190,8 +190,6 @@ my $exe_ndbd;
 my $exe_ndb_mgmd;
 my $exe_ndb_waiter;
 
-our $path_sql_dir;
-
 our $debug_compiled_binaries;
 
 our %mysqld_variables;
@@ -265,7 +263,7 @@ sub main {
       (
        name           => 'report_features',
        # No result_file => Prints result
-       path           => 'include/report-features.test'.
+       path           => 'include/report-features.test',
        template_path  => "include/default_my.cnf",
        master_opt     => [],
        slave_opt      => [],
@@ -286,6 +284,7 @@ sub main {
     for my $limit (2000, 1500, 1000, 500){
       $opt_parallel-- if ($sys_info->min_bogomips() < $limit);
     }
+    $opt_parallel= 8 if ($opt_parallel > 8);
     $opt_parallel= $num_tests if ($opt_parallel > $num_tests);
     $opt_parallel= 1 if ($opt_parallel < 1);
     mtr_report("Using parallel: $opt_parallel");
@@ -619,6 +618,16 @@ sub run_worker ($) {
 
   $SIG{INT}= sub { exit(1); };
 
+  # Connect to server
+  my $server = new IO::Socket::INET
+    (
+     PeerAddr => 'localhost',
+     PeerPort => $server_port,
+     Proto    => 'tcp'
+    );
+  mtr_error("Could not connect to server at port $server_port: $!")
+    unless $server;
+
   # --------------------------------------------------------------------------
   # Set worker name
   # --------------------------------------------------------------------------
@@ -641,23 +650,12 @@ sub run_worker ($) {
 
   environment_setup();
 
-  # Connect to server
-  my $server = new IO::Socket::INET
-    (
-     PeerAddr => 'localhost',
-     PeerPort => $server_port,
-     Proto    => 'tcp'
-    );
-  mtr_error("Could not connect to server at port $server_port: $!")
-    unless $server;
-
   # Read hello from server which it will send when shared
   # resources have been setup
   my $hello= <$server>;
 
   setup_vardir();
   check_running_as_root();
-  mysql_install_db($thread_num);
 
   if ( using_extern() ) {
     create_config_file_for_extern(%opts_extern);
@@ -904,20 +902,9 @@ sub command_line_setup {
 				       "$basedir/sql/share",
 				       "$basedir/share");
 
+  
   $path_language=      mtr_path_exists("$path_share/english");
   $path_charsetsdir=   mtr_path_exists("$path_share/charsets");
-
-  # Look for SQL scripts directory
-  if ( mtr_file_exists("$path_share/mysql_system_tables.sql") ne "")
-  {
-    # The SQL scripts are in path_share
-    $path_sql_dir= $path_share;
-  }
-  else
-  {
-    $path_sql_dir= mtr_path_exists("$basedir/share",
-				   "$basedir/scripts");
-  }
 
   if (using_extern())
   {
@@ -1035,7 +1022,20 @@ sub command_line_setup {
   # --------------------------------------------------------------------------
   # Set the "tmp" directory
   # --------------------------------------------------------------------------
-  $opt_tmpdir=       "$opt_vardir/tmp" unless $opt_tmpdir;
+  if ( ! $opt_tmpdir )
+  {
+    $opt_tmpdir=       "$opt_vardir/tmp" unless $opt_tmpdir;
+
+    if (check_socket_path_length("$opt_tmpdir/testsocket.sock"))
+    {
+      mtr_report("Too long tmpdir path '$opt_tmpdir'",
+		 " creating a shorter one...");
+
+      # Create temporary directory in standard location for temporary files
+      $opt_tmpdir= tempdir( TMPDIR => 1, CLEANUP => 1 );
+      mtr_report(" - using tmpdir: '$opt_tmpdir'\n");
+    }
+  }
   $opt_tmpdir =~ s,/+$,,;       # Remove ending slash if any
 
   # --------------------------------------------------------------------------
@@ -1546,8 +1546,9 @@ sub mysql_client_test_arguments(){
   # mysql_client_test executable may _not_ exist
   if ( $opt_embedded_server ) {
     $exe= mtr_exe_maybe_exists(
-	    vs_config_dirs('libmysqld/examples','mysql_client_test_embedded'),
-	    "$basedir/libmysqld/examples/mysql_client_test_embedded");
+            vs_config_dirs('libmysqld/examples','mysql_client_test_embedded'),
+	      "$basedir/libmysqld/examples/mysql_client_test_embedded",
+		"$basedir/bin/mysql_client_test_embedded");
   } else {
     $exe= mtr_exe_maybe_exists(vs_config_dirs('tests', 'mysql_client_test'),
 			       "$basedir/tests/mysql_client_test",
@@ -2446,7 +2447,7 @@ sub initialize_servers {
       remove_stale_vardir();
       setup_vardir();
 
-      mysql_install_db(0);
+      mysql_install_db(default_mysqld(), "$opt_vardir/install.db");
     }
   }
 }
@@ -2501,9 +2502,33 @@ sub sql_to_bootstrap {
 }
 
 
+sub default_mysqld {
+  # Generate new config file from template
+  my $config= My::ConfigFactory->new_config
+    ( {
+       basedir         => $basedir,
+       template_path   => "include/default_my.cnf",
+       vardir          => $opt_vardir,
+       tmpdir          => $opt_tmpdir,
+       baseport        => 0,
+       user            => $opt_user,
+       password        => '',
+      }
+    );
+
+  my $mysqld= $config->group('mysqld.1')
+    or mtr_error("Couldn't find mysqld.1 in default config");
+  return $mysqld;
+}
+
+
 sub mysql_install_db {
-  my ($thread_num)= @_;
-  my $data_dir= "$opt_vardir/install.db";
+  my ($mysqld, $datadir)= @_;
+
+  my $install_datadir= $datadir || $mysqld->value('datadir');
+  my $install_basedir= $mysqld->value('basedir');
+  my $install_lang= $mysqld->value('language');
+  my $install_chsdir= $mysqld->value('character-sets-dir');
 
   mtr_report("Installing system database...");
 
@@ -2511,8 +2536,8 @@ sub mysql_install_db {
   mtr_init_args(\$args);
   mtr_add_arg($args, "--no-defaults");
   mtr_add_arg($args, "--bootstrap");
-  mtr_add_arg($args, "--basedir=%s", $basedir);
-  mtr_add_arg($args, "--datadir=%s", $data_dir);
+  mtr_add_arg($args, "--basedir=%s", $install_basedir);
+  mtr_add_arg($args, "--datadir=%s", $install_datadir);
   mtr_add_arg($args, "--loose-skip-innodb");
   mtr_add_arg($args, "--loose-skip-ndbcluster");
   mtr_add_arg($args, "--tmpdir=%s", "$opt_vardir/tmp/");
@@ -2524,15 +2549,16 @@ sub mysql_install_db {
 		$path_vardir_trace);
   }
 
-  mtr_add_arg($args, "--language=%s", $path_language);
-  mtr_add_arg($args, "--character-sets-dir=%s", $path_charsetsdir);
+  mtr_add_arg($args, "--language=%s", $install_lang);
+  mtr_add_arg($args, "--character-sets-dir=%s", $install_chsdir);
 
   # If DISABLE_GRANT_OPTIONS is defined when the server is compiled (e.g.,
   # configure --disable-grant-options), mysqld will not recognize the
   # --bootstrap or --skip-grant-tables options.  The user can set
   # MYSQLD_BOOTSTRAP to the full path to a mysqld which does accept
   # --bootstrap, to accommodate this.
-  my $exe_mysqld_bootstrap = $ENV{'MYSQLD_BOOTSTRAP'} || find_mysqld($basedir);
+  my $exe_mysqld_bootstrap =
+    $ENV{'MYSQLD_BOOTSTRAP'} || find_mysqld($install_basedir);
 
   # MASV add only to bootstrap.test
   # Setup args for bootstrap.test
@@ -2545,32 +2571,44 @@ sub mysql_install_db {
   # ----------------------------------------------------------------------
   $ENV{'MYSQLD_BOOTSTRAP_CMD'}= "$exe_mysqld_bootstrap " . join(" ", @$args);
 
-  return if $thread_num > 0; # Only generate MYSQLD_BOOTSTRAP_CMD in workers
+
 
   # ----------------------------------------------------------------------
   # Create the bootstrap.sql file
   # ----------------------------------------------------------------------
   my $bootstrap_sql_file= "$opt_vardir/tmp/bootstrap.sql";
 
-  if (-f "$path_sql_dir/mysql_system_tables.sql")
+  my $path_sql= my_find_file($install_basedir,
+			     ["mysql", "sql/share", "share", "scripts"],
+			     "mysql_system_tables.sql",
+			     NOT_REQUIRED);
+
+  if (-f $path_sql )
   {
+    my $sql_dir= dirname($path_sql);
     # Use the mysql database for system tables
     mtr_tofile($bootstrap_sql_file, "use mysql\n");
 
     # Add the offical mysql system tables
     # for a production system
-    mtr_appendfile_to_file("$path_sql_dir/mysql_system_tables.sql",
+    mtr_appendfile_to_file("$sql_dir/mysql_system_tables.sql",
 			   $bootstrap_sql_file);
 
     # Add the mysql system tables initial data
     # for a production system
-    mtr_appendfile_to_file("$path_sql_dir/mysql_system_tables_data.sql",
+    mtr_appendfile_to_file("$sql_dir/mysql_system_tables_data.sql",
 			   $bootstrap_sql_file);
 
     # Add test data for timezone - this is just a subset, on a real
     # system these tables will be populated either by mysql_tzinfo_to_sql
     # or by downloading the timezone table package from our website
-    mtr_appendfile_to_file("$path_sql_dir/mysql_test_data_timezone.sql",
+    mtr_appendfile_to_file("$sql_dir/mysql_test_data_timezone.sql",
+			   $bootstrap_sql_file);
+
+    # Fill help tables, just an empty file when running from bk repo
+    # but will be replaced by a real fill_help_tables.sql when
+    # building the source dist
+    mtr_appendfile_to_file("$sql_dir/fill_help_tables.sql",
 			   $bootstrap_sql_file);
 
   }
@@ -2578,7 +2616,7 @@ sub mysql_install_db {
   {
     # Install db from init_db.sql that exist in early 5.1 and 5.0
     # versions of MySQL
-    my $init_file= "$basedir/mysql-test/lib/init_db.sql";
+    my $init_file= "$install_basedir/mysql-test/lib/init_db.sql";
     mtr_report(" - from '$init_file'");
     my $text= mtr_grab_file($init_file) or
       mtr_error("Can't open '$init_file': $!");
@@ -2586,12 +2624,6 @@ sub mysql_install_db {
     mtr_tofile($bootstrap_sql_file,
 	       sql_to_bootstrap($text));
   }
-
-  # Fill help tables, just an empty file when running from bk repo
-  # but will be replaced by a real fill_help_tables.sql when
-  # building the source dist
-  mtr_appendfile_to_file("$path_sql_dir/fill_help_tables.sql",
-			 $bootstrap_sql_file);
 
   # Remove anonymous users
   mtr_tofile($bootstrap_sql_file,
@@ -2615,8 +2647,8 @@ sub mysql_install_db {
 	     "$exe_mysqld_bootstrap " . join(" ", @$args) . "\n");
 
   # Create directories mysql and test
-  mkpath("$data_dir/mysql");
-  mkpath("$data_dir/test");
+  mkpath("$install_datadir/mysql");
+  mkpath("$install_datadir/test");
 
   if ( My::SafeProcess->run
        (
@@ -2686,12 +2718,14 @@ sub do_before_run_mysqltest($)
   my $tinfo= shift;
 
   # Remove old files produced by mysqltest
-  my $base_file= mtr_match_extension($tinfo->{'result_file'},
-				    "result"); # Trim extension
-  unlink("$base_file.reject");
-  unlink("$base_file.progress");
-  unlink("$base_file.log");
-  unlink("$base_file.warnings");
+  my $base_file= mtr_match_extension($tinfo->{result_file},
+				     "result"); # Trim extension
+  if (defined $base_file ){
+    unlink("$base_file.reject");
+    unlink("$base_file.progress");
+    unlink("$base_file.log");
+    unlink("$base_file.warnings");
+  }
 
   if ( $mysql_version_id < 50000 ) {
     # Set environment variable NDB_STATUS_OK to 1
@@ -2800,8 +2834,8 @@ sub check_testcase($$)
     else {
       # Unknown process returned, most likley a crash, abort everything
       $tinfo->{comment}=
-	"Unexpected process $proc returned during ".
-	"check testcase $mode test";
+	"The server $proc crashed while running ".
+	"'check testcase $mode test'";
       $result= 3;
     }
 
@@ -2912,8 +2946,7 @@ sub run_on_all($$)
     else {
       # Unknown process returned, most likley a crash, abort everything
       $tinfo->{comment}.=
-	"Unexpected process $proc returned during ".
-	"execution of '$run'";
+	"The server $proc crashed while running '$run'";
     }
 
     # Kill any check processes still running
@@ -3400,8 +3433,7 @@ sub check_warnings ($) {
     else {
       # Unknown process returned, most likley a crash, abort everything
       $tinfo->{comment}=
-	"Unexpected process $proc returned during ".
-	"check warnings";
+	"The server $proc crashed while running 'check warnings'";
       $result= 3;
     }
 
@@ -4135,14 +4167,26 @@ sub start_servers($) {
       }
     }
 
-    # Copy datadir from installed system db
-    for my $path ( "$opt_vardir", "$opt_vardir/..") {
-      my $install_db= "$path/install.db";
-      copytree($install_db, $datadir)
-	if -d $install_db;
+    my $mysqld_basedir= $mysqld->value('basedir');
+    if ( $basedir eq $mysqld_basedir )
+    {
+      # Copy datadir from installed system db
+      for my $path ( "$opt_vardir", "$opt_vardir/..") {
+	my $install_db= "$path/install.db";
+	copytree($install_db, $datadir)
+	  if -d $install_db;
+      }
+      mtr_error("Failed to copy system db to '$datadir'")
+	unless -d $datadir;
     }
-    mtr_error("Failed to copy system db to '$datadir'")
-      unless -d $datadir;
+    else
+    {
+      mysql_install_db($mysqld);
+
+      mtr_error("Failed to install system db to '$datadir'")
+	unless -d $datadir;
+
+    }
 
     # Create the servers tmpdir
     my $tmpdir= $mysqld->value('tmpdir');
@@ -4402,6 +4446,7 @@ sub start_mysqltest ($) {
   if ( $opt_record )
   {
     mtr_add_arg($args, "--record");
+    mtr_add_arg($args, "--result-file=%s", $tinfo->{record_file});
   }
 
   if ( $opt_client_gdb )

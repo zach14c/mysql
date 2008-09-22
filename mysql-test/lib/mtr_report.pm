@@ -378,6 +378,12 @@ sub mtr_report_stats ($) {
 		  /Can't execute this command because another BACKUP\/RESTORE operation is in progress/
 		) or
                 
+		# backup_db_grants test is supposed to trigger lots of restore warnings
+		($testname eq 'main.backup_db_grants') and
+		(
+		  /Restore:/ or /was skipped because the user does not exist/
+		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'main.backup_tablespace') and
 		(
