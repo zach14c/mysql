@@ -71,9 +71,13 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
     )
   ])
 
+  # -lstdc++ really shouldn't be here, and is only required while we continue
+  # to use gcc to link C++ code for the static linking hack.  Once we stop
+  # doing that it should be removed from here, and the CXXLDFLAG setting below
+  # will do the right thing for g++.
   AC_CACHE_CHECK([compiler flag to enable exceptions],
                  falcon_cxx_enable_exceptions,[
-    m4_foreach([cxxflag], [[-fexceptions], [-features=except]],[
+    m4_foreach([cxxflag], [[-fexceptions -lstdc++], [-features=except]],[
       CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
       AC_LINK_IFELSE([AC_LANG_PROGRAM()],
         falcon_cxx_enable_exceptions="cxxflag"
