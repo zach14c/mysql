@@ -7,7 +7,6 @@ partition_syntax_ndb           : Bug#36735 Not supported
 partition_value_innodb         : Bug#30581 partition_value tests use disallowed CAST() function
 partition_value_myisam         : Bug#30581 partition_value tests use disallowed CAST() function
 partition_value_ndb            : Bug#30581 partition_value tests use disallowed CAST() function
-partition_auto_increment_falcon : Bug#36595 2008-05-08 test crashes
 ndb_dd_backuprestore           : Bug#32659 2008-07-14 alik  Disabled to make 6.0 greaner (the test fails too often)
 partition_mgm_lc0_archive      : Bug#38751 - add partition deletes all rows
 partition_mgm_lc1_archive      : Bug#38751 - add partition deletes all rows

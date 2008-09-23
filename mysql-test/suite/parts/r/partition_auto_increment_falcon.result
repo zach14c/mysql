@@ -133,7 +133,7 @@ PARTITION BY HASH(c2)
 PARTITIONS 2;
 INSERT INTO t1 VALUES (1, NULL);
 INSERT INTO t1 VALUES (1, 1), (99, 99);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
 INSERT INTO t1 VALUES (1, NULL);
 SET @@session.sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
 INSERT INTO t1 VALUES (1, 0);
@@ -174,7 +174,7 @@ PARTITIONS 2;
 INSERT INTO t1 VALUES (2), (4), (NULL);
 INSERT INTO t1 VALUES (0);
 INSERT INTO t1 VALUES (5), (16);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '5' for key 'PRIMARY'
 INSERT INTO t1 VALUES (17), (19), (NULL);
 INSERT INTO t1 VALUES (NULL), (10), (NULL);
 INSERT INTO t1 VALUES (NULL), (9);
@@ -547,12 +547,12 @@ PARTITION BY HASH(c2)
 PARTITIONS 2;
 INSERT INTO t1 VALUES (1, 0);
 INSERT INTO t1 VALUES (1, 1);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
 INSERT INTO t1 VALUES (1, NULL);
 INSERT INTO t1 VALUES (2, NULL), (3, 11), (3, NULL), (2, 0);
 INSERT INTO t1 VALUES (2, NULL);
 INSERT INTO t1 VALUES (2, 2);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2' for key 'PRIMARY'
 INSERT INTO t1 VALUES (2, 22);
 INSERT INTO t1 VALUES (2, NULL);
 SELECT * FROM t1 ORDER BY c1,c2;
