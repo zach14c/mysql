@@ -787,6 +787,7 @@ impossible position";
 	  read_packet = 1;
           if (coord)
             coord->pos= uint4korr(packet->ptr() + 1 + LOG_POS_OFFSET);
+          event_type= (Log_event_type)((*packet)[LOG_EVENT_OFFSET+ev_offset]);
 	  break;
 
 	case LOG_READ_EOF:
