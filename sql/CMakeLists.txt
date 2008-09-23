@@ -78,6 +78,7 @@ ADD_EXECUTABLE(mysqld
                sql_connect.cc scheduler.cc transaction.cc
                ddl_blocker.cc si_objects.cc
                sql_profile.cc event_parse_data.cc mdl.cc
+               rpl_handler.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h
