@@ -75,6 +75,7 @@
 #include "RecordScavenge.h"
 #include "LogStream.h"
 #include "SyncTest.h"
+#include "SyncHandler.h"
 #include "PriorityScheduler.h"
 #include "Sequence.h"
 #include "BackLog.h"
@@ -462,6 +463,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	zombieTables = NULL;
 	updateCardinality = NULL;
 	backLog = NULL;
+	syncHandler = getFalconSyncHandler();
 	ioScheduler = new PriorityScheduler;
 	lastScavenge = 0;
 	scavengeCycle = 0;
@@ -610,6 +612,8 @@ Database::~Database()
 	delete transactionManager;
 	delete ioScheduler;
 	delete backLog;
+	if (syncHandler)
+		delete syncHandler;
 }
 
 void Database::createDatabase(const char * filename)
@@ -679,16 +683,28 @@ void Database::createDatabase(const char * filename)
 		}
 	catch (...)
 		{
-		dbb->closeFile();
-		dbb->deleteFile();
-		
+		deleteFilesOnExit = true;
 		throw;
 		}
+
 }
 
 void Database::openDatabase(const char * filename)
 {
-	cache = dbb->open (filename, configuration->pageCacheSize, 0);
+	try 
+		{
+		cache = dbb->open (filename, configuration->pageCacheSize, 0);
+		}
+	catch(SQLException& e)
+		{
+		// Master cannot be opened - throw OPEN_MASTER error to initiate
+		// create database. Don't do it if file exists, but there is a problem
+		// with permissions and/or locking.
+		if(e.getSqlcode() != FILE_ACCESS_ERROR)
+			throw SQLError(OPEN_MASTER_ERROR, e.getText());
+		else
+			throw;
+		}
 	start();
 
 	if (   dbb->logRoot.IsEmpty()
@@ -705,34 +721,18 @@ void Database::openDatabase(const char * filename)
 			{
 			if (dbb->logLength)
 				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-
-			try
-				{
-				serialLog->open(dbb->logRoot, false);
-				}
-			catch (SQLException&)
-				{
-				const char *p = strrchr(filename, '.');
-				JString logRoot = (p) ? JString(filename, (int) (p - filename)) : name;
-				bool failed = true;
-				
-				try
-					{
-					serialLog->open(logRoot, false);
-					failed = false;
-					}
-				catch (...)
-					{
-					}
-				
-				if (failed)
-					throw;
-				}
-			
+			serialLog->open(dbb->logRoot, false);
 			if (dbb->tableSpaceSectionId)
 				tableSpaceManager->bootstrap(dbb->tableSpaceSectionId);
 
-			serialLog->recover();
+			try 
+				{
+				serialLog->recover();
+				}
+			catch(SQLError &e)
+				{
+				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+				}
 			tableSpaceManager->postRecovery();
 			serialLog->start();
 			}
@@ -1560,7 +1560,7 @@ void Database::shutdown()
 
 	if (shuttingDown)
 		return;
-	
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
@@ -2479,6 +2479,10 @@ void Database::debugTrace(void)
 	if (falcon_debug_trace & FALC0N_SYNC_OBJECTS)
 		SyncObject::dump();
 	
+	if (falcon_debug_trace & FALC0N_SYNC_HANDLER)
+		if (syncHandler) 
+			syncHandler->dump();
+
 	if (falcon_debug_trace & FALC0N_REPORT_WRITES)
 		tableSpaceManager->reportWrites();
 	

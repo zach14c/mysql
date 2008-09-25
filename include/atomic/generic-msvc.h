@@ -30,7 +30,7 @@
 */
 #ifdef _M_IX86
 
-#if (_MSC_VER >= 1400)
+#if (_MSC_VER >= 1500)
 #include <intrin.h>
 #else
 C_MODE_START

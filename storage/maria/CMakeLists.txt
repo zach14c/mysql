@@ -49,7 +49,7 @@ SET(MARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c
 IF(NOT SOURCE_SUBLIBS)
 
   ADD_LIBRARY(maria ${MARIA_SOURCES})
-  ADD_DEPENDENCIES(ha_falcon GenError)
+  ADD_DEPENDENCIES(maria GenError)
 
 ADD_EXECUTABLE(maria_ftdump maria_ftdump.c)
 TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib wsock32)

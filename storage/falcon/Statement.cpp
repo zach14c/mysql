@@ -144,6 +144,7 @@ Statement::Statement(Connection *pConnection, Database *db)
 	special = false;
 	active = false;
 	memset (&stats, 0, sizeof (stats));
+	syncObject.setName("Statement::syncObject");
 }
 
 Statement::~Statement()
@@ -2303,9 +2304,9 @@ void Statement::dropIndex(Syntax *syntax)
 
 	checkAlterPriv (table);
 
-		Transaction *sysTransaction = database->getSystemTransaction();
+	Transaction *sysTransaction = database->getSystemTransaction();
 	table->dropIndex(name, sysTransaction);
-		database->commitSystemTransaction();
+	database->commitSystemTransaction();
 
 	Index::deleteIndex (database, schema, name);
 	database->commitSystemTransaction();

@@ -544,8 +544,11 @@ void my_write_core(int unused)
   if(hFile)
   {
     /* Create minidump */
+    MINIDUMP_TYPE dump_type = (MINIDUMP_TYPE)
+    (MiniDumpWithDataSegs|MiniDumpWithPrivateReadWriteMemory);
+
     if(pMiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
-      hFile, MiniDumpNormal, &info, 0, 0))
+      hFile, dump_type, &info, 0, 0))
     {
       fprintf(stderr, "Minidump written to %s\n",
         _fullpath(path, dump_fname, sizeof(path)) ? path : dump_fname);
