@@ -229,6 +229,10 @@ int init_slave()
     TODO: re-write this to interate through the list of files
     for multi-master
   */
+
+  if (pthread_key_create(&RPL_MASTER_INFO, NULL))
+    goto err;
+
   active_mi= new Master_info;
 
   /*
