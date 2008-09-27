@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+--source include/have_debug.inc
 
 #
 # Bug #39692: Falcon allocates SectorCache even if falcon_use_sectorcache is OFF
