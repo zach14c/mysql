@@ -1,0 +1,23 @@
+#
+# The falcon_team test suite is intended for unstable or otherwise
+# intermittently failing Falcon-related tests.
+# Stable Falcon tests are located in the falcon test suite.
+#
+# All tests in the falcon_team test suite should be associated with 
+# a bug report describing the test failure or issue related to the test.
+#
+# Note that a separate bug report is usually needed for this, it is
+# not sufficient to list the ID of the bug whose fix this test is 
+# supposed to verify.
+#
+# Format:
+#  Test case: BugId - BugDescription
+#
+# Do not use TAB characters for whitespace.
+# Keep the list sorted by test name.
+#
+
+falcon_bug_23945: Bug#34892 - Transaction handling in select_create::abort let's Falcon fail
+falcon_bug_26433: Bug#39314 - falcon_bug_26433 fails with an offset of 1 in row numbers in expected warnings
+falcon_bug_28048: Bug#36700 - Running falcon_bug_28048 shows increasing memory usage and run time
+falcon_bug_34892: Bug#34892 - Transaction handling in select_create::abort let's Falcon fail
