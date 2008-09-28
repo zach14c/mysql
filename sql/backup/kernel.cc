@@ -126,6 +126,10 @@ static int send_reply(Backup_restore_ctx &context);
 
   @note This function sends response to the client (ok, result set or error).
 
+  @note Both BACKUP and RESTORE should perform implicit commit at the beginning
+  and at the end of execution. This is done by the parser after marking these
+  commands with appropriate flags in @c sql_command_flags[] in sql_parse.cc.
+
   @returns 0 on success, error code otherwise.
  */
 
@@ -790,17 +794,6 @@ int Backup_restore_ctx::close()
   using namespace backup;
 
   time_t when= my_time(0);
-
-  // If auto commit is turned off, be sure to commit the transaction
-  /* 
-    Note: this code needs to be refactored (see BUG#38261). When refactoring
-    make sure that errors are detected and reported.
-  */
-  if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-  {
-    trans_commit_stmt(m_thd);
-    trans_commit_implicit(m_thd);
-  }
 
   // unlock tables if they are still locked
 
