@@ -1348,6 +1348,7 @@ bool tdc_open_view(THD *thd, TABLE_LIST *table_list, const char *alias,
 TABLE *find_locked_table(TABLE *list, const char *db, const char *table_name);
 TABLE *find_write_locked_table(TABLE *list, const char *db,
                                const char *table_name);
+thr_lock_type read_lock_type_for_table(THD *thd, TABLE *table);
 bool open_new_frm(THD *thd, TABLE_SHARE *share, const char *alias,
                   uint db_stat, uint prgflag,
                   uint ha_open_flags, TABLE *outparam,
@@ -2029,7 +2030,7 @@ extern bool opt_using_transactions;
 extern bool mysqld_embedded;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
-extern bool using_update_log, opt_large_files, server_id_supplied;
+extern bool opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_log, opt_slow_log;
 extern ulong log_output_options;
