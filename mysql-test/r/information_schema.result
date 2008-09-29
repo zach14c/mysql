@@ -63,11 +63,14 @@ SESSION_STATUS
 SESSION_VARIABLES
 STATISTICS
 TABLES
+TABLESPACES
 TABLE_CONSTRAINTS
 TABLE_PRIVILEGES
 TRIGGERS
 USER_PRIVILEGES
 VIEWS
+backup_history
+backup_progress
 columns_priv
 db
 event
@@ -78,8 +81,6 @@ help_keyword
 help_relation
 help_topic
 host
-online_backup
-online_backup_progress
 plugin
 proc
 procs_priv
@@ -103,6 +104,7 @@ inner join information_schema.TABLES v2 on (v1.c=v2.table_name)
 where v1.c like "t%";
 c	table_name
 TABLES	TABLES
+TABLESPACES	TABLESPACES
 TABLE_CONSTRAINTS	TABLE_CONSTRAINTS
 TABLE_PRIVILEGES	TABLE_PRIVILEGES
 TRIGGERS	TRIGGERS
@@ -122,6 +124,7 @@ left join information_schema.TABLES v2 on (v1.c=v2.table_name)
 where v1.c like "t%";
 c	table_name
 TABLES	TABLES
+TABLESPACES	TABLESPACES
 TABLE_CONSTRAINTS	TABLE_CONSTRAINTS
 TABLE_PRIVILEGES	TABLE_PRIVILEGES
 TRIGGERS	TRIGGERS
@@ -141,6 +144,7 @@ right join information_schema.TABLES v2 on (v1.c=v2.table_name)
 where v1.c like "t%";
 c	table_name
 TABLES	TABLES
+TABLESPACES	TABLESPACES
 TABLE_CONSTRAINTS	TABLE_CONSTRAINTS
 TABLE_PRIVILEGES	TABLE_PRIVILEGES
 TRIGGERS	TRIGGERS
@@ -627,6 +631,7 @@ COLLATIONS	SYSTEM VIEW	MEMORY
 show tables from information_schema like "T%";
 Tables_in_information_schema (T%)
 TABLES
+TABLESPACES
 TABLE_CONSTRAINTS
 TABLE_PRIVILEGES
 TRIGGERS
@@ -636,6 +641,7 @@ use information_schema;
 show full tables like "T%";
 Tables_in_information_schema (T%)	Table_type
 TABLES	SYSTEM VIEW
+TABLESPACES	SYSTEM VIEW
 TABLE_CONSTRAINTS	SYSTEM VIEW
 TABLE_PRIVILEGES	SYSTEM VIEW
 TRIGGERS	SYSTEM VIEW
@@ -648,6 +654,7 @@ use information_schema;
 show tables like "T%";
 Tables_in_information_schema (T%)
 TABLES
+TABLESPACES
 TABLE_CONSTRAINTS
 TABLE_PRIVILEGES
 TRIGGERS
@@ -803,15 +810,15 @@ TABLES	CREATE_TIME	datetime
 TABLES	UPDATE_TIME	datetime
 TABLES	CHECK_TIME	datetime
 TRIGGERS	CREATED	datetime
+backup_history	validity_point_time	datetime
+backup_history	start_time	datetime
+backup_history	stop_time	datetime
+backup_progress	start_time	datetime
+backup_progress	stop_time	datetime
 event	execute_at	datetime
 event	last_executed	datetime
 event	starts	datetime
 event	ends	datetime
-online_backup	validity_point_time	datetime
-online_backup	start_time	datetime
-online_backup	stop_time	datetime
-online_backup_progress	start_time	datetime
-online_backup_progress	stop_time	datetime
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES A
 WHERE NOT EXISTS 
 (SELECT * FROM INFORMATION_SCHEMA.COLUMNS B
@@ -862,7 +869,7 @@ flush privileges;
 SELECT table_schema, count(*) FROM information_schema.TABLES
 WHERE table_name NOT LIKE 'ndb_%' AND table_name NOT LIKE 'falcon%' GROUP BY TABLE_SCHEMA;
 table_schema	count(*)
-information_schema	29
+information_schema	30
 mysql	24
 create table t1 (i int, j int);
 create trigger trg1 before insert on t1 for each row
@@ -1283,7 +1290,6 @@ select 1 as f1 from information_schema.tables  where "CHARACTER_SETS"=
 (select cast(table_name as char)  from information_schema.tables
 order by table_name limit 1) limit 1;
 f1
-1
 select t.table_name, group_concat(t.table_schema, '.', t.table_name),
 count(*) as num1
 from information_schema.tables t
@@ -1325,6 +1331,7 @@ SESSION_STATUS	information_schema.SESSION_STATUS	1
 SESSION_VARIABLES	information_schema.SESSION_VARIABLES	1
 STATISTICS	information_schema.STATISTICS	1
 TABLES	information_schema.TABLES	1
+TABLESPACES	information_schema.TABLESPACES	1
 TABLE_CONSTRAINTS	information_schema.TABLE_CONSTRAINTS	1
 TABLE_PRIVILEGES	information_schema.TABLE_PRIVILEGES	1
 TRIGGERS	information_schema.TRIGGERS	1

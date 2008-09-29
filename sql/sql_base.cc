@@ -21,6 +21,7 @@
 #include "sp_head.h"
 #include "sp.h"
 #include "sql_trigger.h"
+#include "transaction.h"
 #include <m_ctype.h>
 #include <my_dir.h>
 #include <hash.h>
@@ -1354,7 +1355,7 @@ void close_thread_tables(THD *thd,
   if (!(thd->state_flags & Open_tables_state::BACKUPS_AVAIL))
   {
     thd->main_da.can_overwrite_status= TRUE;
-    ha_autocommit_or_rollback(thd, thd->is_error());
+    thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
     thd->main_da.can_overwrite_status= FALSE;
 
     /*
@@ -2607,7 +2608,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
           VIEW not really opened, only frm were read.
           Set 1 as a flag here
         */
-        table_list->view= (st_lex*)1;
+        table_list->view= (LEX*)1;
       }
       else
       {

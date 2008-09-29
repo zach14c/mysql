@@ -572,7 +572,8 @@ class st_alter_tablespace : public Sql_alloc
 
 /* The handler for a table type.  Will be included in the TABLE structure */
 
-struct st_table;
+struct TABLE;
+struct TABLE_SHARE;
 
 /*
   Make sure that the order of schema_tables and enum_schema_tables are the same.
@@ -605,19 +606,16 @@ enum enum_schema_tables
   SCH_STATISTICS,
   SCH_STATUS,
   SCH_TABLES,
+  SCH_TABLESPACES,
   SCH_TABLE_CONSTRAINTS,
   SCH_TABLE_NAMES,
   SCH_TABLE_PRIVILEGES,
   SCH_TRIGGERS,
   SCH_USER_PRIVILEGES,
   SCH_VARIABLES,
-  SCH_VIEWS,
-  SCH_FALCON_TABLESPACES,
-  SCH_FALCON_TABLESPACE_FILES
+  SCH_VIEWS
 };
 
-typedef struct st_table TABLE;
-typedef struct st_table_share TABLE_SHARE;
 struct st_foreign_key_info;
 typedef struct st_foreign_key_info FOREIGN_KEY_INFO;
 typedef bool (stat_print_fn)(THD *thd, const char *type, uint type_len,
@@ -692,6 +690,7 @@ struct handler_iterator {
   void *buffer;
 };
 
+class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
   to provide access to storage engine functionality that works on the
@@ -1387,8 +1386,8 @@ class handler :public Sql_alloc
 public:
   typedef ulonglong Table_flags;
 protected:
-  struct st_table_share *table_share;   /* The table definition */
-  struct st_table *table;               /* The current open table */
+  TABLE_SHARE *table_share;   /* The table definition */
+  TABLE *table;               /* The current open table */
   Table_flags cached_table_flags;       /* Set on init() and open() */
 
   ha_rows estimation_rows_to_insert;
@@ -2458,10 +2457,6 @@ extern TYPELIB tx_isolation_typelib;
 extern TYPELIB myisam_stats_method_typelib;
 extern ulong total_ha, total_ha_2pc;
 
-       /* Wrapper functions */
-#define ha_commit(thd) (ha_commit_trans((thd), TRUE))
-#define ha_rollback(thd) (ha_rollback_trans((thd), TRUE))
-
 /* lookups */
 handlerton *ha_default_handlerton(THD *thd);
 plugin_ref ha_resolve_by_name(THD *thd, const LEX_STRING *name);
@@ -2538,13 +2533,12 @@ int ha_release_temporary_latches(THD *thd);
 int ha_start_consistent_snapshot(THD *thd);
 int ha_commit_or_rollback_by_xid(XID *xid, bool commit);
 int ha_commit_one_phase(THD *thd, bool all);
+int ha_commit_trans(THD *thd, bool all);
 int ha_rollback_trans(THD *thd, bool all);
 int ha_prepare(THD *thd);
 int ha_recover(HASH *commit_list);
 
 /* transactions: these functions never call handlerton functions directly */
-int ha_commit_trans(THD *thd, bool all);
-int ha_autocommit_or_rollback(THD *thd, int error);
 int ha_enable_transaction(THD *thd, bool on);
 
 /* savepoints */

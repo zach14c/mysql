@@ -1893,3 +1893,5 @@ libmysqld/ddl_blocker.cc
 libmysqld/mdl.cc
 libmysqld/sql_fixstring.cc
 libmysqld/sql_signal.cc
+client/transaction.h
+libmysqld/transaction.cc

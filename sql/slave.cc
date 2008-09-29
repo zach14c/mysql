@@ -34,6 +34,7 @@
 #include "sql_repl.h"
 #include "rpl_filter.h"
 #include "repl_failsafe.h"
+#include "transaction.h"
 #include <thr_alarm.h>
 #include <my_dir.h>
 #include <sql_common.h>
@@ -1240,7 +1241,7 @@ bool show_master_info(THD* thd, Master_info* mi)
   field_list.push_back(new Item_return_int("Last_SQL_Errno", 4, MYSQL_TYPE_LONG));
   field_list.push_back(new Item_empty_string("Last_SQL_Error", 20));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -1954,7 +1955,7 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
           else
           {
             exec_res= 0;
-            end_trans(thd, ROLLBACK);
+            trans_rollback(thd);
             /* chance for concurrent connection to get more locks */
             safe_sleep(thd, min(rli->trans_retries, MAX_SLAVE_RETRY_PAUSE),
                        (CHECK_KILLED_FUNC)sql_slave_killed, (void*)rli);

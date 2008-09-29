@@ -216,7 +216,7 @@ void SerialLog::recover()
 	Sync sync(&syncWrite, "SerialLog::recover");
 	sync.lock(Exclusive);
 	recovering = true;
-	recoveryPhase = 0;
+	recoveryPhase = 0;	// Find last block and recovery block
 	
 	// See if either or both files have valid blocks
 
@@ -323,7 +323,7 @@ void SerialLog::recover()
 	recoveryPages = new RecoveryObjects(this);
 	recoverySections = new RecoveryObjects(this);
 	recoveryIndexes = new RecoveryObjects(this);
-	recoveryPhase = 1;
+	recoveryPhase = 1;	// Take Inventory (serialLogTransactions, recoveryObject states, last checkpoint)
 	
 	// Make a first pass finding records, transactions, etc.
 
@@ -337,7 +337,7 @@ void SerialLog::recover()
 	recoveryPages->reset();
 	recoveryIndexes->reset();
 	recoverySections->reset();
-	recoveryPhase = 2;
+	recoveryPhase = 2;	// Physical operations, skip old incarnations
 
 	// Next, make a second pass to reallocate any necessary pages
 
@@ -352,7 +352,7 @@ void SerialLog::recover()
 
 	control.setWindow(window, block, 0);
 	SerialLogTransaction *transaction;
-	recoveryPhase = 3;
+	recoveryPhase = 3;	// Logical operations, skip old incarnations
 
 	for (transaction = running.first; transaction; transaction = transaction->next)
 		transaction->preRecovery();
@@ -416,7 +416,7 @@ void SerialLog::recover()
 		}
 		
 	Log::log("Recovery complete\n");
-	recoveryPhase = 0;
+	recoveryPhase = 0;	// Find last lock and recovery block
 }
 
 void SerialLog::overflowFlush(void)
@@ -1294,12 +1294,6 @@ bool SerialLog::indexInUse(int indexId, int tableSpaceId)
 	TableSpaceInfo *info = getTableSpaceInfo(tableSpaceId);
 	return info->indexUseVector.get(indexId) > 0;
 }
-/*
-int SerialLog::getPageState(int32 pageNumber, int tableSpaceId)
-{
-	return recoveryPages->getCurrentState(pageNumber, tableSpaceId);
-}
-*/
 
 void SerialLog::redoFreePage(int32 pageNumber, int tableSpaceId)
 {

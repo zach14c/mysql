@@ -430,7 +430,10 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 extern DDL_blocker_class *DDL_blocker;
 bool opt_update_log, opt_bin_log;
 my_bool opt_log, opt_slow_log;
+my_bool opt_backup_history_log;
+my_bool opt_backup_progress_log;
 ulong log_output_options;
+ulong log_backup_output_options;
 my_bool opt_log_queries_not_using_indexes= 0;
 bool opt_error_log= IF_WIN(1,0);
 bool opt_disable_networking=0, opt_skip_show_db=0;
@@ -572,6 +575,7 @@ ulong slow_launch_threads = 0, sync_binlog_period;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
+const char *log_backup_output_str= "TABLE";
 
 const double log_10[] = {
   1e000, 1e001, 1e002, 1e003, 1e004, 1e005, 1e006, 1e007, 1e008, 1e009,
@@ -718,6 +722,8 @@ char *master_info_file;
 char *relay_log_info_file, *report_user, *report_password, *report_host;
 char *opt_relay_logname = 0, *opt_relaylog_index_name=0;
 char *opt_logname, *opt_slow_logname;
+char *opt_backup_history_logname, *opt_backup_progress_logname,
+     *opt_backup_settings_name;
 
 /* Static variables */
 
@@ -1366,8 +1372,10 @@ void clean_up(bool print_message)
   my_free(sys_init_connect.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_init_slave.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_var_general_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
-  my_free(sys_var_slow_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_backup_history_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_backup_progress_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_var_backupdir.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_slow_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
   free_tmpdir(&mysql_tmpdir_list);
 #ifdef HAVE_REPLICATION
   my_free(slave_load_tmpdir,MYF(MY_ALLOW_ZERO_PTR));
@@ -2884,6 +2892,8 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
       /* switch to the old log message processing */
       logger.set_handlers(LOG_FILE, opt_slow_log ? LOG_FILE:LOG_NONE,
                           opt_log ? LOG_FILE:LOG_NONE);
+      logger.set_backup_handlers(opt_backup_history_log ? LOG_FILE : LOG_NONE,
+                                 opt_backup_progress_log ? LOG_FILE : LOG_NONE);
       DBUG_PRINT("info",("Got signal: %d  abort_loop: %d",sig,abort_loop));
       if (!abort_loop)
       {
@@ -2901,6 +2911,7 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
       }
       break;
     case SIGHUP:
+    {
       if (!abort_loop)
       {
         bool not_used;
@@ -2924,7 +2935,14 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
                             opt_slow_log ? log_output_options : LOG_NONE,
                             opt_log ? log_output_options : LOG_NONE);
       }
+      if (log_backup_output_options & LOG_NONE)
+        logger.set_backup_handlers(LOG_NONE, LOG_NONE);
+      else
+        logger.set_backup_handlers(
+          opt_backup_history_log ? log_backup_output_options : LOG_NONE,
+          opt_backup_progress_log ? log_backup_output_options : LOG_NONE);
       break;
+    }
 #ifdef USE_ONE_SIGNAL_HAND
     case THR_SERVER_ALARM:
       process_alarm(sig);			// Trigger alarms.
@@ -3515,9 +3533,34 @@ static int init_common_variables(const char *conf_file_name, int argc,
                       "--log-slow-queries option, log tables are used. "
                       "To enable logging to files use the --log-output=file option.");
 
+  if (opt_backup_history_log && opt_backup_history_logname
+     && !(log_backup_output_options & LOG_FILE) && !(log_backup_output_options & LOG_NONE))
+    sql_print_warning("Although a path was specified for the "
+                      "--log-backup-history option, log tables are used. "
+                      "To enable logging to files use the --log-backup-output option.");
+
+  if (opt_backup_progress_log && opt_backup_progress_logname
+     && !(log_backup_output_options & LOG_FILE) && !(log_backup_output_options & LOG_NONE))
+    sql_print_warning("Although a path was specified for the "
+                      "--log-backup-progress option, log tables are used. "
+                      "To enable logging to files use the --log-backup-output option.");
+
   s= opt_logname ? opt_logname : make_default_log_name(buff, ".log");
   sys_var_general_log_path.value= my_strdup(s, MYF(0));
   sys_var_general_log_path.value_length= strlen(s);
+
+  /*
+    Set defaults for history and progress log paths.
+  */
+  s= opt_backup_history_logname ? opt_backup_history_logname : 
+    make_backup_log_name(buff, BACKUP_HISTORY_LOG_NAME.str, ".log");
+  sys_var_backup_history_log_path.value= my_strdup(s, MYF(0));
+  sys_var_backup_history_log_path.value_length= BACKUP_HISTORY_LOG_NAME.length;
+
+  s= opt_backup_progress_logname ? opt_backup_progress_logname : 
+    make_backup_log_name(buff, BACKUP_PROGRESS_LOG_NAME.str, ".log");
+  sys_var_backup_progress_log_path.value= my_strdup(s, MYF(0));
+  sys_var_backup_progress_log_path.value_length= BACKUP_PROGRESS_LOG_NAME.length;
 
   s= opt_slow_logname ? opt_slow_logname : make_default_log_name(buff, "-slow.log");
   sys_var_slow_log_path.value= my_strdup(s, MYF(0));
@@ -4039,7 +4082,10 @@ server.");
 
 #ifdef WITH_CSV_STORAGE_ENGINE
   if (opt_bootstrap)
+  {
     log_output_options= LOG_FILE;
+    log_backup_output_options= LOG_FILE;
+  }
   else
     logger.init_log_tables();
 
@@ -4071,9 +4117,41 @@ server.");
     logger.set_handlers(LOG_FILE, opt_slow_log ? log_output_options:LOG_NONE,
                         opt_log ? log_output_options:LOG_NONE);
   }
+
+  if (log_backup_output_options & LOG_NONE)
+  {
+    /*
+      Issue a warining if there were specified additional options to the
+      log-backup-output along with NONE. Probably this wasn't what user wanted.
+    */
+    if ((log_backup_output_options & LOG_NONE) && 
+        (log_backup_output_options & ~LOG_NONE))
+      sql_print_warning("There were other values specified to "
+                        "log-backup-output besides NONE. Disabling "
+                        "backup logs anyway.");
+    logger.set_backup_handlers(LOG_NONE, LOG_NONE);
+  }
+  else
+  {
+    /* fall back to the log files if tables are not present */
+    LEX_STRING csv_name={C_STRING_WITH_LEN("csv")};
+    if (!plugin_is_ready(&csv_name, MYSQL_STORAGE_ENGINE_PLUGIN))
+    {
+      /* purecov: begin inspected */
+      sql_print_error("CSV engine is not present, falling back to the "
+                      "log files");
+      log_backup_output_options= 
+        (log_backup_output_options & ~LOG_TABLE) | LOG_FILE;
+      /* purecov: end */
+    }
+
+    logger.set_backup_handlers(log_backup_output_options,
+      log_backup_output_options);
+  }
 #else
   logger.set_handlers(LOG_FILE, opt_slow_log ? LOG_FILE:LOG_NONE,
                       opt_log ? LOG_FILE:LOG_NONE);
+  logger.set_backup_handlers(LOG_FILE, LOG_FILE);
 #endif
 
   /*
@@ -5679,10 +5757,13 @@ enum options_mysqld
   OPT_PLUGIN_LOAD,
   OPT_PLUGIN_DIR,
   OPT_LOG_OUTPUT,
+  OPT_LOG_BACKUP_OUTPUT,
   OPT_PORT_OPEN_TIMEOUT,
   OPT_PROFILING,
   OPT_KEEP_FILES_ON_CREATE,
   OPT_GENERAL_LOG,
+  OPT_BACKUP_HISTORY_LOG,
+  OPT_BACKUP_PROGRESS_LOG,
   OPT_SLOW_LOG,
   OPT_THREAD_HANDLING,
   OPT_INNODB_ROLLBACK_ON_TIMEOUT,
@@ -5739,6 +5820,12 @@ struct my_option my_long_options[] =
    0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
   {"backupdir", 'B', "Path used to store backup data.", (uchar**) &sys_var_backupdir.value,
    (uchar**) &sys_var_backupdir.value, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"backup-history-log", OPT_BACKUP_HISTORY_LOG,
+   "Enable|disable backup history log", (uchar**) &opt_backup_history_log,
+   (uchar**) &opt_backup_history_log, 0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
+  {"backup-progress-log", OPT_BACKUP_PROGRESS_LOG,
+   "Enable|disable backup progress log", (uchar**) &opt_backup_progress_log,
+   (uchar**) &opt_backup_progress_log, 0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
   {"basedir", 'b',
    "Path to installation directory. All paths are usually resolved relative to this.",
    (uchar**) &mysql_home_ptr, (uchar**) &mysql_home_ptr, 0, GET_STR, REQUIRED_ARG,
@@ -5988,6 +6075,11 @@ Disable with --skip-large-pages.",
    "Syntax: log-output[=value[,value...]], where \"value\" could be TABLE, "
    "FILE or NONE.",
    (uchar**) &log_output_str, (uchar**) &log_output_str, 0,
+   GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"log-backup-output", OPT_LOG_BACKUP_OUTPUT,
+   "Syntax: log-backup-output[=value[,value...]], where \"value\" could be TABLE, "
+   "FILE or NONE.",
+   (uchar**) &log_backup_output_str, (uchar**) &log_backup_output_str, 0,
    GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #endif
   {"log-queries-not-using-indexes", OPT_LOG_QUERIES_NOT_USING_INDEXES,
@@ -7608,6 +7700,7 @@ static void mysql_init_variables(void)
   opt_log= opt_slow_log= 0;
   opt_update_log= 0;
   log_output_options= find_bit_type(log_output_str, &log_output_typelib);
+  log_backup_output_options= find_bit_type(log_backup_output_str, &log_output_typelib);
   opt_bin_log= 0;
   opt_disable_networking= opt_skip_show_db=0;
   opt_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= 0;
@@ -7695,6 +7788,8 @@ static void mysql_init_variables(void)
   mysql_data_home_buff[1]=0;
   mysql_data_home_len= 2;
 
+  strmake(language, LANGUAGE, sizeof(language)-1);
+ 
   /* Replication parameters */
   master_info_file= (char*) "master.info",
     relay_log_info_file= (char*) "relay-log.info";
@@ -8059,6 +8154,21 @@ mysqld_get_one_option(int optid,
     {
       log_output_str= argument;
       log_output_options=
+        find_bit_type_or_exit(argument, &log_output_typelib, opt->name);
+  }
+    break;
+  }
+  case  OPT_LOG_BACKUP_OUTPUT:
+  {
+    if (!argument || !argument[0])
+    {
+      log_backup_output_options= LOG_FILE;
+      log_backup_output_str= log_output_typelib.type_names[1];
+    }
+    else
+    {
+      log_backup_output_str= argument;
+      log_backup_output_options=
         find_bit_type_or_exit(argument, &log_output_typelib, opt->name);
   }
     break;

@@ -6251,7 +6251,7 @@ ER_BACKUP_THREAD_INIT
         eng "Backup driver's table locking thread can not be initialized."
 
 ER_BACKUP_PROGRESS_TABLES
-        eng "Can't open the online backup progress tables. Check 'mysql.online_backup' and 'mysql.online_backup_progress'."
+        eng "Can't open the backup log tables. Check 'mysql.backup_history' and 'mysql.backup_progress'."
 
 ER_TABLESPACE_EXIST
   eng "Tablespace '%-.192s' already exists"
@@ -6388,6 +6388,10 @@ ER_BACKUP_GRANT_SKIPPED
         eng "The grant '%-.64s' was skipped because the user does not exist."
 ER_BACKUP_GRANT_WRONG_DB
         eng "The grant '%-.64s' failed. Database not included in the backup image."
+ER_BACKUP_LOGPATHS
+  eng "The log names for backup_history and backup_progress must be unique."
+ER_BACKUP_LOGPATH_INVALID
+  eng "The path specified for the %-.64s is invalid. ref: %-.64s"
 
 ER_DUP_SIGNAL_SET 42000
         eng "Duplicate condition information item '%s'"

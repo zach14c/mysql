@@ -42,6 +42,7 @@
 
 #include "sp_rcontext.h"
 #include "sp_cache.h"
+#include "transaction.h"
 
 /*
   The following is used to initialise Table_ident with a internal
@@ -1044,7 +1045,8 @@ void THD::cleanup(void)
   }
 #endif
   {
-    ha_rollback(this);
+    transaction.xid_state.xa_state= XA_NOTR;
+    trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
   locked_tables_list.unlock_locked_tables(this);
@@ -1605,7 +1607,7 @@ int THD::send_explain_fields(select_result *result)
   }
   item->maybe_null= 1;
   field_list.push_back(new Item_empty_string("Extra", 255, cs));
-  return (result->send_fields(field_list,
+  return (result->send_result_set_metadata(field_list,
                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF));
 }
 
@@ -1751,10 +1753,10 @@ sql_exchange::sql_exchange(char *name, bool flag,
   cs= NULL;
 }
 
-bool select_send::send_fields(List<Item> &list, uint flags)
+bool select_send::send_result_set_metadata(List<Item> &list, uint flags)
 {
   bool res;
-  if (!(res= thd->protocol->send_fields(&list, flags)))
+  if (!(res= thd->protocol->send_result_set_metadata(&list, flags)))
     is_result_set_started= 1;
   return res;
 }
@@ -1796,10 +1798,13 @@ void select_send::cleanup()
 
 bool select_send::send_data(List<Item> &items)
 {
+  Protocol *protocol= thd->protocol;
+  DBUG_ENTER("select_send::send_data");
+
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
     unit->offset_limit_cnt--;
-    return 0;
+    DBUG_RETURN(FALSE);
   }
 
   /*
@@ -1809,31 +1814,18 @@ bool select_send::send_data(List<Item> &items)
   */
   ha_release_temporary_latches(thd);
 
-  List_iterator_fast<Item> li(items);
-  Protocol *protocol= thd->protocol;
-  char buff[MAX_FIELD_WIDTH];
-  String buffer(buff, sizeof(buff), &my_charset_bin);
-  DBUG_ENTER("select_send::send_data");
-
   protocol->prepare_for_resend();
-  Item *item;
-  while ((item=li++))
-  {
-    if (item->send(protocol, &buffer) || thd->is_error())
-    {
-      protocol->free();				// Free used buffer
-      my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
-      break;
-    }
-  }
-  if (thd->is_error())
+  if (protocol->send_result_set_row(&items))
   {
     protocol->remove_last_row();
-    DBUG_RETURN(1);
+    DBUG_RETURN(TRUE);
   }
+
   thd->sent_row_count++;
+
   if (thd->vio_ok())
     DBUG_RETURN(protocol->write());
+
   DBUG_RETURN(0);
 }
 
@@ -3623,7 +3615,7 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
 
   uchar *row_data= memory.slot(0);
 
-  size_t const len= pack_row(table, table->write_set, row_data, record);
+  size_t const len= pack_row(table, table->write_set, row_data, record, TRUE);
 
   Rows_log_event* const ev=
     binlog_prepare_pending_rows_event(table, server_id, len, is_trans,
@@ -3652,9 +3644,9 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
   uchar *after_row= row_data.slot(1);
 
   size_t const before_size= pack_row(table, table->read_set, before_row,
-                                        before_record);
+                                     before_record, TRUE);
   size_t const after_size= pack_row(table, table->write_set, after_row,
-                                       after_record);
+                                    after_record, TRUE);
 
   /*
     Don't print debug messages when running valgrind since they can
@@ -3696,7 +3688,7 @@ int THD::binlog_delete_row(TABLE* table, bool is_trans,
   uchar *row_data= memory.slot(0);
 
   DBUG_DUMP("table->read_set", (uchar*) table->read_set->bitmap, (table->s->fields + 7) / 8);
-  size_t const len= pack_row(table, table->read_set, row_data, record);
+  size_t const len= pack_row(table, table->read_set, row_data, record, TRUE);
 
   Rows_log_event* const ev=
     binlog_prepare_pending_rows_event(table, server_id, len, is_trans,

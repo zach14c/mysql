@@ -31,6 +31,7 @@
 #include "rpl_filter.h"
 #include "rpl_utility.h"
 #include "rpl_record.h"
+#include "transaction.h"
 #include <my_dir.h>
 
 #endif /* MYSQL_CLIENT */
@@ -5094,7 +5095,7 @@ int Xid_log_event::do_apply_event(Relay_log_info const *rli)
   /* For a slave Xid_log_event is COMMIT */
   general_log_print(thd, COM_QUERY,
                     "COMMIT /* implicit, from Xid_log_event */");
-  return end_trans(thd, COMMIT);
+  return trans_commit(thd);
 }
 
 Log_event::enum_skip_reason
@@ -7418,7 +7419,7 @@ Rows_log_event::do_update_pos(Relay_log_info *rli)
       are involved, commit the transaction and flush the pending event to the
       binlog.
     */
-    error= ha_autocommit_or_rollback(thd, 0);
+    error= trans_commit_stmt(thd);
 
     /*
       Now what if this is not a transactional engine? we still need to

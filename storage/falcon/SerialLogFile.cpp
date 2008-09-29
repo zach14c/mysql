@@ -76,16 +76,22 @@ SerialLogFile::SerialLogFile(Database *db)
 	highWater = 0;
 	writePoint = 0;
 	forceFsync = false;
+	created = false;
 	sectorSize = database->serialLogBlockSize;
 }
 
 SerialLogFile::~SerialLogFile()
 {
 	close();
+	if(created && deleteFilesOnExit)
+		unlink(fileName);
 }
 
 void SerialLogFile::open(JString filename, bool create)
 {
+	if(!create)
+		ASSERT(!inCreateDatabase);
+
 #ifdef _WIN32
 	handle = 0;
 	char pathName[1024];
@@ -96,7 +102,7 @@ void SerialLogFile::open(JString filename, bool create)
 						GENERIC_READ | GENERIC_WRITE,
 						0,							// share mode
 						NULL,						// security attributes
-						(create) ? CREATE_ALWAYS : OPEN_ALWAYS,
+						(create) ? CREATE_NEW : OPEN_EXISTING,
 						FILE_FLAG_NO_BUFFERING | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
 						0);
 
@@ -119,25 +125,19 @@ void SerialLogFile::open(JString filename, bool create)
 
 	sectorSize = MAX(bytesPerSector, database->serialLogBlockSize);
 #else
+	
 
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		if (create)
-			handle = ::open(filename,  IO::getWriteMode(attempt) | O_RDWR | O_BINARY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-		else
-			handle = ::open(filename, IO::getWriteMode(attempt) | O_RDWR | O_BINARY);
+	if (create)
+		handle = ::open(filename, O_RDWR | O_BINARY | O_CREAT|O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+	else
+		handle = ::open(filename, O_RDWR | O_BINARY);
 
-		if (handle > 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
 
 	if (handle <= 0)		
 		throw SQLEXCEPTION (IO_ERROR, "can't open file \"%s\": %s (%d)", 
 							(const char*) filename, strerror (errno), errno);
 
+	IO::setWriteFlags(handle, &forceFsync);
 	fileName = filename;
 	struct stat statBuffer;
 	fstat(handle, &statBuffer);
@@ -146,7 +146,10 @@ void SerialLogFile::open(JString filename, bool create)
 #endif
 
 	if (create)
+	{
+		created = true;
 		zap();
+	}
 }
 
 void SerialLogFile::close()
