@@ -33,9 +33,19 @@ LEX_STRING GENERAL_LOG_NAME= {C_STRING_WITH_LEN("general_log")};
 /* SLOW_LOG name */
 LEX_STRING SLOW_LOG_NAME= {C_STRING_WITH_LEN("slow_log")};
 
+/* BACKUP_HISTORY_LOG name */
+LEX_STRING BACKUP_HISTORY_LOG_NAME= {C_STRING_WITH_LEN("backup_history")};
+
+/* BACKUP_PROGRESS_LOG name */
+LEX_STRING BACKUP_PROGRESS_LOG_NAME= {C_STRING_WITH_LEN("backup_progress")};
+
+/* BACKUP_SETTINGS name */
+LEX_STRING BACKUP_SETTINGS_NAME= {C_STRING_WITH_LEN("backup_settings")};
+
 #ifndef EMBEDDED_LIBRARY
 extern LEX_STRING BACKUP_HISTORY_LOG_NAME;
 extern LEX_STRING BACKUP_PROGRESS_LOG_NAME;
+extern LEX_STRING BACKUP_SETTINGS_NAME;
 #endif
 
 	/* Functions defined in this file */
@@ -238,6 +248,30 @@ TABLE_CATEGORY get_table_category(const LEX_STRING *db, const LEX_STRING *name)
     if ((name->length == GENERAL_LOG_NAME.length) &&
         (my_strcasecmp(system_charset_info,
                       GENERAL_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_HISTORY_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_HISTORY_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_PROGRESS_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_PROGRESS_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_SETTINGS_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_SETTINGS_NAME.str,
                       name->str) == 0))
     {
       return TABLE_CATEGORY_PERFORMANCE;

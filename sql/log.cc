@@ -39,6 +39,7 @@
 #endif
 
 #include <mysql/plugin.h>
+#include "si_logs.h"
 
 /* max size of the log message */
 #define MAX_LOG_BUFFER_SIZE 1024
@@ -110,6 +111,25 @@ char *make_default_log_name(char *buff,const char* log_ext)
 {
   strmake(buff, pidfile_name, FN_REFLEN-5);
   return fn_format(buff, buff, mysql_data_home, log_ext,
+                   MYF(MY_UNPACK_FILENAME|MY_REPLACE_EXT));
+}
+
+/**
+  Create the name of the backup log specified.
+
+  This method forms a new path + file name for the backup
+  log specified in @c name.
+
+  @param[IN] buff    Location for building new string.
+  @param[IN] name    Name of the backup log.
+  @param[IN] log_ext The extension for the log (e.g. .log).
+
+  @returns Pointer to new string containing the name.
+*/
+char *make_backup_log_name(char *buff, const char *name, const char* log_ext)
+{
+  strmake(buff, name, FN_REFLEN-5);
+  return fn_format(buff, buff, mysql_real_data_home, log_ext,
                    MYF(MY_UNPACK_FILENAME|MY_REPLACE_EXT));
 }
 
@@ -682,16 +702,37 @@ int Log_to_csv_event_handler::
 
   bzero(& table_list, sizeof(TABLE_LIST));
 
-  if (log_table_type == QUERY_LOG_GENERAL)
+  /*
+    Code changed to use a switch now that there are 4 logs.
+  */
+  switch (log_table_type) {
+  case QUERY_LOG_GENERAL:
   {
     table_list.alias= table_list.table_name= GENERAL_LOG_NAME.str;
     table_list.table_name_length= GENERAL_LOG_NAME.length;
+    break;
   }
-  else
+  case QUERY_LOG_SLOW:
   {
     DBUG_ASSERT(log_table_type == QUERY_LOG_SLOW);
     table_list.alias= table_list.table_name= SLOW_LOG_NAME.str;
     table_list.table_name_length= SLOW_LOG_NAME.length;
+    break;
+  }
+  case BACKUP_HISTORY_LOG:
+  {
+    DBUG_ASSERT(log_table_type == BACKUP_HISTORY_LOG);
+    table_list.alias= table_list.table_name= BACKUP_HISTORY_LOG_NAME.str;
+    table_list.table_name_length= BACKUP_HISTORY_LOG_NAME.length;
+    break;
+  }
+  case BACKUP_PROGRESS_LOG:
+  {
+    DBUG_ASSERT(log_table_type == BACKUP_PROGRESS_LOG);
+    table_list.alias= table_list.table_name= BACKUP_PROGRESS_LOG_NAME.str;
+    table_list.table_name_length= BACKUP_PROGRESS_LOG_NAME.length;
+    break;
+  }
   }
 
   table_list.lock_type= TL_WRITE_CONCURRENT_INSERT;
@@ -710,6 +751,339 @@ int Log_to_csv_event_handler::
     result= 1;
 
   DBUG_RETURN(result);
+}
+
+/**
+  Write the backup log entry for the backup history log to a table.
+
+  This method creates a new row in the backup history log with the
+  information provided.
+
+  @param[IN]   thd   The current thread
+  @param[IN]   st_backup_history   Data to write to log.
+
+  @retval TRUE if error.
+
+  @todo Add internal error handler to handle errors that occur on
+        open. See  thd->push_internal_handler(&error_handler).
+*/
+bool Log_to_csv_event_handler::
+  log_backup_history(THD *thd, 
+                     st_backup_history *history_data)
+{
+  TABLE_LIST table_list;
+  TABLE *table= NULL;
+  bool result= TRUE;
+  bool need_close= FALSE;
+  bool need_rnd_end= FALSE;
+  Open_tables_state open_tables_backup;
+  bool save_time_zone_used;
+  char *host= current_thd->security_ctx->host; // host name
+  char *user= current_thd->security_ctx->user; // user name
+
+  save_time_zone_used= thd->time_zone_used;
+  bzero(& table_list, sizeof(TABLE_LIST));
+  table_list.alias= table_list.table_name= BACKUP_HISTORY_LOG_NAME.str;
+  table_list.table_name_length= BACKUP_HISTORY_LOG_NAME.length;
+
+  table_list.lock_type= TL_WRITE_CONCURRENT_INSERT;
+
+  table_list.db= MYSQL_SCHEMA_NAME.str;
+  table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  if (!(table= open_performance_schema_table(thd, & table_list,
+                                             & open_tables_backup)))
+    goto err;
+
+  need_close= TRUE;
+
+  if (table->file->extra(HA_EXTRA_MARK_AS_LOG_TABLE) ||
+      table->file->ha_rnd_init(0))
+    goto err;
+
+  need_rnd_end= TRUE;
+
+  /*
+    Get defaults for new record.
+  */
+  restore_record(table, s->default_values); 
+
+  /* check that all columns exist */
+  if (table->s->fields < ET_OBH_FIELD_COUNT)
+    goto err;
+
+  /*
+    Fill in the data.
+  */
+  table->field[ET_OBH_FIELD_BACKUP_ID]->store(history_data->backup_id, TRUE);
+  table->field[ET_OBH_FIELD_BACKUP_ID]->set_notnull();
+  table->field[ET_OBH_FIELD_PROCESS_ID]->store(history_data->process_id, TRUE);
+  table->field[ET_OBH_FIELD_PROCESS_ID]->set_notnull();
+  table->field[ET_OBH_FIELD_BINLOG_POS]->store(history_data->binlog_pos, TRUE);
+  table->field[ET_OBH_FIELD_BINLOG_POS]->set_notnull();
+
+  if (history_data->binlog_file)
+  {
+    if (table->field[ET_OBH_FIELD_BINLOG_FILE]->
+        store(history_data->binlog_file, 
+              strlen(history_data->binlog_file), 
+              system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_BINLOG_FILE]->set_notnull();
+  }
+
+  table->field[ET_OBH_FIELD_BACKUP_STATE]->store(history_data->state, TRUE);
+  table->field[ET_OBH_FIELD_BACKUP_STATE]->set_notnull();
+  table->field[ET_OBH_FIELD_OPER]->store(history_data->operation, TRUE);
+  table->field[ET_OBH_FIELD_OPER]->set_notnull();
+  table->field[ET_OBH_FIELD_ERROR_NUM]->store(history_data->error_num, TRUE);
+  table->field[ET_OBH_FIELD_ERROR_NUM]->set_notnull();
+  table->field[ET_OBH_FIELD_NUM_OBJ]->store(history_data->num_objects, TRUE);
+  table->field[ET_OBH_FIELD_NUM_OBJ]->set_notnull();
+  table->field[ET_OBH_FIELD_TOTAL_BYTES]->store(history_data->size, TRUE);
+  table->field[ET_OBH_FIELD_TOTAL_BYTES]->set_notnull();
+
+  if (history_data->vp_time)
+  {
+    MYSQL_TIME time;
+    my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)history_data->vp_time);
+
+    table->field[ET_OBH_FIELD_VP]->set_notnull();
+    table->field[ET_OBH_FIELD_VP]->store_time(&time, MYSQL_TIMESTAMP_DATETIME);
+  }
+
+  if (history_data->start)
+  {
+    MYSQL_TIME time;
+    my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)history_data->start);
+
+    table->field[ET_OBH_FIELD_START_TIME]->set_notnull();
+    table->field[ET_OBH_FIELD_START_TIME]->store_time(&time, 
+      MYSQL_TIMESTAMP_DATETIME);
+  }
+
+  if (history_data->stop)
+  {
+    MYSQL_TIME time;
+    my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)history_data->stop);
+
+    table->field[ET_OBH_FIELD_STOP_TIME]->set_notnull();
+    table->field[ET_OBH_FIELD_STOP_TIME]->store_time(&time, 
+      MYSQL_TIMESTAMP_DATETIME);
+  }
+
+  if (host)
+  {
+    if(table->field[ET_OBH_FIELD_HOST_OR_SERVER]->store(host, 
+       strlen(host), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_HOST_OR_SERVER]->set_notnull();
+  }
+
+  if (user)
+  {
+    if (table->field[ET_OBH_FIELD_USERNAME]->store(user,
+        strlen(user), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_USERNAME]->set_notnull();
+  }
+
+  if (history_data->backup_file)
+  {
+    if (table->field[ET_OBH_FIELD_BACKUP_FILE]->store(
+        history_data->backup_file, 
+        strlen(history_data->backup_file), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_BACKUP_FILE]->set_notnull();
+  }
+
+  if (history_data->user_comment)
+  {
+    if (table->field[ET_OBH_FIELD_COMMENT]->store(history_data->user_comment,
+        strlen(history_data->user_comment), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_COMMENT]->set_notnull();
+  }
+
+  if (history_data->command)
+  {
+    if (table->field[ET_OBH_FIELD_COMMAND]->store(history_data->command,
+        strlen(history_data->command), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_COMMAND]->set_notnull();
+  }
+
+  if (history_data->driver_name.length())
+  {
+    if (table->field[ET_OBH_FIELD_DRIVERS]->store(
+        history_data->driver_name.c_ptr(),
+        history_data->driver_name.length(), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_DRIVERS]->set_notnull();
+  }
+
+  /* log table entries are not replicated */
+  if (table->file->ha_write_row(table->record[0]))
+    goto err;
+
+  result= FALSE;
+
+err:
+  if (result && !thd->killed)
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                        ER_BACKUP_LOG_WRITE_ERROR,
+                        ER(ER_BACKUP_LOG_WRITE_ERROR),
+                        "mysql.backup_history");
+
+  if (need_rnd_end)
+    table->file->ha_rnd_end();
+  if (need_close)
+    close_performance_schema_table(thd, & open_tables_backup);
+
+  thd->time_zone_used= save_time_zone_used;
+  return result;
+}
+
+/**
+  Write the backup log entry for the backup progress log to a table.
+
+  This method creates a new row in the backup progress log with the
+  information provided.
+
+  @param[IN]   thd         The current thread
+  @param[OUT]  backup_id   The id of the backup/restore operation for
+                           the progress information
+  @param[IN]   object      The name of the object processed
+  @param[IN]   start       Start datetime
+  @param[IN]   stop        Stop datetime
+  @param[IN]   size        Size value
+  @param[IN]   progress    Progress (percent)
+  @param[IN]   error_num   Error number (should be 0 if success)
+  @param[IN]   notes       Misc data from engine
+
+  @retval TRUE if error.
+
+  @todo Add internal error handler to handle errors that occur on
+        open. See  thd->push_internal_handler(&error_handler).
+*/
+bool Log_to_csv_event_handler::
+  log_backup_progress(THD *thd,
+                      ulonglong backup_id,
+                      const char *object,
+                      time_t start,
+                      time_t stop,
+                      longlong size,
+                      longlong progress,
+                      int error_num,
+                      const char *notes)
+{
+  TABLE_LIST table_list;
+  TABLE *table;
+  bool result= TRUE;
+  bool need_close= FALSE;
+  bool need_rnd_end= FALSE;
+  Open_tables_state open_tables_backup;
+  bool save_time_zone_used;
+
+  save_time_zone_used= thd->time_zone_used;
+
+  bzero(& table_list, sizeof(TABLE_LIST));
+  table_list.alias= table_list.table_name= BACKUP_PROGRESS_LOG_NAME.str;
+  table_list.table_name_length= BACKUP_PROGRESS_LOG_NAME.length;
+
+  table_list.lock_type= TL_WRITE_CONCURRENT_INSERT;
+
+  table_list.db= MYSQL_SCHEMA_NAME.str;
+  table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  if (!(table= open_performance_schema_table(thd, & table_list,
+                                             & open_tables_backup)))
+    goto err;
+
+  need_close= TRUE;
+
+  if (table->file->extra(HA_EXTRA_MARK_AS_LOG_TABLE) ||
+      table->file->ha_rnd_init(0))
+    goto err;
+
+  need_rnd_end= TRUE;
+
+  /*
+    Get defaults for new record.
+  */
+  restore_record(table, s->default_values); 
+
+  /* check that all columns exist */
+  if (table->s->fields < ET_OBP_FIELD_PROG_COUNT)
+    goto err;
+
+  /*
+    Fill in the data.
+  */
+  table->field[ET_OBP_FIELD_BACKUP_ID_FK]->store(backup_id, TRUE);
+  table->field[ET_OBP_FIELD_BACKUP_ID_FK]->set_notnull();
+
+  if (object)
+  {
+    if (table->field[ET_OBP_FIELD_PROG_OBJECT]->store(object,
+        strlen(object), system_charset_info))
+      goto err;
+    table->field[ET_OBP_FIELD_PROG_OBJECT]->set_notnull();
+  }
+
+  if (start)
+  {
+    MYSQL_TIME time;
+    my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)start);
+
+    table->field[ET_OBP_FIELD_PROG_START_TIME]->set_notnull();
+    table->field[ET_OBP_FIELD_PROG_START_TIME]->store_time(&time, MYSQL_TIMESTAMP_DATETIME);
+  }
+
+  if (stop)
+  {
+    MYSQL_TIME time;
+    my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)stop);
+
+    table->field[ET_OBP_FIELD_PROG_STOP_TIME]->set_notnull();
+    table->field[ET_OBP_FIELD_PROG_STOP_TIME]->store_time(&time, MYSQL_TIMESTAMP_DATETIME);
+  }
+
+  table->field[ET_OBP_FIELD_PROG_SIZE]->store(size, TRUE);
+  table->field[ET_OBP_FIELD_PROG_SIZE]->set_notnull();
+  table->field[ET_OBP_FIELD_PROGRESS]->store(progress, TRUE);
+  table->field[ET_OBP_FIELD_PROGRESS]->set_notnull();
+  table->field[ET_OBP_FIELD_PROG_ERROR_NUM]->store(error_num, TRUE);
+  table->field[ET_OBP_FIELD_PROG_ERROR_NUM]->set_notnull();
+
+  if (notes)
+  {
+    if (table->field[ET_OBP_FIELD_PROG_NOTES]->store(notes,
+        strlen(notes), system_charset_info))
+      goto err;
+    table->field[ET_OBP_FIELD_PROG_NOTES]->set_notnull();
+  }
+
+  /* log table entries are not replicated */
+  if (table->file->ha_write_row(table->record[0]))
+    goto err;
+
+  result= FALSE;
+
+err:
+  if (result && !thd->killed)
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                        ER_BACKUP_LOG_WRITE_ERROR,
+                        ER(ER_BACKUP_LOG_WRITE_ERROR),
+                        "mysql.backup_progress");
+
+  if (need_rnd_end)
+    table->file->ha_rnd_end();
+  if (need_close)
+    close_performance_schema_table(thd, & open_tables_backup);
+
+  thd->time_zone_used= save_time_zone_used;
+  return result;
 }
 
 bool Log_to_csv_event_handler::
@@ -731,6 +1105,8 @@ void Log_to_file_event_handler::init_pthread_objects()
 {
   mysql_log.init_pthread_objects();
   mysql_slow_log.init_pthread_objects();
+  mysql_backup_history_log.init_pthread_objects();
+  mysql_backup_progress_log.init_pthread_objects();
 }
 
 
@@ -774,6 +1150,65 @@ bool Log_to_file_event_handler::
   return retval;
 }
 
+/**
+  Write the history data to a file.
+
+  This method calls the write method for the backup log
+  class to write the history data to the file.
+
+  @param[IN]   thd   The current thread
+  @param[IN]   st_backup_history   Data to write to log.
+
+  @returns TRUE if error.
+*/
+bool Log_to_file_event_handler::
+  log_backup_history(THD *thd, 
+                     st_backup_history *history_data)
+{
+  Silence_log_table_errors error_handler;
+  thd->push_internal_handler(&error_handler);
+  bool retval= mysql_backup_history_log.write(thd, history_data);
+  thd->pop_internal_handler();
+  return retval;
+}
+
+/**
+  Write the progress data to a file.
+
+  This method calls the write method for the backup log
+  class to write the progress data to the file.
+
+  @param[IN]   thd         The current thread
+  @param[OUT]  backup_id   The new row id for the backup history
+  @param[IN]   object      The name of the object processed
+  @param[IN]   start       Start datetime
+  @param[IN]   stop        Stop datetime
+  @param[IN]   size        Size value
+  @param[IN]   progress    Progress (percent)
+  @param[IN]   error_num   Error number (should be 0 is success)
+  @param[IN]   notes       Misc data from engine
+
+  @returns TRUE if error.
+*/
+bool Log_to_file_event_handler::
+  log_backup_progress(THD *thd,
+                      ulonglong backup_id,
+                      const char *object,
+                      time_t start,
+                      time_t stop,
+                      longlong size,
+                      longlong progress,
+                      int error_num,
+                      const char *notes)
+{
+  Silence_log_table_errors error_handler;
+  thd->push_internal_handler(&error_handler);
+  bool retval= mysql_backup_progress_log.write(thd, backup_id, object, start,
+                 stop, size, progress, error_num, notes);
+  thd->pop_internal_handler();
+  return retval;
+}
+
 
 bool Log_to_file_event_handler::init()
 {
@@ -785,17 +1220,44 @@ bool Log_to_file_event_handler::init()
     if (opt_log)
       mysql_log.open_query_log(sys_var_general_log_path.value);
 
+    /*
+      Check the backup log options and open if they are turned on.
+    */
+    if (opt_backup_history_log)
+      mysql_backup_history_log.open_backup_history_log(
+        sys_var_backup_history_log_path.value);
+
+    if (opt_backup_progress_log)
+      mysql_backup_progress_log.open_backup_progress_log(
+        sys_var_backup_progress_log_path.value);
+
     is_initialized= TRUE;
   }
 
   return FALSE;
 }
 
+/**
+  Close and reopen the backup logs.
+*/
+void Log_to_file_event_handler::flush_backup_logs()
+{
+  /* 
+    reopen log files 
+
+    Where TRUE means perform open on history file (backup_history) and
+    FALSE means perform open on the progress file (backkup_progress).
+  */
+  mysql_backup_history_log.reopen_file(TRUE);
+  mysql_backup_progress_log.reopen_file(FALSE);
+}
 
 void Log_to_file_event_handler::cleanup()
 {
   mysql_log.cleanup();
   mysql_slow_log.cleanup();
+  mysql_backup_history_log.cleanup();
+  mysql_backup_progress_log.cleanup();
 }
 
 void Log_to_file_event_handler::flush()
@@ -907,6 +1369,32 @@ bool LOGGER::flush_logs(THD *thd)
 
   /* reopen log files */
   file_log_handler->flush();
+
+  /* end of log flush */
+  logger.unlock();
+  return rc;
+}
+
+
+/**
+  Close and reopen the backup logs (with locks).
+
+  @param[IN]  thd   The current thread.
+
+  @returns FALSE.
+*/
+bool LOGGER::flush_backup_logs(THD *thd)
+{
+  int rc= 0;
+
+  /*
+    Now we lock logger, as nobody should be able to use logging routines while
+    log tables are closed
+  */
+  logger.lock_exclusive();
+
+  /* reopen log files */
+  file_log_handler->flush_backup_logs();
 
   /* end of log flush */
   logger.unlock();
@@ -1065,6 +1553,105 @@ bool LOGGER::general_log_print(THD *thd, enum enum_server_command command,
   return general_log_write(thd, command, message_buff, message_buff_len);
 }
 
+
+/**
+  Write the backup log entry for the backup history logs (file or table).
+
+  This method creates a new row in the backup history log with the
+  information provided. It is a high-level wrapper for writing to any
+  of the log types (e.g., FILE or TABLE) as specified by --log-option.
+
+  @Note The backup logs currently only write to tables.
+
+  @param[IN]   thd   The current thread
+  @param[IN]   st_backup_history   Data to write to log.
+  
+  @returns TRUE if error.
+*/
+bool LOGGER::backup_history_log_write(THD *thd, 
+                                      st_backup_history *history_data)
+{
+  bool error= FALSE;
+  Log_event_handler **current_handler= backup_history_log_handler_list;
+  ulong id;
+
+  /*
+    Don't write if log is turned off.
+  */
+  if (!opt_backup_history_log)
+    return 0;
+
+  if (thd)
+    id= thd->thread_id;                 /* Normal thread */
+  else
+    id= 0;                              /* Log from connect handler */
+
+  lock_shared();
+  while (*current_handler)
+    error|= (*current_handler++)->
+      log_backup_history(thd, history_data) || error;
+  unlock();
+
+  return error;
+}
+
+/**
+  Write the backup log entry for the backup progress logs (file or table).
+
+  This method creates a new row in the backup progress log with the
+  information provided. It is a high-level wrapper for writing to any
+  of the log types (e.g., FILE or TABLE) as specified by --log-option.
+
+  @Note The backup logs currently only write to tables.
+
+  @param[IN]   thd         The current thread
+  @param[OUT]  backup_id   The new row id for the backup history
+  @param[IN]   object      The name of the object processed
+  @param[IN]   start       Start datetime
+  @param[IN]   stop        Stop datetime
+  @param[IN]   size        Size value
+  @param[IN]   progress    Progress (percent)
+  @param[IN]   error_num   Error number (should be 0 is success)
+  @param[IN]   notes       Misc data from engine
+
+  @returns TRUE if error.
+*/
+bool LOGGER::backup_progress_log_write(THD *thd,
+                                       ulonglong backup_id,
+                                       const char *object,
+                                       time_t start,
+                                       time_t stop,
+                                       longlong size,
+                                       longlong progress,
+                                       int error_num,
+                                       const char *notes)
+{
+  bool error= FALSE;
+  Log_event_handler **current_handler= backup_progress_log_handler_list;
+  ulong id;
+
+  /*
+    Don't write if log is turned off.
+  */
+  if (!opt_backup_progress_log)
+    return 0;
+
+  if (thd)
+    id= thd->thread_id;                 /* Normal thread */
+  else
+    id= 0;                              /* Log from connect handler */
+
+  lock_shared();
+  while (*current_handler)
+    error|= (*current_handler++)->
+      log_backup_progress(thd, backup_id, object, start, 
+                             stop, size, progress, error_num, notes) || error;
+  unlock();
+
+  return error;
+}
+
+
 void LOGGER::init_error_log(uint error_log_printer)
 {
   if (error_log_printer & LOG_NONE)
@@ -1139,9 +1726,77 @@ void LOGGER::init_general_log(uint general_log_printer)
 }
 
 
+/**
+  Initialize the backup history log.
+
+  This method initializes the backup log handlers. Currently, only
+  log to table is supported.
+
+  @param[IN]   backup_history_log_printer  The output type for log.
+*/
+void LOGGER::init_backup_history_log(uint backup_history_log_printer)
+{
+  if (backup_history_log_printer & LOG_NONE)
+  {
+    backup_history_log_handler_list[0]= 0;
+    return;
+  }
+
+  switch (backup_history_log_printer) {
+  case LOG_FILE:
+    backup_history_log_handler_list[0]= file_log_handler;
+    backup_history_log_handler_list[1]= 0;
+    break;
+  case LOG_TABLE:
+    backup_history_log_handler_list[0]= table_log_handler;
+    backup_history_log_handler_list[1]= 0;
+    break;
+  case LOG_TABLE|LOG_FILE:
+    backup_history_log_handler_list[0]= file_log_handler;
+    backup_history_log_handler_list[1]= table_log_handler;
+    backup_history_log_handler_list[2]= 0;
+    break;
+  }
+}
+
+/**
+  Initialize the backup progress log.
+
+  This method initializes the backup log handlers. Currently, only
+  log to table is supported.
+
+  @param[IN]   backup_history_log_printer  The output type for log.
+*/
+void LOGGER::init_backup_progress_log(uint backup_progress_log_printer)
+{
+  if (backup_progress_log_printer & LOG_NONE)
+  {
+    backup_progress_log_handler_list[0]= 0;
+    return;
+  }
+
+  switch (backup_progress_log_printer) {
+  case LOG_FILE:
+    backup_progress_log_handler_list[0]= file_log_handler;
+    backup_progress_log_handler_list[1]= 0;
+    break;
+  case LOG_TABLE:
+    backup_progress_log_handler_list[0]= table_log_handler;
+    backup_progress_log_handler_list[1]= 0;
+    break;
+  case LOG_TABLE|LOG_FILE:
+    backup_progress_log_handler_list[0]= file_log_handler;
+    backup_progress_log_handler_list[1]= table_log_handler;
+    backup_progress_log_handler_list[2]= 0;
+    break;
+  }
+}
+
+
 bool LOGGER::activate_log_handler(THD* thd, uint log_type)
 {
   MYSQL_QUERY_LOG *file_log;
+  MYSQL_BACKUP_LOG *backup_log;
   bool res= FALSE;
   lock_exclusive();
   switch (log_type) {
@@ -1183,6 +1838,51 @@ bool LOGGER::activate_log_handler(THD* thd, uint log_type)
       }
     }
     break;
+  /*
+    Check the backup history and progress logs for activation.
+  */
+  case BACKUP_HISTORY_LOG:
+  {
+    if (!opt_backup_history_log)
+    {
+      backup_log= file_log_handler->get_backup_history_log();
+
+      backup_log->open_backup_history_log(sys_var_backup_history_log_path.value);
+      if (table_log_handler->activate_log(thd, BACKUP_HISTORY_LOG))
+      {
+        /* Error printed by open table in activate_log() */
+        res= TRUE;
+        backup_log->close(0);
+      }
+      else
+      {
+        init_backup_history_log(log_backup_output_options);
+        opt_backup_history_log= TRUE;
+      }
+    }
+    break;
+  }
+  case BACKUP_PROGRESS_LOG:
+  {
+    if (!opt_backup_progress_log)
+    {
+      backup_log= file_log_handler->get_backup_progress_log();
+
+      backup_log->open_backup_progress_log(sys_var_backup_progress_log_path.value);
+      if (table_log_handler->activate_log(thd, BACKUP_PROGRESS_LOG))
+      {
+        /* Error printed by open table in activate_log() */
+        res= TRUE;
+        backup_log->close(0);
+      }
+      else
+      {
+        init_backup_progress_log(log_backup_output_options);
+        opt_backup_progress_log= TRUE;
+      }
+    }
+    break;
+  }
   default:
     DBUG_ASSERT(0);
   }
@@ -1204,6 +1904,17 @@ void LOGGER::deactivate_log_handler(THD *thd, uint log_type)
   case QUERY_LOG_GENERAL:
     tmp_opt= &opt_log;
     file_log= file_log_handler->get_mysql_log();
+    break;
+  /*
+    Deactivate the backup history and progress logs on request.
+  */
+  case BACKUP_HISTORY_LOG:
+    tmp_opt= &opt_backup_history_log;
+    file_log= file_log_handler->get_backup_history_log();
+    break;
+  case BACKUP_PROGRESS_LOG:
+    tmp_opt= &opt_backup_progress_log;
+    file_log= file_log_handler->get_backup_progress_log();
     break;
   default:
     assert(0);                                  // Impossible
@@ -1253,6 +1964,30 @@ int LOGGER::set_handlers(uint error_log_printer,
   return 0;
 }
 
+/**
+  Set the logging handlers for operation on the backup logs.
+
+  This method allows the caller to set the method of logging
+  for the backup logs. Values for these variables equate
+  to the {FILE, TABLE, NONE} definitions.
+
+  @param[IN] backup_history_log_printer  The type of output.
+  @param[IN] backup_progress_log_printer The type of output.
+
+  @returns 0
+*/
+int LOGGER::set_backup_handlers(uint backup_history_log_printer,
+                                uint backup_progress_log_printer)
+{
+  lock_exclusive();
+
+  init_backup_history_log(backup_history_log_printer);
+  init_backup_progress_log(backup_progress_log_printer);
+
+  unlock();
+
+  return 0;
+}
 
  /*
   Save position of binary log transaction cache.
@@ -2335,6 +3070,578 @@ bool MYSQL_QUERY_LOG::write(THD *thd, time_t current_time,
   }
   (void) pthread_mutex_unlock(&LOCK_log);
   DBUG_RETURN(error);
+}
+
+
+/**
+  Open a (new) backup log file.
+
+  Open the backup log file, init IO_CACHE and write startup messages.
+
+  @param[IN] log_name          The name of the log to open
+  @param[IN] log_type_arg      The type of the log. E.g. LOG_NORMAL
+  @param[IN] new_name          The new name for the logfile.
+  @param[IN] io_cache_type_arg The type of the IO_CACHE to use for this loge
+  @param[IN] history           If TRUE, process history log headeer else do
+                               progress header
+
+  @returns 0 success, 1 error
+*/
+bool MYSQL_BACKUP_LOG::open(const char *log_name, 
+                            enum_log_type log_type_arg,
+                            const char *new_name, 
+                            enum cache_type io_cache_type_arg,
+                            bool history)
+{
+  char buff[FN_REFLEN];
+  File file= -1;
+  int open_flags= O_CREAT | O_BINARY;
+  DBUG_ENTER("MYSQL_BACKUP_LOG::open");
+  DBUG_PRINT("enter", ("log_type: %d", (int) log_type_arg));
+
+  write_error= 0;
+
+  init(log_type_arg, io_cache_type_arg);
+
+  if (!(name= my_strdup(log_name, MYF(MY_WME))))
+  {
+    name= (char *)log_name; // for the error message
+    goto err;
+  }
+
+  if (new_name)
+    strmov(log_file_name, new_name);
+  else if (generate_new_name(log_file_name, name))
+    goto err;
+
+  if (io_cache_type == SEQ_READ_APPEND)
+    open_flags |= O_RDWR | O_APPEND;
+  else
+    open_flags |= O_WRONLY | (log_type == LOG_BIN ? 0 : O_APPEND);
+
+  db[0]= 0;
+
+  if ((file= my_open(log_file_name, open_flags,
+                     MYF(MY_WME | ME_WAITTANG))) < 0 ||
+      init_io_cache(&log_file, file, IO_SIZE, io_cache_type,
+                    my_tell(file, MYF(MY_WME)), 0,
+                    MYF(MY_WME | MY_NABP |
+                        ((log_type == LOG_BIN) ? MY_WAIT_IF_FULL : 0))))
+    goto err;
+
+  /*
+    Write header of column names if this is the first time the log
+    has been opened.
+  */
+  if (!headers_written && (log_type == LOG_NORMAL))
+  {
+    char *end;
+
+    int len=my_snprintf(buff, sizeof(buff), "Columns for this log:\n");
+    if (history)
+      end= strnmov(buff + len, "backup_id \tprocess_id \tbinlog_pos "
+                   "\tbinlog_file \tbackup_state \toperation "
+                   "\terror_num \tnum_objects \ttotal_bytes "
+                   "\tvalidity_point_time \tstart_time \tstop_time "
+                   "\thost_or_server_name \tusername \tbackup_file "
+                   "\tuser_comment \tcommand \tdrivers\n",
+                   sizeof(buff) - len);
+    else
+      end= strnmov(buff + len, "\nbackup_id \tobject \tstart_time \tstop_time "
+                   "\ttotal_bytes \tprogress \terror_num \tnotes \tbackup_id "
+                   "\tobject \tstart_time \tstop_time \ttotal_bytes "
+                   "\tprogress \terror_num \tnotes\n",
+                   sizeof(buff) - len);
+    if (my_b_write(&log_file, (uchar*) buff, (uint) (end-buff)) ||
+        flush_io_cache(&log_file))
+      goto err;
+    headers_written= TRUE;
+  }
+
+  log_state= LOG_OPENED;
+  DBUG_RETURN(0);
+
+err:
+  sql_print_error("Could not use %s for backup logging (error %d).", name, errno);
+  if (file >= 0)
+    my_close(file, MYF(0));
+  end_io_cache(&log_file);
+  safeFree(name);
+  log_state= LOG_CLOSED;
+  DBUG_RETURN(1);
+}
+
+/**
+  Write an unsigned integer value to the log file.
+
+  This method writes the data passed and appends a tab character.
+
+  @param[IN]   thd   The current thread
+  @param[IN]   num   Data to write to log.
+
+  @returns TRUE if error.
+*/
+bool MYSQL_BACKUP_LOG::write_int(uint num)
+{
+  char buff[32];
+  uint length= 0;
+
+  /*
+    This field is wide to allow ulonglong fields.
+    We don't want to truncate any large backup id values.
+  */
+  length= my_snprintf(buff, 32, "%10lu ", (ulong)num);
+  if (my_b_write(&log_file, (uchar*) buff, length))
+    return TRUE;
+  if (my_b_write(&log_file, (uchar*) "\t", 1))
+    return TRUE;
+  return FALSE;
+}
+
+/**
+  Write an unsigned longlong value to the log file.
+
+  This method writes the data passed and appends a tab character.
+
+  @param[IN]   thd   The current thread
+  @param[IN]   num   Data to write to log.
+
+  @returns TRUE if error.
+*/
+bool MYSQL_BACKUP_LOG::write_long(ulonglong num)
+{
+  char buff[32];
+  uint length= 0;
+
+  /*
+    This field is wide to allow ulonglong fields.
+    We don't want to truncate any large backup id values.
+  */
+  length= my_snprintf(buff, 32, "%10lu ", (ulong)num);
+  if (my_b_write(&log_file, (uchar*) buff, length))
+    return TRUE;
+  if (my_b_write(&log_file, (uchar*) "\t", 1))
+    return TRUE;
+  return FALSE;
+}
+
+/**
+  Write a datetime value to the log file.
+
+  This method writes the data passed (if not null) and appends a tab character.
+
+  @param[IN]   thd       The current thread
+  @param[IN]   time_val  Data to write to log.
+
+  @returns TRUE if error.
+*/
+bool MYSQL_BACKUP_LOG::write_datetime(time_t time_val)
+{
+  char local_time_buff[MAX_TIME_SIZE];
+  uint time_buff_len= 0;
+
+  if (time_val)
+  {
+    MYSQL_TIME time;
+    my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)time_val);
+
+    time_buff_len= my_snprintf(local_time_buff, MAX_TIME_SIZE,
+                               "%02d%02d%02d %2d:%02d:%02d",
+                               time.year % 100, time.month + 1,
+                               time.day, time.hour,
+                               time.minute, time.second);
+
+    if (my_b_write(&log_file, (uchar*) local_time_buff, time_buff_len))
+      return TRUE;
+    if (my_b_write(&log_file, (uchar*) "\t", 1))
+      return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+  Write a character string value to the log file.
+
+  This method writes the data passed (if not null) and appends a tab character.
+
+  @param[IN]   thd       The current thread
+  @param[IN]   str       Data to write to log.
+
+  @returns TRUE if error.
+*/
+bool MYSQL_BACKUP_LOG::write_str(const char *str)
+{
+  if (str)
+  {
+    if (my_b_write(&log_file, (uchar*)str, strlen(str)))
+      return TRUE;
+    if (my_b_write(&log_file, (uchar*) "\t", 1))
+      return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+  Write the backup log entry for the backup history log to a file.
+
+  This method creates a new row in the backup history log with the
+  information provided.
+
+  @param[IN]   thd   The current thread
+  @param[IN]   st_backup_history   Data to write to log.
+
+  @returns TRUE if error.
+*/
+bool MYSQL_BACKUP_LOG::write(THD *thd, st_backup_history *history_data)
+{
+  char *host= current_thd->security_ctx->host; // host name
+  char *user= current_thd->security_ctx->user; // user name
+  bool save_time_zone_used;
+
+  save_time_zone_used= thd->time_zone_used;
+
+  (void) pthread_mutex_lock(&LOCK_log);
+
+  /* 
+    Test if someone closed between the is_open test and lock 
+  */
+  if (is_open())
+  {
+    /*
+      Write log data.
+    */
+    if (write_long(history_data->backup_id))
+      goto err;
+    if (write_int(history_data->process_id))
+      goto err;
+    if (write_int(history_data->binlog_pos))
+      goto err;
+    if (write_str(history_data->binlog_file))
+      goto err;
+    if (write_int(history_data->state))
+      goto err;
+    if (write_int(history_data->operation))
+      goto err;
+    if (write_int(history_data->error_num))
+      goto err;
+    if (write_int(history_data->num_objects))
+      goto err;
+    if (write_long(history_data->size))
+      goto err;
+    if (write_datetime(history_data->vp_time))
+      goto err;
+    if (write_datetime(history_data->start))
+      goto err;
+    if (write_datetime(history_data->stop))
+      goto err;
+    if (write_str(host))
+      goto err;
+    if (write_str(user))
+      goto err;
+    if (write_str(history_data->user_comment))
+      goto err;
+    if (write_str(history_data->command))
+      goto err;
+    if (write_str(history_data->driver_name.ptr()))
+      goto err;
+
+    if (my_b_write(&log_file, (uchar*) "\n", 1) ||
+        flush_io_cache(&log_file))
+      goto err;
+  }
+
+  (void) pthread_mutex_unlock(&LOCK_log);
+  thd->time_zone_used= save_time_zone_used;
+  return FALSE;
+err:
+
+  if (!write_error)
+  {
+    write_error= 1;
+    sql_print_error(ER(ER_ERROR_ON_WRITE), name, errno);
+  }
+  (void) pthread_mutex_unlock(&LOCK_log);
+  thd->time_zone_used= save_time_zone_used;
+  return TRUE;
+}
+
+
+/**
+  Write the backup log entry for the backup progress log to a file.
+
+  This method creates a new row in the backup progress log with the
+  information provided.
+
+  @param[IN]   thd         The current thread
+  @param[OUT]  backup_id   The new row id for the backup history
+  @param[IN]   object      The name of the object processed
+  @param[IN]   start       Start datetime
+  @param[IN]   stop        Stop datetime
+  @param[IN]   size        Size value
+  @param[IN]   progress    Progress (percent)
+  @param[IN]   error_num   Error number (should be 0 is success)
+  @param[IN]   notes       Misc data from engine
+
+  @returns TRUE if error.
+*/
+bool MYSQL_BACKUP_LOG::write(THD *thd, ulonglong backup_id, const char *object, 
+                             time_t start, time_t stop, longlong size,
+                             longlong progress, int error_num, const char *notes)
+{
+  bool save_time_zone_used;
+
+  save_time_zone_used= thd->time_zone_used;
+
+  (void) pthread_mutex_lock(&LOCK_log);
+
+  /* 
+    Test if someone closed between the is_open test and lock 
+  */
+  if (is_open())
+  {
+    /*
+      Write log data.
+    */
+    if (write_long(backup_id))
+      goto err;
+    if (write_str(object))
+      goto err;
+    if (write_datetime(start))
+      goto err;
+    if (write_datetime(stop))
+      goto err;
+    if (write_long(size))
+      goto err;
+    if (write_long(progress))
+      goto err;
+    if (write_int(error_num))
+      goto err;
+    if (write_str(notes))
+      goto err;
+
+    if (my_b_write(&log_file, (uchar*) "\n", 1) ||
+        flush_io_cache(&log_file))
+      goto err;
+  }
+
+  (void) pthread_mutex_unlock(&LOCK_log);
+  thd->time_zone_used= save_time_zone_used;
+  return FALSE;
+err:
+
+  if (!write_error)
+  {
+    write_error= 1;
+    sql_print_error(ER(ER_ERROR_ON_WRITE), name, errno);
+  }
+  (void) pthread_mutex_unlock(&LOCK_log);
+  thd->time_zone_used= save_time_zone_used;
+  return TRUE;
+}
+
+
+/**
+  Check backup history logs.
+  
+  This method attempts to open the backup logs. It returns
+  an error if either log is not present or cannot be opened.
+
+  @param[in] THD * The current thread.
+
+  @returns Information whether backup logs can be used.
+
+  @retval FALSE  success
+  @retval TRUE  failed to open one of the logs
+*/
+my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
+{
+  TABLE_LIST tables;
+  my_bool ret= FALSE;
+
+  DBUG_ENTER("check_backup_logs");
+
+  /*
+     ADD TO THIS AREA!!!
+     CHECK TO SEE IF LOG TO TABLE OR LOG TO FILE! 
+     ONLY DO CHECK IF WE ARE LOGGING TO TABLE!
+  */
+
+  /* Check mysql.backup_history */
+  tables.init_one_table("mysql", strlen("mysql"), 
+                        "backup_history", strlen("backup_history"),
+                        "backup_history", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
+  if (simple_open_n_lock_tables(thd, &tables))
+  {
+    ret= TRUE;
+    sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
+    DBUG_RETURN(ret);
+  }
+  close_thread_tables(thd);
+
+  /* Check mysql.backup_progress */
+  tables.init_one_table("mysql", strlen("mysql"), 
+                        "backup_progress", strlen("backup_progress"),
+                        "backup_progress", TL_READ);
+  alloc_mdl_locks(&tables, thd->mem_root);
+  if (simple_open_n_lock_tables(thd, &tables))
+  {
+    ret= TRUE;
+    sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
+    DBUG_RETURN(ret);
+  }
+  close_thread_tables(thd);
+  DBUG_RETURN(ret);
+}
+
+/**
+  Generate the next backup id.
+  
+  Since autoincrement columns are not permitted in CSV files, an alternative 
+  mechanism has been developed to create monotonically increasing values. When 
+  a server that does not have any logs written (no backup logs), the system 
+  starts at backup_id = 0. This value is stored in a binary file in the data 
+  directory named backup_settings.obx. Each time a new backup_id is needed, 
+  this value is read, incremented, then the file rewritten. This ensures a 
+  monotonically increasing backup_id. If the backup logs exist and the 
+  backup_settings.obx file does not, the system uses the backup log file size 
+  as the starting backup_id. 
+
+  @todo Do we need a mutex to protect this call internally?
+  @todo Do we need to version the file?
+
+  @returns next backup id or 0 if failure
+*/
+ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
+{
+  ulonglong id= 0;
+  uchar *read_id= 0;
+  uchar *write_id= 0;
+  char buff[FN_REFLEN], *file_path;
+  File file= 0;
+
+  /*
+    This code attempts to generate a new backup_id. The process is:
+    1) Attempt to read from backup settings file.
+    2) If file exists, read value, increment, write new values.
+    3) If file does not exist, create it and set the first backup_id
+       equal to the filesize of the backup history log file.
+
+    Notes:
+    m_next_id == 0 means we need to read the next id from the file (on startup).
+    m_next_id > 0 means use this value
+  */
+  pthread_mutex_lock(&LOCK_backupid);
+  if (!m_next_id)
+  {
+    file_path= make_backup_log_name(buff, BACKUP_SETTINGS_NAME.str, ".obx");
+    MY_STAT state;  
+  
+    file= my_open(file_path, O_RDWR|O_BINARY|O_CREAT, MYF(MY_WME));
+    if (!file)
+      goto err_end; 
+    if (my_fstat(file, &state, MYF(0)))
+      goto err;
+    /*
+      Check to see if the file size is 0. If it is, we need to pick a 
+      new backup_id to start from. 
+    */
+    if (state.st_size == 0)
+    {
+      MY_STAT fstate;
+      File hist_file= my_open(sys_var_backup_history_log_path.value,
+        O_RDONLY|O_BINARY, MYF(MY_WME));
+      if (hist_file > 0)
+      {
+         my_fstat(hist_file, &fstate, MYF(0));
+         my_close(hist_file, MYF(MY_WME));
+        id= fstate.st_size + 1;
+      }
+      else
+        id= 1;
+    }
+    // else .... we read the next value in the file!
+    else
+    {
+      my_seek(file, 0, 0, MYF(MY_WME));
+      read_id= (uchar *)my_malloc(sizeof(ulonglong), MYF(MY_ZEROFILL));
+      my_read(file, read_id, sizeof(ulonglong), MYF(MY_WME|MY_NABP));
+      id= uint8korr(read_id);
+      id++;
+    }
+  }
+  else  // increment the counter
+    id= m_next_id + 1;
+
+  DBUG_EXECUTE_IF("set_backup_id", id= 500;);
+
+  /* 
+    Write the new value to the file
+  */
+  if ((m_next_id != id) && id)
+  {
+    if (!file)
+    {
+      file_path= make_backup_log_name(buff, BACKUP_SETTINGS_NAME.str, ".obx");
+      file= my_open(file_path, O_RDWR|O_BINARY|O_CREAT, MYF(MY_WME));
+      if (!file)
+        goto err_end; 
+    }
+    my_seek(file, 0, 0, MYF(MY_WME));
+    write_id= (uchar *)my_malloc(sizeof(ulonglong), MYF(MY_ZEROFILL));
+    int8store(write_id, id);
+    my_write(file, write_id, sizeof(ulonglong), MYF(MY_WME));
+  }
+err:
+  if (file > 0)
+    my_close(file,MYF(MY_WME));
+  
+err_end:
+  m_next_id= id;
+  pthread_mutex_unlock(&LOCK_backupid);
+  DBUG_PRINT("backup_log",("The next id is %lu.\n", (ulong)id));
+  if(read_id)
+    my_free(read_id, MYF(0));
+  if(write_id)
+    my_free(write_id, MYF(0));
+  return id;
+}
+
+
+/**
+  Reopen the log file.
+
+  This method opens the log file.
+
+  @param[IN] history Process as history log if TRUE else progress log
+*/
+void MYSQL_BACKUP_LOG::reopen_file(bool history)
+{
+  char *save_name;
+
+  DBUG_ENTER("MYSQL_BACKUP_LOG::reopen_file");
+  if (!is_open())
+  {
+    DBUG_PRINT("info",("log is closed"));
+    DBUG_VOID_RETURN;
+  }
+
+  pthread_mutex_lock(&LOCK_log);
+
+  save_name= name;
+  name= 0;            // Don't free name
+  close(LOG_CLOSE_TO_BE_OPENED);
+
+  /*
+     Note that at this point, log_state != LOG_CLOSED (important for is_open()).
+  */
+
+  open(save_name, log_type, 0, io_cache_type, history);
+  my_free(save_name, MYF(0));
+
+  pthread_mutex_unlock(&LOCK_log);
+
+  DBUG_VOID_RETURN;
 }
 
 
