@@ -83,6 +83,7 @@
 #include "be_snapshot.h"
 #include "be_nodata.h"
 #include "ddl_blocker.h"
+#include "transaction.h"
 
 
 /** 
@@ -124,6 +125,10 @@ static int send_reply(Backup_restore_ctx &context);
   @param[IN] backupdir  value of the backupdir variable from server.
 
   @note This function sends response to the client (ok, result set or error).
+
+  @note Both BACKUP and RESTORE should perform implicit commit at the beginning
+  and at the end of execution. This is done by the parser after marking these
+  commands with appropriate flags in @c sql_command_flags[] in sql_parse.cc.
 
   @returns 0 on success, error code otherwise.
  */
@@ -298,9 +303,7 @@ int send_reply(Backup_restore_ctx &context)
   // FIXME: detect errors if  reported.
   // FIXME: error logging.
   field_list.push_back(new Item_empty_string(STRING_WITH_LEN("backup_id")));
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
   /*
     Send field data.
@@ -791,17 +794,6 @@ int Backup_restore_ctx::close()
   using namespace backup;
 
   time_t when= my_time(0);
-
-  // If auto commit is turned off, be sure to commit the transaction
-  /* 
-    Note: this code needs to be refactored (see BUG#38261). When refactoring
-    make sure that errors are detected and reported.
-  */
-  if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-  {
-    ha_autocommit_or_rollback(m_thd, 0);
-    end_active_trans(m_thd);
-  }
 
   // unlock tables if they are still locked
 
@@ -1796,7 +1788,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
       this and cancel restore process.
     */ 
 
-    Obj *ts= obs::is_tablespace(thd, sobj->get_name()); 
+    Obj *ts= obs::is_tablespace(thd, sobj); 
 
     if (ts)
     {
