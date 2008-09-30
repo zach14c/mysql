@@ -1,10 +1,10 @@
 --source include/have_falcon.inc
---source include/big_test.inc
+--source include/have_debug.inc
 
 #
-# Bug #22154: Crash after 500 alters, 500 inserts, and a few updates
+# Bug #39692: Falcon allocates SectorCache even if falcon_use_sectorcache is OFF
 #
---echo *** Bug #22154 ***
+--echo *** Bug #39692 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -13,49 +13,24 @@ let $engine = 'Falcon';
 eval SET @@storage_engine = $engine;
 
 --disable_warnings
-DROP TABLE IF EXISTS tj9;
-DROP PROCEDURE IF EXISTS pj9;
+DROP TABLE IF EXISTS t1;
 --enable_warnings
 
-CREATE TABLE tj9 (s0 int);
-
-delimiter //;
-create procedure pj9 ()
-begin
-  declare v int default 1;
-  while v < 500 do
-    set @v = concat('alter table tj9 add column s',v,' char(64) default ''Hello World''');
-    prepare stmt1 from @v;
-    execute stmt1;
-    set v = v + 1;
-  end while;
-  set v = 1;
-  while v < 500 do
-    insert into tj9 (s1) values (v);
-    set v = v + 1;
-  end while;
-  set v = 1;
-  while v < 500 do
-    set @v = concat('update tj9 set s',v,'=concat(s2,s1)');
-    prepare stmt1 from @v;
-    execute stmt1;
-    set v = v + 1;
-  end while;
-end//
-delimiter ;//
+CREATE TABLE t1 (a int);
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-call pj9();
+SELECT file FROM information_schema.falcon_system_memory_detail
+  WHERE file = 'SectorCache.cpp';
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
 # ----------------------------------------------------- #
-SELECT count(*) FROM tj9;
+# Check not applicable in this test.
+#SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
-DROP TABLE tj9;
-DROP PROCEDURE pj9;
+DROP TABLE t1;
