@@ -686,7 +686,6 @@ void Database::createDatabase(const char * filename)
 		deleteFilesOnExit = true;
 		throw;
 		}
-
 }
 
 void Database::openDatabase(const char * filename)
@@ -1455,50 +1454,61 @@ void Database::dropTable(Table *table, Transaction *transaction)
 
 void Database::truncateTable(Table *table, Sequence *sequence, Transaction *transaction)
 {
-	Sync syncDDL(&syncSysDDL, "Database::truncateTable(1)");
-	syncDDL.lock(Exclusive);
-	
-	table->checkDrop();
-	
 	// Check for records in active transactions
 
 	if (hasUncommittedRecords(table, transaction))
 		throw SQLError(UNCOMMITTED_UPDATES, "table %s.%s has uncommitted updates and cannot be truncated",
 						table->schemaName, table->name);
-						   
+
+	// Lock SystemDDL first.  This lock can happen multiple times in many call stacks,
+	// both before and after the following locks.  So it is important that we get an 
+	// exclusive lock first.
+
+	Sync syncDDLLock(&syncSysDDL, "Database::truncateTable(SysDDL)");
+	syncDDLLock.lock(Exclusive);
+	
+	// Lock syncScavenge before locking syncSysDDL, syncTables, or table->syncObject.
+	// The scavenger locks syncScavenge  and then syncTables
+	// If we run out of record memory, forceRecordScavenge will eventually call table->syncObject.
+
+	Sync syncScavengeLock(&syncScavenge, "Database::truncateTable(scavenge)");
+	syncScavengeLock.lock(Exclusive);
+
+	table->checkDrop();
+	
 	// Block table drop/add, table list scans ok
-	
-	Sync syncTbl(&syncTables, "Database::truncateTable(2)");
-	syncTbl.lock(Shared);
-	
+
+	Sync syncTablesLock(&syncTables, "Database::truncateTable(tables)");
+	syncTablesLock.lock(Shared);
+
 	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
 	//The lock order (serialLog->syncSections before table->syncObject) is 
 	//important
 
-	Sync syncSections(&serialLog->syncSections, "Database::truncateTable(3)");
-	syncSections.lock(Exclusive);
-	
+	Sync syncSectionsLock(&serialLog->syncSections, "Database::truncateTable(sections)");
+	syncSectionsLock.lock(Exclusive);
+
 	// No table access until truncate completes
-	
-	Sync syncObj(&table->syncObject, "Database::truncateTable(4)");
-	syncObj.lock(Exclusive);
-	
+
+	Sync syncTableLock(&table->syncObject, "Database::truncateTable(table)");
+	syncTableLock.lock(Exclusive);
+
 	table->deleting = true;
-	
+
 	// Purge records out of committed transactions
-	
+
 	transactionManager->truncateTable(table, transaction);
-	
+
 	Transaction *sysTransaction = getSystemTransaction();
-	
+
 	// Recreate data/blob sections and indexes
-	
+
 	table->truncate(sysTransaction);
-	
+
 	commitSystemTransaction();
-	
+
 	// Delete and recreate the sequence
-	
+
 	if (sequence)
 		sequence = sequence->recreate();
 }
