@@ -67,12 +67,20 @@ breakpoints: Sending finish signal to wake BACKUP.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 backup_id
 #
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+SELECT validity_point_time FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_time;
+SELECT binlog_file FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_file;
+SELECT binlog_pos FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_pos;
 DROP DATABASE db1;
 DROP DATABASE db2;
 USE mysql;
 RESTORE FROM 'test.ba';
 backup_id
 #
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
 SHOW CREATE DATABASE db1;
 Database	Create Database
 db1	CREATE DATABASE `db1` /*!40100 DEFAULT CHARACTER SET latin1 */
@@ -132,6 +140,18 @@ tasking	CREATE TABLE `tasking` (
   `project_number` char(9) DEFAULT NULL,
   `hours_worked` double(10,2) DEFAULT NULL
 ) ENGINE=BLACKHOLE DEFAULT CHARSET=latin1
+SELECT validity_point_time = @vp_time FROM mysql.backup_history
+WHERE backup_id = @bid;
+validity_point_time = @vp_time
+1
+SELECT binlog_file = @vp_file FROM mysql.backup_history
+WHERE backup_id = @bid;
+binlog_file = @vp_file
+1
+SELECT binlog_pos = @vp_pos FROM mysql.backup_history
+WHERE backup_id = @bid;
+binlog_pos = @vp_pos
+1
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;

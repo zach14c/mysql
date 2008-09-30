@@ -120,6 +120,8 @@ public: // public interface
 
    void save_binlog_pos(const ::LOG_INFO&);
 
+   time_t get_vp_time() const;
+
  protected: // internal interface
   
   // Populate the catalogue
@@ -741,6 +743,25 @@ Image_info::Ts* Image_info::get_ts(uint pos) const
   return m_ts_map[pos];
 }
 
+
+inline
+time_t Image_info::get_vp_time() const
+{
+  struct tm time;
+
+  time.tm_year= vp_time.year;
+  time.tm_mon= vp_time.mon;
+  time.tm_mday= vp_time.mday;
+  time.tm_hour= vp_time.hour;
+  time.tm_min= vp_time.min;
+  time.tm_sec= vp_time.sec;  
+
+  /*
+    Note: mktime() assumes that time is expressed as local time hence
+    we must correct the result to get UTC time.
+   */ 
+  return mktime(&time) - timezone;
+}
 
 /**
   Save time inside a @c bstream_time_t structure (helper function).
