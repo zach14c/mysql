@@ -1969,10 +1969,10 @@ int bstream_rd_int4(backup_stream *s, unsigned long int *x)
   if (ret == BSTREAM_ERROR)
     return BSTREAM_ERROR;
 
-  *x = buf[0];
-  *x += (buf[1] << 8);
-  *x += (buf[1] << 2*8);
-  *x += (buf[1] << 3*8);
+  *x = (unsigned long int)buf[0];
+  *x += ((unsigned long int)buf[1] << 8);
+  *x += ((unsigned long int)buf[2] << 2*8);
+  *x += ((unsigned long int)buf[3] << 3*8);
 
   return ret;
 }
