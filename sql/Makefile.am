@@ -135,7 +135,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc si_logs.cc \ 
+			ddl_blocker.cc si_objects.cc si_logs.cc \
 			event_parse_data.cc mdl.cc transaction.cc
 
 if HAVE_DTRACE
