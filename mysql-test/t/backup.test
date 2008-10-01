@@ -33,9 +33,7 @@ CREATE TABLE `building` (
 # Dumping data for table `building`
 #
 
-LOCK TABLES `building` WRITE;
 INSERT INTO `building` VALUES ('N41','1300'),('N01','1453'),('M00','1000'),('N41','1301'),('N41','1305');
-UNLOCK TABLES;
 
 
 #
@@ -52,9 +50,7 @@ CREATE TABLE `directorate` (
 # Dumping data for table `directorate`
 #
 
-LOCK TABLES `directorate` WRITE;
 INSERT INTO `directorate` VALUES ('N41','Development','333445555'),('N01','Human Resources','123654321'),('M00','Management','333444444');
-UNLOCK TABLES;
 
 USE db2;
 
@@ -76,9 +72,7 @@ CREATE TABLE `staff` (
 # Dumping data for table `staff`
 #
 
-LOCK TABLES `staff` WRITE;
 INSERT INTO `staff` VALUES ('333445555','John','Q','Smith','M',30000,'333444444'),('123763153','William','E','Walters','M',25000,'123654321'),('333444444','Alicia','F','St.Cruz','F',25000,NULL),('921312388','Goy','X','Hong','F',40000,'123654321'),('800122337','Rajesh','G','Kardakarna','M',38000,'333445555'),('820123637','Monty','C','Smythe','M',38000,'333445555'),('830132335','Richard','E','Jones','M',38000,'333445555'),('333445665','Edward','E','Engles','M',25000,'333445555'),('123654321','Beware','D','Borg','F',55000,'333444444'),('123456789','Wilma','N','Maxima','F',43000,'333445555');
-UNLOCK TABLES;
 
 #
 # Table structure for table `tasking`
@@ -94,9 +88,7 @@ CREATE TABLE `tasking` (
 # Dumping data for table `tasking`
 #
 
-LOCK TABLES `tasking` WRITE;
 INSERT INTO `tasking` VALUES ('333445555','405',23),('123763153','405',33.5),('921312388','601',44),('800122337','300',13),('820123637','300',9.5),('830132335','401',8.5),('333445555','300',11),('921312388','500',13),('800122337','300',44),('820123637','401',500.5),('830132335','400',12),('333445665','600',300.25),('123654321','607',444.75),('123456789','300',1000);
-UNLOCK TABLES;
 
 #
 # Get a lock to check for locking thread in process list

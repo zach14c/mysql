@@ -743,11 +743,18 @@ Image_info::Ts* Image_info::get_ts(uint pos) const
   return m_ts_map[pos];
 }
 
-
 inline
 time_t Image_info::get_vp_time() const
 {
   struct tm time;
+  long tz_offset;
+
+  bzero(&time,sizeof(time));
+
+  // Determine system timezone offset by calculating offset of the Epoch date.
+  time.tm_year=70;
+  time.tm_mday=1;
+  tz_offset= mktime(&time);
 
   time.tm_year= vp_time.year;
   time.tm_mon= vp_time.mon;
@@ -757,10 +764,10 @@ time_t Image_info::get_vp_time() const
   time.tm_sec= vp_time.sec;  
 
   /*
-    Note: mktime() assumes that time is expressed as local time hence
-    we must correct the result to get UTC time.
+    Note: mktime() assumes that time is expressed as local time and vp_time is
+    in UTC. Hence we must correct the result to get it right.
    */ 
-  return mktime(&time) - timezone;
+  return mktime(&time) - tz_offset;
 }
 
 /**
