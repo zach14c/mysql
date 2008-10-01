@@ -263,15 +263,23 @@ uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 	overlapped.Offset = pos.LowPart;
 	overlapped.OffsetHigh = pos.HighPart;
 
-	DWORD ret;
+	DWORD n;
 
-	if (!ReadFile(handle, data, effectiveLength, &ret, &overlapped))
-		throw SQLError(IO_ERROR, "serial log ReadFile failed with %d", GetLastError());
+	if (!ReadFile(handle, data, effectiveLength, &n, &overlapped))
+		{
+		DWORD lastError = GetLastError();
+		if(lastError != ERROR_HANDLE_EOF)
+			throw SQLError(IO_ERROR, "serial log ReadFile failed with %d", 
+							GetLastError());
+		else
+			n = 0;	// reached end of file
+		}
 
-	offset = position + effectiveLength;
+
+	offset = position + n;
 	highWater = MAX(offset, highWater);
 	
-	return ret;
+	return n;
 #else
 
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)

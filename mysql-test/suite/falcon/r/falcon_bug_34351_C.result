@@ -35,7 +35,5 @@ CALL p1();
 CALL p1();
 # Switch to connection default
 # Pull the results of the preceeding call p1()
-SELECT count(*) FROM t1;
-count(*)
-0
 DROP PROCEDURE p1;
+DROP TABLE t1;
