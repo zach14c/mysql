@@ -96,6 +96,7 @@
 int backup_init()
 {
   pthread_mutex_init(&Backup_restore_ctx::run_lock, MY_MUTEX_INIT_FAST);
+  Backup_restore_ctx::run_lock_initialized= TRUE;
   return 0;
 }
 
@@ -104,10 +105,18 @@ int backup_init()
   
   @note This function is called in the server shut-down sequences, just before
   it shuts-down all its plugins.
+
+  @note Due to way in which server's code is organized this function might be
+  called and should work normally even in situation when backup_init() was not
+  called at all.
  */
 void backup_shutdown()
 {
-  pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+  if (Backup_restore_ctx::run_lock_initialized)
+  {
+    pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+    Backup_restore_ctx::run_lock_initialized= FALSE;
+  }
 }
 
 /*
@@ -362,6 +371,7 @@ class Mem_allocator
 // static members
 
 Backup_restore_ctx *Backup_restore_ctx::current_op= NULL;
+bool Backup_restore_ctx::run_lock_initialized= FALSE;
 pthread_mutex_t Backup_restore_ctx::run_lock;
 
 
