@@ -104,9 +104,6 @@ class Stream: public fd_stream
 
 private:
 
-  int make_relative_path(char *new_path, 
-                         char *orig_loc, 
-                         ::String *backupdir);
   int prepare_path(::String *backupdir, 
                    LEX_STRING orig_loc);
 

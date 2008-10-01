@@ -204,71 +204,6 @@ Stream::Stream(Logger &log, ::String *backupdir,
 }
 
 /**
-  Make a relative path.
-
-  This method takes the backupdir and the path specified on the backup command
-  (orig_loc) and forms a combined path. It walks the backupdir from the right
-  and the orig_loc from the left to position the paths for concatenation. Output
-  is written to new_path.
-
-  @param[OUT] new_path   The newly combined path + file name.
-  @param[IN]  orig_loc   The path + file name specified in the backup command.
-  @param[IN]  backupdir  The backupdir system variable value.
-
-  For example, if backupdir = '/dev/tmp' and orig_log = '../backup.bak', the 
-  combined path is = '/dev/backup.bak'.
-
-  @returns 
-    0 if success
-    1 if cannot be combined. Note: m_path is set to '' when this occurs to
-      trigger error in call stack.
-*/
-int Stream::make_relative_path(char *new_path, 
-                               char *orig_loc, 
-                               ::String *backupdir)
-{
-  char fixed_base[FN_LEN];
-  char fixed_rel[FN_LEN];
-  cleanup_dirname(fixed_base, backupdir->c_ptr());
-  cleanup_dirname(fixed_rel, orig_loc);
-  char *rel;
-  char *base= fixed_base;
-  bool done= FALSE;
-  char *found= fixed_rel;
-  int j= backupdir->length() - 1;
-  new_path[0]= 0;  // initialize the new path to an empty string
-
-  /*
-    For each '../' in orig_loc, move the pointer to the right for rel.
-    For each '../' in orig_loc, move pointer to the left for base.
-  */
-  while (!done)
-  {
-    rel= found; // save last known position
-    // find location of next level in relative path
-    found= strstr(found, FN_PARENTDIR);
-    if (found)
-    {
-      found+= 2;   // move past '..\'
-      if (base[j] == FN_LIBCHAR)
-        j--;       // move past last '\'
-      if (j == 0)  // We are trying to move too far down the path
-        return 1;
-      /*
-        Look for the next level down.
-      */
-      while ((base[j] != FN_LIBCHAR) && j)
-        j--;       
-    }
-    else
-      done= TRUE;
-  }
-  strcpy (new_path, base);
-  strcpy (new_path + j, rel);
-  return 0;
-}
-
-/**
   Prepare path for access.
 
   This method takes the backupdir and the file name specified on the backup
@@ -286,64 +221,59 @@ int Stream::make_relative_path(char *new_path,
 int Stream::prepare_path(::String *backupdir, 
                          LEX_STRING orig_loc)
 {
-  int path_len= 0;
+  char fix_path[FN_REFLEN]; 
+  char full_path[FN_REFLEN]; 
 
   /*
     Prepare the path using the backupdir iff no relative path
     or no hard path included.
 
     Relative paths are formed from the backupdir system variable.
+
+    Case 1: Backup image file name has relative path. 
+            Make relative to backupdir.
+
+    Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
+            If backupdir = '/dev/daily' then the
+            calculated path becomes
+            '/dev/monthly/dec.bak'
+
+    Case 2: Backup image file name has no path or has a subpath. 
+
+    Example BACKUP DATABASE ... TO 'week2.bak'
+            If backupdir = '/dev/weekly/' then the
+            calculated path becomes
+            '/dev/weekly/week2.bak'
+    Example BACKUP DATABASE ... TO 'jan/day1.bak'
+            If backupdir = '/dev/monthly/' then the
+            calculated path becomes
+            '/dev/monthly/jan/day1.bak'
+
+    Case 3: Backup image file name has hard path. 
+
+    Example BACKUP DATATBASE ... TO '/dev/dec.bak'
+            If backupdir = '/dev/daily/backup' then the
+            calculated path becomes
+            '/dev/dec.bak'
   */
-  if (is_prefix(orig_loc.str, FN_PARENTDIR))
-  {
-    /* 
-      Case 1: Backup image file name has relative path. 
-              Make relative to backupdir.
 
-      Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
-              If backupdir = '/dev/daily/backup' then the
-              calculated path becomes
-              '/dev/monthly/backup/dec.bak'
-    */
-    char new_path[FN_LEN];
-    if (make_relative_path(new_path, orig_loc.str, backupdir))
-      m_path.length(0);
-    path_len= strlen(new_path) + 1;
-    m_path.alloc(path_len);
-    m_path.length(0);
-    m_path.append(new_path);
-  }
-  else if (!test_if_hard_path(orig_loc.str))
-  {
-    /* 
-      Case 2: Backup image file name has hard path. 
+  /*
+    First, we construct the complete path from backupdir.
+  */
+  fn_format(fix_path, backupdir->ptr(), mysql_real_data_home, "", 
+            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
 
-      Example BACKUP DATATBASE ... TO '/dev/dec.bak'
-              If backupdir = '/dev/daily/backup' then the
-              calculated path becomes
-              '/dev/dec.bak'
-    */
-    path_len=backupdir->length() + orig_loc.length + 1;
-    m_path.alloc(path_len);
-    fn_format(m_path.c_ptr(), orig_loc.str, backupdir->c_ptr(), "",
-              MY_UNPACK_FILENAME);
-  }
-  else 
-  {
-    /* 
-      Case 3: Backup image file name has no path. 
+  /*
+    Next, we contruct the full path to the backup file.
+  */
+  fn_format(full_path, orig_loc.str, fix_path, "", 
+            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
 
-      Example BACKUP DATATBASE ... TO 'week2.bak'
-              If backupdir = '/dev/weekly/backup' then the
-              calculated path becomes
-              '/dev/weekly/week2.bak'
-    */
-    path_len= orig_loc.length + 1;
-    m_path.alloc(path_len);
-    m_path.length(0);
-    m_path.append(orig_loc.str);
-  }
-  m_path.length(path_len);
+  /*
+    Copy result to member variable for Stream class.
+  */
+  m_path.copy(full_path, strlen(full_path), system_charset_info);
+ 
   return 0;
 }
 
