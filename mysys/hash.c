@@ -692,8 +692,8 @@ my_bool my_hash_check(HASH *hash)
                                         blength, records)) != i)
 	{
           DBUG_PRINT("error", ("Record in wrong link at %d: Start %d  "
-		     ("Record in wrong link at %d: Start %d  Record: %p  Record-link %d",
-                      idx, i, hash_info->data, rec_link));
+                               "Record: 0x%lx  Record-link %d",
+                               idx, i, (long) hash_info->data, rec_link));
 	  error=1;
 	}
 	else
