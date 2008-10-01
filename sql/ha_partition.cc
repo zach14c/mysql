@@ -2515,7 +2515,11 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
                                    alloc_root(&table_share->mem_root,
                                               sizeof(HA_DATA_PARTITION));
     if (!ha_data)
+    {
+      if (is_not_tmp_table)
+        pthread_mutex_unlock(&table_share->LOCK_ha_data);
       goto err_handler;
+    }
     DBUG_PRINT("info", ("table_share->ha_data 0x%p", ha_data));
     bzero(ha_data, sizeof(HA_DATA_PARTITION));
   }
@@ -2933,7 +2937,7 @@ int ha_partition::write_row(uchar * buf)
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
   if (have_auto_increment && !table->s->next_number_keypart)
-    set_auto_increment_if_higher();
+    set_auto_increment_if_higher(table->next_number_field->val_int());
   reenable_binlog(thd);
 exit:
   table->timestamp_field_type= orig_timestamp_type;
@@ -2959,13 +2963,6 @@ exit:
     data in it.
     Keep in mind that the server can do updates based on ordering if an
     ORDER BY clause was used. Consecutive ordering is not guarenteed.
-
-    Currently new_data will not have an updated auto_increament record, or
-    and updated timestamp field. You can do these for partition by doing these:
-    if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
-      table->timestamp_field->set_time();
-    if (table->next_number_field && record == table->record[0])
-      update_auto_increment();
 
     Called from sql_select.cc, sql_acl.cc, sql_update.cc, and sql_insert.cc.
     new_data is always record[0]
@@ -3009,10 +3006,12 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
       table_share->ha_data->next_auto_inc_val if needed.
       (not to be used if auto_increment on secondary field in a multi-
       column index)
+      mysql_update does not set table->next_number_field, so we use
+      table->found_next_number_field instead.
     */
-    if (table->next_number_field && new_data == table->record[0] &&
+    if (table->found_next_number_field && new_data == table->record[0] &&
         !table->s->next_number_keypart)
-      set_auto_increment_if_higher();
+      set_auto_increment_if_higher(table->found_next_number_field->val_int());
     reenable_binlog(thd);
     goto exit;
   }
@@ -3022,6 +3021,9 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
 			old_part_id, new_part_id));
     tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
     error= m_file[new_part_id]->ha_write_row(new_data);
+    if (table->found_next_number_field && new_data == table->record[0] &&
+        !table->s->next_number_keypart)
+      set_auto_increment_if_higher(table->found_next_number_field->val_int());
     reenable_binlog(thd);
     if (error)
       goto exit;
@@ -5989,6 +5991,7 @@ void ha_partition::get_auto_increment(ulonglong offset, ulonglong increment,
       if (first_value_part == ~(ulonglong)(0)) // error in one partition
       {
         *first_value= first_value_part;
+        /* log that the error was between table/partition handler */
         sql_print_error("Partition failed to reserve auto_increment value");
         unlock_auto_increment();
         DBUG_VOID_RETURN;

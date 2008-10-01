@@ -13,3 +13,4 @@ partition_mgm_lc2_archive      : Bug#38751 - add partition deletes all rows
 partition_mgm_lc0_ndb          : Bug#38778 - master1 crashes
 partition_mgm_lc1_ndb          : Bug#38778 - master1 crashes
 partition_mgm_lc2_ndb          : Bug#38778 - master1 crashes
+partition_auto_increment_ndb   : Bug#39773 - auto_increment for NDB changed behavior
