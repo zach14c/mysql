@@ -359,7 +359,7 @@ print_plan(JOIN* join, uint idx, double record_count, double read_time,
 
 
 #ifndef DBUG_OFF
-void print_sjm(SJ_MATERIALIZE_INFO *sjm)
+void print_sjm(SJ_MATERIALIZATION_INFO *sjm)
 {
   DBUG_LOCK_FILE;
   fprintf(DBUG_FILE, "\nsemi-join nest{\n");

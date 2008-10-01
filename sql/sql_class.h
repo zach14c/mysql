@@ -2790,9 +2790,9 @@ public:
 struct st_table_ref;
 
 /*
-  Materialized semi-join info
+  Descriptor of a materialized semi-join.
 */
-class SJ_MATERIALIZE_INFO : public Sql_alloc
+class SJ_MATERIALIZATION_INFO : public Sql_alloc
 {
 public:
   /* optimal join sub-order */

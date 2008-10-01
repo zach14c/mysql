@@ -89,7 +89,7 @@ static bool find_best(JOIN *join,table_map rest_tables,uint index,
 		      double record_count,double read_time);
 static uint cache_record_length(JOIN *join,uint index);
 static double prev_record_reads(JOIN *join, uint idx, table_map found_ref);
-static bool get_best_combination(JOIN *join, table_map join_tables);
+static bool get_best_combination(JOIN *join);
 static store_key *get_store_key(THD *thd,
 				KEYUSE *keyuse, table_map used_tables,
 				KEY_PART_INFO *key_part, uchar *key_buff,
@@ -271,13 +271,6 @@ bool subquery_types_allow_materialization(THD *thd,
 */
 const char *subq_sj_cond_name=
   "0123456789ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef-sj-cond";
-
-#if 0
-static bool bitmap_covers(const table_map x, const table_map y)
-{
-  return !test(y & ~x);
-}
-#endif
 
 /**
   This handles SELECT with and without UNION.
@@ -1356,8 +1349,8 @@ static int clear_sj_tmp_tables(JOIN *join)
       return res;
   }
 
-  SJ_MATERIALIZE_INFO *sjm;
-  List_iterator<SJ_MATERIALIZE_INFO> it2(join->sjm_info_list);
+  SJ_MATERIALIZATION_INFO *sjm;
+  List_iterator<SJ_MATERIALIZATION_INFO> it2(join->sjm_info_list);
   while ((sjm= it2++))
   {
     sjm->materialized= FALSE;
@@ -4354,9 +4347,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
     join->best_read=1.0;
   }
   /* Generate an execution plan from the found optimal join order. */
-  DBUG_RETURN(join->thd->killed || 
-              get_best_combination(join, all_table_map & 
-                                         ~join->const_table_map));
+  DBUG_RETURN(join->thd->killed || get_best_combination(join));
 }
 
 
@@ -4381,8 +4372,8 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
         save it.
       */
       uint n_tables= my_count_bits(sj_nest->sj_inner_tables);
-      SJ_MATERIALIZE_INFO* sjm;
-      if (!(sjm= new SJ_MATERIALIZE_INFO) ||
+      SJ_MATERIALIZATION_INFO* sjm;
+      if (!(sjm= new SJ_MATERIALIZATION_INFO) ||
           !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
                                                         n_tables)))
         DBUG_RETURN(TRUE);
@@ -4392,7 +4383,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
       get_partial_join_cost(join, n_tables,
                             &subjoin_read_time, &subjoin_out_rows);
 
-      sjm->materialization_cost.set_double(subjoin_read_time);
+      sjm->materialization_cost.convert_from_cost(subjoin_read_time);
       sjm->rows= subjoin_out_rows;
 
       List<Item> &right_expr_list= 
@@ -4459,7 +4450,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
         sjm->scan_cost.zero();
         sjm->scan_cost.add_io(sjm->rows, 1.0);
       }
-      sjm->lookup_cost.set_double(lookup_cost);
+      sjm->lookup_cost.convert_from_cost(lookup_cost);
       sj_nest->sj_mat_info= sjm;
       DBUG_EXECUTE("opt", print_sjm(sjm););
     }
@@ -6811,7 +6802,7 @@ optimize_straight_join(JOIN *join, table_map join_tables)
     FALSE  No, some of the requirements are not met
 */
 
-SJ_MATERIALIZE_INFO *
+SJ_MATERIALIZATION_INFO *
 at_sjmat_pos(const JOIN *join, table_map remaining_tables, const JOIN_TAB *tab,
              uint idx, bool *insideout_scan)
 {
@@ -7550,7 +7541,7 @@ prev_record_reads(JOIN *join, uint idx, table_map found_ref)
 */
 
 static bool
-get_best_combination(JOIN *join, table_map join_tables)
+get_best_combination(JOIN *join)
 {
   uint i,tablenr;
   table_map used_tables;
@@ -7572,7 +7563,7 @@ get_best_combination(JOIN *join, table_map join_tables)
   /*
     Prepare semi-join processing info for plan refimenent stage:
   */
-  table_map remaining_tables= 0;//join_tables;
+  table_map remaining_tables= 0;
   table_map handled_tabs= 0;
   for (tablenr= table_count - 1 ; tablenr != join->const_tables - 1; tablenr--)
   {
@@ -7589,7 +7580,7 @@ get_best_combination(JOIN *join, table_map join_tables)
     
     if (pos->sj_strategy == SJ_OPT_MATERIALIZE)
     {
-      SJ_MATERIALIZE_INFO *sjm= s->emb_sj_nest->sj_mat_info;
+      SJ_MATERIALIZATION_INFO *sjm= s->emb_sj_nest->sj_mat_info;
       sjm->is_used= TRUE;
       sjm->is_sj_scan= FALSE;
       memcpy(pos - sjm->n_tables + 1, sjm->positions, 
@@ -7601,7 +7592,7 @@ get_best_combination(JOIN *join, table_map join_tables)
     else if (pos->sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
     {
       POSITION *first_inner= join->best_positions + pos->sjm_scan_last_inner;
-      SJ_MATERIALIZE_INFO *sjm= first_inner->table->emb_sj_nest->sj_mat_info;
+      SJ_MATERIALIZATION_INFO *sjm= first_inner->table->emb_sj_nest->sj_mat_info;
       sjm->is_used= TRUE;
       sjm->is_sj_scan= TRUE;
       first= pos->sjm_scan_last_inner - sjm->n_tables + 1;
@@ -9111,7 +9102,7 @@ end_sj_materialize(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
 {
   int error;
   THD *thd= join->thd;
-  SJ_MATERIALIZE_INFO *sjm= join_tab[-1].emb_sj_nest->sj_mat_info;
+  SJ_MATERIALIZATION_INFO *sjm= join_tab[-1].emb_sj_nest->sj_mat_info;
   DBUG_ENTER("end_sj_materialize");
   if (!end_of_records)
   {
@@ -9176,7 +9167,7 @@ void remove_sj_conds(Item **tree)
 
 */
 
-Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZE_INFO *sjm, 
+Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm, 
                                 Item_in_subselect *subq_pred)
 {
   //SELECT_LEX *subq_lex= subq_pred->unit->first_select();
@@ -9219,7 +9210,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
   uint i;
   DBUG_ENTER("setup_sj_materialization");
   TABLE_LIST *emb_sj_nest= tab->table->pos_in_table_list->embedding;
-  SJ_MATERIALIZE_INFO *sjm= emb_sj_nest->sj_mat_info;
+  SJ_MATERIALIZATION_INFO *sjm= emb_sj_nest->sj_mat_info;
   THD *thd= tab->join->thd;
   /* First the calls come to the materialization function */
   List<Item> &item_list= emb_sj_nest->sj_subq_pred->unit->first_select()->item_list;
@@ -12095,7 +12086,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
   POSITION *pos= join->positions + idx;
   remaining_tables &= ~s->table->map;
 
-  pos->prefix_cost.set_double(*current_read_time);
+  pos->prefix_cost.convert_from_cost(*current_read_time);
   pos->prefix_record_count= *current_record_count;
   pos->sj_strategy= SJ_OPT_NONE;
   
@@ -12269,7 +12260,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
 
   /* 4. SJ-Materialization and SJ-Materialization-scan strategy handler */
   bool sjm_scan;
-  SJ_MATERIALIZE_INFO *mat_info;
+  SJ_MATERIALIZATION_INFO *mat_info;
   if ((mat_info= at_sjmat_pos(join, remaining_tables, s, idx, &sjm_scan)))
   {
     if (sjm_scan)
@@ -12341,7 +12332,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
   {
     TABLE_LIST *mat_nest= 
       join->positions[pos->sjm_scan_last_inner].table->emb_sj_nest;
-    SJ_MATERIALIZE_INFO *mat_info= mat_nest->sj_mat_info;
+    SJ_MATERIALIZATION_INFO *mat_info= mat_nest->sj_mat_info;
 
     double prefix_cost;
     double prefix_rec_count;
@@ -15143,7 +15134,7 @@ sub_select_sjm(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   if (end_of_records)
     return (*join_tab->next_select)(join, join_tab + 1, end_of_records);
 
-  SJ_MATERIALIZE_INFO *sjm= join_tab->emb_sj_nest->sj_mat_info;
+  SJ_MATERIALIZATION_INFO *sjm= join_tab->emb_sj_nest->sj_mat_info;
   if (!sjm->materialized)
   {
     /* 

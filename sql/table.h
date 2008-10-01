@@ -1001,7 +1001,7 @@ public:
 };
 
 
-class SJ_MATERIALIZE_INFO;
+class SJ_MATERIALIZATION_INFO;
 class Index_hint;
 class Item_in_subselect;
 
@@ -1086,7 +1086,7 @@ struct TABLE_LIST
   /* Number of IN-compared expressions */
   uint          sj_in_exprs; 
   Item_in_subselect  *sj_subq_pred;
-  SJ_MATERIALIZE_INFO *sj_mat_info;
+  SJ_MATERIALIZATION_INFO *sj_mat_info;
 
   /*
     The structure of ON expression presented in the member above
@@ -1451,7 +1451,7 @@ private:
 
 struct st_position;
 
-class SJ_MATERIALIZE_INFO;
+class SJ_MATERIALIZATION_INFO;
   
 class Item;
 
