@@ -99,7 +99,6 @@ bool RecoveryObjects::isObjectActive(int objectNumber, int tableSpaceId)
 	return object->pass1Count == object->currentCount;
 }
 
-
 static inline RecoveryPage * findInHashBucket(RecoveryPage *head, int objectNumber, int tableSpaceId)
 {
 	for (RecoveryPage *object = head ; object; object = object->collision)

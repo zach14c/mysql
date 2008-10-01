@@ -28,6 +28,17 @@
 #include "SyncObject.h"
 #include "Queue.h"
 
+// uncomment DEBUG_SYNC_HASH_TABLE_SIZE to cause more contention and test for race conditions
+//#define DEBUG_SYNC_HASH_TABLE_SIZE (0x01 << 1)
+#ifdef DEBUG_SYNC_HASH_TABLE_SIZE
+#  define DEBUG_SYNC_HASH_TABLE_MASK (DEBUG_SYNC_HASH_TABLE_SIZE - 1)
+#  define PAGENUM_2_LOCK_INDEX(_pgnum, _slot) ((_pgnum) & DEBUG_SYNC_HASH_TABLE_MASK)
+#else /* DEBUG_SYNC_HASH_TABLE_SIZE */
+#  define PAGENUM_2_LOCK_INDEX(_pgnum, _slot) ((_slot))
+#endif /* DEBUG_SYNC_HASH_TABLE_SIZE */
+
+#define PAGENUM_2_SLOT(_pgnum) ((_pgnum) & hashMask)
+
 class Bdb;
 class Dbb;
 class PageWriter;
@@ -54,7 +65,6 @@ public:
 	void	markClean (Bdb *bdb);
 	void	markDirty (Bdb *bdb);
 	void	validate();
-	void	moveToHead (Bdb *bdb);
 	void	flush(int64 arg);
 	void	validateCache(void);
 	void	syncFile(Dbb *dbb, const char *text);
@@ -83,14 +93,20 @@ public:
 	bool		flushing;
 
 protected:
-	Bdb*		findBuffer (Dbb *dbb, int pageNumber, LockType lockType);
+	void	moveToHead (Bdb *bdb);
+	void	moveToHeadAlreadyLocked (Bdb *bdb);
+	Bdb*		getFreeBuffer(void);
+	Bdb*		findBdb(Dbb* dbb, int32 pageNumber, int slot);
 	Bdb*		findBdb(Dbb* dbb, int32 pageNumber);
+	Bdb*		lockFindBdbIncrementUseCount(Dbb* dbb, int32 pageNumber);
+	Bdb*		lockFindBdbIncrementUseCount(int32 pageNumber, int slot);
 
 	int64		flushArg;
 	Bdb			*bdbs;
 	Bdb			*endBdbs;
 	Queue<Bdb>	bufferQueue;
 	Bdb			**hashTable;
+	SyncObject  *syncHashTable;
 	Bdb			*firstDirty;
 	Bdb			*lastDirty;
 	Bitmap		*flushBitmap;
@@ -105,12 +121,13 @@ protected:
 	int			flushPages;
 	int			physicalWrites;
 	int			hashSize;
+	unsigned int	hashMask;
 	int			pageSize;
-	int			upperFraction;
+	unsigned int upperFraction;
 	int			numberHunks;
-	int			numberDirtyPages;
 	int			numberIoThreads;
-	volatile int bufferAge;
+	volatile uint64 bufferAge;
+
 public:
 	void flushWait(void);
 };

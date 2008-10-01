@@ -275,7 +275,7 @@ uint Backup::pack(byte *rcd, byte *packed_row)
     my_bool use_bitbuf= n_fields <= sizeof(bitbuf) * 8;
     error= bitmap_init(&cols, use_bitbuf ? bitbuf : NULL, (n_fields + 7) & ~7UL, FALSE);
     bitmap_set_all(&cols);
-    size= pack_row(cur_table, &cols, packed_row, rcd);
+    size= pack_row(cur_table, &cols, packed_row, rcd, FALSE);
     if (!use_bitbuf)
       bitmap_free(&cols);
   }
@@ -680,7 +680,7 @@ uint Restore::unpack(byte *packed_row)
     error= bitmap_init(&cols, use_bitbuf ? bitbuf : NULL, (n_fields + 7) & ~7UL, FALSE);
     bitmap_set_all(&cols);
     ulong length;
-    error= unpack_row(NULL, cur_table, n_fields, packed_row, &cols, &cur_row_end, &length);
+    error= unpack_row(NULL, cur_table, n_fields, packed_row, &cols, &cur_row_end, &length, FALSE);
     if (!use_bitbuf)
       bitmap_free(&cols);
   }
@@ -906,6 +906,7 @@ result_t Restore::send_data(Buffer &buf)
       memcpy(blob_ptrs[blob_ptr_index], (byte *)buf.data + META_SIZE, size);
       ((Field_blob*) cur_table->field[*cur_blob])->set_ptr(size, 
         (uchar *)blob_ptrs[blob_ptr_index]);
+      cur_table->field[*cur_blob]->set_notnull();
       blob_ptr_index++;
       mode= CHECK_BLOBS;
       DBUG_RETURN(PROCESSING);
@@ -944,6 +945,7 @@ result_t Restore::send_data(Buffer &buf)
       ptr= (byte *)blob_buffer.get_base_ptr();
       ((Field_blob*) cur_table->field[*cur_blob])->set_ptr(max_blob_size, 
         (uchar *)ptr);
+      cur_table->field[*cur_blob]->set_notnull();
       blob_ptr_index++;
       mode= CHECK_BLOBS;
       DBUG_RETURN(PROCESSING);

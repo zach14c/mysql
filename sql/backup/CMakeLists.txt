@@ -25,7 +25,7 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
 SET(BACKUP_SOURCES stream.cc logger.cc kernel.cc
                image_info.cc backup_info.cc data_backup.cc
                be_default.cc buffer_iterator.cc
-               be_snapshot.cc be_thread.cc backup_progress.cc
+               be_snapshot.cc be_thread.cc 
                backup_test.cc be_nodata.cc)
 
 IF(NOT SOURCE_SUBLIBS)

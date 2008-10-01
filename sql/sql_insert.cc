@@ -62,6 +62,7 @@
 #include "slave.h"
 #include "rpl_mi.h"
 #include "sql_audit.h"
+#include "transaction.h"
 
 #ifndef EMBEDDED_LIBRARY
 static bool delayed_get_table(THD *thd, TABLE_LIST *table_list);
@@ -2515,7 +2516,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
       */
       di->table->file->ha_release_auto_increment();
       mysql_unlock_tables(thd, lock);
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
       di->group_count=0;
       mysql_audit_release(thd);
       pthread_mutex_lock(&di->mutex);
@@ -2536,7 +2537,7 @@ err:
     first call to ha_*_row() instead. Remove code that are used to
     cover for the case outlined above.
    */
-  ha_autocommit_or_rollback(thd, 1);
+  trans_rollback_stmt(thd);
 
 #ifndef __WIN__
 end:
@@ -3783,8 +3784,8 @@ bool select_create::send_eof()
     */
     if (!table->s->tmp_table)
     {
-      ha_autocommit_or_rollback(thd, 0);
-      end_active_trans(thd);
+      trans_commit_stmt(thd);
+      trans_commit_implicit(thd);
     }
 
     table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
