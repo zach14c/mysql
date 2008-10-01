@@ -2338,7 +2338,7 @@ void open_table_error(TABLE_SHARE *share, int error, int db_errno, int errarg)
   case 7:
   case 1:
     if (db_errno == ENOENT)
-      current_thd->raise_ER_NO_SUCH_TABLE(share->db.str, share->table_name.str);
+      my_error(ER_NO_SUCH_TABLE, MYF(0), share->db.str, share->table_name.str);
     else
     {
       strxmov(buff, share->normalized_path.str, reg_ext, NullS);

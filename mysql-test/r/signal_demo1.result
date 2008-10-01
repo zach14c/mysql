@@ -26,6 +26,9 @@ po_id integer, /* FK to po_order.po_id */
 line_no integer,
 item_id integer, /* FK to in_inventory.item_id */
 qty integer);
+#
+# Schema integrity enforcement
+#
 create procedure check_pk_person(in person_type char, in id integer)
 begin
 declare x integer;
@@ -131,6 +134,9 @@ call check_pk_order(NEW.po_id);
 call check_pk_inventory(NEW.item_id);
 end
 $$
+#
+# Application helpers
+#
 create procedure po_create_order(
 in p_cust_type char,
 in p_cust_id integer,
@@ -150,9 +156,9 @@ insert into po_order_line set
 po_id = po, line_no = line, item_id = item, qty = q;
 end
 $$
-select "Create sample data";
-Create sample data
-Create sample data
+#
+# Create sample data
+#
 insert into ab_physical_person values
 ( 1, "John", "A", "Doe"),
 ( 2, "Marry", "B", "Smith")
@@ -183,9 +189,9 @@ item_id	descr	stock
 200	Table, coffee	3
 300	School table	25
 301	School chairs	50
-select "Entering an order !";
-Entering an order !
-Entering an order !
+#
+# Entering an order
+#
 set @my_po = 0;
 /* John Doe wants 1 table and 4 chairs */
 call po_create_order("P", 1, @my_po);
@@ -194,24 +200,24 @@ call po_add_order_line (@my_po, 2, 101, 4);
 /* Marry Smith wants a coffee table */
 call po_create_order("P", 2, @my_po);
 call po_add_order_line (@my_po, 1, 200, 1);
-select "Entering bad data in an order";
-Entering bad data in an order
-Entering bad data in an order
+#
+# Entering bad data in an order
+#
 call po_add_order_line (@my_po, 1, 999, 1);
 ERROR 45000: Failed integrity constraint, table in_inventory, PK:999
-select "Entering bad data in an unknown order";
-Entering bad data in an unknown order
-Entering bad data in an unknown order
+#
+# Entering bad data in an unknown order
+#
 call po_add_order_line (99, 1, 100, 1);
 ERROR 45000: Failed integrity constraint, table po_order, PK:99
-select "Entering an order for an unknown company";
-Entering an order for an unknown company
-Entering an order for an unknown company
+#
+# Entering an order for an unknown company
+#
 call po_create_order("M", 7, @my_po);
 ERROR 45000: No such moral person, PK:7
-select "Entering an order for an unknown person type";
-Entering an order for an unknown person type
-Entering an order for an unknown person type
+#
+# Entering an order for an unknown person type
+#
 call po_create_order("X", 1, @my_po);
 ERROR 45000: No such person type:X
 /* The local school wants 10 class tables and 20 chairs */

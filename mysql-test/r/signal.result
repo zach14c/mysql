@@ -1,3 +1,9 @@
+#
+# PART 1: syntax
+#
+#
+# Test every new reserved and non reserved keywords
+#
 drop table if exists signal_non_reserved;
 create table signal_non_reserved (
 class_origin int,
@@ -65,6 +71,9 @@ create table test_reserved (resignal int);
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'resignal int)' at line 1
 create table test_reserved (condition int);
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'condition int)' at line 1
+#
+# Test the SIGNAL syntax
+#
 drop procedure if exists test_invalid;
 drop procedure if exists test_signal_syntax;
 drop function if exists test_signal_func;
@@ -223,6 +232,9 @@ begin
 SIGNAL SQLSTATE '00001';
 end $$
 ERROR 42000: Bad SQLSTATE: '00001'
+#
+# Test conditions information that SIGNAL can not set
+#
 create procedure test_invalid()
 begin
 SIGNAL SQLSTATE '12345' SET bla_bla = 'foo';
@@ -331,6 +343,9 @@ SIGNAL SQLSTATE '12345' SET TRIGGER_SCHEMA = 'foo';
 end $$
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'TRIGGER_SCHEMA = 'foo';
 end' at line 3
+#
+# Test the RESIGNAL syntax
+#
 drop procedure if exists test_invalid;
 drop procedure if exists test_resignal_syntax;
 create procedure test_invalid()
@@ -537,16 +552,30 @@ begin
 RESIGNAL SQLSTATE '00000';
 end $$
 ERROR 42000: Bad SQLSTATE: '00000'
+create procedure test_invalid()
+begin
+RESIGNAL SQLSTATE '00001';
+end $$
+ERROR 42000: Bad SQLSTATE: '00001'
+#
+# PART 2: non preparable statements
+#
 prepare stmt from 'SIGNAL SQLSTATE \'23000\'';
 ERROR HY000: This command is not supported in the prepared statement protocol yet
 prepare stmt from 'RESIGNAL SQLSTATE \'23000\'';
 ERROR HY000: This command is not supported in the prepared statement protocol yet
+#
+# PART 3: runtime execution
+#
 drop procedure if exists test_signal;
 drop procedure if exists test_resignal;
 drop table if exists t_warn;
 drop table if exists t_cursor;
 create table t_warn(a integer(2));
 create table t_cursor(a integer);
+#
+# SIGNAL can also appear in a query
+#
 SIGNAL foo;
 ERROR 42000: Undefined CONDITION: foo
 SIGNAL SQLSTATE '01000';
@@ -570,6 +599,9 @@ SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = -1;
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '-1' at line 1
 SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = 65535;
 ERROR HY000: Unhandled user-defined exception condition
+#
+# RESIGNAL can also appear in a query
+#
 RESIGNAL;
 ERROR 0K000: RESIGNAL when handler not active
 RESIGNAL foo;
@@ -578,6 +610,9 @@ RESIGNAL SQLSTATE '12345';
 ERROR 0K000: RESIGNAL when handler not active
 RESIGNAL SQLSTATE VALUE '12345';
 ERROR 0K000: RESIGNAL when handler not active
+#
+# Different kind of SIGNAL conditions
+#
 create procedure test_signal()
 begin
 # max range
@@ -725,6 +760,9 @@ end $$
 call test_signal() $$
 ERROR 40001: Unhandled user-defined exception condition
 drop procedure test_signal $$
+#
+# Test the scope of condition
+#
 create procedure test_signal()
 begin
 DECLARE foo CONDITION FOR SQLSTATE '99999';
@@ -747,6 +785,9 @@ end $$
 call test_signal() $$
 ERROR 88888: Unhandled user-defined exception condition
 drop procedure test_signal $$
+#
+# Test SET MYSQL_ERRNO
+#
 create procedure test_signal()
 begin
 DECLARE foo CONDITION FOR SQLSTATE '99999';
@@ -780,6 +821,9 @@ end $$
 call test_signal() $$
 ERROR 55000: Unhandled user-defined exception condition
 drop procedure test_signal $$
+#
+# Test SET MESSAGE_TEXT
+#
 SIGNAL SQLSTATE '77777' SET MESSAGE_TEXT='' $$
 ERROR 77777: 
 create procedure test_signal()
@@ -845,6 +889,21 @@ call test_signal() $$
 Warnings:
 Warning	1736	
 drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE warn CONDITION FOR SQLSTATE "01111";
+SIGNAL warn SET MESSAGE_TEXT = "รก a";
+end $$
+call test_signal() $$
+Warnings:
+Warning	1736	แ a
+show warnings $$
+Level	Code	Message
+Warning	1736	แ a
+drop procedure test_signal $$
+#
+# Test SET complex expressions
+#
 create procedure test_signal()
 begin
 DECLARE error CONDITION FOR SQLSTATE '99999';
@@ -1251,6 +1310,9 @@ call test_signal() $$
 Caught by SQLEXCEPTION
 Caught by SQLEXCEPTION
 drop procedure test_signal $$
+#
+# Test where SIGNAL can be used
+#
 create function test_signal_func() returns integer
 begin
 DECLARE warn CONDITION FOR SQLSTATE "01XXX";
@@ -1369,6 +1431,9 @@ end $$
 drop table t1 $$
 drop procedure p1 $$
 drop function f1 $$
+#
+# Test the RESIGNAL runtime
+#
 create procedure test_resignal()
 begin
 DECLARE warn CONDITION FOR SQLSTATE "01234";
@@ -2016,6 +2081,9 @@ Level	Code	Message
 Error	1051	Unknown table 'no_such_table'
 Error	5555	RESIGNAL to an error
 drop procedure test_resignal $$
+#
+# More complex cases
+#
 drop procedure if exists peter_p1 $$
 drop procedure if exists peter_p2 $$
 CREATE PROCEDURE peter_p1 ()

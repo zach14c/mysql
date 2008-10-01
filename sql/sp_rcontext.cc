@@ -32,7 +32,8 @@
 sp_rcontext::sp_rcontext(MEM_ROOT *cond_root, sp_pcontext *root_parsing_ctx,
                          Field *return_value_fld,
                          sp_rcontext *prev_runtime_ctx)
-  :m_root_parsing_ctx(root_parsing_ctx),
+  :end_partial_result_set(FALSE),
+   m_root_parsing_ctx(root_parsing_ctx),
    m_var_table(0),
    m_var_items(0),
    m_return_value_fld(return_value_fld),

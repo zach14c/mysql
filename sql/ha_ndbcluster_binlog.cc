@@ -962,7 +962,8 @@ struct Cluster_schema
   uint32 any_value;
 };
 
-void print_could_not_discover_error(THD *thd, const Cluster_schema *schema)
+static void print_could_not_discover_error(THD *thd,
+                                           const Cluster_schema *schema)
 {
   sql_print_error("NDB Binlog: Could not discover table '%s.%s' from "
                   "binlog schema event '%s' from node %d. "

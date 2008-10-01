@@ -78,9 +78,9 @@ create table po_order_line (
 
 delimiter $$;
 
-#
-# Schema integrity enforcement
-#
+--echo #
+--echo # Schema integrity enforcement
+--echo #
 
 create procedure check_pk_person(in person_type char, in id integer)
 begin
@@ -203,9 +203,9 @@ begin
 end
 $$
 
-#
-# Application helpers
-#
+--echo #
+--echo # Application helpers
+--echo #
 
 create procedure po_create_order(
   in p_cust_type char,
@@ -230,7 +230,9 @@ $$
 
 delimiter ;$$
 
-select "Create sample data";
+--echo #
+--echo # Create sample data
+--echo #
 
 insert into ab_physical_person values
   ( 1, "John", "A", "Doe"),
@@ -254,7 +256,9 @@ select * from ab_physical_person order by person_id;
 select * from ab_moral_person order by company_id;
 select * from in_inventory order by item_id;
 
-select "Entering an order !";
+--echo #
+--echo # Entering an order
+--echo #
 
 set @my_po = 0;
 
@@ -269,25 +273,33 @@ call po_create_order("P", 2, @my_po);
 
 call po_add_order_line (@my_po, 1, 200, 1);
 
-select "Entering bad data in an order";
+--echo #
+--echo # Entering bad data in an order
+--echo #
 
 # There is no item 999 in in_inventory
 --error 10000
 call po_add_order_line (@my_po, 1, 999, 1);
 
-select "Entering bad data in an unknown order";
+--echo #
+--echo # Entering bad data in an unknown order
+--echo #
 
 # There is no order 99 in po_order
 --error 10000
 call po_add_order_line (99, 1, 100, 1);
 
-select "Entering an order for an unknown company";
+--echo #
+--echo # Entering an order for an unknown company
+--echo #
 
 # There is no moral person of id 7
 --error 10000
 call po_create_order("M", 7, @my_po);
 
-select "Entering an order for an unknown person type";
+--echo #
+--echo # Entering an order for an unknown person type
+--echo #
 
 # There is no person of type X
 --error 20000

@@ -45,17 +45,15 @@ protected:
     default values for this statement.
     @param thd the current thread.
     @param cond the condition to update.
-    @return 0 on success.
   */
-  int eval_sqlcode_sqlstate(THD *thd, SQL_condition *cond);
+  void eval_sqlcode_sqlstate(THD *thd, SQL_condition *cond);
 
   /**
     Evaluate condition item 'MESSAGE_TEXT' default value.
     @param thd the current thread.
     @param cond the condition to update.
-    @return 0 on success.
   */
-  int eval_default_message_text(THD *thd, SQL_condition *cond);
+  void eval_default_message_text(THD *thd, SQL_condition *cond);
 
   /**
     Evaluate each signal condition items for this statement.

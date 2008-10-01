@@ -15,13 +15,13 @@
 
 # Tests for SIGNAL and RESIGNAL
 
-#
-# PART 1: syntax
-#
+--echo #
+--echo # PART 1: syntax
+--echo #
 
-#
-# Test every new reserved and non reserved keywords
-#
+--echo #
+--echo # Test every new reserved and non reserved keywords
+--echo #
 
 --disable_warnings
 drop table if exists signal_non_reserved;
@@ -116,9 +116,9 @@ create table test_reserved (resignal int);
 --error ER_PARSE_ERROR
 create table test_reserved (condition int);
 
-#
-# Test the SIGNAL syntax
-#
+--echo #
+--echo # Test the SIGNAL syntax
+--echo #
 
 --disable_warnings
 drop procedure if exists test_invalid;
@@ -308,10 +308,9 @@ begin
   SIGNAL SQLSTATE '00001';
 end $$
 
-
-#
-# Test conditions information that SIGNAL can not set
-#
+--echo #
+--echo # Test conditions information that SIGNAL can not set
+--echo #
 
 --error ER_PARSE_ERROR
 create procedure test_invalid()
@@ -423,9 +422,9 @@ end $$
 
 delimiter ;$$
 
-#
-# Test the RESIGNAL syntax
-#
+--echo #
+--echo # Test the RESIGNAL syntax
+--echo #
 
 --disable_warnings
 drop procedure if exists test_invalid;
@@ -673,11 +672,17 @@ begin
   RESIGNAL SQLSTATE '00000';
 end $$
 
+--error ER_SP_BAD_SQLSTATE
+create procedure test_invalid()
+begin
+  RESIGNAL SQLSTATE '00001';
+end $$
+
 delimiter ;$$
 
-#
-# PART 2: non preparable statements
-#
+--echo #
+--echo # PART 2: non preparable statements
+--echo #
 
 --error ER_UNSUPPORTED_PS
 prepare stmt from 'SIGNAL SQLSTATE \'23000\'';
@@ -685,9 +690,9 @@ prepare stmt from 'SIGNAL SQLSTATE \'23000\'';
 --error ER_UNSUPPORTED_PS
 prepare stmt from 'RESIGNAL SQLSTATE \'23000\'';
 
-#
-# PART 3: runtime execution
-#
+--echo #
+--echo # PART 3: runtime execution
+--echo #
 
 --disable_warnings
 drop procedure if exists test_signal;
@@ -700,9 +705,9 @@ drop table if exists t_cursor;
 create table t_warn(a integer(2));
 create table t_cursor(a integer);
 
-#
-# SIGNAL can also appear in a query
-#
+--echo #
+--echo # SIGNAL can also appear in a query
+--echo #
 
 --error ER_SP_COND_MISMATCH
 SIGNAL foo;
@@ -736,9 +741,9 @@ SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = -1;
 --error 65535
 SIGNAL SQLSTATE 'HY000' SET MYSQL_ERRNO = 65535;
 
-#
-# RESIGNAL can also appear in a query
-#
+--echo #
+--echo # RESIGNAL can also appear in a query
+--echo #
 
 --error ER_RESIGNAL_NO_HANDLER
 RESIGNAL;
@@ -752,9 +757,9 @@ RESIGNAL SQLSTATE '12345';
 --error ER_RESIGNAL_NO_HANDLER
 RESIGNAL SQLSTATE VALUE '12345';
 
-#
-# Different kind of SIGNAL conditions
-#
+--echo #
+--echo # Different kind of SIGNAL conditions
+--echo #
 
 delimiter $$;
 
@@ -931,7 +936,9 @@ end $$
 call test_signal() $$
 drop procedure test_signal $$
 
-# Test the scope of condition
+--echo #
+--echo # Test the scope of condition
+--echo #
 
 create procedure test_signal()
 begin
@@ -959,7 +966,9 @@ end $$
 call test_signal() $$
 drop procedure test_signal $$
 
-# Test SET MYSQL_ERRNO
+--echo #
+--echo # Test SET MYSQL_ERRNO
+--echo #
 
 create procedure test_signal()
 begin
@@ -1000,7 +1009,9 @@ end $$
 call test_signal() $$
 drop procedure test_signal $$
 
-# Test SET MESSAGE_TEXT
+--echo #
+--echo # Test SET MESSAGE_TEXT
+--echo #
 
 --error ER_SIGNAL_EXCEPTION
 SIGNAL SQLSTATE '77777' SET MESSAGE_TEXT='' $$
@@ -1076,7 +1087,19 @@ end $$
 call test_signal() $$
 drop procedure test_signal $$
 
-# Test SET complex expressions
+create procedure test_signal()
+begin
+  DECLARE warn CONDITION FOR SQLSTATE "01111";
+  SIGNAL warn SET MESSAGE_TEXT = "á a";
+end $$
+
+call test_signal() $$
+show warnings $$
+drop procedure test_signal $$
+
+--echo #
+--echo # Test SET complex expressions
+--echo #
 
 create procedure test_signal()
 begin
@@ -1277,57 +1300,6 @@ begin
     MYSQL_ERRNO = @sqlcode := 1234;
 end $$
 
-## create procedure test_signal()
-## begin
-##   DECLARE something CONDITION FOR SQLSTATE "12345";
-## 
-##   SIGNAL something SET
-##     MESSAGE_TEXT = concat("functions", " also works"),
-##     MYSQL_ERRNO = 1000 + 12;
-## end $$
-## 
-## --error 1012
-## call test_signal() $$
-## drop procedure test_signal $$
-
-## create procedure test_signal(code integer)
-## begin
-##   DECLARE something CONDITION FOR SQLSTATE "12345";
-## 
-##   SIGNAL something SET
-##     MESSAGE_TEXT = (select message_text from t1 where id=code),
-##     MYSQL_ERRNO = (select sqlcode from t1 where id=code);
-## end $$
-## 
-## --disable_warnings
-## drop table if exists t1 $$
-## --enable_warnings
-## 
-## --error ER_NO_SUCH_TABLE
-## call test_signal(1) $$
-## 
-## create table t1(id integer, message_text varchar(64), sqlcode integer) $$
-## 
-## --error ER_WRONG_VALUE_FOR_VAR
-## call test_signal(1) $$
-## 
-## insert into t1 values ((1), ("First message"), (1001)) $$
-## insert into t1 values ((2), ("Second message"), (1002)) $$
-## 
-## --error 1001
-## call test_signal(1) $$
-## 
-## --error 1002
-## call test_signal(2) $$
-
-## alter table t1 drop column message_text $$
-## 
-## --error ER_BAD_FIELD_ERROR
-## call test_signal(2) $$
-## 
-## drop table t1 $$
-## drop procedure test_signal $$
-
 create procedure test_signal()
 begin
   DECLARE aaa VARCHAR(64);
@@ -1438,8 +1410,6 @@ end $$
 # value: '%-.128s', so the warning printed truncates the value too,
 # which affects MESSAGE_TEXT (the X is missing)
 
-#NOTE: ER_TRUNCATED_WRONG_VALUE is raised as an error for DECIMAL,
-# it's an existing bug: Bug#36457
 call test_signal() $$
 drop procedure test_signal $$
 
@@ -1589,7 +1559,9 @@ end $$
 call test_signal() $$
 drop procedure test_signal $$
 
-# Test where SIGNAL can be used
+--echo #
+--echo # Test where SIGNAL can be used
+--echo #
 
 create function test_signal_func() returns integer
 begin
@@ -1743,9 +1715,9 @@ drop table t1 $$
 drop procedure p1 $$
 drop function f1 $$
 
-#########################################################
-# Test the RESIGNAL runtime
-#########################################################
+--echo #
+--echo # Test the RESIGNAL runtime
+--echo #
 
 # 6 tests:
 # {Signaled warning, Signaled Not Found, Signaled Error,
@@ -2376,9 +2348,9 @@ call test_resignal() $$
 show warnings $$
 drop procedure test_resignal $$
 
-#########################################################
-# More complex cases
-#########################################################
+--echo #
+--echo # More complex cases
+--echo #
 
 --disable_warnings
 drop procedure if exists peter_p1 $$

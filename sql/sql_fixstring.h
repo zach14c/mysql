@@ -63,21 +63,6 @@ public:
   ~Fixed_string();
 
   /**
-    Set the string value.
-    @param str the value to set, expressed in the character set of
-    Fixed_string_param
-  */
-  void set(const char* str);
-
-  /**
-    Set the string value.
-    @param str the value to set, expressed in the character set of
-    Fixed_string_param
-    @param len length, in bytes, of str
-  */
-  void set(const char* str, size_t len);
-
-  /**
     Set the string value, with character set conversion if necessary.
     @param str the value to set, expressed in any character set
   */

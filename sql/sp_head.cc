@@ -1274,7 +1274,7 @@ sp_head::execute(THD *thd)
         ctx->push_hstack(i->get_cont_dest());
         /* Fall through */
       default:
-        if (thd->end_partial_result_set)
+        if (ctx->end_partial_result_set)
           thd->protocol->end_partial_result_set(thd);
         ip= hip;
         err_status= FALSE;
@@ -1287,7 +1287,7 @@ sp_head::execute(THD *thd)
         continue;
       }
 
-      thd->end_partial_result_set= FALSE;
+      ctx->end_partial_result_set= FALSE;
     }
   } while (!err_status && !thd->killed && !thd->is_fatal_error);
 

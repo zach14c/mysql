@@ -84,6 +84,13 @@ class sp_rcontext : public Sql_alloc
   */
   Query_arena *callers_arena;
 
+  /*
+    End a open result set before start executing a continue/exit
+    handler if one is found as otherwise the client will hang
+    due to a violation of the client/server protocol.
+  */
+  bool end_partial_result_set;
+
 #ifndef DBUG_OFF
   /*
     The routine for which this runtime context is created. Used for checking

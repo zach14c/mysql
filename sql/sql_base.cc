@@ -2386,7 +2386,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
 
   if (flags & MYSQL_OPEN_TEMPORARY_ONLY)
   {
-    thd->raise_ER_NO_SUCH_TABLE(table_list->db, table_list->table_name);
+    my_error(ER_NO_SUCH_TABLE, MYF(0), table_list->db, table_list->table_name);
     DBUG_RETURN(TRUE);
   }
 
@@ -2509,7 +2509,7 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
       locked tables list was created.
     */
     if (thd->locked_tables_mode == LTM_PRELOCKED)
-      thd->raise_ER_NO_SUCH_TABLE(table_list->db, table_list->alias);
+      my_error(ER_NO_SUCH_TABLE, MYF(0), table_list->db, table_list->alias);
     else
       my_error(ER_TABLE_NOT_LOCKED, MYF(0), alias);
     DBUG_RETURN(TRUE);

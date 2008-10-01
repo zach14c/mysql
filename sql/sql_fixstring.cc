@@ -18,40 +18,6 @@
 Fixed_string::~Fixed_string()
 {}
 
-void Fixed_string::set(const char* str)
-{
-  set(str, strlen(str));
-}
-
-void Fixed_string::set(const char* str, size_t len)
-{
-  size_t numchars;
-  size_t to_copy;
-  CHARSET_INFO *cs= m_param->m_cs;
-  const char *end= str+len;
-
-  numchars= cs->cset->numchars(cs, str, end);
-
-  if (numchars <= m_param->m_max_char_length)
-  {
-    to_copy= len;
-    m_truncated= FALSE;
-  }
-  else
-  {
-    to_copy= cs->cset->charpos(cs, str, end, m_param->m_max_char_length);
-    m_truncated= TRUE;
-  }
-
-  reserve(to_copy + cs->mbminlen);
-  if (m_ptr)
-  {
-    m_byte_length= to_copy;
-    memcpy(m_ptr, str, to_copy);
-    add_nul(m_ptr + to_copy);
-  }
-}
-
 void Fixed_string::set(const String* str)
 {
   set(str->ptr(), str->length(), (CHARSET_INFO*) str->charset());
@@ -65,7 +31,16 @@ void Fixed_string::set(const char* str, size_t len, const CHARSET_INFO *str_cs)
   CHARSET_INFO *cs= m_param->m_cs;
   const char *end= str + len;
 
-  numchars= cs->cset->numchars(cs, str, end);
+  if (str == NULL)
+  {
+    m_ptr= NULL;
+    m_byte_length= 0;
+    m_allocated_length= 0;
+    m_truncated= FALSE;
+    return;
+  }
+
+  numchars= str_cs->cset->numchars((CHARSET_INFO*) str_cs, str, end);
 
   if (numchars <= m_param->m_max_char_length)
   {
@@ -137,7 +112,7 @@ void Fixed_string::copy(const Fixed_string *str)
 {
   DBUG_ASSERT(m_param->m_cs->number == str->m_param->m_cs->number);
 
-  set(str->m_ptr, str->m_byte_length);
+  set(str->m_ptr, str->m_byte_length, str->m_param->m_cs);
 }
 
 void Fixed_string::reserve(size_t len)

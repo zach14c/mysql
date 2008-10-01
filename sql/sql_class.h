@@ -24,6 +24,7 @@
 #include "log.h"
 #include "rpl_tblmap.h"
 #include "mdl.h"
+#include "sql_fixstring.h"
 
 /**
   An interface that is used to take an action when
@@ -313,7 +314,7 @@ typedef enum enum_diag_condition_item_name
 {
   /*
     Conditions that can be set by the user (SIGNAL/RESIGNAL),
-    and by the server implementation (THD::raise_ER_XXX).
+    and by the server implementation.
   */
 
   DIAG_CLASS_ORIGIN= 0,
@@ -1109,7 +1110,7 @@ enum enum_thread_type
 /**
   Representation of a SQL condition.
   A SQL condition can be a completion condition (note, warning),
-  or an exception contition (error, not found).
+  or an exception condition (error, not found).
 */
 class SQL_condition : public Sql_alloc
 {
@@ -1137,7 +1138,7 @@ public:
     Get the SQL_ERRNO of this condition.
     @return the sql error number condition item.
   */
-  int get_sql_errno() const
+  uint get_sql_errno() const
   { return m_sql_errno; }
 
   /**
@@ -1159,9 +1160,6 @@ private:
     interface available to the rest of the server implementation
     is the interface offered by the THD methods (THD::raise_error()),
     which should be used.
-    MAINTAINER: If you need to access private attributes/methods here,
-    please consider creating a helper similar to THD::raise_ER_NO_SUCH_TABLE
-    instead.
   */
   friend class THD;
   friend class Abstract_signal;
@@ -1284,7 +1282,7 @@ private:
   bool m_message_text_set;
 
   /** MySQL extension, MYSQL_ERRNO condition item. */
-  int m_sql_errno;
+  uint m_sql_errno;
 
   /**
     SQL RETURNED_SQLSTATE condition item.
@@ -1387,12 +1385,12 @@ public:
   /**
     Condition area.
   */
-  List	     <SQL_condition> warn_list;
+  List <SQL_condition> warn_list;
 
   /**
     Counters for errors/warnings/notes in the condition area.
   */
-  uint	     warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_END];
+  uint warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_END];
 
 private:
   /** Read only status. */
@@ -2156,7 +2154,6 @@ public:
   my_bool    tablespace_op;	/* This is TRUE in DISCARD/IMPORT TABLESPACE */
 
   sp_rcontext *spcont;		// SP runtime context
-  bool       end_partial_result_set;
 
   sp_cache   *sp_proc_cache;
   sp_cache   *sp_func_cache;
@@ -2646,22 +2643,6 @@ public:
     Remove the error handler last pushed.
   */
   void pop_internal_handler();
-
-  /**
-    Raise an ER_NO_SUCH_TABLE exception condition.
-    @param db the schema name of the missing table
-    @param table the table name of the missing table
-  */
-  void raise_ER_NO_SUCH_TABLE(const char* db, const char* table)
-  {
-    SQL_condition cond(this->mem_root);
-    cond.set_printf(this, ER_NO_SUCH_TABLE, ER(ER_NO_SUCH_TABLE),
-                    MYSQL_ERROR::WARN_LEVEL_ERROR, MYF(0),
-                    db, table);
-    cond.m_schema_name.set(db);
-    cond.m_table_name.set(table);
-    raise_condition(& cond);
-  }
 
   /**
     Raise an exception condition.

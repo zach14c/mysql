@@ -207,7 +207,14 @@ bool foreign_key_prefix(Key *a, Key *b)
 bool
 Reprepare_observer::report_error(THD *thd)
 {
-  /* No handler, no error in the condition area */
+  /*
+    This 'error' is purely internal to the server:
+    - No exception handler is invoked,
+    - No condition is added in the condition area (warn_list).
+    The diagnostics area is set to an error status to enforce
+    that this thread execution stops and returns to the caller,
+    backtracking all the way to Prepared_statement::execute_loop().
+  */
   thd->main_da.set_error_status(thd, ER_NEED_REPREPARE,
                                 ER(ER_NEED_REPREPARE), "HY000");
   m_invalidated= TRUE;
@@ -375,7 +382,7 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
 void Diagnostics_stmt_area::clear()
 {
   warn_list.empty();
-  memset((char*) warn_count, 0, sizeof(warn_count));
+  memset(warn_count, 0, sizeof(warn_count));
 }
 
 /**
@@ -501,7 +508,7 @@ Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
 #endif
 
   m_sql_errno= sql_errno_arg;
-  strncpy(m_sqlstate, sqlstate, SQLSTATE_LENGTH);
+  memcpy(m_sqlstate, sqlstate, SQLSTATE_LENGTH);
   m_sqlstate[SQLSTATE_LENGTH]= '\0';
   strmake(m_message, message_arg, sizeof(m_message)-1);
 
@@ -549,7 +556,6 @@ THD::THD()
    bootstrap(0),
    derived_tables_processing(FALSE),
    spcont(NULL),
-   end_partial_result_set(FALSE),
    m_parser_state(NULL),
   /*
     @todo The following is a work around for online backup and the DDL blocker.
@@ -1769,15 +1775,14 @@ void select_send::abort()
   {
     /*
       We're executing a stored procedure, have an open result
-      set, an SQL exception condition and a handler for it.
-      In this situation we must abort the current statement,
-      silence the error and start executing the continue/exit
-      handler.
+      set and an SQL exception condition. In this situation we
+      must abort the current statement, silence the error and
+      start executing the continue/exit handler if one is found.
       Before aborting the statement, let's end the open result set, as
       otherwise the client will hang due to the violation of the
       client/server protocol.
     */
-    thd->end_partial_result_set= TRUE;
+    thd->spcont->end_partial_result_set= TRUE;
   }
   DBUG_VOID_RETURN;
 }

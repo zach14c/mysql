@@ -20,6 +20,143 @@
 #include "sql_signal.h"
 
 /*
+  Design notes about SQL_condition::m_message_text.
+
+  The member SQL_condition::m_message_text contains the text associated with
+  an error, warning or note (which are all SQL 'conditions')
+
+  Producer of SQL_condition::m_message_text:
+  ------------------------------------------
+
+  (#1) the server implementation itself, when invoking functions like
+  my_error() or push_warning()
+
+  (#2) user code in stored programs, when using the SIGNAL statement.
+
+  (#3) user code in stored programs, when using the RESIGNAL statement.
+
+  When invoking my_error(), the error number and message is typically
+  provided like this:
+  - my_error(ER_WRONG_DB_NAME, MYF(0), ...);
+  - my_message(ER_SLAVE_IGNORED_TABLE, ER(ER_SLAVE_IGNORED_TABLE), MYF(0));
+
+  In both cases, the message is retrieved from ER(ER_XXX), which in turn
+  is read from the resource file errmsg.sys at server startup.
+  The strings stored in the errmsg.sys file are expressed in the character set
+  that corresponds to the server --language start option
+  (see error_message_charset_info).
+
+  When executing:
+  - a SIGNAL statement,
+  - a RESIGNAL statement,
+  the message text is provided by the user logic, and is expressed in UTF8.
+
+  Storage of SQL_condition::m_message_text:
+  -----------------------------------------
+
+  (#4) The class SQL_condition is used to hold the message text member.
+  This class represents a single SQL condition.
+
+  (#5) The thread warn_list is a collection of SQL_condition, and represents
+  the condition area for the top level statement.
+
+  (#6) For nested statements (sub statements invoked in stored programs),
+  the SQL standard mandates that the implementation maintains a stack of
+  SQL diagnostics area, so that each sub statement has an associated
+  condition area (a collection os SQL conditions).
+  This is currently not implemented in MySQL, only the top level condition area
+  is implemented (represented by warn_list).
+  The code is minimal, and only keeps the last SQL_condition caught in a SQL
+  exception handler (DECLARE HANDLER in a stored program).
+  This is implemented by sp_rcontext::m_raised_conditions.
+
+  Consumer of SQL_condition::m_message_text:
+  ------------------------------------------
+
+  (#7) The statements SHOW WARNINGS and SHOW ERRORS display the content of
+  the warning list.
+
+  (#8) The RESIGNAL statement reads the SQL_condition caught by an exception
+  handler, to raise a new or modified condition (in #3).
+
+  (#9) The GET DIAGNOSTICS statement (planned, not implemented yet) will
+  also read the content of:
+  - the top level statement condition area (when executed  in a query),
+  - a sub statement (when executed in a stored program)
+  and return the data stored in a SQL_condition.
+
+  The big picture
+  ---------------
+
+  my_error(#1)                 SIGNAL(#2)                 RESIGNAL(#3)
+      |(#A)                       |(#B)                       |(#C)
+      |                           |                           |
+      ----------------------------|----------------------------
+                                  |
+                                  V
+                           SQL_condition(#4)
+                                  |
+                    -----------------------------------------
+                    |(#D)                                   |(#I)
+                    V                                       V
+                warn_list(#5)                         Stored Programs(#6)
+                    |                                       |
+          ---------------------                 ---------------------
+          |(#G)               |(#K)             |(#J)               |(#M)
+          V                   V                 V                   V
+   SHOW WARNINGS(#7)  GET DIAGNOSTICS(#9)    RESIGNAL(#8)  GET DIAGNOSTICS(#9)
+          |  |                |
+          |  --------         |
+          |         |         |
+          V         |         |
+      Connectors    |         |
+          |(#F)     |(#H)     |(#L)
+          ---------------------
+                    |
+                    V
+             Client application
+
+  Current implementation status
+  -----------------------------
+
+  (#1) (my_error) produces data in the 'error_message_charset_info' CHARSET
+
+  (#2) and (#3) (SIGNAL, RESIGNAL) produces data internally in UTF8
+
+  (#7) (SHOW WARNINGS) produces data in the 'error_message_charset_info' CHARSET
+
+  (#8) (RESIGNAL) produces data internally in UTF8 (see #3)
+
+  (#9) (GET DIAGNOSTICS) is not implemented.
+
+  As a result, the design choice for (#4), (#5) and (#6) is to store data in
+  the 'error_message_charset_info' CHARSET, to minimize impact on the code base.
+  This is implemented by using 'String SQL_condition::m_message_text'.
+
+  The UTF8 -> error_message_charset_info convertion is implemented in
+  Abstract_signal::eval_signal_informations() (for path #B and #C).
+
+  Future work
+  -----------
+
+  - Change (#1) (my_error) to generate errors in UTF8.
+    See WL#751 (Recoding of error messages)
+
+  - Change (#4, #5 and #6) to store message text in UTF8 natively.
+    In practice, this means changing the type of the message text to
+    'UTF8String128 SQL_condition::m_message_text', and is a direct
+    consequence of WL#751.
+
+  - Change (#6) to implement a full stacked diagnostics area for sub statements.
+    There are many reported bugs affecting this area.
+    See Bug#36649 (Condition area is not properly cleaned up after trigger
+                   invocation)
+
+  - Implement (#9) (GET DIAGNOSTICS).
+    See WL#2111 (Stored Procedures: Implement GET DIAGNOSTICS)
+*/
+
+/*
   The parser accepts any error code (desired)
   The runtime internally supports any error code (desired)
   The client server protocol is limited to 16 bits error codes (restriction)
@@ -203,6 +340,11 @@ SQL_condition::set(THD *thd, uint code, const char *str,
 void
 SQL_condition::set_builtin_message_text(const char* str)
 {
+  /*
+    See the comments
+     "Design notes about SQL_condition::m_message_text."
+    in file sql_signal.cc
+  */
   const char* copy;
 
   copy= strdup_root(m_mem_root, str);
@@ -258,7 +400,7 @@ void Set_signal_information::clear()
   }
 }
 
-int Abstract_signal::eval_sqlcode_sqlstate(THD *thd, SQL_condition *cond)
+void Abstract_signal::eval_sqlcode_sqlstate(THD *thd, SQL_condition *cond)
 {
   DBUG_ASSERT(m_cond);
   DBUG_ASSERT(cond);
@@ -290,11 +432,9 @@ int Abstract_signal::eval_sqlcode_sqlstate(THD *thd, SQL_condition *cond)
     cond->m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
     cond->m_sql_errno= ER_SIGNAL_EXCEPTION;
   }
-
-  return 0;
 }
 
-int Abstract_signal::eval_default_message_text(THD *thd, SQL_condition *cond)
+void Abstract_signal::eval_default_message_text(THD *thd, SQL_condition *cond)
 {
   const char* sqlstate= cond->get_sqlstate();
 
@@ -317,8 +457,6 @@ int Abstract_signal::eval_default_message_text(THD *thd, SQL_condition *cond)
       cond->set_builtin_message_text(ER(ER_SIGNAL_EXCEPTION));
     }
   }
-
-  return 0;
 }
 
 int assign_condition_item(const char* name, THD *thd, Item *set,
@@ -331,7 +469,10 @@ int assign_condition_item(const char* name, THD *thd, Item *set,
 
   if (set->is_null())
   {
-    my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), name, "NULL");
+    thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
+                            ER(ER_WRONG_VALUE_FOR_VAR),
+                            MYF(0),
+                            name, "NULL");
     DBUG_RETURN(1);
   }
 
@@ -342,14 +483,16 @@ int assign_condition_item(const char* name, THD *thd, Item *set,
     if (thd->variables.sql_mode & (MODE_STRICT_TRANS_TABLES |
                                    MODE_STRICT_ALL_TABLES))
     {
-      my_error(ER_COND_ITEM_TOO_LONG, MYF(0), name);
+      thd->raise_error_printf(ER_COND_ITEM_TOO_LONG,
+                              ER(ER_COND_ITEM_TOO_LONG),
+                              MYF(0),
+                              name);
       DBUG_RETURN(1);
     }
 
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                        WARN_COND_ITEM_TRUNCATED,
-                        ER(WARN_COND_ITEM_TRUNCATED),
-                        name);
+    thd->raise_warning_printf(WARN_COND_ITEM_TRUNCATED,
+                              ER(WARN_COND_ITEM_TRUNCATED),
+                              name);
   }
 
   DBUG_RETURN(0);
@@ -467,7 +610,10 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
   {
     if (set->is_null())
     {
-      my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), "MESSAGE_TEXT", "NULL");
+      thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
+                              ER(ER_WRONG_VALUE_FOR_VAR),
+                              MYF(0),
+                              "MESSAGE_TEXT", "NULL");
       goto end;
     }
     /*
@@ -483,19 +629,22 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
       if (thd->variables.sql_mode & (MODE_STRICT_TRANS_TABLES |
                                      MODE_STRICT_ALL_TABLES))
       {
-        my_error(ER_COND_ITEM_TOO_LONG, MYF(0), "MESSAGE_TEXT");
+        thd->raise_error_printf(ER_COND_ITEM_TOO_LONG,
+                                ER(ER_COND_ITEM_TOO_LONG),
+                                MYF(0),
+                                "MESSAGE_TEXT");
         goto end;
       }
 
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                          WARN_COND_ITEM_TRUNCATED,
-                          ER(WARN_COND_ITEM_TRUNCATED),
-                          "MESSAGE_TEXT");
+      thd->raise_warning_printf(WARN_COND_ITEM_TRUNCATED,
+                                ER(WARN_COND_ITEM_TRUNCATED),
+                                "MESSAGE_TEXT");
     }
 
     /*
-      Convert to the character set used with --language.
-      This code should be removed when WL#751 is implemented.
+      See the comments
+       "Design notes about SQL_condition::m_message_text."
+      in file sql_signal.cc
     */
     String converted_text;
     converted_text.set_charset(error_message_charset_info);
@@ -509,15 +658,20 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
   {
     if (set->is_null())
     {
-      my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), "MYSQL_ERRNO", "NULL");
+      thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
+                              ER(ER_WRONG_VALUE_FOR_VAR),
+                              MYF(0),
+                              "MYSQL_ERRNO", "NULL");
       goto end;
     }
     longlong code= set->val_int();
     if ((code <= 0) || (code > MAX_MYSQL_ERRNO))
     {
       str= set->val_str(& str_value);
-      my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0),
-               "MYSQL_ERRNO", str->c_ptr_safe());
+      thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
+                              ER(ER_WRONG_VALUE_FOR_VAR),
+                              MYF(0),
+                              "MYSQL_ERRNO", str->c_ptr_safe());
       goto end;
     }
     cond->m_sql_errno= (int) code;
@@ -556,15 +710,13 @@ int Abstract_signal::raise_condition(THD *thd, SQL_condition *cond)
 
   if (m_cond != NULL)
   {
-    if (eval_sqlcode_sqlstate(thd, cond))
-      DBUG_RETURN(result);
+    eval_sqlcode_sqlstate(thd, cond);
   }
 
   if (eval_signal_informations(thd, cond))
     DBUG_RETURN(result);
 
-  if (eval_default_message_text(thd, cond))
-    DBUG_RETURN(result);
+  eval_default_message_text(thd, cond);
 
   /* SIGNAL should not signal WARN_LEVEL_NOTE */
   DBUG_ASSERT((cond->m_level == MYSQL_ERROR::WARN_LEVEL_WARN) ||
@@ -607,7 +759,7 @@ int SQLCOM_resignal::execute(THD *thd)
 
   if (! thd->spcont || ! (signaled= thd->spcont->raised_condition()))
   {
-    my_error(ER_RESIGNAL_NO_HANDLER, MYF(0));
+    thd->raise_error(ER_RESIGNAL_NO_HANDLER);
     DBUG_RETURN(result);
   }
 

@@ -482,7 +482,7 @@ bool mysql_create_view(THD *thd, TABLE_LIST *views,
         strcmp(tbl->view_db.str, view->db) == 0 &&
         strcmp(tbl->view_name.str, view->table_name) == 0)
     {
-      thd->raise_ER_NO_SUCH_TABLE(tbl->view_db.str, tbl->view_name.str);
+      my_error(ER_NO_SUCH_TABLE, MYF(0), tbl->view_db.str, tbl->view_name.str);
       res= TRUE;
       goto err;
     }
@@ -935,7 +935,7 @@ loop_out:
    {
       if (mode == VIEW_ALTER)
       {
-        thd->raise_ER_NO_SUCH_TABLE(view->db, view->alias);
+        my_error(ER_NO_SUCH_TABLE, MYF(0), view->db, view->alias);
         error= -1;
         goto err;
       }
