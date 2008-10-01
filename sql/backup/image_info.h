@@ -747,7 +747,7 @@ inline
 time_t Image_info::get_vp_time() const
 {
   struct tm time;
-  long tz_offset;
+  time_t tz_offset;
 
   bzero(&time,sizeof(time));
 
