@@ -1313,7 +1313,7 @@ void Transaction::add(DeferredIndex* deferredIndex)
 	Sync sync(&syncDeferredIndexes, "Transaction::add");
 	sync.lock(Exclusive);
 
-	deferredIndex->addRef();
+//	deferredIndex->addRef(); // temporarily disabled for Bug#39711
 	deferredIndex->nextInTransaction = deferredIndexes;
 	deferredIndexes = deferredIndex;
 	deferredIndexCount++;
