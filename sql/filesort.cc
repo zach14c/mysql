@@ -121,7 +121,7 @@ ha_rows filesort(THD *thd, TABLE *table, SORT_FIELD *sortorder, uint s_length,
   TABLE_LIST *tab= table->pos_in_table_list;
   Item_subselect *subselect= tab ? tab->containing_subselect() : 0;
 
-  MYSQL_FILESORT_START();
+  MYSQL_FILESORT_START(table->s->db.str, table->s->table_name.str);
 
   /*
    Release InnoDB's adaptive hash index latch (if holding) before
@@ -333,8 +333,10 @@ ha_rows filesort(THD *thd, TABLE *table, SORT_FIELD *sortorder, uint s_length,
 #endif
   memcpy(&table->sort, &table_sort, sizeof(FILESORT_INFO));
   DBUG_PRINT("exit",("records: %ld", (long) records));
-  MYSQL_FILESORT_END();
-  DBUG_RETURN(error ? HA_POS_ERROR : records);
+  if (error)
+    records= HA_POS_ERROR;
+  MYSQL_FILESORT_DONE(error, records);
+  DBUG_RETURN(records);
 } /* filesort */
 
 

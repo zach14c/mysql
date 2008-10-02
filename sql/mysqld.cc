@@ -1905,6 +1905,7 @@ void close_connection(THD *thd, uint errcode, bool lock)
   }
   if (lock)
     (void) pthread_mutex_unlock(&LOCK_thread_count);
+  MYSQL_CONNECTION_DONE((int) errcode, thd->thread_id);
   DBUG_VOID_RETURN;
 }
 #endif /* EMBEDDED_LIBRARY */

@@ -601,6 +601,8 @@ pthread_handler_t libevent_thread_proc(void *arg)
       else
       {
         /* login successful */
+        MYSQL_CONNECTION_START(thd->thread_id, thd->security_ctx->priv_user,
+                               (char *) thd->security_ctx->host_or_ip);
         thd->scheduler.logged_in= TRUE;
         prepare_new_connection_state(thd);
         if (!libevent_needs_immediate_processing(thd))

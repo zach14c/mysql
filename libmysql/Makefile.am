@@ -67,6 +67,8 @@ link_sources:
 	  done; \
 	  rm -f net.c; \
 	  @LN_CP_F@ $(top_srcdir)/sql/net_serv.cc net.c ; \
+	  rm -f probes.h; \
+	  @LN_CP_F@ $(top_srcdir)/sql/probes.h probes.h
 	  rm -f password.c; \
 	  @LN_CP_F@ $(top_srcdir)/sql/password.c password.c
 	  echo timestamp > link_sources
