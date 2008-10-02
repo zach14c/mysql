@@ -1079,14 +1079,19 @@ int StorageInterface::write_row(uchar *buff)
 
 	if (table->next_number_field && buff == table->record[0])
 		{
-		update_auto_increment();
+		int code = update_auto_increment();
+		/*
+		   May fail, e.g. due to an out of range value in STRICT mode.
+		*/
+		if (code)
+			DBUG_RETURN(code);
 
 		/*
 		   If the new value is less than the current highest value, it will be
 		   ignored by setSequenceValue().
 		*/
 
-		int code = storageShare->setSequenceValue(table->next_number_field->val_int());
+		code = storageShare->setSequenceValue(table->next_number_field->val_int());
 
 		if (code)
 			DBUG_RETURN(error(code));
