@@ -11768,8 +11768,7 @@ user:
             if (check_identifier_name(&$$->user, USERNAME_CHAR_LENGTH,
                                       ER_WRONG_STRING_LENGTH,
                                       ER(ER_USERNAME)) ||
-                check_string_byte_length(&$$->host, ER(ER_HOSTNAME),
-                                         HOSTNAME_LENGTH))
+                check_host_name(&$$->host))
               MYSQL_YYABORT;
           }
         | CURRENT_USER optional_braces
