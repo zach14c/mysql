@@ -1076,14 +1076,10 @@ void Transaction::addRef()
 	INTERLOCKED_INCREMENT(useCount);
 }
 
-int Transaction::release()
+void Transaction::release()
 {
-	int count = INTERLOCKED_DECREMENT(useCount);
-
-	if (count == 0)
+	if (INTERLOCKED_DECREMENT(useCount) == 0)
 		delete this;
-
-	return count;
 }
 
 int Transaction::createSavepoint()
