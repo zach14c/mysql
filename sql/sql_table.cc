@@ -6983,7 +6983,6 @@ view_err:
   /* Copy the data if necessary. */
   thd->count_cuted_fields= CHECK_FIELD_WARN;	// calc cuted fields
   thd->cuted_fields=0L;
-  thd_proc_info(thd, "copy to tmp table");
   copied=deleted=0;
   /*
     We do not copy data for MERGE tables. Only the children have data.
@@ -6994,6 +6993,7 @@ view_err:
     /* We don't want update TIMESTAMP fields during ALTER TABLE. */
     new_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
     new_table->next_number_field=new_table->found_next_number_field;
+    thd_proc_info(thd, "copy to tmp table");
     error= copy_data_between_tables(table, new_table,
                                     alter_info->create_list, ignore,
                                    order_num, order, &copied, &deleted,
