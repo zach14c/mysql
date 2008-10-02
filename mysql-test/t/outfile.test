@@ -3,7 +3,7 @@ disable_query_log;
 # Server are started in "var/master-data", so "../tmp" will be "var/tmp"
 eval set @tmpdir="../tmp";
 enable_query_log;
-#-- source include/have_outfile.inc
+-- source include/have_outfile.inc
 
 #
 # test of into outfile|dumpfile
