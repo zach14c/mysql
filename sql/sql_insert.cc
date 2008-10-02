@@ -3788,10 +3788,10 @@ void select_create::abort()
   DBUG_ENTER("select_create::abort");
 
   /*
-    In select_insert::abort() we roll back the statement, including
-    truncating the transaction cache of the binary log. To do this, we
-    pretend that the statement is transactional, even though it might
-    be the case that it was not.
+    We roll back the statement here, including truncating the
+    transaction cache of the binary log. To do this, we pretend that
+    the statement is transactional, even though it might be the case
+    that it was not.
 
     We roll back the statement prior to deleting the table and prior
     to releasing the lock on the table, since there might be potential
@@ -3805,6 +3805,7 @@ void select_create::abort()
   tmp_disable_binlog(thd);
   select_insert::abort();
   thd->transaction.stmt.modified_non_trans_table= FALSE;
+  trans_rollback_stmt(thd);
   reenable_binlog(thd);
   thd->binlog_flush_pending_rows_event(TRUE);
 
