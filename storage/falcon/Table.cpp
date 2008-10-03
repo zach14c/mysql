@@ -2117,7 +2117,10 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 	if (!leaving && !staying)
 		return;
 
-	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect");
+	Sync sync (&syncObject, "Table::garbageCollect(1)");
+	sync.lock(Shared);
+	
+	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(2)");
 	syncPrior.lock(Shared);
 	
 	// Clean up field indexes
