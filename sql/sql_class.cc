@@ -831,6 +831,16 @@ SQL_condition* THD::raise_condition(uint sql_errno,
   if (query_id != warn_id && !spcont)
     mysql_reset_errors(this, 0);
 
+  /*
+    TODO: replace by DBUG_ASSERT(sql_errno != 0) once all bugs similar to
+    Bug#36760 are fixed: a SQL condition must have a real (!=0) error number
+    so that it can be caught by handlers.
+  */
+  if (sql_errno == 0)
+    sql_errno= ER_UNKNOWN_ERROR;
+  if (msg == NULL)
+    msg= ER(sql_errno);
+
   if ((level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
       really_abort_on_warning())
   {

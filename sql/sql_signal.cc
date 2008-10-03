@@ -308,17 +308,11 @@ void
 SQL_condition::set(uint sql_errno, const char* sqlstate,
                    MYSQL_ERROR::enum_warning_level level, const char* msg)
 {
-  /*
-    TODO: replace by DBUG_ASSERT(code != 0) once all bugs similar to
-    Bug#36760 are fixed: a SQL condition must have a real (!=0) error number
-    so that it can be caught by handlers.
-  */
-  if (sql_errno == 0)
-    sql_errno= ER_UNKNOWN_ERROR;
-  if (msg == NULL)
-    msg= ER(sql_errno);
-  m_sql_errno= sql_errno;
+  DBUG_ASSERT(sql_errno != 0);
+  DBUG_ASSERT(sqlstate != NULL);
+  DBUG_ASSERT(msg != NULL);
 
+  m_sql_errno= sql_errno;
   memcpy(m_returned_sqlstate, sqlstate, SQLSTATE_LENGTH);
   m_returned_sqlstate[SQLSTATE_LENGTH]= '\0';
 
