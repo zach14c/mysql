@@ -38,7 +38,6 @@ libbackup_la_SOURCES = \
   be_nodata.cc \
   buffer_iterator.cc \
   be_thread.cc \
-  backup_progress.cc \
   backup_test.cc
 
 libbackup_la_LIBADD = libbackupstream.la
@@ -67,7 +66,6 @@ noinst_HEADERS = \
   be_nodata.h \
   buffer_iterator.h \
   be_thread.h \
-  backup_progress.h \
   stream_v1.h \
   stream_v1_services.h \
   backup_test.h

@@ -53,7 +53,7 @@ table_mapping::~table_mapping()
   free_root(&m_mem_root, MYF(0));
 }
 
-TABLE* table_mapping::get_table(ulong table_id)
+TABLE *table_mapping::get_table(ulong table_id)
 {
   DBUG_ENTER("table_mapping::get_table(ulong)");
   DBUG_PRINT("enter", ("table_id: %lu", table_id));

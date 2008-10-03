@@ -273,10 +273,11 @@ SET(FALCON_SOURCES
 		SymbolManager.cpp 
 		Sync.cpp 
 		Synchronize.cpp
-		SyncObject.cpp 
-		SyncTest.cpp 
-		SyncWait.cpp 
-		Syntax.cpp 
+		SyncHandler.cpp
+		SyncObject.cpp
+		SyncTest.cpp
+		SyncWait.cpp
+		Syntax.cpp
 		TableAttachment.cpp
 		Table.cpp 
 		TableFilter.cpp 
@@ -555,6 +556,7 @@ SET(FALCON_SOURCES
 		SymbolManager.h 
 		Sync.h 
 		Synchronize.h
+		SyncHandler.h 
 		SyncObject.h 
 		SyncTest.h 
 		SyncWait.h 

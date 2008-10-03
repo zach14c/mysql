@@ -794,9 +794,10 @@ void Image_info::save_vp_time(const time_t time)
 inline
 void Image_info::save_binlog_pos(const ::LOG_INFO &li)
 {
-  // save current binlog file name
+  // save current binlog file name only, not full path
   m_binlog_file.length(0);
-  m_binlog_file.append(li.log_file_name);
+  int dn_length= dirname_length(li.log_file_name);
+  m_binlog_file.append(li.log_file_name + dn_length);
 
   // store binlog coordinates
   binlog_pos.pos= (unsigned long int)li.pos;

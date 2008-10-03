@@ -166,7 +166,7 @@ Table::~Table()
 
 Field* Table::findField(const char * fieldName)
 {
-	const char *name = database->getSymbol(fieldName);
+	const char *name = database->getString(fieldName);
 	Sync sync(&syncObject, "Table::findField");
 	sync.lock(Shared);
 
@@ -841,14 +841,6 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	activeVersions = false;
 	primaryKey = NULL;
 	formats = NEW Format* [FORMAT_HASH_SIZE];
-
-	static char name[SYNC_VERSIONS_SIZE][64];
-	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
-		{
-		sprintf(name[n], "syncPriorVersions[%02d]", n);
-		syncPriorVersions[n].setName(name[n]);
-		}
-		
 	triggers = NULL;
 	memset (formats, 0, sizeof (Format*) * FORMAT_HASH_SIZE);
 	maxFieldId = 0;

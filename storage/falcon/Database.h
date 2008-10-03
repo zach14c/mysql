@@ -45,6 +45,7 @@ static const int FALC0N_SYNC_TEST			= 2;
 static const int FALC0N_SYNC_OBJECTS		= 4;
 static const int FALC0N_FREEZE				= 8;
 static const int FALC0N_REPORT_WRITES		= 16;
+static const int FALC0N_SYNC_HANDLER		= 32;
 
 #define TABLE_HASH_SIZE		101
 
@@ -102,6 +103,7 @@ class RecordScavenge;
 class PriorityScheduler;
 class SQLException;
 class BackLog;
+class SyncHandler;
 
 struct JavaCallback;
 
@@ -284,6 +286,7 @@ public:
 	TransactionManager	*transactionManager;
 	FilterSetManager	*filterSetManager;
 	TableSpaceManager	*tableSpaceManager;
+	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;
 	PageWriter			*pageWriter;

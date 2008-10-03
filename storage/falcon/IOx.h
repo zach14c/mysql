@@ -65,6 +65,7 @@ public:
 	void	readPage (Bdb *page);
 	bool	createFile (const char *name);
 	static	void setBaseDirectory(const char *path);
+	static	void setWriteFlags(int fileId, bool *forceFsync);
 	bool	openFile (const char *name, bool readOnly);
 	void	longSeek(int64 offset);
 	void	read(int64 offset, int length, UCHAR* buffer);
@@ -106,9 +107,11 @@ public:
 	bool		fatalError;
 	bool		isReadOnly;
 	bool		forceFsync;
+	bool		created;
 
 //private:
 	Dbb			*dbb;						// this is a crock and should be phased out
 };
-
+extern bool deleteFilesOnExit;
+extern bool inCreateDatabase;
 #endif // !defined(AFX_IO_H__6A019C19_A340_11D2_AB5A_0000C01D2301__INCLUDED_)
