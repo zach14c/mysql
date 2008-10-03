@@ -65,7 +65,7 @@ class Logger
    void save_errors();
    void stop_save_errors();
    void clear_saved_errors();
-   MYSQL_ERROR *last_saved_error();
+   util::SAVED_MYSQL_ERROR *last_saved_error();
 
  protected:
 
@@ -86,8 +86,7 @@ class Logger
   int write_message(log_level::value level , int error_code, const char *msg);
 
  private:
-
-  List<MYSQL_ERROR> errors;  ///< Used to store saved errors.
+  util::SAVED_MYSQL_ERROR error;   ///< Used to store saved errors.
   bool m_save_errors;        ///< Flag telling if errors should be saved.
 };
 
@@ -208,15 +207,15 @@ void Logger::stop_save_errors()
 /// Delete all saved errors to free resources.
 inline
 void Logger::clear_saved_errors()
-{ 
-  errors.delete_elements();
+{
+  memset(&error, 0, sizeof(error));
 }
 
 /// Return a pointer to most recent saved error.
 inline
-MYSQL_ERROR *Logger::last_saved_error()
+util::SAVED_MYSQL_ERROR *Logger::last_saved_error()
 { 
-  return errors.is_empty() ? NULL : errors.head();
+  return error.code ? &error : NULL;
 }
 
 /// Report start of an operation.

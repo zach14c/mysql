@@ -264,7 +264,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
  */
 int send_error(Backup_restore_ctx &log, int error_code, ...)
 {
-  MYSQL_ERROR *error= log.last_saved_error();
+  util::SAVED_MYSQL_ERROR *error= log.last_saved_error();
 
   if (error && !util::report_mysql_error(log.thd(), error, error_code))
   {
