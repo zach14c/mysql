@@ -28,6 +28,7 @@ AUTO_INCREMENT
 INSERT INTO t1 VALUES (0);
 INSERT INTO t1 VALUES (5), (16);
 # ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (17);
 INSERT INTO t1 VALUES (19), (NULL);
 INSERT INTO t1 VALUES (NULL), (10), (NULL);
@@ -37,7 +38,8 @@ INSERT INTO t1 VALUES (NULL);
 UPDATE t1 SET c1 = 50 WHERE c1 = 17;
 UPDATE t1 SET c1 = 51 WHERE c1 = 19;
 UPDATE t1 SET c1 = NULL WHERE c1 = 4;
-# ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# ERROR (only OK if Blackhole) should give ER_BAD_NULL_ERROR
+# mysql_errno: 0
 INSERT INTO t1 VALUES (NULL);
 INSERT INTO t1 VALUES (NULL);
 SELECT * FROM t1 ORDER BY c1;
@@ -125,6 +127,7 @@ PARTITIONS 2;
 INSERT INTO t1 VALUES (1, NULL);
 INSERT INTO t1 VALUES (1, 1), (99, 99);
 # ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (1, NULL);
 SET @@session.sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
 INSERT INTO t1 VALUES (1, 0);
@@ -157,6 +160,7 @@ INSERT INTO t1 VALUES (2), (4), (NULL);
 INSERT INTO t1 VALUES (0);
 INSERT INTO t1 VALUES (5), (16);
 # ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (17), (19), (NULL);
 INSERT INTO t1 VALUES (NULL), (10), (NULL);
 INSERT INTO t1 VALUES (NULL), (9);
@@ -166,7 +170,8 @@ INSERT INTO t1 VALUES (NULL);
 UPDATE t1 SET c1 = 150 WHERE c1 = 17;
 UPDATE t1 SET c1 = 151 WHERE c1 = 19;
 UPDATE t1 SET c1 = NULL WHERE c1 = 4;
-# ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# ERROR (only OK if Blackhole) should give ER_BAD_NULL_ERROR
+# mysql_errno: 0
 INSERT INTO t1 VALUES (NULL);
 INSERT INTO t1 VALUES (NULL);
 SELECT * FROM t1 ORDER BY c1;
@@ -399,11 +404,13 @@ PARTITIONS 2;
 INSERT INTO t1 VALUES (1, 0);
 INSERT INTO t1 VALUES (1, 1);
 # ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (1, NULL);
 INSERT INTO t1 VALUES (2, NULL), (3, 11), (3, NULL), (2, 0);
 INSERT INTO t1 VALUES (2, NULL);
 INSERT INTO t1 VALUES (2, 2);
 # ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (2, 22);
 INSERT INTO t1 VALUES (2, NULL);
 SELECT * FROM t1 ORDER BY c1,c2;
@@ -420,12 +427,14 @@ PARTITIONS 2;
 INSERT INTO t1 VALUES (1, 0);
 INSERT INTO t1 VALUES (1, 1);
 # ERROR (only OK if Blackhole) should give ER_DUP_KEY or ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (1, NULL);
 INSERT INTO t1 VALUES (2, NULL);
 INSERT INTO t1 VALUES (3, NULL);
 INSERT INTO t1 VALUES (3, NULL), (2, 0), (2, NULL);
 INSERT INTO t1 VALUES (2, 2);
-# ERROR (only OK if Blackhole/NDB) should give ER_DUP_KEY or ER_DUP_ENTRY
+# ERROR (only OK if Blackhole/NDB) should give ER_DUP_ENTRY
+# mysql_errno: 0
 INSERT INTO t1 VALUES (2, 22), (2, NULL);
 SELECT * FROM t1 ORDER BY c1,c2;
 c1	c2
