@@ -695,14 +695,24 @@ void THD::push_internal_handler(Internal_error_handler *handler)
 }
 
 
-bool THD::handle_condition(const SQL_condition *cond)
+bool THD::handle_condition(uint sql_errno,
+                           const char* sqlstate,
+                           MYSQL_ERROR::enum_warning_level level,
+                           const char* msg,
+                           SQL_condition ** cond_hdl)
 {
   if (m_internal_handler)
   {
-    return m_internal_handler->handle_condition(this, cond);
+    return m_internal_handler->handle_condition(this,
+                                                sql_errno,
+                                                sqlstate,
+                                                level,
+                                                msg,
+                                                cond_hdl);
   }
 
-  return FALSE;                                 // 'FALSE', as per coding style
+  *cond_hdl= NULL;
+  return FALSE;
 }
 
 
@@ -712,111 +722,144 @@ void THD::pop_internal_handler()
   m_internal_handler= NULL;
 }
 
-void THD::raise_error(uint code, const char *str, myf MyFlags)
+void THD::raise_error(uint sql_errno, const char *str, myf MyFlags)
 {
-  SQL_condition cond(this->mem_root);
-  cond.set(this, code, str, MYSQL_ERROR::WARN_LEVEL_ERROR, MyFlags);
-  raise_condition(& cond);
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  (void) raise_condition(sql_errno,
+                         sqlstate,
+                         MYSQL_ERROR::WARN_LEVEL_ERROR,
+                         str,
+                         MyFlags);
 }
 
-void THD::raise_error_printf(uint code, const char *format, myf MyFlags, ...)
+void THD::raise_error_printf(uint sql_errno, const char *format,
+                             myf MyFlags, ...)
 {
   va_list args;
   char ebuff[ERRMSGSIZE+20];
   DBUG_ENTER("THD::raise_error_printf");
   DBUG_PRINT("my", ("nr: %d  MyFlags: %d  errno: %d  Format: %s",
-                    code, MyFlags, errno, format));
+                    sql_errno, MyFlags, errno, format));
   va_start(args, MyFlags);
   my_vsnprintf(ebuff, sizeof(ebuff), format, args);
   va_end(args);
-  SQL_condition cond(this->mem_root);
-  cond.set(this, code, ebuff, MYSQL_ERROR::WARN_LEVEL_ERROR, MyFlags);
-  raise_condition(& cond);
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  (void) raise_condition(sql_errno,
+                         sqlstate,
+                         MYSQL_ERROR::WARN_LEVEL_ERROR,
+                         ebuff,
+                         MyFlags);
   DBUG_VOID_RETURN;
 }
 
-void THD::raise_warning(uint code, const char *msg)
+void THD::raise_warning(uint sql_errno, const char *msg)
 {
-  SQL_condition cond(this->mem_root);
-  cond.set(this, code, msg, MYSQL_ERROR::WARN_LEVEL_WARN, MYF(0));
-  raise_condition(& cond);
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  (void) raise_condition(sql_errno,
+                         sqlstate,
+                         MYSQL_ERROR::WARN_LEVEL_WARN,
+                         msg,
+                         MYF(0));
 }
 
-void THD::raise_warning_printf(uint code, const char *format, ...)
+void THD::raise_warning_printf(uint sql_errno, const char *format, ...)
 {
   va_list args;
   char    ebuff[ERRMSGSIZE+20];
   DBUG_ENTER("THD::raise_warning_printf");
-  DBUG_PRINT("enter", ("warning: %u", code));
+  DBUG_PRINT("enter", ("warning: %u", sql_errno));
   va_start(args, format);
   my_vsnprintf(ebuff, sizeof(ebuff), format, args);
   va_end(args);
-  SQL_condition cond(this->mem_root);
-  cond.set(this, code, ebuff, MYSQL_ERROR::WARN_LEVEL_WARN, MYF(0));
-  raise_condition(& cond);
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  (void) raise_condition(sql_errno,
+                         sqlstate,
+                         MYSQL_ERROR::WARN_LEVEL_WARN,
+                         ebuff,
+                         MYF(0));
   DBUG_VOID_RETURN;
 }
 
-void THD::raise_note(uint code, const char *msg)
+void THD::raise_note(uint sql_errno, const char *msg)
 {
   DBUG_ENTER("THD::raise_note");
-  DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
+  DBUG_PRINT("enter", ("code: %d, msg: %s", sql_errno, msg));
   if (!(this->options & OPTION_SQL_NOTES))
     DBUG_VOID_RETURN;
-  SQL_condition cond(this->mem_root);
-  cond.set(this, code, msg, MYSQL_ERROR::WARN_LEVEL_NOTE, MYF(0));
-  raise_condition(& cond);
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  (void) raise_condition(sql_errno,
+                         sqlstate,
+                         MYSQL_ERROR::WARN_LEVEL_NOTE,
+                         msg,
+                         MYF(0));
   DBUG_VOID_RETURN;
 }
 
-void THD::raise_note_printf(uint code, const char *format, ...)
+void THD::raise_note_printf(uint sql_errno, const char *format, ...)
 {
   va_list args;
   char    ebuff[ERRMSGSIZE+20];
   DBUG_ENTER("THD::raise_note_printf");
-  DBUG_PRINT("enter",("code: %u", code));
+  DBUG_PRINT("enter",("code: %u", sql_errno));
   if (!(this->options & OPTION_SQL_NOTES))
     DBUG_VOID_RETURN;
   va_start(args, format);
   my_vsnprintf(ebuff, sizeof(ebuff), format, args);
   va_end(args);
-  SQL_condition cond(this->mem_root);
-  cond.set(this, code, ebuff, MYSQL_ERROR::WARN_LEVEL_NOTE, MYF(0));
-  raise_condition(& cond);
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
+  (void) raise_condition(sql_errno,
+                         sqlstate,
+                         MYSQL_ERROR::WARN_LEVEL_NOTE,
+                         ebuff,
+                         MYF(0));
   DBUG_VOID_RETURN;
 }
 
-void THD::raise_condition(const SQL_condition *cond)
+SQL_condition* THD::raise_condition(uint sql_errno,
+                                    const char* sqlstate,
+                                    MYSQL_ERROR::enum_warning_level level,
+                                    const char* msg,
+                                    myf flags)
 {
-  const char* msg= cond->get_message_text();
-
+  SQL_condition *cond= NULL;
   DBUG_ENTER("THD::raise_condition");
 
   if (!(this->options & OPTION_SQL_NOTES) &&
-      (cond->m_level == MYSQL_ERROR::WARN_LEVEL_NOTE))
-    DBUG_VOID_RETURN;
+      (level == MYSQL_ERROR::WARN_LEVEL_NOTE))
+    DBUG_RETURN(NULL);
 
   if (query_id != warn_id && !spcont)
     mysql_reset_errors(this, 0);
 
-  switch (cond->m_level)
+  if ((level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
+      really_abort_on_warning())
+  {
+    /*
+      FIXME:
+      push_warning and strict SQL_MODE case.
+    */
+    level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+    killed= THD::KILL_BAD_DATA;
+  }
+
+  switch (level)
   {
   case MYSQL_ERROR::WARN_LEVEL_NOTE:
   case MYSQL_ERROR::WARN_LEVEL_WARN:
     got_warning= 1;
     break;
   case MYSQL_ERROR::WARN_LEVEL_ERROR:
-    if (cond->m_flags & ME_FATALERROR)
+    if (flags & ME_FATALERROR)
       is_fatal_error= 1;
     break;
   default:
     DBUG_ASSERT(FALSE);
   }
 
-  if (handle_condition(cond))
-    DBUG_VOID_RETURN;
+  if (handle_condition(sql_errno, sqlstate, level, msg, &cond))
+    DBUG_RETURN(cond);
 
-  if (cond->m_level == MYSQL_ERROR::WARN_LEVEL_ERROR)
+  if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)
   {
     is_slave_error=  1; // needed to catch query errors during replication
 
@@ -835,8 +878,7 @@ void THD::raise_condition(const SQL_condition *cond)
                   (int) is_fatal_error));
     }
     else if (! main_da.is_error())
-      main_da.set_error_status(this, cond->m_sql_errno,
-                               msg, cond->get_sqlstate());
+      main_da.set_error_status(this, sql_errno, msg, sqlstate);
   }
 
   /*
@@ -844,49 +886,54 @@ void THD::raise_condition(const SQL_condition *cond)
     by the stored procedures code.
   */
   if (!is_fatal_error && spcont &&
-      spcont->handle_condition(this, cond))
+      spcont->handle_condition(this, sql_errno, sqlstate, level, msg, &cond))
   {
     /*
       Do not push any warnings, a handled error must be completely
       silenced.
     */
-    DBUG_VOID_RETURN;
+    DBUG_RETURN(cond);
   }
 
   /* Un-handled conditions */
 
-  raise_condition_no_handler(cond);
-  DBUG_VOID_RETURN;
+  cond= raise_condition_no_handler(sql_errno, sqlstate, level, msg);
+  DBUG_RETURN(cond);
 }
 
-void THD::raise_condition_no_handler(const SQL_condition *cond)
+SQL_condition*
+THD::raise_condition_no_handler(uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg)
 {
+  SQL_condition *cond= NULL;
   DBUG_ENTER("THD::raise_condition_no_handler");
 
   query_cache_abort(& query_cache_tls);
 
   /* FIXME: broken special case */
-  if (no_warnings_for_error && (cond->m_level == MYSQL_ERROR::WARN_LEVEL_ERROR))
-    DBUG_VOID_RETURN;
+  if (no_warnings_for_error && (level == MYSQL_ERROR::WARN_LEVEL_ERROR))
+    DBUG_RETURN(NULL);
 
   if (! main_da.m_stmt_area.is_read_only())
   {
     if (main_da.m_stmt_area.warn_list.elements < variables.max_error_count)
     {
       /* We have to use warn_root, as mem_root is freed after each query */
-      SQL_condition *stored_cond;
-      stored_cond= SQL_condition::deep_copy(this, & warn_root, cond);
-      if (stored_cond)
+      cond= new (& warn_root) SQL_condition(& warn_root);
+      if (cond)
       {
-        main_da.m_stmt_area.warn_list.push_back(stored_cond, & warn_root);
+        cond->set(sql_errno, sqlstate, level, msg);
+        main_da.m_stmt_area.warn_list.push_back(cond, & warn_root);
       }
     }
 
-    main_da.m_stmt_area.warn_count[(uint) cond->m_level]++;
+    main_da.m_stmt_area.warn_count[(uint) level]++;
   }
 
   total_warn_count++;
-  DBUG_VOID_RETURN;
+  DBUG_RETURN(cond);
 }
 
 extern "C"

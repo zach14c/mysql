@@ -59,6 +59,9 @@ public:
     m_ptr(NULL)
   {}
 
+  void init(MEM_ROOT *mem_root)
+  { m_mem_root= mem_root; }
+
   /** Destructor. */
   ~Fixed_string();
 
@@ -112,6 +115,8 @@ public:
     @param str the string to copy
   */
   void copy(const Fixed_string *str);
+
+  void clear();
 
 private:
   /**
@@ -176,6 +181,10 @@ public:
     : Fixed_string(& params, root)
   {}
 
+  UTF8String64()
+    : Fixed_string(& params, NULL)
+  {}
+
   ~UTF8String64()
   {}
 
@@ -195,6 +204,10 @@ public:
   */
   UTF8String128(MEM_ROOT *root)
     : Fixed_string(& params, root)
+  {}
+
+  UTF8String128()
+    : Fixed_string(& params, NULL)
   {}
 
   ~UTF8String128()

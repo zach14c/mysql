@@ -33,10 +33,7 @@ void Fixed_string::set(const char* str, size_t len, const CHARSET_INFO *str_cs)
 
   if (str == NULL)
   {
-    m_ptr= NULL;
-    m_byte_length= 0;
-    m_allocated_length= 0;
-    m_truncated= FALSE;
+    clear();
     return;
   }
 
@@ -113,6 +110,14 @@ void Fixed_string::copy(const Fixed_string *str)
   DBUG_ASSERT(m_param->m_cs->number == str->m_param->m_cs->number);
 
   set(str->m_ptr, str->m_byte_length, str->m_param->m_cs);
+}
+
+void Fixed_string::clear()
+{
+  m_ptr= NULL;
+  m_byte_length= 0;
+  m_allocated_length= 0;
+  m_truncated= FALSE;
 }
 
 void Fixed_string::reserve(size_t len)

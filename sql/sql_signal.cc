@@ -213,6 +213,60 @@ const LEX_STRING Diag_statement_item_names[]=
 };
 
 
+SQL_condition::SQL_condition()
+ : Sql_alloc(),
+   m_class_origin(),
+   m_subclass_origin(),
+   m_constraint_catalog(),
+   m_constraint_schema(),
+   m_constraint_name(),
+   m_catalog_name(),
+   m_schema_name(),
+   m_table_name(),
+   m_column_name(),
+   m_cursor_name(),
+   m_message_text(),
+   m_message_text_set(FALSE),
+   m_sql_errno(0),
+   m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
+   m_mem_root(NULL)
+{
+  memset(m_returned_sqlstate, 0, sizeof(m_returned_sqlstate));
+}
+
+void SQL_condition::init(MEM_ROOT *mem_root)
+{
+  m_class_origin.init(mem_root);
+  m_subclass_origin.init(mem_root);
+  m_constraint_catalog.init(mem_root);
+  m_constraint_schema.init(mem_root);
+  m_constraint_name.init(mem_root);
+  m_catalog_name.init(mem_root);
+  m_schema_name.init(mem_root);
+  m_table_name.init(mem_root);
+  m_column_name.init(mem_root);
+  m_cursor_name.init(mem_root);
+  m_mem_root= mem_root;
+}
+
+void SQL_condition::clear()
+{
+  m_class_origin.clear();
+  m_subclass_origin.clear();
+  m_constraint_catalog.clear();
+  m_constraint_schema.clear();
+  m_constraint_name.clear();
+  m_catalog_name.clear();
+  m_schema_name.clear();
+  m_table_name.clear();
+  m_column_name.clear();
+  m_cursor_name.clear();
+  m_message_text.length(0);
+  m_message_text_set= FALSE;
+  m_sql_errno= 0;
+  m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+}
+
 SQL_condition::SQL_condition(MEM_ROOT *mem_root)
  : Sql_alloc(),
    m_class_origin(mem_root),
@@ -229,42 +283,15 @@ SQL_condition::SQL_condition(MEM_ROOT *mem_root)
    m_message_text_set(FALSE),
    m_sql_errno(0),
    m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
-   m_flags(0),
    m_mem_root(mem_root)
 {
   memset(m_returned_sqlstate, 0, sizeof(m_returned_sqlstate));
 }
 
-SQL_condition *
-SQL_condition::deep_copy(THD *thd, MEM_ROOT *mem_root,
-                         const SQL_condition *cond)
-{
-  SQL_condition *copy= new (mem_root) SQL_condition(mem_root);
-  if (copy)
-    copy->deep_copy(cond);
-  return copy;
-}
-
 void
-SQL_condition::deep_copy(const SQL_condition *cond)
+SQL_condition::copy_opt_attributes(const SQL_condition *cond)
 {
-  memcpy(m_returned_sqlstate, cond->m_returned_sqlstate,
-         sizeof(m_returned_sqlstate));
-
-  if (cond->m_message_text.length())
-  {
-    const char* copy;
-
-    copy= strdup_root(m_mem_root, cond->m_message_text.ptr());
-    m_message_text.set(copy, cond->m_message_text.length(),
-                       error_message_charset_info);
-  }
-  else
-    m_message_text.length(0);
-
-  DBUG_ASSERT(! m_message_text.is_alloced());
-
-  m_message_text_set= cond->m_message_text_set;
+  DBUG_ASSERT(this != cond);
   m_class_origin.copy(& cond->m_class_origin);
   m_subclass_origin.copy(& cond->m_subclass_origin);
   m_constraint_catalog.copy(& cond->m_constraint_catalog);
@@ -275,66 +302,28 @@ SQL_condition::deep_copy(const SQL_condition *cond)
   m_table_name.copy(& cond->m_table_name);
   m_column_name.copy(& cond->m_column_name);
   m_cursor_name.copy(& cond->m_cursor_name);
-  m_sql_errno= cond->m_sql_errno;
-  m_level= cond->m_level;
-  m_flags= cond->m_flags;
 }
 
 void
-SQL_condition::set_printf(THD *thd, uint code, const char *str,
-                          MYSQL_ERROR::enum_warning_level level,
-                          myf flags, ...)
+SQL_condition::set(uint sql_errno, const char* sqlstate,
+                   MYSQL_ERROR::enum_warning_level level, const char* msg)
 {
-  va_list args;
-  char ebuff[ERRMSGSIZE+20];
-
-
-  DBUG_ENTER("SQL_condition::set_printf");
-
-  va_start(args, flags);
-  (void) my_vsnprintf (ebuff, sizeof(ebuff), str, args);
-  va_end(args);
-
-  set(thd, code, ebuff, level, flags);
-
-  DBUG_VOID_RETURN;
-}
-
-void
-SQL_condition::set(THD *thd, uint code, const char *str,
-                   MYSQL_ERROR::enum_warning_level level, myf flags)
-{
-  const char* sqlstate;
-
   /*
     TODO: replace by DBUG_ASSERT(code != 0) once all bugs similar to
     Bug#36760 are fixed: a SQL condition must have a real (!=0) error number
     so that it can be caught by handlers.
   */
-  if (code == 0)
-    code= ER_UNKNOWN_ERROR;
-  if (str == NULL)
-    str= ER(code);
-  m_sql_errno= code;
+  if (sql_errno == 0)
+    sql_errno= ER_UNKNOWN_ERROR;
+  if (msg == NULL)
+    msg= ER(sql_errno);
+  m_sql_errno= sql_errno;
 
-  sqlstate= mysql_errno_to_sqlstate(m_sql_errno);
   memcpy(m_returned_sqlstate, sqlstate, SQLSTATE_LENGTH);
   m_returned_sqlstate[SQLSTATE_LENGTH]= '\0';
 
-  set_builtin_message_text(str);
-  if ((level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
-      thd->really_abort_on_warning())
-  {
-    /*
-      FIXME:
-      push_warning and strict SQL_MODE case.
-    */
-    m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
-    thd->killed= THD::KILL_BAD_DATA;
-  }
-  else
-    m_level= level;
-  m_flags= flags;
+  set_builtin_message_text(msg);
+  m_level= level;
 }
 
 void
@@ -722,7 +711,16 @@ int Abstract_signal::raise_condition(THD *thd, SQL_condition *cond)
   DBUG_ASSERT((cond->m_level == MYSQL_ERROR::WARN_LEVEL_WARN) ||
               (cond->m_level == MYSQL_ERROR::WARN_LEVEL_ERROR));
 
-  thd->raise_condition(cond);
+  SQL_condition *raised= NULL;
+  raised= thd->raise_condition(cond->get_sql_errno(),
+                               cond->get_sqlstate(),
+                               cond->get_level(),
+                               cond->get_message_text(),
+                               MYF(0));
+  if (raised)
+  {
+    raised->copy_opt_attributes(cond);
+  }
 
   if (cond->m_level == MYSQL_ERROR::WARN_LEVEL_WARN)
   {
@@ -780,11 +778,18 @@ int SQLCOM_resignal::execute(THD *thd)
     thd->main_da.m_stmt_area.warn_list.pop();
   }
 
-  thd->raise_condition_no_handler(signaled);
+  SQL_condition *raised= NULL;
+  raised= thd->raise_condition_no_handler(signaled->get_sql_errno(),
+                                          signaled->get_sqlstate(),
+                                          signaled->get_level(),
+                                          signaled->get_message_text());
+  if (raised)
+  {
+    raised->copy_opt_attributes(signaled);
+  }
 
-  SQL_condition new_cond(thd->mem_root);
-  new_cond.deep_copy(signaled);
-  result= raise_condition(thd, & new_cond);
+  result= raise_condition(thd, signaled);
+
   DBUG_RETURN(result);
 }
 

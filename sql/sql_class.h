@@ -1168,6 +1168,20 @@ private:
   friend class sp_rcontext;
 
   /**
+    Default constructor.
+    This constructor is usefull when allocating arrays.
+    Note that the init() method should be called to complete the SQL_condition.
+  */
+  SQL_condition();
+
+  /**
+    Complete the SQL_condition initialisation.
+    @param mem_root The memory root to use for the condition items
+    of this condition
+  */
+  void init(MEM_ROOT *mem_root);
+
+  /**
     Constructor.
     @param mem_root The memory root to use for the condition items
     of this condition
@@ -1179,27 +1193,10 @@ private:
   {}
 
   /**
-    Deep copy (static method).
-    Builds a copy of a condition using a given memory root.
-    'Deep copy' is useful to propagate SQL conditions raised from a short
-    lived runtime environment to a parent execution environment with a longer
-    life cycle.
-    For example, when proc_p1() calls proc_p2(), an exception raised in
-    proc_p2() should be copied when caught in proc_p1(),
-    before destroying the proc_p2() memory root.
-    @param thd the current thread.
-    @param mem_root the memory root to use for memory allocation.
-    @param cond the condition to copy.
-    @return the duplicated condition.
-  */
-  static SQL_condition* deep_copy(THD *thd, MEM_ROOT *mem_root,
-                                  const SQL_condition *cond);
-
-  /**
-    Deep copy (instance method).
+    Copy optional condition items attributes.
     @param cond the condition to copy.
   */
-  void deep_copy(const SQL_condition *cond);
+  void copy_opt_attributes(const SQL_condition *cond);
 
   /**
     Set this condition area with a fixed message text.
@@ -1209,19 +1206,9 @@ private:
     @param level the error level for this condition.
     @param MyFlags additional flags.
   */
-  void set(THD *thd, uint code, const char *str,
-           MYSQL_ERROR::enum_warning_level level, myf MyFlags);
-
-  /**
-    Set this condition area with formatting of the message text.
-    @param thd the current thread.
-    @param code the error number for this condition.
-    @param str the message text printf format for this condition.
-    @param level the error level for this condition.
-    @param MyFlags additional flags.
-  */
-  void set_printf(THD *thd, uint code, const char *str,
-                  MYSQL_ERROR::enum_warning_level level, myf MyFlags, ...);
+  void set(uint sql_errno, const char* sqlstate,
+           MYSQL_ERROR::enum_warning_level level,
+           const char* msg);
 
   /**
     Set the condition message test.
@@ -1233,8 +1220,17 @@ private:
   /** Set the SQLSTATE of this condition. */
   void set_sqlstate(const char* sqlstate);
 
+  /**
+    Predicate, returns true if the condition item MESSAGE_TEXT was set.
+    @return True if MESSAGE_TEXT was set.
+  */
   bool is_message_text_set() const
   { return m_message_text_set; }
+
+  /**
+    Clear this SQL condition.
+  */
+  void clear();
 
 private:
   /** SQL CLASS_ORIGIN condition item. */
@@ -1293,9 +1289,6 @@ private:
   /** Severity (error, warning, note) of this condition. */
   MYSQL_ERROR::enum_warning_level m_level;
 
-  /** Additional flags. */
-  myf m_flags;
-
   /** Memory root to use to hold condition item values. */
   MEM_ROOT *m_mem_root;
 };
@@ -1336,7 +1329,13 @@ public:
     @param cond the condition raised.
     @return true if the condition is handled
   */
-  virtual bool handle_condition(THD *thd, const SQL_condition *cond) = 0;
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                SQL_condition ** cond_hdl) = 0;
+
 };
 
 
@@ -2637,7 +2636,11 @@ public:
     @param cond the sql condition to handle.
     @return true if the error is handled
   */
-  virtual bool handle_condition(const SQL_condition *cond);
+  bool handle_condition(uint sql_errno,
+                        const char* sqlstate,
+                        MYSQL_ERROR::enum_warning_level level,
+                        const char* msg,
+                        SQL_condition ** cond_hdl);
 
   /**
     Remove the error handler last pushed.
@@ -2724,14 +2727,23 @@ private:
     Raise a generic SQL condition.
     @param cond the condition to raise
   */
-  void raise_condition(const SQL_condition *cond);
+  SQL_condition*
+  raise_condition(uint sql_errno,
+                  const char* sqlstate,
+                  MYSQL_ERROR::enum_warning_level level,
+                  const char* msg,
+                  myf flags);
 
   /**
     Raise a generic SQL condition, without activation any SQL condition
     handlers.
     @param cond the condition to raise
   */
-  void raise_condition_no_handler(const SQL_condition *cond);
+  SQL_condition*
+  raise_condition_no_handler(uint sql_errno,
+                             const char* sqlstate,
+                             MYSQL_ERROR::enum_warning_level level,
+                             const char* msg);
 
 private:
   /** The current internal error handler for this thread, or NULL. */

@@ -99,8 +99,8 @@ class sp_rcontext : public Sql_alloc
   sp_head *sp;
 #endif
 
-  sp_rcontext(MEM_ROOT *cond_root, sp_pcontext *root_parsing_ctx,
-              Field *return_value_fld, sp_rcontext *prev_runtime_ctx);
+  sp_rcontext(sp_pcontext *root_parsing_ctx, Field *return_value_fld,
+              sp_rcontext *prev_runtime_ctx);
   bool init(THD *thd);
 
   ~sp_rcontext();
@@ -129,10 +129,20 @@ class sp_rcontext : public Sql_alloc
 
   // Returns 1 if a handler was found, 0 otherwise.
   bool
-  find_handler(THD *thd, const SQL_condition *cond);
+  find_handler(THD *thd,
+               uint sql_errno,
+               const char* sqlstate,
+               MYSQL_ERROR::enum_warning_level level,
+               const char* msg,
+               SQL_condition ** cond_hdl);
 
   // If there is an error handler for this error, handle it and return TRUE.
-  bool handle_condition(THD *thd, const SQL_condition *cond);
+  bool handle_condition(THD *thd,
+                        uint sql_errno,
+                        const char* sqlstate,
+                        MYSQL_ERROR::enum_warning_level level,
+                        const char* msg,
+                        SQL_condition ** cond_hdl);
 
 
   // Returns handler type and sets *ip to location if one was found
@@ -240,7 +250,7 @@ private:
     SQL conditions caught by each handler.
     This is an array indexed by handler index.
   */
-  SQL_condition ** m_raised_conditions;
+  SQL_condition * m_raised_conditions;
 
   uint m_hcount;                // Stack pointer for m_handler
   uint *m_hstack;               // Return stack for continue handlers
@@ -257,9 +267,6 @@ private:
 
   /* Previous runtime context (NULL if none) */
   sp_rcontext *m_prev_runtime_ctx;
-
-  /** Memory root to use for SQL_condition caught by handlers. */
-  MEM_ROOT *m_cond_root;
 
 private:
   bool init_var_table(THD *thd);

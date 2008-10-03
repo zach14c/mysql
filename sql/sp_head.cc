@@ -1529,7 +1529,7 @@ sp_head::execute_trigger(THD *thd,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0);
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= new sp_rcontext(mem_root, m_pcont, 0, octx)) ||
+  if (!(nctx= new sp_rcontext(m_pcont, 0, octx)) ||
       nctx->init(thd))
   {
     err_status= TRUE;
@@ -1646,7 +1646,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0);
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= new sp_rcontext(mem_root, m_pcont, return_value_fld, octx)) ||
+  if (!(nctx= new sp_rcontext(m_pcont, return_value_fld, octx)) ||
       nctx->init(thd))
   {
     thd->restore_active_arena(&call_arena, &backup_arena);
@@ -1850,7 +1850,7 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
   save_spcont= octx= thd->spcont;
   if (! octx)
   {				// Create a temporary old context
-    if (!(octx= new sp_rcontext(mem_root, m_pcont, NULL, octx)) ||
+    if (!(octx= new sp_rcontext(m_pcont, NULL, octx)) ||
         octx->init(thd))
     {
       delete octx; /* Delete octx if it was init() that failed. */
@@ -1866,7 +1866,7 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
     thd->spcont->callers_arena= thd;
   }
 
-  if (!(nctx= new sp_rcontext(mem_root, m_pcont, NULL, octx)) ||
+  if (!(nctx= new sp_rcontext(m_pcont, NULL, octx)) ||
       nctx->init(thd))
   {
     delete nctx; /* Delete nctx if it was init() that failed. */

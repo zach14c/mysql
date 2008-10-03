@@ -1819,17 +1819,28 @@ const char *get_canonical_filename(handler *file, const char *path,
 struct Ha_delete_table_error_handler: public Internal_error_handler
 {
 public:
-  virtual bool handle_condition(THD *thd, const SQL_condition *cond);
+  virtual bool handle_condition(THD *thd,
+                                uint sql_errno,
+                                const char* sqlstate,
+                                MYSQL_ERROR::enum_warning_level level,
+                                const char* msg,
+                                SQL_condition ** cond_hdl);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
 
 bool
 Ha_delete_table_error_handler::
-handle_condition(THD *, const SQL_condition *cond)
+handle_condition(THD *,
+                 uint,
+                 const char*,
+                 MYSQL_ERROR::enum_warning_level,
+                 const char* msg,
+                 SQL_condition ** cond_hdl)
 {
+  *cond_hdl= NULL;
   /* Grab the error message */
-  strmake(buff, cond->get_message_text(), sizeof(buff)-1);
+  strmake(buff, msg, sizeof(buff)-1);
   return TRUE;
 }
 

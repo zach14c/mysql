@@ -29,7 +29,7 @@
 #include "sp_pcontext.h"
 
 
-sp_rcontext::sp_rcontext(MEM_ROOT *cond_root, sp_pcontext *root_parsing_ctx,
+sp_rcontext::sp_rcontext(sp_pcontext *root_parsing_ctx,
                          Field *return_value_fld,
                          sp_rcontext *prev_runtime_ctx)
   :end_partial_result_set(FALSE),
@@ -45,8 +45,7 @@ sp_rcontext::sp_rcontext(MEM_ROOT *cond_root, sp_pcontext *root_parsing_ctx,
    m_hfound(-1),
    m_ccount(0),
    m_case_expr_holders(0),
-   m_prev_runtime_ctx(prev_runtime_ctx),
-   m_cond_root(cond_root)
+   m_prev_runtime_ctx(prev_runtime_ctx)
 {
 }
 
@@ -71,17 +70,22 @@ sp_rcontext::~sp_rcontext()
 bool sp_rcontext::init(THD *thd)
 {
   uint handler_count= m_root_parsing_ctx->max_handler_index();
+  uint i;
 
   in_sub_stmt= thd->in_sub_stmt;
 
   if (init_var_table(thd) || init_var_items())
     return TRUE;
 
+  if (!(m_raised_conditions= new (thd->mem_root) SQL_condition[handler_count]))
+    return TRUE;
+
+  for (i= 0; i<handler_count; i++)
+    m_raised_conditions[i].init(thd->mem_root);
+
   return
     !(m_handler=
       (sp_handler_t*)thd->alloc(handler_count * sizeof(sp_handler_t))) ||
-    !(m_raised_conditions=
-      (SQL_condition**)thd->calloc(handler_count * sizeof(SQL_condition*))) ||
     !(m_hstack=
       (uint*)thd->alloc(handler_count * sizeof(uint))) ||
     !(m_in_handler=
@@ -198,15 +202,19 @@ sp_rcontext::set_return_value(THD *thd, Item **return_value_item)
 */
 
 bool
-sp_rcontext::find_handler(THD *thd, const SQL_condition *cond)
+sp_rcontext::find_handler(THD *thd,
+                          uint sql_errno,
+                          const char* sqlstate,
+                          MYSQL_ERROR::enum_warning_level level,
+                          const char* msg,
+                          SQL_condition ** cond_hdl)
 {
   if (m_hfound >= 0)
-    return 1;			// Already got one
+  {
+    *cond_hdl= NULL;
+    return TRUE;			// Already got one
+  }
 
-  uint sql_errno= cond->get_sql_errno();
-  MYSQL_ERROR::enum_warning_level level= cond->get_level();
-
-  const char *sqlstate= cond->get_sqlstate();
   int i= m_hcount, found= -1;
 
   /*
@@ -270,18 +278,26 @@ sp_rcontext::find_handler(THD *thd, const SQL_condition *cond)
     */
     if (m_prev_runtime_ctx && IS_EXCEPTION_CONDITION(sqlstate) &&
         level == MYSQL_ERROR::WARN_LEVEL_ERROR)
-      return m_prev_runtime_ctx->find_handler(thd, cond);
+      return m_prev_runtime_ctx->find_handler(thd,
+                                              sql_errno,
+                                              sqlstate,
+                                              level,
+                                              msg,
+                                              cond_hdl);
+    *cond_hdl= NULL;
     return FALSE;
   }
 
   m_hfound= found;
 
-  SQL_condition *raised;
-  raised= SQL_condition::deep_copy(thd, m_cond_root, cond) ;
+  SQL_condition *raised= NULL;
   DBUG_ASSERT(m_hfound >= 0);
   DBUG_ASSERT((uint) m_hfound < m_root_parsing_ctx->max_handler_index());
-  m_raised_conditions[m_hfound]= raised;
+  raised= & m_raised_conditions[m_hfound];
+  raised->clear();
+  raised->set(sql_errno, sqlstate, level, msg);
 
+  *cond_hdl= raised;
   return TRUE;
 }
 
@@ -307,22 +323,25 @@ sp_rcontext::find_handler(THD *thd, const SQL_condition *cond)
     FALSE      if no handler was found.
 */
 bool
-sp_rcontext::handle_condition(THD *thd, const SQL_condition *cond)
+sp_rcontext::handle_condition(THD *thd,
+                              uint sql_errno,
+                              const char* sqlstate,
+                              MYSQL_ERROR::enum_warning_level level,
+                              const char* msg,
+                              SQL_condition ** cond_hdl)
 {
+  MYSQL_ERROR::enum_warning_level elevated_level= level;
+
+
   /* Depending on the sql_mode of execution,
      warnings may be considered errors */
-  if ((cond->m_level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
+  if ((level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
       thd->really_abort_on_warning())
   {
-    SQL_condition elevated_cond(thd->mem_root);
-    elevated_cond.set(thd, cond->m_sql_errno,
-                      cond->get_message_text(),
-                      MYSQL_ERROR::WARN_LEVEL_ERROR,
-                      MYF(0));
-    return find_handler(thd, & elevated_cond);
+    elevated_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
   }
 
-  return find_handler(thd, cond);
+  return find_handler(thd, sql_errno, sqlstate, elevated_level, msg, cond_hdl);
 }
 
 void
@@ -412,9 +431,7 @@ sp_rcontext::exit_handler()
   DBUG_ENTER("sp_rcontext::exit_handler");
   DBUG_ASSERT(m_ihsp);
   uint hindex= m_in_handler[m_ihsp-1].index;
-  DBUG_ASSERT(m_raised_conditions[hindex]);
-  delete m_raised_conditions[hindex];
-  m_raised_conditions[hindex]= NULL;
+  m_raised_conditions[hindex].clear();
   m_ihsp-= 1;
   DBUG_PRINT("info", ("m_ihsp: %d", m_ihsp));
   DBUG_VOID_RETURN;
@@ -426,8 +443,7 @@ sp_rcontext::raised_condition() const
   if (m_ihsp > 0)
   {
     uint hindex= m_in_handler[m_ihsp - 1].index;
-    SQL_condition *raised= m_raised_conditions[hindex];
-    DBUG_ASSERT(raised);
+    SQL_condition *raised= & m_raised_conditions[hindex];
     return raised;
   }
 
