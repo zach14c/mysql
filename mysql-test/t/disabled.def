@@ -30,7 +30,6 @@ query_cache_size_basic_32   : Bug#36747: Allocating a large query cache is not d
 query_cache_size_basic_64   : Bug#36747: Allocating a large query cache is not deterministic
 query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fails in pushbuild
 wait_timeout_func           : Bug #36873 wait_timeout_func.test fails randomly
-slow_launch_time_func       : Bug #36874 main.slow_launch_time_func test fails randomly
 timestamp_func              : Bug #37702 timestamp_func relies on sleep and is unstable in pushbuild
 sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on some systems
 key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
