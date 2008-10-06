@@ -833,7 +833,7 @@ SQL_condition* THD::raise_condition(uint sql_errno,
 
   /*
     TODO: replace by DBUG_ASSERT(sql_errno != 0) once all bugs similar to
-    Bug#36760 are fixed: a SQL condition must have a real (!=0) error number
+    Bug#36768 are fixed: a SQL condition must have a real (!=0) error number
     so that it can be caught by handlers.
   */
   if (sql_errno == 0)
