@@ -1,9 +1,10 @@
 --source include/have_falcon.inc
+
 #
 # Bug #34890: Update Conflict on non-overlapping transactions
-# This test works because it uses FALCON_CONSISTENT_READ=OFF
-# This test is different from 34351_C in that there is no index
-# on t1_uuid.
+#   This test works because it uses FALCON_CONSISTENT_READ=OFF
+#   This test is different from 34351_C in that there is no index
+#   on t1_uuid.
 #
 --echo *** Bug #34890 ***
 
@@ -42,9 +43,7 @@ CREATE TABLE t1 (
   t1_autoinc INTEGER NOT NULL AUTO_INCREMENT,
   t1_uuid CHAR(36),
   PRIMARY KEY (t1_autoinc)
-) ENGINE = Falcon;
-
-#   declare continue handler for sqlexception
+);
 
 delimiter //;
 CREATE PROCEDURE p1 ()
@@ -64,7 +63,6 @@ delimiter ;//
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-
 --echo # Switch to connection conn1
 connection conn1;
 --echo # Send call p1() to the server but do not pull the results
@@ -110,10 +108,8 @@ connection conn4;
 --echo # Pull the results of the preceeding call p1() by conn4
 --reap
 
-
 --echo # Switch to connection default
 connection default;
-
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
