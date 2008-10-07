@@ -2449,6 +2449,12 @@ end:
 bool sys_var_log_state::update(THD *thd, set_var *var)
 {
   bool res;
+
+  if (this == &sys_var_log)
+    WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
+  else if (this == &sys_var_log_slow)
+    WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
+
   pthread_mutex_lock(&LOCK_global_system_variables);
   if (!var->save_result.ulong_value)
   {
@@ -2463,6 +2469,11 @@ bool sys_var_log_state::update(THD *thd, set_var *var)
 
 void sys_var_log_state::set_default(THD *thd, enum_var_type type)
 {
+  if (this == &sys_var_log)
+    WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
+  else if (this == &sys_var_log_slow)
+    WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
+
   pthread_mutex_lock(&LOCK_global_system_variables);
   logger.deactivate_log_handler(thd, log_type);
   pthread_mutex_unlock(&LOCK_global_system_variables);
