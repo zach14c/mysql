@@ -78,4 +78,10 @@ connection slave;
 --replace_column 1 # 7 # 8 # 9 # 12 # 22 # 23 # 33 # 35 # 36 #
 query_vertical show slave status;
 
+# Cleaning up
+connection master;
+drop table t1;
+connection slave;
+drop table t1;
+
 # End of tests
