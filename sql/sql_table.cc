@@ -7563,6 +7563,12 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	{
 	  for (;;)
 	  {
+            if (thd->killed)
+            {
+              t->file->ha_rnd_end();
+              thd->protocol->remove_last_row();
+              goto err;
+            }
 	    ha_checksum row_crc= 0;
             int error= t->file->rnd_next(t->record[0]);
             if (unlikely(error))
