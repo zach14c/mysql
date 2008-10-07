@@ -36,6 +36,9 @@ SELECT * FROM t1;
 --error ER_BAD_TABLE_ERROR
 DROP TABLE t1;
 
+CREATE TABLE t1(a INT);
+DROP TABLE t1;
+
 # ----------------------------------------------------- #
 # --- Check                                         --- #
 # ----------------------------------------------------- #

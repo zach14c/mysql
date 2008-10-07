@@ -20,5 +20,4 @@
 falcon_bug_23945: Bug#34892 - Transaction handling in select_create::abort let's Falcon fail
 falcon_bug_26433: Bug#39314 - falcon_bug_26433 fails with an offset of 1 in row numbers in expected warnings
 falcon_bug_28048: Bug#36700 - Running falcon_bug_28048 shows increasing memory usage and run time
-falcon_bug_34892: Bug#34892 - Transaction handling in select_create::abort let's Falcon fail
 falcon_deadlock:  Bug#34182 - SELECT ... FOR UPDATE does not lock when in subquery

@@ -15,3 +15,5 @@ SELECT * FROM t1;
 ERROR 42S02: Table 'test.t1' doesn't exist
 DROP TABLE t1;
 ERROR 42S02: Unknown table 't1'
+CREATE TABLE t1(a INT);
+DROP TABLE t1;

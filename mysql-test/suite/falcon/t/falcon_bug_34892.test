@@ -1,6 +1,7 @@
 --source include/have_falcon.inc
+
 #
-# Bug #34892: Some falcon tests fail sporadically
+# Bug #34892: Transaction handling in select_create::abort let's Falcon fail
 #
 --echo *** Bug #34892 ***
 
@@ -21,8 +22,6 @@ SET @@autocommit = 0;
 --error ER_DUP_ENTRY
 CREATE TABLE t1 (PRIMARY KEY (a)) SELECT 1 AS a UNION ALL SELECT 1;
 
-# This CREATE TABLE provokes a
-# 1005: Can't create table 'test.t1' (errno: 156).
 CREATE TABLE t1 (a int);
 
 # ----------------------------------------------------- #
