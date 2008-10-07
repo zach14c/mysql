@@ -6,6 +6,8 @@ mysql
 test
 show tables in mysql;
 Tables_in_mysql
+backup_history
+backup_progress
 columns_priv
 db
 event
@@ -17,8 +19,6 @@ help_relation
 help_topic
 host
 ndb_binlog_index
-online_backup
-online_backup_progress
 plugin
 proc
 procs_priv

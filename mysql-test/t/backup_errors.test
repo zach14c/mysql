@@ -169,8 +169,8 @@ BACKUP DATABASE mysql, information_schema, test TO 't.bak';
 
 # Make backup copies of the tables first.
 --echo Making copies of progress tables.
-CREATE TABLE IF NOT EXISTS test.ob_copy LIKE mysql.online_backup;
-CREATE TABLE IF NOT EXISTS test.obp_copy LIKE mysql.online_backup_progress;
+CREATE TABLE IF NOT EXISTS test.ob_copy LIKE mysql.backup_history;
+CREATE TABLE IF NOT EXISTS test.obp_copy LIKE mysql.backup_progress;
 
 # Create a database and put some data in it.
 CREATE DATABASE test_ob_error;
@@ -184,7 +184,7 @@ BACKUP DATABASE test_ob_error TO 'ob_err.bak';
 --remove_file $MYSQLD_DATADIR/ob_err.bak
 
 # Drop one of the tables and try a backup.
-DROP TABLE mysql.online_backup;
+DROP TABLE mysql.backup_history;
 
 # Try to backup the database (should be error).
 --echo Backup the database;
@@ -197,11 +197,11 @@ SHOW ERRORS;
 
 # Restore the table
 --echo Restoring the table
-CREATE TABLE mysql.online_backup LIKE test.ob_copy;
+CREATE TABLE mysql.backup_history LIKE test.ob_copy;
 DROP TABLE test.ob_copy;
 
 # Drop one of the tables and try a backup.
-DROP TABLE mysql.online_backup_progress;
+DROP TABLE mysql.backup_progress;
 
 # Try to backup the database (should be error).
 --echo Backup the database;
@@ -214,7 +214,7 @@ SHOW ERRORS;
 
 # Restore the table
 --echo Restoring the table
-CREATE TABLE mysql.online_backup_progress LIKE test.obp_copy;
+CREATE TABLE mysql.backup_progress LIKE test.obp_copy;
 DROP TABLE test.obp_copy;
 
 DROP DATABASE test_ob_error;

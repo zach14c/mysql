@@ -116,7 +116,7 @@ DROP DATABASE mysqltest1;
 
 --echo
 use test;
-
+DROP TABLE t1;
 --echo
 --sync_slave_with_master
 

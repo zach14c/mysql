@@ -120,6 +120,14 @@ select event_schema, event_name, sql_mode from information_schema.events order b
 --echo "Let's check whether we change the sql_mode on ALTER EVENT"
 set sql_mode='traditional';
 alter event e_16407 do select 1;
+
+# wait for it to stop or we will get very spurious test failures
+let $wait_condition=
+    select count(*) = 0
+    from information_schema.processlist
+    where db = 'events_test' and info not like '%processlist%';
+--source include/wait_condition.inc
+
 select event_schema, event_name, sql_mode from information_schema.events order by event_schema, event_name;
 drop event e_16407;
 
@@ -970,6 +978,8 @@ let $wait_condition=
 --source include/wait_condition.inc
 
 DROP DATABASE events_test;
+--echo # restore the defeault
+SET GLOBAL event_scheduler = 'on';
 
 # Restore event_schedulre setting to how it was when test started
 SET GLOBAL event_scheduler= 'ON';

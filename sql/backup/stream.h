@@ -79,7 +79,7 @@ class Stream: public fd_stream
 {
  public:
 
-  bool open();
+  int open();
   virtual void close();
   bool rewind();
 
@@ -104,8 +104,12 @@ class Stream: public fd_stream
 
 private:
 
+  int make_relative_path(char *new_path, 
+                         char *orig_loc, 
+                         ::String *backupdir);
   int prepare_path(::String *backupdir, 
                    LEX_STRING orig_loc);
+  bool test_secure_file_priv_access(char *path);
 
 };
 
@@ -117,7 +121,7 @@ class Output_stream:
 
   Output_stream(Logger&, ::String *, LEX_STRING, bool);
 
-  bool open();
+  int  open();
   void close();
   bool rewind();
 
@@ -135,7 +139,7 @@ class Input_stream:
 
   Input_stream(Logger&, ::String *, LEX_STRING);
 
-  bool open();
+  int  open();
   void close();
   bool rewind();
 

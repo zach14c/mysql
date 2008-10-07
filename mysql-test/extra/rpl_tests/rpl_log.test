@@ -138,4 +138,4 @@ drop table t1;
 # End of 4.1 tests
 
 sync_slave_with_master;
-
+drop table t1;

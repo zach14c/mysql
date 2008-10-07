@@ -738,17 +738,24 @@ public:
   const String* get_comments()
   { return &m_comments; }
 
+  const String* get_engine()
+  { return &m_engine; }
+
   void set_datafile(const String *df)
   { m_datafile.copy(*df); }
 
   void set_comments(const String *c)
   { m_comments.copy(*c); }
 
+  void set_engine(const String *engine)
+  { m_engine.copy(*engine); }
+
 private:
   // These attributes are to be used only for serialization.
   String m_ts_name;
   String m_datafile;
   String m_comments;
+  String m_engine;
 
   // Drop is not supported by this object.
   bool drop(THD *thd)
@@ -1215,50 +1222,8 @@ bool InformationSchemaIterator::prepare_is_table(
   enum_schema_tables is_table_idx,
   List<LEX_STRING> db_list)
 {
-  ST_SCHEMA_TABLE *st;
-  /*
-    The falcon schema table does not conform to the older SHOW 
-    style fill methods nor does it use a wildcard condition.
-  */
-  switch (is_table_idx) {
-    case SCH_FALCON_TABLESPACES:
-    {
-      st= find_schema_table(thd, "FALCON_TABLESPACES");
-      *is_table= open_schema_table(thd, st, NULL);
-      break;
-    }
-    case SCH_FALCON_TABLESPACE_FILES:
-    {
-      st= find_schema_table(thd, "FALCON_TABLESPACE_FILES");
-      *is_table= open_schema_table(thd, st, NULL);
-      break;
-    }
-    case SCH_SCHEMA_PRIVILEGES:
-    {
-      st= find_schema_table(thd, "SCHEMA_PRIVILEGES");
-      *is_table= open_schema_table(thd, st, NULL);
-      break;
-    }
-    case SCH_TABLE_PRIVILEGES:
-    {
-      st= find_schema_table(thd, "TABLE_PRIVILEGES");
-      *is_table= open_schema_table(thd, st, NULL);
-      break;
-    }
-    case SCH_COLUMN_PRIVILEGES:
-    {
-      st= find_schema_table(thd, "COLUMN_PRIVILEGES");
-      *is_table= open_schema_table(thd, st, NULL);
-      break;
-    }
-    default:
-    {
-      st= get_schema_table(is_table_idx);
-      *is_table= open_schema_table(thd, st, &db_list);
-      break;
-    }
-  }
-  if (!*is_table)
+  ST_SCHEMA_TABLE *st= get_schema_table(is_table_idx);
+  if (!(*is_table= open_schema_table(thd, st, &db_list)))
     return TRUE;
 
   *ha= (*is_table)->file;
@@ -2879,6 +2844,7 @@ TablespaceObj::TablespaceObj(const String *ts_name)
   m_ts_name.copy(*ts_name);
   m_datafile.length(0);
   m_comments.length(0);
+  m_engine.length(0);
 }
 
 /**
@@ -2906,6 +2872,7 @@ bool TablespaceObj::do_serialize(THD *thd, String *serialization)
   Materialize the serialization string.
 
   This method saves serialization string into a member variable.
+  Also extracts tablespace engine name from serialization string.
 
   @param[in]  serialization_version   version number of this interface
   @param[in]  serialization           the string from serialize()
@@ -2921,6 +2888,11 @@ bool TablespaceObj::materialize(uint serialization_version,
 {
   DBUG_ENTER("TablespaceObj::materialize()");
   m_create_stmt.copy(*serialization);
+  /* Extract engine from create statement */
+  String tmp_str= String("=", 1, system_charset_info);
+  int pos= m_create_stmt.strrstr(tmp_str, m_create_stmt.length());
+  m_engine.copy(m_create_stmt.ptr() + pos + 1, m_create_stmt.length() - pos - 1,
+                system_charset_info);
   DBUG_RETURN(FALSE);
 }
 
@@ -2974,7 +2946,8 @@ const String *TablespaceObj::build_serialization()
     m_create_stmt.append("' COMMENT = '");
     m_create_stmt.append(m_comments);
   }
-  m_create_stmt.append("' ENGINE=FALCON");
+  m_create_stmt.append("' ENGINE=");
+  m_create_stmt.append(m_engine);
   DBUG_RETURN(&m_create_stmt);
 }
 
@@ -3462,6 +3435,7 @@ bool user_exists(THD *thd, const String *grantee)
   @param[in]     thd           Thread context
   @param[in]     is_table_idx  The information schema to search
   @param[in]     ts_name       The name of the tablespace to find
+  @param[in]     ts_engine     Engine of the tablespace to find
   @param[out]    datafile      The datafile for the tablespace
   @param[out]    comments      The comments for the tablespace
   
@@ -3471,16 +3445,16 @@ bool user_exists(THD *thd, const String *grantee)
 static bool find_tablespace_schema_row(THD *thd,
                                        enum_schema_tables is_table_idx,
                                        const String *ts_name,
+                                       const String *ts_engine,
                                        String *datafile,
                                        String *comments)
 {
-  int ret= 0;
   TABLE *is_table;
   handler *ha;
   my_bitmap_map *orig_col;
   LEX_STRING lex_ts_name;
-  String found_ts_name;
-  bool retval= FALSE;
+  String found_ts_name, found_ts_engine;
+  bool retval= TRUE;
   String data;
   List<LEX_STRING> ts_list;
   DBUG_ENTER("obs::find_tablespace_schema_row()");
@@ -3496,66 +3470,66 @@ static bool find_tablespace_schema_row(THD *thd,
       thd, &is_table, &ha, &orig_col, is_table_idx, ts_list))
     DBUG_RETURN(TRUE);
 
-  /*
-    Now read from the IS table.
-  */
-  if (ha->rnd_next(is_table->record[0]))
-  {
-    retval= TRUE;
-    goto end;
-  }
-
-  /*    
-    Attempt to locate the row in the tablespaces table.
-    If found, proceed to the retrieving the data.
-  */
-  is_table->field[0]->val_str(&found_ts_name);
-  while (!ret && found_ts_name.length() &&
-    (strncasecmp(found_ts_name.ptr(), ts_name->ptr(), 
-     ts_name->length()) != 0))
-  {
-    ret= ha->rnd_next(is_table->record[0]);
-    found_ts_name.length(0); // reset the length of the string
-    if (!ret)
-      is_table->field[0]->val_str(&found_ts_name);
-  }
-  if (ret || (found_ts_name.length() == 0))
-  {
-    retval= TRUE;
-    goto end;
-  }
-
-  /*
-    TS name is in col 0 in FALCON_TABLESPACES
-    TS comment is in col 2 in FALCON_TABLESPACES
-    TS datafile is in col 3 in FALCON_TABLESPACE_FILES
-  */
+  /* Locate the row in the schema table and retrive the data. */
   switch (is_table_idx) {
-    case SCH_FALCON_TABLESPACES:
+  case SCH_TABLESPACES:
+    while (!ha->rnd_next(is_table->record[0]))
     {
-      is_table->field[2]->val_str(&data);
-      comments->copy(data);
-      break;
+      is_table->field[IS_TABLESPACES_TABLESPACE_NAME]->val_str(&found_ts_name);
+      is_table->field[IS_TABLESPACES_ENGINE]->val_str(&found_ts_engine);
+      if (found_ts_name.length() && found_ts_engine.length() &&
+          !my_strnncoll(system_charset_info, (const uchar*) found_ts_name.ptr(),
+                        found_ts_name.length(), (const uchar*) ts_name->ptr(),
+                        ts_name->length()) &&
+          !my_strnncoll(system_charset_info,
+                        (const uchar*) found_ts_engine.ptr(),
+                        found_ts_engine.length(),
+                        (const uchar*) ts_engine->ptr(), ts_engine->length()))
+      {
+        retval= FALSE;
+        is_table->field[IS_TABLESPACES_TABLESPACE_COMMENT]->val_str(&data);
+        comments->copy(data);
+        DBUG_PRINT("find_tablespace_schema_row", (" Found tablespace %s",
+                   found_ts_name.ptr()));
+        break;
+      }
+      found_ts_name.length(0);
+      found_ts_engine.length(0);
     }
-    case SCH_FALCON_TABLESPACE_FILES:
+    break;
+  case SCH_FILES:
+    while (!ha->rnd_next(is_table->record[0]))
     {
-      is_table->field[3]->val_str(&data);
-      datafile->copy(data);
-      break;
+      is_table->field[IS_FILES_TABLESPACE_NAME]->val_str(&found_ts_name);
+      is_table->field[IS_FILES_ENGINE]->val_str(&found_ts_engine);
+      if (found_ts_name.length() && found_ts_engine.length() &&
+          !my_strnncoll(system_charset_info, (const uchar*) found_ts_name.ptr(),
+                        found_ts_name.length(), (const uchar*) ts_name->ptr(),
+                        ts_name->length()) &&
+          !my_strnncoll(system_charset_info,
+                        (const uchar*) found_ts_engine.ptr(),
+                        found_ts_engine.length(),
+                        (const uchar*) ts_engine->ptr(), ts_engine->length()))
+      {
+        retval= FALSE;
+        is_table->field[IS_FILES_FILE_NAME]->val_str(&data);
+        datafile->copy(data);
+        DBUG_PRINT("find_tablespace_schema_row", (" Found tablespace %s",
+                   found_ts_name.ptr()));
+        break;
+      }
+      found_ts_name.length(0);
+      found_ts_engine.length(0);
     }
-    default:
-    {
-      retval= TRUE;  //error
-      goto end;
-    }
+    break;
+  default:
+    DBUG_ASSERT(0);
+    break;
   }
-  DBUG_PRINT("find_tablespace_schema_row", (" Found tablespace %s", 
-    found_ts_name.ptr()));
 
   /*
     Cleanup
   */
-end:
   ha->ha_rnd_end();
 
   dbug_tmp_restore_column_map(is_table->read_set, orig_col);
@@ -3572,6 +3546,7 @@ end:
   @param[in]     thd           Thread context.
   @param[out]    TablespaceObj A pointer to a new tablespace object
   @param[in]     ts_name       The name of the tablespace to find
+  @param[in]     ts_engine     Engine of the tablespace to find
   
   @note Caller is responsible for destroying the tablespace object.
 
@@ -3580,24 +3555,25 @@ end:
 */
 static bool get_tablespace_from_schema(THD *thd,
                                        TablespaceObj **ts, 
-                                       const String *ts_name)
+                                       const String *ts_name,
+                                       const String *ts_engine)
 {
   String datafile;
   String comments;
   DBUG_ENTER("obs::get_tablespace_from_schema()");
 
   /*
-    Locate the row in FALCON_TABLESPACES and get the comments.
+    Locate the row in TABLESPACES and get the comments.
   */
-  if (find_tablespace_schema_row(thd, SCH_FALCON_TABLESPACES, 
-      ts_name, &datafile, &comments))
+  if (find_tablespace_schema_row(thd, SCH_TABLESPACES, 
+      ts_name, ts_engine, &datafile, &comments))
     DBUG_RETURN(TRUE);
 
   /*
-    Locate the row in FALCON_TABLESPACE_FILES and get the datafile.
+    Locate the row in FILES and get the datafile.
   */
-  if (find_tablespace_schema_row(thd, SCH_FALCON_TABLESPACE_FILES, 
-      ts_name, &datafile, &comments))
+  if (find_tablespace_schema_row(thd, SCH_FILES, 
+      ts_name, ts_engine, &datafile, &comments))
     DBUG_RETURN(TRUE);
 
   /*
@@ -3613,6 +3589,7 @@ static bool get_tablespace_from_schema(THD *thd,
   *ts= ts_local;
   ts_local->set_datafile(&datafile);
   ts_local->set_comments(&comments);
+  ts_local->set_engine(ts_engine);
 
   DBUG_RETURN(FALSE);
 }
@@ -3637,9 +3614,8 @@ Obj *get_tablespace_for_table(THD *thd,
 {
   TablespaceObj *ts= NULL;
   char path[FN_REFLEN];
-  String ts_name;
-  bool get_ts= FALSE;
-  const char *ts_name_str;
+  String ts_name, ts_engine;
+  const char *ts_name_str= NULL;
   DBUG_ENTER("obs::get_tablespace_for_table()");
   DBUG_PRINT("obs::get_tablespace_for_table", ("name: %s.%s", 
              db_name->ptr(), tbl_name->ptr()));
@@ -3649,6 +3625,7 @@ Obj *get_tablespace_for_table(THD *thd,
 
   build_table_filename(path, sizeof(path), db, name, "", 0);
   ts_name.length(0);
+  ts_engine.length(0);
 
   TABLE *table= open_temporary_table(thd, path, db, name,
                     FALSE /* don't link to thd->temporary_tables */,
@@ -3656,12 +3633,12 @@ Obj *get_tablespace_for_table(THD *thd,
 
   if (table)
   {
-    get_ts= (table->s->db_type()->db_type == DB_TYPE_FALCON
-        && (ts_name_str= table->file->get_tablespace_name()));
-    if (get_ts)
+    if ((ts_name_str= table->file->get_tablespace_name()))
     {
       ts_name.append(ts_name_str);
       ts_name.set_charset(system_charset_info);
+      ts_engine.append(table->file->engine_name()->str);
+      ts_engine.set_charset(system_charset_info);
     }
     intern_close_table(table);
     my_free(table, MYF(0));
@@ -3672,8 +3649,8 @@ Obj *get_tablespace_for_table(THD *thd,
   /*
     Now open the information_schema table and get the tablespace information.
   */
-  if (get_ts)
-    get_tablespace_from_schema(thd, &ts, &ts_name);
+  if (ts_name_str)
+    get_tablespace_from_schema(thd, &ts, &ts_name, &ts_engine);
 end:
   DBUG_RETURN(ts);
 }
@@ -3694,10 +3671,11 @@ end:
 bool tablespace_exists(THD *thd,
                        Obj *ts)
 {
-  TablespaceObj *other_ts= NULL;
+  TablespaceObj *other_ts= NULL, *this_ts= static_cast<TablespaceObj*>(ts);
   bool retval= FALSE;
   DBUG_ENTER("obs::tablespace_exists()");
-  get_tablespace_from_schema(thd, &other_ts, ts->get_name());
+  get_tablespace_from_schema(thd, &other_ts, this_ts->get_name(),
+                             this_ts->get_engine());
   if (!other_ts)
     DBUG_RETURN(retval);
   retval= (my_strcasecmp(system_charset_info, 
@@ -3713,18 +3691,18 @@ bool tablespace_exists(THD *thd,
   This method determines if the tablespace referenced by name exists on the
   system. Returns a TablespaceObj if it exists or NULL if it doesn't.
 
-  @param[in]  ts_name  The Tablspace name to compare.
+  @param[in]  Obj  The TablspaceObj pointer to compare.
   
   @note Caller is responsible for destroying the tablespace object.
 
   @returns the tablespace if found or NULL if not found
 */
-Obj *is_tablespace(THD *thd,
-                   const String *ts_name)
+Obj *is_tablespace(THD *thd, Obj *ts)
 {
-  TablespaceObj *other_ts= NULL;
+  TablespaceObj *other_ts= NULL, *this_ts= static_cast<TablespaceObj*>(ts);
   DBUG_ENTER("obs::is_tablespace()");
-  get_tablespace_from_schema(thd, &other_ts, ts_name);
+  get_tablespace_from_schema(thd, &other_ts, this_ts->get_name(),
+                             this_ts->get_engine());
   DBUG_RETURN(other_ts);
 }
 

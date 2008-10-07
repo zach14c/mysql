@@ -34,6 +34,7 @@
 #include "sql_repl.h"
 #include "rpl_filter.h"
 #include "repl_failsafe.h"
+#include "transaction.h"
 #include <thr_alarm.h>
 #include <my_dir.h>
 #include <sql_common.h>
@@ -228,6 +229,10 @@ int init_slave()
     TODO: re-write this to interate through the list of files
     for multi-master
   */
+
+  if (pthread_key_create(&RPL_MASTER_INFO, NULL))
+    goto err;
+
   active_mi= new Master_info;
 
   /*
@@ -1341,7 +1346,7 @@ bool show_master_info(THD* thd, Master_info* mi)
   field_list.push_back(new Item_return_int("Master_Server_Id", sizeof(ulong),
                                            MYSQL_TYPE_LONG));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -2085,7 +2090,7 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
           else
           {
             exec_res= 0;
-            end_trans(thd, ROLLBACK);
+            trans_rollback(thd);
             /* chance for concurrent connection to get more locks */
             safe_sleep(thd, min(rli->trans_retries, MAX_SLAVE_RETRY_PAUSE),
                        (CHECK_KILLED_FUNC)sql_slave_killed, (void*)rli);
@@ -2420,36 +2425,35 @@ Stopping slave I/O thread due to out-of-memory error from master");
         goto err;
       goto connected;
     } // if (event_len == packet_error)
-    
 
-      retry_count=0;                    // ok event, reset retry counter
-      thd_proc_info(thd, "Queueing master event to the relay log");
-      event_buf= (const char*)mysql->net.read_pos + 1;
-      if (RUN_HOOK(binlog_relay_io, after_read_event,
-                   (thd, mi,(const char*)mysql->net.read_pos + 1,
-                    event_len, &event_buf, &event_len)))
-      {
-        sql_print_error("Failed to run 'after_read_event' hook");
-        goto err;
-      }
+    retry_count=0;                    // ok event, reset retry counter
+    thd_proc_info(thd, "Queueing master event to the relay log");
+    event_buf= (const char*)mysql->net.read_pos + 1;
+    if (RUN_HOOK(binlog_relay_io, after_read_event,
+                 (thd, mi,(const char*)mysql->net.read_pos + 1,
+                  event_len, &event_buf, &event_len)))
+    {
+      sql_print_error("Failed to run 'after_read_event' hook");
+      goto err;
+    }
 
-      /* XXX: 'synced' should be updated by queue_event to indicate
-         whether event has been synced to disk */
-      bool synced= 0;
-      if (queue_event(mi, event_buf, event_len))
-      {
-        goto err;
-      }
+    /* XXX: 'synced' should be updated by queue_event to indicate
+       whether event has been synced to disk */
+    bool synced= 0;
+    if (queue_event(mi, event_buf, event_len))
+    {
+      goto err;
+    }
+
+    if (RUN_HOOK(binlog_relay_io, after_queue_event,
+                 (thd, mi, event_buf, event_len, synced)))
+      goto err;
+
     if (flush_master_info(mi, 1))
     {
       sql_print_error("Failed to flush master info file");
       goto err;
     }
-
-      if (RUN_HOOK(binlog_relay_io, after_queue_event,
-                   (thd, mi, event_buf, event_len, synced)))
-        goto err;
-
     /*
       See if the relay logs take too much space.
       We don't lock mi->rli.log_space_lock here; this dirty read saves time
@@ -2472,7 +2476,7 @@ ignore_log_space_limit=%d",
                           (int) rli->ignore_log_space_limit));
     }
 #endif
-    
+
     if (rli->log_space_limit && rli->log_space_limit <
         rli->log_space_total &&
         !rli->ignore_log_space_limit)
@@ -2483,6 +2487,7 @@ log space");
         goto err;
       }
   }
+
 
 err:
   // print the current replication position

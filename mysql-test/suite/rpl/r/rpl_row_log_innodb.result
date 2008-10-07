@@ -307,3 +307,4 @@ a	b
 5	1
 6	1
 drop table t1;
+drop table t1;

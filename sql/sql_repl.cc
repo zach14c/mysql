@@ -586,8 +586,9 @@ impossible position";
      if (!(error = Log_event::read_log_event(&log, packet, log_lock)))
      {
        /*
-         The packet has offsets equal to the normal offsets in a binlog
-         event + ev_offset (the first character is \0).
+         The packet has offsets equal to the normal offsets in a
+         binlog event + ev_offset (the first ev_offset characters are
+         the header (default \0)).
        */
        DBUG_PRINT("info",
                   ("Looked for a Format_description_log_event, found event type %d",
@@ -1573,7 +1574,7 @@ bool mysql_show_binlog_events(THD* thd)
   DBUG_ENTER("mysql_show_binlog_events");
 
   Log_event::init_show_field_list(&field_list);
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -1723,7 +1724,7 @@ bool show_binlog_info(THD* thd)
   field_list.push_back(new Item_empty_string("Binlog_Do_DB",255));
   field_list.push_back(new Item_empty_string("Binlog_Ignore_DB",255));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
   protocol->prepare_for_resend();
@@ -1778,7 +1779,7 @@ bool show_binlogs(THD* thd)
   field_list.push_back(new Item_empty_string("Log_name", 255));
   field_list.push_back(new Item_return_int("File_size", 20,
                                            MYSQL_TYPE_LONGLONG));
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
   

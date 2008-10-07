@@ -575,7 +575,7 @@ bool setup_select_in_parentheses(LEX *lex)
   struct sp_cond_type *spcondtype;
   struct { int vars, conds, hndlrs, curs; } spblock;
   sp_name *spname;
-  struct st_lex *lex;
+  LEX *lex;
   sp_head *sphead;
   struct p_elem_val *p_elem_value;
   enum index_hint_type index_hint;
@@ -10780,6 +10780,8 @@ flush_option:
           { Lex->type|= REFRESH_GRANT; }
         | LOGS_SYM
           { Lex->type|= REFRESH_LOG; }
+        | BACKUP_SYM LOGS_SYM
+          { Lex->type|= REFRESH_BACKUP_LOG; }
         | STATUS_SYM
           { Lex->type|= REFRESH_STATUS; }
         | SLAVE

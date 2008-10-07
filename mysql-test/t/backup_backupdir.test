@@ -83,15 +83,24 @@ BACKUP DATABASE bup_backupdir TO '../../bup_backupdir4.bak';
 
 --echo Try a backup to an invalid relative path.
 --error ER_BACKUP_WRITE_LOC
-BACKUP DATABASE bup_backupdir TO '../../../../../../../../../../../../../../../../../../bup_backupdir5.bak';
+BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
 
+--echo 
 --echo Try a backup to an invalid hard path.
---error ER_BACKUP_WRITE_LOC
-BACKUP DATABASE bup_backupdir TO '/dev/not/there/either/bup_backupdir6.bak';
 
-#
-# Attempt to set the backupdir to something invalid.
-#
+--echo *Actual BACKUP DATABASE command not printed due to non-deterministic path.
+--echo *Performing: 
+--echo *BACKUP DATABASE bup_backupdir TO '\$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+# Do not print the SQL command to result file because dir is not deterministic across hosts
+--disable_query_log
+# Replace actual dir in error message because $MYSQLTEST_VARDIR is not deterministic
+replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/there\/either\/bup_backupdir6.bak'/ ;
+--error ER_BACKUP_WRITE_LOC
+--eval BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+--enable_query_log
+
+--echo
+--echo Attempt to set the backupdir to something invalid.
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
 
 --echo Cleanup
