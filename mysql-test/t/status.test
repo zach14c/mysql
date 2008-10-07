@@ -314,6 +314,15 @@ SELECT * FROM v1 WHERE NAME = 'Threads_running' AND VALUE < @tr;
 
 DROP VIEW v1;
 
+#
+# Bug#39916: pool-of-threads fails to increment the number of created threads
+#
+
+SELECT VARIABLE_NAME FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+  WHERE VARIABLE_NAME = 'Threads_created' AND
+        CONVERT(VARIABLE_VALUE, UNSIGNED) > 0;
+
+
 # Restore global concurrent_insert value. Keep in the end of the test file.
 --connection default
 set @@global.concurrent_insert= @old_concurrent_insert;
