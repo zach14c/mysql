@@ -4273,6 +4273,7 @@ sub start_check_testcase ($$$) {
      error         => $errfile,
      args          => \$args,
      user_data     => $errfile,
+     verbose       => $opt_verbose,
     );
 
   mtr_report("Started $proc");
