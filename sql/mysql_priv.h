@@ -140,7 +140,7 @@ char* query_table_status(THD *thd,const char *db,const char *table_name);
 #define WARN_DEPRECATED(Thd,VerHi,VerLo,Old,New)                            \
   do {                                                                      \
     compile_time_assert(MYSQL_VERSION_ID < VerHi * 10000 + VerLo * 100);    \
-    if ((Thd) != NULL)                                                      \
+    if (((THD *) Thd) != NULL)                                              \
       push_warning_printf((Thd), MYSQL_ERROR::WARN_LEVEL_WARN,              \
                         ER_WARN_DEPRECATED_SYNTAX,                          \
                         ER(ER_WARN_DEPRECATED_SYNTAX_WITH_VER),             \
