@@ -1759,6 +1759,18 @@ public:
     {
       memcpy_fixed((uchar*) str,ptr+packlength+row_offset,sizeof(char*));
     }
+
+  /**
+     Copy value in data to the field ptr. 
+
+     NOTE
+     If the null_bit for this field is set, @c
+     set_notnull(my_ptrdiff_t) needs to be called for set_ptr to have
+     any effect when inserting a record.
+
+     @param length  Length of data
+     @param data    The value of the field
+  */
   inline void set_ptr(uchar *length, uchar *data)
     {
       memcpy(ptr,length,packlength);

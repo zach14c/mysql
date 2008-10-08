@@ -16,6 +16,50 @@
 #ifndef LOG_H
 #define LOG_H
 
+struct st_backup_history;
+
+/**
+  List of fields for online backup table.
+*/
+enum enum_backup_history_log_field
+{
+  ET_OBH_FIELD_BACKUP_ID = 0, /* start from 0 to correspond with field array */
+  ET_OBH_FIELD_PROCESS_ID,
+  ET_OBH_FIELD_BINLOG_POS,
+  ET_OBH_FIELD_BINLOG_FILE,
+  ET_OBH_FIELD_BACKUP_STATE,
+  ET_OBH_FIELD_OPER,
+  ET_OBH_FIELD_ERROR_NUM,
+  ET_OBH_FIELD_NUM_OBJ,
+  ET_OBH_FIELD_TOTAL_BYTES,
+  ET_OBH_FIELD_VP,
+  ET_OBH_FIELD_START_TIME,
+  ET_OBH_FIELD_STOP_TIME,
+  ET_OBH_FIELD_HOST_OR_SERVER,
+  ET_OBH_FIELD_USERNAME,
+  ET_OBH_FIELD_BACKUP_FILE,
+  ET_OBH_FIELD_COMMENT,
+  ET_OBH_FIELD_COMMAND,
+  ET_OBH_FIELD_DRIVERS,
+  ET_OBH_FIELD_COUNT /* a cool trick to count the number of fields :) */
+};
+
+/**
+  List of fields for online backup progress table.
+*/
+enum enum_backup_progress_log_field
+{
+  ET_OBP_FIELD_BACKUP_ID_FK = 0, /* start from 0 to correspond with field array */
+  ET_OBP_FIELD_PROG_OBJECT,
+  ET_OBP_FIELD_PROG_START_TIME,
+  ET_OBP_FIELD_PROG_STOP_TIME,
+  ET_OBP_FIELD_PROG_SIZE,
+  ET_OBP_FIELD_PROGRESS,
+  ET_OBP_FIELD_PROG_ERROR_NUM,
+  ET_OBP_FIELD_PROG_NOTES,
+  ET_OBP_FIELD_PROG_COUNT /* a cool trick to count the number of fields :) */
+};
+
 class Relay_log_info;
 
 class Format_description_log_event;
@@ -223,6 +267,56 @@ private:
   time_t last_time;
 };
 
+class MYSQL_BACKUP_LOG: public MYSQL_LOG
+{
+public:
+  MYSQL_BACKUP_LOG () 
+  { 
+    headers_written= FALSE; 
+    pthread_mutex_init(&LOCK_backupid, MY_MUTEX_INIT_FAST);
+    m_next_id= 0;
+  }
+  ~MYSQL_BACKUP_LOG()
+  {
+    pthread_mutex_destroy(&LOCK_backupid);
+  }
+  void reopen_file(bool history);
+  bool write(THD *thd, st_backup_history *history_data);
+  bool write(THD *thd, ulonglong backup_id, const char *object, 
+             time_t start, time_t stop, longlong size,
+             longlong progress, int error_num, const char *notes);
+
+  bool open(const char *log_name,
+            enum_log_type log_type,
+            const char *new_name,
+            enum cache_type io_cache_type_arg,
+            bool history);
+
+  bool open_backup_history_log(const char *log_name)
+  {
+    char buf[FN_REFLEN];
+    return open(generate_name(log_name, ".log", 0, buf), LOG_NORMAL, 0,
+                WRITE_CACHE, TRUE);
+  }
+  bool open_backup_progress_log(const char *log_name)
+  {
+    char buf[FN_REFLEN];
+    return open(generate_name(log_name, ".log", 0, buf), LOG_NORMAL, 0,
+                WRITE_CACHE, FALSE);
+  }
+  ulonglong get_next_backup_id();
+  my_bool check_backup_logs(THD *thd);
+
+private:
+  bool write_int(uint num);
+  bool write_long(ulonglong num);
+  bool write_datetime(time_t time_val);
+  bool write_str(const char *str);
+  bool headers_written;
+  ulonglong m_next_id;       ///< the next available backup_id
+  pthread_mutex_t LOCK_backupid; ///< mutex for backupid generation
+};
+
 class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 {
  private:
@@ -364,7 +458,21 @@ public:
   bool is_active(const char* log_file_name);
   int update_log_index(LOG_INFO* linfo, bool need_update_threads);
   void rotate_and_purge(uint flags);
-  bool flush_and_sync();
+
+  /**
+     Flush binlog cache and synchronize to disk.
+
+     This function flushes events in binlog cache to binary log file,
+     it will do synchronizing according to the setting of system
+     variable 'sync_binlog'. If file is synchronized, @c synced will
+     be set to 1, otherwise 0.
+
+     @param[out] synced if not NULL, set to 1 if file is synchronized, otherwise 0
+
+     @retval 0 Success
+     @retval other Failure
+  */
+  bool flush_and_sync(bool *synced);
   int purge_logs(const char *to_log, bool included,
                  bool need_mutex, bool need_update_threads,
                  ulonglong *decrease_log_space);
@@ -411,6 +519,20 @@ public:
                            const char *command_type, uint command_type_len,
                            const char *sql_text, uint sql_text_len,
                            CHARSET_INFO *client_cs)= 0;
+
+  virtual bool log_backup_history(THD *thd, 
+                                  st_backup_history *history_data)= 0;
+
+  virtual bool log_backup_progress(THD *thd,
+                                   ulonglong backup_id,
+                                   const char *object,
+                                   time_t start,
+                                   time_t stop,
+                                   longlong size,
+                                   longlong progress,
+                                   int error_num,
+                                   const char *notes)= 0;
+
   virtual ~Log_event_handler() {}
 };
 
@@ -441,18 +563,36 @@ public:
                            const char *sql_text, uint sql_text_len,
                            CHARSET_INFO *client_cs);
 
+  virtual bool log_backup_history(THD *thd, 
+                                  st_backup_history *history_data);
+
+  virtual bool log_backup_progress(THD *thd,
+                                   ulonglong backup_id,
+                                   const char *object,
+                                   time_t start,
+                                   time_t stop,
+                                   longlong size,
+                                   longlong progress,
+                                   int error_num,
+                                   const char *notes);
+
   int activate_log(THD *thd, uint log_type);
+
 };
 
 
 /* type of the log table */
 #define QUERY_LOG_SLOW 1
 #define QUERY_LOG_GENERAL 2
+#define BACKUP_HISTORY_LOG 3
+#define BACKUP_PROGRESS_LOG 4
 
 class Log_to_file_event_handler: public Log_event_handler
 {
   MYSQL_QUERY_LOG mysql_log;
   MYSQL_QUERY_LOG mysql_slow_log;
+  MYSQL_BACKUP_LOG mysql_backup_history_log;
+  MYSQL_BACKUP_LOG mysql_backup_progress_log;
   bool is_initialized;
 public:
   Log_to_file_event_handler(): is_initialized(FALSE)
@@ -472,14 +612,36 @@ public:
                            const char *command_type, uint command_type_len,
                            const char *sql_text, uint sql_text_len,
                            CHARSET_INFO *client_cs);
+
+  virtual bool log_backup_history(THD *thd, 
+                                   st_backup_history *history_data);
+
+  virtual bool log_backup_progress(THD *thd,
+                                   ulonglong backup_id,
+                                   const char *object,
+                                   time_t start,
+                                   time_t stop,
+                                   longlong size,
+                                   longlong progress,
+                                   int error_num,
+                                   const char *notes);
+
   void flush();
+  void flush_backup_logs();
   void init_pthread_objects();
   MYSQL_QUERY_LOG *get_mysql_slow_log() { return &mysql_slow_log; }
   MYSQL_QUERY_LOG *get_mysql_log() { return &mysql_log; }
+  MYSQL_BACKUP_LOG *get_backup_history_log()
+  { return &mysql_backup_history_log; }
+  MYSQL_BACKUP_LOG *get_backup_progress_log() 
+  { return &mysql_backup_progress_log; }
 };
 
 
-/* Class which manages slow, general and error log event handlers */
+/*
+   Class which manages slow, general, error log, backup history, and
+   backup progress event handlers.
+*/
 class LOGGER
 {
   rw_lock_t LOCK_logger;
@@ -494,6 +656,8 @@ class LOGGER
   Log_event_handler *error_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
   Log_event_handler *slow_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
   Log_event_handler *general_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
+  Log_event_handler *backup_history_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
+  Log_event_handler *backup_progress_log_handler_list[MAX_LOG_HANDLERS_NUM + 1];
 
 public:
 
@@ -517,6 +681,7 @@ public:
   void init_base();
   void init_log_tables();
   bool flush_logs(THD *thd);
+  bool flush_backup_logs(THD *thd);
   /* Perform basic logger cleanup. this will leave e.g. error log open. */
   void cleanup_base();
   /* Free memory. Nothing could be logged after this function is called */
@@ -530,13 +695,29 @@ public:
   bool general_log_write(THD *thd, enum enum_server_command command,
                          const char *query, uint query_length);
 
+  bool backup_history_log_write(THD *thd, 
+                                st_backup_history *history_data);
+  bool backup_progress_log_write(THD *thd,
+                                 ulonglong backup_id,
+                                 const char *object,
+                                 time_t start,
+                                 time_t stop,
+                                 longlong size,
+                                 longlong progress,
+                                 int error_num,
+                                 const char *notes);
+
   /* we use this function to setup all enabled log event handlers */
   int set_handlers(uint error_log_printer,
                    uint slow_log_printer,
                    uint general_log_printer);
+  int set_backup_handlers(uint backup_history_log_printer,
+                          uint backup_progress_log_printer);
   void init_error_log(uint error_log_printer);
   void init_slow_log(uint slow_log_printer);
   void init_general_log(uint general_log_printer);
+  void init_backup_history_log(uint backup_history_log_printer);
+  void init_backup_progress_log(uint backup_progress_log_printer);
   void deactivate_log_handler(THD* thd, uint log_type);
   bool activate_log_handler(THD* thd, uint log_type);
   MYSQL_QUERY_LOG *get_slow_log_file_handler()
@@ -549,6 +730,18 @@ public:
   { 
     if (file_log_handler)
       return file_log_handler->get_mysql_log();
+    return NULL;
+  }
+  MYSQL_BACKUP_LOG *get_backup_history_log_file_handler()
+  { 
+    if (file_log_handler)
+      return file_log_handler->get_backup_history_log();
+    return NULL;
+  }
+  MYSQL_BACKUP_LOG *get_backup_progress_log_file_handler()
+  { 
+    if (file_log_handler)
+      return file_log_handler->get_backup_progress_log();
     return NULL;
   }
 };

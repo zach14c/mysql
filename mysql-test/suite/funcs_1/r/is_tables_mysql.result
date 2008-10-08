@@ -14,6 +14,54 @@ WHERE table_schema = 'mysql'
 ORDER BY table_schema,table_name;
 TABLE_CATALOG	NULL
 TABLE_SCHEMA	mysql
+TABLE_NAME	backup_history
+TABLE_TYPE	BASE TABLE
+ENGINE	CSV
+VERSION	10
+ROW_FORMAT	DYNAMIC_OR_PAGE
+TABLE_ROWS	#TBLR#
+AVG_ROW_LENGTH	#ARL#
+DATA_LENGTH	#DL#
+MAX_DATA_LENGTH	#MDL#
+INDEX_LENGTH	#IL#
+DATA_FREE	#DF#
+AUTO_INCREMENT	NULL
+CREATE_TIME	#CRT#
+UPDATE_TIME	#UT#
+CHECK_TIME	#CT#
+TABLE_COLLATION	utf8_general_ci
+CHECKSUM	NULL
+CREATE_OPTIONS	#CO#
+TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
+user_comment	
+Separator	-----------------------------------------------------
+TABLE_CATALOG	NULL
+TABLE_SCHEMA	mysql
+TABLE_NAME	backup_progress
+TABLE_TYPE	BASE TABLE
+ENGINE	CSV
+VERSION	10
+ROW_FORMAT	Fixed
+TABLE_ROWS	#TBLR#
+AVG_ROW_LENGTH	#ARL#
+DATA_LENGTH	#DL#
+MAX_DATA_LENGTH	#MDL#
+INDEX_LENGTH	#IL#
+DATA_FREE	#DF#
+AUTO_INCREMENT	NULL
+CREATE_TIME	#CRT#
+UPDATE_TIME	#UT#
+CHECK_TIME	#CT#
+TABLE_COLLATION	utf8_general_ci
+CHECKSUM	NULL
+CREATE_OPTIONS	#CO#
+TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
+user_comment	
+Separator	-----------------------------------------------------
+TABLE_CATALOG	NULL
+TABLE_SCHEMA	mysql
 TABLE_NAME	columns_priv
 TABLE_TYPE	BASE TABLE
 ENGINE	MYISAM_OR_MARIA
@@ -33,6 +81,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Column privileges
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -56,6 +105,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Database privileges
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -79,6 +129,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Events
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -102,6 +153,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	User defined functions
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -125,6 +177,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	General log
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -148,6 +201,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	help categories
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -171,6 +225,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	help keywords
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -194,6 +249,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	keyword-topic relation
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -217,6 +273,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	help topics
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -240,6 +297,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Host privileges;  Merged with database privileges
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -263,52 +321,7 @@ TABLE_COLLATION	latin1_swedish_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
-user_comment	
-Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
-TABLE_SCHEMA	mysql
-TABLE_NAME	online_backup
-TABLE_TYPE	BASE TABLE
-ENGINE	MYISAM_OR_MARIA
-VERSION	10
-ROW_FORMAT	DYNAMIC_OR_PAGE
-TABLE_ROWS	#TBLR#
-AVG_ROW_LENGTH	#ARL#
-DATA_LENGTH	#DL#
-MAX_DATA_LENGTH	#MDL#
-INDEX_LENGTH	#IL#
-DATA_FREE	#DF#
-AUTO_INCREMENT	1
-CREATE_TIME	#CRT#
-UPDATE_TIME	#UT#
-CHECK_TIME	#CT#
-TABLE_COLLATION	utf8_general_ci
-CHECKSUM	NULL
-CREATE_OPTIONS	#CO#
-TABLE_COMMENT	#TC#
-user_comment	
-Separator	-----------------------------------------------------
-TABLE_CATALOG	NULL
-TABLE_SCHEMA	mysql
-TABLE_NAME	online_backup_progress
-TABLE_TYPE	BASE TABLE
-ENGINE	MYISAM_OR_MARIA
-VERSION	10
-ROW_FORMAT	Fixed
-TABLE_ROWS	#TBLR#
-AVG_ROW_LENGTH	#ARL#
-DATA_LENGTH	#DL#
-MAX_DATA_LENGTH	#MDL#
-INDEX_LENGTH	#IL#
-DATA_FREE	#DF#
-AUTO_INCREMENT	NULL
-CREATE_TIME	#CRT#
-UPDATE_TIME	#UT#
-CHECK_TIME	#CT#
-TABLE_COLLATION	utf8_general_ci
-CHECKSUM	NULL
-CREATE_OPTIONS	#CO#
-TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -332,6 +345,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	MySQL plugins
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -355,6 +369,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Stored Procedures
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -378,6 +393,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Procedure privileges
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -401,6 +417,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	MySQL Foreign Servers table
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -424,6 +441,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Slow log
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -447,6 +465,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Table privileges
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -470,6 +489,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Time zones
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -493,6 +513,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Leap seconds information for time zones
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -516,6 +537,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Time zone names
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -539,6 +561,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Time zone transitions
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -562,6 +585,7 @@ TABLE_COLLATION	utf8_general_ci
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Time zone transition types
 Separator	-----------------------------------------------------
 TABLE_CATALOG	NULL
@@ -585,6 +609,7 @@ TABLE_COLLATION	utf8_bin
 CHECKSUM	NULL
 CREATE_OPTIONS	#CO#
 TABLE_COMMENT	#TC#
+TABLESPACE_NAME	#TN#
 user_comment	Users and global privileges
 Separator	-----------------------------------------------------
 DROP   USER testuser1@localhost;

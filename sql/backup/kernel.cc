@@ -83,7 +83,6 @@
 #include "be_snapshot.h"
 #include "be_nodata.h"
 #include "ddl_blocker.h"
-#include "backup_progress.h"
 #include "transaction.h"
 
 
@@ -330,6 +329,7 @@ int send_reply(Backup_restore_ctx &context)
   // FIXME: detect errors if  reported.
   // FIXME: error logging.
   my_eof(context.thd());
+  context.report_cleanup();
   DBUG_RETURN(0);
 }
 
@@ -383,7 +383,8 @@ Backup_restore_ctx::Backup_restore_ctx(THD *thd)
   /*
     Check for progress tables.
   */
-  if (check_ob_progress_tables(thd))
+  MYSQL_BACKUP_LOG *backup_log= logger.get_backup_history_log_file_handler();
+  if (backup_log->check_backup_logs(thd))
     m_error= ER_BACKUP_PROGRESS_TABLES;
 }
 
@@ -560,13 +561,10 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
     return NULL;
   }
   
-  if (!s->open())
+  int my_open_status= s->open();
+  if (my_open_status != 0)
   {
-    /*
-      For this error, use the actual value returned instead of the
-      path complimented with backupdir.
-    */
-    fatal_error(ER_BACKUP_WRITE_LOC, orig_loc.str);
+    report_stream_open_failure(my_open_status, &orig_loc);
     return NULL;
   }
 
@@ -643,13 +641,10 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
     return NULL;
   }
   
-  if (!s->open())
+  int my_open_status= s->open();
+  if (my_open_status != 0)
   {
-    /*
-      For this error, use the actual value returned instead of the
-      path complimented with backupdir.
-    */
-    fatal_error(ER_BACKUP_READ_LOC, orig_loc.str);
+    report_stream_open_failure(my_open_status, &orig_loc);
     return NULL;
   }
 
@@ -1139,6 +1134,40 @@ int Backup_restore_ctx::do_restore()
   DBUG_RETURN(0);
 }
 
+/**
+  Report stream open error by calling fatal_error, effectively moving
+  context object into error state.
+  
+  @return error code given as input or the one stored in the context
+  object if a fatal error has already been reported.
+ */ 
+int Backup_restore_ctx::report_stream_open_failure(int my_open_status,
+                                                   const LEX_STRING *location)
+{
+  int error= 0;
+  switch (my_open_status) {
+    case ER_OPTION_PREVENTS_STATEMENT:
+      error= fatal_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-file-priv");
+      break;
+    case ER_BACKUP_WRITE_LOC:
+      /*
+        For this error, use the actual value returned instead of the
+        path complimented with backupdir.
+      */
+      error= fatal_error(ER_BACKUP_WRITE_LOC, location->str);
+      break;
+    case ER_BACKUP_READ_LOC:
+      /*
+        For this error, use the actual value returned instead of the
+        path complimented with backupdir.
+      */
+      error= fatal_error(ER_BACKUP_READ_LOC, location->str);
+      break;
+    default:
+      DBUG_ASSERT(FALSE);
+  }
+  return error;
+}
 
 namespace backup {
 
@@ -1776,7 +1805,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
       this and cancel restore process.
     */ 
 
-    Obj *ts= obs::is_tablespace(thd, sobj->get_name()); 
+    Obj *ts= obs::is_tablespace(thd, sobj); 
 
     if (ts)
     {

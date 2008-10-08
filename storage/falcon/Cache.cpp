@@ -82,7 +82,9 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageWriter = NULL;
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
+	
+	if (falcon_use_sectorcache)
+		sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
 
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
@@ -153,7 +155,9 @@ Cache::~Cache()
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
-	delete sectorCache;
+
+	if (falcon_use_sectorcache)
+		delete sectorCache;
 	
 	if (bufferHunks)
 		{

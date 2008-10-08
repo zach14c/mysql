@@ -76,8 +76,9 @@ ADD_EXECUTABLE(mysqld
                partition_info.cc rpl_utility.cc rpl_injector.cc sql_locale.cc
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
-               ddl_blocker.cc si_objects.cc
+               ddl_blocker.cc si_objects.cc si_logs.cc
                sql_profile.cc event_parse_data.cc mdl.cc
+               rpl_handler.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h

@@ -81,7 +81,8 @@ sqlsources = derror.cc field.cc field_conv.cc strfunc.cc filesort.cc \
 	debug_sync.cc sql_tablespace.cc transaction.cc \
 	rpl_injector.cc my_user.c partition_info.cc \
 	sql_servers.cc ddl_blocker.cc si_objects.cc sql_audit.cc \
-        event_parse_data.cc mdl.cc
+        event_parse_data.cc mdl.cc \
+        rpl_handler.cc
 
 libmysqld_int_a_SOURCES= $(libmysqld_sources)
 nodist_libmysqld_int_a_SOURCES= $(libmysqlsources) $(sqlsources)
