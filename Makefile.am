@@ -64,6 +64,7 @@ dist-hook:
 		--srcdir=$(top_srcdir)
 	storage/myisam/myisamchk --silent --fast $(distdir)/win/data/mysql/*.MYI
 
+
 all-local:		@ABI_CHECK@	
 
 tags:

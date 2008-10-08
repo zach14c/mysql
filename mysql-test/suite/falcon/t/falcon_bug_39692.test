@@ -1,0 +1,36 @@
+--source include/have_falcon.inc
+--source include/have_debug.inc
+
+#
+# Bug #39692: Falcon allocates SectorCache even if falcon_use_sectorcache is OFF
+#
+--echo *** Bug #39692 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1 (a int);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+SELECT file FROM information_schema.falcon_system_memory_detail
+  WHERE file = 'SectorCache.cpp';
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+# Check not applicable in this test.
+#SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

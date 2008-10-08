@@ -819,7 +819,7 @@ void DeferredIndex::scanIndex(IndexKey *lowKey, IndexKey *highKey, int searchFla
 void DeferredIndex::detachIndex(void)
 {
 	Sync sync(&syncObject, "DeferredIndex::detachIndex");
-	sync.lock(Shared);
+	sync.lock(Exclusive); // was Shared
 	index = NULL;
 }
 
@@ -840,7 +840,7 @@ void DeferredIndex::detachTransaction(void)
 	else
 		sync.unlock();
 
-	releaseRef();
+	//releaseRef();
 }
 
 void DeferredIndex::chill(Dbb *dbb)
@@ -884,8 +884,7 @@ void DeferredIndex::addRef()
 
 void DeferredIndex::releaseRef()
 {
-	INTERLOCKED_DECREMENT(useCount);
-
-	if (useCount == 0)
+	if (INTERLOCKED_DECREMENT(useCount) == 0)
 		delete this;
 }
+

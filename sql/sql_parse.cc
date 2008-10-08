@@ -21,6 +21,7 @@
 #include <m_ctype.h>
 #include <myisam.h>
 #include <my_dir.h>
+#include "rpl_handler.h"
 
 #include "sp_head.h"
 #include "sp.h"
@@ -6464,6 +6465,13 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       result=1;
     if (flush_error_log())
       result=1;
+  }
+  /*
+    Added support for flushing backup logs.
+  */
+  if (options & REFRESH_BACKUP_LOG)
+  {
+    logger.flush_backup_logs(thd);
   }
 #ifdef HAVE_QUERY_CACHE
   if (options & REFRESH_QUERY_CACHE_FREE)
