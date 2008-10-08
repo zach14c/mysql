@@ -6396,12 +6396,15 @@ ER_BACKUP_LOGPATH_INVALID
 ER_DUP_SIGNAL_SET 42000
         eng "Duplicate condition information item '%s'"
 
+# Note that the SQLSTATE is not 01000, it is provided by SIGNAL/RESIGNAL
 ER_SIGNAL_WARN 01000
         eng "Unhandled user-defined warning condition"
 
+# Note that the SQLSTATE is not 02000, it is provided by SIGNAL/RESIGNAL
 ER_SIGNAL_NOT_FOUND 02000
         eng "Unhandled user-defined not found condition"
 
+# Note that the SQLSTATE is not HY000, it is provided by SIGNAL/RESIGNAL
 ER_SIGNAL_EXCEPTION HY000
         eng "Unhandled user-defined exception condition"
 
