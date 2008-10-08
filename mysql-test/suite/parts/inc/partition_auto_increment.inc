@@ -33,11 +33,11 @@ if (!$mysql_errno)
 }
 INSERT INTO t1 VALUES (17);
 INSERT INTO t1 VALUES (19), (NULL);
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (NULL), (10), (NULL);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 INSERT INTO t1 VALUES (NULL);
 SET INSERT_ID = 30;
@@ -118,11 +118,11 @@ if (!$mysql_errno)
 INSERT INTO t1 VALUES (1, NULL);
 let $old_sql_mode = `select @@session.sql_mode`;
 SET @@session.sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (1, 0);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 SELECT * FROM t1 ORDER BY c1, c2;
 DROP TABLE t1;
@@ -133,11 +133,11 @@ eval CREATE TABLE t1 (
 ENGINE=$engine
 PARTITION BY HASH(c2)
 PARTITIONS 2;
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (1, 0);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 INSERT INTO t1 VALUES (1, 1), (1, NULL);
 INSERT INTO t1 VALUES (2, NULL), (4, 7);
@@ -164,23 +164,23 @@ if (!$mysql_errno)
   echo # mysql_errno: $mysql_errno;
 }
 INSERT INTO t1 VALUES (17), (19), (NULL);
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (NULL), (10), (NULL);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (NULL), (9);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (59), (55);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 INSERT INTO t1 VALUES (NULL), (90);
 INSERT INTO t1 VALUES (NULL);
@@ -266,22 +266,22 @@ SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='test'
 AND TABLE_NAME='t1';
 SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='test'
 AND TABLE_NAME='t1';
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (10);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 SELECT * FROM t1 ORDER BY c1;
 INSERT INTO t1 VALUES (NULL);
 SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='test'
 AND TABLE_NAME='t1';
 INSERT INTO t1 VALUES (NULL);
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (15);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 INSERT INTO t1 VALUES (NULL);
 SELECT * FROM t1 ORDER BY c1;
@@ -327,11 +327,11 @@ connection con1;
 INSERT INTO t1 (c1) VALUES (NULL);
 connection default;
 -- echo # con default
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 (c1) VALUES (16);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 -- echo # con1
 connection con1;
@@ -368,11 +368,11 @@ connection con1;
 INSERT INTO t1 (c1) VALUES (NULL);
 connection default;
 -- echo # con default
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_KEY, ER_DUP_KEY
 INSERT INTO t1 (c1) VALUES (16);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 -- echo # con1
 connection con1;
@@ -413,11 +413,11 @@ connection con1;
 INSERT INTO t1 (c1) VALUES (NULL);
 connection default;
 -- echo # con default
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 (c1) VALUES (16);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 -- echo # con1
 connection con1;
@@ -522,11 +522,11 @@ INSERT INTO t1 VALUES (1, NULL);
 INSERT INTO t1 VALUES (2, NULL);
 INSERT INTO t1 VALUES (3, NULL);
 INSERT INTO t1 VALUES (3, NULL), (2, 0), (2, NULL);
--- error 0, ER_DUP_ENTRY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 VALUES (2, 2);
 if (!$mysql_errno)
 {
-  echo # ERROR (only OK if Blackhole/NDB) should give ER_DUP_ENTRY;
+  echo # ERROR (only OK if Blackhole/NDB) should give ER_DUP_KEY or ER_DUP_ENTRY;
   echo # mysql_errno: $mysql_errno;
 }
 INSERT INTO t1 VALUES (2, 22), (2, NULL);
@@ -541,11 +541,11 @@ eval CREATE TABLE t1 (c1 INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (c1))
   PARTITION BY HASH(c1)
   PARTITIONS 2;
 SHOW CREATE TABLE t1;
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 (c1) VALUES (4);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 SHOW CREATE TABLE t1;
 INSERT INTO t1 (c1) VALUES (0);
@@ -559,11 +559,11 @@ let $old_sql_mode = `select @@session.sql_mode`;
 SET @@session.sql_mode = 'NO_AUTO_VALUE_ON_ZERO';
 INSERT INTO t1 (c1) VALUES (300);
 SHOW CREATE TABLE t1;
--- error 0, ER_DUP_KEY
+-- error 0, ER_DUP_ENTRY, ER_DUP_KEY
 INSERT INTO t1 (c1) VALUES (0);
 if ($mysql_errno)
 {
-  echo # ERROR (only OK if Archive) mysql_errno: $mysql_errno;
+  echo # ERROR (only OK if Archive);
 }
 SHOW CREATE TABLE t1;
 INSERT INTO t1 (c1) VALUES (NULL);
