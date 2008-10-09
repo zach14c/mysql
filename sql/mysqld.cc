@@ -3009,7 +3009,7 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
 
   if ((thd= current_thd))
   {
-    thd->raise_error(error, str, MyFlags);
+    thd->legacy_raise_error(error, str, MyFlags);
   }
   if (!thd || MyFlags & ME_NOREFRESH)
     sql_print_error("%s: %s", my_progname, str); /* purecov: inspected */

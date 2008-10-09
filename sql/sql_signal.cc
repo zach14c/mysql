@@ -452,10 +452,7 @@ int assign_condition_item(const char* name, THD *thd, Item *set,
 
   if (set->is_null())
   {
-    thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
-                            ER(ER_WRONG_VALUE_FOR_VAR),
-                            MYF(0),
-                            name, "NULL");
+    thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR, name, "NULL");
     DBUG_RETURN(1);
   }
 
@@ -466,16 +463,11 @@ int assign_condition_item(const char* name, THD *thd, Item *set,
     if (thd->variables.sql_mode & (MODE_STRICT_TRANS_TABLES |
                                    MODE_STRICT_ALL_TABLES))
     {
-      thd->raise_error_printf(ER_COND_ITEM_TOO_LONG,
-                              ER(ER_COND_ITEM_TOO_LONG),
-                              MYF(0),
-                              name);
+      thd->raise_error_printf(ER_COND_ITEM_TOO_LONG, name);
       DBUG_RETURN(1);
     }
 
-    thd->raise_warning_printf(WARN_COND_ITEM_TRUNCATED,
-                              ER(WARN_COND_ITEM_TRUNCATED),
-                              name);
+    thd->raise_warning_printf(WARN_COND_ITEM_TRUNCATED, name);
   }
 
   DBUG_RETURN(0);
@@ -594,8 +586,6 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
     if (set->is_null())
     {
       thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
-                              ER(ER_WRONG_VALUE_FOR_VAR),
-                              MYF(0),
                               "MESSAGE_TEXT", "NULL");
       goto end;
     }
@@ -613,14 +603,11 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
                                      MODE_STRICT_ALL_TABLES))
       {
         thd->raise_error_printf(ER_COND_ITEM_TOO_LONG,
-                                ER(ER_COND_ITEM_TOO_LONG),
-                                MYF(0),
                                 "MESSAGE_TEXT");
         goto end;
       }
 
       thd->raise_warning_printf(WARN_COND_ITEM_TRUNCATED,
-                                ER(WARN_COND_ITEM_TRUNCATED),
                                 "MESSAGE_TEXT");
     }
 
@@ -642,8 +629,6 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
     if (set->is_null())
     {
       thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
-                              ER(ER_WRONG_VALUE_FOR_VAR),
-                              MYF(0),
                               "MYSQL_ERRNO", "NULL");
       goto end;
     }
@@ -652,8 +637,6 @@ int Abstract_signal::eval_signal_informations(THD *thd, SQL_condition *cond)
     {
       str= set->val_str(& str_value);
       thd->raise_error_printf(ER_WRONG_VALUE_FOR_VAR,
-                              ER(ER_WRONG_VALUE_FOR_VAR),
-                              MYF(0),
                               "MYSQL_ERRNO", str->c_ptr_safe());
       goto end;
     }

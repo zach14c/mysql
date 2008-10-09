@@ -2652,64 +2652,62 @@ public:
     Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the error
   */
-  void raise_error(uint code)
-  {
-    raise_error(code, ER(code), MYF(0));
-  }
-
-  /**
-    Raise an exception condition, with a fixed message.
-    @param code the MYSQL_ERRNO error code of the error
-    @param str the MESSAGE_TEXT of the error
-    @param MyFlags additional flags
-  */
-  void raise_error(uint code, const char *str, myf MyFlags);
+  void raise_error(uint code);
 
   /**
     Raise an exception condition, with a formatted message.
+    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the error
-    @param format the MESSAGE_TEXT printf format of the error
-    @param MyFlags additional flags
   */
-  void raise_error_printf(uint code, const char *format, myf MyFlags, ...);
+  void raise_error_printf(uint code, ...);
+
+  /**
+    Raise an exception condition.
+    Deprecated method, used to support my_message_sql().
+    @deprecated
+    @param code the MYSQL_ERRNO error code of the error
+    @param msg the MESSAGE_TEXT of the error
+    @param flags additional flags
+  */
+  void legacy_raise_error(uint code, const char *msg, myf flags);
 
   /**
     Raise a completion condition (warning).
     Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the warning
   */
-  void raise_warning(uint code)
-  {
-    raise_warning(code, ER(code));
-  }
+  void raise_warning(uint code);
 
   /**
     Raise a completion condition (warning), with a fixed message.
+    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the warning
-    @param str the MESSAGE_TEXT of the warning
   */
-  void raise_warning(uint code, const char *str);
+  void raise_warning_printf(uint code, ...);
 
   /**
-    Raise a completion condition (warning), with a formatted message.
+    Raise a completion condition (warning).
+    Deprecated method, used to support push_warning().
+    @deprecated
     @param code the MYSQL_ERRNO error code of the warning
-    @param format the MESSAGE_TEXT printf format of the warning
+    @param msg the MESSAGE_TEXT of the warning
   */
-  void raise_warning_printf(uint code, const char *format, ...);
+  void legacy_raise_warning(uint code, const char *msg);
 
   /**
     Raise a completion condition (note), with a fixed message.
+    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the note
-    @param str the MESSAGE_TEXT of the note
   */
-  void raise_note(uint code, const char *str);
+  void raise_note(uint code);
 
+  void raise_note_printf(uint code, ...);
   /**
     Raise a completion condition (note), with a formatted message.
     @param code the MYSQL_ERRNO error code of the note
-    @param format the MESSAGE_TEXT printf format of the note
+    @param msg the MESSAGE_TEXT the note
   */
-  void raise_note_printf(uint code, const char *format, ...);
+  void legacy_raise_note(uint code, const char *msg);
 
 private:
   /*

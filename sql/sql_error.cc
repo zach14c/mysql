@@ -111,10 +111,10 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
   switch(level)
   {
   case MYSQL_ERROR::WARN_LEVEL_NOTE:
-    thd->raise_note(code, msg);
+    thd->legacy_raise_note(code, msg);
     break;
   case MYSQL_ERROR::WARN_LEVEL_WARN:
-    thd->raise_warning(code, msg);
+    thd->legacy_raise_warning(code, msg);
     break;
   default:
     DBUG_ASSERT(FALSE);
