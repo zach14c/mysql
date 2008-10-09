@@ -1085,6 +1085,7 @@ show_system_thread(enum_thread_type thread)
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_BACKUP);
   }
 #undef RETURN_NAME_AS_STRING
+  return "UNKNOWN"; /* keep gcc happy */
 }
 
 /**
