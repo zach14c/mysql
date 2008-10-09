@@ -176,6 +176,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
       DBUG_RETURN(send_error(context, ER_BACKUP_BACKUP_PREPARE));
 
     DEBUG_SYNC(thd, "after_backup_start_backup");
+    context.report_state(BUP_ERRORS);
 
     // select objects to backup
 

@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+
 #
 # Bug #34351_C: Update Conflict on non-overlapping transactions
 # This test works because it uses FALCON_CONSISTENT_READ=OFF
@@ -29,8 +30,6 @@ CREATE TABLE t1 (
   t1_uuid CHAR(36),
   PRIMARY KEY (t1_autoinc), key(t1_uuid)
 ) ENGINE = Falcon;
-
-#   declare continue handler for sqlexception
 
 delimiter //;
 CREATE PROCEDURE p1 ()
@@ -77,14 +76,14 @@ connection default;
 --echo # Pull the results of the preceeding call p1()
 --reap
 
-
 # ----------------------------------------------------- #
 # --- Check                                         --- #
 # ----------------------------------------------------- #
 # Checking row count is not applicable here.
-SELECT count(*) FROM t1;
+#SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
 DROP PROCEDURE p1;
+DROP TABLE t1;

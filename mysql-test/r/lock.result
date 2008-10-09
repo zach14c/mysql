@@ -135,7 +135,8 @@ sic: did not left LOCK TABLES mode automatically
 select * from t1;
 ERROR HY000: Table 't1' was not locked with LOCK TABLES
 unlock tables;
-create or replace view v_bug5719 as select * from t1;
+drop view if exists v_bug5719;
+create view v_bug5719 as select * from t1;
 lock tables v_bug5719 write;
 select * from v_bug5719;
 a

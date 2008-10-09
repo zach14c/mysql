@@ -501,6 +501,18 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 		}
 }
 
+JString TableSpaceManager::tableSpaceFileType(JString name)
+{
+	JString type;
+	
+	if (name == "FALCON_USER" || name == "FALCON_TEMPORARY" || name == "FALCON_SYSTEM_BASE")
+		type = "SYSTEM DATAFILE";
+	else
+		type = "USER DATAFILE";
+	
+	return type;
+}
+
 void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 {
 	PStatement statement = database->systemConnection->prepareStatement(
@@ -512,7 +524,7 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		infoTable->putInt(0, 0);		// FILE_ID NOT NULL, unused for now
 		infoTable->setNotNull(1);		// FILE_NAME
 		infoTable->putString(1, resultSet->getString(2));
-		infoTable->putString(2, "DATAFILE");	// FILE_TYPE NOT NULL
+		infoTable->putString(2, tableSpaceFileType(resultSet->getString(1)));	// FILE_TYPE NOT NULL
 		infoTable->setNotNull(3);		// TABLESPACE_NAME
 		infoTable->putString(3, resultSet->getString(1));
 		infoTable->setNull(4);			// TABLE_CATALOG
