@@ -1224,6 +1224,21 @@ void fix_slave_exec_mode(enum_var_type type)
   DBUG_VOID_RETURN;
 }
 
+
+bool sys_var_thd_binlog_format::check(THD *thd, set_var *var) {
+  /*
+    All variables that affect writing to binary log (either format or
+    turning logging on and off) use the same checking. We call the
+    superclass ::check function to assign the variable correctly, and
+    then check the value.
+   */
+  bool result= sys_var_thd_enum::check(thd, var);
+  if (!result)
+    result= check_log_update(thd, var);
+  return result;
+}
+
+
 bool sys_var_thd_binlog_format::is_readonly() const
 {
   /*

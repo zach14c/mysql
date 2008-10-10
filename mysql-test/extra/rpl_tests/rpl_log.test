@@ -68,10 +68,7 @@ eval create table t3 (a int)ENGINE=$engine_type;
 connection master;
 select * from t1 order by 1 asc;
 
-save_master_pos;
-connection slave;
-
-sync_with_master;
+sync_slave_with_master;
 #check t1 on slave to ensure whether it's identical with on master
 select * from t1 order by 1 asc;
 flush logs;
@@ -91,6 +88,7 @@ source include/show_binlog_events.inc;
 show binlog events in 'master-bin.000002';
 show binary logs;
 sync_slave_with_master;
+--source include/wait_for_slave_to_start.inc
 show binary logs;
 --replace_result $MASTER_MYPORT MASTER_PORT $VERSION VERSION
 --replace_column 2 # 5 #

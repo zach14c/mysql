@@ -1230,6 +1230,7 @@ public:
                       &binlog_format_typelib,
                       fix_binlog_format_after_update)
   {};
+  bool check(THD *thd, set_var *var);
   bool is_readonly() const;
 };
 

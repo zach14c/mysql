@@ -11,6 +11,9 @@ connect (con1,localhost,root,,,,);
 --echo con1
 connection con1;
 
+let $MYSQLD_DATADIR = `select @@datadir`;
+let $MYSQLD_BACKUPDIR = `select @@backupdir`;
+
 --echo Display backup variables
 SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
@@ -36,6 +39,8 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 --disable_warnings
+--error 0,1
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 DROP DATABASE IF EXISTS bup_log;
 --enable_warnings
 
@@ -52,11 +57,11 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 
@@ -82,11 +87,11 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 --echo '---and the progress log is turned off                   ---'
@@ -114,11 +119,11 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 --echo '---and the history log is turned off                 ---'
@@ -146,11 +151,11 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is FILE---'
 
@@ -182,20 +187,20 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
 #
 # BUG#33364 - uncomment when purge command is implemented
 #
 # Check contents of logs for data. 
 #--error 0
-#--exec grep -q "BACKUP DATABASE bup_log TO 'bup_log.bak'" $MYSQLTEST_VARDIR/master-data/backup_history.log
+#--exec grep -q "BACKUP DATABASE bup_log TO 'bup_log.bak'" $MYSQLD_DATADIR/backup_history.log
 #--error 0
-#--exec grep -q "complete" $MYSQLTEST_VARDIR/master-data/backup_progress.log
+#--exec grep -q "complete" $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo '---Checking backup logs when log_backup_output is TABLE, FILE---'
 
@@ -223,20 +228,20 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
 #
 # BUG#33364 - uncomment when purge command is implemented
 #
 # Check contents of logs for data. 
 #--error 0
-#--exec grep -q "BACKUP DATABASE bup_log TO 'bup_log.bak'" $MYSQLTEST_VARDIR/master-data/backup_history.log
+#--exec grep -q "BACKUP DATABASE bup_log TO 'bup_log.bak'" $MYSQLD_DATADIR/backup_history.log
 #--error 0
-#--exec grep -q "complete" $MYSQLTEST_VARDIR/master-data/backup_progress.log
+#--exec grep -q "complete" $MYSQLD_DATADIR/backup_progress.log
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 
 --echo Cleanup
 DROP DATABASE bup_log;
@@ -244,5 +249,5 @@ DROP DATABASE bup_log;
 SET @@global.log_backup_output = 'TABLE';
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+--remove_file $MYSQLD_BACKUPDIR/bup_log.bak
 

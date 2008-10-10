@@ -64,18 +64,24 @@ BEGIN {
 #  in cygwin perl (that uses unix paths)
 #
 
+use Memoize;
+if (!IS_WIN32PERL){
+  memoize('mixed_path');
+  memoize('native_path');
+  memoize('posix_path');
+}
+
 sub mixed_path {
   my ($path)= @_;
   if (IS_CYGWIN){
     return unless defined $path;
     my $cmd= "cygpath -m $path";
-    print "$cmd\n";
-    $path= `$cmd`;
+    $path= `$cmd` or
+      print "Failed to run: '$cmd', $!\n";
     chomp $path;
   }
   return $path;
 }
-
 
 sub native_path {
   my ($path)= @_;
@@ -83,7 +89,6 @@ sub native_path {
     if (IS_CYGWIN or IS_WIN32PERL);
   return $path;
 }
-
 
 sub posix_path {
   my ($path)= @_;
