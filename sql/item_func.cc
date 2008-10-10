@@ -4879,8 +4879,8 @@ Item_func_get_system_var::
 Item_func_get_system_var(sys_var *var_arg, enum_var_type var_type_arg,
                        LEX_STRING *component_arg, const char *name_arg,
                        size_t name_len_arg)
-  :var(var_arg), var_type(var_type_arg), component(*component_arg), 
-   cache_present(0)
+  :var(var_arg), var_type(var_type_arg), orig_var_type(var_type_arg),
+  component(*component_arg), cache_present(0)
 {
   /* set_name() will allocate the name */
   set_name(name_arg, name_len_arg, system_charset_info);
@@ -5014,7 +5014,7 @@ longlong Item_func_get_system_var::val_int()
 {
   THD *thd= current_thd;
 
-  if (thd->query_id == used_query_id)
+  if (cache_present && thd->query_id == used_query_id)
   {
     if (cache_present & GET_SYS_VAR_CACHE_LONG)
     {
@@ -5090,7 +5090,7 @@ String* Item_func_get_system_var::val_str(String* str)
 {
   THD *thd= current_thd;
 
-  if (thd->query_id == used_query_id)
+  if (cache_present && thd->query_id == used_query_id)
   {
     if (cache_present & GET_SYS_VAR_CACHE_STRING)
     {
@@ -5170,7 +5170,7 @@ double Item_func_get_system_var::val_real()
 {
   THD *thd= current_thd;
 
-  if (thd->query_id == used_query_id)
+  if (cache_present && thd->query_id == used_query_id)
   {
     if (cache_present & GET_SYS_VAR_CACHE_DOUBLE)
     {
@@ -5262,6 +5262,15 @@ bool Item_func_get_system_var::eq(const Item *item, bool binary_cmp) const
     return 0;
   Item_func_get_system_var *other=(Item_func_get_system_var*) item;
   return (var == other->var && var_type == other->var_type);
+}
+
+
+void Item_func_get_system_var::cleanup()
+{
+  Item_func::cleanup();
+  cache_present= 0;
+  var_type= orig_var_type;
+  cached_strval.free();
 }
 
 
