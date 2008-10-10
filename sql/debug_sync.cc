@@ -711,7 +711,9 @@ static void debug_sync_reset(THD *thd)
   ds_control->ds_active= 0;
 
   /* Clear the global signal. */
+  pthread_mutex_lock(&debug_sync_global.ds_mutex);
   debug_sync_global.ds_signal.length(0);
+  pthread_mutex_unlock(&debug_sync_global.ds_mutex);
 
   DBUG_VOID_RETURN;
 }
@@ -1511,7 +1513,11 @@ uchar *sys_var_debug_sync::value_ptr(THD *thd,
 
   if (opt_debug_sync_timeout)
   {
-    static char on[]= "ON - current signal: '";
+    static char on[]= "ON - current signal: '"; 
+
+    // Ensure exclusive access to debug_sync_global.ds_signal
+    pthread_mutex_lock(&debug_sync_global.ds_mutex);
+
     size_t lgt= (sizeof(on) /* includes '\0' */ +
                  debug_sync_global.ds_signal.length() + 1 /* for '\'' */);
     char *vend;
@@ -1527,6 +1533,7 @@ uchar *sys_var_debug_sync::value_ptr(THD *thd,
         *(vptr++)= '\'';
       *vptr= '\0'; /* We have one byte reserved for the worst case. */
     }
+    pthread_mutex_unlock(&debug_sync_global.ds_mutex);
   }
   else
     value= strmake_root(thd->mem_root, STRING_WITH_LEN("OFF"));
@@ -1582,6 +1589,13 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       thd_proc_info(thd, proc_info.c_ptr());
     }
 
+    /*
+      Take mutex to ensure that only one thread access
+      debug_sync_global.ds_signal at a time.  Need to take mutex for
+      read access too, to create a memory barrier in order to avoid that
+      threads just reads an old cached version of the signal.
+    */
+    pthread_mutex_lock(&debug_sync_global.ds_mutex);
     if (action->signal.length())
     {
       /* Copy the signal to the global variable. */
@@ -1606,7 +1620,6 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       int             error= 0;
       struct timespec abstime;
 
-      pthread_mutex_lock(&debug_sync_global.ds_mutex);
       /*
         We don't use enter_cond()/exit_cond(). They do not save old
         mutex and cond. This would prohibit the use of DEBUG_SYNC
@@ -1670,6 +1683,11 @@ static void debug_sync_execute(THD *thd, st_debug_sync_action *action)
       pthread_mutex_unlock(&thd->mysys_var->mutex);
 
     } /* end if (action->wait_for.length()) */
+    else
+    {
+      // Make sure to realease mutex also when there is no WAIT_FOR
+      pthread_mutex_unlock(&debug_sync_global.ds_mutex);
+    }
 
   } /* end if (action->execute) */
 

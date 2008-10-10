@@ -378,6 +378,16 @@ int bstream_next_chunk(backup_stream*);
   the bytes being written to/read from a backup stream. This is done by
   storing pointers to functions performing basic I/O operations inside
   this structure.
+  
+  Low-level @c write(), @c read() and @c forward() functions should return 
+  BSTREAM_OK on success and BSTREAM_ERROR on error. Additionally, @c read() 
+  should return BSTREAM_EOS if there is no more data in the input stream.
+  
+  Functions @c write() and @c read() should behave like functions
+  @c bstream_write_part() and @c bstream_read_part(), respectively. The latter
+  are documented in stream_v1_transport.c. The only difference is that low-level
+  @c read() doesn't deal with chunk boundaries and never returns BSTREAM_EOC. 
+  However, it should detect end of stream and return BSTREAM_EOS in that case.
  */
 struct st_abstract_stream
 {

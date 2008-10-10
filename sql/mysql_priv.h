@@ -575,6 +575,7 @@ enum open_table_mode
 /* @@optimizer_switch flags */
 #define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
 #define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
+#define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
 
 
 /*
@@ -642,6 +643,8 @@ extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
 #define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+#define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
+
 /* BINLOG_DUMP options */
 
 #define BINLOG_DUMP_NON_BLOCK   1
@@ -689,8 +692,6 @@ enum enum_parsing_place
   IN_WHERE,
   IN_ON
 };
-
-struct st_table;
 
 class THD;
 
@@ -888,24 +889,14 @@ inline bool check_identifier_name(LEX_STRING *str)
   return check_identifier_name(str, NAME_CHAR_LEN, 0, "");
 }
 
-bool test_if_data_home_dir(const char *dir);
-
 bool parse_sql(THD *thd,
                Parser_state *parser_state,
                Object_creation_ctx *creation_ctx);
 
-enum enum_mysql_completiontype {
-  ROLLBACK_RELEASE=-2, ROLLBACK=1,  ROLLBACK_AND_CHAIN=7,
-  COMMIT_RELEASE=-1,   COMMIT=0,    COMMIT_AND_CHAIN=6
-};
-
-bool begin_trans(THD *thd);
-bool end_active_trans(THD *thd);
-int end_trans(THD *thd, enum enum_mysql_completiontype completion);
-
 Item *negate_expression(THD *thd, Item *expr);
 
 /* log.cc */
+
 int vprint_msg_to_log(enum loglevel level, const char *format, va_list args);
 void sql_print_error(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 void sql_print_warning(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
@@ -932,6 +923,7 @@ bool general_log_write(THD *thd, enum enum_server_command command,
 #include "tztime.h"
 #ifdef MYSQL_SERVER
 #include "sql_servers.h"
+#include "records.h"
 #include "opt_range.h"
 
 #ifdef HAVE_QUERY_CACHE
@@ -1450,6 +1442,9 @@ extern LEX_STRING INFORMATION_SCHEMA_NAME;
 extern LEX_STRING MYSQL_SCHEMA_NAME;
 extern LEX_STRING GENERAL_LOG_NAME;
 extern LEX_STRING SLOW_LOG_NAME;
+extern LEX_STRING BACKUP_HISTORY_LOG_NAME;
+extern LEX_STRING BACKUP_PROGRESS_LOG_NAME;
+extern LEX_STRING BACKUP_SETTINGS_NAME;
 
 extern const LEX_STRING partition_keywords[];
 ST_SCHEMA_TABLE *find_schema_table(THD *thd, const char* table_name);
@@ -1652,6 +1647,7 @@ bool rename_temporary_table(THD* thd, TABLE *table, const char *new_db,
 void flush_tables();
 bool is_equal(const LEX_STRING *a, const LEX_STRING *b);
 char *make_default_log_name(char *buff,const char* log_ext);
+char *make_backup_log_name(char *buff, const char *name, const char* log_ext);
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 uint fast_alter_partition_table(THD *thd, TABLE *table,
@@ -1661,6 +1657,8 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
                                 char *db,
                                 const char *table_name,
                                 uint fast_alter_partition);
+uint set_part_state(Alter_info *alter_info, partition_info *tab_part_info,
+                    enum partition_state part_state);
 uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
                            HA_CREATE_INFO *create_info,
                            handlerton *old_db_type,
@@ -1952,6 +1950,7 @@ extern CHARSET_INFO *character_set_filesystem;
 #ifdef MYSQL_SERVER
 extern char *opt_mysql_tmpdir, mysql_charsets_dir[],
             def_ft_boolean_syntax[sizeof(ft_boolean_syntax)];
+extern int mysql_unpacked_real_data_home_len;
 #define mysql_tmpdir (my_tmpdir(&mysql_tmpdir_list))
 extern MY_TMPDIR mysql_tmpdir_list;
 extern const LEX_STRING command_name[];
@@ -2033,7 +2032,10 @@ extern bool mysqld_embedded;
 extern bool using_update_log, opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_log, opt_slow_log;
+extern my_bool opt_backup_history_log;
+extern my_bool opt_backup_progress_log;
 extern ulong log_output_options;
+extern ulong log_backup_output_options;
 extern my_bool opt_log_queries_not_using_indexes;
 extern bool opt_disable_networking, opt_skip_show_db;
 extern my_bool opt_character_set_client_handshake;
@@ -2062,11 +2064,15 @@ extern uint opt_large_page_size;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern char *opt_logname, *opt_slow_logname;
-extern const char *log_output_str;
+extern char *opt_backup_history_logname, *opt_backup_progress_logname,
+            *opt_backup_settings_name;
+extern const char *og_output_str;
+extern const char *log_backup_output_str;
 
 extern MYSQL_BIN_LOG mysql_bin_log;
 extern LOGGER logger;
-extern TABLE_LIST general_log, slow_log;
+extern TABLE_LIST general_log, slow_log, 
+       backup_history_log, backup_progress_log;
 extern FILE *bootstrap_file;
 extern int bootstrap_error;
 extern FILE *stderror_file;
@@ -2117,8 +2123,8 @@ extern struct my_option my_long_options[];
 extern const LEX_STRING view_type;
 extern scheduler_functions thread_scheduler;
 extern TYPELIB thread_handling_typelib;
-extern uint8 uc_update_queries[SQLCOM_END+1];
 extern uint sql_command_flags[];
+extern uint server_command_flags[];
 extern TYPELIB log_output_typelib;
 
 /* optional things, have_* variables */
@@ -2238,6 +2244,7 @@ int writefrm(const char* name, const uchar* data, size_t len);
 int closefrm(TABLE *table, bool free_share);
 int read_string(File file, uchar* *to, size_t length);
 void free_blobs(TABLE *table);
+void free_field_buffers_larger_than(TABLE *table, uint32 size);
 int set_zone(int nr,int min_zone,int max_zone);
 ulong convert_period_to_month(ulong period);
 ulong convert_month_to_period(ulong month);
@@ -2332,6 +2339,8 @@ uint tablename_to_filename(const char *from, char *to, uint to_length);
 #ifdef MYSQL_SERVER
 uint build_table_filename(char *buff, size_t bufflen, const char *db,
                           const char *table, const char *ext, uint flags);
+const char *get_canonical_filename(handler *file, const char *path,
+                                   char *tmp_path);
 
 #define MYSQL50_TABLE_NAME_PREFIX         "#mysql50#"
 #define MYSQL50_TABLE_NAME_PREFIX_LENGTH  9
@@ -2562,6 +2571,17 @@ inline void kill_delayed_threads(void) {}
 #define IS_FILES_CHECKSUM            35
 #define IS_FILES_STATUS              36
 #define IS_FILES_EXTRA               37
+
+#define IS_TABLESPACES_TABLESPACE_NAME    0
+#define IS_TABLESPACES_ENGINE             1
+#define IS_TABLESPACES_TABLESPACE_TYPE    2
+#define IS_TABLESPACES_LOGFILE_GROUP_NAME 3
+#define IS_TABLESPACES_EXTENT_SIZE        4
+#define IS_TABLESPACES_AUTOEXTEND_SIZE    5
+#define IS_TABLESPACES_MAXIMUM_SIZE       6
+#define IS_TABLESPACES_NODEGROUP_ID       7
+#define IS_TABLESPACES_TABLESPACE_COMMENT 8
+
 void init_fill_schema_files_row(TABLE* table);
 bool schema_table_store_record(THD *thd, TABLE *table);
 
@@ -2588,6 +2608,8 @@ bool load_collation(MEM_ROOT *mem_root,
                     CHARSET_INFO **cl);
 
 #endif /* MYSQL_SERVER */
+extern "C" int test_if_data_home_dir(const char *dir);
+
 #endif /* MYSQL_CLIENT */
 
 #endif /* MYSQL_PRIV_H */

@@ -168,7 +168,7 @@ typedef struct st_mi_create_info
   ulonglong data_file_length;
   ulonglong key_file_length;
   uint old_options;
-  uint8 language;
+  uint16 language;
   my_bool with_auto_increment;
 } MI_CREATE_INFO;
 
@@ -262,6 +262,10 @@ extern ulong myisam_concurrent_insert;
 extern my_bool myisam_flush,myisam_delay_key_write,myisam_single_user;
 extern my_off_t myisam_max_temp_length;
 extern ulong myisam_bulk_insert_tree_size, myisam_data_pointer_size;
+
+/* usually used to check if a symlink points into the mysql data home */
+/* which is normally forbidden                                        */
+extern int (*myisam_test_invalid_symlink)(const char *filename);
 
 	/* Prototypes for myisam-functions */
 

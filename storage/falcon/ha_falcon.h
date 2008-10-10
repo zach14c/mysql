@@ -28,14 +28,14 @@ static const int TRANSACTION_WRITE_COMMITTED  = 4;	// Dirty reads are prevented;
 static const int TRANSACTION_CONSISTENT_READ  = 8;	// Dirty reads and non-repeatable reads are prevented; phantom reads can occur.   
 static const int TRANSACTION_SERIALIZABLE     = 16;	// Dirty reads, non-repeatable reads and phantom reads are prevented.
 
-struct st_table_share;
-struct StorageIndexDesc;
+struct TABLE_SHARE;
+class StorageIndexDesc;
 struct StorageBlob;
 
 class StorageInterface : public handler
 {
 public:
-	StorageInterface(handlerton *, st_table_share *table_arg);
+	StorageInterface(handlerton *, TABLE_SHARE *table_arg);
 	~StorageInterface(void);
 
 	virtual int		open(const char *name, int mode, uint test_if_locked);
@@ -113,15 +113,18 @@ public:
 	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
-	int				dropIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
-	void			getKeyDesc(KEY *keyInfo, StorageIndexDesc *indexInfo);
+	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
 	int				threadSwitchError(void);
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
-	int				setIndexes(void);
+	int				setIndex(TABLE *table, int indexId);
+	int				setIndexes(TABLE *table);
+	int				remapIndexes(TABLE *table);
+	bool			validateIndexes(TABLE *table, bool exclusiveLock = false);
 	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
@@ -155,6 +158,7 @@ public:
 	static uint		alter_table_flags(uint flags);
 #endif
 	static int		alter_tablespace(handlerton* hton, THD* thd, st_alter_tablespace* ts_info);
+	static int		fill_is_table(handlerton *hton, THD *thd, TABLE_LIST *tables, class Item *cond, enum enum_schema_tables);
 
 	static int		commit_by_xid(handlerton* hton, XID* xid);
 	static int		rollback_by_xid(handlerton* hton, XID* xid);
@@ -176,7 +180,7 @@ public:
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
-	st_table_share		*share;
+	TABLE_SHARE *share;
 	uint				recordLength;
 	int					lastRecord;
 	int					nextRecord;
@@ -245,16 +249,4 @@ public:
 	static int getSyncInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initSyncInfo(void *p);
 	static int deinitSyncInfo(void *p);
-
-	static int getTableSpaceInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTableSpaceInfo(void *p);
-	static int deinitTableSpaceInfo(void *p);
-
-	static int getTableSpaceFilesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTableSpaceFilesInfo(void *p);
-	static int deinitTableSpaceFilesInfo(void *p);
-	
-	static int getTablesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTablesInfo(void *p);
-	static int deinitTablesInfo(void *p);
 };

@@ -79,7 +79,7 @@ class Stream: public fd_stream
 {
  public:
 
-  bool open();
+  int open();
   virtual void close();
   bool rewind();
 
@@ -92,7 +92,7 @@ class Stream: public fd_stream
 
  protected:
 
-  Stream(Logger&, const ::String&, int);
+  Stream(Logger&, ::String *, LEX_STRING, int);
 
   String  m_path;
   int     m_flags;  ///< flags used when opening the file
@@ -101,6 +101,16 @@ class Stream: public fd_stream
 
   friend int stream_write(void*, bstream_blob*, bstream_blob);
   friend int stream_read(void*, bstream_blob*, bstream_blob);
+
+private:
+
+  int make_relative_path(char *new_path, 
+                         char *orig_loc, 
+                         ::String *backupdir);
+  int prepare_path(::String *backupdir, 
+                   LEX_STRING orig_loc);
+  bool test_secure_file_priv_access(char *path);
+
 };
 
 /// Used to write to backup stream.
@@ -109,9 +119,9 @@ class Output_stream:
 {
  public:
 
-  Output_stream(Logger&, const ::String&, bool);
+  Output_stream(Logger&, ::String *, LEX_STRING, bool);
 
-  bool open();
+  int  open();
   void close();
   bool rewind();
 
@@ -127,9 +137,9 @@ class Input_stream:
 {
  public:
 
-  Input_stream(Logger&, const ::String &name);
+  Input_stream(Logger&, ::String *, LEX_STRING);
 
-  bool open();
+  int  open();
   void close();
   bool rewind();
 

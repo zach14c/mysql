@@ -1474,13 +1474,15 @@ sub executable_setup_ndb () {
 
   $exe_ndbd=
     mtr_exe_maybe_exists("$ndb_path/src/kernel/ndbd",
-			 "$ndb_path/ndbd");
+			 "$ndb_path/ndbd",
+			 "$glob_basedir/libexec/ndbd");
   $exe_ndb_mgm=
     mtr_exe_maybe_exists("$ndb_path/src/mgmclient/ndb_mgm",
 			 "$ndb_path/ndb_mgm");
   $exe_ndb_mgmd=
     mtr_exe_maybe_exists("$ndb_path/src/mgmsrv/ndb_mgmd",
-			 "$ndb_path/ndb_mgmd");
+			 "$ndb_path/ndb_mgmd",
+			 "$glob_basedir/libexec/ndb_mgmd");
   $exe_ndb_waiter=
     mtr_exe_maybe_exists("$ndb_path/tools/ndb_waiter",
 			 "$ndb_path/ndb_waiter");
@@ -3403,7 +3405,16 @@ sub run_testcase ($) {
   {
     mtr_timer_stop_all($glob_timers);
     mtr_report("\nServers started, exiting");
-    exit(0);
+    if ($glob_win32_perl)
+    {
+      #ActiveState perl hangs  when using normal exit, use  POSIX::_exit instead
+      use POSIX qw[ _exit ]; 
+      POSIX::_exit(0);
+    }
+    else
+    {
+      exit(0);
+    }
   }
 
   {
@@ -3668,15 +3679,17 @@ sub mysqld_arguments ($$$$) {
   mtr_add_arg($args, "%s--basedir=%s", $prefix, $path_my_basedir);
   mtr_add_arg($args, "%s--character-sets-dir=%s", $prefix, $path_charsetsdir);
 
-  if ( $mysql_version_id >= 50036)
+  if (!$opt_extern)
   {
-    # By default, prevent the started mysqld to access files outside of vardir
-    mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
-  }
+    if ( $mysql_version_id >= 50036)
+    {
+      # Prevent the started mysqld to access files outside of vardir
+      mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
+    }
 
-  if ( $mysql_version_id >= 50000 )
-  {
-    mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    if ( $mysql_version_id >= 50000 ) {
+      mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    }
   }
 
   mtr_add_arg($args, "%s--default-character-set=latin1", $prefix);
@@ -3728,7 +3741,7 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--disable-sync-frm", $prefix);  # Faster test
 
-  if ( $mysql_version_id >= 50106 )
+  if (!$opt_extern and $mysql_version_id >= 50106 )
   {
     # Turn on logging to bothe tables and file
     mtr_add_arg($args, "%s--log-output=table,file", $prefix);
@@ -4703,11 +4716,15 @@ sub run_mysqltest ($) {
 
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
+  # and remove existing falcon tables
   # ----------------------------------------------------------------------
-
+  
   if ( $glob_use_embedded_server )
   {
     mysqld_arguments($args,$master->[0],$tinfo->{'master_opt'},[]);
+    #Remove  falcon tables before each test, otherwise every start might fail
+    #if there is an error in falcon recovery
+    rm_falcon_tables($master->[0]->{'path_myddir'});
   }
 
   # ----------------------------------------------------------------------

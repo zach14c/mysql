@@ -30,8 +30,6 @@
 #define NO_HASH				/* Not yet implemented */
 #endif
 
-#define USING_TRANSACTIONS
-
 // the following is for checking tables
 
 #define HA_ADMIN_ALREADY_DONE	  1
@@ -188,6 +186,30 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_CAN_READ_ORDER_IF_LIMIT (LL(1) << 38)
 /* Has automatic checksums and uses the new checksum format */
 #define HA_HAS_NEW_CHECKSUM    (LL(1) << 39)
+
+/*
+    When a multiple key conflict happens in a REPLACE command mysql
+    expects the conflicts to be reported in the ascending order of
+    key names.
+
+    For e.g.
+
+    CREATE TABLE t1 (a INT, UNIQUE (a), b INT NOT NULL, UNIQUE (b), c INT NOT
+                     NULL, INDEX(c));
+
+    REPLACE INTO t1 VALUES (1,1,1),(2,2,2),(2,1,3);
+
+    MySQL expects the conflict with 'a' to be reported before the conflict with
+    'b'.
+
+    If the underlying storage engine does not report the conflicting keys in
+    ascending order, it causes unexpected errors when the REPLACE command is
+    executed.
+
+    This flag helps the underlying SE to inform the server that the keys are not
+    ordered.
+ */
+#define HA_DUPLICATE_KEY_NOT_IN_ORDER    (LL(1) << 40)
 
 /*
   Set of all binlog flags. Currently only contain the capabilities
@@ -550,9 +572,50 @@ class st_alter_tablespace : public Sql_alloc
 
 /* The handler for a table type.  Will be included in the TABLE structure */
 
-struct st_table;
-typedef struct st_table TABLE;
-typedef struct st_table_share TABLE_SHARE;
+struct TABLE;
+struct TABLE_SHARE;
+
+/*
+  Make sure that the order of schema_tables and enum_schema_tables are the same.
+*/
+enum enum_schema_tables
+{
+  SCH_CHARSETS= 0,
+  SCH_COLLATIONS,
+  SCH_COLLATION_CHARACTER_SET_APPLICABILITY,
+  SCH_COLUMNS,
+  SCH_COLUMN_PRIVILEGES,
+  SCH_ENGINES,
+  SCH_EVENTS,
+  SCH_FILES,
+  SCH_GLOBAL_STATUS,
+  SCH_GLOBAL_VARIABLES,
+  SCH_KEY_COLUMN_USAGE,
+  SCH_OPEN_TABLES,
+  SCH_PARAMETERS,
+  SCH_PARTITIONS,
+  SCH_PLUGINS,
+  SCH_PROCESSLIST,
+  SCH_PROFILES,
+  SCH_REFERENTIAL_CONSTRAINTS,
+  SCH_PROCEDURES,
+  SCH_SCHEMATA,
+  SCH_SCHEMA_PRIVILEGES,
+  SCH_SESSION_STATUS,
+  SCH_SESSION_VARIABLES,
+  SCH_STATISTICS,
+  SCH_STATUS,
+  SCH_TABLES,
+  SCH_TABLESPACES,
+  SCH_TABLE_CONSTRAINTS,
+  SCH_TABLE_NAMES,
+  SCH_TABLE_PRIVILEGES,
+  SCH_TRIGGERS,
+  SCH_USER_PRIVILEGES,
+  SCH_VARIABLES,
+  SCH_VIEWS
+};
+
 struct st_foreign_key_info;
 typedef struct st_foreign_key_info FOREIGN_KEY_INFO;
 typedef bool (stat_print_fn)(THD *thd, const char *type, uint type_len,
@@ -627,6 +690,7 @@ struct handler_iterator {
   void *buffer;
 };
 
+class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
   to provide access to storage engine functionality that works on the
@@ -715,9 +779,9 @@ struct handlerton
    uint (*partition_flags)();
    uint (*alter_partition_flags)();
    int (*alter_tablespace)(handlerton *hton, THD *thd, st_alter_tablespace *ts_info);
-   int (*fill_files_table)(handlerton *hton, THD *thd,
-                           TABLE_LIST *tables,
-                           class Item *cond);
+   int (*fill_is_table)(handlerton *hton, THD *thd, TABLE_LIST *tables, 
+                        class Item *cond, 
+                        enum enum_schema_tables);
    uint32 flags;                                /* global handler flags */
    /*
       Those handlerton functions below are properly initialized at handler
@@ -1322,8 +1386,8 @@ class handler :public Sql_alloc
 public:
   typedef ulonglong Table_flags;
 protected:
-  struct st_table_share *table_share;   /* The table definition */
-  struct st_table *table;               /* The current open table */
+  TABLE_SHARE *table_share;   /* The table definition */
+  TABLE *table;               /* The current open table */
   Table_flags cached_table_flags;       /* Set on init() and open() */
 
   ha_rows estimation_rows_to_insert;
@@ -1408,7 +1472,7 @@ public:
   virtual ~handler(void)
   {
     DBUG_ASSERT(locked == FALSE);
-    /* TODO: DBUG_ASSERT(inited == NONE); */
+    DBUG_ASSERT(inited == NONE);
   }
   virtual handler *clone(MEM_ROOT *mem_root);
   /** This is called after create to allow us to set up cached variables */
@@ -1513,10 +1577,6 @@ public:
                            size_t pack_frm_len);
   int ha_drop_partitions(THD *thd, const char *path);
   int ha_rename_partitions(THD *thd, const char *path);
-  int ha_optimize_partitions(THD *thd);
-  int ha_analyze_partitions(THD *thd);
-  int ha_check_partitions(THD *thd);
-  int ha_repair_partitions(THD *thd);
 
   void adjust_next_insert_id_after_explicit_value(ulonglong nr);
   int update_auto_increment();
@@ -2099,7 +2159,7 @@ public:
     @param    thd               The thread handle
     @param    table             The altered table, re-opened
  */
- virtual int alter_table_phase3(THD *thd, TABLE *table)
+ virtual int alter_table_phase3(THD *, TABLE *)
  {
    return HA_ERR_UNSUPPORTED;
  }
@@ -2320,17 +2380,10 @@ private:
   { return HA_ERR_WRONG_COMMAND; }
   virtual int rename_partitions(THD *thd, const char *path)
   { return HA_ERR_WRONG_COMMAND; }
-  virtual int optimize_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
-  virtual int analyze_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
-  virtual int check_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
-  virtual int repair_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
 };
 
 
+bool key_uses_partial_cols(TABLE *table, uint keyno);
 
 /**
   A Disk-Sweep MRR interface implementation
@@ -2391,7 +2444,6 @@ public:
                             void *seq_init_param, uint n_ranges, uint *bufsz,
                             uint *flags, COST_VECT *cost);
 private:
-  bool key_uses_partial_cols(uint keyno);
   bool choose_mrr_impl(uint keyno, ha_rows rows, uint *flags, uint *bufsz, 
                        COST_VECT *cost);
   bool get_disk_sweep_mrr_cost(uint keynr, ha_rows rows, uint flags, 
@@ -2404,10 +2456,6 @@ extern const char *binlog_format_names[];
 extern TYPELIB tx_isolation_typelib;
 extern TYPELIB myisam_stats_method_typelib;
 extern ulong total_ha, total_ha_2pc;
-
-       /* Wrapper functions */
-#define ha_commit(thd) (ha_commit_trans((thd), TRUE))
-#define ha_rollback(thd) (ha_rollback_trans((thd), TRUE))
 
 /* lookups */
 handlerton *ha_default_handlerton(THD *thd);
@@ -2485,13 +2533,12 @@ int ha_release_temporary_latches(THD *thd);
 int ha_start_consistent_snapshot(THD *thd);
 int ha_commit_or_rollback_by_xid(XID *xid, bool commit);
 int ha_commit_one_phase(THD *thd, bool all);
+int ha_commit_trans(THD *thd, bool all);
 int ha_rollback_trans(THD *thd, bool all);
 int ha_prepare(THD *thd);
 int ha_recover(HASH *commit_list);
 
 /* transactions: these functions never call handlerton functions directly */
-int ha_commit_trans(THD *thd, bool all);
-int ha_autocommit_or_rollback(THD *thd, int error);
 int ha_enable_transaction(THD *thd, bool on);
 
 /* savepoints */

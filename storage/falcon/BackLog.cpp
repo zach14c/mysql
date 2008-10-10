@@ -37,8 +37,10 @@ BackLog::BackLog(Database *db, const char *fileName)
 {
 	database = db;
 	dbb = new Dbb(database->dbb, 0);
+#ifndef FALCONDB
 	dbb->createPath(fileName);
-	dbb->create(fileName, dbb->pageSize, 0, HdrTableSpace, 0, NULL, 0);
+#endif
+	dbb->create(fileName, dbb->pageSize, 0, HdrTableSpace, 0, NULL);
 	dbb->noLog = true;
 	dbb->tableSpaceId = -1;
 	int32 sectionId = Section::createSection (dbb, NO_TRANSACTION);

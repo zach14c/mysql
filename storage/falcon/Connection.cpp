@@ -89,7 +89,7 @@ static Server		*server;
 static bool			panicShutdown;
 
 static Registry		registry;
-static SyncObject	databaseList;
+static SyncObject	syncDatabaseList;
 
 static const char *ddl [] = {
 	"grant all on system.sequences to %s",
@@ -169,6 +169,9 @@ void Connection::init(Configuration *config)
 	isolationLevel = TRANSACTION_CONSISTENT_READ;
 	mySqlThreadId = 0;
 	currentStatement = NULL;
+	syncObject.setName("Connection::syncObject");
+	syncResultSets.setName("Connection::syncResultSets");
+	syncDatabaseList.setName("Connection::syncDatabaseList");
 }
 
 Connection::~Connection()
@@ -923,7 +926,7 @@ void Connection::openDatabase(const char* dbName, const char *filename, const ch
 	if (filename)
 		IO::expandFileName(filename, sizeof(dbFileName), dbFileName);
 	else
-		{ 
+		{
 		if (!registry.findDatabase (dbName, sizeof (dbFileName), dbFileName))
 			throw SQLEXCEPTION (CONNECTION_ERROR, "can't find database \"%s\"", dbName);
 		}
@@ -968,7 +971,7 @@ void Connection::createDatabase(const char * dbName, Parameters * parameters, Th
 	const char *password = parameters->findValue ("password", "");
 	char dbFileName [1024];
 	const char *dbFile = registry.findDatabase (dbName, sizeof (dbFileName), dbFileName);
-	Sync sync (&databaseList, "Connection::createDatabase");
+	Sync sync (&syncDatabaseList, "Connection::createDatabase(1)");
 	sync.lock (Exclusive);
 	
 	if (dbFile)
@@ -1027,7 +1030,10 @@ Database* Connection::createDatabase(const char *dbName, const char *fileName, c
 	if (database)
 		throw SQLEXCEPTION (CONNECTION_ERROR, "database is already open");
 
-	Sync sync (&databaseList, "Connection::createDatabase");
+	if (!firstDatabase)
+		syncDatabaseList.setName("Connection::syncDatabaseList");
+
+	Sync sync (&syncDatabaseList, "Connection::createDatabase(2)");
 	sync.lock (Exclusive);
 
 #ifndef STORAGE_ENGINE
@@ -1042,7 +1048,7 @@ Database* Connection::createDatabase(const char *dbName, const char *fileName, c
 				}
 
 #ifdef STORAGE_ENGINE
-        strcpy(dbFileName, fileName);
+	strcpy(dbFileName, fileName);
 #else
 	registry.defineDatabase (dbName, fileName);
 	
@@ -1617,7 +1623,7 @@ ResultList* Connection::findResultList(int32 handle)
 
 Database* Connection::getDatabase(const char* dbName, const char* dbFileName, Threads* threads)
 {
-	Sync sync (&databaseList, "Connection::getDatabase");
+	Sync sync (&syncDatabaseList, "Connection::getDatabase");
 	sync.lock (Shared);
 	Database *db;
 
@@ -1665,7 +1671,7 @@ void Connection::dropDatabase()
 	if (!database)
 		throw SQLEXCEPTION (CONNECTION_ERROR, "database isn't open");
 		
-	Sync sync (&databaseList, "Connection::dropDatabase");
+	Sync sync (&syncDatabaseList, "Connection::dropDatabase");
 	sync.lock (Exclusive);
 	unlink(database);
 	detachDatabase();

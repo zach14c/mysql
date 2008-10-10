@@ -100,6 +100,8 @@ StorageDatabase::StorageDatabase(StorageHandler *handler, const char *dbName, co
 		//SyncTest syncTest;
 		//syncTest.test();
 		}
+	syncObject.setName("StorageDatabase::syncObject");
+	syncTrace.setName("StorageDatabase::syncTrace");
 }
 
 StorageDatabase::~StorageDatabase(void)
@@ -154,7 +156,9 @@ Connection* StorageDatabase::createDatabase(void)
 	try
 		{
 		masterConnection = getConnection();
+#ifndef FALCONDB
 		IO::createPath(filename);
+#endif
 		masterConnection->createDatabase(name, filename, ACCOUNT, PASSWORD, threads);
 		Statement *statement = masterConnection->createStatement();
 		
@@ -686,7 +690,7 @@ int StorageDatabase::updateRow(StorageConnection* storageConnection, Table* tabl
 	return 0;
 }
 
-int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* table, const char* indexName, const char* sql)
+int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* table, const char* sql)
 {
 	Connection *connection = storageConnection->connection;
 	Statement *statement = connection->createStatement();
@@ -711,7 +715,7 @@ int StorageDatabase::createIndex(StorageConnection *storageConnection, Table* ta
 	return 0;
 }
 
-int StorageDatabase::dropIndex(StorageConnection *storageConnection, Table* table, const char* indexName, const char* sql)
+int StorageDatabase::dropIndex(StorageConnection *storageConnection, Table* table, const char* sql)
 {
 	Connection *connection = storageConnection->connection;
 	Statement *statement = connection->createStatement();
@@ -744,37 +748,13 @@ int StorageDatabase::renameTable(StorageConnection* storageConnection, Table* ta
 		{
 		Database *database = connection->database;
 		Sequence *sequence = connection->findSequence(schemaName, table->name);
-		int numberIndexes = 0;
-		int firstIndex = 0;
-		Index *index;
 
-		for (index = table->indexes; index; index = index->next)
-			{
-			if (index->type == PrimaryKey)
-				firstIndex = 1;
-
-			++numberIndexes;
-			}
-
-		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable");
+		Sync syncDDL(&database->syncSysDDL, "StorageDatabase::renameTable(1)");
 		syncDDL.lock(Exclusive);
 		
-		Sync syncTables(&database->syncTables, "StorageDatabase::renameTable");
+		Sync syncTables(&database->syncTables, "StorageDatabase::renameTable(2)");
 		syncTables.lock(Exclusive);
 		
-		for (int n = firstIndex; n < numberIndexes; ++n)
-			{
-			char indexName[256];
-			sprintf(indexName, "%s$%d", (const char*) table->name, n);
-			Index *index = table->findIndex(indexName);
-
-			if (index)
-				{
-				sprintf(indexName, "%s$%d", tableName, n);
-				index->rename(indexName);
-				}
-			}
-
 		table->rename(schemaName, tableName);
 
 		if (sequence)
@@ -1206,7 +1186,7 @@ void StorageDatabase::clearTransactions(void)
 {
 #ifdef TRACE_TRANSACTIONS
 
-	Sync sync(&traceSyncObject, "StorageDatabase::clearTransactions");
+	Sync sync(&syncTrace, "StorageDatabase::clearTransactions");
 	sync.lock(Exclusive);
 	Statement *statement = masterConnection->createStatement();
 	statement->execute(traceTable);
@@ -1224,7 +1204,7 @@ void StorageDatabase::traceTransaction(int transId, int committed, int blockedBy
 {
 	try
 		{
-		Sync sync(&traceSyncObject, "StorageDatabase::traceTransaction");
+		Sync sync(&syncTrace, "StorageDatabase::traceTransaction");
 		sync.lock(Exclusive);
 		char buffer [10000];
 		int length = stream->getSegment(0, sizeof(buffer) - 1, buffer);

@@ -76,16 +76,22 @@ SerialLogFile::SerialLogFile(Database *db)
 	highWater = 0;
 	writePoint = 0;
 	forceFsync = false;
+	created = false;
 	sectorSize = database->serialLogBlockSize;
 }
 
 SerialLogFile::~SerialLogFile()
 {
 	close();
+	if(created && deleteFilesOnExit)
+		unlink(fileName);
 }
 
 void SerialLogFile::open(JString filename, bool create)
 {
+	if(!create)
+		ASSERT(!inCreateDatabase);
+
 #ifdef _WIN32
 	handle = 0;
 	char pathName[1024];
@@ -96,7 +102,7 @@ void SerialLogFile::open(JString filename, bool create)
 						GENERIC_READ | GENERIC_WRITE,
 						0,							// share mode
 						NULL,						// security attributes
-						(create) ? CREATE_ALWAYS : OPEN_ALWAYS,
+						(create) ? CREATE_NEW : OPEN_EXISTING,
 						FILE_FLAG_NO_BUFFERING | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_WRITE_THROUGH,
 						0);
 
@@ -119,25 +125,19 @@ void SerialLogFile::open(JString filename, bool create)
 
 	sectorSize = MAX(bytesPerSector, database->serialLogBlockSize);
 #else
+	
 
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		if (create)
-			handle = ::open(filename,  IO::getWriteMode(attempt) | O_RDWR | O_BINARY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-		else
-			handle = ::open(filename, IO::getWriteMode(attempt) | O_RDWR | O_BINARY);
+	if (create)
+		handle = ::open(filename, O_RDWR | O_BINARY | O_CREAT|O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+	else
+		handle = ::open(filename, O_RDWR | O_BINARY);
 
-		if (handle > 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
 
 	if (handle <= 0)		
 		throw SQLEXCEPTION (IO_ERROR, "can't open file \"%s\": %s (%d)", 
 							(const char*) filename, strerror (errno), errno);
 
+	IO::setWriteFlags(handle, &forceFsync);
 	fileName = filename;
 	struct stat statBuffer;
 	fstat(handle, &statBuffer);
@@ -146,7 +146,10 @@ void SerialLogFile::open(JString filename, bool create)
 #endif
 
 	if (create)
+	{
+		created = true;
 		zap();
+	}
 }
 
 void SerialLogFile::close()
@@ -169,7 +172,7 @@ void SerialLogFile::close()
 void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *data)
 {
 	uint32 effectiveLength = ROUNDUP(length, sectorSize);
-    time_t start = database->timestamp;
+	time_t start = database->timestamp;
 	Priority priority(database->ioScheduler);
 	
 	if (!(position == writePoint || position == 0 || writePoint == 0))
@@ -202,7 +205,7 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	uint32 n = ::pwrite (handle, data, effectiveLength, position);
 #else
-	Sync sync (&syncObject, "IO::pwrite");
+	Sync sync (&syncObject, "SerialLogFile::write");
 	sync.lock (Exclusive);
 
 	if (position != offset)
@@ -244,7 +247,7 @@ void SerialLogFile::write(int64 position, uint32 length, const SerialLogBlock *d
 uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 {
 	uint32 effectiveLength = ROUNDUP(length, sectorSize);
-	//Sync syncIO(&database->syncSerialLogIO, "SerialLogFile::read");
+	//Sync syncIO(&database->syncSerialLogIO, "SerialLogFile::read(1)");
 	Priority priority(database->ioScheduler);
 
 	if (falcon_serial_log_priority)
@@ -260,21 +263,29 @@ uint32 SerialLogFile::read(int64 position, uint32 length, UCHAR *data)
 	overlapped.Offset = pos.LowPart;
 	overlapped.OffsetHigh = pos.HighPart;
 
-	DWORD ret;
+	DWORD n;
 
-	if (!ReadFile(handle, data, effectiveLength, &ret, &overlapped))
-		throw SQLError(IO_ERROR, "serial log ReadFile failed with %d", GetLastError());
+	if (!ReadFile(handle, data, effectiveLength, &n, &overlapped))
+		{
+		DWORD lastError = GetLastError();
+		if(lastError != ERROR_HANDLE_EOF)
+			throw SQLError(IO_ERROR, "serial log ReadFile failed with %d", 
+							GetLastError());
+		else
+			n = 0;	// reached end of file
+		}
 
-	offset = position + effectiveLength;
+
+	offset = position + n;
 	highWater = MAX(offset, highWater);
 	
-	return ret;
+	return n;
 #else
 
 #if defined(HAVE_PREAD) && !defined(HAVE_BROKEN_PREAD)
 	int n = ::pread (handle, data, effectiveLength, position);
 #else
-	Sync sync(&syncObject, "SerialLogFile::read");
+	Sync sync(&syncObject, "SerialLogFile::read(2)");
 	sync.lock(Exclusive);
 	ASSERT(position < writePoint || writePoint == 0);
 	off_t loc = lseek(handle, position, SEEK_SET);

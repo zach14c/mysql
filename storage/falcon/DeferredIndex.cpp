@@ -60,6 +60,8 @@ DeferredIndex::DeferredIndex(Index *idx, Transaction *trans)
 	haveMinValue = true;
 	haveMaxValue = true;
 	window = NULL;
+	syncObject.setName("DeferredIndex::syncObject");
+	useCount = 1;   // the transaction that created it
 }
 
 DeferredIndex::~DeferredIndex(void)
@@ -357,11 +359,11 @@ bool DeferredIndex::deleteNode(IndexKey* key, int32 recordNumber)
 	bool doingDIHash = (   (index->database->configuration->useDeferredIndexHash)
 	                    && (INDEX_IS_UNIQUE(index->type)));
 
-	Sync syncHash(&index->syncDIHash, "DeferredIndex::deleteNode");
+	Sync syncHash(&index->syncDIHash, "DeferredIndex::deleteNode(1)");
 	if (doingDIHash)
 		syncHash.lock(Exclusive);
 
-	Sync sync(&syncObject, "DeferredIndex::deleteNode");
+	Sync sync(&syncObject, "DeferredIndex::deleteNode(2)");
 	sync.lock(Exclusive);
 
 	DIBucket *buckets[DEFERRED_INDEX_MAX_LEVELS];
@@ -817,13 +819,13 @@ void DeferredIndex::scanIndex(IndexKey *lowKey, IndexKey *highKey, int searchFla
 void DeferredIndex::detachIndex(void)
 {
 	Sync sync(&syncObject, "DeferredIndex::detachIndex");
-	sync.lock(Shared);
+	sync.lock(Exclusive); // was Shared
 	index = NULL;
 }
 
 void DeferredIndex::detachTransaction(void)
 {
-	Sync sync(&syncObject, "DeferredIndex::detachIndex");
+	Sync sync(&syncObject, "DeferredIndex::detachTransaction");
 	sync.lock(Exclusive);
 	transaction = NULL;
 
@@ -838,7 +840,7 @@ void DeferredIndex::detachTransaction(void)
 	else
 		sync.unlock();
 
-	delete this;
+	//releaseRef();
 }
 
 void DeferredIndex::chill(Dbb *dbb)
@@ -874,3 +876,15 @@ DINode* DeferredIndex::findMinValue(void)
 {
 	return NULL;
 }
+
+void DeferredIndex::addRef()
+{
+	INTERLOCKED_INCREMENT (useCount);
+}
+
+void DeferredIndex::releaseRef()
+{
+	if (INTERLOCKED_DECREMENT(useCount) == 0)
+		delete this;
+}
+

@@ -1,0 +1,27 @@
+*** Bug #30826 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+------- Test 1 - optimize with records  -------
+CREATE TABLE  t1 (
+`id` BIGINT NOT NULL  AUTO_INCREMENT PRIMARY KEY,
+`field1` CHAR(50) NOT NULL)
+PARTITION BY Hash (id) PARTITIONS 4;
+INSERT INTO t1 (`id`, `field1`) VALUES('3','value3');
+INSERT INTO t1 (`id`, `field1`) VALUES('5','value5');
+INSERT INTO t1 (`id`, `field1`) VALUES('7','value7');
+ALTER TABLE t1 OPTIMIZE PARTITION `p1`;
+Table	Op	Msg_type	Msg_text
+test.t1	optimize	status	OK
+SELECT count(*) FROM t1;
+count(*)
+3
+------- Test 2 - optimize without records ------
+DROP TABLE t1;
+CREATE TABLE  t1 (
+`id` BIGINT NOT NULL  AUTO_INCREMENT PRIMARY KEY,
+`field1` CHAR(50) NOT NULL)
+PARTITION BY Hash (id) PARTITIONS 4;
+ALTER TABLE t1 OPTIMIZE PARTITION `p1`;
+Table	Op	Msg_type	Msg_text
+test.t1	optimize	status	OK
+DROP TABLE t1;

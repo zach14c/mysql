@@ -1,0 +1,162 @@
+#
+# This test is for the DDL blocker timeout feature.
+#
+
+--source include/have_innodb.inc
+--source include/have_debug.inc
+--source include/not_embedded.inc
+--source include/have_debug_sync.inc
+
+SET DEBUG_SYNC= 'reset';
+
+#
+# Remove backup files (if they exist)
+#
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak;
+
+#
+# Connections used in this test
+#
+# con1       used to create data, load data, and run the backup 
+# con2-con4  used for DDL statements: 2 before backup and 2 during backup
+# con5       used for setting and releasing breakpoints
+#
+
+connect (con1,localhost,root,,);
+connect (con2,localhost,root,,);
+connect (con3,localhost,root,,);
+connect (con4,localhost,root,,);
+connect (con5,localhost,root,,);
+
+connection con1;
+
+# Create data for this test and tailor it to the test.
+--disable_warnings
+DROP DATABASE IF EXISTS bup_ddl_blocker;
+--enable_warnings
+
+CREATE DATABASE bup_ddl_blocker;
+
+# Create a table and load it with data.
+--echo con1: Creating tables
+CREATE TABLE bup_ddl_blocker.t1 (col_a CHAR(40)) ENGINE=INNODB;
+
+--echo con1: Loading data
+INSERT INTO bup_ddl_blocker.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_ddl_blocker.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_ddl_blocker.t1 VALUES ("03 Some data to test");
+
+SHOW VARIABLES LIKE 'backup_wait%';
+
+#
+# Part A - test timeout for one session 
+#
+--echo Part A
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+
+connection con1;
+
+--echo con1: Activate synchronization points for backup.
+SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_blocked WAIT_FOR timeout_done';
+
+--echo con1: Get a backup going and stop after the DDL blocker is fired.
+send BACKUP DATABASE bup_ddl_blocker TO "bup_ddl_blocker.bak";
+
+connection con2;
+
+SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
+
+--echo Set ddl timeout to 1 second
+SET backup_wait_timeout = 1; 
+SHOW VARIABLES LIKE 'backup_wait%';
+
+--echo con2: Try a ddl operation and watch it expire
+--error ER_DDL_TIMEOUT
+CREATE TABLE bup_ddl_blocker.t2 (col_a CHAR(40)) ENGINE=MEMORY;
+
+connection con5;
+--echo release the lock.
+--echo con5: Resume all.
+SET DEBUG_SYNC= 'now SIGNAL timeout_done';
+
+# Reconnect to con1 and let backup finish.
+
+connection con1;
+--replace_column 1 #
+reap;
+
+#
+# Part B - test timeout for a session with a timeout, 
+#          and a session with no timeout (backup_wait_timeout = 0)
+#
+--echo Part B
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+
+connection con1;
+
+--echo con1: Activate synchronization points for backup.
+SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_blocked WAIT_FOR timeout_done';
+
+--echo con1: Get a backup going and stop after the DDL blocker is fired.
+send BACKUP DATABASE bup_ddl_blocker TO "bup_ddl_blocker.bak";
+
+connection con2;
+
+SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
+
+--echo Set ddl timeout to 0 seconds
+SET backup_wait_timeout = 0; 
+SHOW VARIABLES LIKE 'backup_wait%';
+
+--echo con2: Try a ddl operation and it should expire
+--error ER_DDL_TIMEOUT
+CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY;
+
+connection con3;
+
+SET backup_wait_timeout = 100;
+SHOW VARIABLES LIKE 'backup_wait%';
+
+--echo con3: Try a ddl operation and it should not expire
+send CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY;
+
+connection con5;
+--echo release the lock.
+--echo con5: Resume all.
+SET DEBUG_SYNC= 'now SIGNAL timeout_done';
+
+# Reconnect to con1 and let backup finish.
+
+connection con1;
+--replace_column 1 #
+reap;
+
+connection con3;
+reap;
+
+USE bup_ddl_blocker;
+SHOW FULL TABLES;
+
+#
+# Part C - test default behavior: set backup timeout = default
+#
+--echo Part C
+
+connection con1;
+
+--echo Show that the variable can be reset to its timeout value using
+--echo SET backup_wait_timeout = DEFAULT;
+SET backup_wait_timeout = 1; 
+SHOW VARIABLES LIKE 'backup_wait%';
+SET backup_wait_timeout = DEFAULT; 
+SHOW VARIABLES LIKE 'backup_wait%';
+
+DROP DATABASE bup_ddl_blocker;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak

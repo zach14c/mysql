@@ -35,6 +35,9 @@
 #include "InfoTable.h"
 #include "CmdGen.h"
 #include "Dbb.h"
+#include "Database.h"
+#include "TableSpaceManager.h"
+#include "IOx.h"
 
 #define DICTIONARY_ACCOUNT		"mysql"
 #define DICTIONARY_PW			"mysql"
@@ -51,7 +54,6 @@ struct StorageSavepoint {
 	int					savepoint;
 	};
 
-extern uint64		falcon_initial_allocation;
 
 static const char *createTempSpace = "upgrade tablespace " TEMPORARY_TABLESPACE " filename '" FALCON_TEMPORARY "'";
 //static const char *dropTempSpace = "drop tablespace " TEMPORARY_TABLESPACE;
@@ -59,11 +61,11 @@ static const char *createTempSpace = "upgrade tablespace " TEMPORARY_TABLESPACE 
 static const char *falconSchema [] = {
 	//"create tablespace " DEFAULT_TABLESPACE " filename '" FALCON_USER "' allocation 2000000000",
 	createTempSpace,
-	
+
 	"upgrade table falcon.tablespaces ("
 	"    name varchar(128) not null primary	key,"
 	"    pathname varchar(1024) not null)",
-	
+
 	"upgrade table falcon.tables ("
 	"    given_schema_name varchar(128) not null,"
 	"    effective_schema_name varchar(128) not null,"
@@ -71,15 +73,15 @@ static const char *falconSchema [] = {
 	"    effective_table_name varchar(128) not null,"
 	"    tablespace_name varchar(128) not null,"
 	"    pathname varchar(1024) not null primary key)",
-	
+
 	"upgrade unique index effective on falcon.tables (effective_schema_name, effective_table_name)",
 
 	NULL };
-				
+
 class Server;
 extern Server*	startServer(int port, const char *configFile);
 
-static StorageHandler *storageHandler;
+StorageHandler *storageHandler;
 
 static char charTable[256];
 static int init();
@@ -93,13 +95,13 @@ static const char THIS_FILE[]=__FILE__;
 int init()
 {
 	const char *p;
-	
+
 	for (p = WHITE_SPACE; *p; p++)
 		charTable[(unsigned char)*p] = 1;
-	
+
 	for (p = PUNCTUATION_CHARS; *p; p++)
 		charTable[(unsigned char)*p] = 1;
-	
+
 	return 1;
 }
 
@@ -107,10 +109,22 @@ StorageHandler*	getFalconStorageHandler(int lockSize)
 {
 	if (!storageHandler)
 		storageHandler = new StorageHandler(lockSize);
-	
+
 	return storageHandler;
 }
 
+void freeFalconStorageHandler(void)
+{
+	if (storageHandler)
+		{
+		delete storageHandler;
+		storageHandler = 0;
+		}
+}
+void StorageHandler::setDataDirectory(const char *directory)
+{
+	IO::setBaseDirectory(directory);
+}
 
 StorageHandler::StorageHandler(int lockSize)
 {
@@ -122,6 +136,11 @@ StorageHandler::StorageHandler(int lockSize)
 	databaseList = NULL;
 	defaultDatabase = NULL;
 	initialized = false;
+	syncObject.setName("StorageHandler::syncObject");
+	hashSyncObject.setName("StorageHandler::hashSyncObject");
+	dictionarySyncObject.setName("StorageHandler::dictionarySyncObject");
+	inCreateDatabase=false;
+	deleteFilesOnExit=false;
 }
 
 StorageHandler::~StorageHandler(void)
@@ -132,7 +151,7 @@ StorageHandler::~StorageHandler(void)
 			storageDatabases[n] = storageDatabase->collision;
 			delete storageDatabase;
 			}
-	
+
 	for (int n = 0; n < tableHashSize; ++n)
 		for (StorageTableShare *table; (table = tables[n]);)
 			{
@@ -171,11 +190,11 @@ void StorageHandler::shutdownHandler(void)
 		dictionaryConnection->close();
 		dictionaryConnection = NULL;
 		}
-	
+
 	for (int n = 0; n < databaseHashSize; ++n)
 		for (StorageDatabase *storageDatabase = storageDatabases[n]; storageDatabase; storageDatabase = storageDatabase->collision)
 			storageDatabase->close();
-	
+
 	/***
 	Configuration configuration(NULL);
 	Connection *connection = new Connection(&configuration);
@@ -188,14 +207,14 @@ void StorageHandler::databaseDropped(StorageDatabase *storageDatabase, StorageCo
 {
 	if (!storageDatabase && storageConnection)
 		storageDatabase = storageConnection->storageDatabase;
-		
+
 	if (storageDatabase)
 		{
-		Sync syncHash(&hashSyncObject, "StorageHandler::dropDatabase");
+		Sync syncHash(&hashSyncObject, "StorageHandler::databaseDropped(1)");
 		int slot = JString::hash(storageDatabase->name, databaseHashSize);
 		syncHash.lock(Exclusive);
 		StorageDatabase **ptr;
-		
+
 		for (ptr = storageDatabases + slot; *ptr; ptr = &(*ptr)->collision)
 			if (*ptr == storageDatabase)
 				{
@@ -214,14 +233,14 @@ void StorageHandler::databaseDropped(StorageDatabase *storageDatabase, StorageCo
 		storageDatabase->release();
 		}
 
-	Sync sync(&syncObject, "StorageHandler::~dropDatabase");
+	Sync sync(&syncObject, "StorageHandler::databaseDropped(2)");
 	sync.lock(Exclusive);
 
 	for (int n = 0; n < connectionHashSize; ++n)
 		for (StorageConnection *cnct = connections[n]; cnct; cnct = cnct->collision)
 			if (cnct != storageConnection)
 				cnct->databaseDropped(storageDatabase);
-			
+
 	sync.unlock();
 }
 
@@ -237,8 +256,8 @@ int StorageHandler::startTransaction(THD* mySqlThread, int isolationLevel)
 	Sync sync(&syncObject, "StorageHandler::commit");
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
-	
-	for (StorageConnection *storageConnection = connections[slot]; 
+
+	for (StorageConnection *storageConnection = connections[slot];
 		 storageConnection; storageConnection = storageConnection->collision)
 		{
 		if (storageConnection->mySqlThread == mySqlThread)
@@ -257,16 +276,16 @@ int StorageHandler::commit(THD* mySqlThread)
 	Sync sync(&syncObject, "StorageHandler::commit");
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
-	
+
 	for (StorageConnection *connection = connections[slot]; connection; connection = connection->collision)
 		if (connection->mySqlThread == mySqlThread)
 			{
 			int ret =connection->commit();
-			
+
 			if (ret)
 				return ret;
 			}
-	
+
 	return 0;
 }
 
@@ -275,16 +294,16 @@ int StorageHandler::prepare(THD* mySqlThread, int xidSize, const UCHAR *xid)
 	Sync sync(&syncObject, "StorageHandler::prepare");
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
-	
+
 	for (StorageConnection *connection = connections[slot]; connection; connection = connection->collision)
 		if (connection->mySqlThread == mySqlThread)
 			{
 			int ret = connection->prepare(xidSize, xid);
-			
+
 			if (ret)
 				return ret;
 			}
-	
+
 	return 0;
 }
 
@@ -293,16 +312,16 @@ int StorageHandler::rollback(THD* mySqlThread)
 	Sync sync(&syncObject, "StorageHandler::rollback");
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
-	
+
 	for (StorageConnection *connection = connections[slot]; connection; connection = connection->collision)
 		if (connection->mySqlThread == mySqlThread)
 			{
 			int ret = connection->rollback();
-			
+
 			if (ret)
 				return ret;
 			}
-	
+
 	return 0;
 }
 
@@ -311,11 +330,11 @@ int StorageHandler::releaseVerb(THD* mySqlThread)
 	Sync sync(&syncObject, "StorageHandler::releaseVerb");
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
-	
+
 	for (StorageConnection *connection = connections[slot]; connection; connection = connection->collision)
 		if (connection->mySqlThread == mySqlThread)
 			connection->releaseVerb();
-	
+
 	return 0;
 }
 
@@ -324,11 +343,11 @@ int StorageHandler::rollbackVerb(THD* mySqlThread)
 	Sync sync(&syncObject, "StorageHandler::rollbackVerb");
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
-	
+
 	for (StorageConnection *connection = connections[slot]; connection; connection = connection->collision)
 		if (connection->mySqlThread == mySqlThread)
 			connection->rollbackVerb();
-	
+
 	return 0;
 }
 
@@ -338,7 +357,7 @@ int StorageHandler::savepointSet(THD* mySqlThread, void* savePoint)
 	sync.lock(Shared);
 	int slot = HASH(mySqlThread, connectionHashSize);
 	StorageSavepoint *savepoints = NULL;
-	
+
 	for (StorageConnection *connection = connections[slot]; connection; connection = connection->collision)
 		if (connection->mySqlThread == mySqlThread)
 			{
@@ -348,9 +367,9 @@ int StorageHandler::savepointSet(THD* mySqlThread, void* savePoint)
 			savepoint->storageConnection = connection;
 			savepoint->savepoint = connection->savepointSet();
 			}
-	
+
 	*((void**) savePoint) = savepoints;
-	
+
 	return 0;
 }
 
@@ -358,15 +377,15 @@ int StorageHandler::savepointRelease(THD* mySqlThread, void* savePoint)
 {
 	Sync sync(&syncObject, "StorageHandler::savepointRelease");
 	sync.lock(Shared);
-	
-	for (StorageSavepoint *savepoints = *(StorageSavepoint**) savePoint, *savepoint; 
+
+	for (StorageSavepoint *savepoints = *(StorageSavepoint**) savePoint, *savepoint;
 		  (savepoint = savepoints);)
 		{
 		savepoint->storageConnection->savepointRelease(savepoint->savepoint);
 		savepoints = savepoint->next;
 		delete savepoint;
 		}
-		
+
 	*((void**) savePoint) = NULL;
 
 	return 0;
@@ -376,15 +395,15 @@ int StorageHandler::savepointRollback(THD* mySqlThread, void* savePoint)
 {
 	Sync sync(&syncObject, "StorageHandler::savepointRollback");
 	sync.lock(Shared);
-	
-	for (StorageSavepoint *savepoints = *(StorageSavepoint**) savePoint, *savepoint; 
+
+	for (StorageSavepoint *savepoints = *(StorageSavepoint**) savePoint, *savepoint;
 		   (savepoint = savepoints);)
 		{
 		savepoint->storageConnection->savepointRollback(savepoint->savepoint);
 		savepoints = savepoint->next;
 		delete savepoint;
 		}
-	
+
 	*((void**) savePoint) = NULL;
 
 	return 0;
@@ -395,22 +414,22 @@ StorageDatabase* StorageHandler::getStorageDatabase(const char* dbName, const ch
 	Sync sync(&hashSyncObject, "StorageHandler::getStorageDatabase");
 	int slot = JString::hash(dbName, databaseHashSize);
 	StorageDatabase *storageDatabase;
-	
+
 	if (storageDatabases[slot])
 		{
 		sync.lock(Shared);
-		
+
 		if ( (storageDatabase = findDatabase(dbName)) )
 			return storageDatabase;
-			
+
 		sync.unlock();
 		}
-		
+
 	sync.lock(Exclusive);
 
 	if ( (storageDatabase = findDatabase(dbName)) )
 		return storageDatabase;
-	
+
 	storageDatabase = new StorageDatabase(this, dbName, path);
 	storageDatabase->load();
 	storageDatabase->collision = storageDatabases[slot];
@@ -418,16 +437,16 @@ StorageDatabase* StorageHandler::getStorageDatabase(const char* dbName, const ch
 	storageDatabase->addRef();
 	storageDatabase->next = databaseList;
 	databaseList = storageDatabase;
-	
+
 	return storageDatabase;
 }
 
 void StorageHandler::closeDatabase(const char* path)
 {
-	Sync sync(&hashSyncObject, "StorageHandler::getStorageDatabase");
+	Sync sync(&hashSyncObject, "StorageHandler::closeDatabase");
 	int slot = JString::hash(path, databaseHashSize);
 	sync.lock(Exclusive);
-	
+
 	for (StorageDatabase *storageDatabase, **ptr = storageDatabases + slot; (storageDatabase = *ptr); ptr = &storageDatabase->collision)
 		if (storageDatabase->filename == path)
 			{
@@ -464,43 +483,38 @@ Connection* StorageHandler::getDictionaryConnection(void)
 	return dictionaryConnection;
 }
 
-JString StorageHandler::genCreateTableSpace(const char* tableSpaceName, const char* filename,
-												unsigned long long initialSize,
-												unsigned long long extentSize,
-												unsigned long long autoextendSize,
-												unsigned long long maxSize,
-												int nodegroup, bool wait, const char* comment)
+JString StorageHandler::genCreateTableSpace(const char* tableSpaceName, const char* filename, const char* comment)
 {
 	CmdGen gen;
-	/***
-	gen.gen("create tablespace \"%s\" filename '%s' initial_size " I64FORMAT " extent_size " I64FORMAT 
-				" autoextend_size " I64FORMAT " max_size " I64FORMAT " nodegroup %d wait %d comment '%s'",
-				tableSpaceName, filename, initialSize, extentSize, autoextendSize, maxSize, nodegroup, (int)wait, comment ? comment : "");
-	***/
 	gen.gen("create tablespace \"%s\" filename '%s' comment '%s'", tableSpaceName, filename, comment ? comment : "");
 	return (gen.getString());
 }
 
-int StorageHandler::createTablespace(const char* tableSpaceName, const char* filename,
-										unsigned long long initialSize,
-										unsigned long long extentSize,
-										unsigned long long autoextendSize,
-										unsigned long long maxSize,
-										int nodegroup, bool wait, const char* comment)
+int StorageHandler::createTablespace(const char* tableSpaceName, const char* filename, const char* comment)
 {
 	if (!defaultDatabase)
 		initialize();
 
 	if (!dictionaryConnection)
 		return StorageErrorTablesSpaceOperationFailed;
-		
-	//StorageDatabase *storageDatabase = NULL;
-	JString tableSpace = JString::upcase(tableSpaceName);
-	
+
+	if (   !strcasecmp(tableSpaceName, MASTER_NAME)
+		|| !strcasecmp(tableSpaceName, DEFAULT_TABLESPACE)
+		|| !strcasecmp(tableSpaceName, TEMPORARY_TABLESPACE))
+		{
+		return StorageErrorTableSpaceExist;
+		}
+
+	TableSpaceManager *tableSpaceManager =
+		dictionaryConnection->database->tableSpaceManager;
+
+	if (!tableSpaceManager->waitForPendingDrop(filename, 10))
+		// file still exists after waiting for 10 seconds
+		return  StorageErrorTableSpaceDataFileExist;
+
 	try
 		{
-		JString cmd = genCreateTableSpace(tableSpaceName, filename, initialSize, extentSize,
-											autoextendSize, maxSize, nodegroup, wait, comment);
+		JString cmd = genCreateTableSpace(tableSpaceName, filename, comment);
 		Sync sync(&dictionarySyncObject, "StorageHandler::createTablespace");
 		sync.lock(Exclusive);
 		Statement *statement = dictionaryConnection->createStatement();
@@ -511,16 +525,16 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 		{
 		if (exception.getSqlcode() == TABLESPACE_EXIST_ERROR)
 			return StorageErrorTableSpaceExist;
-			
+
 		if (exception.getSqlcode() == TABLESPACE_NOT_EXIST_ERROR)
 			return StorageErrorTableSpaceNotExist;
 
 		if (exception.getSqlcode() == TABLESPACE_DATAFILE_EXIST_ERROR)
 			return StorageErrorTableSpaceDataFileExist;
-			
+
 		return StorageErrorTablesSpaceOperationFailed;
 		}
-	
+
 	return 0;
 }
 
@@ -538,12 +552,12 @@ int StorageHandler::deleteTablespace(const char* tableSpaceName)
 		{
 		return StorageErrorTablesSpaceOperationFailed;
 		}
-		
+
 	try
 		{
 		CmdGen gen;
 		gen.gen("drop tablespace \"%s\"", tableSpaceName);
-		Sync sync(&dictionarySyncObject, "StorageHandler::createTablespace");
+		Sync sync(&dictionarySyncObject, "StorageHandler::deleteTablespace");
 		sync.lock(Exclusive);
 		Statement *statement = dictionaryConnection->createStatement();
 		statement->executeUpdate(gen.getString());
@@ -552,16 +566,16 @@ int StorageHandler::deleteTablespace(const char* tableSpaceName)
 	catch (SQLException& exception)
 		{
 		int sqlCode = exception.getSqlcode();
-		
+
 		if (sqlCode == TABLESPACE_NOT_EXIST_ERROR)
 			return StorageErrorTableSpaceNotExist;
-			
+
 		if (sqlCode == TABLESPACE_NOT_EMPTY)
 			return StorageErrorTableNotEmpty;
-			
+
 		return StorageErrorTablesSpaceOperationFailed;
 		}
-	
+
 	return 0;
 }
 
@@ -576,26 +590,26 @@ StorageTableShare* StorageHandler::findTable(const char* pathname)
 	if (tables[slot])
 		{
 		sync.lock(Shared);
-		
+
 		for (tableShare = tables[slot]; tableShare; tableShare = tableShare->collision)
 			if (tableShare->pathName == filename)
 				return tableShare;
-	
+
 		sync.unlock();
 		}
 
 	sync.lock(Exclusive);
-	
+
 	for (tableShare = tables[slot]; tableShare; tableShare = tableShare->collision)
 		if (tableShare->pathName == filename)
 			return tableShare;
-	
+
 	tableShare = new StorageTableShare(this, filename, NULL, mySqlLockSize, false);
 	tableShare->collision = tables[slot];
 	tables[slot] = tableShare;
-	
+
 	ASSERT(tableShare->collision != tableShare);
-	
+
 	return tableShare;
 }
 
@@ -616,7 +630,7 @@ StorageTableShare* StorageHandler::preDeleteTable(const char* pathname)
 		{
 		Sync sync(&hashSyncObject, "StorageHandler::preDeleteTable");
 		sync.lock(Shared);
-		
+
 		for (tableShare = tables[slot]; tableShare; tableShare = tableShare->collision)
 			if (tableShare->pathName == filename)
 				return tableShare;
@@ -627,14 +641,14 @@ StorageTableShare* StorageHandler::preDeleteTable(const char* pathname)
 		tableShare = new StorageTableShare(this, filename, NULL, mySqlLockSize, false);
 		JString path = tableShare->lookupPathName();
 		delete tableShare;
-		
+
 		if (path == pathname)
 			return findTable(pathname);
 		}
 	catch (...)
 		{
 		}
-	
+
 	return NULL;
 }
 
@@ -647,37 +661,37 @@ StorageTableShare* StorageHandler::createTable(const char* pathname, const char 
 		return NULL;
 
 	StorageTableShare *tableShare = new StorageTableShare(this, pathname, tableSpaceName, mySqlLockSize, tempTable);
-	
+
 	if (tableShare->tableExists())
 		{
 		delete tableShare;
-		
+
 		return NULL;
 		}
 
 	addTable(tableShare);
 	tableShare->registerTable();
-	
+
 	return tableShare;
 }
 
 void StorageHandler::addTable(StorageTableShare* table)
 {
 	int slot = JString::hash(table->pathName, tableHashSize);
-	Sync sync(&hashSyncObject, "StorageHandler::add");
+	Sync sync(&hashSyncObject, "StorageHandler::addTable");
 	sync.lock(Exclusive);
 	table->collision = tables[slot];
 	tables[slot] = table;
-	
+
 	ASSERT(table->collision != table);
 }
 
 void StorageHandler::removeTable(StorageTableShare* table)
 {
-	Sync sync(&hashSyncObject, "StorageHandler::deleteTable");
+	Sync sync(&hashSyncObject, "StorageHandler::removeTable");
 	sync.lock(Exclusive);
 	int slot = JString::hash(table->pathName, tableHashSize);
-	
+
 	for (StorageTableShare **ptr = tables + slot; *ptr; ptr = &(*ptr)->collision)
 		if (*ptr == table)
 			{
@@ -688,8 +702,8 @@ void StorageHandler::removeTable(StorageTableShare* table)
 
 StorageConnection* StorageHandler::getStorageConnection(StorageTableShare* tableShare, THD* mySqlThread, int mySqlThdId, OpenOption createFlag)
 {
-	Sync sync(&syncObject, "StorageConnection::getStorageConnection");
-	
+	Sync sync(&syncObject, "StorageHandler::getStorageConnection");
+
 	if (!defaultDatabase)
 		initialize();
 
@@ -711,10 +725,10 @@ StorageConnection* StorageHandler::getStorageConnection(StorageTableShare* table
 			if (storageConnection->mySqlThread == mySqlThread) // && storageConnection->storageDatabase == tableShare->storageDatabase)
 				{
 				storageConnection->addRef();
-				
+
 				if (!tableShare->storageDatabase)
 					tableShare->setDatabase(storageDatabase);
-					
+
 				return storageConnection;
 				}
 
@@ -727,16 +741,16 @@ StorageConnection* StorageHandler::getStorageConnection(StorageTableShare* table
 		if (storageConnection->mySqlThread == mySqlThread) // && storageConnection->storageDatabase == tableShare->storageDatabase)
 			{
 			storageConnection->addRef();
-				
+
 			if (!tableShare->storageDatabase)
 				tableShare->setDatabase(storageDatabase);
-					
+
 			return storageConnection;
 			}
-	
+
 	storageConnection = new StorageConnection(this, storageDatabase, mySqlThread, mySqlThdId);
 	bool success = false;
-	
+
 	if (createFlag != CreateDatabase) // && createFlag != OpenTemporaryDatabase)
 		try
 			{
@@ -747,15 +761,15 @@ StorageConnection* StorageHandler::getStorageConnection(StorageTableShare* table
 			{
 			//fprintf(stderr, "database open failed: %s\n", exception.getText());
 			storageConnection->setErrorText(exception.getText());
-			
+
 			if (createFlag == OpenDatabase)
 				{
 				delete storageConnection;
-				
+
 				return NULL;
 				}
 			}
-	
+
 	if (!success && createFlag != OpenDatabase)
 		try
 			{
@@ -764,29 +778,29 @@ StorageConnection* StorageHandler::getStorageConnection(StorageTableShare* table
 		catch (SQLException&)
 			{
 			delete storageConnection;
-			
+
 			return NULL;
 			}
-	
+
 	tableShare->setDatabase(storageDatabase);
 	storageConnection->collision = connections[slot];
 	connections[slot] = storageConnection;
-	
+
 	return storageConnection;
 }
 
 StorageDatabase* StorageHandler::findDatabase(const char* dbName)
 {
 	int slot = JString::hash(dbName, databaseHashSize);
-	
+
 	for (StorageDatabase *storageDatabase = storageDatabases[slot]; storageDatabase; storageDatabase = storageDatabase->collision)
 		if (storageDatabase->name == dbName)
 			{
 			storageDatabase->addRef();
-			
+
 			return storageDatabase;
 			}
-			
+
 	return NULL;
 }
 
@@ -804,7 +818,7 @@ void StorageHandler::changeMySqlThread(StorageConnection* storageConnection, THD
 void StorageHandler::removeConnection(StorageConnection* storageConnection)
 {
 	int slot = HASH(storageConnection->mySqlThread, connectionHashSize);
-	
+
 	for (StorageConnection **ptr = connections + slot; *ptr; ptr = &(*ptr)->collision)
 		if (*ptr == storageConnection)
 			{
@@ -822,7 +836,7 @@ int StorageHandler::closeConnections(THD* thd)
 	for (StorageConnection *storageConnection = connections[slot], *next; storageConnection; storageConnection = next)
 		{
 		next = storageConnection->collision;
-		
+
 		if (storageConnection->mySqlThread == thd)
 			{
 			sync.unlock();
@@ -831,7 +845,7 @@ int StorageHandler::closeConnections(THD* thd)
 
 			if (storageConnection->mySqlThread)
 				storageConnection->release();	// This is for thd->ha_data[falcon_hton->slot]
-			
+
 			storageConnection->release();	// This is for storageConn
 			}
 		}
@@ -845,25 +859,25 @@ int StorageHandler::dropDatabase(const char* path)
 	char pathname[FILENAME_MAX];
 	const char *SEPARATOR = pathname;
 	char *q = pathname;
-	
+
 	for (const char *p = path; *p;)
 		{
 		char c = *p++;
-		
+
 		if (c == '/')
 			{
 			if (*p == 0)
 				break;
-				
+
 			SEPARATOR = q + 1;
 			}
-		
+
 		*q++ = c;
 		}
-	
+
 	*q = 0;
 	JString dbName = JString::upcase(SEPARATOR);
-	strcpy(q, StorageTableShare::getDefaultRoot());	
+	strcpy(q, StorageTableShare::getDefaultRoot());
 	StorageDatabase *storageDatabase = getStorageDatabase(dbName, pathname);
 	databaseDropped(storageDatabase, NULL);
 
@@ -877,7 +891,7 @@ int StorageHandler::dropDatabase(const char* path)
 
 	storageDatabase->release();
 	***/
-	
+
 	return 0;
 }
 
@@ -885,7 +899,7 @@ void StorageHandler::getIOInfo(InfoTable* infoTable)
 {
 	Sync sync(&hashSyncObject, "StorageHandler::getIOInfo");
 	sync.lock(Shared);
-	
+
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
 		storageDatabase->getIOInfo(infoTable);
 }
@@ -914,16 +928,16 @@ void StorageHandler::getTransactionInfo(InfoTable* infoTable)
 {
 	Sync sync(&hashSyncObject, "StorageHandler::getTransactionInfo");
 	sync.lock(Shared);
-	
+
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
 		storageDatabase->getTransactionInfo(infoTable);
 }
 
 void StorageHandler::getSerialLogInfo(InfoTable* infoTable)
 {
-	Sync sync(&hashSyncObject, "StorageHandler::getTransactionInfo");
+	Sync sync(&hashSyncObject, "StorageHandler::getSerialLogInfo");
 	sync.lock(Shared);
-	
+
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
 		storageDatabase->getSerialLogInfo(infoTable);
 }
@@ -937,7 +951,7 @@ void StorageHandler::getTransactionSummaryInfo(InfoTable* infoTable)
 {
 	Sync sync(&hashSyncObject, "StorageHandler::getTransactionSummaryInfo");
 	sync.lock(Shared);
-	
+
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
 		storageDatabase->getTransactionSummaryInfo(infoTable);
 }
@@ -946,7 +960,7 @@ void StorageHandler::getTableSpaceInfo(InfoTable* infoTable)
 {
 	Sync sync(&hashSyncObject, "StorageHandler::getTableSpaceInfo");
 	sync.lock(Shared);
-	
+
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
 		storageDatabase->getTableSpaceInfo(infoTable);
 }
@@ -955,7 +969,7 @@ void StorageHandler::getTableSpaceFilesInfo(InfoTable* infoTable)
 {
 	Sync sync(&hashSyncObject, "StorageHandler::getTableSpaceFilesInfo");
 	sync.lock(Shared);
-	
+
 	for (StorageDatabase *storageDatabase = databaseList; storageDatabase; storageDatabase = storageDatabase->next)
 		storageDatabase->getTableSpaceFilesInfo(infoTable);
 }
@@ -964,16 +978,16 @@ void StorageHandler::initialize(void)
 {
 	if (initialized)
 		return;
-	
-	Sync sync(&syncObject, "StorageConnection::initialize");
+
+	Sync sync(&syncObject, "StorageHandler::initialize");
 	sync.lock(Exclusive);
-	
+
 	if (initialized)
 		return;
-		
+
 	initialized = true;
 	defaultDatabase = getStorageDatabase(MASTER_NAME, MASTER_PATH);
-	
+
 	try
 		{
 		defaultDatabase->getOpenConnection();
@@ -983,43 +997,61 @@ void StorageHandler::initialize(void)
 		}
 	catch (SQLException &e)
 		{
-		// No point in creating a database if we got memory error.
-		// On FILE_ACCESS_ERROR, an external application can temporarily lock the file.
-		// In this both cases, trying to create database in this case could eventually
-		// lead to "recreate" and data loss.
-		
 		int err = e.getSqlcode();
-		
-		if (err == OUT_OF_MEMORY_ERROR || err == FILE_ACCESS_ERROR || err == VERSION_ERROR)
+
+		// If got one of following errors, just rethrow. No point in
+		// trying to create database.
+		if (err != OPEN_MASTER_ERROR)
 			throw;
 
-		defaultDatabase->createDatabase();
-		IO::deleteFile(FALCON_USER);
-		IO::deleteFile(FALCON_TEMPORARY);
-		dictionaryConnection = defaultDatabase->getOpenConnection();
-		Statement *statement = dictionaryConnection->createStatement();
-		JString createTableSpace = genCreateTableSpace(DEFAULT_TABLESPACE, FALCON_USER, falcon_initial_allocation);
-		statement->executeUpdate(createTableSpace);
-			
-		for (const char **ddl = falconSchema; *ddl; ++ddl)
-			statement->executeUpdate(*ddl);
-		
-		statement->close();
-		dictionaryConnection->commit();
+		try
+			{
+			createDatabase();
+			}
+		catch(SQLException &e2)
+			{
+			deleteFilesOnExit = true; 	// Cleanup created files
+
+			throw SQLError(e2.getSqlcode(),
+				"create database failed : %s \n" \
+				"prior open database failure was: %s",
+				e2.getText(),e.getText());
+			}
+		catch(...)
+			{
+			deleteFilesOnExit = true;
+			}
 		}
+}
+
+void StorageHandler::createDatabase(void)
+{
+	// Check all files are properly opened with O_CREAT
+	inCreateDatabase = true;
+	defaultDatabase->createDatabase();
+	dictionaryConnection = defaultDatabase->getOpenConnection();
+	Statement *statement = dictionaryConnection->createStatement();
+	JString createTableSpace = genCreateTableSpace(DEFAULT_TABLESPACE, FALCON_USER);
+	statement->executeUpdate(createTableSpace);
+
+	for (const char **ddl = falconSchema; *ddl; ++ddl)
+		statement->executeUpdate(*ddl);
+	statement->close();
+	dictionaryConnection->commit();
+	inCreateDatabase = false;
 }
 
 void StorageHandler::dropTempTables(void)
 {
 	Statement *statement = dictionaryConnection->createStatement();
-	
+
 	try
 		{
 		PStatement select = dictionaryConnection->prepareStatement(
 			"select schema,tablename from system.tables where tablespace='" TEMPORARY_TABLESPACE "'");
 		RSet resultSet = select->executeQuery();
 		bool hit = false;
-		
+
 		while (resultSet->next())
 			{
 			CmdGen gen;
@@ -1027,14 +1059,14 @@ void StorageHandler::dropTempTables(void)
 			statement->executeUpdate(gen.getString());
 			hit = true;
 			}
-		
+
 		//if (hit)
 			//statement->executeUpdate(dropTempSpace);
 		}
 	catch(...)
 		{
 		}
-	
+
 	try
 		{
 		statement->executeUpdate(createTempSpace);
@@ -1043,69 +1075,8 @@ void StorageHandler::dropTempTables(void)
 		{
 		Log::log("Can't create temporary tablespace: %s\n", exception.getText());
 		}
-	
+
 	statement->close();
-}
-
-void StorageHandler::getTablesInfo(InfoTable* infoTable)
-{
-	if (!defaultDatabase)
-		initialize();
-	
-	if (!dictionaryConnection)
-		return;
-		
-	try
-		{
-		PStatement statement = dictionaryConnection->prepareStatement(
-			"select schema,tablename,tablespace from system.tables where tablespace <> ''");
-		RSet resultSet = statement->executeQuery();
-		
-		while (resultSet->next())
-			{
-
-			// Parse table and partition name
-			
-			const char *pStr = resultSet->getString(2);
-			char *pTable = NULL;
-			char *pPart = NULL;
-			
-			if (pStr)
-				{
-				const int max_buf = 1024;
-				char buffer[max_buf+1];
-				
-				pTable = buffer;
-				*pTable = 0;
-				strncpy(buffer, pStr, (size_t)max_buf);
-				
-				char *pBuf = strchr(buffer, '#');
-				
-				if (pBuf)
-					{
-					*pBuf = 0;
-					if ((pPart = strrchr(++pBuf, '#')) != NULL)
-						pPart++;
-					}
-				}
-					
-			infoTable->putString(0, resultSet->getString(1));	// database
-			infoTable->putString(1, (pTable ? pTable : pStr));	// table
-			infoTable->putString(2, (pPart ? pPart : ""));		// partition
-			infoTable->putString(3, resultSet->getString(3));	// tablespace
-			infoTable->putString(4, resultSet->getString(2));	// internal name
-		
-			//for (int n = 0; n < 3; ++n)
-			//	infoTable->putString(n, resultSet->getString(n + 1));
-			
-			infoTable->putRecord();
-			}
-		
-		dictionaryConnection->commit();
-		}
-	catch(...)
-		{
-		}
 }
 
 void StorageHandler::setRecordMemoryMax(uint64 value)
@@ -1145,7 +1116,7 @@ void StorageHandler::cleanFileName(const char* pathname, char* filename, int fil
 	char *q = filename;
 	char *end = filename + filenameLength - 1;
 	filename[0] = 0;
-	
+
 	for (const char *p = pathname; q < end && (c = *p++); prior = c)
 		if (c != SEPARATOR || c != prior)
 			*q++ = c;
@@ -1163,7 +1134,7 @@ void StorageHandler::getFalconVersionInfo(InfoTable* infoTable)
 
 int StorageHandler::recoverGetNextLimbo(int xidLength, unsigned char* xid)
 	{
-	if (!defaultDatabase)	
+	if (!defaultDatabase)
 		initialize();
 
 	if (Connection* connection = dictionaryConnection)
@@ -1176,14 +1147,14 @@ const char* StorageHandler::normalizeName(const char* name, int bufferSize, char
 {
 	char *q = buffer;
 	char *end = buffer + bufferSize - 1;
-	
+
 	for (const char *p = name; *p && q < end; ++p)
 		if (charTable[(unsigned char)*p])
 			return name;
 		else
 			*q++ = UPPER(*p);
-	
+
 	*q = 0;
-	
+
 	return buffer;
 }

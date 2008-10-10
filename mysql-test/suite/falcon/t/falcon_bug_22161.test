@@ -25,7 +25,9 @@ ALTER TABLE t1 MODIFY COLUMN a text;
 --error ER_BLOB_USED_AS_KEY
 CREATE INDEX i1 ON t1 (a);
 ALTER TABLE t1 MODIFY COLUMN a varchar(30000);
+--disable_warnings
 CREATE INDEX i1 ON t1 (a);
+--enable_warnings
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #

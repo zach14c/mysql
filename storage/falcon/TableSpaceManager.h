@@ -55,6 +55,7 @@ public:
 	JString			tableSpaceType(JString name);
 	void			getIOInfo(InfoTable* infoTable);
 	void			getTableSpaceInfo(InfoTable* infoTable);
+	JString			tableSpaceFileType(JString name);
 	void			getTableSpaceFilesInfo(InfoTable* infoTable);
 	void			validate(int optionMask);
 	void			sync();
@@ -62,6 +63,7 @@ public:
 	void			reportWrites(void);
 	void			redoCreateTableSpace(int id, int nameLength, const char* name, int fileNameLength, const char* fileName, int type, TableSpaceInit* tsInit);
 	void			initialize(void);
+	bool			waitForPendingDrop(const char *filename, int seconds);
 
 	Database	*database;
 	TableSpace	*tableSpaces;

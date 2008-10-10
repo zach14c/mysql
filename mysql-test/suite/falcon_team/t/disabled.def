@@ -13,11 +13,7 @@
 # If a test has side effects, then it can be disabled for local testing purposes.
 #
 # Attention: Never ever push disabled tests. This is for local purposes only.
-#    Only exception is for tests, which are considered as "won't fix" for long time.
+#    Only exception is for tests which are considered as "won't fix" for long time,
+#    which should probably be attached to a bug report instead.
 #    Also please keep the list sorted.
-
-falcon_bug_22166	: Bug#22166 tests  for case-sensitive identifiers.Will probably never be fixed (besides , can never run on case-insensitive filesystems)  2008-04-21  vvaintroub 
-falcon_bug_22187	: Bug#22187 Tests for foreign key.Useless without FK implementation	2008-04-21  vvaintroub
-falcon_bug_28006  : Bug#28006 Not a Falcon-specific bug, innodb shows the same behaviour(see Bug#15491) to be fixed in Server. 2008-04-28 vvaintroub
-
 

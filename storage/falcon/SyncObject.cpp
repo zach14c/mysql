@@ -39,6 +39,7 @@
 #include "Thread.h"
 #include "Threads.h"
 #include "Sync.h"
+#include "SyncHandler.h"
 #include "Interlock.h"
 #include "LinkedList.h"
 #include "Log.h"
@@ -117,7 +118,7 @@ SyncObject::SyncObject()
 	exclusiveCount = 0;
 	waitCount = 0;
 	queueLength = 0;
-	where = NULL;
+	location = NULL;
 	name = NULL;
 	objectId = INTERLOCKED_INCREMENT(nextSyncObjectId);
 	
@@ -133,9 +134,6 @@ SyncObject::~SyncObject()
 #ifdef TRACE_SYNC_OBJECTS
 	if (objectId < MAX_SYNC_OBJECTS)
 		syncObjects[objectId] = NULL;
-		
-	if (name)
-		delete [] name;
 #endif
 }
 
@@ -145,10 +143,15 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	Thread *thread;
 
 #ifdef TRACE_SYNC_OBJECTS
-	if (sync)
-		where = sync->where;
+	location = (sync ? sync->location : NULL);
+
+#ifdef USE_FALCON_SYNC_HANDLER
+	SyncHandler *syncHandler = getFalconSyncHandler();
+	if (sync && syncHandler)
+		syncHandler->addLock(this, location);
 #endif
-	
+#endif
+
 	// Shared case
 	
 	if (type == Shared)
@@ -312,10 +315,15 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	Thread *thread;
 
 #ifdef TRACE_SYNC_OBJECTS
-	if (sync)
-		where = sync->where;
+	location = (sync ? sync->location : NULL);
+
+#ifdef USE_FALCON_SYNC_HANDLER
+	SyncHandler *syncHandler = getFalconSyncHandler();
+	if (sync && syncHandler)
+		syncHandler->addLock(this, location);
 #endif
-	
+#endif
+
 	if (type == Shared)
 		{
 		thread = NULL;
@@ -494,6 +502,12 @@ void SyncObject::unlock(Sync *sync, LockType type)
 #else // FAST_SHARED
 void SyncObject::unlock(Sync *sync, LockType type)
 {
+#if defined TRACE_SYNC_OBJECTS && defined USE_FALCON_SYNC_HANDLER
+	SyncHandler *syncHandler = findFalconSyncHandler();
+	if (sync && syncHandler)
+		syncHandler->delLock(this);
+#endif
+
 	//ASSERT(lockState != 0);
 	
 	if (monitorCount)
@@ -979,7 +993,7 @@ void SyncObject::frequentStaller(Thread *thread, Sync *sync)
 	Sync *lockPending = thread->lockPending;
 
 	if (sync)
-		LOG_DEBUG("Frequent stall from %s\n", sync->where);
+		LOG_DEBUG("Frequent stall from %s\n", sync->location);
 	else
 		LOG_DEBUG("Frequent stall from unknown\n");
 		
@@ -995,9 +1009,9 @@ void SyncObject::analyze(Stream* stream)
 	stream->format("Where\tShares\tExclusives\tWaits\tAverage Queue\n");
 	
 	for (int n = 1; n < MAX_SYNC_OBJECTS; ++n)
-		if ( (syncObject = syncObjects[n]) && syncObject->where)
+		if ( (syncObject = syncObjects[n]) && syncObject->location)
 			stream->format("%s\t%d\t%d\t%d\t%d\t\n",
-					syncObject->where,
+					syncObject->location,
 					syncObject->sharedCount,
 					syncObject->exclusiveCount,
 					syncObject->waitCount,
@@ -1019,7 +1033,7 @@ void SyncObject::dump(void)
 	for (int n = 1; n < MAX_SYNC_OBJECTS; ++n)
 		if ( (syncObject = syncObjects[n]) )
 			{
-			const char *name = (syncObject->name) ? syncObject->name : syncObject->where;
+			const char *name = (syncObject->name) ? syncObject->name : syncObject->location;
 			
 			if (name)
 				fprintf(out, "%s\t%d\t%d\t%d\t%d\t\n",
@@ -1044,10 +1058,10 @@ void SyncObject::getSyncInfo(InfoTable* infoTable)
 	SyncObject *syncObject;
 	
 	for (int index = 1; index < MAX_SYNC_OBJECTS; ++index)
-		if ( (syncObject = syncObjects[index]) && syncObject->where)
+		if ( (syncObject = syncObjects[index]) && syncObject->location)
 			{
 			int n = 0;
-			infoTable->putString(n++, syncObject->where);
+			infoTable->putString(n++, syncObject->location);
 			infoTable->putInt(n++, syncObject->sharedCount);
 			infoTable->putInt(n++, syncObject->exclusiveCount);
 			infoTable->putInt(n++, syncObject->waitCount);
@@ -1060,19 +1074,23 @@ void SyncObject::getSyncInfo(InfoTable* infoTable)
 void SyncObject::setName(const char* string)
 {
 #ifdef TRACE_SYNC_OBJECTS
-	if (name)
-		{
-		delete [] name;
-		name = NULL;
-		}
-	
-	if (string)
-		{
-		name = new char[strlen(string)+1];
-		strcpy(name, string);
-		}
-		
-	//name = string;
+	name = string;
+#endif
+}
+const char*	SyncObject::getName(void)
+{
+#ifdef TRACE_SYNC_OBJECTS
+	return name;
+#else
+	return NULL;
+#endif
+}
+const char*	SyncObject::getLocation(void)
+{
+#ifdef TRACE_SYNC_OBJECTS
+	return location;
+#else
+	return NULL;
 #endif
 }
 

@@ -53,12 +53,18 @@ Bdb::Bdb()
 	pageNumber = -1;
 	useCount = 0;
 	age = 0;
+#ifdef CHECK_STALLED_BDB
+	stallCount = 0;
+#endif // CHECK_STALLED_BDB
 	markingThread = NULL;
 	priorDirty = nextDirty = NULL;
 	flushIt = false;
 	dbb = NULL;
+	syncObject.setName("Bdb::syncObject");
+	syncWrite.setName("Bdb::syncWrite");
 
 #ifdef COLLECT_BDB_HISTORY
+	syncHistory.setName("Bdb::syncHistory");
 	lockType = None;
 	initCount = 0;
 	historyCount = 0;
@@ -129,7 +135,7 @@ void Bdb::release()
 	if (cache->panicShutdown)
 		{
 		Thread *thread = Thread::getThread("Cache::fetchPage");
-		
+
 		if (thread->pageMarks == 0)
 			throw SQLError(RUNTIME_ERROR, "Emergency shut is underway");
 		}
@@ -203,7 +209,7 @@ void Bdb::initHistory()
 
 void Bdb::addHistory(int delta, const char *file, int line)
 {
-	Sync sync (&historySyncObject, "Bdb::addHistory");
+	Sync sync (&syncHistory, "Bdb::addHistory");
 	sync.lock (Exclusive);
 	unsigned int historyOffset = historyCount++ % MAX_BDB_HISTORY;
 

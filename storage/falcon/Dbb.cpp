@@ -89,6 +89,8 @@ Dbb::Dbb(Database *dbase)
 	tableSpaceSectionId = 0;
 	tableSpaceId = 0;
 	noLog = false;
+	syncClone.setName("Dbb::syncClone");
+	syncSequences.setName("Dbb::syncSequences");
 }
 
 
@@ -147,7 +149,7 @@ Dbb::~Dbb()
 		dbb->close();
 }
 
-Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, uint64 initialAllocation)
+Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot)
 {
 	serialLog = database->serialLog;
 	odsVersion = ODS_VERSION;
@@ -155,7 +157,7 @@ Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType 
 	sequence = 1;
 
 	init(pageSz, (int) ((cacheSize + pageSz - 1) / pageSz));
-	createFile(fileName, initialAllocation);
+	createFile(fileName);
 	try
 		{
 		Hdr::create(this, fileType, transId, logRoot);
@@ -367,6 +369,8 @@ void Dbb::expungeRecord(Section *section, int32 recordId)
 
 Section* Dbb::findSection(int32 sectionId)
 {
+	ASSERT(sectionId != Section::INVALID_SECTION_ID);
+
 	int slot = sectionId % SECTION_HASH_SIZE;
 	Section *section;
 
@@ -749,7 +753,7 @@ Bdb* Dbb::getSequencePage(int sequenceId, LockType lockType, TransId transId)
 	else
 	***/
 		{
-		Sync sync(&sequencesSyncObject, "Dbb::updateSequence");
+		Sync sync(&syncSequences, "Dbb::getSequencePage");
 		sync.lock(Shared);
 		int sequencePageSequence = sequenceId / sequencesPerPage;
 		int32 sequencePageNumber = sequencePages.get(sequencePageSequence);
@@ -970,7 +974,7 @@ void Dbb::cloneFile(Database *database, const char *fileName, bool createShadow)
 /***
 void Dbb::cloneFile(DatabaseClone *shadow, bool isShadow)
 {
-	Sync sync (&cloneSyncObject, "Dbb::cloneFile(2)");
+	Sync sync (&syncClone, "Dbb::cloneFile(2)");
 	sync.lock (Exclusive);
 	shadow->next = shadows;
 	shadows = shadow;
@@ -1023,7 +1027,7 @@ void Dbb::cloneFile(DatabaseClone *shadow, bool isShadow)
 
 bool Dbb::deleteShadow(DatabaseCopy *shadow)
 {
-	Sync sync (&cloneSyncObject, "Dbb::deleteShadow");
+	Sync sync (&syncClone, "Dbb::deleteShadow");
 	sync.lock (Exclusive);
 
 	for (DatabaseCopy **ptr = &shadows; *ptr; ptr = &(*ptr)->next)
@@ -1352,7 +1356,7 @@ void Dbb::upgradeSequenceSection(void)
 
 void Dbb::addShadow(DatabaseCopy* shadow)
 {
-	Sync sync (&cloneSyncObject, "Dbb::addShadow");
+	Sync sync (&syncClone, "Dbb::addShadow");
 	sync.lock (Exclusive);
 	shadow->next = shadows;
 	shadows = shadow;

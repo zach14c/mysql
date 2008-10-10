@@ -97,12 +97,9 @@ void mysql_reset_errors(THD *thd, bool force)
     level		Severity of warning (note, warning, error ...)
     code		Error number
     msg			Clear error message
-    
-  RETURN
-    pointer on MYSQL_ERROR object
 */
 
-MYSQL_ERROR *push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level, 
+void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level, 
                           uint code, const char *msg)
 {
   MYSQL_ERROR *err= 0;
@@ -111,7 +108,7 @@ MYSQL_ERROR *push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
 
   if (level == MYSQL_ERROR::WARN_LEVEL_NOTE &&
       !(thd->options & OPTION_SQL_NOTES))
-    DBUG_RETURN(0);
+    DBUG_VOID_RETURN;
 
   if (thd->query_id != thd->warn_id && !thd->spcont)
     mysql_reset_errors(thd, 0);
@@ -138,12 +135,12 @@ MYSQL_ERROR *push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
   }
 
   if (thd->handle_error(code, msg, level))
-    DBUG_RETURN(NULL);
+    DBUG_VOID_RETURN;
 
   if (thd->spcont &&
       thd->spcont->handle_error(code, level, thd))
   {
-    DBUG_RETURN(NULL);
+    DBUG_VOID_RETURN;
   }
   query_cache_abort(&thd->query_cache_tls);
 
@@ -156,7 +153,7 @@ MYSQL_ERROR *push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
   }
   thd->warn_count[(uint) level]++;
   thd->total_warn_count++;
-  DBUG_RETURN(err);
+  DBUG_VOID_RETURN;
 }
 
 /*
@@ -219,7 +216,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
   field_list.push_back(new Item_return_int("Code",4, MYSQL_TYPE_LONG));
   field_list.push_back(new Item_empty_string("Message",MYSQL_ERRMSG_SIZE));
 
-  if (thd->protocol->send_fields(&field_list,
+  if (thd->protocol->send_result_set_metadata(&field_list,
                                  Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 

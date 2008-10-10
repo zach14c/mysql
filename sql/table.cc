@@ -33,9 +33,19 @@ LEX_STRING GENERAL_LOG_NAME= {C_STRING_WITH_LEN("general_log")};
 /* SLOW_LOG name */
 LEX_STRING SLOW_LOG_NAME= {C_STRING_WITH_LEN("slow_log")};
 
+/* BACKUP_HISTORY_LOG name */
+LEX_STRING BACKUP_HISTORY_LOG_NAME= {C_STRING_WITH_LEN("backup_history")};
+
+/* BACKUP_PROGRESS_LOG name */
+LEX_STRING BACKUP_PROGRESS_LOG_NAME= {C_STRING_WITH_LEN("backup_progress")};
+
+/* BACKUP_SETTINGS name */
+LEX_STRING BACKUP_SETTINGS_NAME= {C_STRING_WITH_LEN("backup_settings")};
+
 #ifndef EMBEDDED_LIBRARY
 extern LEX_STRING BACKUP_HISTORY_LOG_NAME;
 extern LEX_STRING BACKUP_PROGRESS_LOG_NAME;
+extern LEX_STRING BACKUP_SETTINGS_NAME;
 #endif
 
 	/* Functions defined in this file */
@@ -238,6 +248,30 @@ TABLE_CATEGORY get_table_category(const LEX_STRING *db, const LEX_STRING *name)
     if ((name->length == GENERAL_LOG_NAME.length) &&
         (my_strcasecmp(system_charset_info,
                       GENERAL_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_HISTORY_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_HISTORY_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_PROGRESS_LOG_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_PROGRESS_LOG_NAME.str,
+                      name->str) == 0))
+    {
+      return TABLE_CATEGORY_PERFORMANCE;
+    }
+
+    if ((name->length == BACKUP_SETTINGS_NAME.length) &&
+        (my_strcasecmp(system_charset_info,
+                      BACKUP_SETTINGS_NAME.str,
                       name->str) == 0))
     {
       return TABLE_CATEGORY_PERFORMANCE;
@@ -736,7 +770,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     share->transactional= (ha_choice) (head[39] & 3);
     share->page_checksum= (ha_choice) ((head[39] >> 2) & 3);
     share->row_type= (row_type) head[40];
-    share->table_charset= get_charset((uint) head[38],MYF(0));
+    share->table_charset= get_charset((((uint) head[41]) << 8) + 
+                                        (uint) head[38],MYF(0));
     share->null_field_first= 1;
   }
   if (!share->table_charset)
@@ -1273,12 +1308,13 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       }
       else
       {
-        if (!strpos[14])
+        uint csid= strpos[14] + (((uint) strpos[11]) << 8);
+        if (!csid)
           charset= &my_charset_bin;
-        else if (!(charset=get_charset((uint) strpos[14], MYF(0))))
+        else if (!(charset= get_charset(csid, MYF(0))))
         {
           error= 5; // Unknown or unavailable charset
-          errarg= (int) strpos[14];
+          errarg= (int) csid;
           goto err;
         }
       }
@@ -1351,7 +1387,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                       "Please do \"ALTER TABLE '%s' FORCE\" to fix it!",
                       share->fieldnames.type_names[i], share->table_name.str,
                       share->table_name.str);
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_CRASHED_ON_USAGE,
                           "Found incompatible DECIMAL field '%s' in %s; "
                           "Please do \"ALTER TABLE '%s' FORCE\" to fix it!",
@@ -1554,7 +1590,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                             "Please do \"ALTER TABLE '%s' FORCE \" to fix it!",
                             share->table_name.str,
                             share->table_name.str);
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                                 ER_CRASHED_ON_USAGE,
                                 "Found wrong key definition in %s; "
                                 "Please do \"ALTER TABLE '%s' FORCE\" to fix "
@@ -2123,6 +2159,28 @@ void free_blobs(register TABLE *table)
 }
 
 
+/**
+  Reclaim temporary blob storage which is bigger than 
+  a threshold.
+ 
+  @param table A handle to the TABLE object containing blob fields
+  @param size The threshold value.
+ 
+*/
+
+void free_field_buffers_larger_than(TABLE *table, uint32 size)
+{
+  uint *ptr, *end;
+  for (ptr= table->s->blob_field, end=ptr + table->s->blob_fields ;
+       ptr != end ;
+       ptr++)
+  {
+    Field_blob *blob= (Field_blob*) table->field[*ptr];
+    if (blob->get_field_buffer_size() > size)
+        blob->free();
+  }
+}
+
 	/* Find where a form starts */
 	/* if formname is NullS then only formnames is read */
 
@@ -2548,8 +2606,7 @@ File create_frm(THD *thd, const char *name, const char *db,
 
   if ((file= my_create(name, CREATE_MODE, create_flags, MYF(0))) >= 0)
   {
-    uint key_length, tmp_key_length;
-    uint tmp;
+    uint key_length, tmp_key_length, tmp, csid;
     bzero((char*) fileinfo,64);
     /* header */
     fileinfo[0]=(uchar) 254;
@@ -2598,13 +2655,14 @@ File create_frm(THD *thd, const char *name, const char *db,
     fileinfo[32]=0;				// No filename anymore
     fileinfo[33]=5;                             // Mark for 5.0 frm file
     int4store(fileinfo+34,create_info->avg_row_length);
-    fileinfo[38]= (create_info->default_table_charset ?
-		   create_info->default_table_charset->number : 0);
+    csid= (create_info->default_table_charset ?
+           create_info->default_table_charset->number : 0);
+    fileinfo[38]= (uchar) csid;
     fileinfo[39]= (uchar) ((uint) create_info->transactional |
                            ((uint) create_info->page_checksum << 2));
     fileinfo[40]= (uchar) create_info->row_type;
     /* Next few bytes where for RAID support */
-    fileinfo[41]= 0;
+    fileinfo[41]= (uchar) (csid >> 8);
     fileinfo[42]= 0;
     fileinfo[43]= 0;
     fileinfo[44]= 0;
@@ -2995,7 +3053,7 @@ table_check_intact(TABLE *table, const uint table_f_count,
   Create Item_field for each column in the table.
 
   SYNPOSIS
-    st_table::fill_item_list()
+    TABLE::fill_item_list()
       item_list          a pointer to an empty list used to store items
 
   DESCRIPTION
@@ -3008,7 +3066,7 @@ table_check_intact(TABLE *table, const uint table_f_count,
     1                    out of memory
 */
 
-bool st_table::fill_item_list(List<Item> *item_list) const
+bool TABLE::fill_item_list(List<Item> *item_list) const
 {
   /*
     All Item_field's created using a direct pointer to a field
@@ -3028,7 +3086,7 @@ bool st_table::fill_item_list(List<Item> *item_list) const
   Fields of this table.
 
   SYNPOSIS
-    st_table::fill_item_list()
+    TABLE::fill_item_list()
       item_list          a non-empty list with Item_fields
 
   DESCRIPTION
@@ -3038,7 +3096,7 @@ bool st_table::fill_item_list(List<Item> *item_list) const
     is the same as the number of columns in the table.
 */
 
-void st_table::reset_item_list(List<Item> *item_list) const
+void TABLE::reset_item_list(List<Item> *item_list) const
 {
   List_iterator_fast<Item> it(*item_list);
   for (Field **ptr= field; *ptr; ptr++)
@@ -3497,7 +3555,7 @@ int TABLE_LIST::view_check_option(THD *thd, bool ignore_failure)
     TABLE_LIST *main_view= top_table();
     if (ignore_failure)
     {
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                           ER_VIEW_CHECK_FAILED, ER(ER_VIEW_CHECK_FAILED),
                           main_view->view_db.str, main_view->view_name.str);
       return(VIEW_CHECK_SKIP);
@@ -3964,7 +4022,7 @@ const char *Natural_join_column::db_name()
     return table_ref->view_db.str;
 
   /*
-    Test that TABLE_LIST::db is the same as st_table_share::db to
+    Test that TABLE_LIST::db is the same as TABLE_SHARE::db to
     ensure consistency. An exception are I_S schema tables, which
     are inconsistent in this respect.
   */
@@ -4183,7 +4241,7 @@ const char *Field_iterator_table_ref::db_name()
     return natural_join_it.column_ref()->db_name();
 
   /*
-    Test that TABLE_LIST::db is the same as st_table_share::db to
+    Test that TABLE_LIST::db is the same as TABLE_SHARE::db to
     ensure consistency. An exception are I_S schema tables, which
     are inconsistent in this respect.
   */
@@ -4355,7 +4413,7 @@ Field_iterator_table_ref::get_natural_column_ref()
 
 /* Reset all columns bitmaps */
 
-void st_table::clear_column_bitmaps()
+void TABLE::clear_column_bitmaps()
 {
   /*
     Reset column read/write usage. It's identical to:
@@ -4376,9 +4434,9 @@ void st_table::clear_column_bitmaps()
   key fields.
 */
 
-void st_table::prepare_for_position()
+void TABLE::prepare_for_position()
 {
-  DBUG_ENTER("st_table::prepare_for_position");
+  DBUG_ENTER("TABLE::prepare_for_position");
 
   if ((file->ha_table_flags() & HA_PRIMARY_KEY_IN_READ_INDEX) &&
       s->primary_key < MAX_KEY)
@@ -4397,14 +4455,14 @@ void st_table::prepare_for_position()
   NOTE:
     This changes the bitmap to use the tmp bitmap
     After this, you can't access any other columns in the table until
-    bitmaps are reset, for example with st_table::clear_column_bitmaps()
-    or st_table::restore_column_maps_after_mark_index()
+    bitmaps are reset, for example with TABLE::clear_column_bitmaps()
+    or TABLE::restore_column_maps_after_mark_index()
 */
 
-void st_table::mark_columns_used_by_index(uint index)
+void TABLE::mark_columns_used_by_index(uint index)
 {
   MY_BITMAP *bitmap= &tmp_set;
-  DBUG_ENTER("st_table::mark_columns_used_by_index");
+  DBUG_ENTER("TABLE::mark_columns_used_by_index");
 
   (void) file->extra(HA_EXTRA_KEYREAD);
   bitmap_clear_all(bitmap);
@@ -4425,9 +4483,9 @@ void st_table::mark_columns_used_by_index(uint index)
     when calling mark_columns_used_by_index
 */
 
-void st_table::restore_column_maps_after_mark_index()
+void TABLE::restore_column_maps_after_mark_index()
 {
-  DBUG_ENTER("st_table::restore_column_maps_after_mark_index");
+  DBUG_ENTER("TABLE::restore_column_maps_after_mark_index");
 
   key_read= 0;
   (void) file->extra(HA_EXTRA_NO_KEYREAD);
@@ -4441,7 +4499,7 @@ void st_table::restore_column_maps_after_mark_index()
   mark columns used by key, but don't reset other fields
 */
 
-void st_table::mark_columns_used_by_index_no_reset(uint index,
+void TABLE::mark_columns_used_by_index_no_reset(uint index,
                                                    MY_BITMAP *bitmap)
 {
   KEY_PART_INFO *key_part= key_info[index].key_part;
@@ -4460,7 +4518,7 @@ void st_table::mark_columns_used_by_index_no_reset(uint index,
     always set and sometimes read.
 */
 
-void st_table::mark_auto_increment_column()
+void TABLE::mark_auto_increment_column()
 {
   DBUG_ASSERT(found_next_number_field);
   /*
@@ -4493,7 +4551,7 @@ void st_table::mark_auto_increment_column()
     retrieve the row again.
 */
 
-void st_table::mark_columns_needed_for_delete()
+void TABLE::mark_columns_needed_for_delete()
 {
   if (triggers)
     triggers->mark_fields_used(TRG_EVENT_DELETE);
@@ -4546,7 +4604,7 @@ void st_table::mark_columns_needed_for_delete()
     retrieve the row again.
 */
 
-void st_table::mark_columns_needed_for_update()
+void TABLE::mark_columns_needed_for_update()
 {
   DBUG_ENTER("mark_columns_needed_for_update");
   if (triggers)
@@ -4592,7 +4650,7 @@ void st_table::mark_columns_needed_for_update()
   as changed.
 */
 
-void st_table::mark_columns_needed_for_insert()
+void TABLE::mark_columns_needed_for_insert()
 {
   if (triggers)
   {
@@ -4668,9 +4726,9 @@ Item_subselect *TABLE_LIST::containing_subselect()
   DESCRIPTION
     The parser collects the index hints for each table in a "tagged list" 
     (TABLE_LIST::index_hints). Using the information in this tagged list
-    this function sets the members st_table::keys_in_use_for_query, 
-    st_table::keys_in_use_for_group_by, st_table::keys_in_use_for_order_by,
-    st_table::force_index and st_table::covering_keys.
+    this function sets the members TABLE::keys_in_use_for_query, 
+    TABLE::keys_in_use_for_group_by, TABLE::keys_in_use_for_order_by,
+    TABLE::force_index and TABLE::covering_keys.
 
     Current implementation of the runtime does not allow mixing FORCE INDEX
     and USE INDEX, so this is checked here. Then the FORCE INDEX list 

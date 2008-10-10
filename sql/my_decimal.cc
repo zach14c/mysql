@@ -47,11 +47,11 @@ int decimal_operation_results(int result)
 			"DECIMAL", "");
     break;
   case E_DEC_DIV_ZERO:
-    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_DIVISION_BY_ZERO, ER(ER_DIVISION_BY_ZERO));
     break;
   case E_DEC_BAD_NUM:
-    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
 			ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
 			"decimal", "", "", (long)-1);

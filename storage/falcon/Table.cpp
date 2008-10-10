@@ -166,7 +166,7 @@ Table::~Table()
 
 Field* Table::findField(const char * fieldName)
 {
-	const char *name = database->getSymbol(fieldName);
+	const char *name = database->getString(fieldName);
 	Sync sync(&syncObject, "Table::findField");
 	sync.lock(Shared);
 
@@ -207,6 +207,34 @@ Index* Table::addIndex(const char * name, int numberFields, int type)
 		primaryKey = index;
 
 	return index;
+}
+
+void Table::dropIndex(const char* indexName, Transaction* transaction)
+{
+	Sync sync(&syncObject, "Table::dropIndex");
+	sync.lock(Exclusive);
+	
+	Index *index = findIndex(indexName);
+		
+	if (index)
+		deleteIndex(index, transaction);
+}
+
+void Table::renameIndexes(const char *newTableName)
+{
+	for (Index *index = indexes; index; index = index->next)
+		{
+		if (index->type != PrimaryKey)
+			{
+
+			// Assume that index name is <table>$<index>
+
+			char newIndexName[256];
+			const char *p = strchr((const char*)index->name, '$');
+			sprintf(newIndexName, "%s%s", newTableName, (const char *)p);
+			index->rename(newIndexName);
+			}
+		}
 }
 
 const char* Table::getName()
@@ -396,10 +424,10 @@ Format* Table::getFormat(int version)
 		 if (format->version == version)
 			return format;
 
-	Sync syncObj(&syncObject, "Table::getFormat");
+	Sync syncObj(&syncObject, "Table::getFormat(1)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "Table::getFormat");
+	Sync syncDDL(&database->syncSysDDL, "Table::getFormat(2)");
 	syncDDL.lock(Shared);
 
 	PStatement statement = database->prepareStatement(
@@ -794,8 +822,8 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	fields = NULL;
 	indexes = NULL;
 	fieldCount = 0;
-	blobSectionId = 0;
-	dataSectionId = 0;
+	blobSectionId = Section::INVALID_SECTION_ID;
+	dataSectionId = Section::INVALID_SECTION_ID;
 	blobSection = NULL;
 	dataSection = NULL;
 	backloggedRecords = NULL;
@@ -813,14 +841,6 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	activeVersions = false;
 	primaryKey = NULL;
 	formats = NEW Format* [FORMAT_HASH_SIZE];
-
-	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
-		{
-		char name[64];
-		sprintf(name, "syncPriorVersions[%02d]", n);
-		syncPriorVersions[n].setName(name);
-		}
-		
 	triggers = NULL;
 	memset (formats, 0, sizeof (Format*) * FORMAT_HASH_SIZE);
 	maxFieldId = 0;
@@ -836,6 +856,8 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncScavenge.setName("Table::syncScavenge");
 	syncAlter.setName("Table::syncAlter");
+	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
+		syncPriorVersions[n].setName("Table::syncPriorVersions");
 }
 
 Record* Table::fetch(int32 recordNumber)
@@ -1227,7 +1249,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 	RecordVersion *record = NULL;
 	bool updated = false;
 	int recordNumber = oldRecord->recordNumber;
-	Sync scavenge(&syncScavenge, "Table::update(2)");
+	Sync scavenge(&syncScavenge, "Table::update(1)");
 	//scavenge.lock(Shared);
 	
 	try
@@ -1369,7 +1391,7 @@ void Table::reIndexInversion(Transaction *transaction)
 
 bool Table::isCreated()
 {
-	return dataSectionId != 0;
+	return dataSectionId != Section::INVALID_SECTION_ID;
 }
 
 Index* Table::getPrimaryKey()
@@ -1702,6 +1724,19 @@ void Table::addIndex(Index * index)
 
 	index->next = *ptr;
 	*ptr = index;
+}
+
+void Table::dropIndex(Index *index)
+{
+	Sync sync(&syncObject, "Table::dropIndex");
+	sync.lock(Exclusive);
+
+	for (Index **ptr = &indexes; *ptr; ptr = &(*ptr)->next)
+		if (*ptr == index)
+			{
+			*ptr = index->next;
+			break;
+			}
 }
 
 void Table::addAttachment(TableAttachment * attachment)
@@ -2082,7 +2117,10 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 	if (!leaving && !staying)
 		return;
 
-	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect");
+	Sync sync (&syncObject, "Table::garbageCollect(1)");
+	sync.lock(Shared);
+	
+	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(2)");
 	syncPrior.lock(Shared);
 	
 	// Clean up field indexes
@@ -2224,15 +2262,6 @@ void Table::dropTrigger(Trigger *trigger)
 #endif
 }
 
-void Table::dropIndex(Index *index)
-{
-	for (Index **ptr = &indexes; *ptr; ptr = &(*ptr)->next)
-		if (*ptr == index)
-			{
-			*ptr = index->next;
-			break;
-			}
-}
 
 int Table::nextColumnId(int previous)
 {
@@ -3064,7 +3093,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 
 	RecordVersion *record = NULL;
 	bool updated = false;
-	Sync scavenge(&syncScavenge, "Table::update");
+	Sync scavenge(&syncScavenge, "Table::update(2)");
 	//scavenge.lock(Shared);
 	
 	if (candidate->state == recLock && candidate->getTransaction() == transaction)
@@ -3194,6 +3223,8 @@ void Table::rename(const char *newSchema, const char *newName)
 		Index *primaryKey = getPrimaryKey();
 		database->renameTable(this, newSchema, newName);
 		
+		renameIndexes(newName);
+		
 		if (primaryKey)
 			primaryKey->rename(getPrimaryKeyName());
 		}
@@ -3230,13 +3261,17 @@ void Table::expunge(Transaction *transaction)
 	if (transaction)
 		transaction->hasUpdates = true;
 
-	if (dataSectionId || blobSectionId)
+	if (dataSectionId != Section::INVALID_SECTION_ID)
 		{
 		dbb->deleteSection(dataSectionId, TRANSACTION_ID(transaction));
-		dataSectionId = 0;
+		dataSectionId = Section::INVALID_SECTION_ID;
 		dataSection = NULL;
+		}
+
+	if (blobSectionId != Section::INVALID_SECTION_ID)
+		{
 		dbb->deleteSection(blobSectionId, TRANSACTION_ID(transaction));
-		blobSectionId = 0;
+		blobSectionId = Section::INVALID_SECTION_ID;
 		blobSection = NULL;
 		}
 }
@@ -3323,6 +3358,11 @@ int Table::getFormatVersion()
 bool Table::hasUncommittedRecords(Transaction* transaction)
 {
 	return database->hasUncommittedRecords(this, transaction);
+}
+
+void Table::waitForWriteComplete()
+{
+	database->waitForWriteComplete(this);
 }
 
 RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
@@ -3480,7 +3520,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 
 				ASSERT(IS_CONSISTENT_READ(transaction->isolationLevel));
 				record->release();
-				Log::debug("Table::fetchForUpdate: Update Conflict: TransId=%d, RecordNumber=%d, Table %s.%s", 
+				Log::debug("Table::fetchForUpdate: Update Conflict: TransId=%d, RecordNumber=%d, Table %s.%s\n", 
 					transaction->transactionId, record->recordNumber, schemaName, name);
 				throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s", schemaName, name);
 
@@ -3639,14 +3679,21 @@ Format* Table::getCurrentFormat(void)
 
 void Table::findSections(void)
 {
+	ASSERT(dataSectionId != Section::INVALID_SECTION_ID && 
+		blobSectionId != Section::INVALID_SECTION_ID);
+
 	if (!dataSection)
 		{
 		dataSection = dbb->findSection(dataSectionId);
 		dataSection->table = this;
 		}
+	ASSERT(dataSection->sectionId == dataSectionId);
 
 	if (!blobSection)
+		{
 		blobSection = dbb->findSection(blobSectionId);
+		}
+	ASSERT(blobSection->sectionId == blobSectionId);
 }
 
 bool Table::validateUpdate(int32 recordNumber, TransId transactionId)

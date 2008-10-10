@@ -1,6 +1,8 @@
 drop table if exists t1,t1aa,t2aa;
 show tables;
 Tables_in_db
+backup_history
+backup_progress
 columns_priv
 db
 event
@@ -12,8 +14,6 @@ help_relation
 help_topic
 host
 ndb_binlog_index
-online_backup
-online_backup_progress
 plugin
 proc
 procs_priv
@@ -113,6 +113,7 @@ user	CREATE TABLE `user` (
   `Create_user_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
   `Event_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
   `Trigger_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
+  `Create_tablespace_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
   `ssl_type` enum('','ANY','X509','SPECIFIED') CHARACTER SET utf8 NOT NULL DEFAULT '',
   `ssl_cipher` blob NOT NULL,
   `x509_issuer` blob NOT NULL,

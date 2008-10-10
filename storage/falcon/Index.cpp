@@ -107,6 +107,9 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 	DIHashTable = NULL;
 	DIHashTableCounts =  0;
 	DIHashTableSlotsUsed =  0;
+	syncDIHash.setName("Index::syncDIHash");
+	syncUnique.setName("Index::syncUnique");
+	deferredIndexes.syncObject.setName("Index::deferredIndexes.syncObject");
 }
 
 Index::~Index()
@@ -227,7 +230,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 
 	if (deferredIndexes.count < transaction->deferredIndexCount)
 		{
-		Sync sync(&deferredIndexes.syncObject, "Index::insert");
+		Sync sync(&deferredIndexes.syncObject, "Index::getDeferredIndex(1)");
 		sync.lock(Shared);
 		for (deferredIndex = deferredIndexes.first; 
 			 deferredIndex; 
@@ -270,7 +273,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 
 	// Make a new one and attach to Index and Transaction.
 
-	Sync sync(&deferredIndexes.syncObject, "Index::insert");
+	Sync sync(&deferredIndexes.syncObject, "Index::getDeferredIndex(2)");
 	deferredIndex = new DeferredIndex(this, transaction);
 	sync.lock(Exclusive);
 	deferredIndexes.append(deferredIndex);
@@ -510,12 +513,14 @@ IndexWalker* Index::positionIndex(IndexKey* lowKey, IndexKey* highKey, int searc
 		for (DeferredIndex *deferredIndex = deferredIndexes.first; deferredIndex; deferredIndex = deferredIndex->next)
 			if (transaction->visible(deferredIndex->transaction, deferredIndex->transactionId, FOR_WRITING))
 				{
+				deferredIndex->addRef();
+
 				if (!indexWalker)
 					{
 					indexWalker = new IndexWalker(this, transaction, searchFlags);
 					indexWalker->addWalker(walkIndex);
 					}
-				
+
 				WalkDeferred *walkDeferred = new WalkDeferred(deferredIndex, transaction, searchFlags, &walkIndex->lowerBound, &walkIndex->upperBound);
 				indexWalker->addWalker(walkDeferred);
 				}
@@ -835,7 +840,7 @@ UCHAR Index::getPadByte(void)
 
 void Index::detachDeferredIndex(DeferredIndex *deferredIndex)
 {
-	Sync sync(&deferredIndexes.syncObject, "Index::detachDeferredIndex");
+	Sync sync(&deferredIndexes.syncObject, "Index::detachDeferredIndex(1)");
 	sync.lock(Exclusive);
 	deferredIndexes.remove(deferredIndex);
 	sync.unlock();
@@ -843,9 +848,9 @@ void Index::detachDeferredIndex(DeferredIndex *deferredIndex)
 	if (   (database->configuration->useDeferredIndexHash)
 		&& (INDEX_IS_UNIQUE(type)))
 		{
-		Sync syncHash(&syncDIHash, "Index::detachDeferredIndex");
+		Sync syncHash(&syncDIHash, "Index::detachDeferredIndex(2)");
 		syncHash.lock(Exclusive);
-		Sync syncDI(&deferredIndex->syncObject, "Index::detachDeferredIndex");
+		Sync syncDI(&deferredIndex->syncObject, "Index::detachDeferredIndex(3)");
 		syncDI.lock(Exclusive);
 
 		DeferredIndexWalker walker(deferredIndex, NULL);

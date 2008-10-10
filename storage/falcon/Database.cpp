@@ -75,6 +75,7 @@
 #include "RecordScavenge.h"
 #include "LogStream.h"
 #include "SyncTest.h"
+#include "SyncHandler.h"
 #include "PriorityScheduler.h"
 #include "Sequence.h"
 #include "BackLog.h"
@@ -323,14 +324,6 @@ static const char *createTableSpaces =
 		"tablespace_id int not null,"
 		"filename varchar(512) not null,"
 		"type int,"
-		/***
-		"initial_size bigint,"
-		"extent_size bigint,"
-		"autoextend_size bigint,"
-		"max_size bigint,"
-		"nodegroup int,"
-		"wait int,"
-		***/
 		"comment text)";
 
 static const char *createTableSpaceSequence = 
@@ -470,6 +463,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	zombieTables = NULL;
 	updateCardinality = NULL;
 	backLog = NULL;
+	syncHandler = getFalconSyncHandler();
 	ioScheduler = new PriorityScheduler;
 	lastScavenge = 0;
 	scavengeCycle = 0;
@@ -618,6 +612,8 @@ Database::~Database()
 	delete transactionManager;
 	delete ioScheduler;
 	delete backLog;
+	if (syncHandler)
+		delete syncHandler;
 }
 
 void Database::createDatabase(const char * filename)
@@ -634,7 +630,7 @@ void Database::createDatabase(const char * filename)
 	int page_size = PAGE_SIZE;
 #endif
 
-	cache = dbb->create(filename, page_size, configuration->pageCacheSize, HdrDatabaseFile, 0, "", 0);
+	cache = dbb->create(filename, page_size, configuration->pageCacheSize, HdrDatabaseFile, 0, "");
 	
 	try
 		{
@@ -687,16 +683,27 @@ void Database::createDatabase(const char * filename)
 		}
 	catch (...)
 		{
-		dbb->closeFile();
-		dbb->deleteFile();
-		
+		deleteFilesOnExit = true;
 		throw;
 		}
 }
 
 void Database::openDatabase(const char * filename)
 {
-	cache = dbb->open (filename, configuration->pageCacheSize, 0);
+	try 
+		{
+		cache = dbb->open (filename, configuration->pageCacheSize, 0);
+		}
+	catch(SQLException& e)
+		{
+		// Master cannot be opened - throw OPEN_MASTER error to initiate
+		// create database. Don't do it if file exists, but there is a problem
+		// with permissions and/or locking.
+		if(e.getSqlcode() != FILE_ACCESS_ERROR)
+			throw SQLError(OPEN_MASTER_ERROR, e.getText());
+		else
+			throw;
+		}
 	start();
 
 	if (   dbb->logRoot.IsEmpty()
@@ -713,34 +720,18 @@ void Database::openDatabase(const char * filename)
 			{
 			if (dbb->logLength)
 				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-
-			try
-				{
-				serialLog->open(dbb->logRoot, false);
-				}
-			catch (SQLException&)
-				{
-				const char *p = strrchr(filename, '.');
-				JString logRoot = (p) ? JString(filename, (int) (p - filename)) : name;
-				bool failed = true;
-				
-				try
-					{
-					serialLog->open(logRoot, false);
-					failed = false;
-					}
-				catch (...)
-					{
-					}
-				
-				if (failed)
-					throw;
-				}
-			
+			serialLog->open(dbb->logRoot, false);
 			if (dbb->tableSpaceSectionId)
 				tableSpaceManager->bootstrap(dbb->tableSpaceSectionId);
 
-			serialLog->recover();
+			try 
+				{
+				serialLog->recover();
+				}
+			catch(SQLError &e)
+				{
+				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+				}
 			tableSpaceManager->postRecovery();
 			serialLog->start();
 			}
@@ -995,7 +986,7 @@ Table* Database::findTable (const char *schema, const char *name)
 	schema = symbolManager->getSymbol (schema);
 	name = symbolManager->getSymbol (name);
 
-	Sync syncTbl (&syncTables, "Database::findTable");
+	Sync syncTbl (&syncTables, "Database::findTable(1)");
 	syncTbl.lock (Shared);
 	
 	int slot = HASH (name, TABLE_HASH_SIZE);
@@ -1012,7 +1003,7 @@ Table* Database::findTable (const char *schema, const char *name)
 		if (untable->name == name && untable->schemaName == schema)
 			return NULL;
 
-	Sync syncDDL(&syncSysDDL, "Database::findTable");
+	Sync syncDDL(&syncSysDDL, "Database::findTable(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = prepareStatement (
@@ -1145,7 +1136,7 @@ CompiledStatement* Database::getCompiledStatement(Connection *connection, const 
 	Sync syncDDL(&syncSysDDL, "Database::getCompiledStatement(1)");
 	syncDDL.lock(Shared);
 
-	Sync syncStmt(&syncStatements, "Database::getCompiledStatement(1)");
+	Sync syncStmt(&syncStatements, "Database::getCompiledStatement(2)");
 	syncStmt.lock(Shared);
 	
 	//printf("%s\n", (const char*) sqlString);
@@ -1174,10 +1165,10 @@ CompiledStatement* Database::getCompiledStatement(Connection *connection, const 
 
 CompiledStatement* Database::getCompiledStatement(Connection *connection, const WCString *sqlString)
 {
-	Sync syncDDL(&syncSysDDL, "Database::getCompiledStatement(WC)");
+	Sync syncDDL(&syncSysDDL, "Database::getCompiledStatement(3)");
 	syncDDL.lock(Shared);
 	
-	Sync syncStmt(&syncStatements, "Database::getCompiledStatement(WC)");
+	Sync syncStmt(&syncStatements, "Database::getCompiledStatement(4)");
 	syncStmt.lock(Shared);
 	
 	//JString str(sqlString);
@@ -1208,7 +1199,7 @@ CompiledStatement* Database::getCompiledStatement(Connection *connection, const 
 
 CompiledStatement* Database::compileStatement(Connection *connection, JString sqlString)
 {
-	Sync syncDDL(&syncSysDDL, "Database::getCompiledStatement(WC)");
+	Sync syncDDL(&syncSysDDL, "Database::compileStatement(1)");
 	syncDDL.lock(Shared);
 	
 	CompiledStatement *statement = new CompiledStatement (connection);
@@ -1227,9 +1218,9 @@ CompiledStatement* Database::compileStatement(Connection *connection, JString sq
 	if (statement->useable && 
 		(statement->numberParameters > 0 || !statement->filters.isEmpty()))
 		{
-		Sync syncStmt (&syncStatements, "Database::compileStatement(1)");
+		Sync syncStmt (&syncStatements, "Database::compileStatement(2)");
 		syncStmt.lock (Shared);
-		Sync syncAddStmt (&syncAddStatement, "Database::compileStatement(2)");
+		Sync syncAddStmt (&syncAddStatement, "Database::compileStatement(3)");
 		syncAddStmt.lock (Exclusive);
 		statement->addRef();
 		statement->next = compiledStatements;
@@ -1265,7 +1256,7 @@ void Database::commitSystemTransaction()
 
 void Database::rollbackSystemTransaction(void)
 {
-	Sync sync (&syncSysDDL, "Database::commitSystemTransaction");
+	Sync sync (&syncSysDDL, "Database::rollbackSystemTransaction");
 	sync.lock (Exclusive);
 	systemConnection->rollback();
 }
@@ -1331,10 +1322,10 @@ Table* Database::getTable(int tableId)
 
 Table* Database::loadTable(ResultSet * resultSet)
 {
-	Sync syncDDL(&syncSysDDL, "Database::loadTable");
+	Sync syncDDL(&syncSysDDL, "Database::loadTable(1)");
 	syncDDL.lock(Shared);
 
-	Sync syncObj(&syncTables, "Database::loadTable");
+	Sync syncObj(&syncTables, "Database::loadTable(2)");
 	
 	if (!resultSet->next())
 		return NULL;
@@ -1399,7 +1390,7 @@ void Database::flushInversion(Transaction *transaction)
 
 void Database::dropTable(Table *table, Transaction *transaction)
 {
-	Sync syncDDL(&syncSysDDL, "Database::dropTable");
+	Sync syncDDL(&syncSysDDL, "Database::dropTable(1)");
 	syncDDL.lock(Exclusive);
 	
 	table->checkDrop();
@@ -1414,7 +1405,7 @@ void Database::dropTable(Table *table, Transaction *transaction)
 	
 	transactionManager->dropTable(table, transaction);
 
-	Sync syncTbl(&syncTables, "Database::dropTable");
+	Sync syncTbl(&syncTables, "Database::dropTable(2)");
 	syncTbl.lock(Exclusive);
 
 	// Remove table from linear table list
@@ -1455,7 +1446,7 @@ void Database::dropTable(Table *table, Transaction *transaction)
 
 	// Lock sections (factored out of SRLDropTable to avoid a deadlock)
 
-	Sync syncSections(&serialLog->syncSections, "Database::dropTable");
+	Sync syncSections(&serialLog->syncSections, "Database::dropTable(3)");
 	syncSections.lock(Exclusive);
 	table->expunge(getSystemTransaction());
 	delete table;
@@ -1463,50 +1454,61 @@ void Database::dropTable(Table *table, Transaction *transaction)
 
 void Database::truncateTable(Table *table, Sequence *sequence, Transaction *transaction)
 {
-	Sync syncDDL(&syncSysDDL, "Database::truncateTable");
-	syncDDL.lock(Exclusive);
-	
-	table->checkDrop();
-	
 	// Check for records in active transactions
 
 	if (hasUncommittedRecords(table, transaction))
 		throw SQLError(UNCOMMITTED_UPDATES, "table %s.%s has uncommitted updates and cannot be truncated",
 						table->schemaName, table->name);
-						   
+
+	// Lock SystemDDL first.  This lock can happen multiple times in many call stacks,
+	// both before and after the following locks.  So it is important that we get an 
+	// exclusive lock first.
+
+	Sync syncDDLLock(&syncSysDDL, "Database::truncateTable(SysDDL)");
+	syncDDLLock.lock(Exclusive);
+	
+	// Lock syncScavenge before locking syncSysDDL, syncTables, or table->syncObject.
+	// The scavenger locks syncScavenge  and then syncTables
+	// If we run out of record memory, forceRecordScavenge will eventually call table->syncObject.
+
+	Sync syncScavengeLock(&syncScavenge, "Database::truncateTable(scavenge)");
+	syncScavengeLock.lock(Exclusive);
+
+	table->checkDrop();
+	
 	// Block table drop/add, table list scans ok
-	
-	Sync syncTbl(&syncTables, "Database::truncateTable");
-	syncTbl.lock(Shared);
-	
+
+	Sync syncTablesLock(&syncTables, "Database::truncateTable(tables)");
+	syncTablesLock.lock(Shared);
+
 	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
 	//The lock order (serialLog->syncSections before table->syncObject) is 
 	//important
 
-	Sync syncSections(&serialLog->syncSections, "Database::truncateTable");
-	syncSections.lock(Exclusive);
-	
+	Sync syncSectionsLock(&serialLog->syncSections, "Database::truncateTable(sections)");
+	syncSectionsLock.lock(Exclusive);
+
 	// No table access until truncate completes
-	
-	Sync syncObj(&table->syncObject, "Database::truncateTable");
-	syncObj.lock(Exclusive);
-	
+
+	Sync syncTableLock(&table->syncObject, "Database::truncateTable(table)");
+	syncTableLock.lock(Exclusive);
+
 	table->deleting = true;
-	
+
 	// Purge records out of committed transactions
-	
+
 	transactionManager->truncateTable(table, transaction);
-	
+
 	Transaction *sysTransaction = getSystemTransaction();
-	
+
 	// Recreate data/blob sections and indexes
-	
+
 	table->truncate(sysTransaction);
-	
+
 	commitSystemTransaction();
-	
+
 	// Delete and recreate the sequence
-	
+
 	if (sequence)
 		sequence = sequence->recreate();
 }
@@ -1568,7 +1570,7 @@ void Database::shutdown()
 
 	if (shuttingDown)
 		return;
-	
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
@@ -1675,10 +1677,10 @@ Role* Database::findRole(const WCString *schemaName, const WCString *roleName)
 
 void Database::validate(int optionMask)
 {
-	Sync syncDDL(&syncSysDDL, "Database::validate");
+	Sync syncDDL(&syncSysDDL, "Database::validate(1)");
 	syncDDL.lock(Shared);
 	
-	Sync syncObj(&syncObject, "Database::validate");
+	Sync syncObj(&syncObject, "Database::validate(2)");
 	syncObj.lock (Exclusive);
 	
 	Log::debug ("Validation:\n");
@@ -1764,7 +1766,7 @@ void Database::retireRecords(bool forced)
 {
 	int cycle = scavengeCycle;
 	
-	Sync syncScavenger(&syncScavenge, "Database::retireRecords");
+	Sync syncScavenger(&syncScavenge, "Database::retireRecords(1)");
 	syncScavenger.lock(Exclusive);
 
 	if (forced && scavengeCycle > cycle)
@@ -1792,7 +1794,7 @@ void Database::retireRecords(bool forced)
 		//LogStream stream;
 		//recordDataPool->analyze(0, &stream, NULL, NULL);
 		
-		Sync syncTbl(&syncTables, "Database::retireRecords");
+		Sync syncTbl(&syncTables, "Database::retireRecords(2)");
 		syncTbl.lock(Shared);
 		
 		Table *table;
@@ -2006,7 +2008,7 @@ JString Database::analyze(int mask)
 {
 	Stream stream;
 	stream.setMalloc (true);
-	Sync syncDDL(&syncSysDDL, "Database::analyze");
+	Sync syncDDL(&syncSysDDL, "Database::analyze(1)");
 
 	if (mask & analyzeMemory)
 		MemMgrAnalyze (mask, &stream);
@@ -2048,7 +2050,7 @@ JString Database::analyze(int mask)
 	if (mask & analyzeStatements)
 		{
 		stream.putSegment ("\nStatements\n");
-		Sync syncStmt(&syncStatements, "Database::analyze");
+		Sync syncStmt(&syncStatements, "Database::analyze(2)");
 		syncStmt.lock(Shared);
 
 		for (CompiledStatement *statement = compiledStatements; statement;
@@ -2290,6 +2292,11 @@ bool Database::hasUncommittedRecords(Table* table, Transaction *transaction)
 	return transactionManager->hasUncommittedRecords(table, transaction);
 }
 
+void Database::waitForWriteComplete(Table *table)
+{
+	transactionManager->waitForWriteComplete(table);
+}
+
 void Database::commitByXid(int xidLength, const UCHAR* xid)
 {
 	serialLog->commitByXid(xidLength, xid);
@@ -2359,10 +2366,10 @@ void Database::getTableSpaceFilesInfo(InfoTable* infoTable)
 
 void Database::updateCardinalities(void)
 {
-	Sync syncDDL(&syncSysDDL, "Database::updateCardinalities");
+	Sync syncDDL(&syncSysDDL, "Database::updateCardinalities(1)");
 	syncDDL.lock(Shared);
 	
-	Sync syncTbl(&syncTables, "Database::updateCardinalities");
+	Sync syncTbl(&syncTables, "Database::updateCardinalities(2)");
 	syncTbl.lock(Shared);
 	
 	bool hit = false;
@@ -2482,6 +2489,10 @@ void Database::debugTrace(void)
 	if (falcon_debug_trace & FALC0N_SYNC_OBJECTS)
 		SyncObject::dump();
 	
+	if (falcon_debug_trace & FALC0N_SYNC_HANDLER)
+		if (syncHandler) 
+			syncHandler->dump();
+
 	if (falcon_debug_trace & FALC0N_REPORT_WRITES)
 		tableSpaceManager->reportWrites();
 	

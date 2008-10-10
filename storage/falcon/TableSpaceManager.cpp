@@ -59,6 +59,7 @@ TableSpaceManager::TableSpaceManager(Database *db)
 	memset(idHash, 0, sizeof(nameHash));
 	tableSpaces = NULL;
 	pendingDrops = 0;
+	syncObject.setName("TableSpaceManager::syncObject");
 }
 
 TableSpaceManager::~TableSpaceManager()
@@ -86,7 +87,7 @@ void TableSpaceManager::add(TableSpace *tableSpace)
 
 TableSpace* TableSpaceManager::findTableSpace(const char *name)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace");
+	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(1)");
 	syncObj.lock(Shared);
 	TableSpace *tableSpace;
 
@@ -101,7 +102,7 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		if (tableSpace->name == name)
 			return tableSpace;
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = database->prepareStatement(
@@ -117,14 +118,6 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		int type = TABLESPACE_TYPE_TABLESPACE;				// type (forced)
 		
 		TableSpaceInit tsInit;
-		/***
-		tsInit.initialSize	= resultSet->getLong(n++);
-		tsInit.extentSize	= resultSet->getLong(n++);
-		tsInit.autoExtendSize = resultSet->getLong(n++);
-		tsInit.maxSize		= resultSet->getLong(n++);
-		tsInit.nodegroup	= resultSet->getInt(n++);
-		tsInit.wait			= resultSet->getInt(n++);
-		***/
 		tsInit.comment		= resultSet->getString(n++);	// comment
 		
 		tableSpace = new TableSpace(database, name, id, fileName, type, &tsInit);
@@ -170,32 +163,10 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
-	if (!repository)
+	if (!repository && IO::doesFileExist(fileName))
 		{
-		bool fileExists;
-
-		// Check if table space file already exists.
-		// Take into account, that tablespace might have been already  dropped
-		// by another transaction, yet file can still be present on the disk,
-		// if log record is not yet fully committed by the gopher thread).
-		// So we'll wait for a few seconds if there are pending drops and 
-		// tablespace file exists.
-
-		for (int i=0; i < 10; i++)
-			{
-			fileExists = tableSpace->dbb->doesFileExist(fileName);
-
-			if (fileExists && pendingDrops > 0)
-				Thread::getThread("TableSpaceManager::createTableSpace")->sleep(1000);
-			else
-				break;
-			}
-
-		if (fileExists)
-			{
-			delete tableSpace;
-			throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
-			}
+		delete tableSpace;
+		throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
 		}
 		
 	try
@@ -239,21 +210,9 @@ void TableSpaceManager::bootstrap(int sectionId)
 		p = EncodedDataStream::decode(p, &fileName, true);
 		p = EncodedDataStream::decode(p, &type, true);
 		/***
-		p = EncodedDataStream::decode(p, &initialSize, true);
-		p = EncodedDataStream::decode(p, &extentSsize, true);
-		p = EncodedDataStream::decode(p, &autoExtendSize, true);
-		p = EncodedDataStream::decode(p, &maxSize, true);
-		p = EncodedDataStream::decode(p, &nodegroup, true);
-		p = EncodedDataStream::decode(p, &wait, true);
 		p = EncodedDataStream::decode(p, &comment, true);
 
 		TableSpaceInit tsInit;
-		tsInit.initialSize	= initialSize.getQuad();
-		tsInit.extentSize	= extentSize.getQuad();
-		tsInit.autoExtendSize = autoExtendSize.getQuad();
-		tsInit.maxSize		= maxSize.getQuad();
-		tsInit.nodegroup	= nodegroup.getInt();
-		tsInit.wait			= wait.getInt();
 		tsInit.comment		= comment.getString();
 		***/
 		
@@ -314,10 +273,10 @@ void TableSpaceManager::dropDatabase(void)
 
 void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace");
+	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(1)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(2)");
 	syncDDL.lock(Shared);
 	
 	PStatement statement = database->prepareStatement(
@@ -500,12 +459,12 @@ JString TableSpaceManager::tableSpaceType(JString name)
 	JString type;
 	
 	if (name == "FALCON_USER")
-		type = "FALCON_USER";
+		type = "DEFAULT";
 	else if (name == "FALCON_TEMPORARY")
-		type = "FALCON_TEMPORARY";
+		type = "TEMPORARY";
 	else if (name == "FALCON_SYSTEM_BASE") //cwp tbd: fix this
-		type = "SYSTEM_BASE";
-	else type = "USER_DEFINED";
+		type = "MASTER CATALOG";
+	else type = "USER DEFINED";
 	
 	return type;
 }
@@ -518,11 +477,40 @@ void TableSpaceManager::getTableSpaceInfo(InfoTable* infoTable)
 		
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
-		infoTable->putString(2, resultSet->getString(2));					// comment
+		// TABLESPACE_NAME NOT NULL
+		infoTable->putString(0, resultSet->getString(1));
+		// ENGINE NOT NULL
+		infoTable->putString(1, "Falcon");
+		// TABLESPACE_TYPE (based upon name)
+		infoTable->setNotNull(2);
+		infoTable->putString(2, tableSpaceType(resultSet->getString(1)));
+		// LOGFILE_GROUP_NAME
+		infoTable->setNull(3);
+		// EXTENT_SIZE
+		infoTable->setNull(4);
+		// AUTOEXTEND_SIZE
+		infoTable->setNull(5);
+		// MAXIMUM_SIZE
+		infoTable->setNull(6);
+		// NODEGROUP_ID
+		infoTable->setNull(7);
+		// TABLESPACE_COMMENT
+		infoTable->setNotNull(8);
+		infoTable->putString(8, resultSet->getString(2));
 		infoTable->putRecord();
 		}
+}
+
+JString TableSpaceManager::tableSpaceFileType(JString name)
+{
+	JString type;
+	
+	if (name == "FALCON_USER" || name == "FALCON_TEMPORARY" || name == "FALCON_SYSTEM_BASE")
+		type = "SYSTEM DATAFILE";
+	else
+		type = "USER DATAFILE";
+	
+	return type;
 }
 
 void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
@@ -533,12 +521,70 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 
 	while (resultSet->next())
 		{
-		infoTable->putString(0, resultSet->getString(1));					// tablespace name
-		infoTable->putString(1, tableSpaceType(resultSet->getString(1)));	// type based upon name
-		infoTable->putInt(2, 1);											// file id (unused for now)
-		infoTable->putString(3, resultSet->getString(2));					// file name
+		infoTable->putInt(0, 0);		// FILE_ID NOT NULL, unused for now
+		infoTable->setNotNull(1);		// FILE_NAME
+		infoTable->putString(1, resultSet->getString(2));
+		infoTable->putString(2, tableSpaceFileType(resultSet->getString(1)));	// FILE_TYPE NOT NULL
+		infoTable->setNotNull(3);		// TABLESPACE_NAME
+		infoTable->putString(3, resultSet->getString(1));
+		infoTable->setNull(4);			// TABLE_CATALOG
+		infoTable->setNull(5);			// TABLE_SCHEMA
+		infoTable->setNull(6);			// TABLE_NAME
+		infoTable->setNull(7);			// LOGFILE_GROUP_NAME
+		infoTable->setNull(8);			// LOGFILE_GROUP_NUMBER
+		infoTable->putString(9, "Falcon");	// ENGINE NOT NULL
+		infoTable->setNull(10);			// FULLTEXT_KEYS
+		infoTable->setNull(11);			// DELETED_ROWS
+		infoTable->setNull(12);			// UPDATE_COUNT
+		infoTable->setNull(13);			// FREE_EXTENTS
+		infoTable->setNull(14);			// TOTAL_EXTENTS
+		infoTable->putInt(15, 0);		// EXTENT_SIZE NOT NULL
+		infoTable->setNull(16);			// INITIAL_SIZE
+		infoTable->setNull(17);			// MAXIMUM_SIZE
+		infoTable->setNull(18);			// AUTOEXTEND_SIZE
+		infoTable->setNull(19);			// CREATION_TIME
+		infoTable->setNull(20);			// LAST_UPDATE_TIME
+		infoTable->setNull(21);			// LAST_ACCESS_TIME
+		infoTable->setNull(22);			// RECOVER_TIME
+		infoTable->setNull(23);			// TRANSACTION_COUNTER
+		infoTable->setNull(24);			// VERSION
+		infoTable->setNull(25);			// ROW_FORMAT
+		infoTable->setNull(26);			// TABLE_ROWS
+		infoTable->setNull(27);			// AVG_ROW_LENGTH
+		infoTable->setNull(28);			// DATA_LENGTH
+		infoTable->setNull(29);			// MAX_DATA_LENGTH
+		infoTable->setNull(30);			// INDEX_LENGTH
+		infoTable->setNull(31);			// DATA_FREE
+		infoTable->setNull(32);			// CREATE_TIME
+		infoTable->setNull(33);			// UPDATE_TIME
+		infoTable->setNull(34);			// CHECK_TIME
+		infoTable->setNull(35);			// CHECKSUM
+		infoTable->putString(36, "NORMAL");	// STATUS NOT NULL
+		infoTable->setNull(37);			// EXTRA
 		infoTable->putRecord();
 		}
 }
 
+
+// Wait for specified amount of time for a  file to be deleted.
+// Don't wait if pendingDrops count is 0.
+//
+// The function returns true, if wait was successfull, i.e file does not exist
+//(anymore)
+bool TableSpaceManager::waitForPendingDrop(const char  *filename, int seconds)
+{
+	bool fileExists;
+
+	do
+		{
+		fileExists = IO::doesFileExist(filename);
+		if (fileExists && pendingDrops > 0 && seconds-- > 0)
+			Thread::getThread("TransactionManager::waitForPendingDrop")->sleep(1000);
+		else
+			break;
+		}
+	while(true);
+
+	return !fileExists;
+}
 

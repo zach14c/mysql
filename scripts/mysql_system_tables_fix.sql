@@ -216,6 +216,52 @@ ALTER TABLE func
   MODIFY type enum ('function','aggregate') COLLATE utf8_general_ci NOT NULL;
 
 #
+# Convert miscellaneous tables to UTF-8.
+#
+# Tables coming from a old version might have the 3-byte Unicode
+# character set formerly known as utf8.
+#
+
+ALTER TABLE help_category CONVERT TO CHARACTER SET utf8;
+ALTER TABLE help_keyword CONVERT TO CHARACTER SET utf8;
+ALTER TABLE help_relation CONVERT TO CHARACTER SET utf8;
+ALTER TABLE servers CONVERT TO CHARACTER SET utf8;
+ALTER TABLE time_zone CONVERT TO CHARACTER SET utf8;
+ALTER TABLE time_zone_leap_second CONVERT TO CHARACTER SET utf8;
+ALTER TABLE time_zone_name CONVERT TO CHARACTER SET utf8;
+ALTER TABLE time_zone_transition CONVERT TO CHARACTER SET utf8;
+ALTER TABLE time_zone_transition_type CONVERT TO CHARACTER SET utf8;
+
+# Bug#31291: Avoid conversion from text to mediumtext
+ALTER TABLE help_topic
+  MODIFY description text NOT NULL,
+  MODIFY example text NOT NULL,
+CONVERT TO CHARACTER SET utf8;
+
+#
+# Convert log tables to UTF-8.
+#
+
+SET @old_log_state = @@global.general_log;
+SET GLOBAL general_log = 'OFF';
+ALTER TABLE general_log CONVERT TO CHARACTER SET utf8;
+SET GLOBAL general_log = @old_log_state;
+
+SET @old_log_state = @@global.slow_query_log;
+SET GLOBAL slow_query_log = 'OFF';
+ALTER TABLE slow_log CONVERT TO CHARACTER SET utf8;
+SET GLOBAL slow_query_log = @old_log_state;
+
+#
+# Convert plugin table to UTF-8 with binary collation.
+#
+
+ALTER TABLE plugin
+  MODIFY name char(64) COLLATE utf8_bin NOT NULL DEFAULT '',
+  MODIFY dl char(128) COLLATE utf8_bin NOT NULL DEFAULT '',
+  CONVERT TO CHARACTER SET utf8 COLLATE utf8_bin;
+
+#
 # Detect whether we had Create_view_priv
 #
 SET @hadCreateViewPriv:=0;
@@ -431,6 +477,13 @@ ALTER TABLE db MODIFY Event_priv enum('N','Y') character set utf8 DEFAULT 'N' NO
 #
 # EVENT table
 #
+
+#
+# WARNING: Beware that some columns are added and modified multiple
+# times. Whether adding or modifying the column, it's specification
+# should always be the same.
+#
+
 ALTER TABLE event DROP PRIMARY KEY;
 ALTER TABLE event ADD PRIMARY KEY(db, name);
 # Add sql_mode column just in case.
@@ -499,6 +552,20 @@ ALTER TABLE event ADD body_utf8 longblob DEFAULT NULL
                       AFTER db_collation;
 ALTER TABLE event MODIFY body_utf8 longblob DEFAULT NULL;
 
+#
+# Convert event table to UTF-8 with binary collation.
+#
+
+ALTER TABLE event
+  CONVERT TO CHARACTER SET utf8;
+ALTER TABLE event
+  MODIFY time_zone char(64) CHARACTER SET latin1 NOT NULL DEFAULT 'SYSTEM',
+  MODIFY db char(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  MODIFY definer char(77) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  MODIFY comment char(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL DEFAULT '',
+  MODIFY character_set_client char(32) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  MODIFY collation_connection char(32) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  MODIFY db_collation char(32) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL;
 
 #
 # TRIGGER privilege
@@ -519,6 +586,18 @@ ALTER TABLE db MODIFY Trigger_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT
 ALTER TABLE tables_priv MODIFY Table_priv set('Select','Insert','Update','Delete','Create','Drop','Grant','References','Index','Alter','Create View','Show view','Trigger') COLLATE utf8_general_ci DEFAULT '' NOT NULL;
 
 UPDATE user SET Trigger_priv=Super_priv WHERE @hadTriggerPriv = 0;
+
+#
+# user.Create_tablespace_priv
+#
+
+SET @hadCreateTablespacePriv := 0;
+SELECT @hadCreateTablespacePriv :=1 FROM user WHERE Create_tablespace_priv LIKE '%';
+
+ALTER TABLE user ADD Create_tablespace_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER Trigger_priv;
+ALTER TABLE user MODIFY Create_tablespace_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER Trigger_priv;
+
+UPDATE user SET Create_tablespace_priv = Super_priv WHERE @hadCreateTablespacePriv = 0;
 
 # Activate the new, possible modified privilege tables
 # This should not be needed, but gives us some extra testing that the above

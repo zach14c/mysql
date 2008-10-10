@@ -54,8 +54,8 @@ public:
 	void	writeHeader (Hdr *header);
 	int		read(int length, UCHAR *buffer);
 	void	write(uint32 length, const UCHAR *data);
-	bool	doesFileExist(const char *fileName);
-	int		fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
+	static bool	doesFileExist(const char *fileName);
+	static int	fileStat(const char *fileName, struct stat *stats = NULL, int *errnum = NULL);
 	void	declareFatalError();
 	void	seek (int pageNumber);
 	void	closeFile();
@@ -63,7 +63,9 @@ public:
 	void	writePage (Bdb *buffer, int type);
 	void	writePages(int32 pageNumber, int length, const UCHAR* data, int type);
 	void	readPage (Bdb *page);
-	bool	createFile (const char *name, uint64 initialAllocation);
+	bool	createFile (const char *name);
+	static	void setBaseDirectory(const char *path);
+	static	void setWriteFlags(int fileId, bool *forceFsync);
 	bool	openFile (const char *name, bool readOnly);
 	void	longSeek(int64 offset);
 	void	read(int64 offset, int length, UCHAR* buffer);
@@ -105,9 +107,11 @@ public:
 	bool		fatalError;
 	bool		isReadOnly;
 	bool		forceFsync;
+	bool		created;
 
 //private:
 	Dbb			*dbb;						// this is a crock and should be phased out
 };
-
+extern bool deleteFilesOnExit;
+extern bool inCreateDatabase;
 #endif // !defined(AFX_IO_H__6A019C19_A340_11D2_AB5A_0000C01D2301__INCLUDED_)

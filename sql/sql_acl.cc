@@ -4565,13 +4565,13 @@ static const char *command_array[]=
   "ALTER", "SHOW DATABASES", "SUPER", "CREATE TEMPORARY TABLES",
   "LOCK TABLES", "EXECUTE", "REPLICATION SLAVE", "REPLICATION CLIENT",
   "CREATE VIEW", "SHOW VIEW", "CREATE ROUTINE", "ALTER ROUTINE",
-  "CREATE USER", "EVENT", "TRIGGER"
+  "CREATE USER", "EVENT", "TRIGGER", "CREATE TABLESPACE"
 };
 
 static uint command_lengths[]=
 {
   6, 6, 6, 6, 6, 4, 6, 8, 7, 4, 5, 10, 5, 5, 14, 5, 23, 11, 7, 17, 18, 11, 9,
-  14, 13, 11, 5, 7
+  14, 13, 11, 5, 7, 17
 };
 
 
@@ -4626,7 +4626,7 @@ bool mysql_show_grants(THD *thd,LEX_USER *lex_user)
   strxmov(buff,"Grants for ",lex_user->user.str,"@",
 	  lex_user->host.str,NullS);
   field_list.push_back(field);
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
   {
     pthread_mutex_unlock(&acl_cache->lock);
@@ -5811,7 +5811,6 @@ bool mysql_drop_user(THD *thd, List <LEX_USER> &list)
 
   while ((tmp_user_name= user_list++))
   {
-    user_name= get_current_user(thd, tmp_user_name);
     if (!(user_name= get_current_user(thd, tmp_user_name)))
     {
       result= TRUE;

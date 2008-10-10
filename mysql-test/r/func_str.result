@@ -1435,7 +1435,7 @@ select benchmark(-1, 1);
 benchmark(-1, 1)
 NULL
 Warnings:
-Error	1411	Incorrect count value: '-1' for function benchmark
+Warning	1411	Incorrect count value: '-1' for function benchmark
 set @password="password";
 set @my_data="clear text to encode";
 select md5(encode(@my_data, "password"));
@@ -2271,12 +2271,12 @@ SELECT CHAR(0xff,0x8f USING utf8);
 CHAR(0xff,0x8f USING utf8)
 NULL
 Warnings:
-Error	1300	Invalid utf8 character string: 'FF8F'
+Warning	1300	Invalid utf8 character string: 'FF8F'
 SELECT CHAR(0xff,0x8f USING utf8) IS NULL;
 CHAR(0xff,0x8f USING utf8) IS NULL
 1
 Warnings:
-Error	1300	Invalid utf8 character string: 'FF8F'
+Warning	1300	Invalid utf8 character string: 'FF8F'
 SET SQL_MODE=@orig_sql_mode;
 select substring('abc', cast(2 as unsigned int));
 substring('abc', cast(2 as unsigned int))

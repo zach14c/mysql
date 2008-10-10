@@ -174,7 +174,6 @@ class SJ_TMP_TABLE;
 
 typedef enum_nested_loop_state
 (*Next_select_func)(JOIN *, struct st_join_table *, bool);
-typedef int (*Read_record_func)(struct st_join_table *tab);
 Next_select_func setup_end_select_func(JOIN *join);
 
 
@@ -210,7 +209,7 @@ typedef struct st_join_table {
   */
   uint          packed_info;
 
-  Read_record_func read_first_record;
+  READ_RECORD::Setup_func read_first_record;
   Next_select_func next_select;
   READ_RECORD	read_record;
   /* 
@@ -218,8 +217,8 @@ typedef struct st_join_table {
     if it is executed by an alternative full table scan when the left operand of
     the subquery predicate is evaluated to NULL.
   */  
-  Read_record_func save_read_first_record;/* to save read_first_record */ 
-  int (*save_read_record) (READ_RECORD *);/* to save read_record.read_record */
+  READ_RECORD::Setup_func save_read_first_record;/* to save read_first_record */
+  READ_RECORD::Read_func save_read_record;/* to save read_record.read_record */
   double	worst_seeks;
   key_map	const_keys;			/**< Keys with constant part */
   key_map	checked_keys;			/**< Keys checked in find_best */
@@ -272,15 +271,20 @@ typedef struct st_join_table {
   struct st_join_table  *do_firstmatch;
  
   /* 
-     ptr  - this join tab should do an InsideOut scan. Points 
-            to the tab for which we'll need to check tab->found_match.
-
+     ptr  - We're doing and InsideOut scan, and this is the first (aka
+            "driving" join tab). ptr to the last tab, for which we'll need 
+            to check tab->found_match to see if the current value group had
+            a match.
      NULL - Not an insideout scan.
   */
   struct st_join_table *insideout_match_tab;
-  uchar *insideout_buf; // Buffer to save index tuple to be able to skip dups
+  /* Buffer to save index tuple to be able to skip duplicates */
+  uchar *insideout_buf;
+  
+  /* Length of key tuple (depends on #keyparts used) to store in the above */
+  uint insideout_key_len;
 
-  /* Used by InsideOut scan. Just set to true when have found a row. */
+  /* Used by LooseScan. TRUE<=> there has been a matching record combination */
   bool found_match;
 
   enum { 
@@ -348,8 +352,16 @@ typedef struct st_position
 
   /* If ref-based access is used: bitmap of tables this table depends on  */
   table_map ref_depend_map;
-
-  bool use_insideout_scan;
+  
+  /* 
+    keyno  - This is an insideout scan on this key. If keyuse is NULL then
+              this is a full index scan, otherwise this is a ref + insideout
+              scan (and keyno matches the KEUSE's)
+    MAX_KEY - This is not an InsideOut scan
+  */
+  uint insideout_key;
+  /* Number of key parts to be used by insideout */
+  uint insideout_parts;
 } POSITION;
 
 
@@ -413,7 +425,7 @@ public:
   JOIN_TAB *join_tab,**best_ref;
   JOIN_TAB **map2table;    ///< mapping between table indexes and JOIN_TABs
   JOIN_TAB *join_tab_save; ///< saved join_tab for subquery reexecution
-  TABLE    **table,**all_tables;
+  TABLE    **all_tables;
   /**
     The table which has an index that allows to produce the requried ordering.
     A special value of 0x1 means that the ordering will be produced by
@@ -568,7 +580,7 @@ public:
        select_result *result_arg)
   {
     join_tab= join_tab_save= 0;
-    table= 0;
+    all_tables= 0;
     tables= 0;
     const_tables= 0;
     join_list= 0;
@@ -635,7 +647,7 @@ public:
   bool alloc_func_list();
   bool flatten_subqueries();
   bool setup_subquery_materialization();
-  bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
+  bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_result_set_metadata,
 			  bool before_group_by, bool recompute= FALSE);
 
   inline void set_items_ref_array(Item **ptr)
