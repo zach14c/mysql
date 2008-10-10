@@ -923,6 +923,10 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
                       to tailor the format of the statement.  Can be
                       NULL, in which case only SQL_MODE is considered
                       when building the statement.
+    show_database     If TRUE, the database for the table will be
+                      prepended to the table name if either the
+                      current database is not set, or if it is set and
+                      it is different from the database for the table.
 
   NOTE
     Currently always return 0, but might return error code in the
@@ -993,7 +997,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
   {
     const LEX_STRING *const db=
       table_list->schema_table ? &INFORMATION_SCHEMA_NAME : &table->s->db;
-    if (strcmp(db->str, thd->db) != 0)
+    if (!thd->db || db->str && strcmp(db->str, thd->db) != 0)
     {
       append_identifier(thd, packet, db->str, db->length);
       packet->append(STRING_WITH_LEN("."));
