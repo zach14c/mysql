@@ -3303,8 +3303,10 @@ void select_insert::abort() {
   }
 
   if (MYSQL_INSERT_SELECT_DONE_ENABLED())
+  {
     MYSQL_INSERT_SELECT_DONE(0, (ulong) (info.copied + info.deleted +
                                          info.updated));
+  }
 
   DBUG_VOID_RETURN;
 }

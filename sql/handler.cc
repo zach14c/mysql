@@ -5269,14 +5269,20 @@ int handler::ha_external_lock(THD *thd, int lock_type)
       MYSQL_HANDLER_UNLOCK_START_ENABLED())
   {
     if (lock_type == F_RDLCK)
+    {
       MYSQL_HANDLER_RDLOCK_START(table_share->db.str,
                                  table_share->table_name.str);
+    }
     else if (lock_type == F_WRLCK)
+    {
       MYSQL_HANDLER_WRLOCK_START(table_share->db.str,
                                  table_share->table_name.str);
+    }
     else if (lock_type == F_UNLCK)
+    {
       MYSQL_HANDLER_UNLOCK_START(table_share->db.str,
                                  table_share->table_name.str);
+    }
   }
 
   /*
@@ -5290,11 +5296,17 @@ int handler::ha_external_lock(THD *thd, int lock_type)
       MYSQL_HANDLER_UNLOCK_DONE_ENABLED())
   {
     if (lock_type == F_RDLCK)
+    {
       MYSQL_HANDLER_RDLOCK_DONE(error);
+    }
     else if (lock_type == F_WRLCK)
+    {
       MYSQL_HANDLER_WRLOCK_DONE(error);
+    }
     else if (lock_type == F_UNLCK)
+    {
       MYSQL_HANDLER_UNLOCK_DONE(error);
+    }
   }
   
   if (error == 0)

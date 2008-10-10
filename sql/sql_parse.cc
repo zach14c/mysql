@@ -1082,7 +1082,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       }
 
       if (MYSQL_QUERY_DONE_ENABLED())
+      {
         MYSQL_QUERY_DONE(thd->is_error());
+      }
       
 #if defined(ENABLED_PROFILING)
       thd->profiling.finish_current_query();
@@ -1479,9 +1481,12 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #endif
   if (MYSQL_QUERY_DONE_ENABLED() || MYSQL_COMMAND_DONE_ENABLED())
   {
-    int res= (int) thd->is_error();
+    int res;
+    res= (int) thd->is_error();
     if (command == COM_QUERY)
+    {
       MYSQL_QUERY_DONE(res);
+    }
     MYSQL_COMMAND_DONE(res);
   }
   
