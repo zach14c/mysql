@@ -119,7 +119,7 @@ ADD_LIBRARY(mysqlclient_notls STATIC ${CLIENT_SOURCES})
 ADD_DEPENDENCIES(mysqlclient_notls GenError)
 TARGET_LINK_LIBRARIES(mysqlclient_notls)
 
-ADD_LIBRARY(libmysql          SHARED ${CLIENT_SOURCES} dll.c libmysql.def)
+ADD_LIBRARY(libmysql          SHARED ${CLIENT_SOURCES} libmysql.def)
 IF(WIN32)
   SET_TARGET_PROPERTIES(libmysql mysqlclient PROPERTIES COMPILE_FLAGS "-DUSE_TLS")
 ENDIF(WIN32)
