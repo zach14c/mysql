@@ -3687,22 +3687,6 @@ Obj *is_tablespace(THD *thd, Obj *ts)
   DBUG_RETURN(other_ts);
 }
 
-/**
-  Decribe a tablespace.
-
-  This method returns a description of the tablespace useful for communicating
-  with the user.
-
-  @param[in]  ts  The Tablspace to describe.
-  
-  @returns tablespace description
-*/
-const String *describe_tablespace(Obj *ts)
-{
-  DBUG_ENTER("obs::describe_tablespace()");
-  DBUG_RETURN(((TablespaceObj *)ts)->describe());
-}
-
 ///////////////////////////////////////////////////////////////////////////
 
 //

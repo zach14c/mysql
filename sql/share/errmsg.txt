@@ -6353,7 +6353,7 @@ ER_BACKUP_CAT_ENUM
 ER_BACKUP_CANT_RESTORE_TS
         eng "Could not create tablespace %-.64s needed by tables being restored."
 ER_BACKUP_TS_CHANGE
-        eng "Tablespace %-.64s needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
+        eng "Tablespace %-.64s needed by tables being restored, but the current tablespace definition differs from how it was when backup was made."
 ER_BACKUP_GET_META_TS
         eng "Failed to obtain meta-data for tablespace %-.64s."
 ER_TABLESPACE_DATAFILE_EXIST

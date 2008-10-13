@@ -1823,9 +1823,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     if (ts)
     {
       DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
-      info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc,
-                              obs::describe_tablespace(sobj)->ptr(),
-                              obs::describe_tablespace(ts)->ptr());
+      info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc);
       return BSTREAM_ERROR;
     }
   }

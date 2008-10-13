@@ -355,7 +355,7 @@ sub mtr_report_stats ($) {
 		# The tablespace test triggers error below on purpose
 		($testname eq 'backup.backup_tablespace') and
 		(
-		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
+		  /Restore: Tablespace .* needed by tables being restored, but the current/
 		) or
                 
 		# The backup_securefilepriv test triggers error below on purpose
