@@ -31,6 +31,10 @@
 #
 
 --source include/not_embedded.inc
+if (`SELECT @@GLOBAL.thread_handling IN ('pool-of-threads','no-threads')`)
+{
+   skip Test does not work with thread_handling in ('pool-of-threads','no-threads');
+}
 
 SET @global_slow_launch_time = @@GLOBAL.slow_launch_time;
 
