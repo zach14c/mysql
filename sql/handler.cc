@@ -27,6 +27,7 @@
 #include "rpl_filter.h"
 #include <myisampack.h>
 #include "myisam.h"
+#include "transaction.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -816,16 +817,16 @@ void ha_close_connection(THD* thd)
   a transaction in a given engine is read-write and will not
   involve the two-phase commit protocol!
 
-  At the end of a statement, server call
-  ha_autocommit_or_rollback() is invoked. This call in turn
-  invokes handlerton::prepare() for every involved engine.
-  Prepare is followed by a call to handlerton::commit_one_phase()
-  If a one-phase commit will suffice, handlerton::prepare() is not
-  invoked and the server only calls handlerton::commit_one_phase().
-  At statement commit, the statement-related read-write engine
-  flag is propagated to the corresponding flag in the normal
-  transaction.  When the commit is complete, the list of registered
-  engines is cleared.
+  At the end of a statement, server call trans_commit_stmt is
+  invoked. This call in turn invokes handlerton::prepare()
+  for every involved engine. Prepare is followed by a call
+  to handlerton::commit_one_phase() If a one-phase commit
+  will suffice, handlerton::prepare() is not invoked and
+  the server only calls handlerton::commit_one_phase().
+  At statement commit, the statement-related read-write
+  engine flag is propagated to the corresponding flag in the
+  normal transaction.  When the commit is complete, the list
+  of registered engines is cleared.
 
   Rollback is handled in a similar fashion.
 
@@ -836,7 +837,7 @@ void ha_close_connection(THD* thd)
   do not "register" in thd->transaction lists, and thus do not
   modify the transaction state. Besides, each DDL in
   MySQL is prefixed with an implicit normal transaction commit
-  (a call to end_active_trans()), and thus leaves nothing
+  (a call to trans_commit_implicit()), and thus leaves nothing
   to modify.
   However, as it has been pointed out with CREATE TABLE .. SELECT,
   some DDL statements can start a *new* transaction.
@@ -1277,42 +1278,6 @@ int ha_rollback_trans(THD *thd, bool all)
   DBUG_RETURN(error);
 }
 
-/**
-  This is used to commit or rollback a single statement depending on
-  the value of error.
-
-  @note
-    Note that if the autocommit is on, then the following call inside
-    InnoDB will commit or rollback the whole transaction (= the statement). The
-    autocommit mechanism built into InnoDB is based on counting locks, but if
-    the user has used LOCK TABLES then that mechanism does not know to do the
-    commit.
-*/
-int ha_autocommit_or_rollback(THD *thd, int error)
-{
-  DBUG_ENTER("ha_autocommit_or_rollback");
-
-  if (thd->transaction.stmt.ha_list)
-  {
-    if (!error)
-    {
-      if (ha_commit_trans(thd, 0))
-	error=1;
-    }
-    else 
-    {
-      (void) ha_rollback_trans(thd, 0);
-      if (thd->transaction_rollback_request && !thd->in_sub_stmt)
-        (void) ha_rollback(thd);
-    }
-
-    thd->variables.tx_isolation=thd->session_tx_isolation;
-  }
-
-  DBUG_RETURN(error);
-}
-
-
 struct xahton_st {
   XID *xid;
   int result;
@@ -1584,7 +1549,7 @@ bool mysql_xa_recover(THD *thd)
   field_list.push_back(new Item_int("bqual_length", 0, MY_INT32_NUM_DECIMAL_DIGITS));
   field_list.push_back(new Item_empty_string("data",XIDDATASIZE));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(1);
 
@@ -1826,8 +1791,8 @@ bool ha_flush_logs(handlerton *db_type)
   return FALSE;
 }
 
-static const char *check_lowercase_names(handler *file, const char *path,
-                                         char *tmp_path)
+const char *get_canonical_filename(handler *file, const char *path,
+                                   char *tmp_path)
 {
   if (lower_case_table_names != 2 || (file->ha_table_flags() & HA_FILE_BASED))
     return path;
@@ -1898,7 +1863,7 @@ int ha_delete_table(THD *thd, handlerton *table_type, const char *path,
       ! (file=get_new_handler((TABLE_SHARE*)0, thd->mem_root, table_type)))
     DBUG_RETURN(ENOENT);
 
-  path= check_lowercase_names(file, path, tmp_path);
+  path= get_canonical_filename(file, path, tmp_path);
   if ((error= file->ha_delete_table(path)) && generate_warning)
   {
     /*
@@ -3295,66 +3260,6 @@ handler::ha_rename_partitions(THD *thd, const char *path)
 
 
 /**
-  Optimize partitions: public interface.
-
-  @sa handler::optimize_partitions()
-*/
-
-int
-handler::ha_optimize_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return optimize_partitions(thd);
-}
-
-
-/**
-  Analyze partitions: public interface.
-
-  @sa handler::analyze_partitions()
-*/
-
-int
-handler::ha_analyze_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return analyze_partitions(thd);
-}
-
-
-/**
-  Check partitions: public interface.
-
-  @sa handler::check_partitions()
-*/
-
-int
-handler::ha_check_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return check_partitions(thd);
-}
-
-
-/**
-  Repair partitions: public interface.
-
-  @sa handler::repair_partitions()
-*/
-
-int
-handler::ha_repair_partitions(THD *thd)
-{
-  mark_trx_read_write();
-
-  return repair_partitions(thd);
-}
-
-
-/**
   Tell the storage engine that it is allowed to "disable transaction" in the
   handler. It is a hint that ACID is not required - it is used in NDB for
   ALTER TABLE, for example, when data are copied to temporary table.
@@ -3377,7 +3282,7 @@ int ha_enable_transaction(THD *thd, bool on)
       So, let's commit an open transaction (if any) now.
     */
     if (!(error= ha_commit_trans(thd, 0)))
-      error= end_trans(thd, COMMIT);
+      error= trans_commit_implicit(thd);
   }
   DBUG_RETURN(error);
 }
@@ -3492,7 +3397,7 @@ int ha_create_table(THD *thd, const char *path,
   if (update_create_info)
     update_create_info_from_table(create_info, &table);
 
-  name= check_lowercase_names(table.file, share.path.str, name_buff);
+  name= get_canonical_filename(table.file, share.path.str, name_buff);
 
   error= table.file->ha_create(name, &table, create_info);
   (void) closefrm(&table, 0);
@@ -3571,7 +3476,7 @@ int ha_create_table_from_engine(THD* thd, const char *db, const char *name)
   update_create_info_from_table(&create_info, &table);
   create_info.table_options|= HA_OPTION_CREATE_FROM_ENGINE;
 
-  check_lowercase_names(table.file, path, path);
+  get_canonical_filename(table.file, path, path);
   error=table.file->ha_create(path, &table, &create_info);
   (void) closefrm(&table, 1);
 
@@ -4332,6 +4237,13 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
   {
     /* Create a separate handler object to do rndpos() calls. */
     THD *thd= current_thd;
+
+  /*
+    ::clone() takes up a lot of stack, especially on 64 bit platforms.
+    The constant 5 is an empiric result.
+  */
+  if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
+    DBUG_RETURN(1);
     if (!(new_h2= h->clone(thd->mem_root)) || 
         new_h2->ha_external_lock(thd, F_RDLCK))
     {
@@ -5143,7 +5055,7 @@ bool ha_show_status(THD *thd, handlerton *db_type, enum ha_stat_type stat)
   field_list.push_back(new Item_empty_string("Name",FN_REFLEN));
   field_list.push_back(new Item_empty_string("Status",10));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     return TRUE;
 

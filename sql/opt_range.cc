@@ -8653,7 +8653,10 @@ QUICK_SELECT_DESC::QUICK_SELECT_DESC(QUICK_RANGE_SELECT *q,
   used_key_parts (used_key_parts_arg)
 {
   QUICK_RANGE *r;
-  /* Reverse MRR scans are currently not supported */
+  /* 
+    Use default MRR implementation for reverse scans. No table engine
+    currently can do an MRR scan with output in reverse index order.
+  */
   mrr_buf_desc= NULL;
   mrr_flags |= HA_MRR_USE_DEFAULT_IMPL;
   mrr_buf_size= 0;

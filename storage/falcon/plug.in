@@ -9,6 +9,7 @@ AC_CACHE_CHECK([if Falcon Storage Engine is supported on $MACHINE_TYPE],
   			   falcon_supported_by_machine,[
   case "$BASE_MACHINE_TYPE" in
     i386)   falcon_supported_by_machine="yes" ;;
+    amd64)  falcon_supported_by_machine="yes" ;;
     x86_64) falcon_supported_by_machine="yes" ;;
     powerpc)falcon_supported_by_machine="yes" ;;
     sparc)
@@ -18,6 +19,18 @@ volatile int target= 0;
 int compare= 1;
 int exchange= 2;
       ],[
+#if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
+  /* When compiling with Sun Studio compiler we need the Solaris atomic 
+     functions. These were first introduced in Solaris 10. */
+#if defined(HAVE_SOLARIS_ATOMIC)
+  return 0;
+#else 
+  /* Fail if the atomic functions are not available. Support for this
+     will be added when the fix for bug 37622 is completed. */
+#error Need Solaris atomic functions to use Sun Studio compiler
+#endif /* HAVE_SOLARIS_ATOMIC */
+#else
+  /* Use gcc style inline assembly when compiling with gcc */
   char ret;
   __asm__ __volatile__ (
 	  "membar #LoadLoad | #LoadStore | #StoreLoad | #StoreStore\n\t"
@@ -31,6 +44,7 @@ int exchange= 2;
 	  : "r" (&target), "0" (compare)
 	  : "memory", "cc"
 	  )
+#endif /* !__SUNPRO_C && !__SUNPRO_CC */
       ], falcon_supported_by_machine="yes", 
          falcon_supported_by_machine="no")
       ;;

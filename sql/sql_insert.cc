@@ -62,6 +62,7 @@
 #include "slave.h"
 #include "rpl_mi.h"
 #include "sql_audit.h"
+#include "transaction.h"
 
 #ifndef EMBEDDED_LIBRARY
 static bool delayed_get_table(THD *thd, TABLE_LIST *table_list);
@@ -1306,6 +1307,23 @@ bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
 
 static int last_uniq_key(TABLE *table,uint keynr)
 {
+  /*
+    When an underlying storage engine informs that the unique key
+    conflicts are not reported in the ascending order by setting
+    the HA_DUPLICATE_KEY_NOT_IN_ORDER flag, we cannot rely on this
+    information to determine the last key conflict.
+   
+    The information about the last key conflict will be used to
+    do a replace of the new row on the conflicting row, rather
+    than doing a delete (of old row) + insert (of new row).
+   
+    Hence check for this flag and disable replacing the last row
+    by returning 0 always. Returning 0 will result in doing
+    a delete + insert always.
+   */
+  if (table->file->ha_table_flags() & HA_DUPLICATE_KEY_NOT_IN_ORDER)
+    return 0;
+
   while (++keynr < table->s->keys)
     if (table->key_info[keynr].flags & HA_NOSAME)
       return 0;
@@ -2487,7 +2505,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
       */
       di->table->file->ha_release_auto_increment();
       mysql_unlock_tables(thd, lock);
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
       di->group_count=0;
       mysql_audit_release(thd);
       pthread_mutex_lock(&di->mutex);
@@ -2508,7 +2526,7 @@ err:
     first call to ha_*_row() instead. Remove code that are used to
     cover for the case outlined above.
    */
-  ha_autocommit_or_rollback(thd, 1);
+  trans_rollback_stmt(thd);
 
 #ifndef __WIN__
 end:
@@ -3589,7 +3607,8 @@ select_create::prepare(List<Item> &values, SELECT_LEX_UNIT *u)
     temporary table, we need to start a statement transaction.
   */
   if ((thd->lex->create_info.options & HA_LEX_CREATE_TMP_TABLE) == 0 &&
-      thd->current_stmt_binlog_row_based)
+      thd->current_stmt_binlog_row_based &&
+      mysql_bin_log.is_open())
   {
     thd->binlog_start_trans_and_stmt();
   }
@@ -3685,10 +3704,11 @@ select_create::binlog_show_create_table(TABLE **tables, uint count)
   result= store_create_info(thd, &tmp_table_list, &query, create_info);
   DBUG_ASSERT(result == 0); /* store_create_info() always return 0 */
 
-  thd->binlog_query(THD::STMT_QUERY_TYPE,
-                    query.ptr(), query.length(),
-                    /* is_trans */ TRUE,
-                    /* suppress_use */ FALSE);
+  if (mysql_bin_log.is_open())
+    thd->binlog_query(THD::STMT_QUERY_TYPE,
+                      query.ptr(), query.length(),
+                      /* is_trans */ TRUE,
+                      /* suppress_use */ FALSE);
 }
 
 void select_create::store_values(List<Item> &values)
@@ -3746,8 +3766,8 @@ bool select_create::send_eof()
     */
     if (!table->s->tmp_table)
     {
-      ha_autocommit_or_rollback(thd, 0);
-      end_active_trans(thd);
+      trans_commit_stmt(thd);
+      trans_commit_implicit(thd);
     }
 
     table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
@@ -3768,10 +3788,10 @@ void select_create::abort()
   DBUG_ENTER("select_create::abort");
 
   /*
-    In select_insert::abort() we roll back the statement, including
-    truncating the transaction cache of the binary log. To do this, we
-    pretend that the statement is transactional, even though it might
-    be the case that it was not.
+    We roll back the statement here, including truncating the
+    transaction cache of the binary log. To do this, we pretend that
+    the statement is transactional, even though it might be the case
+    that it was not.
 
     We roll back the statement prior to deleting the table and prior
     to releasing the lock on the table, since there might be potential
@@ -3785,6 +3805,7 @@ void select_create::abort()
   tmp_disable_binlog(thd);
   select_insert::abort();
   thd->transaction.stmt.modified_non_trans_table= FALSE;
+  trans_rollback_stmt(thd);
   reenable_binlog(thd);
   thd->binlog_flush_pending_rows_event(TRUE);
 

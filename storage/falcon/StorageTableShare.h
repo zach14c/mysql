@@ -26,6 +26,7 @@
 typedef __int64			INT64;
 
 static const int MaxIndexSegments	= 16;
+static const int indexNameSize		= 257;
 
 class StorageDatabase;
 class StorageConnection;
@@ -47,14 +48,27 @@ struct StorageSegment {
 	void			*mysql_charset;
 	};
 
-struct StorageIndexDesc {
+// StorageIndexDesc maps a server-side index to a Falcon index
+class StorageIndexDesc
+{
+public:
+	StorageIndexDesc();
+	StorageIndexDesc(const StorageIndexDesc *indexDesc);
+	virtual ~StorageIndexDesc(void);
+	bool operator==(const StorageIndexDesc &indexDesc) const;
+	bool operator!=(const StorageIndexDesc &indexDesc) const;
+	
+	int			id;
 	int			unique;
 	int			primaryKey;
 	int			numberSegments;
-	const char	*name;
+	char		name[indexNameSize];		// clean name
+	char		rawName[indexNameSize];		// original name
 	Index		*index;
 	uint64		*segmentRecordCounts;
 	StorageSegment segments[MaxIndexSegments];
+	StorageIndexDesc *next;
+	StorageIndexDesc *prev;
 	};
 
 
@@ -95,22 +109,30 @@ public:
 	StorageTableShare(StorageHandler *handler, const char * path, const char *tableSpaceName, int lockSize, bool tempTbl);
 	virtual ~StorageTableShare(void);
 	
-	virtual void		lock(bool exclusiveLock);
+	virtual void		lock(bool exclusiveLock=false);
 	virtual void		unlock(void);
-	virtual int			createIndex(StorageConnection *storageConnection, const char* name, const char* sql);
-	virtual int			dropIndex(StorageConnection *storageConnection, const char* name, const char* sql);
+	virtual void		lockIndexes(bool exclusiveLock=false);
+	virtual void		unlockIndexes(void);
+	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
+	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
+	virtual bool		validateIndex(int indexId, StorageIndexDesc *indexTarget);
+	virtual void		deleteIndexes();
+	virtual int			numberIndexes();
 	virtual int			renameTable(StorageConnection *storageConnection, const char* newName);
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
 	virtual int			haveIndexes(int indexCount);
-	virtual void		cleanupFieldName(const char* name, char* buffer, int bufferLength);
+	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength);
 	virtual void		setTablePath(const char* path, bool tempTable);
 	virtual void		registerCollation(const char* collationName, void* arg);
 
 	int					open(void);
-	StorageIndexDesc*	getIndex(int indexCount, int indexId, StorageIndexDesc* indexDesc);
+	void				addIndex(StorageIndexDesc *indexDesc);
+	void				deleteIndex(int indexId);
+	int					setIndex(const StorageIndexDesc* indexInfo);
+	void				clearIndex(StorageIndexDesc *indexDesc);
 	StorageIndexDesc*	getIndex(int indexId);
-
+	StorageIndexDesc*	getIndex(int indexId, StorageIndexDesc *indexDesc);
 	int					getIndexId(const char* schemaName, const char* indexName);
 	int					create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
 	int					upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
@@ -126,11 +148,10 @@ public:
 	uint64				estimateCardinality(void);
 	bool				tableExists(void);
 	JString				lookupPathName(void);
-	void				setTruncateLock(void);
-	void				clearTruncateLock(void);
 
 	static const char*	getDefaultRoot(void);
 	static const char*	cleanupTableName(const char* name, char* buffer, int bufferLength, char *schema, int schemaLength);
+	char*				createIndexName(const char *rawName, char *indexName, bool primary = false);
 	
 	JString				name;
 	JString				schemaName;
@@ -142,15 +163,13 @@ public:
 	unsigned char		*impure;
 	int					initialized;
 	SyncObject			*syncObject;
-	SyncObject			*syncTruncate;
+	SyncObject			*syncIndexMap;
 	StorageDatabase		*storageDatabase;
 	StorageHandler		*storageHandler;
 	Table				*table;
-	StorageIndexDesc	**indexes;
+	StorageIndexDesc	*indexes;
 	Sequence			*sequence;
 	Format				*format;						// format for insertion
-	int					numberIndexes;
-	volatile INTERLOCK_TYPE	truncateLockCount;
 	bool				tempTable;
 	int getFieldId(const char* fieldName);
 };

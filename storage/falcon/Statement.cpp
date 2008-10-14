@@ -2303,16 +2303,10 @@ void Statement::dropIndex(Syntax *syntax)
 		throw SQLEXCEPTION (DDL_ERROR, "table %s.%s not defined", (const char*) tableName, schema);
 
 	checkAlterPriv (table);
-	Index *index = table->findIndex (name);
 
-	if (index)
-		{
-		Transaction *sysTransaction = database->getSystemTransaction();
-		table->dropIndex(index);
-		index->deleteIndex(sysTransaction); /* transaction */
-		delete index;
-		database->commitSystemTransaction();
-		}
+	Transaction *sysTransaction = database->getSystemTransaction();
+	table->dropIndex(name, sysTransaction);
+	database->commitSystemTransaction();
 
 	Index::deleteIndex (database, schema, name);
 	database->commitSystemTransaction();

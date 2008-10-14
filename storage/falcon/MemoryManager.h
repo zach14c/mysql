@@ -31,8 +31,10 @@
 
 #ifdef _WIN32
 #define ALWAYS_INLINE inline /* for windows */
-#else
+#elif __GNUC__
 #define ALWAYS_INLINE extern inline __attribute__ ((always_inline)) /* for gcc */
+#else
+#define ALWAYS_INLINE extern inline
 #endif
 
 class Stream;

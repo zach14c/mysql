@@ -2296,7 +2296,7 @@ JOIN::exec()
 		      (zero_result_cause?zero_result_cause:"No tables used"));
     else
     {
-      result->send_fields(*columns_list,
+      result->send_result_set_metadata(*columns_list,
                           Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
       /*
         We have to test for 'conds' here as the WHERE may not be constant
@@ -2436,7 +2436,8 @@ JOIN::exec()
     if (!items1)
     {
       items1= items0 + all_fields.elements;
-      if (sort_and_group || curr_tmp_table->group)
+      if (sort_and_group || curr_tmp_table->group ||
+          tmp_table_param.precomputed_group_by)
       {
 	if (change_to_use_tmp_fields(thd, items1,
 				     tmp_fields_list1, tmp_all_fields1,
@@ -2687,7 +2688,7 @@ JOIN::exec()
   }
   if (curr_join->group_list || curr_join->order)
   {
-    DBUG_PRINT("info",("Sorting for send_fields"));
+    DBUG_PRINT("info",("Sorting for send_result_set_metadata"));
     thd_proc_info(thd, "Sorting result");
     /* If we have already done the group, add HAVING to sorted table */
     if (curr_join->tmp_having && ! curr_join->group_list && 
@@ -2827,7 +2828,7 @@ JOIN::exec()
   {
     thd_proc_info(thd, "Sending data");
     DBUG_PRINT("info", ("%s", thd->proc_info));
-    result->send_fields((procedure ? curr_join->procedure_fields_list :
+    result->send_result_set_metadata((procedure ? curr_join->procedure_fields_list :
                          *curr_fields_list),
                         Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
     error= do_select(curr_join, curr_fields_list, NULL, procedure);
@@ -9200,7 +9201,7 @@ return_zero_rows(JOIN *join, select_result *result,TABLE_LIST *tables,
     if (having && having->val_int() == 0)
       send_row=0;
   }
-  if (!(result->send_fields(fields,
+  if (!(result->send_result_set_metadata(fields,
                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF)))
   {
     if (send_row)
@@ -11820,7 +11821,7 @@ void setup_tmp_table_column_bitmaps(TABLE *table, uchar *bitmaps)
   Create a temp table according to a field list.
 
   Given field pointers are changed to point at tmp_table for
-  send_fields. The table object is self contained: it's
+  send_result_set_metadata. The table object is self contained: it's
   allocated in its own memory root, as well as Field objects
   created for table columns.
   This function will replace Item_sum items in 'fields' list with
@@ -11878,6 +11879,8 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   ENGINE_COLUMNDEF *recinfo;
   uint total_uneven_bit_length= 0;
   bool force_copy_fields= param->force_copy_fields;
+  /* Treat sum functions as normal ones when loose index scan is used. */
+  save_sum_fields|= param->precomputed_group_by;
   DBUG_ENTER("create_tmp_table");
   DBUG_PRINT("enter",
              ("distinct: %d  save_sum_fields: %d  rows_limit: %lu  group: %d",
@@ -13179,7 +13182,8 @@ static bool create_internal_tmp_table(TABLE *table, KEY *keyinfo,
 bool create_internal_tmp_table_from_heap(THD *thd, TABLE *table,
                                          ENGINE_COLUMNDEF *start_recinfo,
                                          ENGINE_COLUMNDEF **recinfo, 
-                                         int error, bool ignore_last_dupp_key_error)
+                                         int error,
+                                         bool ignore_last_dupp_key_error)
 {
   return create_internal_tmp_table_from_heap2(thd, table,
                                               start_recinfo, recinfo, error,
@@ -16344,6 +16348,16 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
             table->key_read=1;
             table->file->extra(HA_EXTRA_KEYREAD);
           }
+          else if (table->key_read)
+          {
+            /*
+              Clear the covering key read flags that might have been
+              previously set for some key other than the current best_key.
+            */
+            table->key_read= 0;
+            table->file->extra(HA_EXTRA_NO_KEYREAD);
+          }
+
           table->file->ha_index_or_rnd_end();
           if (join->select_options & SELECT_DESCRIBE)
           {
@@ -20753,7 +20767,7 @@ int test_if_item_cache_changed(List<Cached_item> &list)
 
   Only FIELD_ITEM:s and FUNC_ITEM:s needs to be saved between groups.
   Change old item_field to use a new field with points at saved fieldvalue
-  This function is only called before use of send_fields.
+  This function is only called before use of send_result_set_metadata.
 
   @param thd                   THD pointer
   @param param                 temporary table parameters
@@ -20984,7 +20998,7 @@ bool JOIN::alloc_func_list()
   Initialize 'sum_funcs' array with all Item_sum objects.
 
   @param field_list        All items
-  @param send_fields       Items in select list
+  @param send_result_set_metadata       Items in select list
   @param before_group_by   Set to 1 if this is called before GROUP BY handling
   @param recompute         Set to TRUE if sum_funcs must be recomputed
 
@@ -20994,7 +21008,7 @@ bool JOIN::alloc_func_list()
     1  error
 */
 
-bool JOIN::make_sum_func_list(List<Item> &field_list, List<Item> &send_fields,
+bool JOIN::make_sum_func_list(List<Item> &field_list, List<Item> &send_result_set_metadata,
 			      bool before_group_by, bool recompute)
 {
   List_iterator_fast<Item> it(field_list);
@@ -21016,7 +21030,7 @@ bool JOIN::make_sum_func_list(List<Item> &field_list, List<Item> &send_fields,
   if (before_group_by && rollup.state == ROLLUP::STATE_INITED)
   {
     rollup.state= ROLLUP::STATE_READY;
-    if (rollup_make_fields(field_list, send_fields, &func))
+    if (rollup_make_fields(field_list, send_result_set_metadata, &func))
       DBUG_RETURN(TRUE);			// Should never happen
   }
   else if (rollup.state == ROLLUP::STATE_NONE)

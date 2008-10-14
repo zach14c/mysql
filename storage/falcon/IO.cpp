@@ -113,6 +113,9 @@ static int simulateDiskFull = SIMULATE_DISK_FULL;
 #endif
 	
 static FILE	*traceFile;
+static char baseDir[PATH_MAX+1]={0};
+bool deleteFilesOnExit = false;
+bool inCreateDatabase = false;
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -132,6 +135,7 @@ IO::IO()
 	dbb = NULL;
 	forceFsync = true;
 	fatalError = false;
+	created = false;
 	memset(writeTypes, 0, sizeof(writeTypes));
 	syncObject.setName("IO::syncObject");
 }
@@ -140,30 +144,60 @@ IO::~IO()
 {
 	traceClose();
 	closeFile();
+	if(created && deleteFilesOnExit)
+		deleteFile();
+}
+
+static bool isAbsolutePath(const char *name)
+{
+#ifdef _WIN32
+	size_t len = strlen(name);
+	if(len < 2)
+		return false;
+	return (name[0]=='\\' || name[1]==':');
+#else
+	return (name[0]=='/');
+#endif
+}
+
+void IO::setBaseDirectory(const char *directory)
+{
+
+	strncpy(baseDir, directory, PATH_MAX);
+	size_t len = strlen(baseDir);
+	// Append path separator
+	if (baseDir[len-1] != SEPARATOR)
+	{
+		baseDir[len] = SEPARATOR;
+		baseDir[len+1] = 0;
+	}
+
+}
+
+static JString getPath(const char *filename)
+{
+	if(baseDir[0] == 0 || isAbsolutePath(filename))
+		return JString(filename);
+	return JString(baseDir) + filename;
 }
 
 bool IO::openFile(const char * name, bool readOnly)
 {
-	fileName = name;
-	
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		fileId = ::open (fileName, (readOnly) ? O_RDONLY | O_BINARY : getWriteMode(attempt) | O_RDWR | O_BINARY);
-		
-		if (fileId >= 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
+	ASSERT(!inCreateDatabase);
+
+	fileName = getPath(name);
+	fileId = ::open (fileName, (readOnly) ? (O_RDONLY | O_BINARY) : (O_RDWR | O_BINARY));
 
 	if (fileId < 0)
 		{
 			int sqlError = (errno == EACCES )? FILE_ACCESS_ERROR :CONNECTION_ERROR;
-			throw SQLEXCEPTION (sqlError, "can't open file \"%s\": %s (%d)", name, strerror (errno), errno);
+			throw SQLEXCEPTION (sqlError, "can't open file \"%s\": %s (%d)", 
+								fileName.getString(), strerror (errno), errno);
 		}
 
+	setWriteFlags(fileId, &forceFsync);
 	isReadOnly = readOnly;
+	created = false;
 	
 #ifndef _WIN32
 	signal (SIGXFSZ, SIG_IGN);
@@ -185,28 +219,37 @@ bool IO::openFile(const char * name, bool readOnly)
 	return fileId != -1;
 }
 
+void IO::setWriteFlags(int fileId, bool *forceFsync)
+{
+#ifndef _WIN32
+	int flags = fcntl(fileId, F_GETFL);
+
+	for (int attempt = 0; attempt < 2; attempt++)
+		{
+		if (fcntl(fileId, F_SETFL, flags|getWriteMode(attempt)) == 0)
+			break;
+		if(attempt == 1)
+			*forceFsync = true;
+		}
+#else
+	*forceFsync = true;
+#endif
+}
+
 bool IO::createFile(const char *name)
 {
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
-	fileName = name;
-	
-	for (int attempt = 0; attempt < 3; ++attempt)
-		{
-		fileId = ::open (fileName,
-						getWriteMode(attempt) | O_CREAT | O_RDWR | O_RANDOM | O_TRUNC | O_BINARY,
+	fileName = getPath(name);
+	fileId = ::open (fileName.getString(),O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY,
 						S_IREAD | S_IWRITE | S_IRGRP | S_IWGRP);
 
-		if (fileId >= 0)
-			break;
-		
-		if (attempt == 1)
-			forceFsync = true;
-		}
 
 	if (fileId < 0)
-		throw SQLEXCEPTION (CONNECTION_ERROR,"can't create file \"%s\", %s (%d)", name, strerror (errno), errno);
+		throw SQLEXCEPTION (CONNECTION_ERROR,"can't create file \"%s\", %s (%d)", 
+			fileName.getString(), strerror (errno), errno);
 
+	setWriteFlags(fileId, &forceFsync);
 	isReadOnly = false;
 #ifndef _WIN32
 #ifndef __NETWARE__
@@ -218,7 +261,7 @@ bool IO::createFile(const char *name)
 	fcntl(fileId, F_SETLK, &lock);
 #endif
 #endif
-
+	created = true;
 	return fileId != -1;
 }
 
@@ -377,13 +420,18 @@ void IO::declareFatalError()
 	fatalError = true;
 }
 
+
+#ifndef ENOSYS
+#define ENOSYS EEXIST
+#endif
+
+// Make sure parent directories for file exist
 void IO::createPath(const char *fileName)
 {
-	// First, better make sure directories exists
+	JString fname = getPath(fileName);
 
 	char directory [256], *q = directory;
-
-	for (const char *p = fileName; *p;)
+	for (const char *p = fname.getString(); *p;)
 		{
 		char c = *p++;
 		
@@ -392,8 +440,14 @@ void IO::createPath(const char *fileName)
 			*q = 0;
 			
 			if (q > directory && q [-1] != ':')
-				if (MKDIR (directory) && errno != EEXIST)
-					throw SQLError (IO_ERROR, "can't create directory \"%s\"\n", directory);
+				{
+				if (MKDIR (directory) && errno != EEXIST && errno != ENOSYS)
+					// ENOSYS is a Solaris speficic workaround, mkdir returns it
+					// on existing automounted NFS directories, instead
+					// of EEXIST.
+					throw SQLError (IO_ERROR, 
+					"can't create directory \"%s\"\n", directory);
+				}
 			}
 		*q++ = c;
 		}
@@ -409,11 +463,12 @@ void IO::expandFileName(const char *fileName, int length, char *buffer, const ch
 {
 	char expandedName[PATH_MAX+1];
 	const char *path;
+	JString fname = getPath(fileName);
+	fileName = fname.getString();
 #ifdef _WIN32
 	char *base;
-	
+
 	GetFullPathName(fileName, sizeof (expandedName), expandedName, &base);
-	
 	path = expandedName;
 #else
 	const char *base;
@@ -465,7 +520,8 @@ bool IO::doesFileExist(const char *fileName)
 int IO::fileStat(const char *fileName, struct stat *fileStats, int *errnum)
 {
 	struct stat stats;
-	int retCode = stat(fileName, &stats);
+	JString path = getPath(fileName);
+	int retCode = stat(path.getString(), &stats);
 	
 	if (fileStats)
 		*fileStats = stats;
@@ -621,7 +677,8 @@ void IO::sync(void)
 
 void IO::deleteFile(const char* fileName)
 {
-	unlink(fileName);
+	JString path = getPath(fileName);
+	unlink(path.getString());
 }
 
 void IO::tracePage(Bdb* bdb)
@@ -753,4 +810,3 @@ uint16 IO::computeChecksum(Page *page, size_t len)
 	return (uint16) sum;
 
 }
-

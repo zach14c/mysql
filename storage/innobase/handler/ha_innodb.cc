@@ -3650,7 +3650,7 @@ calc_row_difference(
 	upd_t*		uvect,		/* in/out: update vector */
 	uchar*		old_row,	/* in: old row in MySQL format */
 	uchar*		new_row,	/* in: new row in MySQL format */
-	struct st_table* table,		/* in: table in MySQL data
+	TABLE*          table,		/* in: table in MySQL data
 					dictionary */
 	uchar*		upd_buff,	/* in: buffer to use */
 	ulint		buff_len,	/* in: buffer length */
@@ -5861,6 +5861,14 @@ ha_innobase::info(
 		if (thd_sql_command(user_thd) == SQLCOM_TRUNCATE) {
 
 			n_rows = 0;
+
+			/* We need to reset the prebuilt value too, otherwise
+			checks for values greater than the last value written
+			to the table will fail and the autoinc counter will
+			not be updated. This will force write_row() into
+			attempting an update of the table's AUTOINC counter. */
+
+			prebuilt->last_value = 0;
 		}
 
 		stats.records = (ha_rows)n_rows;
@@ -5871,9 +5879,21 @@ ha_innobase::info(
 		stats.index_file_length = ((ulonglong)
 				ib_table->stat_sum_of_other_index_sizes)
 					* UNIV_PAGE_SIZE;
-		stats.delete_length =
-			fsp_get_available_space_in_free_extents(
-				ib_table->space) * 1024;
+
+		/* Since fsp_get_available_space_in_free_extents() is
+		acquiring latches inside InnoDB, we do not call it if we
+		are asked by MySQL to avoid locking. Another reason to
+		avoid the call is that it uses quite a lot of CPU.
+		See Bug#38185.
+		We do not update delete_length if no locking is requested
+		so the "old" value can remain. delete_length is initialized
+		to 0 in the ha_statistics' constructor. */
+		if (!(flag & HA_STATUS_NO_LOCK)) {
+			stats.delete_length =
+				fsp_get_available_space_in_free_extents(
+					ib_table->space) * 1024;
+		}
+
 		stats.check_time = 0;
 	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 

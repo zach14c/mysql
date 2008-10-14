@@ -443,6 +443,11 @@ public:
       TRUE if error has occured.
   */
   virtual bool set_value(THD *thd, sp_rcontext *ctx, Item **it)= 0;
+
+  virtual void set_out_param_info(Send_field *info) {}
+
+  virtual const Send_field *get_out_param_info() const
+  { return NULL; }
 };
 
 
@@ -1614,7 +1619,8 @@ public:
 
 /* Item represents one placeholder ('?') of prepared statement */
 
-class Item_param :public Item
+class Item_param :public Item,
+                  private Settable_routine_parameter
 {
   char cnvbuf[MAX_FIELD_WIDTH];
   String cnvstr;
@@ -1702,6 +1708,7 @@ public:
   void set_int(longlong i, uint32 max_length_arg);
   void set_double(double i);
   void set_decimal(const char *str, ulong length);
+  void set_decimal(const my_decimal *dv);
   bool set_str(const char *str, ulong length);
   bool set_longdata(const char *str, ulong length);
   void set_time(MYSQL_TIME *tm, timestamp_type type, uint32 max_length_arg);
@@ -1751,6 +1758,25 @@ public:
   /** Item is a argument to a limit clause. */
   bool limit_clause_param;
   void set_param_type_and_swap_value(Item_param *from);
+
+private:
+  virtual inline Settable_routine_parameter *
+    get_settable_routine_parameter()
+  {
+    return this;
+  }
+
+  virtual bool set_value(THD *thd, sp_rcontext *ctx, Item **it);
+
+  virtual void set_out_param_info(Send_field *info);
+
+public:
+  virtual const Send_field *get_out_param_info() const;
+
+  virtual void make_field(Send_field *field);
+
+private:
+  Send_field *m_out_param_info;
 };
 
 
@@ -2103,7 +2129,7 @@ public:
 
 /**
   Item_empty_string -- is a utility class to put an item into List<Item>
-  which is then used in protocol.send_fields() when sending SHOW output to
+  which is then used in protocol.send_result_set_metadata() when sending SHOW output to
   the client.
 */
 
@@ -2112,7 +2138,7 @@ class Item_empty_string :public Item_partition_func_safe_string
 public:
   Item_empty_string(const char *header,uint length, CHARSET_INFO *cs= NULL) :
     Item_partition_func_safe_string("",0, cs ? cs : &my_charset_utf8_general_ci)
-    { name=(char*) header; max_length= cs ? length * cs->mbmaxlen : length; }
+    { name=(char*) header; max_length= length * collation.collation->mbmaxlen; }
   void make_field(Send_field *field);
 };
 

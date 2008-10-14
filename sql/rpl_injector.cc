@@ -15,6 +15,7 @@
 
 #include "mysql_priv.h" 
 #include "rpl_injector.h"
+#include "transaction.h"
 
 /*
   injector::transaction - member definitions
@@ -35,8 +36,7 @@ injector::transaction::transaction(MYSQL_BIN_LOG *log, THD *thd)
   m_start_pos.m_file_name= my_strdup(log_info.log_file_name, MYF(0));
   m_start_pos.m_file_pos= log_info.pos;
 
-  m_thd->lex->start_transaction_opt= 0; /* for begin_trans() */
-  begin_trans(m_thd);
+  trans_begin(m_thd);
 
   thd->set_current_stmt_binlog_row_based();
 }
@@ -82,16 +82,18 @@ int injector::transaction::commit()
      is committed by committing the statement transaction
      explicitly.
    */
-   ha_autocommit_or_rollback(m_thd, 0);
-   end_trans(m_thd, COMMIT);
+   trans_commit_stmt(m_thd);
+   trans_commit(m_thd);
    DBUG_RETURN(0);
 }
 
 int injector::transaction::rollback()
 {
    DBUG_ENTER("injector::transaction::rollback()");
-   ha_autocommit_or_rollback(m_thd, 1 /* error to get rollback */);
-   end_trans(m_thd, ROLLBACK);
+ //psergey  ha_autocommit_or_rollback(m_thd, 1 /* error to get rollback */);
+   trans_rollback_stmt(m_thd);
+ //psergey  end_trans(m_thd, ROLLBACK);
+   trans_rollback(m_thd);
    DBUG_RETURN(0);
 }
 
