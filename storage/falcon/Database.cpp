@@ -528,6 +528,13 @@ void Database::start()
 
 Database::~Database()
 {
+						
+	if (systemConnection)
+		{
+		systemConnection->rollback();
+		systemConnection->close();
+		}
+
 	for (Table *table; (table = tableList);)
 		{
 		tableList = table->next;
@@ -549,12 +556,7 @@ Database::~Database()
 			schemas [n] = schema->collision;
 			delete schema;
 			}
-					
-	if (systemConnection)
-		{
-		systemConnection->rollback();
-		systemConnection->close();
-		}
+
 
 	for (CompiledStatement *statement = compiledStatements; statement;)
 		{
