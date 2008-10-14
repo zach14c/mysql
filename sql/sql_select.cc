@@ -624,6 +624,7 @@ JOIN::prepare(Item ***rref_pointer_array,
             (oe1, oe2) IN (SELECT ie1, ie2, ie3 ...)
 
           TODO why do we have this duplicated in IN->EXISTS transformers?
+          psergey-todo: fix these: grep for duplicated_subselect_card_check
         */
         if (select_lex->item_list.elements != in_subs->left_expr->cols())
         {
@@ -677,6 +678,7 @@ JOIN::prepare(Item ***rref_pointer_array,
           thd->lex->sql_command == SQLCOM_SELECT &&                     // *
           subquery_types_allow_materialization(thd, in_subs, NULL))
       {
+        // psergey-todo: duplicated_subselect_card_check: where it's done?
         if (in_subs->is_top_level_item() &&                             // 4
             !in_subs->is_correlated &&                                  // 5
             in_subs->exec_method == Item_in_subselect::NOT_TRANSFORMED) // 6
@@ -877,6 +879,7 @@ bool subquery_types_allow_materialization(THD *thd,
 
   List_iterator<Item> it(in_subs->unit->first_select()->item_list);
   uint elements= in_subs->unit->first_select()->item_list.elements;
+  // psergey: duplicated_subselect_card_check
   if (in_subs->left_expr->cols() != elements)
     DBUG_RETURN(FALSE);
   

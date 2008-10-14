@@ -1005,6 +1005,7 @@ Item_in_subselect::single_value_transformer(JOIN *join,
     Check that the right part of the subselect contains no more than one
     column. E.g. in SELECT 1 IN (SELECT * ..) the right part is (SELECT * ...)
   */
+  // psergey: duplicated_subselect_card_check
   if (select_lex->item_list.elements > 1)
   {
     my_error(ER_OPERAND_COLUMNS, MYF(0), 1);
@@ -1362,6 +1363,7 @@ Item_in_subselect::row_value_transformer(JOIN *join)
 
   DBUG_ENTER("Item_in_subselect::row_value_transformer");
 
+  // psergey: duplicated_subselect_card_check
   if (select_lex->item_list.elements != left_expr->cols())
   {
     my_error(ER_OPERAND_COLUMNS, MYF(0), left_expr->cols());
