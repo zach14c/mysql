@@ -1887,6 +1887,10 @@ int StorageInterface::getMySqlError(int storageError)
 			DBUG_PRINT("info", ("StorageErrorTableSpaceDataFileExist"));
 			return (HA_ERR_TABLESPACE_DATAFILE_EXIST);
 
+		case StorageErrorIOErrorSerialLog:
+			DBUG_PRINT("info", ("StorageErrorIOErrorSerialLog"));
+			return (HA_ERR_LOGGING_IMPOSSIBLE);
+
 		default:
 			DBUG_PRINT("info", ("Unknown Falcon Error"));
 			return (200 - storageError);

@@ -550,6 +550,10 @@ int StorageTable::translateError(SQLException *exception, int defaultStorageErro
 				errorCode = StorageErrorDeviceFull;
 				break;
 
+			case IO_ERROR_SERIALLOG:
+				errorCode = StorageErrorIOErrorSerialLog;
+				break;
+
 			default:
 				errorCode = defaultStorageError;
 			}

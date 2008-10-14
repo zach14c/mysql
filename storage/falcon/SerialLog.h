@@ -154,6 +154,7 @@ public:
 	void			blockUpdates(void);
 	int				getBlockSize(void);
 	SerialLogWindow* setWindowInterest(void);
+	void            setWriteError(int sqlCode, const char* errorText);
 	
 	TableSpaceManager	*tableSpaceManager;
 	SerialLogFile		*file1;
