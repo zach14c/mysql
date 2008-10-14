@@ -80,7 +80,8 @@ class Stream: public fd_stream
  public:
 
   int open();
-  virtual void close();
+  virtual bool close();
+
   bool rewind();
 
   /// Check if stream is opened
@@ -121,8 +122,8 @@ class Output_stream:
 
   Output_stream(Logger&, ::String *, LEX_STRING, bool);
 
-  int  open();
-  void close();
+  int open();
+  bool close();
   bool rewind();
 
  private:
@@ -139,8 +140,8 @@ class Input_stream:
 
   Input_stream(Logger&, ::String *, LEX_STRING);
 
-  int  open();
-  void close();
+  int open();
+  bool close();
   bool rewind();
 
   int next_chunk();

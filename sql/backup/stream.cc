@@ -419,7 +419,8 @@ bool Stream::test_secure_file_priv_access(char *path) {
  */
 int Stream::open()
 {
-  close();
+  close();        // If close() should fail, we will still try to open
+
   if (!test_secure_file_priv_access(m_path.c_ptr()))
     return ER_OPTION_PREVENTS_STATEMENT;
 
@@ -431,13 +432,18 @@ int Stream::open()
   return 0;
 }
 
-void Stream::close()
+bool Stream::close()
 {
+  bool ret= TRUE;
   if (m_fd >= 0)
   {
-    my_close(m_fd, MYF(0));
+    if (my_close(m_fd, MYF(0)))
+    {
+      ret= FALSE;
+    }
     m_fd= -1;
   }
+  return ret;
 }
 
 bool Stream::rewind()
@@ -532,7 +538,7 @@ bool Output_stream::init()
 int Output_stream::open()
 {
   MY_STAT stat_info;
-  close();
+  close();        // If close() should fail, we will still try to open
 
   /* Allow to write to existing named pipe */
   if (my_stat(m_path.c_ptr(), &stat_info, MYF(0)) &&
@@ -585,17 +591,22 @@ int Output_stream::open()
   Close backup stream
 
   If @c destroy is TRUE, the stream object is deleted.
-*/
-void Output_stream::close()
-{
-  if (m_fd < 0)
-    return;
 
-  /*
-   Note: Even if bstream_close() fails we want to do the lower level clean-up.
-   This is why errors from bstream_close() are ignored.
-  */ 
-  bstream_close(this);
+  @retval TRUE  Operation Succeeded
+  @retval FALSE Operation Failed
+*/
+bool Output_stream::close()
+{
+  bool ret= TRUE;
+  if (m_fd < 0)
+    return TRUE;
+
+  if (bstream_close(this) == BSTREAM_ERROR)
+  {
+    // Note that close failed, and continue with lower level clean-up.
+    ret= FALSE;
+  }
+
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
   {
@@ -624,7 +635,8 @@ void Output_stream::close()
     my_free(zbuf, MYF(0));
   }
 #endif
-  Stream::close();
+  ret &= Stream::close();
+  return ret;
 }
 
 /**
@@ -723,7 +735,7 @@ bool Input_stream::init()
 */
 int Input_stream::open()
 {
-  close();
+  close();        // If close() should fail, we will still try to open
 
   int ret= Stream::open();
 
@@ -776,17 +788,22 @@ int Input_stream::open()
   Close backup stream
 
   If @c destroy is TRUE, the stream object is deleted.
-*/
-void Input_stream::close()
-{
-  if (m_fd < 0)
-    return;
 
-  /*
-   Note: Even if bstream_close() fails we want to do the lower level clean-up.
-   This is why errors from bstream_close() are ignored.
-  */ 
-  bstream_close(this);
+  @retval TRUE  Operation Succeeded
+  @retval FALSE Operation Failed
+*/
+bool Input_stream::close()
+{
+  bool ret= TRUE;
+  if (m_fd < 0)
+    return TRUE;
+
+  if (bstream_close(this) == BSTREAM_ERROR)
+  {
+    // Note that close failed, and continue with lower level clean-up.
+    ret= FALSE;
+  }
+
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
   {
@@ -796,7 +813,8 @@ void Input_stream::close()
     my_free(zbuf, (MYF(0)));
   }
 #endif
-  Stream::close();
+  ret &= Stream::close();
+  return ret;
 }
 
 /**

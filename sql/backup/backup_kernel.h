@@ -76,6 +76,7 @@ class Backup_restore_ctx: public backup::Logger
   int do_backup();
   int do_restore();
   int fatal_error(int, ...);
+  int log_error(int, ...);
 
   int close();
 
@@ -127,7 +128,7 @@ class Backup_restore_ctx: public backup::Logger
   bool m_tables_locked; 
 
   int lock_tables_for_restore();
-  int unlock_tables();
+  void unlock_tables();
   
   int report_stream_open_failure(int open_error, const LEX_STRING *location);
 

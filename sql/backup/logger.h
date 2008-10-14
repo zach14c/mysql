@@ -70,6 +70,7 @@ class Logger
    void stop_save_errors();
    void clear_saved_errors();
    MYSQL_ERROR *last_saved_error();
+   bool push_errors(bool);
 
  protected:
 
@@ -84,6 +85,8 @@ class Logger
 
   List<MYSQL_ERROR> errors;  ///< Used to store saved errors.
   bool m_save_errors;        ///< Flag telling if errors should be saved.
+  bool m_push_errors;        ///< Should errors be pushed on warning stack?
+
   Backup_log *backup_log;    ///< Backup log interface class.
 };
 
