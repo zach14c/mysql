@@ -564,13 +564,14 @@ JOIN::prepare(Item ***rref_pointer_array,
     TODO: for PS, make the whole block execute only on the first execution
   */
   Item_subselect *subselect;
-  if (!thd->lex->view_prepare_mode && 
-      (subselect= select_lex->master_unit()->item) && 
-      subselect->substype() == Item_subselect::IN_SUBS)
+  if (!thd->lex->view_prepare_mode &&
+      (subselect= select_lex->master_unit()->item))
   {
-    Item_in_subselect *in_subs= (Item_in_subselect*)subselect;
+    Item_in_subselect *in_subs= NULL;
     bool do_semijoin= !test(thd->variables.optimizer_switch &
                             OPTIMIZER_SWITCH_NO_SEMIJOIN);
+    if (subselect->substype() == Item_subselect::IN_SUBS)
+      in_subs= (Item_in_subselect*)subselect;
     DBUG_PRINT("info", ("Checking if subq can be converted to semi-join"));
     /*
       Check if we're in subquery that is a candidate for flattening into a
