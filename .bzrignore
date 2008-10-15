@@ -1912,5 +1912,10 @@ libmysqld/event_parse_data.cc
 storage/ndb/src/common/util/ndb_show_compat
 libmysqld/ddl_blocker.cc
 libmysqld/mdl.cc
+mysql-test/bug36522-64.tar
+mysql-test/bug36522.tar
+mysql-test/t.log
+mysql-test/tps.log
+libmysqld/event_parse_data.cc
 client/transaction.h
 libmysqld/transaction.cc

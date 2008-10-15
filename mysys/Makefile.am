@@ -75,7 +75,7 @@ libmysyslt_la_SOURCES =	my_init.c my_getwd.c mf_getdate.c my_mmap.c \
 			thr_alarm.c thr_lock.c my_pthread.c my_thr_init.c \
 			thr_mutex.c thr_rwlock.c \
 			mf_soundex.c \
-			my_conio.c my_wincond.c my_winthread.c
+			my_conio.c my_wincond.c my_winthread.c my_winerr.c my_winfile.c
 EXTRA_DIST =  		CMakeLists.txt 
 
 DEFS =			-DDEFAULT_BASEDIR=\"$(prefix)\" \

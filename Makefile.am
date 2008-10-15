@@ -272,10 +272,10 @@ TEST_PREPROCESSOR_HEADER = $(top_srcdir)/include/mysql/plugin.h \
 #    to prevent seeing these messages.
 # 2) sed the output to 
 #    2.1) remove blank lines and lines that begin with "# "
-#    2.2) When gcc -E is run on the Mac OS  and solaris sparc platforms it 
+#    2.2) When gcc -E is run on the Mac OS  and solaris sparc platforms it
 #         introduces a line of output that shows up as a difference between
 #         the .pp and .out files. Remove these OS specific preprocessor text
-#         inserted by the preprocessor. 
+#         inserted by the preprocessor.
 # 3) diff the generated file and the canons (.pp files already in
 #    the repository).
 # 4) delete the .out file that is generated.
