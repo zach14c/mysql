@@ -49,8 +49,9 @@ int Logger::write_message(log_level::value level, int error_code,
        errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
                                          MYSQL_ERROR::WARN_LEVEL_ERROR, msg));
      sql_print_error(out);
-     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                         error_code, msg);
+     if (m_push_errors)
+       push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+			   error_code, msg);
      DBUG_PRINT("backup_log",("[ERROR] %s", out));
      
      if (m_state == READY || m_state == RUNNING)
@@ -65,8 +66,9 @@ int Logger::write_message(log_level::value level, int error_code,
 
    case log_level::WARNING:
      sql_print_warning(out);
-     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                         error_code, msg);
+     if (m_push_errors)
+       push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                           error_code, msg);
      DBUG_PRINT("backup_log",("[Warning] %s", out));
      return 0;
 
@@ -130,5 +132,21 @@ void Logger::report_stats_post(const Image_info &info)
   DBUG_ASSERT(m_state == RUNNING);
   backup_log->size(info.data_size);
 }
+
+
+/*
+ Indicate if reported errors should be pushed on the warning stack.
+
+ If @c flag is TRUE, errors will be pushed on the warning stack, otherwise
+ they will not.
+
+ @returns Current setting.
+*/
+bool Logger::push_errors(bool flag)
+{
+  bool old= m_push_errors;
+  m_push_errors= flag;
+  return old;
+} 
 
 } // backup namespace
