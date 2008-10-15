@@ -142,7 +142,7 @@ ALTER TABLE t1 ADD PRIMARY KEY (a);
 ALTER ONLINE TABLE t2 ADD UNIQUE INDEX ix_unique_c (c);
 EXPLAIN SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	range	ix_unique_c	ix_unique_c	5	NULL	1	Using where; Using filesort
+1	SIMPLE	t2	range	ix_unique_c	ix_unique_c	5	NULL	1	Using where; Using MRR; Using filesort
 SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
 a	b	c	d
 20	40	21	SomeString 20 for testing
@@ -179,7 +179,7 @@ DROP ONLINE INDEX ix_asc_b ON t3;
 ALTER ONLINE TABLE t1 ADD INDEX ix_keyblock_b (b) KEY_BLOCK_SIZE = 0;
 EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	range	ix_keyblock_b	ix_keyblock_b	258	NULL	2	Using where; Using filesort
+1	SIMPLE	t1	range	ix_keyblock_b	ix_keyblock_b	258	NULL	2	Using where; Using MRR; Using filesort
 SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
 a	b	c	d
 1	TestRow1	2	Char1
@@ -202,7 +202,7 @@ ALTER ONLINE TABLE t1 DROP INDEX ix_keyblock_b;
 ALTER ONLINE TABLE t1 ADD INDEX ix_b (b) COMMENT 'Test comment';
 EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	range	ix_b	ix_b	258	NULL	2	Using where; Using filesort
+1	SIMPLE	t1	range	ix_b	ix_b	258	NULL	2	Using where; Using MRR; Using filesort
 SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
 a	b	c	d
 1	TestRow1	2	Char1
@@ -231,7 +231,7 @@ t1	1	index_multicol	2	c	NULL	5	NULL	NULL	YES	BTREE
 t1	1	index_multicol	3	d	NULL	10	NULL	NULL	YES	BTREE		
 EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow3%' AND c = 6 ORDER BY b, c, d;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	range	index_multicol	index_multicol	263	NULL	2	Using where; Using filesort
+1	SIMPLE	t1	range	index_multicol	index_multicol	263	NULL	2	Using where; Using MRR; Using filesort
 SELECT * FROM t1 WHERE b LIKE 'TestRow3%' AND c = 6 ORDER BY b, c, d;
 a	b	c	d
 3	TestRow3	6	Char3
@@ -305,7 +305,7 @@ ADD INDEX ix_d (d);
 ALTER ONLINE TABLE t3 ADD INDEX ix_b (b);
 EXPLAIN SELECT * FROM t1 WHERE a = 3 OR (c > 10 AND a < 15) ORDER BY a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	range	PRIMARY,ix_a,ix_c	PRIMARY	4	NULL	20	Using where; Using filesort
+1	SIMPLE	t1	range	PRIMARY,ix_a,ix_c	PRIMARY	4	NULL	20	Using where; Using MRR; Using filesort
 SELECT * FROM t1 WHERE a = 3 OR (c > 10 AND a < 15) ORDER BY a;
 a	b	c	d
 3	TestRow3	6	Char3
