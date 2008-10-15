@@ -73,10 +73,10 @@ libmysyslt_la_SOURCES =	my_init.c my_getwd.c mf_getdate.c my_mmap.c \
 			my_windac.c my_access.c base64.c \
 			wqueue.c \
 			thr_alarm.c thr_lock.c my_pthread.c my_thr_init.c \
-			thr_mutex.c thr_rwlock.c \
+			thr_mutex.c thr_rwlock.c
+EXTRA_DIST =  		CMakeLists.txt \
 			mf_soundex.c \
 			my_conio.c my_wincond.c my_winthread.c my_winerr.c my_winfile.c
-EXTRA_DIST =  		CMakeLists.txt 
 
 DEFS =			-DDEFAULT_BASEDIR=\"$(prefix)\" \
 			-DDATADIR="\"$(MYSQLDATAdir)\"" \
@@ -86,6 +86,7 @@ DEFS =			-DDEFAULT_BASEDIR=\"$(prefix)\" \
 			-DDEFAULT_GROUP_SUFFIX_ENV=MYSQL_GROUP_SUFFIX \
 			-DDEFAULT_SYSCONFDIR="\"$(sysconfdir)\"" \
                         @DEFS@
+
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%
