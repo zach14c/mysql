@@ -107,7 +107,7 @@ class Backup_restore_ctx: public backup::Logger
    */ 
   int m_error;
   
-  const char *m_path;   ///< Path to where the backup image file is located.
+  ::String  m_path;   ///< Path to where the backup image file is located.
 
   /** If true, the backup image file is deleted at clean-up time. */
   bool m_remove_loc;
@@ -118,7 +118,9 @@ class Backup_restore_ctx: public backup::Logger
   /** Memory allocator for backup stream library. */
   backup::Mem_allocator *mem_alloc;
 
-  int prepare(LEX_STRING location);
+  int prepare_path(::String *backupdir, 
+                   LEX_STRING orig_loc);
+  int prepare(::String *backupdir, LEX_STRING location);
   void disable_fkey_constraints();
   int  restore_triggers_and_events();
   

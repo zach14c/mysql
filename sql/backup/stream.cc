@@ -190,91 +190,15 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 }
 
 
-Stream::Stream(Logger &log, ::String *backupdir, 
-               LEX_STRING orig_loc, int flags)
-  :m_flags(flags), m_block_size(0), m_log(log)
+Stream::Stream(Logger &log, ::String *path, int flags)
+  :m_path(path), m_flags(flags), m_block_size(0), m_log(log)
 {
-  prepare_path(backupdir, orig_loc);
   bzero(&stream, sizeof(stream));
   bzero(&buf, sizeof(buf));
   bzero(&mem, sizeof(mem));
   bzero(&data_buf, sizeof(data_buf));
   block_size= 0;
   state= CLOSED;
-}
-
-/**
-  Prepare path for access.
-
-  This method takes the backupdir and the file name specified on the backup
-  command (orig_loc) and forms a combined path + file name as follows:
-
-    1. If orig_loc has a relative path, make it relative to backupdir
-    2. If orig_loc has a hard path, use it.
-    3. If orig_loc has no path, append to backupdir
-
-  @param[IN]  backupdir  The backupdir system variable value.
-  @param[IN]  orig_loc   The path + file name specified in the backup command.
-
-  @returns 0
-*/
-int Stream::prepare_path(::String *backupdir, 
-                         LEX_STRING orig_loc)
-{
-  char fix_path[FN_REFLEN]; 
-  char full_path[FN_REFLEN]; 
-
-  /*
-    Prepare the path using the backupdir iff no relative path
-    or no hard path included.
-
-    Relative paths are formed from the backupdir system variable.
-
-    Case 1: Backup image file name has relative path. 
-            Make relative to backupdir.
-
-    Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
-            If backupdir = '/dev/daily' then the
-            calculated path becomes
-            '/dev/monthly/dec.bak'
-
-    Case 2: Backup image file name has no path or has a subpath. 
-
-    Example BACKUP DATABASE ... TO 'week2.bak'
-            If backupdir = '/dev/weekly/' then the
-            calculated path becomes
-            '/dev/weekly/week2.bak'
-    Example BACKUP DATABASE ... TO 'jan/day1.bak'
-            If backupdir = '/dev/monthly/' then the
-            calculated path becomes
-            '/dev/monthly/jan/day1.bak'
-
-    Case 3: Backup image file name has hard path. 
-
-    Example BACKUP DATATBASE ... TO '/dev/dec.bak'
-            If backupdir = '/dev/daily/backup' then the
-            calculated path becomes
-            '/dev/dec.bak'
-  */
-
-  /*
-    First, we construct the complete path from backupdir.
-  */
-  fn_format(fix_path, backupdir->ptr(), mysql_real_data_home, "", 
-            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
-
-  /*
-    Next, we contruct the full path to the backup file.
-  */
-  fn_format(full_path, orig_loc.str, fix_path, "", 
-            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
-
-  /*
-    Copy result to member variable for Stream class.
-  */
-  m_path.copy(full_path, strlen(full_path), system_charset_info);
- 
-  return 0;
 }
 
 /**
@@ -311,10 +235,10 @@ int Stream::open()
 {
   close();        // If close() should fail, we will still try to open
 
-  if (!test_secure_file_priv_access(m_path.c_ptr()))
+  if (!test_secure_file_priv_access(m_path->c_ptr()))
     return ER_OPTION_PREVENTS_STATEMENT;
 
-  m_fd= my_open(m_path.c_ptr(), m_flags, MYF(0));
+  m_fd= my_open(m_path->c_ptr(), m_flags, MYF(0));
 
   if (!(m_fd >= 0))
     return -1;
@@ -347,10 +271,9 @@ bool Stream::rewind()
 }
 
 
-Output_stream::Output_stream(Logger &log, ::String *backupdir,
-                             LEX_STRING orig_loc,
+Output_stream::Output_stream(Logger &log, ::String *path,
                              bool with_compression)
-  :Stream(log, backupdir, orig_loc, 0)
+  :Stream(log, path, 0)
 {
   m_with_compression= with_compression;
   stream.write= stream_write;
@@ -431,7 +354,7 @@ int Output_stream::open()
   close();        // If close() should fail, we will still try to open
 
   /* Allow to write to existing named pipe */
-  if (my_stat(m_path.c_ptr(), &stat_info, MYF(0)) &&
+  if (my_stat(m_path->c_ptr(), &stat_info, MYF(0)) &&
       MY_S_ISFIFO(stat_info.st_mode))
     m_flags= O_WRONLY;
   else
@@ -550,9 +473,8 @@ bool Output_stream::rewind()
 }
 
 
-Input_stream::Input_stream(Logger &log, ::String *backupdir, 
-                           LEX_STRING orig_loc)
-  :Stream(log, backupdir, orig_loc, O_RDONLY)
+Input_stream::Input_stream(Logger &log, ::String *path)
+  :Stream(log, path, O_RDONLY)
 {
   m_with_compression= false;
   stream.read= stream_read;

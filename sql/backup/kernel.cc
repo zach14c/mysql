@@ -388,6 +388,81 @@ Backup_restore_ctx::~Backup_restore_ctx()
 }
 
 /**
+  Prepare path for access.
+
+  This method takes the backupdir and the file name specified on the backup
+  command (orig_loc) and forms a combined path + file name as follows:
+
+    1. If orig_loc has a relative path, make it relative to backupdir
+    2. If orig_loc has a hard path, use it.
+    3. If orig_loc has no path, append to backupdir
+
+  @param[IN]  backupdir  The backupdir system variable value.
+  @param[IN]  orig_loc   The path + file name specified in the backup command.
+
+  @returns 0
+*/
+int Backup_restore_ctx::prepare_path(::String *backupdir, 
+                                     LEX_STRING orig_loc)
+{
+  char fix_path[FN_REFLEN]; 
+  char full_path[FN_REFLEN]; 
+
+  /*
+    Prepare the path using the backupdir iff no relative path
+    or no hard path included.
+
+    Relative paths are formed from the backupdir system variable.
+
+    Case 1: Backup image file name has relative path. 
+            Make relative to backupdir.
+
+    Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
+            If backupdir = '/dev/daily' then the
+            calculated path becomes
+            '/dev/monthly/dec.bak'
+
+    Case 2: Backup image file name has no path or has a subpath. 
+
+    Example BACKUP DATABASE ... TO 'week2.bak'
+            If backupdir = '/dev/weekly/' then the
+            calculated path becomes
+            '/dev/weekly/week2.bak'
+    Example BACKUP DATABASE ... TO 'jan/day1.bak'
+            If backupdir = '/dev/monthly/' then the
+            calculated path becomes
+            '/dev/monthly/jan/day1.bak'
+
+    Case 3: Backup image file name has hard path. 
+
+    Example BACKUP DATATBASE ... TO '/dev/dec.bak'
+            If backupdir = '/dev/daily/backup' then the
+            calculated path becomes
+            '/dev/dec.bak'
+  */
+
+  /*
+    First, we construct the complete path from backupdir.
+  */
+  fn_format(fix_path, backupdir->ptr(), mysql_real_data_home, "", 
+            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
+
+  /*
+    Next, we contruct the full path to the backup file.
+  */
+  fn_format(full_path, orig_loc.str, fix_path, "", 
+            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
+
+  /*
+    Copy result to member variable for Stream class.
+  */
+  m_path.copy(full_path, strlen(full_path), system_charset_info);
+  report_backup_file(m_path.c_ptr());
+ 
+  return 0;
+}
+
+/**
   Do preparations common to backup and restore operations.
   
   It is checked if another operation is in progress and if yes then
@@ -398,7 +473,7 @@ Backup_restore_ctx::~Backup_restore_ctx()
 
   @returns 0 on success, error code otherwise.
  */ 
-int Backup_restore_ctx::prepare(LEX_STRING location)
+int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
 {
   if (m_error)
     return m_error;
@@ -462,7 +537,12 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
     return m_error;
   }
 
-  m_path= location.str;
+  /*
+    Computer full path to backup file.
+  */
+  prepare_path(backupdir, location);
+
+  //m_path= location.str;
 
   // create new instance of memory allocator for backup stream library
 
@@ -517,7 +597,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   if (m_error)
     return NULL;
   
-  if (Logger::init(BACKUP, orig_loc, query))
+  if (Logger::init(BACKUP, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -530,15 +610,14 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
     Do preparations common to backup and restore operations. After call
     to prepare() all meta-data changes are blocked.
    */ 
-  if (prepare(orig_loc))
+  if (prepare(backupdir, orig_loc))
     return NULL;
 
   /*
     Open output stream.
    */
   Output_stream *s= new Output_stream(*this, 
-                                      backupdir, 
-                                      orig_loc,
+                                      &m_path,
                                       with_compression);
   m_stream= s;
   
@@ -614,7 +693,7 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
   if (m_error)
     return NULL;
   
-  if (Logger::init(RESTORE, orig_loc, query))
+  if (Logger::init(RESTORE, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -627,14 +706,14 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
     Do preparations common to backup and restore operations. After this call
     changes of meta-data are blocked.
    */ 
-  if (prepare(orig_loc))
+  if (prepare(backupdir, orig_loc))
     return NULL;
   
   /*
     Open input stream.
    */
 
-  Input_stream *s= new Input_stream(*this, backupdir, orig_loc);
+  Input_stream *s= new Input_stream(*this, &m_path);
   m_stream= s;
   
   if (!s)
@@ -867,7 +946,7 @@ int Backup_restore_ctx::close()
    */
   if (m_remove_loc && m_state == PREPARED_FOR_BACKUP)
   {
-    int res= my_delete(m_path, MYF(0));
+    int res= my_delete(m_path.c_ptr(), MYF(0));
 
     /*
       Ignore ENOENT error since it is ok if the file doesn't exist.

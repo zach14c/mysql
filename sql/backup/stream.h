@@ -93,9 +93,9 @@ class Stream: public fd_stream
 
  protected:
 
-  Stream(Logger&, ::String *, LEX_STRING, int);
+  Stream(Logger&, ::String *, int);
 
-  String  m_path;
+  ::String  *m_path;
   int     m_flags;  ///< flags used when opening the file
   size_t  m_block_size;
   Logger  m_log;
@@ -105,8 +105,6 @@ class Stream: public fd_stream
 
 private:
 
-  int prepare_path(::String *backupdir, 
-                   LEX_STRING orig_loc);
   bool test_secure_file_priv_access(char *path);
 
 };
@@ -117,7 +115,7 @@ class Output_stream:
 {
  public:
 
-  Output_stream(Logger&, ::String *, LEX_STRING, bool);
+  Output_stream(Logger&, ::String *, bool);
 
   int open();
   bool close();
@@ -135,7 +133,7 @@ class Input_stream:
 {
  public:
 
-  Input_stream(Logger&, ::String *, LEX_STRING);
+   Input_stream(Logger&, ::String *);
 
   int open();
   bool close();
