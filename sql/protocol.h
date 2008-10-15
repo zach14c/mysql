@@ -20,6 +20,7 @@
 
 class i_string;
 class THD;
+class Item_param;
 typedef struct st_mysql_field MYSQL_FIELD;
 typedef struct st_mysql_rows MYSQL_ROWS;
 
@@ -53,7 +54,8 @@ public:
   void init(THD* thd_arg);
 
   enum { SEND_NUM_ROWS= 1, SEND_DEFAULTS= 2, SEND_EOF= 4 };
-  virtual bool send_fields(List<Item> *list, uint flags);
+  virtual bool send_result_set_metadata(List<Item> *list, uint flags);
+  bool send_result_set_row(List<Item> *row_items);
 
   bool store(I_List<i_string> *str_list);
   bool store(const char *from, CHARSET_INFO *cs);
@@ -71,9 +73,9 @@ public:
   inline bool store(String *str)
   { return store((char*) str->ptr(), str->length(), str->charset()); }
 
-  virtual bool prepare_for_send(List<Item> *item_list) 
+  virtual bool prepare_for_send(uint num_columns)
   {
-    field_count=item_list->elements;
+    field_count= num_columns;
     return 0;
   }
   virtual bool flush();
@@ -95,6 +97,8 @@ public:
   virtual bool store_date(MYSQL_TIME *time)=0;
   virtual bool store_time(MYSQL_TIME *time)=0;
   virtual bool store(Field *field)=0;
+
+  virtual bool send_out_parameters(List<Item_param> *sp_params)=0;
 #ifdef EMBEDDED_LIBRARY
   int begin_dataset();
   virtual void remove_last_row() {}
@@ -136,6 +140,8 @@ public:
   virtual bool store(float nr, uint32 decimals, String *buffer);
   virtual bool store(double from, uint32 decimals, String *buffer);
   virtual bool store(Field *field);
+
+  virtual bool send_out_parameters(List<Item_param> *sp_params);
 #ifdef EMBEDDED_LIBRARY
   void remove_last_row();
 #endif
@@ -150,7 +156,7 @@ private:
 public:
   Protocol_binary() {}
   Protocol_binary(THD *thd_arg) :Protocol(thd_arg) {}
-  virtual bool prepare_for_send(List<Item> *item_list);
+  virtual bool prepare_for_send(uint num_columns);
   virtual void prepare_for_resend();
 #ifdef EMBEDDED_LIBRARY
   virtual bool write();
@@ -171,6 +177,9 @@ public:
   virtual bool store(float nr, uint32 decimals, String *buffer);
   virtual bool store(double from, uint32 decimals, String *buffer);
   virtual bool store(Field *field);
+
+  virtual bool send_out_parameters(List<Item_param> *sp_params);
+
   virtual enum enum_protocol_type type() { return PROTOCOL_BINARY; };
 };
 

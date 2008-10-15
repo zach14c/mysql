@@ -42,6 +42,7 @@ ADD_EXECUTABLE(my_print_defaults my_print_defaults.c)
 TARGET_LINK_LIBRARIES(my_print_defaults strings mysys debug dbug taocrypt ws2_32)
 
 ADD_EXECUTABLE(perror perror.c)
+ADD_DEPENDENCIES(perror GenError)
 TARGET_LINK_LIBRARIES(perror strings mysys debug dbug ws2_32)
 
 ADD_EXECUTABLE(resolveip resolveip.c)

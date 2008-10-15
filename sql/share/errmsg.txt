@@ -6251,7 +6251,7 @@ ER_BACKUP_THREAD_INIT
         eng "Backup driver's table locking thread can not be initialized."
 
 ER_BACKUP_PROGRESS_TABLES
-        eng "Can't open the online backup progress tables. Check 'mysql.online_backup' and 'mysql.online_backup_progress'."
+        eng "Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair."
 
 ER_TABLESPACE_EXIST
   eng "Tablespace '%-.192s' already exists"
@@ -6275,7 +6275,7 @@ ER_BACKUP_CANT_RESTORE_DB
 ER_BACKUP_CANT_RESTORE_TABLE
 	eng "Could not restore table %-.64s"
 ER_BACKUP_CANT_RESTORE_VIEW
-	eng "Could not restore view %-.64s"
+	eng "Could not restore view %-.64s. Please check the view definition for possible missing dependencies."
 ER_BACKUP_CANT_RESTORE_SROUT
 	eng "Could not restore stored routine %-.64s"
 ER_BACKUP_CANT_RESTORE_EVENT
@@ -6372,3 +6372,23 @@ ER_BACKUP_OBTAIN_NAME_LOCK_FAILED
   eng "Restore failed to obtain the name locks on the tables."
 ER_BACKUP_RELEASE_NAME_LOCK_FAILED
   eng "Restore failed to release the name locks on the tables."
+ER_BACKUP_BACKUPDIR
+  eng "The path specified for the system variable backupdir cannot be accessed or is invalid. ref: %-.64s"
+ER_DDL_TIMEOUT
+   eng "The backup wait timeout has expired for query '%-64s'."
+ER_BACKUP_LIST_DB_PRIV
+        eng "Can't enumerate grants in database '%-.64s'."
+ER_BACKUP_CATALOG_ADD_PRIV
+	eng "Failed to add grant '%-.64s' to the catalog"
+ER_BACKUP_GET_META_PRIV
+        eng "Failed to obtain meta-data for grant '%-.64s'."
+ER_BACKUP_CANT_RESTORE_PRIV
+        eng "Could not execute grant '%-.64s'."
+ER_BACKUP_GRANT_SKIPPED
+        eng "The grant '%-.64s' was skipped because the user does not exist."
+ER_BACKUP_GRANT_WRONG_DB
+        eng "The grant '%-.64s' failed. Database not included in the backup image."
+ER_BACKUP_LOGPATHS
+  eng "The log names for backup_history and backup_progress must be unique."
+ER_BACKUP_LOGPATH_INVALID
+  eng "The path specified for the %-.64s is invalid. ref: %-.64s"

@@ -1775,7 +1775,7 @@ bool Field::optimize_range(uint idx, uint part)
 }
 
 
-Field *Field::new_field(MEM_ROOT *root, struct st_table *new_table,
+Field *Field::new_field(MEM_ROOT *root, TABLE *new_table,
                         bool keep_type __attribute__((unused)))
 {
   Field *tmp;
@@ -1796,7 +1796,7 @@ Field *Field::new_field(MEM_ROOT *root, struct st_table *new_table,
 }
 
 
-Field *Field::new_key_field(MEM_ROOT *root, struct st_table *new_table,
+Field *Field::new_key_field(MEM_ROOT *root, TABLE *new_table,
                             uchar *new_ptr, uchar *new_null_ptr,
                             uint new_null_bit)
 {
@@ -1813,7 +1813,7 @@ Field *Field::new_key_field(MEM_ROOT *root, struct st_table *new_table,
 
 /* This is used to generate a field in TABLE from TABLE_SHARE */
 
-Field *Field::clone(MEM_ROOT *root, struct st_table *new_table)
+Field *Field::clone(MEM_ROOT *root, TABLE *new_table)
 {
   Field *tmp;
   if ((tmp= (Field*) memdup_root(root,(char*) this,size_of())))
@@ -6429,7 +6429,8 @@ String *Field_string::val_str(String *val_buffer __attribute__((unused)),
   uint length;
   if (table->in_use->variables.sql_mode &
       MODE_PAD_CHAR_TO_FULL_LENGTH)
-    length= my_charpos(field_charset, ptr, ptr + field_length, field_length);
+    length= my_charpos(field_charset, ptr, ptr + field_length,
+                       field_length / field_charset->mbmaxlen);
   else
     length= field_charset->cset->lengthsp(field_charset, (const char*) ptr,
                                           field_length);
@@ -6778,7 +6779,7 @@ uint Field_string::get_key_image(uchar *buff, uint length, imagetype type_arg)
 }
 
 
-Field *Field_string::new_field(MEM_ROOT *root, struct st_table *new_table,
+Field *Field_string::new_field(MEM_ROOT *root, TABLE *new_table,
                                bool keep_type)
 {
   Field *field;
@@ -7334,7 +7335,7 @@ int Field_varstring::cmp_binary(const uchar *a_ptr, const uchar *b_ptr,
 }
 
 
-Field *Field_varstring::new_field(MEM_ROOT *root, struct st_table *new_table,
+Field *Field_varstring::new_field(MEM_ROOT *root, TABLE *new_table,
                                   bool keep_type)
 {
   Field_varstring *res= (Field_varstring*) Field::new_field(root, new_table,
@@ -7346,7 +7347,7 @@ Field *Field_varstring::new_field(MEM_ROOT *root, struct st_table *new_table,
 
 
 Field *Field_varstring::new_key_field(MEM_ROOT *root,
-                                      struct st_table *new_table,
+                                      TABLE *new_table,
                                       uchar *new_ptr, uchar *new_null_ptr,
                                       uint new_null_bit)
 {
@@ -7532,8 +7533,18 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
     return 0;
   }
 
-  if (from == value.ptr())
+  /*
+    If the 'from' address is in the range of the temporary 'value'-
+    object we need to copy the content to a different location or it will be
+    invalidated when the 'value'-object is reallocated to make room for
+    the new character set.
+  */
+  if (from >= value.ptr() && from <= value.ptr()+value.length())
   {
+    /*
+      If content of the 'from'-address is cached in the 'value'-object
+      it is possible that the content needs a character conversion.
+    */
     uint32 dummy_offset;
     if (!String::needs_conversion(length, cs, field_charset, &dummy_offset))
     {
@@ -8468,7 +8479,7 @@ void Field_enum::sql_type(String &res) const
 }
 
 
-Field *Field_enum::new_field(MEM_ROOT *root, struct st_table *new_table,
+Field *Field_enum::new_field(MEM_ROOT *root, TABLE *new_table,
                              bool keep_type)
 {
   Field_enum *res= (Field_enum*) Field::new_field(root, new_table, keep_type);
@@ -8751,7 +8762,7 @@ Field_bit::do_last_null_byte() const
 
 
 Field *Field_bit::new_key_field(MEM_ROOT *root,
-                                struct st_table *new_table,
+                                TABLE *new_table,
                                 uchar *new_ptr, uchar *new_null_ptr,
                                 uint new_null_bit)
 {

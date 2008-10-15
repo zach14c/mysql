@@ -3405,7 +3405,16 @@ sub run_testcase ($) {
   {
     mtr_timer_stop_all($glob_timers);
     mtr_report("\nServers started, exiting");
-    exit(0);
+    if ($glob_win32_perl)
+    {
+      #ActiveState perl hangs  when using normal exit, use  POSIX::_exit instead
+      use POSIX qw[ _exit ]; 
+      POSIX::_exit(0);
+    }
+    else
+    {
+      exit(0);
+    }
   }
 
   {
@@ -3670,15 +3679,17 @@ sub mysqld_arguments ($$$$) {
   mtr_add_arg($args, "%s--basedir=%s", $prefix, $path_my_basedir);
   mtr_add_arg($args, "%s--character-sets-dir=%s", $prefix, $path_charsetsdir);
 
-  if ( $mysql_version_id >= 50036)
+  if (!$opt_extern)
   {
-    # By default, prevent the started mysqld to access files outside of vardir
-    mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
-  }
+    if ( $mysql_version_id >= 50036)
+    {
+      # Prevent the started mysqld to access files outside of vardir
+      mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
+    }
 
-  if ( $mysql_version_id >= 50000 )
-  {
-    mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    if ( $mysql_version_id >= 50000 ) {
+      mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    }
   }
 
   mtr_add_arg($args, "%s--default-character-set=latin1", $prefix);
@@ -3730,7 +3741,7 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--disable-sync-frm", $prefix);  # Faster test
 
-  if ( $mysql_version_id >= 50106 )
+  if (!$opt_extern and $mysql_version_id >= 50106 )
   {
     # Turn on logging to bothe tables and file
     mtr_add_arg($args, "%s--log-output=table,file", $prefix);
@@ -4160,19 +4171,10 @@ sub run_testcase_need_master_restart($)
   elsif (! mtr_same_opts($master->[0]->{'start_opts'},
                          $tinfo->{'master_opt'}) )
   {
-    # Chech that diff is binlog format only
-    my $diff_opts= mtr_diff_opts($master->[0]->{'start_opts'},$tinfo->{'master_opt'});
-    if (scalar(@$diff_opts) eq 2) 
-    {
-      $do_restart= 1 unless ($diff_opts->[0] =~/^--binlog-format=/ and $diff_opts->[1] =~/^--binlog-format=/);
-    }
-    else
-    {
-      $do_restart= 1;
-      mtr_verbose("Restart master: running with different options '" .
-	         join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
+    $do_restart= 1;
+    mtr_verbose("Restart master: running with different options '" .
+		join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
 	  	join(" ", @{$master->[0]->{'start_opts'}}) . "'" );
-    }
   }
   elsif( ! $master->[0]->{'pid'} )
   {

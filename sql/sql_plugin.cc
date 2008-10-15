@@ -20,14 +20,6 @@
 #define REPORT_TO_LOG  1
 #define REPORT_TO_USER 2
 
-#ifdef DBUG_OFF
-#define plugin_ref_to_int(A) A
-#define plugin_int_to_ref(A) A
-#else
-#define plugin_ref_to_int(A) (A ? A[0] : NULL)
-#define plugin_int_to_ref(A) &(A)
-#endif
-
 extern struct st_mysql_plugin *mysqld_builtins[];
 
 char *opt_plugin_load= NULL;
@@ -44,7 +36,8 @@ const LEX_STRING plugin_type_names[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   { C_STRING_WITH_LEN("FTPARSER") },
   { C_STRING_WITH_LEN("DAEMON") },
   { C_STRING_WITH_LEN("INFORMATION SCHEMA") },
-  { C_STRING_WITH_LEN("AUDIT") }
+  { C_STRING_WITH_LEN("AUDIT") },
+  { C_STRING_WITH_LEN("REPLICATION") },
 };
 
 extern int initialize_schema_table(st_plugin_int *plugin);
@@ -89,7 +82,8 @@ static int min_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_FTPARSER_INTERFACE_VERSION,
   MYSQL_DAEMON_INTERFACE_VERSION,
   MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION,
-  MYSQL_AUDIT_INTERFACE_VERSION
+  MYSQL_AUDIT_INTERFACE_VERSION,
+  MYSQL_REPLICATION_INTERFACE_VERSION
 };
 static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
 {
@@ -98,7 +92,8 @@ static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_FTPARSER_INTERFACE_VERSION,
   MYSQL_DAEMON_INTERFACE_VERSION,
   MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION,
-  MYSQL_AUDIT_INTERFACE_VERSION
+  MYSQL_AUDIT_INTERFACE_VERSION,
+  MYSQL_REPLICATION_INTERFACE_VERSION
 };
 
 static bool initialized= 0;
@@ -1669,11 +1664,18 @@ bool mysql_install_plugin(THD *thd, const LEX_STRING *name, const LEX_STRING *dl
     goto deinit;
   }
 
+  /*
+    We do not replicate the INSTALL PLUGIN statement. Disable binlogging
+    of the insert into the plugin table, so that it is not replicated in
+    row based mode.
+  */
+  tmp_disable_binlog(thd);
   table->use_all_columns();
   restore_record(table, s->default_values);
   table->field[0]->store(name->str, name->length, system_charset_info);
   table->field[1]->store(dl->str, dl->length, files_charset_info);
   error= table->file->ha_write_row(table->record[0]);
+  reenable_binlog(thd);
   if (error)
   {
     table->file->print_error(error, MYF(0));
@@ -1739,7 +1741,15 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
                                         HA_READ_KEY_EXACT))
   {
     int error;
-    if ((error= table->file->ha_delete_row(table->record[0])))
+    /*
+      We do not replicate the UNINSTALL PLUGIN statement. Disable binlogging
+      of the delete from the plugin table, so that it is not replicated in
+      row based mode.
+    */
+    tmp_disable_binlog(thd);
+    error= table->file->ha_delete_row(table->record[0]);
+    reenable_binlog(thd);
+    if (error)
     {
       table->file->print_error(error, MYF(0));
       DBUG_RETURN(TRUE);

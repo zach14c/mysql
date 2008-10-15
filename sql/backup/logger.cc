@@ -10,7 +10,6 @@
 
 namespace backup {
 
-
 /**
   Output message on a given level.
 
@@ -50,12 +49,17 @@ int Logger::write_message(log_level::value level, int error_code,
        errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
                                          MYSQL_ERROR::WARN_LEVEL_ERROR, msg));
      sql_print_error(out);
-     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                          error_code, msg);
      DBUG_PRINT("backup_log",("[ERROR] %s", out));
      
      if (m_state == READY || m_state == RUNNING)
-       report_ob_error(m_thd, m_op_id, error_code);
+     {
+       time_t ts = my_time(0);
+
+       backup_log->error_num(error_code);
+       backup_log->write_progress(0, ts, ts, 0, 0, error_code, out);
+     }
      
      return 0;
 
@@ -114,8 +118,7 @@ int Logger::v_write_message(log_level::value level, int error_code,
 void Logger::report_stats_pre(const Image_info &info)
 {
   DBUG_ASSERT(m_state == RUNNING);
-  
-  report_ob_num_objects(m_thd, m_op_id, info.table_count());
+  backup_log->num_objects(info.table_count());
 }
 
 /**
@@ -125,8 +128,7 @@ void Logger::report_stats_pre(const Image_info &info)
 void Logger::report_stats_post(const Image_info &info)
 {
   DBUG_ASSERT(m_state == RUNNING);
-  
-  report_ob_size(m_thd, m_op_id, info.data_size);
+  backup_log->size(info.data_size);
 }
 
 } // backup namespace

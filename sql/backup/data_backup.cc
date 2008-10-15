@@ -7,6 +7,17 @@
   drivers and protocols to create snapshot of the data stored in the tables being
   backed up.
 
+  @todo Fix error detection in places marked with "FIXME: detect errors...". 
+  These are places where functions or methods are called and if they can 
+  report errors it should be detected and appropriate action taken. If callee 
+  never reports errors or we want to ignore errors, a comment explaining this
+  should be added.
+
+  @todo Fix error logging in places marked with "FIXME: error logging...". In 
+  these places it should be decided if and how the error should be shown to the
+  user. If an error message should be logged, it can happen either in the place
+  where error was detected or somewhere up the call stack.
+
   @todo Implement better scheduling strategy in Scheduler::step
   @todo Add error reporting in the scheduler and elsewhere
   @todo If an error from driver is ignored (and operation retried) leave trace
@@ -18,7 +29,6 @@
 #include "backup_kernel.h"
 #include "backup_engine.h"
 #include "stream.h"
-#include "backup_progress.h"
 #include "be_default.h"  // needed for table locking code
 
 /***********************************************
@@ -440,7 +450,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 
   // add unknown "at end" drivers to scheduler, rest to inactive list
 
-  for (uint n=0; n < 256; ++n)
+  for (uint n=0; n < info.snap_count(); ++n)
   {
     Snapshot_info *i= info.m_snap[n];
 
@@ -467,6 +477,8 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       if (init_size > max_init_size)
         max_init_size= init_size;
 
+      // FIXME: detect errors if reported.
+      // FIXME: error logging.
       inactive.push_back(p);
     }
   }
@@ -587,6 +599,8 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       Save binlog information for point in time recovery on restore.
     */
     if (mysql_bin_log.is_open())
+      // FIXME: detect errors if reported.
+      // FIXME: error logging.
       mysql_bin_log.get_current_log(&binlog_pos);
 
     /*
@@ -609,7 +623,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     // Report and save information about VP
 
     info.save_vp_time(vp_time);
-    info.m_ctx.report_vp_time(vp_time);
+    info.m_ctx.report_vp_time(vp_time, TRUE); // TRUE = also write to progress log
 
     if (mysql_bin_log.is_open())
     {
@@ -774,12 +788,14 @@ int Scheduler::step()
       break;
 
     case backup_state::DONE:
+      // FIXME: detect errors if reported.
       p->end();
 
     case backup_state::ERROR:
-      remove_pump(p);
+      remove_pump(p);   // Note: never errors.
       if (res)
         cancel_backup(); // we hit an error - bail out
+                         // Note: cancel_backup() never errors.
       break;
 
     default: break;
@@ -911,8 +927,8 @@ void Scheduler::cancel_backup()
   while (m_count && m_pumps)
   {
     Pump_iterator p(*this);
-    p->cancel();
-    remove_pump(p);
+    p->cancel();        // Note: even if cancel() errors, we ignore it.
+    remove_pump(p);     // Note: never errors.
   }
 
   cancelled= TRUE;
@@ -931,7 +947,7 @@ int Scheduler::prepare()
   {
     if (it->prepare())
     {
-      cancel_backup();
+      cancel_backup();  // Note: never errors.
       return ERROR;
     }
     if (it->state == backup_state::PREPARING)
@@ -954,7 +970,7 @@ int Scheduler::lock()
   for (Pump_iterator it(*this); it; ++it)
    if (it->lock())
    {
-     cancel_backup();
+     cancel_backup();  // Note: never errors.
      return ERROR;
    }
 
@@ -973,7 +989,7 @@ int Scheduler::unlock()
   {
     if (it->unlock())
     {
-      cancel_backup();
+      cancel_backup();  // Note: never errors.
       return ERROR;
     }
     if (it->state == backup_state::FINISHING)
@@ -998,6 +1014,7 @@ Backup_pump::Backup_pump(Snapshot_info &snap, Block_writer &bw)
 {
   DBUG_ASSERT(snap.m_num > 0);
   m_buf.data= NULL;
+  // FIXME: detect errors if reported.
   bitmap_init(&m_closed_streams,
               NULL,
               1 + snap.table_count(),
@@ -1237,6 +1254,8 @@ int Backup_pump::pump(size_t *howmuch)
         if (m_buf.size > 0)
           mode= WRITING;
         else
+          // FIXME: detect errors (perhaps ensure that drop_buf never errors).
+          // FIXME: error logging.
           m_bw.drop_buf(m_buf);
 
         break;
@@ -1255,6 +1274,8 @@ int Backup_pump::pump(size_t *howmuch)
         state= backup_state::DONE;
 
       case BUSY:
+        // FIXME: detect errors (perhaps ensure that drop_buf never errors).
+        // FIXME: error logging.
         m_bw.drop_buf(m_buf);
         m_buf_head=NULL;  // thus a new request will be made
       }
@@ -1510,6 +1531,8 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
           bad_drivers.append(",");
         bad_drivers.append(info.m_snap[n]->name());
       }
+      // FIXME: detect errors.
+      // FIXME: error logging.
       drv[n]->free();
     }
 
@@ -1528,6 +1551,8 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
     if (!drv[n])
       continue;
 
+    // FIXME: detect errors.
+    // FIXME: error logging (perhaps we don't want to report errors here).
     drv[n]->free();
   }
 

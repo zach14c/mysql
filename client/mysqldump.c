@@ -905,9 +905,9 @@ static int get_options(int *argc, char ***argv)
       my_hash_insert(&ignore_table,
                      (uchar*) my_strdup("mysql.slow_log", MYF(MY_WME))) ||
       my_hash_insert(&ignore_table,
-                     (uchar*) my_strdup("mysql.online_backup", MYF(MY_WME))) ||
+                     (uchar*) my_strdup("mysql.backup_history", MYF(MY_WME))) ||
       my_hash_insert(&ignore_table,
-                     (uchar*) my_strdup("mysql.online_backup_progress", MYF(MY_WME))))
+                     (uchar*) my_strdup("mysql.backup_progress", MYF(MY_WME))))
     return(EX_EOM);
 
   if ((ho_error= handle_options(argc, argv, my_long_options, get_one_option)))
@@ -2446,8 +2446,15 @@ static uint get_table_structure(char *table, char *db, char *table_type,
             fprintf(sql_file, ",\n  %s %s",
                     quote_name(row[0], name_buff, 0), row[1]);
           }
+
+          /*
+            Stand-in tables are always MyISAM tables as the default
+            engine might have a column-limit that's lower than the
+            number of columns in the view, and MyISAM support is
+            guaranteed to be in the server anyway.
+          */
           fprintf(sql_file,
-                  "\n) */;\n"
+                  "\n) ENGINE=MyISAM */;\n"
                   "SET character_set_client = @saved_cs_client;\n");
 
           check_io(sql_file);
@@ -3684,6 +3691,7 @@ static int dump_tablespaces(char* ts_where)
                       " EXTRA"
                       " FROM INFORMATION_SCHEMA.FILES"
                       " WHERE FILE_TYPE = 'UNDO LOG'"
+                      " AND ENGINE != 'Falcon'"
                       " AND FILE_NAME IS NOT NULL",
                       256, 1024);
   if(ts_where)
@@ -3780,7 +3788,8 @@ static int dump_tablespaces(char* ts_where)
                       " INITIAL_SIZE,"
                       " ENGINE"
                       " FROM INFORMATION_SCHEMA.FILES"
-                      " WHERE FILE_TYPE = 'DATAFILE'",
+                      " WHERE FILE_TYPE = 'DATAFILE'"
+                      " AND ENGINE != 'Falcon'",
                       256, 1024);
 
   if(ts_where)

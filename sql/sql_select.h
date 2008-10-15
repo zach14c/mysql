@@ -174,7 +174,6 @@ class SJ_TMP_TABLE;
 
 typedef enum_nested_loop_state
 (*Next_select_func)(JOIN *, struct st_join_table *, bool);
-typedef int (*Read_record_func)(struct st_join_table *tab);
 Next_select_func setup_end_select_func(JOIN *join);
 int rr_sequential(READ_RECORD *info);
 
@@ -212,7 +211,7 @@ typedef struct st_join_table
   */
   uint          packed_info;
 
-  Read_record_func read_first_record;
+  READ_RECORD::Setup_func read_first_record;
   Next_select_func next_select;
   READ_RECORD	read_record;
   /* 
@@ -220,8 +219,8 @@ typedef struct st_join_table
     if it is executed by an alternative full table scan when the left operand of
     the subquery predicate is evaluated to NULL.
   */  
-  Read_record_func save_read_first_record;/* to save read_first_record */ 
-  int (*save_read_record) (READ_RECORD *);/* to save read_record.read_record */
+  READ_RECORD::Setup_func save_read_first_record;/* to save read_first_record */
+  READ_RECORD::Read_func save_read_record;/* to save read_record.read_record */
   double	worst_seeks;
   key_map	const_keys;			/**< Keys with constant part */
   key_map	checked_keys;			/**< Keys checked in find_best */
@@ -741,7 +740,7 @@ public:
   bool alloc_func_list();
   bool flatten_subqueries();
   bool setup_subquery_materialization();
-  bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
+  bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_result_set_metadata,
 			  bool before_group_by, bool recompute= FALSE);
 
   inline void set_items_ref_array(Item **ptr)

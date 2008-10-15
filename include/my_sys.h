@@ -233,7 +233,7 @@ extern uint    my_large_page_size;
 #endif
 
 /* charsets */
-#define MY_ALL_CHARSETS_SIZE 512
+#define MY_ALL_CHARSETS_SIZE 2048
 extern CHARSET_INFO *default_charset_info;
 extern CHARSET_INFO *all_charsets[MY_ALL_CHARSETS_SIZE];
 extern CHARSET_INFO compiled_charsets[];
@@ -256,7 +256,7 @@ extern int NEAR my_umask,		/* Default creation mask  */
 	   NEAR my_safe_to_handle_signal, /* Set when allowed to SIGTSTP */
 	   NEAR my_dont_interrupt;	/* call remember_intr when set */
 extern my_bool NEAR mysys_uses_curses, my_use_symdir;
-extern ulong sf_malloc_cur_memory, sf_malloc_max_memory;
+extern size_t sf_malloc_cur_memory, sf_malloc_max_memory;
 
 extern ulong	my_default_record_cache_size;
 extern my_bool NEAR my_disable_locking,NEAR my_disable_async_io,
@@ -329,9 +329,13 @@ enum file_type
 
 struct st_my_file_info
 {
-  char *		name;
-  enum file_type	type;
-#if defined(THREAD) && !defined(HAVE_PREAD) && !defined(__WIN__)
+  char  *name;
+#ifdef _WIN32
+  HANDLE fhandle;   /* win32 file handle */
+  int    oflag;     /* open flags, e.g O_APPEND */
+#endif
+  enum   file_type	type;
+#if defined(THREAD) && !defined(HAVE_PREAD) && !defined(_WIN32)
   pthread_mutex_t	mutex;
 #endif
 };
@@ -605,6 +609,7 @@ extern int my_close(File Filedes,myf MyFlags);
 extern File my_dup(File file, myf MyFlags);
 extern int my_mkdir(const char *dir, int Flags, myf MyFlags);
 extern int my_readlink(char *to, const char *filename, myf MyFlags);
+extern int my_is_symlink(const char *filename);
 extern int my_realpath(char *to, const char *filename, myf MyFlags);
 extern File my_create_with_symlink(const char *linkname, const char *filename,
 				   int createflags, int access_flags,
@@ -647,20 +652,27 @@ extern void *my_memmem(const void *haystack, size_t haystacklen,
                        const void *needle, size_t needlelen);
 
 
-#ifdef __WIN__
-extern int my_access(const char *path, int amode);
-extern File my_sopen(const char *path, int oflag, int shflag, int pmode);
+#ifdef _WIN32
+extern int      my_access(const char *path, int amode);
 #else
 #define my_access access
 #endif
+
 extern int check_if_legal_filename(const char *path);
 extern int check_if_legal_tablename(const char *path);
 
-#if defined(__WIN__) && defined(__NT__)
+#ifdef _WIN32
 extern int nt_share_delete(const char *name,myf MyFlags);
 #define my_delete_allow_opened(fname,flags)  nt_share_delete((fname),(flags))
 #else
 #define my_delete_allow_opened(fname,flags)  my_delete((fname),(flags))
+#endif
+
+#ifdef _WIN32
+/* Windows-only functions (CRT equivalents)*/
+extern File     my_sopen(const char *path, int oflag, int shflag, int pmode);
+extern HANDLE   my_get_osfhandle(File fd);
+extern void     my_osmaperr(unsigned long last_error);
 #endif
 
 #ifndef TERMINATE
@@ -670,6 +682,7 @@ extern void init_glob_errs(void);
 extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);
+extern File my_fileno(FILE *fd);
 extern int my_chsize(File fd,my_off_t newlength, int filler, myf MyFlags);
 extern int my_chmod(const char *name, mode_t mode, myf my_flags);
 extern int my_sync(File fd, myf my_flags);

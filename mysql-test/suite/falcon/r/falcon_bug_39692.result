@@ -1,0 +1,8 @@
+*** Bug #39692 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (a int);
+SELECT file FROM information_schema.falcon_system_memory_detail
+WHERE file = 'SectorCache.cpp';
+file
+DROP TABLE t1;
