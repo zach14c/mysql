@@ -786,12 +786,6 @@ void Transaction::releaseDependencies()
 
 		if (transaction)
 			{
-			if (transaction->transactionId != state->transactionId)
-				{
-				Transaction *transaction = database->transactionManager->findTransaction(state->transactionId);
-				ASSERT(transaction == NULL);
-				}
-
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
 				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);

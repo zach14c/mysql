@@ -11816,7 +11816,7 @@ static int ndbcluster_fill_tablespace_table(handlerton *hton,
                                                            system_charset_info);
     schema_table_store_record(thd, table);
   }
-  return 0;
+  DBUG_RETURN(0);
 }
 
 SHOW_VAR ndb_status_variables_export[]= {
