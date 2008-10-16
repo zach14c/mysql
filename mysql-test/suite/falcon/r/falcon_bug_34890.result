@@ -16,7 +16,7 @@ CREATE TABLE t1 (
 t1_autoinc INTEGER NOT NULL AUTO_INCREMENT,
 t1_uuid CHAR(36),
 PRIMARY KEY (t1_autoinc)
-) ENGINE = Falcon;
+);
 CREATE PROCEDURE p1 ()
 begin
 DECLARE my_count INT DEFAULT 0;

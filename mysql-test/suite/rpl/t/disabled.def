@@ -10,13 +10,11 @@
 #
 ##############################################################################
 
-rpl_ddl                    : BUG#26418 2007-03-01 mleich Slave out of sync after CREATE                            /DROP TEMPORARY TABLE + ROLLBACK on master
 rpl_invoked_features       : BUG#29020 2007-06-21 Lars Non-deterministic test case
 rpl_auto_increment_11932   : Bug#29809 2007-07-16 ingo Slave SQL errors in warnings 
                              file
 rpl_do_grant               : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
 rpl_ignore_table           : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
-rpl_ddl                  : BUG#26418 2007-03-01 mleich Slave out of sync after CREATE/DROP TEMPORARY TABLE + ROLLBACK on master
 rpl_auto_increment_11932   : Bug#29809 2007-07-16 ingo Slave SQL errors in warnings file
 rpl_extraColmaster_innodb  : BUG#30854 : Tables name show as binary in slave err msg on                             vm-win2003-64-b and Solaris
 rpl_extraColmaster_myisam  : BUG#30854
@@ -35,5 +33,4 @@ rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 grea
 rpl_flushlog_loop          : Bug#37733 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
-rpl_temporary              : BUG#38269 2008-07-21 Sven valgrind error in pushbuild
 rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main

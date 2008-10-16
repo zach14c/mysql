@@ -5,6 +5,7 @@
 #
 --echo #---- Bug 33688 ----
 connection master;
+set binlog_format="mixed";
 set storage_engine='Falcon';
 create table t1 (a int primary key);
 create table t4 (a int primary key);

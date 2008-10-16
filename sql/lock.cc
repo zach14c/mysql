@@ -74,6 +74,7 @@
 */
 
 #include "mysql_priv.h"
+#include "transaction.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -867,7 +868,7 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
     if ((table=table_ptr[i])->s->tmp_table == NON_TRANSACTIONAL_TMP_TABLE)
       continue;
     lock_type= table->reginfo.lock_type;
-    DBUG_ASSERT (lock_type != TL_WRITE_DEFAULT);
+    DBUG_ASSERT(lock_type != TL_WRITE_DEFAULT && lock_type != TL_READ_DEFAULT);
     if (lock_type >= TL_WRITE_ALLOW_WRITE)
     {
       *write_lock_used=table;
@@ -1440,7 +1441,7 @@ int try_transactional_lock(THD *thd, TABLE_LIST *table_list)
 
  err:
   /* We need to explicitly commit if autocommit mode is active. */
-  (void) ha_autocommit_or_rollback(thd, 0);
+  trans_commit_stmt(thd);
   /* Close the tables. The locks (if taken) persist in the storage engines. */
   close_tables_for_reopen(thd, &table_list, FALSE);
   thd->in_lock_tables= FALSE;

@@ -170,3 +170,4 @@ EXPORTS
 	my_charset_bin
 	my_charset_same
 	modify_defaults_file
+        mysql_stmt_next_result

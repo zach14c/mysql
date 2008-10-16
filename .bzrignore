@@ -331,6 +331,9 @@ client/readline.cpp
 client/rpl_constants.h
 client/rpl_record_old.cc
 client/rpl_record_old.h
+client/rpl_tblmap.h
+client/rpl_tblmap.cc
+client/rpl_utility.h
 client/select_test
 client/sql_string.cpp
 client/ssl_test
@@ -1885,4 +1888,13 @@ win/vs8cache.txt
 ylwrap
 zlib/*.ds?
 zlib/*.vcproj
+extra/libevent/event-config.h
 libmysqld/ddl_blocker.cc
+libmysqld/mdl.cc
+mysql-test/bug36522-64.tar
+mysql-test/bug36522.tar
+mysql-test/t.log
+mysql-test/tps.log
+libmysqld/event_parse_data.cc
+client/transaction.h
+libmysqld/transaction.cc

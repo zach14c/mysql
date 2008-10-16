@@ -480,15 +480,17 @@ C_MODE_END
 #include <assert.h>
 
 /* an assert that works at compile-time. only for constant expression */
-#ifndef __GNUC__
-#define compile_time_assert(X)  do { } while(0)
-#else
+#if (_MSC_VER >=1400)
+#define compile_time_assert(X)  do { C_ASSERT(X); } while(0)
+#elif defined (___GNUC__)
 #define compile_time_assert(X)                                  \
   do                                                            \
   {                                                             \
     char compile_time_assert[(X) ? 1 : -1]                      \
                              __attribute__ ((unused));          \
   } while(0)
+#else
+#define compile_time_assert(X)  do { } while(0)
 #endif
 
 /* Go around some bugs in different OS and compilers */
@@ -772,7 +774,41 @@ typedef SOCKET_SIZE_TYPE size_socket;
 #define FN_LIBCHAR	'/'
 #define FN_ROOTDIR	"/"
 #endif
-#define MY_NFILE	64	/* This is only used to save filenames */
+
+/* 
+  MY_FILE_MIN is  Windows speciality and is used to quickly detect
+  the mismatch of CRT and mysys file IO usage on Windows at runtime.
+  CRT file descriptors can be in the range 0-2047, whereas descriptors returned
+  by my_open() will start with 2048. If a file descriptor with value less then
+  MY_FILE_MIN is passed to mysys IO function, chances are it stemms from
+  open()/fileno() and not my_open()/my_fileno.
+
+  For Posix,  mysys functions are light wrappers around libc, and MY_FILE_MIN
+  is logically 0.
+*/
+
+#ifdef _WIN32
+#define MY_FILE_MIN  2048
+#else
+#define MY_FILE_MIN  0
+#endif
+
+/* 
+  MY_NFILE is the default size of my_file_info array.
+
+  It is larger on Windows, because it all file handles are stored in my_file_info
+  Default size is 16384 and this should be enough for most cases.If it is not 
+  enough, --max-open-files with larger value can be used.
+
+  For Posix , my_file_info array is only used to store filenames for
+  error reporting and its size is not a limitation for number of open files.
+*/ 
+#ifdef _WIN32
+#define MY_NFILE (16384 + MY_FILE_MIN)
+#else
+#define MY_NFILE 64
+#endif
+
 #ifndef OS_FILE_LIMIT
 #define OS_FILE_LIMIT	65535
 #endif
@@ -809,9 +845,8 @@ typedef SOCKET_SIZE_TYPE size_socket;
 	/* Some things that this system doesn't have */
 
 #define NO_HASH			/* Not needed anymore */
-#ifdef __WIN__
-#define NO_DIR_LIBRARY		/* Not standar dir-library */
-#define USE_MY_STAT_STRUCT	/* For my_lib */
+#ifdef _WIN32
+#define NO_DIR_LIBRARY		/* Not standard dir-library */
 #endif
 
 /* Some defines of functions for portability */
@@ -1556,7 +1591,7 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #endif
 
 /* Provide __func__ macro definition for platforms that miss it. */
-#if __STDC_VERSION__ < 199901L
+#if __STDC_VERSION__ < 199901L && !defined(__func__)
 #  if __GNUC__ >= 2
 #    define __func__ __FUNCTION__
 #  else

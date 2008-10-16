@@ -168,7 +168,9 @@ falcon_headers= Agent.h Alias.h Application.h \
 		SRLUpdateRecords.h \
 		SRLVersion.h \
 		SRLWordUpdate.h \
-		Stack.h Statement.h StorageConnection.h \
+		Stack.h \
+		Statement.h \
+		StorageConnection.h \
 		StorageDatabase.h \
 		StorageHandler.h \
 		StorageParameters.h \
@@ -176,8 +178,12 @@ falcon_headers= Agent.h Alias.h Application.h \
 		StorageTableShare.h \
 		StorageVersion.h \
 		Stream.h \
-		StreamSegment.h SymbolManager.h Sync.h SynchronizationObject.h \
+		StreamSegment.h \
+		SymbolManager.h \
+		Sync.h \
+		SynchronizationObject.h \
 		Synchronize.h \
+		SyncHandler.h \
 		SyncObject.h \
 		SyncTest.h \
 		SyncWait.h \
@@ -347,11 +353,18 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SRLVersion.cpp \
 		SRLWordUpdate.cpp \
 		Stack.cpp \
-		Statement.cpp StorageConnection.cpp \
+		Statement.cpp \
+		StorageConnection.cpp \
 		StorageDatabase.cpp \
 		StorageHandler.cpp \
-		StorageTable.cpp StorageTableShare.cpp Stream.cpp \
-		StreamSegment.cpp SymbolManager.cpp Sync.cpp Synchronize.cpp \
+		StorageTable.cpp \
+		StorageTableShare.cpp \
+		Stream.cpp \
+		StreamSegment.cpp \
+		SymbolManager.cpp \
+		Sync.cpp \
+		Synchronize.cpp \
+		SyncHandler.cpp \
 		SyncObject.cpp\
 		SyncTest.cpp\
 		SyncWait.cpp\

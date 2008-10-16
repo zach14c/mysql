@@ -42,6 +42,7 @@
 
 #include "sp_rcontext.h"
 #include "sp_cache.h"
+#include "transaction.h"
 
 /*
   The following is used to initialise Table_ident with a internal
@@ -513,6 +514,7 @@ THD::THD()
    lock_id(&main_lock_id),
    user_time(0), in_sub_stmt(0),
    binlog_table_maps(0), binlog_flags(0UL),
+   table_map_for_update(0),
    arg_of_last_insert_id_function(FALSE),
    first_successful_insert_id_in_prev_stmt(0),
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
@@ -536,6 +538,7 @@ THD::THD()
           when the DDL blocker is engaged.
   */
    DDL_exception(FALSE),
+   backup_wait_timeout(50),
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
@@ -846,7 +849,8 @@ void THD::cleanup(void)
   }
 #endif
   {
-    ha_rollback(this);
+    transaction.xid_state.xa_state= XA_NOTR;
+    trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
   }
   locked_tables_list.unlock_locked_tables(this);
@@ -1156,6 +1160,8 @@ void THD::cleanup_after_query()
   free_items();
   /* Reset where. */
   where= THD::DEFAULT_WHERE;
+  /* reset table map for multi-table update */
+  table_map_for_update= 0;
 }
 
 
@@ -1405,7 +1411,7 @@ int THD::send_explain_fields(select_result *result)
   }
   item->maybe_null= 1;
   field_list.push_back(new Item_empty_string("Extra", 255, cs));
-  return (result->send_fields(field_list,
+  return (result->send_result_set_metadata(field_list,
                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF));
 }
 
@@ -1551,10 +1557,16 @@ sql_exchange::sql_exchange(char *name, bool flag,
   cs= NULL;
 }
 
-bool select_send::send_fields(List<Item> &list, uint flags)
+bool sql_exchange::escaped_given(void)
+{
+  return escaped != &default_escaped;
+}
+
+
+bool select_send::send_result_set_metadata(List<Item> &list, uint flags)
 {
   bool res;
-  if (!(res= thd->protocol->send_fields(&list, flags)))
+  if (!(res= thd->protocol->send_result_set_metadata(&list, flags)))
     is_result_set_started= 1;
   return res;
 }
@@ -1597,10 +1609,13 @@ void select_send::cleanup()
 
 bool select_send::send_data(List<Item> &items)
 {
+  Protocol *protocol= thd->protocol;
+  DBUG_ENTER("select_send::send_data");
+
   if (unit->offset_limit_cnt)
   {						// using limit offset,count
     unit->offset_limit_cnt--;
-    return 0;
+    DBUG_RETURN(FALSE);
   }
 
   /*
@@ -1610,31 +1625,18 @@ bool select_send::send_data(List<Item> &items)
   */
   ha_release_temporary_latches(thd);
 
-  List_iterator_fast<Item> li(items);
-  Protocol *protocol= thd->protocol;
-  char buff[MAX_FIELD_WIDTH];
-  String buffer(buff, sizeof(buff), &my_charset_bin);
-  DBUG_ENTER("select_send::send_data");
-
   protocol->prepare_for_resend();
-  Item *item;
-  while ((item=li++))
-  {
-    if (item->send(protocol, &buffer) || thd->is_error())
-    {
-      protocol->free();				// Free used buffer
-      my_message(ER_OUT_OF_RESOURCES, ER(ER_OUT_OF_RESOURCES), MYF(0));
-      break;
-    }
-  }
-  if (thd->is_error())
+  if (protocol->send_result_set_row(&items))
   {
     protocol->remove_last_row();
-    DBUG_RETURN(1);
+    DBUG_RETURN(TRUE);
   }
+
   thd->sent_row_count++;
+
   if (thd->vio_ok())
     DBUG_RETURN(protocol->write());
+
   DBUG_RETURN(0);
 }
 
@@ -1653,6 +1655,12 @@ bool select_send::send_eof()
     mysql_unlock_tables(thd, thd->lock);
     thd->lock=0;
   }
+  /* 
+    Don't send EOF if we're in error condition (which implies we've already
+    sent or are sending an error)
+  */
+  if (thd->is_error())
+    return TRUE;
   ::my_eof(thd);
   is_result_set_started= 0;
   return FALSE;
@@ -1830,8 +1838,11 @@ select_export::prepare(List<Item> &list, SELECT_LEX_UNIT *u)
     exchange->line_term=exchange->field_term;	// Use this if it exists
   field_sep_char= (exchange->enclosed->length() ?
                   (int) (uchar) (*exchange->enclosed)[0] : field_term_char);
-  escape_char=	(exchange->escaped->length() ?
-                (int) (uchar) (*exchange->escaped)[0] : -1);
+  if (exchange->escaped->length() && (exchange->escaped_given() ||
+      !(thd->variables.sql_mode & MODE_NO_BACKSLASH_ESCAPES)))
+    escape_char= (int) (uchar) (*exchange->escaped)[0];
+  else
+    escape_char= -1;
   is_ambiguous_field_sep= test(strchr(ESCAPE_CHARS, field_sep_char));
   is_unsafe_field_sep= test(strchr(NUMERIC_CHARS, field_sep_char));
   line_sep_char= (exchange->line_term->length() ?
@@ -3418,7 +3429,7 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
 
   uchar *row_data= memory.slot(0);
 
-  size_t const len= pack_row(table, table->write_set, row_data, record);
+  size_t const len= pack_row(table, table->write_set, row_data, record, TRUE);
 
   Rows_log_event* const ev=
     binlog_prepare_pending_rows_event(table, server_id, len, is_trans,
@@ -3447,9 +3458,9 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
   uchar *after_row= row_data.slot(1);
 
   size_t const before_size= pack_row(table, table->read_set, before_row,
-                                        before_record);
+                                     before_record, TRUE);
   size_t const after_size= pack_row(table, table->write_set, after_row,
-                                       after_record);
+                                    after_record, TRUE);
 
   /*
     Don't print debug messages when running valgrind since they can
@@ -3491,7 +3502,7 @@ int THD::binlog_delete_row(TABLE* table, bool is_trans,
   uchar *row_data= memory.slot(0);
 
   DBUG_DUMP("table->read_set", (uchar*) table->read_set->bitmap, (table->s->fields + 7) / 8);
-  size_t const len= pack_row(table, table->read_set, row_data, record);
+  size_t const len= pack_row(table, table->read_set, row_data, record, TRUE);
 
   Rows_log_event* const ev=
     binlog_prepare_pending_rows_event(table, server_id, len, is_trans,
@@ -3503,6 +3514,21 @@ int THD::binlog_delete_row(TABLE* table, bool is_trans,
   return ev->add_row_data(row_data, len);
 }
 
+
+int THD::binlog_remove_pending_rows_event(bool clear_maps)
+{
+  DBUG_ENTER(__FUNCTION__);
+
+  if (!mysql_bin_log.is_open())
+    DBUG_RETURN(0);
+
+  mysql_bin_log.remove_pending_rows_event(this);
+
+  if (clear_maps)
+    binlog_table_maps= 0;
+
+  DBUG_RETURN(0);
+}
 
 int THD::binlog_flush_pending_rows_event(bool stmt_end)
 {
@@ -3536,6 +3562,29 @@ int THD::binlog_flush_pending_rows_event(bool stmt_end)
 }
 
 
+#if !defined(DBUG_OFF) && !defined(_lint)
+static const char *
+show_query_type(THD::enum_binlog_query_type qtype)
+{
+  switch (qtype) {
+  case THD::ROW_QUERY_TYPE:
+    return "ROW";
+  case THD::STMT_QUERY_TYPE:
+    return "STMT";
+  case THD::MYSQL_QUERY_TYPE:
+    return "MYSQL";
+  case THD::QUERY_TYPE_COUNT:
+  default:
+    DBUG_ASSERT(0 <= qtype && qtype < THD::QUERY_TYPE_COUNT);
+  }
+
+  static char buf[64];
+  sprintf(buf, "UNKNOWN#%d", qtype);
+  return buf;
+}
+#endif
+
+
 /*
   Member function that will log query, either row-based or
   statement-based depending on the value of the 'current_stmt_binlog_row_based'
@@ -3564,7 +3613,8 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
                       THD::killed_state killed_status_arg)
 {
   DBUG_ENTER("THD::binlog_query");
-  DBUG_PRINT("enter", ("qtype: %d  query: '%s'", qtype, query_arg));
+  DBUG_PRINT("enter", ("qtype: %s  query: '%s'",
+                       show_query_type(qtype), query_arg));
   DBUG_ASSERT(query_arg && mysql_bin_log.is_open());
 
   /*
@@ -3603,6 +3653,9 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
 
   switch (qtype) {
   case THD::ROW_QUERY_TYPE:
+    DBUG_PRINT("debug",
+               ("current_stmt_binlog_row_based: %d",
+                current_stmt_binlog_row_based));
     if (current_stmt_binlog_row_based)
       DBUG_RETURN(0);
     /* Otherwise, we fall through */

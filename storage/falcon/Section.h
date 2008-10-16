@@ -43,6 +43,7 @@ struct SectionAnalysis;
 class Section  
 {
 public:
+	static const int INVALID_SECTION_ID = -1;
 	void redoDataPage (int32 pageNumber, int32 locatorPageNumber);
 	Section(Dbb *dbb, int32 id, TransId transId);
 	virtual ~Section();

@@ -268,6 +268,7 @@ NULL	information_schema	TABLES	ENGINE	5	NULL	YES	varchar	64	256	NULL	NULL	utf8	u
 NULL	information_schema	TABLES	INDEX_LENGTH	12	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
 NULL	information_schema	TABLES	MAX_DATA_LENGTH	11	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
 NULL	information_schema	TABLES	ROW_FORMAT	7	NULL	YES	varchar	10	40	NULL	NULL	utf8	utf8_general_ci	varchar(10)			select		Default	Default
+NULL	information_schema	TABLES	TABLESPACE_NAME	22	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLES	TABLE_CATALOG	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	TABLES	TABLE_COLLATION	18	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLES	TABLE_COMMENT	21		NO	varchar	2048	8192	NULL	NULL	utf8	utf8_general_ci	varchar(2048)			select		Default	Default
@@ -277,6 +278,15 @@ NULL	information_schema	TABLES	TABLE_SCHEMA	2		NO	varchar	64	256	NULL	NULL	utf8	
 NULL	information_schema	TABLES	TABLE_TYPE	4		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLES	UPDATE_TIME	16	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
 NULL	information_schema	TABLES	VERSION	6	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	AUTOEXTEND_SIZE	6	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	ENGINE	2		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	TABLESPACES	EXTENT_SIZE	5	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	LOGFILE_GROUP_NAME	4	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	TABLESPACES	MAXIMUM_SIZE	7	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	NODEGROUP_ID	8	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	TABLESPACE_COMMENT	9	NULL	YES	varchar	2048	8192	NULL	NULL	utf8	utf8_general_ci	varchar(2048)			select		Default	Default
+NULL	information_schema	TABLESPACES	TABLESPACE_NAME	1		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	TABLESPACES	TABLESPACE_TYPE	3	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_CATALOG	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_NAME	3		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_SCHEMA	2		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
@@ -657,6 +667,16 @@ NULL	information_schema	TABLES	CHECK_TIME	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	information_schema	TABLES	CHECKSUM	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
 4.0000	information_schema	TABLES	CREATE_OPTIONS	varchar	255	1020	utf8	utf8_general_ci	varchar(255)
 4.0000	information_schema	TABLES	TABLE_COMMENT	varchar	2048	8192	utf8	utf8_general_ci	varchar(2048)
+4.0000	information_schema	TABLES	TABLESPACE_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	TABLESPACE_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	ENGINE	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	TABLESPACE_TYPE	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	LOGFILE_GROUP_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+NULL	information_schema	TABLESPACES	EXTENT_SIZE	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLESPACES	AUTOEXTEND_SIZE	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLESPACES	MAXIMUM_SIZE	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLESPACES	NODEGROUP_ID	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+4.0000	information_schema	TABLESPACES	TABLESPACE_COMMENT	varchar	2048	8192	utf8	utf8_general_ci	varchar(2048)
 4.0000	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_CATALOG	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
 4.0000	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_SCHEMA	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)

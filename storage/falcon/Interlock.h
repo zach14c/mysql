@@ -32,50 +32,50 @@ extern "C" char compareswapptr(volatile void **target, void *compare, void *exch
 #define INTERLOCKED_ADD(ptr, value)			interlockedAdd(ptr, value)
 
 #ifdef _WIN32
+#include <windows.h>
 
 #define COMPARE_EXCHANGE(target,compare,exchange)\
 	(InterlockedCompareExchange(target,exchange,compare)==compare)
 
-#ifdef _WIN64
-#include <intrin.h>
 #define COMPARE_EXCHANGE_POINTER(target,compare,exchange)\
 	(InterlockedCompareExchangePointer((void *volatile*) target,(void*)exchange,(void*)compare)==(void*)compare)
-#define InterlockedCompareExchangePointer	_InterlockedCompareExchangePointer
-void* _InterlockedCompareExchangePointer(void *volatile *Destination, void *Exchange, void *Comperand);
-#else /* _WIN64 */
-#define COMPARE_EXCHANGE_POINTER(target,compare,exchange)\
-	(InterlockedCompareExchange((volatile long*) target,(long)exchange,(long)compare)==(long)compare)
-#endif /* _WIN64 */
-
-#define InterlockedIncrement				_InterlockedIncrement
-#define InterlockedDecrement				_InterlockedDecrement
-#define InterlockedExchange					_InterlockedExchange
-#define InterlockedExchangeAdd				_InterlockedExchangeAdd
-
-#define InterlockedCompareExchange			_InterlockedCompareExchange
-
-#ifndef InterlockedCompareExchangePointer
-//#define InterlockedCompareExchangePointer	_InterlockedCompareExchangePointer
-#endif /* InterlockedCompareExchangePointer */
-
-#ifndef __MACHINEX64
-extern "C"
+/*
+  x86 compilers (both VS2003 or VS2005) never use instrinsics, but generate 
+  function calls to kernel32 instead, even in the optimized build. 
+  We force intrinsics as described in MSDN documentation for 
+  _InterlockedCompareExchange.
+  x64 on the other hand, always uses intrinsic version, even in debug build
+*/
+#ifdef _M_IX86
+#if (_MSC_VER >= 1400)
+#include <intrin.h>
+#else
+/* Visual Studio 2003 and earlier do not have prototypes for atomic intrinsics */
+extern "C" 
 	{
-	long  InterlockedIncrement(long* lpAddend);
-	long  InterlockedDecrement(long* lpAddend);
-	long  InterlockedExchange(long* volatile addend, long value);
-	long  InterlockedExchangeAdd(long* volatile addend, long value);
-	long  InterlockedCompareExchange(volatile long *Destination, long Exchange, long Comperand);
-	//void* InterlockedCompareExchangePointer(void *volatile* *Destination, void *Exchange, void *Comperand);
+	long _InterlockedIncrement(long volatile *Addend);
+	long _InterlockedDecrement(long volatile *Addend);
+	long _InterlockedExchangeAdd(long volatile *Addend, long Value);
+	long _InterlockedExchange(long volatile *Target,long Value);
+	long _InterlockedCompareExchange (long volatile *Target, long Value, long Comp);
 	}
-#endif /* __MACHINEX64 */
-
 #pragma intrinsic(_InterlockedIncrement)
 #pragma intrinsic(_InterlockedDecrement)
 #pragma intrinsic(_InterlockedExchange)
 #pragma intrinsic(_InterlockedExchangeAdd)
 #pragma intrinsic(_InterlockedCompareExchange)
-//#pragma intrinsic(_InterlockedCompareExchangePointer)
+#endif /* _MSC_VER */
+
+#define InterlockedIncrement		_InterlockedIncrement
+#define InterlockedDecrement		_InterlockedDecrement
+#define InterlockedExchangeAdd		_InterlockedExchangeAdd
+#define InterlockedExchange			_InterlockedExchange
+#define InterlockedCompareExchange	_InterlockedCompareExchange
+/*
+ No need to handle InterlockedCompareExchangePointer
+ it is a defined as InterlockedCompareExchange. 
+*/
+#endif /*_M_IX86*/
 
 #else /* _WIN32 */
 
@@ -396,7 +396,7 @@ inline INTERLOCK_TYPE interlockedAdd(volatile INTERLOCK_TYPE* addend,
 	{
 		INTERLOCK_TYPE current= *addend;
 		INTERLOCK_TYPE ret= current + value;
-		if (COMPARE_EXCHANGE_POINTER(addend, current, ret))
+		if (COMPARE_EXCHANGE(addend, current, ret))
 			return ret;
 	}
 #endif

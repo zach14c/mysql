@@ -860,13 +860,9 @@ static int mi_close_care_state(MI_INFO *info)
   if (!update_index_on_close)
   {
     MYISAM_SHARE *share;
-    my_bool      old_myisam_single_user;
 
     share= info->s;
-    old_myisam_single_user= myisam_single_user;
-    myisam_single_user= FALSE;
-    (void) mi_state_info_read_dsk(share->kfile, &share->state, 1);
-    myisam_single_user= old_myisam_single_user;
+    (void) mi_state_info_read_dsk(share->kfile, &share->state, 1, 1);
   }
   return mi_close(info);
 }

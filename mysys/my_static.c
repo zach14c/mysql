@@ -35,7 +35,7 @@ int		NEAR my_umask=0664, NEAR my_umask_dir=0777;
 #ifndef THREAD
 int		NEAR my_errno=0;
 #endif
-struct st_my_file_info my_file_info_default[MY_NFILE]= {{0,UNOPEN}};
+struct st_my_file_info my_file_info_default[MY_NFILE];
 uint   my_file_limit= MY_NFILE;
 struct st_my_file_info *my_file_info= my_file_info_default;
 
@@ -70,8 +70,8 @@ uint sf_malloc_prehunc=0,		/* If you have problem with core- */
      sf_malloc_endhunc=0,		/* dump when malloc-message.... */
 					/* set theese to 64 or 128  */
      sf_malloc_quick=0;			/* set if no calls to sanity */
-ulong sf_malloc_cur_memory= 0L;		/* Current memory usage */
-ulong sf_malloc_max_memory= 0L;		/* Maximum memory usage */
+size_t sf_malloc_cur_memory= 0L;		/* Current memory usage */
+size_t sf_malloc_max_memory= 0L;		/* Maximum memory usage */
 uint  sf_malloc_count= 0;		/* Number of times NEW() was called */
 uchar *sf_min_adress= (uchar*) ~(unsigned long) 0L,
      *sf_max_adress= (uchar*) 0L;

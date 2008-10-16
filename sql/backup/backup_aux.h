@@ -1,6 +1,18 @@
 #ifndef _BACKUP_AUX_H
 #define _BACKUP_AUX_H
 
+/** 
+  @file
+ 
+  @brief Auxiliary declarations used in online backup code.
+
+  @todo Fix error detection in places marked with "FIXME: detect errors...". 
+  These are places where functions or methods are called and if they can 
+  report errors it should be detected and appropriate action taken. If callee 
+  never reports errors or we want to ignore errors, a comment explaining this
+  should be added.
+*/ 
+
 typedef st_plugin_int* storage_engine_ref;
 
 // Macro which transforms plugin_ref to storage_engine_ref
@@ -33,6 +45,12 @@ storage_engine_ref get_se_by_name(const LEX_STRING name)
 
 
 namespace backup {
+
+/**
+  Constants for appending uniqueness to privileges in backup catalog.
+*/
+#define UNIQUE_PRIV_KEY_LEN 9
+#define UNIQUE_PRIV_KEY_FORMAT "%08lu"
 
 /**
   Local version of LEX_STRING structure.
@@ -131,6 +149,7 @@ void set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
   tl.db= const_cast<char*>(tbl.db().name().ptr());
   tl.lock_type= lock_type;
 
+  // FIXME: detect errors (if NULL returned).
   tl.mdl_lock_data= mdl_alloc_lock(0, tl.db, tl.table_name, mem); 
 }
 

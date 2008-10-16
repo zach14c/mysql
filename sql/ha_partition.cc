@@ -595,6 +595,12 @@ int ha_partition::drop_partitions(THD *thd, const char *path)
   int  error= 0;
   DBUG_ENTER("ha_partition::drop_partitions");
 
+  /*
+    Assert that it works without HA_FILE_BASED and lower_case_table_name = 2.
+    We use m_file[0] as long as all partitions have the same storage engine.
+  */
+  DBUG_ASSERT(!strcmp(path, get_canonical_filename(m_file[0], path,
+                                                   part_name_buff)));
   do
   {
     partition_element *part_elem= part_it++;
@@ -684,6 +690,13 @@ int ha_partition::rename_partitions(THD *thd, const char *path)
   handler *file;
   partition_element *part_elem, *sub_elem;
   DBUG_ENTER("ha_partition::rename_partitions");
+
+  /*
+    Assert that it works without HA_FILE_BASED and lower_case_table_name = 2.
+    We use m_file[0] as long as all partitions have the same storage engine.
+  */
+  DBUG_ASSERT(!strcmp(path, get_canonical_filename(m_file[0], path,
+                                                   norm_name_buff)));
 
   if (temp_partitions)
   {
@@ -856,6 +869,9 @@ int ha_partition::rename_partitions(THD *thd, const char *path)
 #define CHECK_PARTS   3
 #define REPAIR_PARTS 4
 
+static const char *opt_op_name[]= {NULL,
+                                   "optimize", "analyze", "check", "repair" };
+
 /*
   Optimize table
 
@@ -873,8 +889,10 @@ int ha_partition::optimize(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::optimize");
 
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    OPTIMIZE_PARTS, TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
+                                    OPTIMIZE_PARTS,
+                                    thd->lex->alter_info.flags &
+                                    ALTER_OPTIMIZE_PARTITION ? FALSE : TRUE));
 }
 
 
@@ -895,8 +913,10 @@ int ha_partition::analyze(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::analyze");
 
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    ANALYZE_PARTS, TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
+                                    ANALYZE_PARTS,
+                                    thd->lex->alter_info.flags &
+                                    ALTER_ANALYZE_PARTITION ? FALSE : TRUE));
 }
 
 
@@ -917,8 +937,10 @@ int ha_partition::check(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::check");
 
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    CHECK_PARTS, TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
+                                    CHECK_PARTS,
+                                    thd->lex->alter_info.flags &
+                                    ALTER_CHECK_PARTITION ? FALSE : TRUE));
 }
 
 
@@ -939,94 +961,11 @@ int ha_partition::repair(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::repair");
 
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    REPAIR_PARTS, TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
+                                    REPAIR_PARTS,
+                                    thd->lex->alter_info.flags &
+                                    ALTER_REPAIR_PARTITION ? FALSE : TRUE));
 }
-
-/*
-  Optimize partitions
-
-  SYNOPSIS
-    optimize_partitions()
-    thd                   Thread object
-  RETURN VALUE
-    >0                        Failure
-    0                         Success
-  DESCRIPTION
-    Call optimize on each partition marked with partition state PART_CHANGED
-*/
-
-int ha_partition::optimize_partitions(THD *thd)
-{
-  DBUG_ENTER("ha_partition::optimize_partitions");
-
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    OPTIMIZE_PARTS, FALSE));
-}
-
-/*
-  Analyze partitions
-
-  SYNOPSIS
-    analyze_partitions()
-    thd                   Thread object
-  RETURN VALUE
-    >0                        Failure
-    0                         Success
-  DESCRIPTION
-    Call analyze on each partition marked with partition state PART_CHANGED
-*/
-
-int ha_partition::analyze_partitions(THD *thd)
-{
-  DBUG_ENTER("ha_partition::analyze_partitions");
-
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    ANALYZE_PARTS, FALSE));
-}
-
-/*
-  Check partitions
-
-  SYNOPSIS
-    check_partitions()
-    thd                   Thread object
-  RETURN VALUE
-    >0                        Failure
-    0                         Success
-  DESCRIPTION
-    Call check on each partition marked with partition state PART_CHANGED
-*/
-
-int ha_partition::check_partitions(THD *thd)
-{
-  DBUG_ENTER("ha_partition::check_partitions");
-
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    CHECK_PARTS, FALSE));
-}
-
-/*
-  Repair partitions
-
-  SYNOPSIS
-    repair_partitions()
-    thd                   Thread object
-  RETURN VALUE
-    >0                        Failure
-    0                         Success
-  DESCRIPTION
-    Call repair on each partition marked with partition state PART_CHANGED
-*/
-
-int ha_partition::repair_partitions(THD *thd)
-{
-  DBUG_ENTER("ha_partition::repair_partitions");
-
-  DBUG_RETURN(handle_opt_partitions(thd, &thd->lex->check_opt, 
-                                    REPAIR_PARTS, FALSE));
-}
-
 
 /*
   Handle optimize/analyze/check/repair of one partition
@@ -1043,19 +982,12 @@ int ha_partition::repair_partitions(THD *thd)
     0                         Success
 */
 
-#ifdef WL4176_IS_DONE
 static int handle_opt_part(THD *thd, HA_CHECK_OPT *check_opt,
                            handler *file, uint flag)
 {
   int error;
   DBUG_ENTER("handle_opt_part");
   DBUG_PRINT("enter", ("flag = %u", flag));
-
-  /*
-    TODO:
-    Rewrite the code for ANALYZE/CHECK/OPTIMIZE/REPAIR PARTITION WL4176
-  */
-  DBUG_RETURN(HA_ADMIN_NOT_IMPLEMENTED);
 
   if (flag == OPTIMIZE_PARTS)
     error= file->ha_optimize(thd, check_opt);
@@ -1074,7 +1006,59 @@ static int handle_opt_part(THD *thd, HA_CHECK_OPT *check_opt,
     error= 0;
   DBUG_RETURN(error);
 }
-#endif
+
+
+/*
+   print a message row formatted for ANALYZE/CHECK/OPTIMIZE/REPAIR TABLE 
+   (modelled after mi_check_print_msg)
+   TODO: move this into the handler, or rewrite mysql_admin_table.
+*/
+static bool print_admin_msg(THD* thd, const char* msg_type,
+                            const char* db_name, const char* table_name,
+                            const char* op_name, const char *fmt, ...)
+{
+  va_list args;
+  Protocol *protocol= thd->protocol;
+  uint length, msg_length;
+  char msgbuf[PARTITION_MAX_MSG_BUF];
+  char name[NAME_LEN*2+2];
+
+  va_start(args, fmt);
+  msg_length= my_vsnprintf(msgbuf, sizeof(msgbuf), fmt, args);
+  va_end(args);
+  msgbuf[sizeof(msgbuf) - 1] = 0; // healthy paranoia
+
+
+  if (!thd->vio_ok())
+  {
+    sql_print_error(msgbuf);
+    return TRUE;
+  }
+
+  length=(uint) (strxmov(name, db_name, ".", table_name,NullS) - name);
+  /*
+     TODO: switch from protocol to push_warning here. The main reason we didn't
+     it yet is parallel repair. Due to following trace:
+     mi_check_print_msg/push_warning/sql_alloc/my_pthread_getspecific_ptr.
+
+     Also we likely need to lock mutex here (in both cases with protocol and
+     push_warning).
+  */
+  DBUG_PRINT("info",("print_admin_msg:  %s, %s, %s, %s", name, op_name,
+                     msg_type, msgbuf));
+  protocol->prepare_for_resend();
+  protocol->store(name, length, system_charset_info);
+  protocol->store(op_name, system_charset_info);
+  protocol->store(msg_type, system_charset_info);
+  protocol->store(msgbuf, msg_length, system_charset_info);
+  if (protocol->write())
+  {
+    sql_print_error("Failed on my_net_write, writing to stderr instead: %s\n",
+                    msgbuf);
+    return TRUE;
+  }
+  return FALSE;
+}
 
 
 /*
@@ -1095,54 +1079,151 @@ static int handle_opt_part(THD *thd, HA_CHECK_OPT *check_opt,
 int ha_partition::handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt,
                                         uint flag, bool all_parts)
 {
-#ifdef WL4176_IS_DONE
   List_iterator<partition_element> part_it(m_part_info->partitions);
   uint no_parts= m_part_info->no_parts;
   uint no_subparts= m_part_info->no_subparts;
   uint i= 0;
   int error;
-#endif
   DBUG_ENTER("ha_partition::handle_opt_partitions");
   DBUG_PRINT("enter", ("all_parts %u, flag= %u", all_parts, flag));
 
-  /*
-    TODO:
-    Rewrite the code for ANALYZE/CHECK/OPTIMIZE/REPAIR PARTITION WL4176
-  */
-  DBUG_RETURN(HA_ADMIN_NOT_IMPLEMENTED);
-#ifdef WL4176_IS_DONE
   do
   {
     partition_element *part_elem= part_it++;
-    if (all_parts || part_elem->part_state == PART_CHANGED)
+    /*
+      when ALTER TABLE <CMD> PARTITION ...
+      it should only do named partitions, otherwise all partitions
+    */
+    if (all_parts ||
+        part_elem->part_state == PART_CHANGED)
     {
       if (m_is_sub_partitioned)
       {
+        List_iterator<partition_element> subpart_it(part_elem->subpartitions);
+        partition_element *sub_elem;
         uint j= 0, part;
         do
         {
+          sub_elem= subpart_it++;
           part= i * no_subparts + j;
-          DBUG_PRINT("info", ("Optimize subpartition %u",
-                     part));
+          DBUG_PRINT("info", ("Optimize subpartition %u (%s)",
+                     part, sub_elem->partition_name));
+#ifdef NOT_USED
+          if (print_admin_msg(thd, "note", table_share->db.str, table->alias,
+                          opt_op_name[flag],
+                          "Start to operate on subpartition %s", 
+                          sub_elem->partition_name))
+            DBUG_RETURN(HA_ADMIN_INTERNAL_ERROR);
+#endif
           if ((error= handle_opt_part(thd, check_opt, m_file[part], flag)))
           {
+            /* print a line which partition the error belongs to */
+            if (error != HA_ADMIN_NOT_IMPLEMENTED &&
+                error != HA_ADMIN_ALREADY_DONE &&
+                error != HA_ADMIN_TRY_ALTER)
+            {
+              print_admin_msg(thd, "error", table_share->db.str, table->alias,
+                              opt_op_name[flag],
+                              "Subpartition %s returned error", 
+                              sub_elem->partition_name);
+            }
             DBUG_RETURN(error);
           }
         } while (++j < no_subparts);
       }
       else
       {
-        DBUG_PRINT("info", ("Optimize partition %u", i));
+        DBUG_PRINT("info", ("Optimize partition %u (%s)", i,
+                            part_elem->partition_name));
+#ifdef NOT_USED
+        if (print_admin_msg(thd, "note", table_share->db.str, table->alias,
+                        opt_op_name[flag],
+                        "Start to operate on partition %s", 
+                        part_elem->partition_name))
+          DBUG_RETURN(HA_ADMIN_INTERNAL_ERROR);
+#endif
         if ((error= handle_opt_part(thd, check_opt, m_file[i], flag)))
         {
+          /* print a line which partition the error belongs to */
+          if (error != HA_ADMIN_NOT_IMPLEMENTED &&
+              error != HA_ADMIN_ALREADY_DONE &&
+              error != HA_ADMIN_TRY_ALTER)
+          {
+            print_admin_msg(thd, "error", table_share->db.str, table->alias,
+                            opt_op_name[flag], "Partition %s returned error", 
+                            part_elem->partition_name);
+          }
           DBUG_RETURN(error);
         }
       }
     }
   } while (++i < no_parts);
   DBUG_RETURN(FALSE);
-#endif
 }
+
+
+/**
+  @brief Check and repair the table if neccesary
+
+  @param thd    Thread object
+
+  @retval TRUE  Error/Not supported
+  @retval FALSE Success
+*/
+
+bool ha_partition::check_and_repair(THD *thd)
+{
+  handler **file= m_file;
+  DBUG_ENTER("ha_partition::check_and_repair");
+
+  do
+  {
+    if ((*file)->ha_check_and_repair(thd))
+      DBUG_RETURN(TRUE);
+  } while (*(++file));
+  DBUG_RETURN(FALSE);
+}
+ 
+
+/**
+  @breif Check if the table can be automatically repaired
+
+  @retval TRUE  Can be auto repaired
+  @retval FALSE Cannot be auto repaired
+*/
+
+bool ha_partition::auto_repair() const
+{
+  DBUG_ENTER("ha_partition::auto_repair");
+
+  /*
+    As long as we only support one storage engine per table,
+    we can use the first partition for this function.
+  */
+  DBUG_RETURN(m_file[0]->auto_repair());
+}
+
+
+/**
+  @breif Check if the table is crashed
+
+  @retval TRUE  Crashed
+  @retval FALSE Not crashed
+*/
+
+bool ha_partition::is_crashed() const
+{
+  handler **file= m_file;
+  DBUG_ENTER("ha_partition::is_crashed");
+
+  do
+  {
+    if ((*file)->is_crashed())
+      DBUG_RETURN(TRUE);
+  } while (*(++file));
+  DBUG_RETURN(FALSE);
+}
+ 
 
 /*
   Prepare by creating a new partition
@@ -1291,6 +1372,12 @@ int ha_partition::change_partitions(HA_CREATE_INFO *create_info,
   THD *thd= ha_thd();
   DBUG_ENTER("ha_partition::change_partitions");
 
+  /*
+    Assert that it works without HA_FILE_BASED and lower_case_table_name = 2.
+    We use m_file[0] as long as all partitions have the same storage engine.
+  */
+  DBUG_ASSERT(!strcmp(path, get_canonical_filename(m_file[0], path,
+                                                   part_name_buff)));
   m_reorged_parts= 0;
   if (!m_part_info->is_sub_partitioned())
     no_subparts= 1;
@@ -1643,6 +1730,14 @@ error:
 
 void ha_partition::update_create_info(HA_CREATE_INFO *create_info)
 {
+  /*
+    Fix for bug#38751, some engines needs info-calls in ALTER.
+    Archive need this since it flushes in ::info.
+    HA_STATUS_AUTO is optimized so it will not always be forwarded
+    to all partitions, but HA_STATUS_VARIABLE will.
+  */
+  info(HA_STATUS_VARIABLE);
+
   info(HA_STATUS_AUTO);
 
   if (!(create_info->used_fields & HA_CREATE_USED_AUTO))
@@ -1725,8 +1820,11 @@ uint ha_partition::del_ren_cre_table(const char *from,
 {
   int save_error= 0;
   int error;
-  char from_buff[FN_REFLEN], to_buff[FN_REFLEN];
+  char from_buff[FN_REFLEN], to_buff[FN_REFLEN], from_lc_buff[FN_REFLEN],
+       to_lc_buff[FN_REFLEN];
   char *name_buffer_ptr;
+  const char *from_path;
+  const char *to_path= NULL;
   uint i;
   handler **file, **abort_file;
   DBUG_ENTER("del_ren_cre_table()");
@@ -1734,17 +1832,29 @@ uint ha_partition::del_ren_cre_table(const char *from,
   if (get_from_handler_file(from, ha_thd()->mem_root))
     DBUG_RETURN(TRUE);
   DBUG_ASSERT(m_file_buffer);
+  DBUG_PRINT("enter", ("from: (%s) to: (%s)", from, to));
   name_buffer_ptr= m_name_buffer_ptr;
   file= m_file;
+  /*
+    Since ha_partition has HA_FILE_BASED, it must alter underlying table names
+    if they do not have HA_FILE_BASED and lower_case_table_names == 2.
+    See Bug#37402, for Mac OS X.
+    The appended #P#<partname>[#SP#<subpartname>] will remain in current case.
+    Using the first partitions handler, since mixing handlers is not allowed.
+  */
+  from_path= get_canonical_filename(*file, from, from_lc_buff);
+  if (to != NULL)
+    to_path= get_canonical_filename(*file, to, to_lc_buff);
   i= 0;
   do
   {
-    create_partition_name(from_buff, from, name_buffer_ptr, NORMAL_PART_NAME,
-                          FALSE);
+    create_partition_name(from_buff, from_path, name_buffer_ptr,
+                          NORMAL_PART_NAME, FALSE);
+
     if (to != NULL)
     {						// Rename branch
-      create_partition_name(to_buff, to, name_buffer_ptr, NORMAL_PART_NAME,
-                            FALSE);
+      create_partition_name(to_buff, to_path, name_buffer_ptr,
+                            NORMAL_PART_NAME, FALSE);
       error= (*file)->ha_rename_table(from_buff, to_buff);
     }
     else if (table_arg == NULL)			// delete branch
@@ -1766,7 +1876,7 @@ create_error:
   name_buffer_ptr= m_name_buffer_ptr;
   for (abort_file= file, file= m_file; file < abort_file; file++)
   {
-    create_partition_name(from_buff, from, name_buffer_ptr, NORMAL_PART_NAME,
+    create_partition_name(from_buff, from_path, name_buffer_ptr, NORMAL_PART_NAME,
                           FALSE);
     (void) (*file)->ha_delete_table((const char*) from_buff);
     name_buffer_ptr= strend(name_buffer_ptr) + 1;
@@ -2413,7 +2523,11 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
                                    alloc_root(&table_share->mem_root,
                                               sizeof(HA_DATA_PARTITION));
     if (!ha_data)
+    {
+      if (is_not_tmp_table)
+        pthread_mutex_unlock(&table_share->LOCK_ha_data);
       goto err_handler;
+    }
     DBUG_PRINT("info", ("table_share->ha_data 0x%p", ha_data));
     bzero(ha_data, sizeof(HA_DATA_PARTITION));
   }
@@ -2431,6 +2545,8 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
 err_handler:
   while (file-- != m_file)
     (*file)->close();
+  if (!is_clone)
+    bitmap_free(&(m_part_info->used_partitions));
 
   DBUG_RETURN(error);
 }
@@ -2766,6 +2882,7 @@ int ha_partition::write_row(uchar * buf)
   my_bitmap_map *old_map;
   HA_DATA_PARTITION *ha_data= (HA_DATA_PARTITION*) table_share->ha_data;
   THD *thd= ha_thd();
+  timestamp_auto_set_type orig_timestamp_type= table->timestamp_field_type;
 #ifdef NOT_NEEDED
   uchar *rec0= m_rec0;
 #endif
@@ -2775,6 +2892,7 @@ int ha_partition::write_row(uchar * buf)
   /* If we have a timestamp column, update it to the current time */
   if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_INSERT)
     table->timestamp_field->set_time();
+  table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
 
   /*
     If we have an auto_increment column and we are writing a changed row
@@ -2827,9 +2945,10 @@ int ha_partition::write_row(uchar * buf)
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
   if (have_auto_increment && !table->s->next_number_keypart)
-    set_auto_increment_if_higher();
+    set_auto_increment_if_higher(table->next_number_field->val_int());
   reenable_binlog(thd);
 exit:
+  table->timestamp_field_type= orig_timestamp_type;
   DBUG_RETURN(error);
 }
 
@@ -2853,13 +2972,6 @@ exit:
     Keep in mind that the server can do updates based on ordering if an
     ORDER BY clause was used. Consecutive ordering is not guarenteed.
 
-    Currently new_data will not have an updated auto_increament record, or
-    and updated timestamp field. You can do these for partition by doing these:
-    if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
-      table->timestamp_field->set_time();
-    if (table->next_number_field && record == table->record[0])
-      update_auto_increment();
-
     Called from sql_select.cc, sql_acl.cc, sql_update.cc, and sql_insert.cc.
     new_data is always record[0]
     old_data is normally record[1] but may be anything
@@ -2880,10 +2992,8 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
     inside m_file[*]->update_row() methods
   */
   if (orig_timestamp_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
-  {
     table->timestamp_field->set_time();
-    table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
-  }
+  table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
 
   if ((error= get_parts_for_update(old_data, new_data, table->record[0],
                                    m_part_info, &old_part_id, &new_part_id,
@@ -2904,10 +3014,12 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
       table_share->ha_data->next_auto_inc_val if needed.
       (not to be used if auto_increment on secondary field in a multi-
       column index)
+      mysql_update does not set table->next_number_field, so we use
+      table->found_next_number_field instead.
     */
-    if (table->next_number_field && new_data == table->record[0] &&
+    if (table->found_next_number_field && new_data == table->record[0] &&
         !table->s->next_number_keypart)
-      set_auto_increment_if_higher();
+      set_auto_increment_if_higher(table->found_next_number_field->val_int());
     reenable_binlog(thd);
     goto exit;
   }
@@ -2917,6 +3029,9 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
 			old_part_id, new_part_id));
     tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
     error= m_file[new_part_id]->ha_write_row(new_data);
+    if (table->found_next_number_field && new_data == table->record[0] &&
+        !table->s->next_number_keypart)
+      set_auto_increment_if_higher(table->found_next_number_field->val_int());
     reenable_binlog(thd);
     if (error)
       goto exit;
@@ -3662,7 +3777,7 @@ int ha_partition::common_index_read(uchar *buf, bool have_start_key)
   uint key_len;
   bool reverse_order= FALSE;
   DBUG_ENTER("ha_partition::common_index_read");
-  LINT_INIT(key_len); /* used iff have_start_key==TRUE */
+  LINT_INIT(key_len); /* used if have_start_key==TRUE */
 
   if (have_start_key)
   {
@@ -3993,7 +4108,7 @@ int ha_partition::read_range_next()
 
 
 /*
-  Common routine to set up index scans scans
+  Common routine to set up index scans
 
   SYNOPSIS
     ha_partition::partition_scan_set_up()
@@ -4190,6 +4305,17 @@ int ha_partition::handle_unordered_scan_next_partition(uchar * buf)
       break;
     case partition_index_first:
       DBUG_PRINT("info", ("index_first on partition %d", i));
+      /* MyISAM engine can fail if we call index_first() when indexes disabled */
+      /* that happens if the table is empty. */
+      /* Here we use file->stats.records instead of file->records() because */
+      /* file->records() is supposed to return an EXACT count, and it can be   */
+      /* possibly slow. We don't need an exact number, an approximate one- from*/
+      /* the last ::info() call - is sufficient. */
+      if (file->stats.records == 0)
+      {
+        error= HA_ERR_END_OF_FILE;
+        break;
+      }
       error= file->index_first(buf);
       break;
     case partition_index_first_unordered:
@@ -4277,10 +4403,32 @@ int ha_partition::handle_ordered_index_scan(uchar *buf, bool reverse_order)
                                   m_start_key.flag);
       break;
     case partition_index_first:
+      /* MyISAM engine can fail if we call index_first() when indexes disabled */
+      /* that happens if the table is empty. */
+      /* Here we use file->stats.records instead of file->records() because */
+      /* file->records() is supposed to return an EXACT count, and it can be   */
+      /* possibly slow. We don't need an exact number, an approximate one- from*/
+      /* the last ::info() call - is sufficient. */
+      if (file->stats.records == 0)
+      {
+        error= HA_ERR_END_OF_FILE;
+        break;
+      }
       error= file->index_first(rec_buf_ptr);
       reverse_order= FALSE;
       break;
     case partition_index_last:
+      /* MyISAM engine can fail if we call index_last() when indexes disabled */
+      /* that happens if the table is empty. */
+      /* Here we use file->stats.records instead of file->records() because */
+      /* file->records() is supposed to return an EXACT count, and it can be   */
+      /* possibly slow. We don't need an exact number, an approximate one- from*/
+      /* the last ::info() call - is sufficient. */
+      if (file->stats.records == 0)
+      {
+        error= HA_ERR_END_OF_FILE;
+        break;
+      }
       error= file->index_last(rec_buf_ptr);
       reverse_order= TRUE;
       break;
@@ -4703,10 +4851,11 @@ int ha_partition::info(uint flag)
       This flag is used to get index number of the unique index that
       reported duplicate key
       We will report the errkey on the last handler used and ignore the rest
+      Note: all engines does not support HA_STATUS_ERRKEY, so set errkey.
     */
+    file->errkey= errkey;
     file->info(HA_STATUS_ERRKEY);
-    if (file->errkey != (uint) -1)
-      errkey= file->errkey;
+    errkey= file->errkey;
   }
   if (flag & HA_STATUS_TIME)
   {
@@ -5884,6 +6033,7 @@ void ha_partition::get_auto_increment(ulonglong offset, ulonglong increment,
       if (first_value_part == ~(ulonglong)(0)) // error in one partition
       {
         *first_value= first_value_part;
+        /* log that the error was between table/partition handler */
         sql_print_error("Partition failed to reserve auto_increment value");
         unlock_auto_increment();
         DBUG_VOID_RETURN;

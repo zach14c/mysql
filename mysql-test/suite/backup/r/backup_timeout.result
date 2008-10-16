@@ -1,0 +1,73 @@
+SET DEBUG_SYNC= 'reset';
+DROP DATABASE IF EXISTS bup_ddl_blocker;
+CREATE DATABASE bup_ddl_blocker;
+con1: Creating tables
+CREATE TABLE bup_ddl_blocker.t1 (col_a CHAR(40)) ENGINE=INNODB;
+con1: Loading data
+INSERT INTO bup_ddl_blocker.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_ddl_blocker.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_ddl_blocker.t1 VALUES ("03 Some data to test");
+SHOW VARIABLES LIKE 'backup_wait%';
+Variable_name	Value
+backup_wait_timeout	50
+Part A
+con1: Activate synchronization points for backup.
+SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_blocked WAIT_FOR timeout_done';
+con1: Get a backup going and stop after the DDL blocker is fired.
+BACKUP DATABASE bup_ddl_blocker TO "bup_ddl_blocker.bak";
+SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
+Set ddl timeout to 1 second
+SET backup_wait_timeout = 1;
+SHOW VARIABLES LIKE 'backup_wait%';
+Variable_name	Value
+backup_wait_timeout	1
+con2: Try a ddl operation and watch it expire
+CREATE TABLE bup_ddl_blocker.t2 (col_a CHAR(40)) ENGINE=MEMORY;
+ERROR HY000: The backup wait timeout has expired for query 'CREATE TABLE bup_ddl_blocker.t2 (col_a CHAR(40)) ENGINE=MEMORY'.
+release the lock.
+con5: Resume all.
+SET DEBUG_SYNC= 'now SIGNAL timeout_done';
+backup_id
+#
+Part B
+con1: Activate synchronization points for backup.
+SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_blocked WAIT_FOR timeout_done';
+con1: Get a backup going and stop after the DDL blocker is fired.
+BACKUP DATABASE bup_ddl_blocker TO "bup_ddl_blocker.bak";
+SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
+Set ddl timeout to 0 seconds
+SET backup_wait_timeout = 0;
+SHOW VARIABLES LIKE 'backup_wait%';
+Variable_name	Value
+backup_wait_timeout	0
+con2: Try a ddl operation and it should expire
+CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY;
+ERROR HY000: The backup wait timeout has expired for query 'CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY'.
+SET backup_wait_timeout = 100;
+SHOW VARIABLES LIKE 'backup_wait%';
+Variable_name	Value
+backup_wait_timeout	100
+con3: Try a ddl operation and it should not expire
+CREATE TABLE bup_ddl_blocker.t3 (col_a CHAR(40)) ENGINE=MEMORY;
+release the lock.
+con5: Resume all.
+SET DEBUG_SYNC= 'now SIGNAL timeout_done';
+backup_id
+#
+USE bup_ddl_blocker;
+SHOW FULL TABLES;
+Tables_in_bup_ddl_blocker	Table_type
+t1	BASE TABLE
+t3	BASE TABLE
+Part C
+Show that the variable can be reset to its timeout value using
+SET backup_wait_timeout = DEFAULT;
+SET backup_wait_timeout = 1;
+SHOW VARIABLES LIKE 'backup_wait%';
+Variable_name	Value
+backup_wait_timeout	1
+SET backup_wait_timeout = DEFAULT;
+SHOW VARIABLES LIKE 'backup_wait%';
+Variable_name	Value
+backup_wait_timeout	50
+DROP DATABASE bup_ddl_blocker;

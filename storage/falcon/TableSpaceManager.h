@@ -55,6 +55,7 @@ public:
 	JString			tableSpaceType(JString name);
 	void			getIOInfo(InfoTable* infoTable);
 	void			getTableSpaceInfo(InfoTable* infoTable);
+	JString			tableSpaceFileType(JString name);
 	void			getTableSpaceFilesInfo(InfoTable* infoTable);
 	void			validate(int optionMask);
 	void			sync();
