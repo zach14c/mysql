@@ -2220,11 +2220,6 @@ int subselect_single_select_engine::exec()
     SELECT_LEX_UNIT *unit= select_lex->master_unit();
 
     unit->set_limit(unit->global_parameters);
-    if (join->flatten_subqueries())
-    {
-      thd->is_fatal_error= TRUE;
-      DBUG_RETURN(1);
-    }
     if (join->optimize())
     {
       thd->where= save_where;
@@ -3209,8 +3204,7 @@ int subselect_hash_sj_engine::exec()
     int res= 0;
     SELECT_LEX *save_select= thd->lex->current_select;
     thd->lex->current_select= materialize_engine->select_lex;
-    if ((res= materialize_join->flatten_subqueries()) || 
-        (res= materialize_join->optimize()))
+    if ((res= materialize_join->optimize()))
       goto err;
     materialize_join->exec();
     if ((res= test(materialize_join->error || thd->is_fatal_error)))

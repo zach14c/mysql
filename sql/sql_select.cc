@@ -1385,6 +1385,13 @@ JOIN::optimize()
   optimized= 1;
 
   thd_proc_info(thd, "optimizing");
+  
+  /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
+  if (flatten_subqueries())
+    return 1;
+  /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
+
+
   row_limit= ((select_distinct || order || group_list) ? HA_POS_ERROR :
 	      unit->select_limit_cnt);
   /* select_limit is used to decide if we are likely to scan the whole table */
@@ -1421,6 +1428,7 @@ JOIN::optimize()
   SELECT_LEX *sel= thd->lex->current_select;
   if (sel->first_cond_optimization)
   {
+    //psergey-todo: move flatten-subqueries call to here?
     /*
       The following code will allocate the new items in a permanent
       MEMROOT for prepared statements and stored procedures.
@@ -2997,14 +3005,6 @@ mysql_select(THD *thd, Item ***rref_pointer_array,
     }
   }
 
-  /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
-  if (join->flatten_subqueries())
-  {
-    err= 1;
-    goto err;
-  }
-  /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
-
   if ((err= join->optimize()))
   {
     goto err;					// 1
@@ -3400,13 +3400,46 @@ bool convert_subq_to_sj(JOIN *parent_join, Item_in_subselect *subq_pred)
 
 
 /*
-  Convert candidate subquery predicates to semi-joins
+  Convert semi-join subquery predicates into semi-join join nests
 
   SYNOPSIS
     JOIN::flatten_subqueries()
  
   DESCRIPTION
-    Convert candidate subquery predicates to semi-joins.
+
+    Convert candidate subquery predicates into semi-join join nests. This 
+    transformation is performed once in query lifetime and is irreversible.
+    
+    Conversion of one subquery predicate
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    We start with a join that has a semi-join subquery:
+
+      SELECT ...
+      FROM ot, ...
+      WHERE oe IN (SELECT ie FROM it1 ... itN WHERE subq_where) AND outer_where
+
+    and convert it into a semi-join nest:
+
+      SELECT ...
+      FROM ot SEMI JOIN (it1 ... itN), ...
+      WHERE outer_where AND subq_where AND oe=ie
+
+    that is, in order to do the conversion, we need to 
+
+     * Create the "SEMI JOIN (it1 .. itN)" part and add it into the parent
+       query's FROM structure.
+     * Add "AND subq_where AND oe=ie" into parent query's WHERE (or ON if
+       the subquery predicate was in an ON expression)
+     * Remove the subquery predicate from the parent query's WHERE
+
+    Considerations when converting many predicates
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    A join may have at most MAX_TABLES tables. This may prevent us from
+    flattening all subqueries when the total number of tables in parent and
+    child selects exceeds MAX_TABLES.
+    We deal with this problem by flattening children's subqueries first and
+    then using a heuristic rule to determine each subquery predicate's
+    "priority".
 
   RETURN 
     FALSE  OK
@@ -3423,7 +3456,7 @@ bool JOIN::flatten_subqueries()
   if (sj_subselects.elements() == 0)
     DBUG_RETURN(FALSE);
 
-  /* 1. Fix children subqueries */
+  /* First, convert child join's subqueries. We proceed bottom-up here */
   for (in_subq= sj_subselects.front(), in_subq_end= sj_subselects.back(); 
        in_subq != in_subq_end; in_subq++)
   {
@@ -7546,7 +7579,7 @@ prev_record_reads(JOIN *join, uint idx, table_map found_ref)
       join  The join with the picked join order
 
   DESCRIPTION
-     psergey-todo: comments:   
+    psergey-todo: comments:   
 */
 
 static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
@@ -7716,8 +7749,10 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
   DESCRIPTION
     Setup join structures accroding the picked join order:
     - finalize semi-join strategy choices (see
-      fix_semijoin_strategies_for_picked_join_order)
+        fix_semijoin_strategies_for_picked_join_order)
+
     - create join->join_tab array and put there the JOIN_TABs in the join order
+      
     - create ref access data structures
 
   RETURN 
@@ -7725,8 +7760,7 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
     TRUE   Out of memory
 */
 
-static bool
-get_best_combination(JOIN *join)
+static bool get_best_combination(JOIN *join)
 {
   uint i,tablenr;
   table_map used_tables;
@@ -15299,6 +15333,7 @@ sub_select_cache(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
     rc= sub_select(join, join_tab, end_of_records);
   return rc;
 }
+
 
 /**
   Retrieve records ends with a given beginning from the result of a join.
