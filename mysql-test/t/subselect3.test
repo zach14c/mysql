@@ -684,8 +684,7 @@ insert into t1 select * from t1;
 
 set @save_join_cache_level=@@join_cache_level;
 set join_cache_level=6;
-select * from t0 left join t1 on t0.a=t1.a where t1.b is null; 
-
+select * from t0 where t0.a in (select t1.a from t1 where t1.b=0); 
 set join_cache_level=@save_join_cache_level;
 drop table t0, t1;
 
