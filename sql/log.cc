@@ -34,7 +34,7 @@
 #include <stdarg.h>
 #include <m_ctype.h>				// For test_if_number
 
-#ifdef __NT__
+#ifdef _WIN32
 #include "message.h"
 #endif
 
@@ -2122,6 +2122,8 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
                       FLAGSTR(thd->options, OPTION_NOT_AUTOCOMMIT),
                       FLAGSTR(thd->options, OPTION_BEGIN)));
 
+  thd->binlog_flush_pending_rows_event(TRUE);
+
   /*
     NULL denotes ROLLBACK with nothing to replicate: i.e., rollback of
     only transactional tables.  If the transaction contain changes to
@@ -2140,8 +2142,6 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
       were, we would have to ensure that we're not ending a statement
       inside a stored function.
      */
-    thd->binlog_flush_pending_rows_event(TRUE);
-
     error= mysql_bin_log.write(thd, &trx_data->trans_log, end_ev);
     trx_data->reset();
 
@@ -2166,6 +2166,7 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
       If rolling back a statement in a transaction, we truncate the
       transaction cache to remove the statement.
      */
+    thd->binlog_remove_pending_rows_event(TRUE);
     if (all || !(thd->options & (OPTION_BEGIN | OPTION_NOT_AUTOCOMMIT)))
     {
       trx_data->reset();
@@ -2488,7 +2489,7 @@ err:
   DBUG_RETURN(-1);
 }
 
-#ifdef __NT__
+#ifdef _WIN32
 static int eventSource = 0;
 
 static void setup_windows_event_source()
@@ -2523,8 +2524,7 @@ static void setup_windows_event_source()
   RegCloseKey(hRegKey);
 }
 
-#endif /* __NT__ */
-
+#endif /* _WIN32 */
 
 /**
   Find a unique filename for 'filename.#'.
@@ -2654,7 +2654,7 @@ bool MYSQL_LOG::open(const char *log_name, enum_log_type log_type_arg,
 #ifdef EMBEDDED_LIBRARY
                         "embedded library\n",
                         my_progname, server_version, MYSQL_COMPILATION_COMMENT
-#elif __NT__
+#elif _WIN32
 			"started with:\nTCP Port: %d, Named Pipe: %s\n",
                         my_progname, server_version, MYSQL_COMPILATION_COMMENT,
                         mysqld_port, mysqld_unix_port
@@ -5122,6 +5122,31 @@ THD::binlog_set_pending_rows_event(Rows_log_event* ev)
 }
 
 
+/**
+  Remove the pending rows event, discarding any outstanding rows.
+
+  If there is no pending rows event available, this is effectively a
+  no-op.
+ */
+int
+MYSQL_BIN_LOG::remove_pending_rows_event(THD *thd)
+{
+  DBUG_ENTER(__FUNCTION__);
+
+  binlog_trx_data *const trx_data=
+    (binlog_trx_data*) thd_get_ha_data(thd, binlog_hton);
+
+  DBUG_ASSERT(trx_data);
+
+  if (Rows_log_event* pending= trx_data->pending())
+  {
+    delete pending;
+    trx_data->set_pending(NULL);
+  }
+
+  DBUG_RETURN(0);
+}
+
 /*
   Moves the last bunch of rows from the pending Rows event to the binlog
   (either cached binlog if transaction, or disk binlog). Sets a new pending
@@ -5337,11 +5362,6 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
           DBUG_PRINT("info",("number of auto_inc intervals: %u",
                              thd->auto_inc_intervals_in_cur_stmt_for_binlog.
                              nb_elements()));
-          /*
-            If the auto_increment was second in a table's index (possible with
-            MyISAM or BDB) (table->next_number_keypart != 0), such event is
-            in fact not necessary. We could avoid logging it.
-          */
           Intvar_log_event e(thd, (uchar) INSERT_ID_EVENT,
                              thd->auto_inc_intervals_in_cur_stmt_for_binlog.
                              minimum());
@@ -6052,7 +6072,7 @@ void MYSQL_BIN_LOG::signal_update()
   DBUG_VOID_RETURN;
 }
 
-#ifdef __NT__
+#ifdef _WIN32
 static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
                                         size_t length, size_t buffLen)
 {
@@ -6085,7 +6105,7 @@ static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
 
   DBUG_VOID_RETURN;
 }
-#endif /* __NT__ */
+#endif /* _WIN32 */
 
 
 /**
@@ -6143,13 +6163,13 @@ int vprint_msg_to_log(enum loglevel level, const char *format, va_list args)
   char   buff[1024];
   DBUG_ENTER("vprint_msg_to_log");
 
-#ifdef __NT__
+#ifdef _WIN32
   size_t length=
 #endif
     my_vsnprintf(buff, sizeof(buff), format, args);
   print_buffer_to_file(level, buff);
 
-#ifdef __NT__
+#ifdef _WIN32
   print_buffer_to_nt_eventlog(level, buff, length, sizeof(buff));
 #endif
 

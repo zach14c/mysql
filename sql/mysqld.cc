@@ -408,7 +408,7 @@ static bool volatile ready_to_exit;
 static my_bool opt_debugging= 0, opt_external_locking= 0, opt_console= 0;
 static my_bool opt_short_log_format= 0;
 static uint kill_cached_threads, wake_thread;
-static ulong killed_threads, thread_created;
+static ulong killed_threads;
 static ulong max_used_connections;
 static volatile ulong cached_thread_count= 0;
 static const char *sql_mode_str= "OFF";
@@ -443,7 +443,7 @@ my_bool opt_character_set_client_handshake= 1;
 bool server_id_supplied = 0;
 bool opt_endinfo, using_udf_functions;
 my_bool locked_in_memory;
-bool opt_using_transactions, using_update_log;
+bool opt_using_transactions;
 bool volatile abort_loop;
 bool volatile shutdown_in_progress;
 /**
@@ -533,6 +533,7 @@ uint delay_key_write_options, protocol_version;
 uint lower_case_table_names;
 uint tc_heuristic_recover= 0;
 uint volatile thread_count, thread_running;
+ulong thread_created;
 ulonglong thd_startup_options;
 ulong back_log, connect_timeout, concurrency, server_id;
 ulong table_cache_size, table_def_size;
@@ -769,14 +770,12 @@ static char shutdown_event_name[40];
 #include "nt_servc.h"
 static	 NTService  Service;	      ///< Service object for WinNT
 #endif /* EMBEDDED_LIBRARY */
-#endif /* __WIN__ */
 
-#ifdef __NT__
 static char pipe_name[512];
 static SECURITY_ATTRIBUTES saPipeSecurity;
 static SECURITY_DESCRIPTOR sdPipeDescriptor;
 static HANDLE hPipe = INVALID_HANDLE_VALUE;
-#endif
+#endif /* __WIN__ */
 
 #ifndef EMBEDDED_LIBRARY
 bool mysqld_embedded=0;
@@ -848,7 +847,7 @@ pthread_handler_t handle_connections_sockets(void *arg);
 pthread_handler_t kill_server_thread(void *arg);
 static void bootstrap(FILE *file);
 static bool read_init_file(char *file_name);
-#ifdef __NT__
+#ifdef _WIN32
 pthread_handler_t handle_connections_namedpipes(void *arg);
 #endif
 #ifdef HAVE_SMEM
@@ -945,7 +944,7 @@ static void close_connections(void)
       ip_sock= INVALID_SOCKET;
     }
   }
-#ifdef __NT__
+#ifdef _WIN32
   if (hPipe != INVALID_HANDLE_VALUE && opt_enable_named_pipe)
   {
     HANDLE temp;
@@ -1790,7 +1789,7 @@ static void network_init(void)
     }
   }
 
-#ifdef __NT__
+#ifdef _WIN32
   /* create named pipe */
   if (Service.IsNT() && mysqld_unix_port[0] && !opt_bootstrap &&
       opt_enable_named_pipe)
@@ -3598,7 +3597,7 @@ static int init_common_variables(const char *conf_file_name, int argc,
   if (opt_slow_log && opt_slow_logname && !(log_output_options & LOG_FILE)
       && !(log_output_options & LOG_NONE))
     sql_print_warning("Although a path was specified for the "
-                      "--log-slow-queries option, log tables are used. "
+                      "--log_slow_queries option, log tables are used. "
                       "To enable logging to files use the --log-output=file option.");
 
   if (opt_backup_history_log && opt_backup_history_logname
@@ -4018,23 +4017,25 @@ with --log-bin instead.");
     unireg_abort(1);
   }
   if (!opt_bin_log)
+  {
     if (opt_binlog_format_id != BINLOG_FORMAT_UNSPEC)
-  {
-    sql_print_error("You need to use --log-bin to make "
-                    "--binlog-format work.");
-    unireg_abort(1);
-  }
-    else
-  {
-      global_system_variables.binlog_format= BINLOG_FORMAT_MIXED;
+    {
+      sql_print_error("You need to use --log-bin to make "
+                      "--binlog-format work.");
+      unireg_abort(1);
     }
+    else
+    {
+      global_system_variables.binlog_format= BINLOG_FORMAT_STMT;
+    }
+  }
   else
     if (opt_binlog_format_id == BINLOG_FORMAT_UNSPEC)
-      global_system_variables.binlog_format= BINLOG_FORMAT_MIXED;
+      global_system_variables.binlog_format= BINLOG_FORMAT_STMT;
     else
     {
       DBUG_ASSERT(global_system_variables.binlog_format != BINLOG_FORMAT_UNSPEC);
-  }
+    }
 
   /* Check that we have not let the format to unspecified at this point */
   DBUG_ASSERT((uint)global_system_variables.binlog_format <=
@@ -4080,12 +4081,6 @@ server.");
     {
       unireg_abort(1);
     }
-
-    /*
-      Used to specify which type of lock we need to use for queries of type
-      INSERT ... SELECT. This will change when we have row level logging.
-    */
-    using_update_log=1;
   }
 
   /* call ha_init_key_cache() on all key caches to init them */
@@ -4369,12 +4364,12 @@ static void create_shutdown_thread()
 #endif /* EMBEDDED_LIBRARY */
 
 
-#if (defined(__NT__) || defined(HAVE_SMEM)) && !defined(EMBEDDED_LIBRARY)
+#if (defined(_WIN32) || defined(HAVE_SMEM)) && !defined(EMBEDDED_LIBRARY)
 static void handle_connections_methods()
 {
   pthread_t hThread;
   DBUG_ENTER("handle_connections_methods");
-#ifdef __NT__
+#ifdef _WIN32
   if (hPipe == INVALID_HANDLE_VALUE &&
       (!have_tcpip || opt_disable_networking) &&
       !opt_enable_shared_memory)
@@ -4387,7 +4382,7 @@ static void handle_connections_methods()
   pthread_mutex_lock(&LOCK_thread_count);
   (void) pthread_cond_init(&COND_handler_count,NULL);
   handler_count=0;
-#ifdef __NT__
+#ifdef _WIN32
   if (hPipe != INVALID_HANDLE_VALUE)
   {
     handler_count++;
@@ -4398,7 +4393,7 @@ static void handle_connections_methods()
       handler_count--;
     }
   }
-#endif /* __NT__ */
+#endif /* _WIN32 */
   if (have_tcpip && !opt_disable_networking)
   {
     handler_count++;
@@ -4438,7 +4433,7 @@ void decrement_handler_count()
 }
 #else
 #define decrement_handler_count()
-#endif /* defined(__NT__) || defined(HAVE_SMEM) */
+#endif /* defined(_WIN32) || defined(HAVE_SMEM) */
 
 
 #ifndef EMBEDDED_LIBRARY
@@ -4678,7 +4673,7 @@ int main(int argc, char **argv)
   pthread_cond_signal(&COND_server_started);
   pthread_mutex_unlock(&LOCK_server_started);
 
-#if defined(__NT__) || defined(HAVE_SMEM)
+#if defined(_WIN32) || defined(HAVE_SMEM)
   handle_connections_methods();
 #else
 #ifdef __WIN__
@@ -4689,7 +4684,7 @@ int main(int argc, char **argv)
   }
 #endif
   handle_connections_sockets(0);
-#endif /* __NT__ */
+#endif /* _WIN32 || HAVE_SMEM */
 
   /* (void) pthread_attr_destroy(&connection_attrib); */
 
@@ -5350,7 +5345,7 @@ pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))
 }
 
 
-#ifdef __NT__
+#ifdef _WIN32
 pthread_handler_t handle_connections_namedpipes(void *arg)
 {
   HANDLE hConnectedPipe;
@@ -5430,7 +5425,7 @@ pthread_handler_t handle_connections_namedpipes(void *arg)
   decrement_handler_count();
   DBUG_RETURN(0);
 }
-#endif /* __NT__ */
+#endif /* _WIN32 */
 
 
 #ifdef HAVE_SMEM
@@ -5850,7 +5845,9 @@ enum options_mysqld
   OPT_POOL_OF_THREADS,
 #endif
   OPT_DEBUG_CRC, OPT_DEBUG_ON,
-  OPT_SLAVE_EXEC_MODE
+  OPT_SLAVE_EXEC_MODE,
+  OPT_GENERAL_LOG_FILE,
+  OPT_SLOW_QUERY_LOG_FILE
 };
 
 
@@ -6028,7 +6025,7 @@ struct my_option my_long_options[] =
    "Deprecated option, use --external-locking instead.",
    (uchar**) &opt_external_locking, (uchar**) &opt_external_locking,
    0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-#ifdef __NT__
+#ifdef _WIN32
   {"enable-named-pipe", OPT_HAVE_NAMED_PIPE, "Enable the named pipe (NT).",
    (uchar**) &opt_enable_named_pipe, (uchar**) &opt_enable_named_pipe, 0, GET_BOOL,
    NO_ARG, 0, 0, 0, 0, 0, 0},
@@ -6060,7 +6057,7 @@ struct my_option my_long_options[] =
    "Set up signals usable for debugging",
    (uchar**) &opt_debugging, (uchar**) &opt_debugging,
    0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"general-log", OPT_GENERAL_LOG,
+  {"general_log", OPT_GENERAL_LOG,
    "Enable|disable general log", (uchar**) &opt_log,
    (uchar**) &opt_log, 0, GET_BOOL, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #ifdef HAVE_LARGE_PAGES
@@ -6096,8 +6093,12 @@ Disable with --skip-large-pages.",
    (uchar**) &opt_local_infile,
    (uchar**) &opt_local_infile, 0, GET_BOOL, OPT_ARG,
    1, 0, 0, 0, 0, 0},
-  {"log", 'l', "Log connections and queries to file.", (uchar**) &opt_logname,
+  {"log", 'l', "Log connections and queries to file (deprecated option, use "
+   "--general_log/--general_log_file instead).", (uchar**) &opt_logname,
    (uchar**) &opt_logname, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"general_log_file", OPT_GENERAL_LOG_FILE,
+   "Log connections and queries to given file.", (uchar**) &opt_logname,
+   (uchar**) &opt_logname, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"log-bin", OPT_BIN_LOG,
    "Log update queries in binary format. Optional (but strongly recommended "
    "to avoid replication problems if server's hostname changes) argument "
@@ -6176,10 +6177,17 @@ Disable with --skip-large-pages.",
   (uchar**) &opt_log_slow_slave_statements,
   (uchar**) &opt_log_slow_slave_statements,
   0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"log-slow-queries", OPT_SLOW_QUERY_LOG,
-    "Log slow queries to a table or log file. Defaults logging to table mysql.slow_log or hostname-slow.log if --log-output=file is used. Must be enabled to activate other slow log options.",
+  {"log_slow_queries", OPT_SLOW_QUERY_LOG,
+    "Log slow queries to a table or log file. Defaults logging to table "
+    "mysql.slow_log or hostname-slow.log if --log-output=file is used. "
+    "Must be enabled to activate other slow log options. "
+    "(deprecated option, use --slow_query_log/--slow_query_log_file instead)",
    (uchar**) &opt_slow_logname, (uchar**) &opt_slow_logname, 0, GET_STR, OPT_ARG,
    0, 0, 0, 0, 0, 0},
+  {"slow_query_log_file", OPT_SLOW_QUERY_LOG_FILE,
+    "Log slow queries to given log file. Defaults logging to hostname-slow.log. Must be enabled to activate other slow log options.",
+   (uchar**) &opt_slow_logname, (uchar**) &opt_slow_logname, 0, GET_STR,
+   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"log-tc", OPT_LOG_TC,
    "Path to transaction coordinator log (used for transactions that affect "
    "more than one storage engine, when binary log is disabled)",
@@ -6551,7 +6559,7 @@ Can't be set to 1 if --log-slave-updates is used.",
   {"skip-symlink", OPT_SKIP_SYMLINKS, "Don't allow symlinking of tables. Deprecated option.  Use --skip-symbolic-links instead.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"skip-thread-priority", OPT_SKIP_PRIOR,
-   "Don't give threads different priorities.", 0, 0, 0, GET_NO_ARG, NO_ARG,
+   "Don't give threads different priorities. Deprecated option.", 0, 0, 0, GET_NO_ARG, NO_ARG,
    DEFAULT_SKIP_THREAD_PRIORITY, 0, 0, 0, 0, 0},
 #ifdef HAVE_REPLICATION
   {"slave-load-tmpdir", OPT_SLAVE_LOAD_TMPDIR,
@@ -7791,7 +7799,7 @@ static void mysql_init_variables(void)
   slave_open_temp_tables= 0;
   cached_thread_count= 0;
   opt_endinfo= using_udf_functions= 0;
-  opt_using_transactions= using_update_log= 0;
+  opt_using_transactions= 0;
   abort_loop= select_thread_in_use= signal_thread_in_use= 0;
   ready_to_exit= shutdown_in_progress= grant_option= 0;
   aborted_threads= aborted_connects= 0;
@@ -8028,6 +8036,7 @@ mysqld_get_one_option(int optid,
       default_collation_name= 0;
     break;
   case 'l':
+    WARN_DEPRECATED(NULL, 7,0, "--log", "'--general_log'/'--general_log_file'");
     opt_log=1;
     break;
   case 'B':
@@ -8212,6 +8221,7 @@ mysqld_get_one_option(int optid,
   }
 #endif /* HAVE_REPLICATION */
   case (int) OPT_SLOW_QUERY_LOG:
+    WARN_DEPRECATED(NULL, 7,0, "--log_slow_queries", "'--slow_query_log'/'--slow_query_log_file'");
     opt_slow_log= 1;
     break;
 #ifdef WITH_CSV_STORAGE_ENGINE
@@ -8274,6 +8284,9 @@ mysqld_get_one_option(int optid,
     break;
   case (int) OPT_SKIP_PRIOR:
     opt_specialflag|= SPECIAL_NO_PRIOR;
+    sql_print_warning("The --skip-thread-priority startup option is deprecated "
+                      "and will be removed in MySQL 7.0. MySQL 6.0 and up do not "
+                      "give threads different priorities.");
     break;
   case (int) OPT_SKIP_LOCK:
     opt_external_locking=0;
@@ -8613,7 +8626,7 @@ static void get_options(int *argc,char **argv)
   if ((opt_log_slow_admin_statements || opt_log_queries_not_using_indexes ||
        opt_log_slow_slave_statements) &&
       !opt_slow_log)
-    sql_print_warning("options --log-slow-admin-statements, --log-queries-not-using-indexes and --log-slow-slave-statements have no effect if --log-slow-queries is not set");
+    sql_print_warning("options --log-slow-admin-statements, --log-queries-not-using-indexes and --log-slow-slave-statements have no effect if --log_slow_queries is not set");
 
 #if defined(HAVE_BROKEN_REALPATH)
   my_use_symdir=0;

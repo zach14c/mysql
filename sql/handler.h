@@ -1457,6 +1457,13 @@ public:
     inserter.
   */
   Discrete_interval auto_inc_interval_for_cur_row;
+  /**
+     Number of reserved auto-increment intervals. Serves as a heuristic
+     when we have no estimation of how many records the statement will insert:
+     the more intervals we have reserved, the bigger the next one. Reset in
+     handler::ha_release_auto_increment().
+  */
+  uint auto_inc_intervals_count;
 
   handler(handlerton *ht_arg, TABLE_SHARE *share_arg)
     :table_share(share_arg), table(0),
@@ -1467,7 +1474,7 @@ public:
     ft_handler(0), inited(NONE),
     locked(FALSE), implicit_emptied(0),
     pushed_cond(0), pushed_idx_cond(NULL), pushed_idx_cond_keyno(MAX_KEY),
-    next_insert_id(0), insert_id_for_cur_row(0)
+    next_insert_id(0), insert_id_for_cur_row(0), auto_inc_intervals_count(0)
     {}
   virtual ~handler(void)
   {
@@ -1535,6 +1542,7 @@ public:
   int ha_delete_row(const uchar * buf);
   void ha_release_auto_increment();
 
+  int check_collation_compatibility();
   int ha_check_for_upgrade(HA_CHECK_OPT *check_opt);
   /** to be actually called to get 'check()' functionality*/
   int ha_check(THD *thd, HA_CHECK_OPT *check_opt);
