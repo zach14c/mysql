@@ -118,13 +118,6 @@ typedef struct st_reginfo {		/* Extra info about reg */
 
 class Copy_field;
 
-  /* 
-    SJ-Materialization runtime may need to read fields from the materialized
-    table and unpack them into original table fields:
-  */
-  Copy_field *copy_field;
-  Copy_field *copy_field_end;
-
 /*
   Originally MySQL used MYSQL_TIME structure inside server only, but since
   4.1 it's exported to user in the new client API. Define aliases for
