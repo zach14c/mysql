@@ -770,9 +770,35 @@ SELECT * FROM t1,t2 WHERE t1.a=t2.a AND t1.b >= 30;
 
 DROP TABLE t1,t2;
  
---echo 
---echo BUG#40136: Group by is ignored when join buffer is used for an outer join
---echo 
+--echo #
+--echo # Bug #40134: outer join with not exists optimization and join buffer
+--echo #
+
+set join_cache_level=default;
+set join_buffer_size=default;
+
+CREATE TABLE t1 (a int NOT NULL);
+INSERT INTO t1 VALUES (2), (4), (3), (5), (1);
+CREATE TABLE t2 (a int NOT NULL, b int NOT NULL, INDEX i_a(a));
+INSERT INTO t2 VALUES (4,10), (2,10), (2,30), (2,20), (4,20);
+
+EXPLAIN
+SELECT * FROM t1 LEFT JOIN t2 ON t1.a=t2.a WHERE t2.b IS NULL;
+SELECT * FROM t1 LEFT JOIN t2 ON t1.a=t2.a WHERE t2.b IS NULL;
+
+SET join_cache_level=6;
+EXPLAIN
+SELECT * FROM t1 LEFT JOIN t2 ON t1.a=t2.a WHERE t2.b IS NULL;
+SELECT * FROM t1 LEFT JOIN t2 ON t1.a=t2.a WHERE t2.b IS NULL;
+
+DROP TABLE t1, t2;
+
+set join_cache_level=default;
+set join_buffer_size=default;
+
+--echo #
+--echo # BUG#40136: Group by is ignored when join buffer is used for an outer join
+--echo #
 create table t1(a int PRIMARY KEY, b int);
 insert into t1 values
   (5, 10), (2, 70), (7, 80), (6, 20), (1, 50), (9, 40), (8, 30), (3, 60);
@@ -788,5 +814,5 @@ select t1.a, count(t2.p) as count
   from t1 left join t2 on t1.a=t2.a and t2.p % 2 = 1 group by t1.a;
 select t1.a, count(t2.p) as count
   from t1 left join t2 on t1.a=t2.a and t2.p % 2 = 1 group by t1.a;
+set join_cache_level=@save_join_cache_level;
 drop table t1, t2;
-
