@@ -128,7 +128,7 @@ void SerialLogFile::open(JString filename, bool create)
 	
 
 	if (create)
-		handle = ::open(filename, O_RDWR | O_BINARY | O_CREAT|O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+		handle = ::open(filename, O_RDWR | O_BINARY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 	else
 		handle = ::open(filename, O_RDWR | O_BINARY);
 

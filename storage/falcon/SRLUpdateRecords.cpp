@@ -247,6 +247,7 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			log->chilledRecords += chilledRecordsWindow;
 			log->chilledBytes   += chilledBytesWindow;
 			transaction->chilledRecords += chilledRecordsWindow;
+			transaction->chilledBytes += chilledBytesWindow;
 			windowNumber = (uint32)log->writeWindow->virtualOffset / SRL_WINDOW_SIZE;
 			}
 		} // next window

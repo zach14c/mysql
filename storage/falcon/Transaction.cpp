@@ -397,7 +397,7 @@ void Transaction::rollback()
 	// Rollback pending record versions from newest to oldest in case
 	// there are multiple record versions on a prior record chain
 
-	Sync syncRec(&syncRecords, "Transaction::rollback(1.5)");
+	Sync syncRec(&syncRecords, "Transaction::rollback(records)");
 	syncRec.lock(Exclusive);
 
 	while (firstRecord)
@@ -451,7 +451,7 @@ void Transaction::rollback()
 		xidLength = 0;
 		}
 	
-	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(2)");
+	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(active)");
 	syncActiveTransactions.lock (Exclusive);
 	++transactionManager->rolledBack;
 	
@@ -1494,7 +1494,7 @@ void Transaction::releaseDeferredIndexes(void)
 		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
 		deferredIndex->detachTransaction();
-		deferredIndex->releaseRef();
+		deferredIndex->release();
 		deferredIndexCount--;
 		}
 }
@@ -1510,7 +1510,7 @@ void Transaction::releaseDeferredIndexes(Table* table)
 			{
 			*ptr = deferredIndex->nextInTransaction;
 			deferredIndex->detachTransaction();
-			deferredIndex->releaseRef();
+			deferredIndex->release();
 			--deferredIndexCount;
 			}
 		else

@@ -73,12 +73,14 @@
 #include "MemoryManager.h"
 #include "MemMgr.h"
 #include "RecordScavenge.h"
+#include "RecordSection.h"
 #include "LogStream.h"
 #include "SyncTest.h"
 #include "SyncHandler.h"
 #include "PriorityScheduler.h"
 #include "Sequence.h"
 #include "BackLog.h"
+#include "Bitmap.h"
 
 #ifdef _WIN32
 #define PATH_MAX			_MAX_PATH
@@ -1825,7 +1827,7 @@ void Database::retireRecords(bool forced)
 			catch (SQLException &exception)
 				{
 				//syncTbl.unlock();
-				Log::debug ("Exception during scavenger of table %s.%s: %s\n",
+				Log::debug ("Exception during scavenge of table %s.%s: %s\n",
 						table->schemaName, table->name, exception.getText());
 				}
 			}
@@ -2044,6 +2046,30 @@ JString Database::analyze(int mask)
 			
 			if (count)
 				stream.format ("%s.%s\t%d\n", table->schemaName, table->name, count);
+			}
+			
+		stream.putCharacter ('\n');
+		}
+
+	if (mask & analyzeRecordLeafs)
+		{
+		int *chart = new int [RECORD_SLOTS + 1];
+		stream.putSegment ("\nRecordLeafs\n");
+
+		for (Table *table = tableList; table; table = table->next)
+			{
+			memset(chart, 0, sizeof(int) * (RECORD_SLOTS + 1));
+			int count = table->chartActiveRecords(chart);
+
+			if (count)
+				{
+				stream.format ("%s.%s\t%d\t", table->schemaName, table->name, count);
+				for (int a = 0; a < RECORD_SLOTS + 1; a++)
+					if (chart[a])
+						stream.format ("[%d]%d ", a, chart[a]);
+
+				stream.format ("\n");
+				}
 			}
 			
 		stream.putCharacter ('\n');
@@ -2501,6 +2527,9 @@ void Database::debugTrace(void)
 	if (falcon_debug_trace & FALC0N_FREEZE)
 		Synchronize::freezeSystem();
 	
+	if (falcon_debug_trace & FALC0N_TEST_BITMAP)
+		Bitmap::unitTest();
+
 	falcon_debug_trace = 0;
 #endif
 }

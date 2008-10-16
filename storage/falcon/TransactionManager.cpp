@@ -291,7 +291,7 @@ void TransactionManager::purgeTransactions()
 	Sync syncCommitted(&committedTransactions.syncObject, "Transaction::purgeTransactions");
 	syncCommitted.lock(Exclusive);
 	
-	// And, while we're at it, check for any fully mature transactions to ditch
+	// Check for any fully mature transactions to ditch
 	
 	for (Transaction *transaction, *next = committedTransactions.first; (transaction = next);)
 		{

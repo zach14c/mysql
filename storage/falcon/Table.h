@@ -99,6 +99,7 @@ public:
 	void		rebuildIndex (Index *index, Transaction *transaction);
 	int			retireRecords (RecordScavenge *recordScavenge);
 	int			countActiveRecords();
+	int			chartActiveRecords(int *chart);
 	bool		foreignKeyMember (ForeignKey *key);
 	void		makeNotSearchable (Field *field, Transaction *transaction);
 	bool		dropForeignKey (int fieldCount, Field **fields, Table *references);
@@ -204,7 +205,7 @@ public:
 	void			inventoryRecords(RecordScavenge* recordScavenge);
 	Format*			getCurrentFormat(void);
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
-	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
+//	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
 	void			unlockRecord(int recordNumber);
 	void			unlockRecord(RecordVersion* record, bool remove);
 
