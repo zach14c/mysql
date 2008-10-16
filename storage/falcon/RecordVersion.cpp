@@ -175,7 +175,6 @@ bool RecordVersion::isVersion()
 void RecordVersion::commit()
 {
 	transaction = NULL;
-	poke();
 }
 
 // Scavenge record versions by the scavenger thread.  Return true if the
