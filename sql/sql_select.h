@@ -468,7 +468,7 @@ public:
   TAB *tabs_end;
 
   bool is_confluent;
-  bool seen;
+  bool seen; //psergey-todo: comments.
 
   uint null_bits;
   uint null_bytes;

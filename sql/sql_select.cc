@@ -264,6 +264,7 @@ static
 bool subquery_types_allow_materialization(THD *thd, 
                                           Item_in_subselect *in_subs,
                                           bool *scan_allowed);
+int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 /*
   This is used to mark equalities that were made from i-th IN-equality.
   We limit semi-join LooseScan optimization to handling max 64 inequalities,
@@ -3769,6 +3770,8 @@ int pull_out_semijoin_tables(JOIN *join)
                - we could still use LooseScan
                - we could still use SJ-Materialization if we pull the tables
                  back in.
+
+               psergey-todo: examples
             */
             sj_nest->sj_subq_pred->is_correlated= TRUE;
           }
@@ -6346,7 +6349,6 @@ best_access_path(JOIN      *join,
         ! s->table->covering_keys.is_clear_all() && best_key && !s->quick) &&// (3)
       !(s->table->force_index && best_key && !s->quick))                 // (4)
   {                                             // Check full join
-    //part1_conds_met= MAX_KEY;
     ha_rows rnd_records= s->found_records;
     /*
       If there is a filtering condition on the table (i.e. ref analyzer found
@@ -9167,8 +9169,8 @@ static uint make_join_orderinfo(JOIN *join)
     end_sj_materialize()
       join            The join 
       join_tab        Last join table
-      end_of_records  FALSE <=> This call is made to pass the callee another
-                                record combination
+      end_of_records  FALSE <=> This call is made to pass another record 
+                                combination
                       TRUE  <=> EOF (no action)
 
   DESCRIPTION
@@ -15205,12 +15207,27 @@ int rr_sequential_and_unpack(READ_RECORD *info)
   Semi-join materialization join function
 
   SYNOPSIS
+    sub_select_sjm()
+      join            The join
+      join_tab        The first table in the materialization nest
+      end_of_records  FALSE <=> This call is made to pass another record 
+                                combination
+                      TRUE  <=> EOF
 
   DESCRIPTION
-    This function is called for
-    (psergey-todo: comment)
+    This is a join execution function that does materialization of a join
+    suborder before joining it to the rest of the join.
+
+    The table pointed by join_tab is the first of the materialized tables.
+    This function first creates the materialized table and then switches to
+    joining the materialized table with the rest of the join.
+
+    The materialized table can be accessed in two ways:
+     - index lookups
+     - full table scan
+
   RETURN
-    
+    One of enum_nested_loop_state values
 */
 
 enum_nested_loop_state
@@ -15282,7 +15299,7 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
   
   if (sjm->is_sj_scan)
   {
-    /* This will do full scan of the materialized table: */
+    /* Do full scan of the materialized table */
     JOIN_TAB *last_tab= join_tab + (sjm->n_tables - 1);
     enum_nested_loop_state res;
 
@@ -15458,7 +15475,6 @@ sub_select_cache(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   @return
     return one of enum_nested_loop_state, except NESTED_LOOP_NO_MORE_ROWS.
 */
-int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 
 enum_nested_loop_state
 sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
@@ -19008,8 +19024,10 @@ read_cached_record(JOIN_TAB *tab)
 
   SYNOPSIS
     cmp_buffer_with_ref()
-      tab  Join tab of the accessed table
- 
+      tab      Join tab of the accessed table
+      table    psergey-todo: comments
+      tab_ref  psergey-todo: comments 
+
   DESCRIPTION 
     Used by eq_ref access method: create the index lookup key and check if 
     we've used this key at previous lookup (If yes, we don't need to repeat
