@@ -99,7 +99,7 @@ public:
 	void		prepare(int xidLength, const UCHAR *xid);
 	void		rollback();
 	void		commit();
-	int			release();
+	void		release();
 	void		addRef();
 	void		waitForTransaction();
 	bool		waitForTransaction (TransId transId);

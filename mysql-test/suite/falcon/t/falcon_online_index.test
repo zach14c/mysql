@@ -163,14 +163,12 @@ ALTER ONLINE TABLE t3 DROP INDEX ix_b;
 
 --echo #-------- ONLINE: ALTER ADD not-null with default --------#
 
-# Test that ALTER ONLINE ... ADD INDEX fails with ONLINE for non-nullable column having default value
---error ER_NOT_SUPPORTED_YET
+# Test that ALTER ONLINE ... ADD INDEX succeeds with ONLINE for non-nullable column having default value
 ALTER ONLINE TABLE t3 ADD INDEX ix_c (c);
 
 --echo #-------- ONLINE: ALTER ADD not-null --------#
 
-# Test that ALTER ONLINE ... ADD INDEX fails with ONLINE for non-nullable columns
---error ER_NOT_SUPPORTED_YET
+# Test that ALTER ONLINE ... ADD INDEX succeeds with ONLINE for non-nullable columns
 ALTER ONLINE TABLE t3 ADD INDEX ix_d (d);
 
 --echo #-------- ONLINE: ALTER ADD same key multiple times --------#

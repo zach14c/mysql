@@ -2180,46 +2180,6 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 			}
 		}
 		
-	// TODO for Add Index:
-	// 1. Check for supported ALTER combinations
-	// 2. Can error message be improved for non-null columns?
-	
-	if (alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX))
-		{
-		for (unsigned int n = 0; n < altered_table->s->keys; n++)
-			{
-			if (n != altered_table->s->primary_key)
-				{
-				KEY *key = altered_table->key_info + n;
-				KEY *tableEnd = table->key_info + table->s->keys;
-				KEY *tableKey;
-				
-				// Determine if this is a new index
-
-				for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
-					if (!strcmp(tableKey->name, key->name))
-						break;
-				
-				// Verify that each part is nullable
-				
-				if (tableKey >= tableEnd)
-					for (uint p = 0; p < key->key_parts; p++)
-						{
-						KEY_PART_INFO *keyPart = key->key_part + p;
-						if (keyPart && !keyPart->field->real_maybe_null())
-							{
-							DBUG_PRINT("info",("Online add index columns must be nullable"));
-							DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
-							}
-						}
-				}
-			}
-		}
-		
-	if (alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX))
-		{
-		}
-		
 	DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 }
 
