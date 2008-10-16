@@ -43,7 +43,7 @@ public:
 	virtual	int     retireRecords(Table *table, int base, RecordScavenge *recordScavenge) = 0;
 	virtual	void    inventoryRecords(RecordScavenge* recordScavenge) = 0;
 	virtual	int     countActiveRecords() = 0;
-	virtual	bool    anyActiveRecords() = false;
+	virtual	bool    anyActiveRecords() = 0;
 	virtual	int     chartActiveRecords(int *chart) = 0;
 
 	int32			base;
