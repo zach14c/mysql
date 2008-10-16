@@ -99,6 +99,7 @@ public:
 	void		rebuildIndex (Index *index, Transaction *transaction);
 	int			retireRecords (RecordScavenge *recordScavenge);
 	int			countActiveRecords();
+	int			chartActiveRecords(int *chart);
 	bool		foreignKeyMember (ForeignKey *key);
 	void		makeNotSearchable (Field *field, Transaction *transaction);
 	bool		dropForeignKey (int fieldCount, Field **fields, Table *references);

@@ -64,6 +64,8 @@ public:
 	void	addRef();
 
 	INTERLOCK_TYPE		count;
+	
+	static void unitTest(void);
 
 protected:
 	void	decompose (int32 number, uint *indexes);

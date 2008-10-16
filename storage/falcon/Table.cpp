@@ -162,6 +162,9 @@ Table::~Table()
 
 	if (recordBitmap)
 		recordBitmap->release();
+
+	if (emptySections)
+		emptySections->release();
 }
 
 Field* Table::findField(const char * fieldName)
@@ -1875,7 +1878,7 @@ int Table::retireRecords(RecordScavenge *recordScavenge)
 		syncObj.lock(Exclusive);
 
 		// Confirm that tree is still empty
-		
+
 		count = records->countActiveRecords();
 
 		if (count == 0)
@@ -1888,16 +1891,17 @@ int Table::retireRecords(RecordScavenge *recordScavenge)
 		{
 		// Get an exclusive lock only if there are empty leaf nodes. Find and
 		// delete the empty nodes using the stored record numbers as identifiers.
-		
+
 		if (emptySections->count > 0)
 			{
 			syncObj.unlock();
 			syncObj.lock(Exclusive);
 
-			for (int recordNumber = 0; (recordNumber = emptySections->nextSet(recordNumber)) >= 0;)
+			for (int sectionNumber = 0; (sectionNumber = emptySections->nextSet(0)) >= 0;)
 				{
+				int recordNumber = sectionNumber * RECORD_SLOTS;
 				records->retireSections(this, recordNumber);
-				emptySections->clear(recordNumber);
+				emptySections->clear(sectionNumber);
 				}
 				
 			}
@@ -2117,10 +2121,10 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 	if (!leaving && !staying)
 		return;
 
-	Sync sync (&syncObject, "Table::garbageCollect(1)");
+	Sync sync (&syncObject, "Table::garbageCollect(Obj)");
 	sync.lock(Shared);
 	
-	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(2)");
+	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(prior)");
 	syncPrior.lock(Shared);
 	
 	// Clean up field indexes
@@ -2768,6 +2772,17 @@ int Table::countActiveRecords()
 		return 0;
 
 	return records->countActiveRecords();
+}
+
+int Table::chartActiveRecords(int *chart)
+{
+	Sync sync(&syncObject, "Table::countActiveRecords");
+	sync.lock(Shared);
+
+	if (!records)
+		return 0;
+
+	return records->chartActiveRecords(chart);
 }
 
 void Table::rebuildIndex(Index *index, Transaction *transaction)
