@@ -3379,7 +3379,7 @@ void Table::waitForWriteComplete()
 {
 	database->waitForWriteComplete(this);
 }
-
+/*
 RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
 {
 	Record *current = fetch(record->recordNumber);
@@ -3426,7 +3426,7 @@ RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
 		}
 	
 	return recordVersion;	
-}
+}   */
 
 void Table::unlockRecord(int recordNumber)
 {

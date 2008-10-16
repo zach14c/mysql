@@ -205,7 +205,7 @@ public:
 	void			inventoryRecords(RecordScavenge* recordScavenge);
 	Format*			getCurrentFormat(void);
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
-	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
+//	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
 	void			unlockRecord(int recordNumber);
 	void			unlockRecord(RecordVersion* record, bool remove);
 
