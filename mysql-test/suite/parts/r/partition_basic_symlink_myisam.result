@@ -8042,7 +8042,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -8584,7 +8584,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -9139,7 +9139,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -9688,7 +9688,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -10237,7 +10237,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -10788,7 +10788,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -11357,7 +11357,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -11910,7 +11910,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -12437,7 +12437,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -12979,7 +12979,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -13534,7 +13534,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -14083,7 +14083,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -14632,7 +14632,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -15181,7 +15181,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -15750,7 +15750,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -16303,7 +16303,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -16824,7 +16824,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -17356,7 +17356,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -17904,7 +17904,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -18441,7 +18441,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -18978,7 +18978,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -19521,7 +19521,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -20080,7 +20080,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
