@@ -2501,6 +2501,9 @@ void Database::debugTrace(void)
 	if (falcon_debug_trace & FALC0N_FREEZE)
 		Synchronize::freezeSystem();
 	
+	if (falcon_debug_trace & FALC0N_TEST_BITMAP)
+		Bitmap::unitTest();
+
 	falcon_debug_trace = 0;
 #endif
 }

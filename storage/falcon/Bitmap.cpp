@@ -19,6 +19,7 @@
 
 #include <memory.h>
 #include "Engine.h"
+#include "Log.h"
 #include "Bitmap.h"
 
 #ifndef FALCONDB
@@ -207,7 +208,7 @@ int32 Bitmap::nextSet(int32 start)
 
 	uint indexes[6];
 	decompose (start, indexes);
-    void **vectors [5];
+	void **vectors [5];
 	vectors [level] = vector;
 	int index;
 
@@ -244,7 +245,8 @@ int32 Bitmap::nextSet(int32 start)
 			void **vec = vectors [lvl];
 			
 			for (index = indexes[lvl]; index < BITMAP_VECTOR_SIZE && !vec [index]; ++index)
-				;
+				for (int n = 0; n < lvl; ++n)
+					indexes[n] = 0;
 				
 			if (index < BITMAP_VECTOR_SIZE)
 				{
@@ -701,4 +703,117 @@ bool Bitmap::setSafe(int32 bitNumber)
 		}
 	
 	return true;
+}
+
+void Bitmap::unitTest(void)
+{
+	int bitNumber;
+	Bitmap *tester = new Bitmap;
+
+	// Set numbers incremented by random amounts.
+	// Check that what is set is set.
+	// Clear sequentially searching from zero.
+	// Check that what was cleared is not still set.
+	Log::log("\nBitmap Test #1\n");
+
+	for (bitNumber = 0; bitNumber < 20000; bitNumber += rand() % 200)
+		{
+		Log::log("Setting bit %d\n", bitNumber);
+		tester->set(bitNumber);
+		}
+
+	for (int bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
+		{
+		if (!tester->isSet(bitNumber))
+			Log::log("** Error - %d should be set\n", bitNumber);
+
+		Log::log("Clearing bit %d\n", bitNumber);
+		tester->clear(bitNumber);
+
+		if (tester->isSet(bitNumber))
+			Log::log("** Error - %d is still set\n", bitNumber);
+		}
+
+	for (bitNumber = 0; (bitNumber = tester->nextSet(bitNumber + 1)) >= 0;)
+		Log::log("** Error - bit %d is still set\n", bitNumber);
+
+	tester->clear();
+
+	// Set numbers incremented by large random amounts.
+	// Clear bits after searching from last bit cleard.
+	// Check that all bits are cleared.
+	Log::log("\nBitmap Test #2\n");
+
+	for (bitNumber = 0; bitNumber < 2000000; bitNumber += rand() % 20000)
+		{
+		Log::log("Setting bit %d\n", bitNumber);
+		tester->set(bitNumber);
+		}
+
+	for (int bitNumber = 0; (bitNumber = tester->nextSet(bitNumber)) >= 0;)
+		{
+		Log::log("Clearing bit %d\n", bitNumber);
+		tester->clear(bitNumber);
+		}
+
+	for (bitNumber = 0; (bitNumber = tester->nextSet(bitNumber + 1)) >= 0;)
+		Log::log("** Error - bit %d is still set\n", bitNumber);
+
+	tester->clear();
+
+	// Set numbers incremented by larger random amounts.
+	// Clear bits after searching from random locations.
+	// Finish clearing after searching from zero.
+	// Check that all bits are cleared.
+	Log::log("\nBitmap Test #3\n");
+
+	for (bitNumber = 0; bitNumber < 2000000; bitNumber += rand() % 20000)
+		{
+		Log::log("Setting bit %d\n", bitNumber);
+		tester->set(bitNumber);
+		}
+
+	for (int bitNumber = 0; (bitNumber = tester->nextSet( ((int32) rand() * (int32) rand()) % 1800000)) >= 0;)
+		{
+		Log::log("Clearing bit %d\n", bitNumber);
+			tester->clear(bitNumber);
+		}
+
+	for (int bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
+		{
+		Log::log("Clearing bit %d\n", bitNumber);
+		tester->clear(bitNumber);
+		}
+
+	for (bitNumber = 0; (bitNumber = tester->nextSet(bitNumber + 1)) >= 0;)
+		Log::log("** Error - bit %d is still set\n", bitNumber);
+
+	tester->clear();
+
+	// Set specific numbers around 1024 and 2048.
+	// Clear bits after searching from last bit cleared.
+	// Check that all bits are cleared.
+	Log::log("\nBitmap Test #4\n");
+	for (bitNumber = 1020; bitNumber <= 1040; bitNumber += 1)
+		{
+		Log::log("Setting bit %d\n", bitNumber);
+		tester->set(bitNumber);
+		}
+
+	for (bitNumber = 2040; bitNumber <= 2060; bitNumber += 1)  // rand() % 1000)
+		{
+		Log::log("Setting bit %d\n", bitNumber);
+		tester->set(bitNumber);
+		}
+
+	for (bitNumber = 0; (bitNumber = tester->nextSet(bitNumber)) >= 0;)
+		{
+		Log::log("Clearing bit %d\n", bitNumber);
+		tester->clear(bitNumber);
+		}
+
+	for (bitNumber = 0; (bitNumber = tester->nextSet(bitNumber + 1)) >= 0;)
+		Log::log("** Error - bit %d is still set \n", bitNumber);
+
+	tester->clear();
 }
