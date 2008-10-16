@@ -8310,7 +8310,7 @@ uint make_join_orderinfo(JOIN *join)
       break;
     }
   }
-  return i;
+  return i-1;
 }
 
 static
