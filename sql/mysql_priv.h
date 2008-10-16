@@ -140,7 +140,7 @@ char* query_table_status(THD *thd,const char *db,const char *table_name);
 #define WARN_DEPRECATED(Thd,VerHi,VerLo,Old,New)                            \
   do {                                                                      \
     compile_time_assert(MYSQL_VERSION_ID < VerHi * 10000 + VerLo * 100);    \
-    if (Thd)                                                                \
+    if (((THD *) Thd) != NULL)                                              \
       push_warning_printf((Thd), MYSQL_ERROR::WARN_LEVEL_WARN,              \
                         ER_WARN_DEPRECATED_SYNTAX,                          \
                         ER(ER_WARN_DEPRECATED_SYNTAX_WITH_VER),             \
@@ -873,6 +873,7 @@ bool check_string_byte_length(LEX_STRING *str, const char *err_msg,
 bool check_string_char_length(LEX_STRING *str, const char *err_msg,
                               uint max_char_length, CHARSET_INFO *cs,
                               bool no_error);
+bool check_host_name(LEX_STRING *str);
 bool check_identifier_name(LEX_STRING *str, uint max_char_length,
                            uint err_code, const char *param_for_err_msg);
 inline bool check_identifier_name(LEX_STRING *str, uint err_code)
@@ -1339,6 +1340,7 @@ bool tdc_open_view(THD *thd, TABLE_LIST *table_list, const char *alias,
 TABLE *find_locked_table(TABLE *list, const char *db, const char *table_name);
 TABLE *find_write_locked_table(TABLE *list, const char *db,
                                const char *table_name);
+thr_lock_type read_lock_type_for_table(THD *thd, TABLE *table);
 bool open_new_frm(THD *thd, TABLE_SHARE *share, const char *alias,
                   uint db_stat, uint prgflag,
                   uint ha_open_flags, TABLE *outparam,
@@ -2024,7 +2026,7 @@ extern bool opt_using_transactions;
 extern bool mysqld_embedded;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
-extern bool using_update_log, opt_large_files, server_id_supplied;
+extern bool opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_log, opt_slow_log;
 extern my_bool opt_backup_history_log;
@@ -2036,6 +2038,7 @@ extern bool opt_disable_networking, opt_skip_show_db;
 extern my_bool opt_character_set_client_handshake;
 extern bool volatile abort_loop, shutdown_in_progress;
 extern uint volatile thread_count, thread_running, global_read_lock;
+extern ulong thread_created;
 extern uint connection_count;
 extern my_bool opt_sql_bin_update, opt_safe_user_create, opt_no_mix_types;
 extern my_bool opt_safe_show_db, opt_local_infile, opt_myisam_use_mmap;

@@ -881,9 +881,8 @@ private:
       auto_increment_lock= FALSE;
     }
   }
-  virtual void set_auto_increment_if_higher()
+  virtual void set_auto_increment_if_higher(const ulonglong nr)
   {
-    ulonglong nr= table->next_number_field->val_int();
     HA_DATA_PARTITION *ha_data= (HA_DATA_PARTITION*) table_share->ha_data;
     lock_auto_increment();
     /* must check when the mutex is taken */

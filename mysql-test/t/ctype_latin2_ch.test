@@ -182,3 +182,16 @@ SELECT * FROM t1 ORDER BY s1;
 DROP TABLE t1;
 
 SET NAMES latin2;
+
+#
+# Bug#37854 Test fails/aborts for collate latin2_czech_cs used with SET and ENUM datatypes
+#
+CREATE TABLE t2(colours SET('red','blue','yellow'))CHARACTER SET latin2 COLLATE
+latin2_czech_cs;
+CREATE TABLE t1(continent ENUM('Asia', 'Europe','Africa','Antartica'))CHARACTER SET latin2
+COLLATE latin2_czech_cs;
+INSERT INTO t1 VALUES('Asia');
+INSERT INTO t2 VALUES('blue');
+SELECT * FROM t1;
+SELECT * FROM t2;
+DROP TABLE t1, t2;
