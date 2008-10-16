@@ -94,7 +94,7 @@ static void add_hostname(struct sockaddr_storage *in, const char *name)
       if ((entry=(host_entry*) malloc(sizeof(host_entry)+length+1)))
       {
 	char *new_name;
-	memcpy_fixed(&entry->ip, in, sizeof(struct addrinfo));
+	memcpy_fixed(&entry->ip, in, sizeof(struct sockaddr_storage));
 	if (length)
 	  memcpy(new_name= (char *) (entry+1), name, length+1);
 	else
@@ -239,7 +239,6 @@ char *ip_to_hostname(struct sockaddr_storage *in, int addrLen, uint *errors)
       add_wrong_ip(in);
 
     my_free(name,MYF(0));
-    freeaddrinfo(res_lst);
     DBUG_RETURN(0);
   }
 
