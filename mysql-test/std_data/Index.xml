@@ -8,6 +8,12 @@
       </rules>
     </collation>
 
+    <collation name="utf8_maxuserid_ci" id="2047">
+      <rules>
+        <reset>a</reset>
+        <s>b</s>
+      </rules>
+    </collation>
   </charset>
 
   <charset name="utf16">

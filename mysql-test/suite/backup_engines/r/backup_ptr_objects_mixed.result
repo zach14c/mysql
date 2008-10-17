@@ -1,0 +1,2106 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+SET GLOBAL BINLOG_FORMAT='MIXED';
+SET BINLOG_FORMAT='MIXED';
+SELECT @@BINLOG_FORMAT;
+@@BINLOG_FORMAT
+MIXED
+RESET MASTER;
+**START TEST**
+*** TEST1 ***
+This test will recover data and objects using binlog position
+till point of backup and after backup.
+
+SET @a=UNIX_TIMESTAMP("2010-01-21 15:32:22");
+SET timestamp=@a;
+CREATE DATABASE IF NOT EXISTS ptr_ob1;
+CREATE DATABASE IF NOT EXISTS ptr_ob2;
+USE ptr_ob1;
+**** Creating tables ****
+CREATE TABLE ptr_ob1.t1(
+id INT, 
+a INT, 
+b CHAR(5)
+);
+CREATE TABLE ptr_ob1.t2(
+id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, 
+data CHAR(50)
+);
+CREATE TABLE ptr_ob1.t3(
+srno INT AUTO_INCREMENT, 
+PRIMARY KEY(srno), 
+name VARCHAR(30) NOT NULL, 
+old_a INT
+);
+CREATE TABLE ptr_ob2.t1(
+id INT, 
+b CHAR(5)
+);
+CREATE TABLE ptr_ob2.t2(id SMALLINT);
+INSERT INTO ptr_ob2.t1 VALUES(11,'set1'),(21,'set2'),(3,'set3'),(4,'set4');
+INSERT INTO ptr_ob2.t2 VALUES(91),(5),(26),(33),(5);
+**** Creating views ****
+CREATE VIEW ptr_ob1.v AS SELECT * FROM ptr_ob1.t1;
+CREATE VIEW ptr_ob1.v1 AS SELECT * FROM ptr_ob2.t1;
+CREATE TABLE ptr_ob1.tv1(id SMALLINT);
+INSERT INTO ptr_ob1.tv1  VALUES(1),(2),(3),(3),(5);
+SELECT * FROM ptr_ob1.tv1 UNION ALL SELECT * FROM ptr_ob2.t2;
+id
+1
+2
+3
+3
+5
+91
+5
+26
+33
+5
+CREATE VIEW ptr_ob2.v1 AS SELECT * FROM ptr_ob1.tv1  UNION ALL 
+SELECT * FROM ptr_ob2.t2 ORDER BY id;
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+26
+33
+91
+#### Creating view from another view ####
+CREATE VIEW ptr_ob1.vv AS SELECT SUM(id) from ptr_ob2.v1 GROUP BY id;
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+26
+33
+91
+**** Creating Triggers ****
+CREATE TRIGGER ptr_ob1.trg1 BEFORE INSERT ON ptr_ob1.t1 FOR EACH ROW
+BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END;||
+INSERT INTO ptr_ob1.t1 VALUES(1,20, 'bb1'), (2,50, 'bb2'),(3,80,'bb3');
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+2	50	bb2
+3	80	bb3
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+CREATE TRIGGER ptr_ob1.trg2 AFTER INSERT ON ptr_ob1.t2 FOR EACH ROW
+BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END;||
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL, 'Normal Insert1'),(NULL, 'Normal Insert2'),
+(NULL, 'Normal Insert3'),(NULL, 'Normal Insert4');
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+CREATE TRIGGER ptr_ob2.trg3 BEFORE DELETE ON ptr_ob2.t2 FOR EACH ROW
+SET @del_sum:= @del_sum + old.id;||
+SET @del_sum:= 0;||
+DELETE FROM ptr_ob2.t2 WHERE id=26;
+DELETE FROM ptr_ob2.t2 WHERE id=91;
+SELECT @del_sum;
+@del_sum
+117
+CREATE TRIGGER ptr_ob1.trg4 AFTER DELETE ON ptr_ob1.t1 FOR EACH ROW
+BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END;||
+DELETE FROM ptr_ob1.t1 WHERE id=2;
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	80	bb3
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	set3
+4	set4
+2	bb2
+CREATE TRIGGER ptr_ob1.trg5 BEFORE UPDATE ON ptr_ob1.t1 FOR EACH ROW
+BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END;
+||
+UPDATE ptr_ob1.t1 SET a='85' WHERE b='bb3';
+SELECT @id, @a_old, @a_new;
+@id	@a_old	@a_new
+3	80	85
+CREATE TRIGGER ptr_ob2.trg6 AFTER UPDATE ON ptr_ob2.t1 FOR EACH ROW
+BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END;
+||
+UPDATE ptr_ob2.t1 SET b='alert' WHERE id=3;
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	set4
+2	bb2
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	set4
+2	bb2
+
+**** Creating stored Procedures and functions ****
+
+#### The procedure p1 will insert VALUES in view ####
+CREATE PROCEDURE ptr_ob1.p1(details CHAR(40), id INT)
+BEGIN
+INSERT INTO ptr_ob1.v1 VALUES(1,'fired');
+END;
+||
+#### Procedure p2 will trigger trg2 ####
+CREATE PROCEDURE ptr_ob1.p2(content VARCHAR(40))
+BEGIN
+INSERT INTO ptr_ob1.t2 VALUES(NULL, 'Trigger fired from procedure p2');
+END;||
+#### Procedure p3 will trigger trg6 ####
+CREATE PROCEDURE ptr_ob1.p3(info TEXT)
+BEGIN
+UPDATE ptr_ob2.t1 SET b='#up#' WHERE id=4;
+END;||
+#### Procedure p4 will call view ####
+CREATE PROCEDURE ptr_ob2.p4() 
+BEGIN
+SELECT * FROM ptr_ob2.v1;
+END;
+||
+#### Function f1() ####
+CREATE FUNCTION f1() RETURNS INT
+RETURN (SELECT COUNT(*) FROM ptr_ob1.v1);||
+SELECT f1();
+f1()
+5
+CALL ptr_ob1.p1('procedure p1 called for view v1', 1);
+CALL ptr_ob1.p1('procedure p1 called for view v1', 2);
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	set4
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	set4
+2	bb2
+1	fired
+1	fired
+CALL ptr_ob1.p2('procedure p2 called for trg2');
+CALL ptr_ob1.p2('procedure p2 again called for trg2');
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+CALL ptr_ob1.p3('procedure p3 called for trg6');
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+CALL ptr_ob2.p4();
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+33
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+** Checking data contents in all the tables before performing backup **
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vv	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+33
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+7
+set timestamp=@a+2;
+Make some changes to objects.
+ALTER VIEW ptr_ob1.v AS SELECT id, a FROM ptr_ob1.t1;
+ALTER TABLE ptr_ob1.vv RENAME TO ptr_ob1.vva;
+ALTER TABLE ptr_ob2.t2 ADD COLUMN af_backup VARCHAR(30);
+ALTER TABLE ptr_ob1.t3 CHANGE name name TEXT;
+DESCRIBE ptr_ob1.t3;
+Field	Type	Null	Key	Default	Extra
+srno	int(11)	NO	PRI	NULL	auto_increment
+name	text	YES		NULL	
+old_a	int(11)	YES		NULL	
+ALTER PROCEDURE ptr_ob2.p4 COMMENT 'AFTER BACKUP';
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+Creating some new objects
+CREATE TABLE ptr_ob1.t11 (i INT, sr INT, j INT) engine=myisam;
+INSERT INTO ptr_ob1.t11 VALUES (1, 2, 3);
+CREATE TRIGGER ptr_ob1.ai AFTER INSERT ON ptr_ob1.t11 FOR EACH ROW SET @a:= new.sr;
+CREATE TRIGGER ptr_ob1.au AFTER UPDATE ON ptr_ob1.t11 FOR EACH ROW SET @a:= new.sr;
+CREATE TRIGGER ptr_ob1.ad AFTER DELETE ON ptr_ob1.t11 FOR EACH ROW SET @a:= old.sr;
+INSERT INTO ptr_ob1.t11 VALUES(4, 5, 6),(7, 8, 9);
+SELECT @a;
+@a
+8
+UPDATE ptr_ob1.t11 SET i=10 WHERE sr=5;
+SELECT @a;
+@a
+5
+DELETE FROM ptr_ob1.t11 WHERE sr=8;
+SELECT @a;
+@a
+8
+Now alter the table 
+ALTER TABLE ptr_ob1.t11 DROP COLUMN j;
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+INSERT INTO ptr_ob1.t11 VALUES(11, 12);
+SELECT @a;
+@a
+12
+Firing existing triggers and calling procedures.
+INSERT INTO ptr_ob1.t2 VALUES(NULL, 'Insert after backup');
+INSERT INTO ptr_ob2.t2 VALUES(10, 'af_bk1'),(2, 'af_bk2'),(7,'af_bk3'),(2,'af_bk4');
+DELETE FROM ptr_ob2.t2 WHERE id=10;
+SELECT @del_sum;
+@del_sum
+127
+CALL ptr_ob1.p1('procedure p1 af_bkup for view v1', 3);
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+CALL ptr_ob1.p2('procedure p2 called  af_bkup for trg2');
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+CALL ptr_ob1.p3('procedure p3 called af_bkup for trg6');
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+CALL ptr_ob2.p4();
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+Checking the data contents after backup.
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+SET TIMESTAMP=@a+4;
+FLUSH LOGS;
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;
+**** Execute mysqlbinlog to recover the data from start to backup ****
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vv	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+33
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+7
+**** Now perform another recovery to recover data after backup ****
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;
+*** TEST2 *** :
+Perform Restore and recover transactions after backup by executing 
+mysqlbinlog utility using binlog position.
+
+Perfrom Restore operation
+RESTORE FROM 'ptr_objects.bak';
+backup_id
+#
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vv	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+33
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+7
+Now use binlog position to recover data after backup
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;
+*** TEST3 *** :
+This test will recover data and objects using binlog dates
+till point of backup and after backup.
+
+Use mysqlbinlog dates to recover data till point of backup.
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vv	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+33
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+7
+Use mysqlbinlog dates to recover data after backup 
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;
+*** TEST4 *** :
+Perform Restore and recover objects after backup by executing mysqlbinlog
+utility using binlog dates.
+
+Perform Restore operation
+RESTORE FROM 'ptr_objects.bak';
+backup_id
+#
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vv	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+3
+3
+5
+5
+5
+33
+SELECT * FROM ptr_ob1.vv;
+SUM(id)
+1
+2
+6
+15
+33
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+7
+use binlog dates to recover data after backup.
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;
+*** TEST5 *** :
+Do complete recovery of data after backup using binlog position. Ensure
+that presence of backup operation in the binlog shouldn't have any impact
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;
+*** TEST6 *** :
+Do complete recovery of data after backup using binlog dates. Ensure
+that presence of backup operation in the binlog shouldn't have any impact
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob1	p3	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
+ptr_ob2	p4	PROCEDURE	root@localhost	#	#	DEFINER	AFTER BACKUP	#	#	#
+SHOW TRIGGERS FROM ptr_ob1;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg1	INSERT	t1	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 't1', new.a);
+END	#	#		root@localhost	#	#	#
+trg5	UPDATE	t1	BEGIN
+SET @id=old.id;
+SET @a_old=old.a;
+SET @a_new=new.a;
+END	#	#		root@localhost	#	#	#
+trg4	DELETE	t1	BEGIN 
+INSERT INTO ptr_ob2.t1(id, b) VALUES(old.id, old.b);
+END	#	#		root@localhost	#	#	#
+ai	INSERT	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+au	UPDATE	t11	SET @a:= new.sr	#	#		root@localhost	#	#	#
+ad	DELETE	t11	SET @a:= old.sr	#	#		root@localhost	#	#	#
+trg2	INSERT	t2	BEGIN
+INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
+END	#	#		root@localhost	#	#	#
+SHOW TRIGGERS FROM ptr_ob2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trg6	UPDATE	t1	BEGIN
+INSERT INTO ptr_ob1.t2 VALUES
+(NULL,'Trigger fired from after update of ptr_ob2.t1');  
+END	#	#		root@localhost	#	#	#
+trg3	DELETE	t2	SET @del_sum:= @del_sum + old.id	#	#		root@localhost	#	#	#
+SHOW FULL TABLES FROM ptr_ob1;
+Tables_in_ptr_ob1	Table_type
+t1	BASE TABLE
+t11	BASE TABLE
+t2	BASE TABLE
+t3	BASE TABLE
+tv1	BASE TABLE
+v	VIEW
+v1	VIEW
+vva	VIEW
+SHOW FULL TABLES FROM ptr_ob2;
+Tables_in_ptr_ob2	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+v1	VIEW
+SELECT * FROM ptr_ob1.t1;
+id	a	b
+1	20	bb1
+3	85	bb3
+SELECT * FROM ptr_ob1.v;
+id	a
+1	20
+3	85
+SELECT * FROM ptr_ob1.t2;
+id	data
+1	Normal Insert1
+2	Normal Insert2
+3	Normal Insert3
+4	Normal Insert4
+5	Trigger fired from after update of ptr_ob2.t1
+6	Trigger fired from procedure p2
+7	Trigger fired from procedure p2
+8	Trigger fired from after update of ptr_ob2.t1
+9	Insert after backup
+10	Trigger fired from procedure p2
+11	Trigger fired from after update of ptr_ob2.t1
+SELECT * FROM ptr_ob1.t3;
+srno	name	old_a
+1	t1	20
+2	t1	50
+3	t1	80
+4	trigger fired for AFTER INSERT	100
+5	trigger fired for AFTER INSERT	100
+6	trigger fired for AFTER INSERT	100
+7	trigger fired for AFTER INSERT	100
+8	trigger fired for AFTER INSERT	100
+9	trigger fired for AFTER INSERT	100
+10	trigger fired for AFTER INSERT	100
+11	trigger fired for AFTER INSERT	100
+12	trigger fired for AFTER INSERT	100
+13	trigger fired for AFTER INSERT	100
+14	trigger fired for AFTER INSERT	100
+SELECT * FROM ptr_ob2.t1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.v1;
+id	b
+11	set1
+21	set2
+3	alert
+4	#up#
+2	bb2
+1	fired
+1	fired
+1	fired
+SELECT * FROM ptr_ob1.tv1;
+id
+1
+2
+3
+3
+5
+SELECT * FROM ptr_ob2.v1;
+id
+1
+2
+2
+2
+3
+3
+5
+5
+5
+7
+33
+SELECT * FROM ptr_ob1.vva;
+SUM(id)
+1
+6
+6
+15
+7
+33
+SELECT * FROM ptr_ob1.t11;
+i	sr
+1	2
+10	5
+11	12
+SELECT ptr_ob1.f1();
+ptr_ob1.f1()
+8
+
+***  DROP ptr_ob1 and ptr_ob2 DATABASE ****
+
+DROP DATABASE ptr_ob1;
+DROP DATABASE ptr_ob2;

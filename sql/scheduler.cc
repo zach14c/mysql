@@ -548,6 +548,7 @@ pthread_handler_t libevent_thread_proc(void *arg)
   */
   (void) pthread_mutex_lock(&LOCK_thread_count);
   created_threads++;
+  thread_created++;
   if (created_threads == thread_pool_size)
     (void) pthread_cond_signal(&COND_thread_count);
   (void) pthread_mutex_unlock(&LOCK_thread_count);

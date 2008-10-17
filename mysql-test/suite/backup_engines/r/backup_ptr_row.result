@@ -1,0 +1,843 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+SET GLOBAL BINLOG_FORMAT='ROW';
+SET BINLOG_FORMAT='ROW';
+SELECT @@BINLOG_FORMAT;
+@@BINLOG_FORMAT
+ROW
+RESET MASTER;
+**START TEST**
+**** TEST1 ****
+This test will recover data using binlog position
+till point of backup and after backup.
+
+SET @a=UNIX_TIMESTAMP("2010-01-21 15:32:22");
+SET timestamp=@a;
+CREATE DATABASE IF NOT EXISTS ptr;
+USE ptr;
+**** Creating tables ****
+CREATE TABLE ptr.t1(id INT, a CHAR(4));
+INSERT INTO ptr.t1 VALUES(1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e');
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+CREATE TABLE ptr.t3(id INT, b CHAR(4));
+INSERT INTO ptr.t3 VALUES
+(11,'aa'),(22,'bb'),(33,'cc'),(44,'dd'),(55,'ee');
+CREATE TABLE ptr.t2(id INT, deletes_data VARCHAR(30), updates_data TEXT);
+INSERT INTO ptr.t2 VALUES
+(100,'data1 for testing','update data1'),
+(200,'data2 for testing','update data2'),
+(300,'data3 for testing','update data3'),
+(400,'data4 for testing','update data4'),
+(500,'data5 for testing','update data5'),
+(100,'data1 for testing','update data1'),
+(600,'data6 for testing','update data6');
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+100	data1 for testing	update data1
+200	data2 for testing	update data2
+300	data3 for testing	update data3
+400	data4 for testing	update data4
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+SELECT COUNT(*) FROM ptr.t2;
+COUNT(*)
+7
+**** Creating tables with different datatypes ****
+CREATE TABLE ptr.d1(
+rint INT,
+tint TINYINT,
+sint SMALLINT,
+bint BIGINT,
+mint MEDIUMINT,
+name CHAR(100),
+city  VARCHAR(100),
+fl FLOAT(7,4),
+pers DECIMAL(8,2),
+sal DOUBLE,
+colours SET('red','blue','yellow'),
+continent ENUM('Asia', 'Europe','Africa','Antartica'),
+ts TIMESTAMP DEFAULT 0,
+dob DATE,
+y YEAR
+);
+CREATE TABLE ptr.d2(
+region TEXT,
+summary LONGTEXT,
+data BLOB,
+details MEDIUMBLOB,
+queries TINYTEXT,
+query2 TINYBLOB,
+extract LONGBLOB,
+paras MEDIUMTEXT
+);
+INSERT INTO ptr.d1 VALUES
+(785,127,7288,278829899,3777,'testing1','sweden','678.299',200.23,829899.909,
+'yellow','Asia','2008-06-01 16:23:30','1984-09-08','1984');
+INSERT INTO ptr.d2 VALUES
+('xxxxxxxx','Testofonline backup','aaaaaaaaaa','bbbbbbbbbbb','hhhhhhhhhhh',
+'kkkkkkkkkkkkk','mmmmmmmmmmmm','onlinebackup1');
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+**** Perform Data Manipulation Operations ****
+## Delete ##
+DELETE FROM ptr.t2 WHERE deletes_data='data4 for testing';
+DELETE FROM ptr.t2 WHERE id=100 LIMIT 1;
+## Insert and Select ##
+**** Now ptr.t2 will have 5 counts in the table ****
+
+SELECT COUNT(*) FROM ptr.t2;
+COUNT(*)
+5
+INSERT INTO ptr.t2 VALUES
+(800,'data1 for replacement','replace data1');
+## Replace ##
+REPLACE INTO ptr.t2 
+SET id=800, deletes_data='data replaced', updates_data='replace over';
+## Union ##
+SELECT * FROM ptr.t1 UNION SELECT * FROM ptr.t3;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+## Update ##
+UPDATE ptr.t2 SET updates_data='##VALUE UPDATED##' WHERE id=300;
+Now table t2 will have 6 counts with one updated and replaced values 
+SELECT COUNT(*) FROM ptr.t2;
+COUNT(*)
+7
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+200	data2 for testing	update data2
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.d1;
+Field	Type	Null	Key	Default	Extra
+rint	int(11)	YES		NULL	
+tint	tinyint(4)	YES		NULL	
+sint	smallint(6)	YES		NULL	
+bint	bigint(20)	YES		NULL	
+mint	mediumint(9)	YES		NULL	
+name	char(100)	YES		NULL	
+city	varchar(100)	YES		NULL	
+fl	float(7,4)	YES		NULL	
+pers	decimal(8,2)	YES		NULL	
+sal	double	YES		NULL	
+colours	set('red','blue','yellow')	YES		NULL	
+continent	enum('Asia','Europe','Africa','Antartica')	YES		NULL	
+ts	timestamp	NO		0000-00-00 00:00:00	
+dob	date	YES		NULL	
+y	year(4)	YES		NULL	
+DESCRIBE ptr.d2;
+Field	Type	Null	Key	Default	Extra
+region	text	YES		NULL	
+summary	longtext	YES		NULL	
+data	blob	YES		NULL	
+details	mediumblob	YES		NULL	
+queries	tinytext	YES		NULL	
+query2	tinyblob	YES		NULL	
+extract	longblob	YES		NULL	
+paras	mediumtext	YES		NULL	
+**** Perform Data Definition Operations ****
+## ALTER ##
+ALTER TABLE ptr.t2 ADD COLUMN changes CHAR(20);
+UPDATE ptr.t2 SET changes='altered' WHERE id=200;
+UPDATE ptr.t2 SET changes='altered' WHERE id=100;
+ALTER TABLE ptr.t3 MODIFY b VARCHAR(4);
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+changes	char(20)	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+**** Now we will check the data contents in all the tables again ****
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data	changes
+100	data1 for testing	update data1	altered
+200	data2 for testing	update data2	altered
+300	data3 for testing	##VALUE UPDATED##	NULL
+500	data5 for testing	update data5	NULL
+600	data6 for testing	update data6	NULL
+800	data1 for replacement	replace data1	NULL
+800	data replaced	replace over	NULL
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+** Perform Backup operation and gather binlog position and dates **
+** Backup data **
+set timestamp=@a+2;
+
+Now execute some operations in the table after performing backup.
+
+
+**** Perform some data manipulation operations ****
+INSERT INTO ptr.t1 VALUES(6,'f'),(7,'g');
+INSERT INTO ptr.d1 VALUES
+(10001,120,6550,7278634657,90667,'After backup','Minneapolis',782.9901,
+789.23,97806.456,'blue','Antartica','2008-08-07 15:12:44','1954-12-23','1954');
+INSERT INTO ptr.t3 VALUES(1,'ff'),(3,'kk');
+SELECT * FROM t1 UNION SELECT * FROM t3 ORDER BY a;
+id	a
+1	a
+11	aa
+2	b
+22	bb
+3	c
+33	cc
+4	d
+44	dd
+5	e
+55	ee
+6	f
+1	ff
+7	g
+3	kk
+UPDATE ptr.t3 SET b='mm' where b='kk';
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+DELETE FROM ptr.t2 WHERE id=200;
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data	changes
+100	data1 for testing	update data1	altered
+300	data3 for testing	##VALUE UPDATED##	NULL
+500	data5 for testing	update data5	NULL
+600	data6 for testing	update data6	NULL
+800	data1 for replacement	replace data1	NULL
+800	data replaced	replace over	NULL
+
+**** Perform some data definition operations ****
+ALTER TABLE ptr.t2 DROP COLUMN changes;
+ALTER TABLE ptr.t3 ENGINE=MEMORY;
+CREATE TABLE definition(details LONGTEXT);
+INSERT INTO definition VALUES
+('Performing some data definition statements for PTR');
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.definition;
+Field	Type	Null	Key	Default	Extra
+details	longtext	YES		NULL	
+
+**** The tables t1, t2, t3 and t4 has changes ****
+**** New table "definition" is created after backup *****
+
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+SET TIMESTAMP=@a+4;
+FLUSH LOGS;
+DROP DATABASE ptr;
+**** Execute mysqlbinlog to recover the data from start to backup ****
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+t1
+t2
+t3
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data	changes
+100	data1 for testing	update data1	altered
+200	data2 for testing	update data2	altered
+300	data3 for testing	##VALUE UPDATED##	NULL
+500	data5 for testing	update data5	NULL
+600	data6 for testing	update data6	NULL
+800	data1 for replacement	replace data1	NULL
+800	data replaced	replace over	NULL
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+**** Now perform another recovery to recover data after backup ****
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+DROP DATABASE ptr;
+*** TEST2 *** :
+Perform Restore and recover transactions after backup by executing 
+mysqlbinlog utility using binlog position.
+Perform restore operation 
+RESTORE FROM 'ptr.bak';
+backup_id
+#
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data	changes
+100	data1 for testing	update data1	altered
+200	data2 for testing	update data2	altered
+300	data3 for testing	##VALUE UPDATED##	NULL
+500	data5 for testing	update data5	NULL
+600	data6 for testing	update data6	NULL
+800	data1 for replacement	replace data1	NULL
+800	data replaced	replace over	NULL
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+Recovering data contents after backup
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+DROP DATABASE ptr;
+*** TEST3 *** :
+This test will recover data using binlog dates
+till point of backup and after backup.
+Now use binlog dates to recover the data till point of backup.
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data	changes
+100	data1 for testing	update data1	altered
+200	data2 for testing	update data2	altered
+300	data3 for testing	##VALUE UPDATED##	NULL
+500	data5 for testing	update data5	NULL
+600	data6 for testing	update data6	NULL
+800	data1 for replacement	replace data1	NULL
+800	data replaced	replace over	NULL
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+We execute binlog to recover data after backup using binlog dates.
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+DROP DATABASE ptr;
+*** TEST4 *** :
+Perform Restore and recover transactions after backup by executing
+mysqlbinlog utility using binlog dates.
+RESTORE FROM 'ptr.bak';
+backup_id
+#
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+changes	char(20)	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data	changes
+100	data1 for testing	update data1	altered
+200	data2 for testing	update data2	altered
+300	data3 for testing	##VALUE UPDATED##	NULL
+500	data5 for testing	update data5	NULL
+600	data6 for testing	update data6	NULL
+800	data1 for replacement	replace data1	NULL
+800	data replaced	replace over	NULL
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+SHOW DATABASES;
+Database
+information_schema
+mysql
+ptr
+test
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+DROP DATABASE ptr;
+*** TEST5 *** :
+Do complete recovery of data after backup using binlog position. Ensure 
+that presence of backup operation in the binlog shouldn't have any impact
+SHOW DATABASES;
+Database
+information_schema
+mysql
+ptr
+test
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+DROP DATABASE ptr;
+*** TEST6 *** :
+Do complete recovery of data after backup using binlog dates. Ensure
+that presence of backup operation in the binlog shouldn't have any impact
+SHOW DATABASES;
+Database
+information_schema
+mysql
+ptr
+test
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+d1
+d2
+definition
+t1
+t2
+t3
+DESCRIBE ptr.t1;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+a	char(4)	YES		NULL	
+DESCRIBE ptr.t2;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+deletes_data	varchar(30)	YES		NULL	
+updates_data	text	YES		NULL	
+DESCRIBE ptr.t3;
+Field	Type	Null	Key	Default	Extra
+id	int(11)	YES		NULL	
+b	varchar(4)	YES		NULL	
+SELECT * FROM ptr.t1;
+id	a
+1	a
+2	b
+3	c
+4	d
+5	e
+6	f
+7	g
+SELECT * FROM ptr.t2 ORDER BY id;
+id	deletes_data	updates_data
+100	data1 for testing	update data1
+300	data3 for testing	##VALUE UPDATED##
+500	data5 for testing	update data5
+600	data6 for testing	update data6
+800	data1 for replacement	replace data1
+800	data replaced	replace over
+SELECT * FROM ptr.t3;
+id	b
+11	aa
+22	bb
+33	cc
+44	dd
+55	ee
+1	ff
+3	mm
+SELECT * FROM ptr.d1;
+rint	tint	sint	bint	mint	name	city	fl	pers	sal	colours	continent	ts	dob	y
+785	127	7288	278829899	3777	testing1	sweden	678.2990	200.23	829899.909	yellow	Asia	2008-06-01 16:23:30	1984-09-08	1984
+10001	120	6550	7278634657	90667	After backup	Minneapolis	782.9901	789.23	97806.456	blue	Antartica	2008-08-07 15:12:44	1954-12-23	1954
+SELECT * FROM ptr.d2;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mmmmmmmmmmmm	onlinebackup1
+
+***  DROP ptr DATABASE ****
+
+DROP DATABASE ptr;
