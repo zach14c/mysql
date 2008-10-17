@@ -1811,8 +1811,8 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     {
       DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc,
-                              obs::describe_tablespace(sobj)->ptr(),
-                              obs::describe_tablespace(ts)->ptr());
+                              obs::get_tablespace_description(sobj)->ptr(),
+                              obs::get_tablespace_description(ts)->ptr());
       return BSTREAM_ERROR;
     }
   }
@@ -1832,7 +1832,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
             error handling work in WL#4384 with possible implementation
             via a related bug report.
     */
-    if (!obs::user_exists(thd, sobj->get_name()))
+    if (!obs::check_user_existence(thd, sobj->get_name()))
     {
       info->m_ctx.write_message(log_level::WARNING, 
                                 ER(ER_BACKUP_GRANT_SKIPPED),
