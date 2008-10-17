@@ -82,14 +82,6 @@ static my_bool is_NT(void)
 ** Shut down connection
 **************************************************************************/
 
-static void end_server(MYSQL *mysql)
-{
-  DBUG_ENTER("end_server");
-  free_old_query(mysql);
-  DBUG_VOID_RETURN;
-}
-
-
 int mysql_init_character_set(MYSQL *mysql);
 
 MYSQL * STDCALL
@@ -223,7 +215,7 @@ error:
   {
     /* Free alloced memory */
     my_bool free_me=mysql->free_me;
-    end_server(mysql);
+    free_old_query(mysql);
     mysql->free_me=0;
     mysql_close(mysql);
     mysql->free_me=free_me;
