@@ -40,14 +40,29 @@ SRLUpdateIndex::~SRLUpdateIndex(void)
 
 void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 {
+	uint indexId;
+	int idxVersion;
+	int tableSpaceId;
+
+	Sync syncDI(&deferredIndex->syncObject, "SRLUpdateIndex::append");
+	syncDI.lock(Shared);
+
+	if (!deferredIndex->index)
+		return;
+	else
+		{
+		indexId = deferredIndex->index->indexId;
+		idxVersion = deferredIndex->index->indexVersion;
+		tableSpaceId = deferredIndex->index->dbb->tableSpaceId;
+		}
+
+	syncDI.unlock();
+
 	Sync syncIndexes(&log->syncIndexes, "SRLUpdateIndex::append(1)");
 	syncIndexes.lock(Shared);
 
 	Transaction *transaction = deferredIndex->transaction;
 	DeferredIndexWalker walker(deferredIndex, NULL);
-	uint indexId = deferredIndex->index->indexId;
-	int idxVersion = deferredIndex->index->indexVersion;
-	int tableSpaceId = deferredIndex->index->dbb->tableSpaceId;
 	uint64 virtualOffset = 0;
 	uint64 virtualOffsetAtEnd = 0;
 

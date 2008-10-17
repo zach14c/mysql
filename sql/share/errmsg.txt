@@ -6251,7 +6251,7 @@ ER_BACKUP_THREAD_INIT
         eng "Backup driver's table locking thread can not be initialized."
 
 ER_BACKUP_PROGRESS_TABLES
-        eng "Can't open the backup log tables. Check 'mysql.backup_history' and 'mysql.backup_progress'."
+        eng "Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair."
 
 ER_TABLESPACE_EXIST
   eng "Tablespace '%-.192s' already exists"

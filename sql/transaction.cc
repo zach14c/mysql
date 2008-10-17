@@ -20,6 +20,7 @@
 
 #include "transaction.h"
 #include "mysql_priv.h"
+#include "rpl_handler.h"
 
 #ifdef WITH_MARIA_STORAGE_ENGINE
 #include "../storage/maria/ha_maria.h"
@@ -97,6 +98,14 @@ bool trans_commit(THD *thd)
 
   thd->server_status&= ~SERVER_STATUS_IN_TRANS;
   res= ha_commit_trans(thd, TRUE);
+  if (res)
+    /*
+      if res is non-zero, then ha_commit_trans has rolled back the
+      transaction, so the hooks for rollback will be called.
+    */
+    RUN_HOOK(transaction, after_rollback, (thd, FALSE));
+  else
+    RUN_HOOK(transaction, after_commit, (thd, FALSE));
   thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
   thd->transaction.all.modified_non_trans_table= FALSE;
   thd->lex->start_transaction_opt= 0;
@@ -163,6 +172,7 @@ bool trans_rollback(THD *thd)
 
   thd->server_status&= ~SERVER_STATUS_IN_TRANS;
   res= ha_rollback_trans(thd, TRUE);
+  RUN_HOOK(transaction, after_rollback, (thd, FALSE));
   thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
   thd->transaction.all.modified_non_trans_table= FALSE;
   thd->lex->start_transaction_opt= 0;
@@ -192,6 +202,15 @@ bool trans_commit_stmt(THD *thd)
   int res= FALSE;
   if (thd->transaction.stmt.ha_list)
     res= ha_commit_trans(thd, FALSE);
+  
+  if (res)
+    /*
+      if res is non-zero, then ha_commit_trans has rolled back the
+      transaction, so the hooks for rollback will be called.
+    */
+    RUN_HOOK(transaction, after_rollback, (thd, FALSE));
+  else
+    RUN_HOOK(transaction, after_commit, (thd, FALSE));
   DBUG_RETURN(test(res));
 }
 
@@ -215,6 +234,8 @@ bool trans_rollback_stmt(THD *thd)
     if (thd->transaction_rollback_request && !thd->in_sub_stmt)
       ha_rollback_trans(thd, TRUE);
   }
+
+  RUN_HOOK(transaction, after_rollback, (thd, FALSE));
 
   DBUG_RETURN(FALSE);
 }

@@ -1,0 +1,324 @@
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE TABLE db1.t1 (s1 CHAR(3)) ENGINE=innodb;
+CREATE TABLE db1.t2 (s1 CHAR(3)) ENGINE=falcon;
+CREATE TABLE db1.t3 (s1 CHAR(3)) ENGINE=memory;
+CREATE TABLE db1.t4 (s1 CHAR(3)) ENGINE=myisam;
+CREATE TABLE db2.t1 (s1 CHAR(3)) ENGINE=innodb;
+CREATE TABLE db2.t2 (s1 CHAR(3)) ENGINE=falcon;
+CREATE TABLE db2.t3 (s1 CHAR(3)) ENGINE=myisam;
+connection B - starting transaction B
+SET autocommit=0;
+BEGIN;
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+INSERT INTO db1.t1 VALUES ('b1');
+INSERT INTO db1.t2 VALUES ('b1');
+INSERT INTO db1.t3 VALUES ('b1');
+INSERT INTO db1.t4 VALUES ('b1');
+INSERT INTO db2.t1 VALUES ('b1');
+INSERT INTO db2.t2 VALUES ('b1');
+INSERT INTO db2.t3 VALUES ('b1');
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+SELECT * FROM db1.t1;
+s1
+SELECT * FROM db1.t2;
+s1
+SELECT * FROM db1.t3;
+s1
+b1
+SELECT * FROM db1.t4;
+s1
+b1
+SELECT * FROM db2.t1;
+s1
+SELECT * FROM db2.t2;
+s1
+SELECT * FROM db2.t3;
+s1
+b1
+SELECT release_lock("sync");
+release_lock("sync")
+1
+connection A - starting transaction A
+SET autocommit=0;
+BEGIN;
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+INSERT INTO db1.t1 VALUES ('a1');
+INSERT INTO db1.t2 VALUES ('a1');
+INSERT INTO db1.t3 VALUES ('a1');
+INSERT INTO db1.t4 VALUES ('a1');
+INSERT INTO db2.t1 VALUES ('a1');
+INSERT INTO db2.t2 VALUES ('a1');
+INSERT INTO db2.t3 VALUES ('a1');
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+SELECT * FROM db1.t1;
+s1
+SELECT * FROM db1.t2;
+s1
+SELECT * FROM db1.t3;
+s1
+b1
+a1
+SELECT * FROM db1.t4;
+s1
+b1
+a1
+SELECT * FROM db2.t1;
+s1
+SELECT * FROM db2.t2;
+s1
+SELECT * FROM db2.t3;
+s1
+b1
+a1
+SELECT release_lock("sync");
+release_lock("sync")
+1
+connection B - performing BACKUP which commits transaction B
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+INSERT INTO db1.t1 VALUES ('b2');
+INSERT INTO db1.t2 VALUES ('b2');
+INSERT INTO db1.t3 VALUES ('b2');
+INSERT INTO db1.t4 VALUES ('b2');
+INSERT INTO db2.t1 VALUES ('b2');
+INSERT INTO db2.t2 VALUES ('b2');
+INSERT INTO db2.t3 VALUES ('b2');
+BACKUP DATABASE db1 TO 'db1.bak';
+backup_id
+#
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+SELECT * FROM db1.t1;
+s1
+b1
+b2
+SELECT * FROM db1.t2;
+s1
+b1
+b2
+SELECT * FROM db1.t3;
+s1
+b1
+a1
+b2
+SELECT * FROM db1.t4;
+s1
+b1
+a1
+b2
+SELECT * FROM db2.t1;
+s1
+b1
+b2
+SELECT * FROM db2.t2;
+s1
+b1
+b2
+SELECT * FROM db2.t3;
+s1
+b1
+a1
+b2
+SELECT release_lock("sync");
+release_lock("sync")
+1
+connection B - doing ROLLBACK which should be a no-op after the implicit commit
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+ROLLBACK;
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+SELECT * FROM db1.t1;
+s1
+b1
+b2
+SELECT * FROM db1.t2;
+s1
+b1
+b2
+SELECT * FROM db1.t3;
+s1
+b1
+a1
+b2
+SELECT * FROM db1.t4;
+s1
+b1
+a1
+b2
+SELECT * FROM db2.t1;
+s1
+b1
+b2
+SELECT * FROM db2.t2;
+s1
+b1
+b2
+SELECT * FROM db2.t3;
+s1
+b1
+a1
+b2
+SELECT release_lock("sync");
+release_lock("sync")
+1
+connection A - finishing transaction A
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+INSERT INTO db1.t1 VALUES ('a2');
+INSERT INTO db1.t2 VALUES ('a2');
+INSERT INTO db1.t3 VALUES ('a2');
+INSERT INTO db1.t4 VALUES ('a2');
+INSERT INTO db2.t1 VALUES ('a2');
+INSERT INTO db2.t2 VALUES ('a2');
+INSERT INTO db2.t3 VALUES ('a2');
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+SELECT * FROM db1.t1;
+s1
+b1
+b2
+SELECT * FROM db1.t2;
+s1
+b1
+b2
+SELECT * FROM db1.t3;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db1.t4;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db2.t1;
+s1
+b1
+b2
+SELECT * FROM db2.t2;
+s1
+b1
+b2
+SELECT * FROM db2.t3;
+s1
+b1
+a1
+b2
+a2
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+COMMIT;
+SELECT release_lock("sync");
+release_lock("sync")
+1
+SELECT get_lock("sync",10);
+get_lock("sync",10)
+1
+SELECT * FROM db1.t1;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db1.t2;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db1.t3;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db1.t4;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db2.t1;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db2.t2;
+s1
+b1
+a1
+b2
+a2
+SELECT * FROM db2.t3;
+s1
+b1
+a1
+b2
+a2
+SELECT release_lock("sync");
+release_lock("sync")
+1
+Checking contents of the backup image
+RESTORE FROM 'db1.bak';
+backup_id
+#
+SELECT * FROM db1.t1;
+s1
+b1
+b2
+SELECT * FROM db1.t2;
+s1
+b1
+b2
+SELECT * FROM db1.t3;
+s1
+b1
+a1
+b2
+SELECT * FROM db1.t4;
+s1
+b1
+a1
+b2
+DROP DATABASE db1;
+DROP DATABASE db2;

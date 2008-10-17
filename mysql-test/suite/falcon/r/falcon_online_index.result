@@ -72,14 +72,14 @@ affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 0
 #-------- Testing implicit OFFLINE --------#
 ALTER TABLE t3 ADD INDEX ix_c (c);
-affected rows: 1000
-info: Records: 1000  Duplicates: 0  Warnings: 0
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
 DROP INDEX ix_c ON t3;
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 0
 ALTER TABLE t3 ADD INDEX ix_cd (c, d);
-affected rows: 1000
-info: Records: 1000  Duplicates: 0  Warnings: 0
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
 DROP INDEX ix_cd ON t3;
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 0
@@ -108,10 +108,8 @@ a	b	c	d	e
 ALTER ONLINE TABLE t3 DROP INDEX ix_b;
 #-------- ONLINE: ALTER ADD not-null with default --------#
 ALTER ONLINE TABLE t3 ADD INDEX ix_c (c);
-ERROR 42000: This version of MySQL doesn't yet support 'ALTER ONLINE TABLE t3 ADD INDEX ix_c (c)'
 #-------- ONLINE: ALTER ADD not-null --------#
 ALTER ONLINE TABLE t3 ADD INDEX ix_d (d);
-ERROR 42000: This version of MySQL doesn't yet support 'ALTER ONLINE TABLE t3 ADD INDEX ix_d (d)'
 #-------- ONLINE: ALTER ADD same key multiple times --------#
 ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
 ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
@@ -171,6 +169,8 @@ ALTER ONLINE TABLE t3 ADD INDEX ix_asc_b (b ASC);
 SHOW INDEXES FROM t3;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
 t3	1	ix_desc_b	1	b	NULL	500	NULL	NULL	YES	BTREE		
 t3	1	ix_asc_b	1	b	NULL	500	NULL	NULL	YES	BTREE		
 DROP ONLINE INDEX ix_desc_b ON t3;
@@ -265,6 +265,8 @@ t1	1	index_int	1	c	NULL	10	NULL	NULL	YES	BTREE
 SHOW INDEXES FROM t3;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
 t3	1	index_int	1	b	NULL	500	NULL	NULL	YES	BTREE		
 t3	1	index_multi	1	b	NULL	250	NULL	NULL	YES	BTREE		
 t3	1	index_multi	2	e	NULL	500	NULL	NULL	YES	BTREE		
@@ -283,6 +285,8 @@ t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE
 SHOW INDEXES FROM t3;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
 #-------- Test: Combined ADD/DROP INDEX in a single statement --------#
 ALTER TABLE t1 ADD INDEX index_int (c);
 ALTER TABLE t1 ADD INDEX index_char (d), DROP INDEX index_int;
@@ -344,7 +348,7 @@ a	b	c	d	a	b	c	d
 16	TestRow16	32	Char16	31	62	32	SomeString 31 for testing
 EXPLAIN SELECT * FROM t1, t3 WHERE t3.b=2 AND (t1.c = t3.c OR t1.a=t3.d);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t3	ref	ix_b	ix_b	5	const	100	
+1	SIMPLE	t3	ref	ix_c,ix_d,ix_b	ix_b	5	const	100	
 1	SIMPLE	t1	ALL	PRIMARY,ix_a,ix_c	NULL	NULL	NULL	20	Range checked for each record (index map: 0xB)
 SELECT * FROM t1, t3 WHERE t3.b=2 AND (t1.c = t3.c OR t1.a=t3.d);
 a	b	c	d	a	b	c	d	e
@@ -367,6 +371,8 @@ t2	0	PRIMARY	1	a	NULL	16	NULL	NULL		BTREE
 SHOW INDEXES FROM t3;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;

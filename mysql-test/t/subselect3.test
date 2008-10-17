@@ -629,6 +629,8 @@ delete from t1;
 load data infile "subselect.out.file.1" into table t1;
 select * from t1;
 drop table t1;
+let $datadir=`select @@datadir`;
+--remove_file $datadir/test/subselect.out.file.1
 
 --echo End of 5.0 tests
 

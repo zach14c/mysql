@@ -541,7 +541,8 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
 
   if ((table_list->view ?
        view_store_create_info(thd, table_list, &buffer) :
-       store_create_info(thd, table_list, &buffer, NULL)))
+       store_create_info(thd, table_list, &buffer, NULL,
+                         FALSE /* show_database */)))
     DBUG_RETURN(TRUE);
 
   List<Item> field_list;
@@ -922,6 +923,10 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
                       to tailor the format of the statement.  Can be
                       NULL, in which case only SQL_MODE is considered
                       when building the statement.
+    show_database     If TRUE, the database for the table will be
+                      prepended to the table name if either the
+                      current database is not set, or if it is set and
+                      it is different from the database for the table.
 
   NOTE
     Currently always return 0, but might return error code in the
@@ -932,7 +937,7 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
  */
 
 int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
-                      HA_CREATE_INFO *create_info_arg)
+                      HA_CREATE_INFO *create_info_arg, bool show_database)
 {
   List<Item> field_list;
   char tmp[MAX_FIELD_WIDTH], *for_str, buff[128], def_value_buf[MAX_FIELD_WIDTH];
@@ -980,6 +985,25 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
       alias= share->table_name.str;
     }
   }
+
+  /*
+    Print the database before the table name if told to do that. The
+    database name is only printed in the event that it is different
+    from the current database.  The main reason for doing this is to
+    avoid having to update gazillions of tests and result files, but
+    it also saves a few bytes of the binary log.
+   */
+  if (show_database)
+  {
+    const LEX_STRING *const db=
+      table_list->schema_table ? &INFORMATION_SCHEMA_NAME : &table->s->db;
+    if (!thd->db || db->str && strcmp(db->str, thd->db) != 0)
+    {
+      append_identifier(thd, packet, db->str, db->length);
+      packet->append(STRING_WITH_LEN("."));
+    }
+  }
+
   append_identifier(thd, packet, alias, strlen(alias));
   packet->append(STRING_WITH_LEN(" (\n"));
   /*
@@ -3641,6 +3665,12 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
     if (share->comment.str)
       table->field[20]->store(share->comment.str, share->comment.length, cs);
 
+    if (share->tablespace)
+    {
+      table->field[21]->store(share->tablespace, strlen(share->tablespace), cs);
+      table->field[21]->set_notnull();
+    }
+
     if(file)
     {
       file->info(HA_STATUS_VARIABLE | HA_STATUS_TIME | HA_STATUS_AUTO);
@@ -4634,6 +4664,27 @@ static int get_schema_views_record(THD *thd, TABLE_LIST *tables,
           !my_strcasecmp(system_charset_info, tables->definer.host.str,
                          sctx->priv_host))
         tables->allowed_show= TRUE;
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+      else
+      {
+        if ((thd->col_access & (SHOW_VIEW_ACL|SELECT_ACL)) ==
+            (SHOW_VIEW_ACL|SELECT_ACL))
+          tables->allowed_show= TRUE;
+        else
+        {
+          TABLE_LIST table_list;
+          uint view_access;
+          memset(&table_list, 0, sizeof(table_list));
+          table_list.db= tables->db;
+          table_list.table_name= tables->table_name;
+          table_list.grant.privilege= thd->col_access;
+          view_access= get_table_grant(thd, &table_list);
+	  if ((view_access & (SHOW_VIEW_ACL|SELECT_ACL)) ==
+	      (SHOW_VIEW_ACL|SELECT_ACL))
+	    tables->allowed_show= TRUE;
+        }
+      }
+#endif
     }
     restore_record(table, s->default_values);
     table->field[1]->store(db_name->str, db_name->length, cs);
@@ -6397,6 +6448,7 @@ ST_FIELD_INFO tables_fields_info[]=
   {"CREATE_OPTIONS", 255, MYSQL_TYPE_STRING, 0, 1, "Create_options",
    OPEN_FRM_ONLY},
   {"TABLE_COMMENT", TABLE_COMMENT_MAXLEN, MYSQL_TYPE_STRING, 0, 0, "Comment", OPEN_FRM_ONLY},
+  {"TABLESPACE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, 0, OPEN_FRM_ONLY},
   {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 

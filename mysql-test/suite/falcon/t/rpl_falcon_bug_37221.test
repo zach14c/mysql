@@ -7,6 +7,12 @@
 --source include/have_falcon.inc
 --source include/master-slave.inc
 
+--echo [slave]
+connection slave; 
+STOP SLAVE; 
+SET @@global.binlog_format = MIXED; 
+START SLAVE;
+
 --echo [master]
 connection master;
 SET BINLOG_FORMAT = 'ROW';

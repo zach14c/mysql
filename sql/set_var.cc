@@ -853,7 +853,7 @@ static SHOW_VAR fixed_vars[]= {
   {"lower_case_file_system",  (char*) &lower_case_file_system,      SHOW_MY_BOOL},
   {"lower_case_table_names",  (char*) &lower_case_table_names,      SHOW_INT},
   {"myisam_recover_options",  (char*) &myisam_recover_options_str,  SHOW_CHAR_PTR},
-#ifdef __NT__
+#ifdef _WIN32  
   {"named_pipe",	      (char*) &opt_enable_named_pipe,       SHOW_MY_BOOL},
 #endif
   {"open_files_limit",	      (char*) &open_files_limit,	    SHOW_LONG},
@@ -1223,6 +1223,21 @@ void fix_slave_exec_mode(enum_var_type type)
     bit_do_set(slave_exec_mode_options, SLAVE_EXEC_MODE_STRICT);
   DBUG_VOID_RETURN;
 }
+
+
+bool sys_var_thd_binlog_format::check(THD *thd, set_var *var) {
+  /*
+    All variables that affect writing to binary log (either format or
+    turning logging on and off) use the same checking. We call the
+    superclass ::check function to assign the variable correctly, and
+    then check the value.
+   */
+  bool result= sys_var_thd_enum::check(thd, var);
+  if (!result)
+    result= check_log_update(thd, var);
+  return result;
+}
+
 
 bool sys_var_thd_binlog_format::is_readonly() const
 {
@@ -2434,6 +2449,12 @@ end:
 bool sys_var_log_state::update(THD *thd, set_var *var)
 {
   bool res;
+
+  if (this == &sys_var_log)
+    WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
+  else if (this == &sys_var_log_slow)
+    WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
+
   pthread_mutex_lock(&LOCK_global_system_variables);
   if (!var->save_result.ulong_value)
   {
@@ -2448,6 +2469,11 @@ bool sys_var_log_state::update(THD *thd, set_var *var)
 
 void sys_var_log_state::set_default(THD *thd, enum_var_type type)
 {
+  if (this == &sys_var_log)
+    WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
+  else if (this == &sys_var_log_slow)
+    WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
+
   pthread_mutex_lock(&LOCK_global_system_variables);
   logger.deactivate_log_handler(thd, log_type);
   pthread_mutex_unlock(&LOCK_global_system_variables);

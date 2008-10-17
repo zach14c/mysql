@@ -205,6 +205,7 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/event_parse_data.cc ../sql/mdl.cc
            ../sql/sql_signal.cc ../sql/sql_fixstring.cc
            ../sql/transaction.cc
+	   ../sql/rpl_handler.cc
            ${GEN_SOURCES}
            ${LIB_SOURCES})
 

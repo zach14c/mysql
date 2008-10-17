@@ -3195,6 +3195,15 @@ SELECT @a;
 DROP PROCEDURE p1;
 DROP PROCEDURE p2;
 
+#
+# Additional cleanup.
+#
+# Delete files which were created by "select ... into outfile ...".
+#
+
+let $datadir= `select @@datadir`;
+--remove_file $datadir/test/f1.txt
+
 --echo
 --echo # End of WL#4435.
 

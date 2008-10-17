@@ -623,7 +623,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     // Report and save information about VP
 
     info.save_vp_time(vp_time);
-    info.m_ctx.report_vp_time(vp_time);
+    info.m_ctx.report_vp_time(vp_time, TRUE); // TRUE = also write to progress log
 
     if (mysql_bin_log.is_open())
     {

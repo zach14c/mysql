@@ -90,7 +90,8 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			probes.h sql_audit.h transaction.h \
 			contributors.h sql_servers.h ddl_blocker.h \
 			si_objects.h si_logs.h sql_plist.h mdl.h records.h \
-			sql_signal.h sql_fixstring.h
+			sql_signal.h sql_fixstring.h \
+			rpl_handler.h replication.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -138,7 +139,8 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
 			ddl_blocker.cc si_objects.cc si_logs.cc \
 			event_parse_data.cc mdl.cc transaction.cc \
-			sql_signal.cc sql_fixstring.cc
+			sql_signal.cc sql_fixstring.cc \
+			rpl_handler.cc
 
 if HAVE_DTRACE
   mysqld_SOURCES += probes.d
