@@ -155,6 +155,11 @@ private:
     This to ensure it will work with statement based replication.
   */
   bool auto_increment_safe_stmt_log_lock;
+  /** For optimizing ha_start_bulk_insert calls */
+  MY_BITMAP m_bulk_insert_started;
+  ha_rows   m_bulk_inserted_rows;
+  /* used for prediction of start_bulk_insert rows */
+  enum_monotonicity_info m_part_func_monotonicity_info;
 public:
   handler *clone(MEM_ROOT *mem_root);
   virtual void set_part_info(partition_info *part_info, bool early)
@@ -322,7 +327,6 @@ public:
     Bulk inserts are supported if all underlying handlers support it.
     start_bulk_insert and end_bulk_insert is called before and after a
     number of calls to write_row.
-    Not yet though.
   */
   virtual int write_row(uchar * buf);
   virtual int update_row(const uchar * old_data, uchar * new_data);
@@ -330,6 +334,10 @@ public:
   virtual int delete_all_rows(void);
   virtual void start_bulk_insert(ha_rows rows);
   virtual int end_bulk_insert();
+private:
+  ha_rows guess_bulk_insert_rows();
+  void start_part_bulk_insert(uint part_id);
+public:
 
   virtual bool is_fatal_error(int error, uint flags)
   {
