@@ -478,7 +478,7 @@ INSERT INTO t1 VALUES
 ERROR 23000: Can't write; duplicate key in table 't1'
 SHOW WARNINGS;
 Level	Code	Message
-Error	1296	Got error 630 'Tuple already existed when attempting to insert' from NDB
+Warning	1296	Got error 630 'Tuple already existed when attempting to insert' from NDB
 Error	1022	Can't write; duplicate key in table 't1'
 Warning	1615	Storage engine NDB does not support rollback for this statement. Transaction rolled back and must be restarted
 SELECT * FROM t1 WHERE pk1=10;

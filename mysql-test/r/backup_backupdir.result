@@ -48,8 +48,8 @@ BACKUP DATABASE bup_backupdir TO '/dev/not/there/either/bup_backupdir6.bak';
 ERROR HY000: Can't write to backup location '/dev/not/there/either/bup_backupdir6.bak' (file already exists?)
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
 Warnings:
-Warning	1725	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
-Warning	1725	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1726	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1726	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
 Cleanup
 Reset backupdir 
 SET @@global.backupdir = @@global.datadir;
