@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <time.h>
+#include <sql_common.h>
 #include "client_settings.h"
 #ifdef	 HAVE_PWD_H
 #include <pwd.h>
@@ -103,6 +104,13 @@ mysql_real_connect(MYSQL *mysql,const char *host, const char *user,
 		      host ? host : "(Null)",
 		      db ? db : "(Null)",
 		      user ? user : "(Null)"));
+
+  /* Test whether we're already connected */
+  if (mysql->server_version)
+  {
+    set_mysql_error(mysql, CR_ALREADY_CONNECTED, unknown_sqlstate);
+    DBUG_RETURN(0);
+  }
 
   if (!host || !host[0])
     host= mysql->options.host;
