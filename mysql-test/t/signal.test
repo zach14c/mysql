@@ -2478,3 +2478,5 @@ delimiter ;$$
 drop table t_warn;
 drop table t_cursor;
 
+# end of file
+
