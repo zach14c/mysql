@@ -54,7 +54,7 @@ class Logger
    void report_start(time_t);
    void report_stop(time_t, bool);
    void report_state(enum_backup_state);
-   void report_vp_time(time_t);
+   void report_vp_time(time_t, bool);
    void report_binlog_pos(const st_bstream_binlog_pos&);
    void report_driver(const char *driver);
    void report_stats_pre(const Image_info&);
@@ -236,13 +236,19 @@ void Logger::report_state(enum_backup_state state)
   backup_log->state(state);
 }
 
-/// Report validity point creation time.
+/** 
+  Report validity point creation time.
+
+  @param[IN] when   the time of validity point
+  @param[IN] report determines if VP time should be also reported in the
+                    backup_progress log
+*/
 inline
-void Logger::report_vp_time(time_t when)
+void Logger::report_vp_time(time_t when, bool report)
 {
   DBUG_ASSERT(m_state == RUNNING);
   DBUG_ASSERT(backup_log);
-  backup_log->vp_time(when);
+  backup_log->vp_time(when, report);
 }
 
 /** 

@@ -1285,7 +1285,7 @@ int Backup_info::add_to_dep_list(const obj_type type, Dep_node *node)
   Currently only global objects handled are tablespaces and databases.
  */
 class Backup_info::Global_iterator
- : public Image_info::Iterator
+ : public backup::Image_info::Iterator
 {
   /**
     Indicates whether tablespaces or databases are being currently enumerated.
@@ -1373,7 +1373,7 @@ Backup_info::Global_iterator::next()
   This iterator uses the dependency list maintained inside Backup_info
   instance to list objects in a dependency-respecting order.
  */ 
-class Backup_info::Perdb_iterator : public Image_info::Iterator
+class Backup_info::Perdb_iterator : public backup::Image_info::Iterator
 {
   Dep_node *ptr;
 
