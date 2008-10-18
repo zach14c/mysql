@@ -66,6 +66,9 @@ public:
 	INTERLOCK_TYPE		count;
 	
 	static void unitTest(void);
+	static inline int32 pseudoRand(int32 seed, uint32 modulus) {
+		return (int32)( ( (7177 * (int64) seed) + 1777) % (int64) modulus);
+		}
 
 protected:
 	void	decompose (int32 number, uint *indexes);

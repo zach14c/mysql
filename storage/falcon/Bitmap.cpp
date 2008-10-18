@@ -17,7 +17,6 @@
 //
 //////////////////////////////////////////////////////////////////////
 
-#include <stdlib.h>
 #include <memory.h>
 #include "Engine.h"
 #include "Log.h"
@@ -708,16 +707,16 @@ bool Bitmap::setSafe(int32 bitNumber)
 
 void Bitmap::unitTest(void)
 {
-	int bitNumber;
+	int32 bitNumber;
 	Bitmap *tester = new Bitmap;
 
 	// Set numbers incremented by random amounts.
-	// Check that what is set is set.
+	// Check that what was set is set.
 	// Clear sequentially searching from zero.
 	// Check that what was cleared is not still set.
 	Log::log("\nBitmap Test #1\n");
 
-	for (bitNumber = 0; bitNumber < 20000; bitNumber += rand() % 200)
+	for (bitNumber = 0; bitNumber < 20000; bitNumber += pseudoRand(bitNumber, 200))
 		{
 		Log::log("Setting bit %d\n", bitNumber);
 		tester->set(bitNumber);
@@ -745,7 +744,7 @@ void Bitmap::unitTest(void)
 	// Check that all bits are cleared.
 	Log::log("\nBitmap Test #2\n");
 
-	for (bitNumber = 0; bitNumber < 2000000; bitNumber += rand() % 20000)
+	for (bitNumber = 0; bitNumber < 2000000; bitNumber += pseudoRand(bitNumber, 20000))
 		{
 		Log::log("Setting bit %d\n", bitNumber);
 		tester->set(bitNumber);
@@ -768,16 +767,16 @@ void Bitmap::unitTest(void)
 	// Check that all bits are cleared.
 	Log::log("\nBitmap Test #3\n");
 
-	for (bitNumber = 0; bitNumber < 2000000; bitNumber += rand() % 20000)
+	for (bitNumber = 0; bitNumber < 2000000; bitNumber += pseudoRand(bitNumber, 20000))
 		{
 		Log::log("Setting bit %d\n", bitNumber);
 		tester->set(bitNumber);
 		}
 
-	for (int bitNumber = 0; (bitNumber = tester->nextSet( ((int32) rand() * (int32) rand()) % 1800000)) >= 0;)
+	for (int bitNumber = 0; (bitNumber = tester->nextSet( pseudoRand(bitNumber, 1800000))) >= 0;)
 		{
 		Log::log("Clearing bit %d\n", bitNumber);
-			tester->clear(bitNumber);
+		tester->clear(bitNumber);
 		}
 
 	for (int bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
@@ -801,7 +800,7 @@ void Bitmap::unitTest(void)
 		tester->set(bitNumber);
 		}
 
-	for (bitNumber = 2040; bitNumber <= 2060; bitNumber += 1)  // rand() % 1000)
+	for (bitNumber = 2040; bitNumber <= 2060; bitNumber += 1)
 		{
 		Log::log("Setting bit %d\n", bitNumber);
 		tester->set(bitNumber);
