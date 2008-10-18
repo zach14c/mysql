@@ -8394,7 +8394,8 @@ bool check_join_cache_usage(JOIN_TAB *tab,
     if (first_inner != tab && !first_inner->use_join_cache)
       goto no_join_cache;
   }
-  if (tab->first_sj_inner_tab && !tab->first_sj_inner_tab->use_join_cache)
+  if (tab->first_sj_inner_tab && tab->first_sj_inner_tab != tab &&
+      !tab->first_sj_inner_tab->use_join_cache)
     goto no_join_cache;
   if (!tab[-1].use_join_cache)
   {
