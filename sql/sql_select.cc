@@ -267,13 +267,6 @@ bool subquery_types_allow_materialization(THD *thd,
                                           Item_in_subselect *in_subs,
                                           bool *scan_allowed);
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
-/*
-  This is used to mark equalities that were made from i-th IN-equality.
-  We limit semi-join LooseScan optimization to handling max 64 inequalities,
-  The following variable occupies 64 addresses.
-*/
-const char *subq_sj_cond_name=
-  "0123456789ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef-sj-cond";
 
 /**
   This handles SELECT with and without UNION.
@@ -3329,9 +3322,9 @@ bool convert_subq_to_sj(JOIN *parent_join, Item_in_subselect *subq_pred)
   {
     nested_join->sj_outer_expr_list.push_back(subq_pred->left_expr);
 
-    Item *item_eq= new Item_func_eq(subq_pred->left_expr, 
+    Item_func_eq *item_eq= new Item_func_eq(subq_pred->left_expr, 
                                     subq_lex->ref_pointer_array[0]);
-    item_eq->name= (char*)subq_sj_cond_name;
+    item_eq->in_equality_no= 0;
     sj_nest->sj_on_expr= and_items(sj_nest->sj_on_expr, item_eq);
   }
   else
@@ -3340,10 +3333,10 @@ bool convert_subq_to_sj(JOIN *parent_join, Item_in_subselect *subq_pred)
     {
       nested_join->sj_outer_expr_list.push_back(subq_pred->left_expr->
                                                 element_index(i));
-      Item *item_eq= 
+      Item_func_eq *item_eq= 
         new Item_func_eq(subq_pred->left_expr->element_index(i), 
                          subq_lex->ref_pointer_array[i]);
-      item_eq->name= (char*)subq_sj_cond_name + (i % 64);
+      item_eq->in_equality_no= i;
       sj_nest->sj_on_expr= and_items(sj_nest->sj_on_expr, item_eq);
     }
   }
@@ -4817,9 +4810,12 @@ add_key_field(KEY_FIELD **key_fields,uint and_level, Item_func *cond,
                                   ((*value)->type() == Item::FIELD_ITEM) &&
                                   ((Item_field*)*value)->field->maybe_null());
   (*key_fields)->cond_guard= NULL;
-  (*key_fields)->sj_pred_no= (cond->name >= subq_sj_cond_name && 
-                              cond->name < subq_sj_cond_name + 64)? 
-                              cond->name - subq_sj_cond_name: UINT_MAX;
+  
+  uint sj_pred_no= UINT_MAX;
+  if (cond->functype() == Item_func::EQ_FUNC)
+    sj_pred_no= ((Item_func_eq*)cond)->in_equality_no;
+  (*key_fields)->sj_pred_no= sj_pred_no;
+
   (*key_fields)++;
 }
 
@@ -9262,8 +9258,13 @@ end_sj_materialize(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
 /* Check if given Item was injected by semi-join equality */
 static bool is_cond_sj_in_equality(Item *item)
 {
-  return test(item->name >= subq_sj_cond_name && 
-              item->name < subq_sj_cond_name + 64);
+  if (item->type() == Item::FUNC_ITEM &&
+      ((Item_func*)item)->functype()== Item_func::EQ_FUNC)
+  {
+    Item_func_eq *item_eq= (Item_func_eq*)item;
+    return test(item_eq->in_equality_no != UINT_MAX);
+  }
+  return FALSE;
 }
 
 
@@ -9449,7 +9450,12 @@ bool setup_sj_materialization(JOIN_TAB *tab)
     tab_ref->key_parts= tmp_key_parts;
     sjm->tab_ref= tab_ref;
 
-    /* Remove the injected semi-join IN-equalities from join_tab conds */
+    /*
+      Remove the injected semi-join IN-equalities from join_tab conds. This
+      needs to be done because the IN-equalities refer to columns of
+      sj-inner tables which are not available after the materialization
+      has been finished.
+    */
     for (i= 0; i < sjm->n_tables; i++)
     {
       remove_sj_conds(&tab[i].select_cond);
@@ -10488,25 +10494,19 @@ static bool check_simple_equality(Item *left_item, Item *right_item,
       */
        return TRUE;
     }
-    
-    bool copy_item_name= test(item && item->name >= subq_sj_cond_name && 
-                              item->name < subq_sj_cond_name + 64);
+
     /* Copy the found multiple equalities at the current level if needed */
     if (left_copyfl)
     {
       /* left_item_equal of an upper level contains left_item */
       left_item_equal= new Item_equal(left_item_equal);
       cond_equal->current_level.push_back(left_item_equal);
-      if (copy_item_name)
-        left_item_equal->name = item->name;
     }
     if (right_copyfl)
     {
       /* right_item_equal of an upper level contains right_item */
       right_item_equal= new Item_equal(right_item_equal);
       cond_equal->current_level.push_back(right_item_equal);
-      if (copy_item_name)
-        right_item_equal->name = item->name;
     }
 
     if (left_item_equal)
@@ -10530,8 +10530,6 @@ static bool check_simple_equality(Item *left_item, Item *right_item,
       if (right_item_equal)
       {
         right_item_equal->add((Item_field *) left_item);
-        if (copy_item_name)
-          right_item_equal->name = item->name;
       }
       else 
       {
@@ -10539,8 +10537,6 @@ static bool check_simple_equality(Item *left_item, Item *right_item,
         Item_equal *item_equal= new Item_equal((Item_field *) left_item,
                                                (Item_field *) right_item);
         cond_equal->current_level.push_back(item_equal);
-        if (copy_item_name)
-          item_equal->name = item->name;
       }
     }
     return TRUE;

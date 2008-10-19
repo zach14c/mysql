@@ -463,13 +463,23 @@ public:
 class Item_func_eq :public Item_bool_rowready_func2
 {
 public:
-  Item_func_eq(Item *a,Item *b) :Item_bool_rowready_func2(a,b) {}
+  Item_func_eq(Item *a,Item *b) :
+    Item_bool_rowready_func2(a,b), in_equality_no(UINT_MAX)
+  {}
   longlong val_int();
   enum Functype functype() const { return EQ_FUNC; }
   enum Functype rev_functype() const { return EQ_FUNC; }
   cond_result eq_cmp_result() const { return COND_TRUE; }
   const char *func_name() const { return "="; }
   Item *negated_item();
+  /* 
+    - If this equality is created from the subquery's IN-equality:
+      number of the item it was created from, e.g. for
+       (a,b) IN (SELECT c,d ...)  a=c will have in_equality_no=0, 
+       and b=d will have in_equality_no=1.
+    - Otherwise, UINT_MAX
+  */
+  uint in_equality_no;
 };
 
 class Item_func_equal :public Item_bool_rowready_func2
