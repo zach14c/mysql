@@ -440,22 +440,29 @@ typedef struct st_rollup
 
 
 /*
-  Describes use of one temporary table to weed out join duplicates.
-  The temporar
+  Temporary table used by semi-join DuplicateElimination strategy
 
-  Used to
-    - create a temp table
-    - when we reach the weed-out tab, walk through rowid-ed tabs and
-      and copy rowids.
-      For each table we need
-       - rowid offset
-       - null bit address.
+  This consists of the temptable itself and data needed to put records
+  into it. The table's DDL is as follows:
+
+    CREATE TABLE tmptable (col VARCHAR(n) BINARY, PRIMARY KEY(col));
+
+  where the primary key can be replaced with unique constraint if n exceeds
+  the limit (as it is always done for query execution-time temptables).
+
+  The record value is a concation of rowids of tables from the join we're
+  executing. If a join table is on the inner side of the outer join, we
+  assume that its rowid can be NULL and provide means to store this rowid in
+  the tuple.
 */
 
 class SJ_TMP_TABLE : public Sql_alloc
 {
 public:
-  /* Array of pointers to tables that should be "used" */
+  /*
+    Array of pointers to tables whose rowids compose the temporary table
+    record.
+  */
   class TAB
   {
   public:
@@ -466,16 +473,34 @@ public:
   };
   TAB *tabs;
   TAB *tabs_end;
-
+  
+  /* 
+    is_confluent==TRUE means this is a special case where the temptable record
+    has zero length (and presense of a unique key means that the temptable can
+    have either 0 or 1 records). 
+    In this case we don't create the physical temptable but instead record
+    its state in SJ_TMP_TABLE::have_confluent_record.
+  */
   bool is_confluent;
-  bool seen; //psergey-todo: comments.
 
+  /* 
+    When is_confluent==TRUE: the contents of the table (whether it has the
+    record or not).
+  */
+  bool have_confluent_row;
+  
+  /* table record parameters */
   uint null_bits;
   uint null_bytes;
   uint rowid_len;
 
+  /* The temporary table itself (NULL means not created yet) */
   TABLE *tmp_table;
-
+  
+  /*
+    These are the members we got from temptable creation code. We'll need
+    them if we'll need to convert table from HEAP to MyISAM/Maria.
+  */
   ENGINE_COLUMNDEF *start_recinfo;
   ENGINE_COLUMNDEF *recinfo;
 

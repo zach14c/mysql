@@ -1246,7 +1246,6 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
           //cur_map |= j->table->map;
         }
 
-        //DBUG_ASSERT(jt_rowid_offset);
         if (jt_rowid_offset) /* Temptable has at least one rowid */
         {
           SJ_TMP_TABLE *sjtbl;
@@ -1277,10 +1276,11 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
               WHERE const IN (uncorrelated select)
           */
           SJ_TMP_TABLE *sjtbl;
+          DBUG_ASSERT(0);
           if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))))
             DBUG_RETURN(TRUE);
           sjtbl->is_confluent= TRUE;
-          sjtbl->seen= FALSE;
+          sjtbl->have_confluent_row= FALSE;
         }
         //tab= last_outer_tab + 1;
         //jump_to= last_outer_tab;
@@ -8780,6 +8780,7 @@ make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
                                 ~tab->emb_sj_nest->sj_inner_tables &
                                 ~PSEUDO_TABLE_BITS))
       {
+        //psergey-todo: wtf is this?
         /* This should use values from the previous iteration. */
         tab->emb_sj_nest->sj_mat_info->join_cond= 
           cond ?
@@ -9253,13 +9254,30 @@ void remove_sj_conds(Item **tree)
 
 
 /*
-  psergey-todo: comments.
+  Create subquery IN-equalities assuming use of materialization strategy
+  
+  SYNOPSIS
+    create_subq_in_equalities()
+      thd        Thread handle
+      sjm        Semi-join materialization structure
+      subq_pred  The subquery predicate
+
+  DESCRIPTION
+    Create subquery IN-equality predicates. That is, for a subquery
+    
+      (oe1, oe2, ...) IN (SELECT ie1, ie2, ... FROM ...)
+    
+    create "oe1=ie1 AND ie1=ie2 AND ..." expression, such that ie1, ie2, ..
+    refer to the columns of the table that's used to materialize the
+    subquery.
+
+  RETURN 
+    Created condition
 */
 
 Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm, 
                                 Item_in_subselect *subq_pred)
 {
-  //SELECT_LEX *subq_lex= subq_pred->unit->first_select();
   Item *res= NULL;
   if (subq_pred->left_expr->cols() == 1)
   {
@@ -9271,9 +9289,7 @@ Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm,
     Item *conj;
     for (uint i= 0; i < subq_pred->left_expr->cols(); i++)
     {
-      //todo: create equality based on the temp table
       if (!(conj= new Item_func_eq(subq_pred->left_expr->element_index(i), 
-                                   //subq_lex->ref_pointer_array[i])) ||
                                    new Item_field(sjm->table->field[i]))) ||
           !(res= and_items(res, conj)))
         return NULL;
@@ -9294,7 +9310,16 @@ Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm,
     tab  The first tab in the semi-join
 
   DESCRIPTION
-    //TODO: copy a part of this to join::reinit or whatever. (pserey-todo: still need this?)
+    Setup execution structures for one semi-join materialization nest:
+    - Create the materialization temporary table
+    - If we're going to do index lookups
+        create TABLE_REF structure to make the lookus
+    - else (if we're going to do a full scan of the temptable)
+        create Copy_field structures to do copying.
+
+  RETURN
+    FALSE  Ok
+    TRUE   Error
 */
 
 bool setup_sj_materialization(JOIN_TAB *tab)
@@ -9338,15 +9363,11 @@ bool setup_sj_materialization(JOIN_TAB *tab)
     uint          tmp_key_parts; /* Number of keyparts in tmp_key. */
     tmp_key= sjm->table->key_info;
     tmp_key_parts= tmp_key->key_parts;
-
-    /*  Create/initialize execution related objects. */
+    
     /*
-      Create and initialize the JOIN_TAB that represents an index lookup
-      plan operator into the materialized subquery result. Notice that:
-      - this JOIN_TAB has no corresponding JOIN (and doesn't need one), and
-      - here we initialize only those members that are used by
-        subselect_uniquesubquery_engine, so these objects are incomplete.
-    */ 
+      Create/initialize everything we will need to index lookups into the
+      temptable.
+    */
     TABLE_REF *tab_ref;
     if (!(tab_ref= (TABLE_REF*) thd->alloc(sizeof(TABLE_REF))))
       DBUG_RETURN(TRUE);
@@ -9405,8 +9426,30 @@ bool setup_sj_materialization(JOIN_TAB *tab)
   else
   {
     /*
-      Initialize SJM table scan
-        Setup copying from temp table back to the "original" tables
+      We'll be doing full scan of the temptable.
+      Setup copying of temptable columns back to their source tables. We
+      need this because IN-equalities refer to the original tables.
+
+      EXAMPLE
+
+      Consider the query:
+        SELECT * FROM ot WHERE ot.col1 IN (SELECT it.col2 FROM it)
+      
+      Suppose it's executed with SJ-Materialization-scan. We choose to do scan
+      if we can't do the lookup, i.e. the join order is (it, ot). The plan
+      would look as follows:
+
+        table    access method      condition
+         it      materialize+scan    -
+         ot      (whatever)          ot1.col1=it.col2 (C2)
+
+      The condition C2 refers to current row of table it. The problem is
+      that by the time we evaluate C2, we would have finished with scanning
+      it itself and will be scanning the temptable. 
+
+      At the moment, our solution is to copy back: when we get the next
+      temptable record, we copy its columns to their corresponding columns
+      in the source tables. 
     */
     sjm->copy_field= new Copy_field[sjm->sjm_table_cols.elements];
     it.rewind();
@@ -9415,22 +9458,6 @@ bool setup_sj_materialization(JOIN_TAB *tab)
       sjm->copy_field[i].set(((Item_field*)it++)->field,
                               sjm->table->field[i], FALSE);
     }
-    /*
-      Dont need this because we're using different approach here:
-      we copy materialized table columns to 
-       Do not create/attach IN-equalities. They are already appropriately
-       attached into JOIN_TABs.
-    if (!(in_eq= create_subq_in_equalities(thd, sjm, emb_sj_nest->sj_subq_pred)))
-      DBUG_RETURN(TRUE);
-    if (tab->emb_sj_nest->sj_mat_info->join_cond)
-    {
-      Item *item= and_items(tab->emb_sj_nest->sj_mat_info->join_cond, in_eq);
-      item->quick_fix_field();
-      tab->emb_sj_nest->sj_mat_info->join_cond= item;
-    }
-    else
-      tab->emb_sj_nest->sj_mat_info->join_cond= in_eq;
-    */
   }
 
   DBUG_RETURN(FALSE);
@@ -11124,13 +11151,15 @@ Item *eliminate_item_equal(COND *cond, COND_EQUAL *upper_levels,
       if (eq_item)
         eq_list.push_back(eq_item);
       /*
+      psergey-todo: sanity and isolation?
         If item_field belongs to an SJM-nest, then we have this situation:
 
-          outer_tbl1 outer_tbl2 SJM( inner_tbl1 inner_tbl2 ) outer_tbl3 
+          outer_tbl1 outer_tbl2 SJM (inner_tbl1 inner_tbl2) outer_tbl3 
 
         SJM nests are made from uncorrelated subqueries, and IN-equality
         tables must be in the prefix (outer_tbl{1,2} on the pic), so this
         function will never try to construct an equality like 
+
           inner_tblX.col = outer_tbl3.col.
 
         We might try to construct an equality like
@@ -15255,36 +15284,34 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
   if (!sjm->materialized)
   {
     /* 
-      Do the materialization. First, run the join for the sjm nest (we've
-      got table dumper catching row combinations at the last semi-join-nest
-      table)
-    */
+      Do the materialization. First, put end_sj_materialize after the last
+      inner table so we can catch record combinations of sj-inner tables.
+    */ 
     Next_select_func next_func= join_tab[sjm->n_tables - 1].next_select;
     join_tab[sjm->n_tables - 1].next_select= end_sj_materialize;
-    if ((rc= sub_select(join, join_tab, FALSE)) < 0)
+    
+    /*
+      Now run the join for the inner tables. The first call is to run the
+      join, the second one is to signal EOF (this is essiential for some
+      join strategies, e.g. it will make join buffering flush the records)
+    */
+    if ((rc= sub_select(join, join_tab, FALSE)) < 0 || 
+        (rc= sub_select(join, join_tab, TRUE/*EOF*/)) < 0)
+    {
+      join_tab[sjm->n_tables - 1].next_select= next_func;
       return rc; /* it's NESTED_LOOP_(ERROR|KILLED)*/
-
-    /* 
-      Signal the EOF: in case there are tables using join buffering within
-      the materialization nest, this will be the signal to flush everything.
-    */
-    if ((rc= sub_select(join, join_tab, TRUE)) < 0)
-      return rc;
-
-    /* 
-      This function's job is done. Call sub_select (this is what's used for
-      eq_ref access) instead of this function from now on.
-    */
-    /* Let it jump over the tables (TODO psergey: need this anymore?) */
+    }
     join_tab[sjm->n_tables - 1].next_select= next_func;
-
-    join_tab->read_record.read_record= join_no_more_records;
+     
+    /* 
+      Ok, materialization finished. Initialize the access to the temptable
+    */
     sjm->materialized= TRUE;
+    join_tab->read_record.read_record= join_no_more_records;
     if (sjm->is_sj_scan)
     {
+      /* Initialize full scan */
       JOIN_TAB *last_tab= join_tab + (sjm->n_tables - 1);
-
-      /* Initialize full scan of the materialized table */
       init_read_record(&last_tab->read_record, join->thd, 
                        sjm->table, NULL, TRUE, TRUE, FALSE);
 
@@ -15591,11 +15618,11 @@ int do_sj_dups_weedout(THD *thd, SJ_TMP_TABLE *sjtbl)
   
   if (sjtbl->is_confluent)
   {
-    if (sjtbl->seen) 
+    if (sjtbl->have_confluent_row) 
       return 1;
     else
     {
-      sjtbl->seen= 1;
+      sjtbl->have_confluent_row= TRUE;
       return 0;
     }
   }
@@ -15661,7 +15688,7 @@ int do_sj_reset(SJ_TMP_TABLE *sj_tbl)
 {
   if (sj_tbl->tmp_table)
     return sj_tbl->tmp_table->file->ha_delete_all_rows();
-  sj_tbl->seen= FALSE;
+  sj_tbl->have_confluent_row= FALSE;
   return 0;
 }
 
