@@ -96,6 +96,8 @@ static store_key *get_store_key(THD *thd,
 				uint maybe_null);
 static bool make_simple_join(JOIN *join,TABLE *tmp_table);
 static void make_outerjoin_info(JOIN *join);
+static COND *
+make_cond_after_sjm(Item *cond, table_map tables, table_map sjm_tables);
 static bool make_join_select(JOIN *join,SQL_SELECT *select,COND *item);
 static bool make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after);
 static bool only_eq_ref_tables(JOIN *join, ORDER *order, table_map tables);
@@ -1429,7 +1431,6 @@ JOIN::optimize()
   SELECT_LEX *sel= thd->lex->current_select;
   if (sel->first_cond_optimization)
   {
-    //psergey-todo: move flatten-subqueries call to here?
     /*
       The following code will allocate the new items in a permanent
       MEMROOT for prepared statements and stored procedures.
@@ -3546,8 +3547,7 @@ skip_conversion:
     if (replace_where_subcondition(this, tree, *in_subq, substitute, 
                                    do_fix_fields))
       DBUG_RETURN(TRUE);
-   /* psergey-todo: remove this hack: */
-   (*in_subq)->substitution= NULL;
+    (*in_subq)->substitution= NULL;
      
     if (!thd->stmt_arena->is_conventional())
     {
@@ -3707,6 +3707,19 @@ bool find_eq_ref_candidate(TABLE *table, table_map sj_inner_tables)
 
     This operation is (and should be) performed at each PS execution since
     tables may become/cease to be constant across PS reexecutions.
+    
+  NOTE
+    Table pullout may make uncorrelated subquery correlated. Consider this
+    example:
+    
+     ... WHERE oe IN (SELECT it1.primary_key WHERE p(it1, it2) ... ) 
+    
+    here table it1 can be pulled out (we have it1.primary_key=oe which gives
+    us functional dependency). Once it1 is pulled out, all references to it1
+    from p(it1, it2) become references to outside of the subquery and thus
+    make the subquery (i.e. its semi-join nest) correlated.
+    Making the subquery (i.e. its semi-join nest) correlated prevents us from
+    using Materialization or LooseScan to execute it. 
 
   RETURN 
     0 - OK
@@ -3764,14 +3777,8 @@ int pull_out_semijoin_tables(JOIN *join)
             DBUG_PRINT("info", ("Table %s pulled out (reason: func dep)",
                                 tbl->table->alias));
             /*
-              Pulling a table out of uncorrelated subquery can make it
-              correlated. 
-              TODO SergeyP: handle this in a smarter way:
-               - we could still use LooseScan
-               - we could still use SJ-Materialization if we pull the tables
-                 back in.
-
-               psergey-todo: examples
+              Pulling a table out of uncorrelated subquery in general makes
+              makes it correlated. See the NOTE to this funtion. 
             */
             sj_nest->sj_subq_pred->is_correlated= TRUE;
           }
@@ -3837,6 +3844,7 @@ int pull_out_semijoin_tables(JOIN *join)
   }
   DBUG_RETURN(0);
 }
+
 
 /*****************************************************************************
   Create JOIN_TABS, make a guess about the table types,
@@ -7062,7 +7070,7 @@ void get_partial_join_cost(JOIN *join, uint n_tables, double *read_time_arg,
   double read_time= 0.0;
   for (uint i= join->const_tables; i < n_tables + join->const_tables ; i++)
   {
-    if (join->best_positions[i].records_read) //!!psergey psergey fix AA BB
+    if (join->best_positions[i].records_read)
     {
       record_count *= join->best_positions[i].records_read;
       read_time += join->best_positions[i].read_time;
@@ -7582,8 +7590,39 @@ prev_record_reads(JOIN *join, uint idx, table_map found_ref)
       join  The join with the picked join order
 
   DESCRIPTION
-    psergey-todo: comments:   
-*/
+    Fix semi-join strategies for the picked join order. This is a step that
+    needs to be done right after we have fixed the join order. What we do
+    here is switch join's semi-join strategy description from backward-based
+    to forwards based.
+    
+    When join optimization is in progress, we re-consider semi-join
+    strategies after we've added another table. Here's an illustration.
+    Suppose the join optimization is underway:
+
+    1) ot1  it1  it2 
+                 sjX  -- looking at (ot1, it1, it2) join prefix, we decide
+                         to use semi-join strategy sjX.
+
+    2) ot1  it1  it2  ot2 
+                 sjX  sjY -- Having added table ot2, we now may consider
+                             another semi-join strategy and decide to use a 
+                             different strategy sjY. Note that the record
+                             of sjX has remained under it2. That is
+                             necessary because we need to be able to get
+                             back to (ot1, it1, it2) join prefix.
+      what makes things even worse is that there are cases where the choice
+      of sjY changes the way we should access it2. 
+
+    3) [ot1  it1  it2  ot2  ot3]
+                  sjX  sjY  -- This means that after join optimization is
+                               finished, semi-join info should be read
+                               right-to-left (while nearly all plan refinement
+                               functions, EXPLAIN, etc proceed from left to 
+                               right)
+
+    This function does the needed reversal, making it possible to read the
+    join and semi-join order from left to right.
+*/    
 
 static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
 {
@@ -7808,8 +7847,7 @@ static bool get_best_combination(JOIN *join)
       continue;
     
     if (j->keys.is_clear_all() || !(keyuse= join->best_positions[tablenr].key) || 
-        (join->best_positions[tablenr].sj_strategy == SJ_OPT_LOOSE_SCAN /* &&
-        psergey-todo TODO*/))
+        (join->best_positions[tablenr].sj_strategy == SJ_OPT_LOOSE_SCAN))
     {
       j->type=JT_ALL;
       j->index= join->best_positions[tablenr].loosescan_key;
@@ -8359,8 +8397,6 @@ make_outerjoin_info(JOIN *join)
   DBUG_VOID_RETURN;
 }
 
-static COND *
-make_cond_after_sjm(Item *cond, table_map tables, table_map sjm_tables);
 
 static bool
 make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
@@ -8780,8 +8816,20 @@ make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
                                 ~tab->emb_sj_nest->sj_inner_tables &
                                 ~PSEUDO_TABLE_BITS))
       {
-        //psergey-todo: wtf is this?
-        /* This should use values from the previous iteration. */
+        /*
+          We have reached the end of semi join nest. That is, the join order
+          looks like this:
+
+           outer_tbl1 SJ-Materialize(inner_tbl1 ... inner_tblN) outer_tbl ...
+                                                               ^
+                                                                \-we're here
+          At this point, we need to produce two conditions
+           - A condition that can be checked whein we have all of the sj-inner
+             tables (inner_tbl1 ... inner_tblN). This will be used while doing
+             materialization.
+           - A condition that can be checked when we have all of the tables
+             in the prefix (both inner and outer).
+        */
         tab->emb_sj_nest->sj_mat_info->join_cond= 
           cond ?
              make_cond_after_sjm(cond, save_used_tables, used_tables):
@@ -11151,24 +11199,18 @@ Item *eliminate_item_equal(COND *cond, COND_EQUAL *upper_levels,
       if (eq_item)
         eq_list.push_back(eq_item);
       /*
-      psergey-todo: sanity and isolation?
-        If item_field belongs to an SJM-nest, then we have this situation:
+        item_field might refer to a table that is within a semi-join
+        materialziation nest. In that case, join order looks like this:
 
           outer_tbl1 outer_tbl2 SJM (inner_tbl1 inner_tbl2) outer_tbl3 
 
-        SJM nests are made from uncorrelated subqueries, and IN-equality
-        tables must be in the prefix (outer_tbl{1,2} on the pic), so this
-        function will never try to construct an equality like 
+        We must not construct equalities like 
 
-          inner_tblX.col = outer_tbl3.col.
+           outer_tbl1.col = inner_tbl1.col 
 
-        We might try to construct an equality like
-
-           outer_tbl1.col = inner_tblX.col 
-
-        though, and that is a problem because this equality should not be
-        created - if we attach it to inner_tbl1, it will get evaluated
-        during materialization and that will cause us to miss records.
+        because they would get attached to inner_tbl1 and will get evaluated
+        during materialization phase, when we don't have current value of
+        outer_tbl1.col.
       */
       TABLE_LIST *emb_nest= 
         item_field->field->table->pos_in_table_list->embedding;
@@ -19052,8 +19094,12 @@ read_cached_record(JOIN_TAB *tab)
   SYNOPSIS
     cmp_buffer_with_ref()
       tab      Join tab of the accessed table
-      table    psergey-todo: comments
-      tab_ref  psergey-todo: comments 
+      table    The table to read.  This is usually tab->table, except for 
+               semi-join when we might need to make a lookup in a temptable
+               instead.
+      tab_ref  The structure with methods to collect index lookup tuple. 
+               This is usually table->ref, except for the case of when we're 
+               doing lookup into semi-join materialization table.
 
   DESCRIPTION 
     Used by eq_ref access method: create the index lookup key and check if 

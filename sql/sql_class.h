@@ -2826,13 +2826,17 @@ public:
 
 struct st_table_ref;
 
+
 /*
-  Descriptor of a materialized semi-join.
+  Optimizer and executor structure for the materialized semi-join info. This
+  structure contains
+   - The sj-materialization temporary table
+   - Members needed to make index lookup or a full scan of the temptable.
 */
 class SJ_MATERIALIZATION_INFO : public Sql_alloc
 {
 public:
-  /* optimal join sub-order */
+  /* Optimal join sub-order */
   struct st_position *positions;
 
   uint n_tables; /* Number of tables in the sj-nest */
@@ -2849,20 +2853,33 @@ public:
   /* Cost fo scanning the materialization table */
   COST_VECT scan_cost;
 
-  /* Execution structures */
+  /* --- Execution structures ---------- */
+  
+  /*
+    TRUE <=> This structure is used for execution. We don't necessarily pick
+    sj-materialization, so some of SJ_MATERIALIZATION_INFO structures are not
+    used by materialization
+  */
+  bool is_used;
+  
+  bool materialized; /* TRUE <=> materialization already performed */
+  /*
+    TRUE  - the temptable is read with full scan
+    FALSE - we use the temptable for index lookups
+  */
+  bool is_sj_scan; 
+  
+  /* The temptable and its related info */
   TMP_TABLE_PARAM sjm_table_param;
   List<Item> sjm_table_cols;
   TABLE *table;
 
-  /* The thing to do index lookups */
+  /* Structure used to make index lookups */
   struct st_table_ref *tab_ref;
-  bool materialized;
-  Item *in_equality;
+  Item *in_equality; /* See create_subq_in_equalities() */
 
-  bool is_used;
-  bool is_sj_scan;
-  Item *join_cond;
-  Copy_field *copy_field;
+  Item *join_cond; /* See comments in make_join_select() */
+  Copy_field *copy_field; /* Needed for SJ_Materialization scan */
 };
 
 
