@@ -1173,14 +1173,11 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
   {
     JOIN_TAB *tab=join->join_tab + i;
     POSITION *pos= join->best_positions + i;
-    //uint jump_over= pos->n_sj_tables;
     uint keylen, keyno;
     switch (pos->sj_strategy) {
       case SJ_OPT_MATERIALIZE:
       case SJ_OPT_MATERIALIZE_SCAN:
-        /* 
-          Do nothing. (Q: can we move the code from setup_sj_materialization to here?
-        */
+        /* Do nothing */
         i += pos->n_sj_tables;
         break;
       case SJ_OPT_LOOSE_SCAN:
@@ -1195,8 +1192,6 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
           keylen += tab->table->key_info[keyno].key_part[kp].store_length;
 
         tab->insideout_key_len= keylen;
-        //jump_to= tab++;
-        //TODO Create the FirstMatch tail
         if (pos->n_sj_tables > 1) 
           tab[pos->n_sj_tables - 1].do_firstmatch= tab;
         i += pos->n_sj_tables;
@@ -1222,7 +1217,6 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
         uint jt_rowid_offset= 0; // # tuple bytes are already occupied (w/o NULL bytes)
         uint jt_null_bits= 0;    // # null bits in tuple bytes
         uint rowid_keep_flags= JOIN_TAB::CALL_POSITION | JOIN_TAB::KEEP_ROWID;
-        //JOIN_TAB *last_outer_tab= tab - 1;
         /*
           Walk through the range and remember
            - tables that need their rowids to be put into temptable
@@ -1245,7 +1239,6 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
             j->table->prepare_for_position();
             j->rowid_keep_flags= rowid_keep_flags;
           }
-          //cur_map |= j->table->map;
         }
 
         if (jt_rowid_offset) /* Temptable has at least one rowid */
@@ -1278,14 +1271,11 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
               WHERE const IN (uncorrelated select)
           */
           SJ_TMP_TABLE *sjtbl;
-          DBUG_ASSERT(0);
           if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))))
             DBUG_RETURN(TRUE);
           sjtbl->is_confluent= TRUE;
           sjtbl->have_confluent_row= FALSE;
         }
-        //tab= last_outer_tab + 1;
-        //jump_to= last_outer_tab;
         i += pos->n_sj_tables;
         break;
       }
@@ -1305,7 +1295,6 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
         break;
     }
   }
-
   DBUG_RETURN(FALSE);
 }
 
@@ -1341,7 +1330,8 @@ static void destroy_sj_tmp_tables(JOIN *join)
       join  The join to remove tables for
 
   DESCRIPTION
-    This function must be called before join re-execution.
+    Remove all records from all temp tables used by NL-semijoin runtime. This 
+    must be done before every join re-execution.
 */
 
 static int clear_sj_tmp_tables(JOIN *join)
@@ -1393,7 +1383,6 @@ JOIN::optimize()
   if (flatten_subqueries())
     return 1;
   /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
-
 
   row_limit= ((select_distinct || order || group_list) ? HA_POS_ERROR :
 	      unit->select_limit_cnt);
