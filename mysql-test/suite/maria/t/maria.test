@@ -1832,8 +1832,6 @@ lock table t1 write concurrent;
 # should be fixed with fully implemented versioning
 --error ER_CHECK_NOT_IMPLEMENTED
 delete from t1;
---error 1099
-drop table t1;
 unlock tables;
 drop table t1;
 
@@ -1903,6 +1901,8 @@ drop table t1;
 create table t1 (c1 int);
 create table t2 (c1 int);
 lock table t1 read, t2 read;
+# 6.0 throws this error, unlike 5.1
+--error ER_LOCK_OR_ACTIVE_TRANSACTION
 flush tables with read lock;
 unlock tables;
 drop table t1, t2;
