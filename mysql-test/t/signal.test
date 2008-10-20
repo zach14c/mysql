@@ -2478,5 +2478,198 @@ delimiter ;$$
 drop table t_warn;
 drop table t_cursor;
 
-# end of file
+--echo #
+--echo # Miscelaneous test cases
+--echo #
+
+delimiter $$;
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 0x12; /* 18 */
+end $$
+
+-- error 18
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 0b00010010; /* 18 */
+end $$
+
+-- error 18
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = '65'; /* 65 */
+end $$
+
+-- error 65
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 'A'; /* illegal */
+end $$
+
+-- error ER_WRONG_VALUE_FOR_VAR
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = "65"; /* 65 */
+end $$
+
+-- error 65
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = "A"; /* illegal */
+end $$
+
+-- error ER_WRONG_VALUE_FOR_VAR
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = `65`; /* illegal */
+end $$
+
+-- error ER_BAD_FIELD_ERROR
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = `A`; /* illegal */
+end $$
+
+-- error ER_BAD_FIELD_ERROR
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 3.141592; /* 3 */
+end $$
+
+-- error 3
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 1000,
+    MESSAGE_TEXT= 0x41; /* A */
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 1000,
+    MESSAGE_TEXT= 0b01000001; /* A */
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 1000,
+    MESSAGE_TEXT = "Hello";
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 1000,
+    MESSAGE_TEXT = 'Hello';
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 1000,
+    MESSAGE_TEXT = `Hello`;
+end $$
+
+-- error ER_BAD_FIELD_ERROR
+call test_signal $$
+drop procedure test_signal $$
+
+create procedure test_signal()
+begin
+  DECLARE foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL foo SET MYSQL_ERRNO = 1000,
+    MESSAGE_TEXT = 65.4321;
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
+-- error ER_PARSE_ERROR
+create procedure test_signal()
+begin
+  DECLARE céèçà foo CONDITION FOR SQLSTATE '12345';
+  SIGNAL céèçà SET MYSQL_ERRNO = 1000;
+end $$
+
+-- error ER_PARSE_ERROR
+create procedure test_signal()
+begin
+  DECLARE "céèçà" CONDITION FOR SQLSTATE '12345';
+  SIGNAL "céèçà" SET MYSQL_ERRNO = 1000;
+end $$
+
+-- error ER_PARSE_ERROR
+create procedure test_signal()
+begin
+  DECLARE 'céèçà' CONDITION FOR SQLSTATE '12345';
+  SIGNAL 'céèçà' SET MYSQL_ERRNO = 1000;
+end $$
+
+create procedure test_signal()
+begin
+  DECLARE `céèçà` CONDITION FOR SQLSTATE '12345';
+  SIGNAL `céèçà` SET MYSQL_ERRNO = 1000;
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
+delimiter ; $$
 

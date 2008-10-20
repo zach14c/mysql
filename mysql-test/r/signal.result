@@ -2196,3 +2196,161 @@ Error	2	Original
 drop procedure peter_p3 $$
 drop table t_warn;
 drop table t_cursor;
+#
+# Miscelaneous test cases
+#
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 0x12; /* 18 */
+end $$
+call test_signal $$
+ERROR 12345: Unhandled user-defined exception condition
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 0b00010010; /* 18 */
+end $$
+call test_signal $$
+ERROR 12345: Unhandled user-defined exception condition
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = '65'; /* 65 */
+end $$
+call test_signal $$
+ERROR 12345: Unhandled user-defined exception condition
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 'A'; /* illegal */
+end $$
+call test_signal $$
+ERROR 42000: Variable 'MYSQL_ERRNO' can't be set to the value of 'A'
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = "65"; /* 65 */
+end $$
+call test_signal $$
+ERROR 12345: Unhandled user-defined exception condition
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = "A"; /* illegal */
+end $$
+call test_signal $$
+ERROR 42000: Variable 'MYSQL_ERRNO' can't be set to the value of 'A'
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = `65`; /* illegal */
+end $$
+call test_signal $$
+ERROR 42S22: Unknown column '65' in 'field list'
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = `A`; /* illegal */
+end $$
+call test_signal $$
+ERROR 42S22: Unknown column 'A' in 'field list'
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 3.141592; /* 3 */
+end $$
+call test_signal $$
+ERROR 12345: Unhandled user-defined exception condition
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 1000,
+MESSAGE_TEXT= 0x41; /* A */
+end $$
+call test_signal $$
+ERROR 12345: A
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 1000,
+MESSAGE_TEXT= 0b01000001; /* A */
+end $$
+call test_signal $$
+ERROR 12345: A
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 1000,
+MESSAGE_TEXT = "Hello";
+end $$
+call test_signal $$
+ERROR 12345: Hello
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 1000,
+MESSAGE_TEXT = 'Hello';
+end $$
+call test_signal $$
+ERROR 12345: Hello
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 1000,
+MESSAGE_TEXT = `Hello`;
+end $$
+call test_signal $$
+ERROR 42S22: Unknown column 'Hello' in 'field list'
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE foo CONDITION FOR SQLSTATE '12345';
+SIGNAL foo SET MYSQL_ERRNO = 1000,
+MESSAGE_TEXT = 65.4321;
+end $$
+call test_signal $$
+ERROR 12345: 65.4321
+drop procedure test_signal $$
+create procedure test_signal()
+begin
+DECLARE céèçà foo CONDITION FOR SQLSTATE '12345';
+SIGNAL céèçà SET MYSQL_ERRNO = 1000;
+end $$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '�èçà foo CONDITION FOR SQLSTATE '12345';
+SIGNAL céèçà SET MYSQL_ERRNO = 1' at line 3
+create procedure test_signal()
+begin
+DECLARE "céèçà" CONDITION FOR SQLSTATE '12345';
+SIGNAL "céèçà" SET MYSQL_ERRNO = 1000;
+end $$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '"céèçà" CONDITION FOR SQLSTATE '12345';
+SIGNAL "céèçà" SET MYSQL_ERRNO =' at line 3
+create procedure test_signal()
+begin
+DECLARE 'céèçà' CONDITION FOR SQLSTATE '12345';
+SIGNAL 'céèçà' SET MYSQL_ERRNO = 1000;
+end $$
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''céèçà' CONDITION FOR SQLSTATE '12345';
+SIGNAL 'céèçà' SET MYSQL_ERRNO =' at line 3
+create procedure test_signal()
+begin
+DECLARE `céèçà` CONDITION FOR SQLSTATE '12345';
+SIGNAL `céèçà` SET MYSQL_ERRNO = 1000;
+end $$
+call test_signal $$
+ERROR 12345: Unhandled user-defined exception condition
+drop procedure test_signal $$
