@@ -1020,7 +1020,7 @@ static bool print_admin_msg(THD* thd, const char* msg_type,
   va_list args;
   Protocol *protocol= thd->protocol;
   uint length, msg_length;
-  char msgbuf[PARTITION_MAX_MSG_BUF];
+  char msgbuf[HA_MAX_MSG_BUF];
   char name[NAME_LEN*2+2];
 
   va_start(args, fmt);
@@ -5226,6 +5226,7 @@ int ha_partition::extra(enum ha_extra_function operation)
   case HA_EXTRA_KEYREAD:
   case HA_EXTRA_NO_KEYREAD:
   case HA_EXTRA_FLUSH:
+  case HA_EXTRA_PREPARE_FOR_FORCED_CLOSE:
     DBUG_RETURN(loop_extra(operation));
 
     /* Category 2), used by non-MyISAM handlers */
@@ -5249,8 +5250,7 @@ int ha_partition::extra(enum ha_extra_function operation)
   case HA_EXTRA_PREPARE_FOR_DROP:
   case HA_EXTRA_FLUSH_CACHE:
   {
-    if (m_myisam)
-      DBUG_RETURN(loop_extra(operation));
+    DBUG_RETURN(loop_extra(operation));
     break;
   }
   case HA_EXTRA_CACHE:
@@ -5459,8 +5459,8 @@ int ha_partition::loop_extra(enum ha_extra_function operation)
   DBUG_ENTER("ha_partition::loop_extra()");
   
   /* 
-    TODO, 5.2: this is where you could possibly add optimisations to add the bitmap
-    _if_ a SELECT.
+    TODO, 5.2: this is where you could possibly add optimisations to add the
+    bitmap _if_ a SELECT.
   */
   for (file= m_file; *file; file++)
   {

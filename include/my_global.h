@@ -1577,7 +1577,7 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #if !defined(max)
 #define max(a, b)	((a) > (b) ? (a) : (b))
 #define min(a, b)	((a) < (b) ? (a) : (b))
-#endif  
+#endif
 /*
   Only Linux is known to need an explicit sync of the directory to make sure a
   file creation/deletion/renaming in(from,to) this directory durable.
@@ -1591,7 +1591,7 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #endif
 
 /* Provide __func__ macro definition for platforms that miss it. */
-#if __STDC_VERSION__ < 199901L && !defined(__func__)
+#if __STDC_VERSION__ < 199901L
 #  if __GNUC__ >= 2
 #    define __func__ __FUNCTION__
 #  else

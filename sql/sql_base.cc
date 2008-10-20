@@ -3252,7 +3252,6 @@ check_and_update_table_version(THD *thd,
   }
 
   DBUG_EXECUTE_IF("reprepare_each_statement", return inject_reprepare(thd););
-
   return FALSE;
 }
 
@@ -3570,8 +3569,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   /* Also used for indicating that prelocking is need */
   TABLE_LIST **query_tables_last_own;
   bool safe_to_ignore_table;
-
   DBUG_ENTER("open_tables");
+
   /*
     temporary mem_root for new .frm parsing.
     TODO: variables for size
