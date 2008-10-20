@@ -59,7 +59,7 @@
 #include <thr_alarm.h>
 #include <myisam.h>
 #include <my_dir.h>
-
+#include <waiting_threads.h>
 #include "events.h"
 #include "transaction.h"
 
@@ -239,6 +239,18 @@ static sys_var_long_ptr	sys_connect_timeout(&vars, "connect_timeout",
 					    &connect_timeout);
 static sys_var_const_str       sys_datadir(&vars, "datadir", mysql_real_data_home);
 static sys_var_backup_wait_timeout sys_backup_wait_timeout(&vars, "backup_wait_timeout");
+static sys_var_thd_ulong sys_deadlock_search_depth_short(&vars,
+                                "deadlock_search_depth_short",
+                                 &SV::wt_deadlock_search_depth_short);
+static sys_var_thd_ulong sys_deadlock_search_depth_long(&vars,
+                                "deadlock_search_depth_long",
+                                 &SV::wt_deadlock_search_depth_long);
+static sys_var_thd_ulong sys_deadlock_timeout_short(&vars,
+                                "deadlock_timeout_short",
+                                 &SV::wt_timeout_short);
+static sys_var_thd_ulong sys_deadlock_timeout_long(&vars,
+                                "deadlock_timeout_long",
+                                 &SV::wt_timeout_long);
 #ifndef DBUG_OFF
 static sys_var_thd_dbug        sys_dbug(&vars, "debug");
 #endif
@@ -1223,6 +1235,21 @@ void fix_slave_exec_mode(enum_var_type type)
     bit_do_set(slave_exec_mode_options, SLAVE_EXEC_MODE_STRICT);
   DBUG_VOID_RETURN;
 }
+
+
+bool sys_var_thd_binlog_format::check(THD *thd, set_var *var) {
+  /*
+    All variables that affect writing to binary log (either format or
+    turning logging on and off) use the same checking. We call the
+    superclass ::check function to assign the variable correctly, and
+    then check the value.
+   */
+  bool result= sys_var_thd_enum::check(thd, var);
+  if (!result)
+    result= check_log_update(thd, var);
+  return result;
+}
+
 
 bool sys_var_thd_binlog_format::is_readonly() const
 {

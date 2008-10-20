@@ -1893,3 +1893,4 @@ libmysqld/ddl_blocker.cc
 libmysqld/mdl.cc
 client/transaction.h
 libmysqld/transaction.cc
+libmysqld/rpl_handler.cc

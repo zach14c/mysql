@@ -13,6 +13,15 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+
+static int always_valid(const char *filename __attribute__((unused)))
+{
+  return 0;
+}
+
+int (*maria_test_invalid_symlink)(const char *filename)= always_valid;
+
+
 /*
   Static variables for MARIA library. All definied here for easy making of
   a shared library
@@ -63,6 +72,9 @@ HASH maria_stored_state;
    transactional (CREATE/DROP/RENAME/OPTIMIZE/REPAIR).
 */
 TRN dummy_transaction_object;
+
+/* a WT_RESOURCE_TYPE for transactions waiting on a unique key conflict */
+WT_RESOURCE_TYPE ma_rc_dup_unique={ wt_resource_id_memcmp, 0};
 
 /* Enough for comparing if number is zero */
 uchar maria_zero_string[]= {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};

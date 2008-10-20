@@ -1979,13 +1979,17 @@ mysql_execute_command(THD *thd)
 #endif
   case SQLCOM_SHOW_STATUS_PROC:
   case SQLCOM_SHOW_STATUS_FUNC:
-    res= execute_sqlcom_select(thd, all_tables);
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE,
+                                  UINT_MAX)))
+      res= execute_sqlcom_select(thd, all_tables);
     break;
   case SQLCOM_SHOW_STATUS:
   {
     system_status_var old_status_var= thd->status_var;
     thd->initial_status_var= &old_status_var;
-    res= execute_sqlcom_select(thd, all_tables);
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE,
+                                  UINT_MAX)))
+      res= execute_sqlcom_select(thd, all_tables);
     /* Don't log SHOW STATUS commands to slow query log */
     thd->server_status&= ~(SERVER_QUERY_NO_INDEX_USED |
                            SERVER_QUERY_NO_GOOD_INDEX_USED);
@@ -4655,6 +4659,8 @@ bool check_single_table_access(THD *thd, ulong privilege,
   /* Show only 1 table for check_grant */
   if (!(all_tables->belong_to_view &&
         (thd->lex->sql_command == SQLCOM_SHOW_FIELDS)) &&
+      !(all_tables->view &&
+        all_tables->effective_algorithm == VIEW_ALGORITHM_TMPTABLE) &&
       check_grant(thd, privilege, all_tables, 0, 1, no_errors))
     goto deny;
 
@@ -5051,14 +5057,18 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
       continue;
     }
 
-    if (tables->derived ||
-        (tables->table && tables->table->s && (int)tables->table->s->tmp_table))
+    DBUG_PRINT("info", ("derived: %d  view: %d", tables->derived != 0,
+                        tables->view != 0));
+    if (tables->is_anonymous_derived_table() ||
+        (tables->table && tables->table->s &&
+         (int)tables->table->s->tmp_table))
       continue;
     thd->security_ctx= sctx;
-    if ((sctx->master_access & want_access) ==
-        want_access && thd->db)
+    if ((sctx->master_access & want_access) == want_access &&
+        thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->db,&tables->grant.privilege,
+    else if (check_access(thd,want_access,tables->get_db_name(),
+                          &tables->grant.privilege,
                           0, no_errors, 0))
       goto deny;
   }
@@ -7406,15 +7416,14 @@ bool check_identifier_name(LEX_STRING *str, uint max_char_length,
 
 /*
   Check if path does not contain mysql data home directory
+
   SYNOPSIS
     test_if_data_home_dir()
     dir                     directory
-    conv_home_dir           converted data home directory
-    home_dir_len            converted data home directory length
 
   RETURN VALUES
     0	ok
-    1	error  
+    1	error ;  Given path contains data directory
 */
 C_MODE_START
 
@@ -7442,11 +7451,17 @@ int test_if_data_home_dir(const char *dir)
                         mysql_unpacked_real_data_home_len,
                         (const uchar*) mysql_unpacked_real_data_home,
                         mysql_unpacked_real_data_home_len))
+      {
+        DBUG_PRINT("error", ("Path is part of mysql_real_data_home"));
         DBUG_RETURN(1);
+      }
     }
     else if (!memcmp(path, mysql_unpacked_real_data_home,
                      mysql_unpacked_real_data_home_len))
+    {
+      DBUG_PRINT("error", ("Path is part of mysql_real_data_home"));
       DBUG_RETURN(1);
+    }
   }
   DBUG_RETURN(0);
 }

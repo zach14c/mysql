@@ -69,6 +69,7 @@ private:
   bool m_invalidated;
 };
 
+#include <waiting_threads.h>
 
 class Relay_log_info;
 
@@ -77,6 +78,7 @@ class Load_log_event;
 class Slave_log_event;
 class sp_rcontext;
 class sp_cache;
+class Lex_input_stream;
 class Parser_state;
 class Rows_log_event;
 
@@ -442,6 +444,10 @@ struct system_variables
   DATE_TIME_FORMAT *datetime_format;
   DATE_TIME_FORMAT *time_format;
   my_bool sysdate_is_now;
+
+  /* deadlock detection */
+  ulong wt_timeout_short, wt_deadlock_search_depth_short;
+  ulong wt_timeout_long, wt_deadlock_search_depth_long;
 };
 
 
@@ -1504,9 +1510,14 @@ public:
   Rows_log_event* binlog_get_pending_rows_event() const;
   void            binlog_set_pending_rows_event(Rows_log_event* ev);
   int binlog_flush_pending_rows_event(bool stmt_end);
+  int binlog_remove_pending_rows_event(bool clear_maps);
 
 private:
-  uint binlog_table_maps; // Number of table maps currently in the binlog
+  /*
+    Number of outstanding table maps, i.e., table maps in the
+    transaction cache.
+  */
+  uint binlog_table_maps;
 
   enum enum_binlog_flag {
     BINLOG_FLAG_UNSAFE_STMT_PRINTED,
@@ -1535,6 +1546,7 @@ public:
     THD_TRANS stmt;			// Trans for current statement
     bool on;                            // see ha_enable_transaction()
     XID_STATE xid_state;
+    WT_THD wt;
     Rows_log_event *m_pending_rows_event;
 
     /*
