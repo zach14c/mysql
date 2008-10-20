@@ -935,15 +935,12 @@ THD::~THD()
 #endif
   stmt_map.reset();                     /* close all prepared statements */
   DBUG_ASSERT(lock_info.n_cursors == 0);
-  ha_close_connection(this);
-  plugin_thdvar_cleanup(this);
-
   if (!cleanup_done)
     cleanup();
 
   mdl_context_destroy(&mdl_context);
   mdl_context_destroy(&handler_mdl_context);
-
+  ha_close_connection(this);
   mysql_audit_release(this);
   plugin_thdvar_cleanup(this);
 
