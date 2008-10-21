@@ -7,7 +7,7 @@
 ###################################################################
 
 --source include/not_embedded.inc
---source suite/backup/include/backup_engine.inc
+--source suite/backup_engines/include/backup_engine.inc
 --source include/have_debug.inc
 
 connect (backup,localhost,root,,);

@@ -1,0 +1,23 @@
+##########################################################################
+# Author: Hema
+# Date: 2008-07-30
+# Purpose: Test to ensure that point in time recovery is preserves all the
+# objects during backup
+###############################################################################
+
+--source suite/backup_engines/include/backup_engine.inc
+--source suite/backup_engines/include/not_have_falcon.inc
+--source suite/backup_engines/include/not_have_memory.inc
+--source suite/backup_engines/include/not_have_innodb.inc
+
+# Falcon supports only row based logging, therefore we skip falcon
+# engine for this test.
+# Memory engine is skipped as it does not support TEXT datatype.
+# The innodb engine will be skipped for this test because of
+# Bug#38872. Once this bug is fixed, allow this test to run with
+# Innodb storage engine.
+
+SET GLOBAL BINLOG_FORMAT='STATEMENT';
+SET BINLOG_FORMAT='STATEMENT';
+--source suite/backup_engines/include/backup_ptr_objects.inc
+

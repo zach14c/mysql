@@ -605,18 +605,25 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   {
     my_error(ER_DELAYED_INSERT_TABLE_LOCKED, MYF(0),
              table_list->table_name);
+    MYSQL_INSERT_DONE(1, 0);
     DBUG_RETURN(TRUE);
   }
 
   if (table_list->lock_type == TL_WRITE_DELAYED)
   {
     if (open_and_lock_for_insert_delayed(thd, table_list))
+    {
+      MYSQL_INSERT_DONE(1, 0);
       DBUG_RETURN(TRUE);
+    }
   }
   else
   {
     if (open_and_lock_tables(thd, table_list))
+    {
+      MYSQL_INSERT_DONE(1, 0);
       DBUG_RETURN(TRUE);
+    }
   }
   lock_type= table_list->lock_type;
 
@@ -987,7 +994,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     ::my_ok(thd, (ulong) thd->row_count_func, id, buff);
   }
   thd->abort_on_warning= 0;
-  MYSQL_INSERT_END();
+  MYSQL_INSERT_DONE(0, (ulong) thd->row_count_func);
   DBUG_RETURN(FALSE);
 
 abort:
@@ -1000,7 +1007,7 @@ abort:
   if (!joins_freed)
     free_underlaid_joins(thd, &thd->lex->select_lex);
   thd->abort_on_warning= 0;
-  MYSQL_INSERT_END();
+  MYSQL_INSERT_DONE(1, 0);
   DBUG_RETURN(TRUE);
 }
 
@@ -3257,6 +3264,7 @@ bool select_insert::send_eof()
   if (error)
   {
     table->file->print_error(error,MYF(0));
+    MYSQL_INSERT_SELECT_DONE(error, 0);
     DBUG_RETURN(1);
   }
   char buff[160];
@@ -3276,6 +3284,7 @@ bool select_insert::send_eof()
      thd->first_successful_insert_id_in_prev_stmt :
      (info.copied ? autoinc_value_of_last_inserted_row : 0));
   ::my_ok(thd, (ulong) thd->row_count_func, id, buff);
+  MYSQL_INSERT_SELECT_DONE(0, (ulong) thd->row_count_func);
   DBUG_RETURN(0);
 }
 
@@ -3327,6 +3336,12 @@ void select_insert::abort() {
     DBUG_ASSERT(transactional_table || !changed ||
 		thd->transaction.stmt.modified_non_trans_table);
     table->file->ha_release_auto_increment();
+  }
+
+  if (MYSQL_INSERT_SELECT_DONE_ENABLED())
+  {
+    MYSQL_INSERT_SELECT_DONE(0, (ulong) (info.copied + info.deleted +
+                                         info.updated));
   }
 
   DBUG_VOID_RETURN;
