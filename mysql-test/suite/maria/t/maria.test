@@ -1832,6 +1832,8 @@ lock table t1 write concurrent;
 # should be fixed with fully implemented versioning
 --error ER_CHECK_NOT_IMPLEMENTED
 delete from t1;
+--error 1099
+drop table t1;
 unlock tables;
 drop table t1;
 
@@ -1880,7 +1882,18 @@ ALTER TABLE t1 CHANGE c d varchar(10);
 drop table t1;
 
 #
+# Bug #39227 Maria: crash with ALTER TABLE PARTITION
+#
+
+create table t1 (s1 int);
+insert into t1 values (1);
+--error ER_NO_PARTITION_FOR_GIVEN_VALUE
+alter table t1 partition by list (s1) (partition p1 values in (2));
+drop table t1;
+
+#
 # Bug #39226 Maria: crash with FLUSH TABLES WITH READ LOCK after LOCK TABLES
+#
 
 create table t1 (c1 int);
 create table t2 (c1 int);
@@ -1891,7 +1904,9 @@ flush tables with read lock;
 unlock tables;
 drop table t1, t2;
 
+#
 # Set defaults back
+#
 --disable_result_log
 --disable_query_log
 eval set global storage_engine=$default_engine, maria_page_checksum=$default_checksum;
