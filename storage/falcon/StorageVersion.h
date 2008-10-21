@@ -14,5 +14,5 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 
-#define FALCON_VERSION	"T1.2-7"
-#define FALCON_DATE		"16 October, 2008"
+#define FALCON_VERSION	"T1.2-8"
+#define FALCON_DATE		"21 October, 2008"
