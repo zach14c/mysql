@@ -1482,12 +1482,14 @@ def_week_frmt: %lu",
   thd->status_var.last_query_cost= 0.0;
   thd->main_da.disable_status();
 
+  MYSQL_QUERY_CACHE_HIT(thd->query, (ulong) thd->limit_found_rows);
   BLOCK_UNLOCK_RD(query_block);
   DBUG_RETURN(1);				// Result sent to client
 
 err_unlock:
   STRUCT_UNLOCK(&structure_guard_mutex);
 err:
+  MYSQL_QUERY_CACHE_MISS(thd->query);
   DBUG_RETURN(0);				// Query was not cached
 }
 
