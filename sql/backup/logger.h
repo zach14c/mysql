@@ -94,7 +94,7 @@ class Logger
 inline
 Logger::Logger(THD *thd) 
   :m_type(BACKUP), m_state(CREATED),
-   m_thd(thd), m_save_errors(FALSE), backup_log(0)
+   m_thd(thd), m_save_errors(FALSE), m_push_errors(TRUE), backup_log(0)
 {}
 
 inline

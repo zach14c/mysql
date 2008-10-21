@@ -261,17 +261,17 @@ int vio_close(Vio * vio)
 {
   int r=0;
   DBUG_ENTER("vio_close");
-#ifdef __WIN__
+#ifdef _WIN32
   if (vio->type == VIO_TYPE_NAMEDPIPE)
   {
-#if defined(__NT__) && defined(MYSQL_SERVER)
+#ifdef MYSQL_SERVER
     CancelIo(vio->hPipe);
     DisconnectNamedPipe(vio->hPipe);
 #endif
     r=CloseHandle(vio->hPipe);
   }
   else
-#endif /* __WIN__ */
+#endif /* _WIN32 */
  if (vio->type != VIO_CLOSED)
   {
     DBUG_ASSERT(vio->sd >= 0);
@@ -493,7 +493,7 @@ int vio_close_pipe(Vio * vio)
 {
   int r;
   DBUG_ENTER("vio_close_pipe");
-#if defined(__NT__) && defined(MYSQL_SERVER)
+#ifdef MYSQL_SERVER
   CancelIo(vio->hPipe);
   DisconnectNamedPipe(vio->hPipe);
 #endif

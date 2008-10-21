@@ -763,3 +763,16 @@ z
 Z
 DROP TABLE t1;
 SET NAMES latin2;
+CREATE TABLE t2(colours SET('red','blue','yellow'))CHARACTER SET latin2 COLLATE
+latin2_czech_cs;
+CREATE TABLE t1(continent ENUM('Asia', 'Europe','Africa','Antartica'))CHARACTER SET latin2
+COLLATE latin2_czech_cs;
+INSERT INTO t1 VALUES('Asia');
+INSERT INTO t2 VALUES('blue');
+SELECT * FROM t1;
+continent
+Asia
+SELECT * FROM t2;
+colours
+blue
+DROP TABLE t1, t2;
