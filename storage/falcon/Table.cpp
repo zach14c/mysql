@@ -3310,7 +3310,7 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 	Sync syncTable(&syncObject, "Table::validateAndInsert");
 
 	// Do not need syncPrior here since this is a new record.
-	// No other thread can see this records priorVersion pointer.
+	// No other thread can see this record's priorVersion pointer.
 
 	Record *prior = record->getPriorVersion();
 

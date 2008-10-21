@@ -292,9 +292,8 @@ void SyncHandler::showSyncObjects(void)
 	Log::debug("\n\n== SyncHandler has found %d unique sync objects ==\n", syncObjCount);
 	Log::debug("  _____SyncObjectName_____\n", syncObjCount);
 
-	for (int slot = 0; slot < syncObjHashSize; slot++)
-		for (SyncObjectInfo *soi = syncObjects[slot]; soi; soi = soi->collision)
-			Log::debug("  %s\n", soi->name);
+	FOR_HASH_ITEMS(SyncObjectInfo *, soi, syncObjects, syncObjHashSize)
+		Log::debug("  %s\n", soi->name);
 }
 
 SyncLocationInfo *SyncHandler::findLocation(const char* locationName, LockType type, int slot)
@@ -339,9 +338,8 @@ void SyncHandler::showLocations(void)
 	Log::debug("\n\n== SyncHandler has found %d unique locations ==\n",locationCount);
 	Log::debug("  _____LocationName_____\t_____SyncObjectName_____\n");
 
-	for (int slot = 0; slot < locationHashSize; slot++)
-		for (SyncLocationInfo *loc = locations[slot]; loc; loc = loc->collision)
-			Log::debug("  %s\t%s\t%s\n", loc->name, loc->soi->name, (loc->type == Exclusive ? "Exclusive" : "Shared"));
+	FOR_HASH_ITEMS(SyncLocationInfo *, loc, locations, locationHashSize)
+		Log::debug("  %s\t%s\t%s\n", loc->name, loc->soi->name, (loc->type == Exclusive ? "Exclusive" : "Shared"));
 }
 
 void SyncHandler::addToThread(SyncThreadInfo* thd, SyncLocationInfo *loc)
@@ -464,9 +462,8 @@ void SyncHandler::countLocationStacks(void)
 {
 	int stackCount = 0;
 
-	for (int slot = 0; slot < stackHashSize; slot++)
-		for (LocationStackInfo *lsi = locationStacks[slot]; lsi; lsi = lsi->collision)
-			lsi->count = ++stackCount;
+	FOR_HASH_ITEMS(LocationStackInfo *, lsi, locationStacks, stackHashSize)
+		lsi->count = ++stackCount;
 }
 
 void SyncHandler::showLocationStacks(void)
@@ -475,20 +472,18 @@ void SyncHandler::showLocationStacks(void)
 	Log::debug("     Count; LocationStack\n");
 	int stackCount = 0;
 
-	for (int slot = 0; slot < stackHashSize; slot++)
-		for (LocationStackInfo *lsi = locationStacks[slot]; lsi; lsi = lsi->collision)
-			showLocationStack(lsi);
+	FOR_HASH_ITEMS(LocationStackInfo *, lsi, locationStacks, stackHashSize)
+		showLocationStack(lsi);
 }
 
 void SyncHandler::showLocationStack(int stackNum)
 {
-	for (int slot = 0; slot < stackHashSize; slot++)
-		for (LocationStackInfo *lsi = locationStacks[slot]; lsi; lsi = lsi->collision)
-			if (lsi->count == stackNum)
-				{
-				showLocationStack(lsi);
-				return;
-				}
+	FOR_HASH_ITEMS(LocationStackInfo *, lsi, locationStacks, stackHashSize)
+		if (lsi->count == stackNum)
+			{
+			showLocationStack(lsi);
+			return;
+			}
 }
 
 void SyncHandler::showLocationStack(LocationStackInfo *lsi)
@@ -530,150 +525,144 @@ DeadlockInfo* SyncHandler::findDeadlock(DeadlockInfo* dli, int slot)
 void SyncHandler::validate(void)
 {
 	possibleDeadlockCount = 0;
-	for (int n = 0; n < deadlockHashSize; ++n)
-		for (DeadlockInfo *dli; (dli = possibleDeadlocks[n]);)
-			{
-			possibleDeadlocks[n] = dli->collision;
-			delete dli;
-			}
+	FOR_HASH_ITEMS_TO_DELETE(DeadlockInfo *, dli, possibleDeadlocks, deadlockHashSize)
+		{
+		possibleDeadlocks[_slot] = dli->collision;
+		delete dli;
+		}
 
 	int a,b,c,d,e;
-	for (a = 0; a < syncObjHashSize; a++)
-		for (SyncObjectInfo *soi = syncObjects[a]; soi; soi = soi->collision)
+	FOR_HASH_ITEMS(SyncObjectInfo *, soi, syncObjects, syncObjHashSize)
+		{
+		// Make a list of all SyncObjects that must occur before and after and this.
+
+		memset(soi->beforeList, 0, sizeof(soi->beforeList));
+		int beforeCount = 0;
+
+		memset(soi->afterList, 0, sizeof(soi->afterList));
+		int afterCount = 0;
+
+		// search each location stack for this soi, make a list of
+		// SyncObjects that occur before and after
+
+		FOR_HASH_ITEMS_2(LocationStackInfo *, lsi, locationStacks, stackHashSize)
 			{
-			// Make a list of all SyncObjects that must occur before and after and this.
-
-			memset(soi->beforeList, 0, sizeof(soi->beforeList));
-			int beforeCount = 0;
-
-			memset(soi->afterList, 0, sizeof(soi->afterList));
-			int afterCount = 0;
-
-			// search each location stack for this soi, make a list of
-			// SyncObjects that occur before and after
-
-			for (b = 0; b < stackHashSize; b++)
-				for (LocationStackInfo *lsi = locationStacks[b]; lsi; lsi = lsi->collision)
+			for (c = 0; c < lsi->height; c++)
+				if (soi == lsi->loc[c]->soi)
 					{
-					for (c = 0; c < lsi->height; c++)
-						if (soi == lsi->loc[c]->soi)
-							{
 
-							// Record the SyncObjects that occur before this
+					// Record the SyncObjects that occur before this
 
-							for (d = 0; d < c; d++) 
-								{
-								for (e = 0; e < beforeCount; e++)
-									if (soi->beforeList[e] == lsi->loc[d]->soi)
-										break;
+					for (d = 0; d < c; d++) 
+						{
+						for (e = 0; e < beforeCount; e++)
+							if (soi->beforeList[e] == lsi->loc[d]->soi)
+								break;
 
-								if (e == beforeCount)
-									soi->beforeList[beforeCount++] = lsi->loc[d]->soi;
+						if (e == beforeCount)
+							soi->beforeList[beforeCount++] = lsi->loc[d]->soi;
 
-								ASSERT(lsi->loc[d]->soi);
-								ASSERT(beforeCount < beforeAfterSize);
-								}
+						ASSERT(lsi->loc[d]->soi);
+						ASSERT(beforeCount < beforeAfterSize);
+						}
 
-							// Record the SyncObjects that occur after this
+					// Record the SyncObjects that occur after this
 
-							for (d = c + 1; d < lsi->height; d++)
-								{
-								for (e = 0; e < afterCount; e++)
-									if (soi->afterList[e] == lsi->loc[d]->soi)
-										break;
+					for (d = c + 1; d < lsi->height; d++)
+						{
+						for (e = 0; e < afterCount; e++)
+							if (soi->afterList[e] == lsi->loc[d]->soi)
+								break;
 
-								if (e == afterCount)
-									soi->afterList[afterCount++] = lsi->loc[d]->soi;
+						if (e == afterCount)
+							soi->afterList[afterCount++] = lsi->loc[d]->soi;
 
-								ASSERT(lsi->loc[d]->soi);
-								ASSERT(afterCount < beforeAfterSize);
-								}
-							}
+						ASSERT(lsi->loc[d]->soi);
+						ASSERT(afterCount < beforeAfterSize);
+						}
 					}
-
-			// Make sure none of the SyncObjects in before are also in after.
-
-			for (b = 0; b < beforeCount; b++)
-				if (soi != soi->beforeList[b])
-					for (c = 0; c < afterCount; c++)
-						if (soi->beforeList[b] == soi->afterList[c])
-							addPossibleDeadlock(soi, soi->afterList[c]);
 			}
+
+		// Make sure none of the SyncObjects in before are also in after.
+
+		for (a = 0; a < beforeCount; a++)
+			if (soi != soi->beforeList[a])
+				for (b = 0; b < afterCount; b++)
+					if (soi->beforeList[a] == soi->afterList[b])
+						addPossibleDeadlock(soi, soi->afterList[b]);
+		}
 
 	// Refine the list of possible deadlocks
 	// The second SOI  was found before and after the first.
 	// But if that happened on the same stack,  it is OK as long as
 	// the two calls do not go from shared up to exclusive.
-	for (a = 0; a < deadlockHashSize; a++)
-		for (DeadlockInfo *dli = possibleDeadlocks[a]; dli; dli = dli->collision)
+	FOR_HASH_ITEMS(DeadlockInfo *, dli, possibleDeadlocks, deadlockHashSize)
+		{
+		bool foundBothInOneStack = false;
+		bool foundOneBeforeTwo = false;
+		bool foundTwoBeforeOne = false;
+		bool foundRisingLock = false;
+
+		FOR_HASH_ITEMS_2(LocationStackInfo *, lsi, locationStacks, stackHashSize)
 			{
-			bool foundBothInOneStack = false;
-			bool foundOneBeforeTwo = false;
-			bool foundTwoBeforeOne = false;
-			bool foundRisingLock = false;
-
-			for (b = 0; b < stackHashSize; b++)
-				for (LocationStackInfo *lsi = locationStacks[b]; lsi; lsi = lsi->collision)
-					{
-					int firstOneNum = 0;
-					int lastOneNum = 0;
-					int firstTwoNum = 0;
-					int lastTwoNum = 0;
-					
-					for (c = 0; c < lsi->height; c++)
-						{
-						if (dli->soi[0] == lsi->loc[c]->soi)
-							if (firstOneNum)
-								{
-								lastOneNum = c + 1;
-								if (   (lsi->loc[firstOneNum - 1]->type == Shared) 
-									&& (lsi->loc[c]->type == Exclusive))
-									{
-									foundRisingLock = true;
-									lsi->hasRisingLockTypes = true;
-									}
-								}
-							else
-								firstOneNum = c + 1;
-
-						else if (dli->soi[1] == lsi->loc[c]->soi)
-							if (firstTwoNum)
-								{
-								lastTwoNum = c + 1;
-								if (   (lsi->loc[firstTwoNum - 1]->type == Shared) 
-									&& (lsi->loc[c]->type == Exclusive))
-									{
-									foundRisingLock = true;
-									lsi->hasRisingLockTypes = true;
-									}
-								}
-							else
-								firstTwoNum = c + 1;
-						}
-
-					if (firstOneNum && firstTwoNum)
-						{
-						if (firstOneNum < lastTwoNum && lastTwoNum < lastOneNum)
-							foundBothInOneStack = true;
-						else if (firstTwoNum < lastOneNum && lastOneNum < lastTwoNum)
-							foundBothInOneStack = true;
-						else if (firstOneNum < firstTwoNum)
-							foundOneBeforeTwo = true;
-						else if (firstTwoNum < firstOneNum)
-							foundTwoBeforeOne = true;
-
-						}
-					}
-
-			// Is this still a possible deadlock?
-			if (   foundBothInOneStack 
-				&& !(foundOneBeforeTwo && foundTwoBeforeOne) 
-				&& !foundRisingLock)
+			int firstOneNum = 0;
+			int lastOneNum = 0;
+			int firstTwoNum = 0;
+			int lastTwoNum = 0;
+			
+			for (c = 0; c < lsi->height; c++)
 				{
-				// Take this possible deadlock out of the list.
-				removePossibleDeadlock(dli);
+				if (dli->soi[0] == lsi->loc[c]->soi)
+					if (firstOneNum)
+						{
+						lastOneNum = c + 1;
+						if (   (lsi->loc[firstOneNum - 1]->type == Shared) 
+							&& (lsi->loc[c]->type == Exclusive))
+							{
+							foundRisingLock = true;
+							lsi->hasRisingLockTypes = true;
+							}
+						}
+					else
+						firstOneNum = c + 1;
+
+				else if (dli->soi[1] == lsi->loc[c]->soi)
+					if (firstTwoNum)
+						{
+						lastTwoNum = c + 1;
+						if (   (lsi->loc[firstTwoNum - 1]->type == Shared) 
+							&& (lsi->loc[c]->type == Exclusive))
+							{
+							foundRisingLock = true;
+							lsi->hasRisingLockTypes = true;
+							}
+						}
+					else
+						firstTwoNum = c + 1;
+				}
+
+			if (firstOneNum && firstTwoNum)
+				{
+				if (firstOneNum < lastTwoNum && lastTwoNum < lastOneNum)
+					foundBothInOneStack = true;
+				else if (firstTwoNum < lastOneNum && lastOneNum < lastTwoNum)
+					foundBothInOneStack = true;
+				else if (firstOneNum < firstTwoNum)
+					foundOneBeforeTwo = true;
+				else if (firstTwoNum < firstOneNum)
+					foundTwoBeforeOne = true;
 				}
 			}
+
+		// Is this still a possible deadlock?
+		if (   foundBothInOneStack 
+			&& !(foundOneBeforeTwo && foundTwoBeforeOne) 
+			&& !foundRisingLock)
+			{
+			// Take this possible deadlock out of the list.
+			removePossibleDeadlock(dli);
+			}
+		}
 }
 
 void SyncHandler::addPossibleDeadlock(SyncObjectInfo *soi1, SyncObjectInfo *soi2)
@@ -728,23 +717,20 @@ void SyncHandler::removePossibleDeadlock(DeadlockInfo* dli)
 #define TWO_ONE 2
 void SyncHandler::showPossibleDeadlockStacks(void)
 {
-	int a;
 	int possibleDeadlockCount = 0;
-	for (a = 0; a < deadlockHashSize; a++)
-		for (DeadlockInfo *dli = possibleDeadlocks[a]; dli; dli = dli->collision)
-			if (dli->isPossible)
-				possibleDeadlockCount++;
+	FOR_HASH_ITEMS(DeadlockInfo *, dli, possibleDeadlocks, deadlockHashSize)
+		if (dli->isPossible)
+			possibleDeadlockCount++;
 
 	Log::debug("\n== SyncHandler has found %d possible deadlocks ==\n", possibleDeadlockCount);
 
-	for (a = 0; a < deadlockHashSize; a++)
-		for (DeadlockInfo *dli = possibleDeadlocks[a]; dli; dli = dli->collision)
-			if (dli->isPossible)
-				{
-				Log::debug("\n=== Possible Deadlock===\n");
-				showPossibleDeadlockStack(dli, ONE_TWO);
-				showPossibleDeadlockStack(dli, TWO_ONE);
-				}
+	FOR_HASH_ITEMS(DeadlockInfo *, dli, possibleDeadlocks, deadlockHashSize)
+		if (dli->isPossible)
+			{
+			Log::debug("\n=== Possible Deadlock===\n");
+			showPossibleDeadlockStack(dli, ONE_TWO);
+			showPossibleDeadlockStack(dli, TWO_ONE);
+			}
 }
 
 void SyncHandler::showPossibleDeadlockStack(DeadlockInfo *dli, int showOrder)
@@ -759,44 +745,43 @@ void SyncHandler::showPossibleDeadlockStack(DeadlockInfo *dli, int showOrder)
 
 	// Find call stacks containing these two SyncObjects.
 
-	for (int b = 0; b < stackHashSize; b++)
-		for (LocationStackInfo *lsi = locationStacks[b]; lsi; lsi = lsi->collision)
+	FOR_HASH_ITEMS(LocationStackInfo *, lsi, locationStacks, stackHashSize)
+		{
+		// Does this location stack have both SyncObjects?
+
+		int numFound = 0;
+		int order = 0;
+		for (int c = 0; c < lsi->height; c++)
 			{
-			// Does this location stack have both SyncObjects?
-
-			int numFound = 0;
-			int order = 0;
-			for (int c = 0; c < lsi->height; c++)
+			if (lsi->loc[c]->soi == dli->soi[0])
 				{
-				if (lsi->loc[c]->soi == dli->soi[0])
-					{
-					numFound |= FOUND_FIRST;
-					if (!order)
-						order = ONE_TWO;
-					}
-				else if (lsi->loc[c]->soi == dli->soi[1])
-					{
-					numFound |= FOUND_SECOND;
-					if (!order)
-						order = TWO_ONE;
-					}
+				numFound |= FOUND_FIRST;
+				if (!order)
+					order = ONE_TWO;
 				}
-
-			if ( (numFound == FOUND_BOTH) && (order == showOrder) )
+			else if (lsi->loc[c]->soi == dli->soi[1])
 				{
-				if (stackCount == 0)
-					{
-					sampleLsi1 = lsi;
-					Log::debug("  Stacks =", dli->soi[0]->name, dli->soi[1]->name);
-					}
-				else if ((stackCount % 10) == 0)
-					Log::debug("\n   ");
-
-				stackCount++;
-				Log::debug(" %d", lsi->count);
-				sampleLsi2 = lsi;
+				numFound |= FOUND_SECOND;
+				if (!order)
+					order = TWO_ONE;
 				}
 			}
+
+		if ( (numFound == FOUND_BOTH) && (order == showOrder) )
+			{
+			if (stackCount == 0)
+				{
+				sampleLsi1 = lsi;
+				Log::debug("  Stacks =", dli->soi[0]->name, dli->soi[1]->name);
+				}
+			else if ((stackCount % 10) == 0)
+				Log::debug("\n   ");
+
+			stackCount++;
+			Log::debug(" %d", lsi->count);
+			sampleLsi2 = lsi;
+			}
+		}
 
 	Log::debug("\n");
 	if (sampleLsi1)

@@ -23,6 +23,19 @@
 // Uncomment this to use the SyncHandler
 //#define USE_FALCON_SYNC_HANDLER
 
+#define FOR_HASH_ITEMS(_itemType, _item, _hashBuckets, _hashSize) \
+	for (int _slot1 = 0; _slot1 < _hashSize; _slot1++) \
+		for (_itemType _item = _hashBuckets[_slot1]; _item; _item = _item->collision)
+
+#define FOR_HASH_ITEMS_2(_itemType2, _item2, _hashBuckets2, _hashSize2) \
+	for (int _slot2 = 0; _slot2 < _hashSize2; _slot2++) \
+		for (_itemType2 _item2 = _hashBuckets2[_slot2]; _item2; _item2 = _item2->collision)
+
+#define FOR_HASH_ITEMS_TO_DELETE(_itemType, _item, _hashBuckets, _hashSize) \
+	for (int _slot = 0; _slot < _hashSize; ++_slot) \
+		for (_itemType _item; (_item = _hashBuckets[_slot]);)
+
+
 static const int syncObjHashSize = 101;
 static const int locationHashSize = 503;
 static const int threadHashSize = 100;
