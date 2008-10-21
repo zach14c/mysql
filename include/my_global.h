@@ -480,17 +480,15 @@ C_MODE_END
 #include <assert.h>
 
 /* an assert that works at compile-time. only for constant expression */
-#if (_MSC_VER >=1400)
-#define compile_time_assert(X)  do { C_ASSERT(X); } while(0)
-#elif defined (___GNUC__)
+#ifdef _some_old_compiler_that_does_not_understand_the_construct_below_
+#define compile_time_assert(X)  do { } while(0)
+#else
 #define compile_time_assert(X)                                  \
   do                                                            \
   {                                                             \
     char compile_time_assert[(X) ? 1 : -1]                      \
                              __attribute__ ((unused));          \
   } while(0)
-#else
-#define compile_time_assert(X)  do { } while(0)
 #endif
 
 /* Go around some bugs in different OS and compilers */
