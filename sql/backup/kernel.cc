@@ -367,7 +367,7 @@ pthread_mutex_t Backup_restore_ctx::run_lock;
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
-  m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL),
+  m_error(0), m_remove_loc(FALSE), m_stream(NULL),
   m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE)
 {
   /*
@@ -541,8 +541,6 @@ int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
     Computer full path to backup file.
   */
   prepare_path(backupdir, location);
-
-  //m_path= location.str;
 
   // create new instance of memory allocator for backup stream library
 
