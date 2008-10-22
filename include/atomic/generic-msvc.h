@@ -56,11 +56,11 @@ C_MODE_END
 #endif /*_M_IX86*/
 
 #define MY_ATOMIC_MODE "msvc-intrinsics"
-#define IL_EXCHG_ADD32(A,B)    InterlockedExchangeAdd((LONG volatile*)A,B)
-#define IL_COMP_EXCHG32(A,B,C) InterlockedCompareExchange((LONG volatile*)A,B,C)
-#define IL_COMP_EXCHGptr       InterlockedCompareExchangePointer
-#define IL_EXCHG32(A,B)        InterlockedExchange((LONG volatile*)A,B)
-#define IL_EXCHGptr            InterlockedExchangePointer
+#define IL_EXCHG_ADD32(X,Y) InterlockedExchangeAdd((volatile LONG *)(X),(Y))
+#define IL_COMP_EXCHG32(X,Y,Z) InterlockedCompareExchange((volatile LONG *)(X),(Y),(Z))
+#define IL_COMP_EXCHGptr InterlockedCompareExchangePointer
+#define IL_EXCHG32       InterlockedExchange
+#define IL_EXCHGptr      InterlockedExchangePointer
 #define make_atomic_add_body(S) \
   v= IL_EXCHG_ADD ## S (a, v)
 #define make_atomic_cas_body(S)                                 \
