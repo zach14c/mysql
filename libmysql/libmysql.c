@@ -1748,19 +1748,21 @@ static void alloc_stmt_fields(MYSQL_STMT *stmt)
 	 field= stmt->fields;
        field && fields < end; fields++, field++)
   {
-    field->catalog  = strdup_root(alloc,fields->catalog);
-    field->db       = strdup_root(alloc,fields->db);
-    field->table    = strdup_root(alloc,fields->table);
-    field->org_table= strdup_root(alloc,fields->org_table);
-    field->name     = strdup_root(alloc,fields->name);
-    field->org_name = strdup_root(alloc,fields->org_name);
-    field->charsetnr= fields->charsetnr;
-    field->length   = fields->length;
-    field->type     = fields->type;
-    field->flags    = fields->flags;
-    field->decimals = fields->decimals;
-    field->def      = fields->def ? strdup_root(alloc,fields->def): 0;
-    field->max_length= 0;
+    *field= *fields; /* To copy all numeric parts. */
+    field->catalog=   strmake_root(alloc, fields->catalog,
+                                   fields->catalog_length);
+    field->db=        strmake_root(alloc, fields->db, fields->db_length);
+    field->table=     strmake_root(alloc, fields->table, fields->table_length);
+    field->org_table= strmake_root(alloc, fields->org_table,
+                                   fields->org_table_length);
+    field->name=      strmake_root(alloc, fields->name, fields->name_length);
+    field->org_name=  strmake_root(alloc, fields->org_name,
+                                   fields->org_name_length);
+    field->def      = fields->def ? strmake_root(alloc, fields->def,
+                                                 fields->def_length) : 0;
+    field->def_length= field->def ? fields->def_length : 0;
+    field->extension= 0; /* Avoid dangling links. */
+    field->max_length= 0; /* max_length is set in mysql_stmt_store_result() */
   }
 }
 

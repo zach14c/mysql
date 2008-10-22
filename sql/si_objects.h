@@ -19,10 +19,11 @@ namespace obs {
   Obj defines the basic set of operations for each database object.
 */
 
-class Obj { 
+class Obj
+{
 public:
 
-  bool serialize(THD *thd, String *serialialization);
+  bool serialize(THD *thd, String *serialization);
 
   /**
     Return the name of the object.
@@ -50,18 +51,18 @@ private:
     Read the object state from a given buffer and restores object state to
     the point, where it can be executed.
 
-    @param[in] serialialization_version The version of the serialization format.
-    @param[in] serialialization         Buffer contained serialized object.
+    @param[in] serialization_version The version of the serialization format.
+    @param[in] serialization         Buffer contained serialized object.
 
     @return error status.
       @retval FALSE on success.
       @retval TRUE on error.
   */
   virtual bool materialize(uint serialization_version,
-                           const String *serialialization) = 0;
+                           const String *serialization) = 0;
 
   /// Primitive implementing @c serialize() method.
-  virtual bool do_serialize(THD *thd, String *serialialization) = 0;
+  virtual bool do_serialize(THD *thd, String *serialization) = 0;
 
   /// Primitive implementing @c execute() method.
   virtual bool do_execute(THD *thd) = 0;
@@ -174,8 +175,8 @@ bool Obj::execute(THD *thd)
   the server must be able to materialize objects coded in any previous
   formats.
 
-  @param[in] thd              Server thread context.
-  @param[in] serialialization Buffer to serialize the object
+  @param[in] thd           Server thread context.
+  @param[in] serialization Buffer to serialize the object
 
   @return error status.
     @retval FALSE on success.
@@ -190,7 +191,7 @@ bool Obj::serialize(THD *thd, String *serialization)
 {
   ulong saved_sql_mode= thd->variables.sql_mode;
   thd->variables.sql_mode= 0;
-  
+
   bool ret= do_serialize(thd, serialization);
 
   thd->variables.sql_mode= saved_sql_mode;
@@ -201,14 +202,14 @@ bool Obj::serialize(THD *thd, String *serialization)
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  ObjIterator is a basic interface to enumerate the objects.
+  Obj_iterator is a basic interface to enumerate the objects.
 */
 
-class ObjIterator
+class Obj_iterator
 {
 public:
 
-  ObjIterator()
+  Obj_iterator()
   { }
 
   /**
@@ -223,7 +224,7 @@ public:
   virtual Obj *next() = 0;
 
 public:
-  virtual ~ObjIterator()
+  virtual ~Obj_iterator()
   { }
 
 };
@@ -232,12 +233,12 @@ public:
   GrantObjIternator is an encapsulation of the three iterators for each level
   of grant supported: database-, table- and routine-, and column-level.
 */
-class GrantObjIterator : public ObjIterator
+class GrantObjIterator : public Obj_iterator
 {
 public:
   GrantObjIterator(THD *thd, const String *db_name);
 
-  ~GrantObjIterator() 
+  ~GrantObjIterator()
   {
     delete db_grants;
     delete tbl_grants;
@@ -256,9 +257,9 @@ public:
   Obj *next();
 
 private:
-  ObjIterator *db_grants;  ///< database-level grants
-  ObjIterator *tbl_grants; ///< table- and routine-level grants
-  ObjIterator *col_grants; ///< column-level grants
+  Obj_iterator *db_grants;  ///< database-level grants
+  Obj_iterator *tbl_grants; ///< table- and routine-level grants
+  Obj_iterator *col_grants; ///< column-level grants
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -400,7 +401,7 @@ Obj *get_event(const String *db_name, const String *event_name);
   @return a pointer to an iterator object.
 */
 
-ObjIterator *get_databases(THD *thd);
+Obj_iterator *get_databases(THD *thd);
 
 /**
   Create an iterator over all tables in the particular database.
@@ -411,7 +412,7 @@ ObjIterator *get_databases(THD *thd);
     @retval NULL in case of error.
 */
 
-ObjIterator *get_db_tables(THD *thd, const String *db_name);
+Obj_iterator *get_db_tables(THD *thd, const String *db_name);
 
 /**
   Create an iterator over all views in the particular database.
@@ -422,7 +423,7 @@ ObjIterator *get_db_tables(THD *thd, const String *db_name);
     @retval NULL in case of error.
 */
 
-ObjIterator *get_db_views(THD *thd, const String *db_name);
+Obj_iterator *get_db_views(THD *thd, const String *db_name);
 
 /**
   Create an iterator over all triggers in the particular database.
@@ -433,7 +434,7 @@ ObjIterator *get_db_views(THD *thd, const String *db_name);
     @retval NULL in case of error.
 */
 
-ObjIterator *get_db_triggers(THD *thd, const String *db_name);
+Obj_iterator *get_db_triggers(THD *thd, const String *db_name);
 
 /**
   Create an iterator over all stored procedures in the particular database.
@@ -444,7 +445,7 @@ ObjIterator *get_db_triggers(THD *thd, const String *db_name);
     @retval NULL in case of error.
 */
 
-ObjIterator *get_db_stored_procedures(THD *thd, const String *db_name);
+Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name);
 
 /**
   Create an iterator over all stored functions in the particular database.
@@ -455,7 +456,7 @@ ObjIterator *get_db_stored_procedures(THD *thd, const String *db_name);
     @retval NULL in case of error.
 */
 
-ObjIterator *get_db_stored_functions(THD *thd, const String *db_name);
+Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name);
 
 /**
   Create an iterator over all events in the particular database.
@@ -466,15 +467,15 @@ ObjIterator *get_db_stored_functions(THD *thd, const String *db_name);
     @retval NULL in case of error.
 */
 
-ObjIterator *get_db_events(THD *thd, const String *db_name);
+Obj_iterator *get_db_events(THD *thd, const String *db_name);
 
 /*
   Creates a high-level iterator that iterates over database-, table-,
   routine-, and column-level privileges which shall permit a single
-  iterator from the si_objects to retrieve all of the privileges for 
+  iterator from the si_objects to retrieve all of the privileges for
   a given database.
 */
-ObjIterator *get_all_db_grants(THD *thd, const String *db_name);
+Obj_iterator *get_all_db_grants(THD *thd, const String *db_name);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -491,9 +492,9 @@ ObjIterator *get_all_db_grants(THD *thd, const String *db_name);
     @retval NULL in case of error.
 */
 
-ObjIterator* get_view_base_tables(THD *thd,
-                                  const String *db_name,
-                                  const String *view_name);
+Obj_iterator* get_view_base_tables(THD *thd,
+                                   const String *db_name,
+                                   const String *view_name);
 
 /**
   Create an iterator overl all base tables in the particular view.
@@ -504,9 +505,9 @@ ObjIterator* get_view_base_tables(THD *thd,
     @retval NULL in case of error.
 */
 
-ObjIterator* get_view_base_views(THD *thd,
-                                 const String *db_name,
-                                 const String *view_name);
+Obj_iterator* get_view_base_views(THD *thd,
+                                  const String *db_name,
+                                  const String *view_name);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -517,41 +518,41 @@ ObjIterator* get_view_base_views(THD *thd,
 
 Obj *materialize_database(const String *db_name,
                           uint serialization_version,
-                          const String *serialialization);
+                          const String *serialization);
 
 Obj *materialize_table(const String *db_name,
                        const String *table_name,
                        uint serialization_version,
-                       const String *serialialization);
+                       const String *serialization);
 
 Obj *materialize_view(const String *db_name,
                       const String *view_name,
                       uint serialization_version,
-                      const String *serialialization);
+                      const String *serialization);
 
 Obj *materialize_trigger(const String *db_name,
                          const String *trigger_name,
                          uint serialization_version,
-                         const String *serialialization);
+                         const String *serialization);
 
 Obj *materialize_stored_procedure(const String *db_name,
                                   const String *stored_proc_name,
                                   uint serialization_version,
-                                  const String *serialialization);
+                                  const String *serialization);
 
 Obj *materialize_stored_function(const String *db_name,
                                  const String *stored_func_name,
                                  uint serialization_version,
-                                 const String *serialialization);
+                                 const String *serialization);
 
 Obj *materialize_event(const String *db_name,
                        const String *event_name,
                        uint serialization_version,
-                       const String *serialialization);
+                       const String *serialization);
 
 Obj *materialize_tablespace(const String *ts_name,
                             uint serialization_version,
-                            const String *serialialization);
+                            const String *serialization);
 
 Obj *materialize_db_grant(const String *grantee,
                           const String *db_name,
@@ -559,6 +560,14 @@ Obj *materialize_db_grant(const String *grantee,
                           const String *serialization);
 
 ///////////////////////////////////////////////////////////////////////////
+
+/**
+  Check if the given database name is reserved for internal use.
+
+  @return
+    @retval TRUE if the given database name is reserved for internal use
+    @retval FALSE otherwise.
+*/
 
 bool is_internal_db_name(const String *db_name);
 
@@ -571,40 +580,49 @@ bool is_internal_db_name(const String *db_name);
     @retval FALSE on success (the database exists and accessible).
     @retval TRUE on error (the database either not exists, or not accessible).
 */
+
 bool check_db_existence(const String *db_name);
 
 /*
-  Returns TRUE if user is defined on the system.
+  Check if the given user is actually defined on the system.
+
+  @return Existence status.
+    @retval TRUE if user is defined on the system.
+    @retval FALSE if user does not exist.
 */
-bool user_exists(THD *thd, const String *grantee);
+
+bool check_user_existence(THD *thd, const String *grantee);
 
 /*
   This method returns a @c TablespaceObj object if the table has a tablespace.
 */
-Obj *get_tablespace_for_table(THD *thd, 
-                              const String *db_name, 
+
+Obj *get_tablespace_for_table(THD *thd,
+                              const String *db_name,
                               const String *tbl_name);
 
 /*
   This method determines if a materialized tablespace exists on the
-  system. This compares the name and all saved attributes of the 
+  system. This compares the name and all saved attributes of the
   tablespace. A FALSE return would mean either the tablespace does
   not exist or the tablespace attributes are different.
 */
-bool tablespace_exists(THD *thd,
-                       Obj *ts);
+
+bool tablespace_exists(THD *thd, Obj *ts);
 
 /*
   This method determines if the tablespace referenced by name exists on the
   system. Returns a TablespaceObj if it exists or NULL if it doesn't.
 */
+
 Obj *is_tablespace(THD *thd, Obj *ts);
 
-/*
-  This method returns a description of the tablespace useful for communicating
-  with the user.
+/**
+  Return a description of the tablespace useful for communicating with the
+  user.
 */
-const String *describe_tablespace(Obj *ts);
+
+const String *get_tablespace_description(Obj *ts);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -656,22 +674,22 @@ void ddl_blocker_exception_off(THD *thd);
   Creates a WHERE clause for information schema table lookups of the
   for FROM INFORMATION_SCHEMA.X WHERE <db_col> IN ('a','b','c').
 */
-COND *create_db_select_condition(THD *thd, 
+COND *create_db_select_condition(THD *thd,
                                  TABLE *t,
                                  List<LEX_STRING> *db_list);
 
 /*
   The following class is used to manage name locks on a list of tables.
 
-  This class uses a list of type List<Obj> to establish the table list 
+  This class uses a list of type List<Obj> to establish the table list
   that will be used to manage locks on the tables.
 */
 class Name_locker
 {
 public:
   Name_locker(THD *thd) { m_thd= thd; }
-  ~Name_locker() 
-  { 
+  ~Name_locker()
+  {
     free_table_list(m_table_list);
     m_table_list= NULL;
   }
