@@ -44,6 +44,38 @@ static bool trans_check(THD *thd)
 
 
 /**
+  Mark a XA transaction as rollback-only if the RM unilaterally
+  rolled back the transaction branch.
+
+  @note If a rollback was requested by the RM, this function sets
+        the appropriate rollback error code and transits the state
+        to XA_ROLLBACK_ONLY.
+
+  @return TRUE if transaction was rolled back or if the transaction
+          state is XA_ROLLBACK_ONLY. FALSE otherwise.
+*/
+static bool xa_trans_rolled_back(XID_STATE *xid_state)
+{
+  if (xid_state->rm_error)
+  {
+    switch (xid_state->rm_error) {
+    case ER_LOCK_WAIT_TIMEOUT:
+      my_error(ER_XA_RBTIMEOUT, MYF(0));
+      break;
+    case ER_LOCK_DEADLOCK:
+      my_error(ER_XA_RBDEADLOCK, MYF(0));
+      break;
+    default:
+      my_error(ER_XA_RBROLLBACK, MYF(0));
+    }
+    xid_state->xa_state= XA_ROLLBACK_ONLY;
+  }
+
+  return (xid_state->xa_state == XA_ROLLBACK_ONLY);
+}
+
+
+/**
   Begin a new transaction.
 
   @note Beginning a transaction implicitly commits any current
@@ -229,7 +261,6 @@ bool trans_rollback_stmt(THD *thd)
 
   if (thd->transaction.stmt.ha_list)
   {
-    thd->transaction_rollback_request= FALSE;
     ha_rollback_trans(thd, FALSE);
     if (thd->transaction_rollback_request && !thd->in_sub_stmt)
       ha_rollback_trans(thd, TRUE);
@@ -426,6 +457,7 @@ bool trans_xa_start(THD *thd)
   {
     DBUG_ASSERT(thd->transaction.xid_state.xid.is_null());
     thd->transaction.xid_state.xa_state= XA_ACTIVE;
+    thd->transaction.xid_state.rm_error= 0;
     thd->transaction.xid_state.xid.set(thd->lex->xid);
     xid_cache_insert(&thd->transaction.xid_state);
     DBUG_RETURN(FALSE);
@@ -456,7 +488,7 @@ bool trans_xa_end(THD *thd)
              xa_state_names[thd->transaction.xid_state.xa_state]);
   else if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
     my_error(ER_XAER_NOTA, MYF(0));
-  else
+  else if (!xa_trans_rolled_back(&thd->transaction.xid_state))
     thd->transaction.xid_state.xa_state= XA_IDLE;
 
   DBUG_RETURN(thd->transaction.xid_state.xa_state != XA_IDLE);
@@ -512,18 +544,24 @@ bool trans_xa_commit(THD *thd)
   if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
   {
     XID_STATE *xs= xid_cache_search(thd->lex->xid);
-    bool not_found= !xs || xs->in_thd;
-    if (not_found)
+    res= !xs || xs->in_thd;
+    if (res)
       my_error(ER_XAER_NOTA, MYF(0));
     else
     {
-      ha_commit_or_rollback_by_xid(thd->lex->xid, 1);
+      res= xa_trans_rolled_back(xs);
+      ha_commit_or_rollback_by_xid(thd->lex->xid, !res);
       xid_cache_delete(xs);
     }
-    DBUG_RETURN(not_found);
+    DBUG_RETURN(res);
   }
 
-  if (xa_state == XA_IDLE && thd->lex->xa_opt == XA_ONE_PHASE)
+  if (xa_trans_rolled_back(&thd->transaction.xid_state))
+  {
+    if ((res= test(ha_rollback_trans(thd, TRUE))))
+      my_error(ER_XAER_RMERR, MYF(0));
+  }
+  else if (xa_state == XA_IDLE && thd->lex->xa_opt == XA_ONE_PHASE)
   {
     int r= ha_commit_trans(thd, TRUE);
     if ((res= test(r)))
@@ -545,7 +583,10 @@ bool trans_xa_commit(THD *thd)
     }
   }
   else
+  {
     my_error(ER_XAER_RMFAIL, MYF(0), xa_state_names[xa_state]);
+    DBUG_RETURN(TRUE);
+  }
 
   thd->options&= ~(OPTION_BEGIN | OPTION_KEEP_LOG);
   thd->transaction.all.modified_non_trans_table= FALSE;
@@ -575,18 +616,18 @@ bool trans_xa_rollback(THD *thd)
   if (!thd->transaction.xid_state.xid.eq(thd->lex->xid))
   {
     XID_STATE *xs= xid_cache_search(thd->lex->xid);
-    bool not_found= !xs || xs->in_thd;
-    if (not_found)
+    if (!xs || xs->in_thd)
       my_error(ER_XAER_NOTA, MYF(0));
     else
     {
+      xa_trans_rolled_back(xs);
       ha_commit_or_rollback_by_xid(thd->lex->xid, 0);
       xid_cache_delete(xs);
     }
-    DBUG_RETURN(not_found);
+    DBUG_RETURN(thd->main_da.is_error());
   }
 
-  if (xa_state != XA_IDLE && xa_state != XA_PREPARED)
+  if (xa_state != XA_IDLE && xa_state != XA_PREPARED && xa_state != XA_ROLLBACK_ONLY)
   {
     my_error(ER_XAER_RMFAIL, MYF(0), xa_state_names[xa_state]);
     DBUG_RETURN(TRUE);
