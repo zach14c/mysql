@@ -902,7 +902,7 @@ int StorageInterface::createIndex(const char *schemaName, const char *tableName,
 	return storageTable->createIndex(&indexDesc, sql);
 }
 
-int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId)
+int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online)
 {
 	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
@@ -911,7 +911,7 @@ int StorageInterface::dropIndex(const char *schemaName, const char *tableName, T
 	gen.gen("drop index %s.\"%s\"", schemaName, indexDesc.name);
 	const char *sql = gen.getString();
 
-	return storageTable->dropIndex(&indexDesc, sql);
+	return storageTable->dropIndex(&indexDesc, sql, online);
 }
 
 #if 0
@@ -1548,6 +1548,7 @@ int StorageInterface::rename_table(const char *from, const char *to)
 
 	ret = storageShare->renameTable(storageConnection, to);
 	
+	if (!ret)
 	remapIndexes(table);
 	
 	storageShare->unlock();
@@ -2329,7 +2330,7 @@ int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 					break;
 
 			if (alterKey >= alterEnd)
-				if ((ret = dropIndex(schemaName, tableName, table, n)))
+				if ((ret = dropIndex(schemaName, tableName, table, n, true)))
 					break;
 				}
 		}
