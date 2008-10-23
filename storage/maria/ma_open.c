@@ -896,6 +896,7 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
     goto err;
 
   pthread_mutex_unlock(&THR_LOCK_maria);
+  DBUG_PRINT("exit", ("maria_handler: %p", m_info));
   DBUG_RETURN(m_info);
 
 err:

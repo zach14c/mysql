@@ -28,9 +28,8 @@ int maria_close(register MARIA_HA *info)
   my_bool share_can_be_freed= FALSE;
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("maria_close");
-  DBUG_PRINT("enter",("base: 0x%lx  reopen: %u  locks: %u",
-		      (long) info, (uint) share->reopen,
-                      (uint) share->tot_locks));
+  DBUG_PRINT("enter",("maria_handler: %p  reopen: %u  locks: %u",
+		      info, (uint) share->reopen, (uint) share->tot_locks));
 
   /* Check that we have unlocked key delete-links properly */
   DBUG_ASSERT(info->key_del_used == 0);

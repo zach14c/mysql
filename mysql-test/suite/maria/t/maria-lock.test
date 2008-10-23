@@ -6,6 +6,7 @@
 
 --disable_warnings
 drop table if exists t1,t2,t3;
+drop view if exists v1;
 --enable_warnings
 
 # Check that a lock merge works.
@@ -96,3 +97,48 @@ connection default;
 disconnect locker;
 disconnect reader;
 disconnect writer;
+
+#
+# Bug#39396 Maria: ha_maria.cc:2415: assertion in ha_maria::store_lock()
+#
+# Test alter table and a concurrent multi update
+# (This will force update to reopen tables)
+#
+
+create table t1 (a int, b int) engine=maria;
+insert into t1 values (1, 2), (2, 3), (3, 4);
+create table t2 (a int) engine=maria;
+insert into t2 values (10), (20), (30);
+create view v1 as select a as b, a/10 as a from t2;
+
+connect (locker,localhost,root,,test);
+connection locker;
+lock table t1 write;
+
+connect (changer,localhost,root,,test);
+connection changer;
+send alter table t1 add column c int default 100 after a;
+
+connect (updater,localhost,root,,test);
+connection updater;
+sleep 2;
+send update t1, v1 set t1.b=t1.a+t1.b+v1.b where t1.a=v1.a;
+
+connection locker;
+sleep 2;
+unlock tables;
+
+connection changer;
+reap;
+
+connection updater;
+reap;
+select * from t1;
+select * from t2;
+drop view v1;
+drop table t1, t2;
+
+connection default;
+disconnect updater;
+disconnect changer;
+disconnect locker;
