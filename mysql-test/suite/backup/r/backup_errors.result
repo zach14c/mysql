@@ -75,7 +75,7 @@ backup_id
 DROP TABLE mysql.backup_history;
 Backup the database;
 BACKUP DATABASE test_ob_error TO 'ob_err.bak';
-ERROR 42S02: Table 'mysql.backup_history' doesn't exist
+ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
 SHOW ERRORS;
 Level	Code	Message
 Error	#	Table 'mysql.backup_history' doesn't exist
@@ -86,7 +86,7 @@ DROP TABLE test.ob_copy;
 DROP TABLE mysql.backup_progress;
 Backup the database;
 BACKUP DATABASE test_ob_error TO 'ob_err.bak';
-ERROR 42S02: Table 'mysql.backup_progress' doesn't exist
+ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
 SHOW ERRORS;
 Level	Code	Message
 Error	#	Table 'mysql.backup_progress' doesn't exist

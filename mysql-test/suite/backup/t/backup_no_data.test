@@ -1,6 +1,8 @@
 --source include/not_embedded.inc
 
 --disable_warnings
+--rmdir $MYSQLTEST_VARDIR/master-data/test
+--mkdir $MYSQLTEST_VARDIR/master-data/test
 DROP DATABASE IF EXISTS empty_db;
 DROP DATABASE IF EXISTS other_db;
 --enable_warnings

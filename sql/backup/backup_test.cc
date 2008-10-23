@@ -44,7 +44,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   field_list.push_back(new Item_empty_string("serialization", 13));
   protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
-  //obs::ObjIterator *it= obs::get_databases(thd);
+  //obs::Obj_iterator *it= obs::get_databases(thd);
   List_iterator<LEX_STRING> it(*db_list);
   
   //if (it)
@@ -68,7 +68,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
       // List tables..
       //
 
-      obs::ObjIterator *tit= obs::get_db_tables(thd, db->get_name());
+      obs::Obj_iterator *tit= obs::get_db_tables(thd, db->get_name());
 
       if (tit)
       {
@@ -250,7 +250,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
           String user;
           String host;
           String *user_host= (String *)grant->get_name();
-          user_exists(thd, user_host);
+          check_user_existence(thd, user_host);
           protocol->store(C_STRING_WITH_LEN("GRANT"),
                           system_charset_info);
           grant->serialize(thd, &serial);

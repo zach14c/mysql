@@ -5020,7 +5020,7 @@ ER_WARN_HOSTNAME_WONT_WORK
         por "MySQL foi inicializado em modo --skip-name-resolve. Voc� necesita reincializ�-lo sem esta op��o para este grant funcionar"
         spa "MySQL esta inicializado en modo --skip-name-resolve. Usted necesita reinicializarlo sin esta opci�n para este derecho funcionar"
 ER_UNKNOWN_STORAGE_ENGINE 42000 
-        eng "Unknown table engine '%s'"
+        eng "Unknown storage engine '%s'"
         ger "Unbekannte Speicher-Engine '%s'"
         por "Motor de tabela desconhecido '%s'"
         spa "Desconocido motor de tabla '%s'"
@@ -6257,7 +6257,7 @@ ER_BACKUP_THREAD_INIT
         eng "Backup driver's table locking thread can not be initialized."
 
 ER_BACKUP_PROGRESS_TABLES
-        eng "Can't open the backup log tables. Check 'mysql.backup_history' and 'mysql.backup_progress'."
+        eng "Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair."
 
 ER_TABLESPACE_EXIST
   eng "Tablespace '%-.192s' already exists"

@@ -794,7 +794,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
 #endif
-
+  MYSQL_COMMAND_START(thd->thread_id, command,
+                      thd->security_ctx->priv_user,
+                      (char *) thd->security_ctx->host_or_ip);
+  
   thd->command=command;
   /*
     Commands which always take a long time are logged into
@@ -986,6 +989,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   {
     if (alloc_query(thd, packet, packet_length))
       break;					// fatal error is set
+    MYSQL_QUERY_START(thd->query, thd->thread_id,
+                      (char *) (thd->db ? thd->db : ""),
+                      thd->security_ctx->priv_user,
+                      (char *) thd->security_ctx->host_or_ip);
     char *packet_end= thd->query + thd->query_length;
     /* 'b' stands for 'buffer' parameter', special for 'my_snprintf' */
     const char* end_of_stmt= NULL;
@@ -1026,12 +1033,22 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
         length--;
       }
 
+      if (MYSQL_QUERY_DONE_ENABLED())
+      {
+        MYSQL_QUERY_DONE(thd->is_error());
+      }
+      
 #if defined(ENABLED_PROFILING)
       thd->profiling.finish_current_query();
       thd->profiling.start_new_query("continuing");
       thd->profiling.set_query_source(beginning_of_next_stmt, length);
 #endif
 
+      MYSQL_QUERY_START(thd->query, thd->thread_id,
+                        (char *) (thd->db ? thd->db : ""),
+                        thd->security_ctx->priv_user,
+                        (char *) thd->security_ctx->host_or_ip);
+      
       pthread_mutex_lock(&LOCK_thread_count);
       thd->query_length= length;
       thd->query= beginning_of_next_stmt;
@@ -1419,7 +1436,17 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #if defined(ENABLED_PROFILING)
   thd->profiling.finish_current_query();
 #endif
-
+  if (MYSQL_QUERY_DONE_ENABLED() || MYSQL_COMMAND_DONE_ENABLED())
+  {
+    int res;
+    res= (int) thd->is_error();
+    if (command == COM_QUERY)
+    {
+      MYSQL_QUERY_DONE(res);
+    }
+    MYSQL_COMMAND_DONE(res);
+  }
+  
   DBUG_RETURN(error);
 }
 
@@ -2858,6 +2885,7 @@ ddl_blocker_err:
       break;
     DBUG_ASSERT(select_lex->offset_limit == 0);
     unit->set_limit(select_lex);
+    MYSQL_UPDATE_START(thd->query);
     res= (up_result= mysql_update(thd, all_tables,
                                   select_lex->item_list,
                                   lex->value_list,
@@ -2917,7 +2945,7 @@ ddl_blocker_err:
 #ifdef HAVE_REPLICATION
     }  /* unlikely */
 #endif
-
+    MYSQL_MULTI_UPDATE_START(thd->query);
     res= mysql_multi_update(thd, all_tables,
                             &select_lex->item_list,
                             &lex->value_list,
@@ -2970,6 +2998,7 @@ ddl_blocker_err:
       break;
     }
 
+    MYSQL_INSERT_START(thd->query);
     res= mysql_insert(thd, all_tables, lex->field_list, lex->many_values,
 		      lex->update_list, lex->value_list,
                       lex->duplicates, lex->ignore);
@@ -3013,6 +3042,8 @@ ddl_blocker_err:
 
     if (!(res= open_and_lock_tables(thd, all_tables)))
     {
+      MYSQL_INSERT_SELECT_START(thd->query);
+      
       /* Skip first table, which is the table we are inserting in */
       TABLE_LIST *second_table= first_table->next_local;
       select_lex->table_list.first= (uchar*) second_table;
@@ -3097,6 +3128,7 @@ ddl_blocker_err:
       break;
     }
 
+    MYSQL_DELETE_START(thd->query);
     res = mysql_delete(thd, all_tables, select_lex->where,
                        &select_lex->order_list,
                        unit->select_limit_cnt, select_lex->options,
@@ -3127,6 +3159,7 @@ ddl_blocker_err:
       goto error;
 
     thd_proc_info(thd, "init");
+    MYSQL_MULTI_DELETE_START(thd->query);
     if ((res= open_and_lock_tables(thd, all_tables)))
       break;
 
@@ -5516,6 +5549,7 @@ void mysql_init_multi_delete(LEX *lex)
 void mysql_parse(THD *thd, const char *inBuf, uint length,
                  const char ** found_semicolon)
 {
+  int error;
   DBUG_ENTER("mysql_parse");
 
   DBUG_EXECUTE_IF("parser_debug", turn_parser_debug_on(););
@@ -5584,7 +5618,15 @@ void mysql_parse(THD *thd, const char *inBuf, uint length,
             thd->server_status|= SERVER_MORE_RESULTS_EXISTS;
           }
           lex->set_trg_event_type_for_tables();
-          mysql_execute_command(thd);
+	  MYSQL_QUERY_EXEC_START(thd->query,
+                                 thd->thread_id,
+                                 (char *) (thd->db ? thd->db : ""),
+                                 thd->security_ctx->priv_user,
+                                 (char *) thd->security_ctx->host_or_ip,
+                                 0);
+
+          error= mysql_execute_command(thd);
+	  MYSQL_QUERY_EXEC_DONE(error);
 	}
       }
     }
@@ -7518,6 +7560,8 @@ bool parse_sql(THD *thd,
   bool mysql_parse_status;
   DBUG_ASSERT(thd->m_parser_state == NULL);
 
+  MYSQL_QUERY_PARSE_START(thd->query);
+  
   /* Backup creation context. */
 
   Object_creation_ctx *backup_ctx= NULL;
@@ -7549,6 +7593,8 @@ bool parse_sql(THD *thd,
 
   /* That's it. */
 
+  MYSQL_QUERY_PARSE_DONE(mysql_parse_status || thd->is_fatal_error);
+  
   return mysql_parse_status || thd->is_fatal_error;
 }
 
