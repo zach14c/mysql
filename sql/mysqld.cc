@@ -3598,7 +3598,7 @@ static int init_common_variables(const char *conf_file_name, int argc,
   if (opt_slow_log && opt_slow_logname && !(log_output_options & LOG_FILE)
       && !(log_output_options & LOG_NONE))
     sql_print_warning("Although a path was specified for the "
-                      "--log_slow_queries option, log tables are used. "
+                      "--log-slow-queries option, log tables are used. "
                       "To enable logging to files use the --log-output=file option.");
 
   if (opt_backup_history_log && opt_backup_history_logname
@@ -6174,14 +6174,14 @@ Disable with --skip-large-pages.",
   (uchar**) &opt_log_slow_slave_statements,
   (uchar**) &opt_log_slow_slave_statements,
   0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"log_slow_queries", OPT_SLOW_QUERY_LOG,
-    "Log slow queries to a table or log file. Defaults logging to table "
-    "mysql.slow_log or hostname-slow.log if --log-output=file is used. "
-    "Must be enabled to activate other slow log options. "
-    "(deprecated option, use --slow_query_log/--slow_query_log_file instead)",
+  {"log-slow-queries", OPT_SLOW_QUERY_LOG,
+   "Log slow queries to a table or log file. Defaults logging to table "
+   "mysql.slow_log or hostname-slow.log if --log-output=file is used. "
+   "Must be enabled to activate other slow log options. "
+   "Deprecated option, use --slow-query-log/--slow-query-log-file instead.",
    (uchar**) &opt_slow_logname, (uchar**) &opt_slow_logname, 0, GET_STR, OPT_ARG,
    0, 0, 0, 0, 0, 0},
-  {"slow_query_log_file", OPT_SLOW_QUERY_LOG_FILE,
+  {"slow-query-log-file", OPT_SLOW_QUERY_LOG_FILE,
     "Log slow queries to given log file. Defaults logging to hostname-slow.log. Must be enabled to activate other slow log options.",
    (uchar**) &opt_slow_logname, (uchar**) &opt_slow_logname, 0, GET_STR,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
@@ -6888,7 +6888,7 @@ The minimum value for this variable is 4096.",
    (uchar**) &max_write_lock_count, (uchar**) &max_write_lock_count, 0, GET_ULONG,
    REQUIRED_ARG, (longlong) ULONG_MAX, 1, (longlong) ULONG_MAX, 0, 1, 0},
   {"min_examined_row_limit", OPT_MIN_EXAMINED_ROW_LIMIT,
-   "Don't log queries which examine less than min_examined_row_limit rows to file.",
+   "Don't write queries to slow log that examine fewer than min_examined_row_limit rows.",
    (uchar**) &global_system_variables.min_examined_row_limit,
    (uchar**) &max_system_variables.min_examined_row_limit, 0, GET_ULONG,
    REQUIRED_ARG, 0, 0, (longlong) ULONG_MAX, 0, 1L, 0},
@@ -8218,7 +8218,7 @@ mysqld_get_one_option(int optid,
   }
 #endif /* HAVE_REPLICATION */
   case (int) OPT_SLOW_QUERY_LOG:
-    WARN_DEPRECATED(NULL, 7,0, "--log_slow_queries", "'--slow_query_log'/'--slow_query_log_file'");
+    WARN_DEPRECATED(NULL, 7,0, "--log-slow-queries", "'--slow-query-log'/'--slow-query-log-file'");
     opt_slow_log= 1;
     break;
 #ifdef WITH_CSV_STORAGE_ENGINE
