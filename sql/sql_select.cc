@@ -31,6 +31,7 @@
 #include "mysql_priv.h"
 #include "sql_select.h"
 #include "sql_cursor.h"
+
 #include <m_ctype.h>
 #include <my_bit.h>
 #include <hash.h>
@@ -278,7 +279,7 @@ bool handle_select(THD *thd, LEX *lex, select_result *result,
   bool res;
   register SELECT_LEX *select_lex = &lex->select_lex;
   DBUG_ENTER("handle_select");
-  MYSQL_SELECT_START();
+  MYSQL_SELECT_START(thd->query);
 
   if (select_lex->master_unit()->is_union() || 
       select_lex->master_unit()->fake_select_lex)
@@ -312,7 +313,8 @@ bool handle_select(THD *thd, LEX *lex, select_result *result,
   if (unlikely(res))
     result->abort();
 
-  MYSQL_SELECT_END();
+  MYSQL_SELECT_DONE((int) res, (ulong) thd->limit_found_rows);
+
   DBUG_RETURN(res);
 }
 
