@@ -859,8 +859,12 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncScavenge.setName("Table::syncScavenge");
 	syncAlter.setName("Table::syncAlter");
+	
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
 		syncPriorVersions[n].setName("Table::syncPriorVersions");
+	
+	for (int n = 0; n < SYNC_THAW_SIZE; n++)
+		syncThaw[n].setName("Table::syncThaw");
 }
 
 Record* Table::fetch(int32 recordNumber)
@@ -3817,6 +3821,18 @@ SyncObject* Table::getSyncPrior(int recordNumber)
 {
 	int lockNumber = recordNumber % SYNC_VERSIONS_SIZE;
 	return syncPriorVersions + lockNumber;
+}
+
+SyncObject* Table::getSyncThaw(Record* record)
+{
+	int lockNumber = record->recordNumber % SYNC_THAW_SIZE;
+	return syncThaw + lockNumber;
+}
+
+SyncObject* Table::getSyncThaw(int recordNumber)
+{
+	int lockNumber = recordNumber % SYNC_THAW_SIZE;
+	return syncThaw + lockNumber;
 }
 
 static bool needUniqueCheck(Index *index, Record *record)

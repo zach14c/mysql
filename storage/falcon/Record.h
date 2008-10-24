@@ -94,6 +94,7 @@ public:
 	virtual void	serialize(Serialize* stream);
 	virtual int		getSize(void);
 	virtual SyncObject* getSyncPrior(void);
+	virtual SyncObject* getSyncThaw(void);
 
 	const UCHAR*	getEncoding (int index);
 	int				setEncodedRecord(Stream *stream, bool interlocked);

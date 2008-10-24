@@ -971,3 +971,8 @@ SyncObject* Record::getSyncPrior(void)
 {
 	return format->table->getSyncPrior(this);
 }
+
+SyncObject* Record::getSyncThaw(void)
+{
+	return format->table->getSyncThaw(this);
+}

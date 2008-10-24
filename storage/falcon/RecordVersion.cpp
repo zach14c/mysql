@@ -355,6 +355,9 @@ uint64 RecordVersion::getVirtualOffset()
 
 int RecordVersion::thaw(bool force)
 {
+	Sync syncThaw(format->table->getSyncThaw(this), "RecordVersion::thaw");
+	syncThaw.lock(Exclusive);
+
 	int bytesRestored = 0;
 	Transaction *trans = transaction;
 	
