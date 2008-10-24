@@ -92,7 +92,7 @@ int delegates_init()
   static unsigned long storage_mem[sizeof(Binlog_storage_delegate) / sizeof(unsigned long) + 1];
 #ifdef HAVE_REPLICATION
   static unsigned long transmit_mem[sizeof(Binlog_transmit_delegate) / sizeof(unsigned long) + 1];
-  static unsigned int relay_io_mem[sizeof(Binlog_relay_IO_delegate)/ sizeof(unsigned long) + 1];
+  static unsigned long relay_io_mem[sizeof(Binlog_relay_IO_delegate)/ sizeof(unsigned long) + 1];
 #endif
   
   if (!(transaction_delegate= new (trans_mem) Trans_delegate)
