@@ -1203,20 +1203,26 @@ int StorageInterface::commit(handlerton *hton, THD* thd, bool all)
 {
 	DBUG_ENTER("StorageInterface::commit");
 	StorageConnection *storageConnection = getStorageConnection(thd);
+	int ret = 0;
 
 	if (all || !thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
 		{
 		if (storageConnection)
-			storageConnection->commit();
+			ret = storageConnection->commit();
 		else
-			storageHandler->commit(thd);
+			ret = storageHandler->commit(thd);
 		}
 	else
 		{
 		if (storageConnection)
 			storageConnection->releaseVerb();
 		else
-			storageHandler->releaseVerb(thd);
+			ret = storageHandler->releaseVerb(thd);
+		}
+
+	if (ret != 0)
+		{
+		DBUG_RETURN(getMySqlError(ret));
 		}
 
 	DBUG_RETURN(0);
@@ -1245,20 +1251,26 @@ int StorageInterface::rollback(handlerton *hton, THD *thd, bool all)
 {
 	DBUG_ENTER("StorageInterface::rollback");
 	StorageConnection *storageConnection = getStorageConnection(thd);
+	int ret = 0;
 
 	if (all || !thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
 		{
 		if (storageConnection)
-			storageConnection->rollback();
+			ret = storageConnection->rollback();
 		else
-			storageHandler->rollback(thd);
+			ret = storageHandler->rollback(thd);
 		}
 	else
 		{
 		if (storageConnection)
-			storageConnection->rollbackVerb();
+			ret = storageConnection->rollbackVerb();
 		else
-			storageHandler->rollbackVerb(thd);
+			ret = storageHandler->rollbackVerb(thd);
+		}
+
+	if (ret != 0)
+		{
+		DBUG_RETURN(getMySqlError(ret));
 		}
 
 	DBUG_RETURN(0);
@@ -1929,10 +1941,12 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 
 	if (lock_type == F_UNLCK)
 		{
+		int ret = 0;
+
 		storageConnection->setCurrentStatement(NULL);
 
 		if (!thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-			storageConnection->endImplicitTransaction();
+			ret = storageConnection->endImplicitTransaction();
 		else
 			storageConnection->releaseVerb();
 
@@ -1941,6 +1955,9 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageTable->clearStatement();
 			storageTable->clearCurrentIndex();
 			}
+
+		if (ret)
+			DBUG_RETURN(error(ret));
 		}
 	else
 		{
