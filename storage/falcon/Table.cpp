@@ -2545,9 +2545,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		state = transaction->getRelativeState(dup, DO_NOT_WAIT);
 
-		if (dup->state == recChilled)
-			dup->getRecordData();
-
 		// Check for a deleted record or a record lock
 
 		if (!dup->hasRecord())
@@ -3548,6 +3545,13 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					return NULL;
 					}
 
+				if (record->state == recChilled	&& !record->thaw())
+					{
+					record->release();
+
+					return NULL;
+					}
+						
 				// Lock the record
 
 				if (dbb->debug & DEBUG_RECORD_LOCKS)
@@ -3562,9 +3566,6 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					transaction->addRecord(recordVersion);
 					recordVersion->release();
 
-					if (record->state == recChilled)
-						record->thaw();
-					
 					ASSERT(record->useCount >= 2);
 						
 					return record;

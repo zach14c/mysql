@@ -586,22 +586,27 @@ int Record::getSavePointId()
 	return 0;
 }
 
-void Record::getRecord(Stream *stream)
+bool Record::getRecord(Stream *stream)
 {
-	switch (encoding)
+	if (data.record != NULL)
 		{
-		case traditional:
-			stream->compress (format->length, data.record);
-			break;
+		switch (encoding)
+			{
+			case traditional:
+				stream->compress (format->length, data.record);
+				break;
 
-		case shortVector:
-			stream->putSegment(getEncodedSize(),
-							   data.record + ((USHORT*) data.record)[0] - sizeof(short), false);
-			break;
+			case shortVector:
+				stream->putSegment(getEncodedSize(),
+						data.record + ((USHORT*) data.record)[0] - sizeof(short), false);
+				break;
 
-		default:
-			NOT_YET_IMPLEMENTED;
+			default:
+				NOT_YET_IMPLEMENTED;
+			}
 		}
+
+	return (data.record != NULL);
 }
 
 int Record::getEncodedSize()
@@ -626,11 +631,8 @@ int Record::getEncodedSize()
 
 void Record::getEncodedValue(int fieldId, Value *value)
 {
-	// If chilled, restore the record data from the serial log
-	
-	if (state == recChilled)
-		thaw();
-
+	try
+		{
 	switch (encoding)
 		{
 		case shortVector:
@@ -661,6 +663,11 @@ void Record::getEncodedValue(int fieldId, Value *value)
 
 		default:
 			NOT_YET_IMPLEMENTED;
+		}
+}
+	catch (SQLException& exception)
+		{
+		int code = exception.getSqlcode();
 		}
 }
 
@@ -849,7 +856,7 @@ void Record::setPriorVersion(Record* record)
 	ASSERT(false);
 }
 
-int Record::thaw()
+int Record::thaw(bool force)
 {
 	return 0;
 }

@@ -1526,7 +1526,7 @@ void Transaction::backlogRecords(void)
 		{
 		prior = record->prevInTrans;
 		
-		if (!record->hasRecord())
+		if (!record->hasRecord(false))
 			{
 			if (savePoints)
 				for (; savePoint && record->savePointId < savePoint->id; savePoint = savePoint->next)
