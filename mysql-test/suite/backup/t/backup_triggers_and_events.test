@@ -79,7 +79,9 @@ CREATE TRIGGER before_upd BEFORE UPDATE ON t1 FOR EACH ROW
 CALL trg_msg(NEW.a);
 ||
 
-CREATE TRIGGER before_del BEFORE DELETE ON t1 FOR EACH ROW 
+# Create a trigger with the same name as an event to test that backup is
+# able to handle that.  (Bug#38810)
+CREATE TRIGGER ev BEFORE DELETE ON t1 FOR EACH ROW 
 CALL trg_msg(OLD.a);
 ||
 

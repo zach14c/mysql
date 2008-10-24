@@ -240,7 +240,7 @@ struct Backup_info::Dep_node: public Sql_alloc
   Dbobj *obj;
   String key;
 
-  Dep_node(const ::String &db_name, const ::String &name);
+  Dep_node(const ::String &db_name, const ::String &name, const obj_type type);
   Dep_node(const Dep_node&);
 
   static uchar* get_key(const uchar *record, size_t *key_length, my_bool);
@@ -250,14 +250,18 @@ struct Backup_info::Dep_node: public Sql_alloc
 /**
   Create an empty dependency list node for a given per-database object.
 
-  The object is identified by its name and the name of the database to which
-  it belongs. 
+  The object is identified by its name, the name of the database to
+  which it belongs, and its type.
  */ 
 inline
-Backup_info::Dep_node::Dep_node(const ::String &db_name, const ::String &name)
+Backup_info::Dep_node::Dep_node(const ::String &db_name, const ::String &name,
+                                const obj_type type)
   :next(NULL), obj(NULL)
 {
   key.length(0);
+  // Add type to make sure keys are unique even between different namespaces
+  key.set_int(type, TRUE, &my_charset_bin);
+  key.append("|");
   key.append(db_name);
   key.append(".");
   key.append(name);
@@ -952,13 +956,13 @@ int Backup_info::add_view_deps(obs::Obj &obj)
     Dep_node *n= NULL;
     const ::String *name= bv->get_name();
     const ::String *db_name= bv->get_db_name();
-  
+
     DBUG_ASSERT(name); 
     DBUG_ASSERT(db_name); 
 
     // Locate or create a dependency list node for the base view.
 
-    int res= get_dep_node(*db_name, *name, n);
+    int res= get_dep_node(*db_name, *name, BSTREAM_IT_VIEW, n);
 
     if (res == get_dep_node_res::ERROR)
       goto error;
@@ -1074,7 +1078,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   // Get a dep. list node for the object.  
 
-  int res= get_dep_node(db.name(), *name, n);
+  int res= get_dep_node(db.name(), *name, type, n);
   
   if (res == get_dep_node_res::ERROR)
   {
@@ -1159,9 +1163,10 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
  */ 
 int Backup_info::get_dep_node(const ::String &db_name, 
                               const ::String &name, 
+                              const obj_type type,
                               Dep_node* &node)
 {
-  Dep_node n(db_name, name);
+  Dep_node n(db_name, name, type);
   size_t klen;
   uchar  *key= Dep_node::get_key((const uchar*)&n, &klen, TRUE);
 
