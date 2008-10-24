@@ -69,7 +69,8 @@ class Backup_info: public backup::Image_info
 
   struct Dep_node;
 
-  int get_dep_node(const ::String&, const ::String&, Dep_node*&);
+  int get_dep_node(const ::String&, const ::String&, const obj_type, 
+                   Dep_node*&);
   int add_to_dep_list(const obj_type, Dep_node*);
 
   struct get_dep_node_res 
