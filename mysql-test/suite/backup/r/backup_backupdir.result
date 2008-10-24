@@ -53,8 +53,8 @@ ERROR HY000: Can't write to backup location '$MYSQLTEST_VARDIR/master_data/not/t
 Attempt to set the backupdir to something invalid.
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
 Warnings:
-Warning	1727	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
-Warning	1727	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1731	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1731	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
 Cleanup
 Reset backupdir 
 SET @@global.backupdir = @@global.datadir;

@@ -6140,6 +6140,18 @@ ER_NEED_REPREPARE
 ER_DELAYED_NOT_SUPPORTED  
   eng "DELAYED option not supported for table '%-.192s'"
 
+WARN_NO_MASTER_INFO  
+  eng "The master info structure does not exist"
+
+WARN_OPTION_IGNORED
+  eng "<%-.64s> option ignored"
+
+WARN_PLUGIN_DELETE_BUILTIN
+  eng "Built-in plugins cannot be deleted"
+
+WARN_PLUGIN_BUSY
+  eng "Plugin is busy and will be uninstalled on shutdown"
+
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
         ger "Umgewandelt zu nicht-transaktionalen Sperren auf '%-.64s'"
@@ -6398,15 +6410,4 @@ ER_BACKUP_LOGPATHS
   eng "The log names for backup_history and backup_progress must be unique."
 ER_BACKUP_LOGPATH_INVALID
   eng "The path specified for the %-.64s is invalid. ref: %-.64s"
-WARN_NO_MASTER_INFO  
-  eng "The master info structure does not exist"
-
-WARN_OPTION_IGNORED
-  eng "<%-.64s> option ignored"
-
-WARN_PLUGIN_DELETE_BUILTIN
-  eng "Built-in plugins cannot be deleted"
-
-WARN_PLUGIN_BUSY
-  eng "Plugin is busy and will be uninstalled on shutdown"
 
