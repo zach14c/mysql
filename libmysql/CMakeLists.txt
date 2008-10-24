@@ -98,7 +98,7 @@ SET(CLIENT_SOURCES   ../mysys/array.c ../strings/bchange.c ../strings/bmove.c
                      ../strings/strtoll.c ../strings/strtoull.c ../strings/strxmov.c ../strings/strxnmov.c 
                      ../mysys/thr_mutex.c ../mysys/typelib.c ../vio/vio.c ../vio/viosocket.c 
                      ../vio/viossl.c ../vio/viosslfactories.c ../strings/xml.c ../mysys/mf_qsort.c
-		     ../mysys/my_getsystime.c  ${LIB_SOURCES})
+		     ../mysys/my_getsystime.c ../mysys/my_winerr.c ../mysys/my_winfile.c ${LIB_SOURCES})
 
 # Need to set USE_TLS for building the DLL, since __declspec(thread)
 # approach to thread local storage does not work properly in DLLs.
@@ -119,7 +119,7 @@ ADD_LIBRARY(mysqlclient_notls STATIC ${CLIENT_SOURCES})
 ADD_DEPENDENCIES(mysqlclient_notls GenError)
 TARGET_LINK_LIBRARIES(mysqlclient_notls)
 
-ADD_LIBRARY(libmysql          SHARED ${CLIENT_SOURCES} dll.c libmysql.def)
+ADD_LIBRARY(libmysql          SHARED ${CLIENT_SOURCES} libmysql.def)
 IF(WIN32)
   SET_TARGET_PROPERTIES(libmysql mysqlclient PROPERTIES COMPILE_FLAGS "-DUSE_TLS")
 ENDIF(WIN32)

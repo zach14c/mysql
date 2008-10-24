@@ -1,0 +1,378 @@
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+DROP TABLE IF EXISTS t3;
+CREATE TABLE t1 (
+a int PRIMARY KEY, 
+b VARCHAR(255), 
+c int,
+d CHAR(10)
+);
+INSERT INTO t1 VALUES (0, 'TestRow0', 0*2, 'Char0');
+INSERT INTO t1 VALUES (1, 'TestRow1', 1*2, 'Char1');
+INSERT INTO t1 VALUES (2, 'TestRow2', 2*2, 'Char2');
+INSERT INTO t1 VALUES (3, 'TestRow3', 3*2, 'Char3');
+INSERT INTO t1 VALUES (4, 'TestRow4', 4*2, 'Char4');
+INSERT INTO t1 VALUES (5, 'TestRow5', 5*2, 'Char5');
+INSERT INTO t1 VALUES (6, 'TestRow6', 6*2, 'Char6');
+INSERT INTO t1 VALUES (7, 'TestRow7', 7*2, 'Char7');
+INSERT INTO t1 VALUES (8, 'TestRow8', 8*2, 'Char8');
+INSERT INTO t1 VALUES (9, 'TestRow9', 9*2, 'Char9');
+INSERT INTO t1 VALUES (10, 'TestRow10', 10*2, 'Char10');
+INSERT INTO t1 VALUES (11, 'TestRow11', 11*2, 'Char11');
+INSERT INTO t1 VALUES (12, 'TestRow12', 12*2, 'Char12');
+INSERT INTO t1 VALUES (13, 'TestRow13', 13*2, 'Char13');
+INSERT INTO t1 VALUES (14, 'TestRow14', 14*2, 'Char14');
+INSERT INTO t1 VALUES (15, 'TestRow15', 15*2, 'Char15');
+INSERT INTO t1 VALUES (16, 'TestRow16', 16*2, 'Char16');
+INSERT INTO t1 VALUES (17, 'TestRow17', 17*2, 'Char17');
+INSERT INTO t1 VALUES (18, 'TestRow18', 18*2, 'Char18');
+INSERT INTO t1 VALUES (19, 'TestRow19', 19*2, 'Char19');
+CREATE TABLE t2 (
+a int PRIMARY KEY, 
+b int,
+c int,
+d VARCHAR(65)
+);
+#-------- Inserting 33 rows into t2 (query log disabled) --------#
+CREATE TABLE t3 (
+a int PRIMARY KEY AUTO_INCREMENT, 
+b int DEFAULT 9999,
+c int DEFAULT 8888 NOT NULL,
+d int NOT NULL,
+e VARCHAR(65)
+);
+#-------- Inserting 1000 rows into t3... (query log disabled) --------#
+#-------- Testing implicit ONLINE --------#
+ALTER TABLE t1 ADD INDEX ix_b (b);
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+DROP INDEX ix_b ON t1;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+CREATE INDEX ix_c ON t1 (c);
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+DROP INDEX ix_c ON t1;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+ALTER TABLE t3 ADD INDEX ix_b (b);
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+SELECT * from t3 where b > 555 ORDER BY a LIMIT 5;
+a	b	c	d	e
+279	556	279	277	SomeVarchar 278 for testing
+280	558	280	278	SomeVarchar 279 for testing
+281	560	281	279	SomeVarchar 280 for testing
+282	562	282	280	SomeVarchar 281 for testing
+283	564	283	281	SomeVarchar 282 for testing
+affected rows: 5
+DROP INDEX ix_b ON t3;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+#-------- Testing implicit OFFLINE --------#
+ALTER TABLE t3 ADD INDEX ix_c (c);
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+DROP INDEX ix_c ON t3;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+ALTER TABLE t3 ADD INDEX ix_cd (c, d);
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+DROP INDEX ix_cd ON t3;
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
+#-------- Testing ONLINE keyword... --------#
+#-------- ONLINE: ALTER ADD/DROP INDEX --------#
+ALTER ONLINE TABLE t1 ADD INDEX ix_b (b);
+ALTER ONLINE TABLE t1 DROP INDEX ix_b;
+#-------- ONLINE: ALTER ADD/DROP KEY --------#
+ALTER ONLINE TABLE t1 ADD KEY ix_b (b);
+ALTER ONLINE TABLE t1 DROP KEY ix_b;
+#-------- ONLINE: CREATE/DROP INDEX --------#
+CREATE ONLINE INDEX ix_c ON t1 (c);
+DROP ONLINE INDEX ix_c ON t1;
+#-------- ONLINE: ADD INDEX default name --------#
+ALTER ONLINE TABLE t1 ADD INDEX (b);
+ALTER ONLINE TABLE t1 DROP INDEX b;
+#-------- ONLINE: ALTER ADD nullable with default --------#
+ALTER ONLINE TABLE t3 ADD INDEX ix_b (b);
+SELECT * from t3 where b > 555 ORDER BY a LIMIT 5;
+a	b	c	d	e
+279	556	279	277	SomeVarchar 278 for testing
+280	558	280	278	SomeVarchar 279 for testing
+281	560	281	279	SomeVarchar 280 for testing
+282	562	282	280	SomeVarchar 281 for testing
+283	564	283	281	SomeVarchar 282 for testing
+ALTER ONLINE TABLE t3 DROP INDEX ix_b;
+#-------- ONLINE: ALTER ADD not-null with default --------#
+ALTER ONLINE TABLE t3 ADD INDEX ix_c (c);
+#-------- ONLINE: ALTER ADD not-null --------#
+ALTER ONLINE TABLE t3 ADD INDEX ix_d (d);
+#-------- ONLINE: ALTER ADD same key multiple times --------#
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+ERROR 42000: Duplicate key name 'index_c'
+ALTER ONLINE TABLE t1 ADD INDEX index_c (c);
+ERROR 42000: Duplicate key name 'index_c'
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	index_c	1	c	NULL	10	NULL	NULL	YES	BTREE		
+#-------- ONLINE: ALTER DROP same key multiple times --------#
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+ERROR 42000: Can't DROP 'index_c'; check that column/key exists
+ALTER ONLINE TABLE t1 DROP INDEX index_c;
+ERROR 42000: Can't DROP 'index_c'; check that column/key exists
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+#-------- ONLINE: ALTER ADD/DROP PRIMARY KEY --------#
+ALTER ONLINE TABLE t1 DROP PRIMARY KEY;
+ERROR 42000: This version of MySQL doesn't yet support 'ALTER ONLINE TABLE t1 DROP PRIMARY KEY'
+ALTER TABLE t1 DROP PRIMARY KEY;
+ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c);
+ERROR 42000: This version of MySQL doesn't yet support 'ALTER ONLINE TABLE t1 ADD PRIMARY KEY (c)'
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+ALTER TABLE t1 ADD PRIMARY KEY (a);
+#-------- Test: UNIQUE --------#
+ALTER ONLINE TABLE t2 ADD UNIQUE INDEX ix_unique_c (c);
+EXPLAIN SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t2	range	ix_unique_c	ix_unique_c	5	NULL	1	Using where; Using filesort
+SELECT * FROM t2 WHERE c < 25 AND c > 20 ORDER BY c;
+a	b	c	d
+20	40	21	SomeString 20 for testing
+21	42	22	SomeString 21 for testing
+22	44	23	SomeString 22 for testing
+23	46	24	SomeString 23 for testing
+SHOW INDEXES FROM t2;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t2	0	PRIMARY	1	a	NULL	16	NULL	NULL		BTREE		
+t2	0	ix_unique_c	1	c	NULL	16	NULL	NULL	YES	BTREE		
+DESCRIBE t2;
+Field	Type	Null	Key	Default	Extra
+a	int(11)	NO	PRI	NULL	
+b	int(11)	YES		NULL	
+c	int(11)	YES	UNI	NULL	
+d	varchar(65)	YES		NULL	
+DROP ONLINE INDEX ix_unique_c ON t2;
+SHOW INDEXES FROM t2;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t2	0	PRIMARY	1	a	NULL	16	NULL	NULL		BTREE		
+#-------- Test: DESC --------#
+ALTER ONLINE TABLE t3 ADD INDEX ix_desc_b (b DESC);
+ALTER ONLINE TABLE t3 ADD INDEX ix_asc_b (b ASC);
+SHOW INDEXES FROM t3;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_desc_b	1	b	NULL	500	NULL	NULL	YES	BTREE		
+t3	1	ix_asc_b	1	b	NULL	500	NULL	NULL	YES	BTREE		
+DROP ONLINE INDEX ix_desc_b ON t3;
+DROP ONLINE INDEX ix_asc_b ON t3;
+#-------- Test: KEY_BLOCK_SIZE --------#
+ALTER ONLINE TABLE t1 ADD INDEX ix_keyblock_b (b) KEY_BLOCK_SIZE = 0;
+EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	ix_keyblock_b	ix_keyblock_b	258	NULL	2	Using where; Using filesort
+SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+a	b	c	d
+1	TestRow1	2	Char1
+10	TestRow10	20	Char10
+11	TestRow11	22	Char11
+12	TestRow12	24	Char12
+13	TestRow13	26	Char13
+14	TestRow14	28	Char14
+15	TestRow15	30	Char15
+16	TestRow16	32	Char16
+17	TestRow17	34	Char17
+18	TestRow18	36	Char18
+19	TestRow19	38	Char19
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	ix_keyblock_b	1	b	NULL	10	NULL	NULL	YES	BTREE		
+ALTER ONLINE TABLE t1 DROP INDEX ix_keyblock_b;
+#-------- Test: COMMENT --------#
+ALTER ONLINE TABLE t1 ADD INDEX ix_b (b) COMMENT 'Test comment';
+EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	ix_b	ix_b	258	NULL	2	Using where; Using filesort
+SELECT * FROM t1 WHERE b LIKE 'TestRow1%' ORDER BY b;
+a	b	c	d
+1	TestRow1	2	Char1
+10	TestRow10	20	Char10
+11	TestRow11	22	Char11
+12	TestRow12	24	Char12
+13	TestRow13	26	Char13
+14	TestRow14	28	Char14
+15	TestRow15	30	Char15
+16	TestRow16	32	Char16
+17	TestRow17	34	Char17
+18	TestRow18	36	Char18
+19	TestRow19	38	Char19
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	ix_b	1	b	NULL	10	NULL	NULL	YES	BTREE		Test comment
+ALTER ONLINE TABLE t1 DROP INDEX ix_b;
+#-------- Test: Multiple columns --------#
+ALTER ONLINE TABLE t1 ADD INDEX index_multicol (b, c, d);
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	index_multicol	1	b	NULL	2	NULL	NULL	YES	BTREE		
+t1	1	index_multicol	2	c	NULL	5	NULL	NULL	YES	BTREE		
+t1	1	index_multicol	3	d	NULL	10	NULL	NULL	YES	BTREE		
+EXPLAIN SELECT * FROM t1 WHERE b LIKE 'TestRow3%' AND c = 6 ORDER BY b, c, d;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	index_multicol	index_multicol	263	NULL	2	Using where; Using filesort
+SELECT * FROM t1 WHERE b LIKE 'TestRow3%' AND c = 6 ORDER BY b, c, d;
+a	b	c	d
+3	TestRow3	6	Char3
+DROP INDEX index_multicol ON t1;
+#-------- Test: Multiple ADD INDEX on same column --------#
+ALTER ONLINE TABLE t1 ADD INDEX index_1d (d);
+ALTER ONLINE TABLE t1 ADD INDEX index_2d (d);
+CREATE ONLINE INDEX index_3d ON t1 (d);
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	index_1d	1	d	NULL	10	NULL	NULL	YES	BTREE		
+t1	1	index_2d	1	d	NULL	10	NULL	NULL	YES	BTREE		
+t1	1	index_3d	1	d	NULL	10	NULL	NULL	YES	BTREE		
+DROP ONLINE INDEX index_1d ON t1;
+DROP ONLINE INDEX index_2d ON t1;
+DROP ONLINE INDEX index_3d ON t1;
+#-------- Test: Multiple ADD INDEX in a single statement --------#
+ALTER TABLE t1 
+ADD INDEX index_varchar (b), 
+ADD INDEX index_int (c);
+ALTER TABLE t3 
+ADD INDEX index_int (b), 
+ADD INDEX index_multi (b,e), 
+ADD INDEX index_varchar (e);
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	index_varchar	1	b	NULL	10	NULL	NULL	YES	BTREE		
+t1	1	index_int	1	c	NULL	10	NULL	NULL	YES	BTREE		
+SHOW INDEXES FROM t3;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
+t3	1	index_int	1	b	NULL	500	NULL	NULL	YES	BTREE		
+t3	1	index_multi	1	b	NULL	250	NULL	NULL	YES	BTREE		
+t3	1	index_multi	2	e	NULL	500	NULL	NULL	YES	BTREE		
+t3	1	index_varchar	1	e	NULL	500	NULL	NULL	YES	BTREE		
+#-------- Test: Multiple DROP INDEX in a single statement --------#
+ALTER TABLE t1 
+DROP INDEX index_varchar, 
+DROP INDEX index_int;
+ALTER TABLE t3 
+DROP INDEX index_int, 
+DROP INDEX index_multi,
+DROP INDEX index_varchar;
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+SHOW INDEXES FROM t3;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
+#-------- Test: Combined ADD/DROP INDEX in a single statement --------#
+ALTER TABLE t1 ADD INDEX index_int (c);
+ALTER TABLE t1 ADD INDEX index_char (d), DROP INDEX index_int;
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+t1	1	index_char	1	d	NULL	10	NULL	NULL	YES	BTREE		
+ALTER TABLE t1 DROP INDEX index_char;
+#-------- Test: ADD INDEX followed by some complex queries --------#
+ALTER TABLE t1 ADD INDEX ix_a (a);
+ALTER ONLINE TABLE t1 ADD INDEX ix_b (b);
+ALTER ONLINE TABLE t1 ADD INDEX ix_c (c);
+ALTER ONLINE TABLE t2
+ADD INDEX ix_b (b),
+ADD INDEX ix_d (d);
+ALTER ONLINE TABLE t3 ADD INDEX ix_b (b);
+EXPLAIN SELECT * FROM t1 WHERE a = 3 OR (c > 10 AND a < 15) ORDER BY a;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY,ix_a,ix_c	PRIMARY	4	NULL	20	Using where; Using filesort
+SELECT * FROM t1 WHERE a = 3 OR (c > 10 AND a < 15) ORDER BY a;
+a	b	c	d
+3	TestRow3	6	Char3
+6	TestRow6	12	Char6
+7	TestRow7	14	Char7
+8	TestRow8	16	Char8
+9	TestRow9	18	Char9
+10	TestRow10	20	Char10
+11	TestRow11	22	Char11
+12	TestRow12	24	Char12
+13	TestRow13	26	Char13
+14	TestRow14	28	Char14
+EXPLAIN SELECT * FROM t1 WHERE a = 99 OR b LIKE 'TestRow7%';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index_merge	PRIMARY,ix_a,ix_b	PRIMARY,ix_b	4,258	NULL	3	Using sort_union(PRIMARY,ix_b); Using where
+SELECT * FROM t1 WHERE a = 99 OR b LIKE 'TestRow7%';
+a	b	c	d
+7	TestRow7	14	Char7
+EXPLAIN SELECT * FROM t1 WHERE (a = 10 OR b LIKE 'TestRow11') AND d LIKE 'Char%' ORDER BY a;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index_merge	PRIMARY,ix_a,ix_b	PRIMARY,ix_b	4,258	NULL	3	Using sort_union(PRIMARY,ix_b); Using where; Using filesort
+SELECT * FROM t1 WHERE (a = 10 OR b LIKE 'TestRow11') AND d LIKE 'Char%' ORDER BY a;
+a	b	c	d
+10	TestRow10	20	Char10
+11	TestRow11	22	Char11
+EXPLAIN SELECT * FROM t1, t2 WHERE (t1.a IN (1,2) OR t1.b LIKE 'TestRow1%') AND t1.c=t2.c;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index_merge	PRIMARY,ix_a,ix_b,ix_c	PRIMARY,ix_b	4,258	NULL	4	Using sort_union(PRIMARY,ix_b); Using where
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	33	Using where; Using join buffer
+SELECT * FROM t1, t2 WHERE (t1.a IN (1,2) OR t1.b LIKE 'TestRow1%') AND t1.c=t2.c;
+a	b	c	d	a	b	c	d
+1	TestRow1	2	Char1	1	2	2	SomeString 1 for testing
+2	TestRow2	4	Char2	3	6	4	SomeString 3 for testing
+10	TestRow10	20	Char10	19	38	20	SomeString 19 for testing
+11	TestRow11	22	Char11	21	42	22	SomeString 21 for testing
+12	TestRow12	24	Char12	23	46	24	SomeString 23 for testing
+13	TestRow13	26	Char13	25	50	26	SomeString 25 for testing
+14	TestRow14	28	Char14	27	54	28	SomeString 27 for testing
+15	TestRow15	30	Char15	29	58	30	SomeString 29 for testing
+16	TestRow16	32	Char16	31	62	32	SomeString 31 for testing
+EXPLAIN SELECT * FROM t1, t3 WHERE t3.b=2 AND (t1.c = t3.c OR t1.a=t3.d);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t3	ref	ix_c,ix_d,ix_b	ix_b	5	const	100	
+1	SIMPLE	t1	ALL	PRIMARY,ix_a,ix_c	NULL	NULL	NULL	20	Range checked for each record (index map: 0xB)
+SELECT * FROM t1, t3 WHERE t3.b=2 AND (t1.c = t3.c OR t1.a=t3.d);
+a	b	c	d	a	b	c	d	e
+0	TestRow0	0	Char0	2	2	2	0	SomeVarchar 1 for testing
+1	TestRow1	2	Char1	2	2	2	0	SomeVarchar 1 for testing
+ALTER ONLINE TABLE t1 
+DROP INDEX ix_a,
+DROP INDEX ix_b,
+DROP INDEX ix_c;
+ALTER ONLINE TABLE t2
+DROP INDEX ix_b,
+DROP INDEX ix_d;
+ALTER ONLINE TABLE t3 DROP INDEX ix_b;
+SHOW INDEXES FROM t1;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t1	0	PRIMARY	1	a	NULL	10	NULL	NULL		BTREE		
+SHOW INDEXES FROM t2;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t2	0	PRIMARY	1	a	NULL	16	NULL	NULL		BTREE		
+SHOW INDEXES FROM t3;
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
+t3	0	PRIMARY	1	a	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_c	1	c	NULL	500	NULL	NULL		BTREE		
+t3	1	ix_d	1	d	NULL	500	NULL	NULL		BTREE		
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;

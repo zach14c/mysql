@@ -960,6 +960,32 @@ public:
   SHOW_TYPE show_type() { return SHOW_CHAR; }
 };
 
+/*
+  Class used to manage log-backup-output variable.
+*/
+class sys_var_log_backup_output : public sys_var
+{
+  ulong *value;
+  TYPELIB *enum_names;
+public:
+  sys_var_log_backup_output(sys_var_chain *chain, const char *name_arg, ulong *value_arg,
+                     TYPELIB *typelib, sys_after_update_func func)
+    :sys_var(name_arg,func), value(value_arg), enum_names(typelib)
+  {
+    chain_sys_var(chain);
+    set_allow_empty_value(FALSE);
+  }
+  virtual bool check(THD *thd, set_var *var)
+  {
+    return check_set(thd, var, enum_names);
+  }
+  bool update(THD *thd, set_var *var);
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+  bool check_update_type(Item_result type) { return 0; }
+  void set_default(THD *thd, enum_var_type type);
+  SHOW_TYPE show_type() { return SHOW_CHAR; }
+};
+
 
 /* Variable that you can only read from */
 
@@ -1183,6 +1209,7 @@ public:
                       &binlog_format_typelib,
                       fix_binlog_format_after_update)
   {};
+  bool check(THD *thd, set_var *var);
   bool is_readonly() const;
 };
 
@@ -1371,6 +1398,7 @@ uchar* find_named(I_List<NAMED_LIST> *list, const char *name, uint length,
 		NAMED_LIST **found);
 
 extern sys_var_str sys_var_general_log_path, sys_var_slow_log_path,
+       sys_var_backup_history_log_path, sys_var_backup_progress_log_path,
        sys_var_backupdir;
 
 /* key_cache functions */

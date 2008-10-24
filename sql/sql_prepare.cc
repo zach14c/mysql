@@ -105,7 +105,7 @@ class Select_fetch_protocol_binary: public select_send
   Protocol_binary protocol;
 public:
   Select_fetch_protocol_binary(THD *thd);
-  virtual bool send_fields(List<Item> &list, uint flags);
+  virtual bool send_result_set_metadata(List<Item> &list, uint flags);
   virtual bool send_data(List<Item> &items);
   virtual bool send_eof();
 #ifdef EMBEDDED_LIBRARY
@@ -258,7 +258,7 @@ static bool send_prep_stmt(Prepared_statement *stmt, uint columns)
   error= my_net_write(net, buff, sizeof(buff));
   if (stmt->param_count && ! error)
   {
-    error= thd->protocol_text.send_fields((List<Item> *)
+    error= thd->protocol_text.send_result_set_metadata((List<Item> *)
                                           &stmt->lex->param_list,
                                           Protocol::SEND_EOF);
   }
@@ -1373,7 +1373,7 @@ static int mysql_test_select(Prepared_statement *stmt,
       unit->prepare call above.
     */
     if (send_prep_stmt(stmt, lex->result->field_count(fields)) ||
-        lex->result->send_fields(fields, Protocol::SEND_EOF) ||
+        lex->result->send_result_set_metadata(fields, Protocol::SEND_EOF) ||
         thd->protocol->flush())
       goto error;
     DBUG_RETURN(2);
@@ -2774,19 +2774,19 @@ Select_fetch_protocol_binary::Select_fetch_protocol_binary(THD *thd_arg)
   :protocol(thd_arg)
 {}
 
-bool Select_fetch_protocol_binary::send_fields(List<Item> &list, uint flags)
+bool Select_fetch_protocol_binary::send_result_set_metadata(List<Item> &list, uint flags)
 {
   bool rc;
   Protocol *save_protocol= thd->protocol;
 
   /*
-    Protocol::send_fields caches the information about column types:
+    Protocol::send_result_set_metadata caches the information about column types:
     this information is later used to send data. Therefore, the same
     dedicated Protocol object must be used for all operations with
     a cursor.
   */
   thd->protocol= &protocol;
-  rc= select_send::send_fields(list, flags);
+  rc= select_send::send_result_set_metadata(list, flags);
   thd->protocol= save_protocol;
 
   return rc;
@@ -3568,7 +3568,14 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     if (query_cache_send_result_to_client(thd, thd->query,
                                           thd->query_length) <= 0)
     {
+      MYSQL_QUERY_EXEC_START(thd->query,
+                             thd->thread_id,
+                             (char *) (thd->db ? thd->db : ""),
+                             thd->security_ctx->priv_user,
+                             (char *) thd->security_ctx->host_or_ip,
+                             1);
       error= mysql_execute_command(thd);
+      MYSQL_QUERY_EXEC_DONE(error);
     }
   }
 
@@ -3596,6 +3603,9 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
 
   if (state == Query_arena::PREPARED)
     state= Query_arena::EXECUTED;
+
+  if (this->lex->sql_command == SQLCOM_CALL)
+    protocol->send_out_parameters(&this->lex->param_list);
 
   /*
     Log COM_EXECUTE to the general log. Note, that in case of SQL

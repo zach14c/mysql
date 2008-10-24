@@ -21,7 +21,7 @@ PARAMETER_UINT(index_chill_threshold, "Bytes of pending index data that is 'froz
 PARAMETER_UINT(io_threads, "Number of Falcon I/O threads", 2, 2, 20, 0, NULL)
 PARAMETER_UINT(large_blob_threshold, "Threshold for large blobs", 0, 160000, INT_MAX, 0, NULL)
 PARAMETER_UINT(lock_wait_timeout, "Transaction lock time period (seconds)", 0, 50, INT_MAX, 0, NULL)
-PARAMETER_UINT(page_size, "The page size used when creating a Falcon tablespace.", 1024, 4096, 32768, 0x0200, NULL)
+PARAMETER_UINT(page_size, "The page size used when creating a Falcon tablespace.", 2048, 4096, 32768, 0x0200, NULL)
 PARAMETER_UINT(record_chill_threshold, "Bytes of pending record data that is 'frozen' to the Falcon serial log.", 1, 5*1024*1024, 1024*1024*1024, 0, &updateRecordChillThreshold)
 PARAMETER_UINT(record_scavenge_floor, "A percentage of falcon_record_memory_threshold that defines the amount of record data that will remain in the record cache after a scavenge run.", 10, 50, 90, 0x2000, &StorageInterface::updateRecordScavengeFloor)
 PARAMETER_UINT(record_scavenge_threshold, "The percentage of falcon_record_memory_max that will cause the scavenger thread to start scavenging records from the record cache.", 10, 67, 100, 0x2000, &StorageInterface::updateRecordScavengeThreshold)

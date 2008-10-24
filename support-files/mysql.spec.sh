@@ -37,11 +37,6 @@
 %{?_with_cluster:%define CLUSTER_BUILD 1}
 %{!?_with_cluster:%define CLUSTER_BUILD 0}
 
-# use "rpmbuild --with federated" or "rpm --define '_with_federated 1'" (for RPM 3.x)
-# to build with federated support (off by default)
-%{?_with_federated:%define FEDERATED_BUILD 1}
-%{!?_with_federated:%define FEDERATED_BUILD 0}
-
 %if %{STATIC_BUILD}
 %define release 0
 %else
@@ -257,8 +252,8 @@ BuildMySQL() {
 # The --enable-assembler simply does nothing on systems that does not
 # support assembler speedups.
 sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
-	CC=\"${CC:-$MYSQL_BUILD_CC}\" \
-	CXX=\"${CXX:-$MYSQL_BUILD_CXX}\" \
+	CC=\"${MYSQL_BUILD_CC:-$CC}\" \
+	CXX=\"${MYSQL_BUILD_CXX:-$CXX}\" \
 	CFLAGS=\"$CFLAGS\" \
 	CXXFLAGS=\"$CXXFLAGS\" \
 	LDFLAGS=\"$MYSQL_BUILD_LDFLAGS\" \
@@ -347,11 +342,7 @@ BuildMySQL "--enable-shared \
 		--with-archive-storage-engine \
 		--with-csv-storage-engine \
 		--with-blackhole-storage-engine \
-%if %{FEDERATED_BUILD}
 		--with-federated-storage-engine \
-%else
-		--without-federated-storage-engine \
-%endif
 %ifarch i386 x86_64
 		--with-falcon \
 %else
@@ -392,11 +383,7 @@ BuildMySQL "--enable-shared \
 		--with-archive-storage-engine \
 		--with-csv-storage-engine \
 		--with-blackhole-storage-engine \
-%if %{FEDERATED_BUILD}
 		--with-federated-storage-engine \
-%else
-		--without-federated-storage-engine \
-%endif
 %ifarch i386 x86_64
 		--with-falcon \
 %else
@@ -467,6 +454,9 @@ install -m 755 $MBD/support-files/mysql.server $RBR%{_sysconfdir}/init.d/mysql
 
 # Install embedded server library in the build root
 install -m 644 $MBD/libmysqld/libmysqld.a $RBR%{_libdir}/mysql/
+
+# in RPMs, it is unlikely that anybody should use "sql-bench"
+rm -fr $RBR%{_datadir}/sql-bench
 
 # Create a symlink "rcmysql", pointing to the init.script. SuSE users
 # will appreciate that, as all services usually offer this.
@@ -657,6 +647,7 @@ fi
 
 %doc %attr(644, root, root) %{_infodir}/mysql.info*
 
+%doc %attr(644, root, man) %{_mandir}/man1/innochecksum.1*
 %doc %attr(644, root, man) %{_mandir}/man1/my_print_defaults.1*
 %doc %attr(644, root, man) %{_mandir}/man1/myisam_ftdump.1*
 %doc %attr(644, root, man) %{_mandir}/man1/myisamchk.1*
@@ -674,11 +665,13 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man1/mysqltest.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_tzinfo_to_sql.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_zap.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysqlbug.1*
 %doc %attr(644, root, man) %{_mandir}/man1/perror.1*
 %doc %attr(644, root, man) %{_mandir}/man1/replace.1*
 
 %ghost %config(noreplace,missingok) %{_sysconfdir}/my.cnf
 
+%attr(755, root, root) %{_bindir}/innochecksum
 %attr(755, root, root) %{_bindir}/my_print_defaults
 %attr(755, root, root) %{_bindir}/myisam_ftdump
 %attr(755, root, root) %{_bindir}/myisamchk
@@ -718,6 +711,7 @@ fi
 %attr(755, root, root) %{_bindir}/msql2mysql
 %attr(755, root, root) %{_bindir}/mysql
 %attr(755, root, root) %{_bindir}/mysql_find_rows
+%attr(755, root, root) %{_bindir}/mysql_upgrade_shell
 %attr(755, root, root) %{_bindir}/mysql_waitpid
 %attr(755, root, root) %{_bindir}/mysqlaccess
 %attr(755, root, root) %{_bindir}/mysqladmin
@@ -730,6 +724,7 @@ fi
 
 %doc %attr(644, root, man) %{_mandir}/man1/msql2mysql.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_find_rows.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlaccess.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqladmin.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlbinlog.1*
@@ -775,6 +770,8 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_config.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_desc.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_error_reporter.1*
+%doc %attr(644, root, man) %{_mandir}/man1/ndb_mgm.1*
+%doc %attr(644, root, man) %{_mandir}/man1/ndb_restore.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_print_backup_file.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_print_schema_file.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_print_sys_file.1*
@@ -786,13 +783,14 @@ fi
 
 %files ndb-extra
 %defattr(-,root,root,0755)
-%attr(755, root, root) %{_sbindir}/ndb_cpcd
 %attr(755, root, root) %{_bindir}/ndb_delete_all
 %attr(755, root, root) %{_bindir}/ndb_drop_index
 %attr(755, root, root) %{_bindir}/ndb_drop_table
+%attr(755, root, root) %{_sbindir}/ndb_cpcd
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_delete_all.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_drop_index.1*
 %doc %attr(644, root, man) %{_mandir}/man1/ndb_drop_table.1*
+%doc %attr(644, root, man) %{_mandir}/man1/ndb_cpcd.1*
 %endif
 
 %files devel
@@ -803,6 +801,7 @@ fi
 %dir %attr(755, root, root) %{_includedir}/mysql
 %dir %attr(755, root, root) %{_libdir}/mysql
 %{_includedir}/mysql/*
+%{_datadir}/aclocal/mysql.m4
 %{_libdir}/mysql/libdbug.a
 %{_libdir}/mysql/libheap.a
 %if %{have_libgcc}
@@ -852,6 +851,24 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
+
+- Removed the "Federated" storage engine option, and enabled in all
+
+* Tue Aug 26 2008 Joerg Bruehe <joerg@mysql.com>
+
+- Get rid of the "warning: Installed (but unpackaged) file(s) found:"
+  Some generated files aren't needed in RPMs:
+  - the "sql-bench/" subdirectory
+  Some files were missing:
+  - /usr/share/aclocal/mysql.m4  ("devel" subpackage)
+  - Manual "mysqlbug" ("server" subpackage)
+  - Program "innochecksum" and its manual ("server" subpackage)
+  - Manual "mysql_find_rows" ("client" subpackage)
+  - Script "mysql_upgrade_shell" ("client" subpackage)
+  - Program "ndb_cpcd" and its manual ("ndb-extra" subpackage)
+  - Manuals "ndb_mgm" + "ndb_restore" ("ndb-tools" subpackage)
+
 * Mon Mar 31 2008 Kent Boortz <kent@mysql.com>
 
 - Made the "Federated" storage engine an option

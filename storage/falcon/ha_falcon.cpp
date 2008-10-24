@@ -34,6 +34,7 @@
 #include "CmdGen.h"
 #include "InfoTable.h"
 #include "Format.h"
+#include "Error.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -72,7 +73,7 @@ static const char *falcon_extensions[] = {
 	NullS
 };
 
-static StorageHandler	*storageHandler;
+extern StorageHandler	*storageHandler;
 
 #define PARAMETER_UINT(_name, _text, _min, _default, _max, _flags, _update_function) \
 	uint falcon_##_name;
@@ -156,16 +157,37 @@ void flushFalconLogFile()
 		fflush(falcon_log_file);
 }
 
+bool checkExceptionSupport()
+{
+    // Validate that the code has been compiled with support for exceptions
+    // by throwing and catching an exception. If the executable does not
+    // support exceptions we will reach the return false statement
+	try
+		{
+		throw 1;
+		}
+	catch (int) 
+		{
+		return true;
+		}
+	return false;
+}
+
 int StorageInterface::falcon_init(void *p)
 {
 	DBUG_ENTER("falcon_init");
 	falcon_hton = (handlerton *)p;
 	my_bool error = false;
 
+	if (!checkExceptionSupport()) 
+		{
+		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work");
+		DBUG_RETURN(1);
+		}
+
 	StorageHandler::setDataDirectory(mysql_real_data_home);
 
-	if (!storageHandler)
-		storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
+	storageHandler = getFalconStorageHandler(sizeof(THR_LOCK));
 	
 	falcon_hton->state = SHOW_OPTION_YES;
 	falcon_hton->db_type = DB_TYPE_FALCON;
@@ -179,7 +201,6 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->create = falcon_create_handler;
 	falcon_hton->drop_database  = StorageInterface::dropDatabase;
 	falcon_hton->panic  = StorageInterface::panic;
-
 
 #if 0
 	falcon_hton->alter_table_flags  = StorageInterface::alter_table_flags;
@@ -203,6 +224,7 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->start_consistent_snapshot = StorageInterface::start_consistent_snapshot;
 
 	falcon_hton->alter_tablespace = StorageInterface::alter_tablespace;
+	falcon_hton->fill_is_table = StorageInterface::fill_is_table;
 	//falcon_hton->show_status  = StorageInterface::show_status;
 	falcon_hton->flags = HTON_NO_FLAGS;
 	storageHandler->addNfsLogger(falcon_debug_mask, StorageInterface::logger, NULL);
@@ -216,13 +238,12 @@ int StorageInterface::falcon_init(void *p)
 		}
 	catch(SQLException &e)
 		{
-		sql_print_error("Falcon: Exception '%s' during initialization",
-			e.getText());
+		sql_print_error("Falcon: %s", e.getText());
 		error = true;
 		}
 	catch(...)
 		{
-		sql_print_error(" Falcon: General exception in initialization");
+		sql_print_error("Falcon: General exception in initialization");
 		error = true;
 		}
 
@@ -230,8 +251,7 @@ int StorageInterface::falcon_init(void *p)
 	if (error)
 		{
 		// Cleanup after error
-		delete storageHandler;
-		storageHandler = 0;
+		falcon_deinit(0);
 		DBUG_RETURN(1);
 		}
 		
@@ -242,8 +262,10 @@ int StorageInterface::falcon_init(void *p)
 int StorageInterface::falcon_deinit(void *p)
 {
 	if(storageHandler)
+		{
 		storageHandler->shutdownHandler();
-
+		freeFalconStorageHandler();
+		}
 	return 0;
 }
 
@@ -392,7 +414,7 @@ typedef longlong      dec2;
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-StorageInterface::StorageInterface(handlerton *hton, st_table_share *table_arg)
+StorageInterface::StorageInterface(handlerton *hton, TABLE_SHARE *table_arg)
   : handler(hton, table_arg)
 {
 	ref_length = sizeof(lastRecord);
@@ -486,7 +508,6 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 		if (!storageShare->initialized)
 			{
-//			storageShare->lockIndexes(true);
 			storageShare->lock(true);
 
 			if (!storageShare->initialized)
@@ -510,7 +531,6 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 				}
 
 			storageShare->unlock();
-//			storageShare->unlockIndexes();
 			}
 		}
 
@@ -521,10 +541,10 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 	thr_lock_data_init((THR_LOCK *)storageShare->impure, &lockData, NULL);
 
-	ret = setIndexes();
-	
 	if (table)
 		mapFields(table);
+	
+	setIndexes(table);
 	
 	if (ret)
 		DBUG_RETURN(error(ret));
@@ -670,7 +690,6 @@ int StorageInterface::info(uint what)
 	DBUG_RETURN(0);
 }
 
-
 void StorageInterface::getDemographics(void)
 {
 	DBUG_ENTER("StorageInterface::getDemographics");
@@ -693,7 +712,7 @@ void StorageInterface::getDemographics(void)
 			{
 			ha_rows rows = 1 << indexDesc->numberSegments;
 
-			for (uint segment = 0; segment < key->key_parts; ++segment, rows >>= 1)
+			for (uint segment = 0; segment < (uint)indexDesc->numberSegments /*key->key_parts*/; ++segment, rows >>= 1)
 				{
 				ha_rows recordsPerSegment = (ha_rows)indexDesc->segmentRecordCounts[segment];
 				key->rec_per_key[segment] = (ulong) MAX(recordsPerSegment, rows);
@@ -854,6 +873,8 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 				}
 
 	mapFields(form);
+	
+	setIndexes(table);
 
 	DBUG_RETURN(0);
 }
@@ -872,12 +893,9 @@ int StorageInterface::createIndex(const char *schemaName, const char *tableName,
 	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 	
-	char indexName[indexNameSize];
-	storageShare->createIndexName(indexDesc.name, indexName);
-
 	CmdGen gen;
 	const char *unique = (key->flags & HA_NOSAME) ? "unique " : "";
-	gen.gen("create %sindex \"%s\" on %s.\"%s\" ", unique, indexName, schemaName, tableName);
+	gen.gen("create %sindex \"%s\" on %s.\"%s\" ", unique, indexDesc.name, schemaName, tableName);
 	genKeyFields(key, &gen);
 	const char *sql = gen.getString();
 
@@ -889,11 +907,8 @@ int StorageInterface::dropIndex(const char *schemaName, const char *tableName, T
 	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
 	
-	char indexName[indexNameSize];
-	storageShare->createIndexName(indexDesc.name, indexName);
-
 	CmdGen gen;
-	gen.gen("drop index %s.\"%s\"", schemaName, indexName);
+	gen.gen("drop index %s.\"%s\"", schemaName, indexDesc.name);
 	const char *sql = gen.getString();
 
 	return storageTable->dropIndex(&indexDesc, sql);
@@ -1036,7 +1051,7 @@ int StorageInterface::delete_all_rows()
 		DBUG_RETURN(my_errno=HA_ERR_WRONG_COMMAND);
 
 	int ret = 0;
-	struct st_table_share *tableShare = table_share;
+	TABLE_SHARE *tableShare = table_share;
 	const char *tableName = tableShare->normalized_path.str;
 	
 	if (!storageShare)
@@ -1079,14 +1094,19 @@ int StorageInterface::write_row(uchar *buff)
 
 	if (table->next_number_field && buff == table->record[0])
 		{
-		update_auto_increment();
+		int code = update_auto_increment();
+		/*
+		   May fail, e.g. due to an out of range value in STRICT mode.
+		*/
+		if (code)
+			DBUG_RETURN(code);
 
 		/*
 		   If the new value is less than the current highest value, it will be
 		   ignored by setSequenceValue().
 		*/
 
-		int code = storageShare->setSequenceValue(table->next_number_field->val_int());
+		code = storageShare->setSequenceValue(table->next_number_field->val_int());
 
 		if (code)
 			DBUG_RETURN(error(code));
@@ -1262,6 +1282,8 @@ int StorageInterface::start_consistent_snapshot(handlerton *hton, THD *thd)
 {
 	DBUG_ENTER("StorageInterface::start_consistent_snapshot");
 	int ret = storageHandler->startTransaction(thd, TRANSACTION_CONSISTENT_READ);
+ 	if (!ret)
+		trans_register_ha(thd, true, hton);
 	DBUG_RETURN(ret);
 
 }
@@ -1396,14 +1418,17 @@ int StorageInterface::index_init(uint idx, bool sorted)
 	nextRecord = 0;
 	haveStartKey = false;
 	haveEndKey = false;
+	int ret = 0;
 
-	int ret = storageTable->setCurrentIndex(idx);
+	ret = storageTable->setCurrentIndex(idx);
 
 	if (ret)
 		{
 		setIndex(table, idx);
 		ret = storageTable->setCurrentIndex(idx);
 		}
+		
+	// validateIndexes(table);
 		
 	if (ret)
 		DBUG_RETURN(error(ret));
@@ -1467,22 +1492,18 @@ void StorageInterface::getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *i
 {
 	KEY *keyInfo = table->key_info + indexId;
 	int numberKeys = keyInfo->key_parts;
-	char nameBuffer[indexNameSize];
 	
-	// Clean up the index name for internal use
-	
-	strncpy(indexDesc->rawName, (const char*)keyInfo->name, MIN(indexNameSize, (int)strlen(keyInfo->name)+1));
-	storageShare->cleanupFieldName(indexDesc->rawName, nameBuffer, sizeof(nameBuffer));
-	indexDesc->rawName[indexNameSize-1] = '\0';
-	
-	strncpy(indexDesc->name, (const char*)nameBuffer, MIN(indexNameSize, (int)strlen(nameBuffer)+1));
-	indexDesc->name[indexNameSize-1] = '\0';
-
 	indexDesc->id			  = indexId;
 	indexDesc->numberSegments = numberKeys;
 	indexDesc->unique		  = (keyInfo->flags & HA_NOSAME);
 	indexDesc->primaryKey	  = (table->s->primary_key == (uint)indexId);
-
+	
+	// Clean up the index name for internal use
+	
+	strncpy(indexDesc->rawName, (const char*)keyInfo->name, MIN(indexNameSize, (int)strlen(keyInfo->name)+1));
+	indexDesc->rawName[indexNameSize-1] = '\0';
+	storageShare->createIndexName(indexDesc->rawName, indexDesc->name, indexDesc->primaryKey);
+	
 	for (int n = 0; n < numberKeys; ++n)
 		{
 		StorageSegment *segment = indexDesc->segments + n;
@@ -1521,8 +1542,17 @@ int StorageInterface::rename_table(const char *from, const char *to)
 	if (ret)
 		DBUG_RETURN(error(ret));
 
+	storageTable->clearCurrentIndex();
+	storageShare->lockIndexes(true);
+	storageShare->lock(true);
+
 	ret = storageShare->renameTable(storageConnection, to);
 	
+	remapIndexes(table);
+	
+	storageShare->unlock();
+	storageShare->unlockIndexes();
+
 	if (ret)
 		DBUG_RETURN(error(ret));
 
@@ -1543,6 +1573,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 	storageTable->clearIndexBounds();
 	haveStartKey = false;
 	haveEndKey = false;
+	int ret = 0;
 
 	if (start_key && !storageTable->isKeyNull((const unsigned char*) start_key->key, start_key->length))
 		{
@@ -1565,7 +1596,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 		if (end_key->flag == HA_READ_BEFORE_KEY)
 			storageTable->setReadBeforeKey();
 
-		int ret = storageTable->setIndexBound((const unsigned char*) end_key->key,
+		ret = storageTable->setIndexBound((const unsigned char*) end_key->key,
 												end_key->length, UpperBound);
 		if (ret)
 			DBUG_RETURN(error(ret));
@@ -2011,16 +2042,12 @@ void StorageInterface::freeActiveBlobs(void)
 
 void StorageInterface::shutdown(handlerton *htons)
 {
-	if(storageHandler)
-		storageHandler->shutdownHandler();
+	falcon_deinit(0);
 }
 
 int StorageInterface::panic(handlerton* hton, ha_panic_function flag)
 {
-	if(storageHandler)
-		storageHandler->shutdownHandler();
-
-	return 0;
+	return falcon_deinit(0);
 }
 
 int StorageInterface::closeConnection(handlerton *hton, THD *thd)
@@ -2091,15 +2118,37 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	DBUG_RETURN(getMySqlError(ret));
 }
 
+int StorageInterface::fill_is_table(handlerton *hton, THD *thd, TABLE_LIST *tables, class Item *cond, enum enum_schema_tables schema_table_idx)
+{
+
+	InfoTableImpl infoTable(thd, tables, system_charset_info);
+
+	if (!storageHandler)
+		return 0;
+
+	switch (schema_table_idx)
+		{
+		case SCH_TABLESPACES:
+			storageHandler->getTableSpaceInfo(&infoTable);
+			break;
+		case SCH_FILES:
+			storageHandler->getTableSpaceFilesInfo(&infoTable);
+			break;
+		default:
+			return 0;
+		}
+
+	return infoTable.error;
+}
+
 int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_INFO *create_info, HA_ALTER_FLAGS *alter_flags, uint table_changes)
 {
 	DBUG_ENTER("StorageInterface::check_if_supported_alter");
 	tempTable = (create_info->options & HA_LEX_CREATE_TMP_TABLE) ? true : false;
 	HA_ALTER_FLAGS supported;
-	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX;
+	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX;
 						/**
-						| HA_ADD_COLUMN | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX
-						| HA_COLUMN_STORAGE | HA_COLUMN_FORMAT;
+						| HA_ADD_COLUMN | HA_COLUMN_STORAGE | HA_COLUMN_FORMAT;
 						**/
 	HA_ALTER_FLAGS notSupported = ~(supported);
 	
@@ -2136,46 +2185,6 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 			}
 		}
 		
-	// TODO for Add Index:
-	// 1. Check for supported ALTER combinations
-	// 2. Can error message be improved for non-null columns?
-	
-	if (alter_flags->is_set(HA_ADD_INDEX))
-		{
-		for (unsigned int n = 0; n < altered_table->s->keys; n++)
-			{
-			if (n != altered_table->s->primary_key)
-				{
-				KEY *key = altered_table->key_info + n;
-				KEY *tableEnd = table->key_info + table->s->keys;
-				KEY *tableKey;
-				
-				// Determine if this is a new index
-
-				for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
-					if (!strcmp(tableKey->name, key->name))
-						break;
-				
-				// Verify that each part is nullable
-				
-				if (tableKey >= tableEnd)
-					for (uint p = 0; p < key->key_parts; p++)
-						{
-						KEY_PART_INFO *keyPart = key->key_part + p;
-						if (keyPart && !keyPart->field->real_maybe_null())
-							{
-							DBUG_PRINT("info",("Online add index columns must be nullable"));
-							DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
-							}
-						}
-				}
-			}
-		}
-		
-	if (alter_flags->is_set(HA_DROP_INDEX))
-		{
-		}
-		
 	DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 }
 
@@ -2187,10 +2196,10 @@ int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREA
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		ret = addColumn(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	if (alter_flags->is_set(HA_ADD_INDEX) && !ret)
+	if ((alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX)) && !ret)
 		ret = addIndex(thd, altered_table, create_info, alter_info, alter_flags);
 		
-	if (alter_flags->is_set(HA_DROP_INDEX) && !ret)
+	if ((alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX)) && !ret)
 		ret = dropIndex(thd, altered_table, create_info, alter_info, alter_flags);
 		
 	DBUG_RETURN(ret);
@@ -2373,7 +2382,7 @@ int StorageInterface::setIndex(TABLE *table, int indexId)
 	return storageTable->setIndex(&indexDesc);
 }
 
-int StorageInterface::setIndexes(void)
+int StorageInterface::setIndexes(TABLE *table)
 {
 	int ret = 0;
 	
@@ -2381,14 +2390,14 @@ int StorageInterface::setIndexes(void)
 		return ret;
 
 	storageShare->lockIndexes(true);
+	storageShare->lock(true);
 
-	if (!storageShare->haveIndexes(table->s->keys))
-		for (uint n = 0; n < table->s->keys; ++n)
-			if ((ret = setIndex(table, n)))
-				break;
+	ret = remapIndexes(table);
+	// validateIndexes(table, true);
 
+	storageShare->unlock();
 	storageShare->unlockIndexes();
-
+	
 	return ret;
 }
 
@@ -2396,14 +2405,40 @@ int StorageInterface::remapIndexes(TABLE *table)
 {
 	int ret = 0;
 	
+	storageShare->deleteIndexes();
+
 	if (!table)
 		return ret;
 		
-	storageShare->deleteIndexes();
-
 	for (uint n = 0; n < table->s->keys; ++n)
 		if ((ret = setIndex(table, n)))
 			break;
+
+	return ret;
+}
+
+bool StorageInterface::validateIndexes(TABLE *table, bool exclusiveLock)
+{
+	bool ret = true;
+	
+	if (!table)
+		return false;
+	
+	storageShare->lockIndexes(exclusiveLock);
+		
+	for (uint n = 0; (n < table->s->keys) && ret; ++n)
+		{
+		StorageIndexDesc indexDesc;
+		getKeyDesc(table, n, &indexDesc);
+		
+		if (!storageShare->validateIndex(n, &indexDesc))
+			ret = false;
+		}
+	
+	if (ret && (table->s->keys != (uint)storageShare->numberIndexes()))
+		ret = false;
+	
+	storageShare->unlockIndexes();
 
 	return ret;
 }
@@ -2598,13 +2633,7 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 			continue;
 			
 		Field *field = fieldMap[fieldFormat->fieldId];
-
-		if (!field)
-			{
-			dataStream->encodeNull();
-			
-			continue;
-			}
+		ASSERT(field);
 		
 		if (ptrDiff)
 			field->move_field_offset(ptrDiff);
@@ -3203,87 +3232,6 @@ int NfsPluginHandler::deinitTableSpaceIOInfo(void *p)
 
 //*****************************************************************************
 //
-// FALCON_TABLESPACES
-//
-//*****************************************************************************
-
-int NfsPluginHandler::getTableSpaceInfo(THD *thd, TABLE_LIST *tables, COND *cond)
-{
-	InfoTableImpl infoTableSpace(thd, tables, system_charset_info);
-
-	if (storageHandler)
-		storageHandler->getTableSpaceInfo(&infoTableSpace);
-
-	return infoTableSpace.error;
-}
-
-ST_FIELD_INFO tableSpaceFieldInfo[]=
-{
-	{"TABLESPACE_NAME",	127, MYSQL_TYPE_STRING,		0, 0, "TableSpace Name", SKIP_OPEN_TABLE},
-	{"TYPE",			127, MYSQL_TYPE_STRING,		0, 0, "Type", SKIP_OPEN_TABLE},
-	{"COMMENT",			127, MYSQL_TYPE_STRING,		0, 0, "Comment", SKIP_OPEN_TABLE},
-	{0,					0, MYSQL_TYPE_STRING,		0, 0, 0, SKIP_OPEN_TABLE}
-};
-
-int NfsPluginHandler::initTableSpaceInfo(void *p)
-{
-	DBUG_ENTER("initTableSpaceInfo");
-	ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *)p;
-	schema->fields_info = tableSpaceFieldInfo;
-	schema->fill_table = NfsPluginHandler::getTableSpaceInfo;
-
-	DBUG_RETURN(0);
-}
-
-int NfsPluginHandler::deinitTableSpaceInfo(void *p)
-{
-	DBUG_ENTER("deinitTableSpaceInfo");
-	DBUG_RETURN(0);
-}
-
-//*****************************************************************************
-//
-// FALCON_TABLESPACE_FILES
-//
-//*****************************************************************************
-
-int NfsPluginHandler::getTableSpaceFilesInfo(THD *thd, TABLE_LIST *tables, COND *cond)
-{
-	InfoTableImpl infoTableSpace(thd, tables, system_charset_info);
-
-	if (storageHandler)
-		storageHandler->getTableSpaceFilesInfo(&infoTableSpace);
-
-	return infoTableSpace.error;
-}
-
-ST_FIELD_INFO tableSpaceFilesFieldInfo[]=
-{
-	{"TABLESPACE_NAME",	127, MYSQL_TYPE_STRING,		0, 0, "TableSpace Name", SKIP_OPEN_TABLE},
-	{"TYPE",			127, MYSQL_TYPE_STRING,		0, 0, "Type", SKIP_OPEN_TABLE},
-	{"FILE_ID",			127, MYSQL_TYPE_LONG,		0, 0, "File ID", SKIP_OPEN_TABLE},
-	{"FILE_NAME",		127, MYSQL_TYPE_STRING,		0, 0, "File Name", SKIP_OPEN_TABLE},
-	{0,					0, MYSQL_TYPE_STRING,		0, 0, 0, SKIP_OPEN_TABLE}
-};
-
-int NfsPluginHandler::initTableSpaceFilesInfo(void *p)
-{
-	DBUG_ENTER("initTableSpaceFilesInfo");
-	ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *)p;
-	schema->fields_info = tableSpaceFilesFieldInfo;
-	schema->fill_table = NfsPluginHandler::getTableSpaceFilesInfo;
-
-	DBUG_RETURN(0);
-}
-
-int NfsPluginHandler::deinitTableSpaceFilesInfo(void *p)
-{
-	DBUG_ENTER("deinitTableSpaceFilesInfo");
-	DBUG_RETURN(0);
-}
-
-//*****************************************************************************
-//
 // FALCON_TRANSACTIONS
 //
 //*****************************************************************************
@@ -3688,8 +3636,6 @@ static st_mysql_information_schema falcon_transactions			=	{ MYSQL_INFORMATION_S
 static st_mysql_information_schema falcon_transaction_summary	=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_syncobjects			=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_serial_log_info		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
-static st_mysql_information_schema falcon_tablespaces			=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
-static st_mysql_information_schema falcon_tablespace_files		=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 static st_mysql_information_schema falcon_version				=	{ MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION};
 
 mysql_declare_plugin(falcon)
@@ -3852,36 +3798,6 @@ mysql_declare_plugin(falcon)
 	PLUGIN_LICENSE_GPL,
 	NfsPluginHandler::initFalconVersionInfo,			/* plugin init */
 	NfsPluginHandler::deinitFalconVersionInfo,			/* plugin deinit */
-	0x0005,
-	NULL,										/* status variables */
-	NULL,										/* system variables */
-	NULL										/* config options   */
-	},
-
-	{
-	MYSQL_INFORMATION_SCHEMA_PLUGIN,
-	&falcon_tablespaces,
-	"FALCON_TABLESPACES",
-	"MySQL AB",
-	"Falcon TableSpaces.",
-	PLUGIN_LICENSE_GPL,
-	NfsPluginHandler::initTableSpaceInfo,		/* plugin init */
-	NfsPluginHandler::deinitTableSpaceInfo,		/* plugin deinit */
-	0x0005,
-	NULL,										/* status variables */
-	NULL,										/* system variables */
-	NULL										/* config options   */
-	},
-
-	{
-	MYSQL_INFORMATION_SCHEMA_PLUGIN,
-	&falcon_tablespace_files,
-	"FALCON_TABLESPACE_FILES",
-	"MySQL AB",
-	"Falcon TableSpace Files.",
-	PLUGIN_LICENSE_GPL,
-	NfsPluginHandler::initTableSpaceFilesInfo,	/* plugin init */
-	NfsPluginHandler::deinitTableSpaceFilesInfo,/* plugin deinit */
 	0x0005,
 	NULL,										/* status variables */
 	NULL,										/* system variables */

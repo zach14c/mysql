@@ -368,8 +368,6 @@ int RecordVersion::thaw()
 	// true, then the record data can be restored from the serial log. If writePending
 	// is false, then the record data has been written to the data pages.
 	
-	bool wasWritePending = (trans) ? trans->writePending : false;
-
 	if (trans && trans->writePending)
 		{
 		trans->addRef();
@@ -416,11 +414,9 @@ int RecordVersion::thaw()
 			}
 		}
 		
-	if (bytesRestored <= 0)
-		Log::debug("RecordVersion::thaw: writePending %d, was %d, recordFetched %d, data %p\n",
-					trans->writePending, wasWritePending, recordFetched, data.record);
-
-	ASSERT(bytesRestored > 0 || data.record == NULL);
+	if (state == recChilled)
+		ASSERT(bytesRestored > 0 || data.record == NULL);
+		
 	state = recData;
 		
 	return bytesRestored;

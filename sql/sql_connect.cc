@@ -987,7 +987,7 @@ bool login_connection(THD *thd)
 
   if (error)
   {						// Wrong permissions
-#ifdef __NT__
+#ifdef _WIN32
     if (vio_type(net->vio) == VIO_TYPE_NAMEDPIPE)
       my_sleep(1000);				/* must wait after eof() */
 #endif
@@ -1144,6 +1144,9 @@ pthread_handler_t handle_one_connection(void *arg)
     if (login_connection(thd))
       goto end_thread;
 
+    MYSQL_CONNECTION_START(thd->thread_id, thd->security_ctx->priv_user,
+                           (char *) thd->security_ctx->host_or_ip);
+  
     prepare_new_connection_state(thd);
 
     while (!net->error && net->vio != 0 &&

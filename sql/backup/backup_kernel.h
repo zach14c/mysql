@@ -87,6 +87,11 @@ class Backup_restore_ctx: public backup::Logger
       ongoing backup/restore operation.  If pointer is null, no
       operation is currently running. */
   static Backup_restore_ctx *current_op;
+  /**
+     Indicates if @c run_lock mutex was initialized and thus it should
+     be properly destroyed during shutdown. @sa backup_shutdown().
+   */
+  static bool run_lock_initialized;
   static pthread_mutex_t  run_lock; ///< To guard @c current_op.
 
   /** 
@@ -129,6 +134,8 @@ class Backup_restore_ctx: public backup::Logger
   int lock_tables_for_restore();
   int unlock_tables();
   
+  int report_stream_open_failure(int open_error, const LEX_STRING *location);
+
   friend class Backup_info;
   friend class Restore_info;
   friend int backup_init();
@@ -148,7 +155,7 @@ bool Backup_restore_ctx::is_valid() const
 inline
 ulonglong Backup_restore_ctx::op_id() const
 {
-  return m_op_id; // inherited from Logger class
+  return get_op_id(); // inherited from Logger class
 }
 
 /// Disable foreign key constraint checks (needed during restore).

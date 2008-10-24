@@ -27,11 +27,11 @@
 #include "SyncObject.h"
 
 //#define COLLECT_BDB_HISTORY
-#if defined _DEBUG  && defined COLLECT_BDB_HISTORY
-	#define ADD_HISTORY          +1, THIS_FILE, __LINE__
-	#define COMMA_ADD_HISTORY   ,+1, THIS_FILE, __LINE__
-	#define REL_HISTORY          -1, THIS_FILE, __LINE__
-	#define BDB_HISTORY(_bdb_)   {if (_bdb_) (_bdb_)->addHistory(0, THIS_FILE, __LINE__);}
+#if defined COLLECT_BDB_HISTORY
+	#define ADD_HISTORY          +1, __FILE__, __LINE__
+	#define COMMA_ADD_HISTORY   ,+1, __FILE__, __LINE__
+	#define REL_HISTORY          -1, __FILE__, __LINE__
+	#define BDB_HISTORY(_bdb_)   {if (_bdb_) (_bdb_)->addHistory(0, __FILE__, __LINE__);}
 	#define MAX_BDB_HISTORY 100
 	#define BDB_HISTORY_FILE_LEN 16
 	struct bdb_history
@@ -97,6 +97,9 @@ public:
 	SyncObject		syncWrite;
 	time_t			lastMark;
 	LockType		lockType;
+#ifdef CHECK_STALLED_BDB
+	int		stallCount;
+#endif // CHECK_STALLED_BDB
 	bool			flushIt;				// PageWriter wants to hear about this
 	bool			isDirty;
 	bool			isRegistered;			// Register with PageWrite on next release

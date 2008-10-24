@@ -31,6 +31,7 @@
 #include "rpl_filter.h"
 #include "rpl_utility.h"
 #include "rpl_record.h"
+#include "transaction.h"
 #include <my_dir.h>
 
 #endif /* MYSQL_CLIENT */
@@ -3353,6 +3354,17 @@ int Start_log_event_v3::do_apply_event(Relay_log_info const *rli)
       close_temporary_tables(thd);
       cleanup_load_tmpdir();
     }
+    else
+    {
+      /*
+        Set all temporary tables thread references to the current thread
+        as they may point to the "old" SQL slave thread in case of its
+        restart.
+      */
+      TABLE *table;
+      for (table= thd->temporary_tables; table; table= table->next)
+        table->in_use= thd;
+    }
     break;
 
     /*
@@ -5093,7 +5105,7 @@ int Xid_log_event::do_apply_event(Relay_log_info const *rli)
   /* For a slave Xid_log_event is COMMIT */
   general_log_print(thd, COM_QUERY,
                     "COMMIT /* implicit, from Xid_log_event */");
-  return end_trans(thd, COMMIT);
+  return trans_commit(thd);
 }
 
 Log_event::enum_skip_reason
@@ -7417,7 +7429,7 @@ Rows_log_event::do_update_pos(Relay_log_info *rli)
       are involved, commit the transaction and flush the pending event to the
       binlog.
     */
-    error= ha_autocommit_or_rollback(thd, 0);
+    error= trans_commit_stmt(thd);
 
     /*
       Now what if this is not a transactional engine? we still need to
@@ -7885,8 +7897,9 @@ int Table_map_log_event::do_apply_event(Relay_log_info const *rli)
 
   int error= 0;
 
-  if (!rpl_filter->db_ok(table_list->db) ||
-      (rpl_filter->is_on() && !rpl_filter->tables_ok("", table_list)))
+  if (rli->sql_thd->slave_thread /* filtering is for slave only */ &&
+      (!rpl_filter->db_ok(table_list->db) ||
+       (rpl_filter->is_on() && !rpl_filter->tables_ok("", table_list))))
   {
     my_free(memory, MYF(MY_WME));
   }
@@ -8101,7 +8114,6 @@ Write_rows_log_event::do_before_row_operations(const Slave_reporting_capability 
     */
   }
 
-  m_table->file->ha_start_bulk_insert(0);
   /*
     We need TIMESTAMP_NO_AUTO_SET otherwise ha_write_row() will not use fill
     any TIMESTAMP column with data from the row but instead will use
@@ -8255,6 +8267,16 @@ Rows_log_event::write_row(const Relay_log_info *const rli,
   // Temporary fix to find out why it fails [/Matz]
   memcpy(m_table->write_set->bitmap, m_cols.bitmap, (m_table->write_set->n_bits + 7) / 8);
 
+  if (m_curr_row == m_rows_buf)
+  {
+    /* this is the first row to be inserted, we estimate the rows with
+       the size of the first row and use that value to initialize
+       storage engine for bulk insertion */
+    ulong estimated_rows= (m_rows_end - m_curr_row) / (m_curr_row_end - m_curr_row);
+    m_table->file->ha_start_bulk_insert(estimated_rows);
+  }
+  
+  
 #ifndef DBUG_OFF
   DBUG_DUMP("record[0]", table->record[0], table->s->reclength);
   DBUG_PRINT_BITSET("debug", "write_set = %s", table->write_set);
@@ -8673,10 +8695,10 @@ int Rows_log_event::find_row(const Relay_log_info *rli)
       the necessary bits on the bytes and don't set the filler bits
       correctly.
     */
-    my_ptrdiff_t const pos=
-      table->s->null_bytes > 0 ? table->s->null_bytes - 1 : 0;
-    table->record[0][pos]= 0xFF;
-    
+    if (table->s->null_bytes > 0)
+      table->record[0][table->s->null_bytes - 1]|=
+        256U - (1U << table->s->last_null_bit_pos);
+
     if ((error= table->file->index_read_map(table->record[0], m_key, 
                                             HA_WHOLE_KEY,
                                             HA_READ_KEY_EXACT)))

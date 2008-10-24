@@ -120,6 +120,8 @@ public: // public interface
 
    void save_binlog_pos(const ::LOG_INFO&);
 
+   time_t get_vp_time() const;
+
  protected: // internal interface
   
   // Populate the catalogue
@@ -741,6 +743,32 @@ Image_info::Ts* Image_info::get_ts(uint pos) const
   return m_ts_map[pos];
 }
 
+inline
+time_t Image_info::get_vp_time() const
+{
+  struct tm time;
+  time_t tz_offset;
+
+  bzero(&time,sizeof(time));
+
+  // Determine system timezone offset by calculating offset of the Epoch date.
+  time.tm_year=70;
+  time.tm_mday=1;
+  tz_offset= mktime(&time);
+
+  time.tm_year= vp_time.year;
+  time.tm_mon= vp_time.mon;
+  time.tm_mday= vp_time.mday;
+  time.tm_hour= vp_time.hour;
+  time.tm_min= vp_time.min;
+  time.tm_sec= vp_time.sec;  
+
+  /*
+    Note: mktime() assumes that time is expressed as local time and vp_time is
+    in UTC. Hence we must correct the result to get it right.
+   */ 
+  return mktime(&time) - tz_offset;
+}
 
 /**
   Save time inside a @c bstream_time_t structure (helper function).
@@ -794,9 +822,10 @@ void Image_info::save_vp_time(const time_t time)
 inline
 void Image_info::save_binlog_pos(const ::LOG_INFO &li)
 {
-  // save current binlog file name
+  // save current binlog file name only, not full path
   m_binlog_file.length(0);
-  m_binlog_file.append(li.log_file_name);
+  int dn_length= dirname_length(li.log_file_name);
+  m_binlog_file.append(li.log_file_name + dn_length);
 
   // store binlog coordinates
   binlog_pos.pos= (unsigned long int)li.pos;
