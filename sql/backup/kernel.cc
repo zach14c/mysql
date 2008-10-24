@@ -95,6 +95,7 @@
 int backup_init()
 {
   pthread_mutex_init(&Backup_restore_ctx::run_lock, MY_MUTEX_INIT_FAST);
+  Backup_restore_ctx::run_lock_initialized= TRUE;
   return 0;
 }
 
@@ -103,10 +104,18 @@ int backup_init()
   
   @note This function is called in the server shut-down sequences, just before
   it shuts-down all its plugins.
+
+  @note Due to way in which server's code is organized this function might be
+  called and should work normally even in situation when backup_init() was not
+  called at all.
  */
 void backup_shutdown()
 {
-  pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+  if (Backup_restore_ctx::run_lock_initialized)
+  {
+    pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+    Backup_restore_ctx::run_lock_initialized= FALSE;
+  }
 }
 
 /*
@@ -125,6 +134,10 @@ static int send_reply(Backup_restore_ctx &context);
   @param[IN] backupdir  value of the backupdir variable from server.
 
   @note This function sends response to the client (ok, result set or error).
+
+  @note Both BACKUP and RESTORE should perform implicit commit at the beginning
+  and at the end of execution. This is done by the parser after marking these
+  commands with appropriate flags in @c sql_command_flags[] in sql_parse.cc.
 
   @returns 0 on success, error code otherwise.
  */
@@ -254,7 +267,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
  */
 int send_error(Backup_restore_ctx &log, int error_code, ...)
 {
-  MYSQL_ERROR *error= log.last_saved_error();
+  util::SAVED_MYSQL_ERROR *error= log.last_saved_error();
 
   if (error && !util::report_mysql_error(log.thd(), error, error_code))
   {
@@ -362,6 +375,7 @@ class Mem_allocator
 // static members
 
 Backup_restore_ctx *Backup_restore_ctx::current_op= NULL;
+bool Backup_restore_ctx::run_lock_initialized= FALSE;
 pthread_mutex_t Backup_restore_ctx::run_lock;
 
 
@@ -572,6 +586,21 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
 
   if (!info->is_valid())
     return NULL;
+
+  /*
+    If binlog is enabled, set BSTREAM_FLAG_BINLOG in the header to indicate
+    that validity point's binlog position will be stored in the image 
+    (in its summary section).
+    
+    This is not completely safe because theoretically even if now binlog is 
+    active, it can be disabled before we reach the validity point and then we 
+    will not store binlog position even though the flag is set. To fix this 
+    problem the format of backup image must be changed (some flags must be 
+    stored in the summary section which is written at the end of backup 
+    operation).
+  */
+  if (mysql_bin_log.is_open())
+    info->flags|= BSTREAM_FLAG_BINLOG; 
 
   info->save_start_time(when);
   m_catalog= info;
@@ -791,17 +820,6 @@ int Backup_restore_ctx::close()
 
   time_t when= my_time(0);
 
-  // If auto commit is turned off, be sure to commit the transaction
-  /* 
-    Note: this code needs to be refactored (see BUG#38261). When refactoring
-    make sure that errors are detected and reported.
-  */
-  if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-  {
-    trans_commit_stmt(m_thd);
-    trans_commit_implicit(m_thd);
-  }
-
   // unlock tables if they are still locked
 
   // FIXME: detect errors if reported.
@@ -826,18 +844,6 @@ int Backup_restore_ctx::close()
 
   if (m_catalog)
     m_catalog->save_end_time(when); // Note: no errors.
-
-  // destroy backup stream's memory allocator (this frees memory)
-
-  delete mem_alloc;
-  mem_alloc= NULL;
-  
-  // deregister this operation if it was running
-  pthread_mutex_lock(&run_lock);
-  if (current_op == this) {
-    current_op= NULL;
-  }
-  pthread_mutex_unlock(&run_lock);
 
   /* 
     Remove the location, if asked for.
@@ -864,6 +870,24 @@ int Backup_restore_ctx::close()
 
   if (!m_error)
     report_stop(when, TRUE);
+
+  /* 
+    Destroy backup stream's memory allocator (this frees memory)
+  
+    Note that from now on data stored in this object might be corrupted. For 
+    example the binlog file name is a string stored in memory allocated by
+    the allocator which will be freed now.
+  */
+  
+  delete mem_alloc;
+  mem_alloc= NULL;
+  
+  // deregister this operation if it was running
+  pthread_mutex_lock(&run_lock);
+  if (current_op == this) {
+    current_op= NULL;
+  }
+  pthread_mutex_unlock(&run_lock);
 
   m_state= CLOSED;
   return m_error;
@@ -1116,6 +1140,15 @@ int Backup_restore_ctx::do_restore()
   // FIXME: detect errors.
   // FIXME: error logging.
   m_thd->main_da.reset_diagnostics_area();
+
+  /*
+    Report validity point time and binlog position stored in the backup image
+    (in the summary section).
+   */ 
+
+  report_vp_time(info.get_vp_time(), FALSE); // FALSE = do not write to progress log
+  if (info.flags & BSTREAM_FLAG_BINLOG)
+    report_binlog_pos(info.binlog_pos);
 
   // FIXME: detect errors if reported.
   // FIXME: error logging.
@@ -1801,8 +1834,8 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     {
       DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc,
-                              obs::describe_tablespace(sobj)->ptr(),
-                              obs::describe_tablespace(ts)->ptr());
+                              obs::get_tablespace_description(sobj)->ptr(),
+                              obs::get_tablespace_description(ts)->ptr());
       return BSTREAM_ERROR;
     }
   }
@@ -1822,7 +1855,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
             error handling work in WL#4384 with possible implementation
             via a related bug report.
     */
-    if (!obs::user_exists(thd, sobj->get_name()))
+    if (!obs::check_user_existence(thd, sobj->get_name()))
     {
       info->m_ctx.report_error(log_level::WARNING, 
                                ER_BACKUP_GRANT_SKIPPED,

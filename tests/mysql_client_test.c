@@ -18408,6 +18408,49 @@ static void test_bug38486(void)
   DBUG_VOID_RETURN;
 }
 
+
+/**
+     Bug# 33831 mysql_real_connect() should fail if
+     given an already connected MYSQL handle.
+*/
+
+static void test_bug33831(void)
+{
+  MYSQL *l_mysql;
+  my_bool error;
+
+  DBUG_ENTER("test_bug33831");
+  
+  error= 0;
+
+  if (!(l_mysql= mysql_init(NULL)))
+  {
+    myerror("mysql_init() failed");
+    DIE_UNLESS(0);
+  }
+  if (!(mysql_real_connect(l_mysql, opt_host, opt_user,
+                           opt_password, current_db, opt_port,
+                           opt_unix_socket, 0)))
+  {
+    myerror("connection failed");
+    DIE_UNLESS(0);
+  }
+
+  if (mysql_real_connect(l_mysql, opt_host, opt_user,
+                         opt_password, current_db, opt_port,
+                         opt_unix_socket, 0))
+  {
+    myerror("connection should have failed");
+    DIE_UNLESS(0);
+  }
+
+
+  mysql_close(l_mysql);
+  
+  DBUG_VOID_RETURN;
+}
+
+
 /*
   Read and parse arguments and MySQL options from my.cnf
 */
@@ -18722,6 +18765,7 @@ static struct my_tests_st my_tests[]= {
   { "test_wl4284_1", test_wl4284_1 },
   { "test_wl4435",   test_wl4435 },
   { "test_bug38486", test_bug38486 },
+  { "test_bug33831", test_bug33831 },
   { 0, 0 }
 };
 

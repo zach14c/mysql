@@ -1914,6 +1914,7 @@ void close_connection(THD *thd, uint errcode, bool lock)
   }
   if (lock)
     (void) pthread_mutex_unlock(&LOCK_thread_count);
+  MYSQL_CONNECTION_DONE((int) errcode, thd->thread_id);
   DBUG_VOID_RETURN;
 }
 #endif /* EMBEDDED_LIBRARY */
@@ -4026,12 +4027,12 @@ with --log-bin instead.");
     }
     else
     {
-      global_system_variables.binlog_format= BINLOG_FORMAT_STMT;
+      global_system_variables.binlog_format= BINLOG_FORMAT_MIXED;
     }
   }
   else
     if (opt_binlog_format_id == BINLOG_FORMAT_UNSPEC)
-      global_system_variables.binlog_format= BINLOG_FORMAT_STMT;
+      global_system_variables.binlog_format= BINLOG_FORMAT_MIXED;
     else
     {
       DBUG_ASSERT(global_system_variables.binlog_format != BINLOG_FORMAT_UNSPEC);
@@ -5989,10 +5990,6 @@ struct my_option my_long_options[] =
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
   {"default-storage-engine", OPT_STORAGE_ENGINE,
    "Set the default storage engine (table type) for tables.",
-   (uchar**)&default_storage_engine_str, (uchar**)&default_storage_engine_str,
-   0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
-  {"default-table-type", OPT_STORAGE_ENGINE,
-   "(deprecated) Use --default-storage-engine.",
    (uchar**)&default_storage_engine_str, (uchar**)&default_storage_engine_str,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"default-time-zone", OPT_DEFAULT_TIME_ZONE, "Set the default time zone.",

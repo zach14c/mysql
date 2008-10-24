@@ -7026,7 +7026,6 @@ view_err:
   /* Copy the data if necessary. */
   thd->count_cuted_fields= CHECK_FIELD_WARN;	// calc cuted fields
   thd->cuted_fields=0L;
-  thd_proc_info(thd, "copy to tmp table");
   copied=deleted=0;
   /*
     We do not copy data for MERGE tables. Only the children have data.
@@ -7037,6 +7036,7 @@ view_err:
     /* We don't want update TIMESTAMP fields during ALTER TABLE. */
     new_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
     new_table->next_number_field=new_table->found_next_number_field;
+    thd_proc_info(thd, "copy to tmp table");
     error= copy_data_between_tables(table, new_table,
                                     alter_info->create_list, ignore,
                                    order_num, order, &copied, &deleted,
@@ -7606,6 +7606,12 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	{
 	  for (;;)
 	  {
+            if (thd->killed)
+            {
+              t->file->ha_rnd_end();
+              thd->protocol->remove_last_row();
+              goto err;
+            }
 	    ha_checksum row_crc= 0;
             int error= t->file->rnd_next(t->record[0]);
             if (unlikely(error))

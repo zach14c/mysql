@@ -130,7 +130,7 @@ public:
   void size(longlong s) { m_op_hist.size= s; }
   void start(time_t when);
   void stop(time_t when);
-  void vp_time(time_t when);
+  void vp_time(time_t when, bool report);
   void add_driver(const char* driver);
 
 private:
