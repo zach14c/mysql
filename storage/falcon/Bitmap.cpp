@@ -722,7 +722,7 @@ void Bitmap::unitTest(void)
 		tester->set(bitNumber);
 		}
 
-	for (int bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
+	for (bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
 		{
 		if (!tester->isSet(bitNumber))
 			Log::log("** Error - %d should be set\n", bitNumber);
@@ -750,7 +750,7 @@ void Bitmap::unitTest(void)
 		tester->set(bitNumber);
 		}
 
-	for (int bitNumber = 0; (bitNumber = tester->nextSet(bitNumber)) >= 0;)
+	for (bitNumber = 0; (bitNumber = tester->nextSet(bitNumber)) >= 0;)
 		{
 		Log::log("Clearing bit %d\n", bitNumber);
 		tester->clear(bitNumber);
@@ -773,13 +773,13 @@ void Bitmap::unitTest(void)
 		tester->set(bitNumber);
 		}
 
-	for (int bitNumber = 0; (bitNumber = tester->nextSet( pseudoRand(bitNumber, 1800000))) >= 0;)
+	for (bitNumber = 0; (bitNumber = tester->nextSet( pseudoRand(bitNumber, 1800000))) >= 0;)
 		{
 		Log::log("Clearing bit %d\n", bitNumber);
 		tester->clear(bitNumber);
 		}
 
-	for (int bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
+	for (bitNumber = 0; (bitNumber = tester->nextSet(0)) >= 0;)
 		{
 		Log::log("Clearing bit %d\n", bitNumber);
 		tester->clear(bitNumber);

@@ -2434,7 +2434,16 @@ void Database::updateCardinalities(void)
 	syncTbl.unlock();
 	syncDDL.unlock();
 
-	commitSystemTransaction();
+	try
+		{
+		commitSystemTransaction();
+		}
+	catch (...)
+		{
+		// Ignores any errors from committing the updates of the cardinalities
+		// Situations where this might happen can be due to problems with
+		// writing to the serial log
+		}
 }
 
 void Database::sync()
