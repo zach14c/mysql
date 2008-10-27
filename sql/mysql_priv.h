@@ -530,7 +530,7 @@ enum open_table_mode
   Dont report errors for individual rows,
   But just report error on commit (or read ofcourse)
 */
-#define OPTION_ALLOW_BATCH              (ULL(1) << 33) // THD, intern (slave)
+#define OPTION_ALLOW_BATCH              (ULL(1) << 34) // THD, intern (slave)
 
 /**
   Maximum length of time zone name that we support
@@ -1322,6 +1322,9 @@ bool mysql_insert(THD *thd,TABLE_LIST *table,List<Item> &fields,
                   List<List_item> &values, List<Item> &update_fields,
                   List<Item> &update_values, enum_duplicates flag,
                   bool ignore);
+void upgrade_lock_type_for_insert(THD *thd, thr_lock_type *lock_type,
+                                  enum_duplicates duplic,
+                                  bool is_multi_insert);
 int check_that_all_fields_are_given_values(THD *thd, TABLE *entry,
                                            TABLE_LIST *table_list);
 void prepare_triggers_for_insert_stmt(TABLE *table);

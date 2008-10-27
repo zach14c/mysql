@@ -95,6 +95,7 @@
 int backup_init()
 {
   pthread_mutex_init(&Backup_restore_ctx::run_lock, MY_MUTEX_INIT_FAST);
+  Backup_restore_ctx::run_lock_initialized= TRUE;
   return 0;
 }
 
@@ -103,10 +104,18 @@ int backup_init()
   
   @note This function is called in the server shut-down sequences, just before
   it shuts-down all its plugins.
+
+  @note Due to way in which server's code is organized this function might be
+  called and should work normally even in situation when backup_init() was not
+  called at all.
  */
 void backup_shutdown()
 {
-  pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+  if (Backup_restore_ctx::run_lock_initialized)
+  {
+    pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+    Backup_restore_ctx::run_lock_initialized= FALSE;
+  }
 }
 
 /*
@@ -258,7 +267,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
  */
 int send_error(Backup_restore_ctx &log, int error_code, ...)
 {
-  MYSQL_ERROR *error= log.last_saved_error();
+  util::SAVED_MYSQL_ERROR *error= log.last_saved_error();
 
   if (error && !util::report_mysql_error(log.thd(), error, error_code))
   {
@@ -366,6 +375,7 @@ class Mem_allocator
 // static members
 
 Backup_restore_ctx *Backup_restore_ctx::current_op= NULL;
+bool Backup_restore_ctx::run_lock_initialized= FALSE;
 pthread_mutex_t Backup_restore_ctx::run_lock;
 
 
@@ -1824,8 +1834,8 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     {
       DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc,
-                              obs::describe_tablespace(sobj)->ptr(),
-                              obs::describe_tablespace(ts)->ptr());
+                              obs::get_tablespace_description(sobj)->ptr(),
+                              obs::get_tablespace_description(ts)->ptr());
       return BSTREAM_ERROR;
     }
   }
@@ -1845,7 +1855,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
             error handling work in WL#4384 with possible implementation
             via a related bug report.
     */
-    if (!obs::user_exists(thd, sobj->get_name()))
+    if (!obs::check_user_existence(thd, sobj->get_name()))
     {
       info->m_ctx.write_message(log_level::WARNING, 
                                 ER(ER_BACKUP_GRANT_SKIPPED),

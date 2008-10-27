@@ -2037,11 +2037,15 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
                               enum ha_extra_function function)
 {
   enum thr_lock_type old_lock_type;
-
   DBUG_ENTER("wait_while_table_is_used");
   DBUG_PRINT("enter", ("table: '%s'  share: %p  db_stat: %u  version: %lu",
                        table->s->table_name.str, table->s,
                        table->db_stat, table->s->version));
+
+  /* Ensure no one can reopen table before it's removed */
+  pthread_mutex_lock(&LOCK_open);
+  table->s->version= 0;
+  pthread_mutex_unlock(&LOCK_open);
 
   old_lock_type= table->reginfo.lock_type;
   mysql_lock_abort(thd, table, TRUE);	/* end threads waiting on lock */
@@ -3258,7 +3262,6 @@ check_and_update_table_version(THD *thd,
   }
 
   DBUG_EXECUTE_IF("reprepare_each_statement", return inject_reprepare(thd););
-
   return FALSE;
 }
 
@@ -3576,8 +3579,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   /* Also used for indicating that prelocking is need */
   TABLE_LIST **query_tables_last_own;
   bool safe_to_ignore_table;
-
   DBUG_ENTER("open_tables");
+
   /*
     temporary mem_root for new .frm parsing.
     TODO: variables for size

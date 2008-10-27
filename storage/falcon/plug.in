@@ -66,33 +66,40 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_CACHE_CHECK([compiler flag to enable implicit templates],
                  falcon_cxx_enable_implicit_templates,[
     CXXFLAGS="$ac_save_CXXFLAGS -fimplicit-templates"
-    AC_TRY_LINK([],
-      [int i = 0;
-       i++;],
-      falcon_cxx_enable_implicit_templates="-fimplicit-templates",
-      falcon_cxx_enable_implicit_templates=""
+    AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+      falcon_cxx_enable_implicit_templates="-fimplicit-templates"
     )
   ])
 
+  # -lstdc++ really shouldn't be here, and is only required while we continue
+  # to use gcc to link C++ code for the static linking hack.  Once we stop
+  # doing that it should be removed from here, and the CXXLDFLAG setting below
+  # will do the right thing for g++.
   AC_CACHE_CHECK([compiler flag to enable exceptions],
                  falcon_cxx_enable_exceptions,[
-    CXXFLAGS="$ac_save_CXXFLAGS -fexceptions -lstdc++"
-    AC_TRY_LINK([],
-      [int i = 0;
-       i++;],
-      falcon_cxx_enable_exceptions="-fexceptions -lstdc++",
-      falcon_cxx_enable_exceptions=""
-    )
+    m4_foreach([cxxflag], [[-fexceptions -lstdc++], [-features=except]],[
+      CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
+      AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+        falcon_cxx_enable_exceptions="cxxflag"
+      )
+    ])
+  ])
+
+  AC_CACHE_CHECK([linker flag to enable STL],
+                 falcon_cxx_enable_stl,[
+    m4_foreach([cxxflag], [-lstdc++],[
+      CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
+      AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+        falcon_cxx_enable_stl="cxxflag"
+      )
+    ])
   ])
 
   AC_CACHE_CHECK([compiler flag to silence offsetof warnings],
                  falcon_cxx_no_invalid_offsetof,[
     CXXFLAGS="$ac_save_CXXFLAGS -Wno-invalid-offsetof"
-    AC_TRY_LINK([],
-      [int i = 0;
-       i++;],
-      falcon_cxx_no_invalid_offsetof="-Wno-invalid-offsetof",
-      falcon_cxx_no_invalid_offsetof=""
+    AC_LINK_IFELSE([AC_LANG_PROGRAM()],
+      falcon_cxx_no_invalid_offsetof="-Wno-invalid-offsetof"
     )
   ])
 
@@ -100,7 +107,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_LANG_POP([C++])
 
   # Falcon uses exceptions and STL.
-  CXXLDFLAGS="$CXXLDFLAGS $falcon_cxx_enable_exceptions"
+  CXXLDFLAGS="$CXXLDFLAGS $falcon_cxx_enable_stl"
   FALCON_CXXFLAGS="$falcon_cxx_no_invalid_offsetof $falcon_cxx_enable_implicit_templates $falcon_cxx_enable_exceptions"
   case "$with_debug" in
     yes)  FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG" ;;
