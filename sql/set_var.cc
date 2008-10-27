@@ -2833,15 +2833,26 @@ err:
 static bool sys_update_backupdir(THD *thd, set_var * var)
 {
   char buff[FN_REFLEN];
-  char *res= 0, *old_value=(char *)(var ? var->value->str_value.ptr() : 0);
+  char *res= 0, *old_value= NULL;
   bool result= 0;
-  uint str_length= (var ? var->value->str_value.length() : 0);
+  uint str_length;
+  String str(buff, sizeof(buff), system_charset_info);
 
-  if (!old_value)
+  if (var)
+  {
+    String *strres;
+
+    if (!(strres= var->value->val_str(&str)))
+      goto err;
+    old_value= strres->c_ptr();
+    str_length= strres->length();
+  }
+  else
   {
     old_value= make_default_backupdir(buff);
     str_length= strlen(old_value);
   }
+
   if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
   {
     result= 1;
