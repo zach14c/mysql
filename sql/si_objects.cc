@@ -261,10 +261,10 @@ bool drop_object(THD *thd, const char *obj_name, String *name1, String *name2)
   cmd.append(" IF EXISTS ");
   if (name1 && (name1->length() > 0))
   {
-    append_identifier(thd, &cmd, name1->c_ptr(), name1->length());  
+    append_identifier(thd, &cmd, name1->c_ptr(), name1->length());
     cmd.append(".");
   }
-  append_identifier(thd, &cmd, name2->c_ptr(), name2->length());  
+  append_identifier(thd, &cmd, name2->c_ptr(), name2->length());
   DBUG_RETURN(silent_exec(thd, &cmd));
 }
 
@@ -279,7 +279,7 @@ bool drop_object(THD *thd, const char *obj_name, String *name1, String *name2)
 
   @note: The select condition is designed to form a WHERE clause based on
   the database/schema column of the information_schema views. Most views have
-  a database/schema column but for those that do not, you must ignore the 
+  a database/schema column but for those that do not, you must ignore the
   selection condition by passing db_list = NULL.
 
   @retval TABLE* The schema table
@@ -344,7 +344,7 @@ void prepend_db(THD *thd, String *serialization, String *db_name)
   */
   serialization->length(0);
   serialization->append("USE ");
-  append_identifier(thd, serialization, db_name->c_ptr(), db_name->length());  
+  append_identifier(thd, serialization, db_name->c_ptr(), db_name->length());
   serialization->append("; ");
   DBUG_VOID_RETURN;
 }
@@ -394,7 +394,7 @@ void delete_table_name_key(void *data)
 ///////////////////////////////////////////////////////////////////////////
 
 namespace obs {
-  
+
 /**
   Build a where clause for list of databases.
 
@@ -408,7 +408,7 @@ namespace obs {
 
   @returns NULL if no databases in list or pointer to COND tree.
 */
-COND *create_db_select_condition(THD *thd, 
+COND *create_db_select_condition(THD *thd,
                                  TABLE *t,
                                  List<LEX_STRING> *db_list)
 {
@@ -416,7 +416,7 @@ COND *create_db_select_condition(THD *thd,
   List_iterator< ::LEX_STRING> it(*db_list);
   ::LEX_STRING *db;
   DBUG_ENTER("Obj::create_select_condition()");
-  
+
   /*
     If no list of databases, just return NULL
   */
@@ -439,7 +439,7 @@ COND *create_db_select_condition(THD *thd,
   */
   Item *db_field= new Item_field(thd, thd->lex->current_context(), t->field[1]);
   in_db_list.push_front(db_field);
-  
+
   /*
     Build the in function item comparison and add list of databases.
   */
@@ -711,7 +711,7 @@ class TablespaceObj : public Obj
 {
 public:
   TablespaceObj(const String *ts_name);
-  
+
 public:
   virtual bool do_serialize(THD *thd, String *serialization);
 
@@ -891,7 +891,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-class InformationSchemaIterator : public ObjIterator
+class InformationSchemaIterator : public Obj_iterator
 {
 public:
   static bool prepare_is_table(
@@ -932,7 +932,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-class ObjIteratorDummyImpl : ObjIterator
+class ObjIteratorDummyImpl : Obj_iterator
 {
 public:
   ObjIteratorDummyImpl() { return; }
@@ -1081,7 +1081,7 @@ protected:
 private:
   String m_db_name;
 };
- 
+
 class TblGrantIterator : public InformationSchemaIterator
 {
 public:
@@ -1101,7 +1101,7 @@ protected:
 private:
   String m_db_name;
 };
- 
+
 class ColGrantIterator : public InformationSchemaIterator
 {
 public:
@@ -1121,7 +1121,7 @@ protected:
 private:
   String m_db_name;
 };
- 
+
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1168,7 +1168,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-class ViewBaseObjectsIterator : public ObjIterator
+class ViewBaseObjectsIterator : public Obj_iterator
 {
 public:
   enum IteratorType
@@ -1197,13 +1197,13 @@ private:
   uint m_cur_idx;
 
 private:
-  friend ObjIterator *get_view_base_tables(THD *,
+  friend Obj_iterator *get_view_base_tables(THD *,
+                                            const String *,
+                                            const String *);
+
+  friend Obj_iterator *get_view_base_views(THD *,
                                            const String *,
                                            const String *);
-
-  friend ObjIterator *get_view_base_views(THD *,
-                                          const String *,
-                                          const String *);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1509,13 +1509,13 @@ DbGrantObj* DbGrantIterator::create_obj(TABLE *t)
   */
   if (db_name == m_db_name)
   {
-    DBUG_PRINT("DbGrantIterator::create", (" Found grant %s %s %s", 
+    DBUG_PRINT("DbGrantIterator::create", (" Found grant %s %s %s",
      db_name.ptr(), grantee.ptr(), priv_type.ptr()));
 
     /*
       Include grants for only users that exist at time of backup.
     */
-    if (user_exists(m_thd, &grantee))
+    if (check_user_existence(m_thd, &grantee))
       return new DbGrantObj(&grantee, &db_name, &priv_type);
     else
       return NULL;
@@ -1538,7 +1538,7 @@ TblGrantObj* TblGrantIterator::create_obj(TABLE *t)
   String db_name;   // corresponds with TABLE_SCHEMA
   String tbl_name;  // corresponds with TABLE_NAME
   String priv_type; // corresponds with PRIVILEGE_TYPE
- 
+
   t->field[0]->val_str(&grantee);
   t->field[2]->val_str(&db_name);
   t->field[3]->val_str(&tbl_name);
@@ -1553,13 +1553,13 @@ TblGrantObj* TblGrantIterator::create_obj(TABLE *t)
   */
   if (db_name == m_db_name)
   {
-    DBUG_PRINT("TblGrantIterator::create", (" Found grant %s %s %s %s", 
+    DBUG_PRINT("TblGrantIterator::create", (" Found grant %s %s %s %s",
      db_name.ptr(), grantee.ptr(), tbl_name.ptr(), priv_type.ptr()));
 
     /*
       Include grants for only users that exist at time of backup.
     */
-    if (user_exists(m_thd, &grantee))
+    if (check_user_existence(m_thd, &grantee))
       return new TblGrantObj(&grantee, &db_name, &tbl_name, &priv_type);
     else
       return NULL;
@@ -1583,7 +1583,7 @@ ColGrantObj* ColGrantIterator::create_obj(TABLE *t)
   String tbl_name;  // corresponds with TABLE_NAME
   String col_name;  // corresponds with COLUMN_NAME
   String priv_type; // corresponds with PRIVILEGE_TYPE
- 
+
   t->field[0]->val_str(&grantee);
   t->field[2]->val_str(&db_name);
   t->field[3]->val_str(&tbl_name);
@@ -1599,14 +1599,14 @@ ColGrantObj* ColGrantIterator::create_obj(TABLE *t)
   */
   if (db_name == m_db_name)
   {
-    DBUG_PRINT("ColGrantIterator::create", (" Found grant %s %s %s %s %s", 
+    DBUG_PRINT("ColGrantIterator::create", (" Found grant %s %s %s %s %s",
      db_name.ptr(), grantee.ptr(), tbl_name.ptr(), col_name.ptr(),
      priv_type.ptr()));
 
     /*
       Include grants for only users that exist at time of backup.
     */
-    if (user_exists(m_thd, &grantee))
+    if (check_user_existence(m_thd, &grantee))
       return new ColGrantObj(&grantee, &db_name, &tbl_name,
                              &col_name, &priv_type);
     else
@@ -1734,14 +1734,14 @@ TableObj *ViewBaseObjectsIterator::next()
 
 ///////////////////////////////////////////////////////////////////////////
 
-ObjIterator *get_databases(THD *thd)
+Obj_iterator *get_databases(THD *thd)
 {
   TABLE *is_table;
   handler *ha;
   my_bitmap_map *orig_columns;
 
   if (InformationSchemaIterator::prepare_is_table(
-      thd, &is_table, &ha, &orig_columns, SCH_SCHEMATA, 
+      thd, &is_table, &ha, &orig_columns, SCH_SCHEMATA,
       thd->lex->db_list))
     return NULL;
 
@@ -1810,37 +1810,37 @@ template
 ColGrantIterator *
 create_is_iterator<ColGrantIterator>(THD *, enum_schema_tables, const String *);
 
-ObjIterator *get_db_tables(THD *thd, const String *db_name)
+Obj_iterator *get_db_tables(THD *thd, const String *db_name)
 {
   return create_is_iterator<DbTablesIterator>(thd, SCH_TABLES, db_name);
 }
 
-ObjIterator *get_db_views(THD *thd, const String *db_name)
+Obj_iterator *get_db_views(THD *thd, const String *db_name)
 {
   return create_is_iterator<DbViewsIterator>(thd, SCH_TABLES, db_name);
 }
 
-ObjIterator *get_db_triggers(THD *thd, const String *db_name)
+Obj_iterator *get_db_triggers(THD *thd, const String *db_name)
 {
   return create_is_iterator<DbTriggerIterator>(thd, SCH_TRIGGERS, db_name);
 }
 
-ObjIterator *get_db_stored_procedures(THD *thd, const String *db_name)
+Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
 {
   return create_is_iterator<DbStoredProcIterator>(thd, SCH_PROCEDURES, db_name);
 }
 
-ObjIterator *get_db_stored_functions(THD *thd, const String *db_name)
+Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
 {
   return create_is_iterator<DbStoredFuncIterator>(thd, SCH_PROCEDURES, db_name);
 }
 
-ObjIterator *get_db_events(THD *thd, const String *db_name)
+Obj_iterator *get_db_events(THD *thd, const String *db_name)
 {
 #ifdef HAVE_EVENT_SCHEDULER
   return create_is_iterator<DbEventIterator>(thd, SCH_EVENTS, db_name);
 #else
-  return (ObjIterator *)new ObjIteratorDummyImpl;
+  return (Obj_iterator *)new ObjIteratorDummyImpl;
 #endif
 }
 
@@ -1852,16 +1852,16 @@ ObjIterator *get_db_events(THD *thd, const String *db_name)
   The iterators return all of the grants for the database specified.
 */
 GrantObjIterator::GrantObjIterator(THD *thd, const String *db_name)
-: ObjIterator()
+: Obj_iterator()
 {
-  db_grants= create_is_iterator<DbGrantIterator>(thd, 
-                                                 SCH_SCHEMA_PRIVILEGES, 
+  db_grants= create_is_iterator<DbGrantIterator>(thd,
+                                                 SCH_SCHEMA_PRIVILEGES,
                                                  db_name);
   tbl_grants= create_is_iterator<TblGrantIterator>(thd,
-                                                 SCH_TABLE_PRIVILEGES, 
+                                                 SCH_TABLE_PRIVILEGES,
                                                  db_name);
-  col_grants= create_is_iterator<ColGrantIterator>(thd, 
-                                                 SCH_COLUMN_PRIVILEGES, 
+  col_grants= create_is_iterator<ColGrantIterator>(thd,
+                                                 SCH_COLUMN_PRIVILEGES,
                                                  db_name);
 }
 
@@ -1879,7 +1879,7 @@ Obj *GrantObjIterator::next()
 /**
   Creates a high-level iterator that iterates over database-, table-,
   routine-, and column-level privileges which shall permit a single
-  iterator from the si_objects to retrieve all of the privileges for 
+  iterator from the si_objects to retrieve all of the privileges for
   a given database.
 
   @param[IN] thd      Current THD object
@@ -1890,7 +1890,7 @@ Obj *GrantObjIterator::next()
   @return a pointer to an iterator object.
     @retval NULL in case of error.
 */
-ObjIterator *get_all_db_grants(THD *thd, const String *db_name)
+Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
 {
   return new GrantObjIterator(thd, db_name);
 }
@@ -1903,17 +1903,17 @@ ObjIterator *get_all_db_grants(THD *thd, const String *db_name)
 
 ///////////////////////////////////////////////////////////////////////////
 
-ObjIterator* get_view_base_tables(THD *thd,
-                                  const String *db_name,
-                                  const String *view_name)
+Obj_iterator* get_view_base_tables(THD *thd,
+                                   const String *db_name,
+                                   const String *view_name)
 {
   return ViewBaseObjectsIterator::create(
     thd, db_name, view_name, ViewBaseObjectsIterator::GET_BASE_TABLES);
 }
 
-ObjIterator* get_view_base_views(THD *thd,
-                                 const String *db_name,
-                                 const String *view_name)
+Obj_iterator* get_view_base_views(THD *thd,
+                                  const String *db_name,
+                                  const String *view_name)
 {
   return ViewBaseObjectsIterator::create(
     thd, db_name, view_name, ViewBaseObjectsIterator::GET_BASE_VIEWS);
@@ -2918,8 +2918,8 @@ const String *TablespaceObj::build_serialization()
   if (m_ts_name.length() > 0)
   {
     THD *thd= current_thd;
-    append_identifier(thd, &m_create_stmt, 
-      m_ts_name.c_ptr(), m_ts_name.length());  
+    append_identifier(thd, &m_create_stmt,
+      m_ts_name.c_ptr(), m_ts_name.length());
   }
   m_create_stmt.append(" ADD DATAFILE '");
   m_create_stmt.append(m_datafile);
@@ -3046,7 +3046,7 @@ bool DbGrantObj::do_execute(THD *thd)
 TblGrantObj::TblGrantObj(const String *grantee,
                          const String *db_name,
                          const String *table_name,
-                         const String *priv_type) 
+                         const String *priv_type)
 : DbGrantObj(grantee, db_name, priv_type)
 {
   // copy strings to newly allocated memory
@@ -3095,7 +3095,7 @@ ColGrantObj::ColGrantObj(const String *grantee,
                          const String *db_name,
                          const String *table_name,
                          const String *col_name,
-                         const String *priv_type) 
+                         const String *priv_type)
 : TblGrantObj(grantee, db_name, table_name, priv_type)
 {
   // copy strings to newly allocated memory
@@ -3188,10 +3188,10 @@ Obj *get_event(const String *db_name,
 
 Obj *materialize_database(const String *db_name,
                           uint serialization_version,
-                          const String *serialialization)
+                          const String *serialization)
 {
   Obj *obj= new DatabaseObj(db_name);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3199,10 +3199,10 @@ Obj *materialize_database(const String *db_name,
 Obj *materialize_table(const String *db_name,
                        const String *table_name,
                        uint serialization_version,
-                       const String *serialialization)
+                       const String *serialization)
 {
   Obj *obj= new TableObj(db_name, table_name, false);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3210,10 +3210,10 @@ Obj *materialize_table(const String *db_name,
 Obj *materialize_view(const String *db_name,
                       const String *view_name,
                       uint serialization_version,
-                      const String *serialialization)
+                      const String *serialization)
 {
   Obj *obj= new TableObj(db_name, view_name, true);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3221,10 +3221,10 @@ Obj *materialize_view(const String *db_name,
 Obj *materialize_trigger(const String *db_name,
                          const String *trigger_name,
                          uint serialization_version,
-                         const String *serialialization)
+                         const String *serialization)
 {
   Obj *obj= new TriggerObj(db_name, trigger_name);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3232,10 +3232,10 @@ Obj *materialize_trigger(const String *db_name,
 Obj *materialize_stored_procedure(const String *db_name,
                                   const String *stored_proc_name,
                                   uint serialization_version,
-                                  const String *serialialization)
+                                  const String *serialization)
 {
   Obj *obj= new StoredProcObj(db_name, stored_proc_name);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3243,10 +3243,10 @@ Obj *materialize_stored_procedure(const String *db_name,
 Obj *materialize_stored_function(const String *db_name,
                                  const String *stored_func_name,
                                  uint serialization_version,
-                                 const String *serialialization)
+                                 const String *serialization)
 {
   Obj *obj= new StoredFuncObj(db_name, stored_func_name);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3255,10 +3255,10 @@ Obj *materialize_stored_function(const String *db_name,
 Obj *materialize_event(const String *db_name,
                        const String *event_name,
                        uint serialization_version,
-                       const String *serialialization)
+                       const String *serialization)
 {
   Obj *obj= new EventObj(db_name, event_name);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3266,10 +3266,10 @@ Obj *materialize_event(const String *db_name,
 
 Obj *materialize_tablespace(const String *ts_name,
                             uint serialization_version,
-                            const String *serialialization)
+                            const String *serialization)
 {
   Obj *obj= new TablespaceObj(ts_name);
-  obj->materialize(serialization_version, serialialization);
+  obj->materialize(serialization_version, serialization);
 
   return obj;
 }
@@ -3293,7 +3293,7 @@ Obj *materialize_db_grant(const String *db_name,
     grants. We use DbGrantObj for all types of grants because
     we only have the GRANT statement in the serialization
     string and therefore do not that the 'parts' to create
-    the specific types. 
+    the specific types.
   */
   Obj *obj= get_db_grant(grantee, db_name);
   obj->materialize(serialization_version, serialization);
@@ -3383,10 +3383,7 @@ int split_user_host(String *grantee, String *user, String *host)
   return 0;
 }
 
-/*
-  Returns TRUE if user is defined on the system.
-*/
-bool user_exists(THD *thd, const String *grantee)
+bool check_user_existence(THD *thd, const String *grantee)
 {
   String user;
   String host;
@@ -3412,7 +3409,7 @@ bool user_exists(THD *thd, const String *grantee)
   Locate the row in the information_schema view for this tablespace.
 
   This method returns a row from a tablespace information_schema view
-  that matches the tablespace name passed. 
+  that matches the tablespace name passed.
 
   @param[in]     thd           Thread context
   @param[in]     is_table_idx  The information schema to search
@@ -3420,7 +3417,7 @@ bool user_exists(THD *thd, const String *grantee)
   @param[in]     ts_engine     Engine of the tablespace to find
   @param[out]    datafile      The datafile for the tablespace
   @param[out]    comments      The comments for the tablespace
-  
+
   @retval FALSE if tablespace exists and no errors
   @retval TRUE if tablespace does not exist or errors
 */
@@ -3529,14 +3526,14 @@ static bool find_tablespace_schema_row(THD *thd,
   @param[out]    TablespaceObj A pointer to a new tablespace object
   @param[in]     ts_name       The name of the tablespace to find
   @param[in]     ts_engine     Engine of the tablespace to find
-  
+
   @note Caller is responsible for destroying the tablespace object.
 
   @retval FALSE if tablespace exists and no errors
   @retval TRUE if tablespace does not exist or errors
 */
 static bool get_tablespace_from_schema(THD *thd,
-                                       TablespaceObj **ts, 
+                                       TablespaceObj **ts,
                                        const String *ts_name,
                                        const String *ts_engine)
 {
@@ -3547,14 +3544,14 @@ static bool get_tablespace_from_schema(THD *thd,
   /*
     Locate the row in TABLESPACES and get the comments.
   */
-  if (find_tablespace_schema_row(thd, SCH_TABLESPACES, 
+  if (find_tablespace_schema_row(thd, SCH_TABLESPACES,
       ts_name, ts_engine, &datafile, &comments))
     DBUG_RETURN(TRUE);
 
   /*
     Locate the row in FILES and get the datafile.
   */
-  if (find_tablespace_schema_row(thd, SCH_FILES, 
+  if (find_tablespace_schema_row(thd, SCH_FILES,
       ts_name, ts_engine, &datafile, &comments))
     DBUG_RETURN(TRUE);
 
@@ -3564,7 +3561,7 @@ static bool get_tablespace_from_schema(THD *thd,
   if (datafile.length() == 0)
     DBUG_RETURN(TRUE);
 
-  DBUG_PRINT("get_tablespace_from_schema", (" Found tablespace %s %s", 
+  DBUG_PRINT("get_tablespace_from_schema", (" Found tablespace %s %s",
     ts_name->ptr(), datafile.ptr()));
 
   TablespaceObj *ts_local= new TablespaceObj(ts_name);
@@ -3578,20 +3575,20 @@ static bool get_tablespace_from_schema(THD *thd,
 
 /**
   Retrieve the tablespace for a table if it exists
-  
+
   This method returns a @c TablespaceObj object if the table has a tablespace.
 
   @param[in]  thd       Thread context.
   @param[in]  db_name   The database name for the table.
   @param[in]  tbl_name  The table name.
-  
+
   @note Caller is responsible for destroying the object.
 
-  @retval Tablespace object if table uses a tablespace 
+  @retval Tablespace object if table uses a tablespace
   @retval NULL if table does not use a tablespace
 */
-Obj *get_tablespace_for_table(THD *thd, 
-                              const String *db_name, 
+Obj *get_tablespace_for_table(THD *thd,
+                              const String *db_name,
                               const String *tbl_name)
 {
   TablespaceObj *ts= NULL;
@@ -3599,7 +3596,7 @@ Obj *get_tablespace_for_table(THD *thd,
   String ts_name, ts_engine;
   const char *ts_name_str= NULL;
   DBUG_ENTER("obs::get_tablespace_for_table()");
-  DBUG_PRINT("obs::get_tablespace_for_table", ("name: %s.%s", 
+  DBUG_PRINT("obs::get_tablespace_for_table", ("name: %s.%s",
              db_name->ptr(), tbl_name->ptr()));
 
   const char *db= db_name->ptr();
@@ -3641,12 +3638,12 @@ end:
   Determine if tablespace exists.
 
   This method determines if a materialized tablespace exists on the
-  system. This compares the name and all saved attributes of the 
+  system. This compares the name and all saved attributes of the
   tablespace. A FALSE return would mean either the tablespace does
   not exist or the tablespace attributes are different.
 
   @param[in]  Obj  The TablspaceObj pointer to compare.
-  
+
   @retval TRUE if it exists
   @retval FALSE if it does not exist
 */
@@ -3660,8 +3657,8 @@ bool tablespace_exists(THD *thd,
                              this_ts->get_engine());
   if (!other_ts)
     DBUG_RETURN(retval);
-  retval= (my_strcasecmp(system_charset_info, 
-           other_ts->build_serialization()->ptr(), 
+  retval= (my_strcasecmp(system_charset_info,
+           other_ts->build_serialization()->ptr(),
            ((TablespaceObj *)ts)->build_serialization()->ptr()) == 0);
   delete other_ts;
   DBUG_RETURN(retval);
@@ -3669,12 +3666,12 @@ bool tablespace_exists(THD *thd,
 
 /**
   Is there a tablespace with the given name?
-  
+
   This method determines if the tablespace referenced by name exists on the
   system. Returns a TablespaceObj if it exists or NULL if it doesn't.
 
   @param[in]  Obj  The TablspaceObj pointer to compare.
-  
+
   @note Caller is responsible for destroying the tablespace object.
 
   @returns the tablespace if found or NULL if not found
@@ -3778,7 +3775,7 @@ TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
   TABLE_LIST *tl= NULL;
   Obj *tbl= NULL;
   DBUG_ENTER("Name_locker::build_table_list()");
-  
+
   List_iterator<Obj> it(*tables);
   while ((tbl= it++))
   {

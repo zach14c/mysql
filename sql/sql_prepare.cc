@@ -1122,6 +1122,8 @@ static bool mysql_test_insert(Prepared_statement *stmt,
   if (insert_precheck(thd, table_list))
     goto error;
 
+  upgrade_lock_type_for_insert(thd, &table_list->lock_type, duplic,
+                               values_list.elements > 1);
   /*
     open temporary memory pool for temporary data allocated by derived
     tables & preparation procedure
@@ -2465,7 +2467,6 @@ void mysql_stmt_execute(THD *thd, char *packet_arg, uint packet_length)
   stmt->execute_loop(&expanded_query, open_cursor, packet, packet_end);
 
   DBUG_VOID_RETURN;
-
 }
 
 
@@ -3568,7 +3569,14 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     if (query_cache_send_result_to_client(thd, thd->query,
                                           thd->query_length) <= 0)
     {
+      MYSQL_QUERY_EXEC_START(thd->query,
+                             thd->thread_id,
+                             (char *) (thd->db ? thd->db : ""),
+                             thd->security_ctx->priv_user,
+                             (char *) thd->security_ctx->host_or_ip,
+                             1);
       error= mysql_execute_command(thd);
+      MYSQL_QUERY_EXEC_DONE(error);
     }
   }
 

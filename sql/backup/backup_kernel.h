@@ -88,6 +88,11 @@ class Backup_restore_ctx: public backup::Logger
       ongoing backup/restore operation.  If pointer is null, no
       operation is currently running. */
   static Backup_restore_ctx *current_op;
+  /**
+     Indicates if @c run_lock mutex was initialized and thus it should
+     be properly destroyed during shutdown. @sa backup_shutdown().
+   */
+  static bool run_lock_initialized;
   static pthread_mutex_t  run_lock; ///< To guard @c current_op.
 
   /** 

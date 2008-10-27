@@ -64,7 +64,7 @@ class Backup_info: public backup::Image_info
   Table* add_table(Db&, obs::Obj*);
 
   int add_db_items(Db&);
-  int add_objects(Db&, const obj_type, obs::ObjIterator&);
+  int add_objects(Db&, const obj_type, obs::Obj_iterator&);
   int add_view_deps(obs::Obj&);
 
   struct Dep_node;

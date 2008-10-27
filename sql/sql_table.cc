@@ -5347,8 +5347,7 @@ compare_tables(THD *thd,
   new_field_it.init(alter_info->create_list);
   tmp_new_field_it.init(tmp_alter_info.create_list);
 
-  /*
-    Go through fields and check if the original ones are compatible
+  /*   Go through fields and check if the original ones are compatible
     with new table.
   */
   for (f_ptr= table->field, new_field= new_field_it++,
@@ -5362,10 +5361,11 @@ compare_tables(THD *thd,
       new_field->charset= create_info->default_table_charset;
 
     /* Don't pack rows in old tables if the user has requested this. */
-    if ((tmp_new_field->flags & BLOB_FLAG) ||
-        tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
-        create_info->row_type != ROW_TYPE_FIXED)
-      create_info->table_options|= HA_OPTION_PACK_RECORD;
+      if (create_info->row_type == ROW_TYPE_DYNAMIC ||
+	(tmp_new_field->flags & BLOB_FLAG) ||
+	tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
+  	create_info->row_type != ROW_TYPE_FIXED)
+        create_info->table_options|= HA_OPTION_PACK_RECORD;
 
     /* Check how fields have been modified */
     if (alter_info->flags & ALTER_CHANGE_COLUMN)
@@ -7024,7 +7024,6 @@ view_err:
   /* Copy the data if necessary. */
   thd->count_cuted_fields= CHECK_FIELD_WARN;	// calc cuted fields
   thd->cuted_fields=0L;
-  thd_proc_info(thd, "copy to tmp table");
   copied=deleted=0;
   /*
     We do not copy data for MERGE tables. Only the children have data.
@@ -7035,6 +7034,7 @@ view_err:
     /* We don't want update TIMESTAMP fields during ALTER TABLE. */
     new_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
     new_table->next_number_field=new_table->found_next_number_field;
+    thd_proc_info(thd, "copy to tmp table");
     error= copy_data_between_tables(table, new_table,
                                     alter_info->create_list, ignore,
                                    order_num, order, &copied, &deleted,
@@ -7604,6 +7604,12 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	{
 	  for (;;)
 	  {
+            if (thd->killed)
+            {
+              t->file->ha_rnd_end();
+              thd->protocol->remove_last_row();
+              goto err;
+            }
 	    ha_checksum row_crc= 0;
             int error= t->file->rnd_next(t->record[0]);
             if (unlikely(error))

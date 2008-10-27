@@ -794,7 +794,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #if defined(ENABLED_PROFILING)
   thd->profiling.start_new_query();
 #endif
-
+  MYSQL_COMMAND_START(thd->thread_id, command,
+                      thd->security_ctx->priv_user,
+                      (char *) thd->security_ctx->host_or_ip);
+  
   thd->command=command;
   /*
     Commands which always take a long time are logged into
@@ -986,6 +989,10 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   {
     if (alloc_query(thd, packet, packet_length))
       break;					// fatal error is set
+    MYSQL_QUERY_START(thd->query, thd->thread_id,
+                      (char *) (thd->db ? thd->db : ""),
+                      thd->security_ctx->priv_user,
+                      (char *) thd->security_ctx->host_or_ip);
     char *packet_end= thd->query + thd->query_length;
     /* 'b' stands for 'buffer' parameter', special for 'my_snprintf' */
     const char* end_of_stmt= NULL;
@@ -1026,12 +1033,22 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
         length--;
       }
 
+      if (MYSQL_QUERY_DONE_ENABLED())
+      {
+        MYSQL_QUERY_DONE(thd->is_error());
+      }
+      
 #if defined(ENABLED_PROFILING)
       thd->profiling.finish_current_query();
       thd->profiling.start_new_query("continuing");
       thd->profiling.set_query_source(beginning_of_next_stmt, length);
 #endif
 
+      MYSQL_QUERY_START(thd->query, thd->thread_id,
+                        (char *) (thd->db ? thd->db : ""),
+                        thd->security_ctx->priv_user,
+                        (char *) thd->security_ctx->host_or_ip);
+      
       pthread_mutex_lock(&LOCK_thread_count);
       thd->query_length= length;
       thd->query= beginning_of_next_stmt;
@@ -1419,7 +1436,17 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #if defined(ENABLED_PROFILING)
   thd->profiling.finish_current_query();
 #endif
-
+  if (MYSQL_QUERY_DONE_ENABLED() || MYSQL_COMMAND_DONE_ENABLED())
+  {
+    int res;
+    res= (int) thd->is_error();
+    if (command == COM_QUERY)
+    {
+      MYSQL_QUERY_DONE(res);
+    }
+    MYSQL_COMMAND_DONE(res);
+  }
+  
   DBUG_RETURN(error);
 }
 
@@ -1979,14 +2006,16 @@ mysql_execute_command(THD *thd)
 #endif
   case SQLCOM_SHOW_STATUS_PROC:
   case SQLCOM_SHOW_STATUS_FUNC:
-    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE,
+                                  UINT_MAX)))
       res= execute_sqlcom_select(thd, all_tables);
     break;
   case SQLCOM_SHOW_STATUS:
   {
     system_status_var old_status_var= thd->status_var;
     thd->initial_status_var= &old_status_var;
-    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE,
+                                  UINT_MAX)))
       res= execute_sqlcom_select(thd, all_tables);
     /* Don't log SHOW STATUS commands to slow query log */
     thd->server_status&= ~(SERVER_QUERY_NO_INDEX_USED |
@@ -2858,6 +2887,7 @@ ddl_blocker_err:
       break;
     DBUG_ASSERT(select_lex->offset_limit == 0);
     unit->set_limit(select_lex);
+    MYSQL_UPDATE_START(thd->query);
     res= (up_result= mysql_update(thd, all_tables,
                                   select_lex->item_list,
                                   lex->value_list,
@@ -2917,7 +2947,7 @@ ddl_blocker_err:
 #ifdef HAVE_REPLICATION
     }  /* unlikely */
 #endif
-
+    MYSQL_MULTI_UPDATE_START(thd->query);
     res= mysql_multi_update(thd, all_tables,
                             &select_lex->item_list,
                             &lex->value_list,
@@ -2970,6 +3000,7 @@ ddl_blocker_err:
       break;
     }
 
+    MYSQL_INSERT_START(thd->query);
     res= mysql_insert(thd, all_tables, lex->field_list, lex->many_values,
 		      lex->update_list, lex->value_list,
                       lex->duplicates, lex->ignore);
@@ -3013,6 +3044,8 @@ ddl_blocker_err:
 
     if (!(res= open_and_lock_tables(thd, all_tables)))
     {
+      MYSQL_INSERT_SELECT_START(thd->query);
+      
       /* Skip first table, which is the table we are inserting in */
       TABLE_LIST *second_table= first_table->next_local;
       select_lex->table_list.first= (uchar*) second_table;
@@ -3097,6 +3130,7 @@ ddl_blocker_err:
       break;
     }
 
+    MYSQL_DELETE_START(thd->query);
     res = mysql_delete(thd, all_tables, select_lex->where,
                        &select_lex->order_list,
                        unit->select_limit_cnt, select_lex->options,
@@ -3127,6 +3161,7 @@ ddl_blocker_err:
       goto error;
 
     thd_proc_info(thd, "init");
+    MYSQL_MULTI_DELETE_START(thd->query);
     if ((res= open_and_lock_tables(thd, all_tables)))
       break;
 
@@ -5055,15 +5090,19 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
       continue;
     }
 
+    DBUG_PRINT("info", ("derived: %d  view: %d", tables->derived != 0,
+                        tables->view != 0));
     if (tables->is_anonymous_derived_table() ||
-        (tables->table && tables->table->s && (int)tables->table->s->tmp_table))
+        (tables->table && tables->table->s &&
+         (int)tables->table->s->tmp_table))
       continue;
     thd->security_ctx= sctx;
-    if ((sctx->master_access & want_access) ==
-        want_access && thd->db)
+    if ((sctx->master_access & want_access) == want_access &&
+        thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd, want_access, tables->get_db_name(),
-                          &tables->grant.privilege, 0, no_errors, 0))
+    else if (check_access(thd,want_access,tables->get_db_name(),
+                          &tables->grant.privilege,
+                          0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
@@ -5516,6 +5555,7 @@ void mysql_init_multi_delete(LEX *lex)
 void mysql_parse(THD *thd, const char *inBuf, uint length,
                  const char ** found_semicolon)
 {
+  int error;
   DBUG_ENTER("mysql_parse");
 
   DBUG_EXECUTE_IF("parser_debug", turn_parser_debug_on(););
@@ -5584,7 +5624,15 @@ void mysql_parse(THD *thd, const char *inBuf, uint length,
             thd->server_status|= SERVER_MORE_RESULTS_EXISTS;
           }
           lex->set_trg_event_type_for_tables();
-          mysql_execute_command(thd);
+	  MYSQL_QUERY_EXEC_START(thd->query,
+                                 thd->thread_id,
+                                 (char *) (thd->db ? thd->db : ""),
+                                 thd->security_ctx->priv_user,
+                                 (char *) thd->security_ctx->host_or_ip,
+                                 0);
+
+          error= mysql_execute_command(thd);
+	  MYSQL_QUERY_EXEC_DONE(error);
 	}
       }
     }
@@ -7414,15 +7462,14 @@ bool check_identifier_name(LEX_STRING *str, uint max_char_length,
 
 /*
   Check if path does not contain mysql data home directory
+
   SYNOPSIS
     test_if_data_home_dir()
     dir                     directory
-    conv_home_dir           converted data home directory
-    home_dir_len            converted data home directory length
 
   RETURN VALUES
     0	ok
-    1	error  
+    1	error ;  Given path contains data directory
 */
 C_MODE_START
 
@@ -7450,11 +7497,17 @@ int test_if_data_home_dir(const char *dir)
                         mysql_unpacked_real_data_home_len,
                         (const uchar*) mysql_unpacked_real_data_home,
                         mysql_unpacked_real_data_home_len))
+      {
+        DBUG_PRINT("error", ("Path is part of mysql_real_data_home"));
         DBUG_RETURN(1);
+      }
     }
     else if (!memcmp(path, mysql_unpacked_real_data_home,
                      mysql_unpacked_real_data_home_len))
+    {
+      DBUG_PRINT("error", ("Path is part of mysql_real_data_home"));
       DBUG_RETURN(1);
+    }
   }
   DBUG_RETURN(0);
 }
@@ -7518,6 +7571,8 @@ bool parse_sql(THD *thd,
   bool mysql_parse_status;
   DBUG_ASSERT(thd->m_parser_state == NULL);
 
+  MYSQL_QUERY_PARSE_START(thd->query);
+  
   /* Backup creation context. */
 
   Object_creation_ctx *backup_ctx= NULL;
@@ -7549,6 +7604,8 @@ bool parse_sql(THD *thd,
 
   /* That's it. */
 
+  MYSQL_QUERY_PARSE_DONE(mysql_parse_status || thd->is_fatal_error);
+  
   return mysql_parse_status || thd->is_fatal_error;
 }
 

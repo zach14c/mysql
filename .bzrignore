@@ -1898,3 +1898,6 @@ mysql-test/tps.log
 libmysqld/event_parse_data.cc
 client/transaction.h
 libmysqld/transaction.cc
+libmysqld/rpl_handler.cc
+libmysql/probes.h
+libmysql_r/probes.h

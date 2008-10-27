@@ -610,7 +610,7 @@ int Backup_info::add_all_dbs()
   using namespace obs;
 
   int res= 0;
-  ObjIterator *dbit= get_databases(m_ctx.m_thd);
+  Obj_iterator *dbit= get_databases(m_ctx.m_thd);
   
   if (!dbit)
   {
@@ -672,7 +672,7 @@ int Backup_info::add_all_dbs()
 
   @returns 0 on success, error code otherwise.
  */
-int Backup_info::add_objects(Db &db, const obj_type type, obs::ObjIterator &it)
+int Backup_info::add_objects(Db &db, const obj_type type, obs::Obj_iterator &it)
 {
   obs::Obj *obj;
   
@@ -697,7 +697,7 @@ int Backup_info::add_db_items(Db &db)
 
   // Add tables.
 
-  ObjIterator *it= get_db_tables(m_ctx.m_thd, &db.name()); 
+  Obj_iterator *it= get_db_tables(m_ctx.m_thd, &db.name());
 
   if (!it)
   {
@@ -939,7 +939,7 @@ int Backup_info::add_view_deps(obs::Obj &obj)
   
   // Get an iterator to iterate over base views of the given one.
 
-  obs::ObjIterator *it= obs::get_view_base_views(m_ctx.m_thd, db_name, name);
+  obs::Obj_iterator *it= obs::get_view_base_views(m_ctx.m_thd, db_name, name);
 
   if (!it)
     return ERROR;

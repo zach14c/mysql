@@ -46,8 +46,12 @@ int Logger::write_message(log_level::value level, int error_code,
    switch (level) {
    case log_level::ERROR:
      if (m_save_errors)
-       errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
-                                         MYSQL_ERROR::WARN_LEVEL_ERROR, msg));
+     {
+       error.code= error_code;
+       error.level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+       error.msg= sql_strdup(msg);
+     }
+
      sql_print_error(out);
      if (m_push_errors)
        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
@@ -132,7 +136,6 @@ void Logger::report_stats_post(const Image_info &info)
   DBUG_ASSERT(m_state == RUNNING);
   backup_log->size(info.data_size);
 }
-
 
 /*
  Indicate if reported errors should be pushed on the warning stack.
