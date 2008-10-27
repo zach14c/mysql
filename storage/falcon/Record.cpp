@@ -631,8 +631,6 @@ int Record::getEncodedSize()
 
 void Record::getEncodedValue(int fieldId, Value *value)
 {
-	try
-		{
 	switch (encoding)
 		{
 		case shortVector:
@@ -663,11 +661,6 @@ void Record::getEncodedValue(int fieldId, Value *value)
 
 		default:
 			NOT_YET_IMPLEMENTED;
-		}
-}
-	catch (SQLException& exception)
-		{
-		int code = exception.getSqlcode();
 		}
 }
 
