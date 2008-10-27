@@ -2676,12 +2676,17 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
 				case MYSQL_TYPE_LONGLONG:
-				case MYSQL_TYPE_YEAR:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					dataStream->encodeInt64(field->val_int());
+					break;
+
+				case MYSQL_TYPE_YEAR:
+					// Have to use the ptr directly to get the same number for
+					// both two and four digit YEAR
+					dataStream->encodeInt64((int) field->ptr[0]);
 					break;
 
 				case MYSQL_TYPE_NEWDECIMAL:
@@ -2852,13 +2857,18 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
 				case MYSQL_TYPE_LONGLONG:
-				case MYSQL_TYPE_YEAR:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					field->store(dataStream->getInt64(),
 								((Field_num*)field)->unsigned_flag);
+					break;
+
+				case MYSQL_TYPE_YEAR:
+					// Must add 1900 to give Field_year::store the value it
+					// expects. See also case 'MYSQL_TYPE_YEAR' in encodeRecord()
+					field->store(dataStream->getInt64() + 1900, ((Field_num*)field)->unsigned_flag);
 					break;
 
 				case MYSQL_TYPE_NEWDECIMAL:
