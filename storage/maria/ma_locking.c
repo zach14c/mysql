@@ -29,7 +29,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
   uint count;
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("maria_lock_database");
-  DBUG_PRINT("enter",("lock_type: %d  old lock %d  r_locks: %u  w_locks: %u "
+  DBUG_PRINT("enter",("lock_type: %d  old lock %d  r_locks: %u  w_locks: %u  "
                       "global_changed:  %d  open_count: %u  name: '%s'",
                       lock_type, info->lock_type, share->r_locks,
                       share->w_locks,
