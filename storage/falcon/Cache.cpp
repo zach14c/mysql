@@ -934,7 +934,15 @@ void Cache::ioThread(void)
 					Log::log(LogInfo, "%d: Cache flush: %d pages, %d writes in %d seconds (%d pps)\n",
 								database->deltaTime, pages, writes, delta, pages / MAX(delta, 1));
 
-				database->pageCacheFlushed(flushArg);
+				try
+					{
+					database->pageCacheFlushed(flushArg);
+					}
+				catch (...)
+					{
+					// Ignores any errors from writing the checkpoint
+					// log record (ie. if we have issues with the serial log)
+					}
 				}
 			else
 				flushLock.unlock();

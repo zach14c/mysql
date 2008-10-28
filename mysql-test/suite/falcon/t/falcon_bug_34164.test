@@ -55,7 +55,7 @@ SELECT * FROM t1;
 --send UPDATE t1 SET b = 111 WHERE a = 1
 --echo # Switch to conn1
 connection conn1;
---real_sleep=1
+--real_sleep 1
 COMMIT;
 --echo # Switch to conn2
 connection conn2;
@@ -85,7 +85,7 @@ SELECT * FROM t1;
 --send UPDATE t1 SET b = 222 WHERE a = 2
 --echo # Switch to conn1
 connection conn1;
---real_sleep=1
+--real_sleep 1
 COMMIT;
 --echo # Switch to conn2
 connection conn2;
@@ -124,7 +124,7 @@ SELECT * FROM t1;
 --send UPDATE t1 SET b = 333 WHERE a = 3
 --echo # Switch to conn3
 connection conn3;
---real_sleep=1
+--real_sleep 1
 COMMIT;
 --echo # Switch to conn4
 connection conn4;
@@ -155,7 +155,7 @@ SELECT * FROM t1;
 --send UPDATE t1 SET b = 444 WHERE a = 4
 --echo # Switch to conn3
 connection conn3;
---real_sleep=1
+--real_sleep 1
 COMMIT;
 --echo # Switch to conn4
 connection conn4;
