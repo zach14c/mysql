@@ -856,6 +856,11 @@ bool Log_to_csv_event_handler::
   if (history_data->start)
   {
     MYSQL_TIME time;
+    /*
+      Set time ahead a few hours to allow backup purge test to test
+      PURGE BACKUP LOGS BEFORE command.
+    */
+    DBUG_EXECUTE_IF("set_log_time", history_data->start= my_time(0) + 100000;);
     my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)history_data->start);
 
     table->field[ET_OBH_FIELD_START_TIME]->set_notnull();
@@ -1096,6 +1101,323 @@ err:
   return result;
 }
 
+/**
+  Delete the current row from a log table.
+
+  This method is used to delete a row from a log that is being
+  accessed as a table. The row to be deleted is the current
+  row that the handler is pointing to via tbl->record[0].
+
+  Note: The handler must be positioned correctly and the
+        tbl->record[0] must be fetched by the appropriate
+        method (e.g., hdl->next()). 
+
+  @param[IN]  hdl   Table handler.
+  @param[IN]  tbl   Table class.
+
+  @returns Result of delete operation
+*/
+static bool delete_current_log_row(handler *hdl, TABLE *tbl)
+{
+  bool result= 0;
+
+  /*
+    Tell the handler to allow deletes for this log table
+    by turning off log table flag.
+  */
+  hdl->extra(HA_EXTRA_ALLOW_LOG_DELETE);
+  result= hdl->ha_delete_row(tbl->record[0]);
+  hdl->extra(HA_EXTRA_MARK_AS_LOG_TABLE);
+  return result;
+}
+
+/**
+  Perform a table scan of the backup log tables for deleting rows.
+
+  This method is a helper method designed to delete rows from the
+  backup logs when the destination includes writing to tables.
+
+  The method is designed to work with either the backup_history or
+  backup_progress log. The log is specified using the @c log_name
+  parameter and should be either BACKUP_HISTORY_LOG_NAME or
+  BACKUP_PROGRESS_LOG_NAME.
+
+  There are three ways this method can be used. The choice of which of 
+  the operations to run depends on the values of the parameters as stated.
+  1. Delete rows whose backup_id is < a given value. This is used
+     for @c PURGE BACKUP LOGS TO <@c backup_id>.
+     To use this method, set @c backup_id to the value passed from the
+     command, @c delete_exact_row = FALSE, and @c datetime_val = 0. 
+  2. Delete rows in the log where backuip_id is == to a given value.
+     This is used when cascading deletes from the backup_history log 
+     to the backup_progress log. 
+     To use this method, set @c backup_id to the value of the rows needing
+     deletion, @c delete_exact_row = TRUE, and @c datetime_val = 0. 
+  3. Delete rows whose start_time < a given value. This is used for
+     @c PURGE BACKUP LOGS BEFORE <datetimeval>.
+     To use this method, set @c backup_id = 0, @c delete_exact_row = FALSE, 
+     and @c datetime_val = value passed from the command. 
+
+  @note Deleting rows by date is limited to the backup_history table.
+
+  @param[IN]  THD                 The current thread
+  @param[IN]  log_name            is used to determine which log to process 
+                                  (backup_history or backup_progress).
+  @param[IN]  backup_id           value specified on the command for deleting 
+                                  rows by id or value for exact match 
+  @param[IN]  datetime_val        value specified on the command for deleting 
+                                  rows by date
+  @param[IN]  delete_exact_row    if TRUE, use the comparison for the log 
+                                  column backup_id_in_row == @c backup_id else 
+                                  use the comparison backup_id_in_row < 
+                                  @c backup_id.
+  @param[OUT] num                 Number of rows affected.
+
+  @returns TRUE if error
+*/
+static bool del_bup_log_row(THD *thd, 
+                            LEX_STRING log_name, 
+                            ulonglong backup_id, 
+                            my_time_t datetime_val,
+                            bool delete_exact_row,
+                            int *rows)
+{
+  TABLE_LIST table_list;
+  handler *hdl;
+  TABLE *tbl;
+  bool res= FALSE;
+  uint result= 0;
+  int num_rows= 0;
+  Open_tables_state open_tables_backup;
+  MYSQL_TIME tmp;
+
+  DBUG_ASSERT((my_strcasecmp(system_charset_info, log_name.str, 
+               BACKUP_HISTORY_LOG_NAME.str) == 0) ||
+              (my_strcasecmp(system_charset_info, log_name.str, 
+               BACKUP_PROGRESS_LOG_NAME.str) == 0));
+
+  /*
+    Setup table list for open.
+  */
+  bzero(&table_list, sizeof(TABLE_LIST));
+  table_list.alias= table_list.table_name= log_name.str;
+  table_list.table_name_length= log_name.length;
+
+  table_list.lock_type= TL_WRITE_CONCURRENT_INSERT;
+
+  table_list.db= MYSQL_SCHEMA_NAME.str;
+  table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  tbl= open_performance_schema_table(thd, &table_list,
+                                       &open_tables_backup);
+  hdl= tbl->file;
+  hdl->extra(HA_EXTRA_MARK_AS_LOG_TABLE);
+
+  /*
+    Get time zone conversion of value to compare for
+    PURGE BACKUP LOGS BEFORE <datetime>.
+  */
+  bzero(&tmp, sizeof(MYSQL_TIME));
+  thd->variables.time_zone->gmt_sec_to_TIME(&tmp, datetime_val);
+
+  /*
+    Begin table scan.
+  */
+  result= hdl->ha_rnd_init(1);
+  result= hdl->rnd_next(tbl->record[0]);
+  while (result != HA_ERR_END_OF_FILE)
+  {
+    // backup_id is field number 0 in both logs.
+    ulonglong id= tbl->field[0]->val_int();
+    /*
+      Delete by id.
+    */
+    if (!datetime_val)
+    {
+      /*
+        Here we delete a specific row. For example, a specific
+        row in the backup_history log as the result of a 
+        cascade delete initiated from backup_history log.
+      */
+      if (delete_exact_row)
+      {
+        if (id == backup_id) // delete log row
+        {
+          result= delete_current_log_row(hdl, tbl);
+          if (result)
+            goto error;
+        }
+      }
+      /*
+        Here we execute the delete all rows 'to' a specific
+        id, e.g. PURGE BACKUP LOGS TO 17 -- we delete id < 17.
+      */
+      else if (id < backup_id)
+      {
+        result= delete_current_log_row(hdl, tbl);
+        if (result)
+          goto error;
+        num_rows++;
+      }
+    }
+    /*
+      Delete by date
+    */
+    else  
+    {
+      MYSQL_TIME time;      
+
+      DBUG_ASSERT(my_strcasecmp(system_charset_info, log_name.str, 
+                  BACKUP_HISTORY_LOG_NAME.str) == 0);
+
+      tbl->field[ET_OBH_FIELD_START_TIME]->get_date(&time, TIME_NO_ZERO_DATE);
+      if (my_time_compare(&time, &tmp) < 0)
+      {
+        /*
+          When deleting by date for the backup_history table,
+          we must also delete rows from the backup_progress table
+          for this backup id.
+        */
+        if ((my_strcasecmp(system_charset_info, log_name.str, 
+             BACKUP_HISTORY_LOG_NAME.str) == 0) &&
+            opt_backup_progress_log && 
+            (log_backup_output_options & LOG_TABLE))
+        {
+          int r= 0;
+
+          del_bup_log_row(thd, BACKUP_PROGRESS_LOG_NAME, 
+                          id, 0, TRUE, &r);
+        }
+        result= delete_current_log_row(hdl, tbl);
+        if (result)
+          goto error;
+        num_rows++;
+      }
+    }
+    result= hdl->rnd_next(tbl->record[0]);
+  }
+error:
+  int res_end= hdl->ha_rnd_end();
+  *rows= num_rows;
+  close_performance_schema_table(thd, &open_tables_backup);
+  return (result != HA_ERR_END_OF_FILE) ? result : res_end;
+}
+
+/**
+  Remove all rows from the backup logs.
+
+  This method removes (via truncate) all data from the backup logs. It checks
+  if the backup logs are turned on and if the log_backup_output_option is set
+  to include writing to tables. If these conditions are true, each log 
+  (backup_history, backup_progress) is truncated.
+
+  @param[IN] THD  current thread
+
+  @returns TRUE = success, FALSE = failed
+*/
+bool Log_to_csv_event_handler::purge_backup_logs(THD *thd)
+{
+  TABLE_LIST tables;
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_TABLE))
+  {
+    // need to truncate the table.
+    tables.init_one_table("mysql", strlen("mysql"), 
+                          "backup_history", strlen("backup_history"),
+                          "backup_history", TL_READ);
+    alloc_mdl_locks(&tables, thd->mem_root);
+    res= mysql_truncate(thd, &tables, 1);
+    close_thread_tables(thd);
+    if (res)
+      goto err;
+  }
+  if (opt_backup_progress_log && (log_backup_output_options & LOG_TABLE))
+  {
+    // need to truncate the table.
+    tables.init_one_table("mysql", strlen("mysql"), 
+                          "backup_progress", strlen("backup_progress"),
+                          "backup_progress", TL_READ);
+    alloc_mdl_locks(&tables, thd->mem_root);
+    res= mysql_truncate(thd, &tables, 1);
+    close_thread_tables(thd);
+  }
+err:
+  return res;
+}
+
+/**
+  Purge backup logs of rows less than backup_id passed.
+
+  This method walks the backup log tables deleting all rows whose
+  backup id is less than @c backup_id passed. 
+
+  @param[IN]  THD                 The current thread
+  @param[IN]  backup_id           Value for backup id
+  @param[OUT] num                 Number of rows affected.
+
+  @retval num  Number of rows affected.
+
+  @returns TRUE if error
+*/
+bool 
+Log_to_csv_event_handler::purge_backup_logs_before_id(THD *thd, 
+                                                      ulonglong backup_id,
+                                                      int *rows)
+{
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_TABLE))
+  { 
+    res= del_bup_log_row(thd, BACKUP_HISTORY_LOG_NAME, 
+                         backup_id, 0, FALSE, rows);
+    if (res)
+      goto err;
+  }
+  if (opt_backup_progress_log && (log_backup_output_options & LOG_TABLE))
+  {
+    int r= 0;   //ignore this for progress log
+
+    res= del_bup_log_row(thd, BACKUP_PROGRESS_LOG_NAME, 
+                         backup_id, 0, FALSE, &r);
+  }
+err:
+  return res;
+}
+
+/**
+  Purge backup logs of rows previous to start date passed.
+
+  This method walks the backup log tables deleting all rows whose
+  start column value is less than @c t passed. 
+
+  Implementation Description: This method uses cascading delete 
+  functionality to remove rows from the backup_progress log when 
+  rows from the backup_history log are removed. Thus, only one 
+  call to delete rows from the logs is necessary.
+
+  @param[IN]  THD                 The current thread
+  @param[IN]  t                   Value for start datetime
+  @param[OUT] num                 Number of rows affected.
+
+  @retval num  Number of rows affected.
+
+  @returns TRUE if error
+*/
+bool 
+Log_to_csv_event_handler::purge_backup_logs_before_date(THD *thd, 
+                                                        my_time_t t,
+                                                        int *rows)
+{
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_TABLE))
+    res= del_bup_log_row(thd, BACKUP_HISTORY_LOG_NAME, 
+                         0, t, FALSE, rows);
+  return res;
+}
+
+
 bool Log_to_csv_event_handler::
   log_error(enum loglevel level, const char *format, va_list args)
 {
@@ -1256,10 +1578,53 @@ void Log_to_file_event_handler::flush_backup_logs()
     reopen log files 
 
     Where TRUE means perform open on history file (backup_history) and
-    FALSE means perform open on the progress file (backkup_progress).
+    FALSE means perform open on the progress file (backup_progress).
   */
   mysql_backup_history_log.reopen_file(TRUE);
   mysql_backup_progress_log.reopen_file(FALSE);
+}
+
+/**
+  Purge the backup logs of all data.
+
+  This method truncates the backup log files. It will only do so if the
+  log_backup_output_options includes logging to FILE. It also checks to
+  see if each log is turned on (backup_history and backup_progress) and
+  if so, truncates it. Truncate in this case means resetting the size
+  to 0 bytes using my_chsize().
+
+  @returns TRUE = success, FALSE = failed.
+*/
+bool Log_to_file_event_handler::purge_backup_logs()
+{
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_FILE))
+  {
+    MYSQL_BACKUP_LOG *backup_log= logger.get_backup_history_log_file_handler();
+
+    pthread_mutex_lock(backup_log->get_log_lock());
+    res= my_sync(backup_log->get_file(), MYF(MY_WME));
+    if (!res)
+      res= my_chsize(backup_log->get_file(), 0, 0, MYF(MY_WME));
+    pthread_mutex_unlock(backup_log->get_log_lock());
+    if (res)
+      goto err;
+  }
+  if (opt_backup_progress_log && (log_backup_output_options & LOG_FILE))
+  {
+    MYSQL_BACKUP_LOG *backup_log= logger.get_backup_progress_log_file_handler();
+
+    pthread_mutex_lock(backup_log->get_log_lock());
+    res= my_sync(backup_log->get_file(), MYF(MY_WME));
+    if (!res)
+      res= my_chsize(backup_log->get_file(), 0, 0, MYF(MY_WME));
+    pthread_mutex_unlock(backup_log->get_log_lock());
+    if (res)
+      goto err;
+  }
+err:
+  return res;
 }
 
 void Log_to_file_event_handler::cleanup()
@@ -1411,6 +1776,91 @@ bool LOGGER::flush_backup_logs(THD *thd)
   return rc;
 }
 
+/**
+  Delete contents of backup logs.
+
+  This method deletes the data from the backup logs. This applies to both
+  log file and table destinations.
+
+  @param[IN]  thd  The current thread.
+
+  @returns TRUE if error.
+*/
+bool LOGGER::purge_backup_logs(THD *thd)
+{
+  my_bool res= FALSE;
+
+  DBUG_ENTER("LOGGER::purge_backup_logs");
+  /*
+    Here we need to truncate the files if writing to files.
+  */
+  res= file_log_handler->purge_backup_logs();
+  if (res)
+    goto err;
+
+  /*
+    We also need to truncate the table if writing to tables.
+  */
+  res= table_log_handler->purge_backup_logs(thd);
+
+err:
+  DBUG_RETURN(res);
+}
+
+/**
+  Delete contents of backup logs where backup id is less than a given id.
+
+  This method deletes the data from the backup logs where a backup id is 
+  less than the backup id specified. This applies only to table destinations.
+
+  @param[IN]  thd        The current thread.
+  @param[IN]  backup_id  The backup id to compare rows to.
+  @param[OUT] rows       The number of rows affected.
+
+  @retval  num  The number of rows affected.
+
+  @returns TRUE if error.
+*/
+bool LOGGER::purge_backup_logs_before_id(THD *thd, 
+                                         ulonglong backup_id, 
+                                         int *rows)
+{
+  my_bool res= FALSE;
+
+  DBUG_ENTER("LOGGER::purge_backup_logs_before_id");
+
+  res= table_log_handler->purge_backup_logs_before_id(thd, backup_id, rows);
+
+  DBUG_RETURN(res);
+}
+
+/**
+  Delete backup rows less than a certain date.
+
+  This method scans the backup history log and deletes the rows for those
+  operations that were created (start column) previous to the date specified in 
+  @c t.
+
+  @param[IN]  thd        The current thread.
+  @param[IN]  t          The date to compare rows to.
+  @param[OUT] rows       The number of rows affected.
+
+  @retval  rows  The number of rows affected.
+
+  @returns TRUE if error.
+*/
+bool LOGGER::purge_backup_logs_before_date(THD *thd, 
+                                           my_time_t t, 
+                                           int *rows)
+{
+  my_bool res= FALSE;
+
+  DBUG_ENTER("LOGGER::purge_backup_logs_before_date");
+
+  res= table_log_handler->purge_backup_logs_before_date(thd, t, rows);
+
+  DBUG_RETURN(res);
+}
 
 /*
   Log slow query with all enabled log event handlers

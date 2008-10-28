@@ -2129,6 +2129,94 @@ mysql_execute_command(THD *thd)
     res = purge_master_logs_before_date(thd, (ulong)it->val_int());
     break;
   }
+  /*
+    Purge backup logs command.
+  */
+  case SQLCOM_PURGE_BACKUP_LOGS:
+  {
+    char buff[256];
+    int num= 0;
+    res= 0;
+
+    if (check_global_access(thd, SUPER_ACL))
+      goto error;
+
+    /*
+      If we are attempting to purge to a specified date or backup_id, we
+      must ensure the backup history log is turned on and is
+      being written to a table.
+    */
+    if (((lex->type == TYPE_ENUM_PURGE_BACKUP_LOGS_ID) ||
+         (lex->type == TYPE_ENUM_PURGE_BACKUP_LOGS_DATE)) &&
+         (opt_backup_history_log && !(log_backup_output_options & LOG_TABLE)))
+    {
+      my_error(ER_BACKUP_LOG_OUTPUT, MYF(0), ER(ER_BACKUP_LOG_OUTPUT));
+      goto error;
+    }
+
+    /*
+      Check the type of purge command and process accordingly.
+    */
+    switch (lex->type) {
+    case TYPE_ENUM_PURGE_BACKUP_LOGS:
+    {
+      if (sys_var_backupdir.value_length > 0)
+        res= logger.purge_backup_logs(thd);
+      break;
+    }
+    case TYPE_ENUM_PURGE_BACKUP_LOGS_ID:
+    {
+      res= logger.purge_backup_logs_before_id(thd, thd->lex->backup_id, &num);
+      break;
+    }
+    case TYPE_ENUM_PURGE_BACKUP_LOGS_DATE:
+    {
+      Item *it;
+
+      /*
+        Perform additional error checking for the 
+        PURGE BACKUP LOGS BEFORE <date> command.
+      */
+      it= (Item *)lex->value_list.head();
+      if ((!it->fixed && it->fix_fields(lex->thd, &it)) ||
+          it->check_cols(1))
+      {
+        my_error(ER_WRONG_ARGUMENTS, MYF(0), "PURGE BACKUP LOGS BEFORE");
+        goto error;
+      }
+      it= new Item_func_unix_timestamp(it);
+
+      /*
+        it is OK to only emulate fix_fields, because we need only
+        value of constant
+      */
+      it->quick_fix_field();
+
+      if ((ulong)it->val_int() == 0)
+      {
+        my_error(ER_BACKUP_PURGE_DATETIME, MYF(0), "PURGE BACKUP LOGS BEFORE");
+        goto error;
+      }
+
+      my_time_t t= (ulong)it->val_int();
+
+      res= logger.purge_backup_logs_before_date(thd, t, &num);
+      break;
+    }
+    }
+
+    /*
+      Check result. 
+    */
+    if (res)
+      goto error;
+    if (lex->type == TYPE_ENUM_PURGE_BACKUP_LOGS)
+      my_sprintf(buff, (buff, "%s.", ER(ER_BACKUP_LOGS_TRUNCATED)));
+    else
+      my_sprintf(buff, (buff, "%s %d.", ER(ER_BACKUP_LOGS_DELETED), num));
+    my_ok(thd, num, 0, buff);
+    break;
+  }
 #endif
   case SQLCOM_SHOW_WARNS:
   {

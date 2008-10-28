@@ -10813,10 +10813,32 @@ purge:
             lex->type=0;
             lex->sql_command = SQLCOM_PURGE;
           }
-          purge_options
-          {}
-        ;
+          purge_options {}
+          | PURGE BACKUP_SYM LOGS_SYM 
+          {
+            LEX *lex=Lex;
+            lex->type=TYPE_ENUM_PURGE_BACKUP_LOGS;
+            lex->sql_command = SQLCOM_PURGE_BACKUP_LOGS;
+          }
+          purge_bup_log_option {}
+          ; 
 
+purge_bup_log_option:
+          {}
+          | TO_SYM NUM_literal
+          {
+            LEX *lex= Lex;
+            lex->backup_id= (ulonglong)$2->val_int(); 
+            lex->type=TYPE_ENUM_PURGE_BACKUP_LOGS_ID;
+          }
+          | BEFORE_SYM expr
+          {
+            LEX *lex= Lex;
+            lex->value_list.empty();
+            lex->value_list.push_front($2);
+            lex->type=TYPE_ENUM_PURGE_BACKUP_LOGS_DATE;
+          }
+          ;
 purge_options:
           master_or_binary LOGS_SYM purge_option
         ;

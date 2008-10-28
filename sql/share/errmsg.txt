@@ -6404,4 +6404,11 @@ ER_BACKUP_BINLOG
         eng "Error on accessing binlog during BACKUP"
         nor "Lesing av binlog feilet under BACKUP"
         norwegian-ny "Lesing av binlog feila under BACKUP"
-
+ER_BACKUP_LOG_OUTPUT
+  eng "Removing backup log entries by date or backup_id requires logging to tables."
+ER_BACKUP_PURGE_DATETIME
+  eng "The datetime specified is invalid for the '%-.64s' command."
+ER_BACKUP_LOGS_DELETED
+  eng "Backup log entries deleted: "
+ER_BACKUP_LOGS_TRUNCATED
+  eng "All backup logs entries have been deleted"

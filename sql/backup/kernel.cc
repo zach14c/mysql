@@ -1253,6 +1253,8 @@ int Backup_restore_ctx::do_restore()
 
   report_stats_post(info);                      // Never errors
 
+  DEBUG_SYNC(m_thd, "before_restore_done");
+
   DBUG_RETURN(0);
 }
 
