@@ -859,8 +859,12 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncScavenge.setName("Table::syncScavenge");
 	syncAlter.setName("Table::syncAlter");
+	
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
 		syncPriorVersions[n].setName("Table::syncPriorVersions");
+	
+	for (int n = 0; n < SYNC_THAW_SIZE; n++)
+		syncThaw[n].setName("Table::syncThaw");
 }
 
 Record* Table::fetch(int32 recordNumber)
@@ -2545,9 +2549,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		state = transaction->getRelativeState(dup, DO_NOT_WAIT);
 
-		if (dup->state == recChilled)
-			dup->getRecordData();
-
 		// Check for a deleted record or a record lock
 
 		if (!dup->hasRecord())
@@ -3548,6 +3549,13 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					return NULL;
 					}
 
+				if (record->state == recChilled	&& !record->thaw())
+					{
+					record->release();
+
+					return NULL;
+					}
+						
 				// Lock the record
 
 				if (dbb->debug & DEBUG_RECORD_LOCKS)
@@ -3562,9 +3570,6 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					transaction->addRecord(recordVersion);
 					recordVersion->release();
 
-					if (record->state == recChilled)
-						record->thaw();
-					
 					ASSERT(record->useCount >= 2);
 						
 					return record;
@@ -3816,6 +3821,18 @@ SyncObject* Table::getSyncPrior(int recordNumber)
 {
 	int lockNumber = recordNumber % SYNC_VERSIONS_SIZE;
 	return syncPriorVersions + lockNumber;
+}
+
+SyncObject* Table::getSyncThaw(Record* record)
+{
+	int lockNumber = record->recordNumber % SYNC_THAW_SIZE;
+	return syncThaw + lockNumber;
+}
+
+SyncObject* Table::getSyncThaw(int recordNumber)
+{
+	int lockNumber = recordNumber % SYNC_THAW_SIZE;
+	return syncThaw + lockNumber;
 }
 
 static bool needUniqueCheck(Index *index, Record *record)
