@@ -6412,3 +6412,7 @@ ER_BACKUP_LOGS_DELETED
   eng "Backup log entries deleted: "
 ER_BACKUP_LOGS_TRUNCATED
   eng "All backup logs entries have been deleted"
+ER_MASTER_BLOCKING_SLAVES
+  eng "The master is not allowing slave connections."
+ER_RESTORE_ON_MASTER
+  eng "A restore operation was initiated on the master."
