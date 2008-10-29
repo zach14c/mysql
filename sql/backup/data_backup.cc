@@ -552,6 +552,25 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     DBUG_PRINT("backup_data",("-- PREPARE PHASE --"));
     DEBUG_SYNC(thd, "before_backup_data_prepare");
 
+    /*
+      Note: block_commits is performed here because of the global read
+      lock/table lock deadlock reported in bug#39602. It should be
+      moved back to right before sch.lock() once a refined commit
+      blocker has been implemented. WL#4610 tracks the work on a
+      refined commit blocker
+    */
+    /*
+      Block commits.
+
+      TODO: Step 2 of the commit blocker has been skipped for this release.
+      When it is included, developer needs to build a list of all of the
+      non-transactional tables and pass that to block_commits().
+    */
+    int error= 0;
+    error= block_commits(thd, NULL);
+    if (error)
+      goto error;
+
     if (sch.prepare())
       goto error;
 
@@ -574,16 +593,8 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     DEBUG_SYNC(thd, "after_backup_validated");
     
     /*
-      Block commits.
-
-      TODO: Step 2 of the commit blocker has been skipped for this release.
-      When it is included, developer needs to build a list of all of the
-      non-transactional tables and pass that to block_commits().
+      Refined commit blocker should be set here; see WL#4610
     */
-    int error= 0;
-    error= block_commits(thd, NULL);
-    if (error)
-      goto error;
 
     DEBUG_SYNC(thd, "before_backup_data_lock");
     if (sch.lock())
