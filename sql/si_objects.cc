@@ -4035,7 +4035,7 @@ int num_slaves_attached()
 
   if (pl)
   {
-    while (proc= pl->next())
+    while ((proc= pl->next()))
     {
       const String *p= proc->get_name();
       if (my_strcasecmp(system_charset_info, p->ptr(), 

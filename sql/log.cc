@@ -1185,7 +1185,6 @@ static bool del_bup_log_row(THD *thd,
   TABLE_LIST table_list;
   handler *hdl;
   TABLE *tbl;
-  bool res= FALSE;
   uint result= 0;
   int num_rows= 0;
   Open_tables_state open_tables_backup;
