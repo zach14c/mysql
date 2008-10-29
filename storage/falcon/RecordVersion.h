@@ -53,7 +53,7 @@ public:
 	virtual void		setPriorVersion (Record *oldVersion);
 	virtual void		setVirtualOffset(uint64 offset);
 	virtual uint64		getVirtualOffset();
-	virtual int			thaw(bool force = false);
+	virtual int			thaw(void);
 	virtual void		print(void);
 	virtual int			getSize(void);
 	virtual void		serialize(Serialize* stream);

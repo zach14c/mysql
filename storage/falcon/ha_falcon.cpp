@@ -1561,7 +1561,7 @@ int StorageInterface::rename_table(const char *from, const char *to)
 	ret = storageShare->renameTable(storageConnection, to);
 	
 	if (!ret)
-	remapIndexes(table);
+		remapIndexes(table);
 	
 	storageShare->unlock();
 	storageShare->unlockIndexes();
