@@ -1685,6 +1685,9 @@ public:
     then the latter INSERT will insert no rows
     (first_successful_insert_id_in_cur_stmt == 0), but storing "INSERT_ID=3"
     in the binlog is still needed; the list's minimum will contain 3.
+    This variable is cumulative: if several statements are written to binlog
+    as one (stored functions or triggers are used) this list is the
+    concatenation of all intervals reserved by all statements.
   */
   Discrete_intervals_list auto_inc_intervals_in_cur_stmt_for_binlog;
   /* Used by replication and SET INSERT_ID */
@@ -2457,6 +2460,7 @@ public:
   CHARSET_INFO *cs;
   sql_exchange(char *name, bool dumpfile_flag,
                enum_filetype filetype_arg= FILETYPE_CSV);
+  bool escaped_given(void);
 };
 
 #include "log_event.h"

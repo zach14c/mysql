@@ -36,6 +36,8 @@ DROP DATABASE mysql_test;
 --echo
 SELECT DATABASE();
 
+--echo
+--echo rm mysql_test/t1.MYD mysql_test/t1.MYI
 remove_file $MYSQLD_DATADIR/mysql_test/t1.MYD;
 remove_file $MYSQLD_DATADIR/mysql_test/t1.MYI;
 

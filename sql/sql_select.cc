@@ -31,6 +31,7 @@
 #include "mysql_priv.h"
 #include "sql_select.h"
 #include "sql_cursor.h"
+
 #include <m_ctype.h>
 #include <my_bit.h>
 #include <hash.h>
@@ -271,7 +272,7 @@ bool handle_select(THD *thd, LEX *lex, select_result *result,
   bool res;
   register SELECT_LEX *select_lex = &lex->select_lex;
   DBUG_ENTER("handle_select");
-  MYSQL_SELECT_START();
+  MYSQL_SELECT_START(thd->query);
 
   if (select_lex->master_unit()->is_union() || 
       select_lex->master_unit()->fake_select_lex)
@@ -305,7 +306,8 @@ bool handle_select(THD *thd, LEX *lex, select_result *result,
   if (unlikely(res))
     result->abort();
 
-  MYSQL_SELECT_END();
+  MYSQL_SELECT_DONE((int) res, (ulong) thd->limit_found_rows);
+
   DBUG_RETURN(res);
 }
 
@@ -17863,6 +17865,7 @@ setup_copy_fields(THD *thd, TMP_TABLE_PARAM *param,
   Item *pos;
   List_iterator_fast<Item> li(all_fields);
   Copy_field *copy= NULL;
+  IF_DBUG(Copy_field *copy_start);
   res_selected_fields.empty();
   res_all_fields.empty();
   List_iterator_fast<Item> itr(res_all_fields);
@@ -17875,12 +17878,19 @@ setup_copy_fields(THD *thd, TMP_TABLE_PARAM *param,
     goto err2;
 
   param->copy_funcs.empty();
+  IF_DBUG(copy_start= copy);
   for (i= 0; (pos= li++); i++)
   {
     Field *field;
     uchar *tmp;
     Item *real_pos= pos->real_item();
-    if (real_pos->type() == Item::FIELD_ITEM)
+    /*
+      Aggregate functions can be substituted for fields (by e.g. temp tables).
+      We need to filter those substituted fields out.
+    */
+    if (real_pos->type() == Item::FIELD_ITEM &&
+        !(real_pos != pos &&
+          ((Item_ref *)pos)->ref_type() == Item_ref::AGGREGATE_REF))
     {
       Item_field *item;
       if (!(item= new Item_field(thd, ((Item_field*) real_pos))))
@@ -17927,6 +17937,7 @@ setup_copy_fields(THD *thd, TMP_TABLE_PARAM *param,
 	  goto err;
         if (copy)
         {
+          DBUG_ASSERT (param->field_count > (uint) (copy - copy_start));
           copy->set(tmp, item->result_field);
           item->result_field->move_field(copy->to_ptr,copy->to_null_ptr,1);
 #ifdef HAVE_purify

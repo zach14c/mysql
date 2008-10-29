@@ -82,6 +82,7 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 load data infile 't1.txt' into table t1;
 select hex(a) from t1;
 --remove_file $MYSQLD_DATADIR/test/t1.txt
+
 drop table t1;
 
 --echo End of 5.0 tests

@@ -548,6 +548,7 @@ pthread_handler_t libevent_thread_proc(void *arg)
   */
   (void) pthread_mutex_lock(&LOCK_thread_count);
   created_threads++;
+  thread_created++;
   if (created_threads == thread_pool_size)
     (void) pthread_cond_signal(&COND_thread_count);
   (void) pthread_mutex_unlock(&LOCK_thread_count);
@@ -601,6 +602,8 @@ pthread_handler_t libevent_thread_proc(void *arg)
       else
       {
         /* login successful */
+        MYSQL_CONNECTION_START(thd->thread_id, thd->security_ctx->priv_user,
+                               (char *) thd->security_ctx->host_or_ip);
         thd->scheduler.logged_in= TRUE;
         prepare_new_connection_state(thd);
         if (!libevent_needs_immediate_processing(thd))

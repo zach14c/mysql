@@ -31,7 +31,7 @@ include $(srcdir)/Makefile.shared
 libmysqlclient_la_SOURCES = $(target_sources)
 libmysqlclient_la_LIBADD = $(target_libadd) $(yassl_las)
 libmysqlclient_la_LDFLAGS = $(target_ldflags)
-EXTRA_DIST = Makefile.shared libmysql.def dll.c CMakeLists.txt
+EXTRA_DIST = Makefile.shared libmysql.def CMakeLists.txt
 noinst_HEADERS = client_settings.h
 
 link_sources:
@@ -67,6 +67,8 @@ link_sources:
 	  done; \
 	  rm -f net.c; \
 	  @LN_CP_F@ $(top_srcdir)/sql/net_serv.cc net.c ; \
+	  rm -f probes.h; \
+	  @LN_CP_F@ $(top_srcdir)/sql/probes.h probes.h
 	  rm -f password.c; \
 	  @LN_CP_F@ $(top_srcdir)/sql/password.c password.c
 	  echo timestamp > link_sources

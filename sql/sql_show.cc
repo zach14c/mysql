@@ -951,6 +951,10 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
                       to tailor the format of the statement.  Can be
                       NULL, in which case only SQL_MODE is considered
                       when building the statement.
+    show_database     If TRUE, the database for the table will be
+                      prepended to the table name if either the
+                      current database is not set, or if it is set and
+                      it is different from the database for the table.
 
   NOTE
     Currently always return 0, but might return error code in the
@@ -1021,7 +1025,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
   {
     const LEX_STRING *const db=
       table_list->schema_table ? &INFORMATION_SCHEMA_NAME : &table->s->db;
-    if (strcmp(db->str, thd->db) != 0)
+    if (!thd->db || db->str && strcmp(db->str, thd->db) != 0)
     {
       append_identifier(thd, packet, db->str, db->length);
       packet->append(STRING_WITH_LEN("."));
@@ -4692,6 +4696,27 @@ static int get_schema_views_record(THD *thd, TABLE_LIST *tables,
           !my_strcasecmp(system_charset_info, tables->definer.host.str,
                          sctx->priv_host))
         tables->allowed_show= TRUE;
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+      else
+      {
+        if ((thd->col_access & (SHOW_VIEW_ACL|SELECT_ACL)) ==
+            (SHOW_VIEW_ACL|SELECT_ACL))
+          tables->allowed_show= TRUE;
+        else
+        {
+          TABLE_LIST table_list;
+          uint view_access;
+          memset(&table_list, 0, sizeof(table_list));
+          table_list.db= tables->db;
+          table_list.table_name= tables->table_name;
+          table_list.grant.privilege= thd->col_access;
+          view_access= get_table_grant(thd, &table_list);
+	  if ((view_access & (SHOW_VIEW_ACL|SELECT_ACL)) ==
+	      (SHOW_VIEW_ACL|SELECT_ACL))
+	    tables->allowed_show= TRUE;
+        }
+      }
+#endif
     }
     restore_record(table, s->default_values);
     table->field[1]->store(db_name->str, db_name->length, cs);

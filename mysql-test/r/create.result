@@ -228,7 +228,7 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MEMORY DEFAULT CHARSET=latin1
 drop table t1;
 SET SESSION storage_engine="gemini";
-ERROR 42000: Unknown table engine 'gemini'
+ERROR 42000: Unknown storage engine 'gemini'
 SELECT @@storage_engine;
 @@storage_engine
 MEMORY
@@ -389,7 +389,7 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MEMORY DEFAULT CHARSET=latin1
 drop table t1;
 SET SESSION storage_engine="gemini";
-ERROR 42000: Unknown table engine 'gemini'
+ERROR 42000: Unknown storage engine 'gemini'
 SELECT @@storage_engine;
 @@storage_engine
 MEMORY
@@ -1564,6 +1564,8 @@ SHOW INDEX FROM t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_Comment
 t1	1	c1	1	c1	A	NULL	NULL	NULL	YES	BTREE		
 DROP TABLE t1;
+create user mysqltest_1@'test@test';
+ERROR HY000: Malformed hostname (illegal symbol: '@')
 CREATE TABLE t1 (a INTEGER AUTO_INCREMENT PRIMARY KEY, b INTEGER NOT NULL);
 INSERT IGNORE INTO t1 (b) VALUES (5);
 CREATE TABLE IF NOT EXISTS t2 (a INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY)

@@ -287,7 +287,25 @@ while ($j)
 
 SELECT COUNT(*) FROM history;
 
---source include/ndb_backup.inc
+#RESET MASTER;
+--exec $NDB_MGM --no-defaults --ndb-connectstring="localhost:$NDBCLUSTER_PORT" -e "start backup" >> $NDB_TOOLS_OUTPUT
+
+--exec $NDB_TOOLS_DIR/ndb_select_all --ndb-connectstring="localhost:$NDBCLUSTER_PORT" -d sys --delimiter=',' SYSTAB_0 | grep 520093696 > $MYSQLTEST_VARDIR/tmp.dat
+
+CREATE TEMPORARY TABLE IF NOT EXISTS mysql.backup_info (id INT, backup_id INT) ENGINE = HEAP;
+
+DELETE FROM mysql.backup_info;
+
+LOAD DATA INFILE '../tmp.dat' INTO TABLE mysql.backup_info FIELDS TERMINATED BY ',';
+--remove_file $MYSQLTEST_VARDIR/tmp.dat
+--replace_column 1 <the_backup_id>
+
+SELECT @the_backup_id:=backup_id FROM mysql.backup_info;
+
+let the_backup_id=`select @the_backup_id`;
+
+DROP TABLE IF EXISTS mysql.backup_info;
+#RESET MASTER;
 
 --echo ************ Restore the slave ************************
 connection slave;

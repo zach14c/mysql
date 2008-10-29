@@ -126,6 +126,9 @@ sp_get_item_value(THD *thd, Item *item, String *str)
         if (cs->escape_with_backslash_is_dangerous)
           buf.append(' ');
         append_query_string(cs, result, &buf);
+        buf.append(" COLLATE '");
+        buf.append(item->collation.collation->name);
+        buf.append('\'');
         str->copy(buf);
 
         return str;
@@ -1941,8 +1944,8 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
       thd->rollback_item_tree_changes();
     }
 
-    DBUG_PRINT("info",(" %.*s: eval args done",
-                       (int) m_name.length, m_name.str));
+    DBUG_PRINT("info",(" %.*s: eval args done", (int) m_name.length, 
+                       m_name.str));
   }
   if (!(m_flags & LOG_SLOW_STATEMENTS) && thd->enable_slow_log)
   {
@@ -2898,7 +2901,14 @@ sp_instr_stmt::print(String *str)
 int
 sp_instr_stmt::exec_core(THD *thd, uint *nextp)
 {
+  MYSQL_QUERY_EXEC_START(thd->query,
+                         thd->thread_id,
+                         (char *) (thd->db ? thd->db: ""),
+                         thd->security_ctx->priv_user,
+                         (char *) thd->security_ctx->host_or_ip,
+                         3);
   int res= mysql_execute_command(thd);
+  MYSQL_QUERY_EXEC_DONE(res);
   *nextp= m_ip+1;
   return res;
 }
