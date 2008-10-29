@@ -2715,7 +2715,7 @@ public:
   void raise_warning(uint code);
 
   /**
-    Raise a completion condition (warning), with a fixed message.
+    Raise a completion condition (warning), with a formatted message.
     Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the warning
   */
@@ -2737,9 +2737,17 @@ public:
   */
   void raise_note(uint code);
 
+  /**
+    Raise an completion condition (note), with a formatted message.
+    Helper for most common usage.
+    @param code the MYSQL_ERRNO error code of the note
+  */
   void raise_note_printf(uint code, ...);
+
   /**
     Raise a completion condition (note), with a formatted message.
+    Deprecated method, used to support push_warning().
+    @deprecated
     @param code the MYSQL_ERRNO error code of the note
     @param msg the MESSAGE_TEXT the note
   */
