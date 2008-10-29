@@ -20,7 +20,7 @@ PROCESSLIST	CREATE TEMPORARY TABLE `PROCESSLIST` (
   `TIME` bigint(7) NOT NULL DEFAULT '0',
   `STATE` varchar(64) DEFAULT NULL,
   `INFO` longtext
-) ENGINE=MARIA DEFAULT CHARSET=utf8 PAGE_CHECKSUM=0
+)  DEFAULT CHARSET=utf8
 # Ensure that the information about the own connection is correct.
 #--------------------------------------------------------------------------
 

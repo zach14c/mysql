@@ -552,7 +552,7 @@ connect (con1,localhost,root,,test);
 CREATE TABLE t1 (a int);
 ALTER TABLE t1 ADD PRIMARY KEY (a);
 --disconnect con1
---sleep 5
+--real_sleep 3
 
 connection default;
 DROP TABLE t1;
