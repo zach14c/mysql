@@ -668,10 +668,10 @@ void Dbb::validate(int optionMask)
 	Validation validation (this, optionMask);
 	validation.inUse ((int32) HEADER_PAGE, "HeaderPage");
 	PageInventoryPage::validate (this, &validation);
-	
+
 	if (inversion)
 		inversion->validate (&validation);
-		
+
 	Section::validateIndexes (this, &validation);
 	Section::validateSections (this, &validation);
 	PageInventoryPage::validateInventory (this, &validation);

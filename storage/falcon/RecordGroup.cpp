@@ -154,6 +154,35 @@ int RecordGroup::countActiveRecords()
 	return count;
 }
 
+bool RecordGroup::anyActiveRecords()
+{
+	for (RecordSection **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr)
+		{
+		RecordSection *section = *ptr;
+		
+		if (section)
+			if (section->anyActiveRecords())
+				return true;
+		}
+
+	return false;
+}
+
+int RecordGroup::chartActiveRecords(int *chart)
+{
+	int count = 0;
+
+	for (RecordSection **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr)
+		{
+		RecordSection *section = *ptr;
+		
+		if (section)
+			count += section->chartActiveRecords(chart);
+		}
+
+	return count;
+}
+
 bool RecordGroup::inactive()
 {
 	for (int slot = 0; slot < RECORD_SLOTS; slot++)

@@ -148,7 +148,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 #ifdef USE_FALCON_SYNC_HANDLER
 	SyncHandler *syncHandler = getFalconSyncHandler();
 	if (sync && syncHandler)
-		syncHandler->addLock(this, location);
+		syncHandler->addLock(this, location, type);
 #endif
 #endif
 
@@ -320,7 +320,7 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 #ifdef USE_FALCON_SYNC_HANDLER
 	SyncHandler *syncHandler = getFalconSyncHandler();
 	if (sync && syncHandler)
-		syncHandler->addLock(this, location);
+		syncHandler->addLock(this, location, type);
 #endif
 #endif
 

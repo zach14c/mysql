@@ -100,6 +100,8 @@ public:
 	void			initializeSpace(void);
 	DINode*			findMaxValue(void);
 	DINode*			findMinValue(void);
+	void			addRef();
+	void			release();
 
 	SyncObject		syncObject;	
 	volatile INTERLOCK_TYPE useCount;
@@ -124,8 +126,6 @@ public:
 	uint64			virtualOffset;		// virtual offset into the serial log where this DI was flushed.
 	uint64			virtualOffsetAtEnd;
 	SerialLogWindow	*window;
-	void			addRef();
-	void			releaseRef();
 };
 
 #endif

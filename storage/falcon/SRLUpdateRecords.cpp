@@ -198,8 +198,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			
 			// Load the record data into a stream
 
-			if (record->hasRecord())
-				record->getRecord(&stream);
+			if (record->hasRecord(false))
+				{
+				if (!record->getRecord(&stream))
+					continue;
+				}
 			else
 				ASSERT(record->state == recDeleted);
 			
