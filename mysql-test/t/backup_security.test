@@ -8,8 +8,8 @@
 --source include/not_embedded.inc
 
 disable_query_log;
-call mtr.add_supression("Backup:");
-call mtr.add_supression("Restore:");
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Restore:");
 enable_query_log;
 
 --disable_warnings

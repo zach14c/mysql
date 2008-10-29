@@ -1,4 +1,4 @@
-call mtr.add_supression("Restore: Tablespace .* needed by tables being restored has changed on the server");
+call mtr.add_suppression("Restore: Tablespace .* needed by tables being restored has changed on the server");
 DROP TABLE IF EXISTS backup_ts.not_ts;
 DROP TABLE IF EXISTS backup_ts.has_ts;
 DROP DATABASE IF EXISTS backup_ts;

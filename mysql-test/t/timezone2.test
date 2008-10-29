@@ -264,7 +264,7 @@ INSERT INTO t1 VALUES (NULL), (NULL);
 LOCK TABLES t1 WRITE;
 
 # The following two queries should not return error that time zone
-# tables aren't locked.  We use IS NULL below to supress timestamp
+# tables aren't locked.  We use IS NULL below to suppress timestamp
 # result.
 SELECT CONVERT_TZ(NOW(), 'UTC', 'Europe/Moscow') IS NULL;
 UPDATE t1 SET t = CONVERT_TZ(t, 'UTC', 'Europe/Moscow');

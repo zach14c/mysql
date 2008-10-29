@@ -127,7 +127,7 @@ select count(*) from t1;
 count(*)
 12
 DROP table t1;
-call mtr.add_supression("Slave: Got error 146 during COMMIT Error_code: 1180");
+call mtr.add_suppression("Slave: Got error 146 during COMMIT Error_code: 1180");
 CREATE TABLE `t1` ( `nid` int(11) NOT NULL default '0',
 `nom` char(4) default NULL,
 `prenom` char(4) default NULL,
