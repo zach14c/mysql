@@ -599,7 +599,6 @@ sub optimize_cases {
           if ( $default_engine =~ /^innodb/i );
       }
     }
-
   }
 }
 

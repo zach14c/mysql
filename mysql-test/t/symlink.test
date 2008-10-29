@@ -220,6 +220,7 @@ INDEX DIRECTORY='$MYSQLD_DATADIR';
 --error 1
 eval CREATE TABLE t1(a INT)
 INDEX DIRECTORY='$MYSQLTEST_VARDIR/master-data_var';
+
 # BUG#25677 - With --skip-symbolic-links option on, DATA DIRECTORY clause is
 #             silently ignored
 #

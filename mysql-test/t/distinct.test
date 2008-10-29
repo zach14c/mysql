@@ -440,7 +440,6 @@ SELECT DISTINCT a,a FROM t1 WHERE b < 12 ORDER BY a;
 DROP TABLE t1;
 
 #Bug #20836: Selecting into variables results in wrong results being returned
-
 --disable_warnings
 DROP TABLE IF EXISTS t1;
 --enable_warnings
