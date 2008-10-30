@@ -300,7 +300,7 @@ void mdl_init_lock(MDL_LOCK_DATA *lock_data, char *key, int type,
 
    @note The allocated lock request will have MDL_SHARED type.
 
-   @retval 0      Error
+   @retval 0      Error if out of memory
    @retval non-0  Pointer to an object representing a lock request
 */
 

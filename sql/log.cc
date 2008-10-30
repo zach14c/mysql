@@ -898,6 +898,15 @@ bool Log_to_csv_event_handler::
     table->field[ET_OBH_FIELD_BACKUP_FILE]->set_notnull();
   }
 
+  if (history_data->backup_file_path)
+  {
+    if (table->field[ET_OBH_FIELD_BACKUP_FILE_PATH]->store(
+        history_data->backup_file_path, 
+        strlen(history_data->backup_file_path), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_BACKUP_FILE_PATH]->set_notnull();
+  }
+
   if (history_data->user_comment)
   {
     if (table->field[ET_OBH_FIELD_COMMENT]->store(history_data->user_comment,
@@ -3145,7 +3154,7 @@ bool MYSQL_BACKUP_LOG::open(const char *log_name,
                    "\terror_num \tnum_objects \ttotal_bytes "
                    "\tvalidity_point_time \tstart_time \tstop_time "
                    "\thost_or_server_name \tusername \tbackup_file "
-                   "\tuser_comment \tcommand \tdrivers\n",
+                   "\tbackup_file_path \tuser_comment \tcommand \tdrivers\n",
                    sizeof(buff) - len);
     else
       end= strnmov(buff + len, "\nbackup_id \tobject \tstart_time \tstop_time "
@@ -3340,6 +3349,8 @@ bool MYSQL_BACKUP_LOG::write(THD *thd, st_backup_history *history_data)
     if (write_str(user))
       goto err;
     if (write_str(history_data->backup_file))
+      goto err;
+    if (write_str(history_data->backup_file_path))
       goto err;
     if (write_str(history_data->user_comment))
       goto err;

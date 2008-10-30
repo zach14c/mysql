@@ -50,7 +50,7 @@ DROP TABLESPACE bup_ts ENGINE=FALCON;
 CREATE TABLESPACE bup_ts ADD DATAFILE 'different.dat' ENGINE=FALCON;
 Now restore the database.
 RESTORE FROM 'backup_ts.bak';
-ERROR HY000: Tablespace `bup_ts` needed by tables being restored has changed on the server. The original definition of the required tablespace is 'CREATE TABLESPACE `bup_ts` ADD DATAFILE 'bup_ts.dat' COMMENT = 'test tablespace backup' ENGINE=Falcon' while the same tablespace is defined o
+ERROR HY000: Tablespace `bup_ts` needed by tables being restored, but the current tablespace definition differs from how it was when backup was made.
 Cleanup
 DROP DATABASE IF EXISTS backup_ts;
 DROP TABLESPACE bup_ts ENGINE=FALCON;

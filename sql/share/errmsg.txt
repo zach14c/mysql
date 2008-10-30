@@ -6347,7 +6347,7 @@ ER_BACKUP_CAT_ENUM
 ER_BACKUP_CANT_RESTORE_TS
         eng "Could not create tablespace %-.64s needed by tables being restored."
 ER_BACKUP_TS_CHANGE
-        eng "Tablespace %-.64s needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
+        eng "Tablespace %-.64s needed by tables being restored, but the current tablespace definition differs from how it was when backup was made."
 ER_BACKUP_GET_META_TS
         eng "Failed to obtain meta-data for tablespace %-.64s."
 ER_TABLESPACE_DATAFILE_EXIST
@@ -6386,3 +6386,16 @@ ER_BACKUP_LOGPATHS
   eng "The log names for backup_history and backup_progress must be unique."
 ER_BACKUP_LOGPATH_INVALID
   eng "The path specified for the %-.64s is invalid. ref: %-.64s"
+ER_BACKUP_SEND_REPLY
+        eng "Failed to send reply to client after successful %-.64s operation"
+        nor "Feil ved sending av svar til klient etter %-.64s"
+        norwegian-ny "Feil ved sending av svar til klienten etter %-.64s"
+ER_BACKUP_CLOSE
+        eng "Backup/Restore: Error on close of backup stream"
+        nor "Backup/Restore: Feil ved lukning av backup-strøm"
+        norwegian-ny "Backup/Restore:  Feil ved lukking av backup-straum"
+ER_BACKUP_BINLOG
+        eng "Error on accessing binlog during BACKUP"
+        nor "Lesing av binlog feilet under BACKUP"
+        norwegian-ny "Lesing av binlog feila under BACKUP"
+
