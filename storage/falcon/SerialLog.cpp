@@ -217,7 +217,9 @@ void SerialLog::recover()
 	sync.lock(Exclusive);
 	recovering = true;
 	recoveryPhase = 0;	// Find last block and recovery block
-	
+
+	defaultDbb->setCacheRecovering(true);
+
 	// See if either or both files have valid blocks
 
 	SerialLogWindow *window1 = allocWindow(file1, 0);
@@ -414,7 +416,8 @@ void SerialLog::recover()
 		info->sectionUseVector.zap();
 		info->indexUseVector.zap();
 		}
-		
+
+	defaultDbb->setCacheRecovering(false);
 	Log::log("Recovery complete\n");
 	recoveryPhase = 0;	// Find last lock and recovery block
 }
