@@ -6416,3 +6416,5 @@ ER_MASTER_BLOCKING_SLAVES
   eng "The master is not allowing slave connections."
 ER_RESTORE_ON_MASTER
   eng "A restore operation was initiated on the master."
+ER_RESTORE_ON_SLAVE
+  eng "A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore."

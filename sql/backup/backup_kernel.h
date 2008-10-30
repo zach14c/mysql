@@ -134,6 +134,12 @@ class Backup_restore_ctx: public backup::Logger
   */
   bool m_tables_locked; 
 
+  /**
+    Indicates we must turn binlog back on in the close method. This is
+    set to TRUE in the prepare_for_restore() method.
+  */
+  bool m_engage_binlog;
+
   int lock_tables_for_restore();
   void unlock_tables();
   

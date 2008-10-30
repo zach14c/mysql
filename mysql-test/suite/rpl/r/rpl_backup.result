@@ -1,0 +1,335 @@
+stop slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+reset master;
+reset slave;
+drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
+start slave;
+Create some data...
+CREATE DATABASE rpl_backup;
+CREATE TABLE rpl_backup.t1 (a int);
+INSERT INTO rpl_backup.t1 VALUES (1), (2), (3), (4), (5);
+Remove all entries in the backup logs.
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+Remove all entries in the backup logs.
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+Get master's binlog position from the slave before backup.
+Get master's binlog position before backup.
+SET SESSION debug="+d,set_backup_id";
+Backup_id = 500.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_m1.bak';
+backup_id
+500
+SET SESSION debug="-d";
+Show any events issued as a result of backup.
+Note: There should be none!
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+Verify backup run on master does not advance binlog pos.
+Get master's binlog position after backup.
+Compare the before position of the master's binlog to
+the after position of the master's binlog. The result
+should be 0.
+Delta
+0
+Should have count(*) = 0.
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+0
+Verify backup run on master does not advance binlog pos.
+Get master's binlog position on the slave after backup.
+Compare the before position of the master's binlog to
+the after position of the slave's binlog as shown on
+on the slave. The result should be 0.
+Delta
+0
+SHOW SLAVE STATUS;
+Slave_IO_State	#
+Master_Host	127.0.0.1
+Master_User	root
+Master_Port	MASTER_PORT
+Connect_Retry	1
+Master_Log_File	#
+Read_Master_Log_Pos	#
+Relay_Log_File	#
+Relay_Log_Pos	#
+Relay_Master_Log_File	master-bin.000001
+Slave_IO_Running	Yes
+Slave_SQL_Running	Yes
+Replicate_Do_DB	
+Replicate_Ignore_DB	
+Replicate_Do_Table	
+Replicate_Ignore_Table	
+Replicate_Wild_Do_Table	
+Replicate_Wild_Ignore_Table	
+Last_Errno	0
+Last_Error	
+Skip_Counter	0
+Exec_Master_Log_Pos	#
+Relay_Log_Space	#
+Until_Condition	None
+Until_Log_File	
+Until_Log_Pos	0
+Master_SSL_Allowed	No
+Master_SSL_CA_File	
+Master_SSL_CA_Path	
+Master_SSL_Cert	
+Master_SSL_Cipher	
+Master_SSL_Key	
+Seconds_Behind_Master	#
+Master_SSL_Verify_Server_Cert	No
+Last_IO_Errno	0
+Last_IO_Error	
+Last_SQL_Errno	0
+Last_SQL_Error	
+Ensure replication is still working...
+Cleanup from last error on master and slave.
+DELETE FROM rpl_backup.t1;
+INSERT INTO rpl_backup.t1 VALUES (11), (22), (33);
+SELECT count(*) FROM rpl_backup.t1;
+count(*)
+3
+SELECT count(*) FROM rpl_backup.t1;
+count(*)
+3
+Cleanup backup logs.
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+First, get master's binlog position and filename.
+SET SESSION debug="+d,set_backup_id";
+Backup_id = 600.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_s1.bak';
+backup_id
+600
+SET SESSION debug="-d";
+SHOW SLAVE STATUS;
+Slave_IO_State	#
+Master_Host	127.0.0.1
+Master_User	root
+Master_Port	MASTER_PORT
+Connect_Retry	1
+Master_Log_File	#
+Read_Master_Log_Pos	#
+Relay_Log_File	#
+Relay_Log_Pos	#
+Relay_Master_Log_File	master-bin.000001
+Slave_IO_Running	Yes
+Slave_SQL_Running	Yes
+Replicate_Do_DB	
+Replicate_Ignore_DB	
+Replicate_Do_Table	
+Replicate_Ignore_Table	
+Replicate_Wild_Do_Table	
+Replicate_Wild_Ignore_Table	
+Last_Errno	0
+Last_Error	
+Skip_Counter	0
+Exec_Master_Log_Pos	#
+Relay_Log_Space	#
+Until_Condition	None
+Until_Log_File	
+Until_Log_Pos	0
+Master_SSL_Allowed	No
+Master_SSL_CA_File	
+Master_SSL_CA_Path	
+Master_SSL_Cert	
+Master_SSL_Cipher	
+Master_SSL_Key	
+Seconds_Behind_Master	#
+Master_SSL_Verify_Server_Cert	No
+Last_IO_Errno	0
+Last_IO_Error	
+Last_SQL_Errno	0
+Last_SQL_Error	
+Check saving of master's binlog information.
+Should have count(*) = 1.
+count(*)
+1
+Should have count(*) = 1.
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+1
+INSERT INTO rpl_backup.t1 VALUES (10), (20), (30);
+Backup_id = 501.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_m2.bak';
+backup_id
+501
+SELECT count(*) FROM rpl_backup.t1;
+count(*)
+6
+SELECT count(*) FROM rpl_backup.t1;
+count(*)
+6
+Make a backup for later use.
+Backup_id = 601.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_s2.bak';
+backup_id
+601
+CREATE TABLE rpl_backup.t2 (b int);
+INSERT INTO rpl_backup.t2 VALUES (888), (999);
+Get master's binlog position before restore.
+Backup_id = 502.
+RESTORE FROM 'rpl_bup_m2.bak';
+backup_id
+502
+Show the incident event issued as a result of restore.
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Incident	1	#	#2 ((null))
+master-bin.000001	#	Rotate	1	#	master-bin.000002;pos=4
+Showing tables on master.
+SHOW FULL TABLES FROM rpl_backup;
+Tables_in_rpl_backup	Table_type
+t1	BASE TABLE
+SELECT count(*) FROM rpl_backup.t1;
+count(*)
+6
+Check slave got everything up to incident event.
+Should be two rows: 888, 999.
+SELECT * FROM rpl_backup.t2 WHERE b > 800;
+b
+888
+999
+SHOW SLAVE STATUS;
+Slave_IO_State	#
+Master_Host	127.0.0.1
+Master_User	root
+Master_Port	MASTER_PORT
+Connect_Retry	1
+Master_Log_File	#
+Read_Master_Log_Pos	#
+Relay_Log_File	#
+Relay_Log_Pos	#
+Relay_Master_Log_File	master-bin.000001
+Slave_IO_Running	Yes
+Slave_SQL_Running	No
+Replicate_Do_DB	
+Replicate_Ignore_DB	
+Replicate_Do_Table	
+Replicate_Ignore_Table	
+Replicate_Wild_Do_Table	
+Replicate_Wild_Ignore_Table	
+Last_Errno	1590
+Last_Error	The incident (null) occured on the master. Message: A restore operation was initiated on the master.
+Skip_Counter	0
+Exec_Master_Log_Pos	#
+Relay_Log_Space	#
+Until_Condition	None
+Until_Log_File	
+Until_Log_Pos	0
+Master_SSL_Allowed	No
+Master_SSL_CA_File	
+Master_SSL_CA_Path	
+Master_SSL_Cert	
+Master_SSL_Cipher	
+Master_SSL_Key	
+Seconds_Behind_Master	#
+Master_SSL_Verify_Server_Cert	No
+Last_IO_Errno	0
+Last_IO_Error	
+Last_SQL_Errno	1590
+Last_SQL_Error	The incident (null) occured on the master. Message: A restore operation was initiated on the master.
+Show the slave stopped with an error.
+Last_SQL_Error
+The incident (null) occured on the master. Message: A restore operation was initiated on the master.
+SET global sql_slave_skip_counter=1;
+STOP SLAVE;
+START SLAVE;
+Showing tables on slave.
+SHOW FULL TABLES FROM rpl_backup;
+Tables_in_rpl_backup	Table_type
+t1	BASE TABLE
+t2	BASE TABLE
+STOP SLAVE;
+Backup_id = 602.
+RESTORE FROM '../master-data/rpl_bup_m2.bak';
+backup_id
+602
+Showing databases on slave.
+SHOW DATABASES LIKE 'rpl_backup%';
+Database (rpl_backup%)
+rpl_backup
+SELECT count(*) FROM rpl_backup.t1;
+count(*)
+6
+START SLAVE;
+Make a backup for later use.
+Backup_id = 603.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_s3.bak';
+backup_id
+603
+Test restore on slave while replication turned on.
+RESTORE FROM 'rpl_bup_s1.bak';
+ERROR HY000: A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore.
+Stop slave and restart after restore.
+STOP SLAVE;
+RESTORE FROM 'rpl_bup_s3.bak';
+backup_id
+#
+START SLAVE;
+Checking affect on replication.
+INSERT INTO rpl_backup.t1 VALUES (44), (55), (66);
+SELECT * FROM rpl_backup.t1 ORDER BY a;
+a
+10
+11
+20
+22
+30
+33
+44
+55
+66
+SELECT * FROM rpl_backup.t1 ORDER BY a;
+a
+10
+11
+20
+22
+30
+33
+44
+55
+66
+Stop replication and turn off binary log.
+STOP SLAVE;
+SET @orig_sql_log_bin= @@sql_log_bin;
+Turn off binlog.
+SET @@sql_log_bin= 0;
+SHOW VARIABLES LIKE '%log_bin';
+Variable_name	Value
+log_bin	ON
+sql_log_bin	OFF
+Backup_id = 503.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_m3.bak';
+backup_id
+503
+Turn on binlog;
+SET @@sql_log_bin= @orig_sql_log_bin;
+SHOW VARIABLES LIKE '%log_bin';
+Variable_name	Value
+log_bin	ON
+sql_log_bin	ON
+RESET MASTER;
+Get master's binlog position before restore.
+Backup_id = 504.
+RESTORE FROM 'rpl_bup_m3.bak';
+backup_id
+504
+Get master's binlog position after restore.
+Show the incident event issued as a result of restore.
+Log_name	Pos	Event_type	Server_id	End_log_pos	Info
+master-bin.000001	#	Incident	1	#	#2 ((null))
+master-bin.000001	#	Rotate	1	#	master-bin.000002;pos=4
+Compute the difference of the binlog positions.
+Result should be 0.
+Compare the before position of the master's binlog to
+the after position of the master's binlog. The result
+should be 0.
+Delta
+0
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+DROP DATABASE rpl_backup;
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+DROP DATABASE rpl_backup;

@@ -611,6 +611,18 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       }
 
     /*
+      If we are a connected slave, write master's binlog information to
+      the progress log for later use.
+    */
+    st_bstream_binlog_pos master_pos;
+    master_pos.pos= 0;
+    if (obs::is_slave() && active_mi)
+    {
+      master_pos.pos= (ulong)active_mi->master_log_pos;
+      master_pos.file= active_mi->master_log_name;
+    }
+
+    /*
       Save VP creation time.
     */
     vp_time= my_time(0);
@@ -637,6 +649,13 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       info.save_binlog_pos(binlog_pos);
       info.m_ctx.report_binlog_pos(info.binlog_pos);
     }
+
+    /*
+      If we are a slave and the master's binlog position has been recorded
+      write it to the log.
+    */
+    if (obs::is_slave() && master_pos.pos)
+      info.m_ctx.report_master_binlog_pos(master_pos);
 
     info.m_ctx.report_state(BUP_RUNNING);
     DEBUG_SYNC(thd, "after_backup_binlog");

@@ -211,6 +211,14 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
 
   case SQLCOM_RESTORE:
   {
+    bool turn_on_binlog= FALSE;
+
+    /*
+      Restore cannot be run on a slave while connected to a master.
+    */
+    if (obs::is_slave())
+      DBUG_RETURN(send_error(context, ER_RESTORE_ON_SLAVE));
+
     Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
                                                     thd->query);
     
@@ -378,7 +386,8 @@ pthread_mutex_t Backup_restore_ctx::run_lock;
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
   m_error(0), m_remove_loc(FALSE), m_stream(NULL),
-  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE)
+  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE),
+  m_engage_binlog(FALSE)
 {
   /*
     Check for progress tables.
@@ -785,6 +794,25 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 
   m_state= PREPARED_FOR_RESTORE;
 
+  /*
+    Do not allow slaves to connect during a restore.
+
+    If the binlog is turned on, write a RESTORE_EVENT as an
+    incident report into the binary log.
+
+    Turn off binlog during restore.
+  */
+  if (obs::is_binlog_engaged())
+  {
+    obs::disable_slave_connections(TRUE);
+
+    DEBUG_SYNC(m_thd, "after_disable_slave_connections");
+
+    obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
+    m_engage_binlog= TRUE;
+    obs::engage_binlog(FALSE);
+  }
+
   return info;
 }
 
@@ -929,6 +957,17 @@ int Backup_restore_ctx::close()
     return 0;
 
   using namespace backup;
+
+  /*
+    Allow slaves connect after restore is complete.
+  */
+  obs::disable_slave_connections(FALSE);
+
+  /*
+    Turn binlog back on iff it was turned off earlier.
+  */
+  if (m_engage_binlog)
+    obs::engage_binlog(TRUE);
 
   time_t when= my_time(0);
 
