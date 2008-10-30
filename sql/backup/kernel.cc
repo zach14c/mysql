@@ -211,7 +211,6 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
 
   case SQLCOM_RESTORE:
   {
-    bool turn_on_binlog= FALSE;
 
     /*
       Restore cannot be run on a slave while connected to a master.

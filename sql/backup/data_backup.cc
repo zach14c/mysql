@@ -616,6 +616,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     */
     st_bstream_binlog_pos master_pos;
     master_pos.pos= 0;
+    master_pos.file= 0;
     if (obs::is_slave() && active_mi)
     {
       master_pos.pos= (ulong)active_mi->master_log_pos;
