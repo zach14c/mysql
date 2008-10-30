@@ -34,7 +34,7 @@ CALL trg_msg(NEW.a);
 CREATE TRIGGER before_upd BEFORE UPDATE ON t1 FOR EACH ROW 
 CALL trg_msg(NEW.a);
 ||
-CREATE TRIGGER before_del BEFORE DELETE ON t1 FOR EACH ROW 
+CREATE TRIGGER ev BEFORE DELETE ON t1 FOR EACH ROW 
 CALL trg_msg(OLD.a);
 ||
 USE test||
@@ -134,7 +134,7 @@ Definer	root@localhost
 character_set_client	#
 collation_connection	latin1_swedish_ci
 Database Collation	latin1_swedish_ci
-Trigger	before_del
+Trigger	ev
 Event	DELETE
 Table	t1
 Statement	CALL trg_msg(OLD.a)
