@@ -190,201 +190,15 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 }
 
 
-Stream::Stream(Logger &log, ::String *backupdir, 
-               LEX_STRING orig_loc, int flags)
-  :m_flags(flags), m_block_size(0), m_log(log)
+Stream::Stream(Logger &log, ::String *path, int flags)
+  :m_path(path), m_flags(flags), m_block_size(0), m_log(log)
 {
-  prepare_path(backupdir, orig_loc);
   bzero(&stream, sizeof(stream));
   bzero(&buf, sizeof(buf));
   bzero(&mem, sizeof(mem));
   bzero(&data_buf, sizeof(data_buf));
   block_size= 0;
   state= CLOSED;
-}
-
-/**
-  Make a relative path.
-
-  This method takes the backupdir and the path specified on the backup command
-  (orig_loc) and forms a combined path. It walks the backupdir from the right
-  and the orig_loc from the left to position the paths for concatenation. Output
-  is written to new_path.
-
-  @param[OUT] new_path   The newly combined path + file name.
-  @param[IN]  orig_loc   The path + file name specified in the backup command.
-  @param[IN]  backupdir  The backupdir system variable value.
-
-  For example, if backupdir = '/dev/tmp' and orig_log = '../backup.bak', the 
-  combined path is = '/dev/backup.bak'.
-
-  Note: fn_format may likely be used instead of this function - will
-  not be changed unless bugs are found.
-
-  @returns 
-    0 if success
-    1 if cannot be combined. Note: m_path is set to '' when this occurs to
-      trigger error in call stack.
-*/
-int Stream::make_relative_path(char *new_path, 
-                               char *orig_loc, 
-                               ::String *backupdir)
-{
-  char fixed_base[FN_LEN];
-  char fixed_rel[FN_LEN];
-  cleanup_dirname(fixed_base, backupdir->c_ptr());
-  cleanup_dirname(fixed_rel, orig_loc);
-  char *rel;
-  char *base= fixed_base;
-  bool done= FALSE;
-  char *found= fixed_rel;
-  int j= backupdir->length() - 1;
-  new_path[0]= 0;  // initialize the new path to an empty string
-
-  /*
-    For each '../' in orig_loc, move the pointer to the right for rel.
-    For each '../' in orig_loc, move pointer to the left for base.
-  */
-  while (!done)
-  {
-    rel= found; // save last known position
-    // find location of next level in relative path
-    found= strstr(found, FN_PARENTDIR);
-    if (found)
-    {
-      found+= 2;   // move past '..\'
-      if (base[j] == FN_LIBCHAR)
-        j--;       // move past last '\'
-      if (j == 0)  // We are trying to move too far down the path
-        return 1;
-      /*
-        Look for the next level down.
-      */
-      while ((base[j] != FN_LIBCHAR) && j)
-        j--;       
-    }
-    else
-      done= TRUE;
-  }
-  strcpy (new_path, base);
-  strcpy (new_path + j, rel);
-  return 0;
-}
-
-/**
-  Prepare path for access.
-
-  This method takes the backupdir and the file name specified on the backup
-  command (orig_loc) and forms a combined path + file name as follows:
-
-    1. If orig_loc has a relative path, make it relative to backupdir
-    2. If orig_loc has a hard path, use it.
-    3. If orig_loc has no path, append to backupdir
-
-  @param[IN]  backupdir  The backupdir system variable value.
-  @param[IN]  orig_loc   The path + file name specified in the backup command.
-
-  @returns 0
-*/
-int Stream::prepare_path(::String *backupdir, 
-                         LEX_STRING orig_loc)
-{
-  int path_len= 0;
-
-  /*
-    The full path is needed to test for secure-file-priv option in
-    Stream::open. If not full, replace backupdir with the full
-    path name, which is relative to datadir (i.e., global variable
-    mysql_real_data_home)
-  */
-  if (!test_if_hard_path(backupdir->c_ptr()))
-  {
-    char full_path[FN_LEN];
-    
-    /* 
-       MY_UNPACK_FILENAME  "~/" will be changed to full path
-       MY_RELATIVE_PATH    path is constructed from the base path
-                           mysql_real_data_home combined with the
-                           relative path backupdir. Also handles
-                           "../" in backupdir and converts dirname 
-                           to fit this system
-    */
-    fn_format(full_path, backupdir->c_ptr(), mysql_real_data_home, "",
-              MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
-
-    uint32 full_path_len= strlen(full_path);
-    backupdir->copy(full_path, full_path_len, &::my_charset_bin);
-  }
-  
-  /*
-    Prepare the path using the backupdir iff no relative path
-    or no hard path included.
-
-    Relative paths are formed from the backupdir system variable.
-  */
-  if (is_prefix(orig_loc.str, FN_PARENTDIR))
-  {
-    /* 
-      Case 1: Backup image file name has relative path. 
-              Make relative to backupdir.
-
-      Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
-              If backupdir = '/dev/daily' then the
-              calculated path becomes
-              '/dev/monthly/dec.bak'
-    */
-    char new_path[FN_LEN];
-    if (make_relative_path(new_path, orig_loc.str, backupdir))
-      m_path.length(0);
-    path_len= strlen(new_path) + 1;
-    m_path.alloc(path_len);
-    m_path.length(0);
-    m_path.append(new_path);
-  }
-  else if (!test_if_hard_path(orig_loc.str))
-  {
-    /* 
-      Case 2: Backup image file name has no path or has a subpath. 
-
-      Example BACKUP DATABASE ... TO 'week2.bak'
-              If backupdir = '/dev/weekly/' then the
-              calculated path becomes
-              '/dev/weekly/week2.bak'
-      Example BACKUP DATABASE ... TO 'jan/day1.bak'
-              If backupdir = '/dev/monthly/' then the
-              calculated path becomes
-              '/dev/monthly/jan/day1.bak'
-    */
-    path_len=backupdir->length() + orig_loc.length + 1;
-    m_path.alloc(path_len);
-    fn_format(m_path.c_ptr(), orig_loc.str, backupdir->c_ptr(), "",
-              MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
-  }
-  else 
-  {
-    /* 
-      Case 3: Backup image file name has hard path. 
-
-      Example BACKUP DATATBASE ... TO '/dev/dec.bak'
-              If backupdir = '/dev/daily/backup' then the
-              calculated path becomes
-              '/dev/dec.bak'
-    */
-    path_len= orig_loc.length + 1;
-    int dn_length= dirname_length(orig_loc.str);
-
-    m_path.alloc(path_len);
-    m_path.length(0);
-    m_path.append(orig_loc.str, dn_length); // Append directory-part only
-
-    // Convert directory name to fit this system
-    convert_dirname(m_path.c_ptr(), m_path.c_ptr(), m_path.c_ptr() + dn_length);
-
-    // Append filename now that directory name has been converted
-    m_path.append(orig_loc.str + dn_length);
-  }
-  m_path.length(path_len);
-  return 0;
 }
 
 /**
@@ -419,11 +233,12 @@ bool Stream::test_secure_file_priv_access(char *path) {
  */
 int Stream::open()
 {
-  close();
-  if (!test_secure_file_priv_access(m_path.c_ptr()))
+  close();        // If close() should fail, we will still try to open
+
+  if (!test_secure_file_priv_access(m_path->c_ptr()))
     return ER_OPTION_PREVENTS_STATEMENT;
 
-  m_fd= my_open(m_path.c_ptr(), m_flags, MYF(0));
+  m_fd= my_open(m_path->c_ptr(), m_flags, MYF(0));
 
   if (!(m_fd >= 0))
     return -1;
@@ -431,13 +246,18 @@ int Stream::open()
   return 0;
 }
 
-void Stream::close()
+bool Stream::close()
 {
+  bool ret= TRUE;
   if (m_fd >= 0)
   {
-    my_close(m_fd, MYF(0));
+    if (my_close(m_fd, MYF(0)))
+    {
+      ret= FALSE;
+    }
     m_fd= -1;
   }
+  return ret;
 }
 
 bool Stream::rewind()
@@ -451,10 +271,9 @@ bool Stream::rewind()
 }
 
 
-Output_stream::Output_stream(Logger &log, ::String *backupdir,
-                             LEX_STRING orig_loc,
+Output_stream::Output_stream(Logger &log, ::String *path,
                              bool with_compression)
-  :Stream(log, backupdir, orig_loc, 0)
+  :Stream(log, path, 0)
 {
   m_with_compression= with_compression;
   stream.write= stream_write;
@@ -532,10 +351,10 @@ bool Output_stream::init()
 int Output_stream::open()
 {
   MY_STAT stat_info;
-  close();
+  close();        // If close() should fail, we will still try to open
 
   /* Allow to write to existing named pipe */
-  if (my_stat(m_path.c_ptr(), &stat_info, MYF(0)) &&
+  if (my_stat(m_path->c_ptr(), &stat_info, MYF(0)) &&
       MY_S_ISFIFO(stat_info.st_mode))
     m_flags= O_WRONLY;
   else
@@ -585,17 +404,22 @@ int Output_stream::open()
   Close backup stream
 
   If @c destroy is TRUE, the stream object is deleted.
-*/
-void Output_stream::close()
-{
-  if (m_fd < 0)
-    return;
 
-  /*
-   Note: Even if bstream_close() fails we want to do the lower level clean-up.
-   This is why errors from bstream_close() are ignored.
-  */ 
-  bstream_close(this);
+  @retval TRUE  Operation Succeeded
+  @retval FALSE Operation Failed
+*/
+bool Output_stream::close()
+{
+  bool ret= TRUE;
+  if (m_fd < 0)
+    return TRUE;
+
+  if (bstream_close(this) == BSTREAM_ERROR)
+  {
+    // Note that close failed, and continue with lower level clean-up.
+    ret= FALSE;
+  }
+
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
   {
@@ -624,7 +448,8 @@ void Output_stream::close()
     my_free(zbuf, MYF(0));
   }
 #endif
-  Stream::close();
+  ret &= Stream::close();
+  return ret;
 }
 
 /**
@@ -648,9 +473,8 @@ bool Output_stream::rewind()
 }
 
 
-Input_stream::Input_stream(Logger &log, ::String *backupdir, 
-                           LEX_STRING orig_loc)
-  :Stream(log, backupdir, orig_loc, O_RDONLY)
+Input_stream::Input_stream(Logger &log, ::String *path)
+  :Stream(log, path, O_RDONLY)
 {
   m_with_compression= false;
   stream.read= stream_read;
@@ -723,7 +547,7 @@ bool Input_stream::init()
 */
 int Input_stream::open()
 {
-  close();
+  close();        // If close() should fail, we will still try to open
 
   int ret= Stream::open();
 
@@ -776,17 +600,22 @@ int Input_stream::open()
   Close backup stream
 
   If @c destroy is TRUE, the stream object is deleted.
-*/
-void Input_stream::close()
-{
-  if (m_fd < 0)
-    return;
 
-  /*
-   Note: Even if bstream_close() fails we want to do the lower level clean-up.
-   This is why errors from bstream_close() are ignored.
-  */ 
-  bstream_close(this);
+  @retval TRUE  Operation Succeeded
+  @retval FALSE Operation Failed
+*/
+bool Input_stream::close()
+{
+  bool ret= TRUE;
+  if (m_fd < 0)
+    return TRUE;
+
+  if (bstream_close(this) == BSTREAM_ERROR)
+  {
+    // Note that close failed, and continue with lower level clean-up.
+    ret= FALSE;
+  }
+
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
   {
@@ -796,7 +625,8 @@ void Input_stream::close()
     my_free(zbuf, (MYF(0)));
   }
 #endif
-  Stream::close();
+  ret &= Stream::close();
+  return ret;
 }
 
 /**
