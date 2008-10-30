@@ -838,11 +838,18 @@ int Backup_restore_ctx::lock_tables_for_restore()
   /*
     Open and lock the tables.
     
-    Note: simple_open_n_lock_tables() must be used here since we don't want
-    to do derived tables processing. Processing derived tables even leads 
-    to crashes as those reported in BUG#34758.
+    Note 1: It is important to not do derived tables processing here. Processing
+    derived tables even leads to crashes as those reported in BUG#34758.
+  
+    Note 2: Skiping tmp tables is also important because otherwise a tmp table
+    can occlude a regular table with the same name (BUG#33574).
   */ 
-  if (simple_open_n_lock_tables(m_thd,tables))
+  if (open_and_lock_tables_derived(m_thd, tables,
+                                   FALSE, /* do not process derived tables */
+                                   MYSQL_OPEN_SKIP_TEMPORARY 
+                                          /* do not open tmp tables */
+                                  )
+     )
   {
     fatal_error(ER_BACKUP_OPEN_TABLES,"RESTORE");
     return m_error;
