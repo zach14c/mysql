@@ -9,6 +9,7 @@ AND character_set_name LIKE 'utf8'
 ORDER BY column_name;
 column_name	character_set_name
 backup_file	utf8
+backup_file_path	utf8
 backup_state	utf8
 binlog_file	utf8
 command	utf8
@@ -115,6 +116,7 @@ stop_time	#
 host_or_server_name	localhost
 username	root
 backup_file	#
+backup_file_path	#
 user_comment	
 command	BACKUP DATABASE backup_logs to 'backup_logs_orig.bak'
 drivers	MyISAM, Default, Snapshot
@@ -175,6 +177,7 @@ stop_time	#
 host_or_server_name	localhost
 username	root
 backup_file	#
+backup_file_path	#
 user_comment	
 command	RESTORE FROM 'backup_logs_orig.bak'
 drivers	MyISAM, Default, Snapshot

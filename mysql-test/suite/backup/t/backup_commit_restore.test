@@ -1,5 +1,6 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
+--source include/have_falcon.inc
 
 # Test that it is not possible to rollback restore.  That is, that an
 # automatic commit is performed as part of restore.  This test both
@@ -70,7 +71,7 @@ COMMIT;
 
 # Test using InnoDB, Memory, MyISAM and Falcon (Consistent Snapshot)
 SET @@autocommit=0;
-CREATE TABLE t4 (s1 CHAR(2));
+CREATE TABLE t4 (s1 CHAR(2)) ENGINE=falcon;
 INSERT INTO t1 VALUES ('a4');
 INSERT INTO t2 VALUES ('a4');
 INSERT INTO t3 VALUES ('a4');
@@ -120,10 +121,12 @@ COMMIT;
 
 # Test doing backup with auto-commit on and restore with auto-commit off
 SET @@autocommit=1;
+CREATE TABLE t5 (s1 CHAR(2)) ENGINE=falcon;
 INSERT INTO t1 VALUES ('a6');
 INSERT INTO t2 VALUES ('a6');
 INSERT INTO t3 VALUES ('a6');
 INSERT INTO t4 VALUES ('a6');
+INSERT INTO t5 VALUES ('a6');
 
 replace_column 1 #;
 BACKUP DATABASE commit_test TO '86';
@@ -131,6 +134,9 @@ BACKUP DATABASE commit_test TO '86';
 SET @@autocommit=0;
 replace_column 1 #;
 RESTORE FROM '86';
+
+#Test of scenario from BUG#34205
+DROP TABLE t5;
 
 SELECT * FROM t1;
 SELECT * FROM t2;
