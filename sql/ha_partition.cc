@@ -3838,8 +3838,7 @@ int ha_partition::common_index_read(uchar *buf, bool have_start_key)
       Need to set unordered scan ongoing since we can come here even when
       it isn't set.
     */
-    DBUG_PRINT("info", ("key_len %lu (%lu), doing unordered scan",
-                        key_len, m_curr_key_info[0]->key_length));
+    DBUG_PRINT("info", ("doing unordered scan"));
     m_ordered_scan_ongoing= FALSE;
     error= handle_unordered_scan_next_partition(buf);
   }
