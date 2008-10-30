@@ -82,3 +82,4 @@ void init_read_record_idx(READ_RECORD *info, THD *thd, TABLE *table,
 void end_read_record(READ_RECORD *info);
 
 #endif /* SQL_RECORDS_H */
+

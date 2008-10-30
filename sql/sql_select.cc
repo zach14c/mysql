@@ -584,7 +584,8 @@ JOIN::prepare(Item ***rref_pointer_array,
              doesn't have a JOIN (TODO: We should handle this at some
              point by switching to multi-table UPDATE/DELETE)
         7. We're not in a confluent table-less subquery, like "SELECT 1".
-        8. No execution method was already chosen (by a prepared statement).
+        8. No execution method was already chosen (by a prepared statement)
+        9. Parent select is not a confluent table-less select
     */
     if (do_semijoin &&
         in_subs &&                                                    // 1
@@ -594,7 +595,8 @@ JOIN::prepare(Item ***rref_pointer_array,
         thd->thd_marker.emb_on_expr_nest &&                           // 5
         select_lex->outer_select()->join &&                           // 6
         select_lex->master_unit()->first_select()->leaf_tables &&     // 7
-        in_subs->exec_method == Item_in_subselect::NOT_TRANSFORMED)   // 8
+        in_subs->exec_method == Item_in_subselect::NOT_TRANSFORMED && // 8
+        select_lex->outer_select()->leaf_tables)                      // 9
     {
       DBUG_PRINT("info", ("Subquery is semi-join conversion candidate"));
       in_subs->types_allow_materialization= 
@@ -647,6 +649,11 @@ JOIN::prepare(Item ***rref_pointer_array,
         2. Subquery is a single SELECT (not a UNION)
         3. Subquery is not a table-less query. In this case there is no
            point in materializing.
+          3A The upper query is not a confluent SELECT ... FROM DUAL. We
+             can't do materialization for SELECT .. FROM DUAL because it
+             does not call setup_subquery_materialization(). We could make 
+             SELECT ... FROM DUAL call that function but that doesn't seem
+             to be the case that is worth handling.
         4. Subquery predicate is a top-level predicate
            (this implies it is not negated)
            TODO: this is a limitation that should be lifeted once we
@@ -674,6 +681,7 @@ JOIN::prepare(Item ***rref_pointer_array,
           !select_lex->is_part_of_union() &&                            // 2
           select_lex->master_unit()->first_select()->leaf_tables &&     // 3
           thd->lex->sql_command == SQLCOM_SELECT &&                     // *
+          select_lex->outer_select()->leaf_tables &&                    // 3A
           subquery_types_allow_materialization(thd, in_subs, NULL))
       {
         // psergey-todo: duplicated_subselect_card_check: where it's done?
@@ -17918,7 +17926,11 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
       if (table->covering_keys.is_set(ref_key))
 	usable_keys.intersect(table->covering_keys);
       if (tab->pre_idx_push_select_cond)
-        tab->select_cond= tab->select->cond= tab->pre_idx_push_select_cond;
+      {
+        tab->select_cond= tab->pre_idx_push_select_cond;
+        if (tab->select)
+          tab->select->cond= tab->select_cond;
+      }
       if ((new_ref_key= test_if_subkey(order, table, ref_key, ref_key_parts,
 				       &usable_keys)) < MAX_KEY)
       {
@@ -18186,7 +18198,12 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
             table->key_read= 0;
             table->file->extra(HA_EXTRA_NO_KEYREAD);
           }
-
+          if (tab->pre_idx_push_select_cond)
+          {
+            if (tab->select)
+              tab->select->cond= tab->select_cond;
+            tab->select_cond= tab->pre_idx_push_select_cond;
+          }
           table->file->ha_index_or_rnd_end();
           if (join->select_options & SELECT_DESCRIBE)
           {

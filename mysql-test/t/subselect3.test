@@ -634,6 +634,12 @@ let $datadir=`select @@datadir`;
 
 --echo End of 5.0 tests
 
+--echo #  
+--echo # BUG#36896: Server crash on SELECT FROM DUAL
+--echo # 
+create table t1 (a int);
+select 1 as res from dual where (1) in (select * from t1);
+drop table t1;
 #
 # BUG#36135 "void Diagnostics_area::set_eof_status(THD*): Assertion `!is_set()' failed."
 #

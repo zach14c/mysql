@@ -116,7 +116,6 @@ typedef struct st_reginfo {		/* Extra info about reg */
 } REGINFO;
 
 
-class Copy_field;
 
 /*
   Originally MySQL used MYSQL_TIME structure inside server only, but since
