@@ -604,3 +604,5 @@ UPDATE user SET Create_tablespace_priv = Super_priv WHERE @hadCreateTablespacePr
 # changes was correct
 
 flush privileges;
+
+ALTER TABLE backup_history ADD COLUMN backup_file_path VARCHAR (512) NOT NULL DEFAULT '' COMMENT 'The full path to the backup image file' AFTER backup_file;

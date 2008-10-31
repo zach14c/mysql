@@ -81,7 +81,7 @@ s1
 a3
 COMMIT;
 SET @@autocommit=0;
-CREATE TABLE t4 (s1 CHAR(2));
+CREATE TABLE t4 (s1 CHAR(2)) ENGINE=falcon;
 INSERT INTO t1 VALUES ('a4');
 INSERT INTO t2 VALUES ('a4');
 INSERT INTO t3 VALUES ('a4');
@@ -188,10 +188,12 @@ a4
 a5
 COMMIT;
 SET @@autocommit=1;
+CREATE TABLE t5 (s1 CHAR(2)) ENGINE=falcon;
 INSERT INTO t1 VALUES ('a6');
 INSERT INTO t2 VALUES ('a6');
 INSERT INTO t3 VALUES ('a6');
 INSERT INTO t4 VALUES ('a6');
+INSERT INTO t5 VALUES ('a6');
 BACKUP DATABASE commit_test TO '86';
 backup_id
 #
@@ -199,6 +201,7 @@ SET @@autocommit=0;
 RESTORE FROM '86';
 backup_id
 #
+DROP TABLE t5;
 SELECT * FROM t1;
 s1
 a1
