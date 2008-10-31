@@ -174,7 +174,7 @@ backup_id
 502
 Show the incident event issued as a result of restore.
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info
-master-bin.000001	#	Incident	1	#	#2 ((null))
+master-bin.000001	#	Incident	1	#	#2 (RESTORE_ON_MASTER)
 master-bin.000001	#	Rotate	1	#	master-bin.000002;pos=4
 Showing tables on master.
 SHOW FULL TABLES FROM rpl_backup;
@@ -209,7 +209,7 @@ Replicate_Ignore_Table
 Replicate_Wild_Do_Table	
 Replicate_Wild_Ignore_Table	
 Last_Errno	1590
-Last_Error	The incident (null) occured on the master. Message: A restore operation was initiated on the master.
+Last_Error	The incident RESTORE_ON_MASTER occured on the master. Message: A restore operation was initiated on the master.
 Skip_Counter	0
 Exec_Master_Log_Pos	#
 Relay_Log_Space	#
@@ -227,10 +227,10 @@ Master_SSL_Verify_Server_Cert	No
 Last_IO_Errno	0
 Last_IO_Error	
 Last_SQL_Errno	1590
-Last_SQL_Error	The incident (null) occured on the master. Message: A restore operation was initiated on the master.
+Last_SQL_Error	The incident RESTORE_ON_MASTER occured on the master. Message: A restore operation was initiated on the master.
 Show the slave stopped with an error.
 Last_SQL_Error
-The incident (null) occured on the master. Message: A restore operation was initiated on the master.
+The incident RESTORE_ON_MASTER occured on the master. Message: A restore operation was initiated on the master.
 SET global sql_slave_skip_counter=1;
 STOP SLAVE;
 START SLAVE;
@@ -318,7 +318,7 @@ backup_id
 Get master's binlog position after restore.
 Show the incident event issued as a result of restore.
 Log_name	Pos	Event_type	Server_id	End_log_pos	Info
-master-bin.000001	#	Incident	1	#	#2 ((null))
+master-bin.000001	#	Incident	1	#	#2 (RESTORE_ON_MASTER)
 master-bin.000001	#	Rotate	1	#	master-bin.000002;pos=4
 Compute the difference of the binlog positions.
 Result should be 0.

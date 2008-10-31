@@ -24,6 +24,7 @@ INSERT INTO rpl_backup.t1 VALUES (1), (2), (3), (4), (5);
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
 
+sync_slave_with_master;
 connection slave;
 
 --echo Remove all entries in the backup logs.
