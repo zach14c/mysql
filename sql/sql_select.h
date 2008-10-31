@@ -273,18 +273,19 @@ typedef struct st_join_table
   struct st_join_table  *do_firstmatch;
  
   /* 
-     ptr  - We're doing and InsideOut scan, and this is the first (aka
-            "driving" join tab). ptr to the last tab, for which we'll need 
-            to check tab->found_match to see if the current value group had
-            a match.
-     NULL - Not an insideout scan.
+     ptr  - We're doing a LooseScan, this join tab is the first (i.e. 
+            "driving") join tab), and ptr points to the last join tab
+            handled by the strategy. loosescan_match_tab->found_match
+            should be checked to see if the current value group had a match.
+     NULL - Not doing a loose scan on this join tab.
   */
-  struct st_join_table *insideout_match_tab;
+  struct st_join_table *loosescan_match_tab;
+
   /* Buffer to save index tuple to be able to skip duplicates */
-  uchar *insideout_buf;
+  uchar *loosescan_buf;
   
   /* Length of key tuple (depends on #keyparts used) to store in the above */
-  uint insideout_key_len;
+  uint loosescan_key_len;
 
   /* Used by LooseScan. TRUE<=> there has been a matching record combination */
   bool found_match;
@@ -389,10 +390,10 @@ typedef struct st_position
 
 /* LooseScan strategy members */
   /*
-    keyno  - This is an insideout scan on this key. If keyuse is NULL then
-              this is a full index scan, otherwise this is a ref + insideout
+    keyno  -  Planning to do LooseScan on this key. If keyuse is NULL then 
+              this is a full index scan, otherwise this is a ref+loosescan
               scan (and keyno matches the KEUSE's)
-    MAX_KEY - This is not an InsideOut scan
+    MAX_KEY - Not doing a LooseScan
   */
   uint loosescan_key;  // final (one for strategy instance )
   uint loosescan_parts; /* Number of keyparts to be kept distinct */
@@ -566,7 +567,6 @@ public:
   TABLE_LIST *emb_sjm_nest;
 
   POSITION positions[MAX_TABLES+1];
-  //POSITION loose_scan_pos;
   
   /*
     Bitmap of nested joins embedding the position at the end of the current 
@@ -574,8 +574,8 @@ public:
   */
   nested_join_map cur_embedding_map;
 
-  table_map cur_emb_sj_nests;
-  table_map cur_unhandled_sj_fanout;
+  table_map cur_sj_inner_tables;
+  table_map cur_dups_producing_tables;
 
   /* We also maintain a stack of join optimization states in * join->positions[] */
 /******* Join optimization members end *******/

@@ -552,7 +552,11 @@ JOIN::prepare(Item ***rref_pointer_array,
   }
   
   /*
-    Perform early unconditional subquery tranformations:
+    If 
+      1) this join is inside a subquery (of any type except FROM-clause 
+         subquery) and
+      2) we aren't just normalizing a VIEW
+    Then perform early unconditional subquery tranformations:
      - Convert subquery predicate into semi-join, or
      - Mark the subquery for execution using materialization, or
      - Perform IN->EXISTS tranformation, or
@@ -562,8 +566,8 @@ JOIN::prepare(Item ***rref_pointer_array,
     TODO: for PS, make the whole block execute only on the first execution
   */
   Item_subselect *subselect;
-  if (!thd->lex->view_prepare_mode &&
-      (subselect= select_lex->master_unit()->item))
+  if (!thd->lex->view_prepare_mode &&                    // (1)
+      (subselect= select_lex->master_unit()->item))      // (2)
   {
     Item_in_subselect *in_subs= NULL;
     bool do_semijoin= !test(thd->variables.optimizer_switch &
@@ -573,7 +577,7 @@ JOIN::prepare(Item ***rref_pointer_array,
     DBUG_PRINT("info", ("Checking if subq can be converted to semi-join"));
     /*
       Check if we're in subquery that is a candidate for flattening into a
-      semi-join (which is done done in flatten_subqueries()). The
+      semi-join (which is done in flatten_subqueries()). The
       requirements are:
         1. Subquery predicate is an IN/=ANY subq predicate
         2. Subquery is a single SELECT (not a UNION)
@@ -656,7 +660,7 @@ JOIN::prepare(Item ***rref_pointer_array,
              to be the case that is worth handling.
         4. Subquery predicate is a top-level predicate
            (this implies it is not negated)
-           TODO: this is a limitation that should be lifeted once we
+           TODO: this is a limitation that should be lifted once we
            implement correct NULL semantics (WL#3830)
         5. Subquery is non-correlated
            TODO:
@@ -858,7 +862,7 @@ err:
        tables may also use join buffering, so they'll need to copy 
 
   RETURN 
-    TRUE   Yes
+    TRUE   Yes, subquery types allow materialization
     FALSE  No, or this is an invalid subquery
 */
 
@@ -894,8 +898,8 @@ bool subquery_types_allow_materialization(THD *thd,
   {
     Item *outer= in_subs->left_expr->element_index(i);
     Item *inner= it++;
-    all_are_fields &= (outer->type() == Item::FIELD_ITEM && 
-                       inner->type() == Item::FIELD_ITEM);
+    all_are_fields &= (outer->real_item()->type() == Item::FIELD_ITEM && 
+                       inner->real_item()->type() == Item::FIELD_ITEM);
     if (outer->result_type() != inner->result_type())
       DBUG_RETURN(FALSE);
     switch (outer->result_type()) {
@@ -1131,7 +1135,7 @@ TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
     LooseScan strategy 
     ~~~~~~~~~~~~~~~~~~
 
-     (ot|ct|nt) [ insideout_tbl (ot|nt|it)* it ]  (ot|nt)*
+     (ot|ct|nt) [ loosescan_tbl (ot|nt|it)* it ]  (ot|nt)*
      +--------+   +===========+ +=============+   +------+
         (1)           (2)          (3)              (4)
      
@@ -1159,14 +1163,15 @@ TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
   =========
   We have the choice made for us by the join optimizer. The optimizer
   guarantees that applicability conditions for 
-  insideout
+  loosescan
 
   RETURN
     FALSE  OK 
     TRUE   Out of memory error
 */
 
-int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf_after)
+int setup_semijoin_dups_elimination(JOIN *join, ulonglong options, 
+                                    uint no_jbuf_after)
 {
   uint i;
   THD *thd= join->thd;
@@ -1186,7 +1191,7 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
       case SJ_OPT_LOOSE_SCAN:
       {
         /* We jump from the last table to the first one */
-        tab->insideout_match_tab= tab + pos->n_sj_tables - 1;
+        tab->loosescan_match_tab= tab + pos->n_sj_tables - 1;
 
         /* Calculate key length */
         keylen= 0;
@@ -1194,7 +1199,7 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
         for (uint kp=0; kp < pos->loosescan_parts; kp++)
           keylen += tab->table->key_info[keyno].key_part[kp].store_length;
 
-        tab->insideout_key_len= keylen;
+        tab->loosescan_key_len= keylen;
         if (pos->n_sj_tables > 1) 
           tab[pos->n_sj_tables - 1].do_firstmatch= tab;
         i += pos->n_sj_tables;
@@ -1202,8 +1207,10 @@ int setup_semijoin_dups_elimination2(JOIN *join, ulonglong options, uint no_jbuf
       }
       case SJ_OPT_DUPS_WEEDOUT:
       {
-        // Check for join buffering. If there is one, move the first table
-        // forwards, but do not destroy other duplicate elimination methods.
+        /*
+          Check for join buffering. If there is one, move the first table
+          forwards, but do not destroy other duplicate elimination methods.
+        */
         uint first_table= i;
         for (uint j= i; j < i + pos->n_sj_tables; j++)
         {
@@ -1879,7 +1886,7 @@ JOIN::optimize()
     (select_lex->ftfunc_list->elements ?  SELECT_NO_JOIN_CACHE : 0);
 
   if (!select_lex->sj_nests.is_empty())
-    setup_semijoin_dups_elimination2(this, select_opts_for_readinfo,
+    setup_semijoin_dups_elimination(this, select_opts_for_readinfo,
                                     no_jbuf_after);
 
   // No cache for MATCH == 'Don't use join buffering when we use MATCH'.
@@ -4417,7 +4424,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
           !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
                                                         n_tables)))
         DBUG_RETURN(TRUE);
-      sjm->n_tables= n_tables;
+      sjm->tables= n_tables;
       sjm->is_used= FALSE;
       double subjoin_out_rows, subjoin_read_time;
       get_partial_join_cost(join, n_tables,
@@ -4444,7 +4451,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
               nest (the payoff is probably less here?)
       */
       {
-        for (uint i=0 ; i < join->const_tables + sjm->n_tables ; i++)
+        for (uint i=0 ; i < join->const_tables + sjm->tables ; i++)
         {
           JOIN_TAB *tab= join->best_positions[i].table;
           join->map2table[tab->table->tablenr]= tab;
@@ -4466,10 +4473,10 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
       memcpy(sjm->positions, join->best_positions + join->const_tables, 
              sizeof(POSITION) * n_tables);
 
-      for (uint j= 0; j < sjm->n_tables ; j++)
+      for (uint j= 0; j < sjm->tables ; j++)
         sjm->positions[j].use_sj_mat= SJ_MAT_INNER;
       sjm->positions[0].use_sj_mat |= SJ_MAT_FIRST;
-      sjm->positions[sjm->n_tables - 1].use_sj_mat |= SJ_MAT_LAST;
+      sjm->positions[sjm->tables - 1].use_sj_mat |= SJ_MAT_LAST;
 
       /*
         Calculate temporary table parameters
@@ -5704,7 +5711,7 @@ public:
     bound_sj_equalities(0),
     quick_uses_applicable_index(FALSE)
   {
-    LINT_INIT(quick_max_loose_keypart); /* Protected by sj_insideout_quick_* */
+    LINT_INIT(quick_max_loose_keypart); /* Protected by quick_uses_applicable_index */
     /* The following are protected by best_loose_scan_cost!= DBL_MAX */
     LINT_INIT(best_loose_scan_key);
     LINT_INIT(best_loose_scan_records);
@@ -5731,7 +5738,7 @@ public:
         s->emb_sj_nest->sj_in_exprs < 64 && 
         ((remaining_tables & s->emb_sj_nest->sj_inner_tables) ==        // (2)
          s->emb_sj_nest->sj_inner_tables) &&                            // (2)
-        join->cur_emb_sj_nests == 0 &&                                  // (3)
+        join->cur_sj_inner_tables == 0 &&                                  // (3)
         !(remaining_tables & 
           s->emb_sj_nest->nested_join->sj_corr_tables) &&               // (4)
         remaining_tables & s->emb_sj_nest->nested_join->sj_depends_on &&// (5)
@@ -6507,7 +6514,7 @@ choose_plan(JOIN *join, table_map join_tables)
   DBUG_ENTER("choose_plan");
 
   join->cur_embedding_map= 0;
-  join->cur_unhandled_sj_fanout= 0;
+  join->cur_dups_producing_tables= 0;
   reset_nj_counters(join->join_list);
   qsort2_cmp jtab_sort_func;
 
@@ -6533,7 +6540,7 @@ choose_plan(JOIN *join, table_map join_tables)
   my_qsort2(join->best_ref + join->const_tables,
             join->tables - join->const_tables, sizeof(JOIN_TAB*),
             jtab_sort_func, (void*)join->emb_sjm_nest);
-  join->cur_emb_sj_nests= 0;
+  join->cur_sj_inner_tables= 0;
 
   if (!join->emb_sjm_nest && straight_join)
   {
@@ -6836,7 +6843,7 @@ optimize_straight_join(JOIN *join, table_map join_tables)
       remaining_tables
       tab                the last table's join tab
       idx                last table's index
-      insideout_scan     OUT  TRUE <=> use inside-out scan.
+      loose_scan    OUT  TRUE <=> use LooseScan
 
   RETURN
     TRUE   Yes, can apply sj-materialization
@@ -6845,7 +6852,7 @@ optimize_straight_join(JOIN *join, table_map join_tables)
 
 SJ_MATERIALIZATION_INFO *
 at_sjmat_pos(const JOIN *join, table_map remaining_tables, const JOIN_TAB *tab,
-             uint idx, bool *insideout_scan)
+             uint idx, bool *loose_scan)
 {
   /*
    Check if 
@@ -6867,10 +6874,10 @@ at_sjmat_pos(const JOIN *join, table_map remaining_tables, const JOIN_TAB *tab,
       if (join->positions[idx - i].table->emb_sj_nest != tab->emb_sj_nest)
         return NULL;
     }
-    *insideout_scan= test(remaining_tables & ~tab->table->map &
+    *loose_scan= test(remaining_tables & ~tab->table->map &
                              (emb_sj_nest->sj_inner_tables |
                               emb_sj_nest->nested_join->sj_depends_on));
-    if (*insideout_scan && !emb_sj_nest->sj_subq_pred->sjm_scan_allowed)
+    if (*loose_scan && !emb_sj_nest->sj_subq_pred->sjm_scan_allowed)
       return NULL;
     else
       return emb_sj_nest->sj_mat_info;
@@ -7643,10 +7650,10 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       SJ_MATERIALIZATION_INFO *sjm= s->emb_sj_nest->sj_mat_info;
       sjm->is_used= TRUE;
       sjm->is_sj_scan= FALSE;
-      memcpy(pos - sjm->n_tables + 1, sjm->positions, 
-             sizeof(POSITION) * sjm->n_tables);
-      first= tablenr - sjm->n_tables + 1;
-      join->best_positions[first].n_sj_tables= sjm->n_tables;
+      memcpy(pos - sjm->tables + 1, sjm->positions, 
+             sizeof(POSITION) * sjm->tables);
+      first= tablenr - sjm->tables + 1;
+      join->best_positions[first].n_sj_tables= sjm->tables;
       join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE;
     }
     else if (pos->sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
@@ -7655,12 +7662,12 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       SJ_MATERIALIZATION_INFO *sjm= first_inner->table->emb_sj_nest->sj_mat_info;
       sjm->is_used= TRUE;
       sjm->is_sj_scan= TRUE;
-      first= pos->sjm_scan_last_inner - sjm->n_tables + 1;
+      first= pos->sjm_scan_last_inner - sjm->tables + 1;
       memcpy(join->best_positions + first, 
-             sjm->positions, sizeof(POSITION) * sjm->n_tables);
+             sjm->positions, sizeof(POSITION) * sjm->tables);
       join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
       join->best_positions[first].use_sj_mat |= SJ_MAT_SCAN;
-      join->best_positions[first].n_sj_tables= sjm->n_tables;
+      join->best_positions[first].n_sj_tables= sjm->tables;
       /* 
         Do what advance_sj_state did: re-run best_access_path for every table
         in the [last_inner_table + 1; pos..) range
@@ -7677,11 +7684,11 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       
       uint i;
       table_map rem_tables= remaining_tables;
-      for (i= tablenr; i != (first + sjm->n_tables - 1); i--)
+      for (i= tablenr; i != (first + sjm->tables - 1); i--)
         rem_tables |= join->best_positions[i].table->table->map;
 
       POSITION dummy;
-      for (i= first + sjm->n_tables; i <= tablenr; i++)
+      for (i= first + sjm->tables; i <= tablenr; i++)
       {
         best_access_path(join, join->best_positions[i].table, rem_tables, i, FALSE,
                          prefix_rec_count, join->best_positions + i, &dummy);
@@ -7784,7 +7791,7 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       join  The join to process
 
   DESCRIPTION
-    Setup join structures accroding the picked join order:
+    Setup join structures according the picked join order:
     - finalize semi-join strategy choices (see
         fix_semijoin_strategies_for_picked_join_order)
 
@@ -7833,7 +7840,7 @@ static bool get_best_combination(JOIN *join)
       continue;					// Handled in make_join_stat..
 
 
-    j->insideout_match_tab= NULL;  //non-nulls will be set later
+    j->loosescan_match_tab= NULL;  //non-nulls will be set later
     j->ref.key = -1;
     j->ref.key_parts=0;
 
@@ -8140,7 +8147,7 @@ make_simple_join(JOIN *join,TABLE *tmp_table)
   join_tab->ref.key_parts= 0;
   join_tab->flush_weedout_table= join_tab->check_weed_out_table= NULL;
   join_tab->do_firstmatch= NULL;
-  join_tab->insideout_match_tab= NULL;
+  join_tab->loosescan_match_tab= NULL;
   join_tab->emb_sj_nest= NULL;
   bzero((char*) &join_tab->read_record,sizeof(join_tab->read_record));
   tmp_table->status=0;
@@ -8819,7 +8826,7 @@ make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
                                                                ^
                                                                 \-we're here
           At this point, we need to produce two conditions
-           - A condition that can be checked whein we have all of the sj-inner
+           - A condition that can be checked when we have all of the sj-inner
              tables (inner_tbl1 ... inner_tblN). This will be used while doing
              materialization.
            - A condition that can be checked when we have all of the tables
@@ -9466,7 +9473,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
       sj-inner tables which are not available after the materialization
       has been finished.
     */
-    for (i= 0; i < sjm->n_tables; i++)
+    for (i= 0; i < sjm->tables; i++)
     {
       remove_sj_conds(&tab[i].select_cond);
       if (tab->select)
@@ -9561,10 +9568,10 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
     */
     tab->sorted= sorted;
     sorted= 0;                                  // only first must be sorted
-    if (tab->insideout_match_tab)
+    if (tab->loosescan_match_tab)
     {
-      if (!(tab->insideout_buf= 
-            (uchar*)join->thd->alloc(tab->insideout_key_len)))
+      if (!(tab->loosescan_buf= 
+            (uchar*)join->thd->alloc(tab->loosescan_key_len)))
         return TRUE;
     }
     if (join->best_positions[i].use_sj_mat & SJ_MAT_FIRST)
@@ -9659,7 +9666,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
       if (i != join->const_tables && !(options & SELECT_NO_JOIN_CACHE) &&
           join->best_positions[i].use_join_buffer && 
           tab->use_quick != 2 && !tab->first_inner && i <= no_jbuf_after &&
-          !tab->insideout_match_tab &&
+          !tab->loosescan_match_tab &&
           !(join->best_positions[i].use_sj_mat & SJ_MAT_FIRST))
       {
         JOIN_TAB *first_tab= join->join_tab+join->const_tables;
@@ -9738,7 +9745,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 	  else if (!table->covering_keys.is_clear_all() &&
 		   !(tab->select && tab->select->quick))
 	  {					// Only read index tree
-            if (!tab->insideout_match_tab)
+            if (!tab->loosescan_match_tab)
             {
               /*
                 It has turned out that the below change, while speeding things
@@ -12227,8 +12234,19 @@ void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab,
 /*
   Join optimization: update the semi-join related members after we've added
   a table
-  
+
+  SYNOPSIS
+    advance_sj_state()
+      join
+      remaining_tables
+      s
+      idx
+      current_record_count
+      current_read_time
+      loose_scan_pos
+
   DESCRIPTION
+
     { Updates the semi-join perspective of join optimizer state. 
       May also update record_count and read_time }
 */
@@ -12289,9 +12307,11 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
            - referred to from the outer_expr 
           are in the prefix
     */
-    if (s->emb_sj_nest && !join->cur_emb_sj_nests &&   //(1), (2)
-       !(remaining_tables & (s->emb_sj_nest->nested_join->sj_corr_tables | //(3)
-                             s->emb_sj_nest->nested_join->sj_depends_on))) //(3)
+    if (s->emb_sj_nest &&            // (1)
+        !join->cur_sj_inner_tables &&   // (2)
+        !(remaining_tables &                             // (3)
+          (s->emb_sj_nest->nested_join->sj_corr_tables | // (3)
+           s->emb_sj_nest->nested_join->sj_depends_on))) // (3)
     {
       /* Start tracking potential FirstMatch range */
       pos->first_firstmatch_table= idx;
@@ -12401,19 +12421,19 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
   }
 
   /* 
-    Update join->cur_emb_sj_nests (Used by FirstMatch in this function and
+    Update join->cur_sj_inner_tables (Used by FirstMatch in this function and
     LooseScan detector in best_access_path)
   */
   if ((emb_sj_nest= s->emb_sj_nest))
   {
-    join->cur_emb_sj_nests |= emb_sj_nest->sj_inner_tables;
-    join->cur_unhandled_sj_fanout |= emb_sj_nest->sj_inner_tables;
+    join->cur_sj_inner_tables |= emb_sj_nest->sj_inner_tables;
+    join->cur_dups_producing_tables |= emb_sj_nest->sj_inner_tables;
 
     /* Remove the sj_nest if all of its SJ-inner tables are in cur_table_map */
     if (!(remaining_tables & emb_sj_nest->sj_inner_tables & ~s->table->map))
-      join->cur_emb_sj_nests &= ~emb_sj_nest->sj_inner_tables;
+      join->cur_sj_inner_tables &= ~emb_sj_nest->sj_inner_tables;
   }
-  join->cur_unhandled_sj_fanout &= ~handled_by_fm_or_ls;
+  join->cur_dups_producing_tables &= ~handled_by_fm_or_ls;
 
   /* 4. SJ-Materialization and SJ-Materialization-scan strategy handler */
   bool sjm_scan;
@@ -12450,7 +12470,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
     {
       /* This is SJ-Materialization with lookups */
       COST_VECT prefix_cost; 
-      signed int first_tab= (int)idx - mat_info->n_tables;
+      signed int first_tab= (int)idx - mat_info->tables;
       double prefix_rec_count;
       if (first_tab < (int)join->const_tables)
       {
@@ -12478,7 +12498,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
         pos->sj_strategy= SJ_OPT_MATERIALIZE;
         *current_read_time=    mat_read_time;
         *current_record_count= prefix_rec_count;
-        join->cur_unhandled_sj_fanout&= ~s->emb_sj_nest->sj_inner_tables;
+        join->cur_dups_producing_tables &= ~s->emb_sj_nest->sj_inner_tables;
       }
     }
   }
@@ -12493,7 +12513,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
 
     double prefix_cost;
     double prefix_rec_count;
-    int first_tab= pos->sjm_scan_last_inner + 1 - mat_info->n_tables;
+    int first_tab= pos->sjm_scan_last_inner + 1 - mat_info->tables;
     /* Get the prefix cost */
     if (first_tab == (int)join->const_tables)
     {
@@ -12513,12 +12533,12 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
     
     uint i;
     table_map rem_tables= remaining_tables;
-    for (i= idx; i != (first_tab + mat_info->n_tables - 1); i--)
+    for (i= idx; i != (first_tab + mat_info->tables - 1); i--)
       rem_tables |= join->positions[i].table->table->map;
 
     POSITION curpos, dummy;
     /* Need to re-run best-access-path as we prefix_rec_count has changed */
-    for (i= first_tab + mat_info->n_tables; i <= idx; i++)
+    for (i= first_tab + mat_info->tables; i <= idx; i++)
     {
       best_access_path(join, join->positions[i].table, rem_tables, i, FALSE,
                        prefix_rec_count, &curpos, &dummy);
@@ -12526,12 +12546,12 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
       prefix_cost += curpos.read_time;
     }
 
-    if (prefix_cost < *current_read_time || join->cur_unhandled_sj_fanout)
+    if (prefix_cost < *current_read_time || join->cur_dups_producing_tables)
     {
       pos->sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
       *current_read_time=    prefix_cost;
       *current_record_count= prefix_rec_count;
-      join->cur_unhandled_sj_fanout&= ~mat_nest->sj_inner_tables;
+      join->cur_dups_producing_tables&= ~mat_nest->sj_inner_tables;
 
     }
   }
@@ -12627,12 +12647,12 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
         Duplicate Weedout is the catch-all default, so we should pick it if
         there is unhandled sj-fanout.
       */
-      if (dups_cost < *current_read_time || join->cur_unhandled_sj_fanout)
+      if (dups_cost < *current_read_time || join->cur_dups_producing_tables)
       {
         pos->sj_strategy= SJ_OPT_DUPS_WEEDOUT;
         *current_read_time= dups_cost;
         *current_record_count= *current_record_count / sj_inner_fanout;
-        join->cur_unhandled_sj_fanout &= ~dups_removed_fanout;
+        join->cur_dups_producing_tables &= ~dups_removed_fanout;
       }
     }
   }
@@ -12640,7 +12660,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
 
 
 /*
-  Remove the last join tab from from join->cur_emb_sj_nests bitmap
+  Remove the last join tab from from join->cur_sj_inner_tables bitmap
   we assume remaining_tables doesnt contain @tab.
 */
 
@@ -12654,7 +12674,7 @@ static void restore_prev_sj_state(const table_map remaining_tables,
     if ((remaining_tables & emb_sj_nest->sj_inner_tables) == 
         (emb_sj_nest->sj_inner_tables & ~tab->table->map))
     {
-      tab->join->cur_emb_sj_nests &= ~emb_sj_nest->sj_inner_tables;
+      tab->join->cur_sj_inner_tables &= ~emb_sj_nest->sj_inner_tables;
     }
   }
 }
@@ -15324,8 +15344,8 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
       Do the materialization. First, put end_sj_materialize after the last
       inner table so we can catch record combinations of sj-inner tables.
     */ 
-    Next_select_func next_func= join_tab[sjm->n_tables - 1].next_select;
-    join_tab[sjm->n_tables - 1].next_select= end_sj_materialize;
+    Next_select_func next_func= join_tab[sjm->tables - 1].next_select;
+    join_tab[sjm->tables - 1].next_select= end_sj_materialize;
     
     /*
       Now run the join for the inner tables. The first call is to run the
@@ -15335,10 +15355,10 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     if ((rc= sub_select(join, join_tab, FALSE)) < 0 || 
         (rc= sub_select(join, join_tab, TRUE/*EOF*/)) < 0)
     {
-      join_tab[sjm->n_tables - 1].next_select= next_func;
+      join_tab[sjm->tables - 1].next_select= next_func;
       return rc; /* it's NESTED_LOOP_(ERROR|KILLED)*/
     }
-    join_tab[sjm->n_tables - 1].next_select= next_func;
+    join_tab[sjm->tables - 1].next_select= next_func;
      
     /* 
       Ok, materialization finished. Initialize the access to the temptable
@@ -15348,7 +15368,7 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     if (sjm->is_sj_scan)
     {
       /* Initialize full scan */
-      JOIN_TAB *last_tab= join_tab + (sjm->n_tables - 1);
+      JOIN_TAB *last_tab= join_tab + (sjm->tables - 1);
       init_read_record(&last_tab->read_record, join->thd, 
                        sjm->table, NULL, TRUE, TRUE, FALSE);
 
@@ -15364,7 +15384,7 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
   if (sjm->is_sj_scan)
   {
     /* Do full scan of the materialized table */
-    JOIN_TAB *last_tab= join_tab + (sjm->n_tables - 1);
+    JOIN_TAB *last_tab= join_tab + (sjm->tables - 1);
     enum_nested_loop_state res;
 
     Item *save_cond= last_tab->select_cond;
@@ -15384,8 +15404,8 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
       return NESTED_LOOP_NO_MORE_ROWS;
   }
 
-  return (*join_tab[sjm->n_tables - 1].next_select)(join,
-                                                    join_tab + sjm->n_tables,
+  return (*join_tab[sjm->tables - 1].next_select)(join,
+                                                    join_tab + sjm->tables,
                                                     FALSE);
 }
 
@@ -15595,18 +15615,19 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   bool skip_over= FALSE;
   while (rc == NESTED_LOOP_OK && join->return_tab >= join_tab)
   {
-    if (join_tab->insideout_match_tab && join_tab->insideout_match_tab->found_match)
+    if (join_tab->loosescan_match_tab && 
+        join_tab->loosescan_match_tab->found_match)
     {
       KEY *key= join_tab->table->key_info + join_tab->index;
-      key_copy(join_tab->insideout_buf, info->record, key, 
-               join_tab->insideout_key_len);
+      key_copy(join_tab->loosescan_buf, info->record, key, 
+               join_tab->loosescan_key_len);
       skip_over= TRUE;
     }
     error= info->read_record(info);
 
     if (skip_over && !error && 
         !key_cmp(join_tab->table->key_info[join_tab->index].key_part,
-                 join_tab->insideout_buf, join_tab->insideout_key_len))
+                 join_tab->loosescan_buf, join_tab->loosescan_key_len))
     {
       continue;
     }
@@ -21339,7 +21360,7 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
         if (distinct & test_all_bits(used_tables,thd->used_tables))
           extra.append(STRING_WITH_LEN("; Distinct"));
 
-        if (tab->insideout_match_tab)
+        if (tab->loosescan_match_tab)
         {
           extra.append(STRING_WITH_LEN("; LooseScan"));
         }

@@ -2846,12 +2846,14 @@ public:
   /* Optimal join sub-order */
   struct st_position *positions;
 
-  uint n_tables; /* Number of tables in the sj-nest */
+  uint tables; /* Number of tables in the sj-nest */
 
   /* Expected #rows in the materialized table */
   double rows;
 
-  /* Cost to materialize - run the sub-join and write rows into temp.table */
+  /* 
+    Cost to materialize - execute the sub-join and write rows into temp.table
+  */
   COST_VECT materialization_cost;
 
   /* Cost to make one lookup in the temptable */

@@ -61,7 +61,6 @@ struct READ_RECORD
   uchar	*cache,*cache_pos,*cache_end,*read_positions;
   struct st_io_cache *io_cache;
   bool print_error, ignore_not_found_rows;
-  struct st_join_table *do_insideout_scan;
 
   /* 
     SJ-Materialization runtime may need to read fields from the materialized
