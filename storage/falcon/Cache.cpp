@@ -852,7 +852,7 @@ void Cache::ioThread(void)
 						
 					flushLock.unlock();
 					//Log::debug(" %d Writing %s %d pages: %d - %d\n", thread->threadId, (const char*) dbb->fileName, count, pageNumber, pageNumber + count - 1);
-					int length = p - buffer;
+					int length = (int)(p - buffer);
 					priority.schedule(PRIORITY_LOW);
 					
 					try

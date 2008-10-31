@@ -55,7 +55,7 @@
 #include "LogStream.h"
 #endif
 
-static const int guardBytes = sizeof(long); // * 2048;
+static const size_t guardBytes = sizeof(long); // * 2048;
 
 #ifndef ASSERT
 #define ASSERT
@@ -112,7 +112,7 @@ struct Client {
 	};
 
 #ifdef _DEBUG
-	void* MemMgrPoolAllocateDebug (MemMgr *pool, unsigned int s, const char *file, int line)
+	void* MemMgrPoolAllocateDebug (MemMgr *pool, size_t s, const char *file, int line)
 	{
 		void *object = pool->allocateDebug(s, file, line);
 
@@ -120,12 +120,12 @@ struct Client {
 			printf("MemMgrAllocateDebug at %p\n", stopAddress);
 
 		if (traceFile)
-			fprintf(traceFile, "a %d %p\n", s, object);
+			fprintf(traceFile, "a " I64FORMAT " %p\n", (int64)s, object);
 
 		return object;
 	}
 
-	void* MemMgrAllocateDebug (unsigned int s, const char *file, int line)
+	void* MemMgrAllocateDebug (size_t s, const char *file, int line)
 	{
 		if(!memoryManagerAlive)
 			return malloc(s);
@@ -136,7 +136,7 @@ struct Client {
 			printf("MemMgrAllocateDebug at %p\n", stopAddress);
 
 		if (traceFile)
-			fprintf(traceFile, "a %d %p\n", s, object);
+			fprintf(traceFile, "a " I64FORMAT " %p\n", (int64)s, object);
 
 		return object;
 	}
@@ -159,7 +159,7 @@ struct Client {
 		memoryManager.releaseDebug (object);
 	}
 
-	void* MemMgrRecordAllocate (int size, const char *file, int line)
+	void* MemMgrRecordAllocate (size_t size, const char *file, int line)
 	{
 		return recordManager.allocateDebug (size, file, line);
 	}
@@ -169,12 +169,12 @@ struct Client {
 		recordManager.releaseDebug (record);
 	}
 #else
-	void* MemMgrPoolAllocate (MemMgr *pool, unsigned int s)
+	void* MemMgrPoolAllocate (MemMgr *pool, size_t s)
 	{
 		return pool->allocate (s);
 	}
 
-	void* MemMgrAllocate (unsigned int s)
+	void* MemMgrAllocate (size_t s)
 	{
 		if(!memoryManagerAlive)
 			return malloc(s);
@@ -190,7 +190,7 @@ struct Client {
 			memoryManager.release (object);
 	}
 
-	void* MemMgrRecordAllocate (int size, const char *file, int line)
+	void* MemMgrRecordAllocate (size_t size, const char *file, int line)
 	{
 		return recordManager.allocate (size);
 	}
@@ -346,10 +346,13 @@ MemMgr::~MemMgr(void)
 		*isAlive = false;
 }
 
-MemBlock* MemMgr::alloc(int length)
+MemBlock* MemMgr::alloc(size_t s)
 {
-	if (length <= 0)
-		throw SQLError (RUNTIME_ERROR, "illegal memory allocate for %d bytes", length);
+	if (s > INT_MAX)
+		throw SQLError (RUNTIME_ERROR, "illegal memory allocate for " I64FORMAT " bytes",
+		(int64)s);
+
+	int length = (int) s;
 
 	Sync sync (&mutex, "MemMgr::alloc");
 	sync.lock(Exclusive);
@@ -522,9 +525,9 @@ MemBlock* MemMgr::alloc(int length)
 	return block;
 }
 
-void* MemMgr::allocate(int size)
+void* MemMgr::allocate(size_t size)
 {
-	int length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
+	size_t length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
 	MemBlock *memory;
 
 	ASSERT(signature == defaultSignature);
@@ -547,9 +550,9 @@ void* MemMgr::allocate(int size)
 	return &memory->body;
 }
 
-void* MemMgr::allocateDebug(int size, const char* fileName, int line)
+void* MemMgr::allocateDebug(size_t size, const char* fileName, int line)
 {
-	int length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
+	size_t length = ROUNDUP(size, roundingSize) + OFFSET(MemBlock*, body) + guardBytes;
 	MemBlock *memory;
 
 	ASSERT(signature == defaultSignature);
@@ -563,7 +566,7 @@ void* MemMgr::allocateDebug(int size, const char* fileName, int line)
 #endif
 
 	memset (&memory->body, INIT_BYTE, size);
-	int l = ABS(memory->length) - size - OFFSET(MemBlock*,body);
+	size_t l = ABS(memory->length) - size - OFFSET(MemBlock*,body);
 	ASSERT(l >= guardBytes && l < length - size + guardBytes + (int) sizeof (MemFreeBlock));
 	memset (&memory->body + size, GUARD_BYTE, l);
 	++blocksAllocated;

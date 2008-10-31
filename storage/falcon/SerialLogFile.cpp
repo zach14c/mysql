@@ -370,7 +370,7 @@ void SerialLogFile::zap()
 	UCHAR *junk = new UCHAR[initialSize +sectorSize];
 	UCHAR *buffer = ALIGN(junk, sectorSize);
 	memset(buffer, 0, initialSize);
-	write(0, initialSize, (SerialLogBlock*) buffer);
+	write(0, (uint32) initialSize, (SerialLogBlock*) buffer);
 	delete junk;
 }
 

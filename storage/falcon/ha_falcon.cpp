@@ -344,7 +344,7 @@ uint falcon_strnxfrmlen(void *cs, const char *s, uint srcLen,
 	uint chrLen = falcon_strnchrlen(cs, s, srcLen);
 	int maxChrLen = partialKey ? min(chrLen, partialKey / charset->mbmaxlen) : chrLen;
 
-	return min(charset->coll->strnxfrmlen(charset, maxChrLen * charset->mbmaxlen), (uint) bufSize);
+	return (uint)min(charset->coll->strnxfrmlen(charset, maxChrLen * charset->mbmaxlen), (uint) bufSize);
 }
 
 // Return the number of bytes used in s to hold a certain number of characters.
@@ -372,7 +372,7 @@ uint falcon_strntrunc(void *cs, int partialKey, const char *s, uint l)
 		charLimit--;
 		}
 
-	return ch - (uchar *) s;
+	return (uint)(ch - (uchar *) s);
 }
 
 int falcon_strnncoll(void *cs, const char *s1, uint l1, const char *s2, uint l2, char flag)
@@ -3006,10 +3006,10 @@ bool StorageInterface::get_error_message(int error, String *buf)
 	if (storageConnection)
 		{
 		const char *text = storageConnection->getLastErrorString();
-		buf->set(text, strlen(text), system_charset_info);
+		buf->set(text, (uint32)strlen(text), system_charset_info);
 		}
 	else if (errorText)
-		buf->set(errorText, strlen(errorText), system_charset_info);
+		buf->set(errorText, (uint32)strlen(errorText), system_charset_info);
 
 	return false;
 }
