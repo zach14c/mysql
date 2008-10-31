@@ -1805,6 +1805,10 @@ int StorageInterface::error(int storageError)
 			                    "Falcon does not support READ UNCOMMITTED ISOLATION, using REPEATABLE READ instead.");
 			break;
 
+		case StorageErrorIndexOverflow:
+			my_error(ER_TOO_LONG_KEY, MYF(0), max_key_length());
+			break;
+
 		default:
 			;
 		}
