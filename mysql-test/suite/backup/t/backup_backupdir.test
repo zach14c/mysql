@@ -1,0 +1,118 @@
+#
+# This test is designed to test the new backupdir variable.
+#
+
+--source include/not_embedded.inc
+
+--echo Reset backupdir 
+SET @@global.backupdir = @@global.datadir;
+
+--disable_warnings
+DROP DATABASE IF EXISTS bup_backupdir;
+--enable_warnings
+
+--echo Create a database
+CREATE DATABASE bup_backupdir;
+CREATE TABLE bup_backupdir.t1(a INT);
+INSERT INTO bup_backupdir.t1 VALUES (1), (2), (3);
+
+#
+# The following tests the backupdir variable by changing it to
+# redirect the output of the backup command/input of the restore
+# command.
+#
+
+--error 0,1,2
+rmdir $MYSQLTEST_VARDIR/tmp/backup;
+
+--echo Create a directory for backup images
+mkdir $MYSQLTEST_VARDIR/tmp/backup;
+
+--echo Reset backupdir 
+SET @@global.backupdir = '../tmp/backup';
+
+--echo Perform backup
+--replace_column 1 #
+BACKUP DATABASE bup_backupdir TO 'bup_backupdir1.bak';
+
+--echo Ensure backup image file went to the correct location
+--echo $MYSQLTEST_DIR/backup/bup_backupdir.bak
+--file_exists $MYSQLTEST_VARDIR/tmp/backup/bup_backupdir1.bak
+
+--echo Perform restore
+--replace_column 1 #
+RESTORE FROM 'bup_backupdir1.bak';
+
+--echo Now do the backup and restore by specifying a path.
+
+--echo Perform backup
+--replace_column 1 #
+BACKUP DATABASE bup_backupdir TO '../bup_backupdir2.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLTEST_VARDIR/tmp/bup_backupdir2.bak
+
+--echo Perform restore
+--replace_column 1 #
+RESTORE FROM '../bup_backupdir2.bak';
+
+--echo Perform backup
+--replace_column 1 #
+BACKUP DATABASE bup_backupdir TO '../../bup_backupdir3.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLTEST_VARDIR/bup_backupdir3.bak
+
+--echo Reset backupdir with ending /
+SET @@global.backupdir = '../tmp/backup/';
+
+--echo Perform backup
+--replace_column 1 #
+BACKUP DATABASE bup_backupdir TO '../../bup_backupdir4.bak';
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLTEST_VARDIR/bup_backupdir4.bak
+
+--echo Try a backup to an invalid relative path.
+--error ER_BACKUP_WRITE_LOC
+BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
+
+--echo 
+--echo Try a backup to an invalid hard path.
+
+--echo *Actual BACKUP DATABASE command not printed due to non-deterministic path.
+--echo *Performing: 
+--echo *BACKUP DATABASE bup_backupdir TO '\$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+# Do not print the SQL command to result file because dir is not deterministic across hosts
+--disable_query_log
+# Replace actual dir in error message because $MYSQLTEST_VARDIR is not deterministic
+replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/there\/either\/bup_backupdir6.bak'/ ;
+--error ER_BACKUP_WRITE_LOC
+--eval BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+--enable_query_log
+
+--echo
+--echo Attempt to set the backupdir to something invalid.
+SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
+
+--echo Cleanup
+
+--echo Reset backupdir 
+SET @@global.backupdir = @@global.datadir;
+
+DROP DATABASE bup_backupdir;
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/tmp/bup_backupdir1.bak
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/tmp/backup/bup_backupdir2.bak
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_backupdir3.bak
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_backupdir4.bak
+
+--error 0,1
+rmdir $MYSQLTEST_VARDIR/tmp/backup;

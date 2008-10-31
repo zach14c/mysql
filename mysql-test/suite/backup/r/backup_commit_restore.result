@@ -1,0 +1,334 @@
+CREATE DATABASE commit_test;
+USE commit_test;
+SET @@autocommit=0;
+CREATE TABLE t1 (s1 CHAR(2)) ENGINE=innodb;
+INSERT INTO t1 VALUES ('a1');
+BACKUP DATABASE commit_test TO '81';
+backup_id
+#
+RESTORE FROM '81';
+backup_id
+#
+SELECT * FROM t1;
+s1
+a1
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+COMMIT;
+SET @@autocommit=0;
+CREATE TABLE t2 (s1 CHAR(2)) ENGINE=Memory;
+INSERT INTO t1 VALUES ('a2');
+INSERT INTO t2 VALUES ('a2');
+BACKUP DATABASE commit_test TO '82';
+backup_id
+#
+RESTORE FROM '82';
+backup_id
+#
+SELECT * FROM t1;
+s1
+a1
+a2
+SELECT * FROM t2;
+s1
+a2
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+a2
+SELECT * FROM t2;
+s1
+a2
+COMMIT;
+SET @@autocommit=0;
+CREATE TABLE t3 (s1 CHAR(2));
+INSERT INTO t1 VALUES ('a3');
+INSERT INTO t2 VALUES ('a3');
+INSERT INTO t3 VALUES ('a3');
+BACKUP DATABASE commit_test TO '83';
+backup_id
+#
+RESTORE FROM '83';
+backup_id
+#
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+SELECT * FROM t2;
+s1
+a2
+a3
+SELECT * FROM t3;
+s1
+a3
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+SELECT * FROM t2;
+s1
+a2
+a3
+SELECT * FROM t3;
+s1
+a3
+COMMIT;
+SET @@autocommit=0;
+CREATE TABLE t4 (s1 CHAR(2)) ENGINE=falcon;
+INSERT INTO t1 VALUES ('a4');
+INSERT INTO t2 VALUES ('a4');
+INSERT INTO t3 VALUES ('a4');
+INSERT INTO t4 VALUES ('a4');
+BACKUP DATABASE commit_test TO '84';
+backup_id
+#
+RESTORE FROM '84';
+backup_id
+#
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+SELECT * FROM t3;
+s1
+a3
+a4
+SELECT * FROM t4;
+s1
+a4
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+SELECT * FROM t3;
+s1
+a3
+a4
+SELECT * FROM t4;
+s1
+a4
+COMMIT;
+SET @@autocommit=1;
+INSERT INTO t1 VALUES ('a5');
+INSERT INTO t2 VALUES ('a5');
+INSERT INTO t3 VALUES ('a5');
+INSERT INTO t4 VALUES ('a5');
+BACKUP DATABASE commit_test TO '85';
+backup_id
+#
+RESTORE FROM '85';
+backup_id
+#
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+a5
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+a5
+SELECT * FROM t3;
+s1
+a3
+a4
+a5
+SELECT * FROM t4;
+s1
+a4
+a5
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+a5
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+a5
+SELECT * FROM t3;
+s1
+a3
+a4
+a5
+SELECT * FROM t4;
+s1
+a4
+a5
+COMMIT;
+SET @@autocommit=1;
+CREATE TABLE t5 (s1 CHAR(2)) ENGINE=falcon;
+INSERT INTO t1 VALUES ('a6');
+INSERT INTO t2 VALUES ('a6');
+INSERT INTO t3 VALUES ('a6');
+INSERT INTO t4 VALUES ('a6');
+INSERT INTO t5 VALUES ('a6');
+BACKUP DATABASE commit_test TO '86';
+backup_id
+#
+SET @@autocommit=0;
+RESTORE FROM '86';
+backup_id
+#
+DROP TABLE t5;
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+a5
+a6
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+a5
+a6
+SELECT * FROM t3;
+s1
+a3
+a4
+a5
+a6
+SELECT * FROM t4;
+s1
+a4
+a5
+a6
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+a5
+a6
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+a5
+a6
+SELECT * FROM t3;
+s1
+a3
+a4
+a5
+a6
+SELECT * FROM t4;
+s1
+a4
+a5
+a6
+COMMIT;
+SET @@autocommit=0;
+INSERT INTO t1 VALUES ('a7');
+INSERT INTO t2 VALUES ('a7');
+INSERT INTO t3 VALUES ('a7');
+INSERT INTO t4 VALUES ('a7');
+BACKUP DATABASE commit_test TO '87';
+backup_id
+#
+SET @@autocommit=1;
+RESTORE FROM '87';
+backup_id
+#
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+a5
+a6
+a7
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+a5
+a6
+a7
+SELECT * FROM t3;
+s1
+a3
+a4
+a5
+a6
+a7
+SELECT * FROM t4;
+s1
+a4
+a5
+a6
+a7
+ROLLBACK;
+SELECT * FROM t1;
+s1
+a1
+a2
+a3
+a4
+a5
+a6
+a7
+SELECT * FROM t2;
+s1
+a2
+a3
+a4
+a5
+a6
+a7
+SELECT * FROM t3;
+s1
+a3
+a4
+a5
+a6
+a7
+SELECT * FROM t4;
+s1
+a4
+a5
+a6
+a7
+COMMIT;
+DROP DATABASE commit_test;
+COMMIT;

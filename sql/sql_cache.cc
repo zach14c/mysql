@@ -1482,12 +1482,14 @@ def_week_frmt: %lu",
   thd->status_var.last_query_cost= 0.0;
   thd->main_da.disable_status();
 
+  MYSQL_QUERY_CACHE_HIT(thd->query, (ulong) thd->limit_found_rows);
   BLOCK_UNLOCK_RD(query_block);
   DBUG_RETURN(1);				// Result sent to client
 
 err_unlock:
   STRUCT_UNLOCK(&structure_guard_mutex);
 err:
+  MYSQL_QUERY_CACHE_MISS(thd->query);
   DBUG_RETURN(0);				// Query was not cached
 }
 
@@ -1557,10 +1559,9 @@ void Query_cache::invalidate_locked_for_write(TABLE_LIST *tables_used)
   for (; tables_used; tables_used= tables_used->next_local)
   {
     thd_proc_info(thd, "invalidating query cache entries (table)");
-    if (tables_used->lock_type & (TL_WRITE_LOW_PRIORITY | TL_WRITE) &&
+    if (tables_used->lock_type >= TL_WRITE_ALLOW_WRITE &&
         tables_used->table)
     {
-      THD *thd= current_thd; 
       invalidate_table(thd, tables_used->table);
     }
   }
@@ -2648,7 +2649,7 @@ Query_cache::register_tables_from_list(TABLE_LIST *tables_used,
        tables_used;
        tables_used= tables_used->next_global, n++, block_table++)
   {
-    if (tables_used->derived && !tables_used->view)
+    if (tables_used->is_anonymous_derived_table())
     {
       DBUG_PRINT("qcache", ("derived table skipped"));
       n--;

@@ -31,10 +31,19 @@ EXTRA_PROGRAMS =	gen_lex_hash
 bin_PROGRAMS =		mysql_tzinfo_to_sql
 DTRACE =                @DTRACE@
 DTRACEFLAGS =           @DTRACEFLAGS@
-DTRACEFILES =           handler.o \
-			filesort.o \
-			sql_insert.o \
+DTRACEFILES =           filesort.o \
+			handler.o \
+			mysqld.o \
+			net_serv.o \
+			scheduler.o \
+			sp_head.o \
+			sql_cache.o \
+			sql_connect.o \
+			sql_cursor.o \
 			sql_delete.o \
+			sql_insert.o \
+			sql_parse.o \
+			sql_prepare.o \
 			sql_select.o \
 			sql_update.o
 
@@ -87,9 +96,10 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			sql_plugin.h authors.h event_parse_data.h \
 			event_data_objects.h event_scheduler.h \
 			sql_partition.h partition_info.h partition_element.h \
-			probes.h sql_audit.h \
+			probes.h sql_audit.h transaction.h \
 			contributors.h sql_servers.h ddl_blocker.h \
-			si_objects.h sql_plist.h mdl.h
+			si_objects.h si_logs.h sql_plist.h mdl.h records.h \
+			rpl_handler.h replication.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -135,8 +145,9 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc event_parse_data.cc \
-			mdl.cc
+			ddl_blocker.cc si_objects.cc si_logs.cc \
+			event_parse_data.cc mdl.cc transaction.cc \
+			rpl_handler.cc
 
 if HAVE_DTRACE
   mysqld_SOURCES += probes.d
@@ -216,8 +227,10 @@ install-exec-hook:
 
 SUFFIXES : .d
 
-.d.o : $(DTRACEFILES)
+.d.o :
 	$(DTRACE) $(DTRACEFLAGS) -G -s $< $(DTRACEFILES)
+
+probes.o : $(DTRACEFILES)
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%

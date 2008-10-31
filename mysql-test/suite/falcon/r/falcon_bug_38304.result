@@ -1,0 +1,646 @@
+*** Bug #<38304> ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+SET LOCAL SQL_MODE="";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+DROP TABLE t1;
+SET LOCAL SQL_MODE="PIPES_AS_CONCAT,ANSI_QUOTES,ANSI,NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES,STRICT_ALL_TABLES";
+CREATE TABLE t1 (`äëïôæø` varchar(30) character set utf8);
+INSERT INTO t1 VALUES ('this'),('is'), ('a'), ('test');
+SELECT * FROM t1;
+äëïôæø
+this
+is
+a
+test
+SELECT count(*) FROM t1;
+count(*)
+4
+DROP TABLE t1;

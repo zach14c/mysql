@@ -390,7 +390,7 @@ public:
     Base class for st_select_lex (SELECT_LEX) & 
     st_select_lex_unit (SELECT_LEX_UNIT)
 */
-struct st_lex;
+struct LEX;
 class st_select_lex;
 class st_select_lex_unit;
 class st_select_lex_node {
@@ -460,7 +460,7 @@ public:
   virtual void set_lock_for_tables(thr_lock_type lock_type) {}
 
   friend class st_select_lex_unit;
-  friend bool mysql_new_select(struct st_lex *lex, bool move_down);
+  friend bool mysql_new_select(LEX *lex, bool move_down);
   friend bool mysql_make_view(THD *thd, File_parser *parser,
                               TABLE_LIST *table, uint flags);
 private:
@@ -585,7 +585,7 @@ public:
   /* Saved values of the WHERE and HAVING clauses*/
   Item::cond_result cond_value, having_value;
   /* point on lex in which it was created, used in view subquery detection */
-  st_lex *parent_lex;
+  LEX *parent_lex;
   enum olap_type olap;
   /* FROM clause - points to the beginning of the TABLE_LIST::next_local list. */
   SQL_LIST	      table_list;
@@ -678,6 +678,7 @@ public:
     case of an error during prepare the PS is not created.
   */
   bool first_execution;
+  bool first_natural_join_processing;
   bool first_cond_optimization;
   /* do not wrap view fields with Item_ref */
   bool no_wrap_view_item;
@@ -953,7 +954,7 @@ extern const LEX_STRING null_lex_str;
   stored functions/triggers to this list in order to pre-open and lock
   them.
 
-  Also used by st_lex::reset_n_backup/restore_backup_query_tables_list()
+  Also used by LEX::reset_n_backup/restore_backup_query_tables_list()
   methods to save and restore this information.
 */
 
@@ -1513,7 +1514,7 @@ public:
 
 /* The state of the lex parsing. This is saved in the THD struct */
 
-typedef struct st_lex : public Query_tables_list
+struct LEX: public Query_tables_list
 {
   SELECT_LEX_UNIT unit;                         /* most upper unit */
   SELECT_LEX select_lex;                        /* first SELECT_LEX */
@@ -1572,6 +1573,7 @@ typedef struct st_lex : public Query_tables_list
   List<Item>	      *insert_list,field_list,value_list,update_list;
   List<List_item>     many_values;
   List<set_var_base>  var_list;
+  List<Item_func_set_user_var> set_var_list; // in-query assignment list
   List<Item_param>    param_list;
   List<LEX_STRING>    view_list; // view list (list of field names in view)
   /*
@@ -1757,9 +1759,9 @@ typedef struct st_lex : public Query_tables_list
   bool escape_used;
   bool is_lex_started; /* If lex_start() did run. For debugging. */
 
-  st_lex();
+  LEX();
 
-  virtual ~st_lex()
+  virtual ~LEX()
   {
     destroy_query_tables_list();
     plugin_unlock_list(NULL, (plugin_ref *)plugins.buffer, plugins.elements);
@@ -1801,7 +1803,7 @@ typedef struct st_lex : public Query_tables_list
     Is this update command where 'WHITH CHECK OPTION' clause is important
 
     SYNOPSIS
-      st_lex::which_check_option_applicable()
+      LEX::which_check_option_applicable()
 
     RETURN
       TRUE   have to take 'WHITH CHECK OPTION' clause into account
@@ -1873,7 +1875,7 @@ typedef struct st_lex : public Query_tables_list
     }
     return FALSE;
   }
-} LEX;
+};
 
 
 /**
@@ -1928,7 +1930,7 @@ public:
 };
 
 
-struct st_lex_local: public st_lex
+struct st_lex_local: public LEX
 {
   static void *operator new(size_t size) throw()
   {

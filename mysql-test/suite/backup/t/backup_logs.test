@@ -1,0 +1,227 @@
+#
+# This test includes tests for ensuring the backup progress tables
+# are updated.
+#
+
+--source include/have_log_bin.inc
+--source include/have_debug_sync.inc
+--source include/have_innodb.inc
+--source include/not_embedded.inc
+--source include/have_debug.inc
+
+SET DEBUG_SYNC= 'RESET';
+
+# bug#33836 backup tables should have charset utf8
+
+--echo 
+--echo Checking character set for backup tables 
+--echo 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'backup_history' 
+  AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+
+--echo 
+
+SELECT column_name, character_set_name 
+FROM information_schema.columns 
+WHERE table_name LIKE 'backup_progress' 
+  AND character_set_name LIKE 'utf8' 
+ORDER BY column_name;
+
+--echo 
+--echo Now starting real tests
+--echo 
+
+#
+# Preparative cleanup.
+#
+--disable_warnings
+DROP DATABASE IF EXISTS backup_logs;
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak;
+--enable_warnings
+
+connect (con1,localhost,root,,);
+connect (con2,localhost,root,,);
+
+#
+# Test 1 - Check output of backup.
+#
+
+connection con1;
+
+CREATE DATABASE backup_logs;
+
+--echo con1: Create table and new users.
+
+CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
+CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
+CREATE TABLE backup_logs.t1_res (id BIGINT UNSIGNED NOT NULL) ENGINE=MEMORY;
+
+INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("03 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("04 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("05 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("06 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("07 Test #1 - progress"); 
+
+INSERT INTO backup_logs.t2 VALUES ("01 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("02 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("03 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("04 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("05 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("06 Test #1 - progress"); 
+
+INSERT INTO backup_logs.t3 VALUES ("01 Test #1 - progress"); 
+INSERT INTO backup_logs.t3 VALUES ("02 Test #1 - progress"); 
+INSERT INTO backup_logs.t3 VALUES ("03 Test #1 - progress"); 
+INSERT INTO backup_logs.t3 VALUES ("04 Test #1 - progress"); 
+
+--echo Do backup of database
+
+connection con2;
+
+--echo con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_log_init     SIGNAL started   WAIT_FOR do_run';
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL phase1    WAIT_FOR backup';
+SET DEBUG_SYNC= 'after_backup_validated    SIGNAL validated WAIT_FOR do_phase2';
+SET DEBUG_SYNC= 'after_backup_binlog       SIGNAL phase2    WAIT_FOR finish';
+
+--echo con2: Send backup command.
+send BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+connection con1;
+
+--echo con1: Wait for the backup to be started.
+SET DEBUG_SYNC= 'now WAIT_FOR started';
+
+--echo con1: Display progress
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_progress;
+INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
+SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+
+--echo con1: Let backup step to running state.
+SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR phase1';
+
+--echo con1: Display progress
+SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+
+--echo con1: Let backup do the backup phase1.
+SET DEBUG_SYNC= 'now SIGNAL backup WAIT_FOR validated';
+
+--echo con1: Display progress
+SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+
+--echo con1: Let backup do the backup phase2.
+SET DEBUG_SYNC= 'now SIGNAL do_phase2 WAIT_FOR phase2';
+
+--echo con1: Display progress
+SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+
+--echo con1: Let backup finish.
+SET DEBUG_SYNC= 'now SIGNAL finish';
+
+connection con2;
+--echo con2: Finish backup command
+--replace_column 1 #
+reap;
+
+connection con1;
+
+#Show results
+--replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 # 16 #
+--query_vertical SELECT ob.* FROM mysql.backup_history AS ob JOIN backup_logs.t1_res AS t1 ON ob.backup_id = t1.id;
+--replace_column 1 # 3 # 4 #
+SELECT obp.* FROM mysql.backup_progress AS obp JOIN backup_logs.t1_res AS t1 ON obp.backup_id = t1.id;
+
+DELETE FROM backup_logs.t1_res;
+ 
+connection con2;
+
+--echo con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'after_backup_log_init      SIGNAL started WAIT_FOR do_run';
+SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR finish';
+
+--echo con2: Send restore command.
+send RESTORE FROM 'backup_logs_orig.bak';
+
+connection con1;
+
+--echo con1: Wait for the restore to be started.
+SET DEBUG_SYNC= 'now WAIT_FOR started';
+
+--echo con1: Display progress
+select * from backup_logs.t1_res;
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_progress;
+INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
+SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+
+--echo con1: Let restore step to running state.
+SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
+
+--echo con1: Display progress
+SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+
+--echo con1: Let restore do its job and finish.
+SET DEBUG_SYNC= 'now SIGNAL finish';
+
+connection con2;
+--echo con2: Finish restore command
+--replace_column 1 #
+reap;
+
+SET DEBUG_SYNC= 'now SIGNAL complete';
+
+connection con1;
+
+SET DEBUG_SYNC= 'now WAIT_FOR complete';
+
+#Show results
+DELETE FROM backup_logs.t1_res;
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history WHERE command LIKE "RESTORE FROM%";
+INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
+--replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 # 16 #
+--query_vertical SELECT ob.* FROM mysql.backup_history AS ob JOIN backup_logs.t1_res AS t1 ON ob.backup_id = t1.id;
+--replace_column 1 # 3 # 4 #
+SELECT obp.* FROM mysql.backup_progress AS obp JOIN backup_logs.t1_res AS t1 ON obp.backup_id = t1.id;
+
+SET DEBUG_SYNC= 'RESET';
+
+#
+# Now test read of backupid with known id using debug insertion
+#
+SET SESSION debug="d,set_backup_id";
+
+--remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+
+#
+# The first backup will cause the value to be set to 500 and written to file.
+# The second backup will read the value (500) and increment it.
+#--replace_column 1 #
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+SET SESSION debug="d";
+
+--remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+--echo The backup id for this command should be 501.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+--remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+--echo The backup id for this command should be 502.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+--remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+--echo The backup id for this command should be 503.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+
+#
+# Cleanup.
+#
+DROP DATABASE backup_logs;
+--remove_file $MYSQLTEST_VARDIR/master-data/backup_logs_orig.bak
+

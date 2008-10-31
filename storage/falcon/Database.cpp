@@ -73,11 +73,14 @@
 #include "MemoryManager.h"
 #include "MemMgr.h"
 #include "RecordScavenge.h"
+#include "RecordSection.h"
 #include "LogStream.h"
 #include "SyncTest.h"
+#include "SyncHandler.h"
 #include "PriorityScheduler.h"
 #include "Sequence.h"
 #include "BackLog.h"
+#include "Bitmap.h"
 
 #ifdef _WIN32
 #define PATH_MAX			_MAX_PATH
@@ -462,6 +465,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	zombieTables = NULL;
 	updateCardinality = NULL;
 	backLog = NULL;
+	syncHandler = getFalconSyncHandler();
 	ioScheduler = new PriorityScheduler;
 	lastScavenge = 0;
 	scavengeCycle = 0;
@@ -526,6 +530,13 @@ void Database::start()
 
 Database::~Database()
 {
+						
+	if (systemConnection)
+		{
+		systemConnection->rollback();
+		systemConnection->close();
+		}
+
 	for (Table *table; (table = tableList);)
 		{
 		tableList = table->next;
@@ -547,12 +558,7 @@ Database::~Database()
 			schemas [n] = schema->collision;
 			delete schema;
 			}
-					
-	if (systemConnection)
-		{
-		systemConnection->rollback();
-		systemConnection->close();
-		}
+
 
 	for (CompiledStatement *statement = compiledStatements; statement;)
 		{
@@ -610,6 +616,8 @@ Database::~Database()
 	delete transactionManager;
 	delete ioScheduler;
 	delete backLog;
+	if (syncHandler)
+		delete syncHandler;
 }
 
 void Database::createDatabase(const char * filename)
@@ -679,16 +687,27 @@ void Database::createDatabase(const char * filename)
 		}
 	catch (...)
 		{
-		dbb->closeFile();
-		dbb->deleteFile();
-		
+		deleteFilesOnExit = true;
 		throw;
 		}
 }
 
 void Database::openDatabase(const char * filename)
 {
-	cache = dbb->open (filename, configuration->pageCacheSize, 0);
+	try 
+		{
+		cache = dbb->open (filename, configuration->pageCacheSize, 0);
+		}
+	catch(SQLException& e)
+		{
+		// Master cannot be opened - throw OPEN_MASTER error to initiate
+		// create database. Don't do it if file exists, but there is a problem
+		// with permissions and/or locking.
+		if(e.getSqlcode() != FILE_ACCESS_ERROR)
+			throw SQLError(OPEN_MASTER_ERROR, e.getText());
+		else
+			throw;
+		}
 	start();
 
 	if (   dbb->logRoot.IsEmpty()
@@ -705,34 +724,18 @@ void Database::openDatabase(const char * filename)
 			{
 			if (dbb->logLength)
 				serialLog->copyClone(dbb->logRoot, dbb->logOffset, dbb->logLength);
-
-			try
-				{
-				serialLog->open(dbb->logRoot, false);
-				}
-			catch (SQLException&)
-				{
-				const char *p = strrchr(filename, '.');
-				JString logRoot = (p) ? JString(filename, (int) (p - filename)) : name;
-				bool failed = true;
-				
-				try
-					{
-					serialLog->open(logRoot, false);
-					failed = false;
-					}
-				catch (...)
-					{
-					}
-				
-				if (failed)
-					throw;
-				}
-			
+			serialLog->open(dbb->logRoot, false);
 			if (dbb->tableSpaceSectionId)
 				tableSpaceManager->bootstrap(dbb->tableSpaceSectionId);
 
-			serialLog->recover();
+			try 
+				{
+				serialLog->recover();
+				}
+			catch(SQLError &e)
+				{
+				throw SQLError(RECOVERY_ERROR, "Recovery failed: %s",e.getText());
+				}
 			tableSpaceManager->postRecovery();
 			serialLog->start();
 			}
@@ -1455,50 +1458,61 @@ void Database::dropTable(Table *table, Transaction *transaction)
 
 void Database::truncateTable(Table *table, Sequence *sequence, Transaction *transaction)
 {
-	Sync syncDDL(&syncSysDDL, "Database::truncateTable(1)");
-	syncDDL.lock(Exclusive);
-	
-	table->checkDrop();
-	
 	// Check for records in active transactions
 
 	if (hasUncommittedRecords(table, transaction))
 		throw SQLError(UNCOMMITTED_UPDATES, "table %s.%s has uncommitted updates and cannot be truncated",
 						table->schemaName, table->name);
-						   
+
+	// Lock SystemDDL first.  This lock can happen multiple times in many call stacks,
+	// both before and after the following locks.  So it is important that we get an 
+	// exclusive lock first.
+
+	Sync syncDDLLock(&syncSysDDL, "Database::truncateTable(SysDDL)");
+	syncDDLLock.lock(Exclusive);
+	
+	// Lock syncScavenge before locking syncSysDDL, syncTables, or table->syncObject.
+	// The scavenger locks syncScavenge  and then syncTables
+	// If we run out of record memory, forceRecordScavenge will eventually call table->syncObject.
+
+	Sync syncScavengeLock(&syncScavenge, "Database::truncateTable(scavenge)");
+	syncScavengeLock.lock(Exclusive);
+
+	table->checkDrop();
+	
 	// Block table drop/add, table list scans ok
-	
-	Sync syncTbl(&syncTables, "Database::truncateTable(2)");
-	syncTbl.lock(Shared);
-	
+
+	Sync syncTablesLock(&syncTables, "Database::truncateTable(tables)");
+	syncTablesLock.lock(Shared);
+
 	//Lock sections (factored out of SRLDropTable to avoid a deadlock)
 	//The lock order (serialLog->syncSections before table->syncObject) is 
 	//important
 
-	Sync syncSections(&serialLog->syncSections, "Database::truncateTable(3)");
-	syncSections.lock(Exclusive);
-	
+	Sync syncSectionsLock(&serialLog->syncSections, "Database::truncateTable(sections)");
+	syncSectionsLock.lock(Exclusive);
+
 	// No table access until truncate completes
-	
-	Sync syncObj(&table->syncObject, "Database::truncateTable(4)");
-	syncObj.lock(Exclusive);
-	
+
+	Sync syncTableLock(&table->syncObject, "Database::truncateTable(table)");
+	syncTableLock.lock(Exclusive);
+
 	table->deleting = true;
-	
+
 	// Purge records out of committed transactions
-	
+
 	transactionManager->truncateTable(table, transaction);
-	
+
 	Transaction *sysTransaction = getSystemTransaction();
-	
+
 	// Recreate data/blob sections and indexes
-	
+
 	table->truncate(sysTransaction);
-	
+
 	commitSystemTransaction();
-	
+
 	// Delete and recreate the sequence
-	
+
 	if (sequence)
 		sequence = sequence->recreate();
 }
@@ -1560,7 +1574,7 @@ void Database::shutdown()
 
 	if (shuttingDown)
 		return;
-	
+
 	if (updateCardinality)
 		{
 		updateCardinality->close();
@@ -1813,7 +1827,7 @@ void Database::retireRecords(bool forced)
 			catch (SQLException &exception)
 				{
 				//syncTbl.unlock();
-				Log::debug ("Exception during scavenger of table %s.%s: %s\n",
+				Log::debug ("Exception during scavenge of table %s.%s: %s\n",
 						table->schemaName, table->name, exception.getText());
 				}
 			}
@@ -2032,6 +2046,30 @@ JString Database::analyze(int mask)
 			
 			if (count)
 				stream.format ("%s.%s\t%d\n", table->schemaName, table->name, count);
+			}
+			
+		stream.putCharacter ('\n');
+		}
+
+	if (mask & analyzeRecordLeafs)
+		{
+		int *chart = new int [RECORD_SLOTS + 1];
+		stream.putSegment ("\nRecordLeafs\n");
+
+		for (Table *table = tableList; table; table = table->next)
+			{
+			memset(chart, 0, sizeof(int) * (RECORD_SLOTS + 1));
+			int count = table->chartActiveRecords(chart);
+
+			if (count)
+				{
+				stream.format ("%s.%s\t%d\t", table->schemaName, table->name, count);
+				for (int a = 0; a < RECORD_SLOTS + 1; a++)
+					if (chart[a])
+						stream.format ("[%d]%d ", a, chart[a]);
+
+				stream.format ("\n");
+				}
 			}
 			
 		stream.putCharacter ('\n');
@@ -2396,7 +2434,16 @@ void Database::updateCardinalities(void)
 	syncTbl.unlock();
 	syncDDL.unlock();
 
-	commitSystemTransaction();
+	try
+		{
+		commitSystemTransaction();
+		}
+	catch (...)
+		{
+		// Ignores any errors from committing the updates of the cardinalities
+		// Situations where this might happen can be due to problems with
+		// writing to the serial log
+		}
 }
 
 void Database::sync()
@@ -2479,12 +2526,19 @@ void Database::debugTrace(void)
 	if (falcon_debug_trace & FALC0N_SYNC_OBJECTS)
 		SyncObject::dump();
 	
+	if (falcon_debug_trace & FALC0N_SYNC_HANDLER)
+		if (syncHandler) 
+			syncHandler->dump();
+
 	if (falcon_debug_trace & FALC0N_REPORT_WRITES)
 		tableSpaceManager->reportWrites();
 	
 	if (falcon_debug_trace & FALC0N_FREEZE)
 		Synchronize::freezeSystem();
 	
+	if (falcon_debug_trace & FALC0N_TEST_BITMAP)
+		Bitmap::unitTest();
+
 	falcon_debug_trace = 0;
 #endif
 }

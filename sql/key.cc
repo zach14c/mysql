@@ -382,7 +382,7 @@ void key_unpack(String *to,TABLE *table,uint idx)
         uint charpos, char_length= key_part->length / cs->mbmaxlen;
         if ((charpos= my_charpos(cs, tmp.ptr(),
                                  tmp.ptr() + tmp.length(),
-                                 char_length)) < key_part->length)
+                                 char_length)) < tmp.length())
           tmp.length(charpos);
       }
       

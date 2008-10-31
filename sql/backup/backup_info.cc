@@ -5,16 +5,6 @@
   implements algorithm for selecting backup engine used to backup
   given table.
   
-  @todo Fix error detection in places marked with "FIXME: detect errors...". 
-  These are places where functions or methods are called and if they can 
-  report errors it should be detected and appropriate action taken. If callee 
-  never reports errors or we want to ignore errors, a comment explaining this
-  should be added.
-
-  @todo Fix error logging in places marked with "FIXME: error logging...". In 
-  these places it should be decided if and how the error should be shown to the
-  user. If an error message should be logged, it can happen either in the place
-  where error was detected or somewhere up the call stack.
 */
 
 #include "../mysql_priv.h"
@@ -250,7 +240,7 @@ struct Backup_info::Dep_node: public Sql_alloc
   Dbobj *obj;
   String key;
 
-  Dep_node(const ::String &db_name, const ::String &name);
+  Dep_node(const ::String &db_name, const ::String &name, const obj_type type);
   Dep_node(const Dep_node&);
 
   static uchar* get_key(const uchar *record, size_t *key_length, my_bool);
@@ -260,14 +250,18 @@ struct Backup_info::Dep_node: public Sql_alloc
 /**
   Create an empty dependency list node for a given per-database object.
 
-  The object is identified by its name and the name of the database to which
-  it belongs. 
+  The object is identified by its name, the name of the database to
+  which it belongs, and its type.
  */ 
 inline
-Backup_info::Dep_node::Dep_node(const ::String &db_name, const ::String &name)
+Backup_info::Dep_node::Dep_node(const ::String &db_name, const ::String &name,
+                                const obj_type type)
   :next(NULL), obj(NULL)
 {
   key.length(0);
+  // Add type to make sure keys are unique even between different namespaces
+  key.set_int(type, TRUE, &my_charset_bin);
+  key.append("|");
   key.append(db_name);
   key.append(".");
   key.append(name);
@@ -317,14 +311,16 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
 
   bzero(m_snap, sizeof(m_snap));
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
-            Ts_hash_node::get_key, Ts_hash_node::free, MYF(0));
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
-            Dep_node::get_key, Dep_node::free, MYF(0));
+  if (hash_init(&ts_hash, &::my_charset_bin, 16, 0, 0,
+                Ts_hash_node::get_key, Ts_hash_node::free, MYF(0))
+      ||
+      hash_init(&dep_hash, &::my_charset_bin, 16, 0, 0,
+                Dep_node::get_key, Dep_node::free, MYF(0)))
+  {
+    // Allocation failed. Error has been reported, but not logged to backup logs
+    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    return;
+  }
 
   /* 
     Create nodata, default, and CS snapshot objects and add them to the 
@@ -332,35 +328,56 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
     element on that list, as a "catch all" entry. 
    */
 
-  snap= new Nodata_snapshot(m_ctx);  // reports errors
-
-  // FIXME: error logging (in case snap could not be allocated).
-  if (!snap || !snap->is_valid())
+  snap= new Nodata_snapshot(m_ctx);             // logs errors
+  if (!snap)
+  {
+    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
     return;
+  }
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  snapshots.push_back(snap);
+  if (!snap->is_valid())
+    return;    // Error has been logged by Nodata_snapshot constructor
 
-  snap= new CS_snapshot(m_ctx); // reports errors
-
-  // FIXME: error logging (in case snap could not be allocated).
-  if (!snap || !snap->is_valid())
+  if (snapshots.push_back(snap))
+  {
+    // Allocation failed. Error has been reported, but not logged to backup logs
+    m_ctx.log_error(ER_OUT_OF_RESOURCES);
     return;
+  }
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  snapshots.push_back(snap);
-
-  snap= new Default_snapshot(m_ctx);  // reports errors
-
-  // FIXME: error logging (in case snap could not be allocated).
-  if (!snap || !snap->is_valid())
+  snap= new CS_snapshot(m_ctx);                 // logs errors
+  if (!snap)
+  {
+    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
     return;
+  }
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  snapshots.push_back(snap);
+  if (!snap->is_valid())
+    return;        // Error has been logged by CS_snapshot constructor
+
+  if (snapshots.push_back(snap))
+  {
+    // Allocation failed. Error has been reported, but not logged to backup logs
+    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    return;                                   // Error has been logged
+  }
+
+  snap= new Default_snapshot(m_ctx);            // logs errors
+  if (!snap)
+  {
+    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    return;
+  }
+
+  if (!snap->is_valid())
+    return;  // Error has been logged by Default_snapshot constructor
+
+  if (snapshots.push_back(snap))
+  {
+    // Allocation failed. Error has been reported, but not logged to backup logs
+    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    return;                                   // Error has been logged
+  }
 
   m_state= CREATED;
 }
@@ -593,7 +610,7 @@ int Backup_info::add_all_dbs()
   using namespace obs;
 
   int res= 0;
-  ObjIterator *dbit= get_databases(m_ctx.m_thd);
+  Obj_iterator *dbit= get_databases(m_ctx.m_thd);
   
   if (!dbit)
   {
@@ -655,7 +672,7 @@ int Backup_info::add_all_dbs()
 
   @returns 0 on success, error code otherwise.
  */
-int Backup_info::add_objects(Db &db, const obj_type type, obs::ObjIterator &it)
+int Backup_info::add_objects(Db &db, const obj_type type, obs::Obj_iterator &it)
 {
   obs::Obj *obj;
   
@@ -680,7 +697,7 @@ int Backup_info::add_db_items(Db &db)
 
   // Add tables.
 
-  ObjIterator *it= get_db_tables(m_ctx.m_thd, &db.name()); 
+  Obj_iterator *it= get_db_tables(m_ctx.m_thd, &db.name());
 
   if (!it)
   {
@@ -922,7 +939,7 @@ int Backup_info::add_view_deps(obs::Obj &obj)
   
   // Get an iterator to iterate over base views of the given one.
 
-  obs::ObjIterator *it= obs::get_view_base_views(m_ctx.m_thd, db_name, name);
+  obs::Obj_iterator *it= obs::get_view_base_views(m_ctx.m_thd, db_name, name);
 
   if (!it)
     return ERROR;
@@ -939,13 +956,13 @@ int Backup_info::add_view_deps(obs::Obj &obj)
     Dep_node *n= NULL;
     const ::String *name= bv->get_name();
     const ::String *db_name= bv->get_db_name();
-  
+
     DBUG_ASSERT(name); 
     DBUG_ASSERT(db_name); 
 
     // Locate or create a dependency list node for the base view.
 
-    int res= get_dep_node(*db_name, *name, n);
+    int res= get_dep_node(*db_name, *name, BSTREAM_IT_VIEW, n);
 
     if (res == get_dep_node_res::ERROR)
       goto error;
@@ -1061,7 +1078,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   // Get a dep. list node for the object.  
 
-  int res= get_dep_node(db.name(), *name, n);
+  int res= get_dep_node(db.name(), *name, type, n);
   
   if (res == get_dep_node_res::ERROR)
   {
@@ -1146,9 +1163,10 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
  */ 
 int Backup_info::get_dep_node(const ::String &db_name, 
                               const ::String &name, 
+                              const obj_type type,
                               Dep_node* &node)
 {
-  Dep_node n(db_name, name);
+  Dep_node n(db_name, name, type);
   size_t klen;
   uchar  *key= Dep_node::get_key((const uchar*)&n, &klen, TRUE);
 
@@ -1285,7 +1303,7 @@ int Backup_info::add_to_dep_list(const obj_type type, Dep_node *node)
   Currently only global objects handled are tablespaces and databases.
  */
 class Backup_info::Global_iterator
- : public Image_info::Iterator
+ : public backup::Image_info::Iterator
 {
   /**
     Indicates whether tablespaces or databases are being currently enumerated.
@@ -1297,7 +1315,9 @@ class Backup_info::Global_iterator
 
  public:
 
-  Global_iterator(const Image_info&);
+  Global_iterator(const Backup_info&);
+
+  int init();
 
  private:
 
@@ -1306,14 +1326,24 @@ class Backup_info::Global_iterator
 };
 
 inline
-Backup_info::Global_iterator::Global_iterator(const Image_info &info)
+Backup_info::Global_iterator::Global_iterator(const Backup_info &info)
  :Iterator(info), mode(TABLESPACES), m_it(NULL), m_obj(NULL)
-{
-  // FIXME: detect errors (if NULL returned).
-  m_it= m_info.get_tablespaces();
-  next();       // Note: next() doesn't report errors.
-}
+{}
 
+
+inline
+int Backup_info::Global_iterator::init()
+{
+  m_it= m_info.get_tablespaces();
+  if (!m_it)
+  {
+    const Backup_info* info= static_cast<const Backup_info*>(&m_info);
+    return info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+  }
+  next();                                       // Never errors
+
+  return 0;
+}
 
 inline
 backup::Image_info::Obj*
@@ -1351,6 +1381,14 @@ Backup_info::Global_iterator::next()
     // We have finished enumerating tablespaces, move on to databases.
     mode= DATABASES;
     m_it= m_info.get_dbs();
+    if (!m_it)
+    {
+      const Backup_info* info= static_cast<const Backup_info*>(&m_info);
+      info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+      mode= DONE;
+      return FALSE;
+    }
+
     m_obj= (*m_it)++;
     return m_obj != NULL;
 
@@ -1373,7 +1411,7 @@ Backup_info::Global_iterator::next()
   This iterator uses the dependency list maintained inside Backup_info
   instance to list objects in a dependency-respecting order.
  */ 
-class Backup_info::Perdb_iterator : public Image_info::Iterator
+class Backup_info::Perdb_iterator : public backup::Image_info::Iterator
 {
   Dep_node *ptr;
 
@@ -1426,11 +1464,33 @@ bool Backup_info::Perdb_iterator::next()
 /// Wrapper to return global iterator.
 backup::Image_info::Iterator* Backup_info::get_global() const
 {
-  return new Global_iterator(*this);
+  Global_iterator* it = new Global_iterator(*this);
+  if (it == NULL) 
+  {
+    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    return NULL;
+  }    
+  if (it->init())                               // Error has been logged
+  {
+    return NULL;
+  }
+
+  return it;
 }
 
 /// Wrapper to return iterator for per-database objects.
 backup::Image_info::Iterator* Backup_info::get_perdb()  const
 {
-  return new Perdb_iterator(*this);
+  Perdb_iterator* it = new Perdb_iterator(*this);
+  if (it == NULL) 
+  {
+    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    return NULL;
+  }    
+  if (it->init())                               // Error has been logged
+  {
+    return NULL;
+  }
+
+  return it;
 }

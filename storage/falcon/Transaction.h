@@ -99,7 +99,7 @@ public:
 	void		prepare(int xidLength, const UCHAR *xid);
 	void		rollback();
 	void		commit();
-	int			release();
+	void		release();
 	void		addRef();
 	void		waitForTransaction();
 	bool		waitForTransaction (TransId transId);
@@ -170,8 +170,8 @@ public:
 	bool			pendingPageWrites;
 	bool			hasLocks;
 	SyncObject		syncObject;
-	SyncObject		syncActive;
-	SyncObject		syncIndexes;
+	SyncObject		syncIsActive;		// locked while transaction is active
+	SyncObject		syncDeferredIndexes;
 	SyncObject		syncRecords;
 	SyncObject		syncSavepoints;
 	uint64			totalRecordData;	// total bytes of record data for this transaction (unchilled + thawed)

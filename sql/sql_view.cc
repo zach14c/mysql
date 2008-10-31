@@ -1029,7 +1029,6 @@ bool mysql_make_view(THD *thd, File_parser *parser, TABLE_LIST *table,
   bool parse_status;
   bool result, view_is_mergeable;
   TABLE_LIST *view_main_select_tables;
-
   DBUG_ENTER("mysql_make_view");
   DBUG_PRINT("info", ("table: %p (%s)", table, table->table_name));
 
@@ -1971,7 +1970,7 @@ mysql_rename_view(THD *thd,
       goto err;
 
     /* rename view and it's backups */
-    if (rename_in_schema_file(view->db, view->table_name, new_name, 
+    if (rename_in_schema_file(thd, view->db, view->table_name, new_name, 
                               view_def.revision - 1, num_view_backups))
       goto err;
 
@@ -1991,7 +1990,7 @@ mysql_rename_view(THD *thd,
                                    num_view_backups)) 
     {
       /* restore renamed view in case of error */
-      rename_in_schema_file(view->db, new_name, view->table_name, 
+      rename_in_schema_file(thd, view->db, new_name, view->table_name, 
                             view_def.revision - 1, num_view_backups);
       goto err;
     }

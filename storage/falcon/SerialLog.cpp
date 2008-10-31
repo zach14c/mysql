@@ -117,7 +117,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	recovering = false;
 	blocking = false;
 	writeError = false;
-	windowBuffers = MAX(database->configuration->serialLogWindows, 10);
+	windowBuffers = MAX(database->configuration->serialLogWindows, SRL_MIN_WINDOWS);
 	tableSpaceInfo = NULL;
 	memset(tableSpaces, 0, sizeof(tableSpaces));
 	syncWrite.setName("SerialLog::syncWrite");
@@ -216,7 +216,7 @@ void SerialLog::recover()
 	Sync sync(&syncWrite, "SerialLog::recover");
 	sync.lock(Exclusive);
 	recovering = true;
-	recoveryPhase = 0;
+	recoveryPhase = 0;	// Find last block and recovery block
 	
 	// See if either or both files have valid blocks
 
@@ -323,7 +323,7 @@ void SerialLog::recover()
 	recoveryPages = new RecoveryObjects(this);
 	recoverySections = new RecoveryObjects(this);
 	recoveryIndexes = new RecoveryObjects(this);
-	recoveryPhase = 1;
+	recoveryPhase = 1;	// Take Inventory (serialLogTransactions, recoveryObject states, last checkpoint)
 	
 	// Make a first pass finding records, transactions, etc.
 
@@ -337,7 +337,7 @@ void SerialLog::recover()
 	recoveryPages->reset();
 	recoveryIndexes->reset();
 	recoverySections->reset();
-	recoveryPhase = 2;
+	recoveryPhase = 2;	// Physical operations, skip old incarnations
 
 	// Next, make a second pass to reallocate any necessary pages
 
@@ -352,7 +352,7 @@ void SerialLog::recover()
 
 	control.setWindow(window, block, 0);
 	SerialLogTransaction *transaction;
-	recoveryPhase = 3;
+	recoveryPhase = 3;	// Logical operations, skip old incarnations
 
 	for (transaction = running.first; transaction; transaction = transaction->next)
 		transaction->preRecovery();
@@ -416,7 +416,7 @@ void SerialLog::recover()
 		}
 		
 	Log::log("Recovery complete\n");
-	recoveryPhase = 0;
+	recoveryPhase = 0;	// Find last lock and recovery block
 }
 
 void SerialLog::overflowFlush(void)
@@ -445,9 +445,9 @@ void SerialLog::overflowFlush(void)
 		flushWindow->write(flushBlock);
 		lastBlockWritten = flushBlock->blockNumber;
 		}
-	catch (...)
+	catch (SQLException& exception)
 		{
-		writeError = true;
+		setWriteError(exception.getSqlcode(), exception.getText());
 		mutex.unlock();
 		throw;
 		}	
@@ -547,15 +547,15 @@ uint64 SerialLog::flush(bool forceNewWindow, uint64 commitBlockNumber, Sync *cli
 	mutex.lock();
 	syncPtr->unlock();
 	//Log::debug("Flushing log block %d, read block %d\n", (int) flushBlock->blockNumber, (int) flushBlock->readBlockNumber);
-	
+
 	try
 		{
 		flushWindow->write(flushBlock);
 		lastBlockWritten = flushBlock->blockNumber;
 		}
-	catch (...)
+	catch (SQLException& exception)
 		{
-		writeError = true;
+		setWriteError(exception.getSqlcode(), exception.getText());
 		mutex.unlock();
 		throw;
 		}
@@ -706,7 +706,7 @@ void SerialLog::startRecord()
 	ASSERT(!recovering);
 
 	if (writeError)
-		throw SQLError(IO_ERROR, "Previous I/O error on serial log prevents further processing");
+		throw SQLError(IO_ERROR_SERIALLOG, "Previous I/O error on serial log prevents further processing");
 
 	if (writePtr == writeBlock->data)
 		putVersion();
@@ -1294,12 +1294,6 @@ bool SerialLog::indexInUse(int indexId, int tableSpaceId)
 	TableSpaceInfo *info = getTableSpaceInfo(tableSpaceId);
 	return info->indexUseVector.get(indexId) > 0;
 }
-/*
-int SerialLog::getPageState(int32 pageNumber, int tableSpaceId)
-{
-	return recoveryPages->getCurrentState(pageNumber, tableSpaceId);
-}
-*/
 
 void SerialLog::redoFreePage(int32 pageNumber, int tableSpaceId)
 {
@@ -1592,4 +1586,24 @@ SerialLogWindow* SerialLog::setWindowInterest(void)
 	window->setInterest();
 	
 	return window;
+}
+
+
+void SerialLog::setWriteError(int sqlCode, const char* errorText)
+{
+	// Logs an error message to the error log and sets the status of the
+	// serial log to "writeError"
+	
+    char msgBuf[1024];
+
+    if (!errorText)
+		{
+		errorText = "Not provided";
+		}
+
+    sprintf(msgBuf, "SerialLog: Error during writing to serial log. Cause: %s (sqlcode=%d)\n",
+			errorText, sqlCode);
+	Log::log(msgBuf);
+
+	writeError = true;
 }

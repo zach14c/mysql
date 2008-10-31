@@ -1020,7 +1020,7 @@ static bool print_admin_msg(THD* thd, const char* msg_type,
   va_list args;
   Protocol *protocol= thd->protocol;
   uint length, msg_length;
-  char msgbuf[PARTITION_MAX_MSG_BUF];
+  char msgbuf[HA_MAX_MSG_BUF];
   char name[NAME_LEN*2+2];
 
   va_start(args, fmt);
@@ -1730,6 +1730,14 @@ error:
 
 void ha_partition::update_create_info(HA_CREATE_INFO *create_info)
 {
+  /*
+    Fix for bug#38751, some engines needs info-calls in ALTER.
+    Archive need this since it flushes in ::info.
+    HA_STATUS_AUTO is optimized so it will not always be forwarded
+    to all partitions, but HA_STATUS_VARIABLE will.
+  */
+  info(HA_STATUS_VARIABLE);
+
   info(HA_STATUS_AUTO);
 
   if (!(create_info->used_fields & HA_CREATE_USED_AUTO))
@@ -2515,7 +2523,11 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
                                    alloc_root(&table_share->mem_root,
                                               sizeof(HA_DATA_PARTITION));
     if (!ha_data)
+    {
+      if (is_not_tmp_table)
+        pthread_mutex_unlock(&table_share->LOCK_ha_data);
       goto err_handler;
+    }
     DBUG_PRINT("info", ("table_share->ha_data 0x%p", ha_data));
     bzero(ha_data, sizeof(HA_DATA_PARTITION));
   }
@@ -2933,7 +2945,7 @@ int ha_partition::write_row(uchar * buf)
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
   if (have_auto_increment && !table->s->next_number_keypart)
-    set_auto_increment_if_higher();
+    set_auto_increment_if_higher(table->next_number_field->val_int());
   reenable_binlog(thd);
 exit:
   table->timestamp_field_type= orig_timestamp_type;
@@ -2959,13 +2971,6 @@ exit:
     data in it.
     Keep in mind that the server can do updates based on ordering if an
     ORDER BY clause was used. Consecutive ordering is not guarenteed.
-
-    Currently new_data will not have an updated auto_increament record, or
-    and updated timestamp field. You can do these for partition by doing these:
-    if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
-      table->timestamp_field->set_time();
-    if (table->next_number_field && record == table->record[0])
-      update_auto_increment();
 
     Called from sql_select.cc, sql_acl.cc, sql_update.cc, and sql_insert.cc.
     new_data is always record[0]
@@ -3009,10 +3014,12 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
       table_share->ha_data->next_auto_inc_val if needed.
       (not to be used if auto_increment on secondary field in a multi-
       column index)
+      mysql_update does not set table->next_number_field, so we use
+      table->found_next_number_field instead.
     */
-    if (table->next_number_field && new_data == table->record[0] &&
+    if (table->found_next_number_field && new_data == table->record[0] &&
         !table->s->next_number_keypart)
-      set_auto_increment_if_higher();
+      set_auto_increment_if_higher(table->found_next_number_field->val_int());
     reenable_binlog(thd);
     goto exit;
   }
@@ -3022,6 +3029,9 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
 			old_part_id, new_part_id));
     tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
     error= m_file[new_part_id]->ha_write_row(new_data);
+    if (table->found_next_number_field && new_data == table->record[0] &&
+        !table->s->next_number_keypart)
+      set_auto_increment_if_higher(table->found_next_number_field->val_int());
     reenable_binlog(thd);
     if (error)
       goto exit;
@@ -3767,7 +3777,7 @@ int ha_partition::common_index_read(uchar *buf, bool have_start_key)
   uint key_len;
   bool reverse_order= FALSE;
   DBUG_ENTER("ha_partition::common_index_read");
-  LINT_INIT(key_len); /* used iff have_start_key==TRUE */
+  LINT_INIT(key_len); /* used if have_start_key==TRUE */
 
   if (have_start_key)
   {
@@ -4098,7 +4108,7 @@ int ha_partition::read_range_next()
 
 
 /*
-  Common routine to set up index scans scans
+  Common routine to set up index scans
 
   SYNOPSIS
     ha_partition::partition_scan_set_up()
@@ -4295,6 +4305,17 @@ int ha_partition::handle_unordered_scan_next_partition(uchar * buf)
       break;
     case partition_index_first:
       DBUG_PRINT("info", ("index_first on partition %d", i));
+      /* MyISAM engine can fail if we call index_first() when indexes disabled */
+      /* that happens if the table is empty. */
+      /* Here we use file->stats.records instead of file->records() because */
+      /* file->records() is supposed to return an EXACT count, and it can be   */
+      /* possibly slow. We don't need an exact number, an approximate one- from*/
+      /* the last ::info() call - is sufficient. */
+      if (file->stats.records == 0)
+      {
+        error= HA_ERR_END_OF_FILE;
+        break;
+      }
       error= file->index_first(buf);
       break;
     case partition_index_first_unordered:
@@ -4382,10 +4403,32 @@ int ha_partition::handle_ordered_index_scan(uchar *buf, bool reverse_order)
                                   m_start_key.flag);
       break;
     case partition_index_first:
+      /* MyISAM engine can fail if we call index_first() when indexes disabled */
+      /* that happens if the table is empty. */
+      /* Here we use file->stats.records instead of file->records() because */
+      /* file->records() is supposed to return an EXACT count, and it can be   */
+      /* possibly slow. We don't need an exact number, an approximate one- from*/
+      /* the last ::info() call - is sufficient. */
+      if (file->stats.records == 0)
+      {
+        error= HA_ERR_END_OF_FILE;
+        break;
+      }
       error= file->index_first(rec_buf_ptr);
       reverse_order= FALSE;
       break;
     case partition_index_last:
+      /* MyISAM engine can fail if we call index_last() when indexes disabled */
+      /* that happens if the table is empty. */
+      /* Here we use file->stats.records instead of file->records() because */
+      /* file->records() is supposed to return an EXACT count, and it can be   */
+      /* possibly slow. We don't need an exact number, an approximate one- from*/
+      /* the last ::info() call - is sufficient. */
+      if (file->stats.records == 0)
+      {
+        error= HA_ERR_END_OF_FILE;
+        break;
+      }
       error= file->index_last(rec_buf_ptr);
       reverse_order= TRUE;
       break;
@@ -4808,10 +4851,11 @@ int ha_partition::info(uint flag)
       This flag is used to get index number of the unique index that
       reported duplicate key
       We will report the errkey on the last handler used and ignore the rest
+      Note: all engines does not support HA_STATUS_ERRKEY, so set errkey.
     */
+    file->errkey= errkey;
     file->info(HA_STATUS_ERRKEY);
-    if (file->errkey != (uint) -1)
-      errkey= file->errkey;
+    errkey= file->errkey;
   }
   if (flag & HA_STATUS_TIME)
   {
@@ -5182,6 +5226,7 @@ int ha_partition::extra(enum ha_extra_function operation)
   case HA_EXTRA_KEYREAD:
   case HA_EXTRA_NO_KEYREAD:
   case HA_EXTRA_FLUSH:
+  case HA_EXTRA_PREPARE_FOR_FORCED_CLOSE:
     DBUG_RETURN(loop_extra(operation));
 
     /* Category 2), used by non-MyISAM handlers */
@@ -5205,8 +5250,7 @@ int ha_partition::extra(enum ha_extra_function operation)
   case HA_EXTRA_PREPARE_FOR_DROP:
   case HA_EXTRA_FLUSH_CACHE:
   {
-    if (m_myisam)
-      DBUG_RETURN(loop_extra(operation));
+    DBUG_RETURN(loop_extra(operation));
     break;
   }
   case HA_EXTRA_CACHE:
@@ -5415,8 +5459,8 @@ int ha_partition::loop_extra(enum ha_extra_function operation)
   DBUG_ENTER("ha_partition::loop_extra()");
   
   /* 
-    TODO, 5.2: this is where you could possibly add optimisations to add the bitmap
-    _if_ a SELECT.
+    TODO, 5.2: this is where you could possibly add optimisations to add the
+    bitmap _if_ a SELECT.
   */
   for (file= m_file; *file; file++)
   {
@@ -5989,6 +6033,7 @@ void ha_partition::get_auto_increment(ulonglong offset, ulonglong increment,
       if (first_value_part == ~(ulonglong)(0)) // error in one partition
       {
         *first_value= first_value_part;
+        /* log that the error was between table/partition handler */
         sql_print_error("Partition failed to reserve auto_increment value");
         unlock_auto_increment();
         DBUG_VOID_RETURN;

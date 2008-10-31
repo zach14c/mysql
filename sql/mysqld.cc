@@ -28,10 +28,13 @@
 #include "events.h"
 #include "ddl_blocker.h"
 #include "sql_audit.h"
+#include <waiting_threads.h>
 
 #include "../storage/myisam/ha_myisam.h"
 
 #include "rpl_injector.h"
+
+#include "rpl_handler.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -406,7 +409,7 @@ static bool volatile ready_to_exit;
 static my_bool opt_debugging= 0, opt_external_locking= 0, opt_console= 0;
 static my_bool opt_short_log_format= 0;
 static uint kill_cached_threads, wake_thread;
-static ulong killed_threads, thread_created;
+static ulong killed_threads;
 static ulong max_used_connections;
 static volatile ulong cached_thread_count= 0;
 static const char *sql_mode_str= "OFF";
@@ -430,7 +433,10 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 extern DDL_blocker_class *DDL_blocker;
 bool opt_update_log, opt_bin_log;
 my_bool opt_log, opt_slow_log;
+my_bool opt_backup_history_log;
+my_bool opt_backup_progress_log;
 ulong log_output_options;
+ulong log_backup_output_options;
 my_bool opt_log_queries_not_using_indexes= 0;
 bool opt_error_log= IF_WIN(1,0);
 bool opt_disable_networking=0, opt_skip_show_db=0;
@@ -438,7 +444,7 @@ my_bool opt_character_set_client_handshake= 1;
 bool server_id_supplied = 0;
 bool opt_endinfo, using_udf_functions;
 my_bool locked_in_memory;
-bool opt_using_transactions, using_update_log;
+bool opt_using_transactions;
 bool volatile abort_loop;
 bool volatile shutdown_in_progress;
 /**
@@ -528,6 +534,7 @@ uint delay_key_write_options, protocol_version;
 uint lower_case_table_names;
 uint tc_heuristic_recover= 0;
 uint volatile thread_count, thread_running;
+ulong thread_created;
 ulonglong thd_startup_options;
 ulong back_log, connect_timeout, concurrency, server_id;
 ulong table_cache_size, table_def_size;
@@ -572,6 +579,7 @@ ulong slow_launch_threads = 0, sync_binlog_period;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
+const char *log_backup_output_str= "TABLE";
 
 const double log_10[] = {
   1e000, 1e001, 1e002, 1e003, 1e004, 1e005, 1e006, 1e007, 1e008, 1e009,
@@ -717,6 +725,8 @@ char *master_info_file;
 char *relay_log_info_file, *report_user, *report_password, *report_host;
 char *opt_relay_logname = 0, *opt_relaylog_index_name=0;
 char *opt_logname, *opt_slow_logname;
+char *opt_backup_history_logname, *opt_backup_progress_logname,
+     *opt_backup_settings_name;
 
 /* Static variables */
 
@@ -1346,7 +1356,9 @@ void clean_up(bool print_message)
   ha_end();
   if (tc_log)
     tc_log->close();
+  delegates_destroy();
   xid_cache_free();
+  wt_end();
   delete_elements(&key_caches, (void (*)(const char*, uchar*)) free_key_cache);
   multi_keycache_free();
   free_status_vars();
@@ -1363,8 +1375,10 @@ void clean_up(bool print_message)
   my_free(sys_init_connect.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_init_slave.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_var_general_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
-  my_free(sys_var_slow_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_backup_history_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_backup_progress_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
   my_free(sys_var_backupdir.value, MYF(MY_ALLOW_ZERO_PTR));
+  my_free(sys_var_slow_log_path.value, MYF(MY_ALLOW_ZERO_PTR));
   free_tmpdir(&mysql_tmpdir_list);
 #ifdef HAVE_REPLICATION
   my_free(slave_load_tmpdir,MYF(MY_ALLOW_ZERO_PTR));
@@ -1906,6 +1920,7 @@ void close_connection(THD *thd, uint errcode, bool lock)
   }
   if (lock)
     (void) pthread_mutex_unlock(&LOCK_thread_count);
+  MYSQL_CONNECTION_DONE((int) errcode, thd->thread_id);
   DBUG_VOID_RETURN;
 }
 #endif /* EMBEDDED_LIBRARY */
@@ -2878,6 +2893,8 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
       /* switch to the old log message processing */
       logger.set_handlers(LOG_FILE, opt_slow_log ? LOG_FILE:LOG_NONE,
                           opt_log ? LOG_FILE:LOG_NONE);
+      logger.set_backup_handlers(opt_backup_history_log ? LOG_FILE : LOG_NONE,
+                                 opt_backup_progress_log ? LOG_FILE : LOG_NONE);
       DBUG_PRINT("info",("Got signal: %d  abort_loop: %d",sig,abort_loop));
       if (!abort_loop)
       {
@@ -2895,6 +2912,7 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
       }
       break;
     case SIGHUP:
+    {
       if (!abort_loop)
       {
         bool not_used;
@@ -2918,7 +2936,14 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
                             opt_slow_log ? log_output_options : LOG_NONE,
                             opt_log ? log_output_options : LOG_NONE);
       }
+      if (log_backup_output_options & LOG_NONE)
+        logger.set_backup_handlers(LOG_NONE, LOG_NONE);
+      else
+        logger.set_backup_handlers(
+          opt_backup_history_log ? log_backup_output_options : LOG_NONE,
+          opt_backup_progress_log ? log_backup_output_options : LOG_NONE);
       break;
+    }
 #ifdef USE_ONE_SIGNAL_HAND
     case THR_SERVER_ALARM:
       process_alarm(sig);			// Trigger alarms.
@@ -3575,12 +3600,37 @@ static int init_common_variables(const char *conf_file_name, int argc,
   if (opt_slow_log && opt_slow_logname && !(log_output_options & LOG_FILE)
       && !(log_output_options & LOG_NONE))
     sql_print_warning("Although a path was specified for the "
-                      "--log-slow-queries option, log tables are used. "
+                      "--log_slow_queries option, log tables are used. "
                       "To enable logging to files use the --log-output=file option.");
+
+  if (opt_backup_history_log && opt_backup_history_logname
+     && !(log_backup_output_options & LOG_FILE) && !(log_backup_output_options & LOG_NONE))
+    sql_print_warning("Although a path was specified for the "
+                      "--log-backup-history option, log tables are used. "
+                      "To enable logging to files use the --log-backup-output option.");
+
+  if (opt_backup_progress_log && opt_backup_progress_logname
+     && !(log_backup_output_options & LOG_FILE) && !(log_backup_output_options & LOG_NONE))
+    sql_print_warning("Although a path was specified for the "
+                      "--log-backup-progress option, log tables are used. "
+                      "To enable logging to files use the --log-backup-output option.");
 
   s= opt_logname ? opt_logname : make_default_log_name(buff, ".log");
   sys_var_general_log_path.value= my_strdup(s, MYF(0));
   sys_var_general_log_path.value_length= strlen(s);
+
+  /*
+    Set defaults for history and progress log paths.
+  */
+  s= opt_backup_history_logname ? opt_backup_history_logname : 
+    make_backup_log_name(buff, BACKUP_HISTORY_LOG_NAME.str, ".log");
+  sys_var_backup_history_log_path.value= my_strdup(s, MYF(0));
+  sys_var_backup_history_log_path.value_length= BACKUP_HISTORY_LOG_NAME.length;
+
+  s= opt_backup_progress_logname ? opt_backup_progress_logname : 
+    make_backup_log_name(buff, BACKUP_PROGRESS_LOG_NAME.str, ".log");
+  sys_var_backup_progress_log_path.value= my_strdup(s, MYF(0));
+  sys_var_backup_progress_log_path.value_length= BACKUP_PROGRESS_LOG_NAME.length;
 
   s= opt_slow_logname ? opt_slow_logname : make_default_log_name(buff, "-slow.log");
   sys_var_slow_log_path.value= my_strdup(s, MYF(0));
@@ -3856,6 +3906,8 @@ static int init_server_components()
   if (table_def_init() | hostname_cache_init())
     unireg_abort(1);
 
+  wt_init();
+
   query_cache_result_size_limit(query_cache_limit);
   query_cache_set_min_res_unit(query_cache_min_res_unit);
   query_cache_init();
@@ -3896,10 +3948,20 @@ static int init_server_components()
 
   /* set up the hook before initializing plugins which may use it */
   error_handler_hook= my_message_sql;
+  proc_info_hook= (const char *(*)(void *, const char *, const char *,
+                                   const char *, const unsigned int))
+                  set_thd_proc_info;
 
   if (xid_cache_init())
   {
     sql_print_error("Out of memory");
+    unireg_abort(1);
+  }
+
+  /* initialize delegates for extension observers */
+  if (delegates_init())
+  {
+    sql_print_error("Initialize extension delegates failed");
     unireg_abort(1);
   }
 
@@ -3963,23 +4025,25 @@ with --log-bin instead.");
     unireg_abort(1);
   }
   if (!opt_bin_log)
+  {
     if (opt_binlog_format_id != BINLOG_FORMAT_UNSPEC)
-  {
-    sql_print_error("You need to use --log-bin to make "
-                    "--binlog-format work.");
-    unireg_abort(1);
-  }
+    {
+      sql_print_error("You need to use --log-bin to make "
+                      "--binlog-format work.");
+      unireg_abort(1);
+    }
     else
-  {
+    {
       global_system_variables.binlog_format= BINLOG_FORMAT_MIXED;
     }
+  }
   else
     if (opt_binlog_format_id == BINLOG_FORMAT_UNSPEC)
       global_system_variables.binlog_format= BINLOG_FORMAT_MIXED;
     else
     {
       DBUG_ASSERT(global_system_variables.binlog_format != BINLOG_FORMAT_UNSPEC);
-  }
+    }
 
   /* Check that we have not let the format to unspecified at this point */
   DBUG_ASSERT((uint)global_system_variables.binlog_format <=
@@ -4025,12 +4089,6 @@ server.");
     {
       unireg_abort(1);
     }
-
-    /*
-      Used to specify which type of lock we need to use for queries of type
-      INSERT ... SELECT. This will change when we have row level logging.
-    */
-    using_update_log=1;
   }
 
   /* call ha_init_key_cache() on all key caches to init them */
@@ -4102,7 +4160,10 @@ server.");
 
 #ifdef WITH_CSV_STORAGE_ENGINE
   if (opt_bootstrap)
+  {
     log_output_options= LOG_FILE;
+    log_backup_output_options= LOG_FILE;
+  }
   else
     logger.init_log_tables();
 
@@ -4134,9 +4195,41 @@ server.");
     logger.set_handlers(LOG_FILE, opt_slow_log ? log_output_options:LOG_NONE,
                         opt_log ? log_output_options:LOG_NONE);
   }
+
+  if (log_backup_output_options & LOG_NONE)
+  {
+    /*
+      Issue a warining if there were specified additional options to the
+      log-backup-output along with NONE. Probably this wasn't what user wanted.
+    */
+    if ((log_backup_output_options & LOG_NONE) && 
+        (log_backup_output_options & ~LOG_NONE))
+      sql_print_warning("There were other values specified to "
+                        "log-backup-output besides NONE. Disabling "
+                        "backup logs anyway.");
+    logger.set_backup_handlers(LOG_NONE, LOG_NONE);
+  }
+  else
+  {
+    /* fall back to the log files if tables are not present */
+    LEX_STRING csv_name={C_STRING_WITH_LEN("csv")};
+    if (!plugin_is_ready(&csv_name, MYSQL_STORAGE_ENGINE_PLUGIN))
+    {
+      /* purecov: begin inspected */
+      sql_print_error("CSV engine is not present, falling back to the "
+                      "log files");
+      log_backup_output_options= 
+        (log_backup_output_options & ~LOG_TABLE) | LOG_FILE;
+      /* purecov: end */
+    }
+
+    logger.set_backup_handlers(log_backup_output_options,
+      log_backup_output_options);
+  }
 #else
   logger.set_handlers(LOG_FILE, opt_slow_log ? LOG_FILE:LOG_NONE,
                       opt_log ? LOG_FILE:LOG_NONE);
+  logger.set_backup_handlers(LOG_FILE, LOG_FILE);
 #endif
 
   /*
@@ -5739,10 +5832,13 @@ enum options_mysqld
   OPT_PLUGIN_LOAD,
   OPT_PLUGIN_DIR,
   OPT_LOG_OUTPUT,
+  OPT_LOG_BACKUP_OUTPUT,
   OPT_PORT_OPEN_TIMEOUT,
   OPT_PROFILING,
   OPT_KEEP_FILES_ON_CREATE,
   OPT_GENERAL_LOG,
+  OPT_BACKUP_HISTORY_LOG,
+  OPT_BACKUP_PROGRESS_LOG,
   OPT_SLOW_LOG,
   OPT_THREAD_HANDLING,
   OPT_INNODB_ROLLBACK_ON_TIMEOUT,
@@ -5757,7 +5853,13 @@ enum options_mysqld
   OPT_POOL_OF_THREADS,
 #endif
   OPT_DEBUG_CRC, OPT_DEBUG_ON,
-  OPT_SLAVE_EXEC_MODE
+  OPT_SLAVE_EXEC_MODE,
+  OPT_GENERAL_LOG_FILE,
+  OPT_SLOW_QUERY_LOG_FILE,
+  OPT_DEADLOCK_SEARCH_DEPTH_SHORT,
+  OPT_DEADLOCK_SEARCH_DEPTH_LONG,
+  OPT_DEADLOCK_TIMEOUT_SHORT,
+  OPT_DEADLOCK_TIMEOUT_LONG
 };
 
 
@@ -5799,6 +5901,12 @@ struct my_option my_long_options[] =
    0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
   {"backupdir", 'B', "Path used to store backup data.", (uchar**) &sys_var_backupdir.value,
    (uchar**) &sys_var_backupdir.value, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"backup-history-log", OPT_BACKUP_HISTORY_LOG,
+   "Enable|disable backup history log", (uchar**) &opt_backup_history_log,
+   (uchar**) &opt_backup_history_log, 0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
+  {"backup-progress-log", OPT_BACKUP_PROGRESS_LOG,
+   "Enable|disable backup progress log", (uchar**) &opt_backup_progress_log,
+   (uchar**) &opt_backup_progress_log, 0, GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, 0},
   {"basedir", 'b',
    "Path to installation directory. All paths are usually resolved relative to this.",
    (uchar**) &mysql_home_ptr, (uchar**) &mysql_home_ptr, 0, GET_STR, REQUIRED_ARG,
@@ -5882,6 +5990,26 @@ struct my_option my_long_options[] =
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"datadir", 'h', "Path to the database root.", (uchar**) &mysql_data_home,
    (uchar**) &mysql_data_home, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"deadlock-search-depth-short", OPT_DEADLOCK_SEARCH_DEPTH_SHORT,
+   "Short search depth for the two-step deadlock detection",
+   (uchar**) &global_system_variables.wt_deadlock_search_depth_short,
+   (uchar**) &max_system_variables.wt_deadlock_search_depth_short,
+   0, GET_ULONG, REQUIRED_ARG, 4, 0, 32, 0, 0, 0},
+  {"deadlock-search-depth-long", OPT_DEADLOCK_SEARCH_DEPTH_LONG,
+   "Long search depth for the two-step deadlock detection",
+   (uchar**) &global_system_variables.wt_deadlock_search_depth_long,
+   (uchar**) &max_system_variables.wt_deadlock_search_depth_long,
+   0, GET_ULONG, REQUIRED_ARG, 15, 0, 33, 0, 0, 0},
+  {"deadlock-timeout-short", OPT_DEADLOCK_TIMEOUT_SHORT,
+   "Short timeout for the two-step deadlock detection (in microseconds)",
+   (uchar**) &global_system_variables.wt_timeout_short,
+   (uchar**) &max_system_variables.wt_timeout_short,
+   0, GET_ULONG, REQUIRED_ARG, 10000, 0, ULONG_MAX, 0, 0, 0},
+  {"deadlock-timeout-long", OPT_DEADLOCK_TIMEOUT_LONG,
+   "Long timeout for the two-step deadlock detection (in microseconds)",
+   (uchar**) &global_system_variables.wt_timeout_long,
+   (uchar**) &max_system_variables.wt_timeout_long,
+   0, GET_ULONG, REQUIRED_ARG, 50000000, 0, ULONG_MAX, 0, 0, 0},
 #ifndef DBUG_OFF
   {"debug", '#', "Debug log.", (uchar**) &default_dbug_option,
    (uchar**) &default_dbug_option, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
@@ -5898,10 +6026,6 @@ struct my_option my_long_options[] =
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
   {"default-storage-engine", OPT_STORAGE_ENGINE,
    "Set the default storage engine (table type) for tables.",
-   (uchar**)&default_storage_engine_str, (uchar**)&default_storage_engine_str,
-   0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
-  {"default-table-type", OPT_STORAGE_ENGINE,
-   "(deprecated) Use --default-storage-engine.",
    (uchar**)&default_storage_engine_str, (uchar**)&default_storage_engine_str,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"default-time-zone", OPT_DEFAULT_TIME_ZONE, "Set the default time zone.",
@@ -5961,7 +6085,7 @@ struct my_option my_long_options[] =
    "Set up signals usable for debugging",
    (uchar**) &opt_debugging, (uchar**) &opt_debugging,
    0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"general-log", OPT_GENERAL_LOG,
+  {"general_log", OPT_GENERAL_LOG,
    "Enable|disable general log", (uchar**) &opt_log,
    (uchar**) &opt_log, 0, GET_BOOL, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #ifdef HAVE_LARGE_PAGES
@@ -5997,8 +6121,12 @@ Disable with --skip-large-pages.",
    (uchar**) &opt_local_infile,
    (uchar**) &opt_local_infile, 0, GET_BOOL, OPT_ARG,
    1, 0, 0, 0, 0, 0},
-  {"log", 'l', "Log connections and queries to file.", (uchar**) &opt_logname,
+  {"log", 'l', "Log connections and queries to file (deprecated option, use "
+   "--general_log/--general_log_file instead).", (uchar**) &opt_logname,
    (uchar**) &opt_logname, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"general_log_file", OPT_GENERAL_LOG_FILE,
+   "Log connections and queries to given file.", (uchar**) &opt_logname,
+   (uchar**) &opt_logname, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"log-bin", OPT_BIN_LOG,
    "Log update queries in binary format. Optional (but strongly recommended "
    "to avoid replication problems if server's hostname changes) argument "
@@ -6049,6 +6177,11 @@ Disable with --skip-large-pages.",
    "FILE or NONE.",
    (uchar**) &log_output_str, (uchar**) &log_output_str, 0,
    GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"log-backup-output", OPT_LOG_BACKUP_OUTPUT,
+   "Syntax: log-backup-output[=value[,value...]], where \"value\" could be TABLE, "
+   "FILE or NONE.",
+   (uchar**) &log_backup_output_str, (uchar**) &log_backup_output_str, 0,
+   GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #endif
   {"log-queries-not-using-indexes", OPT_LOG_QUERIES_NOT_USING_INDEXES,
    "Log queries that are executed without benefit of any index to the slow log if it is open.",
@@ -6072,10 +6205,17 @@ Disable with --skip-large-pages.",
   (uchar**) &opt_log_slow_slave_statements,
   (uchar**) &opt_log_slow_slave_statements,
   0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-  {"log-slow-queries", OPT_SLOW_QUERY_LOG,
-    "Log slow queries to a table or log file. Defaults logging to table mysql.slow_log or hostname-slow.log if --log-output=file is used. Must be enabled to activate other slow log options.",
+  {"log_slow_queries", OPT_SLOW_QUERY_LOG,
+    "Log slow queries to a table or log file. Defaults logging to table "
+    "mysql.slow_log or hostname-slow.log if --log-output=file is used. "
+    "Must be enabled to activate other slow log options. "
+    "(deprecated option, use --slow_query_log/--slow_query_log_file instead)",
    (uchar**) &opt_slow_logname, (uchar**) &opt_slow_logname, 0, GET_STR, OPT_ARG,
    0, 0, 0, 0, 0, 0},
+  {"slow_query_log_file", OPT_SLOW_QUERY_LOG_FILE,
+    "Log slow queries to given log file. Defaults logging to hostname-slow.log. Must be enabled to activate other slow log options.",
+   (uchar**) &opt_slow_logname, (uchar**) &opt_slow_logname, 0, GET_STR,
+   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"log-tc", OPT_LOG_TC,
    "Path to transaction coordinator log (used for transactions that affect "
    "more than one storage engine, when binary log is disabled)",
@@ -6447,7 +6587,7 @@ Can't be set to 1 if --log-slave-updates is used.",
   {"skip-symlink", OPT_SKIP_SYMLINKS, "Don't allow symlinking of tables. Deprecated option.  Use --skip-symbolic-links instead.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"skip-thread-priority", OPT_SKIP_PRIOR,
-   "Don't give threads different priorities.", 0, 0, 0, GET_NO_ARG, NO_ARG,
+   "Don't give threads different priorities. Deprecated option.", 0, 0, 0, GET_NO_ARG, NO_ARG,
    DEFAULT_SKIP_THREAD_PRIORITY, 0, 0, 0, 0, 0},
 #ifdef HAVE_REPLICATION
   {"slave-load-tmpdir", OPT_SLAVE_LOAD_TMPDIR,
@@ -7664,10 +7804,14 @@ static void mysql_init_variables(void)
   /* Things reset to zero */
   opt_skip_slave_start= opt_reckless_slave = 0;
   mysql_home[0]= pidfile_name[0]= log_error_file[0]= 0;
+#if defined(HAVE_REALPATH) && !defined(HAVE_purify) && !defined(HAVE_BROKEN_REALPATH)
+  /*  We can only test for sub paths if my_symlink.c is using realpath */
   myisam_test_invalid_symlink= test_if_data_home_dir;
+#endif
   opt_log= opt_slow_log= 0;
   opt_update_log= 0;
   log_output_options= find_bit_type(log_output_str, &log_output_typelib);
+  log_backup_output_options= find_bit_type(log_backup_output_str, &log_output_typelib);
   opt_bin_log= 0;
   opt_disable_networking= opt_skip_show_db=0;
   opt_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= 0;
@@ -7686,7 +7830,7 @@ static void mysql_init_variables(void)
   slave_open_temp_tables= 0;
   cached_thread_count= 0;
   opt_endinfo= using_udf_functions= 0;
-  opt_using_transactions= using_update_log= 0;
+  opt_using_transactions= 0;
   abort_loop= select_thread_in_use= signal_thread_in_use= 0;
   ready_to_exit= shutdown_in_progress= grant_option= 0;
   aborted_threads= aborted_connects= 0;
@@ -7755,6 +7899,8 @@ static void mysql_init_variables(void)
   mysql_data_home_buff[1]=0;
   mysql_data_home_len= 2;
 
+  strmake(language, LANGUAGE, sizeof(language)-1);
+ 
   /* Replication parameters */
   master_info_file= (char*) "master.info",
     relay_log_info_file= (char*) "relay-log.info";
@@ -7921,6 +8067,7 @@ mysqld_get_one_option(int optid,
       default_collation_name= 0;
     break;
   case 'l':
+    WARN_DEPRECATED(NULL, 7,0, "--log", "'--general-log --general-log-file'");
     opt_log=1;
     break;
   case 'B':
@@ -8105,6 +8252,8 @@ mysqld_get_one_option(int optid,
   }
 #endif /* HAVE_REPLICATION */
   case (int) OPT_SLOW_QUERY_LOG:
+    WARN_DEPRECATED(NULL, 7,0, "--log-slow-queries",
+                    "'--slow-query-log --slow-query-log-file'");
     opt_slow_log= 1;
     break;
 #ifdef WITH_CSV_STORAGE_ENGINE
@@ -8119,6 +8268,21 @@ mysqld_get_one_option(int optid,
     {
       log_output_str= argument;
       log_output_options=
+        find_bit_type_or_exit(argument, &log_output_typelib, opt->name);
+  }
+    break;
+  }
+  case  OPT_LOG_BACKUP_OUTPUT:
+  {
+    if (!argument || !argument[0])
+    {
+      log_backup_output_options= LOG_FILE;
+      log_backup_output_str= log_output_typelib.type_names[1];
+    }
+    else
+    {
+      log_backup_output_str= argument;
+      log_backup_output_options=
         find_bit_type_or_exit(argument, &log_output_typelib, opt->name);
   }
     break;
@@ -8152,6 +8316,9 @@ mysqld_get_one_option(int optid,
     break;
   case (int) OPT_SKIP_PRIOR:
     opt_specialflag|= SPECIAL_NO_PRIOR;
+    sql_print_warning("The --skip-thread-priority startup option is deprecated "
+                      "and will be removed in MySQL 7.0. MySQL 6.0 and up do not "
+                      "give threads different priorities.");
     break;
   case (int) OPT_SKIP_LOCK:
     opt_external_locking=0;
@@ -8491,7 +8658,7 @@ static void get_options(int *argc,char **argv)
   if ((opt_log_slow_admin_statements || opt_log_queries_not_using_indexes ||
        opt_log_slow_slave_statements) &&
       !opt_slow_log)
-    sql_print_warning("options --log-slow-admin-statements, --log-queries-not-using-indexes and --log-slow-slave-statements have no effect if --log-slow-queries is not set");
+    sql_print_warning("options --log-slow-admin-statements, --log-queries-not-using-indexes and --log-slow-slave-statements have no effect if --log_slow_queries is not set");
 
 #if defined(HAVE_BROKEN_REALPATH)
   my_use_symdir=0;

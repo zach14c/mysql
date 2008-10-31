@@ -461,21 +461,28 @@ Item* handle_sql2003_note184_exception(THD *thd, Item* left, bool equal,
 
    Sets up and initializes a SELECT_LEX structure for a query once the parser
    discovers a UNION token. The current SELECT_LEX is pushed on the stack and
-   the new SELECT_LEX becomes the current one..=
+   the new SELECT_LEX becomes the current one.
 
-   @lex The parser state.
+   @param lex The parser state.
 
-   @is_union_distinct True if the union preceding the new select statement
+   @param is_union_distinct True if the union preceding the new select statement
    uses UNION DISTINCT.
+
+   @param is_top_level This should be @c TRUE if the newly created SELECT_LEX
+   is a non-nested statement.
 
    @return <code>false</code> if successful, <code>true</code> if an error was
    reported. In the latter case parsing should stop.
  */
-bool add_select_to_union_list(LEX *lex, bool is_union_distinct)
+bool add_select_to_union_list(LEX *lex, bool is_union_distinct, 
+                              bool is_top_level)
 {
-  if (lex->result)
+  /* 
+     Only the last SELECT can have INTO. Since the grammar won't allow INTO in
+     a nested SELECT, we make this check only when creating a top-level SELECT.
+  */
+  if (is_top_level && lex->result)
   {
-    /* Only the last SELECT can have  INTO...... */
     my_error(ER_WRONG_USAGE, MYF(0), "UNION", "INTO");
     return TRUE;
   }
@@ -575,7 +582,7 @@ bool setup_select_in_parentheses(LEX *lex)
   struct sp_cond_type *spcondtype;
   struct { int vars, conds, hndlrs, curs; } spblock;
   sp_name *spname;
-  struct st_lex *lex;
+  LEX *lex;
   sp_head *sphead;
   struct p_elem_val *p_elem_value;
   enum index_hint_type index_hint;
@@ -1972,6 +1979,8 @@ event_tail:
             if (!(lex->event_parse_data= Event_parse_data::new_instance(thd)))
               MYSQL_YYABORT;
             lex->event_parse_data->identifier= $3;
+            lex->event_parse_data->on_completion=
+                                  Event_parse_data::ON_COMPLETION_DROP;
 
             lex->sql_command= SQLCOM_CREATE_EVENT;
             /* We need that for disallowing subqueries */
@@ -4459,7 +4468,7 @@ create_select:
           SELECT_SYM
           {
             LEX *lex=Lex;
-            lex->lock_option= using_update_log ? TL_READ_NO_INSERT : TL_READ;
+            lex->lock_option= TL_READ_DEFAULT;
             if (lex->sql_command == SQLCOM_INSERT)
               lex->sql_command= SQLCOM_INSERT_SELECT;
             else if (lex->sql_command == SQLCOM_REPLACE)
@@ -8490,11 +8499,13 @@ variable:
 variable_aux:
           ident_or_text SET_VAR expr
           {
-            $$= new (YYTHD->mem_root) Item_func_set_user_var($1, $3);
+            Item_func_set_user_var *item;
+            $$= item= new (YYTHD->mem_root) Item_func_set_user_var($1, $3);
             if ($$ == NULL)
               MYSQL_YYABORT;
             LEX *lex= Lex;
             lex->uncacheable(UNCACHEABLE_RAND);
+            lex->set_var_list.push_back(item);
           }
         | ident_or_text
           {
@@ -8955,7 +8966,7 @@ select_derived_union:
           UNION_SYM
           union_option
           {
-            if (add_select_to_union_list(Lex, (bool)$3))
+            if (add_select_to_union_list(Lex, (bool)$3, FALSE))
               MYSQL_YYABORT;
           }
           query_specification
@@ -9919,7 +9930,7 @@ insert:
             lex->duplicates= DUP_ERROR; 
             mysql_init_select(lex);
             /* for subselects */
-            lex->lock_option= (using_update_log) ? TL_READ_NO_INSERT : TL_READ;
+            lex->lock_option= TL_READ_DEFAULT;
           }
           insert_lock_option
           opt_ignore insert2
@@ -10755,6 +10766,8 @@ flush_option:
           { Lex->type|= REFRESH_GRANT; }
         | LOGS_SYM
           { Lex->type|= REFRESH_LOG; }
+        | BACKUP_SYM LOGS_SYM
+          { Lex->type|= REFRESH_BACKUP_LOG; }
         | STATUS_SYM
           { Lex->type|= REFRESH_STATUS; }
         | SLAVE
@@ -11755,8 +11768,7 @@ user:
             if (check_identifier_name(&$$->user, USERNAME_CHAR_LENGTH,
                                       ER_WRONG_STRING_LENGTH,
                                       ER(ER_USERNAME)) ||
-                check_string_byte_length(&$$->host, ER(ER_HOSTNAME),
-                                         HOSTNAME_LENGTH))
+                check_host_name(&$$->host))
               MYSQL_YYABORT;
           }
         | CURRENT_USER optional_braces
@@ -13332,7 +13344,7 @@ union_clause:
 union_list:
           UNION_SYM union_option
           {
-            if (add_select_to_union_list(Lex, (bool)$2))
+            if (add_select_to_union_list(Lex, (bool)$2, TRUE))
               MYSQL_YYABORT;
           }
           select_init
@@ -13402,7 +13414,7 @@ query_expression_body:
         | query_expression_body
           UNION_SYM union_option 
           {
-            if (add_select_to_union_list(Lex, (bool)$3))
+            if (add_select_to_union_list(Lex, (bool)$3, FALSE))
               MYSQL_YYABORT;
           }
           query_specification

@@ -2,6 +2,33 @@ SELECT * FROM information_schema.columns
 WHERE table_schema = 'mysql'
 ORDER BY table_schema, table_name, column_name;
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	STORAGE	FORMAT
+NULL	mysql	backup_history	backup_file	15		NO	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	The name of the file	Default	Default
+NULL	mysql	backup_history	backup_file_path	16		NO	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The full path to the backup image file	Default	Default
+NULL	mysql	backup_history	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	Surrogate key for (near) duplicate entries	Default	Default
+NULL	mysql	backup_history	backup_state	5	NULL	NO	enum	14	56	NULL	NULL	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')			select,insert,update,references	Status of current operation	Default	Default
+NULL	mysql	backup_history	binlog_file	4		NO	char	64	256	NULL	NULL	utf8	utf8_general_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
+NULL	mysql	backup_history	binlog_pos	3	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The recorded binlog position of backup/restore	Default	Default
+NULL	mysql	backup_history	command	18		NO	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
+NULL	mysql	backup_history	drivers	19		NO	varchar	100	400	NULL	NULL	utf8	utf8_general_ci	varchar(100)			select,insert,update,references	The name of the storage engines used in the operation	Default	Default
+NULL	mysql	backup_history	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
+NULL	mysql	backup_history	host_or_server_name	13		NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
+NULL	mysql	backup_history	num_objects	8	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The number of objects in the backup	Default	Default
+NULL	mysql	backup_history	operation	6	NULL	NO	enum	7	28	NULL	NULL	utf8	utf8_general_ci	enum('backup','restore')			select,insert,update,references	Type of operation	Default	Default
+NULL	mysql	backup_history	process_id	2	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The process id that operation ran as	Default	Default
+NULL	mysql	backup_history	start_time	11	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of start of operation	Default	Default
+NULL	mysql	backup_history	stop_time	12	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
+NULL	mysql	backup_history	total_bytes	9	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The size of the backup repository in bytes	Default	Default
+NULL	mysql	backup_history	username	14		NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The user name who ran the operation	Default	Default
+NULL	mysql	backup_history	user_comment	17		NO	varchar	200	800	NULL	NULL	utf8	utf8_general_ci	varchar(200)			select,insert,update,references	The comment from user entered at command line	Default	Default
+NULL	mysql	backup_history	validity_point_time	10	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The time of the validity point.	Default	Default
+NULL	mysql	backup_progress	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	Key for backup_history table entries	Default	Default
+NULL	mysql	backup_progress	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
+NULL	mysql	backup_progress	notes	8		NO	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	Commentary from the backup engine	Default	Default
+NULL	mysql	backup_progress	object	2		NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The object being operated on	Default	Default
+NULL	mysql	backup_progress	progress	6	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The number of bytes processed	Default	Default
+NULL	mysql	backup_progress	start_time	3	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of start of operation	Default	Default
+NULL	mysql	backup_progress	stop_time	4	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
+NULL	mysql	backup_progress	total_bytes	5	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20)			select,insert,update,references	The size of the object in bytes	Default	Default
 NULL	mysql	columns_priv	Column_name	5		NO	char	64	256	NULL	NULL	utf8	utf8_bin	char(64)	PRI		select,insert,update,references		Default	Default
 NULL	mysql	columns_priv	Column_priv	7		NO	set	31	124	NULL	NULL	utf8	utf8_general_ci	set('Select','Insert','Update','References')			select,insert,update,references		Default	Default
 NULL	mysql	columns_priv	Db	2		NO	char	64	256	NULL	NULL	utf8	utf8_bin	char(64)	PRI		select,insert,update,references		Default	Default
@@ -107,32 +134,6 @@ NULL	mysql	ndb_binlog_index	orig_server_id	8	NULL	NO	int	NULL	NULL	10	0	NULL	NUL
 NULL	mysql	ndb_binlog_index	Position	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references		Default	Default
 NULL	mysql	ndb_binlog_index	schemaops	7	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references		Default	Default
 NULL	mysql	ndb_binlog_index	updates	5	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references		Default	Default
-NULL	mysql	online_backup	backup_file	15	NULL	YES	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	The name of the file	Default	Default
-NULL	mysql	online_backup	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned	PRI	auto_increment	select,insert,update,references	Surrogate key for (near) duplicate entries	Default	Default
-NULL	mysql	online_backup	backup_state	5	NULL	NO	enum	14	56	NULL	NULL	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')			select,insert,update,references	Status of current operation	Default	Default
-NULL	mysql	online_backup	binlog_file	4	NULL	YES	char	64	256	NULL	NULL	utf8	utf8_general_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
-NULL	mysql	online_backup	binlog_pos	3	0	YES	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The recorded binlog position of backup/restore	Default	Default
-NULL	mysql	online_backup	command	17	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
-NULL	mysql	online_backup	drivers	18	NULL	YES	varchar	100	400	NULL	NULL	utf8	utf8_general_ci	varchar(100)			select,insert,update,references	The name of the storage engine backup drivers used in the operation	Default	Default
-NULL	mysql	online_backup	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
-NULL	mysql	online_backup	host_or_server_name	13	NULL	YES	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
-NULL	mysql	online_backup	num_objects	8	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The number of objects in the backup	Default	Default
-NULL	mysql	online_backup	operation	6	NULL	NO	enum	7	28	NULL	NULL	utf8	utf8_general_ci	enum('backup','restore')			select,insert,update,references	Type of operation	Default	Default
-NULL	mysql	online_backup	process_id	2	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The process id that operation ran as	Default	Default
-NULL	mysql	online_backup	start_time	11	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of start of operation	Default	Default
-NULL	mysql	online_backup	stop_time	12	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
-NULL	mysql	online_backup	total_bytes	9	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The size of the backup repository in bytes	Default	Default
-NULL	mysql	online_backup	username	14	NULL	YES	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The user name who ran the operation	Default	Default
-NULL	mysql	online_backup	user_comment	16	NULL	YES	varchar	200	800	NULL	NULL	utf8	utf8_general_ci	varchar(200)			select,insert,update,references	The comment from user entered at command line	Default	Default
-NULL	mysql	online_backup	validity_point_time	10	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The time of the validity point.	Default	Default
-NULL	mysql	online_backup_progress	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	Key for online_backup table entries	Default	Default
-NULL	mysql	online_backup_progress	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
-NULL	mysql	online_backup_progress	notes	8	NULL	YES	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	Commentary from the backup engine	Default	Default
-NULL	mysql	online_backup_progress	object	2	NULL	NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The object being operated on	Default	Default
-NULL	mysql	online_backup_progress	progress	6	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The number of bytes processed	Default	Default
-NULL	mysql	online_backup_progress	start_time	3	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of start of operation	Default	Default
-NULL	mysql	online_backup_progress	stop_time	4	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
-NULL	mysql	online_backup_progress	total_bytes	5	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20)			select,insert,update,references	The size of the object in bytes	Default	Default
 NULL	mysql	plugin	dl	2		NO	char	128	512	NULL	NULL	utf8	utf8_bin	char(128)			select,insert,update,references		Default	Default
 NULL	mysql	plugin	name	1		NO	char	64	256	NULL	NULL	utf8	utf8_bin	char(64)	PRI		select,insert,update,references		Default	Default
 NULL	mysql	proc	body	11	NULL	NO	longblob	4294967295	4294967295	NULL	NULL	NULL	NULL	longblob			select,insert,update,references		Default	Default
@@ -314,6 +315,33 @@ FROM information_schema.columns
 WHERE table_schema = 'mysql'
 ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION;
 COL_CML	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE
+NULL	mysql	backup_history	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
+NULL	mysql	backup_history	process_id	int	NULL	NULL	NULL	NULL	int(10) unsigned
+NULL	mysql	backup_history	binlog_pos	int	NULL	NULL	NULL	NULL	int(10) unsigned
+4.0000	mysql	backup_history	binlog_file	char	64	256	utf8	utf8_general_ci	char(64)
+4.0000	mysql	backup_history	backup_state	enum	14	56	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')
+4.0000	mysql	backup_history	operation	enum	7	28	utf8	utf8_general_ci	enum('backup','restore')
+NULL	mysql	backup_history	error_num	int	NULL	NULL	NULL	NULL	int(11)
+NULL	mysql	backup_history	num_objects	int	NULL	NULL	NULL	NULL	int(10) unsigned
+NULL	mysql	backup_history	total_bytes	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
+NULL	mysql	backup_history	validity_point_time	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	mysql	backup_history	start_time	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	mysql	backup_history	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
+4.0000	mysql	backup_history	host_or_server_name	char	30	120	utf8	utf8_general_ci	char(30)
+4.0000	mysql	backup_history	username	char	30	120	utf8	utf8_general_ci	char(30)
+4.0000	mysql	backup_history	backup_file	char	100	400	utf8	utf8_general_ci	char(100)
+4.0000	mysql	backup_history	backup_file_path	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
+4.0000	mysql	backup_history	user_comment	varchar	200	800	utf8	utf8_general_ci	varchar(200)
+4.0000	mysql	backup_history	command	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
+4.0000	mysql	backup_history	drivers	varchar	100	400	utf8	utf8_general_ci	varchar(100)
+NULL	mysql	backup_progress	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
+4.0000	mysql	backup_progress	object	char	30	120	utf8	utf8_general_ci	char(30)
+NULL	mysql	backup_progress	start_time	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	mysql	backup_progress	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	mysql	backup_progress	total_bytes	bigint	NULL	NULL	NULL	NULL	bigint(20)
+NULL	mysql	backup_progress	progress	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
+NULL	mysql	backup_progress	error_num	int	NULL	NULL	NULL	NULL	int(11)
+4.0000	mysql	backup_progress	notes	char	100	400	utf8	utf8_general_ci	char(100)
 4.0000	mysql	columns_priv	Host	char	60	240	utf8	utf8_bin	char(60)
 4.0000	mysql	columns_priv	Db	char	64	256	utf8	utf8_bin	char(64)
 4.0000	mysql	columns_priv	User	char	16	64	utf8	utf8_bin	char(16)
@@ -419,32 +447,6 @@ NULL	mysql	ndb_binlog_index	schemaops	int	NULL	NULL	NULL	NULL	int(10) unsigned
 NULL	mysql	ndb_binlog_index	orig_server_id	int	NULL	NULL	NULL	NULL	int(10) unsigned
 NULL	mysql	ndb_binlog_index	orig_epoch	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
 NULL	mysql	ndb_binlog_index	gci	int	NULL	NULL	NULL	NULL	int(10) unsigned
-NULL	mysql	online_backup	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
-NULL	mysql	online_backup	process_id	int	NULL	NULL	NULL	NULL	int(10) unsigned
-NULL	mysql	online_backup	binlog_pos	int	NULL	NULL	NULL	NULL	int(10) unsigned
-4.0000	mysql	online_backup	binlog_file	char	64	256	utf8	utf8_general_ci	char(64)
-4.0000	mysql	online_backup	backup_state	enum	14	56	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')
-4.0000	mysql	online_backup	operation	enum	7	28	utf8	utf8_general_ci	enum('backup','restore')
-NULL	mysql	online_backup	error_num	int	NULL	NULL	NULL	NULL	int(11)
-NULL	mysql	online_backup	num_objects	int	NULL	NULL	NULL	NULL	int(10) unsigned
-NULL	mysql	online_backup	total_bytes	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
-NULL	mysql	online_backup	validity_point_time	datetime	NULL	NULL	NULL	NULL	datetime
-NULL	mysql	online_backup	start_time	datetime	NULL	NULL	NULL	NULL	datetime
-NULL	mysql	online_backup	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
-4.0000	mysql	online_backup	host_or_server_name	char	30	120	utf8	utf8_general_ci	char(30)
-4.0000	mysql	online_backup	username	char	30	120	utf8	utf8_general_ci	char(30)
-4.0000	mysql	online_backup	backup_file	char	100	400	utf8	utf8_general_ci	char(100)
-4.0000	mysql	online_backup	user_comment	varchar	200	800	utf8	utf8_general_ci	varchar(200)
-4.0000	mysql	online_backup	command	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
-4.0000	mysql	online_backup	drivers	varchar	100	400	utf8	utf8_general_ci	varchar(100)
-NULL	mysql	online_backup_progress	backup_id	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
-4.0000	mysql	online_backup_progress	object	char	30	120	utf8	utf8_general_ci	char(30)
-NULL	mysql	online_backup_progress	start_time	datetime	NULL	NULL	NULL	NULL	datetime
-NULL	mysql	online_backup_progress	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
-NULL	mysql	online_backup_progress	total_bytes	bigint	NULL	NULL	NULL	NULL	bigint(20)
-NULL	mysql	online_backup_progress	progress	bigint	NULL	NULL	NULL	NULL	bigint(20) unsigned
-NULL	mysql	online_backup_progress	error_num	int	NULL	NULL	NULL	NULL	int(11)
-4.0000	mysql	online_backup_progress	notes	char	100	400	utf8	utf8_general_ci	char(100)
 4.0000	mysql	plugin	name	char	64	256	utf8	utf8_bin	char(64)
 4.0000	mysql	plugin	dl	char	128	512	utf8	utf8_bin	char(128)
 4.0000	mysql	proc	db	char	64	256	utf8	utf8_bin	char(64)

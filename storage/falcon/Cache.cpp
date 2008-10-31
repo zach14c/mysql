@@ -82,7 +82,9 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageWriter = NULL;
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
+	
+	if (falcon_use_sectorcache)
+		sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
 
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
@@ -153,7 +155,9 @@ Cache::~Cache()
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
-	delete sectorCache;
+
+	if (falcon_use_sectorcache)
+		delete sectorCache;
 	
 	if (bufferHunks)
 		{
@@ -930,7 +934,15 @@ void Cache::ioThread(void)
 					Log::log(LogInfo, "%d: Cache flush: %d pages, %d writes in %d seconds (%d pps)\n",
 								database->deltaTime, pages, writes, delta, pages / MAX(delta, 1));
 
-				database->pageCacheFlushed(flushArg);
+				try
+					{
+					database->pageCacheFlushed(flushArg);
+					}
+				catch (...)
+					{
+					// Ignores any errors from writing the checkpoint
+					// log record (ie. if we have issues with the serial log)
+					}
 				}
 			else
 				flushLock.unlock();

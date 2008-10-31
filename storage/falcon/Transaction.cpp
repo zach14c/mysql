@@ -84,8 +84,8 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	freeSavePoints = NULL;
 	useCount = 1;
 	syncObject.setName("Transaction::syncObject");
-	syncActive.setName("Transaction::syncActive");
-	syncIndexes.setName("Transaction::syncIndexes");
+	syncIsActive.setName("Transaction::syncActive");
+	syncDeferredIndexes.setName("Transaction::syncDeferredIndexes");
 	syncRecords.setName("Transaction::syncRecords");
 	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
@@ -157,7 +157,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	startTime = database->deltaTime;
 	blockingRecord = NULL;
 	thread = Thread::getThread("Transaction::initialize");
-	syncActive.lock(NULL, Exclusive);
+	syncIsActive.lock(NULL, Exclusive);
 	Transaction *oldest = transactionManager->findOldest();
 	oldestActive = (oldest) ? oldest->transactionId : transactionId;
 	int count = transactionManager->activeTransactions.count;
@@ -205,8 +205,8 @@ Transaction::~Transaction()
 		Log::debug("Deleting apparently active transaction %d\n", transactionId);
 		ASSERT(false);
 		
-		if (syncActive.ourExclusiveLock())
-			syncActive.unlock();
+		if (syncIsActive.ourExclusiveLock())
+			syncIsActive.unlock();
 		}
 
 	if (inList)
@@ -254,7 +254,7 @@ void Transaction::commit()
 
 	if (state == Active)
 		{
-		Sync sync(&syncIndexes, "Transaction::commit(1)");
+		Sync sync(&syncDeferredIndexes, "Transaction::commit(1)");
 		sync.lock(Shared);
 		
 		for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -275,8 +275,6 @@ void Transaction::commit()
 		releaseRecordLocks();
 
 	database->serialLog->preCommit(this);
-
-	
 
 	Sync syncRec(&syncRecords,"Transaction::commit(1.5)");
 	syncRec.lock(Shared);
@@ -302,9 +300,10 @@ void Transaction::commit()
 	database->flushInversion(this);
 
 	// Transfer transaction from active list to committed list, set committed state
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
-	
+
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(2)");
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(3)");
+
 	syncActiveTransactions.lock(Exclusive);
 	syncCommitted.lock(Exclusive);
 
@@ -315,7 +314,7 @@ void Transaction::commit()
 	syncCommitted.unlock();
 	syncActiveTransactions.unlock();
 	
-	syncActive.unlock(); // signal waiting transactions
+	syncIsActive.unlock(); // signal waiting transactions
 
 	database->commit(this);
 
@@ -371,10 +370,10 @@ void Transaction::commitNoUpdates(void)
 	connection = NULL;
 	transactionId = 0;
 	writePending = false;
-	syncActiveTransactions.unlock();
-	syncActive.unlock();
-	release();
 	state = Available;
+	syncActiveTransactions.unlock();
+	syncIsActive.unlock();
+	release();
 }
 
 void Transaction::rollback()
@@ -398,7 +397,7 @@ void Transaction::rollback()
 	// Rollback pending record versions from newest to oldest in case
 	// there are multiple record versions on a prior record chain
 
-	Sync syncRec(&syncRecords, "Transaction::rollback(1.5)");
+	Sync syncRec(&syncRecords, "Transaction::rollback(records)");
 	syncRec.lock(Exclusive);
 
 	while (firstRecord)
@@ -437,10 +436,8 @@ void Transaction::rollback()
 		database->backLog->rollbackRecords(backloggedRecords, this);
 
 	ASSERT(writePending);
-	state = RolledBack;
 	writePending = false;
 	releaseDependencies();
-	syncActive.unlock();
 	
 	if (hasUpdates)
 		database->serialLog->preCommit(this);
@@ -454,7 +451,7 @@ void Transaction::rollback()
 		xidLength = 0;
 		}
 	
-	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(2)");
+	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(active)");
 	syncActiveTransactions.lock (Exclusive);
 	++transactionManager->rolledBack;
 	
@@ -465,6 +462,8 @@ void Transaction::rollback()
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
+	state = RolledBack;
+	syncIsActive.unlock();
 	release();
 }
 
@@ -503,7 +502,7 @@ void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 	state = Limbo;
 	database->dbb->prepareTransaction(transactionId, xidLength, xid);
 
-	Sync sync(&syncIndexes, "Transaction::prepare");
+	Sync sync(&syncDeferredIndexes, "Transaction::prepare");
 	sync.lock(Shared);
 	
 	for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -642,6 +641,7 @@ void Transaction::removeRecord(RecordVersion *record)
 	syncRec.lock(Exclusive);
 	removeRecordNoLock(record);
 }
+
 void Transaction::removeRecordNoLock(RecordVersion *record)
 {
 	RecordVersion **ptr;
@@ -786,12 +786,6 @@ void Transaction::releaseDependencies()
 
 		if (transaction)
 			{
-			if (transaction->transactionId != state->transactionId)
-				{
-				Transaction *transaction = database->transactionManager->findTransaction(state->transactionId);
-				ASSERT(transaction == NULL);
-				}
-
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
 				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
@@ -983,8 +977,6 @@ bool Transaction::waitForTransaction(TransId transId)
 State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 										bool *deadlock)
 {
-
-
 	*deadlock = false;
 	State state;
 
@@ -1069,7 +1061,7 @@ void Transaction::waitForTransaction()
 		}
 	***/
 	
-	Sync sync(&syncActive, "Transaction::waitForTransaction(2)");
+	Sync sync(&syncIsActive, "Transaction::waitForTransaction(2)");
 	sync.lock(Shared, falcon_lock_wait_timeout * 1000);
 }
 
@@ -1078,14 +1070,10 @@ void Transaction::addRef()
 	INTERLOCKED_INCREMENT(useCount);
 }
 
-int Transaction::release()
+void Transaction::release()
 {
-	int count = INTERLOCKED_DECREMENT(useCount);
-
-	if (count == 0)
+	if (INTERLOCKED_DECREMENT(useCount) == 0)
 		delete this;
-
-	return count;
 }
 
 int Transaction::createSavepoint()
@@ -1241,7 +1229,6 @@ void Transaction::rollbackSavepoint(int savePointId)
 
 	savePoint = savePoints;
 	
-
 	while (savePoint)
 		{
 		//validateRecords();
@@ -1317,8 +1304,10 @@ void Transaction::rollbackSavepoint(int savePointId)
 
 void Transaction::add(DeferredIndex* deferredIndex)
 {
-	Sync sync(&syncIndexes, "Transaction::add");
+	Sync sync(&syncDeferredIndexes, "Transaction::add");
 	sync.lock(Exclusive);
+
+//	deferredIndex->addRef(); // temporarily disabled for Bug#39711
 	deferredIndex->nextInTransaction = deferredIndexes;
 	deferredIndexes = deferredIndex;
 	deferredIndexCount++;
@@ -1497,25 +1486,31 @@ void Transaction::printBlockage(void)
 
 void Transaction::releaseDeferredIndexes(void)
 {
-	Sync sync(&syncIndexes, "Transaction::releaseDeferredIndexes");
+	Sync sync(&syncDeferredIndexes, "Transaction::releaseDeferredIndexes");
 	sync.lock(Exclusive);
+	
 	for (DeferredIndex *deferredIndex; (deferredIndex = deferredIndexes);)
 		{
 		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
 		deferredIndex->detachTransaction();
+		deferredIndex->release();
 		deferredIndexCount--;
 		}
 }
 
 void Transaction::releaseDeferredIndexes(Table* table)
 {
+	Sync sync(&syncDeferredIndexes, "Transaction::releaseDeferredIndexes(Table *)");
+	sync.lock(Exclusive);
+
 	for (DeferredIndex **ptr = &deferredIndexes, *deferredIndex; (deferredIndex = *ptr);)
 		{
 		if (deferredIndex->index && (deferredIndex->index->table == table))
 			{
 			*ptr = deferredIndex->nextInTransaction;
 			deferredIndex->detachTransaction();
+			deferredIndex->release();
 			--deferredIndexCount;
 			}
 		else
@@ -1531,7 +1526,7 @@ void Transaction::backlogRecords(void)
 		{
 		prior = record->prevInTrans;
 		
-		if (!record->hasRecord())
+		if (!record->hasRecord(false))
 			{
 			if (savePoints)
 				for (; savePoint && record->savePointId < savePoint->id; savePoint = savePoint->next)

@@ -84,34 +84,39 @@ int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
 	// Get section id, record id and data length written. Input pointer will be at
 	// beginning of record data.
 
-	int tableSpaceId;
+	int tableSpaceId = 0;
 	
 	if (control->version >= srlVersion8)
 		tableSpaceId = control->getInt();
-	else
-		tableSpaceId = 0;
 		
 	control->getInt();			// sectionId
 	int recordNumber = control->getInt();
 	int dataLength   = control->getInt();
-	ASSERT(recordNumber == record->recordNumber);
-	int bytesReallocated = record->setRecordData(control->input, dataLength);
+	int bytesReallocated = 0;
+	
+	// setRecordData() handles race conditions with an interlocked compare and exchange,
+	// but check the state and record number anyway
 
-	if (bytesReallocated > 0)
-		bytesReallocated = record->getEncodedSize();
+	if (record->state == recChilled && recordNumber == record->recordNumber)
+		bytesReallocated = record->setRecordData(control->input, dataLength);
 
 	window->deactivateWindow();
 
-	if (log->chilledRecords > 0)
-		log->chilledRecords--;
+	if (bytesReallocated > 0)
+		{
+		ASSERT(recordNumber == record->recordNumber);
+		bytesReallocated = record->getEncodedSize();
+		*thawed = true;
+
+		if (log->chilledRecords > 0)
+			log->chilledRecords--;
 		
-	if (log->chilledBytes > uint64(bytesReallocated))
-		log->chilledBytes -= bytesReallocated;
-	else
-		log->chilledBytes = 0;
-	
-	*thawed = true;
-	
+		if (log->chilledBytes > uint64(bytesReallocated))
+			log->chilledBytes -= bytesReallocated;
+		else
+			log->chilledBytes = 0;
+		}
+
 	return bytesReallocated;
 }
 
@@ -193,8 +198,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			
 			// Load the record data into a stream
 
-			if (record->hasRecord())
-				record->getRecord(&stream);
+			if (record->hasRecord(false))
+				{
+				if (!record->getRecord(&stream))
+					continue;
+				}
 			else
 				ASSERT(record->state == recDeleted);
 			
