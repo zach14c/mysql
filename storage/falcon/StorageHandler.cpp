@@ -508,10 +508,6 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 	TableSpaceManager *tableSpaceManager =
 		dictionaryConnection->database->tableSpaceManager;
 
-	if (!tableSpaceManager->waitForPendingDrop(filename, 10))
-		// file still exists after waiting for 10 seconds
-		return  StorageErrorTableSpaceDataFileExist;
-
 	try
 		{
 		JString cmd = genCreateTableSpace(tableSpaceName, filename, comment);

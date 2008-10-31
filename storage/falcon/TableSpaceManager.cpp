@@ -58,7 +58,6 @@ TableSpaceManager::TableSpaceManager(Database *db)
 	memset(nameHash, 0, sizeof(nameHash));
 	memset(idHash, 0, sizeof(nameHash));
 	tableSpaces = NULL;
-	pendingDrops = 0;
 	syncObject.setName("TableSpaceManager::syncObject");
 }
 
@@ -298,13 +297,14 @@ void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 			break;
 			}
 			
-	pendingDrops++;
 	syncObj.unlock();
+	tableSpace->active = false;
+	JString filename = tableSpace->dbb->fileName;
 
 	database->serialLog->logControl->dropTableSpace.append(tableSpace, transaction);
 	database->commitSystemTransaction();
+	IO::deleteFile(filename);
 
-	tableSpace->active = false;
 }
 
 void TableSpaceManager::reportStatistics(void)
@@ -370,12 +370,10 @@ void TableSpaceManager::expungeTableSpace(int tableSpaceId)
 			}
 
 	sync.unlock();
-	tableSpace->dropTableSpace();
+	//File already deleted, just close the file descriptor
+	tableSpace->close();
 	delete tableSpace;
 
-	sync.lock(Exclusive);
-	if(pendingDrops >0)
-		pendingDrops--;
 }
 
 void TableSpaceManager::reportWrites(void)
@@ -563,28 +561,5 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		infoTable->setNull(37);			// EXTRA
 		infoTable->putRecord();
 		}
-}
-
-
-// Wait for specified amount of time for a  file to be deleted.
-// Don't wait if pendingDrops count is 0.
-//
-// The function returns true, if wait was successfull, i.e file does not exist
-//(anymore)
-bool TableSpaceManager::waitForPendingDrop(const char  *filename, int seconds)
-{
-	bool fileExists;
-
-	do
-		{
-		fileExists = IO::doesFileExist(filename);
-		if (fileExists && pendingDrops > 0 && seconds-- > 0)
-			Thread::getThread("TransactionManager::waitForPendingDrop")->sleep(1000);
-		else
-			break;
-		}
-	while(true);
-
-	return !fileExists;
 }
 
