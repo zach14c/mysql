@@ -388,13 +388,18 @@ enum open_table_mode
 
 #define DISK_SEEK_PROP_COST ((double)0.1/BLOCKS_IN_AVG_SEEK)
 
-
 /**
   Number of rows in a reference table when refereed through a not unique key.
   This value is only used when we don't know anything about the key
   distribution.
 */
 #define MATCHING_ROWS_IN_OTHER_TABLE 10
+
+/*
+  Subquery materialization-related constants
+*/
+#define MATERIALIZATION_HEAP_LOOKUP_COST 0.05
+#define MATERIALIZATION_DISK_LOOKUP_COST 1.0
 
 /** Don't pack string keys shorter than this (if PACK_KEYS=1 isn't used). */
 #define KEY_DEFAULT_PACK_LENGTH 8

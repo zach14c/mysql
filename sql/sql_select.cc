@@ -556,6 +556,7 @@ JOIN::prepare(Item ***rref_pointer_array,
       1) this join is inside a subquery (of any type except FROM-clause 
          subquery) and
       2) we aren't just normalizing a VIEW
+
     Then perform early unconditional subquery tranformations:
      - Convert subquery predicate into semi-join, or
      - Mark the subquery for execution using materialization, or
@@ -4398,7 +4399,31 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
 }
 
 
-/* Process semi-join nests that could be run with sj-materialization */
+/* 
+  Optimize semi-join nests that could be run with sj-materialization
+
+  SYNOPSIS
+    optimize_semijoin_nests()
+      join           The join to optimize semi-join nests for
+      all_table_map  Bitmap of all tables in the join
+
+  DESCRIPTION
+    Optimize each of the semi-join nests that can be run with
+    materialization. For each of the nests, we
+     - Generate the best join order for this "sub-join" and remember it;
+     - Remember the sub-join execution cost (it's part of materialization
+       cost);
+     - Calculate other costs that will be incurred if we decide 
+       to use materialization strategy for this semi-join nest.
+
+    All obtained information is saved and will be used by the main join
+    optimization pass.
+
+  RETURN
+    FALSE  Ok 
+    TRUE   Out of memory error
+*/
+
 static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
 {
   DBUG_ENTER("optimize_semijoin_nests");
@@ -4479,31 +4504,35 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
       sjm->positions[sjm->tables - 1].use_sj_mat |= SJ_MAT_LAST;
 
       /*
-        Calculate temporary table parameters
+        Calculate temporary table parameters and usage costs
       */
       uint rowlen= get_tmp_table_rec_length(right_expr_list);
       double lookup_cost;
       if (rowlen * subjoin_out_rows< join->thd->variables.max_heap_table_size)
-      {
-        sjm->materialization_cost.add_io(subjoin_out_rows, 0.05);
-        sjm->scan_cost.zero();
-        sjm->scan_cost.add_io(sjm->rows, 0.05);
-        lookup_cost= 0.05;
-      }
+        lookup_cost= MATERIALIZATION_HEAP_LOOKUP_COST;
       else
-      {
-        sjm->materialization_cost.add_io(subjoin_out_rows, 1.0);
-        lookup_cost= 1;
-        sjm->scan_cost.zero();
-        sjm->scan_cost.add_io(sjm->rows, 1.0);
-      }
+        lookup_cost= MATERIALIZATION_DISK_LOOKUP_COST;
+
+      /*
+        Let materialization cost include the cost to write the data into the
+        temporary table:
+      */ 
+      sjm->materialization_cost.add_io(subjoin_out_rows, lookup_cost);
+      
+      /*
+        Set the cost to do a full scan of the temptable (will need this to 
+        consider doing sjm-scan):
+      */ 
+      sjm->scan_cost.zero();
+      sjm->scan_cost.add_io(sjm->rows, lookup_cost);
+
       sjm->lookup_cost.convert_from_cost(lookup_cost);
       sj_nest->sj_mat_info= sjm;
       DBUG_EXECUTE("opt", print_sjm(sjm););
     }
   }
   join->emb_sjm_nest= NULL;
-  DBUG_RETURN(0);
+  DBUG_RETURN(FALSE);
 }
 
 
@@ -12305,7 +12334,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
        3. All outer tables that
            - the subquery is correlated with, or
            - referred to from the outer_expr 
-          are in the prefix
+          are in the join prefix
     */
     if (s->emb_sj_nest &&            // (1)
         !join->cur_sj_inner_tables &&   // (2)
