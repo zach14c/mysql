@@ -31,12 +31,22 @@ typedef struct st_wt_resource_type {
 } WT_RESOURCE_TYPE;
 
 /* we want to compare this struct with memcmp, make it packed */
-#pragma pack(1)
+#if defined(__HP_cc) || defined(__HP_aCC)
+#  pragma pack 1
+#else
+#  pragma pack(1)
+#endif
 struct st_wt_resource_id {
   ulonglong value;
   WT_RESOURCE_TYPE *type;
 };
-#pragma pack()
+#if defined(__HP_cc) || defined(__HP_aCC)
+#  pragma pack
+#elif defined(__xlc__) || defined(__xlC__)
+#  pragma pack(pop)
+#else
+#  pragma pack()
+#endif
 
 #define WT_WAIT_STATS  24
 #define WT_CYCLE_STATS 32

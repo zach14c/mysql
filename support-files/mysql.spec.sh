@@ -343,11 +343,7 @@ BuildMySQL "--enable-shared \
 		--with-csv-storage-engine \
 		--with-blackhole-storage-engine \
 		--with-federated-storage-engine \
-%ifarch i386 x86_64
 		--with-falcon \
-%else
-		--without-falcon \
-%endif
 %if %{MARIA_BUILD}
 		--with-plugin-maria \
 		--with-maria-tmp-tables \
@@ -384,11 +380,7 @@ BuildMySQL "--enable-shared \
 		--with-csv-storage-engine \
 		--with-blackhole-storage-engine \
 		--with-federated-storage-engine \
-%ifarch i386 x86_64
 		--with-falcon \
-%else
-		--without-falcon \
-%endif
 %if %{MARIA_BUILD}
 		--with-plugin-maria \
 		--with-maria-tmp-tables \
@@ -711,7 +703,6 @@ fi
 %attr(755, root, root) %{_bindir}/msql2mysql
 %attr(755, root, root) %{_bindir}/mysql
 %attr(755, root, root) %{_bindir}/mysql_find_rows
-%attr(755, root, root) %{_bindir}/mysql_upgrade_shell
 %attr(755, root, root) %{_bindir}/mysql_waitpid
 %attr(755, root, root) %{_bindir}/mysqlaccess
 %attr(755, root, root) %{_bindir}/mysqladmin
@@ -851,6 +842,11 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Sat Nov 01 2008 Kent Boortz <kent.boortz@sun.com>
+
+  - Removed "mysql_upgrade_shell"
+  - Enabled falcon storage engine for IA64
+
 * Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
 
 - Removed the "Federated" storage engine option, and enabled in all
