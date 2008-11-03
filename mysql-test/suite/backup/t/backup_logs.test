@@ -208,7 +208,7 @@ SET SESSION debug="d,set_backup_id";
 #--replace_column 1 #
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 
-SET SESSION debug="d";
+SET SESSION debug="";
 
 --remove_file $MYSQLD_BACKUPDIR/backup_logs_orig.bak
 --echo The backup id for this command should be 501.
