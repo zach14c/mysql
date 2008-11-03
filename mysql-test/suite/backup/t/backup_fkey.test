@@ -49,7 +49,7 @@ INSERT INTO backup_fkey.child VALUES (2, 4);
 INSERT INTO backup_fkey.child VALUES (3, 2);
 
 # Show that foreign key constraints are enforced.
---error 1452
+--error ER_NO_REFERENCED_ROW_2
 INSERT INTO backup_fkey.child VALUES (4, 6);
 
 # Backup the database with fkey constraints preserved.

@@ -49,13 +49,13 @@ connect (no_rights,localhost,bup_no_rights,,backup_test);
 
 --echo no_rights: Attempting backup. Should fail with error 1227
 --replace_column 1 #
---error 1227
+--error ER_SPECIFIC_ACCESS_DENIED_ERROR
 BACKUP DATABASE backup_test to 'bup_no_rights.bak';
 SHOW ERRORS;
 
 --echo no_rights: Attempting restore. Should fail with error 1227
 --replace_column 1 #
---error 1227
+--error ER_SPECIFIC_ACCESS_DENIED_ERROR
 RESTORE FROM 'bup_no_rights.bak';
 SHOW ERRORS;
 

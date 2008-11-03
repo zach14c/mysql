@@ -382,7 +382,7 @@ void StorageTableShare::deleteIndex(int indexId)
 			}
 }
 
-int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql)
+int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql, bool online)
 {
 	if (!table)
 		open();
@@ -397,7 +397,15 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 	
 	int ret = storageDatabase->dropIndex(storageConnection, table, sql);
 	
-	deleteIndex(indexDesc->id);
+	// If index not found during online drop index, do not return an error
+	
+	if (ret == StorageErrorNoIndex && online)
+		ret = 0;
+		
+	// Remove index description from index mapping
+	
+	if (!ret)
+		deleteIndex(indexDesc->id);
 				
 	return ret;
 }

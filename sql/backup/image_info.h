@@ -4,10 +4,6 @@
 /**
   @file
   
-  @todo Fix error logging in places marked with "FIXME: error logging...". In 
-  these places it should be decided if and how the error should be shown to the
-  user. If an error message should be logged, it can happen either in the place
-  where error was detected or somewhere up the call stack.
 */ 
 
 #include <si_objects.h>
@@ -424,7 +420,7 @@ class Image_info::Db
   obs::Obj* materialize(uint ver, const ::String &sdata);
   result_t add_obj(Dbobj&, ulong pos);
   Dbobj*   get_obj(ulong pos) const;
-  result_t add_table(Table&);
+  void add_table(Table&);
   const char* describe(describe_buf&) const;
 
  private:
@@ -558,6 +554,15 @@ class Image_info::Iterator
 
   Iterator(const Image_info &info);
   virtual ~Iterator();
+
+  
+  /** 
+    Initialize the iterator after construction.
+    Subclasses need to implement this if initialization may generate errors.
+   
+    @returns 0 if success.  Otherwise, error code.
+   */
+  virtual int init() { return 0; }  
 
   Obj* operator++(int);
 
@@ -747,14 +752,8 @@ inline
 time_t Image_info::get_vp_time() const
 {
   struct tm time;
-  time_t tz_offset;
 
   bzero(&time,sizeof(time));
-
-  // Determine system timezone offset by calculating offset of the Epoch date.
-  time.tm_year=70;
-  time.tm_mday=1;
-  tz_offset= mktime(&time);
 
   time.tm_year= vp_time.year;
   time.tm_mon= vp_time.mon;
@@ -767,7 +766,7 @@ time_t Image_info::get_vp_time() const
     Note: mktime() assumes that time is expressed as local time and vp_time is
     in UTC. Hence we must correct the result to get it right.
    */ 
-  return mktime(&time) - tz_offset;
+  return mktime(&time) - (time_t)timezone;
 }
 
 /**
@@ -836,28 +835,52 @@ void Image_info::save_binlog_pos(const ::LOG_INFO &li)
   flags|= BSTREAM_FLAG_BINLOG;
 }
 
-/// Returns an iterator enumerating all databases stored in backup catalogue.
+/**
+  Returns an iterator enumerating all databases stored in backup catalogue.
+
+  @returns Pointer to @c Image_info::Db_iterator or NULL if allocation fails.
+ */ 
 inline
 Image_info::Db_iterator* Image_info::get_dbs() const
 {
-  // FIXME: error logging (in case allocation fails).
-  return new Db_iterator(*this);
+  Db_iterator* it = new Db_iterator(*this);
+
+  if (it && it->init()) // Initialization failed
+    it= NULL;
+
+  return it; // Error logging context not available, caller must handle NULL
 }
 
-/// Returns an iterator enumerating all tablespaces stored in backup catalogue.
+/**
+  Returns an iterator enumerating all tablespaces stored in backup catalogue.
+
+  @returns Pointer to @c Image_info::Ts_iterator or NULL if allocation fails.
+ */
 inline
 Image_info::Ts_iterator* Image_info::get_tablespaces() const
 {
-  // FIXME: error logging (in case allocation fails).
-  return new Ts_iterator(*this);
+  Ts_iterator* it = new Ts_iterator(*this);
+
+  if (it && it->init()) // Initialization failed
+    it= NULL;
+
+  return it; // Error logging context not available, caller must handle NULL
 }
 
-/// Returns an iterator enumerating all objects in a given database.
+/**
+  Returns an iterator enumerating all objects in a given database.
+
+  @returns Pointer to @c Image_info::Dbobj_iterator or NULL if allocation fails.
+ */
 inline
 Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db) const
 {
-  // FIXME: error logging (in case allocation fails).
-  return new Dbobj_iterator(*this, db);
+  Dbobj_iterator* it = new Dbobj_iterator(*this, db);
+
+  if (it && it->init()) // Initialization failed
+    it= NULL;
+
+  return it; // Error logging context not available, caller must handle NULL
 }
 
 /********************************************************************
@@ -1065,7 +1088,7 @@ obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
   The table is appended to database's table list.
  */
 inline
-result_t Image_info::Db::add_table(Table &tbl)
+void Image_info::Db::add_table(Table &tbl)
 {
   tbl.next_table= NULL;
   
@@ -1076,8 +1099,6 @@ result_t Image_info::Db::add_table(Table &tbl)
     last_table->next_table= &tbl;
     last_table= &tbl;
   }
-  
-  return OK;
 }
 
 /**

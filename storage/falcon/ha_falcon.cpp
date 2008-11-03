@@ -902,7 +902,7 @@ int StorageInterface::createIndex(const char *schemaName, const char *tableName,
 	return storageTable->createIndex(&indexDesc, sql);
 }
 
-int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId)
+int StorageInterface::dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online)
 {
 	StorageIndexDesc indexDesc;
 	getKeyDesc(table, indexId, &indexDesc);
@@ -911,7 +911,7 @@ int StorageInterface::dropIndex(const char *schemaName, const char *tableName, T
 	gen.gen("drop index %s.\"%s\"", schemaName, indexDesc.name);
 	const char *sql = gen.getString();
 
-	return storageTable->dropIndex(&indexDesc, sql);
+	return storageTable->dropIndex(&indexDesc, sql, online);
 }
 
 #if 0
@@ -1203,20 +1203,26 @@ int StorageInterface::commit(handlerton *hton, THD* thd, bool all)
 {
 	DBUG_ENTER("StorageInterface::commit");
 	StorageConnection *storageConnection = getStorageConnection(thd);
+	int ret = 0;
 
 	if (all || !thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
 		{
 		if (storageConnection)
-			storageConnection->commit();
+			ret = storageConnection->commit();
 		else
-			storageHandler->commit(thd);
+			ret = storageHandler->commit(thd);
 		}
 	else
 		{
 		if (storageConnection)
 			storageConnection->releaseVerb();
 		else
-			storageHandler->releaseVerb(thd);
+			ret = storageHandler->releaseVerb(thd);
+		}
+
+	if (ret != 0)
+		{
+		DBUG_RETURN(getMySqlError(ret));
 		}
 
 	DBUG_RETURN(0);
@@ -1245,20 +1251,26 @@ int StorageInterface::rollback(handlerton *hton, THD *thd, bool all)
 {
 	DBUG_ENTER("StorageInterface::rollback");
 	StorageConnection *storageConnection = getStorageConnection(thd);
+	int ret = 0;
 
 	if (all || !thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
 		{
 		if (storageConnection)
-			storageConnection->rollback();
+			ret = storageConnection->rollback();
 		else
-			storageHandler->rollback(thd);
+			ret = storageHandler->rollback(thd);
 		}
 	else
 		{
 		if (storageConnection)
-			storageConnection->rollbackVerb();
+			ret = storageConnection->rollbackVerb();
 		else
-			storageHandler->rollbackVerb(thd);
+			ret = storageHandler->rollbackVerb(thd);
+		}
+
+	if (ret != 0)
+		{
+		DBUG_RETURN(getMySqlError(ret));
 		}
 
 	DBUG_RETURN(0);
@@ -1282,7 +1294,7 @@ int StorageInterface::start_consistent_snapshot(handlerton *hton, THD *thd)
 {
 	DBUG_ENTER("StorageInterface::start_consistent_snapshot");
 	int ret = storageHandler->startTransaction(thd, TRANSACTION_CONSISTENT_READ);
- 	if (!ret)
+	if (!ret)
 		trans_register_ha(thd, true, hton);
 	DBUG_RETURN(ret);
 
@@ -1548,6 +1560,7 @@ int StorageInterface::rename_table(const char *from, const char *to)
 
 	ret = storageShare->renameTable(storageConnection, to);
 	
+	if (!ret)
 	remapIndexes(table);
 	
 	storageShare->unlock();
@@ -1892,6 +1905,10 @@ int StorageInterface::getMySqlError(int storageError)
 			DBUG_PRINT("info", ("StorageErrorTableSpaceDataFileExist"));
 			return (HA_ERR_TABLESPACE_DATAFILE_EXIST);
 
+		case StorageErrorIOErrorSerialLog:
+			DBUG_PRINT("info", ("StorageErrorIOErrorSerialLog"));
+			return (HA_ERR_LOGGING_IMPOSSIBLE);
+
 		default:
 			DBUG_PRINT("info", ("Unknown Falcon Error"));
 			return (200 - storageError);
@@ -1924,10 +1941,12 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 
 	if (lock_type == F_UNLCK)
 		{
+		int ret = 0;
+
 		storageConnection->setCurrentStatement(NULL);
 
 		if (!thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-			storageConnection->endImplicitTransaction();
+			ret = storageConnection->endImplicitTransaction();
 		else
 			storageConnection->releaseVerb();
 
@@ -1936,6 +1955,9 @@ int StorageInterface::external_lock(THD *thd, int lock_type)
 			storageTable->clearStatement();
 			storageTable->clearCurrentIndex();
 			}
+
+		if (ret)
+			DBUG_RETURN(error(ret));
 		}
 	else
 		{
@@ -2148,7 +2170,7 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	HA_ALTER_FLAGS supported;
 	supported = supported | HA_ADD_INDEX | HA_DROP_INDEX | HA_ADD_UNIQUE_INDEX | HA_DROP_UNIQUE_INDEX;
 						/**
-						| HA_ADD_COLUMN | HA_COLUMN_STORAGE | HA_COLUMN_FORMAT;
+						| HA_ADD_COLUMN | HA_COLUMN_STORAGE | HA_COLUMN_FORMAT | HA_ADD_PK_INDEX | HA_DROP_PK_INDEX;
 						**/
 	HA_ALTER_FLAGS notSupported = ~(supported);
 	
@@ -2188,9 +2210,21 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 }
 
+// Prepare for online ALTER
+
 int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
 {
 	DBUG_ENTER("StorageInterface::alter_table_phase1");
+
+	DBUG_RETURN(0);
+}
+
+// Perform the online ALTER
+
+int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
+{
+	DBUG_ENTER("StorageInterface::alter_table_phase2");
+
 	int ret = 0;
 	
 	if (alter_flags->is_set(HA_ADD_COLUMN))
@@ -2201,16 +2235,11 @@ int StorageInterface::alter_table_phase1(THD* thd, TABLE* altered_table, HA_CREA
 		
 	if ((alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX)) && !ret)
 		ret = dropIndex(thd, altered_table, create_info, alter_info, alter_flags);
-		
+	
 	DBUG_RETURN(ret);
 }
 
-int StorageInterface::alter_table_phase2(THD* thd, TABLE* altered_table, HA_CREATE_INFO* create_info, HA_ALTER_INFO* alter_info, HA_ALTER_FLAGS* alter_flags)
-{
-	DBUG_ENTER("StorageInterface::alter_table_phase2");
-	
-	DBUG_RETURN(0);
-}
+// Notification that changes are written and table re-opened
 
 int StorageInterface::alter_table_phase3(THD* thd, TABLE* altered_table)
 {
@@ -2272,20 +2301,17 @@ int StorageInterface::addIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* cr
 
 	for (unsigned int n = 0; n < alteredTable->s->keys; n++)
 		{
-		if (n != alteredTable->s->primary_key)
-			{
-			KEY *key = alteredTable->key_info + n;
-			KEY *tableEnd = table->key_info + table->s->keys;
-			KEY *tableKey;
+		KEY *key = alteredTable->key_info + n;
+		KEY *tableEnd = table->key_info + table->s->keys;
+		KEY *tableKey;
 			
-			for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
-				if (!strcmp(tableKey->name, key->name))
-					break;
+		for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
+			if (!strcmp(tableKey->name, key->name))
+				break;
 					
-			if (tableKey >= tableEnd)
-				if ((ret = createIndex(schemaName, tableName, alteredTable, n)))
-					break;
-			}
+		if (tableKey >= tableEnd)
+			if ((ret = createIndex(schemaName, tableName, alteredTable, n)))
+				break;
 		}
 		
 	// The server indexes may have been reordered, so remap to the Falcon indexes
@@ -2314,20 +2340,17 @@ int StorageInterface::dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* c
 	
 	for (unsigned int n = 0; n < table->s->keys; n++)
 		{
-		if (n != table->s->primary_key)
-				{
-			KEY *key = table->key_info + n;
-			KEY *alterEnd = alteredTable->key_info + alteredTable->s->keys;
-			KEY *alterKey;
-			
-			for (alterKey = alteredTable->key_info; alterKey < alterEnd; alterKey++)
-				if (!strcmp(alterKey->name, key->name))
-					break;
+		KEY *key = table->key_info + n;
+		KEY *alterEnd = alteredTable->key_info + alteredTable->s->keys;
+		KEY *alterKey;
+		
+		for (alterKey = alteredTable->key_info; alterKey < alterEnd; alterKey++)
+			if (!strcmp(alterKey->name, key->name))
+				break;
 
-			if (alterKey >= alterEnd)
-				if ((ret = dropIndex(schemaName, tableName, table, n)))
-					break;
-				}
+		if (alterKey >= alterEnd)
+			if ((ret = dropIndex(schemaName, tableName, table, n, true)))
+				break;
 		}
 	
 	// The server indexes have been reordered, so remap to the Falcon indexes
@@ -2653,12 +2676,17 @@ void StorageInterface::encodeRecord(uchar *buf, bool updateFlag)
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
 				case MYSQL_TYPE_LONGLONG:
-				case MYSQL_TYPE_YEAR:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					dataStream->encodeInt64(field->val_int());
+					break;
+
+				case MYSQL_TYPE_YEAR:
+					// Have to use the ptr directly to get the same number for
+					// both two and four digit YEAR
+					dataStream->encodeInt64((int) field->ptr[0]);
 					break;
 
 				case MYSQL_TYPE_NEWDECIMAL:
@@ -2829,13 +2857,18 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_INT24:
 				case MYSQL_TYPE_LONG:
 				case MYSQL_TYPE_LONGLONG:
-				case MYSQL_TYPE_YEAR:
 				case MYSQL_TYPE_DECIMAL:
 				case MYSQL_TYPE_ENUM:
 				case MYSQL_TYPE_SET:
 				case MYSQL_TYPE_BIT:
 					field->store(dataStream->getInt64(),
 								((Field_num*)field)->unsigned_flag);
+					break;
+
+				case MYSQL_TYPE_YEAR:
+					// Must add 1900 to give Field_year::store the value it
+					// expects. See also case 'MYSQL_TYPE_YEAR' in encodeRecord()
+					field->store(dataStream->getInt64() + 1900, ((Field_num*)field)->unsigned_flag);
 					break;
 
 				case MYSQL_TYPE_NEWDECIMAL:

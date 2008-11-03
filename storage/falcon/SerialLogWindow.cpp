@@ -99,7 +99,7 @@ SerialLogBlock* SerialLogWindow::readFirstBlock()
 		uint32 len = file->read(origin + sectorSize, block->length - sectorSize, buffer + sectorSize);
 
 		if (len != length)
-			throw SQLError(IO_ERROR, "truncated log file \"%s\"", (const char*) file->fileName);
+			throw SQLError(IO_ERROR_SERIALLOG, "truncated log file \"%s\"", (const char*) file->fileName);
 
 		currentLength += length;
 		}
