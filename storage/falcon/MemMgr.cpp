@@ -349,8 +349,7 @@ MemMgr::~MemMgr(void)
 MemBlock* MemMgr::alloc(size_t s)
 {
 	if (s > INT_MAX)
-		throw SQLError (RUNTIME_ERROR, "illegal memory allocate for " I64FORMAT " bytes",
-		(int64)s);
+		throw SQLError (RUNTIME_ERROR, "illegal memory allocate for " I64FORMAT " bytes", (int64)s);
 
 	int length = (int) s;
 
