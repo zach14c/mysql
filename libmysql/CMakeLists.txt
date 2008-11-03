@@ -108,4 +108,4 @@ TARGET_LINK_LIBRARIES(mysqlclient)
 
 ADD_LIBRARY(libmysql          SHARED ${CLIENT_SOURCES} libmysql.def)
 ADD_DEPENDENCIES(libmysql GenError)
-TARGET_LINK_LIBRARIES(libmysql ws2_32)
+TARGET_LINK_LIBRARIES(libmysql)

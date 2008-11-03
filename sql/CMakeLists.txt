@@ -89,8 +89,8 @@ ADD_EXECUTABLE(mysqld
                ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
 
 TARGET_LINK_LIBRARIES(mysqld
-                      heap myisam myisammrg mysys yassl zlib debug dbug yassl 
-                      taocrypt strings vio regex ws2_32)
+                      heap myisam myisammrg mysys yassl zlib dbug yassl 
+                      taocrypt strings vio regex)
 
 TARGET_LINK_LIBRARIES(mysqld backup)
 
@@ -148,7 +148,7 @@ ENDIF(WIN32)
 
 # Gen_lex_hash
 ADD_EXECUTABLE(gen_lex_hash gen_lex_hash.cc)
-TARGET_LINK_LIBRARIES(gen_lex_hash debug dbug mysqlclient ws2_32)
+TARGET_LINK_LIBRARIES(gen_lex_hash dbug mysqlclient)
 GET_TARGET_PROPERTY(GEN_LEX_HASH_EXE gen_lex_hash LOCATION)
 ADD_CUSTOM_COMMAND(
         OUTPUT ${PROJECT_SOURCE_DIR}/sql/lex_hash.h
@@ -171,7 +171,7 @@ SET_DIRECTORY_PROPERTIES(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES
 
 ADD_LIBRARY(udf_example MODULE udf_example.c udf_example.def)
 ADD_DEPENDENCIES(udf_example strings GenError)
-TARGET_LINK_LIBRARIES(udf_example strings ws2_32)
+TARGET_LINK_LIBRARIES(udf_example strings)
 
 ADD_SUBDIRECTORY(backup)
 

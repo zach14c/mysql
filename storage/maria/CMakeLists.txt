@@ -52,35 +52,35 @@ ADD_LIBRARY(maria ${MARIA_SOURCES})
 ADD_DEPENDENCIES(maria GenError)
 
 ADD_EXECUTABLE(maria_ftdump maria_ftdump.c)
-TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_chk maria_chk.c)
-TARGET_LINK_LIBRARIES(maria_chk maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_chk maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_read_log maria_read_log.c)
-TARGET_LINK_LIBRARIES(maria_read_log maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_read_log maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_pack maria_pack.c)
-TARGET_LINK_LIBRARIES(maria_pack maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_pack maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_dump_log ma_loghandler.c unittest/ma_loghandler_examples.c)
-TARGET_LINK_LIBRARIES(maria_dump_log maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_dump_log maria myisam mysys dbug strings zlib)
 SET_TARGET_PROPERTIES(maria_dump_log PROPERTIES COMPILE_FLAGS "-DMARIA_DUMP_LOG")
 
 ADD_EXECUTABLE(ma_test1 ma_test1.c)
-TARGET_LINK_LIBRARIES(ma_test1 maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_test1 maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_test2 ma_test2.c)
-TARGET_LINK_LIBRARIES(ma_test2 maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_test2 maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_test3 ma_test3.c)
-TARGET_LINK_LIBRARIES(ma_test3 maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_test3 maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_rt_test ma_rt_test.c)
-TARGET_LINK_LIBRARIES(ma_rt_test maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_rt_test maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_sp_test ma_sp_test.c)
-TARGET_LINK_LIBRARIES(ma_sp_test maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_sp_test maria myisam mysys dbug strings zlib)
 
 IF(EMBED_MANIFESTS)
   MYSQL_EMBED_MANIFEST("maria_ftdump" "asInvoker")

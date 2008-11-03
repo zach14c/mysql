@@ -18,7 +18,7 @@ SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/unittest/mytap)
-LINK_LIBRARIES(maria myisam mytap mysys dbug strings wsock32 zlib)
+LINK_LIBRARIES(maria myisam mytap mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_control_file-t ma_control_file-t.c)
 ADD_EXECUTABLE(trnman-t trnman-t.c)
