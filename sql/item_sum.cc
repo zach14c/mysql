@@ -978,6 +978,17 @@ void Item_sum_distinct::fix_length_and_dec()
 }
 
 
+bool Item_sum_distinct::fix_fields(THD *thd, Item **ref)
+{
+  int res= Item_sum_num::fix_fields(thd, ref);
+  /*
+    SUM(DISTINCT x) and AVG(DISTINCT x) may have NULL value even when x is
+    not nullable:
+  */
+  maybe_null= TRUE;
+  return res;
+}
+
 /**
   @todo
   check that the case of CHAR(0) works OK

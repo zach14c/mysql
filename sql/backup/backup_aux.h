@@ -6,11 +6,6 @@
  
   @brief Auxiliary declarations used in online backup code.
 
-  @todo Fix error detection in places marked with "FIXME: detect errors...". 
-  These are places where functions or methods are called and if they can 
-  report errors it should be detected and appropriate action taken. If callee 
-  never reports errors or we want to ignore errors, a comment explaining this
-  should be added.
 */ 
 
 typedef st_plugin_int* storage_engine_ref;
@@ -140,8 +135,8 @@ class String: public ::String
 };
 
 inline
-void set_table_list(TABLE_LIST &tl, const Table_ref &tbl, 
-                    thr_lock_type lock_type, MEM_ROOT *mem)
+int set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
+                   thr_lock_type lock_type, MEM_ROOT *mem)
 {
   DBUG_ASSERT(mem);
 
@@ -149,8 +144,12 @@ void set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
   tl.db= const_cast<char*>(tbl.db().name().ptr());
   tl.lock_type= lock_type;
 
-  // FIXME: detect errors (if NULL returned).
   tl.mdl_lock_data= mdl_alloc_lock(0, tl.db, tl.table_name, mem); 
+  if (!tl.mdl_lock_data)                    // Failed to allocate lock
+  {
+    return 1;
+  }
+  return 0;
 }
 
 inline
@@ -165,7 +164,10 @@ TABLE_LIST* mk_table_list(const Table_ref &tbl, thr_lock_type lock_type,
      return NULL;
 
   bzero(ptr, sizeof(TABLE_LIST));
-  set_table_list(*ptr, tbl, lock_type, mem);
+  if (set_table_list(*ptr, tbl, lock_type, mem)) // Failed to allocate lock
+  {
+    return NULL;
+  }
 
   return ptr;
 }
