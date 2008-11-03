@@ -250,7 +250,8 @@ void Transaction::commit()
 
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
-	Log::log(LogXARecovery, "%d: Commit transaction %d\n", database->deltaTime, transactionId);
+	Log::log(LogXARecovery, "%d: Commit %sTransaction %d\n", 
+		database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
 
 	if (state == Active)
 		{
@@ -340,6 +341,7 @@ void Transaction::commitNoUpdates(void)
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
+	Log::log(LogXARecovery, "%d: CommitNoUpdates transaction %d\n", database->deltaTime, transactionId);
 	++transactionManager->committed;
 	
 	if (deferredIndexes)
@@ -383,6 +385,8 @@ void Transaction::rollback()
 
 	if (!isActive())
 		throw SQLEXCEPTION (RUNTIME_ERROR, "transaction is not active");
+
+	Log::log(LogXARecovery, "%d: Rollback transaction %d\n", database->deltaTime, transactionId);
 
 	if (deferredIndexes)
 		releaseDeferredIndexes();
@@ -950,6 +954,9 @@ void Transaction::writeComplete(void)
 	
 	if (dependencies == 0)
 		commitRecords();
+
+//	Log::log(LogXARecovery, "%d: WriteComplete %sTransaction %d\n", 
+// 	database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
 
 	writePending = false;
 }
