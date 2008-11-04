@@ -27,10 +27,14 @@
 %{?_with_yassl:%define YASSL_BUILD 1}
 %{!?_with_yassl:%define YASSL_BUILD 0}
 
-# use "rpmbuild --with maria" or "rpm --define '_with_maria 1'" (for RPM 3.x)
-# to build with maria support (off by default)
-%{?_with_maria:%define MARIA_BUILD 1}
-%{!?_with_maria:%define MARIA_BUILD 0}
+# use "rpmbuild --with falcon" or "rpm --define '_with_falcon 1'" (for RPM 3.x)
+# to build with falcon support (off by default)
+#
+# Note: No default --with-falcon, as generic RPM is compiled with gcc 3.x.
+# Falcon requires gcc 4.x that requires libstdc++.6 that is not on most
+# "older" Linux systems.
+%{?_with_falcon:%define FALCON_BUILD 1}
+%{!?_with_falcon:%define FALCON_BUILD 0}
 
 # use "rpmbuild --with cluster" or "rpm --define '_with_cluster 1'" (for RPM 3.x)
 # to build with cluster support (off by default)
@@ -271,20 +275,40 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
             --prefix=/ \
 	    --with-extra-charsets=all \
 %if %{YASSL_BUILD}
-	    --with-ssl \
+		--with-ssl \
 %endif
-            --exec-prefix=%{_exec_prefix} \
-            --libexecdir=%{_sbindir} \
-            --libdir=%{_libdir} \
-            --sysconfdir=%{_sysconfdir} \
-            --datadir=%{_datadir} \
-            --localstatedir=%{mysqldatadir} \
-            --infodir=%{_infodir} \
-            --includedir=%{_includedir} \
-            --mandir=%{_mandir} \
-	    --enable-thread-safe-client \
-	    --with-readline \
-	    "
+		--exec-prefix=%{_exec_prefix} \
+		--libexecdir=%{_sbindir} \
+		--libdir=%{_libdir} \
+		--sysconfdir=%{_sysconfdir} \
+		--datadir=%{_datadir} \
+		--localstatedir=%{mysqldatadir} \
+		--infodir=%{_infodir} \
+		--includedir=%{_includedir} \
+		--mandir=%{_mandir} \
+		--enable-thread-safe-client \
+		--with-readline \
+		--with-innodb \
+%if %{CLUSTER_BUILD}
+		--with-ndbcluster \
+%else
+		--without-ndbcluster \
+%endif
+		--with-plugin-archive \
+		--with-plugin-csv \
+		--with-plugin-blackhole \
+		--with-plugin-federated \
+%if %{FALCON_BUILD}
+		--with-plugin-falcon \
+%else
+		--without-plugin-falcon \
+%endif
+		--with-plugin-maria \
+		--with-maria-tmp-tables \
+		--with-plugin-partition \
+		--with-big-tables \
+		--enable-shared \
+		"
  make
 }
 
@@ -331,25 +355,8 @@ fi
 (cd mysql-debug-%{mysql_version} &&
 CFLAGS=`echo "${MYSQL_BUILD_CFLAGS:-$RPM_OPT_FLAGS} -g" | sed -e 's/-O[0-9]*//g'` \
 CXXFLAGS=`echo "${MYSQL_BUILD_CXXFLAGS:-$RPM_OPT_FLAGS -felide-constructors -fno-exceptions -fno-rtti} -g" | sed -e 's/-O[0-9]*//g'` \
-BuildMySQL "--enable-shared \
+BuildMySQL "\
 		--with-debug \
-		--with-innodb \
-%if %{CLUSTER_BUILD}
-		--with-ndbcluster \
-%else
-		--without-ndbcluster \
-%endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-		--with-falcon \
-%if %{MARIA_BUILD}
-		--with-plugin-maria \
-		--with-maria-tmp-tables \
-%endif
-		--with-partition \
-		--with-big-tables \
 		--with-comment=\"MySQL Community Server - Debug (GPL)\"")
 
 # We might want to save the config log file
@@ -369,25 +376,8 @@ fi
 (cd mysql-release-%{mysql_version} &&
 CFLAGS="${MYSQL_BUILD_CFLAGS:-$RPM_OPT_FLAGS} -g" \
 CXXFLAGS="${MYSQL_BUILD_CXXFLAGS:-$RPM_OPT_FLAGS -felide-constructors -fno-exceptions -fno-rtti} -g" \
-BuildMySQL "--enable-shared \
-		--with-innodb \
-%if %{CLUSTER_BUILD}
-		--with-ndbcluster \
-%else
-		--without-ndbcluster \
-%endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-		--with-falcon \
-%if %{MARIA_BUILD}
-		--with-plugin-maria \
-		--with-maria-tmp-tables \
-%endif
-		--with-partition \
+BuildMySQL "\
 		--with-embedded-server \
-		--with-big-tables \
 		--with-comment=\"MySQL Community Server (GPL)\"")
 # We might want to save the config log file
 if test -n "$MYSQL_CONFLOG_DEST"
@@ -842,6 +832,13 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Mon Nov 03 2008 Kent Boortz <kent.boortz@sun.com>
+
+  - Added option --with-falcon
+  - Removed option --with-maria, enabled by default
+  - Use same way of defining what engines/plugins to use
+  - Remove some copy/paste between debug and normal build
+
 * Sat Nov 01 2008 Kent Boortz <kent.boortz@sun.com>
 
   - Removed "mysql_upgrade_shell"
