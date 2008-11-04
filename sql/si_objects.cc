@@ -2195,8 +2195,15 @@ bool TableObj::do_serialize(THD *thd, String *serialization)
 
   /*
     Open the view and its base tables or views
+
+    The MYSQL_OPEN_SKIP_TEMPORARY flag is needed because TableObj always 
+    refers to a regular table, even if a temporary table with the same name
+    exists in the database (see BUG#33574). 
   */
-  if (open_normal_and_derived_tables(thd, table_list, 0)) {
+  if (open_normal_and_derived_tables(thd, table_list, 
+                                     MYSQL_OPEN_SKIP_TEMPORARY)
+     ) 
+  {
     close_thread_tables(thd);
     thd->lex->select_lex.table_list.empty();
     DBUG_RETURN(TRUE);

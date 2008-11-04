@@ -29,6 +29,7 @@
 #include "rpl_filter.h"
 #include "rpl_rli.h"
 #include "sql_audit.h"
+#include "si_objects.h"
 
 #include <my_dir.h>
 #include <stdarg.h>
@@ -778,9 +779,17 @@ bool Log_to_csv_event_handler::
   bool need_close= FALSE;
   bool need_rnd_end= FALSE;
   Open_tables_state open_tables_backup;
+  ulonglong save_thd_options;
   bool save_time_zone_used;
   char *host= current_thd->security_ctx->host; // host name
   char *user= current_thd->security_ctx->user; // user name
+
+  /*
+    Turn the binlog off and don't replicate the
+    updates to the backup logs.
+  */
+  save_thd_options= thd->options;
+  thd->options&= ~OPTION_BIN_LOG;
 
   save_time_zone_used= thd->time_zone_used;
   bzero(& table_list, sizeof(TABLE_LIST));
@@ -956,6 +965,12 @@ err:
     close_performance_schema_table(thd, & open_tables_backup);
 
   thd->time_zone_used= save_time_zone_used;
+
+  /*
+    Turn binlog back on if disengaged.
+  */
+  thd->options= save_thd_options;
+
   return result;
 }
 
@@ -2099,6 +2114,7 @@ bool LOGGER::backup_progress_log_write(THD *thd,
     id= thd->thread_id;                 /* Normal thread */
   else
     id= 0;                              /* Log from connect handler */
+
 
   lock_shared();
   while (*current_handler)
@@ -4054,7 +4070,7 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
   else  // increment the counter
     id= m_next_id + 1;
 
-  DBUG_EXECUTE_IF("set_backup_id", id= 500;);
+  DBUG_EXECUTE_IF("set_backup_id", id= obs::is_slave() ? 600 : 500;);
 
   /* 
     Write the new value to the file

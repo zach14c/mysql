@@ -1,0 +1,91 @@
+#
+# Test that BACKUP works correctly in the presence of temporary tables
+# with the same names as tables being backed-up (BUG#33574, BUG#34903).
+#
+
+--source include/have_innodb.inc
+--source suite/backup_engines/include/backup_engine.inc
+
+let $bdir= `SELECT @@backupdir`;
+
+--echo ** Pre-cleanup
+--disable_warnings
+DROP DATABASE IF EXISTS db;
+--error 0,1
+--remove_file $bdir/db.bkp
+--enable_warnings
+
+--echo ** Create a database
+CREATE DATABASE db;
+USE db;
+
+--echo ** Create regular tables
+CREATE TABLE t1 (a int);
+CREATE TABLE t2 (a char(1));
+
+--echo ** Create a view
+CREATE VIEW v1 AS SELECT * FROM t1;
+
+--echo ** Store table's definition for later check
+let $stmt1= query_get_value(SHOW CREATE TABLE t1, Create Table, 1);
+let $stmt2= query_get_value(SHOW CREATE TABLE t2, Create Table, 1);
+
+--echo ** Insert some data into the tables
+INSERT INTO t1 VALUES (1);
+INSERT INTO t2 VALUES ('x');
+
+--echo ** Create temporary tables with the same name, but different layout
+--echo ** and using different storage engines
+CREATE TEMPORARY TABLE t1 (b text, c int) ENGINE=MyISAM;
+CREATE TEMPORARY TABLE t2 (b int, c blob) ENGINE=InnoDB;
+
+--echo ** Insert data into the temporary tables
+INSERT INTO t1 VALUES ('foo', 2);
+INSERT INTO t2 VALUES (3, 'bar');
+
+--echo ** Backup database
+--replace_column 1 #
+BACKUP DATABASE db TO 'db.bkp';
+
+--echo ** Drop and restore the database
+DROP TABLE t1;
+DROP TABLE t2;
+--replace_column 1 #
+RESTORE FROM 'db.bkp';
+
+#
+# Note: Above DROP TABLE statements should be removed once BUG#30099 is fixed.
+#
+
+--echo ** Check definitions of the tables after restore
+let $stmt1a= query_get_value(SHOW CREATE TABLE t1, Create Table, 1);
+let $stmt2a= query_get_value(SHOW CREATE TABLE t2, Create Table, 1);
+--disable_query_log
+--eval SELECT strcmp("$stmt1","$stmt1a") AS table_t1
+--eval SELECT strcmp("$stmt2","$stmt2a") AS table_t2
+--enable_query_log
+
+#
+# Note: The above tests using strcmp() might be too sensitive, although they 
+# work now. Theoreticaly the details of the CREATE TABLE statement produced by 
+# SHOW CREATE TABLE could be different even if RESTORE works ok. If you see 
+# result missmatch here, analyse carefully what are the differences before 
+# reporting a bug. The main purpose of above checks is to  ensure that RESTORE 
+# haven't wrongly captured definitions of the temporary tables instead of the 
+# regular ones.
+#
+
+--echo ** Checking data after restore
+SELECT * FROM t1;
+SELECT * FROM t2;
+SELECT * FROM v1;
+
+--echo ** Checking if restored table is seen from other connection
+connect (A, localhost, root,,);
+--connection A
+SELECT * FROM db.t1;
+SELECT * FROM db.t2;
+
+--echo ** Cleanup
+DROP DATABASE db;
+--remove_file $bdir/db.bkp

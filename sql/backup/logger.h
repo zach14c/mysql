@@ -5,6 +5,7 @@
 #include <backup_stream.h>
 #include <backup/error.h>
 #include "si_logs.h"
+#include "rpl_mi.h"
 
 namespace backup {
 
@@ -56,6 +57,7 @@ class Logger
    void report_state(enum_backup_state);
    void report_vp_time(time_t, bool);
    void report_binlog_pos(const st_bstream_binlog_pos&);
+   void report_master_binlog_pos(const st_bstream_binlog_pos&);
    void report_driver(const char *driver);
    void report_backup_file(char * path);
    void report_stats_pre(const Image_info&);
@@ -267,6 +269,22 @@ void Logger::report_binlog_pos(const st_bstream_binlog_pos &pos)
   DBUG_ASSERT(backup_log);
   backup_log->binlog_pos(pos.pos);
   backup_log->binlog_file(pos.file);
+}
+
+/**
+  Report master's binlog information.
+
+  @todo Write this information to the backup image file.
+*/
+inline
+void Logger::report_master_binlog_pos(const st_bstream_binlog_pos &pos)
+{
+  if (active_mi)
+  {
+    backup_log->master_binlog_pos(pos.pos);
+    backup_log->master_binlog_file(pos.file);
+    backup_log->write_master_binlog_info();
+  }
 }
 
 /**
