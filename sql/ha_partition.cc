@@ -890,10 +890,7 @@ int ha_partition::optimize(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::optimize");
 
-  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
-                                    OPTIMIZE_PARTS,
-                                    thd->lex->alter_info.flags &
-                                    ALTER_OPTIMIZE_PARTITION ? FALSE : TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, OPTIMIZE_PARTS));
 }
 
 
@@ -914,10 +911,7 @@ int ha_partition::analyze(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::analyze");
 
-  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
-                                    ANALYZE_PARTS,
-                                    thd->lex->alter_info.flags &
-                                    ALTER_ANALYZE_PARTITION ? FALSE : TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, ANALYZE_PARTS));
 }
 
 
@@ -938,10 +932,7 @@ int ha_partition::check(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::check");
 
-  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
-                                    CHECK_PARTS,
-                                    thd->lex->alter_info.flags &
-                                    ALTER_CHECK_PARTITION ? FALSE : TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, CHECK_PARTS));
 }
 
 
@@ -962,11 +953,9 @@ int ha_partition::repair(THD *thd, HA_CHECK_OPT *check_opt)
 {
   DBUG_ENTER("ha_partition::repair");
 
-  DBUG_RETURN(handle_opt_partitions(thd, check_opt, 
-                                    REPAIR_PARTS,
-                                    thd->lex->alter_info.flags &
-                                    ALTER_REPAIR_PARTITION ? FALSE : TRUE));
+  DBUG_RETURN(handle_opt_partitions(thd, check_opt, REPAIR_PARTS));
 }
+
 
 /*
   Handle optimize/analyze/check/repair of one partition
@@ -1070,7 +1059,6 @@ static bool print_admin_msg(THD* thd, const char* msg_type,
     thd                      Thread object
     check_opt                Options
     flag                     Optimize/Analyze/Check/Repair flag
-    all_parts                All partitions or only a subset
 
   RETURN VALUE
     >0                        Failure
@@ -1078,7 +1066,7 @@ static bool print_admin_msg(THD* thd, const char* msg_type,
 */
 
 int ha_partition::handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt,
-                                        uint flag, bool all_parts)
+                                        uint flag)
 {
   List_iterator<partition_element> part_it(m_part_info->partitions);
   uint no_parts= m_part_info->no_parts;
@@ -1086,7 +1074,7 @@ int ha_partition::handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt,
   uint i= 0;
   int error;
   DBUG_ENTER("ha_partition::handle_opt_partitions");
-  DBUG_PRINT("enter", ("all_parts %u, flag= %u", all_parts, flag));
+  DBUG_PRINT("enter", ("flag= %u", flag));
 
   do
   {
@@ -1095,7 +1083,7 @@ int ha_partition::handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt,
       when ALTER TABLE <CMD> PARTITION ...
       it should only do named partitions, otherwise all partitions
     */
-    if (all_parts ||
+    if (!(thd->lex->alter_info.flags & ALTER_ADMIN_PARTITION) ||
         part_elem->part_state == PART_CHANGED)
     {
       if (m_is_sub_partitioned)
