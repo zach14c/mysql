@@ -46,8 +46,12 @@ int Logger::write_message(log_level::value level, int error_code,
    switch (level) {
    case log_level::ERROR:
      if (m_save_errors)
-       errors.push_front(new MYSQL_ERROR(::current_thd, error_code,
-                                         MYSQL_ERROR::WARN_LEVEL_ERROR, msg));
+     {
+       error.code= error_code;
+       error.level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+       error.msg= sql_strdup(msg);
+     }
+
      sql_print_error(out);
      push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                          error_code, msg);

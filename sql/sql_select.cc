@@ -31,6 +31,7 @@
 #include "mysql_priv.h"
 #include "sql_select.h"
 #include "sql_cursor.h"
+
 #include <m_ctype.h>
 #include <my_bit.h>
 #include <hash.h>
@@ -271,7 +272,7 @@ bool handle_select(THD *thd, LEX *lex, select_result *result,
   bool res;
   register SELECT_LEX *select_lex = &lex->select_lex;
   DBUG_ENTER("handle_select");
-  MYSQL_SELECT_START();
+  MYSQL_SELECT_START(thd->query);
 
   if (select_lex->master_unit()->is_union() || 
       select_lex->master_unit()->fake_select_lex)
@@ -305,7 +306,8 @@ bool handle_select(THD *thd, LEX *lex, select_result *result,
   if (unlikely(res))
     result->abort();
 
-  MYSQL_SELECT_END();
+  MYSQL_SELECT_DONE((int) res, (ulong) thd->limit_found_rows);
+
   DBUG_RETURN(res);
 }
 
@@ -10596,6 +10598,8 @@ simplify_joins(JOIN *join, List<TABLE_LIST> *join_list, COND *conds, bool top,
     Flatten nested joins that can be flattened.
     no ON expression and not a semi-join => can be flattened.
   */
+  TABLE_LIST *right_neighbor= NULL;
+  bool fix_name_res= FALSE;
   li.rewind();
   while ((table= li++))
   {
@@ -10616,9 +10620,17 @@ simplify_joins(JOIN *join, List<TABLE_LIST> *join_list, COND *conds, bool top,
       {
         tbl->embedding= table->embedding;
         tbl->join_list= table->join_list;
-      }      
+      }
       li.replace(nested_join->join_list);
+      /* Need to update the name resolution table chain when flattening joins */
+      fix_name_res= TRUE;
+      table= *li.ref();
     }
+    if (fix_name_res)
+      table->next_name_resolution_table= right_neighbor ?
+        right_neighbor->first_leaf_for_name_resolution() :
+        NULL;
+    right_neighbor= table;
   }
   DBUG_RETURN(conds); 
 }

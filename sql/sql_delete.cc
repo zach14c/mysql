@@ -37,7 +37,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
                   bool reset_auto_increment)
 {
   bool          will_batch;
-  int		error, loc_error;
+  int		error, loc_error, res;
   TABLE		*table;
   SQL_SELECT	*select=0;
   READ_RECORD	info;
@@ -52,11 +52,15 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   DBUG_ENTER("mysql_delete");
 
   if (open_and_lock_tables(thd, table_list))
+  {
+    MYSQL_DELETE_DONE(1, 0);
     DBUG_RETURN(TRUE);
+  }
   if (!(table= table_list->table))
   {
     my_error(ER_VIEW_DELETE_MERGE_VIEW, MYF(0),
 	     table_list->view_db.str, table_list->view_name.str);
+    MYSQL_DELETE_DONE(1, 0);
     DBUG_RETURN(TRUE);
   }
   thd_proc_info(thd, "init");
@@ -160,7 +164,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   {
     free_underlaid_joins(thd, select_lex);
     thd->row_count_func= 0;
-    MYSQL_DELETE_END();
+    MYSQL_DELETE_DONE(0, 0);
     my_ok(thd, (ha_rows) thd->row_count_func);  // No matching records
     DBUG_RETURN(0);
   }
@@ -178,7 +182,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     delete select;
     free_underlaid_joins(thd, select_lex);
     thd->row_count_func= 0;
-    MYSQL_DELETE_END();
+    MYSQL_DELETE_DONE(0, 0);
     my_ok(thd, (ha_rows) thd->row_count_func);
     /*
       We don't need to call reset_auto_increment in this case, because
@@ -401,17 +405,22 @@ cleanup:
 
   DEBUG_SYNC(thd, "at_delete_end");
 
-  MYSQL_DELETE_END();
   if (error < 0 || (thd->lex->ignore && !thd->is_fatal_error))
   {
-    thd->row_count_func= deleted;
+    /*
+      If a TRUNCATE TABLE was issued, the number of rows should be reported as
+      zero since the exact number is unknown.
+    */
+    thd->row_count_func= reset_auto_increment ? 0 : deleted;
     my_ok(thd, (ha_rows) thd->row_count_func);
     DBUG_PRINT("info",("%ld records deleted",(long) deleted));
   }
-  DBUG_RETURN(error >= 0 || thd->is_error());
+  res= error >= 0 || thd->is_error();
+  MYSQL_DELETE_DONE(res, (ulong) deleted);
+  DBUG_RETURN(res);
 
 err:
-  MYSQL_DELETE_END();
+  MYSQL_DELETE_DONE(1, 0);
   DBUG_RETURN(TRUE);
 }
 
@@ -745,6 +754,7 @@ bool multi_delete::send_data(List<Item> &values)
       }
     }
   }
+  MYSQL_MULTI_DELETE_DONE(0, (ulong) deleted);
   DBUG_RETURN(0);
 }
 

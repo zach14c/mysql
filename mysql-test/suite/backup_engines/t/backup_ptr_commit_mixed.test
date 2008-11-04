@@ -1,0 +1,16 @@
+##########################################################################
+# Author: Hema
+# Date: 2008-07-30
+# Purpose: Test to ensure that point in time recovery is preserves all the
+# objects during backup
+###############################################################################
+
+--source suite/backup_engines/include/backup_engine.inc
+--source suite/backup_engines/include/not_have_falcon.inc
+--source suite/backup_engines/include/not_have_memory.inc
+--source suite/backup_engines/include/not_have_myisam.inc
+
+SET GLOBAL BINLOG_FORMAT='MIXED';
+SET BINLOG_FORMAT='MIXED';
+--source suite/backup_engines/include/backup_ptr_commit.inc
+

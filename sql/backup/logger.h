@@ -54,7 +54,7 @@ class Logger
    void report_start(time_t);
    void report_stop(time_t, bool);
    void report_state(enum_backup_state);
-   void report_vp_time(time_t);
+   void report_vp_time(time_t, bool);
    void report_binlog_pos(const st_bstream_binlog_pos&);
    void report_driver(const char *driver);
    void report_stats_pre(const Image_info&);
@@ -69,7 +69,7 @@ class Logger
    void save_errors();
    void stop_save_errors();
    void clear_saved_errors();
-   MYSQL_ERROR *last_saved_error();
+   util::SAVED_MYSQL_ERROR *last_saved_error();
 
  protected:
 
@@ -81,8 +81,7 @@ class Logger
   int write_message(log_level::value level , int error_code, const char *msg);
 
  private:
-
-  List<MYSQL_ERROR> errors;  ///< Used to store saved errors.
+  util::SAVED_MYSQL_ERROR error;   ///< Used to store saved errors.
   bool m_save_errors;        ///< Flag telling if errors should be saved.
   Backup_log *backup_log;    ///< Backup log interface class.
 };
@@ -173,15 +172,15 @@ void Logger::stop_save_errors()
 /// Delete all saved errors to free resources.
 inline
 void Logger::clear_saved_errors()
-{ 
-  errors.delete_elements();
+{
+  memset(&error, 0, sizeof(error));
 }
 
 /// Return a pointer to most recent saved error.
 inline
-MYSQL_ERROR *Logger::last_saved_error()
+util::SAVED_MYSQL_ERROR *Logger::last_saved_error()
 { 
-  return errors.is_empty() ? NULL : errors.head();
+  return error.code ? &error : NULL;
 }
 
 /// Report start of an operation.
@@ -238,13 +237,19 @@ void Logger::report_state(enum_backup_state state)
   backup_log->state(state);
 }
 
-/// Report validity point creation time.
+/** 
+  Report validity point creation time.
+
+  @param[IN] when   the time of validity point
+  @param[IN] report determines if VP time should be also reported in the
+                    backup_progress log
+*/
 inline
-void Logger::report_vp_time(time_t when)
+void Logger::report_vp_time(time_t when, bool report)
 {
   DBUG_ASSERT(m_state == RUNNING);
   DBUG_ASSERT(backup_log);
-  backup_log->vp_time(when);
+  backup_log->vp_time(when, report);
 }
 
 /** 

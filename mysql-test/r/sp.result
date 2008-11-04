@@ -6802,6 +6802,24 @@ ttt
 2
 drop function func30787;
 drop table t1;
+CREATE TABLE t1 (id INT);
+INSERT INTO t1 VALUES (1),(2),(3),(4);
+CREATE PROCEDURE test_sp()
+SELECT t1.* FROM t1 RIGHT JOIN t1 t2 ON t1.id=t2.id;
+CALL test_sp();
+id
+1
+2
+3
+4
+CALL test_sp();
+id
+1
+2
+3
+4
+DROP PROCEDURE test_sp;
+DROP TABLE t1;
 create table t1(c1 INT);
 create function f1(p1 int) returns varchar(32)
 return 'aaa';
@@ -6960,4 +6978,22 @@ p
 drop procedure p;
 # ------------------------------------------------------------------
 # -- End of 5.1 tests
+# ------------------------------------------------------------------
+DROP FUNCTION IF EXISTS f1;
+DROP TABLE IF EXISTS t_non_existing;
+DROP TABLE IF EXISTS t1;
+CREATE FUNCTION f1() RETURNS INT
+BEGIN
+DECLARE v INT;
+SELECT a INTO v FROM t_non_existing;
+RETURN 1;
+END|
+CREATE TABLE t1 (a INT) ENGINE = myisam;
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1 WHERE a = f1();
+ERROR 42S02: Table 'test.t_non_existing' doesn't exist
+DROP FUNCTION f1;
+DROP TABLE t1;
+# ------------------------------------------------------------------
+# -- End of 6.0 tests
 # ------------------------------------------------------------------

@@ -138,16 +138,19 @@ void Backup_log::state(enum_backup_state state)
   a message to the progress log.
 
   @param[IN]  when  Time of validity point.
+  @param[IN]  report Determines if an entry should be written to the 
+                     backup_progress log.
 
   @note If the time is 0|NULL, nothing is saved in the history data.
 */
-void Backup_log::vp_time(time_t when)
+void Backup_log::vp_time(time_t when, bool report)
 {
   if (when)
   {
-    m_op_hist.vp_time= when; 
-    logger.backup_progress_log_write(m_thd, m_op_hist.backup_id, "backup kernel", 
-                                     when, 0, 0, 0, 0, "vp time");
+    m_op_hist.vp_time= when;
+    if (report)
+      logger.backup_progress_log_write(m_thd, m_op_hist.backup_id, "backup kernel", 
+                                       when, 0, 0, 0, 0, "vp time");
   }
 }
 

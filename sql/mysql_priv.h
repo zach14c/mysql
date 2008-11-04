@@ -46,6 +46,11 @@
 
 #ifdef HAVE_DTRACE
 #define _DTRACE_VERSION 1
+#else
+#undef _DTRACE_VERSION
+#endif
+#ifdef EMBEDDED_LIBRARY
+#undef _DTRACE_VERSION
 #endif
 #include "probes.h"
 
@@ -511,7 +516,7 @@ enum open_table_mode
   Dont report errors for individual rows,
   But just report error on commit (or read ofcourse)
 */
-#define OPTION_ALLOW_BATCH              (ULL(1) << 33) // THD, intern (slave)
+#define OPTION_ALLOW_BATCH              (ULL(1) << 34) // THD, intern (slave)
 
 /**
   Maximum length of time zone name that we support
