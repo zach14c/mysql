@@ -40,7 +40,6 @@ slave-load-tmpdir=          ../../tmp
 
 loose-innodb
 
-
 [ENV]
 MASTER_MYPORT=              @mysqld.1.port
 MASTER_MYSOCK=              @mysqld.1.socket
