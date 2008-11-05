@@ -21,10 +21,6 @@ Country char(3) NOT NULL default '',
 Language char(30) NOT NULL default '',
 Percentage float(3,1) NOT NULL default '0.0'
 );
-Table	Op	Msg_type	Msg_text
-world.Country	analyze	status	OK
-world.City	analyze	status	OK
-world.CountryLanguage	analyze	status	OK
 SELECT COUNT(*) FROM Country;
 COUNT(*)
 239
@@ -828,10 +824,6 @@ Percentage float(3,1) NOT NULL default '0.0',
 PRIMARY KEY  (Country, Language),
 INDEX (Percentage)
 );
-Table	Op	Msg_type	Msg_text
-world.Country	analyze	status	OK
-world.City	analyze	status	OK
-world.CountryLanguage	analyze	status	OK
 show variables like 'join_buffer_size';
 Variable_name	Value
 join_buffer_size	131072
