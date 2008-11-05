@@ -2486,7 +2486,7 @@ int StorageInterface::genTable(TABLE* table, CmdGen* gen)
 		if (charset)
 			storageShare->registerCollation(charset->name, charset);
 
-		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), true);
 		gen->gen("%s  \"%s\" ", sep, nameBuffer);
 		int ret = genType(field, gen);
 
@@ -2632,7 +2632,7 @@ void StorageInterface::genKeyFields(KEY* key, CmdGen* gen)
 		{
 		KEY_PART_INFO *part = key->key_part + n;
 		Field *field = part->field;
-		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), true);
 
 		if (part->key_part_flag & HA_PART_KEY_SEG)
 			gen->gen("%s\"%s\"(%d)", sep, nameBuffer, part->length);
@@ -3557,7 +3557,7 @@ void StorageInterface::mapFields(TABLE *table)
 	for (uint n = 0; n < table->s->fields; ++n)
 		{
 		Field *field = table->field[n];
-		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), false);
 		int id = storageShare->getFieldId(nameBuffer);
 		
 		if (id >= 0)
