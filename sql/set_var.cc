@@ -76,7 +76,7 @@ extern ulong ndb_report_thresh_binlog_mem_usage;
 #endif
 
 extern CHARSET_INFO *character_set_filesystem;
-
+extern my_bool disable_slaves;
 
 static DYNAMIC_ARRAY fixed_show_vars;
 static HASH system_variable_hash;
@@ -550,6 +550,8 @@ static sys_var_thd_ulonglong	sys_tmp_table_size(&vars, "tmp_table_size",
 					   &SV::tmp_table_size);
 static sys_var_bool_ptr  sys_timed_mutexes(&vars, "timed_mutexes",
                                     &timed_mutexes);
+static sys_var_bool_ptr  sys_disable_slaves(&vars, "disable_slave_connections",
+                                             &disable_slaves);
 static sys_var_const_str	sys_version(&vars, "version", server_version);
 static sys_var_const_str	sys_version_comment(&vars, "version_comment",
                                             MYSQL_COMPILATION_COMMENT);
