@@ -21,6 +21,10 @@ Country char(3) NOT NULL default '',
 Language char(30) NOT NULL default '',
 Percentage float(3,1) NOT NULL default '0.0'
 );
+Table	Op	Msg_type	Msg_text
+world.Country	analyze	status	OK
+world.City	analyze	status	OK
+world.CountryLanguage	analyze	status	OK
 SELECT COUNT(*) FROM Country;
 COUNT(*)
 239
@@ -824,6 +828,10 @@ Percentage float(3,1) NOT NULL default '0.0',
 PRIMARY KEY  (Country, Language),
 INDEX (Percentage)
 );
+Table	Op	Msg_type	Msg_text
+world.Country	analyze	status	OK
+world.City	analyze	status	OK
+world.CountryLanguage	analyze	status	OK
 show variables like 'join_buffer_size';
 Variable_name	Value
 join_buffer_size	131072
@@ -837,7 +845,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -867,7 +875,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -1021,7 +1029,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -1144,7 +1152,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -1174,7 +1182,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -1328,7 +1336,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -1451,7 +1459,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -1481,7 +1489,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -1635,7 +1643,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -1758,7 +1766,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -1788,7 +1796,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -1942,7 +1950,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -2069,7 +2077,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -2099,7 +2107,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -2253,7 +2261,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -2283,7 +2291,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -2313,7 +2321,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -2467,7 +2475,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -2497,7 +2505,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -2527,7 +2535,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -2681,7 +2689,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
@@ -2711,7 +2719,7 @@ WHERE City.Country=Country.Code AND
 Country.Name LIKE 'L%' AND City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND 
 Country.Name LIKE 'L%' AND City.Population > 100000;
@@ -2741,7 +2749,7 @@ CountryLanguage.Percentage > 50;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	CountryLanguage	ALL	PRIMARY,Percentage	NULL	NULL	NULL	984	Using where
 1	SIMPLE	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where; Using join buffer
-1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	SIMPLE	City	ref	Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT City.Name, Country.Name, CountryLanguage.Language
 FROM City,Country,CountryLanguage
 WHERE City.Country=Country.Code AND
@@ -2895,7 +2903,7 @@ WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AN
 City.Population > 100000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	range	PRIMARY,Name	Name	52	NULL	10	Using index condition; Using MRR
-1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	8	Using where; Using join buffer
+1	PRIMARY	City	ref	Population,Country	Country	3	world.Country.Code	18	Using where; Using join buffer
 SELECT Name FROM City
 WHERE City.Country IN (SELECT Code FROM Country WHERE Country.Name LIKE 'L%') AND
 City.Population > 100000;
