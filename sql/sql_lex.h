@@ -1876,6 +1876,13 @@ struct LEX: public Query_tables_list
     }
     return FALSE;
   }
+
+  void clear_db_list()
+  {
+    db_list.empty();
+  }
+
+  int add_db_to_list(LEX_STRING *name);
 };
 
 
