@@ -32,6 +32,14 @@ ADD_DEFINITIONS(-DHAVE_YASSL)
 # Set debug options
 SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DFORCE_INIT_OF_VARS")
 
+# Do not use SAFEMALLOC for Windows builds, as Debug CRT has the same functionality
+# Neither SAFE_MUTEX works on Windows and it has been explicitely undefined in 
+# my_pthread.h
+IF(NOT WIN32)
+  SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
+  SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
+ENDIF(NOT WIN32)
+
 # Note that some engines are always compiled in, MyISAM, MyISAMMRG and HEAP,
 # these three plugin defintions are dummys for symmetry
 
@@ -169,7 +177,6 @@ IF(MSVC)
     STRING(REPLACE "/MDd" "/MTd" CMAKE_CXX_FLAGS_DEBUG_INIT     ${CMAKE_CXX_FLAGS_DEBUG_INIT})
 
     # generate map files, set stack size (see bug#20815)
-    SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MAP /MAPINFO:EXPORTS")
     SET(thread_stack_size 1048576)
     SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:${thread_stack_size}")
     ADD_DEFINITIONS(-DPTHREAD_STACK_MIN=${thread_stack_size})
