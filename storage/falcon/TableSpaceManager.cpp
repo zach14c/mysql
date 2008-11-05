@@ -155,7 +155,7 @@ TableSpace* TableSpaceManager::getTableSpace(const char *name)
 TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fileName, bool repository, TableSpaceInit *tsInit)
 {
 	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::createTableSpace");
-	syncDDL.lock(Shared);
+	syncDDL.lock(Exclusive);
 	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
 	int type = (repository) ? TABLESPACE_TYPE_REPOSITORY : TABLESPACE_TYPE_TABLESPACE;
 	int id = (int) sequence->update(1, database->getSystemTransaction());
@@ -168,26 +168,26 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 		throw SQLError(TABLESPACE_DATAFILE_EXIST_ERROR, "table space file name \"%s\" already exists\n", fileName);
 		}
 		
+	bool createdFile = false;
 	try
 		{
 		tableSpace->save();
 		
 		if (!repository)
 			tableSpace->create();
-			
-		syncDDL.unlock();
-		database->commitSystemTransaction();
+		createdFile = true;
 		add(tableSpace);
+		database->serialLog->logControl->createTableSpace.append(tableSpace);
 		}
 	catch (...)
 		{
+		if (createdFile)
+			IO::deleteFile(fileName);
+		database->rollbackSystemTransaction();
 		delete tableSpace;
-
 		throw;
 		}
-
-	database->serialLog->logControl->createTableSpace.append(tableSpace);
-	
+	database->commitSystemTransaction();
 	return tableSpace;
 }
 
