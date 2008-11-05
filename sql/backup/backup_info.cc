@@ -543,6 +543,10 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
   while ((s= it++))
   {
     backup::String db_name(*s);
+
+    // Ignore the database if it has already been inserted into the catalogue.    
+    if (has_db(db_name))
+      continue;
     
     if (is_internal_db_name(&db_name))
     {
