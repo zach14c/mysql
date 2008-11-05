@@ -513,6 +513,7 @@ SELECT City.Name, Country.Name FROM City,Country
 set join_cache_level=8;
 set join_buffer_size=256;
 
+--replace_column 9 #
 EXPLAIN
 SELECT City.Name, Country.Name FROM City,Country
   WHERE City.Country=Country.Code AND City.Population > 3000000;
