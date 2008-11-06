@@ -96,7 +96,7 @@ void DeferredIndexWalker::initialize(DeferredIndex *deferredIdx, IndexKey *index
 DeferredIndexWalker::~DeferredIndexWalker(void)
 {
 	if (deferredIndex)
-		deferredIndex->releaseRef();
+		deferredIndex->release();
 }
 
 DINode* DeferredIndexWalker::next(void)

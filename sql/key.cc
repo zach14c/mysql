@@ -368,7 +368,7 @@ void key_unpack(String *to,TABLE *table,uint idx)
     {
       CHARSET_INFO *cs= field->charset();
       field->val_str(&tmp);
-      if (cs->mbmaxlen > 1 && tmp.length() > 0 &&
+      if (cs->mbmaxlen > 1 &&
           table->field[key_part->fieldnr - 1]->field_length !=
           key_part->length)
       {
@@ -382,7 +382,7 @@ void key_unpack(String *to,TABLE *table,uint idx)
         uint charpos, char_length= key_part->length / cs->mbmaxlen;
         if ((charpos= my_charpos(cs, tmp.ptr(),
                                  tmp.ptr() + tmp.length(),
-                                 char_length)) < key_part->length)
+                                 char_length)) < tmp.length())
           tmp.length(charpos);
       }
       

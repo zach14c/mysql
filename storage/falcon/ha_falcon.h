@@ -114,7 +114,7 @@ public:
 
 	void			getDemographics(void);
 	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
-	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online);
 	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
@@ -176,12 +176,12 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
-	Field				**fieldMap;
+	Field					**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
-	TABLE_SHARE *share;
-	uint				recordLength;
+	TABLE_SHARE			*share;
+	uint					recordLength;
 	int					lastRecord;
 	int					nextRecord;
 	int					indexErrorId;
@@ -189,12 +189,12 @@ public:
 	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
-	bool				haveStartKey;
-	bool				haveEndKey;
-	bool				tableLocked;
-	bool				tempTable;
-	bool				lockForUpdate;
-	bool				indexOrder;
+	bool					haveStartKey;
+	bool					haveEndKey;
+	bool					tableLocked;
+	bool					tempTable;
+	bool					lockForUpdate;
+	bool					indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;

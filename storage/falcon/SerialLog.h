@@ -34,6 +34,7 @@ static const unsigned int altLogFlag	= 0x80000000;
 static const int srlSignature			= 123456789;
 static const int SLT_HASH_SIZE			= 1001;
 static const int SRL_WINDOW_SIZE		= 1048576;
+#define SRL_MIN_WINDOWS   10
 
 // States for recovery objects
 
@@ -154,6 +155,7 @@ public:
 	void			blockUpdates(void);
 	int				getBlockSize(void);
 	SerialLogWindow* setWindowInterest(void);
+	void            setWriteError(int sqlCode, const char* errorText);
 	
 	TableSpaceManager	*tableSpaceManager;
 	SerialLogFile		*file1;

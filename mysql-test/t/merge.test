@@ -1274,7 +1274,6 @@ DROP TABLE t1, t2, t3, t4;
 
 --echo End of 5.1 tests
 
-
 --echo #
 --echo # An additional test case for Bug#27430 Crash in subquery code
 --echo # when in PS and table DDL changed after PREPARE
@@ -1623,8 +1622,6 @@ SELECT * FROM tm1;
 DROP TRIGGER t2_au;
 DROP FUNCTION f1;
 DROP TABLE tm1, t1, t2, t3, t4, t5;
-
-
 
 --echo End of 6.0 tests
 

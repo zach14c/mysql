@@ -39,9 +39,8 @@ noinst_HEADERS =	config-win.h config-netware.h lf.h my_bit.h \
 			my_handler.h my_time.h \
 			my_vle.h my_user.h my_atomic.h atomic/nolock.h \
 			atomic/rwlock.h atomic/x86-gcc.h atomic/generic-msvc.h \
-			atomic/gcc_builtins.h my_libwrap.h my_stacktrace.h \
-			wqueue.h
-
+                        atomic/gcc_builtins.h my_libwrap.h my_stacktrace.h \
+                        wqueue.h waiting_threads.h
 EXTRA_DIST =        mysql.h.pp mysql/plugin.h.pp
 
 # Remove built files and the symlinked directories

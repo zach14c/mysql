@@ -63,7 +63,7 @@ static void mi_check_print_msg(HA_CHECK *param,	const char* msg_type,
   THD* thd = (THD*)param->thd;
   Protocol *protocol= thd->protocol;
   uint length, msg_length;
-  char msgbuf[MI_MAX_MSG_BUF];
+  char msgbuf[HA_MAX_MSG_BUF];
   char name[NAME_LEN*2+2];
 
   msg_length= my_vsnprintf(msgbuf, sizeof(msgbuf), fmt, args);
@@ -1482,7 +1482,6 @@ C_MODE_START
 my_bool index_cond_func_myisam(void *arg)
 {
   ha_myisam *h= (ha_myisam*)arg;
-  /*if (h->in_range_read)*/
   if (h->end_range)
   {
     if (h->compare_key2(h->end_range) > 0)
@@ -1497,7 +1496,6 @@ C_MODE_END
 int ha_myisam::index_init(uint idx, bool sorted)
 { 
   active_index=idx;
-  //in_range_read= FALSE;
   if (pushed_idx_cond_keyno == idx)
     mi_set_index_cond_func(file, index_cond_func_myisam, this);
   return 0; 
@@ -1605,13 +1603,7 @@ int ha_myisam::read_range_first(const key_range *start_key,
                                 bool sorted /* ignored */)
 {
   int res;
-  //if (!eq_range_arg)
-  //  in_range_read= TRUE;
-
   res= handler::read_range_first(start_key, end_key, eq_range_arg, sorted);
-
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 
@@ -1619,8 +1611,6 @@ int ha_myisam::read_range_first(const key_range *start_key,
 int ha_myisam::read_range_next()
 {
   int res= handler::read_range_next();
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 

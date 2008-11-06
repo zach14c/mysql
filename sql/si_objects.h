@@ -617,13 +617,6 @@ bool tablespace_exists(THD *thd, Obj *ts);
 
 Obj *is_tablespace(THD *thd, Obj *ts);
 
-/**
-  Return a description of the tablespace useful for communicating with the
-  user.
-*/
-
-const String *get_tablespace_description(Obj *ts);
-
 ///////////////////////////////////////////////////////////////////////////
 
 //
