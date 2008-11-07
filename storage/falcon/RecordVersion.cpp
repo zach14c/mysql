@@ -55,6 +55,9 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 		{
 		priorVersion->addRef();
 		recordNumber = oldVersion->recordNumber;
+
+		if (priorVersion->state == recChilled)
+			priorVersion->thaw();
 		
 		if (trans == priorVersion->getTransaction())
 			oldVersion->setSuperceded (true);

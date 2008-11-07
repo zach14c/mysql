@@ -128,6 +128,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 	SerialLogTransaction *srlTrans = NULL;
 	int savepointId;
 	
+	// Generate one serial log record per write window. To ensure that
+	// record updates are grouped by savepoint, start a new serial
+	// log record for each savepoint. Several serial log records may
+	// be generated for one savepoint.
+	
 	for (RecordVersion *record = records; record;)
 		{
 		START_RECORD(srlUpdateRecords, "SRLUpdateRecords::append");
@@ -169,7 +174,8 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			if (record->state == recNoChill)
 				continue;
 
-			// If this is a different savepoint, start another record
+			// If this is a different savepoint, break out of the inner loop
+			// and start another serial log record
 			
 			if (chillRecords && record->savePointId != savepointId)
 				break;
@@ -178,20 +184,34 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			tableSpaceId = table->dbb->tableSpaceId;
 			Stream stream;
 			
-			// Thawed records are indicated by a non-zero virtual offset, and
-			// are already in the serial log. If this record is to be re-chilled,
-			// then no need to get the record data or set the virtual offset.
+			// A non-zero virtual offset indicates that the record was previously
+			// chilled and thawed and is already in the serial log.
+			//
+			// If this record is being re-chilled, then there is no need to get
+			// the record data or set the virtual offset.
+			//
+			// If this record is being committed, then there is nothing to do.
 
-			if (chillRecords && record->state != recDeleted && record->virtualOffset != 0)
+			if (record->virtualOffset != 0)
 				{
-				int chillBytes = record->getEncodedSize();
-				chill(transaction, record, chillBytes);
-				log->chilledRecords++;
-				log->chilledBytes += chillBytes;
-				ASSERT(transaction->thawedRecords > 0);
+				if (chillRecords && record->state != recDeleted)
+					{
+					int chillBytes = record->getEncodedSize();
 
-				if (transaction->thawedRecords)
-					transaction->thawedRecords--;
+					chill(transaction, record, chillBytes);
+					
+					log->chilledRecords++;
+					log->chilledBytes += chillBytes;
+					
+					ASSERT(transaction->thawedRecords > 0);
+
+					if (transaction->thawedRecords)
+						transaction->thawedRecords--;
+					}
+				else
+					{
+					// Record is already in serial log
+					}
 
 				continue;
 				}
@@ -219,9 +239,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 
 			ASSERT(record->recordNumber >= 0);
 			ASSERT(log->writePtr > (UCHAR *)log->writeWindow->buffer);
+			
 			record->setVirtualOffset(log->writeWindow->currentLength + log->writeWindow->virtualOffset);
 			uint32 sectionId = table->dataSectionId;
 			log->updateSectionUseVector(sectionId, tableSpaceId, 1);
+			
 			putInt(tableSpaceId);
 			putInt(record->getPriorVersion() ? sectionId : -(int) sectionId - 1);
 			putInt(record->recordNumber);
@@ -233,7 +255,7 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 				chilledRecordsWindow++;
 				chilledBytesWindow += stream.totalLength;
 				}
-			} // next record
+			} // next record version
 		
 		int len = (int) (log->writePtr - start);
 		
@@ -253,7 +275,7 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			transaction->chilledBytes += chilledBytesWindow;
 			windowNumber = (uint32)log->writeWindow->virtualOffset / SRL_WINDOW_SIZE;
 			}
-		} // next window
+		} // next serial log record and write window
 }
 
 void SRLUpdateRecords::read(void)
