@@ -6145,6 +6145,8 @@ WARN_PLUGIN_DELETE_BUILTIN
 
 WARN_PLUGIN_BUSY
   eng "Plugin is busy and will be uninstalled on shutdown"
+ER_QUERY_CACHE_DISABLED
+  eng "Query cache is disabled; restart the server with query_cache_type=1 to enable it"
 
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
