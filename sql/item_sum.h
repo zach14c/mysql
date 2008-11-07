@@ -488,6 +488,7 @@ public:
   void reset_field() {} // not used
   void update_field() {} // not used
   virtual void no_rows_in_result() {}
+  bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   enum Item_result result_type () const { return val.traits->type(); }
   virtual void calculate_val_and_count();

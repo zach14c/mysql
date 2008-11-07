@@ -1,0 +1,31 @@
+*** Bug #39342 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (a_int INT, b_year YEAR) Engine = 'falcon';
+INSERT INTO t1 values
+(1989, 1989), (1990, 1990), (1991, 1991), (1992, 1992), 
+(1993, 1993), (1994, 1994), (1995, 1995), (1996, 1996), 
+(1997, 1997), (1998, 1998), (1999, 1999), (2000, 2000);
+ALTER TABLE t1 ADD INDEX index_year (b_year);
+SELECT * FROM t1 WHERE b_year < 1992 ORDER BY b_year ASC;
+a_int	b_year
+1989	1989
+1990	1990
+1991	1991
+SELECT * FROM t1 WHERE b_year > 1992 ORDER BY b_year ASC;
+a_int	b_year
+1993	1993
+1994	1994
+1995	1995
+1996	1996
+1997	1997
+1998	1998
+1999	1999
+2000	2000
+SELECT * FROM t1 WHERE b_year = 1992 ORDER BY b_year ASC;
+a_int	b_year
+1992	1992
+SELECT count(*) FROM t1;
+count(*)
+12
+DROP TABLE t1;
