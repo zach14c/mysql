@@ -124,12 +124,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 {
 	uint32 chilledRecordsWindow = 0;
 	uint32 chilledBytesWindow   = 0;
-	uint32 windowNumber         = 0;
 	SerialLogTransaction *srlTrans = NULL;
 	int savepointId;
 	
 	// Generate one serial log record per write window. To ensure that
-	// record updates are grouped by savepoint, start a new serial
+	// chilled records are grouped by savepoint, start a new serial
 	// log record for each savepoint. Several serial log records may
 	// be generated for one savepoint.
 	
@@ -165,7 +164,6 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			if (record->state == recChilled)
 				{
 				transaction->chillPoint = &record->nextInTrans;
-				
 				continue;
 				}
 				
@@ -235,11 +233,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 				 byteCount(stream.totalLength) + stream.totalLength >= end)
 				break;
 			
-			// Set the virtual offset of the record in the serial log
-
 			ASSERT(record->recordNumber >= 0);
 			ASSERT(log->writePtr > (UCHAR *)log->writeWindow->buffer);
 			
+			// Set the virtual offset of the record in the serial log
+
 			record->setVirtualOffset(log->writeWindow->currentLength + log->writeWindow->virtualOffset);
 			uint32 sectionId = table->dataSectionId;
 			log->updateSectionUseVector(sectionId, tableSpaceId, 1);
@@ -259,10 +257,14 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 		
 		int len = (int) (log->writePtr - start);
 		
+		// The length field is 0, update if necessary
+		
 		if (len > 0)
 			putFixedInt(len, lengthPtr);
 		
-		if (record)
+		// Flush record data, if any, and force the creation of a new serial log window
+		
+		if (record && len > 0)
 			log->flush(true, 0, &sync);
 		else
 			sync.unlock();
@@ -273,7 +275,7 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			log->chilledBytes   += chilledBytesWindow;
 			transaction->chilledRecords += chilledRecordsWindow;
 			transaction->chilledBytes += chilledBytesWindow;
-			windowNumber = (uint32)log->writeWindow->virtualOffset / SRL_WINDOW_SIZE;
+//			uint32 windowNumber = (uint32)log->writeWindow->virtualOffset / SRL_WINDOW_SIZE;
 			}
 		} // next serial log record and write window
 }
