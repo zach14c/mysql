@@ -1910,10 +1910,6 @@ JOIN::optimize()
     (select_options & (SELECT_DESCRIBE | SELECT_NO_JOIN_CACHE)) |
     (select_lex->ftfunc_list->elements ?  SELECT_NO_JOIN_CACHE : 0);
 
-  if (!select_lex->sj_nests.is_empty())
-    setup_semijoin_dups_elimination(this, select_opts_for_readinfo,
-                                    no_jbuf_after);
-
   // No cache for MATCH == 'Don't use join buffering when we use MATCH'.
   if (make_join_readinfo(this, select_opts_for_readinfo, no_jbuf_after))
     DBUG_RETURN(1);
@@ -9619,6 +9615,10 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
   bool sorted= 1;
   DBUG_ENTER("make_join_readinfo");
 
+  if (!join->select_lex->sj_nests.is_empty() &&
+      setup_semijoin_dups_elimination(join, options, no_jbuf_after))
+    DBUG_RETURN(TRUE);
+
   for (i=join->const_tables ; i < join->tables ; i++)
   {
     JOIN_TAB *tab=join->join_tab+i;
@@ -12485,15 +12485,26 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
   /* LooseScan Strategy */
   {
     POSITION *first=join->positions+pos->first_loosescan_table; 
-    /* Check that there's no interleaving w/ other tables */
-    if ((pos->first_loosescan_table != MAX_TABLES) &&
-        (first->table->emb_sj_nest->sj_inner_tables & remaining_tables) &&
-        s->emb_sj_nest != first->table->emb_sj_nest)
+    /* 
+      LooseScan strategy can't handle interleaving between tables from the 
+      semi-join that LooseScan is handling and any other tables.
+
+      If we were considering LooseScan for the join prefix (1)
+         and the table we're adding creates an interleaving (2)
+      then 
+         stop considering loose scan
+    */
+    if ((pos->first_loosescan_table != MAX_TABLES) &&   // (1)
+        (first->table->emb_sj_nest->sj_inner_tables & remaining_tables) && //(2)
+        s->emb_sj_nest != first->table->emb_sj_nest)                       //(2)
     {
       pos->first_loosescan_table= MAX_TABLES;
     }
 
-    /* Start loosescan nest if we're at the first LooseScan table */
+    /*
+      If we got an option to use LooseScan for the current table, start
+      considering LooseScan strateg
+    */
     if (loose_scan_pos->read_time != DBL_MAX)
     {
       pos->first_loosescan_table= idx;
@@ -12502,19 +12513,18 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
                                   s->emb_sj_nest->nested_join->sj_corr_tables;
     }
     
-    /* 
-      Ok have put all loose scan's inner and outer correlated tables into the
-      prefix.
-    */
     if ((pos->first_loosescan_table != MAX_TABLES) && 
         !(remaining_tables & pos->loosescan_need_tables))
     {
-      /* At the last LooseScan table */
+      /* 
+        Ok we have LooseScan plan and also have all LooseScan sj-nest's
+        inner tables and outer correlated tables into the prefix.
+      */
+
       first=join->positions + pos->first_loosescan_table; 
       uint n_tables= my_count_bits(first->table->emb_sj_nest->sj_inner_tables);
       /* Got a complete LooseScan range. Calculate its cost */
       double reopt_cost, reopt_rec_count, sj_inner_fanout;
-
       /*
         The same problem as with FirstMatch - we need to save POSITIONs
         somewhere but reserving space for all cases would require too
@@ -12527,7 +12537,10 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
                                  &reopt_rec_count, 
                                  &reopt_cost, &sj_inner_fanout);
       /*
-        We don't yet know what are the other strategies, so pick the
+        We don't yet have any other strategies that could handle this
+        semi-join nest (the other options are Duplicate Elimination or
+        Materialization, which need at least the same set of tables in 
+        the join prefix to be considered) so unconditionally pick the 
         LooseScan.
       */
       pos->sj_strategy= SJ_OPT_LOOSE_SCAN;
@@ -12604,7 +12617,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
       mat_read_time += mat_info->materialization_cost.total_cost() +
                        prefix_rec_count * mat_info->lookup_cost.total_cost();
 
-      if (mat_read_time < *current_read_time)
+      if (mat_read_time < *current_read_time || join->cur_dups_producing_tables)
       {
         /*
           NOTE: When we pick to use SJM[-Scan] we don't memcpy its POSITION
@@ -12663,6 +12676,14 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
       prefix_cost += curpos.read_time;
     }
 
+    /*
+      Use the strategy if 
+       * it is cheaper then what we've had, or
+       * we haven't picked any other semi-join strategy yet
+      In the second case, we pick this strategy unconditionally because
+      comparing cost without semi-join duplicate removal with cost with
+      duplicate removal is not an apples-to-apples comparison.
+    */
     if (prefix_cost < *current_read_time || join->cur_dups_producing_tables)
     {
       pos->sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
@@ -12765,8 +12786,12 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
       dups_cost += write_cost + full_lookup_cost;
       
       /*
-        Duplicate Weedout is the catch-all default, so we should pick it if
-        there is unhandled sj-fanout.
+        Use the strategy if 
+         * it is cheaper then what we've had, or
+         * we haven't picked any other semi-join strategy yet
+        The second part is necessary because this strategy is the last one
+        to consider (it needs "the most" tables in the prefix) and we can't
+        leave duplicate-producing tables unhandled by any strategy.
       */
       if (dups_cost < *current_read_time || join->cur_dups_producing_tables)
       {
