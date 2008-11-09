@@ -334,13 +334,34 @@ enum_nested_loop_state sub_select_sjm(JOIN *join, JOIN_TAB *join_tab,
 
 
 /**
-  Information about a position of table within a join order. Used in join
-  optimization.
+  A position of table within a join order. This structure is primarily used
+  as a part of join->positions and join->best_positions arrays.
+
+  One POSITION element contains information about:
+   - Which table is accessed
+   - Which access method was chosen
+      = Its cost and #of output records
+   - Semi-join strategy choice. Note that there are two different
+     representation formats:
+      1. The one used during join optimization
+      2. The one used at plan refinement/code generation stage.
+      We call fix_semijoin_strategies_for_picked_join_order() to switch
+      between #1 and #2. See that function's comment for more details.
+
+   - Semi-join optimization state. When we're running join optimization, 
+     we main a state for every semi-join strategy which are various
+     variables that tell us if/at which point we could consider applying the
+     strategy.  
+     The variables are really a function of join prefix but they are too
+     expensive to re-caclulate for every join prefix we consider, so we
+     maintain current state in join->positions[#tables_in_prefix]. See
+     advance_sj_state() for details.
 */
+
 typedef struct st_position
 {
   /*
-    The "fanout": number of output rows that will be produced (after
+    The "fanout" -  number of output rows that will be produced (after
     pushed down selection condition is applied) per each row combination of
     previous tables.
   */
@@ -382,13 +403,23 @@ typedef struct st_position
     must be ignored.
   */
   uint sj_strategy;
-
-  /* Current optimization state: Loose Scan strategy */
-  uint        first_loosescan_table;
-  table_map   loosescan_need_tables;
-  ;
+  /*
+    Valid only after fix_semijoin_strategies_for_picked_join_order() call:
+    if sj_strategy!=SJ_OPT_NONE, this is the number of subsequent tables that
+    are covered by the specified semi-join strategy
+  */
+  uint n_sj_tables;
 
 /* LooseScan strategy members */
+
+  /* The first (i.e. driving) table we're doing loose scan for */
+  uint        first_loosescan_table;
+  /* 
+     Tables that need to be in the prefix before we can calculate the cost
+     of using LooseScan strategy.
+  */
+  table_map   loosescan_need_tables;
+
   /*
     keyno  -  Planning to do LooseScan on this key. If keyuse is NULL then 
               this is a full index scan, otherwise this is a ref+loosescan
@@ -402,31 +433,48 @@ typedef struct st_position
 /* SJ-Materialization[-scan] strategy */
   /*
     0         - not using semi-join materialization
-    sj_mat_*  - using semi-join materialization, the value specifies whether 
+    SJ_MAT_*  - using semi-join materialization, the value specifies whether 
                 this is a first/last/just some inner tab.
   */
   uint use_sj_mat;  // final(one for strategy instance)
 
 
 /* FirstMatch strategy */
-  uint first_firstmatch_table; //state
-  table_map first_firstmatch_rtbl; // state Tables before the firstmatch table
-  table_map firstmatch_need_tables; // state
+  /*
+    Index of the first inner table that we intend to handle with this
+    strategy
+  */
+  uint first_firstmatch_table;
+  /*
+    Tables that were not in the join prefix when we've started considering 
+    FirstMatch strategy.
+  */
+  table_map first_firstmatch_rtbl;
+  /* 
+    Tables that need to be in the prefix before we can calculate the cost
+    of using FirstMatch strategy.
+   */
+  table_map firstmatch_need_tables;
 
 
 /* Duplicate Weedout strategy */
-  table_map dupsweedout_tables;
+  /* The first table that the strategy will need to handle */
   uint  first_dupsweedout_table;
-
-/* SJM-Scan strategy */
-  // When all these tables are in the prefix, the fanout is gone?
-  table_map sjm_scan_need_tables; // state
-  uint      sjm_scan_last_inner;  // state
-  
   /*
-    Used at plan refinement stage.
+    Tables that we will need to have in the prefix to do the weedout step
+    (all inner and all outer that the involved semi-joins are correlated with)
   */
-  uint n_sj_tables;
+  table_map dupsweedout_tables;
+
+/* SJ-Materialization-Scan strategy */
+  /* The last inner table (valid once we're after it) */
+  uint      sjm_scan_last_inner;
+  /*
+    Tables that we need to have in the prefix to calculate the correct cost.
+    Basically, we need all inner tables and outer tables mentioned in the
+    semi-join's ON expression so we can correctly account for fanout.
+  */
+  table_map sjm_scan_need_tables;
 } POSITION;
 
 
@@ -558,8 +606,7 @@ public:
   /* Finally picked QEP. This is result of join optimization */
   POSITION best_positions[MAX_TABLES+1];
 
-/******* Join optimization members start *******/
-  /* The following is current state of the join optimization */
+/******* Join optimization state members start *******/
   /*
     pointer - we're doing optimization for a semi-join materialization nest.
     NULL    - otherwise
@@ -573,12 +620,23 @@ public:
     partial join (valid only during join optimizer run).
   */
   nested_join_map cur_embedding_map;
-
+  
+  /*
+    Bitmap of inner tables of semi-join nests that have a proper subset of
+    their tables in the current join prefix. That is, of those semi-join
+    nests that have their tables both in and outside of the join prefix.
+  */
   table_map cur_sj_inner_tables;
+  
+  /*
+    Bitmap of semi-join inner tables that are in the join prefix and for
+    which there's no provision for how to eliminate semi-join duplicates
+    they produce.
+  */
   table_map cur_dups_producing_tables;
 
   /* We also maintain a stack of join optimization states in * join->positions[] */
-/******* Join optimization members end *******/
+/******* Join optimization state members end *******/
 
 
   Next_select_func first_select;

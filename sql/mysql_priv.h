@@ -398,8 +398,8 @@ enum open_table_mode
 /*
   Subquery materialization-related constants
 */
-#define MATERIALIZATION_HEAP_LOOKUP_COST 0.05
-#define MATERIALIZATION_DISK_LOOKUP_COST 1.0
+#define HEAP_TEMPTABLE_LOOKUP_COST 0.05
+#define DISK_TEMPTABLE_LOOKUP_COST 1.0
 
 /** Don't pack string keys shorter than this (if PACK_KEYS=1 isn't used). */
 #define KEY_DEFAULT_PACK_LENGTH 8
