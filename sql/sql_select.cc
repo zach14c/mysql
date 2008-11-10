@@ -99,7 +99,7 @@ static bool make_simple_join(JOIN *join,TABLE *tmp_table);
 static void make_outerjoin_info(JOIN *join);
 static COND *
 make_cond_after_sjm(Item *cond, table_map tables, table_map sjm_tables);
-static bool make_join_select(JOIN *join,SQL_SELECT *select,COND *item);
+static bool make_join_select(JOIN *join, Item *item);
 static bool make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after);
 static bool only_eq_ref_tables(JOIN *join, ORDER *order, table_map tables);
 static void update_depend_map(JOIN *join);
@@ -268,6 +268,8 @@ bool subquery_types_allow_materialization(THD *thd,
                                           Item_in_subselect *in_subs,
                                           bool *scan_allowed);
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
+TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
+                                          SJ_TMP_TABLE *sjtbl);
 
 /**
   This handles SELECT with and without UNION.
@@ -1088,10 +1090,6 @@ static bool sj_table_is_included(JOIN *join, JOIN_TAB *join_tab)
 }
 
 
-TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
-                                          SJ_TMP_TABLE *sjtbl);
-
-
 /*
   Setup the strategies to eliminate semi-join duplicates.
   
@@ -1644,8 +1642,6 @@ JOIN::optimize()
     /* Handle the case where we have an OUTER JOIN without a WHERE */
     conds=new Item_int((longlong) 1,1);	// Always true
   }
-  select_= make_select(*all_tables, const_table_map,
-                      const_table_map, conds, 1, &error);
   if (error)
   {						/* purecov: inspected */
     error= -1;					/* purecov: inspected */
@@ -1693,7 +1689,7 @@ JOIN::optimize()
   {
     conds=new Item_int((longlong) 0,1);	// Always false
   }
-  if (make_join_select(this, select_, conds))
+  if (make_join_select(this, conds))
   {
     zero_result_cause=
       "Impossible WHERE noticed after reading const tables";
@@ -2917,7 +2913,6 @@ JOIN::destroy()
   if (exec_tmp_table2)
     free_tmp_table(thd, exec_tmp_table2);
   destroy_sj_tmp_tables(this);
-  delete select_;
   delete_dynamic(&keyuse);
   delete procedure;
   DBUG_RETURN(error);
@@ -8461,12 +8456,10 @@ make_outerjoin_info(JOIN *join)
 }
 
 
-static bool
-make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
+static bool make_join_select(JOIN *join, Item *cond)
 {
   THD *thd= join->thd;
   DBUG_ENTER("make_join_select");
-  if (select_)
   {
     add_not_null_conds(join);
     table_map used_tables;
@@ -8533,8 +8526,7 @@ make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
       Step #2: Extract WHERE/ON parts
     */
     table_map save_used_tables= 0;
-    used_tables=((select_->const_tables=join->const_table_map) |
-		 OUTER_REF_TABLE_BIT | RAND_TABLE_BIT);
+    used_tables= join->const_table_map | OUTER_REF_TABLE_BIT | RAND_TABLE_BIT;
     JOIN_TAB *tab;
     table_map current_map;
     for (uint i=join->const_tables ; i < join->tables ; i++)
@@ -8622,9 +8614,7 @@ make_join_select(JOIN *join,SQL_SELECT *select_,COND *cond)
           tab->type == JT_EQ_REF)
       {
         DBUG_EXECUTE("where",print_where(tmp,tab->table->alias, QT_ORDINARY););
-	SQL_SELECT *sel= tab->select= ((SQL_SELECT*)
-                                       thd->memdup((uchar*) select_,
-                                                   sizeof(*select_)));
+	SQL_SELECT *sel= tab->select= new (thd->mem_root) SQL_SELECT;
 	if (!sel)
 	  DBUG_RETURN(1);			// End of memory
         /*

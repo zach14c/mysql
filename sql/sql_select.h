@@ -716,7 +716,6 @@ public:
   TABLE_LIST *tables_list;           ///<hold 'tables' parameter of mysql_select
   List<TABLE_LIST> *join_list;       ///< list of joined tables in reverse order
   COND_EQUAL *cond_equal;
-  SQL_SELECT *select_;                ///<created in optimisation phase
   JOIN_TAB *return_tab;              ///<used only for outer joins
   Item **ref_pointer_array; ///<used pointer reference for this select
   // Copy of above to be used with different lists
@@ -790,7 +789,6 @@ public:
     need_tmp= 0;
     hidden_group_fields= 0; /*safety*/
     error= 0;
-    select_= 0;
     return_tab= 0;
     ref_pointer_array= items0= items1= items2= items3= 0;
     ref_pointer_array_size= 0;

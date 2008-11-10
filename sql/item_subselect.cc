@@ -1698,6 +1698,8 @@ Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
     In some optimisation cases we will not need this Item_in_optimizer
     object, but we can't know it here, but here we need address correct
     reference on left expresion.
+
+    //psergey: he means confluent cases like "... IN (SELECT 1)"
   */
   if (!optimizer)
   {
