@@ -27,7 +27,5 @@ LDADD 		= $(top_builddir)/unittest/mytap/libmytap.a \
 
 EXTRA_DIST       = CMakeLists.txt 
 
-EXTRA_DIST       = CMakeLists.txt 
-
 # Don't update the files from bitkeeper
 %::SCCS/s.%

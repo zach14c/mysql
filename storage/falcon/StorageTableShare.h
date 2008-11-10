@@ -96,7 +96,8 @@ enum StorageError {
 	StorageErrorTableNotEmpty		= -108,
 	StorageErrorTableSpaceNotExist	= -109,
 	StorageErrorDeviceFull			= -110,
-	StorageErrorTableSpaceDataFileExist	= -111
+	StorageErrorTableSpaceDataFileExist	= -111,
+	StorageErrorIOErrorSerialLog	= -112
 	};
 	
 static const int StoreErrorIndexShift	= 10;
@@ -114,7 +115,7 @@ public:
 	virtual void		lockIndexes(bool exclusiveLock=false);
 	virtual void		unlockIndexes(void);
 	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
-	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
+	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql, bool online);
 	virtual bool		validateIndex(int indexId, StorageIndexDesc *indexTarget);
 	virtual void		deleteIndexes();
 	virtual int			numberIndexes();
