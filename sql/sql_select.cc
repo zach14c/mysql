@@ -1246,7 +1246,6 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
 
         SJ_TMP_TABLE::TAB sjtabs[MAX_TABLES];
         SJ_TMP_TABLE::TAB *last_tab= sjtabs;
-        //table_map cur_map= join->const_table_map | PSEUDO_TABLE_BITS;
         uint jt_rowid_offset= 0; // # tuple bytes are already occupied (w/o NULL bytes)
         uint jt_null_bits= 0;    // # null bits in tuple bytes
         uint rowid_keep_flags= JOIN_TAB::CALL_POSITION | JOIN_TAB::KEEP_ROWID;
@@ -1642,13 +1641,7 @@ JOIN::optimize()
     /* Handle the case where we have an OUTER JOIN without a WHERE */
     conds=new Item_int((longlong) 1,1);	// Always true
   }
-  if (error)
-  {						/* purecov: inspected */
-    error= -1;					/* purecov: inspected */
-    DBUG_PRINT("error",("Error: make_select() failed"));
-    DBUG_RETURN(1);
-  }
-  
+  error= 0;
   reset_nj_counters(join_list);
   make_outerjoin_info(this);
 
@@ -8617,6 +8610,7 @@ static bool make_join_select(JOIN *join, Item *cond)
 	SQL_SELECT *sel= tab->select= new (thd->mem_root) SQL_SELECT;
 	if (!sel)
 	  DBUG_RETURN(1);			// End of memory
+        sel->read_tables= sel->const_tables= join->const_table_map; // psergey-new
         /*
           If tab is an inner table of an outer join operation,
           add a match guard to the pushed down predicate.
