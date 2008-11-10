@@ -4514,14 +4514,8 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
           rows *= join->map2table[tableno]->table->quick_condition_rows;
         sjm->rows= min(sjm->rows, rows);
       }
-
       memcpy(sjm->positions, join->best_positions + join->const_tables, 
              sizeof(POSITION) * n_tables);
-
-      for (uint j= 0; j < sjm->tables ; j++)
-        sjm->positions[j].use_sj_mat= SJ_MAT_INNER;
-      sjm->positions[0].use_sj_mat |= SJ_MAT_FIRST;
-      sjm->positions[sjm->tables - 1].use_sj_mat |= SJ_MAT_LAST;
 
       /*
         Calculate temporary table parameters and usage costs
@@ -5642,7 +5636,7 @@ set_position(JOIN *join,uint idx,JOIN_TAB *table,KEYUSE *key)
   join->positions[idx].ref_depend_map= 0;
 
   join->positions[idx].loosescan_key= MAX_KEY; /* Not a LooseScan */
-  join->positions[idx].use_sj_mat= FALSE;
+  join->positions[idx].sj_strategy= SJ_OPT_NONE;
   join->positions[idx].use_join_buffer= FALSE;
 
   /* Move the const table as down as possible in best_ref */
@@ -5948,7 +5942,6 @@ public:
       pos->key=             best_loose_scan_start_key;
       pos->loosescan_key=   best_loose_scan_key;
       pos->loosescan_parts= best_max_loose_keypart + 1;
-      pos->use_sj_mat=      0;
       pos->use_join_buffer= FALSE;
       pos->table=           tab;
       // todo need ref_depend_map ?
@@ -6513,7 +6506,6 @@ best_access_path(JOIN      *join,
   pos->table=        s;
   pos->ref_depend_map= best_ref_depends_map;
   pos->loosescan_key= MAX_KEY;
-  pos->use_sj_mat= 0;
   pos->use_join_buffer= best_uses_jbuf;
    
   loose_scan_opt.save_to_position(s, loose_scan_pos);
@@ -7715,7 +7707,6 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       memcpy(join->best_positions + first, 
              sjm->positions, sizeof(POSITION) * sjm->tables);
       join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
-      join->best_positions[first].use_sj_mat |= SJ_MAT_SCAN;
       join->best_positions[first].n_sj_tables= sjm->tables;
       /* 
         Do what advance_sj_state did: re-run best_access_path for every table
@@ -9597,6 +9588,8 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
   uint i;
   bool statistics= test(!(join->select_options & SELECT_DESCRIBE));
   bool sorted= 1;
+  uint first_sjm_table= MAX_TABLES;
+  uint last_sjm_table= MAX_TABLES;
   DBUG_ENTER("make_join_readinfo");
 
   if (!join->select_lex->sj_nests.is_empty() &&
@@ -9623,9 +9616,11 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
             (uchar*)join->thd->alloc(tab->loosescan_key_len)))
         return TRUE;
     }
-    if (join->best_positions[i].use_sj_mat & SJ_MAT_FIRST)
+    if (sj_is_materialize_strategy(join->best_positions[i].sj_strategy))
     {
       /* This is a start of semi-join nest */
+      first_sjm_table= i;
+      last_sjm_table= i + join->best_positions[i].n_sj_tables;
       if (i == join->const_tables)
         join->first_select= sub_select_sjm;
       else
@@ -9709,6 +9704,8 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
       /*
 	If previous table use cache
         If the incoming data set is already sorted don't use cache.
+        Also don't use cache if this is the first table in semi-join
+          materialization nest.
       */
       table->status=STATUS_NO_RECORD;
       using_join_cache= FALSE;
@@ -9716,27 +9713,27 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
           join->best_positions[i].use_join_buffer && 
           tab->use_quick != 2 && !tab->first_inner && i <= no_jbuf_after &&
           !tab->loosescan_match_tab &&
-          !(join->best_positions[i].use_sj_mat & SJ_MAT_FIRST))
-        // psergey-todo: ^ replace with ->strategy = SJ_MATERIALIZE*
+          !sj_is_materialize_strategy(join->best_positions[i].sj_strategy))
       {
         JOIN_TAB *first_tab= join->join_tab+join->const_tables;
         uint n_tables= i-join->const_tables;
         /*
-          We normally put all join tables into the join buffer, except for
-          the join prefix.
-          If we're doing semi-join materialization, then we need to only
-          keep track of tables from within the semi-join nest.
+          We normally put all preceding tables into the join buffer, except
+          for the constant tables.
+          If we're inside a semi-join materialization nest, e.g.
+
+             outer_tbl1  outer_tbl2  ( inner_tbl1, inner_tbl2 ) ...
+                                                       ^-- we're here
+
+          then we need to put into the join buffer only the tables from
+          within the nest.
         */
-        if (join->best_positions[i].use_sj_mat)
+        if (i >= first_sjm_table && i < last_sjm_table)
         {
-          first_tab= tab;
-          n_tables= 0;
-          while (!join->best_positions[n_tables].use_sj_mat & SJ_MAT_FIRST)
-          {
-            n_tables++;
-            first_tab--;
-          }
+          n_tables= i - first_sjm_table; /* will be >0 if we got here */
+          first_tab= join->join_tab + first_sjm_table;
         }
+
         if ((options & SELECT_DESCRIBE) || 
             !join_init_cache(join->thd, first_tab, n_tables))
 	{
@@ -21161,6 +21158,7 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
   else
   {
     table_map used_tables=0;
+    uint last_sjm_table= MAX_TABLES;
     for (uint i=0 ; i < join->tables ; i++)
     {
       JOIN_TAB *tab=join->join_tab+i;
@@ -21516,28 +21514,24 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
             extra.append(prev_table->pos_in_table_list->alias);
           extra.append(STRING_WITH_LEN(")"));
         }
-        else if (join->best_positions[i].use_sj_mat)
+        uint sj_strategy= join->best_positions[i].sj_strategy;
+        if (sj_is_materialize_strategy(sj_strategy))
         {
-          uint sjmat= join->best_positions[i].use_sj_mat;
-          if ((sjmat & (SJ_MAT_FIRST | SJ_MAT_LAST)) == (SJ_MAT_FIRST |
-                                                         SJ_MAT_LAST))
-          {
+          if (join->best_positions[i].n_sj_tables == 1)
             extra.append(STRING_WITH_LEN("; Materialize"));
-            if (sjmat & SJ_MAT_SCAN)
-              extra.append(STRING_WITH_LEN("; Scan"));
-          }
           else
           {
-            if (sjmat & SJ_MAT_FIRST)
-            {
-              extra.append(STRING_WITH_LEN("; Start materialize"));
-              if (sjmat & SJ_MAT_SCAN)
-                extra.append(STRING_WITH_LEN("; Scan"));
-            }
-            if (sjmat & SJ_MAT_LAST)
-              extra.append(STRING_WITH_LEN("; End materialize"));
+            last_sjm_table= i + join->best_positions[i].n_sj_tables;
+            extra.append(STRING_WITH_LEN("; Start materialize"));
           }
+          if (sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
+              extra.append(STRING_WITH_LEN("; Scan"));
         }
+        else if (last_sjm_table == i)
+        {
+          extra.append(STRING_WITH_LEN("; End materialize"));
+        }
+
 
         for (uint part= 0; part < tab->ref.key_parts; part++)
         {

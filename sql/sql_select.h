@@ -327,11 +327,6 @@ enum_nested_loop_state end_write_group(JOIN *join, JOIN_TAB *join_tab,
 enum_nested_loop_state sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, 
                                       bool end_of_records);
 
-#define SJ_MAT_FIRST 1 
-#define SJ_MAT_INNER 2
-#define SJ_MAT_LAST  4
-#define SJ_MAT_SCAN  8
-
 
 /**
   A position of table within a join order. This structure is primarily used
@@ -429,16 +424,6 @@ typedef struct st_position
   uint loosescan_key;  // final (one for strategy instance )
   uint loosescan_parts; /* Number of keyparts to be kept distinct */
   
-
-/* SJ-Materialization[-scan] strategy */
-  /*
-    0         - not using semi-join materialization
-    SJ_MAT_*  - using semi-join materialization, the value specifies whether 
-                this is a first/last/just some inner tab.
-  */
-  uint use_sj_mat;  // final(one for strategy instance)
-
-
 /* FirstMatch strategy */
   /*
     Index of the first inner table that we intend to handle with this
@@ -564,6 +549,10 @@ public:
 #define SJ_OPT_MATERIALIZE  4
 #define SJ_OPT_MATERIALIZE_SCAN  5
 
+inline bool sj_is_materialize_strategy(uint strategy)
+{
+  return strategy >= SJ_OPT_MATERIALIZE;
+}
 
 class JOIN :public Sql_alloc
 {
