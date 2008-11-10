@@ -2660,7 +2660,8 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   var_str->value= res;
   var_str->value_length= str_length;
   my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
-  if (file_log && log_state)
+  if ((file_log && log_state) ||
+      (backup_log && log_state))
   {
     /*
       Added support for backup log types.

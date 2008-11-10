@@ -14,10 +14,31 @@ connection con1;
 --echo Clear the logs.
 SET @@global.backup_history_log = 'ON';
 SET @@global.backup_progress_log = 'ON';
+
+#
+# BUG#40219 No startup options for backup_*_logname.
+#
+--echo Display backup variable values from startup options file.
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_history%';
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_progress%';
+SHOW VARIABLES LIKE 'log_backup_output';
+
+--echo Set the backup log file names to default values.
+SET @@global.backup_history_log_file = DEFAULT;
+SET @@global.backup_progress_log_file = DEFAULT;
+SET @@global.log_backup_output = 'TABLE';
+
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
 
---echo Display backup variables
+--echo See that the log names have been reset.
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_history%';
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_progress%';
+
 SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
