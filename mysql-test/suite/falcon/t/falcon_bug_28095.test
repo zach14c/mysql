@@ -7,6 +7,15 @@
 #    server restart with --shutdown_server. We do the
 #    restart with the help of include/restart_mysqld.inc.
 #
+
+####
+# Temp: Due to Bug#40636 (falcon_bug_28095 test fails with 
+# "Server failed to restart" in valgrind runs) this test is 
+# disabled in valgrind runs.
+# Re-enable when "soft" server restart works with Valgrind.
+####
+--source include/not_valgrind.inc
+
 --echo *** Bug #28095: First phase ***
 
 # ----------------------------------------------------- #
