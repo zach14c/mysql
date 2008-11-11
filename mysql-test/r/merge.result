@@ -832,7 +832,7 @@ ERROR HY000: Unable to open underlying table which is differently defined or of 
 DROP TABLE t1, t2;
 CREATE TABLE t2(a INT) ENGINE=MERGE UNION=(t3);
 SELECT * FROM t2;
-ERROR 42S02: Table 'test.t3' doesn't exist
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 DROP TABLE t2;
 CREATE TABLE t1(a INT, b TEXT);
 CREATE TABLE tm1(a TEXT, b INT) ENGINE=MERGE UNION=(t1);
@@ -897,17 +897,19 @@ drop table t2;
 drop table t1;
 CREATE TABLE tm1(a INT) ENGINE=MERGE UNION=(t1, t2);
 SELECT * FROM tm1;
-ERROR 42S02: Table 'test.t1' doesn't exist
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 CHECK TABLE tm1;
 Table	Op	Msg_type	Msg_text
 test.tm1	check	Error	Table 'test.t1' doesn't exist
+test.tm1	check	Error	Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 test.tm1	check	error	Corrupt
 CREATE TABLE t1(a INT);
 SELECT * FROM tm1;
-ERROR 42S02: Table 'test.t2' doesn't exist
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 CHECK TABLE tm1;
 Table	Op	Msg_type	Msg_text
 test.tm1	check	Error	Table 'test.t2' doesn't exist
+test.tm1	check	Error	Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 test.tm1	check	error	Corrupt
 CREATE TABLE t2(a BLOB);
 SELECT * FROM tm1;
@@ -1181,7 +1183,7 @@ c1
 3
 RENAME TABLE t2 TO t5;
 SELECT * FROM t3 ORDER BY c1;
-ERROR 42S02: Table 'test.t2' doesn't exist
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 RENAME TABLE t5 TO t2;
 SELECT * FROM t3 ORDER BY c1;
 c1
@@ -1215,7 +1217,7 @@ UNLOCK TABLES;
 # 4. Alter table rename.
 ALTER TABLE t2 RENAME TO t5;
 SELECT * FROM t3 ORDER BY c1;
-ERROR 42S02: Table 'test.t2' doesn't exist
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
 ALTER TABLE t5 RENAME TO t2;
 SELECT * FROM t3 ORDER BY c1;
 c1

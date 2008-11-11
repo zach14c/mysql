@@ -142,7 +142,10 @@ void push_warning_printf(THD *thd, MYSQL_ERROR::enum_warning_level level,
   char    warning[ERRMSGSIZE+20];
   DBUG_ENTER("push_warning_printf");
   DBUG_PRINT("enter",("warning: %u", code));
-  
+
+  DBUG_ASSERT(code != 0);
+  DBUG_ASSERT(format != NULL);
+
   va_start(args,format);
   my_vsnprintf(warning, sizeof(warning), format, args);
   va_end(args);
