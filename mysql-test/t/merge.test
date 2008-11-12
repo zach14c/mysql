@@ -461,7 +461,7 @@ CREATE TABLE t2(a INT) ENGINE=MERGE UNION=(t1);
 SELECT * FROM t2;
 DROP TABLE t1, t2;
 CREATE TABLE t2(a INT) ENGINE=MERGE UNION=(t3);
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM t2;
 DROP TABLE t2;
 
@@ -553,11 +553,11 @@ drop table t1;
 #             CREATE TABLE fails
 #
 CREATE TABLE tm1(a INT) ENGINE=MERGE UNION=(t1, t2);
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM tm1;
 CHECK TABLE tm1;
 CREATE TABLE t1(a INT);
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM tm1;
 CHECK TABLE tm1;
 CREATE TABLE t2(a BLOB);
@@ -784,7 +784,7 @@ DROP TABLE t4;
 --echo # 2. Normal rename.
 SELECT * FROM t3 ORDER BY c1;
 RENAME TABLE t2 TO t5;
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM t3 ORDER BY c1;
 RENAME TABLE t5 TO t2;
 SELECT * FROM t3 ORDER BY c1;
@@ -802,7 +802,7 @@ UNLOCK TABLES;
 --echo #
 --echo # 4. Alter table rename.
 ALTER TABLE t2 RENAME TO t5;
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM t3 ORDER BY c1;
 ALTER TABLE t5 RENAME TO t2;
 SELECT * FROM t3 ORDER BY c1;
@@ -1274,7 +1274,6 @@ DROP TABLE t1, t2, t3, t4;
 
 --echo End of 5.1 tests
 
-
 --echo #
 --echo # An additional test case for Bug#27430 Crash in subquery code
 --echo # when in PS and table DDL changed after PREPARE
@@ -1623,8 +1622,6 @@ SELECT * FROM tm1;
 DROP TRIGGER t2_au;
 DROP FUNCTION f1;
 DROP TABLE tm1, t1, t2, t3, t4, t5;
-
-
 
 --echo End of 6.0 tests
 

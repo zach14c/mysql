@@ -3629,11 +3629,13 @@ bool mysql_create_table_no_lock(THD *thd,
 #endif /* HAVE_READLINK */
   {
     if (create_info->data_file_name)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "DATA DIRECTORY option ignored");
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                          "DATA DIRECTORY");
     if (create_info->index_file_name)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "INDEX DIRECTORY option ignored");
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                          "INDEX DIRECTORY");
     create_info->data_file_name= create_info->index_file_name= 0;
   }
   create_info->table_options=db_options;
@@ -4211,7 +4213,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       table->next_local= save_next_local;
       thd->open_options&= ~extra_open_options;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-      if (table->table && table->table->part_info)
+      if (table->table)
       {
         /*
           Set up which partitions that should be processed
@@ -4219,11 +4221,13 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
         */
         Alter_info *alter_info= &lex->alter_info;
 
-        if (alter_info->flags & ALTER_ANALYZE_PARTITION ||
-            alter_info->flags & ALTER_CHECK_PARTITION ||
-            alter_info->flags & ALTER_OPTIMIZE_PARTITION ||
-            alter_info->flags & ALTER_REPAIR_PARTITION)
+        if (alter_info->flags & ALTER_ADMIN_PARTITION)
         {
+          if (!table->table->part_info)
+          {
+            my_error(ER_PARTITION_MGMT_ON_NONPARTITIONED, MYF(0));
+            DBUG_RETURN(TRUE);
+          }
           uint no_parts_found;
           uint no_parts_opt= alter_info->partition_names.elements;
           no_parts_found= set_part_state(alter_info, table->table->part_info,
@@ -5347,8 +5351,7 @@ compare_tables(THD *thd,
   new_field_it.init(alter_info->create_list);
   tmp_new_field_it.init(tmp_alter_info.create_list);
 
-  /*
-    Go through fields and check if the original ones are compatible
+  /*   Go through fields and check if the original ones are compatible
     with new table.
   */
   for (f_ptr= table->field, new_field= new_field_it++,
@@ -5362,10 +5365,11 @@ compare_tables(THD *thd,
       new_field->charset= create_info->default_table_charset;
 
     /* Don't pack rows in old tables if the user has requested this. */
-    if ((tmp_new_field->flags & BLOB_FLAG) ||
-        tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
-        create_info->row_type != ROW_TYPE_FIXED)
-      create_info->table_options|= HA_OPTION_PACK_RECORD;
+      if (create_info->row_type == ROW_TYPE_DYNAMIC ||
+	(tmp_new_field->flags & BLOB_FLAG) ||
+	tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
+  	create_info->row_type != ROW_TYPE_FIXED)
+        create_info->table_options|= HA_OPTION_PACK_RECORD;
 
     /* Check how fields have been modified */
     if (alter_info->flags & ALTER_CHANGE_COLUMN)

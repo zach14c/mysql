@@ -137,7 +137,7 @@ reap;
 connection con1;
 
 #Show results
---replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 #
+--replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 # 16 #
 --query_vertical SELECT ob.* FROM mysql.backup_history AS ob JOIN backup_logs.t1_res AS t1 ON ob.backup_id = t1.id;
 --replace_column 1 # 3 # 4 #
 SELECT obp.* FROM mysql.backup_progress AS obp JOIN backup_logs.t1_res AS t1 ON obp.backup_id = t1.id;
@@ -188,7 +188,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR complete';
 DELETE FROM backup_logs.t1_res;
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history WHERE command LIKE "RESTORE FROM%";
 INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
---replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 #
+--replace_column 1 # 2 # 3 # 4 # 10 # 11 # 12 # 15 # 16 #
 --query_vertical SELECT ob.* FROM mysql.backup_history AS ob JOIN backup_logs.t1_res AS t1 ON ob.backup_id = t1.id;
 --replace_column 1 # 3 # 4 #
 SELECT obp.* FROM mysql.backup_progress AS obp JOIN backup_logs.t1_res AS t1 ON obp.backup_id = t1.id;

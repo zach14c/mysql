@@ -2942,7 +2942,7 @@ void do_rmdir(struct st_command *command)
   int error;
   static DYNAMIC_STRING ds_dirname;
   const struct command_arg rmdir_args[] = {
-    {"dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to remove"}
+    { "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to remove" }
   };
   DBUG_ENTER("do_rmdir");
 

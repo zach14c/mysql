@@ -90,6 +90,7 @@ sub init_pattern {
 
 sub collect_test_cases ($$) {
   my $suites= shift; # Semicolon separated list of test suites
+  my %found_suites;
   my $opt_cases= shift;
   my $cases= []; # Array of hash(one hash for each testcase)
 
@@ -99,6 +100,7 @@ sub collect_test_cases ($$) {
   foreach my $suite (split(",", $suites))
   {
     push(@$cases, collect_one_suite($suite, $opt_cases));
+    $found_suites{$suite}= 1;
   }
 
   if ( @$opt_cases )
@@ -110,6 +112,12 @@ sub collect_test_cases ($$) {
     {
       my $found= 0;
       my ($sname, $tname, $extension)= split_testname($test_name_spec);
+      if (defined($sname) && !defined($found_suites{$sname}))
+      {
+	$found_suites{$sname}= 1;
+	push(@$cases, collect_one_suite($sname));
+      }
+
       foreach my $test ( @$cases )
       {
 	# test->{name} is always in suite.name format
@@ -671,6 +679,7 @@ sub process_opts_file {
     }
   }
 }
+
 
 ##############################################################################
 #

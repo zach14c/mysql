@@ -26,7 +26,7 @@ WalkDeferred::WalkDeferred(DeferredIndex *deferredIdx, Transaction *transaction,
 
 WalkDeferred::~WalkDeferred(void)
 {
-	deferredIndex->releaseRef();
+	deferredIndex->release();
 }
 
 Record* WalkDeferred::getNext(bool lockForUpdate)

@@ -333,9 +333,6 @@ ibool	srv_stats_on_metadata	= TRUE;
 ibool	srv_use_doublewrite_buf	= TRUE;
 ibool	srv_use_checksums = TRUE;
 
-ibool	srv_set_thread_priorities = TRUE;
-int	srv_query_thread_priority = 0;
-
 /* TRUE if the Address Windowing Extensions of Windows are used; then we must
 disable adaptive hash indexes */
 ibool	srv_use_awe			= FALSE;

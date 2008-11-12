@@ -1,0 +1,144 @@
+#
+# Different cases involving locking that has failed with Maria
+#
+# Can't test with embedded server
+-- source include/not_embedded.inc
+
+--disable_warnings
+drop table if exists t1,t2,t3;
+drop view if exists v1;
+--enable_warnings
+
+# Check that a lock merge works.
+create table t1 (c1 int) engine=maria;
+create table t2 (c1 int) engine=maria;
+create table t3 (c1 int) engine=maria;
+lock tables t1 write, t2 write, t3 write, t1 as t4 read;
+alter table t2 add column c2 int;
+drop table t1, t2, t3;
+
+#
+# Bug #39395 maria_extra: Assertion `share->reopen == 1' failed
+#
+# Test problem when using locks on many tables and droping a table that
+# is to-be-locked by another thread. Dropped table locked twice
+#
+
+connect (locker,localhost,root,,);
+connect (reader,localhost,root,,);
+connect (writer,localhost,root,,);
+
+connection locker;
+create table t1 (a int) engine=maria;
+create table t2 (a int) engine=maria;
+lock table t1 write, t2 write, t1 as t1_2 write, t2 as t2_2 write;
+connection reader;
+send insert t1 select * from t2;
+connection locker;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Table lock" and info = "insert t1 select * from t2";
+--source include/wait_condition.inc
+drop table t2;
+--echo "table dropped";
+connection reader;
+--error 1146
+reap;
+connection locker;
+drop table t1;
+connection default;
+
+#
+# We need to disconnect and reconnect for the bug to appear. This is still
+# part of Bug#39395
+#
+
+disconnect locker;
+disconnect reader;
+disconnect writer;
+connect (locker,localhost,root,,);
+connect (reader,localhost,root,,);
+connect (writer,localhost,root,,);
+
+connection locker;
+create table t1 (a int, b int) engine=maria;
+create table t2 (c int, d int) engine=maria;
+insert into t1 values(1,1);
+insert into t1 values(2,2);
+insert into t2 values(1,2);
+lock table t1 read;
+connection writer;
+update t1,t2 set c=a where b=d;
+connection reader;
+select c from t2;
+connection locker;
+unlock tables;
+drop table t1;
+drop table t2;
+
+connection locker;
+create table t1 (a int) engine=maria;
+create table t2 (a int) engine=maria;
+lock table t1 write, t2 write, t1 as t1_2 write, t2 as t2_2 write;
+connection reader;
+send insert t1 select * from t2;
+connection locker;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Table lock" and info = "insert t1 select * from t2";
+--source include/wait_condition.inc
+drop table t2;
+connection reader;
+--error 1146
+reap;
+connection locker;
+drop table t1;
+connection default;
+disconnect locker;
+disconnect reader;
+disconnect writer;
+
+#
+# Bug#39396 Maria: ha_maria.cc:2415: assertion in ha_maria::store_lock()
+#
+# Test alter table and a concurrent multi update
+# (This will force update to reopen tables)
+#
+
+create table t1 (a int, b int) engine=maria;
+insert into t1 values (1, 2), (2, 3), (3, 4);
+create table t2 (a int) engine=maria;
+insert into t2 values (10), (20), (30);
+create view v1 as select a as b, a/10 as a from t2;
+
+connect (locker,localhost,root,,test);
+connection locker;
+lock table t1 write;
+
+connect (changer,localhost,root,,test);
+connection changer;
+send alter table t1 add column c int default 100 after a;
+
+connect (updater,localhost,root,,test);
+connection updater;
+sleep 2;
+send update t1, v1 set t1.b=t1.a+t1.b+v1.b where t1.a=v1.a;
+
+connection locker;
+sleep 2;
+unlock tables;
+
+connection changer;
+reap;
+
+connection updater;
+reap;
+select * from t1;
+select * from t2;
+drop view v1;
+drop table t1, t2;
+
+connection default;
+disconnect updater;
+disconnect changer;
+disconnect locker;

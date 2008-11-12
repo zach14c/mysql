@@ -259,13 +259,16 @@ int thd_tablespace_op(const THD *thd)
 
 
 extern "C"
-const char *set_thd_proc_info(THD *thd, const char *info, 
-                              const char *calling_function, 
-                              const char *calling_file, 
+const char *set_thd_proc_info(THD *thd, const char *info,
+                              const char *calling_function,
+                              const char *calling_file,
                               const unsigned int calling_line)
 {
+  if (!thd)
+    thd= current_thd;
+
   const char *old_info= thd->proc_info;
-  DBUG_PRINT("proc_info", ("%s:%d  %s", calling_file, calling_line, 
+  DBUG_PRINT("proc_info", ("%s:%d  %s", calling_file, calling_line,
                            (info != NULL) ? info : "(null)"));
 #if defined(ENABLED_PROFILING)
   thd->profiling.status_change(info, calling_function, calling_file, calling_line);
@@ -304,20 +307,25 @@ void thd_inc_row_count(THD *thd)
   thd->row_count++;
 }
 
-/*
+
+/**
   Dumps a text description of a thread, its security context
   (user, host) and the current query.
 
-  SYNOPSIS
-    thd_security_context()
-    thd                 current thread context
-    buffer              pointer to preferred result buffer
-    length              length of buffer
-    max_query_len       how many chars of query to copy (0 for all)
+  @param thd current thread context
+  @param buffer pointer to preferred result buffer
+  @param length length of buffer
+  @param max_query_len how many chars of query to copy (0 for all)
 
-  RETURN VALUES
-    pointer to string
+  @req LOCK_thread_count
+  
+  @note LOCK_thread_count mutex is not necessary when the function is invoked on
+   the currently running thread (current_thd) or if the caller in some other
+   way guarantees that access to thd->query is serialized.
+ 
+  @return Pointer to string
 */
+
 extern "C"
 char *thd_security_context(THD *thd, char *buffer, unsigned int length,
                            unsigned int max_query_len)
@@ -326,6 +334,16 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
   const Security_context *sctx= &thd->main_security_ctx;
   char header[64];
   int len;
+  /*
+    The pointers thd->query and thd->proc_info might change since they are
+    being modified concurrently. This is acceptable for proc_info since its
+    values doesn't have to very accurate and the memory it points to is static,
+    but we need to attempt a snapshot on the pointer values to avoid using NULL
+    values. The pointer to thd->query however, doesn't point to static memory
+    and has to be protected by LOCK_thread_count or risk pointing to
+    uninitialized memory.
+  */
+  const char *proc_info= thd->proc_info;
 
   len= my_snprintf(header, sizeof(header),
                    "MySQL thread id %lu, query id %lu",
@@ -351,10 +369,10 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
     str.append(sctx->user);
   }
 
-  if (thd->proc_info)
+  if (proc_info)
   {
     str.append(' ');
-    str.append(thd->proc_info);
+    str.append(proc_info);
   }
 
   if (thd->query)
@@ -605,6 +623,10 @@ THD::THD()
   peer_port= 0;					// For SHOW PROCESSLIST
   transaction.m_pending_rows_event= 0;
   transaction.on= 1;
+  wt_thd_lazy_init(&transaction.wt, &variables.wt_deadlock_search_depth_short,
+                                    &variables.wt_timeout_short,
+                                    &variables.wt_deadlock_search_depth_long,
+                                    &variables.wt_timeout_long);
 #ifdef SIGNAL_WITH_VIO_CLOSE
   active_vio = 0;
 #endif
@@ -860,6 +882,7 @@ void THD::cleanup(void)
   debug_sync_end_thread(this);
 #endif /* defined(ENABLED_DEBUG_SYNC) */
 
+  wt_thd_destroy(&transaction.wt);
   mysql_ha_cleanup(this);
   delete_dynamic(&user_var_events);
   hash_free(&user_vars);
@@ -867,7 +890,7 @@ void THD::cleanup(void)
   my_free((char*) variables.time_format, MYF(MY_ALLOW_ZERO_PTR));
   my_free((char*) variables.date_format, MYF(MY_ALLOW_ZERO_PTR));
   my_free((char*) variables.datetime_format, MYF(MY_ALLOW_ZERO_PTR));
-  
+
   sp_cache_clear(&sp_proc_cache);
   sp_cache_clear(&sp_func_cache);
 
@@ -938,7 +961,6 @@ THD::~THD()
 
   mdl_context_destroy(&mdl_context);
   mdl_context_destroy(&handler_mdl_context);
-
   ha_close_connection(this);
   mysql_audit_release(this);
   plugin_thdvar_cleanup(this);
@@ -2937,7 +2959,10 @@ extern "C" int thd_non_transactional_update(const MYSQL_THD thd)
 
 extern "C" int thd_binlog_format(const MYSQL_THD thd)
 {
-  return (int) thd->variables.binlog_format;
+  if (mysql_bin_log.is_open() && (thd->options & OPTION_BIN_LOG))
+    return (int) thd->variables.binlog_format;
+  else
+    return BINLOG_FORMAT_UNSPEC;
 }
 
 extern "C" void thd_mark_transaction_to_rollback(MYSQL_THD thd, bool all)

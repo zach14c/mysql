@@ -69,6 +69,7 @@ private:
   bool m_invalidated;
 };
 
+#include <waiting_threads.h>
 
 class Relay_log_info;
 
@@ -77,6 +78,7 @@ class Load_log_event;
 class Slave_log_event;
 class sp_rcontext;
 class sp_cache;
+class Lex_input_stream;
 class Parser_state;
 class Rows_log_event;
 
@@ -442,6 +444,10 @@ struct system_variables
   DATE_TIME_FORMAT *datetime_format;
   DATE_TIME_FORMAT *time_format;
   my_bool sysdate_is_now;
+
+  /* deadlock detection */
+  ulong wt_timeout_short, wt_deadlock_search_depth_short;
+  ulong wt_timeout_long, wt_deadlock_search_depth_long;
 };
 
 
@@ -794,7 +800,7 @@ struct st_savepoint {
   Ha_trx_info         *ha_list;
 };
 
-enum xa_states {XA_NOTR=0, XA_ACTIVE, XA_IDLE, XA_PREPARED};
+enum xa_states {XA_NOTR=0, XA_ACTIVE, XA_IDLE, XA_PREPARED, XA_ROLLBACK_ONLY};
 extern const char *xa_state_names[];
 
 typedef struct st_xid_state {
@@ -802,6 +808,8 @@ typedef struct st_xid_state {
   XID  xid;                           // transaction identifier
   enum xa_states xa_state;            // used by external XA only
   bool in_thd;
+  /* Error reported by the Resource Manager (RM) to the Transaction Manager. */
+  uint rm_error;
 } XID_STATE;
 
 extern pthread_mutex_t LOCK_xid_cache;
@@ -1560,6 +1568,7 @@ public:
     THD_TRANS stmt;			// Trans for current statement
     bool on;                            // see ha_enable_transaction()
     XID_STATE xid_state;
+    WT_THD wt;
     Rows_log_event *m_pending_rows_event;
 
     /*

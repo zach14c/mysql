@@ -190,11 +190,9 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
 }
 
 
-Stream::Stream(Logger &log, ::String *backupdir, 
-               LEX_STRING orig_loc, int flags)
-  :m_flags(flags), m_block_size(0), m_log(log)
+Stream::Stream(Logger &log, ::String *path, int flags)
+  :m_path(path), m_flags(flags), m_block_size(0), m_log(log)
 {
-  prepare_path(backupdir, orig_loc);
   bzero(&stream, sizeof(stream));
   bzero(&buf, sizeof(buf));
   bzero(&mem, sizeof(mem));
@@ -203,79 +201,6 @@ Stream::Stream(Logger &log, ::String *backupdir,
   state= CLOSED;
 }
 
-/**
-  Prepare path for access.
-
-  This method takes the backupdir and the file name specified on the backup
-  command (orig_loc) and forms a combined path + file name as follows:
-
-    1. If orig_loc has a relative path, make it relative to backupdir
-    2. If orig_loc has a hard path, use it.
-    3. If orig_loc has no path, append to backupdir
-
-  @param[IN]  backupdir  The backupdir system variable value.
-  @param[IN]  orig_loc   The path + file name specified in the backup command.
-
-  @returns 0
-*/
-int Stream::prepare_path(::String *backupdir, 
-                         LEX_STRING orig_loc)
-{
-  char fix_path[FN_REFLEN]; 
-  char full_path[FN_REFLEN]; 
-
-  /*
-    Prepare the path using the backupdir iff no relative path
-    or no hard path included.
-
-    Relative paths are formed from the backupdir system variable.
-
-    Case 1: Backup image file name has relative path. 
-            Make relative to backupdir.
-
-    Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
-            If backupdir = '/dev/daily' then the
-            calculated path becomes
-            '/dev/monthly/dec.bak'
-
-    Case 2: Backup image file name has no path or has a subpath. 
-
-    Example BACKUP DATABASE ... TO 'week2.bak'
-            If backupdir = '/dev/weekly/' then the
-            calculated path becomes
-            '/dev/weekly/week2.bak'
-    Example BACKUP DATABASE ... TO 'jan/day1.bak'
-            If backupdir = '/dev/monthly/' then the
-            calculated path becomes
-            '/dev/monthly/jan/day1.bak'
-
-    Case 3: Backup image file name has hard path. 
-
-    Example BACKUP DATATBASE ... TO '/dev/dec.bak'
-            If backupdir = '/dev/daily/backup' then the
-            calculated path becomes
-            '/dev/dec.bak'
-  */
-
-  /*
-    First, we construct the complete path from backupdir.
-  */
-  fn_format(fix_path, backupdir->ptr(), mysql_real_data_home, "", 
-            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
-
-  /*
-    Next, we contruct the full path to the backup file.
-  */
-  fn_format(full_path, orig_loc.str, fix_path, "", 
-            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
-
-  /*
-    Copy result to member variable for Stream class.
-  */
-  m_path.copy(full_path, strlen(full_path), system_charset_info);
- 
-  return 0;
-}
 
 /**
   Check if secure-file-priv option has been set and if so, whether
@@ -309,11 +234,12 @@ bool Stream::test_secure_file_priv_access(char *path) {
  */
 int Stream::open()
 {
-  close();
-  if (!test_secure_file_priv_access(m_path.c_ptr()))
+  close();        // If close() should fail, we will still try to open
+
+  if (!test_secure_file_priv_access(m_path->c_ptr()))
     return ER_OPTION_PREVENTS_STATEMENT;
 
-  m_fd= my_open(m_path.c_ptr(), m_flags, MYF(0));
+  m_fd= my_open(m_path->c_ptr(), m_flags, MYF(0));
 
   if (!(m_fd >= 0))
     return -1;
@@ -321,13 +247,18 @@ int Stream::open()
   return 0;
 }
 
-void Stream::close()
+bool Stream::close()
 {
+  bool ret= TRUE;
   if (m_fd >= 0)
   {
-    my_close(m_fd, MYF(0));
+    if (my_close(m_fd, MYF(0)))
+    {
+      ret= FALSE;
+    }
     m_fd= -1;
   }
+  return ret;
 }
 
 bool Stream::rewind()
@@ -341,10 +272,9 @@ bool Stream::rewind()
 }
 
 
-Output_stream::Output_stream(Logger &log, ::String *backupdir,
-                             LEX_STRING orig_loc,
+Output_stream::Output_stream(Logger &log, ::String *path,
                              bool with_compression)
-  :Stream(log, backupdir, orig_loc, 0)
+  :Stream(log, path, 0)
 {
   m_with_compression= with_compression;
   stream.write= stream_write;
@@ -422,10 +352,10 @@ bool Output_stream::init()
 int Output_stream::open()
 {
   MY_STAT stat_info;
-  close();
+  close();        // If close() should fail, we will still try to open
 
   /* Allow to write to existing named pipe */
-  if (my_stat(m_path.c_ptr(), &stat_info, MYF(0)) &&
+  if (my_stat(m_path->c_ptr(), &stat_info, MYF(0)) &&
       MY_S_ISFIFO(stat_info.st_mode))
     m_flags= O_WRONLY;
   else
@@ -475,17 +405,22 @@ int Output_stream::open()
   Close backup stream
 
   If @c destroy is TRUE, the stream object is deleted.
-*/
-void Output_stream::close()
-{
-  if (m_fd < 0)
-    return;
 
-  /*
-   Note: Even if bstream_close() fails we want to do the lower level clean-up.
-   This is why errors from bstream_close() are ignored.
-  */ 
-  bstream_close(this);
+  @retval TRUE  Operation Succeeded
+  @retval FALSE Operation Failed
+*/
+bool Output_stream::close()
+{
+  bool ret= TRUE;
+  if (m_fd < 0)
+    return TRUE;
+
+  if (bstream_close(this) == BSTREAM_ERROR)
+  {
+    // Note that close failed, and continue with lower level clean-up.
+    ret= FALSE;
+  }
+
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
   {
@@ -514,7 +449,8 @@ void Output_stream::close()
     my_free(zbuf, MYF(0));
   }
 #endif
-  Stream::close();
+  ret &= Stream::close();
+  return ret;
 }
 
 /**
@@ -538,9 +474,8 @@ bool Output_stream::rewind()
 }
 
 
-Input_stream::Input_stream(Logger &log, ::String *backupdir, 
-                           LEX_STRING orig_loc)
-  :Stream(log, backupdir, orig_loc, O_RDONLY)
+Input_stream::Input_stream(Logger &log, ::String *path)
+  :Stream(log, path, O_RDONLY)
 {
   m_with_compression= false;
   stream.read= stream_read;
@@ -613,7 +548,7 @@ bool Input_stream::init()
 */
 int Input_stream::open()
 {
-  close();
+  close();        // If close() should fail, we will still try to open
 
   int ret= Stream::open();
 
@@ -666,17 +601,22 @@ int Input_stream::open()
   Close backup stream
 
   If @c destroy is TRUE, the stream object is deleted.
-*/
-void Input_stream::close()
-{
-  if (m_fd < 0)
-    return;
 
-  /*
-   Note: Even if bstream_close() fails we want to do the lower level clean-up.
-   This is why errors from bstream_close() are ignored.
-  */ 
-  bstream_close(this);
+  @retval TRUE  Operation Succeeded
+  @retval FALSE Operation Failed
+*/
+bool Input_stream::close()
+{
+  bool ret= TRUE;
+  if (m_fd < 0)
+    return TRUE;
+
+  if (bstream_close(this) == BSTREAM_ERROR)
+  {
+    // Note that close failed, and continue with lower level clean-up.
+    ret= FALSE;
+  }
+
 #ifdef HAVE_COMPRESS
   if (m_with_compression)
   {
@@ -686,7 +626,8 @@ void Input_stream::close()
     my_free(zbuf, (MYF(0)));
   }
 #endif
-  Stream::close();
+  ret &= Stream::close();
+  return ret;
 }
 
 /**

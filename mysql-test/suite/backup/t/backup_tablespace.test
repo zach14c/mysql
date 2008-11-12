@@ -8,7 +8,7 @@
 --source include/have_falcon.inc
 --source include/not_embedded.inc
 
-call mtr.add_suppression("Restore: Tablespace .* needed by tables being restored has changed on the server");
+call mtr.add_suppression("Restore: Tablespace .* needed by tables being restored, but the current tablespace definition differs");
 
 let $MYSQLD_DATADIR=`select @@datadir`;
 

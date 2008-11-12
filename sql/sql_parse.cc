@@ -94,7 +94,7 @@ const LEX_STRING command_name[]={
 };
 
 const char *xa_state_names[]={
-  "NON-EXISTING", "ACTIVE", "IDLE", "PREPARED"
+  "NON-EXISTING", "ACTIVE", "IDLE", "PREPARED", "ROLLBACK ONLY"
 };
 
 extern DDL_blocker_class *DDL_blocker;
@@ -1004,9 +1004,6 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     thd->profiling.set_query_source(thd->query, thd->query_length);
 #endif
 
-    if (!(specialflag & SPECIAL_NO_PRIOR))
-      my_pthread_setprio(pthread_self(),QUERY_PRIOR);
-
     mysql_parse(thd, thd->query, thd->query_length, &end_of_stmt);
 
     while (!thd->killed && (end_of_stmt != NULL) && ! thd->is_error())
@@ -1064,8 +1061,6 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       mysql_parse(thd, beginning_of_next_stmt, length, &end_of_stmt);
     }
 
-    if (!(specialflag & SPECIAL_NO_PRIOR))
-      my_pthread_setprio(pthread_self(),WAIT_PRIOR);
     DBUG_PRINT("info",("query ready"));
     break;
   }
@@ -2007,14 +2002,16 @@ mysql_execute_command(THD *thd)
 #endif
   case SQLCOM_SHOW_STATUS_PROC:
   case SQLCOM_SHOW_STATUS_FUNC:
-    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE,
+                                  UINT_MAX)))
       res= execute_sqlcom_select(thd, all_tables);
     break;
   case SQLCOM_SHOW_STATUS:
   {
     system_status_var old_status_var= thd->status_var;
     thd->initial_status_var= &old_status_var;
-    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE, UINT_MAX)))
+    if (!(res= check_table_access(thd, SELECT_ACL, all_tables, FALSE, FALSE,
+                                  UINT_MAX)))
       res= execute_sqlcom_select(thd, all_tables);
     /* Don't log SHOW STATUS commands to slow query log */
     thd->server_status&= ~(SERVER_QUERY_NO_INDEX_USED |
@@ -2280,8 +2277,8 @@ mysql_execute_command(THD *thd)
     }
     else
     {
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "the master info structure does not exist");
+      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                   WARN_NO_MASTER_INFO, ER(WARN_NO_MASTER_INFO));
       my_ok(thd);
     }
     pthread_mutex_unlock(&LOCK_active_mi);
@@ -2656,11 +2653,13 @@ ddl_blocker_err:
 
       /* Don't yet allow changing of symlinks with ALTER TABLE */
       if (create_info.data_file_name)
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                     "DATA DIRECTORY option ignored");
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                            WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                            "DATA DIRECTORY");
       if (create_info.index_file_name)
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                     "INDEX DIRECTORY option ignored");
+        push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                            WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                            "INDEX DIRECTORY");
       create_info.data_file_name= create_info.index_file_name= NULL;
 
       if (!thd->locked_tables_mode &&
@@ -5089,12 +5088,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
       continue;
     }
 
+    DBUG_PRINT("info", ("derived: %d  view: %d", tables->derived != 0,
+                        tables->view != 0));
     if (tables->is_anonymous_derived_table() ||
-        (tables->table && tables->table->s && (int)tables->table->s->tmp_table))
+        (tables->table && tables->table->s &&
+         (int)tables->table->s->tmp_table))
       continue;
     thd->security_ctx= sctx;
-    if ((sctx->master_access & want_access) ==
-        want_access && thd->db)
+    if ((sctx->master_access & want_access) == want_access &&
+        thd->db)
       tables->grant.privilege= want_access;
     else if (tables->db && thd->db && strcmp(tables->db, thd->db) == 0)
     {
@@ -7465,15 +7467,14 @@ bool check_identifier_name(LEX_STRING *str, uint max_char_length,
 
 /*
   Check if path does not contain mysql data home directory
+
   SYNOPSIS
     test_if_data_home_dir()
     dir                     directory
-    conv_home_dir           converted data home directory
-    home_dir_len            converted data home directory length
 
   RETURN VALUES
     0	ok
-    1	error  
+    1	error ;  Given path contains data directory
 */
 C_MODE_START
 
@@ -7501,11 +7502,17 @@ int test_if_data_home_dir(const char *dir)
                         mysql_unpacked_real_data_home_len,
                         (const uchar*) mysql_unpacked_real_data_home,
                         mysql_unpacked_real_data_home_len))
+      {
+        DBUG_PRINT("error", ("Path is part of mysql_real_data_home"));
         DBUG_RETURN(1);
+      }
     }
     else if (!memcmp(path, mysql_unpacked_real_data_home,
                      mysql_unpacked_real_data_home_len))
+    {
+      DBUG_PRINT("error", ("Path is part of mysql_real_data_home"));
       DBUG_RETURN(1);
+    }
   }
   DBUG_RETURN(0);
 }

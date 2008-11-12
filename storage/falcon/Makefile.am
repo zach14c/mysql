@@ -438,5 +438,7 @@ falcon_probes.h: falcon_probes.d
 falcon_probes.o:
 	$(DTRACE) $(DTRACEFLAGS) -G -s falcon_probes.d $(DTRACEFILES)
 
+CLEANFILES=	libhafalcon.a
+
 # Don't update the files from bitkeeper
 %::SCCS/s.%

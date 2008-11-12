@@ -56,7 +56,7 @@ void RecordScavenge::inventoryRecord(Record* record)
 		uint64 age = baseGeneration - record->generation;
 		int size = record->size + sizeof(MemBigHeader);
 		
-		if (record->hasRecord() || (record->state == recChilled))
+		if (record->hasRecord(false) || record->state == recChilled)
 			size += sizeof(MemBigHeader);
 			
 		if (age != UNDEFINED && age < AGE_GROUPS)

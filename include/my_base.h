@@ -206,7 +206,9 @@ enum ha_extra_function {
   HA_EXTRA_IS_ATTACHED_CHILDREN,
   HA_EXTRA_DETACH_CHILDREN,
   HA_EXTRA_ORDERBY_LIMIT,
-  HA_EXTRA_NO_ORDERBY_LIMIT
+  HA_EXTRA_NO_ORDERBY_LIMIT,
+  /* Inform handler we will force a close as part of flush */
+  HA_EXTRA_PREPARE_FOR_FORCED_CLOSE
 };
 
 /* Compatible option, to be deleted in 6.0 */

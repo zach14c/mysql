@@ -19,7 +19,6 @@ ctype_create         : Bug#32965 main.ctype_create fails
 backup_no_engine     : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
 query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
-thread_cache_size_func: BUG#35988, BUG#36733 Due to not deterministic results
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 maria-preload        : Bug#35107 crashes
 key_buffer_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
@@ -38,7 +37,6 @@ tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on so
 backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
 backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
 user_limits                 : Bug#23921 2008-07-25 joro random failure of user_limits.test
-thread_cache_size_func : Bug#36733 main.thread_cache_size_func fails randomly
 log_tables.test                       : Bug #37798: main.log_tables fails randomly on powermacg5 and windows
 wait_timeout_func                     : BUG#36873 2008-07-06 sven wait_timeout_func.test fails randomly
 delayed_insert_limit_func             : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
@@ -53,3 +51,4 @@ timestamp_func                        : BUG#37962 2008-07-08 sven *_func tests c
 log_output_func                       : BUG#37766 2008-07-10 sven main.log_output_func randomly fails in pushbuild
 events_bugs                           : Bug#37774 Bug#39569 Bug#39863 Bug#39848 2008-10-08 alik
 slow_query_log_func                   : Bug #37962: *_func tests containing sleeps/race conditions
+thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads

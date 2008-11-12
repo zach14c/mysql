@@ -44,7 +44,7 @@ class Logger
 
    Logger(THD*);
    ~Logger();
-   int init(enum_type type, const LEX_STRING path, const char *query);
+   int init(enum_type type, const char *query);
 
    int report_error(int error_code, ...);
    int report_error(log_level::value level, int error_code, ...);
@@ -57,6 +57,7 @@ class Logger
    void report_vp_time(time_t, bool);
    void report_binlog_pos(const st_bstream_binlog_pos&);
    void report_driver(const char *driver);
+   void report_backup_file(char * path);
    void report_stats_pre(const Image_info&);
    void report_stats_post(const Image_info&);
    ulonglong get_op_id() const 
@@ -70,6 +71,7 @@ class Logger
    void stop_save_errors();
    void clear_saved_errors();
    util::SAVED_MYSQL_ERROR *last_saved_error();
+   bool push_errors(bool);
 
  protected:
 
@@ -83,13 +85,15 @@ class Logger
  private:
   util::SAVED_MYSQL_ERROR error;   ///< Used to store saved errors.
   bool m_save_errors;        ///< Flag telling if errors should be saved.
+  bool m_push_errors;        ///< Should errors be pushed on warning stack?
+
   Backup_log *backup_log;    ///< Backup log interface class.
 };
 
 inline
 Logger::Logger(THD *thd) 
   :m_type(BACKUP), m_state(CREATED),
-   m_thd(thd), m_save_errors(FALSE), backup_log(0)
+   m_thd(thd), m_save_errors(FALSE), m_push_errors(TRUE), backup_log(0)
 {}
 
 inline
@@ -98,13 +102,14 @@ Logger::~Logger()
   clear_saved_errors();
 }
 
+/// Report unregistered message.
 inline
 int Logger::write_message(log_level::value level, const char *msg, ...)
 {
   va_list args;
 
   va_start(args, msg);
-  int res= v_write_message(level, 0, msg, args);
+  int res= v_write_message(level, ER_UNKNOWN_ERROR, msg, args);
   va_end(args);
 
   return res;
@@ -276,6 +281,17 @@ void Logger::report_driver(const char *driver)
   backup_log->add_driver(driver); 
 }
 
+/** 
+  Report backup file and path.
+*/
+inline
+void Logger::report_backup_file(char *path)
+{ 
+  DBUG_ASSERT(m_state == RUNNING);
+  DBUG_ASSERT(backup_log);
+  backup_log->backup_file(path); 
+}
+
 /**
   Initialize logger for backup or restore operation.
   
@@ -283,7 +299,6 @@ void Logger::report_driver(const char *driver)
   member.
   
   @param[in]  type  type of operation (backup or restore)
-  @param[in]  path  location of the backup image
   @param[in]  query backup or restore query starting the operation
     
   @returns 0 on success, error code otherwise.
@@ -292,14 +307,14 @@ void Logger::report_driver(const char *driver)
   @todo Add code to get the user comment from command.
 */ 
 inline
-int Logger::init(enum_type type, const LEX_STRING path, const char *query)
+int Logger::init(enum_type type, const char *query)
 {
   if (m_state != CREATED)
     return 0;
 
   m_type= type;
   m_state= READY;
-  backup_log = new Backup_log(m_thd, (enum_backup_operation)type, path, query);
+  backup_log = new Backup_log(m_thd, (enum_backup_operation)type, query);
   backup_log->state(BUP_STARTING);
   DEBUG_SYNC(m_thd, "after_backup_log_init");
   return 0;

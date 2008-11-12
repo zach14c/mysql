@@ -570,7 +570,7 @@ JOIN::prepare(Item ***rref_pointer_array,
           4. Subquery does not use aggregate functions or HAVING
           5. Subquery predicate is at the AND-top-level of ON/WHERE clause
           6. No execution method was already chosen (by a prepared statement).
-
+          7. Parent SELECT is not a confluent "SELECT ... FROM DUAL" w/o tables
           (*). We are not in a subquery of a single table UPDATE/DELETE that 
                doesn't have a JOIN (TODO: We should handle this at some
                point by switching to multi-table UPDATE/DELETE)
@@ -586,7 +586,8 @@ JOIN::prepare(Item ***rref_pointer_array,
           select_lex->outer_select()->join &&                           // (*)
           select_lex->master_unit()->first_select()->leaf_tables &&     // (**) 
           do_semijoin &&
-          in_subs->exec_method == Item_in_subselect::NOT_TRANSFORMED)   // 6
+          in_subs->exec_method == Item_in_subselect::NOT_TRANSFORMED && // 6
+          select_lex->outer_select()->leaf_tables)                     // 7
       {
         DBUG_PRINT("info", ("Subquery is semi-join conversion candidate"));
 
@@ -634,6 +635,11 @@ JOIN::prepare(Item ***rref_pointer_array,
           2. Subquery is a single SELECT (not a UNION)
           3. Subquery is not a table-less query. In this case there is no
              point in materializing.
+          3A The upper query is not a confluent SELECT ... FROM DUAL. We
+             can't do materialization for SELECT .. FROM DUAL because it
+             does not call setup_subquery_materialization(). We could make 
+             SELECT ... FROM DUAL call that function but that doesn't seem
+             to be the case that is worth handling.
           4. Subquery predicate is a top-level predicate
              (this implies it is not negated)
              TODO: this is a limitation that should be lifeted once we
@@ -660,7 +666,8 @@ JOIN::prepare(Item ***rref_pointer_array,
             in_subs  &&                                                   // 1
             !select_lex->master_unit()->first_select()->next_select() &&  // 2
             select_lex->master_unit()->first_select()->leaf_tables &&     // 3
-            thd->lex->sql_command == SQLCOM_SELECT)                       // *
+            thd->lex->sql_command == SQLCOM_SELECT &&                     // *
+            select_lex->outer_select()->leaf_tables)                      // 3A
         {
           if (in_subs->is_top_level_item() &&                             // 4
               !in_subs->is_correlated &&                                  // 5
@@ -2431,8 +2438,7 @@ JOIN::exec()
     if (!items1)
     {
       items1= items0 + all_fields.elements;
-      if (sort_and_group || curr_tmp_table->group ||
-          tmp_table_param.precomputed_group_by)
+      if (sort_and_group || curr_tmp_table->group)
       {
 	if (change_to_use_tmp_fields(thd, items1,
 				     tmp_fields_list1, tmp_all_fields1,
@@ -3628,10 +3634,10 @@ bool find_eq_ref_candidate(TABLE *table, table_map sj_inner_tables)
      - It is accessed 
 
     POSTCONDITIONS
-     * Pulled out tables have JOIN_TAB::emb_sj_nest == NULL (like the outer
-       tables)
-     * Tables that were not pulled out have JOIN_TAB::emb_sj_nest.
-     * Semi-join nests TABLE_LIST::sj_inner_tables
+     * Tables that were pulled out have JOIN_TAB::emb_sj_nest == NULL
+     * Tables that were not pulled out have JOIN_TAB::emb_sj_nest pointing 
+       to semi-join nest they are in.
+     * Semi-join nests' TABLE_LIST::sj_inner_tables is updated accordingly
 
     This operation is (and should be) performed at each PS execution since
     tables may become/cease to be constant across PS reexecutions.
@@ -8853,6 +8859,7 @@ only_eq_ref_tables(JOIN *join,ORDER *order,table_map tables)
 {
   if (specialflag &  SPECIAL_SAFE_MODE)
     return 0;			// skip this optimize /* purecov: inspected */
+  tables&= ~PSEUDO_TABLE_BITS;
   for (JOIN_TAB **tab=join->map2table ; tables ; tab++, tables>>=1)
   {
     if (tables & 1 && !eq_ref_table(join, order, *tab))
@@ -10597,6 +10604,8 @@ simplify_joins(JOIN *join, List<TABLE_LIST> *join_list, COND *conds, bool top,
     Flatten nested joins that can be flattened.
     no ON expression and not a semi-join => can be flattened.
   */
+  TABLE_LIST *right_neighbor= NULL;
+  bool fix_name_res= FALSE;
   li.rewind();
   while ((table= li++))
   {
@@ -10617,9 +10626,17 @@ simplify_joins(JOIN *join, List<TABLE_LIST> *join_list, COND *conds, bool top,
       {
         tbl->embedding= table->embedding;
         tbl->join_list= table->join_list;
-      }      
+      }
       li.replace(nested_join->join_list);
+      /* Need to update the name resolution table chain when flattening joins */
+      fix_name_res= TRUE;
+      table= *li.ref();
     }
+    if (fix_name_res)
+      table->next_name_resolution_table= right_neighbor ?
+        right_neighbor->first_leaf_for_name_resolution() :
+        NULL;
+    right_neighbor= table;
   }
   DBUG_RETURN(conds); 
 }
@@ -11346,6 +11363,7 @@ static Field *create_tmp_field_from_item(THD *thd, Item *item, TABLE *table,
     */
     if ((type= item->field_type()) == MYSQL_TYPE_DATETIME ||
         type == MYSQL_TYPE_TIME || type == MYSQL_TYPE_DATE ||
+        type == MYSQL_TYPE_NEWDATE ||
         type == MYSQL_TYPE_TIMESTAMP || type == MYSQL_TYPE_GEOMETRY)
       new_field= item->tmp_table_field_from_field_type(table, 1);
     /* 
@@ -11701,8 +11719,6 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   ENGINE_COLUMNDEF *recinfo;
   uint total_uneven_bit_length= 0;
   bool force_copy_fields= param->force_copy_fields;
-  /* Treat sum functions as normal ones when loose index scan is used. */
-  save_sum_fields|= param->precomputed_group_by;
   DBUG_ENTER("create_tmp_table");
   DBUG_PRINT("enter",
              ("distinct: %d  save_sum_fields: %d  rows_limit: %lu  group: %d",
@@ -11868,11 +11884,11 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
     }
     if (type == Item::SUM_FUNC_ITEM && !group && !save_sum_fields)
     {						/* Can't calc group yet */
-      ((Item_sum*) item)->result_field=0;
-      for (i=0 ; i < ((Item_sum*) item)->arg_count ; i++)
+      Item_sum *sum_item= (Item_sum *) item;
+      sum_item->result_field=0;
+      for (i=0 ; i < sum_item->get_arg_count() ; i++)
       {
-	Item **argp= ((Item_sum*) item)->args + i;
-	Item *arg= *argp;
+	Item *arg= sum_item->get_arg(i);
 	if (!arg->const_item())
 	{
 	  Field *new_field=
@@ -11900,7 +11916,7 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
             string_total_length+= new_field->pack_length();
           }
           thd->mem_root= mem_root_save;
-          thd->change_item_tree(argp, new Item_field(new_field));
+          arg= sum_item->set_arg(i, thd, new Item_field(new_field));
           thd->mem_root= &table->mem_root;
 	  if (!(new_field->flags & NOT_NULL_FLAG))
           {
@@ -11909,7 +11925,7 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
               new_field->maybe_null() is still false, it will be
               changed below. But we have to setup Item_field correctly
             */
-            (*argp)->maybe_null=1;
+            arg->maybe_null=1;
           }
           new_field->field_index= fieldnr++;
 	}
@@ -13004,8 +13020,7 @@ static bool create_internal_tmp_table(TABLE *table, KEY *keyinfo,
 bool create_internal_tmp_table_from_heap(THD *thd, TABLE *table,
                                          ENGINE_COLUMNDEF *start_recinfo,
                                          ENGINE_COLUMNDEF **recinfo, 
-                                         int error,
-                                         bool ignore_last_dupp_key_error)
+                                         int error, bool ignore_last_dupp_key_error)
 {
   return create_internal_tmp_table_from_heap2(thd, table,
                                               start_recinfo, recinfo, error,
@@ -15265,7 +15280,8 @@ static bool replace_where_subcondition(JOIN *join, TABLE_LIST *emb_nest,
       }
     }
   }
-
+  // If we came here it means there were an error during prerequisites check.
+  DBUG_ASSERT(0);
   return TRUE;
 }
 
@@ -15916,7 +15932,11 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
       if (table->covering_keys.is_set(ref_key))
 	usable_keys.intersect(table->covering_keys);
       if (tab->pre_idx_push_select_cond)
-        tab->select_cond= tab->select->cond= tab->pre_idx_push_select_cond;
+      {
+        tab->select_cond= tab->pre_idx_push_select_cond;
+        if (tab->select)
+          tab->select->cond= tab->select_cond;
+      }
       if ((new_ref_key= test_if_subkey(order, table, ref_key, ref_key_parts,
 				       &usable_keys)) < MAX_KEY)
       {
@@ -16184,7 +16204,12 @@ test_if_skip_sort_order(JOIN_TAB *tab,ORDER *order,ha_rows select_limit,
             table->key_read= 0;
             table->file->extra(HA_EXTRA_NO_KEYREAD);
           }
-
+          if (tab->pre_idx_push_select_cond)
+          {
+            if (tab->select)
+              tab->select->cond= tab->select_cond;
+            tab->select_cond= tab->pre_idx_push_select_cond;
+          }
           table->file->ha_index_or_rnd_end();
           if (join->select_options & SELECT_DESCRIBE)
           {
@@ -17583,9 +17608,9 @@ count_field_types(SELECT_LEX *select_lex, TMP_TABLE_PARAM *param,
             param->quick_group=0;			// UDF SUM function
           param->sum_func_count++;
 
-          for (uint i=0 ; i < sum_item->arg_count ; i++)
+          for (uint i=0 ; i < sum_item->get_arg_count() ; i++)
           {
-            if (sum_item->args[0]->real_item()->type() == Item::FIELD_ITEM)
+            if (sum_item->get_arg(i)->real_item()->type() == Item::FIELD_ITEM)
               param->field_count++;
             else
               param->func_count++;
