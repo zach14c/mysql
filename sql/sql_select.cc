@@ -1174,19 +1174,12 @@ static bool sj_table_is_included(JOIN *join, JOIN_TAB *join_tab)
 
       (4) - THe suffix of outer and outer non-correlated tables.
 
-    If several strategies are applicable, their relative priorities are:
-      1. LooseScan
-      2. FirstMatch 
-      3. DuplicateWeedout
-
-    This function walks over the join order and sets up the strategies by
-    setting appropriate members in join_tab structures.
   
-  Optimizer
-  =========
-  We have the choice made for us by the join optimizer. The optimizer
-  guarantees that applicability conditions for 
-  loosescan
+  The choice between the strategies is made by the join optimizer (see
+  advance_sj_state() and fix_semijoin_strategies_for_picked_join_order()).
+  This function sets up all fields/structures/etc needed for execution except
+  for setup/initialization of semi-join materialization which is done in 
+  setup_sj_materialization() (todo: can't we move that to here also?)
 
   RETURN
     FALSE  OK 
@@ -8601,7 +8594,7 @@ static bool make_join_select(JOIN *join, Item *cond)
 	SQL_SELECT *sel= tab->select= new (thd->mem_root) SQL_SELECT;
 	if (!sel)
 	  DBUG_RETURN(1);			// End of memory
-        sel->read_tables= sel->const_tables= join->const_table_map; // psergey-new
+        sel->read_tables= sel->const_tables= join->const_table_map;
         /*
           If tab is an inner table of an outer join operation,
           add a match guard to the pushed down predicate.
@@ -12347,6 +12340,9 @@ void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab,
     Most of the new state is saved join->positions[idx] (and hence no undo
     is necessary). Several members of class JOIN are updated also, these
     changes can be rolled back with restore_prev_sj_state().
+
+    See setup_semijoin_dups_elimination() for a description of what kinds of
+    join prefixes each strategy can handle.
 */
 
 static 
