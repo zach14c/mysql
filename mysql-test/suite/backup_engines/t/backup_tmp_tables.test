@@ -3,6 +3,7 @@
 # with the same names as tables being backed-up (BUG#33574, BUG#34903).
 #
 
+--source include/not_embedded.inc
 --source include/have_innodb.inc
 --source suite/backup_engines/include/backup_engine.inc
 
