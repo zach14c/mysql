@@ -96,7 +96,6 @@ int pthread_create(pthread_t *thread_id, pthread_attr_t *attr,
   HANDLE hThread;
   struct pthread_map *map;
   DWORD StackSize= 0;
-  int priority= 0;
   DBUG_ENTER("pthread_create");
 
   if (!(map=malloc(sizeof(*map))))
@@ -106,7 +105,6 @@ int pthread_create(pthread_t *thread_id, pthread_attr_t *attr,
   if (attr != NULL)
   {
     StackSize= attr->dwStackSize;
-    priority=  attr->priority;
   }
   if (StackSize == 0)
     StackSize= PTHREAD_STACK_MIN;
@@ -129,7 +127,6 @@ int pthread_create(pthread_t *thread_id, pthread_attr_t *attr,
 	       ("Can't create thread to handle request (error %d)",error));
     DBUG_RETURN(error ? error : -1);
   }
-  (void) SetThreadPriority(hThread, priority);
   DBUG_RETURN(0);
 }
 
