@@ -1992,9 +1992,9 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     */
     if (!obs::check_user_existence(thd, sobj->get_name()))
     {
-      info->m_ctx.write_message(log_level::WARNING, 
-                                ER(ER_BACKUP_GRANT_SKIPPED),
-                                create_stmt);
+      info->m_ctx.report_error(log_level::WARNING, 
+                               ER_BACKUP_GRANT_SKIPPED,
+                               create_stmt);
       return BSTREAM_OK; 
     }
     /*

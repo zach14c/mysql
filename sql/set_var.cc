@@ -126,8 +126,10 @@ static void fix_net_read_timeout(THD *thd, enum_var_type type);
 static void fix_net_write_timeout(THD *thd, enum_var_type type);
 static void fix_net_retry_count(THD *thd, enum_var_type type);
 static void fix_max_join_size(THD *thd, enum_var_type type);
+#ifdef HAVE_QUERY_CACHE
 static void fix_query_cache_size(THD *thd, enum_var_type type);
 static void fix_query_cache_min_res_unit(THD *thd, enum_var_type type);
+#endif
 static void fix_myisam_max_sort_file_size(THD *thd, enum_var_type type);
 static void fix_max_binlog_size(THD *thd, enum_var_type type);
 static void fix_max_relay_log_size(THD *thd, enum_var_type type);
@@ -432,10 +434,6 @@ static sys_var_thd_ulong	sys_div_precincrement(&vars, "div_precision_increment",
                                               &SV::div_precincrement);
 static sys_var_long_ptr	sys_rpl_recovery_rank(&vars, "rpl_recovery_rank",
 					      &rpl_recovery_rank);
-static sys_var_long_ptr	sys_query_cache_size(&vars, "query_cache_size",
-					     &query_cache_size,
-					     fix_query_cache_size);
-
 static sys_var_thd_ulong	sys_range_alloc_block_size(&vars, "range_alloc_block_size",
 						   &SV::range_alloc_block_size);
 static sys_var_thd_ulong	sys_query_alloc_block_size(&vars, "query_alloc_block_size",
@@ -457,14 +455,18 @@ sys_var_enum_const        sys_thread_handling(&vars, "thread_handling",
                                               NULL);
 
 #ifdef HAVE_QUERY_CACHE
+static sys_var_long_ptr	sys_query_cache_size(&vars, "query_cache_size",
+					     &query_cache_size,
+					     fix_query_cache_size);
 static sys_var_long_ptr	sys_query_cache_limit(&vars, "query_cache_limit",
 					      &query_cache.query_cache_limit);
 static sys_var_long_ptr        sys_query_cache_min_res_unit(&vars, "query_cache_min_res_unit",
 						     &query_cache_min_res_unit,
 						     fix_query_cache_min_res_unit);
+static int check_query_cache_type(THD *thd, set_var *var);
 static sys_var_thd_enum	sys_query_cache_type(&vars, "query_cache_type",
 					     &SV::query_cache_type,
-					     &query_cache_type_typelib);
+					     &query_cache_type_typelib, NULL, check_query_cache_type);
 static sys_var_thd_bool
 sys_query_cache_wlock_invalidate(&vars, "query_cache_wlock_invalidate",
 				 &SV::query_cache_wlock_invalidate);
@@ -1117,10 +1119,9 @@ static void fix_net_retry_count(THD *thd __attribute__((unused)),
 {}
 #endif /* HAVE_REPLICATION */
 
-
+#ifdef HAVE_QUERY_CACHE
 static void fix_query_cache_size(THD *thd, enum_var_type type)
 {
-#ifdef HAVE_QUERY_CACHE
   ulong new_cache_size= query_cache.resize(query_cache_size);
 
   /*
@@ -1134,11 +1135,34 @@ static void fix_query_cache_size(THD *thd, enum_var_type type)
 			query_cache_size, new_cache_size);
   
   query_cache_size= new_cache_size;
-#endif
 }
 
 
-#ifdef HAVE_QUERY_CACHE
+/**
+  Trigger before query_cache_type variable is updated.
+  @param thd Thread handler
+  @param var Pointer to the new variable status
+ 
+  @return Status code
+   @retval 1 Failure
+   @retval 0 Success
+*/
+
+static int check_query_cache_type(THD *thd, set_var *var)
+{
+  /*
+    Don't allow changes of the query_cache_type if the query cache
+    is disabled.
+  */
+  if (query_cache.is_disabled())
+  {
+    my_error(ER_QUERY_CACHE_DISABLED,MYF(0));
+    return 1;
+  }
+
+  return 0;
+}
+
 static void fix_query_cache_min_res_unit(THD *thd, enum_var_type type)
 {
   query_cache_min_res_unit= 
@@ -1804,119 +1828,6 @@ bool sys_var::check_set(THD *thd, set_var *var, TYPELIB *enum_names)
 err:
   my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), name, buff);
   return 1;
-}
-
-
-/**
-  Return an Item for a variable.
-
-  Used with @@[global.]variable_name.
-
-  If type is not given, return local value if exists, else global.
-*/
-
-Item *sys_var::item(THD *thd, enum_var_type var_type, LEX_STRING *base)
-{
-  if (check_type(var_type))
-  {
-    if (var_type != OPT_DEFAULT)
-    {
-      my_error(ER_INCORRECT_GLOBAL_LOCAL_VAR, MYF(0),
-               name, var_type == OPT_GLOBAL ? "SESSION" : "GLOBAL");
-      return 0;
-    }
-    /* As there was no local variable, return the global value */
-    var_type= OPT_GLOBAL;
-  }
-  switch (show_type()) {
-  case SHOW_INT:
-  {
-    uint value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(uint*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_uint((ulonglong) value);
-  }
-  case SHOW_LONG:
-  {
-    ulong value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(ulong*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_uint((ulonglong) value);
-  }
-  case SHOW_LONGLONG:
-  {
-    longlong value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(longlong*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_int(value);
-  }
-  case SHOW_DOUBLE:
-  {
-    double value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(double*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    /* 6, as this is for now only used with microseconds */
-    return new Item_float(value, 6);
-  }
-  case SHOW_HA_ROWS:
-  {
-    ha_rows value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(ha_rows*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_int((ulonglong) value);
-  }
-  case SHOW_MY_BOOL:
-  {
-    int32 value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(my_bool*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_int(value,1);
-  }
-  case SHOW_CHAR_PTR:
-  {
-    Item *tmp;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    char *str= *(char**) value_ptr(thd, var_type, base);
-    if (str)
-    {
-      uint length= strlen(str);
-      tmp= new Item_string(thd->strmake(str, length), length,
-                           system_charset_info, DERIVATION_SYSCONST);
-    }
-    else
-    {
-      tmp= new Item_null();
-      tmp->collation.set(system_charset_info, DERIVATION_SYSCONST);
-    }
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return tmp;
-  }
-  case SHOW_CHAR:
-  {
-    Item *tmp;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    char *str= (char*) value_ptr(thd, var_type, base);
-    if (str)
-      tmp= new Item_string(str, strlen(str),
-                           system_charset_info, DERIVATION_SYSCONST);
-    else
-    {
-      tmp= new Item_null();
-      tmp->collation.set(system_charset_info, DERIVATION_SYSCONST);
-    }
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return tmp;
-  }
-  default:
-    my_error(ER_VAR_CANT_BE_READ, MYF(0), name);
-  }
-  return 0;
 }
 
 
@@ -2960,15 +2871,26 @@ err:
 static bool sys_update_backupdir(THD *thd, set_var * var)
 {
   char buff[FN_REFLEN];
-  char *res= 0, *old_value=(char *)(var ? var->value->str_value.ptr() : 0);
+  char *res= 0, *old_value= NULL;
   bool result= 0;
-  uint str_length= (var ? var->value->str_value.length() : 0);
+  uint str_length;
+  String str(buff, sizeof(buff), system_charset_info);
 
-  if (!old_value)
+  if (var)
+  {
+    String *strres;
+
+    if (!(strres= var->value->val_str(&str)))
+      goto err;
+    old_value= strres->c_ptr();
+    str_length= strres->length();
+  }
+  else
   {
     old_value= make_default_backupdir(buff);
     str_length= strlen(old_value);
   }
+
   if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
   {
     result= 1;
@@ -3901,6 +3823,16 @@ bool not_all_support_one_shot(List<set_var_base> *var_list)
 /*****************************************************************************
   Functions to handle SET mysql_internal_variable=const_expr
 *****************************************************************************/
+
+/**
+  Verify that the supplied value is correct.
+
+  @param thd Thread handler
+
+  @return status code
+   @retval -1 Failure
+   @retval 0 Success
+ */
 
 int set_var::check(THD *thd)
 {

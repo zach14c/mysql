@@ -35,7 +35,6 @@ typedef HANDLE		 pthread_t;
 typedef struct thread_attr {
     DWORD dwStackSize ;
     DWORD dwCreatingFlag ;
-    int priority ;
 } pthread_attr_t ;
 
 typedef struct { int dummy; } pthread_condattr_t;
@@ -114,7 +113,6 @@ int pthread_cond_broadcast(pthread_cond_t *cond);
 int pthread_cond_destroy(pthread_cond_t *cond);
 int pthread_attr_init(pthread_attr_t *connect_att);
 int pthread_attr_setstacksize(pthread_attr_t *connect_att,DWORD stack);
-int pthread_attr_setprio(pthread_attr_t *connect_att,int priority);
 int pthread_attr_destroy(pthread_attr_t *connect_att);
 struct tm *localtime_r(const time_t *timep,struct tm *tmp);
 struct tm *gmtime_r(const time_t *timep,struct tm *tmp);
@@ -162,21 +160,18 @@ void pthread_exit(void *a);	 /* was #define pthread_exit(A) ExitThread(A)*/
 #define pthread_mutex_trylock(A) win_pthread_mutex_trylock((A))
 #define pthread_mutex_unlock(A)  (LeaveCriticalSection(A),0)
 #define pthread_mutex_destroy(A) DeleteCriticalSection(A)
-#define my_pthread_setprio(A,B)  SetThreadPriority(GetCurrentThread(), (B))
 #define pthread_kill(A,B) pthread_dummy((A) ? 0 : ESRCH)
 
 #define pthread_join(A,B) (WaitForSingleObject((A), INFINITE) != WAIT_OBJECT_0)
 
 /* Dummy defines for easier code */
 #define pthread_attr_setdetachstate(A,B) pthread_dummy(0)
-#define my_pthread_attr_setprio(A,B) pthread_attr_setprio(A,B)
 #define pthread_attr_setscope(A,B)
 #define pthread_detach_this_thread()
 #define pthread_condattr_init(A)
 #define pthread_condattr_destroy(A)
 #define pthread_yield() Sleep(0) /* according to MSDN */
 
-#define my_pthread_getprio(thread_id) pthread_dummy(0)
 /* per the platform's documentation */
 #define pthread_yield() Sleep(0)
 
@@ -205,8 +200,6 @@ void pthread_exit(void *a);	 /* was #define pthread_exit(A) ExitThread(A)*/
 void my_pthread_exit(void *status);
 #define pthread_exit(A) my_pthread_exit(A)
 #endif
-
-extern int my_pthread_getprio(pthread_t thread_id);
 
 #define pthread_key(T,V) pthread_key_t V
 #define my_pthread_getspecific_ptr(T,V) my_pthread_getspecific(T,(V))
@@ -277,24 +270,6 @@ int sigwait(sigset_t *setp, int *sigp);		/* Use our implemention */
 #define my_sigset(A,B) sigset((A),(B))
 #elif !defined(my_sigset)
 #define my_sigset(A,B) signal((A),(B))
-#endif
-
-#ifndef my_pthread_setprio
-#if defined(HAVE_PTHREAD_SETPRIO_NP)		/* FSU threads */
-#define my_pthread_setprio(A,B) pthread_setprio_np((A),(B))
-#elif defined(HAVE_PTHREAD_SETPRIO)
-#define my_pthread_setprio(A,B) pthread_setprio((A),(B))
-#else
-extern void my_pthread_setprio(pthread_t thread_id,int prior);
-#endif
-#endif
-
-#ifndef my_pthread_attr_setprio
-#ifdef HAVE_PTHREAD_ATTR_SETPRIO
-#define my_pthread_attr_setprio(A,B) pthread_attr_setprio((A),(B))
-#else
-extern void my_pthread_attr_setprio(pthread_attr_t *attr, int priority);
-#endif
 #endif
 
 #if !defined(HAVE_PTHREAD_ATTR_SETSCOPE) || defined(HAVE_DEC_3_2_THREADS)
@@ -525,6 +500,7 @@ typedef struct st_my_pthread_fastmutex_t
 {
   pthread_mutex_t mutex;
   uint spins;
+  uint rng_state;
 } my_pthread_fastmutex_t;
 void fastmutex_global_init(void);
 
