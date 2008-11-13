@@ -1,4 +1,4 @@
-
+#
 # Write file to make mysql-test-run.pl expect the "crash", but don't start
 # it until it's told to
 --write_file $MYSQLTEST_VARDIR/tmp/master0.expect
@@ -6,8 +6,8 @@ wait
 EOF
 
 # Send shutdown to the connected server and give
-# it 10 seconds to die before zapping it
-shutdown_server 10;
+# it 30 seconds to die before zapping it.
+shutdown_server 30;
 
 # Check server is gone
 --source include/wait_until_disconnected.inc

@@ -4,7 +4,7 @@
 # You should have done --enable_reconnect first
 --disable_result_log
 --disable_query_log
-let $counter= 300;
+let $counter= 600;
 let $mysql_errno= 9999;
 while ($mysql_errno)
 {
@@ -19,7 +19,7 @@ while ($mysql_errno)
   {
     --die Server failed to restart
   }
-  --sleep 0.1
+  --real_sleep 0.1
 }
 --enable_query_log
 --enable_result_log
