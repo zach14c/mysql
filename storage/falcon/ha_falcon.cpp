@@ -35,6 +35,7 @@
 #include "InfoTable.h"
 #include "Format.h"
 #include "Error.h"
+#include "Log.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -227,7 +228,9 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->fill_is_table = StorageInterface::fill_is_table;
 	//falcon_hton->show_status  = StorageInterface::show_status;
 	falcon_hton->flags = HTON_NO_FLAGS;
+	falcon_debug_mask&= ~(LogMysqlInfo|LogMysqlWarning|LogMysqlError);
 	storageHandler->addNfsLogger(falcon_debug_mask, StorageInterface::logger, NULL);
+	storageHandler->addNfsLogger(LogMysqlInfo|LogMysqlWarning|LogMysqlError, StorageInterface::mysqlLogger, NULL);
 
 	if (falcon_debug_server)
 		storageHandler->startNfsServer();
@@ -535,6 +538,10 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 		}
 
 	int ret = storageTable->open();
+
+	if (ret == StorageErrorTableNotFound)
+		sql_print_error("Server is attempting to access a table %s,\n"
+				"which doesn't exist in Falcon.", name);
 
 	if (ret)
 		DBUG_RETURN(error(ret));
@@ -1024,6 +1031,10 @@ int StorageInterface::delete_table(const char *tableName)
 	int res = storageTable->deleteTable();
 	storageTable->deleteStorageTable();
 	storageTable = NULL;
+
+	if (res == StorageErrorTableNotFound)
+		sql_print_error("Server is attempting to drop a table %s,\n"
+				"which doesn't exist in Falcon.", tableName);
 
 	// (hk) Fix for Bug#31465 Running Falcon test suite leads
 	//                        to warnings about temp tables
@@ -2401,6 +2412,16 @@ void StorageInterface::logger(int mask, const char* text, void* arg)
 		}
 }
 
+void StorageInterface::mysqlLogger(int mask, const char* text, void* arg)
+{
+	if (mask & LogMysqlError)
+		sql_print_error("%s", text);
+	else if (mask & LogMysqlWarning)
+		sql_print_warning("%s", text);
+	else if (mask & LogMysqlInfo)
+		sql_print_information("%s", text);
+}
+
 int StorageInterface::setIndex(TABLE *table, int indexId)
 {
 	StorageIndexDesc indexDesc;
@@ -3520,6 +3541,7 @@ void StorageInterface::updateRecordScavengeFloor(MYSQL_THD thd, struct st_mysql_
 void StorageInterface::updateDebugMask(MYSQL_THD thd, struct st_mysql_sys_var* variable, void* var_ptr, const void* save)
 {
 	falcon_debug_mask = *(uint*) save;
+	falcon_debug_mask&= ~(LogMysqlInfo|LogMysqlWarning|LogMysqlError);
 	storageHandler->deleteNfsLogger(StorageInterface::logger, NULL);
 	storageHandler->addNfsLogger(falcon_debug_mask, StorageInterface::logger, NULL);
 }
