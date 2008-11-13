@@ -2400,7 +2400,15 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
   pthread_mutex_lock(&LOCK_global_system_variables);
-  logger.deactivate_log_handler(thd, log_type);
+  /*
+    Default for general and slow log is OFF.
+    Default for backup logs is ON.
+  */
+  if ((this == &sys_var_backup_history_log) ||
+      (this == &sys_var_backup_progress_log))
+    logger.activate_log_handler(thd, log_type);
+  else
+    logger.deactivate_log_handler(thd, log_type);
   pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
@@ -2563,7 +2571,8 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   var_str->value= res;
   var_str->value_length= str_length;
   my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
-  if (file_log && log_state)
+  if ((file_log && log_state) ||
+      (backup_log && log_state))
   {
     /*
       Added support for backup log types.
