@@ -84,6 +84,10 @@ class Backup_restore_ctx: public backup::Logger
 
  private:
 
+  // Prevent copying/assignments
+  Backup_restore_ctx(const Backup_restore_ctx&);
+  Backup_restore_ctx& operator=(const Backup_restore_ctx&);
+
   /** @c current_op points to the @c Backup_restore_ctx for the
       ongoing backup/restore operation.  If pointer is null, no
       operation is currently running. */

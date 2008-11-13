@@ -331,7 +331,6 @@ int send_reply(Backup_restore_ctx &context)
     goto err;
   }
   my_eof(context.thd());                        // Never errors
-  context.report_cleanup();                     // Never errors
   DBUG_RETURN(0);
 
  err:
@@ -399,7 +398,7 @@ Backup_restore_ctx::Backup_restore_ctx(THD *thd)
 Backup_restore_ctx::~Backup_restore_ctx()
 {
   close();
-  
+
   delete mem_alloc;
   delete m_catalog;  
   delete m_stream;
@@ -1971,6 +1970,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     {
       DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc);
+      delete ts;
       return BSTREAM_ERROR;
     }
   }
