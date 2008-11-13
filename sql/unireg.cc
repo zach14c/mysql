@@ -219,8 +219,12 @@ bool mysql_create_frm(THD *thd, const char *file_name,
     create_info->comment.length= tmp_len;
   }
 
-  //if table comment is larger than 180 bytes, store into extra segment.
-  if (create_info->comment.length > 180)
+  /*
+    If table comment is longer than TABLE_COMMENT_INLINE_MAXLEN bytes,
+    store the comment in an extra segment (up to TABLE_COMMENT_MAXLEN bytes).
+    Pre 6.0, the limit was 60 characters, with no extra segment-handling.
+  */
+  if (create_info->comment.length > TABLE_COMMENT_INLINE_MAXLEN)
   {
     forminfo[46]=255;
     create_info->extra_size+= 2 + create_info->comment.length;
@@ -235,7 +239,8 @@ bool mysql_create_frm(THD *thd, const char *file_name,
       payload with a magic value to detect wrong buffer-sizes. We
       explicitly zero that segment again.
     */
-    memset((char*) forminfo+47 + forminfo[46], 0, 61 - forminfo[46]);
+    memset((char*) forminfo+47 + forminfo[46], 0,
+           TABLE_COMMENT_INLINE_MAXLEN + 1 - forminfo[46]);
 #endif
   }
 
