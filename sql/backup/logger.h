@@ -111,13 +111,14 @@ Logger::~Logger()
   delete backup_log;
 }
 
+/// Report unregistered message.
 inline
 int Logger::write_message(log_level::value level, const char *msg, ...)
 {
   va_list args;
 
   va_start(args, msg);
-  int res= v_write_message(level, 0, msg, args);
+  int res= v_write_message(level, ER_UNKNOWN_ERROR, msg, args);
   va_end(args);
 
   return res;
