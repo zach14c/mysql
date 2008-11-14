@@ -1,0 +1,399 @@
+#
+# Test backup and replication integration.
+#
+
+--source include/master-slave.inc
+--source include/not_embedded.inc
+--source include/have_debug_sync.inc
+--source include/have_debug.inc
+
+connection master;
+
+--echo Create some data...
+CREATE DATABASE rpl_backup;
+CREATE TABLE rpl_backup.t1 (a int);
+INSERT INTO rpl_backup.t1 VALUES (1), (2), (3), (4), (5);
+
+#
+# Use Case 1 - Backup performed on a master.
+#   When a backup is performed on a master, the master shall not log 
+#   the backup event nor shall the master replicate any data produced
+#   (logged) by the backup. 
+
+--echo Remove all entries in the backup logs.
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
+sync_slave_with_master;
+connection slave;
+
+--echo Remove all entries in the backup logs.
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
+--echo Get master's binlog position from the slave before backup.
+let $slave_before_pos = 
+  query_get_value("SHOW SLAVE STATUS", Read_Master_Log_Pos, 1);
+
+connection master;
+
+--echo Get master's binlog position before backup.
+let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+
+#
+# Now test read of backupid with known id using debug insertion
+#
+SET SESSION debug="+d,set_backup_id";
+
+# We are using debug insertion to set the first backup_id to
+# 500 so we can expect the output of this operation to be 500.
+--echo Backup_id = 500.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_m1.bak';
+
+SET SESSION debug="-d";
+
+--echo Show any events issued as a result of backup.
+--echo Note: There should be none!
+--disable_query_log
+eval SHOW BINLOG EVENTS FROM $master_before_pos;
+--enable_query_log
+
+--echo Verify backup run on master does not advance binlog pos.
+--echo Get master's binlog position after backup.
+let $master_after_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+
+--disable_query_log
+--echo Compare the before position of the master's binlog to
+--echo the after position of the master's binlog. The result
+--echo should be 0.
+eval SELECT $master_after_pos - $master_before_pos AS Delta;
+--enable_query_log
+
+#
+# Now check slave to see if backup logs are affected.
+# Check slave's master position.
+# Ensure replication is still working.
+#
+sync_slave_with_master;
+connection slave;
+
+#
+# This tests is added to ensure none of the entries in the master's
+# backup logs are replicated to the slave.
+#
+--echo Should have count(*) = 0.
+SELECT count(*) FROM mysql.backup_history;
+
+--echo Verify backup run on master does not advance binlog pos.
+--echo Get master's binlog position on the slave after backup.
+let $slave_after_pos = 
+  query_get_value("SHOW SLAVE STATUS", Read_Master_Log_Pos, 1);
+
+--disable_query_log
+--echo Compare the before position of the master's binlog to
+--echo the after position of the slave's binlog as shown on
+--echo on the slave. The result should be 0.
+eval SELECT $slave_after_pos - $slave_before_pos AS Delta;
+--enable_query_log
+
+--replace_result $MASTER_MYPORT MASTER_PORT
+--replace_column 1 # 6 # 7 # 8 # 9 # 22 # 23 # 33 #
+--query_vertical SHOW SLAVE STATUS
+
+connection master;
+
+--echo Ensure replication is still working...
+--echo Cleanup from last error on master and slave.
+
+DELETE FROM rpl_backup.t1;
+
+INSERT INTO rpl_backup.t1 VALUES (11), (22), (33);
+
+SELECT count(*) FROM rpl_backup.t1;
+
+sync_slave_with_master;
+connection slave;
+
+SELECT count(*) FROM rpl_backup.t1;
+
+--echo Cleanup backup logs.
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
+#
+#  Use Case 3 - Backup performed on a slave (part 1 of 2)
+#    Test backup on slave where slave has no slaves.
+#    Also, verify master's binlog information is saved to
+#      the progress log.
+#
+
+connection master;
+
+--echo First, get master's binlog position and filename.
+let $master_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+let $master_file = query_get_value("SHOW MASTER STATUS", File, 1);
+
+connection slave;
+
+#
+# Now test read of backupid with known id using debug insertion
+#
+
+SET SESSION debug="+d,set_backup_id";
+
+# We are using debug insertion to set the first backup_id to
+# 600 so we can expect the output of this operation to be 600.
+--echo Backup_id = 600.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_s1.bak';
+
+SET SESSION debug="-d";
+
+--replace_result $MASTER_MYPORT MASTER_PORT
+--replace_column 1 # 6 # 7 # 8 # 9 # 22 # 23 # 33 #
+--query_vertical SHOW SLAVE STATUS
+
+#
+# Build search string for known master binlog information.
+#
+let $preamble = 'Recording master binlog information. binlog file = ''';
+let $middle = ''', position = ';
+let $end = '.';
+
+--echo Check saving of master's binlog information.
+--echo Should have count(*) = 1.
+--disable_query_log
+eval SELECT count(*) FROM mysql.backup_progress 
+WHERE Backup_id = 600 AND 
+notes = concat($preamble, "$master_file", $middle, $master_pos, $end);
+--enable_query_log
+
+--echo Should have count(*) = 1.
+SELECT count(*) FROM mysql.backup_history;
+
+connection master;
+
+#
+# Run backups for later use.
+#
+
+INSERT INTO rpl_backup.t1 VALUES (10), (20), (30);
+
+--echo Backup_id = 501.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_m2.bak';
+
+SELECT count(*) FROM rpl_backup.t1;
+
+sync_slave_with_master;
+connection slave;
+
+SELECT count(*) FROM rpl_backup.t1;
+
+--echo Make a backup for later use.
+--echo Backup_id = 601.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_s2.bak';
+
+#
+#  Use Case 2 - Restore performed on a master.
+#
+
+connection master;
+
+#
+# Insert some data to check slave with later.
+#
+
+CREATE TABLE rpl_backup.t2 (b int);
+INSERT INTO rpl_backup.t2 VALUES (888), (999);
+
+--echo Get master's binlog position before restore.
+let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+
+--echo Backup_id = 502.
+RESTORE FROM 'rpl_bup_m2.bak';
+
+--echo Show the incident event issued as a result of restore.
+--replace_column 2 # 5 #
+--disable_query_log
+eval SHOW BINLOG EVENTS FROM $master_before_pos;
+--enable_query_log
+
+--echo Showing tables on master.
+SHOW FULL TABLES FROM rpl_backup;
+
+SELECT count(*) FROM rpl_backup.t1;
+
+#
+# Wait for slave to stop as result of incident event.
+#
+source include/wait_for_slave_sql_to_stop.inc;
+
+connection slave;
+
+--echo Check slave got everything up to incident event.
+--echo Should be two rows: 888, 999.
+SELECT * FROM rpl_backup.t2 WHERE b > 800;
+
+--replace_result $MASTER_MYPORT MASTER_PORT
+--replace_column 1 # 6 # 7 # 8 # 9 # 22 # 23 # 33 #
+--query_vertical SHOW SLAVE STATUS
+
+--echo Show the slave stopped with an error.
+LET $last_error = query_get_value("SHOW SLAVE STATUS", Last_SQL_Error, 1);
+disable_query_log;
+eval SELECT "$last_error" AS Last_SQL_Error;
+enable_query_log;
+
+SET global sql_slave_skip_counter=1;
+
+STOP SLAVE;
+--source include/wait_for_slave_to_stop.inc
+
+START SLAVE;
+--source include/wait_for_slave_to_start.inc
+
+# Sync with master to ensure nothing is replicated after incident event.
+sync_with_master;
+
+--echo Showing tables on slave.
+SHOW FULL TABLES FROM rpl_backup;
+
+#
+# Cleanup replication for next test case.
+#
+
+# Now stop the slave, do the restore, then restart.
+STOP SLAVE;
+--source include/wait_for_slave_to_stop.inc
+
+--echo Backup_id = 602.
+RESTORE FROM '../master-data/rpl_bup_m2.bak';
+
+--echo Showing databases on slave.
+SHOW DATABASES LIKE 'rpl_backup%';
+
+SELECT count(*) FROM rpl_backup.t1;
+
+START SLAVE;
+--source include/wait_for_slave_to_start.inc
+
+--echo Make a backup for later use.
+--echo Backup_id = 603.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_s3.bak';
+
+#
+#  Use Case 4 - Restore performed on a slave.
+#
+
+connection slave;
+
+--echo Test restore on slave while replication turned on.
+
+--error ER_RESTORE_ON_SLAVE
+RESTORE FROM 'rpl_bup_s1.bak';
+
+--echo Stop slave and restart after restore.
+STOP SLAVE;
+
+--replace_column 1 #
+RESTORE FROM 'rpl_bup_s3.bak';
+
+START SLAVE;
+--source include/wait_for_slave_to_start.inc
+
+connection master;
+
+--echo Checking affect on replication.
+INSERT INTO rpl_backup.t1 VALUES (44), (55), (66);
+SELECT * FROM rpl_backup.t1 ORDER BY a;
+
+sync_slave_with_master;
+connection slave;
+SELECT * FROM rpl_backup.t1 ORDER BY a;
+
+#
+#  Use Case 3 - Backup performed on a slave (part 2 of 2)
+#    Test backup on slave with another slave attached.
+#
+#  Note: To be added as part of WL#4612
+
+#
+#  Use Case 5 - Backup run with no binary log.
+#
+#  Note: This is basically covered in Use Case 2 but the distinction is 
+#        we have explicitly turned off binary logging. 
+#
+
+--echo Stop replication and turn off binary log.
+connection slave;
+
+STOP SLAVE;
+--source include/wait_for_slave_to_stop.inc
+
+connection master;
+
+SET @orig_sql_log_bin= @@sql_log_bin;
+
+--echo Turn off binlog.
+SET @@sql_log_bin= 0;
+SHOW VARIABLES LIKE '%log_bin';
+
+--echo Backup_id = 503.
+BACKUP DATABASE rpl_backup TO 'rpl_bup_m3.bak';
+
+--echo Turn on binlog;
+SET @@sql_log_bin= @orig_sql_log_bin;
+SHOW VARIABLES LIKE '%log_bin';
+
+#
+#  Use Case 6 - Restore run with binary log turned on but no slaves attached.
+#  
+
+RESET MASTER;
+
+--echo Get master's binlog position before restore.
+let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+
+--echo Backup_id = 504.
+RESTORE FROM 'rpl_bup_m3.bak';
+
+--echo Get master's binlog position after restore.
+let $master_after_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
+
+--echo Show the incident event issued as a result of restore.
+--replace_column 2 # 5 #
+--disable_query_log
+eval SHOW BINLOG EVENTS FROM $master_before_pos;
+--enable_query_log
+
+--echo Compute the difference of the binlog positions.
+--echo Result should be 0.
+--disable_query_log
+--echo Compare the before position of the master's binlog to
+--echo the after position of the master's binlog. The result
+--echo should be 0.
+eval SELECT $master_after_pos - $master_before_pos AS Delta;
+--enable_query_log
+
+#
+# Cleanup
+#
+connection master;
+
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+DROP DATABASE rpl_backup;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/rpl_bup_m1.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/rpl_bup_m2.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/rpl_bup_m3.bak
+
+connection slave;
+
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+DROP DATABASE rpl_backup;
+
+--remove_file $MYSQLTEST_VARDIR/slave-data/rpl_bup_s1.bak
+--remove_file $MYSQLTEST_VARDIR/slave-data/rpl_bup_s2.bak
+--remove_file $MYSQLTEST_VARDIR/slave-data/rpl_bup_s3.bak
+

@@ -28,6 +28,7 @@ my_bool opt_sporadic_binlog_dump_fail = 0;
 #ifndef DBUG_OFF
 static int binlog_dump_count = 0;
 #endif
+extern my_bool disable_slaves;
 
 /*
     fake_rotate_event() builds a fake (=which does not exist physically in any
@@ -470,6 +471,17 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
     goto err;
   }
 #endif
+
+  /*
+    Tell the connecting slave the master cannot accept any connections
+    if disable_slaves == TRUE.
+  */
+  if (disable_slaves)
+  {
+     errmsg= "Master does not allow slaves to connect.";
+     my_errno= ER_MASTER_BLOCKING_SLAVES;
+     goto err;
+  }
 
   if (!mysql_bin_log.is_open())
   {
