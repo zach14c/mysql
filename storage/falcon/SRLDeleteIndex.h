@@ -38,7 +38,6 @@ public:
 	void			append(Dbb *dbb, TransId transId, int indexId, int idxVersion);
 	void			print();
 
-	int		tableSpaceId;
 	int32	indexId;
 	int		indexVersion;
 };

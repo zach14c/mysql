@@ -38,7 +38,6 @@ public:
 	virtual void	read();
 	virtual void	commit(void);
 
-	int			tableSpaceId;
 	int32		indexId;
 	int			indexVersion;
 };

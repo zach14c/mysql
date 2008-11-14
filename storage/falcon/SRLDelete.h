@@ -40,7 +40,6 @@ public:
 	SRLDelete();
 	virtual ~SRLDelete();
 
-	int			tableSpaceId;
 	int32		sectionId;
 	int32		recordId;
 	int32		length;
