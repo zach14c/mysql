@@ -60,14 +60,16 @@ void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 	uint64 virtualOffset = 0;
 	uint64 virtualOffsetAtEnd = 0;
 
-	// Save the absolute offset of the DeferredIndex record within the serial log
-
-	virtualOffset = log->writeWindow->getNextVirtualOffset();
-
 	for (DINode *node = walker.next(); node;)
 		{
 		START_RECORD(srlUpdateIndex, "SRLUpdateIndex::append(2)");
 		
+		// Save the absolute offset of the DeferredIndex record within the serial log.
+		// This must be done inside the SerialLog::syncWrite lock set by START_RECORD().
+
+		if (virtualOffset == 0)
+			virtualOffset = log->startRecordVirtualOffset;
+
 		log->updateIndexUseVector(indexId, tableSpaceId, 1);
 		SerialLogTransaction *srlTrans = log->getTransaction(transaction->transactionId);
 		srlTrans->setTransaction(transaction);
@@ -238,9 +240,9 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 {
 	Sync sync(&log->syncWrite, "SRLUpdateIndex::thaw");
 	sync.lock(Exclusive);
+
 	uint64 virtualOffset = deferredIndex->virtualOffset;
 	int recordNumber = 0;  // a valid record number to get into the loop.
-	ASSERT(deferredIndex->virtualOffset);
 	Transaction *trans = deferredIndex->transaction;
 	TransId transId = trans->transactionId;
 	indexId = deferredIndex->index->indexId;
@@ -255,7 +257,7 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 	
 	if (window == NULL)
 		{
-		Log::log("A window for DeferredIndex::virtualOffset=" I64FORMAT " could not be found.\n", deferredIndex->virtualOffset);
+		Log::log("Index thaw FAIL: A window for DeferredIndex::virtualOffset=" I64FORMAT " could not be found.\n", deferredIndex->virtualOffset);
 		log->printWindows();
 		return;
 		}
@@ -302,7 +304,10 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 	if (srlRecord && srlRecord->type == srlVersion)
 		srlRecord = control->nextRecord();
 		
-	ASSERT(srlRecord->type == srlUpdateIndex);
+	if (srlRecord)
+		ASSERT(srlRecord->type == srlUpdateIndex);
+	else
+		Log::log("Index thaw FAIL: SRLUpdateIndex record not found. DeferredIndex::virtualOffset=" I64FORMAT "\n", deferredIndex->virtualOffset);
 	
 	// The DeferredIndex may reside in several serial log records. Read each record and
 	// rebuild the index from the nodes stored within the record.
