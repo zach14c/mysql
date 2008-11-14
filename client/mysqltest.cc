@@ -518,15 +518,22 @@ public:
 
   void close()
   {
-    if (m_file && m_file != stdout)
-      fclose(m_file);
+    if (m_file) {
+      if (m_file != stdout)
+        fclose(m_file);
+      else
+        fflush(m_file);
+    }
     m_file= NULL;
   }
 
   void flush()
   {
     if (m_file && m_file != stdout)
-      fflush(m_file);
+    {
+      if (fflush(m_file))
+        die("Failed to flush '%s', errno: %d", m_file_name, errno);
+    }
   }
 
   void write(DYNAMIC_STRING* ds)
