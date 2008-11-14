@@ -9150,8 +9150,6 @@ Incident_log_event::description() const
 
   DBUG_PRINT("info", ("m_incident: %d", m_incident));
 
-  DBUG_ASSERT((size_t) m_incident <= sizeof(description)/sizeof(*description));
-
   return description[m_incident];
 }
 
