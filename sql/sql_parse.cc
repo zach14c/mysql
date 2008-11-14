@@ -1412,7 +1412,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                         0,0,0,0,
                         thd->query,thd->query_length,
                         thd->variables.character_set_client,
-                        thd->row_count);  
+                        thd->warning_info.current_row_for_warning());
   }
 
   log_slow_statement(thd);
@@ -1851,7 +1851,7 @@ mysql_execute_command(THD *thd)
     Don't reset warnings when executing a stored routine.
   */
   if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
-    mysql_reset_errors(thd, 0);
+    thd->warning_info.opt_clear_warning_info(thd->query_id);
 
 #ifdef HAVE_REPLICATION
   if (unlikely(thd->slave_thread))
@@ -4126,12 +4126,6 @@ create_sp_error:
           So just execute the statement.
         */
 	res= sp->execute_procedure(thd, &lex->value_list);
-	/*
-          If warnings have been cleared, we have to clear total_warn_count
-          too, otherwise the clients get confused.
-	 */
-	if (thd->warn_list.is_empty())
-	  thd->total_warn_count= 0;
 
 	thd->variables.select_limit= select_limit;
 
@@ -4162,7 +4156,7 @@ create_sp_error:
       else
         sp= sp_find_routine(thd, TYPE_ENUM_FUNCTION, lex->spname,
                             &thd->sp_func_cache, FALSE);
-      mysql_reset_errors(thd, 0);
+      thd->warning_info.opt_clear_warning_info(thd->query_id);
       if (! sp)
       {
 	if (lex->spname->m_db.str)
@@ -4282,7 +4276,7 @@ create_sp_error:
       }
 
       sp_result= sp_routine_exists_in_table(thd, type, lex->spname);
-      mysql_reset_errors(thd, 0);
+      thd->warning_info.opt_clear_warning_info(thd->query_id);
       if (sp_result == SP_OK)
       {
         char *db= lex->spname->m_db.str;
@@ -5373,7 +5367,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
   }
   thd->clear_error();
   thd->main_da.reset_diagnostics_area();
-  thd->total_warn_count=0;			// Warnings for this query
+  thd->warning_info.reset_for_next_command();
   thd->rand_used= 0;
   thd->sent_row_count= thd->examined_row_count= 0;
   thd->thd_marker.emb_on_expr_nest= NULL;

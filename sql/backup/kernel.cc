@@ -490,7 +490,7 @@ int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
   
   // Prepare error reporting context.
   
-  mysql_reset_errors(m_thd, 0);                 // Never errors
+  m_thd->warning_info.opt_clear_warning_info(m_thd->query_id); // Never errors
   m_thd->no_warnings_for_error= FALSE;
 
   save_errors();                                // Never errors

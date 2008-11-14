@@ -4289,7 +4289,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     if (!table->table)
     {
       DBUG_PRINT("admin", ("open table failed"));
-      if (!thd->warn_list.elements)
+      if (thd->warning_info.is_empty())
         push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_CHECK_NO_SUCH_TABLE, ER(ER_CHECK_NO_SUCH_TABLE));
       /* if it was a view will check md5 sum */
@@ -4397,7 +4397,7 @@ send_result:
     lex->cleanup_after_one_table_open();
     thd->clear_error();  // these errors shouldn't get client
     {
-      List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+      List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
       MYSQL_ERROR *err;
       while ((err= it++))
       {
@@ -4411,7 +4411,7 @@ send_result:
         if (protocol->write())
           goto err;
       }
-      mysql_reset_errors(thd, true);
+      thd->warning_info.clear_warning_info(thd->query_id);
     }
     protocol->prepare_for_resend();
     protocol->store(table_name, system_charset_info);
@@ -7236,7 +7236,8 @@ err:
     the table to be altered isn't empty.
     Report error here.
   */
-  if (alter_info->error_if_not_empty && thd->row_count)
+  if (alter_info->error_if_not_empty &&
+      thd->warning_info.current_row_for_warning())
   {
     const char *f_val= 0;
     enum enum_mysql_timestamp_type t_type= MYSQL_TIMESTAMP_DATE;
@@ -7408,7 +7409,7 @@ copy_data_between_tables(TABLE *from,TABLE *to,
   errpos= 4;
   if (ignore)
     to->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
-  thd->row_count= 0;
+  thd->warning_info.reset_current_row_for_warning();
   restore_record(to, s->default_values);        // Create empty record
   while (!(error=info.read_record(&info)))
   {
@@ -7418,7 +7419,6 @@ copy_data_between_tables(TABLE *from,TABLE *to,
       error= 1;
       break;
     }
-    thd->row_count++;
     /* Return error if source table isn't empty. */
     if (error_if_not_empty)
     {
@@ -7468,6 +7468,7 @@ copy_data_between_tables(TABLE *from,TABLE *to,
     }
     else
       found_count++;
+    thd->warning_info.inc_current_row_for_warning();
   }
 
 err:

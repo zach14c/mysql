@@ -6144,9 +6144,9 @@ public:
   virtual ~Silence_routine_definer_errors()
   {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
 
   bool has_errors() { return is_grave; }
 
@@ -6155,10 +6155,9 @@ private:
 };
 
 bool
-Silence_routine_definer_errors::handle_error(uint sql_errno,
-                                       const char *message,
-                                       MYSQL_ERROR::enum_warning_level level,
-                                       THD *thd)
+Silence_routine_definer_errors::
+handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+             uint sql_errno, const char *message)
 {
   if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)
   {

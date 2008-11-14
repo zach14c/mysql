@@ -45,9 +45,9 @@ public:
 
   virtual ~Prelock_error_handler() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
 
   bool safely_trapped_errors();
 
@@ -58,10 +58,10 @@ private:
 
 
 bool
-Prelock_error_handler::handle_error(uint sql_errno,
-                                    const char * /* message */,
+Prelock_error_handler::handle_error(THD * /* thd */,
                                     MYSQL_ERROR::enum_warning_level /* level */,
-                                    THD * /* thd */)
+                                    uint sql_errno,
+                                    const char * /* message */)
 {
   if (sql_errno == ER_NO_SUCH_TABLE)
   {
@@ -602,7 +602,7 @@ static TABLE_SHARE
     DBUG_RETURN(0);
   }
   /* Table existed in engine. Let's open it */
-  mysql_reset_errors(thd, 1);                   // Clear warnings
+  thd->warning_info.clear_warning_info(thd->query_id);
   thd->clear_error();                           // Clear error message
   DBUG_RETURN(get_table_share(thd, table_list, key, key_length,
                               db_flags, error));
@@ -3483,7 +3483,7 @@ recover_from_failed_open_table_attempt(THD *thd, TABLE_LIST *table,
       ha_create_table_from_engine(thd, table->db, table->table_name);
       pthread_mutex_unlock(&LOCK_open);
 
-      mysql_reset_errors(thd, 1);         // Clear warnings
+      thd->warning_info.clear_warning_info(thd->query_id);
       thd->clear_error();                 // Clear error message
       mdl_release_lock(&thd->mdl_context, table->mdl_lock_data);
       mdl_remove_lock(&thd->mdl_context, table->mdl_lock_data);

@@ -3022,7 +3022,7 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
       TODO: There are two exceptions mechanism (THD and sp_rcontext),
       this could be improved by having a common stack of handlers.
     */
-    if (thd->handle_error(error, str, level))
+    if (thd->handle_error(level, error, str))
       DBUG_VOID_RETURN;
 
     if (level == MYSQL_ERROR::WARN_LEVEL_WARN)
@@ -3060,7 +3060,7 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     */
     if (!thd->is_fatal_error && thd->spcont &&
         ! (MyFlags & ME_NO_SP_HANDLER) &&
-        thd->spcont->handle_error(error, MYSQL_ERROR::WARN_LEVEL_ERROR, thd))
+        thd->spcont->handle_error(thd, MYSQL_ERROR::WARN_LEVEL_ERROR, error))
     {
       /*
         Do not push any warnings, a handled error must be completely

@@ -208,7 +208,7 @@ static my_bool emb_read_prepare_result(MYSQL *mysql, MYSQL_STMT *stmt)
   stmt->stmt_id= thd->client_stmt_id;
   stmt->param_count= thd->client_param_count;
   stmt->field_count= 0;
-  mysql->warning_count= thd->total_warn_count;
+  mysql->warning_count= thd->warning_info.statement_warn_count();
 
   if (thd->first_data)
   {
@@ -797,7 +797,7 @@ MYSQL_DATA *THD::alloc_new_dataset()
 
 static
 void
-write_eof_packet(THD *thd, uint server_status, uint total_warn_count)
+write_eof_packet(THD *thd, uint server_status, uint statement_warn_count)
 {
   if (!thd->mysql)            // bootstrap file handling
     return;
@@ -814,7 +814,7 @@ write_eof_packet(THD *thd, uint server_status, uint total_warn_count)
     is cleared between substatements, and mysqltest gets confused
   */
   thd->cur_data->embedded_info->warning_count=
-    (thd->spcont ? 0 : min(total_warn_count, 65535));
+    (thd->spcont ? 0 : min(statement_warn_count, 65535));
 }
 
 
@@ -970,7 +970,8 @@ bool Protocol::send_result_set_metadata(List<Item> *list, uint flags)
   }
 
   if (flags & SEND_EOF)
-    write_eof_packet(thd, thd->server_status, thd->total_warn_count);
+    write_eof_packet(thd, thd->server_status,
+                     thd->warning_info.statement_warn_count());
 
   DBUG_RETURN(prepare_for_send(list->elements));
  err:
@@ -1030,7 +1031,7 @@ bool Protocol_binary::write()
 
 void
 net_send_ok(THD *thd,
-            uint server_status, uint total_warn_count,
+            uint server_status, uint statement_warn_count,
             ha_rows affected_rows, ulonglong id, const char *message)
 {
   DBUG_ENTER("emb_net_send_ok");
@@ -1047,7 +1048,7 @@ net_send_ok(THD *thd,
     strmake(data->embedded_info->info, message,
             sizeof(data->embedded_info->info)-1);
 
-  write_eof_packet(thd, server_status, total_warn_count);
+  write_eof_packet(thd, server_status, statement_warn_count);
   thd->cur_data= 0;
   DBUG_VOID_RETURN;
 }
@@ -1062,9 +1063,9 @@ net_send_ok(THD *thd,
 */
 
 void
-net_send_eof(THD *thd, uint server_status, uint total_warn_count)
+net_send_eof(THD *thd, uint server_status, uint statement_warn_count)
 {
-  write_eof_packet(thd, server_status, total_warn_count);
+  write_eof_packet(thd, server_status, statement_warn_count);
   thd->cur_data= 0;
 }
 

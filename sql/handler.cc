@@ -1862,20 +1862,20 @@ const char *get_canonical_filename(handler *file, const char *path,
 struct Ha_delete_table_error_handler: public Internal_error_handler
 {
 public:
-  virtual bool handle_error(uint sql_errno,
-                            const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno,
+                            const char *message);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
 
 bool
 Ha_delete_table_error_handler::
-handle_error(uint sql_errno,
-             const char *message,
+handle_error(THD *thd,
              MYSQL_ERROR::enum_warning_level level,
-             THD *thd)
+             uint sql_errno,
+             const char *message)
 {
   /* Grab the error message */
   strmake(buff, message, sizeof(buff)-1);

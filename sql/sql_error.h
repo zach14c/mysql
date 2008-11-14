@@ -19,27 +19,26 @@ public:
   enum enum_warning_level
   { WARN_LEVEL_NOTE, WARN_LEVEL_WARN, WARN_LEVEL_ERROR, WARN_LEVEL_END};
 
-  uint code;
   enum_warning_level level;
+  uint code;
   char *msg;
-  
-  MYSQL_ERROR(THD *thd, uint code_arg, enum_warning_level level_arg,
-	      const char *msg_arg)
-    :code(code_arg), level(level_arg)
+
+  MYSQL_ERROR(MEM_ROOT *warn_root,
+              enum_warning_level level_arg, uint code_arg, const char *msg_arg)
+    :level(level_arg), code(code_arg)
   {
     if (msg_arg)
-      set_msg(thd, msg_arg);
+      set_msg(warn_root, msg_arg);
   }
 
 private:
-  void set_msg(THD *thd, const char *msg_arg);
+  void set_msg(MEM_ROOT *warn_root, const char *msg_arg);
 };
 
 void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
                   uint code, const char *msg);
 void push_warning_printf(THD *thd, MYSQL_ERROR::enum_warning_level level,
 			 uint code, const char *format, ...);
-void mysql_reset_errors(THD *thd, bool force);
 bool mysqld_show_warnings(THD *thd, ulong levels_to_show);
 
 extern const LEX_STRING warning_level_names[];

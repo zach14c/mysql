@@ -74,7 +74,7 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
 {
   MYSQL_ERROR *err;
   DBUG_ENTER("evex_print_warnings");
-  if (!thd->warn_list.elements)
+  if (thd->warning_info.is_empty())
     DBUG_VOID_RETURN;
 
   char msg_buf[10 * STRING_BUFFER_USUAL_SIZE];
@@ -90,7 +90,7 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
   prefix.append(et->name.str, et->name.length, system_charset_info);
   prefix.append("] ", 2);
 
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
   while ((err= it++))
   {
     String err_msg(msg_buf, sizeof(msg_buf), system_charset_info);

@@ -1670,7 +1670,7 @@ static int has_temporary_error(THD *thd)
   /*
     currently temporary error set in ndbcluster
   */
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
   MYSQL_ERROR *err;
   while ((err= it++))
   {
@@ -2610,7 +2610,7 @@ Slave SQL thread aborted. Can't execute init_slave query");
         }
 
         /* Print any warnings issued */
-        List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+        List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
         MYSQL_ERROR *err;
         /*
           Added controlled slave thread cancel for replication

@@ -1116,7 +1116,7 @@ int Field_num::check_int(CHARSET_INFO *cs, const char *str, int length,
                         ER_TRUNCATED_WRONG_VALUE_FOR_FIELD, 
                         ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                         "integer", tmp.c_ptr(), field_name,
-                        (ulong) table->in_use->row_count);
+                        table->in_use->warning_info.current_row_for_warning());
     return 1;
   }
   /* Test if we have garbage at the end of the given string. */
@@ -2599,7 +2599,7 @@ int Field_new_decimal::store(const char *from, uint length,
                         ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                         ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                         "decimal", from_as_str.c_ptr(), field_name,
-                        (ulong) table->in_use->row_count);
+                        table->in_use->warning_info.current_row_for_warning());
 
     DBUG_RETURN(err);
   }
@@ -2622,7 +2622,7 @@ int Field_new_decimal::store(const char *from, uint length,
                         ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                         ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                           "decimal", from_as_str.c_ptr(), field_name,
-                        (ulong) table->in_use->row_count);
+                        table->in_use->warning_info.current_row_for_warning());
     my_decimal_set_zero(&decimal_value);
 
     break;
@@ -2659,7 +2659,7 @@ int Field_new_decimal::store(double nr)
     if (check_overflow(err))
       set_value_on_overflow(&decimal_value, decimal_value.sign());
     /* Only issue a warning if store_value doesn't issue an warning */
-    table->in_use->got_warning= 0;
+    table->in_use->got_warning= FALSE;
   }
   if (store_value(&decimal_value))
     err= 1;
@@ -2681,7 +2681,7 @@ int Field_new_decimal::store(longlong nr, bool unsigned_val)
     if (check_overflow(err))
       set_value_on_overflow(&decimal_value, decimal_value.sign());
     /* Only issue a warning if store_value doesn't issue an warning */
-    table->in_use->got_warning= 0;
+    table->in_use->got_warning= FALSE;
   }
   if (store_value(&decimal_value))
     err= 1;
@@ -5168,7 +5168,7 @@ bool Field_time::get_date(MYSQL_TIME *ltime, uint fuzzydate)
     push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_WARN_DATA_OUT_OF_RANGE,
                         ER(ER_WARN_DATA_OUT_OF_RANGE), field_name,
-                        thd->row_count);
+                        thd->warning_info.current_row_for_warning());
     return 1;
   }
   tmp=(long) sint3korr(ptr);
@@ -6158,6 +6158,7 @@ check_string_copy_error(Field_str *field,
 {
   const char *pos, *end_orig;
   char tmp[64], *t;
+  THD *thd= field->table->in_use;
   
   if (!(pos= well_formed_error_pos) &&
       !(pos= cannot_convert_error_pos))
@@ -6198,12 +6199,12 @@ check_string_copy_error(Field_str *field,
     *t++= '.';
   }
   *t= '\0';
-  push_warning_printf(field->table->in_use,
+  push_warning_printf(thd,
                       MYSQL_ERROR::WARN_LEVEL_WARN,
                       ER_TRUNCATED_WRONG_VALUE_FOR_FIELD,
                       ER(ER_TRUNCATED_WRONG_VALUE_FOR_FIELD),
                       "string", tmp, field->field_name,
-                      (ulong) field->table->in_use->row_count);
+                      thd->warning_info.current_row_for_warning());
   return TRUE;
 }
 
@@ -10107,7 +10108,7 @@ Field::set_warning(MYSQL_ERROR::enum_warning_level level, uint code,
   {
     thd->cuted_fields+= cuted_increment;
     push_warning_printf(thd, level, code, ER(code), field_name,
-                        thd->row_count);
+                        thd->warning_info.current_row_for_warning());
     return 0;
   }
   return level >= MYSQL_ERROR::WARN_LEVEL_WARN;

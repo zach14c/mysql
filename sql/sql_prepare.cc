@@ -248,7 +248,7 @@ static bool send_prep_stmt(Prepared_statement *stmt, uint columns)
   int2store(buff+5, columns);
   int2store(buff+7, stmt->param_count);
   buff[9]= 0;                                   // Guard against a 4.1 client
-  tmp= min(stmt->thd->total_warn_count, 65535);
+  tmp= min(stmt->thd->warning_info.statement_warn_count(), 65535);
   int2store(buff+10, tmp);
 
   /*
@@ -1839,7 +1839,7 @@ static bool check_prepared_statement(Prepared_statement *stmt)
 
   /* Reset warning count for each query that uses tables */
   if ((tables || !lex->is_single_level_stmt()) && !thd->spcont)
-    mysql_reset_errors(thd, 0);
+    thd->warning_info.opt_clear_warning_info(thd->query_id);
 
   switch (sql_command) {
   case SQLCOM_REPLACE:
@@ -3293,12 +3293,12 @@ Prepared_statement::reprepare()
 #endif
     /*
       Clear possible warnings during reprepare, it has to be completely
-      transparent to the user. We use mysql_reset_errors() since
+      transparent to the user. We use mysql_reset_warnings() since
       there were no separate query id issued for re-prepare.
       Sic: we can't simply silence warnings during reprepare, because if
       it's failed, we need to return all the warnings to the user.
     */
-    mysql_reset_errors(thd, TRUE);
+    thd->warning_info.clear_warning_info(thd->query_id);
   }
   return error;
 }

@@ -44,51 +44,15 @@ This file contains the implementation of error and warnings related
 #include "mysql_priv.h"
 #include "sp_rcontext.h"
 
-/*
-  Store a new message in an error object
+/* Store a new message in an error object. */
 
-  This is used to in group_concat() to register how many warnings we actually
-  got after the query has been executed.
-*/
-
-void MYSQL_ERROR::set_msg(THD *thd, const char *msg_arg)
+void MYSQL_ERROR::set_msg(MEM_ROOT *warn_root, const char *msg_arg)
 {
-  msg= strdup_root(&thd->warn_root, msg_arg);
+  msg= strdup_root(warn_root, msg_arg);
 }
 
 
 /*
-  Reset all warnings for the thread
-
-  SYNOPSIS
-    mysql_reset_errors()
-    thd			Thread handle
-    force               Reset warnings even if it has been done before
-
-  IMPLEMENTATION
-    Don't reset warnings if this has already been called for this query.
-    This may happen if one gets a warning during the parsing stage,
-    in which case push_warnings() has already called this function.
-*/  
-
-void mysql_reset_errors(THD *thd, bool force)
-{
-  DBUG_ENTER("mysql_reset_errors");
-  if (thd->query_id != thd->warn_id || force)
-  {
-    thd->warn_id= thd->query_id;
-    free_root(&thd->warn_root,MYF(0));
-    bzero((char*) thd->warn_count, sizeof(thd->warn_count));
-    if (force)
-      thd->total_warn_count= 0;
-    thd->warn_list.empty();
-    thd->row_count= 1; // by default point to row 1
-  }
-  DBUG_VOID_RETURN;
-}
-
-
-/* 
   Push the warning/error to error list if there is still room in the list
 
   SYNOPSIS
@@ -102,7 +66,6 @@ void mysql_reset_errors(THD *thd, bool force)
 void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level, 
                           uint code, const char *msg)
 {
-  MYSQL_ERROR *err= 0;
   DBUG_ENTER("push_warning");
   DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
 
@@ -113,8 +76,9 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
       !(thd->options & OPTION_SQL_NOTES))
     DBUG_VOID_RETURN;
 
-  if (thd->query_id != thd->warn_id && !thd->spcont)
-    mysql_reset_errors(thd, 0);
+  if (! thd->spcont)
+    thd->warning_info.opt_clear_warning_info(thd->query_id);
+
   thd->got_warning= 1;
 
   /* Abort if we are using strict mode and we are not using IGNORE */
@@ -137,25 +101,18 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
     level= MYSQL_ERROR::WARN_LEVEL_ERROR;
   }
 
-  if (thd->handle_error(code, msg, level))
+  if (thd->handle_error(level, code, msg))
     DBUG_VOID_RETURN;
 
   if (thd->spcont &&
-      thd->spcont->handle_error(code, level, thd))
+      thd->spcont->handle_error(thd, level, code))
   {
     DBUG_VOID_RETURN;
   }
   query_cache_abort(&thd->query_cache_tls);
 
+  thd->warning_info.push_warning(thd, level, code, msg);
 
-  if (thd->warn_list.elements < thd->variables.max_error_count)
-  {
-    /* We have to use warn_root, as mem_root is freed after each query */
-    if ((err= new (&thd->warn_root) MYSQL_ERROR(thd, code, level, msg)))
-      thd->warn_list.push_back(err, &thd->warn_root);
-  }
-  thd->warn_count[(uint) level]++;
-  thd->total_warn_count++;
   DBUG_VOID_RETURN;
 }
 
@@ -234,7 +191,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
 
   unit->set_limit(sel);
 
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
   while ((err= it++))
   {
     /* Skip levels that the user is not interested in */

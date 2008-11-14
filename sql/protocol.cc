@@ -31,10 +31,10 @@ static const unsigned int PACKET_BUFFER_EXTRA_ALLOC= 1024;
 /* Declared non-static only because of the embedded library. */
 void net_send_error_packet(THD *thd, uint sql_errno, const char *err);
 void net_send_ok(THD *, uint, uint, ha_rows, ulonglong, const char *);
-void net_send_eof(THD *thd, uint server_status, uint total_warn_count);
+void net_send_eof(THD *thd, uint server_status, uint statement_warn_count);
 #ifndef EMBEDDED_LIBRARY
 static void write_eof_packet(THD *thd, NET *net,
-                             uint server_status, uint total_warn_count);
+                             uint server_status, uint statement_warn_count);
 #endif
 
 #ifndef EMBEDDED_LIBRARY
@@ -178,7 +178,7 @@ void net_send_error(THD *thd, uint sql_errno, const char *err)
 #ifndef EMBEDDED_LIBRARY
 void
 net_send_ok(THD *thd,
-            uint server_status, uint total_warn_count,
+            uint server_status, uint statement_warn_count,
             ha_rows affected_rows, ulonglong id, const char *message)
 {
   NET *net= &thd->net;
@@ -201,12 +201,12 @@ net_send_ok(THD *thd,
 		(ulong) affected_rows,		
 		(ulong) id,
 		(uint) (server_status & 0xffff),
-		(uint) total_warn_count));
+		(uint) statement_warn_count));
     int2store(pos, server_status);
     pos+=2;
 
     /* We can only return up to 65535 warnings in two bytes */
-    uint tmp= min(total_warn_count, 65535);
+    uint tmp= min(statement_warn_count, 65535);
     int2store(pos, tmp);
     pos+= 2;
   }
@@ -250,7 +250,7 @@ static uchar eof_buff[1]= { (uchar) 254 };      /* Marker for end of fields */
 */    
 
 void
-net_send_eof(THD *thd, uint server_status, uint total_warn_count)
+net_send_eof(THD *thd, uint server_status, uint statement_warn_count)
 {
   NET *net= &thd->net;
   DBUG_ENTER("net_send_eof");
@@ -258,7 +258,7 @@ net_send_eof(THD *thd, uint server_status, uint total_warn_count)
   if (net->vio != 0)
   {
     thd->main_da.can_overwrite_status= TRUE;
-    write_eof_packet(thd, net, server_status, total_warn_count);
+    write_eof_packet(thd, net, server_status, statement_warn_count);
     (void) net_flush(net);
     thd->main_da.can_overwrite_status= FALSE;
     DBUG_PRINT("info", ("EOF sent, so no more error sending allowed"));
@@ -274,7 +274,7 @@ net_send_eof(THD *thd, uint server_status, uint total_warn_count)
 
 static void write_eof_packet(THD *thd, NET *net,
                              uint server_status,
-                             uint total_warn_count)
+                             uint statement_warn_count)
 {
   if (thd->client_capabilities & CLIENT_PROTOCOL_41)
   {
@@ -283,7 +283,7 @@ static void write_eof_packet(THD *thd, NET *net,
       Don't send warn count during SP execution, as the warn_list
       is cleared between substatements, and mysqltest gets confused
     */
-    uint tmp= min(total_warn_count, 65535);
+    uint tmp= min(statement_warn_count, 65535);
     buff[0]= 254;
     int2store(buff+1, tmp);
     /*
@@ -450,12 +450,12 @@ void net_end_statement(THD *thd)
   case Diagnostics_area::DA_EOF:
     net_send_eof(thd,
                  thd->main_da.server_status(),
-                 thd->main_da.total_warn_count());
+                 thd->main_da.statement_warn_count());
     break;
   case Diagnostics_area::DA_OK:
     net_send_ok(thd,
                 thd->main_da.server_status(),
-                thd->main_da.total_warn_count(),
+                thd->main_da.statement_warn_count(),
                 thd->main_da.affected_rows(),
                 thd->main_da.last_insert_id(),
                 thd->main_da.message());
@@ -465,8 +465,7 @@ void net_end_statement(THD *thd)
   case Diagnostics_area::DA_EMPTY:
   default:
     DBUG_ASSERT(0);
-    net_send_ok(thd, thd->server_status, thd->total_warn_count,
-                0, 0, NULL);
+    net_send_ok(thd, thd->server_status, 0, 0, 0, NULL);
     break;
   }
   thd->main_da.is_sent= TRUE;
@@ -702,7 +701,8 @@ bool Protocol::send_result_set_metadata(List<Item> *list, uint flags)
       to show that there is no cursor.
       Send no warning information, as it will be sent at statement end.
     */
-    write_eof_packet(thd, &thd->net, thd->server_status, thd->total_warn_count);
+    write_eof_packet(thd, &thd->net, thd->server_status,
+                     thd->warning_info.statement_warn_count());
   }
   DBUG_RETURN(prepare_for_send(list->elements));
 

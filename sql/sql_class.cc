@@ -304,7 +304,7 @@ int thd_tx_isolation(const THD *thd)
 extern "C"
 void thd_inc_row_count(THD *thd)
 {
-  thd->row_count++;
+  thd->warning_info.inc_current_row_for_warning();
 }
 
 
@@ -407,7 +407,7 @@ Diagnostics_area::reset_diagnostics_area()
   m_server_status= 0;
   m_affected_rows= 0;
   m_last_insert_id= 0;
-  m_total_warn_count= 0;
+  m_statement_warn_count= 0;
 #endif
   is_sent= FALSE;
   /** Tiny reset in debug mode to see garbage right away */
@@ -436,7 +436,7 @@ Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
     return;
 
   m_server_status= thd->server_status;
-  m_total_warn_count= thd->total_warn_count;
+  m_statement_warn_count= thd->warning_info.statement_warn_count();
   m_affected_rows= affected_rows_arg;
   m_last_insert_id= last_insert_id_arg;
   if (message_arg)
@@ -471,7 +471,8 @@ Diagnostics_area::set_eof_status(THD *thd)
     number of warnings, since they are not available to the client
     anyway.
   */
-  m_total_warn_count= thd->spcont ? 0 : thd->total_warn_count;
+  m_statement_warn_count= (thd->spcont ?
+                           0 : thd->warning_info.statement_warn_count());
 
   m_status= DA_EOF;
   DBUG_VOID_RETURN;
@@ -525,6 +526,59 @@ Diagnostics_area::disable_status()
 }
 
 
+Warning_info::Warning_info(query_id_t warn_id_arg)
+  :m_statement_warn_count(0),
+  m_current_row_for_warning(1),
+  m_warn_id(warn_id_arg)
+{
+  /* Initialize sub structures */
+  init_sql_alloc(&m_warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
+  m_warn_list.empty();
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+}
+
+
+Warning_info::~Warning_info()
+{
+  free_root(&m_warn_root,MYF(0));
+}
+
+
+/**
+  Reset the warning information of this connection.
+*/
+
+void Warning_info::clear_warning_info(query_id_t warn_id_arg)
+{
+  m_warn_id= warn_id_arg;
+  free_root(&m_warn_root, MYF(0));
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+  m_warn_list.empty();
+  m_statement_warn_count= 0;
+  m_current_row_for_warning= 1; /* Start counting from the first row */
+}
+
+
+/**
+  Add a warning to the list of warnings. Increment the respective
+  counters.
+*/
+
+void Warning_info::push_warning(THD *thd,
+                                MYSQL_ERROR::enum_warning_level level,
+                                uint code, const char *msg)
+{
+  if (m_warn_list.elements < thd->variables.max_error_count)
+  {
+    MYSQL_ERROR *err;
+    if ((err= new (&m_warn_root) MYSQL_ERROR(&m_warn_root, level, code, msg)))
+      m_warn_list.push_back(err, &m_warn_root);
+  }
+  m_warn_count[(uint) level]++;
+  m_statement_warn_count++;
+}
+
+
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
               /* statement id */ 0),
@@ -538,6 +592,7 @@ THD::THD()
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
    first_successful_insert_id_in_cur_stmt(0),
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
+   warning_info(0),
    global_read_lock(0),
    is_fatal_error(0),
    transaction_rollback_request(0),
@@ -584,7 +639,8 @@ THD::THD()
   hash_clear(&handler_tables_hash);
   tmp_table=0;
   used_tables=0;
-  cuted_fields= sent_row_count= row_count= 0L;
+  cuted_fields= 0L;
+  sent_row_count= 0L;
   limit_found_rows= 0;
   row_count_func= -1;
   statement_id_counter= 0UL;
@@ -603,7 +659,6 @@ THD::THD()
   one_shot_set= 0;
   file_id = 0;
   query_id= 0;
-  warn_id= 0;
   db_charset= global_system_variables.collation_database;
   bzero(ha_data, sizeof(ha_data));
   mysys_var=0;
@@ -644,8 +699,6 @@ THD::THD()
   init_open_tables_state(this, refresh_version);
 
   init();
-  /* Initialize sub structures */
-  init_sql_alloc(&warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
 #if defined(ENABLED_PROFILING)
   profiling.set_thd(this);
 #endif
@@ -691,13 +744,11 @@ void THD::push_internal_handler(Internal_error_handler *handler)
 }
 
 
-bool THD::handle_error(uint sql_errno, const char *message,
-                       MYSQL_ERROR::enum_warning_level level)
+bool THD::handle_error(MYSQL_ERROR::enum_warning_level level,
+                       uint sql_errno, const char *message)
 {
   if (m_internal_handler)
-  {
-    return m_internal_handler->handle_error(sql_errno, message, level, this);
-  }
+    return m_internal_handler->handle_error(this, level, sql_errno, message);
 
   return FALSE;                                 // 'FALSE', as per coding style
 }
@@ -791,9 +842,6 @@ void THD::init(void)
 			TL_WRITE_LOW_PRIORITY :
 			TL_WRITE);
   session_tx_isolation= (enum_tx_isolation) variables.tx_isolation;
-  warn_list.empty();
-  bzero((char*) warn_count, sizeof(warn_count));
-  total_warn_count= 0;
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
@@ -962,7 +1010,6 @@ THD::~THD()
   DBUG_PRINT("info", ("freeing security context"));
   main_security_ctx.destroy();
   safeFree(db);
-  free_root(&warn_root,MYF(0));
   free_root(&transaction.mem_root,MYF(0));
   mysys_var=0;					// Safety (shouldn't be needed)
   pthread_mutex_destroy(&LOCK_delete);
