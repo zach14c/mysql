@@ -50,6 +50,10 @@ BACKUP DATABASE foo TO 'test.bak';
 -- error ER_BAD_DB_ERROR
 BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
 
+# repeated database
+-- error ER_NONUNIQ_DB
+BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
+
 # Test that BACKUP/RESTORE statements are disable inside stored routines,
 # triggers and events.
 

@@ -80,7 +80,6 @@ static handler *tina_create_handler(handlerton *hton,
                                     TABLE_SHARE *table, 
                                     MEM_ROOT *mem_root);
 
-
 /*****************************************************************************
  ** TINA tables
  *****************************************************************************/
@@ -169,6 +168,7 @@ static TINA_SHARE *get_share(const char *table_name, TABLE *table)
     share->update_file_opened= FALSE;
     share->tina_write_opened= FALSE;
     share->data_file_version= 0;
+    share->allow_log_delete= FALSE;
     strmov(share->table_name, table_name);
     fn_format(share->data_file_name, table_name, "", CSV_EXT,
               MY_REPLACE_EXT|MY_UNPACK_FILENAME);
@@ -995,8 +995,13 @@ int ha_tina::delete_row(const uchar * buf)
   share->rows_recorded--;
   pthread_mutex_unlock(&share->mutex);
 
-  /* DELETE should never happen on the log table */
-  DBUG_ASSERT(!share->is_log_table);
+  /* 
+     DELETE should never happen on the log table
+     UNLESS extra() has been called with HA_EXTRA_ALLOW_LOG_DELETE 
+     which sets allow_log_delete flag. The flag is reset with 
+     HA_EXTRA_MARK_AS_LOG_TABLE.     
+  */
+  DBUG_ASSERT(!share->is_log_table || share->allow_log_delete);
 
   DBUG_RETURN(0);
 }
@@ -1169,6 +1174,13 @@ int ha_tina::extra(enum ha_extra_function operation)
  {
    pthread_mutex_lock(&share->mutex);
    share->is_log_table= TRUE;
+   share->allow_log_delete= FALSE;
+   pthread_mutex_unlock(&share->mutex);
+ }
+ else if (operation == HA_EXTRA_ALLOW_LOG_DELETE)
+ {
+   pthread_mutex_lock(&share->mutex);
+   share->allow_log_delete= TRUE;
    pthread_mutex_unlock(&share->mutex);
  }
   DBUG_RETURN(0);
