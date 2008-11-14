@@ -183,8 +183,6 @@ my $opt_debug_sync_timeout= 300; # Default timeout for WAIT_FOR actions.
 our $opt_warnings= 1;
 
 our $opt_skip_ndbcluster= 0;
-our $opt_skip_ndbcluster_slave= 0;
-our $opt_with_ndbcluster;
 
 my $exe_ndbd;
 my $exe_ndb_mgmd;
@@ -200,6 +198,8 @@ my $opt_max_save_core= $ENV{MTR_MAX_SAVE_CORE} || 5;
 my $opt_max_save_datadir= $ENV{MTR_MAX_SAVE_DATADIR} || 20;
 my $opt_max_test_fail= $ENV{MTR_MAX_TEST_FAIL} || 10;
 
+my $opt_parallel= $ENV{MTR_PARALLEL};
+
 select(STDOUT);
 $| = 1; # Automatically flush STDOUT
 
@@ -214,10 +214,6 @@ sub main {
   # in all cases where the calling tool does not log the commands
   # directly before it executes them, like "make test-force-pl" in RPM builds.
   mtr_report("Logging: $0 ", join(" ", @ARGV));
-
-  my $opt_parallel= $ENV{MTR_PARALLEL};
-  Getopt::Long::Configure("pass_through");
-  GetOptions('parallel=i' => \$opt_parallel) or usage(0, "Can't read options");
 
   command_line_setup();
 
@@ -721,6 +717,7 @@ sub set_vardir {
 
 }
 
+
 sub command_line_setup {
   my $opt_comment;
   my $opt_usage;
@@ -738,8 +735,10 @@ sub command_line_setup {
              'ssl|with-openssl'         => \$opt_ssl,
              'skip-ssl'                 => \$opt_skip_ssl,
              'compress'                 => \$opt_compress,
-             'with-ndbcluster|ndb'      => \$opt_with_ndbcluster,
              'vs-config'                => \$opt_vs_config,
+
+	     # Max number of parallel threads to use
+	     'parallel=i'               => \$opt_parallel,
 
              # Config file to use as template for all tests
 	     'defaults-file=s'          => \&collect_option,
@@ -750,8 +749,6 @@ sub command_line_setup {
              'force'                    => \$opt_force,
              'with-ndbcluster-only'     => \&collect_option,
              'skip-ndbcluster|skip-ndb' => \$opt_skip_ndbcluster,
-             'skip-ndbcluster-slave|skip-ndb-slave'
-                                        => \$opt_skip_ndbcluster_slave,
              'suite|suites=s'           => \$opt_suites,
              'skip-rpl'                 => \&collect_option,
              'skip-test=s'              => \&collect_option,
@@ -1057,6 +1054,11 @@ sub command_line_setup {
   if ( $opt_record and ! @opt_cases )
   {
     mtr_error("Will not run in record mode without a specific test case");
+  }
+
+  if ( $opt_record ) {
+    # Use only one worker with --record
+    $opt_parallel= 1;
   }
 
   # --------------------------------------------------------------------------
@@ -1401,7 +1403,7 @@ sub find_mysqld {
   }
 
   return my_find_bin($mysqld_basedir,
-		     ["sql", "libexec", "sbin"],
+		     ["sql", "libexec", "sbin", "bin"],
 		     [@mysqld_names]);
 }
 
@@ -1431,12 +1433,12 @@ sub executable_setup () {
   {
     $exe_ndbd=
       my_find_bin($basedir,
-		  ["storage/ndb/src/kernel", "libexec"],
+		  ["storage/ndb/src/kernel", "libexec", "bin"],
 		  "ndbd");
 
     $exe_ndb_mgmd=
       my_find_bin($basedir,
-		  ["storage/ndb/src/mgmsrv", "libexec"],
+		  ["storage/ndb/src/mgmsrv", "libexec", "bin"],
 		  "ndb_mgmd");
 
     $exe_ndb_waiter=
@@ -2105,7 +2107,6 @@ sub check_ndbcluster_support ($) {
   if ($opt_skip_ndbcluster)
   {
     mtr_report(" - skipping ndbcluster");
-    $opt_skip_ndbcluster_slave= $opt_skip_ndbcluster;
     return;
   }
 
@@ -2113,7 +2114,6 @@ sub check_ndbcluster_support ($) {
   {
     mtr_report(" - skipping ndbcluster, mysqld not compiled with ndbcluster");
     $opt_skip_ndbcluster= 2;
-    $opt_skip_ndbcluster_slave= 2;
     return;
   }
 
@@ -2585,7 +2585,8 @@ sub mysql_install_db {
   my $bootstrap_sql_file= "$opt_vardir/tmp/bootstrap.sql";
 
   my $path_sql= my_find_file($install_basedir,
-			     ["mysql", "sql/share", "share", "scripts"],
+			     ["mysql", "sql/share", "share/mysql",
+			      "share", "scripts"],
 			     "mysql_system_tables.sql",
 			     NOT_REQUIRED);
 
@@ -4470,7 +4471,12 @@ sub start_mysqltest ($) {
   if ( $opt_record )
   {
     mtr_add_arg($args, "--record");
-    mtr_add_arg($args, "--result-file=%s", $tinfo->{record_file});
+
+    # When recording to a non existing result file
+    # the name of that file is in "record_file"
+    if ( defined $tinfo->{'record_file'} ) {
+      mtr_add_arg($args, "--result-file=%s", $tinfo->{record_file});
+    }
   }
 
   if ( $opt_client_gdb )
@@ -4741,7 +4747,6 @@ Options to control what engine/variation to run
   compress              Use the compressed protocol between client and server
   ssl                   Use ssl protocol between client and server
   skip-ssl              Dont start server with support for ssl connections
-  ndb|with-ndbcluster   Use cluster as default table type
   vs-config             Visual Studio configuration used to create executables
                         (default: MTR_VS_CONFIG environment variable)
 
