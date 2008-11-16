@@ -182,8 +182,8 @@ int StorageInterface::falcon_init(void *p)
 
 	if (!checkExceptionSupport()) 
 		{
-		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work");
-		DBUG_RETURN(1);
+		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work. Please adjust your compile flags.");
+		FATAL("Falcon exiting process.\n");
 		}
 
 	StorageHandler::setDataDirectory(mysql_real_data_home);
