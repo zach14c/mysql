@@ -862,3 +862,18 @@ t22.a in (select t12.a from t11, t12 where t11.a in(255,256) and t11.a = t12.a a
 a	b	c
 256	67	NULL
 drop table t1, t11, t12, t21, t22;
+create table t1(a int);
+insert into t1 values (0),(1);
+set @@optimizer_switch='no_firstmatch';
+explain 
+select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) as subq from t1 X;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	X	ALL	NULL	NULL	NULL	NULL	2	
+2	DEPENDENT SUBQUERY	Y	ALL	NULL	NULL	NULL	NULL	2	Using where
+2	DEPENDENT SUBQUERY	Z	ALL	NULL	NULL	NULL	NULL	2	Materialize
+select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) as subq from t1 X;
+subq
+NULL
+0
+set @@optimizer_switch='';
+drop table t1;

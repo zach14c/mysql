@@ -724,3 +724,18 @@ t22.a in (select t12.a from t11, t12 where t11.a in(255,256) and t11.a = t12.a a
 
 drop table t1, t11, t12, t21, t22;
 
+#
+# Test sj-materialization re-execution. The test isn't meaningful (materialized
+# table stays the same across all executions) because it's hard to create a
+# dataset that would verify correct re-execution without hitting BUG#31480
+# 
+create table t1(a int);
+insert into t1 values (0),(1);
+
+set @@optimizer_switch='no_firstmatch';
+explain 
+select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) as subq from t1 X;
+select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) as subq from t1 X;
+set @@optimizer_switch='';
+
+drop table t1;
