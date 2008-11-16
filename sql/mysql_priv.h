@@ -581,7 +581,7 @@ enum open_table_mode
 #define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
 #define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
 #define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-
+#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you

@@ -1572,6 +1572,7 @@ public:
   for them. We have to take care of restricting the predicate such an
   object represents f1=f2= ...=fn to the projection of known fields fi1=...=fik.
 */
+struct st_join_table;
 
 class Item_equal: public Item_bool_func
 {
@@ -1610,6 +1611,7 @@ public:
   { return fields.head()->collation.collation; }
   friend Item *eliminate_item_equal(COND *cond, COND_EQUAL *upper_levels,
                            Item_equal *item_equal);
+  friend bool setup_sj_materialization(struct st_join_table *tab);
 }; 
 
 class COND_EQUAL: public Sql_alloc

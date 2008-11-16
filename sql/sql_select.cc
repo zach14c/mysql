@@ -270,6 +270,14 @@ bool subquery_types_allow_materialization(THD *thd,
 int do_sj_reset(SJ_TMP_TABLE *sj_tbl);
 TABLE *create_duplicate_weedout_tmp_table(THD *thd, uint uniq_tuple_length_arg,
                                           SJ_TMP_TABLE *sjtbl);
+inline bool optimizer_flag(THD *thd, uint flag)
+{ 
+  return (thd->variables.optimizer_switch & flag);
+}
+
+Item_equal *find_item_equal(COND_EQUAL *cond_equal, Field *field,
+                            bool *inherited_fl);
+
 
 /**
   This handles SELECT with and without UNION.
@@ -573,8 +581,6 @@ JOIN::prepare(Item ***rref_pointer_array,
       (subselect= select_lex->master_unit()->item))      // (2)
   {
     Item_in_subselect *in_subs= NULL;
-    bool do_semijoin= !test(thd->variables.optimizer_switch &
-                            OPTIMIZER_SWITCH_NO_SEMIJOIN);
     if (subselect->substype() == Item_subselect::IN_SUBS)
       in_subs= (Item_in_subselect*)subselect;
     DBUG_PRINT("info", ("Checking if subq can be converted to semi-join"));
@@ -594,7 +600,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         8. No execution method was already chosen (by a prepared statement)
         9. Parent select is not a confluent table-less select
     */
-    if (do_semijoin &&
+    if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_SEMIJOIN) &&
         in_subs &&                                                    // 1
         !select_lex->is_part_of_union() &&                            // 2
         !select_lex->group_list.elements && !order &&                 // 3
@@ -647,8 +653,6 @@ JOIN::prepare(Item ***rref_pointer_array,
     else
     {
       DBUG_PRINT("info", ("Subquery can't be converted to semi-join"));
-      bool do_materialize= !test(thd->variables.optimizer_switch &
-                                 OPTIMIZER_SWITCH_NO_MATERIALIZATION);
       /*
         Check if the subquery predicate can be executed via materialization.
         The required conditions are:
@@ -683,7 +687,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         perform the whole transformation or only that part of it which wraps
         Item_in_subselect in an Item_in_optimizer.
       */
-      if (do_materialize && 
+      if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION)  && 
           in_subs  &&                                                   // 1
           !select_lex->is_part_of_union() &&                            // 2
           select_lex->master_unit()->first_select()->leaf_tables &&     // 3
@@ -4442,100 +4446,103 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
   DBUG_ENTER("optimize_semijoin_nests");
   List_iterator<TABLE_LIST> sj_list_it(join->select_lex->sj_nests);
   TABLE_LIST *sj_nest;
-  while ((sj_nest= sj_list_it++))
+  if (!optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_MATERIALIZATION))
   {
-    sj_nest->sj_mat_info= NULL;
-    if (sj_nest->sj_inner_tables && /* not everything was pulled out */
-        !sj_nest->sj_subq_pred->is_correlated && 
-         sj_nest->sj_subq_pred->types_allow_materialization)
+    while ((sj_nest= sj_list_it++))
     {
-      join->emb_sjm_nest= sj_nest;
-      if (choose_plan(join, all_table_map))
-        DBUG_RETURN(TRUE);
-      /*
-        The best plan to run the subquery is now in join->best_positions,
-        save it.
-      */
-      uint n_tables= my_count_bits(sj_nest->sj_inner_tables);
-      SJ_MATERIALIZATION_INFO* sjm;
-      if (!(sjm= new SJ_MATERIALIZATION_INFO) ||
-          !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
-                                                        n_tables)))
-        DBUG_RETURN(TRUE);
-      sjm->tables= n_tables;
-      sjm->is_used= FALSE;
-      double subjoin_out_rows, subjoin_read_time;
-      get_partial_join_cost(join, n_tables,
-                            &subjoin_read_time, &subjoin_out_rows);
-
-      sjm->materialization_cost.convert_from_cost(subjoin_read_time);
-      sjm->rows= subjoin_out_rows;
-
-      List<Item> &right_expr_list= 
-        sj_nest->sj_subq_pred->unit->first_select()->item_list;
-      /*
-        Adjust output cardinality estimates. If the subquery has form
-
-         ... oe IN (SELECT t1.colX, t2.colY, func(X,Y,Z) )
-
-         then the number of distinct output record combinations has an
-         upper bound of product of number of records matching the tables 
-         that are used by the SELECT clause.
-         TODO:
-           We can get a more precise estimate if we
-            - use rec_per_key cardinality estimates. For simple cases like 
-              "oe IN (SELECT t.key ...)" it is trivial. 
-            - Functional dependencies between the tables in the semi-join
-              nest (the payoff is probably less here?)
-      */
+      sj_nest->sj_mat_info= NULL;
+      if (sj_nest->sj_inner_tables && /* not everything was pulled out */
+          !sj_nest->sj_subq_pred->is_correlated && 
+           sj_nest->sj_subq_pred->types_allow_materialization)
       {
-        for (uint i=0 ; i < join->const_tables + sjm->tables ; i++)
+        join->emb_sjm_nest= sj_nest;
+        if (choose_plan(join, all_table_map))
+          DBUG_RETURN(TRUE);
+        /*
+          The best plan to run the subquery is now in join->best_positions,
+          save it.
+        */
+        uint n_tables= my_count_bits(sj_nest->sj_inner_tables);
+        SJ_MATERIALIZATION_INFO* sjm;
+        if (!(sjm= new SJ_MATERIALIZATION_INFO) ||
+            !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
+                                                          n_tables)))
+          DBUG_RETURN(TRUE);
+        sjm->tables= n_tables;
+        sjm->is_used= FALSE;
+        double subjoin_out_rows, subjoin_read_time;
+        get_partial_join_cost(join, n_tables,
+                              &subjoin_read_time, &subjoin_out_rows);
+
+        sjm->materialization_cost.convert_from_cost(subjoin_read_time);
+        sjm->rows= subjoin_out_rows;
+
+        List<Item> &right_expr_list= 
+          sj_nest->sj_subq_pred->unit->first_select()->item_list;
+        /*
+          Adjust output cardinality estimates. If the subquery has form
+
+           ... oe IN (SELECT t1.colX, t2.colY, func(X,Y,Z) )
+
+           then the number of distinct output record combinations has an
+           upper bound of product of number of records matching the tables 
+           that are used by the SELECT clause.
+           TODO:
+             We can get a more precise estimate if we
+              - use rec_per_key cardinality estimates. For simple cases like 
+                "oe IN (SELECT t.key ...)" it is trivial. 
+              - Functional dependencies between the tables in the semi-join
+                nest (the payoff is probably less here?)
+        */
         {
-          JOIN_TAB *tab= join->best_positions[i].table;
-          join->map2table[tab->table->tablenr]= tab;
+          for (uint i=0 ; i < join->const_tables + sjm->tables ; i++)
+          {
+            JOIN_TAB *tab= join->best_positions[i].table;
+            join->map2table[tab->table->tablenr]= tab;
+          }
+          List_iterator<Item> it(right_expr_list);
+          Item *item;
+          table_map map= 0;
+          while ((item= it++))
+            map |= item->used_tables();
+          map= map & ~PSEUDO_TABLE_BITS;
+          Table_map_iterator tm_it(map);
+          int tableno;
+          double rows= 1.0;
+          while ((tableno = tm_it.next_bit()) != Table_map_iterator::BITMAP_END)
+            rows *= join->map2table[tableno]->table->quick_condition_rows;
+          sjm->rows= min(sjm->rows, rows);
         }
-        List_iterator<Item> it(right_expr_list);
-        Item *item;
-        table_map map= 0;
-        while ((item= it++))
-          map |= item->used_tables();
-        map= map & ~PSEUDO_TABLE_BITS;
-        Table_map_iterator tm_it(map);
-        int tableno;
-        double rows= 1.0;
-        while ((tableno = tm_it.next_bit()) != Table_map_iterator::BITMAP_END)
-          rows *= join->map2table[tableno]->table->quick_condition_rows;
-        sjm->rows= min(sjm->rows, rows);
+        memcpy(sjm->positions, join->best_positions + join->const_tables, 
+               sizeof(POSITION) * n_tables);
+
+        /*
+          Calculate temporary table parameters and usage costs
+        */
+        uint rowlen= get_tmp_table_rec_length(right_expr_list);
+        double lookup_cost;
+        if (rowlen * subjoin_out_rows< join->thd->variables.max_heap_table_size)
+          lookup_cost= HEAP_TEMPTABLE_LOOKUP_COST;
+        else
+          lookup_cost= DISK_TEMPTABLE_LOOKUP_COST;
+
+        /*
+          Let materialization cost include the cost to write the data into the
+          temporary table:
+        */ 
+        sjm->materialization_cost.add_io(subjoin_out_rows, lookup_cost);
+        
+        /*
+          Set the cost to do a full scan of the temptable (will need this to 
+          consider doing sjm-scan):
+        */ 
+        sjm->scan_cost.zero();
+        sjm->scan_cost.add_io(sjm->rows, lookup_cost);
+
+        sjm->lookup_cost.convert_from_cost(lookup_cost);
+        sj_nest->sj_mat_info= sjm;
+        DBUG_EXECUTE("opt", print_sjm(sjm););
       }
-      memcpy(sjm->positions, join->best_positions + join->const_tables, 
-             sizeof(POSITION) * n_tables);
-
-      /*
-        Calculate temporary table parameters and usage costs
-      */
-      uint rowlen= get_tmp_table_rec_length(right_expr_list);
-      double lookup_cost;
-      if (rowlen * subjoin_out_rows< join->thd->variables.max_heap_table_size)
-        lookup_cost= HEAP_TEMPTABLE_LOOKUP_COST;
-      else
-        lookup_cost= DISK_TEMPTABLE_LOOKUP_COST;
-
-      /*
-        Let materialization cost include the cost to write the data into the
-        temporary table:
-      */ 
-      sjm->materialization_cost.add_io(subjoin_out_rows, lookup_cost);
-      
-      /*
-        Set the cost to do a full scan of the temptable (will need this to 
-        consider doing sjm-scan):
-      */ 
-      sjm->scan_cost.zero();
-      sjm->scan_cost.add_io(sjm->rows, lookup_cost);
-
-      sjm->lookup_cost.convert_from_cost(lookup_cost);
-      sj_nest->sj_mat_info= sjm;
-      DBUG_EXECUTE("opt", print_sjm(sjm););
     }
   }
   join->emb_sjm_nest= NULL;
@@ -5778,7 +5785,7 @@ public:
         !(remaining_tables & 
           s->emb_sj_nest->nested_join->sj_corr_tables) &&               // (4)
         remaining_tables & s->emb_sj_nest->nested_join->sj_depends_on &&// (5)
-        !test(join->thd->variables.optimizer_switch & OPTIMIZER_SWITCH_NO_LOOSE_SCAN))
+        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_LOOSE_SCAN))
     {
       /* This table is an LooseScan scan candidate */
       bound_sj_equalities= get_bound_sj_equalities(s->emb_sj_nest, 
@@ -9544,8 +9551,20 @@ bool setup_sj_materialization(JOIN_TAB *tab)
     it.rewind();
     for (uint i=0; i < sjm->sjm_table_cols.elements; i++)
     {
-      sjm->copy_field[i].set(((Item_field*)it++)->field,
-                              sjm->table->field[i], FALSE);
+      bool dummy;
+      Item_equal *item_eq;
+      Field *copy_to=((Item_field*)it++)->field; 
+      Item *head;
+      item_eq= find_item_equal(tab->join->cond_equal, copy_to, &dummy);
+
+      if (!item_eq->const_item && 
+          (head= item_eq->fields.head())->used_tables() &
+          emb_sj_nest->sj_inner_tables)
+      {
+        DBUG_ASSERT(head->type() == Item::FIELD_ITEM);
+        copy_to= ((Item_field*)head)->field;
+      }
+      sjm->copy_field[i].set(copy_to, sjm->table->field[i], FALSE);
     }
   }
 
@@ -12405,7 +12424,8 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
         !join->cur_sj_inner_tables &&   // (2)
         !(remaining_tables &                             // (3)
           (s->emb_sj_nest->nested_join->sj_corr_tables | // (3)
-           s->emb_sj_nest->nested_join->sj_depends_on))) // (3)
+           s->emb_sj_nest->nested_join->sj_depends_on)) && // (3)
+        !optimizer_flag(join->thd, OPTIMIZER_SWITCH_NO_FIRSTMATCH))
     {
       /* Start tracking potential FirstMatch range */
       pos->first_firstmatch_table= idx;
@@ -15457,10 +15477,13 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     return sub_select(join, join_tab, end_of_records);
   }
 
-  if (end_of_records)
-    return (*join_tab->next_select)(join, join_tab + 1, end_of_records);
-
   SJ_MATERIALIZATION_INFO *sjm= join_tab->emb_sj_nest->sj_mat_info;
+  if (end_of_records)
+  {
+    return (*join_tab[sjm->tables - 1].next_select)(join,
+                                                    join_tab + sjm->tables,
+                                                    end_of_records);
+  }
   if (!sjm->materialized)
   {
     /* 
@@ -15508,15 +15531,13 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
   {
     /* Do full scan of the materialized table */
     JOIN_TAB *last_tab= join_tab + (sjm->tables - 1);
-    enum_nested_loop_state res;
 
     Item *save_cond= last_tab->select_cond;
     last_tab->select_cond= sjm->join_cond;
        
-    res = sub_select(join, last_tab, end_of_records);
-
+    rc= sub_select(join, last_tab, end_of_records);
     last_tab->select_cond= save_cond;
-    return res;
+    return rc;
   }
   else
   {
@@ -15526,10 +15547,9 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     if (res || !sjm->in_equality->val_int())
       return NESTED_LOOP_NO_MORE_ROWS;
   }
-
   return (*join_tab[sjm->tables - 1].next_select)(join,
-                                                    join_tab + sjm->tables,
-                                                    FALSE);
+                                                  join_tab + sjm->tables,
+                                                  end_of_records);
 }
 
 
@@ -17272,8 +17292,8 @@ static bool test_if_ref(Item_field *left_item,Item *right_item)
 
    @note Because of current requirements for semijoin flattening, we do not
    need to recurse here, hence this function will only examine the top-level
-   AND conditions. (see JOIN::prepare, comment above the line 
-   'if (do_materialize)'
+   AND conditions. (see JOIN::prepare, comment starting with "Check if the 
+   subquery predicate can be executed via materialization".
    
    @param join The top-level query.
    @param old_cond The expression to be replaced.
@@ -21517,7 +21537,7 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
             extra.append(STRING_WITH_LEN("; Materialize"));
           else
           {
-            last_sjm_table= i + join->best_positions[i].n_sj_tables;
+            last_sjm_table= i + join->best_positions[i].n_sj_tables - 1;
             extra.append(STRING_WITH_LEN("; Start materialize"));
           }
           if (sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
