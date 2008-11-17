@@ -121,6 +121,8 @@ static int send_reply(Backup_restore_ctx &context);
   @param[IN] thd        current thread object reference.
   @param[IN] lex        results of parsing the statement.
   @param[IN] backupdir  value of the backupdir variable from server.
+  @param[IN] overwrite  whether or not restore should overwrite existing
+                        DB with same name as in backup image
 
   @note This function sends response to the client (ok, result set or error).
 
@@ -132,7 +134,7 @@ static int send_reply(Backup_restore_ctx &context);
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex, String *backupdir)
+execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
 {
   int res= 0;
   
@@ -226,7 +228,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     
     DEBUG_SYNC(thd, "after_backup_start_restore");
 
-    res= context.do_restore();      
+    res= context.do_restore(overwrite);      
 
     DEBUG_SYNC(thd, "restore_before_end");
 
@@ -1198,11 +1200,14 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   @pre @c prepare_for_restore() method was called.
 
+  @param[IN] overwrite whether or not restore should overwrite existing
+                       DB with same name as in backup image
+
   @returns 0 on success, error code otherwise.
 
   @todo Remove the @c reset_diagnostic_area() hack.
 */
-int Backup_restore_ctx::do_restore()
+int Backup_restore_ctx::do_restore(bool overwrite)
 {
   DBUG_ENTER("do_restore");
 
@@ -1221,6 +1226,23 @@ int Backup_restore_ctx::do_restore()
   report_stats_pre(info);                       // Never errors
 
   DBUG_PRINT("restore", ("Restoring meta-data"));
+
+  // unless RESTORE... OVERWRITE: return error if database already exists
+  if (!overwrite) {
+    Image_info::Db_iterator *dbit= info.get_dbs();
+
+    if (!dbit) {
+      DBUG_RETURN(fatal_error(ER_OUT_OF_RESOURCES));
+    }
+
+    Image_info::Db *mydb;
+    while (mydb= static_cast<Image_info::Db*>((*dbit)++)) {
+      if (!obs::check_db_existence(&mydb->name())) {
+        DBUG_RETURN(fatal_error(ER_RESTORE_DB_EXISTS, mydb->name().ptr()));
+      }
+    }
+    delete dbit;
+  }
 
   disable_fkey_constraints();                   // Never errors
 

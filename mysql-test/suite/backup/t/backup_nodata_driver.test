@@ -127,7 +127,7 @@ DROP DATABASE bup_nodata;
 # Now restore the nodata database and see if it is the same as above.
 --echo Restoring nodata database.
 --replace_column 1 #
-RESTORE FROM 'bup_nodata.bak';
+RESTORE FROM 'bup_nodata.bak' OVERWRITE;
 
 # Show the data
 --echo show data

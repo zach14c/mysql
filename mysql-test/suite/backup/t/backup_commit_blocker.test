@@ -292,7 +292,7 @@ DROP TABLE bup_commit_blocker.t3;
 
 --echo con1: Restoring the database
 --replace_column 1 #
- RESTORE FROM "bup_commit_blocker.bak";
+ RESTORE FROM "bup_commit_blocker.bak" OVERWRITE;
 
 --echo con1: Showing the data (no new data should be here).
 SELECT * FROM bup_commit_blocker.t1;
@@ -458,7 +458,7 @@ DROP TABLE bup_commit_blocker.t5;
 
 --echo con1: Restoring the database
 --replace_column 1 #
- RESTORE FROM "bup_commit_blocker.bak";
+ RESTORE FROM "bup_commit_blocker.bak" OVERWRITE;
 
 --echo con1: Showing the data (no new data should be here).
 #SELECT * FROM bup_commit_blocker.t4;
@@ -764,7 +764,7 @@ DROP TABLE bup_commit_blocker.t5;
 
 --echo con1: Restoring the database
 --replace_column 1 #
-RESTORE FROM "bup_commit_blocker.bak";
+RESTORE FROM "bup_commit_blocker.bak" OVERWRITE;
 
 --echo con1: Showing the data (no new data should be here).
 SELECT * FROM bup_commit_blocker.t1;

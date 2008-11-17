@@ -41,7 +41,7 @@ BACKUP DATABASE bup_backupdir TO 'bup_backupdir1.bak';
 
 --echo Perform restore
 --replace_column 1 #
-RESTORE FROM 'bup_backupdir1.bak';
+RESTORE FROM 'bup_backupdir1.bak' OVERWRITE;
 
 --echo Now do the backup and restore by specifying a path.
 
@@ -54,7 +54,7 @@ BACKUP DATABASE bup_backupdir TO '../bup_backupdir2.bak';
 
 --echo Perform restore
 --replace_column 1 #
-RESTORE FROM '../bup_backupdir2.bak';
+RESTORE FROM '../bup_backupdir2.bak' OVERWRITE;
 
 --echo Perform backup
 --replace_column 1 #

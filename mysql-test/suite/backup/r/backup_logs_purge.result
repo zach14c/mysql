@@ -45,19 +45,19 @@ BACKUP DATABASE backup_logs to 'backup4.bak';
 backup_id
 503
 Do restore of database
-RESTORE from 'backup1.bak';
+RESTORE from 'backup1.bak' OVERWRITE;
 backup_id
 504
 Do restore of database
-RESTORE from 'backup2.bak';
+RESTORE from 'backup2.bak' OVERWRITE;
 backup_id
 505
 Do restore of database
-RESTORE from 'backup3.bak';
+RESTORE from 'backup3.bak' OVERWRITE;
 backup_id
 506
 Do restore of database
-RESTORE from 'backup4.bak';
+RESTORE from 'backup4.bak' OVERWRITE;
 backup_id
 507
 Display results from backup logs
@@ -149,20 +149,20 @@ backup_id
 503
 SET SESSION debug="-d";
 Do restore of database
-RESTORE from 'backup1.bak';
+RESTORE from 'backup1.bak' OVERWRITE;
 backup_id
 504
 Do restore of database
-RESTORE from 'backup2.bak';
+RESTORE from 'backup2.bak' OVERWRITE;
 backup_id
 505
 Do restore of database
-RESTORE from 'backup3.bak';
+RESTORE from 'backup3.bak' OVERWRITE;
 backup_id
 506
 SET SESSION debug="+d,set_log_time";
 Do restore of database
-RESTORE from 'backup4.bak';
+RESTORE from 'backup4.bak' OVERWRITE;
 backup_id
 507
 SET SESSION debug="-d";
@@ -286,16 +286,16 @@ progress	0
 error_num	0
 notes	complete
 Now do the same test for restore.
-RESTORE FROM 'backup1.bak';
+RESTORE FROM 'backup1.bak' OVERWRITE;
 backup_id
 #
-RESTORE FROM 'backup2.bak';
+RESTORE FROM 'backup2.bak' OVERWRITE;
 backup_id
 #
-RESTORE FROM 'backup3.bak';
+RESTORE FROM 'backup3.bak' OVERWRITE;
 backup_id
 #
-RESTORE FROM 'backup4.bak';
+RESTORE FROM 'backup4.bak' OVERWRITE;
 backup_id
 #
 SELECT count(*) FROM mysql.backup_history;
@@ -306,7 +306,7 @@ count(*)
 13
 con2: Activate sync points for the backup statement.
 SET DEBUG_SYNC= 'before_restore_done SIGNAL ready WAIT_FOR proceed';
-RESTORE FROM 'backup5.bak';
+RESTORE FROM 'backup5.bak' OVERWRITE;
 con1: Wait for the backup to be ready.
 SET DEBUG_SYNC= 'now WAIT_FOR ready';
 PURGE BACKUP LOGS;
@@ -320,7 +320,7 @@ count(*)
 1
 SELECT backup_id, command FROM mysql.backup_history;
 backup_id	command
-505	RESTORE FROM 'backup5.bak'
+505	RESTORE FROM 'backup5.bak' OVERWRITE
 There should be one row in this table: the backup id from last
 restore (505). We should only see the complete progress 
 statement because all others were deleted while restore was

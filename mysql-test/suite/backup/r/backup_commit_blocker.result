@@ -129,7 +129,7 @@ DROP TABLE bup_commit_blocker.t1;
 DROP TABLE bup_commit_blocker.t2;
 DROP TABLE bup_commit_blocker.t3;
 con1: Restoring the database
-RESTORE FROM "bup_commit_blocker.bak";
+RESTORE FROM "bup_commit_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing the data (no new data should be here).
@@ -229,7 +229,7 @@ col_a
 con1: Dropping the database
 DROP TABLE bup_commit_blocker.t5;
 con1: Restoring the database
-RESTORE FROM "bup_commit_blocker.bak";
+RESTORE FROM "bup_commit_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing the data (no new data should be here).
@@ -411,7 +411,7 @@ DROP TABLE bup_commit_blocker.t2;
 DROP TABLE bup_commit_blocker.t3;
 DROP TABLE bup_commit_blocker.t5;
 con1: Restoring the database
-RESTORE FROM "bup_commit_blocker.bak";
+RESTORE FROM "bup_commit_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing the data (no new data should be here).
