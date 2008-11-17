@@ -133,6 +133,26 @@ bool Backup_log::write_progress(const char *object,
                                           error_num, notes);
 }
 
+/**
+  Write master's binlog file and position to progress log.
+
+  @returns results of logging function (i.e., TRUE if error)
+*/
+bool Backup_log::write_master_binlog_info()
+{
+  char buff[1024];
+  bool ret= FALSE;
+
+  if (m_op_hist.master_binlog_file || m_op_hist.master_binlog_pos)
+  {
+    sprintf(buff, 
+      "Recording master binlog information. binlog file = '%s', position = %d.",
+      m_op_hist.master_binlog_file, m_op_hist.master_binlog_pos);
+    ret= write_progress(0, 0, 0, 0, 0, 0, (char *)&buff);
+  }
+  return ret;
+}
+
 /** 
   Report change of the state of operation
  

@@ -1,0 +1,58 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+** Pre-cleanup
+DROP DATABASE IF EXISTS db;
+** Create a database
+CREATE DATABASE db;
+USE db;
+** Create regular tables
+CREATE TABLE t1 (a int);
+CREATE TABLE t2 (a char(1));
+** Create a view
+CREATE VIEW v1 AS SELECT * FROM t1;
+** Store table's definition for later check
+** Insert some data into the tables
+INSERT INTO t1 VALUES (1);
+INSERT INTO t2 VALUES ('x');
+** Create temporary tables with the same name, but different layout
+** and using different storage engines
+CREATE TEMPORARY TABLE t1 (b text, c int) ENGINE=MyISAM;
+CREATE TEMPORARY TABLE t2 (b int, c blob) ENGINE=InnoDB;
+** Insert data into the temporary tables
+INSERT INTO t1 VALUES ('foo', 2);
+INSERT INTO t2 VALUES (3, 'bar');
+** Backup database
+BACKUP DATABASE db TO 'db.bkp';
+backup_id
+#
+** Drop and restore the database
+DROP TABLE t1;
+DROP TABLE t2;
+RESTORE FROM 'db.bkp';
+backup_id
+#
+** Check definitions of the tables after restore
+table_t1
+0
+table_t2
+0
+** Checking data after restore
+SELECT * FROM t1;
+a
+1
+SELECT * FROM t2;
+a
+x
+SELECT * FROM v1;
+a
+1
+** Checking if restored table is seen from other connection
+SELECT * FROM db.t1;
+a
+1
+SELECT * FROM db.t2;
+a
+x
+** Cleanup
+DROP DATABASE db;
