@@ -352,6 +352,13 @@ sub mtr_report_stats ($) {
 		  /Restore:/ or /was skipped because the user does not exist/
 		) or
                 
+		# backup_logs_output has warning because --log-backup-output option does 
+    # not have argument
+		($testname eq 'backup.backup_logs_output') and
+		(
+		  /Although a path was specified for the/
+		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'backup.backup_tablespace') and
 		(
