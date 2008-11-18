@@ -3434,14 +3434,14 @@ static int check_pseudo_thread_id(THD *thd, set_var *var)
 
 static uchar *get_warning_count(THD *thd)
 {
-  thd->sys_var_tmp.long_value= thd->warning_info.warn_count();
+  thd->sys_var_tmp.long_value= thd->warning_info->warn_count();
 
   return (uchar*) &thd->sys_var_tmp.long_value;
 }
 
 static uchar *get_error_count(THD *thd)
 {
-  thd->sys_var_tmp.long_value= thd->warning_info.error_count();
+  thd->sys_var_tmp.long_value= thd->warning_info->error_count();
   return (uchar*) &thd->sys_var_tmp.long_value;
 }
 

@@ -248,7 +248,7 @@ static bool send_prep_stmt(Prepared_statement *stmt, uint columns)
   int2store(buff+5, columns);
   int2store(buff+7, stmt->param_count);
   buff[9]= 0;                                   // Guard against a 4.1 client
-  tmp= min(stmt->thd->warning_info.statement_warn_count(), 65535);
+  tmp= min(stmt->thd->warning_info->statement_warn_count(), 65535);
   int2store(buff+10, tmp);
 
   /*
@@ -1839,7 +1839,7 @@ static bool check_prepared_statement(Prepared_statement *stmt)
 
   /* Reset warning count for each query that uses tables */
   if ((tables || !lex->is_single_level_stmt()) && !thd->spcont)
-    thd->warning_info.opt_clear_warning_info(thd->query_id);
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
 
   switch (sql_command) {
   case SQLCOM_REPLACE:
@@ -3298,7 +3298,7 @@ Prepared_statement::reprepare()
       Sic: we can't simply silence warnings during reprepare, because if
       it's failed, we need to return all the warnings to the user.
     */
-    thd->warning_info.clear_warning_info(thd->query_id);
+    thd->warning_info->clear_warning_info(thd->query_id);
   }
   return error;
 }

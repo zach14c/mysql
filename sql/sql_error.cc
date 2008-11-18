@@ -77,7 +77,7 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
     DBUG_VOID_RETURN;
 
   if (! thd->spcont)
-    thd->warning_info.opt_clear_warning_info(thd->query_id);
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
 
   thd->got_warning= 1;
 
@@ -111,7 +111,7 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
   }
   query_cache_abort(&thd->query_cache_tls);
 
-  thd->warning_info.push_warning(thd, level, code, msg);
+  thd->warning_info->push_warning(thd, level, code, msg);
 
   DBUG_VOID_RETURN;
 }
@@ -191,7 +191,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
 
   unit->set_limit(sel);
 
-  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
   while ((err= it++))
   {
     /* Skip levels that the user is not interested in */

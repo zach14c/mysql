@@ -304,7 +304,7 @@ int thd_tx_isolation(const THD *thd)
 extern "C"
 void thd_inc_row_count(THD *thd)
 {
-  thd->warning_info.inc_current_row_for_warning();
+  thd->warning_info->inc_current_row_for_warning();
 }
 
 
@@ -436,7 +436,7 @@ Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
     return;
 
   m_server_status= thd->server_status;
-  m_statement_warn_count= thd->warning_info.statement_warn_count();
+  m_statement_warn_count= thd->warning_info->statement_warn_count();
   m_affected_rows= affected_rows_arg;
   m_last_insert_id= last_insert_id_arg;
   if (message_arg)
@@ -472,7 +472,7 @@ Diagnostics_area::set_eof_status(THD *thd)
     anyway.
   */
   m_statement_warn_count= (thd->spcont ?
-                           0 : thd->warning_info.statement_warn_count());
+                           0 : thd->warning_info->statement_warn_count());
 
   m_status= DA_EOF;
   DBUG_VOID_RETURN;
@@ -592,7 +592,8 @@ THD::THD()
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
    first_successful_insert_id_in_cur_stmt(0),
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
-   warning_info(0),
+   main_warning_info(0),
+   warning_info(&main_warning_info),
    global_read_lock(0),
    is_fatal_error(0),
    transaction_rollback_request(0),

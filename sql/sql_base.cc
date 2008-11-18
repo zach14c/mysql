@@ -602,7 +602,7 @@ static TABLE_SHARE
     DBUG_RETURN(0);
   }
   /* Table existed in engine. Let's open it */
-  thd->warning_info.clear_warning_info(thd->query_id);
+  thd->warning_info->clear_warning_info(thd->query_id);
   thd->clear_error();                           // Clear error message
   DBUG_RETURN(get_table_share(thd, table_list, key, key_length,
                               db_flags, error));
@@ -3483,7 +3483,7 @@ recover_from_failed_open_table_attempt(THD *thd, TABLE_LIST *table,
       ha_create_table_from_engine(thd, table->db, table->table_name);
       pthread_mutex_unlock(&LOCK_open);
 
-      thd->warning_info.clear_warning_info(thd->query_id);
+      thd->warning_info->clear_warning_info(thd->query_id);
       thd->clear_error();                 // Clear error message
       mdl_release_lock(&thd->mdl_context, table->mdl_lock_data);
       mdl_remove_lock(&thd->mdl_context, table->mdl_lock_data);

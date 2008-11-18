@@ -1899,7 +1899,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
                             "my_errno: %d",
                             schema->db, schema->name, schema->query,
                             schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
+            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
             MYSQL_ERROR *err;
             while ((err= it++))
               sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
@@ -2259,7 +2259,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
                             "binlog schema event '%s' from node %d. my_errno: %d",
                             schema->db, schema->name, schema->query,
                             schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
+            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
             MYSQL_ERROR *err;
             while ((err= it++))
               sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
@@ -2438,7 +2438,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
                             "binlog schema event '%s' from node %d. my_errno: %d",
                             schema->db, schema->name, schema->query,
                             schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
+            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
             MYSQL_ERROR *err;
             while ((err= it++))
               sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);

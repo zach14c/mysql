@@ -702,7 +702,7 @@ bool Protocol::send_result_set_metadata(List<Item> *list, uint flags)
       Send no warning information, as it will be sent at statement end.
     */
     write_eof_packet(thd, &thd->net, thd->server_status,
-                     thd->warning_info.statement_warn_count());
+                     thd->warning_info->statement_warn_count());
   }
   DBUG_RETURN(prepare_for_send(list->elements));
 

@@ -516,7 +516,7 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
       issue a warning with 'warning' level status in
       case of invalid view and last error is ER_VIEW_INVALID
     */
-    thd->warning_info.clear_warning_info(thd->query_id);
+    thd->warning_info->clear_warning_info(thd->query_id);
     thd->clear_error();
 
     push_warning_printf(thd,MYSQL_ERROR::WARN_LEVEL_WARN,

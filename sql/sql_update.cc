@@ -727,7 +727,7 @@ int mysql_update(THD *thd,
     }
     else
       table->file->unlock_row();
-    thd->warning_info.inc_current_row_for_warning();
+    thd->warning_info->inc_current_row_for_warning();
   }
   dup_key_found= 0;
   /*

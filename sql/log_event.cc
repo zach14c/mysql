@@ -133,7 +133,7 @@ static void inline slave_rows_error_report(enum loglevel level, int ha_error,
   char buff[MAX_SLAVE_ERRMSG], *slider;
   const char *buff_end= buff + sizeof(buff);
   uint len;
-  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info.warn_list());
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
   MYSQL_ERROR *err;
   buff[0]= 0;
 
@@ -4369,7 +4369,7 @@ int Load_log_event::do_apply_event(NET* net, Relay_log_info const *rli,
     pthread_mutex_lock(&LOCK_thread_count);
     thd->query_id = next_query_id();
     pthread_mutex_unlock(&LOCK_thread_count);
-    thd->warning_info.opt_clear_warning_info(thd->query_id);
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
 
     TABLE_LIST tables;
     bzero((char*) &tables,sizeof(tables));
