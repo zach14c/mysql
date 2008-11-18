@@ -983,7 +983,7 @@ bool login_connection(THD *thd)
   lex_start(thd);
 
   error= check_connection(thd);
-  net_end_statement(thd);
+  thd->protocol->end_statement();
 
   if (error)
   {						// Wrong permissions

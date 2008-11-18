@@ -646,7 +646,7 @@ int check_embedded_connection(MYSQL *mysql, const char *db)
   strmake(sctx->priv_host, (char*) my_localhost,  MAX_HOSTNAME-1);
   sctx->priv_user= sctx->user= my_strdup(mysql->user, MYF(0));
   result= check_user(thd, COM_CONNECT, NULL, 0, db, true);
-  net_end_statement(thd);
+  thd->protocol->end_statement();
   emb_read_query_result(mysql);
   return result;
 }

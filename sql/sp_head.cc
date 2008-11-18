@@ -2847,7 +2847,7 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
       res= m_lex_keeper.reset_lex_and_exec_core(thd, nextp, FALSE, this);
 
       if (thd->main_da.is_eof())
-        net_end_statement(thd);
+        thd->protocol->end_statement();
 
       query_cache_end_of_result(thd);
 

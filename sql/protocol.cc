@@ -28,9 +28,10 @@
 #include <stdarg.h>
 
 static const unsigned int PACKET_BUFFER_EXTRA_ALLOC= 1024;
-/* Declared non-static only because of the embedded library. */
 void net_send_error_packet(THD *thd, uint sql_errno, const char *err);
+/* Declared non-static only because of the embedded library. */
 void net_send_ok(THD *, uint, uint, ha_rows, ulonglong, const char *);
+/* Declared non-static only because of the embedded library. */
 void net_send_eof(THD *thd, uint server_status, uint statement_warn_count);
 #ifndef EMBEDDED_LIBRARY
 static void write_eof_packet(THD *thd, NET *net,
@@ -417,6 +418,12 @@ static uchar *net_store_length_fast(uchar *packet, uint length)
   packet is "buffered" in the diagnostics area and sent to the client
   in the end of statement.
 
+  @note This method defines a template, but delegates actual 
+  sending of data to virtual Protocol::send_{ok,eof,error}. This
+  allows for implementation of protocols that "intercept" ok/eof/error
+  messages, and store them in memory, etc, instead of sending to
+  the client.
+
   @pre  The diagnostics area is assigned or disabled. It can not be empty
         -- we assume that every SQL statement or COM_* command
         generates OK, ERROR, or EOF status.
@@ -431,44 +438,95 @@ static uchar *net_store_length_fast(uchar *packet, uint length)
           Diagnostics_area::is_sent is set for debugging purposes only.
 */
 
-void net_end_statement(THD *thd)
+void Protocol::end_statement()
 {
-  DBUG_ENTER("net_end_statement");
+  DBUG_ENTER("Protocol::end_statement");
   DBUG_ASSERT(! thd->main_da.is_sent);
 
   /* Can not be true, but do not take chances in production. */
   if (thd->main_da.is_sent)
-    return;
+    DBUG_VOID_RETURN;
 
   switch (thd->main_da.status()) {
   case Diagnostics_area::DA_ERROR:
     /* The query failed, send error to log and abort bootstrap. */
-    net_send_error(thd,
-                   thd->main_da.sql_errno(),
-                   thd->main_da.message());
+    this->send_error(thd->main_da.sql_errno(),
+                     thd->main_da.message());
     break;
   case Diagnostics_area::DA_EOF:
-    net_send_eof(thd,
-                 thd->main_da.server_status(),
-                 thd->main_da.statement_warn_count());
+    this->send_eof(thd->main_da.server_status(),
+                   thd->main_da.statement_warn_count());
     break;
   case Diagnostics_area::DA_OK:
-    net_send_ok(thd,
-                thd->main_da.server_status(),
-                thd->main_da.statement_warn_count(),
-                thd->main_da.affected_rows(),
-                thd->main_da.last_insert_id(),
-                thd->main_da.message());
+    this->send_ok(thd->main_da.server_status(),
+                  thd->main_da.statement_warn_count(),
+                  thd->main_da.affected_rows(),
+                  thd->main_da.last_insert_id(),
+                  thd->main_da.message());
     break;
   case Diagnostics_area::DA_DISABLED:
     break;
   case Diagnostics_area::DA_EMPTY:
   default:
     DBUG_ASSERT(0);
-    net_send_ok(thd, thd->server_status, 0, 0, 0, NULL);
+    this->send_ok(thd->server_status, 0, 0, 0, NULL);
     break;
   }
   thd->main_da.is_sent= TRUE;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  A default implementation of "OK" packet response to the client.
+
+  Currently this implementation is re-used by both network-oriented
+  protocols -- the binary and text one. They do not differ
+  in their OK packet format, which allows for a significant simplification
+  on client side.
+*/
+
+void Protocol::send_ok(uint server_status, uint statement_warn_count,
+                       ha_rows affected_rows, ulonglong last_insert_id,
+                       const char *message)
+{
+  DBUG_ENTER("Protocol::send_ok");
+
+  net_send_ok(thd, server_status, statement_warn_count, affected_rows,
+              last_insert_id, message);
+
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  A default implementation of "EOF" packet response to the client.
+
+  Binary and text protocol do not differ in their EOF packet format.
+*/
+
+void Protocol::send_eof(uint server_status, uint statement_warn_count)
+{
+  DBUG_ENTER("Protocol::send_eof");
+
+  net_send_eof(thd, server_status, statement_warn_count);
+
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  A default implementation of "ERROR" packet response to the client.
+
+  Binary and text protocol do not differ in ERROR packet format.
+*/
+
+void Protocol::send_error(uint sql_errno, const char *err_msg)
+{
+  DBUG_ENTER("Protocol::send_error");
+
+  net_send_error_packet(thd, sql_errno, err_msg);
+
   DBUG_VOID_RETURN;
 }
 

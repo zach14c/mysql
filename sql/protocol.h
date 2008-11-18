@@ -17,7 +17,6 @@
 #pragma interface			/* gcc class implementation */
 #endif
 
-
 class i_string;
 class THD;
 class Item_param;
@@ -114,6 +113,16 @@ public:
     */
   };
   virtual enum enum_protocol_type type()= 0;
+
+  void end_statement();
+
+  virtual void send_ok(uint server_status, uint statement_warn_count,
+                       ha_rows affected_rows, ulonglong last_insert_id,
+                       const char *message);
+
+  virtual void send_eof(uint server_status, uint statement_warn_count);
+
+  virtual void send_error(uint sql_errno, const char *err_msg);
 };
 
 
@@ -185,7 +194,6 @@ public:
 
 void send_warning(THD *thd, uint sql_errno, const char *err=0);
 void net_send_error(THD *thd, uint sql_errno=0, const char *err=0);
-void net_end_statement(THD *thd);
 bool send_old_password_request(THD *thd);
 uchar *net_store_data(uchar *to,const uchar *from, size_t length);
 uchar *net_store_data(uchar *to,int32 from);

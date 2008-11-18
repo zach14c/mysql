@@ -450,7 +450,7 @@ pthread_handler_t handle_bootstrap(void *arg)
       /* purecov: begin tested */
       if (net_realloc(&(thd->net), 2 * thd->net.max_packet))
       {
-        net_end_statement(thd);
+        thd->protocol->end_statement();
         bootstrap_error= 1;
         break;
       }
@@ -492,7 +492,7 @@ pthread_handler_t handle_bootstrap(void *arg)
     close_thread_tables(thd);			// Free tables
 
     bootstrap_error= thd->is_error();
-    net_end_statement(thd);
+    thd->protocol->end_statement();
 
 #if defined(ENABLED_PROFILING) && defined(COMMUNITY_SERVER)
     thd->profiling.finish_current_query();
@@ -642,7 +642,7 @@ bool do_command(THD *thd)
 
     /* The error must be set. */
     DBUG_ASSERT(thd->is_error());
-    net_end_statement(thd);
+    thd->protocol->end_statement();
 
     if (net->error != 3)
     {
@@ -1013,7 +1013,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       ha_maria::implicit_commit(thd, FALSE);
 #endif
 
-      net_end_statement(thd);
+      thd->protocol->end_statement();
       query_cache_end_of_result(thd);
       /*
         Multiple queries exits, execute them individually
@@ -1399,7 +1399,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   ha_maria::implicit_commit(thd, FALSE);
 #endif
 
-  net_end_statement(thd);
+  thd->protocol->end_statement();
   query_cache_end_of_result(thd);
 
   thd->proc_info= "closing tables";
