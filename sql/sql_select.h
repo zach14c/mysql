@@ -289,20 +289,12 @@ typedef struct st_join_table
 
   /* Used by LooseScan. TRUE<=> there has been a matching record combination */
   bool found_match;
-
-  enum { 
-    /* If set, the rowid of this table must be put into the temptable. */
-    KEEP_ROWID=1, 
-    /* 
-      If set, one should call h->position() to obtain the rowid,
-      otherwise, the rowid is assumed to already be in h->ref
-      (this is because join caching and filesort() save the rowid and then
-      put it back into h->ref)
-    */
-    CALL_POSITION=2
-  };
-  /* A set of flags from the above enum */
-  int  rowid_keep_flags;
+  
+  /*
+    Used by DuplicateElimination. tab->table->ref must have the rowid
+    whenever we have a current record.
+  */
+  int  keep_current_rowid;
 
   /* NestedOuterJoins: Bitmap of nested joins this table is part of */
   nested_join_map embedding_map;

@@ -1245,7 +1245,6 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
         SJ_TMP_TABLE::TAB *last_tab= sjtabs;
         uint jt_rowid_offset= 0; // # tuple bytes are already occupied (w/o NULL bytes)
         uint jt_null_bits= 0;    // # null bits in tuple bytes
-        uint rowid_keep_flags= JOIN_TAB::CALL_POSITION | JOIN_TAB::KEEP_ROWID;
         /*
           Walk through the range and remember
            - tables that need their rowids to be put into temptable
@@ -1266,7 +1265,7 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
             }
             last_tab++;
             j->table->prepare_for_position();
-            j->rowid_keep_flags= rowid_keep_flags;
+            j->keep_current_rowid= TRUE;
           }
         }
 
@@ -15748,6 +15747,10 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
     join->thd->row_count= 0;
 
     error= (*join_tab->read_first_record)(join_tab);
+
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
+    
     rc= evaluate_join_record(join, join_tab, error);
   }
   
@@ -15775,6 +15778,9 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
       continue;
     }
 
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
+    
     rc= evaluate_join_record(join, join_tab, error);
   }
 
@@ -15860,8 +15866,6 @@ int do_sj_dups_weedout(THD *thd, SJ_TMP_TABLE *sjtbl)
     else
     {
       /* Copy the rowid value */
-      if (tab->join_tab->rowid_keep_flags & JOIN_TAB::CALL_POSITION)
-        h->position(tab->join_tab->table->record[0]);
       memcpy(ptr + tab->rowid_offset, h->ref, h->ref_length);
     }
   }
@@ -16154,6 +16158,10 @@ flush_cached_records(JOIN *join,JOIN_TAB *join_tab,bool skip_last)
         (!join_tab->cache.select || !join_tab->cache.select->skip_record()))
     {
       uint i;
+
+      if (join_tab->keep_current_rowid)
+        join_tab->table->file->position(join_tab->table->record[0]);
+      
       reset_cache_read(&join_tab->cache);
       for (i=(join_tab->cache.records- (skip_last ? 1 : 0)) ; i-- > 0 ;)
       {
@@ -19012,7 +19020,7 @@ join_init_cache(THD *thd,JOIN_TAB *tables,uint table_count)
     blobs+=join_tab->used_blobs;
 
     /* SemiJoinDuplicateElimination: reserve space for rowid */
-    if (join_tab->rowid_keep_flags & JOIN_TAB::KEEP_ROWID)
+    if (join_tab->keep_current_rowid)
     {
       cache->fields++;
       join_tab->used_fieldlength += join_tab->table->file->ref_length;
@@ -19050,7 +19058,6 @@ join_init_cache(THD *thd,JOIN_TAB *tables,uint table_count)
 	  (*blob_ptr++)=copy;
 	if (field->maybe_null())
 	  null_fields++;
-        copy->get_rowid= NULL;
 	copy++;
       }
     }
@@ -19061,7 +19068,6 @@ join_init_cache(THD *thd,JOIN_TAB *tables,uint table_count)
       copy->length= tables[i].table->s->null_bytes;
       copy->strip=0;
       copy->blob_field=0;
-      copy->get_rowid= NULL;
       length+=copy->length;
       copy++;
       cache->fields++;
@@ -19079,21 +19085,13 @@ join_init_cache(THD *thd,JOIN_TAB *tables,uint table_count)
       cache->fields++;
     }
     /* SemiJoinDuplicateElimination: Allocate space for rowid if needed */
-    if (tables[i].rowid_keep_flags & JOIN_TAB::KEEP_ROWID)
+    if (tables[i].keep_current_rowid)
     {
       copy->str= tables[i].table->file->ref;
       copy->length= tables[i].table->file->ref_length;
       copy->strip=0;
       copy->blob_field=0;
-      copy->get_rowid= NULL;
       length+=copy->length;
-      if (tables[i].rowid_keep_flags & JOIN_TAB::CALL_POSITION)
-      {
-        /* We will need to call h->position(): */
-        copy->get_rowid= tables[i].table;
-        /* And those after us won't have to: */
-        tables[i].rowid_keep_flags &=  ~((int)JOIN_TAB::CALL_POSITION);
-      }
       copy++;
     }
   }
@@ -19164,10 +19162,6 @@ store_record_in_cache(JOIN_CACHE *cache)
     }
     else
     {
-      // SemiJoinDuplicateElimination: Get the rowid into table->ref:
-      if (copy->get_rowid)
-        copy->get_rowid->file->position(copy->get_rowid->record[0]);
-
       if (copy->strip)
       {
 	uchar *str,*end;
