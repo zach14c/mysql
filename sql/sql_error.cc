@@ -41,6 +41,7 @@ This file contains the implementation of error and warnings related
 
 ***********************************************************************/
 
+#include "sql_error.h"
 #include "mysql_priv.h"
 #include "sp_rcontext.h"
 
@@ -49,6 +50,59 @@ This file contains the implementation of error and warnings related
 void MYSQL_ERROR::set_msg(MEM_ROOT *warn_root, const char *msg_arg)
 {
   msg= strdup_root(warn_root, msg_arg);
+}
+
+
+Warning_info::Warning_info(ulonglong warn_id_arg)
+  :m_statement_warn_count(0),
+  m_current_row_for_warning(1),
+  m_warn_id(warn_id_arg)
+{
+  /* Initialize sub structures */
+  init_sql_alloc(&m_warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
+  m_warn_list.empty();
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+}
+
+
+Warning_info::~Warning_info()
+{
+  free_root(&m_warn_root,MYF(0));
+}
+
+
+/**
+  Reset the warning information of this connection.
+*/
+
+void Warning_info::clear_warning_info(ulonglong warn_id_arg)
+{
+  m_warn_id= warn_id_arg;
+  free_root(&m_warn_root, MYF(0));
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+  m_warn_list.empty();
+  m_statement_warn_count= 0;
+  m_current_row_for_warning= 1; /* Start counting from the first row */
+}
+
+
+/**
+  Add a warning to the list of warnings. Increment the respective
+  counters.
+*/
+
+void Warning_info::push_warning(THD *thd,
+                                MYSQL_ERROR::enum_warning_level level,
+                                uint code, const char *msg)
+{
+  if (m_warn_list.elements < thd->variables.max_error_count)
+  {
+    MYSQL_ERROR *err;
+    if ((err= new (&m_warn_root) MYSQL_ERROR(&m_warn_root, level, code, msg)))
+      m_warn_list.push_back(err, &m_warn_root);
+  }
+  m_warn_count[(uint) level]++;
+  m_statement_warn_count++;
 }
 
 
