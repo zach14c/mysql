@@ -84,10 +84,10 @@ int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
 	// Get section id, record id and data length written. Input pointer will be at
 	// beginning of record data.
 
-	int tablespaceid = 0;
+	int recordTableSpaceId = 0;
 	
 	if (control->version >= srlVersion8)
-		tablespaceid = control->getInt();
+		recordTableSpaceId = control->getInt();
 		
 	control->getInt();			// sectionId
 	int recordNumber = control->getInt();
@@ -179,7 +179,7 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 				break;
 	
 			Table *table = record->format->table;
-			int tablespaceid = table->dbb->tableSpaceId;
+			int recordTableSpaceId = table->dbb->tableSpaceId;
 			Stream stream;
 			
 			// A non-zero virtual offset indicates that the record was previously
@@ -227,7 +227,7 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			// Ensure record fits within current window
 
 			if (log->writePtr + 
-				 byteCount(tablespaceid) + 
+				 byteCount(recordTableSpaceId) + 
 				 byteCount(table->dataSectionId) + 
 				 byteCount(record->recordNumber) + 
 				 byteCount(stream.totalLength) + stream.totalLength >= end)
@@ -240,9 +240,9 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 
 			record->setVirtualOffset(log->writeWindow->currentLength + log->writeWindow->virtualOffset);
 			uint32 sectionId = table->dataSectionId;
-			log->updateSectionUseVector(sectionId, tablespaceid, 1);
+			log->updateSectionUseVector(sectionId, recordTableSpaceId, 1);
 			
-			putInt(tablespaceid);
+			putInt(recordTableSpaceId);
 			putInt(record->getPriorVersion() ? sectionId : -(int) sectionId - 1);
 			putInt(record->recordNumber);
 			putStream(&stream);
@@ -303,25 +303,25 @@ void SRLUpdateRecords::redo(void)
 	if (transaction->state == sltCommitted)
 		for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 			{
-			int tablespaceid;
+			int recordTableSpaceId;
 			if (control->version >= srlVersion8)
-				tablespaceid = getInt(&p);
+				recordTableSpaceId = getInt(&p);
 			else
-				tablespaceid = 0;
+				recordTableSpaceId = 0;
 		
 			int id = getInt(&p);
 			uint sectionId = (id >= 0) ? id : -id - 1;
 			int recordNumber = getInt(&p);
 			int length = getInt(&p);
-			log->updateSectionUseVector(sectionId, tablespaceid, -1);
+			log->updateSectionUseVector(sectionId, recordTableSpaceId, -1);
 
 			if (log->traceRecord && recordNumber == log->traceRecord)
 				print();
 					
-			if (log->bumpSectionIncarnation(sectionId, tablespaceid, objInUse)
-				&& (!log->isTableSpaceDropped(tablespaceid)))
+			if (log->bumpSectionIncarnation(sectionId, recordTableSpaceId, objInUse)
+				&& (!log->isTableSpaceDropped(recordTableSpaceId)))
 				{
-				Dbb *dbb = log->getDbb(tablespaceid);
+				Dbb *dbb = log->getDbb(recordTableSpaceId);
 				
 				if (length)
 					{
@@ -348,19 +348,19 @@ void SRLUpdateRecords::pass1(void)
 
 	for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 		{
-		int tablespaceid;
+		int recordTableSpaceId;
 		if (control->version >= srlVersion8)
-			tablespaceid = getInt(&p);
+			recordTableSpaceId = getInt(&p);
 		else
-			tablespaceid = 0;
+			recordTableSpaceId = 0;
 
 		int id = getInt(&p);
 		uint sectionId = (id >= 0) ? id : -id - 1;
 		getInt(&p);			// recordNumber
 		int length = getInt(&p);
 
-		if (!log->isTableSpaceDropped(tablespaceid))
-			log->bumpSectionIncarnation(sectionId, tablespaceid, objInUse);
+		if (!log->isTableSpaceDropped(recordTableSpaceId))
+			log->bumpSectionIncarnation(sectionId, recordTableSpaceId, objInUse);
 
 		p += length;
 		}
@@ -386,21 +386,21 @@ void SRLUpdateRecords::commit(void)
 	
 	for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 		{
-		int tablespaceid;
+		int recordTableSpaceId;
 		if (control->version >= srlVersion8)
-			tablespaceid = getInt(&p);
+			recordTableSpaceId = getInt(&p);
 		else
-			tablespaceid = 0;
+			recordTableSpaceId = 0;
 			
 		int id = getInt(&p);
 		uint sectionId = (id >= 0) ? id : -id - 1;
 		int recordNumber = getInt(&p);
 		int length = getInt(&p);
-		log->updateSectionUseVector(sectionId, tablespaceid, -1);
+		log->updateSectionUseVector(sectionId, recordTableSpaceId, -1);
 		
-		if (log->isSectionActive(sectionId, tablespaceid))
+		if (log->isSectionActive(sectionId, recordTableSpaceId))
 			{
-			Dbb *dbb = log->getDbb(tablespaceid);
+			Dbb *dbb = log->getDbb(recordTableSpaceId);
 
 			if (length)
 				{
@@ -422,11 +422,11 @@ void SRLUpdateRecords::print(void)
 	
 	for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 		{
-		int tablespaceid;
+		int recordTableSpaceId;
 		if (control->version >= srlVersion8)
-			tablespaceid = getInt(&p);
+			recordTableSpaceId = getInt(&p);
 		else
-			tablespaceid = 0;
+			recordTableSpaceId = 0;
 
 		int id = getInt(&p);
 		uint sectionId = (id >= 0) ? id : -id - 1;
@@ -434,7 +434,7 @@ void SRLUpdateRecords::print(void)
 		int length = getInt(&p);
 		char temp[40];
 		Log::debug("   rec %d, len %d to section %d/%d %s\n", 
-					recordNumber, length, sectionId, tablespaceid, format(length, p, sizeof(temp), temp));
+					recordNumber, length, sectionId, recordTableSpaceId, format(length, p, sizeof(temp), temp));
 		p += length;
 		}
 }
