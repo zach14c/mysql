@@ -127,12 +127,12 @@ class Prepared_statement: public Statement
 public:
   enum flag_values
   {
-    IS_IN_USE= 1
+    IS_IN_USE= 1,
+    IS_SQL_PREPARE= 2,
   };
 
   THD *thd;
   Select_fetch_protocol_binary result;
-  Protocol *protocol;
   Item_param **param_array;
   uint param_count;
   uint last_errno;
@@ -148,7 +148,7 @@ public:
                                List<LEX_STRING>& varnames,
                                String *expanded_query);
 public:
-  Prepared_statement(THD *thd_arg, Protocol *protocol_arg);
+  Prepared_statement(THD *thd_arg);
   virtual ~Prepared_statement();
   void setup_set_params();
   virtual Query_arena::Type type() const;
@@ -156,11 +156,13 @@ public:
   bool set_name(LEX_STRING *name);
   inline void close_cursor() { delete cursor; cursor= 0; }
   inline bool is_in_use() { return flags & (uint) IS_IN_USE; }
-  inline bool is_protocol_text() const { return protocol == &thd->protocol_text; }
+  inline bool is_sql_prepare() const { return flags & (uint) IS_SQL_PREPARE; }
+  void set_sql_prepare() { flags|= (uint) IS_SQL_PREPARE; }
   bool prepare(const char *packet, uint packet_length);
   bool execute_loop(String *expanded_query,
                     bool open_cursor,
                     uchar *packet_arg, uchar *packet_end_arg);
+  bool execute_immediate(const char *stmt, uint length);
   /* Destroy this statement */
   void deallocate();
 private:
@@ -1361,7 +1363,7 @@ static int mysql_test_select(Prepared_statement *stmt,
   */
   if (unit->prepare(thd, 0, 0))
     goto error;
-  if (!lex->describe && !stmt->is_protocol_text())
+  if (!lex->describe && !stmt->is_sql_prepare())
   {
     /* Make copy of item list, as change_columns may change it */
     List<Item> fields(lex->select_lex.item_list);
@@ -1995,7 +1997,7 @@ static bool check_prepared_statement(Prepared_statement *stmt)
     break;
   }
   if (res == 0)
-    DBUG_RETURN(stmt->is_protocol_text() ?
+    DBUG_RETURN(stmt->is_sql_prepare() ?
                 FALSE : (send_prep_stmt(stmt, 0) || thd->protocol->flush()));
 error:
   DBUG_RETURN(TRUE);
@@ -2065,6 +2067,7 @@ static bool init_param_array(Prepared_statement *stmt)
 
 void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
 {
+  Protocol *save_protocol= thd->protocol;
   Prepared_statement *stmt;
   DBUG_ENTER("mysql_stmt_prepare");
 
@@ -2073,7 +2076,7 @@ void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
   /* First of all clear possible warnings from the previous command */
   mysql_reset_thd_for_next_command(thd);
 
-  if (! (stmt= new Prepared_statement(thd, &thd->protocol_binary)))
+  if (! (stmt= new Prepared_statement(thd)))
     DBUG_VOID_RETURN; /* out of memory: error is set in Sql_alloc */
 
   if (thd->stmt_map.insert(thd, stmt))
@@ -2088,11 +2091,16 @@ void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
   sp_cache_flush_obsolete(&thd->sp_proc_cache);
   sp_cache_flush_obsolete(&thd->sp_func_cache);
 
+  thd->protocol= &thd->protocol_binary;
+
   if (stmt->prepare(packet, packet_length))
   {
     /* Statement map deletes statement on erase */
     thd->stmt_map.erase(stmt);
   }
+
+  thd->protocol= save_protocol;
+
   /* check_prepared_statemnt sends the metadata packet in case of success */
   DBUG_VOID_RETURN;
 }
@@ -2226,7 +2234,6 @@ void mysql_sql_stmt_prepare(THD *thd)
   uint query_len;
   DBUG_ENTER("mysql_sql_stmt_prepare");
   LINT_INIT(query_len);
-  DBUG_ASSERT(thd->protocol == &thd->protocol_text);
 
   if ((stmt= (Prepared_statement*) thd->stmt_map.find_by_name(name)))
   {
@@ -2244,10 +2251,12 @@ void mysql_sql_stmt_prepare(THD *thd)
   }
 
   if (! (query= get_dynamic_sql_string(lex, &query_len)) ||
-      ! (stmt= new Prepared_statement(thd, &thd->protocol_text)))
+      ! (stmt= new Prepared_statement(thd)))
   {
     DBUG_VOID_RETURN;                           /* out of memory */
   }
+
+  stmt->set_sql_prepare();
 
   /* Set the name first, insert should know that this statement has a name */
   if (stmt->set_name(name))
@@ -2428,6 +2437,7 @@ void mysql_stmt_execute(THD *thd, char *packet_arg, uint packet_length)
   String expanded_query;
   uchar *packet_end= packet + packet_length;
   Prepared_statement *stmt;
+  Protocol *save_protocol= thd->protocol;
   bool open_cursor;
   DBUG_ENTER("mysql_stmt_execute");
 
@@ -2455,7 +2465,9 @@ void mysql_stmt_execute(THD *thd, char *packet_arg, uint packet_length)
 
   open_cursor= test(flags & (ulong) CURSOR_TYPE_READ_ONLY);
 
+  thd->protocol= &thd->protocol_binary;
   stmt->execute_loop(&expanded_query, open_cursor, packet, packet_end);
+  thd->protocol= save_protocol;
 
   DBUG_VOID_RETURN;
 }
@@ -2801,12 +2813,11 @@ Select_fetch_protocol_binary::send_data(List<Item> &fields)
  Prepared_statement
 ****************************************************************************/
 
-Prepared_statement::Prepared_statement(THD *thd_arg, Protocol *protocol_arg)
+Prepared_statement::Prepared_statement(THD *thd_arg)
   :Statement(NULL, &main_mem_root,
              INITIALIZED, ++thd_arg->statement_id_counter),
   thd(thd_arg),
   result(thd_arg),
-  protocol(protocol_arg),
   param_array(0),
   param_count(0),
   last_errno(0),
@@ -2895,7 +2906,8 @@ void Prepared_statement::cleanup_stmt()
   DBUG_ENTER("Prepared_statement::cleanup_stmt");
   DBUG_PRINT("enter",("stmt: %p", this));
 
-  DBUG_ASSERT(lex->sphead == 0);
+  delete lex->sphead;
+  lex->sphead= 0;
   /* The order is important */
   lex->unit.cleanup();
   cleanup_items(free_list);
@@ -3008,6 +3020,7 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
 
   Parser_state parser_state(thd, thd->query, thd->query_length);
   parser_state.m_lip.stmt_prepare_mode= TRUE;
+  parser_state.m_lip.multi_statements= FALSE;
   lex_start(thd);
 
   error= parse_sql(thd, & parser_state, NULL) ||
@@ -3247,6 +3260,86 @@ reexecute:
 
 
 /**
+  Parse and execute a query string. Does not prepare the query.
+
+  An implementation of "EXECUTE IMMEDIATE" syntax of Dynamic SQL.
+  Allows to execute a statement from within another statement.
+  The main property of the implementation is that it does not
+  affect the environment -- i.e. you  can run many
+  ::execute_immediate() without having to cleanup/reset THD in
+  between.
+*/
+
+bool
+Prepared_statement::execute_immediate(const char *query, uint length)
+{
+  Statement stmt_backup;
+  bool error;
+
+  state= CONVENTIONAL_EXECUTION;
+
+  if (!(lex = new (mem_root) st_lex_local))
+    return TRUE;
+
+  thd->set_n_backup_statement(this, &stmt_backup);
+
+  if (alloc_query(thd, query, length))
+  {
+    thd->set_statement(&stmt_backup);
+    return TRUE;
+  }
+  /*
+    Expanded query is needed for slow logging, so we want thd->query
+    to point at it even after we restore from backup. This is ok, as
+    expanded query was allocated in thd->mem_root.
+  */
+  stmt_backup.query= thd->query;
+  stmt_backup.query_length= thd->query_length;
+
+  Parser_state parser_state(thd, thd->query, thd->query_length);
+
+  parser_state.m_lip.multi_statements= FALSE;
+  lex_start(thd);
+
+  error= parse_sql(thd, &parser_state, NULL) || thd->is_error();
+
+
+  if (lex->sql_command == SQLCOM_PREPARE ||
+      lex->sql_command == SQLCOM_EXECUTE ||
+      (lex->sql_command == SQLCOM_CHANGE_DB && is_sql_prepare()))
+  {
+    my_error(ER_PS_NO_RECURSION, MYF(0));
+    error= 1;
+  }
+
+  if (error)
+  {
+    thd->set_statement(&stmt_backup);
+    return TRUE;
+  }
+
+  lex->set_trg_event_type_for_tables();
+
+  if (query_cache_send_result_to_client(thd, thd->query,
+                                        thd->query_length) <= 0)
+  {
+    error= mysql_execute_command(thd);
+  }
+
+  cleanup_stmt();
+  lex_end(thd->lex);
+
+  thd->set_statement(&stmt_backup);
+
+  if (error == 0 && thd->spcont == NULL)
+    general_log_write(thd, COM_STMT_EXECUTE,
+                      thd->query, thd->query_length);
+
+  return error;
+}
+
+
+/**
   Reprepare this prepared statement.
 
   Currently this is implemented by creating a new prepared
@@ -3269,7 +3362,9 @@ Prepared_statement::reprepare()
   bool cur_db_changed;
   bool error;
 
-  Prepared_statement copy(thd, &thd->protocol_text);
+  Prepared_statement copy(thd);
+
+  copy.set_sql_prepare(); /* To suppress sending metadata to the client. */
 
   status_var_increment(thd->status_var.com_stmt_reprepare);
 
@@ -3327,7 +3422,7 @@ bool Prepared_statement::validate_metadata(Prepared_statement *copy)
     return FALSE -- the metadata of the original SELECT,
     if any, has not been sent to the client.
   */
-  if (is_protocol_text() || lex->describe)
+  if (is_sql_prepare() || lex->describe)
     return FALSE;
 
   if (lex->select_lex.item_list.elements !=
@@ -3390,7 +3485,6 @@ Prepared_statement::swap_prepared_statement(Prepared_statement *copy)
   DBUG_ASSERT(thd == copy->thd);
   last_error[0]= '\0';
   last_errno= 0;
-  /* Do not swap protocols, the copy always has protocol_text */
 }
 
 
@@ -3531,8 +3625,6 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
   thd->stmt_arena= this;
   reinit_stmt_before_use(thd, lex);
 
-  thd->protocol= protocol;                      /* activate stmt protocol */
-
   /* Go! */
 
   if (open_cursor)
@@ -3570,8 +3662,6 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
   if (cur_db_changed)
     mysql_change_db(thd, &saved_cur_db_name, TRUE);
 
-  thd->protocol= &thd->protocol_text;         /* use normal protocol */
-
   /* Assert that if an error, no cursor is open */
   DBUG_ASSERT(! (error && cursor));
 
@@ -3585,7 +3675,13 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     state= Query_arena::EXECUTED;
 
   if (this->lex->sql_command == SQLCOM_CALL)
-    protocol->send_out_parameters(&this->lex->param_list);
+  {
+    if (is_sql_prepare())
+      thd->protocol_text.send_out_parameters(&this->lex->param_list);
+    else
+      thd->protocol->send_out_parameters(&this->lex->param_list);
+  }
+
 
   /*
     Log COM_EXECUTE to the general log. Note, that in case of SQL
