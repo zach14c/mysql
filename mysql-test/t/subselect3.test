@@ -739,3 +739,16 @@ select (select max(Y.a) from t1 Y where a in (select a from t1 Z) and a < X.a) a
 set @@optimizer_switch='';
 
 drop table t1;
+
+#
+# Test confluent duplicate weedout
+#
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 as select * from t0;
+insert into t1 select a+10 from t0;
+set @@optimizer_switch='no_firstmatch,no_materialization';
+insert into t0 values(2);
+explain select * from t1 where 2 in (select a from t0);
+select * from t1 where 2 in (select a from t0);
+drop table t0, t1;

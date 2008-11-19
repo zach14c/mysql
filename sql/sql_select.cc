@@ -1269,9 +1269,9 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
           }
         }
 
+        SJ_TMP_TABLE *sjtbl;
         if (jt_rowid_offset) /* Temptable has at least one rowid */
         {
-          SJ_TMP_TABLE *sjtbl;
           uint tabs_size= (last_tab - sjtabs) * sizeof(SJ_TMP_TABLE::TAB);
           if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))) ||
               !(sjtbl->tabs= (SJ_TMP_TABLE::TAB*) thd->alloc(tabs_size)))
@@ -1288,8 +1288,6 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
                                                sjtbl->null_bytes,
                                                sjtbl);
           join->sj_tmp_tables.push_back(sjtbl->tmp_table);
-          join->join_tab[first_table].flush_weedout_table= sjtbl;
-          join->join_tab[i + pos->n_sj_tables - 1].check_weed_out_table= sjtbl;
         }
         else
         {
@@ -1298,12 +1296,15 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
             not depend on anything at all, ie this is 
               WHERE const IN (uncorrelated select)
           */
-          SJ_TMP_TABLE *sjtbl;
           if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))))
             DBUG_RETURN(TRUE); /* purecov: inspected */
+          sjtbl->tmp_table= NULL;
           sjtbl->is_confluent= TRUE;
           sjtbl->have_confluent_row= FALSE;
         }
+        join->join_tab[first_table].flush_weedout_table= sjtbl;
+        join->join_tab[i + pos->n_sj_tables - 1].check_weed_out_table= sjtbl;
+
         i += pos->n_sj_tables;
         break;
       }
@@ -15820,8 +15821,6 @@ int do_sj_dups_weedout(THD *thd, SJ_TMP_TABLE *sjtbl)
   int error;
   SJ_TMP_TABLE::TAB *tab= sjtbl->tabs;
   SJ_TMP_TABLE::TAB *tab_end= sjtbl->tabs_end;
-  uchar *ptr= sjtbl->tmp_table->record[0] + 1;
-  uchar *nulls_ptr= ptr;
   
   if (sjtbl->is_confluent)
   {
@@ -15833,6 +15832,9 @@ int do_sj_dups_weedout(THD *thd, SJ_TMP_TABLE *sjtbl)
       return 0;
     }
   }
+
+  uchar *ptr= sjtbl->tmp_table->record[0] + 1;
+  uchar *nulls_ptr= ptr;
   /* Put the the rowids tuple into table->record[0]: */
   // 1. Store the length 
   if (((Field_varstring*)(sjtbl->tmp_table->field[0]))->length_bytes == 1)
@@ -21505,7 +21507,7 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
 
         if (tab->flush_weedout_table)
           extra.append(STRING_WITH_LEN("; Start temporary"));
-        else if (tab->check_weed_out_table)
+        if (tab->check_weed_out_table)
           extra.append(STRING_WITH_LEN("; End temporary"));
         else if (tab->do_firstmatch)
         {
