@@ -206,7 +206,7 @@ int Image_info::add_snapshot(Snapshot_info &snap)
 /**
   Check if catalogue contains given database.
  */ 
-bool Image_info::has_db(const String &db_name)
+bool Image_info::has_db(const String &db_name) const
 {
   for (uint n=0; n < m_dbs.count() ; ++n)
     if (m_dbs[n] && m_dbs[n]->name() == db_name)

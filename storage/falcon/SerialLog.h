@@ -228,6 +228,7 @@ public:
 	uint64				chilledBytes;
 	int32				wantToSerializeGophers;
 	int32				serializeGophers;
+	uint64				startRecordVirtualOffset;
 
 	TableSpaceInfo		*tableSpaces[SLT_HASH_SIZE];
 	TableSpaceInfo		*tableSpaceInfo;

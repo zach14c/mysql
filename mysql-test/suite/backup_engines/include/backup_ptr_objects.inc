@@ -38,9 +38,15 @@ SET timestamp=@a;
 # procedure p1, p2 and p3 are created in ptr_ob1 and p4 in ptr_ob2.
 #
 
+# Get rid of old objects in the databases.
+--disable_warnings
+DROP DATABASE IF EXISTS ptr_ob1;
+DROP DATABASE IF EXISTS ptr_ob2;
+--enable_warnings
+
 # Create database
-CREATE DATABASE IF NOT EXISTS ptr_ob1;
-CREATE DATABASE IF NOT EXISTS ptr_ob2;
+CREATE DATABASE ptr_ob1;
+CREATE DATABASE ptr_ob2;
 USE ptr_ob1;
 
 --echo **** Creating tables ****
@@ -109,9 +115,10 @@ BEGIN
 END;||
 delimiter ;||
 
-INSERT INTO ptr_ob1.t2 VALUES
-(NULL, 'Normal Insert1'),(NULL, 'Normal Insert2'),
-(NULL, 'Normal Insert3'),(NULL, 'Normal Insert4');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert1');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert2');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert3');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert4');
 SELECT * FROM ptr_ob1.t2;
 SELECT * FROM ptr_ob1.t3;
 

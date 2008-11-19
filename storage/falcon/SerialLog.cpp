@@ -131,6 +131,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	gophers = NULL;
 	wantToSerializeGophers = 0;
 	serializeGophers = 0;
+	startRecordVirtualOffset = 0;
 	
 	for (uint n = 0; n < falcon_gopher_threads; ++n)
 		{
@@ -715,6 +716,8 @@ void SerialLog::startRecord()
 	if (writeError)
 		throw SQLError(IO_ERROR_SERIALLOG, "Previous I/O error on serial log prevents further processing");
 
+	startRecordVirtualOffset = writeWindow->getNextVirtualOffset();
+	
 	if (writePtr == writeBlock->data)
 		putVersion();
 

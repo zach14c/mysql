@@ -1,0 +1,425 @@
+SET @@global.log_backup_output = 'FILE,TABLE';
+PURGE BACKUP LOGS;
+
+Now starting real tests
+
+DROP DATABASE IF EXISTS backup_logs;
+CREATE DATABASE backup_logs;
+Create table and populate with data.
+CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
+CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
+INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress");
+INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress");
+INSERT INTO backup_logs.t1 VALUES ("03 Test #1 - progress");
+INSERT INTO backup_logs.t1 VALUES ("04 Test #1 - progress");
+INSERT INTO backup_logs.t1 VALUES ("05 Test #1 - progress");
+INSERT INTO backup_logs.t1 VALUES ("06 Test #1 - progress");
+INSERT INTO backup_logs.t1 VALUES ("07 Test #1 - progress");
+INSERT INTO backup_logs.t2 VALUES ("01 Test #1 - progress");
+INSERT INTO backup_logs.t2 VALUES ("02 Test #1 - progress");
+INSERT INTO backup_logs.t2 VALUES ("03 Test #1 - progress");
+INSERT INTO backup_logs.t2 VALUES ("04 Test #1 - progress");
+INSERT INTO backup_logs.t2 VALUES ("05 Test #1 - progress");
+INSERT INTO backup_logs.t2 VALUES ("06 Test #1 - progress");
+INSERT INTO backup_logs.t3 VALUES ("01 Test #1 - progress");
+INSERT INTO backup_logs.t3 VALUES ("02 Test #1 - progress");
+INSERT INTO backup_logs.t3 VALUES ("03 Test #1 - progress");
+INSERT INTO backup_logs.t3 VALUES ("04 Test #1 - progress");
+SET SESSION debug="+d,set_backup_id";
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup1.bak';
+backup_id
+500
+SET SESSION debug="-d";
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup2.bak';
+backup_id
+501
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup3.bak';
+backup_id
+502
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup4.bak';
+backup_id
+503
+Do restore of database
+RESTORE from 'backup1.bak';
+backup_id
+504
+Do restore of database
+RESTORE from 'backup2.bak';
+backup_id
+505
+Do restore of database
+RESTORE from 'backup3.bak';
+backup_id
+506
+Do restore of database
+RESTORE from 'backup4.bak';
+backup_id
+507
+Display results from backup logs
+SELECT backup_id FROM mysql.backup_history;
+backup_id
+500
+501
+502
+503
+504
+505
+506
+507
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+backup_id
+500
+501
+502
+503
+504
+505
+506
+507
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+8
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+36
+Purge all backup log data prior to id = 502.
+PURGE BACKUP LOGS TO 502;
+Display results from backup logs
+SELECT backup_id FROM mysql.backup_history;
+backup_id
+502
+503
+504
+505
+506
+507
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+backup_id
+502
+503
+504
+505
+506
+507
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+6
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+24
+Purge all backup log data.
+PURGE BACKUP LOGS;
+Display results from backup logs
+SELECT backup_id FROM mysql.backup_history;
+backup_id
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+backup_id
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+0
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+0
+Cleanup the logs and images for later testing.
+PURGE BACKUP LOGS;
+SET @@time_zone = '+00:00';
+SET SESSION debug="+d,set_backup_id";
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup1.bak';
+backup_id
+500
+SET SESSION debug="-d";
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup2.bak';
+backup_id
+501
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup3.bak';
+backup_id
+502
+SET SESSION debug="+d,set_log_time";
+Do backup of database
+BACKUP DATABASE backup_logs to 'backup4.bak';
+backup_id
+503
+SET SESSION debug="-d";
+Do restore of database
+RESTORE from 'backup1.bak';
+backup_id
+504
+Do restore of database
+RESTORE from 'backup2.bak';
+backup_id
+505
+Do restore of database
+RESTORE from 'backup3.bak';
+backup_id
+506
+SET SESSION debug="+d,set_log_time";
+Do restore of database
+RESTORE from 'backup4.bak';
+backup_id
+507
+SET SESSION debug="-d";
+Display the results.
+SELECT backup_id FROM mysql.backup_history;
+backup_id
+500
+501
+502
+503
+504
+505
+506
+507
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+backup_id
+500
+501
+502
+503
+504
+505
+506
+507
+SET @now_time= now();
+PURGE BACKUP LOGS BEFORE @now_time;
+SELECT backup_id FROM mysql.backup_history;
+backup_id
+503
+507
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+backup_id
+503
+507
+SET @@time_zone = @@global.time_zone;
+PURGE BACKUP LOGS;
+Perform backup
+SET SESSION debug="+d,set_backup_id";
+BACKUP DATABASE backup_logs TO '../bup_logs_dir.bak';
+backup_id
+500
+SET SESSION debug="-d";
+Ensure backup image file went to the correct location
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+1
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+6
+PURGE BACKUP LOGS TO 501;
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+0
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+0
+PURGE BACKUP LOGS BEFORE 123123;
+ERROR HY000: The datetime specified is invalid for the 'PURGE BACKUP LOGS BEFORE' command.
+SET @@global.log_backup_output = 'FILE';
+PURGE BACKUP LOGS TO 99999999;
+ERROR HY000: Removing backup log entries by date or backup_id requires logging to tables.
+PURGE BACKUP LOGS BEFORE @now_time;
+ERROR HY000: Removing backup log entries by date or backup_id requires logging to tables.
+SET @@global.log_backup_output = 'TABLE';
+Test backup and purge concurrent execution.
+PURGE BACKUP LOGS;
+Get rid of any lingering image files.
+SET DEBUG_SYNC= 'RESET';
+con2: Do some backups to add entries in logs.
+BACKUP DATABASE backup_logs to 'backup1.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs to 'backup2.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs to 'backup3.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs to 'backup4.bak';
+backup_id
+#
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+4
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+24
+SET SESSION debug="+d,set_backup_id";
+con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'before_backup_done SIGNAL ready WAIT_FOR proceed';
+BACKUP DATABASE backup_logs to 'backup5.bak';
+con1: Wait for the backup to be ready.
+SET DEBUG_SYNC= 'now WAIT_FOR ready';
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC= 'now SIGNAL proceed';
+backup_id
+#
+SET SESSION debug="-d";
+There should be one row in this table: the backup id from last
+backup (500).
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+1
+SELECT backup_id, command FROM mysql.backup_history;
+backup_id	command
+500	BACKUP DATABASE backup_logs to 'backup5.bak'
+There should be one row in this table: the backup id from last
+backup (500). We should only see the complete progress 
+statement because all others were deleted while backup was
+in progress.
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+1
+SELECT * FROM mysql.backup_progress;
+backup_id	500
+object	backup kernel
+start_time	#
+stop_time	#
+total_bytes	0
+progress	0
+error_num	0
+notes	complete
+Now do the same test for restore.
+RESTORE FROM 'backup1.bak';
+backup_id
+#
+RESTORE FROM 'backup2.bak';
+backup_id
+#
+RESTORE FROM 'backup3.bak';
+backup_id
+#
+RESTORE FROM 'backup4.bak';
+backup_id
+#
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+5
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+13
+con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'before_restore_done SIGNAL ready WAIT_FOR proceed';
+RESTORE FROM 'backup5.bak';
+con1: Wait for the backup to be ready.
+SET DEBUG_SYNC= 'now WAIT_FOR ready';
+PURGE BACKUP LOGS;
+SET DEBUG_SYNC= 'now SIGNAL proceed';
+backup_id
+#
+There should be one row in this table: the backup id from last
+restore (505).
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+1
+SELECT backup_id, command FROM mysql.backup_history;
+backup_id	command
+505	RESTORE FROM 'backup5.bak'
+There should be one row in this table: the backup id from last
+restore (505). We should only see the complete progress 
+statement because all others were deleted while restore was
+in progress.
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+1
+SELECT * FROM mysql.backup_progress;
+backup_id	505
+object	backup kernel
+start_time	#
+stop_time	#
+total_bytes	0
+progress	0
+error_num	0
+notes	complete
+First, run some backups.
+BACKUP DATABASE backup_logs TO 'backup1.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup2.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup3.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup4.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup5.bak';
+backup_id
+#
+Test purges that do not meet criteria.
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+6
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+31
+PURGE BACKUP LOGS BEFORE '1988-10-12 12:00:00';
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+6
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+31
+PURGE BACKUP LOGS TO 0;
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+6
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+31
+Test empty logs (delete all entries).
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+6
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+31
+PURGE BACKUP LOGS TO 999999999;
+Check to be sure backup logs are empty (count(*) = 0).
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+0
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+0
+Run some more backups to generate more rows.
+BACKUP DATABASE backup_logs TO 'backup1.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup2.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup3.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup4.bak';
+backup_id
+#
+BACKUP DATABASE backup_logs TO 'backup5.bak';
+backup_id
+#
+Test purges that do not meet criteria.
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+5
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+30
+PURGE BACKUP LOGS BEFORE '2024-10-12 12:00:00';
+Test empty logs (delete all entries).
+SELECT count(*) FROM mysql.backup_history;
+count(*)
+0
+SELECT count(*) FROM mysql.backup_progress;
+count(*)
+0
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE backup_logs;
+PURGE BACKUP LOGS;

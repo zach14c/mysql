@@ -76,6 +76,9 @@ int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
 	if (!window)
 		return 0;
 		
+	Sync sync(&log->syncWrite, "SRLUpdateRecords::thaw");
+	sync.lock(Exclusive);
+	
 	// Return pointer to record data
 
 	control->input = window->buffer + (record->getVirtualOffset() - window->virtualOffset);
@@ -94,13 +97,14 @@ int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
 	int dataLength   = control->getInt();
 	int bytesReallocated = 0;
 	
+	window->deactivateWindow();
+	sync.unlock();
+	
 	// setRecordData() handles race conditions with an interlocked compare and exchange,
 	// but check the state and record number anyway
 
 	if (record->state == recChilled && recordNumber == record->recordNumber)
 		bytesReallocated = record->setRecordData(control->input, dataLength);
-
-	window->deactivateWindow();
 
 	if (bytesReallocated > 0)
 		{
