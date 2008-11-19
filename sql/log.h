@@ -268,6 +268,14 @@ private:
   time_t last_time;
 };
 
+/*
+  Values for the type enum. This reflects the order of the enum 
+  declaration in the PURGE BACKUP LOGS command.
+*/
+#define TYPE_ENUM_PURGE_BACKUP_LOGS       1
+#define TYPE_ENUM_PURGE_BACKUP_LOGS_ID    2
+#define TYPE_ENUM_PURGE_BACKUP_LOGS_DATE  3
+
 class MYSQL_BACKUP_LOG: public MYSQL_LOG
 {
 public:
@@ -307,6 +315,8 @@ public:
   }
   ulonglong get_next_backup_id();
   my_bool check_backup_logs(THD *thd);
+  File get_file() { return log_file.file; }
+  inline pthread_mutex_t* get_log_lock() { return &LOCK_log; }
 
 private:
   bool write_int(uint num);
@@ -577,6 +587,13 @@ public:
                                    longlong progress,
                                    int error_num,
                                    const char *notes);
+  bool purge_backup_logs(THD *thd);
+  bool purge_backup_logs_before_id(THD *thd, 
+                                   ulonglong backup_id, 
+                                   int *rows);
+  bool purge_backup_logs_before_date(THD *thd, 
+                                     my_time_t t, 
+                                     int *rows);
 
   int activate_log(THD *thd, uint log_type);
 
@@ -630,6 +647,7 @@ public:
 
   void flush();
   void flush_backup_logs();
+  bool purge_backup_logs();
   void init_pthread_objects();
   MYSQL_QUERY_LOG *get_mysql_slow_log() { return &mysql_slow_log; }
   MYSQL_QUERY_LOG *get_mysql_log() { return &mysql_log; }
@@ -684,6 +702,13 @@ public:
   void init_log_tables();
   bool flush_logs(THD *thd);
   bool flush_backup_logs(THD *thd);
+  bool purge_backup_logs(THD *thd);
+  bool purge_backup_logs_before_id(THD *thd, 
+                                   ulonglong backup_id, 
+                                   int *rows);
+  bool purge_backup_logs_before_date(THD *thd, 
+                                     my_time_t t, 
+                                     int *rows);
   /* Perform basic logger cleanup. this will leave e.g. error log open. */
   void cleanup_base();
   /* Free memory. Nothing could be logged after this function is called */

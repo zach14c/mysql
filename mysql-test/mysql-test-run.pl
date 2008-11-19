@@ -133,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "main,backup,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
+our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
