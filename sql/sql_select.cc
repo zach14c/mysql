@@ -1275,7 +1275,7 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
           uint tabs_size= (last_tab - sjtabs) * sizeof(SJ_TMP_TABLE::TAB);
           if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))) ||
               !(sjtbl->tabs= (SJ_TMP_TABLE::TAB*) thd->alloc(tabs_size)))
-            DBUG_RETURN(TRUE);
+            DBUG_RETURN(TRUE); /* purecov: inspected */
           memcpy(sjtbl->tabs, sjtabs, tabs_size);
           sjtbl->is_confluent= FALSE;
           sjtbl->tabs_end= sjtbl->tabs + (last_tab - sjtabs);
@@ -1300,7 +1300,7 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
           */
           SJ_TMP_TABLE *sjtbl;
           if (!(sjtbl= (SJ_TMP_TABLE*)thd->alloc(sizeof(SJ_TMP_TABLE))))
-            DBUG_RETURN(TRUE);
+            DBUG_RETURN(TRUE); /* purecov: inspected */
           sjtbl->is_confluent= TRUE;
           sjtbl->have_confluent_row= FALSE;
         }
@@ -3001,7 +3001,7 @@ mysql_select(THD *thd, Item ***rref_pointer_array,
   else
   {
     if (!(join= new JOIN(thd, fields, select_options, result)))
-	DBUG_RETURN(TRUE);
+	DBUG_RETURN(TRUE); /* purecov: inspected */
     thd_proc_info(thd, "init");
     thd->used_tables=0;                         // Updated by setup_fields
     if (err= join->prepare(rref_pointer_array, tables, wild_num,
