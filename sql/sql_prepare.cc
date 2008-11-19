@@ -2520,6 +2520,7 @@ void mysql_sql_stmt_execute(THD *thd)
   DBUG_VOID_RETURN;
 }
 
+
 /**
   COM_STMT_FETCH handler: fetches requested amount of rows from cursor.
 
