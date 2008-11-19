@@ -772,8 +772,8 @@ private:
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-T *create_row_set_iterator(THD *thd, const LEX_STRING *query)
+template <typename Iterator>
+Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 {
   Ed_result result(thd->mem_root);
 
@@ -790,7 +790,7 @@ T *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 
   DBUG_ASSERT(rs);
 
-  return new T(rs);
+  return new Iterator(rs);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1270,8 +1270,9 @@ public:
   virtual Obj *next();
 
 protected:
-  template <typename T>
-  static T *create(THD *thd, const String *db_name, const String *view_name);
+  template <typename Iterator>
+  static Iterator *create(THD *thd,
+                          const String *db_name, const String *view_name);
 
 protected:
   bool init(THD *thd, const String *db_name, const String *view_name);
@@ -1286,12 +1287,12 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-T *View_base_obj_iterator::create(THD *thd,
-                                  const String *db_name,
-                                  const String *view_name)
+template <typename Iterator>
+Iterator *View_base_obj_iterator::create(THD *thd,
+                                         const String *db_name,
+                                         const String *view_name)
 {
-  T *it= new T();
+  Iterator *it= new Iterator();
 
   if (it->init(thd, db_name, view_name))
   {
