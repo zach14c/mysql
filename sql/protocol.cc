@@ -1486,6 +1486,7 @@ Ed_result::Ed_result(MEM_ROOT *mem_root) :
   m_affected_rows(0),
   m_last_insert_id(0),
   m_sql_errno(0),
+  m_warning_info(0),
   m_warning_info_saved(NULL)
 {
   m_message[0]= 0;

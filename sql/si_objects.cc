@@ -439,8 +439,10 @@ bool Abstract_obj::execute(THD *thd)
       break;
 
     LEX_STRING query= { (char *) stmt->ptr(), stmt->length() };
+    Ed_result result(thd->mem_root);
+    DBUG_ASSERT(alloc_root_inited(thd->mem_root));
 
-    rc= mysql_execute_direct(thd, &query, NULL);
+    rc= mysql_execute_direct(thd, &query, &result);
 
     /* Ignore warnings from materialization for now. */
 

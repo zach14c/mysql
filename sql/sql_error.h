@@ -80,8 +80,6 @@ private:
 public:
 
   Warning_info(ulonglong warn_id_arg);
-  /* Do nothing - used to initialize a backup info */
-  Warning_info() { clear_alloc_root(&m_warn_root); }
   ~Warning_info();
 
   /**
