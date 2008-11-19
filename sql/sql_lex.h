@@ -1477,10 +1477,9 @@ public:
 
   /**
     TRUE if we're parsing a prepared statement: in this mode
-    we should allow placeholders and disallow multi-statements.
+    we should allow placeholders.
   */
   bool stmt_prepare_mode;
-
   /**
     TRUE if we should allow multi-statements.
   */
