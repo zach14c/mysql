@@ -2520,6 +2520,7 @@ void mysql_sql_stmt_execute(THD *thd)
   DBUG_VOID_RETURN;
 }
 
+
 /**
   COM_STMT_FETCH handler: fetches requested amount of rows from cursor.
 
@@ -3303,6 +3304,17 @@ bool mysql_execute_direct(THD *thd, const LEX_STRING *query, Ed_result *result)
 }
 
 
+/**
+  Parse and execute a query string. Does not prepare the query.
+
+  An implementation of "EXECUTE IMMEDIATE" syntax of Dynamic SQL.
+  Allows to execute a statement from within another statement.
+  The main property of the implementation is that it does not
+  affect the environment -- i.e. you  can run many
+  ::execute_immediate() without having to cleanup/reset THD in
+  between.
+*/
+
 bool
 Prepared_statement::execute_immediate(const char *query, uint length)
 {
@@ -3336,7 +3348,10 @@ Prepared_statement::execute_immediate(const char *query, uint length)
 
   error= parse_sql(thd, &parser_state, NULL) || thd->is_error();
 
-  if (lex->sql_command == SQLCOM_PREPARE || lex->sql_command == SQLCOM_EXECUTE)
+
+  if (lex->sql_command == SQLCOM_PREPARE ||
+      lex->sql_command == SQLCOM_EXECUTE ||
+      (lex->sql_command == SQLCOM_CHANGE_DB && is_sql_prepare()))
   {
     my_error(ER_PS_NO_RECURSION, MYF(0));
     error= 1;
