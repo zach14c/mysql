@@ -513,6 +513,7 @@ my_bool opt_old_style_user_limits= 0, trust_function_creators= 0;
 volatile bool mqh_used = 0;
 my_bool opt_noacl;
 my_bool sp_automatic_privileges= 1;
+my_bool disable_slaves= 0;
 
 ulong opt_binlog_rows_event_max_size;
 const char *binlog_format_names[]= {"MIXED", "STATEMENT", "ROW", NullS};
@@ -3247,6 +3248,7 @@ SHOW_VAR com_status_vars[]= {
   {"prepare_sql",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_PREPARE]), SHOW_LONG_STATUS},
   {"purge",                (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_PURGE]), SHOW_LONG_STATUS},
   {"purge_before_date",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_PURGE_BEFORE]), SHOW_LONG_STATUS},
+  {"purge_bup_log",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_PURGE_BACKUP_LOGS]), SHOW_LONG_STATUS},
   {"release_savepoint",    (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RELEASE_SAVEPOINT]), SHOW_LONG_STATUS},
   {"rename_table",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RENAME_TABLE]), SHOW_LONG_STATUS},
   {"rename_user",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RENAME_USER]), SHOW_LONG_STATUS},
@@ -5852,7 +5854,9 @@ enum options_mysqld
   OPT_DEADLOCK_SEARCH_DEPTH_SHORT,
   OPT_DEADLOCK_SEARCH_DEPTH_LONG,
   OPT_DEADLOCK_TIMEOUT_SHORT,
-  OPT_DEADLOCK_TIMEOUT_LONG
+  OPT_DEADLOCK_TIMEOUT_LONG,
+  OPT_BACKUP_HISTORY_LOG_FILE,
+  OPT_BACKUP_PROGRESS_LOG_FILE
 };
 
 
@@ -6120,6 +6124,16 @@ Disable with --skip-large-pages.",
   {"general_log_file", OPT_GENERAL_LOG_FILE,
    "Log connections and queries to given file.", (uchar**) &opt_logname,
    (uchar**) &opt_logname, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"backup_history_log_file", OPT_BACKUP_HISTORY_LOG_FILE,
+   "Log backup history to a given file.", 
+   (uchar**) &opt_backup_history_logname,
+   (uchar**) &opt_backup_history_logname, 0, GET_STR, 
+   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"backup_progress_log_file", OPT_BACKUP_PROGRESS_LOG_FILE,
+   "Log backup progress to a given file.", 
+   (uchar**) &opt_backup_progress_logname,
+   (uchar**) &opt_backup_progress_logname, 0, GET_STR, 
+   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"log-bin", OPT_BIN_LOG,
    "Log update queries in binary format. Optional (but strongly recommended "
    "to avoid replication problems if server's hostname changes) argument "

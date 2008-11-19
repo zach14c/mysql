@@ -6447,8 +6447,6 @@ slave_until_opts:
 
 restore:
           RESTORE_SYM
-          FROM
-          TEXT_STRING_sys
           {
             LEX *lex= Lex;
             if (lex->sphead)
@@ -6457,18 +6455,17 @@ restore:
               MYSQL_YYABORT;
             }
             lex->sql_command = SQLCOM_RESTORE;
-            lex->db_list.empty();
-            lex->backup_dir = $3; 
+            lex->clear_db_list();
+          }
+          FROM
+          TEXT_STRING_sys
+          {
+            Lex->backup_dir = $4; 
           }
         ;
 
-backup:
-          BACKUP_SYM
-          DATABASE
-          database_list
-          TO_SYM
-          TEXT_STRING_sys
-          opt_compression
+backup:   
+          BACKUP_SYM 
           {
             LEX *lex= Lex;
             if (lex->sphead)
@@ -6477,7 +6474,15 @@ backup:
               MYSQL_YYABORT;
             }
             lex->sql_command = SQLCOM_BACKUP;
-            lex->backup_dir = $5; 
+            lex->clear_db_list();
+          }
+          DATABASE
+          database_list 
+          TO_SYM 
+          TEXT_STRING_sys
+          opt_compression
+          {
+            Lex->backup_dir = $6;
           }
         | BACKUP_TEST_SYM
           database_list
@@ -6510,29 +6515,19 @@ opt_compression_algorithm:
 
 database_list:
           '*'
-          {
-            Lex->db_list.empty();
-          }
+          {}
         | database_ident_list
         ;
 
 database_ident_list:
           ident
           {
-            LEX *lex= Lex;
-            LEX_STRING* ls= (LEX_STRING*) sql_memdup(&$1, sizeof(LEX_STRING));
-            if (ls == NULL)
-              MYSQL_YYABORT;
-            lex->db_list.empty();
-            if (lex->db_list.push_back(ls))
+            if (Lex->add_db_to_list(&$1))
               YYABORT;
           }
         | database_ident_list ',' ident
           {
-            LEX_STRING *ls= (LEX_STRING*) sql_memdup(&$3, sizeof(LEX_STRING));
-            if (ls == NULL)
-              MYSQL_YYABORT;
-            if (Lex->db_list.push_back(ls))
+            if (Lex->add_db_to_list(&$3))
               YYABORT;
           }
         ;
@@ -10838,10 +10833,32 @@ purge:
             lex->type=0;
             lex->sql_command = SQLCOM_PURGE;
           }
-          purge_options
-          {}
-        ;
+          purge_options {}
+          | PURGE BACKUP_SYM LOGS_SYM 
+          {
+            LEX *lex=Lex;
+            lex->type=TYPE_ENUM_PURGE_BACKUP_LOGS;
+            lex->sql_command = SQLCOM_PURGE_BACKUP_LOGS;
+          }
+          purge_bup_log_option {}
+          ; 
 
+purge_bup_log_option:
+          {}
+          | TO_SYM NUM_literal
+          {
+            LEX *lex= Lex;
+            lex->backup_id= (ulonglong)$2->val_int(); 
+            lex->type=TYPE_ENUM_PURGE_BACKUP_LOGS_ID;
+          }
+          | BEFORE_SYM expr
+          {
+            LEX *lex= Lex;
+            lex->value_list.empty();
+            lex->value_list.push_front($2);
+            lex->type=TYPE_ENUM_PURGE_BACKUP_LOGS_DATE;
+          }
+          ;
 purge_options:
           master_or_binary LOGS_SYM purge_option
         ;

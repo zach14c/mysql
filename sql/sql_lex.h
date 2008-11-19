@@ -117,7 +117,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_CREATE_EVENT, SQLCOM_SHOW_EVENTS,
   SQLCOM_SHOW_CREATE_TRIGGER,
   SQLCOM_ALTER_DB_UPGRADE,
-  SQLCOM_BACKUP, SQLCOM_RESTORE,
+  SQLCOM_BACKUP, SQLCOM_RESTORE, SQLCOM_PURGE_BACKUP_LOGS, 
 #ifdef BACKUP_TEST
   SQLCOM_BACKUP_TEST,
 #endif
@@ -1527,6 +1527,7 @@ struct LEX: public Query_tables_list
   LEX_STRING backup_dir;				/* For RESTORE/BACKUP */
   bool backup_compression;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
+  ulonglong backup_id;     /* For PURGE BACKUP LOGS */
   char* x509_subject,*x509_issuer,*ssl_cipher;
   String *wild;
   sql_exchange *exchange;
@@ -1873,6 +1874,13 @@ struct LEX: public Query_tables_list
     }
     return FALSE;
   }
+
+  void clear_db_list()
+  {
+    db_list.empty();
+  }
+
+  int add_db_to_list(LEX_STRING *name);
 };
 
 

@@ -2,6 +2,11 @@
 --source include/have_debug.inc
 --source include/not_embedded.inc
 
+disable_query_log;
+call mtr.add_suppression("Backup:");
+call mtr.add_suppression("Cannot create backup engine for storage engine");
+enable_query_log;
+
 #
 # This test script tests the behaviour reported in BUG#34721
 #
@@ -22,10 +27,10 @@
 --disable_warnings
 DROP DATABASE IF EXISTS db1;
 
-
 let $MYSQLD_DATADIR= `select @@datadir`;
+
 --error 0,1
-remove_file $MYSQLTEST_DATADIR/db1.bak;
+remove_file $MYSQLD_DATADIR/db1.bak;
 --enable_warnings
 
 CREATE DATABASE db1;
@@ -36,7 +41,7 @@ INSERT INTO t1 VALUES (1),(2),(3);
 # First check the normal behaviour when server is not modified.
 
 # make sure that injected code is disabled
-SET SESSION debug="d,";
+SET SESSION debug="-d,";
 SELECT @@debug;
 
 # BACKUP should succeed without a warning.
@@ -59,7 +64,7 @@ SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 # Now see what happens when injected code is activated and MyISAM uses the dummy
 # factory function.
 
-SET SESSION debug="d,backup_test_dummy_be_factory";
+SET SESSION debug="+d,backup_test_dummy_be_factory";
 SELECT @@debug;
 
 # The following BACKUP command should generate a warning but otherwise
@@ -68,7 +73,7 @@ SELECT @@debug;
 # avoid showing message codes (which change sometimes)
 
 --disable_warnings
-remove_file $MYSQLTEST_DATADIR/db1.bak;
+remove_file $MYSQLD_DATADIR/db1.bak;
 --replace_column 1 #
 BACKUP DATABASE db1 TO 'db1.bak';
 --enable_warnings
@@ -94,5 +99,5 @@ SHOW TABLES IN db1;
 # Clean up.
 
 DROP DATABASE db1;
-SET GLOBAL debug="d,";
-remove_file $MYSQLTEST_DATADIR/db1.bak;
+SET GLOBAL debug="-d,";
+--remove_file $MYSQLD_DATADIR/db1.bak

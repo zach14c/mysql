@@ -11,6 +11,9 @@ enum Incident {
   /** There are possibly lost events in the replication stream */
   INCIDENT_LOST_EVENTS,
 
+  /** Restore event: Restore has occurred on the master during replication */
+  INCIDENT_RESTORE_EVENT,
+
   /** Shall be last event of the enumeration */
   INCIDENT_COUNT
 };

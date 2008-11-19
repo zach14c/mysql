@@ -9144,12 +9144,11 @@ Incident_log_event::description() const
 {
   static const char *const description[]= {
     "NOTHING",                                  // Not used
-    "LOST_EVENTS"
+    "LOST_EVENTS",
+    "RESTORE_ON_MASTER"
   };
 
   DBUG_PRINT("info", ("m_incident: %d", m_incident));
-
-  DBUG_ASSERT((size_t) m_incident <= sizeof(description)/sizeof(*description));
 
   return description[m_incident];
 }

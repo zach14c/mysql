@@ -76,7 +76,7 @@ extern ulong ndb_report_thresh_binlog_mem_usage;
 #endif
 
 extern CHARSET_INFO *character_set_filesystem;
-
+extern my_bool disable_slaves;
 
 static DYNAMIC_ARRAY fixed_show_vars;
 static HASH system_variable_hash;
@@ -552,6 +552,8 @@ static sys_var_thd_ulonglong	sys_tmp_table_size(&vars, "tmp_table_size",
 					   &SV::tmp_table_size);
 static sys_var_bool_ptr  sys_timed_mutexes(&vars, "timed_mutexes",
                                     &timed_mutexes);
+static sys_var_bool_ptr  sys_disable_slaves(&vars, "disable_slave_connections",
+                                             &disable_slaves);
 static sys_var_const_str	sys_version(&vars, "version", server_version);
 static sys_var_const_str	sys_version_comment(&vars, "version_comment",
                                             MYSQL_COMPILATION_COMMENT);
@@ -2414,7 +2416,15 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
   pthread_mutex_lock(&LOCK_global_system_variables);
-  logger.deactivate_log_handler(thd, log_type);
+  /*
+    Default for general and slow log is OFF.
+    Default for backup logs is ON.
+  */
+  if ((this == &sys_var_backup_history_log) ||
+      (this == &sys_var_backup_progress_log))
+    logger.activate_log_handler(thd, log_type);
+  else
+    logger.deactivate_log_handler(thd, log_type);
   pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
@@ -2577,7 +2587,8 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   var_str->value= res;
   var_str->value_length= str_length;
   my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
-  if (file_log && log_state)
+  if ((file_log && log_state) ||
+      (backup_log && log_state))
   {
     /*
       Added support for backup log types.

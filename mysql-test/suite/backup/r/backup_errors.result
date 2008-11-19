@@ -20,6 +20,8 @@ BACKUP DATABASE foo TO 'test.bak';
 ERROR 42000: Unknown database 'foo'
 BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
 ERROR 42000: Unknown database 'foo,bar'
+BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
+ERROR 42000: Not unique database: 'foo'
 use adb;
 create table t1 (a int);
 create procedure p1() backup database test to 'test.bak';
