@@ -1065,16 +1065,8 @@ obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
     m_obj_ptr= obs::materialize_trigger(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_PRIVILEGE:
-  {
-    /*
-      Here we undo the uniqueness suffix for grants.
-    */
-    String new_name;
-    new_name.copy(*name);
-    new_name.length(new_name.length() - UNIQUE_PRIV_KEY_LEN);
-    m_obj_ptr= obs::materialize_db_grant(db_name, &new_name, ver, &sdata);
+    m_obj_ptr= obs::materialize_db_grant(db_name, name, ver, &sdata);
     break;
-  }
   default: m_obj_ptr= NULL;
   }
 

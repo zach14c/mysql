@@ -4863,7 +4863,10 @@ int STDCALL mysql_stmt_next_result(MYSQL_STMT *stmt)
   rc= mysql_next_result(mysql);
 
   if (rc)
+  {
+    set_stmt_errmsg(stmt, &mysql->net);
     DBUG_RETURN(rc);
+  }
 
   stmt->state= MYSQL_STMT_EXECUTE_DONE;
   stmt->bind_result_done= FALSE;

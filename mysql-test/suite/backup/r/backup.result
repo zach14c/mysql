@@ -51,10 +51,6 @@ id	#
 command	Daemon
 state	MyISAM backup: holding table locks
 info	MyISAM driver locking thread
-id	#
-command	Query
-state	debug sync point: myisam_locking_thread_added
-info	BACKUP DATABASE db1,db2 TO 'test.ba'
 breakpoints: Sending finish signal to wake BACKUP.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 backup_id

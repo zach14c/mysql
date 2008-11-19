@@ -144,6 +144,7 @@ Lex_input_stream::Lex_input_stream(THD *thd,
   found_semicolon(NULL),
   ignore_space(test(thd->variables.sql_mode & MODE_IGNORE_SPACE)),
   stmt_prepare_mode(FALSE),
+  multi_statements(TRUE),
   in_comment(NO_COMMENT),
   m_underscore_cs(NULL)
 {

@@ -1481,6 +1481,11 @@ public:
   */
   bool stmt_prepare_mode;
 
+  /**
+    TRUE if we should allow multi-statements.
+  */
+  bool multi_statements;
+
   /** State of the lexical analyser for comments. */
   enum_comment_state in_comment;
 

@@ -5,6 +5,8 @@
  */
 #include "mysql_priv.h"
 
+class THD;
+
 /**
    @class DDL_blocker_class
  
@@ -119,4 +121,6 @@ class DDL_blocker_class
     my_bool DDL_blocked;                     ///< Is blocking operation running
     int DDL_blocks;              ///< Number of DDL operations in progress.
     static DDL_blocker_class *m_instance;    ///< instance var for singleton 
+
+    THD *m_blocker_thd;
 };

@@ -1136,6 +1136,11 @@ void init_update_queries(void);
 void free_max_user_conn(void);
 pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
+
+class Ed_result;
+
+bool mysql_execute_direct(THD *thd, const LEX_STRING *query, Ed_result *result);
+
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length);
