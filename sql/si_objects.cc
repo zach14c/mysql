@@ -297,8 +297,8 @@ bool In_stream::next(LEX_STRING *chunk)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-#define STR(x) (x).length(), (x).ptr()
-#define LXS(x) (x)->length, (x)->str
+#define STR(x) (int) (x).length(), (x).ptr()
+#define LXS(x) (int) (x).length, (x).str
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -314,6 +314,10 @@ namespace obs {
 
 class Abstract_obj : public Obj
 {
+public:
+  virtual inline const String *get_name() const    { return &m_id; }
+  virtual inline const String *get_db_name() const { return &m_db_name; }
+
 public:
   virtual bool serialize(THD *thd, String *serialization);
 
@@ -335,7 +339,14 @@ protected:
   List<String> m_stmt_lst;
 
 protected:
-  Abstract_obj();
+  /* These attributes are to be used only for serialization. */
+  String m_id; //< identify object
+  String m_db_name;
+
+protected:
+  Abstract_obj(const char *db_name_str, int db_name_length,
+               const char *id_str, int id_length);
+
   virtual ~Abstract_obj();
 
 private:
@@ -345,9 +356,20 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-Abstract_obj::Abstract_obj()
+Abstract_obj::Abstract_obj(const char *db_name_str, int db_name_length,
+                           const char *id_str, int id_length)
 {
   init_sql_alloc(&m_mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
+
+  if (db_name_str && db_name_length)
+    m_db_name.copy(db_name_str, db_name_length, system_charset_info);
+  else
+    m_db_name.length(0);
+
+  if (id_str && id_length)
+    m_id.copy(id_str, id_length, system_charset_info);
+  else
+    m_id.length(0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -493,10 +515,10 @@ bool Abstract_obj::do_materialize(In_stream *is)
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-   @class Database_obj
+  @class Database_obj
 
-   This class provides an abstraction to a database object for creation and
-   capture of the creation data.
+  This class provides an abstraction to a database object for creation and
+  capture of the creation data.
 */
 
 class Database_obj : public Abstract_obj
@@ -504,51 +526,36 @@ class Database_obj : public Abstract_obj
 public:
   Database_obj(const char *db_name_str, int db_name_length);
 
-public:
-  virtual inline const String *get_name() const    { return &m_db_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
-
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-   @class Table_obj
+  @class Table_obj
 
-   This class provides an abstraction to a table object for creation and
-   capture of the creation data.
+  This class provides an abstraction to a table object for creation and
+  capture of the creation data.
 */
 
 class Table_obj : public Abstract_obj
 {
 public:
   Table_obj(const char *db_name_str, int db_name_length,
-           const char *table_name_str, int table_name_length);
-
-public:
-  virtual inline const String *get_name() const    { return &m_table_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
+            const char *table_name_str, int table_name_length);
 
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-  String m_table_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-   @class View_obj
+  @class View_obj
 
-   This class provides an abstraction to a view object for creation and
-   capture of the creation data.
+  This class provides an abstraction to a view object for creation and
+  capture of the creation data.
 */
 
 class View_obj : public Abstract_obj
@@ -557,15 +564,7 @@ public:
   View_obj(const char *db_name_str, int db_name_length,
            const char *view_name_str, int view_name_length);
 
-public:
-  virtual inline const String *get_name() const    { return &m_view_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
-
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-  String m_view_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
@@ -584,15 +583,7 @@ public:
   Trigger_obj(const char *db_name_str, int db_name_length,
              const char *trigger_name_str, int trigger_name_length);
 
-public:
-  virtual inline const String *get_name() const    { return &m_trigger_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
-
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-  String m_trigger_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
@@ -609,17 +600,9 @@ class Stored_proc_obj : public Abstract_obj
 {
 public:
   Stored_proc_obj(const char *db_name_str, int db_name_length,
-                const char *sp_name_str, int sp_name_length);
-
-public:
-  virtual inline const String *get_name() const    { return &m_sp_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
+                 const char *sp_name_str, int sp_name_length);
 
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-  String m_sp_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
@@ -636,17 +619,9 @@ class Stored_func_obj : public Abstract_obj
 {
 public:
   Stored_func_obj(const char *db_name_str, int db_name_length,
-                const char *sf_name_str, int sf_name_length);
-
-public:
-  virtual inline const String *get_name() const    { return &m_sf_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
+                 const char *sf_name_str, int sf_name_length);
 
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-  String m_sf_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
@@ -665,17 +640,9 @@ class Event_obj : public Abstract_obj
 {
 public:
   Event_obj(const char *db_name_str, int db_name_length,
-           const char *event_name_str, int event_name_length);
-
-public:
-  virtual inline const String *get_name() const    { return &m_event_name; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
+            const char *event_name_str, int event_name_length);
 
 private:
-  /* These attributes are to be used only for serialization. */
-  String m_db_name;
-  String m_event_name;
-
   virtual bool do_serialize(THD *thd, Out_stream &os);
 };
 
@@ -701,7 +668,6 @@ public:
   Tablespace_obj(const char *ts_name_str, int ts_name_length);
 
 public:
-  virtual inline const String *get_name() const    { return &m_ts_name; }
   virtual inline const String *get_db_name() const { return NULL; }
 
   const String *get_description();
@@ -714,7 +680,6 @@ protected:
 
 private:
   /* These attributes are to be used only for serialization. */
-  String m_ts_name;
   String m_comment;
   String m_data_file_name;
   String m_engine;
@@ -753,8 +718,7 @@ public:
   virtual bool do_materialize(In_stream *is);
 
 public:
-  virtual inline const String *get_name() const    { return &m_id; }
-  virtual inline const String *get_db_name() const { return &m_id; }
+  virtual inline const String *get_db_name() const { return NULL; }
 
   inline const String *get_user_name() const { return &m_user_name; }
   inline const String *get_host_name() const { return &m_host_name; }
@@ -762,7 +726,6 @@ public:
 
 protected:
   /* These attributes are to be used only for serialization. */
-  String m_id;      ///< identify grant object (grantee is not unique).
   String m_user_name;
   String m_host_name;
   String m_grant_info;
@@ -901,12 +864,7 @@ Db_tables_iterator *Db_tables_iterator::create(THD *thd, const String *db_name)
     "SELECT '%.*s', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
     "WHERE table_schema = '%.*s' AND table_type = '%.*s'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) IS_TYPE_TABLE.length,
-    (const char *) IS_TYPE_TABLE.str);
+    STR(*db_name), STR(*db_name), LXS(IS_TYPE_TABLE));
 
   return create_row_set_iterator<Db_tables_iterator>(thd, &query);
 }
@@ -964,12 +922,7 @@ Db_views_iterator *Db_views_iterator::create(THD *thd, const String *db_name)
     "SELECT '%.*s', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
     "WHERE table_schema = '%.*s' AND table_type = '%.*s'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) IS_TYPE_VIEW.length,
-    (const char *) IS_TYPE_VIEW.str);
+    STR(*db_name), STR(*db_name), LXS(IS_TYPE_VIEW));
 
   return create_row_set_iterator<Db_views_iterator>(thd, &query);
 }
@@ -1027,10 +980,7 @@ Db_trigger_iterator *Db_trigger_iterator::create(THD *thd, const String *db_name
     "SELECT '%.*s', trigger_name "
     "FROM INFORMATION_SCHEMA.TRIGGERS "
     "WHERE trigger_schema = '%.*s'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr());
+    STR(*db_name), STR(*db_name));
 
   return create_row_set_iterator<Db_trigger_iterator>(thd, &query);
 }
@@ -1089,10 +1039,7 @@ Db_stored_proc_iterator::create(THD *thd, const String *db_name)
     "SELECT '%.*s', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
     "WHERE routine_schema = '%.*s' AND routine_type = 'PROCEDURE'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr());
+    STR(*db_name), STR(*db_name));
 
   return create_row_set_iterator<Db_stored_proc_iterator>(thd, &query);
 }
@@ -1152,10 +1099,7 @@ Db_stored_func_iterator::create(THD *thd, const String *db_name)
     "SELECT '%.*s', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
     "WHERE routine_schema = '%.*s' AND routine_type = 'FUNCTION'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr());
+    STR(*db_name), STR(*db_name));
 
   return create_row_set_iterator<Db_stored_func_iterator>(thd, &query);
 }
@@ -1217,10 +1161,7 @@ Db_event_iterator::create(THD *thd, const String *db_name)
     "SELECT '%.*s', event_name "
     "FROM INFORMATION_SCHEMA.EVENTS "
     "WHERE event_schema = '%.*s'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr());
+    STR(*db_name), STR(*db_name));
 
   return create_row_set_iterator<Db_event_iterator>(thd, &query);
 
@@ -1526,12 +1467,7 @@ Grant_iterator::create(THD *thd, const String *db_name)
     "WHERE table_schema = '%.*s' AND "
           "grantee = CONCAT(\"'\", user, \"'@'\", host, \"'\")) "
     "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC, c6 ASC",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) db_name->length(),
-    (const char *) db_name->ptr());
+    STR(*db_name), STR(*db_name), STR(*db_name));
 
   return create_row_set_iterator<Grant_iterator>(thd, &query);
 }
@@ -1581,9 +1517,9 @@ create_row_set_iterator<Grant_iterator>(THD *thd, const LEX_STRING *query);
 ///////////////////////////////////////////////////////////////////////////
 
 Database_obj::Database_obj(const char *db_name_str, int db_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-}
+  : Abstract_obj(db_name_str, db_name_length,
+                 db_name_str, db_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1609,14 +1545,12 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 {
   DBUG_ENTER("Database_obj::serialize()");
   DBUG_PRINT("Database_obj::serialize",
-             ("name: %.*s",
-              m_db_name.length(), m_db_name.ptr()));
+             ("name: %.*s", STR(m_db_name)));
 
   if (is_internal_db_name(&m_db_name))
   {
     DBUG_PRINT("backup",
-               (" Skipping internal database %.*s",
-                m_db_name.length(), m_db_name.ptr()));
+               (" Skipping internal database %.*s", STR(m_db_name)));
 
     DBUG_RETURN(TRUE);
   }
@@ -1628,9 +1562,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE DATABASE `%.*s`",
-    (int) m_db_name.length(),
-    (const char *) m_db_name.ptr());
+    "SHOW CREATE DATABASE `%.*s`", STR(m_db_name));
 
   Ed_result result;
 
@@ -1678,11 +1610,10 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 Table_obj::Table_obj(const char *db_name_str, int db_name_length,
-                   const char *table_name_str, int table_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-  m_table_name.copy(table_name_str, table_name_length, system_charset_info);
-}
+                     const char *table_name_str, int table_name_length)
+  : Abstract_obj(db_name_str, db_name_length,
+                 table_name_str, table_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1705,8 +1636,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("Table_obj::serialize()");
   DBUG_PRINT("Table_obj::serialize",
              ("name: %.*s.%.*s",
-              m_db_name.length(), m_db_name.ptr(),
-              m_table_name.length(), m_table_name.ptr()));
+              STR(m_db_name), STR(m_id)));
 
   char query_buffer[QUERY_BUFFER_SIZE];
   LEX_STRING query;
@@ -1714,10 +1644,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE TABLE `%.*s`.`%.*s`",
-    (int) m_db_name.length(),
-    (const char *) m_db_name.ptr(),
-    (int) m_table_name.length(),
-    (const char *) m_table_name.ptr());
+    STR(m_db_name), STR(m_id));
 
   Ed_result result;
 
@@ -1763,11 +1690,10 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 View_obj::View_obj(const char *db_name_str, int db_name_length,
-                 const char *view_name_str, int view_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-  m_view_name.copy(view_name_str, view_name_length, system_charset_info);
-}
+                   const char *view_name_str, int view_name_length)
+  : Abstract_obj(db_name_str, db_name_length,
+                 view_name_str, view_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1786,10 +1712,7 @@ get_view_create_stmt(THD *thd,
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE VIEW `%.*s`.`%.*s`",
-    (int) view->get_db_name()->length(),
-    (const char *) view->get_db_name()->ptr(),
-    (int) view->get_name()->length(),
-    (const char *) view->get_name()->ptr());
+    STR(*view->get_db_name()), STR(*view->get_name()));
 
   Ed_result result;
 
@@ -1858,8 +1781,7 @@ dump_base_object_stubs(THD *thd,
 
     os <<
       Fmt("CREATE DATABASE IF NOT EXISTS `%.*s`",
-          (int) base_obj->get_db_name()->length(),
-          (const char *) base_obj->get_db_name()->ptr());
+          STR(*base_obj->get_db_name()));
 
     base_obj_stmt.length(0);
     base_obj_stmt.append(C_STRING_WITH_LEN("CREATE TABLE IF NOT EXISTS `"));
@@ -1876,10 +1798,8 @@ dump_base_object_stubs(THD *thd,
     query.str= query_buffer;
     query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
       "SHOW COLUMNS FROM `%.*s`.`%.*s`",
-      (int) base_obj->get_db_name()->length(),
-      (const char *) base_obj->get_db_name()->ptr(),
-      (int) base_obj->get_name()->length(),
-      (const char *) base_obj->get_name()->ptr());
+      STR(*base_obj->get_db_name()),
+      STR(*base_obj->get_name()));
 
     Ed_result result;
 
@@ -1957,8 +1877,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("View_obj::serialize()");
   DBUG_PRINT("View_obj::serialize",
              ("name: %.*s.%.*s",
-              m_db_name.length(), m_db_name.ptr(),
-              m_view_name.length(), m_view_name.ptr()));
+              STR(m_db_name), STR(m_id)));
 
   LEX_STRING create_stmt;
   LEX_STRING client_cs_name;
@@ -1981,7 +1900,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 
   {
     Obj_iterator *base_table_it=
-      get_view_base_tables(thd, &m_db_name, &m_view_name);
+      get_view_base_tables(thd, &m_db_name, &m_id);
 
     if (!base_table_it ||
         dump_base_object_stubs(thd, base_table_it, os))
@@ -1994,7 +1913,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 
   {
     Obj_iterator *base_view_it=
-      get_view_base_views(thd, &m_db_name, &m_view_name);
+      get_view_base_views(thd, &m_db_name, &m_id);
 
     if (!base_view_it ||
         dump_base_object_stubs(thd, base_view_it, os))
@@ -2007,8 +1926,8 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 
   os <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(&client_cs_name)) <<
-    Fmt("SET collation_connection = %.*s", LXS(&connection_cl_name)) <<
+    Fmt("SET character_set_client = %.*s", LXS(client_cs_name)) <<
+    Fmt("SET collation_connection = %.*s", LXS(connection_cl_name)) <<
     &create_stmt <<
     "SET character_set_client = @saved_cs_client" <<
     "SET collation_connection = @saved_col_connection";
@@ -2020,12 +1939,10 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 Trigger_obj::Trigger_obj(const char *db_name_str, int db_name_length,
-                       const char *trigger_name_str, int trigger_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-  m_trigger_name.copy(trigger_name_str, trigger_name_length,
-                      system_charset_info);
-}
+                         const char *trigger_name_str, int trigger_name_length)
+  : Abstract_obj(db_name_str, db_name_length,
+                 trigger_name_str, trigger_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2052,8 +1969,7 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("Trigger_obj::do_serialize()");
   DBUG_PRINT("Trigger_obj::do_serialize",
              ("name: %.*s.%.*s",
-              m_db_name.length(), m_db_name.ptr(),
-              m_trigger_name.length(), m_trigger_name.ptr()));
+              STR(m_db_name), STR(m_id)));
 
   DBUG_EXECUTE_IF("backup_fail_add_trigger", DBUG_RETURN(TRUE););
 
@@ -2063,10 +1979,7 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE TRIGGER `%.*s`.`%.*s`",
-    (int) m_db_name.length(),
-    (const char *) m_db_name.ptr(),
-    (int) m_trigger_name.length(),
-    (const char *) m_trigger_name.ptr());
+    STR(m_db_name), STR(m_id));
 
   Ed_result result;
 
@@ -2108,10 +2021,10 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
     "SET @saved_col_database = @@collation_database" <<
     "SET character_set_client = utf8" <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(sql_mode)) <<
+    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
+    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
+    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
+    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
     create_stmt <<
     "SET character_set_client = @saved_cs_client" <<
     "SET collation_connection = @saved_col_connection" <<
@@ -2124,11 +2037,10 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 Stored_proc_obj::Stored_proc_obj(const char *db_name_str, int db_name_length,
-                             const char *sp_name_str, int sp_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-  m_sp_name.copy(sp_name_str, sp_name_length, system_charset_info);
-}
+                                 const char *sp_name_str, int sp_name_length)
+  : Abstract_obj(db_name_str, db_name_length,
+                 sp_name_str, sp_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2153,8 +2065,7 @@ bool Stored_proc_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("Stored_proc_obj::do_serialize()");
   DBUG_PRINT("Stored_proc_obj::do_serialize",
              ("name: %.*s.%.*s",
-              m_db_name.length(), m_db_name.ptr(),
-              m_sp_name.length(), m_sp_name.ptr()));
+              STR(m_db_name), STR(m_id)));
 
   char query_buffer[QUERY_BUFFER_SIZE];
   LEX_STRING query;
@@ -2162,10 +2073,7 @@ bool Stored_proc_obj::do_serialize(THD *thd, Out_stream &os)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE PROCEDURE `%.*s`.`%.*s`",
-    (int) m_db_name.length(),
-    (const char *) m_db_name.ptr(),
-    (int) m_sp_name.length(),
-    (const char *) m_sp_name.ptr());
+    STR(m_db_name), STR(m_id));
 
   Ed_result result;
 
@@ -2207,10 +2115,10 @@ bool Stored_proc_obj::do_serialize(THD *thd, Out_stream &os)
     "SET @saved_col_database = @@collation_database" <<
     "SET character_set_client = utf8" <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(sql_mode)) <<
+    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
+    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
+    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
+    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
     create_stmt <<
     "SET character_set_client = @saved_cs_client" <<
     "SET collation_connection = @saved_col_connection" <<
@@ -2223,11 +2131,10 @@ bool Stored_proc_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 Stored_func_obj::Stored_func_obj(const char *db_name_str, int db_name_length,
-                             const char *sf_name_str, int sf_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-  m_sf_name.copy(sf_name_str, sf_name_length, system_charset_info);
-}
+                                 const char *sf_name_str, int sf_name_length)
+  : Abstract_obj(db_name_str, db_name_length,
+                 sf_name_str, sf_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2254,8 +2161,7 @@ bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("Stored_func_obj::do_serialize()");
   DBUG_PRINT("Stored_func_obj::do_serialize",
              ("name: %.*s.%.*s",
-              m_db_name.length(), m_db_name.ptr(),
-              m_sf_name.length(), m_sf_name.ptr()));
+              STR(m_db_name), STR(m_id)));
 
   char query_buffer[QUERY_BUFFER_SIZE];
   LEX_STRING query;
@@ -2263,10 +2169,7 @@ bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE FUNCTION `%.*s`.`%.*s`",
-    (int) m_db_name.length(),
-    (const char *) m_db_name.ptr(),
-    (int) m_sf_name.length(),
-    (const char *) m_sf_name.ptr());
+    STR(m_db_name), STR(m_id));
 
   Ed_result result;
 
@@ -2308,10 +2211,10 @@ bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
     "SET @saved_col_database = @@collation_database" <<
     "SET character_set_client = utf8" <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(sql_mode)) <<
+    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
+    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
+    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
+    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
     create_stmt <<
     "SET character_set_client = @saved_cs_client" <<
     "SET collation_connection = @saved_col_connection" <<
@@ -2326,11 +2229,10 @@ bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
 #ifdef HAVE_EVENT_SCHEDULER
 
 Event_obj::Event_obj(const char *db_name_str, int db_name_length,
-                   const char *event_name_str, int event_name_length)
-{
-  m_db_name.copy(db_name_str, db_name_length, system_charset_info);
-  m_event_name.copy(event_name_str, event_name_length, system_charset_info);
-}
+                     const char *event_name_str, int event_name_length)
+  : Abstract_obj(db_name_str, db_name_length,
+                 event_name_str, event_name_length)
+{ }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2357,8 +2259,7 @@ bool Event_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("Event_obj::serialize()");
   DBUG_PRINT("Event_obj::serialize",
              ("name: %.*s.%.*s",
-              m_db_name.length(), m_db_name.ptr(),
-              m_event_name.length(), m_event_name.ptr()));
+              STR(m_db_name), STR(m_id)));
 
   char query_buffer[QUERY_BUFFER_SIZE];
   LEX_STRING query;
@@ -2366,10 +2267,7 @@ bool Event_obj::do_serialize(THD *thd, Out_stream &os)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE EVENT `%.*s`.`%.*s`",
-    (int) m_db_name.length(),
-    (const char *) m_db_name.ptr(),
-    (int) m_event_name.length(),
-    (const char *) m_event_name.ptr());
+    STR(m_db_name), STR(m_id));
 
   Ed_result result;
 
@@ -2413,11 +2311,11 @@ bool Event_obj::do_serialize(THD *thd, Out_stream &os)
     "SET @saved_col_database = @@collation_database" <<
     "SET character_set_client = utf8" <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET time_zone = '%.*s'", LXS(tz)) <<
-    Fmt("SET character_set_client = %.*s", LXS(client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(sql_mode)) <<
+    Fmt("SET time_zone = '%.*s'", LXS(*tz)) <<
+    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
+    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
+    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
+    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
     create_stmt <<
     "SET time_zone = @saved_time_zone" <<
     "SET character_set_client = @saved_cs_client" <<
@@ -2437,8 +2335,8 @@ Tablespace_obj::Tablespace_obj(
   const char *comment_str, int comment_length,
   const char *data_file_name_str, int data_file_name_length,
   const char *engine_str, int engine_length)
+  : Abstract_obj(NULL, 0, ts_name_str, ts_name_length)
 {
-  m_ts_name.copy(ts_name_str, ts_name_length, system_charset_info);
   m_comment.copy(comment_str, comment_length, system_charset_info);
   m_data_file_name.copy(data_file_name_str, data_file_name_length,
                         system_charset_info);
@@ -2448,8 +2346,8 @@ Tablespace_obj::Tablespace_obj(
 }
 
 Tablespace_obj::Tablespace_obj(const char *ts_name_str, int ts_name_length)
+  : Abstract_obj(NULL, 0, ts_name_str, ts_name_length)
 {
-  m_ts_name.copy(ts_name_str, ts_name_length, system_charset_info);
   m_comment.length(0);
   m_data_file_name.length(0);
   m_engine.length(0);
@@ -2516,7 +2414,7 @@ const String *Tablespace_obj::get_description()
   DBUG_ENTER("Tablespace_obj::get_description()");
 
   DBUG_ASSERT(m_description.length() ||
-              m_ts_name.length() && m_data_file_name.length());
+              m_id.length() && m_data_file_name.length());
 
   if (m_description.length())
     DBUG_RETURN(&m_description);
@@ -2529,10 +2427,7 @@ const String *Tablespace_obj::get_description()
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "CREATE TABLESPACE `%.*s` ADD DATAFILE '%.*s' ",
-    (int) m_ts_name.length(),
-    (const char *) m_ts_name.ptr(),
-    (int) m_data_file_name.length(),
-    (const char *) m_data_file_name.ptr());
+    STR(m_id), STR(m_data_file_name));
 
   m_description.length(0);
   m_description.append(query.str, query.length);
@@ -2582,6 +2477,7 @@ Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
                      const char *db_name_str, int db_name_length,
                      const char *table_name_str, int table_name_length,
                      const char *column_name_str, int column_name_length)
+  : Abstract_obj(NULL, 0, NULL, 0)
 {
   m_user_name.copy(user_name_str, user_name_length, system_charset_info);
   m_host_name.copy(host_name_str, host_name_length, system_charset_info);
@@ -2613,6 +2509,7 @@ Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
 }
 
 Grant_obj::Grant_obj(const char *name_str, int name_length)
+  : Abstract_obj(NULL, 0, NULL, 0)
 {
   m_user_name.length(0);
   m_host_name.length(0);
@@ -2929,8 +2826,7 @@ bool check_db_existence(THD *thd, const String *db_name)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SHOW CREATE DATABASE `%.*s`",
-    (int) db_name->length(),
-    (const char *) db_name->ptr());
+    STR(*db_name));
 
   Ed_result result;
   int rc= run_query(thd, &query, &result);
@@ -2957,10 +2853,8 @@ bool check_user_existence(THD *thd, const Obj *obj)
     "SELECT 1 "
     "FROM mysql.user "
     "WHERE user = '%.*s' AND host = '%.*s'",
-    (int) grant_obj->get_user_name()->length(),
-    (const char *) grant_obj->get_user_name()->ptr(),
-    (int) grant_obj->get_host_name()->length(),
-    (const char *) grant_obj->get_host_name()->ptr());
+    STR(*grant_obj->get_user_name()),
+    STR(*grant_obj->get_host_name()));
 
   Ed_result result;
 
@@ -3015,8 +2909,7 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
          "INFORMATION_SCHEMA.FILES AS t2 "
     "WHERE t1.tablespace_name = t2.tablespace_name AND "
          "t1.tablespace_name = '%.*s'",
-    (int) ts_name->length(),
-    (const char *) ts_name->ptr());
+    STR(*ts_name));
 
   Ed_result result;
 
@@ -3082,10 +2975,7 @@ Obj *find_tablespace_for_table(THD *thd,
          "t2.tablespace_name = t3.tablespace_name AND "
          "t3.table_schema = '%.*s' AND "
          "t3.table_name = '%.*s'",
-    (int) db_name->length(),
-    (const char *) db_name->ptr(),
-    (int) table_name->length(),
-    (const char *) table_name->ptr());
+    STR(*db_name), STR(*table_name));
 
   Ed_result result;
 
