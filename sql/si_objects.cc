@@ -807,7 +807,7 @@ protected:
   /* These attributes are to be used only for serialization. */
   String m_user_name;
   String m_host_name;
-  String m_grant_info;
+  String m_grant_info; //< contains privilege definition
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &os);
@@ -830,6 +830,7 @@ Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
     return NULL;
   }
 
+  /* The result must contain only one result-set. */
   DBUG_ASSERT(result->elements == 1);
 
   return new Iterator(result);
@@ -908,7 +909,9 @@ Obj *Database_iterator::next()
   if (!row)
     return NULL;
 
+  /* The only column is the database name.*/
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 1);
+
   const Ed_column *db_name= row->get_column(0);
 
   return new Database_obj(db_name->str, db_name->length);
@@ -963,6 +966,7 @@ Obj *Db_tables_iterator::next()
   if (!row)
     return NULL;
 
+  /* The only column is the table name. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *db_name= row->get_column(0);
@@ -1021,6 +1025,7 @@ Obj *Db_views_iterator::next()
   if (!row)
     return NULL;
 
+  /* The only column is the view name. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *db_name= row->get_column(0);
@@ -1079,6 +1084,7 @@ Obj *Db_trigger_iterator::next()
   if (!row)
     return NULL;
 
+  /* There must be two columns: database name and trigger name. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *db_name= row->get_column(0);
@@ -1139,6 +1145,7 @@ Obj *Db_stored_proc_iterator::next()
   if (!row)
     return NULL;
 
+  /* There must be two columns: database name and routine name. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *db_name= row->get_column(0);
@@ -1199,6 +1206,7 @@ Obj *Db_stored_func_iterator::next()
   if (!row)
     return NULL;
 
+  /* There must be two columns: database name and function name. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *db_name= row->get_column(0);
@@ -1270,6 +1278,7 @@ Obj *Db_event_iterator::next()
   if (!row)
     return NULL;
 
+  /* There must be two columns: database name and event name. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *db_name= row->get_column(0);
@@ -1356,6 +1365,7 @@ bool View_base_obj_iterator::init(THD *thd,
                                   const String *db_name,
                                   const String *view_name)
 {
+  /* Ensure that init() will not be run twice. */
   DBUG_ASSERT(!m_table_names);
 
   uint not_used; /* Passed to open_tables(). Not used. */
@@ -1560,6 +1570,7 @@ Obj *Grant_iterator::next()
   if (!row)
     return NULL;
 
+  /* Ensure that there are 6 columns. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
 
   const Ed_column *user_name= row->get_column(0);
@@ -1657,20 +1668,24 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 
   /* Generate serialization. */
 
+  /* The result must contain only one result-set... */
   DBUG_ASSERT(result.elements == 1);
 
   Ed_result_set *rs= result.get_cur_result_set();
 
+  /* ... which is not NULL. */
   DBUG_ASSERT(rs);
 
   if (rs->data()->elements == 0)
     DBUG_RETURN(TRUE);
 
+  /* There must be one row. */
   DBUG_ASSERT(rs->data()->elements == 1);
 
   List_iterator_fast<Ed_row> row_it(*rs->data());
   Ed_row *row= row_it++;
 
+  /* There must be two columns: database name and create statement. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *create_stmt= row->get_column(1);
@@ -1734,20 +1749,24 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
     DBUG_RETURN(TRUE);
   }
 
+  /* The result must contain only one result-set... */
   DBUG_ASSERT(result.elements == 1);
 
   Ed_result_set *rs= result.get_cur_result_set();
 
+  /* ... which is not NULL. */
   DBUG_ASSERT(rs);
 
   if (rs->data()->elements == 0)
     DBUG_RETURN(TRUE);
 
+  /* There must be one row. */
   DBUG_ASSERT(rs->data()->elements == 1);
 
   List_iterator_fast<Ed_row> row_it(*rs->data());
   Ed_row *row= row_it++;
 
+  /* There must be two columns: database name and create statement. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
   const Ed_column *create_stmt= row->get_column(1);
@@ -1799,20 +1818,24 @@ get_view_create_stmt(THD *thd,
     return TRUE;
   }
 
+  /* The result must contain only one result-set... */
   DBUG_ASSERT(result.elements == 1);
 
   Ed_result_set *rs= result.get_cur_result_set();
 
+  /* ... which is not NULL. */
   DBUG_ASSERT(rs);
 
   if (rs->data()->elements == 0)
     return TRUE;
 
+  /* There must be one row. */
   DBUG_ASSERT(rs->data()->elements == 1);
 
   List_iterator_fast<Ed_row> row_it(*rs->data());
   Ed_row *row= row_it++;
 
+  /* There must be four columns. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 4);
 
   const LEX_STRING *c1= row->get_column(1);
@@ -1887,9 +1910,12 @@ dump_base_object_stubs(THD *thd,
       return TRUE;
     }
 
+    /* The result must contain only one result-set... */
     DBUG_ASSERT(result.elements == 1);
 
     Ed_result_set *rs= result.get_cur_result_set();
+
+    /* ... which is not NULL. */
     DBUG_ASSERT(rs);
 
     /* Dump structure of base obj stub. */
@@ -1904,6 +1930,7 @@ dump_base_object_stubs(THD *thd,
       if (!row)
         break;
 
+      /* There must be 6 columns. */
       DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
 
       const LEX_STRING *col_name= row->get_column(0);
@@ -2041,15 +2068,18 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
     DBUG_RETURN(TRUE);
   }
 
+  /* The result must contain only one result-set... */
   DBUG_ASSERT(result.elements == 1);
 
   Ed_result_set *rs= result.get_cur_result_set();
 
+  /* ... which is not NULL. */
   DBUG_ASSERT(rs);
 
   if (rs->data()->elements == 0)
     DBUG_RETURN(TRUE);
 
+  /* There must be one row. */
   DBUG_ASSERT(rs->data()->elements == 1);
 
   List_iterator_fast<Ed_row> row_it(*rs->data());
@@ -2234,6 +2264,7 @@ bool Tablespace_obj::materialize(uint serialization_version,
   List_iterator_fast<String> it(m_stmt_lst);
   String *desc= it++;
 
+  /* Tablespace description must not be NULL. */
   DBUG_ASSERT(desc);
 
   m_description.set(desc->ptr(), desc->length(), desc->charset());
@@ -2256,6 +2287,7 @@ const String *Tablespace_obj::get_description()
 {
   DBUG_ENTER("Tablespace_obj::get_description");
 
+  /* Either description or id and data file name must be not empty. */
   DBUG_ASSERT(m_description.length() ||
               m_id.length() && m_data_file_name.length());
 
@@ -2299,14 +2331,17 @@ void Grant_obj::generate_unique_id(const String *user_name,
 
   id->length(0);
 
-  if (user_name->length() && host_name->length())
-  {
-    id->append(*user_name);
-    id->append('@');
-    id->append(*host_name);
-  }
+  if (user_name->length())
+    id->append("<empty>");
   else
-    id->append("<no_name>");
+    id->append(*user_name);
+
+  id->append('@');
+
+  if (host_name->length())
+    id->append("<empty>");
+  else
+    id->append(*host_name);
 
   char buf[10];
   my_snprintf(buf, 10, " %08lu", ++id_counter);
@@ -2766,10 +2801,12 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   Ed_result_set *rs= result.get_cur_result_set();
 
+  /* The result must contain only one result-set. */
   DBUG_ASSERT(rs->data()->elements == 1);
 
   Ed_row *row= rs->get_cur_row();
 
+  /* There must be 3 columns. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 3);
 
   const Ed_column *comment= row->get_column(0);
@@ -2835,10 +2872,12 @@ Obj *find_tablespace_for_table(THD *thd,
   if (!rs->data()->elements)
     return NULL;
 
+  /* The result must contain only one result-set. */
   DBUG_ASSERT(rs->data()->elements == 1);
 
   Ed_row *row= rs->get_cur_row();
 
+  /* There must be 4 columns. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 4);
 
   const Ed_column *ts_name= row->get_column(0);
