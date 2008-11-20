@@ -1,4 +1,5 @@
 #include "../mysql_priv.h"
+#include "../rpl_mi.h"
 
 #include "image_info.h"
 #include "be_native.h"
@@ -50,6 +51,7 @@ Image_info::Image_info()
 #endif
 
   bzero(m_snap, sizeof(m_snap));
+  bzero(&master_pos, sizeof(master_pos));
 }
 
 Image_info::~Image_info()
@@ -383,6 +385,14 @@ Image_info::Obj *find_obj(const Image_info &info,
     return NULL;
   }
 }
+
+void Image_info::save_master_pos(const ::Master_info &mi)
+{
+  // store binlog coordinates
+  master_pos.pos=  static_cast<unsigned long int>(mi.master_log_pos);
+  master_pos.file= const_cast<char*>(mi.master_log_name);
+}
+
 
 } // backup namespace
 

@@ -75,6 +75,7 @@ public: // public interface
    // info about image (most of it is in the st_bstream_image_header base
 
    size_t     data_size;      ///< How much of table data is saved in the image.
+   st_bstream_binlog_pos  master_pos; ///< To store master position info.
 
    ulong      table_count() const;
    uint       db_count() const;
@@ -115,6 +116,7 @@ public: // public interface
    void save_vp_time(const time_t time);   
 
    void save_binlog_pos(const ::LOG_INFO&);
+   void save_master_pos(const ::Master_info&);
 
    time_t get_vp_time() const;
 

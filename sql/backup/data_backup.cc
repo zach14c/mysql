@@ -412,6 +412,70 @@ int unblock_commits(THD *thd)
 }
 
 /**
+  Store information about validity point in @c Backup_info structure.
+  
+  @note This function is called in a time critical synchronization phase
+  of the backup process. Therefore it should not perform any time consuming
+  or potentially waiting operations such as I/O.
+
+  @returns 0 on success.
+*/
+static
+int save_vp_info(Backup_info &info)
+{
+  LOG_INFO binlog_pos;
+  int ret=0;
+
+  /*
+    Save VP creation time.
+  */
+  info.save_vp_time(my_time(0));
+
+  /*
+    Save current binlog position if it is enabled.
+  */
+  if (mysql_bin_log.is_open())
+    if (mysql_bin_log.get_current_log(&binlog_pos))
+    {
+      info.m_ctx.report_error(ER_BACKUP_BINLOG);
+      ret= TRUE;
+    }
+    else
+      info.save_binlog_pos(binlog_pos);
+
+  /*
+    Save master's binlog information if we are a connected slave.
+  */
+  if (obs::is_slave() && active_mi)
+    info.save_master_pos(*active_mi);
+
+  return ret;
+}
+
+/**
+  Log validity point information.
+
+  Information such as validity point time is logged using backup logger which,
+  in particular, writes it to backup history and progress logs.
+  
+  @note Logging the information may involve time consuming I/O. Therefore this
+  function should not be called in the time critical synchronization phase, but
+  after the synchronisation has been done.
+*/ 
+static
+void report_vp_info(Backup_info &info)
+{
+  info.m_ctx.report_vp_time(info.get_vp_time(), 
+                            TRUE // = also write to progress log
+                           );
+  if (info.flags & BSTREAM_FLAG_BINLOG)
+    info.m_ctx.report_binlog_pos(info.binlog_pos);
+  if (info.master_pos.pos)
+    info.m_ctx.report_master_binlog_pos(info.master_pos);
+}
+
+
+/**
   Save data from tables being backed up.
 
   Function initializes and controls backup drivers which create the image
@@ -424,16 +488,28 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 {
   DBUG_ENTER("backup::write_table_data");
 
+  /*
+    If there are no tables to backup, there is nothing to do in this function
+    except for storing and reporting the validity point info.
+    
+    Note that since DDLs are disabled and backup image contains no table data, 
+    any time during backup operation is a good validity time -- there is no 
+    issue of synchronising the data stored in the image with the data in the 
+    rest of the server.
+  */ 
   if (info.snap_count() == 0 || info.table_count() == 0) // nothing to backup
-    DBUG_RETURN(0);
+  {
+    int res= save_vp_info(info);    // logs errors
+    if (!res)
+      report_vp_info(info);
+    DBUG_RETURN(res);
+  }
 
   Scheduler   sch(s, &info.m_ctx);          // scheduler instance
   List<Scheduler::Pump>  inactive;  // list of images not yet being created
 
   // keeps maximal init size for images in inactive list
   size_t      max_init_size=0;
-
-  time_t      vp_time;              // to store validity point time
 
   DBUG_PRINT("backup_data",("initializing scheduler"));
 
@@ -582,8 +658,6 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     
     DBUG_PRINT("backup_data",("-- SYNC PHASE --"));
 
-    LOG_INFO binlog_pos;
-    
     info.m_ctx.report_state(BUP_VALIDITY_POINT);
     /*
       This breakpoint is used to assist in testing state changes for
@@ -600,33 +674,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     if (sch.lock())
       goto error;
 
-    /*
-      Save binlog information for point in time recovery on restore.
-    */
-    if (mysql_bin_log.is_open())
-      if (mysql_bin_log.get_current_log(&binlog_pos))
-      {
-        info.m_ctx.fatal_error(ER_BACKUP_BINLOG);
-        goto error;
-      }
-
-    /*
-      If we are a connected slave, write master's binlog information to
-      the progress log for later use.
-    */
-    st_bstream_binlog_pos master_pos;
-    master_pos.pos= 0;
-    master_pos.file= 0;
-    if (obs::is_slave() && active_mi)
-    {
-      master_pos.pos= (ulong)active_mi->master_log_pos;
-      master_pos.file= active_mi->master_log_name;
-    }
-
-    /*
-      Save VP creation time.
-    */
-    vp_time= my_time(0);
+    save_vp_info(info);
 
     DEBUG_SYNC(thd, "before_backup_data_unlock");
     if (sch.unlock())
@@ -640,23 +688,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     if (error)
       goto error;
 
-    // Report and save information about VP
-
-    info.save_vp_time(vp_time);
-    info.m_ctx.report_vp_time(vp_time, TRUE); // TRUE = also write to progress log
-
-    if (mysql_bin_log.is_open())
-    {
-      info.save_binlog_pos(binlog_pos);
-      info.m_ctx.report_binlog_pos(info.binlog_pos);
-    }
-
-    /*
-      If we are a slave and the master's binlog position has been recorded
-      write it to the log.
-    */
-    if (obs::is_slave() && master_pos.pos)
-      info.m_ctx.report_master_binlog_pos(master_pos);
+    report_vp_info(info);
 
     info.m_ctx.report_state(BUP_RUNNING);
     DEBUG_SYNC(thd, "after_backup_binlog");
@@ -1364,12 +1396,29 @@ namespace backup {
  */
 int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
 {
+  st_bstream_data_chunk chunk_info; // For reading chunks from the stream.
+
   DBUG_ENTER("restore::restore_table_data");
 
   enum { READING, SENDING, DONE, ERROR } state= READING;
 
+  /*
+    If there are no tables stored in the image, there is nothing to do in this
+    function. However, we must call bstream_rd_data_chunk() which will absorb
+    the 0x00 byte signalling end of (the empty) table data chunk sequence.
+  */ 
   if (info.snap_count() == 0 || info.table_count() == 0) // nothing to restore
+  {
+    int res= bstream_rd_data_chunk(&s, &chunk_info);
+    if (res != BSTREAM_EOC)
+    {
+       info.m_ctx.report_error(res == BSTREAM_ERROR ?
+                                ER_BACKUP_READ_DATA :
+                                ER_BACKUP_UNEXPECTED_DATA);
+       DBUG_RETURN(ERROR);
+    }
     DBUG_RETURN(0);
+  }
 
   Restore_driver* drv[256];
 
@@ -1425,8 +1474,6 @@ int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
     Snapshot_info   *snap= NULL;   // corresponding snapshot object
 
     // main data reading loop
-
-    st_bstream_data_chunk chunk_info;
 
     while ( state != DONE && state != ERROR )
     {

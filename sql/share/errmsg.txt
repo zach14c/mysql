@@ -6414,3 +6414,5 @@ ER_RESTORE_ON_SLAVE
   eng "A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore."
 ER_NONUNIQ_DB 42000 S1009
         eng "Not unique database: '%-.192s'"
+ER_BACKUP_UNEXPECTED_DATA
+  eng "Backup image contains no tables, but table data was found in it"
