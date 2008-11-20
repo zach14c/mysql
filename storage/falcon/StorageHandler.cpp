@@ -998,6 +998,8 @@ void StorageHandler::initialize(void)
 
 		try
 			{
+			Log::log(LogMysqlInfo, "Falcon: unable to open system data files.");
+			Log::log(LogMysqlInfo, "Falcon: creating new system data files.");
 			createDatabase();
 			}
 		catch(SQLException &e2)

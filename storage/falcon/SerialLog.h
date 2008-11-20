@@ -29,6 +29,7 @@
 #include "Stack.h"
 #include "DenseArray.h"
 #include "Queue.h"
+#include "Bitmap.h"
 
 static const unsigned int altLogFlag	= 0x80000000;
 static const int srlSignature			= 123456789;
@@ -126,6 +127,8 @@ public:
 	void			setSectionInactive(int id, int tableSpaceId);
 	void			setIndexActive(int id, int tableSpaceId);
 	void			setIndexInactive(int id, int tableSpaceId);
+	void			setTableSpaceDropped(int tableSpaceId);
+	bool			isTableSpaceDropped(int tableSpaceId);
 	void			updateSectionUseVector(uint sectionId, int tableSpaceId, int delta);
 	void			updateIndexUseVector(uint indexId, int tableSpaceId, int delta);
 	bool			sectionInUse(int sectionId, int tableSpaceId);
@@ -170,6 +173,7 @@ public:
 	RecoveryObjects		*recoveryPages;
 	RecoveryObjects		*recoverySections;
 	RecoveryObjects		*recoveryIndexes;
+	Bitmap				droppedTablespaces;
 	Dbb					*defaultDbb;
 	Gopher				*gophers;
 	Thread				*srlQueue;
@@ -224,6 +228,7 @@ public:
 	uint64				chilledBytes;
 	int32				wantToSerializeGophers;
 	int32				serializeGophers;
+	uint64				startRecordVirtualOffset;
 
 	TableSpaceInfo		*tableSpaces[SLT_HASH_SIZE];
 	TableSpaceInfo		*tableSpaceInfo;

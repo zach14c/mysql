@@ -161,7 +161,16 @@ pthread_handler_t backup_thread_for_locking(void *arg)
     killing the thread. In this case, we need to close the tables 
     and exit.
   */
-  if (open_and_lock_tables(thd, locking_thd->tables_in_backup))
+
+  /*
+    The MYSQL_OPEN_SKIP_TEMPORARY flag is needed so that temporary tables are
+    not opened which would occulde the regular tables selected for backup 
+    (BUG#33574).
+  */ 
+  if (open_and_lock_tables_derived(thd, locking_thd->tables_in_backup,
+                                   FALSE, /* do not process derived tables */
+                                   MYSQL_OPEN_SKIP_TEMPORARY)
+     )
   {
     DBUG_PRINT("info",("Online backup locking thread dying"));
     THD_SET_PROC_INFO(thd, "lock error");
