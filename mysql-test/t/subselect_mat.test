@@ -831,4 +831,19 @@ select min(a1) from t1 where 7 in (select b1 from t2);
 set @@optimizer_switch='no_materialization';
 explain select min(a1) from t1 where 7 in (select b1 from t2);
 select min(a1) from t1 where 7 in (select b1 from t2);
+drop table t1,t2;
 
+#
+# BUG#36752 "subquery materialization produces wrong results when comparing different types"
+#
+create table t1 (a char(2), b varchar(10));
+insert into t1 values ('a',  'aaa');
+insert into t1 values ('aa', 'aaaa');
+
+set @@optimizer_switch='no_semijoin';
+explain select a,b from t1 where b in (select a from t1);
+select a,b from t1 where b in (select a from t1);
+prepare st1 from "select a,b from t1 where b in (select a from t1)";
+execute st1;
+execute st1;
+drop table t1;
