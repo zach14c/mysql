@@ -451,7 +451,7 @@ bool Abstract_obj::execute(THD *thd)
     take care to clean up the environment after itself.
   */
 
-  bool rc;
+  bool rc= FALSE;
   List_iterator_fast<String> it(m_stmt_lst);
   while (true)
   {
