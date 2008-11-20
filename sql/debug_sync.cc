@@ -831,8 +831,8 @@ static st_debug_sync_action *debug_sync_get_action(THD *thd,
   {
     /* Reuse an already active sync point action. */
     DBUG_ASSERT((uint)(action - ds_control->ds_action) < ds_control->ds_active);
-    DBUG_PRINT("debug_sync", ("reuse action idx: %d",
-                              action - ds_control->ds_action));
+    DBUG_PRINT("debug_sync", ("reuse action idx: %ld",
+                              (long) (action - ds_control->ds_action)));
   }
   else
   {

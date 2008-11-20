@@ -355,10 +355,8 @@ private:
 class Ed_result : public List<Ed_result_set>
 {
 public:
-  Ed_result(MEM_ROOT *mem_root);
-
-  inline ~Ed_result()
-  { }
+  Ed_result();
+  ~Ed_result();
 
 public:
   inline Ed_result_set *get_cur_result_set()
@@ -393,7 +391,7 @@ public:
   { return m_warning_info.warn_list(); }
 
 private:
-  MEM_ROOT *m_mem_root;
+  MEM_ROOT m_mem_root;
   Ed_result_set *m_current_result_set;
 
 private:

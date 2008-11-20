@@ -297,8 +297,8 @@ bool In_stream::next(LEX_STRING *chunk)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-#define STR(x) x.length(), x.ptr()
-#define LXS(x) x->length, x->str
+#define STR(x) (x).length(), (x).ptr()
+#define LXS(x) (x)->length, (x)->str
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -439,7 +439,7 @@ bool Abstract_obj::execute(THD *thd)
       break;
 
     LEX_STRING query= { (char *) stmt->ptr(), stmt->length() };
-    Ed_result result(thd->mem_root);
+    Ed_result result;
     DBUG_ASSERT(alloc_root_inited(thd->mem_root));
 
     rc= mysql_execute_direct(thd, &query, &result);
@@ -777,22 +777,20 @@ private:
 template <typename Iterator>
 Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 {
-  Ed_result result(thd->mem_root);
+  Ed_result *result= new Ed_result();
 
-  if (run_query(thd, query, &result) ||
-      result.get_warnings().elements > 0)
+  if (run_query(thd, query, result) ||
+      result->get_warnings().elements > 0)
   {
     /* Should be no warnings. */
+
+    delete result;
     return NULL;
   }
 
-  DBUG_ASSERT(result.elements == 1);
+  DBUG_ASSERT(result->elements == 1);
 
-  Ed_result_set *rs= result.get_cur_result_set();
-
-  DBUG_ASSERT(rs);
-
-  return new Iterator(rs);
+  return new Iterator(result);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -801,19 +799,27 @@ Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 class Ed_result_set_iterator : public Obj_iterator
 {
 protected:
-  inline Ed_result_set_iterator(Ed_result_set *rs);
+  inline Ed_result_set_iterator(Ed_result *result);
+  inline ~Ed_result_set_iterator();
 
 protected:
-  Ed_result_set *m_rs;
+  Ed_result *m_result;
   List_iterator_fast<Ed_row> m_row_it;
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-inline Ed_result_set_iterator::Ed_result_set_iterator(Ed_result_set *rs)
-  : m_rs(rs),
-    m_row_it(*rs->data())
+inline Ed_result_set_iterator::Ed_result_set_iterator(Ed_result *result)
+  : m_result(result),
+    m_row_it(*result->get_cur_result_set()->data())
 { }
+
+///////////////////////////////////////////////////////////////////////////
+
+inline Ed_result_set_iterator::~Ed_result_set_iterator()
+{
+  delete m_result;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -824,8 +830,8 @@ public:
   static Database_iterator *create(THD *thd);
 
 public:
-  inline Database_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Database_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -875,8 +881,8 @@ public:
   static Db_tables_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Db_tables_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Db_tables_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -938,8 +944,8 @@ public:
   static Db_views_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Db_views_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Db_views_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -1001,8 +1007,8 @@ public:
   static Db_trigger_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Db_trigger_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Db_trigger_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -1062,8 +1068,8 @@ public:
   static Db_stored_proc_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Db_stored_proc_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Db_stored_proc_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -1125,8 +1131,8 @@ public:
   static Db_stored_func_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Db_stored_func_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Db_stored_func_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -1188,8 +1194,8 @@ public:
   static Db_event_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Db_event_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Db_event_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -1482,8 +1488,8 @@ public:
   static Grant_iterator *create(THD *thd, const String *db_name);
 
 public:
-  inline Grant_iterator(Ed_result_set *rs)
-    :Ed_result_set_iterator(rs)
+  inline Grant_iterator(Ed_result *result)
+    :Ed_result_set_iterator(result)
   { }
 
 public:
@@ -1626,7 +1632,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
     (int) m_db_name.length(),
     (const char *) m_db_name.ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -1664,7 +1670,6 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
     Fmt("DROP DATABASE IF EXISTS `%.*s`", STR(m_db_name)) <<
     create_stmt <<
     "SET character_set_client = @saved_cs_client";
-
 
   DBUG_RETURN(FALSE);
 }
@@ -1714,7 +1719,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
     (int) m_table_name.length(),
     (const char *) m_table_name.ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -1769,9 +1774,9 @@ View_obj::View_obj(const char *db_name_str, int db_name_length,
 static bool
 get_view_create_stmt(THD *thd,
                      View_obj *view,
-                     const LEX_STRING **create_stmt,
-                     const LEX_STRING **client_cs_name,
-                     const LEX_STRING **connection_cl_name)
+                     LEX_STRING *create_stmt,
+                     LEX_STRING *client_cs_name,
+                     LEX_STRING *connection_cl_name)
 {
   char query_buffer[QUERY_BUFFER_SIZE];
   LEX_STRING query;
@@ -1786,7 +1791,7 @@ get_view_create_stmt(THD *thd,
     (int) view->get_name()->length(),
     (const char *) view->get_name()->ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -1814,9 +1819,18 @@ get_view_create_stmt(THD *thd,
 
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 4);
 
-  *create_stmt= row->get_column(1);
-  *client_cs_name= row->get_column(2);
-  *connection_cl_name= row->get_column(3);
+  const LEX_STRING *c1= row->get_column(1);
+  const LEX_STRING *c2= row->get_column(2);
+  const LEX_STRING *c3= row->get_column(3);
+
+  create_stmt->str= thd->strmake(c1->str, c1->length);
+  create_stmt->length= c1->length;
+
+  client_cs_name->str= thd->strmake(c2->str, c2->length);
+  client_cs_name->length= c2->length;
+
+  connection_cl_name->str= thd->strmake(c3->str, c3->length);
+  connection_cl_name->length= c3->length;
 
   return FALSE;
 }
@@ -1867,7 +1881,7 @@ dump_base_object_stubs(THD *thd,
       (int) base_obj->get_name()->length(),
       (const char *) base_obj->get_name()->ptr());
 
-    Ed_result result(thd->mem_root);
+    Ed_result result;
 
     if (run_query(thd, &query, &result) ||
         result.get_warnings().elements > 0)
@@ -1946,9 +1960,9 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
               m_db_name.length(), m_db_name.ptr(),
               m_view_name.length(), m_view_name.ptr()));
 
-  const LEX_STRING *create_stmt;
-  const LEX_STRING *client_cs_name;
-  const LEX_STRING *connection_cl_name;
+  LEX_STRING create_stmt;
+  LEX_STRING client_cs_name;
+  LEX_STRING connection_cl_name;
 
   if (get_view_create_stmt(thd, this, &create_stmt,
                            &client_cs_name, &connection_cl_name))
@@ -1993,9 +2007,9 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 
   os <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(client_cs_name)) <<
-    Fmt("SET collation_connection = %.*s", LXS(connection_cl_name)) <<
-    create_stmt <<
+    Fmt("SET character_set_client = %.*s", LXS(&client_cs_name)) <<
+    Fmt("SET collation_connection = %.*s", LXS(&connection_cl_name)) <<
+    &create_stmt <<
     "SET character_set_client = @saved_cs_client" <<
     "SET collation_connection = @saved_col_connection";
 
@@ -2054,7 +2068,7 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
     (int) m_trigger_name.length(),
     (const char *) m_trigger_name.ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -2153,7 +2167,7 @@ bool Stored_proc_obj::do_serialize(THD *thd, Out_stream &os)
     (int) m_sp_name.length(),
     (const char *) m_sp_name.ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -2254,7 +2268,7 @@ bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
     (int) m_sf_name.length(),
     (const char *) m_sf_name.ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -2357,7 +2371,7 @@ bool Event_obj::do_serialize(THD *thd, Out_stream &os)
     (int) m_event_name.length(),
     (const char *) m_event_name.ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -2557,7 +2571,7 @@ void Grant_obj::generate_unique_id(const String *user_name,
     id->append("<no_name>");
 
   char buf[10];
-  snprintf(buf, 10, " %08lu", ++id_counter);
+  my_snprintf(buf, 10, " %08lu", ++id_counter);
 
   id->append(buf, 10);
 }
@@ -2918,7 +2932,7 @@ bool check_db_existence(THD *thd, const String *db_name)
     (int) db_name->length(),
     (const char *) db_name->ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
   int rc= run_query(thd, &query, &result);
 
   /* We're not interested in warnings/errors here. */
@@ -2948,7 +2962,7 @@ bool check_user_existence(THD *thd, const Obj *obj)
     (int) grant_obj->get_host_name()->length(),
     (const char *) grant_obj->get_host_name()->ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -3004,7 +3018,7 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
     (int) ts_name->length(),
     (const char *) ts_name->ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)
@@ -3073,7 +3087,7 @@ Obj *find_tablespace_for_table(THD *thd,
     (int) table_name->length(),
     (const char *) table_name->ptr());
 
-  Ed_result result(thd->mem_root);
+  Ed_result result;
 
   if (run_query(thd, &query, &result) ||
       result.get_warnings().elements > 0)

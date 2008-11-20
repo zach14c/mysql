@@ -1478,8 +1478,7 @@ bool Protocol_binary::send_out_parameters(List<Item_param> *sp_params)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-Ed_result::Ed_result(MEM_ROOT *mem_root) :
-  m_mem_root(mem_root),
+Ed_result::Ed_result() :
   m_current_result_set(NULL),
   m_status(Diagnostics_area::DA_EMPTY),
   m_server_status(0),
@@ -1489,21 +1488,30 @@ Ed_result::Ed_result(MEM_ROOT *mem_root) :
   m_warning_info(0),
   m_warning_info_saved(NULL)
 {
+  init_sql_alloc(&m_mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
+
   m_message[0]= 0;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+Ed_result::~Ed_result()
+{
+  free_root(&m_mem_root, MYF(0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 bool Ed_result::add_result_set(List<Item> *col_metadata)
 {
-  Ed_result_set *rs= Ed_result_set::create(m_mem_root, col_metadata);
+  Ed_result_set *rs= Ed_result_set::create(&m_mem_root, col_metadata);
 
   if (!rs)
     return TRUE;
 
   m_current_result_set= rs;
 
-  return push_back(rs, m_mem_root) ? TRUE : FALSE;
+  return push_back(rs, &m_mem_root) ? TRUE : FALSE;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1530,6 +1538,8 @@ void Ed_result::send_ok(THD *thd,
   DBUG_VOID_RETURN;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 void Ed_result::send_eof(THD *thd, uint server_status,
                          uint statement_warn_count)
 {
@@ -1546,6 +1556,8 @@ void Ed_result::send_eof(THD *thd, uint server_status,
   DBUG_VOID_RETURN;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 void Ed_result::send_error(THD *thd, uint sql_errno, const char *err_msg)
 {
   DBUG_ENTER("Ed_result::send_error()");
@@ -1560,6 +1572,8 @@ void Ed_result::send_error(THD *thd, uint sql_errno, const char *err_msg)
   DBUG_VOID_RETURN;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 void Ed_result::begin_statement(THD *thd)
 {
   DBUG_ASSERT(!m_warning_info_saved);
@@ -1567,6 +1581,8 @@ void Ed_result::begin_statement(THD *thd)
   m_warning_info_saved= thd->warning_info;
   thd->warning_info= &m_warning_info;
 }
+
+///////////////////////////////////////////////////////////////////////////
 
 void Ed_result::end_statement(THD *thd)
 {
