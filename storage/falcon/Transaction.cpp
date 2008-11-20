@@ -1225,7 +1225,7 @@ void Transaction::releaseSavepoints(void)
 void Transaction::rollbackSavepoint(int savePointId)
 {
 	//validateRecords();
-	Sync sync(&syncSavepoints, "Transaction::rollbackSavepoints");
+	Sync sync(&syncSavepoints, "Transaction::rollbackSavepoint");
 	SavePoint *savePoint;
 
 	// System transactions require an exclusive lock for concurrent access

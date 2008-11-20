@@ -2553,7 +2553,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		if (!dup->hasRecord())
 			{
-			// If the record is locked or being unlocked keep looking for a dup.
+			// If the record is a lock record, keep looking for a dup.
 
 			if (dup->state == recLock)
 				continue;  // Next record version.
@@ -3158,8 +3158,6 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 				attachment->preUpdate(this, record);
 		END_FOR;
 
-
-
 		//updateInversion(record, transaction);
 		scavenge.lock(Shared);
 		
@@ -3191,18 +3189,18 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		if (updated)
 			{
 			transaction->removeRecord(record);
-			
+
 			if (!insert(oldRecord, record, record->recordNumber))
 				Log::debug("record backout failed after failed update\n");
 			}
-			
+
 		garbageCollect(record, oldRecord, transaction, true);
-	
+
 		if (record)
 			{
 			if (record->getPriorVersion())
 				record->getPriorVersion()->setSuperceded(false);
-								
+
 			if (record->state == recLock)
 				record->deleteData();
 

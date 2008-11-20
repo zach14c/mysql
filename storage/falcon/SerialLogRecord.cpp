@@ -269,8 +269,6 @@ SerialLogTransaction* SerialLogRecord::getTransaction(TransId transactionId)
 	return transaction;
 }
 
-
-
 void SerialLogRecord::pass1()
 {
 
@@ -326,4 +324,3 @@ void SerialLogRecord::logPrint(const char* text, ...)
 	else
 		printf("Log %s", temp);
 }
-

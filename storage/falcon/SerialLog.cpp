@@ -1339,7 +1339,7 @@ void SerialLog::setPhysicalBlock(TransId transId)
 
 void SerialLog::reportStatistics(void)
 {
-	if (!Log::isActive(LogInfo))
+	if (!Log::isActive(LogInfo) || !writeBlock)
 		return;
 		
 	Sync sync(&pending.syncObject, "SerialLog::reportStatistics");
