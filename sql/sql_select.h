@@ -270,6 +270,13 @@ typedef struct st_join_table
   /* Variables for semi-join duplicate elimination */
   SJ_TMP_TABLE  *flush_weedout_table;
   SJ_TMP_TABLE  *check_weed_out_table;
+  
+  /*
+    If set, means we should stop join enumeration after we've got the first
+    match and return to the specified join tab. May point to
+    join->join_tab[-1] which means stop join execution after the first
+    match.
+  */
   struct st_join_table  *do_firstmatch;
  
   /* 
@@ -697,7 +704,14 @@ public:
   TABLE_LIST *tables_list;           ///<hold 'tables' parameter of mysql_select
   List<TABLE_LIST> *join_list;       ///< list of joined tables in reverse order
   COND_EQUAL *cond_equal;
-  JOIN_TAB *return_tab;              ///<used only for outer joins
+  /*
+    Join tab to return to. Points to an element of join->join_tab array, or to
+    join->join_tab[-1].
+    This is used at execution stage to shortcut join enumeration. Currently
+    shortcutting is done to handle outer joins or handle semi-joins with
+    FirstMatch strategy.
+  */
+  JOIN_TAB *return_tab;
   Item **ref_pointer_array; ///<used pointer reference for this select
   // Copy of above to be used with different lists
   Item **items0, **items1, **items2, **items3, **current_ref_pointer_array;

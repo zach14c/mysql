@@ -21512,20 +21512,25 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
           extra.append(STRING_WITH_LEN("; End temporary"));
         else if (tab->do_firstmatch)
         {
-          extra.append(STRING_WITH_LEN("; FirstMatch("));
-          TABLE *prev_table=tab->do_firstmatch->table;
-          if (prev_table->derived_select_number)
-          {
-            char namebuf[NAME_LEN];
-            /* Derived table name generation */
-            int len= my_snprintf(namebuf, sizeof(namebuf)-1,
-                                 "<derived%u>",
-                                 prev_table->derived_select_number);
-            extra.append(namebuf, len);
-          }
+          if (tab->do_firstmatch == join->join_tab - 1)
+            extra.append(STRING_WITH_LEN("; FirstMatch"));
           else
-            extra.append(prev_table->pos_in_table_list->alias);
-          extra.append(STRING_WITH_LEN(")"));
+          {
+            extra.append(STRING_WITH_LEN("; FirstMatch("));
+            TABLE *prev_table=tab->do_firstmatch->table;
+            if (prev_table->derived_select_number)
+            {
+              char namebuf[NAME_LEN];
+              /* Derived table name generation */
+              int len= my_snprintf(namebuf, sizeof(namebuf)-1,
+                                   "<derived%u>",
+                                   prev_table->derived_select_number);
+              extra.append(namebuf, len);
+            }
+            else
+              extra.append(prev_table->pos_in_table_list->alias);
+            extra.append(STRING_WITH_LEN(")"));
+          }
         }
         uint sj_strategy= join->best_positions[i].sj_strategy;
         if (sj_is_materialize_strategy(sj_strategy))

@@ -751,4 +751,8 @@ set @@optimizer_switch='no_firstmatch,no_materialization';
 insert into t0 values(2);
 explain select * from t1 where 2 in (select a from t0);
 select * from t1 where 2 in (select a from t0);
+set @@optimizer_switch='no_materialization';
+explain select * from t1 where 2 in (select a from t0);
+select * from t1 where 2 in (select a from t0);
+set @@optimizer_switch='';
 drop table t0, t1;
