@@ -48,7 +48,7 @@ const LEX_STRING IS_TYPE_VIEW=  { C_STRING_WITH_LEN("VIEW") };
 
 bool run_query(THD *thd, const LEX_STRING *query, Ed_result *result)
 {
-  DBUG_ENTER("run_query()");
+  DBUG_ENTER("run_query");
   DBUG_PRINT("run_query",
              ("query: %.*s",
               (int) query->length, (const char *) query->str));
@@ -300,6 +300,8 @@ bool In_stream::next(LEX_STRING *chunk)
 #define STR(x) (int) (x).length(), (x).ptr()
 #define LXS(x) (int) (x).length, (x).str
 
+#define LXS_INIT(x) {((char *) (x)), ((size_t) (sizeof (x) - 1))}
+
 ///////////////////////////////////////////////////////////////////////////
 
 }
@@ -408,14 +410,14 @@ Abstract_obj::~Abstract_obj()
 
 bool Abstract_obj::serialize(THD *thd, String *serialization)
 {
-  ulong saved_sql_mode= thd->variables.sql_mode;
+  ulong sql_mode_saved= thd->variables.sql_mode;
   thd->variables.sql_mode= 0;
 
   Out_stream os(serialization);
 
   bool ret= do_serialize(thd, os);
 
-  thd->variables.sql_mode= saved_sql_mode;
+  thd->variables.sql_mode= sql_mode_saved;
 
   return ret;
 }
@@ -435,21 +437,46 @@ bool Abstract_obj::serialize(THD *thd, String *serialization)
 bool Abstract_obj::execute(THD *thd)
 {
   /*
-    Save and update session sql_mode.
+    Preserve the following session attributes:
+      - sql_mode;
+      - character_set_client;
+      - character_set_results;
+      - collation_connection;
+      - time_zone;
 
-    Although backup queries can reset it by itself, we should be able to
-    run at least "set" statement. Backup queries are generated using
-    sql_mode == 0, so we also should use it. If a query needs another
-    sql_mode (stored rountines), it will reset it once more.
+    NOTE: other session variables are not preserved, so serialization image
+    must take care to clean up the environment after itself.
   */
 
-  ulong saved_sql_mode= thd->variables.sql_mode;
-  thd->variables.sql_mode= 0;
+  ulong sql_mode_saved= thd->variables.sql_mode;
+  Time_zone *tz_saved= thd->variables.time_zone;
+  CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
+  CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
+  CHARSET_INFO *connection_cl_saved= thd->variables.collation_connection;
 
   /*
-    NOTE: other session variables are not preserved, so backup query must
-    take care to clean up the environment after itself.
+    Reset session state to the following:
+      - sql_mode: 0
+      - character_set_client: utf8
+      - character_set_results: binary
+      - collation_connection: utf8
   */
+
+  thd->variables.sql_mode= 0;
+  thd->variables.character_set_client= system_charset_info;
+  thd->variables.character_set_results= &my_charset_bin;
+  thd->variables.collation_connection= system_charset_info;
+  thd->update_charset();
+
+  /*
+    Temporary tables should be ignored while looking for table structures.
+    Backup wants to deal with ordinary tables, not temporary ones.
+  */
+
+  TABLE *tmp_tables_saved= thd->temporary_tables;
+  thd->temporary_tables= NULL;
+
+  /* Run queries from the serialization image. */
 
   bool rc= FALSE;
   List_iterator_fast<String> it(m_stmt_lst);
@@ -462,7 +489,6 @@ bool Abstract_obj::execute(THD *thd)
 
     LEX_STRING query= { (char *) stmt->ptr(), stmt->length() };
     Ed_result result;
-    DBUG_ASSERT(alloc_root_inited(thd->mem_root));
 
     rc= mysql_execute_direct(thd, &query, &result);
 
@@ -472,7 +498,14 @@ bool Abstract_obj::execute(THD *thd)
       break;
   }
 
-  thd->variables.sql_mode= saved_sql_mode;
+  thd->variables.sql_mode= sql_mode_saved;
+  thd->variables.time_zone= tz_saved;
+  thd->variables.collation_connection= connection_cl_saved;
+  thd->variables.character_set_results= results_cs_saved;
+  thd->variables.character_set_client= client_cs_saved;
+  thd->update_charset();
+
+  thd->temporary_tables= tmp_tables_saved;
 
   return rc == TRUE;
 }
@@ -570,6 +603,38 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
+class Stored_program_obj : public Abstract_obj
+{
+public:
+  Stored_program_obj(const char *db_name_str, int db_name_length,
+                     const char *sp_name_str, int sp_name_length);
+
+protected:
+  virtual const LEX_STRING *get_type() const = 0;
+
+protected:
+  virtual const Ed_column *get_create_stmt(Ed_row *row) = 0;
+  virtual void dump_header(Ed_row *row, Out_stream &os) = 0;
+
+private:
+  virtual bool do_serialize(THD *thd, Out_stream &os);
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+class Stored_routine_obj : public Stored_program_obj
+{
+public:
+  Stored_routine_obj(const char *db_name_str, int db_name_length,
+                     const char *sr_name_str, int sr_name_length);
+
+protected:
+  virtual const Ed_column *get_create_stmt(Ed_row *row);
+  virtual void dump_header(Ed_row *row, Out_stream &os);
+};
+
+///////////////////////////////////////////////////////////////////////////
+
 /**
   @class Trigger_obj
 
@@ -577,14 +642,17 @@ private:
   capture of the creation data.
 */
 
-class Trigger_obj : public Abstract_obj
+class Trigger_obj : public Stored_routine_obj
 {
+private:
+  static const LEX_STRING TYPE_NAME;
+
 public:
   Trigger_obj(const char *db_name_str, int db_name_length,
-             const char *trigger_name_str, int trigger_name_length);
+              const char *trigger_name_str, int trigger_name_length);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual const LEX_STRING *get_type() const;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -596,14 +664,17 @@ private:
   and capture of the creation data.
 */
 
-class Stored_proc_obj : public Abstract_obj
+class Stored_proc_obj : public Stored_routine_obj
 {
+private:
+  static const LEX_STRING TYPE_NAME;
+
 public:
   Stored_proc_obj(const char *db_name_str, int db_name_length,
                  const char *sp_name_str, int sp_name_length);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual const LEX_STRING *get_type() const;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -615,14 +686,17 @@ private:
   and capture of the creation data.
 */
 
-class Stored_func_obj : public Abstract_obj
+class Stored_func_obj : public Stored_routine_obj
 {
+private:
+  static const LEX_STRING TYPE_NAME;
+
 public:
   Stored_func_obj(const char *db_name_str, int db_name_length,
                  const char *sf_name_str, int sf_name_length);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual const LEX_STRING *get_type() const;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -636,14 +710,19 @@ private:
   of the creation data.
 */
 
-class Event_obj : public Abstract_obj
+class Event_obj : public Stored_program_obj
 {
+private:
+  static const LEX_STRING TYPE_NAME;
+
 public:
   Event_obj(const char *db_name_str, int db_name_length,
             const char *event_name_str, int event_name_length);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual const LEX_STRING *get_type() const;
+  virtual const Ed_column *get_create_stmt(Ed_row *row);
+  virtual void dump_header(Ed_row *row, Out_stream &os);
 };
 
 #endif // HAVE_EVENT_SCHEDULER
@@ -1543,8 +1622,8 @@ Database_obj::Database_obj(const char *db_name_str, int db_name_length)
 
 bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 {
-  DBUG_ENTER("Database_obj::serialize()");
-  DBUG_PRINT("Database_obj::serialize",
+  DBUG_ENTER("Database_obj::do_serialize");
+  DBUG_PRINT("Database_obj::do_serialize",
              ("name: %.*s", STR(m_db_name)));
 
   if (is_internal_db_name(&m_db_name))
@@ -1597,11 +1676,8 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
   const Ed_column *create_stmt= row->get_column(1);
 
   os <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET character_set_client = utf8" <<
     Fmt("DROP DATABASE IF EXISTS `%.*s`", STR(m_db_name)) <<
-    create_stmt <<
-    "SET character_set_client = @saved_cs_client";
+    create_stmt;
 
   DBUG_RETURN(FALSE);
 }
@@ -1633,8 +1709,8 @@ Table_obj::Table_obj(const char *db_name_str, int db_name_length,
 
 bool Table_obj::do_serialize(THD *thd, Out_stream &os)
 {
-  DBUG_ENTER("Table_obj::serialize()");
-  DBUG_PRINT("Table_obj::serialize",
+  DBUG_ENTER("Table_obj::do_serialize");
+  DBUG_PRINT("Table_obj::do_serialize",
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
@@ -1677,11 +1753,8 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   const Ed_column *create_stmt= row->get_column(1);
 
   os <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET character_set_client = utf8" <<
     Fmt("USE `%.*s`", STR(m_db_name)) <<
-    create_stmt <<
-    "SET character_set_client = @saved_cs_client";
+    create_stmt;
 
   DBUG_RETURN(FALSE);
 }
@@ -1874,8 +1947,8 @@ dump_base_object_stubs(THD *thd,
 */
 bool View_obj::do_serialize(THD *thd, Out_stream &os)
 {
-  DBUG_ENTER("View_obj::serialize()");
-  DBUG_PRINT("View_obj::serialize",
+  DBUG_ENTER("View_obj::do_serialize");
+  DBUG_PRINT("View_obj::do_serialize",
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
@@ -1888,13 +1961,6 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
   {
     DBUG_RETURN(TRUE);
   }
-
-  /* Dump the header. */
-
-  os <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET @saved_col_connection = @@collation_connection" <<
-    "SET character_set_client = utf8";
 
   /* Get view dependencies. */
 
@@ -1928,9 +1994,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
     Fmt("USE `%.*s`", STR(m_db_name)) <<
     Fmt("SET character_set_client = %.*s", LXS(client_cs_name)) <<
     Fmt("SET collation_connection = %.*s", LXS(connection_cl_name)) <<
-    &create_stmt <<
-    "SET character_set_client = @saved_cs_client" <<
-    "SET collation_connection = @saved_col_connection";
+    &create_stmt;
 
   DBUG_RETURN(FALSE);
 }
@@ -1938,36 +2002,20 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-Trigger_obj::Trigger_obj(const char *db_name_str, int db_name_length,
-                         const char *trigger_name_str, int trigger_name_length)
+Stored_program_obj::Stored_program_obj(const char *db_name_str,
+                                       int db_name_length,
+                                       const char *sp_name_str,
+                                       int sp_name_length)
   : Abstract_obj(db_name_str, db_name_length,
-                 trigger_name_str, trigger_name_length)
+                 sp_name_str, sp_name_length)
 { }
 
 ///////////////////////////////////////////////////////////////////////////
 
-/**
-  Serialize the object.
-
-  This method produces the data necessary for materializing the object
-  on restore (creates object).
-
-  @param[in]  thd Thread handler.
-  @param[out] os  Output stream.
-
-  @note this method will return an error if the db_name is either
-        mysql or information_schema as these are not objects that
-        should be recreated using this interface.
-
-  @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
-*/
-
-bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
+bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
 {
-  DBUG_ENTER("Trigger_obj::do_serialize()");
-  DBUG_PRINT("Trigger_obj::do_serialize",
+  DBUG_ENTER("Stored_program_obj::do_serialize");
+  DBUG_PRINT("Stored_program_obj::do_serialize",
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
@@ -1978,8 +2026,8 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
 
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE TRIGGER `%.*s`.`%.*s`",
-    STR(m_db_name), STR(m_id));
+    "SHOW CREATE %.*s `%.*s`.`%.*s`",
+    LXS(*get_type()), STR(m_db_name), STR(m_id));
 
   Ed_result result;
 
@@ -2007,220 +2055,84 @@ bool Trigger_obj::do_serialize(THD *thd, Out_stream &os)
   List_iterator_fast<Ed_row> row_it(*rs->data());
   Ed_row *row= row_it++;
 
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
-
-  const Ed_column *sql_mode= row->get_column(1);
-  const Ed_column *create_stmt= row->get_column(2);
-  const Ed_column *client_cs= row->get_column(3);
-  const Ed_column *connection_cl= row->get_column(4);
-  const Ed_column *db_cl= row->get_column(5);
-
-  os <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET @saved_col_connection = @@collation_connection" <<
-    "SET @saved_col_database = @@collation_database" <<
-    "SET character_set_client = utf8" <<
-    Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
-    create_stmt <<
-    "SET character_set_client = @saved_cs_client" <<
-    "SET collation_connection = @saved_col_connection" <<
-    "SET collation_database = @saved_col_database";
+  os << Fmt("USE `%.*s`", STR(m_db_name));
+  dump_header(row, os);
+  os << get_create_stmt(row);
 
   DBUG_RETURN(FALSE);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
+
+Stored_routine_obj::Stored_routine_obj(const char *db_name_str,
+                                       int db_name_length,
+                                       const char *sr_name_str,
+                                       int sr_name_length)
+  : Stored_program_obj(db_name_str, db_name_length,
+                       sr_name_str, sr_name_length)
+{ }
+
+const Ed_column *Stored_routine_obj::get_create_stmt(Ed_row *row)
+{
+  return row->get_column(2);
+}
+
+void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &os)
+{
+  os <<
+    Fmt("SET character_set_client = %.*s", LXS(*row->get_column(3))) <<
+    Fmt("SET collation_connection = %.*s", LXS(*row->get_column(4))) <<
+    Fmt("SET collation_database = %.*s", LXS(*row->get_column(5))) <<
+    Fmt("SET sql_mode = '%.*s'", LXS(*row->get_column(1)));
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Trigger_obj::TYPE_NAME= LXS_INIT("TRIGGER");
+
+Trigger_obj::Trigger_obj(const char *db_name_str, int db_name_length,
+                         const char *trigger_name_str, int trigger_name_length)
+  : Stored_routine_obj(db_name_str, db_name_length,
+                       trigger_name_str, trigger_name_length)
+{ }
+
+const LEX_STRING *Trigger_obj::get_type() const
+{
+  return &Trigger_obj::TYPE_NAME;
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Stored_proc_obj::TYPE_NAME= LXS_INIT("PROCEDURE");
 
 Stored_proc_obj::Stored_proc_obj(const char *db_name_str, int db_name_length,
                                  const char *sp_name_str, int sp_name_length)
-  : Abstract_obj(db_name_str, db_name_length,
-                 sp_name_str, sp_name_length)
+  : Stored_routine_obj(db_name_str, db_name_length,
+                       sp_name_str, sp_name_length)
 { }
 
-///////////////////////////////////////////////////////////////////////////
-
-/**
-  Serialize the object.
-
-  This method produces the data necessary for materializing the object
-  on restore (creates object).
-
-  @param[in]  thd Thread context.
-  @param[out] os  Output stream.
-
-  @note this method will return an error if the db_name is either
-        mysql or information_schema as these are not objects that
-        should be recreated using this interface.
-
-  @returns Error status.
-*/
-
-bool Stored_proc_obj::do_serialize(THD *thd, Out_stream &os)
+const LEX_STRING *Stored_proc_obj::get_type() const
 {
-  DBUG_ENTER("Stored_proc_obj::do_serialize()");
-  DBUG_PRINT("Stored_proc_obj::do_serialize",
-             ("name: %.*s.%.*s",
-              STR(m_db_name), STR(m_id)));
-
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE PROCEDURE `%.*s`.`%.*s`",
-    STR(m_db_name), STR(m_id));
-
-  Ed_result result;
-
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
-  {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    DBUG_RETURN(TRUE);
-  }
-
-  DBUG_ASSERT(result.elements == 1);
-
-  Ed_result_set *rs= result.get_cur_result_set();
-
-  DBUG_ASSERT(rs);
-
-  if (rs->data()->elements == 0)
-    DBUG_RETURN(TRUE);
-
-  DBUG_ASSERT(rs->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*rs->data());
-  Ed_row *row= row_it++;
-
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
-
-  const Ed_column *sql_mode= row->get_column(1);
-  const Ed_column *create_stmt= row->get_column(2);
-  const Ed_column *client_cs= row->get_column(3);
-  const Ed_column *connection_cl= row->get_column(4);
-  const Ed_column *db_cl= row->get_column(5);
-
-  os <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET @saved_col_connection = @@collation_connection" <<
-    "SET @saved_col_database = @@collation_database" <<
-    "SET character_set_client = utf8" <<
-    Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
-    create_stmt <<
-    "SET character_set_client = @saved_cs_client" <<
-    "SET collation_connection = @saved_col_connection" <<
-    "SET collation_database = @saved_col_database";
-
-  DBUG_RETURN(FALSE);
+  return &Stored_proc_obj::TYPE_NAME;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+const LEX_STRING Stored_func_obj::TYPE_NAME= LXS_INIT("FUNCTION");
+
 Stored_func_obj::Stored_func_obj(const char *db_name_str, int db_name_length,
                                  const char *sf_name_str, int sf_name_length)
-  : Abstract_obj(db_name_str, db_name_length,
-                 sf_name_str, sf_name_length)
+  : Stored_routine_obj(db_name_str, db_name_length,
+                       sf_name_str, sf_name_length)
 { }
 
-///////////////////////////////////////////////////////////////////////////
-
-/**
-  Serialize the object.
-
-  This method produces the data necessary for materializing the object
-  on restore (creates object).
-
-  @param[in]  thd Thread context.
-  @param[out] os  Output stream.
-
-  @note this method will return an error if the db_name is either
-        mysql or information_schema as these are not objects that
-        should be recreated using this interface.
-
-  @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
-*/
-
-bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
+const LEX_STRING *Stored_func_obj::get_type() const
 {
-  DBUG_ENTER("Stored_func_obj::do_serialize()");
-  DBUG_PRINT("Stored_func_obj::do_serialize",
-             ("name: %.*s.%.*s",
-              STR(m_db_name), STR(m_id)));
-
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE FUNCTION `%.*s`.`%.*s`",
-    STR(m_db_name), STR(m_id));
-
-  Ed_result result;
-
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
-  {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    DBUG_RETURN(TRUE);
-  }
-
-  DBUG_ASSERT(result.elements == 1);
-
-  Ed_result_set *rs= result.get_cur_result_set();
-
-  DBUG_ASSERT(rs);
-
-  if (rs->data()->elements == 0)
-    DBUG_RETURN(TRUE);
-
-  DBUG_ASSERT(rs->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*rs->data());
-  Ed_row *row= row_it++;
-
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
-
-  const Ed_column *sql_mode= row->get_column(1);
-  const Ed_column *create_stmt= row->get_column(2);
-  const Ed_column *client_cs= row->get_column(3);
-  const Ed_column *connection_cl= row->get_column(4);
-  const Ed_column *db_cl= row->get_column(5);
-
-  os <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET @saved_col_connection = @@collation_connection" <<
-    "SET @saved_col_database = @@collation_database" <<
-    "SET character_set_client = utf8" <<
-    Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
-    create_stmt <<
-    "SET character_set_client = @saved_cs_client" <<
-    "SET collation_connection = @saved_col_connection" <<
-    "SET collation_database = @saved_col_database";
-
-  DBUG_RETURN(FALSE);
+  return &Stored_func_obj::TYPE_NAME;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2228,101 +2140,32 @@ bool Stored_func_obj::do_serialize(THD *thd, Out_stream &os)
 
 #ifdef HAVE_EVENT_SCHEDULER
 
+const LEX_STRING Event_obj::TYPE_NAME= LXS_INIT("EVENT");
+
 Event_obj::Event_obj(const char *db_name_str, int db_name_length,
                      const char *event_name_str, int event_name_length)
-  : Abstract_obj(db_name_str, db_name_length,
-                 event_name_str, event_name_length)
+  : Stored_program_obj(db_name_str, db_name_length,
+                       event_name_str, event_name_length)
 { }
 
-///////////////////////////////////////////////////////////////////////////
-
-/**
-  Serialize the object.
-
-  This method produces the data necessary for materializing the object
-  on restore (creates object).
-
-  @param[in]  thd Thread context.
-  @param[out] os  Output stream.
-
-  @note this method will return an error if the db_name is either
-        mysql or information_schema as these are not objects that
-        should be recreated using this interface.
-
-  @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
-*/
-
-bool Event_obj::do_serialize(THD *thd, Out_stream &os)
+const LEX_STRING *Event_obj::get_type() const
 {
-  DBUG_ENTER("Event_obj::serialize()");
-  DBUG_PRINT("Event_obj::serialize",
-             ("name: %.*s.%.*s",
-              STR(m_db_name), STR(m_id)));
+  return &Event_obj::TYPE_NAME;
+}
 
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
+const Ed_column *Event_obj::get_create_stmt(Ed_row *row)
+{
+  return row->get_column(3);
+}
 
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE EVENT `%.*s`.`%.*s`",
-    STR(m_db_name), STR(m_id));
-
-  Ed_result result;
-
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
-  {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    DBUG_RETURN(TRUE);
-  }
-
-  DBUG_ASSERT(result.elements == 1);
-
-  Ed_result_set *rs= result.get_cur_result_set();
-
-  DBUG_ASSERT(rs);
-
-  if (rs->data()->elements == 0)
-    DBUG_RETURN(TRUE);
-
-  DBUG_ASSERT(rs->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*rs->data());
-  Ed_row *row= row_it++;
-
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 7);
-
-  const Ed_column *sql_mode= row->get_column(1);
-  const Ed_column *tz= row->get_column(2);
-  const Ed_column *create_stmt= row->get_column(3);
-  const Ed_column *client_cs= row->get_column(4);
-  const Ed_column *connection_cl= row->get_column(5);
-  const Ed_column *db_cl= row->get_column(6);
-
+void Event_obj::dump_header(Ed_row *row, Out_stream &os)
+{
   os <<
-    "SET @saved_time_zone = @@time_zone" <<
-    "SET @saved_cs_client = @@character_set_client" <<
-    "SET @saved_col_connection = @@collation_connection" <<
-    "SET @saved_col_database = @@collation_database" <<
-    "SET character_set_client = utf8" <<
-    Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET time_zone = '%.*s'", LXS(*tz)) <<
-    Fmt("SET character_set_client = %.*s", LXS(*client_cs)) <<
-    Fmt("SET collation_connection = %.*s", LXS(*connection_cl)) <<
-    Fmt("SET collation_database = %.*s", LXS(*db_cl)) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(*sql_mode)) <<
-    create_stmt <<
-    "SET time_zone = @saved_time_zone" <<
-    "SET character_set_client = @saved_cs_client" <<
-    "SET collation_connection = @saved_col_connection" <<
-    "SET collation_database = @saved_col_database";
-
-  DBUG_RETURN(FALSE);
+    Fmt("SET character_set_client = %.*s", LXS(*row->get_column(4))) <<
+    Fmt("SET collation_connection = %.*s", LXS(*row->get_column(5))) <<
+    Fmt("SET collation_database = %.*s", LXS(*row->get_column(6))) <<
+    Fmt("SET sql_mode = '%.*s'", LXS(*row->get_column(1)));
+    Fmt("SET time_zone = '%.*s'", LXS(*row->get_column(2)));
 }
 
 #endif // HAVE_EVENT_SCHEDULER
@@ -2373,7 +2216,7 @@ Tablespace_obj::Tablespace_obj(const char *ts_name_str, int ts_name_length)
 
 bool Tablespace_obj::do_serialize(THD *thd, Out_stream &os)
 {
-  DBUG_ENTER("Tablespace_obj::serialize()");
+  DBUG_ENTER("Tablespace_obj::do_serialize");
 
   os << *get_description();
 
@@ -2411,7 +2254,7 @@ bool Tablespace_obj::materialize(uint serialization_version,
 
 const String *Tablespace_obj::get_description()
 {
-  DBUG_ENTER("Tablespace_obj::get_description()");
+  DBUG_ENTER("Tablespace_obj::get_description");
 
   DBUG_ASSERT(m_description.length() ||
               m_id.length() && m_data_file_name.length());
@@ -2538,17 +2381,15 @@ Grant_obj::Grant_obj(const char *name_str, int name_length)
 
 bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
 {
-  DBUG_ENTER("Grant_obj::do_serialize()");
+  DBUG_ENTER("Grant_obj::do_serialize");
 
   os <<
     m_user_name <<
     m_host_name <<
     m_grant_info <<
-    "SET @saved_cs_client = @@character_set_client" <<
     "SET character_set_client= binary" <<
     Fmt("GRANT %.*s TO '%.*s'@'%.*s'",
-        STR(m_grant_info), STR(m_user_name), STR(m_host_name)) <<
-    "SET character_set_client= @saved_cs_client";
+        STR(m_grant_info), STR(m_user_name), STR(m_host_name));
 
   DBUG_RETURN(FALSE);
 }
@@ -3015,7 +2856,7 @@ Obj *find_tablespace_for_table(THD *thd,
 
 bool compare_tablespace_attributes(Obj *ts1, Obj *ts2)
 {
-  DBUG_ENTER("obs::compare_tablespace_attributes()");
+  DBUG_ENTER("obs::compare_tablespace_attributes");
 
   Tablespace_obj *o1= (Tablespace_obj *) ts1;
   Tablespace_obj *o2= (Tablespace_obj *) ts2;
@@ -3049,7 +2890,7 @@ bool compare_tablespace_attributes(Obj *ts1, Obj *ts2)
   */
 bool ddl_blocker_enable(THD *thd)
 {
-  DBUG_ENTER("ddl_blocker_enable()");
+  DBUG_ENTER("ddl_blocker_enable");
   if (!DDL_blocker->block_DDL(thd))
     DBUG_RETURN(TRUE);
   DBUG_RETURN(FALSE);
@@ -3062,7 +2903,7 @@ bool ddl_blocker_enable(THD *thd)
   */
 void ddl_blocker_disable()
 {
-  DBUG_ENTER("ddl_blocker_disable()");
+  DBUG_ENTER("ddl_blocker_disable");
   DDL_blocker->unblock_DDL();
   DBUG_VOID_RETURN;
 }
@@ -3077,7 +2918,7 @@ void ddl_blocker_disable()
   */
 void ddl_blocker_exception_on(THD *thd)
 {
-  DBUG_ENTER("ddl_blocker_exception_on()");
+  DBUG_ENTER("ddl_blocker_exception_on");
   thd->DDL_exception= TRUE;
   DBUG_VOID_RETURN;
 }
@@ -3092,7 +2933,7 @@ void ddl_blocker_exception_on(THD *thd)
   */
 void ddl_blocker_exception_off(THD *thd)
 {
-  DBUG_ENTER("ddl_blocker_exception_off()");
+  DBUG_ENTER("ddl_blocker_exception_off");
   thd->DDL_exception= FALSE;
   DBUG_VOID_RETURN;
 }
@@ -3114,7 +2955,7 @@ TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
 {
   TABLE_LIST *tl= NULL;
   Obj *tbl= NULL;
-  DBUG_ENTER("Name_locker::build_table_list()");
+  DBUG_ENTER("Name_locker::build_table_list");
 
   List_iterator<Obj> it(*tables);
   while ((tbl= it++))
@@ -3165,7 +3006,7 @@ int Name_locker::get_name_locks(List<Obj> *tables, thr_lock_type lock)
 {
   TABLE_LIST *ltable= 0;
   int ret= 0;
-  DBUG_ENTER("Name_locker::get_name_locks()");
+  DBUG_ENTER("Name_locker::get_name_locks");
   /*
     Convert List<Obj> to TABLE_LIST *
   */
@@ -3192,7 +3033,7 @@ int Name_locker::get_name_locks(List<Obj> *tables, thr_lock_type lock)
 */
 int Name_locker::release_name_locks()
 {
-  DBUG_ENTER("Name_locker::release_name_locks()");
+  DBUG_ENTER("Name_locker::release_name_locks");
   if (m_table_list)
   {
     pthread_mutex_unlock(&LOCK_open);
