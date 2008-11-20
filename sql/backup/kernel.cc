@@ -1236,8 +1236,9 @@ int Backup_restore_ctx::do_restore(bool overwrite)
     }
 
     Image_info::Db *mydb;
-    while (mydb= static_cast<Image_info::Db*>((*dbit)++)) {
+    while ((mydb= static_cast<Image_info::Db*>((*dbit)++))) {
       if (!obs::check_db_existence(&mydb->name())) {
+        delete dbit;
         DBUG_RETURN(fatal_error(ER_RESTORE_DB_EXISTS, mydb->name().ptr()));
       }
     }
