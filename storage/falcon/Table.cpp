@@ -2555,7 +2555,7 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			{
 			// If the record is locked or being unlocked keep looking for a dup.
 
-			if ((dup->state == recLock) || (dup->state == recUnlocked))
+			if (dup->state == recLock)
 				continue;  // Next record version.
 
 			// The record has been deleted.
@@ -3436,26 +3436,23 @@ void Table::unlockRecord(int recordNumber)
 	if (record)
 		{
 		if (record->state == recLock)
-			unlockRecord((RecordVersion*) record, true);
+			unlockRecord((RecordVersion*) record);
 		
 		record->release();
 		}
 }
 
-void Table::unlockRecord(RecordVersion* record, bool remove)
+void Table::unlockRecord(RecordVersion* record)
 {
 	//int uc = record->useCount;
 	ASSERT(record->getPriorVersion());
-	
-	if (record->state == recLock)
-		{
-		record->state = recUnlocked;
 
+	// A lock record that has superceded=true is already unlocked
+
+	if ((record->state == recLock) && !record->isSuperceded())
+		{
 		if (insert(record->getPriorVersion(), record, record->recordNumber))
-			{
-			if (remove && record->transaction)
-				record->transaction->removeRecord(record);
-			}
+			record->setSuperceded(true);
 		else
 			Log::debug("Table::unlockRecord: record lock not in record tree\n");
 		}

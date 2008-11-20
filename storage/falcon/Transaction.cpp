@@ -422,7 +422,7 @@ void Transaction::rollback()
 		record->nextInTrans = NULL;
 
 		if (record->state == recLock)
-			record->format->table->unlockRecord(record, false);
+			record->format->table->unlockRecord(record);
 		else
 			record->rollback(this);
 		
@@ -1353,19 +1353,19 @@ bool Transaction::isXidEqual(int testLength, const UCHAR* test)
 
 void Transaction::releaseRecordLocks(void)
 {
-	RecordVersion **ptr;
-	RecordVersion *record;
-
 	Sync syncRec(&syncRecords,"Transaction::releaseRecordLocks");
 	syncRec.lock(Exclusive);
-	for (ptr = &firstRecord; (record = *ptr);)
+
+	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
 		if (record->state == recLock)
 			{
-			record->format->table->unlockRecord(record, false);
-			removeRecord(record);
+			record->format->table->unlockRecord(record);
+
+			// Don't do  removeRecord(record); now.  Other threads might be 
+			// pointing to it and need the transaction pointer to determine 
+			// its relative state
 			}
-		else
-			ptr = &record->nextInTrans;
+
 	syncRec.unlock();
 }
 
