@@ -184,6 +184,7 @@ public:
 	void	printPage(Bdb* bdb);
 	void	updateBlob(Section *blobSection, int recordNumber, Stream* blob, Transaction* transaction);
 	void	updateSerialLogBlockSize(void);
+	void	setCacheRecovering(bool state);
 	
 	Cache		*cache;
 	Database	*database;

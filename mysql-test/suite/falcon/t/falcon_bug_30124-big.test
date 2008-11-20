@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+--source include/big_test.inc
 
 #
 # Bug #30124: UPDATE has unacceptable performance
@@ -8,8 +9,6 @@
 #    With the bug, it took 30 to 60 minutes.
 #    It takes a while to build the file though.
 #
-# Note: Original test case is with loop count of 1 mio.
-#       Lowered to 100k due to long run time on slow machines.
 --echo *** Bug #30124 ***
 
 # ----------------------------------------------------- #
@@ -35,7 +34,7 @@ BEGIN
   SET @i = 0;
   SET @v = 0;
 
-  WHILE @i < 100000 DO
+  WHILE @i < 1000000 DO
     SET @a = @v;
 
     EXECUTE stmt1 USING @a;
