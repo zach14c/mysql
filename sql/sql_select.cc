@@ -8185,6 +8185,7 @@ make_simple_join(JOIN *join,TABLE *tmp_table)
   join_tab->read_first_record= join_init_read_record;
   join_tab->join=join;
   join_tab->ref.key_parts= 0;
+  join_tab->keep_current_rowid= FALSE;
   join_tab->flush_weedout_table= join_tab->check_weed_out_table= NULL;
   join_tab->do_firstmatch= NULL;
   join_tab->loosescan_match_tab= NULL;
