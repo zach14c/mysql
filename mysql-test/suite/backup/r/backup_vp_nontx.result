@@ -1,0 +1,115 @@
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE IF EXISTS bup_vp;
+CREATE DATABASE bup_vp;
+
+Starting Test
+
+con_bup: Creating tables
+CREATE TABLE bup_vp.t1 (col_a CHAR(40)) ENGINE=MEMORY;
+con_bup: Loading data
+con_bup: Scenario a) - commited before backup
+INSERT INTO bup_vp.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("05 Some data to test");
+
+con_bup: Show the data before we start backup
+SELECT * FROM bup_vp.t1;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+
+Scenario (b): Insert in progress blocks CB and is included in backup
+con_ntx1: Start insert and stop it in the middle of processing
+con_ntx1: Make insert stop in the middle of execution
+SET DEBUG_SYNC= 'after_insert_locked_tables SIGNAL insert_started
+                   WAIT_FOR complete_insert';
+INSERT INTO bup_vp.t1 VALUES ("ntx1: 06 Some data to test");
+
+con_bup: Activate synchronization points for BACKUP.
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL sync_complete_insert';
+SET DEBUG_SYNC= 'before_backup_data_lock SIGNAL try_insert
+                 WAIT_FOR insert_blocked';
+SET DEBUG_SYNC= 'after_backup_binlog SIGNAL commit_unblocked
+                 WAIT_FOR finish_bup';
+con_bup: Backing up database -- will block with lock
+BACKUP DATABASE bup_vp TO "bup_vp.bak";
+
+SET DEBUG_SYNC= 'now WAIT_FOR sync_complete_insert';
+Backup has been blocked by ongoing insert
+SET DEBUG_SYNC= 'now SIGNAL complete_insert';
+
+con_ntx1: Reap insert
+Check that record has been inserted; Should be 1 record
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx1%';
+col_a
+ntx1: 06 Some data to test
+
+con_ntx2: Wait until backup has set CB, then try to insert
+SET DEBUG_SYNC= 'now WAIT_FOR try_insert';
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL sync_insert_blocked';
+INSERT INTO bup_vp.t1 VALUES ("ntx2: Should NOT be in backup");
+
+SET DEBUG_SYNC= 'now WAIT_FOR sync_insert_blocked';
+Insert in ntx2 is blocked and should not be in t1; Should be 0 records
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx2%';
+col_a
+
+SET DEBUG_SYNC= 'now SIGNAL insert_blocked';
+
+con_ntx1: Backup has now released CB. Perform insert
+SET DEBUG_SYNC= 'now WAIT_FOR commit_unblocked';
+INSERT INTO bup_vp.t1 VALUES ("ntx1: Should NOT be in backup");
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+
+con_ntx1: Reap backup
+backup_id
+#
+
+con_bup: Showing data after updates and backup
+SELECT * FROM bup_vp.t1;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+ntx1: 06 Some data to test
+ntx2: Should NOT be in backup
+ntx1: Should NOT be in backup
+con_bup: Dropping the database
+DROP TABLE bup_vp.t1;
+DROP DATABASE bup_vp;
+con_bup: Restoring the database
+RESTORE FROM "bup_vp.bak";
+backup_id
+#
+
+con_bup: Showing the data after restore
+SELECT * FROM bup_vp.t1;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+ntx1: 06 Some data to test
+
+Verifying results:
+
+T1 should have changes from con_ntx1; Should be 1 record
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx1%';
+col_a
+ntx1: 06 Some data to test
+
+T1 should not have the changes from con_ntx2; Should be 0 records
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx2%';
+col_a
+
+con_bup: Cleanup
+DROP DATABASE bup_vp;
+SET DEBUG_SYNC= 'RESET';
