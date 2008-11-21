@@ -4,6 +4,9 @@ MYSQL_PLUGIN_DIRECTORY(falcon, [storage/falcon])
 MYSQL_PLUGIN_STATIC(falcon,    [libfalcon.a])
 MYSQL_PLUGIN_DYNAMIC(falcon,   [ha_falcon.la])
 
+# Check if we have the atomic_* functions on Solaris
+AC_CHECK_FUNC(atomic_cas_32, AC_DEFINE([HAVE_SOLARIS_ATOMIC], [1], [Define to 1 if Solaris support atomic functions.]))
+
 # Check for supported machine types.
 AC_CACHE_CHECK([if Falcon Storage Engine is supported on $MACHINE_TYPE],
   			   falcon_supported_by_machine,[

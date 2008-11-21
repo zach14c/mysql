@@ -1198,7 +1198,7 @@ void IndexRootPage::positionIndex(Dbb* dbb, int indexId, int32 rootPage, WalkInd
 		offset = page->computePrefix (key, highKey);
 		}
 
-	walkIndex->setNodes(page->nextPage, page->length - ((UCHAR*) node.node - (UCHAR*) page->nodes), node.node);
+	walkIndex->setNodes(page->nextPage, page->length - (int)((UCHAR*) node.node - (UCHAR*) page->nodes), node.node);
 	bdb->release(REL_HISTORY);
 }
 

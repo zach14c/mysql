@@ -36,8 +36,6 @@
 #include "CmdGen.h"
 #include "Dbb.h"
 #include "Database.h"
-#include "TableSpaceManager.h"
-#include "IOx.h"
 
 #define DICTIONARY_ACCOUNT		"mysql"
 #define DICTIONARY_PW			"mysql"
@@ -505,12 +503,6 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 		return StorageErrorTableSpaceExist;
 		}
 
-	TableSpaceManager *tableSpaceManager =
-		dictionaryConnection->database->tableSpaceManager;
-
-	if (!tableSpaceManager->waitForPendingDrop(filename, 10))
-		// file still exists after waiting for 10 seconds
-		return  StorageErrorTableSpaceDataFileExist;
 
 	try
 		{
@@ -1006,6 +998,8 @@ void StorageHandler::initialize(void)
 
 		try
 			{
+			Log::log(LogMysqlInfo, "Falcon: unable to open system data files.");
+			Log::log(LogMysqlInfo, "Falcon: creating new system data files.");
 			createDatabase();
 			}
 		catch(SQLException &e2)
