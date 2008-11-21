@@ -1035,7 +1035,7 @@ YES
 # SQLCOM_RESTORE
 #
 INSERT INTO db1.trans (a) VALUES (1);
-restore from 'backup_db1.ba';
+restore from 'backup_db1.ba' overwrite;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 YES

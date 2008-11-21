@@ -139,7 +139,7 @@ SELECT * FROM bup_nodata.e1;
 Period	Vapor_period
 DROP DATABASE bup_nodata;
 Restoring nodata database.
-RESTORE FROM 'bup_nodata.bak';
+RESTORE FROM 'bup_nodata.bak' OVERWRITE;
 backup_id
 #
 show data

@@ -64,7 +64,7 @@ SHOW GRANTS FOR 'bup_user3'@'%';
 Grants for bup_user3@%
 GRANT USAGE ON *.* TO 'bup_user3'@'%'
 Run Restore
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
 SHOW TABLES FROM bup_db_grants;
@@ -96,7 +96,7 @@ FLUSH PRIVILEGES;
 CREATE USER 'bup_user1'@'%';
 CREATE USER 'bup_user1'@'nosuchhost';
 Run Restore
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
 SHOW TABLES FROM bup_db_grants;
@@ -166,7 +166,7 @@ EXECUTE stmt3;
 Grants for ƒ@@%
 GRANT USAGE ON *.* TO 'ƒ@'@'%'
 Run restore.
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
 FLUSH PRIVILEGES;

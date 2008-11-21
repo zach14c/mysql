@@ -30,7 +30,7 @@ void backup_shutdown();
   Called from the big switch in mysql_execute_command() to execute
   backup related statement
 */
-int execute_backup_command(THD*, LEX*, String*);
+int execute_backup_command(THD*, LEX*, String*, bool);
 
 // forward declarations
 
@@ -74,7 +74,7 @@ class Backup_restore_ctx: public backup::Logger
                                    const char*);  
 
   int do_backup();
-  int do_restore();
+  int do_restore(bool overwrite);
   int fatal_error(int, ...);
   int log_error(int, ...);
 
@@ -83,6 +83,10 @@ class Backup_restore_ctx: public backup::Logger
   THD* thd() const { return m_thd; }
 
  private:
+
+  // Prevent copying/assignments
+  Backup_restore_ctx(const Backup_restore_ctx&);
+  Backup_restore_ctx& operator=(const Backup_restore_ctx&);
 
   /** @c current_op points to the @c Backup_restore_ctx for the
       ongoing backup/restore operation.  If pointer is null, no
