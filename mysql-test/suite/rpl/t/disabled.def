@@ -31,3 +31,6 @@ rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 grea
 rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main
+rpl_truncate_falcon        : Bug#40926 2008-11-21 johnemb rpl.rpl_truncate_falcon fails in Pushbuild due to wrong binlog-format being used
+rpl_relay_space_falcon     : Bug#40927 2008-11-21 johnemb rpl.rpl_relay_space_falcon fails when binlog-format is explicitly set to mixed
+rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
