@@ -132,6 +132,22 @@ extern  void _db_flush_();
 #define DEBUGGER_ON                     do { } while(0)
 #define IF_DBUG(A)
 #define DBUG_ABORT()                    abort()
+
+#ifdef __WIN__
+/*
+   On windows all the dll export has to be declared in the *.def file
+   so as we export these symbols in DEBUG mode we have to export
+   these in the RELEASE mode also. So below are the dummy symbols
+   for the RELEASE export
+*/
+extern  char _db_doprnt_;
+extern  char _db_enter_;
+extern  char _db_pargs_;
+extern  char _db_process_;
+extern  char _db_push_;
+extern  char _db_return_;
+#endif /*__WIN__*/
+
 #endif
 #ifdef  __cplusplus
 }
