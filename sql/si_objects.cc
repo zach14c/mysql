@@ -478,6 +478,10 @@ bool Abstract_obj::execute(THD *thd)
   TABLE *tmp_tables_saved= thd->temporary_tables;
   thd->temporary_tables= NULL;
 
+  /* Allow to execute DDL operations. */
+
+  ddl_blocker_exception_on(thd);
+
   /* Run queries from the serialization image. */
 
   bool rc= FALSE;
@@ -499,6 +503,8 @@ bool Abstract_obj::execute(THD *thd)
     if (rc)
       break;
   }
+
+  ddl_blocker_exception_off(thd);
 
   thd->variables.sql_mode= sql_mode_saved;
   thd->variables.time_zone= tz_saved;
@@ -2908,7 +2914,7 @@ bool compare_tablespace_attributes(Obj *ts1, Obj *ts2)
   */
 bool ddl_blocker_enable(THD *thd)
 {
-  DBUG_ENTER("ddl_blocker_enable");
+  DBUG_ENTER("obs::ddl_blocker_enable");
   if (!DDL_blocker->block_DDL(thd))
     DBUG_RETURN(TRUE);
   DBUG_RETURN(FALSE);
@@ -2921,7 +2927,7 @@ bool ddl_blocker_enable(THD *thd)
   */
 void ddl_blocker_disable()
 {
-  DBUG_ENTER("ddl_blocker_disable");
+  DBUG_ENTER("obs::ddl_blocker_disable");
   DDL_blocker->unblock_DDL();
   DBUG_VOID_RETURN;
 }
@@ -2936,7 +2942,7 @@ void ddl_blocker_disable()
   */
 void ddl_blocker_exception_on(THD *thd)
 {
-  DBUG_ENTER("ddl_blocker_exception_on");
+  DBUG_ENTER("obs::ddl_blocker_exception_on");
   thd->DDL_exception= TRUE;
   DBUG_VOID_RETURN;
 }
@@ -2951,7 +2957,7 @@ void ddl_blocker_exception_on(THD *thd)
   */
 void ddl_blocker_exception_off(THD *thd)
 {
-  DBUG_ENTER("ddl_blocker_exception_off");
+  DBUG_ENTER("obs::ddl_blocker_exception_off");
   thd->DDL_exception= FALSE;
   DBUG_VOID_RETURN;
 }
