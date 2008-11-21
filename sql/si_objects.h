@@ -467,11 +467,6 @@ bool check_user_existence(THD *thd, const Obj *obj);
 const String *grant_get_user_name(const Obj *obj);
 
 /**
-  Return host name of materialized grant object.
-*/
-const String *grant_get_host_name(const Obj *obj);
-
-/**
   Return grant info of materialized grant object.
 */
 const String *grant_get_grant_info(const Obj *obj);

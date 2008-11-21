@@ -1955,8 +1955,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
       info->m_ctx.report_error(log_level::WARNING,
                                ER_BACKUP_GRANT_SKIPPED,
                                obs::grant_get_grant_info(sobj)->ptr(),
-                               obs::grant_get_user_name(sobj)->ptr(),
-                               obs::grant_get_host_name(sobj)->ptr());
+                               obs::grant_get_user_name(sobj)->ptr());
       return BSTREAM_OK;
     }
     /*

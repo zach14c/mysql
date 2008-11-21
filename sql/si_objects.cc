@@ -419,6 +419,8 @@ bool Abstract_obj::serialize(THD *thd, String *serialization)
 
   thd->variables.sql_mode= sql_mode_saved;
 
+  sql_print_information("--> serialization:\n%.*s", STR(*serialization));
+
   return ret;
 }
 
@@ -779,15 +781,12 @@ private:
 class Grant_obj : public Abstract_obj
 {
 public:
-  static void generate_unique_id(const String *user_name,
-                                 const String *host_name,
-                                 String *id);
+  static void generate_unique_id(const String *user_name, String *id);
 
 public:
   Grant_obj(const char *id_str, int id_length);
 
   Grant_obj(const char *user_name_str, int user_name_length,
-            const char *host_name_str, int host_name_length,
             const char *priv_type_str, int priv_type_length,
             const char *db_name_str, int db_name_length,
             const char *table_name_str, int table_name_length,
@@ -800,13 +799,11 @@ public:
   virtual inline const String *get_db_name() const { return NULL; }
 
   inline const String *get_user_name() const { return &m_user_name; }
-  inline const String *get_host_name() const { return &m_host_name; }
   inline const String *get_grant_info() const { return &m_grant_info; }
 
 protected:
   /* These attributes are to be used only for serialization. */
   String m_user_name;
-  String m_host_name;
   String m_grant_info; //< contains privilege definition
 
 private:
@@ -1536,26 +1533,36 @@ Grant_iterator::create(THD *thd, const String *db_name)
 
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "(SELECT user AS c1, "
-            "host AS c2, "
-            "privilege_type AS c3, "
-            "table_schema AS c4, "
-            "NULL AS c5, "
-            "NULL AS c6 "
-    "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES, mysql.user "
-    "WHERE table_schema = '%.*s' AND "
-          "grantee = CONCAT(\"'\", user, \"'@'\", host, \"'\")) "
+    "(SELECT t1.grantee AS c1, "
+            "t1.privilege_type AS c2, "
+            "t1.table_schema AS c3, "
+            "NULL AS c4, "
+            "NULL AS c5 "
+    "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
+         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "WHERE t1.table_schema = '%.*s' AND "
+          "t1.grantee = t2.grantee) "
     "UNION "
-    "(SELECT user, host, privilege_type, table_schema, table_name, NULL "
-    "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES, mysql.user "
-    "WHERE table_schema = '%.*s' AND "
-          "grantee = CONCAT(\"'\", user, \"'@'\", host, \"'\")) "
+    "(SELECT t1.grantee, "
+            "t1.privilege_type, "
+            "t1.table_schema, "
+            "t1.table_name, "
+            "NULL "
+    "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
+         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "WHERE t1.table_schema = '%.*s' AND "
+          "t1.grantee = t2.grantee) "
     "UNION "
-    "(SELECT user, host, privilege_type, table_schema, table_name, column_name "
-    "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES, mysql.user "
-    "WHERE table_schema = '%.*s' AND "
-          "grantee = CONCAT(\"'\", user, \"'@'\", host, \"'\")) "
-    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC, c6 ASC",
+    "(SELECT t1.grantee, "
+            "t1.privilege_type, "
+            "t1.table_schema, "
+            "t1.table_name, "
+            "t1.column_name "
+    "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
+         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "WHERE t1.table_schema = '%.*s' AND "
+          "t1.grantee = t2.grantee) "
+    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC",
     STR(*db_name), STR(*db_name), STR(*db_name));
 
   return create_row_set_iterator<Grant_iterator>(thd, &query);
@@ -1570,15 +1577,14 @@ Obj *Grant_iterator::next()
   if (!row)
     return NULL;
 
-  /* Ensure that there are 6 columns. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
+  /* Ensure that there are 5 columns. */
+  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 5);
 
   const Ed_column *user_name= row->get_column(0);
-  const Ed_column *host_name= row->get_column(1);
-  const Ed_column *privilege_type= row->get_column(2);
-  const Ed_column *db_name= row->get_column(3);
-  const Ed_column *tbl_name= row->get_column(4);
-  const Ed_column *col_name= row->get_column(5);
+  const Ed_column *privilege_type= row->get_column(1);
+  const Ed_column *db_name= row->get_column(2);
+  const Ed_column *tbl_name= row->get_column(3);
+  const Ed_column *col_name= row->get_column(4);
 
   LEX_STRING table_name= { C_STRING_WITH_LEN("") };
   LEX_STRING column_name= { C_STRING_WITH_LEN("") };
@@ -1590,7 +1596,6 @@ Obj *Grant_iterator::next()
     column_name= *col_name;
 
   return new Grant_obj(user_name->str, user_name->length,
-                       host_name->str, host_name->length,
                        privilege_type->str, privilege_type->length,
                        db_name->str, db_name->length,
                        table_name.str, table_name.length,
@@ -2323,9 +2328,7 @@ const String *Tablespace_obj::get_description()
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-void Grant_obj::generate_unique_id(const String *user_name,
-                                   const String *host_name,
-                                   String *id)
+void Grant_obj::generate_unique_id(const String *user_name, String *id)
 {
   static unsigned long id_counter= 0;
 
@@ -2336,13 +2339,6 @@ void Grant_obj::generate_unique_id(const String *user_name,
   else
     id->append(*user_name);
 
-  id->append('@');
-
-  if (host_name->length())
-    id->append("<empty>");
-  else
-    id->append(*host_name);
-
   char buf[10];
   my_snprintf(buf, 10, " %08lu", ++id_counter);
 
@@ -2350,7 +2346,6 @@ void Grant_obj::generate_unique_id(const String *user_name,
 }
 
 Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
-                     const char *host_name_str, int host_name_length,
                      const char *priv_type_str, int priv_type_length,
                      const char *db_name_str, int db_name_length,
                      const char *table_name_str, int table_name_length,
@@ -2358,7 +2353,6 @@ Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
   : Abstract_obj(NULL, 0, NULL, 0)
 {
   m_user_name.copy(user_name_str, user_name_length, system_charset_info);
-  m_host_name.copy(host_name_str, host_name_length, system_charset_info);
 
   /* Grant info. */
 
@@ -2383,14 +2377,13 @@ Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
 
   /* Id. */
 
-  generate_unique_id(&m_user_name, &m_host_name, &m_id);
+  generate_unique_id(&m_user_name, &m_id);
 }
 
 Grant_obj::Grant_obj(const char *name_str, int name_length)
   : Abstract_obj(NULL, 0, NULL, 0)
 {
   m_user_name.length(0);
-  m_host_name.length(0);
   m_grant_info.length(0);
 
   m_id.copy(name_str, name_length, system_charset_info);
@@ -2420,11 +2413,10 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
 
   os <<
     m_user_name <<
-    m_host_name <<
     m_grant_info <<
     "SET character_set_client= binary" <<
-    Fmt("GRANT %.*s TO '%.*s'@'%.*s'",
-        STR(m_grant_info), STR(m_user_name), STR(m_host_name));
+    Fmt("GRANT %.*s TO %.*s",
+        STR(m_grant_info), STR(m_user_name));
 
   DBUG_RETURN(FALSE);
 }
@@ -2432,20 +2424,15 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
 bool Grant_obj::do_materialize(In_stream *is)
 {
   LEX_STRING user_name;
-  LEX_STRING host_name;
   LEX_STRING grant_info;
 
   if (is->next(&user_name))
     return TRUE; /* Can not decode user name. */
 
-  if (is->next(&host_name))
-    return TRUE; /* Can not decode host name. */
-
   if (is->next(&grant_info))
     return TRUE; /* Can not decode grant info. */
 
   m_user_name.copy(user_name.str, user_name.length, system_charset_info);
-  m_host_name.copy(host_name.str, host_name.length, system_charset_info);
   m_grant_info.copy(grant_info.str, grant_info.length, system_charset_info);
 
   return Abstract_obj::do_materialize(is);
@@ -2727,10 +2714,9 @@ bool check_user_existence(THD *thd, const Obj *obj)
   query.str= query_buffer;
   query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
     "SELECT 1 "
-    "FROM mysql.user "
-    "WHERE user = '%.*s' AND host = '%.*s'",
-    STR(*grant_obj->get_user_name()),
-    STR(*grant_obj->get_host_name()));
+    "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
+    "WHERE grantee = \"%.*s\"",
+    STR(*grant_obj->get_user_name()));
 
   Ed_result result;
 
@@ -2755,13 +2741,6 @@ bool check_user_existence(THD *thd, const Obj *obj)
 const String *grant_get_user_name(const Obj *obj)
 {
   return ((Grant_obj *) obj)->get_user_name();
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-const String *grant_get_host_name(const Obj *obj)
-{
-  return ((Grant_obj *) obj)->get_host_name();
 }
 
 ///////////////////////////////////////////////////////////////////////////
