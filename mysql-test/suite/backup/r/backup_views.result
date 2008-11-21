@@ -280,7 +280,6 @@ RESTORE FROM 'bup_objectview1.bak';
 backup_id
 #
 DROP DATABASE bup_db1;
-DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview2.bak';
 backup_id
 #

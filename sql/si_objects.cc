@@ -28,6 +28,16 @@
 
 DDL_blocker_class *DDL_blocker= NULL;
 
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+#define STR(x) (int) (x).length(), (x).ptr()
+#define LXS(x) (int) (x).length, (x).str
+
+#define LXS_INIT(x) {((char *) (x)), ((size_t) (sizeof (x) - 1))}
+
+///////////////////////////////////////////////////////////////////////////
+
 #define QUERY_BUFFER_SIZE 4096
 
 ///////////////////////////////////////////////////////////////////////////
@@ -210,9 +220,7 @@ Out_stream &Out_stream::operator <<(const LEX_STRING *query)
   chunk.str= chunk_buffer;
   chunk.length= my_snprintf(chunk_buffer, QUERY_BUFFER_SIZE,
     "%d %.*s\n",
-    (int) query->length,
-    (int) query->length,
-    (const char *) query->str);
+    (int) query->length, LXS(*query));
 
   m_serialization->append(chunk.str, chunk.length);
 
@@ -293,14 +301,6 @@ bool In_stream::next(LEX_STRING *chunk)
 
   return FALSE;
 }
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-#define STR(x) (int) (x).length(), (x).ptr()
-#define LXS(x) (int) (x).length, (x).str
-
-#define LXS_INIT(x) {((char *) (x)), ((size_t) (sizeof (x) - 1))}
 
 ///////////////////////////////////////////////////////////////////////////
 

@@ -918,27 +918,8 @@ bool Log_to_csv_event_handler::
 
   if (history_data->command)
   {
-    LEX_STRING cmd;
-    uint str_end_unused;
-
-    if (String::needs_conversion(0, thd->charset(), system_charset_info,
-                                 &str_end_unused))
-    {
-      if (thd->convert_string(&cmd, system_charset_info,
-                              history_data->command,
-                              strlen(history_data->command),
-                              thd->charset()))
-        goto err;
-
-    }
-    else
-    {
-      cmd.str= history_data->command;
-      cmd.length= strlen(cmd.str);
-    }
-
-    if (table->field[ET_OBH_FIELD_COMMAND]->store(cmd.str, cmd.length,
-                                                  system_charset_info))
+    if (table->field[ET_OBH_FIELD_COMMAND]->store(history_data->command,
+       strlen(history_data->command), system_charset_info))
       goto err;
     table->field[ET_OBH_FIELD_COMMAND]->set_notnull();
   }
