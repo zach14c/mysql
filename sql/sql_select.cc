@@ -1410,7 +1410,7 @@ JOIN::optimize()
   
   /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
   if (flatten_subqueries())
-    return 1;
+    DBUG_RETURN(1); /* purecov: inspected */
   /* dump_TABLE_LIST_graph(select_lex, select_lex->leaf_tables); */
 
   row_limit= ((select_distinct || order || group_list) ? HA_POS_ERROR :
@@ -4397,7 +4397,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
     optimize_keyuse(join, keyuse_array);
    
   if (optimize_semijoin_nests(join, all_table_map))
-    DBUG_RETURN(TRUE);
+    DBUG_RETURN(TRUE); /* purecov: inspected */
 
   /* Find an optimal join order of the non-constant tables. */
   if (join->const_tables != join->tables)
@@ -4457,7 +4457,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
       {
         join->emb_sjm_nest= sj_nest;
         if (choose_plan(join, all_table_map))
-          DBUG_RETURN(TRUE);
+          DBUG_RETURN(TRUE); /* purecov: inspected */
         /*
           The best plan to run the subquery is now in join->best_positions,
           save it.
@@ -4467,7 +4467,7 @@ static bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
         if (!(sjm= new SJ_MATERIALIZATION_INFO) ||
             !(sjm->positions= (POSITION*)join->thd->alloc(sizeof(POSITION)*
                                                           n_tables)))
-          DBUG_RETURN(TRUE);
+          DBUG_RETURN(TRUE); /* purecov: inspected */
         sjm->tables= n_tables;
         sjm->is_used= FALSE;
         double subjoin_out_rows, subjoin_read_time;
@@ -9388,7 +9388,7 @@ Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm,
     }
   }
   if (res->fix_fields(thd, &res))
-    return NULL;
+    return NULL; /* purecov: inspected */
   return res;
 }
 
@@ -9442,7 +9442,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
                                      thd->options | TMP_TABLE_ALL_COLUMNS, 
                                      HA_POS_ERROR /*rows_limit */, 
                                      (char*)"sj-materialize")))
-    DBUG_RETURN(TRUE);
+    DBUG_RETURN(TRUE); /* purecov: inspected */
   sjm->table->file->extra(HA_EXTRA_WRITE_CACHE);
   sjm->table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
   tab->join->sj_tmp_tables.push_back(sjm->table);
@@ -9462,7 +9462,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
     */
     TABLE_REF *tab_ref;
     if (!(tab_ref= (TABLE_REF*) thd->alloc(sizeof(TABLE_REF))))
-      DBUG_RETURN(TRUE);
+      DBUG_RETURN(TRUE); /* purecov: inspected */
     tab_ref->key= 0; /* The only temp table index. */
     tab_ref->key_length= tmp_key->key_length;
     if (!(tab_ref->key_buff=
@@ -9472,7 +9472,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
                                     (tmp_key_parts + 1)))) ||
         !(tab_ref->items=
           (Item**) thd->alloc(sizeof(Item*) * tmp_key_parts)))
-      DBUG_RETURN(TRUE);
+      DBUG_RETURN(TRUE); /* purecov: inspected */
 
     tab_ref->key_buff2=tab_ref->key_buff+ALIGN_SIZE(tmp_key->key_length);
     tab_ref->key_err=1;
@@ -9518,7 +9518,7 @@ bool setup_sj_materialization(JOIN_TAB *tab)
     }
     if (!(sjm->in_equality= create_subq_in_equalities(thd, sjm,
                                                       emb_sj_nest->sj_subq_pred)))
-      DBUG_RETURN(TRUE);
+      DBUG_RETURN(TRUE); /* purecov: inspected */
   }
   else
   {
@@ -9607,7 +9607,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 
   if (!join->select_lex->sj_nests.is_empty() &&
       setup_semijoin_dups_elimination(join, options, no_jbuf_after))
-    DBUG_RETURN(TRUE);
+    DBUG_RETURN(TRUE); /* purecov: inspected */
 
   for (i=join->const_tables ; i < join->tables ; i++)
   {
@@ -9625,9 +9625,9 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
     sorted= 0;                                  // only first must be sorted
     if (tab->loosescan_match_tab)
     {
-      if (!(tab->loosescan_buf= 
-            (uchar*)join->thd->alloc(tab->loosescan_key_len)))
-        return TRUE;
+      if (!(tab->loosescan_buf= (uchar*)join->thd->alloc(tab->
+                                                         loosescan_key_len)))
+        return TRUE; /* purecov: inspected */
     }
     if (sj_is_materialize_strategy(join->best_positions[i].sj_strategy))
     {
