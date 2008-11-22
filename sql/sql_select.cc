@@ -4705,6 +4705,50 @@ merge_key_fields(KEY_FIELD *start,KEY_FIELD *new_fields,KEY_FIELD *end,
   return first_free;
 }
 
+/*
+  Given a field, return its index in semi-join's select list, or UINT_MAX
+
+  DESCRIPTION
+    Given a field, we find its table; then see if the table is within a
+    semi-join nest and if the field was in select list of the subselect.
+    If it was, we return field's index in the select list. The value is used
+    by LooseScan strategy.
+*/
+
+static uint get_semi_join_select_list_index(Field *field)
+{
+  uint res= UINT_MAX;
+  TABLE_LIST *emb_sj_nest;
+  if ((emb_sj_nest= field->table->pos_in_table_list->embedding) &&
+      emb_sj_nest->sj_on_expr)
+  {
+    Item_in_subselect *subq_pred= emb_sj_nest->sj_subq_pred;
+    st_select_lex *subq_lex= subq_pred->unit->first_select();
+    if (subq_pred->left_expr->cols() == 1)
+    {
+      Item *sel_item= subq_lex->ref_pointer_array[0];
+      if (sel_item->type() == Item::FIELD_ITEM &&
+          ((Item_field*)sel_item)->field->eq(field))
+      {
+        res= 0;
+      }
+    }
+    else
+    {
+      for (uint i= 0; i < subq_pred->left_expr->cols(); i++)
+      {
+        Item *sel_item= subq_lex->ref_pointer_array[i];
+        if (sel_item->type() == Item::FIELD_ITEM &&
+            ((Item_field*)sel_item)->field->eq(field))
+        {
+          res= i;
+          break;
+        }
+      }
+    }
+  }
+  return res;
+}
 
 /**
   Add a possible key to array of possible keys if it's usable as a key
@@ -4871,11 +4915,7 @@ add_key_field(KEY_FIELD **key_fields,uint and_level, Item_func *cond,
                                   ((Item_field*)*value)->field->maybe_null());
   (*key_fields)->cond_guard= NULL;
   
-  uint sj_pred_no= UINT_MAX;
-  if (cond->functype() == Item_func::EQ_FUNC)
-    sj_pred_no= ((Item_func_eq*)cond)->in_equality_no;
-  (*key_fields)->sj_pred_no= sj_pred_no;
-
+  (*key_fields)->sj_pred_no= get_semi_join_select_list_index(field);
   (*key_fields)++;
 }
 
@@ -5945,6 +5985,10 @@ public:
       pos->use_join_buffer= FALSE;
       pos->table=           tab;
       // todo need ref_depend_map ?
+      DBUG_PRINT("info", ("Produced a LooseScan plan, key %s, %s",
+                          tab->table->key_info[best_loose_scan_key].name,
+                          best_loose_scan_start_key? "(ref access)":
+                                                     "(range/index access)"));
     }
   }
 };
