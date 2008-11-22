@@ -4670,6 +4670,9 @@ int main(int argc, char **argv)
                                                        : mysqld_unix_port),
                          mysqld_port,
                          MYSQL_COMPILATION_COMMENT);
+#if defined(_WIN32) && !defined(EMBEDDED_LIBRARY)
+  Service.SetRunning();
+#endif
 
 
   /* Signal threads waiting for server to be started */
