@@ -755,4 +755,10 @@ set @@optimizer_switch='no_materialization';
 explain select * from t1 where 2 in (select a from t0);
 select * from t1 where 2 in (select a from t0);
 set @@optimizer_switch='';
+
+
+# 
+# FirstMatch referring to a derived table
+#
+explain select * from (select a from t0) X where a in (select a from t1);
 drop table t0, t1;
