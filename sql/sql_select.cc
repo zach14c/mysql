@@ -630,7 +630,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         thd->where= save_where;
         in_subs->emb_on_expr_nest= thd->thd_marker.emb_on_expr_nest;
         if (failure)
-          DBUG_RETURN(-1);
+          DBUG_RETURN(-1); /* purecov: deadcode */
         /*
           Check if the left and right expressions have the same # of
           columns, i.e. we don't have a case like 
@@ -1371,7 +1371,7 @@ static int clear_sj_tmp_tables(JOIN *join)
   while ((table= it++))
   {
     if ((res= table->file->ha_delete_all_rows()))
-      return res;
+      return res; /* purecov: inspected */
   }
 
   SJ_MATERIALIZATION_INFO *sjm;
@@ -3947,7 +3947,7 @@ static uint get_tmp_table_rec_length(List<Item> &items)
       break;
     case ROW_RESULT:
     default:
-      DBUG_ASSERT(0);
+      DBUG_ASSERT(0); /* purecov: deadcode */
       break;
     }
   }
@@ -7856,7 +7856,7 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       join->best_positions[first].n_sj_tables= tablenr - first + 1;
     }
     
-    uint i_end=join->best_positions[first].n_sj_tables;
+    uint i_end= first + join->best_positions[first].n_sj_tables;
     for (uint i= first; i < i_end; i++)
       handled_tabs |= join->best_positions[i].table->table->map;
 
@@ -9338,7 +9338,7 @@ end_sj_materialize(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     }
     fill_record(thd, table->field, sjm->sjm_table_cols, 1);
     if (thd->is_error())
-      DBUG_RETURN(NESTED_LOOP_ERROR);
+      DBUG_RETURN(NESTED_LOOP_ERROR); /* purecov: inspected */
     if ((error= table->file->ha_write_row(table->record[0])))
     {
       /* create_myisam_from_heap will generate error if needed */
@@ -9346,7 +9346,7 @@ end_sj_materialize(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
           create_internal_tmp_table_from_heap(thd, table,
                                               sjm->sjm_table_param.start_recinfo, 
                                               &sjm->sjm_table_param.recinfo, error, 1))
-        DBUG_RETURN(NESTED_LOOP_ERROR);
+        DBUG_RETURN(NESTED_LOOP_ERROR); /* purecov: inspected */
     }
   }
   DBUG_RETURN(NESTED_LOOP_OK);
@@ -9417,8 +9417,9 @@ Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm,
   Item *res= NULL;
   if (subq_pred->left_expr->cols() == 1)
   {
-    res= new Item_func_eq(subq_pred->left_expr, 
-                          new Item_field(sjm->table->field[0]));
+    if (!(res= new Item_func_eq(subq_pred->left_expr,
+                                new Item_field(sjm->table->field[0]))))
+      return NULL; /* purecov: inspected */
   }
   else
   {
@@ -9428,7 +9429,7 @@ Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm,
       if (!(conj= new Item_func_eq(subq_pred->left_expr->element_index(i), 
                                    new Item_field(sjm->table->field[i]))) ||
           !(res= and_items(res, conj)))
-        return NULL;
+        return NULL; /* purecov: inspected */
     }
   }
   if (res->fix_fields(thd, &res))
@@ -15588,7 +15589,7 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
   {
     /* Do index lookup in the materialized table */
     if ((res= join_read_key2(join_tab, sjm->table, sjm->tab_ref)) == 1)
-      return NESTED_LOOP_ERROR;
+      return NESTED_LOOP_ERROR; /* purecov: inspected */
     if (res || !sjm->in_equality->val_int())
       return NESTED_LOOP_NO_MORE_ROWS;
   }
