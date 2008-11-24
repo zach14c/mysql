@@ -117,6 +117,19 @@ static char baseDir[PATH_MAX+1]={0};
 bool deleteFilesOnExit = false;
 bool inCreateDatabase = false;
 
+#ifdef _WIN32
+static int winUnlink(const char *file);
+static int winOpen(const char *filename, int flags,...);
+#endif
+
+#ifdef _WIN32
+#define POSIX_OPEN_FILE winOpen
+#define POSIX_UNLINK_FILE winUnlink
+#else
+#define POSIX_OPEN_FILE   ::open
+#define POSIX_UNLINK_FILE ::unlink
+#endif
+
 #ifdef _DEBUG
 #undef THIS_FILE
 static const char THIS_FILE[]=__FILE__;
@@ -186,7 +199,7 @@ bool IO::openFile(const char * name, bool readOnly)
 	ASSERT(!inCreateDatabase);
 
 	fileName = getPath(name);
-	fileId = ::open (fileName, (readOnly) ? (O_RDONLY | O_BINARY) : (O_RDWR | O_BINARY));
+	fileId = POSIX_OPEN_FILE(fileName, (readOnly) ? (O_RDONLY | O_BINARY) : (O_RDWR | O_BINARY));
 
 	if (fileId < 0)
 		{
@@ -241,7 +254,7 @@ bool IO::createFile(const char *name)
 	Log::debug("IO::createFile: creating file \"%s\"\n", name);
 
 	fileName = getPath(name);
-	fileId = ::open (fileName.getString(),O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY,
+	fileId = POSIX_OPEN_FILE (fileName.getString(),O_CREAT | O_RDWR | O_RANDOM | O_EXCL | O_BINARY,
 						S_IREAD | S_IWRITE | S_IRGRP | S_IWGRP);
 
 
@@ -557,6 +570,7 @@ void IO::writeHeader(Hdr *header)
 void IO::deleteFile()
 {
 	deleteFile(fileName);
+	fileName="";
 }
 
 int IO::pread(int64 offset, int length, UCHAR* buffer)
@@ -675,10 +689,132 @@ void IO::sync(void)
 		traceOperation(TRACE_SYNC_END);
 }
 
+#ifdef _WIN32
+#define FALCON_DELETED_FILE "fdf"
+
+/*
+	The only safe way to delete file on Windows without invalidating open file 
+	handles is that:
+	- rename file to be deleted to a unique temporary name.
+	- open file it with FILE_FLAG_DELETE_ON_CLOSE
+	- close the file handle
+	Temp file will disappear as soon as last handle on it is closed.
+	This works only if files are opened with FILE_SHARE_DELETE flag.
+*/
+
+static int winUnlink(const char *file)
+{
+	DWORD attributes = GetFileAttributes(file);
+
+	// Bail out, if file does not exist.
+	if (attributes == INVALID_FILE_ATTRIBUTES)
+		return -1;
+
+	// If file is a symbolic link, just delete the link, but not the link target
+	if (attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+		{
+		if(DeleteFile(file))
+			return 0;
+		return -1;
+		}
+
+	// Rename the file to unique name, then open with FILE_FLAG_DELETE_ON_CLOSE
+	// and close.
+	char  tmpDir[MAX_PATH];
+	strncpy(tmpDir, file, sizeof(tmpDir)-1);
+	char *p = strrchr(tmpDir ,SEPARATOR);
+	if (p)
+		*p = 0;
+	else
+		strcpy(tmpDir,".");
+
+	char  tmpFile[MAX_PATH];
+	if (GetTempFileName(tmpDir, FALCON_DELETED_FILE, 0, tmpFile))
+		{
+		if (MoveFileEx(file, tmpFile, MOVEFILE_REPLACE_EXISTING))
+			{
+			HANDLE hFile = CreateFile(tmpFile, 0,
+				FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+				NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+
+			if (hFile != INVALID_HANDLE_VALUE)
+				{
+				CloseHandle(hFile);
+				return 0;
+				}
+			}
+		else
+			DeleteFile(tmpFile);
+		}
+	
+	// Something went wrong. Try DeleteFile(), even if it can invalidate
+	// open file handles.
+	if(DeleteFile(file))
+		return 0;
+
+	return -1;
+}
+
+/* 
+	A wrapper for Posix open(). The reason it is there is the FILE_SHARE_DELETE 
+	flag used in CreateFile, which allows for  posixly-correct unlink
+	(that works with open files)
+*/
+static int winOpen(const char *filename, int flags,...)
+{
+	DWORD access;
+	if (flags & O_WRONLY)
+		access = GENERIC_WRITE;
+	else if (flags & O_RDWR)
+		access = GENERIC_READ|GENERIC_WRITE;
+	else
+		access = GENERIC_READ;
+
+	DWORD disposition;
+	if (flags & O_CREAT)
+		disposition = CREATE_NEW;
+	else
+		disposition = OPEN_EXISTING;
+
+	DWORD attributes;
+	if (flags & O_RANDOM)
+		attributes = FILE_FLAG_RANDOM_ACCESS;
+	else
+		attributes = FILE_ATTRIBUTE_NORMAL;
+
+	HANDLE hFile = CreateFile(filename, access, 
+		FILE_SHARE_DELETE, NULL, disposition, attributes, NULL);
+	
+	if (hFile == INVALID_HANDLE_VALUE)
+		{
+		switch(GetLastError())
+			{
+			case ERROR_ACCESS_DENIED:
+				errno = EACCES;
+				break;
+			case ERROR_FILE_NOT_FOUND:
+			case ERROR_PATH_NOT_FOUND:
+				errno = ENOENT;
+				break;
+			default:
+				errno = EINVAL;
+				break;
+			}
+		return -1;
+		}
+	return _open_osfhandle((intptr_t)hFile, 
+		flags & (_O_APPEND|_O_RDONLY|_O_TEXT));
+}
+
+#endif
+
 void IO::deleteFile(const char* fileName)
 {
-	JString path = getPath(fileName);
-	unlink(path.getString());
+	if(fileName && *fileName)
+		{
+		JString path = getPath(fileName);
+		POSIX_UNLINK_FILE(path.getString());
+		}
 }
 
 void IO::tracePage(Bdb* bdb)
@@ -810,3 +946,4 @@ uint16 IO::computeChecksum(Page *page, size_t len)
 	return (uint16) sum;
 
 }
+

@@ -849,7 +849,7 @@ void Record::setPriorVersion(Record* record)
 	ASSERT(false);
 }
 
-int Record::thaw(bool force)
+int Record::thaw(void)
 {
 	return 0;
 }
