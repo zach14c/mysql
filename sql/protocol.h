@@ -117,11 +117,11 @@ public:
 #endif
   enum enum_protocol_type
   {
-    PROTOCOL_TEXT= 0, PROTOCOL_BINARY= 1
     /*
-      before adding here or change the values, consider that it is cast to a
-      bit in sql_cache.cc.
+      Before adding a new type, please make sure
+      there is enough storage for it in Query_cache_query_flags.
     */
+    PROTOCOL_TEXT= 0, PROTOCOL_BINARY= 1, PROTOCOL_LOCAL= 2
   };
   virtual enum enum_protocol_type type()= 0;
 
@@ -205,6 +205,64 @@ uchar *net_store_data(uchar *to,longlong from);
 ///////////////////////////////////////////////////////////////////////////
 
 /**
+  Protocol_local: a protocol to retrieve and store
+  a result set.
+*/
+
+class Ed_result;
+
+class Protocol_local :public Protocol
+{
+public:
+  inline Protocol_local(THD *thd, Ed_result *result)
+    :Protocol(thd), m_result(result)
+  {}
+
+public:
+  virtual void prepare_for_resend();
+  virtual bool write();
+  virtual bool store_null();
+  virtual bool store_tiny(longlong from);
+  virtual bool store_short(longlong from);
+  virtual bool store_long(longlong from);
+  virtual bool store_longlong(longlong from, bool unsigned_flag);
+  virtual bool store_decimal(const my_decimal *);
+  virtual bool store(const char *from, size_t length, CHARSET_INFO *cs);
+  virtual bool store(const char *from, size_t length,
+                     CHARSET_INFO *fromcs, CHARSET_INFO *tocs);
+  virtual bool store(MYSQL_TIME *time);
+  virtual bool store_date(MYSQL_TIME *time);
+  virtual bool store_time(MYSQL_TIME *time);
+  virtual bool store(float value, uint32 decimals, String *buffer);
+  virtual bool store(double value, uint32 decimals, String *buffer);
+  virtual bool store(Field *field);
+
+  virtual bool send_result_set_metadata(List<Item> *list, uint flags);
+  virtual bool send_out_parameters(List<Item_param> *sp_params);
+#ifdef EMBEDDED_LIBRARY
+  void remove_last_row();
+#endif
+  virtual enum enum_protocol_type type() { return PROTOCOL_LOCAL; };
+
+protected:
+  virtual void send_ok(uint server_status, uint statement_warn_count,
+                       ha_rows affected_rows, ulonglong last_insert_id,
+                       const char *message);
+
+  virtual void send_eof(uint server_status, uint statement_warn_count);
+
+  virtual void send_error(uint sql_errno, const char *err_msg);
+
+private:
+  bool store_string(const char *str, int length,
+                    CHARSET_INFO *src_cs, CHARSET_INFO *dst_cs);
+
+private:
+  Ed_result *m_result;
+};
+
+
+/**
   Ed_column -- a class representing a column data in a row. Used with
   Ed_row and Protocol_local.
 */
@@ -280,8 +338,8 @@ public:
   inline const Ed_column *get_column(int idx) const
   { return &m_columns[idx]; }
 
-  inline const Ed_column *operator [](int idx) const
-  { return get_column(idx); }
+  inline const Ed_column &operator [](int idx) const
+  { return *get_column(idx); }
 
   inline int get_current_column_index() const
   { return m_current_column_index; }
@@ -406,59 +464,3 @@ private:
   Warning_info *m_warning_info_saved;
 };
 
-///////////////////////////////////////////////////////////////////////////
-
-/**
-  Protocol_local: a protocol for retrieving result sets from the server
-  locally.
-*/
-class Protocol_local :public Protocol
-{
-public:
-  inline Protocol_local(THD *thd, Ed_result *result)
-    : Protocol(thd),
-      m_result(result)
-  { }
-
-public:
-  virtual void prepare_for_resend();
-  virtual bool write();
-  virtual bool store_null();
-  virtual bool store_tiny(longlong from);
-  virtual bool store_short(longlong from);
-  virtual bool store_long(longlong from);
-  virtual bool store_longlong(longlong from, bool unsigned_flag);
-  virtual bool store_decimal(const my_decimal *);
-  virtual bool store(const char *from, size_t length, CHARSET_INFO *cs);
-  virtual bool store(const char *from, size_t length,
-                     CHARSET_INFO *fromcs, CHARSET_INFO *tocs);
-  virtual bool store(MYSQL_TIME *time);
-  virtual bool store_date(MYSQL_TIME *time);
-  virtual bool store_time(MYSQL_TIME *time);
-  virtual bool store(float value, uint32 decimals, String *buffer);
-  virtual bool store(double value, uint32 decimals, String *buffer);
-  virtual bool store(Field *field);
-
-  virtual bool send_result_set_metadata(List<Item> *list, uint flags);
-  virtual bool send_out_parameters(List<Item_param> *sp_params);
-#ifdef EMBEDDED_LIBRARY
-  void remove_last_row();
-#endif
-  virtual enum enum_protocol_type type() { return PROTOCOL_TEXT; /* FIXME */ };
-
-protected:
-  virtual void send_ok(uint server_status, uint statement_warn_count,
-                       ha_rows affected_rows, ulonglong last_insert_id,
-                       const char *message);
-
-  virtual void send_eof(uint server_status, uint statement_warn_count);
-
-  virtual void send_error(uint sql_errno, const char *err_msg);
-
-private:
-  bool store_string(const char *str, int length,
-                    CHARSET_INFO *src_cs, CHARSET_INFO *dst_cs);
-
-private:
-  Ed_result *m_result;
-};

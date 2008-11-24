@@ -922,7 +922,7 @@ struct Query_cache_query_flags
 {
   unsigned int client_long_flag:1;
   unsigned int client_protocol_41:1;
-  unsigned int result_in_binary_protocol:1;
+  unsigned int protocol_type:2;
   unsigned int more_results_exists:1;
   unsigned int pkt_nr;
   uint character_set_client_num;
@@ -1139,7 +1139,7 @@ int mysql_execute_command(THD *thd);
 
 class Ed_result;
 
-bool mysql_execute_direct(THD *thd, const LEX_STRING *query, Ed_result *result);
+bool mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *result);
 
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,

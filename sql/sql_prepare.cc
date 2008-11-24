@@ -3265,34 +3265,29 @@ reexecute:
   @param query  Query to execute.
 */
 
-bool mysql_execute_direct(THD *thd, const LEX_STRING *query, Ed_result *result)
+bool
+mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *result)
 {
-  DBUG_ASSERT(result);
+  Protocol_local protocol_local(thd, result);
 
-  mysql_reset_thd_for_next_command(thd);
+  DBUG_ENTER("mysql_execute_direct");
+
+  DBUG_ASSERT(result);
 
   Prepared_statement *stmt= new Prepared_statement(thd);
 
   if (!stmt)
-    return TRUE;
-
-  sp_cache_flush_obsolete(&thd->sp_proc_cache);
-  sp_cache_flush_obsolete(&thd->sp_func_cache);
-
-#if defined(ENABLED_PROFILING)
-  thd->profiling.set_query_source(query->str, query->length);
-#endif
+    DBUG_RETURN(TRUE);
 
   Protocol *protocol_saved= thd->protocol;
-  Protocol_local p(thd, result);
 
-  thd->protocol= &p;
+  thd->protocol= &protocol_local;
 
   result->begin_statement(thd);
-  bool rc= stmt->execute_immediate(query->str, query->length);
+  bool rc= stmt->execute_immediate(query.str, query.length);
   result->end_statement(thd);
 
-  p.end_statement();
+  thd->protocol->end_statement();
 
   thd->protocol= protocol_saved;
 
@@ -3300,7 +3295,7 @@ bool mysql_execute_direct(THD *thd, const LEX_STRING *query, Ed_result *result)
 
   thd->main_da.reset_diagnostics_area();
 
-  return rc;
+  DBUG_RETURN(rc);
 }
 
 
