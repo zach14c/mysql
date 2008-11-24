@@ -9,5 +9,5 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-
-falcon_bug_32398 : HF disabled until new fix for this bug is developed
+backup_ptr_mixed     : Bug#37281 2008-11-18 hakank Dates in Falcon on big-endian have wrong result.
+backup_ptr_row       : Bug#37281 2008-11-18 hakank Dates in Falcon on big-endian have wrong result.

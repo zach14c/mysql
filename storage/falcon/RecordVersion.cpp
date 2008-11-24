@@ -55,6 +55,9 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 		{
 		priorVersion->addRef();
 		recordNumber = oldVersion->recordNumber;
+
+		if (priorVersion->state == recChilled)
+			priorVersion->thaw();
 		
 		if (trans == priorVersion->getTransaction())
 			oldVersion->setSuperceded (true);
@@ -353,7 +356,7 @@ uint64 RecordVersion::getVirtualOffset()
 	return (virtualOffset);
 }
 
-int RecordVersion::thaw(bool force)
+int RecordVersion::thaw()
 {
 	Sync syncThaw(format->table->getSyncThaw(this), "RecordVersion::thaw");
 	syncThaw.lock(Exclusive);
@@ -370,7 +373,7 @@ int RecordVersion::thaw(bool force)
 	// true, then the record data can be restored from the serial log. If writePending
 	// is false, then the record data has been written to the data pages.
 	
-	if (trans && (trans->writePending || force))
+	if (trans && trans->writePending)
 		{
 		trans->addRef();
 		bytesRestored = trans->thaw(this);

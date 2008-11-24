@@ -582,7 +582,7 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	IndexKey key(this);
 	makeKey (record, &key);
 
-	// If there is a duplicate in the old version chain, don't both with another
+	// If there is a duplicate in the old version chain, don't bother with another
 
 	if (duplicateKey (&key, oldRecord))
 		return;
