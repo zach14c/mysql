@@ -841,7 +841,10 @@ static void set_server_version(void);
 static int init_thread_environment();
 static char *get_relative_path(const char *path);
 static void fix_paths(void);
-pthread_handler_t handle_connections_sockets(void *arg);
+void handle_connections_sockets();
+#ifdef _WIN32
+pthread_handler_t handle_connections_sockets_thread(void *arg);
+#endif
 pthread_handler_t kill_server_thread(void *arg);
 static void bootstrap(FILE *file);
 static bool read_init_file(char *file_name);
@@ -2129,29 +2132,6 @@ static BOOL WINAPI console_event_handler( DWORD type )
 }
 
 
-/*
-  In Visual Studio 2005 and later, default SIGABRT handler will overwrite
-  any unhandled exception filter set by the application  and will try to
-  call JIT debugger. This is not what we want, this we calling __debugbreak
-  to stop in debugger, if process is being debugged or to generate 
-  EXCEPTION_BREAKPOINT and then handle_segfault will do its magic.
-*/
-
-#if (_MSC_VER >= 1400)
-static void my_sigabrt_handler(int sig)
-{
-  __debugbreak();
-}
-#endif /*_MSC_VER >=1400 */
-
-void win_install_sigabrt_handler(void)
-{
-#if (_MSC_VER >=1400)
-  /*abort() should not override our exception filter*/
-  _set_abort_behavior(0,_CALL_REPORTFAULT);
-  signal(SIGABRT,my_sigabrt_handler);
-#endif /* _MSC_VER >=1400 */
-}
 
 #ifdef DEBUG_UNHANDLED_EXCEPTION_FILTER
 #define DEBUGGER_ATTACH_TIMEOUT 120
@@ -2230,7 +2210,6 @@ LONG WINAPI my_unhandler_exception_filter(EXCEPTION_POINTERS *ex_pointers)
 
 static void init_signals(void)
 {
-  win_install_sigabrt_handler();
   if(opt_console)
     SetConsoleCtrlHandler(console_event_handler,TRUE);
   else
@@ -4401,8 +4380,8 @@ static void handle_connections_methods()
   if (have_tcpip && !opt_disable_networking)
   {
     handler_count++;
-    if (pthread_create(&hThread,&connection_attrib,
-		       handle_connections_sockets, 0))
+    if (pthread_create(&hThread,&connection_attrib, 
+                       handle_connections_sockets_thread, 0))
     {
       sql_print_warning("Can't create thread to handle TCP/IP");
       handler_count--;
@@ -4678,14 +4657,7 @@ int main(int argc, char **argv)
 #if defined(_WIN32) || defined(HAVE_SMEM)
   handle_connections_methods();
 #else
-#ifdef __WIN__
-  if (!have_tcpip || opt_disable_networking)
-  {
-    sql_print_error("TCP/IP unavailable or disabled with --skip-networking; no available interfaces");
-    unireg_abort(1);
-  }
-#endif
-  handle_connections_sockets(0);
+  handle_connections_sockets();
 #endif /* _WIN32 || HAVE_SMEM */
 
   /* (void) pthread_attr_destroy(&connection_attrib); */
@@ -4724,6 +4696,7 @@ int main(int argc, char **argv)
 #endif
   clean_up(1);
   mysqld_exit(0);
+  return 0; /* purecov: inspected */
 }
 
 #endif /* !EMBEDDED_LIBRARY */
@@ -5137,7 +5110,8 @@ inline void kill_broken_server()
 	/* Handle new connections and spawn new process to handle them */
 
 #ifndef EMBEDDED_LIBRARY
-pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))
+
+void handle_connections_sockets()
 {
   my_socket sock,new_sock;
   uint error_count=0;
@@ -5339,13 +5313,19 @@ pthread_handler_t handle_connections_sockets(void *arg __attribute__((unused)))
 
     create_new_thread(thd);
   }
-
-  decrement_handler_count();
-  DBUG_RETURN(0);
+  DBUG_VOID_RETURN;
 }
 
 
 #ifdef _WIN32
+pthread_handler_t handle_connections_sockets_thread(void *arg)
+{
+  my_thread_init();
+  handle_connections_sockets();
+  decrement_handler_count();
+  return 0;
+}
+
 pthread_handler_t handle_connections_namedpipes(void *arg)
 {
   HANDLE hConnectedPipe;

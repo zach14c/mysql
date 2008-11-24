@@ -31,7 +31,7 @@ extern "C" {
 
 #if defined(__WIN__)
 typedef CRITICAL_SECTION pthread_mutex_t;
-typedef HANDLE		 pthread_t;
+typedef DWORD		 pthread_t;
 typedef struct thread_attr {
     DWORD dwStackSize ;
     DWORD dwCreatingFlag ;
@@ -63,8 +63,7 @@ typedef struct {
 
 
 typedef int pthread_mutexattr_t;
-#define win_pthread_self my_thread_var->pthread_self
-#define pthread_self() win_pthread_self
+#define pthread_self() GetCurrentThreadId()
 #define pthread_handler_t EXTERNC void * __cdecl
 typedef void * (__cdecl *pthread_handler)(void *);
 
@@ -100,7 +99,7 @@ struct timespec {
   set_timespec_time_nsec((ABSTIME), tv.i64, (NSEC));            \
 } while(0)
 
-void win_pthread_init(void);
+
 int win_pthread_mutex_trylock(pthread_mutex_t *mutex);
 int pthread_create(pthread_t *,pthread_attr_t *,pthread_handler,void *);
 int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr);
@@ -116,11 +115,11 @@ int pthread_attr_destroy(pthread_attr_t *connect_att);
 struct tm *localtime_r(const time_t *timep,struct tm *tmp);
 struct tm *gmtime_r(const time_t *timep,struct tm *tmp);
 
+void pthread_exit(void *a);
+int pthread_join(pthread_t thread, void **value_ptr);
 
-void pthread_exit(void *a);	 /* was #define pthread_exit(A) ExitThread(A)*/
 
 #define ETIMEDOUT 145		    /* Win32 doesn't have this */
-#define getpid() GetCurrentThreadId()
 #define HAVE_LOCALTIME_R		1
 #define _REENTRANT			1
 #define HAVE_PTHREAD_ATTR_SETSTACKSIZE	1
@@ -144,7 +143,6 @@ void pthread_exit(void *a);	 /* was #define pthread_exit(A) ExitThread(A)*/
 #define pthread_mutex_destroy(A) DeleteCriticalSection(A)
 #define pthread_kill(A,B) pthread_dummy((A) ? 0 : ESRCH)
 
-#define pthread_join(A,B) (WaitForSingleObject((A), INFINITE) != WAIT_OBJECT_0)
 
 /* Dummy defines for easier code */
 #define pthread_attr_setdetachstate(A,B) pthread_dummy(0)
@@ -152,10 +150,8 @@ void pthread_exit(void *a);	 /* was #define pthread_exit(A) ExitThread(A)*/
 #define pthread_detach_this_thread()
 #define pthread_condattr_init(A)
 #define pthread_condattr_destroy(A)
-#define pthread_yield() Sleep(0) /* according to MSDN */
+#define pthread_yield() SwitchToThread() 
 
-/* per the platform's documentation */
-#define pthread_yield() Sleep(0)
 
 #else /* Normal threads */
 
