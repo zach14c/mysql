@@ -110,10 +110,16 @@ DINode* DeferredIndexWalker::next(void)
 		{
 		nodePending = false;
 
-		return currentNode = (slot >= leaf->count) ? NULL : leaf->nodes[slot];
-		}
+		if (slot < leaf->count)
+			return (currentNode = leaf->nodes[slot]);
 
-	++slot;
+		if (!deferredIndex->levels)
+			return NULL;  // Only one bucket and it is empty
+		// else the first leaf is empty.  Back up a level.
+		}
+	else
+		++slot;
+
 	DIBucket *bucket;
 		
 	for (;;)

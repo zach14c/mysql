@@ -1,0 +1,5 @@
+--source include/have_falcon.inc
+
+--error ER_TOO_LONG_KEY
+CREATE TABLE t1(a VARCHAR(140) CHARACTER SET utf8, KEY(a)) ENGINE=falcon;
+SHOW WARNINGS;

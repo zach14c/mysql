@@ -262,7 +262,7 @@ int StorageTableShare::truncateTable(StorageConnection *storageConnection)
 	return res;
 }
 
-const char* StorageTableShare::cleanupFieldName(const char* name, char* buffer, int bufferLength)
+const char* StorageTableShare::cleanupFieldName(const char* name, char* buffer, int bufferLength, bool doubleQuotes)
 {
 	char *q = buffer;
 	char *end = buffer + bufferLength - 1;
@@ -273,7 +273,11 @@ const char* StorageTableShare::cleanupFieldName(const char* name, char* buffer, 
 		{
 		if (*p == '"')
 			{
-			*q++ = UPPER(*p);
+			if (doubleQuotes)
+				{
+				*q++ = UPPER(*p);
+				}
+
 			quotes = !quotes;
 			}
 	
@@ -321,7 +325,7 @@ char* StorageTableShare::createIndexName(const char *rawName, char *indexName, b
 	else
 		{
 		char nameBuffer[indexNameSize];
-		cleanupFieldName(rawName, nameBuffer, sizeof(nameBuffer));
+		cleanupFieldName(rawName, nameBuffer, sizeof(nameBuffer), true);
 		sprintf(indexName, "%s$%s", name.getString(), nameBuffer);
 		}
 	
