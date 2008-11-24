@@ -10,7 +10,6 @@
 #
 ##############################################################################
 innodb          : WL#1213: Waiting for InnoDB team to add support for 4-byte character sets.
-concurrent_innodb        : BUG#21579 2006-08-11 mleich innodb_concurrent random failures with varying differences
 federated_transactions   : Bug#29523 Transactions do not work
 lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 rpl_log_pos          : Bug#8693 Test 'rpl_log_pos' fails sometimes
@@ -19,20 +18,9 @@ backup_no_engine     : Bug#36021 2008-04-13 rsomla server crashes when openning 
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
 query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-maria-preload        : Bug#35107 crashes
-key_buffer_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-rpl_recovery_rank_basic_64  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-sort_buffer_size_basic_64   : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-log_output_basic      : Bug#34820 log_output can be set to illegal value
-query_cache_size_basic_32   : Bug#36747: Allocating a large query cache is not deterministic
-query_cache_size_basic_64   : Bug#36747: Allocating a large query cache is not deterministic
-query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fails in pushbuild
 timestamp_func              : Bug #37702 timestamp_func relies on sleep and is unstable in pushbuild
-sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on some systems
-key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
-max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
-tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems
 backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
 backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
-user_limits                 : Bug#23921 2008-07-25 joro random failure of user_limits.test
-thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
+thread_cache_size_func      : Bug#40575 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
+log_output_basic     : Bug #40988  	log_output_basic.test succeeded though syntactically false.
+
