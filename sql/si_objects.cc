@@ -871,403 +871,98 @@ Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+template <typename Obj_type>
 class Ed_result_set_iterator : public Obj_iterator
 {
-protected:
+public:
   inline Ed_result_set_iterator(Ed_result *result);
   inline ~Ed_result_set_iterator();
-
-protected:
+  virtual Obj *next();
+private:
   Ed_result *m_result;
   List_iterator_fast<Ed_row> m_row_it;
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-inline Ed_result_set_iterator::Ed_result_set_iterator(Ed_result *result)
+template <typename Obj_type>
+inline
+Ed_result_set_iterator<Obj_type>::
+Ed_result_set_iterator(Ed_result *result)
   : m_result(result),
     m_row_it(*result->get_cur_result_set()->data())
 { }
 
 ///////////////////////////////////////////////////////////////////////////
 
-inline Ed_result_set_iterator::~Ed_result_set_iterator()
+template <typename Obj_type>
+inline
+Ed_result_set_iterator<Obj_type>::~Ed_result_set_iterator()
 {
   delete m_result;
 }
 
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
 
-class Database_iterator : public Ed_result_set_iterator
+template <typename Obj_type>
+Obj *
+Ed_result_set_iterator<Obj_type>::next()
 {
-public:
-  static Database_iterator *create(THD *thd);
+  Ed_row *row= m_row_it++;
 
-public:
-  inline Database_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
+  if (!row)
+    return NULL;
 
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Database_iterator *Database_iterator::create(THD *thd)
-{
-  LEX_STRING query= { C_STRING_WITH_LEN(
-    "SELECT schema_name "
-    "FROM INFORMATION_SCHEMA.SCHEMATA "
-    "WHERE LCASE(schema_name) != 'mysql' AND "
-          "LCASE(schema_name) != 'information_schema'") };
-
-  return create_row_set_iterator<Database_iterator>(thd, &query);
+  return new Obj_type(*row);
 }
 
 ///////////////////////////////////////////////////////////////////////////
+
+typedef Ed_result_set_iterator<Database_obj>    Database_iterator;
+typedef Ed_result_set_iterator<Table_obj>       Db_tables_iterator;
+typedef Ed_result_set_iterator<View_obj>        Db_views_iterator;
+typedef Ed_result_set_iterator<Trigger_obj>     Db_trigger_iterator;
+typedef Ed_result_set_iterator<Stored_proc_obj> Db_stored_proc_iterator;
+typedef Ed_result_set_iterator<Stored_func_obj> Db_stored_func_iterator;
+typedef Ed_result_set_iterator<Event_obj>       Db_event_iterator;
+typedef Ed_result_set_iterator<Grant_obj>       Grant_iterator;
+
+///////////////////////////////////////////////////////////////////////////
+
+#ifdef HAVE_EXPLICIT_TEMPLATE_INSTANTIATION
+template class Ed_result_set_iterator<Database_obj>;
+template class Ed_result_set_iterator<Table_obj>;
+template class Ed_result_set_iterator<View_obj>;
+template class Ed_result_set_iterator<Trigger_obj>;
+template class Ed_result_set_iterator<Stored_proc_obj>;
+template class Ed_result_set_iterator<Stored_func_obj>;
+template class Ed_result_set_iterator<Event_obj>;
+template class Ed_result_set_iterator<Grant_obj>;
 
 template
 Database_iterator *
 create_row_set_iterator<Database_iterator>(THD *thd, const LEX_STRING *query);
 
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Database_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* The only column is the database name.*/
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 1);
-
-  const LEX_STRING *db_name= row->get_column(0);
-
-  return new Database_obj(*db_name);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-class Db_tables_iterator : public Ed_result_set_iterator
-{
-public:
-  static Db_tables_iterator *create(THD *thd, const String *db_name);
-
-public:
-  inline Db_tables_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Db_tables_iterator *Db_tables_iterator::create(THD *thd, const String *db_name)
-{
-  String_stream ss;
-
-  ss <<
-    "SELECT '" << *db_name << "', table_name "
-    "FROM INFORMATION_SCHEMA.TABLES "
-    "WHERE table_schema = '" << *db_name << "' AND "
-          "table_type = 'BASE TABLE'";
-
-  return create_row_set_iterator<Db_tables_iterator>(thd, ss.lxs());
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 template
 Db_tables_iterator *
 create_row_set_iterator<Db_tables_iterator>(THD *thd, const LEX_STRING *query);
-
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Db_tables_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* The only column is the table name. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
-  const LEX_STRING *db_name= row->get_column(0);
-  const LEX_STRING *table_name= row->get_column(1);
-
-  return new Table_obj(*db_name, *table_name);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-class Db_views_iterator : public Ed_result_set_iterator
-{
-public:
-  static Db_views_iterator *create(THD *thd, const String *db_name);
-
-public:
-  inline Db_views_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Db_views_iterator *Db_views_iterator::create(THD *thd, const String *db_name)
-{
-  String_stream ss;
-
-  ss <<
-    "SELECT '" << *db_name << "', table_name "
-    "FROM INFORMATION_SCHEMA.TABLES "
-    "WHERE table_schema = '" << *db_name << "' AND table_type = 'VIEW'";
-
-  return create_row_set_iterator<Db_views_iterator>(thd, ss.lxs());
-}
-
-///////////////////////////////////////////////////////////////////////////
 
 template
 Db_views_iterator *
 create_row_set_iterator<Db_views_iterator>(THD *thd, const LEX_STRING *query);
 
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Db_views_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* The only column is the view name. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
-  const LEX_STRING *db_name= row->get_column(0);
-  const LEX_STRING *view_name= row->get_column(1);
-
-  return new View_obj(*db_name, *view_name);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-class Db_trigger_iterator : public Ed_result_set_iterator
-{
-public:
-  static Db_trigger_iterator *create(THD *thd, const String *db_name);
-
-public:
-  inline Db_trigger_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Db_trigger_iterator *Db_trigger_iterator::create(THD *thd, const String *db_name)
-{
-  String_stream ss;
-  ss <<
-    "SELECT '" << *db_name << "', trigger_name "
-    "FROM INFORMATION_SCHEMA.TRIGGERS "
-    "WHERE trigger_schema = '" << *db_name << "'";
-
-  return create_row_set_iterator<Db_trigger_iterator>(thd, ss.lxs());
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 template
 Db_trigger_iterator *
 create_row_set_iterator<Db_trigger_iterator>(THD *thd, const LEX_STRING *query);
-
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Db_trigger_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* There must be two columns: database name and trigger name. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
-  const LEX_STRING *db_name= row->get_column(0);
-  const LEX_STRING *trigger_name= row->get_column(1);
-
-  return new Trigger_obj(*db_name, *trigger_name);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-class Db_stored_proc_iterator : public Ed_result_set_iterator
-{
-public:
-  static Db_stored_proc_iterator *create(THD *thd, const String *db_name);
-
-public:
-  inline Db_stored_proc_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Db_stored_proc_iterator *
-Db_stored_proc_iterator::create(THD *thd, const String *db_name)
-{
-  String_stream ss;
-  ss <<
-    "SELECT '" << *db_name << "', routine_name "
-    "FROM INFORMATION_SCHEMA.ROUTINES "
-    "WHERE routine_schema = '" << *db_name << "' AND "
-          "routine_type = 'PROCEDURE'";
-
-  return create_row_set_iterator<Db_stored_proc_iterator>(thd, ss.lxs());
-}
-
-///////////////////////////////////////////////////////////////////////////
 
 template
 Db_stored_proc_iterator *
 create_row_set_iterator<Db_stored_proc_iterator>(THD *thd,
                                                  const LEX_STRING *query);
 
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Db_stored_proc_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* There must be two columns: database name and routine name. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
-  const LEX_STRING *db_name= row->get_column(0);
-  const LEX_STRING *routine_name= row->get_column(1);
-
-  return new Stored_proc_obj(*db_name, *routine_name);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-class Db_stored_func_iterator : public Ed_result_set_iterator
-{
-public:
-  static Db_stored_func_iterator *create(THD *thd, const String *db_name);
-
-public:
-  inline Db_stored_func_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Db_stored_func_iterator *
-Db_stored_func_iterator::create(THD *thd, const String *db_name)
-{
-  String_stream ss;
-  ss <<
-    "SELECT '" << *db_name << "', routine_name "
-    "FROM INFORMATION_SCHEMA.ROUTINES "
-    "WHERE routine_schema = '" << *db_name <<"' AND "
-          "routine_type = 'FUNCTION'";
-
-  return create_row_set_iterator<Db_stored_func_iterator>(thd, ss.lxs());
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 template
 Db_stored_func_iterator *
 create_row_set_iterator<Db_stored_func_iterator>(THD *thd,
                                                  const LEX_STRING *query);
-
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Db_stored_func_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* There must be two columns: database name and function name. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
-  const LEX_STRING *db_name= row->get_column(0);
-  const LEX_STRING *routine_name= row->get_column(1);
-
-  return new Stored_func_obj(*db_name, *routine_name);
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-class Db_event_iterator : public Ed_result_set_iterator
-{
-public:
-  static Db_event_iterator *create(THD *thd, const String *db_name);
-
-public:
-  inline Db_event_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Db_event_iterator *
-Db_event_iterator::create(THD *thd, const String *db_name)
-{
-#ifdef HAVE_EVENT_SCHEDULER
-
-  String_stream ss;
-  ss <<
-    "SELECT '" << *db_name << "', event_name "
-    "FROM INFORMATION_SCHEMA.EVENTS "
-    "WHERE event_schema = '" << *db_name <<"'";
-
-  return create_row_set_iterator<Db_event_iterator>(thd, ss.lxs());
-
-#else
-
-  return NULL;
-
-#endif
-}
-
-///////////////////////////////////////////////////////////////////////////
 
 #ifdef HAVE_EVENT_SCHEDULER
 template
@@ -1275,33 +970,12 @@ Db_event_iterator *
 create_row_set_iterator<Db_event_iterator>(THD *thd, const LEX_STRING *query);
 #endif
 
-///////////////////////////////////////////////////////////////////////////
+template
+Grant_iterator *
+create_row_set_iterator<Grant_iterator>(THD *thd, const LEX_STRING *query);
 
-Obj *Db_event_iterator::next()
-{
-#ifdef HAVE_EVENT_SCHEDULER
+#endif // HAVE_EXPLICIT_TEMPLATE_INSTANTIATION
 
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* There must be two columns: database name and event name. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
-  const LEX_STRING *db_name= row->get_column(0);
-  const LEX_STRING *event_name= row->get_column(1);
-
-  return new Event_obj(*db_name, *event_name);
-
-#else
-
-  return NULL;
-
-#endif
-}
-
-///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 class View_base_obj_iterator : public Obj_iterator
@@ -1515,87 +1189,11 @@ View_base_obj_iterator::create<View_base_view_iterator>(
   THD *thd, const String *db_name, const String *view_name);
 
 ///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
 
-class Grant_iterator : public Ed_result_set_iterator
-{
-public:
-  static Grant_iterator *create(THD *thd, const String *db_name);
+Database_obj::Database_obj(const Ed_row &ed_row)
+  : Abstract_obj(ed_row[0], /* database name */ ed_row[0] /* database name */)
+{ }
 
-public:
-  inline Grant_iterator(Ed_result *result)
-    :Ed_result_set_iterator(result)
-  { }
-
-public:
-  virtual Obj *next();
-};
-
-///////////////////////////////////////////////////////////////////////////
-
-Grant_iterator *
-Grant_iterator::create(THD *thd, const String *db_name)
-{
-  String_stream ss;
-  ss <<
-    "(SELECT t1.grantee AS c1, "
-            "t1.privilege_type AS c2, "
-            "t1.table_schema AS c3, "
-            "NULL AS c4, "
-            "NULL AS c5 "
-    "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
-         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << *db_name << "' AND "
-          "t1.grantee = t2.grantee) "
-    "UNION "
-    "(SELECT t1.grantee, "
-            "t1.privilege_type, "
-            "t1.table_schema, "
-            "t1.table_name, "
-            "NULL "
-    "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
-         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << *db_name << "' AND "
-          "t1.grantee = t2.grantee) "
-    "UNION "
-    "(SELECT t1.grantee, "
-            "t1.privilege_type, "
-            "t1.table_schema, "
-            "t1.table_name, "
-            "t1.column_name "
-    "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
-         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << *db_name << "' AND "
-          "t1.grantee = t2.grantee) "
-    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
-
-  return create_row_set_iterator<Grant_iterator>(thd, ss.lxs());
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-Obj *Grant_iterator::next()
-{
-  Ed_row *row= m_row_it++;
-
-  if (!row)
-    return NULL;
-
-  /* Ensure that there are 5 columns. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 5);
-
-
-  return new Grant_obj(*row);
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-template
-Grant_iterator *
-create_row_set_iterator<Grant_iterator>(THD *thd, const LEX_STRING *query);
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
 
 Database_obj::Database_obj(LEX_STRING db_name)
   : Abstract_obj(db_name, db_name)
@@ -2045,7 +1643,6 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
 
 Stored_program_obj::
 Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
@@ -2158,9 +1755,16 @@ void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &os)
 
 const LEX_STRING Trigger_obj::TYPE_NAME= LXS_INIT("TRIGGER");
 
+
+Trigger_obj::Trigger_obj(const Ed_row &ed_row)
+  : Stored_routine_obj(ed_row[0], ed_row[1])
+{ }
+
+
 Trigger_obj::Trigger_obj(LEX_STRING db_name, LEX_STRING trigger_name)
   : Stored_routine_obj(db_name, trigger_name)
 { }
+
 
 const LEX_STRING *Trigger_obj::get_type() const
 {
@@ -2171,6 +1775,12 @@ const LEX_STRING *Trigger_obj::get_type() const
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Stored_proc_obj::TYPE_NAME= LXS_INIT("PROCEDURE");
+
+
+Stored_proc_obj::Stored_proc_obj(const Ed_row &ed_row)
+  : Stored_routine_obj(ed_row[0], ed_row[1])
+{ }
+
 
 Stored_proc_obj::Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name)
   : Stored_routine_obj(db_name, sp_name)
@@ -2185,6 +1795,10 @@ const LEX_STRING *Stored_proc_obj::get_type() const
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Stored_func_obj::TYPE_NAME= LXS_INIT("FUNCTION");
+
+Stored_func_obj::Stored_func_obj(const Ed_row &ed_row)
+  : Stored_routine_obj(ed_row[0], ed_row[1])
+{ }
 
 Stored_func_obj::Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name)
   : Stored_routine_obj(db_name, sf_name)
@@ -2201,6 +1815,11 @@ const LEX_STRING *Stored_func_obj::get_type() const
 #ifdef HAVE_EVENT_SCHEDULER
 
 const LEX_STRING Event_obj::TYPE_NAME= LXS_INIT("EVENT");
+
+Event_obj::Event_obj(const Ed_row &ed_row)
+  : Stored_program_obj(ed_row[0], ed_row[1])
+{ }
+
 
 Event_obj::Event_obj(LEX_STRING db_name, LEX_STRING event_name)
   : Stored_program_obj(db_name, event_name)
@@ -2438,6 +2057,7 @@ Grant_obj::Grant_obj(LEX_STRING name)
   m_id.copy(name.str, name.length, system_charset_info);
 }
 
+
 /**
   Serialize the object.
 
@@ -2473,6 +2093,7 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_RETURN(FALSE);
 }
 
+
 bool Grant_obj::do_materialize(In_stream *is)
 {
   LEX_STRING user_name;
@@ -2502,48 +2123,132 @@ Obj *get_database(const String *db_name)
 
 Obj_iterator *get_databases(THD *thd)
 {
-  return Database_iterator::create(thd);
+  LEX_STRING query= { C_STRING_WITH_LEN(
+    "SELECT schema_name "
+    "FROM INFORMATION_SCHEMA.SCHEMATA "
+    "WHERE LCASE(schema_name) != 'mysql' AND "
+          "LCASE(schema_name) != 'information_schema'") };
+
+  return create_row_set_iterator<Database_iterator>(thd, &query);
 }
 
 Obj_iterator *get_db_tables(THD *thd, const String *db_name)
 {
-  return Db_tables_iterator::create(thd, db_name);
+  String_stream ss;
+
+  ss <<
+    "SELECT '" << *db_name << "', table_name "
+    "FROM INFORMATION_SCHEMA.TABLES "
+    "WHERE table_schema = '" << *db_name << "' AND "
+          "table_type = 'BASE TABLE'";
+
+  return create_row_set_iterator<Db_tables_iterator>(thd, ss.lxs());
 }
 
 
 Obj_iterator *get_db_views(THD *thd, const String *db_name)
 {
-  return Db_views_iterator::create(thd, db_name);
+  String_stream ss;
+
+  ss <<
+    "SELECT '" << *db_name << "', table_name "
+    "FROM INFORMATION_SCHEMA.TABLES "
+    "WHERE table_schema = '" << *db_name << "' AND table_type = 'VIEW'";
+
+  return create_row_set_iterator<Db_views_iterator>(thd, ss.lxs());
 }
 
 
 Obj_iterator *get_db_triggers(THD *thd, const String *db_name)
 {
-  return Db_trigger_iterator::create(thd, db_name);
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', trigger_name "
+    "FROM INFORMATION_SCHEMA.TRIGGERS "
+    "WHERE trigger_schema = '" << *db_name << "'";
+
+  return create_row_set_iterator<Db_trigger_iterator>(thd, ss.lxs());
 }
 
 
 Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
 {
-  return Db_stored_proc_iterator::create(thd, db_name);
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', routine_name "
+    "FROM INFORMATION_SCHEMA.ROUTINES "
+    "WHERE routine_schema = '" << *db_name << "' AND "
+          "routine_type = 'PROCEDURE'";
+
+  return create_row_set_iterator<Db_stored_proc_iterator>(thd, ss.lxs());
 }
 
 
 Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
 {
-  return Db_stored_func_iterator::create(thd, db_name);
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', routine_name "
+    "FROM INFORMATION_SCHEMA.ROUTINES "
+    "WHERE routine_schema = '" << *db_name <<"' AND "
+          "routine_type = 'FUNCTION'";
+
+  return create_row_set_iterator<Db_stored_func_iterator>(thd, ss.lxs());
 }
 
 
 Obj_iterator *get_db_events(THD *thd, const String *db_name)
 {
-  return Db_event_iterator::create(thd, db_name);
+#ifdef HAVE_EVENT_SCHEDULER
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', event_name "
+    "FROM INFORMATION_SCHEMA.EVENTS "
+    "WHERE event_schema = '" << *db_name <<"'";
+
+  return create_row_set_iterator<Db_event_iterator>(thd, ss.lxs());
+#else
+  return NULL;
+#endif
 }
 
 
 Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
 {
-  return Grant_iterator::create(thd, db_name);
+  String_stream ss;
+  ss <<
+    "(SELECT t1.grantee AS c1, "
+            "t1.privilege_type AS c2, "
+            "t1.table_schema AS c3, "
+            "NULL AS c4, "
+            "NULL AS c5 "
+    "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
+         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "WHERE t1.table_schema = '" << *db_name << "' AND "
+          "t1.grantee = t2.grantee) "
+    "UNION "
+    "(SELECT t1.grantee, "
+            "t1.privilege_type, "
+            "t1.table_schema, "
+            "t1.table_name, "
+            "NULL "
+    "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
+         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "WHERE t1.table_schema = '" << *db_name << "' AND "
+          "t1.grantee = t2.grantee) "
+    "UNION "
+    "(SELECT t1.grantee, "
+            "t1.privilege_type, "
+            "t1.table_schema, "
+            "t1.table_name, "
+            "t1.column_name "
+    "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
+         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "WHERE t1.table_schema = '" << *db_name << "' AND "
+          "t1.grantee = t2.grantee) "
+    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
+
+  return create_row_set_iterator<Grant_iterator>(thd, ss.lxs());
 }
 
 
