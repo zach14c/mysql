@@ -843,5 +843,15 @@ create table t2 as select * from t1;
 create table t3 (a int, filler char(100), key(a));
 insert into t3 select A.a + 10*B.a, 'filler' from t1 A, t1 B, t1 C;
 explain select * from t1, t3 where t3.a in (select a from t2) and (t3.a < 10 or t3.a >30) and t1.a =3;
-drop table t1,t2,t3;
+
+#
+# Verify that straight_join modifier in parent or child prevents flattening
+#
+explain select straight_join * from t1 A, t1 B where A.a in (select a from t2);
+explain select * from t2 where a in (select straight_join A.a from t1 A, t1 B);
+explain select * from t2 where a in (select straight_join A.a from t1 A, t1 B);
+explain select straight_join * from t2 X, t2 Y 
+where X.a in (select straight_join A.a from t1 A, t1 B);
+
+drop table t1, t2, t3;
 

@@ -599,6 +599,7 @@ JOIN::prepare(Item ***rref_pointer_array,
         7. We're not in a confluent table-less subquery, like "SELECT 1".
         8. No execution method was already chosen (by a prepared statement)
         9. Parent select is not a confluent table-less select
+        10. Neither parent nor child select have STRAIGHT_JOIN option.
     */
     if (!optimizer_flag(thd, OPTIMIZER_SWITCH_NO_SEMIJOIN) &&
         in_subs &&                                                    // 1
@@ -609,7 +610,9 @@ JOIN::prepare(Item ***rref_pointer_array,
         select_lex->outer_select()->join &&                           // 6
         select_lex->master_unit()->first_select()->leaf_tables &&     // 7
         in_subs->exec_method == Item_in_subselect::NOT_TRANSFORMED && // 8
-        select_lex->outer_select()->leaf_tables)                      // 9
+        select_lex->outer_select()->leaf_tables &&                    // 9
+        !((select_options | select_lex->outer_select()->join->select_options)
+          & SELECT_STRAIGHT_JOIN))                                    // 10
     {
       DBUG_PRINT("info", ("Subquery is semi-join conversion candidate"));
       in_subs->types_allow_materialization= 
@@ -6627,6 +6630,7 @@ choose_plan(JOIN *join, table_map join_tables)
             jtab_sort_func, (void*)join->emb_sjm_nest);
   join->cur_sj_inner_tables= 0;
 
+#if 0
   if (!join->emb_sjm_nest && straight_join)
   {
     /* Put all sj-inner tables right after their last outer table table.  */
@@ -6663,6 +6667,7 @@ choose_plan(JOIN *join, table_map join_tables)
       inner += n_tables;
     }
   }
+#endif
 
   if (straight_join)
   {
@@ -6754,19 +6759,13 @@ join_tab_cmp_straight(const void *dummy, const void* ptr1, const void* ptr2)
   JOIN_TAB *jt1= *(JOIN_TAB**) ptr1;
   JOIN_TAB *jt2= *(JOIN_TAB**) ptr2;
  
-  
-  /* Put SJ-inner tables at the end */
-  if (jt1->emb_sj_nest && !jt2->emb_sj_nest)
-    return -1;
-  if (!jt1->emb_sj_nest && jt2->emb_sj_nest)
-    return 1;
-
-  /* Group SJ-inner tables by their embedding nest */
-  if (jt1->emb_sj_nest && jt2->emb_sj_nest)
-  {
-    ptrdiff_t diff=  jt1->emb_sj_nest - jt2->emb_sj_nest;
-    return diff > 0 ? 1 : (diff < 0 ? -1 : 0);
-  }
+  /*
+    We don't do subquery flattening if the parent or child select has
+    STRAIGHT_JOIN modifier. It is complicated to implement and the semantics
+    is hardly useful.
+  */
+  DBUG_ASSERT(!jt1->emb_sj_nest);
+  DBUG_ASSERT(!jt2->emb_sj_nest);
 
   if (jt1->dependent & jt2->table->map)
     return 1;
