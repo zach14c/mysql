@@ -38,20 +38,7 @@ DDL_blocker_class *DDL_blocker= NULL;
 
 ///////////////////////////////////////////////////////////////////////////
 
-#define QUERY_BUFFER_SIZE 4096
-
-///////////////////////////////////////////////////////////////////////////
-
 namespace {
-
-///////////////////////////////////////////////////////////////////////////
-//
-// Type identifiers in INFORMATION_SCHEMA.
-//
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING IS_TYPE_TABLE= { C_STRING_WITH_LEN("BASE TABLE") };
-const LEX_STRING IS_TYPE_VIEW=  { C_STRING_WITH_LEN("VIEW") };
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -157,29 +144,93 @@ void Table_name_key::delete_key(void *data)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-class Fmt
+struct Int_value
+{
+  int x;
+
+  Int_value(int _x)
+    :x(_x)
+  { }
+};
+
+struct C_str
+{
+  LEX_STRING lxs;
+
+  C_str(const char *str, int length)
+  {
+    lxs.str= (char *) str;
+    lxs.length= length;
+  }
+};
+
+class String_stream
 {
 public:
-  Fmt(const char *format, ...);
+  String_stream()
+    : m_buffer(&m_container)
+  { }
+
+  String_stream(String *dst)
+    : m_buffer(dst)
+  { }
 
 public:
-  const char *str() const { return m_buffer; }
-  int length() const { return m_length; }
+  String *str() { return m_buffer; }
+
+  const LEX_STRING *lxs()
+  {
+    m_lxs.str= (char *) m_buffer->ptr();
+    m_lxs.length= m_buffer->length();
+    return &m_lxs;
+  }
+
+public:
+  String_stream &operator <<(const Int_value &v);
+  String_stream &operator <<(const C_str &v);
+  String_stream &operator <<(const LEX_STRING *query);
+  String_stream &operator <<(const String &query);
+  String_stream &operator <<(const char *str);
 
 private:
-  char m_buffer[QUERY_BUFFER_SIZE];
-  int m_length;
+  String m_container;
+  String *m_buffer;
+  LEX_STRING m_lxs;
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-Fmt::Fmt(const char *format, ...)
+String_stream &String_stream::operator <<(const Int_value &v)
 {
-  va_list args;
+  char buffer[13];
+  my_snprintf(buffer, sizeof (buffer), "%lu", (unsigned long) v.x);
 
-  va_start(args, format);
-  m_length= my_vsnprintf(m_buffer, sizeof (m_buffer), format, args);
-  va_end(args);
+  m_buffer->append(buffer);
+  return *this;
+}
+
+String_stream &String_stream::operator <<(const C_str &v)
+{
+  m_buffer->append(v.lxs.str, v.lxs.length);
+  return *this;
+}
+
+String_stream &String_stream::operator <<(const LEX_STRING *str)
+{
+  m_buffer->append(str->str, str->length);
+  return *this;
+}
+
+String_stream &String_stream::operator <<(const String &str)
+{
+  m_buffer->append(str.ptr(), str.length());
+  return *this;
+}
+
+String_stream &String_stream::operator <<(const char *str)
+{
+  m_buffer->append(str);
+  return *this;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -196,7 +247,7 @@ public:
   Out_stream &operator <<(const char *query);
   Out_stream &operator <<(const LEX_STRING *query);
   Out_stream &operator <<(const String &query);
-  Out_stream &operator <<(const Fmt &query);
+  Out_stream &operator <<(String_stream &ss);
 
 private:
   String *m_serialization;
@@ -214,15 +265,10 @@ Out_stream &Out_stream::operator <<(const char *query)
 
 Out_stream &Out_stream::operator <<(const LEX_STRING *query)
 {
-  char chunk_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING chunk;
+  String_stream ss(m_serialization);
 
-  chunk.str= chunk_buffer;
-  chunk.length= my_snprintf(chunk_buffer, QUERY_BUFFER_SIZE,
-    "%d %.*s\n",
-    (int) query->length, LXS(*query));
-
-  m_serialization->append(chunk.str, chunk.length);
+  ss <<
+    Int_value(query->length) << " " << query << "\n";
 
   return *this;
 }
@@ -237,10 +283,9 @@ Out_stream &Out_stream::operator <<(const String &query)
 
 ///////////////////////////////////////////////////////////////////////////
 
-Out_stream &Out_stream::operator <<(const Fmt &query)
+Out_stream &Out_stream::operator <<(String_stream &ss)
 {
-  LEX_STRING str= { (char *) query.str(), query.length() };
-  return Out_stream::operator <<(&str);
+  return Out_stream::operator <<(*ss.str());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -941,17 +986,15 @@ public:
 
 Db_tables_iterator *Db_tables_iterator::create(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
+  String_stream ss;
 
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT '%.*s', table_name "
+  ss <<
+    "SELECT '" << *db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
-    "WHERE table_schema = '%.*s' AND table_type = '%.*s'",
-    STR(*db_name), STR(*db_name), LXS(IS_TYPE_TABLE));
+    "WHERE table_schema = '" << *db_name << "' AND "
+          "table_type = 'BASE TABLE'";
 
-  return create_row_set_iterator<Db_tables_iterator>(thd, &query);
+  return create_row_set_iterator<Db_tables_iterator>(thd, ss.lxs());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1000,17 +1043,14 @@ public:
 
 Db_views_iterator *Db_views_iterator::create(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
+  String_stream ss;
 
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT '%.*s', table_name "
+  ss <<
+    "SELECT '" << *db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
-    "WHERE table_schema = '%.*s' AND table_type = '%.*s'",
-    STR(*db_name), STR(*db_name), LXS(IS_TYPE_VIEW));
+    "WHERE table_schema = '" << *db_name << "' AND table_type = 'VIEW'";
 
-  return create_row_set_iterator<Db_views_iterator>(thd, &query);
+  return create_row_set_iterator<Db_views_iterator>(thd, ss.lxs());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1059,17 +1099,13 @@ public:
 
 Db_trigger_iterator *Db_trigger_iterator::create(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT '%.*s', trigger_name "
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', trigger_name "
     "FROM INFORMATION_SCHEMA.TRIGGERS "
-    "WHERE trigger_schema = '%.*s'",
-    STR(*db_name), STR(*db_name));
+    "WHERE trigger_schema = '" << *db_name << "'";
 
-  return create_row_set_iterator<Db_trigger_iterator>(thd, &query);
+  return create_row_set_iterator<Db_trigger_iterator>(thd, ss.lxs());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1119,17 +1155,14 @@ public:
 Db_stored_proc_iterator *
 Db_stored_proc_iterator::create(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT '%.*s', routine_name "
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
-    "WHERE routine_schema = '%.*s' AND routine_type = 'PROCEDURE'",
-    STR(*db_name), STR(*db_name));
+    "WHERE routine_schema = '" << *db_name << "' AND "
+          "routine_type = 'PROCEDURE'";
 
-  return create_row_set_iterator<Db_stored_proc_iterator>(thd, &query);
+  return create_row_set_iterator<Db_stored_proc_iterator>(thd, ss.lxs());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1180,17 +1213,14 @@ public:
 Db_stored_func_iterator *
 Db_stored_func_iterator::create(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT '%.*s', routine_name "
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
-    "WHERE routine_schema = '%.*s' AND routine_type = 'FUNCTION'",
-    STR(*db_name), STR(*db_name));
+    "WHERE routine_schema = '" << *db_name <<"' AND "
+          "routine_type = 'FUNCTION'";
 
-  return create_row_set_iterator<Db_stored_func_iterator>(thd, &query);
+  return create_row_set_iterator<Db_stored_func_iterator>(thd, ss.lxs());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1243,17 +1273,13 @@ Db_event_iterator::create(THD *thd, const String *db_name)
 {
 #ifdef HAVE_EVENT_SCHEDULER
 
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT '%.*s', event_name "
+  String_stream ss;
+  ss <<
+    "SELECT '" << *db_name << "', event_name "
     "FROM INFORMATION_SCHEMA.EVENTS "
-    "WHERE event_schema = '%.*s'",
-    STR(*db_name), STR(*db_name));
+    "WHERE event_schema = '" << *db_name <<"'";
 
-  return create_row_set_iterator<Db_event_iterator>(thd, &query);
+  return create_row_set_iterator<Db_event_iterator>(thd, ss.lxs());
 
 #else
 
@@ -1534,11 +1560,8 @@ public:
 Grant_iterator *
 Grant_iterator::create(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
+  String_stream ss;
+  ss <<
     "(SELECT t1.grantee AS c1, "
             "t1.privilege_type AS c2, "
             "t1.table_schema AS c3, "
@@ -1546,7 +1569,7 @@ Grant_iterator::create(THD *thd, const String *db_name)
             "NULL AS c5 "
     "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
          "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '%.*s' AND "
+    "WHERE t1.table_schema = '" << *db_name << "' AND "
           "t1.grantee = t2.grantee) "
     "UNION "
     "(SELECT t1.grantee, "
@@ -1556,7 +1579,7 @@ Grant_iterator::create(THD *thd, const String *db_name)
             "NULL "
     "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
          "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '%.*s' AND "
+    "WHERE t1.table_schema = '" << *db_name << "' AND "
           "t1.grantee = t2.grantee) "
     "UNION "
     "(SELECT t1.grantee, "
@@ -1566,12 +1589,11 @@ Grant_iterator::create(THD *thd, const String *db_name)
             "t1.column_name "
     "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
          "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '%.*s' AND "
+    "WHERE t1.table_schema = '" << *db_name << "' AND "
           "t1.grantee = t2.grantee) "
-    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC",
-    STR(*db_name), STR(*db_name), STR(*db_name));
+    "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
 
-  return create_row_set_iterator<Grant_iterator>(thd, &query);
+  return create_row_set_iterator<Grant_iterator>(thd, ss.lxs());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1658,26 +1680,25 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 
   /* Run 'SHOW CREATE' query. */
 
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE DATABASE `%.*s`", STR(m_db_name));
-
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    DBUG_RETURN(TRUE);
+    String_stream ss;
+    ss <<
+      "SHOW CREATE DATABASE `" << m_db_name << "`";
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /*
+        There should be no warnings. A warning means that serialization has
+        failed.
+      */
+      DBUG_RETURN(TRUE);
+    }
   }
 
-  /* Generate serialization. */
+  /* Check result. */
 
   /* The result must contain only one result-set... */
   DBUG_ASSERT(result.elements == 1);
@@ -1699,11 +1720,15 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
   /* There must be two columns: database name and create statement. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
-  const Ed_column *create_stmt= row->get_column(1);
+  /* Generate serialization. */
 
-  os <<
-    Fmt("DROP DATABASE IF EXISTS `%.*s`", STR(m_db_name)) <<
-    create_stmt;
+  {
+    String_stream ss;
+    ss << "DROP DATABASE IF EXISTS `" << m_db_name << "`";
+    os << ss;
+  }
+
+  os << row->get_column(1);
 
   DBUG_RETURN(FALSE);
 }
@@ -1740,25 +1765,28 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE TABLE `%.*s`.`%.*s`",
-    STR(m_db_name), STR(m_id));
+  DBUG_ASSERT(m_db_name.length() <= 64);
+  DBUG_ASSERT(m_id.length() <= 64);
 
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    DBUG_RETURN(TRUE);
+    String_stream ss;
+    ss <<
+      "SHOW CREATE TABLE `" << m_db_name << "`.`" << m_id << "`";
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /*
+        There should be no warnings. A warning means that serialization has
+        failed.
+      */
+      DBUG_RETURN(TRUE);
+    }
   }
+
+  /* Check result. */
 
   /* The result must contain only one result-set... */
   DBUG_ASSERT(result.elements == 1);
@@ -1780,11 +1808,15 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   /* There must be two columns: database name and create statement. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
-  const Ed_column *create_stmt= row->get_column(1);
+  /* Generate serialization. */
 
-  os <<
-    Fmt("USE `%.*s`", STR(m_db_name)) <<
-    create_stmt;
+  {
+    String_stream ss;
+    ss << "USE `" << m_db_name << "`";
+    os << ss;
+  }
+
+  os << row->get_column(1);
 
   DBUG_RETURN(FALSE);
 }
@@ -1807,26 +1839,28 @@ get_view_create_stmt(THD *thd,
                      LEX_STRING *client_cs_name,
                      LEX_STRING *connection_cl_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
   /* Get a create statement for a view. */
 
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE VIEW `%.*s`.`%.*s`",
-    STR(*view->get_db_name()), STR(*view->get_name()));
+  DBUG_ASSERT(view->get_db_name()->length() <= 64);
+  DBUG_ASSERT(view->get_name()->length() <= 64);
 
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    return TRUE;
+    String_stream ss;
+    ss <<
+      "SHOW CREATE VIEW `" << *view->get_db_name() << "`."
+                       "`" << *view->get_name() << "`";
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /*
+        There should be no warnings. A warning means that serialization has
+        failed.
+      */
+      return TRUE;
+    }
   }
 
   /* The result must contain only one result-set... */
@@ -1872,53 +1906,51 @@ dump_base_object_stubs(THD *thd,
                        Obj_iterator *base_object_it,
                        Out_stream &os)
 {
-  char base_obj_stmt_buf[QUERY_BUFFER_SIZE];
-  String base_obj_stmt(base_obj_stmt_buf,
-                        sizeof (base_obj_stmt_buf),
-                        system_charset_info);
-
   while (true)
   {
+    String_stream base_obj_stmt;
     Obj *base_obj= base_object_it->next();
 
     if (!base_obj)
       break;
 
+    DBUG_ASSERT(base_obj->get_db_name()->length() <= 64);
+    DBUG_ASSERT(base_obj->get_name()->length() <= 64);
+
     /* Dump header of base obj stub. */
 
-    os <<
-      Fmt("CREATE DATABASE IF NOT EXISTS `%.*s`",
-          STR(*base_obj->get_db_name()));
+    {
+      String_stream ss;
+      ss <<
+        "CREATE DATABASE IF NOT EXISTS `" << *base_obj->get_db_name() << "`";
+      os << ss;
+    }
 
-    base_obj_stmt.length(0);
-    base_obj_stmt.append(C_STRING_WITH_LEN("CREATE TABLE IF NOT EXISTS `"));
-    base_obj_stmt.append(*base_obj->get_db_name());
-    base_obj_stmt.append(C_STRING_WITH_LEN("`.`"));
-    base_obj_stmt.append(*base_obj->get_name());
-    base_obj_stmt.append(C_STRING_WITH_LEN("`("));
+    base_obj_stmt <<
+      "CREATE TABLE IF NOT EXISTS "
+        "`" << *base_obj->get_db_name() << "`."
+        "`" << *base_obj->get_name() << "` (";
 
     /* Get base obj structure. */
 
-    char query_buffer[QUERY_BUFFER_SIZE];
-    LEX_STRING query;
-
-    query.str= query_buffer;
-    query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-      "SHOW COLUMNS FROM `%.*s`.`%.*s`",
-      STR(*base_obj->get_db_name()),
-      STR(*base_obj->get_name()));
-
     Ed_result result;
 
-    if (run_query(thd, &query, &result) ||
-        result.get_warnings().elements > 0)
     {
-      /*
-        There should be no warnings. A warning means that serialization has
-        failed.
-      */
-      delete base_obj;
-      return TRUE;
+      String_stream ss;
+      ss <<
+        "SHOW COLUMNS FROM `" << *base_obj->get_db_name() << "`."
+                          "`" << *base_obj->get_name() << "`";
+
+      if (run_query(thd, ss.lxs(), &result) ||
+          result.get_warnings().elements > 0)
+      {
+        /*
+          There should be no warnings. A warning means that serialization has
+          failed.
+        */
+        delete base_obj;
+        return TRUE;
+      }
     }
 
     /* The result must contain only one result-set... */
@@ -1950,15 +1982,13 @@ dump_base_object_stubs(THD *thd,
       if (first_column)
         first_column= FALSE;
       else
-        base_obj_stmt.append(C_STRING_WITH_LEN(", "));
+        base_obj_stmt << ", ";
 
-      base_obj_stmt.append(C_STRING_WITH_LEN("`"));
-      base_obj_stmt.append(col_name->str, col_name->length);
-      base_obj_stmt.append(C_STRING_WITH_LEN("` "));
-      base_obj_stmt.append(col_type->str, col_type->length);
+      base_obj_stmt <<
+        "`" << col_name << "` " << col_type;
     }
 
-    base_obj_stmt.append(C_STRING_WITH_LEN(") ENGINE = MyISAM"));
+    base_obj_stmt << ") ENGINE = MyISAM";
 
     os << base_obj_stmt;
 
@@ -2028,11 +2058,25 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
     delete base_view_it;
   }
 
-  os <<
-    Fmt("USE `%.*s`", STR(m_db_name)) <<
-    Fmt("SET character_set_client = %.*s", LXS(client_cs_name)) <<
-    Fmt("SET collation_connection = %.*s", LXS(connection_cl_name)) <<
-    &create_stmt;
+  {
+    String_stream ss;
+    ss << "USE `" << m_db_name << "`";
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss << "SET character_set_client = " << &client_cs_name;
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss << "SET collation_connection = " << &connection_cl_name;
+    os << ss;
+  }
+
+  os << &create_stmt;
 
   DBUG_RETURN(FALSE);
 }
@@ -2059,24 +2103,22 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
 
   DBUG_EXECUTE_IF("backup_fail_add_trigger", DBUG_RETURN(TRUE););
 
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE %.*s `%.*s`.`%.*s`",
-    LXS(*get_type()), STR(m_db_name), STR(m_id));
-
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /*
-      There should be no warnings. A warning means that serialization has
-      failed.
-    */
-    DBUG_RETURN(TRUE);
+    String_stream ss;
+    ss <<
+      "SHOW CREATE " << get_type() << " `" << m_db_name << "`.`" << m_id << "`";
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /*
+        There should be no warnings. A warning means that serialization has
+        failed.
+      */
+      DBUG_RETURN(TRUE);
+    }
   }
 
   /* The result must contain only one result-set... */
@@ -2096,7 +2138,11 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
   List_iterator_fast<Ed_row> row_it(*rs->data());
   Ed_row *row= row_it++;
 
-  os << Fmt("USE `%.*s`", STR(m_db_name));
+  {
+    String_stream ss;
+    ss << "USE `" << m_db_name << "`";
+    os << ss;
+  }
   dump_header(row, os);
   os << get_create_stmt(row);
 
@@ -2121,11 +2167,33 @@ const Ed_column *Stored_routine_obj::get_create_stmt(Ed_row *row)
 
 void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &os)
 {
-  os <<
-    Fmt("SET character_set_client = %.*s", LXS(*row->get_column(3))) <<
-    Fmt("SET collation_connection = %.*s", LXS(*row->get_column(4))) <<
-    Fmt("SET collation_database = %.*s", LXS(*row->get_column(5))) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(*row->get_column(1)));
+  {
+    String_stream ss;
+    ss <<
+      "SET character_set_client = " << row->get_column(3);
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET collation_connection = " << row->get_column(4);
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET collation_database = " << row->get_column(5);
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET sql_mode = '" << row->get_column(1) << "'";
+    os << ss;
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2201,12 +2269,40 @@ const Ed_column *Event_obj::get_create_stmt(Ed_row *row)
 
 void Event_obj::dump_header(Ed_row *row, Out_stream &os)
 {
-  os <<
-    Fmt("SET character_set_client = %.*s", LXS(*row->get_column(4))) <<
-    Fmt("SET collation_connection = %.*s", LXS(*row->get_column(5))) <<
-    Fmt("SET collation_database = %.*s", LXS(*row->get_column(6))) <<
-    Fmt("SET sql_mode = '%.*s'", LXS(*row->get_column(1)));
-    Fmt("SET time_zone = '%.*s'", LXS(*row->get_column(2)));
+  {
+    String_stream ss;
+    ss <<
+      "SET character_set_client = " << row->get_column(4);
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET collation_connection = " << row->get_column(5);
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET collation_database = " << row->get_column(6);
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET sql_mode = '" << row->get_column(1) << "'";
+    os << ss;
+  }
+
+  {
+    String_stream ss;
+    ss <<
+      "SET time_zone = '" << row->get_column(2) << "'";
+    os << ss;
+  }
 }
 
 #endif // HAVE_EVENT_SCHEDULER
@@ -2307,26 +2403,18 @@ const String *Tablespace_obj::get_description()
 
   /* Construct the CREATE TABLESPACE command from the variables. */
 
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "CREATE TABLESPACE `%.*s` ADD DATAFILE '%.*s' ",
-    STR(m_id), STR(m_data_file_name));
-
   m_description.length(0);
-  m_description.append(query.str, query.length);
+
+  String_stream ss(&m_description);
+
+  ss <<
+    "CREATE TABLESPACE `" << m_id << "` "
+      "ADD DATAFILE '" << m_data_file_name << "' ";
 
   if (m_comment.length())
-  {
-    m_description.append("COMMENT = '");
-    m_description.append(m_comment);
-    m_description.append("' ");
-  }
+    ss << "COMMENT = '" << m_comment << "' ";
 
-  m_description.append("ENGINE = ");
-  m_description.append(m_engine);
+  ss << "ENGINE = " << m_engine;
 
   DBUG_RETURN(&m_description);
 }
@@ -2340,15 +2428,14 @@ void Grant_obj::generate_unique_id(const String *user_name, String *id)
 
   id->length(0);
 
+  String_stream ss(id);
+
   if (user_name->length())
-    id->append("<empty>");
+    ss << "<empty>";
   else
-    id->append(*user_name);
+    ss << *user_name;
 
-  char buf[10];
-  my_snprintf(buf, 10, " %08lu", ++id_counter);
-
-  id->append(buf, 10);
+  ss << " " << Int_value(++id_counter);
 }
 
 Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
@@ -2362,24 +2449,18 @@ Grant_obj::Grant_obj(const char *user_name_str, int user_name_length,
 
   /* Grant info. */
 
-  m_grant_info.append(priv_type_str, priv_type_length);
+  String_stream ss(&m_grant_info);
+  ss << C_str(priv_type_str, priv_type_length);
 
   if (column_name_length)
-  {
-    m_grant_info.append('(');
-    m_grant_info.append(column_name_str, column_name_length);
-    m_grant_info.append(')');
-  }
+    ss << "(" << C_str(column_name_str, column_name_length) << ")";
 
-  m_grant_info.append(" ON ");
-
-  m_grant_info.append(db_name_str, db_name_length);
-  m_grant_info.append('.');
+  ss << " ON " << C_str(db_name_str, db_name_length) << ".";
 
   if (table_name_length)
-    m_grant_info.append(table_name_str, table_name_length);
+    ss << C_str(table_name_str, table_name_length);
   else
-    m_grant_info.append('*');
+    ss << "*";
 
   /* Id. */
 
@@ -2420,9 +2501,12 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
   os <<
     m_user_name <<
     m_grant_info <<
-    "SET character_set_client= binary" <<
-    Fmt("GRANT %.*s TO %.*s",
-        STR(m_grant_info), STR(m_user_name));
+    "SET character_set_client= binary";
+
+  String_stream ss;
+  ss << "GRANT " << m_grant_info << " TO " << m_user_name;
+
+  os << ss;
 
   DBUG_RETURN(FALSE);
 }
@@ -2689,16 +2773,11 @@ bool is_internal_db_name(const String *db_name)
 
 bool check_db_existence(THD *thd, const String *db_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SHOW CREATE DATABASE `%.*s`",
-    STR(*db_name));
+  String_stream ss;
+  ss << "SHOW CREATE DATABASE `" << *db_name << "`";
 
   Ed_result result;
-  int rc= run_query(thd, &query, &result);
+  int rc= run_query(thd, ss.lxs(), &result);
 
   /* We're not interested in warnings/errors here. */
 
@@ -2713,24 +2792,22 @@ bool check_user_existence(THD *thd, const Obj *obj)
   return TRUE;
 #else
   Grant_obj *grant_obj= (Grant_obj *) obj;
-
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT 1 "
-    "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
-    "WHERE grantee = \"%.*s\"",
-    STR(*grant_obj->get_user_name()));
-
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /* Should be no warnings. */
-    return FALSE;
+    String_stream ss;
+    ss <<
+      "SELECT 1 "
+      "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
+      "WHERE grantee = \"" << *grant_obj->get_user_name() << "\"";
+
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /* Should be no warnings. */
+      return FALSE;
+    }
   }
 
   Ed_result_set *rs= result.get_cur_result_set();
@@ -2760,25 +2837,24 @@ const String *grant_get_grant_info(const Obj *obj)
 
 Obj *find_tablespace(THD *thd, const String *ts_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
-    "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
-         "INFORMATION_SCHEMA.FILES AS t2 "
-    "WHERE t1.tablespace_name = t2.tablespace_name AND "
-         "t1.tablespace_name = '%.*s'",
-    STR(*ts_name));
-
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /* Should be no warnings. */
-    return NULL;
+    String_stream ss;
+    ss <<
+      "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
+      "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
+           "INFORMATION_SCHEMA.FILES AS t2 "
+      "WHERE t1.tablespace_name = t2.tablespace_name AND "
+           "t1.tablespace_name = '" << *ts_name << "'";
+
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /* Should be no warnings. */
+      return NULL;
+    }
   }
 
   if (!result.elements)
@@ -2825,28 +2901,27 @@ Obj *find_tablespace_for_table(THD *thd,
                                const String *db_name,
                                const String *table_name)
 {
-  char query_buffer[QUERY_BUFFER_SIZE];
-  LEX_STRING query;
-
-  query.str= query_buffer;
-  query.length= my_snprintf(query_buffer, QUERY_BUFFER_SIZE,
-    "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
-    "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
-         "INFORMATION_SCHEMA.FILES AS t2, "
-         "INFORMATION_SCHEMA.TABLES AS t3 "
-    "WHERE t1.tablespace_name = t2.tablespace_name AND "
-         "t2.tablespace_name = t3.tablespace_name AND "
-         "t3.table_schema = '%.*s' AND "
-         "t3.table_name = '%.*s'",
-    STR(*db_name), STR(*table_name));
-
   Ed_result result;
 
-  if (run_query(thd, &query, &result) ||
-      result.get_warnings().elements > 0)
   {
-    /* Should be no warnings. */
-    return NULL;
+    String_stream ss;
+    ss <<
+      "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
+      "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
+           "INFORMATION_SCHEMA.FILES AS t2, "
+           "INFORMATION_SCHEMA.TABLES AS t3 "
+      "WHERE t1.tablespace_name = t2.tablespace_name AND "
+           "t2.tablespace_name = t3.tablespace_name AND "
+           "t3.table_schema = '" << *db_name << "' AND "
+           "t3.table_name = '" << *table_name << "'";
+
+
+    if (run_query(thd, ss.lxs(), &result) ||
+        result.get_warnings().elements > 0)
+    {
+      /* Should be no warnings. */
+      return NULL;
+    }
   }
 
   if (!result.elements)
