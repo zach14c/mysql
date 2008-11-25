@@ -32,7 +32,6 @@ DDL_blocker_class *DDL_blocker= NULL;
 ///////////////////////////////////////////////////////////////////////////
 
 #define STR(x) (int) (x).length(), (x).ptr()
-#define LXS(x) (int) (x).length, (x).str
 
 #define LXS_INIT(x) {((char *) (x)), ((size_t) (sizeof (x) - 1))}
 
@@ -45,7 +44,6 @@ namespace {
 
 bool run_query(THD *thd, const LEX_STRING *query, Ed_result *result)
 {
-
   ulong sql_mode_saved= thd->variables.sql_mode;
   CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
   CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
@@ -190,7 +188,7 @@ public:
   String_stream &operator <<(const Int_value &v);
   String_stream &operator <<(const C_str &v);
   String_stream &operator <<(const LEX_STRING *query);
-  String_stream &operator <<(const String &query);
+  String_stream &operator <<(const String *query);
   String_stream &operator <<(const char *str);
 
 private:
@@ -222,9 +220,9 @@ String_stream &String_stream::operator <<(const LEX_STRING *str)
   return *this;
 }
 
-String_stream &String_stream::operator <<(const String &str)
+String_stream &String_stream::operator <<(const String *str)
 {
-  m_buffer->append(str.ptr(), str.length());
+  m_buffer->append(str->ptr(), str->length());
   return *this;
 }
 
@@ -247,7 +245,7 @@ public:
 public:
   Out_stream &operator <<(const char *query);
   Out_stream &operator <<(const LEX_STRING *query);
-  Out_stream &operator <<(const String &query);
+  Out_stream &operator <<(const String *query);
   Out_stream &operator <<(String_stream &ss);
 
 private:
@@ -276,9 +274,9 @@ Out_stream &Out_stream::operator <<(const LEX_STRING *query)
 
 ///////////////////////////////////////////////////////////////////////////
 
-Out_stream &Out_stream::operator <<(const String &query)
+Out_stream &Out_stream::operator <<(const String *query)
 {
-  LEX_STRING str= { (char *) query.ptr(), query.length() };
+  LEX_STRING str= { (char *) query->ptr(), query->length() };
   return Out_stream::operator <<(&str);
 }
 
@@ -286,7 +284,7 @@ Out_stream &Out_stream::operator <<(const String &query)
 
 Out_stream &Out_stream::operator <<(String_stream &ss)
 {
-  return Out_stream::operator <<(*ss.str());
+  return Out_stream::operator <<(ss.str());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -483,6 +481,7 @@ bool Abstract_obj::execute(THD *thd)
   bool rc= FALSE;
   List_iterator_fast<String> it(m_stmt_list);
   String *sql_text;
+
   /*
     Preserve the following session attributes:
       - sql_mode;
@@ -494,7 +493,6 @@ bool Abstract_obj::execute(THD *thd)
     NOTE: other session variables are not preserved, so serialization image
     must take care to clean up the environment after itself.
   */
-
   ulong sql_mode_saved= thd->variables.sql_mode;
   Time_zone *tz_saved= thd->variables.time_zone;
   CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
@@ -509,12 +507,12 @@ bool Abstract_obj::execute(THD *thd)
       - character_set_results: binary
       - collation_connection: utf8
   */
-
   thd->variables.sql_mode= 0;
   thd->variables.character_set_client= system_charset_info;
   thd->variables.character_set_results= &my_charset_bin;
   thd->variables.collation_connection= system_charset_info;
   thd->update_charset();
+
   /*
     Temporary tables should be ignored while looking for table structures.
     Backup wants to deal with ordinary tables, not temporary ones.
@@ -522,11 +520,9 @@ bool Abstract_obj::execute(THD *thd)
   thd->temporary_tables= NULL;
 
   /* Allow to execute DDL operations. */
-
   ddl_blocker_exception_on(thd);
 
   /* Run queries from the serialization image. */
-
   while ((sql_text= it++))
   {
     Ed_result result;
@@ -857,7 +853,6 @@ Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
       result->get_warnings().elements > 0)
   {
     /* There should be no warnings. */
-
     delete result;
     return NULL;
   }
@@ -923,7 +918,9 @@ typedef Ed_result_set_iterator<View_obj>        Db_views_iterator;
 typedef Ed_result_set_iterator<Trigger_obj>     Db_trigger_iterator;
 typedef Ed_result_set_iterator<Stored_proc_obj> Db_stored_proc_iterator;
 typedef Ed_result_set_iterator<Stored_func_obj> Db_stored_func_iterator;
+#ifdef HAVE_EVENT_SCHEDULER
 typedef Ed_result_set_iterator<Event_obj>       Db_event_iterator;
+#endif
 typedef Ed_result_set_iterator<Grant_obj>       Grant_iterator;
 
 ///////////////////////////////////////////////////////////////////////////
@@ -935,7 +932,9 @@ template class Ed_result_set_iterator<View_obj>;
 template class Ed_result_set_iterator<Trigger_obj>;
 template class Ed_result_set_iterator<Stored_proc_obj>;
 template class Ed_result_set_iterator<Stored_func_obj>;
+#ifdef HAVE_EVENT_SCHEDULER
 template class Ed_result_set_iterator<Event_obj>;
+#endif
 template class Ed_result_set_iterator<Grant_obj>;
 
 template
@@ -1240,7 +1239,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
   {
     String_stream ss;
     ss <<
-      "SHOW CREATE DATABASE `" << m_db_name << "`";
+      "SHOW CREATE DATABASE `" << &m_db_name << "`";
 
     if (run_query(thd, ss.lxs(), &result) ||
         result.get_warnings().elements > 0)
@@ -1279,7 +1278,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 
   {
     String_stream ss;
-    ss << "DROP DATABASE IF EXISTS `" << m_db_name << "`";
+    ss << "DROP DATABASE IF EXISTS `" << &m_db_name << "`";
     os << ss;
   }
 
@@ -1331,7 +1330,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   {
     String_stream ss;
     ss <<
-      "SHOW CREATE TABLE `" << m_db_name << "`.`" << m_id << "`";
+      "SHOW CREATE TABLE `" << &m_db_name << "`.`" << &m_id << "`";
 
     if (run_query(thd, ss.lxs(), &result) ||
         result.get_warnings().elements > 0)
@@ -1370,7 +1369,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
 
   {
     String_stream ss;
-    ss << "USE `" << m_db_name << "`";
+    ss << "USE `" << &m_db_name << "`";
     os << ss;
   }
 
@@ -1410,8 +1409,8 @@ get_view_create_stmt(THD *thd,
   {
     String_stream ss;
     ss <<
-      "SHOW CREATE VIEW `" << *view->get_db_name() << "`."
-                       "`" << *view->get_name() << "`";
+      "SHOW CREATE VIEW `" << view->get_db_name() << "`."
+                       "`" << view->get_name() << "`";
 
     if (run_query(thd, ss.lxs(), &result) ||
         result.get_warnings().elements > 0)
@@ -1483,14 +1482,14 @@ dump_base_object_stubs(THD *thd,
     {
       String_stream ss;
       ss <<
-        "CREATE DATABASE IF NOT EXISTS `" << *base_obj->get_db_name() << "`";
+        "CREATE DATABASE IF NOT EXISTS `" << base_obj->get_db_name() << "`";
       os << ss;
     }
 
     base_obj_stmt <<
       "CREATE TABLE IF NOT EXISTS "
-        "`" << *base_obj->get_db_name() << "`."
-        "`" << *base_obj->get_name() << "` (";
+        "`" << base_obj->get_db_name() << "`."
+        "`" << base_obj->get_name() << "` (";
 
     /* Get base obj structure. */
 
@@ -1499,8 +1498,8 @@ dump_base_object_stubs(THD *thd,
     {
       String_stream ss;
       ss <<
-        "SHOW COLUMNS FROM `" << *base_obj->get_db_name() << "`."
-                          "`" << *base_obj->get_name() << "`";
+        "SHOW COLUMNS FROM `" << base_obj->get_db_name() << "`."
+                          "`" << base_obj->get_name() << "`";
 
       if (run_query(thd, ss.lxs(), &result) ||
           result.get_warnings().elements > 0)
@@ -1621,7 +1620,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 
   {
     String_stream ss;
-    ss << "USE `" << m_db_name << "`";
+    ss << "USE `" << &m_db_name << "`";
     os << ss;
   }
 
@@ -1665,7 +1664,7 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
   {
     String_stream ss;
     ss <<
-      "SHOW CREATE " << get_type() << " `" << m_db_name << "`.`" << m_id << "`";
+      "SHOW CREATE " << get_type() << " `" << &m_db_name << "`.`" << &m_id << "`";
 
     if (run_query(thd, ss.lxs(), &result) ||
         result.get_warnings().elements > 0)
@@ -1697,7 +1696,7 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
 
   {
     String_stream ss;
-    ss << "USE `" << m_db_name << "`";
+    ss << "USE `" << &m_db_name << "`";
     os << ss;
   }
   dump_header(row, os);
@@ -1923,7 +1922,7 @@ bool Tablespace_obj::do_serialize(THD *thd, Out_stream &os)
 {
   DBUG_ENTER("Tablespace_obj::do_serialize");
 
-  os << *get_description();
+  os << get_description();
 
   DBUG_RETURN(FALSE);
 }
@@ -1976,13 +1975,13 @@ const String *Tablespace_obj::get_description()
   String_stream ss(&m_description);
 
   ss <<
-    "CREATE TABLESPACE `" << m_id << "` "
-      "ADD DATAFILE '" << m_data_file_name << "' ";
+    "CREATE TABLESPACE `" << &m_id << "` "
+      "ADD DATAFILE '" << &m_data_file_name << "' ";
 
   if (m_comment.length())
-    ss << "COMMENT = '" << m_comment << "' ";
+    ss << "COMMENT = '" << &m_comment << "' ";
 
-  ss << "ENGINE = " << m_engine;
+  ss << "ENGINE = " << &m_engine;
 
   DBUG_RETURN(&m_description);
 }
@@ -2003,7 +2002,7 @@ generate_unique_grant_id(const String *user_name, String *id)
   if (user_name->length())
     ss << "<empty>";
   else
-    ss << *user_name;
+    ss << user_name;
 
   ss << " " << Int_value(++id_counter);
 }
@@ -2081,12 +2080,12 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ENTER("Grant_obj::do_serialize");
 
   os <<
-    m_user_name <<
-    m_grant_info <<
+    &m_user_name <<
+    &m_grant_info <<
     "SET character_set_client= binary";
 
   String_stream ss;
-  ss << "GRANT " << m_grant_info << " TO " << m_user_name;
+  ss << "GRANT " << &m_grant_info << " TO " << &m_user_name;
 
   os << ss;
 
@@ -2137,9 +2136,9 @@ Obj_iterator *get_db_tables(THD *thd, const String *db_name)
   String_stream ss;
 
   ss <<
-    "SELECT '" << *db_name << "', table_name "
+    "SELECT '" << db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
-    "WHERE table_schema = '" << *db_name << "' AND "
+    "WHERE table_schema = '" << db_name << "' AND "
           "table_type = 'BASE TABLE'";
 
   return create_row_set_iterator<Db_tables_iterator>(thd, ss.lxs());
@@ -2151,9 +2150,9 @@ Obj_iterator *get_db_views(THD *thd, const String *db_name)
   String_stream ss;
 
   ss <<
-    "SELECT '" << *db_name << "', table_name "
+    "SELECT '" << db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
-    "WHERE table_schema = '" << *db_name << "' AND table_type = 'VIEW'";
+    "WHERE table_schema = '" << db_name << "' AND table_type = 'VIEW'";
 
   return create_row_set_iterator<Db_views_iterator>(thd, ss.lxs());
 }
@@ -2163,9 +2162,9 @@ Obj_iterator *get_db_triggers(THD *thd, const String *db_name)
 {
   String_stream ss;
   ss <<
-    "SELECT '" << *db_name << "', trigger_name "
+    "SELECT '" << db_name << "', trigger_name "
     "FROM INFORMATION_SCHEMA.TRIGGERS "
-    "WHERE trigger_schema = '" << *db_name << "'";
+    "WHERE trigger_schema = '" << db_name << "'";
 
   return create_row_set_iterator<Db_trigger_iterator>(thd, ss.lxs());
 }
@@ -2175,9 +2174,9 @@ Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
 {
   String_stream ss;
   ss <<
-    "SELECT '" << *db_name << "', routine_name "
+    "SELECT '" << db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
-    "WHERE routine_schema = '" << *db_name << "' AND "
+    "WHERE routine_schema = '" << db_name << "' AND "
           "routine_type = 'PROCEDURE'";
 
   return create_row_set_iterator<Db_stored_proc_iterator>(thd, ss.lxs());
@@ -2188,9 +2187,9 @@ Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
 {
   String_stream ss;
   ss <<
-    "SELECT '" << *db_name << "', routine_name "
+    "SELECT '" << db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
-    "WHERE routine_schema = '" << *db_name <<"' AND "
+    "WHERE routine_schema = '" << db_name <<"' AND "
           "routine_type = 'FUNCTION'";
 
   return create_row_set_iterator<Db_stored_func_iterator>(thd, ss.lxs());
@@ -2202,9 +2201,9 @@ Obj_iterator *get_db_events(THD *thd, const String *db_name)
 #ifdef HAVE_EVENT_SCHEDULER
   String_stream ss;
   ss <<
-    "SELECT '" << *db_name << "', event_name "
+    "SELECT '" << db_name << "', event_name "
     "FROM INFORMATION_SCHEMA.EVENTS "
-    "WHERE event_schema = '" << *db_name <<"'";
+    "WHERE event_schema = '" << db_name <<"'";
 
   return create_row_set_iterator<Db_event_iterator>(thd, ss.lxs());
 #else
@@ -2224,7 +2223,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
             "NULL AS c5 "
     "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
          "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << *db_name << "' AND "
+    "WHERE t1.table_schema = '" << db_name << "' AND "
           "t1.grantee = t2.grantee) "
     "UNION "
     "(SELECT t1.grantee, "
@@ -2234,7 +2233,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
             "NULL "
     "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
          "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << *db_name << "' AND "
+    "WHERE t1.table_schema = '" << db_name << "' AND "
           "t1.grantee = t2.grantee) "
     "UNION "
     "(SELECT t1.grantee, "
@@ -2244,7 +2243,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
             "t1.column_name "
     "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
          "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << *db_name << "' AND "
+    "WHERE t1.table_schema = '" << db_name << "' AND "
           "t1.grantee = t2.grantee) "
     "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
 
@@ -2398,7 +2397,7 @@ bool check_db_existence(THD *thd, const String *db_name)
   String_stream ss;
   int rc;
 
-  ss << "SHOW CREATE DATABASE `" << *db_name << "`";
+  ss << "SHOW CREATE DATABASE `" << db_name << "`";
 
   Ed_result result;
   rc= run_query(thd, ss.lxs(), &result);
@@ -2423,7 +2422,7 @@ bool check_user_existence(THD *thd, const Obj *obj)
     ss <<
       "SELECT 1 "
       "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
-      "WHERE grantee = \"" << *grant_obj->get_user_name() << "\"";
+      "WHERE grantee = \"" << grant_obj->get_user_name() << "\"";
 
 
     if (run_query(thd, ss.lxs(), &result) ||
@@ -2470,7 +2469,7 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
       "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
            "INFORMATION_SCHEMA.FILES AS t2 "
       "WHERE t1.tablespace_name = t2.tablespace_name AND "
-           "t1.tablespace_name = '" << *ts_name << "'";
+           "t1.tablespace_name = '" << ts_name << "'";
 
 
     if (run_query(thd, ss.lxs(), &result) ||
@@ -2534,8 +2533,8 @@ Obj *find_tablespace_for_table(THD *thd,
            "INFORMATION_SCHEMA.TABLES AS t3 "
       "WHERE t1.tablespace_name = t2.tablespace_name AND "
            "t2.tablespace_name = t3.tablespace_name AND "
-           "t3.table_schema = '" << *db_name << "' AND "
-           "t3.table_name = '" << *table_name << "'";
+           "t3.table_schema = '" << db_name << "' AND "
+           "t3.table_name = '" << table_name << "'";
 
 
     if (run_query(thd, ss.lxs(), &result) ||
