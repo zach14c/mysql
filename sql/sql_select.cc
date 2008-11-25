@@ -8895,8 +8895,8 @@ static bool make_join_select(JOIN *join, Item *cond)
       }
 
       if (save_used_tables && !(used_tables & 
-                                ~tab->emb_sj_nest->sj_inner_tables &
-                                ~PSEUDO_TABLE_BITS))
+                                ~(tab->emb_sj_nest->sj_inner_tables |
+                                  join->const_table_map | PSEUDO_TABLE_BITS)))
       {
         /*
           We have reached the end of semi join nest. That is, the join order

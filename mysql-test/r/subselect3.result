@@ -1056,4 +1056,11 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Y	ALL	NULL	NULL	NULL	NULL	10	Using join buffer
 2	SUBQUERY	A	ALL	NULL	NULL	NULL	NULL	10	
 2	SUBQUERY	B	ALL	NULL	NULL	NULL	NULL	10	Using join buffer
-drop table t1, t2, t3;
+create table t0 (a int);
+insert into t0 values(1);
+explain select * from t0, t3 where t3.a in (select a from t2) and (t3.a < 10 or t3.a >30);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t0	system	NULL	NULL	NULL	NULL	1	
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	10	Using where; Materialize; Scan
+1	PRIMARY	t3	ref	a	a	5	test.t2.a	10	
+drop table t0,t1,t2,t3;
