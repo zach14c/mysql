@@ -169,8 +169,7 @@ int Image_info::add_snapshot(Snapshot_info &snap)
 {
   uint num= st_bstream_image_header::snap_count++;
 
-  // The limit of 256 snapshots is imposed by backup stream format.  
-  if (num > 256)
+  if (num > MAX_SNAP_COUNT)
     return -1;
   
   m_snap[num]= &snap;

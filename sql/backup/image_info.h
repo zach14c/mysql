@@ -10,6 +10,16 @@
 #include <backup_stream.h> // for st_bstream_* types
 #include <backup/backup_aux.h>  // for Map template
 
+/**
+  @brief The maximal number of table data snapshots per backup image.
+  
+  @note This limit is determined by the backup image format used and can
+  not be changed. Currently we use version 1 of the image format in which
+  one byte is used to store snapshot numbers, hence the limit is 256.
+*/ 
+#define MAX_SNAP_COUNT  256
+
+
 class Backup_restore_ctx;
 
 namespace backup {
@@ -101,12 +111,8 @@ public: // public interface
    /**
      Pointers to @c Snapshot_info objects corresponding to the snapshots
      present in the image.
-     
-     We can have at most 256 different snapshots which is a limitation imposed
-     by the backup stream library (the number of snapshots is stored inside 
-     backup image using one byte field).
     */ 
-   Snapshot_info *m_snap[256];
+   Snapshot_info *m_snap[MAX_SNAP_COUNT];
    
    // save timing & binlog info 
    
