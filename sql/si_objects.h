@@ -2,15 +2,22 @@
 #define SI_OBJECTS_H_
 
 /**
-   @file
+  @file
 
-   This file defines the API for the following object services:
-     - serialize database objects into a string;
-     - materialize (deserialize) object from a string;
-     - enumerating objects;
-     - finding dependencies for objects;
-     - executor for SQL statements;
-     - wrappers for controlling the DDL Blocker;
+  An object in this file refers to SQL language database objects
+  such as tables, views, stored programs, events or users,
+  databases and tablespaces.
+  This file defines an API for the following object services:
+    - serialize object definition (metadata) into a string,
+    - materialize (de-serialize) object from a string,
+    - enumerate all objects of a database,
+    - find dependencies between objects, such as underlying tables of
+    views, tablespace of a table.
+
+  Additionally, the interface provides two helper services
+  for backup:
+    - execute an arbitrary SQL statement
+    - lock and unlock all metadata, so called "DDL blocker"
 */
 
 namespace obs {
@@ -47,11 +54,11 @@ public:
   virtual bool serialize(THD *thd, String *serialization) = 0;
 
   /**
-    Materialize an object in the database.
+    Create an object persistently in the database.
 
     @return Error status.
   */
-  virtual bool execute(THD *thd) = 0;
+  virtual bool create(THD *thd) = 0;
 
 public:
   virtual ~Obj()
@@ -60,7 +67,7 @@ public:
 protected:
   /**
     Read the object state from a given buffer and restores object state to
-    the point, where it can be executed.
+    the point, where it can be created.
 
     @param[in] serialization_version The version of the serialization format.
     @param[in] serialization         Buffer contained serialized object.
@@ -69,59 +76,57 @@ protected:
       @retval FALSE on success.
       @retval TRUE on error.
   */
-  virtual bool materialize(uint serialization_version,
-                           const String *serialization) = 0;
+  virtual bool init_serialization(uint serialization_version,
+                                  const String *serialization_buffer) = 0;
 
 private:
-  friend Obj *materialize_database(const String *,
-                                   uint,
-                                   const String *);
+  friend Obj *get_database(const String *,
+                           uint,
+                           const String *);
 
-  friend Obj *materialize_table(const String *,
-                                const String *,
-                                uint,
-                                const String *);
+  friend Obj *get_table(const String *,
+                        const String *, uint,
+                        const String *);
 
-  friend Obj *materialize_view(const String *,
-                               const String *,
-                               uint,
-                               const String *);
+  friend Obj *get_view(const String *,
+                       const String *,
+                       uint,
+                       const String *);
 
-  friend Obj *materialize_trigger(const String *,
-                                  const String *,
-                                  uint,
-                                  const String *);
+  friend Obj *get_trigger(const String *,
+                          const String *,
+                          uint,
+                          const String *);
 
-  friend Obj *materialize_stored_procedure(const String *,
-                                           const String *,
-                                           uint,
-                                           const String *);
-
-  friend Obj *materialize_stored_function(const String *,
-                                          const String *,
-                                          uint,
-                                          const String *);
-
-  friend Obj *materialize_event(const String *,
-                                const String *,
-                                uint,
-                                const String *);
-
-  friend Obj *materialize_tablespace(const String *,
-                                     uint,
-                                     const String *);
-
-  friend Obj *materialize_db_grant(const String *,
+  friend Obj *get_stored_procedure(const String *,
                                    const String *,
                                    uint,
                                    const String *);
 
+  friend Obj *get_stored_function(const String *,
+                                  const String *,
+                                  uint,
+                                  const String *);
+
+  friend Obj *get_event(const String *,
+                        const String *,
+                        uint,
+                        const String *);
+
+  friend Obj *get_tablespace(const String *,
+                             uint,
+                             const String *);
+
+  friend Obj *get_db_grant(const String *,
+                           const String *,
+                           uint,
+                           const String *);
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Obj_iterator is a basic interface to enumerate the objects.
+  Obj_iterator is a basic interface to enumerate objects.
 */
 class Obj_iterator
 {
@@ -132,8 +137,10 @@ public:
   /**
     This operation returns a pointer to the next object in an enumeration.
     It returns NULL if there is no more objects.
+    Results of an attempt to continue iteration when there is no
+    more objects are undefined.
 
-    The client is responsible to destroy the returned object.
+    The client is responsible for destruction of the returned object.
 
     @return a pointer to the object
       @retval NULL if there is no more objects in an enumeration.
@@ -147,49 +154,51 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////
 
-// The functions in this section are intended to construct an instance of
-// Obj class for any particular database object. These functions do not
-// interact with the server to validate requested names. So, it is possible
-// to construct instances for non-existing objects.
+// Functions in this section are intended to construct an instance of Obj
+// class for any particular database object. These functions do not interact
+// with the server to validate requested names. So, it is possible to
+// construct instances for non-existing objects.
 //
 // The client is responsible for destroying the returned object.
 
 /**
   Construct an instance of Obj representing a database.
 
-  No actual actions are performed in the server. An object can be created
-  even for invalid database name or for non-existing database.
+  No actions are performed in the server. An object can be created
+  even for an invalid database name or for a non-existing database.
 
-  The client is responsible to destroy the created object.
+  The client is responsible for destruction of the created object.
 
   @param[in] db_name Database name.
 
-  @return a pointer to an instance of Obj representing given database.
+  @return a pointer to an instance of Obj representing the given database.
 */
-Obj *get_database(const String *db_name);
+Obj *get_database_stub(const String *db_name);
 
 ///////////////////////////////////////////////////////////////////////////
 
-// The functions in this section provides a way to iterator over all
-// objects in the server or in the particular database.
+// Functions in this section provide a way to iterate over all objects in
+// the server or in a particular database.
 //
-// The client is responsible for destroying the returned iterator.
+// The client is responsible for destruction of the returned iterator.
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
   Create an iterator over all databases in the server.
+  Includes system databases, such as "mysql" and "information_schema".
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
 */
 Obj_iterator *get_databases(THD *thd);
 
 /**
-  Create an iterator over all tables in the particular database.
+  Create an iterator over all base tables in a particular database.
+  Temporary tables are not included.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -197,9 +206,9 @@ Obj_iterator *get_databases(THD *thd);
 Obj_iterator *get_db_tables(THD *thd, const String *db_name);
 
 /**
-  Create an iterator over all views in the particular database.
+  Create an iterator over all views in a particular database.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -207,9 +216,9 @@ Obj_iterator *get_db_tables(THD *thd, const String *db_name);
 Obj_iterator *get_db_views(THD *thd, const String *db_name);
 
 /**
-  Create an iterator over all triggers in the particular database.
+  Create an iterator over all triggers in a particular database.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -217,9 +226,9 @@ Obj_iterator *get_db_views(THD *thd, const String *db_name);
 Obj_iterator *get_db_triggers(THD *thd, const String *db_name);
 
 /**
-  Create an iterator over all stored procedures in the particular database.
+  Create an iterator over all stored procedures in a particular database.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -227,9 +236,9 @@ Obj_iterator *get_db_triggers(THD *thd, const String *db_name);
 Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name);
 
 /**
-  Create an iterator over all stored functions in the particular database.
+  Create an iterator over all stored functions in a particular database.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -237,9 +246,9 @@ Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name);
 Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name);
 
 /**
-  Create an iterator over all events in the particular database.
+  Create an iterator over all events in a particular database.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -248,9 +257,8 @@ Obj_iterator *get_db_events(THD *thd, const String *db_name);
 
 /*
   Creates a high-level iterator that iterates over database-, table-,
-  routine-, and column-level privileges which shall permit a single
-  iterator from the si_objects to retrieve all of the privileges for
-  a given database.
+  routine-, and column-level- privileges. This allows to retrieve all
+  privileges of a given database using a single iterator.
 */
 Obj_iterator *get_all_db_grants(THD *thd, const String *db_name);
 
@@ -258,14 +266,14 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name);
 
 // The functions are intended to enumerate dependent objects.
 //
-// The client is responsible for destroying the returned iterator.
+// The client is responsible for destruction of the returned iterator.
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Create an iterator overl all base tables in the particular view.
+  Create an iterator over all base tables of a view.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -275,9 +283,9 @@ Obj_iterator* get_view_base_tables(THD *thd,
                                    const String *view_name);
 
 /**
-  Create an iterator overl all base tables in the particular view.
+  Create an iterator over all base views of a particular view.
 
-  The client is responsible to destroy the returned iterator.
+  The client is responsible for destruction of the returned iterator.
 
   @return a pointer to an iterator object.
     @retval NULL in case of error.
@@ -288,55 +296,57 @@ Obj_iterator* get_view_base_views(THD *thd,
 
 ///////////////////////////////////////////////////////////////////////////
 
-// The functions in this section provides a way to materialize objects from
-// the serialized form.
+// Functions in this section provide a way to materialize objects from their
+// serialized form (serialization image). In order to do that, the client
+// creates an object handle, by means of one of the functions below, and
+// then calls "create()" method on it.
 //
-// The client is responsible for destroying the returned iterator.
+// The client is responsible for destruction of the returned object handle.
 
 ///////////////////////////////////////////////////////////////////////////
 
-Obj *materialize_database(const String *db_name,
+Obj *get_database(const String *db_name,
+                  uint serialization_version,
+                  const String *serialization);
+
+Obj *get_table(const String *db_name,
+               const String *table_name,
+               uint serialization_version,
+               const String *serialization);
+
+Obj *get_view(const String *db_name,
+              const String *view_name,
+              uint serialization_version,
+              const String *serialization);
+
+Obj *get_trigger(const String *db_name,
+                 const String *trigger_name,
+                 uint serialization_version,
+                 const String *serialization);
+
+Obj *get_stored_procedure(const String *db_name,
+                          const String *stored_proc_name,
                           uint serialization_version,
                           const String *serialization);
 
-Obj *materialize_table(const String *db_name,
-                       const String *table_name,
-                       uint serialization_version,
-                       const String *serialization);
-
-Obj *materialize_view(const String *db_name,
-                      const String *view_name,
-                      uint serialization_version,
-                      const String *serialization);
-
-Obj *materialize_trigger(const String *db_name,
-                         const String *trigger_name,
+Obj *get_stored_function(const String *db_name,
+                         const String *stored_func_name,
                          uint serialization_version,
                          const String *serialization);
 
-Obj *materialize_stored_procedure(const String *db_name,
-                                  const String *stored_proc_name,
-                                  uint serialization_version,
-                                  const String *serialization);
+Obj *get_event(const String *db_name,
+               const String *event_name,
+               uint serialization_version,
+               const String *serialization);
 
-Obj *materialize_stored_function(const String *db_name,
-                                 const String *stored_func_name,
-                                 uint serialization_version,
-                                 const String *serialization);
+Obj *get_tablespace(const String *ts_name,
+                    uint serialization_version,
+                    const String *serialization);
 
-Obj *materialize_event(const String *db_name,
-                       const String *event_name,
-                       uint serialization_version,
-                       const String *serialization);
-
-Obj *materialize_tablespace(const String *ts_name,
-                            uint serialization_version,
-                            const String *serialization);
-
-Obj *materialize_db_grant(const String *db_name,
-                          const String *name,
-                          uint serialization_version,
-                          const String *serialization);
+Obj *get_db_grant(const String *db_name,
+                  const String *name,
+                  uint serialization_version,
+                  const String *serialization);
 
 ///////////////////////////////////////////////////////////////////////////
 

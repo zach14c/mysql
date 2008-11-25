@@ -1118,7 +1118,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
       
       case BSTREAM_IT_TRIGGER:
         DBUG_ASSERT(obj->m_obj_ptr);
-        if (obj->m_obj_ptr->execute(m_thd))
+        if (obj->m_obj_ptr->create(m_thd))
         {
           delete it;
           delete dbit;
@@ -1141,7 +1141,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   Image_info::Obj *ev;
 
   while ((ev= it++)) 
-    if (ev->m_obj_ptr->execute(m_thd))
+    if (ev->m_obj_ptr->create(m_thd))
     {
       fatal_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
       DBUG_RETURN(m_error);
@@ -1980,7 +1980,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     }
   }
 
-  if (sobj->execute(thd))
+  if (sobj->create(thd))
   {
     info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;

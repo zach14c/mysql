@@ -57,7 +57,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
     {
       String dir;
       dir.copy(dbname->str, dbname->length, system_charset_info);
-      db= get_database(&dir);
+      db= get_database_stub(&dir);
 
       if (is_internal_db_name(db->get_db_name()))
           continue;

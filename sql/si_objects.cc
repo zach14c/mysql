@@ -1,13 +1,13 @@
 /**
-   @file
+  @file
 
-   This file defines the API for the following object services:
-     - serialize database objects into a string;
-     - materialize (deserialize) object from a string;
-     - enumerating objects;
-     - finding dependencies for objects;
-     - executor for SQL statements;
-     - wrappers for controlling the DDL Blocker;
+  This file defines the API for the following object services:
+  - serialize database objects into a string;
+  - materialize (deserialize) object from a string;
+  - enumerating objects;
+  - finding dependencies for objects;
+  - executor for SQL statements;
+  - wrappers for controlling the DDL Blocker;
 
   The methods defined below are used to provide server functionality to
   and permitting an isolation layer for the client (caller).
@@ -339,9 +339,9 @@ bool In_stream::next(LEX_STRING *chunk)
   chunk->length= atoi(buffer);
 
   m_read_ptr+= n /* chunk length */
-               + 1 /* delimiter (a space) */
-               + chunk->length /* chunk */
-               + 1; /* chunk delimiter (\n) */
+    + 1 /* delimiter (a space) */
+    + chunk->length /* chunk */
+    + 1; /* chunk delimiter (\n) */
 
   return FALSE;
 }
@@ -367,13 +367,13 @@ public:
 public:
   virtual bool serialize(THD *thd, String *serialization);
 
-  virtual bool execute(THD *thd);
+  virtual bool create(THD *thd);
 
 protected:
-  virtual bool materialize(uint serialization_version,
-                           const String *serialization);
+  virtual bool init_serialization(uint serialization_version,
+                                  const String *serialization_buffer);
 
-  virtual bool do_materialize(In_stream *is);
+  virtual bool do_init_serialization(In_stream *is);
 
   /**
     Primitive implementing @c serialize() method.
@@ -442,8 +442,8 @@ Abstract_obj::~Abstract_obj()
   @param[in] serialization Buffer to serialize the object
 
   @return error status.
-    @retval FALSE on success.
-    @retval TRUE on error.
+  @retval FALSE on success.
+  @retval TRUE on error.
 
   @note The real work is done inside @c do_serialize() primitive which should be
   defied in derived classes. This method prepares appropriate context and calls
@@ -472,11 +472,11 @@ bool Abstract_obj::serialize(THD *thd, String *serialization)
   @param[in] thd              Server thread context.
 
   @return error status.
-    @retval FALSE on success.
-    @retval TRUE on error.
+  @retval FALSE on success.
+  @retval TRUE on error.
 */
 
-bool Abstract_obj::execute(THD *thd)
+bool Abstract_obj::create(THD *thd)
 {
   bool rc= FALSE;
   List_iterator_fast<String> it(m_stmt_list);
@@ -484,15 +484,15 @@ bool Abstract_obj::execute(THD *thd)
 
   /*
     Preserve the following session attributes:
-      - sql_mode;
-      - character_set_client;
-      - character_set_results;
-      - collation_connection;
-      - time_zone;
+    - sql_mode;
+    - character_set_client;
+    - character_set_results;
+    - collation_connection;
+    - time_zone;
 
-    NOTE: other session variables are not preserved, so serialization image
-    must take care to clean up the environment after itself.
-  */
+NOTE: other session variables are not preserved, so serialization image
+must take care to clean up the environment after itself.
+*/
   ulong sql_mode_saved= thd->variables.sql_mode;
   Time_zone *tz_saved= thd->variables.time_zone;
   CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
@@ -502,10 +502,10 @@ bool Abstract_obj::execute(THD *thd)
 
   /*
     Reset session state to the following:
-      - sql_mode: 0
-      - character_set_client: utf8
-      - character_set_results: binary
-      - collation_connection: utf8
+    - sql_mode: 0
+    - character_set_client: utf8
+    - character_set_results: binary
+    - collation_connection: utf8
   */
   thd->variables.sql_mode= 0;
   thd->variables.character_set_client= system_charset_info;
@@ -550,19 +550,19 @@ bool Abstract_obj::execute(THD *thd)
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Abstract_obj::materialize(uint serialization_version,
-                               const String *serialization)
+bool Abstract_obj::init_serialization(uint serialization_version,
+                                      const String *serialization_buffer)
 {
   m_stmt_list.delete_elements();
 
-  In_stream is(serialization_version, serialization);
+  In_stream is(serialization_version, serialization_buffer);
 
-  return do_materialize(&is);
+  return do_init_serialization(&is);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Abstract_obj::do_materialize(In_stream *is)
+bool Abstract_obj::do_init_serialization(In_stream *is)
 {
   LEX_STRING sql_text;
   while (! is->next(&sql_text))
@@ -792,8 +792,8 @@ public:
 protected:
   virtual bool do_serialize(THD *thd, Out_stream &os);
 
-  virtual bool materialize(uint serialization_version,
-                           const String *serialization);
+  virtual bool init_serialization(uint serialization_version,
+                                  const String *serialization);
 
 private:
   /* These attributes are to be used only for serialization. */
@@ -824,7 +824,7 @@ public:
   Grant_obj(const Ed_row &ed_row);
 
 public:
-  virtual bool do_materialize(In_stream *is);
+  virtual bool do_init_serialization(In_stream *is);
 
 public:
   virtual inline const String *get_db_name() const { return NULL; }
@@ -867,7 +867,7 @@ Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 ///////////////////////////////////////////////////////////////////////////
 
 template <typename Obj_type>
-class Ed_result_set_iterator : public Obj_iterator
+  class Ed_result_set_iterator : public Obj_iterator
 {
 public:
   inline Ed_result_set_iterator(Ed_result *result);
@@ -988,8 +988,8 @@ public:
 
 protected:
   template <typename Iterator>
-  static Iterator *create(THD *thd,
-                          const String *db_name, const String *view_name);
+    static Iterator *create(THD *thd,
+                            const String *db_name, const String *view_name);
 
 protected:
   bool init(THD *thd, const String *db_name, const String *view_name);
@@ -1154,8 +1154,9 @@ protected:
 
 template
 View_base_table_iterator *
-View_base_obj_iterator::create<View_base_table_iterator>(
-  THD *thd, const String *db_name, const String *view_name);
+View_base_obj_iterator::
+create<View_base_table_iterator>(THD *thd, const String *db_name,
+                                 const String *view_name);
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -1184,8 +1185,9 @@ protected:
 
 template
 View_base_view_iterator *
-View_base_obj_iterator::create<View_base_view_iterator>(
-  THD *thd, const String *db_name, const String *view_name);
+View_base_obj_iterator::
+create<View_base_view_iterator>(THD *thd, const String *db_name,
+                                const String *view_name);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1210,12 +1212,12 @@ Database_obj::Database_obj(LEX_STRING db_name)
   @param[out] os  Output stream.
 
   @note this method will return an error if the db_name is either
-        mysql or information_schema as these are not objects that
-        should be recreated using this interface.
+  mysql or information_schema as these are not objects that
+  should be recreated using this interface.
 
   @returns Error status.
-   @retval FALSE on success
-   @retval TRUE on error
+  @retval FALSE on success
+  @retval TRUE on error
 */
 
 bool Database_obj::do_serialize(THD *thd, Out_stream &os)
@@ -1311,8 +1313,8 @@ Table_obj::Table_obj(LEX_STRING db_name, LEX_STRING table_name)
   @param[out] os  Output stream.
 
   @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
+  @retval FALSE on success
+  @retval TRUE on error
 */
 
 bool Table_obj::do_serialize(THD *thd, Out_stream &os)
@@ -1382,8 +1384,8 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 View_obj::View_obj(const Ed_row &ed_row)
-: Abstract_obj(ed_row[0], /* schema name */
-               ed_row[1]) /* view name */
+  : Abstract_obj(ed_row[0], /* schema name */
+                 ed_row[1]) /* view name */
 { }
 
 View_obj::View_obj(LEX_STRING db_name, LEX_STRING view_name)
@@ -1410,7 +1412,7 @@ get_view_create_stmt(THD *thd,
     String_stream ss;
     ss <<
       "SHOW CREATE VIEW `" << view->get_db_name() << "`."
-                       "`" << view->get_name() << "`";
+      "`" << view->get_name() << "`";
 
     if (run_query(thd, ss.lxs(), &result) ||
         result.get_warnings().elements > 0)
@@ -1488,8 +1490,8 @@ dump_base_object_stubs(THD *thd,
 
     base_obj_stmt <<
       "CREATE TABLE IF NOT EXISTS "
-        "`" << base_obj->get_db_name() << "`."
-        "`" << base_obj->get_name() << "` (";
+      "`" << base_obj->get_db_name() << "`."
+      "`" << base_obj->get_name() << "` (";
 
     /* Get base obj structure. */
 
@@ -1499,7 +1501,7 @@ dump_base_object_stubs(THD *thd,
       String_stream ss;
       ss <<
         "SHOW COLUMNS FROM `" << base_obj->get_db_name() << "`."
-                          "`" << base_obj->get_name() << "`";
+        "`" << base_obj->get_name() << "`";
 
       if (run_query(thd, ss.lxs(), &result) ||
           result.get_warnings().elements > 0)
@@ -1570,8 +1572,8 @@ dump_base_object_stubs(THD *thd,
   @param[out] os  Output stream.
 
   @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
+  @retval FALSE on success
+  @retval TRUE on error
 */
 bool View_obj::do_serialize(THD *thd, Out_stream &os)
 {
@@ -1644,9 +1646,9 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
 ///////////////////////////////////////////////////////////////////////////
 
 Stored_program_obj::
-Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
+  Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
   : Abstract_obj(db_name, sp_name)
-{ }
+  { }
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1914,8 +1916,8 @@ Tablespace_obj::Tablespace_obj(LEX_STRING ts_name)
   @param[out] os  Output stream.
 
   @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
+  @retval FALSE on success
+  @retval TRUE on error
 */
 
 bool Tablespace_obj::do_serialize(THD *thd, Out_stream &os)
@@ -1929,10 +1931,10 @@ bool Tablespace_obj::do_serialize(THD *thd, Out_stream &os)
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Tablespace_obj::materialize(uint serialization_version,
-                                 const String *serialization)
+bool Tablespace_obj::init_serialization(uint serialization_version,
+                                        const String *serialization)
 {
-  if (Abstract_obj::materialize(serialization_version, serialization))
+  if (Abstract_obj::init_serialization(serialization_version, serialization))
     return TRUE;
 
   List_iterator_fast<String> it(m_stmt_list);
@@ -1976,7 +1978,7 @@ const String *Tablespace_obj::get_description()
 
   ss <<
     "CREATE TABLESPACE `" << &m_id << "` "
-      "ADD DATAFILE '" << &m_data_file_name << "' ";
+    "ADD DATAFILE '" << &m_data_file_name << "' ";
 
   if (m_comment.length())
     ss << "COMMENT = '" << &m_comment << "' ";
@@ -2067,12 +2069,12 @@ Grant_obj::Grant_obj(LEX_STRING name)
   @param[out] os  Output stream.
 
   @note this method will return an error if the db_name is either
-        mysql or information_schema as these are not objects that
-        should be recreated using this interface.
+  mysql or information_schema as these are not objects that
+  should be recreated using this interface.
 
   @returns Error status.
-    @retval FALSE on success
-    @retval TRUE on error
+  @retval FALSE on success
+  @retval TRUE on error
 */
 
 bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
@@ -2093,7 +2095,7 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
 }
 
 
-bool Grant_obj::do_materialize(In_stream *is)
+bool Grant_obj::do_init_serialization(In_stream *is)
 {
   LEX_STRING user_name;
   LEX_STRING grant_info;
@@ -2107,13 +2109,13 @@ bool Grant_obj::do_materialize(In_stream *is)
   m_user_name.copy(user_name.str, user_name.length, system_charset_info);
   m_grant_info.copy(grant_info.str, grant_info.length, system_charset_info);
 
-  return Abstract_obj::do_materialize(is);
+  return Abstract_obj::do_init_serialization(is);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-Obj *get_database(const String *db_name)
+Obj *get_database_stub(const String *db_name)
 {
   return new Database_obj(db_name->lex_string());
 }
@@ -2123,10 +2125,10 @@ Obj *get_database(const String *db_name)
 Obj_iterator *get_databases(THD *thd)
 {
   LEX_STRING query= { C_STRING_WITH_LEN(
-    "SELECT schema_name "
-    "FROM INFORMATION_SCHEMA.SCHEMATA "
-    "WHERE LCASE(schema_name) != 'mysql' AND "
-          "LCASE(schema_name) != 'information_schema'") };
+                                        "SELECT schema_name "
+                                        "FROM INFORMATION_SCHEMA.SCHEMATA "
+                                        "WHERE LCASE(schema_name) != 'mysql' AND "
+                                        "LCASE(schema_name) != 'information_schema'") };
 
   return create_row_set_iterator<Database_iterator>(thd, &query);
 }
@@ -2139,7 +2141,7 @@ Obj_iterator *get_db_tables(THD *thd, const String *db_name)
     "SELECT '" << db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
     "WHERE table_schema = '" << db_name << "' AND "
-          "table_type = 'BASE TABLE'";
+    "table_type = 'BASE TABLE'";
 
   return create_row_set_iterator<Db_tables_iterator>(thd, ss.lxs());
 }
@@ -2177,7 +2179,7 @@ Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
     "SELECT '" << db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
     "WHERE routine_schema = '" << db_name << "' AND "
-          "routine_type = 'PROCEDURE'";
+    "routine_type = 'PROCEDURE'";
 
   return create_row_set_iterator<Db_stored_proc_iterator>(thd, ss.lxs());
 }
@@ -2190,7 +2192,7 @@ Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
     "SELECT '" << db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
     "WHERE routine_schema = '" << db_name <<"' AND "
-          "routine_type = 'FUNCTION'";
+    "routine_type = 'FUNCTION'";
 
   return create_row_set_iterator<Db_stored_func_iterator>(thd, ss.lxs());
 }
@@ -2217,34 +2219,34 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
   String_stream ss;
   ss <<
     "(SELECT t1.grantee AS c1, "
-            "t1.privilege_type AS c2, "
-            "t1.table_schema AS c3, "
-            "NULL AS c4, "
-            "NULL AS c5 "
+    "t1.privilege_type AS c2, "
+    "t1.table_schema AS c3, "
+    "NULL AS c4, "
+    "NULL AS c5 "
     "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
-         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
     "WHERE t1.table_schema = '" << db_name << "' AND "
-          "t1.grantee = t2.grantee) "
+    "t1.grantee = t2.grantee) "
     "UNION "
     "(SELECT t1.grantee, "
-            "t1.privilege_type, "
-            "t1.table_schema, "
-            "t1.table_name, "
-            "NULL "
+    "t1.privilege_type, "
+    "t1.table_schema, "
+    "t1.table_name, "
+    "NULL "
     "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
-         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
     "WHERE t1.table_schema = '" << db_name << "' AND "
-          "t1.grantee = t2.grantee) "
+    "t1.grantee = t2.grantee) "
     "UNION "
     "(SELECT t1.grantee, "
-            "t1.privilege_type, "
-            "t1.table_schema, "
-            "t1.table_name, "
-            "t1.column_name "
+    "t1.privilege_type, "
+    "t1.table_schema, "
+    "t1.table_name, "
+    "t1.column_name "
     "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
-         "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
+    "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
     "WHERE t1.table_schema = '" << db_name << "' AND "
-          "t1.grantee = t2.grantee) "
+    "t1.grantee = t2.grantee) "
     "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
 
   return create_row_set_iterator<Grant_iterator>(thd, ss.lxs());
@@ -2272,103 +2274,127 @@ Obj_iterator* get_view_base_views(THD *thd,
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-Obj *materialize_database(const String *db_name,
-                          uint serialization_version,
-                          const String *serialization)
+Obj *get_database(const String *db_name,
+                  uint serialization_version,
+                  const String *serialization_buffer)
 {
   Obj *obj= new Database_obj(db_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  obj->init_serialization(serialization_version, serialization_buffer);
 
   return obj;
 }
 
-Obj *materialize_table(const String *db_name,
-                       const String *table_name,
-                       uint serialization_version,
-                       const String *serialization)
+Obj *get_table(const String *db_name,
+               const String *table_name,
+               uint serialization_version,
+               const String *serialization_buffer)
 {
   Obj *obj= new Table_obj(db_name->lex_string(), table_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  obj->init_serialization(serialization_version, serialization_buffer);
 
   return obj;
 }
 
-Obj *materialize_view(const String *db_name,
-                      const String *view_name,
-                      uint serialization_version,
-                      const String *serialization)
+Obj *get_view(const String *db_name,
+              const String *view_name,
+              uint serialization_version,
+              const String *serialization_buffer)
 {
   Obj *obj= new View_obj(db_name->lex_string(), view_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  obj->init_serialization(serialization_version, serialization_buffer);
 
   return obj;
 }
 
-Obj *materialize_trigger(const String *db_name,
-                         const String *trigger_name,
-                         uint serialization_version,
-                         const String *serialization)
+Obj *get_trigger(const String *db_name,
+                 const String *trigger_name,
+                 uint serialization_version,
+                 const String *serialization_buffer)
 {
   Obj *obj= new Trigger_obj(db_name->lex_string(), trigger_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  if (obj->init_serialization(serialization_version, serialization_buffer))
+  {
+    delete obj;
+    obj= 0;
+  }
 
   return obj;
 }
 
-Obj *materialize_stored_procedure(const String *db_name,
-                                  const String *sp_name,
-                                  uint serialization_version,
-                                  const String *serialization)
+Obj *get_stored_procedure(const String *db_name,
+                          const String *sp_name,
+                          uint serialization_version,
+                          const String *serialization_buffer)
 {
   Obj *obj= new Stored_proc_obj(db_name->lex_string(), sp_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  if (obj->init_serialization(serialization_version, serialization_buffer))
+  {
+    delete obj;
+    obj= 0;
+  }
 
   return obj;
 }
 
-Obj *materialize_stored_function(const String *db_name,
-                                 const String *sf_name,
-                                 uint serialization_version,
-                                 const String *serialization)
+Obj *get_stored_function(const String *db_name,
+                         const String *sf_name,
+                         uint serialization_version,
+                         const String *serialization_buffer)
 {
   Obj *obj= new Stored_func_obj(db_name->lex_string(), sf_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  if (obj->init_serialization(serialization_version, serialization_buffer))
+  {
+    delete obj;
+    obj= 0;
+  }
 
   return obj;
 }
 
 #ifdef HAVE_EVENT_SCHEDULER
 
-Obj *materialize_event(const String *db_name,
-                       const String *event_name,
-                       uint serialization_version,
-                       const String *serialization)
+Obj *get_event(const String *db_name,
+               const String *event_name,
+               uint serialization_version,
+               const String *serialization_buffer)
 {
   Obj *obj= new Event_obj(db_name->lex_string(), event_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  if (obj->init_serialization(serialization_version, serialization_buffer))
+  {
+    delete obj;
+    obj= 0;
+  }
 
   return obj;
 }
 
 #endif
 
-Obj *materialize_tablespace(const String *ts_name,
-                            uint serialization_version,
-                            const String *serialization)
+Obj *get_tablespace(const String *ts_name,
+                    uint serialization_version,
+                    const String *serialization_buffer)
 {
   Obj *obj= new Tablespace_obj(ts_name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  if (obj->init_serialization(serialization_version, serialization_buffer))
+  {
+    delete obj;
+    obj= 0;
+  }
 
   return obj;
 }
 
-Obj *materialize_db_grant(const String *db_name,
-                          const String *name,
-                          uint serialization_version,
-                          const String *serialization)
+Obj *get_db_grant(const String *db_name,
+                  const String *name,
+                  uint serialization_version,
+                  const String *serialization_buffer)
 {
   Obj *obj= new Grant_obj(name->lex_string());
-  obj->materialize(serialization_version, serialization);
+  if (obj->init_serialization(serialization_version, serialization_buffer))
+  {
+    delete obj;
+    obj= 0;
+  }
 
   return obj;
 }
@@ -2467,9 +2493,9 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
     ss <<
       "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
       "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
-           "INFORMATION_SCHEMA.FILES AS t2 "
+      "INFORMATION_SCHEMA.FILES AS t2 "
       "WHERE t1.tablespace_name = t2.tablespace_name AND "
-           "t1.tablespace_name = '" << ts_name << "'";
+      "t1.tablespace_name = '" << ts_name << "'";
 
 
     if (run_query(thd, ss.lxs(), &result) ||
@@ -2529,12 +2555,12 @@ Obj *find_tablespace_for_table(THD *thd,
     ss <<
       "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
       "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
-           "INFORMATION_SCHEMA.FILES AS t2, "
-           "INFORMATION_SCHEMA.TABLES AS t3 "
+      "INFORMATION_SCHEMA.FILES AS t2, "
+      "INFORMATION_SCHEMA.TABLES AS t3 "
       "WHERE t1.tablespace_name = t2.tablespace_name AND "
-           "t2.tablespace_name = t3.tablespace_name AND "
-           "t3.table_schema = '" << db_name << "' AND "
-           "t3.table_name = '" << table_name << "'";
+      "t2.tablespace_name = t3.tablespace_name AND "
+      "t3.table_schema = '" << db_name << "' AND "
+      "t3.table_name = '" << table_name << "'";
 
 
     if (run_query(thd, ss.lxs(), &result) ||
@@ -2596,15 +2622,15 @@ bool compare_tablespace_attributes(Obj *ts1, Obj *ts2)
 */
 
 /**
-   Turn on the ddl blocker
+  Turn on the ddl blocker
 
-   This method is used to start the ddl blocker blocking DDL commands.
+  This method is used to start the ddl blocker blocking DDL commands.
 
-   @param[in] thd  current thread
+  @param[in] thd  current thread
 
-   @retval FALSE on success.
-   @retval TRUE on error.
-  */
+  @retval FALSE on success.
+  @retval TRUE on error.
+*/
 bool ddl_blocker_enable(THD *thd)
 {
   DBUG_ENTER("obs::ddl_blocker_enable");
@@ -2614,10 +2640,10 @@ bool ddl_blocker_enable(THD *thd)
 }
 
 /**
-   Turn off the ddl blocker
+  Turn off the ddl blocker
 
-   This method is used to stop the ddl blocker from blocking DDL commands.
-  */
+  This method is used to stop the ddl blocker from blocking DDL commands.
+*/
 void ddl_blocker_disable()
 {
   DBUG_ENTER("obs::ddl_blocker_disable");
@@ -2626,13 +2652,13 @@ void ddl_blocker_disable()
 }
 
 /**
-   Turn on the ddl blocker exception
+  Turn on the ddl blocker exception
 
-   This method is used to allow the exception allowing a restore operation to
-   perform DDL operations while the ddl blocker blocking DDL commands.
+  This method is used to allow the exception allowing a restore operation to
+  perform DDL operations while the ddl blocker blocking DDL commands.
 
-   @param[in] thd  current thread
-  */
+  @param[in] thd  current thread
+*/
 void ddl_blocker_exception_on(THD *thd)
 {
   DBUG_ENTER("obs::ddl_blocker_exception_on");
@@ -2641,13 +2667,13 @@ void ddl_blocker_exception_on(THD *thd)
 }
 
 /**
-   Turn off the ddl blocker exception
+  Turn off the ddl blocker exception
 
-   This method is used to suspend the exception allowing a restore operation to
-   perform DDL operations while the ddl blocker blocking DDL commands.
+  This method is used to suspend the exception allowing a restore operation to
+  perform DDL operations while the ddl blocker blocking DDL commands.
 
-   @param[in] thd  current thread
-  */
+  @param[in] thd  current thread
+*/
 void ddl_blocker_exception_off(THD *thd)
 {
   DBUG_ENTER("obs::ddl_blocker_exception_off");

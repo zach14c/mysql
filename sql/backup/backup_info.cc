@@ -550,7 +550,7 @@ int Backup_info::add_dbs(THD *thd, List< ::LEX_STRING > &dbs)
       goto error;
     }
     
-    obs::Obj *obj= get_database(&db_name); // reports errors
+    obs::Obj *obj= get_database_stub(&db_name); // reports errors
 
     if (obj && !check_db_existence(thd, &db_name))
     {    
