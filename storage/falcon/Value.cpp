@@ -366,13 +366,25 @@ int Value::compare(Value * value)
 				if (scale != value->scale)
 					break;
 
-				return data.smallInt - value->data.smallInt;
+				if (data.smallInt > value->data.smallInt)
+					return 1;
+				
+				if (data.smallInt < value->data.smallInt)
+					return -1;
+
+				return 0;
 
 			case Int32:
 				if (scale != value->scale)
 					break;
 
-				return data.integer - value->data.integer;
+				if (data.integer > value->data.integer)
+					return 1;
+
+				if (data.integer < value->data.integer)
+					return -1;
+
+				return 0;
 
 			case Double:
 				if (data.dbl > value->data.dbl)
@@ -480,15 +492,34 @@ int Value::compare(Value * value)
 
 		case Double:
 		case Float:
-			return (int) (getDouble() - value->getDouble());
+			{
+			double v1 = getDouble();
+			double v2 = value->getDouble();
+
+			if (v1 > v2)
+				return 1;
+
+			if (v1 < v2)
+				return -1;
+
+			return 0;
+			}
 
 		case Int64:
 			{
 			int s1 = getScale();
 			int s2 = value->getScale();
 			int maxScale = MAX(s1, s2);
+			int64 v1 = getQuad(maxScale);
+			int64 v2 = value->getQuad(maxScale);
+ 
+			if (v1 > v2)
+				return 1;
 
-			return (int) (getQuad(maxScale) - value->getQuad(maxScale));
+			if (v1 < v2)
+				return -1;
+
+			return 0;
 			}
 
 		case Short:
@@ -497,8 +528,16 @@ int Value::compare(Value * value)
 			int s1 = getScale();
 			int s2 = value->getScale();
 			int maxScale = MAX(s1, s2);
+			int v1 = getInt(maxScale);
+			int v2 = value->getInt(maxScale);
 
-			return (int) (getInt(maxScale) - value->getInt(maxScale));
+			if (v1 > v2)
+				return 1;
+
+			if (v1 < v2)
+				return -1;
+
+				return 0;
 			}
 
 		case Date:
