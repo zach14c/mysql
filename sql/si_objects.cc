@@ -1,17 +1,19 @@
-/**
-  @file
+/* Copyright (C) 2008 MySQL AB
 
-  This file defines the API for the following object services:
-  - serialize database objects into a string;
-  - materialize (deserialize) object from a string;
-  - enumerating objects;
-  - finding dependencies for objects;
-  - executor for SQL statements;
-  - wrappers for controlling the DDL Blocker;
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License.
 
-  The methods defined below are used to provide server functionality to
-  and permitting an isolation layer for the client (caller).
-*/
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA */
+
+/** @file Server Service Interface for Backup: the implementation.  */
 
 #include "mysql_priv.h"
 #include "si_objects.h"
@@ -42,15 +44,18 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-bool run_query(THD *thd, const LEX_STRING *query, Ed_result *result)
+bool
+run_service_interface_sql(THD *thd, const LEX_STRING *query,
+                          Ed_result *ed_result)
 {
   ulong sql_mode_saved= thd->variables.sql_mode;
   CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
   CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
   CHARSET_INFO *connection_cl_saved= thd->variables.collation_connection;
+  TABLE *tmp_tables_saved= thd->temporary_tables;
 
-  DBUG_ENTER("run_query");
-  DBUG_PRINT("run_query",
+  DBUG_ENTER("run_service_interface_sql");
+  DBUG_PRINT("run_service_interface_sql",
              ("query: %.*s",
               (int) query->length, (const char *) query->str));
 
@@ -60,7 +65,6 @@ bool run_query(THD *thd, const LEX_STRING *query, Ed_result *result)
     Temporary tables should be ignored while looking for table structures.
     Backup wants to backup ordinary tables, not temporary ones.
   */
-  TABLE *tmp_tables_saved= thd->temporary_tables;
   thd->temporary_tables= NULL;
 
   /* A query is in UTF8 (internal character set). */
@@ -74,7 +78,7 @@ bool run_query(THD *thd, const LEX_STRING *query, Ed_result *result)
   thd->variables.collation_connection= system_charset_info;
   thd->update_charset();
 
-  bool rc= mysql_execute_direct(thd, *query, result);
+  bool rc= mysql_execute_direct(thd, *query, ed_result);
 
   thd->variables.sql_mode= sql_mode_saved;
   thd->variables.collation_connection= connection_cl_saved;
@@ -93,9 +97,9 @@ bool run_query(THD *thd, const LEX_STRING *query, Ed_result *result)
 struct Table_name_key
 {
 public:
-  static uchar * get_key(const uchar *record,
-                         size_t *key_length,
-                         my_bool not_used __attribute__((unused)));
+  static uchar *get_key(const uchar *record,
+                        size_t *key_length,
+                        my_bool not_used __attribute__((unused)));
 
   static void delete_key(void *data);
 
@@ -145,23 +149,25 @@ void Table_name_key::delete_key(void *data)
 
 struct Int_value
 {
-  int x;
+  unsigned long m_value;
 
-  Int_value(int _x)
-    :x(_x)
+  Int_value(unsigned long value_arg)
+    :m_value(value_arg)
   { }
 };
 
+
 struct C_str
 {
-  LEX_STRING lxs;
+  LEX_STRING lex_string;
 
-  C_str(const char *str, int length)
+  C_str(const char *str, size_t length)
   {
-    lxs.str= (char *) str;
-    lxs.length= length;
+    lex_string.str= (char *) str;
+    lex_string.length= length;
   }
 };
+
 
 class String_stream
 {
@@ -177,11 +183,10 @@ public:
 public:
   String *str() { return m_buffer; }
 
-  const LEX_STRING *lxs()
+  const LEX_STRING *lex_string()
   {
-    m_lxs.str= (char *) m_buffer->ptr();
-    m_lxs.length= m_buffer->length();
-    return &m_lxs;
+    m_lex_string= m_buffer->lex_string();
+    return &m_lex_string;
   }
 
 public:
@@ -194,25 +199,27 @@ public:
 private:
   String m_container;
   String *m_buffer;
-  LEX_STRING m_lxs;
+  LEX_STRING m_lex_string;
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-String_stream &String_stream::operator <<(const Int_value &v)
+String_stream &String_stream::operator <<(const Int_value &int_value)
 {
   char buffer[13];
-  my_snprintf(buffer, sizeof (buffer), "%lu", (unsigned long) v.x);
+  my_snprintf(buffer, sizeof (buffer), "%lu", int_value.m_value);
 
   m_buffer->append(buffer);
   return *this;
 }
 
+
 String_stream &String_stream::operator <<(const C_str &v)
 {
-  m_buffer->append(v.lxs.str, v.lxs.length);
+  m_buffer->append(v.lex_string.str, v.lex_string.length);
   return *this;
 }
+
 
 String_stream &String_stream::operator <<(const LEX_STRING *str)
 {
@@ -220,11 +227,13 @@ String_stream &String_stream::operator <<(const LEX_STRING *str)
   return *this;
 }
 
+
 String_stream &String_stream::operator <<(const String *str)
 {
   m_buffer->append(str->ptr(), str->length());
   return *this;
 }
+
 
 String_stream &String_stream::operator <<(const char *str)
 {
@@ -246,7 +255,7 @@ public:
   Out_stream &operator <<(const char *query);
   Out_stream &operator <<(const LEX_STRING *query);
   Out_stream &operator <<(const String *query);
-  Out_stream &operator <<(String_stream &ss);
+  Out_stream &operator <<(String_stream &s_stream);
 
 private:
   String *m_serialization;
@@ -264,9 +273,9 @@ Out_stream &Out_stream::operator <<(const char *query)
 
 Out_stream &Out_stream::operator <<(const LEX_STRING *query)
 {
-  String_stream ss(m_serialization);
+  String_stream s_stream(m_serialization);
 
-  ss <<
+  s_stream <<
     Int_value(query->length) << " " << query << "\n";
 
   return *this;
@@ -282,9 +291,9 @@ Out_stream &Out_stream::operator <<(const String *query)
 
 ///////////////////////////////////////////////////////////////////////////
 
-Out_stream &Out_stream::operator <<(String_stream &ss)
+Out_stream &Out_stream::operator <<(String_stream &s_stream)
 {
-  return Out_stream::operator <<(ss.str());
+  return Out_stream::operator <<(s_stream.str());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -294,8 +303,8 @@ class In_stream
 {
 public:
   In_stream(uint serialization_version,
-            const String *serialization) :
-    m_serialization_version(serialization_version),
+            const String *serialization)
+  : m_serialization_version(serialization_version),
     m_serialization(serialization),
     m_read_ptr(m_serialization->ptr()),
     m_end_ptr(m_serialization->ptr() + m_serialization->length())
@@ -348,7 +357,7 @@ bool In_stream::next(LEX_STRING *chunk)
 
 ///////////////////////////////////////////////////////////////////////////
 
-}
+} // end of anonymous namespace
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -376,9 +385,9 @@ protected:
   virtual bool do_init_serialization(In_stream *is);
 
   /**
-    Primitive implementing @c serialize() method.
+    A primitive implementing @c serialize() method.
   */
-  virtual bool do_serialize(THD *thd, Out_stream &os) = 0;
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream) = 0;
 
 protected:
   MEM_ROOT m_mem_root; /* This mem-root is for keeping stmt list. */
@@ -455,9 +464,9 @@ bool Abstract_obj::serialize(THD *thd, String *serialization)
   ulong sql_mode_saved= thd->variables.sql_mode;
   thd->variables.sql_mode= 0;
 
-  Out_stream os(serialization);
+  Out_stream out_stream(serialization);
 
-  bool ret= do_serialize(thd, os);
+  bool ret= do_serialize(thd, out_stream);
 
   thd->variables.sql_mode= sql_mode_saved;
 
@@ -490,9 +499,9 @@ bool Abstract_obj::create(THD *thd)
     - collation_connection;
     - time_zone;
 
-NOTE: other session variables are not preserved, so serialization image
-must take care to clean up the environment after itself.
-*/
+    @note other session variables are not preserved, so serialization image
+    must take care to clean up the environment after itself.
+  */
   ulong sql_mode_saved= thd->variables.sql_mode;
   Time_zone *tz_saved= thd->variables.time_zone;
   CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
@@ -525,9 +534,9 @@ must take care to clean up the environment after itself.
   /* Run queries from the serialization image. */
   while ((sql_text= it++))
   {
-    Ed_result result;
+    Ed_result ed_result;
 
-    rc= mysql_execute_direct(thd, sql_text->lex_string(), &result);
+    rc= mysql_execute_direct(thd, sql_text->lex_string(), &ed_result);
 
     /* Ignore warnings from materialization for now. */
     if (rc)
@@ -598,7 +607,7 @@ public:
   Database_obj(LEX_STRING db_name);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -617,7 +626,7 @@ public:
   Table_obj(LEX_STRING db_name, LEX_STRING table_name);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -636,7 +645,7 @@ public:
   View_obj(LEX_STRING db_name, LEX_STRING view_name);
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -652,10 +661,10 @@ protected:
 
 protected:
   virtual const LEX_STRING *get_create_stmt(Ed_row *row) = 0;
-  virtual void dump_header(Ed_row *row, Out_stream &os) = 0;
+  virtual void dump_header(Ed_row *row, Out_stream &out_stream) = 0;
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -668,7 +677,7 @@ public:
 
 protected:
   virtual const LEX_STRING *get_create_stmt(Ed_row *row);
-  virtual void dump_header(Ed_row *row, Out_stream &os);
+  virtual void dump_header(Ed_row *row, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -760,7 +769,7 @@ public:
 private:
   virtual const LEX_STRING *get_type() const;
   virtual const LEX_STRING *get_create_stmt(Ed_row *row);
-  virtual void dump_header(Ed_row *row, Out_stream &os);
+  virtual void dump_header(Ed_row *row, Out_stream &out_stream);
 };
 
 #endif // HAVE_EVENT_SCHEDULER
@@ -790,7 +799,7 @@ public:
   const String *get_description();
 
 protected:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 
   virtual bool init_serialization(uint serialization_version,
                                   const String *serialization);
@@ -838,7 +847,7 @@ protected:
   String m_grant_info; //< contains privilege definition
 
 private:
-  virtual bool do_serialize(THD *thd, Out_stream &os);
+  virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -847,34 +856,34 @@ private:
 template <typename Iterator>
 Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 {
-  Ed_result *result= new Ed_result();
+  Ed_result *ed_result= new Ed_result();
 
-  if (run_query(thd, query, result) ||
-      result->get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, query, ed_result) ||
+      ed_result->get_warnings().elements > 0)
   {
     /* There should be no warnings. */
-    delete result;
+    delete ed_result;
     return NULL;
   }
 
   /* The result must contain only one result-set. */
-  DBUG_ASSERT(result->elements == 1);
+  DBUG_ASSERT(ed_result->elements == 1);
 
-  return new Iterator(result);
+  return new Iterator(ed_result);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 template <typename Obj_type>
-  class Ed_result_set_iterator : public Obj_iterator
+class Ed_result_set_iterator : public Obj_iterator
 {
 public:
-  inline Ed_result_set_iterator(Ed_result *result);
+  inline Ed_result_set_iterator(Ed_result *ed_result);
   inline ~Ed_result_set_iterator();
   virtual Obj *next();
 private:
-  Ed_result *m_result;
+  Ed_result *m_ed_result;
   List_iterator_fast<Ed_row> m_row_it;
 };
 
@@ -883,9 +892,9 @@ private:
 template <typename Obj_type>
 inline
 Ed_result_set_iterator<Obj_type>::
-Ed_result_set_iterator(Ed_result *result)
-  : m_result(result),
-    m_row_it(*result->get_cur_result_set()->data())
+Ed_result_set_iterator(Ed_result *ed_result)
+  : m_ed_result(ed_result),
+    m_row_it(*ed_result->get_cur_result_set()->data())
 { }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -894,7 +903,7 @@ template <typename Obj_type>
 inline
 Ed_result_set_iterator<Obj_type>::~Ed_result_set_iterator()
 {
-  delete m_result;
+  delete m_ed_result;
 }
 
 
@@ -902,12 +911,12 @@ template <typename Obj_type>
 Obj *
 Ed_result_set_iterator<Obj_type>::next()
 {
-  Ed_row *row= m_row_it++;
+  Ed_row *ed_row= m_row_it++;
 
-  if (!row)
+  if (!ed_row)
     return NULL;
 
-  return new Obj_type(*row);
+  return new Obj_type(*ed_row);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -988,8 +997,8 @@ public:
 
 protected:
   template <typename Iterator>
-    static Iterator *create(THD *thd,
-                            const String *db_name, const String *view_name);
+  static Iterator *create(THD *thd,
+                          const String *db_name, const String *view_name);
 
 protected:
   bool init(THD *thd, const String *db_name, const String *view_name);
@@ -1208,8 +1217,8 @@ Database_obj::Database_obj(LEX_STRING db_name)
   This method produces the data necessary for materializing the object
   on restore (creates object).
 
-  @param[in]  thd Thread context.
-  @param[out] os  Output stream.
+  @param[in]  thd         Thread context.
+  @param[out] out_stream  Output stream.
 
   @note this method will return an error if the db_name is either
   mysql or information_schema as these are not objects that
@@ -1220,7 +1229,7 @@ Database_obj::Database_obj(LEX_STRING db_name)
   @retval TRUE on error
 */
 
-bool Database_obj::do_serialize(THD *thd, Out_stream &os)
+bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("Database_obj::do_serialize");
   DBUG_PRINT("Database_obj::do_serialize",
@@ -1236,15 +1245,15 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
 
   /* Run 'SHOW CREATE' query. */
 
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SHOW CREATE DATABASE `" << &m_db_name << "`";
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /*
         There should be no warnings. A warning means that serialization has
@@ -1257,20 +1266,20 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
   /* Check result. */
 
   /* The result must contain only one result-set... */
-  DBUG_ASSERT(result.elements == 1);
+  DBUG_ASSERT(ed_result.elements == 1);
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
   /* ... which is not NULL. */
-  DBUG_ASSERT(rs);
+  DBUG_ASSERT(ed_result_set);
 
-  if (rs->data()->elements == 0)
+  if (ed_result_set->data()->elements == 0)
     DBUG_RETURN(TRUE);
 
   /* There must be one row. */
-  DBUG_ASSERT(rs->data()->elements == 1);
+  DBUG_ASSERT(ed_result_set->data()->elements == 1);
 
-  List_iterator_fast<Ed_row> row_it(*rs->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
   Ed_row *row= row_it++;
 
   /* There must be two columns: database name and create statement. */
@@ -1279,12 +1288,12 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &os)
   /* Generate serialization. */
 
   {
-    String_stream ss;
-    ss << "DROP DATABASE IF EXISTS `" << &m_db_name << "`";
-    os << ss;
+    String_stream s_stream;
+    s_stream << "DROP DATABASE IF EXISTS `" << &m_db_name << "`";
+    out_stream << s_stream;
   }
 
-  os << row->get_column(1);
+  out_stream << row->get_column(1);
 
   DBUG_RETURN(FALSE);
 }
@@ -1309,15 +1318,15 @@ Table_obj::Table_obj(LEX_STRING db_name, LEX_STRING table_name)
   This method produces the data necessary for materializing the object
   on restore (creates object).
 
-  @param[in]  thd Thread context.
-  @param[out] os  Output stream.
+  @param[in]  thd         Thread context.
+  @param[out] out_stream  Output stream.
 
   @returns Error status.
   @retval FALSE on success
   @retval TRUE on error
 */
 
-bool Table_obj::do_serialize(THD *thd, Out_stream &os)
+bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("Table_obj::do_serialize");
   DBUG_PRINT("Table_obj::do_serialize",
@@ -1327,15 +1336,15 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   DBUG_ASSERT(m_db_name.length() <= 64);
   DBUG_ASSERT(m_id.length() <= 64);
 
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SHOW CREATE TABLE `" << &m_db_name << "`.`" << &m_id << "`";
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /*
         There should be no warnings. A warning means that serialization has
@@ -1348,20 +1357,20 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   /* Check result. */
 
   /* The result must contain only one result-set... */
-  DBUG_ASSERT(result.elements == 1);
+  DBUG_ASSERT(ed_result.elements == 1);
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
   /* ... which is not NULL. */
-  DBUG_ASSERT(rs);
+  DBUG_ASSERT(ed_result_set);
 
-  if (rs->data()->elements == 0)
+  if (ed_result_set->data()->elements == 0)
     DBUG_RETURN(TRUE);
 
   /* There must be one row. */
-  DBUG_ASSERT(rs->data()->elements == 1);
+  DBUG_ASSERT(ed_result_set->data()->elements == 1);
 
-  List_iterator_fast<Ed_row> row_it(*rs->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
   Ed_row *row= row_it++;
 
   /* There must be two columns: database name and create statement. */
@@ -1370,12 +1379,12 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &os)
   /* Generate serialization. */
 
   {
-    String_stream ss;
-    ss << "USE `" << &m_db_name << "`";
-    os << ss;
+    String_stream s_stream;
+    s_stream << "USE `" << &m_db_name << "`";
+    out_stream << s_stream;
   }
 
-  os << row->get_column(1);
+  out_stream << row->get_column(1);
 
   DBUG_RETURN(FALSE);
 }
@@ -1406,16 +1415,16 @@ get_view_create_stmt(THD *thd,
   DBUG_ASSERT(view->get_db_name()->length() <= 64);
   DBUG_ASSERT(view->get_name()->length() <= 64);
 
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SHOW CREATE VIEW `" << view->get_db_name() << "`."
       "`" << view->get_name() << "`";
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /*
         There should be no warnings. A warning means that serialization has
@@ -1426,20 +1435,20 @@ get_view_create_stmt(THD *thd,
   }
 
   /* The result must contain only one result-set... */
-  DBUG_ASSERT(result.elements == 1);
+  DBUG_ASSERT(ed_result.elements == 1);
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
   /* ... which is not NULL. */
-  DBUG_ASSERT(rs);
+  DBUG_ASSERT(ed_result_set);
 
-  if (rs->data()->elements == 0)
+  if (ed_result_set->data()->elements == 0)
     return TRUE;
 
   /* There must be one row. */
-  DBUG_ASSERT(rs->data()->elements == 1);
+  DBUG_ASSERT(ed_result_set->data()->elements == 1);
 
-  List_iterator_fast<Ed_row> row_it(*rs->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
   Ed_row *row= row_it++;
 
   /* There must be four columns. */
@@ -1466,7 +1475,7 @@ get_view_create_stmt(THD *thd,
 static bool
 dump_base_object_stubs(THD *thd,
                        Obj_iterator *base_object_it,
-                       Out_stream &os)
+                       Out_stream &out_stream)
 {
   while (true)
   {
@@ -1482,10 +1491,10 @@ dump_base_object_stubs(THD *thd,
     /* Dump header of base obj stub. */
 
     {
-      String_stream ss;
-      ss <<
+      String_stream s_stream;
+      s_stream <<
         "CREATE DATABASE IF NOT EXISTS `" << base_obj->get_db_name() << "`";
-      os << ss;
+      out_stream << s_stream;
     }
 
     base_obj_stmt <<
@@ -1495,16 +1504,16 @@ dump_base_object_stubs(THD *thd,
 
     /* Get base obj structure. */
 
-    Ed_result result;
+    Ed_result ed_result;
 
     {
-      String_stream ss;
-      ss <<
+      String_stream s_stream;
+      s_stream <<
         "SHOW COLUMNS FROM `" << base_obj->get_db_name() << "`."
         "`" << base_obj->get_name() << "`";
 
-      if (run_query(thd, ss.lxs(), &result) ||
-          result.get_warnings().elements > 0)
+      if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+          ed_result.get_warnings().elements > 0)
       {
         /*
           There should be no warnings. A warning means that serialization has
@@ -1516,16 +1525,16 @@ dump_base_object_stubs(THD *thd,
     }
 
     /* The result must contain only one result-set... */
-    DBUG_ASSERT(result.elements == 1);
+    DBUG_ASSERT(ed_result.elements == 1);
 
-    Ed_result_set *rs= result.get_cur_result_set();
+    Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
     /* ... which is not NULL. */
-    DBUG_ASSERT(rs);
+    DBUG_ASSERT(ed_result_set);
 
     /* Dump structure of base obj stub. */
 
-    List_iterator_fast<Ed_row> row_it(*rs->data());
+    List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
     bool first_column= TRUE;
 
     while (true)
@@ -1552,7 +1561,7 @@ dump_base_object_stubs(THD *thd,
 
     base_obj_stmt << ") ENGINE = MyISAM";
 
-    os << base_obj_stmt;
+    out_stream << base_obj_stmt;
 
     delete base_obj;
   }
@@ -1568,14 +1577,14 @@ dump_base_object_stubs(THD *thd,
   This method produces the data necessary for materializing the object
   on restore (creates object).
 
-  @param[in]  thd Thread context.
-  @param[out] os  Output stream.
+  @param[in]  thd         Thread context.
+  @param[out] out_stream  Output stream.
 
   @returns Error status.
   @retval FALSE on success
   @retval TRUE on error
 */
-bool View_obj::do_serialize(THD *thd, Out_stream &os)
+bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("View_obj::do_serialize");
   DBUG_PRINT("View_obj::do_serialize",
@@ -1599,7 +1608,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
       get_view_base_tables(thd, &m_db_name, &m_id);
 
     if (!base_table_it ||
-        dump_base_object_stubs(thd, base_table_it, os))
+        dump_base_object_stubs(thd, base_table_it, out_stream))
     {
       DBUG_RETURN(TRUE);
     }
@@ -1612,7 +1621,7 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
       get_view_base_views(thd, &m_db_name, &m_id);
 
     if (!base_view_it ||
-        dump_base_object_stubs(thd, base_view_it, os))
+        dump_base_object_stubs(thd, base_view_it, out_stream))
     {
       DBUG_RETURN(TRUE);
     }
@@ -1621,24 +1630,24 @@ bool View_obj::do_serialize(THD *thd, Out_stream &os)
   }
 
   {
-    String_stream ss;
-    ss << "USE `" << &m_db_name << "`";
-    os << ss;
+    String_stream s_stream;
+    s_stream << "USE `" << &m_db_name << "`";
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss << "SET character_set_client = " << &client_cs_name;
-    os << ss;
+    String_stream s_stream;
+    s_stream << "SET character_set_client = " << &client_cs_name;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss << "SET collation_connection = " << &connection_cl_name;
-    os << ss;
+    String_stream s_stream;
+    s_stream << "SET collation_connection = " << &connection_cl_name;
+    out_stream << s_stream;
   }
 
-  os << &create_stmt;
+  out_stream << &create_stmt;
 
   DBUG_RETURN(FALSE);
 }
@@ -1652,7 +1661,7 @@ Stored_program_obj::
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
+bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("Stored_program_obj::do_serialize");
   DBUG_PRINT("Stored_program_obj::do_serialize",
@@ -1661,15 +1670,15 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
 
   DBUG_EXECUTE_IF("backup_fail_add_trigger", DBUG_RETURN(TRUE););
 
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SHOW CREATE " << get_type() << " `" << &m_db_name << "`.`" << &m_id << "`";
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /*
         There should be no warnings. A warning means that serialization has
@@ -1680,29 +1689,29 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &os)
   }
 
   /* The result must contain only one result-set... */
-  DBUG_ASSERT(result.elements == 1);
+  DBUG_ASSERT(ed_result.elements == 1);
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
   /* ... which is not NULL. */
-  DBUG_ASSERT(rs);
+  DBUG_ASSERT(ed_result_set);
 
-  if (rs->data()->elements == 0)
+  if (ed_result_set->data()->elements == 0)
     DBUG_RETURN(TRUE);
 
   /* There must be one row. */
-  DBUG_ASSERT(rs->data()->elements == 1);
+  DBUG_ASSERT(ed_result_set->data()->elements == 1);
 
-  List_iterator_fast<Ed_row> row_it(*rs->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
   Ed_row *row= row_it++;
 
   {
-    String_stream ss;
-    ss << "USE `" << &m_db_name << "`";
-    os << ss;
+    String_stream s_stream;
+    s_stream << "USE `" << &m_db_name << "`";
+    out_stream << s_stream;
   }
-  dump_header(row, os);
-  os << get_create_stmt(row);
+  dump_header(row, out_stream);
+  out_stream << get_create_stmt(row);
 
   DBUG_RETURN(FALSE);
 }
@@ -1715,39 +1724,41 @@ Stored_routine_obj(LEX_STRING db_name, LEX_STRING sr_name)
   : Stored_program_obj(db_name, sr_name)
 { }
 
+
 const LEX_STRING *Stored_routine_obj::get_create_stmt(Ed_row *row)
 {
   return row->get_column(2);
 }
 
-void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &os)
+
+void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 {
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET character_set_client = " << row->get_column(3);
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET collation_connection = " << row->get_column(4);
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET collation_database = " << row->get_column(5);
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET sql_mode = '" << row->get_column(1) << "'";
-    os << ss;
+    out_stream << s_stream;
   }
 }
 
@@ -1787,6 +1798,7 @@ Stored_proc_obj::Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name)
   : Stored_routine_obj(db_name, sp_name)
 { }
 
+
 const LEX_STRING *Stored_proc_obj::get_type() const
 {
   return &Stored_proc_obj::TYPE_NAME;
@@ -1801,9 +1813,11 @@ Stored_func_obj::Stored_func_obj(const Ed_row &ed_row)
   : Stored_routine_obj(ed_row[0], ed_row[1])
 { }
 
+
 Stored_func_obj::Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name)
   : Stored_routine_obj(db_name, sf_name)
 { }
+
 
 const LEX_STRING *Stored_func_obj::get_type() const
 {
@@ -1826,51 +1840,54 @@ Event_obj::Event_obj(LEX_STRING db_name, LEX_STRING event_name)
   : Stored_program_obj(db_name, event_name)
 { }
 
+
 const LEX_STRING *Event_obj::get_type() const
 {
   return &Event_obj::TYPE_NAME;
 }
+
 
 const LEX_STRING *Event_obj::get_create_stmt(Ed_row *row)
 {
   return row->get_column(3);
 }
 
-void Event_obj::dump_header(Ed_row *row, Out_stream &os)
+
+void Event_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 {
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET character_set_client = " << row->get_column(4);
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET collation_connection = " << row->get_column(5);
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET collation_database = " << row->get_column(6);
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET sql_mode = '" << row->get_column(1) << "'";
-    os << ss;
+    out_stream << s_stream;
   }
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SET time_zone = '" << row->get_column(2) << "'";
-    os << ss;
+    out_stream << s_stream;
   }
 }
 
@@ -1894,6 +1911,7 @@ Tablespace_obj(LEX_STRING ts_name,
   m_description.length(0);
 }
 
+
 Tablespace_obj::Tablespace_obj(LEX_STRING ts_name)
   : Abstract_obj(null_lex_str, ts_name)
 {
@@ -1913,18 +1931,18 @@ Tablespace_obj::Tablespace_obj(LEX_STRING ts_name)
   on restore (creates object).
 
   @param[in]  thd Thread context.
-  @param[out] os  Output stream.
+  @param[out] out_stream  Output stream.
 
   @returns Error status.
   @retval FALSE on success
   @retval TRUE on error
 */
 
-bool Tablespace_obj::do_serialize(THD *thd, Out_stream &os)
+bool Tablespace_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("Tablespace_obj::do_serialize");
 
-  os << get_description();
+  out_stream << get_description();
 
   DBUG_RETURN(FALSE);
 }
@@ -1974,16 +1992,16 @@ const String *Tablespace_obj::get_description()
 
   m_description.length(0);
 
-  String_stream ss(&m_description);
+  String_stream s_stream(&m_description);
 
-  ss <<
+  s_stream <<
     "CREATE TABLESPACE `" << &m_id << "` "
     "ADD DATAFILE '" << &m_data_file_name << "' ";
 
   if (m_comment.length())
-    ss << "COMMENT = '" << &m_comment << "' ";
+    s_stream << "COMMENT = '" << &m_comment << "' ";
 
-  ss << "ENGINE = " << &m_engine;
+  s_stream << "ENGINE = " << &m_engine;
 
   DBUG_RETURN(&m_description);
 }
@@ -1999,15 +2017,16 @@ generate_unique_grant_id(const String *user_name, String *id)
 
   id->length(0);
 
-  String_stream ss(id);
+  String_stream s_stream(id);
 
   if (user_name->length())
-    ss << "<empty>";
+    s_stream << "<empty>";
   else
-    ss << user_name;
+    s_stream << user_name;
 
-  ss << " " << Int_value(++id_counter);
+  s_stream << " " << Int_value(++id_counter);
 }
+
 
 Grant_obj::Grant_obj(const Ed_row &row)
   : Abstract_obj(null_lex_str, null_lex_str)
@@ -2031,23 +2050,24 @@ Grant_obj::Grant_obj(const Ed_row &row)
 
   /* Grant info. */
 
-  String_stream ss(&m_grant_info);
-  ss << privilege_type;
+  String_stream s_stream(&m_grant_info);
+  s_stream << privilege_type;
 
   if (column_name.length)
-    ss << "(" << &column_name << ")";
+    s_stream << "(" << &column_name << ")";
 
-  ss << " ON " << db_name << ".";
+  s_stream << " ON " << db_name << ".";
 
   if (table_name.length)
-    ss << &table_name;
+    s_stream << &table_name;
   else
-    ss << "*";
+    s_stream << "*";
 
   /* Id. */
 
   generate_unique_grant_id(&m_user_name, &m_id);
 }
+
 
 Grant_obj::Grant_obj(LEX_STRING name)
   : Abstract_obj(null_lex_str, null_lex_str)
@@ -2066,7 +2086,7 @@ Grant_obj::Grant_obj(LEX_STRING name)
   on restore (creates object).
 
   @param[in]  thd Thread context.
-  @param[out] os  Output stream.
+  @param[out] out_stream  Output stream.
 
   @note this method will return an error if the db_name is either
   mysql or information_schema as these are not objects that
@@ -2077,19 +2097,19 @@ Grant_obj::Grant_obj(LEX_STRING name)
   @retval TRUE on error
 */
 
-bool Grant_obj::do_serialize(THD *thd, Out_stream &os)
+bool Grant_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("Grant_obj::do_serialize");
 
-  os <<
+  out_stream <<
     &m_user_name <<
     &m_grant_info <<
     "SET character_set_client= binary";
 
-  String_stream ss;
-  ss << "GRANT " << &m_grant_info << " TO " << &m_user_name;
+  String_stream s_stream;
+  s_stream << "GRANT " << &m_grant_info << " TO " << &m_user_name;
 
-  os << ss;
+  out_stream << s_stream;
 
   DBUG_RETURN(FALSE);
 }
@@ -2124,90 +2144,91 @@ Obj *get_database_stub(const String *db_name)
 
 Obj_iterator *get_databases(THD *thd)
 {
-  LEX_STRING query= { C_STRING_WITH_LEN(
-                                        "SELECT schema_name "
-                                        "FROM INFORMATION_SCHEMA.SCHEMATA "
-                                        "WHERE LCASE(schema_name) != 'mysql' AND "
-                                        "LCASE(schema_name) != 'information_schema'") };
+  LEX_STRING query=
+  { C_STRING_WITH_LEN(
+                      "SELECT schema_name "
+                      "FROM INFORMATION_SCHEMA.SCHEMATA "
+                      "WHERE LCASE(schema_name) != 'mysql' AND "
+                      "LCASE(schema_name) != 'information_schema'") };
 
   return create_row_set_iterator<Database_iterator>(thd, &query);
 }
 
 Obj_iterator *get_db_tables(THD *thd, const String *db_name)
 {
-  String_stream ss;
+  String_stream s_stream;
 
-  ss <<
+  s_stream <<
     "SELECT '" << db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
     "WHERE table_schema = '" << db_name << "' AND "
     "table_type = 'BASE TABLE'";
 
-  return create_row_set_iterator<Db_tables_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Db_tables_iterator>(thd, s_stream.lex_string());
 }
 
 
 Obj_iterator *get_db_views(THD *thd, const String *db_name)
 {
-  String_stream ss;
+  String_stream s_stream;
 
-  ss <<
+  s_stream <<
     "SELECT '" << db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
     "WHERE table_schema = '" << db_name << "' AND table_type = 'VIEW'";
 
-  return create_row_set_iterator<Db_views_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Db_views_iterator>(thd, s_stream.lex_string());
 }
 
 
 Obj_iterator *get_db_triggers(THD *thd, const String *db_name)
 {
-  String_stream ss;
-  ss <<
+  String_stream s_stream;
+  s_stream <<
     "SELECT '" << db_name << "', trigger_name "
     "FROM INFORMATION_SCHEMA.TRIGGERS "
     "WHERE trigger_schema = '" << db_name << "'";
 
-  return create_row_set_iterator<Db_trigger_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Db_trigger_iterator>(thd, s_stream.lex_string());
 }
 
 
 Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
 {
-  String_stream ss;
-  ss <<
+  String_stream s_stream;
+  s_stream <<
     "SELECT '" << db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
     "WHERE routine_schema = '" << db_name << "' AND "
     "routine_type = 'PROCEDURE'";
 
-  return create_row_set_iterator<Db_stored_proc_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Db_stored_proc_iterator>(thd, s_stream.lex_string());
 }
 
 
 Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
 {
-  String_stream ss;
-  ss <<
+  String_stream s_stream;
+  s_stream <<
     "SELECT '" << db_name << "', routine_name "
     "FROM INFORMATION_SCHEMA.ROUTINES "
     "WHERE routine_schema = '" << db_name <<"' AND "
     "routine_type = 'FUNCTION'";
 
-  return create_row_set_iterator<Db_stored_func_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Db_stored_func_iterator>(thd, s_stream.lex_string());
 }
 
 
 Obj_iterator *get_db_events(THD *thd, const String *db_name)
 {
 #ifdef HAVE_EVENT_SCHEDULER
-  String_stream ss;
-  ss <<
+  String_stream s_stream;
+  s_stream <<
     "SELECT '" << db_name << "', event_name "
     "FROM INFORMATION_SCHEMA.EVENTS "
     "WHERE event_schema = '" << db_name <<"'";
 
-  return create_row_set_iterator<Db_event_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Db_event_iterator>(thd, s_stream.lex_string());
 #else
   return NULL;
 #endif
@@ -2216,8 +2237,8 @@ Obj_iterator *get_db_events(THD *thd, const String *db_name)
 
 Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
 {
-  String_stream ss;
-  ss <<
+  String_stream s_stream;
+  s_stream <<
     "(SELECT t1.grantee AS c1, "
     "t1.privilege_type AS c2, "
     "t1.table_schema AS c3, "
@@ -2249,7 +2270,7 @@ Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
     "t1.grantee = t2.grantee) "
     "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
 
-  return create_row_set_iterator<Grant_iterator>(thd, ss.lxs());
+  return create_row_set_iterator<Grant_iterator>(thd, s_stream.lex_string());
 }
 
 
@@ -2420,13 +2441,13 @@ bool is_internal_db_name(const String *db_name)
 
 bool check_db_existence(THD *thd, const String *db_name)
 {
-  String_stream ss;
+  String_stream s_stream;
   int rc;
 
-  ss << "SHOW CREATE DATABASE `" << db_name << "`";
+  s_stream << "SHOW CREATE DATABASE `" << db_name << "`";
 
-  Ed_result result;
-  rc= run_query(thd, ss.lxs(), &result);
+  Ed_result ed_result;
+  rc= run_service_interface_sql(thd, s_stream.lex_string(), &ed_result);
 
   /* We're not interested in warnings/errors here. */
 
@@ -2441,30 +2462,30 @@ bool check_user_existence(THD *thd, const Obj *obj)
   return TRUE;
 #else
   Grant_obj *grant_obj= (Grant_obj *) obj;
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SELECT 1 "
       "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
       "WHERE grantee = \"" << grant_obj->get_user_name() << "\"";
 
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /* Should be no warnings. */
       return FALSE;
     }
   }
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
-  if (!rs)
+  if (!ed_result_set)
     return FALSE;
 
-  return rs->data()->elements > 0;
+  return ed_result_set->data()->elements > 0;
 #endif
 }
 
@@ -2486,11 +2507,11 @@ const String *grant_get_grant_info(const Obj *obj)
 
 Obj *find_tablespace(THD *thd, const String *ts_name)
 {
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
       "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
       "INFORMATION_SCHEMA.FILES AS t2 "
@@ -2498,23 +2519,23 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
       "t1.tablespace_name = '" << ts_name << "'";
 
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /* Should be no warnings. */
       return NULL;
     }
   }
 
-  if (!result.elements)
+  if (!ed_result.elements)
     return NULL;
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
   /* The result must contain only one result-set. */
-  DBUG_ASSERT(rs->data()->elements == 1);
+  DBUG_ASSERT(ed_result_set->data()->elements == 1);
 
-  Ed_row *row= rs->get_cur_row();
+  Ed_row *row= ed_result_set->get_cur_row();
 
   /* There must be 3 columns. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 3);
@@ -2548,11 +2569,11 @@ Obj *find_tablespace_for_table(THD *thd,
                                const String *db_name,
                                const String *table_name)
 {
-  Ed_result result;
+  Ed_result ed_result;
 
   {
-    String_stream ss;
-    ss <<
+    String_stream s_stream;
+    s_stream <<
       "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
       "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
       "INFORMATION_SCHEMA.FILES AS t2, "
@@ -2563,26 +2584,26 @@ Obj *find_tablespace_for_table(THD *thd,
       "t3.table_name = '" << table_name << "'";
 
 
-    if (run_query(thd, ss.lxs(), &result) ||
-        result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
     {
       /* Should be no warnings. */
       return NULL;
     }
   }
 
-  if (!result.elements)
+  if (!ed_result.elements)
     return NULL;
 
-  Ed_result_set *rs= result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
 
-  if (!rs->data()->elements)
+  if (!ed_result_set->data()->elements)
     return NULL;
 
   /* The result must contain only one result-set. */
-  DBUG_ASSERT(rs->data()->elements == 1);
+  DBUG_ASSERT(ed_result_set->data()->elements == 1);
 
-  Ed_row *row= rs->get_cur_row();
+  Ed_row *row= ed_result_set->get_cur_row();
 
   /* There must be 4 columns. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 4);
@@ -2639,6 +2660,7 @@ bool ddl_blocker_enable(THD *thd)
   DBUG_RETURN(FALSE);
 }
 
+
 /**
   Turn off the ddl blocker
 
@@ -2650,6 +2672,7 @@ void ddl_blocker_disable()
   DDL_blocker->unblock_DDL();
   DBUG_VOID_RETURN;
 }
+
 
 /**
   Turn on the ddl blocker exception
@@ -2666,6 +2689,7 @@ void ddl_blocker_exception_on(THD *thd)
   DBUG_VOID_RETURN;
 }
 
+
 /**
   Turn off the ddl blocker exception
 
@@ -2680,6 +2704,7 @@ void ddl_blocker_exception_off(THD *thd)
   thd->DDL_exception= FALSE;
   DBUG_VOID_RETURN;
 }
+
 
 /**
   Build a table list from a list of tables as class Obj.
@@ -2722,15 +2747,16 @@ TABLE_LIST *Name_locker::build_table_list(List<Obj> *tables,
   DBUG_RETURN(tl);
 }
 
-void Name_locker::free_table_list(TABLE_LIST *tl)
+
+void Name_locker::free_table_list(TABLE_LIST *table_list)
 {
-  TABLE_LIST *ptr= tl;
+  TABLE_LIST *ptr= table_list;
 
   while (ptr)
   {
-    tl= tl->next_global;
+    table_list= table_list->next_global;
     my_free(ptr, MYF(0));
-    ptr= tl;
+    ptr= table_list;
   }
 }
 
