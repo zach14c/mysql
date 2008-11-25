@@ -208,7 +208,7 @@ public:
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
 //	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
 	void			unlockRecord(int recordNumber);
-	void			unlockRecord(RecordVersion* record, bool remove);
+	void			unlockRecord(RecordVersion* record);
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
