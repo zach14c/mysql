@@ -1466,9 +1466,6 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
-  DBUG_ASSERT(m_db_name.length() <= 64);
-  DBUG_ASSERT(m_id.length() <= 64);
-
   Ed_result ed_result;
 
   {
@@ -1533,10 +1530,6 @@ get_view_create_stmt(THD *thd,
                      LEX_STRING *connection_cl_name)
 {
   /* Get a create statement for a view. */
-
-  DBUG_ASSERT(view->get_db_name()->length() <= 64);
-  DBUG_ASSERT(view->get_name()->length() <= 64);
-
   Ed_result ed_result;
 
   {
@@ -1596,19 +1589,13 @@ get_view_create_stmt(THD *thd,
 
 static bool
 dump_base_object_stubs(THD *thd,
-                       Obj_iterator *base_object_it,
+                       Obj_iterator *base_obj_it,
                        Out_stream &out_stream)
 {
-  while (true)
+  Obj *base_obj;
+  while ((base_obj= base_obj_it->next()))
   {
     String_stream base_obj_stmt;
-    Obj *base_obj= base_object_it->next();
-
-    if (!base_obj)
-      break;
-
-    DBUG_ASSERT(base_obj->get_db_name()->length() <= 64);
-    DBUG_ASSERT(base_obj->get_name()->length() <= 64);
 
     /* Dump header of base obj stub. */
 
@@ -1658,14 +1645,10 @@ dump_base_object_stubs(THD *thd,
 
     List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
     bool first_column= TRUE;
+    Ed_row *row;
 
-    while (true)
+    while ((row= row_it++))
     {
-      Ed_row *row= row_it++;
-
-      if (!row)
-        break;
-
       /* There must be 6 columns. */
       DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
 
