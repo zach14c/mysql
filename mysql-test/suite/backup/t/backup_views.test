@@ -205,19 +205,18 @@ DROP DATABASE bup_db2;
 
 --echo restore database with view dependency to other, non-existing db
 
-replace_column 1 #;
+--error ER_BACKUP_CANT_RESTORE_VIEW
 RESTORE FROM 'bup_objectview1.bak';
 
 # An incomplete bup_db1 was created by the failing restore operation.
 # Remove it before trying restore of bup_db2.
 DROP DATABASE bup_db1;
 
-replace_column 1 #;
+--error ER_BACKUP_CANT_RESTORE_VIEW
 RESTORE FROM 'bup_objectview2.bak';
 
 # An incomplete bup_db2 was created by the failing restore operation.
 # Remove it before reverting to the working backup image
-DROP DATABASE bup_db1;
 DROP DATABASE bup_db2;
 
 replace_column 1 #;
@@ -349,8 +348,6 @@ ALTER VIEW alter1 AS SELECT 6;
 --echo
 --echo Testing view selecting from altered view
 --echo 
-
-SELECT * FROM alter1;
 
 --error ER_VIEW_INVALID
 SELECT * FROM alter2;

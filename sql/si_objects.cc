@@ -1697,91 +1697,6 @@ get_view_create_stmt(THD *thd,
 
 ///////////////////////////////////////////////////////////////////////////
 
-static bool
-dump_base_object_stubs(THD *thd,
-                       Obj_iterator *base_obj_it,
-                       Out_stream &out_stream)
-{
-  Obj *base_obj;
-  while ((base_obj= base_obj_it->next()))
-  {
-    String_stream base_obj_stmt;
-    String_stream s_stream;
-
-    /* Dump header of base obj stub. */
-
-    s_stream <<
-      "CREATE DATABASE IF NOT EXISTS `" << base_obj->get_db_name() << "`";
-    out_stream << s_stream;
-
-    base_obj_stmt <<
-      "CREATE TABLE IF NOT EXISTS "
-      "`" << base_obj->get_db_name() << "`."
-      "`" << base_obj->get_name() << "` (";
-
-    /* Get base obj structure. */
-
-    Ed_result ed_result;
-
-    s_stream.reset();
-    s_stream <<
-      "SHOW COLUMNS FROM `" << base_obj->get_db_name() << "`."
-      "`" << base_obj->get_name() << "`";
-
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /*
-        There should be no warnings. A warning means that serialization has
-        failed.
-      */
-      delete base_obj;
-      return TRUE;
-    }
-
-    /* The result must contain only one result-set... */
-    DBUG_ASSERT(ed_result.elements == 1);
-
-    Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
-
-    /* ... which is not NULL. */
-    DBUG_ASSERT(ed_result_set);
-
-    /* Dump structure of base obj stub. */
-
-    List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
-    bool first_column= TRUE;
-    Ed_row *row;
-
-    while ((row= row_it++))
-    {
-      /* There must be 6 columns. */
-      DBUG_ASSERT(row->get_metadata()->get_num_columns() == 6);
-
-      const LEX_STRING *col_name= row->get_column(0);
-      const LEX_STRING *col_type= row->get_column(1);
-
-      if (first_column)
-        first_column= FALSE;
-      else
-        base_obj_stmt << ", ";
-
-      base_obj_stmt <<
-        "`" << col_name << "` " << col_type;
-    }
-
-    base_obj_stmt << ") ENGINE = MyISAM";
-
-    out_stream << base_obj_stmt;
-
-    delete base_obj;
-  }
-
-  return FALSE;
-}
-
-///////////////////////////////////////////////////////////////////////////
-
 /**
   Serialize the object.
 
@@ -1812,34 +1727,6 @@ bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
                            &client_cs_name, &connection_cl_name))
   {
     DBUG_RETURN(TRUE);
-  }
-
-  /* Get view dependencies. */
-
-  {
-    Obj_iterator *base_table_it=
-      get_view_base_tables(thd, &m_db_name, &m_id);
-
-    if (!base_table_it ||
-        dump_base_object_stubs(thd, base_table_it, out_stream))
-    {
-      DBUG_RETURN(TRUE);
-    }
-
-    delete base_table_it;
-  }
-
-  {
-    Obj_iterator *base_view_it=
-      get_view_base_views(thd, &m_db_name, &m_id);
-
-    if (!base_view_it ||
-        dump_base_object_stubs(thd, base_view_it, out_stream))
-    {
-      DBUG_RETURN(TRUE);
-    }
-
-    delete base_view_it;
   }
 
   s_stream << "USE `" << &m_db_name << "`";

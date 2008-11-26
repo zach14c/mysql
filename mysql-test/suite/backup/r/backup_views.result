@@ -277,13 +277,10 @@ DROP DATABASE bup_db2;
 Restore database.
 restore database with view dependency to other, non-existing db
 RESTORE FROM 'bup_objectview1.bak';
-backup_id
-#
+ERROR HY000: Could not restore view `bup_db1`.`v5`. Please check the view definition for possible missing dependencies.
 DROP DATABASE bup_db1;
 RESTORE FROM 'bup_objectview2.bak';
-backup_id
-#
-DROP DATABASE bup_db1;
+ERROR HY000: Could not restore view `bup_db2`.`student_details`. Please check the view definition for possible missing dependencies.
 DROP DATABASE bup_db2;
 RESTORE FROM 'bup_objectview.bak';
 backup_id
@@ -584,9 +581,6 @@ ALTER VIEW alter1 AS SELECT 6;
 
 Testing view selecting from altered view
 
-SELECT * FROM alter1;
-6
-6
 SELECT * FROM alter2;
 ERROR HY000: View 'bup_db1.alter2' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
 BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
