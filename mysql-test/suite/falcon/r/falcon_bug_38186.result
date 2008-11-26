@@ -1,0 +1,2 @@
+*** Bug #38186 ***
+SET @@storage_engine = 'Falcon';

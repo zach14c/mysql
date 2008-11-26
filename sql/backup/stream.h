@@ -98,7 +98,7 @@ class Stream: public fd_stream
   ::String  *m_path;
   int     m_flags;  ///< flags used when opening the file
   size_t  m_block_size;
-  Logger  m_log;
+  Logger&  m_log;
 
   friend int stream_write(void*, bstream_blob*, bstream_blob);
   friend int stream_read(void*, bstream_blob*, bstream_blob);

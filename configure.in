@@ -1800,9 +1800,6 @@ case "$with_atomic_ops" in
    *) AC_MSG_ERROR(["$with_atomic_ops" is not a valid value for --with-atomic-ops]) ;;
 esac
 
-# Check if we have the atomic_* functions on Solaris
-AC_CHECK_FUNC(atomic_cas_32, AC_DEFINE([HAVE_SOLARIS_ATOMIC], [1], [Define to 1 if Solaris support atomic functions.]))
-
 # Force static compilation to avoid linking problems/get more speed
 AC_ARG_WITH(mysqld-ldflags,
     [  --with-mysqld-ldflags   Extra linking arguments for mysqld],
@@ -2089,7 +2086,7 @@ AC_CHECK_FUNCS(alarm bcmp bfill bmove bsearch bzero \
   mkstemp mlockall perror poll pread pthread_attr_create mmap mmap64 getpagesize \
   pthread_attr_getstacksize pthread_attr_setprio pthread_attr_setschedparam \
   pthread_attr_setstacksize pthread_condattr_create pthread_getsequence_np \
-  pthread_key_delete pthread_rwlock_rdlock pthread_setprio \
+  pthread_key_delete pthread_rwlock_rdlock pthread_setprio pthread_setschedprio \
   pthread_setprio_np pthread_setschedparam pthread_sigmask readlink \
   realpath rename rint rwlock_init setupterm \
   shmget shmat shmdt shmctl sigaction sigemptyset sigaddset \

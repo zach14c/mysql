@@ -50,6 +50,7 @@ typedef struct st_tina_share {
   bool crashed;             /* Meta file is crashed */
   ha_rows rows_recorded;    /* Number of rows in tables */
   uint data_file_version;   /* Version of the data file used */
+  bool allow_log_delete;
 } TINA_SHARE;
 
 struct tina_set {

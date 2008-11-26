@@ -552,6 +552,25 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     DBUG_PRINT("backup_data",("-- PREPARE PHASE --"));
     DEBUG_SYNC(thd, "before_backup_data_prepare");
 
+    /*
+      Note: block_commits is performed here because of the global read
+      lock/table lock deadlock reported in bug#39602. It should be
+      moved back to right before sch.lock() once a refined commit
+      blocker has been implemented. WL#4610 tracks the work on a
+      refined commit blocker
+    */
+    /*
+      Block commits.
+
+      TODO: Step 2 of the commit blocker has been skipped for this release.
+      When it is included, developer needs to build a list of all of the
+      non-transactional tables and pass that to block_commits().
+    */
+    int error= 0;
+    error= block_commits(thd, NULL);
+    if (error)
+      goto error;
+
     if (sch.prepare())
       goto error;
 
@@ -574,16 +593,8 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     DEBUG_SYNC(thd, "after_backup_validated");
     
     /*
-      Block commits.
-
-      TODO: Step 2 of the commit blocker has been skipped for this release.
-      When it is included, developer needs to build a list of all of the
-      non-transactional tables and pass that to block_commits().
+      Refined commit blocker should be set here; see WL#4610
     */
-    int error= 0;
-    error= block_commits(thd, NULL);
-    if (error)
-      goto error;
 
     DEBUG_SYNC(thd, "before_backup_data_lock");
     if (sch.lock())
@@ -598,6 +609,19 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
         info.m_ctx.fatal_error(ER_BACKUP_BINLOG);
         goto error;
       }
+
+    /*
+      If we are a connected slave, write master's binlog information to
+      the progress log for later use.
+    */
+    st_bstream_binlog_pos master_pos;
+    master_pos.pos= 0;
+    master_pos.file= 0;
+    if (obs::is_slave() && active_mi)
+    {
+      master_pos.pos= (ulong)active_mi->master_log_pos;
+      master_pos.file= active_mi->master_log_name;
+    }
 
     /*
       Save VP creation time.
@@ -626,6 +650,13 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       info.save_binlog_pos(binlog_pos);
       info.m_ctx.report_binlog_pos(info.binlog_pos);
     }
+
+    /*
+      If we are a slave and the master's binlog position has been recorded
+      write it to the log.
+    */
+    if (obs::is_slave() && master_pos.pos)
+      info.m_ctx.report_master_binlog_pos(master_pos);
 
     info.m_ctx.report_state(BUP_RUNNING);
     DEBUG_SYNC(thd, "after_backup_binlog");

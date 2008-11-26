@@ -3,10 +3,10 @@ CREATE DATABASE db1;
 USE db1;
 CREATE TABLE t1 (a int) ENGINE=Myisam;
 INSERT INTO t1 VALUES (1),(2),(3);
-SET SESSION debug="d,";
+SET SESSION debug="-d,";
 SELECT @@debug;
 @@debug
-d
+
 BACKUP DATABASE db1 TO 'db1.bak';
 backup_id
 #
@@ -17,7 +17,7 @@ WHERE command LIKE 'BACKUP DATABASE db1 %';
 SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 drivers
 MyISAM
-SET SESSION debug="d,backup_test_dummy_be_factory";
+SET SESSION debug="+d,backup_test_dummy_be_factory";
 SELECT @@debug;
 @@debug
 d,backup_test_dummy_be_factory
@@ -32,11 +32,11 @@ WHERE command LIKE 'BACKUP DATABASE db1 %';
 SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 drivers
 Default
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;
 backup_id
 #
 SHOW TABLES IN db1;
 Tables_in_db1
 t1
 DROP DATABASE db1;
-SET GLOBAL debug="d,";
+SET GLOBAL debug="-d,";
