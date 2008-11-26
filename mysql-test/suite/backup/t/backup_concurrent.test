@@ -79,7 +79,7 @@ reap;
 --echo ---------------------------------------------------
 --echo Starting restore
 SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR restore';
-send RESTORE FROM 'backup1';
+send RESTORE FROM 'backup1' OVERWRITE;
 
 connection default;
 --echo Waiting for restore to get going

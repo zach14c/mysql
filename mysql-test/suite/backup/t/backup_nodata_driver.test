@@ -1,5 +1,9 @@
 #
 # This test tests the backup using no data engines.
+# These are engines which tables don't contain data.
+# This is obvious for BLACKHOLE and EXAMPLE.
+# Other engines behave like placeholders for tables of other
+# engines and don't have data themselves. Examples are MERGE and FEDERATED.
 # It was made a separate test due to the possibility that some
 # of the engines used may not be available on all platforms or
 # builds.
@@ -10,18 +14,26 @@
 #
 --source include/not_embedded.inc
 --source include/have_federated_db.inc
---source include/have_exampledb.inc
+# MERGE is always available --source include/have_merge.inc
 --source include/have_blackhole.inc
+#
+# Example engine must be loaded as plugin.
+# Currently this does not work on Windows yet.
+#
+--source include/not_windows.inc
+--source include/have_example_plugin.inc
+INSTALL PLUGIN example SONAME 'ha_example.so';
+--source include/have_exampledb.inc
 
 --disable_warnings
 DROP DATABASE IF EXISTS bup_nodata;
 DROP DATABASE IF EXISTS bup_data;
 --enable_warnings
 
-# Create data
---echo Creating tables
-CREATE DATABASE bup_nodata;
-
+--echo #
+--echo # Create a database with tables that can work as
+--echo # base tables for MERGE and FEDERATED.
+--echo #
 CREATE DATABASE bup_data;
 
 CREATE TABLE bup_data.myisam1 (a int, b char(30)) ENGINE=MYISAM;
@@ -38,6 +50,11 @@ CREATE TABLE bup_data.f1 (
     `name` varchar(32) NOT NULL default ''
     )
   DEFAULT CHARSET=latin1;
+
+--echo #
+--echo # Create a database with tables from no-data engines.
+--echo #
+CREATE DATABASE bup_nodata;
 
 CREATE TABLE bup_nodata.merge1 (a int, b char(30))
   ENGINE=MERGE UNION=(bup_data.myisam1, bup_data.myisam2, bup_data.myisam3);
@@ -60,8 +77,9 @@ CREATE TABLE bup_nodata.e1 (
   Vapor_period smallint(4) unsigned DEFAULT '0' NOT NULL
 ) ENGINE=example;
 
-# Insert some data (for merge and federated to ensure proper working tables)
---echo Inserting data
+--echo #
+--echo # Insert some data.
+--echo #
 INSERT INTO bup_data.myisam1 VALUES (11, 'table 1');
 INSERT INTO bup_data.myisam1 VALUES (12, 'table 1');
 INSERT INTO bup_data.myisam1 VALUES (13, 'table 1');
@@ -78,89 +96,152 @@ INSERT INTO bup_data.f1 (id, `group`) VALUES (3, 42);
 INSERT INTO bup_data.f1 (id, `batch`) VALUES (4, 23);
 INSERT INTO bup_data.f1 (id, `qty`) VALUES (5, 1);
 
-# Show the data
---echo show data
+--echo #
+--echo # Show the data.
+--echo #
 SHOW FULL TABLES FROM bup_data;
 SHOW FULL TABLES FROM bup_nodata;
-
 SELECT * FROM bup_nodata.merge1;
 SELECT * FROM bup_nodata.f1;
 SELECT * FROM bup_nodata.b1;
 SELECT * FROM bup_nodata.e1;
 
-# Do the backup of the bup_data DB.
+--echo #
+--echo # Backup the bup_data DB, which tables contain data.
+--echo #
 --replace_column 1 #
 BACKUP DATABASE bup_data TO 'bup_data.bak';
 
-# Do the backup of the bup_nodata DB.
+--echo #
+--echo # Backup the bup_nodata DB, which tables do not contain data.
+--echo #
 --replace_column 1 #
 BACKUP DATABASE bup_nodata TO 'bup_nodata.bak';
 
-# Show the data
---echo show data
+--echo #
+--echo # Show the data again. Backup did not modify them.
+--echo #
 SHOW FULL TABLES FROM bup_data;
 SHOW FULL TABLES FROM bup_nodata;
-
 SELECT * FROM bup_nodata.merge1;
 SELECT * FROM bup_nodata.f1;
 SELECT * FROM bup_nodata.b1;
 SELECT * FROM bup_nodata.e1;
 
-# Now drop the data database and show what is left
-
+--echo #
+--echo # Now drop the bup_data database.
+--echo #
 DROP DATABASE bup_data;
 
-# Show the data
---echo show data
+--echo #
+--echo # Show that the data have gone.
+--echo # The MERGE and FEDERATED tables have errors since
+--echo # their base tables have been dropped with bup_data.
+--echo #
 SHOW FULL TABLES FROM bup_nodata;
-
-# The merge and federated tables should have errors since data is missing.
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM bup_nodata.merge1;
 --error ER_CONNECT_TO_FOREIGN_DATA_SOURCE,ER_QUERY_ON_FOREIGN_DATA_SOURCE
 SELECT * FROM bup_nodata.f1;
 SELECT * FROM bup_nodata.b1;
 SELECT * FROM bup_nodata.e1;
 
+--echo #
+--echo # Now drop the bup_nodata database too.
+--echo #
 DROP DATABASE bup_nodata;
 
-# Now restore the nodata database and see if it is the same as above.
---echo Restoring nodata database.
+--echo #
+--echo # Now try to restore the bup_nodata database. This fails because
+--echo # restore opens the tables for filling them with data, even when
+--echo # they were empty on backup. 'bup_nodata.bak' does not contain
+--echo # the base tables for the MERGE and FEDERATED tables.
+--echo # NOTE: Since restore fails after restoring the meta data,
+--echo # after creating the tables that is, we have the same
+--echo # situation as before. The tables exist, but the base
+--echo # tables for MERGE and FEDERATED do not exist.
+--echo #
 --replace_column 1 #
-RESTORE FROM 'bup_nodata.bak';
+--error ER_WRONG_MRG_TABLE,ER_CONNECT_TO_FOREIGN_DATA_SOURCE,ER_QUERY_ON_FOREIGN_DATA_SOURCE
+RESTORE FROM 'bup_nodata.bak' OVERWRITE;
 
-# Show the data
---echo show data
+--echo #
+--echo # Show what we have.
+--echo # NOTE: If restore would work as all or nothing,
+--echo # all of the SHOW and SELECT statements in this section would fail.
+--echo #
 SHOW FULL TABLES FROM bup_nodata;
-
-# The merge and federated tables should have errors since data is missing.
---error ER_NO_SUCH_TABLE
+--error ER_WRONG_MRG_TABLE
 SELECT * FROM bup_nodata.merge1;
 --error ER_CONNECT_TO_FOREIGN_DATA_SOURCE,ER_QUERY_ON_FOREIGN_DATA_SOURCE
 SELECT * FROM bup_nodata.f1;
 SELECT * FROM bup_nodata.b1;
 SELECT * FROM bup_nodata.e1;
 
-# Now restore the data database and see that all is well.
---echo Restoring data database.
+--echo #
+--echo # Now restore the bup_data database as well.
+--echo #
 --replace_column 1 #
 RESTORE FROM 'bup_data.bak';
 
-# Show the data
---echo show data
+--echo #
+--echo # Show that everything is well.
+--echo # NOTE: If restore would work as all or nothing,
+--echo # the bup_nodata tables would not exist here.
+--echo #
 SHOW FULL TABLES FROM bup_data;
 SHOW FULL TABLES FROM bup_nodata;
-
 SELECT * FROM bup_nodata.merge1;
 SELECT * FROM bup_nodata.f1;
 SELECT * FROM bup_nodata.b1;
 SELECT * FROM bup_nodata.e1;
 
+--echo #
+--echo # Now restore the bup_nodata database and see if it is the same
+--echo # as above. Note that this step would not be required here
+--echo # because all bup_nodata tables have no data and were created
+--echo # by the failed restore. Anyway, the correct approach is to do a
+--echo # succeeding restore before assuming that everything exists again.
+--echo #
+--replace_column 1 #
+RESTORE FROM 'bup_nodata.bak' OVERWRITE;
+
+--echo #
+--echo # Show that everything is well.
+--echo #
+SHOW FULL TABLES FROM bup_nodata;
+SELECT * FROM bup_nodata.merge1;
+SELECT * FROM bup_nodata.f1;
+SELECT * FROM bup_nodata.b1;
+SELECT * FROM bup_nodata.e1;
+
+--echo #
+--echo # Now drop the bup_data database with the base tables again.
+--echo #
 DROP DATABASE bup_data;
+
+--echo #
+--echo # Show that the data have gone.
+--echo # The MERGE and FEDERATED tables have errors since
+--echo # their base tables have been dropped with bup_data.
+--echo #
+SHOW FULL TABLES FROM bup_nodata;
+--error ER_WRONG_MRG_TABLE
+SELECT * FROM bup_nodata.merge1;
+--error ER_CONNECT_TO_FOREIGN_DATA_SOURCE,ER_QUERY_ON_FOREIGN_DATA_SOURCE
+SELECT * FROM bup_nodata.f1;
+SELECT * FROM bup_nodata.b1;
+SELECT * FROM bup_nodata.e1;
+
+--echo #
+--echo # Cleanup.
+--echo #
 DROP DATABASE bup_nodata;
 
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_data.bak
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_nodata.bak
+
+UNINSTALL PLUGIN example;
 

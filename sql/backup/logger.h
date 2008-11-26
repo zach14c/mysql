@@ -67,7 +67,6 @@ class Logger
      DBUG_ASSERT(backup_log);
      return backup_log->get_backup_id(); 
    }
-   void report_cleanup() { delete backup_log; }
    
    void save_errors();
    void stop_save_errors();
@@ -85,6 +84,10 @@ class Logger
   int write_message(log_level::value level , int error_code, const char *msg);
 
  private:
+  // Prevent copying/assigments
+  Logger(const Logger&);
+  Logger& operator=(const Logger&);
+
   util::SAVED_MYSQL_ERROR error;   ///< Used to store saved errors.
   bool m_save_errors;        ///< Flag telling if errors should be saved.
   bool m_push_errors;        ///< Should errors be pushed on warning stack?
@@ -96,12 +99,16 @@ inline
 Logger::Logger(THD *thd) 
   :m_type(BACKUP), m_state(CREATED),
    m_thd(thd), m_save_errors(FALSE), m_push_errors(TRUE), backup_log(0)
-{}
+{
+  clear_saved_errors();
+}
+ 
 
 inline
 Logger::~Logger()
 {
   clear_saved_errors();
+  delete backup_log;
 }
 
 /// Report unregistered message.
