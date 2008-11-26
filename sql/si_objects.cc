@@ -373,7 +373,7 @@ class Abstract_obj : public Obj
 {
 public:
   virtual inline const String *get_name() const    { return &m_id; }
-  virtual inline const String *get_db_name() const { return &m_db_name; }
+  virtual inline const String *get_db_name() const { return NULL; }
 
 public:
   /**
@@ -429,10 +429,9 @@ protected:
 protected:
   /* These attributes are to be used only for serialization. */
   String m_id; //< identify object
-  String m_db_name;
 
 protected:
-  Abstract_obj(LEX_STRING db_name, LEX_STRING id);
+  Abstract_obj(LEX_STRING id);
 
   virtual ~Abstract_obj();
 
@@ -443,14 +442,9 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-Abstract_obj::Abstract_obj(LEX_STRING db_name, LEX_STRING id)
+Abstract_obj::Abstract_obj(LEX_STRING id)
 {
   init_sql_alloc(&m_mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
-
-  if (db_name.str && db_name.length)
-    m_db_name.copy(db_name.str, db_name.length, system_charset_info);
-  else
-    m_db_name.length(0);
 
   if (id.str && id.length)
     m_id.copy(id.str, id.length, system_charset_info);
@@ -635,13 +629,51 @@ bool Abstract_obj::do_deserialize(In_stream *is)
 class Database_obj : public Abstract_obj
 {
 public:
-  Database_obj(const Ed_row &ed_row);
-  Database_obj(LEX_STRING db_name);
+  Database_obj(const Ed_row &ed_row)
+    : Abstract_obj(ed_row[0] /* database name */)
+  { }
+
+  Database_obj(LEX_STRING db_name)
+    : Abstract_obj(db_name)
+  { }
+
+public:
+  virtual inline const String *get_db_name() const { return get_name(); }
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+/**
+  @class Database_item_obj
+
+  This class is a base class for all classes representing objects, which
+  belong to a Database.
+*/
+
+class Database_item_obj : public Abstract_obj
+{
+public:
+  Database_item_obj(LEX_STRING db_name, LEX_STRING object_name)
+    : Abstract_obj(object_name)
+  {
+    if (db_name.str && db_name.length)
+      m_db_name.copy(db_name.str, db_name.length, system_charset_info);
+    else
+      m_db_name.length(0);
+  }
+
+public:
+  virtual inline const String *get_db_name() const { return &m_db_name; }
+
+protected:
+  String m_db_name;
+};
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -651,16 +683,23 @@ private:
   capture of the creation data.
 */
 
-class Table_obj : public Abstract_obj
+class Table_obj : public Database_item_obj
 {
 public:
-  Table_obj(const Ed_row &ed_row);
-  Table_obj(LEX_STRING db_name, LEX_STRING table_name);
+  Table_obj(const Ed_row &ed_row)
+    : Database_item_obj(ed_row[0], /* database name */
+                        ed_row[1]) /* table name */
+  { }
+
+  Table_obj(LEX_STRING db_name, LEX_STRING table_name)
+    : Database_item_obj(db_name, table_name)
+  { }
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -670,23 +709,31 @@ private:
   capture of the creation data.
 */
 
-class View_obj : public Abstract_obj
+class View_obj : public Database_item_obj
 {
 public:
-  View_obj(const Ed_row &ed_row);
-  View_obj(LEX_STRING db_name, LEX_STRING view_name);
+  View_obj(const Ed_row &ed_row)
+    : Database_item_obj(ed_row[0], /* schema name */
+                        ed_row[1]) /* view name */
+  { }
+
+  View_obj(LEX_STRING db_name, LEX_STRING view_name)
+    : Database_item_obj(db_name, view_name)
+  { }
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
 
-class Stored_program_obj : public Abstract_obj
+class Stored_program_obj : public Database_item_obj
 {
 public:
-  Stored_program_obj(LEX_STRING db_name,
-                     LEX_STRING sp_name);
+  Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
+    : Database_item_obj(db_name, sp_name)
+  { }
 
 protected:
   virtual const LEX_STRING *get_type() const = 0;
@@ -700,18 +747,21 @@ private:
 };
 
 ///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
 
 class Stored_routine_obj : public Stored_program_obj
 {
 public:
-  Stored_routine_obj(LEX_STRING db_name,
-                     LEX_STRING sr_name);
+  Stored_routine_obj(LEX_STRING db_name, LEX_STRING sr_name)
+    : Stored_program_obj(db_name, sr_name)
+  { }
 
 protected:
   virtual const LEX_STRING *get_create_stmt(Ed_row *row);
   virtual void dump_header(Ed_row *row, Out_stream &out_stream);
 };
 
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -727,13 +777,30 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Trigger_obj(const Ed_row &ed_row);
-  Trigger_obj(LEX_STRING db_name, LEX_STRING trigger_name);
+  Trigger_obj(const Ed_row &ed_row)
+    : Stored_routine_obj(ed_row[0], ed_row[1])
+  { }
+
+  Trigger_obj(LEX_STRING db_name, LEX_STRING trigger_name)
+    : Stored_routine_obj(db_name, trigger_name)
+  { }
 
 private:
   virtual const LEX_STRING *get_type() const;
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Trigger_obj::TYPE_NAME= LXS_INIT("TRIGGER");
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING *Trigger_obj::get_type() const
+{
+  return &Trigger_obj::TYPE_NAME;
+}
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -749,13 +816,30 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Stored_proc_obj(const Ed_row &ed_row);
-  Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name);
+  Stored_proc_obj(const Ed_row &ed_row)
+    : Stored_routine_obj(ed_row[0], ed_row[1])
+  { }
+
+  Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name)
+    : Stored_routine_obj(db_name, sp_name)
+  { }
 
 private:
   virtual const LEX_STRING *get_type() const;
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Stored_proc_obj::TYPE_NAME= LXS_INIT("PROCEDURE");
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING *Stored_proc_obj::get_type() const
+{
+  return &Stored_proc_obj::TYPE_NAME;
+}
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -771,13 +855,30 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Stored_func_obj(const Ed_row &ed_row);
-  Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name);
+  Stored_func_obj(const Ed_row &ed_row)
+    : Stored_routine_obj(ed_row[0], ed_row[1])
+  { }
+
+  Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name)
+    : Stored_routine_obj(db_name, sf_name)
+  { }
 
 private:
   virtual const LEX_STRING *get_type() const;
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Stored_func_obj::TYPE_NAME= LXS_INIT("FUNCTION");
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING *Stored_func_obj::get_type() const
+{
+  return &Stored_func_obj::TYPE_NAME;
+}
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 #ifdef HAVE_EVENT_SCHEDULER
@@ -795,8 +896,13 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Event_obj(const Ed_row &ed_row);
-  Event_obj(LEX_STRING db_name, LEX_STRING event_name);
+  Event_obj(const Ed_row &ed_row)
+    : Stored_program_obj(ed_row[0], ed_row[1])
+  { }
+
+  Event_obj(LEX_STRING db_name, LEX_STRING event_name)
+    : Stored_program_obj(db_name, event_name)
+  { }
 
 private:
   virtual const LEX_STRING *get_type() const;
@@ -804,8 +910,27 @@ private:
   virtual void dump_header(Ed_row *row, Out_stream &out_stream);
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Event_obj::TYPE_NAME= LXS_INIT("EVENT");
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING *Event_obj::get_type() const
+{
+  return &Event_obj::TYPE_NAME;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING *Event_obj::get_create_stmt(Ed_row *row)
+{
+  return row->get_column(3);
+}
+
 #endif // HAVE_EVENT_SCHEDULER
 
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -826,8 +951,6 @@ public:
   Tablespace_obj(LEX_STRING ts_name);
 
 public:
-  virtual inline const String *get_db_name() const { return NULL; }
-
   const String *get_description();
 
 public:
@@ -846,6 +969,7 @@ private:
   String m_description;
 };
 
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -868,8 +992,6 @@ public:
   virtual bool do_deserialize(In_stream *is);
 
 public:
-  virtual inline const String *get_db_name() const { return NULL; }
-
   inline const String *get_user_name() const { return &m_user_name; }
   inline const String *get_grant_info() const { return &m_grant_info; }
 
@@ -1231,16 +1353,6 @@ create<View_base_view_iterator>(THD *thd, const String *db_name,
                                 const String *view_name);
 
 ///////////////////////////////////////////////////////////////////////////
-
-Database_obj::Database_obj(const Ed_row &ed_row)
-  : Abstract_obj(ed_row[0], /* database name */ ed_row[0] /* database name */)
-{ }
-
-
-Database_obj::Database_obj(LEX_STRING db_name)
-  : Abstract_obj(db_name, db_name)
-{ }
-
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1265,12 +1377,12 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
   DBUG_ENTER("Database_obj::do_serialize");
   DBUG_PRINT("Database_obj::do_serialize",
-             ("name: %.*s", STR(m_db_name)));
+             ("name: %.*s", STR(*get_name())));
 
-  if (is_internal_db_name(&m_db_name))
+  if (is_internal_db_name(get_name()))
   {
     DBUG_PRINT("backup",
-               (" Skipping internal database %.*s", STR(m_db_name)));
+               (" Skipping internal database %.*s", STR(*get_name())));
 
     DBUG_RETURN(TRUE);
   }
@@ -1282,7 +1394,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
   {
     String_stream s_stream;
     s_stream <<
-      "SHOW CREATE DATABASE `" << &m_db_name << "`";
+      "SHOW CREATE DATABASE `" << get_name() << "`";
 
     if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
         ed_result.get_warnings().elements > 0)
@@ -1321,7 +1433,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   {
     String_stream s_stream;
-    s_stream << "DROP DATABASE IF EXISTS `" << &m_db_name << "`";
+    s_stream << "DROP DATABASE IF EXISTS `" << get_name() << "`";
     out_stream << s_stream;
   }
 
@@ -1331,17 +1443,6 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-Table_obj::Table_obj(const Ed_row &ed_row)
-  : Abstract_obj(ed_row[0], /* database name */
-                 ed_row[1]) /* table name */
-{ }
-
-Table_obj::Table_obj(LEX_STRING db_name, LEX_STRING table_name)
-  : Abstract_obj(db_name, table_name)
-{ }
-
 ///////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1422,17 +1523,6 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-View_obj::View_obj(const Ed_row &ed_row)
-  : Abstract_obj(ed_row[0], /* schema name */
-                 ed_row[1]) /* view name */
-{ }
-
-View_obj::View_obj(LEX_STRING db_name, LEX_STRING view_name)
-  : Abstract_obj(db_name, view_name)
-{ }
-
 ///////////////////////////////////////////////////////////////////////////
 
 static bool
@@ -1685,12 +1775,6 @@ bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-
-Stored_program_obj::
-  Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
-  : Abstract_obj(db_name, sp_name)
-  { }
-
 ///////////////////////////////////////////////////////////////////////////
 
 bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
@@ -1751,17 +1835,12 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-Stored_routine_obj::
-Stored_routine_obj(LEX_STRING db_name, LEX_STRING sr_name)
-  : Stored_program_obj(db_name, sr_name)
-{ }
-
-
 const LEX_STRING *Stored_routine_obj::get_create_stmt(Ed_row *row)
 {
   return row->get_column(2);
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 {
@@ -1795,95 +1874,9 @@ void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING Trigger_obj::TYPE_NAME= LXS_INIT("TRIGGER");
-
-
-Trigger_obj::Trigger_obj(const Ed_row &ed_row)
-  : Stored_routine_obj(ed_row[0], ed_row[1])
-{ }
-
-
-Trigger_obj::Trigger_obj(LEX_STRING db_name, LEX_STRING trigger_name)
-  : Stored_routine_obj(db_name, trigger_name)
-{ }
-
-
-const LEX_STRING *Trigger_obj::get_type() const
-{
-  return &Trigger_obj::TYPE_NAME;
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING Stored_proc_obj::TYPE_NAME= LXS_INIT("PROCEDURE");
-
-
-Stored_proc_obj::Stored_proc_obj(const Ed_row &ed_row)
-  : Stored_routine_obj(ed_row[0], ed_row[1])
-{ }
-
-
-Stored_proc_obj::Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name)
-  : Stored_routine_obj(db_name, sp_name)
-{ }
-
-
-const LEX_STRING *Stored_proc_obj::get_type() const
-{
-  return &Stored_proc_obj::TYPE_NAME;
-}
-
-///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING Stored_func_obj::TYPE_NAME= LXS_INIT("FUNCTION");
-
-Stored_func_obj::Stored_func_obj(const Ed_row &ed_row)
-  : Stored_routine_obj(ed_row[0], ed_row[1])
-{ }
-
-
-Stored_func_obj::Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name)
-  : Stored_routine_obj(db_name, sf_name)
-{ }
-
-
-const LEX_STRING *Stored_func_obj::get_type() const
-{
-  return &Stored_func_obj::TYPE_NAME;
-}
-
-///////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
 #ifdef HAVE_EVENT_SCHEDULER
-
-const LEX_STRING Event_obj::TYPE_NAME= LXS_INIT("EVENT");
-
-Event_obj::Event_obj(const Ed_row &ed_row)
-  : Stored_program_obj(ed_row[0], ed_row[1])
-{ }
-
-
-Event_obj::Event_obj(LEX_STRING db_name, LEX_STRING event_name)
-  : Stored_program_obj(db_name, event_name)
-{ }
-
-
-const LEX_STRING *Event_obj::get_type() const
-{
-  return &Event_obj::TYPE_NAME;
-}
-
-
-const LEX_STRING *Event_obj::get_create_stmt(Ed_row *row)
-{
-  return row->get_column(3);
-}
-
 
 void Event_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 {
@@ -1933,7 +1926,7 @@ Tablespace_obj(LEX_STRING ts_name,
                LEX_STRING comment,
                LEX_STRING data_file_name,
                LEX_STRING engine)
-  : Abstract_obj(null_lex_str, ts_name)
+  : Abstract_obj(ts_name)
 {
   m_comment.copy(comment.str, comment.length, system_charset_info);
   m_data_file_name.copy(data_file_name.str, data_file_name.length,
@@ -1945,7 +1938,7 @@ Tablespace_obj(LEX_STRING ts_name,
 
 
 Tablespace_obj::Tablespace_obj(LEX_STRING ts_name)
-  : Abstract_obj(null_lex_str, ts_name)
+  : Abstract_obj(ts_name)
 {
   m_comment.length(0);
   m_data_file_name.length(0);
@@ -2058,9 +2051,10 @@ generate_unique_grant_id(const String *user_name, String *id)
   s_stream << " " << Int_value(++id_counter);
 }
 
+/////////////////////////////////////////////////////////////////////////////
 
 Grant_obj::Grant_obj(const Ed_row &row)
-  : Abstract_obj(null_lex_str, null_lex_str)
+  : Abstract_obj(null_lex_str)
 {
   const LEX_STRING *user_name= row.get_column(0);
   const LEX_STRING *privilege_type= row.get_column(1);
@@ -2099,9 +2093,10 @@ Grant_obj::Grant_obj(const Ed_row &row)
   generate_unique_grant_id(&m_user_name, &m_id);
 }
 
+/////////////////////////////////////////////////////////////////////////////
 
 Grant_obj::Grant_obj(LEX_STRING name)
-  : Abstract_obj(null_lex_str, null_lex_str)
+  : Abstract_obj(null_lex_str)
 {
   m_user_name.length(0);
   m_grant_info.length(0);
@@ -2109,6 +2104,7 @@ Grant_obj::Grant_obj(LEX_STRING name)
   m_id.copy(name.str, name.length, system_charset_info);
 }
 
+/////////////////////////////////////////////////////////////////////////////
 
 /**
   Serialize the object.
@@ -2145,6 +2141,7 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &out_stream)
   DBUG_RETURN(FALSE);
 }
 
+/////////////////////////////////////////////////////////////////////////////
 
 bool Grant_obj::do_deserialize(In_stream *is)
 {
