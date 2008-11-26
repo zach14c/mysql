@@ -3516,7 +3516,7 @@ bool JOIN::flatten_subqueries()
                    &conds : &((*in_subq)->emb_on_expr_nest->on_expr);
     if (replace_where_subcondition(this, tree, *in_subq, new Item_int(1),
                                    FALSE))
-      DBUG_RETURN(TRUE);
+      DBUG_RETURN(TRUE); /* purecov: inspected */
   }
  
   for (in_subq= sj_subselects.front(); 

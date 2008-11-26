@@ -862,8 +862,8 @@ set @@optimizer_switch=default;
 create table t1 (a int);
 insert into t1 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 create table t2 as select * from t1;
-create table t3 (a int, filler char(100), key(a));
-insert into t3 select A.a + 10*B.a, 'filler' from t1 A, t1 B, t1 C;
+create table t3 (a int, b int, filler char(100), key(a));
+insert into t3 select A.a + 10*B.a, A.a + 10*B.a, 'filler' from t1 A, t1 B, t1 C;
 explain select * from t1, t3 where t3.a in (select a from t2) and (t3.a < 10 or t3.a >30) and t1.a =3;
 
 #
@@ -878,9 +878,11 @@ where X.a in (select straight_join A.a from t1 A, t1 B);
 #
 # SJ-Materialization scan + first table being system const table
 #
-create table t0 (a int);
-insert into t0 values(1);
+create table t0 (a int, b int);
+insert into t0 values(1,1);
 explain select * from t0, t3 where t3.a in (select a from t2) and (t3.a < 10 or t3.a >30);
+create table t4 as select a as x, a as y from t1;
+explain select * from t0, t3 where (t3.a, t3.b) in (select x,y from t4) and (t3.a < 10 or t3.a >30);
 drop table t0,t1,t2,t3;
 
 #
@@ -893,6 +895,20 @@ insert into t1 select A.a, B.a, 'filler' from t0 A, t0 B;
 create table t2 as select * from t1;
 
 explain select * from t2 where a in (select b from t1 where a=3);
+explain select * from t2 where (b,a) in (select a,b from t1 where a=3);
 
-drop table t0,t1,t2;
+drop table t1,t2;
 
+#
+# Multi-column sj-materialzation with lookups
+#
+create table t1 (a int, b int);
+insert into t1 select a,a from t0;
+create table t2 (a int, b int); 
+insert into t2 select A.a + 10*B.a, A.a + 10*B.a from t0 A, t0 B;
+
+set @@optimizer_switch='no_firstmatch';
+explain select * from t1 where (a,b) in (select a,b from t2);
+set @@optimizer_switch='';
+
+drop table t0, t1, t2;
