@@ -418,7 +418,7 @@ public:
       @retval FALSE on success.
       @retval TRUE on error.
   */
-  virtual bool deserialize(uint image_version, const String *image);
+  virtual bool init_from_image(uint image_version, const String *image);
 
 protected:
   /**
@@ -427,9 +427,9 @@ protected:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream) = 0;
 
   /**
-    A primitive implementing @c deserialize() method.
+    A primitive implementing @c init_from_image() method.
   */
-  virtual bool do_deserialize(In_stream *is);
+  virtual bool do_init_from_image(In_stream *is);
 
   virtual void build_drop_statement(String_stream &s_stream) const = 0;
 
@@ -686,18 +686,18 @@ bool Abstract_obj::drop(THD *thd)
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Abstract_obj::deserialize(uint image_version, const String *image)
+bool Abstract_obj::init_from_image(uint image_version, const String *image)
 {
   m_stmt_list.delete_elements();
 
   In_stream is(image_version, image);
 
-  return do_deserialize(&is);
+  return do_init_from_image(&is);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Abstract_obj::do_deserialize(In_stream *is)
+bool Abstract_obj::do_init_from_image(In_stream *is)
 {
   LEX_STRING sql_text;
   while (! is->next(&sql_text))
@@ -1061,7 +1061,7 @@ public:
   const String *get_description();
 
 public:
-  virtual bool deserialize(uint image_version, const String *image);
+  virtual bool init_from_image(uint image_version, const String *image);
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
@@ -1101,7 +1101,7 @@ public:
   inline const String *get_grant_info() const { return &m_grant_info; }
 
 private:
-  virtual bool do_deserialize(In_stream *is);
+  virtual bool do_init_from_image(In_stream *is);
   inline virtual void build_drop_statement(String_stream &s_stream) const
   { }
 
@@ -2070,9 +2070,9 @@ bool Tablespace_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Tablespace_obj::deserialize(uint image_version, const String *image)
+bool Tablespace_obj::init_from_image(uint image_version, const String *image)
 {
-  if (Abstract_obj::deserialize(image_version, image))
+  if (Abstract_obj::init_from_image(image_version, image))
     return TRUE;
 
   List_iterator_fast<String> it(m_stmt_list);
@@ -2247,7 +2247,7 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
 /////////////////////////////////////////////////////////////////////////////
 
-bool Grant_obj::do_deserialize(In_stream *is)
+bool Grant_obj::do_init_from_image(In_stream *is)
 {
   LEX_STRING user_name;
   LEX_STRING grant_info;
@@ -2261,7 +2261,7 @@ bool Grant_obj::do_deserialize(In_stream *is)
   m_user_name.copy(user_name.str, user_name.length, system_charset_info);
   m_grant_info.copy(grant_info.str, grant_info.length, system_charset_info);
 
-  return Abstract_obj::do_deserialize(is);
+  return Abstract_obj::do_init_from_image(is);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2432,7 +2432,7 @@ Obj *get_database(const String *db_name,
                   const String *image)
 {
   Database_obj *obj= new Database_obj(db_name->lex_string());
-  obj->deserialize(image_version, image);
+  obj->init_from_image(image_version, image);
 
   return obj;
 }
@@ -2444,7 +2444,7 @@ Obj *get_table(const String *db_name,
 {
   Table_obj *obj= new Table_obj(db_name->lex_string(),
                                 table_name->lex_string());
-  obj->deserialize(image_version, image);
+  obj->init_from_image(image_version, image);
 
   return obj;
 }
@@ -2455,7 +2455,7 @@ Obj *get_view(const String *db_name,
               const String *image)
 {
   View_obj *obj= new View_obj(db_name->lex_string(), view_name->lex_string());
-  obj->deserialize(image_version, image);
+  obj->init_from_image(image_version, image);
 
   return obj;
 }
@@ -2467,7 +2467,7 @@ Obj *get_trigger(const String *db_name,
 {
   Trigger_obj *obj= new Trigger_obj(db_name->lex_string(),
                                     trigger_name->lex_string());
-  if (obj->deserialize(image_version, image))
+  if (obj->init_from_image(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2483,7 +2483,7 @@ Obj *get_stored_procedure(const String *db_name,
 {
   Stored_proc_obj *obj= new Stored_proc_obj(db_name->lex_string(),
                                             sp_name->lex_string());
-  if (obj->deserialize(image_version, image))
+  if (obj->init_from_image(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2499,7 +2499,7 @@ Obj *get_stored_function(const String *db_name,
 {
   Stored_func_obj *obj= new Stored_func_obj(db_name->lex_string(),
                                             sf_name->lex_string());
-  if (obj->deserialize(image_version, image))
+  if (obj->init_from_image(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2517,7 +2517,7 @@ Obj *get_event(const String *db_name,
 {
   Event_obj *obj= new Event_obj(db_name->lex_string(),
                                 event_name->lex_string());
-  if (obj->deserialize(image_version, image))
+  if (obj->init_from_image(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2533,7 +2533,7 @@ Obj *get_tablespace(const String *ts_name,
                     const String *image)
 {
   Tablespace_obj *obj= new Tablespace_obj(ts_name->lex_string());
-  if (obj->deserialize(image_version, image))
+  if (obj->init_from_image(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2548,7 +2548,7 @@ Obj *get_db_grant(const String *db_name,
                   const String *image)
 {
   Grant_obj *obj= new Grant_obj(name->lex_string());
-  if (obj->deserialize(image_version, image))
+  if (obj->init_from_image(image_version, image))
   {
     delete obj;
     obj= 0;
