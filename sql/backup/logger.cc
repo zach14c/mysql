@@ -28,15 +28,27 @@ namespace backup {
   the moment. Destinations which are not ready/initialized yet should be 
   silently ignored.
 
-  @returns 0 on success.
+  @returns Reported error code.
  */
 int Logger::write_message(log_level::value level, int error_code,
                           const char *msg)
 {
    char buf[ERRMSGSIZE + 30];
+   /*
+     When logging to server's error log, msg will be prefixed with
+     "Backup:"/"Restore:" if the operation has been initialized (i.e., after
+     Logger::init() call). For other destinations, msg is reported as it is.
+     
+     Pointer out points at output string for server's error log, which has the
+     prefix added if needed.
+    */ 
    const char *out= msg;
 
-   if (m_state == READY || m_state == RUNNING)
+   /*
+     Note: m_type is meaningful only after a call to init() i.e., 
+     if m_state != CREATED.
+   */ 
+   if (m_state != CREATED)
    {
      my_snprintf(buf, sizeof(buf), "%s: %s", 
                  m_type == BACKUP ? "Backup" : "Restore" , msg);
@@ -45,43 +57,61 @@ int Logger::write_message(log_level::value level, int error_code,
    
    switch (level) {
    case log_level::ERROR:
-     if (m_save_errors)
-     {
-       error.code= error_code;
-       error.level= MYSQL_ERROR::WARN_LEVEL_ERROR;
-       error.msg= sql_strdup(msg);
-     }
+   {
+     // Report to server's error log
 
      sql_print_error(out);
-     if (m_push_errors)
-       push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-			   error_code, msg);
-     DBUG_PRINT("backup_log",("[ERROR] %s", out));
-     
+
+     // Report to the client
+
+     bool saved_value= m_thd->no_warnings_for_error;
+     m_thd->no_warnings_for_error= m_push_errors ? FALSE : TRUE;
+     my_printf_error(error_code, msg, MYF(0));
+     m_thd->no_warnings_for_error= saved_value;
+ 
+     m_error_reported= TRUE;
+
+     // Report to backup logs
+
      if (m_state == READY || m_state == RUNNING)
      {
        time_t ts = my_time(0);
 
        backup_log->error_num(error_code);
-       backup_log->write_progress(0, ts, ts, 0, 0, error_code, out);
+       backup_log->write_progress(0, ts, ts, 0, 0, error_code, msg);
      }
      
-     return 0;
+     // Report in the debug trace
+     
+     DBUG_PRINT("backup_log",("[ERROR] %s", out));
+     
+     return error_code;
+   }
 
    case log_level::WARNING:
+     // Report to server's error log
      sql_print_warning(out);
+     
+     // Report to the client (push on warning stack)
      if (m_push_errors)
        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                            error_code, msg);
+
+     // Report to the debug trace
      DBUG_PRINT("backup_log",("[Warning] %s", out));
-     return 0;
+
+     return error_code;
 
    case log_level::INFO:
+     // Report to server's error log
      sql_print_information(out);
-     DBUG_PRINT("backup_log",("[Info] %s", out));
-     return 0;
 
-   default: return ERROR;
+     // Report to the debug trace
+     DBUG_PRINT("backup_log",("[Info] %s", out));
+
+     return error_code;
+
+   default: DBUG_ASSERT(0); return ERROR;
    }
 }
 
@@ -94,7 +124,7 @@ int Logger::write_message(log_level::value level, int error_code,
   If the message contains placeholders, additional arguments provide
   values to be put there.
 
-  @returns 0 on success.
+  @returns Reported error code.
  */
 int Logger::v_report_error(log_level::value level, int error_code, va_list args)
 {

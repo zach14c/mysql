@@ -974,6 +974,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  OUTER
 %token  OUTFILE
 %token  OUT_SYM                       /* SQL-2003-R */
+%token  OVERWRITE_SYM
 %token  OWNER_SYM
 %token  PACK_KEYS_SYM
 %token  PAGE_SYM
@@ -5959,7 +5960,7 @@ alter_commands:
           {
             LEX *lex= Lex;
             lex->sql_command = SQLCOM_OPTIMIZE;
-            lex->alter_info.flags|= ALTER_OPTIMIZE_PARTITION;
+            lex->alter_info.flags|= ALTER_ADMIN_PARTITION;
             lex->no_write_to_binlog= $3;
             lex->check_opt.init();
           }
@@ -5969,7 +5970,7 @@ alter_commands:
           {
             LEX *lex= Lex;
             lex->sql_command = SQLCOM_ANALYZE;
-            lex->alter_info.flags|= ALTER_ANALYZE_PARTITION;
+            lex->alter_info.flags|= ALTER_ADMIN_PARTITION;
             lex->no_write_to_binlog= $3;
             lex->check_opt.init();
           }
@@ -5977,7 +5978,7 @@ alter_commands:
           {
             LEX *lex= Lex;
             lex->sql_command = SQLCOM_CHECK;
-            lex->alter_info.flags|= ALTER_CHECK_PARTITION;
+            lex->alter_info.flags|= ALTER_ADMIN_PARTITION;
             lex->check_opt.init();
           }
           opt_mi_check_type
@@ -5986,7 +5987,7 @@ alter_commands:
           {
             LEX *lex= Lex;
             lex->sql_command = SQLCOM_REPAIR;
-            lex->alter_info.flags|= ALTER_REPAIR_PARTITION;
+            lex->alter_info.flags|= ALTER_ADMIN_PARTITION;
             lex->no_write_to_binlog= $3;
             lex->check_opt.init();
           }
@@ -6433,11 +6434,31 @@ restore:
             lex->clear_db_list();
           }
           FROM
-          TEXT_STRING_sys
+          TEXT_STRING_sys 
+          opt_overwrite
           {
             Lex->backup_dir = $4; 
           }
         ;
+
+opt_overwrite:
+          /* empty */ 
+          {         
+            LEX *lex= Lex;
+            Item *it= new Item_int((int8) 0);
+
+            lex->value_list.empty();
+            lex->value_list.push_front(it);
+          }
+        | OVERWRITE_SYM 
+          {
+            LEX *lex= Lex;
+            Item *it= new Item_int((int8) 1);
+
+            lex->value_list.empty();
+            lex->value_list.push_front(it);
+           }
+         ;
 
 backup:   
           BACKUP_SYM 

@@ -51,6 +51,7 @@ class Logger
    int report_error(log_level::value level, int error_code, ...);
    int report_error(const char *format, ...);
    int write_message(log_level::value level, const char *msg, ...);
+   int log_error(int error_code, ...);
 
    void report_start(time_t);
    void report_stop(time_t, bool);
@@ -68,11 +69,8 @@ class Logger
      return backup_log->get_backup_id(); 
    }
    
-   void save_errors();
-   void stop_save_errors();
-   void clear_saved_errors();
-   util::SAVED_MYSQL_ERROR *last_saved_error();
    bool push_errors(bool);
+   bool error_reported() const;
 
  protected:
 
@@ -84,40 +82,37 @@ class Logger
   int write_message(log_level::value level , int error_code, const char *msg);
 
  private:
+
   // Prevent copying/assigments
   Logger(const Logger&);
   Logger& operator=(const Logger&);
 
-  util::SAVED_MYSQL_ERROR error;   ///< Used to store saved errors.
-  bool m_save_errors;        ///< Flag telling if errors should be saved.
   bool m_push_errors;        ///< Should errors be pushed on warning stack?
+  bool m_error_reported;     ///< Has any error been reported?
 
   Backup_log *backup_log;    ///< Backup log interface class.
 };
 
 inline
 Logger::Logger(THD *thd) 
-  :m_type(BACKUP), m_state(CREATED),
-   m_thd(thd), m_save_errors(FALSE), m_push_errors(TRUE), backup_log(0)
-{
-  clear_saved_errors();
-}
- 
+   :m_type(BACKUP), m_state(CREATED), m_thd(thd), m_push_errors(TRUE), 
+    m_error_reported(FALSE), backup_log(0)
+{}
 
 inline
 Logger::~Logger()
 {
-  clear_saved_errors();
   delete backup_log;
 }
 
+/// Report unregistered message.
 inline
 int Logger::write_message(log_level::value level, const char *msg, ...)
 {
   va_list args;
 
   va_start(args, msg);
-  int res= v_write_message(level, 0, msg, args);
+  int res= v_write_message(level, ER_UNKNOWN_ERROR, msg, args);
   va_end(args);
 
   return res;
@@ -162,37 +157,20 @@ int Logger::report_error(const char *format, ...)
   return res;
 }
 
-///  Request that all reported errors are saved in the logger.
+/// Reports error without pushing it on server's error stack.
 inline
-void Logger::save_errors()
+int Logger::log_error(int error_code, ...)
 {
-  if (m_save_errors)
-    return;
-  clear_saved_errors();
-  m_save_errors= TRUE;
-}
+  va_list args;
+  bool    saved= push_errors(FALSE);
+  
+  va_start(args, error_code);
+  int res= v_report_error(log_level::ERROR, error_code, args);
+  va_end(args);
 
-/// Stop saving errors.
-inline
-void Logger::stop_save_errors()
-{
-  if (!m_save_errors)
-    return;
-  m_save_errors= FALSE;
-}
+  push_errors(saved);
 
-/// Delete all saved errors to free resources.
-inline
-void Logger::clear_saved_errors()
-{
-  memset(&error, 0, sizeof(error));
-}
-
-/// Return a pointer to most recent saved error.
-inline
-util::SAVED_MYSQL_ERROR *Logger::last_saved_error()
-{ 
-  return error.code ? &error : NULL;
+  return res;
 }
 
 /// Report start of an operation.
@@ -327,7 +305,7 @@ void Logger::report_backup_file(char *path)
     
   @returns 0 on success, error code otherwise.
 
-  @todo Decide what to do if @c initialize() signals errors.
+  @todo Detect, log and report errors to the caller.
   @todo Add code to get the user comment from command.
 */ 
 inline
@@ -337,11 +315,18 @@ int Logger::init(enum_type type, const char *query)
     return 0;
 
   m_type= type;
-  m_state= READY;
+  mysql_reset_errors(m_thd, 0);                 // Never errors
   backup_log = new Backup_log(m_thd, (enum_backup_operation)type, query);
   backup_log->state(BUP_STARTING);
+  m_state= READY;
   DEBUG_SYNC(m_thd, "after_backup_log_init");
   return 0;
+}
+
+inline
+bool Logger::error_reported() const
+{
+  return m_error_reported;
 }
 
 } // backup namespace

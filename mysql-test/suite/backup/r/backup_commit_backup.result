@@ -299,7 +299,7 @@ SELECT release_lock("sync");
 release_lock("sync")
 1
 Checking contents of the backup image
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;
 backup_id
 #
 SELECT * FROM db1.t1;

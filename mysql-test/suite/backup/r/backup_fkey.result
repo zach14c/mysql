@@ -43,10 +43,10 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 Variable_name	Value
 foreign_key_checks	ON
 Now restore the database.
-RESTORE FROM 'backup_fkey.bak';
+RESTORE FROM 'backup_fkey.bak' OVERWRITE;
 backup_id
 #
-RESTORE FROM 'backup_fkey_orig.bak';
+RESTORE FROM 'backup_fkey_orig.bak' OVERWRITE;
 backup_id
 #
 Show data
@@ -84,7 +84,7 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 Variable_name	Value
 foreign_key_checks	ON
 Restoring data
-RESTORE FROM 'backup_fkey.bak';
+RESTORE FROM 'backup_fkey.bak' OVERWRITE;
 backup_id
 #
 Verify foreign_key_checks = ON
@@ -97,7 +97,7 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 Variable_name	Value
 foreign_key_checks	OFF
 Restoring data
-RESTORE FROM 'backup_fkey.bak';
+RESTORE FROM 'backup_fkey.bak' OVERWRITE;
 backup_id
 #
 Verify foreign_key_checks = OFF

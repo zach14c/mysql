@@ -63,7 +63,7 @@ SHOW GRANTS FOR 'bup_user3'@'%';
 
 --echo Run Restore
 --replace_column 1 #
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 
 SHOW TABLES FROM bup_db_grants;
 
@@ -90,7 +90,7 @@ CREATE USER 'bup_user1'@'nosuchhost';
 
 --echo Run Restore
 --replace_column 1 #
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 
 SHOW TABLES FROM bup_db_grants;
 
@@ -178,7 +178,7 @@ EXECUTE stmt3;
 
 --echo Run restore.
 --replace_column 1 #
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 
 FLUSH PRIVILEGES;
 

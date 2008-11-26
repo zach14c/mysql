@@ -15,7 +15,7 @@ Database
 information_schema
 mysql
 test
-RESTORE FROM 'all.bak';
+RESTORE FROM 'all.bak' OVERWRITE;
 backup_id
 #
 SHOW DATABASES;
@@ -38,7 +38,7 @@ mysql
 test
 SHOW TABLES IN empty_db;
 Tables_in_empty_db
-RESTORE FROM 'all.bak';
+RESTORE FROM 'all.bak' OVERWRITE;
 backup_id
 #
 SHOW DATABASES;
@@ -66,7 +66,7 @@ empty_db
 mysql
 other_db
 test
-RESTORE FROM 'empty_db.bak';
+RESTORE FROM 'empty_db.bak' OVERWRITE;
 backup_id
 #
 USE empty_db;

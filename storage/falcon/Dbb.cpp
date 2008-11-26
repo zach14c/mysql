@@ -1397,3 +1397,8 @@ void Dbb::updateSerialLogBlockSize(void)
 	header->serialLogBlockSize = database->serialLogBlockSize;
 	bdb->release(REL_HISTORY);
 }
+
+void Dbb::setCacheRecovering(bool state)
+{
+	cache->recovering = state;
+}

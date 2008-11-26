@@ -15,7 +15,7 @@ backup_id
 Ensure backup image file went to the correct location
 /backup/bup_backupdir.bak
 Perform restore
-RESTORE FROM 'bup_backupdir1.bak';
+RESTORE FROM 'bup_backupdir1.bak' OVERWRITE;
 backup_id
 #
 Now do the backup and restore by specifying a path.
@@ -25,7 +25,7 @@ backup_id
 #
 Ensure backup image file went to the correct location
 Perform restore
-RESTORE FROM '../bup_backupdir2.bak';
+RESTORE FROM '../bup_backupdir2.bak' OVERWRITE;
 backup_id
 #
 Perform backup
@@ -53,8 +53,8 @@ ERROR HY000: Can't write to backup location '$MYSQLTEST_VARDIR/master_data/not/t
 Attempt to set the backupdir to something invalid.
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
 Warnings:
-Warning	1725	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
-Warning	1725	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1731	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1731	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
 Cleanup
 Reset backupdir 
 SET @@global.backupdir = @@global.datadir;
