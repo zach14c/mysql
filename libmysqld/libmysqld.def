@@ -48,7 +48,7 @@ EXPORTS
 	my_regexec
 	my_regex_end
 	my_regfree
-	longlong2str
+	ll2str
 	my_set_exception_pointers
 	my_print_stacktrace
 	my_thread_stack_size
