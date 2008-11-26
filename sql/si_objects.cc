@@ -16,17 +16,19 @@
 /** @file Server Service Interface for Backup: the implementation.  */
 
 #include "mysql_priv.h"
+
 #include "si_objects.h"
 #include "ddl_blocker.h"
 #include "sql_show.h"
+#include "sql_trigger.h"
+#include "sp.h"
+#include "sp_head.h" // for sp_add_to_query_tables().
+
 #ifdef HAVE_EVENT_SCHEDULER
 #include "events.h"
 #include "event_data_objects.h"
 #include "event_db_repository.h"
 #endif
-#include "sql_trigger.h"
-#include "sp.h"
-#include "sp_head.h" // for sp_add_to_query_tables().
 
 DDL_blocker_class *DDL_blocker= NULL;
 
@@ -247,8 +249,8 @@ String_stream &String_stream::operator <<(const char *str)
 class Out_stream
 {
 public:
-  Out_stream(String *serialization) :
-    m_serialization(serialization)
+  Out_stream(String *image) :
+    m_image(image)
   { }
 
 public:
@@ -258,7 +260,7 @@ public:
   Out_stream &operator <<(String_stream &s_stream);
 
 private:
-  String *m_serialization;
+  String *m_image;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -273,7 +275,7 @@ Out_stream &Out_stream::operator <<(const char *query)
 
 Out_stream &Out_stream::operator <<(const LEX_STRING *query)
 {
-  String_stream s_stream(m_serialization);
+  String_stream s_stream(m_image);
 
   s_stream <<
     Int_value(query->length) << " " << query << "\n";
@@ -302,22 +304,22 @@ Out_stream &Out_stream::operator <<(String_stream &s_stream)
 class In_stream
 {
 public:
-  In_stream(uint serialization_version,
-            const String *serialization)
-  : m_serialization_version(serialization_version),
-    m_serialization(serialization),
-    m_read_ptr(m_serialization->ptr()),
-    m_end_ptr(m_serialization->ptr() + m_serialization->length())
+  In_stream(uint image_version,
+            const String *image)
+  : m_image_version(image_version),
+    m_image(image),
+    m_read_ptr(m_image->ptr()),
+    m_end_ptr(m_image->ptr() + m_image->length())
   { }
 
 public:
-  uint serialization_version() const { return m_serialization_version; }
+  uint image_version() const { return m_image_version; }
 public:
   bool next(LEX_STRING *chunk);
 
 private:
-  uint m_serialization_version;
-  const String *m_serialization;
+  uint m_image_version;
+  const String *m_image;
   const char *m_read_ptr;
   const char *m_end_ptr;
 };
@@ -374,20 +376,51 @@ public:
   virtual inline const String *get_db_name() const { return &m_db_name; }
 
 public:
-  virtual bool serialize(THD *thd, String *serialization);
+  /**
+    Serialize an object to an image. The serialization image is opaque
+    object for the client.
 
+    @param[in]  thd     Thread context.
+    @param[out] image   Serialization image.
+
+    @return Error status.
+  */
+  virtual bool serialize(THD *thd, String *image);
+
+  /**
+    Create an object persistently in the database.
+
+    @param[in]  thd     Thread context.
+
+    @return Error status.
+  */
   virtual bool create(THD *thd);
 
+public:
+  /**
+    Read the object state from a given serialization image and restores
+    object state to the point, where it can be created persistently in the
+    database.
+
+    @param[in] image_version The version of the serialization format.
+    @param[in] image         Buffer contained serialized object.
+
+    @return error status.
+      @retval FALSE on success.
+      @retval TRUE on error.
+  */
+  virtual bool deserialize(uint image_version, const String *image);
+
 protected:
-  virtual bool init_serialization(uint serialization_version,
-                                  const String *serialization_buffer);
-
-  virtual bool do_init_serialization(In_stream *is);
-
   /**
     A primitive implementing @c serialize() method.
   */
   virtual bool do_serialize(THD *thd, Out_stream &out_stream) = 0;
+
+  /**
+    A primitive implementing @c deserialize() method.
+  */
+  virtual bool do_deserialize(In_stream *is);
 
 protected:
   MEM_ROOT m_mem_root; /* This mem-root is for keeping stmt list. */
@@ -448,7 +481,7 @@ Abstract_obj::~Abstract_obj()
   formats.
 
   @param[in] thd              Server thread context.
-  @param[in] serialization Buffer to serialize the object
+  @param[in] image Buffer to serialize the object
 
   @return error status.
   @retval FALSE on success.
@@ -459,12 +492,12 @@ Abstract_obj::~Abstract_obj()
   the primitive.
 */
 
-bool Abstract_obj::serialize(THD *thd, String *serialization)
+bool Abstract_obj::serialize(THD *thd, String *image)
 {
   ulong sql_mode_saved= thd->variables.sql_mode;
   thd->variables.sql_mode= 0;
 
-  Out_stream out_stream(serialization);
+  Out_stream out_stream(image);
 
   bool ret= do_serialize(thd, out_stream);
 
@@ -559,19 +592,18 @@ bool Abstract_obj::create(THD *thd)
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Abstract_obj::init_serialization(uint serialization_version,
-                                      const String *serialization_buffer)
+bool Abstract_obj::deserialize(uint image_version, const String *image)
 {
   m_stmt_list.delete_elements();
 
-  In_stream is(serialization_version, serialization_buffer);
+  In_stream is(image_version, image);
 
-  return do_init_serialization(&is);
+  return do_deserialize(&is);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Abstract_obj::do_init_serialization(In_stream *is)
+bool Abstract_obj::do_deserialize(In_stream *is)
 {
   LEX_STRING sql_text;
   while (! is->next(&sql_text))
@@ -798,11 +830,11 @@ public:
 
   const String *get_description();
 
+public:
+  virtual bool deserialize(uint image_version, const String *image);
+
 protected:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
-
-  virtual bool init_serialization(uint serialization_version,
-                                  const String *serialization);
 
 private:
   /* These attributes are to be used only for serialization. */
@@ -833,7 +865,7 @@ public:
   Grant_obj(const Ed_row &ed_row);
 
 public:
-  virtual bool do_init_serialization(In_stream *is);
+  virtual bool do_deserialize(In_stream *is);
 
 public:
   virtual inline const String *get_db_name() const { return NULL; }
@@ -1285,7 +1317,7 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
   /* There must be two columns: database name and create statement. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
-  /* Generate serialization. */
+  /* Generate image. */
 
   {
     String_stream s_stream;
@@ -1376,7 +1408,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
   /* There must be two columns: database name and create statement. */
   DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
 
-  /* Generate serialization. */
+  /* Generate serialization image. */
 
   {
     String_stream s_stream;
@@ -1949,10 +1981,9 @@ bool Tablespace_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
 ///////////////////////////////////////////////////////////////////////////
 
-bool Tablespace_obj::init_serialization(uint serialization_version,
-                                        const String *serialization)
+bool Tablespace_obj::deserialize(uint image_version, const String *image)
 {
-  if (Abstract_obj::init_serialization(serialization_version, serialization))
+  if (Abstract_obj::deserialize(image_version, image))
     return TRUE;
 
   List_iterator_fast<String> it(m_stmt_list);
@@ -1972,7 +2003,7 @@ bool Tablespace_obj::init_serialization(uint serialization_version,
   Get a description of the tablespace object.
 
   This method returns the description of the object which is currently
-  the serialization string.
+  the serialization image.
 
   @returns Serialization string.
 */
@@ -2115,7 +2146,7 @@ bool Grant_obj::do_serialize(THD *thd, Out_stream &out_stream)
 }
 
 
-bool Grant_obj::do_init_serialization(In_stream *is)
+bool Grant_obj::do_deserialize(In_stream *is)
 {
   LEX_STRING user_name;
   LEX_STRING grant_info;
@@ -2129,7 +2160,7 @@ bool Grant_obj::do_init_serialization(In_stream *is)
   m_user_name.copy(user_name.str, user_name.length, system_charset_info);
   m_grant_info.copy(grant_info.str, grant_info.length, system_charset_info);
 
-  return Abstract_obj::do_init_serialization(is);
+  return Abstract_obj::do_deserialize(is);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2296,44 +2327,46 @@ Obj_iterator* get_view_base_views(THD *thd,
 ///////////////////////////////////////////////////////////////////////////
 
 Obj *get_database(const String *db_name,
-                  uint serialization_version,
-                  const String *serialization_buffer)
+                  uint image_version,
+                  const String *image)
 {
-  Obj *obj= new Database_obj(db_name->lex_string());
-  obj->init_serialization(serialization_version, serialization_buffer);
+  Database_obj *obj= new Database_obj(db_name->lex_string());
+  obj->deserialize(image_version, image);
 
   return obj;
 }
 
 Obj *get_table(const String *db_name,
                const String *table_name,
-               uint serialization_version,
-               const String *serialization_buffer)
+               uint image_version,
+               const String *image)
 {
-  Obj *obj= new Table_obj(db_name->lex_string(), table_name->lex_string());
-  obj->init_serialization(serialization_version, serialization_buffer);
+  Table_obj *obj= new Table_obj(db_name->lex_string(),
+                                table_name->lex_string());
+  obj->deserialize(image_version, image);
 
   return obj;
 }
 
 Obj *get_view(const String *db_name,
               const String *view_name,
-              uint serialization_version,
-              const String *serialization_buffer)
+              uint image_version,
+              const String *image)
 {
-  Obj *obj= new View_obj(db_name->lex_string(), view_name->lex_string());
-  obj->init_serialization(serialization_version, serialization_buffer);
+  View_obj *obj= new View_obj(db_name->lex_string(), view_name->lex_string());
+  obj->deserialize(image_version, image);
 
   return obj;
 }
 
 Obj *get_trigger(const String *db_name,
                  const String *trigger_name,
-                 uint serialization_version,
-                 const String *serialization_buffer)
+                 uint image_version,
+                 const String *image)
 {
-  Obj *obj= new Trigger_obj(db_name->lex_string(), trigger_name->lex_string());
-  if (obj->init_serialization(serialization_version, serialization_buffer))
+  Trigger_obj *obj= new Trigger_obj(db_name->lex_string(),
+                                    trigger_name->lex_string());
+  if (obj->deserialize(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2344,11 +2377,12 @@ Obj *get_trigger(const String *db_name,
 
 Obj *get_stored_procedure(const String *db_name,
                           const String *sp_name,
-                          uint serialization_version,
-                          const String *serialization_buffer)
+                          uint image_version,
+                          const String *image)
 {
-  Obj *obj= new Stored_proc_obj(db_name->lex_string(), sp_name->lex_string());
-  if (obj->init_serialization(serialization_version, serialization_buffer))
+  Stored_proc_obj *obj= new Stored_proc_obj(db_name->lex_string(),
+                                            sp_name->lex_string());
+  if (obj->deserialize(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2359,11 +2393,12 @@ Obj *get_stored_procedure(const String *db_name,
 
 Obj *get_stored_function(const String *db_name,
                          const String *sf_name,
-                         uint serialization_version,
-                         const String *serialization_buffer)
+                         uint image_version,
+                         const String *image)
 {
-  Obj *obj= new Stored_func_obj(db_name->lex_string(), sf_name->lex_string());
-  if (obj->init_serialization(serialization_version, serialization_buffer))
+  Stored_func_obj *obj= new Stored_func_obj(db_name->lex_string(),
+                                            sf_name->lex_string());
+  if (obj->deserialize(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2376,11 +2411,12 @@ Obj *get_stored_function(const String *db_name,
 
 Obj *get_event(const String *db_name,
                const String *event_name,
-               uint serialization_version,
-               const String *serialization_buffer)
+               uint image_version,
+               const String *image)
 {
-  Obj *obj= new Event_obj(db_name->lex_string(), event_name->lex_string());
-  if (obj->init_serialization(serialization_version, serialization_buffer))
+  Event_obj *obj= new Event_obj(db_name->lex_string(),
+                                event_name->lex_string());
+  if (obj->deserialize(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2392,11 +2428,11 @@ Obj *get_event(const String *db_name,
 #endif
 
 Obj *get_tablespace(const String *ts_name,
-                    uint serialization_version,
-                    const String *serialization_buffer)
+                    uint image_version,
+                    const String *image)
 {
-  Obj *obj= new Tablespace_obj(ts_name->lex_string());
-  if (obj->init_serialization(serialization_version, serialization_buffer))
+  Tablespace_obj *obj= new Tablespace_obj(ts_name->lex_string());
+  if (obj->deserialize(image_version, image))
   {
     delete obj;
     obj= 0;
@@ -2407,11 +2443,11 @@ Obj *get_tablespace(const String *ts_name,
 
 Obj *get_db_grant(const String *db_name,
                   const String *name,
-                  uint serialization_version,
-                  const String *serialization_buffer)
+                  uint image_version,
+                  const String *image)
 {
-  Obj *obj= new Grant_obj(name->lex_string());
-  if (obj->init_serialization(serialization_version, serialization_buffer))
+  Grant_obj *obj= new Grant_obj(name->lex_string());
+  if (obj->deserialize(image_version, image))
   {
     delete obj;
     obj= 0;

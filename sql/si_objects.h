@@ -61,15 +61,20 @@ public:
 
 public:
   /**
-    Serialize an object to a string. The serialization string is opaque
+    Serialize an object to an image. The serialization image is opaque
     object for the client.
+
+    @param[in]  thd     Thread context.
+    @param[out] image   Serialization image.
 
     @return Error status.
   */
-  virtual bool serialize(THD *thd, String *serialization) = 0;
+  virtual bool serialize(THD *thd, String *image) = 0;
 
   /**
     Create an object persistently in the database.
+
+    @param[in]  thd     Thread context.
 
     @return Error status.
   */
@@ -78,64 +83,6 @@ public:
 public:
   virtual ~Obj()
   { }
-
-protected:
-  /**
-    Read the object state from a given buffer and restores object state to
-    the point, where it can be created.
-
-    @param[in] serialization_version The version of the serialization format.
-    @param[in] serialization         Buffer contained serialized object.
-
-    @return error status.
-      @retval FALSE on success.
-      @retval TRUE on error.
-  */
-  virtual bool init_serialization(uint serialization_version,
-                                  const String *serialization_buffer) = 0;
-
-private:
-  friend Obj *get_database(const String *,
-                           uint,
-                           const String *);
-
-  friend Obj *get_table(const String *,
-                        const String *, uint,
-                        const String *);
-
-  friend Obj *get_view(const String *,
-                       const String *,
-                       uint,
-                       const String *);
-
-  friend Obj *get_trigger(const String *,
-                          const String *,
-                          uint,
-                          const String *);
-
-  friend Obj *get_stored_procedure(const String *,
-                                   const String *,
-                                   uint,
-                                   const String *);
-
-  friend Obj *get_stored_function(const String *,
-                                  const String *,
-                                  uint,
-                                  const String *);
-
-  friend Obj *get_event(const String *,
-                        const String *,
-                        uint,
-                        const String *);
-
-  friend Obj *get_tablespace(const String *,
-                             uint,
-                             const String *);
-
-  friend Obj *get_db_grant(const String *,
-                           const String *,
-                           uint,
-                           const String *);
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -321,47 +268,47 @@ Obj_iterator* get_view_base_views(THD *thd,
 ///////////////////////////////////////////////////////////////////////////
 
 Obj *get_database(const String *db_name,
-                  uint serialization_version,
-                  const String *serialization);
+                  uint image_version,
+                  const String *image);
 
 Obj *get_table(const String *db_name,
                const String *table_name,
-               uint serialization_version,
-               const String *serialization);
+               uint image_version,
+               const String *image);
 
 Obj *get_view(const String *db_name,
               const String *view_name,
-              uint serialization_version,
-              const String *serialization);
+              uint image_version,
+              const String *image);
 
 Obj *get_trigger(const String *db_name,
                  const String *trigger_name,
-                 uint serialization_version,
-                 const String *serialization);
+                 uint image_version,
+                 const String *image);
 
 Obj *get_stored_procedure(const String *db_name,
                           const String *stored_proc_name,
-                          uint serialization_version,
-                          const String *serialization);
+                          uint image_version,
+                          const String *image);
 
 Obj *get_stored_function(const String *db_name,
                          const String *stored_func_name,
-                         uint serialization_version,
-                         const String *serialization);
+                         uint image_version,
+                         const String *image);
 
 Obj *get_event(const String *db_name,
                const String *event_name,
-               uint serialization_version,
-               const String *serialization);
+               uint image_version,
+               const String *image);
 
 Obj *get_tablespace(const String *ts_name,
-                    uint serialization_version,
-                    const String *serialization);
+                    uint image_version,
+                    const String *image);
 
 Obj *get_db_grant(const String *db_name,
                   const String *name,
-                  uint serialization_version,
-                  const String *serialization);
+                  uint image_version,
+                  const String *image);
 
 ///////////////////////////////////////////////////////////////////////////
 
