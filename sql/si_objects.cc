@@ -437,7 +437,7 @@ protected:
 
 protected:
   MEM_ROOT m_mem_root; /* This mem-root is for keeping stmt list. */
-  List<String> m_stmt_list;
+  List<LEX_STRING> m_stmt_list;
 
 protected:
   /* These attributes are to be used only for serialization. */
@@ -528,8 +528,8 @@ bool Abstract_obj::serialize(THD *thd, String *image)
 bool Abstract_obj::create(THD *thd)
 {
   bool rc= FALSE;
-  List_iterator_fast<String> it(m_stmt_list);
-  String *sql_text;
+  List_iterator_fast<LEX_STRING> it(m_stmt_list);
+  LEX_STRING *sql_text;
 
   /*
     Drop the object if it exists first of all.
@@ -584,7 +584,7 @@ bool Abstract_obj::create(THD *thd)
   {
     Ed_result ed_result;
 
-    rc= mysql_execute_direct(thd, sql_text->lex_string(), &ed_result);
+    rc= mysql_execute_direct(thd, *sql_text, &ed_result);
 
     /* Ignore warnings from materialization for now. */
     if (rc)
@@ -690,8 +690,6 @@ bool Abstract_obj::drop(THD *thd)
 
 bool Abstract_obj::init_from_image(uint image_version, const String *image)
 {
-  m_stmt_list.delete_elements();
-
   In_stream is(image_version, image);
 
   return do_init_from_image(&is);
@@ -704,12 +702,15 @@ bool Abstract_obj::do_init_from_image(In_stream *is)
   LEX_STRING sql_text;
   while (! is->next(&sql_text))
   {
-    String *str_sql_text= new (&m_mem_root) String();
+    LEX_STRING *sql_text_root= (LEX_STRING *) alloc_root(&m_mem_root,
+                                                         sizeof (LEX_STRING));
 
-    if (!str_sql_text ||
-        str_sql_text->copy(sql_text.str, sql_text.length,
-                           system_charset_info) ||
-        m_stmt_list.push_back(str_sql_text))
+    sql_text_root->str= strmake_root(&m_mem_root,
+                                     sql_text.str, sql_text.length);
+    sql_text_root->length= sql_text.length;
+
+    if (!sql_text_root || !sql_text_root->str ||
+        m_stmt_list.push_back(sql_text_root))
     {
       return TRUE;
     }
@@ -1932,13 +1933,13 @@ bool Tablespace_obj::init_from_image(uint image_version, const String *image)
   if (Abstract_obj::init_from_image(image_version, image))
     return TRUE;
 
-  List_iterator_fast<String> it(m_stmt_list);
-  String *desc= it++;
+  List_iterator_fast<LEX_STRING> it(m_stmt_list);
+  LEX_STRING *desc= it++;
 
   /* Tablespace description must not be NULL. */
   DBUG_ASSERT(desc);
 
-  m_description.set(desc->ptr(), desc->length(), desc->charset());
+  m_description.copy(desc->str, desc->length, system_charset_info);
 
   return FALSE;
 }
