@@ -206,6 +206,11 @@ NO
 #
 # SQLCOM_SHOW_STATUS
 #
+INSERT INTO db1.trans (a) VALUES (1);
+show status where (1) in (select * from t1);
+CALL db1.test_if_commit();
+IMPLICIT COMMIT
+NO
 #
 # SQLCOM_SHOW_ENGINE_MUTEX
 #
@@ -281,9 +286,19 @@ NO
 #
 # SQLCOM_SHOW_STATUS_PROC
 #
+INSERT INTO db1.trans (a) VALUES (1);
+show procedure status where (1) in (select * from t1);
+CALL db1.test_if_commit();
+IMPLICIT COMMIT
+NO
 #
 # SQLCOM_SHOW_STATUS_FUNC
 #
+INSERT INTO db1.trans (a) VALUES (1);
+show function status where (1) in (select * from t1);
+CALL db1.test_if_commit();
+IMPLICIT COMMIT
+NO
 #
 # SQLCOM_SET_OPTION
 #
@@ -304,6 +319,11 @@ NO
 # SQLCOM_CALL
 #
 create procedure p1(a int) begin end;
+INSERT INTO db1.trans (a) VALUES (1);
+call p1((1) in (select * from t1));
+CALL db1.test_if_commit();
+IMPLICIT COMMIT
+NO
 drop procedure p1;
 #
 # SQLCOM_CREATE_VIEW
@@ -1023,22 +1043,22 @@ YES
 #
 # SQLCOM_BACKUP
 #
+create database backup_db;
 INSERT INTO db1.trans (a) VALUES (1);
-backup database db1 to 'backup_db1.ba';
+backup database backup_db to 'backup_db.ba';
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 YES
-#
-# SQLCOM_SHOW_ARCHIVE
-#
+drop database backup_db;
 #
 # SQLCOM_RESTORE
 #
 INSERT INTO db1.trans (a) VALUES (1);
-restore from 'backup_db1.ba';
+restore from 'backup_db.ba';
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 YES
+drop database backup_db;
 #
 # SQLCOM_BACKUP_TEST
 #
