@@ -80,6 +80,15 @@ public:
   */
   virtual bool create(THD *thd) = 0;
 
+  /**
+    Drop an object in the database.
+
+    @param[in]  thd     Thread context.
+
+    @return Error status.
+  */
+  virtual bool drop(THD *thd) = 0;
+
 public:
   virtual ~Obj()
   { }

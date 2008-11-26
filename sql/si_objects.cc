@@ -396,6 +396,15 @@ public:
   */
   virtual bool create(THD *thd);
 
+  /**
+    Drop an object in the database.
+
+    @param[in]  thd     Thread context.
+
+    @return Error status.
+  */
+  virtual bool drop(THD *thd);
+
 public:
   /**
     Read the object state from a given serialization image and restores
@@ -405,7 +414,7 @@ public:
     @param[in] image_version The version of the serialization format.
     @param[in] image         Buffer contained serialized object.
 
-    @return error status.
+    @return Error status.
       @retval FALSE on success.
       @retval TRUE on error.
   */
@@ -421,6 +430,8 @@ protected:
     A primitive implementing @c deserialize() method.
   */
   virtual bool do_deserialize(In_stream *is);
+
+  virtual void build_drop_statement(String_stream &s_stream) const = 0;
 
 protected:
   MEM_ROOT m_mem_root; /* This mem-root is for keeping stmt list. */
@@ -477,9 +488,9 @@ Abstract_obj::~Abstract_obj()
   @param[in] thd              Server thread context.
   @param[in] image Buffer to serialize the object
 
-  @return error status.
-  @retval FALSE on success.
-  @retval TRUE on error.
+  @return Error status.
+    @retval FALSE on success.
+    @retval TRUE on error.
 
   @note The real work is done inside @c do_serialize() primitive which should be
   defied in derived classes. This method prepares appropriate context and calls
@@ -507,9 +518,9 @@ bool Abstract_obj::serialize(THD *thd, String *image)
 
   @param[in] thd              Server thread context.
 
-  @return error status.
-  @retval FALSE on success.
-  @retval TRUE on error.
+  @return Error status.
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 
 bool Abstract_obj::create(THD *thd)
@@ -517,6 +528,14 @@ bool Abstract_obj::create(THD *thd)
   bool rc= FALSE;
   List_iterator_fast<String> it(m_stmt_list);
   String *sql_text;
+
+  /*
+    Drop the object if it exists first of all.
+
+    @note this semantics will be changed in the future.
+    That's why drop() is a public separate operation of Obj.
+  */
+  drop(thd);
 
   /*
     Preserve the following session attributes:
@@ -586,6 +605,87 @@ bool Abstract_obj::create(THD *thd)
 
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  Create the object in the database.
+
+  @param[in] thd              Server thread context.
+
+  @return Error status.
+    @retval FALSE on success.
+    @retval TRUE on error.
+*/
+
+bool Abstract_obj::drop(THD *thd)
+{
+  bool rc= FALSE;
+
+  /*
+    Preserve the following session attributes:
+    - sql_mode;
+    - character_set_client;
+    - character_set_results;
+    - collation_connection;
+
+    Remember also session temporary tables.
+  */
+  ulong sql_mode_saved= thd->variables.sql_mode;
+  CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
+  CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
+  CHARSET_INFO *connection_cl_saved= thd->variables.collation_connection;
+  TABLE *tmp_tables_saved= thd->temporary_tables;
+
+  /*
+    Reset session state to the following:
+    - sql_mode: 0
+    - character_set_client: utf8
+    - character_set_results: binary
+    - collation_connection: utf8
+  */
+  thd->variables.sql_mode= 0;
+  thd->variables.character_set_client= system_charset_info;
+  thd->variables.character_set_results= &my_charset_bin;
+  thd->variables.collation_connection= system_charset_info;
+  thd->update_charset();
+
+  /*
+    Temporary tables should be ignored while looking for table structures.
+    Backup wants to deal with ordinary tables, not temporary ones.
+  */
+  thd->temporary_tables= NULL;
+
+  /* Allow to execute DDL operations. */
+  ddl_blocker_exception_on(thd);
+
+  /* Run queries from the serialization image. */
+  {
+    Ed_result ed_result;
+    String_stream s_stream;
+    const LEX_STRING *sql_text;
+
+    build_drop_statement(s_stream);
+    sql_text= s_stream.lex_string();
+
+    if (sql_text->str && sql_text->length)
+      rc= mysql_execute_direct(thd, *sql_text, &ed_result);
+
+    /* Ignore warnings. */
+  }
+
+  ddl_blocker_exception_off(thd);
+
+  thd->variables.sql_mode= sql_mode_saved;
+  thd->variables.collation_connection= connection_cl_saved;
+  thd->variables.character_set_results= results_cs_saved;
+  thd->variables.character_set_client= client_cs_saved;
+  thd->update_charset();
+
+  thd->temporary_tables= tmp_tables_saved;
+
+  return rc;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 bool Abstract_obj::deserialize(uint image_version, const String *image)
 {
   m_stmt_list.delete_elements();
@@ -642,6 +742,7 @@ public:
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
+  virtual void build_drop_statement(String_stream &s_stream) const;
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -670,8 +771,20 @@ public:
   virtual inline const String *get_db_name() const { return &m_db_name; }
 
 protected:
+  virtual const LEX_STRING *get_type_name() const = 0;
+  virtual void build_drop_statement(String_stream &s_stream) const;
+
+protected:
   String m_db_name;
 };
+
+///////////////////////////////////////////////////////////////////////////
+
+void Database_item_obj::build_drop_statement(String_stream &s_stream) const
+{
+  s_stream <<
+    "DROP " << get_type_name() << " IF EXISTS `" << get_name() << "`";
+}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -685,6 +798,9 @@ protected:
 
 class Table_obj : public Database_item_obj
 {
+private:
+  static const LEX_STRING TYPE_NAME;
+
 public:
   Table_obj(const Ed_row &ed_row)
     : Database_item_obj(ed_row[0], /* database name */
@@ -697,7 +813,14 @@ public:
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
+
+  virtual const LEX_STRING *get_type_name() const
+  { return &Table_obj::TYPE_NAME; }
 };
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING Table_obj::TYPE_NAME= LXS_INIT("TABLE");
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -711,6 +834,9 @@ private:
 
 class View_obj : public Database_item_obj
 {
+private:
+  static const LEX_STRING TYPE_NAME;
+
 public:
   View_obj(const Ed_row &ed_row)
     : Database_item_obj(ed_row[0], /* schema name */
@@ -723,7 +849,14 @@ public:
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
+
+  virtual const LEX_STRING *get_type_name() const
+  { return &View_obj::TYPE_NAME; }
 };
+
+///////////////////////////////////////////////////////////////////////////
+
+const LEX_STRING View_obj::TYPE_NAME= LXS_INIT("VIEW");
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -734,9 +867,6 @@ public:
   Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
     : Database_item_obj(db_name, sp_name)
   { }
-
-protected:
-  virtual const LEX_STRING *get_type() const = 0;
 
 protected:
   virtual const LEX_STRING *get_create_stmt(Ed_row *row) = 0;
@@ -786,19 +916,13 @@ public:
   { }
 
 private:
-  virtual const LEX_STRING *get_type() const;
+  virtual const LEX_STRING *get_type_name() const
+  { return &Trigger_obj::TYPE_NAME; }
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Trigger_obj::TYPE_NAME= LXS_INIT("TRIGGER");
-
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING *Trigger_obj::get_type() const
-{
-  return &Trigger_obj::TYPE_NAME;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -825,19 +949,13 @@ public:
   { }
 
 private:
-  virtual const LEX_STRING *get_type() const;
+  virtual const LEX_STRING *get_type_name() const
+  { return &Stored_proc_obj::TYPE_NAME; }
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Stored_proc_obj::TYPE_NAME= LXS_INIT("PROCEDURE");
-
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING *Stored_proc_obj::get_type() const
-{
-  return &Stored_proc_obj::TYPE_NAME;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -864,19 +982,13 @@ public:
   { }
 
 private:
-  virtual const LEX_STRING *get_type() const;
+  virtual const LEX_STRING *get_type_name() const
+  { return &Stored_func_obj::TYPE_NAME; }
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Stored_func_obj::TYPE_NAME= LXS_INIT("FUNCTION");
-
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING *Stored_func_obj::get_type() const
-{
-  return &Stored_func_obj::TYPE_NAME;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -905,7 +1017,9 @@ public:
   { }
 
 private:
-  virtual const LEX_STRING *get_type() const;
+  virtual const LEX_STRING *get_type_name() const
+  { return &Event_obj::TYPE_NAME; }
+
   virtual const LEX_STRING *get_create_stmt(Ed_row *row);
   virtual void dump_header(Ed_row *row, Out_stream &out_stream);
 };
@@ -913,13 +1027,6 @@ private:
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Event_obj::TYPE_NAME= LXS_INIT("EVENT");
-
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING *Event_obj::get_type() const
-{
-  return &Event_obj::TYPE_NAME;
-}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -956,8 +1063,9 @@ public:
 public:
   virtual bool deserialize(uint image_version, const String *image);
 
-protected:
+private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
+  virtual void build_drop_statement(String_stream &s_stream) const;
 
 private:
   /* These attributes are to be used only for serialization. */
@@ -989,13 +1097,15 @@ public:
   Grant_obj(const Ed_row &ed_row);
 
 public:
-  virtual bool do_deserialize(In_stream *is);
-
-public:
   inline const String *get_user_name() const { return &m_user_name; }
   inline const String *get_grant_info() const { return &m_grant_info; }
 
-protected:
+private:
+  virtual bool do_deserialize(In_stream *is);
+  inline virtual void build_drop_statement(String_stream &s_stream) const
+  { }
+
+private:
   /* These attributes are to be used only for serialization. */
   String m_user_name;
   String m_grant_info; //< contains privilege definition
@@ -1369,8 +1479,8 @@ create<View_base_view_iterator>(THD *thd, const String *db_name,
   should be recreated using this interface.
 
   @returns Error status.
-  @retval FALSE on success
-  @retval TRUE on error
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 
 bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
@@ -1431,15 +1541,17 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   /* Generate image. */
 
-  {
-    String_stream s_stream;
-    s_stream << "DROP DATABASE IF EXISTS `" << get_name() << "`";
-    out_stream << s_stream;
-  }
-
   out_stream << row->get_column(1);
 
   DBUG_RETURN(FALSE);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Database_obj::build_drop_statement(String_stream &s_stream) const
+{
+  s_stream <<
+    "DROP DATABASE IF EXISTS `" << get_name() << "`";
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1455,8 +1567,8 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
   @param[out] out_stream  Output stream.
 
   @returns Error status.
-  @retval FALSE on success
-  @retval TRUE on error
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 
 bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
@@ -1703,8 +1815,8 @@ dump_base_object_stubs(THD *thd,
   @param[out] out_stream  Output stream.
 
   @returns Error status.
-  @retval FALSE on success
-  @retval TRUE on error
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
@@ -1791,7 +1903,8 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
   {
     String_stream s_stream;
     s_stream <<
-      "SHOW CREATE " << get_type() << " `" << &m_db_name << "`.`" << &m_id << "`";
+      "SHOW CREATE " << get_type_name() <<
+      " `" << &m_db_name << "`.`" << &m_id << "`";
 
     if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
         ed_result.get_warnings().elements > 0)
@@ -1959,8 +2072,8 @@ Tablespace_obj::Tablespace_obj(LEX_STRING ts_name)
   @param[out] out_stream  Output stream.
 
   @returns Error status.
-  @retval FALSE on success
-  @retval TRUE on error
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 
 bool Tablespace_obj::do_serialize(THD *thd, Out_stream &out_stream)
@@ -2028,6 +2141,14 @@ const String *Tablespace_obj::get_description()
   s_stream << "ENGINE = " << &m_engine;
 
   DBUG_RETURN(&m_description);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Tablespace_obj::build_drop_statement(String_stream &s_stream) const
+{
+  s_stream <<
+    "DROP TABLESPACE `" << &m_id << "` ENGINE = " << &m_engine;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2120,8 +2241,8 @@ Grant_obj::Grant_obj(LEX_STRING name)
   should be recreated using this interface.
 
   @returns Error status.
-  @retval FALSE on success
-  @retval TRUE on error
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 
 bool Grant_obj::do_serialize(THD *thd, Out_stream &out_stream)
@@ -2594,8 +2715,9 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   @note Caller is responsible for destroying the object.
 
-  @retval Tablespace object if table uses a tablespace
-  @retval NULL if table does not use a tablespace
+  @return Tablespace object.
+    @retval Tablespace object if table uses a tablespace.
+    @retval NULL if table does not use a tablespace.
 */
 
 Obj *find_tablespace_for_table(THD *thd,
@@ -2682,8 +2804,9 @@ bool compare_tablespace_attributes(Obj *ts1, Obj *ts2)
 
   @param[in] thd  current thread
 
-  @retval FALSE on success.
-  @retval TRUE on error.
+  @return Error status.
+    @retval FALSE on success.
+    @retval TRUE on error.
 */
 bool ddl_blocker_enable(THD *thd)
 {
