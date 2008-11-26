@@ -32,7 +32,7 @@ WHERE command LIKE 'BACKUP DATABASE db1 %';
 SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 drivers
 Default
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;
 backup_id
 #
 SHOW TABLES IN db1;

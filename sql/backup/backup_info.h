@@ -48,6 +48,10 @@ class Backup_info: public backup::Image_info
 
  private:
 
+  // Prevent copying/assignments
+  Backup_info(const Backup_info&);
+  Backup_info& operator=(const Backup_info&);
+
   class Global_iterator; ///< Iterates over global items (for which meta-data is stored).
   class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
 
