@@ -1,5 +1,4 @@
 LIBRARY		LIBMYSQLD
-DESCRIPTION	'MySQL 5.1 Embedded Server Library'
 VERSION		5.1
 EXPORTS
 	_db_process_
@@ -44,11 +43,13 @@ EXPORTS
 	init_dynamic_array2
 	pthread_create
 	pthread_cond_init
+	ll2str
+	my_fileno
+	my_gcvt
 	my_regcomp
 	my_regexec
 	my_regex_end
 	my_regfree
-	ll2str
 	my_set_exception_pointers
 	my_print_stacktrace
 	my_thread_stack_size
