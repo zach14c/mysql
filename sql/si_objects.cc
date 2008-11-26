@@ -191,6 +191,8 @@ public:
     return &m_lex_string;
   }
 
+  void reset() { m_buffer->length(0); }
+
 public:
   String_stream &operator <<(const Int_value &v);
   String_stream &operator <<(const C_str &v);
@@ -1579,21 +1581,19 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
               STR(m_db_name), STR(m_id)));
 
   Ed_result ed_result;
+  String_stream s_stream;
 
+  s_stream <<
+    "SHOW CREATE TABLE `" << &m_db_name << "`.`" << &m_id << "`";
+
+  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+      ed_result.get_warnings().elements > 0)
   {
-    String_stream s_stream;
-    s_stream <<
-      "SHOW CREATE TABLE `" << &m_db_name << "`.`" << &m_id << "`";
-
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /*
-        There should be no warnings. A warning means that serialization has
-        failed.
-      */
-      DBUG_RETURN(TRUE);
-    }
+    /*
+      There should be no warnings. A warning means that serialization has
+      failed.
+    */
+    DBUG_RETURN(TRUE);
   }
 
   /* Check result. */
@@ -1621,7 +1621,7 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
   /* Generate serialization image. */
 
   {
-    String_stream s_stream;
+    s_stream.reset();
     s_stream << "USE `" << &m_db_name << "`";
     out_stream << s_stream;
   }
@@ -1643,22 +1643,20 @@ get_view_create_stmt(THD *thd,
 {
   /* Get a create statement for a view. */
   Ed_result ed_result;
+  String_stream s_stream;
 
+  s_stream <<
+    "SHOW CREATE VIEW `" << view->get_db_name() << "`."
+    "`" << view->get_name() << "`";
+
+  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+      ed_result.get_warnings().elements > 0)
   {
-    String_stream s_stream;
-    s_stream <<
-      "SHOW CREATE VIEW `" << view->get_db_name() << "`."
-      "`" << view->get_name() << "`";
-
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /*
-        There should be no warnings. A warning means that serialization has
-        failed.
-      */
-      return TRUE;
-    }
+    /*
+      There should be no warnings. A warning means that serialization has
+      failed.
+    */
+    return TRUE;
   }
 
   /* The result must contain only one result-set... */
@@ -1708,15 +1706,13 @@ dump_base_object_stubs(THD *thd,
   while ((base_obj= base_obj_it->next()))
   {
     String_stream base_obj_stmt;
+    String_stream s_stream;
 
     /* Dump header of base obj stub. */
 
-    {
-      String_stream s_stream;
-      s_stream <<
-        "CREATE DATABASE IF NOT EXISTS `" << base_obj->get_db_name() << "`";
-      out_stream << s_stream;
-    }
+    s_stream <<
+      "CREATE DATABASE IF NOT EXISTS `" << base_obj->get_db_name() << "`";
+    out_stream << s_stream;
 
     base_obj_stmt <<
       "CREATE TABLE IF NOT EXISTS "
@@ -1727,22 +1723,20 @@ dump_base_object_stubs(THD *thd,
 
     Ed_result ed_result;
 
-    {
-      String_stream s_stream;
-      s_stream <<
-        "SHOW COLUMNS FROM `" << base_obj->get_db_name() << "`."
-        "`" << base_obj->get_name() << "`";
+    s_stream.reset();
+    s_stream <<
+      "SHOW COLUMNS FROM `" << base_obj->get_db_name() << "`."
+      "`" << base_obj->get_name() << "`";
 
-      if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-          ed_result.get_warnings().elements > 0)
-      {
-        /*
-          There should be no warnings. A warning means that serialization has
-          failed.
-        */
-        delete base_obj;
-        return TRUE;
-      }
+    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+        ed_result.get_warnings().elements > 0)
+    {
+      /*
+        There should be no warnings. A warning means that serialization has
+        failed.
+      */
+      delete base_obj;
+      return TRUE;
     }
 
     /* The result must contain only one result-set... */
@@ -1808,6 +1802,8 @@ bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
+  String_stream s_stream;
+
   LEX_STRING create_stmt;
   LEX_STRING client_cs_name;
   LEX_STRING connection_cl_name;
@@ -1846,23 +1842,16 @@ bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
     delete base_view_it;
   }
 
-  {
-    String_stream s_stream;
-    s_stream << "USE `" << &m_db_name << "`";
-    out_stream << s_stream;
-  }
+  s_stream << "USE `" << &m_db_name << "`";
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream << "SET character_set_client = " << &client_cs_name;
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream << "SET character_set_client = " << &client_cs_name;
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream << "SET collation_connection = " << &connection_cl_name;
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream << "SET collation_connection = " << &connection_cl_name;
+  out_stream << s_stream;
 
   out_stream << &create_stmt;
 
@@ -1881,23 +1870,21 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   DBUG_EXECUTE_IF("backup_fail_add_trigger", DBUG_RETURN(TRUE););
 
+  String_stream s_stream;
   Ed_result ed_result;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SHOW CREATE " << get_type_name() <<
-      " `" << &m_db_name << "`.`" << &m_id << "`";
+  s_stream <<
+    "SHOW CREATE " << get_type_name() <<
+    " `" << &m_db_name << "`.`" << &m_id << "`";
 
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /*
-        There should be no warnings. A warning means that serialization has
-        failed.
-      */
-      DBUG_RETURN(TRUE);
-    }
+  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+      ed_result.get_warnings().elements > 0)
+  {
+    /*
+      There should be no warnings. A warning means that serialization has
+      failed.
+    */
+    DBUG_RETURN(TRUE);
   }
 
   /* The result must contain only one result-set... */
@@ -1917,11 +1904,10 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
   List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
   Ed_row *row= row_it++;
 
-  {
-    String_stream s_stream;
-    s_stream << "USE `" << &m_db_name << "`";
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream << "USE `" << &m_db_name << "`";
+  out_stream << s_stream;
+
   dump_header(row, out_stream);
   out_stream << get_create_stmt(row);
 
@@ -1940,33 +1926,26 @@ const LEX_STRING *Stored_routine_obj::get_create_stmt(Ed_row *row)
 
 void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 {
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET character_set_client = " << row->get_column(3);
-    out_stream << s_stream;
-  }
+  String_stream s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET collation_connection = " << row->get_column(4);
-    out_stream << s_stream;
-  }
+  s_stream <<
+    "SET character_set_client = " << row->get_column(3);
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET collation_database = " << row->get_column(5);
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream <<
+    "SET collation_connection = " << row->get_column(4);
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET sql_mode = '" << row->get_column(1) << "'";
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream <<
+    "SET collation_database = " << row->get_column(5);
+  out_stream << s_stream;
+
+  s_stream.reset();
+  s_stream <<
+    "SET sql_mode = '" << row->get_column(1) << "'";
+  out_stream << s_stream;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1976,40 +1955,31 @@ void Stored_routine_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 
 void Event_obj::dump_header(Ed_row *row, Out_stream &out_stream)
 {
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET character_set_client = " << row->get_column(4);
-    out_stream << s_stream;
-  }
+  String_stream s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET collation_connection = " << row->get_column(5);
-    out_stream << s_stream;
-  }
+  s_stream <<
+    "SET character_set_client = " << row->get_column(4);
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET collation_database = " << row->get_column(6);
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream <<
+    "SET collation_connection = " << row->get_column(5);
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET sql_mode = '" << row->get_column(1) << "'";
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream <<
+    "SET collation_database = " << row->get_column(6);
+  out_stream << s_stream;
 
-  {
-    String_stream s_stream;
-    s_stream <<
-      "SET time_zone = '" << row->get_column(2) << "'";
-    out_stream << s_stream;
-  }
+  s_stream.reset();
+  s_stream <<
+    "SET sql_mode = '" << row->get_column(1) << "'";
+  out_stream << s_stream;
+
+  s_stream.reset();
+  s_stream <<
+    "SET time_zone = '" << row->get_column(2) << "'";
+  out_stream << s_stream;
 }
 
 #endif // HAVE_EVENT_SCHEDULER
@@ -2303,7 +2273,6 @@ Obj_iterator *get_db_tables(THD *thd, const String *db_name)
 Obj_iterator *get_db_views(THD *thd, const String *db_name)
 {
   String_stream s_stream;
-
   s_stream <<
     "SELECT '" << db_name << "', table_name "
     "FROM INFORMATION_SCHEMA.TABLES "
@@ -2600,21 +2569,19 @@ bool check_user_existence(THD *thd, const Obj *obj)
 #else
   Grant_obj *grant_obj= (Grant_obj *) obj;
   Ed_result ed_result;
+  String_stream s_stream;
 
+  s_stream <<
+    "SELECT 1 "
+    "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
+    "WHERE grantee = \"" << grant_obj->get_user_name() << "\"";
+
+
+  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+      ed_result.get_warnings().elements > 0)
   {
-    String_stream s_stream;
-    s_stream <<
-      "SELECT 1 "
-      "FROM INFORMATION_SCHEMA.USER_PRIVILEGES "
-      "WHERE grantee = \"" << grant_obj->get_user_name() << "\"";
-
-
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /* Should be no warnings. */
-      return FALSE;
-    }
+    /* Should be no warnings. */
+    return FALSE;
   }
 
   Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
@@ -2645,23 +2612,21 @@ const String *grant_get_grant_info(const Obj *obj)
 Obj *find_tablespace(THD *thd, const String *ts_name)
 {
   Ed_result ed_result;
+  String_stream s_stream;
 
+  s_stream <<
+    "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
+    "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
+    "INFORMATION_SCHEMA.FILES AS t2 "
+    "WHERE t1.tablespace_name = t2.tablespace_name AND "
+    "t1.tablespace_name = '" << ts_name << "'";
+
+
+  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+      ed_result.get_warnings().elements > 0)
   {
-    String_stream s_stream;
-    s_stream <<
-      "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
-      "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
-      "INFORMATION_SCHEMA.FILES AS t2 "
-      "WHERE t1.tablespace_name = t2.tablespace_name AND "
-      "t1.tablespace_name = '" << ts_name << "'";
-
-
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /* Should be no warnings. */
-      return NULL;
-    }
+    /* Should be no warnings. */
+    return NULL;
   }
 
   if (!ed_result.elements)
@@ -2708,26 +2673,24 @@ Obj *find_tablespace_for_table(THD *thd,
                                const String *table_name)
 {
   Ed_result ed_result;
+  String_stream s_stream;
 
+  s_stream <<
+    "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
+    "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
+    "INFORMATION_SCHEMA.FILES AS t2, "
+    "INFORMATION_SCHEMA.TABLES AS t3 "
+    "WHERE t1.tablespace_name = t2.tablespace_name AND "
+    "t2.tablespace_name = t3.tablespace_name AND "
+    "t3.table_schema = '" << db_name << "' AND "
+    "t3.table_name = '" << table_name << "'";
+
+
+  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
+      ed_result.get_warnings().elements > 0)
   {
-    String_stream s_stream;
-    s_stream <<
-      "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
-      "FROM INFORMATION_SCHEMA.TABLESPACES AS t1, "
-      "INFORMATION_SCHEMA.FILES AS t2, "
-      "INFORMATION_SCHEMA.TABLES AS t3 "
-      "WHERE t1.tablespace_name = t2.tablespace_name AND "
-      "t2.tablespace_name = t3.tablespace_name AND "
-      "t3.table_schema = '" << db_name << "' AND "
-      "t3.table_name = '" << table_name << "'";
-
-
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
-    {
-      /* Should be no warnings. */
-      return NULL;
-    }
+    /* Should be no warnings. */
+    return NULL;
   }
 
   if (!ed_result.elements)
