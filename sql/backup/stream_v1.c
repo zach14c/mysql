@@ -1277,9 +1277,8 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
     CHECK_WR_RES(bstream_wr_item_def(s,cat,PER_TABLE_ITEM,item));
   }
 
+wr_error:
   bcat_iterator_free(cat,iter);
-
-  wr_error:
 
   return ret;
 }

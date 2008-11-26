@@ -1,1 +1,1 @@
---backup_history_log_file=$MYSQLTEST_VARDIR/master-data/history.txt --backup_progress_log_file=$MYSQLTEST_VARDIR/master-data/progress.txt --log-backup-output=FILE
+--backup_history_log_file=$MYSQLTEST_VARDIR/master-data/history.txt --backup_progress_log_file=$MYSQLTEST_VARDIR/master-data/progress.txt --log-backup-output

@@ -1136,7 +1136,7 @@ source include/implicit_commit_helper.inc;
 --echo #
 
 let $statement=
-  restore from 'backup_db1.ba';
+  restore from 'backup_db1.ba' overwrite;
 source include/implicit_commit_helper.inc;
 
 --remove_file $MYSQLTEST_VARDIR/master-data/backup_db1.ba
