@@ -117,7 +117,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_CREATE_EVENT, SQLCOM_SHOW_EVENTS,
   SQLCOM_SHOW_CREATE_TRIGGER,
   SQLCOM_ALTER_DB_UPGRADE,
-  SQLCOM_BACKUP, SQLCOM_RESTORE,
+  SQLCOM_BACKUP, SQLCOM_RESTORE, SQLCOM_PURGE_BACKUP_LOGS, 
 #ifdef BACKUP_TEST
   SQLCOM_BACKUP_TEST,
 #endif
@@ -859,15 +859,12 @@ inline bool st_select_lex_unit::is_union ()
 #define ALTER_COALESCE_PARTITION (1L << 20)
 #define ALTER_REORGANIZE_PARTITION (1L << 21)
 #define ALTER_PARTITION          (1L << 22)
-#define ALTER_OPTIMIZE_PARTITION (1L << 23)
+#define ALTER_ADMIN_PARTITION    (1L << 23)
 #define ALTER_TABLE_REORG        (1L << 24)
 #define ALTER_REBUILD_PARTITION  (1L << 25)
 #define ALTER_ALL_PARTITION      (1L << 26)
-#define ALTER_ANALYZE_PARTITION  (1L << 27)
-#define ALTER_CHECK_PARTITION    (1L << 28)
-#define ALTER_REPAIR_PARTITION   (1L << 29)
-#define ALTER_REMOVE_PARTITIONING (1L << 30)
-#define ALTER_FOREIGN_KEY         (1L << 31)
+#define ALTER_REMOVE_PARTITIONING (1L << 27)
+#define ALTER_FOREIGN_KEY         (1L << 28)
 
 /**
   @brief Parsing data for CREATE or ALTER TABLE.
@@ -1529,6 +1526,7 @@ struct LEX: public Query_tables_list
   LEX_STRING backup_dir;				/* For RESTORE/BACKUP */
   bool backup_compression;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
+  ulonglong backup_id;     /* For PURGE BACKUP LOGS */
   char* x509_subject,*x509_issuer,*ssl_cipher;
   String *wild;
   sql_exchange *exchange;
@@ -1875,6 +1873,13 @@ struct LEX: public Query_tables_list
     }
     return FALSE;
   }
+
+  void clear_db_list()
+  {
+    db_list.empty();
+  }
+
+  int add_db_to_list(LEX_STRING *name);
 };
 
 
