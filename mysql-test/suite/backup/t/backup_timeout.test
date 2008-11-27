@@ -159,4 +159,6 @@ SHOW VARIABLES LIKE 'backup_wait%';
 
 DROP DATABASE bup_ddl_blocker;
 
+SET DEBUG_SYNC= 'reset';
+
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak

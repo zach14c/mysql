@@ -43,7 +43,7 @@
   @defgroup Runtime_Environment Runtime Environment
   @{
 */
-int execute_backup_command(THD*, LEX*, String*);
+int execute_backup_command(THD*, LEX*, String*, bool);
 
 /* Used in error handling only */
 #define SP_TYPE_STRING(LP) \
@@ -2312,11 +2312,29 @@ mysql_execute_command(THD *thd)
                         sys_var_backupdir.value_length);
     backupdir.length(sys_var_backupdir.value_length);
 
+    /* Used to specify if RESTORE should overwrite existing db with same name */
+    bool overwrite_restore= false;
+
+    Item *it= (Item *)lex->value_list.head();
+
+    // Item only set for RESTORE in sql_yacc.yy, no error checking of
+    // item necessary
+    if (it)
+    {
+      /*
+        it is OK to only emulate fix_fields, because we need only
+        value of constant
+      */
+      it->quick_fix_field();
+
+      if ((int8)it->val_int() == 1)
+        overwrite_restore= true;
+    }
     /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
      */ 
-    if (execute_backup_command(thd, lex, &backupdir))
+    if (execute_backup_command(thd, lex, &backupdir, overwrite_restore))
       goto error;
     break;
   }
