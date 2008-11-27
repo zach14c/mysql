@@ -208,7 +208,7 @@ void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
   MYSQL_ERROR *err;
 
   while ((err= err_it++))
-    thd->warning_info->push_warning(thd, err->level, err->code, err->msg);
+    push_warning(thd, err->level, err->code, err->msg);
 }
 
 ///////////////////////////////////////////////////////////////////////////
