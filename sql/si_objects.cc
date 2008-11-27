@@ -58,9 +58,9 @@ public:
   { }
 
 public:
-  void save(THD *thd);
-  void reset(THD *thd);
-  void restore(THD *thd);
+  void save_si_ctx(THD *thd);
+  void reset_si_ctx(THD *thd);
+  void restore_si_ctx(THD *thd);
 
 private:
   ulong m_sql_mode_saved;
@@ -88,9 +88,9 @@ private:
   Remember also session temporary tables.
 */
 
-void Si_session_context::save(THD *thd)
+void Si_session_context::save_si_ctx(THD *thd)
 {
-  DBUG_ENTER("Si_session_context::save");
+  DBUG_ENTER("Si_session_context::save_si_ctx");
   m_sql_mode_saved= thd->variables.sql_mode;
   m_client_cs_saved= thd->variables.character_set_client;
   m_results_cs_saved= thd->variables.character_set_results;
@@ -114,9 +114,9 @@ void Si_session_context::save(THD *thd)
   We want to deal with real tables, not temporary ones.
 */
 
-void Si_session_context::reset(THD *thd)
+void Si_session_context::reset_si_ctx(THD *thd)
 {
-  DBUG_ENTER("Si_session_context::reset");
+  DBUG_ENTER("Si_session_context::reset_si_ctx");
 
   thd->variables.sql_mode= 0;
 
@@ -136,9 +136,9 @@ void Si_session_context::reset(THD *thd)
   Restore session state.
 */
 
-void Si_session_context::restore(THD *thd)
+void Si_session_context::restore_si_ctx(THD *thd)
 {
-  DBUG_ENTER("Si_session_context::restore");
+  DBUG_ENTER("Si_session_context::restore_si_ctx");
 
   thd->variables.sql_mode= m_sql_mode_saved;
   thd->variables.time_zone= m_tz_saved;
@@ -182,12 +182,12 @@ run_service_interface_sql(THD *thd, const LEX_STRING *query,
              ("query: %.*s",
               (int) query->length, (const char *) query->str));
 
-  session_context.save(thd);
-  session_context.reset(thd);
+  session_context.save_si_ctx(thd);
+  session_context.reset_si_ctx(thd);
 
   bool rc= mysql_execute_direct(thd, *query, ed_result);
 
-  session_context.restore(thd);
+  session_context.restore_si_ctx(thd);
 
   DBUG_RETURN(rc);
 }
@@ -651,8 +651,8 @@ bool Abstract_obj::create(THD *thd)
   /*
     Now, proceed with creating the object.
   */
-  session_context.save(thd);
-  session_context.reset(thd);
+  session_context.save_si_ctx(thd);
+  session_context.reset_si_ctx(thd);
 
   /* Allow to execute DDL operations. */
   ::obs::ddl_blocker_exception_on(thd);
@@ -674,7 +674,7 @@ bool Abstract_obj::create(THD *thd)
   /* Disable further DDL execution. */
   ::obs::ddl_blocker_exception_off(thd);
 
-  session_context.restore(thd);
+  session_context.restore_si_ctx(thd);
 
   DBUG_RETURN(rc);
 }
@@ -706,8 +706,8 @@ bool Abstract_obj::drop(THD *thd)
 
   Si_session_context session_context;
 
-  session_context.save(thd);
-  session_context.reset(thd);
+  session_context.save_si_ctx(thd);
+  session_context.reset_si_ctx(thd);
 
   /* Allow to execute DDL operations. */
   ::obs::ddl_blocker_exception_on(thd);
@@ -720,7 +720,7 @@ bool Abstract_obj::drop(THD *thd)
   /* Disable further DDL execution. */
   ::obs::ddl_blocker_exception_off(thd);
 
-  session_context.restore(thd);
+  session_context.restore_si_ctx(thd);
 
   DBUG_RETURN(rc);
 }
