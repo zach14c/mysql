@@ -27,7 +27,7 @@ SHOW WARNINGS;
 # --- Check                                         --- #
 # ----------------------------------------------------- #
 # Check not applicable here.
-SELECT count(*) FROM t1;
+#SELECT count(*) FROM t1;
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #

@@ -38,7 +38,6 @@ public:
 	SRLIndexPage();
 	virtual ~SRLIndexPage();
 
-	int			tableSpaceId;
 	int			indexVersion;
 	int32		pageNumber;
 	int32		parent;

@@ -39,7 +39,6 @@ public:
 	SRLIndexAdd();
 	virtual ~SRLIndexAdd();
 
-	int			tableSpaceId;
 	int32		indexId;
 	int32		recordId;
 	int32		length;

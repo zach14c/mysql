@@ -98,7 +98,7 @@ DROP DATABASE db1;
 --echo now start the restore and while the restore is running, fire the trigger
 --echo activate synchronization points for restore.
 SET DEBUG_SYNC= 'restore_in_progress SIGNAL wait_for_restore WAIT_FOR finish';
---send RESTORE FROM 'db1.bak'
+--send RESTORE FROM 'db1.bak' OVERWRITE;
 
 --echo From breakpoints:
 --connection breakpoints
@@ -147,7 +147,7 @@ DELETE FROM db2.t2;
 --echo now start the restore and while the restore is running, fire the trigger
 --echo activate synchronization points for restore.
 SET DEBUG_SYNC= 'restore_in_progress SIGNAL wait_for_restore WAIT_FOR finish';
---send RESTORE FROM 'db1.bak'
+--send RESTORE FROM 'db1.bak' OVERWRITE;
 
 --echo From breakpoints:
 --connection breakpoints

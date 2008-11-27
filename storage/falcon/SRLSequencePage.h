@@ -30,7 +30,6 @@ public:
 	virtual void redo(void);
 	
 	int		pageSequence;
-	int		tableSpaceId;
 	int32	pageNumber;
 	virtual void print(void);
 };

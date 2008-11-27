@@ -106,9 +106,6 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
     )
   ])
 
-  CXXFLAGS=$ac_save_CXXFLAGS
-  AC_LANG_POP([C++])
-
   # Falcon uses exceptions and STL.
   CXXLDFLAGS="$CXXLDFLAGS $falcon_cv_cxx_enable_stl"
   FALCON_CXXFLAGS="$falcon_cv_cxx_no_invalid_offsetof $falcon_cv_cxx_enable_implicit_templates $falcon_cv_cxx_enable_exceptions"
@@ -118,6 +115,34 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   esac
 
   AC_SUBST([FALCON_CXXFLAGS])
+
+  # Check that C++ exceptions works in an executable by actually running a
+  # compiled program and throwing and catching an exception
+  CXXFLAGS=$FALCON_CXXFLAGS
+  AC_CACHE_CHECK([if compiler and compiler options support C++ exceptions for Falcon],
+	            falcon_supported_by_compiler,[
+  AC_TRY_RUN([
+    int main() {
+      try {
+        throw 1;
+      }
+      catch (int) {
+        return 0;
+      }
+      return -1; 
+    }
+  ], falcon_supported_by_compiler="yes",
+     falcon_supported_by_compiler="no", )
+  ])
+
+  if test "$falcon_supported_by_compiler" != "yes"; then
+    echo "Falcon must be compiled with support for C++ exceptions enabled."
+    echo "Please adjust your compiler flags or disable support for Falcon (--without-plugin-falcon)."
+    exit 1
+  fi
+
+  CXXFLAGS=$ac_save_CXXFLAGS
+  AC_LANG_POP([C++])
 
   # When compiling with Sun Studio compiler on SPARC assembly code for
   # Interlock operations needs to be included. This has been implemented

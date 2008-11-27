@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007 MySQL AB
+/* Copyright (C) 2006, 2007 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -45,6 +45,11 @@
 
 #include "ScaledBinary.h"
 #include "BigInt.h"
+
+/* Verify that the compiler options have enabled C++ exception support */
+#if (defined(__GNUC__) && !defined(__EXCEPTIONS)) || (defined (_MSC_VER) && !defined (_CPPUNWIND))
+#error Falcon needs to be compiled with support for C++ exceptions. Please check your compiler settings.
+#endif
 
 //#define NO_OPTIMIZE
 #define VALIDATE
@@ -182,8 +187,8 @@ int StorageInterface::falcon_init(void *p)
 
 	if (!checkExceptionSupport()) 
 		{
-		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work");
-		DBUG_RETURN(1);
+		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work. Please adjust your compile flags.");
+		FATAL("Falcon exiting process.\n");
 		}
 
 	StorageHandler::setDataDirectory(mysql_real_data_home);
