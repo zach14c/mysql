@@ -120,7 +120,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   # compiled program and throwing and catching an exception
   CXXFLAGS=$FALCON_CXXFLAGS
   AC_CACHE_CHECK([if compiler and compiler options support C++ exceptions for Falcon],
-	            falcon_supported_by_compiler,[
+	            falcon_cv_supported_by_compiler,[
   AC_TRY_RUN([
     int main() {
       try {
@@ -129,13 +129,13 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
       catch (int) {
         return 0;
       }
-      return -1; 
+      return -1;
     }
-  ], falcon_supported_by_compiler="yes",
-     falcon_supported_by_compiler="no", )
+  ], falcon_cv_supported_by_compiler="yes",
+     falcon_cv_supported_by_compiler="no", )
   ])
 
-  if test "$falcon_supported_by_compiler" != "yes"; then
+  if test "$falcon_cv_supported_by_compiler" != "yes"; then
     echo "Falcon must be compiled with support for C++ exceptions enabled."
     echo "Please adjust your compiler flags or disable support for Falcon (--without-plugin-falcon)."
     exit 1
