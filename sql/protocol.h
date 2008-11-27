@@ -266,6 +266,7 @@ private:
   Ed_column -- a class representing a column data in a row. Used with
   Ed_row and Protocol_local.
 */
+
 class Ed_column : public LEX_STRING, public Sql_alloc
 {
 public:

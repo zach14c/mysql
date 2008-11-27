@@ -1138,8 +1138,24 @@ pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
 
 class Ed_result;
+/**
+  Execute a fragment of server code in an isolated context, so that
+  it doesn't leave any effect on THD. THD must have no open tables.
+  The code must not leave any open tables around.
+  The result of execution (if any) is stored in Ed_result.
+*/
+
+class Server_runnable
+{
+public:
+  virtual bool execute_server_code(THD *thd)= 0;
+  virtual LEX_STRING get_slow_log_info();
+  virtual ~Server_runnable();
+};
 
 bool mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *result);
+bool mysql_execute_direct(THD *thd, Server_runnable *ed_runnable,
+                          Ed_result *result);
 
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,

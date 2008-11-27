@@ -162,7 +162,7 @@ public:
   bool execute_loop(String *expanded_query,
                     bool open_cursor,
                     uchar *packet_arg, uchar *packet_end_arg);
-  bool execute_immediate(const char *stmt, uint length);
+  bool execute_server_runnable(Server_runnable *server_runnable);
   /* Destroy this statement */
   void deallocate();
 private:
@@ -183,6 +183,20 @@ private:
   void swap_prepared_statement(Prepared_statement *copy);
 };
 
+
+/**
+*/
+
+class Execute_sql_statement: public Server_runnable
+{
+public:
+  Execute_sql_statement(LEX_STRING sql_text);
+  virtual bool execute_server_code(THD *thd);
+  virtual LEX_STRING get_slow_log_info();
+private:
+  LEX_STRING m_sql_text;
+  LEX_STRING m_slow_log_info;
+};
 
 /******************************************************************************
   Implementation
@@ -2764,6 +2778,54 @@ void mysql_stmt_get_longdata(THD *thd, char *packet, ulong packet_length)
 }
 
 
+bool
+mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *ed_result)
+{
+  Execute_sql_statement execute_sql_statement(query);
+
+  return mysql_execute_direct(thd, &execute_sql_statement, ed_result);
+}
+
+
+/**
+  Execute a fragment of server functionality without an effect on
+  thd, and store results in Ed_result.
+
+  @param thd         Thread handle.
+  @param server_runnable A code fragment to execute.
+  @param ed_result   Result interceptor
+*/
+
+bool
+mysql_execute_direct(THD *thd, Server_runnable *server_runnable,
+                     Ed_result *ed_result)
+{
+  Protocol_local protocol_local(thd, ed_result);
+  Prepared_statement stmt(thd);
+
+  DBUG_ENTER("mysql_execute_direct");
+
+  DBUG_ASSERT(ed_result);
+
+  Protocol *protocol_saved= thd->protocol;
+
+  thd->protocol= &protocol_local;
+
+  ed_result->begin_statement(thd);
+  bool rc= stmt.execute_server_runnable(server_runnable);
+  ed_result->end_statement(thd);
+
+  thd->protocol->end_statement();
+
+  thd->protocol= protocol_saved;
+
+  thd->main_da.reset_diagnostics_area();
+
+  DBUG_RETURN(rc);
+}
+
+
+
 /***************************************************************************
  Select_fetch_protocol_binary
 ****************************************************************************/
@@ -2807,6 +2869,78 @@ Select_fetch_protocol_binary::send_data(List<Item> &fields)
   rc= select_send::send_data(fields);
   thd->protocol= save_protocol;
   return rc;
+}
+
+/*******************************************************************
+*
+*******************************************************************/
+
+Server_runnable::~Server_runnable()
+{
+}
+
+
+LEX_STRING
+Server_runnable::get_slow_log_info()
+{
+  return null_lex_str;
+}
+///////////////////////////////////////////////////////////////////////////
+
+Execute_sql_statement::
+Execute_sql_statement(LEX_STRING sql_text)
+  :m_sql_text(sql_text)
+{}
+
+LEX_STRING
+Execute_sql_statement::get_slow_log_info()
+{
+  return m_slow_log_info;
+}
+
+
+/**
+  Parse and execute a statement. Does not prepare the query.
+
+  Allows to execute a statement from within another statement.
+  The main property of the implementation is that it does not
+  affect the environment -- i.e. you  can run many
+  executions without having to cleanup/reset THD in between.
+*/
+
+bool
+Execute_sql_statement::execute_server_code(THD *thd)
+{
+  bool error;
+
+  if (alloc_query(thd, m_sql_text.str, m_sql_text.length))
+    return TRUE;
+
+  m_slow_log_info.str= thd->query;
+  m_slow_log_info.length= thd->query_length;
+
+  Parser_state parser_state(thd, thd->query, thd->query_length);
+
+  parser_state.m_lip.multi_statements= FALSE;
+  lex_start(thd);
+
+  error= parse_sql(thd, &parser_state, NULL) || thd->is_error();
+
+  if (error)
+    goto end;
+
+  thd->lex->set_trg_event_type_for_tables();
+
+  error= mysql_execute_command(thd);
+
+  if (error == 0 && thd->spcont == NULL)
+    general_log_write(thd, COM_STMT_EXECUTE,
+                      thd->query, thd->query_length);
+
+end:
+  lex_end(thd->lex);
+
+  return error;
 }
 
 /***************************************************************************
@@ -3258,122 +3392,33 @@ reexecute:
   return error;
 }
 
-/**
-  Execute one SQL statement.
-
-  @param thd    Thread handle.
-  @param query  Query to execute.
-*/
 
 bool
-mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *result)
+Prepared_statement::execute_server_runnable(Server_runnable *server_runnable)
 {
-  Protocol_local protocol_local(thd, result);
-
-  DBUG_ENTER("mysql_execute_direct");
-
-  DBUG_ASSERT(result);
-
-  Prepared_statement *stmt= new Prepared_statement(thd);
-
-  if (!stmt)
-    DBUG_RETURN(TRUE);
-
-  Protocol *protocol_saved= thd->protocol;
-
-  thd->protocol= &protocol_local;
-
-  result->begin_statement(thd);
-  bool rc= stmt->execute_immediate(query.str, query.length);
-  result->end_statement(thd);
-
-  thd->protocol->end_statement();
-
-  thd->protocol= protocol_saved;
-
-  delete stmt;
-
-  thd->main_da.reset_diagnostics_area();
-
-  DBUG_RETURN(rc);
-}
-
-
-/**
-  Parse and execute a query string. Does not prepare the query.
-
-  An implementation of "EXECUTE IMMEDIATE" syntax of Dynamic SQL.
-  Allows to execute a statement from within another statement.
-  The main property of the implementation is that it does not
-  affect the environment -- i.e. you  can run many
-  ::execute_immediate() without having to cleanup/reset THD in
-  between.
-*/
-
-bool
-Prepared_statement::execute_immediate(const char *query, uint length)
-{
+  LEX_STRING slow_log_stmt;
   Statement stmt_backup;
   bool error;
 
   state= CONVENTIONAL_EXECUTION;
 
-  if (!(lex = new (mem_root) st_lex_local))
+  if (!(lex= new (mem_root) st_lex_local))
     return TRUE;
 
   thd->set_n_backup_statement(this, &stmt_backup);
 
-  if (alloc_query(thd, query, length))
-  {
-    thd->set_statement(&stmt_backup);
-    return TRUE;
-  }
-  /*
-    Expanded query is needed for slow logging, so we want thd->query
-    to point at it even after we restore from backup. This is ok, as
-    expanded query was allocated in thd->mem_root.
-  */
-  stmt_backup.query= thd->query;
-  stmt_backup.query_length= thd->query_length;
-
-  Parser_state parser_state(thd, thd->query, thd->query_length);
-
-  parser_state.m_lip.multi_statements= FALSE;
-  lex_start(thd);
-
-  error= parse_sql(thd, &parser_state, NULL) || thd->is_error();
-
-
-  if (lex->sql_command == SQLCOM_PREPARE ||
-      lex->sql_command == SQLCOM_EXECUTE ||
-      (lex->sql_command == SQLCOM_CHANGE_DB && is_sql_prepare()))
-  {
-    my_error(ER_PS_NO_RECURSION, MYF(0));
-    error= 1;
-  }
-
-  if (error)
-  {
-    thd->set_statement(&stmt_backup);
-    return TRUE;
-  }
-
-  lex->set_trg_event_type_for_tables();
-
-  if (query_cache_send_result_to_client(thd, thd->query,
-                                        thd->query_length) <= 0)
-  {
-    error= mysql_execute_command(thd);
-  }
+  error= server_runnable->execute_server_code(thd);
 
   cleanup_stmt();
-  lex_end(thd->lex);
+
+  slow_log_stmt= server_runnable->get_slow_log_info();
+  if (slow_log_stmt.str)
+  {
+    stmt_backup.query= slow_log_stmt.str;
+    stmt_backup.query_length= slow_log_stmt.length;
+  }
 
   thd->set_statement(&stmt_backup);
-
-  if (error == 0 && thd->spcont == NULL)
-    general_log_write(thd, COM_STMT_EXECUTE,
-                      thd->query, thd->query_length);
 
   return error;
 }
