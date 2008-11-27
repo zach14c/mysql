@@ -367,10 +367,10 @@ void SerialLogFile::zap()
 	// The error is supposedly related to the file size being less than 
 	// page size, so initial size is made 8K just in case we'll ever run on IA64
 	size_t initialSize = MAX(sectorSize, 8192); 
-	UCHAR *junk = new UCHAR[initialSize +sectorSize];
+	UCHAR *junk = new UCHAR[initialSize + sectorSize];
 	UCHAR *buffer = ALIGN(junk, sectorSize);
-	memset(buffer, 0, sectorSize);
-	write(0, sectorSize, (SerialLogBlock*) buffer);
+	memset(buffer, 0, initialSize);
+	write(0, (uint32) initialSize, (SerialLogBlock*) buffer);
 	delete junk;
 }
 

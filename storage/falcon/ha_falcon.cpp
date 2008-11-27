@@ -35,6 +35,7 @@
 #include "InfoTable.h"
 #include "Format.h"
 #include "Error.h"
+#include "Log.h"
 
 #ifdef _WIN32
 #define I64FORMAT			"%I64d"
@@ -227,7 +228,9 @@ int StorageInterface::falcon_init(void *p)
 	falcon_hton->fill_is_table = StorageInterface::fill_is_table;
 	//falcon_hton->show_status  = StorageInterface::show_status;
 	falcon_hton->flags = HTON_NO_FLAGS;
+	falcon_debug_mask&= ~(LogMysqlInfo|LogMysqlWarning|LogMysqlError);
 	storageHandler->addNfsLogger(falcon_debug_mask, StorageInterface::logger, NULL);
+	storageHandler->addNfsLogger(LogMysqlInfo|LogMysqlWarning|LogMysqlError, StorageInterface::mysqlLogger, NULL);
 
 	if (falcon_debug_server)
 		storageHandler->startNfsServer();
@@ -344,7 +347,7 @@ uint falcon_strnxfrmlen(void *cs, const char *s, uint srcLen,
 	uint chrLen = falcon_strnchrlen(cs, s, srcLen);
 	int maxChrLen = partialKey ? min(chrLen, partialKey / charset->mbmaxlen) : chrLen;
 
-	return min(charset->coll->strnxfrmlen(charset, maxChrLen * charset->mbmaxlen), (uint) bufSize);
+	return (uint)min(charset->coll->strnxfrmlen(charset, maxChrLen * charset->mbmaxlen), (uint) bufSize);
 }
 
 // Return the number of bytes used in s to hold a certain number of characters.
@@ -372,7 +375,7 @@ uint falcon_strntrunc(void *cs, int partialKey, const char *s, uint l)
 		charLimit--;
 		}
 
-	return ch - (uchar *) s;
+	return (uint)(ch - (uchar *) s);
 }
 
 int falcon_strnncoll(void *cs, const char *s1, uint l1, const char *s2, uint l2, char flag)
@@ -535,6 +538,10 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 		}
 
 	int ret = storageTable->open();
+
+	if (ret == StorageErrorTableNotFound)
+		sql_print_error("Server is attempting to access a table %s,\n"
+				"which doesn't exist in Falcon.", name);
 
 	if (ret)
 		DBUG_RETURN(error(ret));
@@ -1024,6 +1031,10 @@ int StorageInterface::delete_table(const char *tableName)
 	int res = storageTable->deleteTable();
 	storageTable->deleteStorageTable();
 	storageTable = NULL;
+
+	if (res == StorageErrorTableNotFound)
+		sql_print_error("Server is attempting to drop a table %s,\n"
+				"which doesn't exist in Falcon.", tableName);
 
 	// (hk) Fix for Bug#31465 Running Falcon test suite leads
 	//                        to warnings about temp tables
@@ -1561,7 +1572,7 @@ int StorageInterface::rename_table(const char *from, const char *to)
 	ret = storageShare->renameTable(storageConnection, to);
 	
 	if (!ret)
-	remapIndexes(table);
+		remapIndexes(table);
 	
 	storageShare->unlock();
 	storageShare->unlockIndexes();
@@ -1803,6 +1814,10 @@ int StorageInterface::error(int storageError)
 			push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
 			                    ER_CANT_CHANGE_TX_ISOLATION,
 			                    "Falcon does not support READ UNCOMMITTED ISOLATION, using REPEATABLE READ instead.");
+			break;
+
+		case StorageErrorIndexOverflow:
+			my_error(ER_TOO_LONG_KEY, MYF(0), max_key_length());
 			break;
 
 		default:
@@ -2397,6 +2412,16 @@ void StorageInterface::logger(int mask, const char* text, void* arg)
 		}
 }
 
+void StorageInterface::mysqlLogger(int mask, const char* text, void* arg)
+{
+	if (mask & LogMysqlError)
+		sql_print_error("%s", text);
+	else if (mask & LogMysqlWarning)
+		sql_print_warning("%s", text);
+	else if (mask & LogMysqlInfo)
+		sql_print_information("%s", text);
+}
+
 int StorageInterface::setIndex(TABLE *table, int indexId)
 {
 	StorageIndexDesc indexDesc;
@@ -2482,7 +2507,7 @@ int StorageInterface::genTable(TABLE* table, CmdGen* gen)
 		if (charset)
 			storageShare->registerCollation(charset->name, charset);
 
-		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), true);
 		gen->gen("%s  \"%s\" ", sep, nameBuffer);
 		int ret = genType(field, gen);
 
@@ -2628,7 +2653,7 @@ void StorageInterface::genKeyFields(KEY* key, CmdGen* gen)
 		{
 		KEY_PART_INFO *part = key->key_part + n;
 		Field *field = part->field;
-		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), true);
 
 		if (part->key_part_flag & HA_PART_KEY_SEG)
 			gen->gen("%s\"%s\"(%d)", sep, nameBuffer, part->length);
@@ -3006,10 +3031,10 @@ bool StorageInterface::get_error_message(int error, String *buf)
 	if (storageConnection)
 		{
 		const char *text = storageConnection->getLastErrorString();
-		buf->set(text, strlen(text), system_charset_info);
+		buf->set(text, (uint32)strlen(text), system_charset_info);
 		}
 	else if (errorText)
-		buf->set(errorText, strlen(errorText), system_charset_info);
+		buf->set(errorText, (uint32)strlen(errorText), system_charset_info);
 
 	return false;
 }
@@ -3516,6 +3541,7 @@ void StorageInterface::updateRecordScavengeFloor(MYSQL_THD thd, struct st_mysql_
 void StorageInterface::updateDebugMask(MYSQL_THD thd, struct st_mysql_sys_var* variable, void* var_ptr, const void* save)
 {
 	falcon_debug_mask = *(uint*) save;
+	falcon_debug_mask&= ~(LogMysqlInfo|LogMysqlWarning|LogMysqlError);
 	storageHandler->deleteNfsLogger(StorageInterface::logger, NULL);
 	storageHandler->addNfsLogger(falcon_debug_mask, StorageInterface::logger, NULL);
 }
@@ -3553,7 +3579,7 @@ void StorageInterface::mapFields(TABLE *table)
 	for (uint n = 0; n < table->s->fields; ++n)
 		{
 		Field *field = table->field[n];
-		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer));
+		storageShare->cleanupFieldName(field->field_name, nameBuffer, sizeof(nameBuffer), false);
 		int id = storageShare->getFieldId(nameBuffer);
 		
 		if (id >= 0)
