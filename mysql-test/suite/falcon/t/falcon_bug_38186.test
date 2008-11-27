@@ -1,0 +1,29 @@
+--source include/have_falcon.inc
+#
+# Bug #38186: 
+# CREATE TABLESPACE can fail when invoked immediately following a
+# DROP TABLESPACE statement that used the same tablespace name.
+#
+--echo *** Bug #38186 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--disable_query_log
+let $i = 100;
+while($i)
+{
+  eval CREATE TABLESPACE ts ADD DATAFILE 'file.fts' ENGINE = $engine;
+  CREATE TABLE t(i int) TABLESPACE ts;
+  INSERT INTO t values(1);
+  DROP TABLE t;
+  eval DROP TABLESPACE ts ENGINE= $engine;
+  dec $i;
+}
+--enable_query_log
+
