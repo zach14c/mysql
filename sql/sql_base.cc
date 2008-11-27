@@ -2347,9 +2347,6 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
   TABLE_SHARE *share;
   DBUG_ENTER("open_table");
 
-  /* Parsing of partitioning information from .frm needs thd->lex set up. */
-  DBUG_ASSERT(thd->lex->is_lex_started);
-
   *action= OT_NO_ACTION;
 
   /* an open table operation needs a lot of the stack space */
