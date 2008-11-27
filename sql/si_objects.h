@@ -40,8 +40,11 @@ namespace obs {
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Obj defines the basic set of operations for each database object.
+  @class Obj
+
+  This interface defines the basic set of operations for each database object.
 */
+
 class Obj
 {
 public:
@@ -98,8 +101,11 @@ public:
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Obj_iterator is a basic interface to enumerate objects.
+  @class Obj_iterator
+
+  This is a basic interface to enumerate objects.
 */
+
 class Obj_iterator
 {
 public:

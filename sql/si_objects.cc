@@ -46,51 +46,169 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  Si_session_context defines a way to save/reset/restore session context
+  for SI-operations.
+*/
+
+class Si_session_context
+{
+public:
+  inline Si_session_context()
+  { }
+
+public:
+  void save(THD *thd);
+  void reset(THD *thd);
+  void restore(THD *thd);
+
+private:
+  ulong m_sql_mode_saved;
+  CHARSET_INFO *m_client_cs_saved;
+  CHARSET_INFO *m_results_cs_saved;
+  CHARSET_INFO *m_connection_cl_saved;
+  Time_zone *m_tz_saved;
+  TABLE *m_tmp_tables_saved;
+
+private:
+  Si_session_context(const Si_session_context &);
+  Si_session_context &operator =(const Si_session_context &);
+};
+
+///////////////////////////////////////////////////////////////////////////
+
+/**
+  Preserve the following session attributes:
+    - sql_mode;
+    - character_set_client;
+    - character_set_results;
+    - collation_connection;
+    - time_zone;
+
+  Remember also session temporary tables.
+*/
+
+void Si_session_context::save(THD *thd)
+{
+  DBUG_ENTER("Si_session_context::save");
+  m_sql_mode_saved= thd->variables.sql_mode;
+  m_client_cs_saved= thd->variables.character_set_client;
+  m_results_cs_saved= thd->variables.character_set_results;
+  m_connection_cl_saved= thd->variables.collation_connection;
+  m_tz_saved= thd->variables.time_zone;
+  m_tmp_tables_saved= thd->temporary_tables;
+
+  DBUG_VOID_RETURN;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+/**
+  Reset session state to the following:
+    - sql_mode: 0
+    - character_set_client: utf8
+    - character_set_results: binary (to fetch results w/o conversion)
+    - collation_connection: utf8
+
+  Temporary tables should be ignored while looking for table structures.
+  We want to deal with real tables, not temporary ones.
+*/
+
+void Si_session_context::reset(THD *thd)
+{
+  DBUG_ENTER("Si_session_context::reset");
+
+  thd->variables.sql_mode= 0;
+
+  thd->variables.character_set_client= system_charset_info;
+  thd->variables.character_set_results= &my_charset_bin;
+  thd->variables.collation_connection= system_charset_info;
+  thd->update_charset();
+
+  thd->temporary_tables= NULL;
+
+  DBUG_VOID_RETURN;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+/**
+  Restore session state.
+*/
+
+void Si_session_context::restore(THD *thd)
+{
+  DBUG_ENTER("Si_session_context::restore");
+
+  thd->variables.sql_mode= m_sql_mode_saved;
+  thd->variables.time_zone= m_tz_saved;
+
+  thd->variables.collation_connection= m_connection_cl_saved;
+  thd->variables.character_set_results= m_results_cs_saved;
+  thd->variables.character_set_client= m_client_cs_saved;
+  thd->update_charset();
+
+  thd->temporary_tables= m_tmp_tables_saved;
+
+  DBUG_VOID_RETURN;
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+/**
+  Execute one DML statement in a backup-specific context. Result set and
+  warning information are stored in the output parameter. Some session
+  attributes are preserved and reset to predefined values before query
+  execution (@see Si_session_context).
+
+  @param[in]  thd         Thread context.
+  @param[in]  query       SQL query to be executed.
+  @param[out] ed_result   A place to store result and warnings.
+
+  @return Error status.
+    @retval TRUE on error.
+    @retval FALSE on success.
+*/
+
 bool
 run_service_interface_sql(THD *thd, const LEX_STRING *query,
                           Ed_result *ed_result)
 {
-  ulong sql_mode_saved= thd->variables.sql_mode;
-  CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
-  CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
-  CHARSET_INFO *connection_cl_saved= thd->variables.collation_connection;
-  TABLE *tmp_tables_saved= thd->temporary_tables;
+  Si_session_context session_context;
 
   DBUG_ENTER("run_service_interface_sql");
   DBUG_PRINT("run_service_interface_sql",
              ("query: %.*s",
               (int) query->length, (const char *) query->str));
 
-  thd->variables.sql_mode= 0;
-
-  /*
-    Temporary tables should be ignored while looking for table structures.
-    Backup wants to backup ordinary tables, not temporary ones.
-  */
-  thd->temporary_tables= NULL;
-
-  /* A query is in UTF8 (internal character set). */
-  thd->variables.character_set_client= system_charset_info;
-
-  /*
-    Ed_results should be fetched without any conversion (in the original
-    character set) in order to preserve object definition query intact.
-  */
-  thd->variables.character_set_results= &my_charset_bin;
-  thd->variables.collation_connection= system_charset_info;
-  thd->update_charset();
+  session_context.save(thd);
+  session_context.reset(thd);
 
   bool rc= mysql_execute_direct(thd, *query, ed_result);
 
-  thd->variables.sql_mode= sql_mode_saved;
-  thd->variables.collation_connection= connection_cl_saved;
-  thd->variables.character_set_results= results_cs_saved;
-  thd->variables.character_set_client= client_cs_saved;
-  thd->update_charset();
-
-  thd->temporary_tables= tmp_tables_saved;
+  session_context.restore(thd);
 
   DBUG_RETURN(rc);
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+/**
+  Update THD with the warnings from the given list.
+
+  @param[in]  thd   Thread context.
+  @parampin]  src   Warning list.
+*/
+
+void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
+{
+  List_iterator_fast<MYSQL_ERROR> err_it(*src);
+  MYSQL_ERROR *err;
+
+  while ((err= err_it++))
+    thd->warning_info->push_warning(thd, err->level, err->code, err->msg);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -106,10 +224,10 @@ public:
   static void delete_key(void *data);
 
 public:
-  Table_name_key(const char *db_name_str,
-                 uint db_name_length,
-                 const char *table_name_str,
-                 uint table_name_length)
+  inline Table_name_key(const char *db_name_str,
+                        uint db_name_length,
+                        const char *table_name_str,
+                        uint table_name_length)
   {
     db_name.copy(db_name_str, db_name_length, system_charset_info);
     table_name.copy(table_name_str, table_name_length, system_charset_info);
@@ -158,47 +276,69 @@ struct Int_value
   { }
 };
 
+///////////////////////////////////////////////////////////////////////////
 
 struct C_str
 {
   LEX_STRING lex_string;
 
-  C_str(const char *str, size_t length)
+  inline C_str(const char *str, size_t length)
   {
     lex_string.str= (char *) str;
     lex_string.length= length;
   }
 };
 
+///////////////////////////////////////////////////////////////////////////
 
 class String_stream
 {
 public:
-  String_stream()
+  inline String_stream()
     : m_buffer(&m_container)
   { }
 
-  String_stream(String *dst)
+  inline String_stream(String *dst)
     : m_buffer(dst)
   { }
 
 public:
-  String *str() { return m_buffer; }
+  inline String *str() { return m_buffer; }
 
-  const LEX_STRING *lex_string()
+  inline const LEX_STRING *lex_string()
   {
     m_lex_string= m_buffer->lex_string();
     return &m_lex_string;
   }
 
-  void reset() { m_buffer->length(0); }
+  inline void reset() { m_buffer->length(0); }
 
 public:
   String_stream &operator <<(const Int_value &v);
-  String_stream &operator <<(const C_str &v);
-  String_stream &operator <<(const LEX_STRING *query);
-  String_stream &operator <<(const String *query);
-  String_stream &operator <<(const char *str);
+
+  inline String_stream &operator <<(const C_str &v)
+  {
+    m_buffer->append(v.lex_string.str, v.lex_string.length);
+    return *this;
+  }
+
+  inline String_stream &operator <<(const LEX_STRING *v)
+  {
+    m_buffer->append(v->str, v->length);
+    return *this;
+  }
+
+  inline String_stream &operator <<(const String *v)
+  {
+    m_buffer->append(v->ptr(), v->length());
+    return *this;
+  }
+
+  String_stream &operator <<(const char *v)
+  {
+    m_buffer->append(v);
+    return *this;
+  }
 
 private:
   String m_container;
@@ -217,61 +357,39 @@ String_stream &String_stream::operator <<(const Int_value &int_value)
   return *this;
 }
 
-
-String_stream &String_stream::operator <<(const C_str &v)
-{
-  m_buffer->append(v.lex_string.str, v.lex_string.length);
-  return *this;
-}
-
-
-String_stream &String_stream::operator <<(const LEX_STRING *str)
-{
-  m_buffer->append(str->str, str->length);
-  return *this;
-}
-
-
-String_stream &String_stream::operator <<(const String *str)
-{
-  m_buffer->append(str->ptr(), str->length());
-  return *this;
-}
-
-
-String_stream &String_stream::operator <<(const char *str)
-{
-  m_buffer->append(str);
-  return *this;
-}
-
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 class Out_stream
 {
 public:
-  Out_stream(String *image) :
+  inline Out_stream(String *image) :
     m_image(image)
   { }
 
 public:
-  Out_stream &operator <<(const char *query);
   Out_stream &operator <<(const LEX_STRING *query);
-  Out_stream &operator <<(const String *query);
-  Out_stream &operator <<(String_stream &s_stream);
+
+  inline Out_stream &operator <<(const char *query)
+  {
+    LEX_STRING str= { (char *) query, strlen(query) };
+    return Out_stream::operator <<(&str);
+  }
+
+  inline Out_stream &operator <<(const String *query)
+  {
+    LEX_STRING str= { (char *) query->ptr(), query->length() };
+    return Out_stream::operator <<(&str);
+  }
+
+  inline Out_stream &operator <<(String_stream &s_stream)
+  {
+    return Out_stream::operator <<(s_stream.str());
+  }
 
 private:
   String *m_image;
 };
-
-///////////////////////////////////////////////////////////////////////////
-
-Out_stream &Out_stream::operator <<(const char *query)
-{
-  LEX_STRING str= { (char *) query, strlen(query) };
-  return Out_stream::operator <<(&str);
-}
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -286,36 +404,18 @@ Out_stream &Out_stream::operator <<(const LEX_STRING *query)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-
-Out_stream &Out_stream::operator <<(const String *query)
-{
-  LEX_STRING str= { (char *) query->ptr(), query->length() };
-  return Out_stream::operator <<(&str);
-}
-
-///////////////////////////////////////////////////////////////////////////
-
-Out_stream &Out_stream::operator <<(String_stream &s_stream)
-{
-  return Out_stream::operator <<(s_stream.str());
-}
-
-///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
 class In_stream
 {
 public:
-  In_stream(uint image_version,
-            const String *image)
-  : m_image_version(image_version),
-    m_image(image),
-    m_read_ptr(m_image->ptr()),
-    m_end_ptr(m_image->ptr() + m_image->length())
+  inline In_stream(uint image_version, const String *image)
+    : m_image_version(image_version),
+      m_image(image),
+      m_read_ptr(m_image->ptr()),
+      m_end_ptr(m_image->ptr() + m_image->length())
   { }
 
-public:
-  uint image_version() const { return m_image_version; }
 public:
   bool next(LEX_STRING *chunk);
 
@@ -351,10 +451,10 @@ bool In_stream::next(LEX_STRING *chunk)
   chunk->str= (char *) delimiter_ptr + 1;
   chunk->length= atoi(buffer);
 
-  m_read_ptr+= n /* chunk length */
-    + 1 /* delimiter (a space) */
+  m_read_ptr+= n    /* chunk length */
+    + 1             /* delimiter (a space) */
     + chunk->length /* chunk */
-    + 1; /* chunk delimiter (\n) */
+    + 1;            /* chunk delimiter (\n) */
 
   return FALSE;
 }
@@ -370,6 +470,12 @@ namespace obs {
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
+
+/**
+  @class Abstract_obj
+
+  This class is a base class for all other Obj implementations.
+*/
 
 class Abstract_obj : public Obj
 {
@@ -444,9 +550,9 @@ protected:
   String m_id; //< identify object
 
 protected:
-  Abstract_obj(LEX_STRING id);
+  inline Abstract_obj(LEX_STRING id);
 
-  virtual ~Abstract_obj();
+  virtual inline ~Abstract_obj();
 
 private:
   Abstract_obj(const Abstract_obj &);
@@ -455,7 +561,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////
 
-Abstract_obj::Abstract_obj(LEX_STRING id)
+inline Abstract_obj::Abstract_obj(LEX_STRING id)
 {
   init_sql_alloc(&m_mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
 
@@ -467,7 +573,7 @@ Abstract_obj::Abstract_obj(LEX_STRING id)
 
 ///////////////////////////////////////////////////////////////////////////
 
-Abstract_obj::~Abstract_obj()
+inline Abstract_obj::~Abstract_obj()
 {
   free_root(&m_mem_root, MYF(0));
 }
@@ -530,6 +636,9 @@ bool Abstract_obj::create(THD *thd)
   bool rc= FALSE;
   List_iterator_fast<LEX_STRING> it(m_stmt_list);
   LEX_STRING *sql_text;
+  Si_session_context session_context;
+
+  DBUG_ENTER("Abstract_obj::create");
 
   /*
     Drop the object if it exists first of all.
@@ -540,44 +649,13 @@ bool Abstract_obj::create(THD *thd)
   drop(thd);
 
   /*
-    Preserve the following session attributes:
-    - sql_mode;
-    - character_set_client;
-    - character_set_results;
-    - collation_connection;
-    - time_zone;
-
-    @note other session variables are not preserved, so serialization image
-    must take care to clean up the environment after itself.
+    Now, proceed with creating the object.
   */
-  ulong sql_mode_saved= thd->variables.sql_mode;
-  Time_zone *tz_saved= thd->variables.time_zone;
-  CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
-  CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
-  CHARSET_INFO *connection_cl_saved= thd->variables.collation_connection;
-  TABLE *tmp_tables_saved= thd->temporary_tables;
-
-  /*
-    Reset session state to the following:
-    - sql_mode: 0
-    - character_set_client: utf8
-    - character_set_results: binary
-    - collation_connection: utf8
-  */
-  thd->variables.sql_mode= 0;
-  thd->variables.character_set_client= system_charset_info;
-  thd->variables.character_set_results= &my_charset_bin;
-  thd->variables.collation_connection= system_charset_info;
-  thd->update_charset();
-
-  /*
-    Temporary tables should be ignored while looking for table structures.
-    Backup wants to deal with ordinary tables, not temporary ones.
-  */
-  thd->temporary_tables= NULL;
+  session_context.save(thd);
+  session_context.reset(thd);
 
   /* Allow to execute DDL operations. */
-  ddl_blocker_exception_on(thd);
+  ::obs::ddl_blocker_exception_on(thd);
 
   /* Run queries from the serialization image. */
   while ((sql_text= it++))
@@ -586,29 +664,25 @@ bool Abstract_obj::create(THD *thd)
 
     rc= mysql_execute_direct(thd, *sql_text, &ed_result);
 
-    /* Ignore warnings from materialization for now. */
+    /* Push warnings on the THD error stack. */
+    copy_warnings(thd, &ed_result.get_warnings());
+
     if (rc)
       break;
   }
 
-  ddl_blocker_exception_off(thd);
+  /* Disable further DDL execution. */
+  ::obs::ddl_blocker_exception_off(thd);
 
-  thd->variables.sql_mode= sql_mode_saved;
-  thd->variables.time_zone= tz_saved;
-  thd->variables.collation_connection= connection_cl_saved;
-  thd->variables.character_set_results= results_cs_saved;
-  thd->variables.character_set_client= client_cs_saved;
-  thd->update_charset();
+  session_context.restore(thd);
 
-  thd->temporary_tables= tmp_tables_saved;
-
-  return rc;
+  DBUG_RETURN(rc);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Create the object in the database.
+  Drop the object in the database.
 
   @param[in] thd              Server thread context.
 
@@ -619,71 +693,36 @@ bool Abstract_obj::create(THD *thd)
 
 bool Abstract_obj::drop(THD *thd)
 {
-  bool rc= FALSE;
+  String_stream s_stream;
+  const LEX_STRING *sql_text;
 
-  /*
-    Preserve the following session attributes:
-    - sql_mode;
-    - character_set_client;
-    - character_set_results;
-    - collation_connection;
+  DBUG_ENTER("Abstract_obj::drop");
 
-    Remember also session temporary tables.
-  */
-  ulong sql_mode_saved= thd->variables.sql_mode;
-  CHARSET_INFO *client_cs_saved= thd->variables.character_set_client;
-  CHARSET_INFO *results_cs_saved= thd->variables.character_set_results;
-  CHARSET_INFO *connection_cl_saved= thd->variables.collation_connection;
-  TABLE *tmp_tables_saved= thd->temporary_tables;
+  build_drop_statement(s_stream);
+  sql_text= s_stream.lex_string();
 
-  /*
-    Reset session state to the following:
-    - sql_mode: 0
-    - character_set_client: utf8
-    - character_set_results: binary
-    - collation_connection: utf8
-  */
-  thd->variables.sql_mode= 0;
-  thd->variables.character_set_client= system_charset_info;
-  thd->variables.character_set_results= &my_charset_bin;
-  thd->variables.collation_connection= system_charset_info;
-  thd->update_charset();
+  if (!sql_text->str || !sql_text->length)
+    DBUG_RETURN(FALSE);
 
-  /*
-    Temporary tables should be ignored while looking for table structures.
-    Backup wants to deal with ordinary tables, not temporary ones.
-  */
-  thd->temporary_tables= NULL;
+  Si_session_context session_context;
+
+  session_context.save(thd);
+  session_context.reset(thd);
 
   /* Allow to execute DDL operations. */
-  ddl_blocker_exception_on(thd);
+  ::obs::ddl_blocker_exception_on(thd);
 
-  /* Run queries from the serialization image. */
-  {
-    Ed_result ed_result;
-    String_stream s_stream;
-    const LEX_STRING *sql_text;
+  Ed_result ed_result;
 
-    build_drop_statement(s_stream);
-    sql_text= s_stream.lex_string();
+  /* Execute DDL operation. */
+  bool rc= mysql_execute_direct(thd, *sql_text, &ed_result);
 
-    if (sql_text->str && sql_text->length)
-      rc= mysql_execute_direct(thd, *sql_text, &ed_result);
+  /* Disable further DDL execution. */
+  ::obs::ddl_blocker_exception_off(thd);
 
-    /* Ignore warnings. */
-  }
+  session_context.restore(thd);
 
-  ddl_blocker_exception_off(thd);
-
-  thd->variables.sql_mode= sql_mode_saved;
-  thd->variables.collation_connection= connection_cl_saved;
-  thd->variables.character_set_results= results_cs_saved;
-  thd->variables.character_set_client= client_cs_saved;
-  thd->update_charset();
-
-  thd->temporary_tables= tmp_tables_saved;
-
-  return rc;
+  DBUG_RETURN(rc);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -705,15 +744,15 @@ bool Abstract_obj::do_init_from_image(In_stream *is)
     LEX_STRING *sql_text_root= (LEX_STRING *) alloc_root(&m_mem_root,
                                                          sizeof (LEX_STRING));
 
+    if (!sql_text_root)
+      return TRUE;
+
     sql_text_root->str= strmake_root(&m_mem_root,
                                      sql_text.str, sql_text.length);
     sql_text_root->length= sql_text.length;
 
-    if (!sql_text_root || !sql_text_root->str ||
-        m_stmt_list.push_back(sql_text_root))
-    {
+    if (!sql_text_root->str || m_stmt_list.push_back(sql_text_root))
       return TRUE;
-    }
   }
 
   return FALSE;
@@ -732,11 +771,11 @@ bool Abstract_obj::do_init_from_image(In_stream *is)
 class Database_obj : public Abstract_obj
 {
 public:
-  Database_obj(const Ed_row &ed_row)
+  inline Database_obj(const Ed_row &ed_row)
     : Abstract_obj(ed_row[0] /* database name */)
   { }
 
-  Database_obj(LEX_STRING db_name)
+  inline Database_obj(LEX_STRING db_name)
     : Abstract_obj(db_name)
   { }
 
@@ -761,7 +800,7 @@ private:
 class Database_item_obj : public Abstract_obj
 {
 public:
-  Database_item_obj(LEX_STRING db_name, LEX_STRING object_name)
+  inline Database_item_obj(LEX_STRING db_name, LEX_STRING object_name)
     : Abstract_obj(object_name)
   {
     if (db_name.str && db_name.length)
@@ -805,19 +844,19 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Table_obj(const Ed_row &ed_row)
+  inline Table_obj(const Ed_row &ed_row)
     : Database_item_obj(ed_row[0], /* database name */
                         ed_row[1]) /* table name */
   { }
 
-  Table_obj(LEX_STRING db_name, LEX_STRING table_name)
+  inline Table_obj(LEX_STRING db_name, LEX_STRING table_name)
     : Database_item_obj(db_name, table_name)
   { }
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 
-  virtual const LEX_STRING *get_type_name() const
+  virtual inline const LEX_STRING *get_type_name() const
   { return &Table_obj::TYPE_NAME; }
 };
 
@@ -841,19 +880,19 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  View_obj(const Ed_row &ed_row)
+  inline View_obj(const Ed_row &ed_row)
     : Database_item_obj(ed_row[0], /* schema name */
                         ed_row[1]) /* view name */
   { }
 
-  View_obj(LEX_STRING db_name, LEX_STRING view_name)
+  inline View_obj(LEX_STRING db_name, LEX_STRING view_name)
     : Database_item_obj(db_name, view_name)
   { }
 
 private:
   virtual bool do_serialize(THD *thd, Out_stream &out_stream);
 
-  virtual const LEX_STRING *get_type_name() const
+  virtual inline const LEX_STRING *get_type_name() const
   { return &View_obj::TYPE_NAME; }
 };
 
@@ -864,10 +903,17 @@ const LEX_STRING View_obj::TYPE_NAME= LXS_INIT("VIEW");
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class Stored_program_obj
+
+  This is a base class for stored program objects: stored procedures,
+  stored functions, triggers, events.
+*/
+
 class Stored_program_obj : public Database_item_obj
 {
 public:
-  Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
+  inline Stored_program_obj(LEX_STRING db_name, LEX_STRING sp_name)
     : Database_item_obj(db_name, sp_name)
   { }
 
@@ -882,10 +928,17 @@ private:
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class Stored_routine_obj
+
+  This is a base class for stored routine objects: stored procedures,
+  stored functions, triggers.
+*/
+
 class Stored_routine_obj : public Stored_program_obj
 {
 public:
-  Stored_routine_obj(LEX_STRING db_name, LEX_STRING sr_name)
+  inline Stored_routine_obj(LEX_STRING db_name, LEX_STRING sr_name)
     : Stored_program_obj(db_name, sr_name)
   { }
 
@@ -910,16 +963,16 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Trigger_obj(const Ed_row &ed_row)
+  inline Trigger_obj(const Ed_row &ed_row)
     : Stored_routine_obj(ed_row[0], ed_row[1])
   { }
 
-  Trigger_obj(LEX_STRING db_name, LEX_STRING trigger_name)
+  inline Trigger_obj(LEX_STRING db_name, LEX_STRING trigger_name)
     : Stored_routine_obj(db_name, trigger_name)
   { }
 
 private:
-  virtual const LEX_STRING *get_type_name() const
+  virtual inline const LEX_STRING *get_type_name() const
   { return &Trigger_obj::TYPE_NAME; }
 };
 
@@ -943,16 +996,16 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Stored_proc_obj(const Ed_row &ed_row)
+  inline Stored_proc_obj(const Ed_row &ed_row)
     : Stored_routine_obj(ed_row[0], ed_row[1])
   { }
 
-  Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name)
+  inline Stored_proc_obj(LEX_STRING db_name, LEX_STRING sp_name)
     : Stored_routine_obj(db_name, sp_name)
   { }
 
 private:
-  virtual const LEX_STRING *get_type_name() const
+  virtual inline const LEX_STRING *get_type_name() const
   { return &Stored_proc_obj::TYPE_NAME; }
 };
 
@@ -976,16 +1029,16 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Stored_func_obj(const Ed_row &ed_row)
+  inline Stored_func_obj(const Ed_row &ed_row)
     : Stored_routine_obj(ed_row[0], ed_row[1])
   { }
 
-  Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name)
+  inline Stored_func_obj(LEX_STRING db_name, LEX_STRING sf_name)
     : Stored_routine_obj(db_name, sf_name)
   { }
 
 private:
-  virtual const LEX_STRING *get_type_name() const
+  virtual inline const LEX_STRING *get_type_name() const
   { return &Stored_func_obj::TYPE_NAME; }
 };
 
@@ -1011,32 +1064,27 @@ private:
   static const LEX_STRING TYPE_NAME;
 
 public:
-  Event_obj(const Ed_row &ed_row)
+  inline Event_obj(const Ed_row &ed_row)
     : Stored_program_obj(ed_row[0], ed_row[1])
   { }
 
-  Event_obj(LEX_STRING db_name, LEX_STRING event_name)
+  inline Event_obj(LEX_STRING db_name, LEX_STRING event_name)
     : Stored_program_obj(db_name, event_name)
   { }
 
 private:
-  virtual const LEX_STRING *get_type_name() const
+  virtual inline const LEX_STRING *get_type_name() const
   { return &Event_obj::TYPE_NAME; }
 
-  virtual const LEX_STRING *get_create_stmt(Ed_row *row);
+  virtual inline const LEX_STRING *get_create_stmt(Ed_row *row)
+  { return row->get_column(3); }
+
   virtual void dump_header(Ed_row *row, Out_stream &out_stream);
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
 const LEX_STRING Event_obj::TYPE_NAME= LXS_INIT("EVENT");
-
-///////////////////////////////////////////////////////////////////////////
-
-const LEX_STRING *Event_obj::get_create_stmt(Ed_row *row)
-{
-  return row->get_column(3);
-}
 
 #endif // HAVE_EVENT_SCHEDULER
 
@@ -1142,13 +1190,23 @@ Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class Ed_result_set_iterator
+
+  This is an implementation of Obj_iterator, which creates objects from a
+  result set (represented by an instance of Ed_result).
+*/
+
 template <typename Obj_type>
 class Ed_result_set_iterator : public Obj_iterator
 {
 public:
   inline Ed_result_set_iterator(Ed_result *ed_result);
   inline ~Ed_result_set_iterator();
+
+public:
   virtual Obj *next();
+
 private:
   Ed_result *m_ed_result;
   List_iterator_fast<Ed_row> m_row_it;
@@ -1253,11 +1311,18 @@ create_row_set_iterator<Grant_iterator>(THD *thd, const LEX_STRING *query);
 
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class View_base_iterator
+
+  This is a base implementation of Obj_iterator for the
+  view-dependency-object iterators.
+*/
+
 class View_base_obj_iterator : public Obj_iterator
 {
 public:
-  View_base_obj_iterator();
-  virtual ~View_base_obj_iterator();
+  inline View_base_obj_iterator();
+  virtual inline ~View_base_obj_iterator();
 
 public:
   virtual Obj *next();
@@ -1298,15 +1363,15 @@ Iterator *View_base_obj_iterator::create(THD *thd,
 
 ///////////////////////////////////////////////////////////////////////////
 
-View_base_obj_iterator::View_base_obj_iterator() :
-  m_table_names(NULL),
-  m_cur_idx(0)
+inline View_base_obj_iterator::View_base_obj_iterator()
+  : m_table_names(NULL),
+    m_cur_idx(0)
 {
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-View_base_obj_iterator::~View_base_obj_iterator()
+inline View_base_obj_iterator::~View_base_obj_iterator()
 {
   if (!m_table_names)
     return;
@@ -1406,10 +1471,16 @@ Obj *View_base_obj_iterator::next()
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class View_base_table_iterator
+
+  This is an iterator over base tables for a view.
+*/
+
 class View_base_table_iterator : public View_base_obj_iterator
 {
 public:
-  static View_base_obj_iterator *
+  static inline View_base_obj_iterator *
   create(THD *thd, const String *db_name, const String *view_name)
   {
     return View_base_obj_iterator::create<View_base_table_iterator>
@@ -1417,13 +1488,11 @@ public:
   }
 
 protected:
-  virtual bool is_obj_accepted(TABLE_LIST *obj)
+  virtual inline bool is_obj_accepted(TABLE_LIST *obj)
   { return !obj->view; }
 
-  virtual Obj *create_obj(const String *db_name, const String *obj_name)
-  {
-    return new Table_obj(db_name->lex_string(), obj_name->lex_string());
-  }
+  virtual inline Obj *create_obj(const String *db_name, const String *obj_name)
+  { return new Table_obj(db_name->lex_string(), obj_name->lex_string()); }
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1437,10 +1506,16 @@ create<View_base_table_iterator>(THD *thd, const String *db_name,
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class View_base_view_iterator
+
+  This is an iterator over base views for a view.
+*/
+
 class View_base_view_iterator : public View_base_obj_iterator
 {
 public:
-  static View_base_obj_iterator *
+  static inline View_base_obj_iterator *
   create(THD *thd, const String *db_name, const String *view_name)
   {
     return View_base_obj_iterator::create<View_base_view_iterator>
@@ -1448,13 +1523,11 @@ public:
   }
 
 protected:
-  virtual bool is_obj_accepted(TABLE_LIST *obj)
+  virtual inline bool is_obj_accepted(TABLE_LIST *obj)
   { return obj->view; }
 
-  virtual Obj *create_obj(const String *db_name, const String *obj_name)
-  {
-    return new View_obj(db_name->lex_string(), obj_name->lex_string());
-  }
+  virtual inline Obj *create_obj(const String *db_name, const String *obj_name)
+  { return new View_obj(db_name->lex_string(), obj_name->lex_string()); }
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1720,9 +1793,9 @@ bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   String_stream s_stream;
 
-  LEX_STRING create_stmt;
-  LEX_STRING client_cs_name;
-  LEX_STRING connection_cl_name;
+  LEX_STRING create_stmt= null_lex_str;
+  LEX_STRING client_cs_name= null_lex_str;
+  LEX_STRING connection_cl_name= null_lex_str;
 
   if (get_view_create_stmt(thd, this, &create_stmt,
                            &client_cs_name, &connection_cl_name))
@@ -2144,6 +2217,8 @@ Obj_iterator *get_databases(THD *thd)
   return create_row_set_iterator<Database_iterator>(thd, &query);
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 Obj_iterator *get_db_tables(THD *thd, const String *db_name)
 {
   String_stream s_stream;
@@ -2157,6 +2232,7 @@ Obj_iterator *get_db_tables(THD *thd, const String *db_name)
   return create_row_set_iterator<Db_tables_iterator>(thd, s_stream.lex_string());
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator *get_db_views(THD *thd, const String *db_name)
 {
@@ -2169,6 +2245,7 @@ Obj_iterator *get_db_views(THD *thd, const String *db_name)
   return create_row_set_iterator<Db_views_iterator>(thd, s_stream.lex_string());
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator *get_db_triggers(THD *thd, const String *db_name)
 {
@@ -2181,6 +2258,7 @@ Obj_iterator *get_db_triggers(THD *thd, const String *db_name)
   return create_row_set_iterator<Db_trigger_iterator>(thd, s_stream.lex_string());
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
 {
@@ -2194,6 +2272,7 @@ Obj_iterator *get_db_stored_procedures(THD *thd, const String *db_name)
   return create_row_set_iterator<Db_stored_proc_iterator>(thd, s_stream.lex_string());
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
 {
@@ -2207,6 +2286,7 @@ Obj_iterator *get_db_stored_functions(THD *thd, const String *db_name)
   return create_row_set_iterator<Db_stored_func_iterator>(thd, s_stream.lex_string());
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator *get_db_events(THD *thd, const String *db_name)
 {
@@ -2223,45 +2303,39 @@ Obj_iterator *get_db_events(THD *thd, const String *db_name)
 #endif
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator *get_all_db_grants(THD *thd, const String *db_name)
 {
   String_stream s_stream;
   s_stream <<
-    "(SELECT t1.grantee AS c1, "
-    "t1.privilege_type AS c2, "
-    "t1.table_schema AS c3, "
+    "(SELECT grantee AS c1, "
+    "privilege_type AS c2, "
+    "table_schema AS c3, "
     "NULL AS c4, "
     "NULL AS c5 "
-    "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES AS t1, "
-    "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << db_name << "' AND "
-    "t1.grantee = t2.grantee) "
+    "FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES "
+    "WHERE table_schema = '" << db_name << "') "
     "UNION "
-    "(SELECT t1.grantee, "
-    "t1.privilege_type, "
-    "t1.table_schema, "
-    "t1.table_name, "
+    "(SELECT grantee, "
+    "privilege_type, "
+    "table_schema, "
+    "table_name, "
     "NULL "
-    "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES AS t1, "
-    "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << db_name << "' AND "
-    "t1.grantee = t2.grantee) "
+    "FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES "
+    "WHERE table_schema = '" << db_name << "') "
     "UNION "
-    "(SELECT t1.grantee, "
-    "t1.privilege_type, "
-    "t1.table_schema, "
-    "t1.table_name, "
-    "t1.column_name "
-    "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES AS t1, "
-    "INFORMATION_SCHEMA.USER_PRIVILEGES AS t2 "
-    "WHERE t1.table_schema = '" << db_name << "' AND "
-    "t1.grantee = t2.grantee) "
+    "(SELECT grantee, "
+    "privilege_type, "
+    "table_schema, "
+    "table_name, "
+    "column_name "
+    "FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES "
+    "WHERE table_schema = '" << db_name << "') "
     "ORDER BY c1 ASC, c2 ASC, c3 ASC, c4 ASC, c5 ASC";
 
   return create_row_set_iterator<Grant_iterator>(thd, s_stream.lex_string());
 }
-
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -2273,6 +2347,7 @@ Obj_iterator* get_view_base_tables(THD *thd,
   return View_base_table_iterator::create(thd, db_name, view_name);
 }
 
+///////////////////////////////////////////////////////////////////////////
 
 Obj_iterator* get_view_base_views(THD *thd,
                                   const String *db_name,
@@ -2294,6 +2369,8 @@ Obj *get_database(const String *db_name,
   return obj;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 Obj *get_table(const String *db_name,
                const String *table_name,
                uint image_version,
@@ -2306,6 +2383,8 @@ Obj *get_table(const String *db_name,
   return obj;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 Obj *get_view(const String *db_name,
               const String *view_name,
               uint image_version,
@@ -2316,6 +2395,8 @@ Obj *get_view(const String *db_name,
 
   return obj;
 }
+
+///////////////////////////////////////////////////////////////////////////
 
 Obj *get_trigger(const String *db_name,
                  const String *trigger_name,
@@ -2333,6 +2414,8 @@ Obj *get_trigger(const String *db_name,
   return obj;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 Obj *get_stored_procedure(const String *db_name,
                           const String *sp_name,
                           uint image_version,
@@ -2349,6 +2432,8 @@ Obj *get_stored_procedure(const String *db_name,
   return obj;
 }
 
+///////////////////////////////////////////////////////////////////////////
+
 Obj *get_stored_function(const String *db_name,
                          const String *sf_name,
                          uint image_version,
@@ -2364,6 +2449,8 @@ Obj *get_stored_function(const String *db_name,
 
   return obj;
 }
+
+///////////////////////////////////////////////////////////////////////////
 
 #ifdef HAVE_EVENT_SCHEDULER
 
@@ -2385,6 +2472,8 @@ Obj *get_event(const String *db_name,
 
 #endif
 
+///////////////////////////////////////////////////////////////////////////
+
 Obj *get_tablespace(const String *ts_name,
                     uint image_version,
                     const String *image)
@@ -2398,6 +2487,8 @@ Obj *get_tablespace(const String *ts_name,
 
   return obj;
 }
+
+///////////////////////////////////////////////////////////////////////////
 
 Obj *get_db_grant(const String *db_name,
                   const String *name,
