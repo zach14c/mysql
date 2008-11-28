@@ -979,8 +979,6 @@ bool login_connection(THD *thd)
   /* Use "connect_timeout" value during connection phase */
   my_net_set_read_timeout(net, connect_timeout);
   my_net_set_write_timeout(net, connect_timeout);
-  
-  lex_start(thd);
 
   error= check_connection(thd);
   thd->protocol->end_statement();
