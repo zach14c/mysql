@@ -2981,6 +2981,14 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     TODO:
     DBUG_ASSERT(error != 0);
   */
+  if (error == 0)
+  {
+    /* At least, prevent new abuse ... */
+    DBUG_ASSERT(strncmp(str, "MyISAM table", 12) == 0 ||
+                strncmp(str, "MARIA table", 11) == 0);
+    error= ER_UNKNOWN_ERROR;
+  }
+
   if (MyFlags & ME_JUST_INFO)
   {
     level= MYSQL_ERROR::WARN_LEVEL_NOTE;
@@ -2995,14 +3003,6 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
   {
     level= MYSQL_ERROR::WARN_LEVEL_ERROR;
     func= sql_print_error;
-  }
-
-
-  if (error == 0)
-  {
-    /* At least, prevent new abuse ... */
-    DBUG_ASSERT(strncmp(str, "MyISAM table", 12) == 0);
-    error= ER_UNKNOWN_ERROR;
   }
 
   if ((thd= current_thd))
@@ -5845,12 +5845,12 @@ enum options_mysqld
 #endif
   OPT_DEBUG_CRC, OPT_DEBUG_ON,
   OPT_SLAVE_EXEC_MODE,
-  OPT_GENERAL_LOG_FILE,
-  OPT_SLOW_QUERY_LOG_FILE,
   OPT_DEADLOCK_SEARCH_DEPTH_SHORT,
   OPT_DEADLOCK_SEARCH_DEPTH_LONG,
   OPT_DEADLOCK_TIMEOUT_SHORT,
   OPT_DEADLOCK_TIMEOUT_LONG,
+  OPT_GENERAL_LOG_FILE,
+  OPT_SLOW_QUERY_LOG_FILE,
   OPT_BACKUP_HISTORY_LOG_FILE,
   OPT_BACKUP_PROGRESS_LOG_FILE
 };
