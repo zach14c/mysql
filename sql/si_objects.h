@@ -40,8 +40,11 @@ namespace obs {
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Obj defines the basic set of operations for each database object.
+  @class Obj
+
+  This interface defines the basic set of operations for each database object.
 */
+
 class Obj
 {
 public:
@@ -62,7 +65,8 @@ public:
 public:
   /**
     Serialize an object to an image. The serialization image is opaque
-    object for the client.
+    object for the client. The client should supply a valid string
+    instance, which will contain serialization image after return.
 
     @param[in]  thd     Thread context.
     @param[out] image   Serialization image.
@@ -97,8 +101,11 @@ public:
 ///////////////////////////////////////////////////////////////////////////
 
 /**
-  Obj_iterator is a basic interface to enumerate objects.
+  @class Obj_iterator
+
+  This is a basic interface to enumerate objects.
 */
+
 class Obj_iterator
 {
 public:
@@ -273,6 +280,11 @@ Obj_iterator* get_view_base_views(THD *thd,
 // then calls "create()" method on it.
 //
 // The client is responsible for destruction of the returned object handle.
+//
+// The client is responsible for providing valid serialization image. The
+// operations below do not modify serialization image in any way. In
+// particular, the client is responsible to advance in the serialiazation
+// stream after successful object restoration.
 
 ///////////////////////////////////////////////////////////////////////////
 
