@@ -1149,7 +1149,6 @@ class Server_runnable
 {
 public:
   virtual bool execute_server_code(THD *thd)= 0;
-  virtual LEX_STRING get_slow_log_info();
   virtual ~Server_runnable();
 };
 

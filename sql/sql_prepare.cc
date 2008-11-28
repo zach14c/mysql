@@ -192,10 +192,8 @@ class Execute_sql_statement: public Server_runnable
 public:
   Execute_sql_statement(LEX_STRING sql_text);
   virtual bool execute_server_code(THD *thd);
-  virtual LEX_STRING get_slow_log_info();
 private:
   LEX_STRING m_sql_text;
-  LEX_STRING m_slow_log_info;
 };
 
 /******************************************************************************
@@ -2879,24 +2877,12 @@ Server_runnable::~Server_runnable()
 {
 }
 
-
-LEX_STRING
-Server_runnable::get_slow_log_info()
-{
-  return null_lex_str;
-}
 ///////////////////////////////////////////////////////////////////////////
 
 Execute_sql_statement::
 Execute_sql_statement(LEX_STRING sql_text)
   :m_sql_text(sql_text)
 {}
-
-LEX_STRING
-Execute_sql_statement::get_slow_log_info()
-{
-  return m_slow_log_info;
-}
 
 
 /**
@@ -2915,9 +2901,6 @@ Execute_sql_statement::execute_server_code(THD *thd)
 
   if (alloc_query(thd, m_sql_text.str, m_sql_text.length))
     return TRUE;
-
-  m_slow_log_info.str= thd->query;
-  m_slow_log_info.length= thd->query_length;
 
   Parser_state parser_state(thd, thd->query, thd->query_length);
 
@@ -3396,9 +3379,10 @@ reexecute:
 bool
 Prepared_statement::execute_server_runnable(Server_runnable *server_runnable)
 {
-  LEX_STRING slow_log_stmt;
   Statement stmt_backup;
   bool error;
+  Query_arena *save_stmt_arena= thd->stmt_arena;
+  Item_change_list save_change_list= thd->change_list;
 
   state= CONVENTIONAL_EXECUTION;
 
@@ -3406,19 +3390,28 @@ Prepared_statement::execute_server_runnable(Server_runnable *server_runnable)
     return TRUE;
 
   thd->set_n_backup_statement(this, &stmt_backup);
+  thd->set_n_backup_active_arena(this, &stmt_backup);
+  thd->stmt_arena= this;
+  thd->change_list.empty();
 
   error= server_runnable->execute_server_code(thd);
 
-  cleanup_stmt();
+  delete lex->sphead;
+  lex->sphead= 0;
+  /* The order is important */
+  lex->unit.cleanup();
+  close_thread_tables(thd);
+  thd->cleanup_after_query();
 
-  slow_log_stmt= server_runnable->get_slow_log_info();
-  if (slow_log_stmt.str)
-  {
-    stmt_backup.query= slow_log_stmt.str;
-    stmt_backup.query_length= slow_log_stmt.length;
-  }
+  thd->restore_active_arena(this, &stmt_backup);
+  thd->restore_backup_statement(this, &stmt_backup);
+  thd->stmt_arena= save_stmt_arena;
 
-  thd->set_statement(&stmt_backup);
+  DBUG_ASSERT(thd->change_list.is_empty());
+  thd->change_list= save_change_list;
+  save_change_list.empty();
+
+  /* Items and memory will freed in destructor */
 
   return error;
 }

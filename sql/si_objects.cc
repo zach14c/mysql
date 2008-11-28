@@ -1361,13 +1361,17 @@ Find_view_underlying_tables::execute_server_code(THD *thd)
 
   DBUG_ENTER("Find_view_underlying_tables::execute_server_code");
 
+  lex_start(thd);
   table_list= sp_add_to_query_tables(thd, thd->lex,
                                      ((String *) m_db_name)->c_ptr_safe(),
                                      ((String *) m_view_name)->c_ptr_safe(),
                                      TL_READ);
 
   if (table_list == NULL)                      /* out of memory, reported */
+  {
+    lex_end(thd->lex);
     DBUG_RETURN(TRUE);
+  }
 
   if (open_tables(thd, &table_list, &counter_not_used,
                   MYSQL_OPEN_SKIP_TEMPORARY))
@@ -1413,7 +1417,7 @@ Find_view_underlying_tables::execute_server_code(THD *thd)
   my_ok(thd);
 
 end:
-  close_thread_tables(thd);
+  lex_end(thd->lex);
   DBUG_RETURN(res);
 }
 
