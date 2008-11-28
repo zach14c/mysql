@@ -1,3 +1,4 @@
+DROP DATABASE IF EXISTS db1;
 '#--------------------FN_DYNVARS_009_01-------------------------#'
 SET @global_character_set_server = @@global.character_set_server;
 SET @session_character_set_server = @@session.character_set_server;

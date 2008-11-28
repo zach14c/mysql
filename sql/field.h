@@ -13,7 +13,6 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-
 /*
   Because of the function new_field() all field classes that have static
   variables must declare the size_of() member function.
@@ -29,6 +28,8 @@ const uint32 max_field_size= (uint32) 4294967295U;
 class Send_field;
 class Protocol;
 class Create_field;
+class Relay_log_info;
+
 struct st_cache_field;
 int field_conv(Field *to,Field *from);
 
@@ -48,7 +49,8 @@ class Field
   Field(const Item &);				/* Prevent use of these */
   void operator=(Field &);
 public:
-  static void *operator new(size_t size) {return sql_alloc(size); }
+  static void *operator new(size_t size) throw ()
+  { return sql_alloc(size); }
   static void operator delete(void *ptr_arg, size_t size) { TRASH(ptr_arg, size); }
 
   uchar		*ptr;			// Position to field in record
@@ -57,8 +59,8 @@ public:
     Note that you can use table->in_use as replacement for current_thd member 
     only inside of val_*() and store() members (e.g. you can't use it in cons)
   */
-  struct st_table *table;		// Pointer for table
-  struct st_table *orig_table;		// Pointer to original table
+  TABLE *table;                                 // Pointer for table
+  TABLE *orig_table;                            // Pointer to original table
   const char	**table_name, *field_name;
   LEX_STRING	comment;
   /* Bitmap of indexes that start with this field */
@@ -158,7 +160,7 @@ public:
   virtual bool eq(Field *field)
   {
     return (ptr == field->ptr && null_ptr == field->null_ptr &&
-            null_bit == field->null_bit);
+            null_bit == field->null_bit && field->type() == type());
   }
   virtual bool eq_def(Field *field);
   
@@ -175,7 +177,8 @@ public:
     table, which is located on disk).
   */
   virtual uint32 pack_length_in_rec() const { return pack_length(); }
-  virtual int compatible_field_size(uint field_metadata);
+  virtual int compatible_field_size(uint field_metadata,
+                                    const Relay_log_info *);
   virtual uint pack_length_from_metadata(uint field_metadata)
   { return field_metadata; }
   /*
@@ -318,12 +321,12 @@ public:
   */
   virtual bool can_be_compared_as_longlong() const { return FALSE; }
   virtual void free() {}
-  virtual Field *new_field(MEM_ROOT *root, struct st_table *new_table,
+  virtual Field *new_field(MEM_ROOT *root, TABLE *new_table,
                            bool keep_type);
-  virtual Field *new_key_field(MEM_ROOT *root, struct st_table *new_table,
+  virtual Field *new_key_field(MEM_ROOT *root, TABLE *new_table,
                                uchar *new_ptr, uchar *new_null_ptr,
                                uint new_null_bit);
-  Field *clone(MEM_ROOT *mem_root, struct st_table *new_table);
+  Field *clone(MEM_ROOT *mem_root, TABLE *new_table);
   inline void move_field(uchar *ptr_arg,uchar *null_ptr_arg,uchar null_bit_arg)
   {
     ptr=ptr_arg; null_ptr=null_ptr_arg; null_bit=null_bit_arg;
@@ -837,7 +840,8 @@ public:
   uint32 pack_length() const { return (uint32) bin_size; }
   uint pack_length_from_metadata(uint field_metadata);
   uint row_pack_length() { return pack_length(); }
-  int compatible_field_size(uint field_metadata);
+  int compatible_field_size(uint field_metadata,
+                            const Relay_log_info *rli);
   uint is_equal(Create_field *new_field);
   virtual const uchar *unpack(uchar* to, const uchar *from,
                               uint param_data, bool low_byte_first);
@@ -1525,7 +1529,14 @@ public:
   virtual const uchar *unpack(uchar* to, const uchar *from,
                               uint param_data, bool low_byte_first);
   uint pack_length_from_metadata(uint field_metadata)
-  { return (field_metadata & 0x00ff); }
+  {
+    DBUG_PRINT("debug", ("field_metadata: 0x%04x", field_metadata));
+    if (field_metadata == 0)
+      return row_pack_length();
+    return (((field_metadata >> 4) & 0x300) ^ 0x300) + (field_metadata & 0x00ff);
+  }
+  int compatible_field_size(uint field_metadata,
+                            const Relay_log_info *rli);
   uint row_pack_length() { return (field_length + 1); }
   int pack_cmp(const uchar *a,const uchar *b,uint key_length,
                my_bool insert_or_update);
@@ -1536,7 +1547,7 @@ public:
   enum_field_types real_type() const { return MYSQL_TYPE_STRING; }
   bool has_charset(void) const
   { return charset() == &my_charset_bin ? FALSE : TRUE; }
-  Field *new_field(MEM_ROOT *root, struct st_table *new_table, bool keep_type);
+  Field *new_field(MEM_ROOT *root, TABLE *new_table, bool keep_type);
   virtual uint get_key_image(uchar *buff,uint length, imagetype type);
 private:
   int do_save_field_metadata(uchar *first_byte);
@@ -1624,8 +1635,8 @@ public:
   enum_field_types real_type() const { return MYSQL_TYPE_VARCHAR; }
   bool has_charset(void) const
   { return charset() == &my_charset_bin ? FALSE : TRUE; }
-  Field *new_field(MEM_ROOT *root, struct st_table *new_table, bool keep_type);
-  Field *new_key_field(MEM_ROOT *root, struct st_table *new_table,
+  Field *new_field(MEM_ROOT *root, TABLE *new_table, bool keep_type);
+  Field *new_key_field(MEM_ROOT *root, TABLE *new_table,
                        uchar *new_ptr, uchar *new_null_ptr,
                        uint new_null_bit);
   uint is_equal(Create_field *new_field);
@@ -1637,8 +1648,16 @@ private:
 
 class Field_blob :public Field_longstr {
 protected:
+  /**
+    The number of bytes used to represent the length of the blob.
+  */
   uint packlength;
-  String value;				// For temporaries
+  
+  /**
+    The 'value'-object is a cache fronting the storage engine.
+  */
+  String value;
+  
 public:
   Field_blob(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg,
 	     enum utype unireg_check_arg, const char *field_name_arg,
@@ -1709,6 +1728,7 @@ public:
   }
   int reset(void) { bzero(ptr, packlength+sizeof(uchar*)); return 0; }
   void reset_fields() { bzero((uchar*) &value,sizeof(value)); }
+  uint32 get_field_buffer_size(void) { return value.alloced_length(); }
 #ifndef WORDS_BIGENDIAN
   static
 #endif
@@ -1747,6 +1767,18 @@ public:
     {
       memcpy_fixed((uchar*) str,ptr+packlength+row_offset,sizeof(char*));
     }
+
+  /**
+     Copy value in data to the field ptr. 
+
+     NOTE
+     If the null_bit for this field is set, @c
+     set_notnull(my_ptrdiff_t) needs to be called for set_ptr to have
+     any effect when inserting a record.
+
+     @param length  Length of data
+     @param data    The value of the field
+  */
   inline void set_ptr(uchar *length, uchar *data)
     {
       memcpy(ptr,length,packlength);
@@ -1855,7 +1887,7 @@ public:
   {
       flags|=ENUM_FLAG;
   }
-  Field *new_field(MEM_ROOT *root, struct st_table *new_table, bool keep_type);
+  Field *new_field(MEM_ROOT *root, TABLE *new_table, bool keep_type);
   enum_field_types type() const { return MYSQL_TYPE_STRING; }
   enum Item_result cmp_type () const { return INT_RESULT; }
   enum Item_result cast_to_int_type () const { return INT_RESULT; }
@@ -1884,6 +1916,8 @@ public:
   CHARSET_INFO *sort_charset(void) const { return &my_charset_bin; }
 private:
   int do_save_field_metadata(uchar *first_byte);
+  bool compare_enum_values(TYPELIB *values);
+  uint is_equal(Create_field *new_field);
 };
 
 
@@ -1979,7 +2013,8 @@ public:
   uint pack_length_from_metadata(uint field_metadata);
   uint row_pack_length()
   { return (bytes_in_rec + ((bit_len > 0) ? 1 : 0)); }
-  int compatible_field_size(uint field_metadata);
+  int compatible_field_size(uint field_metadata,
+                            const Relay_log_info *rli);
   void sql_type(String &str) const;
   virtual uchar *pack(uchar *to, const uchar *from,
                       uint max_length, bool low_byte_first);
@@ -1987,7 +2022,7 @@ public:
                               uint param_data, bool low_byte_first);
   virtual void set_default();
 
-  Field *new_key_field(MEM_ROOT *root, struct st_table *new_table,
+  Field *new_key_field(MEM_ROOT *root, TABLE *new_table,
                        uchar *new_ptr, uchar *new_null_ptr,
                        uint new_null_bit);
   void set_bit_ptr(uchar *bit_ptr_arg, uchar bit_ofs_arg)
@@ -1998,7 +2033,6 @@ public:
   bool eq(Field *field)
   {
     return (Field::eq(field) &&
-            field->type() == type() &&
             bit_ptr == ((Field_bit *)field)->bit_ptr &&
             bit_ofs == ((Field_bit *)field)->bit_ofs);
   }
@@ -2111,7 +2145,7 @@ public:
   A class for sending info to the client
 */
 
-class Send_field {
+class Send_field :public Sql_alloc {
  public:
   const char *db_name;
   const char *table_name,*org_table_name;

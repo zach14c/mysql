@@ -49,7 +49,6 @@ public:
 };
 
 static hash_filo *hostname_cache;
-static pthread_mutex_t LOCK_hostname;
 
 void hostname_cache_refresh()
 {
@@ -66,7 +65,6 @@ bool hostname_cache_init()
 				     &my_charset_bin)))
     return 1;
   hostname_cache->clear();
-  (void) pthread_mutex_init(&LOCK_hostname,MY_MUTEX_INIT_SLOW);
 
   return 0;
 }
@@ -75,7 +73,6 @@ void hostname_cache_free()
 {
   if (hostname_cache)
   {
-    (void) pthread_mutex_destroy(&LOCK_hostname);
     delete hostname_cache;
     hostname_cache= 0;
   }
@@ -94,7 +91,7 @@ static void add_hostname(struct sockaddr_storage *in, const char *name)
       if ((entry=(host_entry*) malloc(sizeof(host_entry)+length+1)))
       {
 	char *new_name;
-	memcpy_fixed(&entry->ip, in, sizeof(struct addrinfo));
+	memcpy_fixed(&entry->ip, in, sizeof(struct sockaddr_storage));
 	if (length)
 	  memcpy(new_name= (char *) (entry+1), name, length+1);
 	else
@@ -231,11 +228,14 @@ char *ip_to_hostname(struct sockaddr_storage *in, int addrLen, uint *errors)
       this define is in this place for this reason.
     */
     DBUG_PRINT("error",("getaddrinfo returned %d", gxi_error));
+#ifdef EAI_NODATA
     if (gxi_error == EAI_NODATA )
+#else
+    if (gxi_error == EAI_NONAME )
+#endif
       add_wrong_ip(in);
 
     my_free(name,MYF(0));
-    freeaddrinfo(res_lst);
     DBUG_RETURN(0);
   }
 

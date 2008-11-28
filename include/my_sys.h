@@ -13,6 +13,11 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+/**
+  @file
+  mysys library API
+*/
+
 #ifndef _my_sys_h
 #define _my_sys_h
 C_MODE_START
@@ -222,14 +227,18 @@ extern void (*fatal_error_handler_hook)(uint my_err, const char *str,
 extern uint my_file_limit;
 extern ulong my_thread_stack_size;
 
+extern const char *(*proc_info_hook)(void *, const char *, const char *,
+                                     const char *, const unsigned int);
+
 #ifdef HAVE_LARGE_PAGES
 extern my_bool my_use_large_pages;
 extern uint    my_large_page_size;
 #endif
 
 /* charsets */
+#define MY_ALL_CHARSETS_SIZE 2048
 extern CHARSET_INFO *default_charset_info;
-extern CHARSET_INFO *all_charsets[256];
+extern CHARSET_INFO *all_charsets[MY_ALL_CHARSETS_SIZE];
 extern CHARSET_INFO compiled_charsets[];
 
 /* statistics */
@@ -250,7 +259,7 @@ extern int NEAR my_umask,		/* Default creation mask  */
 	   NEAR my_safe_to_handle_signal, /* Set when allowed to SIGTSTP */
 	   NEAR my_dont_interrupt;	/* call remember_intr when set */
 extern my_bool NEAR mysys_uses_curses, my_use_symdir;
-extern ulong sf_malloc_cur_memory, sf_malloc_max_memory;
+extern size_t sf_malloc_cur_memory, sf_malloc_max_memory;
 
 extern ulong	my_default_record_cache_size;
 extern my_bool NEAR my_disable_locking,NEAR my_disable_async_io,
@@ -323,9 +332,13 @@ enum file_type
 
 struct st_my_file_info
 {
-  char *		name;
-  enum file_type	type;
-#if defined(THREAD) && !defined(HAVE_PREAD) && !defined(__WIN__)
+  char  *name;
+#ifdef _WIN32
+  HANDLE fhandle;   /* win32 file handle */
+  int    oflag;     /* open flags, e.g O_APPEND */
+#endif
+  enum   file_type	type;
+#if defined(THREAD) && !defined(HAVE_PREAD) && !defined(_WIN32)
   pthread_mutex_t	mutex;
 #endif
 };
@@ -357,7 +370,10 @@ typedef struct st_dynamic_string
 } DYNAMIC_STRING;
 
 struct st_io_cache;
-typedef int (*IO_CACHE_CALLBACK)(struct st_io_cache*);
+/** Function called when certain events happen to an IO_CACHE */
+typedef int (*IO_CACHE_CALLBACK)(struct st_io_cache *cache,
+                                 const uchar *buffert, uint length,
+                                 my_off_t filepos);
 
 #ifdef THREAD
 typedef struct st_io_cache_share
@@ -456,21 +472,24 @@ typedef struct st_io_cache		/* Used when cacheing files */
   */
   enum cache_type type;
   /*
-    Callbacks when the actual read I/O happens. These were added and
-    are currently used for binary logging of LOAD DATA INFILE - when a
-    block is read from the file, we create a block create/append event, and
-    when IO_CACHE is closed, we create an end event. These functions could,
-    of course be used for other things
+    Callbacks were added and are currently used for binary logging of LOAD
+    DATA INFILE - when a block is read from the file, we create a block
+    create/append event, and when IO_CACHE is closed, we create an end event;
+    also used to write the MyISAM WRITE_CACHE blocks to the MyISAM physical
+    log. These functions could, of course be used for other things. Note: some
+    callbacks share the same argument ("arg").
   */
-  IO_CACHE_CALLBACK pre_read;
-  IO_CACHE_CALLBACK post_read;
-  IO_CACHE_CALLBACK pre_close;
+  IO_CACHE_CALLBACK pre_read;  /**< called before reading from disk */
+  IO_CACHE_CALLBACK post_read; /**< called after reading from disk */
+  IO_CACHE_CALLBACK pre_close; /**< called before ending the cache */
+  /** Called _after_ writing to disk; not honoured by SEQ_READ_APPEND */
+  IO_CACHE_CALLBACK post_write;
   /*
     Counts the number of times, when we were forced to use disk. We use it to
     increase the binlog_cache_disk_use status variable.
   */
   ulong disk_writes;
-  void* arg;				/* for use by pre/post_read */
+  void *arg;			     /**< used by pre/post_read,post_write */
   char *file_name;			/* if used with 'open_cached_file' */
   char *dir,*prefix;
   File file; /* file descriptor */
@@ -482,6 +501,11 @@ typedef struct st_io_cache		/* Used when cacheing files */
     partial.
   */
   int	seek_not_done,error;
+  /**
+     Cumulative 'error' since last [re]init_io_cache(). Useful if cache's user
+     polls for errors only once in a while.
+  */
+  int hard_write_error_in_the_past;
   /* buffer_length is memory size allocated for buffer or write_buffer */
   size_t	buffer_length;
   /* read_length is the same as buffer_length except when we use async io */
@@ -588,6 +612,7 @@ extern int my_close(File Filedes,myf MyFlags);
 extern File my_dup(File file, myf MyFlags);
 extern int my_mkdir(const char *dir, int Flags, myf MyFlags);
 extern int my_readlink(char *to, const char *filename, myf MyFlags);
+extern int my_is_symlink(const char *filename);
 extern int my_realpath(char *to, const char *filename, myf MyFlags);
 extern File my_create_with_symlink(const char *linkname, const char *filename,
 				   int createflags, int access_flags,
@@ -630,20 +655,27 @@ extern void *my_memmem(const void *haystack, size_t haystacklen,
                        const void *needle, size_t needlelen);
 
 
-#ifdef __WIN__
-extern int my_access(const char *path, int amode);
-extern File my_sopen(const char *path, int oflag, int shflag, int pmode);
+#ifdef _WIN32
+extern int      my_access(const char *path, int amode);
 #else
 #define my_access access
 #endif
+
 extern int check_if_legal_filename(const char *path);
 extern int check_if_legal_tablename(const char *path);
 
-#if defined(__WIN__) && defined(__NT__)
+#ifdef _WIN32
 extern int nt_share_delete(const char *name,myf MyFlags);
 #define my_delete_allow_opened(fname,flags)  nt_share_delete((fname),(flags))
 #else
 #define my_delete_allow_opened(fname,flags)  my_delete((fname),(flags))
+#endif
+
+#ifdef _WIN32
+/* Windows-only functions (CRT equivalents)*/
+extern File     my_sopen(const char *path, int oflag, int shflag, int pmode);
+extern HANDLE   my_get_osfhandle(File fd);
+extern void     my_osmaperr(unsigned long last_error);
 #endif
 
 #ifndef TERMINATE
@@ -653,6 +685,7 @@ extern void init_glob_errs(void);
 extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);
+extern File my_fileno(FILE *fd);
 extern int my_chsize(File fd,my_off_t newlength, int filler, myf MyFlags);
 extern int my_chmod(const char *name, mode_t mode, myf my_flags);
 extern int my_sync(File fd, myf my_flags);
@@ -706,6 +739,7 @@ extern char * fn_format(char * to,const char *name,const char *dir,
 			   const char *form, uint flag);
 extern size_t strlength(const char *str);
 extern void pack_dirname(char * to,const char *from);
+extern size_t normalize_dirname(char * to, const char *from);
 extern size_t unpack_dirname(char * to,const char *from);
 extern size_t cleanup_dirname(char * to,const char *from);
 extern size_t system_filename(char * to,const char *from);

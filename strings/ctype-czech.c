@@ -285,9 +285,21 @@ if ((totlen) < (len)) { dest[totlen] = value; } (totlen++);
 #define IS_END(p, src, len)	(((char *)p - (char *)src) >= (len))
 
 /*
-  ml - a flag indicating whether automatically
-       switch to the secondary level,
-       or stop on the primary level
+  src  - IN     pointer to the beginning of the string
+  p    - IN/OUT pointer to the current character being processed
+  pass - IN     pass number [0..3]
+                0 - primary level
+                1 - secondary level
+                2 - tertiary level 
+                3 - quarternary level
+  value - OUT   the next weight value.
+                -1 is returned on end-of-line.
+                 1 is returned between levels ("level separator").
+                Any value greater than 1 is a normal weight.
+  ml    - IN    a flag indicating whether to switch automatically
+                to the secondary level and higher levels,
+                or stop at the primary level.
+                ml=0 is used for prefix comparison.
 */
                 
 #define NEXT_CMP_VALUE(src, p, pass, value, len, ml)	\
@@ -364,7 +376,7 @@ static int my_strnncoll_czech(CHARSET_INFO *cs __attribute__((unused)),
     if ((diff = v1 - v2))
       return diff;
   }
-  while (v1);
+  while (v1 >= 0);
   return 0;
 }
 
@@ -483,7 +495,12 @@ my_strnxfrm_czech(CHARSET_INFO * cs  __attribute__((unused)),
         *dst++= level < 3 ? 1 : 0;
     }
   }
-
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && dst < de)
+  {
+    uint fill_length= de - dst;
+    cs->cset->fill(cs, (char*) dst, fill_length, 0);
+    dst= de;
+  }
   return dst - dst0;
 }
 

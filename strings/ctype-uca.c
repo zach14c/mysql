@@ -7297,7 +7297,7 @@ static size_t my_strnxfrm_uca(CHARSET_INFO *cs,
                            const uchar *src, size_t srclen, uint flags)
 {
   uchar *d0= dst;
-  uchar *de= dst + (dstlen & (size_t) ~1); /* add even length for easier code */
+  uchar *de= dst + dstlen;
   int   s_res;
   my_uca_scanner scanner;
   scanner_handler->init(&scanner, cs, src, srclen);
@@ -7306,7 +7306,8 @@ static size_t my_strnxfrm_uca(CHARSET_INFO *cs,
          (s_res= scanner_handler->next(&scanner)) > 0 ; nweights--)
   {
     *dst++= s_res >> 8;
-    *dst++= s_res & 0xFF;
+    if (dst < de)
+      *dst++= s_res & 0xFF;
   }
   
   if (dst < de && nweights && (flags & MY_STRXFRM_PAD_WITH_SPACE))
@@ -7320,6 +7321,16 @@ static size_t my_strnxfrm_uca(CHARSET_INFO *cs,
     }
   }
   my_strxfrm_desc_and_reverse(d0, dst, flags, 0);
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && dst < de)
+  {
+    s_res= cs->sort_order_big[0][0x20 * cs->sort_order[0]];
+    for ( ; dst < de; )
+    {
+      *dst++= s_res >> 8;
+      if (dst < de)
+        *dst++= s_res & 0xFF;
+    }
+  }
   return dst - d0;
 }
 
@@ -7673,6 +7684,13 @@ static my_coll_lexem_num my_coll_lexem_next(MY_COLL_LEXEM *lexem)
       goto ex;
     }
     
+    if (beg[0] == '=')
+    {
+      beg++;
+      rc= MY_COLL_LEXEM_DIFF;
+      goto ex;
+    }
+    
     if (beg[0] == '<')
     {
       for (beg++, lexem->diff= 1;
@@ -7832,6 +7850,10 @@ static int my_coll_rule_parse(MY_COLL_RULE *rule, size_t mitems,
           item.diff[0]++;
           item.diff[1]= 0;
           item.diff[2]= 0;
+        }
+        else if (lexem.diff == 0)
+        {
+          item.diff[0]= item.diff[1]= item.diff[2]= 0;
         }
         if (nitems >= mitems)
         {

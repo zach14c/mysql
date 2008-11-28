@@ -1,0 +1,360 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+SET GLOBAL BINLOG_FORMAT='ROW';
+SET BINLOG_FORMAT='ROW';
+SELECT @@BINLOG_FORMAT;
+@@BINLOG_FORMAT
+ROW
+RESET MASTER;
+**START TEST**
+*** TEST1 ***
+This test will recover data that were committed during backup
+operation. This is acheived by means of debug_sync points
+which pauses the backup database operation during commit.
+
+SET @a=UNIX_TIMESTAMP("2010-01-21 15:32:22");
+SET timestamp=@a;
+SET DEBUG_SYNC= 'RESET';
+CREATE DATABASE IF NOT EXISTS ptr;
+USE ptr;
+
+con1: ***Creating Tables***
+CREATE TABLE ptr.t1(id INT, details CHAR(30))ENGINE=INNODB;
+INSERT intO ptr.t1 VALUES
+(1,'testing1'),(2,'testing2'),(3,'testing3'),
+(4,'testing4'),(5,'testing5'),(6,'testing6');
+CREATE TABLE ptr.t2(id INT, info CHAR(30))ENGINE=INNODB;
+INSERT intO ptr.t2 VALUES(201, 'aa1'),(202,'aa2');
+CREATE TABLE ptr.t3(id INT, name CHAR(20))ENGINE=INNODB;
+INSERT intO ptr.t3 VALUES(1,'ab1'),(2,'ab2'),(3,'ab3'),(4,'ab4'),(5,'ab5');
+
+con2:
+START TRANSACTION;
+INSERT intO ptr.t2 VALUES(203, 'During backup-1'),(204,'During backup-2');
+UPDATE ptr.t3 SET name='hh1' WHERE id=1;
+DELETE FROM ptr.t1 WHERE id=5;
+DELETE FROM ptr.t1 WHERE id=6;
+con1:
+The values should be: t1=6 t2=2 t3=5
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+5	testing5
+6	testing6
+SELECT COUNT(*) FROM ptr.t1;
+COUNT(*)
+6
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	aa2
+SELECT COUNT(*) FROM ptr.t2;
+COUNT(*)
+2
+SELECT * FROM ptr.t3;
+id	name
+1	ab1
+2	ab2
+3	ab3
+4	ab4
+5	ab5
+SELECT COUNT(*) FROM ptr.t3;
+COUNT(*)
+5
+SET DEBUG_SYNC= 'before_backup_data_init SIGNAL bup_sync
+                 WAIT_FOR bup_finish';
+BACKUP DATABASE ptr TO 'ptr_commit.bak';
+
+con3: Waiting for BACKUP to reach the breakpoint
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+con2:
+COMMIT;
+
+con3: Signalling that BACKUP can finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+con1:
+con1: Fetching result of BACKUP
+backup_id
+#
+set timestamp=@a+2;
+con2:
+After commit the values of will be: t1=4, t2=4, t3=5
+SELECT COUNT(*) FROM ptr.t1;
+COUNT(*)
+4
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+SELECT COUNT(*) FROM ptr.t2;
+COUNT(*)
+4
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	aa2
+203	During backup-1
+204	During backup-2
+SELECT COUNT(*) FROM ptr.t3;
+COUNT(*)
+5
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	ab2
+3	ab3
+4	ab4
+5	ab5
+con1:
+**** Perform some operations after backup ****
+INSERT intO ptr.t1 VALUES(10,'After Backup1'),(20,'After Backup2');
+UPDATE ptr.t2 SET info='After Backup-1' WHERE id=202;
+UPDATE ptr.t3 SET name='After Backup-1' WHERE id=2;
+set timestamp=@a+4;
+FLUSH LOGS;
+Values in table after backup: t1=6,t2=4(202 updated), t3=5(2 updated)
+SELECT COUNT(*) FROM ptr.t1;
+COUNT(*)
+6
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+10	After Backup1
+20	After Backup2
+SELECT COUNT(*) FROM ptr.t2;
+COUNT(*)
+4
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	After Backup-1
+203	During backup-1
+204	During backup-2
+SELECT COUNT(*) FROM ptr.t3;
+COUNT(*)
+5
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	After Backup-1
+3	ab3
+4	ab4
+5	ab5
+DROP DATABASE ptr;
+*** Recovering data till point of backup using mysql binlog_position ***
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	aa2
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	ab2
+3	ab3
+4	ab4
+5	ab5
+*** Recover data after backup ***
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+10	After Backup1
+20	After Backup2
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	After Backup-1
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	After Backup-1
+3	ab3
+4	ab4
+5	ab5
+DROP DATABASE ptr;
+*** TEST2 ***
+Perform Restore and Recover committed data using mysqlbinlog position
+after backup.
+
+Perform restore operation
+RESTORE FROM 'ptr_commit.bak';
+backup_id
+#
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+t1
+t2
+t3
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	aa2
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	ab2
+3	ab3
+4	ab4
+5	ab5
+*** Recover data using binlog position after backup ***
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+10	After Backup1
+20	After Backup2
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	After Backup-1
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	After Backup-1
+3	ab3
+4	ab4
+5	ab5
+DROP DATABASE ptr;
+*** TEST3 ***
+Recover committed data during backup and after backup operation
+using mysqlbinlog dates
+
+use binlog dates to recover data till backup.
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+t1
+t2
+t3
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	aa2
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	ab2
+3	ab3
+4	ab4
+5	ab5
+use binlog dates to recover data after backup.
+*** Now recover data after backup using binlog dates ***
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+10	After Backup1
+20	After Backup2
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	After Backup-1
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	After Backup-1
+3	ab3
+4	ab4
+5	ab5
+*** TEST4 *** 
+Perform Restore and Recover committed data using mysqlbinlog position
+after backup.
+Perform restore operation
+RESTORE FROM 'ptr_commit.bak' OVERWRITE;
+backup_id
+#
+SHOW TABLES FROM ptr;
+Tables_in_ptr
+t1
+t2
+t3
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	aa2
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	ab2
+3	ab3
+4	ab4
+5	ab5
+*** Now recover data after backup using binlog dates ***
+SELECT * FROM ptr.t1;
+id	details
+1	testing1
+2	testing2
+3	testing3
+4	testing4
+10	After Backup1
+20	After Backup2
+SELECT * FROM ptr.t2;
+id	info
+201	aa1
+202	After Backup-1
+203	During backup-1
+204	During backup-2
+SELECT * FROM ptr.t3;
+id	name
+1	hh1
+2	After Backup-1
+3	ab3
+4	ab4
+5	ab5
+
+***  DROP ptr DATABASE ****
+
+DROP DATABASE ptr;
+SET DEBUG_SYNC= 'RESET';

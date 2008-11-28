@@ -10,13 +10,11 @@
 #
 ##############################################################################
 
-rpl_ddl                    : BUG#26418 2007-03-01 mleich Slave out of sync after CREATE                            /DROP TEMPORARY TABLE + ROLLBACK on master
 rpl_invoked_features       : BUG#29020 2007-06-21 Lars Non-deterministic test case
 rpl_auto_increment_11932   : Bug#29809 2007-07-16 ingo Slave SQL errors in warnings 
                              file
 rpl_do_grant               : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
 rpl_ignore_table           : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
-rpl_ddl                  : BUG#26418 2007-03-01 mleich Slave out of sync after CREATE/DROP TEMPORARY TABLE + ROLLBACK on master
 rpl_auto_increment_11932   : Bug#29809 2007-07-16 ingo Slave SQL errors in warnings file
 rpl_extraColmaster_innodb  : BUG#30854 : Tables name show as binary in slave err msg on                             vm-win2003-64-b and Solaris
 rpl_extraColmaster_myisam  : BUG#30854
@@ -27,6 +25,12 @@ rpl_ssl                    : Bug#32217 rpl_ssl fails with different number of re
 rpl_row_until              : Bug#28772 rpl_row_until fails in pushbuild
 rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
 rpl_row_basic_7ndb         : BUG#33360 2007-12-19 mats rpl_ndb_idempotent fails due to null field for table on slave side
-rpl_redirect               : Failure is sporadic and and the test is superfluous (mats)
-rpl_innodb_bug28430        : Failure on Solaris Bug #36793
-rpl_server_id1             : Bug #36818 rpl_server_id1 fails expecting slave has stopped (azundris)
+rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
+rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
+
+rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
+rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
+rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main
+rpl_truncate_falcon        : Bug#40926 2008-11-21 johnemb rpl.rpl_truncate_falcon fails in Pushbuild due to wrong binlog-format being used
+rpl_relay_space_falcon     : Bug#40927 2008-11-21 johnemb rpl.rpl_relay_space_falcon fails when binlog-format is explicitly set to mixed
+rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)

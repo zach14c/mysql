@@ -1894,6 +1894,130 @@ int my_wildcmp_unicode(CHARSET_INFO *cs,
   return (str != str_end ? 1 : 0);
 }
 
+
+/**
+  Pad buffer with weights for space characters.
+  
+  @details
+  This functions fills the buffer pointed by "str"
+  with weights of space character. Not more than
+  "nweights" weights are put. If at some iteration
+  step only a half of weight can fit
+  (which is possible if buffer length is an odd number)
+  then a half of this weight is put - this gives
+  a little bit better ORDER BY result for long strings.
+  
+  @str      Buffer
+  @strend   End of buffer
+  @nweights Number of weights
+  
+  @return Result length
+*/
+
+static size_t
+my_strxfrm_pad_nweights_unicode(uchar *str, uchar *strend, size_t nweights)
+{
+  uchar *str0;
+  DBUG_ASSERT(str && str <= strend); 
+  for (str0= str; str < strend && nweights; nweights--)
+  {
+    *str++= 0x00;
+    if (str < strend)
+      *str++= 0x20;
+  }
+  return str - str0;
+}
+
+
+/**
+  Pad buffer with weights for space characters.
+  
+  @details
+  This functions fills the buffer pointed by "str"
+  with weights of space character. Putting half of weight
+  (when buffer length is an odd number) is OK.
+  
+  @str      Buffer
+  @strend   End of buffer
+  
+  @return Result length
+*/
+
+static size_t
+my_strxfrm_pad_unicode(uchar *str, uchar *strend)
+{
+  uchar *str0= str;
+  DBUG_ASSERT(str && str <= strend); 
+  for ( ; str < strend ; )
+  {
+    *str++= 0x00;
+    if (str < strend)
+      *str++= 0x20;
+  }
+  return str - str0;
+}
+
+
+#define REPLACEMENT_CHAR 0xFFFD;
+
+
+static inline void
+my_tosort_unicode(MY_UNICASE_INFO **uni_plane, my_wc_t *wc)
+{
+  int page= *wc >> 8;
+  if (page < 256)
+  {
+    if (uni_plane[page])
+      *wc= uni_plane[page][*wc & 0xFF].sort;
+  }
+  else
+  {
+    *wc= REPLACEMENT_CHAR;
+  }
+}
+
+
+size_t
+my_strnxfrm_unicode(CHARSET_INFO *cs,
+                    uchar *dst, size_t dstlen, uint nweights,
+                    const uchar *src, size_t srclen, uint flags)
+{
+  my_wc_t wc;
+  int res;
+  uchar *dst0= dst;
+  uchar *de= dst + dstlen;
+  const uchar *se= src + srclen;
+  MY_UNICASE_INFO **uni_plane= (cs->state & MY_CS_BINSORT) ?
+                                NULL : cs->caseinfo;
+  LINT_INIT(wc);
+  DBUG_ASSERT(src);
+  
+  for (; dst < de && nweights; nweights--)
+  {
+    if ((res= cs->cset->mb_wc(cs, &wc, src, se)) <= 0)
+      break;
+    src+= res;
+
+    if (uni_plane)
+      my_tosort_unicode(uni_plane, &wc);
+    
+    *dst++= (uchar) (wc >> 8);
+    if (dst < de)
+      *dst++= (uchar) (wc & 0xFF);
+  }
+
+  if (dst < de && nweights && (flags & MY_STRXFRM_PAD_WITH_SPACE))
+    dst+= my_strxfrm_pad_nweights_unicode(dst, de, nweights);
+
+  my_strxfrm_desc_and_reverse(dst0, dst, flags, 0);
+
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && dst < de)
+    dst+= my_strxfrm_pad_unicode(dst, de);
+  return dst - dst0;
+}
+
+
+
 #endif
 
 
@@ -2022,15 +2146,35 @@ my_mb_wc_utf8mb4(CHARSET_INFO *cs __attribute__((unused)),
            (my_wc_t) (s[2] ^ 0x80);
     return 3;
   }
-  else if (c < 0xf8)
+  else if (c < 0xf5)
   {
     if (s + 4 > e) /* We need 4 characters */
       return MY_CS_TOOSMALL4;
 
+    /*
+      UTF-8 quick four-byte mask:
+      11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+      Encoding allows to encode U+00010000..U+001FFFFF
+      
+      The maximum character defined in the Unicode standard is U+0010FFFF.
+      Higher characters U+00110000..U+001FFFFF are not used.
+      
+      11110000.10010000.10xxxxxx.10xxxxxx == F0.90.80.80 == U+00010000 (min)
+      11110100.10001111.10111111.10111111 == F4.8F.BF.BF == U+0010FFFF (max)
+      
+      Valid codes:
+      [F0][90..BF][80..BF][80..BF]
+      [F1][80..BF][80..BF][80..BF]
+      [F2][80..BF][80..BF][80..BF]
+      [F3][80..BF][80..BF][80..BF]
+      [F4][80..8F][80..BF][80..BF]
+    */
+
     if (!((s[1] ^ 0x80) < 0x40 &&
           (s[2] ^ 0x80) < 0x40 &&
           (s[3] ^ 0x80) < 0x40 &&
-          (c >= 0xf1 || s[1] >= 0x90)))
+          (c >= 0xf1 || s[1] >= 0x90) &&
+          (c <= 0xf3 || s[1] <= 0x8F)))
       return MY_CS_ILSEQ;
     *pwc = ((my_wc_t) (c & 0x07) << 18)    |
            ((my_wc_t) (s[1] ^ 0x80) << 12) |
@@ -2083,12 +2227,13 @@ my_mb_wc_utf8mb4_no_range(CHARSET_INFO *cs __attribute__((unused)),
 
     return 3;
   }
-  else if (c < 0xf8)
+  else if (c < 0xf5)
   {
     if (!((s[1] ^ 0x80) < 0x40 &&
           (s[2] ^ 0x80) < 0x40 &&
           (s[3] ^ 0x80) < 0x40 &&
-          (c >= 0xf1 || s[1] >= 0x90)))
+          (c >= 0xf1 || s[1] >= 0x90) &&
+          (c <= 0xf3 || s[1] <= 0x8F)))
       return MY_CS_ILSEQ;
     *pwc = ((my_wc_t) (c & 0x07) << 18)    |
            ((my_wc_t) (s[1] ^ 0x80) << 12) |
@@ -2165,9 +2310,6 @@ my_wc_mb_utf8mb4_no_range(CHARSET_INFO *cs __attribute__((unused)),
 }
 
 
-#define REPLACEMENT_CHAR 0xFFFD;
-
-
 static inline void
 my_tolower_utf8mb4(MY_UNICASE_INFO **uni_plane, my_wc_t *wc)
 {
@@ -2183,22 +2325,6 @@ my_toupper_utf8mb4(MY_UNICASE_INFO **uni_plane, my_wc_t *wc)
   int page= *wc >> 8;
   if (page < 256 && uni_plane[page])
     *wc= uni_plane[page][*wc & 0xFF].toupper;
-}
-
-
-static inline void
-my_tosort_utf8mb4(MY_UNICASE_INFO **uni_plane, my_wc_t *wc)
-{
-  int page= *wc >> 8;
-  if (page < 256)
-  {
-    if (uni_plane[page])
-      *wc= uni_plane[page][*wc & 0xFF].sort;
-  }
-  else
-  {
-    *wc= REPLACEMENT_CHAR;
-  }
 }
 
 
@@ -2252,7 +2378,7 @@ my_hash_sort_utf8mb4(CHARSET_INFO *cs, const uchar *s, size_t slen,
 
   while ((res= my_mb_wc_utf8mb4(cs, &wc, (uchar*) s, (uchar*) e)) > 0)
   {
-    my_tosort_utf8mb4(uni_plane, &wc);
+    my_tosort_unicode(uni_plane, &wc);
     my_hash_add(n1, n2, (uint) (wc & 0xFF));
     my_hash_add(n1, n2, (uint) (wc >> 8)  & 0xFF);
     if (wc > 0xFFFF)
@@ -2382,8 +2508,8 @@ my_strnncoll_utf8mb4(CHARSET_INFO *cs,
       return bincmp_utf8mb4(s, se, t, te);
     }
 
-    my_tosort_utf8mb4(uni_plane, &s_wc);
-    my_tosort_utf8mb4(uni_plane, &t_wc);
+    my_tosort_unicode(uni_plane, &s_wc);
+    my_tosort_unicode(uni_plane, &t_wc);
     
     if ( s_wc != t_wc )
     {
@@ -2452,8 +2578,8 @@ my_strnncollsp_utf8mb4(CHARSET_INFO *cs,
       return bincmp_utf8mb4(s, se, t, te);
     }
 
-    my_tosort_utf8mb4(uni_plane, &s_wc);
-    my_tosort_utf8mb4(uni_plane, &t_wc);
+    my_tosort_unicode(uni_plane, &s_wc);
+    my_tosort_unicode(uni_plane, &t_wc);
 
     if ( s_wc != t_wc )
     {
@@ -2593,51 +2719,6 @@ my_strnxfrmlen_utf8mb4(CHARSET_INFO *cs __attribute__((unused)), size_t len)
 }
 
 
-static size_t
-my_strnxfrm_utf8mb4(CHARSET_INFO *cs,
-                    uchar *dst, size_t dstlen, uint nweights,
-                    const uchar *src, size_t srclen, uint flags)
-{
-  my_wc_t wc;
-  int res;
-  uchar *dst0= dst;
-  uchar *de= dst + dstlen;
-  uchar *de_beg= de - 1;
-  const uchar *se = src + srclen;
-  MY_UNICASE_INFO **uni_plane= (cs->state & MY_CS_BINSORT) ?
-                                NULL : cs->caseinfo;
-
-  for (; dst < de_beg && nweights; nweights--)
-  {
-    if ((res= my_mb_wc_utf8mb4(cs,&wc, src, se)) <= 0)
-      break;
-    src+=res;
-
-    if (uni_plane)
-      my_tosort_utf8mb4(uni_plane, &wc);
-    
-    *dst++= (uchar)(wc >> 8);
-    *dst++= (uchar)(wc & 0xFF);
-    
-  }
-  
-  if (dst < de && nweights && (flags & MY_STRXFRM_PAD_WITH_SPACE))
-  {
-    /* Fill the tail with keys for space character */
-    for (; dst < de_beg && nweights; nweights--)
-    {
-      *dst++= 0x00;
-      *dst++= 0x20;
-    }
-    
-    if (dst < de)  /* Clear the last byte, if "dstlen" was an odd number */
-      *dst++= 0x00;
-  }
-  my_strxfrm_desc_and_reverse(dst0, dst, flags, 0);
-  return dst - dst0;
-}
-
-
 static uint
 my_ismbchar_utf8mb4(CHARSET_INFO *cs, const char *b, const char *e)
 {
@@ -2669,7 +2750,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb4_general_ci_handler=
   NULL,               /* init */
   my_strnncoll_utf8mb4,
   my_strnncollsp_utf8mb4,
-  my_strnxfrm_utf8mb4,
+  my_strnxfrm_unicode,
   my_strnxfrmlen_utf8mb4,
   my_like_range_mb,
   my_wildcmp_utf8mb4,
@@ -2685,7 +2766,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb4_bin_handler =
     NULL,		/* init */
     my_strnncoll_mb_bin,
     my_strnncollsp_mb_bin,
-    my_strnxfrm_utf8mb4,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_utf8mb4,
     my_like_range_mb,
     my_wildcmp_mb_bin,
@@ -3519,90 +3600,6 @@ my_strnxfrmlen_utf8mb3(CHARSET_INFO *cs __attribute__((unused)), size_t len)
 }
 
 
-static size_t
-my_strnxfrm_utf8mb3(CHARSET_INFO *cs,
-                    uchar *dst, size_t dstlen, uint nweights,
-                    const uchar *src, size_t srclen, uint flags)
-{
-  my_wc_t wc;
-  int res;
-  int plane;
-  uchar *dst0= dst;
-  uchar *de= dst + dstlen;
-  uchar *de_beg= de - 1;
-  const uchar *se = src + srclen;
-  MY_UNICASE_INFO **uni_plane= cs->caseinfo;
-
-  for (; dst < de_beg && nweights; nweights--)
-  {
-    if ((res= my_mb_wc_utf8mb3(cs,&wc, src, se)) <= 0)
-      break;
-    src+=res;
-
-    plane=(wc>>8) & 0xFF;
-    wc = uni_plane[plane] ? uni_plane[plane][wc & 0xFF].sort : wc;
-
-    *dst++= (uchar)(wc >> 8);
-    *dst++= (uchar)(wc & 0xFF);
-    
-  }
-  
-  if (dst < de && nweights && (flags & MY_STRXFRM_PAD_WITH_SPACE))
-  {
-    /* Fill the tail with keys for space character */
-    for (; dst < de_beg && nweights; nweights--)
-    {
-      *dst++= 0x00;
-      *dst++= 0x20;
-    }
-    
-    if (dst < de)  /* Clear the last byte, if "dstlen" was an odd number */
-      *dst++= 0x00;
-  }
-  my_strxfrm_desc_and_reverse(dst0, dst, flags, 0);
-  return dst - dst0;
-}
-
-
-static size_t
-my_strnxfrm_utf8mb3_bin(CHARSET_INFO *cs,
-                        uchar *dst, size_t dstlen, uint nweights,
-                        const uchar *src, size_t srclen, uint flags)
-{
-  my_wc_t wc;
-  int res;
-  uchar *dst0= dst;
-  uchar *de= dst + dstlen;
-  uchar *de_beg= de - 1;
-  const uchar *se= src + srclen;
-
-  for (; dst < de_beg && nweights; nweights--)
-  {
-    if ((res= my_mb_wc_utf8mb3(cs, &wc, src, se)) <= 0)
-      break;
-    src+=res;
-
-    *dst++= (uchar)(wc >> 8);
-    *dst++= (uchar)(wc & 0xFF);
-  }
-  
-  if (dst < de && nweights && (flags & MY_STRXFRM_PAD_WITH_SPACE))
-  {
-    /* Fill the tail with keys for space character */
-    for (; dst < de_beg && nweights; nweights--)
-    {
-      *dst++= 0x00;
-      *dst++= 0x20;
-    }
-    
-    if (dst < de)  /* Clear the last byte, if "dstlen" was an odd number */
-      *dst++= 0x00;
-  }
-  my_strxfrm_desc_and_reverse(dst0, dst, flags, 0);
-  return dst - dst0;
-}
-
-
 static uint
 my_ismbchar_utf8mb3(CHARSET_INFO *cs, const char *b, const char *e)
 {
@@ -3640,7 +3637,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb3_general_ci_handler =
     NULL,               /* init */
     my_strnncoll_utf8mb3,
     my_strnncollsp_utf8mb3,
-    my_strnxfrm_utf8mb3,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_utf8mb3,
     my_like_range_mb,
     my_wildcmp_utf8mb3,
@@ -3656,7 +3653,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb3_bin_handler =
     NULL,		/* init */
     my_strnncoll_mb_bin,
     my_strnncollsp_mb_bin,
-    my_strnxfrm_utf8mb3_bin,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_utf8mb3,
     my_like_range_mb,
     my_wildcmp_mb_bin,
@@ -3913,7 +3910,7 @@ static MY_COLLATION_HANDLER my_collation_utf8mb3_general_cs_handler =
     NULL,		/* init */
     my_strnncoll_utf8mb3_cs,
     my_strnncollsp_utf8mb3_cs,
-    my_strnxfrm_utf8mb3,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_utf8mb3,
     my_like_range_simple,
     my_wildcmp_mb,
@@ -5179,7 +5176,7 @@ static MY_COLLATION_HANDLER my_collation_filename_handler =
     NULL,               /* init */
     my_strnncoll_utf8mb3,
     my_strnncollsp_utf8mb3,
-    my_strnxfrm_utf8mb3,
+    my_strnxfrm_unicode,
     my_strnxfrmlen_utf8mb3,
     my_like_range_mb,
     my_wildcmp_utf8mb3,

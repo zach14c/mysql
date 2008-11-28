@@ -111,7 +111,6 @@ our $glob_basedir;
 
 our $path_charsetsdir;
 our $path_client_bindir;
-our $path_client_libdir;
 our $path_share;
 our $path_language;
 our $path_timefile;
@@ -134,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "main,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
+our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -143,6 +142,7 @@ our $exe_mysql;
 our $exe_mysqladmin;
 our $exe_mysql_upgrade;
 our $exe_mysqlbinlog;
+our $exe_myisamlog;
 our $exe_mysql_client_test;
 our $exe_bug25714;
 our $exe_mysqld;
@@ -263,6 +263,7 @@ my @default_valgrind_args= ("--show-reachable=yes");
 my @valgrind_args;
 my $opt_valgrind_path;
 my $opt_callgrind;
+my $opt_debug_sync_timeout= 300; # Default timeout for WAIT_FOR actions.
 
 our $opt_stress=               "";
 our $opt_stress_suite=     "main";
@@ -638,6 +639,7 @@ sub command_line_setup () {
              'valgrind-option=s'        => \@valgrind_args,
              'valgrind-path=s'          => \$opt_valgrind_path,
 	     'callgrind'                => \$opt_callgrind,
+	     'debug-sync-timeout=i'     => \$opt_debug_sync_timeout,
 
              # Stress testing 
              'stress'                   => \$opt_stress,
@@ -655,8 +657,6 @@ sub command_line_setup () {
              'vardir=s'                 => \$opt_vardir,
              'benchdir=s'               => \$glob_mysql_bench_dir,
              'mem'                      => \$opt_mem,
-             'client-bindir=s'          => \$path_client_bindir,
-             'client-libdir=s'          => \$path_client_libdir,
 
              # Misc
              'report-features'          => \$opt_report_features,
@@ -783,20 +783,12 @@ sub command_line_setup () {
   #
 
   # Look for the client binaries directory
-  if ($path_client_bindir)
-  {
-    # --client-bindir=path set on command line, check that the path exists
-    $path_client_bindir= mtr_path_exists($path_client_bindir);
-  }
-  else
-  {
-    $path_client_bindir= mtr_path_exists("$glob_basedir/client_release",
-					 "$glob_basedir/client_debug",
-					 vs_config_dirs('client', ''),
-					 "$glob_basedir/client",
-					 "$glob_basedir/bin");
-  }
-  
+  $path_client_bindir= mtr_path_exists("$glob_basedir/client_release",
+				       "$glob_basedir/client_debug",
+				       vs_config_dirs('client', ''),
+				       "$glob_basedir/client",
+				       "$glob_basedir/bin");
+
   # Look for language files and charsetsdir, use same share
   $path_share=      mtr_path_exists("$glob_basedir/share/mysql",
                                     "$glob_basedir/sql/share",
@@ -1482,13 +1474,15 @@ sub executable_setup_ndb () {
 
   $exe_ndbd=
     mtr_exe_maybe_exists("$ndb_path/src/kernel/ndbd",
-			 "$ndb_path/ndbd");
+			 "$ndb_path/ndbd",
+			 "$glob_basedir/libexec/ndbd");
   $exe_ndb_mgm=
     mtr_exe_maybe_exists("$ndb_path/src/mgmclient/ndb_mgm",
 			 "$ndb_path/ndb_mgm");
   $exe_ndb_mgmd=
     mtr_exe_maybe_exists("$ndb_path/src/mgmsrv/ndb_mgmd",
-			 "$ndb_path/ndb_mgmd");
+			 "$ndb_path/ndb_mgmd",
+			 "$glob_basedir/libexec/ndb_mgmd");
   $exe_ndb_waiter=
     mtr_exe_maybe_exists("$ndb_path/tools/ndb_waiter",
 			 "$ndb_path/ndb_waiter");
@@ -1744,25 +1738,19 @@ sub environment_setup () {
 
   my @ld_library_paths;
 
-  if ($path_client_libdir)
+  # --------------------------------------------------------------------------
+  # Setup LD_LIBRARY_PATH so the libraries from this distro/clone
+  # are used in favor of the system installed ones
+  # --------------------------------------------------------------------------
+  if ( $source_dist )
   {
-    # Use the --client-libdir passed on commandline
-    push(@ld_library_paths, "$path_client_libdir");
+    push(@ld_library_paths, "$glob_basedir/libmysql/.libs/",
+                            "$glob_basedir/libmysql_r/.libs/",
+                            "$glob_basedir/zlib.libs/");
   }
   else
   {
-    # Setup LD_LIBRARY_PATH so the libraries from this distro/clone
-    # are used in favor of the system installed ones
-    if ( $source_dist )
-    {
-      push(@ld_library_paths, "$glob_basedir/libmysql/.libs/",
-	   "$glob_basedir/libmysql_r/.libs/",
-	   "$glob_basedir/zlib.libs/");
-    }
-    else
-    {
-      push(@ld_library_paths, "$glob_basedir/lib");
-    }
+    push(@ld_library_paths, "$glob_basedir/lib");
   }
 
  # --------------------------------------------------------------------------
@@ -1974,9 +1962,6 @@ sub environment_setup () {
   {
     $cmdline_mysqlbinlog .=" --character-sets-dir=$path_charsetsdir";
   }
-  # Always use the given tmpdir for the LOAD files created
-  # by mysqlbinlog
-  $cmdline_mysqlbinlog .=" --local-load=$opt_tmpdir";
 
   if ( $opt_debug )
   {
@@ -1984,6 +1969,27 @@ sub environment_setup () {
       " --debug=d:t:A,$path_vardir_trace/log/mysqlbinlog.trace";
   }
   $ENV{'MYSQL_BINLOG'}= $cmdline_mysqlbinlog;
+
+  # ----------------------------------------------------
+  # Setup env so childs can execute myisamlog
+  # ----------------------------------------------------
+
+  my $myisam_path= mtr_file_exists(vs_config_dirs("storage/myisam", ""),
+                                   "$glob_basedir/storage/myisam",
+                                   "$glob_basedir/bin");
+
+  $exe_myisamlog=
+    mtr_exe_exists("$myisam_path/myisamlog");
+
+  my $cmdline_myisamlog=
+    mtr_native_path($exe_myisamlog);
+
+  if ( $opt_debug )
+  {
+    $cmdline_myisamlog .=
+      " -#d:t:A,$path_vardir_trace/log/myisamlog.trace";
+  }
+  $ENV{'MYISAMLOG'}= $cmdline_myisamlog;
 
   # ----------------------------------------------------
   # Setup env so childs can execute mysql
@@ -2080,6 +2086,11 @@ sub environment_setup () {
                         "$path_client_bindir/myisampack",
                         "$glob_basedir/storage/myisam/myisampack",
                         "$glob_basedir/myisam/myisampack"));
+  $ENV{'MYISAM_FTDUMP'}= mtr_native_path(mtr_exe_exists(
+                       vs_config_dirs('storage/myisam', 'myisam_ftdump'),
+                       vs_config_dirs('myisam', 'myisam_ftdump'),
+                       "$path_client_bindir/myisam_ftdump",
+                       "$glob_basedir/storage/myisam/myisam_ftdump"));
 
   # ----------------------------------------------------
   # Setup env so childs can execute maria_pack and maria_chk
@@ -2818,7 +2829,7 @@ sub run_benchmarks ($) {
 
   if ( ! $benchmark )
   {
-    mtr_add_arg($args, "--log");
+    mtr_add_arg($args, "--general-log");
     mtr_run("$glob_mysql_bench_dir/run-all-tests", $args, "", "", "", "");
     # FIXME check result code?!
   }
@@ -3160,6 +3171,24 @@ sub run_testcase_check_skip_test($)
   my ($tinfo)= @_;
 
   # ----------------------------------------------------------------------
+  # Skip some tests silently
+  # ----------------------------------------------------------------------
+
+  if ( $::opt_start_from )
+  {
+    if ($tinfo->{'name'} eq $::opt_start_from )
+    {
+      ## Found parting test. Run this test and all tests after this one
+      $::opt_start_from= "";
+    }
+    else
+    {
+      $tinfo->{'result'}= 'MTR_RES_SKIPPED';
+      return 1;
+    }
+  }
+
+  # ----------------------------------------------------------------------
   # If marked to skip, just print out and return.
   # Note that a test case not marked as 'skip' can still be
   # skipped later, because of the test case itself in cooperation
@@ -3394,7 +3423,16 @@ sub run_testcase ($) {
   {
     mtr_timer_stop_all($glob_timers);
     mtr_report("\nServers started, exiting");
-    exit(0);
+    if ($glob_win32_perl)
+    {
+      #ActiveState perl hangs  when using normal exit, use  POSIX::_exit instead
+      use POSIX qw[ _exit ]; 
+      POSIX::_exit(0);
+    }
+    else
+    {
+      exit(0);
+    }
   }
 
   {
@@ -3659,15 +3697,17 @@ sub mysqld_arguments ($$$$) {
   mtr_add_arg($args, "%s--basedir=%s", $prefix, $path_my_basedir);
   mtr_add_arg($args, "%s--character-sets-dir=%s", $prefix, $path_charsetsdir);
 
-  if ( $mysql_version_id >= 50036)
+  if (!$opt_extern)
   {
-    # By default, prevent the started mysqld to access files outside of vardir
-    mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
-  }
+    if ( $mysql_version_id >= 50036)
+    {
+      # Prevent the started mysqld to access files outside of vardir
+      mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
+    }
 
-  if ( $mysql_version_id >= 50000 )
-  {
-    mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    if ( $mysql_version_id >= 50000 ) {
+      mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    }
   }
 
   mtr_add_arg($args, "%s--default-character-set=latin1", $prefix);
@@ -3679,6 +3719,10 @@ sub mysqld_arguments ($$$$) {
   # see BUG#28359
   mtr_add_arg($args, "%s--connect-timeout=60", $prefix);
 
+  # Enable the debug sync facility, set default wait timeout.
+  # Facility stays disabled if timeout value is zero.
+  mtr_add_arg($args, "%s--loose-debug-sync-timeout=%s", $prefix,
+              $opt_debug_sync_timeout);
 
   # When mysqld is run by a root user(euid is 0), it will fail
   # to start unless we specify what user to run as, see BUG#30630
@@ -3700,6 +3744,9 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--pid-file=%s", $prefix,
 	      $mysqld->{'path_pid'});
+        
+   mtr_add_arg($args, "%s--log-err=%s", $prefix,
+	      $mysqld->{'path_myerr'});
 
   mtr_add_arg($args, "%s--port=%d", $prefix,
                 $mysqld->{'port'});
@@ -3712,16 +3759,18 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--disable-sync-frm", $prefix);  # Faster test
 
-  if ( $mysql_version_id >= 50106 )
+  if (!$opt_extern and $mysql_version_id >= 50106 )
   {
     # Turn on logging to bothe tables and file
     mtr_add_arg($args, "%s--log-output=table,file", $prefix);
   }
 
   my $log_base_path= "$opt_vardir/log/$mysqld->{'type'}$sidx";
-  mtr_add_arg($args, "%s--log=%s.log", $prefix, $log_base_path);
+  mtr_add_arg($args, "%s--general-log", $prefix);
+  mtr_add_arg($args, "%s--general-log-file=%s.log", $prefix, $log_base_path);
+  mtr_add_arg($args, "%s--slow-query-log", $prefix);
   mtr_add_arg($args,
-	      "%s--log-slow-queries=%s-slow.log", $prefix, $log_base_path);
+	      "%s--slow-query-log-file=%s-slow.log", $prefix, $log_base_path);
 
   # Check if "extra_opt" contains --skip-log-bin
   my $skip_binlog= grep(/^--skip-log-bin/, @$extra_opt, @opt_extra_mysqld_opt);
@@ -4142,19 +4191,10 @@ sub run_testcase_need_master_restart($)
   elsif (! mtr_same_opts($master->[0]->{'start_opts'},
                          $tinfo->{'master_opt'}) )
   {
-    # Chech that diff is binlog format only
-    my $diff_opts= mtr_diff_opts($master->[0]->{'start_opts'},$tinfo->{'master_opt'});
-    if (scalar(@$diff_opts) eq 2) 
-    {
-      $do_restart= 1 unless ($diff_opts->[0] =~/^--binlog-format=/ and $diff_opts->[1] =~/^--binlog-format=/);
-    }
-    else
-    {
-      $do_restart= 1;
-      mtr_verbose("Restart master: running with different options '" .
-	         join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
+    $do_restart= 1;
+    mtr_verbose("Restart master: running with different options '" .
+		join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
 	  	join(" ", @{$master->[0]->{'start_opts'}}) . "'" );
-    }
   }
   elsif( ! $master->[0]->{'pid'} )
   {
@@ -4687,11 +4727,15 @@ sub run_mysqltest ($) {
 
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
+  # and remove existing falcon tables
   # ----------------------------------------------------------------------
-
+  
   if ( $glob_use_embedded_server )
   {
     mysqld_arguments($args,$master->[0],$tinfo->{'master_opt'},[]);
+    #Remove  falcon tables before each test, otherwise every start might fail
+    #if there is an error in falcon recovery
+    rm_falcon_tables($master->[0]->{'path_myddir'});
   }
 
   # ----------------------------------------------------------------------
@@ -5119,6 +5163,8 @@ Options for coverage, profiling etc
                         can be specified more then once
   valgrind-path=[EXE]   Path to the valgrind executable
   callgrind             Instruct valgrind to use callgrind
+  debug-sync-timeout=NUM  Set default timeout for WAIT_FOR debug sync
+                        actions. Disable facility with NUM=0.
 
 Misc options
 
@@ -5139,8 +5185,6 @@ Misc options
   warnings | log-warnings Pass --log-warnings to mysqld
 
   sleep=SECONDS         Passed to mysqltest, will be used as fixed sleep time
-  client-bindir=PATH    Path to the directory where client binaries are located
-  client-libdir=PATH    Path to the directory where client libraries are located
 
 Deprecated options
   with-openssl          Deprecated option for ssl

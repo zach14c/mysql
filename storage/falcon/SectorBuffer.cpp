@@ -25,6 +25,7 @@ SectorBuffer::SectorBuffer()
 {
 	activeLength = 0;
 	sectorNumber = -1;
+	syncObject.setName("SectorBuffer::syncObject");
 }
 
 SectorBuffer::~SectorBuffer(void)
@@ -54,8 +55,6 @@ void SectorBuffer::readPage(Bdb* bdb)
 		page->checksum = NO_CHECKSUM_MAGIC;
 		}
 	memcpy(bdb->buffer, page, pageSize);
-
-
 }
 
 void SectorBuffer::readSector()

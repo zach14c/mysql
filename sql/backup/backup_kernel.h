@@ -1,9 +1,8 @@
 #ifndef _BACKUP_KERNEL_API_H
 #define _BACKUP_KERNEL_API_H
 
-#include <backup/api_types.h>
-#include <backup/catalog.h>
 #include <backup/logger.h>
+#include <backup/stream_services.h>
 
 /**
   @file
@@ -19,231 +18,203 @@
 #define DATA_BUFFER_SIZE  (1024*1024)
 
 /*
+  Functions used to initialize and shut down the online backup system.
+  
+  Note: these functions are called at plugin load and plugin shutdown time,
+  respectively.
+ */ 
+int backup_init();
+void backup_shutdown();
+
+/*
   Called from the big switch in mysql_execute_command() to execute
   backup related statement
 */
-int execute_backup_command(THD*, LEX*);
+int execute_backup_command(THD*, LEX*, String*, bool);
 
-namespace backup {
+// forward declarations
 
-class Image_info;
 class Backup_info;
 class Restore_info;
 
-} // backup namespace
-
-// Backup kernel API
-
-int mysql_backup(THD*, backup::Backup_info&, backup::OStream&);
-int mysql_restore(THD*, backup::Restore_info&, backup::IStream&);
-
-
 namespace backup {
 
-/**
-  Represents a location where backup archive can be stored.
+class Mem_allocator;
+class Stream;
+class Output_stream;
+class Input_stream;
+class Native_snapshot;
 
-  The class is supposed to represent the location on the abstract level
-  so that it is easier to add new types of locations.
+int write_table_data(THD*, Backup_info&, Output_stream&);
+int restore_table_data(THD*, Restore_info&, Input_stream&);
 
-  Currently we support only files on the server's file system. Thus the
-  only type of location is a path to a file.
- */
-
-struct Location
-{
-  /// Type of location
-  enum enum_type {SERVER_FILE, INVALID};
-  bool read;
-
-  virtual enum_type type() const
-  { return INVALID; }
-
-  virtual ~Location() {}  // we want to inherit this class
-
-  /// Deallocate any resources used by Location object.
-  virtual void free()
-  { delete this; }  // use destructor to free resources
-
-  /** 
-    Determine if the location is valid
-  
-    An invalid location will not be used.
-    
-    @retval TRUE  Location is valid.
-    @retval FALSE Location is invalid.
-  */
-  virtual bool is_valid() =0;
-  
-  /// Describe location for debug purposes
-  virtual const char* describe()
-  { return "Invalid location"; }
-
-  /**
-    Remove any system resources connected to that location.
-
-    When location is opened for writing, some system resources will be usually
-    created (depending on the type of the location). For example, a file in the
-    file system. This method should remove/free any such resources. If no
-    resources were created, the method should do nothing.
-    
-    @returns OK on success, ERROR otherwise.
-   */ 
-  virtual result_t remove() =0;
-
-  /**
-    Interpret string passed to BACKUP/RESTORE statement as backup location
-    and construct corresponding Location object.
-
-    @returns NULL if the string doesn't denote a valid location
-   */
-  static Location* find(const LEX_STRING&);
-};
-
+}
 
 /**
-  Specialization of @c Image_info which adds methods for selecting items
-  to backup.
-
-  When Backup_info object is created it is empty and ready for adding items
-  to it. Methods @c add_table() @c add_db(), @c add_dbs() and @c add_all_dbs()
-  can be used for that purpose (currently only databases and tables are
-  supported). After populating info object with items it should be "closed"
-  with a call to @c close() method. After that it is ready for use as a
-  description of backup archive to be created.
-*/
-class Backup_info: public Image_info, public Logger
+  Instances of this class are used for creating required context and performing
+  backup/restore operations.
+  
+  @see kernel.cc
+ */ 
+class Backup_restore_ctx: public backup::Logger 
 {
  public:
 
-  Backup_info(THD*);
-  ~Backup_info();
+  Backup_restore_ctx(THD*);
+  ~Backup_restore_ctx();
 
-  bool is_valid()
-  {
-    bool ok= TRUE;
+  bool is_valid() const;
+  ulonglong op_id() const;
 
-    switch (m_state) {
+  Backup_info*  prepare_for_backup(String *location, 
+                                   LEX_STRING orig_loc, 
+                                   const char*, bool);
+  Restore_info* prepare_for_restore(String *location, 
+                                   LEX_STRING orig_loc,
+                                   const char*);  
 
-    case ERROR:
-      ok= FALSE;
-      break;
+  int do_backup();
+  int do_restore(bool overwrite);
+  int fatal_error(int, ...);
+  int log_error(int, ...);
 
-    case INIT:
-      ok= (i_s_tables != NULL);
-      break;
+  int close();
 
-    default:
-      ok= TRUE;
-    }
-
-    if (!ok)
-      m_state= ERROR;
-
-    return ok;
-  }
-
-  int add_dbs(List< ::LEX_STRING >&);
-  int add_all_dbs();
-
-  bool close();
+  THD* thd() const { return m_thd; }
 
  private:
 
-  /// State of the info structure.
-  enum {INIT,   // structure ready for filling
-        READY,  // structure ready for backup (tables opened)
-        DONE,   // tables are closed
-        ERROR
-       }   m_state;
+  // Prevent copying/assignments
+  Backup_restore_ctx(const Backup_restore_ctx&);
+  Backup_restore_ctx& operator=(const Backup_restore_ctx&);
 
-  int find_backup_engine(const ::TABLE *const, const Table_ref&);
-
-  Ts_item*    add_ts(obs::Obj*);
-  Table_item* add_table(Db_item&, const Table_ref&);
-
-  int add_db_items(Db_item&);
-  int add_table_items(Table_item&);
-
-  THD    *m_thd;
-  TABLE  *i_s_tables;
-  String binlog_file_name; ///< stores name of the binlog at VP time
-
+  /** @c current_op points to the @c Backup_restore_ctx for the
+      ongoing backup/restore operation.  If pointer is null, no
+      operation is currently running. */
+  static Backup_restore_ctx *current_op;
   /**
-    @brief Storage for table and database names.
+     Indicates if @c run_lock mutex was initialized and thus it should
+     be properly destroyed during shutdown. @sa backup_shutdown().
+   */
+  static bool run_lock_initialized;
+  static pthread_mutex_t  run_lock; ///< To guard @c current_op.
 
-    When adding tables or databases to the backup catalogue, their names
-    are stored in String objects, and these objects are appended to this
-    list so that they can be freed when Backup_info object is destroyed.
-  */
-  // FIXME: use better solution, e.g., MEM_ROOT
-  List<String>  name_strings;
-
-  struct Ts_hash_node;  ///< Hash nodes used in @c ts_hash.
-
-  /**
-    Hash storing all tablespaces added to the backup catalogue.
+  /** 
+    @brief State of a context object. 
     
-    Used for quickly determining if the catalogue contains a given
-    tablespace or not.
+    Backup/restore can be performed only if object is prepared for that operation.
+   */
+  enum { CREATED,
+         PREPARED_FOR_BACKUP,
+         PREPARED_FOR_RESTORE,
+         CLOSED } m_state;
+
+  ulonglong m_thd_options;  ///< For saving thd->options.
+  /**
+    If backup/restore was interrupted by an error, this member stores the error 
+    number.
    */ 
-  HASH   ts_hash;
+  int m_error;
+  
+  ::String  m_path;   ///< Path to where the backup image file is located.
 
-  void save_binlog_pos(const ::LOG_INFO &li)
-  {
-    binlog_file_name= li.log_file_name;
-    binlog_file_name.copy();
-    binlog_pos.pos= (unsigned long int)li.pos;
-    binlog_pos.file= binlog_file_name.c_ptr();
-  }
+  /** If true, the backup image file is deleted at clean-up time. */
+  bool m_remove_loc;
 
-  friend int write_table_data(THD*, Backup_info&, OStream&);
+  backup::Stream *m_stream; ///< Pointer to the backup stream object, if opened.
+  backup::Image_info *m_catalog;  ///< Pointer to the image catalogue object.
+
+  /** Memory allocator for backup stream library. */
+  backup::Mem_allocator *mem_alloc;
+
+  int prepare_path(::String *backupdir, 
+                   LEX_STRING orig_loc);
+  int prepare(::String *backupdir, LEX_STRING location);
+  void disable_fkey_constraints();
+  int  restore_triggers_and_events();
+  
+  /** 
+    Indicates if tables have been locked with @c lock_tables_for_restore()
+  */
+  bool m_tables_locked; 
+
+  /**
+    Indicates we must turn binlog back on in the close method. This is
+    set to TRUE in the prepare_for_restore() method.
+  */
+  bool m_engage_binlog;
+
+  int lock_tables_for_restore();
+  void unlock_tables();
+  
+  int report_stream_open_failure(int open_error, const LEX_STRING *location);
+
+  friend class Backup_info;
+  friend class Restore_info;
+  friend int backup_init();
+  friend void backup_shutdown();
+  friend bstream_byte* bstream_alloc(unsigned long int);
+  friend void bstream_free(bstream_byte *ptr);
 };
 
+/// Check if instance is correctly created.
+inline
+bool Backup_restore_ctx::is_valid() const
+{
+  return m_error == 0;
+}
+
+/// Return global id of the backup/restore operation.
+inline
+ulonglong Backup_restore_ctx::op_id() const
+{
+  return get_op_id(); // inherited from Logger class
+}
+
+/// Disable foreign key constraint checks (needed during restore).
+inline
+void Backup_restore_ctx::disable_fkey_constraints()
+{
+  m_thd->options|= OPTION_NO_FOREIGN_KEY_CHECKS;
+}
 
 /**
-  Specialization of @c Image_info which is used to select and restore items
-  from a backup image.
-
-  An instance of this class is created by reading backup image header and it
-  describes its contents. @c Restore_info methods select which items
-  should be restored.
-
-  @note This class is not fully implemented. Right now it is not possible to
-  select items to restore - always all items are restored.
- */
-
-class Restore_info: public Image_info, public Logger
+  Report error and move context object into error state.
+  
+  After this method is called the context object is in error state and
+  cannot be normally used. It still can be examined for saved error messages.
+  The code of the error reported here is saved in m_error member.
+  
+  Only one fatal error can be reported. If context is already in error
+  state when this method is called, it does nothing.
+  
+  @return error code given as input or stored in the context object if
+  a fatal error was reported before.
+ */ 
+inline
+int Backup_restore_ctx::fatal_error(int error_code, ...)
 {
-  bool m_valid;
-  THD  *m_thd;
-  const Db_ref *curr_db;
+  if (m_error)
+    return m_error;
 
-  CHARSET_INFO *system_charset;
-  bool same_sys_charset;
+  va_list args;
 
- public:
+  m_error= error_code;
+  m_remove_loc= TRUE;
 
-  Restore_info(THD*, IStream&);
-  ~Restore_info();
+  va_start(args,error_code);
+  v_report_error(backup::log_level::ERROR, error_code, args);
+  va_end(args);
 
-  bool is_valid() const
-  { return m_valid; }
+  return error_code;
+}
 
-  int restore_all_dbs()
-  { return 0; }
+/*
+  Now, when Backup_restore_ctx is defined, include definitions
+  of Backup_info and Restore_info classes.
+*/
 
-  /// Determine if given item is selected for restore.
-  bool selected(const Image_info::Item&)
-  { return TRUE; }
-
-  result_t restore_item(Item &it, String &sdata, String&);
-
-  friend int restore_table_data(THD*, Restore_info&, IStream&);
-  friend int ::bcat_add_item(st_bstream_image_header*,
-                             struct st_bstream_item_info*);
-};
-
-} // backup namespace
+#include <backup/backup_info.h>
+#include <backup/restore_info.h>
 
 #endif

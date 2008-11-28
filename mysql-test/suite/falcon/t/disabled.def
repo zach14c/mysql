@@ -10,5 +10,4 @@
 #
 ##############################################################################
 
-falcon_bug_28095_I  : Bug#xxxxx 2008-04-22 hakank Disabled until soft restart is in main tree
-falcon_bug_28095_II : Bug#xxxxx 2008-03-22 hakank Disabled until soft restart is in main tree
+falcon_bug_32398 : HF disabled until new fix for this bug is developed

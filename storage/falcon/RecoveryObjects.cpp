@@ -23,6 +23,8 @@
 #include "RecoveryObjects.h"
 #include "RecoveryPage.h"
 #include "SerialLog.h"
+#include "SyncObject.h"
+#include "Sync.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -38,6 +40,8 @@ RecoveryObjects::RecoveryObjects(SerialLog *log)
 {
 	serialLog = log;
 	memset(recoveryObjects, 0, sizeof(recoveryObjects));
+	for (int n = 0; n < RPG_HASH_SIZE; n++)
+		syncArray[n].setName("RecoveryObjects::syncArray");
 }
 
 RecoveryObjects::~RecoveryObjects()
@@ -95,15 +99,21 @@ bool RecoveryObjects::isObjectActive(int objectNumber, int tableSpaceId)
 	return object->pass1Count == object->currentCount;
 }
 
-RecoveryPage* RecoveryObjects::findRecoveryObject(int objectNumber, int tableSpaceId)
+RecoveryPage* RecoveryObjects::findInHashBucket(RecoveryPage *head, int objectNumber, int tableSpaceId)
 {
-	int slot = objectNumber % RPG_HASH_SIZE;
-
-	for (RecoveryPage *object = recoveryObjects[slot]; object; object = object->collision)
+	for (RecoveryPage *object = head ; object; object = object->collision)
 		if (object->objectNumber == objectNumber && object->tableSpaceId == tableSpaceId)
 			return object;
 
 	return NULL;
+}
+
+RecoveryPage* RecoveryObjects::findRecoveryObject(int objectNumber, int tableSpaceId)
+{
+	int slot = objectNumber % RPG_HASH_SIZE;
+	Sync sync(&syncArray[slot], "RecoveryObjects::findRecoveryObject");
+	sync.lock(Shared);
+	return findInHashBucket(recoveryObjects[slot], objectNumber, tableSpaceId);
 }
 
 void RecoveryObjects::setActive(int objectNumber, int tableSpaceId)
@@ -129,10 +139,25 @@ RecoveryPage* RecoveryObjects::getRecoveryObject(int objectNumber, int tableSpac
 	int slot = objectNumber % RPG_HASH_SIZE;
 	RecoveryPage *object;
 
-	for (object = recoveryObjects[slot]; object; object = object->collision)
-		if (object->objectNumber == objectNumber && object->tableSpaceId == tableSpaceId)
-			return object;
+	Sync sync(&syncArray[slot], "RecoveryObjects::getRecoveryObject");
+	sync.lock(Shared);
+	object = findInHashBucket(recoveryObjects[slot], objectNumber, tableSpaceId);
 
+	if(object)
+		return object;
+
+	// Object not found, insert (need exlusive lock for this)
+	sync.unlock();
+	sync.lock(Exclusive);
+
+	// We need to traverse the collision list once again. Another thread 
+	// may have inserted the entry while current thread was waiting 
+	// for exclusive lock.
+	object = findInHashBucket(recoveryObjects[slot], objectNumber, tableSpaceId);
+	if (object)
+		return object;
+
+	// Add object to the start of the collision list
 	object = new RecoveryPage(objectNumber, tableSpaceId);
 	object->collision = recoveryObjects[slot];
 	recoveryObjects[slot] = object;
@@ -143,7 +168,9 @@ RecoveryPage* RecoveryObjects::getRecoveryObject(int objectNumber, int tableSpac
 void RecoveryObjects::deleteObject(int objectNumber, int tableSpaceId)
 {
 	int slot = objectNumber % RPG_HASH_SIZE;
-	
+	Sync sync(&syncArray[slot], "RecoveryObjects::deleteObject");
+	sync.lock(Exclusive);
+
 	for (RecoveryPage **ptr = recoveryObjects + slot, *object; (object = *ptr); ptr = &object->collision)
 		if (object->objectNumber == objectNumber && object->tableSpaceId == tableSpaceId)
 			{

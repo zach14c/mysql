@@ -1,6 +1,3 @@
-#include "../mysql_priv.h"
-#include "backup_progress.h"
-
 /**
   @file
 
@@ -11,14 +8,16 @@
   backed up.
 
   @todo Implement better scheduling strategy in Scheduler::step
+  @todo Add error reporting in the scheduler and elsewhere
   @todo If an error from driver is ignored (and operation retried) leave trace
         of the error in the log.
  */
 
+#include "../mysql_priv.h"
+
+#include "backup_kernel.h"
 #include "backup_engine.h"
 #include "stream.h"
-#include "backup_kernel.h"
-#include "debug.h"
 #include "be_default.h"  // needed for table locking code
 
 /***********************************************
@@ -94,18 +93,18 @@ class Block_writer
 
   result_t  get_buf(Buffer &);
   result_t  write_buf(const Buffer&);
-  result_t  drop_buf(Buffer&);
+  void      drop_buf(Buffer&);
 
-  Block_writer(byte, size_t, OStream&);
+  Block_writer(byte, size_t, Output_stream&);
   ~Block_writer();
 
  private:
 
-  byte     snap_no;   ///< snapshot to which the data belongs
-  OStream  &m_str;    ///< stream to which we write
-  size_t   buf_size;  ///< size of a single data block
-  byte     *data_buf; ///< pointer to data buffer
-  bool     taken;     ///< flag which indicates that the buffer is in use
+  byte           snap_num;  ///< snapshot to which the data belongs
+  Output_stream  &m_str;    ///< stream to which we write
+  size_t         buf_size;  ///< size of a single data block
+  byte           *data_buf; ///< pointer to data buffer
+  bool           taken;     ///< flag which indicates that the buffer is in use
 
   friend class Backup_pump;
 };
@@ -133,7 +132,8 @@ class Backup_pump
          WRITING  ///< Pump sends data to the stream.
        } mode;
 
-  size_t  init_size;  ///< The estimate returned by backup driver's @c init_data() method.
+  /** The estimate returned by backup driver's @c init_data() method. */
+  size_t  init_size;
   size_t  bytes_in, bytes_out;
 
   const char *m_name; ///< Name of the driver (for debug purposes).
@@ -165,8 +165,9 @@ class Backup_pump
 
  private:
 
-  static const uint get_buf_retries= 3; /**< if block writer has no buffers, retry
-                                              this many times before giving up */
+  /// If block writer has no buffers, retry this many times before giving up.
+  static const uint get_buf_retries= 3; 
+
   Logger        *m_log;   ///< Used to report errors if not NULL.
   Backup_driver *m_drv;   ///< Pointer to the backup driver.
   Block_writer  &m_bw;    ///< Block writer used for writing data blocks.
@@ -175,20 +176,22 @@ class Backup_pump
   /**
     Pointer to the memory area used as write buffer.
 
-    If m_buf_head is NULL and we are in READ state, then we should allocate new write
-    buffer and ask driver to fill it with data. M_buf_head is not NULL only when the
-    write buffer is being filled with data but the operation is not complete.
+    If m_buf_head is NULL and we are in READ state, then we should allocate new 
+    write buffer and ask driver to fill it with data. M_buf_head is not NULL 
+    only when the write buffer is being filled with data but the operation is 
+    not complete.
    */
   byte          *m_buf_head;
 
-  uint          m_buf_retries; ///< how many times failed to get a buffer from block writer
+  /// How many times failed to get a buffer from block writer.
+  uint          m_buf_retries;
 
   /// Bitmap showing which streams have been closed by the driver.
   MY_BITMAP     m_closed_streams;
 
-  void mark_stream_closed(uint stream_no)
+  void mark_stream_closed(uint stream_num)
   {
-    bitmap_set_bit(&m_closed_streams, stream_no);
+    bitmap_set_bit(&m_closed_streams, stream_num);
   }
 
   bool all_streams_closed()
@@ -197,6 +200,14 @@ class Backup_pump
   }
 
 };
+
+/*
+  The constant is declared here (and memory allocated for it) because
+  IBM's xlc compiler requires that. However, the intention was to make it
+  a pure symbolic constant (no need to allocate memory). If someone knows
+  how to achieve that and keep xlc happy, please let me know. /Rafal
+*/ 
+const uint Backup_pump::get_buf_retries;
 
 /**
  @class Scheduler
@@ -242,11 +253,11 @@ class Scheduler
   size_t m_total;       ///< accumulated position of all drivers
   size_t m_init_left;   ///< how much of init data is left (estimate)
   uint   m_known_count; ///< no. drivers which can estimate init data size
-  OStream &m_str;       ///< stream to which we write
-  bool   cancelled;      ///< true if backup process was cancelled
+  Output_stream &m_str; ///< stream to which we write
+  bool   cancelled;     ///< true if backup process was cancelled
 
-  Scheduler(OStream &s, Logger *log):
-    init_count(0), prepare_count(0), finish_count(0),
+  Scheduler(Output_stream &s, Logger *log)
+    :init_count(0), prepare_count(0), finish_count(0),
     m_pumps(NULL), m_last(NULL), m_log(log),
     m_count(0), m_total(0), m_init_left(0), m_known_count(0),
     m_str(s), cancelled(FALSE)
@@ -256,7 +267,7 @@ class Scheduler
   void remove_pump(Pump_iterator&);
   void cancel_backup();
 
-  friend int write_table_data(THD*, Backup_info&, OStream&);
+  friend int write_table_data(THD*, Backup_info&, Output_stream&);
   friend class Pump_iterator;
 };
 
@@ -273,68 +284,17 @@ class Scheduler::Pump: public Backup_pump
 
  public:
 
-  // FIXME: how to react if the buffer could not be allocated?
-  Pump(Snapshot_info &snap, OStream &s):
-    Backup_pump(snap,bw), start_pos(0),
-    bw(snap.m_no-1,DATA_BUFFER_SIZE,s)
+  Pump(Snapshot_info &snap, Output_stream &s)
+    :Backup_pump(snap, bw), start_pos(0),
+    bw(snap.m_num - 1, DATA_BUFFER_SIZE, s)
   {
-    DBUG_ASSERT(snap.m_no > 0);
+    DBUG_ASSERT(snap.m_num > 0);
   }
 
   size_t pos() const
   { return start_pos + bytes_in; }
 };
 
-/*
-  Collect tables from default and snapshot for open and lock tables.
-  There should be at most only 1 of each driver.
-*/
-int get_default_snapshot_tables(backup::Backup_driver *backup_drv,
-                                backup::Restore_driver *restore_drv,
-                                TABLE_LIST **tables,
-                                TABLE_LIST **tables_last)
-{
-  TABLE_LIST *table_list= *tables;
-  TABLE_LIST *table_list_last= *tables_last;
-
-  DBUG_ENTER("backup::get_default_snapshot_tables");
-  /*
-    If the table list is defined and the last pointer is
-    defined then we are seeing a duplicate of either default
-    or snapshot drivers. There should be at most 1 of each.
-  */
-  if (table_list && table_list_last->next_global)
-  {
-    DBUG_PRINT("restore",("Duplicate default or snapshot subimage"));
-    DBUG_RETURN(ERROR);
-  }
-  /*
-    If the table list is empty, use the first one and loop
-    until the end then record the end of the first one.
-  */
-  if (!table_list)
-  {
-    if (backup_drv)
-      table_list= ((default_backup::Backup *)backup_drv)->get_table_list();
-    else if (restore_drv)
-      table_list= ((default_backup::Restore *)restore_drv)->get_table_list();
-    else
-      DBUG_RETURN(ERROR);
-    *tables= table_list;
-    table_list_last= table_list;
-    while (table_list_last->next_global != NULL)
-      table_list_last= table_list_last->next_global;
-    *tables_last= table_list_last;
-  }
-  else
-    if (backup_drv)
-     (*tables_last)->next_global= ((default_backup::Backup *)backup_drv)->get_table_list();
-    else if (restore_drv)
-     (*tables_last)->next_global= ((default_backup::Restore *)restore_drv)->get_table_list();
-    else
-      DBUG_RETURN(ERROR);
-  DBUG_RETURN(0);
-}
 
 /**
    Commit Blocker
@@ -403,7 +363,7 @@ int block_commits(THD *thd, TABLE_LIST *tables)
   /*
     Step 1 - global read lock.
   */
-  BACKUP_BREAKPOINT("commit_blocker_step_1");
+  DEBUG_SYNC(thd, "before_commit_block");
   if (lock_global_read_lock(thd))
     DBUG_RETURN(1);
 
@@ -419,14 +379,12 @@ int block_commits(THD *thd, TABLE_LIST *tables)
     that do not take lock tables. Thus, it should apply to write locked
     tables only and only to non-transactional engines.
 
-    BACKUP_BREAKPOINT("commit_blocker_step_2");
     result= close_cached_tables(thd, 0, tables);
   */
 
   /*
     Step 3 - make the global read lock to block commits.
   */
-  BACKUP_BREAKPOINT("commit_blocker_step_3");
   if (make_global_read_lock_block_commit(thd))
   {
     /* Don't leave things in a half-locked state */
@@ -449,7 +407,6 @@ int block_commits(THD *thd, TABLE_LIST *tables)
 int unblock_commits(THD *thd)
 {
   DBUG_ENTER("unblock_commits()");
-  BACKUP_BREAKPOINT("commit_blocker_step_5");
   unlock_global_read_lock(thd);
   DBUG_RETURN(0);
 }
@@ -463,39 +420,37 @@ int unblock_commits(THD *thd)
 
   @returns 0 on success.
  */
-int write_table_data(THD* thd, Backup_info &info, OStream &s)
+int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
 {
   DBUG_ENTER("backup::write_table_data");
 
-  if (info.snap_count==0 || info.table_count==0) // nothing to backup
+  if (info.snap_count() == 0 || info.table_count() == 0) // nothing to backup
     DBUG_RETURN(0);
 
-  Scheduler   sch(s,&info);         // scheduler instance
+  Scheduler   sch(s, &info.m_ctx);          // scheduler instance
   List<Scheduler::Pump>  inactive;  // list of images not yet being created
-  size_t      max_init_size=0;      // keeps maximal init size for images in inactive list
+
+  // keeps maximal init size for images in inactive list
+  size_t      max_init_size=0;
+
   time_t      vp_time;              // to store validity point time
 
   DBUG_PRINT("backup_data",("initializing scheduler"));
 
   // add unknown "at end" drivers to scheduler, rest to inactive list
 
-  for (uint no=0; no < 256; ++no)
+  for (uint n=0; n < info.snap_count(); ++n)
   {
-    Snapshot_info *i= info.m_snap[no];
+    Snapshot_info *i= info.m_snap[n];
 
     if (!i)
       continue;
 
-    Scheduler::Pump *p= new Scheduler::Pump(*i,s);
-    
-    /*
-      Record the backup id and name for this driver.
-    */
-    report_ob_engines(thd, info.backup_prog_id, p->m_name);
+    Scheduler::Pump *p= new Scheduler::Pump(*i, s);
 
     if (!p || !p->is_valid())
     {
-      info.report_error(ER_OUT_OF_RESOURCES);
+      info.m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
       goto error;
     }
 
@@ -511,7 +466,14 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
       if (init_size > max_init_size)
         max_init_size= init_size;
 
-      inactive.push_back(p);
+      if (inactive.push_back(p))
+      {
+        /* Allocation failed. 
+           Error has been reported, but not logged to backup logs.
+        */
+        info.m_ctx.log_error(ER_OUT_OF_RESOURCES);
+        goto error;
+      }
     }
   }
 
@@ -525,7 +487,7 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
                             inactive.elements));
 
   DBUG_PRINT("backup_data",("-- INIT PHASE --"));
-  BACKUP_BREAKPOINT("data_init");
+  DEBUG_SYNC(thd, "before_backup_data_init");
 
   /*
    Poll "at end" drivers activating inactive ones on the way.
@@ -588,19 +550,15 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
 
     // prepare for VP
     DBUG_PRINT("backup_data",("-- PREPARE PHASE --"));
-    BACKUP_BREAKPOINT("data_prepare");
+    DEBUG_SYNC(thd, "before_backup_data_prepare");
 
-    if (sch.prepare())
-      goto error;
-
-    while (sch.prepare_count > 0)
-    if (sch.step())
-      goto error;
-
-    // VP creation
-    DBUG_PRINT("backup_data",("-- SYNC PHASE --"));
-
-    report_ob_state(thd, info.backup_prog_id, BUP_VALIDITY_POINT);
+    /*
+      Note: block_commits is performed here because of the global read
+      lock/table lock deadlock reported in bug#39602. It should be
+      moved back to right before sch.lock() once a refined commit
+      blocker has been implemented. WL#4610 tracks the work on a
+      refined commit blocker
+    */
     /*
       Block commits.
 
@@ -613,7 +571,32 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
     if (error)
       goto error;
 
-    BACKUP_BREAKPOINT("data_lock");
+    if (sch.prepare())
+      goto error;
+
+    while (sch.prepare_count > 0)
+    if (sch.step())
+      goto error;
+
+    /**** VP creation (start) ********************************************/
+    
+    DBUG_PRINT("backup_data",("-- SYNC PHASE --"));
+
+    LOG_INFO binlog_pos;
+    
+    info.m_ctx.report_state(BUP_VALIDITY_POINT);
+    /*
+      This breakpoint is used to assist in testing state changes for
+      the backup progress. It is not to be used to indicate actual
+      timing of the validity point.
+    */
+    DEBUG_SYNC(thd, "after_backup_validated");
+    
+    /*
+      Refined commit blocker should be set here; see WL#4610
+    */
+
+    DEBUG_SYNC(thd, "before_backup_data_lock");
     if (sch.lock())
       goto error;
 
@@ -621,12 +604,23 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
       Save binlog information for point in time recovery on restore.
     */
     if (mysql_bin_log.is_open())
+      if (mysql_bin_log.get_current_log(&binlog_pos))
+      {
+        info.m_ctx.fatal_error(ER_BACKUP_BINLOG);
+        goto error;
+      }
+
+    /*
+      If we are a connected slave, write master's binlog information to
+      the progress log for later use.
+    */
+    st_bstream_binlog_pos master_pos;
+    master_pos.pos= 0;
+    master_pos.file= 0;
+    if (obs::is_slave() && active_mi)
     {
-      LOG_INFO li;
-      mysql_bin_log.get_current_log(&li);
-      info.save_binlog_pos(li);
-      DBUG_PRINT("backup_ptr_pos", ("%d", (int) li.pos));
-      DBUG_PRINT("backup_ptr_logname", ("%s", li.log_file_name));
+      master_pos.pos= (ulong)active_mi->master_log_pos;
+      master_pos.file= active_mi->master_log_name;
     }
 
     /*
@@ -634,38 +628,45 @@ int write_table_data(THD* thd, Backup_info &info, OStream &s)
     */
     vp_time= my_time(0);
 
-    BACKUP_BREAKPOINT("commit_blocker_step_4");
-    BACKUP_BREAKPOINT("data_unlock");
+    DEBUG_SYNC(thd, "before_backup_data_unlock");
     if (sch.unlock())
       goto error;
 
     /*
       Unblock commits.
     */
-    BACKUP_BREAKPOINT("backup_commit_blocker");
+    DEBUG_SYNC(thd, "before_backup_unblock_commit");
     error= unblock_commits(thd);
     if (error)
       goto error;
 
-    /*
-      This breakpoint is used to assist in testing state changes for
-      the backup progress. It is not to be used to indicate actual
-      timing of the validity point.
-    */
-    BACKUP_BREAKPOINT("bp_vp_state");
+    // Report and save information about VP
+
     info.save_vp_time(vp_time);
-    report_ob_vp_time(thd, info.backup_prog_id, vp_time);
-    report_ob_state(thd, info.backup_prog_id, BUP_RUNNING);
-    BACKUP_BREAKPOINT("bp_running_state");
+    info.m_ctx.report_vp_time(vp_time, TRUE); // TRUE = also write to progress log
 
     if (mysql_bin_log.is_open())
-      report_ob_binlog_info(thd, info.backup_prog_id, 
-                            info.binlog_pos.pos, info.binlog_pos.file);
+    {
+      info.save_binlog_pos(binlog_pos);
+      info.m_ctx.report_binlog_pos(info.binlog_pos);
+    }
+
+    /*
+      If we are a slave and the master's binlog position has been recorded
+      write it to the log.
+    */
+    if (obs::is_slave() && master_pos.pos)
+      info.m_ctx.report_master_binlog_pos(master_pos);
+
+    info.m_ctx.report_state(BUP_RUNNING);
+    DEBUG_SYNC(thd, "after_backup_binlog");
+
+    /**** VP creation (end) ********************************************/
 
     // get final data from drivers
     DBUG_PRINT("backup_data",("-- FINISH PHASE --"));
-    BACKUP_BREAKPOINT("data_finish");
 
+    DEBUG_SYNC(thd, "before_backup_data_finish");
     while (sch.finish_count > 0)
     if (sch.step())
       goto error;
@@ -720,7 +721,7 @@ class Scheduler::Pump_iterator
   Pump_iterator(): el(NULL)
   {}
 
-  Pump_iterator(const Scheduler &sch): el(sch.m_pumps)
+  Pump_iterator(const Scheduler &sch) :el(sch.m_pumps)
   {}
 
 };
@@ -753,7 +754,7 @@ int Scheduler::step()
 
   move_pump_to_end(p);
 
-  DBUG_PRINT("backup_data",("polling %s",p->m_name));
+  DBUG_PRINT("backup_data",("polling %s", p->m_name));
 
   backup_state::value before_state= p->state;
 
@@ -782,17 +783,17 @@ int Scheduler::step()
     switch (before_state) {
 
     case backup_state::INIT:
-      if (init_count>0)
+      if (init_count > 0)
         init_count--;
       break;
 
     case backup_state::PREPARING:
-      if (prepare_count>0)
+      if (prepare_count > 0)
         prepare_count--;
       break;
 
     case backup_state::FINISHING:
-      if (finish_count>0)
+      if (finish_count > 0)
         finish_count--;
       break;
 
@@ -814,12 +815,13 @@ int Scheduler::step()
       break;
 
     case backup_state::DONE:
-      p->end();
+      res= p->end();  // Logs errors, fall-through to error handling below
 
     case backup_state::ERROR:
-      remove_pump(p);
+      remove_pump(p);   // Note: never errors.
       if (res)
         cancel_backup(); // we hit an error - bail out
+                         // Note: cancel_backup() never errors.
       break;
 
     default: break;
@@ -856,7 +858,7 @@ int Scheduler::add(Pump *p)
   DBUG_PRINT("backup_data",("Adding %s to scheduler (at pos %lu)",
                             p->m_name, (unsigned long)avg));
 
-  m_pumps= list_cons(p,m_pumps);
+  m_pumps= list_cons(p, m_pumps);
   if (!m_last)
     m_last= m_pumps;
 
@@ -888,7 +890,8 @@ int Scheduler::add(Pump *p)
 
   DBUG_PRINT("backup_data",("driver counts: total=%u, init=%u, prepare=%u, finish=%u.",
                             m_count, init_count, prepare_count, finish_count));
-  DBUG_PRINT("backup_data",("total init data size estimate: %lu",(unsigned long)m_init_left));
+  DBUG_PRINT("backup_data",("total init data size estimate: %lu",
+                            (unsigned long)m_init_left));
 
   return 0;
 
@@ -906,7 +909,7 @@ void Scheduler::move_pump_to_end(const Pump_iterator &p)
   DBUG_ASSERT(m_pumps);
   if (m_last != p.el)
   {
-    m_pumps= list_delete(m_pumps,p.el);
+    m_pumps= list_delete(m_pumps, p.el);
     m_last->next= p.el;
     p.el->prev= m_last;
     p.el->next= NULL;
@@ -928,7 +931,7 @@ void Scheduler::remove_pump(Pump_iterator &p)
 
   if (m_pumps)
   {
-    m_pumps= list_delete(m_pumps,p.el);
+    m_pumps= list_delete(m_pumps, p.el);
     m_count--;
   }
 
@@ -936,7 +939,7 @@ void Scheduler::remove_pump(Pump_iterator &p)
   {
     // destructor calls driver's free() method
     delete static_cast<Pump*>(p.el->data);
-    my_free(p.el,MYF(0));
+    my_free(p.el, MYF(0));
   }
 }
 
@@ -950,8 +953,8 @@ void Scheduler::cancel_backup()
   while (m_count && m_pumps)
   {
     Pump_iterator p(*this);
-    p->cancel();
-    remove_pump(p);
+    p->cancel();        // Note: even if cancel() errors, we ignore it.
+    remove_pump(p);     // Note: never errors.
   }
 
   cancelled= TRUE;
@@ -963,14 +966,14 @@ int Scheduler::prepare()
 {
   DBUG_ASSERT(!cancelled);
   // we should start prepare phase only when init phase is finished
-  DBUG_ASSERT(init_count==0);
+  DBUG_ASSERT(init_count == 0);
   DBUG_PRINT("backup_data",("calling prepare() for all drivers"));
 
   for (Pump_iterator it(*this); it; ++it)
   {
     if (it->prepare())
     {
-      cancel_backup();
+      cancel_backup();  // Note: never errors.
       return ERROR;
     }
     if (it->state == backup_state::PREPARING)
@@ -987,13 +990,13 @@ int Scheduler::lock()
 {
   DBUG_ASSERT(!cancelled);
   // lock only when init and prepare phases are finished
-  DBUG_ASSERT(init_count==0 && prepare_count==0);
+  DBUG_ASSERT(init_count == 0 && prepare_count == 0);
   DBUG_PRINT("backup_data",("calling lock() for all drivers"));
 
   for (Pump_iterator it(*this); it; ++it)
    if (it->lock())
    {
-     cancel_backup();
+     cancel_backup();  // Note: never errors.
      return ERROR;
    }
 
@@ -1012,7 +1015,7 @@ int Scheduler::unlock()
   {
     if (it->unlock())
     {
-      cancel_backup();
+      cancel_backup();  // Note: never errors.
       return ERROR;
     }
     if (it->state == backup_state::FINISHING)
@@ -1029,18 +1032,23 @@ int Scheduler::unlock()
 
  **************************************************/
 
-Backup_pump::Backup_pump(Snapshot_info &snap, Block_writer &bw):
-  state(backup_state::INACTIVE), mode(READING),
+Backup_pump::Backup_pump(Snapshot_info &snap, Block_writer &bw)
+  :state(backup_state::INACTIVE), mode(READING),
   init_size(0), bytes_in(0), bytes_out(0),
   m_drv(NULL), m_bw(bw), m_buf_head(NULL),
   m_buf_retries(0)
 {
-  DBUG_ASSERT(snap.m_no > 0);
+  DBUG_ASSERT(snap.m_num > 0);
   m_buf.data= NULL;
-  bitmap_init(&m_closed_streams,
+  if (bitmap_init(&m_closed_streams,
               NULL,
-              1+snap.table_count(),
-              FALSE); // not thread safe
+              1 + snap.table_count(),
+              FALSE)) // not thread safe
+  {
+    state= backup_state::ERROR;  // Created object will be invalid
+    return;
+  }
+
   m_name= snap.name();
   if (ERROR == snap.get_backup_driver(m_drv) || !m_drv)
     state= backup_state::ERROR;
@@ -1059,7 +1067,7 @@ Backup_pump::~Backup_pump()
 int Backup_pump::begin()
 {
   state= backup_state::INIT;
-  DBUG_PRINT("backup_data",(" %s enters INIT state",m_name));
+  DBUG_PRINT("backup_data",(" %s enters INIT state", m_name));
 
   if (ERROR == m_drv->begin(m_bw.buf_size))
   {
@@ -1067,7 +1075,7 @@ int Backup_pump::begin()
     // We check if logger is always setup. Later the assertion can
     // be replaced with "if (m_log)"
     DBUG_ASSERT(m_log);
-      m_log->report_error(ER_BACKUP_INIT_BACKUP_DRIVER,m_name);
+      m_log->report_error(ER_BACKUP_INIT_BACKUP_DRIVER, m_name);
     return ERROR;
   }
 
@@ -1079,13 +1087,13 @@ int Backup_pump::end()
 {
   if (state != backup_state::SHUT_DOWN)
   {
-    DBUG_PRINT("backup_data",(" shutting down %s",m_name));
+    DBUG_PRINT("backup_data",(" shutting down %s", m_name));
 
     if (ERROR == m_drv->end())
     {
       state= backup_state::ERROR;
       DBUG_ASSERT(m_log);
-        m_log->report_error(ER_BACKUP_STOP_BACKUP_DRIVER,m_name);
+        m_log->report_error(ER_BACKUP_STOP_BACKUP_DRIVER, m_name);
       return ERROR;
     }
 
@@ -1119,19 +1127,19 @@ int Backup_pump::prepare()
   }
 
   DBUG_PRINT("backup_data",(" preparing %s, goes to %s state",
-                            m_name,backup_state::name[state]));
+                            m_name, backup_state::name[state]));
   return 0;
 }
 
 /// Request VP from the driver.
 int Backup_pump::lock()
 {
-  DBUG_PRINT("backup_data",(" locking %s",m_name));
+  DBUG_PRINT("backup_data",(" locking %s", m_name));
   if (ERROR == m_drv->lock())
   {
     state= backup_state::ERROR;
     DBUG_ASSERT(m_log);
-      m_log->report_error(ER_BACKUP_CREATE_VP,m_name);
+      m_log->report_error(ER_BACKUP_CREATE_VP, m_name);
     return ERROR;
   }
 
@@ -1141,13 +1149,13 @@ int Backup_pump::lock()
 /// Unlock the driver after VP creation.
 int Backup_pump::unlock()
 {
-  DBUG_PRINT("backup_data",(" unlocking %s, goes to FINISHING state",m_name));
+  DBUG_PRINT("backup_data",(" unlocking %s, goes to FINISHING state", m_name));
   state= backup_state::FINISHING;
   if (ERROR == m_drv->unlock())
   {
     state= backup_state::ERROR;
     DBUG_ASSERT(m_log);
-      m_log->report_error(ER_BACKUP_UNLOCK_DRIVER,m_name);
+      m_log->report_error(ER_BACKUP_UNLOCK_DRIVER, m_name);
     return ERROR;
   }
 
@@ -1160,7 +1168,7 @@ int Backup_pump::cancel()
   {
     state= backup_state::ERROR;
     DBUG_ASSERT(m_log);
-      m_log->report_error(ER_BACKUP_CANCEL_BACKUP,m_name);
+      m_log->report_error(ER_BACKUP_CANCEL_BACKUP, m_name);
     return ERROR;
   }
   state= backup_state::CANCELLED;
@@ -1263,20 +1271,20 @@ int Backup_pump::pump(size_t *howmuch)
 
         if (m_buf.last)
         {
-          mark_stream_closed(m_buf.table_no);
+          mark_stream_closed(m_buf.table_num);
           if (all_streams_closed())
-            DBUG_PRINT("backup_data",(" all streams of %s closed",m_name));
+            DBUG_PRINT("backup_data",(" all streams of %s closed", m_name));
           else
-            DBUG_PRINT("backup_data",(" stream %u closed",m_buf.table_no));
+            DBUG_PRINT("backup_data",(" stream %u closed", m_buf.table_num));
         }
 
         m_buf.data= m_buf_head;
         m_buf_head= NULL;
 
-        if ( m_buf.size > 0 )
+        if (m_buf.size > 0)
           mode= WRITING;
-        else
-          m_bw.drop_buf(m_buf);
+        else 
+          m_bw.drop_buf(m_buf);              // Never errors
 
         break;
 
@@ -1286,7 +1294,7 @@ int Backup_pump::pump(size_t *howmuch)
       case ERROR:
       default:
         DBUG_ASSERT(m_log);
-          m_log->report_error(ER_BACKUP_GET_DATA,m_name);
+          m_log->report_error(ER_BACKUP_GET_DATA, m_name);
         state= backup_state::ERROR;
         return ERROR;
 
@@ -1294,7 +1302,7 @@ int Backup_pump::pump(size_t *howmuch)
         state= backup_state::DONE;
 
       case BUSY:
-        m_bw.drop_buf(m_buf);
+        m_bw.drop_buf(m_buf);                   // Never errors
         m_buf_head=NULL;  // thus a new request will be made
       }
 
@@ -1311,15 +1319,17 @@ int Backup_pump::pump(size_t *howmuch)
         if (howmuch)
           *howmuch= m_buf.size;
 
-        DBUG_PRINT("backup_data",(" added %lu bytes from %s to archive (drv_no=%u, table_no=%u)",
-                                  (unsigned long)howmuch, m_name, m_bw.snap_no, m_buf.table_no));
+        DBUG_PRINT("backup_data",(" added %lu bytes from %s to archive "
+                                  "(drv_num=%u, table_num=%u)",
+                                  (unsigned long)howmuch, m_name, m_bw.snap_num,
+                                  m_buf.table_num));
         mode= READING;
         break;
 
       case Block_writer::ERROR:
 
         DBUG_ASSERT(m_log);
-          m_log->report_error(ER_BACKUP_WRITE_DATA, m_name, m_buf.table_no);
+          m_log->report_error(ER_BACKUP_WRITE_DATA, m_name, m_buf.table_num);
         state= backup_state::ERROR;
         return ERROR;
 
@@ -1332,8 +1342,8 @@ int Backup_pump::pump(size_t *howmuch)
 
   if (state != before_state)
     DBUG_PRINT("backup_data",(" %s changes state %s->%s",
-                              m_name,backup_state::name[before_state],
-                                     backup_state::name[state]));
+                              m_name, backup_state::name[before_state],
+                                      backup_state::name[state]));
   return 0;
 }
 
@@ -1352,70 +1362,59 @@ namespace backup {
 /**
   Read backup image data from a backup stream and forward it to restore drivers.
  */
-int restore_table_data(THD* thd, Restore_info &info, IStream &s)
+int restore_table_data(THD *thd, Restore_info &info, Input_stream &s)
 {
   DBUG_ENTER("restore::restore_table_data");
 
   enum { READING, SENDING, DONE, ERROR } state= READING;
 
-  if (info.snap_count==0 || info.table_count==0) // nothing to restore
+  if (info.snap_count() == 0 || info.table_count() == 0) // nothing to restore
     DBUG_RETURN(0);
 
   Restore_driver* drv[256];
 
-  TABLE_LIST *table_list= 0;
-  TABLE_LIST *table_list_last= 0;
-
-  if (info.snap_count > 256)
+  if (info.snap_count() > 256)
   {
-    info.report_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count, 256);
+    info.m_ctx.fatal_error(ER_BACKUP_TOO_MANY_IMAGES, info.snap_count(), 256);
     DBUG_RETURN(ERROR);
   }
 
-  // Initializing restore drivers
+  // Create restore drivers
   result_t res;
 
-  for (uint no=0; no < info.snap_count; ++no)
+  for (uint n=0; n < info.snap_count(); ++n)
   {
-    drv[no]= NULL;
+    drv[n]= NULL;
 
-    Snapshot_info *snap= info.m_snap[no];
+    Snapshot_info *snap= info.m_snap[n];
 
     // note: img can be NULL if it is not used in restore.
     if (!snap)
       continue;
 
-    res= snap->get_restore_driver(drv[no]);
+    res= snap->get_restore_driver(drv[n]);
     if (res == backup::ERROR)
     {
-      info.report_error(ER_BACKUP_CREATE_RESTORE_DRIVER,snap->name());
+      info.m_ctx.fatal_error(ER_BACKUP_CREATE_RESTORE_DRIVER, snap->name());
       goto error;
-    };
+    };   
+ }
 
-    res= drv[no]->begin(0);
+  // Initialize the drivers.
+  for (uint n=0; n < info.snap_count(); ++n)
+  {
+    res= drv[n]->begin(0);
     if (res == backup::ERROR)
     {
-      info.report_error(ER_BACKUP_INIT_RESTORE_DRIVER,snap->name());
+      info.m_ctx.fatal_error(ER_BACKUP_INIT_RESTORE_DRIVER, info.m_snap[n]->name());
       goto error;
     }
-    /*
-      Collect tables from default and snapshot for open and lock tables.
-      There should be at most only 1 of each driver.
-    */
-    if ((snap->type() == Snapshot_info::DEFAULT_SNAPSHOT) ||
-        (snap->type() == Snapshot_info::CS_SNAPSHOT))
-      get_default_snapshot_tables(NULL, (default_backup::Restore *)drv[no],
-                                  &table_list, &table_list_last);
-
-    /*
-      Record the name for this driver.
-    */
-    report_ob_engines(thd, info.backup_prog_id, snap->name());
   }
 
+  DEBUG_SYNC(thd, "restore_in_progress");
   {
     Buffer  buf;
-    uint    snap_no=0;
+    uint    snap_num=0;
     uint    repeats=0, errors= 0;
     int     ret;
 
@@ -1424,24 +1423,6 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
 
     Restore_driver  *drvr= NULL;  // pointer to the current driver
     Snapshot_info   *snap= NULL;   // corresponding snapshot object
-
-    /*
-      Open tables for default and snapshot drivers.
-    */
-    if (table_list)
-    {
-      table_list->lock_type= TL_WRITE;
-      query_cache.invalidate_locked_for_write(table_list);
-      if (open_and_lock_tables(::current_thd, table_list))
-      {
-        DBUG_PRINT("restore",
-          ( "error on open tables for default and snapshot drivers!" ));
-        info.report_error(ER_BACKUP_OPEN_TABLES, "restore");
-        DBUG_RETURN(backup::ERROR);
-      }
-      if (table_list_last)
-        table_list_last->next_global= NULL; // break lists
-    }
 
     // main data reading loop
 
@@ -1454,7 +1435,7 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
       case READING:
 
         bzero(&chunk_info, sizeof(chunk_info));
-        ret= bstream_rd_data_chunk(&s,&chunk_info);
+        ret= bstream_rd_data_chunk(&s, &chunk_info);
 
         switch (ret) {
 
@@ -1468,7 +1449,7 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
           break;
 
         case BSTREAM_ERROR:
-          info.report_error(ER_BACKUP_READ_DATA);
+          info.m_ctx.fatal_error(ER_BACKUP_READ_DATA);
         default:
           state= ERROR;
           goto error;
@@ -1482,25 +1463,25 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
         DBUG_ASSERT(chunk_info.data.begin);
         DBUG_ASSERT(chunk_info.data.begin < chunk_info.data.end);
 
-        snap_no= chunk_info.snap_no;
-        buf.table_no= chunk_info.table_no;
+        snap_num= chunk_info.snap_num;
+        buf.table_num= chunk_info.table_num;
         buf.last= chunk_info.flags & BSTREAM_FLAG_LAST_CHUNK;
         buf.data= chunk_info.data.begin;
         buf.size= chunk_info.data.end - chunk_info.data.begin;
 
-        if (snap_no > info.snap_count || !(drvr= drv[snap_no]))
+        if (snap_num > info.snap_count() || !(drvr= drv[snap_num]))
         {
-          DBUG_PRINT("restore",("Skipping data from snapshot #%u",snap_no));
+          DBUG_PRINT("restore",("Skipping data from snapshot #%u", snap_num));
           state= READING;
           break;
         }
 
-        snap= info.m_snap[snap_no];
+        snap= info.m_snap[snap_num];
         // Each restore driver should have corresponding Image_info object.
         DBUG_ASSERT(snap);
 
         DBUG_PRINT("restore",("Got %lu bytes of %s image data (for table #%u)",
-                   (unsigned long)buf.size, snap->name(), buf.table_no));
+                   (unsigned long)buf.size, snap->name(), buf.table_num));
 
       case SENDING:
 
@@ -1523,7 +1504,7 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
         case backup::ERROR:
           if( errors > MAX_ERRORS )
           {
-            info.report_error(ER_BACKUP_SEND_DATA, buf.table_no, snap->name());
+            info.m_ctx.fatal_error(ER_BACKUP_SEND_DATA, buf.table_num, snap->name());
             state= ERROR;
             goto error;
           }
@@ -1535,7 +1516,7 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
         default:
           if( repeats > MAX_REPEATS )
           {
-            info.report_error(ER_BACKUP_SEND_DATA_RETRY, repeats, snap->name());
+            info.m_ctx.fatal_error(ER_BACKUP_SEND_DATA_RETRY, repeats, snap->name());
             state= ERROR;
             goto error;
           }
@@ -1551,41 +1532,37 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
 
     DBUG_PRINT("restore",("End of backup stream"));
     if (state != DONE)
-      DBUG_PRINT("restore",("state is %d",state));
+      DBUG_PRINT("restore",("state is %d", state));
   }
 
+  DEBUG_SYNC(::current_thd, "restore_table_data_before_end");
+  
   { // Shutting down drivers
 
     String bad_drivers;
 
-    for (uint no=0; no < info.snap_count; ++no)
+    for (uint n=0; n < info.snap_count(); ++n)
     {
-      if (!drv[no])
+      if (!drv[n])
         continue;
 
       DBUG_PRINT("restore",("Shutting down restore driver %s",
-                            info.m_snap[no]->name()));
-      res= drv[no]->end();
+                            info.m_snap[n]->name()));
+      res= drv[n]->end();
       if (res == backup::ERROR)
       {
         state= ERROR;
 
         if (!bad_drivers.is_empty())
           bad_drivers.append(",");
-        bad_drivers.append(info.m_snap[no]->name());
+        bad_drivers.append(info.m_snap[n]->name());
       }
-      drv[no]->free();
+      drv[n]->free();                           // Never errors
     }
 
     if (!bad_drivers.is_empty())
-      info.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
+      info.m_ctx.report_error(ER_BACKUP_STOP_RESTORE_DRIVERS, bad_drivers.c_ptr());
   }
-
-  /*
-    Close all tables if default or snapshot driver used.
-  */
-  if (table_list)
-    close_thread_tables(::current_thd);
 
   DBUG_RETURN(state == ERROR ? backup::ERROR : 0);
 
@@ -1593,12 +1570,12 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
 
   DBUG_PRINT("restore",("Cancelling restore process"));
 
-  for (uint no=0; no < info.snap_count; ++no)
+  for (uint n=0; n < info.snap_count(); ++n)
   {
-    if (!drv[no])
+    if (!drv[n])
       continue;
 
-    drv[no]->free();
+    drv[n]->free();                             // Never errors
   }
 
   DBUG_RETURN(backup::ERROR);
@@ -1616,16 +1593,16 @@ int restore_table_data(THD* thd, Restore_info &info, IStream &s)
 
 namespace backup {
 
-Block_writer::Block_writer(byte snap_no, size_t size, OStream &s):
-  snap_no(snap_no), m_str(s), buf_size(size), taken(FALSE)
+Block_writer::Block_writer(byte snap_num, size_t size, Output_stream &s)
+  :snap_num(snap_num), m_str(s), buf_size(size), taken(FALSE)
 {
-  data_buf= (byte*)my_malloc(buf_size,MYF(0));
+  data_buf= (byte*)my_malloc(buf_size, MYF(0));
 }
 
 Block_writer::~Block_writer()
 {
   if (data_buf)
-    my_free(data_buf,MYF(0));
+    my_free(data_buf, MYF(0));
   data_buf= NULL;
 }
 
@@ -1642,7 +1619,7 @@ Block_writer::~Block_writer()
 Block_writer::result_t
 Block_writer::get_buf(Buffer &buf)
 {
-  buf.table_no= 0;
+  buf.table_num= 0;
   buf.last= FALSE;
   buf.size= buf_size;
   buf.data= NULL;
@@ -1672,13 +1649,13 @@ Block_writer::write_buf(const Buffer &buf)
 {
   st_bstream_data_chunk  chunk_info;
 
-  chunk_info.table_no= buf.table_no;
+  chunk_info.table_num= buf.table_num;
   chunk_info.data.begin= buf.data;
   chunk_info.data.end= buf.data + buf.size;
   chunk_info.flags= buf.last ? BSTREAM_FLAG_LAST_CHUNK : 0x00;
-  chunk_info.snap_no= snap_no;
+  chunk_info.snap_num= snap_num;
 
-  int ret= bstream_wr_data_chunk(&m_str,&chunk_info);
+  int ret= bstream_wr_data_chunk(&m_str, &chunk_info);
 
   if (ret == BSTREAM_OK)
   {
@@ -1696,13 +1673,12 @@ Block_writer::write_buf(const Buffer &buf)
   method can return it to the buffer pool so that it can be reused for other
   transfers.
  */
-Block_writer::result_t
+void
 Block_writer::drop_buf(Buffer &buf)
 {
   buf.data= NULL;
   buf.size= 0;
   taken= FALSE;
-  return OK;
 }
 
 } // backup namespace

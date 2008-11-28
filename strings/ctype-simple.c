@@ -1805,7 +1805,8 @@ uint my_strxfrm_flag_normalize(uint flags, uint maximum)
   if (!(flags & MY_STRXFRM_LEVEL_ALL))
   {
     static uint def_level_flags[]= {0, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F };
-    uint flag_pad= flags & MY_STRXFRM_PAD_WITH_SPACE;
+    uint flag_pad= flags &
+                   (MY_STRXFRM_PAD_WITH_SPACE | MY_STRXFRM_PAD_TO_MAXLEN);
     flags= def_level_flags[maximum] | flag_pad;
   }
   else
@@ -1814,7 +1815,8 @@ uint my_strxfrm_flag_normalize(uint flags, uint maximum)
     uint flag_lev= flags & MY_STRXFRM_LEVEL_ALL;
     uint flag_dsc= (flags >> MY_STRXFRM_DESC_SHIFT) & MY_STRXFRM_LEVEL_ALL;
     uint flag_rev= (flags >> MY_STRXFRM_REVERSE_SHIFT) & MY_STRXFRM_LEVEL_ALL;
-    uint flag_pad= flags & MY_STRXFRM_PAD_WITH_SPACE;
+    uint flag_pad= flags &
+                   (MY_STRXFRM_PAD_WITH_SPACE | MY_STRXFRM_PAD_TO_MAXLEN);
 
     /*
       If any level number is greater than the maximum,
@@ -1823,9 +1825,9 @@ uint my_strxfrm_flag_normalize(uint flags, uint maximum)
     for (maximum--, flags= 0, i= 0; i < MY_STRXFRM_NLEVELS; i++)
     {
       uint src_bit= 1 << i;
-      uint dst_bit= 1 << min(i, maximum);
       if (flag_lev & src_bit)
       {
+        uint dst_bit= 1 << min(i, maximum);
         flags|= dst_bit;
         flags|= (flag_dsc & dst_bit) << MY_STRXFRM_DESC_SHIFT;
         flags|= (flag_rev & dst_bit) << MY_STRXFRM_REVERSE_SHIFT;
@@ -1910,6 +1912,12 @@ my_strxfrm_pad_desc_and_reverse(CHARSET_INFO *cs,
     frmend+= fill_length;
   }
   my_strxfrm_desc_and_reverse(str, frmend, flags, level);
+  if ((flags & MY_STRXFRM_PAD_TO_MAXLEN) && frmend < strend)
+  {
+    uint fill_length= strend - frmend;
+    cs->cset->fill(cs, (char*) frmend, fill_length, cs->pad_char);
+    frmend= strend;
+  }
   return frmend - str;
 }
 

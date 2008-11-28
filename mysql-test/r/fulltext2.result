@@ -16,50 +16,151 @@ test.t1	optimize	status	OK
 check table t1;
 Table	Op	Msg_type	Msg_text
 test.t1	check	status	OK
+flush table t1;
+ =>               196 aaaxxx
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+ =>                99 aaazzz
 select count(*) from t1 where match a against ('aaaxxx');
 count(*)
-260
+196
 select count(*) from t1 where match a against ('aaayyy');
 count(*)
-250
+98
 select count(*) from t1 where match a against ('aaazzz');
 count(*)
-255
+99
 select count(*) from t1 where match a against ('aaaxxx' in boolean mode);
 count(*)
-260
+196
 select count(*) from t1 where match a against ('aaayyy' in boolean mode);
 count(*)
-250
+98
 select count(*) from t1 where match a against ('aaazzz' in boolean mode);
 count(*)
-255
+99
 select count(*) from t1 where match a against ('aaaxxx aaayyy aaazzz');
 count(*)
-765
+393
 select count(*) from t1 where match a against ('aaaxxx aaayyy aaazzz' in boolean mode);
 count(*)
-765
+393
 select count(*) from t1 where match a against ('aaax*' in boolean mode);
 count(*)
-260
+196
 select count(*) from t1 where match a against ('aaay*' in boolean mode);
 count(*)
-250
+98
 select count(*) from t1 where match a against ('aaa*' in boolean mode);
 count(*)
-765
+393
 insert t1 (a) values ('aaaxxx'),('aaayyy');
 insert t1 (a) values ('aaazzz'),('aaazzz'),('aaazzz'),('aaazzz'),('aaazzz');
 select count(*) from t1 where match a against ('aaaxxx');
 count(*)
-261
+197
 select count(*) from t1 where match a against ('aaayyy');
 count(*)
-251
+99
 select count(*) from t1 where match a against ('aaazzz');
 count(*)
-260
+104
 insert t1 (a) values ('aaaxxx 000000');
 select count(*) from t1 where match a against ('000000');
 count(*)
@@ -70,23 +171,23 @@ count(*)
 0
 select count(*) from t1 where match a against ('aaaxxx');
 count(*)
-261
+197
 delete from t1 where match a against ('aaazzz');
 select count(*) from t1 where match a against ('aaaxxx' in boolean mode);
 count(*)
-261
+197
 select count(*) from t1 where match a against ('aaayyy' in boolean mode);
 count(*)
-251
+99
 select count(*) from t1 where match a against ('aaazzz' in boolean mode);
 count(*)
 0
 select count(*) from t1 where a = 'aaaxxx';
 count(*)
-261
+197
 select count(*) from t1 where a = 'aaayyy';
 count(*)
-251
+99
 select count(*) from t1 where a = 'aaazzz';
 count(*)
 0
@@ -97,7 +198,7 @@ count(*)
 update t1 set a='aaazzz' where match a against ('000000');
 select count(*) from t1 where match a against ('aaaxxx' in boolean mode);
 count(*)
-261
+197
 select count(*) from t1 where match a against ('aaazzz' in boolean mode);
 count(*)
 1
@@ -105,19 +206,272 @@ update t1 set a='aaazzz' where a = 'aaaxxx';
 update t1 set a='aaaxxx' where a = 'aaayyy';
 select count(*) from t1 where match a against ('aaaxxx' in boolean mode);
 count(*)
-251
+99
 select count(*) from t1 where match a against ('aaayyy' in boolean mode);
 count(*)
 0
 select count(*) from t1 where match a against ('aaazzz' in boolean mode);
 count(*)
-262
+198
 drop table t1;
 CREATE TABLE t1 (
 i int(10) unsigned not null auto_increment primary key,
 a varchar(255) not null,
 FULLTEXT KEY (a)
 ) ENGINE=MyISAM;
+flush table t1;
+ =>               260 aaaxxx
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+            aaayyy
+ =>               255 aaazzz
 select count(*) from t1 where match a against ('aaaxxx');
 count(*)
 260

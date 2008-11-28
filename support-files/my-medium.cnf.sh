@@ -44,9 +44,15 @@ myisam_sort_buffer_size = 8M
 # 
 #skip-networking
 
+# Disable Federated by default
+skip-federated
+
 # Replication Master Server (default)
 # binary logging is required for replication
 log-bin=mysql-bin
+
+# binary logging format - mixed recommended
+binlog_format=mixed
 
 # required unique id between 1 and 2^32 - 1
 # defaults to 1 if master-host is not set
@@ -116,7 +122,6 @@ server-id	= 1
 #innodb_data_home_dir = @localstatedir@/
 #innodb_data_file_path = ibdata1:10M:autoextend
 #innodb_log_group_home_dir = @localstatedir@/
-#innodb_log_arch_dir = @localstatedir@/
 # You can set .._buffer_pool_size up to 50 - 80 %
 # of RAM but beware of setting memory usage too high
 #innodb_buffer_pool_size = 16M

@@ -1461,6 +1461,30 @@ select hex(_utf8 B'001111111111');
 select (_utf8 X'616263FF');
 
 #
+# Bug#32914 Character sets: illegal characters in utf8 and utf32 columns
+#
+create table t1 (utf8 char(1) character set utf8);
+--echo Testing [F0][90..BF][80..BF][80..BF]
+insert into t1 values (0xF0908080);
+insert into t1 values (0xF0BFBFBF);
+insert into t1 values (0xF08F8080);
+select hex(utf8) from t1;
+delete from t1;
+
+--echo Testing [F2..F3][80..BF][80..BF][80..BF]
+insert into t1 values (0xF2808080);
+insert into t1 values (0xF2BFBFBF);
+select hex(utf8) from t1;
+delete from t1;
+
+--echo Testing [F4][80..8F][80..BF][80..BF]
+insert into t1 values (0xF4808080);
+insert into t1 values (0xF48F8080);
+insert into t1 values (0xF4908080);
+select hex(utf8) from t1;
+drop table t1;
+
+#
 # Bug#26474: Add Sinhala script (Sri Lanka) collation to MySQL
 #
 --disable_warnings
@@ -1478,10 +1502,12 @@ DROP TABLE t1;
 
 set names utf8;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 set @@collation_connection=utf8_bin;
 --source include/weight_string.inc
+--source include/weight_string_euro.inc
 --source include/weight_string_l1.inc
 
 #
@@ -1496,6 +1522,19 @@ alter table t1 modify a varchar(128) character set utf8 collate utf8_bin;
 select * from t1 order by a;
 drop table t1;
 set max_sort_length=default;
+
+#
+# Bug#26180: Can't add columns to tables created with utf8 text indexes
+#
+CREATE TABLE t1 (
+  clipid INT NOT NULL,
+  Tape TINYTEXT,
+  PRIMARY KEY (clipid),
+  KEY tape(Tape(255))
+) CHARACTER SET=utf8;
+ALTER TABLE t1 ADD mos TINYINT DEFAULT 0 AFTER clipid;
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
 
 #
 # Bug#26474: Add Sinhala script (Sri Lanka) collation to MySQL

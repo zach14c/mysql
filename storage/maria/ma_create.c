@@ -836,6 +836,7 @@ int maria_create(const char *name, enum data_file_type datafile_type,
     my_printf_error(0, "MARIA table '%s' is in use "
                     "(most likely by a MERGE table). Try FLUSH TABLES.",
                     MYF(0), name + dirname_length(name));
+    my_errno= HA_ERR_TABLE_EXIST;
     goto err;
   }
 
@@ -1008,20 +1009,19 @@ int maria_create(const char *name, enum data_file_type datafile_type,
     log_data[0]= test(flags & HA_DONT_TOUCH_DATA);
     int2store(log_data + 1, kfile_size_before_extension);
     int2store(log_data + 1 + 2, share.base.keystart);
-    log_array[TRANSLOG_INTERNAL_PARTS + 0].str= name;
+    log_array[TRANSLOG_INTERNAL_PARTS + 0].str= (uchar *)name;
     /* we store the end-zero, for Recovery to just pass it to my_create() */
-    log_array[TRANSLOG_INTERNAL_PARTS + 0].length=
-      strlen(log_array[TRANSLOG_INTERNAL_PARTS + 0].str) + 1;
+    log_array[TRANSLOG_INTERNAL_PARTS + 0].length= strlen(name) + 1;
     log_array[TRANSLOG_INTERNAL_PARTS + 1].str= log_data;
     /* symlink description is also needed for re-creation by Recovery: */
-    log_array[TRANSLOG_INTERNAL_PARTS + 2].str=
-      (ci->data_file_name ? ci->data_file_name : empty_string);
-    log_array[TRANSLOG_INTERNAL_PARTS + 2].length=
-      strlen(log_array[TRANSLOG_INTERNAL_PARTS + 2].str) + 1;
-    log_array[TRANSLOG_INTERNAL_PARTS + 3].str=
-      (ci->index_file_name ? ci->index_file_name : empty_string);
-    log_array[TRANSLOG_INTERNAL_PARTS + 3].length=
-      strlen(log_array[TRANSLOG_INTERNAL_PARTS + 3].str) + 1;
+    {
+      const char *s= ci->data_file_name ? ci->data_file_name : empty_string;
+      log_array[TRANSLOG_INTERNAL_PARTS + 2].str= (uchar*)s;
+      log_array[TRANSLOG_INTERNAL_PARTS + 2].length= strlen(s) + 1;
+      s= ci->index_file_name ? ci->index_file_name : empty_string;
+      log_array[TRANSLOG_INTERNAL_PARTS + 3].str= (uchar*)s;
+      log_array[TRANSLOG_INTERNAL_PARTS + 3].length= strlen(s) + 1;
+    }
     for (k= TRANSLOG_INTERNAL_PARTS;
          k < (sizeof(log_array)/sizeof(log_array[0])); k++)
       total_rec_length+= (translog_size_t) log_array[k].length;
@@ -1317,7 +1317,8 @@ int _ma_update_state_lsns(MARIA_SHARE *share, LSN lsn, TrID create_trid,
    needed (when creating a table or opening it for the first time).
 
    @param  share           table's share
-   @param  lsn		   LSN to write to log files
+   @param  lsn             LSN to write to state; if LSN_IMPOSSIBLE, write
+                           a LOGREC_IMPORTED_TABLE and use its LSN as lsn.
    @param  create_trid     Trid to be used as state.create_trid
    @param  do_sync         if the write should be forced to disk
    @param  update_create_rename_lsn if this LSN should be updated or not
@@ -1342,6 +1343,26 @@ int _ma_update_state_lsns_sub(MARIA_SHARE *share, LSN lsn, TrID create_trid,
   uchar trid_buff[8];
   File file= share->kfile.file;
   DBUG_ASSERT(file >= 0);
+
+  if (lsn == LSN_IMPOSSIBLE)
+  {
+    int res;
+    LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 1];
+    /* table name is logged only for information */
+    log_array[TRANSLOG_INTERNAL_PARTS + 0].str=
+      (uchar *)(share->open_file_name.str);
+    log_array[TRANSLOG_INTERNAL_PARTS + 0].length=
+      share->open_file_name.length + 1;
+    if ((res= translog_write_record(&lsn, LOGREC_IMPORTED_TABLE,
+                                    &dummy_transaction_object, NULL,
+                                    (translog_size_t)
+                                    log_array[TRANSLOG_INTERNAL_PARTS +
+                                              0].length,
+                                    sizeof(log_array)/sizeof(log_array[0]),
+                                    log_array, NULL, NULL)))
+      return res;
+  }
+
   for (ptr= buf; ptr < (buf + sizeof(buf)); ptr+= LSN_STORE_SIZE)
     lsn_store(ptr, lsn);
   share->state.skip_redo_lsn= share->state.is_of_horizon= lsn;

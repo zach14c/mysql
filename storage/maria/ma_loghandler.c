@@ -671,6 +671,10 @@ static LOG_DESC INIT_LOGREC_REDO_BITMAP_NEW_PAGE=
  NULL, NULL, NULL, 0,
  "redo_create_bitmap", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
 
+static LOG_DESC INIT_LOGREC_IMPORTED_TABLE=
+{LOGRECTYPE_VARIABLE_LENGTH, 0, 0, NULL, NULL, NULL, 0,
+ "imported_table", LOGREC_IS_GROUP_ITSELF, NULL, NULL};
+
 const myf log_write_flags= MY_WME | MY_NABP | MY_WAIT_IF_FULL;
 
 void translog_table_init()
@@ -758,6 +762,8 @@ void translog_table_init()
     INIT_LOGREC_UNDO_BULK_INSERT;
   log_record_type_descriptor[LOGREC_REDO_BITMAP_NEW_PAGE]=
     INIT_LOGREC_REDO_BITMAP_NEW_PAGE;
+  log_record_type_descriptor[LOGREC_IMPORTED_TABLE]=
+    INIT_LOGREC_IMPORTED_TABLE;
   for (i= LOGREC_FIRST_FREE; i < LOGREC_NUMBER_OF_TYPES; i++)
     log_record_type_descriptor[i].rclass= LOGRECTYPE_NOT_ALLOWED;
 #ifndef DBUG_OFF
@@ -3022,7 +3028,7 @@ static void translog_free_link(PAGECACHE_BLOCK_LINK *direct_link)
   if (direct_link)
     pagecache_unlock_by_link(log_descriptor.pagecache, direct_link,
                              PAGECACHE_LOCK_READ_UNLOCK, PAGECACHE_UNPIN,
-                             LSN_IMPOSSIBLE, LSN_IMPOSSIBLE, 0);
+                             LSN_IMPOSSIBLE, LSN_IMPOSSIBLE, 0, FALSE);
   DBUG_VOID_RETURN;
 }
 
@@ -5166,9 +5172,9 @@ static void  translog_relative_LSN_encode(struct st_translog_parts *parts,
 {
   LEX_CUSTRING *part;
   uint lsns_len= lsns * LSN_STORE_SIZE;
-  char buffer_src[MAX_NUMBER_OF_LSNS_PER_RECORD * LSN_STORE_SIZE];
-  char *buffer= buffer_src;
-  const char *cbuffer;
+  uchar buffer_src[MAX_NUMBER_OF_LSNS_PER_RECORD * LSN_STORE_SIZE];
+  uchar *buffer= buffer_src;
+  const uchar *cbuffer;
 
   DBUG_ENTER("translog_relative_LSN_encode");
 
@@ -5243,7 +5249,7 @@ static void  translog_relative_LSN_encode(struct st_translog_parts *parts,
     DBUG_PRINT("info", ("new length of LSNs: %lu  economy: %d",
                         (ulong)part->length, economy));
     parts->total_record_length-= economy;
-    part->str= (char*)dst_ptr;
+    part->str= dst_ptr;
   }
   DBUG_VOID_RETURN;
 }
@@ -5953,7 +5959,7 @@ static my_bool translog_write_fixed_record(LSN *lsn,
   DBUG_ASSERT(parts->current != 0);       /* first part is left for header */
   part= parts->parts + (--parts->current);
   parts->total_record_length+= (translog_size_t) (part->length= 1 + 2);
-  part->str= (char*)chunk1_header;
+  part->str= chunk1_header;
   *chunk1_header= (uchar) (type | TRANSLOG_CHUNK_FIXED);
   int2store(chunk1_header + 1, short_trid);
 
@@ -7680,7 +7686,7 @@ int translog_assign_id_to_share(MARIA_HA *tbl_info, TRN *trn)
   DBUG_ASSERT(share->data_file_type == BLOCK_RECORD);
   /* re-check under mutex to avoid having 2 ids for the same share */
   pthread_mutex_lock(&share->intern_lock);
-  if (likely(share->id == 0))
+  if (unlikely(share->id == 0))
   {
     LSN lsn;
     LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 2];
@@ -7711,13 +7717,14 @@ int translog_assign_id_to_share(MARIA_HA *tbl_info, TRN *trn)
       is not realpath-ed, etc) which is good: the log can be moved to another
       directory and continue working.
     */
-    log_array[TRANSLOG_INTERNAL_PARTS + 1].str= share->open_file_name;
-    /**
-       @todo if we had the name's length in MARIA_SHARE we could avoid this
-       strlen()
-    */
+    log_array[TRANSLOG_INTERNAL_PARTS + 1].str=
+      (uchar *)share->open_file_name.str;
     log_array[TRANSLOG_INTERNAL_PARTS + 1].length=
-      strlen(share->open_file_name) + 1;
+      share->open_file_name.length + 1;
+    /*
+      We can't unlock share->intern_lock before the log entry is written to
+      ensure no one uses the id before it's logged.
+    */
     if (unlikely(translog_write_record(&lsn, LOGREC_FILE_ID, trn, tbl_info,
                                        (translog_size_t)
                                        (sizeof(log_data) +

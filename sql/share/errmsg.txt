@@ -1777,7 +1777,7 @@ ER_TOO_BIG_FIELDLENGTH 42000 S1009
         dan "For stor feltlÊngde for kolonne '%-.192s' (maks = %lu). Brug BLOB i stedet"
         nla "Te grote kolomlengte voor '%-.192s' (max = %lu). Maak hiervoor gebruik van het type BLOB"
         eng "Column length too big for column '%-.192s' (max = %lu); use BLOB or TEXT instead"
-        jps "column '%-.192s' ÇÕ,ämï€Ç∑ÇÈ column ÇÃëÂÇ´Ç≥Ç™ëΩÇ∑Ç¨Ç‹Ç∑. (ç≈ëÂ %lu Ç‹Ç≈). BLOB ÇÇ©ÇÌÇËÇ…égópÇµÇƒÇ≠ÇæÇ≥Ç¢.",
+        jps "column '%-.192s' ÇÕ,ämï€Ç∑ÇÈ column ÇÃëÂÇ´Ç≥Ç™ëΩÇ∑Ç¨Ç‹Ç∑. (ç≈ëÂ %lu Ç‹Ç≈). BLOB ÇÇ©ÇÌÇËÇ…égópÇµÇƒÇ≠ÇæÇ≥Ç¢."
         est "Tulba '%-.192s' pikkus on liiga pikk (maksimaalne pikkus: %lu). Kasuta BLOB v‰ljat¸¸pi"
         fre "Champ '%-.192s' trop long (max = %lu). Utilisez un BLOB"
         ger "Feldl‰nge f¸r Feld '%-.192s' zu groﬂ (maximal %lu). BLOB- oder TEXT-Spaltentyp verwenden!"
@@ -4718,7 +4718,7 @@ ER_SLAVE_IGNORED_TABLE
         swe "Slav SQL trÂden ignorerade frÂgan pga en replicate-*-table regel"
 ER_INCORRECT_GLOBAL_LOCAL_VAR  
         eng "Variable '%-.192s' is a %s variable"
-        serbian "Incorrect foreign key definition for '%-.192s': %s"
+        serbian "Promenljiva '%-.192s' je %s promenljiva"
         ger "Variable '%-.192s' ist eine %s-Variable"
         nla "Variabele '%-.192s' is geen %s variabele"
         spa "Variable '%-.192s' es una %s variable"
@@ -4880,7 +4880,6 @@ ER_ZLIB_Z_DATA_ERROR
         spa "ZLIB: Dato de entrada fuÈ corrompido para zlib"
 ER_CUT_VALUE_GROUP_CONCAT  
         eng "Row %u was cut by GROUP_CONCAT()"
-        por "Linha %u foi cortada por GROUP_CONCAT()"
 ER_WARN_TOO_FEW_RECORDS 01000 
         eng "Row %ld doesn't contain data for all columns"
         ger "Zeile %ld enth‰lt nicht f¸r alle Felder Daten"
@@ -5015,7 +5014,7 @@ ER_WARN_HOSTNAME_WONT_WORK
         por "MySQL foi inicializado em modo --skip-name-resolve. VocÍ necesita reincializ·-lo sem esta opÁ„o para este grant funcionar"
         spa "MySQL esta inicializado en modo --skip-name-resolve. Usted necesita reinicializarlo sin esta opciÛn para este derecho funcionar"
 ER_UNKNOWN_STORAGE_ENGINE 42000 
-        eng "Unknown table engine '%s'"
+        eng "Unknown storage engine '%s'"
         ger "Unbekannte Speicher-Engine '%s'"
         por "Motor de tabela desconhecido '%s'"
         spa "Desconocido motor de tabla '%s'"
@@ -6123,11 +6122,29 @@ ER_LOAD_DATA_INVALID_COLUMN
 ER_LOG_PURGE_NO_FILE  
 	eng "Being purged log %s was not found"
 
+ER_XA_RBTIMEOUT XA106
+	eng "XA_RBTIMEOUT: Transaction branch was rolled back: took too long"
+
+ER_XA_RBDEADLOCK XA102
+	eng "XA_RBDEADLOCK: Transaction branch was rolled back: deadlock was detected"
+
 ER_NEED_REPREPARE
   eng "Prepared statement needs to be re-prepared"
 
 ER_DELAYED_NOT_SUPPORTED  
   eng "DELAYED option not supported for table '%-.192s'"
+
+WARN_NO_MASTER_INFO  
+  eng "The master info structure does not exist"
+
+WARN_OPTION_IGNORED
+  eng "<%-.64s> option ignored"
+
+WARN_PLUGIN_DELETE_BUILTIN
+  eng "Built-in plugins cannot be deleted"
+
+WARN_PLUGIN_BUSY
+  eng "Plugin is busy and will be uninstalled on shutdown"
 
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
@@ -6158,9 +6175,9 @@ ER_BACKUP_NOTHING_TO_BACKUP
 ER_BACKUP_CANNOT_INCLUDE_DB
         eng "Database '%-.64s' cannot be included in a backup"
 ER_BACKUP_BACKUP
-        eng "Error during backup operation - server's error log contains more information about the error"
+        eng "Error during backup operation - see SHOW WARNINGS for more information"
 ER_BACKUP_RESTORE
-        eng "Error during restore operation - server's error log contains more information about the error"
+        eng "Error during restore operation - see SHOW WARNINGS for more information"
 ER_BACKUP_RUNNING
         eng "Can't execute this command because another BACKUP/RESTORE operation is in progress"
 ER_BACKUP_BACKUP_PREPARE
@@ -6198,17 +6215,17 @@ ER_BACKUP_CREATE_BACKUP_DRIVER
 ER_BACKUP_CREATE_RESTORE_DRIVER
         eng "Can't create %-.64s restore driver"
 ER_BACKUP_TOO_MANY_IMAGES
-        eng "Found %d images in backup archive but maximum %d are supported"
+        eng "Backup image uses %d backup engines but maximum %d are supported"
 ER_BACKUP_WRITE_META
         eng "Error when saving meta-data of %-.64s"
 ER_BACKUP_READ_META
-        eng "Error when reading meta-data list"
+        eng "Error when reading meta-data"
 ER_BACKUP_CREATE_META
-        eng "Can't create %-.64s"
+        eng "Failed to obtain meta-data for %-.64s"
 ER_BACKUP_GET_BUF
         eng "Can't allocate buffer for image data transfer"
 ER_BACKUP_WRITE_DATA
-        eng "Error when writing %-.64s backup image data (for table #%d)"
+        eng "Error when writing data from %-.64s backup driver (data block for table #%d)"
 ER_BACKUP_READ_DATA
         eng "Error when reading data from backup stream"
 ER_BACKUP_NEXT_CHUNK
@@ -6225,7 +6242,7 @@ ER_BACKUP_STOP_RESTORE_DRIVERS
 ER_BACKUP_PREPARE_DRIVER
         eng "%-.64s backup driver can't prepare for synchronization"
 ER_BACKUP_CREATE_VP
-        eng	"%-.64s backup driver can't create its image validity point"
+        eng "%-.64s backup driver can't create its validity point"
 ER_BACKUP_UNLOCK_DRIVER
         eng "Can't unlock %-.64s backup driver after creating the validity point"
 ER_BACKUP_CANCEL_BACKUP
@@ -6233,9 +6250,9 @@ ER_BACKUP_CANCEL_BACKUP
 ER_BACKUP_CANCEL_RESTORE
         eng "%-.64s restore driver can't cancel its restore operation"
 ER_BACKUP_GET_DATA
-        eng "Error when polling %-.64s backup driver for its image data"
+        eng "Error when polling %-.64s backup driver for its data"
 ER_BACKUP_SEND_DATA
-        eng "Error when sending image data (for table #%d) to %-.64s restore driver"
+        eng "Error when sending data (for table #%d) to %-.64s restore driver"
 ER_BACKUP_SEND_DATA_RETRY
         eng "After %d attempts %-.64s restore driver still can't accept next block of data"
 
@@ -6246,7 +6263,7 @@ ER_BACKUP_THREAD_INIT
         eng "Backup driver's table locking thread can not be initialized."
 
 ER_BACKUP_PROGRESS_TABLES
-        eng "Can't open the online backup progress tables. Check 'mysql.online_backup' and 'mysql.online_backup_progress'."
+        eng "Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair."
 
 ER_TABLESPACE_EXIST
   eng "Tablespace '%-.192s' already exists"
@@ -6257,12 +6274,165 @@ ER_SLAVE_HEARTBEAT_FAILURE
 ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE
   eng "The requested value for the heartbeat period %s %s"
 
+ER_BACKUP_CANT_FIND_SE
+	eng "Backup image contains data created by a native driver of %-.64s storage engine but this engine can not be found on this server"
+ER_BACKUP_NO_NATIVE_BE
+	eng "Backup image contains data created by a native driver of %-.64s storage engine but it has no native backup support on this server"
+ER_BACKUP_UNKNOWN_BE
+	eng "Backup engine #%d needed for restoring from backup image has unknown type"
+ER_BACKUP_WRONG_TABLE_BE
+	eng "Backup image specifies wrong backup engine #%d for one of the tables"
+ER_BACKUP_CANT_RESTORE_DB
+	eng "Could not restore database %-.64s"
+ER_BACKUP_CANT_RESTORE_TABLE
+	eng "Could not restore table %-.64s"
+ER_BACKUP_CANT_RESTORE_VIEW
+	eng "Could not restore view %-.64s. Please check the view definition for possible missing dependencies."
+ER_BACKUP_CANT_RESTORE_SROUT
+	eng "Could not restore stored routine %-.64s"
+ER_BACKUP_CANT_RESTORE_EVENT
+	eng "Could not restore event %-.64s"
+ER_BACKUP_CANT_RESTORE_TRIGGER
+	eng "Could not restore trigger %-.64s"
+ER_BACKUP_CATALOG_ADD_DB
+	eng "Failed to add database `%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_TABLE
+	eng "Failed to add table `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_VIEW
+	eng "Failed to add view `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_SROUT
+	eng "Failed to add stored routine `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_EVENT
+	eng "Failed to add event `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_CATALOG_ADD_TRIGGER
+	eng "Failed to add trigger `%-.64s`.`%-.64s` to the catalog"
+ER_BACKUP_UNKNOWN_OBJECT
+	eng "Backup image refers to an object which could not be found in the catalog"
+ER_BACKUP_UNKNOWN_OBJECT_TYPE
+	eng "Backup image refers to an object of unknown type"
+ER_BACKUP_OPEN_WR
+	eng "Cannot open backup stream for writing"
+ER_BACKUP_OPEN_RD
+	eng "Cannot open backup stream for reading"
+ER_BACKUP_BAD_MAGIC
+	eng "Could not find correct signature at the beginning of backup stream"
+ER_BACKUP_CONTEXT_CREATE
+	eng "Cannot create backup/restore execution context"
+ER_BACKUP_CONTEXT_REMOVE
+	eng "Error when cleaning up after backup/restore operation"
+ER_BAD_PATH
+	eng "Malformed file path '%-128s'"
+ER_DDL_BLOCK
+	eng "Erorr when attempting to block DDLs"
+ER_BACKUP_LOGGER_INIT
+	eng "Could not initialize logging and reporting services"
+ER_BACKUP_WRITE_SUMMARY
+	eng "Error when writing summary section of backup image"
+ER_BACKUP_READ_SUMMARY
+	eng "Error when reading summary section of backup image"
+ER_BACKUP_GET_META_DB
+        eng "Failed to obtain meta-data for database %-.64s"
+ER_BACKUP_GET_META_TABLE
+        eng "Failed to obtain meta-data for table %-.64s"
+ER_BACKUP_GET_META_VIEW
+	eng "Failed to obtain meta-data for view %-.64s"
+ER_BACKUP_GET_META_SROUT
+	eng "Failed to obtain meta-data for stored routine %-.64s"
+ER_BACKUP_GET_META_EVENT
+	eng "Failed to obtain meta-data for event %-.64s"
+ER_BACKUP_GET_META_TRIGGER
+	eng "Failed to obtain meta-data for trigger %-.64s"
+ER_BACKUP_CREATE_BE
+	eng "Cannot create backup engine for storage engine %-.64s"
+ER_BACKUP_LIST_PERDB
+        eng "Can't enumerate per database objects"
+ER_BACKUP_LIST_DB_VIEWS
+	eng "Can't enumerate views in database `%-.64s`"
+ER_BACKUP_LIST_DB_SROUT
+	eng "Can't enumerate stored routines in database `%-.64s`"
+ER_BACKUP_LIST_DB_EVENTS
+	eng "Can't enumerate events in database `%-.64s`"
+ER_BACKUP_LIST_DB_TRIGGERS
+	eng "Can't enumerate triggers in database `%-.64s`"
+
 ER_BACKUP_LOG_WRITE_ERROR
         eng "Can't write to the online backup progress log %-.64s."
 ER_TABLESPACE_NOT_EMPTY
   eng "Tablespace '%-.192s' not empty"
 
+ER_BACKUP_CAT_ENUM
+        eng "Could not access the contents of the backup catalog when writing backup image preamble"
+ER_BACKUP_CANT_RESTORE_TS
+        eng "Could not create tablespace %-.64s needed by tables being restored."
 ER_BACKUP_TS_CHANGE
-        eng "Tablespace `%-.64s` needed by tables being restored has changed on the server. The original definition of the required tablespace is '%-.256s' while the same tablespace is defined on the server as '%-.256s'"
+        eng "Tablespace %-.64s needed by tables being restored, but the current tablespace definition differs from how it was when backup was made."
+ER_BACKUP_GET_META_TS
+        eng "Failed to obtain meta-data for tablespace %-.64s."
 ER_TABLESPACE_DATAFILE_EXIST
   eng "Tablespace data file '%-.192s' already exists"
+ER_BACKUP_CATALOG_ADD_TS
+        eng "Failed to add tablespace `%-.64s` to the catalog"
+ER_DEBUG_SYNC_TIMEOUT
+  eng "debug sync point wait timed out"
+  ger "Debug Sync Point Wartezeit ¸berschritten"
+ER_DEBUG_SYNC_HIT_LIMIT
+  eng "debug sync point hit limit reached"
+  ger "Debug Sync Point Hit Limit erreicht"
+ER_BACKUP_FAILED_TO_INIT_COMPRESSION
+  eng "Could not initialize compression of backup image (function deflateInit2 returned error code %d: %-.64s)"
+ER_BACKUP_OBTAIN_NAME_LOCK_FAILED
+  eng "Restore failed to obtain the name locks on the tables."
+ER_BACKUP_RELEASE_NAME_LOCK_FAILED
+  eng "Restore failed to release the name locks on the tables."
+ER_BACKUP_BACKUPDIR
+  eng "The path specified for the system variable backupdir cannot be accessed or is invalid. ref: %-.64s"
+ER_DDL_TIMEOUT
+   eng "The backup wait timeout has expired for query '%-64s'."
+ER_BACKUP_LIST_DB_PRIV
+        eng "Can't enumerate grants in database '%-.64s'."
+ER_BACKUP_CATALOG_ADD_PRIV
+	eng "Failed to add grant '%-.64s' to the catalog"
+ER_BACKUP_GET_META_PRIV
+        eng "Failed to obtain meta-data for grant '%-.64s'."
+ER_BACKUP_CANT_RESTORE_PRIV
+        eng "Could not execute grant '%-.64s'."
+ER_BACKUP_GRANT_SKIPPED
+        eng "The grant '%-.64s' was skipped because the user does not exist."
+ER_BACKUP_GRANT_WRONG_DB
+        eng "The grant '%-.64s' failed. Database not included in the backup image."
+ER_BACKUP_LOGPATHS
+  eng "The log names for backup_history and backup_progress must be unique."
+ER_BACKUP_LOGPATH_INVALID
+  eng "The path specified for the %-.64s is invalid. ref: %-.64s"
+ER_BACKUP_SEND_REPLY
+        eng "Failed to send reply to client after successful %-.64s operation"
+        nor "Feil ved sending av svar til klient etter %-.64s"
+        norwegian-ny "Feil ved sending av svar til klienten etter %-.64s"
+ER_BACKUP_CLOSE
+        eng "Backup/Restore: Error on close of backup stream"
+        nor "Backup/Restore: Feil ved lukning av backup-str√∏m"
+        norwegian-ny "Backup/Restore:  Feil ved lukking av backup-straum"
+ER_BACKUP_BINLOG
+        eng "Error on accessing binlog during BACKUP"
+        nor "Lesing av binlog feilet under BACKUP"
+        norwegian-ny "Lesing av binlog feila under BACKUP"
+ER_BACKUP_LOG_OUTPUT
+  eng "Removing backup log entries by date or backup_id requires logging to tables."
+ER_BACKUP_PURGE_DATETIME
+  eng "The datetime specified is invalid for the '%-.64s' command."
+ER_BACKUP_LOGS_DELETED
+  eng "Backup log entries deleted: "
+ER_BACKUP_LOGS_TRUNCATED
+  eng "All backup log entries have been deleted"
+ER_MASTER_BLOCKING_SLAVES
+  eng "The master is not allowing slave connections."
+ER_RESTORE_ON_MASTER
+  eng "A restore operation was initiated on the master."
+ER_RESTORE_ON_SLAVE
+  eng "A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore."
+ER_NONUNIQ_DB 42000 S1009
+        eng "Not unique database: '%-.192s'"
+ER_RESTORE_DB_EXISTS
+  eng "Database \'%-.64s\' already exists. Use OVERWRITE flag to overwrite."
+ER_QUERY_CACHE_DISABLED
+	eng "Query cache is disabled; restart the server with query_cache_type=1 to enable it"

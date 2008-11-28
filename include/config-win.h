@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <malloc.h>
+#include <sys/stat.h>
 
 #define HAVE_SMEM 1
 
@@ -74,7 +75,6 @@
 #endif
 
 /* File and lock constants */
-#define O_SHARE		0x1000		/* Open file in sharing mode */
 #ifdef __BORLANDC__
 #define F_RDLCK		LK_NBLCK	/* read lock */
 #define F_WRLCK		LK_NBRLCK	/* write lock */
@@ -91,6 +91,11 @@
 #define W_OK		2
 
 #define S_IROTH		S_IREAD		/* for my_lib */
+
+/* for MY_S_ISFIFO() macro from my_lib */
+#if defined (_S_IFIFO) && !defined (S_IFIFO)
+#define S_IFIFO _S_IFIFO
+#endif
 
 /* Winsock2 constant (Vista SDK and later)*/
 #define IPPROTO_IPV6 41
@@ -210,7 +215,7 @@ typedef SSIZE_T ssize_t;
 #define SIZEOF_CHARP		4
 #endif
 #define HAVE_BROKEN_NETINET_INCLUDES
-#ifdef __NT__
+#ifdef _WIN32
 #define HAVE_NAMED_PIPE			/* We can only create pipes on NT */
 #endif
 
@@ -319,7 +324,7 @@ inline double ulonglong2double(ulonglong value)
 #define strcasecmp stricmp
 #define strncasecmp strnicmp
 
-#ifndef __NT__
+#ifndef _WIN32
 #undef FILE_SHARE_DELETE
 #define FILE_SHARE_DELETE 0     /* Not implemented on Win 98/ME */
 #endif
@@ -365,13 +370,13 @@ inline double ulonglong2double(ulonglong value)
 #define FN_DEVCHAR	':'
 #define FN_NETWORK_DRIVES	/* Uses \\ to indicate network drives */
 #define FN_NO_CASE_SENCE	/* Files are not case-sensitive */
-#define OS_FILE_LIMIT	2048
+#define OS_FILE_LIMIT	UINT_MAX /* No limit*/
 
 #define DO_NOT_REMOVE_THREAD_WRAPPERS
 #define thread_safe_increment(V,L) InterlockedIncrement((long*) &(V))
 #define thread_safe_decrement(V,L) InterlockedDecrement((long*) &(V))
 /* The following is only used for statistics, so it should be good enough */
-#ifdef __NT__  /* This should also work on Win98 but .. */
+#ifdef _WIN32  /* This should also work on Win98 but .. */
 #define thread_safe_add(V,C,L) InterlockedExchangeAdd((long*) &(V),(C))
 #define thread_safe_sub(V,C,L) InterlockedExchangeAdd((long*) &(V),-(long) (C))
 #endif

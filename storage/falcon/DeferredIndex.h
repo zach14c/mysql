@@ -100,8 +100,11 @@ public:
 	void			initializeSpace(void);
 	DINode*			findMaxValue(void);
 	DINode*			findMinValue(void);
+	void			addRef();
+	void			release();
 
 	SyncObject		syncObject;	
+	volatile INTERLOCK_TYPE useCount;
 	DeferredIndex	*next;
 	DeferredIndex	*prior;
 	DeferredIndex	*nextInTransaction;

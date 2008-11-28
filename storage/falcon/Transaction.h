@@ -87,7 +87,8 @@ public:
 
 	State		getRelativeState(Record* record, uint32 flags);
 	State		getRelativeState (Transaction *transaction, TransId transId, uint32 flags);
-	void		removeRecord (RecordVersion *record);
+	void		removeRecordNoLock (RecordVersion *record);
+	void		removeRecord(RecordVersion *record);
 	void		removeRecord (RecordVersion *record, RecordVersion **ptr);
 	void		expungeTransaction (Transaction *transaction);
 	void		commitRecords();
@@ -98,14 +99,14 @@ public:
 	void		prepare(int xidLength, const UCHAR *xid);
 	void		rollback();
 	void		commit();
-	int			release();
+	void		release();
 	void		addRef();
 	void		waitForTransaction();
 	bool		waitForTransaction (TransId transId);
 	State		waitForTransaction (Transaction *transaction, TransId transId, bool *deadlock);
 	void		dropTable(Table* table);
 	void		truncateTable(Table* table);
-	bool		hasUncommittedRecords(Table* table);
+	bool		hasRecords(Table* table);
 	void		writeComplete(void);
 	void		releaseDependency(void);
 	int			createSavepoint();
@@ -168,9 +169,10 @@ public:
 	bool			writePending;
 	bool			pendingPageWrites;
 	bool			hasLocks;
-	SyncObject		syncActive;
-	SyncObject		syncIndexes;
 	SyncObject		syncObject;
+	SyncObject		syncIsActive;		// locked while transaction is active
+	SyncObject		syncDeferredIndexes;
+	SyncObject		syncRecords;
 	SyncObject		syncSavepoints;
 	uint64			totalRecordData;	// total bytes of record data for this transaction (unchilled + thawed)
 	uint32			totalRecords;		// total record count

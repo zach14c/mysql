@@ -222,7 +222,7 @@ static int really_execute_checkpoint(void)
     */
     LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 5];
     log_array[TRANSLOG_INTERNAL_PARTS + 0].str=
-      checkpoint_start_log_horizon_char;
+      (uchar*) checkpoint_start_log_horizon_char;
     log_array[TRANSLOG_INTERNAL_PARTS + 0].length= total_rec_length=
       sizeof(checkpoint_start_log_horizon_char);
     for (i= 0; i < (sizeof(record_pieces)/sizeof(record_pieces[0])); i++)
@@ -820,7 +820,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
       */
       share->in_checkpoint= MARIA_CHECKPOINT_LOOKS_AT_ME;
       /** @todo avoid strlen() */
-      total_names_length+= strlen(share->open_file_name);
+      total_names_length+= share->open_file_name.length;
     }
   }
 
@@ -894,7 +894,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
        @todo We should not look at tables which didn't change since last
        checkpoint.
     */
-    DBUG_PRINT("info",("looking at table '%s'", share->open_file_name));
+    DBUG_PRINT("info",("looking at table '%s'", share->open_file_name.str));
     if (state_copy == state_copies_end) /* we have no more cached states */
     {
       /*
@@ -978,8 +978,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
     DBUG_PRINT("info", ("ignore_share: %d", ignore_share));
     if (!ignore_share)
     {
-      /** @todo avoid strlen */
-      uint open_file_name_len= strlen(share->open_file_name) + 1;
+      uint open_file_name_len= share->open_file_name.length + 1;
       /* remember the descriptors for background flush */
       *(dfiles_end++)= dfile;
       *(kfiles_end++)= kfile;
@@ -1000,7 +999,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
         If no crash, maria_close() will write the exact value.
       */
       state_copy->state.first_bitmap_with_space= ~(ulonglong)0;
-      memcpy(ptr, share->open_file_name, open_file_name_len);
+      memcpy(ptr, share->open_file_name.str, open_file_name_len);
       ptr+= open_file_name_len;
       if (cmp_translog_addr(share->state.is_of_horizon,
                             checkpoint_start_log_horizon) >= 0)
@@ -1059,8 +1058,9 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
       TODO: Only do this call if there has been # (10?) ended transactions
       since last call.
     */
-    share->state_history=  _ma_remove_not_visible_states(share->state_history,
-                                                         0, 0);
+    pthread_mutex_unlock(&share->intern_lock);
+    _ma_remove_not_visible_states_with_lock(share);
+    pthread_mutex_lock(&share->intern_lock);
 
     if (share->in_checkpoint & MARIA_CHECKPOINT_SHOULD_FREE_ME)
     {

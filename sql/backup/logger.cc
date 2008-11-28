@@ -1,9 +1,14 @@
 #include "../mysql_priv.h"
 
 #include "logger.h"
+#include "image_info.h"
+
+/** @file
+ 
+ @todo Log errors to progress tables
+ */ 
 
 namespace backup {
-
 
 /**
   Output message on a given level.
@@ -17,37 +22,63 @@ namespace backup {
                      for other messages set to 0
   @param msg         message text
 
+  @note It should be possible to use this method (and other error reporting
+  methods relying on it) right after creation of the Logger object instance.
+  The message should be written to these destinations which are available at
+  the moment. Destinations which are not ready/initialized yet should be 
+  silently ignored.
+
   @returns 0 on success.
  */
 int Logger::write_message(log_level::value level, int error_code,
                           const char *msg)
 {
-   const char *prefix= m_type == BACKUP ? "Backup" : "Restore";
    char buf[ERRMSGSIZE + 30];
+   const char *out= msg;
 
-   my_snprintf(buf,sizeof(buf),"%s: %s",prefix,msg);
-
+   if (m_state == READY || m_state == RUNNING)
+   {
+     my_snprintf(buf, sizeof(buf), "%s: %s", 
+                 m_type == BACKUP ? "Backup" : "Restore" , msg);
+     out= buf;
+   }
+   
    switch (level) {
    case log_level::ERROR:
      if (m_save_errors)
-       errors.push_front(new MYSQL_ERROR(::current_thd,error_code,
-                                         MYSQL_ERROR::WARN_LEVEL_ERROR,msg));
-     sql_print_error(buf);
-     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
-                         error_code, msg);
-     DBUG_PRINT("backup_log",("[ERROR] %s",buf));
+     {
+       error.code= error_code;
+       error.level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+       error.msg= sql_strdup(msg);
+     }
+
+     sql_print_error(out);
+     if (m_push_errors)
+       push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+			   error_code, msg);
+     DBUG_PRINT("backup_log",("[ERROR] %s", out));
+     
+     if (m_state == READY || m_state == RUNNING)
+     {
+       time_t ts = my_time(0);
+
+       backup_log->error_num(error_code);
+       backup_log->write_progress(0, ts, ts, 0, 0, error_code, out);
+     }
+     
      return 0;
 
    case log_level::WARNING:
-     sql_print_warning(buf);
-     push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                         error_code, msg);
-     DBUG_PRINT("backup_log",("[Warning] %s",buf));
+     sql_print_warning(out);
+     if (m_push_errors)
+       push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                           error_code, msg);
+     DBUG_PRINT("backup_log",("[Warning] %s", out));
      return 0;
 
    case log_level::INFO:
-     sql_print_information(buf);
-     DBUG_PRINT("backup_log",("[Info] %s",buf));
+     sql_print_information(out);
+     DBUG_PRINT("backup_log",("[Info] %s", out));
      return 0;
 
    default: return ERROR;
@@ -67,7 +98,7 @@ int Logger::write_message(log_level::value level, int error_code,
  */
 int Logger::v_report_error(log_level::value level, int error_code, va_list args)
 {
-  return v_write_message(level,error_code,ER_SAFE(error_code),args);
+  return v_write_message(level, error_code, ER_SAFE(error_code), args);
 }
 
 /**
@@ -82,9 +113,43 @@ int Logger::v_write_message(log_level::value level, int error_code,
 {
   char buf[ERRMSGSIZE + 20];
 
-  my_vsnprintf(buf,sizeof(buf),format,args);
-  return write_message(level,error_code,buf);
+  my_vsnprintf(buf, sizeof(buf), format, args);
+  return write_message(level, error_code, buf);
 }
 
+/**
+  Report statistics from backup/restore catalogue before the main operation
+  starts.
+ */ 
+void Logger::report_stats_pre(const Image_info &info)
+{
+  DBUG_ASSERT(m_state == RUNNING);
+  backup_log->num_objects(info.table_count());
+}
+
+/**
+  Report statistics from backup/restore catalogue after the operation is
+  completed.
+ */ 
+void Logger::report_stats_post(const Image_info &info)
+{
+  DBUG_ASSERT(m_state == RUNNING);
+  backup_log->size(info.data_size);
+}
+
+/*
+ Indicate if reported errors should be pushed on the warning stack.
+
+ If @c flag is TRUE, errors will be pushed on the warning stack, otherwise
+ they will not.
+
+ @returns Current setting.
+*/
+bool Logger::push_errors(bool flag)
+{
+  bool old= m_push_errors;
+  m_push_errors= flag;
+  return old;
+} 
 
 } // backup namespace

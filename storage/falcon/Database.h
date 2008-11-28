@@ -45,6 +45,8 @@ static const int FALC0N_SYNC_TEST			= 2;
 static const int FALC0N_SYNC_OBJECTS		= 4;
 static const int FALC0N_FREEZE				= 8;
 static const int FALC0N_REPORT_WRITES		= 16;
+static const int FALC0N_SYNC_HANDLER		= 32;
+static const int FALC0N_TEST_BITMAP			= 64;
 
 #define TABLE_HASH_SIZE		101
 
@@ -102,6 +104,7 @@ class RecordScavenge;
 class PriorityScheduler;
 class SQLException;
 class BackLog;
+class SyncHandler;
 
 struct JavaCallback;
 
@@ -200,6 +203,7 @@ public:
 	virtual void	createDatabase (const char *filename);
 	void			renameTable(Table* table, const char* newSchema, const char* newName);
 	bool			hasUncommittedRecords(Table* table, Transaction *transaction);
+	void			waitForWriteComplete(Table *table);
 	void			validateCache(void);
 	int				recoverGetNextLimbo(int xidSize, unsigned char *xid);
 	void			commitByXid(int xidLength, const UCHAR* xid);
@@ -283,6 +287,7 @@ public:
 	TransactionManager	*transactionManager;
 	FilterSetManager	*filterSetManager;
 	TableSpaceManager	*tableSpaceManager;
+	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;
 	PageWriter			*pageWriter;
@@ -301,7 +306,7 @@ public:
 	int					noSchedule;
 	int					pendingIOErrorCode;
 	uint32				serialLogBlockSize;
-	
+
 	volatile INTERLOCK_TYPE	currentGeneration;
 	uint64				recordMemoryMax;
 	uint64				recordScavengeThreshold;

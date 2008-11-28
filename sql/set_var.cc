@@ -59,8 +59,9 @@
 #include <thr_alarm.h>
 #include <myisam.h>
 #include <my_dir.h>
-
+#include <waiting_threads.h>
 #include "events.h"
+#include "transaction.h"
 
 /* WITH_NDBCLUSTER_STORAGE_ENGINE */
 #ifdef WITH_NDBCLUSTER_STORAGE_ENGINE
@@ -75,7 +76,7 @@ extern ulong ndb_report_thresh_binlog_mem_usage;
 #endif
 
 extern CHARSET_INFO *character_set_filesystem;
-
+extern my_bool disable_slaves;
 
 static DYNAMIC_ARRAY fixed_show_vars;
 static HASH system_variable_hash;
@@ -125,8 +126,10 @@ static void fix_net_read_timeout(THD *thd, enum_var_type type);
 static void fix_net_write_timeout(THD *thd, enum_var_type type);
 static void fix_net_retry_count(THD *thd, enum_var_type type);
 static void fix_max_join_size(THD *thd, enum_var_type type);
+#ifdef HAVE_QUERY_CACHE
 static void fix_query_cache_size(THD *thd, enum_var_type type);
 static void fix_query_cache_min_res_unit(THD *thd, enum_var_type type);
+#endif
 static void fix_myisam_max_sort_file_size(THD *thd, enum_var_type type);
 static void fix_max_binlog_size(THD *thd, enum_var_type type);
 static void fix_max_relay_log_size(THD *thd, enum_var_type type);
@@ -147,8 +150,18 @@ static uchar *get_tmpdir(THD *thd);
 static int  sys_check_log_path(THD *thd,  set_var *var);
 static bool sys_update_general_log_path(THD *thd, set_var * var);
 static void sys_default_general_log_path(THD *thd, enum_var_type type);
+static bool sys_update_backup_history_log_path(THD *thd, set_var * var);
+static void sys_default_backup_history_log_path(THD *thd, enum_var_type type);
+static bool sys_update_backup_progress_log_path(THD *thd, set_var * var);
+static void sys_default_backup_progress_log_path(THD *thd, enum_var_type type);
 static bool sys_update_slow_log_path(THD *thd, set_var * var);
 static void sys_default_slow_log_path(THD *thd, enum_var_type type);
+static int sys_check_backupdir(THD *thd, set_var *var);
+static bool sys_update_backupdir(THD *thd, set_var * var);
+static void sys_default_backupdir(THD *thd, enum_var_type type);
+static int sys_check_backupdir(THD *thd, set_var *var);
+static bool sys_update_backupdir(THD *thd, set_var * var);
+static void sys_default_backupdir(THD *thd, enum_var_type type);
 
 /*
   Variable definition list
@@ -227,6 +240,19 @@ static sys_var_long_ptr	sys_concurrent_insert(&vars, "concurrent_insert",
 static sys_var_long_ptr	sys_connect_timeout(&vars, "connect_timeout",
 					    &connect_timeout);
 static sys_var_const_str       sys_datadir(&vars, "datadir", mysql_real_data_home);
+static sys_var_backup_wait_timeout sys_backup_wait_timeout(&vars, "backup_wait_timeout");
+static sys_var_thd_ulong sys_deadlock_search_depth_short(&vars,
+                                "deadlock_search_depth_short",
+                                 &SV::wt_deadlock_search_depth_short);
+static sys_var_thd_ulong sys_deadlock_search_depth_long(&vars,
+                                "deadlock_search_depth_long",
+                                 &SV::wt_deadlock_search_depth_long);
+static sys_var_thd_ulong sys_deadlock_timeout_short(&vars,
+                                "deadlock_timeout_short",
+                                 &SV::wt_timeout_short);
+static sys_var_thd_ulong sys_deadlock_timeout_long(&vars,
+                                "deadlock_timeout_long",
+                                 &SV::wt_timeout_long);
 #ifndef DBUG_OFF
 static sys_var_thd_dbug        sys_dbug(&vars, "debug");
 #endif
@@ -408,10 +434,6 @@ static sys_var_thd_ulong	sys_div_precincrement(&vars, "div_precision_increment",
                                               &SV::div_precincrement);
 static sys_var_long_ptr	sys_rpl_recovery_rank(&vars, "rpl_recovery_rank",
 					      &rpl_recovery_rank);
-static sys_var_long_ptr	sys_query_cache_size(&vars, "query_cache_size",
-					     &query_cache_size,
-					     fix_query_cache_size);
-
 static sys_var_thd_ulong	sys_range_alloc_block_size(&vars, "range_alloc_block_size",
 						   &SV::range_alloc_block_size);
 static sys_var_thd_ulong	sys_query_alloc_block_size(&vars, "query_alloc_block_size",
@@ -433,14 +455,18 @@ sys_var_enum_const        sys_thread_handling(&vars, "thread_handling",
                                               NULL);
 
 #ifdef HAVE_QUERY_CACHE
+static sys_var_long_ptr	sys_query_cache_size(&vars, "query_cache_size",
+					     &query_cache_size,
+					     fix_query_cache_size);
 static sys_var_long_ptr	sys_query_cache_limit(&vars, "query_cache_limit",
 					      &query_cache.query_cache_limit);
 static sys_var_long_ptr        sys_query_cache_min_res_unit(&vars, "query_cache_min_res_unit",
 						     &query_cache_min_res_unit,
 						     fix_query_cache_min_res_unit);
+static int check_query_cache_type(THD *thd, set_var *var);
 static sys_var_thd_enum	sys_query_cache_type(&vars, "query_cache_type",
 					     &SV::query_cache_type,
-					     &query_cache_type_typelib);
+					     &query_cache_type_typelib, NULL, check_query_cache_type);
 static sys_var_thd_bool
 sys_query_cache_wlock_invalidate(&vars, "query_cache_wlock_invalidate",
 				 &SV::query_cache_wlock_invalidate);
@@ -505,6 +531,12 @@ static sys_var_long_ptr	sys_table_cache_size(&vars, "table_open_cache",
 					     &table_cache_size);
 static sys_var_long_ptr	sys_table_lock_wait_timeout(&vars, "table_lock_wait_timeout",
                                                     &table_lock_wait_timeout);
+
+#if defined(ENABLED_DEBUG_SYNC)
+/* Debug Sync Facility. Implemented in debug_sync.cc. */
+static sys_var_debug_sync sys_debug_sync(&vars, "debug_sync");
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
 static sys_var_long_ptr	sys_thread_cache_size(&vars, "thread_cache_size",
 					      &thread_cache_size);
 #if HAVE_POOL_OF_THREADS == 1
@@ -520,6 +552,8 @@ static sys_var_thd_ulonglong	sys_tmp_table_size(&vars, "tmp_table_size",
 					   &SV::tmp_table_size);
 static sys_var_bool_ptr  sys_timed_mutexes(&vars, "timed_mutexes",
                                     &timed_mutexes);
+static sys_var_bool_ptr  sys_disable_slaves(&vars, "disable_slave_connections",
+                                             &disable_slaves);
 static sys_var_const_str	sys_version(&vars, "version", server_version);
 static sys_var_const_str	sys_version_comment(&vars, "version_comment",
                                             MYSQL_COMPILATION_COMMENT);
@@ -754,6 +788,12 @@ static sys_var_const_str	sys_license(&vars, "license", STRINGIFY_ARG(LICENSE));
 /* Global variables which enable|disable logging */
 static sys_var_log_state sys_var_general_log(&vars, "general_log", &opt_log,
                                       QUERY_LOG_GENERAL);
+static sys_var_log_state sys_var_backup_history_log(&vars, "backup_history_log", 
+                                                    &opt_backup_history_log,
+                                                    BACKUP_HISTORY_LOG);
+static sys_var_log_state sys_var_backup_progress_log(&vars, "backup_progress_log",
+                                                     &opt_backup_progress_log,
+                                                     BACKUP_PROGRESS_LOG);
 /* Synonym of "general_log" for consistency with SHOW VARIABLES output */
 static sys_var_log_state sys_var_log(&vars, "log", &opt_log,
                                       QUERY_LOG_GENERAL);
@@ -766,12 +806,39 @@ sys_var_str sys_var_general_log_path(&vars, "general_log_file", sys_check_log_pa
 				     sys_update_general_log_path,
 				     sys_default_general_log_path,
 				     opt_logname);
+/*
+  Added new variables for backup log file paths.
+*/
+sys_var_str sys_var_backup_history_log_path(&vars, "backup_history_log_file", 
+                                            sys_check_log_path,
+                                            sys_update_backup_history_log_path,
+                                            sys_default_backup_history_log_path,
+                                            opt_logname);
+sys_var_str sys_var_backup_progress_log_path(&vars, "backup_progress_log_file", 
+                                            sys_check_log_path,
+                                            sys_update_backup_progress_log_path,
+                                            sys_default_backup_progress_log_path,
+                                            opt_logname);
+/*
+  Create the backupdir dynamic variable.
+*/
+sys_var_str sys_var_backupdir(&vars, "backupdir",
+                              sys_check_backupdir,
+                              sys_update_backupdir,
+                              sys_default_backupdir,
+                               0);
+
 sys_var_str sys_var_slow_log_path(&vars, "slow_query_log_file", sys_check_log_path,
 				  sys_update_slow_log_path, 
 				  sys_default_slow_log_path,
 				  opt_slow_logname);
 static sys_var_log_output sys_var_log_output_state(&vars, "log_output", &log_output_options,
 					    &log_output_typelib, 0);
+/*
+  Defines variable for specifying the backup log output.
+*/
+static sys_var_log_backup_output sys_var_log_backup_output_state(&vars, "log_backup_output",
+              &log_backup_output_options, &log_output_typelib, 0);
 
 
 /*
@@ -802,7 +869,7 @@ static SHOW_VAR fixed_vars[]= {
   {"lower_case_file_system",  (char*) &lower_case_file_system,      SHOW_MY_BOOL},
   {"lower_case_table_names",  (char*) &lower_case_table_names,      SHOW_INT},
   {"myisam_recover_options",  (char*) &myisam_recover_options_str,  SHOW_CHAR_PTR},
-#ifdef __NT__
+#ifdef _WIN32  
   {"named_pipe",	      (char*) &opt_enable_named_pipe,       SHOW_MY_BOOL},
 #endif
   {"open_files_limit",	      (char*) &open_files_limit,	    SHOW_LONG},
@@ -1052,10 +1119,9 @@ static void fix_net_retry_count(THD *thd __attribute__((unused)),
 {}
 #endif /* HAVE_REPLICATION */
 
-
+#ifdef HAVE_QUERY_CACHE
 static void fix_query_cache_size(THD *thd, enum_var_type type)
 {
-#ifdef HAVE_QUERY_CACHE
   ulong new_cache_size= query_cache.resize(query_cache_size);
 
   /*
@@ -1069,11 +1135,34 @@ static void fix_query_cache_size(THD *thd, enum_var_type type)
 			query_cache_size, new_cache_size);
   
   query_cache_size= new_cache_size;
-#endif
 }
 
 
-#ifdef HAVE_QUERY_CACHE
+/**
+  Trigger before query_cache_type variable is updated.
+  @param thd Thread handler
+  @param var Pointer to the new variable status
+ 
+  @return Status code
+   @retval 1 Failure
+   @retval 0 Success
+*/
+
+static int check_query_cache_type(THD *thd, set_var *var)
+{
+  /*
+    Don't allow changes of the query_cache_type if the query cache
+    is disabled.
+  */
+  if (query_cache.is_disabled())
+  {
+    my_error(ER_QUERY_CACHE_DISABLED,MYF(0));
+    return 1;
+  }
+
+  return 0;
+}
+
 static void fix_query_cache_min_res_unit(THD *thd, enum_var_type type)
 {
   query_cache_min_res_unit= 
@@ -1172,6 +1261,21 @@ void fix_slave_exec_mode(enum_var_type type)
     bit_do_set(slave_exec_mode_options, SLAVE_EXEC_MODE_STRICT);
   DBUG_VOID_RETURN;
 }
+
+
+bool sys_var_thd_binlog_format::check(THD *thd, set_var *var) {
+  /*
+    All variables that affect writing to binary log (either format or
+    turning logging on and off) use the same checking. We call the
+    superclass ::check function to assign the variable correctly, and
+    then check the value.
+   */
+  bool result= sys_var_thd_enum::check(thd, var);
+  if (!result)
+    result= check_log_update(thd, var);
+  return result;
+}
+
 
 bool sys_var_thd_binlog_format::is_readonly() const
 {
@@ -1273,12 +1377,10 @@ static void fix_thd_mem_root(THD *thd, enum_var_type type)
 
 static void fix_trans_mem_root(THD *thd, enum_var_type type)
 {
-#ifdef USING_TRANSACTIONS
   if (type != OPT_GLOBAL)
     reset_root_defaults(&thd->transaction.mem_root,
                         thd->variables.trans_alloc_block_size,
                         thd->variables.trans_prealloc_size);
-#endif
 }
 
 
@@ -1726,119 +1828,6 @@ bool sys_var::check_set(THD *thd, set_var *var, TYPELIB *enum_names)
 err:
   my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), name, buff);
   return 1;
-}
-
-
-/**
-  Return an Item for a variable.
-
-  Used with @@[global.]variable_name.
-
-  If type is not given, return local value if exists, else global.
-*/
-
-Item *sys_var::item(THD *thd, enum_var_type var_type, LEX_STRING *base)
-{
-  if (check_type(var_type))
-  {
-    if (var_type != OPT_DEFAULT)
-    {
-      my_error(ER_INCORRECT_GLOBAL_LOCAL_VAR, MYF(0),
-               name, var_type == OPT_GLOBAL ? "SESSION" : "GLOBAL");
-      return 0;
-    }
-    /* As there was no local variable, return the global value */
-    var_type= OPT_GLOBAL;
-  }
-  switch (show_type()) {
-  case SHOW_INT:
-  {
-    uint value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(uint*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_uint((ulonglong) value);
-  }
-  case SHOW_LONG:
-  {
-    ulong value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(ulong*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_uint((ulonglong) value);
-  }
-  case SHOW_LONGLONG:
-  {
-    longlong value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(longlong*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_int(value);
-  }
-  case SHOW_DOUBLE:
-  {
-    double value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(double*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    /* 6, as this is for now only used with microseconds */
-    return new Item_float(value, 6);
-  }
-  case SHOW_HA_ROWS:
-  {
-    ha_rows value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(ha_rows*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_int((ulonglong) value);
-  }
-  case SHOW_MY_BOOL:
-  {
-    int32 value;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    value= *(my_bool*) value_ptr(thd, var_type, base);
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return new Item_int(value,1);
-  }
-  case SHOW_CHAR_PTR:
-  {
-    Item *tmp;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    char *str= *(char**) value_ptr(thd, var_type, base);
-    if (str)
-    {
-      uint length= strlen(str);
-      tmp= new Item_string(thd->strmake(str, length), length,
-                           system_charset_info, DERIVATION_SYSCONST);
-    }
-    else
-    {
-      tmp= new Item_null();
-      tmp->collation.set(system_charset_info, DERIVATION_SYSCONST);
-    }
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return tmp;
-  }
-  case SHOW_CHAR:
-  {
-    Item *tmp;
-    pthread_mutex_lock(&LOCK_global_system_variables);
-    char *str= (char*) value_ptr(thd, var_type, base);
-    if (str)
-      tmp= new Item_string(str, strlen(str),
-                           system_charset_info, DERIVATION_SYSCONST);
-    else
-    {
-      tmp= new Item_null();
-      tmp->collation.set(system_charset_info, DERIVATION_SYSCONST);
-    }
-    pthread_mutex_unlock(&LOCK_global_system_variables);
-    return tmp;
-  }
-  default:
-    my_error(ER_VAR_CANT_BE_READ, MYF(0), name);
-  }
-  return 0;
 }
 
 
@@ -2385,6 +2374,12 @@ end:
 bool sys_var_log_state::update(THD *thd, set_var *var)
 {
   bool res;
+
+  if (this == &sys_var_log)
+    WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
+  else if (this == &sys_var_log_slow)
+    WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
+
   pthread_mutex_lock(&LOCK_global_system_variables);
   if (!var->save_result.ulong_value)
   {
@@ -2399,8 +2394,21 @@ bool sys_var_log_state::update(THD *thd, set_var *var)
 
 void sys_var_log_state::set_default(THD *thd, enum_var_type type)
 {
+  if (this == &sys_var_log)
+    WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
+  else if (this == &sys_var_log_slow)
+    WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
+
   pthread_mutex_lock(&LOCK_global_system_variables);
-  logger.deactivate_log_handler(thd, log_type);
+  /*
+    Default for general and slow log is OFF.
+    Default for backup logs is ON.
+  */
+  if ((this == &sys_var_backup_history_log) ||
+      (this == &sys_var_backup_progress_log))
+    logger.activate_log_handler(thd, log_type);
+  else
+    logger.deactivate_log_handler(thd, log_type);
   pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
@@ -2410,7 +2418,7 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   char path[FN_REFLEN], buff[FN_REFLEN];
   MY_STAT f_stat;
   String str(buff, sizeof(buff), system_charset_info), *res;
-  const char *log_file_str;
+  const char *log_file_str= 0;
   size_t path_length;
 
   if (!(res= var->value->val_str(&str)))
@@ -2459,8 +2467,18 @@ static int  sys_check_log_path(THD *thd,  set_var *var)
   return 0;
 
 err:
-  my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), var->var->name, 
-           res ? log_file_str : "NULL");
+  /*
+    If this is one of the backup logs, process the backup specific
+    error message.
+  */
+  if ((my_strcasecmp(system_charset_info, var->var->name, 
+       "backup_history_log_file") == 0) ||
+      (my_strcasecmp(system_charset_info, var->var->name,
+       "backup_progress_log_file") == 0))
+    my_error(ER_BACKUP_LOGPATH_INVALID, MYF(0), var->var->name, path); 
+  else
+    my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), var->var->name, 
+             res ? log_file_str : "NULL");
   return 1;
 }
 
@@ -2469,12 +2487,16 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
 			     set_var *var, const char *log_ext,
 			     bool log_state, uint log_type)
 {
-  MYSQL_QUERY_LOG *file_log;
+  MYSQL_QUERY_LOG *file_log= 0;
+  MYSQL_BACKUP_LOG *backup_log= 0;
   char buff[FN_REFLEN];
   char *res= 0, *old_value=(char *)(var ? var->value->str_value.ptr() : 0);
   bool result= 0;
   uint str_length= (var ? var->value->str_value.length() : 0);
 
+  /*
+    Added support for backup log types.
+  */
   switch (log_type) {
   case QUERY_LOG_SLOW:
     file_log= logger.get_slow_log_file_handler();
@@ -2482,13 +2504,38 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   case QUERY_LOG_GENERAL:
     file_log= logger.get_log_file_handler();
     break;
+  /* 
+    Check the backup logs to update their paths.
+  */
+  case BACKUP_HISTORY_LOG:
+    backup_log= logger.get_backup_history_log_file_handler();
+    break;
+  case BACKUP_PROGRESS_LOG:
+    backup_log= logger.get_backup_progress_log_file_handler();
+    break;
   default:
     assert(0);                                  // Impossible
   }
 
   if (!old_value)
   {
-    old_value= make_default_log_name(buff, log_ext);
+    /*
+      Added support for backup log types.
+    */
+    switch (log_type) {
+    case QUERY_LOG_SLOW:
+    case QUERY_LOG_GENERAL:
+      old_value= make_default_log_name(buff, log_ext);
+      break;
+    case BACKUP_HISTORY_LOG:
+      old_value= make_backup_log_name(buff, BACKUP_HISTORY_LOG_NAME.str, log_ext);
+      break;
+    case BACKUP_PROGRESS_LOG:
+      old_value= make_backup_log_name(buff, BACKUP_PROGRESS_LOG_NAME.str, log_ext);
+      break;
+    default:
+      assert(0);                                  // Impossible
+    }
     str_length= strlen(old_value);
   }
   if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
@@ -2500,20 +2547,51 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
 
-  if (file_log && log_state)
-    file_log->close(0);
+  /*
+    Added support for backup log types.
+  */
+  switch (log_type) {
+  case QUERY_LOG_SLOW:
+  case QUERY_LOG_GENERAL:
+    if (file_log && log_state)
+      file_log->close(0);
+    break;
+  /*
+    Close the backup logs if specified.
+  */
+  case BACKUP_HISTORY_LOG:
+  case BACKUP_PROGRESS_LOG:
+    if (backup_log && log_state)
+      backup_log->close(0);
+    break;
+  default:
+    assert(0);                                  // Impossible
+  }
   old_value= var_str->value;
   var_str->value= res;
   var_str->value_length= str_length;
   my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
-  if (file_log && log_state)
+  if ((file_log && log_state) ||
+      (backup_log && log_state))
   {
+    /*
+      Added support for backup log types.
+    */
     switch (log_type) {
     case QUERY_LOG_SLOW:
       file_log->open_slow_log(sys_var_slow_log_path.value);
       break;
     case QUERY_LOG_GENERAL:
       file_log->open_query_log(sys_var_general_log_path.value);
+      break;
+    /*
+      Open the backup logs if specified.
+    */
+    case BACKUP_HISTORY_LOG:
+      backup_log->open_backup_history_log(sys_var_backup_history_log_path.value);
+      break;
+    case BACKUP_PROGRESS_LOG:
+      backup_log->open_backup_progress_log(sys_var_backup_progress_log_path.value);
       break;
     default:
       DBUG_ASSERT(0);
@@ -2539,6 +2617,63 @@ static void sys_default_general_log_path(THD *thd, enum_var_type type)
 {
   (void) update_sys_var_str_path(thd, &sys_var_general_log_path,
 				 0, ".log", opt_log, QUERY_LOG_GENERAL);
+}
+
+
+/*
+  Update the backup history log path variable.
+*/
+static bool sys_update_backup_history_log_path(THD *thd, set_var * var)
+{
+  char buff[STRING_BUFFER_USUAL_SIZE];
+  String str(buff,sizeof(buff), system_charset_info), *res;
+
+  res= var->value->val_str(&str);
+  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+      sys_var_backup_progress_log_path.value) == 0)
+  {
+    my_error(ER_BACKUP_LOGPATHS, MYF(0));
+    return 1;
+  }
+  return update_sys_var_str_path(thd, &sys_var_backup_history_log_path, 
+                                 var, ".log", opt_log, BACKUP_HISTORY_LOG);
+}
+
+/*
+  Set the default for backup history log path variable.
+*/
+static void sys_default_backup_history_log_path(THD *thd, enum_var_type type)
+{
+  (void) update_sys_var_str_path(thd, &sys_var_backup_history_log_path,
+				 0, ".log", opt_log, BACKUP_HISTORY_LOG);
+}
+
+/*
+  Update the backup progress log path variable.
+*/
+static bool sys_update_backup_progress_log_path(THD *thd, set_var * var)
+{
+  char buff[STRING_BUFFER_USUAL_SIZE];
+  String str(buff,sizeof(buff), system_charset_info), *res;
+
+  res= var->value->val_str(&str);
+  if (my_strcasecmp(system_charset_info, res->c_ptr(), 
+      sys_var_backup_history_log_path.value) == 0)
+  {
+    my_error(ER_BACKUP_LOGPATHS, MYF(0));
+    return 1;
+  }
+  return update_sys_var_str_path(thd, &sys_var_backup_progress_log_path, 
+                                 var, ".log", opt_log, BACKUP_PROGRESS_LOG);
+}
+
+/*
+  Set the default for backup progress log path variable.
+*/
+static void sys_default_backup_progress_log_path(THD *thd, enum_var_type type)
+{
+  (void) update_sys_var_str_path(thd, &sys_var_backup_progress_log_path,
+				 0, ".log", opt_log, BACKUP_PROGRESS_LOG);
 }
 
 
@@ -2605,6 +2740,207 @@ uchar *sys_var_log_output::value_ptr(THD *thd, enum_var_type type,
   if ((length= tmp.length()))
     length--;
   return (uchar*) thd->strmake(tmp.ptr(), length);
+}
+
+/*
+  Allow update of the log-backup-output variable.
+*/
+bool sys_var_log_backup_output::update(THD *thd, set_var *var)
+{
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  logger.lock_exclusive();
+  logger.init_backup_history_log(var->save_result.ulong_value);
+  logger.init_backup_progress_log(var->save_result.ulong_value);
+  *value= var->save_result.ulong_value;
+  logger.unlock();
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+  return 0;
+}
+
+/*
+  Set the default for the log-backup-output variable.
+*/
+void sys_var_log_backup_output::set_default(THD *thd, enum_var_type type)
+{
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  logger.lock_exclusive();
+  logger.init_backup_history_log(LOG_TABLE);
+  logger.init_backup_progress_log(LOG_TABLE);
+  *value= LOG_TABLE;
+  logger.unlock();
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+}
+
+/*
+  Allow reading of the log-backup-output variable.
+*/
+uchar *sys_var_log_backup_output::value_ptr(THD *thd, enum_var_type type,
+                                            LEX_STRING *base)
+{
+  char buff[256];
+  String tmp(buff, sizeof(buff), &my_charset_latin1);
+  ulong length;
+  ulong val= *value;
+
+  tmp.length(0);
+  for (uint i= 0; val; val>>= 1, i++)
+  {
+    if (val & 1)
+    {
+      tmp.append(log_output_typelib.type_names[i],
+                 log_output_typelib.type_lengths[i]);
+      tmp.append(',');
+    }
+  }
+
+  if ((length= tmp.length()))
+    length--;
+  return (uchar*) thd->strmake(tmp.ptr(), length);
+}
+
+/*
+  Functions for backupdir variable.
+*/
+
+/**
+  Set the default for the backupdir
+
+  @param[IN] buff Buffer to use for making string.
+
+  @returns pointer to string (buff)
+*/
+char *make_default_backupdir(char *buff)
+{
+  strmake(buff, mysql_data_home, FN_REFLEN-5);
+  return buff;
+}
+
+/**
+  Check the backupdir value for validity.
+
+  This method ensures the users is specifying a valid path
+  for the backupdir. Validity in this case means the path
+  is accessible to the user.
+
+  @param[IN] thd   Current thread context.
+  @param[IN] var   The new value set in set_var structure.
+
+  @returns 0 
+*/
+static int sys_check_backupdir(THD *thd, set_var *var)
+{
+  char path[FN_REFLEN], buff[FN_REFLEN];
+  MY_STAT f_stat;
+  String str(buff, sizeof(buff), system_charset_info), *res;
+  const char *log_file_str;
+  size_t path_length;
+
+  if (!(res= var->value->val_str(&str)))
+    goto err;
+
+  log_file_str= res->c_ptr();
+  bzero(&f_stat, sizeof(MY_STAT));
+
+  /* Get dirname of the file path. */
+  (void) dirname_part(path, log_file_str, &path_length);
+
+  /* Dirname is empty if file path is relative. */
+  if (!path_length)
+    return 0;
+
+  /*
+    Check if directory exists and we have permission to create file and
+    write to file.
+  */
+  if (my_access(path, (F_OK|W_OK)))
+    goto err;
+
+  return 0;
+
+err:
+  /*
+    We print a warning if backupdir is invalid but set it anyway.
+  */
+  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                      ER_BACKUP_BACKUPDIR, ER(ER_BACKUP_BACKUPDIR),
+                      var->value->str_value.c_ptr());
+  return 0;
+}
+
+/**
+  Update the backupdir variable 
+  
+  This method is used to change the backupdir variable.
+
+  @param[IN] thd   Current thread context.
+  @param[IN] var   The new value set in set_var structure.
+
+  @returns 0 valid, 1 invalid.
+*/
+static bool sys_update_backupdir(THD *thd, set_var * var)
+{
+  char buff[FN_REFLEN];
+  char *res= 0, *old_value= NULL;
+  bool result= 0;
+  uint str_length;
+  String str(buff, sizeof(buff), system_charset_info);
+
+  if (var)
+  {
+    String *strres;
+
+    if (!(strres= var->value->val_str(&str)))
+      goto err;
+    old_value= strres->c_ptr();
+    str_length= strres->length();
+  }
+  else
+  {
+    old_value= make_default_backupdir(buff);
+    str_length= strlen(old_value);
+  }
+
+  if (!(res= my_strndup(old_value, str_length, MYF(MY_FAE+MY_WME))))
+  {
+    result= 1;
+    goto err;
+  }
+
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  logger.lock_exclusive();
+  old_value= sys_var_backupdir.value;
+  sys_var_backupdir.value= res;
+  sys_var_backupdir.value_length= str_length;
+  logger.unlock();
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+
+  if (my_access(sys_var_backupdir.value, (F_OK|W_OK)))
+    goto err;
+
+  return result;
+
+err:
+  /*
+    We print a warning if backupdir is invalid but set it anyway.
+  */
+  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                      ER_BACKUP_BACKUPDIR, ER(ER_BACKUP_BACKUPDIR),
+                      var->value->str_value.c_ptr());
+  return result;
+}
+
+/**
+  Set the default value for the backupdir variable 
+  
+  This method is used to reset the backupdir variable to the
+  default by calling the update method without a path.
+
+  @param[IN] thd   Current thread context.
+  @param[IN] type  Ignored (needed for api).
+*/
+static void sys_default_backupdir(THD *thd, enum_var_type type)
+{
+  sys_update_backupdir(thd, 0);
 }
 
 
@@ -2683,6 +3019,61 @@ bool sys_var_insert_id::update(THD *thd, set_var *var)
 {
   thd->force_one_auto_inc_interval(var->save_result.ulonglong_value);
   return 0;
+}
+
+
+/**
+  Get value.
+
+  Returns the value for the backup_wait_timeout session variable.
+
+  @param[IN] thd    Thread object
+  @param[IN] type   Type of variable
+  @param[IN] base   Not used 
+
+  @returns value of variable
+*/
+uchar *sys_var_backup_wait_timeout::value_ptr(THD *thd, enum_var_type type,
+				   LEX_STRING *base)
+{
+  thd->sys_var_tmp.ulong_value= thd->backup_wait_timeout;
+  return (uchar*) &thd->sys_var_tmp.ulonglong_value;
+}
+
+
+/**
+  Update value.
+
+  Set the backup_wait_timeout variable.
+
+  @param[IN] thd    Thread object
+  @param[IN] var    Pointer to value from command.
+
+  @returns 0
+*/
+bool sys_var_backup_wait_timeout::update(THD *thd, set_var *var)
+{
+  if (var->save_result.ulong_value > (LONG_MAX/1000))
+    thd->backup_wait_timeout= LONG_MAX/1000;
+  else
+    thd->backup_wait_timeout= var->save_result.ulong_value;
+  return 0;
+}
+
+
+/**
+  Set default value.
+
+  Set the backup_wait_timeout variable to the default value.
+
+  @param[IN] thd    Thread object
+  @param[IN] type   Type of variable
+
+  @returns 0
+*/
+void sys_var_backup_wait_timeout::set_default(THD *thd, enum_var_type type)
+{ 
+  thd->backup_wait_timeout= BACKUP_WAIT_TIMEOUT_DEFAULT; 
 }
 
 
@@ -2975,7 +3366,7 @@ static bool set_option_autocommit(THD *thd, set_var *var)
    */
   if (var->save_result.ulong_value != 0 &&
       (thd->options & OPTION_NOT_AUTOCOMMIT) &&
-      ha_commit(thd))
+      trans_commit(thd))
     return 1;
 
   if (var->save_result.ulong_value != 0)
@@ -3441,6 +3832,16 @@ bool not_all_support_one_shot(List<set_var_base> *var_list)
 /*****************************************************************************
   Functions to handle SET mysql_internal_variable=const_expr
 *****************************************************************************/
+
+/**
+  Verify that the supplied value is correct.
+
+  @param thd Thread handler
+
+  @return status code
+   @retval -1 Failure
+   @retval 0 Success
+ */
 
 int set_var::check(THD *thd)
 {

@@ -40,7 +40,7 @@ class IndexWalker;
 
 CLASS(Field);
 
-struct StorageIndexDesc;
+class StorageIndexDesc;
 struct StorageKey;
 struct StorageBlob;
 struct StorageSegment;
@@ -61,7 +61,6 @@ public:
 	int					savepointRollback(Connection* connection, int savePoint);
 	int					deleteTable(StorageConnection* storageConnection,StorageTableShare *tableShare);
 	int					truncateTable(StorageConnection* storageConnection, StorageTableShare *tableShare);
-	int					createIndex(StorageConnection *storageConnection, Table* table, StorageIndexDesc* indexDesc);
 	int					renameTable(StorageConnection* storageConnection, Table* table, const char* newName, const char *schemaName);
 	Bitmap*				indexScan(Index* index, StorageKey *lower, StorageKey *upper, int searchFlags, StorageConnection* storageConnection, Bitmap *bitmap);
 	IndexWalker*		indexPosition(Index* index, StorageKey* lower, StorageKey* upper, int searchFlags, StorageConnection* storageConnection);
@@ -74,15 +73,15 @@ public:
 	void				freeBlob(StorageBlob *blob);
 	void				close(void);
 	void				validateCache(void);
-	int					createIndex(StorageConnection* storageConnection, Table* table, const char* indexName, const char* sql);
-	int					dropIndex(StorageConnection* storageConnection, Table* table, const char* indexName, const char* sql);
+	int					createIndex(StorageConnection* storageConnection, Table* table, const char* sql);
+	int					dropIndex(StorageConnection* storageConnection, Table* table, const char* sql);
 	int					insert(Connection* connection, Table* table, Stream* stream);
 	
 	int					nextRow(StorageTable* storageTable, int recordNumber, bool lockForUpdate);
 	int					nextIndexed(StorageTable *storageTable, void* recordBitmap, int recordNumber, bool lockForUpdate);
 	int					nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate);
 	int					fetch(StorageConnection* storageConnection, StorageTable* storageTable, int recordNumber, bool lockForUpdate);
-	RecordVersion*		lockRecord(StorageConnection* storageConnection, Table *table, Record* record);
+//	RecordVersion*		lockRecord(StorageConnection* storageConnection, Table *table, Record* record);
 	
 	int					updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream);
 	int					getSegmentValue(StorageSegment* segment, const UCHAR* ptr, Value* value, Field *field);
@@ -111,7 +110,7 @@ public:
 	StorageDatabase		*next;
 	StorageHandler		*storageHandler;
 	SyncObject			syncObject;
-	SyncObject			traceSyncObject;
+	SyncObject			syncTrace;
 	User				*user;
 	PreparedStatement	*lookupIndexAlias;
 	PreparedStatement	*insertTrace;

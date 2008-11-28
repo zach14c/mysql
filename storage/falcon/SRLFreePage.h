@@ -41,7 +41,6 @@ public:
 	
 	void			append (Dbb *dbb, int32 pageNumber);
 
-	int			tableSpaceId;
 	int32		pageNumber;
 	int			incarnation;
 };

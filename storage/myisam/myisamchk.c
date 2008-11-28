@@ -1030,7 +1030,7 @@ static int myisamchk(HA_CHECK *param, char * filename)
 	  error|=change_to_newfile(filename,MI_NAME_DEXT,DATA_TMP_EXT,
 				   raid_chunks,
 				   MYF(0));
-	  if (mi_open_datafile(info,info->s, -1))
+	  if (mi_open_datafile(info,info->s, NULL, -1))
 	    error=1;
 	  param->out_flag&= ~O_NEW_DATA; /* We are using new datafile */
 	  param->read_cache.file=info->dfile;
@@ -1065,7 +1065,8 @@ static int myisamchk(HA_CHECK *param, char * filename)
 	error=mi_sort_index(param,info,filename);
       if (!error)
 	share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-				 STATE_CRASHED_ON_REPAIR);
+				 STATE_CRASHED_ON_REPAIR |
+                                 STATE_BAD_OPEN_COUNT);
       else
 	mi_mark_crashed(info);
     }
@@ -1121,7 +1122,8 @@ static int myisamchk(HA_CHECK *param, char * filename)
 	    (param->testflag & T_UPDATE_STATE))
 	  info->update|=HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
 	share->state.changed&= ~(STATE_CHANGED | STATE_CRASHED |
-				 STATE_CRASHED_ON_REPAIR);
+				 STATE_CRASHED_ON_REPAIR |
+                                 STATE_BAD_OPEN_COUNT);
       }
       else if (!mi_is_crashed(info) &&
 	       (param->testflag & T_UPDATE_STATE))

@@ -79,6 +79,9 @@ my_bool _ma_setup_live_state(MARIA_HA *info)
 
   pthread_mutex_lock(&share->intern_lock);
   share->in_trans++;
+  DBUG_PRINT("info", ("share: 0x%lx  in_trans: %d",
+                      (ulong) share, share->in_trans));
+
   history= share->state_history;
 
   /*
@@ -88,7 +91,7 @@ my_bool _ma_setup_live_state(MARIA_HA *info)
     It's enough to compare trids here (instead of calling
     tranman_can_read_from) as history->trid is a commit_trid
   */
-  while (trn->trid < history->trid)
+  while (trn->trid < history->trid && history->trid != ~(TrID)0)
     history= history->next;
   pthread_mutex_unlock(&share->intern_lock);
   /* The current item can't be deleted as it's the first one visible for us */
@@ -110,6 +113,7 @@ end:
    @param all            1 if we should delete the first state if it's
                          visible for all.  For the moment this is only used
                          on close() of table.
+   @param trnman_is_locked  Set to 1 if we have already a lock on trnman.
 
    @notes
      The assumption is that items in the history list is ordered by
@@ -121,6 +125,9 @@ end:
      As long as some states exists, we keep the newest = (last commit)
      state as first state in the history.  This is to allow us to just move
      the history from the global list to the share when we open the table.
+
+     Note that if 'all' is set trnman_is_locked must be 0, becasue
+     trnman_get_min_trid() will take a lock on trnman.
 
    @return
    @retval Pointer to new history list
@@ -157,6 +164,7 @@ MARIA_STATE_HISTORY
 
   if (all && parent == &org_history->next)
   {
+    DBUG_ASSERT(trnman_is_locked == 0);
     /* There is only one state left. Delete this if it's visible for all */
     if (last_trid < trnman_get_min_trid())
     {
@@ -166,6 +174,29 @@ MARIA_STATE_HISTORY
   }
   DBUG_RETURN(org_history);
 }
+
+
+/**
+   @brief Remove not used state history
+
+   @notes
+   share and trnman are not locked.
+
+   We must first lock trnman and then share->intern_lock. This is becasue
+   _ma_trnman_end_trans_hook() has a lock on trnman and then
+   takes share->intern_lock.
+*/
+
+void _ma_remove_not_visible_states_with_lock(MARIA_SHARE *share)
+{
+  trnman_lock();
+  pthread_mutex_lock(&share->intern_lock);
+  share->state_history=  _ma_remove_not_visible_states(share->state_history, 0,
+                                                       1);
+  pthread_mutex_unlock(&share->intern_lock);
+  trnman_unlock();
+}
+
 
 /*
   Free state history information from share->history and reset information
@@ -331,19 +362,20 @@ my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
 {
   my_bool error= 0;
   MARIA_USED_TABLES *tables, *next;
+  DBUG_ENTER("_ma_trnman_end_trans_hook");
   
   for (tables= (MARIA_USED_TABLES*) trn->used_tables;
        tables;
        tables= next)
   {
+    MARIA_SHARE *share= tables->share;
     next= tables->next;
     if (commit)
     {
-      MARIA_SHARE *share= tables->share;
       MARIA_STATE_HISTORY *history;
 
       pthread_mutex_lock(&share->intern_lock);
-      if (active_transactions &&
+      if (active_transactions && share->now_transactional &&
           trnman_exists_active_transactions(share->state_history->trid,
                                             trn->commit_trid, 1))
       {
@@ -377,14 +409,67 @@ my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
         /* Remove not visible states */
         share->state_history= _ma_remove_not_visible_states(history, 0, 1);
       }
+      DBUG_PRINT("info", ("share: 0x%lx  in_trans: %d",
+                          (ulong) share, share->in_trans));
       share->in_trans--;
       pthread_mutex_unlock(&share->intern_lock);
+    }
+    else
+    {
+#ifndef DBUG_OFF
+      /*
+        We need to keep share->in_trans correct in the debug library
+        because of the assert in maria_close()
+      */
+      pthread_mutex_lock(&share->intern_lock);
+      share->in_trans--;
+      pthread_mutex_unlock(&share->intern_lock);
+#endif
     }
     my_free(tables, MYF(0));
   }
   trn->used_tables= 0;
-  return error;
+  DBUG_RETURN(error);
 }
+
+
+/**
+   Remove table from trnman_list
+
+   @notes
+     This is used when we unlock a table from a group of locked tables
+     just before doing a rename or drop table.
+
+     share->internal_lock must be locked when function is called
+*/
+
+void _ma_remove_table_from_trnman(MARIA_SHARE *share, TRN *trn)
+{
+  MARIA_USED_TABLES *tables, **prev;
+  DBUG_ENTER("_ma_remove_table_from_trnman");
+  DBUG_PRINT("enter", ("share: 0x%lx  in_trans: %d",
+                       (ulong) share, share->in_trans));
+
+  safe_mutex_assert_owner(&share->intern_lock);
+  
+  for (prev= (MARIA_USED_TABLES**) &trn->used_tables, tables= *prev;
+       tables;
+       tables= *prev)
+  {
+    if (tables->share == share)
+    {
+      *prev= tables->next;
+      share->in_trans--;
+      DBUG_PRINT("info", ("in_trans: %d", share->in_trans));
+      my_free(tables, MYF(0));
+      break;
+    }
+    prev= &tables->next;
+  }
+  DBUG_VOID_RETURN;
+}
+
+
 
 
 /****************************************************************************
@@ -478,6 +563,23 @@ void _ma_copy_nontrans_state_information(MARIA_HA *info)
 {
   info->s->state.state.records=          info->state->records;
   info->s->state.state.checksum=         info->state->checksum;
+}
+
+
+void _ma_reset_history(MARIA_SHARE *share)
+{
+  MARIA_STATE_HISTORY *history, *next;
+
+  share->state_history->trid= 0;          /* Visibly by all */
+  share->state_history->state= share->state.state;
+  history= share->state_history->next;
+  share->state_history->next= 0;
+
+  for (; history; history= next)
+  {
+    next= history->next;
+    my_free(history, MYF(0));
+  }
 }
 
 

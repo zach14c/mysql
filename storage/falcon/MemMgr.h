@@ -19,6 +19,7 @@
 
 #include "Mutex.h"
 #include "SyncObject.h"
+#include <limits.h>
 
 
 #ifndef MEM_DEBUG
@@ -106,7 +107,8 @@ public:
 class MemMgr
 {
 public:
-	MemMgr(int rounding=defaultRounding, int cutoff=defaultCutoff, int minAllocation=defaultAllocation);
+	MemMgr(int rounding=defaultRounding, int cutoff=defaultCutoff, 
+		int minAllocation=defaultAllocation, bool *alive = NULL);
 	MemMgr(void* arg1, void* arg2);
 	virtual ~MemMgr(void);
 
@@ -129,16 +131,17 @@ public:
 	uint64			activeMemory;
 	int				blocksAllocated;
 	int				blocksActive;
+	bool			*isAlive;
 
 	friend void  MemMgrLogDump();
 
 protected:
-	MemBlock*	alloc(int size);
+	MemBlock*	alloc(size_t size);
 	static void	corrupt(const char* text);
 	
 public:
-	void*		allocate(int size);
-	void*		allocateDebug(int size, const char* fileName, int line);
+	void*		allocate(size_t size);
+	void*		allocateDebug(size_t size, const char* fileName, int line);
 	void		releaseBlock(MemBlock *block);
 	void		validateBlock(MemBlock *block);
 	void		analyze (int mask, Stream *stream, InfoTable *summaryTable, InfoTable *detailTable);

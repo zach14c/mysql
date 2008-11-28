@@ -279,11 +279,12 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
   case HA_EXTRA_FORCE_REOPEN:
     /*
       MySQL uses this case after it has closed all other instances
-      of this table.
-      We however do a flush here for additional safety.
+      of this table;  Note that MySQL may have several copies of the table
+      in the same thread!
+
+      We owever do a flush of data and index here for additional safety.
     */
     /** @todo consider porting these flush-es to MyISAM */
-    DBUG_ASSERT(share->reopen == 1);
     error= _ma_flush_table_files(info, MARIA_FLUSH_DATA | MARIA_FLUSH_INDEX,
                                  FLUSH_FORCE_WRITE, FLUSH_FORCE_WRITE);
     if (!error && share->changed)
@@ -322,6 +323,13 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
     if (share->kfile.file >= 0)
       _ma_decrement_open_count(info);
     pthread_mutex_lock(&share->intern_lock);
+    if (info->trn)
+    {
+      _ma_remove_table_from_trnman(share, info->trn);
+      /* Ensure we don't point to the deleted data in trn */
+      info->state= info->state_start= &share->state.state;
+    }
+
     type= do_flush ? FLUSH_RELEASE : FLUSH_IGNORE_CHANGED;
     if (_ma_flush_table_files(info, MARIA_FLUSH_DATA | MARIA_FLUSH_INDEX,
                               type, type))
@@ -340,7 +348,7 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
       if (do_flush)
       {
         /* Save the state so that others can find it from disk. */
-        if (_ma_state_info_write(share, 1 | 2) ||
+        if ((share->changed && _ma_state_info_write(share, 1 | 2)) ||
             my_sync(share->kfile.file, MYF(0)))
           error= my_errno;
         else
@@ -364,6 +372,16 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
     pthread_mutex_unlock(&THR_LOCK_maria);
     break;
   }
+  case HA_EXTRA_PREPARE_FOR_FORCED_CLOSE:
+    if (info->trn)
+    {
+      pthread_mutex_lock(&share->intern_lock);
+      _ma_remove_table_from_trnman(share, info->trn);
+      /* Ensure we don't point to the deleted data in trn */
+      info->state= info->state_start= &share->state.state;
+      pthread_mutex_unlock(&share->intern_lock);    
+    }
+    break;
   case HA_EXTRA_FLUSH:
     if (!share->temporary)
       error= _ma_flush_table_files(info, MARIA_FLUSH_DATA | MARIA_FLUSH_INDEX,

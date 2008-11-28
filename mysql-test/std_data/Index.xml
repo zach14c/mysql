@@ -1,17 +1,33 @@
 <charsets>
 
   <charset name="utf8">
-    <collation name="utf8_test_ci" id="253">
+    <collation name="utf8_phone_ci" id="352">
+      <rules>
+        <reset>\u0000</reset>
+          <i>\u0020</i> <!-- space -->
+          <i>\u0028</i> <!-- left parenthesis -->
+          <i>\u0029</i> <!-- right parenthesis -->
+          <i>\u002B</i> <!-- plus -->
+          <i>\u002D</i> <!-- hyphen -->
+      </rules>
+    </collation>
+    <collation name="utf8_test_ci" id="353">
+      <rules>
+        <reset>a</reset>
+        <i>b</i>
+      </rules>
+    </collation>
+
+    <collation name="utf8_maxuserid_ci" id="2047">
       <rules>
         <reset>a</reset>
         <s>b</s>
       </rules>
     </collation>
-
   </charset>
 
   <charset name="utf16">
-    <collation name="utf16_test_ci" id="127">
+    <collation name="utf16_test_ci" id="327">
       <rules>
         <reset>a</reset>
         <s>b</s>
@@ -20,7 +36,7 @@
   </charset>
 
   <charset name="utf32">
-    <collation name="utf32_test_ci" id="191">
+    <collation name="utf32_test_ci" id="391">
       <rules>
         <reset>a</reset>
         <s>b</s>
@@ -31,13 +47,13 @@
 
 
   <charset name="ucs2">
-    <collation name="ucs2_test_ci" id="158">
+    <collation name="ucs2_test_ci" id="358">
       <rules>
         <reset>a</reset>
         <s>b</s>
       </rules>
     </collation>
-    <collation name="ucs2_vn_ci" id="159">
+    <collation name="ucs2_vn_ci" id="359">
       <!-- Vietnamese experimental collation -->
       <rules>
         <reset>A</reset>

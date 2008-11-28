@@ -29,17 +29,8 @@ static const int TABLESPACE_TYPE_REPOSITORY		= 1;
 
 struct TableSpaceInit
 {
-	int64	initialSize;
 	JString	comment;
-	TableSpaceInit(): initialSize(0), comment("") {}
-	/***
-	int64	extentSize;
-	int64	autoExtendSize;
-	int64	maxSize;
-	int		nodegroup;
-	int		wait;
-	TableSpaceInit(): initialSize(0), extentSize(0), autoExtendSize(0), maxSize(0), nodegroup(0), wait(0), comment("") {}
-	***/
+	TableSpaceInit(): comment("") {}
 };
 
 class Dbb;
@@ -75,14 +66,6 @@ public:
 	bool		active;
 	bool		needSave;
 	
-	int64		initialSize;
-	/***
-	int64		extentSize;
-	int64		autoExtendSize;
-	int64		maxSize;
-	int			nodegroup;
-	int			wait;
-	***/
 	JString		comment;
 };
 

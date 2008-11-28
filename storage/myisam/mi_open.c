@@ -33,6 +33,8 @@
 #endif
 
 static void setup_key_functions(MI_KEYDEF *keyinfo);
+static int log_key_page_flush_physical(void *arg, const uchar *buffert,
+                                       uint length, my_off_t filepos);
 #define get_next_element(to,pos,size) { memcpy((char*) to,pos,(size_t) size); \
 					pos+=size;}
 
@@ -75,7 +77,7 @@ MI_INFO *test_if_reopen(char *filename)
 
 MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 {
-  int lock_error,kfile,open_mode,save_errno,have_rtree=0;
+  int lock_error,kfile,open_mode,save_errno,have_rtree=0, realpath_err;
   uint i,j,len,errpos,head_length,base_pos,offset,info_length,keys,
     key_parts,unique_key_parts,fulltext_keys,uniques;
   char name_buff[FN_REFLEN], org_name[FN_REFLEN], index_name[FN_REFLEN],
@@ -95,8 +97,21 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   head_length=sizeof(share_buff.state.header);
   bzero((uchar*) &info,sizeof(info));
 
-  my_realpath(name_buff, fn_format(org_name,name,"",MI_NAME_IEXT,
-                                   MY_UNPACK_FILENAME),MYF(0));
+  /*
+    'name' is an unresolved name (no .sym or Unix symbolic link
+    resolution). Physical logging needs it. We resolve 'name' in 'org_name'
+    and 'name_buff'. Don't change how name_buff is built without updating
+    myisam_backup::Backup::begin().
+  */
+  realpath_err= my_realpath(name_buff,
+                            fn_format(org_name,name,"",MI_NAME_IEXT,4),MYF(0));
+  if (my_is_symlink(org_name) &&
+      (realpath_err || (*myisam_test_invalid_symlink)(name_buff)))
+  {
+    my_errno= HA_WRONG_CREATE_OPTION;
+    DBUG_RETURN (NULL);
+  }
+
   pthread_mutex_lock(&THR_LOCK_myisam);
   if (!(old_info=test_if_reopen(name_buff)))
   {
@@ -108,6 +123,20 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     share_buff.key_cache= multi_key_cache_search((uchar*) name_buff,
                                                  strlen(name_buff),
                                                  dflt_key_cache);
+#ifdef HAVE_MYISAM_PHYSICAL_LOGGING
+    if (unlikely((share_buff.key_cache->post_write == NULL) &&
+                 (open_flags & HA_OPEN_FROM_SQL_LAYER)))
+      
+    {
+      /*
+        This is a post_write: physical_logging_state has to be checked after
+        doing the table write (see mi_log_start_physical()).
+        We set it now as physical logging may be requested later when the
+        cache has started being used and blocks are cached.
+      */
+      share_buff.key_cache->post_write= log_key_page_flush_physical;
+    }
+#endif
 
     DBUG_EXECUTE_IF("myisam_pretend_crashed_table_on_open",
                     if (strstr(name, "/t1"))
@@ -215,18 +244,29 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     disk_pos= mi_n_base_info_read(disk_cache + base_pos, &share->base);
     share->state.state_length=base_pos;
 
-    if (!(open_flags & HA_OPEN_FOR_REPAIR) &&
-	((share->state.changed & STATE_CRASHED) ||
-	 ((open_flags & HA_OPEN_ABORT_IF_CRASHED) &&
-	  (my_disable_locking && share->state.open_count))))
+    if (!(open_flags & HA_OPEN_FOR_REPAIR))
     {
-      DBUG_PRINT("error",("Table is marked as crashed. open_flags: %u  "
-                          "changed: %u  open_count: %u  !locking: %d",
-                          open_flags, share->state.changed,
-                          share->state.open_count, my_disable_locking));
-      my_errno=((share->state.changed & STATE_CRASHED_ON_REPAIR) ?
-		HA_ERR_CRASHED_ON_REPAIR : HA_ERR_CRASHED_ON_USAGE);
-      goto err;
+      if ((share->state.changed & STATE_CRASHED) ||
+          ((open_flags & HA_OPEN_ABORT_IF_CRASHED) &&
+           (my_disable_locking && share->state.open_count)))
+      {
+        DBUG_PRINT("error",("Table is marked as crashed. open_flags: %u  "
+                            "changed: %u  open_count: %u  !locking: %d",
+                            open_flags, share->state.changed,
+                            share->state.open_count, my_disable_locking));
+        my_errno=((share->state.changed & STATE_CRASHED_ON_REPAIR) ?
+                  HA_ERR_CRASHED_ON_REPAIR : HA_ERR_CRASHED_ON_USAGE);
+        goto err;
+      }
+      /*
+        Tell future openers that open_count was positive at first open (sign
+        of a problem). See myisam_backup_engine.cc.
+      */
+      if (my_disable_locking && share->state.open_count)
+      {
+        DBUG_PRINT("info", ("STATE_BAD_OPEN_COUNT set on"));
+        share->state.changed|= STATE_BAD_OPEN_COUNT;
+      }
     }
 
     /* sanity check */
@@ -297,6 +337,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 			 &share->rec,
 			 (share->base.fields+1)*sizeof(MI_COLUMNDEF),
 			 &share->blobs,sizeof(MI_BLOB)*share->base.blobs,
+                         &share->unresolv_file_name,strlen(name)+1,
 			 &share->unique_file_name,strlen(name_buff)+1,
 			 &share->index_file_name,strlen(index_name)+1,
 			 &share->data_file_name,strlen(data_name)+1,
@@ -318,6 +359,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     memcpy((char*) share->state.key_del,
 	   (char*) key_del, (sizeof(my_off_t) *
 			     share->state.header.max_block_size_index));
+    strmov(share->unresolv_file_name,name);
     strmov(share->unique_file_name, name_buff);
     share->unique_name_length= strlen(name_buff);
     strmov(share->index_file_name,  index_name);
@@ -485,7 +527,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
       lock_error=1;			/* Database unlocked */
     }
 
-    if (mi_open_datafile(&info, share, -1))
+    if (mi_open_datafile(&info, share, name, -1))
       goto err;
     errpos=5;
 
@@ -522,6 +564,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 #ifdef THREAD
     thr_lock_init(&share->lock);
     pthread_mutex_init(&share->intern_lock,MY_MUTEX_INIT_FAST);
+    my_atomic_rwlock_init(&share->physical_logging_rwlock);
     for (i=0; i<keys; i++)
       (void) my_rwlock_init(&share->key_root_lock[i], NULL);
     (void) my_rwlock_init(&share->mmap_lock, NULL);
@@ -565,7 +608,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
       my_errno=EACCES;				/* Can't open in write mode */
       goto err;
     }
-    if (mi_open_datafile(&info, share, old_info->dfile))
+    if (mi_open_datafile(&info, share, name, old_info->dfile))
       goto err;
     errpos=5;
     have_rtree= old_info->rtree_recursion_state != NULL;
@@ -579,7 +622,6 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 				   share->base.max_key_length),
 		       &info.lastkey,share->base.max_key_length*3+1,
 		       &info.first_mbr_key, share->base.max_key_length,
-		       &info.filename,strlen(name)+1,
 		       &info.rtree_recursion_state,have_rtree ? 1024 : 0,
 		       NullS))
     goto err;
@@ -588,7 +630,6 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   if (!have_rtree)
     info.rtree_recursion_state= NULL;
 
-  strmov(info.filename,name);
   memcpy(info.blobs,share->blobs,sizeof(MI_BLOB)*share->base.blobs);
   info.lastkey2=info.lastkey+share->base.max_key_length;
 
@@ -634,6 +675,13 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
       myisam_delay_key_write)
     share->delay_key_write=1;
   info.state= &share->state.state;	/* Change global values by default */
+
+  if (unlikely(share->state.changed & STATE_BAD_OPEN_COUNT))
+  {
+    /* client may be a reader: ensure new state's flag not lost */
+    mi_state_info_write(share, share->kfile, &share->state, 1);
+  }
+
   pthread_mutex_unlock(&share->intern_lock);
 
   /* Allocate buffer for one record */
@@ -647,14 +695,19 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 #ifdef THREAD
   thr_lock_data_init(&share->lock,&m_info->lock,(void*) m_info);
 #endif
+  if (mi_log_tables_physical &&
+      hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
+                  share->unique_name_length))
+    m_info->s->physical_logging= TRUE; /* set before publishing table */
   m_info->open_list.data=(void*) m_info;
   myisam_open_list=list_add(myisam_open_list,&m_info->open_list);
 
   pthread_mutex_unlock(&THR_LOCK_myisam);
-  if (myisam_log_file >= 0)
+  if (my_b_inited(&myisam_logical_log))
   {
     intern_filename(name_buff,share->index_file_name);
-    _myisam_log(MI_LOG_OPEN, m_info, (uchar*) name_buff, strlen(name_buff));
+    _myisam_log_command(&myisam_logical_log, MI_LOG_OPEN, m_info,
+                        (uchar *)name_buff, strlen(name_buff), 0);
   }
   DBUG_RETURN(m_info);
 
@@ -869,15 +922,25 @@ static void setup_key_functions(register MI_KEYDEF *keyinfo)
 }
 
 
-/*
-   Function to save and store the header in the index file (.MYI)
+/**
+  Function to store state into the index file's header.
+
+  @param  share            table's share
+  @param  file             file descriptor of the index file
+  @param  state            state of the table
+  @param  pWrite           if my_pwrite() or my_write() should be used
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    error
 */
 
-uint mi_state_info_write(File file, MI_STATE_INFO *state, uint pWrite)
+uint mi_state_info_write(MYISAM_SHARE *share, File file,
+                         MI_STATE_INFO *state, uint pWrite)
 {
   uchar  buff[MI_STATE_INFO_SIZE + MI_STATE_EXTRA_SIZE];
   uchar *ptr=buff;
-  uint	i, keys= (uint) state->header.keys,
+  uint	i, ret, keys= (uint) state->header.keys,
 	key_blocks=state->header.max_block_size_index;
   DBUG_ENTER("mi_state_info_write");
 
@@ -929,11 +992,13 @@ uint mi_state_info_write(File file, MI_STATE_INFO *state, uint pWrite)
     }
   }
 
-  if (pWrite & 1)
-    DBUG_RETURN(my_pwrite(file, buff, (size_t) (ptr-buff), 0L,
-			  MYF(MY_NABP | MY_THREADSAFE)) != 0);
-  DBUG_RETURN(my_write(file, buff, (size_t) (ptr-buff),
-		       MYF(MY_NABP)) != 0);
+  ret= (pWrite & 1) ? (my_pwrite(file, buff, (uint) (ptr-buff), 0L,
+                                 MYF(MY_NABP | MY_THREADSAFE)) != 0):
+    (my_write(file, buff, (uint) (ptr-buff), MYF(MY_NABP)) != 0);
+  if (mi_get_physical_logging_state(share))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYI,
+                               share, buff, (uint) (ptr-buff), 0L);
+   DBUG_RETURN(ret);
 }
 
 
@@ -990,11 +1055,40 @@ uchar *mi_state_info_read(uchar *ptr, MI_STATE_INFO *state)
 }
 
 
-uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead)
+/**
+  Read state info from file.
+
+  @param[in]        file        index file descriptor
+  @param[in,out]    state       state info to update from file
+  @param[in]        pRead       if to use my_pread() instaed of my_read()
+  @param[in]        force       force read
+
+  @return           status
+    @retval         0           ok
+    @retval         1           error
+
+  Normally this function does not read the state info from file if
+  'myisam_single_user' is true. This means that mysqld is the only
+  program that works on the table files. No other program modifies the
+  files. Hence the in-memory state is expected to be current.
+
+  If there are other programs tampering with the files, mysqld must be
+  started with --external-locking. This makes 'myisam_single_user'
+  false. In this case this function does indeed read the state from
+  disk.
+
+  In cases like restore, we modify the table files directly,
+  bypassing the MyISAM interface. We do this inside of mysqld, so
+  --external-locking need not be specified. We support this case by the
+  'force' parameter.
+*/
+
+uint mi_state_info_read_dsk(File file, MI_STATE_INFO *state, my_bool pRead,
+                            my_bool force)
 {
   uchar	buff[MI_STATE_INFO_SIZE + MI_STATE_EXTRA_SIZE];
 
-  if (!myisam_single_user)
+  if (!myisam_single_user || force)
   {
     if (pRead)
     {
@@ -1136,10 +1230,10 @@ int mi_keyseg_write(File file, const HA_KEYSEG *keyseg)
   ulong pos;
 
   *ptr++= keyseg->type;
-  *ptr++= keyseg->language;
+  *ptr++= keyseg->language & 0xFF; /* Collation ID, low byte */
   *ptr++= keyseg->null_bit;
   *ptr++= keyseg->bit_start;
-  *ptr++= keyseg->bit_end;
+  *ptr++= keyseg->language >> 8; /* Collation ID, high byte */
   *ptr++= keyseg->bit_length;
   mi_int2store(ptr,keyseg->flag);	ptr+=2;
   mi_int2store(ptr,keyseg->length);	ptr+=2;
@@ -1158,12 +1252,13 @@ uchar *mi_keyseg_read(uchar *ptr, HA_KEYSEG *keyseg)
    keyseg->language	= *ptr++;
    keyseg->null_bit	= *ptr++;
    keyseg->bit_start	= *ptr++;
-   keyseg->bit_end	= *ptr++;
+   keyseg->language	+= ((uint16) (*ptr++)) << 8;
    keyseg->bit_length   = *ptr++;
    keyseg->flag		= mi_uint2korr(ptr);  ptr +=2;
    keyseg->length	= mi_uint2korr(ptr);  ptr +=2;
    keyseg->start	= mi_uint4korr(ptr);  ptr +=4;
    keyseg->null_pos	= mi_uint4korr(ptr);  ptr +=4;
+   keyseg->bit_end= 0;
    keyseg->charset=0;				/* Will be filled in later */
    if (keyseg->null_bit)
      keyseg->bit_pos= (uint16)(keyseg->null_pos + (keyseg->null_bit == 7));
@@ -1233,13 +1328,30 @@ The argument file_to_dup is here for the future if there would on some OS
 exist a dup()-like call that would give us two different file descriptors.
 *************************************************************************/
 
-int mi_open_datafile(MI_INFO *info, MYISAM_SHARE *share,
+int mi_open_datafile(MI_INFO *info, MYISAM_SHARE *share, const char *org_name,
                      File file_to_dup __attribute__((unused)))
 {
+  char *data_name= share->data_file_name;
+  char real_data_name[FN_REFLEN];
+
+  if (org_name)
+  {
+    fn_format(real_data_name,org_name,"",MI_NAME_DEXT,4);
+    if (my_is_symlink(real_data_name))
+    {
+      if (my_realpath(real_data_name, real_data_name, MYF(0)) ||
+          (*myisam_test_invalid_symlink)(real_data_name))
+      {
+        my_errno= HA_WRONG_CREATE_OPTION;
+        return 1;
+      }
+      data_name= real_data_name;
+    }
+  }
 #ifdef USE_RAID
   if (share->base.raid_type)
   {
-    info->dfile=my_raid_open(share->data_file_name,
+    info->dfile=my_raid_open(data_name,
 			     share->mode | O_SHARE,
 			     share->base.raid_type,
 			     share->base.raid_chunks,
@@ -1248,8 +1360,7 @@ int mi_open_datafile(MI_INFO *info, MYISAM_SHARE *share,
   }
   else
 #endif
-    info->dfile=my_open(share->data_file_name, share->mode | O_SHARE,
-			MYF(MY_WME));
+    info->dfile=my_open(data_name, share->mode | O_SHARE, MYF(MY_WME));
   return info->dfile >= 0 ? 0 : 1;
 }
 
@@ -1362,3 +1473,34 @@ int mi_indexes_are_disabled(MI_INFO *info)
   return 2;
 }
 
+
+/**
+  Logs when the key cache flushes a page to the file (so far, always the
+  index file), to the physical log.
+
+  Argument cannot be a MI_INFO* (the MI_INFO which put the page in the key
+  cache may have been freed long ago when the page is finally flushed), it is
+  MYISAM_SHARE* which is sure to be valid.
+
+  @param  arg              MYISAM_SHARE* where the block belongs
+  @param  buffert          argument to the pwrite
+  @param  length           length of buffer
+  @param  filepos          offset in file where buffer was written
+
+  @return Operation status, always 0
+    @retval 0      ok. Yes, even if log write fails we return ok, don't want
+                   to make the table writer believe its table is now
+                   corrupted.
+*/
+
+static int log_key_page_flush_physical(void *arg, const uchar *buffert,
+                                       uint length, my_off_t filepos)
+{
+  MYISAM_SHARE *share= (MYISAM_SHARE *)arg;
+  DBUG_ENTER("log_key_page_flush_physical");
+  if (unlikely(mi_log_index_pages_physical &&
+               mi_get_physical_logging_state(share)))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYI, share, buffert,
+                               length, filepos);
+  DBUG_RETURN(0);
+}

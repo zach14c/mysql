@@ -16,14 +16,17 @@
 #include "Engine.h"
 #include "WalkDeferred.h"
 
-WalkDeferred::WalkDeferred(DeferredIndex *deferredIndex, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper) 
-	: IndexWalker(deferredIndex->index, transaction, flags)
+WalkDeferred::WalkDeferred(DeferredIndex *deferredIdx, Transaction *transaction, int flags, IndexKey *lower, IndexKey *upper) 
+	: IndexWalker(deferredIdx->index, transaction, flags)
 {
+	deferredIndex = deferredIdx;
 	walker.initialize(deferredIndex, lower, flags);
+	node = NULL;
 }
 
 WalkDeferred::~WalkDeferred(void)
 {
+	deferredIndex->release();
 }
 
 Record* WalkDeferred::getNext(bool lockForUpdate)
@@ -35,7 +38,6 @@ Record* WalkDeferred::getNext(bool lockForUpdate)
 		if (!node)
 			{
 			currentRecord = NULL;
-			
 			return NULL;
 			}
 

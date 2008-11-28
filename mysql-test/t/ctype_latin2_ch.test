@@ -93,3 +93,105 @@ hex(weight_string(ch level 4)) l4,
 name from t1 order by l1, l2, l3, l4;
 drop table t1;
 
+#
+# Bug#33791 Wrong ORDER BY with latin2_czech_cs
+#
+set names utf8;
+create table t1 (
+ch varchar(1),
+name varchar(64)
+) character set latin2 collate latin2_czech_cs;
+insert into t1 values (0x4F,'LATIN CAPITAL LETTER O');
+insert into t1 values (0xD3,'LATIN CAPITAL LETTER O WITH ACUTE');
+insert into t1 values (0xD4,'LATIN CAPITAL LETTER O WITH CURCUMFLEX');
+insert into t1 values (0xD6,'LATIN CAPITAL LETTER O WITH DIAERESIS');
+insert into t1 values (0xD5,'LATIN CAPITAL LETTER O WITH DOUBLE ACUTE');
+insert into t1 values (0x75,'LATIN _SMALL_ LETTER U');
+insert into t1 values (0xFA,'LATIN _SMALL_ LETTER U WITH ACUTE');
+insert into t1 values (0xF9,'LATIN _SMALL_ LETTER U WITH RING ABOVE');
+insert into t1 values (0xFC,'LATIN _SMALL_ LETTER U WITH DIAERESIS');
+insert into t1 values (0xFB,'LATIN _SMALL_ LETTER U WITH DOUBLE ACUTE');
+# Testing order by Field_varchar
+select ch,
+  hex(weight_string(ch level 1)) l1,
+  hex(weight_string(ch level 2)) l2,
+  hex(weight_string(ch level 3)) l3,
+  hex(weight_string(ch level 4)) l4,
+  name from t1 order by ch;
+alter table t1 modify ch char(1), modify name char(64);
+# Testing order by Field_char
+select ch,
+  hex(weight_string(ch level 1)) l1,
+  hex(weight_string(ch level 2)) l2,
+  hex(weight_string(ch level 3)) l3,
+  hex(weight_string(ch level 4)) l4,
+  name from t1 order by ch;
+# Testing order by Item
+select ch,
+  hex(weight_string(ch level 1)) l1,
+  hex(weight_string(ch level 2)) l2,
+  hex(weight_string(ch level 3)) l3,
+  hex(weight_string(ch level 4)) l4,
+  name from t1 order by concat(ch);
+drop table t1;
+
+#
+# Bug #30462 Character sets: search failures with case sensitive collations
+#
+SET collation_connection=latin2_czech_cs;
+CREATE TABLE t1 ENGINE=MYISAM AS SELECT repeat('a', 5) AS s1 LIMIT 0;
+INSERT INTO t1 VALUES ('x'),('y'),('z'),('X'),('Y'),('Z');
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+CREATE INDEX i1 ON t1 (s1);
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+DROP TABLE t1;
+
+--disable_warnings
+CREATE TABLE t1 ENGINE=INNODB AS SELECT repeat('a', 5) AS s1 LIMIT 0;
+--enable_warnings
+INSERT INTO t1 VALUES ('x'),('y'),('z'),('X'),('Y'),('Z');
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+CREATE INDEX i1 ON t1 (s1);
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+DROP TABLE t1;
+
+--disable_warnings
+CREATE TABLE t1 ENGINE=FALCON AS SELECT repeat('a', 5) AS s1 LIMIT 0;
+--enable_warnings
+INSERT INTO t1 VALUES ('x'),('y'),('z'),('X'),('Y'),('Z');
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+CREATE INDEX i1 ON t1 (s1);
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+DROP TABLE t1;
+
+--disable_warnings
+CREATE TABLE t1 ENGINE=MARIA AS SELECT repeat('a', 5) AS s1 LIMIT 0;
+--enable_warnings
+INSERT INTO t1 VALUES ('x'),('y'),('z'),('X'),('Y'),('Z');
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+CREATE INDEX i1 ON t1 (s1);
+SELECT * FROM t1 GROUP BY s1;
+SELECT * FROM t1 ORDER BY s1;
+DROP TABLE t1;
+
+SET NAMES latin2;
+
+#
+# Bug#37854 Test fails/aborts for collate latin2_czech_cs used with SET and ENUM datatypes
+#
+CREATE TABLE t2(colours SET('red','blue','yellow'))CHARACTER SET latin2 COLLATE
+latin2_czech_cs;
+CREATE TABLE t1(continent ENUM('Asia', 'Europe','Africa','Antartica'))CHARACTER SET latin2
+COLLATE latin2_czech_cs;
+INSERT INTO t1 VALUES('Asia');
+INSERT INTO t2 VALUES('blue');
+SELECT * FROM t1;
+SELECT * FROM t2;
+DROP TABLE t1, t2;

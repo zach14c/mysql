@@ -26,6 +26,7 @@
 
 static const int RPG_HASH_SIZE			= 101;
 
+#include "SyncObject.h"
 class RecoveryPage;
 class SerialLog;
 
@@ -39,6 +40,7 @@ public:
 	void			reset();
 	bool			bumpIncarnation(int objectNumber, int tableSpaceId, int state, bool pass1);
 	void			clear();
+	RecoveryPage*	findInHashBucket(RecoveryPage *head, int objectNumber, int tableSpaceId);
 	RecoveryPage*	findRecoveryObject(int objectNumber, int tableSpaceId);
 	void			setActive(int objectNumber, int tableSpaceId);
 	void			setInactive(int objectNumber, int tableSpaceId);
@@ -48,6 +50,7 @@ public:
 
 	SerialLog			*serialLog;
 	RecoveryPage		*recoveryObjects[RPG_HASH_SIZE];
+	SyncObject			syncArray[RPG_HASH_SIZE];
 };
 
 #endif // !defined(AFX_RECOVERYOBJECTS_H__00C7CE5F_3C33_435C_9521_9C274CAB0581__INCLUDED_)

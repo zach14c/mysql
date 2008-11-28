@@ -1,8 +1,6 @@
 #ifndef _BUFFER_ITERATOR_H
 #define _BUFFER_ITERATOR_H
 
-#include "mysql_priv.h"
-
 using backup::byte;
 
 /**

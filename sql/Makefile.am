@@ -31,10 +31,19 @@ EXTRA_PROGRAMS =	gen_lex_hash
 bin_PROGRAMS =		mysql_tzinfo_to_sql
 DTRACE =                @DTRACE@
 DTRACEFLAGS =           @DTRACEFLAGS@
-DTRACEFILES =           handler.o \
-			filesort.o \
-			sql_insert.o \
+DTRACEFILES =           filesort.o \
+			handler.o \
+			mysqld.o \
+			net_serv.o \
+			scheduler.o \
+			sp_head.o \
+			sql_cache.o \
+			sql_connect.o \
+			sql_cursor.o \
 			sql_delete.o \
+			sql_insert.o \
+			sql_parse.o \
+			sql_prepare.o \
 			sql_select.o \
 			sql_update.o
 
@@ -87,9 +96,10 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			sql_plugin.h authors.h event_parse_data.h \
 			event_data_objects.h event_scheduler.h \
 			sql_partition.h partition_info.h partition_element.h \
-			probes.h sql_audit.h \
+			probes.h sql_audit.h transaction.h \
 			contributors.h sql_servers.h ddl_blocker.h \
-			si_objects.h sql_plist.h mdl.h
+			si_objects.h si_logs.h sql_plist.h mdl.h records.h \
+			rpl_handler.h replication.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -115,6 +125,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			discover.cc time.cc opt_range.cc opt_sum.cc \
 		   	records.cc filesort.cc handler.cc \
 		        ha_partition.cc \
+			debug_sync.cc \
 			sql_db.cc sql_table.cc sql_rename.cc sql_crypt.cc \
 			sql_load.cc mf_iocache.cc field_conv.cc sql_show.cc \
 			sql_udf.cc sql_analyse.cc sql_analyse.h sql_cache.cc \
@@ -134,8 +145,9 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc event_parse_data.cc \
-			mdl.cc
+			ddl_blocker.cc si_objects.cc si_logs.cc \
+			event_parse_data.cc mdl.cc transaction.cc \
+			rpl_handler.cc
 
 if HAVE_DTRACE
   mysqld_SOURCES += probes.d
@@ -166,9 +178,12 @@ DEFS =			-DMYSQL_SERVER \
 BUILT_MAINT_SRC =	sql_yacc.cc sql_yacc.h
 BUILT_SOURCES =		$(BUILT_MAINT_SRC) lex_hash.h link_sources
 EXTRA_DIST =		udf_example.c udf_example.def $(BUILT_MAINT_SRC) \
-			nt_servc.cc nt_servc.h message.mc CMakeLists.txt \
+			nt_servc.cc nt_servc.h CMakeLists.txt \
 			probes.d \
-			udf_example.c udf_example.def
+			message.mc  message.h message.rc MSG00001.bin \
+			nt_servc.cc nt_servc.h \
+			CMakeLists.txt
+
 CLEANFILES =        	lex_hash.h sql_yacc.output link_sources
 DISTCLEANFILES =        $(EXTRA_PROGRAMS)
 MAINTAINERCLEANFILES =  $(BUILT_MAINT_SRC)
@@ -215,8 +230,10 @@ install-exec-hook:
 
 SUFFIXES : .d
 
-.d.o : $(DTRACEFILES)
+.d.o :
 	$(DTRACE) $(DTRACEFLAGS) -G -s $< $(DTRACEFILES)
+
+probes.o : $(DTRACEFILES)
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%

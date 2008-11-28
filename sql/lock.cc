@@ -74,6 +74,7 @@
 */
 
 #include "mysql_priv.h"
+#include "transaction.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -168,9 +169,8 @@ int mysql_lock_tables_check(THD *thd, TABLE **tables, uint count, uint flags)
   DBUG_RETURN(0);
 }
 
-
 /**
-  Reset lock type in lock data and free.
+  Reset lock type in lock data
 
   @param mysql_lock Lock structures to reset.
 
@@ -189,10 +189,11 @@ int mysql_lock_tables_check(THD *thd, TABLE **tables, uint count, uint flags)
         lock request will set its lock type properly.
 */
 
-static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
+
+static void reset_lock_data(MYSQL_LOCK *sql_lock)
 {
-  MYSQL_LOCK *sql_lock= *mysql_lock;
   THR_LOCK_DATA **ldata, **ldata_end;
+  DBUG_ENTER("reset_lock_data");
 
   /* Clear the lock type of all lock data to avoid reusage. */
   for (ldata= sql_lock->locks, ldata_end= ldata + sql_lock->lock_count;
@@ -202,7 +203,21 @@ static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
     /* Reset lock type. */
     (*ldata)->type= TL_UNLOCK;
   }
-  my_free((uchar*) sql_lock, MYF(0));
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Reset lock type in lock data and free.
+
+  @param mysql_lock Lock structures to reset.
+
+*/
+
+static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
+{
+  reset_lock_data(*mysql_lock);
+  my_free(*mysql_lock, MYF(0));
   *mysql_lock= 0;
 }
 
@@ -314,6 +329,13 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
     }
     else if (rc == 1)                           /* aborted or killed */
     {
+      /*
+        reset_lock_data is required here. If thr_multi_lock fails it
+        resets lock type for tables, which were locked before (and
+        including) one that caused error. Lock type for other tables
+        preserved.
+      */
+      reset_lock_data(sql_lock);
       thd->some_tables_deleted=1;		// Try again
       sql_lock->lock_count= 0;                  // Locks are already freed
       // Fall through: unlock, reset lock data, free and retry
@@ -349,6 +371,7 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
     */
     reset_lock_data_and_free(&sql_lock);
 retry:
+    DEBUG_SYNC(thd, "mysql_lock_retry");
     /* Let upper level close all used tables and retry or give error. */
     *need_reopen= TRUE;
     break;
@@ -866,7 +889,7 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
     if ((table=table_ptr[i])->s->tmp_table == NON_TRANSACTIONAL_TMP_TABLE)
       continue;
     lock_type= table->reginfo.lock_type;
-    DBUG_ASSERT (lock_type != TL_WRITE_DEFAULT);
+    DBUG_ASSERT(lock_type != TL_WRITE_DEFAULT && lock_type != TL_READ_DEFAULT);
     if (lock_type >= TL_WRITE_ALLOW_WRITE)
     {
       *write_lock_used=table;
@@ -941,6 +964,7 @@ bool lock_table_names(THD *thd, TABLE_LIST *table_list)
   TABLE_LIST *lock_table;
   MDL_LOCK_DATA *mdl_lock_data;
 
+  DEBUG_SYNC(thd, "before_wait_locked_tname");
   for (lock_table= table_list; lock_table; lock_table= lock_table->next_local)
   {
     if (!(mdl_lock_data= mdl_alloc_lock(0, lock_table->db,
@@ -1100,9 +1124,33 @@ bool lock_global_read_lock(THD *thd)
   if (!thd->global_read_lock)
   {
     const char *old_message;
+    const char *new_message= "Waiting to get readlock";
     (void) pthread_mutex_lock(&LOCK_global_read_lock);
+
+#if defined(ENABLED_DEBUG_SYNC)
+    /*
+      The below sync point fires if we have to wait for
+      protect_against_global_read_lock.
+
+      WARNING: Beware to use WAIT_FOR with this sync point. We hold
+      LOCK_global_read_lock here.
+
+      Call the sync point before calling enter_cond() as it does use
+      enter_cond() and exit_cond() itself if a WAIT_FOR action is
+      executed in spite of the above warning.
+
+      Pre-set proc_info so that it is available immediately after the
+      sync point sends a SIGNAL. This makes tests more reliable.
+    */
+    if (protect_against_global_read_lock)
+    {
+      thd_proc_info(thd, new_message);
+      DEBUG_SYNC(thd, "wait_lock_global_read_lock");
+    }
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
     old_message=thd->enter_cond(&COND_global_read_lock, &LOCK_global_read_lock,
-                                "Waiting to get readlock");
+                                new_message);
     DBUG_PRINT("info",
 	       ("waiting_for: %d  protect_against: %d",
 		waiting_for_read_lock, protect_against_global_read_lock));
@@ -1207,6 +1255,8 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
   (void) pthread_mutex_lock(&LOCK_global_read_lock);
   if ((need_exit_cond= must_wait))
   {
+    const char *new_message= "Waiting for release of readlock";
+
     if (thd->global_read_lock)		// This thread had the read locks
     {
       if (is_not_commit)
@@ -1220,8 +1270,31 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
       */
       DBUG_RETURN(is_not_commit);
     }
+
+#if defined(ENABLED_DEBUG_SYNC)
+    /*
+      The below sync point fires if we have to wait for
+      global_read_lock.
+
+      WARNING: Beware to use WAIT_FOR with this sync point. We hold
+      LOCK_global_read_lock here.
+
+      Call the sync point before calling enter_cond() as it does use
+      enter_cond() and exit_cond() itself if a WAIT_FOR action is
+      executed in spite of the above warning.
+
+      Pre-set proc_info so that it is available immediately after the
+      sync point sends a SIGNAL. This makes tests more reliable.
+    */
+    if (must_wait)
+    {
+      thd_proc_info(thd, new_message);
+      DEBUG_SYNC(thd, "wait_if_global_read_lock");
+    }
+#endif /* defined(ENABLED_DEBUG_SYNC) */
+
     old_message=thd->enter_cond(&COND_global_read_lock, &LOCK_global_read_lock,
-				"Waiting for release of readlock");
+                                new_message);
     while (must_wait && ! thd->killed &&
 	   (!abort_on_refresh || thd->version == refresh_version))
     {
@@ -1233,7 +1306,11 @@ bool wait_if_global_read_lock(THD *thd, bool abort_on_refresh,
       result=1;
   }
   if (!abort_on_refresh && !result)
+  {
     protect_against_global_read_lock++;
+    DBUG_PRINT("sql_lock", ("protect_against_global_read_lock incr: %u",
+                            protect_against_global_read_lock));
+  }
   /*
     The following is only true in case of a global read locks (which is rare)
     and if old_message is set
@@ -1256,6 +1333,8 @@ void start_waiting_global_read_lock(THD *thd)
   DBUG_ASSERT(protect_against_global_read_lock);
   tmp= (!--protect_against_global_read_lock &&
         (waiting_for_read_lock || global_read_lock_blocks_commit));
+  DBUG_PRINT("sql_lock", ("protect_against_global_read_lock decr: %u",
+                          protect_against_global_read_lock));
   (void) pthread_mutex_unlock(&LOCK_global_read_lock);
   if (tmp)
     pthread_cond_broadcast(&COND_global_read_lock);
@@ -1383,7 +1462,7 @@ int try_transactional_lock(THD *thd, TABLE_LIST *table_list)
 
  err:
   /* We need to explicitly commit if autocommit mode is active. */
-  (void) ha_autocommit_or_rollback(thd, 0);
+  trans_commit_stmt(thd);
   /* Close the tables. The locks (if taken) persist in the storage engines. */
   close_tables_for_reopen(thd, &table_list, FALSE);
   thd->in_lock_tables= FALSE;

@@ -20,6 +20,7 @@
 noinst_LTLIBRARIES = libbackup.la libbackupstream.la
 
 INCLUDES = \
+  @ZLIB_INCLUDES@ \
   -I$(top_builddir)/include \
   -I$(top_srcdir)/include \
   -I$(top_srcdir)/sql \
@@ -28,14 +29,15 @@ INCLUDES = \
 libbackup_la_SOURCES = \
   stream.cc \
   logger.cc \
-  catalog.cc \
+  image_info.cc \
+  backup_info.cc \
   kernel.cc \
   data_backup.cc \
   be_default.cc \
   be_snapshot.cc \
+  be_nodata.cc \
   buffer_iterator.cc \
   be_thread.cc \
-  backup_progress.cc \
   backup_test.cc
 
 libbackup_la_LIBADD = libbackupstream.la
@@ -50,18 +52,20 @@ noinst_HEADERS = \
   backup_kernel.h \
   backup_stream.h \
   stream_services.h \
-  debug.h \
   error.h \
   stream.h \
   backup_aux.h \
   logger.h \
-  catalog.h \
+  image_info.h \
+  backup_info.h \
+  restore_info.h \
   be_native.h \
+  be_logical.h \
   be_default.h \
   be_snapshot.h \
+  be_nodata.h \
   buffer_iterator.h \
   be_thread.h \
-  backup_progress.h \
   stream_v1.h \
   stream_v1_services.h \
   backup_test.h

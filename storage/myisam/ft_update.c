@@ -75,7 +75,7 @@ uint _mi_ft_segiterator(register FT_SEG_ITERATOR *ftsi)
   if (ftsi->seg->flag & HA_VAR_LENGTH_PART)
   {
     uint pack_length= (ftsi->seg->bit_start);
-    ftsi->len= (pack_length == 1 ? (uint) *(uchar*) ftsi->pos :
+    ftsi->len= (pack_length == 1 ? (uint) *ftsi->pos :
                 uint2korr(ftsi->pos));
     ftsi->pos+= pack_length;			 /* Skip VARCHAR length */
     DBUG_RETURN(1);
@@ -108,7 +108,7 @@ uint _mi_ft_parse(TREE *parsed, MI_INFO *info, uint keynr, const uchar *record,
   while (_mi_ft_segiterator(&ftsi))
   {
     if (ftsi.pos)
-      if (ft_parse(parsed, (uchar *)ftsi.pos, ftsi.len, parser, param, mem_root))
+      if (ft_parse(parsed, ftsi.pos, ftsi.len, parser, param, mem_root))
         DBUG_RETURN(1);
   }
   DBUG_RETURN(0);
@@ -139,7 +139,7 @@ static int _mi_ft_store(MI_INFO *info, uint keynr, uchar *keybuf,
   for (; wlist->pos; wlist++)
   {
     key_length=_ft_make_key(info,keynr,keybuf,wlist,filepos);
-    if (_mi_ck_write(info,keynr,(uchar*) keybuf,key_length))
+    if (_mi_ck_write(info,keynr,keybuf,key_length))
       DBUG_RETURN(1);
    }
    DBUG_RETURN(0);
@@ -154,7 +154,7 @@ static int _mi_ft_erase(MI_INFO *info, uint keynr, uchar *keybuf,
   for (; wlist->pos; wlist++)
   {
     key_length=_ft_make_key(info,keynr,keybuf,wlist,filepos);
-    if (_mi_ck_delete(info,keynr,(uchar*) keybuf,key_length))
+    if (_mi_ck_delete(info,keynr,keybuf,key_length))
       err=1;
    }
    DBUG_RETURN(err);
@@ -180,8 +180,8 @@ int _mi_ft_cmp(MI_INFO *info, uint keynr, const uchar *rec1, const uchar *rec2)
   {
     if ((ftsi1.pos != ftsi2.pos) &&
         (!ftsi1.pos || !ftsi2.pos ||
-         ha_compare_text(cs, (uchar*) ftsi1.pos,ftsi1.len,
-                         (uchar*) ftsi2.pos,ftsi2.len,0,0)))
+         ha_compare_text(cs, (uchar*)ftsi1.pos, ftsi1.len,
+                             (uchar*)ftsi2.pos, ftsi2.len, 0, 0)))
       DBUG_RETURN(THOSE_TWO_DAMN_KEYS_ARE_REALLY_DIFFERENT);
   }
   DBUG_RETURN(GEE_THEY_ARE_ABSOLUTELY_IDENTICAL);
@@ -209,20 +209,20 @@ int _mi_ft_update(MI_INFO *info, uint keynr, uchar *keybuf,
   error=0;
   while(old_word->pos && new_word->pos)
   {
-    cmp= ha_compare_text(cs, (uchar*) old_word->pos,old_word->len,
-                             (uchar*) new_word->pos,new_word->len,0,0);
+    cmp= ha_compare_text(cs, old_word->pos,old_word->len,
+                             new_word->pos,new_word->len,0,0);
     cmp2= cmp ? 0 : (fabs(old_word->weight - new_word->weight) > 1.e-5);
 
     if (cmp < 0 || cmp2)
     {
       key_length=_ft_make_key(info,keynr,keybuf,old_word,pos);
-      if ((error=_mi_ck_delete(info,keynr,(uchar*) keybuf,key_length)))
+      if ((error=_mi_ck_delete(info,keynr, keybuf,key_length)))
         goto err;
     }
     if (cmp > 0 || cmp2)
     {
       key_length=_ft_make_key(info,keynr,keybuf,new_word,pos);
-      if ((error=_mi_ck_write(info,keynr,(uchar*) keybuf,key_length)))
+      if ((error=_mi_ck_write(info,keynr, keybuf,key_length)))
         goto err;
     }
     if (cmp<=0) old_word++;
@@ -293,7 +293,7 @@ uint _ft_make_key(MI_INFO *info, uint keynr, uchar *keybuf, FT_WORD *wptr,
 
   int2store(buf+HA_FT_WLEN,wptr->len);
   memcpy(buf+HA_FT_WLEN+2,wptr->pos,wptr->len);
-  DBUG_RETURN(_mi_make_key(info,keynr,(uchar*) keybuf,buf,filepos));
+  DBUG_RETURN(_mi_make_key(info,keynr, keybuf,buf,filepos));
 }
 
 
@@ -301,20 +301,21 @@ uint _ft_make_key(MI_INFO *info, uint keynr, uchar *keybuf, FT_WORD *wptr,
   convert key value to ft2
 */
 
+static int cmp_ft2_part(const void *keyinfo, const void *a, const void *b)
+{
+  return memcmp(((uchar*)a)+HA_FT_WLEN,
+                ((uchar*)b)+HA_FT_WLEN,
+                ((MI_KEYDEF *)keyinfo)->seg[1].length);
+}
+
 uint _mi_ft_convert_to_ft2(MI_INFO *info, uint keynr, uchar *key)
 {
   my_off_t root;
   DYNAMIC_ARRAY *da=info->ft1_to_ft2;
   MI_KEYDEF *keyinfo=&info->s->ft2_keyinfo;
-  uchar *key_ptr= (uchar*) dynamic_array_ptr(da, 0), *end;
+  uchar *key_ptr= dynamic_array_ptr(da, 0), *end;
   uint length, key_length;
   DBUG_ENTER("_mi_ft_convert_to_ft2");
-
-  /* we'll generate one pageful at once, and insert the rest one-by-one */
-  /* calculating the length of this page ...*/
-  length=(keyinfo->block_length-2) / keyinfo->keylength;
-  set_if_smaller(length, da->elements);
-  length=length * keyinfo->keylength;
 
   get_key_full_length_rdonly(key_length, key);
   while (_mi_ck_delete(info, keynr, key, key_length) == 0)
@@ -325,6 +326,13 @@ uint _mi_ft_convert_to_ft2(MI_INFO *info, uint keynr, uchar *key)
      */
   }
 
+  /* we'll generate one pageful at once, and insert the rest one-by-one */
+  /* calculating the length of this page ...*/
+  length=(keyinfo->block_length-2) / keyinfo->keylength;
+  set_if_smaller(length, da->elements);
+  my_qsort2(da->buffer, length, keyinfo->keylength, cmp_ft2_part, keyinfo);
+  length=length * keyinfo->keylength;
+
   /* creating pageful of keys */
   mi_putint(info->buff,length+2,0);
   memcpy(info->buff+2, key_ptr, length);
@@ -333,11 +341,21 @@ uint _mi_ft_convert_to_ft2(MI_INFO *info, uint keynr, uchar *key)
       _mi_write_keypage(info,keyinfo,root,DFLT_INIT_HITS,info->buff))
     DBUG_RETURN(-1);
 
+  /*
+    _mi_ck_real_write_btree() may overwrite its key_ptr argument,
+    and key_reflength bytes after it. That's why we write array
+    elements backwards and reserve a space after the last element.
+  */
+  allocate_dynamic(da, da->elements+1);
+
   /* inserting the rest of key values */
-  end= (uchar*) dynamic_array_ptr(da, da->elements);
-  for (key_ptr+=length; key_ptr < end; key_ptr+=keyinfo->keylength)
+  key_ptr= dynamic_array_ptr(da, da->elements-1);
+  end= dynamic_array_ptr(da, 0) + length;
+  for (; key_ptr >= end; key_ptr-= keyinfo->keylength)
+  {
     if(_mi_ck_real_write_btree(info, keyinfo, key_ptr, 0, &root, SEARCH_SAME))
       DBUG_RETURN(-1);
+  }
 
   /* now, writing the word key entry */
   ft_intXstore(key+key_length, - (int) da->elements);

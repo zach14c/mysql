@@ -61,8 +61,8 @@
 #include "sql_show.h"
 #include "slave.h"
 #include "rpl_mi.h"
-#include "backup/debug.h"
 #include "sql_audit.h"
+#include "transaction.h"
 
 #ifndef EMBEDDED_LIBRARY
 static bool delayed_get_table(THD *thd, TABLE_LIST *table_list);
@@ -389,10 +389,9 @@ void prepare_triggers_for_insert_stmt(TABLE *table)
   downgrade the lock in handler::store_lock() method.
 */
 
-static
-void upgrade_lock_type(THD *thd, thr_lock_type *lock_type,
-                       enum_duplicates duplic,
-                       bool is_multi_insert)
+void upgrade_lock_type_for_insert(THD *thd, thr_lock_type *lock_type,
+                                  enum_duplicates duplic,
+                                  bool is_multi_insert)
 {
   if (duplic == DUP_UPDATE ||
       duplic == DUP_REPLACE && *lock_type == TL_WRITE_CONCURRENT_INSERT)
@@ -589,8 +588,8 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     Upgrade lock type if the requested lock is incompatible with
     the current connection mode or table operation.
   */
-  upgrade_lock_type(thd, &table_list->lock_type, duplic,
-                    values_list.elements > 1);
+  upgrade_lock_type_for_insert(thd, &table_list->lock_type, duplic,
+                               values_list.elements > 1);
 
   /*
     We can't write-delayed into a table locked with LOCK TABLES:
@@ -605,26 +604,29 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   {
     my_error(ER_DELAYED_INSERT_TABLE_LOCKED, MYF(0),
              table_list->table_name);
+    MYSQL_INSERT_DONE(1, 0);
     DBUG_RETURN(TRUE);
   }
 
   if (table_list->lock_type == TL_WRITE_DELAYED)
   {
     if (open_and_lock_for_insert_delayed(thd, table_list))
+    {
+      MYSQL_INSERT_DONE(1, 0);
       DBUG_RETURN(TRUE);
+    }
   }
   else
   {
     if (open_and_lock_tables(thd, table_list))
+    {
+      MYSQL_INSERT_DONE(1, 0);
       DBUG_RETURN(TRUE);
+    }
   }
   lock_type= table_list->lock_type;
 
-  /*
-    Breakpoints for backup testing.
-  */
-  BACKUP_BREAKPOINT("backup_cs_reading");
-  BACKUP_BREAKPOINT("commit_blocker_step_1");
+  DEBUG_SYNC(thd, "after_insert_locked_tables");
   thd_proc_info(thd, "init");
   thd->used_tables=0;
   values= its++;
@@ -705,7 +707,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   if (thd->slave_thread &&
       (info.handle_duplicates == DUP_UPDATE) &&
       (table->next_number_field != NULL) &&
-      rpl_master_has_bug(&active_mi->rli, 24432))
+      rpl_master_has_bug(&active_mi->rli, 24432, TRUE, NULL, NULL))
     goto abort;
 #endif
 
@@ -851,7 +853,6 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
       info.copied=values_list.elements;
       end_delayed_insert(thd);
     }
-    query_cache_invalidate3(thd, table_list, 1);
   }
   else
 #endif
@@ -991,7 +992,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     ::my_ok(thd, (ulong) thd->row_count_func, id, buff);
   }
   thd->abort_on_warning= 0;
-  MYSQL_INSERT_END();
+  MYSQL_INSERT_DONE(0, (ulong) thd->row_count_func);
   DBUG_RETURN(FALSE);
 
 abort:
@@ -1004,7 +1005,7 @@ abort:
   if (!joins_freed)
     free_underlaid_joins(thd, &thd->lex->select_lex);
   thd->abort_on_warning= 0;
-  MYSQL_INSERT_END();
+  MYSQL_INSERT_DONE(1, 0);
   DBUG_RETURN(TRUE);
 }
 
@@ -1311,6 +1312,23 @@ bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
 
 static int last_uniq_key(TABLE *table,uint keynr)
 {
+  /*
+    When an underlying storage engine informs that the unique key
+    conflicts are not reported in the ascending order by setting
+    the HA_DUPLICATE_KEY_NOT_IN_ORDER flag, we cannot rely on this
+    information to determine the last key conflict.
+   
+    The information about the last key conflict will be used to
+    do a replace of the new row on the conflicting row, rather
+    than doing a delete (of old row) + insert (of new row).
+   
+    Hence check for this flag and disable replacing the last row
+    by returning 0 always. Returning 0 will result in doing
+    a delete + insert always.
+   */
+  if (table->file->ha_table_flags() & HA_DUPLICATE_KEY_NOT_IN_ORDER)
+    return 0;
+
   while (++keynr < table->s->keys)
     if (table->key_info[keynr].flags & HA_NOSAME)
       return 0;
@@ -1568,6 +1586,17 @@ int write_record(THD *thd, TABLE *table,COPY_INFO *info)
         }
       }
     }
+    
+    /*
+        If more than one iteration of the above while loop is done, from the second 
+        one the row being inserted will have an explicit value in the autoinc field, 
+        which was set at the first call of handler::update_auto_increment(). This 
+        value is saved to avoid thd->insert_id_for_cur_row becoming 0. Use this saved
+        autoinc value.
+     */
+    if (table->file->insert_id_for_cur_row == 0)
+      table->file->insert_id_for_cur_row= insert_id_for_cur_row;
+      
     thd->record_first_successful_insert_id_in_cur_stmt(table->file->insert_id_for_cur_row);
     /*
       Restore column maps if they where replaced during an duplicate key
@@ -2492,7 +2521,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
       */
       di->table->file->ha_release_auto_increment();
       mysql_unlock_tables(thd, lock);
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
       di->group_count=0;
       mysql_audit_release(thd);
       pthread_mutex_lock(&di->mutex);
@@ -2513,7 +2542,7 @@ err:
     first call to ha_*_row() instead. Remove code that are used to
     cover for the case outlined above.
    */
-  ha_autocommit_or_rollback(thd, 1);
+  trans_rollback_stmt(thd);
 
 #ifndef __WIN__
 end:
@@ -2588,8 +2617,13 @@ bool Delayed_insert::handle_inserts(void)
   thd_proc_info(&thd, "upgrading lock");
   if (thr_upgrade_write_delay_lock(*thd.lock->locks))
   {
-    /* This can only happen if thread is killed by shutdown */
-    sql_print_error(ER(ER_DELAYED_CANT_CHANGE_LOCK),table->s->table_name.str);
+    /*
+      This can happen if thread is killed either by a shutdown
+      or if another thread is removing the current table definition
+      from the table cache.
+    */
+    my_error(ER_DELAYED_CANT_CHANGE_LOCK,MYF(ME_FATALERROR),
+             table->s->table_name.str);
     goto err;
   }
 
@@ -2744,9 +2778,10 @@ bool Delayed_insert::handle_inserts(void)
 	query_cache_invalidate3(&thd, table, 1);
 	if (thr_reschedule_write_lock(*thd.lock->locks))
 	{
-	  /* This should never happen */
-	  sql_print_error(ER(ER_DELAYED_CANT_CHANGE_LOCK),
-                          table->s->table_name.str);
+    /* This is not known to happen. */
+    my_error(ER_DELAYED_CANT_CHANGE_LOCK,MYF(ME_FATALERROR),
+             table->s->table_name.str);
+    goto err;
 	}
 	if (!using_bin_log)
 	  table->file->extra(HA_EXTRA_WRITE_CACHE);
@@ -2793,6 +2828,11 @@ bool Delayed_insert::handle_inserts(void)
   /* Remove all not used rows */
   while ((row=rows.get()))
   {
+    if (table->s->blob_fields)
+    {
+      memcpy(table->record[0],row->record,table->s->reclength);
+      free_delayed_insert_blobs(table);
+    }
     delete row;
     thread_safe_increment(delayed_insert_errors,&LOCK_delayed_status);
     stacked_inserts--;
@@ -3023,7 +3063,7 @@ select_insert::prepare(List<Item> &values, SELECT_LEX_UNIT *u)
   if (thd->slave_thread &&
       (info.handle_duplicates == DUP_UPDATE) &&
       (table->next_number_field != NULL) &&
-      rpl_master_has_bug(&active_mi->rli, 24432))
+      rpl_master_has_bug(&active_mi->rli, 24432, TRUE, NULL, NULL))
     DBUG_RETURN(1);
 #endif
 
@@ -3121,9 +3161,10 @@ bool select_insert::send_data(List<Item> &values)
       DBUG_RETURN(1);
     }
   }
-
+  
   error= write_record(thd, table, &info);
-    
+  table->auto_increment_field_not_null= FALSE;
+  
   if (!error)
   {
     if (table->triggers || info.handle_duplicates == DUP_UPDATE)
@@ -3226,6 +3267,7 @@ bool select_insert::send_eof()
   if (error)
   {
     table->file->print_error(error,MYF(0));
+    MYSQL_INSERT_SELECT_DONE(error, 0);
     DBUG_RETURN(1);
   }
   char buff[160];
@@ -3245,6 +3287,7 @@ bool select_insert::send_eof()
      thd->first_successful_insert_id_in_prev_stmt :
      (info.copied ? autoinc_value_of_last_inserted_row : 0));
   ::my_ok(thd, (ulong) thd->row_count_func, id, buff);
+  MYSQL_INSERT_SELECT_DONE(0, (ulong) thd->row_count_func);
   DBUG_RETURN(0);
 }
 
@@ -3296,6 +3339,12 @@ void select_insert::abort() {
     DBUG_ASSERT(transactional_table || !changed ||
 		thd->transaction.stmt.modified_non_trans_table);
     table->file->ha_release_auto_increment();
+  }
+
+  if (MYSQL_INSERT_SELECT_DONE_ENABLED())
+  {
+    MYSQL_INSERT_SELECT_DONE(0, (ulong) (info.copied + info.deleted +
+                                         info.updated));
   }
 
   DBUG_VOID_RETURN;
@@ -3594,7 +3643,8 @@ select_create::prepare(List<Item> &values, SELECT_LEX_UNIT *u)
     temporary table, we need to start a statement transaction.
   */
   if ((thd->lex->create_info.options & HA_LEX_CREATE_TMP_TABLE) == 0 &&
-      thd->current_stmt_binlog_row_based)
+      thd->current_stmt_binlog_row_based &&
+      mysql_bin_log.is_open())
   {
     thd->binlog_start_trans_and_stmt();
   }
@@ -3687,13 +3737,15 @@ select_create::binlog_show_create_table(TABLE **tables, uint count)
   tmp_table_list.table = *tables;
   query.length(0);      // Have to zero it since constructor doesn't
 
-  result= store_create_info(thd, &tmp_table_list, &query, create_info);
+  result= store_create_info(thd, &tmp_table_list, &query, create_info,
+                            /* show_database */ TRUE);
   DBUG_ASSERT(result == 0); /* store_create_info() always return 0 */
 
-  thd->binlog_query(THD::STMT_QUERY_TYPE,
-                    query.ptr(), query.length(),
-                    /* is_trans */ TRUE,
-                    /* suppress_use */ FALSE);
+  if (mysql_bin_log.is_open())
+    thd->binlog_query(THD::STMT_QUERY_TYPE,
+                      query.ptr(), query.length(),
+                      /* is_trans */ TRUE,
+                      /* suppress_use */ FALSE);
 }
 
 void select_create::store_values(List<Item> &values)
@@ -3751,8 +3803,8 @@ bool select_create::send_eof()
     */
     if (!table->s->tmp_table)
     {
-      ha_autocommit_or_rollback(thd, 0);
-      end_active_trans(thd);
+      trans_commit_stmt(thd);
+      trans_commit_implicit(thd);
     }
 
     table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
@@ -3773,10 +3825,10 @@ void select_create::abort()
   DBUG_ENTER("select_create::abort");
 
   /*
-    In select_insert::abort() we roll back the statement, including
-    truncating the transaction cache of the binary log. To do this, we
-    pretend that the statement is transactional, even though it might
-    be the case that it was not.
+    We roll back the statement here, including truncating the
+    transaction cache of the binary log. To do this, we pretend that
+    the statement is transactional, even though it might be the case
+    that it was not.
 
     We roll back the statement prior to deleting the table and prior
     to releasing the lock on the table, since there might be potential
@@ -3790,6 +3842,7 @@ void select_create::abort()
   tmp_disable_binlog(thd);
   select_insert::abort();
   thd->transaction.stmt.modified_non_trans_table= FALSE;
+  trans_rollback_stmt(thd);
   reenable_binlog(thd);
   thd->binlog_flush_pending_rows_event(TRUE);
 

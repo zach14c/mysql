@@ -105,7 +105,7 @@ class Select_fetch_protocol_binary: public select_send
   Protocol_binary protocol;
 public:
   Select_fetch_protocol_binary(THD *thd);
-  virtual bool send_fields(List<Item> &list, uint flags);
+  virtual bool send_result_set_metadata(List<Item> &list, uint flags);
   virtual bool send_data(List<Item> &items);
   virtual bool send_eof();
 #ifdef EMBEDDED_LIBRARY
@@ -169,6 +169,8 @@ private:
     SELECT_LEX and other classes).
   */
   MEM_ROOT main_mem_root;
+  /* Version of the stored functions cache at the time of prepare. */
+  ulong m_sp_cache_version;
 private:
   bool set_db(const char *db, uint db_length);
   bool set_parameters(String *expanded_query,
@@ -256,7 +258,7 @@ static bool send_prep_stmt(Prepared_statement *stmt, uint columns)
   error= my_net_write(net, buff, sizeof(buff));
   if (stmt->param_count && ! error)
   {
-    error= thd->protocol_text.send_fields((List<Item> *)
+    error= thd->protocol_text.send_result_set_metadata((List<Item> *)
                                           &stmt->lex->param_list,
                                           Protocol::SEND_EOF);
   }
@@ -1120,6 +1122,8 @@ static bool mysql_test_insert(Prepared_statement *stmt,
   if (insert_precheck(thd, table_list))
     goto error;
 
+  upgrade_lock_type_for_insert(thd, &table_list->lock_type, duplic,
+                               values_list.elements > 1);
   /*
     open temporary memory pool for temporary data allocated by derived
     tables & preparation procedure
@@ -1371,7 +1375,7 @@ static int mysql_test_select(Prepared_statement *stmt,
       unit->prepare call above.
     */
     if (send_prep_stmt(stmt, lex->result->field_count(fields)) ||
-        lex->result->send_fields(fields, Protocol::SEND_EOF) ||
+        lex->result->send_result_set_metadata(fields, Protocol::SEND_EOF) ||
         thd->protocol->flush())
       goto error;
     DBUG_RETURN(2);
@@ -2062,7 +2066,6 @@ static bool init_param_array(Prepared_statement *stmt)
 void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
 {
   Prepared_statement *stmt;
-  bool error;
   DBUG_ENTER("mysql_stmt_prepare");
 
   DBUG_PRINT("prep_query", ("%s", packet));
@@ -2085,15 +2088,7 @@ void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
   sp_cache_flush_obsolete(&thd->sp_proc_cache);
   sp_cache_flush_obsolete(&thd->sp_func_cache);
 
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(),QUERY_PRIOR);
-
-  error= stmt->prepare(packet, packet_length);
-
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(),WAIT_PRIOR);
-
-  if (error)
+  if (stmt->prepare(packet, packet_length))
   {
     /* Statement map deletes statement on erase */
     thd->stmt_map.erase(stmt);
@@ -2463,7 +2458,6 @@ void mysql_stmt_execute(THD *thd, char *packet_arg, uint packet_length)
   stmt->execute_loop(&expanded_query, open_cursor, packet, packet_end);
 
   DBUG_VOID_RETURN;
-
 }
 
 
@@ -2554,13 +2548,7 @@ void mysql_stmt_fetch(THD *thd, char *packet, uint packet_length)
   thd->stmt_arena= stmt;
   thd->set_n_backup_statement(stmt, &stmt_backup);
 
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(), QUERY_PRIOR);
-
   cursor->fetch(num_rows);
-
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(), WAIT_PRIOR);
 
   if (!cursor->is_open())
   {
@@ -2772,19 +2760,19 @@ Select_fetch_protocol_binary::Select_fetch_protocol_binary(THD *thd_arg)
   :protocol(thd_arg)
 {}
 
-bool Select_fetch_protocol_binary::send_fields(List<Item> &list, uint flags)
+bool Select_fetch_protocol_binary::send_result_set_metadata(List<Item> &list, uint flags)
 {
   bool rc;
   Protocol *save_protocol= thd->protocol;
 
   /*
-    Protocol::send_fields caches the information about column types:
+    Protocol::send_result_set_metadata caches the information about column types:
     this information is later used to send data. Therefore, the same
     dedicated Protocol object must be used for all operations with
     a cursor.
   */
   thd->protocol= &protocol;
-  rc= select_send::send_fields(list, flags);
+  rc= select_send::send_result_set_metadata(list, flags);
   thd->protocol= save_protocol;
 
   return rc;
@@ -2822,7 +2810,8 @@ Prepared_statement::Prepared_statement(THD *thd_arg, Protocol *protocol_arg)
   param_array(0),
   param_count(0),
   last_errno(0),
-  flags((uint) IS_IN_USE)
+  flags((uint) IS_IN_USE),
+  m_sp_cache_version(0)
 {
   init_sql_alloc(&main_mem_root, thd_arg->variables.query_alloc_block_size,
                   thd_arg->variables.query_prealloc_size);
@@ -3017,11 +3006,11 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
   old_stmt_arena= thd->stmt_arena;
   thd->stmt_arena= this;
 
-  Lex_input_stream lip(thd, thd->query, thd->query_length);
-  lip.stmt_prepare_mode= TRUE;
+  Parser_state parser_state(thd, thd->query, thd->query_length);
+  parser_state.m_lip.stmt_prepare_mode= TRUE;
   lex_start(thd);
 
-  error= parse_sql(thd, &lip, NULL) ||
+  error= parse_sql(thd, & parser_state, NULL) ||
          thd->is_error() ||
          init_param_array(this);
 
@@ -3075,6 +3064,20 @@ bool Prepared_statement::prepare(const char *packet, uint packet_len)
     init_stmt_after_parse(lex);
     state= Query_arena::PREPARED;
     flags&= ~ (uint) IS_IN_USE;
+    /*
+      This is for prepared statement validation purposes.
+      A statement looks up and pre-loads all its stored functions
+      at prepare. Later on, if a function is gone from the cache,
+      execute may fail.
+      Remember the cache version to be able to invalidate the prepared
+      statement at execute if it changes.
+      We only need to care about version of the stored functions cache:
+      if a prepared statement uses a stored procedure, it's indirect,
+      via a stored function. The only exception is SQLCOM_CALL,
+      but the latter one looks up the stored procedure each time
+      it's invoked, rather than once at prepare.
+    */
+    m_sp_cache_version= sp_cache_version(&thd->sp_func_cache);
 
     /* 
       Log COM_EXECUTE to the general log. Note, that in case of SQL
@@ -3221,13 +3224,7 @@ reexecute:
     thd->m_reprepare_observer = &reprepare_observer;
   }
 
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(),QUERY_PRIOR);
-
   error= execute(expanded_query, open_cursor) || thd->is_error();
-
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(), WAIT_PRIOR);
 
   thd->m_reprepare_observer= NULL;
 
@@ -3386,6 +3383,7 @@ Prepared_statement::swap_prepared_statement(Prepared_statement *copy)
   swap_variables(LEX_STRING, name, copy->name);
   /* Ditto */
   swap_variables(char *, db, copy->db);
+  swap_variables(ulong, m_sp_cache_version, copy->m_sp_cache_version);
 
   DBUG_ASSERT(db_length == copy->db_length);
   DBUG_ASSERT(param_count == copy->param_count);
@@ -3444,6 +3442,19 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     my_error(ER_PS_NO_RECURSION, MYF(0));
     return TRUE;
   }
+
+  /*
+    Reprepare the statement if we're using stored functions
+    and the version of the stored routines cache has changed.
+  */
+  if (lex->uses_stored_routines() &&
+      m_sp_cache_version != sp_cache_version(&thd->sp_func_cache) &&
+      thd->m_reprepare_observer &&
+      thd->m_reprepare_observer->report_error(thd))
+  {
+    return TRUE;
+  }
+
 
   /*
     For SHOW VARIABLES lex->result is NULL, as it's a non-SELECT
@@ -3537,7 +3548,14 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     if (query_cache_send_result_to_client(thd, thd->query,
                                           thd->query_length) <= 0)
     {
+      MYSQL_QUERY_EXEC_START(thd->query,
+                             thd->thread_id,
+                             (char *) (thd->db ? thd->db : ""),
+                             thd->security_ctx->priv_user,
+                             (char *) thd->security_ctx->host_or_ip,
+                             1);
       error= mysql_execute_command(thd);
+      MYSQL_QUERY_EXEC_DONE(error);
     }
   }
 
@@ -3565,6 +3583,9 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
 
   if (state == Query_arena::PREPARED)
     state= Query_arena::EXECUTED;
+
+  if (this->lex->sql_command == SQLCOM_CALL)
+    protocol->send_out_parameters(&this->lex->param_list);
 
   /*
     Log COM_EXECUTE to the general log. Note, that in case of SQL

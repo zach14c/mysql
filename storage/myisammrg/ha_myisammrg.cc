@@ -153,7 +153,7 @@ extern "C" void myrg_print_wrong_table(const char *table_name)
   buf[db.length]= '.';
   memcpy(buf + db.length + 1, name.str, name.length);
   buf[db.length + name.length + 1]= 0;
-  push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+  push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                       ER_ADMIN_WRONG_MRG_TABLE, ER(ER_ADMIN_WRONG_MRG_TABLE),
                       buf);
 }
@@ -583,6 +583,7 @@ int ha_myisammrg::attach_children(void)
   /* Must not call this with attached children. */
   DBUG_ASSERT(!this->file->children_attached);
 
+  DEBUG_SYNC(current_thd, "before_myisammrg_attach");
   /* Must call this with children list in place. */
   DBUG_ASSERT(this->table->pos_in_table_list->next_global == this->children_l);
 
@@ -636,7 +637,7 @@ int ha_myisammrg::attach_children(void)
       if (test_if_locked & HA_OPEN_FOR_REPAIR)
       {
         /* purecov: begin inspected */
-        myrg_print_wrong_table(file->open_tables->table->filename);
+        myrg_print_wrong_table(file->open_tables->table->s->unresolv_file_name);
         /* purecov: end */
       }
       error= HA_ERR_WRONG_MRG_TABLE_DEF;
@@ -662,7 +663,7 @@ int ha_myisammrg::attach_children(void)
                            u_table->table->s->base.fields, false))
       {
         DBUG_PRINT("error", ("table definition mismatch: '%s'",
-                             u_table->table->filename));
+                             u_table->table->s->unresolv_file_name));
         error= HA_ERR_WRONG_MRG_TABLE_DEF;
         if (!(this->test_if_locked & HA_OPEN_FOR_REPAIR))
         {
@@ -670,7 +671,7 @@ int ha_myisammrg::attach_children(void)
           goto err;
         }
         /* purecov: begin inspected */
-        myrg_print_wrong_table(u_table->table->filename);
+        myrg_print_wrong_table(u_table->table->s->unresolv_file_name);
         /* purecov: end */
       }
     }
@@ -1134,6 +1135,8 @@ THR_LOCK_DATA **ha_myisammrg::store_lock(THD *thd,
 					 THR_LOCK_DATA **to,
 					 enum thr_lock_type lock_type)
 {
+  DEBUG_SYNC(thd, "before_myisammrg_store_lock");
+
   return to;
 }
 
@@ -1184,7 +1187,7 @@ void ha_myisammrg::update_create_info(HA_CREATE_INFO *create_info)
 
       if (!(ptr = (TABLE_LIST *) thd->calloc(sizeof(TABLE_LIST))))
 	goto err;
-      split_file_name(open_table->table->filename, &db, &name);
+      split_file_name(open_table->table->s->unresolv_file_name, &db, &name);
       if (!(ptr->table_name= thd->strmake(name.str, name.length)))
 	goto err;
       if (db.length && !(ptr->db= thd->strmake(db.str, db.length)))
@@ -1302,7 +1305,7 @@ void ha_myisammrg::append_create_info(String *packet)
     LEX_STRING db, name;
     LINT_INIT(db.str);
 
-    split_file_name(open_table->table->filename, &db, &name);
+    split_file_name(open_table->table->s->unresolv_file_name, &db, &name);
     if (open_table != first)
       packet->append(',');
     /* Report database for mapped table if it isn't in current database */

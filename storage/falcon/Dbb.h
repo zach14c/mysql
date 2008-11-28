@@ -61,11 +61,11 @@ static const int FillLevels = 5;
 
 struct SectionAnalysis 
 {
-   int32		recordLocatorPages;
-   int32		dataPages;
-   int32		overflowPages;
-   int32		spaceAvailable;
-   int32		records;
+	int32		recordLocatorPages;
+	int32		dataPages;
+	int32		overflowPages;
+	int32		spaceAvailable;
+	int32		records;
 };
 
 struct IndexAnalysis
@@ -168,7 +168,7 @@ public:
 	Bdb*	fakePage (int32 pageNumber, PageType pageType, TransId transId);
 	Bdb*	trialFetch(int32 pageNumber, PageType pageType, LockType lockType);
 	void	init(int pageSz, int cacheSize);
-	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, uint64 initialAllocation);
+	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot);
 	void	validateCache(void);
 	void	logUpdatedRecords(Transaction* transaction, RecordVersion* records, bool chill = false);
 	void	logIndexUpdates(DeferredIndex* deferredIndex);
@@ -184,6 +184,7 @@ public:
 	void	printPage(Bdb* bdb);
 	void	updateBlob(Section *blobSection, int recordNumber, Stream* blob, Transaction* transaction);
 	void	updateSerialLogBlockSize(void);
+	void	setCacheRecovering(bool state);
 	
 	Cache		*cache;
 	Database	*database;
@@ -214,8 +215,8 @@ public:
 	HdrState	priorState;
 	Inversion	*inversion;
 	DatabaseCopy *shadows;
-	SyncObject	cloneSyncObject;
-	SyncObject	sequencesSyncObject;
+	SyncObject	syncClone;
+	SyncObject	syncSequences;
 	SerialLog	*serialLog;
 	JString		logRoot;
 	SparseArray<int32, 100>	sequencePages;

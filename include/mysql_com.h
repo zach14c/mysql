@@ -33,6 +33,7 @@
 /*
   Maximum length of comments
 */
+#define TABLE_COMMENT_INLINE_MAXLEN 180 /* pre 6.0: 60 characters */
 #define TABLE_COMMENT_MAXLEN 2048
 #define COLUMN_COMMENT_MAXLEN 1024
 #define INDEX_COMMENT_MAXLEN 1024
@@ -135,6 +136,7 @@ enum enum_server_command
 #define REFRESH_QUERY_CACHE_FREE 0x20000L /* pack query cache */
 #define REFRESH_DES_KEY_FILE	0x40000L
 #define REFRESH_USER_RESOURCES	0x80000L
+#define REFRESH_BACKUP_LOG  0x200000L
 
 #define CLIENT_LONG_PASSWORD	1	/* new more secure passwords */
 #define CLIENT_FOUND_ROWS	2	/* Found instead of affected rows */
@@ -154,6 +156,7 @@ enum enum_server_command
 #define CLIENT_SECURE_CONNECTION 32768  /* New 4.1 authentication */
 #define CLIENT_MULTI_STATEMENTS (1UL << 16) /* Enable/disable multi-stmt support */
 #define CLIENT_MULTI_RESULTS    (1UL << 17) /* Enable/disable multi-results */
+#define CLIENT_PS_MULTI_RESULTS (1UL << 18) /* Multi-results in PS-protocol */
 
 #define CLIENT_SSL_VERIFY_SERVER_CERT (1UL << 30)
 #define CLIENT_REMEMBER_OPTIONS (1UL << 31)
@@ -177,6 +180,7 @@ enum enum_server_command
                            CLIENT_SECURE_CONNECTION | \
                            CLIENT_MULTI_STATEMENTS | \
                            CLIENT_MULTI_RESULTS | \
+                           CLIENT_PS_MULTI_RESULTS | \
                            CLIENT_SSL_VERIFY_SERVER_CERT | \
                            CLIENT_REMEMBER_OPTIONS)
 
@@ -219,6 +223,11 @@ enum enum_server_command
   to use.  See WorkLog 4098.
 */
 #define SERVER_QUERY_WAS_SLOW           2048
+
+/**
+  To mark ResultSet containing output parameter values.
+*/
+#define SERVER_PS_OUT_PARAMS            4096
 
 /**
   Server status flags that must be cleared when starting

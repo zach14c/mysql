@@ -219,8 +219,12 @@ bool mysql_create_frm(THD *thd, const char *file_name,
     create_info->comment.length= tmp_len;
   }
 
-  //if table comment is larger than 180 bytes, store into extra segment.
-  if (create_info->comment.length > 180)
+  /*
+    If table comment is longer than TABLE_COMMENT_INLINE_MAXLEN bytes,
+    store the comment in an extra segment (up to TABLE_COMMENT_MAXLEN bytes).
+    Pre 6.0, the limit was 60 characters, with no extra segment-handling.
+  */
+  if (create_info->comment.length > TABLE_COMMENT_INLINE_MAXLEN)
   {
     forminfo[46]=255;
     create_info->extra_size+= 2 + create_info->comment.length;
@@ -235,7 +239,8 @@ bool mysql_create_frm(THD *thd, const char *file_name,
       payload with a magic value to detect wrong buffer-sizes. We
       explicitly zero that segment again.
     */
-    memset((char*) forminfo+47 + forminfo[46], 0, 61 - forminfo[46]);
+    memset((char*) forminfo+47 + forminfo[46], 0,
+           TABLE_COMMENT_INLINE_MAXLEN + 1 - forminfo[46]);
 #endif
   }
 
@@ -874,20 +879,27 @@ static bool pack_fields(File file, List<Create_field> &create_fields,
     recpos= field->offset+1 + (uint) data_offset;
     int3store(buff+5,recpos);
     int2store(buff+8,field->pack_flag);
-    int2store(buff+10,field->unireg_check);
+    DBUG_ASSERT(field->unireg_check < 256);
+    buff[10]= (uchar) field->unireg_check;
     buff[12]= (uchar) field->interval_id;
     buff[13]= (uchar) field->sql_type; 
     if (field->sql_type == MYSQL_TYPE_GEOMETRY)
     {
+      buff[11]= 0;
       buff[14]= (uchar) field->geom_type;
 #ifndef HAVE_SPATIAL
       DBUG_ASSERT(0);                           // Should newer happen
 #endif
     }
     else if (field->charset) 
+    {
+      buff[11]= (uchar) (field->charset->number >> 8);
       buff[14]= (uchar) field->charset->number;
+    }
     else
-      buff[14]= 0;				// Numerical
+    {
+      buff[11]= buff[14]= 0;			// Numerical
+    }
     int2store(buff+15, field->comment.length);
     comment_length+= field->comment.length;
     set_if_bigger(int_count,field->interval_id);

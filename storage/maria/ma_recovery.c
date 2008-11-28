@@ -77,6 +77,7 @@ prototype_redo_exec_hook(FILE_ID);
 prototype_redo_exec_hook(INCOMPLETE_LOG);
 prototype_redo_exec_hook_dummy(INCOMPLETE_GROUP);
 prototype_redo_exec_hook(UNDO_BULK_INSERT);
+prototype_redo_exec_hook(IMPORTED_TABLE);
 prototype_redo_exec_hook(REDO_INSERT_ROW_HEAD);
 prototype_redo_exec_hook(REDO_INSERT_ROW_TAIL);
 prototype_redo_exec_hook(REDO_INSERT_ROW_HEAD);
@@ -865,7 +866,7 @@ prototype_redo_exec_hook(REDO_RENAME_TABLE)
       ALERT_USER();
       goto end;
     }
-    if (close_one_table(info->s->open_file_name, rec->lsn) ||
+    if (close_one_table(info->s->open_file_name.str, rec->lsn) ||
         maria_close(info))
       goto end;
     info= NULL;
@@ -1007,7 +1008,7 @@ prototype_redo_exec_hook(REDO_REPAIR_TABLE)
   tprint(tracef, "   repairing...\n");
 
   maria_chk_init(&param);
-  param.isam_file_name= name= info->s->open_file_name;
+  param.isam_file_name= name= info->s->open_file_name.str;
   param.testflag= uint8korr(rec->header + FILEID_STORE_SIZE);
   param.tmpdir= maria_tmpdir;
   DBUG_ASSERT(maria_tmpdir);
@@ -1084,7 +1085,7 @@ prototype_redo_exec_hook(REDO_DROP_TABLE)
       ALERT_USER();
       goto end;
     }
-    if (close_one_table(info->s->open_file_name, rec->lsn) ||
+    if (close_one_table(info->s->open_file_name.str, rec->lsn) ||
         maria_close(info))
       goto end;
     info= NULL;
@@ -1140,7 +1141,7 @@ prototype_redo_exec_hook(FILE_ID)
   info= all_tables[sid].info;
   if (info != NULL)
   {
-    tprint(tracef, "   Closing table '%s'\n", info->s->open_file_name);
+    tprint(tracef, "   Closing table '%s'\n", info->s->open_file_name.str);
     prepare_table_for_close(info, rec->lsn);
     if (maria_close(info))
     {
@@ -1200,7 +1201,7 @@ static int new_table(uint16 sid, const char *name, LSN lsn_of_file_id)
       It could be that we have in the log
       FILE_ID(t1,10) ... (t1 was flushed) ... FILE_ID(t1,12);
     */
-    if (close_one_table(share->open_file_name, lsn_of_file_id))
+    if (close_one_table(share->open_file_name.str, lsn_of_file_id))
       goto end;
   }
   if (!share->base.born_transactional)
@@ -1229,7 +1230,7 @@ static int new_table(uint16 sid, const char *name, LSN lsn_of_file_id)
   if (maria_is_crashed(info))
   {
     eprint(tracef, "Table '%s' is crashed, skipping it. Please repair it with"
-           " maria_chk -r", share->open_file_name);
+           " maria_chk -r", share->open_file_name.str);
     error= -1; /* not fatal, try with other tables */
     goto end;
     /*
@@ -1861,6 +1862,24 @@ prototype_redo_exec_hook(UNDO_BULK_INSERT)
 }
 
 
+prototype_redo_exec_hook(IMPORTED_TABLE)
+{
+  char *name;
+  enlarge_buffer(rec);
+  if (log_record_buffer.str == NULL ||
+      translog_read_record(rec->lsn, 0, rec->record_length,
+                           log_record_buffer.str, NULL) !=
+      rec->record_length)
+  {
+    eprint(tracef, "Failed to read record");
+    return 1;
+  }
+  name= (char *)log_record_buffer.str;
+  tprint(tracef, "Table '%s' was imported (auto-zerofilled) in this Maria instance\n", name);
+  return 0;
+}
+
+
 prototype_redo_exec_hook(COMMIT)
 {
   uint16 sid= rec->short_trid;
@@ -2328,6 +2347,7 @@ static int run_redo_phase(LSN lsn, enum maria_apply_log_way apply)
   install_redo_exec_hook_shared(REDO_NEW_ROW_TAIL, REDO_INSERT_ROW_TAIL);
   install_redo_exec_hook(UNDO_BULK_INSERT);
   install_undo_exec_hook(UNDO_BULK_INSERT);
+  install_redo_exec_hook(IMPORTED_TABLE);
 
   current_group_end_lsn= LSN_IMPOSSIBLE;
 #ifndef DBUG_OFF
@@ -2808,7 +2828,7 @@ static MARIA_HA *get_MARIA_HA_from_REDO_record(const
     return NULL;
   }
   share= info->s;
-  tprint(tracef, ", '%s'", share->open_file_name);
+  tprint(tracef, ", '%s'", share->open_file_name.str);
   DBUG_ASSERT(in_redo_phase);
   if (cmp_translog_addr(rec->lsn, share->lsn_of_file_id) <= 0)
   {
@@ -2879,7 +2899,7 @@ static MARIA_HA *get_MARIA_HA_from_UNDO_record(const
     return NULL;
   }
   share= info->s;
-  tprint(tracef, ", '%s'", share->open_file_name);
+  tprint(tracef, ", '%s'", share->open_file_name.str);
   if (cmp_translog_addr(rec->lsn, share->lsn_of_file_id) <= 0)
   {
     tprint(tracef, ", table's LOGREC_FILE_ID has LSN (%lu,0x%lx) more recent"
@@ -3168,7 +3188,7 @@ static my_bool close_one_table(const char *name, TRANSLOG_ADDRESS addr)
        internal_table++)
   {
     MARIA_HA *info= internal_table->info;
-    if ((info != NULL) && !strcmp(info->s->open_file_name, name))
+    if ((info != NULL) && !strcmp(info->s->open_file_name.str, name))
     {
       prepare_table_for_close(info, addr);
       if (maria_close(info))
@@ -3214,6 +3234,16 @@ void _ma_tmp_disable_logging_for_table(MARIA_HA *info,
 
   /* if we disabled before writing the record, record wouldn't reach log */
   share->now_transactional= FALSE;
+
+  /*
+    Reset state pointers. This is needed as in ALTER table we may do
+    commit fllowed by _ma_renable_logging_for_table and then
+    info->state may point to a state that was deleted by
+    _ma_trnman_end_trans_hook()
+   */
+  share->state.common= *info->state;
+  info->state= &share->state.common;
+
   /*
     Some code in ma_blockrec.c assumes a trn even if !now_transactional but in
     this case it only reads trn->rec_lsn, which has to be LSN_IMPOSSIBLE and
@@ -3255,19 +3285,20 @@ my_bool _ma_reenable_logging_for_table(MARIA_HA *info, my_bool flush_pages)
       in not transactional mode
     */
     _ma_copy_nontrans_state_information(info);
+    _ma_reset_history(info->s);
 
     if (flush_pages)
     {
       /*
         We are going to change callbacks; if a page is flushed at this moment
         this can cause race conditions, that's one reason to flush pages
-        now. Other reasons: a checkpoint could be running and miss pages. As
+        now. Other reasons: a checkpoint could be running and miss pages; the
+        pages have type PAGECACHE_PLAIN_PAGE which should not remain. As
         there are no REDOs for pages, them, bitmaps and the state also have to
-        be flushed and synced. Leaving non-dirty pages in cache is ok, when
-        they become dirty again they will have their type corrected.
+        be flushed and synced.
       */
       if (_ma_flush_table_files(info, MARIA_FLUSH_DATA | MARIA_FLUSH_INDEX,
-                                FLUSH_KEEP, FLUSH_KEEP) ||
+                                FLUSH_RELEASE, FLUSH_RELEASE) ||
           _ma_state_info_write(share, 1|4) ||
           _ma_sync_table_files(info))
         DBUG_RETURN(1);

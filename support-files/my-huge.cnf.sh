@@ -46,6 +46,9 @@ thread_concurrency = 8
 # 
 #skip-networking
 
+# Disable Federated by default
+skip-federated
+
 # Replication Master Server (default)
 # binary logging is required for replication
 log-bin=mysql-bin
@@ -109,6 +112,9 @@ server-id	= 1
 #
 # binary logging - not required for slaves, but recommended
 #log-bin=mysql-bin
+#
+# binary logging format - mixed recommended 
+#binlog_format=mixed
 
 # Point the following paths to different dedicated disks
 #tmpdir		= /tmp/		
@@ -118,7 +124,6 @@ server-id	= 1
 #innodb_data_home_dir = @localstatedir@/
 #innodb_data_file_path = ibdata1:2000M;ibdata2:10M:autoextend
 #innodb_log_group_home_dir = @localstatedir@/
-#innodb_log_arch_dir = @localstatedir@/
 # You can set .._buffer_pool_size up to 50 - 80 %
 # of RAM but beware of setting memory usage too high
 #innodb_buffer_pool_size = 384M

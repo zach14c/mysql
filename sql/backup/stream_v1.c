@@ -424,6 +424,7 @@ int bstream_rd_header(backup_stream *s, struct st_bstream_image_header *hdr)
   - 1 = snapshot created by built-in blocking driver (BI_DEFAULT),
   - 2 = snapshot created using created by built-in driver using consistent
       read transaction (BI_CS).
+  - 3 = snapshot created by built-in no data driver (BI_NODATA),
 
   Format of [backup engine info] depends on snapshot type. It is empty for the
   default and CS snapshots. For native snapshots it has format
@@ -446,7 +447,8 @@ int bstream_wr_snapshot_info(backup_stream *s, struct st_bstream_snapshot_info *
   case BI_NATIVE:  ret= bstream_wr_byte(s,0); break;
   case BI_DEFAULT: ret= bstream_wr_byte(s,1); break;
   case BI_CS:      ret= bstream_wr_byte(s,2); break;
-  default:         ret= bstream_wr_byte(s,3); break;
+  case BI_NODATA:  ret= bstream_wr_byte(s,3); break;
+  default:         ret= bstream_wr_byte(s,4); break;
   }
 
   CHECK_WR_RES(bstream_wr_int2(s,info->version));
@@ -495,6 +497,7 @@ int bstream_rd_image_info(backup_stream *s, struct st_bstream_snapshot_info *inf
   case 0: type= BI_NATIVE; break;
   case 1: type= BI_DEFAULT; break;
   case 2: type= BI_CS; break;
+  case 3: type= BI_NODATA; break;
   default: return BSTREAM_ERROR;
   }
 
@@ -933,7 +936,7 @@ int bstream_rd_item_type(backup_stream *s, enum enum_bstream_item_type *type)
   return ret;
 }
 
-/*
+/**
   @page stream_format
 
   @subsection db_catalogue Database catalogue
@@ -950,8 +953,11 @@ int bstream_rd_item_type(backup_stream *s, enum enum_bstream_item_type *type)
   @verbatim
 
   [db-item info]= [ type:2 ! name ! optional item data ]
+  @endverbatim
 
   [optional item data] is used only for tables:
+
+  @verbatim
 
   [optional item data (table)]= [ flags:1 ! snapshot no.:1 ! pos !
                                   optional extra data ]
@@ -1000,7 +1006,7 @@ int bstream_wr_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
     if (item->base.type == BSTREAM_IT_TABLE)
     {
       CHECK_WR_RES(bstream_wr_byte(s,0x00)); /* flags: we don't use extra data */
-      CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_no));
+      CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_num));
       CHECK_WR_RES(bstream_wr_num(s,item->base.pos));
     }
   }
@@ -1059,7 +1065,7 @@ int bstream_rd_db_catalogue(backup_stream *s, struct st_bstream_image_header *ca
         return BSTREAM_ERROR;
 
       CHECK_RD_OK(bstream_rd_byte(s,&flags)); /* flags are ignored currently */
-      CHECK_RD_OK(bstream_rd_byte(s,&ti.snap_no));
+      CHECK_RD_OK(bstream_rd_byte(s,&ti.snap_num));
       CHECK_RD_RES(bstream_rd_num(s,&ti.base.base.pos));
     }
     else
@@ -1271,9 +1277,8 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
     CHECK_WR_RES(bstream_wr_item_def(s,cat,PER_TABLE_ITEM,item));
   }
 
+wr_error:
   bcat_iterator_free(cat,iter);
-
-  wr_error:
 
   return ret;
 }
@@ -1413,7 +1418,7 @@ int bstream_wr_meta_item(backup_stream *s,
 
   if (kind == TABLE_ITEM)
   {
-    CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_no));
+    CHECK_WR_RES(bstream_wr_byte(s,((struct st_bstream_table_info*)item)->snap_num));
     return ret;
   }
 
@@ -1497,7 +1502,7 @@ int bstream_rd_meta_item(backup_stream *s,
     if (ret != BSTREAM_OK)
       return BSTREAM_ERROR;
 
-    CHECK_RD_RES(bstream_rd_byte(s,&item_buf.table.snap_no));
+    CHECK_RD_RES(bstream_rd_byte(s,&item_buf.table.snap_num));
       return ret;
   }
 
@@ -1549,14 +1554,30 @@ int bstream_wr_item_def(backup_stream *s,
   blob data;
   int ret=BSTREAM_OK;
 
-  if (bcat_get_item_create_query(cat,item,&query) == BSTREAM_OK)
+  /* initialize variables */
+  data.begin= 0;
+  data.end= 0;
+  query.begin= 0;
+  query.end= 0;
+  ret= bcat_get_item_create_query(cat,item,&query);
+  if (ret == BSTREAM_OK) 
     flags |= BSTREAM_FLAG_HAS_CREATE_STMT;
+  else if (ret == BSTREAM_ERROR) 
+    goto wr_error;
 
-  if (bcat_get_item_create_data(cat,item,&data) == BSTREAM_OK)
+  /* bcat_get_item_create_data not in use yet. */
+  /*
+  ret= bcat_get_item_create_data(cat,item,&data);
+  if (ret == BSTREAM_OK)
     flags |= BSTREAM_FLAG_HAS_EXTRA_DATA;
-
+  else if (ret == BSTREAM_ERROR) 
+    goto wr_error;
+  */
+  
   ret= bstream_wr_meta_item(s,kind,flags,item);
-
+  if (ret == BSTREAM_ERROR) 
+    goto wr_error;
+  
   /* save create query and/or create data */
 
   if (flags & BSTREAM_FLAG_HAS_EXTRA_DATA)
@@ -1669,10 +1690,10 @@ int bstream_wr_data_chunk(backup_stream *s,
 
   ASSERT(chunk);
 
-  CHECK_WR_RES(bstream_wr_byte(s,chunk->snap_no + 1));
+  CHECK_WR_RES(bstream_wr_byte(s,chunk->snap_num + 1));
   CHECK_WR_RES(bstream_wr_int2(s,0)); /* sequence number - not used now */
   CHECK_WR_RES(bstream_wr_byte(s,chunk->flags));
-  CHECK_WR_RES(bstream_wr_num(s,chunk->table_no));
+  CHECK_WR_RES(bstream_wr_num(s,chunk->table_num));
   CHECK_WR_RES(bstream_write_blob(s,chunk->data));
   CHECK_WR_RES(bstream_end_chunk(s));
 
@@ -1714,27 +1735,27 @@ int bstream_rd_data_chunk(backup_stream *s,
   blob *envelope;
   blob to_read;
   unsigned long int howmuch;
-  unsigned int seq_no;
+  unsigned int seq_num;
   int ret= BSTREAM_OK;
 
   ASSERT(chunk);
 
-  CHECK_RD_RES(bstream_rd_byte(s,&chunk->snap_no));
+  CHECK_RD_RES(bstream_rd_byte(s,&chunk->snap_num));
 
   /*
     Saved snapshot numbers start from 1 - if we read 0 it means that this is not
     a table data chunk
   */
-  if (chunk->snap_no == 0)
+  if (chunk->snap_num == 0)
     return BSTREAM_EOC;
   else if (ret != BSTREAM_OK)
     return BSTREAM_ERROR;
 
-  (chunk->snap_no)--;
+  (chunk->snap_num)--;
 
-  CHECK_RD_OK(bstream_rd_int2(s,&seq_no));  /* FIxME: handle sequence numbers */
+  CHECK_RD_OK(bstream_rd_int2(s,&seq_num));  /* FIxME: handle sequence numbers */
   CHECK_RD_OK(bstream_rd_byte(s,&chunk->flags));
-  CHECK_RD_OK(bstream_rd_num(s,&chunk->table_no));
+  CHECK_RD_OK(bstream_rd_num(s,&chunk->table_num));
 
   /*
     read rest of the chunk data into provided buffer or the internal buffer
@@ -1789,8 +1810,10 @@ int bstream_rd_data_chunk(backup_stream *s,
       {
         memmove(buf->begin, chunk->data.begin, howmuch);
         envelope= buf;
-        chunk->data= *buf;
       }
+
+ /* update chunk->data to point to the new buffer */
+      chunk->data= *buf;
 
       /* update to_read blob to indicate free space left */
       to_read.begin= buf->begin + howmuch;
@@ -1824,7 +1847,11 @@ int bstream_rd_data_chunk(backup_stream *s,
 int bstream_wr_byte(backup_stream *s, unsigned short int x)
 {
   byte buf= x & 0xFF;
-  blob b= { &buf, &buf + 1 };
+  blob b;
+
+  b.begin= &buf;
+  b.end= &buf + 1;
+
   return bstream_write_part(s,&b,b);
 }
 
@@ -1839,8 +1866,11 @@ int bstream_wr_byte(backup_stream *s, unsigned short int x)
 int bstream_rd_byte(backup_stream *s, unsigned short int *x)
 {
   byte buf;
-  blob b= { &buf, &buf+1 };
+  blob b;
   int ret;
+
+  b.begin= &buf;
+  b.end= &buf + 1;
 
   ret= bstream_read_part(s,&b,b);
 
@@ -1858,8 +1888,14 @@ int bstream_rd_byte(backup_stream *s, unsigned short int *x)
 */
 int bstream_wr_int2(backup_stream *s, unsigned int x)
 {
-  byte buf[2]= { x & 0xFF, (x >> 8) & 0xFF };
-  blob b= {buf, buf+2};
+  byte buf[2];
+  blob b;
+
+  buf[0]= x & 0xFF;
+  buf[1]= (x >> 8) & 0xFF;
+
+  b.begin= buf;
+  b.end= buf+2;
 
   return bstream_write_blob(s,b);
 }
@@ -1875,8 +1911,11 @@ int bstream_wr_int2(backup_stream *s, unsigned int x)
 int bstream_rd_int2(backup_stream *s, unsigned int *x)
 {
   byte buf[2];
-  blob b= {buf, buf+2};
+  blob b;
   int ret;
+
+  b.begin= buf;
+  b.end= buf+2;
 
   ret= bstream_read_blob(s,b);
   if (ret == BSTREAM_ERROR)
@@ -1893,8 +1932,11 @@ int bstream_rd_int2(backup_stream *s, unsigned int *x)
 int bstream_wr_int4(backup_stream *s, unsigned long int x)
 {
   byte buf[4];
-  blob b= {buf, buf+4};
+  blob b;
   int i;
+
+  b.begin= buf;
+  b.end= buf+4;
 
   for (i= 0; i < 4; i++)
   {
@@ -1916,17 +1958,20 @@ int bstream_wr_int4(backup_stream *s, unsigned long int x)
 int bstream_rd_int4(backup_stream *s, unsigned long int *x)
 {
   byte buf[4];
-  blob b= {buf, buf+4};
+  blob b;
   int ret;
+
+  b.begin= buf;
+  b.end= buf+4;
 
   ret= bstream_read_blob(s,b);
   if (ret == BSTREAM_ERROR)
     return BSTREAM_ERROR;
 
-  *x = buf[0];
-  *x += (buf[1] << 8);
-  *x += (buf[1] << 2*8);
-  *x += (buf[1] << 3*8);
+  *x = (unsigned long int)buf[0];
+  *x += ((unsigned long int)buf[1] << 8);
+  *x += ((unsigned long int)buf[2] << 2*8);
+  *x += ((unsigned long int)buf[3] << 3*8);
 
   return ret;
 }
@@ -2064,7 +2109,10 @@ int bstream_rd_string(backup_stream *s, bstream_blob *str)
 int bstream_wr_time(backup_stream *s, bstream_time_t *time)
 {
   byte buf[6];
-  blob b= {buf, buf+6};
+  blob b;
+
+  b.begin= buf;
+  b.end= buf+6;
 
   buf[0]= get_byte_uint(((time->year>>4) & 0xFF));
   buf[1]= (get_byte_uint(((time->year<<4) & 0xF0)) |
@@ -2088,8 +2136,11 @@ int bstream_wr_time(backup_stream *s, bstream_time_t *time)
 int bstream_rd_time(backup_stream *s, bstream_time_t *time)
 {
   byte buf[6];
-  blob b= {buf, buf+6};
+  blob b;
   int ret= BSTREAM_OK;
+
+  b.begin= buf;
+  b.end= buf+6;
 
   ret= bstream_read_blob(s,b);
 

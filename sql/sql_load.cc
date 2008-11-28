@@ -359,7 +359,9 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
   bzero((char*) &info,sizeof(info));
   info.ignore= ignore;
   info.handle_duplicates=handle_duplicates;
-  info.escape_char=escaped->length() ? (*escaped)[0] : INT_MAX;
+  info.escape_char= (escaped->length() && (ex->escaped_given() ||
+                    !(thd->variables.sql_mode & MODE_NO_BACKSLASH_ESCAPES)))
+                    ? (*escaped)[0] : INT_MAX;
 
   READ_INFO read_info(file,tot_length,
                       ex->cs ? ex->cs : thd->variables.collation_database,
@@ -1166,8 +1168,7 @@ READ_INFO::READ_INFO(File file_par, uint tot_length, CHARSET_INFO *cs,
 	cache.read_function = _my_b_net_read;
 
       if (mysql_bin_log.is_open())
-	cache.pre_read = cache.pre_close =
-	  (IO_CACHE_CALLBACK) log_loaded_block;
+	cache.pre_read= cache.pre_close = log_loaded_block;
 #endif
     }
   }

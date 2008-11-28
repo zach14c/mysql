@@ -1,0 +1,80 @@
+--source include/not_embedded.inc
+ 
+#
+# This test checks how online backup handles object names encoded using 
+# extended character sets (non-latin1)
+#
+# 1) Test that table whose name uses extended character set is backed up and
+#    retored correctly.
+#
+# 2) Test that above holds also when user changes the default character sets
+#    using SET NAMES command or if these settings are different during backup
+#    and restore time.
+#
+# TODO:
+#
+# - Test more character sets.
+# - Test that native backup engines are not confuced by extended charsets.
+# - Test that all meta-data stored in backup image is always handled correctly
+#   regardless of character set settings on backup and restore servers. 
+#
+
+--source include/not_embedded.inc
+
+disable_warnings;
+DROP DATABASE IF EXISTS backup_cs;
+error 0,1;
+remove_file $MYSQLTEST_VARDIR/master-data/backup_cs.bak;
+enable_warnings;
+
+# TODO: Change to MyISAM when problems with this engine are fixed.
+let $engine=MEMORY;
+
+CREATE DATABASE backup_cs;
+USE backup_cs;
+
+# Set connection charset to UTF8 and create table witch Chinese name.
+
+SET NAMES utf8;
+
+eval CREATE TABLE `ｱｱｱ`(`ｷｷｷ` char(5))
+ENGINE = $engine
+DEFAULT CHARSET = utf8;
+
+SHOW TABLES;
+SHOW CREATE TABLE `ｱｱｱ`;
+
+INSERT INTO `ｱｱｱ` VALUES ("ｱｱｱ");
+
+# Backup and restore database with the table.
+
+replace_column 1 #;
+BACKUP DATABASE backup_cs TO "backup_cs.bak";
+
+DROP DATABASE backup_cs;
+replace_column 1 #;
+RESTORE FROM "backup_cs.bak";
+
+USE backup_cs;
+SHOW CREATE TABLE `ｱｱｱ`;
+SELECT * FROM `ｱｱｱ`;
+
+# Restore once more, changing the default character set.
+
+SET NAMES latin2;
+
+DROP DATABASE backup_cs;
+replace_column 1 #;
+RESTORE FROM "backup_cs.bak";
+
+SHOW TABLES IN backup_cs;
+
+# Check that RESTORE haven't changed the current character set settings.
+
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+
+# Final cleanup.
+
+DROP DATABASE backup_cs;

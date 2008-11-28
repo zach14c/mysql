@@ -162,8 +162,7 @@ int start_slave_thread(pthread_handler h_func, pthread_mutex_t* start_lock,
 		       pthread_cond_t* start_cond,
 		       volatile uint *slave_running,
 		       volatile ulong *slave_run_id,
-		       Master_info* mi,
-                       bool high_priority);
+		       Master_info* mi);
 
 /* If fd is -1, dump to NET */
 int mysql_table_dump(THD* thd, const char* db,
@@ -175,7 +174,8 @@ int fetch_master_table(THD* thd, const char* db_name, const char* table_name,
 
 bool show_master_info(THD* thd, Master_info* mi);
 bool show_binlog_info(THD* thd);
-bool rpl_master_has_bug(Relay_log_info *rli, uint bug_id, bool report=TRUE);
+bool rpl_master_has_bug(const Relay_log_info *rli, uint bug_id, bool report,
+                        bool (*pred)(const void *), const void *param);
 bool rpl_master_erroneous_autoinc(THD* thd);
 
 const char *print_slave_db_safe(const char *db);

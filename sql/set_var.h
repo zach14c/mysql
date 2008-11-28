@@ -105,7 +105,6 @@ public:
   { return type != INT_RESULT; }		/* Assume INT */
   virtual bool check_default(enum_var_type type)
   { return option_limits == 0; }
-  Item *item(THD *thd, enum_var_type type, LEX_STRING *base);
   virtual bool is_struct() { return 0; }
   virtual bool is_readonly() const { return 0; }
   virtual sys_var_pluginvar *cast_pluginvar() { return 0; }
@@ -486,10 +485,16 @@ public:
   { chain_sys_var(chain); }
   bool check(THD *thd, set_var *var)
   {
-    int ret= 0;
-    if (check_func)
-      ret= (*check_func)(thd, var);
-    return ret ? ret : check_enum(thd, var, enum_names);
+    /*
+      check_enum fails if the character representation supplied was wrong
+      or that the integer value was wrong or missing.
+    */
+    if (check_enum(thd, var, enum_names))
+      return TRUE;
+    else if ((check_func && (*check_func)(thd, var)))
+      return TRUE;
+    else
+      return FALSE;
   }
   bool update(THD *thd, set_var *var);
   void set_default(THD *thd, enum_var_type type);
@@ -606,6 +611,21 @@ public:
   uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *b);
 };
 
+#if defined(ENABLED_DEBUG_SYNC)
+/* Debug Sync Facility. Implemented in debug_sync.cc. */
+class sys_var_debug_sync :public sys_var_thd
+{
+public:
+  sys_var_debug_sync(sys_var_chain *chain, const char *name_arg)
+    :sys_var_thd(name_arg)
+  { chain_sys_var(chain); }
+  bool check(THD *thd, set_var *var);
+  bool update(THD *thd, set_var *var);
+  SHOW_TYPE show_type() { return SHOW_CHAR; }
+  bool check_update_type(Item_result type) { return type != STRING_RESULT; }
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+};
+#endif /* defined(ENABLED_DEBUG_SYNC) */
 
 
 /* some variables that require special handling */
@@ -637,6 +657,31 @@ public:
   bool check_type(enum_var_type type) { return type == OPT_GLOBAL; }
   SHOW_TYPE show_type() { return SHOW_LONGLONG; }
   uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+};
+
+
+/**
+  Backup_wait_timeout system variable class.
+
+  This class consolidates the mechanism to manage the backup_wait_timeout
+  system variable. It is a session only variable thus we check the type for
+  check_type() and check_default() to ensure it isn't accessed as a global.
+
+  A set_default() method is provided to allow the SET command :
+  SET backup_wait_TIMEOUT = DEFAULT; 
+*/
+class sys_var_backup_wait_timeout :public sys_var
+{
+public:
+  sys_var_backup_wait_timeout(sys_var_chain *chain, const char *name_arg)
+    :sys_var(name_arg)
+  { chain_sys_var(chain); }
+  bool update(THD *thd, set_var *var);
+  bool check_type(enum_var_type type) { return type == OPT_GLOBAL; }
+  bool check_default(enum_var_type type) { return type == OPT_GLOBAL; }
+  SHOW_TYPE show_type() { return SHOW_LONG; }
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+  void set_default(THD *thd, enum_var_type type);
 };
 
 
@@ -920,6 +965,32 @@ public:
   SHOW_TYPE show_type() { return SHOW_CHAR; }
 };
 
+/*
+  Class used to manage log-backup-output variable.
+*/
+class sys_var_log_backup_output : public sys_var
+{
+  ulong *value;
+  TYPELIB *enum_names;
+public:
+  sys_var_log_backup_output(sys_var_chain *chain, const char *name_arg, ulong *value_arg,
+                     TYPELIB *typelib, sys_after_update_func func)
+    :sys_var(name_arg,func), value(value_arg), enum_names(typelib)
+  {
+    chain_sys_var(chain);
+    set_allow_empty_value(FALSE);
+  }
+  virtual bool check(THD *thd, set_var *var)
+  {
+    return check_set(thd, var, enum_names);
+  }
+  bool update(THD *thd, set_var *var);
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+  bool check_update_type(Item_result type) { return 0; }
+  void set_default(THD *thd, enum_var_type type);
+  SHOW_TYPE show_type() { return SHOW_CHAR; }
+};
+
 
 /* Variable that you can only read from */
 
@@ -1143,6 +1214,7 @@ public:
                       &binlog_format_typelib,
                       fix_binlog_format_after_update)
   {};
+  bool check(THD *thd, set_var *var);
   bool is_readonly() const;
 };
 
@@ -1330,7 +1402,9 @@ CHARSET_INFO *get_old_charset_by_name(const char *old_name);
 uchar* find_named(I_List<NAMED_LIST> *list, const char *name, uint length,
 		NAMED_LIST **found);
 
-extern sys_var_str sys_var_general_log_path, sys_var_slow_log_path;
+extern sys_var_str sys_var_general_log_path, sys_var_slow_log_path,
+       sys_var_backup_history_log_path, sys_var_backup_progress_log_path,
+       sys_var_backupdir;
 
 /* key_cache functions */
 KEY_CACHE *get_key_cache(LEX_STRING *cache_name);

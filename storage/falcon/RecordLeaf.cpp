@@ -118,7 +118,7 @@ int RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSca
 {
 	int count = 0;
 	Record **ptr, **end;
-	Sync sync(&syncObject, "RecordLeaf::retireRecords");
+	Sync sync(&syncObject, "RecordLeaf::retireRecords(syncObject)");
 	sync.lock(Shared);
 	
 	// Get a shared lock to find at least one record to scavenge
@@ -134,7 +134,7 @@ int RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSca
 				++count;
 			else if (record->isVersion())
 				{
-				Sync syncPrior(record->getSyncPrior(), "RecordLeaf::retireRecords1");
+				Sync syncPrior(record->getSyncPrior(), "RecordLeaf::retireRecords(prior)");
 				syncPrior.lock(Shared);
 	
 				if (record->scavenge(recordScavenge, Shared))
@@ -167,7 +167,7 @@ int RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSca
 			{
 			if (record->isVersion())
 				{
-				Sync syncPrior(record->getSyncPrior(), "RecordLeaf::retireRecords2");
+				Sync syncPrior(record->getSyncPrior(), "RecordLeaf::retireRecords(3)");
 				syncPrior.lock(Exclusive);
 				
 				if (record->scavenge(recordScavenge, Exclusive))
@@ -220,7 +220,7 @@ int RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordSca
 	// identifier when the leaf node is scavenged later.
 	
 	if (!count && table->emptySections)
-		table->emptySections->set(base * RECORD_SLOTS);
+		table->emptySections->set(base);
 
 	return count;
 }
@@ -232,7 +232,7 @@ bool RecordLeaf::retireSections(Table * table, int id)
 
 bool RecordLeaf::inactive()
 {
-	return countActiveRecords() == 0;
+	return (!anyActiveRecords());
 }
 
 int RecordLeaf::countActiveRecords()
@@ -242,6 +242,23 @@ int RecordLeaf::countActiveRecords()
 	for (Record **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr)
 		if (*ptr)
 			++count;
+
+	return count;
+}
+
+bool RecordLeaf::anyActiveRecords()
+{
+	for (Record **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr)
+		if (*ptr)
+			return true;
+
+	return false;
+}
+
+int RecordLeaf::chartActiveRecords(int *chart)
+{
+	int count = countActiveRecords();
+	chart[count]++;
 
 	return count;
 }

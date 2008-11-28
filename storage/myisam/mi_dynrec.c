@@ -193,9 +193,11 @@ size_t mi_nommap_pread(MI_INFO *info, uchar *Buffer,
 size_t mi_mmap_pwrite(MI_INFO *info, const uchar *Buffer,
                       size_t Count, my_off_t offset, myf MyFlags)
 {
+  MYISAM_SHARE *share= info->s;
+  uint ret;
   DBUG_PRINT("info", ("mi_write with mmap %d\n", info->dfile));
-  if (info->s->concurrent_insert)
-    rw_rdlock(&info->s->mmap_lock);
+  if (share->concurrent_insert)
+    rw_rdlock(&share->mmap_lock);
 
   /*
     The following test may fail in the following cases:
@@ -204,21 +206,24 @@ size_t mi_mmap_pwrite(MI_INFO *info, const uchar *Buffer,
     memory mapped area.
   */
 
-  if (info->s->mmaped_length >= offset + Count)
+  if (share->mmaped_length >= offset + Count)
   {
-    memcpy(info->s->file_map + offset, Buffer, Count); 
-    if (info->s->concurrent_insert)
-      rw_unlock(&info->s->mmap_lock);
-    return 0;
+    memcpy(share->file_map + offset, Buffer, Count);
+    if (share->concurrent_insert)
+      rw_unlock(&share->mmap_lock);
+    ret= 0;
   }
   else
   {
-    info->s->nonmmaped_inserts++;
-    if (info->s->concurrent_insert)
-      rw_unlock(&info->s->mmap_lock);
-    return my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
+    share->nonmmaped_inserts++;
+    if (share->concurrent_insert)
+      rw_unlock(&share->mmap_lock);
+    ret= my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
   }
-
+  if (unlikely(mi_get_physical_logging_state(share)))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYD,
+                               share, Buffer, Count, offset);
+  return ret;
 }
 
 
@@ -227,7 +232,12 @@ size_t mi_mmap_pwrite(MI_INFO *info, const uchar *Buffer,
 size_t mi_nommap_pwrite(MI_INFO *info, const uchar *Buffer,
                       size_t Count, my_off_t offset, myf MyFlags)
 {
-  return my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
+  MYISAM_SHARE *share= info->s;
+  uint ret= my_pwrite(info->dfile, Buffer, Count, offset, MyFlags);
+  if (unlikely(mi_get_physical_logging_state(share)))
+    myisam_log_pwrite_physical(MI_LOG_WRITE_BYTES_MYD,
+                               share, Buffer, Count, offset);
+  return ret;
 }
 
 
@@ -1732,7 +1742,7 @@ int _mi_read_rnd_dynamic_record(MI_INFO *info, uchar *buf,
       {						/* Check if changed */
 	info_read=1;
 	info->rec_cache.seek_not_done=1;
-	if (mi_state_info_read_dsk(share->kfile,&share->state,1))
+	if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
 	  goto panic;
       }
       if (filepos >= info->state->data_file_length)

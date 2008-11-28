@@ -331,6 +331,9 @@ client/readline.cpp
 client/rpl_constants.h
 client/rpl_record_old.cc
 client/rpl_record_old.h
+client/rpl_tblmap.h
+client/rpl_tblmap.cc
+client/rpl_utility.h
 client/select_test
 client/sql_string.cpp
 client/ssl_test
@@ -492,6 +495,7 @@ libmysqld/client.c
 libmysqld/client_settings.h
 libmysqld/cmake_dummy.c
 libmysqld/convert.cc
+libmysqld/debug_sync.cc
 libmysqld/derror.cc
 libmysqld/des_key_file.cc
 libmysqld/discover.cc
@@ -596,6 +600,7 @@ libmysqld/protocol_cursor.cc
 libmysqld/records.cc
 libmysqld/repl_failsafe.cc
 libmysqld/rpl_filter.cc
+libmysqld/rpl_handler.cc
 libmysqld/rpl_injector.cc
 libmysqld/rpl_record.cc
 libmysqld/rpl_record_old.cc
@@ -871,6 +876,7 @@ mysql-test/suite/partitions/r/partition_special_myisam.warnings
 mysql-test/suite/partitions/r/partition_t55.out
 mysql-test/suite/partitions/r/partition_t55.refout
 mysql-test/suite/partitions/t/partition.test
+mysql-test/suite/rpl/t/rpl_view-slave.opt
 mysql-test/t.log
 mysql-test/t/index_merge.load
 mysql-test/t/tmp.test
@@ -1884,3 +1890,16 @@ win/vs8cache.txt
 ylwrap
 zlib/*.ds?
 zlib/*.vcproj
+extra/libevent/event-config.h
+libmysqld/ddl_blocker.cc
+libmysqld/mdl.cc
+mysql-test/bug36522-64.tar
+mysql-test/bug36522.tar
+mysql-test/t.log
+mysql-test/tps.log
+libmysqld/event_parse_data.cc
+client/transaction.h
+libmysqld/transaction.cc
+libmysqld/rpl_handler.cc
+libmysql/probes.h
+libmysql_r/probes.h

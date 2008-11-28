@@ -13,11 +13,13 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/*
-  locking of isam-tables.
-  reads info from a isam-table. Must be first request before doing any furter
-  calls to any isamfunktion.  Is used to allow many process use the same
-  isamdatabase.
+/**
+  @file
+  Locking of MyISAM tables.
+
+  Reads info from a isam table. Must be first request before doing any
+  further calls to any isam function.  Is used to allow many processes to use
+  the same isam database.
 */
 
 #include "ftdefs.h"
@@ -77,6 +79,12 @@ int mi_lock_database(MI_INFO *info, int lock_type)
       }
       if (info->opt_flag & (READ_CACHE_USED | WRITE_CACHE_USED))
       {
+        /*
+          Logically there should not be a WRITE_CACHE at this stage, except
+          maybe for temporary tables.
+        */
+        DBUG_ASSERT(info->s->temporary ||
+                    !(info->opt_flag & WRITE_CACHE_USED));
 	if (end_io_cache(&info->rec_cache))
 	{
 	  error=my_errno;
@@ -86,43 +94,16 @@ int mi_lock_database(MI_INFO *info, int lock_type)
       }
       if (!count)
       {
+        int local_error;
 	DBUG_PRINT("info",("changed: %u  w_locks: %u",
 			   (uint) share->changed, share->w_locks));
-	if (share->changed && !share->w_locks)
-	{
-#ifdef HAVE_MMAP
-          if ((info->s->mmaped_length != info->s->state.state.data_file_length) &&
-              (info->s->nonmmaped_inserts > MAX_NONMAPPED_INSERTS))
-          {
-            if (info->s->concurrent_insert)
-              rw_wrlock(&info->s->mmap_lock);
-            mi_remap_file(info, info->s->state.state.data_file_length);
-            info->s->nonmmaped_inserts= 0;
-            if (info->s->concurrent_insert)
-              rw_unlock(&info->s->mmap_lock);
-          }
-#endif
-	  share->state.process= share->last_process=share->this_process;
-	  share->state.unique=   info->last_unique=  info->this_unique;
-	  share->state.update_count= info->last_loop= ++info->this_loop;
-          if (mi_state_info_write(share->kfile, &share->state, 1))
-	    error=my_errno;
-	  share->changed=0;
-	  if (myisam_flush)
-	  {
-	    if (my_sync(share->kfile, MYF(0)))
-	      error= my_errno;
-	    if (my_sync(info->dfile, MYF(0)))
-	      error= my_errno;
-	  }
-	  else
-	    share->not_flushed=1;
-	  if (error)
-          {
-            mi_print_error(info->s, HA_ERR_CRASHED);
-	    mi_mark_crashed(info);
-          }
-	}
+	if (share->changed && !share->w_locks &&
+            (local_error= mi_remap_file_and_write_state_for_unlock(info)))
+        {
+          error= local_error;
+          mi_print_error(share, HA_ERR_CRASHED);
+          mi_mark_crashed(info);
+        }
 	if (info->lock_type != F_EXTRA_LCK)
 	{
 	  if (share->r_locks)
@@ -178,7 +159,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
 	  error=my_errno;
 	  break;
 	}
-	if (mi_state_info_read_dsk(share->kfile, &share->state, 1))
+	if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
 	{
 	  error=my_errno;
 	  (void) my_lock(share->kfile,F_UNLCK,0L,F_TO_EOF,MYF(MY_SEEK_NOT_DONE));
@@ -223,7 +204,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
 	  }
 	  if (!share->r_locks)
 	  {
-	    if (mi_state_info_read_dsk(share->kfile, &share->state, 1))
+	    if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
 	    {
 	      error=my_errno;
 	      (void) my_lock(share->kfile,F_UNLCK,0L,F_TO_EOF,
@@ -246,7 +227,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
       break;				/* Impossible */
     }
   }
-#ifdef __WIN__
+#ifdef _WIN32
   else
   {
     /*
@@ -262,11 +243,14 @@ int mi_lock_database(MI_INFO *info, int lock_type)
   }
 #endif
   pthread_mutex_unlock(&share->intern_lock);
-#if defined(FULL_LOG) || defined(_lint)
-  lock_type|=(int) (flag << 8);		/* Set bit to set if real lock */
-  myisam_log_command(MI_LOG_LOCK,info,(uchar*) &lock_type,sizeof(lock_type),
-		     error);
-#endif
+  if (my_b_inited(&myisam_logical_log))
+  {
+    uchar lock_type_buff[4];
+    lock_type|=(int) (flag << 8);	   /* Set bit to set if real lock */
+    int4store(lock_type_buff, lock_type);
+    myisam_log_command_logical(MI_LOG_LOCK, info,
+                               lock_type_buff, sizeof(lock_type_buff), error);
+  }
   DBUG_RETURN(error);
 } /* mi_lock_database */
 
@@ -431,7 +415,7 @@ int _mi_readinfo(register MI_INFO *info, int lock_type, int check_keybuffer)
       if (my_lock(share->kfile,lock_type,0L,F_TO_EOF,
 		  info->lock_wait | MY_SEEK_NOT_DONE))
 	DBUG_RETURN(1);
-      if (mi_state_info_read_dsk(share->kfile, &share->state, 1))
+      if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
       {
 	int error= my_errno ? my_errno : HA_ERR_FILE_TOO_SHORT;
 	(void) my_lock(share->kfile,F_UNLCK,0L,F_TO_EOF,
@@ -475,13 +459,13 @@ int _mi_writeinfo(register MI_INFO *info, uint operation)
       share->state.process= share->last_process=   share->this_process;
       share->state.unique=  info->last_unique=	   info->this_unique;
       share->state.update_count= info->last_loop= ++info->this_loop;
-      if ((error=mi_state_info_write(share->kfile, &share->state, 1)))
+      if ((error= mi_state_info_write(share, share->kfile, &share->state, 1)))
 	olderror=my_errno;
-#ifdef __WIN__
+#ifdef _WIN32
       if (myisam_flush)
       {
-	_commit(share->kfile);
-	_commit(info->dfile);
+        my_sync(share->kfile,0);
+        my_sync(info->dfile,0);
       }
 #endif
     }
@@ -561,6 +545,10 @@ int _mi_mark_file_changed(MI_INFO *info)
     {
       mi_int2store(buff,share->state.open_count);
       buff[2]=1;				/* Mark that it's changed */
+      /*
+        Don't need to log it to physical log, as online backup does dirty
+        copies anyway.
+      */
       DBUG_RETURN(my_pwrite(share->kfile,buff,sizeof(buff),
                             sizeof(share->state.header),
                             MYF(MY_NABP)));
@@ -590,6 +578,10 @@ int _mi_decrement_open_count(MI_INFO *info)
     {
       share->state.open_count--;
       mi_int2store(buff,share->state.open_count);
+      /*
+        Don't need to log it to physical log, as online backup does dirty
+        copies anyway.
+      */
       write_error=my_pwrite(share->kfile,buff,sizeof(buff),
 			    sizeof(share->state.header),
 			    MYF(MY_NABP));
@@ -598,4 +590,55 @@ int _mi_decrement_open_count(MI_INFO *info)
       lock_error=mi_lock_database(info,old_lock);
   }
   return test(lock_error || write_error);
+}
+
+
+/**
+  Remaps the data file, and writes state to index file.
+
+  When we unlock a table and no other thread has announced it is going to
+  write to it (w_locks==0), we want to flush some information to disk, so
+  that in case of crash the table is not too much corrupted. Physical
+  logging, when it is turning logging of for a table, needs to do this too,
+  so that this information reaches the log.
+
+  @param  info            table
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    error
+*/
+
+int mi_remap_file_and_write_state_for_unlock(MI_INFO *info)
+{
+  MYISAM_SHARE *share= info->s;
+  int error= 0;
+#ifdef HAVE_MMAP
+  if ((info->s->mmaped_length != info->s->state.state.data_file_length) &&
+      (info->s->nonmmaped_inserts > MAX_NONMAPPED_INSERTS))
+  {
+    if (info->s->concurrent_insert)
+      rw_wrlock(&info->s->mmap_lock);
+    mi_remap_file(info, info->s->state.state.data_file_length);
+    info->s->nonmmaped_inserts= 0;
+    if (info->s->concurrent_insert)
+      rw_unlock(&info->s->mmap_lock);
+  }
+#endif
+  share->state.process= share->last_process=share->this_process;
+  share->state.unique=   info->last_unique=  info->this_unique;
+  share->state.update_count= info->last_loop= ++info->this_loop;
+  if (mi_state_info_write(share, share->kfile, &share->state, 1))
+    error=my_errno;
+  share->changed=0;
+  if (myisam_flush)
+  {
+    if (my_sync(share->kfile, MYF(0)))
+      error= my_errno;
+    if (my_sync(info->dfile, MYF(0)))
+      error= my_errno;
+  }
+  else
+    share->not_flushed=1;
+  return error;
 }

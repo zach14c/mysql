@@ -42,6 +42,9 @@ public:
 	IndexWalker*		getSuccessor(IndexWalker** parentPointer, bool *shallower);
 	void				remove(void);
 	void				rebalanceUpward(int delta);
+	// debugging routines 
+	int					validate(void);
+	void				corrupt(const char *text);
 	
 	Index			*index;
 	Transaction		*transaction;
@@ -54,9 +57,11 @@ public:
 	UCHAR			*key;
 	uint			keyLength;
 	int32			recordNumber;
+	int32			lastRecordNumber;
 	int				balance;
 	int				searchFlags;
 	bool			first;
+	bool			firstRecord;
 };
 
 #endif

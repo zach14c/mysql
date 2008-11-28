@@ -76,6 +76,9 @@ int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
 	if (!window)
 		return 0;
 		
+	Sync sync(&log->syncWrite, "SRLUpdateRecords::thaw");
+	sync.lock(Exclusive);
+	
 	// Return pointer to record data
 
 	control->input = window->buffer + (record->getVirtualOffset() - window->virtualOffset);
@@ -84,34 +87,40 @@ int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
 	// Get section id, record id and data length written. Input pointer will be at
 	// beginning of record data.
 
-	int tableSpaceId;
+	int recordTableSpaceId = 0;
 	
 	if (control->version >= srlVersion8)
-		tableSpaceId = control->getInt();
-	else
-		tableSpaceId = 0;
+		recordTableSpaceId = control->getInt();
 		
 	control->getInt();			// sectionId
 	int recordNumber = control->getInt();
 	int dataLength   = control->getInt();
-	ASSERT(recordNumber == record->recordNumber);
-	int bytesReallocated = record->setRecordData(control->input, dataLength);
+	int bytesReallocated = 0;
+	
+	window->deactivateWindow();
+	sync.unlock();
+	
+	// setRecordData() handles race conditions with an interlocked compare and exchange,
+	// but check the state and record number anyway
+
+	if (record->state == recChilled && recordNumber == record->recordNumber)
+		bytesReallocated = record->setRecordData(control->input, dataLength);
 
 	if (bytesReallocated > 0)
+		{
+		ASSERT(recordNumber == record->recordNumber);
 		bytesReallocated = record->getEncodedSize();
+		*thawed = true;
 
-	window->deactivateWindow();
-
-	if (log->chilledRecords > 0)
-		log->chilledRecords--;
+		if (log->chilledRecords > 0)
+			log->chilledRecords--;
 		
-	if (log->chilledBytes > uint64(bytesReallocated))
-		log->chilledBytes -= bytesReallocated;
-	else
-		log->chilledBytes = 0;
-	
-	*thawed = true;
-	
+		if (log->chilledBytes > uint64(bytesReallocated))
+			log->chilledBytes -= bytesReallocated;
+		else
+			log->chilledBytes = 0;
+		}
+
 	return bytesReallocated;
 }
 
@@ -119,9 +128,13 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 {
 	uint32 chilledRecordsWindow = 0;
 	uint32 chilledBytesWindow   = 0;
-	uint32 windowNumber         = 0;
 	SerialLogTransaction *srlTrans = NULL;
 	int savepointId;
+	
+	// Generate one serial log record per write window. To ensure that
+	// chilled records are grouped by savepoint, start a new serial
+	// log record for each savepoint. Several serial log records may
+	// be generated for one savepoint.
 	
 	for (RecordVersion *record = records; record;)
 		{
@@ -155,7 +168,6 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			if (record->state == recChilled)
 				{
 				transaction->chillPoint = &record->nextInTrans;
-				
 				continue;
 				}
 				
@@ -164,57 +176,77 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			if (record->state == recNoChill)
 				continue;
 
-			// If this is a different savepoint, start another record
+			// If this is a different savepoint, break out of the inner loop
+			// and start another serial log record
 			
 			if (chillRecords && record->savePointId != savepointId)
 				break;
 	
 			Table *table = record->format->table;
-			tableSpaceId = table->dbb->tableSpaceId;
+			int recordTableSpaceId = table->dbb->tableSpaceId;
 			Stream stream;
 			
-			// Thawed records are indicated by a non-zero virtual offset, and
-			// are already in the serial log. If this record is to be re-chilled,
-			// then no need to get the record data or set the virtual offset.
+			// A non-zero virtual offset indicates that the record was previously
+			// chilled and thawed and is already in the serial log.
+			//
+			// If this record is being re-chilled, then there is no need to get
+			// the record data or set the virtual offset.
+			//
+			// If this record is being committed, then there is nothing to do.
 
-			if (chillRecords && record->state != recDeleted && record->virtualOffset != 0)
+			if (record->virtualOffset != 0)
 				{
-				int chillBytes = record->getEncodedSize();
-				chill(transaction, record, chillBytes);
-				log->chilledRecords++;
-				log->chilledBytes += chillBytes;
-				ASSERT(transaction->thawedRecords > 0);
+				if (chillRecords && record->state != recDeleted)
+					{
+					int chillBytes = record->getEncodedSize();
 
-				if (transaction->thawedRecords)
-					transaction->thawedRecords--;
+					chill(transaction, record, chillBytes);
+					
+					log->chilledRecords++;
+					log->chilledBytes += chillBytes;
+					
+					ASSERT(transaction->thawedRecords > 0);
+
+					if (transaction->thawedRecords)
+						transaction->thawedRecords--;
+					}
+				else
+					{
+					// Record is already in serial log
+					}
 
 				continue;
 				}
 			
 			// Load the record data into a stream
 
-			if (record->hasRecord())
-				record->getRecord(&stream);
+			if (record->hasRecord(false))
+				{
+				if (!record->getRecord(&stream))
+					continue;
+				}
 			else
 				ASSERT(record->state == recDeleted);
 			
 			// Ensure record fits within current window
 
 			if (log->writePtr + 
-				 byteCount(tableSpaceId) + 
+				 byteCount(recordTableSpaceId) + 
 				 byteCount(table->dataSectionId) + 
 				 byteCount(record->recordNumber) + 
 				 byteCount(stream.totalLength) + stream.totalLength >= end)
 				break;
 			
-			// Set the virtual offset of the record in the serial log
-
 			ASSERT(record->recordNumber >= 0);
 			ASSERT(log->writePtr > (UCHAR *)log->writeWindow->buffer);
+			
+			// Set the virtual offset of the record in the serial log
+
 			record->setVirtualOffset(log->writeWindow->currentLength + log->writeWindow->virtualOffset);
 			uint32 sectionId = table->dataSectionId;
-			log->updateSectionUseVector(sectionId, tableSpaceId, 1);
-			putInt(tableSpaceId);
+			log->updateSectionUseVector(sectionId, recordTableSpaceId, 1);
+			
+			putInt(recordTableSpaceId);
 			putInt(record->getPriorVersion() ? sectionId : -(int) sectionId - 1);
 			putInt(record->recordNumber);
 			putStream(&stream);
@@ -225,14 +257,18 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 				chilledRecordsWindow++;
 				chilledBytesWindow += stream.totalLength;
 				}
-			} // next record
+			} // next record version
 		
 		int len = (int) (log->writePtr - start);
+		
+		// The length field is 0, update if necessary
 		
 		if (len > 0)
 			putFixedInt(len, lengthPtr);
 		
-		if (record)
+		// Flush record data, if any, and force the creation of a new serial log window
+		
+		if (record && len > 0)
 			log->flush(true, 0, &sync);
 		else
 			sync.unlock();
@@ -242,9 +278,10 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			log->chilledRecords += chilledRecordsWindow;
 			log->chilledBytes   += chilledBytesWindow;
 			transaction->chilledRecords += chilledRecordsWindow;
-			windowNumber = (uint32)log->writeWindow->virtualOffset / SRL_WINDOW_SIZE;
+			transaction->chilledBytes += chilledBytesWindow;
+//			uint32 windowNumber = (uint32)log->writeWindow->virtualOffset / SRL_WINDOW_SIZE;
 			}
-		} // next window
+		} // next serial log record and write window
 }
 
 void SRLUpdateRecords::read(void)
@@ -270,23 +307,25 @@ void SRLUpdateRecords::redo(void)
 	if (transaction->state == sltCommitted)
 		for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 			{
+			int recordTableSpaceId;
 			if (control->version >= srlVersion8)
-				tableSpaceId = getInt(&p);
+				recordTableSpaceId = getInt(&p);
 			else
-				tableSpaceId = 0;
+				recordTableSpaceId = 0;
 		
 			int id = getInt(&p);
 			uint sectionId = (id >= 0) ? id : -id - 1;
 			int recordNumber = getInt(&p);
 			int length = getInt(&p);
-			log->updateSectionUseVector(sectionId, tableSpaceId, -1);
+			log->updateSectionUseVector(sectionId, recordTableSpaceId, -1);
 
 			if (log->traceRecord && recordNumber == log->traceRecord)
 				print();
 					
-			if (log->bumpSectionIncarnation(sectionId, tableSpaceId, objInUse))
+			if (log->bumpSectionIncarnation(sectionId, recordTableSpaceId, objInUse)
+				&& (!log->isTableSpaceDropped(recordTableSpaceId)))
 				{
-				Dbb *dbb = log->getDbb(tableSpaceId);
+				Dbb *dbb = log->getDbb(recordTableSpaceId);
 				
 				if (length)
 					{
@@ -313,16 +352,20 @@ void SRLUpdateRecords::pass1(void)
 
 	for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 		{
+		int recordTableSpaceId;
 		if (control->version >= srlVersion8)
-			tableSpaceId = getInt(&p);
+			recordTableSpaceId = getInt(&p);
 		else
-			tableSpaceId = 0;
-			
+			recordTableSpaceId = 0;
+
 		int id = getInt(&p);
 		uint sectionId = (id >= 0) ? id : -id - 1;
 		getInt(&p);			// recordNumber
 		int length = getInt(&p);
-		log->bumpSectionIncarnation(sectionId, tableSpaceId, objInUse);
+
+		if (!log->isTableSpaceDropped(recordTableSpaceId))
+			log->bumpSectionIncarnation(sectionId, recordTableSpaceId, objInUse);
+
 		p += length;
 		}
 }
@@ -347,20 +390,21 @@ void SRLUpdateRecords::commit(void)
 	
 	for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 		{
+		int recordTableSpaceId;
 		if (control->version >= srlVersion8)
-			tableSpaceId = getInt(&p);
+			recordTableSpaceId = getInt(&p);
 		else
-			tableSpaceId = 0;
+			recordTableSpaceId = 0;
 			
 		int id = getInt(&p);
 		uint sectionId = (id >= 0) ? id : -id - 1;
 		int recordNumber = getInt(&p);
 		int length = getInt(&p);
-		log->updateSectionUseVector(sectionId, tableSpaceId, -1);
+		log->updateSectionUseVector(sectionId, recordTableSpaceId, -1);
 		
-		if (log->isSectionActive(sectionId, tableSpaceId))
+		if (log->isSectionActive(sectionId, recordTableSpaceId))
 			{
-			Dbb *dbb = log->getDbb(tableSpaceId);
+			Dbb *dbb = log->getDbb(recordTableSpaceId);
 
 			if (length)
 				{
@@ -382,10 +426,11 @@ void SRLUpdateRecords::print(void)
 	
 	for (const UCHAR *p = data, *end = data + dataLength; p < end;)
 		{
+		int recordTableSpaceId;
 		if (control->version >= srlVersion8)
-			tableSpaceId = getInt(&p);
+			recordTableSpaceId = getInt(&p);
 		else
-			tableSpaceId = 0;
+			recordTableSpaceId = 0;
 
 		int id = getInt(&p);
 		uint sectionId = (id >= 0) ? id : -id - 1;
@@ -393,7 +438,7 @@ void SRLUpdateRecords::print(void)
 		int length = getInt(&p);
 		char temp[40];
 		Log::debug("   rec %d, len %d to section %d/%d %s\n", 
-					recordNumber, length, sectionId, tableSpaceId, format(length, p, sizeof(temp), temp));
+					recordNumber, length, sectionId, recordTableSpaceId, format(length, p, sizeof(temp), temp));
 		p += length;
 		}
 }

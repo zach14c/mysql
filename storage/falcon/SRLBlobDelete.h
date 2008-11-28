@@ -29,8 +29,7 @@ public:
 	void pass2(void);
 	void redo(void);
 	void print(void);
-	
-	int		tableSpaceId;
+
 	int32	locatorPage;
 	int		locatorLine;
 	int32	dataPage;

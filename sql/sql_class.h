@@ -69,6 +69,7 @@ private:
   bool m_invalidated;
 };
 
+#include <waiting_threads.h>
 
 class Relay_log_info;
 
@@ -78,6 +79,7 @@ class Slave_log_event;
 class sp_rcontext;
 class sp_cache;
 class Lex_input_stream;
+class Parser_state;
 class Rows_log_event;
 
 enum enum_enable_or_disable { LEAVE_AS_IS, ENABLE, DISABLE };
@@ -443,6 +445,9 @@ struct system_variables
   DATE_TIME_FORMAT *time_format;
   my_bool sysdate_is_now;
 
+  /* deadlock detection */
+  ulong wt_timeout_short, wt_deadlock_search_depth_short;
+  ulong wt_timeout_long, wt_deadlock_search_depth_long;
 };
 
 
@@ -795,7 +800,7 @@ struct st_savepoint {
   Ha_trx_info         *ha_list;
 };
 
-enum xa_states {XA_NOTR=0, XA_ACTIVE, XA_IDLE, XA_PREPARED};
+enum xa_states {XA_NOTR=0, XA_ACTIVE, XA_IDLE, XA_PREPARED, XA_ROLLBACK_ONLY};
 extern const char *xa_state_names[];
 
 typedef struct st_xid_state {
@@ -803,6 +808,8 @@ typedef struct st_xid_state {
   XID  xid;                           // transaction identifier
   enum xa_states xa_state;            // used by external XA only
   bool in_thd;
+  /* Error reported by the Resource Manager (RM) to the Transaction Manager. */
+  uint rm_error;
 } XID_STATE;
 
 extern pthread_mutex_t LOCK_xid_cache;
@@ -1071,6 +1078,23 @@ enum enum_thread_type
   SYSTEM_THREAD_BACKUP= 64
 };
 
+inline char const *
+show_system_thread(enum_thread_type thread)
+{
+#define RETURN_NAME_AS_STRING(NAME) case (NAME): return #NAME
+  switch (thread) {
+    RETURN_NAME_AS_STRING(NON_SYSTEM_THREAD);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_DELAYED_INSERT);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_SLAVE_IO);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_SLAVE_SQL);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_NDBCLUSTER_BINLOG);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_SCHEDULER);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_WORKER);
+    RETURN_NAME_AS_STRING(SYSTEM_THREAD_BACKUP);
+  }
+#undef RETURN_NAME_AS_STRING
+  return "UNKNOWN"; /* keep gcc happy */
+}
 
 /**
   This class represents the interface for internal error handlers.
@@ -1505,9 +1529,14 @@ public:
   Rows_log_event* binlog_get_pending_rows_event() const;
   void            binlog_set_pending_rows_event(Rows_log_event* ev);
   int binlog_flush_pending_rows_event(bool stmt_end);
+  int binlog_remove_pending_rows_event(bool clear_maps);
 
 private:
-  uint binlog_table_maps; // Number of table maps currently in the binlog
+  /*
+    Number of outstanding table maps, i.e., table maps in the
+    transaction cache.
+  */
+  uint binlog_table_maps;
 
   enum enum_binlog_flag {
     BINLOG_FLAG_UNSAFE_STMT_PRINTED,
@@ -1536,6 +1565,7 @@ public:
     THD_TRANS stmt;			// Trans for current statement
     bool on;                            // see ha_enable_transaction()
     XID_STATE xid_state;
+    WT_THD wt;
     Rows_log_event *m_pending_rows_event;
 
     /*
@@ -1549,19 +1579,13 @@ public:
     {
       changed_tables= 0;
       savepoints= 0;
-#ifdef USING_TRANSACTIONS
       free_root(&mem_root,MYF(MY_KEEP_PREALLOC));
-#endif
     }
     st_transactions()
     {
-#ifdef USING_TRANSACTIONS
       bzero((char*)this, sizeof(*this));
       xid_state.xid.null();
       init_sql_alloc(&mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
-#else
-      xid_state.xa_state= XA_NOTR;
-#endif
     }
   } transaction;
   Field      *dup_field;
@@ -1593,6 +1617,13 @@ public:
     Note: in the parser, stmt_arena == thd, even for PS/SP.
   */
   Query_arena *stmt_arena;
+
+  /*
+    map for tables that will be updated for a multi-table update query
+    statement, for other query statements, this will be zero.
+  */
+  table_map table_map_for_update;
+
   /* Tells if LAST_INSERT_ID(#) was called for the current statement */
   bool arg_of_last_insert_id_function;
   /*
@@ -1660,6 +1691,9 @@ public:
     then the latter INSERT will insert no rows
     (first_successful_insert_id_in_cur_stmt == 0), but storing "INSERT_ID=3"
     in the binlog is still needed; the list's minimum will contain 3.
+    This variable is cumulative: if several statements are written to binlog
+    as one (stored functions or triggers are used) this list is the
+    concatenation of all intervals reserved by all statements.
   */
   Discrete_intervals_list auto_inc_intervals_in_cur_stmt_for_binlog;
   /* Used by replication and SET INSERT_ID */
@@ -1918,13 +1952,11 @@ public:
   } binlog_evt_union;
 
   /**
-    Character input stream consumed by the lexical analyser,
-    used during parsing.
-    Note that since the parser is not re-entrant, we keep only one input
-    stream here. This member is valid only when executing code during parsing,
-    and may point to invalid memory after that.
+    Internal parser state.
+    Note that since the parser is not re-entrant, we keep only one parser
+    state here. This member is valid only when executing code during parsing.
   */
-  Lex_input_stream *m_lip;
+  Parser_state *m_parser_state;
 
   /*
     @todo The following is a work around for online backup and the DDL blocker.
@@ -1933,6 +1965,7 @@ public:
           when the DDL blocker is engaged.
   */
   my_bool DDL_exception; // Allow some DDL if there is an exception
+  ulong backup_wait_timeout;
 
   Locked_tables_list locked_tables_list;
 
@@ -1954,6 +1987,10 @@ public:
   unsigned long audit_class_mask[MYSQL_AUDIT_CLASS_MASK_SIZE];
 #endif
 
+#if defined(ENABLED_DEBUG_SYNC)
+  /* Debug Sync facility. See debug_sync.cc. */
+  struct st_debug_sync_control *debug_sync_control;
+#endif /* defined(ENABLED_DEBUG_SYNC) */
   /**
     Points to the memory root of Locked_tables_list if
     we're locking the tables for LOCK TABLES. Otherwise is NULL.
@@ -2078,11 +2115,7 @@ public:
   }
   inline bool active_transaction()
   {
-#ifdef USING_TRANSACTIONS
     return server_status & SERVER_STATUS_IN_TRANS;
-#else
-    return 0;
-#endif
   }
   inline bool fill_derived_tables()
   {
@@ -2263,6 +2296,10 @@ public:
 
       Don't reset binlog format for NDB binlog injector thread.
     */
+    DBUG_PRINT("debug",
+               ("temporary_tables: %p, in_sub_stmt: %d, system_thread: %s",
+                temporary_tables, in_sub_stmt,
+                show_system_thread(system_thread)));
     if ((temporary_tables == NULL) && (in_sub_stmt == 0) &&
         (system_thread != SYSTEM_THREAD_NDBCLUSTER_BINLOG))
     {
@@ -2429,6 +2466,7 @@ public:
   CHARSET_INFO *cs;
   sql_exchange(char *name, bool dumpfile_flag,
                enum_filetype filetype_arg= FILETYPE_CSV);
+  bool escaped_given(void);
 };
 
 #include "log_event.h"
@@ -2459,7 +2497,7 @@ public:
   */
   virtual uint field_count(List<Item> &fields) const
   { return fields.elements; }
-  virtual bool send_fields(List<Item> &list, uint flags)=0;
+  virtual bool send_result_set_metadata(List<Item> &list, uint flags)=0;
   virtual bool send_data(List<Item> &items)=0;
   virtual bool initialize_tables (JOIN *join=0) { return 0; }
   virtual void send_error(uint errcode,const char *err);
@@ -2498,7 +2536,7 @@ class select_result_interceptor: public select_result
 public:
   select_result_interceptor() {}              /* Remove gcc warning */
   uint field_count(List<Item> &fields) const { return 0; }
-  bool send_fields(List<Item> &fields, uint flag) { return FALSE; }
+  bool send_result_set_metadata(List<Item> &fields, uint flag) { return FALSE; }
 };
 
 
@@ -2511,7 +2549,7 @@ class select_send :public select_result {
   bool is_result_set_started;
 public:
   select_send() :is_result_set_started(FALSE) {}
-  bool send_fields(List<Item> &list, uint flags);
+  bool send_result_set_metadata(List<Item> &list, uint flags);
   bool send_data(List<Item> &items);
   bool send_eof();
   virtual bool check_simple_select() const { return FALSE; }
@@ -3039,11 +3077,11 @@ public:
 
 /* Bits in sql_command_flags */
 
-#define CF_CHANGES_DATA		1
-#define CF_HAS_ROW_COUNT	2
-#define CF_STATUS_COMMAND	4
-#define CF_SHOW_TABLE_COMMAND	8
-#define CF_WRITE_LOGS_COMMAND  16
+#define CF_CHANGES_DATA           (1U << 0)
+#define CF_HAS_ROW_COUNT          (1U << 1)
+#define CF_STATUS_COMMAND         (1U << 2)
+#define CF_SHOW_TABLE_COMMAND     (1U << 3)
+#define CF_WRITE_LOGS_COMMAND     (1U << 4)
 /**
   Must be set for SQL statements that may contain
   Item expressions and/or use joins and tables.
@@ -3057,7 +3095,54 @@ public:
   reprepare. Consequently, complex item expressions and
   joins are currently prohibited in these statements.
 */
-#define CF_REEXECUTION_FRAGILE 32
+#define CF_REEXECUTION_FRAGILE    (1U << 5)
+/**
+  Implicitly commit before the SQL statement is executed.
+
+  Statements marked with this flag will cause any active
+  transaction to end (commit) before proceeding with the
+  command execution.
+
+  This flag should be set for statements that probably can't
+  be rolled back or that do not expect any previously metadata
+  locked tables.
+*/
+#define CF_IMPLICT_COMMIT_BEGIN   (1U << 6)
+/**
+  Implicitly commit after the SQL statement.
+
+  Statements marked with this flag are automatically committed
+  at the end of the statement.
+
+  This flag should be set for statements that will implicitly
+  open and take metadata locks on system tables that should not
+  be carried for the whole duration of a active transaction.
+*/
+#define CF_IMPLICIT_COMMIT_END    (1U << 7)
+/**
+  CF_IMPLICT_COMMIT_BEGIN and CF_IMPLICIT_COMMIT_END are used
+  to ensure that the active transaction is implicitly committed
+  before and after every DDL statement and any statement that
+  modifies our currently non-transactional system tables.
+*/
+#define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
+
+/* Bits in server_command_flags */
+
+/**
+  Skip the increase of the global query id counter. Commonly set for
+  commands that are stateless (won't cause any change on the server
+  internal states).
+*/
+#define CF_SKIP_QUERY_ID        (1U << 0)
+
+/**
+  Skip the increase of the number of statements that clients have
+  sent to the server. Commonly used for commands that will cause
+  a statement to be executed but the statement might have not been
+  sent by the user (ie: stored procedure).
+*/
+#define CF_SKIP_QUESTIONS       (1U << 1)
 
 /* Functions in sql_class.cc */
 

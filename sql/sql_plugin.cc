@@ -20,14 +20,6 @@
 #define REPORT_TO_LOG  1
 #define REPORT_TO_USER 2
 
-#ifdef DBUG_OFF
-#define plugin_ref_to_int(A) A
-#define plugin_int_to_ref(A) A
-#else
-#define plugin_ref_to_int(A) (A ? A[0] : NULL)
-#define plugin_int_to_ref(A) &(A)
-#endif
-
 extern struct st_mysql_plugin *mysqld_builtins[];
 
 char *opt_plugin_load= NULL;
@@ -44,7 +36,8 @@ const LEX_STRING plugin_type_names[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   { C_STRING_WITH_LEN("FTPARSER") },
   { C_STRING_WITH_LEN("DAEMON") },
   { C_STRING_WITH_LEN("INFORMATION SCHEMA") },
-  { C_STRING_WITH_LEN("AUDIT") }
+  { C_STRING_WITH_LEN("AUDIT") },
+  { C_STRING_WITH_LEN("REPLICATION") },
 };
 
 extern int initialize_schema_table(st_plugin_int *plugin);
@@ -89,7 +82,8 @@ static int min_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_FTPARSER_INTERFACE_VERSION,
   MYSQL_DAEMON_INTERFACE_VERSION,
   MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION,
-  MYSQL_AUDIT_INTERFACE_VERSION
+  MYSQL_AUDIT_INTERFACE_VERSION,
+  MYSQL_REPLICATION_INTERFACE_VERSION
 };
 static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
 {
@@ -98,7 +92,8 @@ static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_FTPARSER_INTERFACE_VERSION,
   MYSQL_DAEMON_INTERFACE_VERSION,
   MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION,
-  MYSQL_AUDIT_INTERFACE_VERSION
+  MYSQL_AUDIT_INTERFACE_VERSION,
+  MYSQL_REPLICATION_INTERFACE_VERSION
 };
 
 static bool initialized= 0;
@@ -1367,7 +1362,7 @@ static void plugin_load(MEM_ROOT *tmp_root, int *argc, char **argv)
     goto end;
   }
   table= tables.table;
-  init_read_record(&read_record_info, new_thd, table, NULL, 1, 0);
+  init_read_record(&read_record_info, new_thd, table, NULL, 1, 0, FALSE);
   table->use_all_columns();
   /*
     there're no other threads running yet, so we don't need a mutex.
@@ -1669,11 +1664,18 @@ bool mysql_install_plugin(THD *thd, const LEX_STRING *name, const LEX_STRING *dl
     goto deinit;
   }
 
+  /*
+    We do not replicate the INSTALL PLUGIN statement. Disable binlogging
+    of the insert into the plugin table, so that it is not replicated in
+    row based mode.
+  */
+  tmp_disable_binlog(thd);
   table->use_all_columns();
   restore_record(table, s->default_values);
   table->field[0]->store(name->str, name->length, system_charset_info);
   table->field[1]->store(dl->str, dl->length, files_charset_info);
   error= table->file->ha_write_row(table->record[0]);
+  reenable_binlog(thd);
   if (error)
   {
     table->file->print_error(error, MYF(0));
@@ -1716,16 +1718,16 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
   }
   if (!plugin->plugin_dl)
   {
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                 "Built-in plugins cannot be deleted,.");
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                 WARN_PLUGIN_DELETE_BUILTIN, ER(WARN_PLUGIN_DELETE_BUILTIN));
     my_error(ER_SP_DOES_NOT_EXIST, MYF(0), "PLUGIN", name->str);
     goto err;
   }
 
   plugin->state= PLUGIN_IS_DELETED;
   if (plugin->ref_count)
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                 "Plugin is busy and will be uninstalled on shutdown");
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                 WARN_PLUGIN_BUSY, ER(WARN_PLUGIN_BUSY));
   else
     reap_needed= true;
   reap_plugins();
@@ -1739,7 +1741,15 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
                                         HA_READ_KEY_EXACT))
   {
     int error;
-    if ((error= table->file->ha_delete_row(table->record[0])))
+    /*
+      We do not replicate the UNINSTALL PLUGIN statement. Disable binlogging
+      of the delete from the plugin table, so that it is not replicated in
+      row based mode.
+    */
+    tmp_disable_binlog(thd);
+    error= table->file->ha_delete_row(table->record[0]);
+    reenable_binlog(thd);
+    if (error)
     {
       table->file->print_error(error, MYF(0));
       DBUG_RETURN(TRUE);
@@ -1890,7 +1900,7 @@ static int check_func_bool(THD *thd, struct st_mysql_sys_var *var,
     }
     result= (int) tmp;
   }
-  *(int*)save= -result;
+  *(my_bool *) save= -result;
   return 0;
 err:
   my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), var->name, strvalue);
@@ -2071,7 +2081,7 @@ err:
 static void update_func_bool(THD *thd, struct st_mysql_sys_var *var,
                              void *tgt, const void *save)
 {
-  *(my_bool *) tgt= *(int *) save ? 1 : 0;
+  *(my_bool *) tgt= *(my_bool *) save ? TRUE : FALSE;
 }
 
 

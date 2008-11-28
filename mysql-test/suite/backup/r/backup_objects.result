@@ -1,0 +1,279 @@
+SET storage_engine=MyISAM;
+
+Starting Test - Backup
+
+Setting SQL_MODE = PIPES_AS_CONCAT
+SET SQL_MODE = 'PIPES_AS_CONCAT';
+Change client connection charset
+SET character_set_client = 'latin2';
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE PROCEDURE db1.p11()
+BEGIN
+UPDATE db2.t21 SET b = (SELECT b FROM db1.v11 WHERE a = 1);
+SELECT db2.f21(7);
+END;
+||
+CREATE FUNCTION db2.f21(a int) RETURNS INTEGER
+BEGIN
+RETURN a;
+END;
+||
+CREATE PROCEDURE db2.p21()
+BEGIN
+CALL db1.p11();
+SELECT x.a FROM v22 as x, db1.t13 as y WHERE x.b = y.a; 
+END;
+||
+CREATE TABLE db1.t11(a int, primary key (a));
+CREATE TABLE db1.t12(a int, b int, foreign key (b) references db1.t11(a));
+CREATE TABLE db2.t21(a int, b int, primary key(a), foreign key (b) references db1.t11(a));
+CREATE TABLE db1.t13(a int, b int, foreign key (b) references db2.t21(a));
+CREATE VIEW db1.v12 AS SELECT * FROM db2.t21;
+CREATE VIEW db2.v22 AS SELECT * FROM db1.t12;
+CREATE VIEW db1.v11 AS SELECT db2.f21(x.a) AS a, y.b FROM db2.v22 AS x, db1.t13 AS y WHERE x.b = y.a;
+CREATE VIEW db2.v21 AS SELECT x.b, db2.f21(y.a) AS a FROM db1.v11 AS x, db2.v22 AS y WHERE x.a = y.b;
+CREATE TRIGGER db1.tr11 AFTER DELETE ON db1.t11 FOR EACH ROW 
+BEGIN
+DELETE FROM db2.t1 WHERE a > 1;
+END;
+||
+CREATE TRIGGER db2.tr21 AFTER DELETE ON db2.t21 FOR EACH ROW 
+BEGIN
+DELETE FROM db1.t2 WHERE a > 1;
+END;
+||
+CREATE EVENT db1.e11 ON SCHEDULE EVERY 1 YEAR DO
+DELETE FROM db2.t21 WHERE b > 100;
+||
+CREATE EVENT db2.e21 ON SCHEDULE EVERY 1 YEAR DO
+DELETE FROM db1.t12 WHERE b > 100;
+||
+SET foreign_key_checks = 1;
+SHOW VARIABLES LIKE 'foreign_key_checks%';
+Variable_name	Value
+foreign_key_checks	ON
+INSERT INTO db1.t11 VALUES (1),(2),(3);
+INSERT INTO db1.t12 VALUES (3,1), (2,2), (1,3);
+INSERT INTO db2.t21 VALUES (100,1), (200,2);
+INSERT INTO db1.t13 VALUES (1,200), (2,100);
+SELECT * FROM db1.v11;
+a	b
+3	200
+2	100
+SELECT * FROM db1.v12;
+a	b
+100	1
+200	2
+SELECT * FROM db2.v21;
+b	a
+100	2
+200	1
+SELECT * FROM db2.v22;
+a	b
+3	1
+2	2
+1	3
+Backup databases.
+BACKUP DATABASE db1, db2 TO 'bup_objects.bak';
+backup_id
+#
+Dropping databases.
+DROP DATABASE db1;
+DROP DATABASE db2;
+Setting SQL_MODE = ''
+SET SQL_MODE = '';
+Change client connection charset
+SET character_set_client = 'latin1';
+RESTORE FROM 'bup_objects.bak';
+backup_id
+#
+SHOW TABLES IN db1;
+Tables_in_db1
+t11
+t12
+t13
+v11
+v12
+SHOW TABLES IN db2;
+Tables_in_db2
+t21
+v21
+v22
+SHOW TRIGGERS IN db1;;
+Trigger	tr11
+Event	DELETE
+Table	t11
+Statement	BEGIN
+DELETE FROM db2.t1 WHERE a > 1;
+END
+Timing	AFTER
+Created	NULL
+sql_mode	PIPES_AS_CONCAT
+Definer	root@localhost
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW TRIGGERS IN db2;;
+Trigger	tr21
+Event	DELETE
+Table	t21
+Statement	BEGIN
+DELETE FROM db1.t2 WHERE a > 1;
+END
+Timing	AFTER
+Created	NULL
+sql_mode	PIPES_AS_CONCAT
+Definer	root@localhost
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW EVENTS IN db1;;
+Db	db1
+Name	e11
+Definer	root@localhost
+Time zone	SYSTEM
+Type	RECURRING
+Execute at	NULL
+Interval value	1
+Interval field	YEAR
+Starts	#
+Ends	NULL
+Status	ENABLED
+Originator	1
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW EVENTS IN db2;;
+Db	db2
+Name	e21
+Definer	root@localhost
+Time zone	SYSTEM
+Type	RECURRING
+Execute at	NULL
+Interval value	1
+Interval field	YEAR
+Starts	#
+Ends	NULL
+Status	ENABLED
+Originator	1
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';;
+Db	db1
+Name	p11
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	db2
+Name	p21
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';;
+Db	db2
+Name	f21
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Showing objects and create statements.
+SHOW CREATE DATABASE db1;;
+Database	db1
+Create Database	CREATE DATABASE `db1` /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW CREATE TABLE db1.t13;;
+Table	t13
+Create Table	CREATE TABLE `t13` (
+  `a` int(11) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL,
+  KEY `b` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+SHOW CREATE TABLE db2.t21;;
+Table	t21
+Create Table	CREATE TABLE `t21` (
+  `a` int(11) NOT NULL DEFAULT '0',
+  `b` int(11) DEFAULT NULL,
+  PRIMARY KEY (`a`),
+  KEY `b` (`b`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+SHOW CREATE VIEW db1.v11;;
+View	v11
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `db1`.`v11` AS select `db2`.`f21`(`x`.`a`) AS `a`,`y`.`b` AS `b` from (`db2`.`v22` `x` join `db1`.`t13` `y`) where (`x`.`b` = `y`.`a`)
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+SHOW CREATE VIEW db2.v21;;
+View	v21
+Create View	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `db2`.`v21` AS select `x`.`b` AS `b`,`db2`.`f21`(`y`.`a`) AS `a` from (`db1`.`v11` `x` join `db2`.`v22` `y`) where (`x`.`a` = `y`.`b`)
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+SHOW CREATE PROCEDURE db1.p11;;
+Procedure	p11
+sql_mode	PIPES_AS_CONCAT
+Create Procedure	CREATE DEFINER=`root`@`localhost` PROCEDURE `p11`()
+BEGIN
+UPDATE db2.t21 SET b = (SELECT b FROM db1.v11 WHERE a = 1);
+SELECT db2.f21(7);
+END
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE FUNCTION db2.f21;;
+Function	f21
+sql_mode	PIPES_AS_CONCAT
+Create Function	CREATE DEFINER=`root`@`localhost` FUNCTION `f21`(a int) RETURNS int(11)
+BEGIN
+RETURN a;
+END
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER db2.tr21;;
+Trigger	tr21
+sql_mode	PIPES_AS_CONCAT
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER db2.tr21 AFTER DELETE ON db2.t21 FOR EACH ROW 
+BEGIN
+DELETE FROM db1.t2 WHERE a > 1;
+END
+character_set_client	latin2
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SELECT * FROM db1.v11;
+a	b
+3	200
+2	100
+SELECT * FROM db1.v12;
+a	b
+100	1
+200	2
+SELECT * FROM db2.v21;
+b	a
+100	2
+200	1
+SELECT * FROM db2.v22;
+a	b
+3	1
+2	2
+1	3
+Cleanup
+DROP DATABASE db1;
+DROP DATABASE db2;

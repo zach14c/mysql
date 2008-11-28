@@ -180,15 +180,83 @@ int maria_write(MARIA_HA *info, uchar *record)
       }
       else
       {
-        if (keyinfo->ck_insert(info,
-                               (*keyinfo->make_key)(info, &int_key, i,
-                                                    buff, record, filepos,
-                                                    info->trn->trid)))
+        while (keyinfo->ck_insert(info,
+                                  (*keyinfo->make_key)(info, &int_key, i,
+                                                       buff, record, filepos,
+                                                       info->trn->trid)))
         {
-          if (local_lock_tree)
-            rw_unlock(&keyinfo->root_lock);
+          TRN *blocker;
           DBUG_PRINT("error",("Got error: %d on write",my_errno));
-          goto err;
+          /*
+            explicit check to filter out temp tables, they aren't
+            transactional and don't have a proper TRN so the code
+            below doesn't work for them.
+            Also, filter out non-thread maria use, and table modified in
+            the same transaction.
+          */
+          if (!local_lock_tree)
+            goto err;
+          if (info->dup_key_trid == info->trn->trid)
+          {
+	    rw_unlock(&keyinfo->root_lock);
+            goto err;
+          }
+          /* Different TrIDs: table must be transactional */
+          DBUG_ASSERT(share->base.born_transactional);
+          /*
+            If transactions are disabled, and dup_key_trid is different from
+            our TrID, it must be ALTER TABLE with dup_key_trid==0 (no
+            transaction). ALTER TABLE does have MARIA_HA::TRN not dummy but
+            puts TrID=0 in rows/keys.
+          */
+          DBUG_ASSERT(share->now_transactional ||
+                      (info->dup_key_trid == 0));
+          blocker= trnman_trid_to_trn(info->trn, info->dup_key_trid);
+          /*
+            if blocker TRN was not found, it means that the conflicting
+            transaction was committed long time ago. It could not be
+            aborted, as it would have to wait on the key tree lock
+            to remove the conflicting key it has inserted.
+          */
+          if (!blocker || blocker->commit_trid != ~(TrID)0)
+          { /* committed */
+            if (blocker)
+              pthread_mutex_unlock(& blocker->state_lock);
+            rw_unlock(&keyinfo->root_lock);
+            goto err;
+          }
+          rw_unlock(&keyinfo->root_lock);
+          {
+            /* running. now we wait */
+            WT_RESOURCE_ID rc;
+            int res;
+
+            rc.type= &ma_rc_dup_unique;
+            rc.value= (intptr)blocker; /* TODO savepoint id when we'll have them */
+            res= wt_thd_will_wait_for(info->trn->wt, blocker->wt, & rc);
+            if (res != WT_OK)
+            {
+              pthread_mutex_unlock(& blocker->state_lock);
+              my_errno= HA_ERR_LOCK_DEADLOCK;
+              goto err;
+            }
+            {
+              const char *old_proc_info= proc_info_hook(0,
+                    "waiting for a resource", __func__, __FILE__, __LINE__);
+
+              res= wt_thd_cond_timedwait(info->trn->wt, & blocker->state_lock);
+
+              proc_info_hook(0, old_proc_info, __func__, __FILE__, __LINE__);
+            }
+            pthread_mutex_unlock(& blocker->state_lock);
+            if (res != WT_OK)
+            {
+              my_errno= res == WT_TIMEOUT ? HA_ERR_LOCK_WAIT_TIMEOUT
+                                          : HA_ERR_LOCK_DEADLOCK;
+              goto err;
+            }
+          }
+          rw_wrlock(&keyinfo->root_lock);
         }
       }
 
@@ -227,8 +295,8 @@ int maria_write(MARIA_HA *info, uchar *record)
   if (info->invalidator != 0)
   {
     DBUG_PRINT("info", ("invalidator... '%s' (update)",
-                        share->open_file_name));
-    (*info->invalidator)(share->open_file_name);
+                        share->open_file_name.str));
+    (*info->invalidator)(share->open_file_name.str);
     info->invalidator=0;
   }
 
@@ -597,9 +665,22 @@ static int w_search(register MARIA_HA *info, uint32 comp_flag, MARIA_KEY *key,
     else /* not HA_FULLTEXT, normal HA_NOSAME key */
     {
       DBUG_PRINT("warning", ("Duplicate key"));
+      /*
+        TODO
+        When the index will support true versioning - with multiple
+        identical values in the UNIQUE index, invisible to each other -
+        the following should be changed to "continue inserting keys, at the
+        end (of the row or statement) wait". Until it's done we cannot properly
+        support deadlock timeouts.
+      */
+      /*
+        transaction that has inserted the conflicting key is in progress.
+        wait for it to be committed or aborted.
+      */
+      info->dup_key_trid= _ma_trid_from_key(&tmp_key);
       info->dup_key_pos= dup_key_pos;
       my_afree((uchar*) temp_buff);
-      my_errno=HA_ERR_FOUND_DUPP_KEY;
+      my_errno= HA_ERR_FOUND_DUPP_KEY;
       DBUG_RETURN(-1);
     }
   }
@@ -1027,11 +1108,11 @@ static uchar *_ma_find_last_pos(MARIA_HA *info, MARIA_KEY *int_key,
                                 uchar *page, uchar **after_key)
 {
   uint keys, length, key_ref_length, page_flag;
-  uint last_data_length, last_ref_length;
-  uchar *key, *end, *lastpos,*prevpos;
+  uchar *end, *lastpos, *prevpos;
   uchar key_buff[MARIA_MAX_KEY_BUFF];
   MARIA_SHARE *share= info->s;
   MARIA_KEYDEF *keyinfo= int_key->keyinfo;
+  MARIA_KEY tmp_key;
   DBUG_ENTER("_ma_find_last_pos");
 
   key_ref_length= share->keypage_header;
@@ -1053,33 +1134,35 @@ static uchar *_ma_find_last_pos(MARIA_HA *info, MARIA_KEY *int_key,
     DBUG_RETURN(end);
   }
 
-  LINT_INIT(prevpos);
-  LINT_INIT(last_data_length);
-  LINT_INIT(last_ref_length);
   end=page+length-key_ref_length;
-  key= int_key->data;
-
-  length=0;
   lastpos=page;
-  int_key->data= key_buff;
+  tmp_key.data= key_buff;
+  tmp_key.keyinfo= int_key->keyinfo;
   key_buff[0]= 0;                               /* Safety */
 
-  while (page < end)
+  /* We know that there are at least 2 keys on the page */
+
+  if (!(length=(*keyinfo->get_key)(&tmp_key, page_flag, 0, &page)))
+  {
+    maria_print_error(keyinfo->share, HA_ERR_CRASHED);
+    my_errno=HA_ERR_CRASHED;
+    DBUG_RETURN(0);
+  }
+
+  do
   {
     prevpos=lastpos; lastpos=page;
-    last_data_length= int_key->data_length;
-    last_ref_length=  int_key->ref_length;
-    memcpy(key, key_buff, length);		/* previous key */
-    if (!(length=(*keyinfo->get_key)(int_key, page_flag, 0, &page)))
+    int_key->data_length= tmp_key.data_length;
+    int_key->ref_length=  tmp_key.ref_length;
+    int_key->flag=        tmp_key.flag;
+    memcpy(int_key->data, key_buff, length);		/* previous key */
+    if (!(length=(*keyinfo->get_key)(&tmp_key, page_flag, 0, &page)))
     {
       maria_print_error(keyinfo->share, HA_ERR_CRASHED);
       my_errno=HA_ERR_CRASHED;
       DBUG_RETURN(0);
     }
-  }
-  int_key->data=   key;
-  int_key->data_length= last_data_length;
-  int_key->ref_length=  last_ref_length;
+  } while (page < end);
 
   *after_key=lastpos;
   DBUG_PRINT("exit",("returns: 0x%lx  page: 0x%lx  end: 0x%lx",
@@ -1755,11 +1838,11 @@ my_bool _ma_log_new(MARIA_HA *info, my_off_t page, const uchar *buff,
   page_store(log_data + FILEID_STORE_SIZE, page);
 
   /* Store link to next unused page */
-  if (info->used_key_del == 2)
+  if (info->key_del_used == 2)
     page= 0;                                    /* key_del not changed */
   else
-    page= ((share->current_key_del == HA_OFFSET_ERROR) ? IMPOSSIBLE_PAGE_NO :
-           share->current_key_del / share->block_size);
+    page= ((share->key_del_current == HA_OFFSET_ERROR) ? IMPOSSIBLE_PAGE_NO :
+           share->key_del_current / share->block_size);
 
   page_store(log_data + FILEID_STORE_SIZE + PAGE_STORE_SIZE, page);
   key_nr_store(log_data + FILEID_STORE_SIZE + PAGE_STORE_SIZE*2, key_nr);
@@ -1824,7 +1907,7 @@ my_bool _ma_log_change(MARIA_HA *info, my_off_t page, const uchar *buff,
     log_pos[0]= KEY_OP_CHECK;
     int2store(log_pos+1, page_length);
     int4store(log_pos+3, crc);
-    log_array[TRANSLOG_INTERNAL_PARTS + translog_parts].str= (char *) log_pos;
+    log_array[TRANSLOG_INTERNAL_PARTS + translog_parts].str= log_pos;
     log_array[TRANSLOG_INTERNAL_PARTS + translog_parts].length= 7;
     extra_length+= 7;
     translog_parts++;

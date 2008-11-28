@@ -196,8 +196,8 @@ f_charbig VARCHAR(1000)
 PARTITION BY LIST(ABS(MOD(f_int1,2)))
 SUBPARTITION BY KEY(f_int1) SUBPARTITIONS 3
 (PARTITION part1 VALUES IN (0),
- PARTITION part2 VALUES IN (1),
- PARTITION part3 VALUES IN (NULL));
+PARTITION part2 VALUES IN (1),
+PARTITION part3 VALUES IN (NULL));
 INSERT INTO t1(f_int1,f_int2,f_char1,f_char2,f_charbig)
 SELECT f_int1,f_int2,f_char1,f_char2,f_charbig FROM t0_template
 WHERE f_int1 BETWEEN 1 AND @max_row_div2 - 1;
@@ -233,15 +233,17 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY HASH (f_int1) PARTITIONS 2  */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY HASH (f_int1)
+PARTITIONS 2 */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#p0.MYD
+t1#P#p0.MYI
+t1#P#p1.MYD
+t1#P#p1.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -251,7 +253,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -700,20 +702,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -748,21 +750,23 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY KEY (f_int1) PARTITIONS 5  */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY KEY (f_int1)
+PARTITIONS 5 */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p3.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p3.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p4.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p4.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#p0.MYD
+t1#P#p0.MYI
+t1#P#p1.MYD
+t1#P#p1.MYI
+t1#P#p2.MYD
+t1#P#p2.MYI
+t1#P#p3.MYD
+t1#P#p3.MYI
+t1#P#p4.MYD
+t1#P#p4.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -772,7 +776,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -1221,20 +1225,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -1277,27 +1281,36 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (MOD(f_int1,4)) (PARTITION part_3 VALUES IN (-3) ENGINE = MyISAM, PARTITION part_2 VALUES IN (-2) ENGINE = MyISAM, PARTITION part_1 VALUES IN (-1) ENGINE = MyISAM, PARTITION part_N VALUES IN (NULL) ENGINE = MyISAM, PARTITION part0 VALUES IN (0) ENGINE = MyISAM, PARTITION part1 VALUES IN (1) ENGINE = MyISAM, PARTITION part2 VALUES IN (2) ENGINE = MyISAM, PARTITION part3 VALUES IN (3) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (MOD(f_int1,4))
+(PARTITION part_3 VALUES IN (-3) ENGINE = MyISAM,
+ PARTITION part_2 VALUES IN (-2) ENGINE = MyISAM,
+ PARTITION part_1 VALUES IN (-1) ENGINE = MyISAM,
+ PARTITION part_N VALUES IN (NULL) ENGINE = MyISAM,
+ PARTITION part0 VALUES IN (0) ENGINE = MyISAM,
+ PARTITION part1 VALUES IN (1) ENGINE = MyISAM,
+ PARTITION part2 VALUES IN (2) ENGINE = MyISAM,
+ PARTITION part3 VALUES IN (3) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_3.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_3.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_N.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_N.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part0.MYD
+t1#P#part0.MYI
+t1#P#part1.MYD
+t1#P#part1.MYI
+t1#P#part2.MYD
+t1#P#part2.MYI
+t1#P#part3.MYD
+t1#P#part3.MYI
+t1#P#part_1.MYD
+t1#P#part_1.MYI
+t1#P#part_2.MYD
+t1#P#part_2.MYI
+t1#P#part_3.MYD
+t1#P#part_3.MYI
+t1#P#part_N.MYD
+t1#P#part_N.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -1307,7 +1320,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -1756,20 +1769,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -1810,23 +1823,30 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY RANGE (f_int1) (PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM, PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM, PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM, PARTITION partd VALUES LESS THAN (15) ENGINE = MyISAM, PARTITION parte VALUES LESS THAN (20) ENGINE = MyISAM, PARTITION partf VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (f_int1)
+(PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM,
+ PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM,
+ PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM,
+ PARTITION partd VALUES LESS THAN (15) ENGINE = MyISAM,
+ PARTITION parte VALUES LESS THAN (20) ENGINE = MyISAM,
+ PARTITION partf VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parte.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parte.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partf.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partf.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#parta.MYD
+t1#P#parta.MYI
+t1#P#partb.MYD
+t1#P#partb.MYI
+t1#P#partc.MYD
+t1#P#partc.MYI
+t1#P#partd.MYD
+t1#P#partd.MYI
+t1#P#parte.MYD
+t1#P#parte.MYI
+t1#P#partf.MYD
+t1#P#partf.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -1836,7 +1856,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -2283,20 +2303,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -2335,27 +2355,34 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY RANGE (f_int1 DIV 2) SUBPARTITION BY HASH (f_int1) SUBPARTITIONS 2 (PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM, PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM, PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM, PARTITION partd VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (f_int1 DIV 2)
+SUBPARTITION BY HASH (f_int1)
+SUBPARTITIONS 2
+(PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM,
+ PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM,
+ PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM,
+ PARTITION partd VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#parta#SP#partasp0.MYD
+t1#P#parta#SP#partasp0.MYI
+t1#P#parta#SP#partasp1.MYD
+t1#P#parta#SP#partasp1.MYI
+t1#P#partb#SP#partbsp0.MYD
+t1#P#partb#SP#partbsp0.MYI
+t1#P#partb#SP#partbsp1.MYD
+t1#P#partb#SP#partbsp1.MYI
+t1#P#partc#SP#partcsp0.MYD
+t1#P#partc#SP#partcsp0.MYI
+t1#P#partc#SP#partcsp1.MYD
+t1#P#partc#SP#partcsp1.MYI
+t1#P#partd#SP#partdsp0.MYD
+t1#P#partd#SP#partdsp0.MYI
+t1#P#partd#SP#partdsp1.MYD
+t1#P#partd#SP#partdsp1.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -2365,7 +2392,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -2814,20 +2841,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -2870,27 +2897,41 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY RANGE (f_int1) SUBPARTITION BY KEY (f_int1) (PARTITION part1 VALUES LESS THAN (0) (SUBPARTITION subpart11 ENGINE = MyISAM, SUBPARTITION subpart12 ENGINE = MyISAM), PARTITION part2 VALUES LESS THAN (5) (SUBPARTITION subpart21 ENGINE = MyISAM, SUBPARTITION subpart22 ENGINE = MyISAM), PARTITION part3 VALUES LESS THAN (10) (SUBPARTITION subpart31 ENGINE = MyISAM, SUBPARTITION subpart32 ENGINE = MyISAM), PARTITION part4 VALUES LESS THAN (2147483646) (SUBPARTITION subpart41 ENGINE = MyISAM, SUBPARTITION subpart42 ENGINE = MyISAM)) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (f_int1)
+SUBPARTITION BY KEY (f_int1)
+(PARTITION part1 VALUES LESS THAN (0)
+ (SUBPARTITION subpart11 ENGINE = MyISAM,
+  SUBPARTITION subpart12 ENGINE = MyISAM),
+ PARTITION part2 VALUES LESS THAN (5)
+ (SUBPARTITION subpart21 ENGINE = MyISAM,
+  SUBPARTITION subpart22 ENGINE = MyISAM),
+ PARTITION part3 VALUES LESS THAN (10)
+ (SUBPARTITION subpart31 ENGINE = MyISAM,
+  SUBPARTITION subpart32 ENGINE = MyISAM),
+ PARTITION part4 VALUES LESS THAN (2147483646)
+ (SUBPARTITION subpart41 ENGINE = MyISAM,
+  SUBPARTITION subpart42 ENGINE = MyISAM)) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart11.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart11.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart12.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart12.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart21.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart21.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart22.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart22.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart31.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart31.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart32.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart32.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart41.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart41.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart42.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart42.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part1#SP#subpart11.MYD
+t1#P#part1#SP#subpart11.MYI
+t1#P#part1#SP#subpart12.MYD
+t1#P#part1#SP#subpart12.MYI
+t1#P#part2#SP#subpart21.MYD
+t1#P#part2#SP#subpart21.MYI
+t1#P#part2#SP#subpart22.MYD
+t1#P#part2#SP#subpart22.MYI
+t1#P#part3#SP#subpart31.MYD
+t1#P#part3#SP#subpart31.MYI
+t1#P#part3#SP#subpart32.MYD
+t1#P#part3#SP#subpart32.MYI
+t1#P#part4#SP#subpart41.MYD
+t1#P#part4#SP#subpart41.MYI
+t1#P#part4#SP#subpart42.MYD
+t1#P#part4#SP#subpart42.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -2900,7 +2941,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -3347,20 +3388,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -3403,27 +3444,41 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (ABS(MOD(f_int1,3))) SUBPARTITION BY HASH (f_int1 + 1) (PARTITION part1 VALUES IN (0) (SUBPARTITION sp11 ENGINE = MyISAM, SUBPARTITION sp12 ENGINE = MyISAM), PARTITION part2 VALUES IN (1) (SUBPARTITION sp21 ENGINE = MyISAM, SUBPARTITION sp22 ENGINE = MyISAM), PARTITION part3 VALUES IN (2) (SUBPARTITION sp31 ENGINE = MyISAM, SUBPARTITION sp32 ENGINE = MyISAM), PARTITION part4 VALUES IN (NULL) (SUBPARTITION sp41 ENGINE = MyISAM, SUBPARTITION sp42 ENGINE = MyISAM)) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (ABS(MOD(f_int1,3)))
+SUBPARTITION BY HASH (f_int1 + 1)
+(PARTITION part1 VALUES IN (0)
+ (SUBPARTITION sp11 ENGINE = MyISAM,
+  SUBPARTITION sp12 ENGINE = MyISAM),
+ PARTITION part2 VALUES IN (1)
+ (SUBPARTITION sp21 ENGINE = MyISAM,
+  SUBPARTITION sp22 ENGINE = MyISAM),
+ PARTITION part3 VALUES IN (2)
+ (SUBPARTITION sp31 ENGINE = MyISAM,
+  SUBPARTITION sp32 ENGINE = MyISAM),
+ PARTITION part4 VALUES IN (NULL)
+ (SUBPARTITION sp41 ENGINE = MyISAM,
+  SUBPARTITION sp42 ENGINE = MyISAM)) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp11.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp11.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp12.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp12.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp21.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp21.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp22.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp22.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp31.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp31.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp32.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp32.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp41.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp41.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp42.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp42.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part1#SP#sp11.MYD
+t1#P#part1#SP#sp11.MYI
+t1#P#part1#SP#sp12.MYD
+t1#P#part1#SP#sp12.MYI
+t1#P#part2#SP#sp21.MYD
+t1#P#part2#SP#sp21.MYI
+t1#P#part2#SP#sp22.MYD
+t1#P#part2#SP#sp22.MYI
+t1#P#part3#SP#sp31.MYD
+t1#P#part3#SP#sp31.MYI
+t1#P#part3#SP#sp32.MYD
+t1#P#part3#SP#sp32.MYI
+t1#P#part4#SP#sp41.MYD
+t1#P#part4#SP#sp41.MYI
+t1#P#part4#SP#sp42.MYD
+t1#P#part4#SP#sp42.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -3433,7 +3488,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -3882,20 +3937,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -3914,8 +3969,8 @@ f_charbig VARCHAR(1000)
 PARTITION BY LIST(ABS(MOD(f_int1,2)))
 SUBPARTITION BY KEY(f_int1) SUBPARTITIONS 3
 (PARTITION part1 VALUES IN (0),
- PARTITION part2 VALUES IN (1),
- PARTITION part3 VALUES IN (NULL));
+PARTITION part2 VALUES IN (1),
+PARTITION part3 VALUES IN (NULL));
 INSERT INTO t1(f_int1,f_int2,f_char1,f_char2,f_charbig)
 SELECT f_int1,f_int2,f_char1,f_char2,f_charbig FROM t0_template
 WHERE f_int1 BETWEEN 1 AND @max_row_div2 - 1;
@@ -3934,29 +3989,35 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int1`,`f_int2`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (ABS(MOD(f_int1,2))) SUBPARTITION BY KEY (f_int1) SUBPARTITIONS 3 (PARTITION part1 VALUES IN (0) ENGINE = MyISAM, PARTITION part2 VALUES IN (1) ENGINE = MyISAM, PARTITION part3 VALUES IN (NULL) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (ABS(MOD(f_int1,2)))
+SUBPARTITION BY KEY (f_int1)
+SUBPARTITIONS 3
+(PARTITION part1 VALUES IN (0) ENGINE = MyISAM,
+ PARTITION part2 VALUES IN (1) ENGINE = MyISAM,
+ PARTITION part3 VALUES IN (NULL) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part1#SP#part1sp0.MYD
+t1#P#part1#SP#part1sp0.MYI
+t1#P#part1#SP#part1sp1.MYD
+t1#P#part1#SP#part1sp1.MYI
+t1#P#part1#SP#part1sp2.MYD
+t1#P#part1#SP#part1sp2.MYI
+t1#P#part2#SP#part2sp0.MYD
+t1#P#part2#SP#part2sp0.MYI
+t1#P#part2#SP#part2sp1.MYD
+t1#P#part2#SP#part2sp1.MYI
+t1#P#part2#SP#part2sp2.MYD
+t1#P#part2#SP#part2sp2.MYI
+t1#P#part3#SP#part3sp0.MYD
+t1#P#part3#SP#part3sp0.MYI
+t1#P#part3#SP#part3sp1.MYD
+t1#P#part3#SP#part3sp1.MYI
+t1#P#part3#SP#part3sp2.MYD
+t1#P#part3#SP#part3sp2.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -3966,7 +4027,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -4415,20 +4476,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -4464,15 +4525,17 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY HASH (f_int1) PARTITIONS 2  */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY HASH (f_int1)
+PARTITIONS 2 */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#p0.MYD
+t1#P#p0.MYI
+t1#P#p1.MYD
+t1#P#p1.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -4482,7 +4545,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -4931,20 +4994,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -4979,21 +5042,23 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY KEY (f_int1) PARTITIONS 5  */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY KEY (f_int1)
+PARTITIONS 5 */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p3.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p3.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p4.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#p4.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#p0.MYD
+t1#P#p0.MYI
+t1#P#p1.MYD
+t1#P#p1.MYI
+t1#P#p2.MYD
+t1#P#p2.MYI
+t1#P#p3.MYD
+t1#P#p3.MYI
+t1#P#p4.MYD
+t1#P#p4.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -5003,7 +5068,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -5452,20 +5517,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -5508,27 +5573,36 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (MOD(f_int1,4)) (PARTITION part_3 VALUES IN (-3) ENGINE = MyISAM, PARTITION part_2 VALUES IN (-2) ENGINE = MyISAM, PARTITION part_1 VALUES IN (-1) ENGINE = MyISAM, PARTITION part_N VALUES IN (NULL) ENGINE = MyISAM, PARTITION part0 VALUES IN (0) ENGINE = MyISAM, PARTITION part1 VALUES IN (1) ENGINE = MyISAM, PARTITION part2 VALUES IN (2) ENGINE = MyISAM, PARTITION part3 VALUES IN (3) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (MOD(f_int1,4))
+(PARTITION part_3 VALUES IN (-3) ENGINE = MyISAM,
+ PARTITION part_2 VALUES IN (-2) ENGINE = MyISAM,
+ PARTITION part_1 VALUES IN (-1) ENGINE = MyISAM,
+ PARTITION part_N VALUES IN (NULL) ENGINE = MyISAM,
+ PARTITION part0 VALUES IN (0) ENGINE = MyISAM,
+ PARTITION part1 VALUES IN (1) ENGINE = MyISAM,
+ PARTITION part2 VALUES IN (2) ENGINE = MyISAM,
+ PARTITION part3 VALUES IN (3) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_3.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_3.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_N.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part_N.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part0.MYD
+t1#P#part0.MYI
+t1#P#part1.MYD
+t1#P#part1.MYI
+t1#P#part2.MYD
+t1#P#part2.MYI
+t1#P#part3.MYD
+t1#P#part3.MYI
+t1#P#part_1.MYD
+t1#P#part_1.MYI
+t1#P#part_2.MYD
+t1#P#part_2.MYI
+t1#P#part_3.MYD
+t1#P#part_3.MYI
+t1#P#part_N.MYD
+t1#P#part_N.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -5538,7 +5612,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -5987,20 +6061,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -6041,23 +6115,30 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY RANGE (f_int1) (PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM, PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM, PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM, PARTITION partd VALUES LESS THAN (15) ENGINE = MyISAM, PARTITION parte VALUES LESS THAN (20) ENGINE = MyISAM, PARTITION partf VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (f_int1)
+(PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM,
+ PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM,
+ PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM,
+ PARTITION partd VALUES LESS THAN (15) ENGINE = MyISAM,
+ PARTITION parte VALUES LESS THAN (20) ENGINE = MyISAM,
+ PARTITION partf VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parte.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parte.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partf.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partf.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#parta.MYD
+t1#P#parta.MYI
+t1#P#partb.MYD
+t1#P#partb.MYI
+t1#P#partc.MYD
+t1#P#partc.MYI
+t1#P#partd.MYD
+t1#P#partd.MYI
+t1#P#parte.MYD
+t1#P#parte.MYI
+t1#P#partf.MYD
+t1#P#partf.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -6067,7 +6148,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -6514,20 +6595,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -6566,27 +6647,34 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY RANGE (f_int1 DIV 2) SUBPARTITION BY HASH (f_int1) SUBPARTITIONS 2 (PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM, PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM, PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM, PARTITION partd VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (f_int1 DIV 2)
+SUBPARTITION BY HASH (f_int1)
+SUBPARTITIONS 2
+(PARTITION parta VALUES LESS THAN (0) ENGINE = MyISAM,
+ PARTITION partb VALUES LESS THAN (5) ENGINE = MyISAM,
+ PARTITION partc VALUES LESS THAN (10) ENGINE = MyISAM,
+ PARTITION partd VALUES LESS THAN (2147483646) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#parta#SP#partasp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partb#SP#partbsp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partc#SP#partcsp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#partd#SP#partdsp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#parta#SP#partasp0.MYD
+t1#P#parta#SP#partasp0.MYI
+t1#P#parta#SP#partasp1.MYD
+t1#P#parta#SP#partasp1.MYI
+t1#P#partb#SP#partbsp0.MYD
+t1#P#partb#SP#partbsp0.MYI
+t1#P#partb#SP#partbsp1.MYD
+t1#P#partb#SP#partbsp1.MYI
+t1#P#partc#SP#partcsp0.MYD
+t1#P#partc#SP#partcsp0.MYI
+t1#P#partc#SP#partcsp1.MYD
+t1#P#partc#SP#partcsp1.MYI
+t1#P#partd#SP#partdsp0.MYD
+t1#P#partd#SP#partdsp0.MYI
+t1#P#partd#SP#partdsp1.MYD
+t1#P#partd#SP#partdsp1.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -6596,7 +6684,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -7045,20 +7133,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -7101,27 +7189,41 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY RANGE (f_int1) SUBPARTITION BY KEY (f_int1) (PARTITION part1 VALUES LESS THAN (0) (SUBPARTITION subpart11 ENGINE = MyISAM, SUBPARTITION subpart12 ENGINE = MyISAM), PARTITION part2 VALUES LESS THAN (5) (SUBPARTITION subpart21 ENGINE = MyISAM, SUBPARTITION subpart22 ENGINE = MyISAM), PARTITION part3 VALUES LESS THAN (10) (SUBPARTITION subpart31 ENGINE = MyISAM, SUBPARTITION subpart32 ENGINE = MyISAM), PARTITION part4 VALUES LESS THAN (2147483646) (SUBPARTITION subpart41 ENGINE = MyISAM, SUBPARTITION subpart42 ENGINE = MyISAM)) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY RANGE (f_int1)
+SUBPARTITION BY KEY (f_int1)
+(PARTITION part1 VALUES LESS THAN (0)
+ (SUBPARTITION subpart11 ENGINE = MyISAM,
+  SUBPARTITION subpart12 ENGINE = MyISAM),
+ PARTITION part2 VALUES LESS THAN (5)
+ (SUBPARTITION subpart21 ENGINE = MyISAM,
+  SUBPARTITION subpart22 ENGINE = MyISAM),
+ PARTITION part3 VALUES LESS THAN (10)
+ (SUBPARTITION subpart31 ENGINE = MyISAM,
+  SUBPARTITION subpart32 ENGINE = MyISAM),
+ PARTITION part4 VALUES LESS THAN (2147483646)
+ (SUBPARTITION subpart41 ENGINE = MyISAM,
+  SUBPARTITION subpart42 ENGINE = MyISAM)) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart11.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart11.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart12.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#subpart12.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart21.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart21.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart22.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#subpart22.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart31.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart31.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart32.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#subpart32.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart41.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart41.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart42.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#subpart42.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part1#SP#subpart11.MYD
+t1#P#part1#SP#subpart11.MYI
+t1#P#part1#SP#subpart12.MYD
+t1#P#part1#SP#subpart12.MYI
+t1#P#part2#SP#subpart21.MYD
+t1#P#part2#SP#subpart21.MYI
+t1#P#part2#SP#subpart22.MYD
+t1#P#part2#SP#subpart22.MYI
+t1#P#part3#SP#subpart31.MYD
+t1#P#part3#SP#subpart31.MYI
+t1#P#part3#SP#subpart32.MYD
+t1#P#part3#SP#subpart32.MYI
+t1#P#part4#SP#subpart41.MYD
+t1#P#part4#SP#subpart41.MYI
+t1#P#part4#SP#subpart42.MYD
+t1#P#part4#SP#subpart42.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -7131,7 +7233,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -7578,20 +7680,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -7634,27 +7736,41 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (ABS(MOD(f_int1,3))) SUBPARTITION BY HASH (f_int1 + 1) (PARTITION part1 VALUES IN (0) (SUBPARTITION sp11 ENGINE = MyISAM, SUBPARTITION sp12 ENGINE = MyISAM), PARTITION part2 VALUES IN (1) (SUBPARTITION sp21 ENGINE = MyISAM, SUBPARTITION sp22 ENGINE = MyISAM), PARTITION part3 VALUES IN (2) (SUBPARTITION sp31 ENGINE = MyISAM, SUBPARTITION sp32 ENGINE = MyISAM), PARTITION part4 VALUES IN (NULL) (SUBPARTITION sp41 ENGINE = MyISAM, SUBPARTITION sp42 ENGINE = MyISAM)) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (ABS(MOD(f_int1,3)))
+SUBPARTITION BY HASH (f_int1 + 1)
+(PARTITION part1 VALUES IN (0)
+ (SUBPARTITION sp11 ENGINE = MyISAM,
+  SUBPARTITION sp12 ENGINE = MyISAM),
+ PARTITION part2 VALUES IN (1)
+ (SUBPARTITION sp21 ENGINE = MyISAM,
+  SUBPARTITION sp22 ENGINE = MyISAM),
+ PARTITION part3 VALUES IN (2)
+ (SUBPARTITION sp31 ENGINE = MyISAM,
+  SUBPARTITION sp32 ENGINE = MyISAM),
+ PARTITION part4 VALUES IN (NULL)
+ (SUBPARTITION sp41 ENGINE = MyISAM,
+  SUBPARTITION sp42 ENGINE = MyISAM)) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp11.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp11.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp12.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#sp12.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp21.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp21.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp22.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#sp22.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp31.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp31.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp32.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#sp32.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp41.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp41.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp42.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part4#SP#sp42.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part1#SP#sp11.MYD
+t1#P#part1#SP#sp11.MYI
+t1#P#part1#SP#sp12.MYD
+t1#P#part1#SP#sp12.MYI
+t1#P#part2#SP#sp21.MYD
+t1#P#part2#SP#sp21.MYI
+t1#P#part2#SP#sp22.MYD
+t1#P#part2#SP#sp22.MYI
+t1#P#part3#SP#sp31.MYD
+t1#P#part3#SP#sp31.MYI
+t1#P#part3#SP#sp32.MYD
+t1#P#part3#SP#sp32.MYI
+t1#P#part4#SP#sp41.MYD
+t1#P#part4#SP#sp41.MYI
+t1#P#part4#SP#sp42.MYD
+t1#P#part4#SP#sp42.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -7664,7 +7780,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -8113,20 +8229,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	
@@ -8145,8 +8261,8 @@ f_charbig VARCHAR(1000)
 PARTITION BY LIST(ABS(MOD(f_int1,2)))
 SUBPARTITION BY KEY(f_int1) SUBPARTITIONS 3
 (PARTITION part1 VALUES IN (0),
- PARTITION part2 VALUES IN (1),
- PARTITION part3 VALUES IN (NULL));
+PARTITION part2 VALUES IN (1),
+PARTITION part3 VALUES IN (NULL));
 INSERT INTO t1(f_int1,f_int2,f_char1,f_char2,f_charbig)
 SELECT f_int1,f_int2,f_char1,f_char2,f_charbig FROM t0_template
 WHERE f_int1 BETWEEN 1 AND @max_row_div2 - 1;
@@ -8165,29 +8281,35 @@ t1	CREATE TABLE `t1` (
   `f_char2` char(20) DEFAULT NULL,
   `f_charbig` varchar(1000) DEFAULT NULL,
   UNIQUE KEY `uidx1` (`f_int2`,`f_int1`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (ABS(MOD(f_int1,2))) SUBPARTITION BY KEY (f_int1) SUBPARTITIONS 3 (PARTITION part1 VALUES IN (0) ENGINE = MyISAM, PARTITION part2 VALUES IN (1) ENGINE = MyISAM, PARTITION part3 VALUES IN (NULL) ENGINE = MyISAM) */
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (ABS(MOD(f_int1,2)))
+SUBPARTITION BY KEY (f_int1)
+SUBPARTITIONS 3
+(PARTITION part1 VALUES IN (0) ENGINE = MyISAM,
+ PARTITION part2 VALUES IN (1) ENGINE = MyISAM,
+ PARTITION part3 VALUES IN (NULL) ENGINE = MyISAM) */
 
 unified filelist
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part1#SP#part1sp2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part2#SP#part2sp2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp0.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp0.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp1.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp1.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp2.MYD
-$MYSQLTEST_VARDIR/master-data/test/t1#P#part3#SP#part3sp2.MYI
-$MYSQLTEST_VARDIR/master-data/test/t1.frm
-$MYSQLTEST_VARDIR/master-data/test/t1.par
+t1#P#part1#SP#part1sp0.MYD
+t1#P#part1#SP#part1sp0.MYI
+t1#P#part1#SP#part1sp1.MYD
+t1#P#part1#SP#part1sp1.MYI
+t1#P#part1#SP#part1sp2.MYD
+t1#P#part1#SP#part1sp2.MYI
+t1#P#part2#SP#part2sp0.MYD
+t1#P#part2#SP#part2sp0.MYI
+t1#P#part2#SP#part2sp1.MYD
+t1#P#part2#SP#part2sp1.MYI
+t1#P#part2#SP#part2sp2.MYD
+t1#P#part2#SP#part2sp2.MYI
+t1#P#part3#SP#part3sp0.MYD
+t1#P#part3#SP#part3sp0.MYI
+t1#P#part3#SP#part3sp1.MYD
+t1#P#part3#SP#part3sp1.MYI
+t1#P#part3#SP#part3sp2.MYD
+t1#P#part3#SP#part3sp2.MYI
+t1.frm
+t1.par
 
 # check prerequisites-1 success:    1
 # check COUNT(*) success:    1
@@ -8197,7 +8319,7 @@ INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
 SELECT f_int1, f_int1, CAST(f_int1 AS CHAR),
 CAST(f_int1 AS CHAR), 'delete me' FROM t0_template
 WHERE f_int1 IN (2,3);
-ERROR 23000: Can't write; duplicate key in table 't1'
+ERROR 23000: Duplicate entry '2-2' for key 'uidx1'
 # check prerequisites-3 success:    1
 # INFO: f_int1 AND/OR f_int2 AND/OR (f_int1,f_int2) is UNIQUE
 INSERT INTO t1 (f_int1, f_int2, f_char1, f_char2, f_charbig)
@@ -8646,20 +8768,20 @@ AND f_int2 <> CAST(f_char1 AS SIGNED INT)
 AND f_charbig = '####updated per insert trigger####';
 ANALYZE  TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	analyze	note	The storage engine for the table doesn't support analyze
+test.t1	analyze	status	OK
 CHECK    TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	check	note	The storage engine for the table doesn't support check
+test.t1	check	status	OK
 CHECKSUM TABLE t1 EXTENDED;
 Table	Checksum
 test.t1	<some_value>
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
-test.t1	optimize	note	The storage engine for the table doesn't support optimize
+test.t1	optimize	status	OK
 # check layout success:    1
 REPAIR   TABLE t1 EXTENDED;
 Table	Op	Msg_type	Msg_text
-test.t1	repair	note	The storage engine for the table doesn't support repair
+test.t1	repair	status	OK
 # check layout success:    1
 TRUNCATE t1;
 	

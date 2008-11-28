@@ -157,7 +157,7 @@ explain extended select @@IDENTITY,last_insert_id(), @@identity;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	No tables used
 Warnings:
-Note	1003	select 345 AS `@@IDENTITY`,last_insert_id() AS `last_insert_id()`,345 AS `@@identity`
+Note	1003	select @@IDENTITY AS `@@IDENTITY`,last_insert_id() AS `last_insert_id()`,@@identity AS `@@identity`
 set big_tables=OFF, big_tables=ON, big_tables=0, big_tables=1, big_tables="OFF", big_tables="ON";
 set global concurrent_insert=2;
 show variables like 'concurrent_insert';
@@ -378,7 +378,7 @@ ERROR HY000: Unknown system variable 'unknown_variable'
 set max_join_size="hello";
 ERROR 42000: Incorrect argument type to variable 'max_join_size'
 set storage_engine=UNKNOWN_TABLE_TYPE;
-ERROR 42000: Unknown table engine 'UNKNOWN_TABLE_TYPE'
+ERROR 42000: Unknown storage engine 'UNKNOWN_TABLE_TYPE'
 set storage_engine=MERGE, big_tables=2;
 ERROR 42000: Variable 'big_tables' can't be set to the value of '2'
 show local variables like 'storage_engine';

@@ -1,0 +1,61 @@
+Reset backupdir 
+SET @@global.backupdir = @@global.datadir;
+DROP DATABASE IF EXISTS bup_backupdir;
+Create a database
+CREATE DATABASE bup_backupdir;
+CREATE TABLE bup_backupdir.t1(a INT);
+INSERT INTO bup_backupdir.t1 VALUES (1), (2), (3);
+Create a directory for backup images
+Reset backupdir 
+SET @@global.backupdir = '../tmp/backup';
+Perform backup
+BACKUP DATABASE bup_backupdir TO 'bup_backupdir1.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+/backup/bup_backupdir.bak
+Perform restore
+RESTORE FROM 'bup_backupdir1.bak' OVERWRITE;
+backup_id
+#
+Now do the backup and restore by specifying a path.
+Perform backup
+BACKUP DATABASE bup_backupdir TO '../bup_backupdir2.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+Perform restore
+RESTORE FROM '../bup_backupdir2.bak' OVERWRITE;
+backup_id
+#
+Perform backup
+BACKUP DATABASE bup_backupdir TO '../../bup_backupdir3.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+Reset backupdir with ending /
+SET @@global.backupdir = '../tmp/backup/';
+Perform backup
+BACKUP DATABASE bup_backupdir TO '../../bup_backupdir4.bak';
+backup_id
+#
+Ensure backup image file went to the correct location
+Try a backup to an invalid relative path.
+BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
+ERROR HY000: Can't write to backup location '../not/there/bup_backupdir5.bak' (file already exists?)
+
+Try a backup to an invalid hard path.
+*Actual BACKUP DATABASE command not printed due to non-deterministic path.
+*Performing: 
+*BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
+ERROR HY000: Can't write to backup location '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak' (file already exists?)
+
+Attempt to set the backupdir to something invalid.
+SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';
+Warnings:
+Warning	1731	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Warning	1731	The path specified for the system variable backupdir cannot be accessed or is invalid. ref: This_is_really_stupid/not/there/at/all
+Cleanup
+Reset backupdir 
+SET @@global.backupdir = @@global.datadir;
+DROP DATABASE bup_backupdir;

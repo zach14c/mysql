@@ -510,11 +510,11 @@ static int compress(PACK_MRG_INFO *mrg,char *result_table)
 
   /* Create temporary or join file */
   if (backup)
-    (void)(fn_format(org_name,isam_file->s->open_file_name,"",MARIA_NAME_DEXT,
-                   2));
+    (void) fn_format(org_name,isam_file->s->open_file_name.str,
+                     "",MARIA_NAME_DEXT, 2);
   else
-    (void)(fn_format(org_name,isam_file->s->open_file_name,"",MARIA_NAME_DEXT,
-                   2+4+16));
+    (void) fn_format(org_name,isam_file->s->open_file_name.str,
+                     "",MARIA_NAME_DEXT, 2+4+16);
 
   if (init_pagecache(maria_pagecache, MARIA_MIN_PAGE_CACHE_SIZE, 0, 0,
                      maria_block_size, MY_WME) == 0)
@@ -709,7 +709,7 @@ static int compress(PACK_MRG_INFO *mrg,char *result_table)
       if (backup)
       {
 	if (my_rename(org_name,make_old_name(temp_name,
-                                             isam_file->s->open_file_name),
+                                             isam_file->s->open_file_name.str),
 		      MYF(MY_WME)))
 	  error=1;
 	else
@@ -2979,7 +2979,7 @@ static int save_state(MARIA_HA *isam_file,PACK_MRG_INFO *mrg,
   share->state.version=(ulong) time((time_t*) 0);
   if (share->base.born_transactional)
     share->state.create_rename_lsn= share->state.is_of_horizon=
-      share->state.skip_redo_lsn= LSN_REPAIRED_BY_MARIA_CHK;
+      share->state.skip_redo_lsn= LSN_NEEDS_NEW_STATE_LSNS;
   if (! maria_is_all_keys_active(share->state.key_map, share->base.keys))
   {
     /*
@@ -3031,7 +3031,7 @@ static int save_state_mrg(File file,PACK_MRG_INFO *mrg,my_off_t new_length,
   state.state.empty=0;
   state.state.records=state.split=(ha_rows) mrg->records;
   state.create_rename_lsn= state.is_of_horizon= state.skip_redo_lsn=
-    LSN_REPAIRED_BY_MARIA_CHK;
+    LSN_NEEDS_NEW_STATE_LSNS;
 
   /* See comment above in save_state about key_file_length handling. */
   if (mrg->src_file_has_indexes_disabled)

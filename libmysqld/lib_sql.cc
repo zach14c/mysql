@@ -870,7 +870,7 @@ void Protocol_text::remove_last_row()
 }
 
 
-bool Protocol::send_fields(List<Item> *list, uint flags)
+bool Protocol::send_result_set_metadata(List<Item> *list, uint flags)
 {
   List_iterator_fast<Item> it(*list);
   Item                     *item;
@@ -879,7 +879,7 @@ bool Protocol::send_fields(List<Item> *list, uint flags)
   CHARSET_INFO             *thd_cs= thd->variables.character_set_results;
   CHARSET_INFO             *cs= system_charset_info;
   MYSQL_DATA               *data;
-  DBUG_ENTER("send_fields");
+  DBUG_ENTER("send_result_set_metadata");
 
   if (!thd->mysql)            // bootstrap file handling
     DBUG_RETURN(0);
@@ -972,7 +972,7 @@ bool Protocol::send_fields(List<Item> *list, uint flags)
   if (flags & SEND_EOF)
     write_eof_packet(thd, thd->server_status, thd->total_warn_count);
 
-  DBUG_RETURN(prepare_for_send(list));
+  DBUG_RETURN(prepare_for_send(list->elements));
  err:
   my_error(ER_OUT_OF_RESOURCES, MYF(0));        /* purecov: inspected */
   DBUG_RETURN(1);				/* purecov: inspected */
@@ -1103,6 +1103,9 @@ void Protocol_text::prepare_for_resend()
   data->embedded_info->prev_ptr= &cur->next;
   next_field=cur->data;
   next_mysql_field= data->embedded_info->fields_list;
+#ifndef DBUG_OFF
+  field_pos= 0;
+#endif
 
   DBUG_VOID_RETURN;
 }

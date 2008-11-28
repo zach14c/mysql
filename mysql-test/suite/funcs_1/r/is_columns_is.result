@@ -69,7 +69,7 @@ NULL	information_schema	EVENTS	LAST_ALTERED	18	0000-00-00 00:00:00	NO	datetime	N
 NULL	information_schema	EVENTS	LAST_EXECUTED	19	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
 NULL	information_schema	EVENTS	ON_COMPLETION	16		NO	varchar	12	48	NULL	NULL	utf8	utf8_general_ci	varchar(12)			select		Default	Default
 NULL	information_schema	EVENTS	ORIGINATOR	21	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(10)			select		Default	Default
-NULL	information_schema	EVENTS	SQL_MODE	12	NULL	NO	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select		Default	Default
+NULL	information_schema	EVENTS	SQL_MODE	12		NO	varchar	8192	32768	NULL	NULL	utf8	utf8_general_ci	varchar(8192)			select		Default	Default
 NULL	information_schema	EVENTS	STARTS	13	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
 NULL	information_schema	EVENTS	STATUS	15		NO	varchar	18	72	NULL	NULL	utf8	utf8_general_ci	varchar(18)			select		Default	Default
 NULL	information_schema	EVENTS	TIME_ZONE	5		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
@@ -131,17 +131,17 @@ NULL	information_schema	PARAMETERS	CHARACTER_MAXIMUM_LENGTH	8	NULL	YES	int	NULL	
 NULL	information_schema	PARAMETERS	CHARACTER_OCTET_LENGTH	9	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	int(21)			select		Default	Default
 NULL	information_schema	PARAMETERS	CHARACTER_SET_NAME	12	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	PARAMETERS	COLLATION_NAME	13	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
-NULL	information_schema	PARAMETERS	DATA_TYPE	7		NO	varchar	256	1024	NULL	NULL	utf8	utf8_general_ci	varchar(256)			select		Default	Default
+NULL	information_schema	PARAMETERS	DATA_TYPE	7		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	PARAMETERS	DTD_IDENTIFIER	14	NULL	NO	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select		Default	Default
 NULL	information_schema	PARAMETERS	NUMERIC_PRECISION	10	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	int(21)			select		Default	Default
 NULL	information_schema	PARAMETERS	NUMERIC_SCALE	11	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	int(21)			select		Default	Default
 NULL	information_schema	PARAMETERS	ORDINAL_POSITION	4	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(21)			select		Default	Default
 NULL	information_schema	PARAMETERS	PARAMETER_MODE	5	NULL	YES	varchar	5	20	NULL	NULL	utf8	utf8_general_ci	varchar(5)			select		Default	Default
-NULL	information_schema	PARAMETERS	PARAMETER_NAME	6	NULL	YES	varchar	256	1024	NULL	NULL	utf8	utf8_general_ci	varchar(256)			select		Default	Default
+NULL	information_schema	PARAMETERS	PARAMETER_NAME	6	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	PARAMETERS	ROUTINE_TYPE	15		NO	varchar	9	36	NULL	NULL	utf8	utf8_general_ci	varchar(9)			select		Default	Default
 NULL	information_schema	PARAMETERS	SPECIFIC_CATALOG	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
-NULL	information_schema	PARAMETERS	SPECIFIC_NAME	3		NO	varchar	256	1024	NULL	NULL	utf8	utf8_general_ci	varchar(256)			select		Default	Default
-NULL	information_schema	PARAMETERS	SPECIFIC_SCHEMA	2		NO	varchar	256	1024	NULL	NULL	utf8	utf8_general_ci	varchar(256)			select		Default	Default
+NULL	information_schema	PARAMETERS	SPECIFIC_NAME	3		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	PARAMETERS	SPECIFIC_SCHEMA	2		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	PARTITIONS	AVG_ROW_LENGTH	14	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
 NULL	information_schema	PARTITIONS	CHECKSUM	22	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
 NULL	information_schema	PARTITIONS	CHECK_TIME	21	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
@@ -204,7 +204,7 @@ NULL	information_schema	ROUTINES	COLLATION_CONNECTION	29		NO	varchar	32	128	NULL
 NULL	information_schema	ROUTINES	COLLATION_NAME	12	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	ROUTINES	CREATED	23	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
 NULL	information_schema	ROUTINES	DATABASE_COLLATION	30		NO	varchar	32	128	NULL	NULL	utf8	utf8_general_ci	varchar(32)			select		Default	Default
-NULL	information_schema	ROUTINES	DATA_TYPE	6		NO	varchar	256	1024	NULL	NULL	utf8	utf8_general_ci	varchar(256)			select		Default	Default
+NULL	information_schema	ROUTINES	DATA_TYPE	6		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	ROUTINES	DEFINER	27		NO	varchar	77	308	NULL	NULL	utf8	utf8_general_ci	varchar(77)			select		Default	Default
 NULL	information_schema	ROUTINES	DTD_IDENTIFIER	13	NULL	YES	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select		Default	Default
 NULL	information_schema	ROUTINES	EXTERNAL_LANGUAGE	17	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
@@ -224,7 +224,7 @@ NULL	information_schema	ROUTINES	ROUTINE_TYPE	5		NO	varchar	9	36	NULL	NULL	utf8	
 NULL	information_schema	ROUTINES	SECURITY_TYPE	22		NO	varchar	7	28	NULL	NULL	utf8	utf8_general_ci	varchar(7)			select		Default	Default
 NULL	information_schema	ROUTINES	SPECIFIC_NAME	1		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	ROUTINES	SQL_DATA_ACCESS	20		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
-NULL	information_schema	ROUTINES	SQL_MODE	25	NULL	NO	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select		Default	Default
+NULL	information_schema	ROUTINES	SQL_MODE	25		NO	varchar	8192	32768	NULL	NULL	utf8	utf8_general_ci	varchar(8192)			select		Default	Default
 NULL	information_schema	ROUTINES	SQL_PATH	21	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	SCHEMATA	CATALOG_NAME	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	SCHEMATA	DEFAULT_CHARACTER_SET_NAME	3		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
@@ -268,6 +268,7 @@ NULL	information_schema	TABLES	ENGINE	5	NULL	YES	varchar	64	256	NULL	NULL	utf8	u
 NULL	information_schema	TABLES	INDEX_LENGTH	12	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
 NULL	information_schema	TABLES	MAX_DATA_LENGTH	11	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
 NULL	information_schema	TABLES	ROW_FORMAT	7	NULL	YES	varchar	10	40	NULL	NULL	utf8	utf8_general_ci	varchar(10)			select		Default	Default
+NULL	information_schema	TABLES	TABLESPACE_NAME	22	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLES	TABLE_CATALOG	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	TABLES	TABLE_COLLATION	18	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLES	TABLE_COMMENT	21		NO	varchar	2048	8192	NULL	NULL	utf8	utf8_general_ci	varchar(2048)			select		Default	Default
@@ -277,6 +278,15 @@ NULL	information_schema	TABLES	TABLE_SCHEMA	2		NO	varchar	64	256	NULL	NULL	utf8	
 NULL	information_schema	TABLES	TABLE_TYPE	4		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLES	UPDATE_TIME	16	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
 NULL	information_schema	TABLES	VERSION	6	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	AUTOEXTEND_SIZE	6	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	ENGINE	2		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	TABLESPACES	EXTENT_SIZE	5	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	LOGFILE_GROUP_NAME	4	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	TABLESPACES	MAXIMUM_SIZE	7	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	NODEGROUP_ID	8	NULL	YES	bigint	NULL	NULL	19	0	NULL	NULL	bigint(21) unsigned			select		Default	Default
+NULL	information_schema	TABLESPACES	TABLESPACE_COMMENT	9	NULL	YES	varchar	2048	8192	NULL	NULL	utf8	utf8_general_ci	varchar(2048)			select		Default	Default
+NULL	information_schema	TABLESPACES	TABLESPACE_NAME	1		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
+NULL	information_schema	TABLESPACES	TABLESPACE_TYPE	3	NULL	YES	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_CATALOG	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_NAME	3		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_SCHEMA	2		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
@@ -302,12 +312,12 @@ NULL	information_schema	TRIGGERS	CHARACTER_SET_CLIENT	20		NO	varchar	32	128	NULL
 NULL	information_schema	TRIGGERS	COLLATION_CONNECTION	21		NO	varchar	32	128	NULL	NULL	utf8	utf8_general_ci	varchar(32)			select		Default	Default
 NULL	information_schema	TRIGGERS	CREATED	17	NULL	YES	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select		Default	Default
 NULL	information_schema	TRIGGERS	DATABASE_COLLATION	22		NO	varchar	32	128	NULL	NULL	utf8	utf8_general_ci	varchar(32)			select		Default	Default
-NULL	information_schema	TRIGGERS	DEFINER	19	NULL	NO	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select		Default	Default
+NULL	information_schema	TRIGGERS	DEFINER	19		NO	varchar	77	308	NULL	NULL	utf8	utf8_general_ci	varchar(77)			select		Default	Default
 NULL	information_schema	TRIGGERS	EVENT_MANIPULATION	4		NO	varchar	6	24	NULL	NULL	utf8	utf8_general_ci	varchar(6)			select		Default	Default
 NULL	information_schema	TRIGGERS	EVENT_OBJECT_CATALOG	5	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	TRIGGERS	EVENT_OBJECT_SCHEMA	6		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TRIGGERS	EVENT_OBJECT_TABLE	7		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
-NULL	information_schema	TRIGGERS	SQL_MODE	18	NULL	NO	longtext	4294967295	4294967295	NULL	NULL	utf8	utf8_general_ci	longtext			select		Default	Default
+NULL	information_schema	TRIGGERS	SQL_MODE	18		NO	varchar	8192	32768	NULL	NULL	utf8	utf8_general_ci	varchar(8192)			select		Default	Default
 NULL	information_schema	TRIGGERS	TRIGGER_CATALOG	1	NULL	YES	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select		Default	Default
 NULL	information_schema	TRIGGERS	TRIGGER_NAME	3		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
 NULL	information_schema	TRIGGERS	TRIGGER_SCHEMA	2		NO	varchar	64	256	NULL	NULL	utf8	utf8_general_ci	varchar(64)			select		Default	Default
@@ -440,7 +450,7 @@ NULL	information_schema	COLUMNS	NUMERIC_SCALE	bigint	NULL	NULL	NULL	NULL	bigint(
 NULL	information_schema	EVENTS	EXECUTE_AT	datetime	NULL	NULL	NULL	NULL	datetime
 4.0000	information_schema	EVENTS	INTERVAL_VALUE	varchar	256	1024	utf8	utf8_general_ci	varchar(256)
 4.0000	information_schema	EVENTS	INTERVAL_FIELD	varchar	18	72	utf8	utf8_general_ci	varchar(18)
-1.0000	information_schema	EVENTS	SQL_MODE	longtext	4294967295	4294967295	utf8	utf8_general_ci	longtext
+4.0000	information_schema	EVENTS	SQL_MODE	varchar	8192	32768	utf8	utf8_general_ci	varchar(8192)
 NULL	information_schema	EVENTS	STARTS	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	information_schema	EVENTS	ENDS	datetime	NULL	NULL	NULL	NULL	datetime
 4.0000	information_schema	EVENTS	STATUS	varchar	18	72	utf8	utf8_general_ci	varchar(18)
@@ -508,12 +518,12 @@ NULL	information_schema	KEY_COLUMN_USAGE	POSITION_IN_UNIQUE_CONSTRAINT	bigint	NU
 4.0000	information_schema	KEY_COLUMN_USAGE	REFERENCED_TABLE_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	KEY_COLUMN_USAGE	REFERENCED_COLUMN_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	PARAMETERS	SPECIFIC_CATALOG	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
-4.0000	information_schema	PARAMETERS	SPECIFIC_SCHEMA	varchar	256	1024	utf8	utf8_general_ci	varchar(256)
-4.0000	information_schema	PARAMETERS	SPECIFIC_NAME	varchar	256	1024	utf8	utf8_general_ci	varchar(256)
+4.0000	information_schema	PARAMETERS	SPECIFIC_SCHEMA	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	PARAMETERS	SPECIFIC_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 NULL	information_schema	PARAMETERS	ORDINAL_POSITION	int	NULL	NULL	NULL	NULL	int(21)
 4.0000	information_schema	PARAMETERS	PARAMETER_MODE	varchar	5	20	utf8	utf8_general_ci	varchar(5)
-4.0000	information_schema	PARAMETERS	PARAMETER_NAME	varchar	256	1024	utf8	utf8_general_ci	varchar(256)
-4.0000	information_schema	PARAMETERS	DATA_TYPE	varchar	256	1024	utf8	utf8_general_ci	varchar(256)
+4.0000	information_schema	PARAMETERS	PARAMETER_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	PARAMETERS	DATA_TYPE	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 NULL	information_schema	PARAMETERS	CHARACTER_MAXIMUM_LENGTH	int	NULL	NULL	NULL	NULL	int(21)
 NULL	information_schema	PARAMETERS	CHARACTER_OCTET_LENGTH	int	NULL	NULL	NULL	NULL	int(21)
 NULL	information_schema	PARAMETERS	NUMERIC_PRECISION	int	NULL	NULL	NULL	NULL	int(21)
@@ -581,7 +591,7 @@ NULL	information_schema	PROCESSLIST	TIME	bigint	NULL	NULL	NULL	NULL	bigint(7)
 4.0000	information_schema	ROUTINES	ROUTINE_SCHEMA	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	ROUTINES	ROUTINE_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	ROUTINES	ROUTINE_TYPE	varchar	9	36	utf8	utf8_general_ci	varchar(9)
-4.0000	information_schema	ROUTINES	DATA_TYPE	varchar	256	1024	utf8	utf8_general_ci	varchar(256)
+4.0000	information_schema	ROUTINES	DATA_TYPE	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 NULL	information_schema	ROUTINES	CHARACTER_MAXIMUM_LENGTH	int	NULL	NULL	NULL	NULL	int(21)
 NULL	information_schema	ROUTINES	CHARACTER_OCTET_LENGTH	int	NULL	NULL	NULL	NULL	int(21)
 NULL	information_schema	ROUTINES	NUMERIC_PRECISION	int	NULL	NULL	NULL	NULL	int(21)
@@ -600,7 +610,7 @@ NULL	information_schema	ROUTINES	NUMERIC_SCALE	int	NULL	NULL	NULL	NULL	int(21)
 4.0000	information_schema	ROUTINES	SECURITY_TYPE	varchar	7	28	utf8	utf8_general_ci	varchar(7)
 NULL	information_schema	ROUTINES	CREATED	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	information_schema	ROUTINES	LAST_ALTERED	datetime	NULL	NULL	NULL	NULL	datetime
-1.0000	information_schema	ROUTINES	SQL_MODE	longtext	4294967295	4294967295	utf8	utf8_general_ci	longtext
+4.0000	information_schema	ROUTINES	SQL_MODE	varchar	8192	32768	utf8	utf8_general_ci	varchar(8192)
 4.0000	information_schema	ROUTINES	ROUTINE_COMMENT	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	ROUTINES	DEFINER	varchar	77	308	utf8	utf8_general_ci	varchar(77)
 4.0000	information_schema	ROUTINES	CHARACTER_SET_CLIENT	varchar	32	128	utf8	utf8_general_ci	varchar(32)
@@ -657,6 +667,16 @@ NULL	information_schema	TABLES	CHECK_TIME	datetime	NULL	NULL	NULL	NULL	datetime
 NULL	information_schema	TABLES	CHECKSUM	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
 4.0000	information_schema	TABLES	CREATE_OPTIONS	varchar	255	1020	utf8	utf8_general_ci	varchar(255)
 4.0000	information_schema	TABLES	TABLE_COMMENT	varchar	2048	8192	utf8	utf8_general_ci	varchar(2048)
+4.0000	information_schema	TABLES	TABLESPACE_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	TABLESPACE_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	ENGINE	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	TABLESPACE_TYPE	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+4.0000	information_schema	TABLESPACES	LOGFILE_GROUP_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
+NULL	information_schema	TABLESPACES	EXTENT_SIZE	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLESPACES	AUTOEXTEND_SIZE	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLESPACES	MAXIMUM_SIZE	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLESPACES	NODEGROUP_ID	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+4.0000	information_schema	TABLESPACES	TABLESPACE_COMMENT	varchar	2048	8192	utf8	utf8_general_ci	varchar(2048)
 4.0000	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_CATALOG	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
 4.0000	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_SCHEMA	varchar	64	256	utf8	utf8_general_ci	varchar(64)
 4.0000	information_schema	TABLE_CONSTRAINTS	CONSTRAINT_NAME	varchar	64	256	utf8	utf8_general_ci	varchar(64)
@@ -686,8 +706,8 @@ NULL	information_schema	TRIGGERS	ACTION_ORDER	bigint	NULL	NULL	NULL	NULL	bigint(
 4.0000	information_schema	TRIGGERS	ACTION_REFERENCE_OLD_ROW	varchar	3	12	utf8	utf8_general_ci	varchar(3)
 4.0000	information_schema	TRIGGERS	ACTION_REFERENCE_NEW_ROW	varchar	3	12	utf8	utf8_general_ci	varchar(3)
 NULL	information_schema	TRIGGERS	CREATED	datetime	NULL	NULL	NULL	NULL	datetime
-1.0000	information_schema	TRIGGERS	SQL_MODE	longtext	4294967295	4294967295	utf8	utf8_general_ci	longtext
-1.0000	information_schema	TRIGGERS	DEFINER	longtext	4294967295	4294967295	utf8	utf8_general_ci	longtext
+4.0000	information_schema	TRIGGERS	SQL_MODE	varchar	8192	32768	utf8	utf8_general_ci	varchar(8192)
+4.0000	information_schema	TRIGGERS	DEFINER	varchar	77	308	utf8	utf8_general_ci	varchar(77)
 4.0000	information_schema	TRIGGERS	CHARACTER_SET_CLIENT	varchar	32	128	utf8	utf8_general_ci	varchar(32)
 4.0000	information_schema	TRIGGERS	COLLATION_CONNECTION	varchar	32	128	utf8	utf8_general_ci	varchar(32)
 4.0000	information_schema	TRIGGERS	DATABASE_COLLATION	varchar	32	128	utf8	utf8_general_ci	varchar(32)

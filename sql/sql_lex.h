@@ -117,8 +117,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_CREATE_EVENT, SQLCOM_SHOW_EVENTS,
   SQLCOM_SHOW_CREATE_TRIGGER,
   SQLCOM_ALTER_DB_UPGRADE,
-  SQLCOM_SHOW_ARCHIVE,
-  SQLCOM_BACKUP, SQLCOM_RESTORE,
+  SQLCOM_BACKUP, SQLCOM_RESTORE, SQLCOM_PURGE_BACKUP_LOGS, 
 #ifdef BACKUP_TEST
   SQLCOM_BACKUP_TEST,
 #endif
@@ -391,7 +390,7 @@ public:
     Base class for st_select_lex (SELECT_LEX) & 
     st_select_lex_unit (SELECT_LEX_UNIT)
 */
-struct st_lex;
+struct LEX;
 class st_select_lex;
 class st_select_lex_unit;
 class st_select_lex_node {
@@ -423,11 +422,11 @@ public:
   bool no_table_names_allowed; /* used for global order by */
   bool no_error; /* suppress error message (convert it to warnings) */
 
-  static void *operator new(size_t size)
+  static void *operator new(size_t size) throw ()
   {
     return sql_alloc(size);
   }
-  static void *operator new(size_t size, MEM_ROOT *mem_root)
+  static void *operator new(size_t size, MEM_ROOT *mem_root) throw ()
   { return (void*) alloc_root(mem_root, (uint) size); }
   static void operator delete(void *ptr,size_t size) { TRASH(ptr, size); }
   static void operator delete(void *ptr, MEM_ROOT *mem_root) {}
@@ -461,7 +460,7 @@ public:
   virtual void set_lock_for_tables(thr_lock_type lock_type) {}
 
   friend class st_select_lex_unit;
-  friend bool mysql_new_select(struct st_lex *lex, bool move_down);
+  friend bool mysql_new_select(LEX *lex, bool move_down);
   friend bool mysql_make_view(THD *thd, File_parser *parser,
                               TABLE_LIST *table, uint flags);
 private:
@@ -586,7 +585,7 @@ public:
   /* Saved values of the WHERE and HAVING clauses*/
   Item::cond_result cond_value, having_value;
   /* point on lex in which it was created, used in view subquery detection */
-  st_lex *parent_lex;
+  LEX *parent_lex;
   enum olap_type olap;
   /* FROM clause - points to the beginning of the TABLE_LIST::next_local list. */
   SQL_LIST	      table_list;
@@ -679,6 +678,7 @@ public:
     case of an error during prepare the PS is not created.
   */
   bool first_execution;
+  bool first_natural_join_processing;
   bool first_cond_optimization;
   /* do not wrap view fields with Item_ref */
   bool no_wrap_view_item;
@@ -859,15 +859,12 @@ inline bool st_select_lex_unit::is_union ()
 #define ALTER_COALESCE_PARTITION (1L << 20)
 #define ALTER_REORGANIZE_PARTITION (1L << 21)
 #define ALTER_PARTITION          (1L << 22)
-#define ALTER_OPTIMIZE_PARTITION (1L << 23)
+#define ALTER_ADMIN_PARTITION    (1L << 23)
 #define ALTER_TABLE_REORG        (1L << 24)
 #define ALTER_REBUILD_PARTITION  (1L << 25)
 #define ALTER_ALL_PARTITION      (1L << 26)
-#define ALTER_ANALYZE_PARTITION  (1L << 27)
-#define ALTER_CHECK_PARTITION    (1L << 28)
-#define ALTER_REPAIR_PARTITION   (1L << 29)
-#define ALTER_REMOVE_PARTITIONING (1L << 30)
-#define ALTER_FOREIGN_KEY         (1L << 31)
+#define ALTER_REMOVE_PARTITIONING (1L << 27)
+#define ALTER_FOREIGN_KEY         (1L << 28)
 
 /**
   @brief Parsing data for CREATE or ALTER TABLE.
@@ -954,7 +951,7 @@ extern const LEX_STRING null_lex_str;
   stored functions/triggers to this list in order to pre-open and lock
   them.
 
-  Also used by st_lex::reset_n_backup/restore_backup_query_tables_list()
+  Also used by LEX::reset_n_backup/restore_backup_query_tables_list()
   methods to save and restore this information.
 */
 
@@ -1514,7 +1511,7 @@ public:
 
 /* The state of the lex parsing. This is saved in the THD struct */
 
-typedef struct st_lex : public Query_tables_list
+struct LEX: public Query_tables_list
 {
   SELECT_LEX_UNIT unit;                         /* most upper unit */
   SELECT_LEX select_lex;                        /* first SELECT_LEX */
@@ -1527,7 +1524,9 @@ typedef struct st_lex : public Query_tables_list
   LEX_STRING name;
   char *help_arg;
   LEX_STRING backup_dir;				/* For RESTORE/BACKUP */
+  bool backup_compression;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
+  ulonglong backup_id;     /* For PURGE BACKUP LOGS */
   char* x509_subject,*x509_issuer,*ssl_cipher;
   String *wild;
   sql_exchange *exchange;
@@ -1536,7 +1535,6 @@ typedef struct st_lex : public Query_tables_list
   LEX_STRING comment, ident;
   LEX_USER *grant_user;
   XID *xid;
-  uchar* yacc_yyss, *yacc_yyvs;
   THD *thd;
 
   /* maintain a list of used plugins for this LEX */
@@ -1573,6 +1571,7 @@ typedef struct st_lex : public Query_tables_list
   List<Item>	      *insert_list,field_list,value_list,update_list;
   List<List_item>     many_values;
   List<set_var_base>  var_list;
+  List<Item_func_set_user_var> set_var_list; // in-query assignment list
   List<Item_param>    param_list;
   List<LEX_STRING>    view_list; // view list (list of field names in view)
   /*
@@ -1758,9 +1757,9 @@ typedef struct st_lex : public Query_tables_list
   bool escape_used;
   bool is_lex_started; /* If lex_start() did run. For debugging. */
 
-  st_lex();
+  LEX();
 
-  virtual ~st_lex()
+  virtual ~LEX()
   {
     destroy_query_tables_list();
     plugin_unlock_list(NULL, (plugin_ref *)plugins.buffer, plugins.elements);
@@ -1802,7 +1801,7 @@ typedef struct st_lex : public Query_tables_list
     Is this update command where 'WHITH CHECK OPTION' clause is important
 
     SYNOPSIS
-      st_lex::which_check_option_applicable()
+      LEX::which_check_option_applicable()
 
     RETURN
       TRUE   have to take 'WHITH CHECK OPTION' clause into account
@@ -1874,9 +1873,69 @@ typedef struct st_lex : public Query_tables_list
     }
     return FALSE;
   }
-} LEX;
 
-struct st_lex_local: public st_lex
+  void clear_db_list()
+  {
+    db_list.empty();
+  }
+
+  int add_db_to_list(LEX_STRING *name);
+};
+
+
+/**
+  The internal state of the syntax parser.
+  This object is only available during parsing,
+  and is private to the syntax parser implementation (sql_yacc.yy).
+*/
+class Yacc_state
+{
+public:
+  Yacc_state()
+    : yacc_yyss(NULL), yacc_yyvs(NULL)
+  {}
+
+  ~Yacc_state();
+
+  /**
+    Bison internal state stack, yyss, when dynamically allocated using
+    my_yyoverflow().
+  */
+  uchar *yacc_yyss;
+
+  /**
+    Bison internal semantic value stack, yyvs, when dynamically allocated using
+    my_yyoverflow().
+  */
+  uchar *yacc_yyvs;
+
+  /*
+    TODO: move more attributes from the LEX structure here.
+  */
+};
+
+/**
+  Internal state of the parser.
+  The complete state consist of:
+  - state data used during lexical parsing,
+  - state data used during syntactic parsing.
+*/
+class Parser_state
+{
+public:
+  Parser_state(THD *thd, const char* buff, unsigned int length)
+    : m_lip(thd, buff, length), m_yacc()
+  {}
+
+  ~Parser_state()
+  {}
+
+  Lex_input_stream m_lip;
+  Yacc_state m_yacc;
+};
+
+
+struct st_lex_local: public LEX
 {
   static void *operator new(size_t size) throw()
   {

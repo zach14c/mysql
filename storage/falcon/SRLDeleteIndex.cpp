@@ -44,10 +44,10 @@ SRLDeleteIndex::~SRLDeleteIndex()
 
 void SRLDeleteIndex::append(Dbb *dbb, TransId transId, int id, int idxVersion)
 {
-	Sync syncIndexes(&log->syncIndexes, "SRLDeleteIndex::append");
+	Sync syncIndexes(&log->syncIndexes, "SRLDeleteIndex::append(1)");
 	syncIndexes.lock(Exclusive);
 
-	START_RECORD(srlDeleteIndex, "SRLDeleteIndex::append");
+	START_RECORD(srlDeleteIndex, "SRLDeleteIndex::append(2)");
 	putInt(dbb->tableSpaceId);
 	log->getTransaction(transId);
 	log->setIndexInactive(id, dbb->tableSpaceId);
@@ -72,8 +72,14 @@ void SRLDeleteIndex::read()
 void SRLDeleteIndex::pass1()
 {
 	log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted);
-	Dbb *dbb = log->findDbb(tableSpaceId);
+}
 
+void SRLDeleteIndex::redo()
+{
+	if (!log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted))
+		return;
+
+	Dbb *dbb = log->findDbb(tableSpaceId);
 	if (!dbb)
 		return;
 		
@@ -90,12 +96,6 @@ void SRLDeleteIndex::pass1()
 		default:
 			ASSERT(false);
 		}
-}
-
-void SRLDeleteIndex::redo()
-{
-	if (!log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted))
-		return;
 }
 
 void SRLDeleteIndex::print()

@@ -22,6 +22,7 @@
 #include "sp_head.h"
 #include "sql_trigger.h"
 #include "sql_show.h"
+#include "transaction.h"
 
 #ifdef __WIN__
 #include <io.h>
@@ -3537,7 +3538,7 @@ bool mysql_create_table_no_lock(THD *thd,
 
   /* Give warnings for not supported table options */
   if (create_info->transactional && !file->ht->commit)
-    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                         ER_ILLEGAL_HA_CREATE_OPTION,
                         ER(ER_ILLEGAL_HA_CREATE_OPTION),
                         file->engine_name()->str,
@@ -3628,11 +3629,13 @@ bool mysql_create_table_no_lock(THD *thd,
 #endif /* HAVE_READLINK */
   {
     if (create_info->data_file_name)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "DATA DIRECTORY option ignored");
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                          "DATA DIRECTORY");
     if (create_info->index_file_name)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "INDEX DIRECTORY option ignored");
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                          "INDEX DIRECTORY");
     create_info->data_file_name= create_info->index_file_name= 0;
   }
   create_info->table_options=db_options;
@@ -4155,8 +4158,6 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
   CHARSET_INFO *cs= system_charset_info;
   DBUG_ENTER("mysql_admin_table");
 
-  if (end_active_trans(thd))
-    DBUG_RETURN(1);
   field_list.push_back(item = new Item_empty_string("Table",
                                                     NAME_CHAR_LEN * 2,
                                                     cs));
@@ -4167,7 +4168,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
   item->maybe_null = 1;
   field_list.push_back(item = new Item_empty_string("Msg_text", 255, cs));
   item->maybe_null = 1;
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -4211,6 +4212,48 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       table->next_global= save_next_global;
       table->next_local= save_next_local;
       thd->open_options&= ~extra_open_options;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+      if (table->table)
+      {
+        /*
+          Set up which partitions that should be processed
+          if ALTER TABLE t ANALYZE/CHECK/OPTIMIZE/REPAIR PARTITION ..
+        */
+        Alter_info *alter_info= &lex->alter_info;
+
+        if (alter_info->flags & ALTER_ADMIN_PARTITION)
+        {
+          if (!table->table->part_info)
+          {
+            my_error(ER_PARTITION_MGMT_ON_NONPARTITIONED, MYF(0));
+            DBUG_RETURN(TRUE);
+          }
+          uint no_parts_found;
+          uint no_parts_opt= alter_info->partition_names.elements;
+          no_parts_found= set_part_state(alter_info, table->table->part_info,
+                                         PART_CHANGED);
+          if (no_parts_found != no_parts_opt &&
+              (!(alter_info->flags & ALTER_ALL_PARTITION)))
+          {
+            char buff[FN_REFLEN + MYSQL_ERRMSG_SIZE];
+            uint length;
+            DBUG_PRINT("admin", ("sending non existent partition error"));
+            protocol->prepare_for_resend();
+            protocol->store(table_name, system_charset_info);
+            protocol->store(operator_name, system_charset_info);
+            protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+            length= my_snprintf(buff, sizeof(buff),
+                                ER(ER_DROP_PARTITION_NON_EXISTENT),
+                                table_name);
+            protocol->store(buff, length, system_charset_info);
+            if(protocol->write())
+              goto err;
+            my_eof(thd);
+            goto err;
+          }
+        }
+      }
+#endif
     }
     DBUG_PRINT("admin", ("table: %p", table->table));
 
@@ -4219,8 +4262,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       DBUG_PRINT("admin", ("calling prepare_func"));
       switch ((*prepare_func)(thd, table, check_opt)) {
       case  1:           // error, message written to net
-        ha_autocommit_or_rollback(thd, 1);
-        end_trans(thd, ROLLBACK);
+        trans_rollback_stmt(thd);
+        trans_rollback(thd);
         close_thread_tables(thd);
         DBUG_PRINT("admin", ("simple error, admin next table"));
         continue;
@@ -4247,12 +4290,12 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     {
       DBUG_PRINT("admin", ("open table failed"));
       if (!thd->warn_list.elements)
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_CHECK_NO_SUCH_TABLE, ER(ER_CHECK_NO_SUCH_TABLE));
       /* if it was a view will check md5 sum */
       if (table->view &&
           view_checksum(thd, table) == HA_ADMIN_WRONG_CHECKSUM)
-        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+        push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_VIEW_CHECKSUM, ER(ER_VIEW_CHECKSUM));
       result_code= HA_ADMIN_CORRUPT;
       goto send_result;
@@ -4278,8 +4321,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       length= my_snprintf(buff, sizeof(buff), ER(ER_OPEN_AS_READONLY),
                           table_name);
       protocol->store(buff, length, system_charset_info);
-      ha_autocommit_or_rollback(thd, 0);
-      end_trans(thd, COMMIT);
+      trans_commit_stmt(thd);
+      trans_commit(thd);
       close_thread_tables(thd);
       lex->reset_query_tables_list(FALSE);
       table->table=0;				// For query cache
@@ -4295,6 +4338,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       if (wait_while_table_is_used(thd, table->table,
                                    HA_EXTRA_PREPARE_FOR_RENAME))
         goto err;
+      DEBUG_SYNC(thd, "after_admin_flush");
       DBUG_EXECUTE_IF("wait_in_mysql_admin_table",
                       wait_for_kill_signal(thd);
                       if (thd->killed)
@@ -4327,7 +4371,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
            HA_ADMIN_NEEDS_ALTER))
       {
         DBUG_PRINT("admin", ("recreating table"));
-        ha_autocommit_or_rollback(thd, 1);
+        trans_rollback_stmt(thd);
         close_thread_tables(thd);
         tmp_disable_binlog(thd); // binlogging is done by caller if wanted
         result_code= mysql_recreate_table(thd, table);
@@ -4439,9 +4483,17 @@ send_result_message:
         This is currently used only by InnoDB. ha_innobase::optimize() answers
         "try with alter", so here we close the table, do an ALTER TABLE,
         reopen the table and do ha_innobase::analyze() on it.
+        We have to end the row, so analyze could return more rows.
       */
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
+      protocol->store(STRING_WITH_LEN("note"), system_charset_info);
+      protocol->store(STRING_WITH_LEN(
+          "Table does not support optimize, doing recreate + analyze instead"),
+                      system_charset_info);
+      if (protocol->write())
+        goto err;
       close_thread_tables(thd);
+      DBUG_PRINT("info", ("HA_ADMIN_TRY_ALTER, trying analyze..."));
       TABLE_LIST *save_next_local= table->next_local,
                  *save_next_global= table->next_global;
       table->next_local= table->next_global= 0;
@@ -4456,7 +4508,7 @@ send_result_message:
       */
       if (thd->main_da.is_ok())
         thd->main_da.reset_diagnostics_area();
-      ha_autocommit_or_rollback(thd, 0);
+      trans_commit_stmt(thd);
       close_thread_tables(thd);
       if (!result_code) // recreation went ok
       {
@@ -4464,6 +4516,10 @@ send_result_message:
             ((result_code= table->table->file->ha_analyze(thd, check_opt)) > 0))
           result_code= 0; // analyze went ok
       }
+      /* Start a new row for the final status row */
+      protocol->prepare_for_resend();
+      protocol->store(table_name, system_charset_info);
+      protocol->store(operator_name, system_charset_info);
       if (result_code) // either mysql_recreate_table or analyze failed
       {
         DBUG_ASSERT(thd->is_error());
@@ -4479,7 +4535,8 @@ send_result_message:
             /* Hijack the row already in-progress. */
             protocol->store(STRING_WITH_LEN("error"), system_charset_info);
             protocol->store(err_msg, system_charset_info);
-            (void)protocol->write();
+            if (protocol->write())
+              goto err;
             /* Start off another row for HA_ADMIN_FAILED */
             protocol->prepare_for_resend();
             protocol->store(table_name, system_charset_info);
@@ -4545,8 +4602,8 @@ send_result_message:
         query_cache_invalidate3(thd, table->table, 0);
       }
     }
-    ha_autocommit_or_rollback(thd, 0);
-    end_trans(thd, COMMIT);
+    trans_commit_stmt(thd);
+    trans_commit_implicit(thd);
     close_thread_tables(thd);
     table->table=0;				// For query cache
     if (protocol->write())
@@ -4557,8 +4614,8 @@ send_result_message:
   DBUG_RETURN(FALSE);
 
 err:
-  ha_autocommit_or_rollback(thd, 1);
-  end_trans(thd, ROLLBACK);
+  trans_rollback_stmt(thd);
+  trans_rollback(thd);
   close_thread_tables(thd);			// Shouldn't be needed
   if (table)
     table->table=0;
@@ -4930,8 +4987,9 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table, TABLE_LIST* src_table,
                        MYSQL_OPEN_REOPEN))
           goto err;
 
-        IF_DBUG(int result=) store_create_info(thd, table, &query,
-                                               create_info);
+        IF_DBUG(int result=)
+          store_create_info(thd, table, &query,
+                            create_info, FALSE /* show_database */);
 
         DBUG_ASSERT(result == 0); // store_create_info() always return 0
         write_bin_log(thd, TRUE, query.ptr(), query.length());
@@ -5050,15 +5108,15 @@ mysql_discard_or_import_tablespace(THD *thd,
   query_cache_invalidate3(thd, table_list, 0);
 
   /* The ALTER TABLE is always in its own transaction */
-  error = ha_autocommit_or_rollback(thd, 0);
-  if (end_active_trans(thd))
+  error= trans_commit_stmt(thd);
+  if (trans_commit_implicit(thd))
     error=1;
   if (error)
     goto err;
   write_bin_log(thd, FALSE, thd->query, thd->query_length);
 
 err:
-  ha_autocommit_or_rollback(thd, error);
+  trans_rollback_stmt(thd);
   thd->tablespace_op=FALSE;
 
   if (error == 0)
@@ -5293,8 +5351,7 @@ compare_tables(THD *thd,
   new_field_it.init(alter_info->create_list);
   tmp_new_field_it.init(tmp_alter_info.create_list);
 
-  /*
-    Go through fields and check if the original ones are compatible
+  /*   Go through fields and check if the original ones are compatible
     with new table.
   */
   for (f_ptr= table->field, new_field= new_field_it++,
@@ -5308,10 +5365,11 @@ compare_tables(THD *thd,
       new_field->charset= create_info->default_table_charset;
 
     /* Don't pack rows in old tables if the user has requested this. */
-    if ((tmp_new_field->flags & BLOB_FLAG) ||
-        tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
-        create_info->row_type != ROW_TYPE_FIXED)
-      create_info->table_options|= HA_OPTION_PACK_RECORD;
+      if (create_info->row_type == ROW_TYPE_DYNAMIC ||
+	(tmp_new_field->flags & BLOB_FLAG) ||
+	tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
+  	create_info->row_type != ROW_TYPE_FIXED)
+        create_info->table_options|= HA_OPTION_PACK_RECORD;
 
     /* Check how fields have been modified */
     if (alter_info->flags & ALTER_CHANGE_COLUMN)
@@ -5787,7 +5845,7 @@ mysql_fast_or_online_alter_table(THD *thd,
     Upgrade the shared metadata lock to exclusive and close all
     instances of the table in the TDC except those used in this thread.
   */
-  if (wait_while_table_is_used(thd, table, HA_EXTRA_FORCE_REOPEN))
+  if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     DBUG_RETURN(1);
 
   alter_table_manage_keys(table, table->file->indexes_are_disabled(),
@@ -5815,8 +5873,8 @@ mysql_fast_or_online_alter_table(THD *thd,
     wait_if_global_read_lock(), which could create a deadlock if called
     with LOCK_open.
   */
-  error= ha_autocommit_or_rollback(thd, 0);
-  if (ha_commit(thd))
+  error= trans_commit_stmt(thd);
+  if (trans_commit_implicit(thd))
     error= 1;
 
   if (error)
@@ -5849,6 +5907,35 @@ mysql_fast_or_online_alter_table(THD *thd,
   }
   DBUG_ASSERT(table_list->table == 0);
   DBUG_RETURN(error);
+}
+
+
+/**
+  maximum possible length for certain blob types.
+
+  @param[in]      type        Blob type (e.g. MYSQL_TYPE_TINY_BLOB)
+
+  @return
+    length
+*/
+
+static uint
+blob_length_by_type(enum_field_types type)
+{
+  switch (type)
+  {
+  case MYSQL_TYPE_TINY_BLOB:
+    return 255;
+  case MYSQL_TYPE_BLOB:
+    return 65535;
+  case MYSQL_TYPE_MEDIUM_BLOB:
+    return 16777215;
+  case MYSQL_TYPE_LONG_BLOB:
+    return 4294967295U;
+  default:
+    DBUG_ASSERT(0); // we should never go here
+    return 0;
+  }
 }
 
 
@@ -6157,6 +6244,14 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 
           BLOBs may have cfield->length == 0, which is why we test it before
           checking whether cfield->length < key_part_length (in chars).
+          
+          In case of TEXTs we check the data type maximum length *in bytes*
+          to key part length measured *in characters* (i.e. key_part_length
+          devided to mbmaxlen). This is because it's OK to have:
+          CREATE TABLE t1 (a tinytext, key(a(254)) character set utf8);
+          In case of this example:
+          - data type maximum length is 255.
+          - key_part_length is 1016 (=254*4, where 4 is mbmaxlen)
          */
         if (!Field::type_can_have_key_part(cfield->field->type()) ||
             !Field::type_can_have_key_part(cfield->sql_type) ||
@@ -6164,8 +6259,11 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
             (key_info->flags & HA_SPATIAL) ||
             (cfield->field->field_length == key_part_length &&
              !f_is_blob(key_part->key_type)) ||
-	    (cfield->length && (cfield->length < key_part_length /
-                                key_part->field->charset()->mbmaxlen)))
+            (cfield->length && (((cfield->sql_type >= MYSQL_TYPE_TINY_BLOB &&
+                                  cfield->sql_type <= MYSQL_TYPE_BLOB) ? 
+                                blob_length_by_type(cfield->sql_type) :
+                                cfield->length) <
+	     key_part_length / key_part->field->charset()->mbmaxlen)))
 	  key_part_length= 0;			// Use whole field
       }
       key_part_length /= key_part->field->charset()->mbmaxlen;
@@ -6930,7 +7028,6 @@ view_err:
   /* Copy the data if necessary. */
   thd->count_cuted_fields= CHECK_FIELD_WARN;	// calc cuted fields
   thd->cuted_fields=0L;
-  thd_proc_info(thd, "copy to tmp table");
   copied=deleted=0;
   /*
     We do not copy data for MERGE tables. Only the children have data.
@@ -6941,6 +7038,7 @@ view_err:
     /* We don't want update TIMESTAMP fields during ALTER TABLE. */
     new_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
     new_table->next_number_field=new_table->found_next_number_field;
+    thd_proc_info(thd, "copy to tmp table");
     error= copy_data_between_tables(table, new_table,
                                     alter_info->create_list, ignore,
                                    order_num, order, &copied, &deleted,
@@ -6949,8 +7047,8 @@ view_err:
   }
   else
   {
-    error= ha_autocommit_or_rollback(thd, 0);
-    if (end_active_trans(thd))
+    error= trans_commit_stmt(thd);
+    if (trans_commit_implicit(thd))
       error= 1;
   }
   thd->count_cuted_fields= CHECK_FIELD_IGNORE;
@@ -7010,7 +7108,6 @@ view_err:
 
   if (wait_while_table_is_used(thd, table, HA_EXTRA_PREPARE_FOR_RENAME))
     goto err_new_table_cleanup;
-
 
   close_all_tables_for_name(thd, table->s,
                             new_name != table_name || new_db != db);
@@ -7160,7 +7257,7 @@ err:
     }
     bool save_abort_on_warning= thd->abort_on_warning;
     thd->abort_on_warning= TRUE;
-    make_truncated_value_warning(thd, MYSQL_ERROR::WARN_LEVEL_ERROR,
+    make_truncated_value_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                                  f_val, strlength(f_val), t_type,
                                  alter_info->datetime_field->field_name);
     thd->abort_on_warning= save_abort_on_warning;
@@ -7298,13 +7395,16 @@ copy_data_between_tables(TABLE *from,TABLE *to,
                                               (SQL_SELECT *) 0, HA_POS_ERROR,
                                               1, &examined_rows)) ==
           HA_POS_ERROR)
+      {
+        to->file->ha_end_bulk_insert(0);
         goto err;
+      }
     }
   };
 
   /* Tell handler that we have values for all columns in the to table */
   to->use_all_columns();
-  init_read_record(&info, thd, from, (SQL_SELECT *) 0, 1,1);
+  init_read_record(&info, thd, from, (SQL_SELECT *) 0, 1, 1, FALSE);
   errpos= 4;
   if (ignore)
     to->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
@@ -7381,7 +7481,7 @@ err:
   if (errpos >= 3 && to->file->ha_end_bulk_insert(error > 1) && error <= 0)
   {
     to->file->print_error(my_errno,MYF(0));
-    error=1;
+    error= 1;
   }
   to->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
 
@@ -7392,9 +7492,9 @@ err:
     Ensure that the new table is saved properly to disk so that we
     can do a rename
   */
-  if (ha_autocommit_or_rollback(thd, 0))
+  if (trans_commit_stmt(thd))
     error=1;
-  if (end_active_trans(thd))
+  if (trans_commit_implicit(thd))
     error=1;
 
   thd->variables.sql_mode= save_sql_mode;
@@ -7404,6 +7504,8 @@ err:
   to->file->ha_release_auto_increment();
   if (errpos >= 2 && to->file->ha_external_lock(thd,F_UNLCK))
     error=1;
+  if (error < 0 && to->file->extra(HA_EXTRA_PREPARE_FOR_RENAME))
+    error= 1;
   DBUG_RETURN(error > 0 ? -1 : 0);
 }
 
@@ -7457,7 +7559,7 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
   field_list.push_back(item= new Item_int("Checksum", (longlong) 1,
                                           MY_INT64_NUM_DECIMAL_DIGITS));
   item->maybe_null= 1;
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -7506,6 +7608,12 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	{
 	  for (;;)
 	  {
+            if (thd->killed)
+            {
+              t->file->ha_rnd_end();
+              thd->protocol->remove_last_row();
+              goto err;
+            }
 	    ha_checksum row_crc= 0;
             int error= t->file->rnd_next(t->record[0]);
             if (unlikely(error))

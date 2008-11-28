@@ -45,6 +45,7 @@ extern "C" {
 
 #define HA_MAX_POSSIBLE_KEY_BUFF    (HA_MAX_KEY_LENGTH + 24+ 6+6) 
 #define HA_MAX_KEY_BUFF  (HA_MAX_KEY_LENGTH+HA_MAX_KEY_SEG*6+8+8)
+#define HA_MAX_MSG_BUF      1024 /* used in CHECK TABLE, REPAIR TABLE */
 
 typedef struct st_HA_KEYSEG		/* Key-portion */
 {
@@ -54,8 +55,8 @@ typedef struct st_HA_KEYSEG		/* Key-portion */
   uint16 bit_pos;                       /* Position to bit part */
   uint16 flag;
   uint16 length;			/* Keylength */
+  uint16 language;
   uint8  type;				/* Type of key (for sort) */
-  uint8  language;
   uint8  null_bit;			/* bitmask to test for NULL */
   uint8  bit_start,bit_end;		/* if bit field */
   uint8  bit_length;                    /* Length of bit part */

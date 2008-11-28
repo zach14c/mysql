@@ -116,7 +116,8 @@ int _ma_search(register MARIA_HA *info, MARIA_KEY *key, uint32 nextflag,
 	((keyinfo->flag & (HA_NOSAME | HA_NULL_PART)) != HA_NOSAME ||
 	 (key->flag & SEARCH_PART_KEY) || info->s->base.born_transactional))
     {
-      if ((error= _ma_search(info, key, nextflag,
+      if ((error= _ma_search(info, key, (nextflag | SEARCH_FIND) &
+                             ~(SEARCH_BIGGER | SEARCH_SMALLER | SEARCH_LAST),
                              _ma_kpos(nod_flag,keypos))) >= 0 ||
           my_errno != HA_ERR_KEY_NOT_FOUND)
         DBUG_RETURN(error);
@@ -338,10 +339,8 @@ int _ma_seq_search(const MARIA_KEY *key, uchar *page,
                           comp_flag | tmp_key.flag,
                           not_used)) >= 0)
       break;
-#ifdef EXTRA_DEBUG
-    DBUG_PRINT("loop",("page: 0x%lx  key: '%s'  flag: %d", (long) page, t_buff,
-                       flag));
-#endif
+    DBUG_PRINT("loop_extra",("page: 0x%lx  key: '%s'  flag: %d",
+                             (long) page, t_buff, flag));
     memcpy(buff,t_buff,length);
     *ret_pos=page;
   }
@@ -932,7 +931,7 @@ uint _ma_get_static_key(MARIA_KEY *key, uint page_flag, uint nod_flag,
 /**
    Skip over static length key from key-block
 
-  @fn _ma_skip_pack_key()
+  @fn _ma_skip_static_key()
   @param key       Keyinfo and buffer that can be used
   @param nod_flag  If nod: Length of node pointer, else zero.
   @param key       Points at key
@@ -1050,6 +1049,7 @@ uint _ma_get_pack_key(MARIA_KEY *int_key, uint page_flag,
       }
       else
       {
+        /* Key that is not packed against previous key */
         if (keyseg->flag & HA_NULL_PART)
         {
           if (!length--)                        /* Null part */
@@ -1122,6 +1122,9 @@ uint _ma_get_pack_key(MARIA_KEY *int_key, uint page_flag,
   @param nod_flag  If nod: Length of node pointer, else zero.
   @param key       Points at key
 
+  @note
+  This is in principle a simpler version of _ma_get_pack_key()
+
   @retval pointer to next key
 */
 
@@ -1150,6 +1153,14 @@ uchar *_ma_skip_pack_key(MARIA_KEY *key, uint page_flag,
 	get_key_length(length,page);
 	page+= length;
 	continue;
+      }
+      if ((keyseg->flag & HA_NULL_PART) && length)
+      {
+        /*
+          Keys that can have null use length+1 as the length for date as the
+          number 0 is reserved for keys that have a NULL value
+        */
+        length--;
       }
       page+= length;
     }
@@ -1324,7 +1335,7 @@ uint _ma_get_binary_pack_key(MARIA_KEY *int_key, uint page_flag, uint nod_flag,
   }
 
   /* Copy rest of data ptr and, if appropriate, trans_id and node_ptr */
-  memcpy(key, from, length);
+  memcpy(key, from, length + nod_flag);
   *page_pos= from + length + nod_flag;
   
   DBUG_RETURN(int_key->data_length + int_key->ref_length);
@@ -1359,7 +1370,7 @@ uchar *_ma_skip_binary_pack_key(MARIA_KEY *key, uint page_flag,
 }
 
 
-/*
+/**
   @brief Get key at position without knowledge of previous key
 
   @return pointer to next key
@@ -1847,11 +1858,14 @@ _ma_calc_var_key_length(const MARIA_KEY *key, uint nod_flag,
 
     prefix byte(s) The high bit is set if this is a prefix for the prev key
     length         Packed length if the previous was a prefix byte
-    [length]       data bytes ('length' bytes)
+    [data_length]  data bytes ('length' bytes)
     next-key-seg   Next key segments
 
     If the first segment can have NULL:
-    The length is 0 for NULLS and 1+length for not null columns.
+       If key was packed
+         data_length is length of rest of key
+       If key was not packed
+         The data_length is 0 for NULLS and 1+data_length for not null columns
 */
 
 int
@@ -2195,9 +2209,10 @@ int _ma_calc_bin_pack_key_length(const MARIA_KEY *int_key,
 
     if (next_length > ref_length)
     {
-      /* We put a key with different case between two keys with the same prefix
-         Extend next key to have same prefix as
-         this key */
+      /*
+        We put a key with different case between two keys with the same prefix
+        Extend next key to have same prefix as this key
+      */
       s_temp->n_ref_length= ref_length;
       s_temp->prev_length=  next_length-ref_length;
       s_temp->prev_key+=    ref_length;
@@ -2207,13 +2222,13 @@ int _ma_calc_bin_pack_key_length(const MARIA_KEY *int_key,
     }
     /* Check how many characters are identical to next key */
     key= s_temp->key+next_length;
+    s_temp->prev_length= 0;
     while (*key++ == *next_key++) ;
     if ((ref_length= (uint) (key - s_temp->key)-1) == next_length)
     {
       s_temp->next_key_pos=0;
       return (s_temp->move_length= length);  /* Can't pack next key */
     }
-    s_temp->prev_length=0;
     s_temp->n_ref_length=ref_length;
     return s_temp->move_length= (int) (length-(ref_length - next_length) -
                                        next_length_pack +

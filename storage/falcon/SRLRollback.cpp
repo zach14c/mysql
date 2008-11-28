@@ -40,7 +40,7 @@ SRLRollback::~SRLRollback()
 
 void SRLRollback::append(TransId transId, bool updateTransaction)
 {
-	START_RECORD(srlRollback, "");
+	START_RECORD(srlRollback, "SRLRollback::append");
 	putInt(transId);
 	uint64 commitBlockNumber = log->nextBlockNumber;
 	SerialLogTransaction *transaction = log->findTransaction(transId);

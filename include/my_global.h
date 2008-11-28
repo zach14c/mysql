@@ -68,9 +68,11 @@
 #ifdef __cplusplus
 #define C_MODE_START    extern "C" {
 #define C_MODE_END	}
+#define STATIC_CAST(TYPE) static_cast<TYPE>
 #else
 #define C_MODE_START
 #define C_MODE_END
+#define STATIC_CAST(TYPE) (TYPE)
 #endif
 
 #if defined(_WIN32) || defined(_WIN64) || defined(__WIN32__) || defined(WIN32)
@@ -478,14 +480,13 @@ C_MODE_END
 #include <assert.h>
 
 /* an assert that works at compile-time. only for constant expression */
-#ifndef __GNUC__
+#ifdef _some_old_compiler_that_does_not_understand_the_construct_below_
 #define compile_time_assert(X)  do { } while(0)
 #else
 #define compile_time_assert(X)                                  \
   do                                                            \
   {                                                             \
-    char compile_time_assert[(X) ? 1 : -1]                      \
-                             __attribute__ ((unused));          \
+    typedef char compile_time_assert[(X) ? 1 : -1];             \
   } while(0)
 #endif
 
@@ -770,7 +771,41 @@ typedef SOCKET_SIZE_TYPE size_socket;
 #define FN_LIBCHAR	'/'
 #define FN_ROOTDIR	"/"
 #endif
-#define MY_NFILE	64	/* This is only used to save filenames */
+
+/* 
+  MY_FILE_MIN is  Windows speciality and is used to quickly detect
+  the mismatch of CRT and mysys file IO usage on Windows at runtime.
+  CRT file descriptors can be in the range 0-2047, whereas descriptors returned
+  by my_open() will start with 2048. If a file descriptor with value less then
+  MY_FILE_MIN is passed to mysys IO function, chances are it stemms from
+  open()/fileno() and not my_open()/my_fileno.
+
+  For Posix,  mysys functions are light wrappers around libc, and MY_FILE_MIN
+  is logically 0.
+*/
+
+#ifdef _WIN32
+#define MY_FILE_MIN  2048
+#else
+#define MY_FILE_MIN  0
+#endif
+
+/* 
+  MY_NFILE is the default size of my_file_info array.
+
+  It is larger on Windows, because it all file handles are stored in my_file_info
+  Default size is 16384 and this should be enough for most cases.If it is not 
+  enough, --max-open-files with larger value can be used.
+
+  For Posix , my_file_info array is only used to store filenames for
+  error reporting and its size is not a limitation for number of open files.
+*/ 
+#ifdef _WIN32
+#define MY_NFILE (16384 + MY_FILE_MIN)
+#else
+#define MY_NFILE 64
+#endif
+
 #ifndef OS_FILE_LIMIT
 #define OS_FILE_LIMIT	65535
 #endif
@@ -807,9 +842,8 @@ typedef SOCKET_SIZE_TYPE size_socket;
 	/* Some things that this system doesn't have */
 
 #define NO_HASH			/* Not needed anymore */
-#ifdef __WIN__
-#define NO_DIR_LIBRARY		/* Not standar dir-library */
-#define USE_MY_STAT_STRUCT	/* For my_lib */
+#ifdef _WIN32
+#define NO_DIR_LIBRARY		/* Not standard dir-library */
 #endif
 
 /* Some defines of functions for portability */
@@ -956,7 +990,7 @@ typedef long long	my_ptrdiff_t;
 #define my_offsetof(TYPE, MEMBER) \
         ((size_t)((char *)&(((TYPE *)0x10)->MEMBER) - (char*)0x10))
 
-#define NullS		(char *) 0
+#define NullS		STATIC_CAST(char *)(0)
 /* Nowdays we do not support MessyDos */
 #ifndef NEAR
 #define NEAR				/* Who needs segments ? */
@@ -1073,7 +1107,7 @@ typedef ulonglong my_off_t;
 #else
 typedef unsigned long my_off_t;
 #endif
-#define MY_FILEPOS_ERROR	(~(my_off_t) 0)
+#define MY_FILEPOS_ERROR	(~STATIC_CAST(my_off_t)(0))
 #if !defined(__WIN__)
 typedef off_t os_off_t;
 #endif
@@ -1109,7 +1143,7 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #define INT8(v)		(int8) (v)
 #define INT16(v)	(int16) (v)
 #define INT32(v)	(int32) (v)
-#define MYF(v)		(myf) (v)
+#define MYF(v)		STATIC_CAST(myf)(v)
 
 #ifndef LL
 #ifdef HAVE_LONG_LONG
@@ -1540,13 +1574,22 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #if !defined(max)
 #define max(a, b)	((a) > (b) ? (a) : (b))
 #define min(a, b)	((a) < (b) ? (a) : (b))
-#endif  
+#endif
 /*
   Only Linux is known to need an explicit sync of the directory to make sure a
   file creation/deletion/renaming in(from,to) this directory durable.
 */
 #ifdef TARGET_OS_LINUX
 #define NEED_EXPLICIT_SYNC_DIR 1
+#else
+/*
+  On linux default rwlock scheduling policy is good enough for
+  waiting_threads.c, on other systems use our special implementation
+  (which is slower).
+
+  QQ perhaps this should be tested in configure ? how ?
+*/
+#define WT_RWLOCKS_USE_MUTEXES 1
 #endif
 
 #if !defined(__cplusplus) && !defined(bool)

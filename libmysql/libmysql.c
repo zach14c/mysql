@@ -1725,6 +1725,8 @@ static void alloc_stmt_fields(MYSQL_STMT *stmt)
   MEM_ROOT *alloc= &stmt->mem_root;
   MYSQL *mysql= stmt->mysql;
 
+  DBUG_ASSERT(mysql->field_count);
+
   stmt->field_count= mysql->field_count;
 
   /*
@@ -1746,18 +1748,21 @@ static void alloc_stmt_fields(MYSQL_STMT *stmt)
 	 field= stmt->fields;
        field && fields < end; fields++, field++)
   {
-    field->db       = strdup_root(alloc,fields->db);
-    field->table    = strdup_root(alloc,fields->table);
-    field->org_table= strdup_root(alloc,fields->org_table);
-    field->name     = strdup_root(alloc,fields->name);
-    field->org_name = strdup_root(alloc,fields->org_name);
-    field->charsetnr= fields->charsetnr;
-    field->length   = fields->length;
-    field->type     = fields->type;
-    field->flags    = fields->flags;
-    field->decimals = fields->decimals;
-    field->def      = fields->def ? strdup_root(alloc,fields->def): 0;
-    field->max_length= 0;
+    *field= *fields; /* To copy all numeric parts. */
+    field->catalog=   strmake_root(alloc, fields->catalog,
+                                   fields->catalog_length);
+    field->db=        strmake_root(alloc, fields->db, fields->db_length);
+    field->table=     strmake_root(alloc, fields->table, fields->table_length);
+    field->org_table= strmake_root(alloc, fields->org_table,
+                                   fields->org_table_length);
+    field->name=      strmake_root(alloc, fields->name, fields->name_length);
+    field->org_name=  strmake_root(alloc, fields->org_name,
+                                   fields->org_name_length);
+    field->def      = fields->def ? strmake_root(alloc, fields->def,
+                                                 fields->def_length) : 0;
+    field->def_length= field->def ? fields->def_length : 0;
+    field->extension= 0; /* Avoid dangling links. */
+    field->max_length= 0; /* max_length is set in mysql_stmt_store_result() */
   }
 }
 
@@ -2484,6 +2489,33 @@ static void reinit_result_set_metadata(MYSQL_STMT *stmt)
 }
 
 
+static void prepare_to_fetch_result(MYSQL_STMT *stmt)
+{
+  if (stmt->server_status & SERVER_STATUS_CURSOR_EXISTS)
+  {
+    stmt->mysql->status= MYSQL_STATUS_READY;
+    stmt->read_row_func= stmt_read_row_from_cursor;
+  }
+  else if (stmt->flags & CURSOR_TYPE_READ_ONLY)
+  {
+    /*
+      This is a single-row result set, a result set with no rows, EXPLAIN,
+      SHOW VARIABLES, or some other command which either a) bypasses the
+      cursors framework in the server and writes rows directly to the
+      network or b) is more efficient if all (few) result set rows are
+      precached on client and server's resources are freed.
+    */
+    mysql_stmt_store_result(stmt);
+  }
+  else
+  {
+    stmt->mysql->unbuffered_fetch_owner= &stmt->unbuffered_fetch_cancelled;
+    stmt->unbuffered_fetch_cancelled= FALSE;
+    stmt->read_row_func= stmt_read_row_unbuffered;
+  }
+}
+
+
 /*
   Send placeholders data to server (if there are placeholders)
   and execute prepared statement.
@@ -2551,28 +2583,7 @@ int STDCALL mysql_stmt_execute(MYSQL_STMT *stmt)
   if (mysql->field_count)
   {
     reinit_result_set_metadata(stmt);
-    if (stmt->server_status & SERVER_STATUS_CURSOR_EXISTS)
-    {
-      mysql->status= MYSQL_STATUS_READY;
-      stmt->read_row_func= stmt_read_row_from_cursor;
-    }
-    else if (stmt->flags & CURSOR_TYPE_READ_ONLY)
-    {
-      /*
-        This is a single-row result set, a result set with no rows, EXPLAIN,
-        SHOW VARIABLES, or some other command which either a) bypasses the
-        cursors framework in the server and writes rows directly to the
-        network or b) is more efficient if all (few) result set rows are
-        precached on client and server's resources are freed.
-      */
-      mysql_stmt_store_result(stmt);
-    }
-    else
-    {
-      stmt->mysql->unbuffered_fetch_owner= &stmt->unbuffered_fetch_cancelled;
-      stmt->unbuffered_fetch_cancelled= FALSE;
-      stmt->read_row_func= stmt_read_row_unbuffered;
-    }
+    prepare_to_fetch_result(stmt);
   }
   DBUG_RETURN(test(stmt->last_errno));
 }
@@ -4828,6 +4839,46 @@ int STDCALL mysql_next_result(MYSQL *mysql)
     DBUG_RETURN((*mysql->methods->next_result)(mysql));
 
   DBUG_RETURN(-1);				/* No more results */
+}
+
+
+int STDCALL mysql_stmt_next_result(MYSQL_STMT *stmt)
+{
+  MYSQL *mysql= stmt->mysql;
+  int rc;
+  DBUG_ENTER("mysql_stmt_next_result");
+
+  if (!mysql)
+    DBUG_RETURN(1);
+
+  if (stmt->last_errno)
+    DBUG_RETURN(stmt->last_errno);
+
+  if (mysql->server_status & SERVER_MORE_RESULTS_EXISTS)
+  {
+    if (reset_stmt_handle(stmt, RESET_STORE_RESULT))
+      DBUG_RETURN(1);
+  }
+
+  rc= mysql_next_result(mysql);
+
+  if (rc)
+    DBUG_RETURN(rc);
+
+  stmt->state= MYSQL_STMT_EXECUTE_DONE;
+  stmt->bind_result_done= FALSE;
+
+  if (mysql->field_count)
+  {
+    alloc_stmt_fields(stmt);
+    prepare_to_fetch_result(stmt);
+  }
+  else
+  {
+    stmt->field_count= mysql->field_count;
+  }
+
+  DBUG_RETURN(0);
 }
 
 

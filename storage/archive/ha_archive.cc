@@ -177,7 +177,7 @@ int archive_db_init(void *p)
 
   if (pthread_mutex_init(&archive_mutex, MY_MUTEX_INIT_FAST))
     goto error;
-  if (hash_init(&archive_open_tables, system_charset_info, 32, 0, 0,
+  if (hash_init(&archive_open_tables, table_alias_charset, 32, 0, 0,
                 (hash_get_key) archive_get_key, 0, 0))
   {
     pthread_mutex_destroy(&archive_mutex);
@@ -655,10 +655,10 @@ int ha_archive::create(const char *name, TABLE *table_arg,
     {
       if (!my_fstat(frm_file, &file_stat, MYF(MY_WME)))
       {
-        frm_ptr= (uchar *)my_malloc(sizeof(uchar) * file_stat.st_size, MYF(0));
+        frm_ptr= (uchar *)my_malloc(sizeof(uchar) * (size_t)file_stat.st_size, MYF(0));
         if (frm_ptr)
         {
-          my_read(frm_file, frm_ptr, file_stat.st_size, MYF(0));
+          my_read(frm_file, frm_ptr, (size_t)file_stat.st_size, MYF(0));
           azwrite_frm(&create_stream, (char *)frm_ptr, file_stat.st_size);
           my_free((uchar*)frm_ptr, MYF(0));
         }
