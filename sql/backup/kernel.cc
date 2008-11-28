@@ -177,15 +177,9 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
     // select objects to backup
 
     if (lex->db_list.is_empty())
-    {
-      context.write_message(log_level::INFO, "Backing up all databases");
       res= info->add_all_dbs(); // backup all databases
-    }
     else
-    {
-      context.write_message(log_level::INFO, "Backing up selected databases");
       res= info->add_dbs(lex->db_list); // backup databases specified by user
-    }
 
     info->close(); // close catalogue after filling it with objects to backup
 
