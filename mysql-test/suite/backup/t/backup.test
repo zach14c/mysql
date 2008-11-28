@@ -180,17 +180,61 @@ SHOW CREATE TABLE tasking;
 
 # check that VP info was correctly read and reported
 
-SELECT validity_point_time = @vp_time FROM mysql.backup_history
-WHERE backup_id = @bid; 
-SELECT binlog_file = @vp_file FROM mysql.backup_history
-WHERE backup_id = @bid; 
-SELECT binlog_pos = @vp_pos FROM mysql.backup_history
+SELECT validity_point_time = @vp_time 
+   AND binlog_file = @vp_file
+   AND binlog_pos = @vp_pos
+FROM mysql.backup_history
 WHERE backup_id = @bid; 
 
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
 SET DEBUG_SYNC= 'RESET';
+
+#
+# Check that PTR data (such as VP time and binlog positon) is correctly stored and read
+# when there are no tables to backup (BUG#40262). 
+#
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/db1.bkp
+CREATE DATABASE db1;
+
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'db1.bkp';
+# get backup_id of the BACKUP operation. 
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+
+# store VP time and binlog position
+
+SELECT validity_point_time FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_time;
+SELECT binlog_file FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_file;
+SELECT binlog_pos FROM mysql.backup_history
+WHERE backup_id = @bid INTO @vp_pos;
+
+DROP DATABASE db1;
+
+# wait few seconds so that restore time != backup time
+--sleep 2
+
+--replace_column 1 #
+RESTORE FROM 'db1.bkp';
+# determine id of RESTORE operation
+SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
+
+# check that VP info was correctly read and reported
+
+SELECT validity_point_time = @vp_time 
+   AND binlog_file = @vp_file
+   AND binlog_pos = @vp_pos
+FROM mysql.backup_history
+WHERE backup_id = @bid; 
+
+DROP DATABASE db1;
+--remove_file $MYSQLTEST_VARDIR/master-data/db1.bkp
+
 
 #
 # This test is for the default and snapshot online backup drivers
