@@ -217,52 +217,55 @@ void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
 struct Table_name_key
 {
 public:
-  static uchar *get_key(const uchar *record,
-                        size_t *key_length,
-                        my_bool not_used __attribute__((unused)));
-
-  static void delete_key(void *data);
+  LEX_STRING db_name;
+  LEX_STRING table_name;
+  LEX_STRING key;
 
 public:
-  inline Table_name_key(const char *db_name_str,
-                        uint db_name_length,
-                        const char *table_name_str,
-                        uint table_name_length)
-  {
-    db_name.copy(db_name_str, db_name_length, system_charset_info);
-    table_name.copy(table_name_str, table_name_length, system_charset_info);
-
-    key.length(0);
-    key.append(db_name);
-    key.append(".");
-    key.append(table_name);
-  }
-
-public:
-  String db_name;
-  String table_name;
-
-  String key;
+  void init_from_mdl_key(const char *key_arg, size_t key_length_arg,
+                         char *key_buff_arg);
 };
 
 ///////////////////////////////////////////////////////////////////////////
 
-uchar *Table_name_key::get_key(const uchar *record,
-                               size_t *key_length,
-                               my_bool not_used __attribute__((unused)))
+void
+Table_name_key::init_from_mdl_key(const char *key_arg, size_t key_length_arg,
+                                  char *key_buff_arg)
 {
-  Table_name_key *tnk= (Table_name_key *) record;
-  *key_length= tnk->key.length();
-  return (uchar *) tnk->key.c_ptr_safe();
+  key.str= key_buff_arg;
+  key.length= key_length_arg - 4; /* Skip MDL object type */
+  memcpy(key.str, key_arg + 4, key.length);
+
+  db_name.str= key.str;
+  db_name.length= strlen(db_name.str);
+  table_name.str= db_name.str + db_name.length + 1; /* Skip \0 */
+  table_name.length= strlen(table_name.str);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
-void Table_name_key::delete_key(void *data)
+extern "C" {
+
+static uchar *
+get_table_name_key(const uchar *record,
+                   size_t *key_length,
+                   my_bool not_used __attribute__((unused)))
 {
-  Table_name_key *tnk= (Table_name_key *) data;
-  delete tnk;
+  Table_name_key *table_name_key= (Table_name_key *) record;
+  *key_length= table_name_key->key.length;
+  return (uchar *) table_name_key->key.str;
 }
+
+///////////////////////////////////////////////////////////////////////////
+
+static void
+free_table_name_key(void *data)
+{
+  Table_name_key *table_name_key= (Table_name_key *) data;
+  my_free(table_name_key, MYF(0));
+}
+
+} // end of extern "C"
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -1327,6 +1330,10 @@ public:
 public:
   virtual Obj *next();
 
+  enum enum_base_obj_kind { BASE_TABLE= 0, VIEW };
+
+  virtual enum_base_obj_kind get_base_obj_kind() const= 0;
+
 protected:
   template <typename Iterator>
   static Iterator *create(THD *thd,
@@ -1335,11 +1342,11 @@ protected:
 protected:
   bool init(THD *thd, const String *db_name, const String *view_name);
 
-  virtual bool is_obj_accepted(TABLE_LIST *obj)= 0;
-  virtual Obj *create_obj(const String *db_name, const String *obj_name)= 0;
+  virtual Obj *create_obj(const LEX_STRING *db_name,
+                          const LEX_STRING *obj_name)= 0;
 
 private:
-  HASH *m_table_names;
+  HASH m_table_names;
   uint m_cur_idx;
 };
 
@@ -1364,20 +1371,120 @@ Iterator *View_base_obj_iterator::create(THD *thd,
 ///////////////////////////////////////////////////////////////////////////
 
 inline View_base_obj_iterator::View_base_obj_iterator()
-  : m_table_names(NULL),
-    m_cur_idx(0)
+  :m_cur_idx(0)
 {
+  hash_init(&m_table_names, system_charset_info, 16, 0, 0,
+            get_table_name_key, free_table_name_key,
+            MYF(0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 inline View_base_obj_iterator::~View_base_obj_iterator()
 {
-  if (!m_table_names)
-    return;
+  hash_free(&m_table_names);
+}
 
-  hash_free(m_table_names);
-  delete m_table_names;
+
+/**
+  Find all base tables or views of a view.
+*/
+
+class Find_view_underlying_tables: public Server_runnable
+{
+public:
+  Find_view_underlying_tables(const View_base_obj_iterator *base_obj_it,
+                              HASH *table_names,
+                              const String *db_name,
+                              const String *view_name);
+
+  bool execute_server_code(THD *thd);
+private:
+  /* Store the resulting unique here */
+  const View_base_obj_iterator *m_base_obj_it;
+  HASH *m_table_names;
+  const String *m_db_name;
+  const String *m_view_name;
+};
+
+
+Find_view_underlying_tables::
+Find_view_underlying_tables(const View_base_obj_iterator *base_obj_it,
+                            HASH *table_names,
+                            const String *db_name,
+                            const String *view_name)
+  :m_base_obj_it(base_obj_it),
+   m_table_names(table_names),
+   m_db_name(db_name),
+   m_view_name(view_name)
+{
+}
+
+
+bool
+Find_view_underlying_tables::execute_server_code(THD *thd)
+{
+  bool res= TRUE;
+  uint counter_not_used; /* Passed to open_tables(). Not used. */
+
+  TABLE_LIST *table_list;
+
+  DBUG_ENTER("Find_view_underlying_tables::execute_server_code");
+
+  table_list= sp_add_to_query_tables(thd, thd->lex,
+                                     ((String *) m_db_name)->c_ptr_safe(),
+                                     ((String *) m_view_name)->c_ptr_safe(),
+                                     TL_READ);
+
+  if (table_list == NULL)                      /* out of memory, reported */
+    DBUG_RETURN(TRUE);
+
+  if (open_tables(thd, &table_list, &counter_not_used,
+                  MYSQL_OPEN_SKIP_TEMPORARY))
+    goto end;
+
+  if (table_list->view_tables)
+  {
+    TABLE_LIST *table;
+    List_iterator_fast<TABLE_LIST> it(*table_list->view_tables);
+
+    /*
+      Iterate over immediate underlying tables.
+      The list doesn't include views or tables referenced indirectly,
+      through other views, or stored functions or triggers.
+    */
+    while ((table= it++))
+    {
+      Table_name_key *table_name_key;
+      char *key_buff;
+
+      /* If we expect a view, and it's a table, or vice versa, continue */
+      if ((int) m_base_obj_it->get_base_obj_kind() != test(table->view))
+        continue;
+
+      if (! my_multi_malloc(MYF(MY_WME),
+                            &table_name_key, sizeof(*table_name_key),
+                            &key_buff, table->mdl_lock_data->key_length,
+                            NullS))
+        goto end;
+
+      table_name_key->init_from_mdl_key(table->mdl_lock_data->key,
+                                        table->mdl_lock_data->key_length,
+                                        key_buff);
+
+      if (my_hash_insert(m_table_names, (uchar*) table_name_key))
+      {
+        my_free(table_name_key, MYF(0));
+        goto end;
+      }
+    }
+  }
+  res= FALSE;
+  my_ok(thd);
+
+end:
+  close_thread_tables(thd);
+  DBUG_RETURN(res);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1386,69 +1493,14 @@ bool View_base_obj_iterator::init(THD *thd,
                                   const String *db_name,
                                   const String *view_name)
 {
-  /* Ensure that init() will not be run twice. */
-  DBUG_ASSERT(!m_table_names);
+  Find_view_underlying_tables find_tables(this, &m_table_names,
+                                          db_name, view_name);
+  Ed_result ed_result; /* Just to grab OK or ERROR */
 
-  uint not_used; /* Passed to open_tables(). Not used. */
-  THD *my_thd= new THD();
-
-  my_thd->security_ctx= thd->security_ctx;
-
-  my_thd->thread_stack= (char*) &my_thd;
-  my_thd->store_globals();
-  lex_start(my_thd);
-
-  TABLE_LIST *tl =
-    sp_add_to_query_tables(my_thd,
-                           my_thd->lex,
-                           ((String *) db_name)->c_ptr_safe(),
-                           ((String *) view_name)->c_ptr_safe(),
-                           TL_READ);
-
-  if (open_tables(my_thd, &tl, &not_used, MYSQL_OPEN_SKIP_TEMPORARY))
-  {
-    close_thread_tables(my_thd);
-    delete my_thd;
-    thd->store_globals();
-
+  if (mysql_execute_direct(thd, &find_tables, &ed_result))
     return TRUE;
-  }
 
-  m_table_names = new HASH();
-
-  hash_init(m_table_names, system_charset_info, 16, 0, 0,
-            Table_name_key::get_key,
-            Table_name_key::delete_key,
-            MYF(0));
-
-  if (tl->view_tables)
-  {
-    List_iterator_fast<TABLE_LIST> it(*tl->view_tables);
-    TABLE_LIST *tl2;
-
-    while ((tl2 = it++))
-    {
-      Table_name_key *tnk=
-        new Table_name_key(tl2->db, tl2->db_length,
-                           tl2->table_name, tl2->table_name_length);
-
-      if (!is_obj_accepted(tl2) ||
-          hash_search(m_table_names,
-                      (uchar *) tnk->key.c_ptr_safe(),
-                      tnk->key.length()))
-      {
-        delete tnk;
-        continue;
-      }
-
-      my_hash_insert(m_table_names, (uchar *) tnk);
-    }
-  }
-
-  close_thread_tables(my_thd);
-  delete my_thd;
-
-  thd->store_globals();
+  /* The table list is filled with unique underlying table names. */
 
   return FALSE;
 }
@@ -1457,15 +1509,15 @@ bool View_base_obj_iterator::init(THD *thd,
 
 Obj *View_base_obj_iterator::next()
 {
-  if (m_cur_idx >= m_table_names->records)
+  if (m_cur_idx >= m_table_names.records)
     return NULL;
 
-  Table_name_key *tnk=
-    (Table_name_key *) hash_element(m_table_names, m_cur_idx);
+  Table_name_key *table_name_key=
+    (Table_name_key *) hash_element(&m_table_names, m_cur_idx);
 
   ++m_cur_idx;
 
-  return create_obj(&tnk->db_name, &tnk->table_name);
+  return create_obj(&table_name_key->db_name, &table_name_key->table_name);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1488,11 +1540,12 @@ public:
   }
 
 protected:
-  virtual inline bool is_obj_accepted(TABLE_LIST *obj)
-  { return !obj->view; }
+  virtual inline enum_base_obj_kind get_base_obj_kind() const
+  { return BASE_TABLE; }
 
-  virtual inline Obj *create_obj(const String *db_name, const String *obj_name)
-  { return new Table_obj(db_name->lex_string(), obj_name->lex_string()); }
+  virtual inline Obj *create_obj(const LEX_STRING *db_name,
+                                 const LEX_STRING *obj_name)
+  { return new Table_obj(*db_name, *obj_name); }
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1523,11 +1576,11 @@ public:
   }
 
 protected:
-  virtual inline bool is_obj_accepted(TABLE_LIST *obj)
-  { return obj->view; }
+  virtual inline enum_base_obj_kind get_base_obj_kind() const { return VIEW; }
 
-  virtual inline Obj *create_obj(const String *db_name, const String *obj_name)
-  { return new View_obj(db_name->lex_string(), obj_name->lex_string()); }
+  virtual inline Obj *create_obj(const LEX_STRING *db_name,
+                                 const LEX_STRING *obj_name)
+  { return new View_obj(*db_name, *obj_name); }
 };
 
 ///////////////////////////////////////////////////////////////////////////
