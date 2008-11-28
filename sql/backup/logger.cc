@@ -155,6 +155,45 @@ void Logger::report_stats_pre(const Image_info &info)
 {
   DBUG_ASSERT(m_state == RUNNING);
   backup_log->num_objects(info.table_count());
+  // Compose list of databases.
+
+  Image_info::Db_iterator *it= info.get_dbs();
+  Image_info::Obj *db;
+  Image_info::Obj::describe_buf name_buf;
+  String dbs;
+
+  while((db= (*it)++))
+  {
+    if (!dbs.is_empty())
+      dbs.append(",");
+    const size_t len= strnlen(db->describe(name_buf), sizeof(name_buf));
+    /*
+      If appending next database name would create too long string, append
+      ellipsis instead and break the loop.
+      
+      The length limit 220-4 is computed as follows. The placeholder for 
+      database list in ER_BACKUP_BACKUP/RESTORE_DBS has maximum width 220 from
+      which we subtract 4 for ",...", which should fit if the loop iterates 
+      once more.
+
+      The width 220 for database list placeholder is chosen so that a complete 
+      message fits into 256 characters.
+    */
+    if (dbs.length() + len > 220-4)
+    {
+      dbs.append("...");
+      break;
+    }
+    dbs.append(name_buf);
+  }
+
+  delete it;
+
+  // Log the databases.
+
+  report_error(log_level::INFO, m_type == BACKUP ? ER_BACKUP_BACKUP_DBS
+                                                 : ER_BACKUP_RESTORE_DBS, 
+                                info.db_count(), dbs.c_ptr());
 }
 
 /**
