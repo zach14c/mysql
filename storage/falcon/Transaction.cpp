@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -49,6 +49,10 @@
 
 extern uint		falcon_lock_wait_timeout;
 
+extern volatile int Talloc;   // These are temporary for debug tracing
+extern volatile int Tdelete;  // of number of allocated transaction objects.
+
+
 static const char *stateNames [] = {
 	"Active",
 	"Limbo",
@@ -78,8 +82,8 @@ static const char THIS_FILE[]=__FILE__;
 
 Transaction::Transaction(Connection *cnct, TransId seq)
 {
-	states = NULL;
-	statesAllocated = 0;
+	Talloc++;
+
 	savePoints = NULL;
 	freeSavePoints = NULL;
 	useCount = 1;
@@ -90,7 +94,6 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
 	lastRecord = NULL;
-	dependencies = 0;
 	initialize(cnct, seq);
 }
 
@@ -101,7 +104,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	ASSERT(savePoints == NULL);
 	ASSERT(freeSavePoints == NULL);
 	ASSERT(firstRecord == NULL);
-	ASSERT(dependencies == 0);
 	connection = cnct;
 	isolationLevel = connection->isolationLevel;
 	mySqlThreadId = connection->mySqlThreadId;
@@ -109,6 +111,8 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	TransactionManager *transactionManager = database->transactionManager;
 	systemTransaction = database->systemConnection == connection;
 	transactionId = seq;
+	startEvent = 0;
+	commitEvent = 0;
 	chillPoint = &firstRecord;
 	commitTriggers = false;
 	hasUpdates = false;
@@ -132,7 +136,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	debugThawedRecords = 0;
 	debugThawedBytes = 0;
 	committedRecords = 0;
-	numberStates = 0;
 	blockedBy = 0;
 	deletedRecords = 0;
 	inList = true;
@@ -160,46 +163,13 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	syncIsActive.lock(NULL, Exclusive);
 	Transaction *oldest = transactionManager->findOldest();
 	oldestActive = (oldest) ? oldest->transactionId : transactionId;
-	int count = transactionManager->activeTransactions.count;
-	
-	if (count > statesAllocated)
-		{
-		delete [] states;
-		statesAllocated = count;
-		states = new TransState[statesAllocated];
-		}
-
-	if (count)
-		for (Transaction *transaction = transactionManager->activeTransactions.first; transaction; transaction = transaction->next)
-			if (transaction->isActive() && 
-				 !transaction->systemTransaction &&
-				 transaction->transactionId < transactionId)
-				{
-				Sync syncDependency(&transaction->syncObject, "Transaction::initialize(2)");
-				syncDependency.lock(Shared);
-
-				if (transaction->isActive() && 
-					 !transaction->systemTransaction &&
-					 transaction->transactionId < transactionId)
-					{
-					transaction->addRef();
-					INTERLOCKED_INCREMENT(transaction->dependencies);
-					TransState *state = states + numberStates;
-					state->transaction = transaction;
-					state->transactionId = transaction->transactionId;
-					state->state = transaction->state;
-					++numberStates;
-					ASSERT(transaction->transactionId == state->transactionId);
-					}
-				}
-
 	state = Active;
 }
 
 Transaction::~Transaction()
 {
-	ASSERT(dependencies == 0);
-	
+	Tdelete++;
+
 	if (state == Active)
 		{
 		Log::debug("Deleting apparently active transaction %d\n", transactionId);
@@ -212,7 +182,6 @@ Transaction::~Transaction()
 	if (inList)
 		database->transactionManager->removeTransaction(this);
 
-	delete [] states;
 	delete [] xid;
 	delete backloggedRecords;
 	chillPoint = &firstRecord;
@@ -241,12 +210,15 @@ void Transaction::commit()
 
 	releaseSavepoints();
 
-	if (!hasUpdates)
-		{
-		commitNoUpdates();
-		
-		return;
-		}
+	// NOTE: temporary disabled the optimization for read only transactions.
+	// This will be included in a follow up patch
+
+	//if (!hasUpdates)
+	//	{
+	//	commitNoUpdates();
+	//	
+	//	return;
+	//	}
 
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
@@ -275,7 +247,13 @@ void Transaction::commit()
 	if (hasLocks)
 		releaseRecordLocks();
 
-	database->serialLog->preCommit(this);
+	// NOTE: The if test can be removed when the handling of read-only
+	// transactions has been re-implemented
+
+	if (hasUpdates)
+		database->serialLog->preCommit(this);
+	else 
+		writePending = false;
 
 	Sync syncRec(&syncRecords,"Transaction::commit(1.5)");
 	syncRec.lock(Shared);
@@ -297,7 +275,6 @@ void Transaction::commit()
 	}
 	syncRec.unlock();
 
-	releaseDependencies();
 	database->flushInversion(this);
 
 	// Transfer transaction from active list to committed list, set committed state
@@ -307,6 +284,10 @@ void Transaction::commit()
 
 	syncActiveTransactions.lock(Exclusive);
 	syncCommitted.lock(Exclusive);
+
+	// Set the commit transition event for this transaction
+
+    commitEvent = INTERLOCKED_INCREMENT(transactionManager->transitionEventSequence);
 
 	transactionManager->activeTransactions.remove(this);
 	transactionManager->committedTransactions.append(this);
@@ -324,9 +305,16 @@ void Transaction::commit()
 	xidLength = 0;
 	
 	// If there's no reason to stick around, just go away
-	
-	if ((dependencies == 0) && !writePending)
-		commitRecords();
+
+	// NOTE: This call to commitRecords() is temporarily commented out.
+	// A call to commitRecords() are taken care of in
+	// TransactionManager::purgeTransactions().
+	// It is likely that this call will be totally removed in one of the
+	// next patches as I do not think it is ever called here due to 
+	// still having pending writes - but I will investigate this further
+
+	//if ((dependencies == 0) && !writePending)
+	//  commitRecords();
 
 	connection = NULL;
 	
@@ -338,6 +326,9 @@ void Transaction::commit()
 
 void Transaction::commitNoUpdates(void)
 {
+	// NOTE: This method is not in use by the new dependency manager.
+	// It will be re-enabled in a follow-up patch
+
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
@@ -352,7 +343,6 @@ void Transaction::commitNoUpdates(void)
 
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates(2)");
 	syncActiveTransactions.lock(Shared);
-	releaseDependencies();
 
 	if (xid)
 		{
@@ -363,10 +353,7 @@ void Transaction::commitNoUpdates(void)
 	
 	Sync sync(&syncObject, "Transaction::commitNoUpdates(3)");
 	sync.lock(Exclusive);
-	
-	if (dependencies)
-		transactionManager->expungeTransaction(this);
-	
+
 	// If there's no reason to stick around, just go away
 	
 	connection = NULL;
@@ -441,7 +428,6 @@ void Transaction::rollback()
 
 	ASSERT(writePending);
 	writePending = false;
-	releaseDependencies();
 	
 	if (hasUpdates)
 		database->serialLog->preCommit(this);
@@ -458,11 +444,7 @@ void Transaction::rollback()
 	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(active)");
 	syncActiveTransactions.lock (Exclusive);
 	++transactionManager->rolledBack;
-	
-	while (dependencies)
-		transactionManager->expungeTransaction(this);
-		
-	ASSERT(dependencies == 0);
+
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
@@ -471,20 +453,6 @@ void Transaction::rollback()
 	release();
 }
 
-
-void Transaction::expungeTransaction(Transaction * transaction)
-{
-	ASSERT(states != NULL || numberStates == 0);
-	
-	for (TransState *s = states, *end = s + numberStates; s < end; ++s)
-		if (s->transaction == transaction)
-			{
-			if (COMPARE_EXCHANGE_POINTER(&s->transaction, transaction, NULL))
-				transaction->releaseDependency();
-
-			break;
-			}
-}
 
 void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 {
@@ -750,11 +718,11 @@ bool Transaction::visible(Transaction * transaction, TransId transId, int forWha
 	if (transId > transactionId)
 		return false;
 
-	// If the transaction was active when we started, use it's state at that point
+	// If the transaction committed after we started then it should not
+	// be visible to us
 
-	for (int n = 0; n < numberStates; ++n)
-		if (states [n].transactionId == transId)
-			return false;
+	if (transaction->commitEvent > startEvent)
+		return false;
 
 	return true;
 }
@@ -790,26 +758,6 @@ bool Transaction::needToLock(Record* record)
 	return false;
 }
 
-void Transaction::releaseDependencies()
-{
-	if (!numberStates)
-		return;
-
-	for (TransState *state = states, *end = states + numberStates; state < end; ++state)
-		{
-		Transaction *transaction = state->transaction;
-
-		if (transaction)
-			{
-			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
-				{
-				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
-				ASSERT(transaction->state != Initializing);
-				transaction->releaseDependency();
-				}
-			}
-		}
-}
 
 /*
  *  Transaction is fully mature and about to go away.
@@ -852,6 +800,14 @@ void Transaction::commitRecords()
 
 State Transaction::getRelativeState(Record* record, uint32 flags)
 {
+	// If this is a Record object it has no assosiated transaction
+	// and is always visible
+	
+	if (!record->isVersion())
+		{
+		return CommittedVisible;
+		}
+
 	blockingRecord = record;
 	State state = getRelativeState(record->getTransaction(), record->getTransactionId(), flags);
 	blockingRecord = NULL;
@@ -880,14 +836,22 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 			// If the transaction is no longer around, and the record is,
 			// then it must be committed.
 
+			// Check if the transaction started after us.
+			// With the old dependency manager this test might have been
+			// hit but with the new dependency manager this will never 
+			// happen. Still leave it in until further evaluation.
+
 			if (transactionId < transId)
 				return CommittedInvisible;
 
 			// Be sure it was not active when we started.
 
-			for (int n = 0; n < numberStates; ++n)
-				if (states [n].transactionId == transId)
-					return CommittedInvisible;
+			// The dependency manager ensures that transactions that were
+			// active at the time this transaction started will not be
+			// deleted at least not until also we are committed.
+			// Since the transaction pointer is NULL here,
+			// the transaction is not deleted and hence was not active at
+			// the time we started.
 			}
 
 		return CommittedVisible;
@@ -962,9 +926,17 @@ void Transaction::writeComplete(void)
 	ASSERT(writePending);
 	ASSERT(state == Committed);
 	releaseDeferredIndexes();
-	
-	if (dependencies == 0)
-		commitRecords();
+
+	// NOTE: This call to commitRecords() is temporarily commented out.
+	// A call to commitRecords() are taken care of in
+	// TransactionManager::purgeTransactions().
+	// We might want to include a call to commitRecords() her but in 
+	// order to perform the "dependencies == 0" check with the new
+	// dependency manager we should probably have to do a shared lock
+	// on the activelist. Need to experiment with this a bit.
+
+	//if (dependencies == 0)
+	//	commitRecords();
 
 //	Log::log(LogXARecovery, "%d: WriteComplete %sTransaction %d\n", 
 // 	database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
@@ -1371,9 +1343,9 @@ void Transaction::releaseRecordLocks(void)
 
 void Transaction::print(void)
 {
-	Log::debug("  %p Id %d, state %d, updates %d, wrtPend %d, states %d, dependencies %d, records %d\n",
+	Log::debug("  %p Id %d, state %d, updates %d, wrtPend %d, records %d\n",
 			this, transactionId, state, hasUpdates, writePending, 
-			numberStates, dependencies, firstRecord != NULL);
+			firstRecord != NULL);
 }
 
 void Transaction::printBlocking(int level)
@@ -1439,7 +1411,12 @@ void Transaction::printBlocking(int level)
 
 void Transaction::getInfo(InfoTable* infoTable)
 {
-	if (!(state == Available && dependencies == 0))
+	// NOTE: The field for number of dependencies will be removed in
+	// a follow-up patch.
+	// Need to decide if we want to include the startEvent and endEvent
+	// in this table.
+
+	if (!(state == Available))
 		{
 		int n = 0;
 		infoTable->putString(n++, stateNames[state]);
@@ -1447,7 +1424,7 @@ void Transaction::getInfo(InfoTable* infoTable)
 		infoTable->putInt(n++, transactionId);
 		infoTable->putInt(n++, hasUpdates);
 		infoTable->putInt(n++, writePending);
-		infoTable->putInt(n++, dependencies);
+		infoTable->putInt(n++, 0);  // Number of dependencies, will be removed
 		infoTable->putInt(n++, oldestActive);
 		infoTable->putInt(n++, firstRecord != NULL);
 		infoTable->putInt(n++, (waitingFor) ? waitingFor->transactionId : 0);
@@ -1462,17 +1439,6 @@ void Transaction::getInfo(InfoTable* infoTable)
 		infoTable->putString(n++, buffer);
 		infoTable->putRecord();
 		}
-}
-
-void Transaction::releaseDependency(void)
-{
-	ASSERT(useCount >= 2);
-	ASSERT(dependencies > 0);
-	INTERLOCKED_DECREMENT(dependencies);
-
-	if ((dependencies == 0) && !writePending && firstRecord)
-		commitRecords();
-	releaseCommittedTransaction();
 }
 
 void Transaction::fullyCommitted(void)
@@ -1490,20 +1456,21 @@ void Transaction::releaseCommittedTransaction(void)
 {
 	release();
 
-	if ((useCount == 1) && (state == Committed) && (dependencies == 0) && !writePending)
-		if (COMPARE_EXCHANGE(&inList, (INTERLOCK_TYPE) true, (INTERLOCK_TYPE) false))
-			database->transactionManager->removeCommittedTransaction(this);
+	// NOTE: This is commented out due to in order to replacing the
+	// "dependencies == 0" test we have to lock the active transaction list.
+	// This should have no effect on Falcon due to that the if test will
+	// never evaluate to true when called from Transaction::fullyCommitted().
+	// Only when called from Transaction::releaseDependency() (which now is
+	// deleted) would the if test occasionally be true.
+	// The "removeCommittedTransaction" funcionality will be taken care
+	// of by TransactionManager::purgeTransaction.
+	// This code will likely be removed by a follow-up patch.
+
+	//if ((useCount == 1) && (state == Committed) && (dependencies == 0) && !writePending)
+	//	if (COMPARE_EXCHANGE(&inList, (INTERLOCK_TYPE) true, (INTERLOCK_TYPE) false))
+	//		database->transactionManager->removeCommittedTransaction(this);
 }
 
-void Transaction::validateDependencies(bool noDependencies)
-{
-	for (TransState *state = states, *end = states + numberStates; state < end; ++state)
-		if (state->transaction)
-			{
-			ASSERT(!noDependencies);
-			ASSERT(state->transaction->transactionId == state->transactionId);
-			}
-}
 
 void Transaction::printBlockage(void)
 {
