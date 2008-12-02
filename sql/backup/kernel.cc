@@ -185,7 +185,8 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     else
     {
       context.write_message(log_level::INFO, "Backing up selected databases");
-      res= info->add_dbs(lex->db_list); // backup databases specified by user
+      /* Backup databases specified by user. */
+      res= info->add_dbs(thd, lex->db_list);
     }
 
     info->close(); // close catalogue after filling it with objects to backup
@@ -1117,7 +1118,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
       
       case BSTREAM_IT_TRIGGER:
         DBUG_ASSERT(obj->m_obj_ptr);
-        if (obj->m_obj_ptr->execute(m_thd))
+        if (obj->m_obj_ptr->create(m_thd))
         {
           delete it;
           delete dbit;
@@ -1140,7 +1141,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   Image_info::Obj *ev;
 
   while ((ev= it++)) 
-    if (ev->m_obj_ptr->execute(m_thd))
+    if (ev->m_obj_ptr->create(m_thd))
     {
       fatal_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
       DBUG_RETURN(m_error);
@@ -1905,24 +1906,30 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    // if the tablespace exists, there is nothing more to do
-    if (obs::tablespace_exists(thd, sobj))
-    {
-      DBUG_PRINT("restore",(" skipping tablespace which exists"));
-      return BSTREAM_OK;
-    }
-
-    /* 
-      If there is a different tablespace with the same name then we can't 
-      re-create the original tablespace used by tables being restored. We report 
-      this and cancel restore process.
-    */ 
-
-    Obj *ts= obs::is_tablespace(thd, sobj); 
+    Obj *ts= obs::find_tablespace(thd, sobj->get_name());
 
     if (ts)
     {
-      DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
+      /*
+        A tablespace with the same name exists. We have to check if other
+        attributes are the same as they were.
+      */
+
+      if (obs::compare_tablespace_attributes(ts, sobj))
+      {
+        /* The tablespace is the same. There is nothing more to do. */
+        DBUG_PRINT("restore",(" skipping tablespace which exists"));
+        return BSTREAM_OK;
+      }
+
+      /*
+        A tablespace with the same name exists, but it has been changed
+        since backup.  We can't re-create the original tablespace used by
+        tables being restored. We report this and cancel restore process.
+      */
+
+      DBUG_PRINT("restore",
+                 (" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc);
       return BSTREAM_ERROR;
     }
@@ -1943,12 +1950,13 @@ int bcat_create_item(st_bstream_image_header *catalogue,
             error handling work in WL#4384 with possible implementation
             via a related bug report.
     */
-    if (!obs::check_user_existence(thd, sobj->get_name()))
+    if (!obs::check_user_existence(thd, sobj))
     {
-      info->m_ctx.report_error(log_level::WARNING, 
+      info->m_ctx.report_error(log_level::WARNING,
                                ER_BACKUP_GRANT_SKIPPED,
-                               create_stmt);
-      return BSTREAM_OK; 
+                               obs::grant_get_grant_info(sobj)->ptr(),
+                               obs::grant_get_user_name(sobj)->ptr());
+      return BSTREAM_OK;
     }
     /*
       We need to check the grant against the database list to ensure the
@@ -1972,7 +1980,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     }
   }
 
-  if (sobj->execute(thd))
+  if (sobj->create(thd))
   {
     info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;

@@ -450,26 +450,26 @@ void Protocol::end_statement()
   switch (thd->main_da.status()) {
   case Diagnostics_area::DA_ERROR:
     /* The query failed, send error to log and abort bootstrap. */
-    this->send_error(thd->main_da.sql_errno(),
-                     thd->main_da.message());
+    send_error(thd->main_da.sql_errno(),
+               thd->main_da.message());
     break;
   case Diagnostics_area::DA_EOF:
-    this->send_eof(thd->main_da.server_status(),
-                   thd->main_da.statement_warn_count());
+    send_eof(thd->main_da.server_status(),
+             thd->main_da.statement_warn_count());
     break;
   case Diagnostics_area::DA_OK:
-    this->send_ok(thd->main_da.server_status(),
-                  thd->main_da.statement_warn_count(),
-                  thd->main_da.affected_rows(),
-                  thd->main_da.last_insert_id(),
-                  thd->main_da.message());
+    send_ok(thd->main_da.server_status(),
+            thd->main_da.statement_warn_count(),
+            thd->main_da.affected_rows(),
+            thd->main_da.last_insert_id(),
+            thd->main_da.message());
     break;
   case Diagnostics_area::DA_DISABLED:
     break;
   case Diagnostics_area::DA_EMPTY:
   default:
     DBUG_ASSERT(0);
-    this->send_ok(thd->server_status, 0, 0, 0, NULL);
+    send_ok(thd->server_status, 0, 0, 0, NULL);
     break;
   }
   thd->main_da.is_sent= TRUE;
@@ -857,7 +857,6 @@ bool Protocol::store(I_List<i_string>* str_list)
     len--;					// Remove last ','
   return store((char*) tmp.ptr(), len,  tmp.charset());
 }
-
 
 /****************************************************************************
   Functions to handle the simple (default) protocol where everything is
@@ -1475,3 +1474,477 @@ bool Protocol_binary::send_out_parameters(List<Item_param> *sp_params)
 
   return FALSE;
 }
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+Ed_result::Ed_result() :
+  m_current_result_set(NULL),
+  m_status(Diagnostics_area::DA_EMPTY),
+  m_server_status(0),
+  m_affected_rows(0),
+  m_last_insert_id(0),
+  m_sql_errno(0),
+  m_warning_info(0),
+  m_warning_info_saved(NULL)
+{
+  init_sql_alloc(&m_mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
+
+  m_message[0]= 0;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+Ed_result::~Ed_result()
+{
+  free_root(&m_mem_root, MYF(0));
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool Ed_result::add_result_set(List<Item> *col_metadata)
+{
+  Ed_result_set *rs= Ed_result_set::create(&m_mem_root, col_metadata);
+
+  if (!rs)
+    return TRUE;
+
+  m_current_result_set= rs;
+
+  return push_back(rs, &m_mem_root) ? TRUE : FALSE;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Ed_result::send_ok(THD *thd,
+                        uint server_status, uint statement_warn_count,
+                        ha_rows affected_rows, ulonglong last_insert_id,
+                        const char *message)
+{
+  DBUG_ENTER("Ed_result::send_ok()");
+  DBUG_ASSERT(m_status == Diagnostics_area::DA_EMPTY);
+
+  m_status= thd->main_da.status();
+  DBUG_ASSERT(m_status == Diagnostics_area::DA_OK);
+
+  DBUG_ASSERT(m_warning_info.statement_warn_count() == statement_warn_count);
+
+  m_server_status= server_status;
+  m_affected_rows= affected_rows;
+  m_last_insert_id= last_insert_id;
+
+  strmake(m_message, message, sizeof (m_message) - 1);
+
+  DBUG_VOID_RETURN;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Ed_result::send_eof(THD *thd, uint server_status,
+                         uint statement_warn_count)
+{
+  DBUG_ENTER("Ed_result::send_eof");
+  DBUG_ASSERT(m_status == Diagnostics_area::DA_EMPTY);
+
+  m_status= thd->main_da.status();
+  DBUG_ASSERT(m_status == Diagnostics_area::DA_EOF);
+
+  DBUG_ASSERT(m_warning_info.statement_warn_count() == statement_warn_count);
+
+  m_server_status= server_status;
+
+  DBUG_VOID_RETURN;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Ed_result::send_error(THD *thd, uint sql_errno, const char *err_msg)
+{
+  DBUG_ENTER("Ed_result::send_error()");
+  DBUG_ASSERT(m_status == Diagnostics_area::DA_EMPTY);
+
+  m_status= thd->main_da.status();
+  DBUG_ASSERT(m_status == Diagnostics_area::DA_ERROR);
+
+  m_sql_errno= sql_errno;
+  strmake(m_message, err_msg, sizeof (m_message) - 1);
+
+  DBUG_VOID_RETURN;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Ed_result::begin_statement(THD *thd)
+{
+  DBUG_ASSERT(!m_warning_info_saved);
+
+  m_warning_info_saved= thd->warning_info;
+  thd->warning_info= &m_warning_info;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+void Ed_result::end_statement(THD *thd)
+{
+  DBUG_ASSERT(m_warning_info_saved);
+  thd->warning_info= m_warning_info_saved;
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+Ed_result_set *
+Ed_result_set::create(MEM_ROOT *mem_root, List<Item> *col_metadata)
+{
+  Ed_result_set *rs= new (mem_root) Ed_result_set(mem_root);
+
+  if (!rs || rs->init(col_metadata))
+    return NULL;
+
+  return rs;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool Ed_result_set::init(List<Item> *col_metadata)
+{
+  m_metadata= Ed_result_set_metadata::create(m_mem_root, col_metadata);
+
+  return m_metadata == NULL;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+Ed_row *Ed_result_set::add_row()
+{
+  Ed_row *row= Ed_row::create(m_mem_root, m_metadata);
+
+  if (!row)
+    return NULL;
+
+  m_current_row= row;
+
+  return m_data.push_back(row, m_mem_root) ? NULL : row;
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+Ed_result_set_metadata *
+Ed_result_set_metadata::create(MEM_ROOT *mem_root,
+                               List<Item> *col_metadata)
+{
+  Ed_result_set_metadata *md= new (mem_root) Ed_result_set_metadata();
+
+  if (!md || md->init(mem_root, col_metadata))
+    return NULL;
+
+  return md;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool Ed_result_set_metadata::init(MEM_ROOT *mem_root, List<Item> *col_metadata)
+{
+  if (!col_metadata)
+    return FALSE;
+
+  m_metadata= new (mem_root) Send_field[col_metadata->elements];
+
+  if (!m_metadata)
+    return TRUE;
+
+  m_num_columns= col_metadata->elements;
+
+  List_iterator_fast<Item> it(*col_metadata);
+
+  int i= 0;
+  for (Item *column= it++; column; column= it++)
+    column->make_field(&m_metadata[i]);
+
+  return FALSE;
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+Ed_row *Ed_row::create(MEM_ROOT *mem_root,
+                       const Ed_result_set_metadata *metadata)
+{
+  DBUG_ASSERT(metadata);
+
+  Ed_row *row= new (mem_root) Ed_row(mem_root, metadata);
+
+  if (!row || row->init())
+    return NULL;
+
+  return row;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool Ed_row::init()
+{
+  m_columns= new (m_mem_root) Ed_column[m_metadata->get_num_columns()];
+
+  return m_columns == NULL;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool Ed_row::add_null()
+{
+  if (m_current_column_index >= m_metadata->get_num_columns())
+    return TRUE;
+
+  ++m_current_column_index;
+
+  return FALSE;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+bool Ed_row::add_column(const void *data_ptr, int data_length)
+{
+  if (m_current_column_index >= m_metadata->get_num_columns())
+    return TRUE;
+
+  m_columns[m_current_column_index++].set_data(m_mem_root,
+                                               data_ptr, data_length);
+
+  return FALSE;
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
+// Protocol_local: a protocol for retrieving result sets from the server
+// locally.
+//
+///////////////////////////////////////////////////////////////////////////
+
+void Protocol_local::prepare_for_resend()
+{
+  DBUG_ASSERT(m_result);
+
+  Ed_result_set *rs= m_result->get_cur_result_set();
+
+  DBUG_ASSERT(rs);
+
+  rs->add_row();
+}
+
+bool Protocol_local::write()
+{
+  return FALSE;
+}
+
+bool Protocol_local::store_null()
+{
+  DBUG_ASSERT(m_result);
+
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+  DBUG_ASSERT(row);
+
+  return row->add_null();
+}
+
+bool Protocol_local::store_string(const char *str,
+                                  int length,
+                                  CHARSET_INFO *src_cs,
+                                  CHARSET_INFO *dst_cs)
+{
+  DBUG_ASSERT(m_result);
+
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+  DBUG_ASSERT(row);
+
+  /* 'dst_cs' is set 0 when client issued SET character_set_results = NULL */
+
+  if (!dst_cs ||
+      my_charset_same(src_cs, dst_cs) ||
+      src_cs == &my_charset_bin ||
+      dst_cs == &my_charset_bin)
+  {
+    return row->add_column(str, length);
+  }
+
+  /* Store with conversion */
+  uint dummy_errors;
+
+  if (convert->copy(str, length, src_cs, dst_cs, &dummy_errors))
+    return TRUE;
+
+  return row->add_column(convert->ptr(), convert->length());
+}
+
+bool Protocol_local::store_tiny(longlong value)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  char v= (char) value;
+
+  return row->add_column(&v, 1);
+}
+
+bool Protocol_local::store_short(longlong value)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  int16 v= (int16) value;
+
+  return row->add_column(&v, 2);
+}
+
+bool Protocol_local::store_long(longlong value)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  int32 v= (int32) value;
+
+  return row->add_column(&v, 4);
+}
+
+bool Protocol_local::store_longlong(longlong value, bool unsigned_flag)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  int64 v= (int64) value;
+
+  return row->add_column(&v, 8);
+}
+
+bool Protocol_local::store_decimal(const my_decimal *value)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  char buf[DECIMAL_MAX_STR_LENGTH];
+  String str(buf, sizeof (buf), &my_charset_bin);
+  my_decimal2string(E_DEC_FATAL_ERROR, value, 0, 0, 0, &str);
+
+  return row->add_column(str.ptr(), str.length());
+}
+
+bool Protocol_local::store(const char *str,
+                           size_t length,
+                           CHARSET_INFO *src_cs)
+{
+  CHARSET_INFO *dst_cs= this->thd->variables.character_set_results;
+  return store_string(str, length, src_cs, dst_cs);
+}
+
+bool Protocol_local::store(const char *str,
+                           size_t length,
+                           CHARSET_INFO *src_cs,
+                           CHARSET_INFO *dst_cs)
+{
+  return store_string(str, length, src_cs, dst_cs);
+}
+
+bool Protocol_local::store(MYSQL_TIME *time)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  return row->add_column(time, sizeof (MYSQL_TIME));
+}
+
+bool Protocol_local::store_date(MYSQL_TIME *time)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  return row->add_column(time, sizeof (MYSQL_TIME));
+}
+
+bool Protocol_local::store_time(MYSQL_TIME *time)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  return row->add_column(time, sizeof (MYSQL_TIME));
+}
+
+bool Protocol_local::store(float value, uint32 decimals, String *buffer)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  return row->add_column(&value, sizeof (float));
+}
+
+bool Protocol_local::store(double value, uint32 decimals, String *buffer)
+{
+  Ed_result_set *rs= m_result->get_cur_result_set();
+  Ed_row *row= rs->get_cur_row();
+
+  /* TODO: check medata type. */
+
+  return row->add_column(&value, sizeof (double));
+}
+
+bool Protocol_local::store(Field *field)
+{
+  if (field->is_null())
+    return store_null();
+  return field->send_binary(this);
+}
+
+bool Protocol_local::send_result_set_metadata(List<Item> *columns, uint)
+{
+  DBUG_ASSERT(m_result);
+
+  return m_result->add_result_set(columns);
+}
+
+bool Protocol_local::send_out_parameters(List<Item_param> *sp_params)
+{
+  return FALSE;
+}
+
+void Protocol_local::send_ok(uint server_status, uint statement_warn_count,
+                             ha_rows affected_rows, ulonglong last_insert_id,
+                             const char *message)
+{
+  m_result->send_ok(thd, server_status, statement_warn_count,
+                    affected_rows, last_insert_id, message);
+}
+
+void Protocol_local::send_eof(uint server_status, uint statement_warn_count)
+{
+  m_result->send_eof(thd, server_status, statement_warn_count);
+}
+
+void Protocol_local::send_error(uint sql_errno, const char *err_msg)
+{
+  m_result->send_error(thd, sql_errno, err_msg);
+}
+
+#ifdef EMBEDDED_LIBRARY
+void Protocol_local::remove_last_row()
+{ }
+#endif

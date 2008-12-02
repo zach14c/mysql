@@ -942,6 +942,7 @@ enum xa_option_words {XA_NONE, XA_JOIN, XA_RESUME, XA_ONE_PHASE,
                       XA_SUSPEND, XA_FOR_MIGRATE};
 
 extern const LEX_STRING null_lex_str;
+extern const LEX_STRING empty_lex_str;
 
 
 /*
@@ -1484,7 +1485,6 @@ public:
     TRUE if we should allow multi-statements.
   */
   bool multi_statements;
-
 
   /** State of the lexical analyser for comments. */
   enum_comment_state in_comment;

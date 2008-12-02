@@ -32,7 +32,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 
   {
     String tmp_db_name("qqq", 3, system_charset_info);
-    DBUG_ASSERT(obs::check_db_existence(&tmp_db_name));
+    DBUG_ASSERT(obs::check_db_existence(thd, &tmp_db_name));
   }
 
   /*
@@ -57,12 +57,12 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
     {
       String dir;
       dir.copy(dbname->str, dbname->length, system_charset_info);
-      db= get_database(&dir);
+      db= get_database_stub(&dir);
 
       if (is_internal_db_name(db->get_db_name()))
           continue;
 
-      DBUG_ASSERT(!obs::check_db_existence(db->get_db_name()));
+      DBUG_ASSERT(!obs::check_db_existence(thd, db->get_db_name()));
 
       //
       // List tables..
@@ -247,10 +247,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
           protocol->prepare_for_resend();
           protocol->store(const_cast<String*>(db->get_name()));
           protocol->store(const_cast<String*>(grant->get_name()));
-          String user;
-          String host;
-          String *user_host= (String *)grant->get_name();
-          check_user_existence(thd, user_host);
+          check_user_existence(thd, grant);
           protocol->store(C_STRING_WITH_LEN("GRANT"),
                           system_charset_info);
           grant->serialize(thd, &serial);

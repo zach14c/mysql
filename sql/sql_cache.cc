@@ -1014,7 +1014,9 @@ void Query_cache::store_query(THD *thd, TABLE_LIST *tables_used)
       protocol (COM_EXECUTE) cannot be served to statements asking for results
       in the text protocol (COM_QUERY) and vice-versa.
     */
-    flags.result_in_binary_protocol= (unsigned int) thd->protocol->type();
+    flags.protocol_type= (unsigned int) thd->protocol->type();
+    /* PROTOCOL_LOCAL results are not cached. */
+    DBUG_ASSERT(flags.protocol_type != (unsigned int) Protocol::PROTOCOL_LOCAL);
     flags.more_results_exists= test(thd->server_status &
                                     SERVER_MORE_RESULTS_EXISTS);
     flags.pkt_nr= net->pkt_nr;
@@ -1041,7 +1043,7 @@ sql mode: 0x%lx, sort len: %lu, conncat len: %lu, div_precision: %lu, \
 def_week_frmt: %lu",                          
                           (int)flags.client_long_flag,
                           (int)flags.client_protocol_41,
-                          (int)flags.result_in_binary_protocol,
+                          (int)flags.protocol_type,
                           (int)flags.more_results_exists,
                           flags.pkt_nr,
                           flags.character_set_client_num,
@@ -1279,7 +1281,7 @@ Query_cache::send_result_to_client(THD *thd, char *sql, uint query_length)
   flags.client_long_flag= test(thd->client_capabilities & CLIENT_LONG_FLAG);
   flags.client_protocol_41= test(thd->client_capabilities &
                                  CLIENT_PROTOCOL_41);
-  flags.result_in_binary_protocol= (unsigned int)thd->protocol->type();
+  flags.protocol_type= (unsigned int) thd->protocol->type();
   flags.more_results_exists= test(thd->server_status &
                                   SERVER_MORE_RESULTS_EXISTS);
   flags.pkt_nr= thd->net.pkt_nr;
@@ -1304,7 +1306,7 @@ sql mode: 0x%lx, sort len: %lu, conncat len: %lu, div_precision: %lu, \
 def_week_frmt: %lu",                          
                           (int)flags.client_long_flag,
                           (int)flags.client_protocol_41,
-                          (int)flags.result_in_binary_protocol,
+                          (int)flags.protocol_type,
                           (int)flags.more_results_exists,
                           flags.pkt_nr,
                           flags.character_set_client_num,

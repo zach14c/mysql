@@ -110,7 +110,7 @@ delete database files so that check_db_dir_exists will fail in
 si_objects.cc @ DatabaseObj::do_serialize
 SET DEBUG_SYNC='now SIGNAL db_will_fail';
 Database has been deleted, backup will fail
-ERROR 42000: Unknown database 'db1'
+ERROR HY000: Failed to obtain meta-data for database `db1`
 
 Test that backup fails with error if a table used by 
 a trigger cannot be opened

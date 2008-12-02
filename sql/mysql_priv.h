@@ -922,7 +922,7 @@ struct Query_cache_query_flags
 {
   unsigned int client_long_flag:1;
   unsigned int client_protocol_41:1;
-  unsigned int result_in_binary_protocol:1;
+  unsigned int protocol_type:2;
   unsigned int more_results_exists:1;
   unsigned int pkt_nr;
   uint character_set_client_num;
@@ -1136,6 +1136,26 @@ void init_update_queries(void);
 void free_max_user_conn(void);
 pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
+
+class Ed_result;
+/**
+  Execute a fragment of server code in an isolated context, so that
+  it doesn't leave any effect on THD. THD must have no open tables.
+  The code must not leave any open tables around.
+  The result of execution (if any) is stored in Ed_result.
+*/
+
+class Server_runnable
+{
+public:
+  virtual bool execute_server_code(THD *thd)= 0;
+  virtual ~Server_runnable();
+};
+
+bool mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *result);
+bool mysql_execute_direct(THD *thd, Server_runnable *ed_runnable,
+                          Ed_result *result);
+
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length);

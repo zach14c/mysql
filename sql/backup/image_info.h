@@ -1021,7 +1021,7 @@ inline
 obs::Obj* Image_info::Ts::materialize(uint ver, const ::String &sdata)
 {
   delete m_obj_ptr;
-  return m_obj_ptr= obs::materialize_tablespace(&m_name, ver, &sdata); 
+  return m_obj_ptr= obs::get_tablespace(&m_name, ver, &sdata); 
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
@@ -1029,7 +1029,7 @@ inline
 obs::Obj* Image_info::Db::materialize(uint ver, const ::String &sdata)
 {
   delete m_obj_ptr;
-  return m_obj_ptr= obs::materialize_database(&name(), ver, &sdata); 
+  return m_obj_ptr= obs::get_database(&name(), ver, &sdata); 
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
@@ -1037,7 +1037,7 @@ inline
 obs::Obj* Image_info::Table::materialize(uint ver, const ::String &sdata)
 {
   delete m_obj_ptr;
-  return m_obj_ptr= obs::materialize_table(&db().name(), &name(), ver, &sdata);
+  return m_obj_ptr= obs::get_table(&db().name(), &name(), ver, &sdata);
 }
 
 inline
@@ -1050,31 +1050,23 @@ obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
   
   switch (base.type) {
   case BSTREAM_IT_VIEW:   
-    m_obj_ptr= obs::materialize_view(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_view(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_SPROC:  
-    m_obj_ptr= obs::materialize_stored_procedure(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_stored_procedure(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_SFUNC:
-    m_obj_ptr= obs::materialize_stored_function(db_name, name, ver, &sdata); 
+    m_obj_ptr= obs::get_stored_function(db_name, name, ver, &sdata); 
     break;
   case BSTREAM_IT_EVENT:
-    m_obj_ptr= obs::materialize_event(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_event(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_TRIGGER:   
-    m_obj_ptr= obs::materialize_trigger(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_trigger(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_PRIVILEGE:
-  {
-    /*
-      Here we undo the uniqueness suffix for grants.
-    */
-    String new_name;
-    new_name.copy(*name);
-    new_name.length(new_name.length() - UNIQUE_PRIV_KEY_LEN);
-    m_obj_ptr= obs::materialize_db_grant(db_name, &new_name, ver, &sdata);
+    m_obj_ptr= obs::get_db_grant(db_name, name, ver, &sdata);
     break;
-  }
   default: m_obj_ptr= NULL;
   }
 
