@@ -214,6 +214,11 @@ void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  Table_name_key defines a hash key, which includes database and tables
+  names.
+*/
+
 struct Table_name_key
 {
 public:
@@ -270,6 +275,11 @@ free_table_name_key(void *data)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  Int_value is a wrapper for unsigned long type to be used with
+  the String_stream class.
+*/
+
 struct Int_value
 {
   unsigned long m_value;
@@ -280,6 +290,11 @@ struct Int_value
 };
 
 ///////////////////////////////////////////////////////////////////////////
+
+/*
+  C_str is a wrapper for C-string (const char *) to be used with the
+  String_stream class.
+*/
 
 struct C_str
 {
@@ -293,6 +308,14 @@ struct C_str
 };
 
 ///////////////////////////////////////////////////////////////////////////
+
+/**
+  @class String_stream
+
+  This class provides a convenient way to create a dynamic string from
+  C-strings in different forms (LEX_STRING, const char *) and integer
+  constants.
+*/
 
 class String_stream
 {
@@ -363,6 +386,23 @@ String_stream &String_stream::operator <<(const Int_value &int_value)
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+/**
+  @class Out_stream
+
+  This class encapsulates the semantic of creating the serialization image.
+  The image is actually a list of strings. Strings may contain any data
+  (including binary and new-line characters). String is length-coded, which
+  means there is string length before the string data.
+
+  The format is as follows:
+    <string length> <space> <string data> \n
+
+  Example:
+    12 Hello,
+    world
+    5 qwerty
+*/
+
 class Out_stream
 {
 public:
@@ -408,6 +448,13 @@ Out_stream &Out_stream::operator <<(const LEX_STRING *query)
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
+
+/**
+  @class In_stream
+
+  This class encapsulates the semantic of reading from the serialization image.
+  For the format definition of the serialization image, @see Out_stream.
+*/
 
 class In_stream
 {
@@ -2129,6 +2176,15 @@ void
 Grant_obj::
 generate_unique_grant_id(const String *user_name, String *id)
 {
+  /*
+    @note This code is not MT-safe, but we don't need MT-safety here.
+    Backup has object cache (a hash) for one BACKUP/RESTORE statement.
+    Hash keys are formed from object names (Obj::get_db_name() and
+    Obj::get_name()). So, here unique keys for the object cache are
+    generated. These keys need to be unique only within one backup session
+    (serialization image).
+  */
+
   static unsigned long id_counter= 0;
 
   id->length(0);
