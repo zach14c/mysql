@@ -52,3 +52,4 @@ log_output_func                       : BUG#37766 2008-07-10 sven main.log_outpu
 events_bugs                           : Bug#37774 Bug#39569 Bug#39863 Bug#39848 2008-10-08 alik
 slow_query_log_func                   : Bug #37962: *_func tests containing sleeps/race conditions
 thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
+innodb_max_dirty_pages_pct_func       : BUG#41018 BUG#39382 2008-12-02 sven test fails often. some failures fill up the disk, causing subsequent failures in many other tests
