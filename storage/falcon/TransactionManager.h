@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2006 MySQL AB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,14 +44,15 @@ public:
 	void			purgeTransactions();
 	void			getSummaryInfo(InfoTable* infoTable);
 	void			reportStatistics(void);
+	void			expungeTransaction(Transaction *transaction);
 	Transaction* 	findTransaction(TransId transactionId);
+	void 			validateDependencies(void);
 	void			removeCommittedTransaction(Transaction* transaction);
 	void			removeTransaction(Transaction* transaction);
 	void			printBlockage(void);
 	void			printBlocking(Transaction* transaction, int level);
 	
 	INTERLOCK_TYPE	transactionSequence;
-	INTERLOCK_TYPE  transitionEventSequence;
 	Database		*database;
 	SyncObject		syncObject;
 	Transaction		*rolledBackTransaction;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2006 MySQL AB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -42,8 +42,6 @@ class Bitmap;
 class Record;
 class InfoTable;
 class Thread;
-
-typedef TransId TransEvent; // Used for the two transition events
 
 // Transaction States
 
@@ -92,7 +90,9 @@ public:
 	void		removeRecordNoLock (RecordVersion *record);
 	void		removeRecord(RecordVersion *record);
 	void		removeRecord (RecordVersion *record, RecordVersion **ptr);
+	void		expungeTransaction (Transaction *transaction);
 	void		commitRecords();
+	void		releaseDependencies();
 	bool		visible (Transaction *transaction, TransId transId, int forWhat);
 	bool		needToLock(Record* record);
 	void		addRecord (RecordVersion *record);
@@ -108,6 +108,7 @@ public:
 	void		truncateTable(Table* table);
 	bool		hasRecords(Table* table);
 	void		writeComplete(void);
+	void		releaseDependency(void);
 	int			createSavepoint();
 	void		releaseSavepoint(int savepointId);
 	void		releaseSavepoints(void);
@@ -126,6 +127,7 @@ public:
 	void		fullyCommitted(void);
 	void		releaseCommittedTransaction(void);
 	void		commitNoUpdates(void);
+	void		validateDependencies(bool noDependencies);
 	void		validateRecords(void);
 	void		printBlocking(int level);
 	void		releaseDeferredIndexes(void);
@@ -142,8 +144,6 @@ public:
 	TransId			transactionId;
 	TransId			oldestActive;
 	TransId			blockedBy;
-	TransEvent      startEvent;
-	TransEvent      commitEvent;
 	int				curSavePointId;
 	Transaction		*next;			// next in database
 	Transaction		*prior;			// next in database
@@ -157,10 +157,12 @@ public:
 	Bitmap			*backloggedRecords;
 	time_t			startTime;
 	int				deferredIndexCount;
+	int				statesAllocated;
 	int				isolationLevel;
 	int				xidLength;
 	int				mySqlThreadId;
 	UCHAR			*xid;
+	TransState		*states;
 	bool			commitTriggers;
 	bool			systemTransaction;
 	bool			hasUpdates;
@@ -185,7 +187,9 @@ public:
 	RecordVersion	**chillPoint;		// points to a pointer to the first non-chilled record
 	int				scanIndexCount;
 
+	volatile int			numberStates;
 	volatile INTERLOCK_TYPE	state;
+	volatile INTERLOCK_TYPE	dependencies;
 	volatile INTERLOCK_TYPE	useCount;
 	volatile INTERLOCK_TYPE	inList;
 
