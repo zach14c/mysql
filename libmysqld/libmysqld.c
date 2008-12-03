@@ -223,3 +223,14 @@ error:
   DBUG_RETURN(0);
 }
 
+
+#ifdef __WIN__
+static char emb_makeftype_buffer[10];
+
+char *emb_make_ftype(int type)
+{
+  make_ftype(emb_makeftype_buffer, type);
+  return emb_makeftype_buffer;
+}
+#endif /*__WIN__*/
+

@@ -218,7 +218,7 @@ extern int errno;			/* declare errno */
 #endif					/* #ifndef errno */
 extern char NEAR errbuff[NRERRBUFFS][ERRMSGSIZE];
 extern char *home_dir;			/* Home directory for user */
-extern const char *my_progname;		/* program-name (printed in errors) */
+MY_DLLEXPORT const char *my_progname;		/* program-name (printed in errors) */
 extern const char *my_progname_short;	/* like above but without directory */
 extern char NEAR curr_dir[];		/* Current directory for user */
 extern void (*error_handler_hook)(uint my_err, const char *str,myf MyFlags);
@@ -682,6 +682,7 @@ extern void     my_osmaperr(unsigned long last_error);
 extern void TERMINATE(FILE *file, uint flag);
 #endif
 extern void init_glob_errs(void);
+extern void make_ftype(char * to,int flag);
 extern FILE *my_fopen(const char *FileName,int Flags,myf MyFlags);
 extern FILE *my_fdopen(File Filedes,const char *name, int Flags,myf MyFlags);
 extern int my_fclose(FILE *fd,myf MyFlags);

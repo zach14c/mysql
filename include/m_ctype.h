@@ -321,7 +321,7 @@ typedef struct charset_info_st
 #define ILLEGAL_CHARSET_INFO_NUMBER (~0U)
 
 
-extern CHARSET_INFO my_charset_bin;
+MY_DLLEXPORT CHARSET_INFO my_charset_bin;
 extern CHARSET_INFO my_charset_big5_chinese_ci;
 extern CHARSET_INFO my_charset_big5_bin;
 extern CHARSET_INFO my_charset_cp932_japanese_ci;
@@ -336,7 +336,7 @@ extern CHARSET_INFO my_charset_gb2312_chinese_ci;
 extern CHARSET_INFO my_charset_gb2312_bin;
 extern CHARSET_INFO my_charset_gbk_chinese_ci;
 extern CHARSET_INFO my_charset_gbk_bin;
-extern CHARSET_INFO my_charset_latin1;
+MY_DLLEXPORT CHARSET_INFO my_charset_latin1;
 extern CHARSET_INFO my_charset_latin1_german2_ci;
 extern CHARSET_INFO my_charset_latin1_bin;
 extern CHARSET_INFO my_charset_latin2_czech_ci;
