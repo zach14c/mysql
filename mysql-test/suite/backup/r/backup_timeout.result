@@ -71,3 +71,4 @@ SHOW VARIABLES LIKE 'backup_wait%';
 Variable_name	Value
 backup_wait_timeout	50
 DROP DATABASE bup_ddl_blocker;
+SET DEBUG_SYNC= 'reset';

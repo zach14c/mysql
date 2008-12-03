@@ -208,7 +208,8 @@ enum ha_extra_function {
   HA_EXTRA_ORDERBY_LIMIT,
   HA_EXTRA_NO_ORDERBY_LIMIT,
   /* Inform handler we will force a close as part of flush */
-  HA_EXTRA_PREPARE_FOR_FORCED_CLOSE
+  HA_EXTRA_PREPARE_FOR_FORCED_CLOSE,
+  HA_EXTRA_ALLOW_LOG_DELETE
 };
 
 /* Compatible option, to be deleted in 6.0 */

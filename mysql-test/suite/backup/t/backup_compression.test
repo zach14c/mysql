@@ -12,11 +12,11 @@ replace_column 1 #;
 BACKUP DATABASE db1 TO 'db2.bak.gz' WITH COMPRESSION COMPRESSION_ALGORITHM=gzip;
 
 replace_column 1 #;
-RESTORE FROM 'db1.bak.gz';
+RESTORE FROM 'db1.bak.gz' OVERWRITE;
 SHOW TABLES FROM db1;
 
 replace_column 1 #;
-RESTORE FROM 'db2.bak.gz';
+RESTORE FROM 'db2.bak.gz' OVERWRITE;
 SHOW TABLES FROM db1;
 
 DROP DATABASE db1;

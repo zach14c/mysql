@@ -49,7 +49,7 @@ BACKUP DATABASE backup_test to 'bup_with_rights.bak';
 backup_id
 #
 no_rights: Attempting restore. Should succeed
-RESTORE FROM 'bup_with_rights.bak';
+RESTORE FROM 'bup_with_rights.bak' OVERWRITE;
 backup_id
 #
 SELECT * FROM backup_test.t1;
@@ -62,7 +62,7 @@ a
 06 Test #1 - super privilege
 07 Test #1 - super privilege
 default: Do restore to ensure it still works with default test user.
-RESTORE FROM 'backup_test_orig.bak';
+RESTORE FROM 'backup_test_orig.bak' OVERWRITE;
 backup_id
 #
 SELECT * FROM backup_test.t1;

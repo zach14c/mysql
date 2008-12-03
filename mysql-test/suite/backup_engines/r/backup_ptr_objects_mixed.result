@@ -14,8 +14,10 @@ till point of backup and after backup.
 
 SET @a=UNIX_TIMESTAMP("2010-01-21 15:32:22");
 SET timestamp=@a;
-CREATE DATABASE IF NOT EXISTS ptr_ob1;
-CREATE DATABASE IF NOT EXISTS ptr_ob2;
+DROP DATABASE IF EXISTS ptr_ob1;
+DROP DATABASE IF EXISTS ptr_ob2;
+CREATE DATABASE ptr_ob1;
+CREATE DATABASE ptr_ob2;
 USE ptr_ob1;
 **** Creating tables ****
 CREATE TABLE ptr_ob1.t1(
@@ -102,9 +104,10 @@ CREATE TRIGGER ptr_ob1.trg2 AFTER INSERT ON ptr_ob1.t2 FOR EACH ROW
 BEGIN
 INSERT INTO ptr_ob1.t3 VALUES(NULL, 'trigger fired for AFTER INSERT', 100);
 END;||
-INSERT INTO ptr_ob1.t2 VALUES
-(NULL, 'Normal Insert1'),(NULL, 'Normal Insert2'),
-(NULL, 'Normal Insert3'),(NULL, 'Normal Insert4');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert1');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert2');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert3');
+INSERT INTO ptr_ob1.t2 VALUES (NULL, 'Normal Insert4');
 SELECT * FROM ptr_ob1.t2;
 id	data
 1	Normal Insert1

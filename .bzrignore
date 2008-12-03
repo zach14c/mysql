@@ -1903,3 +1903,4 @@ libmysqld/transaction.cc
 libmysqld/rpl_handler.cc
 libmysql/probes.h
 libmysql_r/probes.h
+unittest/tmp

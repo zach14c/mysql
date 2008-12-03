@@ -88,7 +88,7 @@ public:
 	virtual Record*	getPriorVersion();
 	virtual Record*	getGCPriorVersion(void);
 	virtual	void	print(void);
-	virtual int		thaw(bool force = false);
+	virtual int		thaw(void);
 	virtual const char*	getEncodedRecord();
 	virtual int		setRecordData(const UCHAR *dataIn, int dataLength);
 	virtual void	serialize(Serialize* stream);

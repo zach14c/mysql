@@ -152,5 +152,5 @@ JString FilterSet::stripSQL(const char *source)
 	while (end > sql && end [-1] != ')')
 		--end;
 
-	return JString (sql, end - sql);
+	return JString (sql, (int)(end - sql));
 }

@@ -708,6 +708,53 @@ private:
   void free_table_list(TABLE_LIST*);
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+//
+// Replication methods.
+//
+
+/*
+  Turn on or off logging for the current thread. 
+*/
+int engage_binlog(bool enable);
+
+/*
+  Check if binlog is enabled for the current thread. 
+*/
+bool is_binlog_engaged();
+
+/*
+  Check if current server is executing as a slave. 
+*/
+bool is_slave();
+
+/*
+  Check if any slaves are connected. 
+*/
+int num_slaves_attached();
+
+/*
+  Disable or enable connection of new slaves to the master. 
+*/
+int disable_slave_connections(bool disable);
+
+/**
+  Enumeration of the incidents that can occur on the master.
+*/
+enum incident_events {
+  NONE,          // Indicates there was no incident 
+  LOST_EVENTS,   // Indicates lost events 
+  RESTORE_EVENT, // Indicates a restore has executed on the master
+  COUNT          // Value counts the enumerations
+};
+
+/*
+  Write incident event to signal slave an unusual event has been issued 
+  on the master.
+*/
+int write_incident_event(THD *thd, incident_events incident_enum);
+
 } // obs namespace
 
 #endif // SI_OBJECTS_H_
