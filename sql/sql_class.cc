@@ -202,19 +202,6 @@ bool foreign_key_prefix(Key *a, Key *b)
 ** Thread specific functions
 ****************************************************************************/
 
-/** Push an error to the error stack and return TRUE for now. */
-
-bool
-Reprepare_observer::report_error(THD *thd)
-{
-  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
-
-  m_invalidated= TRUE;
-
-  return TRUE;
-}
-
-
 /*
   The following functions form part of the C plugin API
 */

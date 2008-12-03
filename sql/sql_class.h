@@ -25,52 +25,10 @@
 #include "rpl_tblmap.h"
 #include "mdl.h"
 
-/**
-  An interface that is used to take an action when
-  the locking module notices that a table version has changed
-  since the last execution. "Table" here may refer to any kind of
-  table -- a base table, a temporary table, a view or an
-  information schema table.
-
-  When we open and lock tables for execution of a prepared
-  statement, we must verify that they did not change
-  since statement prepare. If some table did change, the statement
-  parse tree *may* be no longer valid, e.g. in case it contains
-  optimizations that depend on table metadata.
-
-  This class provides an interface (a method) that is
-  invoked when such a situation takes place.
-  The implementation of the method simply reports an error, but
-  the exact details depend on the nature of the SQL statement.
-
-  At most 1 instance of this class is active at a time, in which
-  case THD::m_reprepare_observer is not NULL.
-
-  @sa check_and_update_table_version() for details of the
-  version tracking algorithm 
-
-  @sa Open_tables_state::m_reprepare_observer for the life cycle
-  of metadata observers.
-*/
-
-class Reprepare_observer
-{
-public:
-  /**
-    Check if a change of metadata is OK. In future
-    the signature of this method may be extended to accept the old
-    and the new versions, but since currently the check is very
-    simple, we only need the THD to report an error.
-  */
-  bool report_error(THD *thd);
-  bool is_invalidated() const { return m_invalidated; }
-  void reset_reprepare_observer() { m_invalidated= FALSE; }
-private:
-  bool m_invalidated;
-};
 
 #include <waiting_threads.h>
 
+class Reprepare_observer;
 class Relay_log_info;
 
 class Query_log_event;
