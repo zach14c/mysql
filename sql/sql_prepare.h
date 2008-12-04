@@ -19,7 +19,7 @@
 #include "m_string.h"
 
 class THD;
-class LEX;
+struct LEX;
 template <typename T> class List;
 
 /**
