@@ -930,7 +930,8 @@ protected:
 void Database_item_obj::build_drop_statement(String_stream &s_stream) const
 {
   s_stream <<
-    "DROP " << get_type_name() << " IF EXISTS `" << get_name() << "`";
+    "DROP " << get_type_name() << " IF EXISTS `" <<
+    get_db_name() << "`.`" << get_name() << "`";
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1617,12 +1618,9 @@ bool View_base_obj_iterator::init(THD *thd,
                                           db_name, view_name);
   Ed_result ed_result; /* Just to grab OK or ERROR */
 
-  if (mysql_execute_direct(thd, &find_tables, &ed_result))
-    return TRUE;
-
   /* The table list is filled with unique underlying table names. */
 
-  return FALSE;
+  return mysql_execute_direct(thd, &find_tables, &ed_result);
 }
 
 ///////////////////////////////////////////////////////////////////////////
