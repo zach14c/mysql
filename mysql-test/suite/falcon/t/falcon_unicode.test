@@ -58,11 +58,12 @@ DROP TABLE IF EXISTS t_err;
 --enable_warnings
 
 # Reference table with MyISAM as storage engine.
-eval CREATE TABLE t0 (
-   id int auto_increment not null primary key,
-   a varchar(1) character set utf8,
-   category  varchar(100),
-   comment   varchar(80)
+eval
+CREATE TABLE t0 (
+  id int auto_increment not null primary key,
+  a varchar(1) character set utf8,
+  category  varchar(100),
+  comment   varchar(80)
 ) Engine $other_engine;
 
 # Falcon test table without any keys.
@@ -94,10 +95,12 @@ CREATE TABLE t5 (
 );
 
 # We collect any errors in this table.
-eval CREATE TABLE t_err (
+eval
+CREATE TABLE t_err (
   expected char(1) character set utf8,
   actual   char(1) character set utf8,
-  comment  varchar(120)
+  category  varchar(100),
+  comment   varchar(80)
 ) Engine $other_engine;
 
 #
@@ -156,6 +159,9 @@ SET a = (UNHEX((
 # ----------------------------------------------------- #
 
 # Case tests?
+
+# Also test two UTF-8 characters with whitespace
+# like TAB in between.
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
