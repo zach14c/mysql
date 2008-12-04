@@ -66,7 +66,7 @@ GRANT USAGE ON *.* TO 'bup_user3'@'%'
 SHOW GRANTS FOR 'no_user'@'%';
 ERROR 42000: There is no such grant defined for user 'no_user' on host '%'
 Run Restore
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
 Warnings:
@@ -117,7 +117,7 @@ FLUSH PRIVILEGES;
 CREATE USER 'bup_user1'@'%';
 CREATE USER 'bup_user1'@'nosuchhost';
 Run Restore
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
 Warnings:
@@ -209,7 +209,7 @@ EXECUTE stmt3;
 Grants for ƒ@@%
 GRANT USAGE ON *.* TO 'ƒ@'@'%'
 Run restore.
-RESTORE FROM 'bup_db_grants.bak';
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
 FLUSH PRIVILEGES;

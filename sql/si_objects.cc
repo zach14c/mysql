@@ -24,6 +24,7 @@
 #include "sql_trigger.h"
 #include "sp.h"
 #include "sp_head.h" // for sp_add_to_query_tables().
+#include "rpl_mi.h"
 
 #ifdef HAVE_EVENT_SCHEDULER
 #include "events.h"
@@ -32,6 +33,8 @@
 #endif
 
 DDL_blocker_class *DDL_blocker= NULL;
+
+extern my_bool disable_slaves;
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
@@ -3031,6 +3034,201 @@ int Name_locker::release_name_locks()
     unlock_table_names(m_thd);
   }
   DBUG_RETURN(0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+//
+// Implementation: Replication methods.
+//
+
+///////////////////////////////////////////////////////////////////////////
+
+/*
+  Replication methods
+*/
+
+/**
+  Turn on or off logging for the current thread.
+
+  This method can be used to turn logging on or off in situations where it is
+  necessary to prevent some operations from being logged, e.g.
+  BACKUP DATABASE.
+
+  @param[IN] enable  TRUE = turn on, FALSE = turn off
+
+  @returns 0
+*/
+int engage_binlog(bool enable)
+{
+  int ret= 0;
+  THD *thd= current_thd;
+
+  if (enable)
+    thd->options|= OPTION_BIN_LOG;
+  else
+    thd->options&= ~OPTION_BIN_LOG;
+  return ret;
+}
+
+/**
+  Check if binlog is enabled for the current thread.
+
+  This method can be used to check to see if logging is enabled and operate
+  as a gate for those areas of code that are conditional on whether logging is
+  enabled (or disabled).
+
+  @returns   TRUE  if logging is enabled and binlog is open
+  @returns   FALSE if logging is turned off or binlog is closed
+*/
+bool is_binlog_engaged()
+{
+  THD *thd= current_thd;
+
+  return (thd->options & OPTION_BIN_LOG) && mysql_bin_log.is_open();
+}
+
+/**
+  Check if current server is executing as a slave.
+
+  This method can be used to detect when running as a slave. This means that
+  the server is configured to act as a slave. This can make it easier to
+  organize the code for specialized sections where running as a slave requires
+  additional work, prohibiting backup and restore operations, or error
+  conditions.
+
+  @returns   TRUE  if operating as a slave
+*/
+bool is_slave()
+{
+  bool running= FALSE;
+
+#ifdef HAVE_REPLICATION
+  if (active_mi)
+  {
+    pthread_mutex_lock(&LOCK_active_mi);
+    running= (active_mi->slave_running == MYSQL_SLAVE_RUN_CONNECT);
+    pthread_mutex_unlock(&LOCK_active_mi);
+  }
+#endif
+  return running;
+}
+
+/**
+  Check if any slaves are connected.
+
+  This method can be used to detect whether there are slaves attached to the
+  current server. This will allow the code to know if replication is active.
+
+  @returns  int number of slaves currently attached
+*/
+int num_slaves_attached()
+{
+  THD *thd= current_thd;
+
+  Ed_result ed_result;
+  LEX_STRING sql_text= LXS_INIT("SELECT CONCAT(COUNT(1)) "
+                                "FROM INFORMATION_SCHEMA.PROCESSLIST"
+                                "WHERE LCASE(command) = LCASE('Binlog Dump')");
+
+  if (run_service_interface_sql(thd, &sql_text, &ed_result) ||
+      ed_result.get_warnings().elements > 0)
+  {
+    /* Should be no warnings. */
+
+    /*
+      XXX: now zero is returned if there are warnings. Probably, that
+      should be changed and error flag (-1) should be returned.
+    */
+    return 0;
+  }
+
+  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
+
+  if (!ed_result_set || ed_result_set->data()->elements < 1)
+    return 0;
+
+  Ed_row *ed_row= ed_result_set->get_cur_row();
+  const LEX_STRING *num_slaves_str= ed_row->get_column(0);
+
+  char *buffer= thd->strmake(num_slaves_str->str, num_slaves_str->length + 1);
+  return atoi(buffer);
+}
+
+/**
+  Disable or enable connection of new slaves to the master.
+
+  This method can be used to temporarily prevent new slaves from connecting to
+  the master. This can allow operations such as RESTORE to prevent new slaves
+  from attaching during the execution of RESTORE.
+
+  @param[IN] disable  TRUE = turn off, FALSE = turn on
+
+  @returns value of disable_slaves (TRUE | FALSE)
+*/
+int disable_slave_connections(bool disable)
+{
+  // Protect with a mutex?
+  disable_slaves= disable ? 1 : 0;
+  return disable_slaves;
+}
+
+/**
+  Write an incident event in the binary log.
+
+  This method can be used to issue an incident event to inform the slave
+  that an unusual event has occurred on the master. For example an incident
+  event could represent that a restore has been issued on the master. This
+  should force the slave to stop and allow the user to analyze the effect
+  of the restore on the master and take the appropriate steps to correct
+  the slave (e.g. running the same restore on the slave.
+
+  @param[IN] thd            The current thread
+  @param[IN] incident_enum  The indicent being reported
+
+  @retval FALSE on success.
+  @retval TRUE on error.
+*/
+int write_incident_event(THD *thd, incident_events incident_enum)
+{
+  bool res= FALSE;
+
+#ifdef HAVE_REPLICATION
+  Incident incident;
+
+  /*
+    Generate an incident log event (gap event) to signal the slave
+    that a restore has been issued on the master.
+  */
+  switch (incident_enum){
+    case NONE:
+      incident= INCIDENT_NONE;
+      break;
+    case LOST_EVENTS:
+      incident= INCIDENT_LOST_EVENTS;
+      break;
+    case RESTORE_EVENT:
+      incident= INCIDENT_RESTORE_EVENT;
+      break;
+    default:   // fail safe : should not occur
+      incident= INCIDENT_NONE;
+      break;
+  }
+  DBUG_PRINT("write_incident_event()", ("Before write_incident_event()."));
+  /*
+    Don't write this unless binlog is engaged.
+  */
+  if (incident && is_binlog_engaged())
+  {
+    LEX_STRING msg;
+    msg.str= (char *)ER(ER_RESTORE_ON_MASTER);
+    msg.length = strlen(ER(ER_RESTORE_ON_MASTER));
+    Incident_log_event ev(thd, incident, msg);
+    res= mysql_bin_log.write(&ev);
+    mysql_bin_log.rotate_and_purge(RP_FORCE_ROTATE);
+  }
+#endif
+  return res;
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -83,7 +83,7 @@ public: // public interface
 
    // Examine contents of the catalogue.
 
-   bool has_db(const String&);
+   bool has_db(const String&) const;
 
    // Retrieve objects using their coordinates.
 

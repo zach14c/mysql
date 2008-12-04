@@ -9,7 +9,7 @@ CREATE PROCEDURE p1()
 BEGIN
 SET @i = 0;
 SET @v = 0;
-WHILE @i < 500000 DO
+WHILE @i < 100000 DO
 SET @a = @v;
 EXECUTE stmt1 USING @a;
 SET @v = @v + 1;
@@ -25,10 +25,10 @@ SET @@autocommit = 1;
 UPDATE t1 SET b = 5 WHERE b = 3;
 SELECT count(*) FROM t1;
 count(*)
-500000
+100000
 SELECT count(*) FROM t1 WHERE b = 5;
 count(*)
-100000
+20000
 DEALLOCATE PREPARE stmt1;
 DROP TABLE t1;
 DROP PROCEDURE p1;

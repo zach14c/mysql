@@ -54,7 +54,7 @@ DROP DATABASE db1;
 now start the restore and while the restore is running, fire the trigger
 activate synchronization points for restore.
 SET DEBUG_SYNC= 'restore_in_progress SIGNAL wait_for_restore WAIT_FOR finish';
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;;
 From breakpoints:
 Wait for restore to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR wait_for_restore';
@@ -64,7 +64,7 @@ WHERE info LIKE "RESTORE%";
 id	#
 command	Query
 state	debug sync point: restore_in_progress
-info	RESTORE FROM 'db1.bak'
+info	RESTORE FROM 'db1.bak' OVERWRITE
 From con2:
 Now do the insert while restore is running.
 INSERT INTO db2.t2 VALUES (0);
@@ -96,7 +96,7 @@ DELETE FROM db2.t2;
 now start the restore and while the restore is running, fire the trigger
 activate synchronization points for restore.
 SET DEBUG_SYNC= 'restore_in_progress SIGNAL wait_for_restore WAIT_FOR finish';
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;;
 From breakpoints:
 Wait for restore to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR wait_for_restore';
@@ -106,7 +106,7 @@ WHERE info LIKE "RESTORE%";
 id	#
 command	Query
 state	debug sync point: restore_in_progress
-info	RESTORE FROM 'db1.bak'
+info	RESTORE FROM 'db1.bak' OVERWRITE
 From con2:
 Now do the select while restore is running.
 SELECT * FROM db1.t1 limit 10;
