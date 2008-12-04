@@ -1615,4 +1615,10 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #  define __func__ "<unknown>"
 #endif
 
+#ifdef MY_USE_CLIENT_DLL
+#define MY_DLLEXPORT __declspec(dllimport)
+#else
+#define MY_DLLEXPORT extern
+#endif /*MY_USE_CLIENT_DLL*/
+
 #endif /* my_global_h */

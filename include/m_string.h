@@ -89,8 +89,8 @@ extern char *stpcpy(char *, const char *);	/* For AIX with gcc 2.95.3 */
 #endif
 
 /* Declared in int2str() */
-extern char NEAR _dig_vec_upper[];
-extern char NEAR _dig_vec_lower[];
+MY_DLLEXPORT char NEAR _dig_vec_upper[];
+MY_DLLEXPORT char NEAR _dig_vec_lower[];
 
 #ifdef BAD_STRING_COMPILER
 #define strmov(A,B)  (memccpy(A,B,0,INT_MAX)-1)

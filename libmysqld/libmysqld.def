@@ -44,7 +44,7 @@ EXPORTS
 	pthread_create
 	pthread_cond_init
 	ll2str
-	my_fileno
+        my_fileno
 	my_gcvt
 	my_regcomp
 	my_regexec
@@ -63,8 +63,8 @@ EXPORTS
 	my_dir
 	my_micro_time
 	find_type_or_exit
-	_dig_vec_upper
-	_dig_vec_lower
+	_dig_vec_upper DATA
+	_dig_vec_lower DATA
 	bmove_upp
 	delete_dynamic
 	free_defaults
@@ -177,17 +177,18 @@ EXPORTS
 	mysql_sqlstate
 	charsets_dir
 	disabled_my_option
-	my_charset_latin1
+	my_charset_latin1 DATA
+	my_charset_bin DATA
+	my_charset_same
 	init_alloc_root
-	my_progname
+	my_progname DATA
 	get_charset_name
 	get_charset_by_csname
 	print_defaults
 	find_type
 	strxnmov
 	strend
-	my_fopen
-	my_fclose
+        emb_make_ftype
 	unpack_filename
 	str2int
 	int10_to_str
@@ -228,7 +229,5 @@ EXPORTS
 	mysql_stmt_attr_set
 	mysql_stmt_field_count
 	get_defaults_options
-	my_charset_bin
-	my_charset_same
 	modify_defaults_file
         mysql_stmt_next_result

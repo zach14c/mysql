@@ -1,8 +1,9 @@
 LIBRARY		LIBMYSQL
 VERSION		6.0
 EXPORTS
-	_dig_vec_lower
-	_dig_vec_upper
+	_dig_vec_lower DATA
+	_dig_vec_upper DATA
+        my_progname DATA
 	bmove_upp
 	delete_dynamic
 	free_defaults
