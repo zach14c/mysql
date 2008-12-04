@@ -16,6 +16,7 @@
 /** @file Server Service Interface for Backup: the implementation.  */
 
 #include "mysql_priv.h"
+#include "sql_prepare.h"
 
 #include "si_objects.h"
 #include "ddl_blocker.h"

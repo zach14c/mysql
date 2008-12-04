@@ -31,6 +31,7 @@
 #include <ddl_blocker.h>
 #include "sql_audit.h"
 #include "transaction.h"
+#include "sql_prepare.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"

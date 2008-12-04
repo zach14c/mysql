@@ -83,6 +83,7 @@ When one supplies long data for a placeholder:
     at statement execute.
 */
 
+#include "sql_prepare.h"
 #include "mysql_priv.h"
 #include "sql_select.h" // for JOIN
 #include "sql_cursor.h"
@@ -183,8 +184,8 @@ private:
   void swap_prepared_statement(Prepared_statement *copy);
 };
 
-
 /**
+  Execute one SQL statement in an isolated context.
 */
 
 class Execute_sql_statement: public Server_runnable
@@ -2870,7 +2871,23 @@ Select_fetch_protocol_binary::send_data(List<Item> &fields)
 }
 
 /*******************************************************************
-*
+* Reprepare_observer
+*******************************************************************/
+/** Push an error to the error stack and return TRUE for now. */
+
+bool
+Reprepare_observer::report_error(THD *thd)
+{
+  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
+
+  m_invalidated= TRUE;
+
+  return TRUE;
+}
+
+
+/*******************************************************************
+* Server_runnable
 *******************************************************************/
 
 Server_runnable::~Server_runnable()

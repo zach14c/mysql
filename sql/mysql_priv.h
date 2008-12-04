@@ -1137,25 +1137,6 @@ void free_max_user_conn(void);
 pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
 
-class Ed_result;
-/**
-  Execute a fragment of server code in an isolated context, so that
-  it doesn't leave any effect on THD. THD must have no open tables.
-  The code must not leave any open tables around.
-  The result of execution (if any) is stored in Ed_result.
-*/
-
-class Server_runnable
-{
-public:
-  virtual bool execute_server_code(THD *thd)= 0;
-  virtual ~Server_runnable();
-};
-
-bool mysql_execute_direct(THD *thd, LEX_STRING query, Ed_result *result);
-bool mysql_execute_direct(THD *thd, Server_runnable *ed_runnable,
-                          Ed_result *result);
-
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length);
@@ -1479,19 +1460,6 @@ enum enum_schema_tables get_schema_table_idx(ST_SCHEMA_TABLE *schema_table);
 
 #define is_schema_db(X) \
   !my_strcasecmp(system_charset_info, INFORMATION_SCHEMA_NAME.str, (X))
-
-/* sql_prepare.cc */
-
-void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length);
-void mysql_stmt_execute(THD *thd, char *packet, uint packet_length);
-void mysql_stmt_close(THD *thd, char *packet);
-void mysql_sql_stmt_prepare(THD *thd);
-void mysql_sql_stmt_execute(THD *thd);
-void mysql_sql_stmt_close(THD *thd);
-void mysql_stmt_fetch(THD *thd, char *packet, uint packet_length);
-void mysql_stmt_reset(THD *thd, char *packet);
-void mysql_stmt_get_longdata(THD *thd, char *pos, ulong packet_length);
-void reinit_stmt_before_use(THD *thd, LEX *lex);
 
 /* sql_handler.cc */
 bool mysql_ha_open(THD *thd, TABLE_LIST *tables, bool reopen);
