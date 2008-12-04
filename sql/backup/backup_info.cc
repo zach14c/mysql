@@ -36,6 +36,7 @@ storage_engine_ref get_storage_engine(THD *thd, const backup::Table_ref &tbl)
   {
     se= plugin_ref_to_se_ref(table->s->db_plugin);
 
+#ifdef WITH_PARTITION_STORAGE_ENGINE
     /*
       Further check for underlying storage engine is needed
       if table is partitioned
@@ -74,6 +75,7 @@ storage_engine_ref get_storage_engine(THD *thd, const backup::Table_ref &tbl)
       
       se= se_tmp;
     }
+#endif
 
  close:
   

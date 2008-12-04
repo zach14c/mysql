@@ -8,6 +8,8 @@
 #   All other partitioned tables  -> Default
 #
 
+--source include/have_partition.inc
+
 # Find expected backup driver for the current storage engine.
 
 let $exp_drv= Default;
