@@ -557,7 +557,7 @@ static TABLE_SHARE
 
     @todo Rework alternative ways to deal with ER_NO_SUCH TABLE.
   */
-  if (share || thd->is_error() && thd->main_da.sql_errno() != ER_NO_SUCH_TABLE)
+  if (share || thd->is_error() && thd->stmt_da->sql_errno() != ER_NO_SUCH_TABLE)
 
     DBUG_RETURN(share);
 
@@ -1368,9 +1368,9 @@ void close_thread_tables(THD *thd,
    */
   if (!(thd->state_flags & Open_tables_state::BACKUPS_AVAIL))
   {
-    thd->main_da.can_overwrite_status= TRUE;
+    thd->stmt_da->can_overwrite_status= TRUE;
     thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
-    thd->main_da.can_overwrite_status= FALSE;
+    thd->stmt_da->can_overwrite_status= FALSE;
 
     /*
       Reset transaction state, but only if we're not inside a

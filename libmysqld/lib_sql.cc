@@ -103,7 +103,7 @@ emb_advanced_command(MYSQL *mysql, enum enum_server_command command,
 
   /* Clear result variables */
   thd->clear_error();
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
   mysql->affected_rows= ~(my_ulonglong) 0;
   mysql->field_count= 0;
   net_clear_error(net);
@@ -390,7 +390,7 @@ static void emb_free_embedded_thd(MYSQL *mysql)
 static const char * emb_read_statistics(MYSQL *mysql)
 {
   THD *thd= (THD*)mysql->thd;
-  return thd->is_error() ? thd->main_da.message() : "";
+  return thd->is_error() ? thd->stmt_da->message() : "";
 }
 
 
@@ -696,9 +696,10 @@ int check_embedded_connection(MYSQL *mysql, const char *db)
 err:
   {
     NET *net= &mysql->net;
-    strmake(net->last_error, thd->main_da.message(), sizeof(net->last_error)-1);
+    strmake(net->last_error, thd->stmt_da->message(),
+            sizeof(net->last_error)-1);
     memcpy(net->sqlstate,
-           mysql_errno_to_sqlstate(thd->main_da.sql_errno()),
+           mysql_errno_to_sqlstate(thd->stmt_da->sql_errno()),
            sizeof(net->sqlstate)-1);
   }
   return result;
@@ -722,8 +723,8 @@ void THD::clear_data_list()
 
 void THD::clear_error()
 {
-  if (main_da.is_error())
-    main_da.reset_diagnostics_area();
+  if (stmt_da->is_error())
+    stmt_da->reset_diagnostics_area();
 }
 
 static char *dup_str_aux(MEM_ROOT *root, const char *from, uint length,

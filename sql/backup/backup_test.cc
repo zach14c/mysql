@@ -261,7 +261,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
       }
     }
   }
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
   my_eof(thd);
   DBUG_RETURN(res);
 }

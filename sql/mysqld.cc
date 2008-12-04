@@ -3048,9 +3048,9 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
     }
     else
     {
-      if (! thd->main_da.is_error())            // Return only first message
+      if (! thd->stmt_da->is_error())            // Return only first message
       {
-        thd->main_da.set_error_status(thd, error, str);
+        thd->stmt_da->set_error_status(thd, error, str);
       }
       query_cache_abort(&thd->query_cache_tls);
     }

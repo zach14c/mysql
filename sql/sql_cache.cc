@@ -1483,7 +1483,7 @@ def_week_frmt: %lu",
 
   thd->limit_found_rows = query->found_rows();
   thd->status_var.last_query_cost= 0.0;
-  thd->main_da.disable_status();
+  thd->stmt_da->disable_status();
 
   MYSQL_QUERY_CACHE_HIT(thd->query, (ulong) thd->limit_found_rows);
   BLOCK_UNLOCK_RD(query_block);

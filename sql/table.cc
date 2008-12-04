@@ -3475,19 +3475,19 @@ void TABLE_LIST::hide_view_error(THD *thd)
   /* Hide "Unknown column" or "Unknown function" error */
   DBUG_ASSERT(thd->is_error());
 
-  if (thd->main_da.sql_errno() == ER_BAD_FIELD_ERROR ||
-      thd->main_da.sql_errno() == ER_SP_DOES_NOT_EXIST ||
-      thd->main_da.sql_errno() == ER_PROCACCESS_DENIED_ERROR ||
-      thd->main_da.sql_errno() == ER_COLUMNACCESS_DENIED_ERROR ||
-      thd->main_da.sql_errno() == ER_TABLEACCESS_DENIED_ERROR ||
-      thd->main_da.sql_errno() == ER_TABLE_NOT_LOCKED ||
-      thd->main_da.sql_errno() == ER_NO_SUCH_TABLE)
+  if (thd->stmt_da->sql_errno() == ER_BAD_FIELD_ERROR ||
+      thd->stmt_da->sql_errno() == ER_SP_DOES_NOT_EXIST ||
+      thd->stmt_da->sql_errno() == ER_PROCACCESS_DENIED_ERROR ||
+      thd->stmt_da->sql_errno() == ER_COLUMNACCESS_DENIED_ERROR ||
+      thd->stmt_da->sql_errno() == ER_TABLEACCESS_DENIED_ERROR ||
+      thd->stmt_da->sql_errno() == ER_TABLE_NOT_LOCKED ||
+      thd->stmt_da->sql_errno() == ER_NO_SUCH_TABLE)
   {
     TABLE_LIST *top= top_table();
     thd->clear_error();
     my_error(ER_VIEW_INVALID, MYF(0), top->view_db.str, top->view_name.str);
   }
-  else if (thd->main_da.sql_errno() == ER_NO_DEFAULT_FOR_FIELD)
+  else if (thd->stmt_da->sql_errno() == ER_NO_DEFAULT_FOR_FIELD)
   {
     TABLE_LIST *top= top_table();
     thd->clear_error();

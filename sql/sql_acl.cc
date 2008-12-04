@@ -698,7 +698,7 @@ my_bool acl_reload(THD *thd)
   if (simple_open_n_lock_tables(thd, tables))
   {
     sql_print_error("Fatal error: Can't open and lock privilege tables: %s",
-		    thd->main_da.message());
+		    thd->stmt_da->message());
     goto end;
   }
 

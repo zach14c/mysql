@@ -629,7 +629,7 @@ bool do_command(THD *thd)
     Consider moving to init_connect() instead.
   */
   thd->clear_error();				// Clear error message
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
 
   net_new_transaction(net);
 
@@ -1136,7 +1136,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     /* We don't calculate statistics for this command */
     general_log_print(thd, command, NullS);
     net->error=0;				// Don't give 'abort' message
-    thd->main_da.disable_status();              // Don't send anything back
+    thd->stmt_da->disable_status();              // Don't send anything back
     error=TRUE;					// End server
     break;
 
@@ -1313,7 +1313,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #else
     (void) my_net_write(net, (uchar*) buff, length);
     (void) net_flush(net);
-    thd->main_da.disable_status();
+    thd->stmt_da->disable_status();
 #endif
     break;
   }
@@ -1377,9 +1377,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   }
 
   /* If commit fails, we should be able to reset the OK status. */
-  thd->main_da.can_overwrite_status= TRUE;
+  thd->stmt_da->can_overwrite_status= TRUE;
   thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
-  thd->main_da.can_overwrite_status= FALSE;
+  thd->stmt_da->can_overwrite_status= FALSE;
 
   thd->transaction.stmt.reset();
 
@@ -1387,7 +1387,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   /* report error issued during command execution */
   if (thd->killed_errno())
   {
-    if (! thd->main_da.is_set())
+    if (! thd->stmt_da->is_set())
       thd->send_kill_message();
   }
   if (thd->killed == THD::KILL_QUERY || thd->killed == THD::KILL_BAD_DATA)
@@ -4574,9 +4574,9 @@ finish:
   }
 
   /* If commit fails, we should be able to reset the OK status. */
-  thd->main_da.can_overwrite_status= TRUE;
+  thd->stmt_da->can_overwrite_status= TRUE;
   opt_implicit_commit(thd, CF_IMPLICIT_COMMIT_END);
-  thd->main_da.can_overwrite_status= FALSE;
+  thd->stmt_da->can_overwrite_status= FALSE;
 
   DBUG_RETURN(res || thd->is_error());
 
@@ -5367,7 +5367,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
     thd->user_var_events_alloc= thd->mem_root;
   }
   thd->clear_error();
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
   thd->warning_info->reset_for_next_command();
   thd->rand_used= 0;
   thd->sent_row_count= thd->examined_row_count= 0;

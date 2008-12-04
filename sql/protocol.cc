@@ -143,14 +143,14 @@ void net_send_error(THD *thd, uint sql_errno, const char *err)
     It's one case when we can push an error even though there
     is an OK or EOF already.
   */
-  thd->main_da.can_overwrite_status= TRUE;
+  thd->stmt_da->can_overwrite_status= TRUE;
 
   /* Abort multi-result sets */
   thd->server_status&= ~SERVER_MORE_RESULTS_EXISTS;
 
   net_send_error_packet(thd, sql_errno, err);
 
-  thd->main_da.can_overwrite_status= FALSE;
+  thd->stmt_da->can_overwrite_status= FALSE;
 
   DBUG_VOID_RETURN;
 }
@@ -216,14 +216,14 @@ net_send_ok(THD *thd,
     int2store(pos, server_status);
     pos+=2;
   }
-  thd->main_da.can_overwrite_status= TRUE;
+  thd->stmt_da->can_overwrite_status= TRUE;
 
   if (message && message[0])
     pos= net_store_data(pos, (uchar*) message, strlen(message));
   (void) my_net_write(net, buff, (size_t) (pos-buff));
   (void) net_flush(net);
 
-  thd->main_da.can_overwrite_status= FALSE;
+  thd->stmt_da->can_overwrite_status= FALSE;
   DBUG_PRINT("info", ("OK sent, so no more error sending allowed"));
 
   DBUG_VOID_RETURN;
@@ -258,10 +258,10 @@ net_send_eof(THD *thd, uint server_status, uint statement_warn_count)
   /* Set to TRUE if no active vio, to work well in case of --init-file */
   if (net->vio != 0)
   {
-    thd->main_da.can_overwrite_status= TRUE;
+    thd->stmt_da->can_overwrite_status= TRUE;
     write_eof_packet(thd, net, server_status, statement_warn_count);
     (void) net_flush(net);
-    thd->main_da.can_overwrite_status= FALSE;
+    thd->stmt_da->can_overwrite_status= FALSE;
     DBUG_PRINT("info", ("EOF sent, so no more error sending allowed"));
   }
   DBUG_VOID_RETURN;
@@ -441,28 +441,28 @@ static uchar *net_store_length_fast(uchar *packet, uint length)
 void Protocol::end_statement()
 {
   DBUG_ENTER("Protocol::end_statement");
-  DBUG_ASSERT(! thd->main_da.is_sent);
+  DBUG_ASSERT(! thd->stmt_da->is_sent);
 
   /* Can not be true, but do not take chances in production. */
-  if (thd->main_da.is_sent)
+  if (thd->stmt_da->is_sent)
     DBUG_VOID_RETURN;
 
-  switch (thd->main_da.status()) {
+  switch (thd->stmt_da->status()) {
   case Diagnostics_area::DA_ERROR:
     /* The query failed, send error to log and abort bootstrap. */
-    send_error(thd->main_da.sql_errno(),
-               thd->main_da.message());
+    send_error(thd->stmt_da->sql_errno(),
+               thd->stmt_da->message());
     break;
   case Diagnostics_area::DA_EOF:
-    send_eof(thd->main_da.server_status(),
-             thd->main_da.statement_warn_count());
+    send_eof(thd->stmt_da->server_status(),
+             thd->stmt_da->statement_warn_count());
     break;
   case Diagnostics_area::DA_OK:
-    send_ok(thd->main_da.server_status(),
-            thd->main_da.statement_warn_count(),
-            thd->main_da.affected_rows(),
-            thd->main_da.last_insert_id(),
-            thd->main_da.message());
+    send_ok(thd->stmt_da->server_status(),
+            thd->stmt_da->statement_warn_count(),
+            thd->stmt_da->affected_rows(),
+            thd->stmt_da->last_insert_id(),
+            thd->stmt_da->message());
     break;
   case Diagnostics_area::DA_DISABLED:
     break;
@@ -472,7 +472,7 @@ void Protocol::end_statement()
     send_ok(thd->server_status, 0, 0, 0, NULL);
     break;
   }
-  thd->main_da.is_sent= TRUE;
+  thd->stmt_da->is_sent= TRUE;
   DBUG_VOID_RETURN;
 }
 
@@ -1524,7 +1524,7 @@ void Ed_result::send_ok(THD *thd,
   DBUG_ENTER("Ed_result::send_ok()");
   DBUG_ASSERT(m_status == Diagnostics_area::DA_EMPTY);
 
-  m_status= thd->main_da.status();
+  m_status= thd->stmt_da->status();
   DBUG_ASSERT(m_status == Diagnostics_area::DA_OK);
 
   DBUG_ASSERT(m_warning_info.statement_warn_count() == statement_warn_count);
@@ -1546,7 +1546,7 @@ void Ed_result::send_eof(THD *thd, uint server_status,
   DBUG_ENTER("Ed_result::send_eof");
   DBUG_ASSERT(m_status == Diagnostics_area::DA_EMPTY);
 
-  m_status= thd->main_da.status();
+  m_status= thd->stmt_da->status();
   DBUG_ASSERT(m_status == Diagnostics_area::DA_EOF);
 
   DBUG_ASSERT(m_warning_info.statement_warn_count() == statement_warn_count);
@@ -1563,7 +1563,7 @@ void Ed_result::send_error(THD *thd, uint sql_errno, const char *err_msg)
   DBUG_ENTER("Ed_result::send_error()");
   DBUG_ASSERT(m_status == Diagnostics_area::DA_EMPTY);
 
-  m_status= thd->main_da.status();
+  m_status= thd->stmt_da->status();
   DBUG_ASSERT(m_status == Diagnostics_area::DA_ERROR);
 
   m_sql_errno= sql_errno;

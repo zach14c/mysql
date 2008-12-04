@@ -4382,8 +4382,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
           we will store the error message in a result set row 
           and then clear.
         */
-        if (thd->main_da.is_ok())
-          thd->main_da.reset_diagnostics_area();
+        if (thd->stmt_da->is_ok())
+          thd->stmt_da->reset_diagnostics_area();
         goto send_result;
       }
     }
@@ -4506,8 +4506,8 @@ send_result_message:
         we will store the error message in a result set row 
         and then clear.
       */
-      if (thd->main_da.is_ok())
-        thd->main_da.reset_diagnostics_area();
+      if (thd->stmt_da->is_ok())
+        thd->stmt_da->reset_diagnostics_area();
       trans_commit_stmt(thd);
       close_thread_tables(thd);
       if (!result_code) // recreation went ok
@@ -4525,7 +4525,7 @@ send_result_message:
         DBUG_ASSERT(thd->is_error());
         if (thd->is_error())
         {
-          const char *err_msg= thd->main_da.message();
+          const char *err_msg= thd->stmt_da->message();
           if (!thd->vio_ok())
           {
             sql_print_error(err_msg);

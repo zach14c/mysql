@@ -278,7 +278,7 @@ static bool send_prep_stmt(Prepared_statement *stmt, uint columns)
                                           Protocol::SEND_EOF);
   }
   /* Flag that a response has already been sent */
-  thd->main_da.disable_status();
+  thd->stmt_da->disable_status();
   DBUG_RETURN(error);
 }
 #else
@@ -290,7 +290,7 @@ static bool send_prep_stmt(Prepared_statement *stmt,
   thd->client_stmt_id= stmt->id;
   thd->client_param_count= stmt->param_count;
   thd->clear_error();
-  thd->main_da.disable_status();
+  thd->stmt_da->disable_status();
 
   return 0;
 }
@@ -2656,7 +2656,7 @@ void mysql_stmt_close(THD *thd, char *packet)
   Prepared_statement *stmt;
   DBUG_ENTER("mysql_stmt_close");
 
-  thd->main_da.disable_status();
+  thd->stmt_da->disable_status();
 
   if (!(stmt= find_prepared_statement(thd, stmt_id)))
     DBUG_VOID_RETURN;
@@ -2731,7 +2731,7 @@ void mysql_stmt_get_longdata(THD *thd, char *packet, ulong packet_length)
 
   status_var_increment(thd->status_var.com_stmt_send_long_data);
 
-  thd->main_da.disable_status();
+  thd->stmt_da->disable_status();
 #ifndef EMBEDDED_LIBRARY
   /* Minimal size of long data packet is 6 bytes */
   if (packet_length < MYSQL_LONG_DATA_HEADER)
@@ -2818,7 +2818,7 @@ mysql_execute_direct(THD *thd, Server_runnable *server_runnable,
 
   thd->protocol= protocol_saved;
 
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
 
   DBUG_RETURN(rc);
 }
@@ -3379,7 +3379,7 @@ reexecute:
       reprepare_observer.is_invalidated() &&
       reprepare_attempt++ < MAX_REPREPARE_ATTEMPTS)
   {
-    DBUG_ASSERT(thd->main_da.sql_errno() == ER_NEED_REPREPARE);
+    DBUG_ASSERT(thd->stmt_da->sql_errno() == ER_NEED_REPREPARE);
     thd->clear_error();
 
     error= reprepare();
