@@ -1290,7 +1290,7 @@ int ha_rollback_trans(THD *thd, bool all)
     if (is_real_trans)
     {
       if (thd->transaction_rollback_request)
-        thd->transaction.xid_state.rm_error= thd->main_da.sql_errno();
+        thd->transaction.xid_state.rm_error= thd->stmt_da->sql_errno();
       else
         thd->transaction.xid_state.xid.null();
     }

@@ -1183,7 +1183,7 @@ int Backup_restore_ctx::do_restore()
 
   if (read_meta_data(info, s))
   {
-    m_thd->main_da.reset_diagnostics_area();    // Never errors
+    m_thd->stmt_da->reset_diagnostics_area();    // Never errors
 
     fatal_error(ER_BACKUP_READ_META);
     DBUG_RETURN(m_error);
@@ -1203,7 +1203,7 @@ int Backup_restore_ctx::do_restore()
     following line should be removed.
    */
   close_thread_tables(m_thd);                   // Never errors
-  m_thd->main_da.reset_diagnostics_area();      // Never errors  
+  m_thd->stmt_da->reset_diagnostics_area();      // Never errors  
 
   if (lock_tables_for_restore())                // logs errors
     DBUG_RETURN(m_error);
@@ -1241,7 +1241,7 @@ int Backup_restore_ctx::do_restore()
     following line should be removed.
    */
   close_thread_tables(m_thd);                   // Never errors
-  m_thd->main_da.reset_diagnostics_area();      // Never errors
+  m_thd->stmt_da->reset_diagnostics_area();      // Never errors
 
   /*
     Report validity point time and binlog position stored in the backup image

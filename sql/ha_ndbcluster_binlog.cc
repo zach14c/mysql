@@ -280,13 +280,13 @@ static void run_query(THD *thd, char *buf, char *end,
     Thd_ndb *thd_ndb= get_thd_ndb(thd);
     for (i= 0; no_print_error[i]; i++)
       if ((thd_ndb->m_error_code == no_print_error[i]) ||
-          (thd->main_da.sql_errno() == (unsigned) no_print_error[i]))
+          (thd->stmt_da->sql_errno() == (unsigned) no_print_error[i]))
         break;
     if (!no_print_error[i])
       sql_print_error("NDB: %s: error %s %d(ndb: %d) %d %d",
                       buf,
-                      thd->main_da.message(),
-                      thd->main_da.sql_errno(),
+                      thd->stmt_da->message(),
+                      thd->stmt_da->sql_errno(),
                       thd_ndb->m_error_code,
                       (int) thd->is_error(), thd->is_slave_error);
   }
@@ -307,7 +307,7 @@ static void run_query(THD *thd, char *buf, char *end,
     is called from ndbcluster_reset_logs(), which is called from
     mysql_flush().
   */
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
 
   thd->options= save_thd_options;
   thd->query_length= save_thd_query_length;
@@ -2526,8 +2526,8 @@ static int open_ndb_binlog_index(THD *thd, TABLE **ndb_binlog_index)
       sql_print_error("NDB Binlog: Opening ndb_binlog_index: killed");
     else
       sql_print_error("NDB Binlog: Opening ndb_binlog_index: %d, '%s'",
-                      thd->main_da.sql_errno(),
-                      thd->main_da.message());
+                      thd->stmt_da->sql_errno(),
+                      thd->stmt_da->message());
     THD_SET_PROC_INFO(thd, save_proc_info);
     return -1;
   }

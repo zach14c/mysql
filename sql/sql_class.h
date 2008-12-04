@@ -1751,6 +1751,7 @@ public:
   Warning_info main_warning_info;
   Warning_info *warning_info;
   Diagnostics_area main_da;
+  Diagnostics_area *stmt_da;
 #if defined(ENABLED_PROFILING)
   PROFILING  profiling;
 #endif
@@ -2105,8 +2106,8 @@ public:
   inline void clear_error()
   {
     DBUG_ENTER("clear_error");
-    if (main_da.is_error())
-      main_da.reset_diagnostics_area();
+    if (stmt_da->is_error())
+      stmt_da->reset_diagnostics_area();
     is_slave_error= 0;
     DBUG_VOID_RETURN;
   }
@@ -2125,7 +2126,7 @@ public:
   */
   inline void fatal_error()
   {
-    DBUG_ASSERT(main_da.is_error());
+    DBUG_ASSERT(stmt_da->is_error());
     is_fatal_error= 1;
     DBUG_PRINT("error",("Fatal error set"));
   }
@@ -2142,7 +2143,7 @@ public:
 
     To raise this flag, use my_error().
   */
-  inline bool is_error() const { return main_da.is_error(); }
+  inline bool is_error() const { return stmt_da->is_error(); }
   inline CHARSET_INFO *charset() { return variables.character_set_client; }
   void update_charset();
 
@@ -2373,22 +2374,22 @@ private:
 };
 
 
-/** A short cut for thd->main_da.set_ok_status(). */
+/** A short cut for thd->stmt_da->set_ok_status(). */
 
 inline void
 my_ok(THD *thd, ha_rows affected_rows= 0, ulonglong id= 0,
         const char *message= NULL)
 {
-  thd->main_da.set_ok_status(thd, affected_rows, id, message);
+  thd->stmt_da->set_ok_status(thd, affected_rows, id, message);
 }
 
 
-/** A short cut for thd->main_da.set_eof_status(). */
+/** A short cut for thd->stmt_da->set_eof_status(). */
 
 inline void
 my_eof(THD *thd)
 {
-  thd->main_da.set_eof_status(thd);
+  thd->stmt_da->set_eof_status(thd);
 }
 
 #define tmp_disable_binlog(A)       \

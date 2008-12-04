@@ -528,6 +528,7 @@ THD::THD()
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
    main_warning_info(0),
    warning_info(&main_warning_info),
+   stmt_da(&main_da),
    global_read_lock(0),
    is_fatal_error(0),
    transaction_rollback_request(0),
@@ -1579,7 +1580,7 @@ void select_send::abort()
 {
   DBUG_ENTER("select_send::abort");
   if (is_result_set_started && thd->spcont &&
-      thd->spcont->find_handler(thd, thd->main_da.sql_errno(),
+      thd->spcont->find_handler(thd, thd->stmt_da->sql_errno(),
                                 MYSQL_ERROR::WARN_LEVEL_ERROR))
   {
     /*

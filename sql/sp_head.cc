@@ -2847,7 +2847,7 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     {
       res= m_lex_keeper.reset_lex_and_exec_core(thd, nextp, FALSE, this);
 
-      if (thd->main_da.is_eof())
+      if (thd->stmt_da->is_eof())
         thd->protocol->end_statement();
 
       query_cache_end_of_result(thd);
@@ -2861,7 +2861,7 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     thd->query_length= query_length;
 
     if (!thd->is_error())
-      thd->main_da.reset_diagnostics_area();
+      thd->stmt_da->reset_diagnostics_area();
   }
   DBUG_RETURN(res);
 }

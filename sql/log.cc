@@ -3495,10 +3495,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
-    thd->main_da.reset_diagnostics_area();
-    thd->main_da.set_error_status(thd, 
-                                  ER_BACKUP_PROGRESS_TABLES, 
-                                  ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -3517,10 +3517,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
-    thd->main_da.reset_diagnostics_area();
-    thd->main_da.set_error_status(thd, 
-                                  ER_BACKUP_PROGRESS_TABLES, 
-                                  ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
