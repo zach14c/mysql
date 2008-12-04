@@ -113,6 +113,7 @@ int maria_close(register MARIA_HA *info)
     }
 #ifdef THREAD
     thr_lock_delete(&share->lock);
+    (void) pthread_mutex_destroy(&share->key_del_lock);
     {
       int i,keys;
       keys = share->state.header.keys;
@@ -164,11 +165,7 @@ int maria_close(register MARIA_HA *info)
     (void)(pthread_mutex_destroy(&share->intern_lock));
     my_free((uchar *)share, MYF(0));
   }
-  if (info->ftparser_param)
-  {
-    my_free((uchar*)info->ftparser_param, MYF(0));
-    info->ftparser_param= 0;
-  }
+  my_free(info->ftparser_param, MYF(MY_ALLOW_ZERO_PTR));
   if (info->dfile.file >= 0)
   {
     /*
