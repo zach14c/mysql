@@ -915,7 +915,6 @@ void Backup_restore_ctx::unlock_tables()
   @return error code given as input or stored in the context object if
   a fatal error was reported before.
  */ 
-inline
 int Backup_restore_ctx::log_error(int error_code, ...)
 {
   if (m_error)
