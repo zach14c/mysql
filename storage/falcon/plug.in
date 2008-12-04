@@ -9,12 +9,12 @@ AC_CHECK_FUNC(atomic_cas_32, AC_DEFINE([HAVE_SOLARIS_ATOMIC], [1], [Define to 1 
 
 # Check for supported machine types.
 AC_CACHE_CHECK([if Falcon Storage Engine is supported on $MACHINE_TYPE],
-  			   falcon_supported_by_machine,[
+  			   falcon_cv_supported_by_machine,[
   case "$BASE_MACHINE_TYPE" in
-    i386)   falcon_supported_by_machine="yes" ;;
-    amd64)  falcon_supported_by_machine="yes" ;;
-    x86_64) falcon_supported_by_machine="yes" ;;
-    powerpc)falcon_supported_by_machine="yes" ;;
+    i386)   falcon_cv_supported_by_machine="yes" ;;
+    amd64)  falcon_cv_supported_by_machine="yes" ;;
+    x86_64) falcon_cv_supported_by_machine="yes" ;;
+    powerpc)falcon_cv_supported_by_machine="yes" ;;
     sparc)
       AC_TRY_LINK([
 #include <stdlib.h>
@@ -23,11 +23,11 @@ int compare= 1;
 int exchange= 2;
       ],[
 #if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
-  /* When compiling with Sun Studio compiler we need the Solaris atomic 
+  /* When compiling with Sun Studio compiler we need the Solaris atomic
      functions. These were first introduced in Solaris 10. */
 #if defined(HAVE_SOLARIS_ATOMIC)
   return 0;
-#else 
+#else
   /* Fail if the atomic functions are not available. Support for this
      will be added when the fix for bug 37622 is completed. */
 #error Need Solaris atomic functions to use Sun Studio compiler
@@ -48,14 +48,14 @@ int exchange= 2;
 	  : "memory", "cc"
 	  )
 #endif /* !__SUNPRO_C && !__SUNPRO_CC */
-      ], falcon_supported_by_machine="yes", 
-         falcon_supported_by_machine="no")
+      ], falcon_cv_supported_by_machine="yes",
+         falcon_cv_supported_by_machine="no")
       ;;
-    *) falcon_supported_by_machine="no" ;;
+    *) falcon_cv_supported_by_machine="no" ;;
   esac
 ])
 
-if test "$falcon_supported_by_machine" != "yes"; then
+if test "$falcon_cv_supported_by_machine" != "yes"; then
   mysql_plugin_falcon="no"
   with_plugin_falcon="no"
 fi
@@ -67,10 +67,10 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_LANG_PUSH([C++])
   ac_save_CXXFLAGS="$CXXFLAGS"
   AC_CACHE_CHECK([compiler flag to enable implicit templates],
-                 falcon_cxx_enable_implicit_templates,[
+                 falcon_cv_cxx_enable_implicit_templates,[
     CXXFLAGS="$ac_save_CXXFLAGS -fimplicit-templates"
     AC_LINK_IFELSE([AC_LANG_PROGRAM()],
-      falcon_cxx_enable_implicit_templates="-fimplicit-templates"
+      falcon_cv_cxx_enable_implicit_templates="-fimplicit-templates"
     )
   ])
 
@@ -79,36 +79,36 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   # doing that it should be removed from here, and the CXXLDFLAG setting below
   # will do the right thing for g++.
   AC_CACHE_CHECK([compiler flag to enable exceptions],
-                 falcon_cxx_enable_exceptions,[
+                 falcon_cv_cxx_enable_exceptions,[
     m4_foreach([cxxflag], [[-fexceptions -lstdc++], [-features=except]],[
       CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
       AC_LINK_IFELSE([AC_LANG_PROGRAM()],
-        falcon_cxx_enable_exceptions="cxxflag"
+        falcon_cv_cxx_enable_exceptions="cxxflag"
       )
     ])
   ])
 
   AC_CACHE_CHECK([linker flag to enable STL],
-                 falcon_cxx_enable_stl,[
+                 falcon_cv_cxx_enable_stl,[
     m4_foreach([cxxflag], [-lstdc++],[
       CXXFLAGS="$ac_save_CXXFLAGS cxxflag"
       AC_LINK_IFELSE([AC_LANG_PROGRAM()],
-        falcon_cxx_enable_stl="cxxflag"
+        falcon_cv_cxx_enable_stl="cxxflag"
       )
     ])
   ])
 
   AC_CACHE_CHECK([compiler flag to silence offsetof warnings],
-                 falcon_cxx_no_invalid_offsetof,[
+                 falcon_cv_cxx_no_invalid_offsetof,[
     CXXFLAGS="$ac_save_CXXFLAGS -Wno-invalid-offsetof"
     AC_LINK_IFELSE([AC_LANG_PROGRAM()],
-      falcon_cxx_no_invalid_offsetof="-Wno-invalid-offsetof"
+      falcon_cv_cxx_no_invalid_offsetof="-Wno-invalid-offsetof"
     )
   ])
 
   # Falcon uses exceptions and STL.
-  CXXLDFLAGS="$CXXLDFLAGS $falcon_cxx_enable_stl"
-  FALCON_CXXFLAGS="$falcon_cxx_no_invalid_offsetof $falcon_cxx_enable_implicit_templates $falcon_cxx_enable_exceptions"
+  CXXLDFLAGS="$CXXLDFLAGS $falcon_cv_cxx_enable_stl"
+  FALCON_CXXFLAGS="$falcon_cv_cxx_no_invalid_offsetof $falcon_cv_cxx_enable_implicit_templates $falcon_cv_cxx_enable_exceptions"
   case "$with_debug" in
     yes)  FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG" ;;
     full) FALCON_CXXFLAGS="$FALCON_CXXFLAGS -D_DEBUG -DMEM_DEBUG" ;;
@@ -120,7 +120,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   # compiled program and throwing and catching an exception
   CXXFLAGS=$FALCON_CXXFLAGS
   AC_CACHE_CHECK([if compiler and compiler options support C++ exceptions for Falcon],
-	            falcon_supported_by_compiler,[
+	            falcon_cv_supported_by_compiler,[
   AC_TRY_RUN([
     int main() {
       try {
@@ -129,13 +129,13 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
       catch (int) {
         return 0;
       }
-      return -1; 
+      return -1;
     }
-  ], falcon_supported_by_compiler="yes",
-     falcon_supported_by_compiler="no", )
+  ], falcon_cv_supported_by_compiler="yes",
+     falcon_cv_supported_by_compiler="no", )
   ])
 
-  if test "$falcon_supported_by_compiler" != "yes"; then
+  if test "$falcon_cv_supported_by_compiler" != "yes"; then
     echo "Falcon must be compiled with support for C++ exceptions enabled."
     echo "Please adjust your compiler flags or disable support for Falcon (--without-plugin-falcon)."
     exit 1
@@ -145,7 +145,7 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   AC_LANG_POP([C++])
 
   # When compiling with Sun Studio compiler on SPARC assembly code for
-  # Interlock operations needs to be included. This has been implemented 
+  # Interlock operations needs to be included. This has been implemented
   # as "inline templates" in a separate file
   FALCON_SPARC_ASSEMBLY=""
   case $host in

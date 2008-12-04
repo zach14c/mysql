@@ -1,27 +1,33 @@
 --source include/have_falcon.inc
 
 #
-# Bug #39708: Falcon: non-descriptive error message when creating a big key
+# Query Falcon related tables in INFORMATION_SCHEMA
+# to check plugin code path.
 #
---echo *** Bug #39708 ***
+--echo *** Falcon related tables in INFORMATION_SCHEMA ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
 # ----------------------------------------------------- #
-let $engine = 'Falcon';
-eval SET @@storage_engine = $engine;
-
---disable_warnings
-DROP TABLE IF EXISTS t1;
---enable_warnings
+USE INFORMATION_SCHEMA;
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
+--disable_result_log
+SELECT count(*) FROM FALCON_RECORD_CACHE_DETAIL;
+SELECT count(*) FROM FALCON_RECORD_CACHE_SUMMARY;
+SELECT count(*) FROM FALCON_SERIAL_LOG_INFO;
+SELECT count(*) FROM FALCON_SYNCOBJECTS;
+SELECT count(*) FROM FALCON_SYSTEM_MEMORY_DETAIL;
+SELECT count(*) FROM FALCON_SYSTEM_MEMORY_SUMMARY;
+SELECT count(*) FROM FALCON_TABLESPACE_IO;
+SELECT count(*) FROM FALCON_TRANSACTIONS;
+SELECT count(*) FROM FALCON_TRANSACTION_SUMMARY;
+--enable_result_log
 
---error ER_TOO_LONG_KEY
-CREATE TABLE t1(a VARCHAR(140) CHARACTER SET utf8, KEY(a));
-SHOW WARNINGS;
+# FALCON_VERSION should have only one line.
+SELECT count(*) FROM FALCON_VERSION;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
@@ -32,5 +38,6 @@ SHOW WARNINGS;
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
-# No final cleanup needed.
+# No need for final cleanup.
 #DROP TABLE t1;
+USE test;
