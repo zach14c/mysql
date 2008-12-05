@@ -8258,7 +8258,7 @@ mysqld_get_one_option(int optid,
   {
     if (!argument || !argument[0])
     {
-      log_backup_output_options= LOG_FILE;
+      log_backup_output_options= LOG_TABLE;
       log_backup_output_str= log_output_typelib.type_names[1];
     }
     else

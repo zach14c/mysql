@@ -1,0 +1,50 @@
+--source include/have_falcon.inc
+
+#
+# Bug #40158: Falcon assertion in StorageInterface::encodeRecord() line 2635 on CREATE TABLE
+#
+--echo *** Bug #40158 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+CREATE TABLE t1 (`"strangename"` int);
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1;
+SELECT `"strangename"` FROM t1;
+DROP TABLE t1;
+
+SET LOCAL SQL_MODE=ANSI_QUOTES;
+
+CREATE TABLE t1 ("""strangename""" int);
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1;
+SELECT """strangename""" FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (`""strangename""` int);
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1;
+SELECT `""strangename""` FROM t1;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+
+SELECT COUNT(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;

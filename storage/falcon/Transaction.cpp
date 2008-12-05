@@ -250,7 +250,8 @@ void Transaction::commit()
 
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
-	Log::log(LogXARecovery, "%d: Commit transaction %d\n", database->deltaTime, transactionId);
+	Log::log(LogXARecovery, "%d: Commit %sTransaction %d\n", 
+		database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
 
 	if (state == Active)
 		{
@@ -340,6 +341,7 @@ void Transaction::commitNoUpdates(void)
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
+	Log::log(LogXARecovery, "%d: CommitNoUpdates transaction %d\n", database->deltaTime, transactionId);
 	++transactionManager->committed;
 	
 	if (deferredIndexes)
@@ -383,6 +385,8 @@ void Transaction::rollback()
 
 	if (!isActive())
 		throw SQLEXCEPTION (RUNTIME_ERROR, "transaction is not active");
+
+	Log::log(LogXARecovery, "%d: Rollback transaction %d\n", database->deltaTime, transactionId);
 
 	if (deferredIndexes)
 		releaseDeferredIndexes();
@@ -534,7 +538,18 @@ void Transaction::chillRecords()
 		
 	uint32 chilledBefore = chilledRecords;
 	uint64 totalDataBefore = totalRecordData;
+	
 	database->dbb->logUpdatedRecords(this, *chillPoint, true);
+	
+	// At the start of a chill operation, all savepoints are updated with the id of the
+	// savepoint being chilled. This ensures that each savepoint in a transaction always
+	// has a bitmap of savepoints that were chilled after it.
+
+	// When a savepoint is rolled back, those newer savepoints for which records have also
+	// been chilled are recorded in the serial log.
+
+	// The idea is that if savepoint N is rolled back, then chilled records attached to
+	// savepoints >= N	are ignored and not committed to the database.
 	
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->id != curSavePointId)
@@ -951,6 +966,9 @@ void Transaction::writeComplete(void)
 	if (dependencies == 0)
 		commitRecords();
 
+//	Log::log(LogXARecovery, "%d: WriteComplete %sTransaction %d\n", 
+// 	database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
+
 	writePending = false;
 }
 
@@ -1093,6 +1111,8 @@ int Transaction::createSavepoint()
 	else
 		savePoint = new SavePoint;
 	
+	// The savepoint begins with the next record added to the transaction
+	
 	savePoint->records = (lastRecord) ? &lastRecord->nextInTrans : &firstRecord;
 	savePoint->id = ++curSavePointId;
 	savePoint->next = savePoints;
@@ -1117,10 +1137,13 @@ void Transaction::releaseSavepoint(int savePointId)
 	for (SavePoint **ptr = &savePoints, *savePoint; (savePoint = *ptr); ptr = &savePoint->next)
 		if (savePoint->id == savePointId)
 			{
+			
+			// Savepoints are linked in descending order, so the next lower id is next on the list
+			
 			int nextLowerSavePointId = (savePoint->next) ? savePoint->next->id : 0;
 			*ptr = savePoint->next;
 			
-			// If we have backed logged records, merge them in to the previous savepoint or the transaction itself.
+			// If we have backed logged records, merge them in to the previous savepoint or the transaction itself
 			
 			if (savePoint->backloggedRecords)
 				{
@@ -1148,7 +1171,8 @@ void Transaction::releaseSavepoint(int savePointId)
 			if (savePoint->savepoints)
 				savePoint->clear();
 
-			// commit pending record versions to the next pending savepoint
+			// This savepoint is no longer needed, so commit pending record versions to the next pending savepoint
+			// Scavenge prior record versions having 1) the same transaction and 2) savepoint >= the savepoint being released
 			
 			for (RecordVersion *record = *savePoint->records; record && record->savePointId == savePointId; record = record->nextInTrans)
 				{
@@ -1218,12 +1242,19 @@ void Transaction::rollbackSavepoint(int savePointId)
 	if ((savePoint) && (savePoint->id != savePointId))
 		throw SQLError(RUNTIME_ERROR, "invalid savepoint");
 
+	// Records within this savepoint or later may have been chilled and are
+	// already in the serial log, but they are now obsolete. To ensure that those
+	// records are not committed to the database, append the serial log with a SRLSavepointRollback
+	// record for this savepoint and for any greater savepoint that has been chilled.
+	
 	if (chilledRecords)
 		{
 		database->serialLog->logControl->savepointRollback.append(transactionId, savePointId);
 		
+		// SavePoint::savepoints is a bitmap of other savepoints that have been chilled
+		
 		if (savePoint->savepoints)
-			for (int n = 0; (n = savePoint->savepoints->nextSet(n)) >= 0; ++n)
+			for (int n = savePointId; (n = savePoint->savepoints->nextSet(n)) >= savePointId; ++n)
 				database->serialLog->logControl->savepointRollback.append(transactionId, n);
 		}				
 
@@ -1285,10 +1316,9 @@ void Transaction::rollbackSavepoint(int savePointId)
 		if (savePoint->backloggedRecords)
 			database->backLog->rollbackRecords(savePoint->backloggedRecords, this);
 				
-		// Move skipped savepoints object to the free list
-		// Leave the target savepoint empty, but connected to the transaction.
+		// Move skipped savepoint objects to the free list
 		
-		if (savePoint->id > savePointId)
+		if (savePoint->id >= savePointId)
 			{
 			savePoints = savePoint->next;
 			savePoint->next = freeSavePoints;

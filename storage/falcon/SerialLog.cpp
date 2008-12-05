@@ -131,6 +131,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	gophers = NULL;
 	wantToSerializeGophers = 0;
 	serializeGophers = 0;
+	startRecordVirtualOffset = 0;
 	
 	for (uint n = 0; n < falcon_gopher_threads; ++n)
 		{
@@ -217,7 +218,9 @@ void SerialLog::recover()
 	sync.lock(Exclusive);
 	recovering = true;
 	recoveryPhase = 0;	// Find last block and recovery block
-	
+
+	defaultDbb->setCacheRecovering(true);
+
 	// See if either or both files have valid blocks
 
 	SerialLogWindow *window1 = allocWindow(file1, 0);
@@ -414,7 +417,8 @@ void SerialLog::recover()
 		info->sectionUseVector.zap();
 		info->indexUseVector.zap();
 		}
-		
+
+	defaultDbb->setCacheRecovering(false);
 	Log::log("Recovery complete\n");
 	recoveryPhase = 0;	// Find last lock and recovery block
 }
@@ -708,6 +712,8 @@ void SerialLog::startRecord()
 	if (writeError)
 		throw SQLError(IO_ERROR_SERIALLOG, "Previous I/O error on serial log prevents further processing");
 
+	startRecordVirtualOffset = writeWindow->getNextVirtualOffset();
+	
 	if (writePtr == writeBlock->data)
 		putVersion();
 

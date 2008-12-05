@@ -1,0 +1,34 @@
+*** Bug #40158 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (`"strangename"` int);
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1;
+"strangename"
+1
+SELECT `"strangename"` FROM t1;
+"strangename"
+1
+DROP TABLE t1;
+SET LOCAL SQL_MODE=ANSI_QUOTES;
+CREATE TABLE t1 ("""strangename""" int);
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1;
+"strangename"
+1
+SELECT """strangename""" FROM t1;
+"strangename"
+1
+DROP TABLE t1;
+CREATE TABLE t1 (`""strangename""` int);
+INSERT INTO t1 VALUES (1);
+SELECT * FROM t1;
+""strangename""
+1
+SELECT `""strangename""` FROM t1;
+""strangename""
+1
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+1
+DROP TABLE t1;

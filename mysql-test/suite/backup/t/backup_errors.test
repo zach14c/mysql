@@ -294,3 +294,54 @@ DROP DATABASE db1;
 
 --echo
 --echo Done testing for Bug#38624
+
+
+--echo 
+--echo Testing RESTORE ... OVERWRITE functionality
+--echo See bug#34579
+--echo
+
+--source include/not_embedded.inc
+
+--echo Initialize
+CREATE DATABASE db1;
+USE db1;
+CREATE TABLE table1 (text VARCHAR(20));
+INSERT INTO table1 VALUES ('Inserted before');
+
+--echo 
+--echo Backup database
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'overwrite.bak';
+
+--echo 
+--echo Insert more data and display
+INSERT INTO table1 VALUES ('Inserted after');
+SELECT * FROM table1;
+
+--echo 
+--echo Restore without OVERWRITE flag; will fail
+--error ER_RESTORE_DB_EXISTS
+RESTORE FROM 'overwrite.bak';
+
+--echo 
+--echo Restore with OVERWRITE flag; will succeed
+--replace_column 1 #
+RESTORE FROM 'overwrite.bak' OVERWRITE;
+
+--echo 
+--echo Show that inserted value 2 is not there
+SELECT * FROM table1;
+
+DROP DATABASE db1;
+
+--echo 
+--echo Restore after deleting db; will succeed
+--replace_column 1 #
+RESTORE FROM 'overwrite.bak';
+
+--echo 
+--echo Show that inserted value 2 is not there
+SELECT * FROM table1;
+
+DROP DATABASE db1;

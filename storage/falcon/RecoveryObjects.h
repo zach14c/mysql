@@ -40,6 +40,7 @@ public:
 	void			reset();
 	bool			bumpIncarnation(int objectNumber, int tableSpaceId, int state, bool pass1);
 	void			clear();
+	RecoveryPage*	findInHashBucket(RecoveryPage *head, int objectNumber, int tableSpaceId);
 	RecoveryPage*	findRecoveryObject(int objectNumber, int tableSpaceId);
 	void			setActive(int objectNumber, int tableSpaceId);
 	void			setInactive(int objectNumber, int tableSpaceId);

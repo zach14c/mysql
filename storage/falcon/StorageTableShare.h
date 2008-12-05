@@ -123,7 +123,7 @@ public:
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
 	virtual int			haveIndexes(int indexCount);
-	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength);
+	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength, bool doubleQuotes);
 	virtual void		setTablePath(const char* path, bool tempTable);
 	virtual void		registerCollation(const char* collationName, void* arg);
 

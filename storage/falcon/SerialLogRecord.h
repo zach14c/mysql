@@ -111,6 +111,7 @@ public:
 	SerialLog			*log;
 	SerialLogControl	*control;
 	TransId				transactionId;
+	UCHAR				type;
 };
 
 
