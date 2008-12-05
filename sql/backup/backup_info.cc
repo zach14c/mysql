@@ -8,6 +8,7 @@
 */
 
 #include "../mysql_priv.h"
+#include "../ha_partition.h"
 
 #include "backup_info.h"
 #include "backup_kernel.h"
@@ -34,6 +35,50 @@ storage_engine_ref get_storage_engine(THD *thd, const backup::Table_ref &tbl)
   if (table)
   {
     se= plugin_ref_to_se_ref(table->s->db_plugin);
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    /*
+      Further check for underlying storage engine is needed
+      if table is partitioned
+    */
+
+    storage_engine_ref se_tmp= NULL;
+
+    if (table->part_info)
+    {
+      partition_info *p_info=  table->part_info;
+      List_iterator<partition_element> p_it(p_info->partitions);
+      partition_element *p_el;
+      
+      while ((p_el= p_it++))
+      {
+        if (!se_tmp)
+        {
+          se_tmp= hton2plugin[p_el->engine_type->slot];
+          ::handlerton *h= se_hton(se_tmp);
+
+          /* 
+             Native drivers don't support partitioning. Let Falcon and
+             InnoDB use Snapshot driver; all other storage engines use
+             Default.
+          */
+          if (h->start_consistent_snapshot == NULL) 
+            goto close; // This is not a Falcon or InnoDB storage engine
+
+          continue;
+        }
+
+        // use Default driver if partitions have different storage engines
+        if (se_tmp != hton2plugin[p_el->engine_type->slot])
+          goto close;
+      };
+      
+      se= se_tmp;
+    }
+#endif
+
+ close:
+  
     ::intern_close_table(table);
     my_free(table, MYF(0));
   }
