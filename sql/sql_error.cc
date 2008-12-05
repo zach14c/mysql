@@ -45,6 +45,143 @@ This file contains the implementation of error and warnings related
 #include "mysql_priv.h"
 #include "sp_rcontext.h"
 
+/**
+  Clear this diagnostics area.
+
+  Normally called at the end of a statement.
+*/
+
+void
+Diagnostics_area::reset_diagnostics_area()
+{
+  DBUG_ENTER("reset_diagnostics_area");
+#ifdef DBUG_OFF
+  can_overwrite_status= FALSE;
+  /** Don't take chances in production */
+  m_message[0]= '\0';
+  m_sql_errno= 0;
+  m_server_status= 0;
+  m_affected_rows= 0;
+  m_last_insert_id= 0;
+  m_statement_warn_count= 0;
+#endif
+  is_sent= FALSE;
+  /** Tiny reset in debug mode to see garbage right away */
+  m_status= DA_EMPTY;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Set OK status -- ends commands that do not return a
+  result set, e.g. INSERT/UPDATE/DELETE.
+*/
+
+void
+Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
+                                ulonglong last_insert_id_arg,
+                                const char *message_arg)
+{
+  DBUG_ENTER("set_ok_status");
+  DBUG_ASSERT(! is_set());
+  /*
+    In production, refuse to overwrite an error or a custom response
+    with an OK packet.
+  */
+  if (is_error() || is_disabled())
+    return;
+
+  m_server_status= thd->server_status;
+  m_statement_warn_count= thd->warning_info->statement_warn_count();
+  m_affected_rows= affected_rows_arg;
+  m_last_insert_id= last_insert_id_arg;
+  if (message_arg)
+    strmake(m_message, message_arg, sizeof(m_message) - 1);
+  else
+    m_message[0]= '\0';
+  m_status= DA_OK;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Set EOF status.
+*/
+
+void
+Diagnostics_area::set_eof_status(THD *thd)
+{
+  DBUG_ENTER("set_eof_status");
+  /* Only allowed to report eof if has not yet reported an error */
+  DBUG_ASSERT(! is_set());
+  /*
+    In production, refuse to overwrite an error or a custom response
+    with an EOF packet.
+  */
+  if (is_error() || is_disabled())
+    return;
+
+  m_server_status= thd->server_status;
+  /*
+    If inside a stored procedure, do not return the total
+    number of warnings, since they are not available to the client
+    anyway.
+  */
+  m_statement_warn_count= (thd->spcont ?
+                           0 : thd->warning_info->statement_warn_count());
+
+  m_status= DA_EOF;
+  DBUG_VOID_RETURN;
+}
+
+/**
+  Set ERROR status.
+*/
+
+void
+Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
+                                   const char *message_arg)
+{
+  DBUG_ENTER("set_error_status");
+  /*
+    Only allowed to report error if has not yet reported a success
+    The only exception is when we flush the message to the client,
+    an error can happen during the flush.
+  */
+  DBUG_ASSERT(! is_set() || can_overwrite_status);
+#ifdef DBUG_OFF
+  /*
+    In production, refuse to overwrite a custom response with an
+    ERROR packet.
+  */
+  if (is_disabled())
+    return;
+#endif
+
+  m_sql_errno= sql_errno_arg;
+  strmake(m_message, message_arg, sizeof(m_message)-1);
+
+  m_status= DA_ERROR;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Mark the diagnostics area as 'DISABLED'.
+
+  This is used in rare cases when the COM_ command at hand sends a response
+  in a custom format. One example is the query cache, another is
+  COM_STMT_PREPARE.
+*/
+
+void
+Diagnostics_area::disable_status()
+{
+  DBUG_ASSERT(! is_set());
+  m_status= DA_DISABLED;
+}
+
+
 /* Store a new message in an error object. */
 
 void MYSQL_ERROR::set_msg(MEM_ROOT *warn_root, const char *msg_arg)

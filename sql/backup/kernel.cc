@@ -1263,15 +1263,6 @@ int Backup_restore_ctx::do_restore(bool overwrite)
 
   DBUG_PRINT("restore",("Restoring table data"));
 
-  /* 
-    FIXME: this call is here because object services doesn't clean the
-    statement execution context properly, which leads to assertion failure.
-    It should be fixed inside object services implementation and then the
-    following line should be removed.
-   */
-  close_thread_tables(m_thd);                   // Never errors
-  m_thd->stmt_da->reset_diagnostics_area();      // Never errors  
-
   if (lock_tables_for_restore())                // logs errors
     DBUG_RETURN(m_error);
 
@@ -1300,15 +1291,6 @@ int Backup_restore_ctx::do_restore(bool overwrite)
     fatal_error(ER_BACKUP_READ_SUMMARY);
     DBUG_RETURN(m_error);
   }
-
-  /* 
-    FIXME: this call is here because object services doesn't clean the
-    statement execution context properly, which leads to assertion failure.
-    It should be fixed inside object services implementation and then the
-    following line should be removed.
-   */
-  close_thread_tables(m_thd);                   // Never errors
-  m_thd->stmt_da->reset_diagnostics_area();      // Never errors
 
   /*
     Report validity point time and binlog position stored in the backup image

@@ -176,8 +176,8 @@ void Si_session_context::restore_si_ctx(THD *thd)
 */
 
 bool
-run_service_interface_sql(THD *thd, const LEX_STRING *query,
-                          Ed_result *ed_result)
+run_service_interface_sql(THD *thd, Ed_connection *ed_connection,
+                          const LEX_STRING *query)
 {
   Si_session_context session_context;
 
@@ -189,7 +189,7 @@ run_service_interface_sql(THD *thd, const LEX_STRING *query,
   session_context.save_si_ctx(thd);
   session_context.reset_si_ctx(thd);
 
-  bool rc= mysql_execute_direct(thd, *query, ed_result);
+  bool rc= ed_connection->execute_direct(*query);
 
   session_context.restore_si_ctx(thd);
 
@@ -769,12 +769,12 @@ bool Abstract_obj::create(THD *thd)
   /* Run queries from the serialization image. */
   while ((sql_text= it++))
   {
-    Ed_result ed_result;
+    Ed_connection ed_connection(thd);
 
-    rc= mysql_execute_direct(thd, *sql_text, &ed_result);
+    rc= ed_connection.execute_direct(*sql_text);
 
     /* Push warnings on the THD error stack. */
-    copy_warnings(thd, &ed_result.get_warnings());
+    copy_warnings(thd, ed_connection.get_warn_list());
 
     if (rc)
       break;
@@ -804,6 +804,8 @@ bool Abstract_obj::drop(THD *thd)
 {
   String_stream s_stream;
   const LEX_STRING *sql_text;
+  Ed_connection ed_connection(thd);
+  bool rc;
 
   DBUG_ENTER("Abstract_obj::drop");
 
@@ -821,10 +823,8 @@ bool Abstract_obj::drop(THD *thd)
   /* Allow to execute DDL operations. */
   ::obs::ddl_blocker_exception_on(thd);
 
-  Ed_result ed_result;
-
   /* Execute DDL operation. */
-  bool rc= mysql_execute_direct(thd, *sql_text, &ed_result);
+  rc= ed_connection.execute_direct(*sql_text);
 
   /* Disable further DDL execution. */
   ::obs::ddl_blocker_exception_off(thd);
@@ -1281,27 +1281,25 @@ private:
 template <typename Iterator>
 Iterator *create_row_set_iterator(THD *thd, const LEX_STRING *query)
 {
-  Ed_result *ed_result= new Ed_result();
+  Ed_connection ed_connection(thd);
+  Ed_result_set *ed_result_set;
+  Iterator *it;
 
-  if (!ed_result)
-    return NULL;
-
-  if (run_service_interface_sql(thd, query, ed_result) ||
-      ed_result->get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, query) ||
+      ed_connection.get_warn_count())
   {
     /* There should be no warnings. */
-    delete ed_result;
     return NULL;
   }
 
-  /* The result must contain only one result-set. */
-  DBUG_ASSERT(ed_result->elements == 1);
+  DBUG_ASSERT(ed_connection.get_field_count());
 
-  Iterator *it= new Iterator(ed_result);
+  /* Use store_result to get ownership of result memory */
+  ed_result_set= ed_connection.store_result_set();
 
-  if (!it)
+  if (! (it= new Iterator(ed_result_set)))
   {
-    delete ed_result;
+    delete ed_result_set;
     return NULL;
   }
 
@@ -1322,14 +1320,14 @@ template <typename Obj_type>
 class Ed_result_set_iterator : public Obj_iterator
 {
 public:
-  inline Ed_result_set_iterator(Ed_result *ed_result);
+  inline Ed_result_set_iterator(Ed_result_set *ed_result_set);
   inline ~Ed_result_set_iterator();
 
 public:
   virtual Obj *next();
 
 private:
-  Ed_result *m_ed_result;
+  Ed_result_set *m_ed_result_set;
   List_iterator_fast<Ed_row> m_row_it;
 };
 
@@ -1338,9 +1336,9 @@ private:
 template <typename Obj_type>
 inline
 Ed_result_set_iterator<Obj_type>::
-Ed_result_set_iterator(Ed_result *ed_result)
-  : m_ed_result(ed_result),
-    m_row_it(*ed_result->get_cur_result_set()->data())
+Ed_result_set_iterator(Ed_result_set *ed_result_set)
+  : m_ed_result_set(ed_result_set),
+   m_row_it(*ed_result_set)
 { }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1349,7 +1347,7 @@ template <typename Obj_type>
 inline
 Ed_result_set_iterator<Obj_type>::~Ed_result_set_iterator()
 {
-  delete m_ed_result;
+  delete m_ed_result_set;
 }
 
 
@@ -1620,11 +1618,9 @@ bool View_base_obj_iterator::init(THD *thd,
 {
   Find_view_underlying_tables find_tables(this, &m_table_names,
                                           db_name, view_name);
-  Ed_result ed_result; /* Just to grab OK or ERROR */
+  Ed_connection ed_connection(thd); /* Just to grab OK or ERROR */
 
-  /* The table list is filled with unique underlying table names. */
-
-  return mysql_execute_direct(thd, &find_tables, &ed_result);
+  return ed_connection.execute_direct(&find_tables);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1736,6 +1732,9 @@ create<View_base_view_iterator>(THD *thd, const String *db_name,
 
 bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
+  Ed_connection ed_connection(thd);
+  Ed_result_set *ed_result_set;
+
   DBUG_ENTER("Database_obj::do_serialize");
   DBUG_PRINT("Database_obj::do_serialize",
              ("name: %.*s", STR(*get_name())));
@@ -1750,15 +1749,13 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   /* Run 'SHOW CREATE' query. */
 
-  Ed_result ed_result;
-
   {
     String_stream s_stream;
     s_stream <<
       "SHOW CREATE DATABASE `" << get_name() << "`";
 
-    if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-        ed_result.get_warnings().elements > 0)
+    if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+        ed_connection.get_warn_count())
     {
       /*
         There should be no warnings. A warning means that serialization has
@@ -1771,27 +1768,17 @@ bool Database_obj::do_serialize(THD *thd, Out_stream &out_stream)
   /* Check result. */
 
   /* The result must contain only one result-set... */
-  DBUG_ASSERT(ed_result.elements == 1);
+  DBUG_ASSERT(ed_connection.get_field_count());
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
+  ed_result_set= ed_connection.use_result_set();
 
-  /* ... which is not NULL. */
-  DBUG_ASSERT(ed_result_set);
-
-  if (ed_result_set->data()->elements == 0)
+  if (ed_result_set->size() != 1)
     DBUG_RETURN(TRUE);
 
-  /* There must be one row. */
-  DBUG_ASSERT(ed_result_set->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
   Ed_row *row= row_it++;
 
-  /* There must be two columns: database name and create statement. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
-
   /* Generate image. */
-
   out_stream << row->get_column(1);
 
   DBUG_RETURN(FALSE);
@@ -1824,19 +1811,20 @@ void Database_obj::build_drop_statement(String_stream &s_stream) const
 
 bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
+  Ed_connection ed_connection(thd);
+  String_stream s_stream;
+  Ed_result_set *ed_result_set;
+
   DBUG_ENTER("Table_obj::do_serialize");
   DBUG_PRINT("Table_obj::do_serialize",
              ("name: %.*s.%.*s",
               STR(m_db_name), STR(m_id)));
 
-  Ed_result ed_result;
-  String_stream s_stream;
-
   s_stream <<
     "SHOW CREATE TABLE `" << &m_db_name << "`.`" << &m_id << "`";
 
-  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
   {
     /*
       There should be no warnings. A warning means that serialization has
@@ -1847,25 +1835,16 @@ bool Table_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   /* Check result. */
 
-  /* The result must contain only one result-set... */
-  DBUG_ASSERT(ed_result.elements == 1);
+  ed_result_set= ed_connection.use_result_set();
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
-
-  /* ... which is not NULL. */
-  DBUG_ASSERT(ed_result_set);
-
-  if (ed_result_set->data()->elements == 0)
+  if (ed_result_set->size() != 1)
     DBUG_RETURN(TRUE);
 
-  /* There must be one row. */
-  DBUG_ASSERT(ed_result_set->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
   Ed_row *row= row_it++;
 
   /* There must be two columns: database name and create statement. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 2);
+  DBUG_ASSERT(row->size() == 2);
 
   /* Generate serialization image. */
 
@@ -1891,15 +1870,16 @@ get_view_create_stmt(THD *thd,
                      LEX_STRING *connection_cl_name)
 {
   /* Get a create statement for a view. */
-  Ed_result ed_result;
+  Ed_connection ed_connection(thd);
+  Ed_result_set *ed_result_set;
   String_stream s_stream;
 
   s_stream <<
     "SHOW CREATE VIEW `" << view->get_db_name() << "`."
     "`" << view->get_name() << "`";
 
-  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
   {
     /*
       There should be no warnings. A warning means that serialization has
@@ -1908,25 +1888,19 @@ get_view_create_stmt(THD *thd,
     return TRUE;
   }
 
+
   /* The result must contain only one result-set... */
-  DBUG_ASSERT(ed_result.elements == 1);
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
+  ed_result_set= ed_connection.use_result_set();
 
-  /* ... which is not NULL. */
-  DBUG_ASSERT(ed_result_set);
-
-  if (ed_result_set->data()->elements == 0)
+  if (ed_result_set->size() != 1)
     return TRUE;
 
-  /* There must be one row. */
-  DBUG_ASSERT(ed_result_set->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
   Ed_row *row= row_it++;
 
   /* There must be four columns. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 4);
+  DBUG_ASSERT(row->size() == 4);
 
   const LEX_STRING *c1= row->get_column(1);
   const LEX_STRING *c2= row->get_column(2);
@@ -1999,6 +1973,10 @@ bool View_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
 bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
 {
+  String_stream s_stream;
+  Ed_connection ed_connection(thd);
+  Ed_result_set *ed_result_set;
+
   DBUG_ENTER("Stored_program_obj::do_serialize");
   DBUG_PRINT("Stored_program_obj::do_serialize",
              ("name: %.*s.%.*s",
@@ -2006,15 +1984,12 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
 
   DBUG_EXECUTE_IF("backup_fail_add_trigger", DBUG_RETURN(TRUE););
 
-  String_stream s_stream;
-  Ed_result ed_result;
-
   s_stream <<
     "SHOW CREATE " << get_type_name() <<
     " `" << &m_db_name << "`.`" << &m_id << "`";
 
-  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
   {
     /*
       There should be no warnings. A warning means that serialization has
@@ -2023,21 +1998,12 @@ bool Stored_program_obj::do_serialize(THD *thd, Out_stream &out_stream)
     DBUG_RETURN(TRUE);
   }
 
-  /* The result must contain only one result-set... */
-  DBUG_ASSERT(ed_result.elements == 1);
+  ed_result_set= ed_connection.use_result_set();
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
-
-  /* ... which is not NULL. */
-  DBUG_ASSERT(ed_result_set);
-
-  if (ed_result_set->data()->elements == 0)
+  if (ed_result_set->size() != 1)
     DBUG_RETURN(TRUE);
 
-  /* There must be one row. */
-  DBUG_ASSERT(ed_result_set->data()->elements == 1);
-
-  List_iterator_fast<Ed_row> row_it(*ed_result_set->data());
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
   Ed_row *row= row_it++;
 
   s_stream.reset();
@@ -2675,8 +2641,8 @@ bool check_db_existence(THD *thd, const String *db_name)
 
   s_stream << "SHOW CREATE DATABASE `" << db_name << "`";
 
-  Ed_result ed_result;
-  rc= run_service_interface_sql(thd, s_stream.lex_string(), &ed_result);
+  Ed_connection ed_connection(thd);
+  rc= run_service_interface_sql(thd, &ed_connection, s_stream.lex_string());
 
   /* We're not interested in warnings/errors here. */
 
@@ -2691,7 +2657,8 @@ bool check_user_existence(THD *thd, const Obj *obj)
   return TRUE;
 #else
   Grant_obj *grant_obj= (Grant_obj *) obj;
-  Ed_result ed_result;
+  Ed_connection ed_connection(thd);
+  Ed_result_set *ed_result_set;
   String_stream s_stream;
 
   s_stream <<
@@ -2700,19 +2667,16 @@ bool check_user_existence(THD *thd, const Obj *obj)
     "WHERE grantee = \"" << grant_obj->get_user_name() << "\"";
 
 
-  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
   {
     /* Should be no warnings. */
     return FALSE;
   }
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
+  ed_result_set= ed_connection.use_result_set();
 
-  if (!ed_result_set)
-    return FALSE;
-
-  return ed_result_set->data()->elements > 0;
+  return ed_result_set->size() > 0;
 #endif
 }
 
@@ -2734,8 +2698,9 @@ const String *grant_get_grant_info(const Obj *obj)
 
 Obj *find_tablespace(THD *thd, const String *ts_name)
 {
-  Ed_result ed_result;
+  Ed_connection ed_connection(thd);
   String_stream s_stream;
+  Ed_result_set *ed_result_set;
 
   s_stream <<
     "SELECT t1.tablespace_comment, t2.file_name, t1.engine "
@@ -2745,25 +2710,22 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
     "t1.tablespace_name = '" << ts_name << "'";
 
 
-  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
   {
     /* Should be no warnings. */
     return NULL;
   }
 
-  if (!ed_result.elements)
-    return NULL;
+  ed_result_set= ed_connection.use_result_set();
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
+  DBUG_ASSERT(ed_result_set->size() == 1);
 
-  /* The result must contain only one result-set. */
-  DBUG_ASSERT(ed_result_set->data()->elements == 1);
-
-  Ed_row *row= ed_result_set->get_cur_row();
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
+  Ed_row *row= row_it++;
 
   /* There must be 3 columns. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 3);
+  DBUG_ASSERT(row->size() == 3);
 
   const LEX_STRING *comment= row->get_column(0);
   const LEX_STRING *data_file_name= row->get_column(1);
@@ -2771,6 +2733,7 @@ Obj *find_tablespace(THD *thd, const String *ts_name)
 
   return new Tablespace_obj(ts_name->lex_string(),
                             *comment, *data_file_name, *engine);
+  return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2795,8 +2758,9 @@ Obj *find_tablespace_for_table(THD *thd,
                                const String *db_name,
                                const String *table_name)
 {
-  Ed_result ed_result;
+  Ed_connection ed_connection(thd);
   String_stream s_stream;
+  Ed_result_set *ed_result_set;
 
   s_stream <<
     "SELECT t1.tablespace_name, t1.engine, t1.tablespace_comment, t2.file_name "
@@ -2809,28 +2773,24 @@ Obj *find_tablespace_for_table(THD *thd,
     "t3.table_name = '" << table_name << "'";
 
 
-  if (run_service_interface_sql(thd, s_stream.lex_string(), &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, s_stream.lex_string()) ||
+      ed_connection.get_warn_count())
   {
     /* Should be no warnings. */
     return NULL;
   }
 
-  if (!ed_result.elements)
+  ed_result_set= ed_connection.use_result_set();
+
+  /* The result must contain only one row. */
+  if (ed_result_set->size() != 1)
     return NULL;
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
-
-  if (!ed_result_set->data()->elements)
-    return NULL;
-
-  /* The result must contain only one result-set. */
-  DBUG_ASSERT(ed_result_set->data()->elements == 1);
-
-  Ed_row *row= ed_result_set->get_cur_row();
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
+  Ed_row *row= row_it++;
 
   /* There must be 4 columns. */
-  DBUG_ASSERT(row->get_metadata()->get_num_columns() == 4);
+  DBUG_ASSERT(row->size() == 4);
 
   const LEX_STRING *ts_name= row->get_column(0);
   const LEX_STRING *engine= row->get_column(1);
