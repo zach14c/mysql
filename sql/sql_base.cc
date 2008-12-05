@@ -7676,8 +7676,7 @@ static bool tdc_wait_for_old_versions(THD *thd, MDL_CONTEXT *context)
       mdl_get_tdc_key(lock_data, &key);
       if ((share= (TABLE_SHARE*) hash_search(&table_def_cache, (uchar*) key.str,
                                              key.length)) &&
-          share->version != refresh_version &&
-          !share->used_tables.is_empty())
+          share->version != refresh_version)
         break;
     }
     if (!lock_data)
