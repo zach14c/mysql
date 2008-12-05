@@ -748,12 +748,6 @@ int		STDCALL mysql_drop_db(MYSQL *mysql, const char *DB);
 #pragma pack(pop)		/* restore alignment */
 #endif
 
-#ifdef MY_USE_CLIENT_DLL
-char *emb_make_ftype(int type);
-#define my_fopen(name, mode, flags) fopen(name, emb_make_ftype(mode))
-#define my_fclose(file, flags) fclose(file)
-#endif /*MY_USE_CLIENT_DLL*/
-
 #ifdef	__cplusplus
 }
 #endif
