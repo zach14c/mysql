@@ -48,6 +48,7 @@ let $other_engine = 'MyISAM';
 eval SET @@storage_engine = $engine;
 
 --disable_warnings
+DROP FUNCTION IF EXISTS transform;
 DROP TABLE IF EXISTS t0;
 DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS t2;
@@ -63,7 +64,9 @@ CREATE TABLE t0 (
   id int auto_increment not null primary key,
   a varchar(1) character set utf8,
   category  varchar(100),
-  comment   varchar(80)
+  comment   varchar(80),
+  uppercase varchar(1) character set utf8,
+  lowercase varchar(1) character set utf8
 ) Engine $other_engine;
 
 # Falcon test table without any keys.
@@ -104,55 +107,90 @@ CREATE TABLE t_err (
 ) Engine $other_engine;
 
 #
+# Unicode to UTF-8 transformation algorithm is taken from
+# http://scripts.sil.org/cms/scripts/page.php?site_id=nrsi&item_id=IWS-AppendixA
+#
+DELIMITER //;
+
+DELIMITER //
+CREATE FUNCTION transform(a varchar(8))
+  RETURNS varchar(8)
+  DETERMINISTIC
+
+  BEGIN
+    # Surrogate pair boundries, which are going to be ignored.
+    DECLARE surrogate1 varchar(8) DEFAULT CONV('D800', 16, 10);
+    DECLARE surrogate2 varchar(8) DEFAULT CONV('DB7F', 16, 10);
+    DECLARE surrogate3 varchar(8) DEFAULT CONV('DB80', 16, 10);
+    DECLARE surrogate4 varchar(8) DEFAULT CONV('DBFF', 16, 10);
+    DECLARE surrogate5 varchar(8) DEFAULT CONV('DC00', 16, 10);
+    DECLARE surrogate6 varchar(8) DEFAULT CONV('DFFF', 16, 10);
+
+    DECLARE one_byte int DEFAULT        CONV('007F', 16, 10);
+    DECLARE two_byte int DEFAULT        CONV('07FF', 16, 10);
+    DECLARE three_byte int DEFAULT      CONV('D7FF', 16, 10);
+    DECLARE three_byte_low int DEFAULT  CONV('E000', 16, 10);
+    DECLARE three_byte_high int DEFAULT CONV('FFFF', 16, 10);
+
+    DECLARE d int;
+    SET d = CONV(a, 16, 10);
+
+    # In case of missing uppercase or lowercase code points
+    # we return an empty string.
+    IF length(a) = 0 THEN
+      return '';
+    END IF;
+
+    # Also skip the six surrogate boundries.
+    IF d = surrogate1 || d = surrogate2 || d = surrogate3
+       || d = surrogate4 || d = surrogate5 || d = surrogate6 THEN
+      return '';
+    END IF;
+
+    IF d <= one_byte THEN
+      return CONV(a, 16, 16);
+    ELSEIF d <= two_byte THEN
+      return
+        CONCAT(CONV((d DIV 64) + 192, 10, 16),
+               CONV((d MOD 64) + 128, 10, 16));
+    ELSEIF d <= three_byte
+           || (three_byte_low <= d && d <= three_byte_high) THEN
+      return
+        CONCAT(CONV((d DIV 4096) + 224, 10, 16),
+               CONV(((d MOD 4096) div 64) + 128, 10, 16),
+               CONV((d MOD 64) + 128, 10, 16));
+    ELSE
+      return
+        CONCAT(CONV((d DIV 262144) + 240, 10, 16),
+               CONV(((d MOD 262144) DIV 4096) + 128, 10, 16),
+               CONV(((d MOD 4096) DIV 64) + 128, 10, 16),
+               CONV((d MOD 64) + 128, 10, 16));
+    END IF;
+
+  END
+//
+DELIMITER ;
+
+DELIMITER ;//
+
+#
 # Transform Unicode code points to UTF-8 and insert
 # the characters into reference table. The transformation
 # is done in place, so that the Unicode code point file
 # can be updated in an easy fashion.
-#
-# Unicode to UTF-8 transformation algorithm is taken from
-# http://scripts.sil.org/cms/scripts/page.php?site_id=nrsi&item_id=IWS-AppendixA
-#
-SET @one_byte =      CONV('007F', 16, 10);
-SET @two_byte =      CONV('07FF', 16, 10);
-SET @two_byte_low =  CONV('E000', 16, 10);
-SET @two_byte_high = CONV('FFFF', 16, 10);
-SET @three_byte =    CONV('D7FF', 16, 10);
-
-#
-# @todo How to substitute CONV(@var1, 16, 10) with a
-# variable for easier reading?
 #
 LOAD DATA LOCAL INFILE 'include/UnicodeData.txt' INTO TABLE t0
   FIELDS TERMINATED BY ';'
   OPTIONALLY ENCLOSED BY ''
   LINES TERMINATED BY '\n'
   (@var1, @category, @dummy3, @dummy4, @dummy5, @dummy6, @dummy7,
-   @dummy8, @dummy9, @dummy10, @comment, @dummy12, @dummy13, @dummy14, @dummy15)
-SET a = (UNHEX((
-  SELECT IF (CONV(@var1, 16, 10) + 0 <= @one_byte + 0,
-             # One byte UTF-8, leave it as it is. The hex2hex conv() is done
-             # to get rid of leading 00, which are distracting MySQL a bit.
-             CONV(@var1, 16, 16),
-             IF (CONV(@var1, 16, 10) + 0 <= @two_byte + 0,
-                 # Two byte UTF-8.
-                 CONCAT(CONV((CONV(@var1, 16, 10) DIV 64) + 192, 10, 16),
-                        CONV((CONV(@var1, 16, 10) MOD 64) + 128, 10, 16)),
-                 IF (CONV(@var1, 16, 10) + 0 <= @three_byte + 0
-                     || (@two_byte_low + 0 <= CONV(@var1, 16, 10) + 0 && CONV(@var1, 16, 10) + 0 <= @two_byte_high + 0),
-                     # Three byte UTF-8.
-                     CONCAT(CONV((CONV(@var1, 16, 10) DIV 4096) + 224, 10, 16),
-                            CONV(((CONV(@var1, 16, 10) MOD 4096) div 64) + 128, 10, 16),
-                            CONV((CONV(@var1, 16, 10) MOD 64) + 128, 10, 16)),
-                     # Four byte UTF-8.
-                     CONCAT(CONV((CONV(@var1, 16, 10) DIV 262144) + 240, 10, 16),
-                            CONV(((CONV(@var1, 16, 10) MOD 262144) DIV 4096) + 128, 10, 16),
-                            CONV(((CONV(@var1, 16, 10) MOD 4096) DIV 64) + 128, 10, 16),
-                            CONV((CONV(@var1, 16, 10) MOD 64) + 128, 10, 16))
-                 )
-             )
-         )
-  ))
-), category = @category, comment = @comment;
+   @dummy8, @dummy9, @dummy10, @comment, @dummy12, @uppercase, @lowercase, @dummy15)
+# @todo Skip empty strings (surrogates).
+SET a = (UNHEX((SELECT transform(@var1)))),
+    category = @category,
+    comment = @comment,
+    uppercase = (UNHEX((SELECT transform(@uppercase)))),
+    lowercase = (UNHEX((SELECT transform(@lowercase))));
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
@@ -177,6 +215,7 @@ SELECT count(*) FROM t_err;
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
+DROP FUNCTION transform;
 DROP TABLE t0;
 DROP TABLE t1;
 DROP TABLE t2;
