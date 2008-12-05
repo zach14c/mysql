@@ -1,0 +1,153 @@
+*** Unicode tests ***
+SET @@storage_engine = 'Falcon';
+SET NAMES UTF8;
+DROP FUNCTION IF EXISTS transform;
+DROP TABLE IF EXISTS t0;
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+DROP TABLE IF EXISTS t3;
+DROP TABLE IF EXISTS t4;
+DROP TABLE IF EXISTS t5;
+DROP TABLE IF EXISTS t_err;
+CREATE TABLE t0 (
+id int auto_increment not null primary key,
+a varchar(1) binary character set utf8,
+category  varchar(100),
+comment   varchar(80),
+uppercase varchar(1) character set utf8 default null,
+lowercase varchar(1) character set utf8 default null
+) Engine 'MyISAM';
+CREATE TABLE t1 (
+a varchar(1) binary  character set utf8,
+uppercase varchar(1) character set utf8 default null,
+lowercase varchar(1) character set utf8 default null
+);
+CREATE TABLE t2 (
+a varchar(1) binary  character set utf8 primary key,
+uppercase varchar(1) character set utf8 default null,
+lowercase varchar(1) character set utf8 default null
+);
+CREATE TABLE t3 (
+a varchar(1) binary  character set utf8,
+uppercase varchar(1) character set utf8 default null,
+lowercase varchar(1) character set utf8 default null,
+key (a),
+key (uppercase),
+key (lowercase)
+);
+CREATE TABLE t4 (
+a varchar(1) binary  character set utf8,
+uppercase varchar(1) character set utf8 default null,
+lowercase varchar(1) character set utf8 default null,
+unique key (a),
+key (uppercase),
+key (lowercase)
+);
+CREATE TABLE t5 (
+a varchar(1) binary  character set utf8 not null,
+uppercase varchar(1) character set utf8 default null,
+lowercase varchar(1) character set utf8 default null,
+unique key (a)
+);
+CREATE TABLE t_err (
+expected varchar(1) character set utf8,
+actual varchar(1) character set utf8,
+category varchar(100),
+comment varchar(80)
+) Engine 'MyISAM';
+CREATE FUNCTION transform(a varchar(8))
+RETURNS varchar(8)
+DETERMINISTIC
+BEGIN
+# Surrogate pair boundries, which are going to be ignored.
+DECLARE surrogate1 varchar(8) DEFAULT CONV('D800', 16, 10);
+DECLARE surrogate2 varchar(8) DEFAULT CONV('DB7F', 16, 10);
+DECLARE surrogate3 varchar(8) DEFAULT CONV('DB80', 16, 10);
+DECLARE surrogate4 varchar(8) DEFAULT CONV('DBFF', 16, 10);
+DECLARE surrogate5 varchar(8) DEFAULT CONV('DC00', 16, 10);
+DECLARE surrogate6 varchar(8) DEFAULT CONV('DFFF', 16, 10);
+DECLARE one_byte int DEFAULT        CONV('007F', 16, 10);
+DECLARE two_byte int DEFAULT        CONV('07FF', 16, 10);
+DECLARE three_byte int DEFAULT      CONV('D7FF', 16, 10);
+DECLARE three_byte_low int DEFAULT  CONV('E000', 16, 10);
+DECLARE three_byte_high int DEFAULT CONV('FFFF', 16, 10);
+DECLARE d int;
+SET d = CONV(a, 16, 10);
+# In case of missing uppercase or lowercase code points
+# we return an empty string.
+IF length(a) = 0 THEN
+return '';
+END IF;
+# Also skip the six surrogate boundries.
+IF d = surrogate1 || d = surrogate2 || d = surrogate3
+|| d = surrogate4 || d = surrogate5 || d = surrogate6 THEN
+return '';
+END IF;
+IF d <= one_byte THEN
+return CONV(a, 16, 16);
+ELSEIF d <= two_byte THEN
+return
+CONCAT(CONV((d DIV 64) + 192, 10, 16),
+CONV((d MOD 64) + 128, 10, 16));
+ELSEIF d <= three_byte
+|| (three_byte_low <= d && d <= three_byte_high) THEN
+return
+CONCAT(CONV((d DIV 4096) + 224, 10, 16),
+CONV(((d MOD 4096) div 64) + 128, 10, 16),
+CONV((d MOD 64) + 128, 10, 16));
+ELSE
+return
+CONCAT(CONV((d DIV 262144) + 240, 10, 16),
+CONV(((d MOD 262144) DIV 4096) + 128, 10, 16),
+CONV(((d MOD 4096) DIV 64) + 128, 10, 16),
+CONV((d MOD 64) + 128, 10, 16));
+END IF;
+END
+//
+LOAD DATA LOCAL INFILE 'include/UnicodeData.txt' INTO TABLE t0
+FIELDS TERMINATED BY ';'
+  OPTIONALLY ENCLOSED BY ''
+  LINES TERMINATED BY '\n'
+  (@var1, @category, @dummy3, @dummy4, @dummy5, @dummy6, @dummy7,
+@dummy8, @dummy9, @dummy10, @comment, @dummy12, @uppercase, @lowercase, @dummy15)
+# @todo Skip empty strings (surrogates).
+SET a = (UNHEX((SELECT transform(@var1)))),
+category = @category,
+comment = @comment,
+uppercase = (UNHEX((SELECT transform(@uppercase)))),
+lowercase = (UNHEX((SELECT transform(@lowercase))));
+SELECT count(*) FROM t0 WHERE length(a) = 0;
+count(*)
+6
+DELETE FROM t0 WHERE length(a) = 0;
+INSERT INTO t1 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+INSERT INTO t3 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+SELECT count(*) FROM t0;
+count(*)
+19330
+SELECT count(*) FROM t1;
+count(*)
+19330
+SELECT count(*) FROM t2;
+count(*)
+0
+SELECT count(*) FROM t3;
+count(*)
+19330
+SELECT count(*) FROM t4;
+count(*)
+0
+SELECT count(*) FROM t5;
+count(*)
+0
+SELECT count(*) FROM t_err;
+count(*)
+0
+DROP FUNCTION transform;
+DROP TABLE t0;
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;
+DROP TABLE t_err;

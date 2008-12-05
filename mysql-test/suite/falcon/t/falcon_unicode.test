@@ -47,6 +47,8 @@ let $engine = 'Falcon';
 let $other_engine = 'MyISAM';
 eval SET @@storage_engine = $engine;
 
+SET NAMES UTF8;
+
 --disable_warnings
 DROP FUNCTION IF EXISTS transform;
 DROP TABLE IF EXISTS t0;
@@ -62,48 +64,62 @@ DROP TABLE IF EXISTS t_err;
 eval
 CREATE TABLE t0 (
   id int auto_increment not null primary key,
-  a varchar(1) character set utf8,
+  a varchar(1) binary character set utf8,
   category  varchar(100),
   comment   varchar(80),
-  uppercase varchar(1) character set utf8,
-  lowercase varchar(1) character set utf8
+  uppercase varchar(1) character set utf8 default null,
+  lowercase varchar(1) character set utf8 default null
 ) Engine $other_engine;
 
 # Falcon test table without any keys.
 CREATE TABLE t1 (
-  a char(1) character set utf8
+  a varchar(1) binary  character set utf8,
+  uppercase varchar(1) character set utf8 default null,
+  lowercase varchar(1) character set utf8 default null
 );
 
 # Falcon test table with PK.
 CREATE TABLE t2 (
-  a char(1) character set utf8 primary key
+  a varchar(1) binary  character set utf8 primary key,
+  uppercase varchar(1) character set utf8 default null,
+  lowercase varchar(1) character set utf8 default null
 );
 
 # Falcon test table with index.
 CREATE TABLE t3 (
-  a char(1) character set utf8,
-  key (a)
+  a varchar(1) binary  character set utf8,
+  uppercase varchar(1) character set utf8 default null,
+  lowercase varchar(1) character set utf8 default null,
+  key (a),
+  key (uppercase),
+  key (lowercase)
 );
 
 # Falcon test table with unique index.
 CREATE TABLE t4 (
-  a char(1) character set utf8,
-  unique key (a)
+  a varchar(1) binary  character set utf8,
+  uppercase varchar(1) character set utf8 default null,
+  lowercase varchar(1) character set utf8 default null,
+  unique key (a),
+  key (uppercase),
+  key (lowercase)
 );
 
 # Falcon test table with unique index not null.
 CREATE TABLE t5 (
-  a char(1) not null character set utf8,
+  a varchar(1) binary  character set utf8 not null,
+  uppercase varchar(1) character set utf8 default null,
+  lowercase varchar(1) character set utf8 default null,
   unique key (a)
 );
 
 # We collect any errors in this table.
 eval
 CREATE TABLE t_err (
-  expected char(1) character set utf8,
-  actual   char(1) character set utf8,
-  category  varchar(100),
-  comment   varchar(80)
+  expected varchar(1) character set utf8,
+  actual varchar(1) character set utf8,
+  category varchar(100),
+  comment varchar(80)
 ) Engine $other_engine;
 
 #
@@ -112,7 +128,6 @@ CREATE TABLE t_err (
 #
 DELIMITER //;
 
-DELIMITER //
 CREATE FUNCTION transform(a varchar(8))
   RETURNS varchar(8)
   DETERMINISTIC
@@ -169,7 +184,6 @@ CREATE FUNCTION transform(a varchar(8))
 
   END
 //
-DELIMITER ;
 
 DELIMITER ;//
 
@@ -179,6 +193,7 @@ DELIMITER ;//
 # is done in place, so that the Unicode code point file
 # can be updated in an easy fashion.
 #
+# Load should produce no warnings like truncation or so.
 LOAD DATA LOCAL INFILE 'include/UnicodeData.txt' INTO TABLE t0
   FIELDS TERMINATED BY ';'
   OPTIONALLY ENCLOSED BY ''
@@ -191,6 +206,25 @@ SET a = (UNHEX((SELECT transform(@var1)))),
     comment = @comment,
     uppercase = (UNHEX((SELECT transform(@uppercase)))),
     lowercase = (UNHEX((SELECT transform(@lowercase))));
+
+#
+# Sanity checks.
+#
+# We should have six surrogates.
+SELECT count(*) FROM t0 WHERE length(a) = 0;
+DELETE FROM t0 WHERE length(a) = 0;
+
+#
+# Load Falcon tables;
+#
+INSERT INTO t1 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+# Currently fails with duplicate key error.
+#INSERT INTO t2 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+INSERT INTO t3 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+# Currently fails with duplicate key error.
+#INSERT INTO t4 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+# Currently fails with duplicate key error.
+#INSERT INTO t5 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #
