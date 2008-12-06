@@ -49,7 +49,7 @@ Testing starting backup/restore restore is ongoing
 ---------------------------------------------------
 Starting restore
 SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR restore';
-RESTORE FROM 'backup1';
+RESTORE FROM 'backup1' OVERWRITE;
 Waiting for restore to get going
 SET DEBUG_SYNC= 'now WAIT_FOR running';
 Starting backup in another connection.  

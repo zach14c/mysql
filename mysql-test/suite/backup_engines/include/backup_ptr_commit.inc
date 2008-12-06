@@ -202,7 +202,7 @@ SELECT * FROM ptr.t3;
 
 --echo Perform restore operation
 --replace_column 1 #
-RESTORE FROM 'ptr_commit.bak';
+RESTORE FROM 'ptr_commit.bak' OVERWRITE;
 SHOW TABLES FROM ptr;
 SELECT * FROM ptr.t1;
 SELECT * FROM ptr.t2;

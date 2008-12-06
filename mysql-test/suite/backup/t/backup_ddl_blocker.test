@@ -244,7 +244,7 @@ DROP TABLE bup_ddl_blocker.t1, bup_ddl_blocker.t2,
 
 --echo con1: Restoring the database
 --replace_column 1 #
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 
 --echo con1: Showing columns that were backed up
 
@@ -298,7 +298,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR con3_started';
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 --echo con1: Restoring database -- will block with lock
-send RESTORE FROM "bup_ddl_blocker_orig.bak";
+send RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 
 connection con6;
 
@@ -515,7 +515,7 @@ DROP TABLE bup_ddl_blocker.t01, bup_ddl_blocker.t2,
 
 --echo con1: Restoring the database
 --replace_column 1 #
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 
 --echo con1: Showing columns that were backed up
 --echo con1: Table t01 should be in restore
@@ -565,7 +565,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR con3_started';
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 --echo con1: Restoring database -- will block with lock
-send RESTORE FROM "bup_ddl_blocker_orig.bak";
+send RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 
 connection con6;
 
@@ -775,7 +775,7 @@ DROP TABLE bup_ddl_blocker.t1, bup_ddl_blocker.t3;
 
 --echo con1: Restoring the database
 --replace_column 1 #
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 
 --echo con1: Showing columns that were backed up
 --echo con1: Table t2 should not be in restore
@@ -824,7 +824,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR con3_started';
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 --echo con1: Restoring database -- will block with lock
-send RESTORE FROM "bup_ddl_blocker_orig.bak";
+send RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 
 connection con6;
 
@@ -1062,7 +1062,7 @@ DROP DATABASE bup_ddl_blocker_3;
 --echo con1: Restoring the database
 --replace_column 1 #
 --disable_warnings
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 --enable_warnings
 
 --echo con1: Showing databases that were backed up
@@ -1138,7 +1138,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR con3_started';
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 --echo con1: Restoring database -- will block with lock
-send RESTORE FROM "bup_ddl_blocker_orig.bak";
+send RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 
 connection con6;
 
@@ -1382,7 +1382,7 @@ DROP DATABASE bup_ddl_blocker_4;
 
 --echo con1: Restoring the database
 --replace_column 1 #
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 
 --echo con1: Showing databases that were backed up
 --echo con1: bup_ddl_blocker_1 has been renamed and
@@ -1466,7 +1466,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR con3_started';
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 --echo con1: Restoring database -- will block with lock
-send RESTORE FROM "bup_ddl_blocker_orig.bak";
+send RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 
 connection con6;
 
@@ -1733,7 +1733,7 @@ DROP DATABASE bup_ddl_blocker_4;
 --echo con1: Restoring the database
 --replace_column 1 #
 --disable_warnings
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 --enable_warnings
 
 --echo con1: Showing databases that were backed up
@@ -1830,7 +1830,7 @@ SET DEBUG_SYNC= 'now WAIT_FOR con3_started';
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 --echo con1: Restoring database -- will block with lock
-send RESTORE FROM "bup_ddl_blocker_orig.bak";
+send RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 
 connection con6;
 

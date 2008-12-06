@@ -52,7 +52,7 @@ BACKUP DATABASE db TO 'db.bkp';
 DROP TABLE t1;
 DROP TABLE t2;
 --replace_column 1 #
-RESTORE FROM 'db.bkp';
+RESTORE FROM 'db.bkp' OVERWRITE;
 
 #
 # Note: Above DROP TABLE statements should be removed once BUG#30099 is fixed.

@@ -15,7 +15,7 @@ backup_id
 Ensure backup image file went to the correct location
 /backup/bup_backupdir.bak
 Perform restore
-RESTORE FROM 'bup_backupdir1.bak';
+RESTORE FROM 'bup_backupdir1.bak' OVERWRITE;
 backup_id
 #
 Now do the backup and restore by specifying a path.
@@ -25,7 +25,7 @@ backup_id
 #
 Ensure backup image file went to the correct location
 Perform restore
-RESTORE FROM '../bup_backupdir2.bak';
+RESTORE FROM '../bup_backupdir2.bak' OVERWRITE;
 backup_id
 #
 Perform backup

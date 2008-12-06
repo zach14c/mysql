@@ -229,7 +229,7 @@ replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/th
 --echo Backup_id = 502.
 --echo RESTORE FROM 'rpl_bup_m2.bak';
 --disable_query_log
-eval RESTORE FROM '$MYSQLTEST_VARDIR/rpl_bup_m2.bak';
+eval RESTORE FROM '$MYSQLTEST_VARDIR/rpl_bup_m2.bak' OVERWRITE;
 --enable_query_log
 
 --echo Show the incident event issued as a result of restore.
@@ -291,7 +291,7 @@ replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/th
 --echo Backup_id = 602.
 --echo RESTORE_FROM 'rpl_bup_m2.bak';
 --disable_query_log
-eval RESTORE FROM '$MYSQLTEST_VARDIR/rpl_bup_m2.bak';
+eval RESTORE FROM '$MYSQLTEST_VARDIR/rpl_bup_m2.bak' OVERWRITE;
 --enable_query_log
 
 --echo Showing databases on slave.
@@ -315,13 +315,13 @@ connection slave;
 --echo Test restore on slave while replication turned on.
 
 --error ER_RESTORE_ON_SLAVE
-RESTORE FROM 'rpl_bup_s1.bak';
+RESTORE FROM 'rpl_bup_s1.bak' OVERWRITE;
 
 --echo Stop slave and restart after restore.
 STOP SLAVE;
 
 --replace_column 1 #
-RESTORE FROM 'rpl_bup_s3.bak';
+RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
 
 START SLAVE;
 --source include/wait_for_slave_to_start.inc
@@ -380,7 +380,7 @@ RESET MASTER;
 let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
 
 --echo Backup_id = 504.
-RESTORE FROM 'rpl_bup_m3.bak';
+RESTORE FROM 'rpl_bup_m3.bak' OVERWRITE;
 
 --echo Get master's binlog position after restore.
 let $master_after_pos = query_get_value("SHOW MASTER STATUS", Position, 1);

@@ -6,7 +6,7 @@ INSERT INTO t1 VALUES ('a1');
 BACKUP DATABASE commit_test TO '81';
 backup_id
 #
-RESTORE FROM '81';
+RESTORE FROM '81' OVERWRITE;
 backup_id
 #
 SELECT * FROM t1;
@@ -24,7 +24,7 @@ INSERT INTO t2 VALUES ('a2');
 BACKUP DATABASE commit_test TO '82';
 backup_id
 #
-RESTORE FROM '82';
+RESTORE FROM '82' OVERWRITE;
 backup_id
 #
 SELECT * FROM t1;
@@ -51,7 +51,7 @@ INSERT INTO t3 VALUES ('a3');
 BACKUP DATABASE commit_test TO '83';
 backup_id
 #
-RESTORE FROM '83';
+RESTORE FROM '83' OVERWRITE;
 backup_id
 #
 SELECT * FROM t1;
@@ -89,7 +89,7 @@ INSERT INTO t4 VALUES ('a4');
 BACKUP DATABASE commit_test TO '84';
 backup_id
 #
-RESTORE FROM '84';
+RESTORE FROM '84' OVERWRITE;
 backup_id
 #
 SELECT * FROM t1;
@@ -138,7 +138,7 @@ INSERT INTO t4 VALUES ('a5');
 BACKUP DATABASE commit_test TO '85';
 backup_id
 #
-RESTORE FROM '85';
+RESTORE FROM '85' OVERWRITE;
 backup_id
 #
 SELECT * FROM t1;
@@ -198,7 +198,7 @@ BACKUP DATABASE commit_test TO '86';
 backup_id
 #
 SET @@autocommit=0;
-RESTORE FROM '86';
+RESTORE FROM '86' OVERWRITE;
 backup_id
 #
 DROP TABLE t5;
@@ -265,7 +265,7 @@ BACKUP DATABASE commit_test TO '87';
 backup_id
 #
 SET @@autocommit=1;
-RESTORE FROM '87';
+RESTORE FROM '87' OVERWRITE;
 backup_id
 #
 SELECT * FROM t1;
