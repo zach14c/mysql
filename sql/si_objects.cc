@@ -3085,14 +3085,15 @@ bool is_slave()
 int num_slaves_attached()
 {
   THD *thd= current_thd;
-
-  Ed_result ed_result;
+  Ed_row *ed_row;
+  const LEX_STRING *num_slaves_str;
+  Ed_connection ed_connection(thd);
   LEX_STRING sql_text= LXS_INIT("SELECT CONCAT(COUNT(1)) "
                                 "FROM INFORMATION_SCHEMA.PROCESSLIST"
                                 "WHERE LCASE(command) = LCASE('Binlog Dump')");
 
-  if (run_service_interface_sql(thd, &sql_text, &ed_result) ||
-      ed_result.get_warnings().elements > 0)
+  if (run_service_interface_sql(thd, &ed_connection, &sql_text) ||
+      ed_connection.get_warn_count())
   {
     /* Should be no warnings. */
 
@@ -3103,16 +3104,18 @@ int num_slaves_attached()
     return 0;
   }
 
-  Ed_result_set *ed_result_set= ed_result.get_cur_result_set();
+  Ed_result_set *ed_result_set= ed_connection.use_result_set();
 
-  if (!ed_result_set || ed_result_set->data()->elements < 1)
+  if (ed_result_set->size() != 1)
     return 0;
 
-  Ed_row *ed_row= ed_result_set->get_cur_row();
-  const LEX_STRING *num_slaves_str= ed_row->get_column(0);
+  List_iterator_fast<Ed_row> row_it(*ed_result_set);
 
-  char *buffer= thd->strmake(num_slaves_str->str, num_slaves_str->length + 1);
-  return atoi(buffer);
+  ed_row= row_it++;
+  num_slaves_str= ed_row->get_column(0);
+
+  /* Can safely run atoi, strings are always NUL-terminated in Ed interface */
+  return atoi(num_slaves_str->str);
 }
 
 /**
