@@ -78,7 +78,7 @@ Diagnostics_area::reset_diagnostics_area()
 */
 
 void
-Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
+Diagnostics_area::set_ok_status(THD *thd, ulonglong affected_rows_arg,
                                 ulonglong last_insert_id_arg,
                                 const char *message_arg)
 {
@@ -377,7 +377,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
   MYSQL_ERROR *err;
   SELECT_LEX *sel= &thd->lex->select_lex;
   SELECT_LEX_UNIT *unit= &thd->lex->unit;
-  ha_rows idx= 0;
+  ulonglong idx= 0;
   Protocol *protocol=thd->protocol;
 
   unit->set_limit(sel);
