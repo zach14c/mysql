@@ -18,16 +18,19 @@ uppercase varchar(1) character set utf8 default null,
 lowercase varchar(1) character set utf8 default null
 ) Engine 'MyISAM';
 CREATE TABLE t1 (
+id int,
 a varchar(1) binary  character set utf8,
 uppercase varchar(1) character set utf8 default null,
 lowercase varchar(1) character set utf8 default null
 );
 CREATE TABLE t2 (
+id int,
 a varchar(1) binary  character set utf8 primary key,
 uppercase varchar(1) character set utf8 default null,
 lowercase varchar(1) character set utf8 default null
 );
 CREATE TABLE t3 (
+id int,
 a varchar(1) binary  character set utf8,
 uppercase varchar(1) character set utf8 default null,
 lowercase varchar(1) character set utf8 default null,
@@ -36,6 +39,7 @@ key (uppercase),
 key (lowercase)
 );
 CREATE TABLE t4 (
+id int,
 a varchar(1) binary  character set utf8,
 uppercase varchar(1) character set utf8 default null,
 lowercase varchar(1) character set utf8 default null,
@@ -44,16 +48,19 @@ key (uppercase),
 key (lowercase)
 );
 CREATE TABLE t5 (
+id int,
 a varchar(1) binary  character set utf8 not null,
 uppercase varchar(1) character set utf8 default null,
 lowercase varchar(1) character set utf8 default null,
 unique key (a)
 );
 CREATE TABLE t_err (
+id int,
 expected varchar(1) character set utf8,
 actual varchar(1) character set utf8,
 category varchar(100),
-comment varchar(80)
+comment varchar(80),
+test varchar(50)
 ) Engine 'MyISAM';
 CREATE FUNCTION transform(a varchar(8))
 RETURNS varchar(8)
@@ -120,8 +127,8 @@ SELECT count(*) FROM t0 WHERE length(a) = 0;
 count(*)
 6
 DELETE FROM t0 WHERE length(a) = 0;
-INSERT INTO t1 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
-INSERT INTO t3 (a, uppercase, lowercase) SELECT a, uppercase, lowercase FROM t0;
+INSERT INTO t1 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
+INSERT INTO t3 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
 SELECT count(*) FROM t0;
 count(*)
 19330
