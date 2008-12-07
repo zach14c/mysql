@@ -14,26 +14,26 @@ id int auto_increment not null primary key,
 a varchar(1) binary character set utf8,
 category  varchar(100),
 comment   varchar(80),
-uppercase varchar(1) character set utf8 default null,
-lowercase varchar(1) character set utf8 default null
+uppercase varchar(1) binary character set utf8 default null,
+lowercase varchar(1) binary character set utf8 default null
 ) Engine 'MyISAM';
 CREATE TABLE t1 (
 id int,
 a varchar(1) binary  character set utf8,
-uppercase varchar(1) character set utf8 default null,
-lowercase varchar(1) character set utf8 default null
+uppercase varchar(1) binary character set utf8 default null,
+lowercase varchar(1) binary character set utf8 default null
 );
 CREATE TABLE t2 (
 id int,
 a varchar(1) binary  character set utf8 primary key,
-uppercase varchar(1) character set utf8 default null,
-lowercase varchar(1) character set utf8 default null
+uppercase varchar(1) binary character set utf8 default null,
+lowercase varchar(1) binary character set utf8 default null
 );
 CREATE TABLE t3 (
 id int,
 a varchar(1) binary  character set utf8,
-uppercase varchar(1) character set utf8 default null,
-lowercase varchar(1) character set utf8 default null,
+uppercase varchar(1) binary character set utf8 default null,
+lowercase varchar(1) binary character set utf8 default null,
 key (a),
 key (uppercase),
 key (lowercase)
@@ -41,8 +41,8 @@ key (lowercase)
 CREATE TABLE t4 (
 id int,
 a varchar(1) binary  character set utf8,
-uppercase varchar(1) character set utf8 default null,
-lowercase varchar(1) character set utf8 default null,
+uppercase varchar(1) binary character set utf8 default null,
+lowercase varchar(1) binary character set utf8 default null,
 unique key (a),
 key (uppercase),
 key (lowercase)
@@ -50,8 +50,8 @@ key (lowercase)
 CREATE TABLE t5 (
 id int,
 a varchar(1) binary  character set utf8 not null,
-uppercase varchar(1) character set utf8 default null,
-lowercase varchar(1) character set utf8 default null,
+uppercase varchar(1) binary character set utf8 default null,
+lowercase varchar(1) binary character set utf8 default null,
 unique key (a)
 );
 CREATE TABLE t_err (
