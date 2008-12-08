@@ -1,4 +1,5 @@
 --source include/have_innodb.inc
+--source include/have_blackhole.inc
 --source include/not_embedded.inc
 --source include/have_debug_sync.inc
 --source include/have_log_bin.inc
@@ -180,9 +181,9 @@ SHOW CREATE TABLE tasking;
 
 # check that VP info was correctly read and reported
 
-SELECT validity_point_time = @vp_time 
-   AND binlog_file = @vp_file
-   AND binlog_pos = @vp_pos
+SELECT validity_point_time = @vp_time, 
+       binlog_file = @vp_file, 
+       binlog_pos = @vp_pos
 FROM mysql.backup_history
 WHERE backup_id = @bid; 
 
@@ -226,9 +227,9 @@ SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
 
 # check that VP info was correctly read and reported
 
-SELECT validity_point_time = @vp_time 
-   AND binlog_file = @vp_file
-   AND binlog_pos = @vp_pos
+SELECT validity_point_time = @vp_time,
+       binlog_file = @vp_file,
+       binlog_pos = @vp_pos
 FROM mysql.backup_history
 WHERE backup_id = @bid; 
 

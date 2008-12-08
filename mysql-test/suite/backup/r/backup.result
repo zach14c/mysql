@@ -132,18 +132,13 @@ tasking	CREATE TABLE `tasking` (
   `project_number` char(9) DEFAULT NULL,
   `hours_worked` double(10,2) DEFAULT NULL
 ) ENGINE=BLACKHOLE DEFAULT CHARSET=latin1
-SELECT validity_point_time = @vp_time FROM mysql.backup_history
-WHERE backup_id = @bid;
-validity_point_time = @vp_time
-1
-SELECT binlog_file = @vp_file FROM mysql.backup_history
-WHERE backup_id = @bid;
-binlog_file = @vp_file
-1
-SELECT binlog_pos = @vp_pos FROM mysql.backup_history
-WHERE backup_id = @bid;
+SELECT validity_point_time = @vp_time, 
+binlog_file = @vp_file, 
 binlog_pos = @vp_pos
-1
+FROM mysql.backup_history
+WHERE backup_id = @bid;
+validity_point_time = @vp_time	binlog_file = @vp_file	binlog_pos = @vp_pos
+1	1	1
 DROP DATABASE db1;
 DROP DATABASE db2;
 DROP DATABASE db3;
@@ -164,18 +159,13 @@ RESTORE FROM 'db1.bkp';
 backup_id
 #
 SELECT MAX(backup_id) FROM mysql.backup_history INTO @bid;
-SELECT validity_point_time = @vp_time FROM mysql.backup_history
-WHERE backup_id = @bid;
-validity_point_time = @vp_time
-1
-SELECT binlog_file = @vp_file FROM mysql.backup_history
-WHERE backup_id = @bid;
-binlog_file = @vp_file
-1
-SELECT binlog_pos = @vp_pos FROM mysql.backup_history
-WHERE backup_id = @bid;
+SELECT validity_point_time = @vp_time,
+binlog_file = @vp_file,
 binlog_pos = @vp_pos
-1
+FROM mysql.backup_history
+WHERE backup_id = @bid;
+validity_point_time = @vp_time	binlog_file = @vp_file	binlog_pos = @vp_pos
+1	1	1
 DROP DATABASE db1;
 DROP DATABASE IF EXISTS bup_default;
 CREATE DATABASE bup_default;
