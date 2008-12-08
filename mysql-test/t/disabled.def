@@ -9,14 +9,17 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
+innodb          : WL#1213: Waiting for InnoDB team to add support for 4-byte character sets.
 federated_transactions   : Bug#29523 Transactions do not work
-show_check      : Bug #32682    Test show_check fails in 6.0
 lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 ctype_create         : Bug#32965 main.ctype_create fails
+backup_no_engine     : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
+query_cache_wlock_invalidate_func: Bug#35390 causes not deterministic results.
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-wait_timeout_func           : Bug #36873 wait_timeout_func.test fails randomly
-timestamp_func              : Bug #37702 timestamp_func relies on sleep and is unstable in pushbuild
-thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
-log_output_basic     : Bug #40988       log_output_basic.test succeeded though syntactically false.
-innodb               : Bug #41056    Innodb.test shows some difference to its result file.
+backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
+backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
+thread_cache_size_func      : Bug#40575 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
+log_output_basic     : Bug #40988  	log_output_basic.test succeeded though syntactically false.
+wait_timeout_func    : Bug #41225 joro wait_timeout_func fails
+

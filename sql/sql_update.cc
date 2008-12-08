@@ -728,6 +728,11 @@ int mysql_update(THD *thd,
     else
       table->file->unlock_row();
     thd->warning_info->inc_current_row_for_warning();
+    if (thd->is_error())
+    {
+      error= 1;
+      break;
+    }
   }
   dup_key_found= 0;
   /*
