@@ -48,6 +48,7 @@ struct st_backup_history
   int error_num;                   ///< error number
   char *user_comment;              ///< user comment from command
   char *backup_file;               ///< the backup image file
+  char backup_file_path[FN_REFLEN]; ///< the backup image path
   char *command;                   ///< the command used
   int binlog_pos;                  ///< position in the binary log
   char *binlog_file;               ///< the name of the binary log file
@@ -57,6 +58,8 @@ struct st_backup_history
   time_t stop;                     ///< stop time of operation
   time_t vp_time;                  ///< point in time validation was assured
   String driver_name;              ///< list of backup engines used
+  int master_binlog_pos;           ///< position in the binary log
+  char *master_binlog_file;        ///< name of the master's binary log file
 };
 
 
@@ -94,7 +97,6 @@ class Backup_log
 public:
   Backup_log(THD *thd, 
              enum_backup_operation type, 
-             const LEX_STRING path, 
              const char *query); 
 
   /* 
@@ -112,6 +114,12 @@ public:
                       longlong progress,
                       int error_num,
                       const char *notes);
+
+  /*
+    Write master's binlog position and file if recorded earlier.
+  */
+  bool write_master_binlog_info();
+
   /*
     Check the backup logs (as tables).
   */
@@ -126,12 +134,18 @@ public:
   void error_num(int code) { m_op_hist.error_num= code; }
   void binlog_pos(unsigned long int pos) { m_op_hist.binlog_pos= pos; }
   void binlog_file(char *file);
+  void master_binlog_pos(unsigned long int pos) 
+  { 
+    m_op_hist.master_binlog_pos= pos; 
+  }
+  void master_binlog_file(char *file);
   void num_objects(int num) { m_op_hist.num_objects= num; }
   void size(longlong s) { m_op_hist.size= s; }
   void start(time_t when);
   void stop(time_t when);
   void vp_time(time_t when, bool report);
   void add_driver(const char* driver);
+  void backup_file(const char *full_path);
 
 private:
   st_backup_history m_op_hist;  ///< history log information
@@ -189,6 +203,22 @@ void Backup_log::binlog_file(char *file)
 {
   if (strlen(file) > 0)
     m_op_hist.binlog_file= file;
+}
+
+/** 
+  Report master's binlog position at validity point.
+
+  This method saves the binlog file name in the history data.
+
+  @param[IN] file Binlog file name.
+
+  @note If the file name is 0|NULL, nothing is saved in the history data.
+*/
+inline
+void Backup_log::master_binlog_file(char *file)
+{
+  if (strlen(file) > 0)
+    m_op_hist.master_binlog_file= file;
 }
 
 #endif // SI_LOGS_H_

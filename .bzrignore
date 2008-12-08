@@ -600,6 +600,7 @@ libmysqld/protocol_cursor.cc
 libmysqld/records.cc
 libmysqld/repl_failsafe.cc
 libmysqld/rpl_filter.cc
+libmysqld/rpl_handler.cc
 libmysqld/rpl_injector.cc
 libmysqld/rpl_record.cc
 libmysqld/rpl_record_old.cc
@@ -875,6 +876,7 @@ mysql-test/suite/partitions/r/partition_special_myisam.warnings
 mysql-test/suite/partitions/r/partition_t55.out
 mysql-test/suite/partitions/r/partition_t55.refout
 mysql-test/suite/partitions/t/partition.test
+mysql-test/suite/rpl/t/rpl_view-slave.opt
 mysql-test/t.log
 mysql-test/t/index_merge.load
 mysql-test/t/tmp.test
@@ -1919,3 +1921,7 @@ mysql-test/tps.log
 libmysqld/event_parse_data.cc
 client/transaction.h
 libmysqld/transaction.cc
+libmysqld/rpl_handler.cc
+libmysql/probes.h
+libmysql_r/probes.h
+unittest/tmp

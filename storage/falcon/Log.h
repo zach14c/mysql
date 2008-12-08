@@ -38,6 +38,9 @@ static const int	LogScrub		= 128;
 static const int	LogException	= 256;
 static const int	LogScavenge		= 512;
 static const int	LogXARecovery	= 1024;
+static const int	LogMysqlInfo		= 0x20000000;
+static const int	LogMysqlWarning		= 0x40000000;
+static const int	LogMysqlError		= 0x80000000;
 
 typedef void (Listener) (int, const char*, void *arg);
 

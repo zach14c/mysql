@@ -46,6 +46,11 @@
 
 #ifdef HAVE_DTRACE
 #define _DTRACE_VERSION 1
+#else
+#undef _DTRACE_VERSION
+#endif
+#ifdef EMBEDDED_LIBRARY
+#undef _DTRACE_VERSION
 #endif
 #include "probes.h"
 
@@ -425,17 +430,7 @@ enum open_table_mode
 #if defined(__WIN__)
 #undef	FLUSH_TIME
 #define FLUSH_TIME	1800			/**< Flush every half hour */
-
-#define INTERRUPT_PRIOR -2
-#define CONNECT_PRIOR	-1
-#define WAIT_PRIOR	0
-#define QUERY_PRIOR	2
-#else
-#define INTERRUPT_PRIOR 10
-#define CONNECT_PRIOR	9
-#define WAIT_PRIOR	8
-#define QUERY_PRIOR	6
-#endif /* __WIN92__ */
+#endif /* __WIN__ */
 
 	/* Bits from testflag */
 #define TEST_PRINT_CACHED_TABLES 1
@@ -521,7 +516,7 @@ enum open_table_mode
   Dont report errors for individual rows,
   But just report error on commit (or read ofcourse)
 */
-#define OPTION_ALLOW_BATCH              (ULL(1) << 33) // THD, intern (slave)
+#define OPTION_ALLOW_BATCH              (ULL(1) << 34) // THD, intern (slave)
 
 /**
   Maximum length of time zone name that we support
@@ -599,6 +594,7 @@ enum open_table_mode
 #define UNCACHEABLE_PREPARE    16
 /* For uncorrelated SELECT in an UNION with some correlated SELECTs */
 #define UNCACHEABLE_UNITED     32
+#define UNCACHEABLE_CHECKOPTION   64
 
 /* Used to check GROUP BY list in the MODE_ONLY_FULL_GROUP_BY mode */
 #define UNDEF_POS (-1)
@@ -1313,6 +1309,9 @@ bool mysql_insert(THD *thd,TABLE_LIST *table,List<Item> &fields,
                   List<List_item> &values, List<Item> &update_fields,
                   List<Item> &update_values, enum_duplicates flag,
                   bool ignore);
+void upgrade_lock_type_for_insert(THD *thd, thr_lock_type *lock_type,
+                                  enum_duplicates duplic,
+                                  bool is_multi_insert);
 int check_that_all_fields_are_given_values(THD *thd, TABLE *entry,
                                            TABLE_LIST *table_list);
 void prepare_triggers_for_insert_stmt(TABLE *table);
@@ -1844,10 +1843,9 @@ int mysql_load(THD *thd, sql_exchange *ex, TABLE_LIST *table_list,
 int write_record(THD *thd, TABLE *table, COPY_INFO *info);
 
 /* sql_manager.cc */
-extern ulong volatile manager_status;
-extern bool volatile manager_thread_in_use, mqh_used;
-extern pthread_t manager_thread;
-pthread_handler_t handle_manager(void *arg);
+extern bool volatile  mqh_used;
+void start_handle_manager();
+void stop_handle_manager();
 bool mysql_manager_submit(void (*action)());
 
 
@@ -2282,8 +2280,8 @@ void make_date(const DATE_TIME_FORMAT *format, const MYSQL_TIME *l_time,
 void make_time(const DATE_TIME_FORMAT *format, const MYSQL_TIME *l_time,
                String *str);
 int my_time_compare(MYSQL_TIME *a, MYSQL_TIME *b);
-ulonglong get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
-                             Item *warn_item, bool *is_null);
+longlong get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
+                            Item *warn_item, bool *is_null);
 
 int test_if_number(char *str,int *res,bool allow_wildcards);
 void change_byte(uchar *,uint,char,char);

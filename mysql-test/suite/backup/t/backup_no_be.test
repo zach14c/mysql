@@ -33,7 +33,7 @@ INSERT INTO t1 VALUES (1),(2),(3);
 # First check the normal behaviour when server is not modified.
 
 # make sure that injected code is disabled
-SET SESSION debug="d,";
+SET SESSION debug="-d,";
 SELECT @@debug;
 
 # BACKUP should succeed without a warning.
@@ -56,7 +56,7 @@ SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 # Now see what happens when injected code is activated and MyISAM uses the dummy
 # factory function.
 
-SET SESSION debug="d,backup_test_dummy_be_factory";
+SET SESSION debug="+d,backup_test_dummy_be_factory";
 SELECT @@debug;
 
 # The following BACKUP command should generate a warning but otherwise
@@ -84,12 +84,12 @@ SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 # check that we can restore from the created image.
 
 --replace_column 1 #
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;
 SHOW TABLES IN db1;
 
 
 # Clean up.
 
 DROP DATABASE db1;
-SET GLOBAL debug="d,";
+SET GLOBAL debug="-d,";
 --remove_file $MYSQLTEST_VARDIR/master-data/db1.bak

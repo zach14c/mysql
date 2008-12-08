@@ -261,7 +261,7 @@ handler *get_ha_partition(partition_info *part_info)
   DBUG_ENTER("get_ha_partition");
   if ((partition= new ha_partition(partition_hton, part_info)))
   {
-    if (partition->initialise_partition(current_thd->mem_root))
+    if (partition->initialize_partition(current_thd->mem_root))
     {
       delete partition;
       partition= 0;
@@ -1288,7 +1288,12 @@ int ha_rollback_trans(THD *thd, bool all)
     trans->ha_list= 0;
     trans->no_2pc=0;
     if (is_real_trans)
-      thd->transaction.xid_state.xid.null();
+    {
+      if (thd->transaction_rollback_request)
+        thd->transaction.xid_state.rm_error= thd->main_da.sql_errno();
+      else
+        thd->transaction.xid_state.xid.null();
+    }
     if (all)
     {
       thd->variables.tx_isolation=thd->session_tx_isolation;
@@ -2778,7 +2783,7 @@ int handler::check_collation_compatibility()
 {
   ulong mysql_version= table->s->mysql_version;
 
-  if (mysql_version < 50048)
+  if (mysql_version < 60006)
   {
     KEY *key= table->key_info;
     KEY *key_end= key + table->s->keys;
@@ -2792,15 +2797,25 @@ int handler::check_collation_compatibility()
           continue;
         Field *field= table->field[key_part->fieldnr - 1];
         uint cs_number= field->charset()->number;
-        if (mysql_version < 50048 &&
-            (cs_number == 11 || /* ascii_general_ci - bug #29499, bug #27562 */
-             cs_number == 41 || /* latin7_general_ci - bug #29461 */
-             cs_number == 42 || /* latin7_general_cs - bug #29461 */
-             cs_number == 20 || /* latin7_estonian_cs - bug #29461 */
-             cs_number == 21 || /* latin2_hungarian_ci - bug #29461 */
-             cs_number == 22 || /* koi8u_general_ci - bug #29461 */
-             cs_number == 23 || /* cp1251_ukrainian_ci - bug #29461 */
-             cs_number == 26))  /* cp1250_general_ci - bug #29461 */
+        if ((mysql_version < 50048 &&
+             (cs_number == 11 ||   /* ascii_general_ci - bug #29499, bug #27562 */
+              cs_number == 41 ||   /* latin7_general_ci - bug #29461 */
+              cs_number == 42 ||   /* latin7_general_cs - bug #29461 */
+              cs_number == 20 ||   /* latin7_estonian_cs - bug #29461 */
+              cs_number == 21 ||   /* latin2_hungarian_ci - bug #29461 */
+              cs_number == 22 ||   /* koi8u_general_ci - bug #29461 */
+              cs_number == 23 ||   /* cp1251_ukrainian_ci - bug #29461 */
+              cs_number == 26)) || /* cp1250_general_ci - bug #29461 */
+            (mysql_version < 50124 &&
+             (cs_number == 33 ||   /* utf8_general_ci - bug #27877 */
+              cs_number == 35)) || /* ucs2_general_ci - bug #27877 */
+            (mysql_version < 60001 &&
+             (cs_number == 2)) ||  /* latin2_czech_cs - WL #3664 */
+            (mysql_version < 60006 &&
+             (cs_number == 1 ||    /* big5_chinese_ci - bug #25420 */
+              cs_number == 36 ||   /* cp866_general_ci - bug #25420 */
+              cs_number == 24 ||   /* gb2312_chinese_ci - bug #25420 */
+              cs_number == 28)))   /* gbk_chinese_ci - bug #25420 */
           return HA_ADMIN_NEEDS_UPGRADE;
       }  
     }  
@@ -3601,7 +3616,7 @@ int ha_init_key_cache(const char *name, KEY_CACHE *key_cache)
   if (!key_cache->key_cache_inited)
   {
     pthread_mutex_lock(&LOCK_global_system_variables);
-    ulong tmp_buff_size= (ulong) key_cache->param_buff_size;
+    size_t tmp_buff_size= (size_t) key_cache->param_buff_size;
     uint tmp_block_size= (uint) key_cache->param_block_size;
     uint division_limit= key_cache->param_division_limit;
     uint age_threshold=  key_cache->param_age_threshold;
@@ -3625,7 +3640,7 @@ int ha_resize_key_cache(KEY_CACHE *key_cache)
   if (key_cache->key_cache_inited)
   {
     pthread_mutex_lock(&LOCK_global_system_variables);
-    long tmp_buff_size= (long) key_cache->param_buff_size;
+    size_t tmp_buff_size= (size_t) key_cache->param_buff_size;
     long tmp_block_size= (long) key_cache->param_block_size;
     uint division_limit= key_cache->param_division_limit;
     uint age_threshold=  key_cache->param_age_threshold;
@@ -5302,13 +5317,51 @@ int handler::ha_external_lock(THD *thd, int lock_type)
   */
   DBUG_ASSERT(next_insert_id == 0);
 
+  if (MYSQL_HANDLER_RDLOCK_START_ENABLED() ||
+      MYSQL_HANDLER_WRLOCK_START_ENABLED() ||
+      MYSQL_HANDLER_UNLOCK_START_ENABLED())
+  {
+    if (lock_type == F_RDLCK)
+    {
+      MYSQL_HANDLER_RDLOCK_START(table_share->db.str,
+                                 table_share->table_name.str);
+    }
+    else if (lock_type == F_WRLCK)
+    {
+      MYSQL_HANDLER_WRLOCK_START(table_share->db.str,
+                                 table_share->table_name.str);
+    }
+    else if (lock_type == F_UNLCK)
+    {
+      MYSQL_HANDLER_UNLOCK_START(table_share->db.str,
+                                 table_share->table_name.str);
+    }
+  }
+
   /*
     We cache the table flags if the locking succeeded. Otherwise, we
     keep them as they were when they were fetched in ha_open().
   */
-  MYSQL_EXTERNAL_LOCK(lock_type);
-
   int error= external_lock(thd, lock_type);
+
+  if (MYSQL_HANDLER_RDLOCK_DONE_ENABLED() ||
+      MYSQL_HANDLER_WRLOCK_DONE_ENABLED() ||
+      MYSQL_HANDLER_UNLOCK_DONE_ENABLED())
+  {
+    if (lock_type == F_RDLCK)
+    {
+      MYSQL_HANDLER_RDLOCK_DONE(error);
+    }
+    else if (lock_type == F_WRLCK)
+    {
+      MYSQL_HANDLER_WRLOCK_DONE(error);
+    }
+    else if (lock_type == F_UNLCK)
+    {
+      MYSQL_HANDLER_UNLOCK_DONE(error);
+    }
+  }
+  
   if (error == 0)
     cached_table_flags= table_flags();
   DBUG_RETURN(error);
@@ -5342,15 +5395,16 @@ int handler::ha_write_row(uchar *buf)
   int error;
   Log_func *log_func= Write_rows_log_event::binlog_row_logging_function;
   DBUG_ENTER("handler::ha_write_row");
-  MYSQL_INSERT_ROW_START();
 
+  MYSQL_INSERT_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
-
-  if (unlikely(error= write_row(buf)))
+  error= write_row(buf);
+  MYSQL_INSERT_ROW_DONE(error);
+  
+  if (unlikely(error != 0))
     DBUG_RETURN(error);
   if (unlikely(error= binlog_log_row(table, 0, buf, log_func)))
     DBUG_RETURN(error); /* purecov: inspected */
-  MYSQL_INSERT_ROW_END();
   DBUG_RETURN(0);
 }
 
@@ -5366,9 +5420,12 @@ int handler::ha_update_row(const uchar *old_data, uchar *new_data)
    */
   DBUG_ASSERT(new_data == table->record[0]);
 
+  MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
+  error= update_row(old_data, new_data);
+  MYSQL_UPDATE_ROW_DONE(error);
 
-  if (unlikely(error= update_row(old_data, new_data)))
+  if (unlikely(error != 0))
     return error;
   if (unlikely(error= binlog_log_row(table, old_data, new_data, log_func)))
     return error;
@@ -5380,9 +5437,12 @@ int handler::ha_delete_row(const uchar *buf)
   int error;
   Log_func *log_func= Delete_rows_log_event::binlog_row_logging_function;
 
+  MYSQL_DELETE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
+  error= delete_row(buf);
+  MYSQL_DELETE_ROW_DONE(error);
 
-  if (unlikely(error= delete_row(buf)))
+  if (unlikely(error != 0))
     return error;
   if (unlikely(error= binlog_log_row(table, buf, 0, log_func)))
     return error;

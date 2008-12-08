@@ -3607,15 +3607,43 @@ bool mysql_create_table_no_lock(THD *thd,
   create_info->table_existed= 0;		// Mark that table is created
 
 #ifdef HAVE_READLINK
-  if (test_if_data_home_dir(create_info->data_file_name))
   {
-    my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATA DIRECTORY");
-    goto unlock_and_end;
-  }
-  if (test_if_data_home_dir(create_info->index_file_name))
-  {
-    my_error(ER_WRONG_ARGUMENTS, MYF(0), "INDEX DIRECTORY");
-    goto unlock_and_end;
+    size_t dirlen;
+    char   dirpath[FN_REFLEN];
+
+    /*
+      data_file_name and index_file_name include the table name without
+      extension. Mostly this does not refer to an existing file. When
+      comparing data_file_name or index_file_name against the data
+      directory, we try to resolve all symbolic links. On some systems,
+      we use realpath(3) for the resolution. This returns ENOENT if the
+      resolved path does not refer to an existing file. my_realpath()
+      does then copy the requested path verbatim, without symlink
+      resolution. Thereafter the comparison can fail even if the
+      requested path is within the data directory. E.g. if symlinks to
+      another file system are used. To make realpath(3) return the
+      resolved path, we strip the table name and compare the directory
+      path only. If the directory doesn't exist either, table creation
+      will fail anyway.
+    */
+    if (create_info->data_file_name)
+    {
+      dirname_part(dirpath, create_info->data_file_name, &dirlen);
+      if (test_if_data_home_dir(dirpath))
+      {
+        my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATA DIRECTORY");
+        goto unlock_and_end;
+      }
+    }
+    if (create_info->index_file_name)
+    {
+      dirname_part(dirpath, create_info->index_file_name, &dirlen);
+      if (test_if_data_home_dir(dirpath))
+      {
+        my_error(ER_WRONG_ARGUMENTS, MYF(0), "INDEX DIRECTORY");
+        goto unlock_and_end;
+      }
+    }
   }
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -3629,11 +3657,13 @@ bool mysql_create_table_no_lock(THD *thd,
 #endif /* HAVE_READLINK */
   {
     if (create_info->data_file_name)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "DATA DIRECTORY option ignored");
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                          "DATA DIRECTORY");
     if (create_info->index_file_name)
-      push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                   "INDEX DIRECTORY option ignored");
+      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                          WARN_OPTION_IGNORED, ER(WARN_OPTION_IGNORED),
+                          "INDEX DIRECTORY");
     create_info->data_file_name= create_info->index_file_name= 0;
   }
   create_info->table_options=db_options;
@@ -4211,7 +4241,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       table->next_local= save_next_local;
       thd->open_options&= ~extra_open_options;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-      if (table->table && table->table->part_info)
+      if (table->table)
       {
         /*
           Set up which partitions that should be processed
@@ -4219,11 +4249,13 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
         */
         Alter_info *alter_info= &lex->alter_info;
 
-        if (alter_info->flags & ALTER_ANALYZE_PARTITION ||
-            alter_info->flags & ALTER_CHECK_PARTITION ||
-            alter_info->flags & ALTER_OPTIMIZE_PARTITION ||
-            alter_info->flags & ALTER_REPAIR_PARTITION)
+        if (alter_info->flags & ALTER_ADMIN_PARTITION)
         {
+          if (!table->table->part_info)
+          {
+            my_error(ER_PARTITION_MGMT_ON_NONPARTITIONED, MYF(0));
+            DBUG_RETURN(TRUE);
+          }
           uint no_parts_found;
           uint no_parts_opt= alter_info->partition_names.elements;
           no_parts_found= set_part_state(alter_info, table->table->part_info,
@@ -4301,6 +4333,12 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     {
       DBUG_PRINT("admin", ("calling view_operator_func"));
       result_code= (*view_operator_func)(thd, table);
+      goto send_result;
+    }
+
+    if (table->schema_table)
+    {
+      result_code= HA_ADMIN_NOT_IMPLEMENTED;
       goto send_result;
     }
 
@@ -5349,8 +5387,7 @@ compare_tables(THD *thd,
   new_field_it.init(alter_info->create_list);
   tmp_new_field_it.init(tmp_alter_info.create_list);
 
-  /*
-    Go through fields and check if the original ones are compatible
+  /*   Go through fields and check if the original ones are compatible
     with new table.
   */
   for (f_ptr= table->field, new_field= new_field_it++,
@@ -5364,10 +5401,11 @@ compare_tables(THD *thd,
       new_field->charset= create_info->default_table_charset;
 
     /* Don't pack rows in old tables if the user has requested this. */
-    if ((tmp_new_field->flags & BLOB_FLAG) ||
-        tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
-        create_info->row_type != ROW_TYPE_FIXED)
-      create_info->table_options|= HA_OPTION_PACK_RECORD;
+      if (create_info->row_type == ROW_TYPE_DYNAMIC ||
+	(tmp_new_field->flags & BLOB_FLAG) ||
+	tmp_new_field->sql_type == MYSQL_TYPE_VARCHAR &&
+  	create_info->row_type != ROW_TYPE_FIXED)
+        create_info->table_options|= HA_OPTION_PACK_RECORD;
 
     /* Check how fields have been modified */
     if (alter_info->flags & ALTER_CHANGE_COLUMN)
@@ -7102,7 +7140,6 @@ view_err:
   /* Copy the data if necessary. */
   thd->count_cuted_fields= CHECK_FIELD_WARN;	// calc cuted fields
   thd->cuted_fields=0L;
-  thd_proc_info(thd, "copy to tmp table");
   copied=deleted=0;
   /*
     We do not copy data for MERGE tables. Only the children have data.
@@ -7113,6 +7150,7 @@ view_err:
     /* We don't want update TIMESTAMP fields during ALTER TABLE. */
     new_table->timestamp_field_type= TIMESTAMP_NO_AUTO_SET;
     new_table->next_number_field=new_table->found_next_number_field;
+    thd_proc_info(thd, "copy to tmp table");
     error= copy_data_between_tables(table, new_table,
                                     alter_info->create_list, ignore,
                                    order_num, order, &copied, &deleted,
@@ -7682,6 +7720,12 @@ bool mysql_checksum_table(THD *thd, TABLE_LIST *tables,
 	{
 	  for (;;)
 	  {
+            if (thd->killed)
+            {
+              t->file->ha_rnd_end();
+              thd->protocol->remove_last_row();
+              goto err;
+            }
 	    ha_checksum row_crc= 0;
             int error= t->file->rnd_next(t->record[0]);
             if (unlikely(error))

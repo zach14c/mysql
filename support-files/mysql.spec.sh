@@ -252,8 +252,8 @@ BuildMySQL() {
 # The --enable-assembler simply does nothing on systems that does not
 # support assembler speedups.
 sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
-	CC=\"${CC:-$MYSQL_BUILD_CC}\" \
-	CXX=\"${CXX:-$MYSQL_BUILD_CXX}\" \
+	CC=\"${MYSQL_BUILD_CC:-$CC}\" \
+	CXX=\"${MYSQL_BUILD_CXX:-$CXX}\" \
 	CFLAGS=\"$CFLAGS\" \
 	CXXFLAGS=\"$CXXFLAGS\" \
 	LDFLAGS=\"$MYSQL_BUILD_LDFLAGS\" \
@@ -311,8 +311,6 @@ mkdir -p $RBR%{_libdir}/mysql
 PATH=${MYSQL_BUILD_PATH:-/bin:/usr/bin}
 export PATH
 
-# Build the Debug binary.
-
 # Use gcc for C and C++ code (to avoid a dependency on libstdc++ and
 # including exceptions into the code
 if [ -z "$CXX" -a -z "$CC" ]
@@ -321,16 +319,29 @@ then
 	export CXX="gcc"
 fi
 
+# Prepare compiler flags
+CFLAGS=${MYSQL_BUILD_CFLAGS:-$RPM_OPT_FLAGS}
+CXXFLAGS=${MYSQL_BUILD_CXXFLAGS:-$RPM_OPT_FLAGS -felide-constructors -fno-exceptions -fno-rtti }
+
 ##############################################################################
 #
 #  Build the debug version
 #
 ##############################################################################
 
-# Strip -Oxxx, add -g and --with-debug.
-(cd mysql-debug-%{mysql_version} &&
-CFLAGS=`echo "${MYSQL_BUILD_CFLAGS:-$RPM_OPT_FLAGS} -g" | sed -e 's/-O[0-9]*//g'` \
-CXXFLAGS=`echo "${MYSQL_BUILD_CXXFLAGS:-$RPM_OPT_FLAGS -felide-constructors -fno-exceptions -fno-rtti} -g" | sed -e 's/-O[0-9]*//g'` \
+(
+# We are in a subshell, so we can modify variables just for one run.
+CFLAGS=`echo   " $CFLAGS "   | \
+    sed -e 's/ -O[0-9]* / /' -e 's/ -unroll2 / /' -e 's/ -ip / /' \
+        -e 's/^ //' -e 's/ $//'`
+CXXFLAGS=`echo " $CXXFLAGS " | \
+    sed -e 's/ -O[0-9]* / /' -e 's/ -unroll2 / /' -e 's/ -ip / /' \
+        -e 's/^ //' -e 's/ $//'`
+
+# Add -g and --with-debug.
+cd mysql-debug-%{mysql_version} &&
+CFLAGS="$CFLAGS" \
+CXXFLAGS="$CXXFLAGS" \
 BuildMySQL "--enable-shared \
 		--with-debug \
 		--with-innodb \
@@ -371,8 +382,8 @@ fi
 ##############################################################################
 
 (cd mysql-release-%{mysql_version} &&
-CFLAGS="${MYSQL_BUILD_CFLAGS:-$RPM_OPT_FLAGS} -g" \
-CXXFLAGS="${MYSQL_BUILD_CXXFLAGS:-$RPM_OPT_FLAGS -felide-constructors -fno-exceptions -fno-rtti} -g" \
+CFLAGS="$CFLAGS" \
+CXXFLAGS="$CXXFLAGS" \
 BuildMySQL "--enable-shared \
 		--with-innodb \
 %if %{CLUSTER_BUILD}
@@ -851,6 +862,16 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Fri Nov 07 2008 Joerg Bruehe <joerg@mysql.com>
+
+- Correct yesterday's fix, so that it also works for the last flag,
+  and fix a wrong quoting: un-quoted quote marks must not be escaped.
+
+* Thu Nov 06 2008 Joerg Bruehe <joerg@mysql.com>
+
+- Modify CFLAGS and CXXFLAGS such that a debug build is not optimized.
+  This should cover both gcc and icc flags.  Fixes bug#40546.
+  
 * Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
 
 - Removed the "Federated" storage engine option, and enabled in all

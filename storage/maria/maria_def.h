@@ -29,6 +29,7 @@
 #include "ma_loghandler.h"
 #include "ma_control_file.h"
 #include "ma_state.h"
+#include <waiting_threads.h>
 
 /* For testing recovery */
 #ifdef TO_BE_REMOVED
@@ -336,7 +337,7 @@ typedef struct st_maria_share
   size_t (*file_read)(MARIA_HA *, uchar *, size_t, my_off_t, myf);
   size_t (*file_write)(MARIA_HA *, const uchar *, size_t, my_off_t, myf);
   invalidator_by_filename invalidator;	/* query cache invalidator */
-  my_off_t current_key_del;		/* delete links for index pages */
+  my_off_t key_del_current;		/* delete links for index pages */
   ulong this_process;			/* processid */
   ulong last_process;			/* For table-change-check */
   ulong last_version;			/* Version on start */
@@ -380,12 +381,13 @@ typedef struct st_maria_share
   */
   my_bool now_transactional;
   my_bool have_versioning;
-  my_bool used_key_del;                         /* != 0 if key_del is locked */
+  my_bool key_del_used;                         /* != 0 if key_del is locked */
 #ifdef THREAD
   THR_LOCK lock;
   void (*lock_restore_status)(void *);
   pthread_mutex_t intern_lock;		/* Locking for use with _locking */
-  pthread_cond_t intern_cond;
+  pthread_mutex_t key_del_lock;
+  pthread_cond_t  key_del_cond;
 #endif
   my_off_t mmaped_length;
   uint nonmmaped_inserts;		/* counter of writing in
@@ -462,7 +464,7 @@ typedef my_bool (*index_cond_func_t)(void *param);
 struct st_maria_handler
 {
   MARIA_SHARE *s;			/* Shared between open:s */
-  struct st_transaction *trn;           /* Pointer to active transaction */
+  struct st_ma_transaction *trn;           /* Pointer to active transaction */
   MARIA_STATUS_INFO *state, state_save;
   MARIA_STATUS_INFO *state_start;       /* State at start of transaction */
   MARIA_ROW cur_row;                    /* The active row that we just read */
@@ -493,13 +495,14 @@ struct st_maria_handler
   uint32 int_keytree_version;		/* -""- */
   int (*read_record)(MARIA_HA *, uchar*, MARIA_RECORD_POS);
   invalidator_by_filename invalidator;	/* query cache invalidator */
-  ulonglong last_auto_increment;  	/* auto value at start of statement */
+  ulonglong last_auto_increment;        /* auto value at start of statement */
   ulong this_unique;			/* uniq filenumber or thread */
   ulong last_unique;			/* last unique number */
   ulong this_loop;			/* counter for this open */
   ulong last_loop;			/* last used counter */
   MARIA_RECORD_POS save_lastpos;
   MARIA_RECORD_POS dup_key_pos;
+  TrID             dup_key_trid;
   my_off_t pos;				/* Intern variable */
   my_off_t last_keypage;		/* Last key page read */
   my_off_t last_search_keypage;		/* Last keypage when searching */
@@ -536,7 +539,7 @@ struct st_maria_handler
   int save_lastinx;
   uint preload_buff_size;		/* When preloading indexes */
   uint16 last_used_keyseg;              /* For MARIAMRG */
-  uint8 used_key_del;                   /* != 0 if key_del is used */
+  uint8 key_del_used;                   /* != 0 if key_del is used */
   my_bool was_locked;			/* Was locked in panic */
   my_bool append_insert_at_end;		/* Set if concurrent insert */
   my_bool quick_mode;
@@ -700,6 +703,19 @@ struct st_maria_handler
 #define get_pack_length(length) ((length) >= 255 ? 3 : 1)
 #define _ma_have_versioning(info) ((info)->row_flag & ROW_FLAG_TRANSID)
 
+/**
+   Sets table's trn and prints debug information
+   @param tbl              MARIA_HA of table
+   @param newtrn           what to put into tbl->trn
+   @note cast of newtrn is because %p of NULL gives warning (NULL is int)
+*/
+#define _ma_set_trn_for_table(tbl, newtrn) do {                         \
+    DBUG_PRINT("info",("table: %p trn: %p -> %p",                       \
+                       (tbl), (tbl)->trn, (void *)(newtrn)));           \
+    (tbl)->trn= (newtrn);                                               \
+  } while (0)
+
+
 #define MARIA_MIN_BLOCK_LENGTH	20		/* Because of delete-link */
 /* Don't use to small record-blocks */
 #define MARIA_EXTEND_BLOCK_LENGTH	20
@@ -785,7 +801,6 @@ typedef struct st_pinned_page
   enum pagecache_page_lock unlock, write_lock;
   my_bool changed;
 } MARIA_PINNED_PAGE;
-
 
 /* Prototypes for intern functions */
 extern int _ma_read_dynamic_record(MARIA_HA *, uchar *, MARIA_RECORD_POS);
@@ -1090,7 +1105,8 @@ void _ma_def_scan_restore_pos(MARIA_HA *info, MARIA_RECORD_POS lastpos);
 
 extern MARIA_HA *_ma_test_if_reopen(const char *filename);
 my_bool _ma_check_table_is_closed(const char *name, const char *where);
-int _ma_open_datafile(MARIA_HA *info, MARIA_SHARE *share, File file_to_dup);
+int _ma_open_datafile(MARIA_HA *info, MARIA_SHARE *share, const char *org_name,
+                      File file_to_dup);
 int _ma_open_keyfile(MARIA_SHARE *share);
 void _ma_setup_functions(register MARIA_SHARE *share);
 my_bool _ma_dynmap_file(MARIA_HA *info, my_off_t size);

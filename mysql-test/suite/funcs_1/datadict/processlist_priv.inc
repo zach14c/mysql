@@ -144,6 +144,7 @@ eval SELECT * FROM $table $select_where ORDER BY id;
 --replace_column 1 ID 3 HOST_NAME 6 TIME
 eval SELECT $columns FROM $table $select_where ORDER BY id;
 --source suite/funcs_1/datadict/datadict_priv.inc
+--real_sleep 0.3
 
 
 --echo ####################################################################################

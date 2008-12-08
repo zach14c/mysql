@@ -632,8 +632,36 @@ drop table t1;
 let $datadir=`select @@datadir`;
 --remove_file $datadir/test/subselect.out.file.1
 
+#
+# Bug #37894: Assertion in init_read_record_seq in handler.h line 1444
+#
+
+CREATE TABLE t1 (
+  pk INT PRIMARY KEY,
+  int_key INT,
+  varchar_key VARCHAR(5) UNIQUE,
+  varchar_nokey VARCHAR(5)
+);
+INSERT INTO t1 VALUES (9, 7,NULL,NULL), (10,8,'p' ,'p');
+
+SELECT varchar_nokey
+FROM t1
+WHERE NULL NOT IN (
+ SELECT INNR.pk FROM t1 AS INNR2
+   LEFT JOIN t1 AS INNR ON ( INNR2.int_key = INNR.int_key )
+   WHERE INNR.varchar_key > 'n{'
+);
+
+DROP TABLE t1;
+
 --echo End of 5.0 tests
 
+--echo #  
+--echo # BUG#36896: Server crash on SELECT FROM DUAL
+--echo # 
+create table t1 (a int);
+select 1 as res from dual where (1) in (select * from t1);
+drop table t1;
 #
 # BUG#36135 "void Diagnostics_area::set_eof_status(THD*): Assertion `!is_set()' failed."
 #
@@ -689,4 +717,5 @@ set join_cache_level=6;
 select * from t0 where t0.a in (select t1.a from t1 where t1.b=0); 
 set join_cache_level=@save_join_cache_level;
 drop table t0, t1;
+
 

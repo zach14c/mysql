@@ -162,6 +162,9 @@ Table::~Table()
 
 	if (recordBitmap)
 		recordBitmap->release();
+
+	if (emptySections)
+		emptySections->release();
 }
 
 Field* Table::findField(const char * fieldName)
@@ -856,8 +859,12 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	syncTriggers.setName("Table::syncTriggers");
 	syncScavenge.setName("Table::syncScavenge");
 	syncAlter.setName("Table::syncAlter");
+	
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
 		syncPriorVersions[n].setName("Table::syncPriorVersions");
+	
+	for (int n = 0; n < SYNC_THAW_SIZE; n++)
+		syncThaw[n].setName("Table::syncThaw");
 }
 
 Record* Table::fetch(int32 recordNumber)
@@ -1875,7 +1882,7 @@ int Table::retireRecords(RecordScavenge *recordScavenge)
 		syncObj.lock(Exclusive);
 
 		// Confirm that tree is still empty
-		
+
 		count = records->countActiveRecords();
 
 		if (count == 0)
@@ -1888,16 +1895,17 @@ int Table::retireRecords(RecordScavenge *recordScavenge)
 		{
 		// Get an exclusive lock only if there are empty leaf nodes. Find and
 		// delete the empty nodes using the stored record numbers as identifiers.
-		
+
 		if (emptySections->count > 0)
 			{
 			syncObj.unlock();
 			syncObj.lock(Exclusive);
 
-			for (int recordNumber = 0; (recordNumber = emptySections->nextSet(recordNumber)) >= 0;)
+			for (int sectionNumber = 0; (sectionNumber = emptySections->nextSet(0)) >= 0;)
 				{
+				int recordNumber = sectionNumber * RECORD_SLOTS;
 				records->retireSections(this, recordNumber);
-				emptySections->clear(recordNumber);
+				emptySections->clear(sectionNumber);
 				}
 				
 			}
@@ -2117,10 +2125,10 @@ void Table::garbageCollect(Record *leaving, Record *staying, Transaction *transa
 	if (!leaving && !staying)
 		return;
 
-	Sync sync (&syncObject, "Table::garbageCollect(1)");
+	Sync sync (&syncObject, "Table::garbageCollect(Obj)");
 	sync.lock(Shared);
 	
-	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(2)");
+	Sync syncPrior(getSyncPrior(leaving ? leaving : staying), "Table::garbageCollect(prior)");
 	syncPrior.lock(Shared);
 	
 	// Clean up field indexes
@@ -2541,9 +2549,6 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		state = transaction->getRelativeState(dup, DO_NOT_WAIT);
 
-		if (dup->state == recChilled)
-			dup->getRecordData();
-
 		// Check for a deleted record or a record lock
 
 		if (!dup->hasRecord())
@@ -2768,6 +2773,17 @@ int Table::countActiveRecords()
 		return 0;
 
 	return records->countActiveRecords();
+}
+
+int Table::chartActiveRecords(int *chart)
+{
+	Sync sync(&syncObject, "Table::countActiveRecords");
+	sync.lock(Shared);
+
+	if (!records)
+		return 0;
+
+	return records->chartActiveRecords(chart);
 }
 
 void Table::rebuildIndex(Index *index, Transaction *transaction)
@@ -3295,7 +3311,7 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 	Sync syncTable(&syncObject, "Table::validateAndInsert");
 
 	// Do not need syncPrior here since this is a new record.
-	// No other thread can see this records priorVersion pointer.
+	// No other thread can see this record's priorVersion pointer.
 
 	Record *prior = record->getPriorVersion();
 
@@ -3364,7 +3380,7 @@ void Table::waitForWriteComplete()
 {
 	database->waitForWriteComplete(this);
 }
-
+/*
 RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
 {
 	Record *current = fetch(record->recordNumber);
@@ -3411,7 +3427,7 @@ RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
 		}
 	
 	return recordVersion;	
-}
+}   */
 
 void Table::unlockRecord(int recordNumber)
 {
@@ -3533,6 +3549,13 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					return NULL;
 					}
 
+				if (record->state == recChilled	&& !record->thaw())
+					{
+					record->release();
+
+					return NULL;
+					}
+						
 				// Lock the record
 
 				if (dbb->debug & DEBUG_RECORD_LOCKS)
@@ -3547,9 +3570,6 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					transaction->addRecord(recordVersion);
 					recordVersion->release();
 
-					if (record->state == recChilled)
-						record->thaw();
-					
 					ASSERT(record->useCount >= 2);
 						
 					return record;
@@ -3801,6 +3821,18 @@ SyncObject* Table::getSyncPrior(int recordNumber)
 {
 	int lockNumber = recordNumber % SYNC_VERSIONS_SIZE;
 	return syncPriorVersions + lockNumber;
+}
+
+SyncObject* Table::getSyncThaw(Record* record)
+{
+	int lockNumber = record->recordNumber % SYNC_THAW_SIZE;
+	return syncThaw + lockNumber;
+}
+
+SyncObject* Table::getSyncThaw(int recordNumber)
+{
+	int lockNumber = recordNumber % SYNC_THAW_SIZE;
+	return syncThaw + lockNumber;
 }
 
 static bool needUniqueCheck(Index *index, Record *record)

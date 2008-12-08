@@ -2479,15 +2479,20 @@ void st_select_lex_unit::set_limit(st_select_lex *sl)
   val= sl->select_limit ? sl->select_limit->val_uint() : HA_POS_ERROR;
   select_limit_val= (ha_rows)val;
 #ifndef BIG_TABLES
-  /* 
+  /*
     Check for overflow : ha_rows can be smaller then ulonglong if
     BIG_TABLES is off.
     */
   if (val != (ulonglong)select_limit_val)
     select_limit_val= HA_POS_ERROR;
 #endif
-  offset_limit_cnt= (ha_rows)(sl->offset_limit ? sl->offset_limit->val_uint() :
-                                                 ULL(0));
+  val= sl->offset_limit ? sl->offset_limit->val_uint() : ULL(0);
+  offset_limit_cnt= (ha_rows)val;
+#ifndef BIG_TABLES
+  /* Check for truncation. */
+  if (val != (ulonglong)offset_limit_cnt)
+    offset_limit_cnt= HA_POS_ERROR;
+#endif
   select_limit_cnt= select_limit_val + offset_limit_cnt;
   if (select_limit_cnt < select_limit_val)
     select_limit_cnt= HA_POS_ERROR;		// no limit
@@ -3022,3 +3027,28 @@ bool LEX::is_partition_management() const
            alter_info.flags == ALTER_REORGANIZE_PARTITION));
 }
 
+int LEX::add_db_to_list(LEX_STRING *name)
+{
+  DBUG_ASSERT(name);
+    
+  List_iterator<LEX_STRING> it(db_list);
+  LEX_STRING *copy;
+  
+  while ((copy= it++))
+   if (!my_strnncoll(system_charset_info, 
+                     (const uchar*) name->str, name->length , 
+                     (const uchar*) copy->str, copy->length ))
+   {    
+     my_error(ER_NONUNIQ_DB, MYF(0), name->str);
+     return ER_NONUNIQ_DB;
+   }
+
+  copy= (LEX_STRING*) sql_memdup(name, sizeof(LEX_STRING));
+  if (copy == NULL)
+    return ER_OUT_OF_RESOURCES;
+    
+  if (db_list.push_back(copy))
+    return ER_OUT_OF_RESOURCES;
+
+  return 0;
+}

@@ -97,8 +97,6 @@ void init_thr_alarm(uint max_alarms)
     pthread_attr_setscope(&thr_attr,PTHREAD_SCOPE_PROCESS);
     pthread_attr_setdetachstate(&thr_attr,PTHREAD_CREATE_DETACHED);
     pthread_attr_setstacksize(&thr_attr,8196);
-
-    my_pthread_attr_setprio(&thr_attr,100);	/* Very high priority */
     pthread_create(&alarm_thread,&thr_attr,alarm_handler,NULL);
     pthread_attr_destroy(&thr_attr);
   }

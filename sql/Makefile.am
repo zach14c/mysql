@@ -31,10 +31,19 @@ EXTRA_PROGRAMS =	gen_lex_hash
 bin_PROGRAMS =		mysql_tzinfo_to_sql
 DTRACE =                @DTRACE@
 DTRACEFLAGS =           @DTRACEFLAGS@
-DTRACEFILES =           handler.o \
-			filesort.o \
-			sql_insert.o \
+DTRACEFILES =           filesort.o \
+			handler.o \
+			mysqld.o \
+			net_serv.o \
+			scheduler.o \
+			sp_head.o \
+			sql_cache.o \
+			sql_connect.o \
+			sql_cursor.o \
 			sql_delete.o \
+			sql_insert.o \
+			sql_parse.o \
+			sql_prepare.o \
 			sql_select.o \
 			sql_update.o
 
@@ -171,9 +180,12 @@ DEFS =			-DMYSQL_SERVER \
 BUILT_MAINT_SRC =	sql_yacc.cc sql_yacc.h
 BUILT_SOURCES =		$(BUILT_MAINT_SRC) lex_hash.h link_sources
 EXTRA_DIST =		udf_example.c udf_example.def $(BUILT_MAINT_SRC) \
-			nt_servc.cc nt_servc.h message.mc CMakeLists.txt \
+			nt_servc.cc nt_servc.h CMakeLists.txt \
 			probes.d \
-			udf_example.c udf_example.def
+			message.mc  message.h message.rc MSG00001.bin \
+			nt_servc.cc nt_servc.h \
+			CMakeLists.txt
+
 CLEANFILES =        	lex_hash.h sql_yacc.output link_sources
 DISTCLEANFILES =        $(EXTRA_PROGRAMS)
 MAINTAINERCLEANFILES =  $(BUILT_MAINT_SRC)
@@ -220,8 +232,10 @@ install-exec-hook:
 
 SUFFIXES : .d
 
-.d.o : $(DTRACEFILES)
+.d.o :
 	$(DTRACE) $(DTRACEFLAGS) -G -s $< $(DTRACEFILES)
+
+probes.o : $(DTRACEFILES)
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%

@@ -9,6 +9,7 @@ AND character_set_name LIKE 'utf8'
 ORDER BY column_name;
 column_name	character_set_name
 backup_file	utf8
+backup_file_path	utf8
 backup_state	utf8
 binlog_file	utf8
 command	utf8
@@ -30,12 +31,12 @@ object	utf8
 Now starting real tests
 
 DROP DATABASE IF EXISTS backup_logs;
+PURGE BACKUP LOGS;
 CREATE DATABASE backup_logs;
 con1: Create table and new users.
 CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
-CREATE TABLE backup_logs.t1_res (id BIGINT UNSIGNED NOT NULL) ENGINE=MEMORY;
 INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress");
 INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress");
 INSERT INTO backup_logs.t1 VALUES ("03 Test #1 - progress");
@@ -59,27 +60,28 @@ SET DEBUG_SYNC= 'after_backup_log_init     SIGNAL started   WAIT_FOR do_run';
 SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL phase1    WAIT_FOR backup';
 SET DEBUG_SYNC= 'after_backup_validated    SIGNAL validated WAIT_FOR do_phase2';
 SET DEBUG_SYNC= 'after_backup_binlog       SIGNAL phase2    WAIT_FOR finish';
-con2: Send backup command.
+Start using a known backup id for a more definitive test.
+SET SESSION debug="+d,set_backup_id";
+con2: Send backup command. 
+con2: Backup id = 500.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 con1: Wait for the backup to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
 con1: Display progress
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_progress;
-INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
-SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
 notes
 starting
 con1: Let backup step to running state.
 SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR phase1';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
 notes
 starting
 running
 con1: Let backup do the backup phase1.
 SET DEBUG_SYNC= 'now SIGNAL backup WAIT_FOR validated';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
 notes
 starting
 running
@@ -87,7 +89,7 @@ validity point
 con1: Let backup do the backup phase2.
 SET DEBUG_SYNC= 'now SIGNAL do_phase2 WAIT_FOR phase2';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+SELECT notes FROM mysql.backup_progress WHERE backup_id = 500;
 notes
 starting
 running
@@ -98,8 +100,11 @@ con1: Let backup finish.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 con2: Finish backup command
 backup_id
-#
-SELECT ob.* FROM mysql.backup_history AS ob JOIN backup_logs.t1_res AS t1 ON ob.backup_id = t1.id;;
+500
+FLUSH BACKUP LOGS;
+Turn off debugging session.
+SET SESSION debug="-d";
+SELECT * FROM mysql.backup_history WHERE backup_id = 500;;
 backup_id	#
 process_id	#
 binlog_pos	#
@@ -107,18 +112,19 @@ binlog_file	#
 backup_state	complete
 operation	backup
 error_num	0
-num_objects	4
-total_bytes	3981
+num_objects	3
+total_bytes	3971
 validity_point_time	#
 start_time	#
 stop_time	#
 host_or_server_name	localhost
 username	root
 backup_file	#
+backup_file_path	#
 user_comment	
 command	BACKUP DATABASE backup_logs to 'backup_logs_orig.bak'
-drivers	MyISAM, Default, Snapshot
-SELECT obp.* FROM mysql.backup_progress AS obp JOIN backup_logs.t1_res AS t1 ON obp.backup_id = t1.id;
+drivers	MyISAM, Snapshot, Default
+SELECT * FROM mysql.backup_progress WHERE backup_id = 500;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
 #	backup kernel	#	#	0	0	0	running
@@ -126,26 +132,22 @@ backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	vp time
 #	backup kernel	#	#	0	0	0	running
 #	backup kernel	#	#	0	0	0	complete
-DELETE FROM backup_logs.t1_res;
 con2: Activate sync points for the backup statement.
 SET DEBUG_SYNC= 'after_backup_log_init      SIGNAL started WAIT_FOR do_run';
 SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR finish';
 con2: Send restore command.
-RESTORE FROM 'backup_logs_orig.bak';
+con2: Backup id = 501.
+RESTORE FROM 'backup_logs_orig.bak' OVERWRITE;
 con1: Wait for the restore to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
 con1: Display progress
-select * from backup_logs.t1_res;
-id
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_progress;
-INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
-SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+SELECT notes FROM mysql.backup_progress WHERE backup_id = 501;
 notes
 starting
 con1: Let restore step to running state.
 SET DEBUG_SYNC= 'now SIGNAL do_run WAIT_FOR running';
 con1: Display progress
-SELECT notes FROM mysql.backup_progress AS ob JOIN backup_logs.t1_res as t1 ON ob.backup_id = t1.id;
+SELECT notes FROM mysql.backup_progress WHERE backup_id = 501;
 notes
 starting
 running
@@ -153,13 +155,11 @@ con1: Let restore do its job and finish.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 con2: Finish restore command
 backup_id
-#
+501
+FLUSH BACKUP LOGS;
 SET DEBUG_SYNC= 'now SIGNAL complete';
 SET DEBUG_SYNC= 'now WAIT_FOR complete';
-DELETE FROM backup_logs.t1_res;
-SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history WHERE command LIKE "RESTORE FROM%";
-INSERT INTO backup_logs.t1_res (id) VALUES (@bup_id);
-SELECT ob.* FROM mysql.backup_history AS ob JOIN backup_logs.t1_res AS t1 ON ob.backup_id = t1.id;;
+SELECT * FROM mysql.backup_history WHERE backup_id = 501;;
 backup_id	#
 process_id	#
 binlog_pos	#
@@ -167,32 +167,24 @@ binlog_file	#
 backup_state	complete
 operation	restore
 error_num	0
-num_objects	4
-total_bytes	1493
+num_objects	3
+total_bytes	1483
 validity_point_time	#
 start_time	#
 stop_time	#
 host_or_server_name	localhost
 username	root
 backup_file	#
+backup_file_path	#
 user_comment	
-command	RESTORE FROM 'backup_logs_orig.bak'
-drivers	MyISAM, Default, Snapshot
-SELECT obp.* FROM mysql.backup_progress AS obp JOIN backup_logs.t1_res AS t1 ON obp.backup_id = t1.id;
+command	RESTORE FROM 'backup_logs_orig.bak' OVERWRITE
+drivers	MyISAM, Snapshot, Default
+SELECT * FROM mysql.backup_progress WHERE backup_id = 501;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes
 #	backup kernel	#	#	0	0	0	starting
 #	backup kernel	#	#	0	0	0	running
 #	backup kernel	#	#	0	0	0	complete
 SET DEBUG_SYNC= 'RESET';
-SET SESSION debug="d,set_backup_id";
-BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
-backup_id
-500
-SET SESSION debug="d";
-The backup id for this command should be 501.
-BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
-backup_id
-501
 The backup id for this command should be 502.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 backup_id
@@ -201,4 +193,12 @@ The backup id for this command should be 503.
 BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
 backup_id
 503
+The backup id for this command should be 504.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+backup_id
+504
+The backup id for this command should be 505.
+BACKUP DATABASE backup_logs to 'backup_logs_orig.bak';
+backup_id
+505
 DROP DATABASE backup_logs;

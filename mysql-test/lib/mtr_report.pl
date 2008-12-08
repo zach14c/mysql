@@ -352,10 +352,23 @@ sub mtr_report_stats ($) {
 		  /Restore:/ or /was skipped because the user does not exist/
 		) or
                 
+		# backup_logs_output has warning because --log-backup-output option does 
+    # not have argument
+		($testname eq 'backup.backup_logs_output') and
+		(
+		  /Although a path was specified for the/
+		) or
+                
+		# backup_nodata_driver intentionally provokes an error in opening a MERGE table
+		($testname eq 'backup.backup_nodata_driver') and
+		(
+		  /Restore: Open and lock tables failed in RESTORE/
+		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'backup.backup_tablespace') and
 		(
-		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
+		  /Restore: Tablespace .* needed by tables being restored, but the current/
 		) or
                 
 		# The backup_securefilepriv test triggers error below on purpose
@@ -462,6 +475,18 @@ sub mtr_report_stats ($) {
                  )) or
                 # Test case for Bug#31590 produces the following error:
                 /Out of sort memory; increase server sort buffer size/ or
+
+                # Bug#35161, test of auto repair --myisam-recover
+                /able.*_will_crash/ or
+
+                # lowercase_table3 using case sensitive option on
+                # case insensitive filesystem (InnoDB error).
+                /Cannot find or open table test\/BUG29839 from/ or
+
+                # When trying to set lower_case_table_names = 2
+                # on a case sensitive file system. Bug#37402.
+                /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./ or
+
                 # maria-recovery.test has warning about missing log file
                 /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
                 # and about marked-corrupted table

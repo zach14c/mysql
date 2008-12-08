@@ -209,7 +209,10 @@ int mysql_update(THD *thd,
   for ( ; ; )
   {
     if (open_tables(thd, &table_list, &table_count, 0))
+    {
+      MYSQL_UPDATE_DONE(1, 0, 0);
       DBUG_RETURN(1);
+    }
 
     if (table_list->multitable_view)
     {
@@ -218,21 +221,27 @@ int mysql_update(THD *thd,
       /* pass counter value */
       thd->lex->table_count= table_count;
       /* convert to multiupdate */
+      MYSQL_UPDATE_DONE(2, 0, 0);
       DBUG_RETURN(2);
     }
     if (!lock_tables(thd, table_list, table_count, 0, &need_reopen))
       break;
     if (!need_reopen)
+    {
+      MYSQL_UPDATE_DONE(1, 0, 0);
       DBUG_RETURN(1);
+    }
     close_tables_for_reopen(thd, &table_list, FALSE);
   }
 
   if (mysql_handle_derived(thd->lex, &mysql_derived_prepare) ||
       (thd->fill_derived_tables() &&
        mysql_handle_derived(thd->lex, &mysql_derived_filling)))
+  {
+    MYSQL_UPDATE_DONE(1, 0, 0);
     DBUG_RETURN(1);
+  }
 
-  MYSQL_UPDATE_START();
   thd_proc_info(thd, "init");
   table= table_list->table;
 
@@ -292,7 +301,7 @@ int mysql_update(THD *thd,
   if (select_lex->inner_refs_list.elements &&
     fix_inner_refs(thd, all_fields, select_lex, select_lex->ref_pointer_array))
   {
-    MYSQL_UPDATE_END();
+    MYSQL_UPDATE_DONE(1, 0, 0);
     DBUG_RETURN(-1);
   }
 
@@ -321,8 +330,8 @@ int mysql_update(THD *thd,
   if (prune_partitions(thd, table, conds))
   {
     free_underlaid_joins(thd, select_lex);
-    MYSQL_UPDATE_END();
     my_ok(thd);				// No matching records
+    MYSQL_UPDATE_DONE(0, 0, 0);
     DBUG_RETURN(0);
   }
 #endif
@@ -337,8 +346,8 @@ int mysql_update(THD *thd,
     free_underlaid_joins(thd, select_lex);
     if (error)
       goto abort;				// Error in where
-    MYSQL_UPDATE_END();
     my_ok(thd);				// No matching records
+    MYSQL_UPDATE_DONE(0, 0, 0);
     DBUG_RETURN(0);
   }
   if (!select && limit != HA_POS_ERROR)
@@ -719,6 +728,11 @@ int mysql_update(THD *thd,
     else
       table->file->unlock_row();
     thd->row_count++;
+    if (thd->is_error())
+    {
+      error= 1;
+      break;
+    }
   }
   dup_key_found= 0;
   /*
@@ -811,7 +825,6 @@ int mysql_update(THD *thd,
   id= thd->arg_of_last_insert_id_function ?
     thd->first_successful_insert_id_in_prev_stmt : 0;
 
-  MYSQL_UPDATE_END();
   if (error < 0)
   {
     char buff[STRING_BUFFER_USUAL_SIZE];
@@ -824,7 +837,10 @@ int mysql_update(THD *thd,
   }
   thd->count_cuted_fields= CHECK_FIELD_IGNORE;		/* calc cuted fields */
   thd->abort_on_warning= 0;
-  DBUG_RETURN((error >= 0 || thd->is_error()) ? 1 : 0);
+
+  res= (error >= 0 || thd->is_error()) ? 1 : 0;
+  MYSQL_UPDATE_DONE(res, (ulong) found, (ulong) updated);
+  DBUG_RETURN(res);
 
 err:
   delete select;
@@ -837,7 +853,7 @@ err:
   thd->abort_on_warning= 0;
 
 abort:
-  MYSQL_UPDATE_END();
+  MYSQL_UPDATE_DONE(1, 0, 0);
   DBUG_RETURN(1);
 }
 
@@ -1622,7 +1638,10 @@ bool multi_update::send_data(List<Item> &not_used_values)
                                                *values_for_table[offset], 0,
                                                table->triggers,
                                                TRG_EVENT_UPDATE))
+      {
+        MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
 	DBUG_RETURN(1);
+      }
 
       found++;
       if (!can_compare_record || compare_record(table))
@@ -1635,7 +1654,10 @@ bool multi_update::send_data(List<Item> &not_used_values)
           if (error == VIEW_CHECK_SKIP)
             continue;
           else if (error == VIEW_CHECK_ERROR)
+          {
+            MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
             DBUG_RETURN(1);
+          }
         }
         if (!updated++)
         {
@@ -1665,6 +1687,7 @@ bool multi_update::send_data(List<Item> &not_used_values)
 
             prepare_record_for_error_message(error, table);
             table->file->print_error(error,MYF(flags));
+            MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
             DBUG_RETURN(1);
           }
         }
@@ -1689,7 +1712,10 @@ bool multi_update::send_data(List<Item> &not_used_values)
       if (table->triggers &&
           table->triggers->process_triggers(thd, TRG_EVENT_UPDATE,
                                             TRG_ACTION_AFTER, TRUE))
+      {
+        MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
         DBUG_RETURN(1);
+      }
     }
     else
     {
@@ -1732,12 +1758,14 @@ bool multi_update::send_data(List<Item> &not_used_values)
                                          error, 1))
         {
           do_update=0;
+          MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
 	  DBUG_RETURN(1);			// Not a table_is_full error
 	}
         found++;
       }
     }
   }
+  MYSQL_UPDATE_DONE(0, (ulong) found, (ulong) updated);
   DBUG_RETURN(0);
 }
 

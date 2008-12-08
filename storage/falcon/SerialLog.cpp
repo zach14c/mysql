@@ -117,7 +117,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	recovering = false;
 	blocking = false;
 	writeError = false;
-	windowBuffers = MAX(database->configuration->serialLogWindows, 10);
+	windowBuffers = MAX(database->configuration->serialLogWindows, SRL_MIN_WINDOWS);
 	tableSpaceInfo = NULL;
 	memset(tableSpaces, 0, sizeof(tableSpaces));
 	syncWrite.setName("SerialLog::syncWrite");
@@ -131,6 +131,7 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	gophers = NULL;
 	wantToSerializeGophers = 0;
 	serializeGophers = 0;
+	startRecordVirtualOffset = 0;
 	
 	for (uint n = 0; n < falcon_gopher_threads; ++n)
 		{
@@ -217,7 +218,9 @@ void SerialLog::recover()
 	sync.lock(Exclusive);
 	recovering = true;
 	recoveryPhase = 0;	// Find last block and recovery block
-	
+
+	defaultDbb->setCacheRecovering(true);
+
 	// See if either or both files have valid blocks
 
 	SerialLogWindow *window1 = allocWindow(file1, 0);
@@ -414,7 +417,8 @@ void SerialLog::recover()
 		info->sectionUseVector.zap();
 		info->indexUseVector.zap();
 		}
-		
+
+	defaultDbb->setCacheRecovering(false);
 	Log::log("Recovery complete\n");
 	recoveryPhase = 0;	// Find last lock and recovery block
 }
@@ -445,9 +449,9 @@ void SerialLog::overflowFlush(void)
 		flushWindow->write(flushBlock);
 		lastBlockWritten = flushBlock->blockNumber;
 		}
-	catch (...)
+	catch (SQLException& exception)
 		{
-		writeError = true;
+		setWriteError(exception.getSqlcode(), exception.getText());
 		mutex.unlock();
 		throw;
 		}	
@@ -547,15 +551,15 @@ uint64 SerialLog::flush(bool forceNewWindow, uint64 commitBlockNumber, Sync *cli
 	mutex.lock();
 	syncPtr->unlock();
 	//Log::debug("Flushing log block %d, read block %d\n", (int) flushBlock->blockNumber, (int) flushBlock->readBlockNumber);
-	
+
 	try
 		{
 		flushWindow->write(flushBlock);
 		lastBlockWritten = flushBlock->blockNumber;
 		}
-	catch (...)
+	catch (SQLException& exception)
 		{
-		writeError = true;
+		setWriteError(exception.getSqlcode(), exception.getText());
 		mutex.unlock();
 		throw;
 		}
@@ -706,8 +710,10 @@ void SerialLog::startRecord()
 	ASSERT(!recovering);
 
 	if (writeError)
-		throw SQLError(IO_ERROR, "Previous I/O error on serial log prevents further processing");
+		throw SQLError(IO_ERROR_SERIALLOG, "Previous I/O error on serial log prevents further processing");
 
+	startRecordVirtualOffset = writeWindow->getNextVirtualOffset();
+	
 	if (writePtr == writeBlock->data)
 		putVersion();
 
@@ -1586,4 +1592,24 @@ SerialLogWindow* SerialLog::setWindowInterest(void)
 	window->setInterest();
 	
 	return window;
+}
+
+
+void SerialLog::setWriteError(int sqlCode, const char* errorText)
+{
+	// Logs an error message to the error log and sets the status of the
+	// serial log to "writeError"
+	
+    char msgBuf[1024];
+
+    if (!errorText)
+		{
+		errorText = "Not provided";
+		}
+
+    sprintf(msgBuf, "SerialLog: Error during writing to serial log. Cause: %s (sqlcode=%d)\n",
+			errorText, sqlCode);
+	Log::log(msgBuf);
+
+	writeError = true;
 }

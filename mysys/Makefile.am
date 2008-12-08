@@ -71,13 +71,18 @@ libmysyslt_la_SOURCES =	my_init.c my_getwd.c mf_getdate.c my_mmap.c \
 			my_handler.c my_netware.c my_largepage.c \
 			my_memmem.c stacktrace.c \
 			my_windac.c my_access.c base64.c \
-			wqueue.c \
-			thr_alarm.c thr_lock.c my_pthread.c my_thr_init.c \
-			thr_mutex.c thr_rwlock.c
-EXTRA_DIST =  		CMakeLists.txt \
-			mf_soundex.c \
+			wqueue.c
+if THREAD
+libmysyslt_la_SOURCES+=	thr_alarm.c thr_lock.c my_pthread.c my_thr_init.c \
+			thr_mutex.c thr_rwlock.c waiting_threads.c
+endif
+EXTRA_DIST =		CMakeLists.txt mf_soundex.c \
 			my_conio.c my_wincond.c my_winthread.c my_winerr.c my_winfile.c
 
+# test_dir_DEPENDENCIES=	$(LIBRARIES)
+# testhash_DEPENDENCIES=	$(LIBRARIES)
+# test_charset_DEPENDENCIES=	$(LIBRARIES)
+# charset2html_DEPENDENCIES=	$(LIBRARIES)
 DEFS =			-DDEFAULT_BASEDIR=\"$(prefix)\" \
 			-DDATADIR="\"$(MYSQLDATAdir)\"" \
 			-DDEFAULT_CHARSET_HOME="\"$(MYSQLBASEdir)\"" \

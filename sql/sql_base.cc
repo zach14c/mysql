@@ -572,12 +572,20 @@ static TABLE_SHARE
       "no such table" errors.
       @todo Rework the alternative ways to deal with ER_NO_SUCH TABLE.
     */
-    if (thd->is_error() && table_list->belong_to_view)
+    if (thd->is_error())
     {
-      TABLE_LIST *view= table_list->belong_to_view;
-      thd->clear_error();
-      my_error(ER_VIEW_INVALID, MYF(0),
-               view->view_db.str, view->view_name.str);
+      if (table_list->parent_l)
+      {
+        thd->clear_error();
+        my_error(ER_WRONG_MRG_TABLE, MYF(0));
+      }
+      else if (table_list->belong_to_view)
+      {
+        TABLE_LIST *view= table_list->belong_to_view;
+        thd->clear_error();
+        my_error(ER_VIEW_INVALID, MYF(0),
+                 view->view_db.str, view->view_name.str);
+      }
     }
     DBUG_RETURN(0);
   }
@@ -2031,11 +2039,15 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
                               enum ha_extra_function function)
 {
   enum thr_lock_type old_lock_type;
-
   DBUG_ENTER("wait_while_table_is_used");
   DBUG_PRINT("enter", ("table: '%s'  share: %p  db_stat: %u  version: %lu",
                        table->s->table_name.str, table->s,
                        table->db_stat, table->s->version));
+
+  /* Ensure no one can reopen table before it's removed */
+  pthread_mutex_lock(&LOCK_open);
+  table->s->version= 0;
+  pthread_mutex_unlock(&LOCK_open);
 
   old_lock_type= table->reginfo.lock_type;
   mysql_lock_abort(thd, table, TRUE);	/* end threads waiting on lock */
@@ -3252,7 +3264,6 @@ check_and_update_table_version(THD *thd,
   }
 
   DBUG_EXECUTE_IF("reprepare_each_statement", return inject_reprepare(thd););
-
   return FALSE;
 }
 
@@ -3570,8 +3581,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   /* Also used for indicating that prelocking is need */
   TABLE_LIST **query_tables_last_own;
   bool safe_to_ignore_table;
-
   DBUG_ENTER("open_tables");
+
   /*
     temporary mem_root for new .frm parsing.
     TODO: variables for size
@@ -6956,6 +6967,10 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
 
       if (!(item= field_iterator.create_item(thd)))
         DBUG_RETURN(TRUE);
+      DBUG_ASSERT(item->fixed);
+      /* cache the table for the Item_fields inserted by expanding stars */
+      if (item->type() == Item::FIELD_ITEM && tables->cacheable_table)
+        ((Item_field *)item)->cached_table= tables;
 
       if (!found)
       {

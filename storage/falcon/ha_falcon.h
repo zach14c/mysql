@@ -127,7 +127,7 @@ public:
 
 	void			getDemographics(void);
 	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
-	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online);
 	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
@@ -167,6 +167,7 @@ public:
 	static void		shutdown(handlerton *);
 	static int		closeConnection(handlerton *, THD *thd);
 	static void		logger(int mask, const char *text, void *arg);
+	static void		mysqlLogger(int mask, const char *text, void *arg);
 	static int		panic(handlerton* hton, ha_panic_function flag);
 	//static bool	show_status(handlerton* hton, THD* thd, stat_print_fn* print, enum ha_stat_type stat);
 	static int		getMySqlError(int storageError);
@@ -193,12 +194,12 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
-	Field				**fieldMap;
+	Field					**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
-	TABLE_SHARE *share;
-	uint				recordLength;
+	TABLE_SHARE			*share;
+	uint					recordLength;
 	int					lastRecord;
 	int					nextRecord;
 	int					indexErrorId;
@@ -206,12 +207,12 @@ public:
 	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
-	bool				haveStartKey;
-	bool				haveEndKey;
-	bool				tableLocked;
-	bool				tempTable;
-	bool				lockForUpdate;
-	bool				indexOrder;
+	bool					haveStartKey;
+	bool					haveEndKey;
+	bool					tableLocked;
+	bool					tempTable;
+	bool					lockForUpdate;
+	bool					indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;

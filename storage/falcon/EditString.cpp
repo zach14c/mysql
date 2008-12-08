@@ -367,8 +367,8 @@ char* EditString::formatString(Value * value, char * to)
 {
 	char		*temp;
 	const char	*from = value->getString (&temp);
-	int			fromLength = strlen (from);
-	int			fpos = 0, tpos = 0;
+	size_t		fromLength = strlen (from);
+	size_t		fpos = 0, tpos = 0;
 	char		c;
 	reset();
 

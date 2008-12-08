@@ -107,8 +107,7 @@ fi
 libs=" $ldflags -L$pkglibdir -lmysqlclient @ZLIB_DEPS@ @NON_THREADED_LIBS@"
 libs="$libs @openssl_libs@ @STATIC_NSS_FLAGS@ "
 libs_r=" $ldflags -L$pkglibdir -lmysqlclient_r @ZLIB_DEPS@ @LIBS@ @openssl_libs@ "
-libdir="-L$pkglibdir"
-embedded_libs=" $ldflags -L$pkglibdir -lmysqld @ZLIB_DEPS@ @LIBS@ @WRAPLIBS@ @innodb_system_libs@ @openssl_libs@ "
+embedded_libs=" $ldflags -L$pkglibdir -lmysqld @LIBDL@ @ZLIB_DEPS@ @LIBS@ @WRAPLIBS@ @innodb_system_libs@ @openssl_libs@ "
 
 if [ -r "$pkglibdir/libmygcc.a" ]; then
   # When linking against the static library with a different version of GCC
@@ -163,7 +162,6 @@ Options:
         --include        [$include]
         --libs           [$libs]
         --libs_r         [$libs_r]
-        --libdir         [$libdir]
         --plugindir      [$plugindir]
         --socket         [$socket]
         --port           [$port]
@@ -181,7 +179,6 @@ while test $# -gt 0; do
         --include) echo "$include" ;;
         --libs)    echo "$libs" ;;
         --libs_r)  echo "$libs_r" ;;
-        --libdir)  echo "$libdir" ;;
         --plugindir) echo "$plugindir" ;;
         --socket)  echo "$socket" ;;
         --port)    echo "$port" ;;

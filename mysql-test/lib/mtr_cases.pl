@@ -60,12 +60,13 @@ sub collect_test_cases ($) {
 
   my $suites= shift; # Semicolon separated list of test suites
   my $cases = [];    # Array of hash
+  my %found_suites;
 
   foreach my $suite (split(",", $suites))
   {
+    $found_suites{$suite}= 1;
     push(@$cases, collect_one_suite($suite));
   }
-
 
   if ( @::opt_cases )
   {
@@ -75,6 +76,12 @@ sub collect_test_cases ($) {
     {
       my $found= 0;
       my ($sname, $tname, $extension)= split_testname($test_name_spec);
+      if (defined($sname) && !defined($found_suites{$sname}))
+      {
+	$found_suites{$sname}= 1;
+	push(@$cases, collect_one_suite($sname));
+      }
+
       foreach my $test ( @$cases )
       {
 	# test->{name} is always in suite.name format
@@ -541,19 +548,10 @@ sub collect_one_test_case($$$$$$$$$) {
   my $suite_opts= shift;
 
   my $path= "$testdir/$elem";
-
-  # ----------------------------------------------------------------------
-  # Skip some tests silently
-  # ----------------------------------------------------------------------
-
-  if ( $::opt_start_from and $tname lt $::opt_start_from )
-  {
-    return;
-  }
-
+  my $name= basename($suite) . ".$tname";
 
   my $tinfo= {};
-  $tinfo->{'name'}= basename($suite) . ".$tname";
+  $tinfo->{'name'}= $name;
   $tinfo->{'result_file'}= "$resdir/$tname.result";
   $tinfo->{'component_id'} = $component_id;
   push(@$cases, $tinfo);
@@ -562,7 +560,7 @@ sub collect_one_test_case($$$$$$$$$) {
   # Skip some tests but include in list, just mark them to skip
   # ----------------------------------------------------------------------
 
-  if ( $skip_test and $tname =~ /$skip_test/o )
+  if ( $skip_test and ($tname =~ /$skip_test/o || $name =~ /$skip_test/o))
   {
     $tinfo->{'skip'}= 1;
     return;

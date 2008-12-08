@@ -47,6 +47,10 @@ class Restore_info: public backup::Image_info
 
  private:
 
+  // Prevent copying/assignments
+  Restore_info(const Restore_info&);
+  Restore_info& operator=(const Restore_info&);
+
   friend int backup::restore_table_data(THD*, Restore_info&, 
                                         backup::Input_stream&);
   friend int ::bcat_add_item(st_bstream_image_header*,

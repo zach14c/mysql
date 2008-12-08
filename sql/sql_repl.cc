@@ -28,6 +28,7 @@ my_bool opt_sporadic_binlog_dump_fail = 0;
 #ifndef DBUG_OFF
 static int binlog_dump_count = 0;
 #endif
+extern my_bool disable_slaves;
 
 /*
     fake_rotate_event() builds a fake (=which does not exist physically in any
@@ -470,6 +471,17 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
     goto err;
   }
 #endif
+
+  /*
+    Tell the connecting slave the master cannot accept any connections
+    if disable_slaves == TRUE.
+  */
+  if (disable_slaves)
+  {
+     errmsg= "Master does not allow slaves to connect.";
+     my_errno= ER_MASTER_BLOCKING_SLAVES;
+     goto err;
+  }
 
   if (!mysql_bin_log.is_open())
   {
@@ -1903,65 +1915,39 @@ static void fix_slave_net_timeout(THD *thd, enum_var_type type)
 
 static sys_var_chain vars = { NULL, NULL };
 
+static sys_var_const    sys_log_slave_updates(&vars, "log_slave_updates",
+                                              OPT_GLOBAL, SHOW_MY_BOOL,
+                                              (uchar*) &opt_log_slave_updates);
+static sys_var_const    sys_relay_log(&vars, "relay_log",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &opt_relay_logname);
+static sys_var_const    sys_relay_log_index(&vars, "relay_log_index",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &opt_relaylog_index_name);
+static sys_var_const    sys_relay_log_info_file(&vars, "relay_log_info_file",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &relay_log_info_file);
 static sys_var_bool_ptr	sys_relay_log_purge(&vars, "relay_log_purge",
 					    &relay_log_purge);
+static sys_var_const    sys_relay_log_space_limit(&vars,
+                                                  "relay_log_space_limit",
+                                                  OPT_GLOBAL, SHOW_LONGLONG,
+                                                  (uchar*)
+                                                  &relay_log_space_limit);
+static sys_var_const    sys_slave_load_tmpdir(&vars, "slave_load_tmpdir",
+                                              OPT_GLOBAL, SHOW_CHAR_PTR,
+                                              (uchar*) &slave_load_tmpdir);
 static sys_var_long_ptr	sys_slave_net_timeout(&vars, "slave_net_timeout",
 					      &slave_net_timeout,
                                               fix_slave_net_timeout);
+static sys_var_const    sys_slave_skip_errors(&vars, "slave_skip_errors",
+                                              OPT_GLOBAL, SHOW_CHAR,
+                                              (uchar*) slave_skip_error_names);
 static sys_var_long_ptr	sys_slave_trans_retries(&vars, "slave_transaction_retries",
 						&slave_trans_retries);
 static sys_var_sync_binlog_period sys_sync_binlog_period(&vars, "sync_binlog", &sync_binlog_period);
 static sys_var_slave_skip_counter sys_slave_skip_counter(&vars, "sql_slave_skip_counter");
 
-static int show_slave_skip_errors(THD *thd, SHOW_VAR *var, char *buff);
-
-
-static SHOW_VAR fixed_vars[]= {
-  {"log_slave_updates",       (char*) &opt_log_slave_updates,       SHOW_MY_BOOL},
-  {"relay_log" , (char*) &opt_relay_logname, SHOW_CHAR_PTR},
-  {"relay_log_index", (char*) &opt_relaylog_index_name, SHOW_CHAR_PTR},
-  {"relay_log_info_file", (char*) &relay_log_info_file, SHOW_CHAR_PTR},
-  {"relay_log_space_limit",   (char*) &relay_log_space_limit,       SHOW_LONGLONG},
-  {"slave_load_tmpdir",       (char*) &slave_load_tmpdir,           SHOW_CHAR_PTR},
-  {"slave_skip_errors",       (char*) &show_slave_skip_errors,      SHOW_FUNC},
-};
-
-static int show_slave_skip_errors(THD *thd, SHOW_VAR *var, char *buff)
-{
-  var->type=SHOW_CHAR;
-  var->value= buff;
-  if (!use_slave_mask || bitmap_is_clear_all(&slave_error_mask))
-  {
-    var->value= const_cast<char *>("OFF");
-  }
-  else if (bitmap_is_set_all(&slave_error_mask))
-  {
-    var->value= const_cast<char *>("ALL");
-  }
-  else
-  {
-    /* 10 is enough assuming errors are max 4 digits */
-    int i;
-    var->value= buff;
-    for (i= 1;
-         i < MAX_SLAVE_ERROR &&
-         (buff - var->value) < SHOW_VAR_FUNC_BUFF_SIZE;
-         i++)
-    {
-      if (bitmap_is_set(&slave_error_mask, i))
-      {
-        buff= int10_to_str(i, buff, 10);
-        *buff++= ',';
-      }
-    }
-    if (var->value != buff)
-      buff--;				// Remove last ','
-    if (i < MAX_SLAVE_ERROR)
-      buff= strmov(buff, "...");  // Couldn't show all errors
-    *buff=0;
-  }
-  return 0;
-}
 
 bool sys_var_slave_skip_counter::check(THD *thd, set_var *var)
 {
@@ -2009,8 +1995,6 @@ bool sys_var_sync_binlog_period::update(THD *thd, set_var *var)
 
 int init_replication_sys_vars()
 {
-  mysql_append_static_vars(fixed_vars, sizeof(fixed_vars) / sizeof(SHOW_VAR));
-
   if (mysql_add_sys_var_chain(vars.first, my_long_options))
   {
     /* should not happen */

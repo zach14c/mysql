@@ -238,3 +238,26 @@ no_materialization,no_loosescan
 set optimizer_switch='';
 drop table t0, t1;
 drop table t10, t11, t12;
+
+Bug#37899: Wrongly checked optimization prerequisite caused failed
+assertion.
+
+CREATE TABLE t1 (
+`pk` int(11),
+`varchar_nokey` varchar(5)
+);
+INSERT INTO t1 VALUES
+(1,'qk'),(2,'j'),(3,'aew');
+SELECT *
+FROM t1
+WHERE varchar_nokey IN (
+SELECT
+varchar_nokey
+FROM
+t1
+) XOR pk = 30;
+pk	varchar_nokey
+1	qk
+2	j
+3	aew
+drop table t1;

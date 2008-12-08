@@ -1122,6 +1122,8 @@ static bool mysql_test_insert(Prepared_statement *stmt,
   if (insert_precheck(thd, table_list))
     goto error;
 
+  upgrade_lock_type_for_insert(thd, &table_list->lock_type, duplic,
+                               values_list.elements > 1);
   /*
     open temporary memory pool for temporary data allocated by derived
     tables & preparation procedure
@@ -2064,7 +2066,6 @@ static bool init_param_array(Prepared_statement *stmt)
 void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
 {
   Prepared_statement *stmt;
-  bool error;
   DBUG_ENTER("mysql_stmt_prepare");
 
   DBUG_PRINT("prep_query", ("%s", packet));
@@ -2087,15 +2088,7 @@ void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length)
   sp_cache_flush_obsolete(&thd->sp_proc_cache);
   sp_cache_flush_obsolete(&thd->sp_func_cache);
 
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(),QUERY_PRIOR);
-
-  error= stmt->prepare(packet, packet_length);
-
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(),WAIT_PRIOR);
-
-  if (error)
+  if (stmt->prepare(packet, packet_length))
   {
     /* Statement map deletes statement on erase */
     thd->stmt_map.erase(stmt);
@@ -2465,7 +2458,6 @@ void mysql_stmt_execute(THD *thd, char *packet_arg, uint packet_length)
   stmt->execute_loop(&expanded_query, open_cursor, packet, packet_end);
 
   DBUG_VOID_RETURN;
-
 }
 
 
@@ -2556,13 +2548,7 @@ void mysql_stmt_fetch(THD *thd, char *packet, uint packet_length)
   thd->stmt_arena= stmt;
   thd->set_n_backup_statement(stmt, &stmt_backup);
 
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(), QUERY_PRIOR);
-
   cursor->fetch(num_rows);
-
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(), WAIT_PRIOR);
 
   if (!cursor->is_open())
   {
@@ -3238,13 +3224,7 @@ reexecute:
     thd->m_reprepare_observer = &reprepare_observer;
   }
 
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(),QUERY_PRIOR);
-
   error= execute(expanded_query, open_cursor) || thd->is_error();
-
-  if (!(specialflag & SPECIAL_NO_PRIOR))
-    my_pthread_setprio(pthread_self(), WAIT_PRIOR);
 
   thd->m_reprepare_observer= NULL;
 
@@ -3568,7 +3548,14 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
     if (query_cache_send_result_to_client(thd, thd->query,
                                           thd->query_length) <= 0)
     {
+      MYSQL_QUERY_EXEC_START(thd->query,
+                             thd->thread_id,
+                             (char *) (thd->db ? thd->db : ""),
+                             thd->security_ctx->priv_user,
+                             (char *) thd->security_ctx->host_or_ip,
+                             1);
       error= mysql_execute_command(thd);
+      MYSQL_QUERY_EXEC_DONE(error);
     }
   }
 

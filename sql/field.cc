@@ -5706,6 +5706,7 @@ int Field_newdate::store_time(MYSQL_TIME *ltime,timestamp_type time_type)
     {
       char buff[MAX_DATE_STRING_REP_LENGTH];
       String str(buff, sizeof(buff), &my_charset_latin1);
+      tmp= 0;
       make_date((DATE_TIME_FORMAT *) 0, ltime, &str);
       set_datetime_warning(MYSQL_ERROR::WARN_LEVEL_WARN, WARN_DATA_TRUNCATED,
                            str.ptr(), str.length(), MYSQL_TIMESTAMP_DATE, 1);
@@ -5948,6 +5949,7 @@ int Field_datetime::store_time(MYSQL_TIME *ltime,timestamp_type time_type)
     {
       char buff[MAX_DATE_STRING_REP_LENGTH];
       String str(buff, sizeof(buff), &my_charset_latin1);
+      tmp= 0;
       make_datetime((DATE_TIME_FORMAT *) 0, ltime, &str);
       set_datetime_warning(MYSQL_ERROR::WARN_LEVEL_WARN, WARN_DATA_TRUNCATED,
                            str.ptr(), str.length(), MYSQL_TIMESTAMP_DATETIME,1);
@@ -8623,27 +8625,42 @@ bool Field::eq_def(Field *field)
   return 1;
 }
 
+
 /**
   @return
   returns 1 if the fields are equally defined
 */
+
 bool Field_enum::eq_def(Field *field)
 {
   if (!Field::eq_def(field))
     return 0;
-  TYPELIB *from_lib=((Field_enum*) field)->typelib;
-
-  if (typelib->count < from_lib->count)
-    return 0;
-  for (uint i=0 ; i < from_lib->count ; i++)
-    if (my_strnncoll(field_charset,
-                     (const uchar*)typelib->type_names[i],
-                     strlen(typelib->type_names[i]),
-                     (const uchar*)from_lib->type_names[i],
-                     strlen(from_lib->type_names[i])))
-      return 0;
-  return 1;
+  return compare_enum_values(((Field_enum*) field)->typelib);
 }
+
+
+bool Field_enum::compare_enum_values(TYPELIB *values)
+{
+  if (typelib->count != values->count)
+    return FALSE;
+  for (uint i= 0; i < typelib->count; i++)
+    if (my_strnncoll(field_charset,
+                     (const uchar*) typelib->type_names[i],
+                     typelib->type_lengths[i],
+                     (const uchar*) values->type_names[i],
+                     values->type_lengths[i]))
+      return FALSE;
+  return TRUE;
+}
+
+
+uint Field_enum::is_equal(Create_field *new_field)
+{
+  if (!Field_str::is_equal(new_field))
+    return 0;
+  return compare_enum_values(new_field->interval);
+}
+
 
 /**
   @return

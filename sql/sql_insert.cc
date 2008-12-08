@@ -389,10 +389,9 @@ void prepare_triggers_for_insert_stmt(TABLE *table)
   downgrade the lock in handler::store_lock() method.
 */
 
-static
-void upgrade_lock_type(THD *thd, thr_lock_type *lock_type,
-                       enum_duplicates duplic,
-                       bool is_multi_insert)
+void upgrade_lock_type_for_insert(THD *thd, thr_lock_type *lock_type,
+                                  enum_duplicates duplic,
+                                  bool is_multi_insert)
 {
   if (duplic == DUP_UPDATE ||
       duplic == DUP_REPLACE && *lock_type == TL_WRITE_CONCURRENT_INSERT)
@@ -589,8 +588,8 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     Upgrade lock type if the requested lock is incompatible with
     the current connection mode or table operation.
   */
-  upgrade_lock_type(thd, &table_list->lock_type, duplic,
-                    values_list.elements > 1);
+  upgrade_lock_type_for_insert(thd, &table_list->lock_type, duplic,
+                               values_list.elements > 1);
 
   /*
     We can't write-delayed into a table locked with LOCK TABLES:
@@ -605,18 +604,25 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   {
     my_error(ER_DELAYED_INSERT_TABLE_LOCKED, MYF(0),
              table_list->table_name);
+    MYSQL_INSERT_DONE(1, 0);
     DBUG_RETURN(TRUE);
   }
 
   if (table_list->lock_type == TL_WRITE_DELAYED)
   {
     if (open_and_lock_for_insert_delayed(thd, table_list))
+    {
+      MYSQL_INSERT_DONE(1, 0);
       DBUG_RETURN(TRUE);
+    }
   }
   else
   {
     if (open_and_lock_tables(thd, table_list))
+    {
+      MYSQL_INSERT_DONE(1, 0);
       DBUG_RETURN(TRUE);
+    }
   }
   lock_type= table_list->lock_type;
 
@@ -847,7 +853,6 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
       info.copied=values_list.elements;
       end_delayed_insert(thd);
     }
-    query_cache_invalidate3(thd, table_list, 1);
   }
   else
 #endif
@@ -987,7 +992,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     ::my_ok(thd, (ulong) thd->row_count_func, id, buff);
   }
   thd->abort_on_warning= 0;
-  MYSQL_INSERT_END();
+  MYSQL_INSERT_DONE(0, (ulong) thd->row_count_func);
   DBUG_RETURN(FALSE);
 
 abort:
@@ -1000,7 +1005,7 @@ abort:
   if (!joins_freed)
     free_underlaid_joins(thd, &thd->lex->select_lex);
   thd->abort_on_warning= 0;
-  MYSQL_INSERT_END();
+  MYSQL_INSERT_DONE(1, 0);
   DBUG_RETURN(TRUE);
 }
 
@@ -2823,6 +2828,11 @@ bool Delayed_insert::handle_inserts(void)
   /* Remove all not used rows */
   while ((row=rows.get()))
   {
+    if (table->s->blob_fields)
+    {
+      memcpy(table->record[0],row->record,table->s->reclength);
+      free_delayed_insert_blobs(table);
+    }
     delete row;
     thread_safe_increment(delayed_insert_errors,&LOCK_delayed_status);
     stacked_inserts--;
@@ -3257,6 +3267,7 @@ bool select_insert::send_eof()
   if (error)
   {
     table->file->print_error(error,MYF(0));
+    MYSQL_INSERT_SELECT_DONE(error, 0);
     DBUG_RETURN(1);
   }
   char buff[160];
@@ -3276,6 +3287,7 @@ bool select_insert::send_eof()
      thd->first_successful_insert_id_in_prev_stmt :
      (info.copied ? autoinc_value_of_last_inserted_row : 0));
   ::my_ok(thd, (ulong) thd->row_count_func, id, buff);
+  MYSQL_INSERT_SELECT_DONE(0, (ulong) thd->row_count_func);
   DBUG_RETURN(0);
 }
 
@@ -3327,6 +3339,12 @@ void select_insert::abort() {
     DBUG_ASSERT(transactional_table || !changed ||
 		thd->transaction.stmt.modified_non_trans_table);
     table->file->ha_release_auto_increment();
+  }
+
+  if (MYSQL_INSERT_SELECT_DONE_ENABLED())
+  {
+    MYSQL_INSERT_SELECT_DONE(0, (ulong) (info.copied + info.deleted +
+                                         info.updated));
   }
 
   DBUG_VOID_RETURN;

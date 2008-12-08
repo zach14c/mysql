@@ -123,6 +123,7 @@ Index::~Index()
 			{
 			ASSERT(deferredIndex->index == this);
 			deferredIndex->detachIndex();
+//			deferredIndex->release();  not currently refCounted;
 			}
 		}
 
@@ -277,6 +278,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 	deferredIndex = new DeferredIndex(this, transaction);
 	sync.lock(Exclusive);
 	deferredIndexes.append(deferredIndex);
+//	deferredIndex->addRef() not currently refCounted;
 	sync.unlock();
 	transaction->add(deferredIndex);
 
@@ -578,7 +580,7 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	IndexKey key(this);
 	makeKey (record, &key);
 
-	// If there is a duplicate in the old version chain, don't both with another
+	// If there is a duplicate in the old version chain, don't bother with another
 
 	if (duplicateKey (&key, oldRecord))
 		return;
@@ -841,6 +843,7 @@ void Index::detachDeferredIndex(DeferredIndex *deferredIndex)
 	Sync sync(&deferredIndexes.syncObject, "Index::detachDeferredIndex(1)");
 	sync.lock(Exclusive);
 	deferredIndexes.remove(deferredIndex);
+//	deferredIndex->release();  not currently refCounted;
 	sync.unlock();
 
 	if (   (database->configuration->useDeferredIndexHash)

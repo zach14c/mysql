@@ -49,7 +49,7 @@ INSERT INTO backup_fkey.child VALUES (2, 4);
 INSERT INTO backup_fkey.child VALUES (3, 2);
 
 # Show that foreign key constraints are enforced.
---error 1452
+--error ER_NO_REFERENCED_ROW_2
 INSERT INTO backup_fkey.child VALUES (4, 6);
 
 # Backup the database with fkey constraints preserved.
@@ -79,12 +79,12 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 # Restore the database and ensure there are no errors.
 --echo Now restore the database.
 --replace_column 1 #
-RESTORE FROM 'backup_fkey.bak';
+RESTORE FROM 'backup_fkey.bak' OVERWRITE;
 
 # Now restore the original files to show there are no problems
 # restoring valid fkey relationships.
 --replace_column 1 #
-RESTORE FROM 'backup_fkey_orig.bak';
+RESTORE FROM 'backup_fkey_orig.bak' OVERWRITE;
 
 --echo Show data
 SELECT * FROM backup_fkey.parent;
@@ -120,7 +120,7 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 
 --echo Restoring data
 --replace_column 1 #
-RESTORE FROM 'backup_fkey.bak';
+RESTORE FROM 'backup_fkey.bak' OVERWRITE;
 
 --echo Verify foreign_key_checks = ON
 SHOW VARIABLES LIKE 'foreign_key_checks%';
@@ -131,7 +131,7 @@ SHOW VARIABLES LIKE 'foreign_key_checks%';
 
 --echo Restoring data
 --replace_column 1 #
-RESTORE FROM 'backup_fkey.bak';
+RESTORE FROM 'backup_fkey.bak' OVERWRITE;
 
 --echo Verify foreign_key_checks = OFF
 SHOW VARIABLES LIKE 'foreign_key_checks%';

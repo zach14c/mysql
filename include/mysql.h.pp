@@ -213,8 +213,8 @@ typedef struct st_mem_root
   USED_MEM *pre_alloc;
   size_t min_malloc;
   size_t block_size;
-  unsigned long block_num;
-  unsigned long first_block_usage;
+  unsigned int block_num;
+  unsigned int first_block_usage;
   void (*error_handler)(void);
 } MEM_ROOT;
 typedef struct st_typelib {

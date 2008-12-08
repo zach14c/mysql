@@ -55,6 +55,9 @@ RecordVersion::RecordVersion(Table *tbl, Format *format, Transaction *trans, Rec
 		{
 		priorVersion->addRef();
 		recordNumber = oldVersion->recordNumber;
+
+		if (priorVersion->state == recChilled)
+			priorVersion->thaw();
 		
 		if (trans == priorVersion->getTransaction())
 			oldVersion->setSuperceded (true);
@@ -175,7 +178,6 @@ bool RecordVersion::isVersion()
 void RecordVersion::commit()
 {
 	transaction = NULL;
-	poke();
 }
 
 // Scavenge record versions by the scavenger thread.  Return true if the
@@ -195,7 +197,7 @@ bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 	if (	useCount == 1
 		&& !transaction
 		&& transactionId < recordScavenge->transactionId
-		&& (!hasRecord()
+		&& (!hasRecord(false)
 			|| generation <= recordScavenge->scavengeGeneration
 			|| recordScavenge->forced))
 		{
@@ -232,7 +234,7 @@ bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
 					if (	rec->useCount == 1
 						&& !rec->getTransaction()
 						&& rec->getTransactionId() < recordScavenge->transactionId
-						&& (!rec->hasRecord()
+						&& (!rec->hasRecord(false)
 							|| rec->generation <= recordScavenge->scavengeGeneration))
 						return true;
 			}
@@ -356,6 +358,9 @@ uint64 RecordVersion::getVirtualOffset()
 
 int RecordVersion::thaw()
 {
+	Sync syncThaw(format->table->getSyncThaw(this), "RecordVersion::thaw");
+	syncThaw.lock(Exclusive);
+
 	int bytesRestored = 0;
 	Transaction *trans = transaction;
 	
@@ -381,9 +386,6 @@ int RecordVersion::thaw()
 	
 	// The record data is no longer available in the serial log, so zap the
 	// virtual offset and restore from the data page.
-		
-	if (state != recChilled)
-		return size;
 		
 	bool recordFetched = false;
 
@@ -415,9 +417,10 @@ int RecordVersion::thaw()
 		}
 		
 	if (state == recChilled)
-		ASSERT(bytesRestored > 0 || data.record == NULL);
-		
-	state = recData;
+		{
+		if (data.record != NULL)
+			state = recData;
+		}
 		
 	return bytesRestored;
 }

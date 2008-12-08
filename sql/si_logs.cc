@@ -28,7 +28,6 @@
 */ 
 Backup_log::Backup_log(THD *thd, 
                        enum_backup_operation type, 
-                       const LEX_STRING path, 
                        const char *query)
 {
   m_thd= thd;
@@ -37,9 +36,6 @@ Backup_log::Backup_log(THD *thd,
   m_op_hist.process_id= m_thd->id;
   m_op_hist.state= BUP_STARTING;
   m_op_hist.operation= type;
-
-  if (path.length > 0)
-     m_op_hist.backup_file= path.str;
 
   if (strlen(query) > 0)
     m_op_hist.command= (char *)query;
@@ -68,6 +64,27 @@ void Backup_log::add_driver(const char *driver_name)
   if (strlen(driver_name) > 0)
     str.append(driver_name);
   m_op_hist.driver_name.copy(str);
+}
+
+/**
+  Report name of a backup image file and path used in backup/restore.
+
+  This method updates the backup_file and backup_file_path information 
+  in the history data. 
+
+  @param[IN] char * full_path  The full path and file name of the backup file.
+*/
+void Backup_log::backup_file(const char *full_path)
+{
+  String str;   
+
+  if (strlen(full_path))
+  {
+    size_t i= 0;
+    size_t j= 0;
+    j= dirname_part(m_op_hist.backup_file_path, full_path, &i);
+    m_op_hist.backup_file = (char *)(full_path + i);
+  }
 }
 
 /**
@@ -114,6 +131,26 @@ bool Backup_log::write_progress(const char *object,
   return logger.backup_progress_log_write(m_thd, m_op_hist.backup_id, object, 
                                           start, stop, size, progress, 
                                           error_num, notes);
+}
+
+/**
+  Write master's binlog file and position to progress log.
+
+  @returns results of logging function (i.e., TRUE if error)
+*/
+bool Backup_log::write_master_binlog_info()
+{
+  char buff[1024];
+  bool ret= FALSE;
+
+  if (m_op_hist.master_binlog_file || m_op_hist.master_binlog_pos)
+  {
+    sprintf(buff, 
+      "Recording master binlog information. binlog file = '%s', position = %d.",
+      m_op_hist.master_binlog_file, m_op_hist.master_binlog_pos);
+    ret= write_progress(0, 0, 0, 0, 0, 0, (char *)&buff);
+  }
+  return ret;
 }
 
 /** 

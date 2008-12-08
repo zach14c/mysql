@@ -80,7 +80,8 @@ class Stream: public fd_stream
  public:
 
   int open();
-  virtual void close();
+  virtual bool close();
+
   bool rewind();
 
   /// Check if stream is opened
@@ -92,23 +93,18 @@ class Stream: public fd_stream
 
  protected:
 
-  Stream(Logger&, ::String *, LEX_STRING, int);
+  Stream(Logger&, ::String *, int);
 
-  String  m_path;
+  ::String  *m_path;
   int     m_flags;  ///< flags used when opening the file
   size_t  m_block_size;
-  Logger  m_log;
+  Logger&  m_log;
 
   friend int stream_write(void*, bstream_blob*, bstream_blob);
   friend int stream_read(void*, bstream_blob*, bstream_blob);
 
 private:
 
-  int make_relative_path(char *new_path, 
-                         char *orig_loc, 
-                         ::String *backupdir);
-  int prepare_path(::String *backupdir, 
-                   LEX_STRING orig_loc);
   bool test_secure_file_priv_access(char *path);
 
 };
@@ -119,10 +115,10 @@ class Output_stream:
 {
  public:
 
-  Output_stream(Logger&, ::String *, LEX_STRING, bool);
+  Output_stream(Logger&, ::String *, bool);
 
-  int  open();
-  void close();
+  int open();
+  bool close();
   bool rewind();
 
  private:
@@ -137,10 +133,10 @@ class Input_stream:
 {
  public:
 
-  Input_stream(Logger&, ::String *, LEX_STRING);
+   Input_stream(Logger&, ::String *);
 
-  int  open();
-  void close();
+  int open();
+  bool close();
   bool rewind();
 
   int next_chunk();

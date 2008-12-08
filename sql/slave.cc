@@ -51,6 +51,7 @@
 #define MAX_SLAVE_RETRY_PAUSE 5
 bool use_slave_mask = 0;
 MY_BITMAP slave_error_mask;
+char slave_skip_error_names[SHOW_VAR_FUNC_BUFF_SIZE];
 
 typedef bool (*CHECK_KILLED_FUNC)(THD*,void*);
 
@@ -277,6 +278,64 @@ err:
 }
 
 
+/**
+  Convert slave skip errors bitmap into a printable string.
+*/
+
+static void print_slave_skip_errors(void)
+{
+  /*
+    To be safe, we want 10 characters of room in the buffer for a number
+    plus terminators. Also, we need some space for constant strings.
+    10 characters must be sufficient for a number plus {',' | '...'}
+    plus a NUL terminator. That is a max 6 digit number.
+  */
+  const size_t MIN_ROOM= 10;
+  DBUG_ENTER("print_slave_skip_errors");
+  DBUG_ASSERT(sizeof(slave_skip_error_names) > MIN_ROOM);
+  DBUG_ASSERT(MAX_SLAVE_ERROR <= 999999); // 6 digits
+
+  if (!use_slave_mask || bitmap_is_clear_all(&slave_error_mask))
+  {
+    /* purecov: begin tested */
+    memcpy(slave_skip_error_names, STRING_WITH_LEN("OFF"));
+    /* purecov: end */
+  }
+  else if (bitmap_is_set_all(&slave_error_mask))
+  {
+    /* purecov: begin tested */
+    memcpy(slave_skip_error_names, STRING_WITH_LEN("ALL"));
+    /* purecov: end */
+  }
+  else
+  {
+    char *buff= slave_skip_error_names;
+    char *bend= buff + sizeof(slave_skip_error_names);
+    int  errnum;
+
+    for (errnum= 1; errnum < MAX_SLAVE_ERROR; errnum++)
+    {
+      if (bitmap_is_set(&slave_error_mask, errnum))
+      {
+        if (buff + MIN_ROOM >= bend)
+          break; /* purecov: tested */
+        buff= int10_to_str(errnum, buff, 10);
+        *buff++= ',';
+      }
+    }
+    if (buff != slave_skip_error_names)
+      buff--; // Remove last ','
+    if (errnum < MAX_SLAVE_ERROR)
+    {
+      /* Couldn't show all errors */
+      buff= strmov(buff, "..."); /* purecov: tested */
+    }
+    *buff=0;
+  }
+  DBUG_PRINT("init", ("error_names: '%s'", slave_skip_error_names));
+  DBUG_VOID_RETURN;
+}
+
 /*
   Init function to set up array for errors that should be skipped for slave
 
@@ -316,6 +375,8 @@ void init_slave_skip_errors(const char* arg)
     while (!my_isdigit(system_charset_info,*p) && *p)
       p++;
   }
+  /* Convert slave skip errors bitmap into a printable string. */
+  print_slave_skip_errors();
   DBUG_VOID_RETURN;
 }
 
@@ -454,8 +515,7 @@ int start_slave_thread(pthread_handler h_func, pthread_mutex_t *start_lock,
                        pthread_cond_t *start_cond,
                        volatile uint *slave_running,
                        volatile ulong *slave_run_id,
-                       Master_info* mi,
-                       bool high_priority)
+                       Master_info* mi)
 {
   pthread_t th;
   ulong start_id;
@@ -485,8 +545,6 @@ int start_slave_thread(pthread_handler h_func, pthread_mutex_t *start_lock,
   }
   start_id= *slave_run_id;
   DBUG_PRINT("info",("Creating new slave thread"));
-  if (high_priority)
-    my_pthread_attr_setprio(&connection_attrib,CONNECT_PRIOR);
   if (pthread_create(&th, &connection_attrib, h_func, (void*)mi))
   {
     if (start_lock)
@@ -549,13 +607,13 @@ int start_slave_threads(bool need_slave_mutex, bool wait_for_start,
     error=start_slave_thread(handle_slave_io,lock_io,lock_cond_io,
                              cond_io,
                              &mi->slave_running, &mi->slave_run_id,
-                             mi, 1); //high priority, to read the most possible
+                             mi);
   if (!error && (thread_mask & SLAVE_SQL))
   {
     error=start_slave_thread(handle_slave_sql,lock_sql,lock_cond_sql,
                              cond_sql,
                              &mi->rli.slave_running, &mi->rli.slave_run_id,
-                             mi, 0);
+                             mi);
     if (error)
       terminate_slave_threads(mi, thread_mask & SLAVE_IO, 0);
   }
