@@ -1031,7 +1031,7 @@ bool Protocol_binary::write()
 void
 net_send_ok(THD *thd,
             uint server_status, uint statement_warn_count,
-            ha_rows affected_rows, ulonglong id, const char *message)
+            ulonglong affected_rows, ulonglong id, const char *message)
 {
   DBUG_ENTER("emb_net_send_ok");
   MYSQL_DATA *data;
