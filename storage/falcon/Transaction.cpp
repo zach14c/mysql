@@ -209,15 +209,11 @@ void Transaction::commit()
 
 	releaseSavepoints();
 
-	// NOTE: temporary disabled the optimization for read only transactions.
-	// This will be included in a follow up patch
-
-	//if (!hasUpdates)
-	//	{
-	//	commitNoUpdates();
-	//	
-	//	return;
-	//	}
+	if (!hasUpdates)
+		{
+		commitNoUpdates();
+		return;
+		}
 
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
@@ -246,13 +242,7 @@ void Transaction::commit()
 	if (hasLocks)
 		releaseRecordLocks();
 
-	// NOTE: The if test can be removed when the handling of read-only
-	// transactions has been re-implemented
-
-	if (hasUpdates)
-		database->serialLog->preCommit(this);
-	else 
-		writePending = false;
+	database->serialLog->preCommit(this);
 
 	Sync syncRec(&syncRecords,"Transaction::commit(1.5)");
 	syncRec.lock(Shared);
@@ -322,9 +312,6 @@ void Transaction::commit()
 
 void Transaction::commitNoUpdates(void)
 {
-	// NOTE: This method is not in use by the new dependency manager.
-	// It will be re-enabled in a follow-up patch
-
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
@@ -337,8 +324,11 @@ void Transaction::commitNoUpdates(void)
 	if (hasLocks)
 		releaseRecordLocks();
 
+	// NOTE: Temporarily upgraded from using Shared to Exclusive locking.
+	// See explanation further down
+
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates(2)");
-	syncActiveTransactions.lock(Shared);
+	syncActiveTransactions.lock(Exclusive);
 
 	if (xid)
 		{
@@ -356,6 +346,17 @@ void Transaction::commitNoUpdates(void)
 	transactionId = 0;
 	writePending = false;
 	state = Available;
+
+	// NOTE: This code is hopefully temporar until we have implemented
+	// support for reusing transaction objects:
+	// Remove this transaction from the active list
+
+	inList = false;
+	transactionManager->activeTransactions.remove(this);
+	ASSERT(useCount >= 2);
+	release();
+	sync.unlock();
+
 	syncActiveTransactions.unlock();
 	syncIsActive.unlock();
 	release();
