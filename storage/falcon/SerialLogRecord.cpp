@@ -100,6 +100,7 @@ int init()
 SerialLogRecord::SerialLogRecord()
 {
 	transactionId = 0;
+	type = 0;
 }
 
 SerialLogRecord::~SerialLogRecord()

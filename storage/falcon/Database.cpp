@@ -1471,7 +1471,7 @@ void Database::truncateTable(Table *table, Sequence *sequence, Transaction *tran
 	Sync syncDDLLock(&syncSysDDL, "Database::truncateTable(SysDDL)");
 	syncDDLLock.lock(Exclusive);
 	
-	// Lock syncScavenge before locking syncSysDDL, syncTables, or table->syncObject.
+	// Lock syncScavenge before locking syncTables, or table->syncObject.
 	// The scavenger locks syncScavenge  and then syncTables
 	// If we run out of record memory, forceRecordScavenge will eventually call table->syncObject.
 
