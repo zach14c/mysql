@@ -283,4 +283,20 @@ insert into t1 values (1.225e-05);
 select a+0 from t1;
 drop table t1;
 
+# 
+# Bug #27483: Casting 'scientific notation type' to 'unsigned bigint' fails on 
+#             windows.
+#
+
+create table t1(d double, u bigint unsigned);
+
+insert into t1(d) values (9.223372036854775808e+18),
+                         (9.223372036854779e18),
+                         (9.22337203685479e18),
+                         (1.84e19);
+
+update t1 set u = d;
+select * from t1;
+drop table t1;
+
 --echo End of 5.0 tests
