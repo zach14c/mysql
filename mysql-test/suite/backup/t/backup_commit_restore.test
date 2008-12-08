@@ -20,7 +20,7 @@ replace_column 1 #;
 BACKUP DATABASE commit_test TO '81';
 
 replace_column 1 #;
-RESTORE FROM '81';
+RESTORE FROM '81' OVERWRITE;
 
 SELECT * FROM t1;
 ROLLBACK;
@@ -37,7 +37,7 @@ replace_column 1 #;
 BACKUP DATABASE commit_test TO '82';
 
 replace_column 1 #;
-RESTORE FROM '82';
+RESTORE FROM '82' OVERWRITE;
 
 SELECT * FROM t1;
 SELECT * FROM t2;
@@ -58,7 +58,7 @@ replace_column 1 #;
 BACKUP DATABASE commit_test TO '83';
 
 replace_column 1 #;
-RESTORE FROM '83';
+RESTORE FROM '83' OVERWRITE;
 
 SELECT * FROM t1;
 SELECT * FROM t2;
@@ -81,7 +81,7 @@ replace_column 1 #;
 BACKUP DATABASE commit_test TO '84';
 
 replace_column 1 #;
-RESTORE FROM '84';
+RESTORE FROM '84' OVERWRITE;
 
 SELECT * FROM t1;
 SELECT * FROM t2;
@@ -106,7 +106,7 @@ replace_column 1 #;
 BACKUP DATABASE commit_test TO '85';
 
 replace_column 1 #;
-RESTORE FROM '85';
+RESTORE FROM '85' OVERWRITE;
 
 SELECT * FROM t1;
 SELECT * FROM t2;
@@ -133,7 +133,7 @@ BACKUP DATABASE commit_test TO '86';
 
 SET @@autocommit=0;
 replace_column 1 #;
-RESTORE FROM '86';
+RESTORE FROM '86' OVERWRITE;
 
 #Test of scenario from BUG#34205
 DROP TABLE t5;
@@ -162,7 +162,7 @@ BACKUP DATABASE commit_test TO '87';
 
 SET @@autocommit=1;
 replace_column 1 #;
-RESTORE FROM '87';
+RESTORE FROM '87' OVERWRITE;
 
 SELECT * FROM t1;
 SELECT * FROM t2;

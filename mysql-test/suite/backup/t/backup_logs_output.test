@@ -11,7 +11,34 @@ connect (con1,localhost,root,,,,);
 --echo con1
 connection con1;
 
---echo Display backup variables
+--echo Clear the logs.
+SET @@global.backup_history_log = 'ON';
+SET @@global.backup_progress_log = 'ON';
+
+#
+# BUG#40219 No startup options for backup_*_logname.
+#
+--echo Display backup variable values from startup options file.
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_history%';
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_progress%';
+SHOW VARIABLES LIKE 'log_backup_output';
+
+--echo Set the backup log file names to default values.
+SET @@global.backup_history_log_file = DEFAULT;
+SET @@global.backup_progress_log_file = DEFAULT;
+SET @@global.log_backup_output = 'TABLE';
+
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
+--echo See that the log names have been reset.
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_history%';
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+SHOW VARIABLES LIKE 'backup_progress%';
+
 SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
@@ -27,9 +54,6 @@ SET @@global.backup_progress_log = 'OFF';
 SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
-
-TRUNCATE TABLE mysql.backup_history;
-TRUNCATE TABLE mysql.backup_progress;
 
 --echo Show the size of the logs
 SELECT count(*) FROM mysql.backup_history;
@@ -71,8 +95,8 @@ SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
 
-TRUNCATE TABLE mysql.backup_history;
-TRUNCATE TABLE mysql.backup_progress;
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
 
 --replace_column 1 #
 BACKUP DATABASE bup_log TO 'bup_log.bak';
@@ -91,6 +115,12 @@ FLUSH BACKUP LOGS;
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 --echo '---and the progress log is turned off                   ---'
 
+--echo Clear the logs.
+SET @@global.backup_history_log = 'ON';
+SET @@global.backup_progress_log = 'ON';
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
 SET @@global.backup_history_log = 'ON';
 SET @@global.backup_progress_log = 'OFF';
 
@@ -98,9 +128,6 @@ SET @@global.backup_progress_log = 'OFF';
 SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
-
-TRUNCATE TABLE mysql.backup_history;
-TRUNCATE TABLE mysql.backup_progress;
 
 --echo Show the size of the logs
 SELECT count(*) FROM mysql.backup_history;
@@ -123,6 +150,12 @@ FLUSH BACKUP LOGS;
 --echo '---Checking backup logs when log_backup_output is TABLE---'
 --echo '---and the history log is turned off                 ---'
 
+--echo Clear the logs.
+SET @@global.backup_history_log = 'ON';
+SET @@global.backup_progress_log = 'ON';
+FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
 SET @@global.backup_history_log = 'OFF';
 SET @@global.backup_progress_log = 'ON';
 
@@ -130,9 +163,6 @@ SET @@global.backup_progress_log = 'ON';
 SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
-
-TRUNCATE TABLE mysql.backup_history;
-TRUNCATE TABLE mysql.backup_progress;
 
 --echo Show the size of the logs
 SELECT count(*) FROM mysql.backup_history;
@@ -146,6 +176,12 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
+--echo Show the size of the logs
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
 --file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
 --file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
 
@@ -165,15 +201,6 @@ SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
 
-TRUNCATE TABLE mysql.backup_history;
-TRUNCATE TABLE mysql.backup_progress;
-
-#
-# BUG#33364 - uncomment when purge command is implemented
-#
-# Purge the backup logs
-#PURGE BACKUP LOGS;
-
 --replace_column 1 #
 BACKUP DATABASE bup_log TO 'bup_log.bak';
 
@@ -182,12 +209,11 @@ SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
 
 FLUSH BACKUP LOGS;
+PURGE BACKUP LOGS;
+
 --file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
 --file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
 
-#
-# BUG#33364 - uncomment when purge command is implemented
-#
 # Check contents of logs for data. 
 #--error 0
 #--exec grep -q "BACKUP DATABASE bup_log TO 'bup_log.bak'" $MYSQLTEST_VARDIR/master-data/backup_history.log
@@ -206,15 +232,6 @@ SHOW VARIABLES LIKE 'backup_history_log';
 SHOW VARIABLES LIKE 'backup_progress_log';
 SHOW VARIABLES LIKE 'log_backup_output';
 
-TRUNCATE TABLE mysql.backup_history;
-TRUNCATE TABLE mysql.backup_progress;
-
-#
-# BUG#33364 - uncomment when purge command is implemented
-#
-# Purge the backup logs
-#PURGE BACKUP LOGS;
-
 --replace_column 1 #
 BACKUP DATABASE bup_log TO 'bup_log.bak';
 
@@ -237,6 +254,34 @@ FLUSH BACKUP LOGS;
 
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_log.bak
+
+#
+# BUG#40218 Default setting incorrect
+#
+
+SET GLOBAL backup_history_log=0;
+SET GLOBAL backup_progress_log=0;
+
+--echo Should show 'OFF'
+SHOW VARIABLES LIKE 'backup%log';
+
+SET GLOBAL backup_history_log=1;
+SET GLOBAL backup_progress_log=1;
+
+--echo Should show 'ON'
+SHOW VARIABLES LIKE 'backup%log';
+
+SET GLOBAL backup_history_log=OFF;
+SET GLOBAL backup_progress_log=OFF;
+
+--echo Should show 'OFF'
+SHOW VARIABLES LIKE 'backup%log';
+
+SET GLOBAL backup_history_log=DEFAULT;
+SET GLOBAL backup_progress_log=DEFAULT;
+
+--echo After set default still should show 'ON'
+SHOW VARIABLES LIKE 'backup%log';
 
 --echo Cleanup
 DROP DATABASE bup_log;

@@ -76,7 +76,7 @@ extern ulong ndb_report_thresh_binlog_mem_usage;
 #endif
 
 extern CHARSET_INFO *character_set_filesystem;
-
+extern my_bool disable_slaves;
 
 static DYNAMIC_ARRAY fixed_show_vars;
 static HASH system_variable_hash;
@@ -319,7 +319,7 @@ static sys_var_thd_bool	sys_sql_low_priority_updates(&vars, "sql_low_priority_up
 						     &SV::low_priority_updates,
 						     fix_low_priority_updates);
 #endif
-static sys_var_thd_ulong	sys_max_allowed_packet(&vars, "max_allowed_packet",
+static sys_var_thd_ulong_session_readonly sys_max_allowed_packet(&vars, "max_allowed_packet",
 					       &SV::max_allowed_packet);
 static sys_var_long_ptr	sys_max_binlog_cache_size(&vars, "max_binlog_cache_size",
 						  &max_binlog_cache_size);
@@ -389,7 +389,8 @@ static sys_var_thd_enum         sys_myisam_stats_method(&vars, "myisam_stats_met
                                                 &SV::myisam_stats_method,
                                                 &myisam_stats_method_typelib,
                                                 NULL);
-static sys_var_thd_ulong	sys_net_buffer_length(&vars, "net_buffer_length",
+
+static sys_var_thd_ulong_session_readonly sys_net_buffer_length(&vars, "net_buffer_length",
 					      &SV::net_buffer_length);
 static sys_var_thd_ulong	sys_net_read_timeout(&vars, "net_read_timeout",
 					     &SV::net_read_timeout,
@@ -552,6 +553,8 @@ static sys_var_thd_ulonglong	sys_tmp_table_size(&vars, "tmp_table_size",
 					   &SV::tmp_table_size);
 static sys_var_bool_ptr  sys_timed_mutexes(&vars, "timed_mutexes",
                                     &timed_mutexes);
+static sys_var_bool_ptr  sys_disable_slaves(&vars, "disable_slave_connections",
+                                             &disable_slaves);
 static sys_var_const_str	sys_version(&vars, "version", server_version);
 static sys_var_const_str	sys_version_comment(&vars, "version_comment",
                                             MYSQL_COMPILATION_COMMENT);
@@ -2398,7 +2401,15 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
   pthread_mutex_lock(&LOCK_global_system_variables);
-  logger.deactivate_log_handler(thd, log_type);
+  /*
+    Default for general and slow log is OFF.
+    Default for backup logs is ON.
+  */
+  if ((this == &sys_var_backup_history_log) ||
+      (this == &sys_var_backup_progress_log))
+    logger.activate_log_handler(thd, log_type);
+  else
+    logger.deactivate_log_handler(thd, log_type);
   pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
@@ -2561,7 +2572,8 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   var_str->value= res;
   var_str->value_length= str_length;
   my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
-  if (file_log && log_state)
+  if ((file_log && log_state) ||
+      (backup_log && log_state))
   {
     /*
       Added support for backup log types.
@@ -3207,6 +3219,18 @@ uchar *sys_var_max_user_conn::value_ptr(THD *thd, enum_var_type type,
       thd->user_connect && thd->user_connect->user_resources.user_conn)
     return (uchar*) &(thd->user_connect->user_resources.user_conn);
   return (uchar*) &(max_user_connections);
+}
+
+
+bool sys_var_thd_ulong_session_readonly::check(THD *thd, set_var *var)
+{
+  if (var->type != OPT_GLOBAL)
+  {
+    my_error(ER_VARIABLE_IS_READONLY, MYF(0), "SESSION", name, "GLOBAL");
+    return TRUE;
+  }
+
+  return sys_var_thd_ulong::check(thd, var);
 }
 
 

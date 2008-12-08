@@ -121,6 +121,8 @@ static int send_reply(Backup_restore_ctx &context);
   @param[IN] thd        current thread object reference.
   @param[IN] lex        results of parsing the statement.
   @param[IN] backupdir  value of the backupdir variable from server.
+  @param[IN] overwrite  whether or not restore should overwrite existing
+                        DB with same name as in backup image
 
   @note This function sends response to the client (ok, result set or error).
 
@@ -132,7 +134,7 @@ static int send_reply(Backup_restore_ctx &context);
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex, String *backupdir)
+execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
 {
   int res= 0;
   
@@ -211,6 +213,13 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
 
   case SQLCOM_RESTORE:
   {
+
+    /*
+      Restore cannot be run on a slave while connected to a master.
+    */
+    if (obs::is_slave())
+      DBUG_RETURN(send_error(context, ER_RESTORE_ON_SLAVE));
+
     Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
                                                     thd->query);
     
@@ -219,7 +228,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     
     DEBUG_SYNC(thd, "after_backup_start_restore");
 
-    res= context.do_restore();      
+    res= context.do_restore(overwrite);      
 
     DEBUG_SYNC(thd, "restore_before_end");
 
@@ -324,7 +333,6 @@ int send_reply(Backup_restore_ctx &context)
     goto err;
   }
   my_eof(context.thd());                        // Never errors
-  context.report_cleanup();                     // Never errors
   DBUG_RETURN(0);
 
  err:
@@ -378,7 +386,8 @@ pthread_mutex_t Backup_restore_ctx::run_lock;
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
   m_error(0), m_remove_loc(FALSE), m_stream(NULL),
-  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE)
+  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE),
+  m_engage_binlog(FALSE)
 {
   /*
     Check for progress tables.
@@ -391,7 +400,7 @@ Backup_restore_ctx::Backup_restore_ctx(THD *thd)
 Backup_restore_ctx::~Backup_restore_ctx()
 {
   close();
-  
+
   delete mem_alloc;
   delete m_catalog;  
   delete m_stream;
@@ -785,6 +794,25 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 
   m_state= PREPARED_FOR_RESTORE;
 
+  /*
+    Do not allow slaves to connect during a restore.
+
+    If the binlog is turned on, write a RESTORE_EVENT as an
+    incident report into the binary log.
+
+    Turn off binlog during restore.
+  */
+  if (obs::is_binlog_engaged())
+  {
+    obs::disable_slave_connections(TRUE);
+
+    DEBUG_SYNC(m_thd, "after_disable_slave_connections");
+
+    obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
+    m_engage_binlog= TRUE;
+    obs::engage_binlog(FALSE);
+  }
+
   return info;
 }
 
@@ -838,11 +866,18 @@ int Backup_restore_ctx::lock_tables_for_restore()
   /*
     Open and lock the tables.
     
-    Note: simple_open_n_lock_tables() must be used here since we don't want
-    to do derived tables processing. Processing derived tables even leads 
-    to crashes as those reported in BUG#34758.
+    Note 1: It is important to not do derived tables processing here. Processing
+    derived tables even leads to crashes as those reported in BUG#34758.
+  
+    Note 2: Skiping tmp tables is also important because otherwise a tmp table
+    can occlude a regular table with the same name (BUG#33574).
   */ 
-  if (simple_open_n_lock_tables(m_thd,tables))
+  if (open_and_lock_tables_derived(m_thd, tables,
+                                   FALSE, /* do not process derived tables */
+                                   MYSQL_OPEN_SKIP_TEMPORARY 
+                                          /* do not open tmp tables */
+                                  )
+     )
   {
     fatal_error(ER_BACKUP_OPEN_TABLES,"RESTORE");
     return m_error;
@@ -922,6 +957,17 @@ int Backup_restore_ctx::close()
     return 0;
 
   using namespace backup;
+
+  /*
+    Allow slaves connect after restore is complete.
+  */
+  obs::disable_slave_connections(FALSE);
+
+  /*
+    Turn binlog back on iff it was turned off earlier.
+  */
+  if (m_engage_binlog)
+    obs::engage_binlog(TRUE);
 
   time_t when= my_time(0);
 
@@ -1154,11 +1200,14 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   @pre @c prepare_for_restore() method was called.
 
+  @param[IN] overwrite whether or not restore should overwrite existing
+                       DB with same name as in backup image
+
   @returns 0 on success, error code otherwise.
 
   @todo Remove the @c reset_diagnostic_area() hack.
 */
-int Backup_restore_ctx::do_restore()
+int Backup_restore_ctx::do_restore(bool overwrite)
 {
   DBUG_ENTER("do_restore");
 
@@ -1177,6 +1226,23 @@ int Backup_restore_ctx::do_restore()
   report_stats_pre(info);                       // Never errors
 
   DBUG_PRINT("restore", ("Restoring meta-data"));
+
+  // unless RESTORE... OVERWRITE: return error if database already exists
+  if (!overwrite) {
+    Image_info::Db_iterator *dbit= info.get_dbs();
+
+    if (!dbit) {
+      DBUG_RETURN(fatal_error(ER_OUT_OF_RESOURCES));
+    }
+
+    Image_info::Db *mydb;
+    while (mydb= static_cast<Image_info::Db*>((*dbit)++)) {
+      if (!obs::check_db_existence(&mydb->name())) {
+        DBUG_RETURN(fatal_error(ER_RESTORE_DB_EXISTS, mydb->name().ptr()));
+      }
+    }
+    delete dbit;
+  }
 
   disable_fkey_constraints();                   // Never errors
 
@@ -1252,6 +1318,8 @@ int Backup_restore_ctx::do_restore()
     report_binlog_pos(info.binlog_pos);
 
   report_stats_post(info);                      // Never errors
+
+  DEBUG_SYNC(m_thd, "before_restore_done");
 
   DBUG_RETURN(0);
 }
@@ -1924,6 +1992,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     {
       DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc);
+      delete ts;
       return BSTREAM_ERROR;
     }
   }
