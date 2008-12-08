@@ -292,6 +292,13 @@ void Transaction::commit()
 	transactionManager->committedTransactions.append(this);
 	state = Committed;
 
+	// This is one of the few points where we have an exclusive lock on both the
+	// active and committed transaction list. Although this has nothing to do
+	// with the commit of this transaction we use the opportunity to clean up
+	// old transaction objects
+
+	transactionManager->purgeTransactionsWithLocks();
+
 	syncCommitted.unlock();
 	syncActiveTransactions.unlock();
 	
@@ -304,16 +311,6 @@ void Transaction::commit()
 	xidLength = 0;
 	
 	// If there's no reason to stick around, just go away
-
-	// NOTE: This call to commitRecords() is temporarily commented out.
-	// A call to commitRecords() are taken care of in
-	// TransactionManager::purgeTransactions().
-	// It is likely that this call will be totally removed in one of the
-	// next patches as I do not think it is ever called here due to 
-	// still having pending writes - but I will investigate this further
-
-	//if ((dependencies == 0) && !writePending)
-	//  commitRecords();
 
 	connection = NULL;
 	
@@ -926,17 +923,6 @@ void Transaction::writeComplete(void)
 	ASSERT(state == Committed);
 	releaseDeferredIndexes();
 
-	// NOTE: This call to commitRecords() is temporarily commented out.
-	// A call to commitRecords() are taken care of in
-	// TransactionManager::purgeTransactions().
-	// We might want to include a call to commitRecords() her but in 
-	// order to perform the "dependencies == 0" check with the new
-	// dependency manager we should probably have to do a shared lock
-	// on the activelist. Need to experiment with this a bit.
-
-	//if (dependencies == 0)
-	//	commitRecords();
-
 //	Log::log(LogXARecovery, "%d: WriteComplete %sTransaction %d\n", 
 // 	database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
 
@@ -1453,21 +1439,11 @@ void Transaction::fullyCommitted(void)
 
 void Transaction::releaseCommittedTransaction(void)
 {
+	// NOTE: consider to just move the call to release() to where this method is called.
+	// Leave it in here in case we want to check for being able to delete the transaction
+	// object here.
+
 	release();
-
-	// NOTE: This is commented out due to in order to replacing the
-	// "dependencies == 0" test we have to lock the active transaction list.
-	// This should have no effect on Falcon due to that the if test will
-	// never evaluate to true when called from Transaction::fullyCommitted().
-	// Only when called from Transaction::releaseDependency() (which now is
-	// deleted) would the if test occasionally be true.
-	// The "removeCommittedTransaction" funcionality will be taken care
-	// of by TransactionManager::purgeTransaction.
-	// This code will likely be removed by a follow-up patch.
-
-	//if ((useCount == 1) && (state == Committed) && (dependencies == 0) && !writePending)
-	//	if (COMPARE_EXCHANGE(&inList, (INTERLOCK_TYPE) true, (INTERLOCK_TYPE) false))
-	//		database->transactionManager->removeCommittedTransaction(this);
 }
 
 

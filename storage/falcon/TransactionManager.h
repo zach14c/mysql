@@ -42,6 +42,7 @@ public:
 	Transaction*	findOldest(void);
 	void			getTransactionInfo(InfoTable* infoTable);
 	void			purgeTransactions();
+	void			purgeTransactionsWithLocks();
 	void			getSummaryInfo(InfoTable* infoTable);
 	void			reportStatistics(void);
 	Transaction* 	findTransaction(TransId transactionId);

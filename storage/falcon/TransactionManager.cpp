@@ -15,7 +15,7 @@
 
 
 #include <memory.h>
-#include <stdio.h>     // Temporarily, will be removed before falcon-team tree
+#include <stdio.h>
 #include <limits.h>
 #include "Engine.h"
 #include "TransactionManager.h"
@@ -271,15 +271,37 @@ void TransactionManager::getTransactionInfo(InfoTable* infoTable)
 		transaction->getInfo(infoTable);
 }
 
+
 void TransactionManager::purgeTransactions()
 {
+	// This method is called by the scavenger to clean up old committed
+	// transactions. 
+
+	// To purge the committed transaction list requires at least
+	// a shared lock on the active transaction list and an exclusive
+	// lock on the committed transaction list
+
 	Sync syncActive(&activeTransactions.syncObject, "TransactionManager::purgeTransaction");
 	syncActive.lock(Shared);
-
+	
 	Sync syncCommitted(&committedTransactions.syncObject, "Transaction::purgeTransactions");
 	syncCommitted.lock(Exclusive);
 
-	fprintf(stderr, "TM::purgeTransactions: active=%d committed=%d alloc=%d delete=%d diff=%d\n", activeTransactions.count, committedTransactions.count, Talloc, Tdelete, (Talloc-Tdelete));
+	fprintf(stderr, "TM::purgeTransactions: BEFORE: active=%d committed=%d alloc=%d delete=%d diff=%d\n", activeTransactions.count, committedTransactions.count, Talloc, Tdelete, (Talloc-Tdelete));
+
+	purgeTransactionsWithLocks();
+
+	fprintf(stderr, "TM::purgeTransactions: AFTER : active=%d committed=%d alloc=%d delete=%d diff=%d\n", activeTransactions.count, committedTransactions.count, Talloc, Tdelete, (Talloc-Tdelete));
+}
+
+
+void TransactionManager::purgeTransactionsWithLocks()
+{
+	// Removes old committed transaction from the committed transaction list
+	// that no longer is visible by any currently active transactions.
+	// Note that this method relies on that the caller have at least a
+	// shared lock on the active transaction list and an exclusive lock on
+	// the committed transaction list
 
 	// Find the transaction id of the oldest active transaction
 
@@ -289,7 +311,6 @@ void TransactionManager::purgeTransactions()
 		{
 		oldestActive = activeTransactions.first->transactionId;
 		}
-	syncActive.unlock();
 	
 	// Check for any fully mature transactions to ditch
   
@@ -306,6 +327,12 @@ void TransactionManager::purgeTransactions()
 			{
 			committedTransactions.remove(transaction);
 			transaction->release();
+			}
+		else
+			{
+			// If the compare and exchange operation failed we re-try this transaction on the next call
+
+			break;
 			}
 
 		transaction = committedTransactions.first;
