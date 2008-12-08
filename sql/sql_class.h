@@ -2255,7 +2255,7 @@ private:
 /** A short cut for thd->stmt_da->set_ok_status(). */
 
 inline void
-my_ok(THD *thd, ha_rows affected_rows= 0, ulonglong id= 0,
+my_ok(THD *thd, ulonglong affected_rows= 0, ulonglong id= 0,
         const char *message= NULL)
 {
   thd->stmt_da->set_ok_status(thd, affected_rows, id, message);

@@ -237,7 +237,7 @@ protected:
   virtual enum enum_protocol_type type() { return PROTOCOL_LOCAL; };
 
   virtual void send_ok(uint server_status, uint statement_warn_count,
-                       ha_rows affected_rows, ulonglong last_insert_id,
+                       ulonglong affected_rows, ulonglong last_insert_id,
                        const char *message);
 
   virtual void send_eof(uint server_status, uint statement_warn_count);
@@ -4327,7 +4327,7 @@ bool Protocol_local::send_out_parameters(List<Item_param> *sp_params)
 
 void
 Protocol_local::send_ok(uint server_status, uint statement_warn_count,
-                        ha_rows affected_rows, ulonglong last_insert_id,
+                        ulonglong affected_rows, ulonglong last_insert_id,
                         const char *message)
 {
   /*
