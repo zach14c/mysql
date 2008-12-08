@@ -42,13 +42,13 @@ backup_id
 Ensure backup image file went to the correct location
 Try a backup to an invalid relative path.
 BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
-ERROR HY000: Can't write to backup location '../not/there/bup_backupdir5.bak' (file already exists?)
+ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/tmp/not/there/bup_backupdir5.bak' (Errcode: #)
 
 Try a backup to an invalid hard path.
 *Actual BACKUP DATABASE command not printed due to non-deterministic path.
 *Performing: 
 *BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
-ERROR HY000: Can't write to backup location '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak' (file already exists?)
+ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak' (Errcode: #)
 
 Attempt to set the backupdir to something invalid.
 SET @@global.backupdir = 'This_is_really_stupid/not/there/at/all';

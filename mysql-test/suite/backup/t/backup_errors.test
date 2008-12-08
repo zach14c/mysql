@@ -15,7 +15,9 @@ DROP DATABASE IF EXISTS bdb;
 --enable_warnings
 
 # non-existent backup archive
---error ER_BACKUP_READ_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 29
 RESTORE FROM 'test.bak';
 
 CREATE DATABASE adb;
@@ -29,9 +31,13 @@ BACKUP DATABASE adb TO '';
 SHOW WARNINGS;
 
 # don't overwrite existing files
---error ER_BACKUP_WRITE_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
 BACKUP DATABASE adb TO "bdb/t1.frm";
 --replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
 SHOW WARNINGS;
 
 --replace_column 1 #
@@ -40,9 +46,13 @@ BACKUP DATABASE adb TO "test.bak";
 SHOW WARNINGS;
 
 # don't overwrite existing backup image
---error ER_BACKUP_WRITE_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
 BACKUP DATABASE adb TO "test.bak";
 --replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
 SHOW WARNINGS;
 
 --remove_file $MYSQLTEST_VARDIR/master-data/test.bak

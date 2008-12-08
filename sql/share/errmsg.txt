@@ -6189,7 +6189,7 @@ ER_BACKUP_INVALID_LOC
 ER_BACKUP_READ_LOC
         eng "Can't read backup location '%-.64s'"
 ER_BACKUP_WRITE_LOC
-        eng "Can't write to backup location '%-.64s' (file already exists?)"
+        eng "Can't write to backup location '%-.64s'"
 ER_BACKUP_LIST_DBS
         eng "Can't enumerate server databases"
 ER_BACKUP_LIST_TABLES
