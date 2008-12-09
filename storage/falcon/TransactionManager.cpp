@@ -32,7 +32,8 @@
 #include "Thread.h"
 
 static const int EXTRA_TRANSACTIONS = 10;
-static const TransId TRANS_ID_MAX = UINT_MAX;
+
+static TransId OLD = 0;  // Temporary for debugging
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -114,13 +115,71 @@ Transaction* TransactionManager::findOldest(void)
 	return oldest;
 }
 
+
+TransId TransactionManager::findOldestInActiveList() const
+{
+	// Find the transaction id of the oldest active transaction in the 
+	// active transaction list. If the list is empty, the
+	// latest allocated transaction id will be returned.
+	// This method assumes that the caller have set at least a shared lock
+	// on the active list.
+
+	// Note: Here we operate on a transaction list where we allow 
+	// non-locking transaction allocations and de-allocations from so be 
+	// careful when updating this method.
+
+	// NOTE: This needs to be updated when we allow transaction id to wrap
+
+	TransId oldest = transactionSequence;
+	
+	for (Transaction *transaction = activeTransactions.first; transaction; transaction = transaction->next)
+		{
+		TransId transId = transaction->transactionId;
+		if (transaction->isActive() && (transId != 0 && transId < oldest))
+			oldest = transId;
+		}
+	
+	return oldest;
+}
+
+
 Transaction* TransactionManager::startTransaction(Connection* connection)
 {
+	// Go through the active transaction list to check if there are any
+	// transaction objects in state "Available" that can be re-used.
+	// Note that this is done using a shared lock on the active transaction
+	// list.
+
 	Sync sync (&activeTransactions.syncObject, "TransactionManager::startTransaction");
+	sync.lock(Shared);
+	Transaction *transaction;
+
+	for(transaction = activeTransactions.first; transaction; transaction = transaction->next)
+		if (transaction->state == Available)
+			if (COMPARE_EXCHANGE(&transaction->state, Available, Initializing))
+				{
+				transaction->initialize(connection, INTERLOCKED_INCREMENT(transactionSequence));
+				return transaction;
+				}
+
+	sync.unlock();
+
+	// We did not find an available transaction object to re-use, 
+	// so we allocate a new and add to the active list
+
 	sync.lock(Exclusive);
 
-	Transaction *transaction = new Transaction (connection, INTERLOCKED_INCREMENT(transactionSequence));
+	transaction = new Transaction(connection, INTERLOCKED_INCREMENT(transactionSequence));
 	activeTransactions.append(transaction);
+
+	// Since we have acquired the exclusive lock on the active transaction
+	// list we allocate some extra transaction objects for future use
+
+	for (int n = 0; n < EXTRA_TRANSACTIONS; ++n)
+		{
+		Transaction *trans = new Transaction(connection, 0);
+		activeTransactions.append(trans);
+		}
 
 	return transaction;
 }
@@ -305,13 +364,11 @@ void TransactionManager::purgeTransactionsWithLocks()
 
 	// Find the transaction id of the oldest active transaction
 
-	TransId oldestActive = TRANS_ID_MAX;
+	TransId oldestActive = findOldestInActiveList();
 
-	if (activeTransactions.first != NULL)
-		{
-		oldestActive = activeTransactions.first->transactionId;
-		}
-	
+	ASSERT(oldestActive >= OLD);   // Temporary for debugging
+	OLD = oldestActive;            // Please ignore
+
 	// Check for any fully mature transactions to ditch
   
     Transaction* transaction = committedTransactions.first;

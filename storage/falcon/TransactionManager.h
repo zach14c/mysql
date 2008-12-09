@@ -40,6 +40,7 @@ public:
 	void			rollbackByXid(int xidLength, const UCHAR* xid);
 	void			print(void);
 	Transaction*	findOldest(void);
+	TransId			findOldestInActiveList() const;
 	void			getTransactionInfo(InfoTable* infoTable);
 	void			purgeTransactions();
 	void			purgeTransactionsWithLocks();
