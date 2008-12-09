@@ -2727,7 +2727,7 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
     {
       Query_log_event qev(thd, STRING_WITH_LEN("COMMIT"), TRUE, FALSE);
       qev.error_code= 0; // see comment in MYSQL_LOG::write(THD, IO_CACHE)
-      int error= binlog_end_trans(thd, trx_data, &qev, all);
+      error= binlog_end_trans(thd, trx_data, &qev, all);
       goto end;
     }
   }
