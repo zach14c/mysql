@@ -227,7 +227,7 @@ NdbScanOperation::addInterpretedCode(Uint32 aTC_ConnectPtr,
   theAI_LenInCurrAI= theCurrentATTRINFO->getLength();
 
   return res;
-};
+}
 
 /* Method for handling scanoptions passed into 
  * NdbTransaction::scanTable or scanIndex
@@ -969,7 +969,7 @@ NdbScanOperation::readTuples(NdbScanOperation::LockMode lm,
   m_savedBatchOldApi= batch;
 
   return 0;
-};
+}
 
 /* Most of the scan definition work for old + NdbRecord API scans is done here */
 int 
@@ -1350,7 +1350,7 @@ NdbScanOperation::nextResult(bool fetchAllowed, bool forceSend)
   return nextResult(&dummyOutRowPtr,
                     fetchAllowed,
                     forceSend);
-};
+}
 
 /* nextResult() for NdbRecord operation. */
 int
@@ -2365,31 +2365,49 @@ NdbScanOperation::takeOverScanOpNdbRecord(OperationType opType,
 NdbBlob*
 NdbScanOperation::getBlobHandle(const char* anAttrName)
 {
-  /* We need the row KeyInfo for Blobs
-   * Old Api scans have saved flags at this point
-   */
-  if (m_scanUsingOldApi)
-    m_savedScanFlagsOldApi|= SF_KeyInfo;
+  const NdbColumnImpl* col= m_currentTable->getColumn(anAttrName);
+  
+  if (col != NULL)
+  {
+    /* We need the row KeyInfo for Blobs
+     * Old Api scans have saved flags at this point
+     */
+    if (m_scanUsingOldApi)
+      m_savedScanFlagsOldApi|= SF_KeyInfo;
+    else
+      m_keyInfo= 1;
+    
+    return NdbOperation::getBlobHandle(m_transConnection, col);
+  }
   else
-    m_keyInfo= 1;
-
-  return NdbOperation::getBlobHandle(m_transConnection, 
-                                     m_currentTable->getColumn(anAttrName));
+  {
+    setErrorCode(4004);
+    return NULL;
+  }
 }
 
 NdbBlob*
 NdbScanOperation::getBlobHandle(Uint32 anAttrId)
 {
-  /* We need the row KeyInfo for Blobs 
-   * Old Api scans have saved flags at this point
-   */
-  if (m_scanUsingOldApi)
-    m_savedScanFlagsOldApi|= SF_KeyInfo;
+  const NdbColumnImpl* col= m_currentTable->getColumn(anAttrId);
+  
+  if (col != NULL)
+  {
+    /* We need the row KeyInfo for Blobs 
+     * Old Api scans have saved flags at this point
+     */
+    if (m_scanUsingOldApi)
+      m_savedScanFlagsOldApi|= SF_KeyInfo;
+    else
+      m_keyInfo= 1;
+    
+    return NdbOperation::getBlobHandle(m_transConnection, col);
+  }
   else
-    m_keyInfo= 1;
-
-  return NdbOperation::getBlobHandle(m_transConnection, 
-                                     m_currentTable->getColumn(anAttrId));
+  {
+    setErrorCode(4004);
+    return NULL;
+  }
 }
 
 NdbRecAttr*

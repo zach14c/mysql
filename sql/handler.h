@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2582,7 +2582,7 @@ class Ha_global_schema_lock_guard
 public:
   Ha_global_schema_lock_guard(THD *thd);
   ~Ha_global_schema_lock_guard();
-  int lock();
+  int lock(int no_queue= 0);
 private:
   THD *m_thd;
   int m_lock;
@@ -2600,6 +2600,6 @@ class Ha_global_schema_lock_guard
 public:
   Ha_global_schema_lock_guard(THD *thd) {}
   ~Ha_global_schema_lock_guard() {}
-  int lock() { return 0; }
+  int lock(int no_queue= 0) { return 0; }
 };
 #endif

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -3877,14 +3877,15 @@ static my_bool binlog_func_foreach(THD *thd, binlog_func_st *bfn)
 {
   hton_list_st hton_list;
   uint i, sz;
+  int res= 0;
 
   hton_list.sz= 0;
   plugin_foreach(thd, binlog_func_list,
                  MYSQL_STORAGE_ENGINE_PLUGIN, &hton_list);
 
   for (i= 0, sz= hton_list.sz; i < sz ; i++)
-    hton_list.hton[i]->binlog_func(hton_list.hton[i], thd, bfn->fn, bfn->arg);
-  return FALSE;
+    res|= hton_list.hton[i]->binlog_func(hton_list.hton[i], thd, bfn->fn, bfn->arg);
+  return res != 0;
 }
 
 int ha_reset_logs(THD *thd)
@@ -3927,11 +3928,11 @@ int ha_binlog_index_purge_file(THD *thd, const char *file)
   return 0;
 }
 
-static int ha_global_schema_lock(THD *thd)
+static int ha_global_schema_lock(THD *thd, int no_queue)
 {
-  binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_LOCK, 0};
-  binlog_func_foreach(thd, &bfn);
-  if (thd->main_da.is_error())
+  binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_LOCK, (void *)&no_queue};
+  int res= binlog_func_foreach(thd, &bfn);
+  if (res || thd->main_da.is_error())
     return 1;
   return 0;
 }
@@ -3956,11 +3957,11 @@ Ha_global_schema_lock_guard::~Ha_global_schema_lock_guard()
     ha_global_schema_unlock(m_thd);
 }
 
-int Ha_global_schema_lock_guard::lock()
+int Ha_global_schema_lock_guard::lock(int no_queue)
 {
   DBUG_ASSERT(m_lock == 0);
   m_lock= 1;
-  return ha_global_schema_lock(m_thd);
+  return ha_global_schema_lock(m_thd, no_queue);
 }
 
 struct binlog_log_query_st

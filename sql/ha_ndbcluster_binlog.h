@@ -135,7 +135,25 @@ private:
   int m_invalidate;
 };
 
+class Thd_proc_info_guard
+{
+public:
+  Thd_proc_info_guard(THD *thd)
+   : m_thd(thd), m_proc_info(thd->proc_info) {}
+  ~Thd_proc_info_guard() { m_thd->proc_info= m_proc_info; }
+private:
+  THD *m_thd;
+  const char *m_proc_info;
+};
+
 extern Ndb_cluster_connection* g_ndb_cluster_connection;
+#ifdef HAVE_NDB_BINLOG
+void ndbcluster_global_schema_lock_init();
+void ndbcluster_global_schema_lock_deinit();
+#else
+inline void ndbcluster_global_schema_lock_init() {}
+inline void ndbcluster_global_schema_lock_deinit() {}
+#endif
 
 #ifdef HAVE_NDB_BINLOG
 extern pthread_t ndb_binlog_thread;

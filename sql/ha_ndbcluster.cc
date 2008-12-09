@@ -364,6 +364,7 @@ Thd_ndb::Thd_ndb()
   ndb= new Ndb(connection, "");
   lock_count= 0;
   start_stmt_count= 0;
+  save_point_count= 0;
   count= 0;
   trans= NULL;
   m_error= FALSE;
@@ -663,6 +664,33 @@ ha_ndbcluster::copy_row_to_buffer(Thd_ndb *thd_ndb, const uchar *record)
   return row;
 }
 
+/**
+ * findBlobError
+ * This method attempts to find an error in the hierarchy of runtime
+ * NDBAPI objects from Blob up to transaction.
+ * It will return -1 if no error is found, 0 if an error is found.
+ */
+int findBlobError(NdbError& error, NdbBlob* pBlob)
+{
+  error= pBlob->getNdbError();
+  if (error.code != 0)
+    return 0;
+  
+  const NdbOperation* pOp= pBlob->getNdbOperation();
+  error= pOp->getNdbError();
+  if (error.code != 0)
+    return 0;
+  
+  NdbTransaction* pTrans= pOp->getNdbTransaction();
+  error= pTrans->getNdbError();
+  if (error.code != 0)
+    return 0;
+  
+  /* No error on any of the objects */
+  return -1;
+}
+
+
 int g_get_ndb_blobs_value(NdbBlob *ndb_blob, void *arg)
 {
   ha_ndbcluster *ha= (ha_ndbcluster *)arg;
@@ -741,7 +769,19 @@ int g_get_ndb_blobs_value(NdbBlob *ndb_blob, void *arg)
       uchar *buf= ha->m_blobs_buffer + offset;
       uint32 len= ha->m_blobs_buffer_size - offset;
       if (ndb_blob->readData(buf, len) != 0)
-          ERR_RETURN(ndb_blob->getNdbError());
+      {
+        NdbError err;
+        if (findBlobError(err, ndb_blob) == 0)
+        {
+          ERR_RETURN(err);
+        }
+        else
+        {
+          /* Should always have some error code set */
+          assert(err.code != 0);
+          ERR_RETURN(err);
+        }
+      }   
       DBUG_PRINT("info", ("[%u] offset: %u  buf: %p  len=%u",
                           i, offset, buf, len));
       DBUG_ASSERT(len == len64);
@@ -3438,7 +3478,7 @@ int ha_ndbcluster::ndb_delete_row(const uchar *record, bool primary_key_update)
     /*
       Poor approx. let delete ~ tabsize / 4
     */
-    uint delete_size= 12 + m_bytes_per_write >> 2;
+    uint delete_size= 12 + (m_bytes_per_write >> 2);
     bool need_flush= add_row_check_if_batch_full_size(thd_ndb, delete_size);
     if ( (thd->options & OPTION_ALLOW_BATCH) &&
          table_share->primary_key != MAX_KEY &&
@@ -4788,8 +4828,12 @@ static int ndbcluster_commit(handlerton *hton, THD *thd, bool all)
   PRINT_OPTION_FLAGS(thd);
   DBUG_PRINT("enter", ("Commit %s", (all ? "all" : "stmt")));
   thd_ndb->start_stmt_count= 0;
-  if (trans == NULL || (!all &&
-      thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (trans == NULL)
+  {
+    DBUG_PRINT("info", ("trans == NULL"));
+    DBUG_RETURN(0);
+  }
+  if (!all && (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
   {
     /*
       An odditity in the handler interface is that commit on handlerton
@@ -4801,9 +4845,11 @@ static int ndbcluster_commit(handlerton *hton, THD *thd, bool all)
       the MySQL Server could handle the query without contacting the
       NDB kernel.
     */
+    thd_ndb->save_point_count++;
     DBUG_PRINT("info", ("Commit before start or end-of-statement only"));
     DBUG_RETURN(0);
   }
+  thd_ndb->save_point_count= 0;
 
 #ifdef HAVE_NDB_BINLOG
   if (unlikely(thd_ndb->m_slow_path))
@@ -4879,7 +4925,8 @@ static int ndbcluster_rollback(handlerton *hton, THD *thd, bool all)
   NdbTransaction *trans= thd_ndb->trans;
 
   DBUG_ENTER("ndbcluster_rollback");
-  DBUG_PRINT("enter", ("all: %d", all));
+  DBUG_PRINT("enter", ("all: %d  thd_ndb->save_point_count: %d",
+                       all, thd_ndb->save_point_count));
   PRINT_OPTION_FLAGS(thd);
   DBUG_ASSERT(ndb);
   thd_ndb->start_stmt_count= 0;
@@ -4889,7 +4936,8 @@ static int ndbcluster_rollback(handlerton *hton, THD *thd, bool all)
     DBUG_PRINT("info", ("trans == NULL"));
     DBUG_RETURN(0);
   }
-  if (!all && thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
+  if (!all && (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
+      (thd_ndb->save_point_count > 0))
   {
     /*
       Ignore end-of-statement until real rollback or commit is called
@@ -4899,16 +4947,10 @@ static int ndbcluster_rollback(handlerton *hton, THD *thd, bool all)
     */
     DBUG_PRINT("info", ("Rollback before start or end-of-statement only"));
     mark_transaction_to_rollback(thd, 1);
-    /*
-      This warning is not useful in the slave sql thread.
-      The slave sql thread code will handle the full rollback.
-    */
-    if (!thd->slave_thread)
-      push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                          ER_WARN_ENGINE_TRANSACTION_ROLLBACK,
-                          ER(ER_WARN_ENGINE_TRANSACTION_ROLLBACK), "NDB");
+    my_error(ER_WARN_ENGINE_TRANSACTION_ROLLBACK, MYF(0), "NDB");
     DBUG_RETURN(0);
   }
+  thd_ndb->save_point_count= 0;
   if (trans->execute(NdbTransaction::Rollback) != 0)
   {
     const NdbError err= trans->getNdbError();
@@ -7652,6 +7694,7 @@ static int ndbcluster_init(void *p)
   ndbcluster_terminating= 0;
   ndb_dictionary_is_mysqld= 1;
   ndbcluster_hton= (handlerton *)p;
+  ndbcluster_global_schema_lock_init();
 
   {
     handlerton *h= ndbcluster_hton;
@@ -7704,6 +7747,7 @@ static int ndbcluster_init(void *p)
     pthread_mutex_destroy(&LOCK_ndb_util_thread);
     pthread_cond_destroy(&COND_ndb_util_thread);
     pthread_cond_destroy(&COND_ndb_util_ready);
+    ndbcluster_global_schema_lock_deinit();
     goto ndbcluster_init_error;
   }
 
@@ -7721,6 +7765,7 @@ static int ndbcluster_init(void *p)
     pthread_mutex_destroy(&LOCK_ndb_util_thread);
     pthread_cond_destroy(&COND_ndb_util_thread);
     pthread_cond_destroy(&COND_ndb_util_ready);
+    ndbcluster_global_schema_lock_deinit();
     goto ndbcluster_init_error;
   }
 
@@ -7784,6 +7829,7 @@ static int ndbcluster_end(handlerton *hton, ha_panic_function type)
   pthread_mutex_destroy(&LOCK_ndb_util_thread);
   pthread_cond_destroy(&COND_ndb_util_thread);
   pthread_cond_destroy(&COND_ndb_util_ready);
+  ndbcluster_global_schema_lock_deinit();
   DBUG_RETURN(0);
 }
 

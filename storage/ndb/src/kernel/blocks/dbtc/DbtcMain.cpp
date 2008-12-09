@@ -3091,13 +3091,14 @@ void Dbtc::tckeyreq050Lab(Signal* signal)
   regTcPtr->tcNodedata[3] = Tdata6;
 
   Uint8 Toperation = regTcPtr->operation;
-  Uint8 Tdirty = regTcPtr->dirtyOp;
+  Uint8 TopSimple = regTcPtr->opSimple;
+  Uint8 TopDirty = regTcPtr->dirtyOp;
   tnoOfBackup = tnodeinfo & 3;
   tnoOfStandby = (tnodeinfo >> 8) & 3;
  
   regCachePtr->fragmentDistributionKey = (tnodeinfo >> 16) & 255;
   if (Toperation == ZREAD || Toperation == ZREAD_EX) {
-    if (Tdirty == 1) {
+    if (TopSimple == 1 && TopDirty == 0){
       jam();
       /*-------------------------------------------------------------*/
       /*       A SIMPLE READ CAN SELECT ANY OF THE PRIMARY AND       */
@@ -3301,6 +3302,8 @@ void Dbtc::sendlqhkeyreq(Signal* signal,
   const Uint32 noOfLqhs = regTcPtr->noOfNodes;
   if(commitAckMarker != RNIL){
     jam();
+    ndbassert(regApiPtr->commitAckMarker == commitAckMarker);
+
     LqhKeyReq::setMarkerFlag(Tdata10, 1);
 
     CommitAckMarker * tmp = m_commitAckMarkerHash.getPtr(commitAckMarker);
@@ -3593,6 +3596,7 @@ void Dbtc::releaseTcCon()
   UintR TconcurrentOp = c_counters.cconcurrentOp;
   UintR TtcConnectptrIndex = tcConnectptr.i;
 
+  ndbrequire(regTcPtr->commitAckMarker == RNIL);
   regTcPtr->tcConnectstate = OS_CONNECTED;
   regTcPtr->nextTcConnect = TfirstfreeTcConnect;
   regTcPtr->apiConnect = RNIL;
@@ -3785,6 +3789,7 @@ void Dbtc::execLQHKEYCONF(Signal* signal)
   regTcPtr->lastLqhCon = tlastLqhConnect;
   regTcPtr->lastLqhNodeId = refToNode(tlastLqhBlockref);
   regTcPtr->noFiredTriggers = noFired;
+  regTcPtr->commitAckMarker = RNIL;
 
   UintR Ttckeyrec = (UintR)regApiPtr.p->tckeyrec;
   UintR TclientData = regTcPtr->clientData;
@@ -4518,7 +4523,7 @@ void Dbtc::commit020Lab(Signal* signal)
 
     if (localTcConnectptr.i != RNIL) {
       Tcount = Tcount + 1;
-      if (Tcount < 16 && !ERROR_INSERTED(8057)) {
+      if (Tcount < 16 && !ERROR_INSERTED(8057) && !ERROR_INSERTED(8073)) {
         ptrCheckGuard(localTcConnectptr,
                       TtcConnectFilesize, localTcConnectRecord);
         jam();
@@ -4529,6 +4534,14 @@ void Dbtc::commit020Lab(Signal* signal)
           CLEAR_ERROR_INSERT_VALUE;
           return;
         }//if
+        
+        if (ERROR_INSERTED(8073))
+        {
+          execSEND_PACKED(signal);
+          signal->theData[0] = 9999;
+          sendSignalWithDelay(CMVMI_REF, GSN_NDB_TAMPER, signal, 100, 1);
+          return;
+        }
         signal->theData[0] = TcContinueB::ZSEND_COMMIT_LOOP;
         signal->theData[1] = apiConnectptr.i;
         signal->theData[2] = localTcConnectptr.i;
@@ -4795,7 +4808,6 @@ void Dbtc::copyApi(ApiConnectRecordPtr copyPtr, ApiConnectRecordPtr regApiPtr)
   UintR Tlqhkeyconfrec = regApiPtr.p->lqhkeyconfrec;
   UintR TgcpPointer = regApiPtr.p->gcpPointer;
   UintR TgcpFilesize = cgcpFilesize;
-  UintR TcommitAckMarker = regApiPtr.p->commitAckMarker;
   NdbNodeBitmask Tnodes = regApiPtr.p->m_transaction_nodes;
   GcpRecord *localGcpRecord = gcpRecord;
 
@@ -4806,7 +4818,7 @@ void Dbtc::copyApi(ApiConnectRecordPtr copyPtr, ApiConnectRecordPtr regApiPtr)
   copyPtr.p->transid[0] = Ttransid1;
   copyPtr.p->transid[1] = Ttransid2;
   copyPtr.p->lqhkeyconfrec = Tlqhkeyconfrec;
-  copyPtr.p->commitAckMarker = TcommitAckMarker;
+  copyPtr.p->commitAckMarker = RNIL;
   copyPtr.p->m_transaction_nodes = Tnodes;
   copyPtr.p->singleUserMode = 0;
 
@@ -5133,6 +5145,7 @@ void Dbtc::releaseApiConCopy(Signal* signal)
   regApiPtr->nextApiConnect = TfirstfreeApiConnectCopyOld;
   setApiConTimer(apiConnectptr.i, 0, __LINE__);
   regApiPtr->apiConnectstate = CS_RESTART;
+  ndbrequire(regApiPtr->commitAckMarker == RNIL);
 }//Dbtc::releaseApiConCopy()
 
 /* ========================================================================= */
@@ -5371,8 +5384,10 @@ void Dbtc::clearCommitAckMarker(ApiConnectRecord * const regApiPtr,
   if (regApiPtr->commitAckMarker == RNIL)
     ndbassert(commitAckMarker == RNIL);
   if (commitAckMarker != RNIL)
-    ndbassert(regApiPtr->commitAckMarker != RNIL);
-  if(commitAckMarker != RNIL){
+    ndbassert(regApiPtr->commitAckMarker == commitAckMarker);
+  
+  if(commitAckMarker != RNIL)
+  {
     jam();
     m_commitAckMarkerHash.release(commitAckMarker);
     regTcPtr->commitAckMarker = RNIL;
@@ -7353,6 +7368,9 @@ Dbtc::checkNodeFailComplete(Signal* signal,
     nfRep->failedNodeId = hostptr.i;
     sendSignal(cdihblockref, GSN_NF_COMPLETEREP, signal, 
 	       NFCompleteRep::SignalLength, JBB);
+
+    sendSignal(QMGR_REF, GSN_NF_COMPLETEREP, signal, 
+	       NFCompleteRep::SignalLength, JBB);
   }
 
   CRASH_INSERTION(8058);
@@ -7490,6 +7508,10 @@ void Dbtc::execTAKE_OVERTCCONF(Signal* signal)
   if (signal->getSendersBlockRef() != reference())
   {
     jam();
+
+    tcNodeFailptr.i = 0;
+    ptrAss(tcNodeFailptr, tcFailRecord);
+
     /**
      * Node should be in queue
      */
@@ -7914,7 +7936,7 @@ void Dbtc::completeTransAtTakeOverDoOne(Signal* signal, UintR TtakeOverInd)
 }//Dbtc::completeTransAtTakeOverDoOne()
 
 void 
-Dbtc::sendTCKEY_FAILREF(Signal* signal, const ApiConnectRecord * regApiPtr){
+Dbtc::sendTCKEY_FAILREF(Signal* signal, ApiConnectRecord * regApiPtr){
   jam();
 
   const Uint32 ref = regApiPtr->ndbapiBlockref;
@@ -7937,6 +7959,14 @@ Dbtc::sendTCKEY_FAILREF(Signal* signal, const ApiConnectRecord * regApiPtr){
       routeTCKEY_FAILREFCONF(signal, regApiPtr, GSN_TCKEY_FAILREF, 3);
     }
   }
+
+  const Uint32 marker = regApiPtr->commitAckMarker;
+  if(marker != RNIL)
+  {
+    jam();
+    m_commitAckMarkerHash.release(marker);
+    regApiPtr->commitAckMarker = RNIL;
+  }
 }
 
 void 
@@ -7949,7 +7979,7 @@ Dbtc::sendTCKEY_FAILCONF(Signal* signal, ApiConnectRecord * regApiPtr){
   const Uint32 nodeId = refToNode(ref);
   if(ref != 0)
   {
-    jam()
+    jam();
     failConf->apiConnectPtr = regApiPtr->ndbapiConnect | (marker != RNIL);
     failConf->transId1 = regApiPtr->transid[0];
     failConf->transId2 = regApiPtr->transid[1];
@@ -8164,17 +8194,6 @@ void Dbtc::toAbortHandlingLab(Signal* signal)
         if (apiConnectptr.p->takeOverRec != (Uint8)Z8NIL) {
           jam();
 	  sendTCKEY_FAILREF(signal, apiConnectptr.p);
-	  const Uint32 marker = apiConnectptr.p->commitAckMarker;
-          if(marker != RNIL){
-	    jam();
-
-            CommitAckMarkerPtr tmp;
-            tmp.i = marker;
-            tmp.p = m_commitAckMarkerHash.getPtr(tmp.i);
-            
-            m_commitAckMarkerHash.release(tmp);
-            apiConnectptr.p->commitAckMarker = RNIL;
-          }
           
 	  /*------------------------------------------------------------*/
 	  /*       WE HAVE COMPLETED THIS TRANSACTION NOW AND CAN       */
@@ -8795,6 +8814,7 @@ void Dbtc::updateApiStateFail(Signal* signal)
       tmp.p->noOfLqhs      = 1;
       tmp.p->lqhNodeId[0]  = tnodeid;
       tmp.p->apiConnectPtr = apiConnectptr.i;
+
 #if defined VM_TRACE || defined ERROR_INSERT
       {
 	CommitAckMarkerPtr check;
@@ -8809,10 +8829,23 @@ void Dbtc::updateApiStateFail(Signal* signal)
       tmp.i = marker;
       tmp.p = m_commitAckMarkerHash.getPtr(marker);
 
+      ndbassert(tmp.p->transid1 == ttransid1);
+      ndbassert(tmp.p->transid2 == ttransid2);
+
       const Uint32 noOfLqhs = tmp.p->noOfLqhs;
+      for (Uint32 i = 0; i<noOfLqhs && i < MAX_REPLICAS; i++)
+      {
+        if (tmp.p->lqhNodeId[i] == tnodeid)
+        {
+          jam();
+          goto found;
+        }
+      }
       ndbrequire(noOfLqhs < MAX_REPLICAS);
       tmp.p->lqhNodeId[noOfLqhs] = tnodeid;
       tmp.p->noOfLqhs = (noOfLqhs + 1);
+  found:
+      (void)1;
     }
   }
 
@@ -10804,6 +10837,7 @@ void Dbtc::initialiseTcConnect(Signal* signal)
     tcConnectptr.p->apiConnect = RNIL;
     tcConnectptr.p->noOfNodes = 0;
     tcConnectptr.p->nextTcConnect = tcConnectptr.i + 1;
+    tcConnectptr.p->commitAckMarker = RNIL;
   }//for
   tcConnectptr.i = titcTmp - 1;
   ptrAss(tcConnectptr, tcConnectRecord);
@@ -10820,6 +10854,7 @@ void Dbtc::initialiseTcConnect(Signal* signal)
     tcConnectptr.p->apiConnect = RNIL;
     tcConnectptr.p->noOfNodes = 0;
     tcConnectptr.p->nextTcConnect = tcConnectptr.i + 1;
+    tcConnectptr.p->commitAckMarker = RNIL;
   }//for
   tcConnectptr.i = ctcConnectFilesize - 1;
   ptrAss(tcConnectptr, tcConnectRecord);
@@ -10913,6 +10948,15 @@ void Dbtc::releaseAbortResources(Signal* signal)
     releaseTcCon();
     tcConnectptr.i = rarTcConnectptr.i;
   }//while
+
+  Uint32 marker = apiConnectptr.p->commitAckMarker;
+  if (marker != RNIL)
+  {
+    jam();
+    m_commitAckMarkerHash.release(marker);
+    apiConnectptr.p->commitAckMarker = RNIL;
+  }
+
   apiConnectptr.p->firstTcConnect = RNIL;
   apiConnectptr.p->lastTcConnect = RNIL;
   apiConnectptr.p->m_transaction_nodes.clear();
@@ -11003,6 +11047,7 @@ void Dbtc::releaseApiConnectFail(Signal* signal)
   setApiConTimer(apiConnectptr.i, 0, __LINE__);
   apiConnectptr.p->nextApiConnect = cfirstfreeApiConnectFail;
   cfirstfreeApiConnectFail = apiConnectptr.i;
+  ndbrequire(apiConnectptr.p->commitAckMarker == RNIL);
 }//Dbtc::releaseApiConnectFail()
 
 void Dbtc::releaseKeys() 
@@ -11614,6 +11659,12 @@ Dbtc::execDUMP_STATE_ORD(Signal* signal)
     }
     return;
   }
+
+  if (arg == 4002)
+  {
+    ndbrequire(m_commitAckMarkerPool.getNoOfFree() == 
+               m_commitAckMarkerPool.getSize());
+  }
 }//Dbtc::execDUMP_STATE_ORD()
 
 bool
@@ -11638,7 +11689,7 @@ Dbtc::validate_filter(Signal* signal)
       start += 3;
       break;
     default:
-      infoEvent("Invalid filter op: 0x%x pos: %d",
+      infoEvent("Invalid filter op: 0x%x pos: %ld",
 		* start,
 		start - (signal->theData + 1));
       return false;

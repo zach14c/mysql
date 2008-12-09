@@ -1,4 +1,4 @@
-/* Copyright (C) 2003 MySQL AB
+/* Copyright (C) 2003-2008 MySQL AB, 2008 Sun Microsystems Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,18 +13,20 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-#ifndef BASESTRING_VSNPRINTF_H
-#define BASESTRING_VSNPRINTF_H
-#include <ndb_global.h>
-#include <stdarg.h>
-#if defined(__cplusplus)
-extern "C"
-{
-#endif
-int basestring_snprintf(char*, size_t, const char*, ...)
-  ATTRIBUTE_FORMAT(printf, 3, 4);
-int basestring_vsnprintf(char*,size_t, const char*,va_list);
-#if defined(__cplusplus)
-}
-#endif
+#ifndef NDB_TAP_HPP
+#define NDB_TAP_HPP
+
+#include <../../../unittest/mytap/tap.h>
+#include <../../../unittest/mytap/tap.c>
+
+#define TAPTEST(name)                           \
+int name##_test();                              \
+int main(int argc, const char** argv){          \
+  plan(1);                                      \
+  ok(name##_test(), #name);                     \
+  return exit_status();                         \
+}                                               \
+int name##_test()
+
+
 #endif
