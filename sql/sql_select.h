@@ -218,8 +218,6 @@ typedef struct st_join_table {
   JOIN_CACHE	*cache;
   SQL_SELECT    *cache_select;
   JOIN		*join;
-  /** Bitmap of nested joins this table is part of */
-
   /* SemiJoinDuplicateElimination variables: */
   /*
     Embedding SJ-nest (may be not the direct parent), or NULL if none.
