@@ -146,9 +146,9 @@ int StorageTable::createIndex(StorageIndexDesc *indexDesc, const char *sql)
 	return share->createIndex(storageConnection, indexDesc, sql);
 }
 
-int StorageTable::dropIndex(StorageIndexDesc *indexDesc, const char *sql)
+int StorageTable::dropIndex(StorageIndexDesc *indexDesc, const char *sql, bool online)
 {
-	return share->dropIndex(storageConnection, indexDesc, sql);
+	return share->dropIndex(storageConnection, indexDesc, sql, online);
 }
 
 int StorageTable::next(int recordNumber, bool lockForUpdate)
@@ -195,7 +195,7 @@ int StorageTable::setCurrentIndex(int indexId)
 		}
 	
 	if (!(currentIndex = share->getIndex(indexId)))
-{
+		{
 		clearCurrentIndex();
 		return StorageErrorNoIndex;
 		}
@@ -548,6 +548,10 @@ int StorageTable::translateError(SQLException *exception, int defaultStorageErro
 
 			case DEVICE_FULL:
 				errorCode = StorageErrorDeviceFull;
+				break;
+
+			case IO_ERROR_SERIALLOG:
+				errorCode = StorageErrorIOErrorSerialLog;
 				break;
 
 			default:

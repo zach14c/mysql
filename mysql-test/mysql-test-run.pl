@@ -133,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "ndb,ndb_binlog,rpl_ndb,main,backup,binlog,rpl"; # Default suites to run
+our $opt_suites_default= "ndb,ndb_binlog,rpl_ndb,main,backup,backup_engines,binlog,rpl"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -2324,6 +2324,12 @@ sub setup_vardir() {
   mkpath("$opt_vardir/tmp");
   mkpath($opt_tmpdir) if $opt_tmpdir ne "$opt_vardir/tmp";
 
+  if ($master->[0]->{'path_sock'} !~ m/^$opt_tmpdir/)
+  {
+    mtr_report("Symlinking $master->[0]->{'path_sock'}");
+	symlink($master->[0]->{'path_sock'}, "$opt_tmpdir/master.sock");
+  }
+
   # Create new data dirs
   foreach my $data_dir (@data_dir_lst)
   {
@@ -2830,7 +2836,7 @@ sub run_benchmarks ($) {
 
   if ( ! $benchmark )
   {
-    mtr_add_arg($args, "--log");
+    mtr_add_arg($args, "--general-log");
     mtr_run("$glob_mysql_bench_dir/run-all-tests", $args, "", "", "", "");
     # FIXME check result code?!
   }
@@ -3172,6 +3178,24 @@ sub run_testcase_check_skip_test($)
   my ($tinfo)= @_;
 
   # ----------------------------------------------------------------------
+  # Skip some tests silently
+  # ----------------------------------------------------------------------
+
+  if ( $::opt_start_from )
+  {
+    if ($tinfo->{'name'} eq $::opt_start_from )
+    {
+      ## Found parting test. Run this test and all tests after this one
+      $::opt_start_from= "";
+    }
+    else
+    {
+      $tinfo->{'result'}= 'MTR_RES_SKIPPED';
+      return 1;
+    }
+  }
+
+  # ----------------------------------------------------------------------
   # If marked to skip, just print out and return.
   # Note that a test case not marked as 'skip' can still be
   # skipped later, because of the test case itself in cooperation
@@ -3406,7 +3430,16 @@ sub run_testcase ($) {
   {
     mtr_timer_stop_all($glob_timers);
     mtr_report("\nServers started, exiting");
-    exit(0);
+    if ($glob_win32_perl)
+    {
+      #ActiveState perl hangs  when using normal exit, use  POSIX::_exit instead
+      use POSIX qw[ _exit ]; 
+      POSIX::_exit(0);
+    }
+    else
+    {
+      exit(0);
+    }
   }
 
   {
@@ -3740,9 +3773,11 @@ sub mysqld_arguments ($$$$) {
   }
 
   my $log_base_path= "$opt_vardir/log/$mysqld->{'type'}$sidx";
-  mtr_add_arg($args, "%s--log=%s.log", $prefix, $log_base_path);
+  mtr_add_arg($args, "%s--general-log", $prefix);
+  mtr_add_arg($args, "%s--general-log-file=%s.log", $prefix, $log_base_path);
+  mtr_add_arg($args, "%s--slow-query-log", $prefix);
   mtr_add_arg($args,
-	      "%s--log-slow-queries=%s-slow.log", $prefix, $log_base_path);
+	      "%s--slow-query-log-file=%s-slow.log", $prefix, $log_base_path);
 
   # Check if "extra_opt" contains --skip-log-bin
   my $skip_binlog= grep(/^--skip-log-bin/, @$extra_opt, @opt_extra_mysqld_opt);
@@ -4162,19 +4197,10 @@ sub run_testcase_need_master_restart($)
   elsif (! mtr_same_opts($master->[0]->{'start_opts'},
                          $tinfo->{'master_opt'}) )
   {
-    # Chech that diff is binlog format only
-    my $diff_opts= mtr_diff_opts($master->[0]->{'start_opts'},$tinfo->{'master_opt'});
-    if (scalar(@$diff_opts) eq 2) 
-    {
-      $do_restart= 1 unless ($diff_opts->[0] =~/^--binlog-format=/ and $diff_opts->[1] =~/^--binlog-format=/);
-    }
-    else
-    {
-      $do_restart= 1;
-      mtr_verbose("Restart master: running with different options '" .
-	         join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
+    $do_restart= 1;
+    mtr_verbose("Restart master: running with different options '" .
+		join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
 	  	join(" ", @{$master->[0]->{'start_opts'}}) . "'" );
-    }
   }
   elsif( ! $master->[0]->{'pid'} )
   {

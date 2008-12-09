@@ -38,7 +38,7 @@ class Backup_info: public backup::Image_info
 
   bool is_valid();
 
-  int add_dbs(List< ::LEX_STRING >&);
+  int add_dbs(THD *thd, List< ::LEX_STRING >&);
   int add_all_dbs();
 
   int close();
@@ -47,6 +47,10 @@ class Backup_info: public backup::Image_info
   Iterator* get_perdb()  const;
 
  private:
+
+  // Prevent copying/assignments
+  Backup_info(const Backup_info&);
+  Backup_info& operator=(const Backup_info&);
 
   class Global_iterator; ///< Iterates over global items (for which meta-data is stored).
   class Perdb_iterator;  ///< Iterates over all per-database objects (except tables).
@@ -64,12 +68,13 @@ class Backup_info: public backup::Image_info
   Table* add_table(Db&, obs::Obj*);
 
   int add_db_items(Db&);
-  int add_objects(Db&, const obj_type, obs::ObjIterator&);
+  int add_objects(Db&, const obj_type, obs::Obj_iterator&);
   int add_view_deps(obs::Obj&);
 
   struct Dep_node;
 
-  int get_dep_node(const ::String&, const ::String&, Dep_node*&);
+  int get_dep_node(const ::String&, const ::String&, const obj_type, 
+                   Dep_node*&);
   int add_to_dep_list(const obj_type, Dep_node*);
 
   struct get_dep_node_res 
@@ -140,6 +145,12 @@ class Backup_info: public backup::Image_info
     is empty.
    */
   Dep_node  *m_trigger_end;
+  
+  /** 
+    Points at the last event on the dependency list. NULL if events section
+    is empty.
+   */
+  Dep_node  *m_event_end;
   
   /**
     Hash keeping all elements stored in the dependency list.

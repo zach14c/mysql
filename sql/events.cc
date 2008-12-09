@@ -682,7 +682,7 @@ send_show_create_event(THD *thd, Event_timed *et, Protocol *protocol)
   field_list.push_back(
     new Item_empty_string("Database Collation", MY_CS_NAME_SIZE));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -854,7 +854,6 @@ Events::init(my_bool opt_noacl)
   */
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
 
   /*
     We will need Event_db_repository anyway, even if the scheduler is

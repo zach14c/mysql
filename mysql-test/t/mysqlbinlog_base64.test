@@ -62,6 +62,6 @@ select count(*) from t2;
 #
 #  Test cleanup
 #
---exec rm $MYSQLTEST_VARDIR/tmp/mysqlbinlog_base64.sql
+--remove_file $MYSQLTEST_VARDIR/tmp/mysqlbinlog_base64.sql
 drop table t1;
 drop table t2;

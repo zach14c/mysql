@@ -34,11 +34,13 @@
 #include "sql_repl.h"
 #include "rpl_filter.h"
 #include "repl_failsafe.h"
+#include "transaction.h"
 #include <thr_alarm.h>
 #include <my_dir.h>
 #include <sql_common.h>
 #include <errmsg.h>
 #include <mysys_err.h>
+#include "rpl_handler.h"
 
 #ifdef HAVE_REPLICATION
 
@@ -49,6 +51,7 @@
 #define MAX_SLAVE_RETRY_PAUSE 5
 bool use_slave_mask = 0;
 MY_BITMAP slave_error_mask;
+char slave_skip_error_names[SHOW_VAR_FUNC_BUFF_SIZE];
 
 typedef bool (*CHECK_KILLED_FUNC)(THD*,void*);
 
@@ -66,6 +69,8 @@ ulonglong relay_log_space_limit = 0;
 
 int disconnect_slave_event_count = 0, abort_slave_event_count = 0;
 int events_till_abort = -1;
+
+static pthread_key(Master_info*, RPL_MASTER_INFO);
 
 enum enum_slave_reconnect_actions
 {
@@ -225,6 +230,10 @@ int init_slave()
     TODO: re-write this to interate through the list of files
     for multi-master
   */
+
+  if (pthread_key_create(&RPL_MASTER_INFO, NULL))
+    goto err;
+
   active_mi= new Master_info;
 
   /*
@@ -269,6 +278,64 @@ err:
 }
 
 
+/**
+  Convert slave skip errors bitmap into a printable string.
+*/
+
+static void print_slave_skip_errors(void)
+{
+  /*
+    To be safe, we want 10 characters of room in the buffer for a number
+    plus terminators. Also, we need some space for constant strings.
+    10 characters must be sufficient for a number plus {',' | '...'}
+    plus a NUL terminator. That is a max 6 digit number.
+  */
+  const size_t MIN_ROOM= 10;
+  DBUG_ENTER("print_slave_skip_errors");
+  DBUG_ASSERT(sizeof(slave_skip_error_names) > MIN_ROOM);
+  DBUG_ASSERT(MAX_SLAVE_ERROR <= 999999); // 6 digits
+
+  if (!use_slave_mask || bitmap_is_clear_all(&slave_error_mask))
+  {
+    /* purecov: begin tested */
+    memcpy(slave_skip_error_names, STRING_WITH_LEN("OFF"));
+    /* purecov: end */
+  }
+  else if (bitmap_is_set_all(&slave_error_mask))
+  {
+    /* purecov: begin tested */
+    memcpy(slave_skip_error_names, STRING_WITH_LEN("ALL"));
+    /* purecov: end */
+  }
+  else
+  {
+    char *buff= slave_skip_error_names;
+    char *bend= buff + sizeof(slave_skip_error_names);
+    int  errnum;
+
+    for (errnum= 1; errnum < MAX_SLAVE_ERROR; errnum++)
+    {
+      if (bitmap_is_set(&slave_error_mask, errnum))
+      {
+        if (buff + MIN_ROOM >= bend)
+          break; /* purecov: tested */
+        buff= int10_to_str(errnum, buff, 10);
+        *buff++= ',';
+      }
+    }
+    if (buff != slave_skip_error_names)
+      buff--; // Remove last ','
+    if (errnum < MAX_SLAVE_ERROR)
+    {
+      /* Couldn't show all errors */
+      buff= strmov(buff, "..."); /* purecov: tested */
+    }
+    *buff=0;
+  }
+  DBUG_PRINT("init", ("error_names: '%s'", slave_skip_error_names));
+  DBUG_VOID_RETURN;
+}
+
 /*
   Init function to set up array for errors that should be skipped for slave
 
@@ -308,6 +375,8 @@ void init_slave_skip_errors(const char* arg)
     while (!my_isdigit(system_charset_info,*p) && *p)
       p++;
   }
+  /* Convert slave skip errors bitmap into a printable string. */
+  print_slave_skip_errors();
   DBUG_VOID_RETURN;
 }
 
@@ -446,8 +515,7 @@ int start_slave_thread(pthread_handler h_func, pthread_mutex_t *start_lock,
                        pthread_cond_t *start_cond,
                        volatile uint *slave_running,
                        volatile ulong *slave_run_id,
-                       Master_info* mi,
-                       bool high_priority)
+                       Master_info* mi)
 {
   pthread_t th;
   ulong start_id;
@@ -477,8 +545,6 @@ int start_slave_thread(pthread_handler h_func, pthread_mutex_t *start_lock,
   }
   start_id= *slave_run_id;
   DBUG_PRINT("info",("Creating new slave thread"));
-  if (high_priority)
-    my_pthread_attr_setprio(&connection_attrib,CONNECT_PRIOR);
   if (pthread_create(&th, &connection_attrib, h_func, (void*)mi))
   {
     if (start_lock)
@@ -541,13 +607,13 @@ int start_slave_threads(bool need_slave_mutex, bool wait_for_start,
     error=start_slave_thread(handle_slave_io,lock_io,lock_cond_io,
                              cond_io,
                              &mi->slave_running, &mi->slave_run_id,
-                             mi, 1); //high priority, to read the most possible
+                             mi);
   if (!error && (thread_mask & SLAVE_SQL))
   {
     error=start_slave_thread(handle_slave_sql,lock_sql,lock_cond_sql,
                              cond_sql,
                              &mi->rli.slave_running, &mi->rli.slave_run_id,
-                             mi, 0);
+                             mi);
     if (error)
       terminate_slave_threads(mi, thread_mask & SLAVE_IO, 0);
   }
@@ -1240,7 +1306,7 @@ bool show_master_info(THD* thd, Master_info* mi)
   field_list.push_back(new Item_return_int("Last_SQL_Errno", 4, MYSQL_TYPE_LONG));
   field_list.push_back(new Item_empty_string("Last_SQL_Error", 20));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -1499,17 +1565,22 @@ static int safe_sleep(THD* thd, int sec, CHECK_KILLED_FUNC thread_killed,
 }
 
 
-static int request_dump(MYSQL* mysql, Master_info* mi,
-                        bool *suppress_warnings)
+static int request_dump(THD *thd, MYSQL* mysql, Master_info* mi,
+			bool *suppress_warnings)
 {
   uchar buf[FN_REFLEN + 10];
   int len;
-  int binlog_flags = 0; // for now
+  ushort binlog_flags = 0; // for now
   char* logname = mi->master_log_name;
   DBUG_ENTER("request_dump");
   
   *suppress_warnings= FALSE;
 
+  if (RUN_HOOK(binlog_relay_io,
+               before_request_transmit,
+               (thd, mi, binlog_flags)))
+    DBUG_RETURN(1);
+  
   // TODO if big log files: Change next to int8store()
   int4store(buf, (ulong) mi->master_log_pos);
   int2store(buf + 4, binlog_flags);
@@ -1633,7 +1704,7 @@ static int has_temporary_error(THD *thd)
     DBUG_RETURN(0);
 
   DBUG_EXECUTE_IF("all_errors_are_temporary_errors",
-                  if (thd->main_da.is_error())
+                  if (thd->stmt_da->is_error())
                   {
                     thd->clear_error();
                     my_error(ER_LOCK_DEADLOCK, MYF(0));
@@ -1652,15 +1723,15 @@ static int has_temporary_error(THD *thd)
     currently, InnoDB deadlock detected by InnoDB or lock
     wait timeout (innodb_lock_wait_timeout exceeded
   */
-  if (thd->main_da.sql_errno() == ER_LOCK_DEADLOCK ||
-      thd->main_da.sql_errno() == ER_LOCK_WAIT_TIMEOUT)
+  if (thd->stmt_da->sql_errno() == ER_LOCK_DEADLOCK ||
+      thd->stmt_da->sql_errno() == ER_LOCK_WAIT_TIMEOUT)
     DBUG_RETURN(1);
 
 #ifdef HAVE_NDB_BINLOG
   /*
     currently temporary error set in ndbcluster
   */
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
   MYSQL_ERROR *err;
   while ((err= it++))
   {
@@ -1953,7 +2024,7 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
           else
           {
             exec_res= 0;
-            end_trans(thd, ROLLBACK);
+            trans_rollback(thd);
             /* chance for concurrent connection to get more locks */
             safe_sleep(thd, min(rli->trans_retries, MAX_SLAVE_RETRY_PAUSE),
                        (CHECK_KILLED_FUNC)sql_slave_killed, (void*)rli);
@@ -2134,6 +2205,12 @@ pthread_handler_t handle_slave_io(void *arg)
                             mi->master_log_name,
                             llstr(mi->master_log_pos,llbuff)));
 
+  /* This must be called before run any binlog_relay_io hooks */
+  my_pthread_setspecific_ptr(RPL_MASTER_INFO, mi);
+
+  if (RUN_HOOK(binlog_relay_io, thread_start, (thd, mi)))
+    goto err;
+
   if (!(mi->mysql = mysql = mysql_init(NULL)))
   {
     mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
@@ -2208,7 +2285,7 @@ connected:
   while (!io_slave_killed(thd,mi))
   {
     thd_proc_info(thd, "Requesting binlog dump");
-    if (request_dump(mysql, mi, &suppress_warnings))
+    if (request_dump(thd, mysql, mi, &suppress_warnings))
     {
       sql_print_error("Failed on request_dump()");
       if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
@@ -2228,6 +2305,7 @@ requesting master dump") ||
           goto err;
         goto connected;
       });
+    const char *event_buf;
 
     while (!io_slave_killed(thd,mi))
     {
@@ -2283,10 +2361,27 @@ Stopping slave I/O thread due to out-of-memory error from master");
 
       retry_count=0;                    // ok event, reset retry counter
       thd_proc_info(thd, "Queueing master event to the relay log");
-      if (queue_event(mi,(const char*)mysql->net.read_pos + 1, event_len))
+      event_buf= (const char*)mysql->net.read_pos + 1;
+      if (RUN_HOOK(binlog_relay_io, after_read_event,
+                   (thd, mi,(const char*)mysql->net.read_pos + 1,
+                    event_len, &event_buf, &event_len)))
+      {
+        sql_print_error("Failed to run 'after_read_event' hook");
+        goto err;
+      }
+
+      /* XXX: 'synced' should be updated by queue_event to indicate
+         whether event has been synced to disk */
+      bool synced= 0;
+      if (queue_event(mi, event_buf, event_len))
       {
         goto err;
       }
+
+      if (RUN_HOOK(binlog_relay_io, after_queue_event,
+                   (thd, mi, event_buf, event_len, synced)))
+        goto err;
+
       if (flush_master_info(mi, 1))
       {
         sql_print_error("Failed to flush master info file");
@@ -2333,6 +2428,7 @@ err:
   sql_print_information("Slave I/O thread exiting, read up to log '%s', position %s",
                   IO_RPL_LOG_NAME, llstr(mi->master_log_pos,llbuff));
   pthread_mutex_lock(&LOCK_thread_count);
+  RUN_HOOK(binlog_relay_io, thread_stop, (thd, mi));
   thd->query = thd->db = 0; // extra safety
   thd->query_length= thd->db_length= 0;
   pthread_mutex_unlock(&LOCK_thread_count);
@@ -2558,24 +2654,24 @@ Slave SQL thread aborted. Can't execute init_slave query");
 
         if (thd->is_error())
         {
-          char const *const errmsg= thd->main_da.message();
+          char const *const errmsg= thd->stmt_da->message();
 
           DBUG_PRINT("info",
-                     ("thd->main_da.sql_errno()=%d; rli->last_error.number=%d",
-                      thd->main_da.sql_errno(), last_errno));
+                     ("thd->stmt_da->sql_errno()=%d; rli->last_error.number=%d",
+                      thd->stmt_da->sql_errno(), last_errno));
           if (last_errno == 0)
           {
-            rli->report(ERROR_LEVEL, thd->main_da.sql_errno(), errmsg);
+            rli->report(ERROR_LEVEL, thd->stmt_da->sql_errno(), errmsg);
           }
-          else if (last_errno != thd->main_da.sql_errno())
+          else if (last_errno != thd->stmt_da->sql_errno())
           {
             sql_print_error("Slave (additional info): %s Error_code: %d",
-                            errmsg, thd->main_da.sql_errno());
+                            errmsg, thd->stmt_da->sql_errno());
           }
         }
 
         /* Print any warnings issued */
-        List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+        List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
         MYSQL_ERROR *err;
         /*
           Added controlled slave thread cancel for replication
@@ -3452,6 +3548,64 @@ static int safe_reconnect(THD* thd, MYSQL* mysql, Master_info* mi,
   DBUG_RETURN(connect_to_master(thd, mysql, mi, 1, suppress_warnings));
 }
 
+
+MYSQL *rpl_connect_master(MYSQL *mysql)
+{
+  THD *thd= current_thd;
+  Master_info *mi= my_pthread_getspecific_ptr(Master_info*, RPL_MASTER_INFO);
+  if (!mi)
+  {
+    sql_print_error("'rpl_connect_master' must be called in slave I/O thread context.");
+    return NULL;
+  }
+
+  bool allocated= false;
+  
+  if (!mysql)
+  {
+    if(!(mysql= mysql_init(NULL)))
+      return NULL;
+    allocated= true;
+  }
+
+  /*
+    XXX: copied from connect_to_master, this function should not
+    change the slave status, so we cannot use connect_to_master
+    directly
+    
+    TODO: make this part a seperate function to eliminate duplication
+  */
+  mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, (char *) &slave_net_timeout);
+  mysql_options(mysql, MYSQL_OPT_READ_TIMEOUT, (char *) &slave_net_timeout);
+
+#ifdef HAVE_OPENSSL
+  if (mi->ssl)
+  {
+    mysql_ssl_set(mysql,
+                  mi->ssl_key[0]?mi->ssl_key:0,
+                  mi->ssl_cert[0]?mi->ssl_cert:0,
+                  mi->ssl_ca[0]?mi->ssl_ca:0,
+                  mi->ssl_capath[0]?mi->ssl_capath:0,
+                  mi->ssl_cipher[0]?mi->ssl_cipher:0);
+    mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+                  &mi->ssl_verify_server_cert);
+  }
+#endif
+
+  mysql_options(mysql, MYSQL_SET_CHARSET_NAME, default_charset_info->csname);
+  /* This one is not strictly needed but we have it here for completeness */
+  mysql_options(mysql, MYSQL_SET_CHARSET_DIR, (char *) charsets_dir);
+
+  if (io_slave_killed(thd, mi)
+      || !mysql_real_connect(mysql, mi->host, mi->user, mi->password, 0,
+                             mi->port, 0, 0))
+  {
+    if (allocated)
+      mysql_close(mysql);                       // this will free the object
+    return NULL;
+  }
+  return mysql;
+}
 
 /*
   Store the file and position where the execute-slave thread are in the

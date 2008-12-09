@@ -3183,70 +3183,70 @@ v
 v
 999
 Warnings:
-Warning	1264	Out of range value for column 's1' at row 3
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
+Warning	1264	Out of range value for column 's1' at row 4
+Warning	1264	Out of range value for column 's1' at row 5
 Warning	1264	Out of range value for column 's1' at row 3
 Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
 Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 4
-Warning	1264	Out of range value for column 's1' at row 2
-Warning	1264	Out of range value for column 's1' at row 3
-Warning	1264	Out of range value for column 's1' at row 3
 DROP TABLE t1//
 DROP PROCEDURE p//
 *** Bug 216 ***
@@ -3263,4 +3263,30 @@ count(*)
 select count(*) from t2 where b = 150;
 count(*)
 1
+#
+# Bug #36473 Assertion "! is_set()" fails in
+# Diagnostics_area::set_ok_status with Falcon
+# Ensure that we check the return value of update_auto_increment().
+#
+set @@storage_engine = falcon;
+drop table if exists t1;
+create table t1 (a tinyint(4) NOT NULL auto_increment, primary key (a));
+set @@sql_mode='strict_all_tables';
+set auto_increment_increment=1000;
+set auto_increment_offset=700;
+insert into t1 values (null);
+ERROR 22003: Out of range value for column 'a' at row 1
+set @@sql_mode=default;
+set auto_increment_offset=default;
+set auto_increment_increment=default;
 DROP TABLE t1, t2;
+#
+# Bug #36897 Falcon: "use tablespace" is possible
+# Test that "use <ts>" will fail if <ts> is a
+# tablespace and not a database
+#
+set @@storage_engine = falcon;
+create tablespace ts add datafile 'ts' engine=falcon;
+use ts;
+ERROR 42000: Unknown database 'ts'
+drop tablespace ts engine=falcon;

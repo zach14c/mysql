@@ -80,7 +80,6 @@ static handler *tina_create_handler(handlerton *hton,
                                     TABLE_SHARE *table, 
                                     MEM_ROOT *mem_root);
 
-
 /*****************************************************************************
  ** TINA tables
  *****************************************************************************/
@@ -169,6 +168,7 @@ static TINA_SHARE *get_share(const char *table_name, TABLE *table)
     share->update_file_opened= FALSE;
     share->tina_write_opened= FALSE;
     share->data_file_version= 0;
+    share->allow_log_delete= FALSE;
     strmov(share->table_name, table_name);
     fn_format(share->data_file_name, table_name, "", CSV_EXT,
               MY_REPLACE_EXT|MY_UNPACK_FILENAME);
@@ -177,7 +177,7 @@ static TINA_SHARE *get_share(const char *table_name, TABLE *table)
 
     if (my_stat(share->data_file_name, &file_stat, MYF(MY_WME)) == NULL)
       goto error;
-    share->saved_data_file_length= file_stat.st_size;
+    share->saved_data_file_length= (off_t)file_stat.st_size;
 
     if (my_hash_insert(&tina_open_tables, (uchar*) share))
       goto error;
@@ -995,8 +995,13 @@ int ha_tina::delete_row(const uchar * buf)
   share->rows_recorded--;
   pthread_mutex_unlock(&share->mutex);
 
-  /* DELETE should never happen on the log table */
-  DBUG_ASSERT(!share->is_log_table);
+  /* 
+     DELETE should never happen on the log table
+     UNLESS extra() has been called with HA_EXTRA_ALLOW_LOG_DELETE 
+     which sets allow_log_delete flag. The flag is reset with 
+     HA_EXTRA_MARK_AS_LOG_TABLE.     
+  */
+  DBUG_ASSERT(!share->is_log_table || share->allow_log_delete);
 
   DBUG_RETURN(0);
 }
@@ -1169,6 +1174,13 @@ int ha_tina::extra(enum ha_extra_function operation)
  {
    pthread_mutex_lock(&share->mutex);
    share->is_log_table= TRUE;
+   share->allow_log_delete= FALSE;
+   pthread_mutex_unlock(&share->mutex);
+ }
+ else if (operation == HA_EXTRA_ALLOW_LOG_DELETE)
+ {
+   pthread_mutex_lock(&share->mutex);
+   share->allow_log_delete= TRUE;
    pthread_mutex_unlock(&share->mutex);
  }
   DBUG_RETURN(0);
@@ -1595,10 +1607,21 @@ int ha_tina::check(THD* thd, HA_CHECK_OPT* check_opt)
 }
 
 
+/**
+   Return the compatiblity of alter table changes, created for new 
+   fast on-line alter table operation.
+   @param    info                Information about  new altered table properties
+   @param    table_changes       Information if the table layout is changed
+   @retval   COMPATIBLE_DATA_NO  Altered table changes made are incompatible
+   @retval   COMPATIBLE_DATA_YES Altered table changes made are compatible
+*/
 bool ha_tina::check_if_incompatible_data(HA_CREATE_INFO *info,
 					   uint table_changes)
 {
-  return COMPATIBLE_DATA_YES;
+  if (table_changes == IS_EQUAL_NO)  
+    return COMPATIBLE_DATA_NO;
+  else
+    return COMPATIBLE_DATA_YES;    
 }
 
 struct st_mysql_storage_engine csv_storage_engine=

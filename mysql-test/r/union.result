@@ -1301,10 +1301,10 @@ t3	CREATE TABLE `t3` (
   `left(a,100000000)` longtext
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop tables t1,t2,t3;
-SELECT @tmp_max:= @@max_allowed_packet;
-@tmp_max:= @@max_allowed_packet
+SELECT @tmp_max:= @@global.max_allowed_packet;
+@tmp_max:= @@global.max_allowed_packet
 1048576
-SET max_allowed_packet=25000000;
+SET @@global.max_allowed_packet=25000000;
 CREATE TABLE t1 (a mediumtext);
 CREATE TABLE t2 (b varchar(20));
 INSERT INTO t1 VALUES ('a');
@@ -1342,7 +1342,7 @@ t3	CREATE TABLE `t3` (
   `a` varbinary(510) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLES t1,t2,t3;
-SET max_allowed_packet:= @tmp_max;
+SET @@global.max_allowed_packet:= @tmp_max;
 create table t1 ( id int not null auto_increment, primary key (id), col1 int);
 insert into t1 (col1) values (2),(3),(4),(5),(6);
 select 99 union all select id from t1 order by 1;
@@ -1521,3 +1521,33 @@ Field	Type	Null	Key	Default	Extra
 NULL	int(11)	YES		NULL	
 DROP TABLE t1, t2, t3, t4, t5, t6;
 End of 5.0 tests
+CREATE TABLE t1 (a INT);
+INSERT INTO t1 VALUES (1);
+SELECT a INTO @v FROM (
+SELECT a FROM t1
+UNION
+SELECT a FROM t1
+) alias;
+SELECT a INTO OUTFILE 'union.out.file' FROM (
+SELECT a FROM t1
+UNION
+SELECT a FROM t1 WHERE 0
+) alias;
+SELECT a INTO DUMPFILE 'union.out.file2' FROM (
+SELECT a FROM t1
+UNION
+SELECT a FROM t1 WHERE 0
+) alias;
+SELECT a FROM t1 UNION SELECT a INTO @v FROM t1;
+SELECT a FROM t1 UNION SELECT a INTO OUTFILE 'union.out.file5' FROM t1;
+SELECT a FROM t1 UNION SELECT a INTO OUTFILE 'union.out.file6' FROM t1;
+SELECT a INTO @v FROM t1 UNION SELECT a FROM t1;
+ERROR HY000: Incorrect usage of UNION and INTO
+SELECT a INTO OUTFILE 'union.out.file7' FROM t1 UNION SELECT a FROM t1;
+ERROR HY000: Incorrect usage of UNION and INTO
+SELECT a INTO DUMPFILE 'union.out.file8' FROM t1 UNION SELECT a FROM t1;
+ERROR HY000: Incorrect usage of UNION and INTO
+SELECT ( SELECT a UNION SELECT a ) INTO @v FROM t1;
+SELECT ( SELECT a UNION SELECT a ) INTO OUTFILE  'union.out.file3' FROM t1;
+SELECT ( SELECT a UNION SELECT a ) INTO DUMPFILE 'union.out.file4' FROM t1;
+DROP TABLE t1;

@@ -286,6 +286,7 @@ functions:
          if (and only if) this query has a registered result set writer
          (thd->net.query_cache_query).
  4. Query_cache::invalidate
+    Query_cache::invalidate_locked_for_write
        - Called from various places to invalidate query cache based on data-
          base, table and myisam file name. During an on going invalidation
          the query cache is temporarily disabled.
@@ -686,7 +687,7 @@ Query_cache::insert(Query_cache_tls *query_cache_tls,
   DBUG_ENTER("Query_cache::insert");
 
   /* See the comment on double-check locking usage above. */
-  if (query_cache_tls->first_query_block == NULL)
+  if (is_disabled() || query_cache_tls->first_query_block == NULL)
     DBUG_VOID_RETURN;
 
   DBUG_EXECUTE_IF("wait_in_query_cache_insert",
@@ -753,7 +754,7 @@ Query_cache::abort(Query_cache_tls *query_cache_tls)
   THD *thd= current_thd;
 
   /* See the comment on double-check locking usage above. */
-  if (query_cache_tls->first_query_block == NULL)
+  if (is_disabled() || query_cache_tls->first_query_block == NULL)
     DBUG_VOID_RETURN;
 
   STRUCT_LOCK(&structure_guard_mutex);
@@ -901,7 +902,7 @@ Query_cache::Query_cache(ulong query_cache_limit_arg,
   :query_cache_size(0),
    query_cache_limit(query_cache_limit_arg),
    queries_in_cache(0), hits(0), inserts(0), refused(0),
-   total_blocks(0), lowmem_prunes(0),
+   total_blocks(0), lowmem_prunes(0), m_query_cache_is_disabled(FALSE),
    min_allocation_unit(ALIGN_SIZE(min_allocation_unit_arg)),
    min_result_data_size(ALIGN_SIZE(min_result_data_size_arg)),
    def_query_hash_size(ALIGN_SIZE(def_query_hash_size_arg)),
@@ -993,7 +994,7 @@ void Query_cache::store_query(THD *thd, TABLE_LIST *tables_used)
 
     See also a note on double-check locking usage above.
   */
-  if (thd->locked_tables_mode || query_cache_size == 0)
+  if (is_disabled() || thd->locked_tables_mode || query_cache_size == 0)
     DBUG_VOID_RETURN;
   uint8 tables_type= 0;
 
@@ -1013,7 +1014,9 @@ void Query_cache::store_query(THD *thd, TABLE_LIST *tables_used)
       protocol (COM_EXECUTE) cannot be served to statements asking for results
       in the text protocol (COM_QUERY) and vice-versa.
     */
-    flags.result_in_binary_protocol= (unsigned int) thd->protocol->type();
+    flags.protocol_type= (unsigned int) thd->protocol->type();
+    /* PROTOCOL_LOCAL results are not cached. */
+    DBUG_ASSERT(flags.protocol_type != (unsigned int) Protocol::PROTOCOL_LOCAL);
     flags.more_results_exists= test(thd->server_status &
                                     SERVER_MORE_RESULTS_EXISTS);
     flags.pkt_nr= net->pkt_nr;
@@ -1040,7 +1043,7 @@ sql mode: 0x%lx, sort len: %lu, conncat len: %lu, div_precision: %lu, \
 def_week_frmt: %lu",                          
                           (int)flags.client_long_flag,
                           (int)flags.client_protocol_41,
-                          (int)flags.result_in_binary_protocol,
+                          (int)flags.protocol_type,
                           (int)flags.more_results_exists,
                           flags.pkt_nr,
                           flags.character_set_client_num,
@@ -1278,7 +1281,7 @@ Query_cache::send_result_to_client(THD *thd, char *sql, uint query_length)
   flags.client_long_flag= test(thd->client_capabilities & CLIENT_LONG_FLAG);
   flags.client_protocol_41= test(thd->client_capabilities &
                                  CLIENT_PROTOCOL_41);
-  flags.result_in_binary_protocol= (unsigned int)thd->protocol->type();
+  flags.protocol_type= (unsigned int) thd->protocol->type();
   flags.more_results_exists= test(thd->server_status &
                                   SERVER_MORE_RESULTS_EXISTS);
   flags.pkt_nr= thd->net.pkt_nr;
@@ -1303,7 +1306,7 @@ sql mode: 0x%lx, sort len: %lu, conncat len: %lu, div_precision: %lu, \
 def_week_frmt: %lu",                          
                           (int)flags.client_long_flag,
                           (int)flags.client_protocol_41,
-                          (int)flags.result_in_binary_protocol,
+                          (int)flags.protocol_type,
                           (int)flags.more_results_exists,
                           flags.pkt_nr,
                           flags.character_set_client_num,
@@ -1480,14 +1483,16 @@ def_week_frmt: %lu",
 
   thd->limit_found_rows = query->found_rows();
   thd->status_var.last_query_cost= 0.0;
-  thd->main_da.disable_status();
+  thd->stmt_da->disable_status();
 
+  MYSQL_QUERY_CACHE_HIT(thd->query, (ulong) thd->limit_found_rows);
   BLOCK_UNLOCK_RD(query_block);
   DBUG_RETURN(1);				// Result sent to client
 
 err_unlock:
   STRUCT_UNLOCK(&structure_guard_mutex);
 err:
+  MYSQL_QUERY_CACHE_MISS(thd->query);
   DBUG_RETURN(0);				// Query was not cached
 }
 
@@ -1500,6 +1505,9 @@ void Query_cache::invalidate(THD *thd, TABLE_LIST *tables_used,
 			     my_bool using_transactions)
 {
   DBUG_ENTER("Query_cache::invalidate (table list)");
+
+  if (is_disabled())
+    DBUG_VOID_RETURN;
 
   using_transactions= using_transactions &&
     (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
@@ -1527,6 +1535,9 @@ void Query_cache::invalidate(THD *thd, TABLE_LIST *tables_used,
 void Query_cache::invalidate(CHANGED_TABLE_LIST *tables_used)
 {
   DBUG_ENTER("Query_cache::invalidate (changed table list)");
+  if (is_disabled())
+    DBUG_VOID_RETURN;
+
   THD *thd= current_thd;
   for (; tables_used; tables_used= tables_used->next)
   {
@@ -1554,13 +1565,14 @@ void Query_cache::invalidate_locked_for_write(TABLE_LIST *tables_used)
 {
   THD *thd= current_thd;
   DBUG_ENTER("Query_cache::invalidate_locked_for_write");
+  if (is_disabled())
+    DBUG_VOID_RETURN;
   for (; tables_used; tables_used= tables_used->next_local)
   {
     thd_proc_info(thd, "invalidating query cache entries (table)");
-    if (tables_used->lock_type & (TL_WRITE_LOW_PRIORITY | TL_WRITE) &&
+    if (tables_used->lock_type >= TL_WRITE_ALLOW_WRITE &&
         tables_used->table)
     {
-      THD *thd= current_thd; 
       invalidate_table(thd, tables_used->table);
     }
   }
@@ -1575,7 +1587,10 @@ void Query_cache::invalidate(THD *thd, TABLE *table,
 			     my_bool using_transactions)
 {
   DBUG_ENTER("Query_cache::invalidate (table)");
-  
+
+  if (is_disabled())
+    DBUG_VOID_RETURN;
+
   using_transactions= using_transactions &&
     (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
   if (using_transactions && 
@@ -1592,6 +1607,8 @@ void Query_cache::invalidate(THD *thd, const char *key, uint32  key_length,
 			     my_bool using_transactions)
 {
   DBUG_ENTER("Query_cache::invalidate (key)");
+  if (is_disabled())
+    DBUG_VOID_RETURN;
 
   using_transactions= using_transactions &&
     (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
@@ -1653,14 +1670,15 @@ void Query_cache::invalidate(char *db)
 {
   bool restart= FALSE;
   DBUG_ENTER("Query_cache::invalidate (db)");
-
+  if (is_disabled())
+    DBUG_VOID_RETURN;
   STRUCT_LOCK(&structure_guard_mutex);
   bool interrupt;
   wait_while_table_flush_is_in_progress(&interrupt);
   if (interrupt)
   {
     STRUCT_UNLOCK(&structure_guard_mutex);
-    return;
+    DBUG_VOID_RETURN;
   }
 
   THD *thd= current_thd;
@@ -1741,6 +1759,9 @@ void Query_cache::invalidate_by_MyISAM_filename(const char *filename)
 void Query_cache::flush()
 {
   DBUG_ENTER("Query_cache::flush");
+  if (is_disabled())
+    DBUG_VOID_RETURN;
+
   STRUCT_LOCK(&structure_guard_mutex);
   if (query_cache_size > 0)
   {
@@ -1768,7 +1789,8 @@ void Query_cache::flush()
 void Query_cache::pack(ulong join_limit, uint iteration_limit)
 {
   DBUG_ENTER("Query_cache::pack");
-
+  if (is_disabled())
+    DBUG_VOID_RETURN;
   bool interrupt;
   STRUCT_LOCK(&structure_guard_mutex);
   wait_while_table_flush_is_in_progress(&interrupt);
@@ -1828,6 +1850,15 @@ void Query_cache::init()
   pthread_cond_init(&COND_cache_status_changed, NULL);
   m_cache_status= Query_cache::NO_FLUSH_IN_PROGRESS;
   initialized = 1;
+  /*
+    If we explicitly turn off query cache from the command line query cache will
+    be disabled for the reminder of the server life time. This is because we
+    want to avoid locking the QC specific mutex if query cache isn't going to
+    be used.
+  */
+  if (global_system_variables.query_cache_type == 0)
+    query_cache.disable_query_cache();
+
   DBUG_VOID_RETURN;
 }
 
@@ -2648,7 +2679,7 @@ Query_cache::register_tables_from_list(TABLE_LIST *tables_used,
        tables_used;
        tables_used= tables_used->next_global, n++, block_table++)
   {
-    if (tables_used->derived && !tables_used->view)
+    if (tables_used->is_anonymous_derived_table())
     {
       DBUG_PRINT("qcache", ("derived table skipped"));
       n--;

@@ -30,7 +30,7 @@ void backup_shutdown();
   Called from the big switch in mysql_execute_command() to execute
   backup related statement
 */
-int execute_backup_command(THD*, LEX*, String*);
+int execute_backup_command(THD*, LEX*, String*, bool);
 
 // forward declarations
 
@@ -74,8 +74,9 @@ class Backup_restore_ctx: public backup::Logger
                                    const char*);  
 
   int do_backup();
-  int do_restore();
+  int do_restore(bool overwrite);
   int fatal_error(int, ...);
+  int log_error(int, ...);
 
   int close();
 
@@ -83,10 +84,19 @@ class Backup_restore_ctx: public backup::Logger
 
  private:
 
+  // Prevent copying/assignments
+  Backup_restore_ctx(const Backup_restore_ctx&);
+  Backup_restore_ctx& operator=(const Backup_restore_ctx&);
+
   /** @c current_op points to the @c Backup_restore_ctx for the
       ongoing backup/restore operation.  If pointer is null, no
       operation is currently running. */
   static Backup_restore_ctx *current_op;
+  /**
+     Indicates if @c run_lock mutex was initialized and thus it should
+     be properly destroyed during shutdown. @sa backup_shutdown().
+   */
+  static bool run_lock_initialized;
   static pthread_mutex_t  run_lock; ///< To guard @c current_op.
 
   /** 
@@ -106,7 +116,7 @@ class Backup_restore_ctx: public backup::Logger
    */ 
   int m_error;
   
-  const char *m_path;   ///< Path to where the backup image file is located.
+  ::String  m_path;   ///< Path to where the backup image file is located.
 
   /** If true, the backup image file is deleted at clean-up time. */
   bool m_remove_loc;
@@ -117,7 +127,9 @@ class Backup_restore_ctx: public backup::Logger
   /** Memory allocator for backup stream library. */
   backup::Mem_allocator *mem_alloc;
 
-  int prepare(LEX_STRING location);
+  int prepare_path(::String *backupdir, 
+                   LEX_STRING orig_loc);
+  int prepare(::String *backupdir, LEX_STRING location);
   void disable_fkey_constraints();
   int  restore_triggers_and_events();
   
@@ -126,9 +138,17 @@ class Backup_restore_ctx: public backup::Logger
   */
   bool m_tables_locked; 
 
+  /**
+    Indicates we must turn binlog back on in the close method. This is
+    set to TRUE in the prepare_for_restore() method.
+  */
+  bool m_engage_binlog;
+
   int lock_tables_for_restore();
-  int unlock_tables();
+  void unlock_tables();
   
+  int report_stream_open_failure(int open_error, const LEX_STRING *location);
+
   friend class Backup_info;
   friend class Restore_info;
   friend int backup_init();
@@ -148,7 +168,7 @@ bool Backup_restore_ctx::is_valid() const
 inline
 ulonglong Backup_restore_ctx::op_id() const
 {
-  return m_op_id; // inherited from Logger class
+  return get_op_id(); // inherited from Logger class
 }
 
 /// Disable foreign key constraint checks (needed during restore).

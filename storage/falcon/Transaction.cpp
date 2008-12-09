@@ -84,8 +84,8 @@ Transaction::Transaction(Connection *cnct, TransId seq)
 	freeSavePoints = NULL;
 	useCount = 1;
 	syncObject.setName("Transaction::syncObject");
-	syncActive.setName("Transaction::syncActive");
-	syncIndexes.setName("Transaction::syncIndexes");
+	syncIsActive.setName("Transaction::syncActive");
+	syncDeferredIndexes.setName("Transaction::syncDeferredIndexes");
 	syncRecords.setName("Transaction::syncRecords");
 	syncSavepoints.setName("Transaction::syncSavepoints");
 	firstRecord = NULL;
@@ -157,7 +157,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	startTime = database->deltaTime;
 	blockingRecord = NULL;
 	thread = Thread::getThread("Transaction::initialize");
-	syncActive.lock(NULL, Exclusive);
+	syncIsActive.lock(NULL, Exclusive);
 	Transaction *oldest = transactionManager->findOldest();
 	oldestActive = (oldest) ? oldest->transactionId : transactionId;
 	int count = transactionManager->activeTransactions.count;
@@ -205,8 +205,8 @@ Transaction::~Transaction()
 		Log::debug("Deleting apparently active transaction %d\n", transactionId);
 		ASSERT(false);
 		
-		if (syncActive.ourExclusiveLock())
-			syncActive.unlock();
+		if (syncIsActive.ourExclusiveLock())
+			syncIsActive.unlock();
 		}
 
 	if (inList)
@@ -250,11 +250,12 @@ void Transaction::commit()
 
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
-	Log::log(LogXARecovery, "%d: Commit transaction %d\n", database->deltaTime, transactionId);
+	Log::log(LogXARecovery, "%d: Commit %sTransaction %d\n", 
+		database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
 
 	if (state == Active)
 		{
-		Sync sync(&syncIndexes, "Transaction::commit(1)");
+		Sync sync(&syncDeferredIndexes, "Transaction::commit(1)");
 		sync.lock(Shared);
 		
 		for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -275,8 +276,6 @@ void Transaction::commit()
 		releaseRecordLocks();
 
 	database->serialLog->preCommit(this);
-
-	
 
 	Sync syncRec(&syncRecords,"Transaction::commit(1.5)");
 	syncRec.lock(Shared);
@@ -302,9 +301,10 @@ void Transaction::commit()
 	database->flushInversion(this);
 
 	// Transfer transaction from active list to committed list, set committed state
-	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(3)");
-	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(2)");
-	
+
+	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(2)");
+	Sync syncCommitted(&transactionManager->committedTransactions.syncObject, "Transaction::commit(3)");
+
 	syncActiveTransactions.lock(Exclusive);
 	syncCommitted.lock(Exclusive);
 
@@ -315,7 +315,7 @@ void Transaction::commit()
 	syncCommitted.unlock();
 	syncActiveTransactions.unlock();
 	
-	syncActive.unlock(); // signal waiting transactions
+	syncIsActive.unlock(); // signal waiting transactions
 
 	database->commit(this);
 
@@ -341,6 +341,7 @@ void Transaction::commitNoUpdates(void)
 	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
+	Log::log(LogXARecovery, "%d: CommitNoUpdates transaction %d\n", database->deltaTime, transactionId);
 	++transactionManager->committed;
 	
 	if (deferredIndexes)
@@ -371,10 +372,10 @@ void Transaction::commitNoUpdates(void)
 	connection = NULL;
 	transactionId = 0;
 	writePending = false;
-	syncActiveTransactions.unlock();
-	syncActive.unlock();
-	release();
 	state = Available;
+	syncActiveTransactions.unlock();
+	syncIsActive.unlock();
+	release();
 }
 
 void Transaction::rollback()
@@ -384,6 +385,8 @@ void Transaction::rollback()
 
 	if (!isActive())
 		throw SQLEXCEPTION (RUNTIME_ERROR, "transaction is not active");
+
+	Log::log(LogXARecovery, "%d: Rollback transaction %d\n", database->deltaTime, transactionId);
 
 	if (deferredIndexes)
 		releaseDeferredIndexes();
@@ -398,7 +401,7 @@ void Transaction::rollback()
 	// Rollback pending record versions from newest to oldest in case
 	// there are multiple record versions on a prior record chain
 
-	Sync syncRec(&syncRecords, "Transaction::rollback(1.5)");
+	Sync syncRec(&syncRecords, "Transaction::rollback(records)");
 	syncRec.lock(Exclusive);
 
 	while (firstRecord)
@@ -437,10 +440,8 @@ void Transaction::rollback()
 		database->backLog->rollbackRecords(backloggedRecords, this);
 
 	ASSERT(writePending);
-	state = RolledBack;
 	writePending = false;
 	releaseDependencies();
-	syncActive.unlock();
 	
 	if (hasUpdates)
 		database->serialLog->preCommit(this);
@@ -454,7 +455,7 @@ void Transaction::rollback()
 		xidLength = 0;
 		}
 	
-	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(2)");
+	Sync syncActiveTransactions (&transactionManager->activeTransactions.syncObject, "Transaction::rollback(active)");
 	syncActiveTransactions.lock (Exclusive);
 	++transactionManager->rolledBack;
 	
@@ -465,6 +466,8 @@ void Transaction::rollback()
 	inList = false;
 	transactionManager->activeTransactions.remove(this);
 	syncActiveTransactions.unlock();
+	state = RolledBack;
+	syncIsActive.unlock();
 	release();
 }
 
@@ -503,7 +506,7 @@ void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 	state = Limbo;
 	database->dbb->prepareTransaction(transactionId, xidLength, xid);
 
-	Sync sync(&syncIndexes, "Transaction::prepare");
+	Sync sync(&syncDeferredIndexes, "Transaction::prepare");
 	sync.lock(Shared);
 	
 	for (DeferredIndex *deferredIndex= deferredIndexes; deferredIndex;  
@@ -535,7 +538,18 @@ void Transaction::chillRecords()
 		
 	uint32 chilledBefore = chilledRecords;
 	uint64 totalDataBefore = totalRecordData;
+	
 	database->dbb->logUpdatedRecords(this, *chillPoint, true);
+	
+	// At the start of a chill operation, all savepoints are updated with the id of the
+	// savepoint being chilled. This ensures that each savepoint in a transaction always
+	// has a bitmap of savepoints that were chilled after it.
+
+	// When a savepoint is rolled back, those newer savepoints for which records have also
+	// been chilled are recorded in the serial log.
+
+	// The idea is that if savepoint N is rolled back, then chilled records attached to
+	// savepoints >= N	are ignored and not committed to the database.
 	
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->id != curSavePointId)
@@ -642,6 +656,7 @@ void Transaction::removeRecord(RecordVersion *record)
 	syncRec.lock(Exclusive);
 	removeRecordNoLock(record);
 }
+
 void Transaction::removeRecordNoLock(RecordVersion *record)
 {
 	RecordVersion **ptr;
@@ -786,12 +801,6 @@ void Transaction::releaseDependencies()
 
 		if (transaction)
 			{
-			if (transaction->transactionId != state->transactionId)
-				{
-				Transaction *transaction = database->transactionManager->findTransaction(state->transactionId);
-				ASSERT(transaction == NULL);
-				}
-
 			if (COMPARE_EXCHANGE_POINTER(&state->transaction, transaction, NULL))
 				{
 				ASSERT(transaction->transactionId == state->transactionId || transaction->transactionId == 0);
@@ -957,6 +966,9 @@ void Transaction::writeComplete(void)
 	if (dependencies == 0)
 		commitRecords();
 
+//	Log::log(LogXARecovery, "%d: WriteComplete %sTransaction %d\n", 
+// 	database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
+
 	writePending = false;
 }
 
@@ -983,8 +995,6 @@ bool Transaction::waitForTransaction(TransId transId)
 State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 										bool *deadlock)
 {
-
-
 	*deadlock = false;
 	State state;
 
@@ -1069,7 +1079,7 @@ void Transaction::waitForTransaction()
 		}
 	***/
 	
-	Sync sync(&syncActive, "Transaction::waitForTransaction(2)");
+	Sync sync(&syncIsActive, "Transaction::waitForTransaction(2)");
 	sync.lock(Shared, falcon_lock_wait_timeout * 1000);
 }
 
@@ -1078,14 +1088,10 @@ void Transaction::addRef()
 	INTERLOCKED_INCREMENT(useCount);
 }
 
-int Transaction::release()
+void Transaction::release()
 {
-	int count = INTERLOCKED_DECREMENT(useCount);
-
-	if (count == 0)
+	if (INTERLOCKED_DECREMENT(useCount) == 0)
 		delete this;
-
-	return count;
 }
 
 int Transaction::createSavepoint()
@@ -1104,6 +1110,8 @@ int Transaction::createSavepoint()
 		freeSavePoints = savePoint->next;
 	else
 		savePoint = new SavePoint;
+	
+	// The savepoint begins with the next record added to the transaction
 	
 	savePoint->records = (lastRecord) ? &lastRecord->nextInTrans : &firstRecord;
 	savePoint->id = ++curSavePointId;
@@ -1129,10 +1137,13 @@ void Transaction::releaseSavepoint(int savePointId)
 	for (SavePoint **ptr = &savePoints, *savePoint; (savePoint = *ptr); ptr = &savePoint->next)
 		if (savePoint->id == savePointId)
 			{
+			
+			// Savepoints are linked in descending order, so the next lower id is next on the list
+			
 			int nextLowerSavePointId = (savePoint->next) ? savePoint->next->id : 0;
 			*ptr = savePoint->next;
 			
-			// If we have backed logged records, merge them in to the previous savepoint or the transaction itself.
+			// If we have backed logged records, merge them in to the previous savepoint or the transaction itself
 			
 			if (savePoint->backloggedRecords)
 				{
@@ -1160,7 +1171,8 @@ void Transaction::releaseSavepoint(int savePointId)
 			if (savePoint->savepoints)
 				savePoint->clear();
 
-			// commit pending record versions to the next pending savepoint
+			// This savepoint is no longer needed, so commit pending record versions to the next pending savepoint
+			// Scavenge prior record versions having 1) the same transaction and 2) savepoint >= the savepoint being released
 			
 			for (RecordVersion *record = *savePoint->records; record && record->savePointId == savePointId; record = record->nextInTrans)
 				{
@@ -1230,18 +1242,24 @@ void Transaction::rollbackSavepoint(int savePointId)
 	if ((savePoint) && (savePoint->id != savePointId))
 		throw SQLError(RUNTIME_ERROR, "invalid savepoint");
 
+	// Records within this savepoint or later may have been chilled and are
+	// already in the serial log, but they are now obsolete. To ensure that those
+	// records are not committed to the database, append the serial log with a SRLSavepointRollback
+	// record for this savepoint and for any greater savepoint that has been chilled.
+	
 	if (chilledRecords)
 		{
 		database->serialLog->logControl->savepointRollback.append(transactionId, savePointId);
 		
+		// SavePoint::savepoints is a bitmap of other savepoints that have been chilled
+		
 		if (savePoint->savepoints)
-			for (int n = 0; (n = savePoint->savepoints->nextSet(n)) >= 0; ++n)
+			for (int n = savePointId; (n = savePoint->savepoints->nextSet(n)) >= savePointId; ++n)
 				database->serialLog->logControl->savepointRollback.append(transactionId, n);
 		}				
 
 	savePoint = savePoints;
 	
-
 	while (savePoint)
 		{
 		//validateRecords();
@@ -1298,10 +1316,9 @@ void Transaction::rollbackSavepoint(int savePointId)
 		if (savePoint->backloggedRecords)
 			database->backLog->rollbackRecords(savePoint->backloggedRecords, this);
 				
-		// Move skipped savepoints object to the free list
-		// Leave the target savepoint empty, but connected to the transaction.
+		// Move skipped savepoint objects to the free list
 		
-		if (savePoint->id > savePointId)
+		if (savePoint->id >= savePointId)
 			{
 			savePoints = savePoint->next;
 			savePoint->next = freeSavePoints;
@@ -1317,8 +1334,10 @@ void Transaction::rollbackSavepoint(int savePointId)
 
 void Transaction::add(DeferredIndex* deferredIndex)
 {
-	Sync sync(&syncIndexes, "Transaction::add");
+	Sync sync(&syncDeferredIndexes, "Transaction::add");
 	sync.lock(Exclusive);
+
+//	deferredIndex->addRef(); // temporarily disabled for Bug#39711
 	deferredIndex->nextInTransaction = deferredIndexes;
 	deferredIndexes = deferredIndex;
 	deferredIndexCount++;
@@ -1497,25 +1516,31 @@ void Transaction::printBlockage(void)
 
 void Transaction::releaseDeferredIndexes(void)
 {
-	Sync sync(&syncIndexes, "Transaction::releaseDeferredIndexes");
+	Sync sync(&syncDeferredIndexes, "Transaction::releaseDeferredIndexes");
 	sync.lock(Exclusive);
+	
 	for (DeferredIndex *deferredIndex; (deferredIndex = deferredIndexes);)
 		{
 		ASSERT(deferredIndex->transaction == this);
 		deferredIndexes = deferredIndex->nextInTransaction;
 		deferredIndex->detachTransaction();
+		deferredIndex->release();
 		deferredIndexCount--;
 		}
 }
 
 void Transaction::releaseDeferredIndexes(Table* table)
 {
+	Sync sync(&syncDeferredIndexes, "Transaction::releaseDeferredIndexes(Table *)");
+	sync.lock(Exclusive);
+
 	for (DeferredIndex **ptr = &deferredIndexes, *deferredIndex; (deferredIndex = *ptr);)
 		{
 		if (deferredIndex->index && (deferredIndex->index->table == table))
 			{
 			*ptr = deferredIndex->nextInTransaction;
 			deferredIndex->detachTransaction();
+			deferredIndex->release();
 			--deferredIndexCount;
 			}
 		else
@@ -1531,7 +1556,7 @@ void Transaction::backlogRecords(void)
 		{
 		prior = record->prevInTrans;
 		
-		if (!record->hasRecord())
+		if (!record->hasRecord(false))
 			{
 			if (savePoints)
 				for (; savePoint && record->savePointId < savePoint->id; savePoint = savePoint->next)

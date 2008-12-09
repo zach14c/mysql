@@ -882,7 +882,29 @@ innobase_mysql_tmpfile(void)
 		will be passed to fdopen(), it will be closed by invoking
 		fclose(), which in turn will invoke close() instead of
 		my_close(). */
+
+#ifdef _WIN32
+		/* Note that on Windows, the integer returned by mysql_tmpfile 
+		has no relation to C runtime file descriptor. Here, we need 
+		to call my_get_osfhandle to get the HANDLE and then convert it 
+		to C runtime filedescriptor. */
+		{
+			HANDLE hFile = my_get_osfhandle(fd);
+			HANDLE hDup;
+			BOOL bOK = 
+				DuplicateHandle(GetCurrentProcess(), hFile, GetCurrentProcess(),
+								&hDup, 0, FALSE, DUPLICATE_SAME_ACCESS);
+			if(bOK) {
+				fd2 = _open_osfhandle((intptr_t)hDup,0);
+			}
+			else {
+				my_osmaperr(GetLastError());
+				fd2 = -1;
+			}	
+		}
+#else
 		fd2 = dup(fd);
+#endif
 		if (fd2 < 0) {
 			DBUG_PRINT("error",("Got error %d on dup",fd2));
 			my_errno=errno;
@@ -1508,13 +1530,6 @@ innobase_init(
 	}
 
 	ut_a(default_path);
-
-	if (specialflag & SPECIAL_NO_PRIOR) {
-		srv_set_thread_priorities = FALSE;
-	} else {
-		srv_set_thread_priorities = TRUE;
-		srv_query_thread_priority = QUERY_PRIOR;
-	}
 
 	/* Set InnoDB initialization parameters according to the values
 	read from MySQL .cnf file */
@@ -3650,7 +3665,7 @@ calc_row_difference(
 	upd_t*		uvect,		/* in/out: update vector */
 	uchar*		old_row,	/* in: old row in MySQL format */
 	uchar*		new_row,	/* in: new row in MySQL format */
-	struct st_table* table,		/* in: table in MySQL data
+	TABLE*          table,		/* in: table in MySQL data
 					dictionary */
 	uchar*		upd_buff,	/* in: buffer to use */
 	ulint		buff_len,	/* in: buffer length */
@@ -8173,7 +8188,7 @@ static MYSQL_SYSVAR_BOOL(adaptive_hash_index, innobase_adaptive_hash_index,
 static MYSQL_SYSVAR_LONG(additional_mem_pool_size, innobase_additional_mem_pool_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "Size of a memory pool InnoDB uses to store data dictionary information and other internal data structures.",
-  NULL, NULL, 1*1024*1024L, 512*1024L, ~0L, 1024);
+  NULL, NULL, 1*1024*1024L, 512*1024L, LONG_MAX, 1024);
 
 static MYSQL_SYSVAR_ULONG(autoextend_increment, srv_auto_extend_increment,
   PLUGIN_VAR_RQCMDARG,
@@ -8213,7 +8228,7 @@ static MYSQL_SYSVAR_LONG(lock_wait_timeout, innobase_lock_wait_timeout,
 static MYSQL_SYSVAR_LONG(log_buffer_size, innobase_log_buffer_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "The size of the buffer which InnoDB uses to write log to the log files on disk.",
-  NULL, NULL, 1024*1024L, 256*1024L, ~0L, 1024);
+  NULL, NULL, 1024*1024L, 256*1024L, LONG_MAX, 1024);
 
 static MYSQL_SYSVAR_LONGLONG(log_file_size, innobase_log_file_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -8233,7 +8248,7 @@ static MYSQL_SYSVAR_LONG(mirrored_log_groups, innobase_mirrored_log_groups,
 static MYSQL_SYSVAR_LONG(open_files, innobase_open_files,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "How many files at the maximum InnoDB keeps open at the same time.",
-  NULL, NULL, 300L, 10L, ~0L, 0);
+  NULL, NULL, 300L, 10L, LONG_MAX, 0);
 
 static MYSQL_SYSVAR_ULONG(sync_spin_loops, srv_n_spin_wait_rounds,
   PLUGIN_VAR_RQCMDARG,

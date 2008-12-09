@@ -33,7 +33,7 @@ find_files_result find_files(THD *thd, List<LEX_STRING> *files, const char *db,
                              const char *path, const char *wild, bool dir);
 
 int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
-                      HA_CREATE_INFO  *create_info_arg);
+                      HA_CREATE_INFO  *create_info_arg, bool show_database);
 bool store_db_create_info(THD *thd, const char *dbname, String *buffer,
                           HA_CREATE_INFO *create_info);
 int view_store_create_info(THD *thd, TABLE_LIST *table, String *buff);

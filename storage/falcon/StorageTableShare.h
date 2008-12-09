@@ -53,8 +53,10 @@ class StorageIndexDesc
 {
 public:
 	StorageIndexDesc();
-	StorageIndexDesc(const StorageIndexDesc *indexInfo);
+	StorageIndexDesc(const StorageIndexDesc *indexDesc);
 	virtual ~StorageIndexDesc(void);
+	bool operator==(const StorageIndexDesc &indexDesc) const;
+	bool operator!=(const StorageIndexDesc &indexDesc) const;
 	
 	int			id;
 	int			unique;
@@ -94,7 +96,8 @@ enum StorageError {
 	StorageErrorTableNotEmpty		= -108,
 	StorageErrorTableSpaceNotExist	= -109,
 	StorageErrorDeviceFull			= -110,
-	StorageErrorTableSpaceDataFileExist	= -111
+	StorageErrorTableSpaceDataFileExist	= -111,
+	StorageErrorIOErrorSerialLog	= -112
 	};
 	
 static const int StoreErrorIndexShift	= 10;
@@ -112,13 +115,15 @@ public:
 	virtual void		lockIndexes(bool exclusiveLock=false);
 	virtual void		unlockIndexes(void);
 	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
-	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
+	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql, bool online);
+	virtual bool		validateIndex(int indexId, StorageIndexDesc *indexTarget);
 	virtual void		deleteIndexes();
+	virtual int			numberIndexes();
 	virtual int			renameTable(StorageConnection *storageConnection, const char* newName);
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
 	virtual int			haveIndexes(int indexCount);
-	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength);
+	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength, bool doubleQuotes);
 	virtual void		setTablePath(const char* path, bool tempTable);
 	virtual void		registerCollation(const char* collationName, void* arg);
 
@@ -129,7 +134,6 @@ public:
 	void				clearIndex(StorageIndexDesc *indexDesc);
 	StorageIndexDesc*	getIndex(int indexId);
 	StorageIndexDesc*	getIndex(int indexId, StorageIndexDesc *indexDesc);
-	StorageIndexDesc*	getIndex(const char *name);
 	int					getIndexId(const char* schemaName, const char* indexName);
 	int					create(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
 	int					upgrade(StorageConnection *storageConnection, const char* sql, int64 autoIncrementValue);
@@ -148,7 +152,7 @@ public:
 
 	static const char*	getDefaultRoot(void);
 	static const char*	cleanupTableName(const char* name, char* buffer, int bufferLength, char *schema, int schemaLength);
-	char*				createIndexName(const char *rawName, char *indexName);
+	char*				createIndexName(const char *rawName, char *indexName, bool primary = false);
 	
 	JString				name;
 	JString				schemaName;
@@ -160,7 +164,7 @@ public:
 	unsigned char		*impure;
 	int					initialized;
 	SyncObject			*syncObject;
-	SyncObject			*syncIndexes;
+	SyncObject			*syncIndexMap;
 	StorageDatabase		*storageDatabase;
 	StorageHandler		*storageHandler;
 	Table				*table;

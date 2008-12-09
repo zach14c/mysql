@@ -71,9 +71,18 @@ public:
 
   sys_after_update_func after_update;
   bool no_support_one_shot;
+  /*
+    true if the value is in character_set_filesystem, 
+    false otherwise.
+    Note that we can't use a pointer to the charset as the system var is 
+    instantiated in global scope and the charset pointers are initialized
+    later.
+  */  
+  bool is_os_charset;
   sys_var(const char *name_arg, sys_after_update_func func= NULL,
           Binlog_status_enum binlog_status_arg= NOT_IN_BINLOG)
     :name(name_arg), after_update(func), no_support_one_shot(1),
+    is_os_charset (FALSE),
     binlog_status(binlog_status_arg),
     m_allow_empty_value(TRUE)
   {}
@@ -105,9 +114,9 @@ public:
   { return type != INT_RESULT; }		/* Assume INT */
   virtual bool check_default(enum_var_type type)
   { return option_limits == 0; }
-  Item *item(THD *thd, enum_var_type type, LEX_STRING *base);
   virtual bool is_struct() { return 0; }
   virtual bool is_readonly() const { return 0; }
+  CHARSET_INFO *charset(THD *thd);
   virtual sys_var_pluginvar *cast_pluginvar() { return 0; }
 
 protected:
@@ -292,6 +301,18 @@ public:
 };
 
 
+class sys_var_const_os_str: public sys_var_const_str
+{
+public:
+  sys_var_const_os_str(sys_var_chain *chain, const char *name_arg, 
+                       const char *value_arg)
+    :sys_var_const_str(chain, name_arg, value_arg)
+  { 
+    is_os_charset= TRUE; 
+  }
+};
+
+
 class sys_var_const_str_ptr :public sys_var
 {
 public:
@@ -318,6 +339,18 @@ public:
   }
   bool check_default(enum_var_type type) { return 1; }
   bool is_readonly() const { return 1; }
+};
+
+
+class sys_var_const_os_str_ptr :public sys_var_const_str_ptr
+{
+public:
+  sys_var_const_os_str_ptr(sys_var_chain *chain, const char *name_arg, 
+                           char **value_arg)
+    :sys_var_const_str_ptr(chain, name_arg, value_arg)
+  {
+    is_os_charset= TRUE; 
+  }
 };
 
 
@@ -486,10 +519,16 @@ public:
   { chain_sys_var(chain); }
   bool check(THD *thd, set_var *var)
   {
-    int ret= 0;
-    if (check_func)
-      ret= (*check_func)(thd, var);
-    return ret ? ret : check_enum(thd, var, enum_names);
+    /*
+      check_enum fails if the character representation supplied was wrong
+      or that the integer value was wrong or missing.
+    */
+    if (check_enum(thd, var, enum_names))
+      return TRUE;
+    else if ((check_func && (*check_func)(thd, var)))
+      return TRUE;
+    else
+      return FALSE;
   }
   bool update(THD *thd, set_var *var);
   void set_default(THD *thd, enum_var_type type);
@@ -652,6 +691,31 @@ public:
   bool check_type(enum_var_type type) { return type == OPT_GLOBAL; }
   SHOW_TYPE show_type() { return SHOW_LONGLONG; }
   uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+};
+
+
+/**
+  Backup_wait_timeout system variable class.
+
+  This class consolidates the mechanism to manage the backup_wait_timeout
+  system variable. It is a session only variable thus we check the type for
+  check_type() and check_default() to ensure it isn't accessed as a global.
+
+  A set_default() method is provided to allow the SET command :
+  SET backup_wait_TIMEOUT = DEFAULT; 
+*/
+class sys_var_backup_wait_timeout :public sys_var
+{
+public:
+  sys_var_backup_wait_timeout(sys_var_chain *chain, const char *name_arg)
+    :sys_var(name_arg)
+  { chain_sys_var(chain); }
+  bool update(THD *thd, set_var *var);
+  bool check_type(enum_var_type type) { return type == OPT_GLOBAL; }
+  bool check_default(enum_var_type type) { return type == OPT_GLOBAL; }
+  SHOW_TYPE show_type() { return SHOW_LONG; }
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+  void set_default(THD *thd, enum_var_type type);
 };
 
 
@@ -935,6 +999,32 @@ public:
   SHOW_TYPE show_type() { return SHOW_CHAR; }
 };
 
+/*
+  Class used to manage log-backup-output variable.
+*/
+class sys_var_log_backup_output : public sys_var
+{
+  ulong *value;
+  TYPELIB *enum_names;
+public:
+  sys_var_log_backup_output(sys_var_chain *chain, const char *name_arg, ulong *value_arg,
+                     TYPELIB *typelib, sys_after_update_func func)
+    :sys_var(name_arg,func), value(value_arg), enum_names(typelib)
+  {
+    chain_sys_var(chain);
+    set_allow_empty_value(FALSE);
+  }
+  virtual bool check(THD *thd, set_var *var)
+  {
+    return check_set(thd, var, enum_names);
+  }
+  bool update(THD *thd, set_var *var);
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+  bool check_update_type(Item_result type) { return 0; }
+  void set_default(THD *thd, enum_var_type type);
+  SHOW_TYPE show_type() { return SHOW_CHAR; }
+};
+
 
 /* Variable that you can only read from */
 
@@ -960,6 +1050,63 @@ public:
   }
   SHOW_TYPE show_type() { return show_type_value; }
   bool is_readonly() const { return 1; }
+};
+
+
+class sys_var_readonly_os: public sys_var_readonly
+{
+public:
+  sys_var_readonly_os(sys_var_chain *chain, const char *name_arg, enum_var_type type,
+		   SHOW_TYPE show_type_arg,
+		   sys_value_ptr_func value_ptr_func_arg)
+    :sys_var_readonly(chain, name_arg, type, show_type_arg, value_ptr_func_arg)
+  {
+    is_os_charset= TRUE;
+  }
+};
+
+
+/**
+  Global-only, read-only variable. E.g. command line option.
+*/
+
+class sys_var_const: public sys_var
+{
+public:
+  enum_var_type var_type;
+  SHOW_TYPE show_type_value;
+  uchar *ptr;
+  sys_var_const(sys_var_chain *chain, const char *name_arg, enum_var_type type,
+                SHOW_TYPE show_type_arg, uchar *ptr_arg)
+    :sys_var(name_arg), var_type(type),
+    show_type_value(show_type_arg), ptr(ptr_arg)
+  { chain_sys_var(chain); }
+  bool update(THD *thd, set_var *var) { return 1; }
+  bool check_default(enum_var_type type) { return 1; }
+  bool check_type(enum_var_type type) { return type != var_type; }
+  bool check_update_type(Item_result type) { return 1; }
+  uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base)
+  {
+    return ptr;
+  }
+  SHOW_TYPE show_type() { return show_type_value; }
+  bool is_readonly() const { return 1; }
+};
+
+
+class sys_var_const_os: public sys_var_const
+{
+public:
+  enum_var_type var_type;
+  SHOW_TYPE show_type_value;
+  uchar *ptr;
+  sys_var_const_os(sys_var_chain *chain, const char *name_arg, 
+                   enum_var_type type,
+                SHOW_TYPE show_type_arg, uchar *ptr_arg)
+    :sys_var_const(chain, name_arg, type, show_type_arg, ptr_arg)
+  {
+    is_os_charset= TRUE;
+  }
 };
 
 
@@ -1055,6 +1202,29 @@ public:
   void set_default(THD *thd, enum_var_type type);
   SHOW_TYPE show_type() { return SHOW_INT; }
   uchar *value_ptr(THD *thd, enum_var_type type, LEX_STRING *base);
+};
+
+
+/**
+ * @brief This is a specialization of sys_var_thd_ulong that implements a 
+   read-only session variable. The class overrides check() and check_default() 
+   to achieve the read-only property for the session part of the variable.
+ */
+class sys_var_thd_ulong_session_readonly : public sys_var_thd_ulong
+{
+public:
+  sys_var_thd_ulong_session_readonly(sys_var_chain *chain_arg, 
+                                     const char *name_arg, ulong SV::*offset_arg, 
+				     sys_check_func c_func= NULL,
+                                     sys_after_update_func au_func= NULL, 
+                                     Binlog_status_enum bl_status_arg= NOT_IN_BINLOG):
+    sys_var_thd_ulong(chain_arg, name_arg, offset_arg, c_func, au_func, bl_status_arg)
+  { }
+  bool check(THD *thd, set_var *var);
+  bool check_default(enum_var_type type)
+  {
+    return type != OPT_GLOBAL || !option_limits;
+  }
 };
 
 
@@ -1158,6 +1328,7 @@ public:
                       &binlog_format_typelib,
                       fix_binlog_format_after_update)
   {};
+  bool check(THD *thd, set_var *var);
   bool is_readonly() const;
 };
 
@@ -1326,7 +1497,6 @@ struct sys_var_with_base
 
 int set_var_init();
 void set_var_free();
-int mysql_append_static_vars(const SHOW_VAR *show_vars, uint count);
 SHOW_VAR* enumerate_sys_vars(THD *thd, bool sorted);
 int mysql_add_sys_var_chain(sys_var *chain, struct my_option *long_options);
 int mysql_del_sys_var_chain(sys_var *chain);
@@ -1346,6 +1516,7 @@ uchar* find_named(I_List<NAMED_LIST> *list, const char *name, uint length,
 		NAMED_LIST **found);
 
 extern sys_var_str sys_var_general_log_path, sys_var_slow_log_path,
+       sys_var_backup_history_log_path, sys_var_backup_progress_log_path,
        sys_var_backupdir;
 
 /* key_cache functions */

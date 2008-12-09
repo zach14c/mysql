@@ -37,7 +37,7 @@ static long mysql_rm_known_files(THD *thd, MY_DIR *dirp,
 				 const char *db, const char *path, uint level, 
                                  TABLE_LIST **dropped_tables);
          
-static long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path);
+long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path);
 static my_bool rm_dir_w_symlink(const char *org_path, my_bool send_error);
 static void mysql_change_db_impl(THD *thd,
                                  LEX_STRING *new_db_name,
@@ -1100,7 +1100,10 @@ static long mysql_rm_known_files(THD *thd, MY_DIR *dirp, const char *db,
     else if (file->name[0] == 'a' && file->name[1] == 'r' &&
              file->name[2] == 'c' && file->name[3] == '\0')
     {
-      /* .frm archive */
+      /* .frm archive:
+        Those archives are obsolete, but following code should
+        exist to remove existent "arc" directories.
+      */
       char newpath[FN_REFLEN];
       MY_DIR *new_dirp;
       strxmov(newpath, org_path, "/", "arc", NullS);
@@ -1269,9 +1272,12 @@ static my_bool rm_dir_w_symlink(const char *org_path, my_bool send_error)
   RETURN
     > 0 number of removed files
     -1  error
+
+  NOTE
+    A support of "arc" directories is obsolete, however this
+    function should exist to remove existent "arc" directories.
 */
-static long mysql_rm_arc_files(THD *thd, MY_DIR *dirp,
-				 const char *org_path)
+long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path)
 {
   long deleted= 0;
   ulong found_other_files= 0;
@@ -1313,6 +1319,7 @@ static long mysql_rm_arc_files(THD *thd, MY_DIR *dirp,
     {
       goto err;
     }
+    deleted++;
   }
   if (thd->killed)
     goto err;
@@ -2001,6 +2008,7 @@ bool check_db_dir_existence(const char *db_name)
 {
   char db_dir_path[FN_REFLEN];
   uint db_dir_path_len;
+  MY_STAT my_stat_result;
 
   db_dir_path_len= build_table_filename(db_dir_path, sizeof(db_dir_path),
                                         db_name, "", "", 0);
@@ -2008,7 +2016,13 @@ bool check_db_dir_existence(const char *db_name)
   if (db_dir_path_len && db_dir_path[db_dir_path_len - 1] == FN_LIBCHAR)
     db_dir_path[db_dir_path_len - 1]= 0;
 
-  /* Check access. */
+  /* Verify that db_name is accessible and is a directory */
 
-  return my_access(db_dir_path, F_OK);
+  if (! my_stat(db_dir_path, &my_stat_result, MYF(0)))
+    return TRUE;
+
+  if (! MY_S_ISDIR(my_stat_result.st_mode))
+    return TRUE;
+
+  return FALSE;
 }

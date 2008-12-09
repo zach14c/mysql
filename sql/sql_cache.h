@@ -65,7 +65,7 @@ struct Query_cache_query;
 struct Query_cache_result;
 class Query_cache;
 struct Query_cache_tls;
-struct st_lex;
+struct LEX;
 
 /**
   This class represents a node in the linked chain of queries
@@ -280,9 +280,10 @@ private:
                       TABLE_FLUSH_IN_PROGRESS };
 
   Cache_status m_cache_status;
-
+  bool m_query_cache_is_disabled;
   void free_query_internal(Query_cache_block *point);
   void invalidate_table_internal(THD *thd, uchar *key, uint32 key_length);
+  void disable_query_cache(void) { m_query_cache_is_disabled= TRUE; }
 
 protected:
   /*
@@ -413,7 +414,7 @@ protected:
   */
   TABLE_COUNTER_TYPE is_cacheable(THD *thd, size_t query_len,
                                   const char *query,
-				  struct st_lex *lex, TABLE_LIST *tables_used,
+				  LEX *lex, TABLE_LIST *tables_used,
 				  uint8 *tables_type);
   TABLE_COUNTER_TYPE process_and_count_tables(THD *thd,
                                               TABLE_LIST *tables_used,
@@ -427,6 +428,8 @@ protected:
 	      ulong min_result_data_size = QUERY_CACHE_MIN_RESULT_DATA_SIZE,
 	      uint def_query_hash_size = QUERY_CACHE_DEF_QUERY_HASH_SIZE,
 	      uint def_table_hash_size = QUERY_CACHE_DEF_TABLE_HASH_SIZE);
+
+  bool is_disabled(void) { return m_query_cache_is_disabled; }
 
   /* initialize cache (mutex) */
   void init();

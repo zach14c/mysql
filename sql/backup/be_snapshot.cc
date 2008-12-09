@@ -44,6 +44,7 @@
 #include "backup_engine.h"
 #include "be_snapshot.h"
 #include "backup_aux.h"
+#include "transaction.h"
 
 namespace snapshot_backup {
 
@@ -72,8 +73,8 @@ result_t Backup::cleanup()
     locking_thd->lock_state= LOCK_DONE; // set lock done so destructor won't wait
     if (m_trans_start)
     {
-      ha_autocommit_or_rollback(locking_thd->m_thd, 0);
-      end_active_trans(locking_thd->m_thd);
+      trans_commit_stmt(locking_thd->m_thd);
+      trans_commit_implicit(locking_thd->m_thd);
       m_trans_start= FALSE;
     }
     if (tables_open)
@@ -102,9 +103,10 @@ result_t Backup::lock()
     state. 
   */
   locking_thd->m_thd->lex->sql_command= SQLCOM_SELECT; 
-  locking_thd->m_thd->lex->start_transaction_opt|=
+  locking_thd->m_thd->lex->start_transaction_opt=
     MYSQL_START_TRANS_OPT_WITH_CONS_SNAPSHOT;
-  int res= begin_trans(locking_thd->m_thd);
+  int res= trans_begin(locking_thd->m_thd,
+                       locking_thd->m_thd->lex->start_transaction_opt);
   if (res)
     DBUG_RETURN(ERROR);
   m_trans_start= TRUE;
@@ -124,7 +126,15 @@ result_t Backup::get_data(Buffer &buf)
     // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
     // previously opened views and crash.
     locking_thd->m_thd->lex->cleanup_after_one_table_open();
-    open_and_lock_tables(locking_thd->m_thd, locking_thd->tables_in_backup);
+    /*
+      The MYSQL_OPEN_SKIP_TEMPORARY flag is needed so that temporary tables are
+      not opened which would occulde the regular tables selected for backup 
+      (BUG#33574).
+     */ 
+    open_and_lock_tables_derived(locking_thd->m_thd, 
+                                 locking_thd->tables_in_backup,
+                                 FALSE, /* do not process derived tables */
+                                 MYSQL_OPEN_SKIP_TEMPORARY);
     tables_open= TRUE;
   }
   if (locking_thd->lock_state == LOCK_ACQUIRED)

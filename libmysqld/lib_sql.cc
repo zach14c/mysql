@@ -103,7 +103,7 @@ emb_advanced_command(MYSQL *mysql, enum enum_server_command command,
 
   /* Clear result variables */
   thd->clear_error();
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
   mysql->affected_rows= ~(my_ulonglong) 0;
   mysql->field_count= 0;
   net_clear_error(net);
@@ -208,7 +208,7 @@ static my_bool emb_read_prepare_result(MYSQL *mysql, MYSQL_STMT *stmt)
   stmt->stmt_id= thd->client_stmt_id;
   stmt->param_count= thd->client_param_count;
   stmt->field_count= 0;
-  mysql->warning_count= thd->total_warn_count;
+  mysql->warning_count= thd->warning_info->statement_warn_count();
 
   if (thd->first_data)
   {
@@ -383,14 +383,16 @@ static void emb_free_embedded_thd(MYSQL *mysql)
   thd->clear_data_list();
   thread_count--;
   thd->store_globals();
+  thd->unlink();
   delete thd;
+  my_pthread_setspecific_ptr(THR_THD,  0);
   mysql->thd=0;
 }
 
 static const char * emb_read_statistics(MYSQL *mysql)
 {
   THD *thd= (THD*)mysql->thd;
-  return thd->is_error() ? thd->main_da.message() : "";
+  return thd->is_error() ? thd->stmt_da->message() : "";
 }
 
 
@@ -538,12 +540,7 @@ int init_embedded_server(int argc, char **argv, char **groups)
 
   (void) thr_setconcurrency(concurrency);	// 10 by default
 
-  if (flush_time && flush_time != ~(ulong) 0L)
-  {
-    pthread_t hThread;
-    if (pthread_create(&hThread,&connection_attrib,handle_manager,0))
-      sql_print_error("Warning: Can't create thread to manage maintenance");
-  }
+  start_handle_manager();
 
   // FIXME initialize binlog_filter and rpl_filter if not already done
   //       corresponding delete is in clean_up()
@@ -627,6 +624,7 @@ void *create_embedded_thd(int client_flag)
   bzero((char*) &thd->net, sizeof(thd->net));
 
   thread_count++;
+  threads.append(thd);
   return thd;
 err:
   delete(thd);
@@ -646,7 +644,7 @@ int check_embedded_connection(MYSQL *mysql, const char *db)
   strmake(sctx->priv_host, (char*) my_localhost,  MAX_HOSTNAME-1);
   sctx->priv_user= sctx->user= my_strdup(mysql->user, MYF(0));
   result= check_user(thd, COM_CONNECT, NULL, 0, db, true);
-  net_end_statement(thd);
+  thd->protocol->end_statement();
   emb_read_query_result(mysql);
   return result;
 }
@@ -696,9 +694,10 @@ int check_embedded_connection(MYSQL *mysql, const char *db)
 err:
   {
     NET *net= &mysql->net;
-    strmake(net->last_error, thd->main_da.message(), sizeof(net->last_error)-1);
+    strmake(net->last_error, thd->stmt_da->message(),
+            sizeof(net->last_error)-1);
     memcpy(net->sqlstate,
-           mysql_errno_to_sqlstate(thd->main_da.sql_errno()),
+           mysql_errno_to_sqlstate(thd->stmt_da->sql_errno()),
            sizeof(net->sqlstate)-1);
   }
   return result;
@@ -722,8 +721,8 @@ void THD::clear_data_list()
 
 void THD::clear_error()
 {
-  if (main_da.is_error())
-    main_da.reset_diagnostics_area();
+  if (stmt_da->is_error())
+    stmt_da->reset_diagnostics_area();
 }
 
 static char *dup_str_aux(MEM_ROOT *root, const char *from, uint length,
@@ -797,7 +796,7 @@ MYSQL_DATA *THD::alloc_new_dataset()
 
 static
 void
-write_eof_packet(THD *thd, uint server_status, uint total_warn_count)
+write_eof_packet(THD *thd, uint server_status, uint statement_warn_count)
 {
   if (!thd->mysql)            // bootstrap file handling
     return;
@@ -814,7 +813,7 @@ write_eof_packet(THD *thd, uint server_status, uint total_warn_count)
     is cleared between substatements, and mysqltest gets confused
   */
   thd->cur_data->embedded_info->warning_count=
-    (thd->spcont ? 0 : min(total_warn_count, 65535));
+    (thd->spcont ? 0 : min(statement_warn_count, 65535));
 }
 
 
@@ -870,7 +869,7 @@ void Protocol_text::remove_last_row()
 }
 
 
-bool Protocol::send_fields(List<Item> *list, uint flags)
+bool Protocol::send_result_set_metadata(List<Item> *list, uint flags)
 {
   List_iterator_fast<Item> it(*list);
   Item                     *item;
@@ -879,7 +878,7 @@ bool Protocol::send_fields(List<Item> *list, uint flags)
   CHARSET_INFO             *thd_cs= thd->variables.character_set_results;
   CHARSET_INFO             *cs= system_charset_info;
   MYSQL_DATA               *data;
-  DBUG_ENTER("send_fields");
+  DBUG_ENTER("send_result_set_metadata");
 
   if (!thd->mysql)            // bootstrap file handling
     DBUG_RETURN(0);
@@ -970,9 +969,10 @@ bool Protocol::send_fields(List<Item> *list, uint flags)
   }
 
   if (flags & SEND_EOF)
-    write_eof_packet(thd, thd->server_status, thd->total_warn_count);
+    write_eof_packet(thd, thd->server_status,
+                     thd->warning_info->statement_warn_count());
 
-  DBUG_RETURN(prepare_for_send(list));
+  DBUG_RETURN(prepare_for_send(list->elements));
  err:
   my_error(ER_OUT_OF_RESOURCES, MYF(0));        /* purecov: inspected */
   DBUG_RETURN(1);				/* purecov: inspected */
@@ -1030,7 +1030,7 @@ bool Protocol_binary::write()
 
 void
 net_send_ok(THD *thd,
-            uint server_status, uint total_warn_count,
+            uint server_status, uint statement_warn_count,
             ha_rows affected_rows, ulonglong id, const char *message)
 {
   DBUG_ENTER("emb_net_send_ok");
@@ -1047,7 +1047,7 @@ net_send_ok(THD *thd,
     strmake(data->embedded_info->info, message,
             sizeof(data->embedded_info->info)-1);
 
-  write_eof_packet(thd, server_status, total_warn_count);
+  write_eof_packet(thd, server_status, statement_warn_count);
   thd->cur_data= 0;
   DBUG_VOID_RETURN;
 }
@@ -1062,9 +1062,9 @@ net_send_ok(THD *thd,
 */
 
 void
-net_send_eof(THD *thd, uint server_status, uint total_warn_count)
+net_send_eof(THD *thd, uint server_status, uint statement_warn_count)
 {
-  write_eof_packet(thd, server_status, total_warn_count);
+  write_eof_packet(thd, server_status, statement_warn_count);
   thd->cur_data= 0;
 }
 

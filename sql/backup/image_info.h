@@ -4,10 +4,6 @@
 /**
   @file
   
-  @todo Fix error logging in places marked with "FIXME: error logging...". In 
-  these places it should be decided if and how the error should be shown to the
-  user. If an error message should be logged, it can happen either in the place
-  where error was detected or somewhere up the call stack.
 */ 
 
 #include <si_objects.h>
@@ -87,7 +83,7 @@ public: // public interface
 
    // Examine contents of the catalogue.
 
-   bool has_db(const String&);
+   bool has_db(const String&) const;
 
    // Retrieve objects using their coordinates.
 
@@ -119,6 +115,8 @@ public: // public interface
    void save_vp_time(const time_t time);   
 
    void save_binlog_pos(const ::LOG_INFO&);
+
+   time_t get_vp_time() const;
 
  protected: // internal interface
   
@@ -422,7 +420,7 @@ class Image_info::Db
   obs::Obj* materialize(uint ver, const ::String &sdata);
   result_t add_obj(Dbobj&, ulong pos);
   Dbobj*   get_obj(ulong pos) const;
-  result_t add_table(Table&);
+  void add_table(Table&);
   const char* describe(describe_buf&) const;
 
  private:
@@ -556,6 +554,15 @@ class Image_info::Iterator
 
   Iterator(const Image_info &info);
   virtual ~Iterator();
+
+  
+  /** 
+    Initialize the iterator after construction.
+    Subclasses need to implement this if initialization may generate errors.
+   
+    @returns 0 if success.  Otherwise, error code.
+   */
+  virtual int init() { return 0; }  
 
   Obj* operator++(int);
 
@@ -741,6 +748,26 @@ Image_info::Ts* Image_info::get_ts(uint pos) const
   return m_ts_map[pos];
 }
 
+inline
+time_t Image_info::get_vp_time() const
+{
+  struct tm time;
+
+  bzero(&time,sizeof(time));
+
+  time.tm_year= vp_time.year;
+  time.tm_mon= vp_time.mon;
+  time.tm_mday= vp_time.mday;
+  time.tm_hour= vp_time.hour;
+  time.tm_min= vp_time.min;
+  time.tm_sec= vp_time.sec;  
+
+  /*
+    Note: mktime() assumes that time is expressed as local time and vp_time is
+    in UTC. Hence we must correct the result to get it right.
+   */ 
+  return mktime(&time) - (time_t)timezone;
+}
 
 /**
   Save time inside a @c bstream_time_t structure (helper function).
@@ -794,9 +821,10 @@ void Image_info::save_vp_time(const time_t time)
 inline
 void Image_info::save_binlog_pos(const ::LOG_INFO &li)
 {
-  // save current binlog file name
+  // save current binlog file name only, not full path
   m_binlog_file.length(0);
-  m_binlog_file.append(li.log_file_name);
+  int dn_length= dirname_length(li.log_file_name);
+  m_binlog_file.append(li.log_file_name + dn_length);
 
   // store binlog coordinates
   binlog_pos.pos= (unsigned long int)li.pos;
@@ -807,28 +835,52 @@ void Image_info::save_binlog_pos(const ::LOG_INFO &li)
   flags|= BSTREAM_FLAG_BINLOG;
 }
 
-/// Returns an iterator enumerating all databases stored in backup catalogue.
+/**
+  Returns an iterator enumerating all databases stored in backup catalogue.
+
+  @returns Pointer to @c Image_info::Db_iterator or NULL if allocation fails.
+ */ 
 inline
 Image_info::Db_iterator* Image_info::get_dbs() const
 {
-  // FIXME: error logging (in case allocation fails).
-  return new Db_iterator(*this);
+  Db_iterator* it = new Db_iterator(*this);
+
+  if (it && it->init()) // Initialization failed
+    it= NULL;
+
+  return it; // Error logging context not available, caller must handle NULL
 }
 
-/// Returns an iterator enumerating all tablespaces stored in backup catalogue.
+/**
+  Returns an iterator enumerating all tablespaces stored in backup catalogue.
+
+  @returns Pointer to @c Image_info::Ts_iterator or NULL if allocation fails.
+ */
 inline
 Image_info::Ts_iterator* Image_info::get_tablespaces() const
 {
-  // FIXME: error logging (in case allocation fails).
-  return new Ts_iterator(*this);
+  Ts_iterator* it = new Ts_iterator(*this);
+
+  if (it && it->init()) // Initialization failed
+    it= NULL;
+
+  return it; // Error logging context not available, caller must handle NULL
 }
 
-/// Returns an iterator enumerating all objects in a given database.
+/**
+  Returns an iterator enumerating all objects in a given database.
+
+  @returns Pointer to @c Image_info::Dbobj_iterator or NULL if allocation fails.
+ */
 inline
 Image_info::Dbobj_iterator* Image_info::get_db_objects(const Db &db) const
 {
-  // FIXME: error logging (in case allocation fails).
-  return new Dbobj_iterator(*this, db);
+  Dbobj_iterator* it = new Dbobj_iterator(*this, db);
+
+  if (it && it->init()) // Initialization failed
+    it= NULL;
+
+  return it; // Error logging context not available, caller must handle NULL
 }
 
 /********************************************************************
@@ -969,7 +1021,7 @@ inline
 obs::Obj* Image_info::Ts::materialize(uint ver, const ::String &sdata)
 {
   delete m_obj_ptr;
-  return m_obj_ptr= obs::materialize_tablespace(&m_name, ver, &sdata); 
+  return m_obj_ptr= obs::get_tablespace(&m_name, ver, &sdata); 
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
@@ -977,7 +1029,7 @@ inline
 obs::Obj* Image_info::Db::materialize(uint ver, const ::String &sdata)
 {
   delete m_obj_ptr;
-  return m_obj_ptr= obs::materialize_database(&name(), ver, &sdata); 
+  return m_obj_ptr= obs::get_database(&name(), ver, &sdata); 
 }
 
 /// Implementation of @c Image_info::Obj virtual method.
@@ -985,7 +1037,7 @@ inline
 obs::Obj* Image_info::Table::materialize(uint ver, const ::String &sdata)
 {
   delete m_obj_ptr;
-  return m_obj_ptr= obs::materialize_table(&db().name(), &name(), ver, &sdata);
+  return m_obj_ptr= obs::get_table(&db().name(), &name(), ver, &sdata);
 }
 
 inline
@@ -998,19 +1050,22 @@ obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
   
   switch (base.type) {
   case BSTREAM_IT_VIEW:   
-    m_obj_ptr= obs::materialize_view(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_view(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_SPROC:  
-    m_obj_ptr= obs::materialize_stored_procedure(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_stored_procedure(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_SFUNC:
-    m_obj_ptr= obs::materialize_stored_function(db_name, name, ver, &sdata); 
+    m_obj_ptr= obs::get_stored_function(db_name, name, ver, &sdata); 
     break;
   case BSTREAM_IT_EVENT:
-    m_obj_ptr= obs::materialize_event(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_event(db_name, name, ver, &sdata);
     break;
   case BSTREAM_IT_TRIGGER:   
-    m_obj_ptr= obs::materialize_trigger(db_name, name, ver, &sdata);
+    m_obj_ptr= obs::get_trigger(db_name, name, ver, &sdata);
+    break;
+  case BSTREAM_IT_PRIVILEGE:
+    m_obj_ptr= obs::get_db_grant(db_name, name, ver, &sdata);
     break;
   default: m_obj_ptr= NULL;
   }
@@ -1025,7 +1080,7 @@ obs::Obj* Image_info::Dbobj::materialize(uint ver, const ::String &sdata)
   The table is appended to database's table list.
  */
 inline
-result_t Image_info::Db::add_table(Table &tbl)
+void Image_info::Db::add_table(Table &tbl)
 {
   tbl.next_table= NULL;
   
@@ -1036,8 +1091,6 @@ result_t Image_info::Db::add_table(Table &tbl)
     last_table->next_table= &tbl;
     last_table= &tbl;
   }
-  
-  return OK;
 }
 
 /**

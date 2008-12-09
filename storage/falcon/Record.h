@@ -88,12 +88,13 @@ public:
 	virtual Record*	getPriorVersion();
 	virtual Record*	getGCPriorVersion(void);
 	virtual	void	print(void);
-	virtual int		thaw();
+	virtual int		thaw(void);
 	virtual const char*	getEncodedRecord();
 	virtual int		setRecordData(const UCHAR *dataIn, int dataLength);
 	virtual void	serialize(Serialize* stream);
 	virtual int		getSize(void);
 	virtual SyncObject* getSyncPrior(void);
+	virtual SyncObject* getSyncThaw(void);
 
 	const UCHAR*	getEncoding (int index);
 	int				setEncodedRecord(Stream *stream, bool interlocked);
@@ -107,7 +108,7 @@ public:
 	int				getBlobId(int fieldId);
 	void			finalize(Transaction *transaction);
 	void			getEncodedValue (int fieldId, Value *value);
-	void			getRecord (Stream *stream);
+	bool			getRecord (Stream *stream);
 	int				getEncodedSize();
 	void			deleteData(void);
 	void			printRecord(const char* header);
@@ -119,10 +120,13 @@ public:
 	Record (Table *table, int32 recordNumber, Stream *stream);
 	Record (Database *database, Serialize* stream);
 
-	inline int		hasRecord()
+	inline int hasRecord(bool forceThaw = true)
 		{
-		return data.record != NULL;
-		};
+		if (state == recChilled && forceThaw)
+			thaw();
+			
+		return (data.record != NULL);
+		}
 
 	inline char* getRecordData()
 	{
@@ -142,7 +146,6 @@ protected:
 
 public:
 	volatile INTERLOCK_TYPE useCount;
-	//Table		*table;
 	Format		*format;
 	int			recordNumber;
 	int			size;

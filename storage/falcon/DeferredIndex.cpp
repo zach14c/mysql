@@ -819,7 +819,7 @@ void DeferredIndex::scanIndex(IndexKey *lowKey, IndexKey *highKey, int searchFla
 void DeferredIndex::detachIndex(void)
 {
 	Sync sync(&syncObject, "DeferredIndex::detachIndex");
-	sync.lock(Shared);
+	sync.lock(Exclusive); // Do not change while index is in use.
 	index = NULL;
 }
 
@@ -840,7 +840,7 @@ void DeferredIndex::detachTransaction(void)
 	else
 		sync.unlock();
 
-	releaseRef();
+	//releaseRef();
 }
 
 void DeferredIndex::chill(Dbb *dbb)
@@ -862,6 +862,10 @@ void DeferredIndex::chill(Dbb *dbb)
 	leaf->count = 0;
 	root = leaf;
 	count = 0;
+	minValue = NULL;
+	maxValue = NULL;
+	haveMinValue = true;
+	haveMaxValue = true;
 
 	Log::log(LogInfo, "%d: Index chill: transaction %ld, index %ld, %ld bytes, address %p, vofs %llx\n",
 				dbb->database->deltaTime, transaction->transactionId, index->indexId, sizeEstimate, this, virtualOffset);
@@ -882,10 +886,11 @@ void DeferredIndex::addRef()
 	INTERLOCKED_INCREMENT (useCount);
 }
 
-void DeferredIndex::releaseRef()
+void DeferredIndex::release()
 {
-	INTERLOCKED_DECREMENT(useCount);
+	ASSERT(useCount > 0);
 
-	if (useCount == 0)
+	if (INTERLOCKED_DECREMENT(useCount) == 0)
 		delete this;
 }
+

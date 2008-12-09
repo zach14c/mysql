@@ -20,6 +20,7 @@
 #include <my_dir.h>    // For MY_STAT
 #include "sql_repl.h"  // For check_binlog_magic
 #include "rpl_utility.h"
+#include "transaction.h"
 
 static int count_relay_log_space(Relay_log_info* rli);
 
@@ -170,7 +171,7 @@ int init_relay_log_info(Relay_log_info* rli,
     {
       sql_print_error("Failed to create a new relay log info file (\
 file '%s', errno %d)", fname, my_errno);
-      msg= current_thd->main_da.message();
+      msg= current_thd->stmt_da->message();
       goto err;
     }
     if (init_io_cache(&rli->info_file, info_fd, IO_SIZE*2, READ_CACHE, 0L,0,
@@ -178,7 +179,7 @@ file '%s', errno %d)", fname, my_errno);
     {
       sql_print_error("Failed to create a cache on relay log info file '%s'",
                       fname);
-      msg= current_thd->main_da.message();
+      msg= current_thd->stmt_da->message();
       goto err;
     }
 
@@ -1162,8 +1163,8 @@ void Relay_log_info::cleanup_context(THD *thd, bool error)
   */
   if (error)
   {
-    ha_autocommit_or_rollback(thd, 1); // if a "statement transaction"
-    end_trans(thd, ROLLBACK); // if a "real transaction"
+    trans_rollback_stmt(thd); // if a "statement transaction"
+    trans_rollback(thd);      // if a "real transaction"
   }
   m_table_map.clear_tables();
   slave_close_thread_tables(thd);

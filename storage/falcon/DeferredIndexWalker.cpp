@@ -31,6 +31,7 @@ DeferredIndexWalker::DeferredIndexWalker(DeferredIndex *deferredIdx, IndexKey *i
 void DeferredIndexWalker::initialize(DeferredIndex *deferredIdx, IndexKey *indexKey, int searchFlags)
 {
 	deferredIndex = deferredIdx;
+	deferredIndex->addRef();
 	currentNode = NULL;
 	DIBucket *bucket = (DIBucket*) deferredIndex->root;
 	nodePending = true;
@@ -94,6 +95,8 @@ void DeferredIndexWalker::initialize(DeferredIndex *deferredIdx, IndexKey *index
 
 DeferredIndexWalker::~DeferredIndexWalker(void)
 {
+	if (deferredIndex)
+		deferredIndex->release();
 }
 
 DINode* DeferredIndexWalker::next(void)
@@ -107,10 +110,16 @@ DINode* DeferredIndexWalker::next(void)
 		{
 		nodePending = false;
 
-		return currentNode = (slot >= leaf->count) ? NULL : leaf->nodes[slot];
-		}
+		if (slot < leaf->count)
+			return (currentNode = leaf->nodes[slot]);
 
-	++slot;
+		if (!deferredIndex->levels)
+			return NULL;  // Only one bucket and it is empty
+		// else the first leaf is empty.  Back up a level.
+		}
+	else
+		++slot;
+
 	DIBucket *bucket;
 		
 	for (;;)

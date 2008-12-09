@@ -3,6 +3,14 @@
 
 namespace util {
 
+/// Used to save messages pushed into the stack
+struct SAVED_MYSQL_ERROR {
+  uint code;
+  MYSQL_ERROR::enum_warning_level level;
+  char *msg;
+};
+
+
 /**
   Report error stored in MYSQL_ERROR structure to a client.
 
@@ -11,7 +19,7 @@ namespace util {
   @returns 0 if error was reported, non-zero otherwise.
  */
 inline
-int report_mysql_error(THD* thd, MYSQL_ERROR *err, int code= 0)
+int report_mysql_error(THD* thd, SAVED_MYSQL_ERROR *err, int code= 0)
 {
   DBUG_ASSERT(err);
 

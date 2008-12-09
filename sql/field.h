@@ -59,8 +59,8 @@ public:
     Note that you can use table->in_use as replacement for current_thd member 
     only inside of val_*() and store() members (e.g. you can't use it in cons)
   */
-  struct st_table *table;		// Pointer for table
-  struct st_table *orig_table;		// Pointer to original table
+  TABLE *table;                                 // Pointer for table
+  TABLE *orig_table;                            // Pointer to original table
   const char	**table_name, *field_name;
   LEX_STRING	comment;
   /* Bitmap of indexes that start with this field */
@@ -321,12 +321,12 @@ public:
   */
   virtual bool can_be_compared_as_longlong() const { return FALSE; }
   virtual void free() {}
-  virtual Field *new_field(MEM_ROOT *root, struct st_table *new_table,
+  virtual Field *new_field(MEM_ROOT *root, TABLE *new_table,
                            bool keep_type);
-  virtual Field *new_key_field(MEM_ROOT *root, struct st_table *new_table,
+  virtual Field *new_key_field(MEM_ROOT *root, TABLE *new_table,
                                uchar *new_ptr, uchar *new_null_ptr,
                                uint new_null_bit);
-  Field *clone(MEM_ROOT *mem_root, struct st_table *new_table);
+  Field *clone(MEM_ROOT *mem_root, TABLE *new_table);
   inline void move_field(uchar *ptr_arg,uchar *null_ptr_arg,uchar null_bit_arg)
   {
     ptr=ptr_arg; null_ptr=null_ptr_arg; null_bit=null_bit_arg;
@@ -1547,7 +1547,7 @@ public:
   enum_field_types real_type() const { return MYSQL_TYPE_STRING; }
   bool has_charset(void) const
   { return charset() == &my_charset_bin ? FALSE : TRUE; }
-  Field *new_field(MEM_ROOT *root, struct st_table *new_table, bool keep_type);
+  Field *new_field(MEM_ROOT *root, TABLE *new_table, bool keep_type);
   virtual uint get_key_image(uchar *buff,uint length, imagetype type);
 private:
   int do_save_field_metadata(uchar *first_byte);
@@ -1635,8 +1635,8 @@ public:
   enum_field_types real_type() const { return MYSQL_TYPE_VARCHAR; }
   bool has_charset(void) const
   { return charset() == &my_charset_bin ? FALSE : TRUE; }
-  Field *new_field(MEM_ROOT *root, struct st_table *new_table, bool keep_type);
-  Field *new_key_field(MEM_ROOT *root, struct st_table *new_table,
+  Field *new_field(MEM_ROOT *root, TABLE *new_table, bool keep_type);
+  Field *new_key_field(MEM_ROOT *root, TABLE *new_table,
                        uchar *new_ptr, uchar *new_null_ptr,
                        uint new_null_bit);
   uint is_equal(Create_field *new_field);
@@ -1648,8 +1648,16 @@ private:
 
 class Field_blob :public Field_longstr {
 protected:
+  /**
+    The number of bytes used to represent the length of the blob.
+  */
   uint packlength;
-  String value;				// For temporaries
+  
+  /**
+    The 'value'-object is a cache fronting the storage engine.
+  */
+  String value;
+  
 public:
   Field_blob(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg,
 	     enum utype unireg_check_arg, const char *field_name_arg,
@@ -1759,6 +1767,18 @@ public:
     {
       memcpy_fixed((uchar*) str,ptr+packlength+row_offset,sizeof(char*));
     }
+
+  /**
+     Copy value in data to the field ptr. 
+
+     NOTE
+     If the null_bit for this field is set, @c
+     set_notnull(my_ptrdiff_t) needs to be called for set_ptr to have
+     any effect when inserting a record.
+
+     @param length  Length of data
+     @param data    The value of the field
+  */
   inline void set_ptr(uchar *length, uchar *data)
     {
       memcpy(ptr,length,packlength);
@@ -1867,7 +1887,7 @@ public:
   {
       flags|=ENUM_FLAG;
   }
-  Field *new_field(MEM_ROOT *root, struct st_table *new_table, bool keep_type);
+  Field *new_field(MEM_ROOT *root, TABLE *new_table, bool keep_type);
   enum_field_types type() const { return MYSQL_TYPE_STRING; }
   enum Item_result cmp_type () const { return INT_RESULT; }
   enum Item_result cast_to_int_type () const { return INT_RESULT; }
@@ -1896,6 +1916,8 @@ public:
   CHARSET_INFO *sort_charset(void) const { return &my_charset_bin; }
 private:
   int do_save_field_metadata(uchar *first_byte);
+  bool compare_enum_values(TYPELIB *values);
+  uint is_equal(Create_field *new_field);
 };
 
 
@@ -2000,7 +2022,7 @@ public:
                               uint param_data, bool low_byte_first);
   virtual void set_default();
 
-  Field *new_key_field(MEM_ROOT *root, struct st_table *new_table,
+  Field *new_key_field(MEM_ROOT *root, TABLE *new_table,
                        uchar *new_ptr, uchar *new_null_ptr,
                        uint new_null_bit);
   void set_bit_ptr(uchar *bit_ptr_arg, uchar bit_ofs_arg)
@@ -2123,7 +2145,7 @@ public:
   A class for sending info to the client
 */
 
-class Send_field {
+class Send_field :public Sql_alloc {
  public:
   const char *db_name;
   const char *table_name,*org_table_name;

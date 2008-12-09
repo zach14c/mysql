@@ -60,12 +60,13 @@ sub collect_test_cases ($) {
 
   my $suites= shift; # Semicolon separated list of test suites
   my $cases = [];    # Array of hash
+  my %found_suites;
 
   foreach my $suite (split(",", $suites))
   {
+    $found_suites{$suite}= 1;
     push(@$cases, collect_one_suite($suite));
   }
-
 
   if ( @::opt_cases )
   {
@@ -75,6 +76,12 @@ sub collect_test_cases ($) {
     {
       my $found= 0;
       my ($sname, $tname, $extension)= split_testname($test_name_spec);
+      if (defined($sname) && !defined($found_suites{$sname}))
+      {
+	$found_suites{$sname}= 1;
+	push(@$cases, collect_one_suite($sname));
+      }
+
       foreach my $test ( @$cases )
       {
 	# test->{name} is always in suite.name format
@@ -433,41 +440,51 @@ sub optimize_cases {
     # Skip processing if already marked as skipped
     next if $tinfo->{skip};
 
-    # Replication test needs an adjustment of binlog format
-    if (mtr_match_prefix($tinfo->{'name'}, "rpl"))
+    # =======================================================
+    # If a special binlog format was selected with
+    # --mysqld=--binlog-format=x, skip all test that does not
+    # support it
+    # =======================================================
+    #print "used_binlog_format: $::used_binlog_format\n";
+    if (defined $::used_binlog_format )
     {
+      # =======================================================
+      # Fixed --binlog-format=x specified on command line
+      # =======================================================
+      if ( defined $tinfo->{'binlog_formats'} )
+      {
+	#print "binlog_formats: ". join(", ", @{$tinfo->{binlog_formats}})."\n";
 
+	# The test supports different binlog formats
+	# check if the selected one is ok
+	my $supported=
+	  grep { $_ eq $::used_binlog_format } @{$tinfo->{'binlog_formats'}};
+	if ( !$supported )
+	{
+	  $tinfo->{'skip'}= 1;
+	  $tinfo->{'comment'}=
+	    "Doesn't support --binlog-format='$::used_binlog_format'";
+	}
+      }
+    }
+    else
+    {
       # =======================================================
+      # Use dynamic switching of binlog format
+      # =======================================================
+
       # Get binlog-format used by this test from master_opt
-      # =======================================================
       my $test_binlog_format;
       foreach my $opt ( @{$tinfo->{master_opt}} ) {
-	$test_binlog_format= $test_binlog_format ||
-	  mtr_match_prefix($opt, "--binlog-format=");
-      }
-      # print $tinfo->{name}." uses ".$test_binlog_format."\n";
-
-      # =======================================================
-      # If a special binlog format was selected with
-      # --mysqld=--binlog-format=x, skip all test with different
-      # binlog-format
-      # =======================================================
-      if (defined $::used_binlog_format and
-	  $test_binlog_format and
-	  $::used_binlog_format ne $test_binlog_format)
-      {
-	$tinfo->{'skip'}= 1;
-	$tinfo->{'comment'}= "Requires --binlog-format='$test_binlog_format'";
-	next;
+	$test_binlog_format=
+	  mtr_match_prefix($opt, "--binlog-format=") || $test_binlog_format;
       }
 
-      # =======================================================
-      # Check that testcase supports the designated binlog-format
-      # =======================================================
-      if ($test_binlog_format and defined $tinfo->{'sup_binlog_formats'} )
+      if (defined $test_binlog_format and
+	  defined $tinfo->{binlog_formats} )
       {
 	my $supported=
-	  grep { $_ eq $test_binlog_format } @{$tinfo->{'sup_binlog_formats'}};
+	  grep { $_ eq $test_binlog_format } @{$tinfo->{'binlog_formats'}};
 	if ( !$supported )
 	{
 	  $tinfo->{'skip'}= 1;
@@ -476,19 +493,6 @@ sub optimize_cases {
 	  next;
 	}
       }
-
-      # =======================================================
-      # Use dynamic switching of binlog-format if mtr started
-      # w/o --mysqld=--binlog-format=xxx and combinations.
-      # =======================================================
-      if (!defined $tinfo->{'combination'} and
-          !defined $::used_binlog_format)
-      {
-        $test_binlog_format= $tinfo->{'sup_binlog_formats'}->[0];
-      }
-
-      # Save binlog format for dynamic switching
-      $tinfo->{binlog_format}= $test_binlog_format;
     }
 
       # =======================================================
@@ -544,19 +548,10 @@ sub collect_one_test_case($$$$$$$$$) {
   my $suite_opts= shift;
 
   my $path= "$testdir/$elem";
-
-  # ----------------------------------------------------------------------
-  # Skip some tests silently
-  # ----------------------------------------------------------------------
-
-  if ( $::opt_start_from and $tname lt $::opt_start_from )
-  {
-    return;
-  }
-
+  my $name= basename($suite) . ".$tname";
 
   my $tinfo= {};
-  $tinfo->{'name'}= basename($suite) . ".$tname";
+  $tinfo->{'name'}= $name;
   $tinfo->{'result_file'}= "$resdir/$tname.result";
   $tinfo->{'component_id'} = $component_id;
   push(@$cases, $tinfo);
@@ -565,7 +560,7 @@ sub collect_one_test_case($$$$$$$$$) {
   # Skip some tests but include in list, just mark them to skip
   # ----------------------------------------------------------------------
 
-  if ( $skip_test and $tname =~ /$skip_test/o )
+  if ( $skip_test and ($tname =~ /$skip_test/o || $name =~ /$skip_test/o))
   {
     $tinfo->{'skip'}= 1;
     return;
@@ -910,18 +905,19 @@ sub collect_one_test_case($$$$$$$$$) {
 # the specified value in "tinfo"
 our @tags=
 (
- ["include/have_innodb.inc", "innodb_test", 1],
- ["include/have_binlog_format_row.inc", "sup_binlog_formats", ["row"]],
- ["include/have_log_bin.inc", "need_binlog", 1],
- ["include/have_binlog_format_statement.inc",
-  "sup_binlog_formats", ["statement"]],
- ["include/have_binlog_format_mixed.inc", "sup_binlog_formats", ["mixed"]],
+
+ ["include/have_binlog_format_row.inc", "binlog_formats", ["row"]],
+ ["include/have_binlog_format_statement.inc", "binlog_formats", ["statement"]],
+ ["include/have_binlog_format_mixed.inc", "binlog_formats", ["mixed"]],
  ["include/have_binlog_format_mixed_or_row.inc",
-  "sup_binlog_formats", ["mixed","row"]],
+  "binlog_formats", ["mixed", "row"]],
  ["include/have_binlog_format_mixed_or_statement.inc",
-  "sup_binlog_formats", ["mixed","statement"]],
+  "binlog_formats", ["mixed", "statement"]],
  ["include/have_binlog_format_row_or_statement.inc",
-  "sup_binlog_formats", ["row","statement"]],
+  "binlog_formats", ["row", "statement"]],
+
+ ["include/have_innodb.inc", "innodb_test", 1],
+ ["include/have_log_bin.inc", "need_binlog", 1],
  ["include/big_test.inc", "big_test", 1],
  ["include/have_debug.inc", "need_debug", 1],
  ["include/have_ndb.inc", "ndb_test", 1],

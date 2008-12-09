@@ -209,7 +209,10 @@ int mysql_update(THD *thd,
   for ( ; ; )
   {
     if (open_tables(thd, &table_list, &table_count, 0))
+    {
+      MYSQL_UPDATE_DONE(1, 0, 0);
       DBUG_RETURN(1);
+    }
 
     if (table_list->multitable_view)
     {
@@ -218,21 +221,27 @@ int mysql_update(THD *thd,
       /* pass counter value */
       thd->lex->table_count= table_count;
       /* convert to multiupdate */
+      MYSQL_UPDATE_DONE(2, 0, 0);
       DBUG_RETURN(2);
     }
     if (!lock_tables(thd, table_list, table_count, 0, &need_reopen))
       break;
     if (!need_reopen)
+    {
+      MYSQL_UPDATE_DONE(1, 0, 0);
       DBUG_RETURN(1);
+    }
     close_tables_for_reopen(thd, &table_list, FALSE);
   }
 
   if (mysql_handle_derived(thd->lex, &mysql_derived_prepare) ||
       (thd->fill_derived_tables() &&
        mysql_handle_derived(thd->lex, &mysql_derived_filling)))
+  {
+    MYSQL_UPDATE_DONE(1, 0, 0);
     DBUG_RETURN(1);
+  }
 
-  MYSQL_UPDATE_START();
   thd_proc_info(thd, "init");
   table= table_list->table;
 
@@ -292,7 +301,7 @@ int mysql_update(THD *thd,
   if (select_lex->inner_refs_list.elements &&
     fix_inner_refs(thd, all_fields, select_lex, select_lex->ref_pointer_array))
   {
-    MYSQL_UPDATE_END();
+    MYSQL_UPDATE_DONE(1, 0, 0);
     DBUG_RETURN(-1);
   }
 
@@ -321,8 +330,8 @@ int mysql_update(THD *thd,
   if (prune_partitions(thd, table, conds))
   {
     free_underlaid_joins(thd, select_lex);
-    MYSQL_UPDATE_END();
     my_ok(thd);				// No matching records
+    MYSQL_UPDATE_DONE(0, 0, 0);
     DBUG_RETURN(0);
   }
 #endif
@@ -337,8 +346,8 @@ int mysql_update(THD *thd,
     free_underlaid_joins(thd, select_lex);
     if (error)
       goto abort;				// Error in where
-    MYSQL_UPDATE_END();
     my_ok(thd);				// No matching records
+    MYSQL_UPDATE_DONE(0, 0, 0);
     DBUG_RETURN(0);
   }
   if (!select && limit != HA_POS_ERROR)
@@ -718,7 +727,12 @@ int mysql_update(THD *thd,
     }
     else
       table->file->unlock_row();
-    thd->row_count++;
+    thd->warning_info->inc_current_row_for_warning();
+    if (thd->is_error())
+    {
+      error= 1;
+      break;
+    }
   }
   dup_key_found= 0;
   /*
@@ -811,7 +825,6 @@ int mysql_update(THD *thd,
   id= thd->arg_of_last_insert_id_function ?
     thd->first_successful_insert_id_in_prev_stmt : 0;
 
-  MYSQL_UPDATE_END();
   if (error < 0)
   {
     char buff[STRING_BUFFER_USUAL_SIZE];
@@ -824,7 +837,10 @@ int mysql_update(THD *thd,
   }
   thd->count_cuted_fields= CHECK_FIELD_IGNORE;		/* calc cuted fields */
   thd->abort_on_warning= 0;
-  DBUG_RETURN((error >= 0 || thd->is_error()) ? 1 : 0);
+
+  res= (error >= 0 || thd->is_error()) ? 1 : 0;
+  MYSQL_UPDATE_DONE(res, (ulong) found, (ulong) updated);
+  DBUG_RETURN(res);
 
 err:
   delete select;
@@ -837,7 +853,7 @@ err:
   thd->abort_on_warning= 0;
 
 abort:
-  MYSQL_UPDATE_END();
+  MYSQL_UPDATE_DONE(1, 0, 0);
   DBUG_RETURN(1);
 }
 
@@ -1046,7 +1062,7 @@ reopen_tables:
         correct order of statements. Otherwise, we use a TL_READ lock to
         improve performance.
       */
-      tl->lock_type= using_update_log ? TL_READ_NO_INSERT : TL_READ;
+      tl->lock_type= read_lock_type_for_table(thd, table);
       tl->updating= 0;
       /* Update TABLE::lock_type accordingly. */
       if (!tl->placeholder() && !using_lock_tables)
@@ -1083,10 +1099,13 @@ reopen_tables:
   }
 
   /* now lock and fill tables */
-  if (lock_tables(thd, table_list, table_count, 0, &need_reopen))
+  if (!thd->stmt_arena->is_stmt_prepare() &&
+      lock_tables(thd, table_list, table_count, 0, &need_reopen))
   {
     if (!need_reopen)
       DBUG_RETURN(TRUE);
+
+    DBUG_PRINT("info", ("lock_tables failed, reopening"));
 
     /*
       We have to reopen tables since some of them were altered or dropped
@@ -1102,6 +1121,34 @@ reopen_tables:
     /* We have to cleanup translation tables of views. */
     for (TABLE_LIST *tbl= table_list; tbl; tbl= tbl->next_global)
       tbl->cleanup_items();
+
+    /*
+      To not to hog memory (as a result of the 
+      unit->reinit_exec_mechanism() call below):
+    */
+    lex->unit.cleanup();
+
+    for (SELECT_LEX *sl= lex->all_selects_list;
+        sl;
+        sl= sl->next_select_in_list())
+    {
+      SELECT_LEX_UNIT *unit= sl->master_unit();
+      unit->reinit_exec_mechanism(); // reset unit->prepared flags
+      /*
+        Reset 'clean' flag back to force normal execution of
+        unit->cleanup() in Prepared_statement::cleanup_stmt()
+        (call to lex->unit.cleanup() above sets this flag to TRUE).
+      */
+      unit->unclean();
+    }
+
+    /*
+      Also we need to cleanup Natural_join_column::table_field items.
+      To not to traverse a join tree we will cleanup whole
+      thd->free_list (in PS execution mode that list may not contain
+      items from 'fields' list, so the cleanup above is necessary to.
+    */
+    cleanup_items(thd->free_list);
 
     close_tables_for_reopen(thd, &table_list, FALSE);
     goto reopen_tables;
@@ -1591,7 +1638,10 @@ bool multi_update::send_data(List<Item> &not_used_values)
                                                *values_for_table[offset], 0,
                                                table->triggers,
                                                TRG_EVENT_UPDATE))
+      {
+        MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
 	DBUG_RETURN(1);
+      }
 
       found++;
       if (!can_compare_record || compare_record(table))
@@ -1604,7 +1654,10 @@ bool multi_update::send_data(List<Item> &not_used_values)
           if (error == VIEW_CHECK_SKIP)
             continue;
           else if (error == VIEW_CHECK_ERROR)
+          {
+            MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
             DBUG_RETURN(1);
+          }
         }
         if (!updated++)
         {
@@ -1634,6 +1687,7 @@ bool multi_update::send_data(List<Item> &not_used_values)
 
             prepare_record_for_error_message(error, table);
             table->file->print_error(error,MYF(flags));
+            MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
             DBUG_RETURN(1);
           }
         }
@@ -1658,7 +1712,10 @@ bool multi_update::send_data(List<Item> &not_used_values)
       if (table->triggers &&
           table->triggers->process_triggers(thd, TRG_EVENT_UPDATE,
                                             TRG_ACTION_AFTER, TRUE))
+      {
+        MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
         DBUG_RETURN(1);
+      }
     }
     else
     {
@@ -1701,12 +1758,14 @@ bool multi_update::send_data(List<Item> &not_used_values)
                                          error, 1))
         {
           do_update=0;
+          MYSQL_MULTI_UPDATE_DONE(1, 0, 0);
 	  DBUG_RETURN(1);			// Not a table_is_full error
 	}
         found++;
       }
     }
   }
+  MYSQL_UPDATE_DONE(0, (ulong) found, (ulong) updated);
   DBUG_RETURN(0);
 }
 

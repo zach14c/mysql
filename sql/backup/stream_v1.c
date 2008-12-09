@@ -1277,9 +1277,8 @@ int bstream_wr_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
     CHECK_WR_RES(bstream_wr_item_def(s,cat,PER_TABLE_ITEM,item));
   }
 
+wr_error:
   bcat_iterator_free(cat,iter);
-
-  wr_error:
 
   return ret;
 }
@@ -1811,8 +1810,10 @@ int bstream_rd_data_chunk(backup_stream *s,
       {
         memmove(buf->begin, chunk->data.begin, howmuch);
         envelope= buf;
-        chunk->data= *buf;
       }
+
+ /* update chunk->data to point to the new buffer */
+      chunk->data= *buf;
 
       /* update to_read blob to indicate free space left */
       to_read.begin= buf->begin + howmuch;
@@ -1967,10 +1968,10 @@ int bstream_rd_int4(backup_stream *s, unsigned long int *x)
   if (ret == BSTREAM_ERROR)
     return BSTREAM_ERROR;
 
-  *x = buf[0];
-  *x += (buf[1] << 8);
-  *x += (buf[1] << 2*8);
-  *x += (buf[1] << 3*8);
+  *x = (unsigned long int)buf[0];
+  *x += ((unsigned long int)buf[1] << 8);
+  *x += ((unsigned long int)buf[2] << 2*8);
+  *x += ((unsigned long int)buf[3] << 3*8);
 
   return ret;
 }

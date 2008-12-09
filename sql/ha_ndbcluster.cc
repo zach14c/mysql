@@ -93,10 +93,20 @@ static bool ndbcluster_show_status(handlerton *hton, THD*,
 static int ndbcluster_alter_tablespace(handlerton *hton,
                                        THD* thd, 
                                        st_alter_tablespace *info);
+static int ndbcluster_fill_is_table(handlerton *hton,
+                                    THD *thd,
+                                    TABLE_LIST *tables,
+                                    COND *cond,
+                                    enum enum_schema_tables);
 static int ndbcluster_fill_files_table(handlerton *hton,
                                        THD *thd, 
                                        TABLE_LIST *tables, 
                                        COND *cond);
+
+static int ndbcluster_fill_tablespace_table(handlerton *hton,
+                                             THD *thd,
+                                             TABLE_LIST *tables,
+                                             COND *cond);
 
 handlerton *ndbcluster_hton;
 
@@ -7658,7 +7668,7 @@ static int ndbcluster_init(void *p)
     h->partition_flags=  ndbcluster_partition_flags; /* Partition flags */
     h->alter_partition_flags=
       ndbcluster_alter_partition_flags;             /* Alter table flags */
-    h->fill_files_table= ndbcluster_fill_files_table;
+    h->fill_is_table=    ndbcluster_fill_is_table;
 #ifdef HAVE_NDB_BINLOG
     ndbcluster_binlog_init_handlerton();
 #endif
@@ -11529,8 +11539,41 @@ bool ha_ndbcluster::get_no_parts(const char *name, uint *no_parts)
   DBUG_RETURN(TRUE);
 }
 
-static int ndbcluster_fill_files_table(handlerton *hton, 
-                                       THD *thd, 
+/**
+   Used to fill in INFORMATION_SCHEMA* tables.
+
+   @param hton handle to the handlerton structure
+   @param thd the thread/connection descriptor
+   @param[in,out] tables the information schema table that is filled up
+   @param cond used for conditional pushdown to storage engine
+   @param schema_table_idx the table id that distinguishes the type of table
+
+   @return Operation status
+ */
+static int ndbcluster_fill_is_table(handlerton *hton,
+                                    THD *thd,
+                                    TABLE_LIST *tables,
+                                    COND *cond,
+                                    enum enum_schema_tables schema_table_idx)
+{
+  int ret= 0;
+
+  switch(schema_table_idx)
+  {
+  case SCH_FILES:
+    ret= ndbcluster_fill_files_table(hton, thd, tables, cond);
+    break;
+  case SCH_TABLESPACES:
+    ret= ndbcluster_fill_tablespace_table(hton, thd, tables, cond);
+  default:
+    break;
+  }
+
+  return ret;
+}
+
+static int ndbcluster_fill_files_table(handlerton *hton,
+                                       THD *thd,
                                        TABLE_LIST *tables,
                                        COND *cond)
 {
@@ -11552,7 +11595,7 @@ static int ndbcluster_fill_files_table(handlerton *hton,
     NdbDictionary::Dictionary::List::Element& elt = dflist.elements[i];
     Ndb_cluster_connection_node_iter iter;
     uint id;
-    
+
     g_ndb_cluster_connection->init_get_next_node(iter);
 
     while ((id= g_ndb_cluster_connection->get_next_node(iter)))
@@ -11753,6 +11796,56 @@ static int ndbcluster_fill_files_table(handlerton *hton,
                          (ulong) lfg.getUndoBufferSize());
     table->field[IS_FILES_EXTRA]->set_notnull();
     table->field[IS_FILES_EXTRA]->store(extra, len, system_charset_info);
+    schema_table_store_record(thd, table);
+  }
+  DBUG_RETURN(0);
+}
+
+static int ndbcluster_fill_tablespace_table(handlerton *hton,
+                                       THD *thd,
+                                       TABLE_LIST *tables,
+                                       COND *cond)
+{
+  TABLE* table= tables->table;
+  Ndb *ndb= check_ndb_in_thd(thd);
+  NdbDictionary::Dictionary* dict= ndb->getDictionary();
+  NdbDictionary::Dictionary::List dflist;
+  NdbError ndberr;
+  uint i;
+  DBUG_ENTER("ndbcluster_fill_files_table");
+
+  dict->listObjects(dflist, NdbDictionary::Object::Tablespace);
+  ndberr= dict->getNdbError();
+  if (ndberr.classification != NdbError::NoError)
+    ERR_RETURN(ndberr);
+
+  for (i= 0; i < dflist.count; i++)
+  {
+    NdbDictionary::Dictionary::List::Element& elt = dflist.elements[i];
+    NdbDictionary::Tablespace ts= dict->getTablespace(elt.name);
+    ndberr= dict->getNdbError();
+
+    table->field[IS_TABLESPACES_TABLESPACE_NAME]->store(ts.getName(),
+                                                        strlen(ts.getName()),
+                                                        system_charset_info);
+
+    table->field[IS_TABLESPACES_ENGINE]->store("NDBCLUSTER",10,
+                                               system_charset_info);
+
+    table->field[IS_TABLESPACES_LOGFILE_GROUP_NAME]->set_notnull();
+    table->field[IS_TABLESPACES_LOGFILE_GROUP_NAME]
+      ->store(ts.getDefaultLogfileGroup(),
+              strlen(ts.getDefaultLogfileGroup()),
+              system_charset_info);
+
+    table->field[IS_TABLESPACES_EXTENT_SIZE]->set_notnull();
+    table->field[IS_TABLESPACES_EXTENT_SIZE]->store(ts.getExtentSize());
+
+    char s[100];
+    snprintf(s,sizeof(s),"Object Version: %d",ts.getObjectVersion());
+    table->field[IS_TABLESPACES_TABLESPACE_COMMENT]->set_notnull();
+    table->field[IS_TABLESPACES_TABLESPACE_COMMENT]->store(s,strlen(s),
+                                                           system_charset_info);
     schema_table_store_record(thd, table);
   }
   DBUG_RETURN(0);

@@ -1,1 +1,8 @@
-hello,world
+*** Bug #36294 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS ftest;
+CREATE TABLESPACE gimdata ADD DATAFILE 'gimdata.fts' ENGINE 'Falcon';
+CREATE TABLE ftest (id serial, col1 varchar(500)) ENGINE 'Falcon' TABLESPACE gimdata;
+Hello, world!
+DROP TABLE ftest;
+DROP TABLESPACE gimdata ENGINE 'Falcon';

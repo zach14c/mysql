@@ -281,7 +281,9 @@ enum enum_commands {
   Q_CHMOD_FILE, Q_APPEND_FILE, Q_CAT_FILE, Q_DIFF_FILES,
   Q_SEND_QUIT, Q_CHANGE_USER, Q_MKDIR, Q_RMDIR, Q_LIST_FILES,
   Q_LIST_FILES_WRITE_FILE, Q_LIST_FILES_APPEND_FILE,
+  Q_SEND_SHUTDOWN, Q_SHUTDOWN_SERVER,
   Q_RESULT_FORMAT_VERSION,
+
   Q_UNKNOWN,			       /* Unknown command.   */
   Q_COMMENT,			       /* Comments, ignored. */
   Q_COMMENT_WITH_COMMAND,
@@ -373,8 +375,11 @@ const char *command_names[]=
   "list_files",
   "list_files_write_file",
   "list_files_append_file",
+  "send_shutdown",
+  "shutdown_server",
   "result_format",
   "result_format",
+
   0
 };
 
@@ -2841,7 +2846,7 @@ void do_mkdir(struct st_command *command)
   int error;
   static DYNAMIC_STRING ds_dirname;
   const struct command_arg mkdir_args[] = {
-    "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to create"
+    {"dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to create"}
   };
   DBUG_ENTER("do_mkdir");
 
@@ -2871,7 +2876,7 @@ void do_rmdir(struct st_command *command)
   int error;
   static DYNAMIC_STRING ds_dirname;
   const struct command_arg rmdir_args[] = {
-    "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to remove"
+    { "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to remove" }
   };
   DBUG_ENTER("do_rmdir");
 
@@ -3909,6 +3914,145 @@ void do_set_charset(struct st_command *command)
   charset_info= get_charset_by_csname(charset_name,MY_CS_PRIMARY,MYF(MY_WME));
   if (!charset_info)
     abort_not_supported_test("Test requires charset '%s'", charset_name);
+}
+
+
+/*
+  Run query and return one field in the result set from the
+  first row and <column>
+*/
+
+int query_get_string(MYSQL* mysql, const char* query,
+                     int column, DYNAMIC_STRING* ds)
+{
+  MYSQL_RES *res= NULL;
+  MYSQL_ROW row;
+
+  if (mysql_query(mysql, query))
+    die("'%s' failed: %d %s", query,
+        mysql_errno(mysql), mysql_error(mysql));
+  if ((res= mysql_store_result(mysql)) == NULL)
+    die("Failed to store result: %d %s",
+        mysql_errno(mysql), mysql_error(mysql));
+
+  if ((row= mysql_fetch_row(res)) == NULL)
+  {
+    mysql_free_result(res);
+    ds= 0;
+    return 1;
+  }
+  init_dynamic_string(ds, (row[column] ? row[column] : "NULL"), ~0, 32);
+  mysql_free_result(res);
+  return 0;
+}
+
+
+static int my_kill(int pid, int sig)
+{
+#ifdef __WIN__
+  HANDLE proc;
+  if ((proc= OpenProcess(PROCESS_TERMINATE, FALSE, pid)) == NULL)
+    return -1;
+  if (sig == 0)
+  {
+    CloseHandle(proc);
+    return 0;
+  }
+  (void)TerminateProcess(proc, 201);
+  CloseHandle(proc);
+  return 1;
+#else
+  return kill(pid, sig);
+#endif
+}
+
+
+
+/*
+  Shutdown the server of current connection and
+  make sure it goes away within <timeout> seconds
+
+  NOTE! Currently only works with local server
+
+  SYNOPSIS
+  do_shutdown_server()
+  command  called command
+
+  DESCRIPTION
+  shutdown [<timeout>]
+
+*/
+
+void do_shutdown_server(struct st_command *command)
+{
+  int timeout=60, pid;
+  DYNAMIC_STRING ds_pidfile_name;
+  MYSQL* mysql = &cur_con->mysql;
+  static DYNAMIC_STRING ds_timeout;
+  const struct command_arg shutdown_args[] = {
+    {"timeout", ARG_STRING, FALSE, &ds_timeout, "Timeout before killing server"}
+  };
+  DBUG_ENTER("do_shutdown_server");
+
+  check_command_args(command, command->first_argument, shutdown_args,
+                     sizeof(shutdown_args)/sizeof(struct command_arg),
+                     ' ');
+
+  if (ds_timeout.length)
+  {
+    timeout= atoi(ds_timeout.str);
+    if (timeout == 0)
+      die("Illegal argument for timeout: '%s'", ds_timeout.str);
+  }
+  dynstr_free(&ds_timeout);
+
+  /* Get the servers pid_file name and use it to read pid */
+  if (query_get_string(mysql, "SHOW VARIABLES LIKE 'pid_file'", 1,
+                       &ds_pidfile_name))
+    die("Failed to get pid_file from server");
+
+  /* Read the pid from the file */
+  {
+    int fd;
+    char buff[32];
+
+    if ((fd= my_open(ds_pidfile_name.str, O_RDONLY, MYF(0))) < 0)
+      die("Failed to open file '%s'", ds_pidfile_name.str);
+    dynstr_free(&ds_pidfile_name);
+
+    if (my_read(fd, (uchar*)&buff,
+                sizeof(buff), MYF(0)) <= 0){
+      my_close(fd, MYF(0));
+      die("pid file was empty");
+    }
+    my_close(fd, MYF(0));
+
+    pid= atoi(buff);
+    if (pid == 0)
+      die("Pidfile didn't contain a valid number");
+  }
+  DBUG_PRINT("info", ("Got pid %d", pid));
+
+  /* Tell server to shutdown if timeout > 0*/
+  if (timeout && mysql_shutdown(mysql, SHUTDOWN_DEFAULT))
+    die("mysql_shutdown failed");
+
+  /* Check that server dies */
+  while(timeout--){
+    if (my_kill(0, pid) < 0){
+      DBUG_PRINT("info", ("Process %d does not exist anymore", pid));
+      break;
+    }
+    DBUG_PRINT("info", ("Sleeping, timeout: %d", timeout));
+    my_sleep(1000000L);
+  }
+
+  /* Kill the server */
+  DBUG_PRINT("info", ("Killing server, pid: %d", pid));
+  (void)my_kill(9, pid);
+
+  DBUG_VOID_RETURN;
+
 }
 
 
@@ -7552,6 +7696,14 @@ int main(int argc, char **argv)
       case Q_PING:
 	(void) mysql_ping(&cur_con->mysql);
 	break;
+      case Q_SEND_SHUTDOWN:
+        handle_command_error(command,
+                             mysql_shutdown(&cur_con->mysql,
+                                            SHUTDOWN_DEFAULT));
+        break;
+      case Q_SHUTDOWN_SERVER:
+        do_shutdown_server(command);
+        break;
       case Q_EXEC:
 	do_exec(command);
 	command_executed++;

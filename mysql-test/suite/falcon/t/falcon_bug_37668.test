@@ -1,0 +1,4 @@
+--source include/have_falcon.inc
+
+--error ER_TABLESPACE_EXIST
+CREATE TABLESPACE FALCON_MASTER ADD DATAFILE 'test.fts' ENGINE=Falcon;

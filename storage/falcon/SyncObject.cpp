@@ -39,6 +39,7 @@
 #include "Thread.h"
 #include "Threads.h"
 #include "Sync.h"
+#include "SyncHandler.h"
 #include "Interlock.h"
 #include "LinkedList.h"
 #include "Log.h"
@@ -142,10 +143,15 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	Thread *thread;
 
 #ifdef TRACE_SYNC_OBJECTS
-	if (sync)
-		location = sync->location;
+	location = (sync ? sync->location : NULL);
+
+#ifdef USE_FALCON_SYNC_HANDLER
+	SyncHandler *syncHandler = getFalconSyncHandler();
+	if (sync && syncHandler)
+		syncHandler->addLock(this, location, type);
 #endif
-	
+#endif
+
 	// Shared case
 	
 	if (type == Shared)
@@ -309,10 +315,15 @@ void SyncObject::lock(Sync *sync, LockType type, int timeout)
 	Thread *thread;
 
 #ifdef TRACE_SYNC_OBJECTS
-	if (sync)
-		location = sync->location;
+	location = (sync ? sync->location : NULL);
+
+#ifdef USE_FALCON_SYNC_HANDLER
+	SyncHandler *syncHandler = getFalconSyncHandler();
+	if (sync && syncHandler)
+		syncHandler->addLock(this, location, type);
 #endif
-	
+#endif
+
 	if (type == Shared)
 		{
 		thread = NULL;
@@ -491,6 +502,12 @@ void SyncObject::unlock(Sync *sync, LockType type)
 #else // FAST_SHARED
 void SyncObject::unlock(Sync *sync, LockType type)
 {
+#if defined TRACE_SYNC_OBJECTS && defined USE_FALCON_SYNC_HANDLER
+	SyncHandler *syncHandler = findFalconSyncHandler();
+	if (sync && syncHandler)
+		syncHandler->delLock(this);
+#endif
+
 	//ASSERT(lockState != 0);
 	
 	if (monitorCount)
@@ -1058,6 +1075,22 @@ void SyncObject::setName(const char* string)
 {
 #ifdef TRACE_SYNC_OBJECTS
 	name = string;
+#endif
+}
+const char*	SyncObject::getName(void)
+{
+#ifdef TRACE_SYNC_OBJECTS
+	return name;
+#else
+	return NULL;
+#endif
+}
+const char*	SyncObject::getLocation(void)
+{
+#ifdef TRACE_SYNC_OBJECTS
+	return location;
+#else
+	return NULL;
 #endif
 }
 

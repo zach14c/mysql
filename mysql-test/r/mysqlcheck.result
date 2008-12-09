@@ -1,6 +1,10 @@
 DROP TABLE IF EXISTS t1, `t``1`, `t 1`;
 drop view if exists v1;
 drop database if exists client_test_db;
+mysql.backup_history
+note     : The storage engine for the table doesn't support optimize
+mysql.backup_progress
+note     : The storage engine for the table doesn't support optimize
 mysql.columns_priv                                 OK
 mysql.db                                           OK
 mysql.event                                        OK
@@ -13,8 +17,6 @@ mysql.help_relation                                OK
 mysql.help_topic                                   OK
 mysql.host                                         OK
 mysql.ndb_binlog_index                             OK
-mysql.online_backup                                OK
-mysql.online_backup_progress                       OK
 mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
@@ -28,6 +30,10 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.backup_history
+note     : The storage engine for the table doesn't support optimize
+mysql.backup_progress
+note     : The storage engine for the table doesn't support optimize
 mysql.columns_priv                                 OK
 mysql.db                                           OK
 mysql.event                                        OK
@@ -40,8 +46,6 @@ mysql.help_relation                                OK
 mysql.help_topic                                   OK
 mysql.host                                         OK
 mysql.ndb_binlog_index                             OK
-mysql.online_backup                                OK
-mysql.online_backup_progress                       OK
 mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
@@ -102,6 +106,19 @@ drop view v_bug25347;
 drop table t_bug25347;
 drop database d_bug25347;
 use test;
+create view v1 as select * from information_schema.routines;
+check table v1, information_schema.routines;
+Table	Op	Msg_type	Msg_text
+test.v1	check	status	OK
+information_schema.routines	check	note	The storage engine for the table doesn't support check
+drop view v1;
+CREATE TABLE t1(a INT);
+CREATE TABLE t2(a INT);
+test.t1
+Error    : Incorrect information in file: './test/t1.frm'
+error    : Corrupt
+test.t2                                            OK
+DROP TABLE t1, t2;
 End of 5.0 tests
 create table t1(a int);
 create view v1 as select * from t1;
@@ -121,3 +138,4 @@ v1
 v-1
 drop view v1, `v-1`;
 drop table t1;
+End of 5.1 tests

@@ -8,16 +8,6 @@
 
   @brief Implements @c Image_info class and friends.
 
-  @todo Fix error detection in places marked with "FIXME: detect errors...". 
-  These are places where functions or methods are called and if they can 
-  report errors it should be detected and appropriate action taken. If callee 
-  never reports errors or we want to ignore errors, a comment explaining this
-  should be added.
-
-  @todo Fix error logging in places marked with "FIXME: error logging...". In 
-  these places it should be decided if and how the error should be shown to the
-  user. If an error message should be logged, it can happen either in the place
-  where error was detected or somewhere up the call stack.
 */
 
 namespace backup {
@@ -25,8 +15,7 @@ namespace backup {
 Image_info::Image_info()
   :data_size(0), m_table_count(0), m_dbs(16, 16), m_ts_map(16,16)
 {
-  // FIXME: detect errors if reported.
-  init_alloc_root(&mem_root, 4 * 1024, 0);
+  init_alloc_root(&mem_root, 4 * 1024, 0);      // Never errors
 
   /* initialize st_bstream_image_header members */
 
@@ -217,7 +206,7 @@ int Image_info::add_snapshot(Snapshot_info &snap)
 /**
   Check if catalogue contains given database.
  */ 
-bool Image_info::has_db(const String &db_name)
+bool Image_info::has_db(const String &db_name) const
 {
   for (uint n=0; n < m_dbs.count() ; ++n)
     if (m_dbs[n] && m_dbs[n]->name() == db_name)
@@ -308,10 +297,8 @@ Image_info::add_table(Db &db, const ::String &table_name,
 
   if (snap.add_table(*t, pos))  // reports errors
     return NULL;
-  
-  // FIXME: error logging.
-  if (db.add_table(*t))
-    return NULL;
+
+  db.add_table(*t);                             // Never errors
 
   if (!snap.m_num)
     snap.m_num= add_snapshot(snap); // reports errors
@@ -384,6 +371,7 @@ Image_info::Obj *find_obj(const Image_info &info,
   case BSTREAM_IT_SFUNC:
   case BSTREAM_IT_EVENT:
   case BSTREAM_IT_TRIGGER:
+  case BSTREAM_IT_PRIVILEGE:
   {
     const st_bstream_dbitem_info &it=
                           reinterpret_cast<const st_bstream_dbitem_info&>(item);

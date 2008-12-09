@@ -52,17 +52,6 @@
   } // if code jumps here, context destructor will do the clean-up automatically
   @endcode
 
-  @todo Fix error detection in places marked with "FIXME: detect errors...". 
-  These are places where functions or methods are called and if they can 
-  report errors it should be detected and appropriate action taken. If callee 
-  never reports errors or we want to ignore errors, a comment explaining this
-  should be added.
-
-  @todo Fix error logging in places marked with "FIXME: error logging...". In 
-  these places it should be decided if and how the error should be shown to the
-  user. If an error message should be logged, it can happen either in the place
-  where error was detected or somewhere up the call stack.
-
   @todo Use internal table name representation when passing tables to
         backup/restore drivers.
   @todo Handle other types of meta-data in Backup_info methods.
@@ -83,7 +72,7 @@
 #include "be_snapshot.h"
 #include "be_nodata.h"
 #include "ddl_blocker.h"
-#include "backup_progress.h"
+#include "transaction.h"
 
 
 /** 
@@ -95,6 +84,7 @@
 int backup_init()
 {
   pthread_mutex_init(&Backup_restore_ctx::run_lock, MY_MUTEX_INIT_FAST);
+  Backup_restore_ctx::run_lock_initialized= TRUE;
   return 0;
 }
 
@@ -103,10 +93,18 @@ int backup_init()
   
   @note This function is called in the server shut-down sequences, just before
   it shuts-down all its plugins.
+
+  @note Due to way in which server's code is organized this function might be
+  called and should work normally even in situation when backup_init() was not
+  called at all.
  */
 void backup_shutdown()
 {
-  pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+  if (Backup_restore_ctx::run_lock_initialized)
+  {
+    pthread_mutex_destroy(&Backup_restore_ctx::run_lock);
+    Backup_restore_ctx::run_lock_initialized= FALSE;
+  }
 }
 
 /*
@@ -123,14 +121,20 @@ static int send_reply(Backup_restore_ctx &context);
   @param[IN] thd        current thread object reference.
   @param[IN] lex        results of parsing the statement.
   @param[IN] backupdir  value of the backupdir variable from server.
+  @param[IN] overwrite  whether or not restore should overwrite existing
+                        DB with same name as in backup image
 
   @note This function sends response to the client (ok, result set or error).
+
+  @note Both BACKUP and RESTORE should perform implicit commit at the beginning
+  and at the end of execution. This is done by the parser after marking these
+  commands with appropriate flags in @c sql_command_flags[] in sql_parse.cc.
 
   @returns 0 on success, error code otherwise.
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex, String *backupdir)
+execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
 {
   int res= 0;
   
@@ -183,7 +187,8 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     else
     {
       context.write_message(log_level::INFO, "Backing up selected databases");
-      res= info->add_dbs(lex->db_list); // backup databases specified by user
+      /* Backup databases specified by user. */
+      res= info->add_dbs(thd, lex->db_list);
     }
 
     info->close(); // close catalogue after filling it with objects to backup
@@ -209,6 +214,13 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
 
   case SQLCOM_RESTORE:
   {
+
+    /*
+      Restore cannot be run on a slave while connected to a master.
+    */
+    if (obs::is_slave())
+      DBUG_RETURN(send_error(context, ER_RESTORE_ON_SLAVE));
+
     Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
                                                     thd->query);
     
@@ -217,7 +229,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     
     DEBUG_SYNC(thd, "after_backup_start_restore");
 
-    res= context.do_restore();      
+    res= context.do_restore(overwrite);      
 
     DEBUG_SYNC(thd, "restore_before_end");
 
@@ -254,7 +266,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
  */
 int send_error(Backup_restore_ctx &log, int error_code, ...)
 {
-  MYSQL_ERROR *error= log.last_saved_error();
+  util::SAVED_MYSQL_ERROR *error= log.last_saved_error();
 
   if (error && !util::report_mysql_error(log.thd(), error, error_code))
   {
@@ -282,8 +294,10 @@ int send_error(Backup_restore_ctx &log, int error_code, ...)
 /**
   Send positive reply after a backup/restore operation.
 
-  Currently the id of the operation is returned. It can be used to select
-  correct entries form the backup progress tables.
+  Currently the id of the operation is returned to the client. It can
+  be used to select correct entries from the backup progress tables.
+
+  @returns 0 on success, error code otherwise.
 */
 int send_reply(Backup_restore_ctx &context)
 {
@@ -296,33 +310,36 @@ int send_reply(Backup_restore_ctx &context)
   /*
     Send field list.
   */
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  field_list.push_back(new Item_empty_string(STRING_WITH_LEN("backup_id")));
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  if (field_list.push_back(new Item_empty_string(STRING_WITH_LEN("backup_id"))))
+  {
+    goto err;
+  }
+  if (protocol->send_result_set_metadata(&field_list,
+                            Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+  {
+    goto err;
+  }
 
   /*
     Send field data.
   */
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  protocol->prepare_for_resend();
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  llstr(context.op_id(), buf);
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  protocol->store(buf, system_charset_info);
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  protocol->write();
-
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  my_eof(context.thd());
+  protocol->prepare_for_resend();               // Never errors
+  llstr(context.op_id(), buf);                  // Never errors
+  if (protocol->store(buf, system_charset_info))
+  {
+    goto err;
+  }
+  if (protocol->write())
+  {
+    goto err;
+  }
+  my_eof(context.thd());                        // Never errors
   DBUG_RETURN(0);
+
+ err:
+  DBUG_RETURN(context.fatal_error(ER_BACKUP_SEND_REPLY,
+                                  context.m_type == backup::Logger::BACKUP
+                                  ? "BACKUP" : "RESTORE"));
 }
 
 
@@ -363,28 +380,106 @@ class Mem_allocator
 // static members
 
 Backup_restore_ctx *Backup_restore_ctx::current_op= NULL;
+bool Backup_restore_ctx::run_lock_initialized= FALSE;
 pthread_mutex_t Backup_restore_ctx::run_lock;
 
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
-  m_error(0), m_path(NULL), m_remove_loc(FALSE), m_stream(NULL),
-  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE)
+  m_error(0), m_remove_loc(FALSE), m_stream(NULL),
+  m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE),
+  m_engage_binlog(FALSE)
 {
   /*
     Check for progress tables.
   */
-  if (check_ob_progress_tables(thd))
+  MYSQL_BACKUP_LOG *backup_log= logger.get_backup_history_log_file_handler();
+  if (backup_log->check_backup_logs(thd))
     m_error= ER_BACKUP_PROGRESS_TABLES;
 }
 
 Backup_restore_ctx::~Backup_restore_ctx()
 {
   close();
-  
+
   delete mem_alloc;
   delete m_catalog;  
   delete m_stream;
+}
+
+/**
+  Prepare path for access.
+
+  This method takes the backupdir and the file name specified on the backup
+  command (orig_loc) and forms a combined path + file name as follows:
+
+    1. If orig_loc has a relative path, make it relative to backupdir
+    2. If orig_loc has a hard path, use it.
+    3. If orig_loc has no path, append to backupdir
+
+  @param[IN]  backupdir  The backupdir system variable value.
+  @param[IN]  orig_loc   The path + file name specified in the backup command.
+
+  @returns 0
+*/
+int Backup_restore_ctx::prepare_path(::String *backupdir, 
+                                     LEX_STRING orig_loc)
+{
+  char fix_path[FN_REFLEN]; 
+  char full_path[FN_REFLEN]; 
+
+  /*
+    Prepare the path using the backupdir iff no relative path
+    or no hard path included.
+
+    Relative paths are formed from the backupdir system variable.
+
+    Case 1: Backup image file name has relative path. 
+            Make relative to backupdir.
+
+    Example BACKUP DATATBASE ... TO '../monthly/dec.bak'
+            If backupdir = '/dev/daily' then the
+            calculated path becomes
+            '/dev/monthly/dec.bak'
+
+    Case 2: Backup image file name has no path or has a subpath. 
+
+    Example BACKUP DATABASE ... TO 'week2.bak'
+            If backupdir = '/dev/weekly/' then the
+            calculated path becomes
+            '/dev/weekly/week2.bak'
+    Example BACKUP DATABASE ... TO 'jan/day1.bak'
+            If backupdir = '/dev/monthly/' then the
+            calculated path becomes
+            '/dev/monthly/jan/day1.bak'
+
+    Case 3: Backup image file name has hard path. 
+
+    Example BACKUP DATATBASE ... TO '/dev/dec.bak'
+            If backupdir = '/dev/daily/backup' then the
+            calculated path becomes
+            '/dev/dec.bak'
+  */
+
+  /*
+    First, we construct the complete path from backupdir.
+  */
+  fn_format(fix_path, backupdir->ptr(), mysql_real_data_home, "", 
+            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
+
+  /*
+    Next, we contruct the full path to the backup file.
+  */
+  fn_format(full_path, orig_loc.str, fix_path, "", 
+            MY_UNPACK_FILENAME | MY_RELATIVE_PATH);
+
+  /*
+    Copy result to member variable for Stream class.
+  */
+  m_path.copy(full_path, strlen(full_path), system_charset_info);
+  report_backup_file(m_path.c_ptr());
+ 
+  return 0;
 }
 
 /**
@@ -398,20 +493,17 @@ Backup_restore_ctx::~Backup_restore_ctx()
 
   @returns 0 on success, error code otherwise.
  */ 
-int Backup_restore_ctx::prepare(LEX_STRING location)
+int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
 {
   if (m_error)
     return m_error;
   
   // Prepare error reporting context.
   
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  mysql_reset_errors(m_thd, 0);
+  m_thd->warning_info->opt_clear_warning_info(m_thd->query_id); // Never errors
   m_thd->no_warnings_for_error= FALSE;
-  // FIXME: detect errors if  reported.
-  // FIXME: error logging.
-  save_errors();  
+
+  save_errors();                                // Never errors
 
 
   /*
@@ -465,7 +557,10 @@ int Backup_restore_ctx::prepare(LEX_STRING location)
     return m_error;
   }
 
-  m_path= location.str;
+  /*
+    Computer full path to backup file.
+  */
+  prepare_path(backupdir, location);
 
   // create new instance of memory allocator for backup stream library
 
@@ -520,7 +615,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   if (m_error)
     return NULL;
   
-  if (Logger::init(BACKUP, orig_loc, query))
+  if (Logger::init(BACKUP, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -533,15 +628,14 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
     Do preparations common to backup and restore operations. After call
     to prepare() all meta-data changes are blocked.
    */ 
-  if (prepare(orig_loc))
+  if (prepare(backupdir, orig_loc))
     return NULL;
 
   /*
     Open output stream.
    */
   Output_stream *s= new Output_stream(*this, 
-                                      backupdir, 
-                                      orig_loc,
+                                      &m_path,
                                       with_compression);
   m_stream= s;
   
@@ -551,13 +645,10 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
     return NULL;
   }
   
-  if (!s->open())
+  int my_open_status= s->open();
+  if (my_open_status != 0)
   {
-    /*
-      For this error, use the actual value returned instead of the
-      path complimented with backupdir.
-    */
-    fatal_error(ER_BACKUP_WRITE_LOC, orig_loc.str);
+    report_stream_open_failure(my_open_status, &orig_loc);
     return NULL;
   }
 
@@ -565,7 +656,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
     Create backup catalogue.
    */
 
-  Backup_info *info= new Backup_info(*this); // reports errors
+  Backup_info *info= new Backup_info(*this);    // Logs errors
 
   if (!info)
   {
@@ -574,7 +665,22 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   }
 
   if (!info->is_valid())
-    return NULL;
+    return NULL;    // Error has been logged by Backup_Info constructor
+
+  /*
+    If binlog is enabled, set BSTREAM_FLAG_BINLOG in the header to indicate
+    that validity point's binlog position will be stored in the image 
+    (in its summary section).
+    
+    This is not completely safe because theoretically even if now binlog is 
+    active, it can be disabled before we reach the validity point and then we 
+    will not store binlog position even though the flag is set. To fix this 
+    problem the format of backup image must be changed (some flags must be 
+    stored in the summary section which is written at the end of backup 
+    operation).
+  */
+  if (mysql_bin_log.is_open())
+    info->flags|= BSTREAM_FLAG_BINLOG; 
 
   info->save_start_time(when);
   m_catalog= info;
@@ -605,7 +711,7 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
   if (m_error)
     return NULL;
   
-  if (Logger::init(RESTORE, orig_loc, query))
+  if (Logger::init(RESTORE, query))
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
@@ -618,14 +724,14 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
     Do preparations common to backup and restore operations. After this call
     changes of meta-data are blocked.
    */ 
-  if (prepare(orig_loc))
+  if (prepare(backupdir, orig_loc))
     return NULL;
   
   /*
     Open input stream.
    */
 
-  Input_stream *s= new Input_stream(*this, backupdir, orig_loc);
+  Input_stream *s= new Input_stream(*this, &m_path);
   m_stream= s;
   
   if (!s)
@@ -634,13 +740,10 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
     return NULL;
   }
   
-  if (!s->open())
+  int my_open_status= s->open();
+  if (my_open_status != 0)
   {
-    /*
-      For this error, use the actual value returned instead of the
-      path complimented with backupdir.
-    */
-    fatal_error(ER_BACKUP_READ_LOC, orig_loc.str);
+    report_stream_open_failure(my_open_status, &orig_loc);
     return NULL;
   }
 
@@ -692,6 +795,25 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 
   m_state= PREPARED_FOR_RESTORE;
 
+  /*
+    Do not allow slaves to connect during a restore.
+
+    If the binlog is turned on, write a RESTORE_EVENT as an
+    incident report into the binary log.
+
+    Turn off binlog during restore.
+  */
+  if (obs::is_binlog_engaged())
+  {
+    obs::disable_slave_connections(TRUE);
+
+    DEBUG_SYNC(m_thd, "after_disable_slave_connections");
+
+    obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
+    m_engage_binlog= TRUE;
+    obs::engage_binlog(FALSE);
+  }
+
   return info;
 }
 
@@ -730,14 +852,14 @@ int Backup_restore_ctx::lock_tables_for_restore()
       backup::Image_info::Table *tbl= snap->get_table(t);
       DBUG_ASSERT(tbl); // All tables should be present in the catalogue.
 
-      // FIXME: detect errors. Don't assert here but report error instead.
-      // FIXME: error logging.
       TABLE_LIST *ptr= backup::mk_table_list(*tbl, TL_WRITE, m_thd->mem_root);
-      DBUG_ASSERT(ptr);
+      if (!ptr)
+      {
+        // Error has been reported, but not logged to backup logs
+        return log_error(ER_OUT_OF_RESOURCES);
+      }
 
-      // FIXME: detect errors if reported.
-      // FIXME: error logging.
-      tables= backup::link_table_list(*ptr, tables);      
+      tables= backup::link_table_list(*ptr, tables); // Never errors
       tbl->m_table= ptr;
     }
   }
@@ -745,11 +867,18 @@ int Backup_restore_ctx::lock_tables_for_restore()
   /*
     Open and lock the tables.
     
-    Note: simple_open_n_lock_tables() must be used here since we don't want
-    to do derived tables processing. Processing derived tables even leads 
-    to crashes as those reported in BUG#34758.
+    Note 1: It is important to not do derived tables processing here. Processing
+    derived tables even leads to crashes as those reported in BUG#34758.
+  
+    Note 2: Skiping tmp tables is also important because otherwise a tmp table
+    can occlude a regular table with the same name (BUG#33574).
   */ 
-  if (simple_open_n_lock_tables(m_thd,tables))
+  if (open_and_lock_tables_derived(m_thd, tables,
+                                   FALSE, /* do not process derived tables */
+                                   MYSQL_OPEN_SKIP_TEMPORARY 
+                                          /* do not open tmp tables */
+                                  )
+     )
   {
     fatal_error(ER_BACKUP_OPEN_TABLES,"RESTORE");
     return m_error;
@@ -762,19 +891,53 @@ int Backup_restore_ctx::lock_tables_for_restore()
 /**
   Unlock tables which were locked by @c lock_tables_for_restore.
  */ 
-int Backup_restore_ctx::unlock_tables()
+void Backup_restore_ctx::unlock_tables()
 {
   // Do nothing if tables are not locked.
   if (!m_tables_locked)
-    return 0;
+    return;
 
   DBUG_PRINT("restore",("unlocking tables"));
 
-  close_thread_tables(m_thd);
+  close_thread_tables(m_thd);                   // Never errors
   m_tables_locked= FALSE;
 
-  return 0;
+  return;
 }
+
+
+/**
+  Report error and move context object into error state without pushing the 
+  error on the server's warning stack.  
+  
+  Similar to @c fatal_error, but does not push the error on the
+  server's warning stack.  To be used when an error is reported from a
+  server function that has already pushed the error on the warning stack.
+  
+  @return error code given as input or stored in the context object if
+  a fatal error was reported before.
+ */ 
+inline
+int Backup_restore_ctx::log_error(int error_code, ...)
+{
+  if (m_error)
+    return m_error;
+
+  bool saved = push_errors(FALSE);         // Do not use warning stack
+  
+  m_error= error_code;
+  m_remove_loc= TRUE;
+
+  va_list args;
+  va_start(args,error_code);
+  v_report_error(backup::log_level::ERROR, error_code, args);
+  va_end(args);
+
+  push_errors(saved);                      // Reset
+
+  return error_code;
+}
+
 
 /**
   Destroy a backup/restore context.
@@ -790,34 +953,30 @@ int Backup_restore_ctx::unlock_tables()
  */ 
 int Backup_restore_ctx::close()
 {
+  int error= 0;
   if (m_state == CLOSED)
     return 0;
 
   using namespace backup;
 
+  /*
+    Allow slaves connect after restore is complete.
+  */
+  obs::disable_slave_connections(FALSE);
+
+  /*
+    Turn binlog back on iff it was turned off earlier.
+  */
+  if (m_engage_binlog)
+    obs::engage_binlog(TRUE);
+
   time_t when= my_time(0);
 
-  // If auto commit is turned off, be sure to commit the transaction
-  /* 
-    Note: this code needs to be refactored (see BUG#38261). When refactoring
-    make sure that errors are detected and reported.
-  */
-  if (m_thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))
-  {
-    ha_autocommit_or_rollback(m_thd, 0);
-    end_active_trans(m_thd);
-  }
-
   // unlock tables if they are still locked
-
-  // FIXME: detect errors if reported.
-  unlock_tables();
+  unlock_tables();                              // Never errors
 
   // unfreeze meta-data
-
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  obs::ddl_blocker_disable();
+  obs::ddl_blocker_disable();                   // Never errors
 
   // restore thread options
 
@@ -825,16 +984,57 @@ int Backup_restore_ctx::close()
 
   // close stream
 
-  if (m_stream)
-    // FIXME: detect errors if reported.
-    // FIXME: error logging.
-    m_stream->close();
+  if (m_stream && !m_stream->close())
+  {
+    // Note error, but complete clean-up
+    error= ER_BACKUP_CLOSE;
+  }
 
   if (m_catalog)
     m_catalog->save_end_time(when); // Note: no errors.
 
-  // destroy backup stream's memory allocator (this frees memory)
+  /* 
+    Remove the location, if asked for.
+    
+    Important: This is done only for backup operation - RESTORE should never
+    remove the specified backup image!
+   */
+  if (m_remove_loc && m_state == PREPARED_FOR_BACKUP)
+  {
+    int res= my_delete(m_path.c_ptr(), MYF(0));
 
+    /*
+      Ignore ENOENT error since it is ok if the file doesn't exist.
+     */
+    if (res && my_errno != ENOENT)
+    {
+      error= ER_CANT_DELETE_FILE;
+    }
+  }
+
+  /* We report completion of the operation only if no errors were detected,
+     and logger has been initialized.
+  */
+  if (!error)
+  {
+    if (backup::Logger::m_state == backup::Logger::RUNNING)
+    {
+      report_stop(when, TRUE);
+    }
+  }
+  else
+  {
+    fatal_error(error);                         // Log error
+  }
+
+  /* 
+    Destroy backup stream's memory allocator (this frees memory)
+  
+    Note that from now on data stored in this object might be corrupted. For 
+    example the binlog file name is a string stored in memory allocated by
+    the allocator which will be freed now.
+  */
+  
   delete mem_alloc;
   mem_alloc= NULL;
   
@@ -845,34 +1045,8 @@ int Backup_restore_ctx::close()
   }
   pthread_mutex_unlock(&run_lock);
 
-  /* 
-    Remove the location, if asked for.
-    
-    Important: This is done only for backup operation - RESTORE should never
-    remove the specified backup image!
-   */
-  if (m_remove_loc && m_state == PREPARED_FOR_BACKUP)
-  {
-    int res= my_delete(m_path, MYF(0));
-
-    /*
-      Ignore ENOENT error since it is ok if the file doesn't exist.
-     */
-    if (res && my_errno != ENOENT)
-    {
-      report_error(ER_CANT_DELETE_FILE, m_path, my_errno);
-      if (!m_error)
-        m_error= ER_CANT_DELETE_FILE;
-    }
-  }
-
-  // We report completion of the operation only if no errors were detected.
-
-  if (!m_error)
-    report_stop(when, TRUE);
-
   m_state= CLOSED;
-  return m_error;
+  return error;
 }
 
 /**
@@ -900,11 +1074,10 @@ int Backup_restore_ctx::do_backup()
 
   DEBUG_SYNC(m_thd, "before_backup_meta");
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  report_stats_pre(info);
+  report_stats_pre(info);                       // Never errors
 
   DBUG_PRINT("backup",("Writing preamble"));
+  DEBUG_SYNC(m_thd, "backup_before_write_preamble");
 
   if (write_preamble(info, s))
   {
@@ -916,7 +1089,7 @@ int Backup_restore_ctx::do_backup()
 
   DEBUG_SYNC(m_thd, "before_backup_data");
 
-  if (write_table_data(m_thd, info, s)) // reports errors
+  if (write_table_data(m_thd, info, s)) // logs errors
     DBUG_RETURN(send_error(*this, ER_BACKUP_BACKUP));
 
   DBUG_PRINT("backup",("Writing summary"));
@@ -927,9 +1100,7 @@ int Backup_restore_ctx::do_backup()
     DBUG_RETURN(m_error);
   }
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  report_stats_post(info);
+  report_stats_post(info);                      // Never errors
 
   DBUG_PRINT("backup",("Backup done."));
   DEBUG_SYNC(m_thd, "before_backup_done");
@@ -957,35 +1128,43 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   DBUG_ASSERT(m_catalog);
 
-  // FIXME: detect errors (when dbit==NULL). Perhaps just assert.
-  Image_info::Iterator *dbit= m_catalog->get_dbs();
+  DBUG_ENTER("restore_triggers_and_events");
+
   Image_info::Obj *obj;
   List<Image_info::Obj> events;
   Image_info::Obj::describe_buf buf;
 
-  DBUG_ENTER("restore_triggers_and_events");
+  Image_info::Iterator *dbit= m_catalog->get_dbs();
+  if (!dbit)
+  {
+    DBUG_RETURN(fatal_error(ER_OUT_OF_RESOURCES));
+  }
 
   // create all trigers and collect events in the events list
   
   while ((obj= (*dbit)++)) 
   {
-    // FIXME: detect errors (when it==NULL). Perhaps just assert.
-    Image_info::Iterator *it= 
+    Image_info::Iterator *it=
                     m_catalog->get_db_objects(*static_cast<Image_info::Db*>(obj));
-
+    if (!it)
+    {
+      DBUG_RETURN(fatal_error(ER_OUT_OF_RESOURCES));
+    }
     while ((obj= (*it)++))
       switch (obj->type()) {
       
       case BSTREAM_IT_EVENT:
         DBUG_ASSERT(obj->m_obj_ptr);
-        // FIXME: detect errors if reported.
-        // FIXME: error logging.
-        events.push_back(obj);
+        if (events.push_back(obj))
+        {
+          // Error has been reported, but not logged to backup logs
+          DBUG_RETURN(log_error(ER_OUT_OF_RESOURCES)); 
+        }
         break;
       
       case BSTREAM_IT_TRIGGER:
         DBUG_ASSERT(obj->m_obj_ptr);
-        if (obj->m_obj_ptr->execute(m_thd))
+        if (obj->m_obj_ptr->create(m_thd))
         {
           delete it;
           delete dbit;
@@ -1008,7 +1187,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   Image_info::Obj *ev;
 
   while ((ev= it++)) 
-    if (ev->m_obj_ptr->execute(m_thd))
+    if (ev->m_obj_ptr->create(m_thd))
     {
       fatal_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
       DBUG_RETURN(m_error);
@@ -1022,11 +1201,14 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   @pre @c prepare_for_restore() method was called.
 
+  @param[IN] overwrite whether or not restore should overwrite existing
+                       DB with same name as in backup image
+
   @returns 0 on success, error code otherwise.
 
   @todo Remove the @c reset_diagnostic_area() hack.
 */
-int Backup_restore_ctx::do_restore()
+int Backup_restore_ctx::do_restore(bool overwrite)
 {
   DBUG_ENTER("do_restore");
 
@@ -1042,47 +1224,52 @@ int Backup_restore_ctx::do_restore()
   Input_stream &s= *static_cast<Input_stream*>(m_stream);
   Restore_info &info= *static_cast<Restore_info*>(m_catalog);
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  report_stats_pre(info);
+  report_stats_pre(info);                       // Never errors
 
   DBUG_PRINT("restore", ("Restoring meta-data"));
 
-  // FIXME: detect errors if reported.
-  disable_fkey_constraints();  // reports errors
+  // unless RESTORE... OVERWRITE: return error if database already exists
+  if (!overwrite) {
+    Image_info::Db_iterator *dbit= info.get_dbs();
+
+    if (!dbit) {
+      DBUG_RETURN(fatal_error(ER_OUT_OF_RESOURCES));
+    }
+
+    Image_info::Db *mydb;
+    while ((mydb= static_cast<Image_info::Db*>((*dbit)++))) {
+      if (!obs::check_db_existence(m_thd, &mydb->name())) {
+        delete dbit;
+        DBUG_RETURN(fatal_error(ER_RESTORE_DB_EXISTS, mydb->name().ptr()));
+      }
+    }
+    delete dbit;
+  }
+
+  disable_fkey_constraints();                   // Never errors
 
   if (read_meta_data(info, s))
   {
+    m_thd->stmt_da->reset_diagnostics_area();    // Never errors
+
     fatal_error(ER_BACKUP_READ_META);
     DBUG_RETURN(m_error);
   }
 
-  // FIXME: detect errors.
-  s.next_chunk();
+  if (s.next_chunk() == BSTREAM_ERROR)
+  {
+    DBUG_RETURN(fatal_error(ER_BACKUP_NEXT_CHUNK));
+  }
 
   DBUG_PRINT("restore",("Restoring table data"));
 
-  /* 
-    FIXME: this call is here because object services doesn't clean the
-    statement execution context properly, which leads to assertion failure.
-    It should be fixed inside object services implementation and then the
-    following line should be removed.
-   */
-  // FIXME: detect errors.
-  // FIXME: error logging.
-  close_thread_tables(m_thd);
-  // FIXME: detect errors.
-  // FIXME: error logging.
-  m_thd->main_da.reset_diagnostics_area();
-
-  if (lock_tables_for_restore()) // reports errors
+  if (lock_tables_for_restore())                // logs errors
     DBUG_RETURN(m_error);
 
   // Here restore drivers are created to restore table data
   err= restore_table_data(m_thd, info, s); // reports errors
 
-  // FIXME: detect errors if reported.
-  unlock_tables();
+  unlock_tables();                              // Never errors
 
   if (err)
     DBUG_RETURN(ER_BACKUP_RESTORE);
@@ -1105,26 +1292,56 @@ int Backup_restore_ctx::do_restore()
     DBUG_RETURN(m_error);
   }
 
-  /* 
-    FIXME: this call is here because object services doesn't clean the
-    statement execution context properly, which leads to assertion failure.
-    It should be fixed inside object services implementation and then the
-    following line should be removed.
-   */
-  // FIXME: detect errors.
-  // FIXME: error logging.
-  close_thread_tables(m_thd);
-  // FIXME: detect errors.
-  // FIXME: error logging.
-  m_thd->main_da.reset_diagnostics_area();
+  /*
+    Report validity point time and binlog position stored in the backup image
+    (in the summary section).
+   */ 
 
-  // FIXME: detect errors if reported.
-  // FIXME: error logging.
-  report_stats_post(info);
+  report_vp_time(info.get_vp_time(), FALSE); // FALSE = do not write to progress log
+  if (info.flags & BSTREAM_FLAG_BINLOG)
+    report_binlog_pos(info.binlog_pos);
+
+  report_stats_post(info);                      // Never errors
+
+  DEBUG_SYNC(m_thd, "before_restore_done");
 
   DBUG_RETURN(0);
 }
 
+/**
+  Report stream open error by calling fatal_error, effectively moving
+  context object into error state.
+  
+  @return error code given as input or the one stored in the context
+  object if a fatal error has already been reported.
+ */ 
+int Backup_restore_ctx::report_stream_open_failure(int my_open_status,
+                                                   const LEX_STRING *location)
+{
+  int error= 0;
+  switch (my_open_status) {
+    case ER_OPTION_PREVENTS_STATEMENT:
+      error= fatal_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-file-priv");
+      break;
+    case ER_BACKUP_WRITE_LOC:
+      /*
+        For this error, use the actual value returned instead of the
+        path complimented with backupdir.
+      */
+      error= fatal_error(ER_BACKUP_WRITE_LOC, location->str);
+      break;
+    case ER_BACKUP_READ_LOC:
+      /*
+        For this error, use the actual value returned instead of the
+        path complimented with backupdir.
+      */
+      error= fatal_error(ER_BACKUP_READ_LOC, location->str);
+      break;
+    default:
+      DBUG_ASSERT(FALSE);
+  }
+  return error;
+}
 
 namespace backup {
 
@@ -1427,6 +1644,7 @@ int bcat_add_item(st_bstream_image_header *catalogue,
   case BSTREAM_IT_SFUNC:
   case BSTREAM_IT_EVENT:
   case BSTREAM_IT_TRIGGER:
+  case BSTREAM_IT_PRIVILEGE:
   {
     st_bstream_dbitem_info *it= (st_bstream_dbitem_info*)item;
     
@@ -1438,7 +1656,6 @@ int bcat_add_item(st_bstream_image_header *catalogue,
     
     Image_info::Dbobj *it1= info->add_db_object(*db, item->type, name_str,
                                                 item->pos);
-  
     if (!it1)
       return BSTREAM_ERROR;
     
@@ -1485,27 +1702,25 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   case BSTREAM_IT_TABLESPACE:     // table spaces
   {
     Iterator *it= info->get_tablespaces();
-  
-    if (!it)
+    if (!it) 
     {
-      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
+      info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
       return NULL;
     }
-
+  
     return it;
   }
 
   case BSTREAM_IT_DB:       // all databases
   {
     Iterator *it= info->get_dbs();
-  
-    if (!it)
+    if (!it) 
     {
-      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
+      info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
       return NULL;
     }
 
-    return it;
+    return it;  
   }
   
   case BSTREAM_IT_PERDB:    // per-db objects, except tables
@@ -1524,14 +1739,8 @@ void* bcat_iterator_get(st_bstream_image_header *catalogue, unsigned int type)
   case BSTREAM_IT_GLOBAL:   // all global objects
   {
     Iterator *it= info->get_global();
-  
-    if (!it)
-    {
-      info->m_ctx.fatal_error(ER_BACKUP_CAT_ENUM);
-      return NULL;
-    }
 
-    return it;
+    return it;      // if (!it), error has been logged in get_global()
   }
 
   default:
@@ -1620,10 +1829,9 @@ void* bcat_db_iterator_get(st_bstream_image_header *catalogue,
   }
 
   backup::Image_info::Iterator *it= info->get_db_objects(*db);
-
   if (!it)
   {
-    info->m_ctx.fatal_error(ER_BACKUP_LIST_DB_TABLES);
+    info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }
 
@@ -1689,6 +1897,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
   case BSTREAM_IT_EVENT:  create_err= ER_BACKUP_CANT_RESTORE_EVENT; break;
   case BSTREAM_IT_TRIGGER: create_err= ER_BACKUP_CANT_RESTORE_TRIGGER; break;
   case BSTREAM_IT_TABLESPACE: create_err= ER_BACKUP_CANT_RESTORE_TS; break;
+  case BSTREAM_IT_PRIVILEGE: create_err= ER_BACKUP_CANT_RESTORE_PRIV; break;
   
   /*
     TODO: Decide what to do when we come across unknown item:
@@ -1748,34 +1957,82 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    // if the tablespace exists, there is nothing more to do
-    if (obs::tablespace_exists(thd, sobj))
-    {
-      DBUG_PRINT("restore",(" skipping tablespace which exists"));
-      return BSTREAM_OK;
-    }
-
-    /* 
-      If there is a different tablespace with the same name then we can't 
-      re-create the original tablespace used by tables being restored. We report 
-      this and cancel restore process.
-    */ 
-
-    Obj *ts= obs::is_tablespace(thd, sobj->get_name()); 
+    Obj *ts= obs::find_tablespace(thd, sobj->get_name());
 
     if (ts)
     {
-      DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
-      info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc,
-                              obs::describe_tablespace(sobj)->ptr(),
-                              obs::describe_tablespace(ts)->ptr());
+      /*
+        A tablespace with the same name exists. We have to check if other
+        attributes are the same as they were.
+      */
+
+      if (obs::compare_tablespace_attributes(ts, sobj))
+      {
+        /* The tablespace is the same. There is nothing more to do. */
+        DBUG_PRINT("restore",(" skipping tablespace which exists"));
+        return BSTREAM_OK;
+      }
+
+      /*
+        A tablespace with the same name exists, but it has been changed
+        since backup.  We can't re-create the original tablespace used by
+        tables being restored. We report this and cancel restore process.
+      */
+
+      DBUG_PRINT("restore",
+                 (" tablespace has changed on the server - aborting"));
+      info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc);
+      delete ts;
       return BSTREAM_ERROR;
     }
   }
 
   // Create the object.
 
-  if (sobj->execute(thd))
+  /*
+    We need to check to see if the user exists (grantee) and if not, 
+    do not execute the grant. 
+  */
+  if (item->type == BSTREAM_IT_PRIVILEGE)
+  {
+    /*
+      Issue warning to the user that grant was skipped. 
+
+      @todo Replace write_message() call with the result of the revised
+            error handling work in WL#4384 with possible implementation
+            via a related bug report.
+    */
+    if (!obs::check_user_existence(thd, sobj))
+    {
+      info->m_ctx.report_error(log_level::WARNING,
+                               ER_BACKUP_GRANT_SKIPPED,
+                               obs::grant_get_grant_info(sobj)->ptr(),
+                               obs::grant_get_user_name(sobj)->ptr());
+      return BSTREAM_OK;
+    }
+    /*
+      We need to check the grant against the database list to ensure the
+      grants have not been altered to apply to another database.
+    */
+    ::String db_name;  // db name extracted from grant statement
+    char *start;
+    char *end;
+    int size= 0;
+
+    start= strstr((char *)create_stmt.begin, "ON ") + 3;
+    end= strstr(start, ".");
+    size= end - start;
+    db_name.alloc(size);
+    db_name.length(0);
+    db_name.append(start, size);
+    if (!info->has_db(db_name))
+    {
+      info->m_ctx.fatal_error(ER_BACKUP_GRANT_WRONG_DB, create_stmt);
+      return BSTREAM_ERROR;
+    }
+  }
+
+  if (sobj->create(thd))
   {
     info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;
@@ -1820,6 +2077,7 @@ int bcat_get_item_create_query(st_bstream_image_header *catalogue,
   case BSTREAM_IT_EVENT:  meta_err= ER_BACKUP_GET_META_EVENT; break;
   case BSTREAM_IT_TRIGGER: meta_err= ER_BACKUP_GET_META_TRIGGER; break;
   case BSTREAM_IT_TABLESPACE: meta_err= ER_BACKUP_GET_META_TS; break;
+  case BSTREAM_IT_PRIVILEGE: meta_err= ER_BACKUP_GET_META_PRIV; break;
   
   /*
     This can't happen - the item was obtained from the backup kernel.
@@ -1919,7 +2177,11 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
   for( uint tno=0; tno < tables.count() ; tno++ )
   {
     TABLE_LIST *ptr = mk_table_list(tables[tno], lock, ::current_thd->mem_root);
-    DBUG_ASSERT(ptr);
+    if (!ptr)
+    {
+      // Failed to allocate (failure has been reported)
+      return NULL;
+    }
     tl= link_table_list(*ptr,tl);
   }
 

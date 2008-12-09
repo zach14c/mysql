@@ -1,0 +1,52 @@
+DROP DATABASE IF EXISTS mysqltest;
+
+Test blobs, InnoDB
+
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (id int, txt longblob) ENGINE=innodb;
+INSERT INTO t1 VALUES(1, "short text");
+INSERT INTO t1 VALUES(2, "a little longer, but still short text");
+CREATE TABLE t2 (id int, txt longblob) ENGINE=innodb;
+INSERT INTO t2 VALUES(1, REPEAT('x',1000));
+INSERT INTO t2 VALUES(2, REPEAT('y',10000));
+INSERT INTO t2 VALUES(3, REPEAT('z',1048576));
+CREATE TABLE t3 (id int, txt longblob, txt2 longblob, txt3 longblob) ENGINE=innodb;
+INSERT INTO t3 VALUES(1, REPEAT('x',1048576), REPEAT('y',1048576), REPEAT('z',1048576));
+
+Check tables before backup
+SELECT * FROM t1 ORDER BY id;
+id	txt
+1	short text
+2	a little longer, but still short text
+CHECKSUM TABLE t2;
+Table	Checksum
+mysqltest.t2	1646886041
+CHECKSUM TABLE t3;
+Table	Checksum
+mysqltest.t3	2938103984
+
+Backup, drop and restore database
+BACKUP DATABASE mysqltest TO 'blob.bak';
+backup_id
+#
+DROP DATABASE mysqltest;
+RESTORE FROM 'blob.bak';
+backup_id
+#
+
+Check tables after restore
+SELECT * FROM t1 ORDER BY id;
+id	txt
+1	short text
+2	a little longer, but still short text
+CHECKSUM TABLE t2;
+Table	Checksum
+mysqltest.t2	1646886041
+CHECKSUM TABLE t3;
+Table	Checksum
+mysqltest.t3	2938103984
+
+Cleanup 
+
+DROP DATABASE mysqltest;

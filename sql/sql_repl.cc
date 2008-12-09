@@ -21,12 +21,14 @@
 #include "log_event.h"
 #include "rpl_filter.h"
 #include <my_dir.h>
+#include "rpl_handler.h"
 
 int max_binlog_dump_events = 0; // unlimited
 my_bool opt_sporadic_binlog_dump_fail = 0;
 #ifndef DBUG_OFF
 static int binlog_dump_count = 0;
 #endif
+extern my_bool disable_slaves;
 
 /*
     fake_rotate_event() builds a fake (=which does not exist physically in any
@@ -378,8 +380,33 @@ static int send_heartbeat_event(NET* net, String* packet,
   {
     DBUG_RETURN(-1);
   }
-  packet->set("\0", 1, &my_charset_bin);
   DBUG_RETURN(0);
+}
+
+/*
+  Reset thread transmit packet buffer for event sending
+
+  This function allocates header bytes for event transmission, and
+  should be called before store the event data to the packet buffer.
+*/
+static int reset_transmit_packet(THD *thd, ushort flags,
+                                 ulong *ev_offset, const char **errmsg)
+{
+  int ret= 0;
+  String *packet= &thd->packet;
+
+  /* reserve and set default header */
+  packet->length(0);
+  packet->set("\0", 1, &my_charset_bin);
+
+  if (RUN_HOOK(binlog_transmit, reserve_header, (thd, flags, packet)))
+  {
+    *errmsg= "Failed to run hook 'reserve_header'";
+    my_errno= ER_UNKNOWN_ERROR;
+    ret= 1;
+  }
+  *ev_offset= packet->length();
+  return ret;
 }
 
 /*
@@ -392,6 +419,9 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
   LOG_INFO linfo;
   char *log_file_name = linfo.log_file_name;
   char search_file_name[FN_REFLEN], *name;
+
+  ulong ev_offset;
+
   IO_CACHE log;
   File file = -1;
   String* packet = &thd->packet;
@@ -407,6 +437,9 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
   DBUG_PRINT("enter",("log_ident: '%s'  pos: %ld", log_ident, (long) pos));
 
   bzero((char*) &log,sizeof(log));
+  sql_print_information("Start binlog_dump to slave_server(%d), pos(%s, %lu)",
+                        thd->server_id, log_ident, (ulong)pos);
+
   /* 
      heartbeat_period from @master_heartbeat_period user variable
   */
@@ -423,6 +456,13 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
     coord->file_name= log_file_name; // initialization basing on what slave remembers
     coord->pos= pos;
   }
+  if (RUN_HOOK(binlog_transmit, transmit_start, (thd, flags, log_ident, pos)))
+  {
+    errmsg= "Failed to run hook 'transmit_start'";
+    my_errno= ER_UNKNOWN_ERROR;
+    goto err;
+  }
+  
 #ifndef DBUG_OFF
   if (opt_sporadic_binlog_dump_fail && (binlog_dump_count++ % 2))
   {
@@ -431,6 +471,17 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
     goto err;
   }
 #endif
+
+  /*
+    Tell the connecting slave the master cannot accept any connections
+    if disable_slaves == TRUE.
+  */
+  if (disable_slaves)
+  {
+     errmsg= "Master does not allow slaves to connect.";
+     my_errno= ER_MASTER_BLOCKING_SLAVES;
+     goto err;
+  }
 
   if (!mysql_bin_log.is_open())
   {
@@ -477,11 +528,9 @@ impossible position";
     goto err;
   }
 
-  /*
-    We need to start a packet with something other than 255
-    to distinguish it from error
-  */
-  packet->set("\0", 1, &my_charset_bin); /* This is the start of a new packet */
+  /* reset transmit packet for the fake rotate event below */
+  if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+    goto err;
 
   /*
     Tell the client about the log name with a fake Rotate event;
@@ -521,7 +570,7 @@ impossible position";
     my_errno= ER_MASTER_FATAL_ERROR_READING_BINLOG;
     goto err;
   }
-  packet->set("\0", 1, &my_charset_bin);
+
   /*
     Adding MAX_LOG_EVENT_HEADER_LEN, since a binlog event can become
     this larger than the corresponding packet (query) sent 
@@ -537,6 +586,11 @@ impossible position";
   log_lock = mysql_bin_log.get_log_lock();
   if (pos > BIN_LOG_HEADER_SIZE)
   {
+    /* reset transmit packet for the event read from binary log
+       file */
+    if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+      goto err;
+
      /*
        Try to find a Format_description_log_event at the beginning of
        the binlog
@@ -544,29 +598,30 @@ impossible position";
      if (!(error = Log_event::read_log_event(&log, packet, log_lock)))
      {
        /*
-         The packet has offsets equal to the normal offsets in a binlog
-         event +1 (the first character is \0).
+         The packet has offsets equal to the normal offsets in a
+         binlog event + ev_offset (the first ev_offset characters are
+         the header (default \0)).
        */
        DBUG_PRINT("info",
                   ("Looked for a Format_description_log_event, found event type %d",
-                   (*packet)[EVENT_TYPE_OFFSET+1]));
-       if ((*packet)[EVENT_TYPE_OFFSET+1] == FORMAT_DESCRIPTION_EVENT)
+                   (*packet)[EVENT_TYPE_OFFSET+ev_offset]));
+       if ((*packet)[EVENT_TYPE_OFFSET+ev_offset] == FORMAT_DESCRIPTION_EVENT)
        {
-         binlog_can_be_corrupted= test((*packet)[FLAGS_OFFSET+1] &
+         binlog_can_be_corrupted= test((*packet)[FLAGS_OFFSET+ev_offset] &
                                        LOG_EVENT_BINLOG_IN_USE_F);
-         (*packet)[FLAGS_OFFSET+1] &= ~LOG_EVENT_BINLOG_IN_USE_F;
+         (*packet)[FLAGS_OFFSET+ev_offset] &= ~LOG_EVENT_BINLOG_IN_USE_F;
          /*
            mark that this event with "log_pos=0", so the slave
            should not increment master's binlog position
            (rli->group_master_log_pos)
          */
-         int4store((char*) packet->ptr()+LOG_POS_OFFSET+1, 0);
+         int4store((char*) packet->ptr()+LOG_POS_OFFSET+ev_offset, 0);
          /*
            if reconnect master sends FD event with `created' as 0
            to avoid destroying temp tables.
           */
          int4store((char*) packet->ptr()+LOG_EVENT_MINIMAL_HEADER_LEN+
-                   ST_CREATED_OFFSET+1, (ulong) 0);
+                   ST_CREATED_OFFSET+ev_offset, (ulong) 0);
          /* send it */
          if (my_net_write(net, (uchar*) packet->ptr(), packet->length()))
          {
@@ -592,8 +647,6 @@ impossible position";
          Format_description_log_event will be found naturally if it is written.
        */
      }
-     /* reset the packet as we wrote to it in any case */
-     packet->set("\0", 1, &my_charset_bin);
   } /* end of if (pos > BIN_LOG_HEADER_SIZE); */
   else
   {
@@ -605,6 +658,12 @@ impossible position";
 
   while (!net->error && net->vio != 0 && !thd->killed)
   {
+    Log_event_type event_type= UNKNOWN_EVENT;
+
+    /* reset the transmit packet for the event read from binary log
+       file */
+    if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+      goto err;
     while (!(error = Log_event::read_log_event(&log, packet, log_lock)))
     {
 #ifndef DBUG_OFF
@@ -620,17 +679,26 @@ impossible position";
         log's filename does not change while it's active
       */
       if (coord)
-        coord->pos= uint4korr(packet->ptr() + 1 + LOG_POS_OFFSET);
+        coord->pos= uint4korr(packet->ptr() + ev_offset + LOG_POS_OFFSET);
 
-      if ((*packet)[EVENT_TYPE_OFFSET+1] == FORMAT_DESCRIPTION_EVENT)
+      event_type= (Log_event_type)((*packet)[LOG_EVENT_OFFSET+ev_offset]);
+      if (event_type == FORMAT_DESCRIPTION_EVENT)
       {
-        binlog_can_be_corrupted= test((*packet)[FLAGS_OFFSET+1] &
+        binlog_can_be_corrupted= test((*packet)[FLAGS_OFFSET+ev_offset] &
                                       LOG_EVENT_BINLOG_IN_USE_F);
-        (*packet)[FLAGS_OFFSET+1] &= ~LOG_EVENT_BINLOG_IN_USE_F;
+        (*packet)[FLAGS_OFFSET+ev_offset] &= ~LOG_EVENT_BINLOG_IN_USE_F;
       }
-      else if ((*packet)[EVENT_TYPE_OFFSET+1] == STOP_EVENT)
+      else if (event_type == STOP_EVENT)
         binlog_can_be_corrupted= FALSE;
 
+      pos = my_b_tell(&log);
+      if (RUN_HOOK(binlog_transmit, before_send_event,
+                   (thd, flags, packet, log_file_name, pos)))
+      {
+        my_errno= ER_UNKNOWN_ERROR;
+        errmsg= "run 'before_send_event' hook failed";
+        goto err;
+      }
       if (my_net_write(net, (uchar*) packet->ptr(), packet->length()))
       {
 	errmsg = "Failed on my_net_write()";
@@ -638,9 +706,8 @@ impossible position";
 	goto err;
       }
 
-      DBUG_PRINT("info", ("log event code %d",
-			  (*packet)[LOG_EVENT_OFFSET+1] ));
-      if ((*packet)[LOG_EVENT_OFFSET+1] == LOAD_EVENT)
+      DBUG_PRINT("info", ("log event code %d", event_type));
+      if (event_type == LOAD_EVENT)
       {
 	if (send_file(thd))
 	{
@@ -649,7 +716,17 @@ impossible position";
 	  goto err;
 	}
       }
-      packet->set("\0", 1, &my_charset_bin);
+
+      if (RUN_HOOK(binlog_transmit, after_send_event, (thd, flags, packet)))
+      {
+        errmsg= "Failed to run hook 'after_send_event'";
+        my_errno= ER_UNKNOWN_ERROR;
+        goto err;
+      }
+
+      /* reset transmit packet for next loop */
+      if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+        goto err;
     }
 
     /*
@@ -700,6 +777,11 @@ impossible position";
 	}
 #endif
 
+        /* reset the transmit packet for the event read from binary log
+           file */
+        if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+          goto err;
+        
 	/*
 	  No one will update the log while we are reading
 	  now, but we'll be quick and just read one record
@@ -718,6 +800,7 @@ impossible position";
 	  read_packet = 1;
           if (coord)
             coord->pos= uint4korr(packet->ptr() + 1 + LOG_POS_OFFSET);
+          event_type= (Log_event_type)((*packet)[LOG_EVENT_OFFSET+ev_offset]);
 	  break;
 
 	case LOG_READ_EOF:
@@ -753,6 +836,9 @@ impossible position";
                   sql_print_information("the rest of heartbeat info skipped ...");
               }
 #endif
+              /* reset transmit packet for the heartbeat event */
+              if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+                goto err;
               if (send_heartbeat_event(net, packet, coord))
               {
                 errmsg = "Failed on my_net_write()";
@@ -778,8 +864,17 @@ impossible position";
 	}
 
 	if (read_packet)
-	{
-	  thd_proc_info(thd, "Sending binlog event to slave");
+        {
+          thd_proc_info(thd, "Sending binlog event to slave");
+          pos = my_b_tell(&log);
+          if (RUN_HOOK(binlog_transmit, before_send_event,
+                       (thd, flags, packet, log_file_name, pos)))
+          {
+            my_errno= ER_UNKNOWN_ERROR;
+            errmsg= "run 'before_send_event' hook failed";
+            goto err;
+          }
+	  
 	  if (my_net_write(net, (uchar*) packet->ptr(), packet->length()) )
 	  {
 	    errmsg = "Failed on my_net_write()";
@@ -787,7 +882,7 @@ impossible position";
 	    goto err;
 	  }
 
-	  if ((*packet)[LOG_EVENT_OFFSET+1] == LOAD_EVENT)
+	  if (event_type == LOAD_EVENT)
 	  {
 	    if (send_file(thd))
 	    {
@@ -796,11 +891,13 @@ impossible position";
 	      goto err;
 	    }
 	  }
-	  packet->set("\0", 1, &my_charset_bin);
-	  /*
-	    No need to net_flush because we will get to flush later when
-	    we hit EOF pretty quick
-	  */
+
+          if (RUN_HOOK(binlog_transmit, after_send_event, (thd, flags, packet)))
+          {
+            my_errno= ER_UNKNOWN_ERROR;
+            errmsg= "Failed to run hook 'after_send_event'";
+            goto err;
+          }
 	}
 
 	if (fatal_error)
@@ -836,6 +933,10 @@ impossible position";
       end_io_cache(&log);
       (void) my_close(file, MYF(MY_WME));
 
+      /* reset transmit packet for the possible fake rotate event */
+      if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
+        goto err;
+      
       /*
         Call fake_rotate_event() in case the previous log (the one which
         we have just finished reading) did not contain a Rotate event
@@ -853,8 +954,6 @@ impossible position";
 	goto err;
       }
 
-      packet->length(0);
-      packet->append('\0');
       if (coord)
         coord->file_name= log_file_name; // reset to the next
     }
@@ -864,6 +963,7 @@ end:
   end_io_cache(&log);
   (void)my_close(file, MYF(MY_WME));
 
+  RUN_HOOK(binlog_transmit, transmit_stop, (thd, flags));
   my_eof(thd);
   thd_proc_info(thd, "Waiting to finalize termination");
   pthread_mutex_lock(&LOCK_thread_count);
@@ -874,6 +974,7 @@ end:
 err:
   thd_proc_info(thd, "Waiting to finalize termination");
   end_io_cache(&log);
+  RUN_HOOK(binlog_transmit, transmit_stop, (thd, flags));
   /*
     Exclude  iteration through thread list
     this is needed for purge_logs() - it will iterate through
@@ -1135,6 +1236,7 @@ int reset_slave(THD *thd, Master_info* mi)
     goto err;
   }
 
+  RUN_HOOK(binlog_relay_io, after_reset_slave, (thd, mi));
 err:
   unlock_slave_threads(mi);
   if (error)
@@ -1417,7 +1519,11 @@ int reset_master(THD* thd)
                ER(ER_FLUSH_MASTER_BINLOG_CLOSED), MYF(ME_BELL+ME_WAITTANG));
     return 1;
   }
-  return mysql_bin_log.reset_logs(thd);
+
+  if (mysql_bin_log.reset_logs(thd))
+    return 1;
+  RUN_HOOK(binlog_transmit, after_reset_master, (thd, 0 /* flags */));
+  return 0;
 }
 
 int cmp_master_pos(const char* log_file_name1, ulonglong log_pos1,
@@ -1449,7 +1555,7 @@ bool mysql_show_binlog_events(THD* thd)
   DBUG_ENTER("mysql_show_binlog_events");
 
   Log_event::init_show_field_list(&field_list);
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
@@ -1599,7 +1705,7 @@ bool show_binlog_info(THD* thd)
   field_list.push_back(new Item_empty_string("Binlog_Do_DB",255));
   field_list.push_back(new Item_empty_string("Binlog_Ignore_DB",255));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
   protocol->prepare_for_resend();
@@ -1654,7 +1760,7 @@ bool show_binlogs(THD* thd)
   field_list.push_back(new Item_empty_string("Log_name", 255));
   field_list.push_back(new Item_return_int("File_size", 20,
                                            MYSQL_TYPE_LONGLONG));
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
   
@@ -1809,65 +1915,39 @@ static void fix_slave_net_timeout(THD *thd, enum_var_type type)
 
 static sys_var_chain vars = { NULL, NULL };
 
+static sys_var_const    sys_log_slave_updates(&vars, "log_slave_updates",
+                                              OPT_GLOBAL, SHOW_MY_BOOL,
+                                              (uchar*) &opt_log_slave_updates);
+static sys_var_const    sys_relay_log(&vars, "relay_log",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &opt_relay_logname);
+static sys_var_const    sys_relay_log_index(&vars, "relay_log_index",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &opt_relaylog_index_name);
+static sys_var_const    sys_relay_log_info_file(&vars, "relay_log_info_file",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &relay_log_info_file);
 static sys_var_bool_ptr	sys_relay_log_purge(&vars, "relay_log_purge",
 					    &relay_log_purge);
+static sys_var_const    sys_relay_log_space_limit(&vars,
+                                                  "relay_log_space_limit",
+                                                  OPT_GLOBAL, SHOW_LONGLONG,
+                                                  (uchar*)
+                                                  &relay_log_space_limit);
+static sys_var_const    sys_slave_load_tmpdir(&vars, "slave_load_tmpdir",
+                                              OPT_GLOBAL, SHOW_CHAR_PTR,
+                                              (uchar*) &slave_load_tmpdir);
 static sys_var_long_ptr	sys_slave_net_timeout(&vars, "slave_net_timeout",
 					      &slave_net_timeout,
                                               fix_slave_net_timeout);
+static sys_var_const    sys_slave_skip_errors(&vars, "slave_skip_errors",
+                                              OPT_GLOBAL, SHOW_CHAR,
+                                              (uchar*) slave_skip_error_names);
 static sys_var_long_ptr	sys_slave_trans_retries(&vars, "slave_transaction_retries",
 						&slave_trans_retries);
 static sys_var_sync_binlog_period sys_sync_binlog_period(&vars, "sync_binlog", &sync_binlog_period);
 static sys_var_slave_skip_counter sys_slave_skip_counter(&vars, "sql_slave_skip_counter");
 
-static int show_slave_skip_errors(THD *thd, SHOW_VAR *var, char *buff);
-
-
-static SHOW_VAR fixed_vars[]= {
-  {"log_slave_updates",       (char*) &opt_log_slave_updates,       SHOW_MY_BOOL},
-  {"relay_log" , (char*) &opt_relay_logname, SHOW_CHAR_PTR},
-  {"relay_log_index", (char*) &opt_relaylog_index_name, SHOW_CHAR_PTR},
-  {"relay_log_info_file", (char*) &relay_log_info_file, SHOW_CHAR_PTR},
-  {"relay_log_space_limit",   (char*) &relay_log_space_limit,       SHOW_LONGLONG},
-  {"slave_load_tmpdir",       (char*) &slave_load_tmpdir,           SHOW_CHAR_PTR},
-  {"slave_skip_errors",       (char*) &show_slave_skip_errors,      SHOW_FUNC},
-};
-
-static int show_slave_skip_errors(THD *thd, SHOW_VAR *var, char *buff)
-{
-  var->type=SHOW_CHAR;
-  var->value= buff;
-  if (!use_slave_mask || bitmap_is_clear_all(&slave_error_mask))
-  {
-    var->value= const_cast<char *>("OFF");
-  }
-  else if (bitmap_is_set_all(&slave_error_mask))
-  {
-    var->value= const_cast<char *>("ALL");
-  }
-  else
-  {
-    /* 10 is enough assuming errors are max 4 digits */
-    int i;
-    var->value= buff;
-    for (i= 1;
-         i < MAX_SLAVE_ERROR &&
-         (buff - var->value) < SHOW_VAR_FUNC_BUFF_SIZE;
-         i++)
-    {
-      if (bitmap_is_set(&slave_error_mask, i))
-      {
-        buff= int10_to_str(i, buff, 10);
-        *buff++= ',';
-      }
-    }
-    if (var->value != buff)
-      buff--;				// Remove last ','
-    if (i < MAX_SLAVE_ERROR)
-      buff= strmov(buff, "...");  // Couldn't show all errors
-    *buff=0;
-  }
-  return 0;
-}
 
 bool sys_var_slave_skip_counter::check(THD *thd, set_var *var)
 {
@@ -1915,8 +1995,6 @@ bool sys_var_sync_binlog_period::update(THD *thd, set_var *var)
 
 int init_replication_sys_vars()
 {
-  mysql_append_static_vars(fixed_vars, sizeof(fixed_vars) / sizeof(SHOW_VAR));
-
   if (mysql_add_sys_var_chain(vars.first, my_long_options))
   {
     /* should not happen */
@@ -1927,5 +2005,3 @@ int init_replication_sys_vars()
 }
 
 #endif /* HAVE_REPLICATION */
-
-

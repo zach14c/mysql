@@ -28,12 +28,11 @@ int maria_close(register MARIA_HA *info)
   my_bool share_can_be_freed= FALSE;
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("maria_close");
-  DBUG_PRINT("enter",("base: 0x%lx  reopen: %u  locks: %u",
-		      (long) info, (uint) share->reopen,
-                      (uint) share->tot_locks));
+  DBUG_PRINT("enter",("maria_handler: %p  reopen: %u  locks: %u",
+		      info, (uint) share->reopen, (uint) share->tot_locks));
 
   /* Check that we have unlocked key delete-links properly */
-  DBUG_ASSERT(info->used_key_del == 0);
+  DBUG_ASSERT(info->key_del_used == 0);
 
   pthread_mutex_lock(&THR_LOCK_maria);
   if (info->lock_type == F_EXTRA_LCK)
@@ -107,7 +106,7 @@ int maria_close(register MARIA_HA *info)
         File must be synced as it is going out of the maria_open_list and so
         becoming unknown to future Checkpoints.
       */
-      if (!share->temporary && my_sync(share->kfile.file, MYF(MY_WME)))
+      if (share->now_transactional && my_sync(share->kfile.file, MYF(MY_WME)))
         error= my_errno;
       if (my_close(share->kfile.file, MYF(0)))
         error= my_errno;

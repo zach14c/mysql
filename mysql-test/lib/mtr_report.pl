@@ -315,7 +315,7 @@ sub mtr_report_stats ($) {
                 /Slave: Unknown column 'c7' in 't15' Error_code: 1054/ or
                 /Slave: Key column 'c6' doesn't exist in table Error_code: 1072/ or
 		/Slave: Error .* doesn't exist/ or
-		/Slave: Error .*Deadlock found/ or
+		/Slave: Deadlock found/ or
 		/Slave: Error .*Unknown table/ or
 		/Slave: Error in Write_rows event: / or
 		/Slave: Field .* of table .* has no default value/ or
@@ -329,31 +329,56 @@ sub mtr_report_stats ($) {
                 /Slave SQL:.*(?:Error_code: \d+|Query:.*)/ or
 		
 		# backup_errors test is supposed to trigger lots of backup related errors
-		($testname eq 'main.backup_errors') and
+		($testname eq 'backup.backup_errors') and
 		(
-		  /Backup:/ or /Restore:/ or /Can't open the online backup progress tables/
+		  /Backup:/ or /Restore:/ or /Can't open the backup logs as tables/
 		) or
 
 		# backup_backupdir test is supposed to trigger backup related errors
-		($testname eq 'main.backup_backupdir') and
+		($testname eq 'backup.backup_backupdir') and
 		(
 		  /Backup:/ or /Can't write to backup location/
 		) or
                 
 		# backup_concurrent performs a backup that should fail
-		($testname eq 'main.backup_concurrent') and
+		($testname eq 'backup.backup_concurrent') and
 		(
 		  /Can't execute this command because another BACKUP\/RESTORE operation is in progress/
 		) or
                 
-		# The tablespace test triggers error below on purpose
-		($testname eq 'main.backup_tablespace') and
+		# backup_db_grants test is supposed to trigger lots of restore warnings
+		($testname eq 'backup.backup_db_grants') and
 		(
-		  /Restore: Tablespace .* needed by tables being restored has changed on the server/
+		  /Restore:/ or /was skipped because the user does not exist/
+		) or
+                
+		# backup_logs_output has warning because --log-backup-output option does 
+    # not have argument
+		($testname eq 'backup.backup_logs_output') and
+		(
+		  /Although a path was specified for the/
+		) or
+                
+		# backup_nodata_driver intentionally provokes an error in opening a MERGE table
+		($testname eq 'backup.backup_nodata_driver') and
+		(
+		  /Restore: Open and lock tables failed in RESTORE/
+		) or
+                
+		# The tablespace test triggers error below on purpose
+		($testname eq 'backup.backup_tablespace') and
+		(
+		  /Restore: Tablespace .* needed by tables being restored, but the current/
+		) or
+                
+		# The backup_securefilepriv test triggers error below on purpose
+		($testname eq 'backup.backup_securefilepriv') and
+		(
+		  /Backup: The MySQL server is running with the /
 		) or
 		
 		# The views test triggers errors below on purpose
-		($testname eq 'main.backup_views') and
+		($testname eq 'backup.backup_views') and
 		(
 		  /Backup: Failed to add view/ or
 		  /Backup: Failed to obtain meta-data for view/ or
@@ -361,11 +386,11 @@ sub mtr_report_stats ($) {
 		) or
  	 
 		# ignore warning generated when backup engine selection algorithm is tested
-		($testname eq 'main.backup_no_be') and /Backup: Cannot create backup engine/ or
+		($testname eq 'backup.backup_no_be') and /Backup: Cannot create backup engine/ or
 		# ignore warnings generated when backup privilege is tested
-		($testname eq 'main.backup_security') and /(Backup|Restore): Access denied; you need the SUPER/ or
+		($testname eq 'backup.backup_security') and /(Backup|Restore): Access denied; you need the SUPER/ or
 		
-                ($testname eq 'main.backup_myisam1') and
+                ($testname eq 'backup.backup_myisam1') and
                 (/Backup: Can't initialize MyISAM backup driver/) or
 		/Sort aborted/ or
 		/Time-out in NDB/ or
@@ -457,6 +482,18 @@ sub mtr_report_stats ($) {
                  )) or
                 # Test case for Bug#31590 produces the following error:
                 /Out of sort memory; increase server sort buffer size/ or
+
+                # Bug#35161, test of auto repair --myisam-recover
+                /able.*_will_crash/ or
+
+                # lowercase_table3 using case sensitive option on
+                # case insensitive filesystem (InnoDB error).
+                /Cannot find or open table test\/BUG29839 from/ or
+
+                # When trying to set lower_case_table_names = 2
+                # on a case sensitive file system. Bug#37402.
+                /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./ or
+
                 # maria-recovery.test has warning about missing log file
                 /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
                 # and about marked-corrupted table

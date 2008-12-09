@@ -49,6 +49,13 @@ typedef struct st_ha_data_partition
 
 #define PARTITION_BYTES_IN_POS 2
 #define PARTITION_MAX_MSG_BUF  1024   /**< used in CHECK TABLE, REPAIR TABLE */
+#define PARTITION_ENABLED_TABLE_FLAGS (HA_FILE_BASED | HA_REC_NOT_IN_SEQ)
+#define PARTITION_DISABLED_TABLE_FLAGS (HA_CAN_GEOMETRY | \
+                                        HA_CAN_FULLTEXT | \
+                                        HA_DUPLICATE_POS | \
+                                        HA_CAN_SQL_HANDLER | \
+                                        HA_CAN_INSERT_DELAYED | \
+                                        HA_PRIMARY_KEY_REQUIRED_FOR_POSITION)
 class ha_partition :public handler
 {
 private:
@@ -75,9 +82,16 @@ private:
   handler **m_added_file;               // Added parts kept for errors
   partition_info *m_part_info;          // local reference to partition
   Field **m_part_field_array;           // Part field array locally to save acc
-  uchar *m_ordered_rec_buffer;           // Row and key buffer for ord. idx scan
-  KEY *m_curr_key_info;                 // Current index
-  uchar *m_rec0;                         // table->record[0]
+  uchar *m_ordered_rec_buffer;          // Row and key buffer for ord. idx scan
+  /*
+    Current index.
+    When used in key_rec_cmp: If clustered pk, index compare
+    must compare pk if given index is same for two rows.
+    So normally m_curr_key_info[0]= current index and m_curr_key[1]= NULL,
+    and if clustered pk, [0]= current index, [1]= pk, [2]= NULL
+  */
+  KEY *m_curr_key_info[3];              // Current index
+  uchar *m_rec0;                        // table->record[0]
   QUEUE m_queue;                        // Prio queue used by sorted read
   /*
     Since the partition handler is a handler on top of other handlers, it
@@ -86,8 +100,15 @@ private:
     for this since the MySQL Server sometimes allocating the handler object
     without freeing them.
   */
-  longlong m_table_flags;
   ulong m_low_byte_first;
+  enum enum_handler_status
+  {
+    handler_not_initialized= 0,
+    handler_initialized,
+    handler_opened,
+    handler_closed
+  };
+  enum_handler_status m_handler_status;
 
   uint m_reorged_parts;                  // Number of reorganised parts
   uint m_tot_parts;                      // Total number of partitions;
@@ -183,7 +204,7 @@ public:
     enable later calls of the methods to retrieve constants from the under-
     lying handlers. Returns false if not successful.
   */
-   bool initialise_partition(MEM_ROOT *mem_root);
+   bool initialize_partition(MEM_ROOT *mem_root);
 
   /*
     -------------------------------------------------------------------------
@@ -303,6 +324,10 @@ public:
     Call to unlock rows not to be updated in transaction
   */
   virtual void unlock_row();
+  /*
+    Call to hint about semi consistent read
+  */
+  virtual void try_semi_consistent_read(bool);
 
   /*
     -------------------------------------------------------------------------
@@ -588,6 +613,8 @@ public:
     The partition handler will support whatever the underlying handlers
     support except when specifically mentioned below about exceptions
     to this rule.
+    NOTE: This cannot be cached since it can depend on TRANSACTION ISOLATION
+    LEVEL which is dynamic, see bug#39084.
 
     HA_READ_RND_SAME:
     Not currently used. (Means that the handler supports the rnd_same() call)
@@ -712,9 +739,33 @@ public:
     transfer those calls into index_read and other calls in the
     index scan module.
     (NDB)
+
+    HA_PRIMARY_KEY_REQUIRED_FOR_POSITION:
+    Does the storage engine need a PK for position?
+    Used with hidden primary key in InnoDB.
+    Hidden primary keys cannot be supported by partitioning, since the
+    partitioning expressions columns must be a part of the primary key.
+    (InnoDB)
+
+    HA_FILE_BASED is always set for partition handler since we use a
+    special file for handling names of partitions, engine types.
+    HA_REC_NOT_IN_SEQ is always set for partition handler since we cannot
+    guarantee that the records will be returned in sequence.
+    HA_CAN_GEOMETRY, HA_CAN_FULLTEXT, HA_CAN_SQL_HANDLER, HA_DUPLICATE_POS,
+    HA_CAN_INSERT_DELAYED, HA_PRIMARY_KEY_REQUIRED_FOR_POSITION is disabled
+    until further investigated.
   */
-  virtual ulonglong table_flags() const
-  { return m_table_flags; }
+  virtual Table_flags table_flags() const
+  {
+    DBUG_ENTER("ha_partition::table_flags");
+    if (m_handler_status < handler_initialized ||
+        m_handler_status >= handler_closed)
+      DBUG_RETURN(PARTITION_ENABLED_TABLE_FLAGS);
+    else
+      DBUG_RETURN((m_file[0]->ha_table_flags() &
+                   ~(PARTITION_DISABLED_TABLE_FLAGS)) |
+                  (PARTITION_ENABLED_TABLE_FLAGS));
+  }
 
   /*
     This is a bitmap of flags that says how the storage engine
@@ -881,15 +932,14 @@ private:
       auto_increment_lock= FALSE;
     }
   }
-  virtual void set_auto_increment_if_higher()
+  virtual void set_auto_increment_if_higher(const ulonglong nr)
   {
-    ulonglong nr= table->next_number_field->val_int();
     HA_DATA_PARTITION *ha_data= (HA_DATA_PARTITION*) table_share->ha_data;
     lock_auto_increment();
+    DBUG_ASSERT(ha_data->auto_inc_initialized == TRUE);
     /* must check when the mutex is taken */
     if (nr >= ha_data->next_auto_inc_val)
       ha_data->next_auto_inc_val= nr + 1;
-    ha_data->auto_inc_initialized= TRUE;
     unlock_auto_increment();
   }
 
@@ -897,7 +947,7 @@ public:
 
   /*
      -------------------------------------------------------------------------
-     MODULE initialise handler for HANDLER call
+     MODULE initialize handler for HANDLER call
      -------------------------------------------------------------------------
      This method is a special InnoDB method called before a HANDLER query.
      -------------------------------------------------------------------------
@@ -996,8 +1046,7 @@ public:
     virtual bool is_crashed() const;
 
     private:
-    int handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt,
-                              uint flags, bool all_parts);
+    int handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt, uint flags);
     public:
   /*
     -------------------------------------------------------------------------

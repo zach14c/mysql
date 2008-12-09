@@ -56,10 +56,10 @@ static bool make_empty_rec(THD *thd, int file, enum legacy_db_type table_type,
 
 struct Pack_header_error_handler: public Internal_error_handler
 {
-  virtual bool handle_error(uint sql_errno,
-                            const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno,
+                            const char *message);
   bool is_handled;
   Pack_header_error_handler() :is_handled(FALSE) {}
 };
@@ -67,10 +67,10 @@ struct Pack_header_error_handler: public Internal_error_handler
 
 bool
 Pack_header_error_handler::
-handle_error(uint sql_errno,
-             const char * /* message */,
+handle_error(THD * /* thd */,
              MYSQL_ERROR::enum_warning_level /* level */,
-             THD * /* thd */)
+             uint sql_errno,
+             const char * /* message */)
 {
   is_handled= (sql_errno == ER_TOO_MANY_FIELDS);
   return is_handled;
@@ -219,8 +219,12 @@ bool mysql_create_frm(THD *thd, const char *file_name,
     create_info->comment.length= tmp_len;
   }
 
-  //if table comment is larger than 180 bytes, store into extra segment.
-  if (create_info->comment.length > 180)
+  /*
+    If table comment is longer than TABLE_COMMENT_INLINE_MAXLEN bytes,
+    store the comment in an extra segment (up to TABLE_COMMENT_MAXLEN bytes).
+    Pre 6.0, the limit was 60 characters, with no extra segment-handling.
+  */
+  if (create_info->comment.length > TABLE_COMMENT_INLINE_MAXLEN)
   {
     forminfo[46]=255;
     create_info->extra_size+= 2 + create_info->comment.length;
@@ -235,7 +239,8 @@ bool mysql_create_frm(THD *thd, const char *file_name,
       payload with a magic value to detect wrong buffer-sizes. We
       explicitly zero that segment again.
     */
-    memset((char*) forminfo+47 + forminfo[46], 0, 61 - forminfo[46]);
+    memset((char*) forminfo+47 + forminfo[46], 0,
+           TABLE_COMMENT_INLINE_MAXLEN + 1 - forminfo[46]);
 #endif
   }
 

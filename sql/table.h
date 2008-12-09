@@ -20,6 +20,7 @@
 
 class Item;				/* Needed by ORDER */
 class Item_subselect;
+class Item_field;
 class GRANT_TABLE;
 class st_select_lex_unit;
 class st_select_lex;
@@ -69,13 +70,63 @@ typedef struct st_order {
   table_map used, depend_map;
 } ORDER;
 
+/**
+   @brief The current state of the privilege checking process for the current
+   user, SQL statement and SQL object.
+
+   @details The privilege checking process is divided into phases depending on
+   the level of the privilege to be checked and the type of object to be
+   accessed. Due to the mentioned scattering of privilege checking
+   functionality, it is necessary to keep track of the state of the
+   process. This information is stored in privilege, want_privilege, and
+   orig_want_privilege.
+
+   A GRANT_INFO also serves as a cache of the privilege hash tables. Relevant
+   members are grant_table and version.
+ */
 typedef struct st_grant_info
 {
+  /**
+     @brief A copy of the privilege information regarding the current host,
+     database, object and user.
+
+     @details The version of this copy is found in GRANT_INFO::version.
+   */
   GRANT_TABLE *grant_table;
+  /**
+     @brief Used for cache invalidation when caching privilege information.
+
+     @details The privilege information is stored on disk, with dedicated
+     caches residing in memory: table-level and column-level privileges,
+     respectively, have their own dedicated caches.
+
+     The GRANT_INFO works as a level 1 cache with this member updated to the
+     current value of the global variable @c grant_version (@c static variable
+     in sql_acl.cc). It is updated Whenever the GRANT_INFO is refreshed from
+     the level 2 cache. The level 2 cache is the @c column_priv_hash structure
+     (@c static variable in sql_acl.cc)
+
+     @see grant_version
+   */
   uint version;
+  /**
+     @brief The set of privileges that the current user has fulfilled for a
+     certain host, database, and object.
+     
+     @details This field is continually updated throughout the access checking
+     process. In each step the "wanted privilege" is checked against the
+     fulfilled privileges. When/if the intersection of these sets is empty,
+     access is granted.
+
+     The set is implemented as a bitmap, with the bits defined in sql_acl.h.
+   */
   ulong privilege;
+  /**
+     @brief the set of privileges that the current user needs to fulfil in
+     order to carry out the requested operation.
+   */
   ulong want_privilege;
-  /*
+  /**
     Stores the requested access acl of top level tables list. Is used to
     check access rights to the underlying tables of a view.
   */
@@ -245,9 +296,9 @@ struct TABLE_share;
   instance of table share per one table in the database.
 */
 
-typedef struct st_table_share
+struct TABLE_SHARE
 {
-  st_table_share() {}                    /* Remove gcc warning */
+  TABLE_SHARE() {}                    /* Remove gcc warning */
 
   /** Category of this table. */
   TABLE_CATEGORY table_category;
@@ -259,8 +310,7 @@ typedef struct st_table_share
   TYPELIB fieldnames;			/* Pointer to fieldnames */
   TYPELIB *intervals;			/* pointer to interval info */
   pthread_mutex_t LOCK_ha_data;         /* To protect access to ha_data */
-  struct st_table_share *next,		/* Link to unused shares */
-    **prev;
+  TABLE_SHARE *next, **prev;            /* Link to unused shares */
 
   /*
     Doubly-linked (back-linked) lists of used and unused TABLE objects
@@ -550,7 +600,7 @@ typedef struct st_table_share
     return (tmp_table == SYSTEM_TMP_TABLE || is_view) ? 0 : table_map_id;
   }
 
-} TABLE_SHARE;
+};
 
 
 extern ulong refresh_version;
@@ -563,8 +613,9 @@ enum index_hint_type
   INDEX_HINT_FORCE
 };
 
-struct st_table {
-  st_table() {}                               /* Remove gcc warning */
+struct TABLE
+{
+  TABLE() {}                               /* Remove gcc warning */
 
   TABLE_SHARE	*s;
   handler	*file;
@@ -575,11 +626,11 @@ private:
      Declared as private to avoid direct manipulation with those objects.
      One should use methods of I_P_List template instead.
   */
-  struct st_table *share_next, **share_prev;
+  TABLE *share_next, **share_prev;
 
   friend struct TABLE_share;
 public:
-  struct st_table *next, *prev;
+  TABLE *next, *prev;
 
   THD	*in_use;                        /* Which thread uses this */
   Field **field;			/* Pointer to fields */
@@ -716,9 +767,7 @@ public:
   my_bool force_index;
   my_bool distinct,const_table,no_rows;
   my_bool key_read, no_keyread;
-  my_bool locked_by_logger;
   my_bool no_replicate;
-  my_bool locked_by_name;
   my_bool fulltext_searched;
   my_bool no_cache;
   /* To signal that the table is associated with a HANDLER statement */
@@ -729,7 +778,6 @@ public:
     Used only in the MODE_NO_AUTO_VALUE_ON_ZERO mode.
   */
   my_bool auto_increment_field_not_null;
-  my_bool insert_or_update;             /* Can be used by the handler */
   my_bool alias_name_used;		/* true if table_name is alias */
   my_bool get_fields_in_item_tree;      /* Signal to fix_field */
 
@@ -822,50 +870,6 @@ typedef struct st_foreign_key_info
   List<LEX_STRING> referenced_fields;
 } FOREIGN_KEY_INFO;
 
-/*
-  Make sure that the order of schema_tables and enum_schema_tables are the same.
-*/
-
-enum enum_schema_tables
-{
-  SCH_CHARSETS= 0,
-  SCH_COLLATIONS,
-  SCH_COLLATION_CHARACTER_SET_APPLICABILITY,
-  SCH_COLUMNS,
-  SCH_COLUMN_PRIVILEGES,
-  SCH_ENGINES,
-  SCH_EVENTS,
-  SCH_FILES,
-  SCH_GLOBAL_STATUS,
-  SCH_GLOBAL_VARIABLES,
-  SCH_KEY_COLUMN_USAGE,
-  SCH_OPEN_TABLES,
-  SCH_PARAMETERS,
-  SCH_PARTITIONS,
-  SCH_PLUGINS,
-  SCH_PROCESSLIST,
-  SCH_PROFILES,
-  SCH_REFERENTIAL_CONSTRAINTS,
-  SCH_PROCEDURES,
-  SCH_SCHEMATA,
-  SCH_SCHEMA_PRIVILEGES,
-  SCH_SESSION_STATUS,
-  SCH_SESSION_VARIABLES,
-  SCH_STATISTICS,
-  SCH_STATUS,
-  SCH_TABLES,
-  SCH_TABLE_CONSTRAINTS,
-  SCH_TABLE_NAMES,
-  SCH_TABLE_PRIVILEGES,
-  SCH_TRIGGERS,
-  SCH_USER_PRIVILEGES,
-  SCH_VARIABLES,
-  SCH_VIEWS,
-  SCH_FALCON_TABLESPACES,
-  SCH_FALCON_TABLESPACE_FILES
-};
-
-
 #define MY_I_S_MAYBE_NULL 1
 #define MY_I_S_UNSIGNED   2
 
@@ -955,7 +959,6 @@ typedef struct st_schema_table
 /** The threshold size a blob field buffer before it is freed */
 #define MAX_TDC_BLOB_SIZE 65536
 
-struct st_lex;
 class select_union;
 class TMP_TABLE_PARAM;
 
@@ -979,7 +982,7 @@ class Natural_join_column: public Sql_alloc
 {
 public:
   Field_translator *view_field;  /* Column reference of merge view. */
-  Field            *table_field; /* Column reference of table or temp view. */
+  Item_field       *table_field; /* Column reference of table or temp view. */
   TABLE_LIST *table_ref; /* Original base table/view reference. */
   /*
     True if a common join column of two NATURAL/USING join operands. Notice
@@ -991,7 +994,7 @@ public:
   bool is_common;
 public:
   Natural_join_column(Field_translator *field_param, TABLE_LIST *tab);
-  Natural_join_column(Field *field_param, TABLE_LIST *tab);
+  Natural_join_column(Item_field *field_param, TABLE_LIST *tab);
   const char *name();
   Item *create_item(THD *thd);
   Field *field();
@@ -1035,6 +1038,7 @@ public:
        ;
 */
 
+struct LEX;
 class Index_hint;
 struct TABLE_LIST
 {
@@ -1139,6 +1143,27 @@ struct TABLE_LIST
     can see this lists can't be merged)
   */
   TABLE_LIST	*correspondent_table;
+  /**
+     @brief Normally, this field is non-null for anonymous derived tables only.
+
+     @details This field is set to non-null for 
+     
+     - Anonymous derived tables, In this case it points to the SELECT_LEX_UNIT
+     representing the derived table. E.g. for a query
+     
+     @verbatim SELECT * FROM (SELECT a FROM t1) b @endverbatim
+     
+     For the @c TABLE_LIST representing the derived table @c b, @c derived
+     points to the SELECT_LEX_UNIT representing the result of the query within
+     parenteses.
+     
+     - Views. This is set for views with @verbatim ALGORITHM = TEMPTABLE
+     @endverbatim by mysql_make_view().
+     
+     @note Inside views, a subquery in the @c FROM clause is not allowed.
+     @note Do not use this field to separate views/base tables/anonymous
+     derived tables. Use TABLE_LIST::is_anonymous_derived_table().
+  */
   st_select_lex_unit *derived;		/* SELECT_LEX_UNIT of derived table */
   ST_SCHEMA_TABLE *schema_table;        /* Information_schema table */
   st_select_lex	*schema_select_lex;
@@ -1150,7 +1175,7 @@ struct TABLE_LIST
   TMP_TABLE_PARAM *schema_table_param;
   /* link to select_lex where this table was used */
   st_select_lex	*select_lex;
-  st_lex	*view;			/* link on VIEW lex for merging */
+  LEX *view;                    /* link on VIEW lex for merging */
   Field_translator *field_translation;	/* array of VIEW fields */
   /* pointer to element after last one in translation table above */
   Field_translator *field_translation_end;
@@ -1203,8 +1228,15 @@ struct TABLE_LIST
   st_lex_user   definer;                /* definer of view */
   ulonglong	file_version;		/* version of file's field set */
   ulonglong     updatable_view;         /* VIEW can be updated */
-  ulonglong	revision;		/* revision control number */
-  ulonglong	algorithm;		/* 0 any, 1 tmp tables , 2 merging */
+  /** 
+      @brief The declared algorithm, if this is a view.
+      @details One of
+      - VIEW_ALGORITHM_UNDEFINED
+      - VIEW_ALGORITHM_TMPTABLE
+      - VIEW_ALGORITHM_MERGE
+      @to do Replace with an enum 
+  */
+  ulonglong	algorithm;
   ulonglong     view_suid;              /* view is suid (TRUE dy default) */
   ulonglong     with_check;             /* WITH CHECK OPTION */
   /*
@@ -1212,7 +1244,15 @@ struct TABLE_LIST
     algorithm)
   */
   uint8         effective_with_check;
-  uint8         effective_algorithm;    /* which algorithm was really used */
+  /** 
+      @brief The view algorithm that is actually used, if this is a view.
+      @details One of
+      - VIEW_ALGORITHM_UNDEFINED
+      - VIEW_ALGORITHM_TMPTABLE
+      - VIEW_ALGORITHM_MERGE
+      @to do Replace with an enum 
+  */
+  uint8         effective_algorithm;
   GRANT_INFO	grant;
   /* data need by some engines in query cache*/
   ulonglong     engine_data;
@@ -1379,9 +1419,9 @@ struct TABLE_LIST
   Item_subselect *containing_subselect();
 
   /* 
-    Compiles the tagged hints list and fills up st_table::keys_in_use_for_query,
-    st_table::keys_in_use_for_group_by, st_table::keys_in_use_for_order_by,
-    st_table::force_index and st_table::covering_keys.
+    Compiles the tagged hints list and fills up TABLE::keys_in_use_for_query,
+    TABLE::keys_in_use_for_group_by, TABLE::keys_in_use_for_order_by,
+    TABLE::force_index and TABLE::covering_keys.
   */
   bool process_index_hints(TABLE *table);
 
@@ -1425,6 +1465,26 @@ struct TABLE_LIST
     m_table_ref_type= s->get_table_ref_type();
     m_table_ref_version= s->get_table_ref_version();
   }
+
+  /**
+     @brief True if this TABLE_LIST represents an anonymous derived table,
+     i.e.  the result of a subquery.
+  */
+  bool is_anonymous_derived_table() const { return derived && !view; }
+
+  /**
+     @brief Returns the name of the database that the referenced table belongs
+     to.
+  */
+  char *get_db_name() { return view != NULL ? view_db.str : db; }
+
+  /**
+     @brief Returns the name of the table that this TABLE_LIST represents.
+
+     @details The unqualified table name or view name for a table or view,
+     respectively.
+   */
+  char *get_table_name() { return view != NULL ? view_name.str : table_name; }
 
 private:
   bool prep_check_option(THD *thd, uint8 check_opt_type);
@@ -1555,12 +1615,12 @@ public:
   bool end_of_fields()
   { return (table_ref == last_leaf && field_it->end_of_fields()); }
   const char *name() { return field_it->name(); }
-  const char *table_name();
-  const char *db_name();
+  const char *get_table_name();
+  const char *get_db_name();
   GRANT_INFO *grant();
   Item *create_item(THD *thd) { return field_it->create_item(thd); }
   Field *field() { return field_it->field(); }
-  Natural_join_column *get_or_create_column_ref(TABLE_LIST *parent_table_ref);
+  Natural_join_column *get_or_create_column_ref(THD *thd, TABLE_LIST *parent_table_ref);
   Natural_join_column *get_natural_column_ref();
 };
 
