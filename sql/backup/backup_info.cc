@@ -532,7 +532,7 @@ backup::Image_info::Db* Backup_info::add_db(obs::Obj *obj)
 
   @returns 0 on success, error code otherwise.
  */
-int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
+int Backup_info::add_dbs(THD *thd, List< ::LEX_STRING > &dbs)
 {
   using namespace obs;
 
@@ -554,9 +554,9 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
       goto error;
     }
     
-    obs::Obj *obj= get_database(&db_name); // reports errors
+    obs::Obj *obj= get_database_stub(&db_name); // reports errors
 
-    if (obj && !check_db_existence(&db_name))
+    if (obj && !check_db_existence(thd, &db_name))
     {    
       if (!unknown_dbs.is_empty()) // we just compose unknown_dbs list
       {
@@ -731,7 +731,7 @@ int Backup_info::add_db_items(Db &db)
 
     // If this table uses a tablespace, add this tablespace to the catalogue.
 
-    obj= get_tablespace_for_table(m_ctx.m_thd, &db.name(), &tbl->name());
+    obj= find_tablespace_for_table(m_ctx.m_thd, &db.name(), &tbl->name());
 
     if (obj)
     {
@@ -1035,8 +1035,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
   ulong pos= db.obj_count();
 
   DBUG_ASSERT(obj);
-  String *name= (String *)obj->get_name();
-  DBUG_ASSERT(name);
+  DBUG_ASSERT(obj->get_name());
 
   switch (type) {
 
@@ -1056,22 +1055,6 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   }
 
-  /*
-    Generate a unique name for the privilege (grant) objects.
-    Note: this name does not alter the mechanics of the
-          grant objects in si_objects.cc
-  */
-  if (type == BSTREAM_IT_PRIVILEGE)
-  {
-    String new_name;
-    char buff[10];
-    sprintf(buff, UNIQUE_PRIV_KEY_FORMAT, pos);
-    new_name.append(*name);
-    new_name.append(" ");
-    new_name.append(buff);
-    name->copy(new_name);
-  }
-
   /* 
     Add new object to the dependency list. If it is a view, add its
     dependencies first.
@@ -1082,11 +1065,11 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   // Get a dep. list node for the object.  
 
-  int res= get_dep_node(db.name(), *name, type, n);
+  int res= get_dep_node(db.name(), *obj->get_name(), type, n);
   
   if (res == get_dep_node_res::ERROR)
   {
-    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    m_ctx.fatal_error(error, db.name().ptr(), obj->get_name()->ptr());
     return NULL;
   }
 
@@ -1101,7 +1084,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     if (type == BSTREAM_IT_VIEW)
       if (add_view_deps(*obj))
       {
-        m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+        m_ctx.fatal_error(error, db.name().ptr(), obj->get_name()->ptr());
         return NULL;
       } 
 
@@ -1118,11 +1101,11 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     objects.
    */
 
-  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
+  Dbobj *o= Image_info::add_db_object(db, type, *obj->get_name(), pos);
  
   if (!o)
   {
-    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    m_ctx.fatal_error(error, db.name().ptr(), obj->get_name()->ptr());
     return NULL;
   }
 
@@ -1138,7 +1121,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
   n->obj= o;  
 
   DBUG_PRINT("backup",("Added object %s of type %d from database %s (pos=%lu)",
-                       name->ptr(), type, db.name().ptr(), pos));
+                       obj->get_name()->ptr(), type, db.name().ptr(), pos));
   return o;
 }
 

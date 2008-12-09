@@ -437,10 +437,20 @@ inline int setup_without_group(THD *thd, Item **ref_pointer_array,
 {
   int res;
   nesting_map save_allow_sum_func=thd->lex->allow_sum_func ;
+  /* 
+    Need to save the value, so we can turn off only the new NON_AGG_FIELD
+    additions coming from the WHERE
+  */
+  uint8 saved_flag= thd->lex->current_select->full_group_by_flag;
   DBUG_ENTER("setup_without_group");
 
   thd->lex->allow_sum_func&= ~(1 << thd->lex->current_select->nest_level);
   res= setup_conds(thd, tables, leaves, conds);
+
+  /* it's not wrong to have non-aggregated columns in a WHERE */
+  if (thd->variables.sql_mode & MODE_ONLY_FULL_GROUP_BY)
+    thd->lex->current_select->full_group_by_flag= saved_flag |
+      (thd->lex->current_select->full_group_by_flag & ~NON_AGG_FIELD_USED);
 
   thd->lex->allow_sum_func|= 1 << thd->lex->current_select->nest_level;
   res= res || setup_order(thd, ref_pointer_array, tables, fields, all_fields,
@@ -13454,7 +13464,6 @@ do_select(JOIN *join,List<Item> *fields,TABLE *table,Procedure *procedure)
         so we don't touch it here.
       */
       join->examined_rows++;
-      join->thd->row_count++;
       DBUG_ASSERT(join->examined_rows <= 1);
     }
     else if (join->send_row_on_empty_set())
@@ -13718,7 +13727,7 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
       /* Set first_unmatched for the last inner table of this group */
       join_tab->last_inner->first_unmatched= join_tab;
     }
-    join->thd->row_count= 0;
+    join->thd->warning_info->reset_current_row_for_warning();
 
     error= (*join_tab->read_first_record)(join_tab);
     rc= evaluate_join_record(join, join_tab, error);
@@ -13962,7 +13971,6 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
       (See above join->return_tab= tab).
     */
     join->examined_rows++;
-    join->thd->row_count++;
     DBUG_PRINT("counts", ("join->examined_rows++: %lu",
                           (ulong) join->examined_rows));
 
@@ -13971,6 +13979,7 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
       enum enum_nested_loop_state rc;
       /* A match from join_tab is found for the current partial join. */
       rc= (*join_tab->next_select)(join, join_tab+1, 0);
+      join->thd->warning_info->inc_current_row_for_warning();
       if (rc != NESTED_LOOP_OK && rc != NESTED_LOOP_NO_MORE_ROWS)
         return rc;
       if (return_tab < join->return_tab)
@@ -13987,7 +13996,10 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
         return NESTED_LOOP_NO_MORE_ROWS;
     }
     else
+    {
+      join->thd->warning_info->inc_current_row_for_warning();
       join_tab->read_record.file->unlock_row();
+    }
   }
   else
   {
@@ -13996,7 +14008,7 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
       with the beginning coinciding with the current partial join.
     */
     join->examined_rows++;
-    join->thd->row_count++;
+    join->thd->warning_info->inc_current_row_for_warning();
     join_tab->read_record.file->unlock_row();
   }
   return NESTED_LOOP_OK;
