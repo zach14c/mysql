@@ -324,11 +324,8 @@ void Transaction::commitNoUpdates(void)
 	if (hasLocks)
 		releaseRecordLocks();
 
-	// NOTE: Temporarily upgraded from using Shared to Exclusive locking.
-	// See explanation further down
-
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commitNoUpdates(2)");
-	syncActiveTransactions.lock(Exclusive);
+	syncActiveTransactions.lock(Shared);
 
 	if (xid)
 		{
@@ -346,17 +343,6 @@ void Transaction::commitNoUpdates(void)
 	transactionId = 0;
 	writePending = false;
 	state = Available;
-
-	// NOTE: This code is hopefully temporar until we have implemented
-	// support for reusing transaction objects:
-	// Remove this transaction from the active list
-
-	inList = false;
-	transactionManager->activeTransactions.remove(this);
-	ASSERT(useCount >= 2);
-	release();
-	sync.unlock();
-
 	syncActiveTransactions.unlock();
 	syncIsActive.unlock();
 	release();
