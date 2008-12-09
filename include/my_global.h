@@ -855,6 +855,9 @@ typedef SOCKET_SIZE_TYPE size_socket;
 #define ulonglong2double(A) ((double) (ulonglong) (A))
 #define my_off_t2double(A)  ((double) (my_off_t) (A))
 #endif
+#ifndef double2ulonglong
+#define double2ulonglong(A) ((ulonglong) (double) (A))
+#endif
 #endif
 
 #ifndef offsetof
@@ -1614,11 +1617,5 @@ inline void  operator delete[](void*, void*) { /* Do nothing */ }
 #else
 #  define __func__ "<unknown>"
 #endif
-
-#ifdef MY_USE_CLIENT_DLL
-#define MY_DLLEXPORT __declspec(dllimport)
-#else
-#define MY_DLLEXPORT extern
-#endif /*MY_USE_CLIENT_DLL*/
 
 #endif /* my_global_h */

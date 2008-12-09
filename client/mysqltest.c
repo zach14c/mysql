@@ -147,7 +147,7 @@ static struct st_test_file* cur_file;
 static struct st_test_file* file_stack_end;
 
 
-static CHARSET_INFO *charset_info; /* Default charset */
+static CHARSET_INFO *charset_info= &my_charset_latin1; /* Default charset */
 
 static const char *embedded_server_groups[]=
 {
@@ -7255,7 +7255,6 @@ int main(int argc, char **argv)
   MY_STAT res_info;
   MY_INIT(argv[0]);
 
-  charset_info= &my_charset_latin1;
   save_file[0]= 0;
   TMPDIR[0]= 0;
 
