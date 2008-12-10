@@ -179,7 +179,10 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
     if (lex->db_list.is_empty())
       res= info->add_all_dbs(); // backup all databases
     else
-      res= info->add_dbs(lex->db_list); // backup databases specified by user
+    {
+      /* Backup databases specified by user. */
+      res= info->add_dbs(thd, lex->db_list);
+    }
 
     info->close(); // close catalogue after filling it with objects to backup
 
@@ -490,7 +493,7 @@ int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
 {
   if (m_error)
     return m_error;
-  
+
   int ret= 0;
 
   /*
@@ -1128,7 +1131,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
       
       case BSTREAM_IT_TRIGGER:
         DBUG_ASSERT(obj->m_obj_ptr);
-        if (obj->m_obj_ptr->execute(m_thd))
+        if (obj->m_obj_ptr->create(m_thd))
         {
           delete it;
           delete dbit;
@@ -1152,7 +1155,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   Image_info::Obj *ev;
 
   while ((ev= it++)) 
-    if (ev->m_obj_ptr->execute(m_thd))
+    if (ev->m_obj_ptr->create(m_thd))
     {
       int ret= report_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
       DBUG_RETURN(fatal_error(ret));
@@ -1204,7 +1207,7 @@ int Backup_restore_ctx::do_restore(bool overwrite)
     Image_info::Db *mydb;
     while ((mydb= static_cast<Image_info::Db*>((*dbit)++)))
     {
-      if (!obs::check_db_existence(&mydb->name())) 
+      if (!obs::check_db_existence(m_thd, &mydb->name()))
       {
         delete dbit;
         err= report_error(ER_RESTORE_DB_EXISTS, mydb->name().ptr());
@@ -1947,24 +1950,30 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    // if the tablespace exists, there is nothing more to do
-    if (obs::tablespace_exists(thd, sobj))
-    {
-      DBUG_PRINT("restore",(" skipping tablespace which exists"));
-      return BSTREAM_OK;
-    }
-
-    /* 
-      If there is a different tablespace with the same name then we can't 
-      re-create the original tablespace used by tables being restored. We report 
-      this and cancel restore process.
-    */ 
-
-    Obj *ts= obs::is_tablespace(thd, sobj); 
+    Obj *ts= obs::find_tablespace(thd, sobj->get_name());
 
     if (ts)
     {
-      DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
+      /*
+        A tablespace with the same name exists. We have to check if other
+        attributes are the same as they were.
+      */
+
+      if (obs::compare_tablespace_attributes(ts, sobj))
+      {
+        /* The tablespace is the same. There is nothing more to do. */
+        DBUG_PRINT("restore",(" skipping tablespace which exists"));
+        return BSTREAM_OK;
+      }
+
+      /*
+        A tablespace with the same name exists, but it has been changed
+        since backup.  We can't re-create the original tablespace used by
+        tables being restored. We report this and cancel restore process.
+      */
+
+      DBUG_PRINT("restore",
+                 (" tablespace has changed on the server - aborting"));
       log.report_error(ER_BACKUP_TS_CHANGE, desc);
       delete ts;
       return BSTREAM_ERROR;
@@ -1986,12 +1995,13 @@ int bcat_create_item(st_bstream_image_header *catalogue,
             error handling work in WL#4384 with possible implementation
             via a related bug report.
     */
-    if (!obs::check_user_existence(thd, sobj->get_name()))
+    if (!obs::check_user_existence(thd, sobj))
     {
-      log.report_error(log_level::WARNING, 
-                       ER_BACKUP_GRANT_SKIPPED, 
-                       create_stmt);
-      return BSTREAM_OK; 
+      log.report_error(log_level::WARNING,
+                       ER_BACKUP_GRANT_SKIPPED,
+                       obs::grant_get_grant_info(sobj)->ptr(),
+                       obs::grant_get_user_name(sobj)->ptr());
+      return BSTREAM_OK;
     }
     /*
       We need to check the grant against the database list to ensure the
@@ -2015,7 +2025,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     }
   }
 
-  if (sobj->execute(thd))
+  if (sobj->create(thd))
   {
     log.report_error(create_err, desc);
     return BSTREAM_ERROR;

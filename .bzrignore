@@ -764,6 +764,7 @@ mysql-test/install_test_db
 mysql-test/lib/init_db.sql
 mysql-test/linux_sys_vars.inc
 mysql-test/load_sysvars.inc
+mysql-test/maria_recovery.trace
 mysql-test/mtr
 mysql-test/mysql-test-run
 mysql-test/mysql-test-run-shell
@@ -1903,3 +1904,4 @@ libmysqld/transaction.cc
 libmysqld/rpl_handler.cc
 libmysql/probes.h
 libmysql_r/probes.h
+unittest/tmp

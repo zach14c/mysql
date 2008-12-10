@@ -315,7 +315,6 @@ int Logger::init(enum_type type, const char *query)
     return 0;
 
   m_type= type;
-  mysql_reset_errors(m_thd, 0);                 // Never errors
   backup_log = new Backup_log(m_thd, (enum_backup_operation)type, query);
   backup_log->state(BUP_STARTING);
   m_state= READY;

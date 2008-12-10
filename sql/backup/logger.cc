@@ -60,7 +60,7 @@ int Logger::write_message(log_level::value level, int error_code,
    {
      // Report to server's error log
 
-     sql_print_error(out);
+     sql_print_error("%s", out);
 
      // Report to the client
 
@@ -90,12 +90,12 @@ int Logger::write_message(log_level::value level, int error_code,
 
    case log_level::WARNING:
      // Report to server's error log
-     sql_print_warning(out);
-     
+     sql_print_warning("%s", out);
+
      // Report to the client (push on warning stack)
      if (m_push_errors)
        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                           error_code, msg);
+                           error_code, "%s", msg);
 
      // Report to the debug trace
      DBUG_PRINT("backup_log",("[Warning] %s", out));
@@ -104,7 +104,7 @@ int Logger::write_message(log_level::value level, int error_code,
 
    case log_level::INFO:
      // Report to server's error log
-     sql_print_information(out);
+     sql_print_information("%s", out);
 
      // Report to the debug trace
      DBUG_PRINT("backup_log",("[Info] %s", out));

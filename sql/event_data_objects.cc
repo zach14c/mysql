@@ -1366,6 +1366,7 @@ Event_job_data::execute(THD *thd, bool drop)
 
   DBUG_ENTER("Event_job_data::execute");
 
+  lex_start(thd);
   mysql_reset_thd_for_next_command(thd);
 
   /*
@@ -1395,7 +1396,7 @@ Event_job_data::execute(THD *thd, bool drop)
                     "[%s].[%s.%s] execution failed, "
                     "failed to authenticate the user.",
                     definer.str, dbname.str, name.str);
-    goto end_no_lex_start;
+    goto end_no_parse;
   }
 #endif
 
@@ -1412,11 +1413,11 @@ Event_job_data::execute(THD *thd, bool drop)
                     "[%s].[%s.%s] execution failed, "
                     "user no longer has EVENT privilege.",
                     definer.str, dbname.str, name.str);
-    goto end_no_lex_start;
+    goto end_no_parse;
   }
 
   if (construct_sp_sql(thd, &sp_sql))
-    goto end_no_lex_start;
+    goto end_no_parse;
 
   /*
     Set up global thread attributes to reflect the properties of
@@ -1478,7 +1479,7 @@ end:
     thd->lex->sphead= NULL;
   }
 
-end_no_lex_start:
+end_no_parse:
   if (drop && !thd->is_fatal_error)
   {
     /*
