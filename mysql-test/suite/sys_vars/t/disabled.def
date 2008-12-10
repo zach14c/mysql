@@ -18,4 +18,3 @@ query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fai
 sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on some systems
 key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
 max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
-tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems

@@ -19,7 +19,6 @@ csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows 
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
 backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
-thread_cache_size_func      : Bug#40575 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
 log_output_basic     : Bug #40988  	log_output_basic.test succeeded though syntactically false.
 wait_timeout_func    : Bug #41225 joro wait_timeout_func fails
 
