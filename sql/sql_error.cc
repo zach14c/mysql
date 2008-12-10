@@ -42,56 +42,232 @@ This file contains the implementation of error and warnings related
 ***********************************************************************/
 
 #include "mysql_priv.h"
+#include "sql_error.h"
 #include "sp_rcontext.h"
 
-/*
-  Store a new message in an error object
+/**
+  Clear this diagnostics area.
 
-  This is used to in group_concat() to register how many warnings we actually
-  got after the query has been executed.
+  Normally called at the end of a statement.
 */
 
-void MYSQL_ERROR::set_msg(THD *thd, const char *msg_arg)
+void
+Diagnostics_area::reset_diagnostics_area()
 {
-  msg= strdup_root(&thd->warn_root, msg_arg);
-}
-
-
-/*
-  Reset all warnings for the thread
-
-  SYNOPSIS
-    mysql_reset_errors()
-    thd			Thread handle
-    force               Reset warnings even if it has been done before
-
-  IMPLEMENTATION
-    Don't reset warnings if this has already been called for this query.
-    This may happen if one gets a warning during the parsing stage,
-    in which case push_warnings() has already called this function.
-*/  
-
-void mysql_reset_errors(THD *thd, bool force)
-{
-  DBUG_ENTER("mysql_reset_errors");
-
-  if (thd->main_da.m_stmt_area.is_read_only())
-    DBUG_VOID_RETURN;
-
-  if (thd->query_id != thd->warn_id || force)
-  {
-    thd->warn_id= thd->query_id;
-    thd->main_da.m_stmt_area.clear();
-    free_root(&thd->warn_root,MYF(0));
-    if (force)
-      thd->total_warn_count= 0;
-    thd->row_count= 1; // by default point to row 1
-  }
+  DBUG_ENTER("reset_diagnostics_area");
+#ifdef DBUG_OFF
+  can_overwrite_status= FALSE;
+  /** Don't take chances in production */
+  m_message[0]= '\0';
+  m_sql_errno= 0;
+  m_server_status= 0;
+  m_affected_rows= 0;
+  m_last_insert_id= 0;
+  m_statement_warn_count= 0;
+#endif
+  is_sent= FALSE;
+  /** Tiny reset in debug mode to see garbage right away */
+  m_status= DA_EMPTY;
   DBUG_VOID_RETURN;
 }
 
 
-/* 
+/**
+  Set OK status -- ends commands that do not return a
+  result set, e.g. INSERT/UPDATE/DELETE.
+*/
+
+void
+Diagnostics_area::set_ok_status(THD *thd, ulonglong affected_rows_arg,
+                                ulonglong last_insert_id_arg,
+                                const char *message_arg)
+{
+  DBUG_ENTER("set_ok_status");
+  DBUG_ASSERT(! is_set());
+  /*
+    In production, refuse to overwrite an error or a custom response
+    with an OK packet.
+  */
+  if (is_error() || is_disabled())
+    return;
+
+  m_server_status= thd->server_status;
+  m_statement_warn_count= thd->warning_info->statement_warn_count();
+  m_affected_rows= affected_rows_arg;
+  m_last_insert_id= last_insert_id_arg;
+  if (message_arg)
+    strmake(m_message, message_arg, sizeof(m_message) - 1);
+  else
+    m_message[0]= '\0';
+  m_status= DA_OK;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Set EOF status.
+*/
+
+void
+Diagnostics_area::set_eof_status(THD *thd)
+{
+  DBUG_ENTER("set_eof_status");
+  /* Only allowed to report eof if has not yet reported an error */
+  DBUG_ASSERT(! is_set());
+  /*
+    In production, refuse to overwrite an error or a custom response
+    with an EOF packet.
+  */
+  if (is_error() || is_disabled())
+    return;
+
+  m_server_status= thd->server_status;
+  /*
+    If inside a stored procedure, do not return the total
+    number of warnings, since they are not available to the client
+    anyway.
+  */
+  m_statement_warn_count= (thd->spcont ?
+                           0 : thd->warning_info->statement_warn_count());
+
+  m_status= DA_EOF;
+  DBUG_VOID_RETURN;
+}
+
+/**
+  Set ERROR status.
+*/
+
+void
+Diagnostics_area::set_default_error_status(THD *thd, uint sql_errno_arg,
+                                           const char *message_arg)
+{
+  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno_arg);
+  set_error_status(thd, sql_errno_arg, message_arg, sqlstate);
+}
+
+void
+Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
+                                   const char *message_arg,
+                                   const char *sqlstate)
+{
+  DBUG_ENTER("set_error_status");
+  /*
+    Only allowed to report error if has not yet reported a success
+    The only exception is when we flush the message to the client,
+    an error can happen during the flush.
+  */
+  DBUG_ASSERT(! is_set() || can_overwrite_status);
+#ifdef DBUG_OFF
+  /*
+    In production, refuse to overwrite a custom response with an
+    ERROR packet.
+  */
+  if (is_disabled())
+    return;
+#endif
+
+  m_sql_errno= sql_errno_arg;
+  memcpy(m_sqlstate, sqlstate, SQLSTATE_LENGTH);
+  m_sqlstate[SQLSTATE_LENGTH]= '\0';
+  strmake(m_message, message_arg, sizeof(m_message)-1);
+
+  m_status= DA_ERROR;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Mark the diagnostics area as 'DISABLED'.
+
+  This is used in rare cases when the COM_ command at hand sends a response
+  in a custom format. One example is the query cache, another is
+  COM_STMT_PREPARE.
+*/
+
+void
+Diagnostics_area::disable_status()
+{
+  DBUG_ASSERT(! is_set());
+  m_status= DA_DISABLED;
+}
+
+
+/* Store a new message in an error object. */
+
+void MYSQL_ERROR::set_msg(MEM_ROOT *warn_root, const char *msg_arg)
+{
+  msg= strdup_root(warn_root, msg_arg);
+}
+
+
+Warning_info::Warning_info(ulonglong warn_id_arg)
+  :m_statement_warn_count(0),
+  m_current_row_for_warning(1),
+  m_warn_id(warn_id_arg),
+  m_read_only(FALSE)
+{
+  /* Initialize sub structures */
+  init_sql_alloc(&m_warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
+  m_warn_list.empty();
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+}
+
+
+Warning_info::~Warning_info()
+{
+  free_root(&m_warn_root,MYF(0));
+}
+
+
+/**
+  Reset the warning information of this connection.
+*/
+
+void Warning_info::clear_warning_info(ulonglong warn_id_arg)
+{
+  m_warn_id= warn_id_arg;
+  free_root(&m_warn_root, MYF(0));
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+  m_warn_list.empty();
+  m_statement_warn_count= 0;
+  m_current_row_for_warning= 1; /* Start counting from the first row */
+}
+
+void Warning_info::reserve_space(THD *thd, uint count)
+{
+  /* Make room for 2 conditions */
+  while ((m_warn_list.elements > 0) &&
+        ((m_warn_list.elements + count) > thd->variables.max_error_count))
+    m_warn_list.pop();
+}
+
+SQL_condition *Warning_info::raise_condition(THD *thd,
+                                             uint sql_errno, const char* sqlstate,
+                                             MYSQL_ERROR::enum_warning_level level,
+                                             const char* msg)
+{
+  SQL_condition *cond= NULL;
+
+  if (! m_read_only)
+  {
+    if (m_warn_list.elements < thd->variables.max_error_count)
+    {
+      cond= new (& m_warn_root) SQL_condition(& m_warn_root);
+      if (cond)
+      {
+        cond->set(sql_errno, sqlstate, level, msg);
+        m_warn_list.push_back(cond, &m_warn_root);
+      }
+    }
+    m_warn_count[(uint) level]++;
+  }
+
+  m_statement_warn_count++;
+  return cond;
+}
+
+/*
   Push the warning/error to error list if there is still room in the list
 
   SYNOPSIS
@@ -183,7 +359,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
   List<Item> field_list;
   DBUG_ENTER("mysqld_show_warnings");
 
-  DBUG_ASSERT(thd->main_da.m_stmt_area.is_read_only());
+  DBUG_ASSERT(thd->warning_info->is_read_only());
 
   field_list.push_back(new Item_empty_string("Level", 7));
   field_list.push_back(new Item_return_int("Code",4, MYSQL_TYPE_LONG));
@@ -196,12 +372,12 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
   SQL_condition *cond;
   SELECT_LEX *sel= &thd->lex->select_lex;
   SELECT_LEX_UNIT *unit= &thd->lex->unit;
-  ha_rows idx= 0;
+  ulonglong idx= 0;
   Protocol *protocol=thd->protocol;
 
   unit->set_limit(sel);
 
-  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
   while ((cond= it++))
   {
     /* Skip levels that the user is not interested in */
@@ -224,7 +400,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
   }
   my_eof(thd);
 
-  thd->main_da.m_stmt_area.set_read_only(FALSE);
+  thd->warning_info->set_read_only(FALSE);
 
   DBUG_RETURN(FALSE);
 }

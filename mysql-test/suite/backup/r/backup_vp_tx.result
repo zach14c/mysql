@@ -1,0 +1,203 @@
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE IF EXISTS bup_vp;
+CREATE DATABASE bup_vp;
+
+Starting Test
+
+con_bup: Creating tables
+CREATE TABLE bup_vp.t1 (col_a CHAR(40)) ENGINE=INNODB;
+CREATE TABLE bup_vp.t2 (col_a CHAR(40)) ENGINE=INNODB;
+CREATE TABLE bup_vp.t3 (col_a CHAR(40)) ENGINE=INNODB;
+
+con_bup: Loading data
+con_bup: Scenario a) - commited before backup
+INSERT INTO bup_vp.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("05 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("05 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("05 Some data to test");
+
+con_bup: Show the data before we start backup
+SELECT * FROM bup_vp.t1;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+SELECT * FROM bup_vp.t2;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+SELECT * FROM bup_vp.t3;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+
+Scenario d) - commit after VP; tx not included in backup
+con_tx3: Start transaction but do not commit
+BEGIN;
+INSERT INTO bup_vp.t3 VALUES ("tx3: 06 Should NOT be in backup");
+
+Scenario b) - Commit in progress blocks CB; tx is included in backup
+con_tx1: Get a transaction going and stop in the middle of commit
+BEGIN;
+INSERT INTO bup_vp.t1 VALUES ("tx1: 06 Some data to test");
+con_tx1: Make commit stop in the middle of execution
+SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_started
+                       WAIT_FOR complete_commit';
+COMMIT;
+
+Scenario c) - commit blocked by CB; tx not included in backup
+con_tx2: Wait until tx1 has started
+SET DEBUG_SYNC= 'now WAIT_FOR commit_started';
+con_tx2: Start transaction but do not commit
+BEGIN;
+INSERT INTO bup_vp.t2 VALUES ("tx2: 06 Should NOT be in backup");
+
+con_bup: Activate synchronization points for BACKUP.
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL sync_complete_commit';
+SET DEBUG_SYNC= 'before_backup_data_lock SIGNAL try_commit 
+                 WAIT_FOR commit_blocked';
+SET DEBUG_SYNC= 'after_backup_binlog SIGNAL commit_unblocked
+                 WAIT_FOR finish_bup';
+con_bup: Backing up database -- will block with lock
+BACKUP DATABASE bup_vp TO "bup_vp.bak";
+
+SET DEBUG_SYNC= 'now WAIT_FOR sync_complete_commit';
+Backup has been blocked by ongoing commit
+Check that con_tx1 has not committed; Should be 0 records
+SELECT * FROM bup_vp.t1 WHERE col_a like 'tx1%';
+col_a
+
+SET DEBUG_SYNC= 'now SIGNAL complete_commit';
+
+con_tx1: Reap commit
+Check that con_tx1 has committed; Should be 1 record
+SELECT * FROM bup_vp.t1 WHERE col_a like 'tx1%';
+col_a
+tx1: 06 Some data to test
+
+
+con_tx2: Commit request will be blocked by CB
+SET DEBUG_SYNC= 'now WAIT_FOR try_commit';
+SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL sync_commit_blocked';
+COMMIT;
+
+SET DEBUG_SYNC= 'now WAIT_FOR sync_commit_blocked';
+Check that con_tx2 has not committed; Should be 0 records
+SELECT * FROM bup_vp.t2 WHERE col_a like 'tx2%';
+col_a
+
+SET DEBUG_SYNC= 'now SIGNAL commit_blocked';
+
+con_bup: Reap commit
+con_tx2: Backup has now released CB.
+Check that con_tx2 has committed; Should be 1 record
+SELECT * FROM bup_vp.t2 WHERE col_a like 'tx2%';
+col_a
+tx2: 06 Should NOT be in backup
+
+
+con_tx3: Backup has now released CB. Commit transaction
+SET DEBUG_SYNC= 'now WAIT_FOR commit_unblocked';
+COMMIT;
+SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+
+con_bup: Reap backup
+backup_id
+#
+
+con_bup: Showing data after updates and backup
+SELECT * FROM bup_vp.t1;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+tx1: 06 Some data to test
+SELECT * FROM bup_vp.t2;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+tx2: 06 Should NOT be in backup
+SELECT * FROM bup_vp.t3;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+tx3: 06 Should NOT be in backup
+con_bup: Dropping the database
+DROP TABLE bup_vp.t1;
+DROP TABLE bup_vp.t2;
+DROP TABLE bup_vp.t3;
+DROP DATABASE bup_vp;
+con_bup: Restoring the database
+RESTORE FROM "bup_vp.bak";
+backup_id
+#
+
+con_bup: Showing the data after restore (tx2 and tx3 should not be there)
+SELECT * FROM bup_vp.t1;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+tx1: 06 Some data to test
+SELECT * FROM bup_vp.t2;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+SELECT * FROM bup_vp.t3;
+col_a
+01 Some data to test
+02 Some data to test
+03 Some data to test
+04 Some data to test
+05 Some data to test
+
+Verifying results:
+
+T1 should have changes from con_tx1; Should be 1 record
+SELECT * FROM bup_vp.t1 WHERE col_a like 'tx1%';
+col_a
+tx1: 06 Some data to test
+
+T2 should not have the changes from con_tx2; Should be 0 records
+SELECT * FROM bup_vp.t2 WHERE col_a like 'tx2%';
+col_a
+
+T3 should not have the changes from con_tx3; Should be 0 records
+SELECT * FROM bup_vp.t3 WHERE col_a like 'tx3%';
+col_a
+
+con_bup: Cleanup
+DROP DATABASE bup_vp;
+SET DEBUG_SYNC= 'RESET';

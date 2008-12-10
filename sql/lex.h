@@ -398,6 +398,7 @@ static SYMBOL symbols[] = {
   { "OUT",              SYM(OUT_SYM)},
   { "OUTER",		SYM(OUTER)},
   { "OUTFILE",		SYM(OUTFILE)},
+  { "OVERWRITE",		SYM(OVERWRITE_SYM)},
   { "OWNER",		SYM(OWNER_SYM)},
   { "PACK_KEYS",	SYM(PACK_KEYS_SYM)},
   { "PARSER",           SYM(PARSER_SYM)},

@@ -16,6 +16,8 @@
 #ifndef SQL_FIXSTRING_H
 #define SQL_FIXSTRING_H
 
+class String;
+
 /**
   This structure represents the parametrized metadata used
   in class Fixed_string.

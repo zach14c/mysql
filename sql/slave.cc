@@ -51,6 +51,7 @@
 #define MAX_SLAVE_RETRY_PAUSE 5
 bool use_slave_mask = 0;
 MY_BITMAP slave_error_mask;
+char slave_skip_error_names[SHOW_VAR_FUNC_BUFF_SIZE];
 
 typedef bool (*CHECK_KILLED_FUNC)(THD*,void*);
 
@@ -277,6 +278,64 @@ err:
 }
 
 
+/**
+  Convert slave skip errors bitmap into a printable string.
+*/
+
+static void print_slave_skip_errors(void)
+{
+  /*
+    To be safe, we want 10 characters of room in the buffer for a number
+    plus terminators. Also, we need some space for constant strings.
+    10 characters must be sufficient for a number plus {',' | '...'}
+    plus a NUL terminator. That is a max 6 digit number.
+  */
+  const size_t MIN_ROOM= 10;
+  DBUG_ENTER("print_slave_skip_errors");
+  DBUG_ASSERT(sizeof(slave_skip_error_names) > MIN_ROOM);
+  DBUG_ASSERT(MAX_SLAVE_ERROR <= 999999); // 6 digits
+
+  if (!use_slave_mask || bitmap_is_clear_all(&slave_error_mask))
+  {
+    /* purecov: begin tested */
+    memcpy(slave_skip_error_names, STRING_WITH_LEN("OFF"));
+    /* purecov: end */
+  }
+  else if (bitmap_is_set_all(&slave_error_mask))
+  {
+    /* purecov: begin tested */
+    memcpy(slave_skip_error_names, STRING_WITH_LEN("ALL"));
+    /* purecov: end */
+  }
+  else
+  {
+    char *buff= slave_skip_error_names;
+    char *bend= buff + sizeof(slave_skip_error_names);
+    int  errnum;
+
+    for (errnum= 1; errnum < MAX_SLAVE_ERROR; errnum++)
+    {
+      if (bitmap_is_set(&slave_error_mask, errnum))
+      {
+        if (buff + MIN_ROOM >= bend)
+          break; /* purecov: tested */
+        buff= int10_to_str(errnum, buff, 10);
+        *buff++= ',';
+      }
+    }
+    if (buff != slave_skip_error_names)
+      buff--; // Remove last ','
+    if (errnum < MAX_SLAVE_ERROR)
+    {
+      /* Couldn't show all errors */
+      buff= strmov(buff, "..."); /* purecov: tested */
+    }
+    *buff=0;
+  }
+  DBUG_PRINT("init", ("error_names: '%s'", slave_skip_error_names));
+  DBUG_VOID_RETURN;
+}
+
 /*
   Init function to set up array for errors that should be skipped for slave
 
@@ -316,6 +375,8 @@ void init_slave_skip_errors(const char* arg)
     while (!my_isdigit(system_charset_info,*p) && *p)
       p++;
   }
+  /* Convert slave skip errors bitmap into a printable string. */
+  print_slave_skip_errors();
   DBUG_VOID_RETURN;
 }
 
@@ -1643,7 +1704,7 @@ static int has_temporary_error(THD *thd)
     DBUG_RETURN(0);
 
   DBUG_EXECUTE_IF("all_errors_are_temporary_errors",
-                  if (thd->main_da.is_error())
+                  if (thd->stmt_da->is_error())
                   {
                     thd->clear_error();
                     my_error(ER_LOCK_DEADLOCK, MYF(0));
@@ -1662,15 +1723,15 @@ static int has_temporary_error(THD *thd)
     currently, InnoDB deadlock detected by InnoDB or lock
     wait timeout (innodb_lock_wait_timeout exceeded
   */
-  if (thd->main_da.sql_errno() == ER_LOCK_DEADLOCK ||
-      thd->main_da.sql_errno() == ER_LOCK_WAIT_TIMEOUT)
+  if (thd->stmt_da->sql_errno() == ER_LOCK_DEADLOCK ||
+      thd->stmt_da->sql_errno() == ER_LOCK_WAIT_TIMEOUT)
     DBUG_RETURN(1);
 
 #ifdef HAVE_NDB_BINLOG
   /*
     currently temporary error set in ndbcluster
   */
-  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
   SQL_condition *cond;
   while ((cond= it++))
   {
@@ -2594,24 +2655,24 @@ Slave SQL thread aborted. Can't execute init_slave query");
 
         if (thd->is_error())
         {
-          char const *const errmsg= thd->main_da.message();
+          char const *const errmsg= thd->stmt_da->message();
 
           DBUG_PRINT("info",
-                     ("thd->main_da.sql_errno()=%d; rli->last_error.number=%d",
-                      thd->main_da.sql_errno(), last_errno));
+                     ("thd->stmt_da->sql_errno()=%d; rli->last_error.number=%d",
+                      thd->stmt_da->sql_errno(), last_errno));
           if (last_errno == 0)
           {
-            rli->report(ERROR_LEVEL, thd->main_da.sql_errno(), errmsg);
+            rli->report(ERROR_LEVEL, thd->stmt_da->sql_errno(), errmsg);
           }
-          else if (last_errno != thd->main_da.sql_errno())
+          else if (last_errno != thd->stmt_da->sql_errno())
           {
             sql_print_error("Slave (additional info): %s Error_code: %d",
-                            errmsg, thd->main_da.sql_errno());
+                            errmsg, thd->stmt_da->sql_errno());
           }
         }
 
         /* Print any warnings issued */
-        List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+        List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
         SQL_condition *cond;
         /*
           Added controlled slave thread cancel for replication

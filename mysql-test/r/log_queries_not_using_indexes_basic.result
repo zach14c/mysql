@@ -12,11 +12,11 @@ COUNT(@@GLOBAL.log_queries_not_using_indexes)
 1
 1 Expected
 '#---------------------BS_STVARS_041_03----------------------#'
-SELECT @@GLOBAL.log_queries_not_using_indexes = VARIABLE_VALUE
+SELECT IF(@@GLOBAL.log_queries_not_using_indexes, "ON", "OFF") = VARIABLE_VALUE
 FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES
 WHERE VARIABLE_NAME='log_queries_not_using_indexes';
-@@GLOBAL.log_queries_not_using_indexes = VARIABLE_VALUE
-0
+IF(@@GLOBAL.log_queries_not_using_indexes, "ON", "OFF") = VARIABLE_VALUE
+1
 1 Expected
 SELECT COUNT(@@GLOBAL.log_queries_not_using_indexes);
 COUNT(@@GLOBAL.log_queries_not_using_indexes)

@@ -7,7 +7,7 @@ _utf32 'a';
 end $$
 call test_signal() $$
 Warnings:
-Warning	1754	a
+Warning	1756	a
 drop procedure test_signal $$
 create procedure test_signal()
 begin
@@ -17,7 +17,7 @@ _utf32 X'00000048000000450000004C0000004C0000004F';
 end $$
 call test_signal() $$
 Warnings:
-Warning	1754	HELLO
+Warning	1756	HELLO
 drop procedure test_signal $$
 create procedure test_signal()
 begin

@@ -202,27 +202,6 @@ bool foreign_key_prefix(Key *a, Key *b)
 ** Thread specific functions
 ****************************************************************************/
 
-/** Push an error to the error stack and return TRUE for now. */
-
-bool
-Reprepare_observer::report_error(THD *thd)
-{
-  /*
-    This 'error' is purely internal to the server:
-    - No exception handler is invoked,
-    - No condition is added in the condition area (warn_list).
-    The diagnostics area is set to an error status to enforce
-    that this thread execution stops and returns to the caller,
-    backtracking all the way to Prepared_statement::execute_loop().
-  */
-  thd->main_da.set_error_status(thd, ER_NEED_REPREPARE,
-                                ER(ER_NEED_REPREPARE), "HY000");
-  m_invalidated= TRUE;
-
-  return TRUE;
-}
-
-
 /*
   The following functions form part of the C plugin API
 */
@@ -312,7 +291,7 @@ int thd_tx_isolation(const THD *thd)
 extern "C"
 void thd_inc_row_count(THD *thd)
 {
-  thd->row_count++;
+  thd->warning_info->inc_current_row_for_warning();
 }
 
 
@@ -320,7 +299,7 @@ void thd_inc_row_count(THD *thd)
   Dumps a text description of a thread, its security context
   (user, host) and the current query.
 
-  @param thd current thread context
+  @param thd thread context
   @param buffer pointer to preferred result buffer
   @param length length of buffer
   @param max_query_len how many chars of query to copy (0 for all)
@@ -394,160 +373,17 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
   }
   if (str.c_ptr_safe() == buffer)
     return buffer;
-  return thd->strmake(str.ptr(), str.length());
-}
 
-void Diagnostics_stmt_area::clear()
-{
-  warn_list.empty();
-  memset(warn_count, 0, sizeof(warn_count));
-}
-
-/**
-  Clear this diagnostics area. 
-
-  Normally called at the end of a statement.
-*/
-
-void
-Diagnostics_area::reset_diagnostics_area()
-{
-  DBUG_ENTER("reset_diagnostics_area");
-#ifdef DBUG_OFF
-  can_overwrite_status= FALSE;
-  /** Don't take chances in production */
-  m_message[0]= '\0';
-  m_sql_errno= 0;
-  memset(m_sqlstate, 0, sizeof(m_sqlstate));
-  m_server_status= 0;
-  m_affected_rows= 0;
-  m_last_insert_id= 0;
-  m_total_warn_count= 0;
-#endif
-  is_sent= FALSE;
-  /** Tiny reset in debug mode to see garbage right away */
-  m_status= DA_EMPTY;
-  DBUG_VOID_RETURN;
-}
-
-
-/**
-  Set OK status -- ends commands that do not return a
-  result set, e.g. INSERT/UPDATE/DELETE.
-*/
-
-void
-Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
-                                ulonglong last_insert_id_arg,
-                                const char *message_arg)
-{
-  DBUG_ENTER("set_ok_status");
-  DBUG_ASSERT(! is_set());
   /*
-    In production, refuse to overwrite an error or a custom response
-    with an OK packet.
+    We have to copy the new string to the destination buffer because the string
+    was reallocated to a larger buffer to be able to fit.
   */
-  if (is_error() || is_disabled())
-    return;
-
-  m_server_status= thd->server_status;
-  m_total_warn_count= thd->total_warn_count;
-  m_affected_rows= affected_rows_arg;
-  m_last_insert_id= last_insert_id_arg;
-  if (message_arg)
-    strmake(m_message, message_arg, sizeof(m_message) - 1);
-  else
-    m_message[0]= '\0';
-  m_status= DA_OK;
-  DBUG_VOID_RETURN;
-}
-
-
-/**
-  Set EOF status.
-*/
-
-void
-Diagnostics_area::set_eof_status(THD *thd)
-{
-  DBUG_ENTER("set_eof_status");
-  /* Only allowed to report eof if has not yet reported an error */
-  DBUG_ASSERT(! is_set());
-  /*
-    In production, refuse to overwrite an error or a custom response
-    with an EOF packet.
-  */
-  if (is_error() || is_disabled())
-    return;
-
-  m_server_status= thd->server_status;
-  /*
-    If inside a stored procedure, do not return the total
-    number of warnings, since they are not available to the client
-    anyway.
-  */
-  m_total_warn_count= thd->spcont ? 0 : thd->total_warn_count;
-
-  m_status= DA_EOF;
-  DBUG_VOID_RETURN;
-}
-
-/**
-  Set ERROR status.
-*/
-
-void
-Diagnostics_area::set_default_error_status(THD *thd, uint sql_errno_arg,
-                                   const char *message_arg)
-{
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno_arg);
-  set_error_status(thd, sql_errno_arg, message_arg, sqlstate);
-}
-
-void
-Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
-                                   const char *message_arg,
-                                   const char *sqlstate)
-{
-  DBUG_ENTER("set_error_status");
-  /*
-    Only allowed to report error if has not yet reported a success
-    The only exception is when we flush the message to the client,
-    an error can happen during the flush.
-  */
-  DBUG_ASSERT(! is_set() || can_overwrite_status);
-#ifdef DBUG_OFF
-  /*
-    In production, refuse to overwrite a custom response with an
-    ERROR packet.
-  */
-  if (is_disabled())
-    return;
-#endif
-
-  m_sql_errno= sql_errno_arg;
-  memcpy(m_sqlstate, sqlstate, SQLSTATE_LENGTH);
-  m_sqlstate[SQLSTATE_LENGTH]= '\0';
-  strmake(m_message, message_arg, sizeof(m_message)-1);
-
-  m_status= DA_ERROR;
-  DBUG_VOID_RETURN;
-}
-
-
-/**
-  Mark the diagnostics area as 'DISABLED'.
-
-  This is used in rare cases when the COM_ command at hand sends a response
-  in a custom format. One example is the query cache, another is
-  COM_STMT_PREPARE.
-*/
-
-void
-Diagnostics_area::disable_status()
-{
-  DBUG_ASSERT(! is_set());
-  m_status= DA_DISABLED;
+  DBUG_ASSERT(buffer != NULL);
+  length= min(str.length(), length-1);
+  memcpy(buffer, str.c_ptr_quick(), length);
+  /* Make sure that the new string is null terminated */
+  buffer[length]= '\0';
+  return buffer;
 }
 
 
@@ -564,6 +400,9 @@ THD::THD()
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
    first_successful_insert_id_in_cur_stmt(0),
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
+   main_warning_info(0),
+   warning_info(&main_warning_info),
+   stmt_da(&main_da),
    global_read_lock(0),
    is_fatal_error(0),
    transaction_rollback_request(0),
@@ -610,7 +449,8 @@ THD::THD()
   hash_clear(&handler_tables_hash);
   tmp_table=0;
   used_tables=0;
-  cuted_fields= sent_row_count= row_count= 0L;
+  cuted_fields= 0L;
+  sent_row_count= 0L;
   limit_found_rows= 0;
   row_count_func= -1;
   statement_id_counter= 0UL;
@@ -629,7 +469,6 @@ THD::THD()
   one_shot_set= 0;
   file_id = 0;
   query_id= 0;
-  warn_id= 0;
   db_charset= global_system_variables.collation_database;
   bzero(ha_data, sizeof(ha_data));
   mysys_var=0;
@@ -670,8 +509,6 @@ THD::THD()
   init_open_tables_state(this, refresh_version);
 
   init();
-  /* Initialize sub structures */
-  init_sql_alloc(&warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
 #if defined(ENABLED_PROFILING)
   profiling.set_thd(this);
 #endif
@@ -889,8 +726,8 @@ SQL_condition* THD::raise_condition(uint sql_errno,
       (level == MYSQL_ERROR::WARN_LEVEL_NOTE))
     DBUG_RETURN(NULL);
 
-  if (query_id != warn_id && !spcont)
-    mysql_reset_errors(this, 0);
+  if (! spcont)
+    warning_info->opt_clear_warning_info(query_id);
 
   /*
     TODO: replace by DBUG_ASSERT(sql_errno != 0) once all bugs similar to
@@ -948,8 +785,8 @@ SQL_condition* THD::raise_condition(uint sql_errno,
                    lex->current_select->no_error : 0),
                   (int) is_fatal_error));
     }
-    else if (! main_da.is_error())
-      main_da.set_error_status(this, sql_errno, msg, sqlstate);
+    else if (! stmt_da->is_error())
+      stmt_da->set_error_status(this, sql_errno, msg, sqlstate);
   }
 
   /*
@@ -987,23 +824,7 @@ THD::raise_condition_no_handler(uint sql_errno,
   if (no_warnings_for_error && (level == MYSQL_ERROR::WARN_LEVEL_ERROR))
     DBUG_RETURN(NULL);
 
-  if (! main_da.m_stmt_area.is_read_only())
-  {
-    if (main_da.m_stmt_area.warn_list.elements < variables.max_error_count)
-    {
-      /* We have to use warn_root, as mem_root is freed after each query */
-      cond= new (& warn_root) SQL_condition(& warn_root);
-      if (cond)
-      {
-        cond->set(sql_errno, sqlstate, level, msg);
-        main_da.m_stmt_area.warn_list.push_back(cond, & warn_root);
-      }
-    }
-
-    main_da.m_stmt_area.warn_count[(uint) level]++;
-  }
-
-  total_warn_count++;
+  cond= warning_info->raise_condition(this, sql_errno, sqlstate, level, msg);
   DBUG_RETURN(cond);
 }
 
@@ -1089,9 +910,6 @@ void THD::init(void)
 			TL_WRITE_LOW_PRIORITY :
 			TL_WRITE);
   session_tx_isolation= (enum_tx_isolation) variables.tx_isolation;
-  main_da.reset_diagnostics_area();
-  main_da.m_stmt_area.clear();
-  total_warn_count= 0;
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
@@ -1260,7 +1078,6 @@ THD::~THD()
   DBUG_PRINT("info", ("freeing security context"));
   main_security_ctx.destroy();
   safeFree(db);
-  free_root(&warn_root,MYF(0));
   free_root(&transaction.mem_root,MYF(0));
   mysys_var=0;					// Safety (shouldn't be needed)
   pthread_mutex_destroy(&LOCK_delete);

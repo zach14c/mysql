@@ -3607,15 +3607,43 @@ bool mysql_create_table_no_lock(THD *thd,
   create_info->table_existed= 0;		// Mark that table is created
 
 #ifdef HAVE_READLINK
-  if (test_if_data_home_dir(create_info->data_file_name))
   {
-    my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATA DIRECTORY");
-    goto unlock_and_end;
-  }
-  if (test_if_data_home_dir(create_info->index_file_name))
-  {
-    my_error(ER_WRONG_ARGUMENTS, MYF(0), "INDEX DIRECTORY");
-    goto unlock_and_end;
+    size_t dirlen;
+    char   dirpath[FN_REFLEN];
+
+    /*
+      data_file_name and index_file_name include the table name without
+      extension. Mostly this does not refer to an existing file. When
+      comparing data_file_name or index_file_name against the data
+      directory, we try to resolve all symbolic links. On some systems,
+      we use realpath(3) for the resolution. This returns ENOENT if the
+      resolved path does not refer to an existing file. my_realpath()
+      does then copy the requested path verbatim, without symlink
+      resolution. Thereafter the comparison can fail even if the
+      requested path is within the data directory. E.g. if symlinks to
+      another file system are used. To make realpath(3) return the
+      resolved path, we strip the table name and compare the directory
+      path only. If the directory doesn't exist either, table creation
+      will fail anyway.
+    */
+    if (create_info->data_file_name)
+    {
+      dirname_part(dirpath, create_info->data_file_name, &dirlen);
+      if (test_if_data_home_dir(dirpath))
+      {
+        my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATA DIRECTORY");
+        goto unlock_and_end;
+      }
+    }
+    if (create_info->index_file_name)
+    {
+      dirname_part(dirpath, create_info->index_file_name, &dirlen);
+      if (test_if_data_home_dir(dirpath))
+      {
+        my_error(ER_WRONG_ARGUMENTS, MYF(0), "INDEX DIRECTORY");
+        goto unlock_and_end;
+      }
+    }
   }
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -4289,7 +4317,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     if (!table->table)
     {
       DBUG_PRINT("admin", ("open table failed"));
-      if (!thd->main_da.m_stmt_area.warn_list.elements)
+      if (thd->warning_info->is_empty())
         push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                      ER_CHECK_NO_SUCH_TABLE, ER(ER_CHECK_NO_SUCH_TABLE));
       /* if it was a view will check md5 sum */
@@ -4305,6 +4333,12 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
     {
       DBUG_PRINT("admin", ("calling view_operator_func"));
       result_code= (*view_operator_func)(thd, table);
+      goto send_result;
+    }
+
+    if (table->schema_table)
+    {
+      result_code= HA_ADMIN_NOT_IMPLEMENTED;
       goto send_result;
     }
 
@@ -4382,8 +4416,8 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
           we will store the error message in a result set row 
           and then clear.
         */
-        if (thd->main_da.is_ok())
-          thd->main_da.reset_diagnostics_area();
+        if (thd->stmt_da->is_ok())
+          thd->stmt_da->reset_diagnostics_area();
         goto send_result;
       }
     }
@@ -4397,7 +4431,7 @@ send_result:
     lex->cleanup_after_one_table_open();
     thd->clear_error();  // these errors shouldn't get client
     {
-      List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+      List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
       SQL_condition *cond;
       while ((cond= it++))
       {
@@ -4411,7 +4445,7 @@ send_result:
         if (protocol->write())
           goto err;
       }
-      mysql_reset_errors(thd, true);
+      thd->warning_info->clear_warning_info(thd->query_id);
     }
     protocol->prepare_for_resend();
     protocol->store(table_name, system_charset_info);
@@ -4506,8 +4540,8 @@ send_result_message:
         we will store the error message in a result set row 
         and then clear.
       */
-      if (thd->main_da.is_ok())
-        thd->main_da.reset_diagnostics_area();
+      if (thd->stmt_da->is_ok())
+        thd->stmt_da->reset_diagnostics_area();
       trans_commit_stmt(thd);
       close_thread_tables(thd);
       if (!result_code) // recreation went ok
@@ -4525,7 +4559,7 @@ send_result_message:
         DBUG_ASSERT(thd->is_error());
         if (thd->is_error())
         {
-          const char *err_msg= thd->main_da.message();
+          const char *err_msg= thd->stmt_da->message();
           if (!thd->vio_ok())
           {
             sql_print_error(err_msg);
@@ -7236,7 +7270,8 @@ err:
     the table to be altered isn't empty.
     Report error here.
   */
-  if (alter_info->error_if_not_empty && thd->row_count)
+  if (alter_info->error_if_not_empty &&
+      thd->warning_info->current_row_for_warning())
   {
     const char *f_val= 0;
     enum enum_mysql_timestamp_type t_type= MYSQL_TIMESTAMP_DATE;
@@ -7408,7 +7443,7 @@ copy_data_between_tables(TABLE *from,TABLE *to,
   errpos= 4;
   if (ignore)
     to->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
-  thd->row_count= 0;
+  thd->warning_info->reset_current_row_for_warning();
   restore_record(to, s->default_values);        // Create empty record
   while (!(error=info.read_record(&info)))
   {
@@ -7418,7 +7453,6 @@ copy_data_between_tables(TABLE *from,TABLE *to,
       error= 1;
       break;
     }
-    thd->row_count++;
     /* Return error if source table isn't empty. */
     if (error_if_not_empty)
     {
@@ -7468,6 +7502,7 @@ copy_data_between_tables(TABLE *from,TABLE *to,
     }
     else
       found_count++;
+    thd->warning_info->inc_current_row_for_warning();
   }
 
 err:

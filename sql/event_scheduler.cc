@@ -74,7 +74,7 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
 {
   SQL_condition *cond;
   DBUG_ENTER("evex_print_warnings");
-  if (!thd->main_da.m_stmt_area.warn_list.elements)
+  if (thd->warning_info->is_empty())
     DBUG_VOID_RETURN;
 
   char msg_buf[10 * STRING_BUFFER_USUAL_SIZE];
@@ -90,7 +90,7 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
   prefix.append(et->name.str, et->name.length, system_charset_info);
   prefix.append("] ", 2);
 
-  List_iterator_fast<SQL_condition> it(thd->main_da.m_stmt_area.warn_list);
+  List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
   while ((cond= it++))
   {
     String err_msg(msg_buf, sizeof(msg_buf), system_charset_info);
@@ -128,7 +128,6 @@ post_init_event_thread(THD *thd)
     thd->cleanup();
     return TRUE;
   }
-  lex_start(thd);
 
   pthread_mutex_lock(&LOCK_thread_count);
   threads.append(thd);

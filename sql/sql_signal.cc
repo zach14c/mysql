@@ -715,9 +715,9 @@ int SQLCOM_signal::execute(THD *thd)
 
   DBUG_ENTER("SQLCOM_signal::execute");
 
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
   thd->row_count_func= 0;
-  mysql_reset_errors(thd, TRUE);
+  thd->warning_info->clear_warning_info(thd->query_id);
 
   result= raise_condition(thd, &cond);
 
@@ -748,12 +748,7 @@ int SQLCOM_resignal::execute(THD *thd)
   /* RESIGNAL with signal_value */
 
   /* Make room for 2 conditions */
-  while ((thd->main_da.m_stmt_area.warn_list.elements > 0) &&
-         ((thd->main_da.m_stmt_area.warn_list.elements + 2)
-                       > thd->variables.max_error_count))
-  {
-    thd->main_da.m_stmt_area.warn_list.pop();
-  }
+  thd->warning_info->reserve_space(thd, 2);
 
   SQL_condition *raised= NULL;
   raised= thd->raise_condition_no_handler(signaled->get_sql_errno(),

@@ -1290,7 +1290,7 @@ int ha_rollback_trans(THD *thd, bool all)
     if (is_real_trans)
     {
       if (thd->transaction_rollback_request)
-        thd->transaction.xid_state.rm_error= thd->main_da.sql_errno();
+        thd->transaction.xid_state.rm_error= thd->stmt_da->sql_errno();
       else
         thd->transaction.xid_state.xid.null();
     }
@@ -2788,7 +2788,7 @@ int handler::check_collation_compatibility()
 {
   ulong mysql_version= table->s->mysql_version;
 
-  if (mysql_version < 50124)
+  if (mysql_version < 60006)
   {
     KEY *key= table->key_info;
     KEY *key_end= key + table->s->keys;
@@ -2803,17 +2803,24 @@ int handler::check_collation_compatibility()
         Field *field= table->field[key_part->fieldnr - 1];
         uint cs_number= field->charset()->number;
         if ((mysql_version < 50048 &&
-             (cs_number == 11 || /* ascii_general_ci - bug #29499, bug #27562 */
-              cs_number == 41 || /* latin7_general_ci - bug #29461 */
-              cs_number == 42 || /* latin7_general_cs - bug #29461 */
-              cs_number == 20 || /* latin7_estonian_cs - bug #29461 */
-              cs_number == 21 || /* latin2_hungarian_ci - bug #29461 */
-              cs_number == 22 || /* koi8u_general_ci - bug #29461 */
-              cs_number == 23 || /* cp1251_ukrainian_ci - bug #29461 */
+             (cs_number == 11 ||   /* ascii_general_ci - bug #29499, bug #27562 */
+              cs_number == 41 ||   /* latin7_general_ci - bug #29461 */
+              cs_number == 42 ||   /* latin7_general_cs - bug #29461 */
+              cs_number == 20 ||   /* latin7_estonian_cs - bug #29461 */
+              cs_number == 21 ||   /* latin2_hungarian_ci - bug #29461 */
+              cs_number == 22 ||   /* koi8u_general_ci - bug #29461 */
+              cs_number == 23 ||   /* cp1251_ukrainian_ci - bug #29461 */
               cs_number == 26)) || /* cp1250_general_ci - bug #29461 */
-             (mysql_version < 50124 &&
-             (cs_number == 33 || /* utf8_general_ci - bug #27877 */
-              cs_number == 35))) /* ucs2_general_ci - bug #27877 */
+            (mysql_version < 50124 &&
+             (cs_number == 33 ||   /* utf8_general_ci - bug #27877 */
+              cs_number == 35)) || /* ucs2_general_ci - bug #27877 */
+            (mysql_version < 60001 &&
+             (cs_number == 2)) ||  /* latin2_czech_cs - WL #3664 */
+            (mysql_version < 60006 &&
+             (cs_number == 1 ||    /* big5_chinese_ci - bug #25420 */
+              cs_number == 36 ||   /* cp866_general_ci - bug #25420 */
+              cs_number == 24 ||   /* gb2312_chinese_ci - bug #25420 */
+              cs_number == 28)))   /* gbk_chinese_ci - bug #25420 */
           return HA_ADMIN_NEEDS_UPGRADE;
       }  
     }  
@@ -3614,7 +3621,7 @@ int ha_init_key_cache(const char *name, KEY_CACHE *key_cache)
   if (!key_cache->key_cache_inited)
   {
     pthread_mutex_lock(&LOCK_global_system_variables);
-    ulong tmp_buff_size= (ulong) key_cache->param_buff_size;
+    size_t tmp_buff_size= (size_t) key_cache->param_buff_size;
     uint tmp_block_size= (uint) key_cache->param_block_size;
     uint division_limit= key_cache->param_division_limit;
     uint age_threshold=  key_cache->param_age_threshold;
@@ -3638,7 +3645,7 @@ int ha_resize_key_cache(KEY_CACHE *key_cache)
   if (key_cache->key_cache_inited)
   {
     pthread_mutex_lock(&LOCK_global_system_variables);
-    long tmp_buff_size= (long) key_cache->param_buff_size;
+    size_t tmp_buff_size= (size_t) key_cache->param_buff_size;
     long tmp_block_size= (long) key_cache->param_block_size;
     uint division_limit= key_cache->param_division_limit;
     uint age_threshold=  key_cache->param_age_threshold;

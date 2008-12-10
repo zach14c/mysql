@@ -1337,7 +1337,7 @@ sp_exist_routines(THD *thd, TABLE_LIST *routines, bool any, bool no_error)
                                      &thd->sp_proc_cache, FALSE) != NULL ||
                      sp_find_routine(thd, TYPE_ENUM_FUNCTION, name,
                                      &thd->sp_func_cache, FALSE) != NULL;
-    mysql_reset_errors(thd, TRUE);
+    thd->warning_info->clear_warning_info(thd->query_id);
     if (sp_object_found)
     {
       if (any)

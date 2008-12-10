@@ -137,13 +137,13 @@ class sp_rcontext : public Sql_alloc
                SQL_condition ** cond_hdl);
 
   // If there is an error handler for this error, handle it and return TRUE.
-  bool handle_condition(THD *thd,
-                        uint sql_errno,
-                        const char* sqlstate,
-                        MYSQL_ERROR::enum_warning_level level,
-                        const char* msg,
-                        SQL_condition ** cond_hdl);
-
+  bool
+  handle_condition(THD *thd,
+                   uint sql_errno,
+                   const char* sqlstate,
+                   MYSQL_ERROR::enum_warning_level level,
+                   const char* msg,
+                   SQL_condition ** cond_hdl);
 
   // Returns handler type and sets *ip to location if one was found
   inline int
