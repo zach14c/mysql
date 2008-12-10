@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,13 +40,13 @@ public:
 	void			rollbackByXid(int xidLength, const UCHAR* xid);
 	void			print(void);
 	Transaction*	findOldest(void);
+	TransId			findOldestInActiveList() const;
 	void			getTransactionInfo(InfoTable* infoTable);
 	void			purgeTransactions();
+	void			purgeTransactionsWithLocks();
 	void			getSummaryInfo(InfoTable* infoTable);
 	void			reportStatistics(void);
-	void			expungeTransaction(Transaction *transaction);
 	Transaction* 	findTransaction(TransId transactionId);
-	void 			validateDependencies(void);
 	void			removeCommittedTransaction(Transaction* transaction);
 	void			removeTransaction(Transaction* transaction);
 	void			printBlockage(void);
