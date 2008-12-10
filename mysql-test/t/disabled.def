@@ -21,4 +21,4 @@ backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_fi
 backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
 log_output_basic     : Bug #40988  	log_output_basic.test succeeded though syntactically false.
 wait_timeout_func    : Bug #41225 joro wait_timeout_func fails
-
+kill                     : Bug#37780 2008-12-03 HHunger need some changes to be robust enoiugh for pushbuild. 
