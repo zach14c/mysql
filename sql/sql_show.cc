@@ -2134,7 +2134,6 @@ static bool show_status_array(THD *thd, const char *wild,
         const char *pos, *end;                  // We assign a lot of const's
 
         pthread_mutex_lock(&LOCK_global_system_variables);
-
         if (show_type == SHOW_SYS)
         {
           sys_var *var= ((sys_var *) value);
@@ -2217,11 +2216,10 @@ static bool show_status_array(THD *thd, const char *wild,
           DBUG_ASSERT(0);
           break;
         }
+        pthread_mutex_unlock(&LOCK_global_system_variables);
         table->field[1]->store(pos, (uint32) (end - pos), charset);
         thd->count_cuted_fields= CHECK_FIELD_IGNORE;
         table->field[1]->set_notnull();
-
-        pthread_mutex_unlock(&LOCK_global_system_variables);
 
         if (schema_table_store_record(thd, table))
         {

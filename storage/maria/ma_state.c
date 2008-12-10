@@ -96,6 +96,8 @@ my_bool _ma_setup_live_state(MARIA_HA *info)
   pthread_mutex_unlock(&share->intern_lock);
   /* The current item can't be deleted as it's the first one visible for us */
   tables->state_start=  tables->state_current= history->state;
+  tables->state_current.changed= 0;
+
   DBUG_PRINT("info", ("records: %ld", (ulong) tables->state_start.records));
 
 end:
@@ -153,6 +155,8 @@ MARIA_STATE_HISTORY
     if (!trnman_exists_active_transactions(history->trid, last_trid,
                                            trnman_is_locked))
     {
+      DBUG_PRINT("info", ("removing history->trid: %lu  next: %lu",
+                          (ulong) history->trid, (ulong) last_trid));
       my_free(history, MYF(0));
       continue;
     }
@@ -164,7 +168,6 @@ MARIA_STATE_HISTORY
 
   if (all && parent == &org_history->next)
   {
-    DBUG_ASSERT(trnman_is_locked == 0);
     /* There is only one state left. Delete this if it's visible for all */
     if (last_trid < trnman_get_min_trid())
     {
@@ -179,6 +182,11 @@ MARIA_STATE_HISTORY
 /**
    @brief Remove not used state history
 
+   @param share          Maria table information
+   @param all            1 if we should delete the first state if it's
+                         visible for all.  For the moment this is only used
+                         on close() of table.
+
    @notes
    share and trnman are not locked.
 
@@ -187,14 +195,19 @@ MARIA_STATE_HISTORY
    takes share->intern_lock.
 */
 
-void _ma_remove_not_visible_states_with_lock(MARIA_SHARE *share)
+void _ma_remove_not_visible_states_with_lock(MARIA_SHARE *share,
+                                             my_bool all)
 {
-  trnman_lock();
+  my_bool is_lock_trman;
+  if ((is_lock_trman= trman_is_inited()))
+    trnman_lock();
+
   pthread_mutex_lock(&share->intern_lock);
-  share->state_history=  _ma_remove_not_visible_states(share->state_history, 0,
-                                                       1);
+  share->state_history=  _ma_remove_not_visible_states(share->state_history,
+                                                       all, 1);
   pthread_mutex_unlock(&share->intern_lock);
-  trnman_unlock();
+  if (is_lock_trman)
+    trnman_unlock();
 }
 
 
@@ -262,6 +275,7 @@ void _ma_get_status(void* param, my_bool concurrent_insert)
 #endif
   info->state_save= info->s->state.state;
   info->state= &info->state_save;
+  info->state->changed= 0;
   info->append_insert_at_end= concurrent_insert;
   DBUG_VOID_RETURN;
 }
@@ -315,6 +329,14 @@ void _ma_copy_status(void* to, void *from)
 }
 
 
+void _ma_reset_update_flag(void *param,
+                           my_bool concurrent_insert __attribute__((unused)))
+{
+  MARIA_HA *info=(MARIA_HA*) param;
+  info->state->changed= 0;
+}
+
+
 /**
    @brief Check if should allow concurrent inserts
 
@@ -355,6 +377,15 @@ my_bool _ma_check_status(void *param)
 
 /**
    @brief write hook at end of trans to store status for all used table
+
+   @Notes
+   This function must be called under trnman_lock in trnman_end_trn()
+   because of the following reasons:
+   - After trnman_end_trn() is called, the current transaction will be
+   regarded as committed and all used tables state_history will be
+   visible to other transactions.  To do this, we loop over all used
+   tables and create/update a history entries that contains the correct
+   state_history for them.
 */
 
 my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
@@ -379,6 +410,13 @@ my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
           trnman_exists_active_transactions(share->state_history->trid,
                                             trn->commit_trid, 1))
       {
+        /*
+          There exist transactions that are still using the current
+          share->state_history.  Create a new history item for this
+          commit and add it first in the state_history list. This
+          ensures that all history items are stored in the list in
+          decresing trid order.
+        */
         if (!(history= my_malloc(sizeof(*history), MYF(MY_WME))))
         {
           /* purecov: begin inspected */
@@ -396,6 +434,8 @@ my_bool _ma_trnman_end_trans_hook(TRN *trn, my_bool commit,
       {
         /* Previous history can't be seen by anyone, reuse old memory */
         history= share->state_history;
+        DBUG_PRINT("info", ("removing history->trid: %lu  new: %lu",
+                            (ulong) history->trid, (ulong) trn->commit_trid));
       }
 
       history->state.records+= (tables->state_current.records -
