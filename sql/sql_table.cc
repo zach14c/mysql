@@ -5969,6 +5969,12 @@ mysql_fast_or_online_alter_table(THD *thd,
                                         create_info, alter_info,
                                         ha_alter_flags))
       DBUG_RETURN(1);
+
+    /*
+      Make the metadata lock available to open_table() called to
+      reopen the table down the road.
+    */
+    table_list->mdl_lock_data= table->mdl_lock_data;
   }
 
   /*
