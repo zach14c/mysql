@@ -1913,7 +1913,7 @@ static bool check_prepared_statement(Prepared_statement *stmt)
                                                      get_table_list());
 
   /* Reset warning count for each query that uses tables */
-  if ((tables || !lex->is_single_level_stmt()) && !thd->spcont)
+  if (tables)
     thd->warning_info->opt_clear_warning_info(thd->query_id);
 
   switch (sql_command) {

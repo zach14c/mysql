@@ -224,6 +224,47 @@ void Warning_info::clear_warning_info(ulonglong warn_id_arg)
 
 
 /**
+  Append warnings only if the original contents of the routine
+  warning info was replaced.
+*/
+
+void Warning_info::merge_with_routine_info(THD *thd, Warning_info *source)
+{
+  /*
+    If a routine body is empty or if a routine did not
+    generate any warnings (thus m_warn_id didn't change),
+    do not duplicate our own contents by appending the
+    contents of the called routine. We know that the called
+    routine did not change its warning info.
+
+    On the other hand, if the routine body is not empty and
+    some statement in the routine generates a warning or
+    uses tables, m_warn_id is guaranteed to have changed.
+    In this case we know that the routine warning info
+    contains only new warnings, and thus we perform a copy.
+  */
+  if (m_warn_id != source->m_warn_id)
+  {
+    /*
+      If the invocation of the routine was a standalone statement,
+      rather than a sub-statement, in other words, if it's a CALL
+      of a procedure, rather than invocation of a function or a
+      trigger, we need to clear the current contents of the caller's
+      warning info.
+
+      This is per MySQL rules: if a statement generates a warning,
+      warnings from the previous statement are flushed.  Normally
+      it's done in push_warning(). However, here we don't use
+      push_warning() to avoid invocation of condition handlers or
+      escalation of warnings to errors.
+    */
+    opt_clear_warning_info(thd->query_id);
+    append_warning_info(thd, source);
+  }
+}
+
+
+/**
   Add a warning to the list of warnings. Increment the respective
   counters.
 */
@@ -267,8 +308,7 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
       !(thd->options & OPTION_SQL_NOTES))
     DBUG_VOID_RETURN;
 
-  if (! thd->spcont)
-    thd->warning_info->opt_clear_warning_info(thd->query_id);
+  thd->warning_info->opt_clear_warning_info(thd->query_id);
 
   thd->got_warning= 1;
 

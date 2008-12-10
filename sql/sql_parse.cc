@@ -1849,9 +1849,8 @@ mysql_execute_command(THD *thd)
     A better approach would be to reset this for any commands
     that is not a SHOW command or a select that only access local
     variables, but for now this is probably good enough.
-    Don't reset warnings when executing a stored routine.
   */
-  if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
+  if (all_tables)
     thd->warning_info->opt_clear_warning_info(thd->query_id);
 
 #ifdef HAVE_REPLICATION
