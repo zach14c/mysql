@@ -383,4 +383,10 @@ static inline const uchar *skip_trailing_space(const uchar *ptr,size_t len)
   return (end);
 }
 
-#endif
+#ifdef SAFEMALLOC
+#define TRASH(A,B) bfill(A, B, 0x8F)
+#else
+#define TRASH(A,B) /* nothing */
+#endif /* SAFEMALLOC */
+
+#endif /* _m_string_h */

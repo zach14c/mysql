@@ -23,14 +23,23 @@ int compare= 1;
 int exchange= 2;
       ],[
 #if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
-  /* When compiling with Sun Studio compiler we need the Solaris atomic
-     functions. These were first introduced in Solaris 10. */
+  /* When compiling with Sun Studio compiler we use the Solaris atomic 
+     functions if they are available. These were first introduced in 
+     Solaris 10. */
 #if defined(HAVE_SOLARIS_ATOMIC)
   return 0;
+#else 
+  /* If the atomic functions are not available we use our own assembly
+     implementation for these. These are implemented using Sun Studio's
+	 inline assembly templates which is only supported by Sun Studio 12
+	 and newer versions (compiler version 5.9 or newer). */
+#if (__SUNPRO_C) >= 0x590 || (__SUNPRO_CC >= 0x590)
+  return 0;  
 #else
-  /* Fail if the atomic functions are not available. Support for this
-     will be added when the fix for bug 37622 is completed. */
-#error Need Solaris atomic functions to use Sun Studio compiler
+  /* Fail if we do not have the atomic functions and the Sun Studio version
+     is older that Sun Studio 12. */
+#error To compile Falcon with Sun Studio for Solaris on SPARC we need either Solaris 10 or newer or Sun Studio 12 or newer
+#endif
 #endif /* HAVE_SOLARIS_ATOMIC */
 #else
   /* Use gcc style inline assembly when compiling with gcc */

@@ -19,10 +19,9 @@
 #if defined(__sparcv8) || defined(__sparcv9) || defined(__sun)
 #include <sys/atomic.h>
 
-#if defined(__SunOS_5_9)
-extern "C" int compareswap(volatile int *target, int compare, int exchange);
-extern "C" char compareswapptr(volatile void **target, void *compare, void *exchange);
-#endif /* __SunOS_5_9 */
+#if defined(__SunOS_5_9) && defined(__SUNPRO_CC) && defined(__sparc)
+#include "CompareAndSwapSparc.h"
+#endif /* __SunOS_5_9 && __SUNPRO_CC && __sparc */
 
 #endif
 
@@ -152,11 +151,8 @@ inline int inline_cas (volatile int *target, int compare, int exchange)
 #if defined(__SunOS_5_10) || defined(__SunOS_5_11)
     return (compare == atomic_cas_uint((volatile uint_t *)target, compare, exchange));
 #else
-#  error cas not defined. We need >= Solaris 10
-	/* Not implemented yet - just an example of how to call inline assembly */
-	char ret = compareswap(target, compare, exchange);
-
-	return ret;
+	/* Use inline assembly for Solaris 9 */
+	return cas_sparc(target, compare, exchange);
 #endif
 
 #else
@@ -266,11 +262,8 @@ inline char inline_cas_pointer (volatile void **target, void *compare, void *exc
 #if defined(__SunOS_5_10) || defined(__SunOS_5_11)
     return (char)(compare == atomic_cas_ptr(target, compare, exchange));
 #else
-#  error cas not defined. We need >= Solaris 10
-	/* Not implemented yet - just an example for calling inline assembly */
-	char ret = compareswapptr(target, compare, exchange);
-    
-	return ret;
+	/* Use inline assembly for Solaris 9 */
+	return cas_pointer_sparc(target, compare, exchange);
 #endif
 
 #else
