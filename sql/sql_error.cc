@@ -41,54 +41,209 @@ This file contains the implementation of error and warnings related
 
 ***********************************************************************/
 
+#include "sql_error.h"
 #include "mysql_priv.h"
 #include "sp_rcontext.h"
 
-/*
-  Store a new message in an error object
+/**
+  Clear this diagnostics area.
 
-  This is used to in group_concat() to register how many warnings we actually
-  got after the query has been executed.
+  Normally called at the end of a statement.
 */
 
-void MYSQL_ERROR::set_msg(THD *thd, const char *msg_arg)
+void
+Diagnostics_area::reset_diagnostics_area()
 {
-  msg= strdup_root(&thd->warn_root, msg_arg);
-}
-
-
-/*
-  Reset all warnings for the thread
-
-  SYNOPSIS
-    mysql_reset_errors()
-    thd			Thread handle
-    force               Reset warnings even if it has been done before
-
-  IMPLEMENTATION
-    Don't reset warnings if this has already been called for this query.
-    This may happen if one gets a warning during the parsing stage,
-    in which case push_warnings() has already called this function.
-*/  
-
-void mysql_reset_errors(THD *thd, bool force)
-{
-  DBUG_ENTER("mysql_reset_errors");
-  if (thd->query_id != thd->warn_id || force)
-  {
-    thd->warn_id= thd->query_id;
-    free_root(&thd->warn_root,MYF(0));
-    bzero((char*) thd->warn_count, sizeof(thd->warn_count));
-    if (force)
-      thd->total_warn_count= 0;
-    thd->warn_list.empty();
-    thd->row_count= 1; // by default point to row 1
-  }
+  DBUG_ENTER("reset_diagnostics_area");
+#ifdef DBUG_OFF
+  can_overwrite_status= FALSE;
+  /** Don't take chances in production */
+  m_message[0]= '\0';
+  m_sql_errno= 0;
+  m_server_status= 0;
+  m_affected_rows= 0;
+  m_last_insert_id= 0;
+  m_statement_warn_count= 0;
+#endif
+  is_sent= FALSE;
+  /** Tiny reset in debug mode to see garbage right away */
+  m_status= DA_EMPTY;
   DBUG_VOID_RETURN;
 }
 
 
-/* 
+/**
+  Set OK status -- ends commands that do not return a
+  result set, e.g. INSERT/UPDATE/DELETE.
+*/
+
+void
+Diagnostics_area::set_ok_status(THD *thd, ulonglong affected_rows_arg,
+                                ulonglong last_insert_id_arg,
+                                const char *message_arg)
+{
+  DBUG_ENTER("set_ok_status");
+  DBUG_ASSERT(! is_set());
+  /*
+    In production, refuse to overwrite an error or a custom response
+    with an OK packet.
+  */
+  if (is_error() || is_disabled())
+    return;
+
+  m_server_status= thd->server_status;
+  m_statement_warn_count= thd->warning_info->statement_warn_count();
+  m_affected_rows= affected_rows_arg;
+  m_last_insert_id= last_insert_id_arg;
+  if (message_arg)
+    strmake(m_message, message_arg, sizeof(m_message) - 1);
+  else
+    m_message[0]= '\0';
+  m_status= DA_OK;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Set EOF status.
+*/
+
+void
+Diagnostics_area::set_eof_status(THD *thd)
+{
+  DBUG_ENTER("set_eof_status");
+  /* Only allowed to report eof if has not yet reported an error */
+  DBUG_ASSERT(! is_set());
+  /*
+    In production, refuse to overwrite an error or a custom response
+    with an EOF packet.
+  */
+  if (is_error() || is_disabled())
+    return;
+
+  m_server_status= thd->server_status;
+  /*
+    If inside a stored procedure, do not return the total
+    number of warnings, since they are not available to the client
+    anyway.
+  */
+  m_statement_warn_count= (thd->spcont ?
+                           0 : thd->warning_info->statement_warn_count());
+
+  m_status= DA_EOF;
+  DBUG_VOID_RETURN;
+}
+
+/**
+  Set ERROR status.
+*/
+
+void
+Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
+                                   const char *message_arg)
+{
+  DBUG_ENTER("set_error_status");
+  /*
+    Only allowed to report error if has not yet reported a success
+    The only exception is when we flush the message to the client,
+    an error can happen during the flush.
+  */
+  DBUG_ASSERT(! is_set() || can_overwrite_status);
+#ifdef DBUG_OFF
+  /*
+    In production, refuse to overwrite a custom response with an
+    ERROR packet.
+  */
+  if (is_disabled())
+    return;
+#endif
+
+  m_sql_errno= sql_errno_arg;
+  strmake(m_message, message_arg, sizeof(m_message)-1);
+
+  m_status= DA_ERROR;
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Mark the diagnostics area as 'DISABLED'.
+
+  This is used in rare cases when the COM_ command at hand sends a response
+  in a custom format. One example is the query cache, another is
+  COM_STMT_PREPARE.
+*/
+
+void
+Diagnostics_area::disable_status()
+{
+  DBUG_ASSERT(! is_set());
+  m_status= DA_DISABLED;
+}
+
+
+/* Store a new message in an error object. */
+
+void MYSQL_ERROR::set_msg(MEM_ROOT *warn_root, const char *msg_arg)
+{
+  msg= strdup_root(warn_root, msg_arg);
+}
+
+
+Warning_info::Warning_info(ulonglong warn_id_arg)
+  :m_statement_warn_count(0),
+  m_current_row_for_warning(1),
+  m_warn_id(warn_id_arg)
+{
+  /* Initialize sub structures */
+  init_sql_alloc(&m_warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
+  m_warn_list.empty();
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+}
+
+
+Warning_info::~Warning_info()
+{
+  free_root(&m_warn_root,MYF(0));
+}
+
+
+/**
+  Reset the warning information of this connection.
+*/
+
+void Warning_info::clear_warning_info(ulonglong warn_id_arg)
+{
+  m_warn_id= warn_id_arg;
+  free_root(&m_warn_root, MYF(0));
+  bzero((char*) m_warn_count, sizeof(m_warn_count));
+  m_warn_list.empty();
+  m_statement_warn_count= 0;
+  m_current_row_for_warning= 1; /* Start counting from the first row */
+}
+
+
+/**
+  Add a warning to the list of warnings. Increment the respective
+  counters.
+*/
+
+void Warning_info::push_warning(THD *thd,
+                                MYSQL_ERROR::enum_warning_level level,
+                                uint code, const char *msg)
+{
+  if (m_warn_list.elements < thd->variables.max_error_count)
+  {
+    MYSQL_ERROR *err;
+    if ((err= new (&m_warn_root) MYSQL_ERROR(&m_warn_root, level, code, msg)))
+      m_warn_list.push_back(err, &m_warn_root);
+  }
+  m_warn_count[(uint) level]++;
+  m_statement_warn_count++;
+}
+
+
+/*
   Push the warning/error to error list if there is still room in the list
 
   SYNOPSIS
@@ -102,7 +257,6 @@ void mysql_reset_errors(THD *thd, bool force)
 void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level, 
                           uint code, const char *msg)
 {
-  MYSQL_ERROR *err= 0;
   DBUG_ENTER("push_warning");
   DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
 
@@ -113,8 +267,9 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
       !(thd->options & OPTION_SQL_NOTES))
     DBUG_VOID_RETURN;
 
-  if (thd->query_id != thd->warn_id && !thd->spcont)
-    mysql_reset_errors(thd, 0);
+  if (! thd->spcont)
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
+
   thd->got_warning= 1;
 
   /* Abort if we are using strict mode and we are not using IGNORE */
@@ -137,25 +292,18 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
     level= MYSQL_ERROR::WARN_LEVEL_ERROR;
   }
 
-  if (thd->handle_error(code, msg, level))
+  if (thd->handle_error(level, code, msg))
     DBUG_VOID_RETURN;
 
   if (thd->spcont &&
-      thd->spcont->handle_error(code, level, thd))
+      thd->spcont->handle_error(thd, level, code))
   {
     DBUG_VOID_RETURN;
   }
   query_cache_abort(&thd->query_cache_tls);
 
+  thd->warning_info->push_warning(thd, level, code, msg);
 
-  if (thd->warn_list.elements < thd->variables.max_error_count)
-  {
-    /* We have to use warn_root, as mem_root is freed after each query */
-    if ((err= new (&thd->warn_root) MYSQL_ERROR(thd, code, level, msg)))
-      thd->warn_list.push_back(err, &thd->warn_root);
-  }
-  thd->warn_count[(uint) level]++;
-  thd->total_warn_count++;
   DBUG_VOID_RETURN;
 }
 
@@ -229,12 +377,12 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
   MYSQL_ERROR *err;
   SELECT_LEX *sel= &thd->lex->select_lex;
   SELECT_LEX_UNIT *unit= &thd->lex->unit;
-  ha_rows idx= 0;
+  ulonglong idx= 0;
   Protocol *protocol=thd->protocol;
 
   unit->set_limit(sel);
 
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
   while ((err= it++))
   {
     /* Skip levels that the user is not interested in */

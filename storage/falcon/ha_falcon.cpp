@@ -2201,10 +2201,6 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	if (tempTable || (*alter_flags & notSupported).is_set())
 		DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 
-	// TODO:
-	// 1. Check for supported ALTER combinations
-	// 2. Check for explicit default (altered_table->s->default_values)
-	
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		{
 		Field *field = NULL;
@@ -2222,6 +2218,33 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 				if (!field->real_maybe_null())
 					{
 					DBUG_PRINT("info",("Online add column must be nullable"));
+					DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+					}
+			}
+		}
+		
+	if (alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX)
+		|| alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX))
+		{
+		for (unsigned int n = 0; n < altered_table->s->keys; n++)
+			{
+			KEY *key = altered_table->key_info + n;
+			KEY *tableEnd = table->key_info + table->s->keys;
+			KEY *tableKey;
+			
+			// Determine if this is a new index
+
+			for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
+				if (!strcmp(tableKey->name, key->name))
+					break;
+
+			// Unique, non-null keys are interpreted as primary keys.
+			// Online add/drop primary keys not yet supported.
+			
+			if (tableKey >= tableEnd)
+				if (n == altered_table->s->primary_key)
+					{
+					DBUG_PRINT("info",("Online add/drop primary key not supported"));
 					DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 					}
 			}

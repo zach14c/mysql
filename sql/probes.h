@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#if _DTRACE_VERSION && defined(HAVE_DTRACE)
+#if _DTRACE_VERSION
 
 #define	MYSQL_COMMAND_DONE(arg0) \
 	__dtrace_mysql___command__done(arg0)
