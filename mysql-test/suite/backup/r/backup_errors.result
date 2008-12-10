@@ -112,7 +112,7 @@ delete database files so that check_db_dir_exists will fail in
 si_objects.cc @ DatabaseObj::do_serialize
 SET DEBUG_SYNC='now SIGNAL db_will_fail';
 Database has been deleted, backup will fail
-ERROR 42000: Unknown database 'db1'
+ERROR HY000: Failed to obtain meta-data for database `db1`
 
 Test that backup fails with error if a table used by 
 a trigger cannot be opened
@@ -135,3 +135,50 @@ SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
 
 Done testing for Bug#38624
+
+Testing RESTORE ... OVERWRITE functionality
+See bug#34579
+
+Initialize
+CREATE DATABASE db1;
+USE db1;
+CREATE TABLE table1 (text VARCHAR(20));
+INSERT INTO table1 VALUES ('Inserted before');
+
+Backup database
+BACKUP DATABASE db1 TO 'overwrite.bak';
+backup_id
+#
+
+Insert more data and display
+INSERT INTO table1 VALUES ('Inserted after');
+SELECT * FROM table1;
+text
+Inserted before
+Inserted after
+
+Restore without OVERWRITE flag; will fail
+RESTORE FROM 'overwrite.bak';
+ERROR HY000: Database 'db1' already exists. Use OVERWRITE flag to overwrite.
+
+Restore with OVERWRITE flag; will succeed
+RESTORE FROM 'overwrite.bak' OVERWRITE;
+backup_id
+#
+
+Show that inserted value 2 is not there
+SELECT * FROM table1;
+text
+Inserted before
+DROP DATABASE db1;
+
+Restore after deleting db; will succeed
+RESTORE FROM 'overwrite.bak';
+backup_id
+#
+
+Show that inserted value 2 is not there
+SELECT * FROM table1;
+text
+Inserted before
+DROP DATABASE db1;

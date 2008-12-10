@@ -31,6 +31,7 @@
 #include <ddl_blocker.h>
 #include "sql_audit.h"
 #include "transaction.h"
+#include "sql_prepare.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"
@@ -43,7 +44,7 @@
   @defgroup Runtime_Environment Runtime Environment
   @{
 */
-int execute_backup_command(THD*, LEX*, String*);
+int execute_backup_command(THD*, LEX*, String*, bool);
 
 /* Used in error handling only */
 #define SP_TYPE_STRING(LP) \
@@ -450,7 +451,7 @@ pthread_handler_t handle_bootstrap(void *arg)
       /* purecov: begin tested */
       if (net_realloc(&(thd->net), 2 * thd->net.max_packet))
       {
-        net_end_statement(thd);
+        thd->protocol->end_statement();
         bootstrap_error= 1;
         break;
       }
@@ -492,7 +493,7 @@ pthread_handler_t handle_bootstrap(void *arg)
     close_thread_tables(thd);			// Free tables
 
     bootstrap_error= thd->is_error();
-    net_end_statement(thd);
+    thd->protocol->end_statement();
 
 #if defined(ENABLED_PROFILING) && defined(COMMUNITY_SERVER)
     thd->profiling.finish_current_query();
@@ -628,7 +629,7 @@ bool do_command(THD *thd)
     Consider moving to init_connect() instead.
   */
   thd->clear_error();				// Clear error message
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
 
   net_new_transaction(net);
 
@@ -642,7 +643,7 @@ bool do_command(THD *thd)
 
     /* The error must be set. */
     DBUG_ASSERT(thd->is_error());
-    net_end_statement(thd);
+    thd->protocol->end_statement();
 
     if (net->error != 3)
     {
@@ -1013,7 +1014,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       ha_maria::implicit_commit(thd, FALSE);
 #endif
 
-      net_end_statement(thd);
+      thd->protocol->end_statement();
       query_cache_end_of_result(thd);
       /*
         Multiple queries exits, execute them individually
@@ -1135,7 +1136,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     /* We don't calculate statistics for this command */
     general_log_print(thd, command, NullS);
     net->error=0;				// Don't give 'abort' message
-    thd->main_da.disable_status();              // Don't send anything back
+    thd->stmt_da->disable_status();              // Don't send anything back
     error=TRUE;					// End server
     break;
 
@@ -1312,7 +1313,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
 #else
     (void) my_net_write(net, (uchar*) buff, length);
     (void) net_flush(net);
-    thd->main_da.disable_status();
+    thd->stmt_da->disable_status();
 #endif
     break;
   }
@@ -1376,9 +1377,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   }
 
   /* If commit fails, we should be able to reset the OK status. */
-  thd->main_da.can_overwrite_status= TRUE;
+  thd->stmt_da->can_overwrite_status= TRUE;
   thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
-  thd->main_da.can_overwrite_status= FALSE;
+  thd->stmt_da->can_overwrite_status= FALSE;
 
   thd->transaction.stmt.reset();
 
@@ -1386,7 +1387,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   /* report error issued during command execution */
   if (thd->killed_errno())
   {
-    if (! thd->main_da.is_set())
+    if (! thd->stmt_da->is_set())
       thd->send_kill_message();
   }
   if (thd->killed == THD::KILL_QUERY || thd->killed == THD::KILL_BAD_DATA)
@@ -1399,7 +1400,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   ha_maria::implicit_commit(thd, FALSE);
 #endif
 
-  net_end_statement(thd);
+  thd->protocol->end_statement();
   query_cache_end_of_result(thd);
 
   thd->proc_info= "closing tables";
@@ -1412,7 +1413,7 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                         0,0,0,0,
                         thd->query,thd->query_length,
                         thd->variables.character_set_client,
-                        thd->row_count);  
+                        thd->warning_info->current_row_for_warning());
   }
 
   log_slow_statement(thd);
@@ -1851,7 +1852,7 @@ mysql_execute_command(THD *thd)
     Don't reset warnings when executing a stored routine.
   */
   if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
-    mysql_reset_errors(thd, 0);
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
 
 #ifdef HAVE_REPLICATION
   if (unlikely(thd->slave_thread))
@@ -2312,11 +2313,29 @@ mysql_execute_command(THD *thd)
                         sys_var_backupdir.value_length);
     backupdir.length(sys_var_backupdir.value_length);
 
+    /* Used to specify if RESTORE should overwrite existing db with same name */
+    bool overwrite_restore= false;
+
+    Item *it= (Item *)lex->value_list.head();
+
+    // Item only set for RESTORE in sql_yacc.yy, no error checking of
+    // item necessary
+    if (it)
+    {
+      /*
+        it is OK to only emulate fix_fields, because we need only
+        value of constant
+      */
+      it->quick_fix_field();
+
+      if ((int8)it->val_int() == 1)
+        overwrite_restore= true;
+    }
     /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
      */ 
-    if (execute_backup_command(thd, lex, &backupdir))
+    if (execute_backup_command(thd, lex, &backupdir, overwrite_restore))
       goto error;
     break;
   }
@@ -4214,12 +4233,6 @@ create_sp_error:
           So just execute the statement.
         */
 	res= sp->execute_procedure(thd, &lex->value_list);
-	/*
-          If warnings have been cleared, we have to clear total_warn_count
-          too, otherwise the clients get confused.
-	 */
-	if (thd->warn_list.is_empty())
-	  thd->total_warn_count= 0;
 
 	thd->variables.select_limit= select_limit;
 
@@ -4250,7 +4263,7 @@ create_sp_error:
       else
         sp= sp_find_routine(thd, TYPE_ENUM_FUNCTION, lex->spname,
                             &thd->sp_func_cache, FALSE);
-      mysql_reset_errors(thd, 0);
+      thd->warning_info->opt_clear_warning_info(thd->query_id);
       if (! sp)
       {
 	if (lex->spname->m_db.str)
@@ -4370,7 +4383,7 @@ create_sp_error:
       }
 
       sp_result= sp_routine_exists_in_table(thd, type, lex->spname);
-      mysql_reset_errors(thd, 0);
+      thd->warning_info->opt_clear_warning_info(thd->query_id);
       if (sp_result == SP_OK)
       {
         char *db= lex->spname->m_db.str;
@@ -4667,9 +4680,9 @@ finish:
   }
 
   /* If commit fails, we should be able to reset the OK status. */
-  thd->main_da.can_overwrite_status= TRUE;
+  thd->stmt_da->can_overwrite_status= TRUE;
   opt_implicit_commit(thd, CF_IMPLICIT_COMMIT_END);
-  thd->main_da.can_overwrite_status= FALSE;
+  thd->stmt_da->can_overwrite_status= FALSE;
 
   DBUG_RETURN(res || thd->is_error());
 
@@ -5460,8 +5473,8 @@ void mysql_reset_thd_for_next_command(THD *thd)
     thd->user_var_events_alloc= thd->mem_root;
   }
   thd->clear_error();
-  thd->main_da.reset_diagnostics_area();
-  thd->total_warn_count=0;			// Warnings for this query
+  thd->stmt_da->reset_diagnostics_area();
+  thd->warning_info->reset_for_next_command();
   thd->rand_used= 0;
   thd->sent_row_count= thd->examined_row_count= 0;
   thd->thd_marker.emb_on_expr_nest= NULL;
@@ -6544,7 +6557,6 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
     {
       thd->thread_stack= (char*) &tmp_thd;
       thd->store_globals();
-      lex_start(thd);
     }
     
     if (thd)

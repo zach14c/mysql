@@ -121,6 +121,8 @@ static int send_reply(Backup_restore_ctx &context);
   @param[IN] thd        current thread object reference.
   @param[IN] lex        results of parsing the statement.
   @param[IN] backupdir  value of the backupdir variable from server.
+  @param[IN] overwrite  whether or not restore should overwrite existing
+                        DB with same name as in backup image
 
   @note This function sends response to the client (ok, result set or error).
 
@@ -132,7 +134,7 @@ static int send_reply(Backup_restore_ctx &context);
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex, String *backupdir)
+execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
 {
   int res= 0;
   
@@ -185,7 +187,8 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     else
     {
       context.write_message(log_level::INFO, "Backing up selected databases");
-      res= info->add_dbs(lex->db_list); // backup databases specified by user
+      /* Backup databases specified by user. */
+      res= info->add_dbs(thd, lex->db_list);
     }
 
     info->close(); // close catalogue after filling it with objects to backup
@@ -226,7 +229,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir)
     
     DEBUG_SYNC(thd, "after_backup_start_restore");
 
-    res= context.do_restore();      
+    res= context.do_restore(overwrite);      
 
     DEBUG_SYNC(thd, "restore_before_end");
 
@@ -331,7 +334,6 @@ int send_reply(Backup_restore_ctx &context)
     goto err;
   }
   my_eof(context.thd());                        // Never errors
-  context.report_cleanup();                     // Never errors
   DBUG_RETURN(0);
 
  err:
@@ -399,7 +401,7 @@ Backup_restore_ctx::Backup_restore_ctx(THD *thd)
 Backup_restore_ctx::~Backup_restore_ctx()
 {
   close();
-  
+
   delete mem_alloc;
   delete m_catalog;  
   delete m_stream;
@@ -498,7 +500,7 @@ int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
   
   // Prepare error reporting context.
   
-  mysql_reset_errors(m_thd, 0);                 // Never errors
+  m_thd->warning_info->opt_clear_warning_info(m_thd->query_id); // Never errors
   m_thd->no_warnings_for_error= FALSE;
 
   save_errors();                                // Never errors
@@ -1162,7 +1164,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
       
       case BSTREAM_IT_TRIGGER:
         DBUG_ASSERT(obj->m_obj_ptr);
-        if (obj->m_obj_ptr->execute(m_thd))
+        if (obj->m_obj_ptr->create(m_thd))
         {
           delete it;
           delete dbit;
@@ -1185,7 +1187,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   Image_info::Obj *ev;
 
   while ((ev= it++)) 
-    if (ev->m_obj_ptr->execute(m_thd))
+    if (ev->m_obj_ptr->create(m_thd))
     {
       fatal_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
       DBUG_RETURN(m_error);
@@ -1199,11 +1201,14 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   @pre @c prepare_for_restore() method was called.
 
+  @param[IN] overwrite whether or not restore should overwrite existing
+                       DB with same name as in backup image
+
   @returns 0 on success, error code otherwise.
 
   @todo Remove the @c reset_diagnostic_area() hack.
 */
-int Backup_restore_ctx::do_restore()
+int Backup_restore_ctx::do_restore(bool overwrite)
 {
   DBUG_ENTER("do_restore");
 
@@ -1223,11 +1228,29 @@ int Backup_restore_ctx::do_restore()
 
   DBUG_PRINT("restore", ("Restoring meta-data"));
 
+  // unless RESTORE... OVERWRITE: return error if database already exists
+  if (!overwrite) {
+    Image_info::Db_iterator *dbit= info.get_dbs();
+
+    if (!dbit) {
+      DBUG_RETURN(fatal_error(ER_OUT_OF_RESOURCES));
+    }
+
+    Image_info::Db *mydb;
+    while ((mydb= static_cast<Image_info::Db*>((*dbit)++))) {
+      if (!obs::check_db_existence(m_thd, &mydb->name())) {
+        delete dbit;
+        DBUG_RETURN(fatal_error(ER_RESTORE_DB_EXISTS, mydb->name().ptr()));
+      }
+    }
+    delete dbit;
+  }
+
   disable_fkey_constraints();                   // Never errors
 
   if (read_meta_data(info, s))
   {
-    m_thd->main_da.reset_diagnostics_area();    // Never errors
+    m_thd->stmt_da->reset_diagnostics_area();    // Never errors
 
     fatal_error(ER_BACKUP_READ_META);
     DBUG_RETURN(m_error);
@@ -1239,15 +1262,6 @@ int Backup_restore_ctx::do_restore()
   }
 
   DBUG_PRINT("restore",("Restoring table data"));
-
-  /* 
-    FIXME: this call is here because object services doesn't clean the
-    statement execution context properly, which leads to assertion failure.
-    It should be fixed inside object services implementation and then the
-    following line should be removed.
-   */
-  close_thread_tables(m_thd);                   // Never errors
-  m_thd->main_da.reset_diagnostics_area();      // Never errors  
 
   if (lock_tables_for_restore())                // logs errors
     DBUG_RETURN(m_error);
@@ -1277,15 +1291,6 @@ int Backup_restore_ctx::do_restore()
     fatal_error(ER_BACKUP_READ_SUMMARY);
     DBUG_RETURN(m_error);
   }
-
-  /* 
-    FIXME: this call is here because object services doesn't clean the
-    statement execution context properly, which leads to assertion failure.
-    It should be fixed inside object services implementation and then the
-    following line should be removed.
-   */
-  close_thread_tables(m_thd);                   // Never errors
-  m_thd->main_da.reset_diagnostics_area();      // Never errors
 
   /*
     Report validity point time and binlog position stored in the backup image
@@ -1952,25 +1957,32 @@ int bcat_create_item(st_bstream_image_header *catalogue,
 
   if (item->type == BSTREAM_IT_TABLESPACE)
   {
-    // if the tablespace exists, there is nothing more to do
-    if (obs::tablespace_exists(thd, sobj))
-    {
-      DBUG_PRINT("restore",(" skipping tablespace which exists"));
-      return BSTREAM_OK;
-    }
-
-    /* 
-      If there is a different tablespace with the same name then we can't 
-      re-create the original tablespace used by tables being restored. We report 
-      this and cancel restore process.
-    */ 
-
-    Obj *ts= obs::is_tablespace(thd, sobj); 
+    Obj *ts= obs::find_tablespace(thd, sobj->get_name());
 
     if (ts)
     {
-      DBUG_PRINT("restore",(" tablespace has changed on the server - aborting"));
+      /*
+        A tablespace with the same name exists. We have to check if other
+        attributes are the same as they were.
+      */
+
+      if (obs::compare_tablespace_attributes(ts, sobj))
+      {
+        /* The tablespace is the same. There is nothing more to do. */
+        DBUG_PRINT("restore",(" skipping tablespace which exists"));
+        return BSTREAM_OK;
+      }
+
+      /*
+        A tablespace with the same name exists, but it has been changed
+        since backup.  We can't re-create the original tablespace used by
+        tables being restored. We report this and cancel restore process.
+      */
+
+      DBUG_PRINT("restore",
+                 (" tablespace has changed on the server - aborting"));
       info->m_ctx.fatal_error(ER_BACKUP_TS_CHANGE, desc);
+      delete ts;
       return BSTREAM_ERROR;
     }
   }
@@ -1990,12 +2002,13 @@ int bcat_create_item(st_bstream_image_header *catalogue,
             error handling work in WL#4384 with possible implementation
             via a related bug report.
     */
-    if (!obs::check_user_existence(thd, sobj->get_name()))
+    if (!obs::check_user_existence(thd, sobj))
     {
-      info->m_ctx.report_error(log_level::WARNING, 
+      info->m_ctx.report_error(log_level::WARNING,
                                ER_BACKUP_GRANT_SKIPPED,
-                               create_stmt);
-      return BSTREAM_OK; 
+                               obs::grant_get_grant_info(sobj)->ptr(),
+                               obs::grant_get_user_name(sobj)->ptr());
+      return BSTREAM_OK;
     }
     /*
       We need to check the grant against the database list to ensure the
@@ -2019,7 +2032,7 @@ int bcat_create_item(st_bstream_image_header *catalogue,
     }
   }
 
-  if (sobj->execute(thd))
+  if (sobj->create(thd))
   {
     info->m_ctx.fatal_error(create_err, desc);
     return BSTREAM_ERROR;

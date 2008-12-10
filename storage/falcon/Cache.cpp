@@ -102,6 +102,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	ioThreads = new Thread*[numberIoThreads];
 	memset(ioThreads, 0, numberIoThreads * sizeof(ioThreads[0]));
 	flushing = false;
+	recovering = false;
 	
 	try
 		{
@@ -221,6 +222,15 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 #endif
 
 	ASSERT (pageNumber >= 0);
+
+	if (recovering && pageType != PAGE_inventory &&
+		!PageInventoryPage::isPageInUse (dbb, pageNumber))
+		{
+		Log::debug ("During recovery, fetched page %d tablespace %d type %d marked free in PIP\n",
+			pageNumber, dbb->tableSpaceId, pageType);
+		PageInventoryPage::markPageInUse(dbb, pageNumber, 0);
+		}
+
 	int slot = pageNumber % hashSize;
 	LockType actual = lockType;
 	Sync sync (&syncObject, "Cache::fetchPage");
@@ -842,7 +852,7 @@ void Cache::ioThread(void)
 						
 					flushLock.unlock();
 					//Log::debug(" %d Writing %s %d pages: %d - %d\n", thread->threadId, (const char*) dbb->fileName, count, pageNumber, pageNumber + count - 1);
-					int length = p - buffer;
+					int length = (int)(p - buffer);
 					priority.schedule(PRIORITY_LOW);
 					
 					try

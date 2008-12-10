@@ -112,7 +112,7 @@ con1: Dropping the database tables
 DROP TABLE bup_ddl_blocker.t1, bup_ddl_blocker.t2,
 bup_ddl_blocker.t3, bup_ddl_blocker.t4;
 con1: Restoring the database
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing columns that were backed up
@@ -173,13 +173,13 @@ con1: Activate synchronization points for restore.
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 con1: Restoring database -- will block with lock
-RESTORE FROM "bup_ddl_blocker_orig.bak";
+RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 con6: Wait for con1 to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "CREATE TABLE bup_ddl_blocker.t1%";
 state	info
@@ -193,7 +193,7 @@ SET DEBUG_SYNC= 'now SIGNAL status_shown WAIT_FOR bup_started';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 con4: Activate synchronization point for DDL.
 SET DEBUG_SYNC= 'before_check_ddl_blocked SIGNAL con4_started
                  WAIT_FOR status_shown2';
@@ -352,7 +352,7 @@ con1: Dropping the database tables
 DROP TABLE bup_ddl_blocker.t01, bup_ddl_blocker.t2,
 bup_ddl_blocker.t03, bup_ddl_blocker.t4;
 con1: Restoring the database
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing columns that were backed up
@@ -407,13 +407,13 @@ con1: Activate synchronization points for restore.
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 con1: Restoring database -- will block with lock
-RESTORE FROM "bup_ddl_blocker_orig.bak";
+RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 con6: Wait for con1 to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RENAME TABLE bup_ddl_blocker.t1%";
 state	info
@@ -427,7 +427,7 @@ SET DEBUG_SYNC= 'now SIGNAL status_shown WAIT_FOR bup_started';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 con4: Activate synchronization point for DDL.
 SET DEBUG_SYNC= 'before_check_ddl_blocked SIGNAL con4_started
                  WAIT_FOR status_shown2';
@@ -581,7 +581,7 @@ t3
 con1: Dropping the database tables
 DROP TABLE bup_ddl_blocker.t1, bup_ddl_blocker.t3;
 con1: Restoring the database
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing columns that were backed up
@@ -634,13 +634,13 @@ con1: Activate synchronization points for restore.
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 con1: Restoring database -- will block with lock
-RESTORE FROM "bup_ddl_blocker_orig.bak";
+RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 con6: Wait for con1 to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "OPTIMIZE TABLE bup_ddl_blocker.t1%";
 state	info
@@ -654,7 +654,7 @@ SET DEBUG_SYNC= 'now SIGNAL status_shown WAIT_FOR bup_started';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 con4: Activate synchronization point for DDL.
 SET DEBUG_SYNC= 'before_check_ddl_blocked SIGNAL con4_started
                  WAIT_FOR status_shown2';
@@ -806,7 +806,7 @@ con1: Dropping the database tables
 DROP DATABASE bup_ddl_blocker_1;
 DROP DATABASE bup_ddl_blocker_3;
 con1: Restoring the database
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing databases that were backed up
@@ -862,13 +862,13 @@ con1: Activate synchronization points for restore.
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 con1: Restoring database -- will block with lock
-RESTORE FROM "bup_ddl_blocker_orig.bak";
+RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 con6: Wait for con1 to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "CREATE DATABASE bup_ddl_blocker_1%";
 state	info
@@ -882,7 +882,7 @@ SET DEBUG_SYNC= 'now SIGNAL status_shown WAIT_FOR bup_started';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 con4: Activate synchronization point for DDL.
 SET DEBUG_SYNC= 'before_check_ddl_blocked SIGNAL con4_started
                  WAIT_FOR status_shown2';
@@ -1040,7 +1040,7 @@ con1: Dropping the database tables
 DROP DATABASE bup_ddl_blocker_2;
 DROP DATABASE bup_ddl_blocker_4;
 con1: Restoring the database
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing databases that were backed up
@@ -1112,13 +1112,13 @@ con1: Activate synchronization points for restore.
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 con1: Restoring database -- will block with lock
-RESTORE FROM "bup_ddl_blocker_orig.bak";
+RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 con6: Wait for con1 to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "ALTER DATABASE bup_ddl_blocker_2%";
 state	info
@@ -1132,7 +1132,7 @@ SET DEBUG_SYNC= 'now SIGNAL status_shown WAIT_FOR bup_started';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 con4: Activate synchronization point for DDL.
 SET DEBUG_SYNC= 'before_check_ddl_blocked SIGNAL con4_started
                  WAIT_FOR status_shown2';
@@ -1335,7 +1335,7 @@ DROP DATABASE bup_ddl_blocker_2;
 DROP DATABASE bup_ddl_blocker_3;
 DROP DATABASE bup_ddl_blocker_4;
 con1: Restoring the database
-RESTORE FROM "bup_ddl_blocker.bak";
+RESTORE FROM "bup_ddl_blocker.bak" OVERWRITE;
 backup_id
 #
 con1: Showing databases that were backed up
@@ -1428,13 +1428,13 @@ con1: Activate synchronization points for restore.
 SET DEBUG_SYNC= 'before_block_ddl SIGNAL bup_blocked WAIT_FOR status_shown';
 SET DEBUG_SYNC= 'after_block_ddl SIGNAL bup_started WAIT_FOR status_shown2';
 con1: Restoring database -- will block with lock
-RESTORE FROM "bup_ddl_blocker_orig.bak";
+RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE;
 con6: Wait for con1 to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_blocked';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: before_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "CREATE INDEX 1t1col_b%";
 state	info
@@ -1448,7 +1448,7 @@ SET DEBUG_SYNC= 'now SIGNAL status_shown WAIT_FOR bup_started';
 SELECT state, info FROM INFORMATION_SCHEMA.PROCESSLIST
 WHERE info LIKE "RESTORE FROM%";
 state	info
-debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak"
+debug sync point: after_block_ddl	RESTORE FROM "bup_ddl_blocker_orig.bak" OVERWRITE
 con4: Activate synchronization point for DDL.
 SET DEBUG_SYNC= 'before_check_ddl_blocked SIGNAL con4_started
                  WAIT_FOR status_shown2';

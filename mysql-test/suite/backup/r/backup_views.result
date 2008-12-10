@@ -584,7 +584,7 @@ Testing view selecting from altered view
 SELECT * FROM alter2;
 ERROR HY000: View 'bup_db1.alter2' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
 BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
-ERROR HY000: View 'bup_db1.alter2' references invalid table(s) or column(s) or function(s) or definer/invoker of view lack rights to use them
+ERROR HY000: Failed to obtain meta-data for view `bup_db1`.`alter2`
 
 *** EXIT Backup of database with altered view
 

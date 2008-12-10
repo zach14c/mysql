@@ -21,11 +21,12 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
 
 # Currently does not work with DBUG, there are missing symbols reported.
 
-ADD_DEFINITIONS(-DEMBEDDED_LIBRARY)
+ADD_DEFINITIONS(-DEMBEDDED_LIBRARY -DMY_USE_CLIENT_DLL)
 
 ADD_EXECUTABLE(mysql_embedded ../../client/completion_hash.cc
                ../../client/mysql.cc ../../client/readline.cc
                ../../client/sql_string.cc)
+
 TARGET_LINK_LIBRARIES(mysql_embedded mysys yassl taocrypt zlib dbug regex strings)
 ADD_DEPENDENCIES(mysql_embedded libmysqld)
 

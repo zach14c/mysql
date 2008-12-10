@@ -510,7 +510,7 @@ drop table t1;
 #
 create table t1 (a int, b int);
 create view v1 as select a, sum(b) from t1 group by a;
---error ER_WRONG_USAGE
+--error ER_KEY_DOES_NOT_EXITS
 select b from v1 use index (some_index) where b=1;
 drop view v1;
 drop table t1;
@@ -3422,11 +3422,11 @@ drop table t1;
 CREATE TABLE t1 (a INT);
 INSERT INTO t1 VALUES (1),(2);
 CREATE VIEW v1 AS SELECT * FROM t1;
---error ER_WRONG_USAGE
+--error ER_KEY_DOES_NOT_EXITS
 SELECT * FROM v1 USE KEY(non_existant);
---error ER_WRONG_USAGE
+--error ER_KEY_DOES_NOT_EXITS
 SELECT * FROM v1 FORCE KEY(non_existant);
---error ER_WRONG_USAGE
+--error ER_KEY_DOES_NOT_EXITS
 SELECT * FROM v1 IGNORE KEY(non_existant);
 
 DROP VIEW v1;
@@ -3565,6 +3565,32 @@ DROP VIEW v1;
 CREATE VIEW v1 AS SELECT 1;
 DROP VIEW v1;
 
+#
+# Bug #33461: SELECT ... FROM <view> USE INDEX (...) throws an error
+#
+
+CREATE TABLE t1 (c1 INT PRIMARY KEY, c2 INT, INDEX (c2));
+INSERT INTO t1 VALUES (1,1), (2,2), (3,3);
+SELECT * FROM t1 USE INDEX (PRIMARY) WHERE c1=2;
+SELECT * FROM t1 USE INDEX (c2) WHERE c2=2;
+
+CREATE VIEW v1 AS SELECT c1, c2 FROM t1;
+SHOW INDEX FROM v1;
+--error ER_KEY_DOES_NOT_EXITS
+SELECT * FROM v1 USE INDEX (PRIMARY) WHERE c1=2;
+--error ER_KEY_DOES_NOT_EXITS
+SELECT * FROM v1 FORCE INDEX (PRIMARY) WHERE c1=2;
+--error ER_KEY_DOES_NOT_EXITS
+SELECT * FROM v1 IGNORE INDEX (PRIMARY) WHERE c1=2;
+--error ER_KEY_DOES_NOT_EXITS
+SELECT * FROM v1 USE INDEX (c2) WHERE c2=2;
+--error ER_KEY_DOES_NOT_EXITS
+SELECT * FROM v1 FORCE INDEX (c2) WHERE c2=2;
+--error ER_KEY_DOES_NOT_EXITS
+SELECT * FROM v1 IGNORE INDEX (c2) WHERE c2=2;
+
+DROP VIEW v1;
+DROP TABLE t1;
 
 --echo # -----------------------------------------------------------------
 --echo # -- End of 5.0 tests.
@@ -3751,3 +3777,37 @@ create view v_9801 as
 
 drop table t_9801;
 
+#
+# Bug#37460 Assertion failed:
+# !table->file || table->file->inited == handler::NONE
+#
+CREATE TABLE t1 (id int);
+CREATE TABLE t2 (id int, c int);
+
+INSERT INTO t1 (id) VALUES (1);
+INSERT INTO t2 (id) VALUES (1);
+INSERT INTO t1 (id) VALUES (1);
+INSERT INTO t2 (id) VALUES (1);
+
+CREATE VIEW v1 AS
+  SELECT t2.c AS c FROM t1, t2
+    WHERE t1.id=t2.id AND 1 IN (SELECT id FROM t1) WITH CHECK OPTION;
+UPDATE v1 SET c=1;
+
+CREATE VIEW v2 (a,b) AS
+  SELECT t2.id, t2.c AS c FROM t1, t2
+    WHERE t1.id=t2.id AND 1 IN (SELECT id FROM t1) WITH CHECK OPTION;
+  
+--error 1369
+INSERT INTO v2(a,b) VALUES (2,2);
+INSERT INTO v2(a,b) VALUES (1,2);
+SELECT * FROM v1;
+
+CREATE VIEW v3 AS
+  SELECT t2.c AS c FROM t2
+    WHERE 1 IN (SELECT id FROM t1) WITH CHECK OPTION;
+
+DELETE FROM v3;
+
+DROP VIEW v1,v2,v3;
+DROP TABLE t1,t2;
