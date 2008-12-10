@@ -3694,6 +3694,11 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
     if (share->transactional != HA_CHOICE_UNDEF)
       ptr= strxmov(ptr, " transactional=",
                    ha_choice_values[(uint) share->transactional], NullS);
+    if (share->key_block_size)
+    {
+      ptr= strmov(ptr, " KEY_BLOCK_SIZE=");
+      ptr= longlong10_to_str(share->key_block_size, ptr, 10);
+    }
     table->field[19]->store(option_buff+1,
                             (ptr == option_buff ? 0 :
                              (uint) (ptr-option_buff)-1), cs);
