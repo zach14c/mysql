@@ -859,7 +859,7 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 		tableSpace = TEMPORARY_TABLESPACE;
 		}
 	else if (info->tablespace)
-		tableSpace = info->tablespace;
+		tableSpace = storageTable->getTableSpaceName();
 	else
 		tableSpace = DEFAULT_TABLESPACE;
 
