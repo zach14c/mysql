@@ -266,7 +266,7 @@ while ($i)
 
   # If the character in question is not found, thus $hit is 0, we insert
   # a row into t_err for further examination. In case of errors the final
-  # "SELECT * FROM t_err" we be non-zero showing the number of errors occured.
+  # "SELECT * FROM t_err" would show the details of the errors occured.
   if (!$hit)
   {
     INSERT INTO t_err VALUES (@id, @reference, (SELECT a FROM t1 WHERE id = @id), @category, @comment, 't1', @hit);
