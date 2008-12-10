@@ -1,3 +1,4 @@
+call mtr.add_suppression ("Although a path was specified for the");
 con1
 Clear the logs.
 SET @@global.backup_history_log = 'ON';
@@ -13,7 +14,7 @@ backup_progress_log	ON
 backup_progress_log_file	MYSQLTEST_VARDIR/master-data/progress.txt
 SHOW VARIABLES LIKE 'log_backup_output';
 Variable_name	Value
-log_backup_output	FILE
+log_backup_output	TABLE
 Set the backup log file names to default values.
 SET @@global.backup_history_log_file = DEFAULT;
 SET @@global.backup_progress_log_file = DEFAULT;

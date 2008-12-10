@@ -6425,7 +6425,7 @@ ER_BACKUP_PURGE_DATETIME
 ER_BACKUP_LOGS_DELETED
   eng "Backup log entries deleted: "
 ER_BACKUP_LOGS_TRUNCATED
-  eng "All backup logs entries have been deleted"
+  eng "All backup log entries have been deleted"
 ER_MASTER_BLOCKING_SLAVES
   eng "The master is not allowing slave connections."
 ER_RESTORE_ON_MASTER
@@ -6434,6 +6434,7 @@ ER_RESTORE_ON_SLAVE
   eng "A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore."
 ER_NONUNIQ_DB 42000 S1009
         eng "Not unique database: '%-.192s'"
+ER_RESTORE_DB_EXISTS
+  eng "Database \'%-.64s\' already exists. Use OVERWRITE flag to overwrite."
 ER_QUERY_CACHE_DISABLED
 	eng "Query cache is disabled; restart the server with query_cache_type=1 to enable it"
-

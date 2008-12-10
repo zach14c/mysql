@@ -77,7 +77,7 @@ BACKUP DATABASE backup_test to 'bup_with_rights.bak';
 
 --echo no_rights: Attempting restore. Should succeed
 --replace_column 1 #
-RESTORE FROM 'bup_with_rights.bak';
+RESTORE FROM 'bup_with_rights.bak' OVERWRITE;
 
 SELECT * FROM backup_test.t1;
 
@@ -87,7 +87,7 @@ disconnect with_rights;
 connection default;
 
 --replace_column 1 #
-RESTORE FROM 'backup_test_orig.bak';
+RESTORE FROM 'backup_test_orig.bak' OVERWRITE;
 
 SELECT * FROM backup_test.t1;
 

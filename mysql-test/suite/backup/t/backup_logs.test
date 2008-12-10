@@ -159,7 +159,7 @@ SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR finish';
 
 --echo con2: Send restore command.
 --echo con2: Backup id = 501.
-send RESTORE FROM 'backup_logs_orig.bak';
+send RESTORE FROM 'backup_logs_orig.bak' OVERWRITE;
 
 connection con1;
 

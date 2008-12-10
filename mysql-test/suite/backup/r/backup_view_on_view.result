@@ -8,7 +8,7 @@ INSERT INTO db1.t1 VALUES (1),(2),(3),(5),(7),(11);
 BACKUP DATABASE db1 TO 'test.bak';
 backup_id
 #
-RESTORE FROM 'test.bak';
+RESTORE FROM 'test.bak' OVERWRITE;
 backup_id
 #
 SELECT * FROM db1.v2;

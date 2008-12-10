@@ -76,16 +76,16 @@ BACKUP DATABASE backup_logs to 'backup3.bak';
 BACKUP DATABASE backup_logs to 'backup4.bak';
 
 --echo Do restore of database
-RESTORE from 'backup1.bak';
+RESTORE from 'backup1.bak' OVERWRITE;
 
 --echo Do restore of database
-RESTORE from 'backup2.bak';
+RESTORE from 'backup2.bak' OVERWRITE;
 
 --echo Do restore of database
-RESTORE from 'backup3.bak';
+RESTORE from 'backup3.bak' OVERWRITE;
 
 --echo Do restore of database
-RESTORE from 'backup4.bak';
+RESTORE from 'backup4.bak' OVERWRITE;
 
 --file_exists $MYSQLD_DATADIR/backup1.bak
 --file_exists $MYSQLD_DATADIR/backup2.bak
@@ -150,18 +150,18 @@ BACKUP DATABASE backup_logs to 'backup4.bak';
 SET SESSION debug="-d";
 
 --echo Do restore of database
-RESTORE from 'backup1.bak';
+RESTORE from 'backup1.bak' OVERWRITE;
 
 --echo Do restore of database
-RESTORE from 'backup2.bak';
+RESTORE from 'backup2.bak' OVERWRITE;
 
 --echo Do restore of database
-RESTORE from 'backup3.bak';
+RESTORE from 'backup3.bak' OVERWRITE;
 
 SET SESSION debug="+d,set_log_time";
 
 --echo Do restore of database
-RESTORE from 'backup4.bak';
+RESTORE from 'backup4.bak' OVERWRITE;
 
 SET SESSION debug="-d";
 
@@ -312,13 +312,13 @@ SELECT count(*) FROM mysql.backup_progress;
 --echo Now do the same test for restore.
 
 --replace_column 1 #
-RESTORE FROM 'backup1.bak';
+RESTORE FROM 'backup1.bak' OVERWRITE;
 --replace_column 1 #
-RESTORE FROM 'backup2.bak';
+RESTORE FROM 'backup2.bak' OVERWRITE;
 --replace_column 1 #
-RESTORE FROM 'backup3.bak';
+RESTORE FROM 'backup3.bak' OVERWRITE;
 --replace_column 1 #
-RESTORE FROM 'backup4.bak';
+RESTORE FROM 'backup4.bak' OVERWRITE;
 
 SELECT count(*) FROM mysql.backup_history;
 SELECT count(*) FROM mysql.backup_progress;
@@ -331,7 +331,7 @@ connection con2;
 #
 --echo con2: Activate sync points for the backup statement.
 SET DEBUG_SYNC= 'before_restore_done SIGNAL ready WAIT_FOR proceed';
-SEND RESTORE FROM 'backup5.bak';
+SEND RESTORE FROM 'backup5.bak' OVERWRITE;
 
 connection con1;
 

@@ -92,7 +92,7 @@ SELECT drivers FROM mysql.backup_history WHERE backup_id=@id;
 # check that we can restore from the created image.
 
 --replace_column 1 #
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;
 SHOW TABLES IN db1;
 
 

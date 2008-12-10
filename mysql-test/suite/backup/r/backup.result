@@ -562,7 +562,7 @@ id	ccode
 2	bb
 4	dd
 do restore
-RESTORE FROM 'bup_delete.bak';
+RESTORE FROM 'bup_delete.bak' OVERWRITE;
 backup_id
 #
 show the data
@@ -597,7 +597,7 @@ BACKUP DATABASE bup_default TO 'bup_default_timestamp.bak';
 backup_id
 #
 Restore the database.
-RESTORE FROM 'bup_default_timestamp.bak';
+RESTORE FROM 'bup_default_timestamp.bak' OVERWRITE;
 backup_id
 #
 Show data after restore (timestamp should be same as above).

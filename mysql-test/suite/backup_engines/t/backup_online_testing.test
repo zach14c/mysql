@@ -1156,3 +1156,4 @@ DROP DATABASE bup_online;
 
 remove_file $MYSQLD_DATADIR/bup_online.bak;
 
+SET DEBUG_SYNC= 'RESET';

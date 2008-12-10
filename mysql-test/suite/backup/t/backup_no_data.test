@@ -28,7 +28,7 @@ DROP DATABASE other_db;
 SHOW DATABASES;
 
 --replace_column 1 #
-RESTORE FROM 'all.bak';
+RESTORE FROM 'all.bak' OVERWRITE;
 
 SHOW DATABASES;
 
@@ -42,7 +42,7 @@ SHOW DATABASES;
 SHOW TABLES IN empty_db;
 
 --replace_column 1 #
-RESTORE FROM 'all.bak';
+RESTORE FROM 'all.bak' OVERWRITE;
 
 SHOW DATABASES;
 SHOW TABLES IN empty_db;
@@ -66,7 +66,7 @@ BACKUP DATABASE empty_db TO 'empty_db.bak';
 SHOW DATABASES;
 
 --replace_column 1 #
-RESTORE FROM 'empty_db.bak';
+RESTORE FROM 'empty_db.bak' OVERWRITE;
 
 USE empty_db;
 
