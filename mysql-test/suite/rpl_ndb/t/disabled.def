@@ -12,4 +12,4 @@
 
 # the below testcase have been reworked to avoid the bug, test contains comment, keep bug open
 
-rpl_ndb_extraCol	: Bug #22045 2008-03-22 Got error 839 'Illegal null attribute' from NDBCLUSTER when 'Replace Into'
+rpl_ndb_extraCol	: Bug#41369 2008-12-10 alik

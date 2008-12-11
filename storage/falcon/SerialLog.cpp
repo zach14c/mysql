@@ -345,7 +345,8 @@ void SerialLog::recover()
 	// Next, make a second pass to reallocate any necessary pages
 
 	while ( (record = control.nextRecord()) )
-		record->pass2();
+		if (!isTableSpaceDropped(record->tableSpaceId) || record->type == srlDropTableSpace)
+			record->pass2();
 
 	recoveryPages->reset();
 	recoveryIndexes->reset();
@@ -363,8 +364,10 @@ void SerialLog::recover()
 	// Make a third pass doing things
 
 	while ( (record = control.nextRecord()) )
-		record->redo();
-		
+		if (!isTableSpaceDropped(record->tableSpaceId))
+			record->redo();
+
+
 	for (SerialLogTransaction *action, **ptr = &running.first; (action = *ptr);)
 		if (action->completedRecovery())
 			{
@@ -401,6 +404,7 @@ void SerialLog::recover()
 	recoveryPages = NULL;
 	recoveryIndexes = NULL;
 	recoverySections = NULL;
+	droppedTablespaces.clear();
 	
 	for (window = firstWindow; window; window = window->next)
 		if (!(window->inUse == 0 || window == writeWindow))
@@ -1153,7 +1157,7 @@ bool SerialLog::bumpPageIncarnation(int32 pageNumber, int tableSpaceId, int stat
 
 	bool ret = recoveryPages->bumpIncarnation(pageNumber, tableSpaceId, state, pass1);
 	
-	if (ret && pass1)
+	if (ret && recoveryPhase==2)
 		{
 		Dbb *dbb = getDbb(tableSpaceId);
 		dbb->reallocPage(pageNumber);
@@ -1288,6 +1292,18 @@ void SerialLog::setIndexInactive(int id, int tableSpaceId)
 	recoveryIndexes->setInactive(id, tableSpaceId);
 }
 
+void SerialLog::setTableSpaceDropped(int tableSpaceId)
+{
+	ASSERT(recovering);
+	droppedTablespaces.set(tableSpaceId);
+}
+
+bool SerialLog::isTableSpaceDropped(int tableSpaceId)
+{
+	ASSERT(recovering);
+	return droppedTablespaces.isSet(tableSpaceId);
+}
+
 bool SerialLog::sectionInUse(int sectionId, int tableSpaceId)
 {
 	TableSpaceInfo *info = getTableSpaceInfo(tableSpaceId);
@@ -1323,7 +1339,7 @@ void SerialLog::setPhysicalBlock(TransId transId)
 
 void SerialLog::reportStatistics(void)
 {
-	if (!Log::isActive(LogInfo))
+	if (!Log::isActive(LogInfo) || !writeBlock)
 		return;
 		
 	Sync sync(&pending.syncObject, "SerialLog::reportStatistics");
@@ -1464,6 +1480,7 @@ void SerialLog::printWindows(void)
 
 Dbb* SerialLog::getDbb(int tableSpaceId)
 {
+	ASSERT(recoveryPhase != 1);
 	if (tableSpaceId == 0)
 		return defaultDbb;
 		
@@ -1472,6 +1489,7 @@ Dbb* SerialLog::getDbb(int tableSpaceId)
 
 Dbb* SerialLog::findDbb(int tableSpaceId)
 {
+	ASSERT(recoveryPhase != 1);
 	if (tableSpaceId == 0)
 		return defaultDbb;
 	

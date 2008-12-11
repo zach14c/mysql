@@ -184,7 +184,7 @@ bool IndexRootPage::addIndexEntry(Dbb * dbb, int32 indexId, IndexKey *key, int32
 			}
 
 		/* Node didn't fit.  Split the page and propogate the
-		   split upward.  Sooner or laster we'll go back and re-try
+		   split upward.  Sooner or later we'll go back and re-try
 		   the original insertion */
 
 		if (splitIndexPage (dbb, indexId, bdb, transId, result, key, recordNumber))
