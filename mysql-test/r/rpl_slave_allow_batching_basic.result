@@ -1,7 +1,5 @@
 SET @global_start_value = @@global.slave_allow_batching;
-SELECT @global_start_value;
-@global_start_value
-0
+'Bug: This variable is not supported in mysql version 5.1.22'
 '#--------------------FN_DYNVARS_145_01------------------------#'
 SET @@global.slave_allow_batching = 1;
 SET @@global.slave_allow_batching = DEFAULT;
@@ -66,9 +64,9 @@ SELECT count(VARIABLE_VALUE) FROM INFORMATION_SCHEMA.SESSION_VARIABLES WHERE VAR
 count(VARIABLE_VALUE)
 1
 '#----------------------FN_DYNVARS_145_07------------------------#'
-SELECT @@global.slave_allow_batching = VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME='slave_allow_batching';
-@@global.slave_allow_batching = VARIABLE_VALUE
-0
+SELECT IF(@@global.slave_allow_batching, "ON", "OFF") = VARIABLE_VALUE FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME='slave_allow_batching';
+IF(@@global.slave_allow_batching, "ON", "OFF") = VARIABLE_VALUE
+1
 SELECT @@global.slave_allow_batching;
 @@global.slave_allow_batching
 1
