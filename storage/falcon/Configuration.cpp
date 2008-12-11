@@ -144,8 +144,8 @@ Configuration::Configuration(const char *configFile)
 	recordMemoryMax				= getMemorySize(RECORD_MEMORY_UPPER);
 	recordScavengeThresholdPct	= 67;
 	recordScavengeFloorPct		= 33;
-	recordScavengeThreshold		= (recordMemoryMax * 100) / recordScavengeThresholdPct;
-	recordScavengeFloor			= (recordMemoryMax * 100) / recordScavengeFloorPct;
+	recordScavengeThreshold		= (recordMemoryMax * recordScavengeThresholdPct) / 100;
+	recordScavengeFloor			= (recordMemoryMax * recordScavengeFloorPct) / 100;
 	serialLogWindows			= 10;	// same as SRL_MIN_WINDOWS
 	allocationExtent			= 10;
 	pageCacheSize				= getMemorySize(PAGE_CACHE_MEMORY);

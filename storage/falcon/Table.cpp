@@ -2553,9 +2553,9 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 
 		if (!dup->hasRecord())
 			{
-			// If the record is locked or being unlocked keep looking for a dup.
+			// If the record is a lock record, keep looking for a dup.
 
-			if ((dup->state == recLock) || (dup->state == recUnlocked))
+			if (dup->state == recLock)
 				continue;  // Next record version.
 
 			// The record has been deleted.
@@ -3158,8 +3158,6 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 				attachment->preUpdate(this, record);
 		END_FOR;
 
-
-
 		//updateInversion(record, transaction);
 		scavenge.lock(Shared);
 		
@@ -3191,18 +3189,18 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		if (updated)
 			{
 			transaction->removeRecord(record);
-			
+
 			if (!insert(oldRecord, record, record->recordNumber))
 				Log::debug("record backout failed after failed update\n");
 			}
-			
+
 		garbageCollect(record, oldRecord, transaction, true);
-	
+
 		if (record)
 			{
 			if (record->getPriorVersion())
 				record->getPriorVersion()->setSuperceded(false);
-								
+
 			if (record->state == recLock)
 				record->deleteData();
 
@@ -3436,26 +3434,23 @@ void Table::unlockRecord(int recordNumber)
 	if (record)
 		{
 		if (record->state == recLock)
-			unlockRecord((RecordVersion*) record, true);
+			unlockRecord((RecordVersion*) record);
 		
 		record->release();
 		}
 }
 
-void Table::unlockRecord(RecordVersion* record, bool remove)
+void Table::unlockRecord(RecordVersion* record)
 {
 	//int uc = record->useCount;
 	ASSERT(record->getPriorVersion());
-	
-	if (record->state == recLock)
-		{
-		record->state = recUnlocked;
 
+	// A lock record that has superceded=true is already unlocked
+
+	if ((record->state == recLock) && !record->isSuperceded())
+		{
 		if (insert(record->getPriorVersion(), record, record->recordNumber))
-			{
-			if (remove && record->transaction)
-				record->transaction->removeRecord(record);
-			}
+			record->setSuperceded(true);
 		else
 			Log::debug("Table::unlockRecord: record lock not in record tree\n");
 		}

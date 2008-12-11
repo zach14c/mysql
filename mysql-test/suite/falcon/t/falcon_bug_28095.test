@@ -37,6 +37,8 @@ CREATE TABLE t2 (b int);
 # following restart really works. Global variables
 # should be resetted after a server restart.
 #
+--let $debug = `SELECT @@GLOBAL.falcon_debug_mask;`
+--replace_result $debug 0
 SELECT @@GLOBAL.falcon_debug_mask;
 SET GLOBAL falcon_debug_mask = 4096;
 SELECT @@GLOBAL.falcon_debug_mask;
@@ -53,6 +55,7 @@ SELECT * FROM t1 ORDER BY a;
 # --- Check                                         --- #
 # ----------------------------------------------------- #
 SELECT count(*) FROM t1;
+--replace_result $debug 0
 SELECT @@GLOBAL.falcon_debug_mask;
 
 # ----------------------------------------------------- #
