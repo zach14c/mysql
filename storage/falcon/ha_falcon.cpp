@@ -3673,7 +3673,7 @@ static MYSQL_SYSVAR_UINT(allocation_extent, falcon_allocation_extent,
 static MYSQL_SYSVAR_ULONGLONG(page_cache_size, falcon_page_cache_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "The amount of memory to be used for the database page cache.",
-  NULL, NULL, LL(4)<<20, LL(2)<<20, (ulonglong) ~0, LL(1)<<20);
+  NULL, NULL, LL(4)<<20, LL(2)<<20, (ulonglong) max_memory_address, LL(1)<<20);
 
 static MYSQL_THDVAR_BOOL(consistent_read, PLUGIN_VAR_OPCMDARG,
    "Enable Consistent Read Mode for Repeatable Reads",
