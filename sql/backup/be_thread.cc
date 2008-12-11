@@ -109,10 +109,7 @@ pthread_handler_t backup_thread_for_locking(void *arg)
     Turn off condition variable check for lock.
   */
   locking_thd->lock_state= LOCK_NOT_STARTED;
-
-#if !defined( __WIN__) /* Win32 calls this in pthread_create */
   my_thread_init();
-#endif
 
   /*
     First, create a new THD object.

@@ -37,6 +37,7 @@
 #include <io.h>
 #include <malloc.h>
 #include <sys/stat.h>
+#include <process.h>     /* getpid()*/
 
 #define HAVE_SMEM 1
 
