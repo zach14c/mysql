@@ -225,7 +225,7 @@ int DataPage::storeRecord(Dbb *dbb, Bdb *bdb, RecordIndex * index, int length, S
 
 	short id = -1;
 	short highWater = dbb->pageSize;
-	short used = OFFSET (DataPage*, lineIndex) + maxLine * sizeof (LineIndex);
+	int spaceRemaining = dbb->pageSize - OFFSET (DataPage*, lineIndex) - maxLine * sizeof (LineIndex) - length;
 	LineIndex *line, *end;
 
 	for (line = lineIndex, end = line + maxLine; line < end; ++line)
@@ -234,19 +234,17 @@ int DataPage::storeRecord(Dbb *dbb, Bdb *bdb, RecordIndex * index, int length, S
 			if (line->offset < highWater)
 				highWater = line->offset;
 				
-			used += ABS (line->length);
+			spaceRemaining -= ABS (line->length);
 			}
 		else if (id == -1)
 			id = (int) (line - lineIndex);
 
 	if (id == -1)
 		{
-		used += sizeof (LineIndex);
+		spaceRemaining -= sizeof (LineIndex);
 		++end;
 		}
 
-	int spaceRemaining = dbb->pageSize - used - length;
-	
 	if (spaceRemaining < 0)
 		return 0;
 
@@ -318,7 +316,7 @@ int DataPage::deleteLine (Dbb *dbb, int line, TransId transId)
 		if (lineIndex [n].offset)
 			{
 			max = n + 1;
-			available -= lineIndex[n].length;
+			available -= ABS(lineIndex[n].length);
 			}
 
 	maxLine = max;

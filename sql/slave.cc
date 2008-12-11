@@ -1704,7 +1704,7 @@ static int has_temporary_error(THD *thd)
     DBUG_RETURN(0);
 
   DBUG_EXECUTE_IF("all_errors_are_temporary_errors",
-                  if (thd->main_da.is_error())
+                  if (thd->stmt_da->is_error())
                   {
                     thd->clear_error();
                     my_error(ER_LOCK_DEADLOCK, MYF(0));
@@ -1723,15 +1723,15 @@ static int has_temporary_error(THD *thd)
     currently, InnoDB deadlock detected by InnoDB or lock
     wait timeout (innodb_lock_wait_timeout exceeded
   */
-  if (thd->main_da.sql_errno() == ER_LOCK_DEADLOCK ||
-      thd->main_da.sql_errno() == ER_LOCK_WAIT_TIMEOUT)
+  if (thd->stmt_da->sql_errno() == ER_LOCK_DEADLOCK ||
+      thd->stmt_da->sql_errno() == ER_LOCK_WAIT_TIMEOUT)
     DBUG_RETURN(1);
 
 #ifdef HAVE_NDB_BINLOG
   /*
     currently temporary error set in ndbcluster
   */
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
   MYSQL_ERROR *err;
   while ((err= it++))
   {
@@ -2654,24 +2654,24 @@ Slave SQL thread aborted. Can't execute init_slave query");
 
         if (thd->is_error())
         {
-          char const *const errmsg= thd->main_da.message();
+          char const *const errmsg= thd->stmt_da->message();
 
           DBUG_PRINT("info",
-                     ("thd->main_da.sql_errno()=%d; rli->last_error.number=%d",
-                      thd->main_da.sql_errno(), last_errno));
+                     ("thd->stmt_da->sql_errno()=%d; rli->last_error.number=%d",
+                      thd->stmt_da->sql_errno(), last_errno));
           if (last_errno == 0)
           {
-            rli->report(ERROR_LEVEL, thd->main_da.sql_errno(), errmsg);
+            rli->report(ERROR_LEVEL, thd->stmt_da->sql_errno(), errmsg);
           }
-          else if (last_errno != thd->main_da.sql_errno())
+          else if (last_errno != thd->stmt_da->sql_errno())
           {
             sql_print_error("Slave (additional info): %s Error_code: %d",
-                            errmsg, thd->main_da.sql_errno());
+                            errmsg, thd->stmt_da->sql_errno());
           }
         }
 
         /* Print any warnings issued */
-        List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+        List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
         MYSQL_ERROR *err;
         /*
           Added controlled slave thread cancel for replication

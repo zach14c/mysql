@@ -1999,6 +1999,7 @@ bool check_db_dir_existence(const char *db_name)
 {
   char db_dir_path[FN_REFLEN];
   uint db_dir_path_len;
+  MY_STAT my_stat_result;
 
   db_dir_path_len= build_table_filename(db_dir_path, sizeof(db_dir_path),
                                         db_name, "", "", 0);
@@ -2006,7 +2007,13 @@ bool check_db_dir_existence(const char *db_name)
   if (db_dir_path_len && db_dir_path[db_dir_path_len - 1] == FN_LIBCHAR)
     db_dir_path[db_dir_path_len - 1]= 0;
 
-  /* Check access. */
+  /* Verify that db_name is accessible and is a directory */
 
-  return my_access(db_dir_path, F_OK);
+  if (! my_stat(db_dir_path, &my_stat_result, MYF(0)))
+    return TRUE;
+
+  if (! MY_S_ISDIR(my_stat_result.st_mode))
+    return TRUE;
+
+  return FALSE;
 }

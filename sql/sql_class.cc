@@ -202,19 +202,6 @@ bool foreign_key_prefix(Key *a, Key *b)
 ** Thread specific functions
 ****************************************************************************/
 
-/** Push an error to the error stack and return TRUE for now. */
-
-bool
-Reprepare_observer::report_error(THD *thd)
-{
-  my_error(ER_NEED_REPREPARE, MYF(ME_NO_WARNING_FOR_ERROR|ME_NO_SP_HANDLER));
-
-  m_invalidated= TRUE;
-
-  return TRUE;
-}
-
-
 /*
   The following functions form part of the C plugin API
 */
@@ -304,7 +291,7 @@ int thd_tx_isolation(const THD *thd)
 extern "C"
 void thd_inc_row_count(THD *thd)
 {
-  thd->row_count++;
+  thd->warning_info->inc_current_row_for_warning();
 }
 
 
@@ -399,141 +386,6 @@ char *thd_security_context(THD *thd, char *buffer, unsigned int length,
   return buffer;
 }
 
-/**
-  Clear this diagnostics area. 
-
-  Normally called at the end of a statement.
-*/
-
-void
-Diagnostics_area::reset_diagnostics_area()
-{
-  DBUG_ENTER("reset_diagnostics_area");
-#ifdef DBUG_OFF
-  can_overwrite_status= FALSE;
-  /** Don't take chances in production */
-  m_message[0]= '\0';
-  m_sql_errno= 0;
-  m_server_status= 0;
-  m_affected_rows= 0;
-  m_last_insert_id= 0;
-  m_total_warn_count= 0;
-#endif
-  is_sent= FALSE;
-  /** Tiny reset in debug mode to see garbage right away */
-  m_status= DA_EMPTY;
-  DBUG_VOID_RETURN;
-}
-
-
-/**
-  Set OK status -- ends commands that do not return a
-  result set, e.g. INSERT/UPDATE/DELETE.
-*/
-
-void
-Diagnostics_area::set_ok_status(THD *thd, ha_rows affected_rows_arg,
-                                ulonglong last_insert_id_arg,
-                                const char *message_arg)
-{
-  DBUG_ENTER("set_ok_status");
-  DBUG_ASSERT(! is_set());
-  /*
-    In production, refuse to overwrite an error or a custom response
-    with an OK packet.
-  */
-  if (is_error() || is_disabled())
-    return;
-
-  m_server_status= thd->server_status;
-  m_total_warn_count= thd->total_warn_count;
-  m_affected_rows= affected_rows_arg;
-  m_last_insert_id= last_insert_id_arg;
-  if (message_arg)
-    strmake(m_message, message_arg, sizeof(m_message) - 1);
-  else
-    m_message[0]= '\0';
-  m_status= DA_OK;
-  DBUG_VOID_RETURN;
-}
-
-
-/**
-  Set EOF status.
-*/
-
-void
-Diagnostics_area::set_eof_status(THD *thd)
-{
-  DBUG_ENTER("set_eof_status");
-  /* Only allowed to report eof if has not yet reported an error */
-  DBUG_ASSERT(! is_set());
-  /*
-    In production, refuse to overwrite an error or a custom response
-    with an EOF packet.
-  */
-  if (is_error() || is_disabled())
-    return;
-
-  m_server_status= thd->server_status;
-  /*
-    If inside a stored procedure, do not return the total
-    number of warnings, since they are not available to the client
-    anyway.
-  */
-  m_total_warn_count= thd->spcont ? 0 : thd->total_warn_count;
-
-  m_status= DA_EOF;
-  DBUG_VOID_RETURN;
-}
-
-/**
-  Set ERROR status.
-*/
-
-void
-Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
-                                   const char *message_arg)
-{
-  DBUG_ENTER("set_error_status");
-  /*
-    Only allowed to report error if has not yet reported a success
-    The only exception is when we flush the message to the client,
-    an error can happen during the flush.
-  */
-  DBUG_ASSERT(! is_set() || can_overwrite_status);
-#ifdef DBUG_OFF
-  /*
-    In production, refuse to overwrite a custom response with an
-    ERROR packet.
-  */
-  if (is_disabled())
-    return;
-#endif
-
-  m_sql_errno= sql_errno_arg;
-  strmake(m_message, message_arg, sizeof(m_message)-1);
-
-  m_status= DA_ERROR;
-  DBUG_VOID_RETURN;
-}
-
-
-/**
-  Mark the diagnostics area as 'DISABLED'.
-
-  This is used in rare cases when the COM_ command at hand sends a response
-  in a custom format. One example is the query cache, another is
-  COM_STMT_PREPARE.
-*/
-
-void
-Diagnostics_area::disable_status()
-{
-  DBUG_ASSERT(! is_set());
-  m_status= DA_DISABLED;
-}
-
 
 THD::THD()
    :Statement(&main_lex, &main_mem_root, CONVENTIONAL_EXECUTION,
@@ -548,6 +400,9 @@ THD::THD()
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
    first_successful_insert_id_in_cur_stmt(0),
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
+   main_warning_info(0),
+   warning_info(&main_warning_info),
+   stmt_da(&main_da),
    global_read_lock(0),
    is_fatal_error(0),
    transaction_rollback_request(0),
@@ -594,7 +449,8 @@ THD::THD()
   hash_clear(&handler_tables_hash);
   tmp_table=0;
   used_tables=0;
-  cuted_fields= sent_row_count= row_count= 0L;
+  cuted_fields= 0L;
+  sent_row_count= 0L;
   limit_found_rows= 0;
   row_count_func= -1;
   statement_id_counter= 0UL;
@@ -613,7 +469,6 @@ THD::THD()
   one_shot_set= 0;
   file_id = 0;
   query_id= 0;
-  warn_id= 0;
   db_charset= global_system_variables.collation_database;
   bzero(ha_data, sizeof(ha_data));
   mysys_var=0;
@@ -654,8 +509,6 @@ THD::THD()
   init_open_tables_state(this, refresh_version);
 
   init();
-  /* Initialize sub structures */
-  init_sql_alloc(&warn_root, WARN_ALLOC_BLOCK_SIZE, WARN_ALLOC_PREALLOC_SIZE);
 #if defined(ENABLED_PROFILING)
   profiling.set_thd(this);
 #endif
@@ -701,13 +554,11 @@ void THD::push_internal_handler(Internal_error_handler *handler)
 }
 
 
-bool THD::handle_error(uint sql_errno, const char *message,
-                       MYSQL_ERROR::enum_warning_level level)
+bool THD::handle_error(MYSQL_ERROR::enum_warning_level level,
+                       uint sql_errno, const char *message)
 {
   if (m_internal_handler)
-  {
-    return m_internal_handler->handle_error(sql_errno, message, level, this);
-  }
+    return m_internal_handler->handle_error(this, level, sql_errno, message);
 
   return FALSE;                                 // 'FALSE', as per coding style
 }
@@ -801,9 +652,6 @@ void THD::init(void)
 			TL_WRITE_LOW_PRIORITY :
 			TL_WRITE);
   session_tx_isolation= (enum_tx_isolation) variables.tx_isolation;
-  warn_list.empty();
-  bzero((char*) warn_count, sizeof(warn_count));
-  total_warn_count= 0;
   update_charset();
   reset_current_stmt_binlog_row_based();
   bzero((char *) &status_var, sizeof(status_var));
@@ -972,7 +820,6 @@ THD::~THD()
   DBUG_PRINT("info", ("freeing security context"));
   main_security_ctx.destroy();
   safeFree(db);
-  free_root(&warn_root,MYF(0));
   free_root(&transaction.mem_root,MYF(0));
   mysys_var=0;					// Safety (shouldn't be needed)
   pthread_mutex_destroy(&LOCK_delete);
@@ -1607,7 +1454,7 @@ void select_send::abort()
 {
   DBUG_ENTER("select_send::abort");
   if (is_result_set_started && thd->spcont &&
-      thd->spcont->find_handler(thd, thd->main_da.sql_errno(),
+      thd->spcont->find_handler(thd, thd->stmt_da->sql_errno(),
                                 MYSQL_ERROR::WARN_LEVEL_ERROR))
   {
     /*

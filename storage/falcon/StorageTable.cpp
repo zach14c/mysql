@@ -455,30 +455,25 @@ int StorageTable::compareKey(const unsigned char* key, int keyLength)
 							fldLen = MIN(fldLen, partialLength);
 							keyLen = MIN(keyLen, partialLength);
 							}
+						cmp = falcon_strnncollsp(cs, fldString, fldLen, 
+						                       keyString, keyLen, true);
 						}
 					else
 						{
-/* This is not necessary when comparing with the record using strnncollsp()
-						char padChar = falcon_get_pad_char(cs);
-						char minSortChar = falcon_get_min_sort_char(cs);
-						fldLen = MySQLCollation::computeKeyLength(fldLen, fldString, padChar, minSortChar);
-						keyLen = MySQLCollation::computeKeyLength(keyLen, keyString, padChar, minSortChar);
-*/
-						// Trim it down to the number of bytes that represent
-						// the number of characters indicated by partialLength.
 
 						if (partialLength)
 							{
-							fldLen = falcon_strntrunc(cs, partialLength, fldString, fldLen);
-							keyLen = falcon_strntrunc(cs, partialLength, keyString, keyLen);
+							// We must use falcon_strnncoll() for partial key comparision,
+							// as falcon_strnncollsp() cannot handle prefix keys.
+							char padChar = falcon_get_pad_char(cs);
+							char minSortChar = falcon_get_min_sort_char(cs);
+							keyLen = MySQLCollation::computeKeyLength(keyLen, keyString, padChar, minSortChar);
+							cmp = falcon_strnncoll(cs, fldString, fldLen, keyString, keyLen, true);
 							}
+						else
+							cmp = falcon_strnncollsp(cs, fldString, fldLen, 
+							                       keyString, keyLen, true);
 						}
-
-					cmp = falcon_strnncollsp(cs, fldString, fldLen, 
-					                       keyString, keyLen, true);
-
-					//if ((cmp == 0) && (keyLen < fldLen))
-					//	cmp = 1;  // The field begins with the string searched for; fldString > keyString. #23962
 					}
 				else
 					{

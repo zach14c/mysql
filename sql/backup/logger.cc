@@ -52,10 +52,10 @@ int Logger::write_message(log_level::value level, int error_code,
        error.msg= sql_strdup(msg);
      }
 
-     sql_print_error(out);
+     sql_print_error("%s", out);
      if (m_push_errors)
        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-			   error_code, msg);
+			   error_code, "%s", msg);
      DBUG_PRINT("backup_log",("[ERROR] %s", out));
      
      if (m_state == READY || m_state == RUNNING)
@@ -69,15 +69,15 @@ int Logger::write_message(log_level::value level, int error_code,
      return 0;
 
    case log_level::WARNING:
-     sql_print_warning(out);
+     sql_print_warning("%s", out);
      if (m_push_errors)
        push_warning_printf(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                           error_code, msg);
+                           error_code, "%s", msg);
      DBUG_PRINT("backup_log",("[Warning] %s", out));
      return 0;
 
    case log_level::INFO:
-     sql_print_information(out);
+     sql_print_information("%s", out);
      DBUG_PRINT("backup_log",("[Info] %s", out));
      return 0;
 
