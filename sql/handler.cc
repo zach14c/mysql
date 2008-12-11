@@ -1290,7 +1290,7 @@ int ha_rollback_trans(THD *thd, bool all)
     if (is_real_trans)
     {
       if (thd->transaction_rollback_request)
-        thd->transaction.xid_state.rm_error= thd->main_da.sql_errno();
+        thd->transaction.xid_state.rm_error= thd->stmt_da->sql_errno();
       else
         thd->transaction.xid_state.xid.null();
     }
@@ -1862,20 +1862,20 @@ const char *get_canonical_filename(handler *file, const char *path,
 struct Ha_delete_table_error_handler: public Internal_error_handler
 {
 public:
-  virtual bool handle_error(uint sql_errno,
-                            const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno,
+                            const char *message);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
 
 bool
 Ha_delete_table_error_handler::
-handle_error(uint sql_errno,
-             const char *message,
+handle_error(THD *thd,
              MYSQL_ERROR::enum_warning_level level,
-             THD *thd)
+             uint sql_errno,
+             const char *message)
 {
   /* Grab the error message */
   strmake(buff, message, sizeof(buff)-1);

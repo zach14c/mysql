@@ -128,6 +128,9 @@ select /*3*/ user, host, db, info from information_schema.processlist
 where info = 'select get_lock(\'ee_16407_2\', 60)';
 user	host	db	info
 set global event_scheduler= off;
+#
+# Wait until all running events have completed.
+#
 select * from events_smode_test order by ev_name, a;
 ev_name	a
 ee_16407_3	1980-02-19
@@ -166,10 +169,9 @@ call events_test.ee_16407_6_pendant();
 end|
 "Should have 2 locked processes"
 select /*4*/ user, host, db, info from information_schema.processlist
-where (command!='Daemon' || user='event_scheduler') and (info is null or info not like '%processlist%')
+where (command!='Daemon' && user!='event_scheduler') and (info is null or info not like '%processlist%')
 order by info;
 user	host	db	info
-event_scheduler	localhost	NULL	NULL
 root	localhost	events_test	select get_lock('ee_16407_5', 60)
 root	localhost	events_test	select get_lock('ee_16407_5', 60)
 select release_lock('ee_16407_5');
@@ -177,10 +179,9 @@ release_lock('ee_16407_5')
 1
 "Should have 0 processes locked"
 select /*5*/ user, host, db, info from information_schema.processlist
-where (command!='Daemon' || user='event_scheduler') and (info is null or info not like '%processlist%')
+where (command!='Daemon' && user!='event_scheduler') and (info is null or info not like '%processlist%')
 order by info;
 user	host	db	info
-event_scheduler	localhost	NULL	NULL
 select * from events_smode_test order by ev_name, a;
 ev_name	a
 ee_16407_6	2004-02-29

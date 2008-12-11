@@ -255,7 +255,7 @@ SET DEBUG_SYNC='now SIGNAL db_will_fail';
 
 connection con2;
 --echo Database has been deleted, backup will fail
---error ER_BAD_DB_ERROR
+--error ER_BACKUP_GET_META_DB
 reap;
 
 --echo

@@ -353,7 +353,7 @@ ALTER VIEW alter1 AS SELECT 6;
 SELECT * FROM alter2;
 
 #fails
---error ER_VIEW_INVALID
+--error ER_BACKUP_GET_META_VIEW
 BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
 
 --echo 
