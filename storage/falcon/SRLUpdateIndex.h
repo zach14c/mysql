@@ -39,7 +39,6 @@ public:
 	void			append(DeferredIndex* deferredIndex);
 	void			thaw(DeferredIndex* deferredIndex);
 
-	int				tableSpaceId;
 	int				indexId;
 	const UCHAR		*data;
 	const UCHAR		*ptr;
