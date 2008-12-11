@@ -283,3 +283,14 @@ SELECT EXP(750);
 SELECT POW(10, 309);
 
 --echo End of 5.1 tests
+
+#
+# Bug #8457: Precision math: DIV returns incorrect result with large decimal value
+#
+
+--error ER_WARN_DATA_OUT_OF_RANGE
+select 123456789012345678901234567890.123456789012345678901234567890 div 1 as x;
+--error ER_WARN_DATA_OUT_OF_RANGE
+select "123456789012345678901234567890.123456789012345678901234567890" div 1 as x; 
+
+--echo End of 6.0 tests

@@ -382,6 +382,9 @@ y
 SELECT b DIV 900 y FROM t1 GROUP BY y;
 y
 0
+Warnings:
+Warning	1366	Incorrect decimal value: '' for column '' at row -1
+Warning	1366	Incorrect decimal value: '' for column '' at row -1
 SELECT c DIV 900 y FROM t1 GROUP BY y;
 y
 0
@@ -457,3 +460,8 @@ SELECT POW(10, 309);
 POW(10, 309)
 NULL
 End of 5.1 tests
+select 123456789012345678901234567890.123456789012345678901234567890 div 1 as x;
+ERROR 22003: Out of range value for column 'x' at row 1
+select "123456789012345678901234567890.123456789012345678901234567890" div 1 as x;
+ERROR 22003: Out of range value for column 'x' at row 1
+End of 6.0 tests
