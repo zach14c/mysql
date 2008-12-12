@@ -241,7 +241,7 @@ protected:
                        const char *message);
 
   virtual void send_eof(uint server_status, uint statement_warn_count);
-  virtual void send_error(uint sql_errno, const char *err_msg);
+  virtual void send_error(uint sql_errno, const char *err_msg, const char* sqlstate);
 private:
   bool store_string(const char *str, size_t length,
                     CHARSET_INFO *src_cs, CHARSET_INFO *dst_cs);
@@ -4384,7 +4384,7 @@ void Protocol_local::send_eof(uint server_status, uint statement_warn_count)
 /** Called to send an error to the client at the end of a statement. */
 
 void
-Protocol_local::send_error(uint sql_errno, const char *err_msg)
+Protocol_local::send_error(uint sql_errno, const char *err_msg, const char*)
 {
   /*
     Just make sure that nothing is sent to the client (default

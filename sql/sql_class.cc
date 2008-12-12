@@ -789,7 +789,6 @@ SQL_condition* THD::raise_condition(uint sql_errno,
     {
       if (! stmt_da->is_error())
         stmt_da->set_error_status(this, sql_errno, msg, sqlstate);
-      query_cache_abort(& query_cache_tls);
     }
   }
 
@@ -821,6 +820,8 @@ THD::raise_condition_no_handler(uint sql_errno,
 {
   SQL_condition *cond= NULL;
   DBUG_ENTER("THD::raise_condition_no_handler");
+
+  query_cache_abort(& query_cache_tls);
 
   /* FIXME: broken special case */
   if (no_warnings_for_error && (level == MYSQL_ERROR::WARN_LEVEL_ERROR))
