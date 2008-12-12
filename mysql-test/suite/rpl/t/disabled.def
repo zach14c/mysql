@@ -25,7 +25,6 @@ rpl_ssl                    : Bug#32217 rpl_ssl fails with different number of re
 rpl_row_until              : Bug#28772 rpl_row_until fails in pushbuild
 rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
 rpl_row_basic_7ndb         : BUG#33360 2007-12-19 mats rpl_ndb_idempotent fails due to null field for table on slave side
-rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 
 rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
