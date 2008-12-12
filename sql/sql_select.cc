@@ -7774,6 +7774,7 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
         rem_tables |= join->best_positions[i].table->table->map;
 
       POSITION dummy;
+      join->cur_sj_inner_tables= 0;
       for (i= first + sjm->tables; i <= tablenr; i++)
       {
         best_access_path(join, join->best_positions[i].table, rem_tables, i, FALSE,
@@ -7800,6 +7801,7 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
         Re-run best_access_path to produce best access methods that do not use
         join buffering
       */ 
+      join->cur_sj_inner_tables= 0;
       for (idx= first; idx <= tablenr; idx++)
       {
         if (join->best_positions[idx].use_join_buffer)
@@ -7829,6 +7831,7 @@ static void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
         Re-run best_access_path to produce best access methods that do not use
         join buffering
       */ 
+      join->cur_sj_inner_tables= 0;
       for (idx= first; idx <= tablenr; idx++)
       {
         if (join->best_positions[idx].use_join_buffer || (idx == first))
