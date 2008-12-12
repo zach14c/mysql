@@ -2344,7 +2344,6 @@ pthread_handler_t handle_delayed_insert(void *arg)
     since it does not find one in the list.
   */
   pthread_mutex_lock(&di->mutex);
-#if !defined( __WIN__) /* Win32 calls this in pthread_create */
   if (my_thread_init())
   {
     /* Can't use my_error since store_globals has not yet been called */
@@ -2352,8 +2351,6 @@ pthread_handler_t handle_delayed_insert(void *arg)
                                   ER(ER_OUT_OF_RESOURCES));
     goto end;
   }
-#endif
-
   DBUG_ENTER("handle_delayed_insert");
   thd->thread_stack= (char*) &thd;
   if (init_thr_lock() || thd->store_globals())
@@ -2544,9 +2541,7 @@ err:
    */
   trans_rollback_stmt(thd);
 
-#ifndef __WIN__
 end:
-#endif
   /*
     di should be unlinked from the thread handler list and have no active
     clients

@@ -13,15 +13,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
-# Need to set USE_TLS, since __declspec(thread) approach to thread local
-# storage does not work properly in DLLs.
-IF(WIN32)
-  ADD_DEFINITIONS(-DUSE_TLS)
-ENDIF(WIN32)
-
 ADD_DEFINITIONS(-DMYSQL_SERVER -DEMBEDDED_LIBRARY -DHAVE_DLOPEN)
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include 
@@ -222,4 +213,4 @@ TARGET_LINK_LIBRARIES(mysqlserver)
 
 ADD_LIBRARY(libmysqld MODULE cmake_dummy.c libmysqld.def)
 ADD_DEPENDENCIES(libmysqld mysqlserver)
-TARGET_LINK_LIBRARIES(libmysqld mysqlserver ws2_32)
+TARGET_LINK_LIBRARIES(libmysqld mysqlserver)
