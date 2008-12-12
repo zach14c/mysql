@@ -731,7 +731,6 @@ public:
 
   table_map not_null_tables() const { return 0; }
   bool is_null();
-  void agg_str_lengths(Item *arg);
 };
 
 
@@ -1164,6 +1163,7 @@ public:
   CHARSET_INFO *compare_collation() { return cmp_collation.collation; }
   void cleanup();
   void agg_str_lengths(Item *arg);
+  void agg_num_lengths(Item *arg);
 };
 
 /*
