@@ -598,42 +598,6 @@ enum open_table_mode
 
 /* Used to check GROUP BY list in the MODE_ONLY_FULL_GROUP_BY mode */
 #define UNDEF_POS (-1)
-#ifdef EXTRA_DEBUG
-/**
-  Sync points allow us to force the server to reach a certain line of code
-  and block there until the client tells the server it is ok to go on.
-  The client tells the server to block with SELECT GET_LOCK()
-  and unblocks it with SELECT RELEASE_LOCK(). Used for debugging difficult
-  concurrency problems
-*/
-#define DBUG_SYNC_POINT(lock_name,lock_timeout) \
- debug_sync_point(lock_name,lock_timeout)
-void debug_sync_point(const char* lock_name, uint lock_timeout);
-#else
-#define DBUG_SYNC_POINT(lock_name,lock_timeout)
-#endif /* EXTRA_DEBUG */
-
-/* Debug Sync Facility. */
-#if defined(ENABLED_DEBUG_SYNC)
-/* Macro to be put in the code at synchronization points. */
-#define DEBUG_SYNC(_thd_, _sync_point_name_)                            \
-          do { if (unlikely(opt_debug_sync_timeout))                    \
-               debug_sync(_thd_, STRING_WITH_LEN(_sync_point_name_));   \
-             } while (0)
-/* Command line option --debug-sync-timeout. See mysqld.cc. */
-extern uint opt_debug_sync_timeout;
-/* Default WAIT_FOR timeout if command line option is given without argument. */
-#define DEBUG_SYNC_DEFAULT_WAIT_TIMEOUT 300
-/* Debug Sync prototypes. See debug_sync.cc. */
-extern int  debug_sync_init(void);
-extern void debug_sync_end(void);
-extern void debug_sync_init_thread(THD *thd);
-extern void debug_sync_end_thread(THD *thd);
-extern void debug_sync(THD *thd, const char *sync_point_name, size_t name_len);
-#else /* defined(ENABLED_DEBUG_SYNC) */
-#define DEBUG_SYNC(_thd_, _sync_point_name_)    /* disabled DEBUG_SYNC */
-#endif /* defined(ENABLED_DEBUG_SYNC) */
-
 #define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
 
 /* BINLOG_DUMP options */

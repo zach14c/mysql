@@ -75,6 +75,7 @@
 
 #include "mysql_priv.h"
 #include "transaction.h"
+#include "debug_sync.h"
 #include <hash.h>
 #include <assert.h>
 

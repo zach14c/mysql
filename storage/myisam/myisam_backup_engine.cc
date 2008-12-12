@@ -27,6 +27,7 @@
 #include "myisamdef.h" // to access dfile and kfile
 #include "backup/backup_engine.h"
 #include "backup/backup_aux.h"         // for build_table_list()
+#include "debug_sync.h"
 #include <hash.h>
 
 /**

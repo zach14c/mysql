@@ -32,6 +32,7 @@
 #include "sql_audit.h"
 #include "transaction.h"
 #include "sql_prepare.h"
+#include "debug_sync.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"

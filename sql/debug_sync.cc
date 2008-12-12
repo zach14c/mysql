@@ -206,9 +206,11 @@
   See also worklog entry WL#4259 - Test Synchronization Facility
 */
 
-#include "mysql_priv.h"
+#include "debug_sync.h"
 
 #if defined(ENABLED_DEBUG_SYNC)
+
+#include "mysql_priv.h"
 
 /*
   Action to perform at a synchronization point.

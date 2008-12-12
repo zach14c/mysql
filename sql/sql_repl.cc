@@ -22,6 +22,7 @@
 #include "rpl_filter.h"
 #include <my_dir.h>
 #include "rpl_handler.h"
+#include "debug_sync.h"
 
 int max_binlog_dump_events = 0; // unlimited
 my_bool opt_sporadic_binlog_dump_fail = 0;

@@ -68,6 +68,7 @@
 #include "be_default.h"
 #include "backup_aux.h"
 #include "rpl_record.h"
+#include "debug_sync.h"
 
 namespace default_backup {
 

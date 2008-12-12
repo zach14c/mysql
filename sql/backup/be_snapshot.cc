@@ -45,6 +45,7 @@
 #include "be_snapshot.h"
 #include "backup_aux.h"
 #include "transaction.h"
+#include "debug_sync.h"
 
 namespace snapshot_backup {
 

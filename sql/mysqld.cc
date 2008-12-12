@@ -28,6 +28,7 @@
 #include "events.h"
 #include "ddl_blocker.h"
 #include "sql_audit.h"
+#include "debug_sync.h"
 #include <waiting_threads.h>
 
 #include "../storage/myisam/ha_myisam.h"

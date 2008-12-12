@@ -6,6 +6,7 @@
 #include <backup/error.h>
 #include "si_logs.h"
 #include "rpl_mi.h"
+#include "debug_sync.h"
 
 namespace backup {
 

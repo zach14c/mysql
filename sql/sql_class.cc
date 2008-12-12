@@ -43,6 +43,7 @@
 #include "sp_rcontext.h"
 #include "sp_cache.h"
 #include "transaction.h"
+#include "debug_sync.h"
 
 /*
   The following is used to initialise Table_ident with a internal

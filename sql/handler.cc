@@ -24,6 +24,7 @@
 #endif
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "rpl_filter.h"
 #include <myisampack.h>
 #include "myisam.h"
