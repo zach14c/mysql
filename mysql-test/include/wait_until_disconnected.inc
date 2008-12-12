@@ -10,7 +10,7 @@ let $counter= 5000;
 let $mysql_errno= 0;
 while (!$mysql_errno)
 {
-  --error 0,2002,2003,2006,1053
+  --error 0,1040,1053,2002,2003,2006,2013
   show status;
 
   dec $counter;
