@@ -28,9 +28,9 @@
 #include <stdarg.h>
 
 static const unsigned int PACKET_BUFFER_EXTRA_ALLOC= 1024;
-/* Declared non-static only because of the embedded library. */
 void net_send_error_packet(THD *thd, uint sql_errno, const char *err,
                            const char* sqlstate);
+/* Declared non-static only because of the embedded library. */
 void net_send_ok(THD *, uint, uint, ha_rows, ulonglong, const char *);
 /* Declared non-static only because of the embedded library. */
 void net_send_eof(THD *thd, uint server_status, uint statement_warn_count);

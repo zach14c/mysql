@@ -930,7 +930,7 @@ loop_out:
    {
       if (mode == VIEW_ALTER)
       {
-        my_error(ER_NO_SUCH_TABLE, MYF(0), view->db, view->alias);
+	my_error(ER_NO_SUCH_TABLE, MYF(0), view->db, view->alias);
         error= -1;
         goto err;
       }

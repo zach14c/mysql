@@ -212,8 +212,11 @@ void copy_warnings(THD *thd, List<SQL_condition> *src)
   SQL_condition *cond;
 
   while ((cond= cond_it++))
+  {
+    DBUG_ASSERT(cond->get_level() != MYSQL_ERROR::WARN_LEVEL_ERROR);
     push_warning(thd, cond->get_level(),
                  cond->get_sql_errno(), cond->get_message_text());
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////

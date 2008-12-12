@@ -236,7 +236,7 @@ void Warning_info::clear_warning_info(ulonglong warn_id_arg)
 
 void Warning_info::reserve_space(THD *thd, uint count)
 {
-  /* Make room for 2 conditions */
+  /* Make room for count conditions */
   while ((m_warn_list.elements > 0) &&
         ((m_warn_list.elements + count) > thd->variables.max_error_count))
     m_warn_list.pop();
