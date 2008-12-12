@@ -483,7 +483,7 @@ typedef struct st_rollup
   where the primary key can be replaced with unique constraint if n exceeds
   the limit (as it is always done for query execution-time temptables).
 
-  The record value is a concation of rowids of tables from the join we're
+  The record value is a concatenation of rowids of tables from the join we're
   executing. If a join table is on the inner side of the outer join, we
   assume that its rowid can be NULL and provide means to store this rowid in
   the tuple.
@@ -509,7 +509,7 @@ public:
   
   /* 
     is_confluent==TRUE means this is a special case where the temptable record
-    has zero length (and presense of a unique key means that the temptable can
+    has zero length (and presence of a unique key means that the temptable can
     have either 0 or 1 records). 
     In this case we don't create the physical temptable but instead record
     its state in SJ_TMP_TABLE::have_confluent_record.

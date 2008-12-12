@@ -567,10 +567,10 @@ JOIN::prepare(Item ***rref_pointer_array,
          subquery) and
       2) we aren't just normalizing a VIEW
 
-    Then perform early unconditional subquery tranformations:
+    Then perform early unconditional subquery transformations:
      - Convert subquery predicate into semi-join, or
      - Mark the subquery for execution using materialization, or
-     - Perform IN->EXISTS tranformation, or
+     - Perform IN->EXISTS transformation, or
      - Perform more/less ALL/ANY -> MIN/MAX rewrite
      - Substitute trivial scalar-context subquery with its value
 
@@ -893,7 +893,7 @@ err:
           original table's columns (see setup_sj_materialization for more
           details)
         * require that compared columns have exactly the same type. This is
-          a temoporary measure to avoid BUG#36752-type problems.
+          a temporary measure to avoid BUG#36752-type problems.
 
   RETURN 
     TRUE   Yes, subquery types allow materialization
@@ -1143,12 +1143,12 @@ static bool sj_table_is_included(JOIN *join, JOIN_TAB *join_tab)
 
        (1) - Prefix of OuterTables (those that participate in 
              IN-equality and/or are correlated with subquery) and outer 
-             Noncorrelated Tables.
+             Non-correlated tables.
        (2) - The handled range. The range starts with the first sj-inner
              table, and covers all sj-inner and outer tables 
-             Within the range,  Inner, Outer, outer Noncorrelated tables
+             Within the range,  Inner, Outer, outer non-correlated tables
              may follow in any order.
-       (3) - The suffix of outer Noncorrelated tables.
+       (3) - The suffix of outer non-correlated tables.
     
     FirstMatch strategy
     ~~~~~~~~~~~~~~~~~~~
@@ -1160,7 +1160,7 @@ static bool sj_table_is_included(JOIN *join, JOIN_TAB *join_tab)
       (1) - Prefix of outer and non-correlated tables
       (2) - The handled range, which may contain only inner and
             non-correlated tables.
-      (3) - The suffix of outer Noncorrelated tables.
+      (3) - The suffix of outer non-correlated tables.
 
     LooseScan strategy 
     ~~~~~~~~~~~~~~~~~~
@@ -5811,7 +5811,7 @@ public:
   void init(JOIN *join, JOIN_TAB *s, table_map remaining_tables)
   {
     /*
-      Discover the bound equalites. We need to do this, if
+      Discover the bound equalities. We need to do this if
         1. The next table is an SJ-inner table, and
         2. It is the first table from that semijoin, and
         3. We're not within a semi-join range (i.e. all semi-joins either have
@@ -6681,7 +6681,7 @@ choose_plan(JOIN *join, table_map join_tables)
     if (search_depth == MAX_TABLES+2)
     { /*
         TODO: 'MAX_TABLES+2' denotes the old implementation of find_best before
-        the greedy version. Will be removed when greedy_search is apppostqueueroved.
+        the greedy version. Will be removed when greedy_search is approved.
       */
       join->best_read= DBL_MAX;
       if (find_best(join, join_tables, join->const_tables, 1.0, 0.0))
@@ -11310,7 +11310,7 @@ Item *eliminate_item_equal(COND *cond, COND_EQUAL *upper_levels,
         eq_list.push_back(eq_item);
       /*
         item_field might refer to a table that is within a semi-join
-        materialziation nest. In that case, join order looks like this:
+        materialization nest. In that case, the join order looks like this:
 
           outer_tbl1 outer_tbl2 SJM (inner_tbl1 inner_tbl2) outer_tbl3 
 
@@ -12295,10 +12295,10 @@ static void restore_prev_nj_state(JOIN_TAB *last)
   SYNOPSIS
     optimize_wo_join_buffering()
       join
-      first_tab               The first tab to do reoptimization for
-      last_tab                The first tab to do reoptimization for
-      last_remaining_tables   Tables that are not in [0 ... last_tab] join 
-                              prefix
+      first_tab               The first tab to do re-optimization for
+      last_tab                The last tab to do re-optimization for
+      last_remaining_tables   Bitmap of tables that are not in the
+                              [0...last_tab] join prefix
       first_alt               TRUE <=> Use the LooseScan plan for the first_tab
       no_jbuf_before          Don't allow to use join buffering before this
                               table
@@ -12316,7 +12316,7 @@ static void restore_prev_nj_state(JOIN_TAB *last)
     join buffering is different from the best order without join buffering but
     we don't try finding a better join order. (TODO ask Igor why did we
     chose not to do this in the end. that's actually the difference from the 
-    forking apporach)
+    forking approach)
 */
 
 void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab, 
@@ -12527,7 +12527,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
 
           We ought to save the alternate POSITIONs produced by
           optimize_wo_join_buffering but the problem is that providing save
-          space uses too much space. Instead, we will re-caclulate the
+          space uses too much space. Instead, we will re-calculate the
           alternate POSITIONs after we've picked the best QEP.
         */
         pos->sj_strategy= SJ_OPT_FIRST_MATCH;
@@ -12559,7 +12559,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
 
     /*
       If we got an option to use LooseScan for the current table, start
-      considering LooseScan strateg
+      considering using LooseScan strategy
     */
     if (loose_scan_pos->read_time != DBL_MAX)
     {
@@ -12584,7 +12584,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
       /*
         The same problem as with FirstMatch - we need to save POSITIONs
         somewhere but reserving space for all cases would require too
-        much space. We will re-caclulate POSITION structures later on. 
+        much space. We will re-calculate POSITION structures later on. 
       */
       optimize_wo_join_buffering(join, pos->first_loosescan_table, idx,
                                  remaining_tables, 
@@ -12847,7 +12847,7 @@ void advance_sj_state(JOIN *join, table_map remaining_tables,
          * we haven't picked any other semi-join strategy yet
         The second part is necessary because this strategy is the last one
         to consider (it needs "the most" tables in the prefix) and we can't
-        leave duplicate-producing tables unhandled by any strategy.
+        leave duplicate-producing tables not handled by any strategy.
       */
       if (dups_cost < *current_read_time || join->cur_dups_producing_tables)
       {
@@ -15555,7 +15555,7 @@ sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
     
     /*
       Now run the join for the inner tables. The first call is to run the
-      join, the second one is to signal EOF (this is essiential for some
+      join, the second one is to signal EOF (this is essential for some
       join strategies, e.g. it will make join buffering flush the records)
     */
     if ((rc= sub_select(join, join_tab, FALSE)) < 0 || 
@@ -16480,7 +16480,7 @@ join_read_key(JOIN_TAB *tab)
 
 
 /* 
-  eq_ref access handler but genericized a bit to support TABLE and TABLE_REF
+  eq_ref access handler but generalized a bit to support TABLE and TABLE_REF
   not from the join_tab. See join_read_key for detailed synopsis.
 */
 static int
