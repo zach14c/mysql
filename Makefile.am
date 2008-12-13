@@ -1,4 +1,4 @@
-# Copyright (C) 2000-2006 MySQL AB
+# Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@ SUBDIRS =		. include @docs_dirs@ @zlib_dir@ \
 DIST_SUBDIRS =		. include Docs zlib \
 			cmd-line-utils sql-common scripts \
 			pstack \
-			strings mysys dbug extra regex libmysql libmysql_r client unittest storage plugin \
+			strings mysys dbug mysys/tests extra regex libmysql libmysql_r client unittest storage plugin \
 			vio sql man tests \
 			netware libmysqld \
 			mysql-test support-files sql-bench \
@@ -170,6 +170,8 @@ test-bt:
 	    @PERL@ ./mysql-test-run.pl --force --comment=partitions --suite=parts
 	-cd mysql-test ; MTR_BUILD_THREAD=auto \
 	    @PERL@ ./mysql-test-run.pl --force --comment=stress --suite=stress
+	-cd mysql-test ; MTR_BUILD_THREAD=auto \
+	    @PERL@ ./mysql-test-run.pl --force --comment=jp --suite=jp
 	-if [ -d mysql-test/suite/nist ] ; then \
 	  cd mysql-test ; MTR_BUILD_THREAD=auto \
 	      @PERL@ ./mysql-test-run.pl --comment=nist --force --suite=nist ; \
@@ -187,14 +189,27 @@ test-bt:
 	  echo "no program found for 'embedded' tests - skipped testing" ; \
 	fi
 
-# Re-enable the "jp" suite when bug#28563 is fixed
-#	-cd mysql-test ; MTR_BUILD_THREAD=auto \
-#	    @PERL@ ./mysql-test-run.pl --force --comment=jp --suite=jp
+test-bt-fast:
+	-cd mysql-test ; MTR_BUILD_THREAD=auto \
+	    @PERL@ ./mysql-test-run.pl  --comment=ps    --force --timer \
+	        --skip-ndbcluster --ps-protocol --report-features
+	-if [ -e bin/ndbd -o -e storage/ndb/src/kernel/ndbd ] ; then \
+	  cd mysql-test ; \
+	    MTR_BUILD_THREAD=auto \
+	      @PERL@ ./mysql-test-run.pl --comment=ndb --force --timer \
+	          --with-ndbcluster-only ; \
+	else \
+	  echo "no program found for 'ndbcluster' tests - skipped testing" ; \
+	fi
+	-cd mysql-test ; MTR_BUILD_THREAD=auto \
+	    @PERL@ ./mysql-test-run.pl --force --comment=stress --suite=stress
 
 test-bt-debug:
 	-cd mysql-test ; MTR_BUILD_THREAD=auto \
 	    @PERL@ ./mysql-test-run.pl --comment=debug  --force --timer \
 	        --skip-ndbcluster --skip-rpl --report-features
+
+test-bt-debug-fast:
 
 # Keep these for a while
 test-pl:	test

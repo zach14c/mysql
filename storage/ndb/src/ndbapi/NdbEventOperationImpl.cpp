@@ -44,7 +44,7 @@
 #include "ndb_internal.hpp"
 
 #include <EventLogger.hpp>
-extern EventLogger g_eventLogger;
+extern EventLogger * g_eventLogger;
 
 static Gci_container_pod g_empty_gci_container;
 
@@ -52,7 +52,7 @@ static Gci_container_pod g_empty_gci_container;
 static void
 print_std(const SubTableData * sdata, LinearSectionPtr ptr[3])
 {
-  printf("addr=%p gci{hi/lo}hi=%d/%d op=%d\n", (void*)sdata,
+  printf("addr=%p gci{hi/lo}hi=%u/%u op=%d\n", (void*)sdata,
          sdata->gci_hi, sdata->gci_lo,
 	 SubTableData::getOperation(sdata->requestInfo));
   for (int i = 0; i <= 2; i++) {
@@ -1046,10 +1046,10 @@ NdbEventBuffer::NdbEventBuffer(Ndb *ndb) :
   m_ndb(ndb),
   m_latestGCI(0), m_latest_complete_GCI(0),
   m_total_alloc(0),
-  m_free_thresh(10),
-  m_min_free_thresh(10),
-  m_max_free_thresh(100),
-  m_gci_slip_thresh(3),
+  m_free_thresh(0),
+  m_min_free_thresh(0),
+  m_max_free_thresh(0),
+  m_gci_slip_thresh(0),
   m_dropped_ev_op(0),
   m_active_op_count(0),
   m_add_drop_mutex(0)
@@ -1220,8 +1220,8 @@ NdbEventBuffer::flushIncompleteEvents(Uint64 gci)
   Uint32 minpos = m_min_gci_index;
   Uint32 maxpos = m_max_gci_index;
 
-  g_eventLogger.info("Flushing incomplete GCI:s < %u/%u",
-                     Uint32(gci >> 32), Uint32(gci));
+  g_eventLogger->info("Flushing incomplete GCI:s < %u/%u",
+                      Uint32(gci >> 32), Uint32(gci));
   while (minpos != maxpos && array[minpos] < gci)
   {
     Gci_container* tmp = find_bucket(array[minpos]);
@@ -1270,9 +1270,21 @@ NdbEventBuffer::nextEvent()
 #endif
 
   EventBufData *data;
+  Uint64 gci= 0;
   while ((data= m_available_data.m_head))
   {
     NdbEventOperationImpl *op= data->m_event_op;
+
+    /*
+     * The data was not associated with an event operation,
+     * possibly a dummy event list marking missing data
+     */
+    if (!op && !isConsistent(gci))
+    {
+      DBUG_PRINT_EVENT("info", ("detected inconsistent gci %u", gci));
+      DBUG_RETURN_EVENT(0);
+    }
+
     DBUG_PRINT_EVENT("info", ("available data=%p op=%p", data, op));
 
     /*
@@ -1314,9 +1326,13 @@ NdbEventBuffer::nextEvent()
          {
            // moved to next gci, check if any references have been
            // released when completing the last gci
+           NdbMutex_Lock(m_mutex);
            deleteUsedEventOperations();
-           gci_ops = m_available_data.next_gci_ops();
+           NdbMutex_Unlock(m_mutex);
+           gci_ops = m_available_data.delete_next_gci_ops();
          }
+         if (!gci_ops->m_consistent)
+           DBUG_RETURN_EVENT(0);
          assert(gci_ops && (op->getGCI() == gci_ops->m_gci));
          // to return TE_NUL it should be made into data event
          if (SubTableData::getOperation(data->sdata->requestInfo) ==
@@ -1343,14 +1359,50 @@ NdbEventBuffer::nextEvent()
   // free all "per gci unique" collected operations
   // completed gci, check if any references have been
   // released when completing the gci
+  NdbMutex_Lock(m_mutex);
   EventBufData_list::Gci_ops *gci_ops = m_available_data.first_gci_ops();
   while (gci_ops)
   {
     deleteUsedEventOperations();
-    gci_ops = m_available_data.next_gci_ops();
+    gci_ops = m_available_data.delete_next_gci_ops();
   }
+  NdbMutex_Unlock(m_mutex);
   DBUG_RETURN_EVENT(0);
 }
+
+bool
+NdbEventBuffer::isConsistent(Uint64& gci)
+{
+  DBUG_ENTER("NdbEventBuffer::isConsistent");
+  EventBufData_list::Gci_ops *gci_ops = m_available_data.first_gci_ops();
+  while (gci_ops)
+  {
+    if (!gci_ops->m_consistent)
+    {
+      gci = gci_ops->m_gci;
+      DBUG_RETURN(false);
+    }
+    gci_ops = gci_ops->m_next;
+  }
+
+  DBUG_RETURN(true);
+}
+
+bool
+NdbEventBuffer::isConsistentGCI(Uint64 gci)
+{
+  DBUG_ENTER("NdbEventBuffer::isConsistentGCI");
+  EventBufData_list::Gci_ops *gci_ops = m_available_data.first_gci_ops();
+  while (gci_ops)
+  {
+    if (gci_ops->m_gci == gci && !gci_ops->m_consistent)
+      DBUG_RETURN(false);
+    gci_ops = gci_ops->m_next;
+  }
+
+  DBUG_RETURN(true);
+}
+
 
 NdbEventOperationImpl*
 NdbEventBuffer::getGCIEventOperations(Uint32* iter, Uint32* event_types)
@@ -1738,6 +1790,35 @@ NdbEventBuffer::complete_bucket(Gci_container* bucket)
     assert(bucket->m_data.m_count);
 #endif
     m_complete_data.m_data.append_list(&bucket->m_data, gci);
+    if (bucket->m_state & Gci_container::GC_INCONSISTENT)
+    {
+      /*
+       * Bucket marked as possibly missing data, probably due to
+       * kernel running out of event_buffer during node failure.
+       * Mark newly appended event list as inconsistent.
+       */
+      assert(m_complete_data.m_data.m_gci_ops_list_tail != NULL);
+      m_complete_data.m_data.m_gci_ops_list_tail->m_consistent = false;
+    }
+  }
+  else // if (bucket->m_data.is_empty())
+  {
+    if (bucket->m_state & Gci_container::GC_INCONSISTENT)
+    {
+      /*
+       * Bucket marked as possibly missing data, probably due to
+       * kernel running out of event_buffer during node failure
+       * Bucket contained no data so we must add a dummy event list
+       * as inconsistency marker.
+       */
+      EventBufData *dummy_data= alloc_data();
+      EventBufData_list *dummy_event_list = new EventBufData_list;
+      dummy_event_list->append_used_data(dummy_data);
+      dummy_event_list->m_is_not_multi_list = true;
+      m_complete_data.m_data.append_list(dummy_event_list, gci);
+      assert(m_complete_data.m_data.m_gci_ops_list_tail != NULL);
+      m_complete_data.m_data.m_gci_ops_list_tail->m_consistent = false;
+    }
   }
 
   Uint32 minpos = m_min_gci_index;
@@ -1803,6 +1884,11 @@ NdbEventBuffer::execSUB_GCP_COMPLETE_REP(const SubGcpCompleteRep * const rep,
     DBUG_VOID_RETURN_EVENT;
   }
 
+  if (rep->flags & SubGcpCompleteRep::MISSING_DATA)
+  {
+    bucket->m_state = Gci_container::GC_INCONSISTENT;
+  }
+
   Uint32 old_cnt = bucket->m_gcp_complete_rep_count;
   if(unlikely(old_cnt == ~(Uint32)0))
   {
@@ -1847,11 +1933,11 @@ NdbEventBuffer::execSUB_GCP_COMPLETE_REP(const SubGcpCompleteRep * const rep,
         goto do_complete;
       }
       /** out of order something */
-      g_eventLogger.info("out of order bucket: %d gci: %u/%u minGCI: %u/%u m_latestGCI: %u/%u",
-                         (int)(bucket-(Gci_container*)m_active_gci.getBase()),
-                         Uint32(gci >> 32), Uint32(gci),
-                         Uint32(minGCI >> 32), Uint32(minGCI),
-                         Uint32(m_latestGCI >> 32), Uint32(m_latestGCI));
+      g_eventLogger->info("out of order bucket: %d gci: %u/%u minGCI: %u/%u m_latestGCI: %u/%u",
+                          (int)(bucket-(Gci_container*)m_active_gci.getBase()),
+                          Uint32(gci >> 32), Uint32(gci),
+                          Uint32(minGCI >> 32), Uint32(minGCI),
+                          Uint32(m_latestGCI >> 32), Uint32(m_latestGCI));
       bucket->m_state = Gci_container::GC_COMPLETE;
       bucket->m_gcp_complete_rep_count = 1; // Prevent from being reused
       m_latest_complete_GCI = gci;
@@ -1875,18 +1961,18 @@ NdbEventBuffer::complete_outof_order_gcis()
   Uint64 stop_gci = m_latest_complete_GCI;
 
   Uint64 start_gci = array[minpos];
-  g_eventLogger.info("complete_outof_order_gcis from: %u/%u to: %u/%u",
-                     Uint32(start_gci >> 32), Uint32(start_gci),
-                     Uint32(stop_gci >> 32), Uint32(stop_gci));
+  g_eventLogger->info("complete_outof_order_gcis from: %u/%u(%u) to: %u/%u(%u)",
+                      Uint32(start_gci >> 32), Uint32(start_gci), minpos,
+                      Uint32(stop_gci >> 32), Uint32(stop_gci), maxpos);
 
   assert(start_gci <= stop_gci);
   do
   {
-    Uint64 start_gci = array[minpos];
+    start_gci = array[minpos];
     Gci_container* bucket = find_bucket(start_gci);
     assert(bucket);
     assert(maxpos == m_max_gci_index);
-    if (bucket->m_state != Gci_container::GC_COMPLETE)
+    if (!(bucket->m_state & Gci_container::GC_COMPLETE)) // Not complete
     {
 #ifdef VM_TRACE
       verify_known_gci(false);
@@ -1896,10 +1982,10 @@ NdbEventBuffer::complete_outof_order_gcis()
 
 #ifdef VM_TRACE
     ndbout_c("complete_outof_order_gcis - completing %u/%u rows: %u",
-             Uint32(start_gci), Uint32(start_gci), bucket->m_data.m_count);
+             Uint32(start_gci >> 32), Uint32(start_gci), bucket->m_data.m_count);
 #else
     ndbout_c("complete_outof_order_gcis - completing %u/%u",
-             Uint32(start_gci), Uint32(start_gci));
+             Uint32(start_gci >> 32), Uint32(start_gci));
 #endif
     
     complete_bucket(bucket);
@@ -1970,8 +2056,10 @@ NdbEventBuffer::report_node_connected(Uint32 node_id)
 {
   NdbEventOperation* op= m_ndb->getEventOperation(0);
   if (op == 0)
+  {
     return;
-
+  }
+  
   DBUG_ENTER("NdbEventBuffer::report_node_connected");
   SubTableData data;
   LinearSectionPtr ptr[3];
@@ -1984,7 +2072,7 @@ NdbEventBuffer::report_node_connected(Uint32 node_id)
 			     NdbDictionary::Event::_TE_ACTIVE);
   SubTableData::setReqNodeId(data.requestInfo, node_id);
   SubTableData::setNdbdNodeId(data.requestInfo, node_id);
-  data.logType = SubTableData::LOG;
+  data.flags = SubTableData::LOG;
 
   Uint64 gci = Uint64((m_latestGCI >> 32) + 1) << 32;
   find_max_known_gci(&gci);
@@ -2019,7 +2107,7 @@ NdbEventBuffer::report_node_failure(Uint32 node_id)
 			     NdbDictionary::Event::_TE_NODE_FAILURE);
   SubTableData::setReqNodeId(data.requestInfo, node_id);
   SubTableData::setNdbdNodeId(data.requestInfo, node_id);
-  data.logType = SubTableData::LOG;
+  data.flags = SubTableData::LOG;
 
   Uint64 gci = Uint64((m_latestGCI >> 32) + 1) << 32;
   find_max_known_gci(&gci);
@@ -2090,7 +2178,7 @@ NdbEventBuffer::completeClusterFailed()
   data.requestInfo = 0;
   SubTableData::setOperation(data.requestInfo,
 			     NdbDictionary::Event::_TE_CLUSTER_FAILURE);
-  data.logType = SubTableData::LOG;
+  data.flags = SubTableData::LOG;
   data.gci_hi = Uint32(gci >> 32);
   data.gci_lo = Uint32(gci);
 
@@ -2123,6 +2211,7 @@ NdbEventBuffer::completeClusterFailed()
   rep.gci_hi= gci >> 32;
   rep.gci_lo= gci & 0xFFFFFFFF;
   rep.gcp_complete_rep_count= cnt;
+  rep.flags = 0;
   execSUB_GCP_COMPLETE_REP(&rep, SubGcpCompleteRep::SignalLength);
 
   DBUG_VOID_RETURN;
@@ -2386,8 +2475,8 @@ NdbEventBuffer::alloc_data()
     {
 #ifdef VM_TRACE
       printf("m_latest_command: %s\n", m_latest_command);
-      printf("no free data, m_latestGCI %lld\n",
-             m_latestGCI);
+      printf("no free data, m_latestGCI %u/%u\n",
+             (Uint32)(m_latestGCI << 32), (Uint32)m_latestGCI);
       printf("m_free_data_count %d\n", m_free_data_count);
       printf("m_available_data_count %d first gci{hi/lo} %u/%u last gci{hi/lo} %u/%u\n",
              m_available_data.m_count,
@@ -3024,8 +3113,8 @@ void
 EventBufData_list::move_gci_ops(EventBufData_list *list, Uint64 gci)
 {
   DBUG_ENTER_EVENT("EventBufData_list::move_gci_ops");
-  DBUG_PRINT_EVENT("info", ("this: %p  list: %p  gci: %llu",
-                            this, list, gci));
+  DBUG_PRINT_EVENT("info", ("this: %p  list: %p  gci: %u/%u",
+                            this, list, (Uint32)(gci >> 32), (Uint32)gci));
   assert(!m_is_not_multi_list);
   if (!list->m_is_not_multi_list)
   {
@@ -3123,8 +3212,16 @@ NdbEventBuffer::dropEventOperation(NdbEventOperation* tOp)
       tBlobOp->stop();
       tBlobOp = tBlobOp->m_next;
     }
+  }
 
-    // release blob handles now, further access is user error
+  /**
+   * Needs mutex lock as report_node_XXX accesses list...
+   */
+  NdbMutex_Lock(m_mutex);
+
+  // release blob handles now, further access is user error
+  if (op->theMainOp == NULL)
+  {
     while (op->theBlobList != NULL)
     {
       NdbBlob* tBlob = op->theBlobList;
@@ -3133,6 +3230,15 @@ NdbEventBuffer::dropEventOperation(NdbEventOperation* tOp)
     }
   }
 
+  if (op->m_next)
+    op->m_next->m_prev= op->m_prev;
+  if (op->m_prev)
+    op->m_prev->m_next= op->m_next;
+  else
+    m_ndb->theImpl->m_ev_op= op->m_next;
+  
+  assert(m_ndb->theImpl->m_ev_op == 0 || m_ndb->theImpl->m_ev_op->m_prev == 0);
+  
   DBUG_ASSERT(op->m_ref_count > 0);
   // remove user reference
   // added in createEventOperation
@@ -3141,6 +3247,7 @@ NdbEventBuffer::dropEventOperation(NdbEventOperation* tOp)
   DBUG_PRINT("info", ("m_ref_count: %u for op: %p", op->m_ref_count, op));
   if (op->m_ref_count == 0)
   {
+    NdbMutex_Unlock(m_mutex);
     DBUG_PRINT("info", ("deleting op: %p", op));
     DBUG_ASSERT(op->m_node_bit_mask.isclear());
     delete op->m_facade;
@@ -3152,6 +3259,8 @@ NdbEventBuffer::dropEventOperation(NdbEventOperation* tOp)
     if (m_dropped_ev_op)
       m_dropped_ev_op->m_prev= op;
     m_dropped_ev_op= op;
+    
+    NdbMutex_Unlock(m_mutex);
   }
   DBUG_VOID_RETURN;
 }
@@ -3163,7 +3272,7 @@ NdbEventBuffer::reportStatus()
   Uint64 apply_gci, latest_gci= m_latestGCI;
   if (apply_buf == 0)
     apply_buf= m_complete_data.m_data.m_head;
-  if (apply_buf)
+  if (apply_buf && apply_buf->sdata)
   {
     Uint32 gci_hi = apply_buf->sdata->gci_hi;
     Uint32 gci_lo = apply_buf->sdata->gci_lo;
@@ -3172,28 +3281,32 @@ NdbEventBuffer::reportStatus()
   else
     apply_gci= latest_gci;
 
-  if (100*(Uint64)m_free_data_sz < m_min_free_thresh*(Uint64)m_total_alloc &&
-      m_total_alloc > 1024*1024)
+  if (m_free_thresh)
   {
-    /* report less free buffer than m_free_thresh,
-       next report when more free than 2 * m_free_thresh
-    */
-    m_min_free_thresh= 0;
-    m_max_free_thresh= 2 * m_free_thresh;
-    goto send_report;
-  }
+    if (100*(Uint64)m_free_data_sz < m_min_free_thresh*(Uint64)m_total_alloc &&
+        m_total_alloc > 1024*1024)
+    {
+      /* report less free buffer than m_free_thresh,
+         next report when more free than 2 * m_free_thresh
+      */
+      m_min_free_thresh= 0;
+      m_max_free_thresh= 2 * m_free_thresh;
+      goto send_report;
+    }
   
-  if (100*(Uint64)m_free_data_sz > m_max_free_thresh*(Uint64)m_total_alloc &&
-      m_total_alloc > 1024*1024)
-  {
-    /* report more free than 2 * m_free_thresh
-       next report when less free than m_free_thresh
-    */
-    m_min_free_thresh= m_free_thresh;
-    m_max_free_thresh= 100;
-    goto send_report;
+    if (100*(Uint64)m_free_data_sz > m_max_free_thresh*(Uint64)m_total_alloc &&
+        m_total_alloc > 1024*1024)
+    {
+      /* report more free than 2 * m_free_thresh
+         next report when less free than m_free_thresh
+      */
+      m_min_free_thresh= m_free_thresh;
+      m_max_free_thresh= 100;
+      goto send_report;
+    }
   }
-  if (latest_gci-apply_gci >=  m_gci_slip_thresh)
+  if (m_gci_slip_thresh &&
+      (latest_gci-apply_gci >= m_gci_slip_thresh))
   {
     goto send_report;
   }

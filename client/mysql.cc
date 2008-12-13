@@ -1566,7 +1566,7 @@ static void usage(int version)
   if (version)
     return;
   printf("\
-Copyright (C) 2000-2008 MySQL AB\n\
+Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.\n\
 This software comes with ABSOLUTELY NO WARRANTY. This is free software,\n\
 and you are welcome to modify and redistribute it under the GPL license\n");
   printf("Usage: %s [OPTIONS] [database]\n", my_progname);
@@ -1658,8 +1658,10 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
     opt_nopager= 1;
     break;
   case OPT_MYSQL_PROTOCOL:
+#ifndef EMBEDDED_LIBRARY
     opt_protocol= find_type_or_exit(argument, &sql_protocol_typelib,
                                     opt->name);
+#endif
     break;
   case OPT_SERVER_ARG:
 #ifdef EMBEDDED_LIBRARY

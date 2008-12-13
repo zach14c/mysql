@@ -37,6 +37,16 @@ public:
   STATIC_CONST( HeaderLength = 3 );
   STATIC_CONST( DataLength = 20 );
   STATIC_CONST( MaxSignalLength = HeaderLength + DataLength );
+  
+  /* IndexBound constants */
+  STATIC_CONST( PerBoundColumnOverhead = 2 );
+  /* Max number of key columns with max total key size */
+  STATIC_CONST( MaxWordsPerBoundRow =   \
+                (PerBoundColumnOverhead * MAX_ATTRIBUTES_IN_INDEX)    \
+                + MAX_KEY_SIZE_IN_WORDS );
+  /* Single key column with max total key size */
+  STATIC_CONST( MaxWordsPerBoundColumn =     \
+                PerBoundColumnOverhead + MAX_KEY_SIZE_IN_WORDS );
 
 private:
   Uint32 connectPtr;
@@ -59,12 +69,12 @@ private:
     1 word of AttributeHeader (containing attribute Id and byte length)
     N words of attribute data (N = (length+3)>>2).
   Additionally, it is possible to send multiple range bounds in a single
-  SCAN_TABREQ and associated ATTRINFO stream (using
-  NdbIndexScanOperation::end_of_bound(RANGE_NO) ). In this case, the first word
-  of each range bound contains additional information: bits 16-31 holds the
-  length of this bound, in words of ATTRINFO data, and bits 4-15 holds a
-  number RANGE_NO specified by the application that can be read back from the
-  RANGE_NO pseudo-column.
+  SCAN_TABREQ and associated ATTRINFO stream (using NdbRecord Index scans and
+  multiple calls to setBound with different range numbers). In this case, the 
+  first word of each range bound contains additional information: 
+  bits 16-31 holds the length of this bound, in words of ATTRINFO data, 
+  and bits 4-15 holds a number RANGE_NO specified by the application that 
+  can be read back from the RANGE_NO pseudo-column.
 
 */
 #endif

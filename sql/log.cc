@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -84,17 +84,18 @@ public:
 
   virtual ~Silence_log_table_errors() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
   const char *message() const { return m_message; }
 };
 
 bool
-Silence_log_table_errors::handle_error(uint /* sql_errno */,
-                                       const char *message_arg,
-                                       MYSQL_ERROR::enum_warning_level /* level */,
-                                       THD * /* thd */)
+Silence_log_table_errors::
+handle_error(THD * /* thd */,
+             MYSQL_ERROR::enum_warning_level /* level */,
+             uint /* sql_errno */,
+             const char *message_arg)
 {
   strmake(m_message, message_arg, sizeof(m_message)-1);
   return TRUE;
@@ -3959,10 +3960,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
-    thd->main_da.reset_diagnostics_area();
-    thd->main_da.set_error_status(thd, 
-                                  ER_BACKUP_PROGRESS_TABLES, 
-                                  ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -3981,10 +3982,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
-    thd->main_da.reset_diagnostics_area();
-    thd->main_da.set_error_status(thd, 
-                                  ER_BACKUP_PROGRESS_TABLES, 
-                                  ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -4634,7 +4635,11 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
   const char* save_name;
   DBUG_ENTER("reset_logs");
 
-  ha_reset_logs(thd);
+  if (ha_reset_logs(thd))
+  {
+    DBUG_RETURN(1);
+  }
+
   /*
     We need to get both locks to be sure that no one is trying to
     write to the index log file.
@@ -5014,7 +5019,11 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
       }
     }
 
-    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
+    if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
+    {
+      error= LOG_INFO_FATAL;
+      goto err;
+    }
 
     if (find_next_log(&log_info, 0) || exit_loop)
       break;
@@ -5157,7 +5166,11 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
           goto err;
         }
       }
-      ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
+      if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
+      {
+        error= LOG_INFO_FATAL;
+        goto err;
+      }
     }
     if (find_next_log(&log_info, 0))
       break;

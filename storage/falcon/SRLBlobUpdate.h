@@ -39,7 +39,6 @@ public:
 	virtual void	pass2(void);
 	virtual void	redo(void);
 
-	int			tableSpaceId;
 	int32		sectionId;
 	int32		locatorPage;
 	int			locatorLine;

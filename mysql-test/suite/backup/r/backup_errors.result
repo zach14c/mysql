@@ -1,25 +1,44 @@
 DROP DATABASE IF EXISTS adb;
 DROP DATABASE IF EXISTS bdb;
 RESTORE FROM 'test.bak';
-ERROR HY000: Can't read backup location 'test.bak'
+ERROR HY000: File 'MYSQLTEST_VARDIR/master-data/test.bak' not found (Errcode: #)
 CREATE DATABASE adb;
 CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
 BACKUP DATABASE adb TO '';
 ERROR HY000: Malformed file path ''
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Malformed file path ''
 BACKUP DATABASE adb TO "bdb/t1.frm";
-ERROR HY000: Can't write to backup location 'bdb/t1.frm' (file already exists?)
+ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/bdb/t1.frm' (Errcode: #)
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/bdb/t1.frm' (Errcode: #)
+Error	#	Can't write to backup location 'bdb/t1.frm'
 BACKUP DATABASE adb TO "test.bak";
 backup_id
 #
+SHOW WARNINGS;
+Level	Code	Message
 BACKUP DATABASE adb TO "test.bak";
-ERROR HY000: Can't write to backup location 'test.bak' (file already exists?)
+ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+Error	#	Can't write to backup location 'test.bak'
 DROP DATABASE IF EXISTS foo;
 DROP DATABASE IF EXISTS bar;
 BACKUP DATABASE foo TO 'test.bak';
 ERROR 42000: Unknown database 'foo'
+SHOW WARNINGS;
+Level	Code	Message
+Error	1049	Unknown database 'foo'
 BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
 ERROR 42000: Unknown database 'foo,bar'
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Unknown database 'foo,bar'
 BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
 ERROR 42000: Not unique database: 'foo'
 use adb;
@@ -49,21 +68,39 @@ DROP DATABASE bdb;
 Backup of mysql, information_schema scenario 1
 BACKUP DATABASE mysql TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Database 'mysql' cannot be included in a backup
 Backup of mysql, information_schema scenario 2
 BACKUP DATABASE information_schema TO 't.bak';
 ERROR HY000: Database 'information_schema' cannot be included in a backup
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Database 'information_schema' cannot be included in a backup
 Backup of mysql, information_schema scenario 3
 BACKUP DATABASE mysql, information_schema TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Database 'mysql' cannot be included in a backup
 Backup of mysql, information_schema scenario 4
 BACKUP DATABASE mysql, test TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Database 'mysql' cannot be included in a backup
 Backup of mysql, information_schema scenario 5
 BACKUP DATABASE information_schema, test TO 't.bak';
 ERROR HY000: Database 'information_schema' cannot be included in a backup
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Database 'information_schema' cannot be included in a backup
 Backup of mysql, information_schema scenario 6
 BACKUP DATABASE mysql, information_schema, test TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Database 'mysql' cannot be included in a backup
 Making copies of progress tables.
 CREATE TABLE IF NOT EXISTS test.ob_copy LIKE mysql.backup_history;
 CREATE TABLE IF NOT EXISTS test.obp_copy LIKE mysql.backup_progress;
@@ -78,7 +115,7 @@ DROP TABLE mysql.backup_history;
 Backup the database;
 BACKUP DATABASE test_ob_error TO 'ob_err.bak';
 ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
-SHOW ERRORS;
+SHOW WARNINGS;
 Level	Code	Message
 Error	#	Table 'mysql.backup_history' doesn't exist
 Error	#	Cannot create backup/restore execution context
@@ -89,7 +126,7 @@ DROP TABLE mysql.backup_progress;
 Backup the database;
 BACKUP DATABASE test_ob_error TO 'ob_err.bak';
 ERROR HY000: Can't open the backup logs as tables. Check 'mysql.backup_history' and 'mysql.backup_progress' or run mysql_upgrade to repair.
-SHOW ERRORS;
+SHOW WARNINGS;
 Level	Code	Message
 Error	#	Table 'mysql.backup_progress' doesn't exist
 Error	#	Cannot create backup/restore execution context
@@ -112,7 +149,7 @@ delete database files so that check_db_dir_exists will fail in
 si_objects.cc @ DatabaseObj::do_serialize
 SET DEBUG_SYNC='now SIGNAL db_will_fail';
 Database has been deleted, backup will fail
-ERROR 42000: Unknown database 'db1'
+ERROR HY000: Failed to obtain meta-data for database `db1`
 
 Test that backup fails with error if a table used by 
 a trigger cannot be opened

@@ -308,7 +308,7 @@ pad32(Uint32 bytepos, Uint32 bitsused)
   {
     assert((bytepos & 3) == 0);
   }
-  Uint32 ret = 4 * ((bitsused + 31 >> 5)) +
+  Uint32 ret = 4 * ((bitsused + 31) >> 5) +
     ((bytepos + 3) & ~(Uint32)3);
   return ret;
 }
@@ -1510,13 +1510,6 @@ int Dbtup::updateAttributes(KeyReqStruct *req_struct,
       jam();
       req_struct->attr_descriptor= attrDescriptor;
       req_struct->changeMask.set(attributeId);
-      if (attributeId >= 64) {
-        if (req_struct->max_attr_id_updated < attributeId) {
-          Uint32 no_changed_attrs= req_struct->no_changed_attrs;
-          req_struct->max_attr_id_updated= attributeId;
-          req_struct->no_changed_attrs= no_changed_attrs + 1;
-        }
-      }
       if ((this->*f)(inBuffer,
                      req_struct,
                      attributeOffset)) {

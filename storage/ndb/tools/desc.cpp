@@ -305,6 +305,17 @@ void print_part_info(Ndb* pNdb, NDBT_Table* pTab)
 
   ndbout << "-- Per partition info -- " << endl;
   
+  const Uint32 codeWords= 1;
+  Uint32 codeSpace[ codeWords ];
+  NdbInterpretedCode code(NULL, // Table is irrelevant
+                          &codeSpace[0],
+                          codeWords);
+  if ((code.interpret_exit_last_row() != 0) ||
+      (code.finalise() != 0))
+  {
+    return;
+  }
+
   NdbConnection* pTrans = pNdb->startTransaction();
   if (pTrans == 0)
     return;
@@ -319,7 +330,7 @@ void print_part_info(Ndb* pNdb, NDBT_Table* pTab)
     if (rs != 0)
       break;
     
-    if (pOp->interpret_exit_last_row() != 0)
+    if (pOp->setInterpretedCode(&code) != 0)
       break;
     
     Uint32 i = 0;
@@ -343,9 +354,24 @@ void print_part_info(Ndb* pNdb, NDBT_Table* pTab)
     {
       for(i = 0; g_part_info[i].m_title != 0; i++)
       {
-	ndbout << *g_part_info[i].m_rec_attr << "\t";
+        NdbRecAttr &r= *g_part_info[i].m_rec_attr;
+        unsigned long long val;
+        switch (r.getType()) {
+        case NdbDictionary::Column::Bigunsigned:
+          val= r.u_64_value();
+          break;
+        case NdbDictionary::Column::Unsigned:
+          val= r.u_32_value();
+          break;
+        default:
+          abort();
+        }
+        if (val != 0)
+          printf("%-*.llu\t", (int)strlen(g_part_info[i].m_title), val);
+        else
+          printf("0%*.s\t", (int)strlen(g_part_info[i].m_title), "");
       }
-      ndbout << endl;
+      printf("\n");
     }
   } while(0);
   

@@ -23,31 +23,20 @@ libgeneral_la_SOURCES = \
 	    NdbSqlUtil.cpp new.cpp \
             uucode.c random.c version.c \
             strdup.c \
-            ConfigValues.cpp ndb_init.c basestring_vsnprintf.c \
+            ConfigValues.cpp ndb_init.cpp basestring_vsnprintf.c \
             Bitmask.cpp \
 	    ndb_rand.c
 
-EXTRA_PROGRAMS = testBitmask
-testBitmask_SOURCES =  testBitmask.cpp
-testBitmask_LDFLAGS = @ndb_bin_am_ldflags@ \
-  $(top_builddir)/storage/ndb/src/libndbclient.la \
-         $(top_builddir)/dbug/libdbug.a \
-         $(top_builddir)/mysys/libmysys.a \
-         $(top_builddir)/strings/libmystrings.a
+noinst_PROGRAMS = BaseString-t
 
-testBitmask.cpp : Bitmask.cpp
-	rm -f testBitmask.cpp
-	@LN_CP_F@ Bitmask.cpp testBitmask.cpp
-
-testBitmask.o:	$(testBitmask_SOURCES)
-		$(CXXCOMPILE) -c $(INCLUDES) -D__TEST_BITMASK__ $<
-
+BaseString_t_SOURCES = BaseString.cpp
+BaseString_t_CXXFLAGS = -DTEST_BASE_STRING
+BaseString_t_LDADD = \
+	libgeneral.la \
+	$(top_builddir)/mysys/libmysyslt.la
 
 include $(top_srcdir)/storage/ndb/config/common.mk.am
 include $(top_srcdir)/storage/ndb/config/type_util.mk.am
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
 
 windoze-dsp: libgeneral.dsp
 

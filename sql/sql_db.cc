@@ -616,6 +616,7 @@ int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create_info,
   MY_STAT stat_info;
   uint create_options= create_info ? create_info->options : 0;
   uint path_len;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_create_db");
 
   /* do not create 'information_schema' db */
@@ -642,6 +643,8 @@ int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create_info,
     error= -1;
     goto exit2;
   }
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -767,6 +770,7 @@ bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create_info)
   char path[FN_REFLEN+16];
   long result=1;
   int error= 0;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_alter_db");
 
   /*
@@ -783,6 +787,8 @@ bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create_info)
   */
   if ((error=wait_if_global_read_lock(thd,0,1)))
     goto exit2;
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -861,6 +867,7 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
   MY_DIR *dirp;
   uint length;
   TABLE_LIST* dropped_tables= 0;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_rm_db");
 
   /*
@@ -880,6 +887,8 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
     error= -1;
     goto exit2;
   }
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -1094,7 +1103,6 @@ static long mysql_rm_known_files(THD *thd, MY_DIR *dirp, const char *db,
       /* .frm archive:
         Those archives are obsolete, but following code should
         exist to remove existent "arc" directories.
-        See #ifdef FRM_ARCHIVE directives for obsolete code.
       */
       char newpath[FN_REFLEN];
       MY_DIR *new_dirp;
@@ -1268,7 +1276,6 @@ static my_bool rm_dir_w_symlink(const char *org_path, my_bool send_error)
   NOTE
     A support of "arc" directories is obsolete, however this
     function should exist to remove existent "arc" directories.
-    See #ifdef FRM_ARCHIVE directives for obsolete code.
 */
 long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path)
 {
@@ -2001,6 +2008,7 @@ bool check_db_dir_existence(const char *db_name)
 {
   char db_dir_path[FN_REFLEN];
   uint db_dir_path_len;
+  MY_STAT my_stat_result;
 
   db_dir_path_len= build_table_filename(db_dir_path, sizeof(db_dir_path),
                                         db_name, "", "", 0);
@@ -2008,7 +2016,13 @@ bool check_db_dir_existence(const char *db_name)
   if (db_dir_path_len && db_dir_path[db_dir_path_len - 1] == FN_LIBCHAR)
     db_dir_path[db_dir_path_len - 1]= 0;
 
-  /* Check access. */
+  /* Verify that db_name is accessible and is a directory */
 
-  return my_access(db_dir_path, F_OK);
+  if (! my_stat(db_dir_path, &my_stat_result, MYF(0)))
+    return TRUE;
+
+  if (! MY_S_ISDIR(my_stat_result.st_mode))
+    return TRUE;
+
+  return FALSE;
 }

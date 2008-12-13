@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1235,7 +1235,6 @@ struct TABLE_LIST
   st_lex_user   definer;                /* definer of view */
   ulonglong	file_version;		/* version of file's field set */
   ulonglong     updatable_view;         /* VIEW can be updated */
-  ulonglong	revision;		/* revision control number */
   /** 
       @brief The declared algorithm, if this is a view.
       @details One of

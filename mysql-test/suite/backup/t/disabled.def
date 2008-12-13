@@ -9,10 +9,12 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
-backup_no_engine     : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
-backup_triggers_and_events  : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
-#backup_no_be                : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
-backup_no_data       : Bug#17823 2008-10-09 rafal Tests in main suite leave undeleted files causing this test to fail
-backup_ddl_blocker   : Bug#17823 2008-10-09 rafal Tests in main suite leave undeleted files causing this test to fail
-backup               : Bug#40807 2008-11-18 hakank Test fails on big-endian architecture
-backup_timeout       : Bug#40808 2008-11-18 hakank Test fails on big-endian architecture
+backup_no_engine              : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
+backup_triggers_and_events    : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
+#backup_no_be                 : Bug#38023 2008-07-16 rafal Test triggers valgrind warnings described in the bug
+backup_no_data                : Bug#41008 2008-12-08 alik union.test does not cleanup
+backup_ddl_blocker            : Bug#41008 2008-12-08 alik union.test does not cleanup
+backup                        : Bug#40807 2008-11-18 hakank Test fails on big-endian architecture
+backup_timeout                : Bug#40808 2008-11-18 hakank Test fails on big-endian architecture
+backup_errors                 : Bug#41359 2008-12-10 ingo Test fails after merge of main and backup trees
+backup_views                  : Bug#41360 2008-12-10 ingo Test fails after merge of main and backup trees

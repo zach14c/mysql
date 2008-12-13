@@ -662,6 +662,7 @@ DROP TABLE t1;
 create table t1 (a int);
 select 1 as res from dual where (1) in (select * from t1);
 drop table t1;
+
 #
 # BUG#36135 "void Diagnostics_area::set_eof_status(THD*): Assertion `!is_set()' failed."
 #
@@ -943,4 +944,21 @@ create table t1 as select * from t0;
 insert into t1 select * from t0;
 explain select * from t0 where a in (select a from t1);
 select * from t0 where a in (select a from t1);
+drop table t0, t1;
+
+--echo 
+--echo BUG#40118 Crash when running Batched Key Access and requiring one match for each key
+--echo
+create table t0(a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, key(a));
+insert into t1 select * from t0;
+alter table t1 add b int not null, add filler char(200);
+insert into t1 select * from t1;
+insert into t1 select * from t1;
+
+set @save_join_cache_level=@@join_cache_level;
+set join_cache_level=6;
+select * from t0 where t0.a in (select t1.a from t1 where t1.b=0); 
+set join_cache_level=@save_join_cache_level;
 drop table t0, t1;

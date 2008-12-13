@@ -15,7 +15,9 @@ DROP DATABASE IF EXISTS bdb;
 --enable_warnings
 
 # non-existent backup archive
---error ER_BACKUP_READ_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 29
 RESTORE FROM 'test.bak';
 
 CREATE DATABASE adb;
@@ -25,17 +27,33 @@ CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
 # invalid location
 --error ER_BAD_PATH
 BACKUP DATABASE adb TO '';
+--replace_column 2 #
+SHOW WARNINGS;
 
 # don't overwrite existing files
---error ER_BACKUP_WRITE_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
 BACKUP DATABASE adb TO "bdb/t1.frm";
+--replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+SHOW WARNINGS;
 
 --replace_column 1 #
 BACKUP DATABASE adb TO "test.bak";
+--replace_column 2 #
+SHOW WARNINGS;
 
 # don't overwrite existing backup image
---error ER_BACKUP_WRITE_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
 BACKUP DATABASE adb TO "test.bak";
+--replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+SHOW WARNINGS;
 
 --remove_file $MYSQLTEST_VARDIR/master-data/test.bak
 
@@ -47,8 +65,11 @@ DROP DATABASE IF EXISTS bar;
 
 -- error ER_BAD_DB_ERROR
 BACKUP DATABASE foo TO 'test.bak';
+SHOW WARNINGS;
 -- error ER_BAD_DB_ERROR
 BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 # repeated database
 -- error ER_NONUNIQ_DB
@@ -117,6 +138,8 @@ DROP DATABASE bdb;
 --echo Backup of mysql, information_schema scenario 1
 --error ER_BACKUP_CANNOT_INCLUDE_DB
 BACKUP DATABASE mysql TO 't.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 --error 0, 1
 --remove_file $MYSQLTEST_VARDIR/master-data/t.bak
@@ -125,6 +148,8 @@ BACKUP DATABASE mysql TO 't.bak';
 --echo Backup of mysql, information_schema scenario 2
 --error ER_BACKUP_CANNOT_INCLUDE_DB
 BACKUP DATABASE information_schema TO 't.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 --error 0, 1
 --remove_file $MYSQLTEST_VARDIR/master-data/t.bak
@@ -133,6 +158,8 @@ BACKUP DATABASE information_schema TO 't.bak';
 --echo Backup of mysql, information_schema scenario 3
 --error ER_BACKUP_CANNOT_INCLUDE_DB
 BACKUP DATABASE mysql, information_schema TO 't.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 --error 0, 1
 --remove_file $MYSQLTEST_VARDIR/master-data/t.bak
@@ -141,6 +168,8 @@ BACKUP DATABASE mysql, information_schema TO 't.bak';
 --echo Backup of mysql, information_schema scenario 4
 --error ER_BACKUP_CANNOT_INCLUDE_DB
 BACKUP DATABASE mysql, test TO 't.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 --error 0, 1
 --remove_file $MYSQLTEST_VARDIR/master-data/t.bak
@@ -149,6 +178,8 @@ BACKUP DATABASE mysql, test TO 't.bak';
 --echo Backup of mysql, information_schema scenario 5
 --error ER_BACKUP_CANNOT_INCLUDE_DB
 BACKUP DATABASE information_schema, test TO 't.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 --error 0, 1
 --remove_file $MYSQLTEST_VARDIR/master-data/t.bak
@@ -157,6 +188,8 @@ BACKUP DATABASE information_schema, test TO 't.bak';
 --echo Backup of mysql, information_schema scenario 6
 --error ER_BACKUP_CANNOT_INCLUDE_DB
 BACKUP DATABASE mysql, information_schema, test TO 't.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 --error 0, 1
 --remove_file $MYSQLTEST_VARDIR/master-data/t.bak
@@ -190,7 +223,7 @@ BACKUP DATABASE test_ob_error TO 'ob_err.bak';
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/ob_err.bak
 --replace_column 2 #
-SHOW ERRORS;
+SHOW WARNINGS;
 
 # Restore the table
 --echo Restoring the table
@@ -207,7 +240,7 @@ BACKUP DATABASE test_ob_error TO 'ob_err.bak';
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/ob_err.bak
 --replace_column 2 #
-SHOW ERRORS;
+SHOW WARNINGS;
 
 # Restore the table
 --echo Restoring the table
@@ -255,7 +288,7 @@ SET DEBUG_SYNC='now SIGNAL db_will_fail';
 
 connection con2;
 --echo Database has been deleted, backup will fail
---error ER_BAD_DB_ERROR
+--error ER_BACKUP_GET_META_DB
 reap;
 
 --echo

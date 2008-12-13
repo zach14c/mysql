@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -7511,7 +7511,7 @@ ha_rows check_quick_select(PARAM *param, uint idx, bool index_only,
                            uint *mrr_flags, uint *bufsize, COST_VECT *cost)
 {
   SEL_ARG_RANGE_SEQ seq;
-  RANGE_SEQ_IF seq_if = {sel_arg_range_seq_init, sel_arg_range_seq_next};
+  RANGE_SEQ_IF seq_if = {sel_arg_range_seq_init, sel_arg_range_seq_next, 0};
   handler *file= param->table->file;
   ha_rows rows;
   uint keynr= param->real_keynr[idx];
@@ -8429,7 +8429,7 @@ int QUICK_RANGE_SELECT::reset()
  
   if (sorted)
      mrr_flags |= HA_MRR_SORTED;
-  RANGE_SEQ_IF seq_funcs= {quick_range_seq_init, quick_range_seq_next};
+  RANGE_SEQ_IF seq_funcs= {quick_range_seq_init, quick_range_seq_next, 0};
   error= file->multi_range_read_init(&seq_funcs, (void*)this, ranges.elements,
                                      mrr_flags, mrr_buf_desc? mrr_buf_desc: 
                                                               &empty_buf);
@@ -8503,65 +8503,6 @@ uint quick_range_seq_next(range_seq_t rseq, KEY_MULTI_RANGE *range)
   range->range_flag= cur->flag;
   ctx->cur++;
   return 0;
-}
-
-
-/*
-  MRR range sequence interface: array<QUICK_RANGE> impl: utility func for NDB
-
-  SYNOPSIS
-    mrr_persistent_flag_storage()
-      seq  Range sequence being traversed
-      idx  Number of range
-
-  DESCRIPTION
-    MRR/NDB implementation needs to store some bits for each range. This
-    function returns a reference to the "range_flag" associated with the
-    range number idx.
-
-    This function should be removed when we get a proper MRR/NDB 
-    implementation.
-
-  RETURN
-    Reference to range_flag associated with range number #idx
-*/
-
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx)
-{
-  QUICK_RANGE_SEQ_CTX *ctx= (QUICK_RANGE_SEQ_CTX*)seq;
-  return ctx->first[idx]->flag;
-}
-
-
-/*
-  MRR range sequence interface: array<QUICK_RANGE> impl: utility func for NDB
-
-  SYNOPSIS
-    mrr_get_ptr_by_idx()
-      seq  Range sequence bening traversed
-      idx  Number of the range
-
-  DESCRIPTION
-    An extension of MRR range sequence interface needed by NDB: return the
-    data associated with the given range.
-
-    A proper MRR interface implementer is supposed to store and return
-    range-associated data. NDB stores number of the range instead. So this
-    is a helper function that translates range number to range associated
-    data.
-
-    This function does nothing, as currrently there is only one user of the
-    MRR interface - the quick range select code, and this user doesn't need
-    to use range-associated data.
-
-  RETURN
-    Reference to range-associated data
-*/
-
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx)
-{
-  static char *dummy;
-  return dummy;
 }
 
 

@@ -314,6 +314,17 @@ extern "C" {
   };
 #endif
 
+  struct ndb_mgm_severity {
+    enum ndb_mgm_event_severity category;
+    unsigned int value;
+  };
+
+  struct ndb_mgm_loglevel {
+    enum ndb_mgm_event_category category;
+    unsigned int value;
+  };
+
+
   /***************************************************************************/
   /**
    * @name Functions: Error Handling
@@ -433,10 +444,6 @@ extern "C" {
   int ndb_mgm_number_of_mgmd_in_connect_string(NdbMgmHandle handle);
 
   int ndb_mgm_set_configuration_nodeid(NdbMgmHandle handle, int nodeid);
-  int ndb_mgm_get_configuration_nodeid(NdbMgmHandle handle);
-  int ndb_mgm_get_connected_port(NdbMgmHandle handle);
-  const char *ndb_mgm_get_connected_host(NdbMgmHandle handle);
-  const char *ndb_mgm_get_connectstring(NdbMgmHandle handle, char *buf, int buf_sz);
 
   /**
    * Set local bindaddress
@@ -596,7 +603,7 @@ extern "C" {
   const char * ndb_mgm_get_node_status_string(enum ndb_mgm_node_status status);
 
   const char * ndb_mgm_get_event_severity_string(enum ndb_mgm_event_severity);
-  ndb_mgm_event_category ndb_mgm_match_event_category(const char *);
+  enum ndb_mgm_event_category ndb_mgm_match_event_category(const char *);
   const char * ndb_mgm_get_event_category_string(enum ndb_mgm_event_category);
 #endif
 
@@ -616,6 +623,43 @@ extern "C" {
    * @return                Cluster state (or <var>NULL</var> on error).
    */
   struct ndb_mgm_cluster_state * ndb_mgm_get_status(NdbMgmHandle handle);
+
+
+  /**
+   * Gets status of the nodes *of specified types* in an NDB Cluster
+   *
+   * @note The caller must free the pointer returned by this function.
+   * @note Passing a NULL pointer into types make this equivalent to
+   *       ndb_mgm_get_status
+   *
+   * @param   handle        Management handle.
+   * @param   types         Pointer to array of interesting node types.
+   *                        Array should be terminated 
+   *                        by *NDB_MGM_NODE_TYPE_UNKNOWN*.
+   *
+   * @return                Cluster state (or <var>NULL</var> on error).
+   */
+  struct ndb_mgm_cluster_state * 
+  ndb_mgm_get_status2(NdbMgmHandle handle,
+                      const enum ndb_mgm_node_type types[]);
+                      
+
+
+  /**
+   * Dump state
+   *
+   * @param handle the NDB management handle.
+   * @param nodeId the node id.
+   * @param args integer array
+   * @param number of args in int array
+   * @param reply the reply message.
+   * @return 0 if successful or an error code.
+   */
+  int ndb_mgm_dump_state(NdbMgmHandle handle,
+			 int nodeId,
+			 const int * args,
+			 int num_args,
+			 struct ndb_mgm_reply* reply);
 
   /** @} *********************************************************************/
   /**
@@ -1151,13 +1195,8 @@ extern "C" {
   int ndb_mgm_filter_clusterlog(NdbMgmHandle h,
 				enum ndb_mgm_clusterlog_level s,
 				int e, struct ndb_mgm_reply* r)
-  { return ndb_mgm_set_clusterlog_severity_filter(h,(ndb_mgm_event_severity)s,
+  { return ndb_mgm_set_clusterlog_severity_filter(h,(enum ndb_mgm_event_severity)s,
 						  e,r); }
-  struct ndb_mgm_severity {
-    enum ndb_mgm_event_severity category;
-    unsigned int value;
-  };
-  
   inline
   const unsigned int * ndb_mgm_get_logfilter(NdbMgmHandle h)
   { return ndb_mgm_get_clusterlog_severity_filter_old(h); }
@@ -1167,11 +1206,6 @@ extern "C" {
 				      enum ndb_mgm_event_category c,
 				      int l, struct ndb_mgm_reply* r)
   { return ndb_mgm_set_clusterlog_loglevel(h,n,c,l,r); }
-
-  struct ndb_mgm_loglevel {
-    enum ndb_mgm_event_category category;
-    unsigned int value;
-  };
 
   inline
   const unsigned int * ndb_mgm_get_loglevel_clusterlog(NdbMgmHandle h)

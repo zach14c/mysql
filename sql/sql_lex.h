@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -942,6 +942,7 @@ enum xa_option_words {XA_NONE, XA_JOIN, XA_RESUME, XA_ONE_PHASE,
                       XA_SUSPEND, XA_FOR_MIGRATE};
 
 extern const LEX_STRING null_lex_str;
+extern const LEX_STRING empty_lex_str;
 
 
 /*
@@ -1477,9 +1478,13 @@ public:
 
   /**
     TRUE if we're parsing a prepared statement: in this mode
-    we should allow placeholders and disallow multi-statements.
+    we should allow placeholders.
   */
   bool stmt_prepare_mode;
+  /**
+    TRUE if we should allow multi-statements.
+  */
+  bool multi_statements;
 
   /** State of the lexical analyser for comments. */
   enum_comment_state in_comment;

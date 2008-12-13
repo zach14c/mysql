@@ -37,6 +37,8 @@ falcon_headers= Agent.h Alias.h Application.h \
 		CollationUnknown.h \
 		Collation.h \
 		CollationManager.h \
+		CompareAndSwapSparc.h \
+		CompareAndSwapSparc.il \
 		CompiledStatement.h Configuration.h Connection.h Context.h \
 		Coterie.h CoterieRange.h \
 		Database.h \

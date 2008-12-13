@@ -550,7 +550,8 @@ Ndb::startTransaction(const NdbDictionary::Table *table,
       Uint32 hashValue;
       {
 	Uint32 buf[4];
-        Uint64 tmp[1000];
+        const Uint32 MaxKeySizeInLongWords= (NDB_MAX_KEY_SIZE + 7) / 8;
+        Uint64 tmp[ MaxKeySizeInLongWords ];
 
         if (keyLen >= sizeof(tmp))
         {
@@ -686,7 +687,7 @@ Ndb::startTransactionLocal(Uint32 aPriority, Uint32 nodeId)
   }//if
 #ifdef VM_TRACE
   if (tConnection->theListState != NdbTransaction::NotInList) {
-    printState("startTransactionLocal %x", tConnection);
+    printState("startTransactionLocal %lx", (long)tConnection);
     abort();
   }
 #endif
@@ -1827,17 +1828,7 @@ int Ndb::dropEventOperation(NdbEventOperation* tOp)
   // remove it from list
   NdbEventOperationImpl *op=
     NdbEventBuffer::getEventOperationImpl(tOp);
-  if (op->m_next)
-    op->m_next->m_prev= op->m_prev;
-  if (op->m_prev)
-    op->m_prev->m_next= op->m_next;
-  else
-    theImpl->m_ev_op= op->m_next;
-
-  DBUG_PRINT("info", ("first: %s",
-                      theImpl->m_ev_op ? theImpl->m_ev_op->getEvent()->getTable()->getName() : "<empty>"));
-  assert(theImpl->m_ev_op == 0 || theImpl->m_ev_op->m_prev == 0);
-
+  
   theEventBuffer->dropEventOperation(tOp);
   DBUG_RETURN(0);
 }
@@ -1874,6 +1865,18 @@ NdbEventOperation *Ndb::nextEvent()
   return theEventBuffer->nextEvent();
 }
 
+bool
+Ndb::isConsistent(Uint64& gci)
+{
+  return theEventBuffer->isConsistent(gci);
+}
+
+bool
+Ndb::isConsistentGCI(Uint64 gci)
+{
+  return theEventBuffer->isConsistentGCI(gci);
+}
+
 const NdbEventOperation*
 Ndb::getGCIEventOperations(Uint32* iter, Uint32* event_types)
 {
@@ -1891,11 +1894,9 @@ Uint64 Ndb::getLatestGCI()
 
 void Ndb::setReportThreshEventGCISlip(unsigned thresh)
 {
- if (theEventBuffer->m_free_thresh != thresh)
+ if (theEventBuffer->m_gci_slip_thresh != thresh)
  {
-   theEventBuffer->m_free_thresh= thresh;
-   theEventBuffer->m_min_free_thresh= thresh;
-   theEventBuffer->m_max_free_thresh= 100;
+   theEventBuffer->m_gci_slip_thresh= thresh;
  }
 }
 

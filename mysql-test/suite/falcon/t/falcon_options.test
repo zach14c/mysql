@@ -1,6 +1,17 @@
 --source include/have_falcon.inc
 
-SHOW VARIABLES where variable_name LIKE 'falcon_%' and variable_name <>'falcon_serial_log_dir';
+#
+# We exclude falcon_debug_mask as workaround for
+# Bug#41368 --replace_regex does not work as expected.
+#
+SHOW VARIABLES
+  WHERE variable_name LIKE 'falcon_%'
+    AND variable_name <> 'falcon_serial_log_dir'
+    AND variable_name <> 'falcon_debug_mask';
+
+--let $debug = `SELECT @@GLOBAL.falcon_debug_mask;`
+--replace_result $debug 0
+SHOW VARIABLES WHERE variable_name LIKE 'falcon_debug_mask';
 
 # Test that these server variables are READ ONLY.
 
@@ -25,6 +36,7 @@ SET GLOBAL falcon_serial_log_buffers = 100;
 
 # These variables are r/w.
 SELECT @@GLOBAL.falcon_debug_mask INTO @previous_falcon_debug_mask;
+--replace_result $debug 0
 SELECT @@GLOBAL.falcon_debug_mask;
 SET GLOBAL falcon_debug_mask = 4096;
 SELECT @@GLOBAL.falcon_debug_mask;

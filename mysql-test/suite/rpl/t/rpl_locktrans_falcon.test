@@ -1,0 +1,41 @@
+#####################################################################
+# Transactional LOCK TABLE tests.
+# Calls include/locktrans.inc.
+# Based on rpl_locktrans_{innodb,myisam}.
+#####################################################################
+
+# Transactional lock tests require multiple sessions.
+--source include/not_embedded.inc
+
+# This is a replication test.
+--source include/master-slave.inc
+
+# This is a falcon test.
+--source include/have_falcon.inc
+let $engine_type= Falcon;
+
+# Falcon does not support statement-based replication.
+# In 'mixed' mode only 'row' is used with Falcon.
+--source include/have_binlog_format_mixed_or_row.inc
+
+# Storage engine supports transactional locking?
+# According to 6.0 docs, only InnoDB supports transactional locking.
+# Falcon does not support it, see http://lists.mysql.com/falcon/179
+let $transactional= 0;
+
+# Storage engine supports the NOWAIT option?
+# According to 6.0 docs, no storage engine supports this...
+let $nowait_support= 0;
+
+# Define a storage engine that does not support transactional locking.
+let $other_non_trans_engine_type= MyISAM;
+
+# The real test
+--source include/locktrans.inc
+
+# Some post-processing (verifying slave status)
+sync_slave_with_master;
+connection slave;
+--replace_result $MASTER_MYPORT MASTER_PORT
+--replace_column 1 # 7 # 8 # 9 # 22 # 23 # 33 #
+--query_vertical show slave status;

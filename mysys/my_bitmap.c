@@ -759,7 +759,7 @@ uint get_rand_bit(uint bitsize)
   return (rand() % bitsize);
 }
 
-bool test_set_get_clear_bit(MY_BITMAP *map, uint bitsize)
+my_bool test_set_get_clear_bit(MY_BITMAP *map, uint bitsize)
 {
   uint i, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -782,7 +782,7 @@ error2:
   return TRUE;
 }
 
-bool test_flip_bit(MY_BITMAP *map, uint bitsize)
+my_bool test_flip_bit(MY_BITMAP *map, uint bitsize)
 {
   uint i, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -805,13 +805,13 @@ error2:
   return TRUE;
 }
 
-bool test_operators(MY_BITMAP *map __attribute__((unused)),
+my_bool test_operators(MY_BITMAP *map __attribute__((unused)),
                     uint bitsize __attribute__((unused)))
 {
   return FALSE;
 }
 
-bool test_get_all_bits(MY_BITMAP *map, uint bitsize)
+my_bool test_get_all_bits(MY_BITMAP *map, uint bitsize)
 {
   uint i;
   bitmap_set_all(map);
@@ -853,7 +853,7 @@ error6:
   return TRUE;
 }
 
-bool test_compare_operators(MY_BITMAP *map, uint bitsize)
+my_bool test_compare_operators(MY_BITMAP *map, uint bitsize)
 {
   uint i, j, test_bit1, test_bit2, test_bit3,test_bit4;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -959,7 +959,7 @@ error5:
   return TRUE;
 }
 
-bool test_count_bits_set(MY_BITMAP *map, uint bitsize)
+my_bool test_count_bits_set(MY_BITMAP *map, uint bitsize)
 {
   uint i, bit_count=0, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -985,7 +985,7 @@ error2:
   return TRUE;
 }
 
-bool test_get_first_bit(MY_BITMAP *map, uint bitsize)
+my_bool test_get_first_bit(MY_BITMAP *map, uint bitsize)
 {
   uint i, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -1010,7 +1010,7 @@ error2:
   return TRUE;
 }
 
-bool test_get_next_bit(MY_BITMAP *map, uint bitsize)
+my_bool test_get_next_bit(MY_BITMAP *map, uint bitsize)
 {
   uint i, j, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -1029,7 +1029,7 @@ error1:
   return TRUE;
 }
 
-bool test_prefix(MY_BITMAP *map, uint bitsize)
+my_bool test_prefix(MY_BITMAP *map, uint bitsize)
 {
   uint i, j, test_bit;
   uint no_loops= bitsize > 128 ? 128 : bitsize;
@@ -1064,7 +1064,7 @@ error3:
 }
 
 
-bool do_test(uint bitsize)
+my_bool do_test(uint bitsize)
 {
   MY_BITMAP map;
   my_bitmap_map buf[1024];
