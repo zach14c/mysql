@@ -164,7 +164,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     {
       DBUG_PRINT("error",("Wrong header in %s",name_buff));
       DBUG_DUMP("error_dump",(uchar*) share->state.header.file_version,
-		head_length);
+		(size_t)head_length);
       my_errno=HA_ERR_NOT_A_TABLE;
       goto err;
     }

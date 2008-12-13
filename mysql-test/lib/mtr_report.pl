@@ -490,12 +490,12 @@ sub mtr_report_stats ($) {
                 # maria-recovery.test has warning about missing log file
                 /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
                 # and about marked-corrupted table
-                /Table '.\/mysqltest\/t_corrupted1' is crashed, skipping it. Please repair it with maria_chk -r/ or
+                /Table '..mysqltest.t_corrupted1' is crashed, skipping it. Please repair it with maria_chk -r/ or
                 # maria-recover.test corrupts tables on purpose
-                /Checking table:   '.\/mysqltest\/t_corrupted2'/ or
-                /Recovering table: '.\/mysqltest\/t_corrupted2'/ or
-                /Table '.\/mysqltest\/t_corrupted2' is marked as crashed and should be repaired/ or
-                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/ or
+                /Checking table:   '..mysqltest.t_corrupted2'/ or
+                /Recovering table: '..mysqltest.t_corrupted2'/ or
+                /Table '..mysqltest.t_corrupted2' is marked as crashed and should be repaired/ or
+                /Incorrect key file for table '..mysqltest.t_corrupted2.MAI'; try to repair it/ or
                 # Bug#35161, test of auto repair --myisam-recover
                 /able.*_will_crash/ or
                 /Got an error from unknown thread, ha_myisam.cc:/ or
