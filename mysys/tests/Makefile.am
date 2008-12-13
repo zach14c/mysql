@@ -31,10 +31,17 @@ DEFS =			-DMAIN \
 			-DDEFAULT_SYSCONFDIR="\"$(sysconfdir)\"" \
                         @DEFS@
 
+CLEANFILES =		test_bitmap$(EXEEXT) test_priority_queue$(EXEEXT) \
+			test_thr_alarm$(EXEEXT) test_thr_lock$(EXEEXT) \
+			test_vsnprintf$(EXEEXT) test_io_cache$(EXEEXT) \
+			test_dir$(EXEEXT) test_charset$(EXEEXT) \
+			testhash$(EXEEXT) test_gethwaddr$(EXEEXT) \
+			test_base64$(EXEEXT) test_thr_mutex$(EXEEXT)
+
 # I hope this always does the right thing. Otherwise this is only test programs
 FLAGS=$(DEFS) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) @NOINST_LDFLAGS@
 
-noinst_PROGRAMS = test_bitmap test_priority_queue test_thr_alarm test_thr_lock test_vsnprintf test_io_cache testhash test_gethwaddr test_base64 #test_charset
+noinst_PROGRAMS = test_bitmap test_priority_queue test_thr_alarm test_thr_lock test_vsnprintf test_io_cache testhash test_gethwaddr test_base64 test_thr_mutex #test_charset
 test_bitmap_SOURCES = $(top_srcdir)/mysys/my_bitmap.c
 test_thr_alarm_SOURCES = $(top_srcdir)/mysys/thr_alarm.c
 test_priority_queue_SOURCES = $(top_srcdir)/mysys/queues.c
@@ -47,6 +54,7 @@ testhash_SOURCES = testhash.c
 test_gethwaddr_SOURCES = $(top_srcdir)/mysys/my_gethwaddr.c
 test_base64_SOURCES = $(top_srcdir)/mysys/base64.c
 test_base64_LDADD = $(top_builddir)/mysys/libmysyslt.la $(top_builddir)/strings/libmystrings.la
+test_thr_mutex_SOURCES = test_thr_mutex.c
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%

@@ -297,7 +297,7 @@ static int myisammrg_parent_open_callback(void *callback_param,
 
   @param[in]    name            MERGE table path name
   @param[in]    mode            read/write mode, unused
-  @param[in]    test_if_locked  open flags
+  @param[in]    test_if_locked_arg open flags
 
   @return       status
   @retval     0               OK
@@ -309,17 +309,17 @@ static int myisammrg_parent_open_callback(void *callback_param,
 */
 
 int ha_myisammrg::open(const char *name, int mode __attribute__((unused)),
-                       uint test_if_locked)
+                       uint test_if_locked_arg)
 {
   DBUG_ENTER("ha_myisammrg::open");
   DBUG_PRINT("myrg", ("name: '%s'  table: 0x%lx", name, (long) table));
-  DBUG_PRINT("myrg", ("test_if_locked: %u", test_if_locked));
+  DBUG_PRINT("myrg", ("test_if_locked: %u", test_if_locked_arg));
 
   /* Must not be used when table is open. */
   DBUG_ASSERT(!this->file);
 
   /* Save for later use. */
-  this->test_if_locked= test_if_locked;
+  test_if_locked= test_if_locked_arg;
 
   /* In case this handler was open and closed before, free old data. */
   free_root(&this->children_mem_root, MYF(MY_MARK_BLOCKS_FREE));

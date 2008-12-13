@@ -133,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "ndb,ndb_binlog,rpl_ndb,main,backup,backup_engines,binlog,rpl"; # Default suites to run
+our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb,ndb_binlog,maria"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -4830,8 +4830,9 @@ sub gdb_arguments {
   else
   {
     # write init file for mysqld
-    mtr_tofile($gdb_init_file,
-	       "set args $str\n");
+    mtr_tofile($gdb_init_file, <<EOGDB );
+set args $str
+EOGDB
   }
 
   if ( $opt_manual_gdb )
