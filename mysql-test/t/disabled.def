@@ -31,4 +31,5 @@ slow_query_log_func                   : Bug #37962: *_func tests containing slee
 thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
 innodb_max_dirty_pages_pct_func       : BUG#41018 BUG#39382 2008-12-02 sven test fails often. some failures fill up the disk, causing subsequent failures in many other tests
 log_output_basic     : Bug #40988       log_output_basic.test succeeded though syntactically false.
-innodb               : Bug #41056, Bug#41299 2008-12-08 alik.
+innodb               : Bug #41056    Innodb.test shows some difference to its result file.
+log_bin_trust_function_creators_func : Bug#41003 Dec-12-2008 andrei todo:re-enable after merging the bug fixes from the main trees.
