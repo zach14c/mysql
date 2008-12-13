@@ -2001,3 +2001,4 @@ libmysqld/rpl_handler.cc
 libmysql/probes.h
 libmysql_r/probes.h
 unittest/tmp
+libmysqld/sql_join_cache.cc
