@@ -213,7 +213,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -670,7 +670,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -1131,7 +1131,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -1655,7 +1655,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -2155,7 +2155,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -2616,7 +2616,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -3074,7 +3074,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -3535,7 +3535,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;
@@ -3999,7 +3999,7 @@ ERROR 22012: Division by 0
 COMMIT;
 	
 # check transactions-8 success: 	1
-# INFO: Storage engine used for t1 seems to be unable to revert
+# INFO: Storage engine used for t1 seems to be able to revert
 #       changes made by the failing statement.
 SET @@session.sql_mode = '';
 SET AUTOCOMMIT= 1;

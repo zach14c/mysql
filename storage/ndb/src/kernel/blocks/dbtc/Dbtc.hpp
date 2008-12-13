@@ -123,6 +123,7 @@
 #define ZUNKNOWN_TABLE_ERROR 285
 #define ZNODEFAIL_BEFORE_COMMIT 286
 #define ZINDEX_CORRUPT_ERROR 287
+#define ZSCAN_FRAGREC_ERROR 291
 
 // ----------------------------------------
 // Seize error
@@ -1393,7 +1394,7 @@ private:
                      TcConnectRecord * const regTcPtr);
   void sendCompleteLqh(Signal* signal,
                        TcConnectRecord * const regTcPtr);
-  void sendTCKEY_FAILREF(Signal* signal, const ApiConnectRecord *);
+  void sendTCKEY_FAILREF(Signal* signal, ApiConnectRecord *);
   void sendTCKEY_FAILCONF(Signal* signal, ApiConnectRecord *);
   void routeTCKEY_FAILREFCONF(Signal* signal, const ApiConnectRecord *, 
 			      Uint32 gsn, Uint32 len);
@@ -1418,7 +1419,7 @@ private:
                            UintR anApiConnectPtr);
   void handleScanStop(Signal* signal, UintR aFailedNode);
   void initScanTcrec(Signal* signal);
-  void initScanrec(ScanRecordPtr,  const class ScanTabReq*,
+  Uint32 initScanrec(ScanRecordPtr,  const class ScanTabReq*,
 		   const UintR scanParallel, 
 		   const UintR noOprecPerFrag);
   void initScanfragrec(Signal* signal);

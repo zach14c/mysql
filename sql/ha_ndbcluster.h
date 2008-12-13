@@ -231,7 +231,19 @@ inline my_bool get_binlog_use_update(NDB_SHARE *share)
 
 enum THD_NDB_OPTIONS
 {
-  TNO_NO_LOG_SCHEMA_OP= 1 << 0
+  TNO_NO_LOG_SCHEMA_OP=  1 << 0,
+  /*
+    In participating mysqld, do not try to acquire global schema
+    lock, as one other mysqld already has the lock.
+  */
+  TNO_NO_LOCK_SCHEMA_OP= 1 << 1
+  /*
+    Skip drop of ndb table in delete_table.  Used when calling
+    mysql_rm_table_part2 in "show tables", as we do not want to
+    remove ndb tables "by mistake".  The table should not exist
+    in ndb in the first place.
+  */
+  ,TNO_NO_NDB_DROP_TABLE=    1 << 2
 };
 
 enum THD_NDB_TRANS_OPTIONS
@@ -260,6 +272,7 @@ class Thd_ndb
   ulong count;
   uint lock_count;
   uint start_stmt_count;
+  uint save_point_count;
   NdbTransaction *trans;
   bool m_error;
   bool m_slow_path;
@@ -279,6 +292,9 @@ class Thd_ndb
     we execute() to flush the rows buffered in m_batch_mem_root.
   */
   uint m_unsent_bytes;
+  NdbTransaction *global_schema_lock_trans;
+  uint global_schema_lock_count;
+  uint global_schema_lock_error;
 };
 
 class ha_ndbcluster: public handler
@@ -455,7 +471,7 @@ static void set_tabname(const char *pathname, char *tabname);
   /*
    * Internal to ha_ndbcluster, used by C functions
    */
-  int ndb_err(NdbTransaction*);
+  int ndb_err(NdbTransaction*, bool have_lock= FALSE);
 
   my_bool register_query_cache_table(THD *thd, char *table_key,
                                      uint key_length,
@@ -718,7 +734,7 @@ private:
   NdbIndexScanOperation *m_multi_cursor;
   Ndb *get_ndb(THD *thd);
 
-  int update_stats(THD *thd, bool do_read_stat);
+  int update_stats(THD *thd, bool do_read_stat, bool have_lock= FALSE);
 };
 
 extern SHOW_VAR ndb_status_variables[];

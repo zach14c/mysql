@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -6269,7 +6269,7 @@ thread is in the master's binlogs.",
    "Turn on more logging in the error log.",
    (uchar**) &ndb_extra_logging,
    (uchar**) &ndb_extra_logging,
-   0, GET_ULONG, OPT_ARG, 0, 0, 0, 0, 0, 0},
+   0, GET_ULONG, OPT_ARG, 1, 0, 0, 0, 0, 0},
 #ifdef HAVE_NDB_BINLOG
   {"ndb-report-thresh-binlog-epoch-slip", OPT_NDB_REPORT_THRESH_BINLOG_EPOCH_SLIP,
    "Threshold on number of epochs to be behind before reporting binlog status. "
@@ -7929,6 +7929,7 @@ static int mysql_init_variables(void)
   max_system_variables.ndb_index_stat_cache_entries=~0L;
   global_system_variables.ndb_index_stat_update_freq=20;
   max_system_variables.ndb_index_stat_update_freq=~0L;
+
 #ifdef HAVE_OPENSSL
   have_ssl=SHOW_OPTION_YES;
 #else

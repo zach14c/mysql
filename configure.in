@@ -16,8 +16,8 @@ AM_CONFIG_HEADER([include/config.h:config.h.in])
 
 NDB_VERSION_MAJOR=6
 NDB_VERSION_MINOR=2
-NDB_VERSION_BUILD=16
-NDB_VERSION_STATUS="-RC"
+NDB_VERSION_BUILD=17
+NDB_VERSION_STATUS="-GA"
 
 PROTOCOL_VERSION=10
 DOT_FRM_VERSION=6
@@ -403,7 +403,7 @@ fi
 MYSQL_PROG_AR
 
 # libmysqlclient versioning when linked with GNU ld.
-if $LD --version 2>/dev/null|grep -q GNU; then
+if $LD --version 2>/dev/null| grep GNU >/dev/null 2>&1; then
   LD_VERSION_SCRIPT="-Wl,--version-script=\$(top_builddir)/libmysql/libmysql.ver"
   AC_CONFIG_FILES(libmysql/libmysql.ver)
 fi
@@ -475,11 +475,11 @@ AC_SUBST(PERL5)
 
 # Enable the abi_check rule only if gcc is available
 
-if expr "$CC" : ".*gcc.*"
+if test "$GCC" != "yes" || expr "$CC" : ".*icc.*"
 then
-  ABI_CHECK="abi_check"
-else
   ABI_CHECK=""
+else
+  ABI_CHECK="abi_check"
 fi
 
 AC_SUBST(ABI_CHECK)
@@ -2094,7 +2094,7 @@ AC_CHECK_FUNCS(alarm bcmp bfill bmove bsearch bzero \
   sighold sigset sigthreadmask port_create sleep thr_yield \
   snprintf socket stpcpy strcasecmp strerror strsignal strnlen strpbrk strstr \
   strtol strtoll strtoul strtoull tell tempnam thr_setconcurrency vidattr \
-  posix_fallocate backtrace backtrace_symbols backtrace_symbols_fd)
+  posix_fallocate backtrace backtrace_symbols backtrace_symbols_fd directio)
 
 #
 #

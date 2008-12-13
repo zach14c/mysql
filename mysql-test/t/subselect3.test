@@ -662,6 +662,7 @@ DROP TABLE t1;
 create table t1 (a int);
 select 1 as res from dual where (1) in (select * from t1);
 drop table t1;
+
 #
 # BUG#36135 "void Diagnostics_area::set_eof_status(THD*): Assertion `!is_set()' failed."
 #
@@ -717,5 +718,4 @@ set join_cache_level=6;
 select * from t0 where t0.a in (select t1.a from t1 where t1.b=0); 
 set join_cache_level=@save_join_cache_level;
 drop table t0, t1;
-
 

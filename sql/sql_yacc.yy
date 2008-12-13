@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -3775,7 +3775,7 @@ ts_wait:
         ;
 
 size_number:
-          real_ulong_num { $$= $1;}
+          real_ulonglong_num { $$= $1;}
         | IDENT
           {
             ulonglong number;
@@ -5228,7 +5228,7 @@ attribute:
             Lex->default_value=$2; 
             Lex->alter_info.flags|= ALTER_COLUMN_DEFAULT;
           }
-        | ON UPDATE_SYM NOW_SYM optional_braces 
+        | ON UPDATE_SYM NOW_SYM optional_braces
           {
             Item *item= new (YYTHD->mem_root) Item_func_now_local();
             if (item == NULL)

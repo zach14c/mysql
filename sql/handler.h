@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -358,7 +358,9 @@ enum enum_binlog_func {
   BFN_RESET_SLAVE=       2,
   BFN_BINLOG_WAIT=       3,
   BFN_BINLOG_END=        4,
-  BFN_BINLOG_PURGE_FILE= 5
+  BFN_BINLOG_PURGE_FILE= 5,
+  BFN_GLOBAL_SCHEMA_LOCK=  6,
+  BFN_GLOBAL_SCHEMA_UNLOCK=7
 };
 
 enum enum_binlog_command {
@@ -2487,11 +2489,6 @@ extern TYPELIB tx_isolation_typelib;
 extern TYPELIB myisam_stats_method_typelib;
 extern ulong total_ha, total_ha_2pc;
 
- 
-/* Wrapper functions */
-#define ha_commit(thd) (ha_commit_trans((thd), TRUE))
-#define ha_rollback(thd) (ha_rollback_trans((thd), TRUE))
-
 /* lookups */
 handlerton *ha_default_handlerton(THD *thd);
 plugin_ref ha_resolve_by_name(THD *thd, const LEX_STRING *name);
@@ -2602,6 +2599,16 @@ void ha_binlog_log_query(THD *thd, handlerton *db_type,
                          const char *db, const char *table_name);
 void ha_binlog_wait(THD *thd);
 int ha_binlog_end(THD *thd);
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd);
+  ~Ha_global_schema_lock_guard();
+  int lock(int no_queue= 0);
+private:
+  THD *m_thd;
+  int m_lock;
+};
 #else
 inline int ha_int_dummy() { return 0; }
 #define ha_reset_logs(a) ha_int_dummy()
@@ -2610,4 +2617,11 @@ inline int ha_int_dummy() { return 0; }
 #define ha_binlog_log_query(a,b,c,d,e,f,g) do {} while (0)
 #define ha_binlog_wait(a) do {} while (0)
 #define ha_binlog_end(a)  do {} while (0)
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd) {}
+  ~Ha_global_schema_lock_guard() {}
+  int lock(int no_queue= 0) { return 0; }
+};
 #endif

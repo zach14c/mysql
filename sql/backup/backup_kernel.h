@@ -75,8 +75,6 @@ class Backup_restore_ctx: public backup::Logger
 
   int do_backup();
   int do_restore(bool overwrite);
-  int fatal_error(int, ...);
-  int log_error(int, ...);
 
   int close();
 
@@ -102,7 +100,8 @@ class Backup_restore_ctx: public backup::Logger
   /** 
     @brief State of a context object. 
     
-    Backup/restore can be performed only if object is prepared for that operation.
+    Backup/restore can be performed only if object is prepared for that 
+    operation.
    */
   enum { CREATED,
          PREPARED_FOR_BACKUP,
@@ -111,10 +110,22 @@ class Backup_restore_ctx: public backup::Logger
 
   ulonglong m_thd_options;  ///< For saving thd->options.
   /**
-    If backup/restore was interrupted by an error, this member stores the error 
-    number.
-   */ 
+    @brief Tells if context object is in error state.
+
+    In case of fatal error, the context object is put into an error state 
+    by setting @m_error to non-zero value. This can be the code of
+    the detected error but currently the exact value is not used.
+
+    When in error state, public methods of Backup_restore_ctx do not try
+    to perform their operations but report an error instead. @c Is_valid() 
+    will return FALSE for an object in error state.
+
+    @note The error state is an internal state of the context object. The
+    object can enter this state only as a result of executing one of its 
+    methods.
+  */
   int m_error;
+  int fatal_error(int);
   
   ::String  m_path;   ///< Path to where the backup image file is located.
 
@@ -149,8 +160,6 @@ class Backup_restore_ctx: public backup::Logger
   
   int report_stream_open_failure(int open_error, const LEX_STRING *location);
 
-  friend class Backup_info;
-  friend class Restore_info;
   friend int backup_init();
   friend void backup_shutdown();
   friend bstream_byte* bstream_alloc(unsigned long int);
@@ -179,32 +188,31 @@ void Backup_restore_ctx::disable_fkey_constraints()
 }
 
 /**
-  Report error and move context object into error state.
+  Move context object into error state.
   
   After this method is called the context object is in error state and
-  cannot be normally used. It still can be examined for saved error messages.
-  The code of the error reported here is saved in m_error member.
+  cannot be normally used. The provided error code is saved in m_error 
+  member.
   
   Only one fatal error can be reported. If context is already in error
   state when this method is called, it does nothing.
+
+  @note Context object should enter error state only as a result of executing
+  one of its methods. Thus this private helper method is intended to be used 
+  only from within Backup_restore_ctx class.  
   
   @return error code given as input or stored in the context object if
-  a fatal error was reported before.
+  it is already in error state.
  */ 
 inline
-int Backup_restore_ctx::fatal_error(int error_code, ...)
+int Backup_restore_ctx::fatal_error(int error_code)
 {
+  m_remove_loc= TRUE;
+
   if (m_error)
     return m_error;
 
-  va_list args;
-
   m_error= error_code;
-  m_remove_loc= TRUE;
-
-  va_start(args,error_code);
-  v_report_error(backup::log_level::ERROR, error_code, args);
-  va_end(args);
 
   return error_code;
 }

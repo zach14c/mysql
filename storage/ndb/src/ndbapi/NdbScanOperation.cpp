@@ -227,7 +227,7 @@ NdbScanOperation::addInterpretedCode(Uint32 aTC_ConnectPtr,
   theAI_LenInCurrAI= theCurrentATTRINFO->getLength();
 
   return res;
-};
+}
 
 /* Method for handling scanoptions passed into 
  * NdbTransaction::scanTable or scanIndex
@@ -969,7 +969,7 @@ NdbScanOperation::readTuples(NdbScanOperation::LockMode lm,
   m_savedBatchOldApi= batch;
 
   return 0;
-};
+}
 
 /* Most of the scan definition work for old + NdbRecord API scans is done here */
 int 
@@ -1350,7 +1350,7 @@ NdbScanOperation::nextResult(bool fetchAllowed, bool forceSend)
   return nextResult(&dummyOutRowPtr,
                     fetchAllowed,
                     forceSend);
-};
+}
 
 /* nextResult() for NdbRecord operation. */
 int
@@ -2122,7 +2122,7 @@ NdbScanOperation::takeOverScanOp(OperationType opType, NdbTransaction* pTrans)
    */
   Uint32 infoword= 0;
   Uint32 len= 0;
-  const Uint32 *src= NULL;
+  const char *src= NULL;
 
   Uint32 idx= m_current_api_receiver;
   if (idx >= m_api_receivers_count)
@@ -2130,7 +2130,7 @@ NdbScanOperation::takeOverScanOp(OperationType opType, NdbTransaction* pTrans)
   const NdbReceiver *receiver= m_api_receivers[m_current_api_receiver];
 
   /* Get this row's KeyInfo data */
-  int res= receiver->get_keyinfo20(infoword, len, (const char*&) src);
+  int res= receiver->get_keyinfo20(infoword, len, src);
   if (res == -1)
     return NULL;
 
@@ -2170,11 +2170,10 @@ NdbScanOperation::takeOverScanOp(OperationType opType, NdbTransaction* pTrans)
   
   // Copy the first 8 words of key info from KEYINF20 into TCKEYREQ
   TcKeyReq * tcKeyReq = CAST_PTR(TcKeyReq,newOp->theTCREQ->getDataPtrSend());
-  Uint32 i = 0;
-  for (i = 0; i < TcKeyReq::MaxKeyInfo && i < len; i++) {
-    tcKeyReq->keyInfo[i] = * src++;
-  }
-  
+  Uint32 i = MIN(TcKeyReq::MaxKeyInfo, len);
+  memcpy(tcKeyReq->keyInfo, src, 4*i);
+  src += i * 4;
+
   if(i < len){
     NdbApiSignal* tSignal = theNdb->getSignal();
     newOp->theTCREQ->next(tSignal); 
@@ -2184,7 +2183,7 @@ NdbScanOperation::takeOverScanOp(OperationType opType, NdbTransaction* pTrans)
       tSignal->setSignal(GSN_KEYINFO);
       KeyInfo * keyInfo = CAST_PTR(KeyInfo, tSignal->getDataPtrSend());
       memcpy(keyInfo->keyData, src, 4 * KeyInfo::DataLength);
-      src += KeyInfo::DataLength;
+      src += 4 * KeyInfo::DataLength;
       left -= KeyInfo::DataLength;
       
       tSignal->next(theNdb->getSignal());
@@ -2366,31 +2365,49 @@ NdbScanOperation::takeOverScanOpNdbRecord(OperationType opType,
 NdbBlob*
 NdbScanOperation::getBlobHandle(const char* anAttrName)
 {
-  /* We need the row KeyInfo for Blobs
-   * Old Api scans have saved flags at this point
-   */
-  if (m_scanUsingOldApi)
-    m_savedScanFlagsOldApi|= SF_KeyInfo;
+  const NdbColumnImpl* col= m_currentTable->getColumn(anAttrName);
+  
+  if (col != NULL)
+  {
+    /* We need the row KeyInfo for Blobs
+     * Old Api scans have saved flags at this point
+     */
+    if (m_scanUsingOldApi)
+      m_savedScanFlagsOldApi|= SF_KeyInfo;
+    else
+      m_keyInfo= 1;
+    
+    return NdbOperation::getBlobHandle(m_transConnection, col);
+  }
   else
-    m_keyInfo= 1;
-
-  return NdbOperation::getBlobHandle(m_transConnection, 
-                                     m_currentTable->getColumn(anAttrName));
+  {
+    setErrorCode(4004);
+    return NULL;
+  }
 }
 
 NdbBlob*
 NdbScanOperation::getBlobHandle(Uint32 anAttrId)
 {
-  /* We need the row KeyInfo for Blobs 
-   * Old Api scans have saved flags at this point
-   */
-  if (m_scanUsingOldApi)
-    m_savedScanFlagsOldApi|= SF_KeyInfo;
+  const NdbColumnImpl* col= m_currentTable->getColumn(anAttrId);
+  
+  if (col != NULL)
+  {
+    /* We need the row KeyInfo for Blobs 
+     * Old Api scans have saved flags at this point
+     */
+    if (m_scanUsingOldApi)
+      m_savedScanFlagsOldApi|= SF_KeyInfo;
+    else
+      m_keyInfo= 1;
+    
+    return NdbOperation::getBlobHandle(m_transConnection, col);
+  }
   else
-    m_keyInfo= 1;
-
-  return NdbOperation::getBlobHandle(m_transConnection, 
-                                     m_currentTable->getColumn(anAttrId));
+  {
+    setErrorCode(4004);
+    return NULL;
+  }
 }
 
 NdbRecAttr*

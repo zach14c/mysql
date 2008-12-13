@@ -281,8 +281,9 @@ enum enum_commands {
   Q_CHMOD_FILE, Q_APPEND_FILE, Q_CAT_FILE, Q_DIFF_FILES,
   Q_SEND_QUIT, Q_CHANGE_USER, Q_MKDIR, Q_RMDIR, Q_LIST_FILES,
   Q_LIST_FILES_WRITE_FILE, Q_LIST_FILES_APPEND_FILE,
-  Q_RESULT_FORMAT_VERSION,
   Q_SEND_SHUTDOWN, Q_SHUTDOWN_SERVER,
+  Q_RESULT_FORMAT_VERSION,
+
   Q_UNKNOWN,			       /* Unknown command.   */
   Q_COMMENT,			       /* Comments, ignored. */
   Q_COMMENT_WITH_COMMAND,
@@ -374,9 +375,10 @@ const char *command_names[]=
   "list_files",
   "list_files_write_file",
   "list_files_append_file",
-  "result_format",
   "send_shutdown",
   "shutdown_server",
+  "result_format",
+  "result_format",
 
   0
 };
@@ -5072,7 +5074,6 @@ int read_line(char *buf, int size)
       }
       else if (my_isspace(charset_info, c))
       {
-        /* Skip all space at begining of line */
 	if (c == '\n')
         {
           if (last_char == '\n')

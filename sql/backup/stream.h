@@ -100,6 +100,9 @@ class Stream: public fd_stream
   size_t  m_block_size;
   Logger&  m_log;
 
+  virtual File get_file() = 0; // Create or open file
+
+
   friend int stream_write(void*, bstream_blob*, bstream_blob);
   friend int stream_read(void*, bstream_blob*, bstream_blob);
 
@@ -121,6 +124,10 @@ class Output_stream:
   bool close();
   bool rewind();
 
+ protected:
+
+  virtual File get_file();
+
  private:
 
   int write_magic_and_version();
@@ -140,6 +147,10 @@ class Input_stream:
   bool rewind();
 
   int next_chunk();
+
+ protected:
+
+  virtual File get_file();
 
  private:
 

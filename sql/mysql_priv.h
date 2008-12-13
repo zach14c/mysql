@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2336,7 +2336,7 @@ uint build_table_shadow_filename(char *buff, size_t bufflen,
 #define FN_TO_IS_TMP    (1 << 1)
 #define FN_IS_TMP       (FN_FROM_IS_TMP | FN_TO_IS_TMP)
 #define NO_FRM_RENAME   (1 << 2)
-#define FRM_ONLY     (1 << 3)
+#define FRM_ONLY        (1 << 3)
 
 /* from hostname.cc */
 char *ip_to_hostname(struct sockaddr_storage *in, int addrLen, uint *errors);
