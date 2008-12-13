@@ -1,0 +1,20 @@
+############################################################
+# Wrapper for rpl_row_blob.test
+#
+# - By johnemb 2008-11-12:
+#    Wrapped to allow reuse of test code for different 
+#    storage engines. Following pattern already used for
+#    myisam and innodb.
+############################################################
+--source include/not_ndb_default.inc
+--source include/have_falcon.inc
+--source include/have_binlog_format_row.inc
+--source include/master-slave.inc
+
+# Set engine type. All CREATE TABLE statements must specify
+# engine, or default storage engine on slave must be 
+# specified in <test>-slave.opt file.
+
+let $engine_type=Falcon;
+--source extra/rpl_tests/rpl_row_blob.test
+

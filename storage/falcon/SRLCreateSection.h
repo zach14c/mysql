@@ -39,7 +39,6 @@ public:
 	SRLCreateSection();
 	virtual ~SRLCreateSection();
 
-	int		tableSpaceId;
 	int		sectionId;
 };
 

@@ -594,6 +594,7 @@ enum open_table_mode
 #define UNCACHEABLE_PREPARE    16
 /* For uncorrelated SELECT in an UNION with some correlated SELECTs */
 #define UNCACHEABLE_UNITED     32
+#define UNCACHEABLE_CHECKOPTION   64
 
 /* Used to check GROUP BY list in the MODE_ONLY_FULL_GROUP_BY mode */
 #define UNDEF_POS (-1)
@@ -922,7 +923,7 @@ struct Query_cache_query_flags
 {
   unsigned int client_long_flag:1;
   unsigned int client_protocol_41:1;
-  unsigned int result_in_binary_protocol:1;
+  unsigned int protocol_type:2;
   unsigned int more_results_exists:1;
   unsigned int pkt_nr;
   uint character_set_client_num;
@@ -1136,6 +1137,7 @@ void init_update_queries(void);
 void free_max_user_conn(void);
 pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
+
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length);
@@ -1459,19 +1461,6 @@ enum enum_schema_tables get_schema_table_idx(ST_SCHEMA_TABLE *schema_table);
 
 #define is_schema_db(X) \
   !my_strcasecmp(system_charset_info, INFORMATION_SCHEMA_NAME.str, (X))
-
-/* sql_prepare.cc */
-
-void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length);
-void mysql_stmt_execute(THD *thd, char *packet, uint packet_length);
-void mysql_stmt_close(THD *thd, char *packet);
-void mysql_sql_stmt_prepare(THD *thd);
-void mysql_sql_stmt_execute(THD *thd);
-void mysql_sql_stmt_close(THD *thd);
-void mysql_stmt_fetch(THD *thd, char *packet, uint packet_length);
-void mysql_stmt_reset(THD *thd, char *packet);
-void mysql_stmt_get_longdata(THD *thd, char *pos, ulong packet_length);
-void reinit_stmt_before_use(THD *thd, LEX *lex);
 
 /* sql_handler.cc */
 bool mysql_ha_open(THD *thd, TABLE_LIST *tables, bool reopen);
@@ -1842,10 +1831,9 @@ int mysql_load(THD *thd, sql_exchange *ex, TABLE_LIST *table_list,
 int write_record(THD *thd, TABLE *table, COPY_INFO *info);
 
 /* sql_manager.cc */
-extern ulong volatile manager_status;
-extern bool volatile manager_thread_in_use, mqh_used;
-extern pthread_t manager_thread;
-pthread_handler_t handle_manager(void *arg);
+extern bool volatile  mqh_used;
+void start_handle_manager();
+void stop_handle_manager();
 bool mysql_manager_submit(void (*action)());
 
 
@@ -2281,8 +2269,8 @@ void make_date(const DATE_TIME_FORMAT *format, const MYSQL_TIME *l_time,
 void make_time(const DATE_TIME_FORMAT *format, const MYSQL_TIME *l_time,
                String *str);
 int my_time_compare(MYSQL_TIME *a, MYSQL_TIME *b);
-ulonglong get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
-                             Item *warn_item, bool *is_null);
+longlong get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
+                            Item *warn_item, bool *is_null);
 
 int test_if_number(char *str,int *res,bool allow_wildcards);
 void change_byte(uchar *,uint,char,char);

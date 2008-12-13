@@ -38,7 +38,7 @@ class Backup_info: public backup::Image_info
 
   bool is_valid();
 
-  int add_dbs(List< ::LEX_STRING >&);
+  int add_dbs(THD *thd, List< ::LEX_STRING >&);
   int add_all_dbs();
 
   int close();

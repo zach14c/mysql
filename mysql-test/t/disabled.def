@@ -10,13 +10,10 @@
 #
 ##############################################################################
 federated_transactions   : Bug#29523 Transactions do not work
-show_check      : Bug #32682    Test show_check fails in 6.0
 lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 ctype_create         : Bug#32965 main.ctype_create fails
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
-wait_timeout_func           : Bug #36873 wait_timeout_func.test fails randomly
-timestamp_func              : Bug #37702 timestamp_func relies on sleep and is unstable in pushbuild
 log_tables.test                       : Bug #37798: main.log_tables fails randomly on powermacg5 and windows
 wait_timeout_func                     : BUG#36873 2008-07-06 sven wait_timeout_func.test fails randomly
 delayed_insert_limit_func             : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
@@ -34,4 +31,4 @@ slow_query_log_func                   : Bug #37962: *_func tests containing slee
 thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
 innodb_max_dirty_pages_pct_func       : BUG#41018 BUG#39382 2008-12-02 sven test fails often. some failures fill up the disk, causing subsequent failures in many other tests
 log_output_basic     : Bug #40988       log_output_basic.test succeeded though syntactically false.
-innodb               : Bug #41056    Innodb.test shows some difference to its result file.
+innodb               : Bug #41056, Bug#41299 2008-12-08 alik.

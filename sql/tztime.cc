@@ -1072,6 +1072,7 @@ Time_zone_system::gmt_sec_to_TIME(MYSQL_TIME *tmp, my_time_t t) const
   localtime_r(&tmp_t, &tmp_tm);
   localtime_to_TIME(tmp, &tmp_tm);
   tmp->time_type= MYSQL_TIMESTAMP_DATETIME;
+  adjust_leap_second(tmp);
 }
 
 
@@ -1156,6 +1157,7 @@ Time_zone_utc::gmt_sec_to_TIME(MYSQL_TIME *tmp, my_time_t t) const
   gmtime_r(&tmp_t, &tmp_tm);
   localtime_to_TIME(tmp, &tmp_tm);
   tmp->time_type= MYSQL_TIMESTAMP_DATETIME;
+  adjust_leap_second(tmp);
 }
 
 
@@ -1259,6 +1261,7 @@ void
 Time_zone_db::gmt_sec_to_TIME(MYSQL_TIME *tmp, my_time_t t) const
 {
   ::gmt_sec_to_TIME(tmp, t, tz_info);
+  adjust_leap_second(tmp);
 }
 
 
@@ -1575,7 +1578,6 @@ my_tz_init(THD *org_thd, const char *default_tzname, my_bool bootstrap)
     DBUG_RETURN(1);
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
 
   /* Init all memory structures that require explicit destruction */
   if (hash_init(&tz_names, &my_charset_latin1, 20,
@@ -1642,7 +1644,7 @@ my_tz_init(THD *org_thd, const char *default_tzname, my_bool bootstrap)
   if (open_system_tables_for_read(thd, tz_tables, &open_tables_state_backup))
   {
     sql_print_warning("Can't open and lock time zone table: %s "
-                      "trying to live without them", thd->main_da.message());
+                      "trying to live without them", thd->stmt_da->message());
     /* We will try emulate that everything is ok */
     return_val= time_zone_tables_exist= 0;
     goto end_with_setting_default_tz;
@@ -2278,6 +2280,24 @@ my_tz_find(THD *thd, const String *name)
   DBUG_RETURN(result_tz);
 }
 
+
+/**
+  Convert leap seconds into non-leap
+
+  This function will convert the leap seconds added by the OS to 
+  non-leap seconds, e.g. 23:59:59, 23:59:60 -> 23:59:59, 00:00:01 ...
+  This check is not checking for years on purpose : although it's not a
+  complete check this way it doesn't require looking (and having installed)
+  the leap seconds table.
+
+  @param[in,out] broken down time structure as filled in by the OS
+*/
+
+void Time_zone::adjust_leap_second(MYSQL_TIME *t)
+{
+  if (t->second == 60 || t->second == 61)
+    t->second= 59;
+}
 
 #endif /* !defined(TESTTIME) && !defined(TZINFO2SQL) */
 

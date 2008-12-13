@@ -280,13 +280,13 @@ static void run_query(THD *thd, char *buf, char *end,
     Thd_ndb *thd_ndb= get_thd_ndb(thd);
     for (i= 0; no_print_error[i]; i++)
       if ((thd_ndb->m_error_code == no_print_error[i]) ||
-          (thd->main_da.sql_errno() == (unsigned) no_print_error[i]))
+          (thd->stmt_da->sql_errno() == (unsigned) no_print_error[i]))
         break;
     if (!no_print_error[i])
       sql_print_error("NDB: %s: error %s %d(ndb: %d) %d %d",
                       buf,
-                      thd->main_da.message(),
-                      thd->main_da.sql_errno(),
+                      thd->stmt_da->message(),
+                      thd->stmt_da->sql_errno(),
                       thd_ndb->m_error_code,
                       (int) thd->is_error(), thd->is_slave_error);
   }
@@ -307,7 +307,7 @@ static void run_query(THD *thd, char *buf, char *end,
     is called from ndbcluster_reset_logs(), which is called from
     mysql_flush().
   */
-  thd->main_da.reset_diagnostics_area();
+  thd->stmt_da->reset_diagnostics_area();
 
   thd->options= save_thd_options;
   thd->query_length= save_thd_query_length;
@@ -1901,7 +1901,7 @@ ndb_binlog_thread_handle_schema_event(THD *thd, Ndb *ndb,
                             "my_errno: %d",
                             schema->db, schema->name, schema->query,
                             schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
             MYSQL_ERROR *err;
             while ((err= it++))
               sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
@@ -2261,7 +2261,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
                             "binlog schema event '%s' from node %d. my_errno: %d",
                             schema->db, schema->name, schema->query,
                             schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
             MYSQL_ERROR *err;
             while ((err= it++))
               sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
@@ -2440,7 +2440,7 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
                             "binlog schema event '%s' from node %d. my_errno: %d",
                             schema->db, schema->name, schema->query,
                             schema->node_id, my_errno);
-            List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+            List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
             MYSQL_ERROR *err;
             while ((err= it++))
               sql_print_warning("NDB Binlog: (%d)%s", err->code, err->msg);
@@ -2528,8 +2528,8 @@ static int open_ndb_binlog_index(THD *thd, TABLE **ndb_binlog_index)
       sql_print_error("NDB Binlog: Opening ndb_binlog_index: killed");
     else
       sql_print_error("NDB Binlog: Opening ndb_binlog_index: %d, '%s'",
-                      thd->main_da.sql_errno(),
-                      thd->main_da.message());
+                      thd->stmt_da->sql_errno(),
+                      thd->stmt_da->message());
     THD_SET_PROC_INFO(thd, save_proc_info);
     return -1;
   }

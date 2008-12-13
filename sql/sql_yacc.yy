@@ -1487,7 +1487,7 @@ query:
             Lex_input_stream *lip = YYLIP;
 
             if ((YYTHD->client_capabilities & CLIENT_MULTI_QUERIES) &&
-                ! lip->stmt_prepare_mode &&
+                lip->multi_statements &&
                 ! lip->eof())
             {
               /*

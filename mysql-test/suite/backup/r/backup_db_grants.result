@@ -63,10 +63,31 @@ GRANT USAGE ON *.* TO 'bup_user2'@'%'
 SHOW GRANTS FOR 'bup_user3'@'%';
 Grants for bup_user3@%
 GRANT USAGE ON *.* TO 'bup_user3'@'%'
+SHOW GRANTS FOR 'no_user'@'%';
+ERROR 42000: There is no such grant defined for user 'no_user' on host '%'
 Run Restore
 RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
+Warnings:
+#	1739	The grant 'ALTER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'ALTER ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE TEMPORARY TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'DELETE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'DROP ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'EVENT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'EXECUTE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'INDEX ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'INSERT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'LOCK TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'REFERENCES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'SELECT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'SHOW VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'TRIGGER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'UPDATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
 SHOW TABLES FROM bup_db_grants;
 Tables_in_bup_db_grants
 s1
@@ -99,6 +120,28 @@ Run Restore
 RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
 backup_id
 #
+Warnings:
+#	1739	The grant 'INSERT ON bup_db_grants.*' for the user 'bup_user2'@'%' was skipped because the user does not exist.
+#	1739	The grant 'INSERT(b) ON bup_db_grants.s1' for the user 'bup_user2'@'%' was skipped because the user does not exist.
+#	1739	The grant 'SELECT(b) ON bup_db_grants.s1' for the user 'bup_user2'@'%' was skipped because the user does not exist.
+#	1739	The grant 'ALTER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'ALTER ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE TEMPORARY TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'CREATE VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'DELETE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'DROP ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'EVENT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'EXECUTE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'INDEX ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'INSERT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'LOCK TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'REFERENCES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'SELECT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'SHOW VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'TRIGGER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1739	The grant 'UPDATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
 SHOW TABLES FROM bup_db_grants;
 Tables_in_bup_db_grants
 s1

@@ -1,0 +1,34 @@
+--source include/have_falcon.inc
+--source include/have_partition.inc
+
+#
+# Bug #39702: Unspecific error msg when using non-existent tablespace in
+#             partition definition
+#
+--echo *** Bug #39702 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--error ER_NO_SUCH_TABLESPACE
+CREATE TABLE t1(a INT) PARTITION BY RANGE(a) (
+  PARTITION p1 VALUES LESS THAN (10) TABLESPACE nosuchtablespace,
+  PARTITION p2 VALUES LESS THAN MAXVALUE TABLESPACE nosuchtablespace);
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #

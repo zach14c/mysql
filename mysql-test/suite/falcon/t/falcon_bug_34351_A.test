@@ -38,7 +38,7 @@ CREATE PROCEDURE p1 ()
 begin
   DECLARE my_count INT DEFAULT 0;
   DECLARE my_uuid CHAR(36) DEFAULT 0;
-  while my_count < 10000 do
+  while my_count < 5000 do
     SET my_uuid = UUID();
 	START TRANSACTION;
     INSERT INTO t1 (t1_uuid) VALUES (my_uuid);
@@ -90,3 +90,4 @@ SELECT count(*) FROM t1;
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
 DROP PROCEDURE p1;
+DROP TABLE t1;

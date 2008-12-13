@@ -66,6 +66,8 @@ FLUSH PRIVILEGES;
 SHOW GRANTS FOR 'bup_user1'@'%';
 SHOW GRANTS FOR bup_user2;
 SHOW GRANTS FOR 'bup_user3'@'%';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR 'no_user'@'%';
 
 --echo Run Restore
 --replace_column 1 #

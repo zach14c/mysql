@@ -1,0 +1,33 @@
+#####################################################################
+# Wrapper for "engine independent" test rpl_truncate_helper.test, 
+# using the Falcon storage engine.
+#
+# This wrapper omits the "middle man" rpl_truncate.test, as that test
+# file explicitly runs rpl_truncate_helper with all 3 binlog
+# formats, and Falcon does not support 'stmt'.
+#####################################################################
+
+--source include/master-slave.inc
+--source include/have_falcon.inc
+--source include/not_ndb_default.inc
+
+# Falcon does not support statement-based replication.
+# In 'mixed' mode only 'row' is used with Falcon, so
+# we don't bother testing that here.
+--source include/have_binlog_format_row.inc
+
+let $engine=Falcon;
+
+# Truncating a table can be done in two ways. Make sure to test both:
+
+# Sourced test includes setting binlog format, so specify it here.
+# Since 'mixed' => 'row' with Falcon, we only test 'row'.
+# Also set truncate method (statement) before running test.
+
+let $format=ROW;
+let $stmt = TRUNCATE TABLE;
+--source extra/rpl_tests/rpl_truncate_helper.test
+
+let $format=ROW;
+let $stmt = DELETE FROM;
+--source extra/rpl_tests/rpl_truncate_helper.test
