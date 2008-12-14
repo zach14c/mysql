@@ -5920,6 +5920,7 @@ ha_innobase::info(
 		}
 
 		stats.check_time = 0;
+	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 
 		if (stats.records == 0) {
 			stats.mean_rec_length = 0;
@@ -8384,8 +8385,9 @@ ha_rows ha_innobase::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                  flags, cost);
 }
 
-int ha_innobase::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                          uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows ha_innobase::multi_range_read_info(uint keyno, uint n_ranges, 
+                                           uint keys, uint *bufsz, 
+                                           uint *flags, COST_VECT *cost)
 {
   ds_mrr.init(this, table);
   return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);

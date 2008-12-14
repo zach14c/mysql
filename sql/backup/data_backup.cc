@@ -695,6 +695,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     if (error)
       goto error;
 
+
     report_vp_info(info);
 
     log.report_state(BUP_RUNNING);

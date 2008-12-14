@@ -4095,6 +4095,7 @@ int ha_ndbcluster::info(uint flag)
     if (!thd)
       thd= current_thd;
     DBUG_PRINT("info", ("HA_STATUS_VARIABLE"));
+    stats.mrr_length_per_rec= table_share->reclength + 2*sizeof(void*) + sizeof(uint16);
     if ((flag & HA_STATUS_NO_LOCK) &&
         !thd->variables.ndb_use_exact_count)
     {
@@ -9446,11 +9447,11 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
     See handler::multi_range_read_info.
 */
 
-int 
+ha_rows 
 ha_ndbcluster::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
                                      uint *bufsz, uint *flags, COST_VECT *cost)
 {
-  int res;
+  ha_rows res;
   uint save_bufsize= *bufsz;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_info");
 
@@ -9534,6 +9535,11 @@ int ha_ndbcluster::multi_range_read_init(RANGE_SEQ_IF *seq_funcs,
   mrr_iter= mrr_funcs.init(seq_init_param, n_ranges, mode);
   ranges_in_seq= n_ranges;
   m_range_res= mrr_funcs.next(mrr_iter, &mrr_cur_range);
+  mrr_need_range_assoc = !test(mode & HA_MRR_NO_ASSOCIATION);
+  if (mrr_need_range_assoc)
+  {
+    ha_statistic_increment(&SSV::ha_multi_range_read_init_count);
+  }
 
   /*
     We do not start fetching here with execute(), rather we defer this to the

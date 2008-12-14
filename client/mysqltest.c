@@ -5090,8 +5090,6 @@ int read_line(char *buf, int size)
           DBUG_PRINT("info", ("Query hasn't started yet, start_lineno: %d",
                               start_lineno));
         }
-
-        /* Skip all space at begining of line */
 	skip_char= 1;
       }
       else if (end_of_query(c))
@@ -5133,7 +5131,6 @@ int read_line(char *buf, int size)
     }
 
     last_char= c;
-
     if (!skip_char)
     {
       /* Could be a multibyte character */

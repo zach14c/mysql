@@ -90,7 +90,9 @@ int injector::transaction::commit()
 int injector::transaction::rollback()
 {
    DBUG_ENTER("injector::transaction::rollback()");
+ //psergey  ha_autocommit_or_rollback(m_thd, 1 /* error to get rollback */);
    trans_rollback_stmt(m_thd);
+ //psergey  end_trans(m_thd, ROLLBACK);
    trans_rollback(m_thd);
    DBUG_RETURN(0);
 }

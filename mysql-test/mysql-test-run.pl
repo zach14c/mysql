@@ -133,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb,ndb_binlog,maria"; # Default suites to run
+our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb,maria"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -4140,7 +4140,6 @@ sub stop_all_servers () {
     rm_ndbcluster_tables($mysqld->{'path_myddir'});
     rm_falcon_tables($mysqld->{'path_myddir'});
   }
-
 }
 
 
