@@ -1126,6 +1126,7 @@ static int get_master_version_and_clock(MYSQL* mysql, Master_info* mi)
       err_msg.append(mysql_error(mysql));
       err_msg.append("'");
       mysql_free_result(mysql_store_result(mysql));
+      err_code= ER_SLAVE_FATAL_ERROR;
       goto err;
     }
     mysql_free_result(mysql_store_result(mysql));
