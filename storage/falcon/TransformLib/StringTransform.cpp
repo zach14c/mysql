@@ -39,7 +39,7 @@ StringTransform::StringTransform()
 
 StringTransform::~StringTransform()
 {
-	delete data;
+	delete [] data;
 }
 
 StringTransform::StringTransform(const char *string, bool copyFlag) 

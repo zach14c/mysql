@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@
 
 
 #include <memory.h>
+#include <limits.h>
 #include "Engine.h"
 #include "TransactionManager.h"
 #include "Transaction.h"
@@ -31,10 +32,15 @@
 
 static const int EXTRA_TRANSACTIONS = 10;
 
+static TransId OLD = 0;  // Temporary for debugging
+
 #ifdef _DEBUG
 #undef THIS_FILE
 static const char THIS_FILE[]=__FILE__;
 #endif
+
+volatile int Talloc = 0;  // Temp. will be removed. Used for tracing
+volatile int Tdelete = 0; // new and delete of trans objects.
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -108,42 +114,65 @@ Transaction* TransactionManager::findOldest(void)
 	return oldest;
 }
 
+
+TransId TransactionManager::findOldestInActiveList() const
+{
+	// Find the transaction id of the oldest active transaction in the 
+	// active transaction list. If the list is empty, the
+	// latest allocated transaction id will be returned.
+	// This method assumes that the caller have set at least a shared lock
+	// on the active list.
+
+	// Note: Here we operate on a transaction list where we allow 
+	// non-locking transaction allocations and de-allocations from so be 
+	// careful when updating this method.
+
+	// NOTE: This needs to be updated when we allow transaction id to wrap
+
+	TransId oldest = transactionSequence;
+	
+	for (Transaction *transaction = activeTransactions.first; transaction; transaction = transaction->next)
+		{
+		TransId transId = transaction->transactionId;
+		if (transaction->isActive() && (transId != 0 && transId < oldest))
+			oldest = transId;
+		}
+	
+	return oldest;
+}
+
+
 Transaction* TransactionManager::startTransaction(Connection* connection)
 {
+	// Go through the active transaction list to check if there are any
+	// transaction objects in state "Available" that can be re-used.
+	// Note that this is done using a shared lock on the active transaction
+	// list.
+
 	Sync sync (&activeTransactions.syncObject, "TransactionManager::startTransaction");
-	sync.lock (Shared);
+	sync.lock(Shared);
 	Transaction *transaction;
 
-	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->state == Available && transaction->dependencies == 0)
+	for(transaction = activeTransactions.first; transaction; transaction = transaction->next)
+		if (transaction->state == Available)
 			if (COMPARE_EXCHANGE(&transaction->state, Available, Initializing))
 				{
-				// Check again that the dependencies are zero. The transaction
-				// object might have been re-use between the previous if-test
-				// and the actual change of state
-
-				if (transaction->dependencies != 0)
-					{
-					// Return the transaction object back to the list
-
-					transaction->state = Available;
-					}
-				else
-					{
-					ASSERT(transaction->dependencies == 0);
-					transaction->initialize(connection, INTERLOCKED_INCREMENT(transactionSequence));
-
-					return transaction;
-					}
+				transaction->initialize(connection, INTERLOCKED_INCREMENT(transactionSequence));
+				return transaction;
 				}
 
 	sync.unlock();
+
+	// We did not find an available transaction object to re-use, 
+	// so we allocate a new and add to the active list
+
 	sync.lock(Exclusive);
 
-	transaction = new Transaction (connection, INTERLOCKED_INCREMENT(transactionSequence));
+	transaction = new Transaction(connection, INTERLOCKED_INCREMENT(transactionSequence));
 	activeTransactions.append(transaction);
 
-	// And, just for yucks, add another 10 Available transactions
+	// Since we have acquired the exclusive lock on the active transaction
+	// list we allocate some extra transaction objects for future use
 
 	for (int n = 0; n < EXTRA_TRANSACTIONS; ++n)
 		{
@@ -300,31 +329,69 @@ void TransactionManager::getTransactionInfo(InfoTable* infoTable)
 		transaction->getInfo(infoTable);
 }
 
+
 void TransactionManager::purgeTransactions()
 {
+	// This method is called by the scavenger to clean up old committed
+	// transactions. 
+
+	// To purge the committed transaction list requires at least
+	// a shared lock on the active transaction list and an exclusive
+	// lock on the committed transaction list
+
+	Sync syncActive(&activeTransactions.syncObject, "TransactionManager::purgeTransaction");
+	syncActive.lock(Shared);
+	
 	Sync syncCommitted(&committedTransactions.syncObject, "Transaction::purgeTransactions");
 	syncCommitted.lock(Exclusive);
-	
+
+	purgeTransactionsWithLocks();
+
+}
+
+
+void TransactionManager::purgeTransactionsWithLocks()
+{
+	// Removes old committed transaction from the committed transaction list
+	// that no longer is visible by any currently active transactions.
+	// Note that this method relies on that the caller have at least a
+	// shared lock on the active transaction list and an exclusive lock on
+	// the committed transaction list
+
+	// Find the transaction id of the oldest active transaction
+
+	TransId oldestActive = findOldestInActiveList();
+
+	ASSERT(oldestActive >= OLD);   // Temporary for debugging
+	OLD = oldestActive;            // Please ignore
+
 	// Check for any fully mature transactions to ditch
-	
-	for (Transaction *transaction, *next = committedTransactions.first; (transaction = next);)
+  
+    Transaction* transaction = committedTransactions.first;
+
+    while ((transaction != NULL) &&
+		   (transaction->state == Committed) &&
+		   (transaction->commitId < oldestActive) &&
+		   !transaction->writePending)
 		{
-		next = transaction->next;
+		transaction->commitRecords();
 
-		if ((transaction->state == Committed) && 
-			(transaction->dependencies == 0) && 
-			!transaction->writePending)
+		if (COMPARE_EXCHANGE(&transaction->inList, (INTERLOCK_TYPE) true, (INTERLOCK_TYPE) false))
 			{
-			transaction->commitRecords();
-
-			if (COMPARE_EXCHANGE(&transaction->inList, (INTERLOCK_TYPE) true, (INTERLOCK_TYPE) false))
-				{
-				committedTransactions.remove(transaction);
-				transaction->release();
-				}
+			committedTransactions.remove(transaction);
+			transaction->release();
 			}
+		else
+			{
+			// If the compare and exchange operation failed we re-try this transaction on the next call
+
+			break;
+			}
+
+		transaction = committedTransactions.first;
 		}
 }
+
 
 void TransactionManager::getSummaryInfo(InfoTable* infoTable)
 {
@@ -374,7 +441,6 @@ void TransactionManager::reportStatistics(void)
 	Transaction *transaction;
 	int active = 0;
 	int available = 0;
-	int dependencies = 0;
 	time_t maxTime = 0;
 	
 	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
@@ -387,9 +453,6 @@ void TransactionManager::reportStatistics(void)
 		else if (transaction->state == Available)
 			{
 			++available;
-			
-			if (transaction->dependencies)
-				++dependencies;
 			}
 			
 	int pendingCleanup = committedTransactions.count;
@@ -399,8 +462,8 @@ void TransactionManager::reportStatistics(void)
 	priorRolledBack = rolledBack;
 	
 	if ((active || numberCommitted || numberRolledBack) && Log::isActive(LogInfo))
-		Log::log (LogInfo, "%d: Transactions: %d committed, %d rolled back, %d active, %d/%d available, %d post-commit, oldest %d seconds\n",
-				  database->deltaTime, numberCommitted, numberRolledBack, active, available, dependencies, pendingCleanup, maxTime);
+		Log::log (LogInfo, "%d: Transactions: %d committed, %d rolled back, %d active, %d available, %d post-commit, oldest %d seconds\n",
+				  database->deltaTime, numberCommitted, numberRolledBack, active, available, pendingCleanup, maxTime);
 }
 
 void TransactionManager::removeCommittedTransaction(Transaction* transaction)
@@ -412,16 +475,6 @@ void TransactionManager::removeCommittedTransaction(Transaction* transaction)
 	transaction->release();
 }
 
-void TransactionManager::expungeTransaction(Transaction *transaction)
-{
-	Sync syncActiveTrans(&activeTransactions.syncObject, "TransactionManager::removeTransaction");
-	syncActiveTrans.lock(Shared);
-
-	for (Transaction *trans = activeTransactions.first; trans; trans = trans->next)
-		if ((trans->state != Available && trans->state != Initializing))
-			 //&& trans->transactionId > transaction->transactionId)
-			trans->expungeTransaction(transaction);
-}
 
 Transaction* TransactionManager::findTransaction(TransId transactionId)
 {
@@ -445,24 +498,6 @@ Transaction* TransactionManager::findTransaction(TransId transactionId)
 	return NULL;
 }
 
-void TransactionManager::validateDependencies(void)
-{
-	Sync syncActive(&activeTransactions.syncObject, "TransactionManager::validateDepedendencies(1)");
-	syncActive.lock(Shared);
-	Transaction *transaction;
-
-	for (transaction = activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->isActive())
-			transaction->validateDependencies(false);
-			
-	syncActive.unlock();
-
-	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::validateDepedendencies(2)");
-	syncCommitted.lock(Shared);
-
-	for (transaction = committedTransactions.first; transaction; transaction = transaction->next)
-		transaction->validateDependencies(true);
-}
 
 void TransactionManager::removeTransaction(Transaction* transaction)
 {

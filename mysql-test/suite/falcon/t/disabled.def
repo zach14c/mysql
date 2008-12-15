@@ -10,5 +10,4 @@
 #
 ##############################################################################
 
-falcon_bug_32398 : Bug#32398 2008-08-28 HF HF disabled until new fix for this bug is developed
 falcon_bug_28095 : Bug#40636 2008-12-10 hky Disabled until soft server restart works reliable
