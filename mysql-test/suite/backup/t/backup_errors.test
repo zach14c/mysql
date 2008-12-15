@@ -377,4 +377,22 @@ RESTORE FROM 'overwrite.bak';
 --echo Show that inserted value 2 is not there
 SELECT * FROM table1;
 
+--echo #
+--echo # Test error handling by backup code when injecting commit blocker error.
+--echo #
+
+SET SESSION DEBUG='+d,backup_grl_fail';
+--error ER_BACKUP_SYNCHRONIZE
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+SET SESSION DEBUG='-d';
+
+--echo
+
+SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
+--error ER_BACKUP_SYNCHRONIZE
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+SET SESSION DEBUG='-d';
+
+--echo
+
 DROP DATABASE db1;

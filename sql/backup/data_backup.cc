@@ -360,6 +360,10 @@ int block_commits(THD *thd, TABLE_LIST *tables)
 {
   DBUG_ENTER("block_commits()");
 
+  DBUG_EXECUTE_IF("backup_grl_fail", 
+    /* Mimic behavior of a failing lock_global_read_lock */
+    DBUG_RETURN(1););
+
   /*
     Step 1 - global read lock.
   */
@@ -382,6 +386,12 @@ int block_commits(THD *thd, TABLE_LIST *tables)
     result= close_cached_tables(thd, 0, tables);
   */
 
+  DBUG_EXECUTE_IF("backup_grl_block_commit_fail",
+    /* Mimic behavior of a failing make_global_read_lock_block_commit */
+    unlock_global_read_lock(thd);
+    DBUG_RETURN(1);
+  );
+  
   /*
     Step 3 - make the global read lock to block commits.
   */
@@ -402,13 +412,13 @@ int block_commits(THD *thd, TABLE_LIST *tables)
 
    @param  thd    (in) the current thread structure.
 
-   @returns 0
+   This method cannot fail.
   */
-int unblock_commits(THD *thd)
+void unblock_commits(THD *thd)
 {
   DBUG_ENTER("unblock_commits()");
   unlock_global_read_lock(thd);
-  DBUG_RETURN(0);
+  DBUG_VOID_RETURN;
 }
 
 /**
@@ -652,7 +662,10 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     int error= 0;
     error= block_commits(thd, NULL);
     if (error)
+    {
+      log.report_error(ER_BACKUP_SYNCHRONIZE);
       goto error;
+    }
 
     if (sch.prepare())    // logs errors
       goto error;
@@ -691,9 +704,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       Unblock commits.
     */
     DEBUG_SYNC(thd, "before_backup_unblock_commit");
-    error= unblock_commits(thd);
-    if (error)
-      goto error;
+    unblock_commits(thd);
 
     report_vp_info(info);
 

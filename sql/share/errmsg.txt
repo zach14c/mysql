@@ -6445,3 +6445,6 @@ ER_BACKUP_BACKUP_DBS
   eng "Backing up %u database(s) %.220s"
 ER_BACKUP_RESTORE_DBS
   eng "Restoring %u database(s) %.220s"
+ER_BACKUP_SYNCHRONIZE
+  eng "Backup failed to synchronize table images."
+

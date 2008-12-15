@@ -218,4 +218,17 @@ Show that inserted value 2 is not there
 SELECT * FROM table1;
 text
 Inserted before
+#
+# Test error handling by backup code when injecting commit blocker error.
+#
+SET SESSION DEBUG='+d,backup_grl_fail';
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+ERROR HY000: Backup failed to synchronize table images.
+SET SESSION DEBUG='-d';
+
+SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+ERROR HY000: Backup failed to synchronize table images.
+SET SESSION DEBUG='-d';
+
 DROP DATABASE db1;
