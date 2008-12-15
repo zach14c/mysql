@@ -13,7 +13,7 @@
 # the results.
 #
 --source include/not_embedded.inc
---source include/have_federated_db.inc
+--source suite/federated/have_federated_db.inc
 # MERGE is always available --source include/have_merge.inc
 --source include/have_blackhole.inc
 #

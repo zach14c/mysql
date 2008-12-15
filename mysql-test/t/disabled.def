@@ -26,6 +26,7 @@ slow_query_log_func                   : BUG#37962 2008-07-08 sven *_func tests c
 sql_low_priority_updates_func         : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
 timestamp_func                        : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
 log_output_func                       : BUG#37766 2008-07-10 sven main.log_output_func randomly fails in pushbuild
+wait_timeout_func                     : Bug #41225 joro wait_timeout_func fails
 events_bugs                           : Bug#37774 Bug#39569 Bug#39863 Bug#39848 2008-10-08 alik
 slow_query_log_func                   : Bug #37962: *_func tests containing sleeps/race conditions
 thread_cache_size_func      : Bug#40574 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads

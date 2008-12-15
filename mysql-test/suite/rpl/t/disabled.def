@@ -37,4 +37,4 @@ rpl_flushlog_loop          : Bug#37733 2008-07-17 alik Disabled to make 6.0 grea
 rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main
 rpl_server_id2             : Bug#38540 rpl_server_id2 uses show slave status unnecessarily
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
-rpl_locktrans_falcon       : 2008-12-13 Error after merging 6.0 --> 6.0-rpl by alfranio
+rpl_load_table_from_master : 2008-12-13 Error after merging 5.1-rpl --> 6.0-rpl by alfranio
