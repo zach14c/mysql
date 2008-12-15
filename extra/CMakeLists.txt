@@ -46,8 +46,6 @@ TARGET_LINK_LIBRARIES(perror strings mysys dbug)
 ADD_EXECUTABLE(resolveip resolveip.c)
 TARGET_LINK_LIBRARIES(resolveip strings mysys dbug)
 
-ADD_EXECUTABLE(resolveip resolveip.c)
-TARGET_LINK_LIBRARIES(resolveip strings mysys debug dbug wsock32)
 
 ADD_EXECUTABLE(replace replace.c)
 TARGET_LINK_LIBRARIES(replace strings mysys dbug)
