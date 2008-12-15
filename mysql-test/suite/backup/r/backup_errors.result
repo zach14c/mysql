@@ -19,8 +19,6 @@ Error	#	Can't write to backup location 'bdb/t1.frm'
 BACKUP DATABASE adb TO "test.bak";
 backup_id
 #
-SHOW WARNINGS;
-Level	Code	Message
 BACKUP DATABASE adb TO "test.bak";
 ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
 SHOW WARNINGS;

@@ -16,5 +16,4 @@ backup_no_data                : Bug#41008 2008-12-08 alik union.test does not cl
 backup_ddl_blocker            : Bug#41008 2008-12-08 alik union.test does not cleanup
 backup                        : Bug#40807 2008-11-18 hakank Test fails on big-endian architecture
 backup_timeout                : Bug#40808 2008-11-18 hakank Test fails on big-endian architecture
-backup_errors                 : Bug#41359 2008-12-10 ingo Test fails after merge of main and backup trees
 backup_views                  : Bug#41360 2008-12-10 ingo Test fails after merge of main and backup trees
