@@ -2105,7 +2105,8 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 {
 	DBUG_ENTER("NfsStorageEngine::alter_tablespace");
 	int ret = 0;
-
+	const char *data_file_name= ts_info->data_file_name;
+	char buff[FN_REFLEN];
 	/*
 	CREATE TABLESPACE tablespace
 		ADD DATAFILE 'file'
@@ -2125,28 +2126,30 @@ int StorageInterface::alter_tablespace(handlerton* hton, THD* thd, st_alter_tabl
 	for NDB only.
 	*/
 
-        /*
-           Sergey Vojtovich is to reconsider this code
-
-	if (ts_info->data_file_name)
+	if (data_file_name)
 		{
-		char buff[FN_REFLEN];
-		size_t dirname_part_length;
-		dirname_part(buff, ts_info->data_file_name, &dirname_part_length);
-		fn_format(buff, buff, mysql_real_data_home, "",
-			MY_RELATIVE_PATH | MY_UNPACK_FILENAME);
-		if (test_if_data_home_dir(buff))
+		size_t length= strlen(data_file_name);
+		if (length <= 4 || strcmp(data_file_name + length - 4, ".fts"))
 			{
-			my_error(ER_WRONG_ARGUMENTS, MYF(0), "DATAFILE");
-			DBUG_RETURN(1);
+			if (!length || length > FN_REFLEN - 5)
+				{
+				my_error(ER_BAD_PATH, MYF(0), data_file_name);
+				DBUG_RETURN(1);
+				}
+			memcpy(buff, data_file_name, length);
+			buff[length]= '.';
+			buff[length + 1]= 'f';
+			buff[length + 2]= 't';
+			buff[length + 3]= 's';
+			buff[length + 4]= '\0';
+			data_file_name= buff;
 			}
 		}
-        */
 
 	switch (ts_info->ts_cmd_type)
 		{
 		case CREATE_TABLESPACE:
-			ret = storageHandler->createTablespace(	ts_info->tablespace_name, ts_info->data_file_name, ts_info->ts_comment);
+			ret = storageHandler->createTablespace(	ts_info->tablespace_name, data_file_name, ts_info->ts_comment);
 			break;
 
 		case DROP_TABLESPACE:
