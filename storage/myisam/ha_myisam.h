@@ -56,6 +56,8 @@ class ha_myisam: public handler
   ulonglong table_flags() const { return int_table_flags; }
   int index_init(uint idx, bool sorted);
   int index_end();
+  int rnd_end();
+
   ulong index_flags(uint inx, uint part, bool all_parts) const
   {
     return ((table_share->key_info[inx].algorithm == HA_KEY_ALG_FULLTEXT) ?
@@ -162,8 +164,8 @@ public:
                                       void *seq_init_param, 
                                       uint n_ranges, uint *bufsz,
                                       uint *flags, COST_VECT *cost);
-  int multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                            uint *bufsz, uint *flags, COST_VECT *cost);
+  ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                uint *bufsz, uint *flags, COST_VECT *cost);
   
   /* Index condition pushdown implementation */
   Item *idx_cond_push(uint keyno, Item* idx_cond);

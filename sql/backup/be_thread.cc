@@ -109,10 +109,7 @@ pthread_handler_t backup_thread_for_locking(void *arg)
     Turn off condition variable check for lock.
   */
   locking_thd->lock_state= LOCK_NOT_STARTED;
-
-#if !defined( __WIN__) /* Win32 calls this in pthread_create */
   my_thread_init();
-#endif
 
   /*
     First, create a new THD object.
@@ -222,7 +219,6 @@ end2:
 
   pthread_mutex_lock(&locking_thd->THR_LOCK_caller);
   net_end(&thd->net);
-  my_thread_end();
   delete thd;
   locking_thd->lock_thd= NULL;
   if (locking_thd->lock_state != LOCK_ERROR)
@@ -233,6 +229,7 @@ end2:
   */
   pthread_cond_signal(&locking_thd->COND_caller_wait);
   pthread_mutex_unlock(&locking_thd->THR_LOCK_caller);
+  my_thread_end(); /* always last, after all mutex usage */
   pthread_exit(0);
   return (0);
 }

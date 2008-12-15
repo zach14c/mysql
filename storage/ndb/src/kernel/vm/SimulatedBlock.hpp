@@ -114,6 +114,7 @@ protected:
   void addRecSignalImpl(GlobalSignalNumber g, ExecFunction fun, bool f =false);
   void installSimulatedBlockFunctions();
   ExecFunction theExecArray[MAX_GSN+1];
+  void initCommon();
 public:
   /**
    * 
@@ -392,8 +393,10 @@ protected:
   /**
    * General info event (sent to cluster log)
    */
-  void infoEvent(const char * msg, ...) const ;
-  void warningEvent(const char * msg, ...) const ;
+  void infoEvent(const char * msg, ...) const
+    ATTRIBUTE_FORMAT(printf, 2, 3);
+  void warningEvent(const char * msg, ...) const
+    ATTRIBUTE_FORMAT(printf, 2, 3);
   
   /**
    * Get node state
@@ -523,6 +526,7 @@ public:
   MutexManager c_mutexMgr;
 
   void ignoreMutexUnlockCallback(Signal* signal, Uint32 ptrI, Uint32 retVal);
+  virtual bool getParam(const char * param, Uint32 * retVal) { return false;}
 
   SafeCounterManager c_counterMgr;
 private:
@@ -809,7 +813,8 @@ public:\
 private: \
   void addRecSignal(GlobalSignalNumber gsn, ExecSignalLocal f, bool force = false)
 
-#define BLOCK_CONSTRUCTOR(BLOCK)
+#define BLOCK_CONSTRUCTOR(BLOCK) { initCommon();}
+
 
 #define BLOCK_FUNCTIONS(BLOCK) \
 void \
@@ -818,6 +823,39 @@ BLOCK::addRecSignal(GlobalSignalNumber gsn, ExecSignalLocal f, bool force){ \
 }
 
 #include "Mutex.hpp"
+
+#ifdef ERROR_INSERT
+#define RSS_AP_SNAPSHOT(x) Uint32 rss_##x
+#define RSS_AP_SNAPSHOT_SAVE(x) rss_##x = x.getNoOfFree()
+#define RSS_AP_SNAPSHOT_CHECK(x) ndbrequire(rss_##x == x.getNoOfFree())
+
+#define RSS_OP_COUNTER(x) Uint32 x
+#define RSS_OP_COUNTER_INIT(x) x = 0
+#define RSS_OP_ALLOC(x) x ++
+#define RSS_OP_FREE(x) x --
+#define RSS_OP_ALLOC_X(x,n) x += n
+#define RSS_OP_FREE_X(x,n) x -= n
+
+#define RSS_OP_SNAPSHOT(x) Uint32 rss_##x
+#define RSS_OP_SNAPSHOT_SAVE(x) rss_##x = x
+#define RSS_OP_SNAPSHOT_CHECK(x) ndbrequire(rss_##x == x)
+#else
+#define RSS_AP_SNAPSHOT(x)
+#define RSS_AP_SNAPSHOT_SAVE(x)
+#define RSS_AP_SNAPSHOT_CHECK(x)
+
+#define RSS_OP_COUNTER(x)
+#define RSS_OP_COUNTER_INIT(x)
+#define RSS_OP_ALLOC(x)
+#define RSS_OP_FREE(x)
+#define RSS_OP_ALLOC_X(x,n)
+#define RSS_OP_FREE_X(x,n)
+
+#define RSS_OP_SNAPSHOT(x)
+#define RSS_OP_SNAPSHOT_SAVE(x)
+#define RSS_OP_SNAPSHOT_CHECK(x)
+
+#endif
 
 #endif
 

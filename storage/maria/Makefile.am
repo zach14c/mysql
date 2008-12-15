@@ -42,27 +42,27 @@ maria_chk_DEPENDENCIES=	$(LIBRARIES)
 # For now, it imposes that storage/myisam be built before storage/maria.
 maria_chk_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 maria_pack_DEPENDENCIES=$(LIBRARIES)
 maria_pack_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 maria_read_log_DEPENDENCIES=$(LIBRARIES)
 maria_read_log_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 maria_dump_log_DEPENDENCIES=$(LIBRARIES) ma_loghandler.c
 maria_dump_log_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-                        $(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+                        $(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 maria_dump_log_SOURCES= ma_loghandler.c unittest/ma_loghandler_examples.c
 maria_dump_log_CPPFLAGS= -DMARIA_DUMP_LOG
 noinst_PROGRAMS =	ma_test1 ma_test2 ma_test3 ma_rt_test ma_sp_test
@@ -77,41 +77,41 @@ noinst_HEADERS =	maria_def.h ma_rt_index.h ma_rt_key.h ma_rt_mbr.h \
 ma_test1_DEPENDENCIES=	$(LIBRARIES)
 ma_test1_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 ma_test2_DEPENDENCIES=	$(LIBRARIES)
 ma_test2_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 ma_test3_DEPENDENCIES=	$(LIBRARIES)
 ma_test3_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 #ma_ft_test1_DEPENDENCIES=	$(LIBRARIES)
 #ma_ft_eval_DEPENDENCIES=	$(LIBRARIES)
 maria_ftdump_DEPENDENCIES=	$(LIBRARIES)
 maria_ftdump_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 ma_rt_test_DEPENDENCIES=	$(LIBRARIES)
 ma_rt_test_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 ma_sp_test_DEPENDENCIES=	$(LIBRARIES)
 ma_sp_test_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 libmaria_a_SOURCES =	ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c \
 			ma_rnext.c ma_rnext_same.c \
 			ma_search.c ma_page.c ma_key_recover.c ma_key.c \

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -633,6 +633,16 @@ bool Item_field::collect_item_field_processor(uchar *arg)
   DBUG_RETURN(FALSE);
 }
 
+
+bool Item_field::add_field_to_set_processor(uchar *arg)
+{
+  DBUG_ENTER("Item_field::add_field_to_set_processor");
+  DBUG_PRINT("info", ("%s", field->field_name ? field->field_name : "noname"));
+  TABLE *table= (TABLE *) arg;
+  if (field->table == table)
+    bitmap_set_bit(&table->tmp_set, field->field_index);
+  DBUG_RETURN(FALSE);
+}
 
 /**
   Check if an Item_field references some field from a list of fields.

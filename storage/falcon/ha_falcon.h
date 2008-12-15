@@ -70,6 +70,19 @@ public:
 	virtual int		index_end(void);
 	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
+
+	// Multi Range Read interface
+	virtual int		multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+										  uint n_ranges, uint mode, HANDLER_BUFFER *buf);
+	virtual int		multi_range_read_next(char **range_info);
+	virtual ha_rows	multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+												void *seq_init_param, 
+												uint n_ranges, uint *bufsz,
+												uint *flags, COST_VECT *cost);
+	virtual ha_rows	multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+										  uint *bufsz, uint *flags, COST_VECT *cost);
+	// Multi Range Read interface ends
+
 	virtual int		index_next_same(uchar *buf, const uchar *key, uint key_len);
 
 	virtual ha_rows	records_in_range(uint index,
@@ -132,6 +145,10 @@ public:
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
+	int			scanRange(const key_range *startKey,
+					  const key_range *endKey,
+					  bool eqRange);
+	int			fillMrrBitmap();
 	void			mapFields(TABLE *table);
 	void			unmapFields(void);
 
@@ -200,6 +217,7 @@ public:
 	key_range			endKey;
 	uint64				insertCount;
 	ulonglong			tableFlags;
+	bool				useDefaultMrrImpl;
 };
 
 class NfsPluginHandler

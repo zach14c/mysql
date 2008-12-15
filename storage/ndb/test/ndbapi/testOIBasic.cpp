@@ -616,6 +616,10 @@ getcs(Par par)
       uint n = urandom(maxcsnumber);
       cs = get_charset(n, MYF(0));
       if (cs != 0) {
+        // avoid dodgy internal character sets
+        // see bug# 37554
+        if (cs->state & MY_CS_HIDDEN)
+          continue;
         // prefer complex charsets
         if (cs->mbmaxlen != 1 || urandom(5) == 0)
           break;
@@ -3334,12 +3338,6 @@ BSet::setbnd(Par par) const
     for (uint j = 0; j < m_bvals; j++) {
       uint j2 = rsq1.next();
       const BVal& bval = *m_bval[j2];
-      CHK(bval.setbnd(par) == 0);
-    }
-    // duplicate
-    if (urandom(5) == 0) {
-      uint j3 = urandom(m_bvals);
-      const BVal& bval = *m_bval[j3];
       CHK(bval.setbnd(par) == 0);
     }
   }

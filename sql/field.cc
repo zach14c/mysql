@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1731,13 +1731,12 @@ my_decimal *Field_str::val_decimal(my_decimal *decimal_value)
 uint Field::fill_cache_field(CACHE_FIELD *copy)
 {
   uint store_length;
-  copy->str=ptr;
-  copy->length=pack_length();
-  copy->blob_field=0;
+  copy->str= ptr;
+  copy->length= pack_length();
+  copy->field= this;
   if (flags & BLOB_FLAG)
   {
-    copy->blob_field=(Field_blob*) this;
-    copy->strip=0;
+    copy->type= CACHE_BLOB;
     copy->length-= table->s->blob_ptr_size;
     return copy->length;
   }
@@ -1745,15 +1744,21 @@ uint Field::fill_cache_field(CACHE_FIELD *copy)
            (type() == MYSQL_TYPE_STRING && copy->length >= 4 &&
             copy->length < 256))
   {
-    copy->strip=1;				/* Remove end space */
+    copy->type= CACHE_STRIPPED;			    /* Remove end space */
     store_length= 2;
+  }
+  else if (type() ==  MYSQL_TYPE_VARCHAR)
+  {
+    copy->type= pack_length()-row_pack_length() == 1 ? CACHE_VARSTR1:
+                                                      CACHE_VARSTR2;
+    store_length= 0;
   }
   else
   {
-    copy->strip=0;
+    copy->type= 0;
     store_length= 0;
   }
-  return copy->length+ store_length;
+  return copy->length+store_length;
 }
 
 
@@ -6482,7 +6487,6 @@ check_field_for_37426(const void *param_arg)
 }
 #endif//HAVE_REPLICATION
 
-
 int Field_string::compatible_field_size(uint field_metadata,
                                         const Relay_log_info *rli_arg)
 {
@@ -9714,6 +9718,8 @@ bool Create_field::init(THD *thd, char *fld_name, enum_field_types fld_type,
     }
   case MYSQL_TYPE_DECIMAL:
     DBUG_ASSERT(0); /* Was obsolete */
+  default:
+    break;
   }
   /* Remember the value of length */
   char_length= length;

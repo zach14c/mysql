@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -4099,6 +4099,8 @@ double user_var_entry::val_real(my_bool *null_value)
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
     break;
+  default:
+    break;
   }
   return 0.0;					// Impossible
 }
@@ -4130,6 +4132,8 @@ longlong user_var_entry::val_int(my_bool *null_value) const
   case ROW_RESULT:
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
+    break;
+  default:
     break;
   }
   return LL(0);					// Impossible
@@ -4165,6 +4169,8 @@ String *user_var_entry::val_str(my_bool *null_value, String *str,
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
     break;
+  default:
+    break;
   }
   return(str);
 }
@@ -4192,6 +4198,8 @@ my_decimal *user_var_entry::val_decimal(my_bool *null_value, my_decimal *val)
   case ROW_RESULT:
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
+    break;
+  default:
     break;
   }
   return(val);

@@ -754,9 +754,7 @@ static void usage(void)
 {
   print_version();
   puts("Copyright (C) 2005 MySQL AB");
-  puts("This software comes with ABSOLUTELY NO WARRANTY. This is free software,\
-       \nand you are welcome to modify and redistribute it under the GPL \
-       license\n");
+  puts("This software comes with ABSOLUTELY NO WARRANTY. This is free software,\nand you are welcome to modify and redistribute it under the GPL license\n");
   puts("Run a query multiple times against the server\n");
   printf("Usage: %s [OPTIONS]\n",my_progname);
   print_defaults("my",load_default_groups);
@@ -2175,10 +2173,17 @@ limit_not_met:
         {
           if (mysql_field_count(&mysql))
           {
-            result= mysql_store_result(&mysql);
-            while ((row = mysql_fetch_row(result)))
-              counter++;
-            mysql_free_result(result);
+            if ((result= mysql_store_result(&mysql)))
+            {
+              while ((row = mysql_fetch_row(result)))
+                counter++;
+              mysql_free_result(result);
+            }
+            else
+            {
+              fprintf(stderr,"%s: Error in mysql_store_result(): %d %s\n",
+                      my_progname, mysql_errno(&mysql), mysql_error(&mysql));
+            }
           }
         } while(mysql_next_result(&mysql) == 0);
       }

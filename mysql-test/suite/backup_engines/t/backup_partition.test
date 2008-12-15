@@ -1,0 +1,70 @@
+#
+# This test is designed to test that BACKUP selects the best available
+# driver for partitioned tables. The storage engines should use these
+# drivers:
+#
+#   Partitioned Falcon table      -> Snapshot
+#   Partitioned InnoDB table      -> Snapshot
+#   All other partitioned tables  -> Default
+#
+
+--source include/have_partition.inc
+--source include/not_embedded.inc
+
+# Find expected backup driver for the current storage engine.
+
+let $exp_drv= Default;
+if (`select @@storage_engine = 'falcon'`) { let $exp_drv= Snapshot; }
+if (`select @@storage_engine = 'innodb'`) { let $exp_drv= Snapshot; }
+
+# Uncomment the line below and run the test with --force flag
+# if you want to verify that expected driver is correct
+#echo $exp_drv;
+
+--echo #
+--echo # Creating databases
+--echo #
+CREATE DATABASE backup_part;
+
+CREATE TABLE backup_part.t1 (
+  t1_autoinc INTEGER NOT NULL AUTO_INCREMENT,
+  t1_uuid CHAR(36),
+  PRIMARY KEY (t1_autoinc))
+PARTITION BY HASH (t1_autoinc);
+
+INSERT INTO backup_part.t1(t1_uuid) VALUES ('aaa'),('bbb'),('ccc'),('ddd'); 
+
+--echo # Show content
+SELECT * FROM backup_part.t1 ORDER BY t1_autoinc;
+
+--echo #
+--echo # Perform backup
+--replace_column 1 #
+let $bup_id= `BACKUP DATABASE backup_part TO 'partition.bak'`;
+
+--echo #
+--echo # Show drivers. 
+
+--echo
+# Count of expected driver for this backup_id should be 1
+# Replace exp_drv and backup_id in query because it will vary
+replace_regex /'.*'.*/'FILTERED DRIVER' AND backup_id=FILTERED ID/ ;
+--eval SELECT count(*) FROM mysql.backup_history WHERE drivers LIKE '$exp_drv' AND backup_id=$bup_id
+--echo
+
+--echo #
+--echo # Restore and show content
+--echo #  
+
+--replace_column 1 #
+RESTORE FROM 'partition.bak' OVERWRITE;
+--echo
+SELECT * FROM backup_part.t1 ORDER BY t1_autoinc;
+
+--echo #
+--echo # Cleanup
+--echo #  
+
+DROP DATABASE backup_part;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/partition.bak

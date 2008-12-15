@@ -13,15 +13,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
-# Need to set USE_TLS, since __declspec(thread) approach to thread local
-# storage does not work properly in DLLs.
-IF(WIN32)
-  ADD_DEFINITIONS(-DUSE_TLS)
-ENDIF(WIN32)
-
 ADD_DEFINITIONS(-DMYSQL_SERVER -DEMBEDDED_LIBRARY -DHAVE_DLOPEN)
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include 
@@ -186,7 +177,8 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/sql_class.cc ../sql/sql_crypt.cc ../sql/sql_cursor.cc 
            ../sql/sql_db.cc ../sql/sql_delete.cc ../sql/sql_derived.cc 
            ../sql/sql_do.cc ../sql/sql_error.cc ../sql/sql_handler.cc 
-           ../sql/sql_help.cc ../sql/sql_insert.cc ../sql/sql_lex.cc 
+           ../sql/sql_help.cc ../sql/sql_insert.cc ../sql/sql_join_cache.cc
+           ../sql/sql_lex.cc 
            ../sql/sql_list.cc ../sql/sql_load.cc ../sql/sql_locale.cc 
            ../sql/sql_binlog.cc ../sql/sql_manager.cc ../sql/sql_map.cc 
            ../sql/sql_parse.cc ../sql/sql_partition.cc ../sql/sql_plugin.cc 
@@ -222,4 +214,4 @@ TARGET_LINK_LIBRARIES(mysqlserver)
 
 ADD_LIBRARY(libmysqld MODULE cmake_dummy.c libmysqld.def)
 ADD_DEPENDENCIES(libmysqld mysqlserver)
-TARGET_LINK_LIBRARIES(libmysqld mysqlserver ws2_32)
+TARGET_LINK_LIBRARIES(libmysqld mysqlserver)

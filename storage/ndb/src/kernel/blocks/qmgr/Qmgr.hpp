@@ -91,6 +91,7 @@ public:
     NORMAL = 0,
     WAITING_FOR_FAILCONF1 = 1,
     WAITING_FOR_FAILCONF2 = 2,
+    WAITING_FOR_FAILCONF3 = 3,
     WAITING_FOR_NDB_FAILCONF = 3
   };
 
@@ -154,7 +155,6 @@ public:
     QmgrState sendCommitFailReqStatus;
     QmgrState sendPresToStatus;
     FailState failState;
-    BlockReference rcv[2];        // remember which failconf we have received
     BlockReference blockRef;
 
     NodeRec() { }
@@ -243,6 +243,7 @@ private:
   void execDUMP_STATE_ORD(Signal* signal);
   void execCONNECT_REP(Signal* signal);
   void execNDB_FAILCONF(Signal* signal);
+  void execNF_COMPLETEREP(Signal*);
   void execREAD_CONFIG_REQ(Signal* signal);
   void execSTTOR(Signal* signal);
   void execCM_INFOCONF(Signal* signal);
@@ -421,6 +422,7 @@ private:
   Uint16 cnoPrepFailedNodes;
   Uint16 cnoCommitFailedNodes;
   Uint16 cactivateApiCheck;
+  Uint16 c_allow_api_connect;
   UintR chbApiDelay;
 
   UintR ccommitFailureNr;
@@ -454,10 +456,6 @@ private:
   
   StopReq c_stopReq;
   bool check_multi_node_shutdown(Signal* signal);
-
-#ifdef ERROR_INSERT
-  Uint32 c_error_insert_extra;
-#endif
 
   void recompute_version_info(Uint32 type);
   void recompute_version_info(Uint32 type, Uint32 version);

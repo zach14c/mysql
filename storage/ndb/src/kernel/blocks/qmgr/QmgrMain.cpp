@@ -252,21 +252,35 @@ Qmgr::execSTART_ORD(Signal* signal)
   {
     ptrAss(nodePtr, nodeRec);
     nodePtr.p->ndynamicId = 0;	
-    if(getNodeInfo(nodePtr.i).m_type == NodeInfo::DB)
-    {
+    Uint32 cnt = 0;
+    Uint32 type = getNodeInfo(nodePtr.i).m_type;
+    switch(type){
+    case NodeInfo::DB:
+      jam();
       nodePtr.p->phase = ZINIT;
       c_definedNodes.set(nodePtr.i);
-    } else {
+      break;
+    case NodeInfo::API:
+      jam();
+      nodePtr.p->phase = ZAPI_INACTIVE;
+      break;
+    case NodeInfo::MGM:
+      jam();
+      /**
+       * cmvmi allows ndb_mgmd to connect directly
+       */
+      nodePtr.p->phase = ZAPI_INACTIVE;
+      break;
+    default:
+      jam();
       nodePtr.p->phase = ZAPI_INACTIVE;
     }
     
-    setNodeInfo(nodePtr.i).m_heartbeat_cnt= 0;
+    setNodeInfo(nodePtr.i).m_heartbeat_cnt = cnt;
     nodePtr.p->sendPrepFailReqStatus = Q_NOT_ACTIVE;
     nodePtr.p->sendCommitFailReqStatus = Q_NOT_ACTIVE;
     nodePtr.p->sendPresToStatus = Q_NOT_ACTIVE;
     nodePtr.p->failState = NORMAL;
-    nodePtr.p->rcv[0] = 0;
-    nodePtr.p->rcv[1] = 0;
   }//for
 }
 
@@ -315,6 +329,30 @@ void Qmgr::execSTTOR(Signal* signal)
       }
     }
     break;
+  case 8:{
+    /**
+     * Enable communication to all API nodes by setting state
+     *   to ZFAIL_CLOSING (which will make it auto-open in checkStartInterface)
+     */
+    c_allow_api_connect = 1;
+    NodeRecPtr nodePtr;
+    for (nodePtr.i = 1; nodePtr.i < MAX_NODES; nodePtr.i++)
+    {
+      jam();
+      Uint32 type = getNodeInfo(nodePtr.i).m_type;
+      if (type != NodeInfo::API)
+        continue;
+
+      ptrAss(nodePtr, nodeRec);
+      if (nodePtr.p->phase == ZAPI_INACTIVE)
+      {
+        jam();
+        setNodeInfo(nodePtr.i).m_heartbeat_cnt = 3;
+        nodePtr.p->phase = ZFAIL_CLOSING;
+        nodePtr.p->failState = NORMAL;
+      }
+    }
+  }
   }
   
   sendSttorryLab(signal);
@@ -327,8 +365,9 @@ void Qmgr::sendSttorryLab(Signal* signal)
 /*< STTORRY                  <*/
 /****************************<*/
   signal->theData[3] = 7;
-  signal->theData[4] = 255;
-  sendSignal(NDBCNTR_REF, GSN_STTORRY, signal, 5, JBB);
+  signal->theData[4] = 8;
+  signal->theData[5] = 255;
+  sendSignal(NDBCNTR_REF, GSN_STTORRY, signal, 6, JBB);
   return;
 }//Qmgr::sendSttorryLab()
 
@@ -2180,6 +2219,7 @@ void Qmgr::initData(Signal* signal)
   cneighbourl = ZNIL;
   cdelayRegreq = ZDELAY_REGREQ;
   cactivateApiCheck = 0;
+  c_allow_api_connect = 0;
   ctoStatus = Q_NOT_ACTIVE;
 
   interface_check_timer.setDelay(1000);
@@ -2495,13 +2535,34 @@ void Qmgr::checkStartInterface(Signal* signal)
 	 * IS COMPLETE.
 	 *-------------------------------------------------------------------*/
         nodePtr.p->failState = NORMAL;
-        if (getNodeInfo(nodePtr.i).m_type != NodeInfo::DB){
-          jam();
-          nodePtr.p->phase = ZAPI_INACTIVE;
-        } else {
+        Uint32 type = getNodeInfo(nodePtr.i).m_type;
+        switch(type){
+        case NodeInfo::DB:
           jam();
           nodePtr.p->phase = ZINIT;
-        }//if
+          break;
+        case NodeInfo::MGM:
+          jam();
+          nodePtr.p->phase = ZAPI_INACTIVE;
+          break;
+        case NodeInfo::API:
+          jam();
+          if (c_allow_api_connect)
+          {
+            jam();
+            nodePtr.p->phase = ZAPI_INACTIVE;
+            break;
+          }
+          else
+          {
+            /**
+             * Dont allow API node to connect before c_allow_api_connect
+             */
+            jam();
+            setNodeInfo(nodePtr.i).m_heartbeat_cnt = 3;
+            continue;
+          }
+        }
 
         setNodeInfo(nodePtr.i).m_heartbeat_cnt= 0;
         signal->theData[0] = 0;
@@ -2570,30 +2631,26 @@ void Qmgr::execAPI_FAILCONF(Signal* signal)
   failedNodePtr.i = signal->theData[0];  
   ptrCheckGuard(failedNodePtr, MAX_NODES, nodeRec);
 
-  if (failedNodePtr.p->failState == WAITING_FOR_FAILCONF1){
+  if (failedNodePtr.p->failState == WAITING_FOR_FAILCONF1)
+  {
     jam();
-
-    failedNodePtr.p->rcv[0] = signal->theData[1];
     failedNodePtr.p->failState = WAITING_FOR_FAILCONF2;
-
-  } else if (failedNodePtr.p->failState == WAITING_FOR_FAILCONF2) {
-    failedNodePtr.p->rcv[1] = signal->theData[1];
-    failedNodePtr.p->failState = NORMAL;
-
-    if (failedNodePtr.p->rcv[0] == failedNodePtr.p->rcv[1]) {
-      jam();
-      systemErrorLab(signal, __LINE__);
-    } else {
-      jam();
-      failedNodePtr.p->rcv[0] = 0;
-      failedNodePtr.p->rcv[1] = 0;
-    }//if
-  } else {
+  }
+  else if (failedNodePtr.p->failState == WAITING_FOR_FAILCONF2)
+  {
     jam();
-#ifdef VM_TRACE
+    failedNodePtr.p->failState = WAITING_FOR_FAILCONF3;
+  }
+  else if (failedNodePtr.p->failState == WAITING_FOR_FAILCONF3)
+  {
+    jam();
+    failedNodePtr.p->failState = NORMAL;
+  }
+  else
+  {
+    jam();
     ndbout << "failedNodePtr.p->failState = "
 	   << (Uint32)(failedNodePtr.p->failState) << endl;
-#endif   
     systemErrorLab(signal, __LINE__);
   }//if
   return;
@@ -2629,30 +2686,74 @@ void Qmgr::execNDB_FAILCONF(Signal* signal)
     progError(__LINE__, 0, buf);
     systemErrorLab(signal, __LINE__);
   }//if
-  if (cpresident == getOwnNodeId()) {
-    jam();
-    /** 
-     * Prepare a NFCompleteRep and send to all connected API's
-     * They can then abort all transaction waiting for response from 
-     * the failed node
-     */
-    NFCompleteRep * const nfComp = (NFCompleteRep *)&signal->theData[0];
-    nfComp->blockNo = QMGR_REF;
-    nfComp->nodeId = getOwnNodeId();
-    nfComp->failedNodeId = failedNodePtr.i;
 
-    for (nodePtr.i = 1; nodePtr.i < MAX_NODES; nodePtr.i++) {
-      jam();
-      ptrAss(nodePtr, nodeRec);
-      if (nodePtr.p->phase == ZAPI_ACTIVE){
-        jam();
-        sendSignal(nodePtr.p->blockRef, GSN_NF_COMPLETEREP, signal, 
-                   NFCompleteRep::SignalLength, JBA);
-      }//if
-    }//for
+  if (cpresident == getOwnNodeId()) 
+  {
+    jam();
+    
+    CRASH_INSERTION(936);
   }
+
+  /** 
+   * Prepare a NFCompleteRep and send to all connected API's
+   * They can then abort all transaction waiting for response from 
+   * the failed node
+   *
+   * NOTE: This is sent from all nodes, as otherwise we would need
+   *       take-over if cpresident dies befor sending this
+   */
+  NFCompleteRep * const nfComp = (NFCompleteRep *)&signal->theData[0];
+  nfComp->blockNo = QMGR_REF;
+  nfComp->nodeId = getOwnNodeId();
+  nfComp->failedNodeId = failedNodePtr.i;
+  
+  for (nodePtr.i = 1; nodePtr.i < MAX_NODES; nodePtr.i++) 
+  {
+    jam();
+    ptrAss(nodePtr, nodeRec);
+    if (nodePtr.p->phase == ZAPI_ACTIVE){
+      jam();
+      sendSignal(nodePtr.p->blockRef, GSN_NF_COMPLETEREP, signal, 
+                 NFCompleteRep::SignalLength, JBB);
+    }//if
+  }//for
   return;
 }//Qmgr::execNDB_FAILCONF()
+
+void
+Qmgr::execNF_COMPLETEREP(Signal* signal)
+{
+  jamEntry();
+  NFCompleteRep rep = *(NFCompleteRep*)signal->getDataPtr();
+  if (rep.blockNo != DBTC)
+  {
+    jam();
+    ndbassert(false);
+    return;
+  }
+
+  /**
+   * This is a disgrace...but execNF_COMPLETEREP in ndbapi is a mess
+   *   actually equally messy as it is in ndbd...
+   *   this is therefore a simple way of having ndbapi to get
+   *   earlier information that transactions can be aborted
+   */
+  signal->theData[0] = rep.failedNodeId;
+  NodeRecPtr nodePtr;
+  for (nodePtr.i = 1; nodePtr.i < MAX_NODES; nodePtr.i++) 
+  {
+    jam();
+    ptrAss(nodePtr, nodeRec);
+    if (nodePtr.p->phase == ZAPI_ACTIVE && 
+        ndb_takeovertc(getNodeInfo(nodePtr.i).m_version))
+    {
+      jam();
+      sendSignal(nodePtr.p->blockRef, GSN_TAKE_OVERTCCONF, signal, 
+                 NFCompleteRep::SignalLength, JBB);
+    }//if
+  }//for
+  return;
+}
 
 /*******************************/
 /* DISCONNECT_REP             */
@@ -2820,7 +2921,7 @@ Qmgr::api_failed(Signal* signal, Uint32 nodeId)
     signal->theData[0] = nodeId;
     signal->theData[1] = QMGR_REF;
     sendSignal(SUMA_REF, GSN_API_FAILREQ, signal, 2, JBA);
-    failedNodePtr.p->failState = NORMAL;
+    failedNodePtr.p->failState = WAITING_FOR_FAILCONF3;
   }
 
   failedNodePtr.p->phase = ZFAIL_CLOSING;
@@ -3701,9 +3802,17 @@ void Qmgr::execCOMMIT_FAILREQ(Signal* signal)
       jam();
       NdbNodeBitmask::set(nodeFail->theNodes, ccommitFailedNodes[i]);
     }//if	
-    sendSignal(NDBCNTR_REF, GSN_NODE_FAILREP, signal, 
-	       NodeFailRep::SignalLength, JBB);
-
+    
+    if (ERROR_INSERTED(936))
+    {
+      sendSignalWithDelay(NDBCNTR_REF, GSN_NODE_FAILREP, signal, 
+                          200, NodeFailRep::SignalLength);
+    }
+    else
+    {
+      sendSignal(NDBCNTR_REF, GSN_NODE_FAILREP, signal, 
+                 NodeFailRep::SignalLength, JBB);
+    }
     guard0 = cnoCommitFailedNodes - 1;
     arrGuard(guard0, MAX_NDB_NODES);
     /**--------------------------------------------------------------------
@@ -5152,6 +5261,12 @@ Qmgr::execDUMP_STATE_ORD(Signal* signal)
     c_error_insert_extra = signal->theData[1];
   }
 #endif
+
+  if (signal->theData[0] == 900 && signal->getLength() == 2)
+  {
+    ndbout_c("disconnecting %u", signal->theData[1]);
+    api_failed(signal, signal->theData[1]);
+  }
 }//Qmgr::execDUMP_STATE_ORD()
 
 

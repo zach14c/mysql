@@ -49,6 +49,13 @@ NdbRecAttr::setup(const NdbColumnImpl* anAttrInfo, char* aValue)
 
   theAttrId = anAttrInfo->m_attrId;
   m_size_in_bytes = tAttrByteSize;
+
+  return setup(tAttrByteSize, aValue);
+}
+
+int 
+NdbRecAttr::setup(Uint32 byteSize, char* aValue)
+{
   theValue = aValue;
   m_getVarValue = NULL; // set in getVarValue() only
 
@@ -59,11 +66,12 @@ NdbRecAttr::setup(const NdbColumnImpl* anAttrInfo, char* aValue)
   // check alignment to signal data
   // a future version could check alignment per data type as well
   
-  if (aValue != NULL && (UintPtr(aValue)&3) == 0 && (tAttrByteSize&3) == 0) {
+  if (aValue != NULL && (UintPtr(aValue)&3) == 0 && (byteSize&3) == 0) {
     theRef = aValue;
     return 0;
   }
-  if (tAttrByteSize <= 32) {
+
+  if (byteSize <= 32) {
     theStorage[0] = 0;
     theStorage[1] = 0;
     theStorage[2] = 0;
@@ -71,7 +79,7 @@ NdbRecAttr::setup(const NdbColumnImpl* anAttrInfo, char* aValue)
     theRef = theStorage;
     return 0;
   }
-  Uint32 tSize = (tAttrByteSize + 7) >> 3;
+  Uint32 tSize = (byteSize + 7) >> 3;
   Uint64* tRef = new Uint64[tSize];
   if (tRef != NULL) {
     for (Uint32 i = 0; i < tSize; i++) {
@@ -81,9 +89,10 @@ NdbRecAttr::setup(const NdbColumnImpl* anAttrInfo, char* aValue)
     theRef = tRef;
     return 0;
   }
-  errno = ENOMEM;
+  errno= ENOMEM;
   return -1;
 }
+
 
 void
 NdbRecAttr::copyout()
@@ -136,6 +145,27 @@ NdbRecAttr::receive_data(const Uint32 * data32, Uint32 sz)
   const unsigned char* data = (const unsigned char*)data32;
   if(sz)
   {
+    /* Bug 39645 - correct for Disk Var type mapping to Fixed */
+    if (unlikely(m_column->getStorageType() == NDB_STORAGETYPE_DISK))
+    {
+      Uint32 oldSz= sz;
+
+      switch (m_column->getType()) {
+      case NDB_TYPE_VARCHAR:
+      case NDB_TYPE_VARBINARY:
+        sz= data[0] + 1;
+        break;
+      case NDB_TYPE_LONGVARCHAR:
+      case NDB_TYPE_LONGVARBINARY:
+        sz= data[0] + (data[1] << 8) + 2;
+        break;
+      default:
+        ;
+      }
+      assert( sz <= oldSz );
+    }
+    /* End of Bug 39645 */
+
     if (unlikely(m_getVarValue != NULL)) {
       // ONLY for blob V2 implementation
       assert(m_column->getType() == NdbDictionary::Column::Longvarchar ||
@@ -148,6 +178,7 @@ NdbRecAttr::receive_data(const Uint32 * data32, Uint32 sz)
       data += 2;
       sz -= 2;
     }
+
     if(!copyoutRequired())
       memcpy(theRef, data, sz);
     else

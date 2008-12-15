@@ -21,6 +21,7 @@
 #include <NdbMain.h>
 #include <NdbOut.hpp>
 #include <NdbSleep.h>
+#include <NdbTick.h>
 
 #include <NDBT.hpp>
 
@@ -213,9 +214,12 @@ waitClusterStatus(const char* _addr,
   int resetAttempts = 0;
   const int MAX_RESET_ATTEMPTS = 10;
   bool allInState = false;
-  int timeout_ms= _timeout * 10; /* In number of 100 milliseconds */
+
+  Uint64 time_now = NdbTick_CurrentMillisecond();
+  Uint64 timeout_time = time_now + 1000 * _timeout;
+
   while (allInState == false){
-    if (_timeout > 0 && attempts > _timeout){
+    if (_timeout > 0 && time_now > timeout_time){
       /**
        * Timeout has expired waiting for the nodes to enter
        * the state we want
@@ -243,19 +247,23 @@ waitClusterStatus(const char* _addr,
 	g_err << "waitNodeState("
 	      << ndb_mgm_get_node_status_string(_status)
 	      <<", "<<_startphase<<")"
-	      << " timeout after " << attempts <<" attemps" << endl;
+	      << " timeout after " << attempts << " attempts" << endl;
 	return -1;
       }
 
       g_err << "waitNodeState("
 	    << ndb_mgm_get_node_status_string(_status)
 	    <<", "<<_startphase<<")"
-	    << " resetting number of attempts "
+	    << " resetting timeout "
 	    << resetAttempts << endl;
-      attempts = 0;
+
+      timeout_time = time_now + 1000 * _timeout;
+
       resetAttempts++;
     }
 
+    if (attempts > 0)
+      NdbSleep_MilliSleep(100);
     if (getStatus() != 0){
       return -1;
     }
@@ -279,10 +287,11 @@ waitClusterStatus(const char* _addr,
     if (!allInState) {
       g_info << "Waiting for cluster enter state "
              << ndb_mgm_get_node_status_string(_status)<< endl;
-      NdbSleep_MilliSleep(100);
     }
 
     attempts++;
+    
+    time_now = NdbTick_CurrentMillisecond();
   }
   return 0;
 }

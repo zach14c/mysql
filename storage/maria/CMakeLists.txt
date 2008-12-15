@@ -14,8 +14,6 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql
@@ -48,39 +46,39 @@ SET(MARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c
 
 IF(NOT SOURCE_SUBLIBS)
 
-  ADD_LIBRARY(maria ${MARIA_SOURCES})
-  ADD_DEPENDENCIES(maria GenError)
+ADD_LIBRARY(maria ${MARIA_SOURCES})
+ADD_DEPENDENCIES(maria GenError)
 
 ADD_EXECUTABLE(maria_ftdump maria_ftdump.c)
-TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_ftdump maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_chk maria_chk.c)
-TARGET_LINK_LIBRARIES(maria_chk maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_chk maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_read_log maria_read_log.c)
-TARGET_LINK_LIBRARIES(maria_read_log maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_read_log maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_pack maria_pack.c)
-TARGET_LINK_LIBRARIES(maria_pack maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_pack maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(maria_dump_log ma_loghandler.c unittest/ma_loghandler_examples.c)
-TARGET_LINK_LIBRARIES(maria_dump_log maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(maria_dump_log maria myisam mysys dbug strings zlib)
 SET_TARGET_PROPERTIES(maria_dump_log PROPERTIES COMPILE_FLAGS "-DMARIA_DUMP_LOG")
 
 ADD_EXECUTABLE(ma_test1 ma_test1.c)
-TARGET_LINK_LIBRARIES(ma_test1 maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_test1 maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_test2 ma_test2.c)
-TARGET_LINK_LIBRARIES(ma_test2 maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_test2 maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_test3 ma_test3.c)
-TARGET_LINK_LIBRARIES(ma_test3 maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_test3 maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_rt_test ma_rt_test.c)
-TARGET_LINK_LIBRARIES(ma_rt_test maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_rt_test maria myisam mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_sp_test ma_sp_test.c)
-TARGET_LINK_LIBRARIES(ma_sp_test maria myisam mysys dbug strings zlib wsock32)
+TARGET_LINK_LIBRARIES(ma_sp_test maria myisam mysys dbug strings zlib)
 
 IF(EMBED_MANIFESTS)
   MYSQL_EMBED_MANIFEST("maria_ftdump" "asInvoker")

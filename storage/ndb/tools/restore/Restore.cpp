@@ -40,6 +40,32 @@ BackupFile::Twiddle(const AttributeDesc* attr_desc, AttributeData* attr_data, Ui
   if(m_hostByteOrder)
     return true;
   
+  if((attr_desc->m_column->getType() == NdbDictionary::Column::Blob
+      || attr_desc->m_column->getType() == NdbDictionary::Column::Text)
+     && attr_desc->m_column->getArrayType() == NdbDictionary::Column::ArrayTypeFixed)
+  {
+    char* p = (char*)&attr_data->u_int64_value[0];
+    Uint64 x;
+    memcpy(&x, p, sizeof(Uint64));
+    x = Twiddle64(x);
+    memcpy(p, &x, sizeof(Uint64));
+  }
+  
+  //convert datetime type
+  if(attr_desc->m_column->getType() == NdbDictionary::Column::Datetime)
+  {
+    char* p = (char*)&attr_data->u_int64_value[0];
+    Uint64 x;
+    memcpy(&x, p, sizeof(Uint64));
+    x = Twiddle64(x);
+    memcpy(p, &x, sizeof(Uint64));
+  }
+
+  if(attr_desc->m_column->getType() == NdbDictionary::Column::Timestamp)
+  {
+    attr_data->u_int32_value[0] = Twiddle32(attr_data->u_int32_value[0]);
+  }
+  
   if(arraySize == 0){
     arraySize = attr_desc->arraySize;
   }
@@ -630,29 +656,6 @@ RestoreDataIterator::readTupleData(Uint32 *buf_ptr, Uint32 *ptr,
     assert(arraySize <= attr_desc->arraySize);
 
     //convert the length of blob(v1) and text(v1)
-    if(!m_hostByteOrder
-        && (attr_desc->m_column->getType() == NdbDictionary::Column::Blob
-           || attr_desc->m_column->getType() == NdbDictionary::Column::Text)
-        && attr_desc->m_column->getArrayType() == NdbDictionary::Column::ArrayTypeFixed)
-    {
-      char* p = (char*)&attr_data->u_int64_value[0];
-      Uint64 x;
-      memcpy(&x, p, sizeof(Uint64));
-      x = Twiddle64(x);
-      memcpy(p, &x, sizeof(Uint64));
-    }
-
-    //convert datetime type
-    if(!m_hostByteOrder
-        && attr_desc->m_column->getType() == NdbDictionary::Column::Datetime)
-    {
-      char* p = (char*)&attr_data->u_int64_value[0];
-      Uint64 x;
-      memcpy(&x, p, sizeof(Uint64));
-      x = Twiddle64(x);
-      memcpy(p, &x, sizeof(Uint64));
-    }
-
     if(!Twiddle(attr_desc, attr_data, attr_desc->arraySize))
     {
       return -1;
@@ -739,10 +742,6 @@ RestoreDataIterator::getNextTuple(int  & res)
     attr_data->size = 4*sz;
 
     //if (m_currentTable->getTableId() >= 2) { ndbout << "fix i=" << i << " off=" << ptr-buf_ptr << " attrId=" << attrId << endl; }
-    if(!m_hostByteOrder
-        && attr_desc->m_column->getType() == NdbDictionary::Column::Timestamp)
-      attr_data->u_int32_value[0] = Twiddle32(attr_data->u_int32_value[0]);
-
     if(!Twiddle(attr_desc, attr_data))
       {
 	res = -1;
@@ -1003,13 +1002,19 @@ bool RestoreDataIterator::readFragmentHeader(int & ret, Uint32 *fragmentId)
     if (Header.SectionType == BackupFormat::EMPTY_ENTRY)
     {
       void *tmp;
-      buffer_get_ptr(&tmp, Header.SectionLength*4-8, 1);
+      if (Header.SectionLength < 2)
+      {
+        err << "getFragmentFooter:Error reading fragment footer" << endl;
+        return false;
+      }
+      if (Header.SectionLength > 2)
+        buffer_get_ptr(&tmp, Header.SectionLength*4-8, 1);
       continue;
     }
     break;
   }
   /* read rest of header */
-  if (buffer_read(((char*)&Header)+8, sizeof(Header)-8, 1) != 1)
+  if (buffer_read(((char*)&Header)+8, Header.SectionLength*4-8, 1) != 1)
   {
     ret = 0;
     return false;

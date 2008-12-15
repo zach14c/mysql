@@ -21,9 +21,10 @@ noinst_HEADERS = thr_template.c
 noinst_PROGRAMS  = bitmap-t base64-t my_atomic-t lf-t waiting_threads-t
 
 LDADD 		= $(top_builddir)/unittest/mytap/libmytap.a \
-		  $(top_builddir)/mysys/libmysys.a \
-		  $(top_builddir)/dbug/libdbug.a \
-		  $(top_builddir)/strings/libmystrings.a
+		  $(top_builddir)/mysys/libmysyslt.la \
+		  $(top_builddir)/dbug/libdbuglt.la \
+		  $(top_builddir)/strings/libmystringslt.la \
+		  @ZLIB_LIBS@
 
 EXTRA_DIST       = CMakeLists.txt 
 

@@ -343,7 +343,12 @@ int finalize_audit_plugin(st_plugin_int *plugin)
   bzero(&event_class_mask, sizeof(event_class_mask));
 
   /* Iterate through all the installed plugins to create new mask */
-  pthread_mutex_lock(&LOCK_audit_mask);
+
+  /*
+    LOCK_audit_mask/LOCK_plugin order is not fixed, but serialized with table
+    lock on mysql.plugin.
+  */
+  my_pthread_mutex_lock(&LOCK_audit_mask, MYF_NO_DEADLOCK_DETECTION);
   plugin_foreach(current_thd, calc_class_mask, MYSQL_AUDIT_PLUGIN,
                  &event_class_mask);
 

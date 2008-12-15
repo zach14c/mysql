@@ -54,6 +54,7 @@ bin_PROGRAMS =			mysql \
 mysql_SOURCES =			mysql.cc readline.cc sql_string.cc \
 				completion_hash.cc
 mysql_LDADD =			@readline_link@ @TERMCAP_LIB@ \
+				@ZLIB_LIBS@ \
 				$(LDADD) $(CXXLDFLAGS)
 mysqladmin_SOURCES =		mysqladmin.cc
 
@@ -75,7 +76,7 @@ mysqlimport_SOURCES=		mysqlimport.c
 mysqlimport_LDADD =		$(CXXLDFLAGS) $(CLIENT_THREAD_LIBS) \
 				@CLIENT_EXTRA_LDFLAGS@ \
 				$(LIBMYSQLCLIENT_LA) \
-				$(top_builddir)/mysys/libmysys.a
+				$(top_builddir)/mysys/libmysyslt.la
 
 mysqlshow_SOURCES=		mysqlshow.c
 
@@ -84,14 +85,14 @@ mysqlslap_CFLAGS=		-DTHREAD -UUNDEF_THREADS_HACK
 mysqlslap_LDADD =		$(CXXLDFLAGS) $(CLIENT_THREAD_LIBS) \
 				@CLIENT_EXTRA_LDFLAGS@ \
 				$(LIBMYSQLCLIENT_LA) \
-				$(top_builddir)/mysys/libmysys.a
+				$(top_builddir)/mysys/libmysyslt.la
 
 mysqltest_SOURCES=		mysqltest.c
 mysqltest_CFLAGS=		-DTHREAD -UUNDEF_THREADS_HACK
 mysqltest_LDADD =		$(CXXLDFLAGS) \
 				@CLIENT_EXTRA_LDFLAGS@ \
 				$(LIBMYSQLCLIENT_LA) \
-				$(top_builddir)/mysys/libmysys.a \
+				$(top_builddir)/mysys/libmysyslt.la \
 				$(top_builddir)/regex/libregex.a \
 				$(CLIENT_THREAD_LIBS)
 

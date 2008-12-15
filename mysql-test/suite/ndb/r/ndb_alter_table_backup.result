@@ -6,18 +6,6 @@ DROP TABLE IF EXISTS t1;
 SHOW TABLES;
 Tables_in_test
 t1
-SHOW CREATE TABLE t1;
-Table	Create Table
-t1	CREATE TABLE `t1` (
-  `a` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `b` int(11) /*!50205 COLUMN_FORMAT DYNAMIC */ DEFAULT NULL,
-  `c` float DEFAULT NULL,
-  `d` double unsigned DEFAULT NULL,
-  `e` decimal(5,2) DEFAULT NULL,
-  `f` datetime DEFAULT NULL,
-  `g` binary(4) DEFAULT NULL,
-  PRIMARY KEY (`a`)
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1
 SELECT * FROM t1 WHERE a = 1 or a = 10 or a = 20 or a = 30 ORDER BY a;
 a	b	c	d	e	f	g
 1	5	3.40282e38	1.2686868689898e308	666.66	2007-10-23 23:23:23	1111
@@ -31,18 +19,6 @@ DROP TABLE t1;
 SHOW TABLES;
 Tables_in_test
 t1
-SHOW CREATE TABLE t1;
-Table	Create Table
-t1	CREATE TABLE `t1` (
-  `a` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `b` int(11) /*!50205 COLUMN_FORMAT DYNAMIC */ DEFAULT NULL,
-  `c` float DEFAULT NULL,
-  `d` double unsigned DEFAULT NULL,
-  `e` decimal(5,2) DEFAULT NULL,
-  `f` datetime DEFAULT NULL,
-  `g` binary(4) DEFAULT NULL,
-  PRIMARY KEY (`a`)
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1
 SELECT * FROM t1 WHERE a = 1 or a = 10 or a = 20 or a = 30 ORDER BY a;
 a	b	c	d	e	f	g
 1	5	3.40282e38	1.2686868689898e308	666.66	2007-10-23 23:23:23	1111

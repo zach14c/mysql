@@ -102,7 +102,7 @@ MgmtSrvr::logLevelThread_C(void* m)
   return 0;
 }
 
-extern EventLogger g_eventLogger;
+extern EventLogger * g_eventLogger;
 
 #ifdef NOT_USED
 static NdbOut&
@@ -223,7 +223,7 @@ MgmtSrvr::startEventLog()
 {
   NdbMutex_Lock(m_configMutex);
 
-  g_eventLogger.setCategory("MgmSrvr");
+  g_eventLogger->setCategory("MgmSrvr");
 
   ndb_mgm_configuration_iterator 
     iter(* _config->m_configValues, CFG_SECTION_NODE);
@@ -250,7 +250,7 @@ MgmtSrvr::startEventLog()
 		   clusterLog);
   }
   errStr[0]='\0';
-  if(!g_eventLogger.addHandler(logdest, &err, sizeof(errStr), errStr)) {
+  if(!g_eventLogger->addHandler(logdest, &err, sizeof(errStr), errStr)) {
     ndbout << "Warning: could not add log destination \""
            << logdest.c_str() << "\". Reason: ";
     if(err)
@@ -266,7 +266,7 @@ MgmtSrvr::startEventLog()
 void
 MgmtSrvr::stopEventLog()
 {
-  g_eventLogger.close();
+  g_eventLogger->close();
 }
 
 bool
@@ -274,21 +274,21 @@ MgmtSrvr::setEventLogFilter(int severity, int enable)
 {
   Logger::LoggerLevel level = (Logger::LoggerLevel)severity;
   if (enable > 0) {
-    g_eventLogger.enable(level);
+    g_eventLogger->enable(level);
   } else if (enable == 0) {
-    g_eventLogger.disable(level);
-  } else if (g_eventLogger.isEnable(level)) {
-    g_eventLogger.disable(level);
+    g_eventLogger->disable(level);
+  } else if (g_eventLogger->isEnable(level)) {
+    g_eventLogger->disable(level);
   } else {
-    g_eventLogger.enable(level);
+    g_eventLogger->enable(level);
   }
-  return g_eventLogger.isEnable(level);
+  return g_eventLogger->isEnable(level);
 }
 
 bool 
 MgmtSrvr::isEventLogFilterEnabled(int severity) 
 {
-  return g_eventLogger.isEnable((Logger::LoggerLevel)severity);
+  return g_eventLogger->isEnable((Logger::LoggerLevel)severity);
 }
 
 int MgmtSrvr::translateStopRef(Uint32 errCode)
@@ -693,11 +693,11 @@ int MgmtSrvr::okToSendTo(NodeId nodeId, bool unCond)
 
 void report_unknown_signal(SimpleSignal *signal)
 {
-  g_eventLogger.error("Unknown signal received. SignalNumber: "
-		      "%i from (%d, %x)",
-		      signal->readSignalNumber(),
-		      refToNode(signal->header.theSendersBlockRef),
-		      refToBlock(signal->header.theSendersBlockRef));
+  g_eventLogger->error("Unknown signal received. SignalNumber: "
+                       "%i from (%d, %x)",
+                       signal->readSignalNumber(),
+                       refToNode(signal->header.theSendersBlockRef),
+                       refToBlock(signal->header.theSendersBlockRef));
 }
 
 /*****************************************************************************
@@ -855,6 +855,8 @@ MgmtSrvr::sendVersionReq(int v_nodeId,
 	do_send = 1; // retry with other node
       continue;
     }
+    case GSN_TAKE_OVERTCCONF:
+      continue;
     default:
       report_unknown_signal(signal);
       return SEND_OR_RECEIVE_FAILED;
@@ -908,12 +910,14 @@ int MgmtSrvr::sendStopMgmd(NodeId nodeId,
     if(ndb_mgm_connect(h,1,0,0))
     {
       DBUG_PRINT("info",("failed ndb_mgm_connect"));
+      ndb_mgm_destroy_handle(&h);
       return SEND_OR_RECEIVE_FAILED;
     }
     if(!restart)
     {
       if(ndb_mgm_stop(h, 1, (const int*)&nodeId) < 0)
       {
+        ndb_mgm_destroy_handle(&h);
         return SEND_OR_RECEIVE_FAILED;
       }
     }
@@ -923,6 +927,7 @@ int MgmtSrvr::sendStopMgmd(NodeId nodeId,
       nodes[0]= (int)nodeId;
       if(ndb_mgm_restart2(h, 1, nodes, initialStart, nostart, abort) < 0)
       {
+        ndb_mgm_destroy_handle(&h);
         return SEND_OR_RECEIVE_FAILED;
       }
     }
@@ -1159,13 +1164,15 @@ int MgmtSrvr::sendSTOP_REQ(const Vector<NodeId> &node_ids,
 	CAST_CONSTPTR(NodeFailRep, signal->getDataPtr());
       NdbNodeBitmask mask;
       mask.assign(NdbNodeBitmask::Size, rep->theNodes);
-      mask.bitAND(notstarted);
+      mask.bitANDC(notstarted);
       nodes.bitANDC(mask);
       
       if (singleUserNodeId == 0)
 	stoppedNodes.bitOR(mask);
       break;
     }
+    case GSN_TAKE_OVERTCCONF:
+      continue;
     default:
       report_unknown_signal(signal);
 #ifdef VM_TRACE
@@ -1188,18 +1195,13 @@ int MgmtSrvr::sendSTOP_REQ(const Vector<NodeId> &node_ids,
 int MgmtSrvr::stopNodes(const Vector<NodeId> &node_ids,
                         int *stopCount, bool abort, int* stopSelf)
 {
-  if (!abort)
-  {
-    NodeId nodeId = 0;
-    ClusterMgr::Node node;
-    while(getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_NDB))
-    {
-      node = theFacade->theClusterMgr->getNodeInfo(nodeId);
-      if((node.m_state.startLevel != NodeState::SL_STARTED) && 
-	 (node.m_state.startLevel != NodeState::SL_NOTHING))
-	return OPERATION_NOT_ALLOWED_START_STOP;
-    }
-  }
+  /*
+    verify that no nodes are starting before stopping as this would cause
+    the starting node to shutdown
+  */
+  if (!abort && check_nodes_starting())
+    return OPERATION_NOT_ALLOWED_START_STOP;
+
   NdbNodeBitmask nodes;
   int ret= sendSTOP_REQ(node_ids,
                         nodes,
@@ -1270,15 +1272,6 @@ int MgmtSrvr::enterSingleUser(int * stopCount, Uint32 singleUserNodeId)
 {
   if (getNodeType(singleUserNodeId) != NDB_MGM_NODE_TYPE_API)
     return NODE_NOT_API_NODE;
-  NodeId nodeId = 0;
-  ClusterMgr::Node node;
-  while(getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_NDB))
-  {
-    node = theFacade->theClusterMgr->getNodeInfo(nodeId);
-    if((node.m_state.startLevel != NodeState::SL_STARTED) && 
-       (node.m_state.startLevel != NodeState::SL_NOTHING))
-      return OPERATION_NOT_ALLOWED_START_STOP;
-  }
   NdbNodeBitmask nodes;
   Vector<NodeId> node_ids;
   int stopSelf;
@@ -1300,11 +1293,47 @@ int MgmtSrvr::enterSingleUser(int * stopCount, Uint32 singleUserNodeId)
  * Perform node restart
  */
 
+int MgmtSrvr::check_nodes_stopping()
+{
+  NodeId nodeId = 0;
+  ClusterMgr::Node node;
+  while(getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_NDB))
+  {
+    node = theFacade->theClusterMgr->getNodeInfo(nodeId);
+    if((node.m_state.startLevel == NodeState::SL_STOPPING_1) || 
+       (node.m_state.startLevel == NodeState::SL_STOPPING_2) || 
+       (node.m_state.startLevel == NodeState::SL_STOPPING_3) || 
+       (node.m_state.startLevel == NodeState::SL_STOPPING_4))
+      return 1;
+  }
+  return 0;
+}
+
+int MgmtSrvr::check_nodes_starting()
+{
+  NodeId nodeId = 0;
+  ClusterMgr::Node node;
+  while(getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_NDB))
+  {
+    node = theFacade->theClusterMgr->getNodeInfo(nodeId);
+    if((node.m_state.startLevel == NodeState::SL_STARTING))
+      return 1;
+  }
+  return 0;
+}
+
 int MgmtSrvr::restartNodes(const Vector<NodeId> &node_ids,
                            int * stopCount, bool nostart,
                            bool initialStart, bool abort,
                            int *stopSelf)
 {
+  /*
+    verify that no nodes are starting before stopping as this would cause
+    the starting node to shutdown
+  */
+  if (!abort && check_nodes_starting())
+    return OPERATION_NOT_ALLOWED_START_STOP;
+
   NdbNodeBitmask nodes;
   int ret= sendSTOP_REQ(node_ids,
                         nodes,
@@ -1350,6 +1379,21 @@ int MgmtSrvr::restartNodes(const Vector<NodeId> &node_ids,
   if (nostart)
     return 0;
 
+  /*
+    verify that no nodes are stopping before starting as this would cause
+    the starting node to shutdown
+  */
+  int retry= 600*10;
+  for (;check_nodes_stopping();)
+  {
+    if (--retry)
+      break;
+    NdbSleep_MilliSleep(100);
+  }
+
+  /*
+    start the nodes
+  */
   for (unsigned i = 0; i < node_ids.size(); i++)
   {
     (void) start(node_ids[i]);
@@ -1689,6 +1733,8 @@ MgmtSrvr::setEventReportingLevelImpl(int nodeId_arg,
       nodes.clear(rep->failedNodeId);
       break;
     }
+    case GSN_TAKE_OVERTCCONF:
+      continue;
     default:
       report_unknown_signal(signal);
       return SEND_OR_RECEIVE_FAILED;
@@ -1974,14 +2020,17 @@ MgmtSrvr::handleReceivedSignal(NdbApiSignal* signal)
     ndbout << "TAMPER ORD" << endl;
     break;
 
+  case GSN_TAKE_OVERTCCONF:
+    break;
+
   default:
-    g_eventLogger.error("Unknown signal received. SignalNumber: "
-			"%i from (%d, %x)",
-			gsn,
-			refToNode(signal->theSendersBlockRef),
-			refToBlock(signal->theSendersBlockRef));
+    g_eventLogger->error("Unknown signal received. SignalNumber: "
+                         "%i from (%d, %x)",
+                         gsn,
+                         refToNode(signal->theSendersBlockRef),
+                         refToBlock(signal->theSendersBlockRef));
   }
-  
+
   if (theWaitState == NO_WAIT) {
     NdbCondition_Signal(theMgmtWaitForResponseCondPtr);
   }
@@ -2168,6 +2217,8 @@ MgmtSrvr::alloc_node_id_req(NodeId free_node_id, enum ndb_mgm_node_type type)
       // ignore NF_COMPLETEREP will come
       continue;
     }
+    case GSN_TAKE_OVERTCCONF:
+      continue;
     default:
       report_unknown_signal(signal);
       return SEND_OR_RECEIVE_FAILED;
@@ -2299,6 +2350,7 @@ MgmtSrvr::alloc_node_id(NodeId * nodeId,
 			  "or specifying unique host names in config file,\n"
 			  "or specifying just one mgmt server in config file.",
 			  tmp);
+      NdbMutex_Unlock(m_configMutex);
       error_code = NDB_MGM_ALLOCID_CONFIG_MISMATCH;
       DBUG_RETURN(false);
     }
@@ -2330,11 +2382,12 @@ MgmtSrvr::alloc_node_id(NodeId * nodeId,
       ndb_error_string(res, buf, sizeof(buf));
       error_string.appfmt("Cluster refused allocation of id %d. Error: %d (%s).",
 			  save_id_found, res, buf);
-      g_eventLogger.warning("Cluster refused allocation of id %d. "
-                            "Connection from ip %s. "
-                            "Returned error string \"%s\"", save_id_found,
-                            inet_ntoa(((struct sockaddr_in *)(client_addr))->sin_addr),
-                            error_string.c_str());
+      g_eventLogger->warning("Cluster refused allocation of id %d. "
+                             "Connection from ip %s. "
+                             "Returned error string \"%s\"", save_id_found,
+                             inet_ntoa(((struct sockaddr_in *)
+                                        (client_addr))->sin_addr),
+                             error_string.c_str());
       DBUG_RETURN(false);
     }
   }
@@ -2374,9 +2427,9 @@ MgmtSrvr::alloc_node_id(NodeId * nodeId,
     
     char tmp_str[128];
     m_reserved_nodes.getText(tmp_str);
-    g_eventLogger.info("Mgmt server state: nodeid %d reserved for ip %s, "
-                       "m_reserved_nodes %s.",
-                       id_found, get_connect_address(id_found), tmp_str);
+    g_eventLogger->info("Mgmt server state: nodeid %d reserved for ip %s, "
+                        "m_reserved_nodes %s.",
+                        id_found, get_connect_address(id_found), tmp_str);
     DBUG_RETURN(true);
   }
 
@@ -2472,14 +2525,14 @@ MgmtSrvr::alloc_node_id(NodeId * nodeId,
 
   if (log_event || error_code == NDB_MGM_ALLOCID_CONFIG_MISMATCH)
   {
-    g_eventLogger.warning("Allocate nodeid (%d) failed. Connection from ip %s."
-                          " Returned error string \"%s\"",
-                          *nodeId,
-                          client_addr != 0
-                          ? inet_ntoa(((struct sockaddr_in *)
-                                       (client_addr))->sin_addr)
-                          : "<none>",
-                          error_string.c_str());
+    g_eventLogger->warning("Allocate nodeid (%d) failed. Connection from ip %s."
+			   " Returned error string \"%s\"",
+			   *nodeId,
+			   client_addr != 0
+			   ? inet_ntoa(((struct sockaddr_in *)
+					(client_addr))->sin_addr)
+			   : "<none>",
+			   error_string.c_str());
 
     NodeBitmask connected_nodes2;
     get_connected_nodes(connected_nodes2);
@@ -2497,11 +2550,11 @@ MgmtSrvr::alloc_node_id(NodeId * nodeId,
       }
     }
     if (tmp_connected.length() > 0)
-      g_eventLogger.info("Mgmt server state: node id's %s connected but not reserved", 
-			 tmp_connected.c_str());
+      g_eventLogger->info("Mgmt server state: node id's %s connected but not reserved", 
+			  tmp_connected.c_str());
     if (tmp_not_connected.length() > 0)
-      g_eventLogger.info("Mgmt server state: node id's %s not connected but reserved",
-			 tmp_not_connected.c_str());
+      g_eventLogger->info("Mgmt server state: node id's %s not connected but reserved",
+			  tmp_not_connected.c_str());
   }
   DBUG_RETURN(false);
 }
@@ -2533,8 +2586,8 @@ MgmtSrvr::eventReport(const Uint32 * theData, Uint32 len)
   NodeId nodeId = eventReport->getNodeId();
   Ndb_logevent_type type = eventReport->getEventType();
   // Log event
-  g_eventLogger.log(type, theData, len, nodeId, 
-		    &m_event_listner[0].m_logLevel);  
+  g_eventLogger->log(type, theData, len, nodeId, 
+                     &m_event_listner[0].m_logLevel);
   m_event_listner.log(type, theData, len, nodeId);
 }
 
@@ -2679,6 +2732,8 @@ MgmtSrvr::startBackup(Uint32& backupId, int waitCompleted)
       // master node will report aborted backup
       break;
     }
+    case GSN_TAKE_OVERTCCONF:
+      continue;
     default:
       report_unknown_signal(signal);
       return SEND_OR_RECEIVE_FAILED;
@@ -2732,8 +2787,8 @@ MgmtSrvr::Allocated_resources::~Allocated_resources()
 
     char tmp_str[128];
     m_mgmsrv.m_reserved_nodes.getText(tmp_str);
-    g_eventLogger.info("Mgmt server state: nodeid %d freed, m_reserved_nodes %s.",
-		       get_nodeid(), tmp_str);
+    g_eventLogger->info("Mgmt server state: nodeid %d freed, m_reserved_nodes %s.",
+                        get_nodeid(), tmp_str);
   }
 }
 
@@ -2749,8 +2804,8 @@ MgmtSrvr::Allocated_resources::is_timed_out(NDB_TICKS tick)
 {
   if (m_alloc_timeout && tick > m_alloc_timeout)
   {
-    g_eventLogger.info("Mgmt server state: nodeid %d timed out.",
-                       get_nodeid());
+    g_eventLogger->info("Mgmt server state: nodeid %d timed out.",
+                        get_nodeid());
     return true;
   }
   return false;

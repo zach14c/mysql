@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -358,7 +358,9 @@ enum enum_binlog_func {
   BFN_RESET_SLAVE=       2,
   BFN_BINLOG_WAIT=       3,
   BFN_BINLOG_END=        4,
-  BFN_BINLOG_PURGE_FILE= 5
+  BFN_BINLOG_PURGE_FILE= 5,
+  BFN_GLOBAL_SCHEMA_LOCK=  6,
+  BFN_GLOBAL_SCHEMA_UNLOCK=7
 };
 
 enum enum_binlog_command {
@@ -1182,10 +1184,25 @@ typedef struct st_range_seq_if
       1 - No more ranges
   */
   uint (*next) (range_seq_t seq, KEY_MULTI_RANGE *range);
-} RANGE_SEQ_IF;
 
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx);
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx);
+  /*
+    Check whether range_info orders to skip the next record
+
+    SYNOPSIS
+      skip_record()
+        seq         The value returned by RANGE_SEQ_IF::init()
+        range_info  Information about the next range 
+                    (Ignored if MRR_NO_ASSOCIATION is set)
+        rowid       Rowid of the record to be checked (ignored if set to 0)
+    
+    RETURN
+      1 - Record with this range_info and/or this rowid shall be filtered
+          out from the stream of records returned by multi_range_read_next()
+      0 - The record shall be left in the stream
+  */ 
+  bool (*skip_record) (range_seq_t seq, char *range_info, uchar *rowid);
+ 
+} RANGE_SEQ_IF;
 
 class COST_VECT
 { 
@@ -1287,7 +1304,6 @@ void get_sweep_read_cost(TABLE *table, ha_rows nrows, bool interrupted,
 */
 #define HA_MRR_NO_NULL_ENDPOINTS 128
 
-
 class ha_statistics
 {
 public:
@@ -1312,6 +1328,11 @@ public:
   time_t check_time;
   time_t update_time;
   uint block_size;			/* index block size */
+  
+  /*
+    number of buffer bytes that native mrr implementation needs,
+  */
+  uint mrr_length_per_rec; 
 
   ha_statistics():
     data_file_length(0), max_data_file_length(0),
@@ -1612,8 +1633,8 @@ public:
                                               void *seq_init_param, 
                                               uint n_ranges, uint *bufsz,
                                               uint *flags, COST_VECT *cost);
-  virtual int multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                    uint *bufsz, uint *flags, COST_VECT *cost);
+  virtual ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                        uint *bufsz, uint *flags, COST_VECT *cost);
   virtual int multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                     uint n_ranges, uint mode,
                                     HANDLER_BUFFER *buf);
@@ -2448,8 +2469,8 @@ public:
   int dsmrr_fill_buffer(handler *h);
   int dsmrr_next(handler *h, char **range_info);
 
-  int dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
-                 uint *flags, COST_VECT *cost);
+  ha_rows dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
+                     uint *flags, COST_VECT *cost);
 
   ha_rows dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq, 
                             void *seq_init_param, uint n_ranges, uint *bufsz,
@@ -2571,18 +2592,36 @@ void trans_register_ha(THD *thd, bool all, handlerton *ht);
 #ifdef HAVE_NDB_BINLOG
 int ha_reset_logs(THD *thd);
 int ha_binlog_index_purge_file(THD *thd, const char *file);
-void ha_reset_slave(THD *thd);
+int ha_reset_slave(THD *thd);
 void ha_binlog_log_query(THD *thd, handlerton *db_type,
                          enum_binlog_command binlog_command,
                          const char *query, uint query_length,
                          const char *db, const char *table_name);
 void ha_binlog_wait(THD *thd);
 int ha_binlog_end(THD *thd);
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd);
+  ~Ha_global_schema_lock_guard();
+  int lock(int no_queue= 0);
+private:
+  THD *m_thd;
+  int m_lock;
+};
 #else
-#define ha_reset_logs(a) do {} while (0)
-#define ha_binlog_index_purge_file(a,b) do {} while (0)
-#define ha_reset_slave(a) do {} while (0)
+inline int ha_int_dummy() { return 0; }
+#define ha_reset_logs(a) ha_int_dummy()
+#define ha_binlog_index_purge_file(a,b) ha_int_dummy()
+#define ha_reset_slave(a) ha_int_dummy()
 #define ha_binlog_log_query(a,b,c,d,e,f,g) do {} while (0)
 #define ha_binlog_wait(a) do {} while (0)
 #define ha_binlog_end(a)  do {} while (0)
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd) {}
+  ~Ha_global_schema_lock_guard() {}
+  int lock(int no_queue= 0) { return 0; }
+};
 #endif

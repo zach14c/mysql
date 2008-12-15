@@ -16,15 +16,15 @@ AM_CONFIG_HEADER([include/config.h:config.h.in])
 
 NDB_VERSION_MAJOR=6
 NDB_VERSION_MINOR=2
-NDB_VERSION_BUILD=12
-NDB_VERSION_STATUS="-RC"
+NDB_VERSION_BUILD=17
+NDB_VERSION_STATUS="-GA"
 
 PROTOCOL_VERSION=10
 DOT_FRM_VERSION=6
 # See the libtool docs for information on how to do shared lib versions.
 SHARED_LIB_MAJOR_VERSION=16
 SHARED_LIB_VERSION=$SHARED_LIB_MAJOR_VERSION:0:0
-NDB_SHARED_LIB_MAJOR_VERSION=3
+NDB_SHARED_LIB_MAJOR_VERSION=4
 NDB_SHARED_LIB_VERSION=$NDB_SHARED_LIB_MAJOR_VERSION:0:0
 
 # Set all version vars based on $VERSION. How do we do this more elegant ?
@@ -403,7 +403,7 @@ fi
 MYSQL_PROG_AR
 
 # libmysqlclient versioning when linked with GNU ld.
-if $LD --version 2>/dev/null|grep -q GNU; then
+if $LD --version 2>/dev/null| grep GNU >/dev/null 2>&1; then
   LD_VERSION_SCRIPT="-Wl,--version-script=\$(top_builddir)/libmysql/libmysql.ver"
   AC_CONFIG_FILES(libmysql/libmysql.ver)
 fi
@@ -475,11 +475,11 @@ AC_SUBST(PERL5)
 
 # Enable the abi_check rule only if gcc is available
 
-if expr "$CC" : ".*gcc.*"
+if test "$GCC" != "yes" || expr "$CC" : ".*icc.*"
 then
-  ABI_CHECK="abi_check"
-else
   ABI_CHECK=""
+else
+  ABI_CHECK="abi_check"
 fi
 
 AC_SUBST(ABI_CHECK)
@@ -642,19 +642,19 @@ fi
 AC_MSG_CHECKING(whether features provided by the user community should be included.)
 AC_ARG_ENABLE(community-features,
     AC_HELP_STRING(
-        [--disable-community-features], 
-        [Disable additional features provided by the user community.]),
+        [--enable-community-features], 
+        [Enable additional features provided by the user community.]),
     [ ENABLE_COMMUNITY_FEATURES=$enableval ],
-    [ ENABLE_COMMUNITY_FEATURES=yes ]
+    [ ENABLE_COMMUNITY_FEATURES=no ]
     )
 
 if test "$ENABLE_COMMUNITY_FEATURES" = "yes"
 then
   AC_DEFINE([COMMUNITY_SERVER], [1],
             [Whether features provided by the user community should be included])
-  AC_MSG_RESULT([yes])
+  AC_MSG_RESULT([yes, community server])
 else
-  AC_MSG_RESULT([no])
+  AC_MSG_RESULT([no, enterprise server])
 fi
 
 AC_ARG_WITH(server-suffix,
@@ -858,6 +858,7 @@ AC_CHECK_FUNCS(log2)
 AC_CHECK_LIB(nsl_r, gethostbyname_r, [],
   AC_CHECK_LIB(nsl, gethostbyname_r))
 AC_CHECK_FUNC(gethostbyname_r)
+AC_CHECK_LIB(mtmalloc, malloc)
 
 AC_CHECK_FUNC(setsockopt, , AC_CHECK_LIB(socket, setsockopt))
 AC_CHECK_FUNC(yp_get_default_domain, ,
@@ -2093,11 +2094,12 @@ AC_CHECK_FUNCS(alarm bcmp bfill bmove bsearch bzero \
   sighold sigset sigthreadmask port_create sleep thr_yield \
   snprintf socket stpcpy strcasecmp strerror strsignal strnlen strpbrk strstr \
   strtol strtoll strtoul strtoull tell tempnam thr_setconcurrency vidattr \
-  posix_fallocate backtrace backtrace_symbols backtrace_symbols_fd)
+  posix_fallocate backtrace backtrace_symbols backtrace_symbols_fd directio)
 
 #
 #
 #
+AC_CHECK_LIB(rt, clock_gettime)
 case "$target" in
  *-*-aix4* | *-*-sco*)
 	# (grr) aix 4.3 has a stub for clock_gettime, (returning ENOSYS)
@@ -2108,6 +2110,7 @@ case "$target" in
  *) AC_CHECK_FUNCS(clock_gettime)
     ;;
 esac
+AC_CHECK_FUNCS(pthread_condattr_setclock)
 
 # Check that isinf() is available in math.h and can be used in both C and C++ 
 # code
@@ -2820,7 +2823,7 @@ if test -d "$srcdir/cmd-line-utils/readline" ; then
   AC_CONFIG_FILES(cmd-line-utils/readline/Makefile)
 fi
 
-AC_CONFIG_FILES(Makefile extra/Makefile mysys/Makefile dnl
+AC_CONFIG_FILES(Makefile extra/Makefile mysys/Makefile mysys/tests/Makefile dnl
  unittest/Makefile unittest/mytap/Makefile unittest/mytap/t/Makefile dnl
  unittest/mysys/Makefile unittest/examples/Makefile dnl
  strings/Makefile regex/Makefile storage/Makefile dnl

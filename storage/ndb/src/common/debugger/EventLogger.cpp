@@ -758,15 +758,15 @@ void getTextEventBufferStatus(QQQQ) {
   convert_unit(alloc, alloc_unit);
   convert_unit(max_, max_unit);
   BaseString::snprintf(m_text, m_text_len,
-		       "Event buffer status: used=%d%s(%d%) alloc=%d%s(%d%) "
-		       "max=%d%s apply_gci=%lld latest_gci=%lld",
+		       "Event buffer status: used=%d%s(%d%%) alloc=%d%s(%d%%) "
+		       "max=%d%s apply_epoch=%u/%u latest_epoch=%u/%u",
 		       used, used_unit,
 		       theData[2] ? (Uint32)((((Uint64)theData[1])*100)/theData[2]) : 0,
 		       alloc, alloc_unit,
 		       theData[3] ? (Uint32)((((Uint64)theData[2])*100)/theData[3]) : 0,
 		       max_, max_unit,
-		       theData[4]+(((Uint64)theData[5])<<32),
-		       theData[6]+(((Uint64)theData[7])<<32));
+		       theData[5], theData[4],
+		       theData[7], theData[6]);
 }
 void getTextWarningEvent(QQQQ) {
   BaseString::snprintf(m_text, m_text_len, (char *)&theData[1]);
@@ -990,6 +990,28 @@ void getTextStartReport(QQQQ) {
   }
 }
 
+void getTextSubscriptionStatus(QQQQ)
+{
+  switch(theData[1]) {
+  case(1): // SubscriptionStatus::DISCONNECTED
+    BaseString::snprintf(m_text, m_text_len,
+                         "Disconnecting node %u because it has "
+                         "exceeded MaxBufferedEpochs (%u > %u), epoch %u/%u",
+                         theData[2],
+                         theData[5],
+                         theData[6],
+                         theData[4], theData[3]);
+    break;
+  case(2): // SubscriptionStatus::INCONSISTENT
+    BaseString::snprintf(m_text, m_text_len,
+                         "Nodefailure while out of event buffer: "
+                         "informing subscribers of possibly missing event data"
+                         ", epoch %u/%u",
+                         theData[4], theData[3]);
+    break;
+  }
+}
+
 #if 0
 BaseString::snprintf(m_text, 
 		     m_text_len, 
@@ -1071,6 +1093,7 @@ const EventLoggerBase::EventRepLogLevelMatrix EventLoggerBase::matrix[] = {
   ROW(MissedHeartbeat,         LogLevel::llError,  8, Logger::LL_WARNING ),
   ROW(DeadDueToHeartbeat,      LogLevel::llError,  8, Logger::LL_ALERT   ),
   ROW(WarningEvent,            LogLevel::llError,  2, Logger::LL_WARNING ),
+  ROW(SubscriptionStatus,      LogLevel::llError,  4, Logger::LL_WARNING ),
   // INFO
   ROW(SentHeartbeat,           LogLevel::llInfo,  12, Logger::LL_INFO ),
   ROW(CreateLogBytes,          LogLevel::llInfo,  11, Logger::LL_INFO ),
@@ -1230,3 +1253,18 @@ EventLogger::setFilterLevel(int filterLevel)
 {
   m_filterLevel = filterLevel;
 }
+
+
+EventLogger*
+create_event_logger()
+{
+  return new EventLogger();
+}
+
+void
+destroy_event_logger(class EventLogger ** g_eventLogger)
+{
+  delete *g_eventLogger;
+  *g_eventLogger = 0;
+}
+
