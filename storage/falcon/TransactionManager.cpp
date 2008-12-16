@@ -329,7 +329,6 @@ void TransactionManager::getTransactionInfo(InfoTable* infoTable)
 		transaction->getInfo(infoTable);
 }
 
-
 void TransactionManager::purgeTransactions()
 {
 	// This method is called by the scavenger to clean up old committed
@@ -346,7 +345,6 @@ void TransactionManager::purgeTransactions()
 	syncCommitted.lock(Exclusive);
 
 	purgeTransactionsWithLocks();
-
 }
 
 

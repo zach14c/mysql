@@ -2366,7 +2366,7 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 			KEY *key = altered_table->key_info + n;
 			KEY *tableEnd = table->key_info + table->s->keys;
 			KEY *tableKey;
-			
+
 			// Determine if this is a new index
 
 			for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
@@ -2375,7 +2375,7 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 
 			// Unique, non-null keys are interpreted as primary keys.
 			// Online add/drop primary keys not yet supported.
-			
+		
 			if (tableKey >= tableEnd)
 				if (n == altered_table->s->primary_key)
 					{
@@ -2384,7 +2384,7 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 					}
 			}
 		}
-		
+
 	DBUG_RETURN(HA_ALTER_SUPPORTED_NO_LOCK);
 }
 

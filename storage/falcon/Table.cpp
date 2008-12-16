@@ -534,8 +534,10 @@ Record* Table::fetchNext(int32 start)
 					
 					return record;
 					}
-			
+
+#ifdef CHECK_RECORD_ACTIVITY
 				record->active = false;
+#endif
 				record->release();
 				sync.lock(Shared);
 				
@@ -610,7 +612,9 @@ Record* Table::fetchNext(int32 start)
 				}
 			else
 				{
+#ifdef CHECK_RECORD_ACTIVITY
 				record->active = false;
+#endif
 				record->release();
 				}
 			
@@ -915,7 +919,9 @@ Record* Table::fetch(int32 recordNumber)
 				if (insert(record, NULL, recordNumber))
 					return record;
 				
+#ifdef CHECK_RECORD_ACTIVITY
 				record->active = false;
+#endif
 				record->release();
 				
 				continue;
@@ -932,7 +938,9 @@ Record* Table::fetch(int32 recordNumber)
 		if (insert(record, NULL, recordNumber))
 			return record;
 		
+#ifdef CHECK_RECORD_ACTIVITY
 		record->active = false;
+#endif
 		record->release();
 		sync.lock(Shared);
 		}
@@ -1971,7 +1979,9 @@ bool Table::insert(Record * record, Record *prior, int recordNumber)
 		{
 		if (prior)
 			{
+#ifdef CHECK_RECORD_ACTIVITY
 			prior->active = false;
+#endif
 			prior->release();
 			}
 		
@@ -3356,7 +3366,9 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 		if (n >= 7)
 			Log::debug("Table::validateAndInsert: things going badly (%d)\n", n);
 			
+#ifdef CHECK_RECORD_ACTIVITY
 		record->active = false;
+#endif
 		}
 		
 	throw SQLError(UPDATE_CONFLICT, "unexpected update conflict in table %s.%s record %d", schemaName, name, record->recordNumber);
@@ -3570,7 +3582,9 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					return record;
 					}
 		
+#ifdef CHECK_RECORD_ACTIVITY
 				recordVersion->active = false;
+#endif
 				recordVersion->release();
 				}
 				break;
@@ -3808,7 +3822,8 @@ void Table::deleteRecordBacklog(int32 recordNumber)
 
 SyncObject* Table::getSyncPrior(Record* record)
 {
-	int lockNumber = record->recordNumber % SYNC_VERSIONS_SIZE;
+	int recNumber = (record->recordNumber == -1) ? 0 : record->recordNumber;
+	int lockNumber = recNumber % SYNC_VERSIONS_SIZE;
 	return syncPriorVersions + lockNumber;
 }
 
