@@ -3808,7 +3808,8 @@ void Table::deleteRecordBacklog(int32 recordNumber)
 
 SyncObject* Table::getSyncPrior(Record* record)
 {
-	int lockNumber = record->recordNumber % SYNC_VERSIONS_SIZE;
+	int recNumber = (record->recordNumber == -1) ? 0 : record->recordNumber;
+	int lockNumber = recNumber % SYNC_VERSIONS_SIZE;
 	return syncPriorVersions + lockNumber;
 }
 
