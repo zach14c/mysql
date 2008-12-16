@@ -276,7 +276,7 @@ void Transaction::commit()
 
 	// Set the commit transition id for this transaction
 
-    commitId = INTERLOCKED_INCREMENT(transactionManager->transactionSequence);
+	commitId = INTERLOCKED_INCREMENT(transactionManager->transactionSequence);
 
 	transactionManager->activeTransactions.remove(this);
 	transactionManager->committedTransactions.append(this);
