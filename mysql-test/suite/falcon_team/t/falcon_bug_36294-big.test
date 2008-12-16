@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+--source include/big_test.inc
 
 #
 # Bug#36294: Assertion in Cache::writePage
