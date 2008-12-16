@@ -375,6 +375,63 @@ eval SELECT $master_after_pos - $master_before_pos AS Delta;
 --enable_query_log
 
 #
+# Now test 'slave start' while restore is in progress on slave.
+#
+
+RESET MASTER;
+
+connection slave;
+
+RESET SLAVE;
+
+SET DEBUG_SYNC = 'reset';
+
+connection slave1;
+
+SET DEBUG_SYNC = 'restore_before_end SIGNAL restore_running WAIT_FOR proceed';
+SEND RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
+
+connection slave;
+
+SET DEBUG_SYNC = 'now WAIT_FOR restore_running';
+
+--echo Try to start the slave while restore is running -- gets error.
+--error ER_RESTORE_CANNOT_START_SLAVE
+SLAVE START;
+
+SET DEBUG_SYNC = 'now SIGNAL proceed';
+
+--replace_result $MASTER_MYPORT MASTER_PORT
+--replace_column 1 # 6 # 7 # 8 # 9 # 22 # 23 # 33 #
+--query_vertical SHOW SLAVE STATUS
+
+connection slave1;
+--echo Restore is now complete.
+--replace_column 1 #
+reap;
+SET DEBUG_SYNC = 'now SIGNAL done';
+
+connection slave;
+
+SET DEBUG_SYNC = 'now WAIT_FOR done';
+
+SHOW DATABASES; 
+
+SET DEBUG_SYNC = 'reset';
+
+--echo Try to start the slave after restore is done -- should succeed.
+SLAVE START;
+--source include/wait_for_slave_to_start.inc
+
+--replace_result $MASTER_MYPORT MASTER_PORT
+--replace_column 1 # 6 # 7 # 8 # 9 # 22 # 23 # 33 #
+--query_vertical SHOW SLAVE STATUS
+
+--echo Now stop the slave.
+SLAVE STOP;
+--source include/wait_for_slave_to_stop.inc
+
+#
 # Cleanup
 #
 connection master;

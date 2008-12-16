@@ -1976,6 +1976,8 @@ extern ulong slow_launch_threads, slow_launch_time;
 extern ulong table_cache_size, table_def_size;
 extern ulong max_connections,max_connect_errors, connect_timeout;
 extern my_bool slave_allow_batching;
+extern my_bool allow_slave_start;
+extern LEX_STRING reason_slave_blocked;
 extern ulong slave_net_timeout, slave_trans_retries;
 extern uint max_user_connections;
 extern ulong what_to_log,flush_time;
@@ -2066,7 +2068,7 @@ extern pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_lock_db,
        LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_short,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_slave_list, LOCK_active_mi, LOCK_manager, LOCK_global_read_lock,
-       LOCK_global_system_variables, LOCK_user_conn,
+       LOCK_global_system_variables, LOCK_user_conn, LOCK_slave_start,
        LOCK_prepared_stmt_count,
        LOCK_connection_count;
 #ifdef HAVE_OPENSSL

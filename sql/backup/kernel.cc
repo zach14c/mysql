@@ -208,12 +208,6 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
   case SQLCOM_RESTORE:
   {
 
-    /*
-      Restore cannot be run on a slave while connected to a master.
-    */
-    if (obs::is_slave())
-      DBUG_RETURN(send_error(context, ER_RESTORE_ON_SLAVE));
-
     Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
                                                     thd->query);
     
@@ -701,6 +695,20 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 {
   using namespace backup;  
 
+  /*
+    Block replication from starting.
+  */
+  obs::block_replication(TRUE, "RESTORE");
+
+  /*
+    Restore cannot be run on a slave while connected to a master.
+  */
+  if (obs::is_slave())
+  {
+    fatal_error(report_error(ER_RESTORE_ON_SLAVE));
+    return NULL;
+  }
+
   if (m_error)
     return NULL;
   
@@ -932,6 +940,11 @@ int Backup_restore_ctx::close()
     Allow slaves connect after restore is complete.
   */
   obs::disable_slave_connections(FALSE);
+
+  /*
+    Allow replication to start after restore is complete.
+  */
+  obs::block_replication(FALSE, "");
 
   /*
     Turn binlog back on iff it was turned off earlier.

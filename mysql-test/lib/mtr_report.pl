@@ -377,6 +377,13 @@ sub mtr_report_stats ($) {
 		  /Backup: The MySQL server is running with the /
 		) or
 		
+		# The rpl_backup test will throw an error about running restore
+		# on a slave.
+		($testname eq 'rpl.rpl_backup') and
+		(
+		  /A restore operation was attempted on a slave during replication/
+		) or
+		
 		# The views test triggers errors below on purpose
 		($testname eq 'backup.backup_views') and
 		(

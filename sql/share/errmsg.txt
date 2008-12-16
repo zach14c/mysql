@@ -6447,4 +6447,5 @@ ER_BACKUP_RESTORE_DBS
   eng "Restoring %u database(s) %.220s"
 ER_BACKUP_SYNCHRONIZE
   eng "Backup failed to synchronize table images."
-
+ER_RESTORE_CANNOT_START_SLAVE
+  eng "Cannot start slave. SLAVE START is blocked by %-.64s."
