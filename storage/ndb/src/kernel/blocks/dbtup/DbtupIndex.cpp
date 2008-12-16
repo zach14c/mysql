@@ -144,7 +144,7 @@ Dbtup::tuxReadAttrs(Uint32 fragPtrI,
   KeyReqStruct req_struct;
   tmpOp.m_tuple_location.m_page_no= pageId;
   tmpOp.m_tuple_location.m_page_idx= pageIndex;
-
+  tmpOp.op_struct.op_type = ZREAD; // valgrind
   setup_fixed_part(&req_struct, &tmpOp, tablePtr.p);
   Tuple_header *tuple_ptr= req_struct.m_tuple_ptr;
   if (tuple_ptr->get_tuple_version() != tupVersion)
@@ -158,8 +158,8 @@ Dbtup::tuxReadAttrs(Uint32 fragPtrI,
       if (opPtr.p->tupVersion == tupVersion) {
 	jam();
 	if (!opPtr.p->m_copy_tuple_location.isNull()) {
-	  req_struct.m_tuple_ptr= (Tuple_header*)
-	    c_undo_buffer.get_ptr(&opPtr.p->m_copy_tuple_location);
+	  req_struct.m_tuple_ptr=
+	    get_copy_tuple(tablePtr.p, &opPtr.p->m_copy_tuple_location);
         }
 	break;
       }
@@ -238,8 +238,8 @@ Dbtup::tuxReadPk(Uint32 fragPtrI, Uint32 pageId, Uint32 pageIndex, Uint32* dataO
       Uint32 opPtrI= req_struct.m_tuple_ptr->m_operation_ptr_i;
       Operationrec* opPtrP= c_operation_pool.getPtr(opPtrI);
       ndbassert(!opPtrP->m_copy_tuple_location.isNull());
-      req_struct.m_tuple_ptr= (Tuple_header*)
-	c_undo_buffer.get_ptr(&opPtrP->m_copy_tuple_location);
+      req_struct.m_tuple_ptr=
+	get_copy_tuple(tablePtr.p, &opPtrP->m_copy_tuple_location);
     }
     prepare_read(&req_struct, tablePtr.p, false);
     
@@ -357,6 +357,7 @@ Dbtup::tuxQueryTh(Uint32 fragPtrI,
     Operationrec tmpOp;
     tmpOp.m_tuple_location.m_page_no = pageId;
     tmpOp.m_tuple_location.m_page_idx = pageIndex;
+    tmpOp.op_struct.op_type = ZREAD; // valgrind
     setup_fixed_part(&req_struct, &tmpOp, tablePtr.p);
   }
 

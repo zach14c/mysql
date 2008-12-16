@@ -74,7 +74,9 @@ BACKUP DATABASE bup_backupdir TO '../../bup_backupdir4.bak';
 --file_exists $MYSQLTEST_VARDIR/bup_backupdir4.bak
 
 --echo Try a backup to an invalid relative path.
---error ER_BACKUP_WRITE_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
 BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
 
 --echo 
@@ -86,8 +88,9 @@ BACKUP DATABASE bup_backupdir TO '../not/there/bup_backupdir5.bak';
 # Do not print the SQL command to result file because dir is not deterministic across hosts
 --disable_query_log
 # Replace actual dir in error message because $MYSQLTEST_VARDIR is not deterministic
-replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/there\/either\/bup_backupdir6.bak'/ ;
---error ER_BACKUP_WRITE_LOC
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
 --eval BACKUP DATABASE bup_backupdir TO '$MYSQLTEST_VARDIR/master_data/not/there/either/bup_backupdir6.bak';
 --enable_query_log
 

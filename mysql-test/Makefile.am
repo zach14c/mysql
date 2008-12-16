@@ -65,6 +65,7 @@ dist-hook:
 	$(INSTALL_DATA) $(srcdir)/include/*.inc $(distdir)/include
 	$(INSTALL_DATA) $(srcdir)/include/*.sql $(distdir)/include
 	$(INSTALL_DATA) $(srcdir)/include/*.test $(distdir)/include
+	$(INSTALL_DATA) $(srcdir)/include/*.txt $(distdir)/include
 	$(INSTALL_DATA) $(srcdir)/r/*.result $(srcdir)/r/*.require $(distdir)/r
 	$(INSTALL_DATA) $(srcdir)/std_data/Moscow_leap $(distdir)/std_data
 	$(INSTALL_DATA) $(srcdir)/std_data/Index.xml $(distdir)/std_data

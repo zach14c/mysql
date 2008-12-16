@@ -43,17 +43,17 @@ DROP DATABASE db1;
 
 --echo
 --echo Server should not crash for backup using default driver 
---echo Partitioned Falcon tables
---echo Test for bug#33566, bug#36792 
+--echo Mix of tables
 --echo 
 
 CREATE DATABASE db1;
 USE db1;
 
+# create partitioned MyISAM table - will use default driver
 CREATE TABLE partition_table (
   int_column int(11), 
   char_column char(5))
-engine=falcon
+ENGINE=myisam
 PARTITION BY HASH (int_column);
 
 INSERT INTO partition_table VALUES (0,'pVtIa');
@@ -62,30 +62,7 @@ INSERT INTO partition_table VALUES (20,'UezFi');
 INSERT INTO partition_table VALUES (25,'cxmeH');
 INSERT INTO partition_table VALUES (65,'lIuNS');
 
-#
-# This portion of the test has been disabled. See BUG#39017
-#
-#--echo backup on partitioned falcon
-#--replace_column 1 #
-#BACKUP DATABASE db1 to 'bup_falcon.bak';
-#
-#DROP DATABASE db1;
-#
-#--echo restore on partitioned falcon
-#--replace_column 1 #
-#RESTORE FROM 'bup_falcon.bak';
-
---echo testing content in restored tables
-SELECT * FROM partition_table ORDER BY int_column;
-
-
---echo
---echo Server should not crash for backup using default driver 
---echo Mix of tables
---echo 
-
-# partition_table already exists in the database
-# re-create the csv_table
+# create CSV table - will use default driver
 CREATE TABLE csv_table(
    id int NOT NULL,
    name char(20) NOT NULL,
@@ -102,23 +79,20 @@ ENGINE=myisam;
 
 INSERT INTO myisam_table VALUES(1,'v1'),(2,'v2'),(3,'v3');
 
-#
-# This portion of the test has been disabled. See BUG#39017
-#
-#--echo backup on mixed table database
-#--replace_column 1 #
-#BACKUP DATABASE db1 to 'bup_mixed.bak';
-#
-#DROP DATABASE db1;
-#
-#--echo restore on mixed table database
-#--replace_column 1 #
-#RESTORE FROM 'bup_mixed.bak';
-#
-#--echo testing content in restored tables
-#SELECT * FROM partition_table ORDER BY int_column;
-#SELECT * FROM csv_table ORDER BY id;
-#SELECT * FROM myisam_table ORDER BY i;
+--echo backup on mixed table database
+--replace_column 1 #
+BACKUP DATABASE db1 to 'bup_mixed.bak';
+
+DROP DATABASE db1;
+
+--echo restore on mixed table database
+--replace_column 1 #
+RESTORE FROM 'bup_mixed.bak';
+
+--echo testing content in restored tables
+SELECT * FROM partition_table ORDER BY int_column;
+SELECT * FROM csv_table ORDER BY id;
+SELECT * FROM myisam_table ORDER BY i;
 
 
 # Test cleanup section

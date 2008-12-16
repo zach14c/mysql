@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -314,6 +314,8 @@ static sys_var_thd_ulong	sys_interactive_timeout(&vars, "interactive_timeout",
 						&SV::net_interactive_timeout);
 static sys_var_thd_ulong	sys_join_buffer_size(&vars, "join_buffer_size",
 					     &SV::join_buff_size);
+static sys_var_thd_ulong	sys_join_cache_level(&vars, "join_cache_level",
+					             &SV::join_cache_level);
 static sys_var_key_buffer_size	sys_key_buffer_size(&vars, "key_buffer_size");
 static sys_var_key_cache_long  sys_key_cache_block_size(&vars, "key_cache_block_size",
 						 offsetof(KEY_CACHE,
@@ -2454,13 +2456,11 @@ end:
 bool sys_var_log_state::update(THD *thd, set_var *var)
 {
   bool res;
-
   if (this == &sys_var_log)
     WARN_DEPRECATED(thd, 7,0, "@@log", "'@@general_log'");
   else if (this == &sys_var_log_slow)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
-  pthread_mutex_lock(&LOCK_global_system_variables);
   if (!var->save_result.ulong_value)
   {
     logger.deactivate_log_handler(thd, log_type);
@@ -2468,7 +2468,6 @@ bool sys_var_log_state::update(THD *thd, set_var *var)
   }
   else
     res= logger.activate_log_handler(thd, log_type);
-  pthread_mutex_unlock(&LOCK_global_system_variables);
   return res;
 }
 
@@ -2479,7 +2478,6 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
   else if (this == &sys_var_log_slow)
     WARN_DEPRECATED(thd, 7,0, "@@log_slow_queries", "'@@slow_query_log'");
 
-  pthread_mutex_lock(&LOCK_global_system_variables);
   /*
     Default for general and slow log is OFF.
     Default for backup logs is ON.
@@ -2489,7 +2487,6 @@ void sys_var_log_state::set_default(THD *thd, enum_var_type type)
     logger.activate_log_handler(thd, log_type);
   else
     logger.deactivate_log_handler(thd, log_type);
-  pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
 
@@ -2624,7 +2621,6 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
     goto err;
   }
 
-  pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
 
   /*
@@ -2647,10 +2643,6 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   default:
     assert(0);                                  // Impossible
   }
-  old_value= var_str->value;
-  var_str->value= res;
-  var_str->value_length= str_length;
-  my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
   if ((file_log && log_state) ||
       (backup_log && log_state))
   {
@@ -2659,19 +2651,19 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
     */
     switch (log_type) {
     case QUERY_LOG_SLOW:
-      file_log->open_slow_log(sys_var_slow_log_path.value);
+      file_log->open_slow_log(res);
       break;
     case QUERY_LOG_GENERAL:
-      file_log->open_query_log(sys_var_general_log_path.value);
+      file_log->open_query_log(res);
       break;
     /*
       Open the backup logs if specified.
     */
     case BACKUP_HISTORY_LOG:
-      backup_log->open_backup_history_log(sys_var_backup_history_log_path.value);
+      backup_log->open_backup_history_log(res);
       break;
     case BACKUP_PROGRESS_LOG:
-      backup_log->open_backup_progress_log(sys_var_backup_progress_log_path.value);
+      backup_log->open_backup_progress_log(res);
       break;
     default:
       DBUG_ASSERT(0);
@@ -2679,6 +2671,13 @@ bool update_sys_var_str_path(THD *thd, sys_var_str *var_str,
   }
 
   logger.unlock();
+
+  /* update global variable */
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  old_value= var_str->value;
+  var_str->value= res;
+  var_str->value_length= str_length;
+  my_free(old_value, MYF(MY_ALLOW_ZERO_PTR));
   pthread_mutex_unlock(&LOCK_global_system_variables);
 
 err:
@@ -2775,26 +2774,22 @@ static void sys_default_slow_log_path(THD *thd, enum_var_type type)
 
 bool sys_var_log_output::update(THD *thd, set_var *var)
 {
-  pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
   logger.init_slow_log(var->save_result.ulong_value);
   logger.init_general_log(var->save_result.ulong_value);
   *value= var->save_result.ulong_value;
   logger.unlock();
-  pthread_mutex_unlock(&LOCK_global_system_variables);
   return 0;
 }
 
 
 void sys_var_log_output::set_default(THD *thd, enum_var_type type)
 {
-  pthread_mutex_lock(&LOCK_global_system_variables);
   logger.lock_exclusive();
   logger.init_slow_log(LOG_FILE);
   logger.init_general_log(LOG_FILE);
   *value= LOG_FILE;
   logger.unlock();
-  pthread_mutex_unlock(&LOCK_global_system_variables);
 }
 
 
