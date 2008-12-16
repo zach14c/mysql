@@ -506,7 +506,8 @@ int StorageHandler::createTablespace(const char* tableSpaceName, const char* fil
 
 	try
 		{
-		JString cmd = genCreateTableSpace(tableSpaceName, filename, comment);
+		JString tableSpace= JString::upcase(tableSpaceName);
+		JString cmd = genCreateTableSpace(tableSpace, filename, comment);
 		Sync sync(&dictionarySyncObject, "StorageHandler::createTablespace");
 		sync.lock(Exclusive);
 		Statement *statement = dictionaryConnection->createStatement();
@@ -547,8 +548,9 @@ int StorageHandler::deleteTablespace(const char* tableSpaceName)
 
 	try
 		{
+		JString tableSpace= JString::upcase(tableSpaceName);
 		CmdGen gen;
-		gen.gen("drop tablespace \"%s\"", tableSpaceName);
+		gen.gen("drop tablespace \"%s\"", (const char*) tableSpace);
 		Sync sync(&dictionarySyncObject, "StorageHandler::deleteTablespace");
 		sync.lock(Exclusive);
 		Statement *statement = dictionaryConnection->createStatement();

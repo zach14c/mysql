@@ -375,6 +375,11 @@ const char* StorageTable::getSchemaName(void)
 	return share->schemaName;
 }
 
+const char* StorageTable::getTableSpaceName(void)
+{
+	return share->tableSpace;
+}
+
 void StorageTable::setConnection(StorageConnection* newStorageConn)
 {
 	if (bitmap)

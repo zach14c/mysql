@@ -99,6 +99,7 @@ public:
 	virtual const unsigned char* getEncoding(int fieldIndex);
 	virtual const char*			 getName(void);
 	virtual const char*			 getSchemaName(void);
+	virtual const char*			 getTableSpaceName(void);
 	virtual int		compareKey(const unsigned char* key, int keyLength);
 	virtual int		translateError(SQLException *exception, int defaultStorageError);
 	virtual int		isKeyNull(const unsigned char* key, int keyLength);
