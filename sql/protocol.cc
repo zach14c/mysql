@@ -930,7 +930,7 @@ bool Protocol_text::store(const char *from, size_t length,
 {
   CHARSET_INFO *tocs= this->thd->variables.character_set_results;
 #ifndef DBUG_OFF
-  DBUG_PRINT("info", ("Protocol_text::store field %u (%u): %*s", field_pos,
+  DBUG_PRINT("info", ("Protocol_text::store field %u (%u): %.*s", field_pos,
                       field_count, (int) length, from));
   DBUG_ASSERT(field_pos < field_count);
   DBUG_ASSERT(field_types == 0 ||
