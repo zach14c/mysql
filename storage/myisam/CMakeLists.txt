@@ -14,9 +14,6 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql
                     ${CMAKE_SOURCE_DIR}/regex
@@ -42,32 +39,32 @@ IF(NOT SOURCE_SUBLIBS)
   ADD_DEPENDENCIES(myisam GenError)
 
   ADD_EXECUTABLE(myisam_ftdump myisam_ftdump.c)
-  TARGET_LINK_LIBRARIES(myisam_ftdump myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(myisam_ftdump myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(myisamchk myisamchk.c)
-  TARGET_LINK_LIBRARIES(myisamchk myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(myisamchk myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(myisamlog myisamlog.c)
-  TARGET_LINK_LIBRARIES(myisamlog myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(myisamlog myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(myisampack myisampack.c)
 
-  TARGET_LINK_LIBRARIES(myisampack myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(myisampack myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(mi_test1 mi_test1.c)
-  TARGET_LINK_LIBRARIES(mi_test1 myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(mi_test1 myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(mi_test2 mi_test2.c)
-  TARGET_LINK_LIBRARIES(mi_test2 myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(mi_test2 myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(mi_test3 mi_test3.c)
-  TARGET_LINK_LIBRARIES(mi_test3  myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(mi_test3  myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(sp_test sp_test.c)
-  TARGET_LINK_LIBRARIES(sp_test myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(sp_test myisam mysys dbug strings zlib)
 
   ADD_EXECUTABLE(rt_test rt_test.c)
-  TARGET_LINK_LIBRARIES(rt_test myisam mysys debug dbug strings zlib ws2_32)
+  TARGET_LINK_LIBRARIES(rt_test myisam mysys dbug strings zlib)
   
   IF(EMBED_MANIFESTS)
     MYSQL_EMBED_MANIFEST("myisam_ftdump" "asInvoker")

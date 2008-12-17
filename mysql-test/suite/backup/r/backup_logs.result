@@ -137,7 +137,7 @@ SET DEBUG_SYNC= 'after_backup_log_init      SIGNAL started WAIT_FOR do_run';
 SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR finish';
 con2: Send restore command.
 con2: Backup id = 501.
-RESTORE FROM 'backup_logs_orig.bak';
+RESTORE FROM 'backup_logs_orig.bak' OVERWRITE;
 con1: Wait for the restore to be started.
 SET DEBUG_SYNC= 'now WAIT_FOR started';
 con1: Display progress
@@ -177,7 +177,7 @@ username	root
 backup_file	#
 backup_file_path	#
 user_comment	
-command	RESTORE FROM 'backup_logs_orig.bak'
+command	RESTORE FROM 'backup_logs_orig.bak' OVERWRITE
 drivers	MyISAM, Snapshot, Default
 SELECT * FROM mysql.backup_progress WHERE backup_id = 501;
 backup_id	object	start_time	stop_time	total_bytes	progress	error_num	notes

@@ -29,33 +29,20 @@ id	name	city
 DROP DATABASE db1;
 
 Server should not crash for backup using default driver 
-Partitioned Falcon tables
-Test for bug#33566, bug#36792 
+Mix of tables
 
 CREATE DATABASE db1;
 USE db1;
 CREATE TABLE partition_table (
 int_column int(11), 
 char_column char(5))
-engine=falcon
+ENGINE=myisam
 PARTITION BY HASH (int_column);
 INSERT INTO partition_table VALUES (0,'pVtIa');
 INSERT INTO partition_table VALUES (5,'jTfSg');
 INSERT INTO partition_table VALUES (20,'UezFi');
 INSERT INTO partition_table VALUES (25,'cxmeH');
 INSERT INTO partition_table VALUES (65,'lIuNS');
-testing content in restored tables
-SELECT * FROM partition_table ORDER BY int_column;
-int_column	char_column
-0	pVtIa
-5	jTfSg
-20	UezFi
-25	cxmeH
-65	lIuNS
-
-Server should not crash for backup using default driver 
-Mix of tables
-
 CREATE TABLE csv_table(
 id int NOT NULL,
 name char(20) NOT NULL,
@@ -67,6 +54,33 @@ i int,
 v varchar(20))
 ENGINE=myisam;
 INSERT INTO myisam_table VALUES(1,'v1'),(2,'v2'),(3,'v3');
+backup on mixed table database
+BACKUP DATABASE db1 to 'bup_mixed.bak';
+backup_id
+#
+DROP DATABASE db1;
+restore on mixed table database
+RESTORE FROM 'bup_mixed.bak';
+backup_id
+#
+testing content in restored tables
+SELECT * FROM partition_table ORDER BY int_column;
+int_column	char_column
+0	pVtIa
+5	jTfSg
+20	UezFi
+25	cxmeH
+65	lIuNS
+SELECT * FROM csv_table ORDER BY id;
+id	name	city
+1	aa1	bb1
+2	aa2	bb2
+3	aa3	bb3
+SELECT * FROM myisam_table ORDER BY i;
+i	v
+1	v1
+2	v2
+3	v3
 
 ***  CLEANUP  ****
 

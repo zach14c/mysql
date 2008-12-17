@@ -29,7 +29,7 @@ backup_id
 ** Drop and restore the database
 DROP TABLE t1;
 DROP TABLE t2;
-RESTORE FROM 'db.bkp';
+RESTORE FROM 'db.bkp' OVERWRITE;
 backup_id
 #
 ** Check definitions of the tables after restore

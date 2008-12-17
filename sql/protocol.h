@@ -17,6 +17,7 @@
 #pragma interface			/* gcc class implementation */
 #endif
 
+#include "sql_error.h"
 
 class i_string;
 class THD;
@@ -47,6 +48,15 @@ protected:
                       CHARSET_INFO *fromcs, CHARSET_INFO *tocs);
   bool store_string_aux(const char *from, size_t length,
                         CHARSET_INFO *fromcs, CHARSET_INFO *tocs);
+
+  virtual void send_ok(uint server_status, uint statement_warn_count,
+                       ha_rows affected_rows, ulonglong last_insert_id,
+                       const char *message);
+
+  virtual void send_eof(uint server_status, uint statement_warn_count);
+
+  virtual void send_error(uint sql_errno, const char *err_msg);
+
 public:
   Protocol() {}
   Protocol(THD *thd_arg) { init(thd_arg); }
@@ -107,13 +117,15 @@ public:
 #endif
   enum enum_protocol_type
   {
-    PROTOCOL_TEXT= 0, PROTOCOL_BINARY= 1
     /*
-      before adding here or change the values, consider that it is cast to a
-      bit in sql_cache.cc.
+      Before adding a new type, please make sure
+      there is enough storage for it in Query_cache_query_flags.
     */
+    PROTOCOL_TEXT= 0, PROTOCOL_BINARY= 1, PROTOCOL_LOCAL= 2
   };
   virtual enum enum_protocol_type type()= 0;
+
+  void end_statement();
 };
 
 
@@ -185,9 +197,10 @@ public:
 
 void send_warning(THD *thd, uint sql_errno, const char *err=0);
 void net_send_error(THD *thd, uint sql_errno=0, const char *err=0);
-void net_end_statement(THD *thd);
 bool send_old_password_request(THD *thd);
 uchar *net_store_data(uchar *to,const uchar *from, size_t length);
 uchar *net_store_data(uchar *to,int32 from);
 uchar *net_store_data(uchar *to,longlong from);
+
+///////////////////////////////////////////////////////////////////////////
 

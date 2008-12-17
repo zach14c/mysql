@@ -207,9 +207,7 @@ void STDCALL mysql_server_end()
   /* If library called my_init(), free memory allocated by it */
   if (!org_my_init_done)
   {
-    my_end(MY_DONT_FREE_DBUG);
-    /* Remove TRACING, if enabled by mysql_debug() */
-    DBUG_POP();
+    my_end(0);
   }
   else
   {
@@ -4863,7 +4861,10 @@ int STDCALL mysql_stmt_next_result(MYSQL_STMT *stmt)
   rc= mysql_next_result(mysql);
 
   if (rc)
+  {
+    set_stmt_errmsg(stmt, &mysql->net);
     DBUG_RETURN(rc);
+  }
 
   stmt->state= MYSQL_STMT_EXECUTE_DONE;
   stmt->bind_result_done= FALSE;

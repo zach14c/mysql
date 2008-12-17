@@ -1512,6 +1512,11 @@ int ha_myisam::index_end()
   return 0; 
 }
 
+int ha_myisam::rnd_end()
+{
+  ds_mrr.dsmrr_close();
+  return 0;
+}
 
 int ha_myisam::index_read_map(uchar *buf, const uchar *key,
                               key_part_map keypart_map,
@@ -1678,6 +1683,17 @@ int ha_myisam::info(uint flag)
     stats.max_data_file_length=  misam_info.max_data_file_length;
     stats.max_index_file_length= misam_info.max_index_file_length;
     stats.create_time= misam_info.create_time;
+    stats.mrr_length_per_rec= misam_info.reflength + 8; // 8 = max(sizeof(void *))
+    /* 
+      We want the value of stats.mrr_length_per_rec to be platform independent.
+      The size of the chunk at the end of the join buffer used for MRR needs
+      is calculated now basing on the values passed in the stats structure.
+      The remaining part of the join buffer is used for records. A different
+      number of records in the buffer results in a different number of buffer
+      refills and in a different order of records in the result set.
+    */
+    stats.mrr_length_per_rec= misam_info.reflength + 8; // 8=max(sizeof(void *))
+
     ref_length= misam_info.reflength;
     share->db_options_in_use= misam_info.options;
     stats.block_size= myisam_block_size;        /* record block size */
@@ -2053,8 +2069,9 @@ ha_rows ha_myisam::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                  flags, cost);
 }
 
-int ha_myisam::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                     uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows ha_myisam::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                         uint *bufsz, uint *flags,
+                                         COST_VECT *cost)
 {
   ds_mrr.init(this, table);
   return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);

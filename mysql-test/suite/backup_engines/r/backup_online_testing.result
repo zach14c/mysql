@@ -1135,3 +1135,4 @@ COUNT(*)
 ***  DROP bup_online DATABASE ****
 
 DROP DATABASE bup_online;
+SET DEBUG_SYNC= 'RESET';

@@ -216,7 +216,7 @@ SELECT release_lock("sync");
 echo Checking contents of the backup image;
 
 replace_column 1 #;
-RESTORE FROM 'db1.bak';
+RESTORE FROM 'db1.bak' OVERWRITE;
 
 SELECT * FROM db1.t1;
 SELECT * FROM db1.t2;

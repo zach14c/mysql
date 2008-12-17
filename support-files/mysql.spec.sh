@@ -15,7 +15,11 @@
 # MA  02110-1301  USA.
 
 %define mysql_version		@VERSION@
-%define mysql_vendor    MySQL AB
+
+# NOTE: "vendor" is used in upgrade/downgrade check, so you can't
+# change these, has to be exactly as is.
+%define mysql_old_vendor	MySQL AB
+%define mysql_vendor		Sun Microsystems, Inc.
 
 # NOTE: "vendor" is used in upgrade/downgrade check, so you can't
 # change these, has to be exactly as is.

@@ -46,7 +46,7 @@ typedef void (Listener) (int, const char*, void *arg);
 
 struct LogListener {
 	int			mask;
-    Listener	*listener;
+	Listener	*listener;
 	void		*arg;
 	LogListener	*next;
 	};

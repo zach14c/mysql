@@ -3244,8 +3244,8 @@ int get_partition_id_key_sub(partition_info *part_info,
 {
   longlong func_value;
   *part_id= get_part_id_key(part_info->table->file,
-                         part_info->subpart_field_array,
-                         part_info->no_subparts, &func_value);
+                            part_info->subpart_field_array,
+                            part_info->no_subparts, &func_value);
   return FALSE;
 }
 

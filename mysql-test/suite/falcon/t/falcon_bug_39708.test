@@ -1,5 +1,36 @@
 --source include/have_falcon.inc
 
+#
+# Bug #39708: Falcon: non-descriptive error message when creating a big key
+#
+--echo *** Bug #39708 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
 --error ER_TOO_LONG_KEY
-CREATE TABLE t1(a VARCHAR(140) CHARACTER SET utf8, KEY(a)) ENGINE=falcon;
+CREATE TABLE t1(a VARCHAR(140) CHARACTER SET utf8, KEY(a));
 SHOW WARNINGS;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+# Check not applicable here.
+#SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+# No final cleanup needed.
+#DROP TABLE t1;

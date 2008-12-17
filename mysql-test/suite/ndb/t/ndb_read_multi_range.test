@@ -71,6 +71,31 @@ select * from t1 where a in (33,34,35) order by a;
 select * from t1 where a in (2,8) or (a > 11) or (a <= 1) order by a;
 select * from t1 where b in (6,7) or (b <= 5) or (b >= 10) order by b,a;
 select * from t1 where c in (13,2,8,33,12) order by c,a;
+
+# Huge number of ranges, forcing split of MRR into multiple MRR scans.
+# This version for using hash key operation lookup.
+--disable_query_log
+let $1= 200;
+let $2= 0;
+while ($1)
+{
+  eval insert into t1 (a,b,c)
+       values ($1 + 1000, 1, $1 + 100000),
+              ($1 + 2000, 2, $1 + 200000),
+              ($1 + 3000, 3, $1 + 300000),
+              ($1 + 4000, 4, $1 + 400000),
+              ($1 + 5000, 5, $1 + 500000),
+              ($1 + 6000, 6, $1 + 600000),
+              ($1 + 7000, 7, $1 + 700000),
+              ($1 + 8000, 8, $1 + 800000),
+              ($1 + 9000, 9, $1 + 900000),
+              ($1 + 10000, 10, $1 + 1000000);
+  let $2= $2,$1;
+  dec $1;
+}
+--enable_query_log
+eval select a,b,c from t1 where c in ($2) order by c desc;
+
 drop table t1;
 
 #
@@ -156,6 +181,30 @@ select *
 # batched delete
 delete from t1 where d in (12,6,7);
 select * from t1 where d in (12,6,7);
+
+# Huge number of ranges, forcing split of MRR into multiple MRR scans.
+# This version for using ordered index scans.
+--disable_query_log
+let $1= 200;
+let $2= 0;
+while ($1)
+{
+  eval insert into t1 (a,b,c,d,e)
+       values ($1 + 1000, 1, 1, $1 + 100000, 1),
+              ($1 + 1000, 1, 2, $1 + 200000, 1),
+              ($1 + 1000, 1, 3, $1 + 300000, 1),
+              ($1 + 1000, 1, 4, $1 + 400000, 1),
+              ($1 + 1000, 1, 5, $1 + 500000, 1),
+              ($1 + 1000, 1, 6, $1 + 600000, 1),
+              ($1 + 1000, 1, 7, $1 + 700000, 1),
+              ($1 + 1000, 1, 8, $1 + 800000, 1),
+              ($1 + 1000, 1, 9, $1 + 900000, 1),
+              ($1 + 1000, 1, 10, $1 + 1000000, 1);
+  let $2= $2,$1;
+  dec $1;
+}
+--enable_query_log
+eval select d from t1 where d in ($2) order by d desc;
 
 drop table t1;
 
@@ -352,4 +401,86 @@ select * from t1 order by a;
 delete from t1 where a in (7,8) or a >= 10;
 select * from t1 order by a;
 
+drop table t1;
+
+#bug#35137 - self join + mrr
+
+create table t1 (a int primary key, b int, key b_idx (b)) engine ndb;
+insert into t1 values(1,1), (2,2), (3,3), (4,4), (5,5);
+
+select one.a 
+from t1 one left join t1 two 
+on (two.b = one.b) 
+where one.a in (3, 4) 
+order by a;
+
+drop table t1;
+
+# BUG#35338 Big multi_range_read may overload TC block
+# This creates a _lot_ of KEYINFO (>64k), and hangs before bug fix.
+
+create table t1 (a varchar(2040) not null,
+                 b varchar(2040) not null,
+                 c int, primary key (a,b)) engine=ndb;
+insert into t1 values ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3),
+                      ('d', 'd', 4), ('e', 'e', 5), ('f', 'f', 6),
+                      ('g', 'g', 7), ('h', 'h', 8), ('i', 'i', 9),
+                      ('j', 'j', 10), ('k', 'k', 11), ('l', 'l', 12),
+                      ('m', 'm', 13), ('n', 'n', 14), ('o', 'o', 15),
+                      ('p', 'p', 16), ('q', 'q', 17), ('r', 'r', 18),
+                      ('s', 's', 19), ('t', 't', 20), ('u', 'u', 21),
+                      ('v', 'v', 22), ('w', 'w', 23), ('x', 'x', 24);
+# Current code disables condition pushdown (with a warning) due to too big
+# size. Disable that so we don't have to change result file here just because
+# of condition pushdown implementation changes.
+set @old_ecpd = @@session.engine_condition_pushdown;
+set engine_condition_pushdown = off;
+set @x = repeat('x', 2000);
+select * from t1
+ where (a = 'a')
+    or (a > concat('az',@x) and a < concat('bb', @x))
+    or (a > concat('bz',@x) and a < concat('cb', @x))
+    or (a > concat('cz',@x) and a < concat('db', @x))
+    or (a > concat('dz',@x) and a < concat('eb', @x))
+    or (a > concat('ez',@x) and a < concat('fb', @x))
+    or (a > concat('fz',@x) and a < concat('gb', @x))
+    or (a > concat('gz',@x) and a < concat('hb', @x))
+    or (a > concat('hz',@x) and a < concat('ib', @x))
+    or (a > concat('iz',@x) and a < concat('jb', @x))
+    or (a > concat('jz',@x) and a < concat('kb', @x))
+    or (a > concat('kz',@x) and a < concat('lb', @x))
+    or (a > concat('lz',@x) and a < concat('mb', @x))
+    or (a > concat('mz',@x) and a < concat('nb', @x))
+    or (a > concat('nz',@x) and a < concat('ob', @x))
+    or (a > concat('oz',@x) and a < concat('pb', @x))
+    or (a > concat('pz',@x) and a < concat('qb', @x))
+    or (a > concat('qz',@x) and a < concat('rb', @x))
+    or (a > concat('rz',@x) and a < concat('sb', @x))
+    or (a = 'x')
+    order by a asc, b asc;
+
+set engine_condition_pushdown = @old_ecpd;
+drop table t1;
+
+create table t1 (a varchar(1536) not null,
+                 b varchar(1536) not null,
+                 c int, primary key (a,b)) engine=ndb;
+insert into t1 values ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3),
+                      ('d', 'd', 4), ('e', 'e', 5), ('f', 'f', 6),
+                      ('g', 'g', 7), ('h', 'h', 8), ('i', 'i', 9),
+                      ('j', 'j', 10), ('k', 'k', 11), ('l', 'l', 12),
+                      ('m', 'm', 13), ('n', 'n', 14), ('o', 'o', 15),
+                      ('p', 'p', 16), ('q', 'q', 17), ('r', 'r', 18),
+                      ('s', 's', 19), ('t', 't', 20), ('u', 'u', 21),
+                      ('v', 'v', 22), ('w', 'w', 23), ('x', 'x', 24);
+select * from t1
+ where (a >= 'aa' and b >= 'x' and a <= 'c' and b <= 'c')
+    or (a = 'd')
+    or (a = 'e')
+    or (a = 'f')
+    or (a > 'g' and a < 'ii')
+    or (a >= 'j' and b >= 'x' and a <= 'k' and b <= 'k')
+    or (a = 'm' and b = 'm')
+    or (a = 'v')
+    order by a asc, b asc;
 drop table t1;

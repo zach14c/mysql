@@ -1152,3 +1152,4 @@ DROP DATABASE bup_online;
 
 remove_file $MYSQLTEST_VARDIR/master-data/bup_online.bak;
 
+SET DEBUG_SYNC= 'RESET';

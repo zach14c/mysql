@@ -461,6 +461,14 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
 } /* maria_extra */
 
 
+void ma_set_index_cond_func(MARIA_HA *info, index_cond_func_t func,
+                            void *func_arg)
+{
+  info->index_cond_func= func;
+  info->index_cond_func_arg= func_arg;
+}
+
+
 /*
   Start/Stop Inserting Duplicates Into a Table, WL#1648.
 */

@@ -140,7 +140,6 @@ bool servers_init(bool dont_read_servers_table)
     DBUG_RETURN(TRUE);
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
   /*
     It is safe to call servers_reload() since servers_* arrays and hashes which
     will be freed there are global static objects and thus are initialized
@@ -239,7 +238,7 @@ bool servers_reload(THD *thd)
   if (simple_open_n_lock_tables(thd, tables))
   {
     sql_print_error("Can't open and lock privilege tables: %s",
-		    thd->main_da.message());
+		    thd->stmt_da->message());
     goto end;
   }
 

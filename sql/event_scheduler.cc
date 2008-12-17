@@ -74,7 +74,7 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
 {
   MYSQL_ERROR *err;
   DBUG_ENTER("evex_print_warnings");
-  if (!thd->warn_list.elements)
+  if (thd->warning_info->is_empty())
     DBUG_VOID_RETURN;
 
   char msg_buf[10 * STRING_BUFFER_USUAL_SIZE];
@@ -90,7 +90,7 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
   prefix.append(et->name.str, et->name.length, system_charset_info);
   prefix.append("] ", 2);
 
-  List_iterator_fast<MYSQL_ERROR> it(thd->warn_list);
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
   while ((err= it++))
   {
     String err_msg(msg_buf, sizeof(msg_buf), system_charset_info);
@@ -127,7 +127,6 @@ post_init_event_thread(THD *thd)
     thd->cleanup();
     return TRUE;
   }
-  lex_start(thd);
 
   pthread_mutex_lock(&LOCK_thread_count);
   threads.append(thd);
@@ -337,6 +336,14 @@ Event_scheduler::Event_scheduler(Event_queue *queue_arg)
 {
   pthread_mutex_init(&LOCK_scheduler_state, MY_MUTEX_INIT_FAST);
   pthread_cond_init(&COND_state, NULL);
+
+#ifdef SAFE_MUTEX
+  /* Ensure right mutex order */
+  pthread_mutex_lock(&LOCK_scheduler_state);
+  pthread_mutex_lock(&LOCK_global_system_variables);
+  pthread_mutex_unlock(&LOCK_global_system_variables);
+  pthread_mutex_unlock(&LOCK_scheduler_state);
+#endif
 }
 
 

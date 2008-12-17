@@ -304,7 +304,7 @@ id	name
 Perform Restore and Recover committed data using mysqlbinlog position
 after backup.
 Perform restore operation
-RESTORE FROM 'ptr_commit.bak';
+RESTORE FROM 'ptr_commit.bak' OVERWRITE;
 backup_id
 #
 SHOW TABLES FROM ptr;

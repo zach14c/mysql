@@ -13,19 +13,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql
                     ${CMAKE_SOURCE_DIR}/regex
                     ${CMAKE_SOURCE_DIR}/extra/yassl/include
                     ${CMAKE_SOURCE_DIR}/unittest/mytap)
 ADD_EXECUTABLE(bitmap-t bitmap-t.c)
-TARGET_LINK_LIBRARIES(bitmap-t mytap mysys dbug strings ws2_32)
+TARGET_LINK_LIBRARIES(bitmap-t mytap mysys dbug strings)
 
 ADD_EXECUTABLE(base64-t base64-t.c)
-TARGET_LINK_LIBRARIES(base64-t mytap mysys dbug strings ws2_32)
+TARGET_LINK_LIBRARIES(base64-t mytap mysys dbug strings)
 
 ADD_EXECUTABLE(my_atomic-t my_atomic-t.c)
-TARGET_LINK_LIBRARIES(my_atomic-t mytap mysys dbug strings ws2_32)
+TARGET_LINK_LIBRARIES(my_atomic-t mytap mysys dbug strings)

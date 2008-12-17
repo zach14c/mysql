@@ -32,7 +32,6 @@ public:
 	virtual void	redo(void);
 	virtual void	print(void);
 	
-	int				tableSpaceId;
 	int				dataLength;
 	const UCHAR*	data;
 };

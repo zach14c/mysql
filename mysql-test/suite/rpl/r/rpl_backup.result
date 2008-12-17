@@ -169,7 +169,7 @@ CREATE TABLE rpl_backup.t2 (b int);
 INSERT INTO rpl_backup.t2 VALUES (888), (999);
 Get master's binlog position before restore.
 Backup_id = 502.
-RESTORE FROM 'rpl_bup_m2.bak';
+RESTORE FROM 'rpl_bup_m2.bak' OVERWRITE;
 backup_id
 502
 Show the incident event issued as a result of restore.
@@ -241,7 +241,7 @@ t1	BASE TABLE
 t2	BASE TABLE
 STOP SLAVE;
 Backup_id = 602.
-RESTORE FROM '../master-data/rpl_bup_m2.bak';
+RESTORE FROM '../master-data/rpl_bup_m2.bak' OVERWRITE;
 backup_id
 602
 Showing databases on slave.
@@ -258,11 +258,11 @@ BACKUP DATABASE rpl_backup TO 'rpl_bup_s3.bak';
 backup_id
 603
 Test restore on slave while replication turned on.
-RESTORE FROM 'rpl_bup_s1.bak';
+RESTORE FROM 'rpl_bup_s1.bak' OVERWRITE;
 ERROR HY000: A restore operation was attempted on a slave during replication. You must stop the slave prior to running a restore.
 Stop slave and restart after restore.
 STOP SLAVE;
-RESTORE FROM 'rpl_bup_s3.bak';
+RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
 backup_id
 #
 START SLAVE;
@@ -312,7 +312,7 @@ sql_log_bin	ON
 RESET MASTER;
 Get master's binlog position before restore.
 Backup_id = 504.
-RESTORE FROM 'rpl_bup_m3.bak';
+RESTORE FROM 'rpl_bup_m3.bak' OVERWRITE;
 backup_id
 504
 Get master's binlog position after restore.

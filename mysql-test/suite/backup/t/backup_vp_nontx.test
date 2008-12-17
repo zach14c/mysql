@@ -1,0 +1,256 @@
+#
+# This test is one of two validity point tests. See:
+#    backup_vp_tx.test
+#
+# The goal of the test should be to ensure the following assumptions
+# for the behavior of validity point (VP) hold. Validity point is
+# implemented using commit blocker (CB).
+#
+# Note: in this file, "DML" refers to DML operations executed in
+#       non-transactional storage engines.
+#
+# a) DMLs that are executed before VP are in the backup image
+#
+# b) setting the validity point should not be done while DMLs are
+#    being processed in any table involved in the backup. An active
+#    DML therefore blocks backup from setting commit blocker. The DML
+#    has to complete before backup can set CB (and ultimately set the
+#    VP), and will therefore be in the backup image
+#
+# c) setting the validity point should not be done while DMLs are
+#    being processed in any table involved in the backup. A DML
+#    operation requested when backup is ready to set VP is therefore
+#    blocked by CB. The DML has to wait for CB to be released before
+#    it can continue, and will therefore not be in the backup image
+#
+# d) DMLs executed after VP are not in the backup image
+#
+#
+
+--source include/have_debug_sync.inc
+--source include/not_embedded.inc
+
+--disable_warnings
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE IF EXISTS bup_vp;
+
+let $bdir=`SELECT @@backupdir`;
+
+--error 0,1
+remove_file $bdir/bup_vp.bak;
+--enable_warnings
+
+
+CREATE DATABASE bup_vp;
+
+#
+# Connections used in this test
+#
+# con_bup  - used to create data, load data, and run the backup 
+# con_ntx1 - used for non-transactional execution
+# con_ntx2 - used for non-transactional execution
+# con_sync - used to make sync point work flow easier to read
+#
+
+connect (con_bup,localhost,root,,);
+connect (con_ntx1,localhost,root,,);
+connect (con_ntx2,localhost,root,,);
+connect (con_sync,localhost,root,,);
+
+connection con_bup;
+
+--echo 
+--echo Starting Test
+--echo 
+
+#
+# Sequence diagram (not UML), only relevant parts shown
+#
+#      bup     tx1      tx2
+#       |       |        | 
+#       a)      |        | 
+#    (setup)    |        | 
+#       |       b)       | 
+#       |    INSERT      | 
+#     BACKUP  <...>      | 
+#     SET CB  <...>      | 
+#     <###>   <...>      | 
+#     <...>     |        c)
+#       |       |     INSERT
+#    SET VP     |      <###>
+#   RELEASE CB  |      <###>
+#       |       d)     <...>
+#       |    INSERT      | 
+#    BUP DONE   |        | 
+#   (results)   |        | 
+#
+# Note: Ongoing operations are indicated with <...>
+#       Blocked operations are indicated with <###>
+#
+
+# Create transaction tables and load them with data.
+--echo con_bup: Creating tables
+CREATE TABLE bup_vp.t1 (col_a CHAR(40)) ENGINE=MEMORY;
+
+--echo con_bup: Loading data
+--echo con_bup: Scenario a) - commited before backup
+INSERT INTO bup_vp.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("05 Some data to test");
+
+--echo 
+--echo con_bup: Show the data before we start backup
+SELECT * FROM bup_vp.t1;
+
+### CON 1 ###
+  --echo 
+  connection con_ntx1;
+
+  --echo Scenario (b): Insert in progress blocks CB and is included in backup
+  --echo con_ntx1: Start insert and stop it in the middle of processing
+
+  --echo con_ntx1: Make insert stop in the middle of execution
+  # Will continue once backup has been blocked from setting CB
+  SET DEBUG_SYNC= 'after_insert_locked_tables SIGNAL insert_started
+                   WAIT_FOR complete_insert';
+  send INSERT INTO bup_vp.t1 VALUES ("ntx1: 06 Some data to test");
+
+
+### CON BUP ###
+--echo 
+connection con_bup;
+
+# Backup will be blocked from setting CB by the ongoing insert in
+# con_ntx1. Backup will signal con_ntx1 that it has been blocked. The
+# insert will then finish, making backup able to set CB. When CB has
+# been set, ntx2 will be signaled to try to insert. ntx2 insert will
+# be blocked by the CB and send a signal that it has been blocked. CB
+# is then released, but backup is stopped immediately after releasing
+# CB. ntx2 will now be able to complete the insert, and ntx1 will
+# issue and complete another insert. Finally, backup is allowed to
+# complete.
+
+--echo con_bup: Activate synchronization points for BACKUP.
+# Signal when backup is blocked by ongoing insert in con_ntx1
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL sync_complete_insert';
+
+# ntx1 insert is completed, so backup can set CB. Just before reaching
+# VP, signal ntx2 should try to insert. Wait until ntx2 signals it has
+# been blocked
+SET DEBUG_SYNC= 'before_backup_data_lock SIGNAL try_insert
+                 WAIT_FOR insert_blocked';
+
+# ntx2 insert has been blocked. Create VP and release CB, and then wait
+# while ntx2 and ntx1 inserts.
+SET DEBUG_SYNC= 'after_backup_binlog SIGNAL commit_unblocked
+                 WAIT_FOR finish_bup';
+
+--echo con_bup: Backing up database -- will block with lock
+send BACKUP DATABASE bup_vp TO "bup_vp.bak";
+
+### CON SYNC ###
+--echo 
+connection con_sync;
+SET DEBUG_SYNC= 'now WAIT_FOR sync_complete_insert';
+--echo Backup has been blocked by ongoing insert
+
+# cannot test with select that insert has not completed ntx1 has X-lock
+SET DEBUG_SYNC= 'now SIGNAL complete_insert';
+
+### CON 1 ###
+  --echo 
+  connection con_ntx1;
+  --echo con_ntx1: Reap insert
+  reap;
+
+  --echo Check that record has been inserted; Should be 1 record
+  SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx1%';
+  --echo 
+
+###########
+## Below this line happens after BACKUP has taken CB
+###########
+
+### CON 2 ###
+    connection con_ntx2;
+
+    --echo con_ntx2: Wait until backup has set CB, then try to insert
+    # Wait for backup to set CB
+    SET DEBUG_SYNC= 'now WAIT_FOR try_insert';
+    # Signal to backup that the insert is blocked
+    SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL sync_insert_blocked';
+    send INSERT INTO bup_vp.t1 VALUES ("ntx2: Should NOT be in backup");
+
+    # INSERT is blocked until CB has been released
+
+### CON SYNC ###
+--echo 
+connection con_sync;
+SET DEBUG_SYNC= 'now WAIT_FOR sync_insert_blocked';
+
+--echo Insert in ntx2 is blocked and should not be in t1; Should be 0 records
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx2%';
+--echo 
+
+SET DEBUG_SYNC= 'now SIGNAL insert_blocked';
+
+
+### CON 1 ###
+  --echo 
+  connection con_ntx1;
+
+  --echo con_ntx1: Backup has now released CB. Perform insert
+  # Double-check that backup has reached sync point after CB release
+  SET DEBUG_SYNC= 'now WAIT_FOR commit_unblocked';
+  INSERT INTO bup_vp.t1 VALUES ("ntx1: Should NOT be in backup");
+  SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+
+
+### CON BUP ###
+--echo 
+connection con_bup;
+--echo con_ntx1: Reap backup
+--replace_column 1 #
+reap;
+
+
+###########
+## Verify results
+###########
+
+# Do selects to show that all changes got applied.
+--echo 
+--echo con_bup: Showing data after updates and backup
+SELECT * FROM bup_vp.t1;
+
+--echo con_bup: Dropping the database
+DROP TABLE bup_vp.t1;
+DROP DATABASE bup_vp;
+
+--echo con_bup: Restoring the database
+--replace_column 1 #
+RESTORE FROM "bup_vp.bak";
+
+--echo 
+--echo con_bup: Showing the data after restore
+SELECT * FROM bup_vp.t1;
+
+--echo
+--echo Verifying results:
+--echo
+
+--echo T1 should have changes from con_ntx1; Should be 1 record
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx1%';
+--echo 
+
+--echo T1 should not have the changes from con_ntx2; Should be 0 records
+SELECT * FROM bup_vp.t1 WHERE col_a like 'ntx2%';
+--echo 
+
+--echo con_bup: Cleanup
+DROP DATABASE bup_vp;
+
+remove_file $bdir/bup_vp.bak;
+SET DEBUG_SYNC= 'RESET';

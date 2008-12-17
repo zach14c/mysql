@@ -60,7 +60,7 @@ backup_id
 con1: Dropping the database
 DROP TABLE bup_snapshot.t1;
 con1: Restoring the database
-RESTORE FROM "bup_snapshot.bak";
+RESTORE FROM "bup_snapshot.bak" OVERWRITE;
 backup_id
 #
 con1: Showing the data (no new data should be here).
@@ -106,7 +106,7 @@ backup_id
 con1: Dropping the database
 DROP TABLE bup_snapshot.t1;
 con1: Restoring the database
-RESTORE FROM "bup_snapshot.bak";
+RESTORE FROM "bup_snapshot.bak" OVERWRITE;
 backup_id
 #
 con1: Showing the data (no new data should be here).

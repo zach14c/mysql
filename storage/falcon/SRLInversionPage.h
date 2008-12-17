@@ -38,7 +38,6 @@ public:
 	SRLInversionPage();
 	virtual ~SRLInversionPage();
 
-	int			tableSpaceId;
 	int32		pageNumber;
 	int32		parent;
 	int32		prior;
