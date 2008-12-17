@@ -360,7 +360,7 @@ show tables from information_schema like "T%";
 create database information_schema;
 use information_schema;
 show full tables like "T%";
---error 1109
+--error 1044
 create table t1(a int);
 use test;
 show tables;
@@ -1463,3 +1463,22 @@ EXPLAIN SELECT * FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
 EXPLAIN SELECT * FROM INFORMATION_SCHEMA.TRIGGERS
   WHERE EVENT_OBJECT_SCHEMA='test';
 
+#
+# Bug#24062 Incorrect error msg after execute DROP TABLE IF EXISTS on information_schema
+# 
+--error 1044
+create table information_schema.t1 (f1 INT);
+--error 1044
+drop table information_schema.t1;
+--error 1044
+drop temporary table if exists information_schema.t1;
+--error 1044
+create temporary table information_schema.t1 (f1 INT);
+--error 1044
+drop view information_schema.v1;
+--error 1044
+create view information_schema.v1;
+--error 1044
+create trigger mysql.trg1 after insert on information_schema.t1 for each row set @a=1;
+--error 1109
+create table t1 select * from information_schema.t1;

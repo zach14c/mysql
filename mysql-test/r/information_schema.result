@@ -646,7 +646,7 @@ TABLE_CONSTRAINTS	SYSTEM VIEW
 TABLE_PRIVILEGES	SYSTEM VIEW
 TRIGGERS	SYSTEM VIEW
 create table t1(a int);
-ERROR 42S02: Unknown table 't1' in information_schema
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
 use test;
 show tables;
 Tables_in_test
@@ -1750,3 +1750,19 @@ EXPLAIN SELECT * FROM INFORMATION_SCHEMA.TRIGGERS
 WHERE EVENT_OBJECT_SCHEMA='test';
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	TRIGGERS	ALL	NULL	EVENT_OBJECT_SCHEMA	NULL	NULL	NULL	Using where; Open_frm_only; Scanned 1 database
+create table information_schema.t1 (f1 INT);
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+drop table information_schema.t1;
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+drop temporary table if exists information_schema.t1;
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+create temporary table information_schema.t1 (f1 INT);
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+drop view information_schema.v1;
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+create view information_schema.v1;
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+create trigger mysql.trg1 after insert on information_schema.t1 for each row set @a=1;
+ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
+create table t1 select * from information_schema.t1;
+ERROR 42S02: Unknown table 't1' in information_schema
