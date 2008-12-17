@@ -390,7 +390,9 @@ void IO::readHeader(Hdr * header)
 	n = ::read (fileId, buffer, maxPageSize);
 
 	if (n < (int) sizeof (Hdr))
-		FATAL ("read error on database header");
+		throw SQLError(IO_ERROR,
+		"read error on tablespace header, file %s, read %d bytes at least %d was expected",
+		fileName.getString(), n, (int)sizeof(Hdr));
 
 	Hdr* hdr = (Hdr*) buffer;
 	if (falcon_checksums && hdr->pageSize <= n)
