@@ -4377,6 +4377,13 @@ static void handle_connections_methods()
     sql_print_error("TCP/IP, --shared-memory, or --named-pipe should be configured on NT OS");
     unireg_abort(1);				// Will not return
   }
+  if((hPipe != INVALID_HANDLE_VALUE || opt_enable_shared_memory) &&
+    global_system_variables.thread_handling == SCHEDULER_POOL_OF_THREADS)
+  {
+    sql_print_error("thread_handling=pool-of-threads cannot be used with "
+     "shared memory or named pipe protocols");
+    unireg_abort(1);
+  }
 #endif
 
   pthread_mutex_lock(&LOCK_thread_count);
