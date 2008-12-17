@@ -203,7 +203,7 @@ evbuffer_remove(struct evbuffer *buf, void *data, size_t datlen)
 	memcpy(data, buf->buffer, nread);
 	evbuffer_drain(buf, nread);
 	
-	return (nread);
+	return (int)(nread);
 }
 
 /*
@@ -360,7 +360,7 @@ evbuffer_read(struct evbuffer *buf, int fd, int howmuch)
 
 #if defined(FIONREAD)
 #ifdef WIN32
-	long lng = n;
+	long lng = (long)n;
 	if (ioctlsocket(fd, FIONREAD, &lng) == -1 || (n=lng) == 0) {
 #else
 	if (ioctl(fd, FIONREAD, &n) == -1 || n == 0) {
@@ -375,7 +375,7 @@ evbuffer_read(struct evbuffer *buf, int fd, int howmuch)
 		 * data we should read, we artifically limit it.
 		 */
 		if (n > buf->totallen << 2)
-			n = buf->totallen << 2;
+			n = (int)(buf->totallen << 2);
 		if (n < EVBUFFER_MAX_READ)
 			n = EVBUFFER_MAX_READ;
 	}
@@ -417,7 +417,7 @@ evbuffer_write(struct evbuffer *buffer, int fd)
 #ifndef WIN32
 	n = write(fd, buffer->buffer, buffer->off);
 #else
-	n = send(fd, buffer->buffer, buffer->off, 0);
+	n = send(fd, buffer->buffer, (int)buffer->off, 0);
 #endif
 	if (n == -1)
 		return (-1);

@@ -88,7 +88,7 @@ evutil_socketpair(int family, int type, int protocol, int fd[2])
 		return -1;
 	}
 
-	listener = socket(AF_INET, type, 0);
+	listener = (int)socket(AF_INET, type, 0);
 	if (listener < 0)
 		return -1;
 	memset(&listen_addr, 0, sizeof(listen_addr));
@@ -101,7 +101,7 @@ evutil_socketpair(int family, int type, int protocol, int fd[2])
 	if (listen(listener, 1) == -1)
 		goto tidy_up_and_fail;
 
-	connector = socket(AF_INET, type, 0);
+	connector = (int)socket(AF_INET, type, 0);
 	if (connector < 0)
 		goto tidy_up_and_fail;
 	/* We want to find out the port number to connect to.  */
@@ -115,7 +115,7 @@ evutil_socketpair(int family, int type, int protocol, int fd[2])
 		goto tidy_up_and_fail;
 
 	size = sizeof(listen_addr);
-	acceptor = accept(listener, (struct sockaddr *) &listen_addr, &size);
+	acceptor = (int)accept(listener, (struct sockaddr *) &listen_addr, &size);
 	if (acceptor < 0)
 		goto tidy_up_and_fail;
 	if (size != sizeof(listen_addr))
