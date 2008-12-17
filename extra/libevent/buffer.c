@@ -155,7 +155,7 @@ evbuffer_add_vprintf(struct evbuffer *buf, const char *fmt, va_list ap)
 		va_copy(aq, ap);
 
 #ifdef WIN32
-		sz = vsnprintf(buffer, space - 1, fmt, aq);
+		sz = _vsnprintf(buffer, space - 1, fmt, aq);
 		buffer[space - 1] = '\0';
 #else
 		sz = vsnprintf(buffer, space, fmt, aq);
@@ -165,7 +165,7 @@ evbuffer_add_vprintf(struct evbuffer *buf, const char *fmt, va_list ap)
 
 		if (sz < 0)
 			return (-1);
-		if (sz < space) {
+		if ((size_t)sz < space) {
 			buf->off += sz;
 			if (buf->cb != NULL)
 				(*buf->cb)(buf, oldoff, buf->off, buf->cbarg);
@@ -374,7 +374,7 @@ evbuffer_read(struct evbuffer *buf, int fd, int howmuch)
 		 * about it.  If the reader does not tell us how much
 		 * data we should read, we artifically limit it.
 		 */
-		if (n > buf->totallen << 2)
+		if ((size_t)n > (buf->totallen << 2))
 			n = (int)(buf->totallen << 2);
 		if (n < EVBUFFER_MAX_READ)
 			n = EVBUFFER_MAX_READ;
