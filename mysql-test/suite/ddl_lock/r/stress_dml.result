@@ -1,0 +1,17 @@
+START TRANSACTION;
+UPDATE t1 SET b = "changed" WHERE id=<random>;
+SELECT id,b FROM t1 WHERE id=<random>;
+id	b
+<random>	changed
+COMMIT;
+START TRANSACTION;
+DELETE FROM t1 WHERE id=<random>;
+INSERT INTO t1 (id, b) VALUES (<random>, "newly_inserted");
+COMMIT;
+CALL t_proc(@b);
+SELECT @b;
+@b
+NULL
+SELECT t_func('world');
+t_func('world')
+Hello, world!

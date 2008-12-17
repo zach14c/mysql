@@ -426,6 +426,7 @@ static int lock_external(THD *thd, TABLE **tables, uint count)
       (*tables)->current_lock= lock_type;
     }
   }
+  DEBUG_SYNC(thd, "locked_external");
   DBUG_RETURN(0);
 }
 

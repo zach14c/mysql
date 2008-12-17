@@ -4473,6 +4473,8 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
                                         flags, need_reopen)))
       DBUG_RETURN(-1);
 
+    DEBUG_SYNC(thd, "after_lock_tables_takes_lock");
+
     if (thd->lex->requires_prelocking() &&
         thd->lex->sql_command != SQLCOM_LOCK_TABLES)
     {

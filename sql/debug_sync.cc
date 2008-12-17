@@ -546,7 +546,7 @@ static void debug_sync_action_string(char *result, uint size,
     {
       if ((wtxt == result) && (wtxt < wend))
         *(wtxt++)= ' ';
-      wtxt= debug_sync_bmove_len(wtxt, wend, STRING_WITH_LEN("WAIT_FOR "));
+      wtxt= debug_sync_bmove_len(wtxt, wend, STRING_WITH_LEN(" WAIT_FOR "));
       wtxt= debug_sync_bmove_len(wtxt, wend, action->wait_for.ptr(),
                                  action->wait_for.length());
 
