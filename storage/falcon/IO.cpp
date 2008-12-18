@@ -281,15 +281,15 @@ bool IO::createFile(const char *name)
 void IO::readPage(Bdb * bdb)
 {
 	if (fatalError)
-		FATAL ("can't continue after fatal error");
+		throw SQLError(IO_ERROR, "can't continue after fatal error");
 
 	SEEK_OFFSET offset = (int64) bdb->pageNumber * pageSize;
-	int length = pread (offset, pageSize, (UCHAR *)bdb->buffer);
+	int length = pread(offset, pageSize, (UCHAR *)bdb->buffer);
 
 	if (length != pageSize)
 		{
 		declareFatalError();
-		FATAL ("read error on page %d of \"%s\": %s (%d)",
+		throw SQLError(IO_ERROR, "read error on page %d of \"%s\": %s (%d)",
 				bdb->pageNumber, (const char*) fileName, strerror (errno), errno);
 		}
 
@@ -332,7 +332,7 @@ bool IO::trialRead(Bdb *bdb)
 void IO::writePage(Bdb * bdb, int type)
 {
 	if (fatalError)
-		FATAL ("can't continue after fatal error");
+		throw SQLError(IO_ERROR, "can't continue after fatal error");
 
 	ASSERT(bdb->pageNumber != HEADER_PAGE || ((Page*)(bdb->buffer))->pageType == PAGE_header);
 	tracePage(bdb);
@@ -342,7 +342,7 @@ void IO::writePage(Bdb * bdb, int type)
 void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 {
 	if (fatalError)
-		FATAL ("can't continue after fatal error");
+		throw SQLError(IO_ERROR, "can't continue after fatal error");
 
 	SEEK_OFFSET offset = (int64) pageNumber * pageSize;
 
@@ -370,7 +370,7 @@ void IO::writePages(int32 pageNumber, int length, const UCHAR* data, int type)
 			
 		declareFatalError();
 		
-		FATAL ("write error on page %d (%d/%d/%d) of \"%s\": %s (%d)",
+		throw SQLError(IO_ERROR, "write error on page %d (%d/%d/%d) of \"%s\": %s (%d)",
 				pageNumber, length, pageSize, fileId,
 				(const char*) fileName, strerror (errno), errno);
 		}
@@ -566,7 +566,7 @@ void IO::writeHeader(Hdr *header)
 	n = ::write (fileId, header, sizeof (Hdr));
 
 	if (n != sizeof (Hdr))
-		FATAL ("write error on database clone header");
+		throw SQLError(IO_ERROR, "write error on database clone header");
 }
 
 void IO::deleteFile()
@@ -677,7 +677,7 @@ void IO::sync(void)
 	if (_commit(fileId))
 		{
 		declareFatalError();
-		FATAL ("_commit failed on \"%s\": %s (%d)",
+		throw SQLError(IO_ERROR, "_commit failed on \"%s\": %s (%d)",
 				(const char*) fileName, strerror (errno), errno);
 		}
 	
