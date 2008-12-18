@@ -1,0 +1,34 @@
+--source include/have_falcon.inc
+--source include/not_embedded.inc
+
+#
+# Bug #33148: falcon mysqldump does not include tablespace info
+#
+--echo *** Bug #33148 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.fts' ENGINE=Falcon;
+CREATE TABLE t1(a INT) ENGINE=Falcon TABLESPACE ts1;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+--exec $MYSQL_DUMP --compact test t1
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+DROP TABLESPACE ts1 ENGINE=Falcon;
