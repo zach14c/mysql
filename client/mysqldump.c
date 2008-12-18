@@ -3691,7 +3691,6 @@ static int dump_tablespaces(char* ts_where)
                       " EXTRA"
                       " FROM INFORMATION_SCHEMA.FILES"
                       " WHERE FILE_TYPE = 'UNDO LOG'"
-                      " AND ENGINE != 'Falcon'"
                       " AND FILE_NAME IS NOT NULL",
                       256, 1024);
   if(ts_where)
@@ -3788,8 +3787,7 @@ static int dump_tablespaces(char* ts_where)
                       " INITIAL_SIZE,"
                       " ENGINE"
                       " FROM INFORMATION_SCHEMA.FILES"
-                      " WHERE FILE_TYPE = 'DATAFILE'"
-                      " AND ENGINE != 'Falcon'",
+                      " WHERE FILE_TYPE IN('DATAFILE', 'USER DATAFILE')",
                       256, 1024);
 
   if(ts_where)
@@ -3828,17 +3826,14 @@ static int dump_tablespaces(char* ts_where)
             row[1]);
     if (first)
     {
-      fprintf(md_result_file,
-              "  USE LOGFILE GROUP %s\n"
-              "  EXTENT_SIZE %s\n",
-              row[2],
-              row[3]);
+      if (row[2])
+        fprintf(md_result_file, "  USE LOGFILE GROUP %s\n", row[2]);
+      if (row[3])
+        fprintf(md_result_file, "  EXTENT_SIZE %s\n", row[3]);
     }
-    fprintf(md_result_file,
-            "  INITIAL_SIZE %s\n"
-            "  ENGINE=%s;\n",
-            row[4],
-            row[5]);
+    if (row[4])
+      fprintf(md_result_file, "  INITIAL_SIZE %s\n", row[4]);
+    fprintf(md_result_file, "  ENGINE=%s;\n", row[5]);
     check_io(md_result_file);
     if (first)
     {
