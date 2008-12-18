@@ -10,31 +10,13 @@
 #
 ##############################################################################
 
-rpl_invoked_features       : BUG#29020 2007-06-21 Lars Non-deterministic test case
 rpl_auto_increment_11932   : Bug#29809 2007-07-16 ingo Slave SQL errors in warnings 
                              file
 rpl_do_grant               : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
 rpl_ignore_table           : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
-rpl_auto_increment_11932   : Bug#29809 2007-07-16 ingo Slave SQL errors in warnings file
-rpl_extraColmaster_innodb  : BUG#30854 : Tables name show as binary in slave err msg on                             vm-win2003-64-b and Solaris
-rpl_extraColmaster_myisam  : BUG#30854
 rpl_view                   : Bug#32654: rpl_view.test fails randomly
 rpl_ndb_multi              : Bug#30751: rpl_ndb_multi missing row in output
 
-rpl_ssl                    : Bug#32217 rpl_ssl fails with different number of records on master and slave
-rpl_row_until              : Bug#28772 rpl_row_until fails in pushbuild
 rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
-rpl_redirect               : Failure is sporadic and and the test is superfluous (mats)
-rpl_innodb_bug28430        : Failure on Solaris Bug #36793
-# commented-out tests came from the main tree, but they are left to run in our tree
-# rpl_row_basic_7ndb         : BUG#33360 2007-12-19 mats rpl_ndb_idempotent fails due to null field for table on slave side
 rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
-#rpl_idempotency            : Bug#37767 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
-rpl_flushlog_loop          : Bug#37733 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
-#rpl_temporary_errors       : Bug#36968 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
-#rpl_temporary              : BUG#38269 2008-07-21 Sven valgrind error in pushbuild
-#rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
-rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main
 rpl_server_id2             : Bug#38540 rpl_server_id2 uses show slave status unnecessarily
-rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
-rpl_load_table_from_master : 2008-12-13 Error after merging 5.1-rpl --> 6.0-rpl by alfranio
