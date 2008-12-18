@@ -6035,7 +6035,10 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
                                       INFORMATION_SCHEMA_NAME.str))
   {
     ST_SCHEMA_TABLE *schema_table;
-    if (ptr->updating)
+    if (ptr->updating &&
+        /* Special cases which are processed by commands itself */
+        lex->sql_command != SQLCOM_CHECK &&
+        lex->sql_command != SQLCOM_CHECKSUM)
     {
       my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
                thd->security_ctx->priv_user,
