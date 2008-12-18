@@ -31,12 +31,13 @@ int restore_table_data(THD*, Restore_info&,
 
 class Restore_info: public backup::Image_info
 {
- public:
+public:
 
-  backup::Logger &m_log;
+  backup::Logger &m_log;  ///< Pointer to logger class
 
   ~Restore_info();
 
+  /// Determine of information class is valid.
   bool is_valid() const;
 
   Image_info::Ts* add_ts(const ::String&, uint);
@@ -44,7 +45,7 @@ class Restore_info: public backup::Image_info
   Image_info::Table* add_table(Image_info::Db&, const ::String&, 
                                backup::Snapshot_info&, ulong);
 
- private:
+private:
 
   /*
     Note: constructor is private because instances of this class are supposed

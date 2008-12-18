@@ -58,9 +58,11 @@ int restore_table_data(THD*, Restore_info&, Input_stream&);
  */ 
 class Backup_restore_ctx: public backup::Logger 
 {
- public:
+public:
 
+  /// Constructor
   Backup_restore_ctx(THD*);
+  /// Destructor
   ~Backup_restore_ctx();
 
   bool is_valid() const;
@@ -78,9 +80,10 @@ class Backup_restore_ctx: public backup::Logger
 
   int close();
 
+  /// Return the thread instance used.
   THD* thd() const { return m_thd; }
 
- private:
+private:
 
   // Prevent copying/assignments
   Backup_restore_ctx(const Backup_restore_ctx&);

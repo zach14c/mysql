@@ -118,10 +118,10 @@ static int send_reply(Backup_restore_ctx &context);
 /**
   Call backup kernel API to execute backup related SQL statement.
 
-  @param[IN] thd        current thread object reference.
-  @param[IN] lex        results of parsing the statement.
-  @param[IN] backupdir  value of the backupdir variable from server.
-  @param[IN] overwrite  whether or not restore should overwrite existing
+  @param[in] thd        current thread object reference.
+  @param[in] lex        results of parsing the statement.
+  @param[in] backupdir  value of the backupdir variable from server.
+  @param[in] overwrite  whether or not restore should overwrite existing
                         DB with same name as in backup image
 
   @note This function sends response to the client (ok, result set or error).
@@ -343,7 +343,7 @@ namespace backup {
 */
 class Mem_allocator
 {
- public:
+public:
 
   Mem_allocator();
   ~Mem_allocator();
@@ -351,7 +351,7 @@ class Mem_allocator
   void* alloc(size_t);
   void  free(void*);
 
- private:
+private:
 
   struct node;
   node *first;  ///< Pointer to the first segment in the list.
@@ -407,8 +407,8 @@ Backup_restore_ctx::~Backup_restore_ctx()
     2. If orig_loc has a hard path, use it.
     3. If orig_loc has no path, append to backupdir
 
-  @param[IN]  backupdir  The backupdir system variable value.
-  @param[IN]  orig_loc   The path + file name specified in the backup command.
+  @param[in]  backupdir  The backupdir system variable value.
+  @param[in]  orig_loc   The path + file name specified in the backup command.
 
   @returns 0
 */
@@ -483,7 +483,7 @@ int Backup_restore_ctx::prepare_path(::String *backupdir,
 
   @returns 0 on success, error code otherwise.
  */ 
-int Backup_restore_ctx::prepare(String *backupdir, LEX_STRING location)
+int Backup_restore_ctx::prepare(::String *backupdir, LEX_STRING location)
 {
   if (m_error)
     return m_error;
@@ -1182,7 +1182,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   @pre @c prepare_for_restore() method was called.
 
-  @param[IN] overwrite whether or not restore should overwrite existing
+  @param[in] overwrite whether or not restore should overwrite existing
                        DB with same name as in backup image
 
   @returns 0 on success, error code otherwise.
@@ -1355,8 +1355,8 @@ namespace backup {
 /// All allocated memory segments are linked into a list using this structure.
 struct Mem_allocator::node
 {
-  node *prev;
-  node *next;
+  node *prev;   ///< pointer to previous node in list
+  node *next;   ///< pointer to next node in the list
 };
 
 Mem_allocator::Mem_allocator() :first(NULL)
@@ -1475,7 +1475,9 @@ void bstream_free(bstream_byte *ptr)
   (it was read from image's header). Here we create @c Snapshot_info object
   for each of them.
 
-  @rerturns 0 on success, error code otherwise.
+  @param[in]  catalogue  The catalogue to restore.
+
+  @returns 0 on success, error code otherwise.
 */
 extern "C"
 int bcat_reset(st_bstream_image_header *catalogue)
@@ -2177,6 +2179,15 @@ const char* Table_ref::describe(char *buf, size_t len) const
   TODO: remove these functions. Currently they are only used by the myisam 
   native backup engine.
 */
+
+/**
+  Build the table list as a TABLE_LIST.
+
+  @param[in]  tables  The list of tables to convert.
+  @param[in]  lock    The lock type.
+
+  @retval  TABLE_LIST
+*/
 TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
 {
   TABLE_LIST *tl= NULL;
@@ -2195,7 +2206,12 @@ TABLE_LIST *build_table_list(const Table_list &tables, thr_lock_type lock)
   return tl;
 }
 
-void free_table_list(TABLE_LIST*)
+/**
+  Free the TABLE_LIST.
+
+  @param[in]  tables  The list of tables to free.
+*/
+void free_table_list(TABLE_LIST* tables)
 {}
 
 } // backup namespace

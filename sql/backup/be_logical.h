@@ -22,17 +22,25 @@ class Logical_snapshot :public Snapshot_info
 {
 public:
 
+  /// Constructor
   Logical_snapshot(version_t ver) :Snapshot_info(ver) {}
+
+  /**
+    Get opened TABLE structure for the table at position @c pos.
+
+    This method should be called only after tables have been opened and locked
+    by the backup kernel.
+
+    @param[in] pos The position of the table in the list.
+
+    @returns Pointer to table.
+  */ 
   TABLE*      get_opened_table(ulong pos) const;
+
+  /// Return the current table list.
   const Table_list& get_table_list() const;
 };
 
-/**
-  Get opened TABLE structure for the table at position @c pos.
-
-  This method should be called only after tables have been opened and locked
-  by the backup kernel.
-*/ 
 inline
 TABLE *Logical_snapshot::get_opened_table(ulong pos) const
 {

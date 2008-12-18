@@ -274,9 +274,9 @@ Image_info::Dbobj* Image_info::get_db_object(uint db_num, ulong pos) const
 /**
   Add table to the catalogue.
 
-  @param[in]  db  table's database - this database must already be in 
+  @param[in] db   table's database - this database must already be in 
                   the catalogue
-  @param[in] name name of the table
+  @param[in] table_name name of the table
   @param[in] snap snapshot containing table's data
   @param[in] pos  table's position within the snapshot
 
@@ -286,7 +286,7 @@ Image_info::Dbobj* Image_info::get_db_object(uint db_num, ulong pos) const
   @note The snapshot is added to the catalogue if it was not there already.
 
   @see @c get_table().
- */
+*/
 Image_info::Table* 
 Image_info::add_table(Db &db, const ::String &table_name, 
                       Snapshot_info &snap, ulong pos)

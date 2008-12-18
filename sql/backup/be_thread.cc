@@ -15,32 +15,32 @@
 */
 
 /**
-  * @file
-  *
-  * @brief Contains the thread methods for online backup.
-  *
-  * The methods in this class are used to initialize the mutexes
-  * for the backup threads. Helper methods are included to make thread
-  * calls easier for the driver code.
-  */
+  @file
+  
+  @brief Contains the thread methods for online backup.
+  
+  The methods in this class are used to initialize the mutexes
+  for the backup threads. Helper methods are included to make thread
+  calls easier for the driver code.
+*/
 
 #include "../mysql_priv.h"
 #include "be_thread.h"
 
 /**
-  *  @brief Creates a new THD object.
-  *
-  * Creates a new THD object for use in running as a separate thread.
-  *
-  * @returns Pointer to new THD object or 0 if error.
-  *
-  * @TODO Move this method to a location where ha_ndbcluster_binlog.cc can
-  *       use it and replace code in ndb_binlog_thread_func(void *arg) to
-  *       call this function.
-  *
-  * @note my_net_init() this should be paired with my_net_end() on 
-  *       close/kill of thread.
-  */
+  @brief Creates a new THD object.
+  
+  Creates a new THD object for use in running as a separate thread.
+  
+  @returns Pointer to new THD object or 0 if error.
+  
+  @todo Move this method to a location where ha_ndbcluster_binlog.cc can
+        use it and replace code in ndb_binlog_thread_func(void *arg) to
+        call this function.
+  
+  @note my_net_init() this should be paired with my_net_end() on 
+        close/kill of thread.
+*/
 THD *create_new_thd()
 {
   THD *thd;
@@ -91,14 +91,14 @@ THD *create_new_thd()
 }
 
 /**
-  * @brief Lock tables in driver.
-  *
-  * This method creates a new THD for use in the new thread. It calls
-  * the method to open and lock the tables.
-  *
-  * @note my_thread_init() should be paired with my_thread_end() on 
-  *       close/kill of thread.
-  */
+  @brief Lock tables in driver.
+  
+  This method creates a new THD for use in the new thread. It calls
+  the method to open and lock the tables.
+  
+  @note my_thread_init() should be paired with my_thread_end() on 
+        close/kill of thread.
+*/
 pthread_handler_t backup_thread_for_locking(void *arg)
 {
   Locking_thread_st *locking_thd= static_cast<Locking_thread_st *>(arg);

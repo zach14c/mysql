@@ -15,30 +15,30 @@
 */
 
 /**
- * @file
- *
- * @brief Contains the snapshot backup algorithm driver.
- *
- * This file contains the snapshot backup algorithm (also called a "driver"
- * in the online backup terminology. The snapshot backup algorithm may be
- * used in place of an engine-specific driver if one does not exist or if
- * chosen by the user.
- *
- * The snapshot backup algorithm is a non-blocking algorithm that enables a
- * consistent read of the tables given at the start of the backup/restore 
- * process. This is accomplished by using a consistent snapshot transaction
- * and table locks. Once all of the data is backed up or restored, the locks 
- * are removed. The snapshot backup is a row-level backup and therefore does 
- * not backup the indexes or any of the engine-specific files.
- *
- * The classes in this file use the namespace "snapshot_backup" to distinguish
- * these classes from other backup drivers. The backup functionality is
- * contained in the backup class shown below. Similarly, the restore
- * functionality is contained in the restore class below.
- *
- * The format of the backup is the same as the default backup driver.
- * Please see <code> be_default.cc </code> for a complete description.
- */
+   @file
+  
+   @brief Contains the snapshot backup algorithm driver.
+  
+   This file contains the snapshot backup algorithm (also called a "driver"
+   in the online backup terminology. The snapshot backup algorithm may be
+   used in place of an engine-specific driver if one does not exist or if
+   chosen by the user.
+  
+   The snapshot backup algorithm is a non-blocking algorithm that enables a
+   consistent read of the tables given at the start of the backup/restore 
+   process. This is accomplished by using a consistent snapshot transaction
+   and table locks. Once all of the data is backed up or restored, the locks 
+   are removed. The snapshot backup is a row-level backup and therefore does 
+   not backup the indexes or any of the engine-specific files.
+  
+   The classes in this file use the namespace "snapshot_backup" to distinguish
+   these classes from other backup drivers. The backup functionality is
+   contained in the backup class shown below. Similarly, the restore
+   functionality is contained in the restore class below.
+  
+   The format of the backup is the same as the default backup driver.
+   Please see <code> be_default.cc </code> for a complete description.
+*/
 
 #include "../mysql_priv.h"
 #include "backup_engine.h"
