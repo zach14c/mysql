@@ -1,8 +1,12 @@
-# Establish connection con1 (user=root)
-# Establish connection con2 (user=root)
+*** falcon_deadlock ***
+SET @@storage_engine = 'Falcon';
 DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS t2;
-# Switch to connection con1
+# Establish connection conn1 (user=root)
+SET @@storage_engine = 'Falcon';
+# Establish connection conn2 (user=root)
+SET @@storage_engine = 'Falcon';
+# Switch to connection conn1
 CREATE TABLE t1 (
 id integer,
 x integer
@@ -12,62 +16,62 @@ SET @@autocommit = 0;
 SELECT * FROM t1 WHERE id = 0 FOR UPDATE;
 id	x
 0	0
-# Switch to connection con2
+# Switch to connection conn2
 SET @@autocommit = 0;
 UPDATE t1 SET x = 2 WHERE id = 0;
-# Switch to connection con1
+# Switch to connection conn1
 UPDATE t1 SET x = 1 WHERE id = 0;
 SELECT * FROM t1;
 id	x
 0	1
 COMMIT;
-# Switch to connection con2
-COMMIT;
-# Switch to connection con1
+# Switch to connection conn2
+ROLLBACK;
+# Switch to connection conn1
 SELECT * FROM t1;
 id	x
-0	2
+0	1
 COMMIT;
 DROP TABLE t1;
-# Switch to connection con1
+# Switch to connection conn1
 CREATE TABLE t1 (
 id integer,
 x integer
 );
 CREATE TABLE t2 (
-b integer,
-a integer
+a integer,
+b integer
 );
 INSERT INTO t1 VALUES (0, 0), (300, 300);
 INSERT INTO t2 VALUES (0, 10), (1, 20), (2, 30);
 COMMIT;
 SELECT * FROM t2;
-b	a
+a	b
 0	10
 1	20
 2	30
 UPDATE t2 SET a = 100 WHERE b = (SELECT x FROM t1 WHERE id = b FOR UPDATE);
 SELECT * FROM t2;
-b	a
-0	100
+a	b
+0	10
 1	20
 2	30
 SELECT * FROM t1;
 id	x
 0	0
 300	300
-# Switch to connection con2
+# Switch to connection conn2
 UPDATE t1 SET x = 2 WHERE id = 0;
-# Switch to connection con1
+# Switch to connection conn1
 UPDATE t1 SET x = 1 WHERE id = 0;
 SELECT * FROM t1;
 id	x
 0	1
 300	300
 COMMIT;
-# Switch to connection con2
+# Switch to connection conn2
 COMMIT;
-# Switch to connection con1
+# Switch to connection conn1
 SELECT * FROM t1;
 id	x
 0	2
@@ -80,21 +84,20 @@ id integer,
 x integer
 );
 CREATE TABLE t2 (
-b integer,
-a integer
+a integer,
+b integer
 );
 INSERT INTO t1 VALUES (0, 0), (300, 300);
 INSERT INTO t2 VALUES (0, 0), (1, 20), (2, 30);
 COMMIT;
-# Switch to connection con1
 SELECT a, b FROM t2 UNION SELECT id, x FROM t1 FOR UPDATE;
 a	b
 0	0
-20	1
-30	2
+1	20
+2	30
 300	300
 SELECT * FROM t2;
-b	a
+a	b
 0	0
 1	20
 2	30
@@ -102,29 +105,32 @@ SELECT * FROM t1;
 id	x
 0	0
 300	300
-# Switch to connection con2
+# Switch to connection conn2
 UPDATE t2 SET a = 2 WHERE b = 0;
 SELECT * FROM t2;
-b	a
-0	2
+a	b
+2	0
 1	20
 2	30
 UPDATE t1 SET x = 2 WHERE id = 0;
-# Switch to connection con1
+# Switch to connection conn1
 UPDATE t1 SET x = 1 WHERE id = 0;
 SELECT * FROM t1;
 id	x
 0	1
 300	300
 COMMIT;
-# Switch to connection con2
+# Switch to connection conn2
 COMMIT;
-# Switch to connection con1
+# Switch to connection conn1
 SELECT * FROM t1;
 id	x
 0	2
 300	300
 COMMIT;
-# Switch to connection default + disconnect con1 and con2
+SELECT count(*) FROM t1;
+count(*)
+2
+# Switch to connection default + disconnect conn1 and conn2
 DROP TABLE t1;
 DROP TABLE t2;
