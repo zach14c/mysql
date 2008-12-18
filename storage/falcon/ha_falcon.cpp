@@ -1822,7 +1822,7 @@ int StorageInterface::fillMrrBitmap()
 		startKey = mrr_cur_range.start_key.keypart_map? &mrr_cur_range.start_key: NULL;
 		endKey   = mrr_cur_range.end_key.keypart_map?   &mrr_cur_range.end_key: NULL;
 		if ((res = scanRange(startKey, endKey, test(mrr_cur_range.range_flag & EQ_RANGE))))
-			return res;
+			DBUG_RETURN(res);
 		}
 	DBUG_RETURN(0);
 }
