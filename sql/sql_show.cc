@@ -5164,19 +5164,20 @@ static void store_schema_partitions_record(THD *thd, TABLE *schema_table,
     else
       table->field[23]->store(STRING_WITH_LEN("default"), cs);
 
-    table->field[24]->set_notnull();
     if (part_elem->tablespace_name)
+    {
+      table->field[24]->set_notnull();
       table->field[24]->store(part_elem->tablespace_name,
                               strlen(part_elem->tablespace_name), cs);
-    else
+    }
+  }
+  if (!part_elem || !part_elem->tablespace_name)
+  {
+    const char *ts= showing_table->file->get_tablespace_name();
+    if (ts)
     {
-      const char *ts= showing_table->file->get_tablespace_name();
-      if(ts)
-      {
-        table->field[24]->store(ts, strlen(ts), cs);
-      }
-      else
-        table->field[24]->set_null();
+      table->field[24]->set_notnull();
+      table->field[24]->store(ts, strlen(ts), cs);
     }
   }
   return;
