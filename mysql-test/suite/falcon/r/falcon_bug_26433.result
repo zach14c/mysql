@@ -2,7 +2,7 @@
 SET @@storage_engine = 'Falcon';
 DROP TABLE IF EXISTS t1;
 DROP PROCEDURE IF EXISTS p1;
-SET @a = 909;
+SET @a = 707;
 CREATE PROCEDURE p1 ()
 BEGIN
 DECLARE v int default 0;
@@ -76,70 +76,5 @@ c
 c
 d
 d
-Warnings:
-Warning	1265	Data truncated for column 'b' at row 21
-Warning	1265	Data truncated for column 'b' at row 22
-Warning	1265	Data truncated for column 'b' at row 23
-Warning	1265	Data truncated for column 'b' at row 24
-Warning	1265	Data truncated for column 'b' at row 25
-Warning	1265	Data truncated for column 'b' at row 26
-Warning	1265	Data truncated for column 'b' at row 27
-Warning	1265	Data truncated for column 'b' at row 28
-Warning	1265	Data truncated for column 'b' at row 29
-Warning	1265	Data truncated for column 'b' at row 30
-Warning	1265	Data truncated for column 'b' at row 31
-Warning	1265	Data truncated for column 'b' at row 32
-Warning	1265	Data truncated for column 'b' at row 33
-Warning	1265	Data truncated for column 'b' at row 34
-Warning	1265	Data truncated for column 'b' at row 35
-Warning	1265	Data truncated for column 'b' at row 36
-Warning	1265	Data truncated for column 'b' at row 37
-Warning	1265	Data truncated for column 'b' at row 38
-Warning	1265	Data truncated for column 'b' at row 39
-Warning	1265	Data truncated for column 'b' at row 40
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 1
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 2
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 3
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 4
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 5
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 6
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 7
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 8
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 9
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 10
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 11
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 12
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 13
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 14
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 15
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 16
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 17
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 18
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 19
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 20
-Warning	1265	Data truncated for column 'b' at row 21
-Warning	1265	Data truncated for column 'b' at row 22
-Warning	1265	Data truncated for column 'b' at row 23
-Warning	1265	Data truncated for column 'b' at row 24
-Warning	1265	Data truncated for column 'b' at row 25
-Warning	1265	Data truncated for column 'b' at row 26
-Warning	1265	Data truncated for column 'b' at row 27
-Warning	1265	Data truncated for column 'b' at row 28
-Warning	1265	Data truncated for column 'b' at row 29
-Warning	1265	Data truncated for column 'b' at row 30
-Warning	1265	Data truncated for column 'b' at row 31
-Warning	1265	Data truncated for column 'b' at row 32
-Warning	1265	Data truncated for column 'b' at row 33
-Warning	1265	Data truncated for column 'b' at row 34
-Warning	1265	Data truncated for column 'b' at row 35
-Warning	1265	Data truncated for column 'b' at row 36
-Warning	1265	Data truncated for column 'b' at row 37
-Warning	1265	Data truncated for column 'b' at row 38
-Warning	1265	Data truncated for column 'b' at row 39
-Warning	1265	Data truncated for column 'b' at row 40
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 1
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 2
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 3
-Warning	1366	Incorrect string value: '\x92\x92\x92\x92\x92\x92...' for column 'c' at row 4
 DROP TABLE t1;
 DROP PROCEDURE p1;
