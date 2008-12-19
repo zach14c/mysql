@@ -1,18 +1,17 @@
-Next QMGR 1
+Next QMGR 937
 Next NDBCNTR 1002
 Next NDBFS 2000
 Next DBACC 3002
 Next DBTUP 4029
-Next DBLQH 5050
+Next DBLQH 5051
 Next DBDICT 6008
-Next DBDIH 7202
-Next DBTC 8058
+Next DBDIH 7215
+Next DBTC 8074
 Next CMVMI 9000
-Next BACKUP 10038
+Next BACKUP 10041
 Next DBUTIL 11002
 Next DBTUX 12008
-Next SUMA 13034
-Next SUMA 13036
+Next SUMA 13043
 Next LGMAN 15001
 Next TSMAN 16001
 
@@ -183,6 +182,9 @@ And crash when all have "not" been sent
 7191: Crash when receiving LCP_COMPLETE_REP
 7192: Crash in setLcpActiveStatusStart - when dead node missed to LCP's
 
+7213: in GCP_COMMIT Kill specified node and self, stop processing
+7214: in GCP_TCFINISHED kill specified node
+     
 ERROR CODES FOR TESTING NODE FAILURE, FAILURE IN COPY FRAGMENT PROCESS:
 -----------------------------------------------------------------------
 
@@ -552,6 +554,11 @@ Dbdict:
 6005 Crash in participant @ CreateTabReq::CreateDrop
 6007 Fail on readTableFile for READ_TAB_FILE1 (28770)
 
+6200 Set error code after handleTabInfoInit in master
+6201 Set error code after handleTabInfoInit in master (index)
+6202 Set error code before CREATE_FRAGMENTATION in master
+6203 Set error code before CREATE_FRAGMENTATION in master (index)
+
 Dbtup:
 4014 - handleInsert - Out of undo buffer
 4015 - handleInsert - Out of log space
@@ -574,6 +581,16 @@ NDBCNTR:
 
 1000: Crash insertion on SystemError::CopyFragRef
 1001: Delay sending NODE_FAILREP (to own node), until error is cleared
+
+SUMA:
+13036: Simulate report MISSING_DATA at node failure
+13037: Simulate disconnect lagging subscribers
+13038: Simulate out of event buffer
+
+13039: Crash i DICT_LOCKCONF
+13040: Crash in SUB_CREATE_REQ if m_restart_server_node_id != RNIL
+13041: Crash in SUB_CREATE_REQ (no matter)
+13042: Crash in SUB_START_REQ (if m_restart_server_node_id != 0)
 
 LGMAN:
 -----

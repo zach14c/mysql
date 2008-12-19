@@ -31,6 +31,8 @@
 #include "Transaction.h"
 #include "Log.h"
 #include "SQLError.h"
+#include "SerialLog.h"
+#include "Database.h"
 
 #ifdef _DEBUG
 #undef THIS_FILE
@@ -80,6 +82,8 @@ Bdb* PageInventoryPage::createInventoryPage(Dbb * dbb, int32 pageNumber, TransId
 
 Bdb* PageInventoryPage::allocPage(Dbb * dbb, PageType pageType, TransId transId)
 {
+	SerialLog *serialLog = dbb->database->serialLog;
+	ASSERT(!(serialLog->recovering && (serialLog->recoveryPhase ==2)));
 	for (int32 pip = dbb->lastPageAllocated / dbb->pagesPerPip;; ++pip)
 		{
 		int32 pipPageNumber = (pip == 0) ? PIP_PAGE : pip * dbb->pagesPerPip - 1;

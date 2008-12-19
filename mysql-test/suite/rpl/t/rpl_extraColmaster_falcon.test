@@ -1,0 +1,22 @@
+################################################################
+# Purpose: To test having extra columns on the master. WL#3915.
+#
+# This is a test wrapper for the Falcon storage engine, using
+# the "engine independent" test rpl_extraMaster_Col in 
+# mysql-test/extra/rpl_tests/.
+################################################################
+--source include/master-slave.inc
+--source include/have_falcon.inc
+
+# Falcon does not support statement-based replication.
+# In 'mixed' mode only 'row' is used with Falcon.
+#
+# Test outputs binlog format, so let's not jump through result 
+# file hoops in order to run with different binlog formats, which
+# would be the same for Falcon anyway. Hence, we require 'row' 
+# for this test.
+--source include/have_binlog_format_row.inc
+
+let $engine_type = 'Falcon';
+
+--source extra/rpl_tests/rpl_extraMaster_Col.test

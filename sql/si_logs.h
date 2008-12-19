@@ -201,7 +201,7 @@ void Backup_log::stop(time_t when)
 inline
 void Backup_log::binlog_file(char *file)
 {
-  if (strlen(file) > 0)
+  if (file && strlen(file) > 0)
     m_op_hist.binlog_file= file;
 }
 
@@ -217,7 +217,7 @@ void Backup_log::binlog_file(char *file)
 inline
 void Backup_log::master_binlog_file(char *file)
 {
-  if (strlen(file) > 0)
+  if (file && strlen(file) > 0)
     m_op_hist.master_binlog_file= file;
 }
 

@@ -64,7 +64,9 @@ void my_safe_print_str(const char* name, const char* val, int max_len)
 
 #if BACKTRACE_DEMANGLE
 
-char __attribute__ ((weak)) *my_demangle(const char *mangled_name, int *status)
+char __attribute__ ((weak))
+*my_demangle(const char *mangled_name __attribute__((unused)),
+             int *status __attribute__((unused)))
 {
   return NULL;
 }

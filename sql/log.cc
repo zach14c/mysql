@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -4226,7 +4226,12 @@ void MYSQL_BIN_LOG::init_pthread_objects()
   DBUG_ASSERT(inited == 0);
   inited= 1;
   (void) pthread_mutex_init(&LOCK_log, MY_MUTEX_INIT_SLOW);
-  (void) pthread_mutex_init(&LOCK_index, MY_MUTEX_INIT_SLOW);
+  /*
+    LOCK_index and LOCK_log are taken in wrong order
+    Can be seen with 'mysql-test-run ndb.ndb_binlog_basic'
+  */ 
+  (void) my_pthread_mutex_init(&LOCK_index, MY_MUTEX_INIT_SLOW, "LOCK_index",
+                               MYF_NO_DEADLOCK_DETECTION);
   (void) pthread_cond_init(&update_cond, 0);
 }
 
@@ -4640,7 +4645,11 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
   const char* save_name;
   DBUG_ENTER("reset_logs");
 
-  ha_reset_logs(thd);
+  if (ha_reset_logs(thd))
+  {
+    DBUG_RETURN(1);
+  }
+
   /*
     We need to get both locks to be sure that no one is trying to
     write to the index log file.
@@ -5020,7 +5029,11 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
       }
     }
 
-    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
+    if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
+    {
+      error= LOG_INFO_FATAL;
+      goto err;
+    }
 
     if (find_next_log(&log_info, 0) || exit_loop)
       break;
@@ -5163,7 +5176,11 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
           goto err;
         }
       }
-      ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
+      if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
+      {
+        error= LOG_INFO_FATAL;
+        goto err;
+      }
     }
     if (find_next_log(&log_info, 0))
       break;

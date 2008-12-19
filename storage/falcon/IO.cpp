@@ -946,4 +946,3 @@ uint16 IO::computeChecksum(Page *page, size_t len)
 	return (uint16) sum;
 
 }
-
