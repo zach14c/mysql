@@ -365,9 +365,9 @@ void TransactionManager::purgeTransactionsWithLocks()
 
 	// Check for any fully mature transactions to ditch
   
-    Transaction* transaction = committedTransactions.first;
+	Transaction* transaction = committedTransactions.first;
 
-    while ((transaction != NULL) &&
+	while ((transaction != NULL) &&
 		   (transaction->state == Committed) &&
 		   (transaction->commitId < oldestActive) &&
 		   !transaction->writePending)

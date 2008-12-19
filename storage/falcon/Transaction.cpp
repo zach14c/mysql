@@ -720,12 +720,7 @@ bool Transaction::visible(Transaction * transaction, TransId transId, int forWha
 	// This is REPEATABLE_READ
 	ASSERT (IS_REPEATABLE_READ(isolationLevel));
 
-	// If the transaction started after we did, consider the transaction active
-
-	if (transId > transactionId)
-		return false;
-
-	// If the other transaction committed after we started then it should not
+	// If the other transaction committed after we started then it is not
 	// be visible to us
 
 	if (transaction->commitId > transactionId)

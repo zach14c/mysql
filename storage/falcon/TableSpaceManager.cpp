@@ -86,7 +86,10 @@ void TableSpaceManager::add(TableSpace *tableSpace)
 
 TableSpace* TableSpaceManager::findTableSpace(const char *name)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(1)");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(DDL)");
+	syncDDL.lock(Shared);
+	
+	Sync syncObj(&syncObject, "TableSpaceManager::findTableSpace(syncObj)");
 	syncObj.lock(Shared);
 	TableSpace *tableSpace;
 
@@ -101,9 +104,6 @@ TableSpace* TableSpaceManager::findTableSpace(const char *name)
 		if (tableSpace->name == name)
 			return tableSpace;
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::findTableSpace(2)");
-	syncDDL.lock(Shared);
-	
 	PStatement statement = database->prepareStatement(
 		"select tablespace_id, filename, comment from system.tablespaces where tablespace=?");
 	statement->setString(1, name);
@@ -156,6 +156,7 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 {
 	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::createTableSpace");
 	syncDDL.lock(Exclusive);
+
 	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
 	int type = (repository) ? TABLESPACE_TYPE_REPOSITORY : TABLESPACE_TYPE_TABLESPACE;
 	int id = (int) sequence->update(1, database->getSystemTransaction());
@@ -175,6 +176,7 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 		
 		if (!repository)
 			tableSpace->create();
+
 		createdFile = true;
 		add(tableSpace);
 		database->serialLog->logControl->createTableSpace.append(tableSpace);
@@ -183,11 +185,15 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 		{
 		if (createdFile)
 			IO::deleteFile(fileName);
+
 		database->rollbackSystemTransaction();
 		delete tableSpace;
+
 		throw;
 		}
+
 	database->commitSystemTransaction();
+	
 	return tableSpace;
 }
 
@@ -272,12 +278,12 @@ void TableSpaceManager::dropDatabase(void)
 
 void TableSpaceManager::dropTableSpace(TableSpace* tableSpace)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(1)");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(DDL)");
+	syncDDL.lock(Exclusive);
+	
+	Sync syncObj(&syncObject, "TableSpaceManager::dropTableSpace(syncObj)");
 	syncObj.lock(Exclusive);
 
-	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace(2)");
-	syncDDL.lock(Shared);
-	
 	PStatement statement = database->prepareStatement(
 		"delete from system.tablespaces where tablespace=?");
 	statement->setString(1, tableSpace->name);
@@ -419,14 +425,15 @@ void TableSpaceManager::redoCreateTableSpace(int id, int nameLength, const char*
 
 void TableSpaceManager::initialize(void)
 {
-	Sync syncObj(&syncObject, "TableSpaceManager::initialize");
+	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::initialize(DDL)");
+	syncDDL.lock(Exclusive);
+
+	Sync syncObj(&syncObject, "TableSpaceManager::initialize(syncObj)");
 	syncObj.lock(Shared);
 
 	for (TableSpace *tableSpace = tableSpaces; tableSpace; tableSpace = tableSpace->next)
 		if (tableSpace->needSave)
 			{
-			Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::dropTableSpace");
-			syncDDL.lock(Shared);
 			tableSpace->save();
 			syncDDL.unlock();
 			database->commitSystemTransaction();
