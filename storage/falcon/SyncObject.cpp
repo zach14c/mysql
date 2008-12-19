@@ -638,16 +638,19 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 				return;
 				}
 			
-			for (ptr = &queue; *ptr; ptr = &(*ptr)->queue)
-				if (*ptr == thread)
-					{
-					*ptr = thread->queue;
-					--waiters;
-					break;
-					}
-			
 			if (!wokeup)
 				{
+				// A timeout occured.
+				// Take this thread off the queue and throw an exception
+
+				for (ptr = &queue; *ptr; ptr = &(*ptr)->queue)
+					if (*ptr == thread)
+						{
+						*ptr = thread->queue;
+						--waiters;
+						break;
+						}
+
 				mutex.release();
 				timedout(timeout);
 				}
