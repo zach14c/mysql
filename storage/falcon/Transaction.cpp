@@ -37,6 +37,7 @@
 #include "TransactionManager.h"
 #include "SerialLog.h"
 #include "SerialLogControl.h"
+#include "SerialLogTransaction.h"
 #include "InfoTable.h"
 #include "Thread.h"
 #include "Format.h"
@@ -266,6 +267,11 @@ void Transaction::commit()
 
 	database->flushInversion(this);
 
+	// Write the commit message to the serial log for durability.
+	// If a crash happens after this, the recover will commit.
+
+	database->serialLog->logControl->commit.append(this);
+
 	// Transfer transaction from active list to committed list, set committed state
 
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject, "Transaction::commit(2)");
@@ -293,8 +299,12 @@ void Transaction::commit()
 	syncActiveTransactions.unlock();
 	
 	syncIsActive.unlock(); // signal waiting transactions
+	
+	// signal a gopher to start processing this transaction
 
-	database->commit(this);
+	SerialLogTransaction *srlTransaction = database->serialLog->getTransaction(transactionId);
+	srlTransaction->setState(sltCommitted);
+	database->serialLog->wakeup();
 
 	delete [] xid;
 	xid = NULL;
@@ -411,12 +421,13 @@ void Transaction::rollback()
 
 	ASSERT(writePending);
 	writePending = false;
-	
+
 	if (hasUpdates)
+		{
 		database->serialLog->preCommit(this);
-		
-	database->rollback(this);
-	
+		database->serialLog->logControl->rollback.append(this);
+		}
+
 	if (xid)
 		{
 		delete [] xid;
@@ -433,6 +444,16 @@ void Transaction::rollback()
 	syncActiveTransactions.unlock();
 	state = RolledBack;
 	syncIsActive.unlock();
+
+	// Finish the SerialLogTransaction and signal a gopher
+
+	if (hasUpdates)
+		{
+		SerialLogTransaction *srlTransaction = database->serialLog->getTransaction(transactionId);
+		srlTransaction->setState(sltRolledBack);
+		database->serialLog->wakeup();
+		}
+
 	release();
 }
 
@@ -455,7 +476,10 @@ void Transaction::prepare(int xidLen, const UCHAR *xidPtr)
 		
 	database->pageWriter->waitForWrites(this);
 	state = Limbo;
-	database->dbb->prepareTransaction(transactionId, xidLength, xid);
+
+	// Flush a prepare record to the serial log
+
+	database->serialLog->logControl->prepare.append(transactionId, xidLength, xid);
 
 	Sync sync(&syncDeferredIndexes, "Transaction::prepare");
 	sync.lock(Shared);
@@ -1413,12 +1437,15 @@ void Transaction::getInfo(InfoTable* infoTable)
 		}
 }
 
+// Called by the gopher thread to complete this transaction
+
 void Transaction::fullyCommitted(void)
 {
 	ASSERT(inList);
+	ASSERT(!isActive());
 
 	if (useCount < 2)
-		Log::debug("Transaction::fullyCommitted: funny use count\n");
+		Log::debug("Transaction::fullyCommitted: Unusual use count=%d\n", useCount);
 
 	writeComplete();
 	releaseCommittedTransaction();

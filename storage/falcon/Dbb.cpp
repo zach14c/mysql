@@ -1169,34 +1169,6 @@ void Dbb::reportStatistics()
 	priorFlushWrites = flushWrites;
 }
 
-void Dbb::commit(Transaction *transaction)
-{
-	if (transaction->hasUpdates)
-		serialLog->logControl->commit.append(transaction);
-}
-
-void Dbb::prepareTransaction(TransId transId, int xidLength, const UCHAR *xid)
-{
-	serialLog->logControl->prepare.append(transId, xidLength, xid);
-}
-
-void Dbb::rollback(TransId transId, bool updateTransaction)
-{
-	if (updateTransaction)
-		{
-		if (serialLog)
-			serialLog->logControl->rollback.append(transId, updateTransaction);
-		//flush();
-		}
-}
-
-/***
-void Dbb::setRecovering(bool flag)
-{
-	recovering = flag;
-}
-***/
-
 void Dbb::enableSerialLog()
 {
 	Bdb *bdb = fetchPage(HEADER_PAGE, PAGE_header, Exclusive);

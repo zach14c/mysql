@@ -113,10 +113,7 @@ public:
 	void	createSection(int32 sectionId, TransId transId);
 	void	dropDatabase();
 	void	enableSerialLog();
-	void	rollback (TransId transId, bool updateTransaction);
 	void	updateRecord(int32 sectionId, int32 recordId, Stream *stream, TransId transId, bool earlyWrite);
-	void	prepareTransaction(TransId transId, int xidLength, const UCHAR *xid);
-	void	commit(Transaction *transaction);
 	void	reportStatistics();
 	bool	hasDirtyPages();
 	bool	deleteShadow (DatabaseCopy *shadow);

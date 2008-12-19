@@ -98,7 +98,6 @@ public:
 	int				getInt(const UCHAR** ptr);
 	const UCHAR*	getData(int32 length);
 	void			putStream (Stream *stream);
-	void			wakeup();
 	void			startRecord();
 	void			putData(uint32 length, const UCHAR *data);
 	void			putInt(int32 number);

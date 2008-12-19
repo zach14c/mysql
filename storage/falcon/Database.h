@@ -116,8 +116,6 @@ public:
 
 	void			shutdownNow();
 	void			dropDatabase();
-	void			rollback (Transaction *transaction);
-	void			commit (Transaction *transaction);
 	void			start();
 	void			deleteRepositoryBlob(const char *schema, const char *repositoryName, int volume, int64 blobId, Transaction *transaction);
 	void			deleteRepository (Repository *repository);

@@ -2251,16 +2251,6 @@ void Database::deleteRepositoryBlob(const char *schema, const char *repositoryNa
 	repository->deleteBlob (volume, blobId, transaction);	
 }
 
-void Database::commit(Transaction *transaction)
-{
-	dbb->commit(transaction);
-}
-
-void Database::rollback(Transaction *transaction)
-{
-	dbb->rollback(transaction->transactionId, transaction->hasUpdates);
-}
-
 void Database::renameTable(Table* table, const char* newSchema, const char* newName)
 {
 	newSchema = getSymbol(newSchema);

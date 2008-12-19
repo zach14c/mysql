@@ -38,23 +38,16 @@ SRLRollback::~SRLRollback()
 
 }
 
-void SRLRollback::append(TransId transId, bool updateTransaction)
+void SRLRollback::append(Transaction *transaction)
 {
 	START_RECORD(srlRollback, "SRLRollback::append");
-	putInt(transId);
+	putInt(transaction->transactionId);
 	uint64 commitBlockNumber = log->nextBlockNumber;
-	SerialLogTransaction *transaction = log->findTransaction(transId);
 
-	if (updateTransaction)
+	if (transaction->hasUpdates)
 		log->flush(false, commitBlockNumber, &sync);
 	else
 		sync.unlock();
-	
-	if (transaction)
-		{
-		transaction->setState(sltRolledBack);
-		wakeup();
-		}
 }
 
 void SRLRollback::read()
