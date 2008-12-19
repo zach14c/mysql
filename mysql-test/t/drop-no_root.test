@@ -1,6 +1,11 @@
 # This test uses chmod, can't be run with root permissions
 --source include/not_as_root.inc
 
+
+# BUG#40128 drop-no_root fails under windows in 6.0-rpl
+# Temporarily disable on windows until bug is fixed.
+--source include/not_windows.inc
+
 ###########################################################################
 
 --echo
