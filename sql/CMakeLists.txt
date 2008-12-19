@@ -26,6 +26,7 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/regex 
                     ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql/backup
+                    ${CMAKE_SOURCE_DIR}/extra/libevent
 )
 
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/sql/sql_yacc.h 
@@ -87,8 +88,9 @@ ADD_EXECUTABLE(mysqld
                ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
 
 TARGET_LINK_LIBRARIES(mysqld
-                      heap myisam myisammrg mysys yassl zlib debug dbug yassl 
+                      heap myisam myisammrg mysys yassl zlib debug dbug yassl libevent
                       taocrypt strings vio regex ws2_32)
+
 
 TARGET_LINK_LIBRARIES(mysqld backup)
 

@@ -2452,7 +2452,8 @@ JOIN::exec()
     if (!items1)
     {
       items1= items0 + all_fields.elements;
-      if (sort_and_group || curr_tmp_table->group)
+      if (sort_and_group || curr_tmp_table->group ||
+          tmp_table_param.precomputed_group_by)
       {
 	if (change_to_use_tmp_fields(thd, items1,
 				     tmp_fields_list1, tmp_all_fields1,
@@ -11733,6 +11734,8 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   ENGINE_COLUMNDEF *recinfo;
   uint total_uneven_bit_length= 0;
   bool force_copy_fields= param->force_copy_fields;
+  save_sum_fields|= param->precomputed_group_by;
+
   DBUG_ENTER("create_tmp_table");
   DBUG_PRINT("enter",
              ("distinct: %d  save_sum_fields: %d  rows_limit: %lu  group: %d",
@@ -11862,6 +11865,8 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   share->primary_key= MAX_KEY;               // Indicate no primary key
   share->keys_for_keyread.init();
   share->keys_in_use.init();
+  if (param->schema_table)
+    share->db= INFORMATION_SCHEMA_NAME;
 
   /* Calculate which type of fields we will store in the temporary table */
 
