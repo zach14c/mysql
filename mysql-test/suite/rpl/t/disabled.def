@@ -23,5 +23,6 @@ rpl_server_id2             : Bug#38540 rpl_server_id2 uses show slave status unn
 
 #This was re-disabled because there are still failures in pushbuild. This requires more investigation (alfranio).
 rpl_extraColmaster_myisam  : BUG#30854
+rpl_extraColmaster_innodb  : BUG#30854 : Tables name show as binary in slave err msg on                             vm-win2003-64-b and Solaris
 rpl_row_until              : Bug#28772 rpl_row_until fails in pushbuild
 rpl_flushlog_loop          : BUG#37733 2008-07-23 Sven disabled in 5.1-bugteam. the bug has been fixed in 5.1-rpl: please re-enable when that gets pushed to main
