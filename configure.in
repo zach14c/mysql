@@ -64,6 +64,8 @@ sinclude(config/ac-macros/readline.m4)
 sinclude(config/ac-macros/ssl.m4)
 sinclude(config/ac-macros/libevent.m4)
 sinclude(config/ac-macros/zlib.m4)
+sinclude(config/search_for_lib.m4)
+sinclude(config/libmemcached.m4)
 
 # Remember to add a directory sql/share/LANGUAGE
 AVAILABLE_LANGUAGES="\
