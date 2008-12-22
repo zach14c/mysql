@@ -1654,6 +1654,9 @@ enum_nested_loop_state JOIN_CACHE_BNL::join_matching_records(bool skip_last)
   info= &join_tab->read_record;
   do
   {
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
+
     if (join->thd->killed)
     {
       /* The user has aborted the execution of the query */
@@ -2152,6 +2155,8 @@ enum_nested_loop_state JOIN_CACHE_BKA::join_matching_records(bool skip_last)
       rc= NESTED_LOOP_KILLED; 
       goto finish;
     }
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
     /* 
       If only the first match is needed and it has been already found 
       for the associated partial join record then the returned candidate
