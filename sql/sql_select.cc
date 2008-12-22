@@ -5231,6 +5231,8 @@ add_key_part(DYNAMIC_ARRAY *keyuse_array,KEY_FIELD *key_field)
           keyuse.null_rejecting= key_field->null_rejecting;
           keyuse.cond_guard= key_field->cond_guard;
           keyuse.sj_pred_no= key_field->sj_pred_no;
+          /* This will be set accordingly in optimize_keyuse */
+          keyuse.ref_table_rows= ~(ha_rows) 0;
 	  (void) insert_dynamic(keyuse_array,(uchar*) &keyuse);
 	}
       }
@@ -5261,16 +5263,16 @@ add_ft_keys(DYNAMIC_ARRAY *keyuse_array,
       Item_func *arg0=(Item_func *)(func->arguments()[0]),
                 *arg1=(Item_func *)(func->arguments()[1]);
       if (arg1->const_item()  &&
-          ((functype == Item_func::GE_FUNC && arg1->val_real() > 0) ||
-           (functype == Item_func::GT_FUNC && arg1->val_real() >=0))  &&
            arg0->type() == Item::FUNC_ITEM            &&
-           arg0->functype() == Item_func::FT_FUNC)
+           arg0->functype() == Item_func::FT_FUNC     &&
+          ((functype == Item_func::GE_FUNC && arg1->val_real() > 0) ||
+           (functype == Item_func::GT_FUNC && arg1->val_real() >=0)))
         cond_func=(Item_func_match *) arg0;
       else if (arg0->const_item() &&
-               ((functype == Item_func::LE_FUNC && arg0->val_real() > 0) ||
-                (functype == Item_func::LT_FUNC && arg0->val_real() >=0)) &&
                 arg1->type() == Item::FUNC_ITEM          &&
-                arg1->functype() == Item_func::FT_FUNC)
+                arg1->functype() == Item_func::FT_FUNC   &&
+               ((functype == Item_func::LE_FUNC && arg0->val_real() > 0) ||
+                (functype == Item_func::LT_FUNC && arg0->val_real() >=0)))
         cond_func=(Item_func_match *) arg1;
     }
   }

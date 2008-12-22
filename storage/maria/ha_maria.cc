@@ -1346,7 +1346,7 @@ int ha_maria::repair(THD *thd, HA_CHECK *param, bool do_optimize)
                                      (local_testflag &
                                       T_STATISTICS ? UPDATE_STAT : 0));
     info(HA_STATUS_NO_LOCK | HA_STATUS_TIME | HA_STATUS_VARIABLE |
-         HA_STATUS_CONST);
+         HA_STATUS_CONST, 0);
     if (rows != file->state->records && !(param->testflag & T_VERY_SILENT))
     {
       char llbuff[22], llbuff2[22];
@@ -2068,6 +2068,11 @@ void ha_maria::position(const uchar *record)
 
 int ha_maria::info(uint flag)
 {
+  return info(flag, table->s->tmp_table == NO_TMP_TABLE);
+}
+
+int ha_maria::info(uint flag, my_bool lock_table_share)
+{
   MARIA_INFO maria_info;
   char name_buff[FN_REFLEN];
 
@@ -2094,7 +2099,7 @@ int ha_maria::info(uint flag)
     stats.mrr_length_per_rec= maria_info.reflength + 8; // 8 = max(sizeof(void *))
 
     /* Update share */
-    if (share->tmp_table == NO_TMP_TABLE)
+    if (lock_table_share)
       pthread_mutex_lock(&share->LOCK_ha_data);
     share->keys_in_use.set_prefix(share->keys);
     share->keys_in_use.intersect_extended(maria_info.key_map);
@@ -2107,7 +2112,7 @@ int ha_maria::info(uint flag)
       for (end= to+ share->key_parts ; to < end ; to++, from++)
         *to= (ulong) (*from + 0.5);
     }
-    if (share->tmp_table == NO_TMP_TABLE)
+    if (lock_table_share)
       pthread_mutex_unlock(&share->LOCK_ha_data);
 
     /*
@@ -2239,7 +2244,8 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         trnman_new_statement(trn);
       }
 
-      if (file->s->lock.get_status)
+      /* If handler uses versioning */
+      if (file->s->lock_key_trees)
       {
         if (_ma_setup_live_state(file))
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -2284,6 +2290,10 @@ int ha_maria::external_lock(THD *thd, int lock_type)
         We always re-enable, don't rely on thd->transaction.on as it is
         sometimes reset to true after unlocking (see mysql_truncate() for a
         partitioned table based on Maria).
+        Note that we can come here without having an exclusive lock on the
+        table, for example in this case:
+        external_lock(F_(WR|RD)LCK); thr_lock() which fails due to lock
+        abortion; external_lock(F_UNLCK).
       */
       if (_ma_reenable_logging_for_table(file, TRUE))
         DBUG_RETURN(1);
@@ -2436,7 +2446,8 @@ int ha_maria::implicit_commit(THD *thd, bool new_trn)
         if (handler->s->base.born_transactional)
         {
           _ma_set_trn_for_table(handler, trn);
-          if (handler->s->lock.get_status)
+          /* If handler uses versioning */
+          if (handler->s->lock_key_trees)
           {
             if (_ma_setup_live_state(handler))
               error= HA_ERR_OUT_OF_MEM;
@@ -2877,7 +2888,7 @@ bool maria_show_status(handlerton *hton,
       const char error[]= "can't stat";
       char object[SHOW_MSG_LEN];
       file= translog_filename_by_fileno(i, path);
-      if (!(stat= my_stat(file, &stat_buff, MYF(MY_WME))))
+      if (!(stat= my_stat(file, &stat_buff, MYF(0))))
       {
         status= error;
         status_len= sizeof(error) - 1;
@@ -2994,6 +3005,16 @@ static int mark_recovery_success(void)
   res= ma_control_file_write_and_force(last_checkpoint_lsn, last_logno,
                                        max_trid_in_control_file, 0);
   DBUG_RETURN(res);
+}
+
+
+/*
+  Return 1 if table has changed during the current transaction
+*/
+
+bool ha_maria::is_changed() const
+{
+  return file->state->changed;
 }
 
 

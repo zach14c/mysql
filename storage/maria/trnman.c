@@ -37,6 +37,13 @@ static TRN committed_list_min, committed_list_max;
 /* a counter, used to generate transaction ids */
 static TrID global_trid_generator;
 
+/*
+  The minimum existing transaction id for trnman_get_min_trid()
+  The default value is used when transaction manager not initialize;
+  Probably called from maria_chk
+*/
+static TrID trid_min_read_from= ~(TrID) 0;
+
 /* the mutex for everything above */
 static pthread_mutex_t LOCK_trn_list;
 
@@ -158,6 +165,7 @@ int trnman_init(TrID initial_trid)
 
   pool= 0;
   global_trid_generator= initial_trid;
+  trid_min_read_from= initial_trid;
   lf_hash_init(&trid_to_trn, sizeof(TRN*), LF_HASH_UNIQUE,
                0, 0, trn_get_hash_key, 0);
   DBUG_PRINT("info", ("pthread_mutex_init LOCK_trn_list"));
@@ -222,7 +230,7 @@ static TrID new_trid()
 static uint get_short_trid(TRN *trn)
 {
   int i= (int) ((global_trid_generator + (intptr)trn) * 312089 %
-                SHORT_TRID_MAX + 1);
+                SHORT_TRID_MAX) + 1;
   uint res=0;
 
   for ( ; !res ; i= 1)
@@ -253,6 +261,7 @@ TRN *trnman_new_trn(WT_THD *wt)
 {
   int res;
   TRN *trn;
+  union { TRN *trn; void *v; } tmp;
   DBUG_ENTER("trnman_new_trn");
 
   /*
@@ -268,19 +277,19 @@ TRN *trnman_new_trn(WT_THD *wt)
   pthread_mutex_lock(&LOCK_trn_list);
 
   /* Allocating a new TRN structure */
-  trn= pool;
+  tmp.trn= pool;
   /*
     Popping an unused TRN from the pool
     (ABA isn't possible, we're behind a mutex
   */
   my_atomic_rwlock_wrlock(&LOCK_pool);
-  while (trn && !my_atomic_casptr((void **)&pool, (void **)&trn,
-                                  (void *)trn->next))
+  while (tmp.trn && !my_atomic_casptr((void **)&pool, &tmp.v,
+                                  (void *)tmp.trn->next))
     /* no-op */;
   my_atomic_rwlock_wrunlock(&LOCK_pool);
 
   /* Nothing in the pool ? Allocate a new one */
-  if (!trn)
+  if (!(trn= tmp.trn))
   {
     /*
       trn should be completely initalized at create time to allow
@@ -303,6 +312,7 @@ TRN *trnman_new_trn(WT_THD *wt)
   if (!trn->pins)
   {
     trnman_free_trn(trn);
+    pthread_mutex_unlock(&LOCK_trn_list);
     return 0;
   }
 
@@ -315,6 +325,7 @@ TRN *trnman_new_trn(WT_THD *wt)
   trn->next= &active_list_max;
   trn->prev= active_list_max.prev;
   active_list_max.prev= trn->prev->next= trn;
+  trid_min_read_from= active_list_min.next->min_read_from;
   DBUG_PRINT("info", ("pthread_mutex_unlock LOCK_trn_list"));
   pthread_mutex_unlock(&LOCK_trn_list);
 
@@ -349,7 +360,7 @@ TRN *trnman_new_trn(WT_THD *wt)
     return 0;
   }
 
-  DBUG_PRINT("exit", ("trn: x%lx  trid: 0x%lu",
+  DBUG_PRINT("exit", ("trn: 0x%lx  trid: 0x%lu",
                       (ulong) trn, (ulong) trn->trid));
 
   DBUG_RETURN(trn);
@@ -375,11 +386,12 @@ TRN *trnman_new_trn(WT_THD *wt)
 my_bool trnman_end_trn(TRN *trn, my_bool commit)
 {
   int res= 1;
+  uint16 cached_short_id= trn->short_id; /* we have to cache it, see below */
   TRN *free_me= 0;
   LF_PINS *pins= trn->pins;
   DBUG_ENTER("trnman_end_trn");
+  DBUG_PRINT("enter", ("trn=0x%lx commit=%d", (ulong) trn, commit));
 
-  DBUG_ASSERT(trn->rec_lsn == 0);
   /* if a rollback, all UNDO records should have been executed */
   DBUG_ASSERT(commit || trn->undo_lsn == 0);
   DBUG_PRINT("info", ("pthread_mutex_lock LOCK_trn_list"));
@@ -437,16 +449,24 @@ my_bool trnman_end_trn(TRN *trn, my_bool commit)
     trn->next= free_me;
     free_me= trn;
   }
+  trid_min_read_from= active_list_min.next->min_read_from;
+
   if ((*trnman_end_trans_hook)(trn, commit,
                                active_list_min.next != &active_list_max))
     res= -1;
   trnman_active_transactions--;
 
+  DBUG_PRINT("info", ("pthread_mutex_unlock LOCK_trn_list"));
   pthread_mutex_unlock(&LOCK_trn_list);
 
-  /* the rest is done outside of a critical section */
+  /*
+    the rest is done outside of a critical section
+
+    note that we don't own trn anymore, it may be in a shared list now.
+    Thus, we cannot dereference it, and must use cached_short_id below.
+  */
   my_atomic_rwlock_rdlock(&LOCK_short_trid_to_trn);
-  my_atomic_storeptr((void **)&short_trid_to_active_trn[trn->short_id], 0);
+  my_atomic_storeptr((void **)&short_trid_to_active_trn[cached_short_id], 0);
   my_atomic_rwlock_rdunlock(&LOCK_short_trid_to_trn);
 
   /*
@@ -490,7 +510,6 @@ void trnman_free_trn(TRN *trn)
      modifies the value of tmp.
   */
   union { TRN *trn; void *v; } tmp;
-
 
   pthread_mutex_lock(&trn->state_lock);
   trn->short_id= 0;
@@ -670,7 +689,10 @@ my_bool trnman_collect_transactions(LEX_STRING *str_act, LEX_STRING *str_com,
     */
     uint sid;
     LSN rec_lsn, undo_lsn, first_undo_lsn;
-    if ((sid= trn->short_id) == 0)
+    pthread_mutex_lock(&trn->state_lock);
+    sid= trn->short_id;
+    pthread_mutex_unlock(&trn->state_lock);
+    if (sid == 0)
     {
       /*
         Not even inited, has done nothing. Or it is the
@@ -787,25 +809,14 @@ TRN *trnman_get_any_trn()
 
 
 /**
-  Returns the minimum existing transaction id
-
-  @notes
-    This can only be called when we have at least one running transaction.
+  Returns the minimum existing transaction id. May return a too small
+  number in race conditions, but this is ok as the value is used to
+  remove not visible transid from index/rows.
 */
 
 TrID trnman_get_min_trid()
 {
-  TrID min_read_from;
-  if (short_trid_to_active_trn == NULL)
-  {
-    /* Transaction manager not initialize; Probably called from maria_chk */
-    return ~(TrID) 0;
-  }
-
-  pthread_mutex_lock(&LOCK_trn_list);
-  min_read_from= active_list_min.next->min_read_from;
-  pthread_mutex_unlock(&LOCK_trn_list);
-  return min_read_from;
+  return trid_min_read_from;
 }
 
 
@@ -870,9 +881,15 @@ my_bool trnman_exists_active_transactions(TrID min_id, TrID max_id,
 
   if (!trnman_is_locked)
     pthread_mutex_lock(&LOCK_trn_list);
+  safe_mutex_assert_owner(&LOCK_trn_list);
   for (trn= active_list_min.next; trn != &active_list_max; trn= trn->next)
   {
-    if (trn->trid > min_id && trn->trid < max_id)
+    /*
+      We use >= for min_id as min_id is a commit_trid and trn->trid
+      is transaction id.  In the case they are the same, then the
+      trn started after the min_id was committed.
+    */
+    if (trn->trid >= min_id && trn->trid < max_id)
     {
       ret= 1;
       break;
@@ -893,6 +910,7 @@ void trnman_lock()
   pthread_mutex_lock(&LOCK_trn_list);
 }
 
+
 /**
    unlock transaction list
 */
@@ -900,4 +918,14 @@ void trnman_lock()
 void trnman_unlock()
 {
   pthread_mutex_unlock(&LOCK_trn_list);
+}
+
+
+/**
+  Is trman initialized
+*/
+
+my_bool trman_is_inited()
+{
+  return (short_trid_to_active_trn != NULL);
 }
