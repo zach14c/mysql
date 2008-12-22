@@ -859,7 +859,16 @@ int StorageInterface::create(const char *mySqlName, TABLE *form, HA_CREATE_INFO 
 		tableSpace = TEMPORARY_TABLESPACE;
 		}
 	else if (info->tablespace)
+		{
+		if (!strcasecmp(info->tablespace, TEMPORARY_TABLESPACE))
+			{
+			my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
+				"Cannot create non-temporary table '%s' in '%s' tablespace.", MYF(0), tableName, TEMPORARY_TABLESPACE);
+			storageTable->deleteTable();
+			DBUG_RETURN(HA_WRONG_CREATE_OPTION);
+			}
 		tableSpace = storageTable->getTableSpaceName();
+		}
 	else
 		tableSpace = DEFAULT_TABLESPACE;
 
