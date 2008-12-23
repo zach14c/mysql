@@ -1189,3 +1189,4 @@ a
 8
 9
 set join_cache_level=@save_join_cache_level;
+drop table t0, t1;
