@@ -60,6 +60,9 @@ pars0lex.l: .*conversion from 'ulint' to 'int', possible loss of data.*
 .*/ndb/.* : .*unused variable.*
 .*/ndb/.* : .*defined but not used.*
 
+# Ignore warning produced by passing "" to a printf like function
+.*/ndb/.* : zero-length printf format string
+
 #
 # Unexplanable (?) stuff
 #

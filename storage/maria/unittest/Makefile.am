@@ -24,9 +24,9 @@ EXTRA_DIST=	ma_test_all-t CMakeLists.txt \
 LDADD=			$(top_builddir)/unittest/mytap/libmytap.a \
 			$(top_builddir)/storage/maria/libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
-			$(top_builddir)/strings/libmystrings.a @ZLIB_LIBS@
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
 noinst_PROGRAMS =	ma_control_file-t trnman-t \
 			ma_pagecache_single_1k-t ma_pagecache_single_8k-t \
 			ma_pagecache_single_64k-t \

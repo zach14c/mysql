@@ -239,7 +239,7 @@ int Stream::open()
   if (!test_secure_file_priv_access(m_path->c_ptr()))
     return ER_OPTION_PREVENTS_STATEMENT;
 
-  m_fd= my_open(m_path->c_ptr(), m_flags, MYF(0));
+  m_fd= get_file();
 
   if (!(m_fd >= 0))
     return -1;
@@ -473,6 +473,15 @@ bool Output_stream::rewind()
   return init();
 }
 
+/**
+  Create file to be written to
+
+  @return File descriptor
+*/
+File Output_stream::get_file() 
+{
+  return my_create(m_path->c_ptr(), 0, m_flags, MYF(MY_WME)); // reports errors
+}
 
 Input_stream::Input_stream(Logger &log, ::String *path)
   :Stream(log, path, O_RDONLY)
@@ -650,6 +659,16 @@ bool Input_stream::rewind()
 int Input_stream::next_chunk()
 {
   return bstream_next_chunk(this);
+}
+
+/**
+  Open file that will be read from
+
+  @return File descriptor
+*/
+File Input_stream::get_file() 
+{
+  return my_open(m_path->c_ptr(), m_flags, MYF(MY_WME));  // reports errors
 }
 
 } // backup namespace

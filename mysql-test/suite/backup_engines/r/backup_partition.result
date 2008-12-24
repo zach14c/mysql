@@ -1,0 +1,43 @@
+#
+# Creating databases
+#
+CREATE DATABASE backup_part;
+CREATE TABLE backup_part.t1 (
+t1_autoinc INTEGER NOT NULL AUTO_INCREMENT,
+t1_uuid CHAR(36),
+PRIMARY KEY (t1_autoinc))
+PARTITION BY HASH (t1_autoinc);
+INSERT INTO backup_part.t1(t1_uuid) VALUES ('aaa'),('bbb'),('ccc'),('ddd');
+# Show content
+SELECT * FROM backup_part.t1 ORDER BY t1_autoinc;
+t1_autoinc	t1_uuid
+1	aaa
+2	bbb
+3	ccc
+4	ddd
+#
+# Perform backup
+#
+# Show drivers. 
+
+SELECT count(*) FROM mysql.backup_history WHERE drivers LIKE 'FILTERED DRIVER' AND backup_id=FILTERED ID;
+count(*)
+1
+
+#
+# Restore and show content
+#  
+RESTORE FROM 'partition.bak' OVERWRITE;
+backup_id
+#
+
+SELECT * FROM backup_part.t1 ORDER BY t1_autoinc;
+t1_autoinc	t1_uuid
+1	aaa
+2	bbb
+3	ccc
+4	ddd
+#
+# Cleanup
+#  
+DROP DATABASE backup_part;

@@ -17,8 +17,7 @@ append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect;
 wait-maria_empty_logs.inc
 EOF
 
-# Shutdown server and kill it if not stopped within 60 secs
-shutdown_server 60;
+--source include/mysqladmin_shutdown.inc
 
 if (!$mel_keep_control_file)
 {

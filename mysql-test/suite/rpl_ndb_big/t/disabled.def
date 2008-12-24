@@ -10,7 +10,6 @@
 #
 ##############################################################################
 
-# the below testcase have been reworked to avoid the bug, test contains comment, keep bug open
+rpl_ndb_circular_simplex : Bug#33849 COMMIT event missing in cluster circular replication.
 
-rpl_ndb_myisam2ndb       : Bug#34725 2008-02-26 hakank Currently failing.
-rpl_ndb_sync             : Bug#34923 2008-02-28 hakank Currently failing.
+# the below testcase have been reworked to avoid the bug, test contains comment, keep bug open

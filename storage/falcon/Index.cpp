@@ -418,9 +418,7 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 
 	ASSERT (indexId != -1);
 
-	if (bitmap)
-		bitmap->clear();
-	else
+	if (!bitmap)
 		bitmap = new Bitmap;
 
 	// Use the DIHash if we can.
