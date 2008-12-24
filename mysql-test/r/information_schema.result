@@ -1788,3 +1788,9 @@ ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_
 LOCK TABLES t1 READ, information_schema.tables READ;
 ERROR 42000: Access denied for user 'root'@'localhost' to database 'information_schema'
 DROP TABLE t1;
+create function f1() returns int return 1;
+select routine_name, routine_type from information_schema.routines
+where routine_schema = 'test';
+routine_name	routine_type
+f1	FUNCTION
+drop function f1;

@@ -1500,3 +1500,14 @@ DROP TABLE t1, information_schema.tables;
 --error ER_DBACCESS_DENIED_ERROR
 LOCK TABLES t1 READ, information_schema.tables READ;
 DROP TABLE t1;
+
+#
+# Bug#38916 Select from I_S.ROUTINES results in "No database selected" error
+#
+create function f1() returns int return 1;
+--connect (con7,localhost,root,,*NO-ONE*)
+select routine_name, routine_type from information_schema.routines
+where routine_schema = 'test';
+connection default;
+drop function f1;
+disconnect con7;
