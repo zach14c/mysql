@@ -6524,7 +6524,9 @@ int setup_wild(THD *thd, TABLE_LIST *tables, List<Item> &fields,
     /* make * substituting permanent */
     SELECT_LEX *select_lex= thd->lex->current_select;
     select_lex->with_wild= 0;
-    select_lex->item_list= fields;
+
+    if (&select_lex->item_list != &fields)
+      select_lex->item_list= fields;
 
     thd->restore_active_arena(arena, &backup);
   }
