@@ -1,0 +1,43 @@
+--source include/have_falcon.inc
+
+#
+# Query Falcon related tables in INFORMATION_SCHEMA
+# to check plugin code path.
+#
+--echo *** Falcon related tables in INFORMATION_SCHEMA ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+USE INFORMATION_SCHEMA;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--disable_result_log
+SELECT count(*) FROM FALCON_RECORD_CACHE_DETAIL;
+SELECT count(*) FROM FALCON_RECORD_CACHE_SUMMARY;
+SELECT count(*) FROM FALCON_SERIAL_LOG_INFO;
+SELECT count(*) FROM FALCON_SYNCOBJECTS;
+SELECT count(*) FROM FALCON_SYSTEM_MEMORY_DETAIL;
+SELECT count(*) FROM FALCON_SYSTEM_MEMORY_SUMMARY;
+SELECT count(*) FROM FALCON_TABLESPACE_IO;
+SELECT count(*) FROM FALCON_TRANSACTIONS;
+SELECT count(*) FROM FALCON_TRANSACTION_SUMMARY;
+--enable_result_log
+
+# FALCON_VERSION should have only one line.
+SELECT count(*) FROM FALCON_VERSION;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+# Check not applicable here.
+#SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+# No need for final cleanup.
+#DROP TABLE t1;
+USE test;

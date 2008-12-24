@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -717,7 +717,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   const char **interval_array;
   enum legacy_db_type legacy_db_type;
   my_bitmap_map *bitmaps;
-  uchar *buff= 0;
+  uchar *buffbuff= 0; // rename to cause compile error if automerged stuff
+                      // as scope of variable has changed
   uchar *field_extra_info= 0;
   DBUG_ENTER("open_binary_frm");
 
@@ -914,14 +915,14 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     /* Read extra data segment */
     uchar *next_chunk, *buff_end;
     DBUG_PRINT("info", ("extra segment size is %u bytes", n_length));
-    if (!(next_chunk= buff= (uchar*) my_malloc(n_length, MYF(MY_WME))))
+    if (!(next_chunk= buffbuff= (uchar*) my_malloc(n_length, MYF(MY_WME))))
       goto err;
-    if (my_pread(file, buff, n_length, record_offset + share->reclength,
+    if (my_pread(file, buffbuff, n_length, record_offset + share->reclength,
                  MYF(MY_NABP)))
     {
       goto err;
     }
-    share->connect_string.length= uint2korr(buff);
+    share->connect_string.length= uint2korr(buffbuff);
     if (!(share->connect_string.str= strmake_root(&share->mem_root,
                                                   (char*) next_chunk + 2,
                                                   share->connect_string.
@@ -930,7 +931,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       goto err;
     }
     next_chunk+= share->connect_string.length + 2;
-    buff_end= buff + n_length;
+    buff_end= buffbuff + n_length;
     if (next_chunk + 2 < buff_end)
     {
       uint str_db_type_length= uint2korr(next_chunk);
@@ -947,7 +948,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
                 plugin_data(tmp_plugin, handlerton *)))
         {
           /* bad file, legacy_db_type did not match the name */
-          my_free(buff, MYF(0));
           goto err;
         }
         /*
@@ -983,7 +983,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
         /* purecov: begin inspected */
         error= 8;
         my_error(ER_UNKNOWN_STORAGE_ENGINE, MYF(0), name.str);
-        my_free(buff, MYF(0));
         goto err;
         /* purecov: end */
       }
@@ -1065,20 +1064,18 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
       {
           DBUG_PRINT("error",
                      ("long table comment is not defined in .frm"));
-          my_free(buff, MYF(0));
           goto err;
       }
       share->comment.length = uint2korr(next_chunk);
       if (! (share->comment.str= strmake_root(&share->mem_root,
                                (char*)next_chunk + 2, share->comment.length)))
       {
-          my_free(buff, MYF(0));
           goto err;
       }
       next_chunk+= 2 + share->comment.length;
     }
     DBUG_ASSERT (next_chunk <= buff_end);
-    if (share->mysql_version >= MYSQL_VERSION_TABLESPACE_IN_FRM_CGE)
+    if (share->mysql_version >= MYSQL_VERSION_TABLESPACE_IN_FRM)
     {
       /*
        New frm format in mysql_version 5.2.5 (originally in
@@ -1119,12 +1116,6 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
         field_extra_info= next_chunk + format_section_header_size + tablespace_len + 1;
         next_chunk+= format_section_len;
       }
-    }
-    DBUG_ASSERT (next_chunk <= buff_end);
-    if (next_chunk > buff_end)
-    {
-      DBUG_PRINT("error", ("Buffer overflow in field extra info"));
-      goto err;
     }
   }
   share->key_block_size= uint2korr(head+62);
@@ -1707,13 +1698,13 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   if (use_hash)
     (void) hash_check(&share->name_hash);
 #endif
-  if (buff)
-    my_free(buff, MYF(0));
+  if (buffbuff)
+    my_free(buffbuff, MYF(0));
   DBUG_RETURN (0);
 
  err:
-  if (buff)
-    my_free(buff, MYF(0));
+  if (buffbuff)
+    my_free(buffbuff, MYF(0));
   share->error= error;
   share->open_errno= my_errno;
   share->errarg= errarg;
@@ -1771,9 +1762,6 @@ int open_table_from_share(THD *thd, TABLE_SHARE *share, const char *alias,
                       outparam,
                       (open_mode == OTM_OPEN)?"open":
                       ((open_mode == OTM_CREATE)?"create":"alter")));
-
-  /* Parsing of partitioning information from .frm needs thd->lex set up. */
-  DBUG_ASSERT(thd->lex->is_lex_started);
 
   error= 1;
   bzero((char*) outparam, sizeof(*outparam));
@@ -1960,6 +1948,8 @@ int open_table_from_share(THD *thd, TABLE_SHARE *share, const char *alias,
       thd->restore_active_arena(&part_func_arena, &backup_arena);
       goto partititon_err;
     }
+    /* fix_partition_func needs thd->lex set up. TODO: fix! */
+    DBUG_ASSERT(thd->lex->is_lex_started);
     outparam->part_info->is_auto_partitioned= share->auto_partitioned;
     DBUG_PRINT("info", ("autopartitioned: %u", share->auto_partitioned));
     /* we should perform the fix_partition_func in either local or
@@ -3476,19 +3466,19 @@ void TABLE_LIST::hide_view_error(THD *thd)
   /* Hide "Unknown column" or "Unknown function" error */
   DBUG_ASSERT(thd->is_error());
 
-  if (thd->main_da.sql_errno() == ER_BAD_FIELD_ERROR ||
-      thd->main_da.sql_errno() == ER_SP_DOES_NOT_EXIST ||
-      thd->main_da.sql_errno() == ER_PROCACCESS_DENIED_ERROR ||
-      thd->main_da.sql_errno() == ER_COLUMNACCESS_DENIED_ERROR ||
-      thd->main_da.sql_errno() == ER_TABLEACCESS_DENIED_ERROR ||
-      thd->main_da.sql_errno() == ER_TABLE_NOT_LOCKED ||
-      thd->main_da.sql_errno() == ER_NO_SUCH_TABLE)
+  if (thd->stmt_da->sql_errno() == ER_BAD_FIELD_ERROR ||
+      thd->stmt_da->sql_errno() == ER_SP_DOES_NOT_EXIST ||
+      thd->stmt_da->sql_errno() == ER_PROCACCESS_DENIED_ERROR ||
+      thd->stmt_da->sql_errno() == ER_COLUMNACCESS_DENIED_ERROR ||
+      thd->stmt_da->sql_errno() == ER_TABLEACCESS_DENIED_ERROR ||
+      thd->stmt_da->sql_errno() == ER_TABLE_NOT_LOCKED ||
+      thd->stmt_da->sql_errno() == ER_NO_SUCH_TABLE)
   {
     TABLE_LIST *top= top_table();
     thd->clear_error();
     my_error(ER_VIEW_INVALID, MYF(0), top->view_db.str, top->view_name.str);
   }
-  else if (thd->main_da.sql_errno() == ER_NO_DEFAULT_FOR_FIELD)
+  else if (thd->stmt_da->sql_errno() == ER_NO_DEFAULT_FOR_FIELD)
   {
     TABLE_LIST *top= top_table();
     thd->clear_error();

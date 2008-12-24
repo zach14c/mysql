@@ -1,4 +1,7 @@
-CREATE TABLE t1(a VARCHAR(140) CHARACTER SET utf8, KEY(a)) ENGINE=falcon;
+*** Bug #39708 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a VARCHAR(140) CHARACTER SET utf8, KEY(a));
 ERROR 42000: Specified key was too long; max key length is 540 bytes
 SHOW WARNINGS;
 Level	Code	Message

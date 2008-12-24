@@ -1,0 +1,15 @@
+*** Bug #29246 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (s1 VARCHAR(2) CHARACTER SET latin1 COLLATE latin1_german2_ci, KEY (s1(1))) ENGINE=falcon;
+INSERT INTO t1 VALUES(0xdc),('ue');
+SELECT COUNT(*) FROM t1 WHERE s1 = 0xdc;
+COUNT(*)
+2
+SELECT COUNT(*) FROM t1 WHERE s1 = 'ue';
+COUNT(*)
+2
+SELECT count(*) FROM t1;
+count(*)
+2
+DROP TABLE t1;

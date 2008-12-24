@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+
 #
 # Bug #22089: Can't create temporary tables
 #
@@ -9,6 +10,10 @@
 # ----------------------------------------------------- #
 let $engine = 'Falcon';
 eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TEMPORARY TABLE IF EXISTS t1;
+--enable_warnings
 
 # ----------------------------------------------------- #
 # --- Test                                          --- #

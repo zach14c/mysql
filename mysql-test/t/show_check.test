@@ -544,17 +544,12 @@ SHOW CREATE VIEW v1;
 DROP VIEW v1;
 
 # Check that SQL_NO_CACHE always wins.
+--error ER_WRONG_USAGE
 CREATE VIEW v1 AS SELECT SQL_CACHE SQL_NO_CACHE NOW();
-SHOW CREATE VIEW v1;
-DROP VIEW v1;
-
+--error ER_WRONG_USAGE
 CREATE VIEW v1 AS SELECT SQL_NO_CACHE SQL_CACHE NOW();
-SHOW CREATE VIEW v1;
-DROP VIEW v1;
-
+--error ER_WRONG_USAGE
 CREATE VIEW v1 AS SELECT SQL_CACHE SQL_NO_CACHE SQL_CACHE NOW();
-SHOW CREATE VIEW v1;
-DROP VIEW v1;
 
 # Check CREATE VIEW in a prepared statement in a procedure.
 delimiter |;
@@ -622,7 +617,6 @@ show plugins;
 show columns in t1;
 show slave hosts;
 show keys in t1;
-show column types;
 show storage engines;
 show authors;
 show contributors;

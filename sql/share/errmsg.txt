@@ -6146,6 +6146,9 @@ WARN_PLUGIN_DELETE_BUILTIN
 WARN_PLUGIN_BUSY
   eng "Plugin is busy and will be uninstalled on shutdown"
 
+ER_VARIABLE_IS_READONLY
+  eng "%s variable '%s' is read-only. Use SET %s to assign the value"
+
 ER_WARN_AUTO_CONVERT_LOCK
         eng "Converted to non-transactional lock on '%-.64s'"
         ger "Umgewandelt zu nicht-transaktionalen Sperren auf '%-.64s'"
@@ -6189,7 +6192,7 @@ ER_BACKUP_INVALID_LOC
 ER_BACKUP_READ_LOC
         eng "Can't read backup location '%-.64s'"
 ER_BACKUP_WRITE_LOC
-        eng "Can't write to backup location '%-.64s' (file already exists?)"
+        eng "Can't write to backup location '%-.64s'"
 ER_BACKUP_LIST_DBS
         eng "Can't enumerate server databases"
 ER_BACKUP_LIST_TABLES
@@ -6397,7 +6400,7 @@ ER_BACKUP_GET_META_PRIV
 ER_BACKUP_CANT_RESTORE_PRIV
         eng "Could not execute grant '%-.64s'."
 ER_BACKUP_GRANT_SKIPPED
-        eng "The grant '%-.64s' was skipped because the user does not exist."
+        eng "The grant '%-.64s' for the user %-.64s was skipped because the user does not exist."
 ER_BACKUP_GRANT_WRONG_DB
         eng "The grant '%-.64s' failed. Database not included in the backup image."
 ER_BACKUP_LOGPATHS
@@ -6436,3 +6439,14 @@ ER_RESTORE_DB_EXISTS
   eng "Database \'%-.64s\' already exists. Use OVERWRITE flag to overwrite."
 ER_QUERY_CACHE_DISABLED
 	eng "Query cache is disabled; restart the server with query_cache_type=1 to enable it"
+
+
+ER_BACKUP_UNEXPECTED_DATA
+  eng "Backup image contains no tables, but table data was found in it"
+ER_BACKUP_BACKUP_DBS
+  eng "Backing up %u database(s) %.220s"
+ER_BACKUP_RESTORE_DBS
+  eng "Restoring %u database(s) %.220s"
+
+ER_WARN_ENGINE_TRANSACTION_ROLLBACK
+  eng "Storage engine %s does not support rollback for this statement. Transaction rolled back and must be restarted"

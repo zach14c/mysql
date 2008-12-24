@@ -1441,6 +1441,9 @@ innobase_init(
 	int		err;
 	bool		ret;
 	char		*default_path;
+#ifdef SAFE_MUTEX
+	my_bool         old_safe_mutex_deadlock_detector;
+#endif
 
 	DBUG_ENTER("innobase_init");
         handlerton *innobase_hton= (handlerton *)p;
@@ -1688,8 +1691,15 @@ innobase_init(
 
 	srv_sizeof_trx_t_in_ha_innodb_cc = sizeof(trx_t);
 
+#ifdef SAFE_MUTEX
+	/* Disable deadlock detection as it's very slow for the buffer pool */
+	old_safe_mutex_deadlock_detector= safe_mutex_deadlock_detector;
+	safe_mutex_deadlock_detector= 0;
+#endif
 	err = innobase_start_or_create_for_mysql();
-
+#ifdef SAFE_MUTEX
+	safe_mutex_deadlock_detector= old_safe_mutex_deadlock_detector;
+#endif
 	if (err != DB_SUCCESS) {
 		my_free(internal_innobase_data_file_path,
 						MYF(MY_ALLOW_ZERO_PTR));
@@ -5910,6 +5920,7 @@ ha_innobase::info(
 		}
 
 		stats.check_time = 0;
+	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 
 		if (stats.records == 0) {
 			stats.mean_rec_length = 0;
@@ -8188,7 +8199,7 @@ static MYSQL_SYSVAR_BOOL(adaptive_hash_index, innobase_adaptive_hash_index,
 static MYSQL_SYSVAR_LONG(additional_mem_pool_size, innobase_additional_mem_pool_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "Size of a memory pool InnoDB uses to store data dictionary information and other internal data structures.",
-  NULL, NULL, 1*1024*1024L, 512*1024L, ~0L, 1024);
+  NULL, NULL, 1*1024*1024L, 512*1024L, LONG_MAX, 1024);
 
 static MYSQL_SYSVAR_ULONG(autoextend_increment, srv_auto_extend_increment,
   PLUGIN_VAR_RQCMDARG,
@@ -8228,7 +8239,7 @@ static MYSQL_SYSVAR_LONG(lock_wait_timeout, innobase_lock_wait_timeout,
 static MYSQL_SYSVAR_LONG(log_buffer_size, innobase_log_buffer_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "The size of the buffer which InnoDB uses to write log to the log files on disk.",
-  NULL, NULL, 1024*1024L, 256*1024L, ~0L, 1024);
+  NULL, NULL, 1024*1024L, 256*1024L, LONG_MAX, 1024);
 
 static MYSQL_SYSVAR_LONGLONG(log_file_size, innobase_log_file_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -8248,7 +8259,7 @@ static MYSQL_SYSVAR_LONG(mirrored_log_groups, innobase_mirrored_log_groups,
 static MYSQL_SYSVAR_LONG(open_files, innobase_open_files,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "How many files at the maximum InnoDB keeps open at the same time.",
-  NULL, NULL, 300L, 10L, ~0L, 0);
+  NULL, NULL, 300L, 10L, LONG_MAX, 0);
 
 static MYSQL_SYSVAR_ULONG(sync_spin_loops, srv_n_spin_wait_rounds,
   PLUGIN_VAR_RQCMDARG,
@@ -8374,8 +8385,9 @@ ha_rows ha_innobase::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                  flags, cost);
 }
 
-int ha_innobase::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                          uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows ha_innobase::multi_range_read_info(uint keyno, uint n_ranges, 
+                                           uint keys, uint *bufsz, 
+                                           uint *flags, COST_VECT *cost)
 {
   ds_mrr.init(this, table);
   return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);

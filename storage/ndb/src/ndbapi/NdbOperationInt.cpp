@@ -22,6 +22,7 @@
 #include "NdbUtil.hpp"
 #include "Interpreter.hpp"
 #include <NdbIndexScanOperation.hpp>
+#include <signaldata/AttrInfo.hpp>
 
 #ifdef VM_TRACE
 #include <NdbEnv.h>
@@ -54,25 +55,40 @@ NdbOperation::initInterpreter(){
   theFinalReadSize = 0;
   theInterpretIndicator = 1;
 
-  theTotalCurrAI_Len = 5;
+  theTotalCurrAI_Len = AttrInfo::SectionSizeInfoLength;
+}
+
+bool
+NdbOperation::isNdbRecordOperation()
+{
+  /* All scans are 'NdbRecord'.  For PK and UK access
+   * check if we've got an m_attribute_record set 
+   */
+  return !(((m_type == PrimaryKeyAccess) ||
+            (m_type == UniqueIndexAccess)) &&
+           (m_attribute_record == NULL));
 }
 
 int
 NdbOperation::incCheck(const NdbColumnImpl* tNdbColumnImpl)
 {
+  if (isNdbRecordOperation()) {
+    /* Wrong API.  Use NdbInterpretedCode for NdbRecord operations */
+    setErrorCodeAbort(4537);
+    return -1;
+  }
+
   if ((theInterpretIndicator == 1)) {
-    if ((tNdbColumnImpl == NULL) ||
-        (theOperationType == OpenScanRequest ||
-         theOperationType == OpenRangeScanRequest))
+    if (tNdbColumnImpl == NULL)
       goto inc_check_error1;
     if ((tNdbColumnImpl->getInterpretableType() != true) ||
         (tNdbColumnImpl->m_pk != false) ||
         (tNdbColumnImpl->m_nullable))
       goto inc_check_error2;
-    if (theStatus == ExecInterpretedValue || theStatus == UseNdbRecord) {
+    if (theStatus == ExecInterpretedValue) {
       ; // Simply continue with interpretation
     } else if (theStatus == GetValue) {
-      theInitialReadSize = theTotalCurrAI_Len - 5;
+      theInitialReadSize = theTotalCurrAI_Len - AttrInfo::SectionSizeInfoLength;
       theStatus = ExecInterpretedValue;
     } else if (theStatus == SubroutineExec) {
       ; // Simply continue with interpretation
@@ -90,11 +106,6 @@ NdbOperation::incCheck(const NdbColumnImpl* tNdbColumnImpl)
   return -1;
   
  inc_check_error1:
-  if (theOperationType == OpenScanRequest ||
-      theOperationType == OpenRangeScanRequest) {
-    setErrorCodeAbort(4228);
-    return -1;
-  }
   setErrorCodeAbort(4004);
   return -1;
   
@@ -118,15 +129,19 @@ NdbOperation::incCheck(const NdbColumnImpl* tNdbColumnImpl)
 int
 NdbOperation::write_attrCheck(const NdbColumnImpl* tNdbColumnImpl)
 {
+  if (isNdbRecordOperation()) {
+    /* Wrong API.  Use NdbInterpretedCode for NdbRecord operations */
+    setErrorCodeAbort(4537);
+    return -1;
+  }
+
   if ((theInterpretIndicator == 1)) {
-    if ((tNdbColumnImpl == NULL) ||
-        (theOperationType == OpenScanRequest ||
-         theOperationType == OpenRangeScanRequest))
+    if (tNdbColumnImpl == NULL)
       goto write_attr_check_error1;
     if ((tNdbColumnImpl->getInterpretableType() == false) ||
         (tNdbColumnImpl->m_pk))
       goto write_attr_check_error2;
-    if (theStatus == ExecInterpretedValue || theStatus == UseNdbRecord) {
+    if (theStatus == ExecInterpretedValue) {
       ; // Simply continue with interpretation
     } else if (theStatus == SubroutineExec) {
       ; // Simply continue with interpretation
@@ -144,11 +159,6 @@ NdbOperation::write_attrCheck(const NdbColumnImpl* tNdbColumnImpl)
   return -1;
 
 write_attr_check_error1:
-  if (theOperationType == OpenScanRequest ||
-      theOperationType == OpenRangeScanRequest) {
-    setErrorCodeAbort(4228);
-    return -1;
-  }
   setErrorCodeAbort(4004);
   return -1;
 
@@ -168,15 +178,21 @@ write_attr_check_error2:
 int
 NdbOperation::read_attrCheck(const NdbColumnImpl* tNdbColumnImpl)
 {
+  if (isNdbRecordOperation()) {
+    /* Wrong API.  Use NdbInterpretedCode for NdbRecord operations */
+    setErrorCodeAbort(4537);
+    return -1;
+  }
+
   if ((theInterpretIndicator == 1)) {
     if (tNdbColumnImpl == NULL)
       goto read_attr_check_error1;
     if (tNdbColumnImpl->getInterpretableType() == false)
       goto read_attr_check_error2;
-    if (theStatus == ExecInterpretedValue || theStatus == UseNdbRecord) {
+    if (theStatus == ExecInterpretedValue) {
       ; // Simply continue with interpretation
     } else if (theStatus == GetValue) {
-      theInitialReadSize = theTotalCurrAI_Len - 5;
+      theInitialReadSize = theTotalCurrAI_Len - AttrInfo::SectionSizeInfoLength;
       theStatus = ExecInterpretedValue;
     } else if (theStatus == SubroutineExec) {
       ; // Simply continue with interpretation
@@ -209,11 +225,17 @@ NdbOperation::read_attrCheck(const NdbColumnImpl* tNdbColumnImpl)
 int
 NdbOperation::initial_interpreterCheck()
 {
+  if (isNdbRecordOperation()) {
+    /* Wrong API.  Use NdbInterpretedCode for NdbRecord operations */
+    setErrorCodeAbort(4537);
+    return -1;
+  }
+
   if ((theInterpretIndicator == 1)) {
-    if (theStatus == ExecInterpretedValue || theStatus == UseNdbRecord) {
-       return 0; // Simply continue with interpretation
+    if (theStatus == ExecInterpretedValue) {
+      return 0; // Simply continue with interpretation
     } else if (theStatus == GetValue) {
-      theInitialReadSize = theTotalCurrAI_Len - 5;
+      theInitialReadSize = theTotalCurrAI_Len - AttrInfo::SectionSizeInfoLength;
       theStatus = ExecInterpretedValue;
       return 0;
     } else if (theStatus == SubroutineExec) {
@@ -233,11 +255,17 @@ NdbOperation::initial_interpreterCheck()
 int
 NdbOperation::labelCheck()
 {
+  if (isNdbRecordOperation()) {
+    /* Wrong API.  Use NdbInterpretedCode for NdbRecord operations */
+    setErrorCodeAbort(4537);
+    return -1;
+  }
+
   if ((theInterpretIndicator == 1)) {
-    if (theStatus == ExecInterpretedValue || theStatus == UseNdbRecord) {
-       return 0; // Simply continue with interpretation
+    if (theStatus == ExecInterpretedValue) {
+      return 0; // Simply continue with interpretation
     } else if (theStatus == GetValue) {
-      theInitialReadSize = theTotalCurrAI_Len - 5;
+      theInitialReadSize = theTotalCurrAI_Len - AttrInfo::SectionSizeInfoLength;
       theStatus = ExecInterpretedValue;
       return 0;
     } else if (theStatus == SubroutineExec) {
@@ -259,9 +287,15 @@ NdbOperation::labelCheck()
 int
 NdbOperation::intermediate_interpreterCheck()
 {
+  if (isNdbRecordOperation()) {
+    /* Wrong API.  Use NdbInterpretedCode for NdbRecord operations */
+    setErrorCodeAbort(4537);
+    return -1;
+  }
+
   if ((theInterpretIndicator == 1)) {
-    if (theStatus == ExecInterpretedValue || theStatus == UseNdbRecord) {
-       return 0; // Simply continue with interpretation
+    if (theStatus == ExecInterpretedValue) {
+      return 0; // Simply continue with interpretation
     } else if (theStatus == SubroutineExec) {
        return 0; // Simply continue with interpretation
     } else {
@@ -493,11 +527,23 @@ NdbOperation::def_label(int tLabelNo)
    * the NdbOperation::prepareSendInterpreted method.
    */
 
+  Uint32 initialOffset= theInitialReadSize + AttrInfo::SectionSizeInfoLength;
+
+  if (theNoOfSubroutines > 0)
+  {
+    /* Label in a sub, needs to be offset from the start of the subroutines
+     * section
+     */
+    initialOffset+= (theInterpretedSize + theFinalUpdateSize + theFinalReadSize); 
+
+  }
+
   theLastLabel->theLabelNo[tLabelIndex] = tLabelNo;
-  theLastLabel->theLabelAddress[tLabelIndex] = (theTotalCurrAI_Len + 1) - (theInitialReadSize + 5);
+  theLastLabel->theLabelAddress[tLabelIndex] = (theTotalCurrAI_Len + 1) - initialOffset;
   theLastLabel->theSubroutine[tLabelIndex] = theNoOfSubroutines;
   theNoOfLabels++;
   theErrorLine++;
+
   return (theNoOfLabels - 1);
 }
 
@@ -526,7 +572,7 @@ NdbOperation::def_subroutine(int tSubNo)
   {
     theFinalReadSize = theTotalCurrAI_Len -
        (theInitialReadSize + theInterpretedSize + 
-        theFinalUpdateSize + 5);
+        theFinalUpdateSize + AttrInfo::SectionSizeInfoLength);
 
   } else if (theStatus == SubroutineEnd)
   {
@@ -535,16 +581,19 @@ NdbOperation::def_subroutine(int tSubNo)
   {
     if (insertATTRINFO(Interpreter::EXIT_OK) == -1)
       return -1;
-    theInterpretedSize = theTotalCurrAI_Len - (theInitialReadSize + 5);
+    theInterpretedSize = theTotalCurrAI_Len - 
+      (theInitialReadSize + AttrInfo::SectionSizeInfoLength);
   } else if (theStatus == SetValueInterpreted)
   {
     theFinalUpdateSize = theTotalCurrAI_Len -
-       (theInitialReadSize + theInterpretedSize + 5);
+      (theInitialReadSize + theInterpretedSize + 
+       AttrInfo::SectionSizeInfoLength);
 
   } else if (theStatus == GetValue)
   {
 
-    theInitialReadSize = theTotalCurrAI_Len - 5;
+    theInitialReadSize = theTotalCurrAI_Len - 
+      AttrInfo::SectionSizeInfoLength;
 
   } else
   {
@@ -570,8 +619,9 @@ NdbOperation::def_subroutine(int tSubNo)
     tNdbSubroutine->theNext = NULL;
   }
   theLastSubroutine->theSubroutineAddress[tSubroutineIndex] = theTotalCurrAI_Len - 
-    (theInitialReadSize + theInterpretedSize + 
-     theFinalUpdateSize + theFinalReadSize);
+    (AttrInfo::SectionSizeInfoLength + theInitialReadSize + theInterpretedSize + 
+     theFinalUpdateSize + theFinalReadSize); // Preceding sections + sizes array
+
   theNoOfSubroutines++;
   theErrorLine++;
   return (theNoOfSubroutines - 1);
@@ -975,11 +1025,11 @@ NdbOperation::insertBranch(Uint32 aLabel)
   theLastBranch = tBranch;
   if (theNoOfSubroutines == 0)
     tAddress = theTotalCurrAI_Len - 
-       (theInitialReadSize + 5);
+      (theInitialReadSize + AttrInfo::SectionSizeInfoLength);
   else
     tAddress = theTotalCurrAI_Len - 
       (theInitialReadSize + theInterpretedSize +
-       theFinalUpdateSize + theFinalReadSize + 5);
+       theFinalUpdateSize + theFinalReadSize + AttrInfo::SectionSizeInfoLength);
 
   tBranch->theBranchAddress = tAddress;
   tBranch->theSignal = theCurrentATTRINFO;
@@ -1037,26 +1087,46 @@ NdbOperation::branch_col(Uint32 type,
     abort();
   }
 
+  Uint32 sigLen= len;
+  Uint32 sendLen= len;
+
   if (val == NULL)
-    len = 0;
+    sigLen= sendLen = 0;
   else {
-    if (! col->getStringType()) {
-      // prevent assert in NdbSqlUtil on length error
-      Uint32 sizeInBytes = col->m_attrSize * col->m_arraySize;
-      if (len != 0 && len != sizeInBytes)
+    if (! col->getStringType())
+    {
+      /* Fixed size type */
+      sigLen= sendLen= col->m_attrSize * col->m_arraySize;
+    }
+    else
+    {
+      /* For Like and Not like we must use the passed in 
+       * length.  Otherwise we use the length encoded
+       * in the passed string
+       */
+      if ((type != Interpreter::LIKE) &&
+          (type != Interpreter::NOT_LIKE))
       {
-        setErrorCodeAbort(4209);
-        DBUG_RETURN(-1);
+        if (! col->get_var_length_bug39645(val, sigLen, sendLen))
+        {
+          setErrorCodeAbort(4209);
+          DBUG_RETURN(-1);
+        }
       }
-      len = sizeInBytes;
     }
   }
 
   m_no_disk_flag &= (col->m_storageType == NDB_STORAGETYPE_DISK ? 0:1);
 
-  Uint32 tempData[2000];
-  if (((UintPtr)val & 3) != 0) {
-    memcpy(tempData, val, len);
+  /* We copy the data if it's not 32-bit aligned, or 
+   * if we need to send more data than the user provides (Bug 39645)
+   */
+  bool needCopy= ( (((UintPtr)val & 3) != 0) || // Not aligned
+                   (sigLen != sendLen));        // Bug 39645
+
+  Uint32 tempData[ NDB_MAX_TUPLE_SIZE_IN_WORDS ];
+  if (needCopy) {
+    memcpy(tempData, val, sigLen);
     val = tempData;
   }
 
@@ -1066,17 +1136,17 @@ NdbOperation::branch_col(Uint32 type,
   if (insertBranch(Label) == -1)
     DBUG_RETURN(-1);
   
-  if (insertATTRINFO(Interpreter::BranchCol_2(col->m_attrId, len)))
+  if (insertATTRINFO(Interpreter::BranchCol_2(col->m_attrId, sendLen)))
     DBUG_RETURN(-1);
   
-  Uint32 len2 = Interpreter::mod4(len);
-  if(len2 == len){
+  Uint32 len2 = Interpreter::mod4(sendLen);
+  if(len2 == sendLen){
     insertATTRINFOloop((Uint32*)val, len2 >> 2);
   } else {
     len2 -= 4;
     insertATTRINFOloop((Uint32*)val, len2 >> 2);
     Uint32 tmp = 0;
-    for (Uint32 i = 0; i < len-len2; i++) {
+    for (Uint32 i = 0; i < sendLen-len2; i++) {
       char* p = (char*)&tmp;
       p[i] = ((char*)val)[len2+i];
     }

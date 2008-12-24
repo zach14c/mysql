@@ -277,7 +277,6 @@ my_bool acl_init(bool dont_read_acl_tables)
     DBUG_RETURN(1); /* purecov: inspected */
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
   /*
     It is safe to call acl_reload() since acl_* arrays and hashes which
     will be freed there are global static objects and thus are initialized
@@ -699,7 +698,7 @@ my_bool acl_reload(THD *thd)
   if (simple_open_n_lock_tables(thd, tables))
   {
     sql_print_error("Fatal error: Can't open and lock privilege tables: %s",
-		    thd->main_da.message());
+		    thd->stmt_da->message());
     goto end;
   }
 
@@ -3506,7 +3505,6 @@ my_bool grant_init()
     DBUG_RETURN(1);				/* purecov: deadcode */
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
   return_val=  grant_reload(thd);
   delete thd;
   /* Remember that we don't have a THD */
@@ -6144,9 +6142,9 @@ public:
   virtual ~Silence_routine_definer_errors()
   {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
 
   bool has_errors() { return is_grave; }
 
@@ -6155,10 +6153,9 @@ private:
 };
 
 bool
-Silence_routine_definer_errors::handle_error(uint sql_errno,
-                                       const char *message,
-                                       MYSQL_ERROR::enum_warning_level level,
-                                       THD *thd)
+Silence_routine_definer_errors::
+handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+             uint sql_errno, const char *message)
 {
   if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)
   {

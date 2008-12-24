@@ -136,17 +136,15 @@ Record* IndexWalker::getValidatedRecord(int32 recordId, bool lockForUpdate)
 	else if (recordId == lastRecordNumber)
 		return NULL;
 
-
-
 	// Fetch record.  If it doesn't exist, that's ok.
-	
+
 	Record *candidate = table->fetch(recordId);
 
 	if (!candidate)
 		return NULL;
-	
+
 	// Get the correct version.  If this is select for update, get a lock record
-			
+
 	Record *record = (lockForUpdate) 
 				    ? table->fetchForUpdate(transaction, candidate, true)
 				    : candidate->fetchVersion(transaction);
