@@ -1369,6 +1369,10 @@ longlong Item_func_int_div::val_int()
 {
   DBUG_ASSERT(fixed == 1);
 
+  /*
+    Perform division using DECIMAL math if either of the operands has a
+    non-integer type
+  */
   if (args[0]->result_type() != INT_RESULT ||
       args[1]->result_type() != INT_RESULT)
   {
