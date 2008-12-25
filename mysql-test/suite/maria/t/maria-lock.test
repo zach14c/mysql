@@ -2,6 +2,7 @@
 # Different cases involving locking that has failed with Maria
 #
 # Can't test with embedded server
+-- source include/have_maria.inc
 -- source include/not_embedded.inc
 
 --disable_warnings
