@@ -27,7 +27,7 @@ TARGET_LINK_LIBRARIES(mysql mysqlclient)
 
 ADD_EXECUTABLE(mysqltest mysqltest.cc)
 SET_SOURCE_FILES_PROPERTIES(mysqltest.cc PROPERTIES COMPILE_FLAGS "-DTHREADS")
-TARGET_LINK_LIBRARIES(mysqltest mysqlclient mysys regex ws2_32 dbug)
+TARGET_LINK_LIBRARIES(mysqltest mysqlclient mysys regex dbug)
 
 ADD_EXECUTABLE(mysqlcheck mysqlcheck.c)
 TARGET_LINK_LIBRARIES(mysqlcheck mysqlclient)
