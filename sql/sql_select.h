@@ -1439,7 +1439,8 @@ public:
     NULL    - otherwise
   */
   TABLE_LIST *emb_sjm_nest;
-
+  
+  /* Current join optimization state */
   POSITION positions[MAX_TABLES+1];
   
   /*
