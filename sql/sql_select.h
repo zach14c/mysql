@@ -1417,7 +1417,9 @@ public:
   */
   bool     resume_nested_loop;
   table_map const_table_map,found_const_table_map,outer_join;
-  ha_rows  send_records,found_records,examined_rows,row_limit, select_limit;
+  /* Number of records produced after join + group operation */
+  ha_rows  send_records;
+  ha_rows found_records,examined_rows,row_limit, select_limit;
   /**
     Used to fetch no more than given amount of rows per one
     fetch operation of server side cursor.
