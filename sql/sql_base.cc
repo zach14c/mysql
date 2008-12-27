@@ -3644,9 +3644,6 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   */
   for (tables= *start; tables ;tables= tables->next_global)
   {
-    DBUG_PRINT("tcache", ("opening table: '%s'.'%s'  item: %p",
-                          tables->db, tables->table_name, tables));
-
     safe_to_ignore_table= FALSE;
 
     /*
@@ -3692,6 +3689,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
       }
       DBUG_RETURN(-1);
     }
+    DBUG_PRINT("tcache", ("opening table: '%s'.'%s'  item: %p",
+                          tables->db, tables->table_name, tables)); //psergey: invalid read of size 1 here
     (*counter)++;
 
     /* Not a placeholder: must be a base table or a view. Let us open it. */
