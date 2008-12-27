@@ -1468,6 +1468,11 @@ public:
 
 
   Next_select_func first_select;
+  /*
+    The cost of best complete join plan found so far during optimization,
+    after optimization phase - cost of picked join order (not taking into
+    account the changes made by test_if_skip_sort_order()).
+  */
   double   best_read;
   List<Item> *fields;
   List<Cached_item> group_fields, group_fields_cache;
