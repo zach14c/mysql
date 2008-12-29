@@ -1441,6 +1441,9 @@ innobase_init(
 	int		err;
 	bool		ret;
 	char		*default_path;
+#ifdef SAFE_MUTEX
+	my_bool         old_safe_mutex_deadlock_detector;
+#endif
 
 	DBUG_ENTER("innobase_init");
         handlerton *innobase_hton= (handlerton *)p;
@@ -1688,8 +1691,15 @@ innobase_init(
 
 	srv_sizeof_trx_t_in_ha_innodb_cc = sizeof(trx_t);
 
+#ifdef SAFE_MUTEX
+	/* Disable deadlock detection as it's very slow for the buffer pool */
+	old_safe_mutex_deadlock_detector= safe_mutex_deadlock_detector;
+	safe_mutex_deadlock_detector= 0;
+#endif
 	err = innobase_start_or_create_for_mysql();
-
+#ifdef SAFE_MUTEX
+	safe_mutex_deadlock_detector= old_safe_mutex_deadlock_detector;
+#endif
 	if (err != DB_SUCCESS) {
 		my_free(internal_innobase_data_file_path,
 						MYF(MY_ALLOW_ZERO_PTR));
@@ -5910,6 +5920,7 @@ ha_innobase::info(
 		}
 
 		stats.check_time = 0;
+	        stats.mrr_length_per_rec= ref_length +  8; // 8 = max(sizeof(void *));
 
 		if (stats.records == 0) {
 			stats.mean_rec_length = 0;
@@ -8374,8 +8385,9 @@ ha_rows ha_innobase::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                  flags, cost);
 }
 
-int ha_innobase::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                          uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows ha_innobase::multi_range_read_info(uint keyno, uint n_ranges, 
+                                           uint keys, uint *bufsz, 
+                                           uint *flags, COST_VECT *cost)
 {
   ds_mrr.init(this, table);
   return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);

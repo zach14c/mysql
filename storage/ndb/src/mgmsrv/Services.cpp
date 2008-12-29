@@ -36,7 +36,7 @@
 
 extern bool g_StopServer;
 extern bool g_RestartServer;
-extern EventLogger g_eventLogger;
+extern EventLogger * g_eventLogger;
 
 static const unsigned int MAX_READ_TIMEOUT = 1000 ;
 static const unsigned int MAX_WRITE_TIMEOUT = 100 ;
@@ -140,9 +140,10 @@ ParserRow<MgmApiSession> commands[] = {
     MGM_ARG("log_event", Int, Optional, "Log failure in cluster log"),
 
   MGM_CMD("get version", &MgmApiSession::getVersion, ""),
-  
-  MGM_CMD("get status", &MgmApiSession::getStatus, ""),
 
+  MGM_CMD("get status", &MgmApiSession::getStatus, ""),
+    MGM_ARG("types", String, Optional, "Types"), 
+ 
   MGM_CMD("get info clusterlog", &MgmApiSession::getInfoClusterLog, ""),
   MGM_CMD("get cluster loglevel", &MgmApiSession::getClusterLogLevel, ""),
 
@@ -297,7 +298,7 @@ MgmApiSession::MgmApiSession(class MgmtSrvr & mgm, NDB_SOCKET_TYPE sock, Uint64 
 {
   DBUG_ENTER("MgmApiSession::MgmApiSession");
   m_input = new SocketInputStream(sock, 30000);
-  m_output = new SocketOutputStream(sock, 30000);
+  m_output = new BufferedSockOutputStream(sock, 30000);
   m_parser = new Parser_t(commands, *m_input, true, true, true);
   m_allocated_resources= new MgmtSrvr::Allocated_resources(m_mgmsrv);
   m_stopSelf= 0;
@@ -364,7 +365,11 @@ MgmApiSession::runSession()
 
     stop= m_stop;
     NdbMutex_Unlock(m_mutex);
-  };
+
+    // Send output from command to the client
+    m_output->flush();
+
+  }
 
   NdbMutex_Lock(m_mutex);
   m_ctx= NULL;
@@ -547,7 +552,7 @@ MgmApiSession::get_nodeid(Parser_t::Context &,
   m_allocated_resources->reserve_node(tmp, timeout*1000);
   
   if (name)
-    g_eventLogger.info("Node %d: %s", tmp, name);
+    g_eventLogger->info("Node %d: %s", tmp, name);
 
   return;
 }
@@ -609,7 +614,7 @@ MgmApiSession::getConfig(Parser_t::Context &,
 
   m_output->println("get config reply");
   m_output->println("result: Ok");
-  m_output->println("Content-Length: %d", strlen(tmp_str));
+  m_output->println("Content-Length: %ld", strlen(tmp_str));
   m_output->println("Content-Type: ndbconfig/octet-stream");
   SLEEP_ERROR_INSERTED(2);
   m_output->println("Content-Transfer-Encoding: base64");
@@ -855,7 +860,7 @@ MgmApiSession::setLogLevel(Parser<MgmApiSession>::Context &,
 
   if(level > NDB_MGM_MAX_LOGLEVEL) {
     m_output->println("set loglevel reply");
-    m_output->println("result: Invalid loglevel", errorString.c_str());
+    m_output->println("result: Invalid loglevel: %s", errorString.c_str());
     m_output->println("");
     return;
   }
@@ -998,40 +1003,50 @@ printNodeStatus(OutputStream *output,
     output->println("node.%d.connect_count: %d", nodeId, connectCount);
     output->println("node.%d.address: %s", nodeId, address ? address : "");
   }
-
 }
 
 void
 MgmApiSession::getStatus(Parser<MgmApiSession>::Context &,
-			 Properties const &) {
+			 Properties const & args) {
+  Uint32 i;
   int noOfNodes = 0;
+  BaseString typestring;
 
-  NodeId nodeId = 0;
-  while(m_mgmsrv.getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_NDB)){
-    noOfNodes++;
+  enum ndb_mgm_node_type types[10];
+  if (args.get("types", typestring))
+  {
+    Vector<BaseString> tmp;
+    typestring.split(tmp, " ");
+    for (i = 0; i < tmp.size(); i++)
+    {
+      types[i] = ndb_mgm_match_node_type(tmp[i].c_str());
+    }
+    types[i] = NDB_MGM_NODE_TYPE_UNKNOWN;    
   }
-  nodeId = 0;
-  while(m_mgmsrv.getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_API)){
-    noOfNodes++;
+  else
+  {
+    types[0] = NDB_MGM_NODE_TYPE_NDB;
+    types[1] = NDB_MGM_NODE_TYPE_MGM;
+    types[2] = NDB_MGM_NODE_TYPE_API;
+    types[3] = NDB_MGM_NODE_TYPE_UNKNOWN;
   }
-  nodeId = 0;
-  while(m_mgmsrv.getNextNodeId(&nodeId, NDB_MGM_NODE_TYPE_MGM)){
-    noOfNodes++;
+  
+  for (i = 0; types[i] != NDB_MGM_NODE_TYPE_UNKNOWN; i++)
+  {
+    NodeId nodeId = 0;
+    while(m_mgmsrv.getNextNodeId(&nodeId, types[i]))
+      noOfNodes++;
   }
+  
   SLEEP_ERROR_INSERTED(5);
   m_output->println("node status");
   SLEEP_ERROR_INSERTED(6);
   m_output->println("nodes: %d", noOfNodes);
-  m_mgmsrv.updateStatus();
-  SLEEP_ERROR_INSERTED(7);
-  printNodeStatus(m_output, m_mgmsrv, NDB_MGM_NODE_TYPE_NDB);
-  printNodeStatus(m_output, m_mgmsrv, NDB_MGM_NODE_TYPE_MGM);
-  SLEEP_ERROR_INSERTED(8);
-  printNodeStatus(m_output, m_mgmsrv, NDB_MGM_NODE_TYPE_API);
-  SLEEP_ERROR_INSERTED(9);
-
-  nodeId = 0;
-
+  for (i = 0; types[i] != NDB_MGM_NODE_TYPE_UNKNOWN; i++)
+  {
+    SLEEP_ERROR_INSERTED(int(7+i));
+    printNodeStatus(m_output, m_mgmsrv, types[i]);
+  }
   m_output->println("");
 }
 

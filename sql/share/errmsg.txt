@@ -6439,12 +6439,18 @@ ER_RESTORE_DB_EXISTS
   eng "Database \'%-.64s\' already exists. Use OVERWRITE flag to overwrite."
 ER_QUERY_CACHE_DISABLED
 	eng "Query cache is disabled; restart the server with query_cache_type=1 to enable it"
+
+
 ER_BACKUP_UNEXPECTED_DATA
   eng "Backup image contains no tables, but table data was found in it"
 ER_BACKUP_BACKUP_DBS
   eng "Backing up %u database(s) %.220s"
 ER_BACKUP_RESTORE_DBS
   eng "Restoring %u database(s) %.220s"
+
+ER_WARN_ENGINE_TRANSACTION_ROLLBACK
+  eng "Storage engine %s does not support rollback for this statement. Transaction rolled back and must be restarted"
+
 ER_BACKUP_SYNCHRONIZE
   eng "Backup failed to synchronize table images."
 ER_RESTORE_CANNOT_START_SLAVE

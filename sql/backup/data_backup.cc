@@ -730,6 +730,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     DEBUG_SYNC(thd, "before_backup_unblock_commit");
     unblock_commits(thd);
 
+
     report_vp_info(info);
 
     log.report_state(BUP_RUNNING);
