@@ -16,7 +16,6 @@ rpl_do_grant               : BUG#32462 2007-11-16 mats Crash when replicating 4-
 rpl_ignore_table           : BUG#32462 2007-11-16 mats Crash when replicating 4-byte encoded UTF-8 fields
 rpl_view                   : Bug#32654: rpl_view.test fails randomly
 rpl_ndb_multi              : Bug#30751: rpl_ndb_multi missing row in output
-
 rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
 rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)

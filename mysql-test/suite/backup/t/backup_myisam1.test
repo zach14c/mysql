@@ -30,5 +30,7 @@ BACKUP DATABASE mysqltest TO 'test.ba';
 # Cleanup from this test case
 #
 DROP DATABASE mysqltest;
+# Note: The backup file should not exist as BACKUP command failed.
+--error 1
 remove_file $MYSQLD_DATADIR/test.ba;
 

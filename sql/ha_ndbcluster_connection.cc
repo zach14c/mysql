@@ -28,7 +28,6 @@
 extern my_bool opt_ndb_optimized_node_selection;
 extern const char *opt_ndbcluster_connectstring;
 extern ulong opt_ndb_wait_connected;
-extern ulong opt_ndb_cluster_connection_pool;
 
 Ndb* g_ndb= NULL;
 Ndb_cluster_connection* g_ndb_cluster_connection= NULL;
@@ -92,7 +91,9 @@ int ndbcluster_connect(int (*connect_callback)(void))
         (now_time.tv_sec == end_time.tv_sec &&
          now_time.tv_usec >= end_time.tv_usec))
       break;
-    sleep(1);
+    do_retry_sleep(100);
+    if (abort_loop)
+      goto ndbcluster_connect_error;
   }
 
   {
@@ -149,11 +150,12 @@ int ndbcluster_connect(int (*connect_callback)(void))
                   g_ndb_cluster_connection_pool[i]->get_connected_port()));
 
       struct timeval now_time;
-      gettimeofday(&now_time, 0);
-      ulong wait_until_ready_time = (end_time.tv_sec > now_time.tv_sec) ?
-        end_time.tv_sec - now_time.tv_sec : 1;
-      res= g_ndb_cluster_connection_pool[i]->
-        wait_until_ready(wait_until_ready_time,3);
+      do
+      {
+        res= g_ndb_cluster_connection_pool[i]->wait_until_ready(1, 1);
+        gettimeofday(&now_time, 0);
+      } while (res != 0 && end_time.tv_sec > now_time.tv_sec);
+
       if (res == 0)
       {
         sql_print_information("NDB[%u]: all storage nodes connected", i);

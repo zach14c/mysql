@@ -49,15 +49,7 @@ const char COL_LEN = 7;
 * there are six columns, 'i', 'j', 'k', 'l', 'm', 'n', and each on is equal to 1 or 1,
 * Since each tuple should be unique in this case, then TUPLE_NUM = 2 power 6 = 64 
 */
-#ifdef _AIX
-/*
-  IBM xlC_r breaks on the initialization with pow():
-  "The expression must be an integral constant expression."
-*/
-const int TUPLE_NUM = 64;
-#else
-const int TUPLE_NUM = (int)pow(2, COL_LEN-1);
-#endif
+const int TUPLE_NUM = 1 << (COL_LEN - 1);
 
 /*
 * the recursive level of random scan filter, can 
@@ -487,7 +479,7 @@ int get_column_id(char ch)
 */
 bool check_col_equal_one(int tuple_no, int col_id)
 {
-  int i = (int)pow((double)2, (double)(6 - col_id));
+  int i = 1 << (6 - col_id);
   int j = tuple_no / i;
   if(j % 2)
     return true;
@@ -683,7 +675,11 @@ NdbScanFilter * call_ndbapi(char *str, NdbTransaction *transaction,
     if(check_end(*p))
     {
       if(scanfilter->end()) 
+      {
+        NdbError err= scanfilter->getNdbError();
+        printf("Problem closing ScanFilter= %d\n", err.code);
         ERR_EXIT(transaction, "filter end() failed");
+      }
     }
   }
   
@@ -820,13 +816,197 @@ int runScanRandomFilterTest(NDBT_Context* ctx, NDBT_Step* step)
 {
   char random_str[MAX_STR_LEN];
   Ndb *myNdb = GETNDB(step);
-  bool res = true;
 
   for(int i = 0; i < TEST_NUM; i++)
   {
     get_rand_op_str_compound(random_str);
     if( !compare_cal_ndb(random_str, myNdb)) 
       return NDBT_FAILED;
+  }
+
+  return NDBT_OK;
+}
+
+int runMaxScanFilterSize(NDBT_Context* ctx, NDBT_Step* step)
+{
+  /* This testcase uses the ScanFilter methods to build a large
+   * scanFilter, checking that ScanFilter building fails
+   * at the expected point, with the correct error message
+   */
+  const Uint32 MaxLength= NDB_MAX_SCANFILTER_SIZE_IN_WORDS;
+  
+  const Uint32 InstructionWordsPerEq= 3;
+
+  const Uint32 MaxEqsInScanFilter= MaxLength/InstructionWordsPerEq;
+
+  Ndb *myNdb = GETNDB(step);
+  const NdbDictionary::Dictionary* myDict= myNdb->getDictionary();
+  const NdbDictionary::Table *myTable= myDict->getTable(TABLE_NAME);
+  if(myTable == NULL) 
+    APIERROR(myDict->getNdbError());
+
+  NdbInterpretedCode ic(myTable);
+  
+  NdbScanFilter sf(&ic);
+
+  if (sf.begin()) // And group
+  {
+    ndbout << "Bad rc from begin\n";
+    ndbout << sf.getNdbError() << "\n";
+    return NDBT_FAILED;
+  }
+
+  Uint32 loop=0;
+
+  for (;loop < MaxEqsInScanFilter; loop++)
+  {
+    if (sf.eq(0u, 10u))
+    {
+      ndbout << "Bad rc from eq at loop " << loop << "\n";
+      ndbout << sf.getNdbError() << "\n";
+      return NDBT_FAILED;
+    }
+  }
+
+  if (! sf.eq(0u, 10u))
+  {
+    ndbout << "Expected ScanFilter instruction addition to fail after"
+           << MaxEqsInScanFilter << "iterations, but it didn't\n";
+    return NDBT_FAILED;
+  }
+
+  NdbError err=sf.getNdbError();
+
+  if (err.code != 4294)
+  {
+    ndbout << "Expected to get error code 4294, but instead got " << err.code << "\n";
+    return NDBT_FAILED;
+  }
+
+  return NDBT_OK;
+}
+
+
+int runScanFilterConstructorFail(NDBT_Context* ctx, NDBT_Step* step)
+{
+  /* We test that failures in the ScanFilter constructor can be
+   * detected by the various ScanFilter methods without
+   * issues
+   */
+  Ndb *myNdb = GETNDB(step);
+  const NdbDictionary::Dictionary* myDict= myNdb->getDictionary();
+  const NdbDictionary::Table *myTable= myDict->getTable(TABLE_NAME);
+  if(myTable == NULL) 
+    APIERROR(myDict->getNdbError());
+
+  NdbTransaction* trans=myNdb->startTransaction();
+  
+  if (trans == NULL)
+  {
+    APIERROR(trans->getNdbError());
+    return NDBT_FAILED;
+  }
+  
+  /* Create an NdbRecord scan operation */
+  const NdbScanOperation* tabScan=
+    trans->scanTable(myTable->getDefaultRecord());
+  
+  if (tabScan==NULL)
+  {
+    APIERROR(trans->getNdbError());
+    return NDBT_FAILED;
+  }
+
+  /* Now we hackily try to add a ScanFilter after the operation
+   * is defined.  This will cause a failure within the 
+   * constructor
+   */
+  NdbScanFilter brokenSf((NdbScanOperation*) tabScan);
+
+  /* Scan operation should have an error */
+  if (tabScan->getNdbError().code != 4536)
+  {
+    ndbout << "Expected error 4536, had error " << 
+      tabScan->getNdbError().code << " instead" << endl;
+    return NDBT_FAILED;
+  }
+
+  /* ScanFilter should have an error */
+  if (brokenSf.getNdbError().code != 4539)
+  {
+    ndbout  << "Expected error 4539, had error " << 
+      brokenSf.getNdbError().code << " instead" << endl;
+    return NDBT_FAILED;
+  }
+  
+  if (brokenSf.begin() != -1)
+  { ndbout << "Bad rc from begin" << endl; return NDBT_FAILED; }
+
+  if (brokenSf.istrue() != -1)
+  { ndbout << "Bad rc from istrue" << endl; return NDBT_FAILED; }
+
+  if (brokenSf.isfalse() != -1)
+  { ndbout << "Bad rc from isfalse" << endl; return NDBT_FAILED; }
+
+  if (brokenSf.isnull(0) != -1)
+  { ndbout << "Bad rc from isnull" << endl; return NDBT_FAILED; }
+
+  if (brokenSf.isnotnull(0) != -1)
+  { ndbout << "Bad rc from isnotnull" << endl; return NDBT_FAILED; }
+
+  if (brokenSf.cmp(NdbScanFilter::COND_EQ, 0, NULL, 0) != -1)
+  { ndbout << "Bad rc from cmp" << endl; return NDBT_FAILED; }
+
+  if (brokenSf.end() != -1)
+  { ndbout << "Bad rc from begin" << endl; return NDBT_FAILED; }
+
+  trans->close();
+
+  /* Now we check that we can define a ScanFilter before 
+   * calling readTuples() for a scan operation
+   */
+  trans= myNdb->startTransaction();
+  
+  if (trans == NULL)
+  {
+    APIERROR(trans->getNdbError());
+    return NDBT_FAILED;
+  }
+  
+  /* Get an old Api table scan operation */
+  NdbScanOperation* tabScanOp=
+    trans->getNdbScanOperation(myTable);
+
+  if (tabScanOp==NULL)
+  {
+    APIERROR(trans->getNdbError());
+    return NDBT_FAILED;
+  }
+
+  /* Attempt to define a ScanFilter before calling readTuples() */
+  NdbScanFilter sf(tabScanOp);
+
+  /* Should be no problem ... */
+  if (sf.getNdbError().code != 0) 
+  { APIERROR(sf.getNdbError()); return NDBT_FAILED; };
+  
+ 
+  /* Ok, now attempt to define a ScanFilter against a primary key op */
+  NdbOperation* pkOp= trans->getNdbOperation(myTable);
+
+  if (pkOp == NULL)
+  {
+    APIERROR(trans->getNdbError());
+    return NDBT_FAILED;
+  }
+
+  NdbScanFilter sf2(pkOp);
+  
+  if (sf2.getNdbError().code != 4539)
+  {
+    ndbout << "Error, expected 4539" << endl;
+    APIERROR(sf2.getNdbError());
+    return NDBT_FAILED;
   }
 
   return NDBT_OK;
@@ -840,6 +1020,8 @@ TESTCASE(TEST_NAME,
   INITIALIZER(runCreateTables);
   INITIALIZER(runPopulate);
   INITIALIZER(runScanRandomFilterTest);
+  INITIALIZER(runMaxScanFilterSize);
+  INITIALIZER(runScanFilterConstructorFail);
   FINALIZER(runDropTables);
 }
 

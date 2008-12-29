@@ -33,9 +33,8 @@ class Restore_info: public backup::Image_info
 {
  public:
 
-  Backup_restore_ctx &m_ctx;
+  backup::Logger &m_log;
 
-  Restore_info(Backup_restore_ctx&);
   ~Restore_info();
 
   bool is_valid() const;
@@ -47,19 +46,32 @@ class Restore_info: public backup::Image_info
 
  private:
 
+  /*
+    Note: constructor is private because instances of this class are supposed
+    to be created only with Backup_restore_ctx::prepare_for_restore() method.
+  */
+  Restore_info(backup::Logger&, THD*);
+
   // Prevent copying/assignments
   Restore_info(const Restore_info&);
   Restore_info& operator=(const Restore_info&);
+
+  THD *m_thd;
 
   friend int backup::restore_table_data(THD*, Restore_info&, 
                                         backup::Input_stream&);
   friend int ::bcat_add_item(st_bstream_image_header*,
                              struct st_bstream_item_info*);
+  friend int ::bcat_create_item(st_bstream_image_header *catalogue,
+                                struct st_bstream_item_info *item,
+                                bstream_blob create_stmt,
+                                bstream_blob other_meta_data);
+  friend class Backup_restore_ctx;    // Needs access to the constructor.
 };
 
 inline
-Restore_info::Restore_info(Backup_restore_ctx &ctx)
-  :m_ctx(ctx)
+Restore_info::Restore_info(backup::Logger &log, THD *thd)
+  :m_log(log), m_thd(thd)
 {}
 
 inline
@@ -86,7 +98,7 @@ Restore_info::add_ts(const ::String &name, uint pos)
   Ts *ts= Image_info::add_ts(name, pos);
 
   if (!ts)
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TS, name.ptr());
+    m_log.report_error(ER_BACKUP_CATALOG_ADD_TS, name.ptr());
 
   return ts;
 }
@@ -99,7 +111,7 @@ Restore_info::add_db(const ::String &name, uint pos)
   Db *db= Image_info::add_db(name, pos);
 
   if (!db)
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_DB, name.ptr());
+    m_log.report_error(ER_BACKUP_CATALOG_ADD_DB, name.ptr());
 
   return db;
 }
@@ -113,7 +125,7 @@ Restore_info::add_table(Image_info::Db &db, const ::String &name,
   Table *t= Image_info::add_table(db, name, snap, pos);
 
   if (!t)
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, db.name().ptr(), name.ptr());
+    m_log.report_error(ER_BACKUP_CATALOG_ADD_TABLE, db.name().ptr(), name.ptr());
 
   return t;
 }

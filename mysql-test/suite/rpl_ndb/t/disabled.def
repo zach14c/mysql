@@ -10,10 +10,6 @@
 #
 ##############################################################################
 
-rpl_ndb_circular         : Bug#33849 COMMIT event missing in cluster circular replication.
-rpl_ndb_circular_simplex : Bug#33849 COMMIT event missing in cluster circular replication.
-rpl_row_basic_7ndb       : Bug#38369 rpl_ndb.rpl_row_basic_7ndb fails
-rpl_ndb_circular_2ch	 : Bug#33849 COMMIT event missing in cluster circular replication.
 rpl_ndb_innodb2ndb       : Bug#34725 2008-02-26 hakank Currently failing.
 rpl_ndb_extraCol	: Bug#41369 2008-12-10 alik
-rpl_ndb_circular_2ch : Needs updated config
+rpl_ndb_circular_2ch     : Bug#41732 rpl_ndb_circular_2ch needs an updated configuration file
