@@ -3644,9 +3644,6 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   */
   for (tables= *start; tables ;tables= tables->next_global)
   {
-    DBUG_PRINT("tcache", ("opening table: '%s'.'%s'  item: %p",
-                          tables->db, tables->table_name, tables));
-
     safe_to_ignore_table= FALSE;
 
     /*
@@ -3692,6 +3689,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
       }
       DBUG_RETURN(-1);
     }
+    DBUG_PRINT("tcache", ("opening table: '%s'.'%s'  item: %p",
+                          tables->db, tables->table_name, tables)); //psergey: invalid read of size 1 here
     (*counter)++;
 
     /* Not a placeholder: must be a base table or a view. Let us open it. */
@@ -6525,6 +6524,11 @@ int setup_wild(THD *thd, TABLE_LIST *tables, List<Item> &fields,
     SELECT_LEX *select_lex= thd->lex->current_select;
     select_lex->with_wild= 0;
 
+    /*
+      The assignment below is translated to memcpy() call (at least on some
+      platforms). memcpy() expects that source and destination areas do not
+      overlap. That problem was detected by valgrind.
+    */
     if (&select_lex->item_list != &fields)
       select_lex->item_list= fields;
 
