@@ -1005,6 +1005,7 @@ Item_in_subselect::single_value_transformer(JOIN *join,
     Check that the right part of the subselect contains no more than one
     column. E.g. in SELECT 1 IN (SELECT * ..) the right part is (SELECT * ...)
   */
+  // psergey: duplicated_subselect_card_check
   if (select_lex->item_list.elements > 1)
   {
     my_error(ER_OPERAND_COLUMNS, MYF(0), 1);
@@ -1362,6 +1363,7 @@ Item_in_subselect::row_value_transformer(JOIN *join)
 
   DBUG_ENTER("Item_in_subselect::row_value_transformer");
 
+  // psergey: duplicated_subselect_card_check
   if (select_lex->item_list.elements != left_expr->cols())
   {
     my_error(ER_OPERAND_COLUMNS, MYF(0), left_expr->cols());
@@ -1696,6 +1698,8 @@ Item_in_subselect::select_in_like_transformer(JOIN *join, Comp_creator *func)
     In some optimisation cases we will not need this Item_in_optimizer
     object, but we can't know it here, but here we need address correct
     reference on left expresion.
+
+    //psergey: he means confluent cases like "... IN (SELECT 1)"
   */
   if (!optimizer)
   {
@@ -1896,7 +1900,11 @@ bool Item_in_subselect::init_left_expr_cache()
   bool use_result_field= FALSE;
 
   outer_join= unit->outer_select()->join;
-  if (!outer_join || !outer_join->tables)
+  /*
+    An IN predicate might be evaluated in a query for which all tables have
+    been optimzied away.
+  */ 
+  if (!outer_join || !outer_join->tables || !outer_join->tables_list)
     return TRUE;
   /*
     If we use end_[send | write]_group to handle complete rows of the outer
@@ -2218,11 +2226,6 @@ int subselect_single_select_engine::exec()
     SELECT_LEX_UNIT *unit= select_lex->master_unit();
 
     unit->set_limit(unit->global_parameters);
-    if (join->flatten_subqueries())
-    {
-      thd->is_fatal_error= TRUE;
-      DBUG_RETURN(1);
-    }
     if (join->optimize())
     {
       thd->where= save_where;
@@ -3110,11 +3113,54 @@ bool subselect_hash_sj_engine::init_permanent(List<Item> *tmp_columns)
   KEY_PART_INFO *cur_key_part= tmp_key->key_part;
   store_key **ref_key= tab->ref.key_copy;
   uchar *cur_ref_buff= tab->ref.key_buff;
+
+  /*
+    Create an artificial condition to post-filter those rows matched by index
+    lookups that cannot be distinguished by the index lookup procedure, e.g.
+    because of truncation. Prepared statements execution requires that
+    fix_fields is called for every execution. In order to call fix_fields we
+    need to create a Name_resolution_context and a corresponding TABLE_LIST
+    for the temporary table for the subquery, so that all column references
+    to the materialized subquery table can be resolved correctly.
+  */
+  DBUG_ASSERT(cond == NULL);
+  if (!(cond= new Item_cond_and))
+    DBUG_RETURN(TRUE);
+  /*
+    Table reference for tmp_table that is used to resolve column references
+    (Item_fields) to columns in tmp_table.
+  */
+  TABLE_LIST *tmp_table_ref;
+  if (!(tmp_table_ref= (TABLE_LIST*) thd->calloc(sizeof(TABLE_LIST))))
+    DBUG_RETURN(TRUE);
+
+  tmp_table_ref->init_one_table(NULL, 0, "materialized subselect", 22,
+                                "materialized subselect", TL_READ);
+  tmp_table_ref->table= tmp_table;
+
+  /* Name resolution context for all tmp_table columns created below. */
+  Name_resolution_context *context= new Name_resolution_context;
+  context->init();
+  context->first_name_resolution_table=
+    context->last_name_resolution_table= tmp_table_ref;
   
   for (uint i= 0; i < tmp_key_parts; i++, cur_key_part++, ref_key++)
   {
-    tab->ref.items[i]= item_in->left_expr->element_index(i);
+    Item_func_eq *eq_cond; /* New equi-join condition for the current column. */
+    /* Item for the corresponding field from the materialized temp table. */
+    Item_field *right_col_item;
     int null_count= test(cur_key_part->field->real_maybe_null());
+    tab->ref.items[i]= item_in->left_expr->element_index(i);
+
+    if (!(right_col_item= new Item_field(thd, context, cur_key_part->field)) ||
+        !(eq_cond= new Item_func_eq(tab->ref.items[i], right_col_item)) ||
+        ((Item_cond_and*)cond)->add(eq_cond))
+    {
+      delete cond;
+      cond= NULL;
+      DBUG_RETURN(TRUE);
+    }
+
     *ref_key= new store_key_item(thd, cur_key_part->field,
                                  /* TODO:
                                     the NULL byte is taken into account in
@@ -3130,6 +3176,9 @@ bool subselect_hash_sj_engine::init_permanent(List<Item> *tmp_columns)
   *ref_key= NULL; /* End marker. */
   tab->ref.key_err= 1;
   tab->ref.key_parts= tmp_key_parts;
+
+  if (cond->fix_fields(thd, &cond))
+    DBUG_RETURN(TRUE);
 
   DBUG_RETURN(FALSE);
 }
@@ -3150,6 +3199,12 @@ bool subselect_hash_sj_engine::init_runtime()
     the subquery if not yet created.
   */
   materialize_engine->prepare();
+  /*
+    Repeat name resolution for 'cond' since cond is not part of any
+    clause of the query, and it is not 'fixed' during JOIN::prepare.
+  */
+  if (cond && !cond->fixed && cond->fix_fields(thd, &cond))
+    return TRUE;
   /* Let our engine reuse this query plan for materialization. */
   materialize_join= materialize_engine->join;
   materialize_join->change_result(result);
@@ -3207,9 +3262,8 @@ int subselect_hash_sj_engine::exec()
     int res= 0;
     SELECT_LEX *save_select= thd->lex->current_select;
     thd->lex->current_select= materialize_engine->select_lex;
-    if ((res= materialize_join->flatten_subqueries()) || 
-        (res= materialize_join->optimize()))
-      goto err;
+    if ((res= materialize_join->optimize()))
+      goto err; /* purecov: inspected */
     materialize_join->exec();
     if ((res= test(materialize_join->error || thd->is_fatal_error)))
       goto err;

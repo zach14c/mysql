@@ -36,10 +36,21 @@ class Item_subselect :public Item_result_field
 public:
   /* thread handler, will be assigned in fix_fields only */
   THD *thd;
-  /* substitution instead of subselect in case of optimization */
+  /* 
+    Used inside Item_subselect::fix_fields() according to this scenario:
+      > Item_subselect::fix_fields
+        > engine->prepare
+          > child_join->prepare
+            (Here we realize we need to do the rewrite and set
+             substitution= some new Item, eg. Item_in_optimizer )
+          < child_join->prepare
+        < engine->prepare
+        *ref= substitution;
+      < Item_subselect::fix_fields
+  */
   Item *substitution;
-  /* unit of subquery */
 public:
+  /* unit of subquery */
   st_select_lex_unit *unit;
 protected:
   /* engine that perform execution of subselect (single select or union) */
@@ -303,6 +314,17 @@ public:
      - (TABLE_LIST*)1 if the predicate is in the WHERE.
   */
   TABLE_LIST *expr_join_nest;
+  /*
+    Types of left_expr and subquery's select list allow to perform subquery
+    materialization. Currently, we set this to FALSE when it as well could
+    be TRUE. This is to be properly addressed with fix for BUG#36752.
+  */
+  bool types_allow_materialization;
+
+  /* 
+    Same as above, but they also allow to scan the materialized table. 
+  */
+  bool sjm_scan_allowed;
 
   /* The method chosen to execute the IN predicate.  */
   enum enum_exec_method {
