@@ -9,9 +9,8 @@ start slave;
 * slave status*
 Slave_IO_Running = No
 Slave_SQL_Running = Yes
-Last_IO_Errno = 2013
-Last_IO_Error = error reconnecting to master 
 * start master *
+start slave io_thread;
 * slave status *
 Slave_IO_Running = Yes
 Slave_SQL_Running = No

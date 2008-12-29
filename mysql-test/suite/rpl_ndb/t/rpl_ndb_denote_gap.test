@@ -15,6 +15,18 @@
 --source include/ndb_master-slave.inc
 --echo
 
+# When master shuts down, the slave I/O thread can fail due to various
+# reasons, and result in various error code and message, for example:
+#  1) reconnect error
+#  2) error in get_master_version_and_clock
+#  3) error in register_slave_on_master
+# So add suppresions for these errors.
+--disable_query_log
+call mtr.add_suppression("slave I/O thread stops");
+call mtr.add_suppression("Slave I/O thread couldn't register on master");
+call mtr.add_suppression("Slave I/O: Master command COM_REGISTER_SLAVE failed");
+--enable_query_log
+
 # Stop master mysql server
 --echo * shutdown master *
 --connection master
@@ -32,12 +44,6 @@ let $io_run= query_get_value("SHOW SLAVE STATUS", Slave_IO_Running, 1);
 echo Slave_IO_Running = $io_run;
 let $sql_run= query_get_value("SHOW SLAVE STATUS", Slave_SQL_Running, 1);
 echo Slave_SQL_Running = $sql_run;
-let $errno= query_get_value("SHOW SLAVE STATUS", Last_IO_Errno, 1);
-echo Last_IO_Errno = $errno;
-let $error= query_get_value("SHOW SLAVE STATUS", Last_IO_Error, 1);
-#--eval SELECT SUBSTRING_INDEX('$error', 'master', -1)
-let $error= `SELECT SUBSTRING_INDEX("$error", "'", 1)`;
-echo Last_IO_Error = $error;
 
 # Start master server again
 --echo * start master *
@@ -46,11 +52,31 @@ restart
 EOF
 
 # Reconnect to master
+--connection master
 --enable_reconnect
 --source include/wait_until_connected_again.inc
 
-# Wait for stop slave SQL thread with error LOST EVENTS
 --connection slave
+
+# restart the slave IO thread
+#
+# NOTE: wait_for_slave_io_to_stop.inc above only waits for the
+# Slave_IO_running of SHOW SLAVE STATUS to become 'No', but this does
+# not mean the slave I/O thread is truly stopped, it will try to
+# reconnect to master for 'master_retry_count' times before giving up,
+# so if later the master restarts quickly enough, the slave I/O thread
+# will automatically reconnect to master and running.
+# 
+# So the slave I/O thread still be running and the following statement
+# can emit a warning.
+#
+# See BUG#41613, this restriction can be lifted if this bug is fixed.
+#
+--disable_warnings
+start slave io_thread;
+--enable_warnings
+
+# Wait for stop slave SQL thread with error LOST EVENTS
 --source include/wait_for_slave_sql_to_stop.inc
 --echo * slave status *
 let $io_run= query_get_value("SHOW SLAVE STATUS", Slave_IO_Running, 1);
