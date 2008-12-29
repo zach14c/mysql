@@ -4901,6 +4901,7 @@ add_key_part(DYNAMIC_ARRAY *keyuse_array,KEY_FIELD *key_field)
           keyuse.null_rejecting= key_field->null_rejecting;
           keyuse.cond_guard= key_field->cond_guard;
           keyuse.sj_pred_no= key_field->sj_pred_no;
+          keyuse.ref_table_rows= 0;
 	  (void) insert_dynamic(keyuse_array,(uchar*) &keyuse);
 	}
       }

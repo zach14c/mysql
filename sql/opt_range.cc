@@ -4827,7 +4827,7 @@ static TRP_RANGE *get_key_scans_params(PARAM *param, SEL_TREE *tree,
         tree->n_ror_scans++;
         tree->ror_scans_map.set_bit(idx);
       }
-      if (read_time > found_read_time && found_records != HA_POS_ERROR)
+      if (found_records != HA_POS_ERROR && read_time > found_read_time)
       {
         read_time=    found_read_time;
         best_records= found_records;
