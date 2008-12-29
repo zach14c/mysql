@@ -3146,7 +3146,7 @@ int disable_slave_connections(bool disable)
   @param[in] block  TRUE = block slave start, FALSE = do not block
   @param[in] reason  Reason for the block
 */
-void block_replication(bool block, char *reason)
+void block_replication(bool block, const char *reason)
 {
   pthread_mutex_lock(&LOCK_slave_start);
   allow_slave_start= !block;
