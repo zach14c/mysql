@@ -6450,3 +6450,5 @@ ER_BACKUP_RESTORE_DBS
 
 ER_WARN_ENGINE_TRANSACTION_ROLLBACK
   eng "Storage engine %s does not support rollback for this statement. Transaction rolled back and must be restarted"
+ER_COM_UNSUPPORTED
+        eng "%s doesn't support %s"
