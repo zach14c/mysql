@@ -7,13 +7,14 @@
 # Cleanup from former test cases
 #
 --disable_warnings
-drop database if exists mysqltest;
+USE test;
+DROP DATABASE IF EXISTS mysqltest;
 --enable_warnings
 --error 0,1
 --remove_file $MYSQLTEST_VARDIR/master-data/test.ba
 
-create database mysqltest;
-use mysqltest;
+CREATE DATABASE mysqltest;
+USE mysqltest;
 CREATE TABLE t1 (a int) engine=myisam;
 
 --replace_column 1 #
@@ -23,6 +24,7 @@ BACKUP DATABASE mysqltest TO 'test.ba';
 #
 # Cleanup from this test case
 #
+USE test;
 DROP DATABASE mysqltest;
 # Note: The backup file should not exist as BACKUP command failed.
 --error 1

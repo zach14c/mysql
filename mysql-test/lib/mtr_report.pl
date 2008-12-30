@@ -365,6 +365,14 @@ sub mtr_report_stats ($) {
 		  /Restore: Open and lock tables failed in RESTORE/
 		) or
                 
+		# myisam_keycache_coverage intentionally provokes errors
+		($testname eq 'main.myisam_keycache_coverage') and
+		(
+		  /Incorrect key file/ or
+		  /Got an error from .* mi_update/ or
+		  /MySQL thread id .* localhost root Updating/
+		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'backup.backup_tablespace') and
 		(

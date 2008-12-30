@@ -89,6 +89,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   my_off_t key_root[HA_MAX_POSSIBLE_KEY],key_del[MI_MAX_KEY_BLOCK_SIZE];
   ulonglong max_key_file_length, max_data_file_length;
   DBUG_ENTER("mi_open");
+  DBUG_PRINT("myisam", ("open '%s'", name));
 
   LINT_INIT(m_info);
   kfile= -1;
@@ -115,6 +116,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   pthread_mutex_lock(&THR_LOCK_myisam);
   if (!(old_info=test_if_reopen(name_buff)))
   {
+    DBUG_PRINT("myisam", ("open share '%s'", name));
     share= &share_buff;
     bzero((uchar*) &share_buff,sizeof(share_buff));
     share_buff.state.rec_per_key_part=rec_per_key_part;
