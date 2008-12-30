@@ -2650,7 +2650,7 @@ void Item_param::set_time(MYSQL_TIME *tm, timestamp_type time_type,
 
   if (value.time.year > 9999 || value.time.month > 12 ||
       value.time.day > 31 ||
-      time_type != MYSQL_TIMESTAMP_TIME && value.time.hour > 23 ||
+      (time_type != MYSQL_TIMESTAMP_TIME && value.time.hour > 23) ||
       value.time.minute > 59 || value.time.second > 59)
   {
     char buff[MAX_DATE_STRING_REP_LENGTH];
@@ -5294,6 +5294,9 @@ int Item_hex_string::save_in_field(Field *field, bool no_conversions)
 
   ulonglong nr;
   uint32 length= str_value.length();
+  if (!length)
+    return 1;
+
   if (length > 8)
   {
     nr= field->flags & UNSIGNED_FLAG ? ULONGLONG_MAX : LONGLONG_MAX;

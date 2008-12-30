@@ -487,6 +487,9 @@ sub mtr_report_stats ($) {
                 # on a case sensitive file system. Bug#37402.
                 /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./ or
 
+                # this test is expected to print warnings
+                ($testname eq 'main.innodb_bug39438') or
+
                 # maria-recovery.test has warning about missing log file
                 /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
                 # and about marked-corrupted table

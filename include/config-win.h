@@ -273,6 +273,15 @@ inline double ulonglong2double(ulonglong value)
 #define my_off_t2double(A) ulonglong2double(A)
 #endif /* _WIN64 */
 
+inline ulonglong double2ulonglong(double d)
+{
+  double t= d - (double) 0x8000000000000000ULL;
+
+  if (t >= 0)
+    return  ((ulonglong) t) + 0x8000000000000000ULL;
+  return (ulonglong) d;
+}
+
 #if SIZEOF_OFF_T > 4
 #define lseek(A,B,C) _lseeki64((A),(longlong) (B),(C))
 #define tell(A) _telli64(A)
@@ -433,3 +442,7 @@ inline double ulonglong2double(ulonglong value)
 #define HAVE_CHARSET_utf8mb3 1
 #define HAVE_UCA_COLLATIONS 1
 #define HAVE_BOOL 1
+#ifndef EMBEDDED_LIBRARY
+#define HAVE_LIBEVENT 1
+#define HAVE_POOL_OF_THREADS 1
+#endif

@@ -2308,8 +2308,12 @@ JOIN::exec()
 		      (zero_result_cause?zero_result_cause:"No tables used"));
     else
     {
-      result->send_result_set_metadata(*columns_list,
-                          Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+      if (result->send_result_set_metadata(*columns_list,
+                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+      {
+        DBUG_VOID_RETURN;
+      }
+
       /*
         We have to test for 'conds' here as the WHERE may not be constant
         even if we don't have any tables for prepared statements or if
@@ -2448,7 +2452,8 @@ JOIN::exec()
     if (!items1)
     {
       items1= items0 + all_fields.elements;
-      if (sort_and_group || curr_tmp_table->group)
+      if (sort_and_group || curr_tmp_table->group ||
+          tmp_table_param.precomputed_group_by)
       {
 	if (change_to_use_tmp_fields(thd, items1,
 				     tmp_fields_list1, tmp_all_fields1,
@@ -3957,7 +3962,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
         if (s->dependent & table->map)
           s->dependent |= table->reginfo.join_tab->dependent;
       }
-      if (s->dependent)
+      if (outer_join & s->table->map)
         s->table->maybe_null= 1;
     }
     /* Catch illegal cross references for outer joins */
@@ -11729,6 +11734,8 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   ENGINE_COLUMNDEF *recinfo;
   uint total_uneven_bit_length= 0;
   bool force_copy_fields= param->force_copy_fields;
+  save_sum_fields|= param->precomputed_group_by;
+
   DBUG_ENTER("create_tmp_table");
   DBUG_PRINT("enter",
              ("distinct: %d  save_sum_fields: %d  rows_limit: %lu  group: %d",
@@ -11858,6 +11865,8 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   share->primary_key= MAX_KEY;               // Indicate no primary key
   share->keys_for_keyread.init();
   share->keys_in_use.init();
+  if (param->schema_table)
+    share->db= INFORMATION_SCHEMA_NAME;
 
   /* Calculate which type of fields we will store in the temporary table */
 
@@ -16871,6 +16880,7 @@ join_init_cache(THD *thd,JOIN_TAB *tables,uint table_count)
   length=0;
   for (i=0 ; i < table_count ; i++)
   {
+    bool have_bit_fields= FALSE;
     uint null_fields=0,used_fields;
     Field **f_ptr,*field;
     MY_BITMAP *read_set= tables[i].table->read_set;
@@ -16885,14 +16895,17 @@ join_init_cache(THD *thd,JOIN_TAB *tables,uint table_count)
 	length+=field->fill_cache_field(copy);
 	if (copy->blob_field)
 	  (*blob_ptr++)=copy;
-	if (field->maybe_null())
+	if (field->real_maybe_null())
 	  null_fields++;
         copy->get_rowid= NULL;
+        if (field->type() == MYSQL_TYPE_BIT &&
+            ((Field_bit*)field)->bit_len)
+          have_bit_fields= TRUE;
 	copy++;
       }
     }
     /* Copy null bits from table */
-    if (null_fields && tables[i].table->s->null_fields)
+    if (null_fields || have_bit_fields)
     {						/* must copy null bits */
       copy->str= tables[i].table->null_flags;
       copy->length= tables[i].table->s->null_bytes;
