@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # generate parser files from bison input files.
 

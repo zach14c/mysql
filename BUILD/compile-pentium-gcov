@@ -7,7 +7,7 @@ CCACHE_GCOV_VERSION_ENABLED=0
 if ccache -V > /dev/null 2>&1
 then
   CCACHE_VER=`ccache -V | head -1 | sed s/"ccache version "//`
-  if test "$CCACHE_VER" == "2.4-gcov"
+  if test "$CCACHE_VER" = "2.4-gcov"
   then
     CCACHE_GCOV_VERSION_ENABLED=1
   else
@@ -20,7 +20,8 @@ export CCACHE_GCOV_VERSION_ENABLED
 path=`dirname $0`
 . "$path/SETUP.sh"
 
-export LDFLAGS="$gcov_link_flags"
+LDFLAGS="$gcov_link_flags"
+export LDFLAGS
 
 extra_flags="$pentium_cflags $debug_cflags $max_cflags $gcov_compile_flags"
 c_warnings="$c_warnings $debug_extra_warnings"
