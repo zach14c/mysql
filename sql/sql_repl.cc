@@ -1001,7 +1001,7 @@ void init_slave_start()
   pthread_mutex_lock(&LOCK_slave_start);
   allow_slave_start= TRUE;
   reason_slave_blocked.length= 0;
-  reason_slave_blocked.str= "";
+  reason_slave_blocked.str= (char *)"";
   pthread_mutex_unlock(&LOCK_slave_start);
 }
 

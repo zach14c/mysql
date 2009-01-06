@@ -513,7 +513,7 @@ int disable_slave_connections(bool disable);
   Set state where replication is blocked (TRUE) or not blocked (FALSE)
   from starting. Include reason for feedback to user.
 */
-void block_replication(bool block, char *reason);
+void block_replication(bool block, const char *reason);
 
 /**
   Enumeration of the incidents that can occur on the master.
