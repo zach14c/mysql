@@ -392,13 +392,18 @@ enum open_table_mode
 
 #define DISK_SEEK_PROP_COST ((double)0.1/BLOCKS_IN_AVG_SEEK)
 
-
 /**
   Number of rows in a reference table when refereed through a not unique key.
   This value is only used when we don't know anything about the key
   distribution.
 */
 #define MATCHING_ROWS_IN_OTHER_TABLE 10
+
+/*
+  Subquery materialization-related constants
+*/
+#define HEAP_TEMPTABLE_LOOKUP_COST 0.05
+#define DISK_TEMPTABLE_LOOKUP_COST 1.0
 
 /** Don't pack string keys shorter than this (if PACK_KEYS=1 isn't used). */
 #define KEY_DEFAULT_PACK_LENGTH 8
@@ -570,7 +575,7 @@ enum open_table_mode
 #define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
 #define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
 #define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-
+#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
@@ -1849,6 +1854,7 @@ void TEST_filesort(SORT_FIELD *sortorder,uint s_length);
 void print_plan(JOIN* join,uint idx, double record_count, double read_time,
                 double current_read_time, const char *info);
 void print_keyuse_array(DYNAMIC_ARRAY *keyuse_array);
+void print_sjm(SJ_MATERIALIZATION_INFO *sjm);
 #define EXTRA_DEBUG_DUMP_TABLE_LISTS
 #ifdef EXTRA_DEBUG_DUMP_TABLE_LISTS
 void dump_TABLE_LIST_graph(SELECT_LEX *select_lex, TABLE_LIST* tl);

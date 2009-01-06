@@ -21,6 +21,11 @@
 %define mysql_old_vendor	MySQL AB
 %define mysql_vendor		Sun Microsystems, Inc.
 
+# NOTE: "vendor" is used in upgrade/downgrade check, so you can't
+# change these, has to be exactly as is.
+%define mysql_old_vendor	MySQL AB
+%define mysql_vendor		Sun Microsystems, Inc.
+
 # use "rpmbuild --with static" or "rpm --define '_with_static 1'" (for RPM 3.x)
 # to enable static linking (off by default)
 %{?_with_static:%define STATIC_BUILD 1}
@@ -31,10 +36,14 @@
 %{?_with_yassl:%define YASSL_BUILD 1}
 %{!?_with_yassl:%define YASSL_BUILD 0}
 
-# use "rpmbuild --with maria" or "rpm --define '_with_maria 1'" (for RPM 3.x)
-# to build with maria support (off by default)
-%{?_with_maria:%define MARIA_BUILD 1}
-%{!?_with_maria:%define MARIA_BUILD 0}
+# use "rpmbuild --with falcon" or "rpm --define '_with_falcon 1'" (for RPM 3.x)
+# to build with falcon support (off by default)
+#
+# Note: No default --with-falcon, as generic RPM is compiled with gcc 3.x.
+# Falcon requires gcc 4.x that requires libstdc++.6 that is not on most
+# "older" Linux systems.
+%{?_with_falcon:%define FALCON_BUILD 1}
+%{!?_with_falcon:%define FALCON_BUILD 0}
 
 # use "rpmbuild --with cluster" or "rpm --define '_with_cluster 1'" (for RPM 3.x)
 # to build with cluster support (off by default)
@@ -277,7 +286,11 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
             --with-unix-socket-path=/var/lib/mysql/mysql.sock \
 	    --with-pic \
             --prefix=/ \
+%if %{CLUSTER_BUILD}
 	    --with-extra-charsets=all \
+%else
+	    --with-extra-charsets=complex \
+%endif
 %if %{YASSL_BUILD}
 	    --with-ssl \
 %endif
@@ -292,19 +305,26 @@ sh -c  "PATH=\"${MYSQL_BUILD_PATH:-$PATH}\" \
             --mandir=%{_mandir} \
 	    --enable-thread-safe-client \
 	    --with-readline \
-		--with-innodb \
+	    --with-innodb \
 %if %{CLUSTER_BUILD}
-		--with-ndbcluster \
+	    --with-ndbcluster \
 %else
-		--without-ndbcluster \
+	    --without-ndbcluster \
 %endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-		--with-partition \
-		--with-big-tables \
-		--enable-shared \
+	    --with-plugin-archive \
+	    --with-plugin-csv \
+	    --with-plugin-blackhole \
+	    --with-plugin-federated \
+%if %{FALCON_BUILD}
+	    --with-plugin-falcon \
+%else
+	    --without-plugin-falcon \
+%endif
+	    --with-plugin-maria \
+	    --with-maria-tmp-tables \
+	    --with-plugin-partition \
+	    --with-big-tables \
+	    --enable-shared \
 		"
  make
 }
@@ -367,28 +387,7 @@ CFLAGS="$CFLAGS" \
 CXXFLAGS="$CXXFLAGS" \
 BuildMySQL "\
 		--with-debug \
-		--with-innodb \
-%if %{CLUSTER_BUILD}
-		--with-ndbcluster \
-%else
-		--without-ndbcluster \
-%endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-%ifarch i386 x86_64
-		--with-falcon \
-%else
-		--without-falcon \
-%endif
-%if %{MARIA_BUILD}
-		--with-plugin-maria \
-		--with-maria-tmp-tables \
-%endif
-		--with-partition \
-		--with-big-tables \
-		--with-comment=\"MySQL Community Server - Debug (GPL)\"")
+		--with-comment=\"MySQL Community Server - Debug (%{license})\"")
 
 # We might want to save the config log file
 if test -n "$MYSQL_DEBUGCONFLOG_DEST"
@@ -407,30 +406,10 @@ fi
 (cd mysql-release-%{mysql_version} &&
 CFLAGS="$CFLAGS" \
 CXXFLAGS="$CXXFLAGS" \
-BuildMySQL "--enable-shared \
-		--with-innodb \
-%if %{CLUSTER_BUILD}
-		--with-ndbcluster \
-%else
-		--without-ndbcluster \
-%endif
-		--with-archive-storage-engine \
-		--with-csv-storage-engine \
-		--with-blackhole-storage-engine \
-		--with-federated-storage-engine \
-%ifarch i386 x86_64
-		--with-falcon \
-%else
-		--without-falcon \
-%endif
-%if %{MARIA_BUILD}
-		--with-plugin-maria \
-		--with-maria-tmp-tables \
-%endif
-		--with-partition \
+BuildMySQL "\
 		--with-embedded-server \
-		--with-big-tables \
-		--with-comment=\"MySQL Community Server (GPL)\"")
+		--with-comment=\"MySQL Community Server (%{license})\"")
+
 # We might want to save the config log file
 if test -n "$MYSQL_CONFLOG_DEST"
 then
@@ -900,6 +879,18 @@ fi
 - Modify CFLAGS and CXXFLAGS such that a debug build is not optimized.
   This should cover both gcc and icc flags.  Fixes bug#40546.
   
+* Mon Nov 03 2008 Kent Boortz <kent.boortz@sun.com>
+
+  - Added option --with-falcon
+  - Removed option --with-maria, enabled by default
+  - Use same way of defining what engines/plugins to use
+  - Remove some copy/paste between debug and normal build
+
+* Sat Nov 01 2008 Kent Boortz <kent.boortz@sun.com>
+
+  - Removed "mysql_upgrade_shell"
+  - Enabled falcon storage engine for IA64
+
 * Fri Aug 29 2008 Kent Boortz <kent@mysql.com>
 
 - Removed the "Federated" storage engine option, and enabled in all
