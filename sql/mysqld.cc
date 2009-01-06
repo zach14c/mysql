@@ -267,6 +267,12 @@ void backup_shutdown();
 #define ENABLE_TEMP_TOOL 0
 #endif
 
+#if defined(__linux__)
+#define ENABLE_TEMP_POOL 1
+#else
+#define ENABLE_TEMP_TOOL 0
+#endif
+
 /* Constants */
 
 const char *show_comp_option_name[]= {"YES", "NO", "DISABLED"};
