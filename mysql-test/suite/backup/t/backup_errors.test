@@ -60,9 +60,8 @@ SHOW WARNINGS;
 
 --replace_column 1 #
 BACKUP DATABASE adb TO "test.bak";
---replace_column 2 #
-# Reenable when bug#41468 has been fixed. There should not be warnings
-#SHOW WARNINGS;
+# There should be no warnings after a successful backup
+SHOW WARNINGS;
 
 # don't overwrite existing backup image
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
@@ -491,6 +490,51 @@ SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
 --error ER_BACKUP_SYNCHRONIZE
 BACKUP DATABASE db1 TO 'overwrite1.bak';
 SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Test that BACKUP and RESTORE clears warning stack
+--echo #
+
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'test.bak';
+
+--echo # Generate warning - test.bak cannot be overwritten
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
+BACKUP DATABASE db1 TO 'test.bak';
+--replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+SHOW WARNINGS;
+--echo
+
+--echo # Test that there are no warnings after successful BACKUP
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'newtest.bak';
+--replace_column 2 #
+SHOW WARNINGS;
+--echo
+
+--echo # Generate warning - test.bak cannot be overwritten
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
+BACKUP DATABASE db1 TO 'test.bak';
+--replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+SHOW WARNINGS;
+--echo
+
+--echo # Test that there are no warnings after successful RESTORE
+--replace_column 1 #
+RESTORE FROM 'newtest.bak' OVERWRITE;
+--replace_column 2 #
+SHOW WARNINGS;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/test.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/newtest.bak
 
 --echo
 DROP DATABASE db1;
