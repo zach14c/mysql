@@ -205,6 +205,7 @@ typedef struct st_join_table
   uint		used_fields,used_fieldlength,used_blobs;
   uint          used_null_fields;
   uint          used_rowid_fields;
+  bool          have_bit_fields;
   enum join_type type;
   bool		cached_eq_ref_table,eq_ref_table,not_used_in_distinct;
   /* TRUE <=> index-based access method must return records in order */

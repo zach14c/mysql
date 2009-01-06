@@ -7548,9 +7548,11 @@ void calc_used_field_length(THD *thd, JOIN_TAB *join_tab)
 {
   uint null_fields,blobs,fields,rec_length;
   Field **f_ptr,*field;
+  bool bit_fields;
   MY_BITMAP *read_set= join_tab->table->read_set;;
 
   null_fields= blobs= fields= rec_length=0;
+  bit_fields= FALSE;
   for (f_ptr=join_tab->table->field ; (field= *f_ptr) ; f_ptr++)
   {
     if (bitmap_is_set(read_set, field->field_index))
@@ -7562,6 +7564,9 @@ void calc_used_field_length(THD *thd, JOIN_TAB *join_tab)
 	blobs++;
       if (!(flags & NOT_NULL_FLAG))
 	null_fields++;
+      if (field->type() == MYSQL_TYPE_BIT &&
+          ((Field_bit*)field)->bit_len)
+        bit_fields= TRUE;
     }
   }
   if (null_fields)
@@ -7578,6 +7583,7 @@ void calc_used_field_length(THD *thd, JOIN_TAB *join_tab)
   join_tab->used_fieldlength=rec_length;
   join_tab->used_blobs=blobs;
   join_tab->used_null_fields= null_fields;
+  join_tab->have_bit_fields= bit_fields;
 }
 
 

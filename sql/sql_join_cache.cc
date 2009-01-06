@@ -270,8 +270,7 @@ void JOIN_CACHE::create_flag_fields()
     TABLE *table= tab->table;
 
     /* Create a field for the null bitmap from table if needed */
-    /* TODO: Figure out whether we really need the second conjunct here */
-    if (test(tab->used_null_fields) && table->s->null_fields)			    
+    if (test(tab->used_null_fields) || tab->have_bit_fields)			    
       length+= add_flag_field_to_join_cache(table->null_flags,
                                             table->s->null_bytes,
                                             &copy);
