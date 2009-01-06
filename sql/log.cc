@@ -4877,7 +4877,6 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
                           ulonglong *decrease_log_space)
 {
   int error;
-  int ret= 0;
   bool exit_loop= 0;
   LOG_INFO log_info;
   THD *thd= current_thd;
@@ -5081,24 +5080,6 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
         }
       }
     }
-
-    if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
-    {
-      error= LOG_INFO_FATAL;
-      goto err;
-    }
-
-    if (find_next_log(&log_info, 0) || exit_loop)
-      break;
-  }
-  
-  /*
-    If we get killed -9 here, the sysadmin would have to edit
-    the log index file after restart - otherwise, this should be safe
-  */
-  error= update_log_index(&log_info, need_update_threads);
-  if (error == 0) {
-    error = ret;
   }
 
 err:
@@ -5195,47 +5176,6 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
                 sizeof(log_info.log_file_name));
       else
         break;
-      if (my_delete(log_info.log_file_name, MYF(0)))
-      {
-        if (my_errno == ENOENT) 
-        {
-          /* It's not fatal even if we can't delete a log file */
-          if (thd)
-          {
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                                ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
-                                log_info.log_file_name);
-          }
-          sql_print_information("Failed to delete file '%s'",
-                                log_info.log_file_name);
-          my_errno= 0;
-        }
-        else
-        {
-          if (thd)
-          {
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                                ER_BINLOG_PURGE_FATAL_ERR,
-                                "a problem with deleting %s; "
-                                "consider examining correspondence "
-                                "of your binlog index file "
-                                "to the actual binlog files",
-                                log_info.log_file_name);
-          }
-          else
-          {
-            sql_print_information("Failed to delete log file '%s'",
-                                  log_info.log_file_name); 
-          }
-          error= LOG_INFO_FATAL;
-          goto err;
-        }
-      }
-      if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
-      {
-        error= LOG_INFO_FATAL;
-        goto err;
-      }
     }
     if (find_next_log(&log_info, 0))
       break;
