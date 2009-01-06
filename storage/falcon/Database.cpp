@@ -279,20 +279,20 @@ static const char *createDomains =
 	"create table Domains ("
 			"domainName varchar (128) not null,"
 			"schema varchar (128) not null,"
-		    "dataType int,"
-		    "length int,"
-		    "scale int,"
-		    "remarks text,"
+			"dataType int,"
+			"length int,"
+			"scale int,"
+			"remarks text,"
 			"primary key (domainName, schema));";
 
 //static const char *createOds3Domains = 
 //	"create table Domains ("
 //			"domainName varchar (128) not null,"
 //			"schema varchar (128) not null,"
-//		    "dataType int,"
-//		    "length int,"
-//		    "scale int,"
-//		    "remarks text,"
+//			"dataType int,"
+//			"length int,"
+//			"scale int,"
+//			"remarks text,"
 //			"primary key (domainName, schema));";
 
 static const char *createView_tables = 
@@ -1944,7 +1944,7 @@ const char* Database::getString(const char *string)
 void Database::upgradeSystemTables()
 {
 	Sync syncDDL(&syncSysDDL, "Database::upgradeSystemTables");
-	syncDDL.lock(Shared);
+	syncDDL.lock(Exclusive);
 
 	for (const char **tableName = changedTables; *tableName; ++tableName)
 		{

@@ -38,7 +38,6 @@ public:
 	SRLSectionPage();
 	virtual ~SRLSectionPage();
 
-	int		tableSpaceId;
 	int32	parentPage;
 	int32	pageNumber;
 	int		sectionSlot;

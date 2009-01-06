@@ -293,9 +293,8 @@ sp_rcontext::find_handler(THD *thd, uint sql_errno,
     FALSE      if no handler was found.
 */
 bool
-sp_rcontext::handle_error(uint sql_errno,
-                          MYSQL_ERROR::enum_warning_level level,
-                          THD *thd)
+sp_rcontext::handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+                          uint sql_errno)
 {
   MYSQL_ERROR::enum_warning_level elevated_level= level;
 

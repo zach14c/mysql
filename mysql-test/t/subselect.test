@@ -1,3 +1,11 @@
+#
+# NOTE. Please do not switch connection inside this test.
+#       subselect.test is included from several other test cases which set
+#       explicit session properties that must be preserved throughout the test.
+#       If you need to use a dedicated connection for a test case,
+#       close the new connection and switch back to "default" as soon
+#       as possible.
+#
 # Initialise
 --disable_warnings
 drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t11,t12;
@@ -1460,10 +1468,13 @@ drop table t1;
 
 #
 # Subselect in non-select command just after connection
+# Disconnect new connection and switch back when test is finished
 #
 connect (root,localhost,root,,test,$MASTER_MYPORT,$MASTER_MYSOCK);
 connection root;
 set @got_val= (SELECT 1 FROM (SELECT 'A' as my_col) as T1 ) ;
+disconnect root;
+connection default;
 
 #
 # primary query with temporary table and subquery with groupping

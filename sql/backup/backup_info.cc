@@ -8,6 +8,7 @@
 */
 
 #include "../mysql_priv.h"
+#include "../ha_partition.h"
 
 #include "backup_info.h"
 #include "backup_kernel.h"
@@ -34,6 +35,50 @@ storage_engine_ref get_storage_engine(THD *thd, const backup::Table_ref &tbl)
   if (table)
   {
     se= plugin_ref_to_se_ref(table->s->db_plugin);
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    /*
+      Further check for underlying storage engine is needed
+      if table is partitioned
+    */
+
+    storage_engine_ref se_tmp= NULL;
+
+    if (table->part_info)
+    {
+      partition_info *p_info=  table->part_info;
+      List_iterator<partition_element> p_it(p_info->partitions);
+      partition_element *p_el;
+      
+      while ((p_el= p_it++))
+      {
+        if (!se_tmp)
+        {
+          se_tmp= hton2plugin[p_el->engine_type->slot];
+          ::handlerton *h= se_hton(se_tmp);
+
+          /* 
+             Native drivers don't support partitioning. Let Falcon and
+             InnoDB use Snapshot driver; all other storage engines use
+             Default.
+          */
+          if (h->start_consistent_snapshot == NULL) 
+            goto close; // This is not a Falcon or InnoDB storage engine
+
+          continue;
+        }
+
+        // use Default driver if partitions have different storage engines
+        if (se_tmp != hton2plugin[p_el->engine_type->slot])
+          goto close;
+      };
+      
+      se= se_tmp;
+    }
+#endif
+
+ close:
+  
     ::intern_close_table(table);
     my_free(table, MYF(0));
   }
@@ -87,11 +132,11 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 
   // See if table has native backup engine
 
-  storage_engine_ref se= get_storage_engine(m_ctx.m_thd, tbl);
+  storage_engine_ref se= get_storage_engine(m_thd, tbl);
   
   if (!se)
   {
-    m_ctx.fatal_error(ER_NO_STORAGE_ENGINE, tbl.describe(buf));
+    m_log.report_error(ER_NO_STORAGE_ENGINE, tbl.describe(buf));
     DBUG_RETURN(NULL);
   }
   
@@ -126,7 +171,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   if (!snap)
     if (has_native_backup(se))
     {
-      Native_snapshot *nsnap= new Native_snapshot(m_ctx, se);
+      Native_snapshot *nsnap= new Native_snapshot(m_log, se);
 
       /*
         Check if the snapshot object is valid - in particular has successfully
@@ -175,7 +220,7 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
   }
 
   if (!snap)
-    m_ctx.fatal_error(ER_BACKUP_NO_BACKUP_DRIVER,tbl.describe(buf));
+    m_log.report_error(ER_BACKUP_NO_BACKUP_DRIVER,tbl.describe(buf));
   
   DBUG_RETURN(snap);
 }
@@ -295,13 +340,16 @@ Backup_info::Dep_node::get_key(const uchar *record,
 
 /**
   Create @c Backup_info instance and prepare it for populating with objects.
- 
+  
+  @param[in] log     A logger used to report errors
+  @param[in] thd     THD handle
+
   Snapshots created by the built-in backup engines are added to @c snapshots
   list to be used in the backup engine selection algorithm in 
   @c find_backup_engine().
  */
-Backup_info::Backup_info(Backup_restore_ctx &ctx)
-  :m_ctx(ctx), m_state(Backup_info::ERROR), native_snapshots(8),
+Backup_info::Backup_info(backup::Logger &log, THD *thd)
+  :m_log(log), m_thd(thd), m_state(Backup_info::ERROR), native_snapshots(8),
    m_dep_list(NULL), m_dep_end(NULL), 
    m_srout_end(NULL), m_view_end(NULL), m_trigger_end(NULL), m_event_end(NULL)
 {
@@ -318,7 +366,7 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
                 Dep_node::get_key, Dep_node::free, MYF(0)))
   {
     // Allocation failed. Error has been reported, but not logged to backup logs
-    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    m_log.log_error(ER_OUT_OF_RESOURCES);
     return;
   }
 
@@ -328,10 +376,10 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
     element on that list, as a "catch all" entry. 
    */
 
-  snap= new Nodata_snapshot(m_ctx);             // logs errors
+  snap= new Nodata_snapshot(m_log);             // logs errors
   if (!snap)
   {
-    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    m_log.report_error(ER_OUT_OF_RESOURCES);
     return;
   }
 
@@ -341,14 +389,14 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
   if (snapshots.push_back(snap))
   {
     // Allocation failed. Error has been reported, but not logged to backup logs
-    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    m_log.log_error(ER_OUT_OF_RESOURCES);
     return;
   }
 
-  snap= new CS_snapshot(m_ctx);                 // logs errors
+  snap= new CS_snapshot(m_log);                 // logs errors
   if (!snap)
   {
-    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    m_log.report_error(ER_OUT_OF_RESOURCES);
     return;
   }
 
@@ -358,14 +406,14 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
   if (snapshots.push_back(snap))
   {
     // Allocation failed. Error has been reported, but not logged to backup logs
-    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    m_log.log_error(ER_OUT_OF_RESOURCES);
     return;                                   // Error has been logged
   }
 
-  snap= new Default_snapshot(m_ctx);            // logs errors
+  snap= new Default_snapshot(m_log);            // logs errors
   if (!snap)
   {
-    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    m_log.report_error(ER_OUT_OF_RESOURCES);
     return;
   }
 
@@ -375,7 +423,7 @@ Backup_info::Backup_info(Backup_restore_ctx &ctx)
   if (snapshots.push_back(snap))
   {
     // Allocation failed. Error has been reported, but not logged to backup logs
-    m_ctx.log_error(ER_OUT_OF_RESOURCES);
+    m_log.log_error(ER_OUT_OF_RESOURCES);
     return;                                   // Error has been logged
   }
 
@@ -417,7 +465,7 @@ int Backup_info::close()
   // report backup drivers used in the image
   
   for (ushort n=0; n < snap_count(); ++n)
-    m_ctx.report_driver(m_snap[n]->name());
+    m_log.report_driver(m_snap[n]->name());
   
   m_state= CLOSED;
   return 0;
@@ -465,7 +513,7 @@ backup::Image_info::Ts* Backup_info::add_ts(obs::Obj *obj)
 
   if (!ts)
   {
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TS, name);
+    m_log.report_error(ER_BACKUP_CATALOG_ADD_TS, name);
     return NULL;
   }
 
@@ -479,7 +527,7 @@ backup::Image_info::Ts* Backup_info::add_ts(obs::Obj *obj)
 
   if (!n1)
   {
-    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    m_log.report_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }
 
@@ -513,7 +561,7 @@ backup::Image_info::Db* Backup_info::add_db(obs::Obj *obj)
   
   if (!db)
   {
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_DB, name->ptr());
+    m_log.report_error(ER_BACKUP_CATALOG_ADD_DB, name->ptr());
     return NULL;
   }
 
@@ -532,7 +580,7 @@ backup::Image_info::Db* Backup_info::add_db(obs::Obj *obj)
 
   @returns 0 on success, error code otherwise.
  */
-int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
+int Backup_info::add_dbs(THD *thd, List< ::LEX_STRING > &dbs)
 {
   using namespace obs;
 
@@ -550,13 +598,13 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
     
     if (is_internal_db_name(&db_name))
     {
-      m_ctx.fatal_error(ER_BACKUP_CANNOT_INCLUDE_DB, db_name.c_ptr());
+      m_log.report_error(ER_BACKUP_CANNOT_INCLUDE_DB, db_name.c_ptr());
       goto error;
     }
     
-    obs::Obj *obj= get_database(&db_name); // reports errors
+    obs::Obj *obj= get_database_stub(&db_name); // reports errors
 
-    if (obj && !check_db_existence(&db_name))
+    if (obj && !check_db_existence(thd, &db_name))
     {    
       if (!unknown_dbs.is_empty()) // we just compose unknown_dbs list
       {
@@ -589,7 +637,7 @@ int Backup_info::add_dbs(List< ::LEX_STRING > &dbs)
 
   if (!unknown_dbs.is_empty())
   {
-    m_ctx.fatal_error(ER_BAD_DB_ERROR, unknown_dbs.c_ptr());
+    m_log.report_error(ER_BAD_DB_ERROR, unknown_dbs.c_ptr());
     goto error;
   }
 
@@ -614,11 +662,11 @@ int Backup_info::add_all_dbs()
   using namespace obs;
 
   int res= 0;
-  Obj_iterator *dbit= get_databases(m_ctx.m_thd);
+  Obj_iterator *dbit= get_databases(m_thd);
   
   if (!dbit)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DBS);
+    m_log.report_error(ER_BACKUP_LIST_DBS);
     return ERROR;
   }
   
@@ -701,11 +749,11 @@ int Backup_info::add_db_items(Db &db)
 
   // Add tables.
 
-  Obj_iterator *it= get_db_tables(m_ctx.m_thd, &db.name());
+  Obj_iterator *it= get_db_tables(m_thd, &db.name());
 
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_TABLES, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_TABLES, db.name().ptr());
     return ERROR;
   }
   
@@ -731,7 +779,7 @@ int Backup_info::add_db_items(Db &db)
 
     // If this table uses a tablespace, add this tablespace to the catalogue.
 
-    obj= get_tablespace_for_table(m_ctx.m_thd, &db.name(), &tbl->name());
+    obj= find_tablespace_for_table(m_thd, &db.name(), &tbl->name());
 
     if (obj)
     {
@@ -748,11 +796,11 @@ int Backup_info::add_db_items(Db &db)
   // Add other objects.
 
   delete it;  
-  it= get_db_stored_procedures(m_ctx.m_thd, &db.name());
+  it= get_db_stored_procedures(m_thd, &db.name());
   
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_SROUT, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_SROUT, db.name().ptr());
     goto error;
   }
   
@@ -760,11 +808,11 @@ int Backup_info::add_db_items(Db &db)
     goto error;
 
   delete it;
-  it= get_db_stored_functions(m_ctx.m_thd, &db.name());
+  it= get_db_stored_functions(m_thd, &db.name());
 
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_SROUT, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_SROUT, db.name().ptr());
     goto error;
   }
   
@@ -772,11 +820,11 @@ int Backup_info::add_db_items(Db &db)
     goto error;
 
   delete it;
-  it= get_db_views(m_ctx.m_thd, &db.name());
+  it= get_db_views(m_thd, &db.name());
 
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_VIEWS, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_VIEWS, db.name().ptr());
     goto error;
   }
   
@@ -784,11 +832,11 @@ int Backup_info::add_db_items(Db &db)
     goto error;
 
   delete it;
-  it= get_db_events(m_ctx.m_thd, &db.name());
+  it= get_db_events(m_thd, &db.name());
 
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_EVENTS, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_EVENTS, db.name().ptr());
     goto error;
   }
   
@@ -796,11 +844,11 @@ int Backup_info::add_db_items(Db &db)
     goto error;
   
   delete it;
-  it= get_db_triggers(m_ctx.m_thd, &db.name());
+  it= get_db_triggers(m_thd, &db.name());
 
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_TRIGGERS, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_TRIGGERS, db.name().ptr());
     goto error;
   }
   
@@ -808,11 +856,11 @@ int Backup_info::add_db_items(Db &db)
     goto error;
   
   delete it;
-  it= get_all_db_grants(m_ctx.m_thd, &db.name());
+  it= get_all_db_grants(m_thd, &db.name());
 
   if (!it)
   {
-    m_ctx.fatal_error(ER_BACKUP_LIST_DB_PRIV, db.name().ptr());
+    m_log.report_error(ER_BACKUP_LIST_DB_PRIV, db.name().ptr());
     goto error;
   }
 
@@ -889,8 +937,8 @@ backup::Image_info::Table* Backup_info::add_table(Db &dbi, obs::Obj *obj)
   
   if (!tbl)
   {
-    m_ctx.fatal_error(ER_BACKUP_CATALOG_ADD_TABLE, 
-                      dbi.name().ptr(), t.name().ptr());
+    m_log.report_error(ER_BACKUP_CATALOG_ADD_TABLE, 
+                       dbi.name().ptr(), t.name().ptr());
     return NULL;
   }
 
@@ -943,7 +991,7 @@ int Backup_info::add_view_deps(obs::Obj &obj)
   
   // Get an iterator to iterate over base views of the given one.
 
-  obs::Obj_iterator *it= obs::get_view_base_views(m_ctx.m_thd, db_name, name);
+  obs::Obj_iterator *it= obs::get_view_base_views(m_thd, db_name, name);
 
   if (!it)
     return ERROR;
@@ -1035,8 +1083,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
   ulong pos= db.obj_count();
 
   DBUG_ASSERT(obj);
-  String *name= (String *)obj->get_name();
-  DBUG_ASSERT(name);
+  DBUG_ASSERT(obj->get_name());
 
   switch (type) {
 
@@ -1056,22 +1103,6 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   }
 
-  /*
-    Generate a unique name for the privilege (grant) objects.
-    Note: this name does not alter the mechanics of the
-          grant objects in si_objects.cc
-  */
-  if (type == BSTREAM_IT_PRIVILEGE)
-  {
-    String new_name;
-    char buff[10];
-    sprintf(buff, UNIQUE_PRIV_KEY_FORMAT, pos);
-    new_name.append(*name);
-    new_name.append(" ");
-    new_name.append(buff);
-    name->copy(new_name);
-  }
-
   /* 
     Add new object to the dependency list. If it is a view, add its
     dependencies first.
@@ -1082,11 +1113,11 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
 
   // Get a dep. list node for the object.  
 
-  int res= get_dep_node(db.name(), *name, type, n);
+  int res= get_dep_node(db.name(), *obj->get_name(), type, n);
   
   if (res == get_dep_node_res::ERROR)
   {
-    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    m_log.report_error(error, db.name().ptr(), obj->get_name()->ptr());
     return NULL;
   }
 
@@ -1101,7 +1132,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     if (type == BSTREAM_IT_VIEW)
       if (add_view_deps(*obj))
       {
-        m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+        m_log.report_error(error, db.name().ptr(), obj->get_name()->ptr());
         return NULL;
       } 
 
@@ -1118,11 +1149,11 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
     objects.
    */
 
-  Dbobj *o= Image_info::add_db_object(db, type, *name, pos);
+  Dbobj *o= Image_info::add_db_object(db, type, *obj->get_name(), pos);
  
   if (!o)
   {
-    m_ctx.fatal_error(error, db.name().ptr(), name->ptr());
+    m_log.report_error(error, db.name().ptr(), obj->get_name()->ptr());
     return NULL;
   }
 
@@ -1138,7 +1169,7 @@ Backup_info::add_db_object(Db &db, const obj_type type, obs::Obj *obj)
   n->obj= o;  
 
   DBUG_PRINT("backup",("Added object %s of type %d from database %s (pos=%lu)",
-                       name->ptr(), type, db.name().ptr(), pos));
+                       obj->get_name()->ptr(), type, db.name().ptr(), pos));
   return o;
 }
 
@@ -1342,7 +1373,7 @@ int Backup_info::Global_iterator::init()
   if (!m_it)
   {
     const Backup_info* info= static_cast<const Backup_info*>(&m_info);
-    return info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    return info->m_log.report_error(ER_OUT_OF_RESOURCES);
   }
   next();                                       // Never errors
 
@@ -1388,7 +1419,7 @@ Backup_info::Global_iterator::next()
     if (!m_it)
     {
       const Backup_info* info= static_cast<const Backup_info*>(&m_info);
-      info->m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+      info->m_log.report_error(ER_OUT_OF_RESOURCES);
       mode= DONE;
       return FALSE;
     }
@@ -1471,7 +1502,7 @@ backup::Image_info::Iterator* Backup_info::get_global() const
   Global_iterator* it = new Global_iterator(*this);
   if (it == NULL) 
   {
-    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    m_log.report_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }    
   if (it->init())                               // Error has been logged
@@ -1488,7 +1519,7 @@ backup::Image_info::Iterator* Backup_info::get_perdb()  const
   Perdb_iterator* it = new Perdb_iterator(*this);
   if (it == NULL) 
   {
-    m_ctx.fatal_error(ER_OUT_OF_RESOURCES);
+    m_log.report_error(ER_OUT_OF_RESOURCES);
     return NULL;
   }    
   if (it->init())                               // Error has been logged

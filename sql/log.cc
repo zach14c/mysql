@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -84,17 +84,18 @@ public:
 
   virtual ~Silence_log_table_errors() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
   const char *message() const { return m_message; }
 };
 
 bool
-Silence_log_table_errors::handle_error(uint /* sql_errno */,
-                                       const char *message_arg,
-                                       MYSQL_ERROR::enum_warning_level /* level */,
-                                       THD * /* thd */)
+Silence_log_table_errors::
+handle_error(THD * /* thd */,
+             MYSQL_ERROR::enum_warning_level /* level */,
+             uint /* sql_errno */,
+             const char *message_arg)
 {
   strmake(m_message, message_arg, sizeof(m_message)-1);
   return TRUE;
@@ -3913,10 +3914,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
-    thd->main_da.reset_diagnostics_area();
-    thd->main_da.set_error_status(thd, 
-                                  ER_BACKUP_PROGRESS_TABLES, 
-                                  ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -3935,10 +3936,10 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
     */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
-    thd->main_da.reset_diagnostics_area();
-    thd->main_da.set_error_status(thd, 
-                                  ER_BACKUP_PROGRESS_TABLES, 
-                                  ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -4175,7 +4176,12 @@ void MYSQL_BIN_LOG::init_pthread_objects()
   DBUG_ASSERT(inited == 0);
   inited= 1;
   (void) pthread_mutex_init(&LOCK_log, MY_MUTEX_INIT_SLOW);
-  (void) pthread_mutex_init(&LOCK_index, MY_MUTEX_INIT_SLOW);
+  /*
+    LOCK_index and LOCK_log are taken in wrong order
+    Can be seen with 'mysql-test-run ndb.ndb_binlog_basic'
+  */ 
+  (void) my_pthread_mutex_init(&LOCK_index, MY_MUTEX_INIT_SLOW, "LOCK_index",
+                               MYF_NO_DEADLOCK_DETECTION);
   (void) pthread_cond_init(&update_cond, 0);
 }
 
@@ -4589,7 +4595,11 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
   const char* save_name;
   DBUG_ENTER("reset_logs");
 
-  ha_reset_logs(thd);
+  if (ha_reset_logs(thd))
+  {
+    DBUG_RETURN(1);
+  }
+
   /*
     We need to get both locks to be sure that no one is trying to
     write to the index log file.
@@ -4867,6 +4877,7 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
                           ulonglong *decrease_log_space)
 {
   int error;
+  int ret= 0;
   bool exit_loop= 0;
   LOG_INFO log_info;
   THD *thd= current_thd;
@@ -5070,6 +5081,24 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
         }
       }
     }
+
+    if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
+    {
+      error= LOG_INFO_FATAL;
+      goto err;
+    }
+
+    if (find_next_log(&log_info, 0) || exit_loop)
+      break;
+  }
+  
+  /*
+    If we get killed -9 here, the sysadmin would have to edit
+    the log index file after restart - otherwise, this should be safe
+  */
+  error= update_log_index(&log_info, need_update_threads);
+  if (error == 0) {
+    error = ret;
   }
 
 err:
@@ -5166,6 +5195,47 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
                 sizeof(log_info.log_file_name));
       else
         break;
+      if (my_delete(log_info.log_file_name, MYF(0)))
+      {
+        if (my_errno == ENOENT) 
+        {
+          /* It's not fatal even if we can't delete a log file */
+          if (thd)
+          {
+            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                                ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
+                                log_info.log_file_name);
+          }
+          sql_print_information("Failed to delete file '%s'",
+                                log_info.log_file_name);
+          my_errno= 0;
+        }
+        else
+        {
+          if (thd)
+          {
+            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                                ER_BINLOG_PURGE_FATAL_ERR,
+                                "a problem with deleting %s; "
+                                "consider examining correspondence "
+                                "of your binlog index file "
+                                "to the actual binlog files",
+                                log_info.log_file_name);
+          }
+          else
+          {
+            sql_print_information("Failed to delete log file '%s'",
+                                  log_info.log_file_name); 
+          }
+          error= LOG_INFO_FATAL;
+          goto err;
+        }
+      }
+      if (ha_binlog_index_purge_file(current_thd, log_info.log_file_name))
+      {
+        error= LOG_INFO_FATAL;
+        goto err;
+      }
     }
     if (find_next_log(&log_info, 0))
       break;

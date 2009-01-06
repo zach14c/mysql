@@ -30,7 +30,6 @@ public:
 	virtual void	pass2(void);
 	virtual void	redo(void);
 	
-	int			tableSpaceId;
 	int			sectionId;
 	int			length;
 	int32		rootPageNumber;

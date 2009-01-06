@@ -250,6 +250,15 @@ let $wait_condition=
 select /*3*/ user, host, db, info from information_schema.processlist
 where info = 'select get_lock(\'ee_16407_2\', 60)';
 set global event_scheduler= off;
+--echo #
+--echo # Wait until all running events have completed.
+--echo #
+let $wait_condition=
+  select count(*) = 0 
+  from information_schema.processlist
+  where (command!='Daemon' && user!='event_scheduler')
+  and (info is null or info not like '%processlist%');
+--source include/wait_condition.inc
 select * from events_smode_test order by ev_name, a;
 --echo "OK, last check before we drop them"
 select event_schema, event_name, sql_mode from information_schema.events order by event_schema, event_name;
@@ -291,20 +300,20 @@ let $wait_condition=
 
 --echo "Should have 2 locked processes"
 select /*4*/ user, host, db, info from information_schema.processlist
-where (command!='Daemon' || user='event_scheduler') and (info is null or info not like '%processlist%')
+where (command!='Daemon' && user!='event_scheduler') and (info is null or info not like '%processlist%')
 order by info;
 select release_lock('ee_16407_5');
 
 let $wait_condition=
-  select count(*) = 1 and user = 'event_scheduler' and info is null
+  select count(*) = 0 
   from information_schema.processlist
-  where (command!='Daemon' || user='event_scheduler')
+  where (command!='Daemon' && user!='event_scheduler')
   and (info is null or info not like '%processlist%');
 --source include/wait_condition.inc
 
 --echo "Should have 0 processes locked"
 select /*5*/ user, host, db, info from information_schema.processlist
-where (command!='Daemon' || user='event_scheduler') and (info is null or info not like '%processlist%')
+where (command!='Daemon' && user!='event_scheduler') and (info is null or info not like '%processlist%')
 order by info;
 select * from events_smode_test order by ev_name, a;
 --echo "And here we check one more time before we drop the events"
