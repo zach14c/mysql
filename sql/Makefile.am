@@ -20,9 +20,9 @@ MYSQLSHAREdir =		$(pkgdatadir)
 MYSQLBASEdir=		$(prefix)
 MYSQLLIBdir=            $(pkglibdir)
 pkgplugindir =		$(pkglibdir)/plugin
-INCLUDES =		@ZLIB_INCLUDES@ \
-			-I$(top_builddir)/include -I$(top_srcdir)/include \
-			-I$(top_srcdir)/regex -I$(srcdir) $(openssl_includes) \
+AM_CPPFLAGS =		@ZLIB_INCLUDES@ \
+			-I$(top_srcdir)/include \
+			-I$(top_srcdir)/regex $(openssl_includes) \
 			$(libevent_includes)
 WRAPLIBS=		@WRAPLIBS@
 SUBDIRS =		share backup
@@ -159,7 +159,7 @@ endif
 
 nodist_mysqld_SOURCES =	mini_client_errors.c pack.c client.c my_time.c my_user.c 
 
-libndb_la_CPPFLAGS=	@ndbcluster_includes@
+libndb_la_CPPFLAGS=	@ndbcluster_includes@ $(AM_CPPFLAGS)
 libndb_la_SOURCES=	ha_ndbcluster.cc \
 			ha_ndbcluster_binlog.cc \
 			ha_ndbcluster_connection.cc \
@@ -238,6 +238,3 @@ SUFFIXES : .d
 	$(DTRACE) $(DTRACEFLAGS) -G -s $< $(DTRACEFILES)
 
 probes.o : $(DTRACEFILES)
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

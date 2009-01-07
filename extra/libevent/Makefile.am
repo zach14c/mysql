@@ -34,4 +34,4 @@ event-config.h: $(top_srcdir)/include/config.h
 	    -e 's/#ifndef /#ifndef _EVENT_/' < $(top_srcdir)/include/config.h >> $@
 	echo "#endif" >> $@
 
-INCLUDES = -Icompat -I$(top_srcdir)/include
+AM_CPPFLAGS = -Icompat -I$(top_srcdir)/include

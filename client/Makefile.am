@@ -21,8 +21,7 @@ else
 LIBMYSQLCLIENT_LA =		$(top_builddir)/libmysql/libmysqlclient.la
 endif
 
-INCLUDES =			-I$(top_builddir)/include \
-				-I$(top_srcdir)/include \
+AM_CPPFLAGS =			-I$(top_srcdir)/include \
 				-I$(top_srcdir)/regex \
                                 $(openssl_includes)
 
@@ -124,6 +123,3 @@ link_sources:
 	rm -f $(srcdir)/my_user.c; \
 	@LN_CP_F@ $(top_srcdir)/sql-common/my_user.c my_user.c;
 	echo timestamp > link_sources;
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

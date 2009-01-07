@@ -29,7 +29,7 @@ PRESCRIPTS =		mysql-test-run.pl mysql-stress-test.pl
 test_SCRIPTS = 		$(GENSCRIPTS) $(PRESCRIPTS)
 CLEANFILES = 		$(GENSCRIPTS)
 
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include -I..
+AM_CPPFLAGS =		-I$(top_srcdir)/include
 
 
 dist-hook:
@@ -87,7 +87,7 @@ dist-hook:
 	$(INSTALL_DATA) $(srcdir)/std_data/funcs_1/*.txt $(distdir)/std_data/funcs_1
 	$(INSTALL_DATA) $(srcdir)/lib/*.pl $(distdir)/lib
 	$(INSTALL_DATA) $(srcdir)/lib/My/*.pm $(distdir)/lib/My
-	-rm -rf `find $(distdir)/suite -type d -name SCCS` $(distdir)/suite/row_lock
+	-rm -rf $(distdir)/suite/row_lock
 
 install-data-local:
 	$(mkinstalldirs) \
@@ -149,7 +149,7 @@ install-data-local:
 	$(INSTALL_DATA) $(srcdir)/std_data/funcs_1/*.txt $(DESTDIR)$(testdir)/std_data/funcs_1
 	$(INSTALL_DATA) $(srcdir)/lib/*.pl $(DESTDIR)$(testdir)/lib
 	$(INSTALL_DATA) $(srcdir)/lib/My/*.pm $(DESTDIR)$(testdir)/lib/My
-	for f in `(cd $(srcdir); find suite -type f | egrep -v 'SCCS|row_lock')`; \
+	for f in `(cd $(srcdir); find suite -type f | grep -v 'row_lock')`; \
 	do \
 	  d=$(DESTDIR)$(testdir)/`dirname $$f`; \
 	  mkdir -p $$d ; \
@@ -194,6 +194,3 @@ SUFFIXES = .sh
 	  $< > $@-t
 	@CHMOD@ +x $@-t
 	@MV@ $@-t $@
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

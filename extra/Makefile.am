@@ -13,7 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include \
+AM_CPPFLAGS =		-I$(top_srcdir)/include \
 			-I$(top_srcdir)/sql
 LDADD =			@CLIENT_EXTRA_LDFLAGS@ \
                         $(top_builddir)/mysys/libmysyslt.la \
@@ -57,6 +57,3 @@ EXTRA_DIST =		CMakeLists.txt
 
 perror.o: perror.c 
 	$(COMPILE) @ndbcluster_includes@ $(LM_CFLAGS) -c $<
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
