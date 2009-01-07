@@ -1488,12 +1488,12 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 
 	// syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
+	if (!candidate)
+		return;
+	
 	checkAncestor(candidate, orgRecord);
 	RecordVersion *record;
 	bool wasLock = false;
-	
-	if (!candidate)
-		return;
 	
 	if (candidate->state == recLock && candidate->getTransaction() == transaction)
 		{
@@ -3094,13 +3094,12 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	database->preUpdate();
 	
 	Record *candidate = fetch(orgRecord->recordNumber);
-	checkAncestor(candidate, orgRecord);
-	
 	if (!candidate)
 		return;
 
+	checkAncestor(candidate, orgRecord);
 	Record *oldRecord = candidate;
-	
+
 	if (candidate->getTransaction() == transaction)
 		{
 		if (candidate->state == recLock)
