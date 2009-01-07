@@ -65,7 +65,7 @@ void Scavenger::scavenge()
 
 void Scavenger::execute(Scheduler * scheduler)
 {
-	scavenge();
+	database->signalScavenger();
 	getNextEvent();
 	scheduler->addEvent (this);
 }

@@ -163,7 +163,7 @@ public:
 	static void		release(void* block);
 	static void		validate(void *object);
 	static void		validateBlock (void *object);
-	
+	static int		blockSize(void *object);
 };
 
 #endif

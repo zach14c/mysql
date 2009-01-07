@@ -114,115 +114,103 @@ bool RecordLeaf::store(Record *record, Record *prior, int32 id, RecordSection **
 	return true;
 }
 
-int RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordScavenge)
+// Prune old invisible record versions from the end of record chains.
+// The visible versions at the front of the list are kept.
+// Also, inventory each record slot on this leaf.
+
+void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordScavenge)
 {
-	int count = 0;
 	Record **ptr, **end;
-	Sync sync(&syncObject, "RecordLeaf::retireRecords(syncObject)");
+
+	// Get a shared lock since we are just traversing the tree.  
+	// pruneRecords does not empty any slots in a record leaf.
+
+	Sync sync(&syncObject, "RecordLeaf::pruneRecords(syncObject)");
 	sync.lock(Shared);
-	
-	// Get a shared lock to find at least one record to scavenge
-	// If scavengeGeneration == UNDEFINED then just count the records in the leaf.
-	
+
 	for (ptr = records, end = records + RECORD_SLOTS; ptr < end; ++ptr)
 		{
 		Record *record = *ptr;
 		
 		if (record)
 			{
-			if (recordScavenge->scavengeGeneration == UNDEFINED)
-				++count;
-			else if (record->isVersion())
+			Record* oldestVisible = recordScavenge->inventoryRecord(record);
+
+			// Prune invisible records.
+
+			if (oldestVisible)
 				{
-				Sync syncPrior(record->getSyncPrior(), "RecordLeaf::retireRecords(prior)");
-				syncPrior.lock(Shared);
-	
-				if (record->scavenge(recordScavenge, Shared))
-					break;
-				else
-					++count;
+				ASSERT(oldestVisible->state != recLock);
+
+				Record *prior = oldestVisible->clearPriorVersion();
+
+				for (Record *prune = prior; prune; prune = prune->getPriorVersion())
+					{
+					ASSERT(prune->useCount == 1);
+					recordScavenge->recordsPruned++;
+					recordScavenge->spacePruned += prune->getMemUsage();
+					}
+
+				if (prior)
+					{
+#ifdef CHECK_RECORD_ACTIVITY
+					prior->active = false;
+#endif
+					table->garbageCollect(prior, record, NULL, false);
+					prior->release();
+					}
 				}
-			else if (   record->generation <= recordScavenge->scavengeGeneration
-			         && record->useCount == 1)
-				break;
-			else
-				++count;
 			}
+		}
+}
+
+void RecordLeaf::retireRecords (Table *table, int base, RecordScavenge *recordScavenge)
+{
+	int count = 0;
+	Record **ptr, **end;
+
+	Sync sync(&syncObject, "RecordLeaf::retireRecords(syncObject)");
+	sync.lock(Shared);
+
+	// Get a shared lock to find at least one record to scavenge
+
+	for (ptr = records, end = records + RECORD_SLOTS; ptr < end; ++ptr)
+		{
+		Record *record = *ptr;
+
+		if (record && recordScavenge->canBeRetired(record))
+			break;
 		}
 
 	if (ptr >= end)
-		return count;
-	
-	// Get an exclusive lock and do the actual scavenging
-	
+		return;
+
+	// We can retire at least one record from this leaf;
+	// Get an exclusive lock and retire as many as possible.
+
 	sync.unlock();
 	sync.lock(Exclusive);
-	count = 0;
-	
+
 	for (ptr = records; ptr < end; ++ptr)
 		{
 		Record *record = *ptr;
 		
-		if (record)
+		if (record && recordScavenge->canBeRetired(record))
 			{
-			if (record->isVersion())
-				{
-				Sync syncPrior(record->getSyncPrior(), "RecordLeaf::retireRecords(3)");
-				syncPrior.lock(Exclusive);
-				
-				if (record->scavenge(recordScavenge, Exclusive))
-					{
-					*ptr = NULL;
-					recordScavenge->spaceReclaimed += record->size;
-					++recordScavenge->recordsReclaimed;
-#ifdef CHECK_RECORD_ACTIVITY
-					record->active = false;
-#endif
-					if (record->state == recDeleted)
-						record->expungeRecord();
-
-					record->release();
-					}
-				else
-					{
-					++recordScavenge->recordsRemaining;
-					recordScavenge->spaceRemaining += record->size;
-					++count;
-					}
-				}
-			else if (   (record->generation <= recordScavenge->scavengeGeneration)
-			         && (record->useCount == 1))
-				{
+			if (record->retire(recordScavenge))
 				*ptr = NULL;
-				recordScavenge->spaceReclaimed += record->size;
-				++recordScavenge->recordsReclaimed;
-#ifdef CHECK_RECORD_ACTIVITY
-				record->active = false;
-#endif
-				record->release();
-				}
 			else
-				{
-				++recordScavenge->recordsRemaining;
-				recordScavenge->spaceRemaining += record->size;
-				++count;
-				
-				for (Record *prior = record->getPriorVersion(); prior; prior = prior->getPriorVersion())
-					{
-					++recordScavenge->versionsRemaining;
-					recordScavenge->spaceRemaining += prior->size;
-					}
-				}
+				count++;
 			}
 		}
-		
+
 	// If this node is empty, store the base record number for use as an
 	// identifier when the leaf node is scavenged later.
-	
+
 	if (!count && table->emptySections)
 		table->emptySections->set(base);
 
-	return count;
+	return;
 }
 
 bool RecordLeaf::retireSections(Table * table, int id)
@@ -261,14 +249,4 @@ int RecordLeaf::chartActiveRecords(int *chart)
 	chart[count]++;
 
 	return count;
-}
-
-void RecordLeaf::inventoryRecords(RecordScavenge* recordScavenge)
-{
-	Sync sync(&syncObject, "RecordLeaf::inventoryRecords");
-	sync.lock(Shared);
-
-	for (Record **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr)
-		if (*ptr)
-			recordScavenge->inventoryRecord(*ptr);
 }

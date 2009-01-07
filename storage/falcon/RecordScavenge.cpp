@@ -18,90 +18,288 @@
 #include "RecordScavenge.h"
 #include "Database.h"
 #include "Record.h"
+#include "RecordVersion.h"
 #include "Log.h"
 #include "MemMgr.h"
 #include "Sync.h"
+#include "Transaction.h"
+#include "TransactionManager.h"
 
-
-RecordScavenge::RecordScavenge(Database *db, TransId oldestTransaction, bool wasForced)
+RecordScavenge::RecordScavenge(Database *db)
 {
 	database = db;
-	transactionId = oldestTransaction;
-	forced = wasForced;
-	baseGeneration = database->currentGeneration;
+	cycle = ++database->scavengeCycle;
+	oldestActiveTransaction = db->transactionManager->findOldestInActiveList();
+
 	memset(ageGroups, 0, sizeof(ageGroups));
-	recordsReclaimed = 0;
+	veryOldRecords = 0;
+	veryOldRecordSpace = 0;
+
+	startingActiveMemory = db->recordDataPool->activeMemory;
+	prunedActiveMemory = 0;
+	retiredActiveMemory = 0;
+
+	scavengeStart = db->deltaTime;
+	pruneStop = 0;
+	retireStop = 0;
+
+	baseGeneration = database->currentGeneration;
+	scavengeGeneration = 0;
+
+	// Results of Scavenging
+	recordsPruned = 0;
+	spacePruned = 0;
+	recordsRetired = 0;
+	spaceRetired = 0;
 	recordsRemaining = 0;
-	versionsRemaining = 0;
-	spaceReclaimed = 0;
 	spaceRemaining = 0;
-	overflowSpace = 0;
-	numberRecords = 0;
-	recordSpace = 0;
+
+	// Results of the inventory
+	totalRecords = 0;
+	totalRecordSpace = 0;
+	pruneableRecords = 0;
+	pruneableSpace = 0;
+	retireableRecords = 0;
+	retireableSpace = 0;
+	unScavengeableRecords = 0;
+	unScavengeableSpace = 0;
 }
 
 RecordScavenge::~RecordScavenge(void)
 {
 }
 
-void RecordScavenge::inventoryRecord(Record* record)
+bool RecordScavenge::canBeRetired(Record* record)
 {
+	// Check if this record can be retired
+
+	if (record->generation <= scavengeGeneration)
+		{
+		// Record objects are read from pages
+
+		if (!record->isVersion())
+			return true;
+
+		RecordVersion * recVer = (RecordVersion *) record;
+		ASSERT(!recVer->superceded);  // Must be the base record
+
+		// This record version may be retired if 
+		// it is currently not pointed to by a transaction
+
+		if (!recVer->transaction)
+			return true;
+		}
+
+	return false;
+}
+
+// Take an inventory of every record in this record chain.
+// If there are any old invisible records at the end of the chain,
+// return a pointer to the oldest visible record.
+
+Record* RecordScavenge::inventoryRecord(Record* record)
+{
+	Record *oldestVisibleRec = NULL;
+
 	Sync syncPrior(record->getSyncPrior(), "RecordScavenge::inventoryRecord");
 	syncPrior.lock(Shared);
 
 	for (Record *rec = record; rec; rec = rec->getPriorVersion())
 		{
-		++numberRecords;
-		recordSpace += record->size;
-		uint64 age = baseGeneration - record->generation;
-		int size = record->size + sizeof(MemBigHeader);
-		
-		if (record->hasRecord(false) || (record->state == recChilled))
-			size += sizeof(MemBigHeader);
+		int scavengeType = CANNOT_SCAVENGE;  // Initial value
+
+		++totalRecords;
+		int size = rec->getMemUsage();
+		totalRecordSpace += size;
+
+		// Check if this record can be scavenged somehow
+
+		if (rec->isVersion())
+			{
+			RecordVersion * recVer = (RecordVersion *) rec;
+
+			bool committedBeforeAnyActiveTrans = false;
+			if (   (!recVer->transaction)
+			    || (    recVer->transaction->commitId   // means state == Committed
+			        &&  recVer->transaction->commitId < oldestActiveTransaction))
+				committedBeforeAnyActiveTrans = true;
+
+			// This record may be retired if it is the base record AND
+			// it is currently not needed by any active transaction.
+
+			if (recVer == record && committedBeforeAnyActiveTrans)
+				scavengeType = CAN_BE_RETIRED;
 			
-		if (age != UNDEFINED && age < AGE_GROUPS)
-			ageGroups[age] += size;
-		else if (age >= AGE_GROUPS)
-			overflowSpace += size;
+			// Look for the oldest visible record in this chain.
+			// If the transaction is null then there are no dependent transactions
+			// and this record is visible to all.  If the transaction is not null,
+			// then check if it ended before the current oldest active trans started
+
+			if (oldestVisibleRec)
+				{
+				if (recVer->useCount > 1)
+					// TBD - A prunable record has an extra use count!  Why? by who?
+					oldestVisibleRec = rec; // reset so that this recVer is not pruned.
+
+				scavengeType = CAN_BE_PRUNED;
+				}
+			else if (committedBeforeAnyActiveTrans)
+				{
+				ASSERT(rec->state != recLock);
+				oldestVisibleRec = rec;
+				}
+			}
+		else if (oldestVisibleRec)
+			scavengeType = CAN_BE_PRUNED;   // This is a Record object at the end of a chain.
 		else
-			ageGroups[0] = size;
+			scavengeType = CAN_BE_RETIRED;  // This is a base Record object 
+
+		// Add up the scavengeable space.
+
+		switch (scavengeType)
+			{
+			case CAN_BE_PRUNED:
+				pruneableRecords++;
+				pruneableSpace += size;
+				break;
+
+			case CAN_BE_RETIRED:
+				retireableRecords++;
+				retireableSpace += size;
+				break;
+
+			default:
+				unScavengeableRecords++;
+				unScavengeableSpace += size;
+			}
+
+		// Only base records can be retired
+
+		if (rec == record)
+			{
+			int64 age = (int64) baseGeneration - (int64) rec->generation;
+
+			if (age < 0)
+				ageGroups[0] += size;
+			else if (age < 1)
+				ageGroups[0] += size;
+			else if (age < AGE_GROUPS)
+				ageGroups[age] += size;
+			else	// age >= AGE_GROUPS
+				{
+				veryOldRecords++;
+				veryOldRecordSpace += size;
+				}
+			}
+
 		}
+
+	return oldestVisibleRec;
 }
 
-uint64 RecordScavenge::computeThreshold(uint64 target)
+uint64 RecordScavenge::computeThreshold(uint64 spaceToRetire)
 {
-	totalSpace = 0;
+	uint64 totalSpace = veryOldRecordSpace;
 	scavengeGeneration = 0;
-	
-	for (uint64 n = 0; n < AGE_GROUPS; ++n)
+
+	// The baseGeneration is the currentGeneration when the scavenge started
+	// It is in ageGroups[0].  Next oldest in ageGroups[1], etc.
+	// Find the youngest generation to start scavenging.
+	// Scavenge that scavengeGeneration and older.
+
+	for (int n = AGE_GROUPS - 1; n && !scavengeGeneration; n--)
 		{
 		totalSpace += ageGroups[n];
-		
-		if (totalSpace >= target && scavengeGeneration == 0)
+
+		if (totalSpace >= spaceToRetire)
 			scavengeGeneration = baseGeneration - n;
 		}
 
-	totalSpace += overflowSpace;
-
-	if (forced || (scavengeGeneration == 0 && totalSpace > target))
-		scavengeGeneration = baseGeneration + AGE_GROUPS;
-	
 	return scavengeGeneration;
 }
 
-void RecordScavenge::printRecordMemory(void)
+void RecordScavenge::print(void)
 {
-	Log::debug ("Record Memory usage for %s:\n", (const char*) database->name);
+	Log::log(LogScavenge, "=== Scavenge Cycle " I64FORMAT " - %s - %d seconds\n",
+		cycle, (const char*) database->name, retireStop - scavengeStart);
+
+	if (!recordsPruned && !recordsRetired)
+		return;
+
 	uint64 max;
+
+	// Find the maximum age group represented
 
 	for (max = AGE_GROUPS - 1; max > 0; --max)
 		if (ageGroups[max])
 			break;
 
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Base Generation=" I64FORMAT 
+		"  Scavenge Generation=" I64FORMAT "\n", 
+		cycle, baseGeneration, scavengeGeneration);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Oldest Active Transaction=%d\n", 
+		cycle, oldestActiveTransaction);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Threshold=" I64FORMAT 
+		"  Floor=" I64FORMAT 
+		"  Now=" I64FORMAT "\n", 
+		cycle, database->recordScavengeThreshold, 
+		database->recordScavengeFloor,
+		retiredActiveMemory );
 	for (uint64 n = 0; n <= max; ++n)
 		if (ageGroups [n])
-			Log::debug ("  %d. %d\n", baseGeneration - n, ageGroups[n]);
+			Log::log (LogScavenge,"Cycle=" I64FORMAT 
+				"  Age=" I64FORMAT "  Size=" I64FORMAT "\n", 
+				cycle, baseGeneration - n, ageGroups[n]);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Very Old Records=" I64FORMAT " Size=" I64FORMAT "\n", 
+		cycle, veryOldRecords, veryOldRecordSpace);
 
-	Log::log(LogScavenge, " total: " I64FORMAT ", threshold %d%s\n", totalSpace, scavengeGeneration,
-				(scavengeGeneration > 0) ? " -- scavenge" : "");
+	// Results of the inventory
+
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Inventory; Total records=" I64FORMAT " containing " I64FORMAT " bytes\n", 
+		cycle, totalRecords, totalRecordSpace);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Inventory; Pruneable records=" I64FORMAT " containing " I64FORMAT " bytes\n", 
+		cycle, pruneableRecords, pruneableSpace);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Inventory; Retireable records=" I64FORMAT " containing " I64FORMAT " bytes\n", 
+		cycle, retireableRecords, retireableSpace);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Inventory; unScavengeable records=" I64FORMAT " containing " I64FORMAT " bytes\n", 
+		cycle, unScavengeableRecords, unScavengeableSpace);
+
+	// Results of the Scavenge Cycle;
+
+	Log::log(LogScavenge, "Cycle=" I64FORMAT 
+		"  Results; Pruned " I64FORMAT " records, " I64FORMAT 
+		" bytes in %d seconds\n", 
+		cycle, recordsPruned, spacePruned, pruneStop - scavengeStart);
+	Log::log(LogScavenge, "Cycle=" I64FORMAT 
+		"  Results; Retired " I64FORMAT " records, " I64FORMAT 
+		" bytes in %d seconds\n", 
+		cycle, recordsRetired, spaceRetired, retireStop - pruneStop);
+
+	if (!recordsRetired)
+		{
+		recordsRemaining = totalRecords - recordsPruned;
+		spaceRemaining = totalRecordSpace - spacePruned;
+		}
+
+	Log::log(LogScavenge, "Cycle=" I64FORMAT 
+		"  Results; Remaining " I64FORMAT 
+		" Records, " I64FORMAT " remaining bytes\n", 
+		cycle, recordsRemaining, spaceRemaining);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Results; Active memory at Scavenge Start=" I64FORMAT "\n", 
+		cycle, startingActiveMemory);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Results; Active memory after Pruning Records=" I64FORMAT "\n", 
+		cycle, prunedActiveMemory);
+	Log::log (LogScavenge,"Cycle=" I64FORMAT 
+		"  Results; Active memory after Retiring Records=" I64FORMAT "\n", 
+		cycle, retiredActiveMemory );
 }

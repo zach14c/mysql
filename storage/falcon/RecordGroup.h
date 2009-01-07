@@ -35,11 +35,11 @@ public:
 
 	virtual int     countActiveRecords();
 	virtual bool    anyActiveRecords();
-	virtual	int    chartActiveRecords(int *chart);
+	virtual int     chartActiveRecords(int *chart);
 	virtual bool    store (Record *record, Record *prior, int32 id, RecordSection **parentPtr);
-	virtual void    inventoryRecords(RecordScavenge* recordScavenge);
 	virtual Record* fetch (int32 id);
-	virtual int     retireRecords(Table *table, int base, RecordScavenge *recordScavenge);
+	virtual void    pruneRecords(Table *table, int base, RecordScavenge *recordScavenge);
+	virtual void    retireRecords(Table *table, int base, RecordScavenge *recordScavenge);
 	virtual bool    retireSections(Table * table, int id);
 	virtual bool    inactive();
 	

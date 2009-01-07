@@ -34,7 +34,8 @@ public:
 	virtual int  countActiveRecords();
 	virtual bool anyActiveRecords();
 	virtual int  chartActiveRecords(int *chart);
-	virtual int  retireRecords(Table *table, int id, RecordScavenge *recordScavenge);
+	virtual void pruneRecords(Table *table, int id, RecordScavenge *recordScavenge);
+	virtual void retireRecords(Table *table, int id, RecordScavenge *recordScavenge);
 	virtual bool retireSections(Table * table, int id);
 	virtual bool inactive();
 	virtual bool store(Record *record, Record *prior, int32 id,RecordSection **parentPtr);
@@ -44,7 +45,6 @@ public:
 
 	Record		*records [RECORD_SLOTS];
 	SyncObject	syncObject;
-	void inventoryRecords(RecordScavenge* recordScavenge);
 };
 
 #endif // !defined(AFX_RECORDLEAF_H__02AD6A56_A433_11D2_AB5B_0000C01D2301__INCLUDED_)

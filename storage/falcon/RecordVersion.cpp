@@ -180,66 +180,42 @@ void RecordVersion::commit()
 	transaction = NULL;
 }
 
-// Scavenge record versions by the scavenger thread.  Return true if the
-// record or any prior version of the record is a scavenge candidate.
-
-bool RecordVersion::scavenge(RecordScavenge *recordScavenge, LockType lockType)
+bool RecordVersion::retire(RecordScavenge *recordScavenge)
 {
-	// Scavenge criteria:
-	// 
-	// 1. Use count == 1 AND
-	// 2. Record Version is older than the record version that was visible
-	//    to the oldest active transaction AND
-	// 3. Either the record generation is older than the current generation
-	//    OR the scavenge is forced
-	//    OR there is no record data associated with the record version.
+	bool neededByAnyActiveTrans = false;
+	if (   !transaction 
+		|| (   transaction->commitId   // means state == Committed
+		    && transaction->commitId < recordScavenge->oldestActiveTransaction))
+		neededByAnyActiveTrans = true;
 
-	if (	useCount == 1
-		&& !transaction
-		&& transactionId < recordScavenge->transactionId
-		&& (!hasRecord(false)
-			|| generation <= recordScavenge->scavengeGeneration
-			|| recordScavenge->forced))
+	if (   generation <= recordScavenge->scavengeGeneration
+		&& useCount == 1
+		&& !priorVersion
+		&& !neededByAnyActiveTrans)
 		{
-		
-		// Expunge all record versions prior to this
+		recordScavenge->recordsRetired++;
+		recordScavenge->spaceRetired += getMemUsage();
+#ifdef CHECK_RECORD_ACTIVITY
+		active = false;
+#endif
+		if (state == recDeleted)
+			expungeRecord();
 
-		if (priorVersion && lockType == Exclusive)
-			format->table->expungeRecordVersions(this, recordScavenge);
-			
+		release();
 		return true;
 		}
-	else
+
+	// Cannot retire this record.  Add up remaining space.
+
+	recordScavenge->recordsRemaining++;
+	recordScavenge->spaceRemaining += getMemUsage();
+
+	for (Record *prior = getPriorVersion(); prior; prior = prior->getPriorVersion())
 		{
-		 // Signal Table::cleanupRecords() that there is work to do
-		 
-		format->table->activeVersions = true;
-
-		// Scavenge criteria not met for this base record, so check prior versions.
-		
-		if (priorVersion && (recordScavenge->forced || recordScavenge->scavengeGeneration != UNDEFINED))
-			{
-			
-			// Scavenge prior record versions only if we have an exclusive lock on
-			// the record leaf. Return 'false' because the base record is not scavengable. 
-			
-			if (lockType == Exclusive)
-				priorVersion->scavenge(recordScavenge, lockType);
-			else
-
-				// Scan the prior record versions and return 'true' if a scavenge
-				// candidate is found.
-				
-				for (Record *rec = priorVersion; rec; rec = rec->getPriorVersion())
-					if (	rec->useCount == 1
-						&& !rec->getTransaction()
-						&& rec->getTransactionId() < recordScavenge->transactionId
-						&& (!rec->hasRecord(false)
-							|| rec->generation <= recordScavenge->scavengeGeneration))
-						return true;
-			}
+		++recordScavenge->recordsRemaining;
+		recordScavenge->spaceRemaining += prior->getMemUsage();
 		}
-		return false;
+	return false;
 }
 
 // Scavenge record versions replaced within a savepoint.
@@ -320,6 +296,9 @@ bool RecordVersion::isSuperceded()
 
 Record* RecordVersion::clearPriorVersion(void)
 {
+	Sync syncPrior(getSyncPrior(), "RecordVersion::clearPriorVersion");
+	syncPrior.lock(Exclusive);
+
 	Record * prior = priorVersion;
 	priorVersion = NULL;
 	return prior;
@@ -367,7 +346,7 @@ int RecordVersion::thaw()
 	// Nothing to do if the record is no longer chilled
 	
 	if (state != recChilled)
-		return size;
+		return getDataMemUsage();
 		
 	// First, try to thaw from the serial log. If transaction->writePending is 
 	// true, then the record data can be restored from the serial log. If writePending

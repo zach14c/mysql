@@ -22,6 +22,7 @@
 #include "Engine.h"
 #include "Record.h"
 #include "RecordVersion.h"
+#include "RecordScavenge.h"
 #include "Value.h"
 #include "Transaction.h"
 #include "Format.h"
@@ -36,7 +37,8 @@
 #include "EncodedRecord.h"
 #include "Field.h"
 #include "Serialize.h"
-
+#include "MemMgr.h"
+#include "Thread.h"
 #undef new
 
 #ifdef _DEBUG
@@ -484,10 +486,23 @@ bool Record::isVersion()
 	return false;
 }
 
-
-bool Record::scavenge(RecordScavenge *recordScavenge, LockType lockType)
+bool Record::retire(RecordScavenge *recordScavenge)
 {
-	return true;
+	if (generation <= recordScavenge->scavengeGeneration)
+		{
+		recordScavenge->spaceRetired += getMemUsage();
+		++recordScavenge->recordsRetired;
+#ifdef CHECK_RECORD_ACTIVITY
+		active = false;
+#endif
+		release();
+		return true;
+		}
+
+	++recordScavenge->recordsRemaining;
+	recordScavenge->spaceRemaining += getMemUsage();
+
+	return false;
 }
 
 void Record::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)
@@ -918,14 +933,23 @@ char* Record::allocRecordData(int length)
 	for (int n = 0;; ++n)
 		try
 			{
+			if (format && format->table)
+				if ((++format->table->database->recordPoolAllocCount & 0xFF) == 0)
+					format->table->database->checkRecordScavenge();
+
 			return POOL_NEW(format->table->database->recordDataPool) char[length];
 			}
 		catch (SQLException& exception)
 			{
-			if (n > 2 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
+			if (n > 4 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
 				throw;
 			
-			format->table->database->forceRecordScavenge();
+			format->table->database->signalScavenger();
+
+			// Give the scavenger thread a chance to release some memory
+
+			Thread *thread = Thread::getThread("Database::ticker");
+			thread->sleep(10);
 			}
 	
 	return NULL;
@@ -959,6 +983,18 @@ int Record::getSize(void)
 {
 	return sizeof(*this);
 }
+
+int Record::getDataMemUsage(void)
+{
+	return (data.record == NULL ? 0 : MemMgr::blockSize(data.record));
+}
+
+int Record::getMemUsage(void)
+{
+	int objectSize = MemMgr::blockSize(this);
+	return objectSize + getDataMemUsage();
+}
+
 
 SyncObject* Record::getSyncPrior(void)
 {

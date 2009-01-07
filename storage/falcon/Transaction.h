@@ -110,7 +110,6 @@ public:
 	void		releaseSavepoint(int savepointId);
 	void		releaseSavepoints(void);
 	void		rollbackSavepoint (int savepointId);
-	void		scavengeRecords(int ageGroup);
 	void		add(DeferredIndex* deferredIndex);
 	void		initialize(Connection* cnct, TransId seq);
 	bool		isXidEqual(int testLength, const UCHAR* test);
@@ -138,8 +137,7 @@ public:
 	Connection		*connection;
 	Database		*database;
 	TransId			transactionId;  // used also as startEvent by dep.mgr.
-	TransId         commitId;       // used as commitEvent by dep.mgr.
-	TransId			oldestActive;
+	TransId			commitId;       // used as commitEvent by dep.mgr.
 	TransId			blockedBy;
 	int				curSavePointId;
 	Transaction		*next;			// next in database

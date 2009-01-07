@@ -110,7 +110,20 @@ bool RecordGroup::store(Record * record, Record *prior, int32 id, RecordSection 
 	return section->store(record, prior, id % base, NULL);
 }
 
-int RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordScavenge)
+void RecordGroup::pruneRecords(Table *table, int base, RecordScavenge *recordScavenge)
+{
+	int recordNumber = base * RECORD_SLOTS;
+
+	for (RecordSection **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr, ++recordNumber)
+		{
+		RecordSection *section = *ptr;
+		
+		if (section)
+			section->pruneRecords(table, recordNumber, recordScavenge);
+		}
+}
+
+void RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordScavenge)
 {
 	int count = 0;
 	int recordNumber = base * RECORD_SLOTS;
@@ -120,23 +133,8 @@ int RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordSca
 		RecordSection *section = *ptr;
 		
 		if (section)
-			{
-			int n = section->retireRecords(table, recordNumber, recordScavenge);
-			count += n;
-			
-			/***
-			if (n)
-				count += n;
-			else
-				{
-				delete section;
-				*ptr = NULL;
-				}
-			***/
-			}
+			section->retireRecords(table, recordNumber, recordScavenge);
 		}
-
-	return count;
 }
 
 int RecordGroup::countActiveRecords()
@@ -215,11 +213,4 @@ bool RecordGroup::retireSections(Table * table, int id)
 		}
 		
 	return inactive();
-}
-
-void RecordGroup::inventoryRecords(RecordScavenge* recordScavenge)
-{
-	for (RecordSection **section = records, **end = records + RECORD_SLOTS; section < end; ++section)
-		if (*section)
-			(*section)->inventoryRecords(recordScavenge);
 }

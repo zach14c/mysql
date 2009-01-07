@@ -77,7 +77,7 @@ public:
 	virtual void	setSuperceded (bool flag);
 	virtual Record*	fetchVersion (Transaction * transaction);
 	virtual Record*	fetchVersionRecursive (Transaction *transaction);
-	virtual bool	scavenge(RecordScavenge *recordScavenge, LockType lockType);
+	virtual bool	retire(RecordScavenge *recordScavenge);
 	virtual void	scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
 	virtual bool	isVersion();
 	virtual bool	isSuperceded();
@@ -115,6 +115,8 @@ public:
 	void			validateData(void);
 	char*			allocRecordData(int length);
 	void			expungeRecord(void);
+	int				getDataMemUsage(void);
+	int				getMemUsage(void);
 	
 	Record (Table *table, Format *recordFormat);
 	Record (Table *table, int32 recordNumber, Stream *stream);

@@ -76,56 +76,17 @@ TransactionManager::~TransactionManager(void)
 		}
 }
 
-TransId TransactionManager::findOldestActive()
-{
-	Sync syncCommitted(&committedTransactions.syncObject, "TransactionManager::findOldestActive(1)");
-	syncCommitted.lock(Shared);
-	TransId oldestCommitted = transactionSequence;
-	
-	for (Transaction *trans = committedTransactions.first; trans; trans = trans->next)
-		oldestCommitted = MIN(trans->transactionId, oldestCommitted);
-
-	syncCommitted.unlock();
-
-	Transaction *oldest = findOldest();
-
-	if (oldest)
-		{
-		//Log::debug("Oldest transaction %d, oldest ancestor %d, oldest committed %d\n",  oldest->transactionId, oldest->oldestActive, oldestCommitted);
-
-		return MIN(oldest->oldestActive, oldestCommitted);
-		}
-	
-	//Log::debug("No active, current %d, oldest committed %d\n", transactionSequence, oldestActive);
-	
-	return oldestCommitted;
-}
-
-Transaction* TransactionManager::findOldest(void)
-{
-	Sync sync (&activeTransactions.syncObject, "TransactionManager::findOldest");
-	sync.lock (Shared);
-	Transaction *oldest = NULL;
-	
-	for (Transaction *transaction = activeTransactions.first; transaction; transaction = transaction->next)
-		if (transaction->isActive() && (!oldest || transaction->transactionId < oldest->transactionId))
-			oldest = transaction;
-	
-	return oldest;
-}
-
-
 TransId TransactionManager::findOldestInActiveList() const
 {
 	// Find the transaction id of the oldest active transaction in the 
 	// active transaction list. If the list is empty, the
 	// latest allocated transaction id will be returned.
-	// This method assumes that the caller have set at least a shared lock
+	// This method assumes that the caller has set at least a shared lock
 	// on the active list.
 
 	// Note: Here we operate on a transaction list where we allow 
-	// non-locking transaction allocations and de-allocations from so be 
-	// careful when updating this method.
+	// non-locking transaction allocations and de-allocations from, 
+	// so be careful when updating this method.
 
 	// NOTE: This needs to be updated when we allow transaction id to wrap
 
@@ -164,7 +125,7 @@ Transaction* TransactionManager::startTransaction(Connection* connection)
 	sync.unlock();
 
 	// We did not find an available transaction object to re-use, 
-	// so we allocate a new and add to the active list
+	// so we allocate a new one and add it to the active list
 
 	sync.lock(Exclusive);
 

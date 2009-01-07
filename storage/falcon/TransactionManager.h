@@ -30,7 +30,6 @@ public:
 	TransactionManager(Database *database);
 	~TransactionManager(void);
 	
-	TransId			findOldestActive();
 	Transaction*	startTransaction(Connection* connection);
 	void			dropTable(Table* table, Transaction* transaction);
 	void			truncateTable(Table* table, Transaction* transaction);
@@ -39,7 +38,6 @@ public:
 	void			commitByXid(int xidLength, const UCHAR* xid);
 	void			rollbackByXid(int xidLength, const UCHAR* xid);
 	void			print(void);
-	Transaction*	findOldest(void);
 	TransId			findOldestInActiveList() const;
 	void			getTransactionInfo(InfoTable* infoTable);
 	void			purgeTransactions();

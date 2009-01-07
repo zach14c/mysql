@@ -1209,3 +1209,10 @@ void MemMgr::validateBlock(MemBlock *block)
 			corrupt ("guard bytes overwritten");
 #endif
 }
+
+int MemMgr::blockSize(void *object)
+{
+	MemBlock *block = (MemBlock*) ((UCHAR*) object - OFFSET(MemBlock*, body));
+
+	return ABS(block->length);
+}
