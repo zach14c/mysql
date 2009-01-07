@@ -264,13 +264,7 @@ void backup_shutdown();
 #if defined(__linux__)
 #define ENABLE_TEMP_POOL 1
 #else
-#define ENABLE_TEMP_TOOL 0
-#endif
-
-#if defined(__linux__)
-#define ENABLE_TEMP_POOL 1
-#else
-#define ENABLE_TEMP_TOOL 0
+#define ENABLE_TEMP_POOL 0
 #endif
 
 /* Constants */
