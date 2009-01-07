@@ -409,8 +409,13 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		garbageCollect(record, NULL, transaction, true);
 
 		if (record)
+			{
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 			record->release();
-			
+			}
+
 		throw;
 		}
 
@@ -1354,6 +1359,10 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 			if (record->state == recLock)
 				record->deleteData();
 
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
+
 			record->release();
 			}
 
@@ -1556,6 +1565,10 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 			}
 		catch (...)
 			{
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
+
 			record->release();
 			
 			throw;
@@ -3081,7 +3094,12 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 			}
 
 		if (record)
+			{
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 			record->release();
+			}
 
 		throw;
 		}
@@ -3212,6 +3230,10 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 
 			if (record->state == recLock)
 				record->deleteData();
+
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 
 			record->release();
 			}
