@@ -183,7 +183,6 @@ MYSQL_ERROR::MYSQL_ERROR()
    m_column_name(),
    m_cursor_name(),
    m_message_text(),
-   m_message_text_set(FALSE),
    m_sql_errno(0),
    m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
    m_mem_root(NULL)
@@ -221,7 +220,6 @@ void MYSQL_ERROR::clear()
   m_column_name.clear();
   m_cursor_name.clear();
   m_message_text.length(0);
-  m_message_text_set= FALSE;
   m_sql_errno= 0;
   m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
 }
@@ -239,7 +237,6 @@ MYSQL_ERROR::MYSQL_ERROR(MEM_ROOT *mem_root)
    m_column_name(mem_root),
    m_cursor_name(mem_root),
    m_message_text(),
-   m_message_text_set(FALSE),
    m_sql_errno(0),
    m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
    m_mem_root(mem_root)
@@ -292,7 +289,6 @@ MYSQL_ERROR::set_builtin_message_text(const char* str)
   copy= strdup_root(m_mem_root, str);
   m_message_text.set(copy, strlen(copy), error_message_charset_info);
   DBUG_ASSERT(! m_message_text.is_alloced());
-  m_message_text_set= TRUE;
 }
 
 const char*

@@ -269,13 +269,6 @@ private:
   void set_sqlstate(const char* sqlstate);
 
   /**
-    Predicate, returns true if the condition item MESSAGE_TEXT was set.
-    @return True if MESSAGE_TEXT was set.
-  */
-  bool is_message_text_set() const
-  { return m_message_text_set; }
-
-  /**
     Clear this SQL condition.
   */
   void clear();
@@ -313,17 +306,6 @@ private:
 
   /** Message text, expressed in the character set implied by --language. */
   String m_message_text;
-
-  /**
-    True if m_message_text was explicitly set.
-    This member is needed to differentiate:
-    - SIGNAL ... without a SET MESSAGE_TEXT clause, in which case the message
-    text should have a default value,
-    - SIGNAL ... SET MESSAGE_TEXT='', in which case the message text should
-    be '' and not replaced by a default value.
-  */
-
-  bool m_message_text_set;
 
   /** MySQL extension, MYSQL_ERRNO condition item. */
   uint m_sql_errno;
