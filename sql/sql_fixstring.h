@@ -19,26 +19,6 @@
 class String;
 
 /**
-  This structure represents the parametrized metadata used
-  in class Fixed_string.
-  The metadata consist of 'N' and 'C' in
-  VARCHAR(N) CHARACTER SET C
-  Multiple instances of Fixed_string typically share the same
-  Fixed_string_param instance.
-*/
-struct Fixed_string_param
-{
-  /**
-    Maximum length of a VARCHAR string (N), in VARCHAR(N)
-  */
-  size_t m_max_char_length;
-  /**
-    Character set of a VARCHAR string (C), in VARCHAR(N) CHARACTER SET C.
-  */
-  CHARSET_INFO *m_cs;
-};
-
-/**
   This class represents a VARCHAR string or a given fixed maximum size,
   and of a given fixed character set.
   The size and character set are immutable.
@@ -49,11 +29,13 @@ class Fixed_string
 public:
   /**
     Constructor.
-    @param param Immutable size and character set parameters
+    @param max_char Immutable max size
+    @param cs Immutable character set
     @param mem_root Memory root to use to represent the string value
   */
-  Fixed_string(const Fixed_string_param *param, MEM_ROOT *mem_root)
-    : m_param(param),
+  Fixed_string(size_t max_char, CHARSET_INFO *cs, MEM_ROOT *mem_root)
+    : m_max_char(max_char),
+    m_cs(cs),
     m_mem_root(mem_root),
     m_byte_length(0),
     m_allocated_length(0),
@@ -90,8 +72,7 @@ public:
 
   /**
     Access to the C pointer representation of the string.
-    @return a NUL terminated C string, in the character set of
-    Fixed_string_param
+    @return a NUL terminated C string, in the character set of m_cs
   */
   const char* ptr() const
   { return m_ptr; }
@@ -109,7 +90,7 @@ public:
     @return the string character set
   */
   const CHARSET_INFO *charset() const
-  { return m_param->m_cs; }
+  { return m_cs; }
 
   /**
     Set the string value from another Fixed_string.
@@ -134,11 +115,14 @@ private:
   void add_nul(char *ptr);
 
   /**
-    Immutable string parameters.
-    The string parameters are &lt;N&gt; and &lt;C&gt;
-    in a parametrized class 'VARCHAR(&lt;N&gt;) CHARACTER SET &lt;C&gt;'
+    Immutable maximum length of a VARCHAR string (N), in VARCHAR(N)
   */
-  const Fixed_string_param *m_param;
+  const size_t m_max_char;
+
+  /**
+    Immutable character set of a VARCHAR string (C), in VARCHAR(N) CHARACTER SET C.
+  */
+  CHARSET_INFO * const m_cs;
 
   /**
     Memory root to use to allocate the string value.
@@ -180,18 +164,15 @@ public:
     @param root The memory root to use to represent the string value.
   */
   UTF8String64(MEM_ROOT *root)
-    : Fixed_string(& params, root)
+    : Fixed_string(64, & my_charset_utf8_bin, root)
   {}
 
   UTF8String64()
-    : Fixed_string(& params, NULL)
+    : Fixed_string(64, & my_charset_utf8_bin, NULL)
   {}
 
   ~UTF8String64()
   {}
-
-private:
-  static const Fixed_string_param params;
 };
 
 /**
@@ -205,18 +186,15 @@ public:
     @param root The memory root to use to represent the string value.
   */
   UTF8String128(MEM_ROOT *root)
-    : Fixed_string(& params, root)
+    : Fixed_string(128, & my_charset_utf8_bin, root)
   {}
 
   UTF8String128()
-    : Fixed_string(& params, NULL)
+    : Fixed_string(128, & my_charset_utf8_bin, NULL)
   {}
 
   ~UTF8String128()
   {}
-
-private:
-  static const Fixed_string_param params;
 };
 
 #endif

@@ -206,18 +206,18 @@ run_service_interface_sql(THD *thd, Ed_connection *ed_connection,
   @param[in]  src   Warning list.
 */
 
-void copy_warnings(THD *thd, List<SQL_condition> *src)
+void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
 {
-  List_iterator_fast<SQL_condition> cond_it(*src);
-  SQL_condition *cond;
+  List_iterator_fast<MYSQL_ERROR> err_it(*src);
+  MYSQL_ERROR *err;
 
-  while ((cond= cond_it++))
+  while ((err= err_it++))
   {
     thd->warning_info->raise_condition(thd,
-                                       cond->get_sql_errno(),
-                                       cond->get_sqlstate(),
-                                       cond->get_level(),
-                                       cond->get_message_text());
+                                       err->get_sql_errno(),
+                                       err->get_sqlstate(),
+                                       err->get_level(),
+                                       err->get_message_text());
   }
 }
 

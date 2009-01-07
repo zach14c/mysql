@@ -89,7 +89,7 @@ public:
                                 const char* sql_state,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl);
+                                MYSQL_ERROR ** cond_hdl);
   const char *message() const { return m_message; }
 };
 
@@ -99,7 +99,7 @@ Silence_log_table_errors::handle_condition(THD *,
                                            const char*,
                                            MYSQL_ERROR::enum_warning_level,
                                            const char* msg,
-                                           SQL_condition ** cond_hdl)
+                                           MYSQL_ERROR ** cond_hdl)
 {
   *cond_hdl= NULL;
   strmake(m_message, msg, sizeof(m_message)-1);

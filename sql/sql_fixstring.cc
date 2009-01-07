@@ -28,7 +28,6 @@ void Fixed_string::set(const char* str, size_t len, const CHARSET_INFO *str_cs)
   uint32 dummy_offset;
   size_t numchars;
   size_t to_copy;
-  CHARSET_INFO *cs= m_param->m_cs;
   const char *end= str + len;
 
   if (str == NULL)
@@ -39,30 +38,30 @@ void Fixed_string::set(const char* str, size_t len, const CHARSET_INFO *str_cs)
 
   numchars= str_cs->cset->numchars((CHARSET_INFO*) str_cs, str, end);
 
-  if (numchars <= m_param->m_max_char_length)
+  if (numchars <= m_max_char)
   {
     to_copy= len;
     m_truncated= FALSE;
   }
   else
   {
-    numchars= m_param->m_max_char_length;
-    to_copy= cs->cset->charpos(cs, str, end, numchars);
+    numchars= m_max_char;
+    to_copy= m_cs->cset->charpos(m_cs, str, end, numchars);
     m_truncated= TRUE;
   }
 
   if (String::needs_conversion(to_copy, (CHARSET_INFO*) str_cs,
-                               (CHARSET_INFO*) cs, & dummy_offset))
+                               (CHARSET_INFO*) m_cs, & dummy_offset))
   {
-    size_t dest_len= numchars * cs->mbmaxlen;
-    reserve(dest_len + cs->mbminlen);
+    size_t dest_len= numchars * m_cs->mbmaxlen;
+    reserve(dest_len + m_cs->mbminlen);
     if (m_ptr)
     {
       const char* well_formed_error_pos;
       const char* cannot_convert_error_pos;
       const char* from_end_pos;
 
-      m_byte_length= well_formed_copy_nchars((CHARSET_INFO *) cs,
+      m_byte_length= well_formed_copy_nchars((CHARSET_INFO *) m_cs,
                                              m_ptr, dest_len,
                                              (CHARSET_INFO*) str_cs, str, len,
                                              numchars,
@@ -74,7 +73,7 @@ void Fixed_string::set(const char* str, size_t len, const CHARSET_INFO *str_cs)
   }
   else
   {
-    reserve(to_copy + cs->mbminlen);
+    reserve(to_copy + m_cs->mbminlen);
     if (m_ptr)
     {
       m_byte_length= to_copy;
@@ -95,7 +94,7 @@ void Fixed_string::add_nul(char *ptr)
     - UTF16 : NUL = 2 zero byte
     - UTF32 : NUL = 4 zero byte
   */
-  switch (m_param->m_cs->mbminlen)
+  switch (m_cs->mbminlen)
   {
   case 4: *ptr++ = '\0'; /* fall through */
   case 3: *ptr++ = '\0'; /* fall through */
@@ -107,9 +106,9 @@ void Fixed_string::add_nul(char *ptr)
 
 void Fixed_string::copy(const Fixed_string *str)
 {
-  DBUG_ASSERT(m_param->m_cs->number == str->m_param->m_cs->number);
+  DBUG_ASSERT(m_cs->number == str->m_cs->number);
 
-  set(str->m_ptr, str->m_byte_length, str->m_param->m_cs);
+  set(str->m_ptr, str->m_byte_length, str->m_cs);
 }
 
 void Fixed_string::clear()
@@ -128,11 +127,4 @@ void Fixed_string::reserve(size_t len)
   m_ptr= (char*) alloc_root(m_mem_root, len);
   m_allocated_length= (m_ptr ? len : 0);
 }
-
-const Fixed_string_param UTF8String64::params=
-{64, & my_charset_utf8_bin };
-
-const Fixed_string_param UTF8String128::params=
-{128, & my_charset_utf8_bin };
-
 

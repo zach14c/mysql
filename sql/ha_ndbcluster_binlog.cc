@@ -246,15 +246,19 @@ static void dbug_print_table(const char *info, TABLE *table)
   - purging the ndb_binlog_index
   - creating the ndb_apply_status table
 */
-static void copy_warnings(THD *thd, List<SQL_condition> *src)
+static void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
 {
-  List_iterator_fast<SQL_condition> cond_it(*src);
-  SQL_condition *cond;
+  List_iterator_fast<MYSQL_ERROR> err_it(*src);
+  MYSQL_ERROR *err;
 
-  while ((cond= cond_it++))
-    push_warning(thd, cond->get_level(), cond->get_sql_errno(),
-                 cond->get_message_text());
+  while ((err= err_it++))
+    thd->warning_info->raise_condition(thd,
+                                       err->get_sql_errno(),
+                                       err->get_sqlstate(),
+                                       err->get_level(),
+                                       err->get_message_text());
 }
+
 static void run_query(THD *thd, char *buf, char *end,
                       const int *no_print_error, my_bool disable_binlog,
                       my_bool reset_error)
@@ -294,7 +298,11 @@ static void run_query(THD *thd, char *buf, char *end,
     if (res && !reset_error)
     {
       copy_warnings(thd, con.get_warn_list());
-      my_message(con.get_last_errno(), con.get_last_error(), MYF(ME_NO_WARNING_FOR_ERROR));
+      if (! thd->stmt_da->is_error())
+        thd->stmt_da->set_error_status(thd,
+                                       con.get_last_errno(),
+                                       con.get_last_error(),
+                                       con.get_last_sqlstate());
     }
   }
 
@@ -1436,11 +1444,11 @@ static void print_could_not_discover_error(THD *thd,
                   "my_errno: %d",
                    schema->db, schema->name, schema->query,
                    schema->node_id, my_errno);
-  List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
-  SQL_condition *cond;
-  while ((cond= it++))
-    sql_print_warning("NDB Binlog: (%d)%s", cond->get_sql_errno(),
-                      cond->get_message_text());
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
+  MYSQL_ERROR *err;
+  while ((err= it++))
+    sql_print_warning("NDB Binlog: (%d)%s", err->get_sql_errno(),
+                      err->get_message_text());
 }
 
 /*

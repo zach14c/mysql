@@ -134,7 +134,7 @@ class sp_rcontext : public Sql_alloc
                const char* sqlstate,
                MYSQL_ERROR::enum_warning_level level,
                const char* msg,
-               SQL_condition ** cond_hdl);
+               MYSQL_ERROR ** cond_hdl);
 
   // If there is an error handler for this error, handle it and return TRUE.
   bool
@@ -143,7 +143,7 @@ class sp_rcontext : public Sql_alloc
                    const char* sqlstate,
                    MYSQL_ERROR::enum_warning_level level,
                    const char* msg,
-                   SQL_condition ** cond_hdl);
+                   MYSQL_ERROR ** cond_hdl);
 
   // Returns handler type and sets *ip to location if one was found
   inline int
@@ -156,7 +156,7 @@ class sp_rcontext : public Sql_alloc
     return m_handler[m_hfound].type;
   }
 
-  SQL_condition* raised_condition() const;
+  MYSQL_ERROR* raised_condition() const;
 
   // Returns true if we found a handler in this context
   inline bool
@@ -250,7 +250,7 @@ private:
     SQL conditions caught by each handler.
     This is an array indexed by handler index.
   */
-  SQL_condition * m_raised_conditions;
+  MYSQL_ERROR *m_raised_conditions;
 
   uint m_hcount;                // Stack pointer for m_handler
   uint *m_hstack;               // Return stack for continue handlers

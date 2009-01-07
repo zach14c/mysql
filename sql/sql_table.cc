@@ -4444,17 +4444,17 @@ send_result:
     lex->cleanup_after_one_table_open();
     thd->clear_error();  // these errors shouldn't get client
     {
-      List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
-      SQL_condition *cond;
-      while ((cond= it++))
+      List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
+      MYSQL_ERROR *err;
+      while ((err= it++))
       {
         protocol->prepare_for_resend();
         protocol->store(table_name, system_charset_info);
         protocol->store((char*) operator_name, system_charset_info);
-        protocol->store(warning_level_names[cond->get_level()].str,
-                        warning_level_names[cond->get_level()].length,
+        protocol->store(warning_level_names[err->get_level()].str,
+                        warning_level_names[err->get_level()].length,
                         system_charset_info);
-        protocol->store(cond->get_message_text(), system_charset_info);
+        protocol->store(err->get_message_text(), system_charset_info);
         if (protocol->write())
           goto err;
       }

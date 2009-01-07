@@ -261,7 +261,7 @@ public:
     The second is a numeric code.
     The third is warning text.
   */
-  List<SQL_condition> *get_warn_list() { return &m_warning_info.warn_list(); }
+  List<MYSQL_ERROR> *get_warn_list() { return &m_warning_info.warn_list(); }
   /**
     The following members are only valid if execute_direct()
     or move_to_next_result() returned an error.
@@ -270,6 +270,7 @@ public:
   */
   const char *get_last_error() const { return m_diagnostics_area.message(); }
   unsigned int get_last_errno() const { return m_diagnostics_area.sql_errno(); }
+  const char *get_last_sqlstate() const { return m_diagnostics_area.get_sqlstate(); }
 
   /**
     Provided get_field_count() is not 0, this never fails. You don't

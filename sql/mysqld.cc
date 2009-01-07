@@ -3021,7 +3021,12 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
 
   if ((thd= current_thd))
   {
-    thd->legacy_raise_error(error, str, MyFlags);
+    const char* sqlstate= mysql_errno_to_sqlstate(error);
+    (void) thd->raise_condition(error,
+                                sqlstate,
+                                MYSQL_ERROR::WARN_LEVEL_ERROR,
+                                str,
+                                MyFlags);
   }
   if (!thd || MyFlags & ME_NOREFRESH)
     sql_print_error("%s: %s", my_progname, str); /* purecov: inspected */

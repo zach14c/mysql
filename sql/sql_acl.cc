@@ -6147,7 +6147,7 @@ public:
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl);
+                                MYSQL_ERROR ** cond_hdl);
 
   bool has_errors() { return is_grave; }
 
@@ -6162,7 +6162,7 @@ Silence_routine_definer_errors::handle_condition(
   const char*,
   MYSQL_ERROR::enum_warning_level level,
   const char* msg,
-  SQL_condition ** cond_hdl)
+  MYSQL_ERROR ** cond_hdl)
 {
   *cond_hdl= NULL;
   if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)

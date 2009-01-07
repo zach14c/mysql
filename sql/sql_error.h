@@ -146,45 +146,22 @@ private:
   */
   uint	     m_statement_warn_count;
   enum_diagnostics_status m_status;
-  /**
-    @todo: the following THD members belong here:
-    - warn_list, warn_count,
-  */
 };
 
 ///////////////////////////////////////////////////////////////////////////
-
-class MYSQL_ERROR: public Sql_alloc
-{
-public:
-  enum enum_warning_level
-  { WARN_LEVEL_NOTE, WARN_LEVEL_WARN, WARN_LEVEL_ERROR, WARN_LEVEL_END};
-
-  enum_warning_level level;
-  uint code;
-  char *msg;
-
-  MYSQL_ERROR(MEM_ROOT *warn_root,
-              enum_warning_level level_arg, uint code_arg, const char *msg_arg)
-    :level(level_arg), code(code_arg)
-  {
-    if (msg_arg)
-      set_msg(warn_root, msg_arg);
-  }
-
-private:
-  void set_msg(MEM_ROOT *warn_root, const char *msg_arg);
-};
-
 
 /**
   Representation of a SQL condition.
   A SQL condition can be a completion condition (note, warning),
   or an exception condition (error, not found).
+  @note This class is named MYSQL_ERROR instead of SQL_condition for historical reasons,
+  to facilitate merging code with previous releases.
 */
-class SQL_condition : public Sql_alloc
+class MYSQL_ERROR : public Sql_alloc
 {
 public:
+  enum enum_warning_level
+  { WARN_LEVEL_NOTE, WARN_LEVEL_WARN, WARN_LEVEL_ERROR, WARN_LEVEL_END};
   /**
     Get the MESSAGE_TEXT of this condition.
     @return the message text.
@@ -220,12 +197,12 @@ public:
 
 private:
   /*
-    The interface of SQL_condition is mostly private, by design,
+    The interface of MYSQL_ERROR is mostly private, by design,
     so that only the following code:
     - various raise_error() or raise_warning() methods in class THD,
     - the implementation of SIGNAL / RESIGNAL
     - catch / re-throw of SQL conditions in stored procedures (sp_rcontext)
-    is allowed to create / modify a SQL_condition.
+    is allowed to create / modify a SQL condition.
     Enforcing this policy prevents confusion, since the only public
     interface available to the rest of the server implementation
     is the interface offered by the THD methods (THD::raise_error()),
@@ -241,12 +218,12 @@ private:
   /**
     Default constructor.
     This constructor is usefull when allocating arrays.
-    Note that the init() method should be called to complete the SQL_condition.
+    Note that the init() method should be called to complete the MYSQL_ERROR.
   */
-  SQL_condition();
+  MYSQL_ERROR();
 
   /**
-    Complete the SQL_condition initialisation.
+    Complete the MYSQL_ERROR initialisation.
     @param mem_root The memory root to use for the condition items
     of this condition
   */
@@ -257,17 +234,17 @@ private:
     @param mem_root The memory root to use for the condition items
     of this condition
   */
-  SQL_condition(MEM_ROOT *mem_root);
+  MYSQL_ERROR(MEM_ROOT *mem_root);
 
   /** Destructor. */
-  ~SQL_condition()
+  ~MYSQL_ERROR()
   {}
 
   /**
     Copy optional condition items attributes.
     @param cond the condition to copy.
   */
-  void copy_opt_attributes(const SQL_condition *cond);
+  void copy_opt_attributes(const MYSQL_ERROR *cond);
 
   /**
     Set this condition area with a fixed message text.
@@ -375,7 +352,7 @@ class Warning_info
   /** A memory root to allocate warnings and errors */
   MEM_ROOT           m_warn_root;
   /** List of warnings of all severities (levels). */
-  List <SQL_condition> m_warn_list;
+  List <MYSQL_ERROR> m_warn_list;
   /** A break down of the number of warnings per severity (level). */
   uint	             m_warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_END];
   /**
@@ -449,7 +426,7 @@ public:
     This is for iteration purposes. We return a non-constant reference
     since List doesn't have constant iterators.
   */
-  List<SQL_condition> &warn_list() { return m_warn_list; }
+  List<MYSQL_ERROR> &warn_list() { return m_warn_list; }
 
   /**
     The number of errors, or number of rows returned by SHOW ERRORS,
@@ -472,13 +449,23 @@ public:
 
   ulong statement_warn_count() const { return m_statement_warn_count; }
 
+  /**
+    Reserve some space in the condition area.
+    This is a privileged operation, reserved for the RESIGNAL implementation,
+    as only the RESIGNAL statement is allowed to remove conditions from
+    the condition area.
+    For other statements, new conditions are not added to the condition
+    area once the condition area is full.
+    @param thd The current thread
+    @param count The number of slots to reserve
+  */
   void reserve_space(THD *thd, uint count);
 
   /** Add a new condition to the current list. */
-  SQL_condition *raise_condition(THD *thd,
-                                 uint sql_errno, const char* sqlstate,
-                                 MYSQL_ERROR::enum_warning_level level,
-                                 const char* msg);
+  MYSQL_ERROR *raise_condition(THD *thd,
+                               uint sql_errno, const char* sqlstate,
+                               MYSQL_ERROR::enum_warning_level level,
+                               const char* msg);
 
   /**
     Set the read only status for this statement area.

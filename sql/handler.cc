@@ -1867,7 +1867,7 @@ public:
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl);
+                                MYSQL_ERROR ** cond_hdl);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
@@ -1879,7 +1879,7 @@ handle_condition(THD *,
                  const char*,
                  MYSQL_ERROR::enum_warning_level,
                  const char* msg,
-                 SQL_condition ** cond_hdl)
+                 MYSQL_ERROR ** cond_hdl)
 {
   *cond_hdl= NULL;
   /* Grab the error message */

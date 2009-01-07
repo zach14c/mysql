@@ -72,7 +72,7 @@ struct scheduler_param {
 void
 Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
 {
-  SQL_condition *cond;
+  MYSQL_ERROR *err;
   DBUG_ENTER("evex_print_warnings");
   if (thd->warning_info->is_empty())
     DBUG_VOID_RETURN;
@@ -90,18 +90,18 @@ Event_worker_thread::print_warnings(THD *thd, Event_job_data *et)
   prefix.append(et->name.str, et->name.length, system_charset_info);
   prefix.append("] ", 2);
 
-  List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
-  while ((cond= it++))
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
+  while ((err= it++))
   {
     String err_msg(msg_buf, sizeof(msg_buf), system_charset_info);
     /* set it to 0 or we start adding at the end. That's the trick ;) */
     err_msg.length(0);
     err_msg.append(prefix);
-    err_msg.append(cond->get_message_text(),
-                   cond->get_message_octet_length(), system_charset_info);
-    DBUG_ASSERT(cond->get_level() < 3);
-    (sql_print_message_handlers[cond->get_level()])("%*s", err_msg.length(),
-                                                    err_msg.c_ptr());
+    err_msg.append(err->get_message_text(),
+                   err->get_message_octet_length(), system_charset_info);
+    DBUG_ASSERT(err->get_level() < 3);
+    (sql_print_message_handlers[err->get_level()])("%*s", err_msg.length(),
+                                                   err_msg.c_ptr());
   }
   DBUG_VOID_RETURN;
 }

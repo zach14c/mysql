@@ -501,7 +501,7 @@ public:
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl);
+                                MYSQL_ERROR ** cond_hdl);
 };
 
 bool
@@ -511,7 +511,7 @@ Silence_deprecated_warning::handle_condition(
   const char*,
   MYSQL_ERROR::enum_warning_level level,
   const char*,
-  SQL_condition ** cond_hdl)
+  MYSQL_ERROR ** cond_hdl)
 {
   *cond_hdl= NULL;
   if (sql_errno == ER_WARN_DEPRECATED_SYNTAX &&

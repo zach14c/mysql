@@ -61,7 +61,7 @@ struct Pack_header_error_handler: public Internal_error_handler
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl);
+                                MYSQL_ERROR ** cond_hdl);
   bool is_handled;
   Pack_header_error_handler() :is_handled(FALSE) {}
 };
@@ -74,7 +74,7 @@ handle_condition(THD *,
                  const char*,
                  MYSQL_ERROR::enum_warning_level,
                  const char*,
-                 SQL_condition ** cond_hdl)
+                 MYSQL_ERROR ** cond_hdl)
 {
   *cond_hdl= NULL;
   is_handled= (sql_errno == ER_TOO_MANY_FIELDS);

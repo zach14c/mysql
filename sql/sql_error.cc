@@ -45,6 +45,275 @@ This file contains the implementation of error and warnings related
 #include "sql_error.h"
 #include "sp_rcontext.h"
 
+/*
+  Design notes about MYSQL_ERROR::m_message_text.
+
+  The member MYSQL_ERROR::m_message_text contains the text associated with
+  an error, warning or note (which are all SQL 'conditions')
+
+  Producer of MYSQL_ERROR::m_message_text:
+  ----------------------------------------
+
+  (#1) the server implementation itself, when invoking functions like
+  my_error() or push_warning()
+
+  (#2) user code in stored programs, when using the SIGNAL statement.
+
+  (#3) user code in stored programs, when using the RESIGNAL statement.
+
+  When invoking my_error(), the error number and message is typically
+  provided like this:
+  - my_error(ER_WRONG_DB_NAME, MYF(0), ...);
+  - my_message(ER_SLAVE_IGNORED_TABLE, ER(ER_SLAVE_IGNORED_TABLE), MYF(0));
+
+  In both cases, the message is retrieved from ER(ER_XXX), which in turn
+  is read from the resource file errmsg.sys at server startup.
+  The strings stored in the errmsg.sys file are expressed in the character set
+  that corresponds to the server --language start option
+  (see error_message_charset_info).
+
+  When executing:
+  - a SIGNAL statement,
+  - a RESIGNAL statement,
+  the message text is provided by the user logic, and is expressed in UTF8.
+
+  Storage of MYSQL_ERROR::m_message_text:
+  ---------------------------------------
+
+  (#4) The class MYSQL_ERROR is used to hold the message text member.
+  This class represents a single SQL condition.
+
+  (#5) The class Warning_info represents a SQL condition area, and contains
+  a collection of SQL conditions in the Warning_info::m_warn_list
+
+  Consumer of MYSQL_ERROR::m_message_text:
+  ----------------------------------------
+
+  (#6) The statements SHOW WARNINGS and SHOW ERRORS display the content of
+  the warning list.
+
+  (#7) The GET DIAGNOSTICS statement (planned, not implemented yet) will
+  also read the content of:
+  - the top level statement condition area (when executed in a query),
+  - a sub statement (when executed in a stored program)
+  and return the data stored in a MYSQL_ERROR.
+
+  (#8) The RESIGNAL statement reads the MYSQL_ERROR caught by an exception
+  handler, to raise a new or modified condition (in #3).
+
+  The big picture
+  ---------------
+                                                              --------------
+                                                              |            ^
+                                                              V            |
+  my_error(#1)                 SIGNAL(#2)                 RESIGNAL(#3)     |
+      |(#A)                       |(#B)                       |(#C)        |
+      |                           |                           |            |
+      ----------------------------|----------------------------            |
+                                  |                                        |
+                                  V                                        |
+                           MYSQL_ERROR(#4)                                 |
+                                  |                                        |
+                                  |                                        |
+                                  V                                        |
+                           Warning_info(#5)                                |
+                                  |                                        |
+          -----------------------------------------------------            |
+          |                       |                           |            |
+          |                       |                           |            |
+          |                       |                           |            |
+          V                       V                           V            |
+   SHOW WARNINGS(#6)      GET DIAGNOSTICS(#7)              RESIGNAL(#8)    |
+          |  |                    |                           |            |
+          |  --------             |                           V            |
+          |         |             |                           --------------
+          V         |             |
+      Connectors    |             |
+          |         |             |
+          -------------------------
+                    |
+                    V
+             Client application
+
+  Current implementation status
+  -----------------------------
+
+  (#1) (my_error) produces data in the 'error_message_charset_info' CHARSET
+
+  (#2) and (#3) (SIGNAL, RESIGNAL) produces data internally in UTF8
+
+  (#6) (SHOW WARNINGS) produces data in the 'error_message_charset_info' CHARSET
+
+  (#7) (GET DIAGNOSTICS) is not implemented.
+
+  (#8) (RESIGNAL) produces data internally in UTF8 (see #3)
+
+  As a result, the design choice for (#4) and (#5) is to store data in
+  the 'error_message_charset_info' CHARSET, to minimize impact on the code base.
+  This is implemented by using 'String MYSQL_ERROR::m_message_text'.
+
+  The UTF8 -> error_message_charset_info conversion is implemented in
+  Abstract_signal::eval_signal_informations() (for path #B and #C).
+
+  Future work
+  -----------
+
+  - Change (#1) (my_error) to generate errors in UTF8.
+    See WL#751 (Recoding of error messages)
+
+  - Change (#4 and #5) to store message text in UTF8 natively.
+    In practice, this means changing the type of the message text to
+    'UTF8String128 MYSQL_ERROR::m_message_text', and is a direct
+    consequence of WL#751.
+
+  - Implement (#9) (GET DIAGNOSTICS).
+    See WL#2111 (Stored Procedures: Implement GET DIAGNOSTICS)
+*/
+
+MYSQL_ERROR::MYSQL_ERROR()
+ : Sql_alloc(),
+   m_class_origin(),
+   m_subclass_origin(),
+   m_constraint_catalog(),
+   m_constraint_schema(),
+   m_constraint_name(),
+   m_catalog_name(),
+   m_schema_name(),
+   m_table_name(),
+   m_column_name(),
+   m_cursor_name(),
+   m_message_text(),
+   m_message_text_set(FALSE),
+   m_sql_errno(0),
+   m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
+   m_mem_root(NULL)
+{
+  memset(m_returned_sqlstate, 0, sizeof(m_returned_sqlstate));
+}
+
+void MYSQL_ERROR::init(MEM_ROOT *mem_root)
+{
+  DBUG_ASSERT(mem_root != NULL);
+  DBUG_ASSERT(m_mem_root == NULL);
+  m_class_origin.init(mem_root);
+  m_subclass_origin.init(mem_root);
+  m_constraint_catalog.init(mem_root);
+  m_constraint_schema.init(mem_root);
+  m_constraint_name.init(mem_root);
+  m_catalog_name.init(mem_root);
+  m_schema_name.init(mem_root);
+  m_table_name.init(mem_root);
+  m_column_name.init(mem_root);
+  m_cursor_name.init(mem_root);
+  m_mem_root= mem_root;
+}
+
+void MYSQL_ERROR::clear()
+{
+  m_class_origin.clear();
+  m_subclass_origin.clear();
+  m_constraint_catalog.clear();
+  m_constraint_schema.clear();
+  m_constraint_name.clear();
+  m_catalog_name.clear();
+  m_schema_name.clear();
+  m_table_name.clear();
+  m_column_name.clear();
+  m_cursor_name.clear();
+  m_message_text.length(0);
+  m_message_text_set= FALSE;
+  m_sql_errno= 0;
+  m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
+}
+
+MYSQL_ERROR::MYSQL_ERROR(MEM_ROOT *mem_root)
+ : Sql_alloc(),
+   m_class_origin(mem_root),
+   m_subclass_origin(mem_root),
+   m_constraint_catalog(mem_root),
+   m_constraint_schema(mem_root),
+   m_constraint_name(mem_root),
+   m_catalog_name(mem_root),
+   m_schema_name(mem_root),
+   m_table_name(mem_root),
+   m_column_name(mem_root),
+   m_cursor_name(mem_root),
+   m_message_text(),
+   m_message_text_set(FALSE),
+   m_sql_errno(0),
+   m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
+   m_mem_root(mem_root)
+{
+  DBUG_ASSERT(mem_root != NULL);
+  memset(m_returned_sqlstate, 0, sizeof(m_returned_sqlstate));
+}
+
+void
+MYSQL_ERROR::copy_opt_attributes(const MYSQL_ERROR *cond)
+{
+  DBUG_ASSERT(this != cond);
+  m_class_origin.copy(& cond->m_class_origin);
+  m_subclass_origin.copy(& cond->m_subclass_origin);
+  m_constraint_catalog.copy(& cond->m_constraint_catalog);
+  m_constraint_schema.copy(& cond->m_constraint_schema);
+  m_constraint_name.copy(& cond->m_constraint_name);
+  m_catalog_name.copy(& cond->m_catalog_name);
+  m_schema_name.copy(& cond->m_schema_name);
+  m_table_name.copy(& cond->m_table_name);
+  m_column_name.copy(& cond->m_column_name);
+  m_cursor_name.copy(& cond->m_cursor_name);
+}
+
+void
+MYSQL_ERROR::set(uint sql_errno, const char* sqlstate,
+                 MYSQL_ERROR::enum_warning_level level, const char* msg)
+{
+  DBUG_ASSERT(sql_errno != 0);
+  DBUG_ASSERT(sqlstate != NULL);
+  DBUG_ASSERT(msg != NULL);
+
+  m_sql_errno= sql_errno;
+  memcpy(m_returned_sqlstate, sqlstate, SQLSTATE_LENGTH);
+  m_returned_sqlstate[SQLSTATE_LENGTH]= '\0';
+
+  set_builtin_message_text(msg);
+  m_level= level;
+}
+
+void
+MYSQL_ERROR::set_builtin_message_text(const char* str)
+{
+  /*
+    See the comments
+     "Design notes about MYSQL_ERROR::m_message_text."
+  */
+  const char* copy;
+
+  copy= strdup_root(m_mem_root, str);
+  m_message_text.set(copy, strlen(copy), error_message_charset_info);
+  DBUG_ASSERT(! m_message_text.is_alloced());
+  m_message_text_set= TRUE;
+}
+
+const char*
+MYSQL_ERROR::get_message_text() const
+{
+  return m_message_text.ptr();
+}
+
+int
+MYSQL_ERROR::get_message_octet_length() const
+{
+  return m_message_text.length();
+}
+
+void
+MYSQL_ERROR::set_sqlstate(const char* sqlstate)
+{
+  memcpy(m_returned_sqlstate, sqlstate, SQLSTATE_LENGTH);
+  m_returned_sqlstate[SQLSTATE_LENGTH]= '\0';
+}
+
 /**
   Clear this diagnostics area.
 
@@ -192,15 +461,6 @@ Diagnostics_area::disable_status()
   m_status= DA_DISABLED;
 }
 
-
-/* Store a new message in an error object. */
-
-void MYSQL_ERROR::set_msg(MEM_ROOT *warn_root, const char *msg_arg)
-{
-  msg= strdup_root(warn_root, msg_arg);
-}
-
-
 Warning_info::Warning_info(ulonglong warn_id_arg)
   :m_statement_warn_count(0),
   m_current_row_for_warning(1),
@@ -242,18 +502,18 @@ void Warning_info::reserve_space(THD *thd, uint count)
     m_warn_list.pop();
 }
 
-SQL_condition *Warning_info::raise_condition(THD *thd,
-                                             uint sql_errno, const char* sqlstate,
-                                             MYSQL_ERROR::enum_warning_level level,
-                                             const char* msg)
+MYSQL_ERROR *Warning_info::raise_condition(THD *thd,
+                                           uint sql_errno, const char* sqlstate,
+                                           MYSQL_ERROR::enum_warning_level level,
+                                           const char* msg)
 {
-  SQL_condition *cond= NULL;
+  MYSQL_ERROR *cond= NULL;
 
   if (! m_read_only)
   {
     if (m_warn_list.elements < thd->variables.max_error_count)
     {
-      cond= new (& m_warn_root) SQL_condition(& m_warn_root);
+      cond= new (& m_warn_root) MYSQL_ERROR(& m_warn_root);
       if (cond)
       {
         cond->set(sql_errno, sqlstate, level, msg);
@@ -281,20 +541,19 @@ SQL_condition *Warning_info::raise_condition(THD *thd,
 void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
                   uint code, const char *msg)
 {
+  const char* sqlstate;
+
   DBUG_ENTER("push_warning");
   DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
 
-  switch(level)
-  {
-  case MYSQL_ERROR::WARN_LEVEL_NOTE:
-    thd->legacy_raise_note(code, msg);
-    break;
-  case MYSQL_ERROR::WARN_LEVEL_WARN:
-    thd->legacy_raise_warning(code, msg);
-    break;
-  default:
-    DBUG_ASSERT(FALSE);
-  }
+  /*
+    Calling push_warning with WARN_LEVEL_ERROR is poor code,
+    please use my_error() or THD::raise_error instead.
+  */
+  DBUG_ASSERT((level == MYSQL_ERROR::WARN_LEVEL_NOTE) || (level == MYSQL_ERROR::WARN_LEVEL_WARN));
+
+  sqlstate= mysql_errno_to_sqlstate(code);
+  (void) thd->raise_condition(code, sqlstate, level, msg, MYF(0));
 
   DBUG_VOID_RETURN;
 }
@@ -369,7 +628,7 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
                                  Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 
-  SQL_condition *cond;
+  MYSQL_ERROR *err;
   SELECT_LEX *sel= &thd->lex->select_lex;
   SELECT_LEX_UNIT *unit= &thd->lex->unit;
   ulonglong idx= 0;
@@ -377,23 +636,23 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
 
   unit->set_limit(sel);
 
-  List_iterator_fast<SQL_condition> it(thd->warning_info->warn_list());
-  while ((cond= it++))
+  List_iterator_fast<MYSQL_ERROR> it(thd->warning_info->warn_list());
+  while ((err= it++))
   {
     /* Skip levels that the user is not interested in */
-    if (!(levels_to_show & ((ulong) 1 << cond->get_level())))
+    if (!(levels_to_show & ((ulong) 1 << err->get_level())))
       continue;
     if (++idx <= unit->offset_limit_cnt)
       continue;
     if (idx > unit->select_limit_cnt)
       break;
     protocol->prepare_for_resend();
-    protocol->store(warning_level_names[cond->get_level()].str,
-		    warning_level_names[cond->get_level()].length,
+    protocol->store(warning_level_names[err->get_level()].str,
+		    warning_level_names[err->get_level()].length,
                     system_charset_info);
-    protocol->store((uint32) cond->get_sql_errno());
-    protocol->store(cond->get_message_text(),
-                    cond->get_message_octet_length(),
+    protocol->store((uint32) err->get_sql_errno());
+    protocol->store(err->get_message_text(),
+                    err->get_message_octet_length(),
                     system_charset_info);
     if (protocol->write())
       DBUG_RETURN(TRUE);

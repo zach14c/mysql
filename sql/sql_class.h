@@ -1137,7 +1137,7 @@ public:
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl) = 0;
+                                MYSQL_ERROR ** cond_hdl) = 0;
 
 };
 
@@ -1220,6 +1220,7 @@ struct Ha_data
   Ha_data() :ha_ptr(NULL) {}
 };
 
+extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 
 /**
   @class THD
@@ -2262,14 +2263,18 @@ public:
 
   /**
     Handle a sql condition.
-    @param cond the sql condition to handle.
-    @return true if the error is handled
+    @param sql_errno the condition error number
+    @param sqlstate the condition sqlstate
+    @param level the condition level
+    @param msg the condition message text
+    @param[out] cond_hdl the sql condition raised, if any
+    @return true if the condition is handled
   */
   virtual bool handle_condition(uint sql_errno,
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg,
-                                SQL_condition ** cond_hdl);
+                                MYSQL_ERROR ** cond_hdl);
 
   /**
     Remove the error handler last pushed.
@@ -2278,73 +2283,39 @@ public:
 
   /**
     Raise an exception condition.
-    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the error
   */
   void raise_error(uint code);
 
   /**
     Raise an exception condition, with a formatted message.
-    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the error
   */
   void raise_error_printf(uint code, ...);
 
   /**
-    Raise an exception condition.
-    Deprecated method, used to support my_message_sql().
-    @deprecated
-    @param code the MYSQL_ERRNO error code of the error
-    @param msg the MESSAGE_TEXT of the error
-    @param flags additional flags
-  */
-  void legacy_raise_error(uint code, const char *msg, myf flags);
-
-  /**
     Raise a completion condition (warning).
-    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the warning
   */
   void raise_warning(uint code);
 
   /**
     Raise a completion condition (warning), with a formatted message.
-    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the warning
   */
   void raise_warning_printf(uint code, ...);
 
   /**
-    Raise a completion condition (warning).
-    Deprecated method, used to support push_warning().
-    @deprecated
-    @param code the MYSQL_ERRNO error code of the warning
-    @param msg the MESSAGE_TEXT of the warning
-  */
-  void legacy_raise_warning(uint code, const char *msg);
-
-  /**
     Raise a completion condition (note), with a fixed message.
-    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the note
   */
   void raise_note(uint code);
 
   /**
     Raise an completion condition (note), with a formatted message.
-    Helper for most common usage.
     @param code the MYSQL_ERRNO error code of the note
   */
   void raise_note_printf(uint code, ...);
-
-  /**
-    Raise a completion condition (note), with a formatted message.
-    Deprecated method, used to support push_warning().
-    @deprecated
-    @param code the MYSQL_ERRNO error code of the note
-    @param msg the MESSAGE_TEXT the note
-  */
-  void legacy_raise_note(uint code, const char *msg);
 
 private:
   /*
@@ -2357,12 +2328,19 @@ private:
   friend class Abstract_signal;
   friend class SQLCOM_signal;
   friend class SQLCOM_resignal;
+  friend void push_warning(THD*, MYSQL_ERROR::enum_warning_level, uint, const char*);
+  friend void my_message_sql(uint, const char *, myf);
 
   /**
     Raise a generic SQL condition.
-    @param cond the condition to raise
+    @param sql_errno the condition error number
+    @param sqlstate the condition SQLSTATE
+    @param level the condition level
+    @param msg the condition message text
+    @param flags the condition flags (ME_FATAL_ERROR)
+    @return The condition raised, or NULL
   */
-  SQL_condition*
+  MYSQL_ERROR*
   raise_condition(uint sql_errno,
                   const char* sqlstate,
                   MYSQL_ERROR::enum_warning_level level,
@@ -2372,9 +2350,15 @@ private:
   /**
     Raise a generic SQL condition, without activation any SQL condition
     handlers.
-    @param cond the condition to raise
+    This method is necessary to support the RESIGNAL statement,
+    which is allowed to bypass SQL exception handlers.
+    @param sql_errno the condition error number
+    @param sqlstate the condition SQLSTATE
+    @param level the condition level
+    @param msg the condition message text
+    @return The condition raised, or NULL
   */
-  SQL_condition*
+  MYSQL_ERROR*
   raise_condition_no_handler(uint sql_errno,
                              const char* sqlstate,
                              MYSQL_ERROR::enum_warning_level level,

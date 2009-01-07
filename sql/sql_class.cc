@@ -558,7 +558,7 @@ bool THD::handle_condition(uint sql_errno,
                            const char* sqlstate,
                            MYSQL_ERROR::enum_warning_level level,
                            const char* msg,
-                           SQL_condition ** cond_hdl)
+                           MYSQL_ERROR ** cond_hdl)
 {
   if (m_internal_handler)
   {
@@ -611,16 +611,6 @@ void THD::raise_error_printf(uint sql_errno, ...)
   DBUG_VOID_RETURN;
 }
 
-void THD::legacy_raise_error(uint sql_errno, const char *msg, myf MyFlags)
-{
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
-  (void) raise_condition(sql_errno,
-                         sqlstate,
-                         MYSQL_ERROR::WARN_LEVEL_ERROR,
-                         msg,
-                         MyFlags);
-}
-
 void THD::raise_warning(uint sql_errno)
 {
   const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
@@ -649,16 +639,6 @@ void THD::raise_warning_printf(uint sql_errno, ...)
                          ebuff,
                          MYF(0));
   DBUG_VOID_RETURN;
-}
-
-void THD::legacy_raise_warning(uint sql_errno, const char *msg)
-{
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
-  (void) raise_condition(sql_errno,
-                         sqlstate,
-                         MYSQL_ERROR::WARN_LEVEL_WARN,
-                         msg,
-                         MYF(0));
 }
 
 void THD::raise_note(uint sql_errno)
@@ -698,28 +678,13 @@ void THD::raise_note_printf(uint sql_errno, ...)
   DBUG_VOID_RETURN;
 }
 
-void THD::legacy_raise_note(uint sql_errno, const char* msg)
+MYSQL_ERROR* THD::raise_condition(uint sql_errno,
+                                  const char* sqlstate,
+                                  MYSQL_ERROR::enum_warning_level level,
+                                  const char* msg,
+                                  myf flags)
 {
-  DBUG_ENTER("THD::raise_note");
-  DBUG_PRINT("enter", ("code: %d", sql_errno));
-  if (!(this->options & OPTION_SQL_NOTES))
-    DBUG_VOID_RETURN;
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
-  (void) raise_condition(sql_errno,
-                         sqlstate,
-                         MYSQL_ERROR::WARN_LEVEL_NOTE,
-                         msg,
-                         MYF(0));
-  DBUG_VOID_RETURN;
-}
-
-SQL_condition* THD::raise_condition(uint sql_errno,
-                                    const char* sqlstate,
-                                    MYSQL_ERROR::enum_warning_level level,
-                                    const char* msg,
-                                    myf flags)
-{
-  SQL_condition *cond= NULL;
+  MYSQL_ERROR *cond= NULL;
   DBUG_ENTER("THD::raise_condition");
 
   if (!(this->options & OPTION_SQL_NOTES) &&
@@ -812,13 +777,13 @@ SQL_condition* THD::raise_condition(uint sql_errno,
   DBUG_RETURN(cond);
 }
 
-SQL_condition*
+MYSQL_ERROR*
 THD::raise_condition_no_handler(uint sql_errno,
                                 const char* sqlstate,
                                 MYSQL_ERROR::enum_warning_level level,
                                 const char* msg)
 {
-  SQL_condition *cond= NULL;
+  MYSQL_ERROR *cond= NULL;
   DBUG_ENTER("THD::raise_condition_no_handler");
 
   query_cache_abort(& query_cache_tls);

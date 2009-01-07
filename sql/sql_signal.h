@@ -46,14 +46,14 @@ protected:
     @param thd the current thread.
     @param cond the condition to update.
   */
-  void eval_sqlcode_sqlstate(THD *thd, SQL_condition *cond);
+  void eval_sqlcode_sqlstate(THD *thd, MYSQL_ERROR *cond);
 
   /**
     Evaluate condition item 'MESSAGE_TEXT' default value.
     @param thd the current thread.
     @param cond the condition to update.
   */
-  void eval_default_message_text(THD *thd, SQL_condition *cond);
+  void eval_default_message_text(THD *thd, MYSQL_ERROR *cond);
 
   /**
     Evaluate each signal condition items for this statement.
@@ -61,7 +61,7 @@ protected:
     @param cond the condition to update.
     @return 0 on success.
   */
-  int eval_signal_informations(THD *thd, SQL_condition *cond);
+  int eval_signal_informations(THD *thd, MYSQL_ERROR *cond);
 
   /**
     Raise a SQL condition.
@@ -69,7 +69,7 @@ protected:
     @param cond the condition to raise.
     @return 0 on success.
   */
-  int raise_condition(THD *thd, SQL_condition *cond);
+  int raise_condition(THD *thd, MYSQL_ERROR *cond);
 
   /**
     The condition to signal or resignal.
