@@ -19,5 +19,4 @@ rpl_ndb_multi              : Bug#30751: rpl_ndb_multi missing row in output
 rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
 rpl_heartbeat              : Bug#37714 2008-07-14 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
-rpl_row_until              : Bug#41707 2008-12-23 alfranio rpl.rpl_row_until fails in pushbuild: Table 'test.t2' doesnt exist
 rpl_flushlog_loop          : BUG#41708 2008-12-23 alfranio rpl.rpl_flushlog_loop fails in pushbuild producing non-deterministic result file
