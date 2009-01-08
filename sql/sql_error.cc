@@ -542,12 +542,6 @@ void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
   DBUG_ENTER("push_warning");
   DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
 
-  /*
-    Calling push_warning with WARN_LEVEL_ERROR is poor code,
-    please use my_error() or THD::raise_error instead.
-  */
-  DBUG_ASSERT((level == MYSQL_ERROR::WARN_LEVEL_NOTE) || (level == MYSQL_ERROR::WARN_LEVEL_WARN));
-
   sqlstate= mysql_errno_to_sqlstate(code);
   (void) thd->raise_condition(code, sqlstate, level, msg, MYF(0));
 
