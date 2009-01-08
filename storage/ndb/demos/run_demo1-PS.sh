@@ -27,4 +27,4 @@ fi
 NDB_HOST=$NDB_HOST1
 NDB_EXTHOST=$NDB_HOST2
 
-source $MYSQLCLUSTER_TOP/ndb/demos/run_demo1-PS-SS_common.sh
+. $MYSQLCLUSTER_TOP/ndb/demos/run_demo1-PS-SS_common.sh
