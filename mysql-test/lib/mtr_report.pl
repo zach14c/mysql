@@ -328,6 +328,9 @@ sub mtr_report_stats ($) {
 		/Slave: Can't drop database.* database doesn't exist/ or
                 /Slave SQL:.*(?:Error_code: \d+|Query:.*)/ or
 		
+		# Ignore warnings issued when backup/restore operation is aborted.
+		/\[Warning\] (Backup|Restore): Operation aborted/ or
+		
 		# backup_errors test is supposed to trigger lots of backup related errors
 		($testname eq 'backup.backup_errors') and
 		(

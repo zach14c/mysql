@@ -38,7 +38,7 @@ public:
   ~Restore_info();
 
   /// Determine of information class is valid.
-  bool is_valid() const;
+  bool is_valid();
 
   Image_info::Ts* add_ts(const ::String&, uint);
   Image_info::Db* add_db(const ::String&, uint);
@@ -59,6 +59,9 @@ private:
 
   THD *m_thd;
 
+  /// A flag to indicate that data has been modified during restore operation.
+  bool m_data_changed;
+
   friend int backup::restore_table_data(THD*, Restore_info&, 
                                         backup::Input_stream&);
   friend int ::bcat_add_item(st_bstream_image_header*,
@@ -72,7 +75,7 @@ private:
 
 inline
 Restore_info::Restore_info(backup::Logger &log, THD *thd)
-  :m_log(log), m_thd(thd)
+  :m_log(log), m_thd(thd), m_data_changed(FALSE)
 {}
 
 inline
@@ -86,7 +89,7 @@ Restore_info::~Restore_info()
 }
 
 inline
-bool Restore_info::is_valid() const
+bool Restore_info::is_valid()
 {
   return TRUE; 
 }

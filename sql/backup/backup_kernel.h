@@ -102,9 +102,31 @@ private:
 
   /** 
     @brief State of a context object. 
-    
-    Backup/restore can be performed only if object is prepared for that 
-    operation.
+
+    The following diagram illustrates the states in which a context object
+    can be and how the state changes as a result of calling public methods.
+    Methods which are not listed are forbidden in a given state.
+    @verbatim
+    CREATED
+        prepare_for_backup()   -> PREPARED_FOR_BACKUP
+        prepare_for_restore()  -> PREPARED_FOR_RESTORE
+        close()                -> CLOSED
+
+    PREPARED_FOR_BACKUP
+        do_backup()            -> CLOSED
+        close()                -> CLOSED
+
+    PREPARED_FOR_RESTORE
+        do_restore()           -> CLOSED
+        close()                -> CLOSED
+
+    CLOSED
+        close()                -> CLOSED
+    @endverbatim
+
+    @note An instance of the context class can be used only once -- when it 
+    moves to CLOSED state no methods can be called except for close() which does
+    nothing in that case.
    */
   enum { CREATED,
          PREPARED_FOR_BACKUP,
@@ -131,9 +153,6 @@ private:
   int fatal_error(int);
   
   ::String  m_path;   ///< Path to where the backup image file is located.
-
-  /** If true, the backup image file is deleted at clean-up time. */
-  bool m_remove_loc;
 
   backup::Stream *m_stream; ///< Pointer to the backup stream object, if opened.
   backup::Image_info *m_catalog;  ///< Pointer to the image catalogue object.
@@ -162,6 +181,9 @@ private:
   void unlock_tables();
   
   int report_stream_open_failure(int open_error, const LEX_STRING *location);
+
+  /// Indicates if the operation has been successfully completed.  
+  bool m_completed;  
 
   friend int backup_init();
   friend void backup_shutdown();
@@ -210,12 +232,11 @@ void Backup_restore_ctx::disable_fkey_constraints()
 inline
 int Backup_restore_ctx::fatal_error(int error_code)
 {
-  m_remove_loc= TRUE;
-
   if (m_error)
     return m_error;
 
   m_error= error_code;
+  report_state(BUP_ERRORS);
 
   return error_code;
 }

@@ -85,6 +85,8 @@ public: // public interface
  
   // info about image (most of it is in the st_bstream_image_header base
 
+  virtual bool is_valid() =0;  ///< Is the structure valid?
+
   size_t     data_size;      ///< How much of table data is saved in the image.
   st_bstream_binlog_pos  master_pos; ///< To store master position info.
 

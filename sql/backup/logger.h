@@ -58,7 +58,8 @@ public:
    int log_error(int error_code, ...);
 
    void report_start(time_t);
-   void report_stop(time_t, bool);
+   void report_completed(time_t);
+   void report_aborted(time_t, bool data_changed);
    void report_state(enum_backup_state);
    void report_vp_time(time_t, bool);
    void report_binlog_pos(const st_bstream_binlog_pos&);
@@ -67,6 +68,7 @@ public:
    void report_backup_file(char * path);
    void report_stats_pre(const Image_info&);
    void report_stats_post(const Image_info&);
+
    /// Return the Backup_id of the current operation
    ulonglong get_op_id() const 
    {
@@ -192,27 +194,73 @@ void Logger::report_start(time_t when)
   backup_log->state(BUP_RUNNING);
 }
 
-/**
-  Report end of the operation.
+/** 
+  Report that the operation has completed successfully.
+
+  @param[in] when       the time when operation has completed.
+
+  @note This method can be called only after @c report_start(). It can not be
+  called after end of operation has been logged with either this method or
+  @c report_aborted().
+*/
+inline
+void Logger::report_completed(time_t when)
+{
+   DBUG_ASSERT(m_state == RUNNING);
+   DBUG_ASSERT(backup_log);
+
+   report_error(log_level::INFO, m_type == BACKUP ? ER_BACKUP_BACKUP_DONE
+                                                  : ER_BACKUP_RESTORE_DONE);  
+   report_state(BUP_COMPLETE);
   
-  @param[in] when    time when report stopped 
-  @param[in] success indicates if the operation ended successfully
+  // Report stop time to backup logs.
+  backup_log->stop(when);
+  /* 
+    Since the operation has completed, we can now write the backup history log
+    entry describing it.
+  */
+  backup_log->write_history();
+}
+
+/**
+  Report that backup/restore operation has been aborted.
+
+  @param[in] when  time when the operation has ended.
+  @param[in] data_changed  tells if data has been already modified in case
+                           this is restore operation.
+
+  This method should be called when backup/restore operation has been aborted
+  before its completion, e.g., because of an error or user interruption.
+  
+  The method will log the stop time and ER_OPERATION_ABORTED warning.
+  However, if a restore operation has been interrupted and @c data_changed flag
+  is true, ER_OPERATION_ABORTED_CORRUPTED warning will be logged, to warn the 
+  user about the possibility of data corruption.
+  
+  @note This method must be called after @c report_start(). It can not be
+  called after end of operation has been logged with either this method or
+  @c report_completed().
  */
 inline
-void Logger::report_stop(time_t when, bool success)
+void Logger::report_aborted(time_t when, bool data_changed)
 {
-  if (m_state == DONE)
-    return;
-
   DBUG_ASSERT(m_state == RUNNING);
   DBUG_ASSERT(backup_log);
 
-  report_error(log_level::INFO, m_type == BACKUP ? ER_BACKUP_BACKUP_DONE
-                                                 : ER_BACKUP_RESTORE_DONE);  
+ if (m_type == RESTORE && data_changed)
+   report_error(log_level::WARNING, ER_OPERATION_ABORTED_CORRUPTED);
+ else
+   report_error(log_level::WARNING, ER_OPERATION_ABORTED);
+
+  // Report stop time to backup logs.
 
   backup_log->stop(when);
-  backup_log->state(success ? BUP_COMPLETE : BUP_ERRORS);
+  /* 
+    Since the operation has ended, we can now write the backup history log
+    entry describing it.
+  */
   backup_log->write_history();
+
   m_state= DONE;
 }
 

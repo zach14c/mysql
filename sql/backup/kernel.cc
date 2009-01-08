@@ -270,8 +270,6 @@ int send_error(Backup_restore_ctx &context, int error_code, ...)
     va_end(args);
   }
 
-  if (context.backup::Logger::m_state == backup::Logger::RUNNING)
-    context.report_stop(my_time(0), FALSE); // FASLE = no success
   return error_code;
 }
 
@@ -376,9 +374,9 @@ pthread_mutex_t Backup_restore_ctx::run_lock;
 
 Backup_restore_ctx::Backup_restore_ctx(THD *thd)
  :Logger(thd), m_state(CREATED), m_thd_options(thd->options),
-  m_error(0), m_remove_loc(FALSE), m_stream(NULL),
+  m_error(0), m_stream(NULL),
   m_catalog(NULL), mem_alloc(NULL), m_tables_locked(FALSE),
-  m_engage_binlog(FALSE)
+  m_engage_binlog(FALSE), m_completed(FALSE)
 {
   /*
     Check for progress tables.
@@ -624,9 +622,6 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
     fatal_error(report_error(ER_OUT_OF_RESOURCES));
     return NULL;
   }
-
-  // Mark that the file should be removed unless operation completes successfuly
-  m_remove_loc= TRUE;
 
   int my_open_status= s->open();
   if (my_open_status != 0)
@@ -936,6 +931,35 @@ int Backup_restore_ctx::close()
 
   using namespace backup;
 
+  // Move context to error state if the catalog became corrupted.
+  if (m_catalog && !m_catalog->is_valid())
+    fatal_error(m_type == BACKUP ? ER_BACKUP_BACKUP : ER_BACKUP_RESTORE);
+
+  /*
+    Report end of the operation which has started if it has not been done 
+    before (Logger is in RUNNING state). 
+  */ 
+  if (Logger::m_state == RUNNING)
+  {
+    time_t  now= my_time(0);
+    if (m_catalog)
+      m_catalog->save_end_time(now);
+
+    // Report either completion or interruption depending on m_completed flag.
+    if (m_completed)
+      report_completed(now);
+    else
+    {
+      /*
+        If this is restore operation then m_data_changed flag in the 
+        Restore_info object tells if data has been modified or not.
+       */ 
+      const bool data_changed= m_type==RESTORE && m_catalog && 
+                         static_cast<Restore_info*>(m_catalog)->m_data_changed;
+      report_aborted(now, data_changed);
+    }
+  }
+
   /*
     Allow slaves connect after restore is complete.
   */
@@ -952,8 +976,6 @@ int Backup_restore_ctx::close()
   if (m_engage_binlog)
     obs::engage_binlog(TRUE);
 
-  time_t when= my_time(0);
-
   // unlock tables if they are still locked
   unlock_tables();                              // Never errors
 
@@ -964,7 +986,7 @@ int Backup_restore_ctx::close()
 
   m_thd->options= m_thd_options;
 
-  // close stream
+  // close stream if not closed already (in which case m_steam is NULL)
 
   if (m_stream && !m_stream->close())
   {
@@ -972,16 +994,13 @@ int Backup_restore_ctx::close()
     fatal_error(report_error(ER_BACKUP_CLOSE));
   }
 
-  if (m_catalog)
-    m_catalog->save_end_time(when); // Note: no errors.
-
   /* 
-    Remove the location, if asked for.
+    Remove the location if it is BACKUP operation and it has not completed
+    successfully.
     
-    Important: This is done only for backup operation - RESTORE should never
-    remove the specified backup image!
+    Important: RESTORE should never remove the specified backup image!
    */
-  if (m_remove_loc && m_state == PREPARED_FOR_BACKUP)
+  if (m_state == PREPARED_FOR_BACKUP && !m_completed)
   {
     int ret= my_delete(m_path.c_ptr(), MYF(0));
 
@@ -989,17 +1008,8 @@ int Backup_restore_ctx::close()
       Ignore ENOENT error since it is ok if the file doesn't exist.
      */
     if (ret && my_errno != ENOENT)
-      fatal_error(report_error(ER_CANT_DELETE_FILE, m_path.c_ptr(), my_errno));
-  }
-
-  /* We report completion of the operation only if no errors were detected,
-     and logger has been initialized.
-  */
-  if (!m_error)
-  {
-    if (backup::Logger::m_state == backup::Logger::RUNNING)
     {
-      report_stop(when, TRUE);
+      fatal_error(report_error(ER_CANT_DELETE_FILE, m_path.c_ptr(), my_errno));
     }
   }
 
@@ -1078,17 +1088,14 @@ int Backup_restore_ctx::do_backup()
   if (ret)
     DBUG_RETURN(fatal_error(report_error(ER_BACKUP_WRITE_SUMMARY)));
 
-  /*
-    Now backup image has been written. Set m_remove_loc to FALSE, so that the
-    backup file is not removed in Backup_restore_ctx::close().
-  */
-  m_remove_loc= FALSE;
+  DEBUG_SYNC(m_thd, "before_backup_completed");
+  m_completed= TRUE;
   report_stats_post(info);                      // Never errors
 
   DBUG_PRINT("backup",("Backup done."));
   DEBUG_SYNC(m_thd, "before_backup_done");
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(close());
 }
 
 /**
@@ -1113,11 +1120,13 @@ int Backup_restore_ctx::restore_triggers_and_events()
 
   DBUG_ENTER("restore_triggers_and_events");
 
+  DBUG_ASSERT(m_type == RESTORE);
+  Restore_info *info= static_cast<Restore_info*>(m_catalog);
   Image_info::Obj *obj;
   List<Image_info::Obj> events;
   Image_info::Obj::describe_buf buf;
 
-  Image_info::Iterator *dbit= m_catalog->get_dbs();
+  Image_info::Iterator *dbit= info->get_dbs();
   if (!dbit)
     DBUG_RETURN(fatal_error(report_error(ER_OUT_OF_RESOURCES)));
 
@@ -1126,7 +1135,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
   while ((obj= (*dbit)++)) 
   {
     Image_info::Iterator *it=
-                    m_catalog->get_db_objects(*static_cast<Image_info::Db*>(obj));
+                       info->get_db_objects(*static_cast<Image_info::Db*>(obj));
     if (!it)
       DBUG_RETURN(fatal_error(report_error(ER_OUT_OF_RESOURCES)));
 
@@ -1144,6 +1153,8 @@ int Backup_restore_ctx::restore_triggers_and_events()
       
       case BSTREAM_IT_TRIGGER:
         DBUG_ASSERT(obj->m_obj_ptr);
+        // Mark that data is being changed.
+        info->m_data_changed= TRUE;
         if (obj->m_obj_ptr->create(m_thd))
         {
           delete it;
@@ -1168,11 +1179,15 @@ int Backup_restore_ctx::restore_triggers_and_events()
   Image_info::Obj *ev;
 
   while ((ev= it++)) 
+  {
+    // Mark that data is being changed.
+    info->m_data_changed= TRUE;
     if (ev->m_obj_ptr->create(m_thd))
     {
       int ret= report_error(ER_BACKUP_CANT_RESTORE_EVENT,ev->describe(buf));
       DBUG_RETURN(fatal_error(ret));
     };
+  }
 
   DBUG_RETURN(0);
 }
@@ -1260,7 +1275,11 @@ int Backup_restore_ctx::do_restore(bool overwrite)
   if (err)
     DBUG_RETURN(fatal_error(err));
 
-  // Here restore drivers are created to restore table data
+  /* 
+   Here restore drivers are created to restore table data. Data is being
+   (potentially) changed so we set m_data_changed flag.
+  */
+  info.m_data_changed= TRUE;
   err= restore_table_data(m_thd, info, s);      // logs errors
 
   unlock_tables();                              // Never errors
@@ -1290,6 +1309,9 @@ int Backup_restore_ctx::do_restore(bool overwrite)
 
   DBUG_PRINT("restore",("Done."));
 
+  DEBUG_SYNC(m_thd, "before_restore_completed");
+  m_completed= TRUE;
+
   err= read_summary(info, s);
   if (err)
     DBUG_RETURN(fatal_error(report_error(ER_BACKUP_READ_SUMMARY)));
@@ -1307,7 +1329,7 @@ int Backup_restore_ctx::do_restore(bool overwrite)
 
   DEBUG_SYNC(m_thd, "before_restore_done");
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(close());
 }
 
 /**
@@ -2039,6 +2061,9 @@ int bcat_create_item(st_bstream_image_header *catalogue,
       return BSTREAM_ERROR;
     }
   }
+
+  // Mark that data is being changed.
+  info->m_data_changed= TRUE;
 
   if (sobj->create(thd))
   {
