@@ -187,7 +187,7 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 
 		if (rec == record)
 			{
-			uint64 age = baseGeneration - rec->generation;
+			int64 age = (int64) baseGeneration - (int64) rec->generation;
 
 			// While this inventory is happening, newer records could be
 			// created that are a later generation than our baseGeneration.
