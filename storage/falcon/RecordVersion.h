@@ -42,7 +42,7 @@ public:
 	virtual void		setSuperceded (bool flag);
 	virtual Record*		getPriorVersion();
 	virtual Record*		getGCPriorVersion(void);
-	virtual bool		scavenge(RecordScavenge *recordScavenge, LockType lockType);
+	virtual bool		retire(RecordScavenge *recordScavenge);
 	virtual void		scavenge(TransId targetTransactionId, int oldestActiveSavePoint);
 	virtual bool		isVersion();
 	virtual void		rollback(Transaction *transaction);

@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,11 +35,11 @@ public:
 
 	virtual int     countActiveRecords();
 	virtual bool    anyActiveRecords();
-	virtual	int    chartActiveRecords(int *chart);
+	virtual int     chartActiveRecords(int *chart);
 	virtual bool    store (Record *record, Record *prior, int32 id, RecordSection **parentPtr);
-	virtual void    inventoryRecords(RecordScavenge* recordScavenge);
 	virtual Record* fetch (int32 id);
-	virtual int     retireRecords(Table *table, int base, RecordScavenge *recordScavenge);
+	virtual void    pruneRecords(Table *table, int base, RecordScavenge *recordScavenge);
+	virtual void    retireRecords(Table *table, int base, RecordScavenge *recordScavenge);
 	virtual bool    retireSections(Table * table, int id);
 	virtual bool    inactive();
 	

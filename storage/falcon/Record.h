@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -50,9 +50,10 @@ static const int recLock	= 4;		// this is a "record lock" and not a record
 static const int recNoChill = 5;		// record is in use and should not be chilled
 static const int recRollback = 6;		// record is being rolled back
 static const int recUnlocked = 7;		// record is being unlocked
-static const int recDeleting = 8;		// record is being physically deleted
-static const int recPruning	 = 9;		// record is being pruned
-static const int recEndChain = 10;		// end of chain for garbage collection
+static const int recInserting = 8;		// record is being physically deleted
+static const int recDeleting = 9;		// record is being physically deleted
+static const int recPruning	 = 10;		// record is being pruned
+static const int recEndChain = 11;		// end of chain for garbage collection
 
 class Format;
 class Table;
@@ -77,7 +78,7 @@ public:
 	virtual void	setSuperceded (bool flag);
 	virtual Record*	fetchVersion (Transaction * transaction);
 	virtual Record*	fetchVersionRecursive (Transaction *transaction);
-	virtual bool	scavenge(RecordScavenge *recordScavenge, LockType lockType);
+	virtual bool	retire(RecordScavenge *recordScavenge);
 	virtual void	scavenge(TransId targetTransactionId, int oldestActiveSavePointId);
 	virtual bool	isVersion();
 	virtual bool	isSuperceded();
@@ -115,6 +116,8 @@ public:
 	void			validateData(void);
 	char*			allocRecordData(int length);
 	void			expungeRecord(void);
+	int				getDataMemUsage(void);
+	int				getMemUsage(void);
 	
 	Record (Table *table, Format *recordFormat);
 	Record (Table *table, int32 recordNumber, Stream *stream);
