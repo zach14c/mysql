@@ -329,7 +329,7 @@ TYPELIB sql_mode_typelib= { array_elements(sql_mode_names)-1,"",
 
 static const char *optimizer_switch_names[]=
 {
-  "no_materialization", "no_semijoin", "no_loosescan",
+  "no_materialization", "no_semijoin", "no_loosescan", "no_firstmatch",
   NullS
 };
 
@@ -339,6 +339,7 @@ static const unsigned int optimizer_switch_names_len[]=
   /*no_materialization*/          18,
   /*no_semijoin*/                 11,
   /*no_loosescan*/                12,
+  /*no_firstmatch*/               13
 };
 
 TYPELIB optimizer_switch_typelib= { array_elements(optimizer_switch_names)-1,"",

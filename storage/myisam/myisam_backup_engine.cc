@@ -257,6 +257,9 @@ private:
   size_t bytes_since_last_sleep; ///< how many bytes sent since we last slept
 };
 
+/* Needed for VisualAge 6.0 */
+const size_t Backup::bytes_between_sleeps;
+
 /**
   When we send a backup packet to the backup kernel, we prefix it with a code
   which tells which type of file this packet belongs to. Starts at 1 because

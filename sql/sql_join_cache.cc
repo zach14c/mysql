@@ -67,7 +67,6 @@ uint add_flag_field_to_join_cache(uchar *str, uint length, CACHE_FIELD **field)
   copy->type= 0;
   copy->field= 0;
   copy->referenced_field_no= 0;
-  copy->get_rowid= NULL;
   (*field)++;
   return length;    
 }
@@ -123,7 +122,6 @@ uint add_table_data_fields_to_join_cache(JOIN_TAB *tab,
       }
       copy->field= *fld_ptr;
       copy->referenced_field_no= 0;
-      copy->get_rowid= NULL;
       copy++;
       (*field_cnt)++;
       used_fields--;
@@ -350,21 +348,13 @@ void JOIN_CACHE:: create_remaining_fields(bool all_read_fields)
                                                  &copy, &copy_ptr);
   
     /* SemiJoinDuplicateElimination: allocate space for rowid if needed */
-    if (tab->rowid_keep_flags & JOIN_TAB::KEEP_ROWID)
+    if (tab->keep_current_rowid)
     {
       copy->str= table->file->ref;
       copy->length= table->file->ref_length;
       copy->type= 0;
       copy->field= 0;
       copy->referenced_field_no= 0;
-      copy->get_rowid= NULL;
-      if (tab->rowid_keep_flags & JOIN_TAB::CALL_POSITION)
-      {
-        /* We will need to call h->position(): */
-        copy->get_rowid= tab->table;
-        /* And those after us won't have to: */
-        tab->rowid_keep_flags &=  ~((int)JOIN_TAB::CALL_POSITION);
-      }
       length+= copy->length;
       data_field_count++;
       copy++;
@@ -986,12 +976,6 @@ uint JOIN_CACHE::write_record_data(uchar * link, bool *is_full)
     }
     else
     {
-      if (copy->get_rowid)
-      {
-        /* SemiJoinDuplicateElimination: get the rowid into table->ref */
-        copy->get_rowid->file->position(copy->get_rowid->record[0]);
-      }
-
       switch (copy->type) {
       case CACHE_VARSTR1:
         /* Copy the significant part of the short varstring field */ 
@@ -1670,6 +1654,9 @@ enum_nested_loop_state JOIN_CACHE_BNL::join_matching_records(bool skip_last)
   info= &join_tab->read_record;
   do
   {
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
+
     if (join->thd->killed)
     {
       /* The user has aborted the execution of the query */
@@ -2168,6 +2155,8 @@ enum_nested_loop_state JOIN_CACHE_BKA::join_matching_records(bool skip_last)
       rc= NESTED_LOOP_KILLED; 
       goto finish;
     }
+    if (join_tab->keep_current_rowid)
+      join_tab->table->file->position(join_tab->table->record[0]);
     /* 
       If only the first match is needed and it has been already found 
       for the associated partial join record then the returned candidate

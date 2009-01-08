@@ -1254,6 +1254,17 @@ public:
                   add_io_cnt * add_avg_cost) / io_count_sum;
     io_count= io_count_sum;
   }
+
+  /*
+    To be used when we go from old single value-based cost calculations to
+    the new COST_VECT-based.
+  */
+  void convert_from_cost(double cost)
+  {
+    zero();
+    avg_io_cost= 1.0;
+    io_count= cost;
+  }
 };
 
 void get_sweep_read_cost(TABLE *table, ha_rows nrows, bool interrupted, 

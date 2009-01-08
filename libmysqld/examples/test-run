@@ -1,4 +1,4 @@
-#! /bin/sh
+#!/bin/bash
 
 # This is slapped together as a quick way to run the tests and
 # is not meant for prime time.  Please hack at it and submit
