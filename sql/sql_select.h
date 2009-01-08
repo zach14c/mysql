@@ -133,9 +133,11 @@ class SJ_TMP_TABLE;
 typedef enum_nested_loop_state
 (*Next_select_func)(JOIN *, struct st_join_table *, bool);
 Next_select_func setup_end_select_func(JOIN *join);
+int rr_sequential(READ_RECORD *info);
 
 
-typedef struct st_join_table {
+typedef struct st_join_table
+{
   st_join_table() {}                          /* Remove gcc warning */
   TABLE		*table;
   KEYUSE	*keyuse;			/**< pointer to first used key */
@@ -231,39 +233,38 @@ typedef struct st_join_table {
   /* Variables for semi-join duplicate elimination */
   SJ_TMP_TABLE  *flush_weedout_table;
   SJ_TMP_TABLE  *check_weed_out_table;
+  
+  /*
+    If set, means we should stop join enumeration after we've got the first
+    match and return to the specified join tab. May point to
+    join->join_tab[-1] which means stop join execution after the first
+    match.
+  */
   struct st_join_table  *do_firstmatch;
  
   /* 
-     ptr  - We're doing and InsideOut scan, and this is the first (aka
-            "driving" join tab). ptr to the last tab, for which we'll need 
-            to check tab->found_match to see if the current value group had
-            a match.
-     NULL - Not an insideout scan.
+     ptr  - We're doing a LooseScan, this join tab is the first (i.e. 
+            "driving") join tab), and ptr points to the last join tab
+            handled by the strategy. loosescan_match_tab->found_match
+            should be checked to see if the current value group had a match.
+     NULL - Not doing a loose scan on this join tab.
   */
-  struct st_join_table *insideout_match_tab;
+  struct st_join_table *loosescan_match_tab;
+
   /* Buffer to save index tuple to be able to skip duplicates */
-  uchar *insideout_buf;
+  uchar *loosescan_buf;
   
   /* Length of key tuple (depends on #keyparts used) to store in the above */
-  uint insideout_key_len;
+  uint loosescan_key_len;
 
   /* Used by LooseScan. TRUE<=> there has been a matching record combination */
   bool found_match;
-
-  enum { 
-    /* If set, the rowid of this table must be put into the temptable. */
-    KEEP_ROWID=1, 
-    /* 
-      If set, one should call h->position() to obtain the rowid,
-      otherwise, the rowid is assumed to already be in h->ref
-      (this is because join caching and filesort() save the rowid and then
-      put it back into h->ref)
-    */
-    CALL_POSITION=2
-  };
-  /* A set of flags from the above enum */
-  int  rowid_keep_flags;
-
+  
+  /*
+    Used by DuplicateElimination. tab->table->ref must have the rowid
+    whenever we have a current record.
+  */
+  int  keep_current_rowid;
 
   /* NestedOuterJoins: Bitmap of nested joins this table is part of */
   nested_join_map embedding_map;
@@ -278,7 +279,7 @@ typedef struct st_join_table {
   /* SemiJoinDuplicateElimination: reserve space for rowid */
   bool check_rowid_field()
   {
-    if (rowid_keep_flags & KEEP_ROWID && !used_rowid_fields)
+    if (keep_current_rowid && !used_rowid_fields)
     {
       used_rowid_fields= 1;
       used_fieldlength+= table->file->ref_length;
@@ -359,7 +360,6 @@ typedef struct st_cache_field {
     trailing sequence of offsets.
   */ 
   uint referenced_field_no; 
-  TABLE *get_rowid; /**< only for ROWID fields used for Duplicate Elimination */
   /* The remaining structure fields are used as containers for temp values */
   uint blob_length; /**< length of the blob to be copied */
   uint offset;      /**< field offset to be saved in cache buffer */
@@ -1160,15 +1160,39 @@ enum_nested_loop_state end_send_group(JOIN *join, JOIN_TAB *join_tab,
                                       bool end_of_records);
 enum_nested_loop_state end_write_group(JOIN *join, JOIN_TAB *join_tab,
                                        bool end_of_records);
+enum_nested_loop_state sub_select_sjm(JOIN *join, JOIN_TAB *join_tab, 
+                                      bool end_of_records);
+
 
 /**
-  Information about a position of table within a join order. Used in join
-  optimization.
+  A position of table within a join order. This structure is primarily used
+  as a part of join->positions and join->best_positions arrays.
+
+  One POSITION element contains information about:
+   - Which table is accessed
+   - Which access method was chosen
+      = Its cost and #of output records
+   - Semi-join strategy choice. Note that there are two different
+     representation formats:
+      1. The one used during join optimization
+      2. The one used at plan refinement/code generation stage.
+      We call fix_semijoin_strategies_for_picked_join_order() to switch
+      between #1 and #2. See that function's comment for more details.
+
+   - Semi-join optimization state. When we're running join optimization, 
+     we main a state for every semi-join strategy which are various
+     variables that tell us if/at which point we could consider applying the
+     strategy.  
+     The variables are really a function of join prefix but they are too
+     expensive to re-caclulate for every join prefix we consider, so we
+     maintain current state in join->positions[#tables_in_prefix]. See
+     advance_sj_state() for details.
 */
+
 typedef struct st_position
 {
   /*
-    The "fanout": number of output rows that will be produced (after
+    The "fanout" -  number of output rows that will be produced (after
     pushed down selection condition is applied) per each row combination of
     previous tables.
   */
@@ -1190,16 +1214,88 @@ typedef struct st_position
 
   /* If ref-based access is used: bitmap of tables this table depends on  */
   table_map ref_depend_map;
+  bool use_join_buffer; 
   
-  /* 
-    keyno  - This is an insideout scan on this key. If keyuse is NULL then
-              this is a full index scan, otherwise this is a ref + insideout
-              scan (and keyno matches the KEUSE's)
-    MAX_KEY - This is not an InsideOut scan
+  
+  /* These form a stack of partial join order costs and output sizes */
+  COST_VECT prefix_cost;
+  double    prefix_record_count;
+
+  /*
+    Current optimization state: Semi-join strategy to be used for this
+    and preceding join tables.
+    
+    Join optimizer sets this for the *last* join_tab in the
+    duplicate-generating range. That is, in order to interpret this field, 
+    one needs to traverse join->[best_]positions array from right to left.
+    When you see a join table with sj_strategy!= SJ_OPT_NONE, some other
+    field (depending on the strategy) tells how many preceding positions 
+    this applies to. The values of covered_preceding_positions->sj_strategy
+    must be ignored.
   */
-  uint insideout_key;
-  /* Number of key parts to be used by insideout */
-  uint insideout_parts;
+  uint sj_strategy;
+  /*
+    Valid only after fix_semijoin_strategies_for_picked_join_order() call:
+    if sj_strategy!=SJ_OPT_NONE, this is the number of subsequent tables that
+    are covered by the specified semi-join strategy
+  */
+  uint n_sj_tables;
+
+/* LooseScan strategy members */
+
+  /* The first (i.e. driving) table we're doing loose scan for */
+  uint        first_loosescan_table;
+  /* 
+     Tables that need to be in the prefix before we can calculate the cost
+     of using LooseScan strategy.
+  */
+  table_map   loosescan_need_tables;
+
+  /*
+    keyno  -  Planning to do LooseScan on this key. If keyuse is NULL then 
+              this is a full index scan, otherwise this is a ref+loosescan
+              scan (and keyno matches the KEUSE's)
+    MAX_KEY - Not doing a LooseScan
+  */
+  uint loosescan_key;  // final (one for strategy instance )
+  uint loosescan_parts; /* Number of keyparts to be kept distinct */
+  
+/* FirstMatch strategy */
+  /*
+    Index of the first inner table that we intend to handle with this
+    strategy
+  */
+  uint first_firstmatch_table;
+  /*
+    Tables that were not in the join prefix when we've started considering 
+    FirstMatch strategy.
+  */
+  table_map first_firstmatch_rtbl;
+  /* 
+    Tables that need to be in the prefix before we can calculate the cost
+    of using FirstMatch strategy.
+   */
+  table_map firstmatch_need_tables;
+
+
+/* Duplicate Weedout strategy */
+  /* The first table that the strategy will need to handle */
+  uint  first_dupsweedout_table;
+  /*
+    Tables that we will need to have in the prefix to do the weedout step
+    (all inner and all outer that the involved semi-joins are correlated with)
+  */
+  table_map dupsweedout_tables;
+
+/* SJ-Materialization-Scan strategy */
+  /* The last inner table (valid once we're after it) */
+  uint      sjm_scan_last_inner;
+  /*
+    Tables that we need to have in the prefix to calculate the correct cost.
+    Basically, we need all inner tables and outer tables mentioned in the
+    semi-join's ON expression so we can correctly account for fanout.
+  */
+  table_map sjm_scan_need_tables;
 } POSITION;
 
 
@@ -1214,22 +1310,29 @@ typedef struct st_rollup
 
 
 /*
-  Describes use of one temporary table to weed out join duplicates.
-  The temporar
+  Temporary table used by semi-join DuplicateElimination strategy
 
-  Used to
-    - create a temp table
-    - when we reach the weed-out tab, walk through rowid-ed tabs and
-      and copy rowids.
-      For each table we need
-       - rowid offset
-       - null bit address.
+  This consists of the temptable itself and data needed to put records
+  into it. The table's DDL is as follows:
+
+    CREATE TABLE tmptable (col VARCHAR(n) BINARY, PRIMARY KEY(col));
+
+  where the primary key can be replaced with unique constraint if n exceeds
+  the limit (as it is always done for query execution-time temptables).
+
+  The record value is a concatenation of rowids of tables from the join we're
+  executing. If a join table is on the inner side of the outer join, we
+  assume that its rowid can be NULL and provide means to store this rowid in
+  the tuple.
 */
 
 class SJ_TMP_TABLE : public Sql_alloc
 {
 public:
-  /* Array of pointers to tables that should be "used" */
+  /*
+    Array of pointers to tables whose rowids compose the temporary table
+    record.
+  */
   class TAB
   {
   public:
@@ -1240,13 +1343,34 @@ public:
   };
   TAB *tabs;
   TAB *tabs_end;
+  
+  /* 
+    is_confluent==TRUE means this is a special case where the temptable record
+    has zero length (and presence of a unique key means that the temptable can
+    have either 0 or 1 records). 
+    In this case we don't create the physical temptable but instead record
+    its state in SJ_TMP_TABLE::have_confluent_record.
+  */
+  bool is_confluent;
 
+  /* 
+    When is_confluent==TRUE: the contents of the table (whether it has the
+    record or not).
+  */
+  bool have_confluent_row;
+  
+  /* table record parameters */
   uint null_bits;
   uint null_bytes;
   uint rowid_len;
 
+  /* The temporary table itself (NULL means not created yet) */
   TABLE *tmp_table;
-
+  
+  /*
+    These are the members we got from temptable creation code. We'll need
+    them if we'll need to convert table from HEAP to MyISAM/Maria.
+  */
   ENGINE_COLUMNDEF *start_recinfo;
   ENGINE_COLUMNDEF *recinfo;
 
@@ -1254,6 +1378,17 @@ public:
   SJ_TMP_TABLE *next; 
 };
 
+#define SJ_OPT_NONE 0
+#define SJ_OPT_DUPS_WEEDOUT 1
+#define SJ_OPT_LOOSE_SCAN   2
+#define SJ_OPT_FIRST_MATCH  3
+#define SJ_OPT_MATERIALIZE  4
+#define SJ_OPT_MATERIALIZE_SCAN  5
+
+inline bool sj_is_materialize_strategy(uint strategy)
+{
+  return strategy >= SJ_OPT_MATERIALIZE;
+}
 
 class JOIN :public Sql_alloc
 {
@@ -1282,7 +1417,9 @@ public:
   */
   bool     resume_nested_loop;
   table_map const_table_map,found_const_table_map,outer_join;
-  ha_rows  send_records,found_records,examined_rows,row_limit, select_limit;
+  /* Number of records produced after join + group operation */
+  ha_rows  send_records;
+  ha_rows found_records,examined_rows,row_limit, select_limit;
   /**
     Used to fetch no more than given amount of rows per one
     fetch operation of server side cursor.
@@ -1293,14 +1430,49 @@ public:
       - on each fetch iteration we add num_rows to fetch to fetch_limit
   */
   ha_rows  fetch_limit;
-  POSITION positions[MAX_TABLES+1],best_positions[MAX_TABLES+1];
+  /* Finally picked QEP. This is result of join optimization */
+  POSITION best_positions[MAX_TABLES+1];
+
+/******* Join optimization state members start *******/
+  /*
+    pointer - we're doing optimization for a semi-join materialization nest.
+    NULL    - otherwise
+  */
+  TABLE_LIST *emb_sjm_nest;
   
-  /* *
+  /* Current join optimization state */
+  POSITION positions[MAX_TABLES+1];
+  
+  /*
     Bitmap of nested joins embedding the position at the end of the current 
     partial join (valid only during join optimizer run).
   */
   nested_join_map cur_embedding_map;
+  
+  /*
+    Bitmap of inner tables of semi-join nests that have a proper subset of
+    their tables in the current join prefix. That is, of those semi-join
+    nests that have their tables both in and outside of the join prefix.
+  */
+  table_map cur_sj_inner_tables;
+  
+  /*
+    Bitmap of semi-join inner tables that are in the join prefix and for
+    which there's no provision for how to eliminate semi-join duplicates
+    they produce.
+  */
+  table_map cur_dups_producing_tables;
 
+  /* We also maintain a stack of join optimization states in * join->positions[] */
+/******* Join optimization state members end *******/
+
+
+  Next_select_func first_select;
+  /*
+    The cost of best complete join plan found so far during optimization,
+    after optimization phase - cost of picked join order (not taking into
+    account the changes made by test_if_skip_sort_order()).
+  */
   double   best_read;
   List<Item> *fields;
   List<Cached_item> group_fields, group_fields_cache;
@@ -1377,8 +1549,14 @@ public:
   TABLE_LIST *tables_list;           ///<hold 'tables' parameter of mysql_select
   List<TABLE_LIST> *join_list;       ///< list of joined tables in reverse order
   COND_EQUAL *cond_equal;
-  SQL_SELECT *select;                ///<created in optimisation phase
-  JOIN_TAB *return_tab;              ///<used only for outer joins
+  /*
+    Join tab to return to. Points to an element of join->join_tab array, or to
+    join->join_tab[-1].
+    This is used at execution stage to shortcut join enumeration. Currently
+    shortcutting is done to handle outer joins or handle semi-joins with
+    FirstMatch strategy.
+  */
+  JOIN_TAB *return_tab;
   Item **ref_pointer_array; ///<used pointer reference for this select
   // Copy of above to be used with different lists
   Item **items0, **items1, **items2, **items3, **current_ref_pointer_array;
@@ -1390,10 +1568,9 @@ public:
   
   Array<Item_in_subselect> sj_subselects;
 
-  /* Descriptions of temporary tables used to weed-out semi-join duplicates */
-  SJ_TMP_TABLE  *sj_tmp_tables;
-
-  table_map cur_emb_sj_nests;
+  /* Temporary tables used to weed-out semi-join duplicates */
+  List<TABLE> sj_tmp_tables;
+  List<SJ_MATERIALIZATION_INFO> sjm_info_list;
 
   /* 
     storage for caching buffers allocated during query execution. 
@@ -1452,7 +1629,6 @@ public:
     need_tmp= 0;
     hidden_group_fields= 0; /*safety*/
     error= 0;
-    select= 0;
     return_tab= 0;
     ref_pointer_array= items0= items1= items2= items3= 0;
     ref_pointer_array_size= 0;
@@ -1468,9 +1644,9 @@ public:
     tmp_table_param.init();
     tmp_table_param.end_write_records= HA_POS_ERROR;
     rollup.state= ROLLUP::STATE_NONE;
-    sj_tmp_tables= NULL;
 
     no_const_tables= FALSE;
+    first_select= sub_select;
   }
 
   int prepare(Item ***rref_pointer_array, TABLE_LIST *tables, uint wind_num,

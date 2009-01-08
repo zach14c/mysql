@@ -10,4 +10,3 @@
 #
 ##############################################################################
 
-falcon_bug_28095 : Bug#40636 2008-12-10 hky Disabled until soft server restart works reliable
