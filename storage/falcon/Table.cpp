@@ -341,6 +341,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		Format *format = getFormat(formatVersion);
 		record = allocRecordVersion(format, transaction, NULL);
+		record->state = recInserting;
 		
 		// Handle any default values
 
@@ -381,15 +382,15 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		
 		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
 
-		// Verify that record is valid
+		checkNullable(record);  // Verify that record is valid
 
-		checkNullable(record);
 		transaction->addRecord(record);
 		insert(record, NULL, recordNumber);
 		inserted = true;
 		insertIndexes(transaction, record);
 		updateInversion(record, transaction);
 		fireTriggers(transaction, PostInsert, NULL, record);
+		record->state = recData;
 		record->release();
 		}
 	catch (...)
@@ -524,6 +525,11 @@ Record* Table::fetchNext(int32 start)
 			
 			if (records && (record = records->fetch(bitNumber)))
 				break;
+
+			// Don't bother with a record that is half-way inserted.
+
+			if (record->state == recInserting)
+				continue;
 
 			if (backloggedRecords && (record = backlogFetch(bitNumber)))
 				break;
@@ -3015,6 +3021,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 			fmt = format = getFormat(formatVersion);
 			
 		record = allocRecordVersion(fmt, transaction, NULL);
+		record->state = recInserting;
 		record->setEncodedRecord(stream, false);
 		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
 		
@@ -3028,7 +3035,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		inserted = true;
 		insertIndexes(transaction, record);
 		ASSERT(ret);
-
+		record->state = recData;
 		record->release();
 		}
 	catch (...)
@@ -3039,14 +3046,14 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 			insert(NULL, record, recordNumber);
 			}
 
-		garbageCollect(record, NULL, transaction, true);
-
 		if (recordNumber >= 0)
 			{
 			dbb->updateRecord(dataSection, recordNumber, NULL, transaction, false);
 			dataSection->expungeRecord(recordNumber);
 			record->recordNumber = -1;
 			}
+
+		garbageCollect(record, NULL, transaction, true);
 
 		if (record)
 			{
