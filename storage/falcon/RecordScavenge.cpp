@@ -1,4 +1,4 @@
-/* Copyright (C) 2007 MySQL AB
+/* Copyright (C) 2007 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,7 +29,6 @@ RecordScavenge::RecordScavenge(Database *db)
 {
 	database = db;
 	cycle = ++database->scavengeCycle;
-	oldestActiveTransaction = db->transactionManager->findOldestInActiveList();
 
 	memset(ageGroups, 0, sizeof(ageGroups));
 	veryOldRecords = 0;
@@ -63,6 +62,11 @@ RecordScavenge::RecordScavenge(Database *db)
 	retireableSpace = 0;
 	unScavengeableRecords = 0;
 	unScavengeableSpace = 0;
+
+	Sync syncActive(&db->transactionManager->activeTransactions.syncObject, "RecordScavenge::RecordScavenge");
+	syncActive.lock(Shared);
+
+	oldestActiveTransaction = db->transactionManager->findOldestInActiveList();
 }
 
 RecordScavenge::~RecordScavenge(void)
@@ -94,8 +98,14 @@ bool RecordScavenge::canBeRetired(Record* record)
 }
 
 // Take an inventory of every record in this record chain.
-// If there are any old invisible records at the end of the chain,
-// return a pointer to the oldest visible record.
+// If there are any old invisible records at the end of 
+// the chain, return a pointer to the oldest visible record.
+// It is assumed that the record sent is the 'base' record,
+// which means that the RecordLeaf has a pointer to this.
+// It is what you get from a Table::fetch()
+// Only base records with no priorRecords attached can be 'retired'.
+// 'Pruning' involved releasing the priorRecords at the end 
+// of the chain that are no longer visible to any active transaction.
 
 Record* RecordScavenge::inventoryRecord(Record* record)
 {
@@ -119,9 +129,8 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 			RecordVersion * recVer = (RecordVersion *) rec;
 
 			bool committedBeforeAnyActiveTrans = false;
-			if (   (!recVer->transaction)
-			    || (    recVer->transaction->commitId   // means state == Committed
-			        &&  recVer->transaction->commitId < oldestActiveTransaction))
+			if (  !recVer->transaction
+				|| recVer->transaction->committedBefore(oldestActiveTransaction))
 				committedBeforeAnyActiveTrans = true;
 
 			// This record may be retired if it is the base record AND
@@ -130,10 +139,10 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 			if (recVer == record && committedBeforeAnyActiveTrans)
 				scavengeType = CAN_BE_RETIRED;
 			
-			// Look for the oldest visible record in this chain.
+			// Look for the oldest visible record version in this chain.
 			// If the transaction is null then there are no dependent transactions
-			// and this record is visible to all.  If the transaction is not null,
-			// then check if it ended before the current oldest active trans started
+			// and this record version is visible to all.  If the transaction is not null,
+			// then check if it ended before the current oldest active trans started.
 
 			if (oldestVisibleRec)
 				{
@@ -173,11 +182,16 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				unScavengeableSpace += size;
 			}
 
-		// Only base records can be retired
+		// Only base records can be retired.  Add up all retireable records 
+		// in a array of relative ages from our baseGeneration.
 
 		if (rec == record)
 			{
-			int64 age = (int64) baseGeneration - (int64) rec->generation;
+			uint64 age = baseGeneration - rec->generation;
+
+			// While this inventory is happening, newer records could be
+			// created that are a later generation than our baseGeneration.
+			// So check for age < 0.
 
 			if (age < 0)
 				ageGroups[0] += size;
@@ -191,7 +205,6 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				veryOldRecordSpace += size;
 				}
 			}
-
 		}
 
 	return oldestVisibleRec;

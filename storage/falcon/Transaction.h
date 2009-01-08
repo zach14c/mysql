@@ -42,6 +42,7 @@ class Bitmap;
 class Record;
 class InfoTable;
 class Thread;
+class TransactionManager;
 
 // Transaction States
 
@@ -128,6 +129,8 @@ public:
 	void		releaseDeferredIndexes(void);
 	void		releaseDeferredIndexes(Table* table);
 	void		backlogRecords(void);
+	bool		committedBefore(TransId transactionId);
+
 
 	inline bool isActive()
 		{
@@ -136,6 +139,7 @@ public:
 
 	Connection		*connection;
 	Database		*database;
+	TransactionManager	*transactionManager;
 	TransId			transactionId;  // used also as startEvent by dep.mgr.
 	TransId			commitId;       // used as commitEvent by dep.mgr.
 	TransId			blockedBy;

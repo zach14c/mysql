@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -125,7 +125,6 @@ void RecordGroup::pruneRecords(Table *table, int base, RecordScavenge *recordSca
 
 void RecordGroup::retireRecords(Table *table, int base, RecordScavenge *recordScavenge)
 {
-	int count = 0;
 	int recordNumber = base * RECORD_SLOTS;
 
 	for (RecordSection **ptr = records, **end = records + RECORD_SLOTS; ptr < end; ++ptr, ++recordNumber)

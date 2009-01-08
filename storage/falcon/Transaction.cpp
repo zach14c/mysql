@@ -109,7 +109,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	isolationLevel = connection->isolationLevel;
 	mySqlThreadId = connection->mySqlThreadId;
 	database = connection->database;
-	TransactionManager *transactionManager = database->transactionManager;
+	transactionManager = database->transactionManager;
 	systemTransaction = database->systemConnection == connection;
 	transactionId = seq;
 	commitId = 0;
@@ -177,7 +177,7 @@ Transaction::~Transaction()
 		}
 
 	if (inList)
-		database->transactionManager->removeTransaction(this);
+		transactionManager->removeTransaction(this);
 
 	delete [] xid;
 	delete backloggedRecords;
@@ -213,7 +213,6 @@ void Transaction::commit()
 		return;
 		}
 
-	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	Log::log(LogXARecovery, "%d: Commit %sTransaction %d\n", 
 		database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
@@ -319,7 +318,6 @@ void Transaction::commit()
 
 void Transaction::commitNoUpdates(void)
 {
-	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
 	Log::log(LogXARecovery, "%d: CommitNoUpdates transaction %d\n", database->deltaTime, transactionId);
@@ -369,7 +367,6 @@ void Transaction::rollback()
 		releaseDeferredIndexes();
 		
 	releaseSavepoints();
-	TransactionManager *transactionManager = database->transactionManager;
 	Transaction *rollbackTransaction = transactionManager->rolledBackTransaction;
 	chillPoint = &firstRecord;
 	totalRecordData = 0;
@@ -950,7 +947,6 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 	if(transaction)
 		transaction->addRef();
 
-	TransactionManager *transactionManager = database->transactionManager;
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
 		"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
@@ -1383,7 +1379,7 @@ void Transaction::printBlocking(int level)
 				   what);
 		}
 	syncRec.unlock();
-	database->transactionManager->printBlocking(this, level);
+	transactionManager->printBlocking(this, level);
 }
 
 void Transaction::getInfo(InfoTable* infoTable)
@@ -1444,7 +1440,6 @@ void Transaction::releaseCommittedTransaction(void)
 
 void Transaction::printBlockage(void)
 {
-	TransactionManager *transactionManager = database->transactionManager;
 	LogLock logLock;
 	Sync sync (&transactionManager->activeTransactions.syncObject, "Transaction::printBlockage");
 	sync.lock (Shared);
@@ -1529,4 +1524,13 @@ void Transaction::validateRecords(void)
 		;
 	
 	ASSERT(firstRecord == record);	
+}
+
+// Return true if this transaction was committed before
+// another transaction started.  If commitId is 0, then
+// this trans is not yet committed.
+
+bool Transaction::committedBefore(TransId transactionId)
+{
+	return (commitId && commitId < transactionId);
 }

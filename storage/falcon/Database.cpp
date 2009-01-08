@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1809,13 +1809,9 @@ void Database::scavengeRecords(void)
 	recordScavenge.print();
 	// Log::log(analyze(analyzeRecordLeafs));
 
-	// Start a new generation now that scavenging is done and the 
-	// active memory has been adjusted.
-
 	Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
 	syncMem.lock(Exclusive);
 
-//	INTERLOCKED_INCREMENT (currentGeneration);
 	lastActiveMemoryChecked = lastGenerationMemory = recordDataPool->activeMemory;
 }
 
@@ -1907,8 +1903,7 @@ void Database::scavengerThreadMain(void)
 	Thread *thread = Thread::getThread("Database::scavengerThreadMain");
 
 	thread->sleep(1000);
-	scavengerThreadSleeping = 0;
-	scavengerThreadSignaled = 0;
+
 	while (!thread->shutdownInProgress)
 		{
 		scavenge();
@@ -1925,12 +1920,7 @@ void Database::scavengerThreadMain(void)
 void Database::scavengerThreadWakeup(void)
 {
 	if (scavengerThread)
-		{
 		scavengerThread->wake();
-		}
-		else
-		{
-		}
 }
 
 int Database::createSequence(int64 initialValue)
@@ -2521,18 +2511,21 @@ void Database::setRecordScavengeFloor(int value)
 void Database::checkRecordScavenge(void)
 {
 	// Signal a load-based scavenge if we are over the threshold
+
 	if (scavengerThreadSleeping && !scavengerThreadSignaled)
 		{
 		Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
 		syncMem.lock(Exclusive);
 
-		if (!scavengerThreadSignaled && (recordDataPool->activeMemory > lastActiveMemoryChecked))
+		if (   !scavengerThreadSignaled 
+			&& (recordDataPool->activeMemory > lastActiveMemoryChecked))
 			{
+			// Start a new age generation regularly
+
 			if ((recordDataPool->activeMemory - lastGenerationMemory) > recordScavengeMaxGroupSize)
 				{
-				// Start a new age generation regularly, except during a scavenge.
 				// Let the scavenger run to prune records.  
-				// It will retire records if above the thresold
+				// It will also retire records if recordScavengeThreshold has been reached.
 
 				INTERLOCKED_INCREMENT (currentGeneration);
 				lastGenerationMemory = recordDataPool->activeMemory;

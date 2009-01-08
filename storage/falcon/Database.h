@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -47,6 +47,12 @@ static const int FALC0N_FREEZE				= 8;
 static const int FALC0N_REPORT_WRITES		= 16;
 static const int FALC0N_SYNC_HANDLER		= 32;
 static const int FALC0N_TEST_BITMAP			= 64;
+
+// This constant defines how many times a thread will sleep(10) while 
+// waiting for record cache memory to be freed up by the scavenger thread
+// before it gives up and returns OUT_OF_RECORD_MEMORY_ERROR.
+
+static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
 
 #define TABLE_HASH_SIZE		101
 

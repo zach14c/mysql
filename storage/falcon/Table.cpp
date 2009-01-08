@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -3592,7 +3592,7 @@ bool Table::setAlter(void)
 
 RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transaction, Record* priorVersion)
 {
-	for (int n = 0;; ++n)
+	for (int n = 1;; ++n)
 		{
 		try
 			{
@@ -3604,7 +3604,8 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 
 		catch (SQLException& exception)
 			{
-			if (n > 4 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
+			if (   exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR
+				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 
 			database->signalScavenger();
@@ -3621,7 +3622,7 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 
 Record* Table::allocRecord(int recordNumber, Stream* stream)
 {
-	for (int n = 0;; ++n)
+	for (int n = 1;; ++n)
 		{
 		try
 			{
@@ -3633,7 +3634,8 @@ Record* Table::allocRecord(int recordNumber, Stream* stream)
 
 		catch (SQLException& exception)
 			{
-			if (n > 4 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
+			if (   exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR
+				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 
 			database->signalScavenger();

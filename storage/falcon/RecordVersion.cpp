@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -183,9 +183,8 @@ void RecordVersion::commit()
 bool RecordVersion::retire(RecordScavenge *recordScavenge)
 {
 	bool neededByAnyActiveTrans = false;
-	if (   !transaction 
-		|| (   transaction->commitId   // means state == Committed
-		    && transaction->commitId < recordScavenge->oldestActiveTransaction))
+	if (  !transaction 
+		|| transaction->committedBefore(recordScavenge->oldestActiveTransaction))
 		neededByAnyActiveTrans = true;
 
 	if (   generation <= recordScavenge->scavengeGeneration
@@ -199,7 +198,7 @@ bool RecordVersion::retire(RecordScavenge *recordScavenge)
 		active = false;
 #endif
 		if (state == recDeleted)
-			expungeRecord();
+			expungeRecord();  // Allow this record number to be reused
 
 		release();
 		return true;
@@ -230,7 +229,7 @@ void RecordVersion::scavenge(TransId targetTransactionId, int oldestActiveSavePo
 	
 	Record *rec = priorVersion;
 	Record *ptr = NULL;
-	
+
 	// Remove prior record versions assigned to the savepoint being released
 	
 	for (; rec && rec->getTransactionId() == targetTransactionId && rec->getSavePointId() >= oldestActiveSavePointId;
