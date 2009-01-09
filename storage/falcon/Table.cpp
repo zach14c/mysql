@@ -524,12 +524,14 @@ Record* Table::fetchNext(int32 start)
 			// Record should exist somewhere
 			
 			if (records && (record = records->fetch(bitNumber)))
+				{
+				// Don't bother with a record that is half-way inserted.
+
+				if (record->state == recInserting)
+					continue;
+
 				break;
-
-			// Don't bother with a record that is half-way inserted.
-
-			if (record->state == recInserting)
-				continue;
+				}
 
 			if (backloggedRecords && (record = backlogFetch(bitNumber)))
 				break;
