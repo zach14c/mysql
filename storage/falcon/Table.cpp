@@ -503,7 +503,7 @@ Record* Table::fetchNext(int32 start)
 	Stream stream;
 	Sync sync(&syncObject, "Table::fetchNext");
 	sync.lock(Shared);
-	Record *record;
+	Record *record = NULL;
 	int32 recordNumber = start;
 
 	for (;;)
