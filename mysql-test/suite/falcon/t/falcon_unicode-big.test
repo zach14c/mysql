@@ -1,0 +1,317 @@
+--source include/have_falcon.inc
+--source include/big_test.inc
+
+#
+# Unicode related tests for Falcon
+#
+# UnicodeData.txt is Copyright © 1991-2008 Unicode, Inc.
+# All rights reserved. Distributed under the Terms of Use
+# in http://www.unicode.org/copyright.html.
+#
+# Currently we are using this file:
+#     http://www.unicode.org/Public/5.1.0/ucd/UnicodeData.txt
+#
+# Notes
+#    Six Unicode code points are invalid in UTF-8,
+#    but they get translated, leading to empty
+#    UTF-8 values
+#        [15:09] root@test>select id, hex(a), character_length(a) as len
+#            -> from t0 where character_length(a) = 0;
+#        +-------+--------+------+
+#        | id    | hex(a) | len  |
+#        +-------+--------+------+
+#        | 13135 |        |    0 |
+#        | 13136 |        |    0 |
+#        | 13137 |        |    0 |
+#        | 13138 |        |    0 |
+#        | 13139 |        |    0 |
+#        | 13140 |        |    0 |
+#        +-------+--------+------+
+#        6 rows in set (0.04 sec)
+#
+#    The code points in question are:
+#      * D800;<Non Private Use High Surrogate, First>
+#      * DB7F;<Non Private Use High Surrogate, Last>
+#      * DB80;<Private Use High Surrogate, First>
+#      * DBFF;<Private Use High Surrogate, Last>
+#      * DC00;<Low Surrogate, First>
+#      * DFFF;<Low Surrogate, Last>
+#
+#    The following two code points look suspicious but they
+#    get translated to UTF-8. They mark the start and the
+#    end of the private plane.
+#      * E000;<Private Use, First>
+#      * F8FF;<Private Use, Last>
+#
+--echo *** Unicode tests ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+# We use $other_engine here for easier storage engine
+# change. Currently we use MyISAM as reference table.
+let $other_engine = 'MyISAM';
+
+eval SET @@storage_engine = $engine;
+
+SET NAMES UTF8;
+
+--disable_warnings
+DROP FUNCTION IF EXISTS transform;
+DROP TABLE IF EXISTS t0;
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+DROP TABLE IF EXISTS t3;
+DROP TABLE IF EXISTS t4;
+DROP TABLE IF EXISTS t5;
+DROP TABLE IF EXISTS t_err;
+--enable_warnings
+
+# Reference table with MyISAM as storage engine.
+eval
+CREATE TABLE t0 (
+  id int auto_increment not null primary key,
+  a varchar(1) character set utf8 collate utf8_bin,
+  category  varchar(100),
+  comment   varchar(80),
+  uppercase varchar(1) character set utf8 collate utf8_bin default null,
+  lowercase varchar(1) character set utf8 collate utf8_bin default null
+) Engine $other_engine;
+
+# Falcon test table without any keys.
+CREATE TABLE t1 (
+  id int,
+  a varchar(1) character set utf8 collate utf8_bin,
+  uppercase varchar(1) character set utf8 collate utf8_bin default null,
+  lowercase varchar(1) character set utf8 collate utf8_bin default null
+);
+
+# Falcon test table with PK.
+CREATE TABLE t2 (
+  id int,
+  a varchar(1) character set utf8 collate utf8_bin primary key,
+  uppercase varchar(1) character set utf8 collate utf8_bin default null,
+  lowercase varchar(1) character set utf8 collate utf8_bin default null
+);
+
+# Falcon test table with index.
+CREATE TABLE t3 (
+  id int,
+  a varchar(1) character set utf8 collate utf8_bin,
+  uppercase varchar(1) character set utf8 collate utf8_bin default null,
+  lowercase varchar(1) character set utf8 collate utf8_bin default null,
+  key (a),
+  key (uppercase),
+  key (lowercase)
+);
+
+# Falcon test table with unique index.
+CREATE TABLE t4 (
+  id int,
+  a varchar(1) character set utf8 collate utf8_bin,
+  uppercase varchar(1) character set utf8 collate utf8_bin default null,
+  lowercase varchar(1) character set utf8 collate utf8_bin default null,
+  unique key (a),
+  key (uppercase),
+  key (lowercase)
+);
+
+# Falcon test table with unique index not null.
+CREATE TABLE t5 (
+  id int,
+  a varchar(1) character set utf8 collate utf8_bin not null,
+  uppercase varchar(1) character set utf8 collate utf8_bin default null,
+  lowercase varchar(1) character set utf8 collate utf8_bin default null,
+  unique key (a)
+);
+
+# We collect any errors in this table.
+eval
+CREATE TABLE t_err (
+  id int,
+  expected varchar(1) character set utf8,
+  actual varchar(1) character set utf8,
+  category varchar(100),
+  comment varchar(80),
+  test varchar(50),
+  hits int
+) Engine $other_engine;
+
+#
+# Unicode to UTF-8 transformation algorithm is taken from
+# http://scripts.sil.org/cms/scripts/page.php?site_id=nrsi&item_id=IWS-AppendixA
+#
+DELIMITER //;
+
+CREATE FUNCTION transform(a varchar(8))
+  RETURNS varchar(8)
+  DETERMINISTIC
+
+  BEGIN
+    # Surrogate pair boundries, which are going to be ignored.
+    DECLARE surrogate1 varchar(8) DEFAULT CONV('D800', 16, 10);
+    DECLARE surrogate2 varchar(8) DEFAULT CONV('DB7F', 16, 10);
+    DECLARE surrogate3 varchar(8) DEFAULT CONV('DB80', 16, 10);
+    DECLARE surrogate4 varchar(8) DEFAULT CONV('DBFF', 16, 10);
+    DECLARE surrogate5 varchar(8) DEFAULT CONV('DC00', 16, 10);
+    DECLARE surrogate6 varchar(8) DEFAULT CONV('DFFF', 16, 10);
+
+    DECLARE one_byte int DEFAULT        CONV('007F', 16, 10);
+    DECLARE two_byte int DEFAULT        CONV('07FF', 16, 10);
+    DECLARE three_byte int DEFAULT      CONV('D7FF', 16, 10);
+    DECLARE three_byte_low int DEFAULT  CONV('E000', 16, 10);
+    DECLARE three_byte_high int DEFAULT CONV('FFFF', 16, 10);
+
+    DECLARE d int;
+    SET d = CONV(a, 16, 10);
+
+    # In case of missing uppercase or lowercase code points
+    # we return an empty string.
+    IF length(a) = 0 THEN
+      return '';
+    END IF;
+
+    # Also skip the six surrogate boundries.
+    IF d = surrogate1 || d = surrogate2 || d = surrogate3
+       || d = surrogate4 || d = surrogate5 || d = surrogate6 THEN
+      return '';
+    END IF;
+
+    IF d <= one_byte THEN
+      # Without the 16-base to 16-base conversion a 0009 gets 00,
+      # which is wrong.
+      return CONV(a, 16, 16);
+    ELSEIF d <= two_byte THEN
+      return
+        CONCAT(CONV((d DIV 64) + 192, 10, 16),
+               CONV((d MOD 64) + 128, 10, 16));
+    ELSEIF d <= three_byte
+           || (three_byte_low <= d && d <= three_byte_high) THEN
+      return
+        CONCAT(CONV((d DIV 4096) + 224, 10, 16),
+               CONV(((d MOD 4096) div 64) + 128, 10, 16),
+               CONV((d MOD 64) + 128, 10, 16));
+    ELSE
+      return
+        CONCAT(CONV((d DIV 262144) + 240, 10, 16),
+               CONV(((d MOD 262144) DIV 4096) + 128, 10, 16),
+               CONV(((d MOD 4096) DIV 64) + 128, 10, 16),
+               CONV((d MOD 64) + 128, 10, 16));
+    END IF;
+
+  END
+//
+
+DELIMITER ;//
+
+#
+# Transform Unicode code points to UTF-8 and insert
+# the characters into reference table. The transformation
+# is done in place, so that the Unicode code point file
+# can be updated in an easy fashion.
+#
+# The fields in UnicodeData.txt are described here:
+#     http://www.unicode.org/Public/5.1.0/ucd/UCD.html#UnicodeData.txt
+#
+# Load should produce no warnings like truncation or so.
+LOAD DATA LOCAL INFILE 'include/UnicodeData.txt' INTO TABLE t0
+  FIELDS TERMINATED BY ';'
+  OPTIONALLY ENCLOSED BY ''
+  LINES TERMINATED BY '\n'
+  (@var1, @category, @dummy3, @dummy4, @dummy5, @dummy6, @dummy7,
+   @dummy8, @dummy9, @dummy10, @comment, @dummy12, @uppercase, @lowercase, @dummy15)
+SET a = (UNHEX((SELECT transform(@var1)))),
+    category = @category,
+    comment = @comment,
+    uppercase = (UNHEX((SELECT transform(@uppercase)))),
+    lowercase = (UNHEX((SELECT transform(@lowercase))));
+
+#
+# Sanity checks.
+#
+# We should have six surrogates.
+SELECT count(*) FROM t0 WHERE length(a) = 0;
+DELETE FROM t0 WHERE length(a) = 0;
+
+--let $count = `SELECT count(*) FROM t0`;
+
+#
+# Load Falcon tables;
+#
+INSERT INTO t1 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
+# Currently fails with duplicate key error.
+#INSERT INTO t2 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
+INSERT INTO t3 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
+# Currently fails with duplicate key error.
+#INSERT INTO t4 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
+# Currently fails with duplicate key error.
+#INSERT INTO t5 (id, a, uppercase, lowercase) SELECT id, a, uppercase, lowercase FROM t0;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--let $i = $count
+--disable_query_log
+--disable_result_log
+while ($i)
+{
+  eval SELECT @id := id, @reference := a, @category := category, @comment := comment FROM t0 WHERE id = $i;
+
+  #
+  # Test table t1.
+  #
+  SELECT @hit := count(*) FROM t1 WHERE t1.id = @id AND t1.a = @reference;
+  --let $hit = `SELECT @hit`;
+
+  # If the character in question is not found, thus $hit is 0, we insert
+  # a row into t_err for further examination. In case of errors the final
+  # "SELECT * FROM t_err" would show the details of the errors occured.
+  if (!$hit)
+  {
+    INSERT INTO t_err VALUES (@id, @reference, (SELECT a FROM t1 WHERE id = @id), @category, @comment, 't1', @hit);
+  }
+
+  #
+  # Test table t3.
+  #
+  SELECT @hit := count(*) FROM t3 WHERE t3.id = @id AND t3.a = @reference;
+  --let $hit = `SELECT @hit`;
+
+  if (!$hit)
+  {
+    INSERT INTO t_err VALUES (@id, @reference, (SELECT a FROM t3 WHERE id = @id), @category, @comment, 't3', @hit);
+  }
+
+  --dec $i
+}
+--enable_result_log
+--enable_query_log
+
+# Uppercase and lowercase tests.
+
+# Also test two UTF-8 characters with whitespace
+# like TAB in between.
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t0;
+SELECT count(*) FROM t1;
+SELECT count(*) FROM t2;
+SELECT count(*) FROM t3;
+SELECT count(*) FROM t4;
+SELECT count(*) FROM t5;
+SELECT * FROM t_err;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP FUNCTION transform;
+DROP TABLE t0;
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;
+DROP TABLE t_err;

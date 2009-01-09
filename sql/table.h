@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1004,6 +1004,11 @@ public:
 };
 
 
+class SJ_MATERIALIZATION_INFO;
+class Index_hint;
+class Item_in_subselect;
+
+
 /*
   Table reference in the FROM clause.
 
@@ -1039,7 +1044,6 @@ public:
 */
 
 struct LEX;
-class Index_hint;
 struct TABLE_LIST
 {
   TABLE_LIST() {}                          /* Remove gcc warning */
@@ -1085,6 +1089,9 @@ struct TABLE_LIST
   table_map     sj_inner_tables;
   /* Number of IN-compared expressions */
   uint          sj_in_exprs; 
+  Item_in_subselect  *sj_subq_pred;
+  SJ_MATERIALIZATION_INFO *sj_mat_info;
+
   /*
     The structure of ON expression presented in the member above
     can be changed during certain optimizations. This member
@@ -1502,6 +1509,10 @@ private:
   ulong m_table_ref_version;
 };
 
+struct st_position;
+
+class SJ_MATERIALIZATION_INFO;
+  
 class Item;
 
 /*

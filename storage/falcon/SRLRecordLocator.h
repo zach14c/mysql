@@ -39,7 +39,6 @@ public:
 	SRLRecordLocator();
 	virtual ~SRLRecordLocator();
 
-	int		tableSpaceId;
 	int		sectionId;
 	int		sequence;
 	int32	pageNumber;

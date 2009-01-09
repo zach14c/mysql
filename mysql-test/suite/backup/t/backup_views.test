@@ -205,14 +205,14 @@ DROP DATABASE bup_db2;
 
 --echo restore database with view dependency to other, non-existing db
 
---error ER_BACKUP_CANT_RESTORE_VIEW
+--error ER_NO_SUCH_TABLE
 RESTORE FROM 'bup_objectview1.bak';
 
 # An incomplete bup_db1 was created by the failing restore operation.
 # Remove it before trying restore of bup_db2.
 DROP DATABASE bup_db1;
 
---error ER_BACKUP_CANT_RESTORE_VIEW
+--error ER_NO_SUCH_TABLE
 RESTORE FROM 'bup_objectview2.bak';
 
 # An incomplete bup_db2 was created by the failing restore operation.
@@ -353,7 +353,7 @@ ALTER VIEW alter1 AS SELECT 6;
 SELECT * FROM alter2;
 
 #fails
---error ER_VIEW_INVALID
+--error ER_BACKUP_GET_META_VIEW
 BACKUP DATABASE bup_db1 TO 'bup_alterview.bak';
 
 --echo 

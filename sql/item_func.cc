@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1368,6 +1368,38 @@ void Item_func_div::fix_length_and_dec()
 longlong Item_func_int_div::val_int()
 {
   DBUG_ASSERT(fixed == 1);
+
+  /*
+    Perform division using DECIMAL math if either of the operands has a
+    non-integer type
+  */
+  if (args[0]->result_type() != INT_RESULT ||
+      args[1]->result_type() != INT_RESULT)
+  {
+    my_decimal value0, value1, tmp;
+    my_decimal *val0, *val1;
+    longlong res;
+    int err;
+
+    val0= args[0]->val_decimal(&value0);
+    val1= args[1]->val_decimal(&value1);
+    if ((null_value= (args[0]->null_value || args[1]->null_value)))
+      return 0;
+
+    if ((err= my_decimal_div(E_DEC_FATAL_ERROR & ~E_DEC_DIV_ZERO, &tmp,
+                             val0, val1, 0)) > 3)
+    {
+      if (err == E_DEC_DIV_ZERO)
+        signal_divide_by_null();
+      return 0;
+    }
+
+    if (my_decimal2int(E_DEC_FATAL_ERROR, &tmp, unsigned_flag, &res) &
+        E_DEC_OVERFLOW)
+      my_error(ER_WARN_DATA_OUT_OF_RANGE, MYF(0), name, 1);
+    return res;
+  }
+  
   longlong value=args[0]->val_int();
   longlong val2=args[1]->val_int();
   if ((null_value= (args[0]->null_value || args[1]->null_value)))
@@ -4099,6 +4131,8 @@ double user_var_entry::val_real(my_bool *null_value)
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
     break;
+  default:
+    break;
   }
   return 0.0;					// Impossible
 }
@@ -4130,6 +4164,8 @@ longlong user_var_entry::val_int(my_bool *null_value) const
   case ROW_RESULT:
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
+    break;
+  default:
     break;
   }
   return LL(0);					// Impossible
@@ -4165,6 +4201,8 @@ String *user_var_entry::val_str(my_bool *null_value, String *str,
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
     break;
+  default:
+    break;
   }
   return(str);
 }
@@ -4192,6 +4230,8 @@ my_decimal *user_var_entry::val_decimal(my_bool *null_value, my_decimal *val)
   case ROW_RESULT:
   case IMPOSSIBLE_RESULT:
     DBUG_ASSERT(0);				// Impossible
+    break;
+  default:
     break;
   }
   return(val);

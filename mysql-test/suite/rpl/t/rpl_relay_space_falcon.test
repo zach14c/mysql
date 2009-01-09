@@ -1,0 +1,19 @@
+########################################################################
+# Wrapper for rpl_sv_relay_space.test.
+# This test is a wrapper for the rpl_sv_relayspace test, which is able 
+# to test multiple storage engines, in this case Falcon.
+#
+# By wrapping we are saving some space and making the test more
+# maintainable by only having one test file and reusing the code.
+# One result file per wrapper is still needed, though.
+########################################################################
+
+-- source include/not_ndb_default.inc
+-- source include/have_falcon.inc
+
+# Falcon does not support statement-based replication.
+# In 'mixed' mode only 'row' is used with Falcon.
+--source include/have_binlog_format_mixed_or_row.inc
+
+let $engine_type=Falcon;
+-- source extra/rpl_tests/rpl_sv_relay_space.test

@@ -1,6 +1,6 @@
 #
 # Write file to make mysql-test-run.pl expect the "crash", but don't start
-# it until it's told to
+# it until it's told to.
 --write_file $MYSQLTEST_VARDIR/tmp/master0.expect
 wait
 EOF
@@ -9,20 +9,19 @@ EOF
 # it 30 seconds to die before zapping it.
 shutdown_server 30;
 
-# Check server is gone
+# Check server is gone.
 --source include/wait_until_disconnected.inc
 
-# Write file to make mysql-test-run.pl start up the server again
+# Write file to make mysql-test-run.pl start up the server again.
 --append_file $MYSQLTEST_VARDIR/tmp/master0.expect
 restart
 EOF
 
-# Turn on reconnect
+# Turn on reconnect.
 --enable_reconnect
 
-# Call script that will poll the server waiting for it to be back online again
+# Call script that will poll the server waiting for it to be back online again.
 --source include/wait_until_connected_again.inc
 
-# Turn off reconnect again
+# Turn off reconnect again.
 --disable_reconnect
-

@@ -42,7 +42,6 @@ public:
 	virtual void read();
 	void append (TableSpace *tableSpace, Transaction *transaction);
 
-	int		tableSpaceId;
 };
 
 #endif // !defined(AFX_SRLDROPTABLESPACE_H__3A416C47_6B8F_49CC_9471_B9F75D024B12__INCLUDED_)

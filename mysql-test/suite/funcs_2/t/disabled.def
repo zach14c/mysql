@@ -3,4 +3,3 @@ innodb_charset : Bug#20447 Problem with prefix keys with contractions and expans
 myisam_charset : Bug#20447 Problem with prefix keys with contractions and expansions
 memory_charset : Bug#20447 Problem with prefix keys with contractions and expansions
 ndb_charset    : Bug#20447 Problem with prefix keys with contractions and expansions
-

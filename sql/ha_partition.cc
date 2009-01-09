@@ -1,4 +1,4 @@
-/* Copyright (C) 2005 MySQL AB
+/* Copyright 2005-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -553,14 +553,15 @@ int ha_partition::create(const char *name, TABLE *table_arg,
 			 HA_CREATE_INFO *create_info)
 {
   char t_name[FN_REFLEN];
+  int error;
   DBUG_ENTER("ha_partition::create");
 
   strmov(t_name, name);
   DBUG_ASSERT(*fn_rext((char*)name) == '\0');
-  if (del_ren_cre_table(t_name, NULL, table_arg, create_info))
+  if ((error= del_ren_cre_table(t_name, NULL, table_arg, create_info)))
   {
     handler::delete_table(t_name);
-    DBUG_RETURN(1);
+    DBUG_RETURN(error);
   }
   DBUG_RETURN(0);
 }
@@ -4892,7 +4893,7 @@ int ha_partition::info(uint flag)
     /*
       Calculates statistical variables
       records:           Estimate of number records in table
-      We report sum (always at least 2)
+      We report sum (always at least 2 if not empty)
       deleted:           Estimate of number holes in the table due to
       deletes
       We report sum
@@ -4931,13 +4932,13 @@ int ha_partition::info(uint flag)
           stats.check_time= file->stats.check_time;
       }
     } while (*(++file_array));
-    if (stats.records < 2 &&
+    if (stats.records && stats.records < 2 &&
         !(m_file[0]->ha_table_flags() & HA_STATS_RECORDS_IS_EXACT))
       stats.records= 2;
     if (stats.records > 0)
       stats.mean_rec_length= (ulong) (stats.data_file_length / stats.records);
     else
-      stats.mean_rec_length= 1; //? What should we set here 
+      stats.mean_rec_length= 0;
   }
   if (flag & HA_STATUS_CONST)
   {

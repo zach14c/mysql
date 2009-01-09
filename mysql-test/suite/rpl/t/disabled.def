@@ -10,10 +10,9 @@
 #
 ##############################################################################
 
-rpl_row_sp002_innodb       : Bug#32673 rpl_row_sp002_innodb.test fails randomly
-rpl_locktrans_innodb       : Bug#37712 2008-07-17 alik Disabled to make 6.0 greaner (the test fails too often)
 rpl_extraColmaster_innodb  : BUG#41097 2008-12-12 sven result files for rpl_extraColmaster_myisam, rpl_extraColmaster_innodb are gone
 rpl_extraColmaster_myisam  : BUG#41097 2008-12-12 sven result files for rpl_extraColmaster_myisam, rpl_extraColmaster_innodb are gone
 rpl_row_until              : BUG#41423 2008-12-12 sven rpl_row_until needs maintenance
 rpl_ignore_table           : BUG#41424 2008-12-12 sven rpl_ignore_table fails, "could not execute write_rows event"
 rpl_binlog_corruption : BUG#41793 2008-12-30 sven rpl_binlog_corruption disabled in main (needs new mtr)
+rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)

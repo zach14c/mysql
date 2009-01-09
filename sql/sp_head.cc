@@ -1,4 +1,4 @@
-/* Copyright (C) 2002 MySQL AB
+/* Copyright 2002-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,6 +14,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #include "mysql_priv.h"
+#include "sql_prepare.h"
 #ifdef USE_PRAGMA_IMPLEMENTATION
 #pragma implementation
 #endif
@@ -2846,8 +2847,8 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     {
       res= m_lex_keeper.reset_lex_and_exec_core(thd, nextp, FALSE, this);
 
-      if (thd->main_da.is_eof())
-        net_end_statement(thd);
+      if (thd->stmt_da->is_eof())
+        thd->protocol->end_statement();
 
       query_cache_end_of_result(thd);
 
@@ -2860,7 +2861,7 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     thd->query_length= query_length;
 
     if (!thd->is_error())
-      thd->main_da.reset_diagnostics_area();
+      thd->stmt_da->reset_diagnostics_area();
   }
   DBUG_RETURN(res);
 }
@@ -3982,7 +3983,7 @@ sp_head::add_used_tables_to_table_list(THD *thd,
 
 
 /**
-  Simple function for adding an explicetly named (systems) table to
+  Simple function for adding an explicitly named (systems) table to
   the global table list, e.g. "mysql", "proc".
 */
 

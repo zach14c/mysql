@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -393,13 +393,18 @@ enum open_table_mode
 
 #define DISK_SEEK_PROP_COST ((double)0.1/BLOCKS_IN_AVG_SEEK)
 
-
 /**
   Number of rows in a reference table when refereed through a not unique key.
   This value is only used when we don't know anything about the key
   distribution.
 */
 #define MATCHING_ROWS_IN_OTHER_TABLE 10
+
+/*
+  Subquery materialization-related constants
+*/
+#define HEAP_TEMPTABLE_LOOKUP_COST 0.05
+#define DISK_TEMPTABLE_LOOKUP_COST 1.0
 
 /** Don't pack string keys shorter than this (if PACK_KEYS=1 isn't used). */
 #define KEY_DEFAULT_PACK_LENGTH 8
@@ -571,7 +576,7 @@ enum open_table_mode
 #define OPTIMIZER_SWITCH_NO_MATERIALIZATION 1
 #define OPTIMIZER_SWITCH_NO_SEMIJOIN 2
 #define OPTIMIZER_SWITCH_NO_LOOSE_SCAN 4
-
+#define OPTIMIZER_SWITCH_NO_FIRSTMATCH 8
 
 /*
   Replication uses 8 bytes to store SQL_MODE in the binary log. The day you
@@ -927,7 +932,7 @@ struct Query_cache_query_flags
 {
   unsigned int client_long_flag:1;
   unsigned int client_protocol_41:1;
-  unsigned int result_in_binary_protocol:1;
+  unsigned int protocol_type:2;
   unsigned int more_results_exists:1;
   unsigned int pkt_nr;
   uint character_set_client_num;
@@ -1141,6 +1146,7 @@ void init_update_queries(void);
 void free_max_user_conn(void);
 pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
+
 bool do_command(THD *thd);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length);
@@ -1464,19 +1470,6 @@ enum enum_schema_tables get_schema_table_idx(ST_SCHEMA_TABLE *schema_table);
 
 #define is_schema_db(X) \
   !my_strcasecmp(system_charset_info, INFORMATION_SCHEMA_NAME.str, (X))
-
-/* sql_prepare.cc */
-
-void mysql_stmt_prepare(THD *thd, const char *packet, uint packet_length);
-void mysql_stmt_execute(THD *thd, char *packet, uint packet_length);
-void mysql_stmt_close(THD *thd, char *packet);
-void mysql_sql_stmt_prepare(THD *thd);
-void mysql_sql_stmt_execute(THD *thd);
-void mysql_sql_stmt_close(THD *thd);
-void mysql_stmt_fetch(THD *thd, char *packet, uint packet_length);
-void mysql_stmt_reset(THD *thd, char *packet);
-void mysql_stmt_get_longdata(THD *thd, char *pos, ulong packet_length);
-void reinit_stmt_before_use(THD *thd, LEX *lex);
 
 /* sql_handler.cc */
 bool mysql_ha_open(THD *thd, TABLE_LIST *tables, bool reopen);
@@ -1861,6 +1854,7 @@ void TEST_filesort(SORT_FIELD *sortorder,uint s_length);
 void print_plan(JOIN* join,uint idx, double record_count, double read_time,
                 double current_read_time, const char *info);
 void print_keyuse_array(DYNAMIC_ARRAY *keyuse_array);
+void print_sjm(SJ_MATERIALIZATION_INFO *sjm);
 #define EXTRA_DEBUG_DUMP_TABLE_LISTS
 #ifdef EXTRA_DEBUG_DUMP_TABLE_LISTS
 void dump_TABLE_LIST_graph(SELECT_LEX *select_lex, TABLE_LIST* tl);
@@ -2352,6 +2346,7 @@ uint build_table_shadow_filename(char *buff, size_t bufflen,
 #define FN_TO_IS_TMP    (1 << 1)
 #define FN_IS_TMP       (FN_FROM_IS_TMP | FN_TO_IS_TMP)
 #define NO_FRM_RENAME   (1 << 2)
+#define FRM_ONLY        (1 << 3)
 
 /* from hostname.cc */
 char *ip_to_hostname(struct sockaddr_storage *in, int addrLen, uint *errors);

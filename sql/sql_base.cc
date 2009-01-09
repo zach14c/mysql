@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "sp.h"
 #include "sql_trigger.h"
 #include "transaction.h"
+#include "sql_prepare.h"
 #include <m_ctype.h>
 #include <my_dir.h>
 #include <hash.h>
@@ -45,9 +46,9 @@ public:
 
   virtual ~Prelock_error_handler() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
 
   bool safely_trapped_errors();
 
@@ -58,10 +59,10 @@ private:
 
 
 bool
-Prelock_error_handler::handle_error(uint sql_errno,
-                                    const char * /* message */,
+Prelock_error_handler::handle_error(THD * /* thd */,
                                     MYSQL_ERROR::enum_warning_level /* level */,
-                                    THD * /* thd */)
+                                    uint sql_errno,
+                                    const char * /* message */)
 {
   if (sql_errno == ER_NO_SUCH_TABLE)
   {
@@ -556,7 +557,7 @@ static TABLE_SHARE
 
     @todo Rework alternative ways to deal with ER_NO_SUCH TABLE.
   */
-  if (share || thd->is_error() && thd->main_da.sql_errno() != ER_NO_SUCH_TABLE)
+  if (share || thd->is_error() && thd->stmt_da->sql_errno() != ER_NO_SUCH_TABLE)
 
     DBUG_RETURN(share);
 
@@ -602,7 +603,7 @@ static TABLE_SHARE
     DBUG_RETURN(0);
   }
   /* Table existed in engine. Let's open it */
-  mysql_reset_errors(thd, 1);                   // Clear warnings
+  thd->warning_info->clear_warning_info(thd->query_id);
   thd->clear_error();                           // Clear error message
   DBUG_RETURN(get_table_share(thd, table_list, key, key_length,
                               db_flags, error));
@@ -1131,6 +1132,28 @@ static void mark_temp_tables_as_free_for_reuse(THD *thd)
       /* Detach temporary MERGE children from temporary parent. */
       DBUG_ASSERT(table->file);
       table->file->extra(HA_EXTRA_DETACH_CHILDREN);
+
+      /*
+        Reset temporary table lock type to it's default value (TL_WRITE).
+
+        Statements such as INSERT INTO .. SELECT FROM tmp, CREATE TABLE
+        .. SELECT FROM tmp and UPDATE may under some circumstances modify
+        the lock type of the tables participating in the statement. This
+        isn't a problem for non-temporary tables since their lock type is
+        reset at every open, but the same does not occur for temporary
+        tables for historical reasons.
+
+        Furthermore, the lock type of temporary tables is not really that
+        important because they can only be used by one query at a time and
+        not even twice in a query -- a temporary table is represented by
+        only one TABLE object. Nonetheless, it's safer from a maintenance
+        point of view to reset the lock type of this singleton TABLE object
+        as to not cause problems when the table is reused.
+
+        Even under LOCK TABLES mode its okay to reset the lock type as
+        LOCK TABLES is allowed (but ignored) for a temporary table.
+      */
+      table->reginfo.lock_type= TL_WRITE;
     }
   }
 }
@@ -1367,9 +1390,9 @@ void close_thread_tables(THD *thd,
    */
   if (!(thd->state_flags & Open_tables_state::BACKUPS_AVAIL))
   {
-    thd->main_da.can_overwrite_status= TRUE;
+    thd->stmt_da->can_overwrite_status= TRUE;
     thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
-    thd->main_da.can_overwrite_status= FALSE;
+    thd->stmt_da->can_overwrite_status= FALSE;
 
     /*
       Reset transaction state, but only if we're not inside a
@@ -2346,9 +2369,6 @@ bool open_table(THD *thd, TABLE_LIST *table_list, MEM_ROOT *mem_root,
   int error;
   TABLE_SHARE *share;
   DBUG_ENTER("open_table");
-
-  /* Parsing of partitioning information from .frm needs thd->lex set up. */
-  DBUG_ASSERT(thd->lex->is_lex_started);
 
   *action= OT_NO_ACTION;
 
@@ -3483,7 +3503,7 @@ recover_from_failed_open_table_attempt(THD *thd, TABLE_LIST *table,
       ha_create_table_from_engine(thd, table->db, table->table_name);
       pthread_mutex_unlock(&LOCK_open);
 
-      mysql_reset_errors(thd, 1);         // Clear warnings
+      thd->warning_info->clear_warning_info(thd->query_id);
       thd->clear_error();                 // Clear error message
       mdl_release_lock(&thd->mdl_context, table->mdl_lock_data);
       mdl_remove_lock(&thd->mdl_context, table->mdl_lock_data);
@@ -3646,9 +3666,6 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
   */
   for (tables= *start; tables ;tables= tables->next_global)
   {
-    DBUG_PRINT("tcache", ("opening table: '%s'.'%s'  item: %p",
-                          tables->db, tables->table_name, tables));
-
     safe_to_ignore_table= FALSE;
 
     /*
@@ -3694,6 +3711,8 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
       }
       DBUG_RETURN(-1);
     }
+    DBUG_PRINT("tcache", ("opening table: '%s'.'%s'  item: %p",
+                          tables->db, tables->table_name, tables)); //psergey: invalid read of size 1 here
     (*counter)++;
 
     /* Not a placeholder: must be a base table or a view. Let us open it. */
@@ -3838,7 +3857,7 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
       else if (tables->lock_type == TL_READ_DEFAULT)
         tables->table->reginfo.lock_type=
           read_lock_type_for_table(thd, tables->table);
-      else if (tables->table->s->tmp_table == NO_TMP_TABLE)
+      else
         tables->table->reginfo.lock_type= tables->lock_type;
     }
     tables->table->grant= tables->grant;
@@ -6528,7 +6547,14 @@ int setup_wild(THD *thd, TABLE_LIST *tables, List<Item> &fields,
     /* make * substituting permanent */
     SELECT_LEX *select_lex= thd->lex->current_select;
     select_lex->with_wild= 0;
-    select_lex->item_list= fields;
+
+    /*
+      The assignment below is translated to memcpy() call (at least on some
+      platforms). memcpy() expects that source and destination areas do not
+      overlap. That problem was detected by valgrind.
+    */
+    if (&select_lex->item_list != &fields)
+      select_lex->item_list= fields;
 
     thd->restore_active_arena(arena, &backup);
   }
@@ -7680,8 +7706,7 @@ static bool tdc_wait_for_old_versions(THD *thd, MDL_CONTEXT *context)
       mdl_get_tdc_key(lock_data, &key);
       if ((share= (TABLE_SHARE*) hash_search(&table_def_cache, (uchar*) key.str,
                                              key.length)) &&
-          share->version != refresh_version &&
-          !share->used_tables.is_empty())
+          share->version != refresh_version)
         break;
     }
     if (!lock_data)
