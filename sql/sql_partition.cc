@@ -6662,6 +6662,7 @@ int get_part_iter_for_interval_via_mapping(partition_info *part_info,
   uint field_len= field->pack_length_in_rec();
   DBUG_ENTER("get_part_iter_for_interval_via_mapping");
   DBUG_ASSERT(!is_subpart);
+  part_iter->ret_null_part= part_iter->ret_null_part_orig= FALSE;
 
   if (part_info->part_type == RANGE_PARTITION)
   {
@@ -6682,7 +6683,6 @@ int get_part_iter_for_interval_via_mapping(partition_info *part_info,
     max_endpoint_val=    part_info->no_list_values;
     part_iter->get_next= get_next_partition_id_list;
     part_iter->part_info= part_info;
-    part_iter->ret_null_part= part_iter->ret_null_part_orig= FALSE;
     if (max_endpoint_val == 0)
     {
       /*
