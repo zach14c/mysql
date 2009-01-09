@@ -31,14 +31,16 @@
 %{?_with_yassl:%define YASSL_BUILD 1}
 %{!?_with_yassl:%define YASSL_BUILD 0}
 
-# use "rpmbuild --with falcon" or "rpm --define '_with_falcon 1'" (for RPM 3.x)
-# to build with falcon support (off by default)
+# use "rpmbuild --without falcon" or "rpm --define '_without_falcon 1'" (for
+# RPM 3.x) to build without falcon support (on by default on supported archs)
 #
-# Note: No default --with-falcon, as generic RPM is compiled with gcc 3.x.
-# Falcon requires gcc 4.x that requires libstdc++.6 that is not on most
-# "older" Linux systems.
-%{?_with_falcon:%define FALCON_BUILD 1}
-%{!?_with_falcon:%define FALCON_BUILD 0}
+# Note that falcon requires gcc 4.x that in turn requires libstdc++.6 which is
+# not available on most "older" Linux systems.
+%{?_without_falcon:%define FALCON_BUILD 0}
+%{!?_without_falcon:%define FALCON_BUILD 1}
+%ifnarch i386 x86_64
+%define FALCON_BUILD 0
+%endif
 
 # use "rpmbuild --with cluster" or "rpm --define '_with_cluster 1'" (for RPM 3.x)
 # to build with cluster support (off by default)
@@ -854,6 +856,11 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Fri Jan 09 2009 Jonathan Perkin <jperkin@sun.com>
+
+- Revert previous falcon changes, it is not yet supported on IA64,
+  and we want to build by default on supported platforms.
+
 * Fri Nov 07 2008 Joerg Bruehe <joerg@mysql.com>
 
 - Correct yesterday's fix, so that it also works for the last flag,
