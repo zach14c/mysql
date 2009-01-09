@@ -16,12 +16,13 @@ AC_CACHE_CHECK([if Falcon Storage Engine is supported on $MACHINE_TYPE],
     x86_64) falcon_cv_supported_by_machine="yes" ;;
     powerpc)falcon_cv_supported_by_machine="yes" ;;
     sparc)
-      AC_TRY_LINK([
+      AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM([[
 #include <stdlib.h>
 volatile int target= 0;
 int compare= 1;
 int exchange= 2;
-      ],[
+      ]],[[
 #if defined(__SUNPRO_C) || defined(__SUNPRO_CC)
   /* When compiling with Sun Studio compiler we use the Solaris atomic 
      functions if they are available. These were first introduced in 
@@ -57,8 +58,9 @@ int exchange= 2;
 	  : "memory", "cc"
 	  )
 #endif /* !__SUNPRO_C && !__SUNPRO_CC */
-      ], falcon_cv_supported_by_machine="yes",
-         falcon_cv_supported_by_machine="no")
+        ]])],
+        [falcon_cv_supported_by_machine="yes"],
+        [falcon_cv_supported_by_machine="no"])
       ;;
     *) falcon_cv_supported_by_machine="no" ;;
   esac
@@ -130,8 +132,8 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
   CXXFLAGS=$FALCON_CXXFLAGS
   AC_CACHE_CHECK([if compiler and compiler options support C++ exceptions for Falcon],
 	            falcon_cv_supported_by_compiler,[
-  AC_TRY_RUN([
-    int main() {
+    AC_RUN_IFELSE(
+      [AC_LANG_PROGRAM([],[[
       try {
         throw 1;
       }
@@ -139,9 +141,10 @@ MYSQL_PLUGIN_ACTIONS(falcon,[
         return 0;
       }
       return -1;
-    }
-  ], falcon_cv_supported_by_compiler="yes",
-     falcon_cv_supported_by_compiler="no", )
+      ]])],
+      [falcon_cv_supported_by_compiler="yes"],
+      [falcon_cv_supported_by_compiler="no"],
+      [falcon_cv_supported_by_compiler="yes"]) dnl For cross compiling, assume it works
   ])
 
   if test "$falcon_cv_supported_by_compiler" != "yes"; then

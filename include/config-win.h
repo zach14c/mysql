@@ -192,7 +192,6 @@ typedef SSIZE_T ssize_t;
 #define SIGPIPE SIGINT
 #define RETQSORTTYPE void
 #define QSORT_TYPE_IS_VOID
-#define RETSIGTYPE void
 #define SOCKET_SIZE_TYPE int
 #define my_socket_defined
 #define byte_defined
