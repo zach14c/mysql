@@ -1122,7 +1122,7 @@ void Transaction::releaseSavepoint(int savePointId)
 			for (RecordVersion *record = *savePoint->records; record && record->savePointId == savePointId; record = record->nextInTrans)
 				{
 				record->savePointId = nextLowerSavePointId;
-				record->scavenge(transactionId, nextLowerSavePointId);
+				record->scavengeSavepoint(transactionId, nextLowerSavePointId);
 				}
 
 			savePoint->next = freeSavePoints;

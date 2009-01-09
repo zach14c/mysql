@@ -1336,7 +1336,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 		
-		record->scavenge(transaction->transactionId, transaction->curSavePointId);
+		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
 
 		record->release();
 		}
@@ -3163,7 +3163,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 
-		record->scavenge(transaction->transactionId, transaction->curSavePointId);
+		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
 
 		if (record)
 			record->release();
@@ -3597,13 +3597,19 @@ bool Table::setAlter(void)
 
 #undef new
 
+// Allocate a RecordVersion object from the record cache.
+// Use an non-thread-safe increment of recordPoolAllocCount.  It allows 
+// full concurrency by multiple threads but it may miss a check every 
+// now and then.  This keeps the code from doing this check every time.
+// It is done about every 128 allocations from the record cache.
+
 RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transaction, Record* priorVersion)
 {
 	for (int n = 1;; ++n)
 		{
 		try
 			{
-			if ((++database->recordPoolAllocCount & 0xFF) == 0)
+			if ((++database->recordPoolAllocCount & 0x7F) == 0)
 				database->checkRecordScavenge();
 
 			return POOL_NEW(database->recordDataPool) RecordVersion(this, format, transaction, priorVersion);
@@ -3627,13 +3633,19 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 	return NULL;
 }
 
+// Allocate a Record object from the record cache.
+// Use an non-thread-safe increment of recordPoolAllocCount.  It allows 
+// full concurrency by multiple threads but it may miss a check every 
+// now and then.  This keeps the code from doing this check every time.
+// It is done about every 128 allocations from the record cache.
+
 Record* Table::allocRecord(int recordNumber, Stream* stream)
 {
 	for (int n = 1;; ++n)
 		{
 		try
 			{
-			if ((++database->recordPoolAllocCount & 0xFF) == 0)
+			if ((++database->recordPoolAllocCount & 0x7F) == 0)
 				database->checkRecordScavenge();
 
 			return POOL_NEW(database->recordDataPool) Record (this, recordNumber, stream);

@@ -1741,6 +1741,12 @@ void Database::scavenge()
 	
 	syncStmt.unlock();
 
+	// purgeTransactions will release records that are  attached to old 
+	// transactions, thus freeing up old invisible records to be pruned 
+	// and actually released.  It is not likely that the scavenger will 
+	// retire these freshly released base records, but disconnecting 
+	// pruneable records from their transactions is definitely needed.
+
 	transactionManager->purgeTransactions();
 
 	// Scavenge the record cache
@@ -1808,6 +1814,15 @@ void Database::scavengeRecords(void)
 
 	recordScavenge.print();
 	// Log::log(analyze(analyzeRecordLeafs));
+
+	// syncmemory is used to protect lastActiveMemoryChecked 
+	// and lastGenerationMemory.  In addition, it is used to 
+	// serialize signaling of the scavenger thread by allowing 
+	// only one thread at a time to check and change 
+	// scavengerThreadSignaled.  It is a Mutex instead of a 
+	// SyncObject because it is only locked exclusively, no 
+	// shared locks.  It does not need any of the other 
+	// features of SyncObject.  And a Mutex is faster.
 
 	Sync syncMem(&syncMemory, "Database::checkRecordScavenge");
 	syncMem.lock(Exclusive);
@@ -2520,9 +2535,12 @@ void Database::checkRecordScavenge(void)
 		if (   !scavengerThreadSignaled 
 			&& (recordDataPool->activeMemory > lastActiveMemoryChecked))
 			{
-			// Start a new age generation regularly
+			// Start a new age generation regularly.  Note that since activeMemory
+			// can go down due to a recent scavenge, it is possible for
+			// lastGenerationMemory to be > recordDataPool->activeMemory
 
-			if ((recordDataPool->activeMemory - lastGenerationMemory) > recordScavengeMaxGroupSize)
+			if (  (int64) (recordDataPool->activeMemory - lastGenerationMemory)
+			    > (int64) recordScavengeMaxGroupSize)
 				{
 				// Let the scavenger run to prune records.  
 				// It will also retire records if recordScavengeThreshold has been reached.

@@ -43,7 +43,7 @@ public:
 	virtual Record*		getPriorVersion();
 	virtual Record*		getGCPriorVersion(void);
 	virtual bool		retire(RecordScavenge *recordScavenge);
-	virtual void		scavenge(TransId targetTransactionId, int oldestActiveSavePoint);
+	virtual void		scavengeSavepoint(TransId targetTransactionId, int oldestActiveSavePoint);
 	virtual bool		isVersion();
 	virtual void		rollback(Transaction *transaction);
 	virtual Record*		fetchVersion (Transaction * trans);

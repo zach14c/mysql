@@ -219,12 +219,12 @@ bool RecordVersion::retire(RecordScavenge *recordScavenge)
 
 // Scavenge record versions replaced within a savepoint.
 
-void RecordVersion::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)
+void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestActiveSavePointId)
 {
 	if (!priorVersion)
 		return;
 
-	Sync syncPrior(getSyncPrior(), "RecordVersion::scavenge");
+	Sync syncPrior(getSyncPrior(), "RecordVersion::scavengeSavepoint");
 	syncPrior.lock(Shared);
 	
 	Record *rec = priorVersion;

@@ -929,6 +929,10 @@ void Record::validateData(void)
 }
 
 // Allocate a record data buffer from the record cache.
+// Use an non-thread-safe increment of recordPoolAllocCount.  It allows 
+// full concurrency by multiple threads but it may miss a check every 
+// now and then.  This keeps the code from doing this check every time.
+// It is done about every 128 allocations from the record cache.
 
 char* Record::allocRecordData(int length)
 {
@@ -936,7 +940,7 @@ char* Record::allocRecordData(int length)
 		try
 			{
 			if (format && format->table)
-				if ((++format->table->database->recordPoolAllocCount & 0xFF) == 0)
+				if ((++format->table->database->recordPoolAllocCount & 0x7F) == 0)
 					format->table->database->checkRecordScavenge();
 
 			return POOL_NEW(format->table->database->recordDataPool) char[length];
