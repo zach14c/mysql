@@ -21,10 +21,6 @@ else
 LIBMYSQLCLIENT_LA =		$(top_builddir)/libmysql/libmysqlclient.la
 endif
 
-MYSQLDATAdir =          $(localstatedir)
-MYSQLSHAREdir =         $(pkgdatadir)
-MYSQLBASEdir=           $(prefix)
-MYSQLLIBdir=            $(pkglibdir)
 pkgplugindir =		$(pkglibdir)/plugin
 INCLUDES =              -I$(top_srcdir)/include -I$(top_builddir)/include \
 			-I$(top_srcdir)/regex \
@@ -41,7 +37,7 @@ noinst_HEADERS =	ha_archive.h azio.h
 noinst_PROGRAMS	=	archive_test archive_reader archive_performance concurrency_test
 
 EXTRA_LTLIBRARIES =	ha_archive.la
-pkglib_LTLIBRARIES =	@plugin_archive_shared_target@
+pkgplugin_LTLIBRARIES =	@plugin_archive_shared_target@
 ha_archive_la_LDFLAGS =	-module -rpath $(pkgplugindir) $(LDADD)
 ha_archive_la_CXXFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_archive_la_CFLAGS =	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN

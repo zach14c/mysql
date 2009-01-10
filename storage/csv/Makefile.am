@@ -15,10 +15,8 @@
 
 #called from the top level Makefile
 
-MYSQLDATAdir =          $(localstatedir)
-MYSQLSHAREdir =         $(pkgdatadir)
-MYSQLBASEdir=           $(prefix)
-MYSQLLIBdir=            $(pkglibdir)
+pkgplugindir=		$(pkglibdir)/plugin
+
 INCLUDES =              -I$(top_builddir)/include \
 			-I$(top_srcdir)/include \
 			-I$(top_srcdir)/regex \
@@ -30,8 +28,8 @@ DEFS =	@DEFS@
 noinst_HEADERS	  =	ha_tina.h transparent_file.h
 
 EXTRA_LTLIBRARIES =	ha_csv.la
-pkglib_LTLIBRARIES =	@plugin_csv_shared_target@
-ha_csv_la_LDFLAGS =	-module -rpath $(MYSQLLIBdir)
+pkgplugin_LTLIBRARIES =	@plugin_csv_shared_target@
+ha_csv_la_LDFLAGS =	-module -rpath $(pkgplugindir)
 ha_csv_la_CXXFLAGS =	$(AM_CFLAGS) -DMYSQL_PLUGIN
 ha_csv_la_SOURCES =	transparent_file.cc ha_tina.cc 
 

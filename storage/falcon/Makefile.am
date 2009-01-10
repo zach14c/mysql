@@ -21,6 +21,8 @@ MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 DEFS= @DEFS@ \
       -D_REENTRANT -D_PTHREADS -DFALCONDB -DSTORAGE_ENGINE -DNAMESPACE=Nfs
 
+pkgplugindir=	$(pkglibdir)/plugin
+
 INCLUDES= -I$(top_srcdir)/include -I$(top_builddir)/include \
 	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql -I$(srcdir) \
 	  -I$(srcdir)/TransformLib @ZLIB_INCLUDES@ @FALCON_SPARC_ASSEMBLY@
@@ -394,8 +396,8 @@ noinst_HEADERS=	$(falcon_headers) \
 		falcon_probes.h
 
 EXTRA_LTLIBRARIES=	ha_falcon.la
-pkglib_LTLIBRARIES=	@plugin_falcon_shared_target@
-ha_falcon_la_LDFLAGS=	-module -rpath $(pkglibdir)
+pkgplugin_LTLIBRARIES=	@plugin_falcon_shared_target@
+ha_falcon_la_LDFLAGS=	-module -rpath $(pkgplugindir)
 ha_falcon_la_CXXFLAGS=	$(AM_CXXFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_CFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_LIBADD=	TransformLib/libtransform.la
