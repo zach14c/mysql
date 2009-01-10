@@ -197,7 +197,7 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				ageGroups[0] += size;
 			else if (age < 1)
 				ageGroups[0] += size;
-			else if (age < AGE_GROUPS)
+			else if (age < (int64) AGE_GROUPS)
 				ageGroups[age] += size;
 			else	// age >= AGE_GROUPS
 				{
