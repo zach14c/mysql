@@ -662,9 +662,14 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man8/mysqld.8*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqld_multi.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqld_safe.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_convert_table_format.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_fix_extensions.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_fix_privilege_tables.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_install_db.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_secure_installation.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_setpermission.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql_upgrade.1*
+%doc %attr(644, root, man) %{_mandir}/man1/mysql_waitpid.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlhotcopy.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlman.1*
 %doc %attr(644, root, man) %{_mandir}/man1/mysql.server.1*
@@ -674,10 +679,17 @@ fi
 %doc %attr(644, root, man) %{_mandir}/man1/mysqlbug.1*
 %doc %attr(644, root, man) %{_mandir}/man1/perror.1*
 %doc %attr(644, root, man) %{_mandir}/man1/replace.1*
+%doc %attr(644, root, man) %{_mandir}/man1/resolve_stack_dump.1*
+%doc %attr(644, root, man) %{_mandir}/man1/resolveip.1*
 
 %ghost %config(noreplace,missingok) %{_sysconfdir}/my.cnf
 
 %attr(755, root, root) %{_bindir}/innochecksum
+%attr(755, root, root) %{_bindir}/maria_chk
+%attr(755, root, root) %{_bindir}/maria_dump_log
+%attr(755, root, root) %{_bindir}/maria_ftdump
+%attr(755, root, root) %{_bindir}/maria_pack
+%attr(755, root, root) %{_bindir}/maria_read_log
 %attr(755, root, root) %{_bindir}/my_print_defaults
 %attr(755, root, root) %{_bindir}/myisam_ftdump
 %attr(755, root, root) %{_bindir}/myisamchk
@@ -706,6 +718,8 @@ fi
 %attr(755, root, root) %{_sbindir}/mysqld
 %attr(755, root, root) %{_sbindir}/mysqld-debug
 %attr(755, root, root) %{_sbindir}/rcmysql
+
+%attr(755, root, root) %{_libdir}/mysql/plugin/*.so*
 
 %attr(644, root, root) %config(noreplace,missingok) %{_sysconfdir}/logrotate.d/mysql
 %attr(755, root, root) %{_sysconfdir}/init.d/mysql
@@ -808,7 +822,9 @@ fi
 %{_includedir}/mysql/*
 %{_datadir}/aclocal/mysql.m4
 %{_libdir}/mysql/libdbug.a
+%{_libdir}/mysql/libdbug.la
 %{_libdir}/mysql/libheap.a
+%{_libdir}/mysql/libmaria.a
 %if %{have_libgcc}
 %{_libdir}/mysql/libmygcc.a
 %endif
@@ -819,7 +835,9 @@ fi
 %{_libdir}/mysql/libmysqlclient_r.a
 %{_libdir}/mysql/libmysqlclient_r.la
 %{_libdir}/mysql/libmystrings.a
+%{_libdir}/mysql/libmystrings.la
 %{_libdir}/mysql/libmysys.a
+%{_libdir}/mysql/libmysys.la
 %if %{CLUSTER_BUILD}
 %{_libdir}/mysql/libndbclient.a
 %{_libdir}/mysql/libndbclient.la
@@ -827,6 +845,12 @@ fi
 %{_libdir}/mysql/libvio.a
 %{_libdir}/mysql/libz.a
 %{_libdir}/mysql/libz.la
+%{_libdir}/mysql/plugin/ha_example.a
+%{_libdir}/mysql/plugin/ha_example.la
+%{_libdir}/mysql/plugin/libdaemon_example.a
+%{_libdir}/mysql/plugin/libdaemon_example.la
+%{_libdir}/mysql/plugin/mypluglib.a
+%{_libdir}/mysql/plugin/mypluglib.la
 
 %files shared
 %defattr(-, root, root, 0755)
@@ -856,6 +880,10 @@ fi
 # itself - note that they must be ordered by date (important when
 # merging BK trees)
 %changelog
+* Sat Jan 10 2009 Jonathan Perkin <jperkin@sun.com>
+
+- Add a bunch of missing files, most notably the maria utilities.
+
 * Fri Jan 09 2009 Jonathan Perkin <jperkin@sun.com>
 
 - Revert previous falcon changes, it is not yet supported on IA64,
