@@ -23,4 +23,4 @@ log_output_basic                  : Bug #40988 log_output_basic.test succeeded t
 ;wait_timeout_func                 : Bug #41225 joro wait_timeout_func fails
 ;kill                              : Bug#37780 2008-12-03 HHunger need some changes to be robust enough for pushbuild.
 query_cache_28249                 : Bug#41098 Query Cache returns wrong result with concurrent insert
-select_jcl6                       : Bug#41919 select_jcl6 fails with valgrind errors
+
