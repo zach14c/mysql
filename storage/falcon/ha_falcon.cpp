@@ -3091,7 +3091,7 @@ void StorageInterface::decodeRecord(uchar *buf)
 				case MYSQL_TYPE_TIMESTAMP:
 					{
 					int value = (int) (dataStream->value.integer64 / 1000);
-					longstore(field->ptr, value);
+					((Field_timestamp*)field)->store_timestamp(value);
 					}
 					break;
 
