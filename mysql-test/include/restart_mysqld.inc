@@ -9,9 +9,6 @@ EOF
 # it 30 seconds to die before zapping it.
 shutdown_server 30;
 
-# Check server is gone.
---source include/wait_until_disconnected.inc
-
 # Write file to make mysql-test-run.pl start up the server again.
 --append_file $MYSQLTEST_VARDIR/tmp/master0.expect
 restart

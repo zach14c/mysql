@@ -528,22 +528,25 @@ Record* Table::fetchNext(int32 start)
 				// Don't bother with a record that is half-way inserted.
 
 				if (record->state == recInserting)
+					{
+					recordNumber = bitNumber + 1;
 					continue;
+					}
 
 				break;
 				}
 
 			if (backloggedRecords && (record = backlogFetch(bitNumber)))
 				break;
-				
+
 			sync.unlock();
-			
+
 			for (int n = 0; (record = databaseFetch(bitNumber)); ++n)
 				{
 				if (insert(record, NULL, bitNumber))
 					{
 					record->poke();
-					
+
 					return record;
 					}
 
