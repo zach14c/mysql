@@ -332,3 +332,28 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 Warnings:
 Note	1003	select min(`test`.`t1`.`pk`) AS `MIN(t1.pk)` from `test`.`t1` where 0
 DROP TABLE t1, t2;
+#
+# BUG#42048 Discrepancy between MyISAM and Maria's ICP implementation
+#
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b char(20), filler char(200), key(a,b(10)));
+insert into t1 select A.a + 10*(B.a + 10*C.a), 'bbb','filler' from t0 A, t0 B, t0 C;
+update t1 set b=repeat(char(65+a), 20) where a < 25;
+This must show range + using index condition:
+explain select * from t1 where a < 10 and b = repeat(char(65+a), 20);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	a	a	5	NULL	19	Using index condition; Using where
+select * from t1 where a < 10 and b = repeat(char(65+a), 20);
+a	b	filler
+0	AAAAAAAAAAAAAAAAAAAA	filler
+1	BBBBBBBBBBBBBBBBBBBB	filler
+2	CCCCCCCCCCCCCCCCCCCC	filler
+3	DDDDDDDDDDDDDDDDDDDD	filler
+4	EEEEEEEEEEEEEEEEEEEE	filler
+5	FFFFFFFFFFFFFFFFFFFF	filler
+6	GGGGGGGGGGGGGGGGGGGG	filler
+7	HHHHHHHHHHHHHHHHHHHH	filler
+8	IIIIIIIIIIIIIIIIIIII	filler
+9	JJJJJJJJJJJJJJJJJJJJ	filler
+drop table t0,t1;
