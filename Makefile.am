@@ -53,10 +53,8 @@ init-db:		all
 bin-dist:		all
 	$(top_builddir)/scripts/make_binary_distribution @MAKE_BINARY_DISTRIBUTION_OPTIONS@
 
-# Remove BK's "SCCS" subdirectories from source distribution
 # Create initial database files for Windows installations and check them.
 dist-hook:
-	rm -rf `find $(distdir) -type d -name SCCS -print`
 	mkdir -p $(distdir)/win
 	scripts/mysql_install_db --no-defaults --cross-bootstrap \
 		--builddir=$(top_builddir) \
@@ -336,6 +334,3 @@ do_abi_check:
 	                  @DIFF@ -w $$file.pp $(top_builddir)/abi_check.out; \
 	                  @RM@ $(top_builddir)/abi_check.out; \
 	done
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

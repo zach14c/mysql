@@ -19,9 +19,8 @@
 
 noinst_LTLIBRARIES = libbackup.la libbackupstream.la
 
-INCLUDES = \
+AM_CPPFLAGS = \
   @ZLIB_INCLUDES@ \
-  -I$(top_builddir)/include \
   -I$(top_srcdir)/include \
   -I$(top_srcdir)/sql \
   -I$(top_srcdir)/regex
@@ -79,6 +78,3 @@ DEFS = \
   @DEFS@
 
 EXTRA_DIST =	CMakeLists.txt 
-	
-# Don't update the files from bitkeeper
-%::SCCS/s.%

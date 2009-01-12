@@ -17,11 +17,9 @@
 
 pkgplugindir=		$(pkglibdir)/plugin
 
-INCLUDES =              -I$(top_builddir)/include \
-			-I$(top_srcdir)/include \
+AM_CPPFLAGS =		-I$(top_srcdir)/include \
 			-I$(top_srcdir)/regex \
-			-I$(top_srcdir)/sql \
-                        -I$(srcdir)
+			-I$(top_srcdir)/sql
 LDADD =
 
 DEFS =	@DEFS@
@@ -30,14 +28,11 @@ noinst_HEADERS	  =	ha_tina.h transparent_file.h
 EXTRA_LTLIBRARIES =	ha_csv.la
 pkgplugin_LTLIBRARIES =	@plugin_csv_shared_target@
 ha_csv_la_LDFLAGS =	-module -rpath $(pkgplugindir)
-ha_csv_la_CXXFLAGS =	$(AM_CFLAGS) -DMYSQL_PLUGIN
+ha_csv_la_CPPFLAGS =	$(AM_CPPFLAGS) -DMYSQL_PLUGIN
 ha_csv_la_SOURCES =	transparent_file.cc ha_tina.cc 
 
 EXTRA_LIBRARIES =	libcsv.a
 noinst_LIBRARIES =	@plugin_csv_static_target@
-libcsv_a_CXXFLAGS =	$(AM_CFLAGS)
 libcsv_a_SOURCES =	transparent_file.cc ha_tina.cc
 
 EXTRA_DIST =		CMakeLists.txt plug.in
-# Don't update the files from bitkeeper
-%::SCCS/s.%

@@ -5,7 +5,7 @@
 ASRC =			$(srcdir)/vi.c $(srcdir)/emacs.c $(srcdir)/common.c
 AHDR =			vi.h emacs.h common.h
 
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include
+AM_CPPFLAGS =		-I$(top_srcdir)/include
 
 noinst_LIBRARIES =	libedit.a
 
@@ -101,6 +101,3 @@ term.o: vi.h emacs.h common.h help.h fcns.h
 tty.o: vi.h emacs.h common.h help.h fcns.h 
 help.o: vi.h emacs.h common.h help.h fcns.h
 fcns.o: vi.h emacs.h common.h help.h fcns.h
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

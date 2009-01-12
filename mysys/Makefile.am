@@ -16,8 +16,8 @@
 MYSQLDATAdir =		$(localstatedir)
 MYSQLSHAREdir =		$(pkgdatadir)
 MYSQLBASEdir=		$(prefix)
-INCLUDES =		@ZLIB_INCLUDES@ -I$(top_builddir)/include \
-			-I$(top_srcdir)/include -I$(srcdir)
+AM_CPPFLAGS =		@ZLIB_INCLUDES@ \
+			-I$(top_srcdir)/include
 LDADD =			$(top_builddir)/strings/libmystringslt.la \
 			$(top_builddir)/dbug/libdbuglt.la @ZLIB_LIBS@
 
@@ -87,6 +87,3 @@ DEFS =			-DDEFAULT_BASEDIR=\"$(prefix)\" \
 			-DDEFAULT_GROUP_SUFFIX_ENV=MYSQL_GROUP_SUFFIX \
 			-DDEFAULT_SYSCONFDIR="\"$(sysconfdir)\"" \
                         @DEFS@
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%
