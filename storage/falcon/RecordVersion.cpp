@@ -182,10 +182,10 @@ void RecordVersion::commit()
 
 bool RecordVersion::retire(RecordScavenge *recordScavenge)
 {
-	bool neededByAnyActiveTrans = false;
+	bool neededByAnyActiveTrans = true;
 	if (  !transaction 
 		|| transaction->committedBefore(recordScavenge->oldestActiveTransaction))
-		neededByAnyActiveTrans = true;
+		neededByAnyActiveTrans = false;
 
 	if (   generation <= recordScavenge->scavengeGeneration
 		&& useCount == 1
