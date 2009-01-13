@@ -169,7 +169,13 @@ private:
   /** 
     Indicates if tables have been locked with @c lock_tables_for_restore()
   */
-  bool m_tables_locked; 
+  bool m_tables_locked;
+
+  /**
+    Table list created by lock_tables_for_restore() and used by
+    unlock_tables(). Members are allocated from m_thd->mem_root.
+  */
+  TABLE_LIST *m_backup_tables;
 
   /**
     Indicates we must turn binlog back on in the close method. This is
