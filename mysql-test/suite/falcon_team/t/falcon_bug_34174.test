@@ -36,6 +36,8 @@ SELECT * FROM t1;
 INSERT INTO t1 VALUES (1,1);
 --send INSERT INTO t1 VALUES (0,3)
 
+--real_sleep 1
+
 --echo # switching to default connection
 connection default;
 SELECT * FROM t1;
