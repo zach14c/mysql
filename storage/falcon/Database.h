@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -47,6 +47,12 @@ static const int FALC0N_FREEZE				= 8;
 static const int FALC0N_REPORT_WRITES		= 16;
 static const int FALC0N_SYNC_HANDLER		= 32;
 static const int FALC0N_TEST_BITMAP			= 64;
+
+// This constant defines how many times a thread will sleep(10) while 
+// waiting for record cache memory to be freed up by the scavenger thread
+// before it gives up and returns OUT_OF_RECORD_MEMORY_ERROR.
+
+static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
 
 #define TABLE_HASH_SIZE		101
 
@@ -125,9 +131,10 @@ public:
 	Repository*		findRepository(const char *schema, const char *name);
 	const char*		fetchTemplate (JString applicationName, JString templateName, TemplateContext *context);
 	void			licenseCheck();
-	void			cleanupRecords (RecordScavenge *recordScavenge);
 	void			serverOperation (int op, Parameters *parameters);
-	void			retireRecords(bool forced);
+	void			scavengeRecords(void);
+	void			pruneRecords(RecordScavenge* recordScavenge);
+	void			retireRecords(RecordScavenge* recordScavenge);
 	int				getMemorySize (const char *string);
 	JString			analyze(int mask);
 	void			upgradeSystemTables();
@@ -146,6 +153,9 @@ public:
 	int				createSequence(int64 initialValue);
 	void			ticker();
 	static void		ticker (void *database);
+	static void		scavengerThreadMain(void * database);
+	void			scavengerThreadMain(void);
+	void			scavengerThreadWakeup(void);
 	void			scavenge();
 	void			validate (int optionMask);
 	Role*			findRole(const char *schemaName, const char * roleName);
@@ -218,7 +228,8 @@ public:
 	void			setRecordMemoryMax(uint64 value);
 	void			setRecordScavengeThreshold(int value);
 	void			setRecordScavengeFloor(int value);
-	void			forceRecordScavenge(void);
+	void			checkRecordScavenge(void);
+	void			signalScavenger(void);
 	void			debugTrace(void);
 	void			pageCacheFlushed(int64 flushArg);
 	JString			setLogRoot(const char *defaultPath, bool create);
@@ -268,6 +279,7 @@ public:
 	SyncObject			syncConnectionStatements;
 	SyncObject			syncScavenge;
 	SyncObject			syncSysDDL;
+	Mutex				syncMemory;
 	PriorityScheduler	*ioScheduler;
 	Threads				*threads;
 	Scheduler			*scheduler;
@@ -288,6 +300,9 @@ public:
 	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;
+	Thread				*scavengerThread;
+	volatile INTERLOCK_TYPE	scavengerThreadSleeping;
+	volatile INTERLOCK_TYPE	scavengerThreadSignaled;
 	PageWriter			*pageWriter;
 	PreparedStatement	*updateCardinality;
 	MemMgr				*recordDataPool;
@@ -308,8 +323,11 @@ public:
 	volatile INTERLOCK_TYPE	currentGeneration;
 	uint64				recordMemoryMax;
 	uint64				recordScavengeThreshold;
+	uint64				recordScavengeMaxGroupSize;
 	uint64				recordScavengeFloor;
-	int64				lastRecordMemory;
+	uint64				recordPoolAllocCount;
+	uint64				lastGenerationMemory;
+	uint64				lastActiveMemoryChecked;
 	time_t				creationTime;
 	volatile time_t		lastScavenge;
 };

@@ -433,11 +433,9 @@ void TableSpaceManager::initialize(void)
 
 	for (TableSpace *tableSpace = tableSpaces; tableSpace; tableSpace = tableSpace->next)
 		if (tableSpace->needSave)
-			{
 			tableSpace->save();
-			syncDDL.unlock();
-			database->commitSystemTransaction();
-			}
+
+	database->commitSystemTransaction();
 }
 
 void TableSpaceManager::postRecovery(void)

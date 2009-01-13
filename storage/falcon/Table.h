@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -96,9 +96,9 @@ public:
 	void		rebuildIndexes (Transaction *transaction, bool force = false);
 	void		collationChanged (Field *field);
 	void		validateBlobs (int optionMask);
-	void		cleanupRecords(RecordScavenge *recordScavenge);
 	void		rebuildIndex (Index *index, Transaction *transaction);
-	int			retireRecords (RecordScavenge *recordScavenge);
+	void		pruneRecords (RecordScavenge *recordScavenge);
+	void		retireRecords (RecordScavenge *recordScavenge);
 	int			countActiveRecords();
 	int			chartActiveRecords(int *chart);
 	bool		foreignKeyMember (ForeignKey *key);
@@ -139,7 +139,6 @@ public:
 	void		expungeBlob (Value *blob);
 	bool		duplicateBlob (Value *blob, int fieldId, Record *recordChain);
 	void		expungeRecord(int32 recordNumber);
-	void		expungeRecordVersions (RecordVersion *record, RecordScavenge *recordScavenge);
 	void		setView (View *view);
 	Index*		findIndex (const char *indexName);
 	virtual		PrivObject getPrivilegeType();
@@ -203,10 +202,8 @@ public:
 	
 	RecordVersion*	allocRecordVersion(Format* format, Transaction* transaction, Record* priorVersion);
 	Record*			allocRecord(int recordNumber, Stream* stream);
-	void			inventoryRecords(RecordScavenge* recordScavenge);
 	Format*			getCurrentFormat(void);
 	Record*			fetchForUpdate(Transaction* transaction, Record* record, bool usingIndex);
-//	RecordVersion*	lockRecord(Record* record, Transaction* transaction);
 	void			unlockRecord(int recordNumber);
 	void			unlockRecord(RecordVersion* record);
 
@@ -231,7 +228,6 @@ public:
 	Dbb				*dbb;
 	SyncObject		syncObject;
 	SyncObject		syncTriggers;
-	SyncObject		syncScavenge;
 	SyncObject		syncAlter;				// prevent concurrent Alter statements.
 	SyncObject		syncPriorVersions[SYNC_VERSIONS_SIZE];
 	SyncObject		syncThaw[SYNC_THAW_SIZE];
@@ -267,7 +263,6 @@ public:
 	bool			changed;
 	bool			eof;
 	bool			markedForDelete;
-	bool			activeVersions;
 	bool			alterIsActive;
 	bool			deleting;					// dropping or truncating.
 	int32			highWater;

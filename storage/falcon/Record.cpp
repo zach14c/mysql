@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "Engine.h"
 #include "Record.h"
 #include "RecordVersion.h"
+#include "RecordScavenge.h"
 #include "Value.h"
 #include "Transaction.h"
 #include "Format.h"
@@ -36,7 +37,8 @@
 #include "EncodedRecord.h"
 #include "Field.h"
 #include "Serialize.h"
-
+#include "MemMgr.h"
+#include "Thread.h"
 #undef new
 
 #ifdef _DEBUG
@@ -484,10 +486,23 @@ bool Record::isVersion()
 	return false;
 }
 
-
-bool Record::scavenge(RecordScavenge *recordScavenge, LockType lockType)
+bool Record::retire(RecordScavenge *recordScavenge)
 {
-	return true;
+	if (generation <= recordScavenge->scavengeGeneration)
+		{
+		recordScavenge->spaceRetired += getMemUsage();
+		++recordScavenge->recordsRetired;
+#ifdef CHECK_RECORD_ACTIVITY
+		active = false;
+#endif
+		release();
+		return true;
+		}
+
+	++recordScavenge->recordsRemaining;
+	recordScavenge->spaceRemaining += getMemUsage();
+
+	return false;
 }
 
 void Record::scavenge(TransId targetTransactionId, int oldestActiveSavePointId)
@@ -913,19 +928,38 @@ void Record::validateData(void)
 	ASSERT(data.record);
 }
 
+// Allocate a record data buffer from the record cache.
+// Use an non-thread-safe increment of recordPoolAllocCount.  It allows 
+// full concurrency by multiple threads but it may miss a check every 
+// now and then.  This keeps the code from doing this check every time.
+// It is done about every 128 allocations from the record cache.
+
 char* Record::allocRecordData(int length)
 {
-	for (int n = 0;; ++n)
+	for (int n = 1;; ++n)
 		try
 			{
+			if (format && format->table)
+				if ((++format->table->database->recordPoolAllocCount & 0x7F) == 0)
+					format->table->database->checkRecordScavenge();
+
 			return POOL_NEW(format->table->database->recordDataPool) char[length];
 			}
 		catch (SQLException& exception)
 			{
-			if (n > 2 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
+			// If the error was out-of-memory, signal the scavenger,
+			// sleep(10),and try again. But try a limited number of times.
+
+			if (   exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR
+				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 			
-			format->table->database->forceRecordScavenge();
+			format->table->database->signalScavenger();
+
+			// Give the scavenger thread a chance to release some memory
+
+			Thread *thread = Thread::getThread("Database::ticker");
+			thread->sleep(10);
 			}
 	
 	return NULL;
@@ -959,6 +993,18 @@ int Record::getSize(void)
 {
 	return sizeof(*this);
 }
+
+int Record::getDataMemUsage(void)
+{
+	return (data.record == NULL ? 0 : MemMgr::blockSize(data.record));
+}
+
+int Record::getMemUsage(void)
+{
+	int objectSize = MemMgr::blockSize(this);
+	return objectSize + getDataMemUsage();
+}
+
 
 SyncObject* Record::getSyncPrior(void)
 {

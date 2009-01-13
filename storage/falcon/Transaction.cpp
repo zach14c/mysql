@@ -109,7 +109,7 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	isolationLevel = connection->isolationLevel;
 	mySqlThreadId = connection->mySqlThreadId;
 	database = connection->database;
-	TransactionManager *transactionManager = database->transactionManager;
+	transactionManager = database->transactionManager;
 	systemTransaction = database->systemConnection == connection;
 	transactionId = seq;
 	commitId = 0;
@@ -145,7 +145,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 		{
 		state = Available;
 		systemTransaction = false;
-		oldestActive = 0;
 		writePending = false;
 
 		return;
@@ -161,8 +160,6 @@ void Transaction::initialize(Connection* cnct, TransId seq)
 	blockingRecord = NULL;
 	thread = Thread::getThread("Transaction::initialize");
 	syncIsActive.lock(NULL, Exclusive);
-	Transaction *oldest = transactionManager->findOldest();
-	oldestActive = (oldest) ? oldest->transactionId : transactionId;
 	state = Active;
 }
 
@@ -180,7 +177,7 @@ Transaction::~Transaction()
 		}
 
 	if (inList)
-		database->transactionManager->removeTransaction(this);
+		transactionManager->removeTransaction(this);
 
 	delete [] xid;
 	delete backloggedRecords;
@@ -216,7 +213,6 @@ void Transaction::commit()
 		return;
 		}
 
-	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	Log::log(LogXARecovery, "%d: Commit %sTransaction %d\n", 
 		database->deltaTime, (systemTransaction ? "System " : ""),  transactionId);
@@ -322,7 +318,6 @@ void Transaction::commit()
 
 void Transaction::commitNoUpdates(void)
 {
-	TransactionManager *transactionManager = database->transactionManager;
 	addRef();
 	ASSERT(!deferredIndexes);
 	Log::log(LogXARecovery, "%d: CommitNoUpdates transaction %d\n", database->deltaTime, transactionId);
@@ -372,7 +367,6 @@ void Transaction::rollback()
 		releaseDeferredIndexes();
 		
 	releaseSavepoints();
-	TransactionManager *transactionManager = database->transactionManager;
 	Transaction *rollbackTransaction = transactionManager->rolledBackTransaction;
 	chillPoint = &firstRecord;
 	totalRecordData = 0;
@@ -542,7 +536,7 @@ int Transaction::thaw(RecordVersion * record)
 	// Nothing to do if record is no longer chilled
 	
 	if (record->state != recChilled)
-		return record->size;
+		return record->getDataMemUsage();
 		
 	// Get pointer to record data in serial log
 
@@ -835,25 +829,14 @@ State Transaction::getRelativeState(Transaction *transaction, TransId transId, u
 
 		if (IS_CONSISTENT_READ(isolationLevel))
 			{
-			// If the transaction is no longer around, and the record is,
-			// then it must be committed.
-
-			// Check if the transaction started after us.
-			// With the old dependency manager this test might have been
-			// hit but with the new dependency manager this will never 
-			// happen. Still leave it in until further evaluation.
+			// Be sure that transaction was not active when we started.
+			// If the transaction is no longer connected to the record,
+			// then it must be committed.  The scavenger can scavenge 
+			// transactions newer than the oldest active if they are 
+			// committed.
 
 			if (transactionId < transId)
 				return CommittedInvisible;
-
-			// Be sure it was not active when we started.
-
-			// The dependency manager ensures that transactions that were
-			// active at the time this transaction started will not be
-			// deleted at least not until also we are committed.
-			// Since the transaction pointer is NULL here,
-			// the transaction is not deleted and hence was not active at
-			// the time we started.
 			}
 
 		return CommittedVisible;
@@ -964,7 +947,6 @@ State Transaction::waitForTransaction(Transaction *transaction, TransId transId,
 	if(transaction)
 		transaction->addRef();
 
-	TransactionManager *transactionManager = database->transactionManager;
 	Sync syncActiveTransactions(&transactionManager->activeTransactions.syncObject,
 		"Transaction::waitForTransaction(1)");
 	syncActiveTransactions.lock(Shared);
@@ -1140,7 +1122,7 @@ void Transaction::releaseSavepoint(int savePointId)
 			for (RecordVersion *record = *savePoint->records; record && record->savePointId == savePointId; record = record->nextInTrans)
 				{
 				record->savePointId = nextLowerSavePointId;
-				record->scavenge(transactionId, nextLowerSavePointId);
+				record->scavengeSavepoint(transactionId, nextLowerSavePointId);
 				}
 
 			savePoint->next = freeSavePoints;
@@ -1397,7 +1379,7 @@ void Transaction::printBlocking(int level)
 				   what);
 		}
 	syncRec.unlock();
-	database->transactionManager->printBlocking(this, level);
+	transactionManager->printBlocking(this, level);
 }
 
 void Transaction::getInfo(InfoTable* infoTable)
@@ -1416,7 +1398,7 @@ void Transaction::getInfo(InfoTable* infoTable)
 		infoTable->putInt(n++, hasUpdates);
 		infoTable->putInt(n++, writePending);
 		infoTable->putInt(n++, 0);  // Number of dependencies, will be removed
-		infoTable->putInt(n++, oldestActive);
+		infoTable->putInt(n++, 0); //  was oldestActive);
 		infoTable->putInt(n++, firstRecord != NULL);
 		infoTable->putInt(n++, (waitingFor) ? waitingFor->transactionId : 0);
 		
@@ -1458,7 +1440,6 @@ void Transaction::releaseCommittedTransaction(void)
 
 void Transaction::printBlockage(void)
 {
-	TransactionManager *transactionManager = database->transactionManager;
 	LogLock logLock;
 	Sync sync (&transactionManager->activeTransactions.syncObject, "Transaction::printBlockage");
 	sync.lock (Shared);
@@ -1543,4 +1524,13 @@ void Transaction::validateRecords(void)
 		;
 	
 	ASSERT(firstRecord == record);	
+}
+
+// Return true if this transaction was committed before
+// another transaction started.  If commitId is 0, then
+// this trans is not yet committed.
+
+bool Transaction::committedBefore(TransId transactionId)
+{
+	return (commitId && commitId < transactionId);
 }

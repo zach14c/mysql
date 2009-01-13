@@ -258,7 +258,9 @@ int StorageTableShare::deleteTable(StorageConnection *storageConnection)
 int StorageTableShare::truncateTable(StorageConnection *storageConnection)
 {
 	int res = storageDatabase->truncateTable(storageConnection, this);
-	
+
+	sequence = storageDatabase->findSequence(name, schemaName);
+
 	return res;
 }
 

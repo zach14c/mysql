@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -57,6 +57,7 @@
 #include "RecordScavenge.h"
 #include "Section.h"
 #include "BackLog.h"
+#include "Thread.h"
 
 #ifndef STORAGE_ENGINE
 #include "Trigger.h"
@@ -340,6 +341,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 
 		Format *format = getFormat(formatVersion);
 		record = allocRecordVersion(format, transaction, NULL);
+		record->state = recInserting;
 		
 		// Handle any default values
 
@@ -380,15 +382,15 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		
 		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
 
-		// Verify that record is valid
+		checkNullable(record);  // Verify that record is valid
 
-		checkNullable(record);
 		transaction->addRecord(record);
 		insert(record, NULL, recordNumber);
 		inserted = true;
 		insertIndexes(transaction, record);
 		updateInversion(record, transaction);
 		fireTriggers(transaction, PostInsert, NULL, record);
+		record->state = recData;
 		record->release();
 		}
 	catch (...)
@@ -409,8 +411,13 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		garbageCollect(record, NULL, transaction, true);
 
 		if (record)
+			{
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 			record->release();
-			
+			}
+
 		throw;
 		}
 
@@ -474,8 +481,6 @@ void Table::reformat()
 
 void Table::updateRecord (RecordVersion * record)
 {
-	activeVersions = true;
-	
 	FOR_OBJECTS (TableAttachment*, attachment, &attachments)
 		if (attachment->mask & POST_COMMIT)
 			attachment->postCommit(this, record);
@@ -498,7 +503,7 @@ Record* Table::fetchNext(int32 start)
 	Stream stream;
 	Sync sync(&syncObject, "Table::fetchNext");
 	sync.lock(Shared);
-	Record *record;
+	Record *record = NULL;
 	int32 recordNumber = start;
 
 	for (;;)
@@ -519,19 +524,29 @@ Record* Table::fetchNext(int32 start)
 			// Record should exist somewhere
 			
 			if (records && (record = records->fetch(bitNumber)))
+				{
+				// Don't bother with a record that is half-way inserted.
+
+				if (record->state == recInserting)
+					{
+					recordNumber = bitNumber + 1;
+					continue;
+					}
+
 				break;
+				}
 
 			if (backloggedRecords && (record = backlogFetch(bitNumber)))
 				break;
-				
+
 			sync.unlock();
-			
+
 			for (int n = 0; (record = databaseFetch(bitNumber)); ++n)
 				{
 				if (insert(record, NULL, bitNumber))
 					{
 					record->poke();
-					
+
 					return record;
 					}
 
@@ -845,7 +860,6 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	highWater = 0;
 	eof = false;
 	markedForDelete = false;
-	activeVersions = false;
 	primaryKey = NULL;
 	formats = NEW Format* [FORMAT_HASH_SIZE];
 	triggers = NULL;
@@ -861,7 +875,6 @@ void Table::init(int id, const char *schema, const char *tableName, TableSpace *
 	alterIsActive = false;
 	syncObject.setName("Table::syncObject");
 	syncTriggers.setName("Table::syncTriggers");
-	syncScavenge.setName("Table::syncScavenge");
 	syncAlter.setName("Table::syncAlter");
 	
 	for (int n = 0; n < SYNC_VERSIONS_SIZE; n++)
@@ -1264,8 +1277,6 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 	RecordVersion *record = NULL;
 	bool updated = false;
 	int recordNumber = oldRecord->recordNumber;
-	Sync scavenge(&syncScavenge, "Table::update(1)");
-	//scavenge.lock(Shared);
 	
 	try
 		{
@@ -1319,8 +1330,6 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		
 		// Make insert/update atomic, then check for unique index duplicats
 
-
-		scavenge.lock(Shared);
 		validateAndInsert(transaction, record);
 		transaction->addRecord(record);
 		updated = true;
@@ -1332,7 +1341,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 		
-		record->scavenge(transaction->transactionId, transaction->curSavePointId);
+		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
 
 		record->release();
 		}
@@ -1353,6 +1362,10 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 								
 			if (record->state == recLock)
 				record->deleteData();
+
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 
 			record->release();
 			}
@@ -1484,16 +1497,15 @@ ForeignKey* Table::findForeignKey(ForeignKey * key)
 void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 {
 	database->preUpdate();
-	Sync scavenge(&syncScavenge, "Table::deleteRecord");
 
 	// syncPrior is not needed here.  It is handled in fetchVersion()
 	Record *candidate = fetch(orgRecord->recordNumber);
+	if (!candidate)
+		return;
+	
 	checkAncestor(candidate, orgRecord);
 	RecordVersion *record;
 	bool wasLock = false;
-	
-	if (!candidate)
-		return;
 	
 	if (candidate->state == recLock && candidate->getTransaction() == transaction)
 		{
@@ -1541,8 +1553,6 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 			attachment->preDelete(this, record);
 	END_FOR;
 
-	scavenge.lock(Shared);
-
 	if (wasLock)
 		{
 		record->state = recDeleted;
@@ -1556,11 +1566,15 @@ void Table::deleteRecord(Transaction * transaction, Record * orgRecord)
 			}
 		catch (...)
 			{
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
+
 			record->release();
-			
+
 			throw;
 			}
-			
+
 		transaction->addRecord(record);
 		}
 	
@@ -1868,68 +1882,61 @@ void Table::setView(View *viewObject)
 	view = viewObject;
 }
 
+// Prune old invisible records from this table and inventory the rest.
 
-int Table::retireRecords(RecordScavenge *recordScavenge)
+void Table::pruneRecords(RecordScavenge *recordScavenge)
 {
 	if (!records)
-		return 0;
+		return;
+
+	Sync syncObj(&syncObject, "Table::retireRecords");
+	syncObj.lock(Shared);
+
+	if (records)
+		records->pruneRecords(this, 0, recordScavenge);
+}
+
+void Table::retireRecords(RecordScavenge *recordScavenge)
+{
+	if (!records)
+		return;
 
 	Sync syncObj(&syncObject, "Table::retireRecords");
 	syncObj.lock(Shared);
 
 	if (!records)
-		return 0;
-	
-	activeVersions = false;
-	emptySections->clear();
-	int count = records->retireRecords(this, 0, recordScavenge);
+		return;
 
-	if (count == 0)
+	emptySections->clear();
+	records->retireRecords(this, 0, recordScavenge);
+	syncObj.unlock();
+
+	// Get an exclusive lock only if there are empty leaf nodes. Find and
+	// delete the empty nodes using the stored record numbers as identifiers.
+
+	if (emptySections->count > 0)
 		{
-		syncObj.unlock();
 		syncObj.lock(Exclusive);
 
-		// Confirm that tree is still empty
+		// Delete these newly emptied RecordLeaf sections
 
-		count = records->countActiveRecords();
+		for (int sectionNumber = 0; (sectionNumber = emptySections->nextSet(0)) >= 0;)
+			{
+			int recordNumber = sectionNumber * RECORD_SLOTS;
+			records->retireSections(this, recordNumber);
+			emptySections->clear(sectionNumber);
+			}
 
-		if (count == 0)
+		// Check if there are any sections/active records left in this table.
+
+		if (!records->anyActiveRecords())
 			{
 			delete records;
 			records = NULL;
 			}
 		}
-	else
-		{
-		// Get an exclusive lock only if there are empty leaf nodes. Find and
-		// delete the empty nodes using the stored record numbers as identifiers.
 
-		if (emptySections->count > 0)
-			{
-			syncObj.unlock();
-			syncObj.lock(Exclusive);
-
-			for (int sectionNumber = 0; (sectionNumber = emptySections->nextSet(0)) >= 0;)
-				{
-				int recordNumber = sectionNumber * RECORD_SLOTS;
-				records->retireSections(this, recordNumber);
-				emptySections->clear(sectionNumber);
-				}
-				
-			}
-		}
-	
-	return count;
-}
-
-void Table::inventoryRecords(RecordScavenge* recordScavenge)
-{
-	if (!records)
-		return;
-		
-	Sync sync(&syncObject, "Table::inventoryRecords");
-	sync.lock(Shared);
-	records->inventoryRecords(recordScavenge);
+	return;
 }
 
 bool Table::insert(Record * record, Record *prior, int recordNumber)
@@ -1992,28 +1999,6 @@ bool Table::insert(Record * record, Record *prior, int recordNumber)
 		record->release();
 	
 	return false;
-}
-
-void Table::expungeRecordVersions(RecordVersion *record, RecordScavenge *recordScavenge)
-{
-	ASSERT(record->state != recLock);
-
-	Record *prior = record->clearPriorVersion();
-	
-	if (recordScavenge)
-		for (Record *rec = prior; rec; rec = rec->getPriorVersion())
-			{
-			++recordScavenge->recordsReclaimed;
-			recordScavenge->spaceReclaimed += record->size;
-			}
-			
-#ifdef CHECK_RECORD_ACTIVITY
-	for (Record *rec = prior; rec; rec = rec->getPriorVersion())
-		rec->active = false;
-#endif
-			
-	garbageCollect(prior, record, NULL, false);
-	prior->release();
 }
 
 bool Table::duplicateBlob(Value * blob, int fieldId, Record * recordChain)
@@ -2803,12 +2788,6 @@ void Table::rebuildIndex(Index *index, Transaction *transaction)
 }
 
 
-void Table::cleanupRecords(RecordScavenge *recordScavenge)
-{
-	if (activeVersions)
-		retireRecords(recordScavenge);
-}
-
 void Table::validateBlobs(int optionMask)
 {
 	Field *field;
@@ -3047,6 +3026,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 			fmt = format = getFormat(formatVersion);
 			
 		record = allocRecordVersion(fmt, transaction, NULL);
+		record->state = recInserting;
 		record->setEncodedRecord(stream, false);
 		recordNumber = record->recordNumber = dbb->insertStub(dataSection, transaction);
 		
@@ -3060,7 +3040,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		inserted = true;
 		insertIndexes(transaction, record);
 		ASSERT(ret);
-
+		record->state = recData;
 		record->release();
 		}
 	catch (...)
@@ -3071,8 +3051,6 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 			insert(NULL, record, recordNumber);
 			}
 
-		garbageCollect(record, NULL, transaction, true);
-
 		if (recordNumber >= 0)
 			{
 			dbb->updateRecord(dataSection, recordNumber, NULL, transaction, false);
@@ -3080,8 +3058,15 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 			record->recordNumber = -1;
 			}
 
+		garbageCollect(record, NULL, transaction, true);
+
 		if (record)
+			{
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 			record->release();
+			}
 
 		throw;
 		}
@@ -3094,13 +3079,12 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 	database->preUpdate();
 	
 	Record *candidate = fetch(orgRecord->recordNumber);
-	checkAncestor(candidate, orgRecord);
-	
 	if (!candidate)
 		return;
 
+	checkAncestor(candidate, orgRecord);
 	Record *oldRecord = candidate;
-	
+
 	if (candidate->getTransaction() == transaction)
 		{
 		if (candidate->state == recLock)
@@ -3119,8 +3103,6 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 
 	RecordVersion *record = NULL;
 	bool updated = false;
-	Sync scavenge(&syncScavenge, "Table::update(2)");
-	//scavenge.lock(Shared);
 	
 	if (candidate->state == recLock && candidate->getTransaction() == transaction)
 		{
@@ -3169,7 +3151,6 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		END_FOR;
 
 		//updateInversion(record, transaction);
-		scavenge.lock(Shared);
 		
 		if (record->state == recLock)
 			record->state = recData;
@@ -3187,7 +3168,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
 
-		record->scavenge(transaction->transactionId, transaction->curSavePointId);
+		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
 
 		if (record)
 			record->release();
@@ -3213,6 +3194,10 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 
 			if (record->state == recLock)
 				record->deleteData();
+
+#ifdef CHECK_RECORD_ACTIVITY
+			record->active = false;
+#endif
 
 			record->release();
 			}
@@ -3390,54 +3375,6 @@ void Table::waitForWriteComplete()
 {
 	database->waitForWriteComplete(this);
 }
-/*
-RecordVersion* Table::lockRecord(Record* record, Transaction* transaction)
-{
-	Record *current = fetch(record->recordNumber);
-
-	if (!current)
-		throw SQLError(UPDATE_CONFLICT, "lock target from table %s.%s", schemaName, name);
-
-	// If the current version is already updated/locked by us, there's nothing to do
-	
-	if (current->getTransaction() == transaction)
-		{
-		current->release();
-		
-		return NULL;
-		}
-
-	checkAncestor(current, record);
-	Record *visible = current->fetchVersion(transaction);
-	
-	if (!visible)
-		{
-		printf("Target for transaction %d:\n", transaction->transactionId);
-		record->print();
-		current->printRecord("Current");
-		current->fetchVersion(transaction);
-		ASSERT(false);
-		}
-		
-	RecordVersion *recordVersion = allocRecordVersion(NULL, transaction, visible);
-	recordVersion->state = recLock;
-	current->release();
-	
-	try
-		{
-		validateAndInsert(transaction, recordVersion);
-		transaction->addRecord(recordVersion);
-		recordVersion->release();
-		}
-	catch(...)
-		{
-		recordVersion->active = false;
-		recordVersion->release();
-		throw;
-		}
-	
-	return recordVersion;	
-}   */
 
 void Table::unlockRecord(int recordNumber)
 {
@@ -3665,39 +3602,75 @@ bool Table::setAlter(void)
 
 #undef new
 
+// Allocate a RecordVersion object from the record cache.
+// Use an non-thread-safe increment of recordPoolAllocCount.  It allows 
+// full concurrency by multiple threads but it may miss a check every 
+// now and then.  This keeps the code from doing this check every time.
+// It is done about every 128 allocations from the record cache.
+
 RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transaction, Record* priorVersion)
 {
-	for (int n = 0;; ++n)
+	for (int n = 1;; ++n)
+		{
 		try
 			{
+			if ((++database->recordPoolAllocCount & 0x7F) == 0)
+				database->checkRecordScavenge();
+
 			return POOL_NEW(database->recordDataPool) RecordVersion(this, format, transaction, priorVersion);
 			}
+
 		catch (SQLException& exception)
 			{
-			if (n > 2 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
+			if (   exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR
+				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
-			
-			database->forceRecordScavenge();
+
+			database->signalScavenger();
+
+			// Give the scavenger thread a chance to release some memory
+
+			Thread *thread = Thread::getThread("Database::ticker");
+			thread->sleep(10);
 			}
-	
+		}
+
 	return NULL;
 }
 
+// Allocate a Record object from the record cache.
+// Use an non-thread-safe increment of recordPoolAllocCount.  It allows 
+// full concurrency by multiple threads but it may miss a check every 
+// now and then.  This keeps the code from doing this check every time.
+// It is done about every 128 allocations from the record cache.
+
 Record* Table::allocRecord(int recordNumber, Stream* stream)
 {
-	for (int n = 0;; ++n)
+	for (int n = 1;; ++n)
+		{
 		try
 			{
+			if ((++database->recordPoolAllocCount & 0x7F) == 0)
+				database->checkRecordScavenge();
+
 			return POOL_NEW(database->recordDataPool) Record (this, recordNumber, stream);
 			}
+
 		catch (SQLException& exception)
 			{
-			if (n > 2 || exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR)
+			if (   exception.getSqlcode() != OUT_OF_RECORD_MEMORY_ERROR
+				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
-			
-			database->forceRecordScavenge();
+
+			database->signalScavenger();
+
+			// Give the scavenger thread a chance to release some memory
+
+			Thread *thread = Thread::getThread("Database::ticker");
+			thread->sleep(10);
 			}
-	
+		}
+
 	return NULL;
 }
 

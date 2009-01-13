@@ -42,6 +42,7 @@ class Bitmap;
 class Record;
 class InfoTable;
 class Thread;
+class TransactionManager;
 
 // Transaction States
 
@@ -110,7 +111,6 @@ public:
 	void		releaseSavepoint(int savepointId);
 	void		releaseSavepoints(void);
 	void		rollbackSavepoint (int savepointId);
-	void		scavengeRecords(int ageGroup);
 	void		add(DeferredIndex* deferredIndex);
 	void		initialize(Connection* cnct, TransId seq);
 	bool		isXidEqual(int testLength, const UCHAR* test);
@@ -129,6 +129,8 @@ public:
 	void		releaseDeferredIndexes(void);
 	void		releaseDeferredIndexes(Table* table);
 	void		backlogRecords(void);
+	bool		committedBefore(TransId transactionId);
+
 
 	inline bool isActive()
 		{
@@ -137,9 +139,9 @@ public:
 
 	Connection		*connection;
 	Database		*database;
+	TransactionManager	*transactionManager;
 	TransId			transactionId;  // used also as startEvent by dep.mgr.
-	TransId         commitId;       // used as commitEvent by dep.mgr.
-	TransId			oldestActive;
+	TransId			commitId;       // used as commitEvent by dep.mgr.
 	TransId			blockedBy;
 	int				curSavePointId;
 	Transaction		*next;			// next in database
