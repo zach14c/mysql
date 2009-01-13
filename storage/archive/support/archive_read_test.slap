@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Script I use to look at aio performance --Brian
 

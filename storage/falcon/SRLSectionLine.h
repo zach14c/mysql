@@ -31,7 +31,6 @@ public:
 	virtual void redo(void);
 	virtual void print(void);
 
-	int		tableSpaceId;
 	int32	pageNumber;
 	int32	dataPageNumber;
 };

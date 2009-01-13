@@ -33,6 +33,7 @@ extern pthread_mutex_t THR_LOCK_charset, THR_LOCK_time;
 #include <my_no_pthread.h>
 #endif
 
+
 /*
   EDQUOT is used only in 3 C files only in mysys/. If it does not exist on
   system, we set it to some value which can never happen.
@@ -66,3 +67,6 @@ extern File     my_win_dup(File fd);
 extern File     my_win_sopen(const char *path, int oflag, int shflag, int perm);
 extern File     my_open_osfhandle(HANDLE handle, int oflag);
 #endif
+
+void my_thread_destroy_mutex(void);
+my_bool my_wait_for_other_threads_to_die(uint number_of_threads);

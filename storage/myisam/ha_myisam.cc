@@ -550,8 +550,7 @@ ha_myisam::ha_myisam(handlerton *hton, TABLE_SHARE *table_arg)
                   HA_DUPLICATE_POS | HA_CAN_INDEX_BLOBS | HA_AUTO_PART_KEY |
                   HA_FILE_BASED | HA_CAN_GEOMETRY | HA_NO_TRANSACTIONS |
                   HA_CAN_INSERT_DELAYED | HA_CAN_BIT_FIELD | HA_CAN_RTREEKEYS |
-                  HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT |
-                  HA_NEED_READ_RANGE_BUFFER | HA_MRR_CANT_SORT),
+                  HA_HAS_RECORDS | HA_STATS_RECORDS_IS_EXACT),
    can_enable_indexes(1)
 {}
 
@@ -1512,6 +1511,11 @@ int ha_myisam::index_end()
   return 0; 
 }
 
+int ha_myisam::rnd_end()
+{
+  ds_mrr.dsmrr_close();
+  return 0;
+}
 
 int ha_myisam::index_read_map(uchar *buf, const uchar *key,
                               key_part_map keypart_map,
@@ -1597,23 +1601,6 @@ int ha_myisam::index_next_same(uchar *buf,
   return error;
 }
 
-int ha_myisam::read_range_first(const key_range *start_key,
-		 	        const key_range *end_key,
-			        bool eq_range_arg,
-                                bool sorted /* ignored */)
-{
-  int res;
-  res= handler::read_range_first(start_key, end_key, eq_range_arg, sorted);
-  return res;
-}
-
-
-int ha_myisam::read_range_next()
-{
-  int res= handler::read_range_next();
-  return res;
-}
-
 
 int ha_myisam::rnd_init(bool scan)
 {
@@ -1678,6 +1665,16 @@ int ha_myisam::info(uint flag)
     stats.max_data_file_length=  misam_info.max_data_file_length;
     stats.max_index_file_length= misam_info.max_index_file_length;
     stats.create_time= misam_info.create_time;
+    /* 
+      We want the value of stats.mrr_length_per_rec to be platform independent.
+      The size of the chunk at the end of the join buffer used for MRR needs
+      is calculated now basing on the values passed in the stats structure.
+      The remaining part of the join buffer is used for records. A different
+      number of records in the buffer results in a different number of buffer
+      refills and in a different order of records in the result set.
+    */
+    stats.mrr_length_per_rec= misam_info.reflength + 8; // 8=max(sizeof(void *))
+
     ref_length= misam_info.reflength;
     share->db_options_in_use= misam_info.options;
     stats.block_size= myisam_block_size;        /* record block size */
@@ -2053,8 +2050,9 @@ ha_rows ha_myisam::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                                  flags, cost);
 }
 
-int ha_myisam::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                     uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows ha_myisam::multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                         uint *bufsz, uint *flags,
+                                         COST_VECT *cost)
 {
   ds_mrr.init(this, table);
   return ds_mrr.dsmrr_info(keyno, n_ranges, keys, bufsz, flags, cost);

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -820,7 +820,7 @@ public:
   }
 
   void clear_index_hints(void) { index_hints= NULL; }
-
+  bool is_part_of_union() { return master_unit()->is_union(); }
 private:  
   /* current index hint kind. used in filling up index_hints */
   enum index_hint_type current_index_hint_type;

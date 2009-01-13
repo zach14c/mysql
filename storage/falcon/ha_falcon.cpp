@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007 MySQL AB
+/* Copyright (C) 2006, 2007 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -45,6 +45,11 @@
 
 #include "ScaledBinary.h"
 #include "BigInt.h"
+
+/* Verify that the compiler options have enabled C++ exception support */
+#if (defined(__GNUC__) && !defined(__EXCEPTIONS)) || (defined (_MSC_VER) && !defined (_CPPUNWIND))
+#error Falcon needs to be compiled with support for C++ exceptions. Please check your compiler settings.
+#endif
 
 //#define NO_OPTIMIZE
 #define VALIDATE
@@ -182,8 +187,8 @@ int StorageInterface::falcon_init(void *p)
 
 	if (!checkExceptionSupport()) 
 		{
-		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work");
-		DBUG_RETURN(1);
+		sql_print_error("Falcon must be compiled with C++ exceptions enabled to work. Please adjust your compile flags.");
+		FATAL("Falcon exiting process.\n");
 		}
 
 	StorageHandler::setDataDirectory(mysql_real_data_home);
@@ -1410,6 +1415,7 @@ int StorageInterface::index_read(uchar *buf, const uchar *keyBytes, uint key_len
 		if ((ret = storageTable->setIndexBound(key, key_len, which)))
 			DBUG_RETURN(error(ret));
 
+	storageTable->clearBitmap();
 	if ((ret = storageTable->indexScan(indexOrder)))
 		DBUG_RETURN(error(ret));
 
@@ -1593,10 +1599,41 @@ int StorageInterface::read_range_first(const key_range *start_key,
                                       const key_range *end_key,
                                       bool eq_range_arg, bool sorted)
 {
+        int res;
 	DBUG_ENTER("StorageInterface::read_range_first");
+
 	storageTable->clearIndexBounds();
+	if ((res= scanRange(start_key, end_key, eq_range_arg)))
+		DBUG_RETURN(res);
+
+	for (;;)
+		{
+		int result = index_next(table->record[0]);
+
+		if (result)
+			{
+			if (result == HA_ERR_KEY_NOT_FOUND)
+				result = HA_ERR_END_OF_FILE;
+
+			table->status = result;
+			DBUG_RETURN(result);
+			}
+
+		DBUG_RETURN(0);
+		}
+
+	DBUG_RETURN(0);
+}
+
+
+int StorageInterface::scanRange(const key_range *start_key,
+								const key_range *end_key,
+								bool eqRange)
+{
+	DBUG_ENTER("StorageInterface::read_range_first");
 	haveStartKey = false;
 	haveEndKey = false;
+	storageTable->upperBound = storageTable->lowerBound = NULL;
 	int ret = 0;
 
 	if (start_key && !storageTable->isKeyNull((const unsigned char*) start_key->key, start_key->length))
@@ -1629,7 +1666,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 	storageTable->indexScan(indexOrder);
 	nextRecord = 0;
 	lastRecord = -1;
-	eq_range = eq_range_arg;
+	eq_range = eqRange;
 	end_range = 0;
 
 	if (end_key)
@@ -1644,22 +1681,7 @@ int StorageInterface::read_range_first(const key_range *start_key,
 		}
 
 	range_key_part = table->key_info[active_index].key_part;
-
-	for (;;)
-		{
-		int result = index_next(table->record[0]);
-
-		if (result)
-			{
-			if (result == HA_ERR_KEY_NOT_FOUND)
-				result = HA_ERR_END_OF_FILE;
-
-			table->status = result;
-			DBUG_RETURN(result);
-			}
-
-		DBUG_RETURN(0);
-		}
+	DBUG_RETURN(0);
 }
 
 int StorageInterface::index_first(uchar* buf)
@@ -1742,6 +1764,121 @@ int StorageInterface::index_next_same(uchar *buf, const uchar *key, uint key_len
 			DBUG_RETURN(0);
 		}
 }
+
+
+//*****************************************************************************
+// Falcon MRR implementation: One-sweep DS-MRR
+//
+// Overview
+//  - MRR scan is always done in one pass, which consists of two steps:
+//      1. Scan the index and populate Falcon's internal record number bitmap
+//      2. Scan the bitmap, retrieve and return records
+//    (without MRR falcon does steps 1 and 2 for each range)
+//  - The record number bitmap is allocated using Falcon's internal
+//    allocation routines, so we're not using the SQL layer's join buffer space.
+//  - multi_range_read_next() may return "garbage" records - records that are
+//    outside of any of the scanned ranges. Filtering out these records is
+//    the responsibility of whoever is making MRR calls.
+//
+//*****************************************************************************
+
+int StorageInterface::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+                                            uint n_ranges, uint mode, 
+                                            HANDLER_BUFFER *buf)
+{
+	DBUG_ENTER("StorageInterface::multi_range_read_init");
+	if (mode & HA_MRR_USE_DEFAULT_IMPL)
+		{
+		useDefaultMrrImpl= true;
+		int res = handler::multi_range_read_init(seq, seq_init_param, n_ranges, 
+												 mode, buf);
+		DBUG_RETURN(res);
+		}
+	useDefaultMrrImpl = false;
+	multi_range_buffer = buf;
+	mrr_funcs = *seq;
+
+	mrr_iter = mrr_funcs.init(seq_init_param, n_ranges, mode);
+	fillMrrBitmap();
+
+	// multi_range_read_next() will be calling index_next(). The following is
+	// to make index_next() not to check whether the retrieved record is in 
+	// range
+	haveStartKey = haveEndKey = 0;
+	DBUG_RETURN(0);
+}
+
+
+int StorageInterface::fillMrrBitmap()
+{
+	int res;
+	key_range *startKey;
+	key_range *endKey;
+	DBUG_ENTER("StorageInterface::fillMrrBitmap");
+
+	storageTable->clearBitmap();
+	while (!(res = mrr_funcs.next(mrr_iter, &mrr_cur_range)))
+		{
+		startKey = mrr_cur_range.start_key.keypart_map? &mrr_cur_range.start_key: NULL;
+		endKey   = mrr_cur_range.end_key.keypart_map?   &mrr_cur_range.end_key: NULL;
+		if ((res = scanRange(startKey, endKey, test(mrr_cur_range.range_flag & EQ_RANGE))))
+			return res;
+		}
+	DBUG_RETURN(0);
+}
+
+int StorageInterface::multi_range_read_next(char **rangeInfo)
+{
+	if (useDefaultMrrImpl)
+		return handler::multi_range_read_next(rangeInfo);
+	return index_next(table->record[0]);
+}
+
+
+ha_rows StorageInterface::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+													  void *seq_init_param,
+													  uint n_ranges, uint *bufsz,
+													  uint *flags, COST_VECT *cost)
+{
+	ha_rows res;
+	// TODO: SergeyP: move the optimizer_use_mrr check from here out to the
+	// SQL layer, do same for all other MRR implementations
+	bool native_requested = test(*flags & HA_MRR_USE_DEFAULT_IMPL ||
+								 (current_thd->variables.optimizer_use_mrr == 2));
+	res = handler::multi_range_read_info_const(keyno, seq, seq_init_param, n_ranges, bufsz,
+											   flags, cost);
+	if ((res != HA_POS_ERROR) && !native_requested)
+		{
+		*flags &= ~HA_MRR_USE_DEFAULT_IMPL;
+		/* We'll be returning records without telling which range they are contained in */
+		*flags |= HA_MRR_NO_ASSOCIATION;
+		/* We'll use our own internal buffer so we won't need any buffer space from the SQL layer */
+		*bufsz = 0;
+		}
+	return res;
+}
+
+
+ha_rows StorageInterface::multi_range_read_info(uint keyno, uint n_ranges, 
+												uint keys, uint *bufsz, 
+												uint *flags, COST_VECT *cost)
+{
+	ha_rows res;
+	bool native_requested = test(*flags & HA_MRR_USE_DEFAULT_IMPL || 
+								 (current_thd->variables.optimizer_use_mrr == 2));
+	res = handler::multi_range_read_info(keyno, n_ranges, keys, bufsz, flags,
+										 cost);
+	if ((res != HA_POS_ERROR) && !native_requested)
+		{
+		*flags &= ~HA_MRR_USE_DEFAULT_IMPL;
+		/* See _info_const() function for explanation of these: */
+		*flags |= HA_MRR_NO_ASSOCIATION;
+		*bufsz = 0;
+		}
+	return res;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
 
 double StorageInterface::scan_time(void)
 {
@@ -2196,10 +2333,6 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 	if (tempTable || (*alter_flags & notSupported).is_set())
 		DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 
-	// TODO:
-	// 1. Check for supported ALTER combinations
-	// 2. Check for explicit default (altered_table->s->default_values)
-	
 	if (alter_flags->is_set(HA_ADD_COLUMN))
 		{
 		Field *field = NULL;
@@ -2217,6 +2350,33 @@ int StorageInterface::check_if_supported_alter(TABLE *altered_table, HA_CREATE_I
 				if (!field->real_maybe_null())
 					{
 					DBUG_PRINT("info",("Online add column must be nullable"));
+					DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
+					}
+			}
+		}
+		
+	if (alter_flags->is_set(HA_ADD_INDEX) || alter_flags->is_set(HA_ADD_UNIQUE_INDEX)
+		|| alter_flags->is_set(HA_DROP_INDEX) || alter_flags->is_set(HA_DROP_UNIQUE_INDEX))
+		{
+		for (unsigned int n = 0; n < altered_table->s->keys; n++)
+			{
+			KEY *key = altered_table->key_info + n;
+			KEY *tableEnd = table->key_info + table->s->keys;
+			KEY *tableKey;
+			
+			// Determine if this is a new index
+
+			for (tableKey = table->key_info; tableKey < tableEnd; tableKey++)
+				if (!strcmp(tableKey->name, key->name))
+					break;
+
+			// Unique, non-null keys are interpreted as primary keys.
+			// Online add/drop primary keys not yet supported.
+			
+			if (tableKey >= tableEnd)
+				if (n == altered_table->s->primary_key)
+					{
+					DBUG_PRINT("info",("Online add/drop primary key not supported"));
 					DBUG_RETURN(HA_ALTER_NOT_SUPPORTED);
 					}
 			}
