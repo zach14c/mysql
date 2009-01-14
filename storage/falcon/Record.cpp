@@ -855,7 +855,6 @@ Record* Record::releaseNonRecursive(void)
 
 Record* Record::clearPriorVersion(void)
 {
-	ASSERT(false);
 	return NULL;
 }
 

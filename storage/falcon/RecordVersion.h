@@ -59,6 +59,7 @@ public:
 	virtual void		serialize(Serialize* stream);
 
 	void				commit();
+	bool				committedBefore(TransId);
 
 protected:
 	virtual ~RecordVersion();

@@ -180,6 +180,23 @@ void RecordVersion::commit()
 	transaction = NULL;
 }
 
+// Return true if this record has been committed before a certain transactionId
+
+bool RecordVersion::committedBefore(TransId transId)
+{
+	// The transaction pointer in this record can disapear at any time due to 
+	// another call to Transaction::commitRecords().  So read it locally
+
+	Transaction *transactionPtr = transaction;
+	if (transactionPtr)
+		return transactionPtr->committedBefore(transId);
+
+	// If the transaction Pointer is null, then this record is committed.
+	// All we have is the starting point for these transactions.
+	return (transactionId < transId);
+}
+
+
 bool RecordVersion::retire(RecordScavenge *recordScavenge)
 {
 	bool neededByAnyActiveTrans = true;
@@ -232,7 +249,8 @@ void RecordVersion::scavengeSavepoint(TransId targetTransactionId, int oldestAct
 
 	// Remove prior record versions assigned to the savepoint being released
 	
-	for (; rec && rec->getTransactionId() == targetTransactionId && rec->getSavePointId() >= oldestActiveSavePointId;
+	for (; (   rec && rec->getTransactionId() == targetTransactionId 
+		    && rec->getSavePointId() >= oldestActiveSavePointId);
 		  rec = rec->getPriorVersion())
 		{
 		ptr = rec;

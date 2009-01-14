@@ -124,33 +124,60 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 
 		// Check if this record can be scavenged somehow
 
-		if (rec->isVersion())
+		if (!rec->isVersion())
+			{
+			// This Record object was read from a page on disk
+
+			if (rec == record)
+				scavengeType = CAN_BE_RETIRED;  // This is a base Record object 
+			else
+				{
+				// There must be some newer RecordVersions.
+
+				if (oldestVisibleRec)
+					scavengeType = CAN_BE_PRUNED;   // This is a Record object at the end of a chain.
+				else
+					oldestVisibleRec = rec;
+				}
+			}
+
+		else      // This is a RecordVersion object
 			{
 			RecordVersion * recVer = (RecordVersion *) rec;
 
-			bool committedBeforeAnyActiveTrans = false;
-			if (  !recVer->transaction
-				|| recVer->transaction->committedBefore(oldestActiveTransaction))
-				committedBeforeAnyActiveTrans = true;
+			// We assume here that Transaction::commitRecords is only called
+			// when there are no dependent transactions.  It means that if the 
+			// transaction pointer is null, and we do not know the commitId,
+			// Then we can be assured that the recVer was committed before
+			// any active transaction, including oldestActiveTransaction.
 
-			// This record may be retired if it is the base record AND
+			bool committedBeforeAnyActiveTrans = recVer->committedBefore(oldestActiveTransaction);
+			
+			// This recVer 'may' be retired if it is the base record AND
 			// it is currently not needed by any active transaction.
 
 			if (recVer == record && committedBeforeAnyActiveTrans)
 				scavengeType = CAN_BE_RETIRED;
 			
 			// Look for the oldest visible record version in this chain.
-			// If the transaction is null then there are no dependent transactions
-			// and this record version is visible to all.  If the transaction is not null,
-			// then check if it ended before the current oldest active trans started.
 
 			if (oldestVisibleRec)
 				{
-				if (recVer->useCount > 1)
-					// TBD - A prunable record has an extra use count!  Why? by who?
-					oldestVisibleRec = rec; // reset so that this recVer is not pruned.
+				// Younger transactions may commit before older transactions.
+				// If this older record is visible, then forget oldestVisibleRec
 
-				scavengeType = CAN_BE_PRUNED;
+				if (!committedBeforeAnyActiveTrans)
+					oldestVisibleRec = NULL;
+
+				else
+					{
+					// Do not prune records that have other pointers to them.
+
+					if (recVer->useCount != 1)
+						oldestVisibleRec = rec;   // Rreset this pointer.
+					else
+						scavengeType = CAN_BE_PRUNED;
+					}
 				}
 			else if (committedBeforeAnyActiveTrans)
 				{
@@ -158,10 +185,6 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				oldestVisibleRec = rec;
 				}
 			}
-		else if (oldestVisibleRec)
-			scavengeType = CAN_BE_PRUNED;   // This is a Record object at the end of a chain.
-		else
-			scavengeType = CAN_BE_RETIRED;  // This is a base Record object 
 
 		// Add up the scavengeable space.
 
@@ -182,8 +205,8 @@ Record* RecordScavenge::inventoryRecord(Record* record)
 				unScavengeableSpace += size;
 			}
 
-		// Only base records can be retired.  Add up all retireable records 
-		// in a array of relative ages from our baseGeneration.
+		// Add up all retireable records in a array of relative ages 
+		// from our baseGeneration. Only base records can be retired.
 
 		if (rec == record)
 			{
