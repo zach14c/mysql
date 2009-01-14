@@ -134,12 +134,10 @@ connection master;
 
 --echo ---- ROLLBACK ----
 
-BEGIN;
-INSERT INTO myisam_innodb VALUES (13);
-INSERT INTO myisam_innodb VALUES (14);
-ROLLBACK;
-sync_slave_with_master;
-connection master;
+# Rollback of MyISAM tables not possible, so testing with a MyISAM on
+# master and InnoDB on slave will lead to mismatching tables, so we
+# don't test that.  For more information, see BUG#40116.
+
 BEGIN;
 INSERT INTO innodb_myisam VALUES (15);
 INSERT INTO innodb_myisam VALUES (16);
@@ -221,12 +219,10 @@ connection master;
 
 --echo ---- ROLLBACK ----
 
-BEGIN;
-INSERT INTO myisam_innodb VALUES (37);
-INSERT INTO myisam_innodb VALUES (38);
-ROLLBACK;
-sync_slave_with_master;
-connection master;
+# Rollback of MyISAM tables not possible, so testing with a MyISAM on
+# master and InnoDB on slave will lead to mismatching tables, so we
+# don't test that.  For more information, see BUG#40116.
+
 BEGIN;
 INSERT INTO innodb_myisam VALUES (39);
 INSERT INTO innodb_myisam VALUES (40);
