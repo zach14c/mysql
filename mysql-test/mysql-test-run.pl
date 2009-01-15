@@ -411,9 +411,8 @@ sub main () {
 	 "bzr_mysql-5.1-telco-6.3"            => "ndb_team",
 	 "bzr_mysql-5.1-telco-6.4"            => "ndb_team",
 	 "bzr_mysql-6.0-ndb"                  => "ndb_team,rpl_ndb_big",
-	 "bzr_mysql-6.0-falcon"               => "falcon_team",
 	 "bzr_mysql-6.0-falcon-team"          => "falcon_team",
-	 "bzr_mysql-6.0-falcon-wlad"          => "falcon_team",
+	 "bzr_mysql-6.0-falcon-ann"           => "falcon_team",
 	 "bzr_mysql-6.0-falcon-chris"         => "falcon_team",
 	 "bzr_mysql-6.0-falcon-kevin"         => "falcon_team",
 	);
