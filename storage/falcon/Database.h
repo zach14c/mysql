@@ -153,6 +153,9 @@ public:
 	int				createSequence(int64 initialValue);
 	void			ticker();
 	static void		ticker (void *database);
+	static void		cardinalityThreadMain(void * database);
+	void			cardinalityThreadMain(void);
+	void			cardinalityThreadWakeup(void);
 	static void		scavengerThreadMain(void * database);
 	void			scavengerThreadMain(void);
 	void			scavengerThreadWakeup(void);
@@ -229,6 +232,7 @@ public:
 	void			setRecordScavengeThreshold(int value);
 	void			setRecordScavengeFloor(int value);
 	void			checkRecordScavenge(void);
+	void			signalCardinality(void);
 	void			signalScavenger(void);
 	void			debugTrace(void);
 	void			pageCacheFlushed(int64 flushArg);
@@ -279,6 +283,7 @@ public:
 	SyncObject			syncConnectionStatements;
 	SyncObject			syncScavenge;
 	SyncObject			syncSysDDL;
+	Mutex				syncCardinality;
 	Mutex				syncMemory;
 	PriorityScheduler	*ioScheduler;
 	Threads				*threads;
@@ -300,7 +305,10 @@ public:
 	SyncHandler			*syncHandler;
 	SearchWords			*searchWords;
 	Thread				*tickerThread;
+	Thread				*cardinalityThread;
 	Thread				*scavengerThread;
+	volatile INTERLOCK_TYPE	cardinalityThreadSleeping;
+	volatile INTERLOCK_TYPE	cardinalityThreadSignaled;
 	volatile INTERLOCK_TYPE	scavengerThreadSleeping;
 	volatile INTERLOCK_TYPE	scavengerThreadSignaled;
 	PageWriter			*pageWriter;

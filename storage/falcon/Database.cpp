@@ -463,6 +463,9 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	tableSpaceManager = NULL;
 	timestamp = time (NULL);
 	tickerThread = NULL;
+	cardinalityThread = NULL;
+	cardinalityThreadSleeping = 0;
+	cardinalityThreadSignaled = 0;
 	scavengerThread = NULL;
 	scavengerThreadSleeping = 0;
 	scavengerThreadSignaled = 0;
@@ -527,6 +530,7 @@ void Database::start()
 	filterSetManager = new FilterSetManager(this);
 	timestamp = time(NULL);
 	tickerThread = threads->start("Database::Database", &Database::ticker, this);
+	cardinalityThread = threads->start("Database::cardinalityThreadMain", &Database::cardinalityThreadMain, this);
 	scavengerThread = threads->start("Database::scavengerThreadMain", &Database::scavengerThreadMain, this);
 	internalScheduler->addEvent(scavenger);
 	internalScheduler->addEvent(garbageCollector);
@@ -1719,7 +1723,7 @@ void Database::validate(int optionMask)
 
 void Database::scavenge()
 {
-	updateCardinalities();
+	signalCardinality();
 
 	// Start by scavenging compiled statements.  If they're moldy and not in use,
 	// off with their heads!
@@ -1778,14 +1782,8 @@ void Database::scavenge()
 		backLog->reportStatistics();
 }
 
-
 void Database::scavengeRecords(void)
 {
-	// Commit pending system transactions before proceeding
-
-	if (systemConnection->transaction)
-		commitSystemTransaction();
-
 	Sync syncScavenger(&syncScavenge, "Database::scavengeRecords(Scavenge)");
 	syncScavenger.lock(Exclusive);
 
@@ -1855,7 +1853,6 @@ void Database::pruneRecords(RecordScavenge *recordScavenge)
 		}
 }
 
-
 void Database::retireRecords(RecordScavenge *recordScavenge)
 {
 	// If we passed the upper limit, scavenge.
@@ -1922,6 +1919,7 @@ void Database::scavengerThreadMain(void)
 	while (!thread->shutdownInProgress)
 		{
 		scavenge();
+		
 		if (recordDataPool->activeMemory < recordScavengeThreshold)
 			{
 			INTERLOCKED_INCREMENT(scavengerThreadSleeping);
@@ -2407,6 +2405,45 @@ void Database::getTableSpaceInfo(InfoTable* infoTable)
 void Database::getTableSpaceFilesInfo(InfoTable* infoTable)
 {
 	tableSpaceManager->getTableSpaceFilesInfo(infoTable);
+}
+
+void Database::cardinalityThreadMain(void * database)
+{
+	((Database*) database)->cardinalityThreadMain();
+}
+
+void Database::cardinalityThreadMain(void)
+{
+	Thread *thread = Thread::getThread("Database::cardinalityThreadMain");
+
+	thread->sleep(1000);
+
+	while (!thread->shutdownInProgress)
+		{
+		updateCardinalities();
+		INTERLOCKED_INCREMENT(cardinalityThreadSleeping);
+		thread->sleep();
+		cardinalityThreadSignaled = 0;
+		INTERLOCKED_DECREMENT(cardinalityThreadSleeping);
+		}
+}
+
+void Database::signalCardinality(void)
+{
+	Sync syncCard(&syncCardinality, "Database::signalCardinality");
+	syncCard.lock(Exclusive);
+
+	if (cardinalityThreadSleeping && !cardinalityThreadSignaled)
+		{
+		INTERLOCKED_INCREMENT(cardinalityThreadSignaled);
+		cardinalityThreadWakeup();
+		}
+}
+
+void Database::cardinalityThreadWakeup(void)
+{
+	if (cardinalityThread)
+		cardinalityThread->wake();
 }
 
 void Database::updateCardinalities(void)
