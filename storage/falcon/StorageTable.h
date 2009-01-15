@@ -78,6 +78,7 @@ public:
 	virtual int		indexScan(int indexOrder);
 	virtual int		setCurrentIndex(int indexId);
 	virtual int		clearCurrentIndex();
+	virtual int		checkCurrentIndex();
 	virtual int		setIndex(StorageIndexDesc* indexDesc);
 	virtual void	indexEnd(void);
 	virtual int		setIndexBound(const unsigned char* key, int keyLength, int which);

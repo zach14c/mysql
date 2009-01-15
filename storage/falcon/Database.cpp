@@ -769,7 +769,9 @@ void Database::openDatabase(const char * filename)
 		table->setDataSection (sectionId++);
 		table->setBlobSection (sectionId++);
 		
-		FOR_INDEXES (index, table)
+		// Iterate all indexes, set indexIDs
+		
+		FOR_ALL_INDEXES (index, table)
 			index->setIndex (indexId++);
 		END_FOR;
 		}

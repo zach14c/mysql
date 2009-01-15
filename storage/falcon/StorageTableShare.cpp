@@ -410,8 +410,7 @@ int StorageTableShare::dropIndex(StorageConnection *storageConnection, StorageIn
 		
 	// Remove index description from index mapping
 	
-	if (!ret)
-		deleteIndex(indexDesc->id);
+	deleteIndex(indexDesc->id);
 				
 	return ret;
 }

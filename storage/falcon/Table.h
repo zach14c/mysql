@@ -46,7 +46,14 @@ static const int SYNC_VERSIONS_SIZE	= 16;
 static const int SYNC_THAW_SIZE		= 16;
 
 #define FOR_FIELDS(field,table)	{for (Field *field=table->fields; field; field = field->next){
-#define FOR_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){
+
+// For all indexes, regardless of state
+
+#define FOR_ALL_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){
+
+// For all indexes except incomplete or invalid
+
+#define FOR_INDEXES(index,table)	{for (Index *index=table->indexes; index; index = index->next){if (index->indexId == -1) continue;
 
 class Database;
 class Dbb;

@@ -614,13 +614,18 @@ void Index::garbageCollect(Record * leaving, Record * staying, Transaction *tran
 {
 	int n = 0;
 	
+	// Delete index entries of prior record versions of the 'leaving' record 
+	
 	for (Record *record = leaving; record && record != staying; record = record->getGCPriorVersion(), ++n)
 		if (record->hasRecord() && record->recordNumber >= 0)
 			{
 			IndexKey key(this);
 			makeKey (record, &key);
 
-			if (!duplicateKey(&key, record->getPriorVersion()) && !duplicateKey (&key, staying))
+			// Delete the index entry for this record version if the key is not used by other record versions
+			
+			if (!duplicateKey(&key, record->getPriorVersion())	// key not in 'leaving' record chain
+				&& !duplicateKey (&key, staying))				// key not in 'staying' record chain
 				{
 				bool hit = false;
 				
@@ -633,6 +638,8 @@ void Index::garbageCollect(Record * leaving, Record * staying, Transaction *tran
 						if (deferredIndex->deleteNode(&key, record->recordNumber))
 							hit = true;
 					}
+				
+				// Delete the index entry directly from the index page
 				
 				if (dbb->deleteIndexEntry(indexId, indexVersion, &key, record->recordNumber, TRANSACTION_ID(transaction)))
 					hit = true;

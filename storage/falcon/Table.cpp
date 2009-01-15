@@ -252,7 +252,9 @@ void Table::create(const char * tableType, Transaction *transaction)
 	dataSectionId = dbb->createSection(TRANSACTION_ID(transaction));
 	blobSectionId = dbb->createSection(TRANSACTION_ID(transaction));
 
-	FOR_INDEXES(index, this);
+	// Iterate all indexes, assume indexId == -1
+	
+	FOR_ALL_INDEXES(index, this);
 		index->create(transaction);
 	END_FOR;
 }

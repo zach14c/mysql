@@ -194,11 +194,12 @@ int StorageTable::setCurrentIndex(int indexId)
 		indexesLocked = true;
 		}
 	
-	if (!(currentIndex = share->getIndex(indexId)))
-		{
-		clearCurrentIndex();
-		return StorageErrorNoIndex;
-		}
+	currentIndex = share->getIndex(indexId);
+
+	int ret = checkCurrentIndex();
+	
+	if (ret)
+		return ret;
 		
 	upperBound = lowerBound = NULL;
 	searchFlags = 0;
@@ -219,6 +220,22 @@ int StorageTable::clearCurrentIndex()
 	return 0;
 }
 
+int StorageTable::checkCurrentIndex()
+{
+	if (!currentIndex)
+		{
+		clearCurrentIndex();
+		
+		// Use a more benign error until the server protects online alter
+		// with a DDL lock.
+		
+		// return StorageErrorNoIndex;
+		return StorageErrorRecordNotFound;
+		}
+	
+	return 0;
+}
+
 int StorageTable::setIndex(StorageIndexDesc* indexDesc)
 {
 	return share->setIndex(indexDesc);
@@ -226,11 +243,10 @@ int StorageTable::setIndex(StorageIndexDesc* indexDesc)
 
 int StorageTable::indexScan(int indexOrder)
 {
-	if (!currentIndex)
-		{
-		clearCurrentIndex();
-		return StorageErrorNoIndex;
-		}
+	int ret = checkCurrentIndex();
+
+	if (ret)
+		return ret;
 	
 	int numberSegments = (upperBound) ?  upperBound->numberSegments : (lowerBound) ? lowerBound->numberSegments : 0;
 	
@@ -267,16 +283,15 @@ void StorageTable::indexEnd(void)
 
 int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int which)
 {
-	if (!currentIndex)
-		{
-		clearCurrentIndex();
-		return StorageErrorNoIndex;
-		}
+	int ret = checkCurrentIndex();
+
+	if (ret)
+		return ret;
 
 	if (which & LowerBound)
 		{
 		lowerBound = &lowerKey;
-		int ret = storageDatabase->makeKey(currentIndex, key, keyLength, lowerBound);
+		ret = storageDatabase->makeKey(currentIndex, key, keyLength, lowerBound);
 		
 		if (ret)
 			return ret;
@@ -287,7 +302,7 @@ int StorageTable::setIndexBound(const unsigned char* key, int keyLength, int whi
 	else if (which & UpperBound)
 		{
 		upperBound = &upperKey;
-		int ret = storageDatabase->makeKey(currentIndex, key, keyLength, upperBound);
+		ret = storageDatabase->makeKey(currentIndex, key, keyLength, upperBound);
 
 		if (ret)
 			return ret;
