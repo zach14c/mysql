@@ -183,11 +183,35 @@ static int assign_condition_item(const char* name, THD *thd, Item *set,
 
 int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
 {
+  struct cond_item_map
+  {
+    enum enum_diag_condition_item_name m_item;
+    UTF8String64 MYSQL_ERROR::*m_member;
+  };
+
+  static cond_item_map map[]=
+  {
+    { DIAG_CLASS_ORIGIN, & MYSQL_ERROR::m_class_origin },
+    { DIAG_SUBCLASS_ORIGIN, & MYSQL_ERROR::m_subclass_origin },
+    { DIAG_CONSTRAINT_CATALOG, & MYSQL_ERROR::m_constraint_catalog },
+    { DIAG_CONSTRAINT_SCHEMA, & MYSQL_ERROR::m_constraint_schema },
+    { DIAG_CONSTRAINT_NAME, & MYSQL_ERROR::m_constraint_name },
+    { DIAG_CATALOG_NAME, & MYSQL_ERROR::m_catalog_name },
+    { DIAG_SCHEMA_NAME, & MYSQL_ERROR::m_schema_name },
+    { DIAG_TABLE_NAME, & MYSQL_ERROR::m_table_name },
+    { DIAG_COLUMN_NAME, & MYSQL_ERROR::m_column_name },
+    { DIAG_CURSOR_NAME, & MYSQL_ERROR::m_cursor_name }
+  };
+
   Item *set;
   String str_value;
   String *str;
   int i;
+  uint j;
   int result= 1;
+  enum enum_diag_condition_item_name item_enum;
+  UTF8String64 *member;
+  const LEX_STRING *name;
 
   DBUG_ENTER("Abstract_signal::eval_signal_informations");
 
@@ -207,85 +231,26 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
     }
   }
 
-  set= m_set_signal_information.m_item[DIAG_CLASS_ORIGIN];
-  if (set != NULL)
+  /*
+    Generically assign all the UTF8String64 condition items
+    described in the map.
+  */
+  for (j= 0; j < sizeof(map)/sizeof(map[0]); j++)
   {
-    if (assign_condition_item("CLASS_ORIGIN", thd, set,
-                              & cond->m_class_origin))
-      goto end;
+    item_enum= map[j].m_item;
+    set= m_set_signal_information.m_item[item_enum];
+    if (set != NULL)
+    {
+      member= & (cond->* map[j].m_member);
+      name= & Diag_condition_item_names[item_enum];
+      if (assign_condition_item(name->str, thd, set, member))
+        goto end;
+    }
   }
 
-  set= m_set_signal_information.m_item[DIAG_SUBCLASS_ORIGIN];
-  if (set != NULL)
-  {
-    if (assign_condition_item("SUBCLASS_ORIGIN", thd, set,
-                              & cond->m_subclass_origin))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_CONSTRAINT_CATALOG];
-  if (set != NULL)
-  {
-    if (assign_condition_item("CONSTRAINT_CATALOG", thd, set,
-                              & cond->m_constraint_catalog))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_CONSTRAINT_SCHEMA];
-  if (set != NULL)
-  {
-    if (assign_condition_item("CONSTRAINT_SCHEMA", thd, set,
-                              & cond->m_constraint_schema))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_CONSTRAINT_NAME];
-  if (set != NULL)
-  {
-    if (assign_condition_item("CONSTRAINT_NAME", thd, set,
-                              & cond->m_constraint_name))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_CATALOG_NAME];
-  if (set != NULL)
-  {
-    if (assign_condition_item("CATALOG_NAME", thd, set,
-                              & cond->m_catalog_name))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_SCHEMA_NAME];
-  if (set != NULL)
-  {
-    if (assign_condition_item("SCHEMA_NAME", thd, set,
-                              & cond->m_schema_name))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_TABLE_NAME];
-  if (set != NULL)
-  {
-    if (assign_condition_item("TABLE_NAME", thd, set,
-                              & cond->m_table_name))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_COLUMN_NAME];
-  if (set != NULL)
-  {
-    if (assign_condition_item("COLUMN_NAME", thd, set,
-                              & cond->m_column_name))
-      goto end;
-  }
-
-  set= m_set_signal_information.m_item[DIAG_CURSOR_NAME];
-  if (set != NULL)
-  {
-    if (assign_condition_item("CURSOR_NAME", thd, set,
-                              & cond->m_cursor_name))
-      goto end;
-  }
+  /*
+    Assign the remaining attributes.
+  */
 
   set= m_set_signal_information.m_item[DIAG_MESSAGE_TEXT];
   if (set != NULL)
@@ -321,7 +286,7 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
     /*
       See the comments
        "Design notes about MYSQL_ERROR::m_message_text."
-      in file sql_signal.cc
+      in file sql_error.cc
     */
     String converted_text;
     converted_text.set_charset(error_message_charset_info);
