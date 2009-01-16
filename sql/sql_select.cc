@@ -9076,6 +9076,7 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
     uint n_marked= 0;
     if (((Item_cond*) cond)->functype() == Item_func::COND_AND_FUNC)
     {
+      table_map used_tables= 0;
       Item_cond_and *new_cond=new Item_cond_and;
       if (!new_cond)
 	return (COND*) 0;
@@ -9085,7 +9086,10 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
       {
 	Item *fix= make_cond_for_index(item, table, keyno, other_tbls_ok);
 	if (fix)
+        {
 	  new_cond->argument_list()->push_back(fix);
+          used_tables|= fix->used_tables();
+        }
         n_marked += test(item->marker == ICP_COND_USES_INDEX_ONLY);
       }
       if (n_marked ==((Item_cond*)cond)->argument_list()->elements)
@@ -9094,9 +9098,11 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
       case 0:
 	return (COND*) 0;
       case 1:
+        new_cond->used_tables_cache= used_tables;
 	return new_cond->argument_list()->head();
       default:
 	new_cond->quick_fix_field();
+        new_cond->used_tables_cache= used_tables;
 	return new_cond;
       }
     }
@@ -9118,6 +9124,7 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
       if (n_marked ==((Item_cond*)cond)->argument_list()->elements)
         cond->marker= ICP_COND_USES_INDEX_ONLY;
       new_cond->quick_fix_field();
+      new_cond->used_tables_cache= ((Item_cond_or*) cond)->used_tables_cache;
       new_cond->top_level_item();
       return new_cond;
     }
