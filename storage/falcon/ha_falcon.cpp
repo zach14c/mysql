@@ -1646,20 +1646,15 @@ int StorageInterface::read_range_first(const key_range *start_key,
 	if ((res= scanRange(start_key, end_key, eq_range_arg)))
 		DBUG_RETURN(res);
 
-	for (;;)
+	int result = index_next(table->record[0]);
+
+	if (result)
 		{
-		int result = index_next(table->record[0]);
+		if (result == HA_ERR_KEY_NOT_FOUND)
+			result = HA_ERR_END_OF_FILE;
 
-		if (result)
-			{
-			if (result == HA_ERR_KEY_NOT_FOUND)
-				result = HA_ERR_END_OF_FILE;
-
-			table->status = result;
-			DBUG_RETURN(result);
-			}
-
-		DBUG_RETURN(0);
+		table->status = result;
+		DBUG_RETURN(result);
 		}
 
 	DBUG_RETURN(0);
