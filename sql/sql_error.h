@@ -55,8 +55,6 @@ public:
                      ulonglong last_insert_id_arg,
                      const char *message);
   void set_eof_status(THD *thd);
-  void set_default_error_status(THD *thd, uint sql_errno_arg,
-                                const char *message_arg);
   void set_error_status(THD *thd, uint sql_errno_arg, const char *message_arg,
                         const char *sqlstate);
 

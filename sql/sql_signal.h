@@ -41,19 +41,25 @@ protected:
   {}
 
   /**
-    Evaluate the condition items 'MYSQL_ERRNO', 'RETURNED_SQLSTATE' and 'level'
+    Assign the condition items 'MYSQL_ERRNO', 'level' and 'MESSAGE_TEXT'
+    default values of a condition.
+    @param cond the condition to update.
+    @param set_level_code true if 'level' and 'MYSQL_ERRNO' needs to be overwritten
+    @param level the level to assign
+    @param sqlcode the sql code to assign
+  */
+  static void assign_defaults(MYSQL_ERROR *cond,
+                              bool set_level_code,
+                              MYSQL_ERROR::enum_warning_level level,
+                              int sqlcode);
+
+  /**
+    Evaluate the condition items 'SQLSTATE', 'MYSQL_ERRNO', 'level' and 'MESSAGE_TEXT'
     default values for this statement.
     @param thd the current thread.
     @param cond the condition to update.
   */
-  void eval_sqlcode_sqlstate(THD *thd, MYSQL_ERROR *cond);
-
-  /**
-    Evaluate condition item 'MESSAGE_TEXT' default value.
-    @param thd the current thread.
-    @param cond the condition to update.
-  */
-  void eval_default_message_text(THD *thd, MYSQL_ERROR *cond);
+  void eval_defaults(THD *thd, MYSQL_ERROR *cond);
 
   /**
     Evaluate each signal condition items for this statement.

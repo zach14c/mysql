@@ -2337,15 +2337,13 @@ private:
     @param sqlstate the condition SQLSTATE
     @param level the condition level
     @param msg the condition message text
-    @param flags the condition flags (ME_FATAL_ERROR)
     @return The condition raised, or NULL
   */
   MYSQL_ERROR*
   raise_condition(uint sql_errno,
                   const char* sqlstate,
                   MYSQL_ERROR::enum_warning_level level,
-                  const char* msg,
-                  myf flags);
+                  const char* msg);
 
   /**
     Raise a generic SQL condition, without activation any SQL condition

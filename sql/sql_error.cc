@@ -404,14 +404,6 @@ Diagnostics_area::set_eof_status(THD *thd)
 */
 
 void
-Diagnostics_area::set_default_error_status(THD *thd, uint sql_errno_arg,
-                                           const char *message_arg)
-{
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno_arg);
-  set_error_status(thd, sql_errno_arg, message_arg, sqlstate);
-}
-
-void
 Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
                                    const char *message_arg,
                                    const char *sqlstate)
@@ -431,6 +423,9 @@ Diagnostics_area::set_error_status(THD *thd, uint sql_errno_arg,
   if (is_disabled())
     return;
 #endif
+
+  if (sqlstate == NULL)
+    sqlstate= mysql_errno_to_sqlstate(sql_errno_arg);
 
   m_sql_errno= sql_errno_arg;
   memcpy(m_sqlstate, sqlstate, SQLSTATE_LENGTH);
@@ -537,13 +532,10 @@ MYSQL_ERROR *Warning_info::raise_condition(THD *thd,
 void push_warning(THD *thd, MYSQL_ERROR::enum_warning_level level,
                   uint code, const char *msg)
 {
-  const char* sqlstate;
-
   DBUG_ENTER("push_warning");
   DBUG_PRINT("enter", ("code: %d, msg: %s", code, msg));
 
-  sqlstate= mysql_errno_to_sqlstate(code);
-  (void) thd->raise_condition(code, sqlstate, level, msg, MYF(0));
+  (void) thd->raise_condition(code, NULL, level, msg);
 
   DBUG_VOID_RETURN;
 }

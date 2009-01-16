@@ -141,6 +141,9 @@ void net_send_error(THD *thd, uint sql_errno, const char *err,
 
   DBUG_PRINT("enter",("sql_errno: %d  err: %s", sql_errno, err));
 
+  if (sqlstate == NULL)
+    sqlstate= mysql_errno_to_sqlstate(sql_errno);
+
   /*
     It's one case when we can push an error even though there
     is an OK or EOF already.

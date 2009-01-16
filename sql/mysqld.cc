@@ -1942,10 +1942,7 @@ void close_connection(THD *thd, uint errcode, bool lock)
   if ((vio= thd->net.vio) != 0)
   {
     if (errcode)
-    {
-      const char* sqlstate= mysql_errno_to_sqlstate(errcode);
-      net_send_error(thd, errcode, ER(errcode), sqlstate); /* purecov: inspected */
-    }
+      net_send_error(thd, errcode, ER(errcode), NULL); /* purecov: inspected */
     vio_close(vio);			/* vio is freed in delete thd */
   }
   if (lock)
@@ -3021,12 +3018,12 @@ void my_message_sql(uint error, const char *str, myf MyFlags)
 
   if ((thd= current_thd))
   {
-    const char* sqlstate= mysql_errno_to_sqlstate(error);
+    if (MyFlags & ME_FATALERROR)
+      thd->is_fatal_error= 1;
     (void) thd->raise_condition(error,
-                                sqlstate,
+                                NULL,
                                 MYSQL_ERROR::WARN_LEVEL_ERROR,
-                                str,
-                                MyFlags);
+                                str);
   }
   if (!thd || MyFlags & ME_NOREFRESH)
     sql_print_error("%s: %s", my_progname, str); /* purecov: inspected */
@@ -4961,8 +4958,6 @@ void create_thread_to_handle_connection(THD *thd)
                               handle_one_connection,
                               (void*) thd)))
     {
-      const char* sqlstate;
-
       /* purecov: begin inspected */
       DBUG_PRINT("error",
                  ("Can't create thread to handle request (error %d)",
@@ -4979,8 +4974,7 @@ void create_thread_to_handle_connection(THD *thd)
       /* Can't use my_error() since store_globals has not been called. */
       my_snprintf(error_message_buff, sizeof(error_message_buff),
                   ER(ER_CANT_CREATE_THREAD), error);
-      sqlstate= mysql_errno_to_sqlstate(ER_CANT_CREATE_THREAD);
-      net_send_error(thd, ER_CANT_CREATE_THREAD, error_message_buff, sqlstate);
+      net_send_error(thd, ER_CANT_CREATE_THREAD, error_message_buff, NULL);
       (void) pthread_mutex_lock(&LOCK_thread_count);
       close_connection(thd,0,0);
       delete thd;

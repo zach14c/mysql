@@ -91,62 +91,60 @@ void Set_signal_information::clear()
   memset(m_item, 0, sizeof(m_item));
 }
 
-void Abstract_signal::eval_sqlcode_sqlstate(THD *thd, MYSQL_ERROR *cond)
+void Abstract_signal::assign_defaults(MYSQL_ERROR *cond,
+                                      bool set_level_code,
+                                      MYSQL_ERROR::enum_warning_level level,
+                                      int sqlcode)
 {
-  DBUG_ASSERT(m_cond);
+  if (set_level_code)
+  {
+    cond->m_level= level;
+    cond->m_sql_errno= sqlcode;
+  }
+  if (! cond->get_message_text())
+    cond->set_builtin_message_text(ER(sqlcode));
+}
+
+void Abstract_signal::eval_defaults(THD *thd, MYSQL_ERROR *cond)
+{
   DBUG_ASSERT(cond);
 
-  /*
-    SIGNAL is restricted in sql_yacc.yy to only signal SQLSTATE conditions
-  */
-  DBUG_ASSERT(m_cond->type == sp_cond_type::state);
-  const char* sqlstate= m_cond->sqlstate;
+  const char* sqlstate;
+  bool set_defaults= (m_cond != 0);
 
+  if (set_defaults)
+  {
+    /*
+      SIGNAL is restricted in sql_yacc.yy to only signal SQLSTATE conditions.
+    */
+    DBUG_ASSERT(m_cond->type == sp_cond_type::state);
+    sqlstate= m_cond->sqlstate;
+    cond->set_sqlstate(sqlstate);
+  }
+  else
+    sqlstate= cond->get_sqlstate();
+
+  DBUG_ASSERT(sqlstate);
+  /* SQLSTATE class "00": illegal, rejected in the parser. */
   DBUG_ASSERT((sqlstate[0] != '0') || (sqlstate[1] != '0'));
-
-  cond->set_sqlstate(sqlstate);
 
   if ((sqlstate[0] == '0') && (sqlstate[1] == '1'))
   {
-    /* SQLSTATE class "01": warning */
-    cond->m_level= MYSQL_ERROR::WARN_LEVEL_WARN;
-    cond->m_sql_errno= ER_SIGNAL_WARN;
+    /* SQLSTATE class "01": warning. */
+    assign_defaults(cond, set_defaults,
+                    MYSQL_ERROR::WARN_LEVEL_WARN, ER_SIGNAL_WARN);
   }
   else if ((sqlstate[0] == '0') && (sqlstate[1] == '2'))
   {
-    /* SQLSTATE class "02": not found */
-    cond->m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
-    cond->m_sql_errno= ER_SIGNAL_NOT_FOUND;
+    /* SQLSTATE class "02": not found. */
+    assign_defaults(cond, set_defaults,
+                    MYSQL_ERROR::WARN_LEVEL_ERROR, ER_SIGNAL_NOT_FOUND);
   }
   else
   {
-    cond->m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
-    cond->m_sql_errno= ER_SIGNAL_EXCEPTION;
-  }
-}
-
-void Abstract_signal::eval_default_message_text(THD *thd, MYSQL_ERROR *cond)
-{
-  const char* sqlstate= cond->get_sqlstate();
-
-  DBUG_ASSERT((sqlstate[0] != '0') || (sqlstate[1] != '0'));
-
-  if (cond->get_message_text() == NULL)
-  {
-    if ((sqlstate[0] == '0') && (sqlstate[1] == '1'))
-    {
-      /* SQLSTATE class "01": warning */
-      cond->set_builtin_message_text(ER(ER_SIGNAL_WARN));
-    }
-    else if ((sqlstate[0] == '0') && (sqlstate[1] == '2'))
-    {
-      /* SQLSTATE class "02": not found */
-      cond->set_builtin_message_text(ER(ER_SIGNAL_NOT_FOUND));
-    }
-    else
-    {
-      cond->set_builtin_message_text(ER(ER_SIGNAL_EXCEPTION));
-    }
+    /* other SQLSTATE classes : error. */
+    assign_defaults(cond, set_defaults,
+                    MYSQL_ERROR::WARN_LEVEL_ERROR, ER_SIGNAL_EXCEPTION);
   }
 }
 
@@ -383,13 +381,9 @@ int Abstract_signal::raise_condition(THD *thd, MYSQL_ERROR *cond)
 
   DBUG_ASSERT(m_lex->query_tables == NULL);
 
-  if (m_cond != NULL)
-    eval_sqlcode_sqlstate(thd, cond);
-
+  eval_defaults(thd, cond);
   if (eval_signal_informations(thd, cond))
     DBUG_RETURN(result);
-
-  eval_default_message_text(thd, cond);
 
   /* SIGNAL should not signal WARN_LEVEL_NOTE */
   DBUG_ASSERT((cond->m_level == MYSQL_ERROR::WARN_LEVEL_WARN) ||
@@ -399,8 +393,7 @@ int Abstract_signal::raise_condition(THD *thd, MYSQL_ERROR *cond)
   raised= thd->raise_condition(cond->get_sql_errno(),
                                cond->get_sqlstate(),
                                cond->get_level(),
-                               cond->get_message_text(),
-                               MYF(0));
+                               cond->get_message_text());
   if (raised)
     raised->copy_opt_attributes(cond);
 

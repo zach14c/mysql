@@ -583,13 +583,11 @@ void THD::pop_internal_handler()
 
 void THD::raise_error(uint sql_errno)
 {
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
   const char* msg= ER(sql_errno);
   (void) raise_condition(sql_errno,
-                         sqlstate,
+                         NULL,
                          MYSQL_ERROR::WARN_LEVEL_ERROR,
-                         msg,
-                         MYF(0));
+                         msg);
 }
 
 void THD::raise_error_printf(uint sql_errno, ...)
@@ -602,24 +600,20 @@ void THD::raise_error_printf(uint sql_errno, ...)
   va_start(args, sql_errno);
   my_vsnprintf(ebuff, sizeof(ebuff), format, args);
   va_end(args);
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
   (void) raise_condition(sql_errno,
-                         sqlstate,
+                         NULL,
                          MYSQL_ERROR::WARN_LEVEL_ERROR,
-                         ebuff,
-                         MYF(0));
+                         ebuff);
   DBUG_VOID_RETURN;
 }
 
 void THD::raise_warning(uint sql_errno)
 {
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
   const char* msg= ER(sql_errno);
   (void) raise_condition(sql_errno,
-                         sqlstate,
+                         NULL,
                          MYSQL_ERROR::WARN_LEVEL_WARN,
-                         msg,
-                         MYF(0));
+                         msg);
 }
 
 void THD::raise_warning_printf(uint sql_errno, ...)
@@ -632,12 +626,10 @@ void THD::raise_warning_printf(uint sql_errno, ...)
   va_start(args, sql_errno);
   my_vsnprintf(ebuff, sizeof(ebuff), format, args);
   va_end(args);
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
   (void) raise_condition(sql_errno,
-                         sqlstate,
+                         NULL,
                          MYSQL_ERROR::WARN_LEVEL_WARN,
-                         ebuff,
-                         MYF(0));
+                         ebuff);
   DBUG_VOID_RETURN;
 }
 
@@ -647,13 +639,11 @@ void THD::raise_note(uint sql_errno)
   DBUG_PRINT("enter", ("code: %d", sql_errno));
   if (!(this->options & OPTION_SQL_NOTES))
     DBUG_VOID_RETURN;
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
   const char* msg= ER(sql_errno);
   (void) raise_condition(sql_errno,
-                         sqlstate,
+                         NULL,
                          MYSQL_ERROR::WARN_LEVEL_NOTE,
-                         msg,
-                         MYF(0));
+                         msg);
   DBUG_VOID_RETURN;
 }
 
@@ -669,20 +659,17 @@ void THD::raise_note_printf(uint sql_errno, ...)
   va_start(args, sql_errno);
   my_vsnprintf(ebuff, sizeof(ebuff), format, args);
   va_end(args);
-  const char* sqlstate= mysql_errno_to_sqlstate(sql_errno);
   (void) raise_condition(sql_errno,
-                         sqlstate,
+                         NULL,
                          MYSQL_ERROR::WARN_LEVEL_NOTE,
-                         ebuff,
-                         MYF(0));
+                         ebuff);
   DBUG_VOID_RETURN;
 }
 
 MYSQL_ERROR* THD::raise_condition(uint sql_errno,
                                   const char* sqlstate,
                                   MYSQL_ERROR::enum_warning_level level,
-                                  const char* msg,
-                                  myf flags)
+                                  const char* msg)
 {
   MYSQL_ERROR *cond= NULL;
   DBUG_ENTER("THD::raise_condition");
@@ -703,6 +690,8 @@ MYSQL_ERROR* THD::raise_condition(uint sql_errno,
     sql_errno= ER_UNKNOWN_ERROR;
   if (msg == NULL)
     msg= ER(sql_errno);
+  if (sqlstate == NULL)
+   sqlstate= mysql_errno_to_sqlstate(sql_errno);
 
   if ((level == MYSQL_ERROR::WARN_LEVEL_WARN) &&
       really_abort_on_warning())
@@ -722,8 +711,6 @@ MYSQL_ERROR* THD::raise_condition(uint sql_errno,
     got_warning= 1;
     break;
   case MYSQL_ERROR::WARN_LEVEL_ERROR:
-    if (flags & ME_FATALERROR)
-      is_fatal_error= 1;
     break;
   default:
     DBUG_ASSERT(FALSE);
