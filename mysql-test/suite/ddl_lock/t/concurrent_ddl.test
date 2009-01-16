@@ -1,0 +1,752 @@
+##
+## Test for WL #4343 - DDL locking for all metadata objects
+##
+##
+## Test case 1: Concurrent users performing DDL operations
+##
+
+#
+# We need the Debug Sync Facility.
+#
+--source include/have_debug_sync.inc
+--source include/have_innodb.inc
+
+if (`SELECT LENGTH("$engine_type") = 0`) {
+  let $engine_type= MyISAM;
+# InnoDB;
+# MyISAM;
+}
+let $lock_table= t1;
+
+--disable_warnings
+SET DEBUG_SYNC= 'RESET';
+eval DROP TABLE IF EXISTS $lock_table;
+--enable_warnings
+
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE $lock_table(a INT) ENGINE=$engine_type;
+eval INSERT INTO $lock_table VALUES (1);
+
+# Connections we will use - create only once, in case we forget to unlock.
+--echo # Establish connection locker: the connection that locks the resource
+connect (locker,localhost,root,,);
+--echo # Establish connection waiter: the connection that waits for the resource
+connect (waiter,localhost,root,,);
+--echo # Both these connections are used the same way in all the test cases
+--echo # In this test.
+
+--echo ##
+--echo ## 1.1 One connection holding a lock on a table, other performing
+--echo ##     alter, handler, truncate and drop on same object
+--echo ##
+
+let $sql= ALTER TABLE $lock_table ADD COLUMN (b INT);
+--source suite/ddl_lock/include/sync_lock.inc
+
+let $sql= RENAME TABLE $lock_table TO t2;
+let $teardown= RENAME TABLE t2 TO $lock_table;
+--source suite/ddl_lock/include/sync_lock.inc
+let $teardown= ;
+
+let $sync= locked_external;
+let $setup= HANDLER $lock_table OPEN;
+let $teardown= HANDLER t1 CLOSE;
+let $sql= HANDLER $lock_table READ FIRST;
+--source suite/ddl_lock/include/sync_lock.inc
+let $setup= ;
+let $teardown= ;
+let $sync= ;
+
+# InnoDB needs other syncronization signal
+if (`SELECT STRCMP("$engine_type", "InnoDB") = 0`) {
+    let $sync= wait_for_lock;
+}
+let $sql= TRUNCATE TABLE $lock_table;
+--source suite/ddl_lock/include/sync_lock.inc
+let $sync= ;
+
+let $sql= DROP TABLE $lock_table;
+--source suite/ddl_lock/include/sync_lock.inc
+--echo ##
+--echo ## 1.2 Two connections trying to perform alter on same table/view
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval
+CREATE TABLE t1(a INT, b CHAR(100) DEFAULT "test 1.2")
+ENGINE=$engine_type;
+
+# Some rows to make the alter table do something
+INSERT INTO t1 (a) VALUES (1), (2), (3), (4), (5);
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'alter_table_before_main_binlog
+                SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 ADD COLUMN (c CHAR(100) DEFAULT "test 1.2 locker");
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 ADD COLUMN (d CHAR(100) DEFAULT "test 1.2 waiter");
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+SET DEBUG_SYNC= 'RESET';
+SELECT SUM(a) FROM t1;
+SELECT COUNT(*) FROM t1 WHERE NOT c LIKE "test 1.2 %";
+
+DROP TABLE t1;
+
+--echo ##
+--echo ## 1.3 One connection creating a table, another is trying to alter it
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval
+CREATE TABLE t1(a INT, b INT)
+ENGINE=$engine_type;
+
+# 5 rows, 1 sec sleep for each (see below)
+INSERT INTO t1 VALUES (1, 2), (2, 3), (3, 4), (4, 5), (5, 6);
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+--replace_result $engine_type <engine_type>
+send;
+eval
+CREATE TABLE t2 ENGINE=$engine_type AS SELECT *, SLEEP(1) FROM t1;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 ADD COLUMN (c INT);
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+
+SET DEBUG_SYNC= 'RESET';
+SELECT SUM(a), SUM(b) FROM t1;
+SELECT SUM(a), SUM(b) FROM t2;
+
+DROP TABLE t1;
+DROP TABLE t2;
+
+--echo ##
+--echo ## 1.4 One connection is selecting (using handler) while another is
+--echo ##     altering the table (select start first)
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE t1(a INT, b INT) ENGINE=$engine_type;
+INSERT INTO t1 VALUES (1, 2), (3, 4);
+
+--echo # Switch to connection locker
+connection locker;
+HANDLER t1 OPEN;
+SET DEBUG_SYNC= 'locked_external SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+HANDLER t1 READ FIRST;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 ADD COLUMN (c INT);
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+HANDLER t1 CLOSE;
+SELECT * FROM t1 ORDER BY a;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection locker
+connection locker;
+HANDLER t1 OPEN;
+SET DEBUG_SYNC= 'locked_external SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+HANDLER t1 READ FIRST;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 DROP COLUMN b;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+HANDLER t1 CLOSE;
+SELECT * FROM t1 ORDER BY a;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+SELECT * FROM t1 ORDER BY a;
+
+# Clean up
+--echo # Switch to connection default
+connection default;
+
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+
+--echo ##
+--echo ## 1.5 One connection selecting (using handler), while another is
+--echo ##     altering the table - altering table starts first
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE t1(a INT, b CHAR(100)) ENGINE=$engine_type;
+
+# Need some rows to make the alter table use some time
+let $i= 10;
+while ($i) {
+  eval INSERT INTO t1 (a) VALUES ($i);
+  dec $i;
+}
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'alter_table_before_main_binlog
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 ADD COLUMN (c CHAR(100) DEFAULT "test 1.5");
+
+--echo # Switch to connection waiter
+connection waiter;
+
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
+--echo # "send" next statement
+send
+HANDLER t1 OPEN;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+HANDLER t1 READ FIRST;
+HANDLER t1 CLOSE;
+
+--echo # Switch to connection default
+connection default;
+SELECT SUM(a) FROM t1;
+SELECT COUNT(*) FROM t1 WHERE NOT c LIKE "test 1.5";
+
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+
+--echo ##
+--echo ## 1.6 Tow connections are long create/select, while another is
+--echo ##     altering the table
+--echo ##
+
+--echo # Connections locker1..locker3 will run different SQL queries, which
+--echo # will all lock on the same resource.
+connect (locker1,localhost,root,,);
+connect (locker2,localhost,root,,);
+connect (locker3,localhost,root,,);
+
+--replace_result $engine_type <engine_type>
+eval
+CREATE TABLE t1(a INT, b INT)
+ENGINE=$engine_type;
+
+# 5 rows, 1 sec sleep for each = 5 sec sleep
+INSERT INTO t1 VALUES (1, 2), (2, 3), (3, 4), (4, 5), (5, 6);
+
+--echo # Switch to connection locker1
+connection locker1;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+--replace_result $engine_type <engine_type>
+send;
+eval CREATE TABLE t2 ENGINE=$engine_type AS SELECT *, SLEEP(1) FROM t1;
+
+--echo # Switch to connection locker2
+connection locker2;
+--echo # "send" next statement
+send;
+eval CREATE TABLE t3 LIKE t1;
+
+--echo # Switch to connection locker3
+connection locker3;
+--echo # "send" next statement
+--replace_result $engine_type <engine_type>
+send;
+eval CREATE TABLE t4 ENGINE=$engine_type AS SELECT *, SLEEP(1) FROM t1;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 ADD COLUMN (c INT);
+
+--echo # Switch to connection locker3
+connection locker3;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection locker2
+connection locker2;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection locker1
+connection locker1;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+SELECT SUM(a), SUM(b) FROM t2;
+SELECT SUM(a), SUM(b) FROM t3;
+SELECT SUM(a), SUM(b) FROM t4;
+
+--echo # Closing connections locker1..locker3 since they are not used any more
+disconnect locker1;
+disconnect locker2;
+disconnect locker3;
+
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+
+--echo ##
+--echo ## 1.7 Both connections trying to rename the same table/view
+--echo ##     (including alter ... rename command)
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval
+CREATE TABLE t1(a INT, b CHAR(100))
+ENGINE=$engine_type;
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t1 RENAME t2;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'after_start_ddl SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER TABLE t2 RENAME t3;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+SELECT SUM(a) FROM t3;
+SELECT COUNT(*) FROM t3;
+
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t3;
+
+##
+## 1.8 - Repeat with different engines: already supported, set $engine_type
+##
+
+--echo ##
+--echo ## 1.8a Use list of tables in DROP TABLE and RENAME TABLE statements
+--echo ##
+
+let $lock_table_2 = t_$lock_table;
+
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE $lock_table(a INT) ENGINE=$engine_type;
+eval INSERT INTO $lock_table VALUES (1);
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE $lock_table_2(a INT) ENGINE=$engine_type;
+eval INSERT INTO $lock_table_2 VALUES (1);
+
+
+let $sql= RENAME TABLE $lock_table TO t2, $lock_table_2 TO t3;
+let $teardown= RENAME TABLE t2 TO $lock_table, t3 TO $lock_table_2;
+--source suite/ddl_lock/include/sync_lock.inc
+let $teardown= ;
+
+let $sql= DROP TABLE $lock_table, $lock_table_2;
+--source suite/ddl_lock/include/sync_lock.inc
+
+--echo ##
+--echo ## 1.9 Two connections trying to alter the same stored procedure
+--echo ##     and function
+--echo ##
+
+--echo # Switch to connection default
+connection default;
+
+--replace_result $engine_type <engine_type>
+eval
+CREATE TABLE t1 (id INT PRIMARY KEY, b CHAR(100) DEFAULT "initial value")
+ENGINE=$engine_type;
+
+delimiter |;
+CREATE PROCEDURE t_proc ()
+BEGIN
+   SELECT * FROM t1;
+END|
+delimiter ;|
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER PROCEDURE t_proc COMMENT 'Now with a comment from conn lock 1.9';
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'wait_for_lock SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER PROCEDURE t_proc COMMENT 'Now with a comment from conn waiter 1.9';
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+
+SET DEBUG_SYNC= 'RESET';
+DROP PROCEDURE t_proc;
+
+CREATE FUNCTION t_func (s CHAR(20)) RETURNS CHAR(30) DETERMINISTIC
+RETURN CONCAT('Hello, ', s, '!');
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER FUNCTION t_func COMMENT 'Now with a comment from conn locker 1.9';
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'wait_for_lock SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER FUNCTION t_func COMMENT 'Now with a comment from conn waiter 1.9';
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+
+SET DEBUG_SYNC= 'RESET';
+DROP FUNCTION t_func;
+DROP TABLE t1;
+
+--echo ##
+--echo ## 1.10 One Connection altering a stored procedure/function, while
+--echo ##      the other is dropping it.
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval
+CREATE TABLE t1 (id INT PRIMARY KEY, b CHAR(100) DEFAULT "initial value")
+ENGINE=$engine_type;
+
+delimiter |;
+CREATE PROCEDURE t_proc ()
+BEGIN
+   SELECT * FROM t1;
+END|
+delimiter ;|
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER PROCEDURE t_proc COMMENT 'Now with a comment from conn lock 1.10';
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'wait_for_lock SIGNAL do_unlock';
+--echo # "send" next statement
+send
+DROP PROCEDURE t_proc;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+# TODO: Remove when WL#4299 is fixed
+--error ER_SP_DOES_NOT_EXIST
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+
+CREATE FUNCTION t_func (s CHAR(20)) RETURNS CHAR(30) DETERMINISTIC
+RETURN CONCAT('Hello, ', s, '!');
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER FUNCTION t_func COMMENT 'Now with a comment from conn lock 1.10';
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'wait_for_lock SIGNAL do_unlock';
+--echo # "send" next statement
+send
+DROP FUNCTION t_func;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+# TODO: Remove when WL#4299 is fixed
+--error ER_SP_DOES_NOT_EXIST
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+
+SET DEBUG_SYNC= 'RESET';
+DROP table t1;
+
+--echo ##
+--echo ## 1.11, 1.12 and 1.13 - ALTER TABLE and TRUNCATE TABLE simoultaniously
+--echo ##
+
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE $lock_table(a INT, b CHAR(20) DEFAULT "test 1.11")
+     ENGINE=$engine_type;
+eval INSERT INTO $lock_table (a) VALUES (1);
+
+let $sync= locked_external;
+# InnoDB needs other syncronization signal
+if (`SELECT STRCMP("$engine_type", "InnoDB") = 0`) {
+    let $sync= after_lock_tables_takes_lock;
+}
+
+let sync2= after_lock_tables_takes_lock;
+if (`SELECT STRCMP("$engine_type", "InnoDB") = 0`) {
+    let $sync2= wait_for_lock;
+}
+
+let sync3= locked_external;
+if (`SELECT STRCMP("$engine_type", "InnoDB") = 0`) {
+    let $sync3= wait_for_lock;
+}
+
+--echo # Switch to connection locker
+connection locker;
+
+--replace_result $sync <sync>
+eval SET DEBUG_SYNC= '$sync SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send;
+eval TRUNCATE TABLE $lock_table;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+--replace_result $sync2 <sync2>
+eval SET DEBUG_SYNC= '$sync2 SIGNAL do_unlock';
+--echo # "send" next statement
+send;
+eval ALTER TABLE $lock_table ADD COLUMN (c INT);
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+SET DEBUG_SYNC= 'RESET';
+
+--echo # Switch to connection locker
+connection locker;
+# --replace_result $sync2 <sync2>
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock
+                 SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send;
+eval ALTER TABLE $lock_table ADD COLUMN (d INT);
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+--replace_result $sync3 <sync3>
+eval SET DEBUG_SYNC= '$sync3 SIGNAL do_unlock';
+--echo # "send" next statement
+send;
+eval TRUNCATE TABLE $lock_table;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+
+SET DEBUG_SYNC= 'RESET';
+eval DROP TABLE $lock_table;
+
+--echo ##
+--echo ## 1.14 Two connections are trying to alter the same event.
+--echo ##
+
+CREATE EVENT ev1 ON SCHEDULE AT CURRENT_TIMESTAMP + INTERVAL 1 HOUR DO
+SELECT MOD(29,9);
+
+--echo # Switch to connection locker
+connection locker;
+SET DEBUG_SYNC= 'locked_external SIGNAL locked WAIT_FOR do_unlock';
+--echo # "send" next statement
+send
+ALTER EVENT ev1 ON SCHEDULE EVERY 12 HOUR
+STARTS CURRENT_TIMESTAMP + INTERVAL 1 HOUR;
+
+--echo # Switch to connection waiter
+connection waiter;
+SET DEBUG_SYNC= 'now WAIT_FOR locked';
+SET DEBUG_SYNC= 'after_lock_tables_takes_lock SIGNAL do_unlock';
+--echo # "send" next statement
+send
+ALTER EVENT ev1 ON SCHEDULE EVERY 4 HOUR
+STARTS CURRENT_TIMESTAMP + INTERVAL 4 HOUR;
+
+--echo # Switch to connection locker
+connection locker;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection waiter
+connection waiter;
+--echo # "reap" outcome of last statement
+reap;
+
+--echo # Switch to connection default
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP EVENT ev1;
+
+--echo # Clean up connections
+disconnect waiter;
+disconnect locker;
