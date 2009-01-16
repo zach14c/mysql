@@ -28,6 +28,7 @@
   */
 
 #include "ddl_blocker.h"
+#include "debug_sync.h"
 
 DDL_blocker_class *DDL_blocker_class::m_instance= NULL;
 

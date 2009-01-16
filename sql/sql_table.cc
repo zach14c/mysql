@@ -16,6 +16,7 @@
 /* drop and alter of tables */
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include <hash.h>
 #include <myisam.h>
 #include <my_dir.h>
@@ -3001,13 +3002,21 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  }
 	}
 	else if (!f_is_geom(sql_field->pack_flag) &&
-		  (column->length > length ||
-                   !Field::type_can_have_key_part (sql_field->sql_type) ||
-		   ((f_is_packed(sql_field->pack_flag) ||
-		     ((file->ha_table_flags() & HA_NO_PREFIX_CHAR_KEYS) &&
-		      (key_info->flags & HA_NOSAME))) &&
-		    column->length != length)))
-	{
+                 ((column->length > length &&
+                   !Field::type_can_have_key_part (sql_field->sql_type)) ||
+                  ((f_is_packed(sql_field->pack_flag) ||
+                    ((file->ha_table_flags() & HA_NO_PREFIX_CHAR_KEYS) &&
+                     (key_info->flags & HA_NOSAME))) &&
+                   column->length != length)))
+        {
+          /* Catch invalid uses of partial keys.
+             A key is identified as 'partial' if column->length != length.
+             A partial key is invalid if they data type does
+             not allow it, or the field is packed (as in MyISAM),
+             or the storage engine doesn't allow prefixed search and
+             the key is primary key.
+          */
+
 	  my_message(ER_WRONG_SUB_KEY, ER(ER_WRONG_SUB_KEY), MYF(0));
 	  DBUG_RETURN(TRUE);
 	}
@@ -4390,7 +4399,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       table->table=0;				// For query cache
       if (protocol->write())
 	goto err;
-      thd->main_da.reset_diagnostics_area();
+      thd->stmt_da->reset_diagnostics_area();
       continue;
       /* purecov: end */
     }
@@ -6700,6 +6709,8 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
         Query_log_event qinfo(thd, thd->query, thd->query_length, 0, FALSE);
         mysql_bin_log.write(&qinfo);
       }
+      DBUG_EXECUTE_IF("sleep_alter_rename_view", my_sleep(6000000););
+      DEBUG_SYNC(thd, "alter_rename_view");
       my_ok(thd);
     }
     pthread_mutex_unlock(&LOCK_open);
@@ -7316,22 +7327,31 @@ view_err:
     error=1;
     (void) quick_rm_table(new_db_type, new_db, tmp_name, FN_IS_TMP);
   }
-  else if (mysql_rename_table(new_db_type, new_db, tmp_name, new_db,
+
+  else {
+
+    DEBUG_SYNC(thd, "alter_table_before_rename");
+
+    if (mysql_rename_table(new_db_type, new_db, tmp_name, new_db,
                               new_alias, FN_FROM_IS_TMP) ||
            (new_name != table_name || new_db != db) && // we also do rename
            Table_triggers_list::change_table_name(thd, db, table_name,
                                                   new_db, new_alias))
-  {
-    /* Try to get everything back. */
-    error=1;
-    (void) quick_rm_table(new_db_type,new_db,new_alias, 0);
-    (void) quick_rm_table(new_db_type, new_db, tmp_name, FN_IS_TMP);
-    (void) mysql_rename_table(old_db_type, db, old_name, db, alias,
-                            FN_FROM_IS_TMP);
+      {
+        /* Try to get everything back. */
+        error=1;
+        (void) quick_rm_table(new_db_type,new_db,new_alias, 0);
+        (void) quick_rm_table(new_db_type, new_db, tmp_name, FN_IS_TMP);
+        (void) mysql_rename_table(old_db_type, db, old_name, db, alias,
+                                  FN_FROM_IS_TMP);
+      }
   }
 
+  DBUG_EXECUTE_IF("sleep_alter_rename_table", my_sleep(6000000););
+  DEBUG_SYNC(thd, "alter_rename_table");
+
   if (! error)
-  (void) quick_rm_table(old_db_type, db, old_name, FN_IS_TMP);
+    (void) quick_rm_table(old_db_type, db, old_name, FN_IS_TMP);
 
   pthread_mutex_unlock(&LOCK_open);
 
@@ -7345,6 +7365,7 @@ end_online:
   thd_proc_info(thd, "end");
 
   DBUG_EXECUTE_IF("sleep_alter_before_main_binlog", my_sleep(6000000););
+  DEBUG_SYNC(thd, "alter_table_before_main_binlog");
 
   ha_binlog_log_query(thd, create_info->db_type, LOGCOM_ALTER_TABLE,
                       thd->query, thd->query_length,
