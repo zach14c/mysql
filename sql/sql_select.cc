@@ -119,7 +119,7 @@ static COND* substitute_for_best_equal_field(COND *cond,
                                              void *table_join_idx);
 static COND *simplify_joins(JOIN *join, List<TABLE_LIST> *join_list,
                             COND *conds, bool top, bool in_sj);
-static bool check_interleaving_with_nj(JOIN_TAB *last, JOIN_TAB *next);
+static bool check_interleaving_with_nj(JOIN_TAB *next);
 static void restore_prev_nj_state(JOIN_TAB *last);
 static void reset_nj_counters(List<TABLE_LIST> *join_list);
 static uint build_bitmap_for_nested_joins(List<TABLE_LIST> *join_list,
@@ -7120,6 +7120,18 @@ greedy_search(JOIN      *join,
     */
     join->positions[idx]= best_pos;
 
+    /*
+      Update the interleaving state after extending the current partial plan
+      with a new table.
+      We are doing this here because best_extension_by_limited_search reverts
+      the interleaving state to the one of the non-extended partial plan 
+      on exit.
+    */
+    IF_DBUG(bool is_interleave_error= )
+    check_interleaving_with_nj (best_table);
+    /* This has been already checked by best_extension_by_limited_search */
+    DBUG_ASSERT(!is_interleave_error);
+
     /* find the position of 'best_table' in 'join->best_ref' */
     best_idx= idx;
     JOIN_TAB *pos= join->best_ref[best_idx];
@@ -7137,7 +7149,7 @@ greedy_search(JOIN      *join,
     --size_remain;
     ++idx;
 
-    DBUG_EXECUTE("opt", print_plan(join, n_tables, record_count, read_time, 
+    DBUG_EXECUTE("opt", print_plan(join, idx, record_count, read_time, 
                                    read_time, "extended"););
   } while (TRUE);
 }
@@ -7340,7 +7352,7 @@ best_extension_by_limited_search(JOIN      *join,
     if ((remaining_tables & real_table_bit) && 
         (allowed_tables & real_table_bit) &&
         !(remaining_tables & s->dependent) && 
-        (!idx || !check_interleaving_with_nj(join->positions[idx-1].table, s)))
+        (!idx || !check_interleaving_with_nj(s)))
     {
       double current_record_count, current_read_time;
       POSITION *position= join->positions + idx;
@@ -7496,7 +7508,7 @@ find_best(JOIN *join,table_map rest_tables,uint idx,double record_count,
   {
     table_map real_table_bit=s->table->map;
     if ((rest_tables & real_table_bit) && !(rest_tables & s->dependent) &&
-        (!idx|| !check_interleaving_with_nj(join->positions[idx-1].table, s)))
+        (!idx|| !check_interleaving_with_nj(s)))
     {
       double records, best;
       POSITION loose_scan_pos;
@@ -12515,9 +12527,6 @@ static void reset_nj_counters(List<TABLE_LIST> *join_list)
              the partial join order.
   @endverbatim
 
-  @param join       Join being processed
-  @param last_tab   Last table in current partial join order (this function is
-                    not called for empty partial join orders)
   @param next_tab   Table we're going to extend the current partial join with
 
   @retval
@@ -12527,10 +12536,10 @@ static void reset_nj_counters(List<TABLE_LIST> *join_list)
     TRUE   Requested join order extension not allowed.
 */
 
-static bool check_interleaving_with_nj(JOIN_TAB *last_tab, JOIN_TAB *next_tab)
+static bool check_interleaving_with_nj(JOIN_TAB *next_tab)
 {
   TABLE_LIST *next_emb= next_tab->table->pos_in_table_list->embedding;
-  JOIN *join= last_tab->join;
+  JOIN *join= next_tab->join;
 
   if (join->cur_embedding_map & ~next_tab->embedding_map)
   {
