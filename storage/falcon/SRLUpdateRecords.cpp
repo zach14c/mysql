@@ -28,6 +28,7 @@
 #include "Sync.h"
 #include "SerialLogWindow.h"
 #include "Format.h"
+#include "SQLError.h"
 
 SRLUpdateRecords::SRLUpdateRecords(void)
 {
@@ -37,8 +38,19 @@ SRLUpdateRecords::~SRLUpdateRecords(void)
 {
 }
 
-void SRLUpdateRecords::chill(Transaction *transaction, RecordVersion *record, uint dataLength)
+bool SRLUpdateRecords::chill(Transaction *transaction, RecordVersion *record, uint dataLength)
 {
+	Sync syncPrior(record->getSyncPrior(), "SRLUpdateRecords::chill");
+	
+	try
+		{
+		syncPrior.lock(Exclusive, 50);
+		}
+	catch (...)
+		{
+		return false;
+		}
+	
 	// Record data has been written to the serial log, so release the data
 	// buffer and set the state accordingly
 	
@@ -55,6 +67,8 @@ void SRLUpdateRecords::chill(Transaction *transaction, RecordVersion *record, ui
 		transaction->totalRecordData -= dataLength;
 	else
 		transaction->totalRecordData = 0;
+		
+	return true;
 }
 
 int SRLUpdateRecords::thaw(RecordVersion *record, bool *thawed)
@@ -200,15 +214,16 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 					{
 					int chillBytes = record->getEncodedSize();
 
-					chill(transaction, record, chillBytes);
+					if (chill(transaction, record, chillBytes))
+						{
+						log->chilledRecords++;
+						log->chilledBytes += chillBytes;
 					
-					log->chilledRecords++;
-					log->chilledBytes += chillBytes;
-					
-					ASSERT(transaction->thawedRecords > 0);
+						//ASSERT(transaction->thawedRecords > 0);
 
-					if (transaction->thawedRecords)
-						transaction->thawedRecords--;
+						if (transaction->thawedRecords)
+							transaction->thawedRecords--;
+						}
 					}
 				else
 					{
@@ -253,9 +268,11 @@ void SRLUpdateRecords::append(Transaction *transaction, RecordVersion *records, 
 			
 			if (chillRecords && record->state != recDeleted)
 				{
-				chill(transaction, record, stream.totalLength);
-				chilledRecordsWindow++;
-				chilledBytesWindow += stream.totalLength;
+				if (chill(transaction, record, stream.totalLength))
+					{
+					chilledRecordsWindow++;
+					chilledBytesWindow += stream.totalLength;
+					}
 				}
 			} // next record version
 		
