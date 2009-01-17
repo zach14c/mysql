@@ -246,19 +246,6 @@ static void dbug_print_table(const char *info, TABLE *table)
   - purging the ndb_binlog_index
   - creating the ndb_apply_status table
 */
-static void copy_warnings(THD *thd, List<MYSQL_ERROR> *src)
-{
-  List_iterator_fast<MYSQL_ERROR> err_it(*src);
-  MYSQL_ERROR *err;
-
-  while ((err= err_it++))
-    thd->warning_info->raise_condition(thd,
-                                       err->get_sql_errno(),
-                                       err->get_sqlstate(),
-                                       err->get_level(),
-                                       err->get_message_text());
-}
-
 static void run_query(THD *thd, char *buf, char *end,
                       const int *no_print_error, my_bool disable_binlog,
                       my_bool reset_error)
@@ -297,7 +284,7 @@ static void run_query(THD *thd, char *buf, char *end,
 
     if (res && !reset_error)
     {
-      copy_warnings(thd, con.get_warn_list());
+      thd->warning_info->append_warnings(thd, con.get_warn_list());
       if (! thd->stmt_da->is_error())
         thd->stmt_da->set_error_status(thd,
                                        con.get_last_errno(),

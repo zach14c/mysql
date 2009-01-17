@@ -43,6 +43,7 @@
 #include "sp_rcontext.h"
 #include "sp_cache.h"
 #include "transaction.h"
+#include "debug_sync.h"
 
 /*
   The following is used to initialise Table_ident with a internal
@@ -400,7 +401,6 @@ THD::THD()
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
    first_successful_insert_id_in_cur_stmt(0),
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
-   main_warning_info(0),
    warning_info(&main_warning_info),
    stmt_da(&main_da),
    global_read_lock(0),
@@ -425,7 +425,8 @@ THD::THD()
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
-   locked_tables_root(NULL)
+   locked_tables_root(NULL),
+   main_warning_info(0)
 {
   ulong tmp;
 
@@ -678,8 +679,7 @@ MYSQL_ERROR* THD::raise_condition(uint sql_errno,
       (level == MYSQL_ERROR::WARN_LEVEL_NOTE))
     DBUG_RETURN(NULL);
 
-  if (! spcont)
-    warning_info->opt_clear_warning_info(query_id);
+  warning_info->opt_clear_warning_info(query_id);
 
   /*
     TODO: replace by DBUG_ASSERT(sql_errno != 0) once all bugs similar to
@@ -779,7 +779,7 @@ THD::raise_condition_no_handler(uint sql_errno,
   if (no_warnings_for_error && (level == MYSQL_ERROR::WARN_LEVEL_ERROR))
     DBUG_RETURN(NULL);
 
-  cond= warning_info->raise_condition(this, sql_errno, sqlstate, level, msg);
+  cond= warning_info->push_warning(this, sql_errno, sqlstate, level, msg);
   DBUG_RETURN(cond);
 }
 

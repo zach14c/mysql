@@ -17,6 +17,7 @@
 /* Basic functions needed by many modules */
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sp.h"
@@ -4476,6 +4477,8 @@ int lock_tables(THD *thd, TABLE_LIST *tables, uint count,
     if (! (thd->lock= mysql_lock_tables(thd, start, (uint) (ptr - start),
                                         flags, need_reopen)))
       DBUG_RETURN(-1);
+
+    DEBUG_SYNC(thd, "after_lock_tables_takes_lock");
 
     if (thd->lex->requires_prelocking() &&
         thd->lex->sql_command != SQLCOM_LOCK_TABLES)

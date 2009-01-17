@@ -24,6 +24,7 @@
 #endif
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "rpl_filter.h"
 #include <myisampack.h>
 #include "myisam.h"
@@ -3897,7 +3898,7 @@ int ha_reset_logs(THD *thd)
 {
   binlog_func_st bfn= {BFN_RESET_LOGS, 0};
   binlog_func_foreach(thd, &bfn);
-  if (thd->main_da.is_error())
+  if (thd->stmt_da->is_error())
     return 1;
   return 0;
 }
@@ -3906,7 +3907,7 @@ int ha_reset_slave(THD* thd)
 {
   binlog_func_st bfn= {BFN_RESET_SLAVE, 0};
   binlog_func_foreach(thd, &bfn);
-  if (thd->main_da.is_error())
+  if (thd->stmt_da->is_error())
     return 1;
   return 0;
 }
@@ -3928,7 +3929,7 @@ int ha_binlog_index_purge_file(THD *thd, const char *file)
 {
   binlog_func_st bfn= {BFN_BINLOG_PURGE_FILE, (void *)file};
   binlog_func_foreach(thd, &bfn);
-  if (thd->main_da.is_error())
+  if (thd->stmt_da->is_error())
     return 1;
   return 0;
 }
@@ -3937,7 +3938,7 @@ static int ha_global_schema_lock(THD *thd, int no_queue)
 {
   binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_LOCK, (void *)&no_queue};
   int res= binlog_func_foreach(thd, &bfn);
-  if (res || thd->main_da.is_error())
+  if (res || thd->stmt_da->is_error())
     return 1;
   return 0;
 }
@@ -3946,7 +3947,7 @@ static int ha_global_schema_unlock(THD *thd)
 {
   binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_UNLOCK, 0};
   binlog_func_foreach(thd, &bfn);
-  if (thd->main_da.is_error())
+  if (thd->stmt_da->is_error())
     return 1;
   return 0;
 }

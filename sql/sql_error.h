@@ -380,6 +380,38 @@ public:
       clear_warning_info(query_id);
   }
 
+  void append_warning_info(THD *thd, Warning_info *source)
+  {
+    append_warnings(thd, & source->warn_list());
+  }
+
+  /**
+    Concatenate the list of warnings.
+    It's considered tolerable to lose a warning.
+  */
+  void append_warnings(THD *thd, List<MYSQL_ERROR> *src)
+  {
+    MYSQL_ERROR *err;
+    MYSQL_ERROR *copy;
+    List_iterator_fast<MYSQL_ERROR> it(*src);
+    /*
+      Don't use ::push_warning() to avoid invocation of condition
+      handlers or escalation of warnings to errors.
+    */
+    while ((err= it++))
+    {
+      copy= Warning_info::push_warning(thd, err->get_sql_errno(), err->get_sqlstate(),
+                                       err->get_level(), err->get_message_text());
+      if (copy)
+        copy->copy_opt_attributes(err);
+    }
+  }
+
+  /**
+    Conditional merge of related warning information areas.
+  */
+  void merge_with_routine_info(THD *thd, Warning_info *source);
+
   /**
     Reset between two COM_ commands. Warnings are preserved
     between commands, but statement_warn_count indicates
@@ -417,6 +449,9 @@ public:
     return m_warn_count[(uint) MYSQL_ERROR::WARN_LEVEL_ERROR];
   }
 
+  /** Id of the warning information area. */
+  ulonglong warn_id() const { return m_warn_id; }
+
   /** Do we have any errors and warnings that we can *show*? */
   bool is_empty() const { return m_warn_list.elements == 0; }
 
@@ -442,10 +477,10 @@ public:
   void reserve_space(THD *thd, uint count);
 
   /** Add a new condition to the current list. */
-  MYSQL_ERROR *raise_condition(THD *thd,
-                               uint sql_errno, const char* sqlstate,
-                               MYSQL_ERROR::enum_warning_level level,
-                               const char* msg);
+  MYSQL_ERROR *push_warning(THD *thd,
+                            uint sql_errno, const char* sqlstate,
+                            MYSQL_ERROR::enum_warning_level level,
+                            const char* msg);
 
   /**
     Set the read only status for this statement area.
@@ -471,6 +506,8 @@ public:
 private:
   /** Read only status. */
   bool m_read_only;
+
+  friend class SQLCOM_resignal;
 };
 
 ///////////////////////////////////////////////////////////////////////////

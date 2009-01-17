@@ -20,6 +20,7 @@
 */
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sql_trigger.h"

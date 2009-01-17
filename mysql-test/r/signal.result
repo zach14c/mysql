@@ -1362,6 +1362,7 @@ MYSQL_ERRNO = 1012;
 end $$
 insert into t1 values (1), (2) $$
 Warnings:
+Warning	1012	This trigger SIGNAL a warning, a=1
 Warning	1012	This trigger SIGNAL a warning, a=2
 drop trigger t1_ai $$
 create trigger t1_ai after insert on t1 for each row

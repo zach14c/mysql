@@ -395,6 +395,8 @@ int SQLCOM_resignal::execute(THD *thd)
 
   DBUG_ENTER("SQLCOM_resignal::execute");
 
+  thd->warning_info->m_warn_id= thd->query_id;
+
   if (! thd->spcont || ! (signaled= thd->spcont->raised_condition()))
   {
     thd->raise_error(ER_RESIGNAL_WITHOUT_ACTIVE_HANDLER);

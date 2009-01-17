@@ -55,8 +55,6 @@ create temporary table t2 as select * from t1;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_DROP_TABLE TEMPORARY
 #
@@ -81,8 +79,6 @@ update t2 set a=a+1 where (1) in (select * from t1);
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_INSERT
 #
@@ -91,8 +87,6 @@ insert into t2 set a=((1) in (select * from t1));
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_INSERT_SELECT
 #
@@ -101,8 +95,6 @@ insert into t2 select * from t1;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_REPLACE
 #
@@ -111,8 +103,6 @@ replace t2 set a=((1) in (select * from t1));
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_REPLACE_SELECT
 #
@@ -121,8 +111,6 @@ replace t2 select * from t1;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_DELETE
 #
@@ -131,8 +119,6 @@ delete from t2 where (1) in (select * from t1);
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 #
 # SQLCOM_DELETE_MULTI
 #
@@ -160,8 +146,6 @@ load data infile '../std_data_ln/words.dat' into table t4;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
-Warnings:
-Warning	1196	Some non-transactional changed tables couldn't be rolled back
 drop table t4;
 #
 # SQLCOM_SHOW_DATABASES

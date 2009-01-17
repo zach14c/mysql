@@ -526,8 +526,6 @@ end|
 delete from t1|
 create table t3 ( s char(16), d int)|
 call into_test4()|
-Warnings:
-Warning	1329	No data - zero rows fetched, selected, or processed
 select * from t3|
 s	d
 into4	NULL
@@ -1118,8 +1116,6 @@ end|
 select f9()|
 f9()
 6
-Warnings:
-Note	1051	Unknown table 't3'
 select f9() from t1 limit 1|
 f9()
 6
@@ -1160,8 +1156,6 @@ drop temporary table t3|
 select f12_1()|
 f12_1()
 3
-Warnings:
-Note	1051	Unknown table 't3'
 select f12_1() from t1 limit 1|
 f12_1()
 3
@@ -2113,12 +2107,7 @@ end if;
 insert into t4 values (2, rc, t3);
 end|
 call bug1863(10)|
-Warnings:
-Note	1051	Unknown table 'temp_t1'
-Warning	1329	No data - zero rows fetched, selected, or processed
 call bug1863(10)|
-Warnings:
-Warning	1329	No data - zero rows fetched, selected, or processed
 select * from t4|
 f1	rc	t3
 2	0	NULL
@@ -2383,11 +2372,7 @@ begin
 end|
 call bug4579_1()|
 call bug4579_1()|
-Warnings:
-Warning	1329	No data - zero rows fetched, selected, or processed
 call bug4579_1()|
-Warnings:
-Warning	1329	No data - zero rows fetched, selected, or processed
 drop procedure bug4579_1|
 drop procedure bug4579_2|
 drop table t3|
@@ -3773,9 +3758,6 @@ Table	Create Table
 tm1	CREATE TEMPORARY TABLE `tm1` (
   `spv1` decimal(3,3) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
-Warnings:
-Warning	1264	Out of range value for column 'spv1' at row 1
-Warning	1366	Incorrect decimal value: 'test' for column 'spv1' at row 1
 call bug12589_2()|
 Table	Create Table
 tm1	CREATE TEMPORARY TABLE `tm1` (
@@ -6134,35 +6116,6 @@ bug5274_f2()
 x
 Warnings:
 Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
-Warning	1265	Data truncated for column 'bug5274_f1' at row 1
 DROP FUNCTION bug5274_f1|
 DROP FUNCTION bug5274_f2|
 drop procedure if exists proc_21513|
@@ -6257,19 +6210,16 @@ f1(2)
 0
 Warnings:
 Warning	1329	No data - zero rows fetched, selected, or processed
-Warning	1329	No data - zero rows fetched, selected, or processed
 PREPARE s1 FROM 'SELECT f1(2)';
 EXECUTE s1;
 f1(2)
 0
 Warnings:
 Warning	1329	No data - zero rows fetched, selected, or processed
-Warning	1329	No data - zero rows fetched, selected, or processed
 EXECUTE s1;
 f1(2)
 0
 Warnings:
-Warning	1329	No data - zero rows fetched, selected, or processed
 Warning	1329	No data - zero rows fetched, selected, or processed
 DROP PROCEDURE p1;
 DROP PROCEDURE p2;
@@ -6282,6 +6232,7 @@ create procedure mysqltest_db1.sp_bug28551() begin end;
 call mysqltest_db1.sp_bug28551();
 show warnings;
 Level	Code	Message
+Note	1008	Can't drop database 'mysqltest_db1'; database doesn't exist
 drop database mysqltest_db1;
 drop database if exists mysqltest_db1;
 drop table if exists test.t1;
@@ -6993,6 +6944,101 @@ INSERT INTO t1 VALUES (1);
 SELECT * FROM t1 WHERE a = f1();
 ERROR 42S02: Table 'test.t_non_existing' doesn't exist
 DROP FUNCTION f1;
+DROP TABLE t1;
+DROP PROCEDURE IF EXISTS p1;
+CREATE PROCEDURE p1(a INT, b CHAR)
+BEGIN
+IF a > 0 THEN
+CALL p1(a-1, 'ab');
+ELSE
+SELECT 1;
+END IF;
+END|
+SET @save_max_sp_recursion= @@max_sp_recursion_depth;
+SET @@max_sp_recursion_depth= 5;
+CALL p1(4, 'a');
+1
+1
+Warnings:
+Warning	1265	Data truncated for column 'b' at row 1
+Warning	1265	Data truncated for column 'b' at row 1
+Warning	1265	Data truncated for column 'b' at row 1
+Warning	1265	Data truncated for column 'b' at row 1
+SET @@max_sp_recursion_depth= @save_max_sp_recursion;
+DROP PROCEDURE p1;
+DROP PROCEDURE IF EXISTS p1;
+CREATE PROCEDURE p1(a CHAR)
+BEGIN
+SELECT 1;
+SELECT CAST('10 ' as UNSIGNED INTEGER);
+SELECT 1;
+END|
+CALL p1('data truncated parameter');
+1
+1
+CAST('10 ' as UNSIGNED INTEGER)
+10
+1
+1
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
+Warning	1292	Truncated incorrect INTEGER value: '10 '
+DROP PROCEDURE p1;
+DROP PROCEDURE IF EXISTS p1;
+DROP PROCEDURE IF EXISTS p2;
+DROP PROCEDURE IF EXISTS p3;
+DROP PROCEDURE IF EXISTS p4;
+CREATE PROCEDURE p1()
+CALL p2()|
+CREATE PROCEDURE p2()
+CALL p3()|
+CREATE PROCEDURE p3()
+CALL p4()|
+CREATE PROCEDURE p4()
+BEGIN
+SELECT 1;
+SELECT CAST('10 ' as UNSIGNED INTEGER);
+SELECT 2;
+END|
+CALL p1();
+1
+1
+CAST('10 ' as UNSIGNED INTEGER)
+10
+2
+2
+Warnings:
+Warning	1292	Truncated incorrect INTEGER value: '10 '
+DROP PROCEDURE p1;
+DROP PROCEDURE p2;
+DROP PROCEDURE p3;
+DROP PROCEDURE p4;
+DROP FUNCTION IF EXISTS f1;
+DROP FUNCTION IF EXISTS f2;
+DROP FUNCTION IF EXISTS f3;
+DROP FUNCTION IF EXISTS f4;
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (a CHAR(2));
+INSERT INTO t1 VALUES ('aa');
+CREATE FUNCTION f1() RETURNS CHAR
+RETURN (SELECT f2())|
+CREATE FUNCTION f2() RETURNS CHAR
+RETURN (SELECT f3())|
+CREATE FUNCTION f3() RETURNS CHAR
+RETURN (SELECT f4())|
+CREATE FUNCTION f4() RETURNS CHAR
+BEGIN
+RETURN (SELECT a FROM t1);
+END|
+SELECT f1();
+f1()
+a
+Warnings:
+Warning	1265	Data truncated for column 'f4()' at row 1
+DROP FUNCTION f1;
+DROP FUNCTION f2;
+DROP FUNCTION f3;
+DROP FUNCTION f4;
 DROP TABLE t1;
 # ------------------------------------------------------------------
 # -- End of 6.0 tests
