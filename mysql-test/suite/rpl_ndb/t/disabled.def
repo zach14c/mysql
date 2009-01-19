@@ -13,4 +13,3 @@
 # the below testcase have been reworked to avoid the bug, test contains comment, keep bug open
 
 rpl_ndb_extraCol	: Bug#41369 2008-12-10 alik
-rpl_ndb_mixed_tables    : Bug #42199 2009-01-19 joro
