@@ -693,6 +693,44 @@ void _ma_check_print_warning(HA_CHECK *param, const char *fmt, ...)
   DBUG_VOID_RETURN;
 }
 
+/**
+  Report list of threads (and queries) accessing a table, thread_id of a
+  thread that detected corruption, ource file name and line number where
+  this corruption was detected, optional extra information (string).
+
+  This function is intended to be used when table corruption is detected.
+
+  @param[in] file      MARIA_HA object.
+  @param[in] message   Optional error message.
+  @param[in] sfile     Name of source file.
+  @param[in] sline     Line number in source file.
+
+  @return void
+*/
+
+void _ma_report_crashed(MARIA_HA *file, const char *message,
+                        const char *sfile, uint sline)
+{
+  THD *cur_thd;
+  LIST *element;
+  char buf[1024];
+  pthread_mutex_lock(&file->s->intern_lock);
+  if ((cur_thd= (THD*) file->in_use.data))
+    sql_print_error("Got an error from thread_id=%lu, %s:%d", cur_thd->thread_id,
+                    sfile, sline);
+  else
+    sql_print_error("Got an error from unknown thread, %s:%d", sfile, sline);
+  if (message)
+    sql_print_error("%s", message);
+  for (element= file->s->in_use; element; element= list_rest(element))
+  {
+    THD *thd= (THD*) element->data;
+    sql_print_error("%s", thd ? thd_security_context(thd, buf, sizeof(buf), 0)
+                              : "Unknown thread accessing table");
+  }
+  pthread_mutex_unlock(&file->s->intern_lock);
+}
+
 }
 
 /**
@@ -784,90 +822,6 @@ uint ha_maria::max_supported_key_length() const
   return min(HA_MAX_KEY_BUFF, tmp);
 }
 
-
-#ifdef HAVE_REPLICATION
-int ha_maria::net_read_dump(NET * net)
-{
-  int data_fd= file->dfile.file;
-  int error= 0;
-
-  my_seek(data_fd, 0L, MY_SEEK_SET, MYF(MY_WME));
-  for (;;)
-  {
-    ulong packet_len= my_net_read(net);
-    if (!packet_len)
-      break;                                    // end of file
-    if (packet_len == packet_error)
-    {
-      sql_print_error("ha_maria::net_read_dump - read error ");
-      error= -1;
-      goto err;
-    }
-    if (my_write(data_fd, (uchar *) net->read_pos, (uint) packet_len,
-                 MYF(MY_WME | MY_FNABP)))
-    {
-      error= errno;
-      goto err;
-    }
-  }
-err:
-  return error;
-}
-
-
-int ha_maria::dump(THD * thd, int fd)
-{
-  MARIA_SHARE *share= file->s;
-  NET *net= &thd->net;
-  uint block_size= share->block_size;
-  my_off_t bytes_to_read= share->state.state.data_file_length;
-  int data_fd= file->dfile.file;
-  uchar *buf= (uchar *) my_malloc(block_size, MYF(MY_WME));
-  if (!buf)
-    return ENOMEM;
-
-  int error= 0;
-  my_seek(data_fd, 0L, MY_SEEK_SET, MYF(MY_WME));
-  for (; bytes_to_read > 0;)
-  {
-    size_t bytes= my_read(data_fd, buf, block_size, MYF(MY_WME));
-    if (bytes == MY_FILE_ERROR)
-    {
-      error= errno;
-      goto err;
-    }
-
-    if (fd >= 0)
-    {
-      if (my_write(fd, buf, bytes, MYF(MY_WME | MY_FNABP)))
-      {
-        error= errno ? errno : EPIPE;
-        goto err;
-      }
-    }
-    else
-    {
-      if (my_net_write(net, buf, bytes))
-      {
-        error= errno ? errno : EPIPE;
-        goto err;
-      }
-    }
-    bytes_to_read -= bytes;
-  }
-
-  if (fd < 0)
-  {
-    if (my_net_write(net, (uchar*) "", 0))
-      error= errno ? errno : EPIPE;
-    net_flush(net);
-  }
-
-err:
-  my_free((uchar*) buf, MYF(0));
-  return error;
-}
-#endif                                          /* HAVE_REPLICATION */
 
         /* Name is here without an extension */
 
@@ -2209,6 +2163,7 @@ int ha_maria::external_lock(THD *thd, int lock_type)
 {
   TRN *trn= THD_TRN;
   DBUG_ENTER("ha_maria::external_lock");
+  file->in_use.data= thd;
   /*
     We don't test now_transactional because it may vary between lock/unlock
     and thus confuse our reference counting.
@@ -3065,8 +3020,8 @@ static int ha_maria_init(void *p)
   @brief Register a named table with a call back function to the query cache.
 
   @param thd The thread handle
-  @param table_key A pointer to the table name in the table cache
-  @param key_length The length of the table name
+  @param table_name A pointer to the table name in the table cache
+  @param table_name_len The length of the table name
   @param[out] engine_callback The pointer to the storage engine call back
     function, currently 0
   @param[out] engine_data Engine data will be set to 0.

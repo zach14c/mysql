@@ -506,6 +506,7 @@ sub mtr_report_stats ($) {
                 # Bug#35161, test of auto repair --myisam-recover
                 /able.*_will_crash/ or
                 /Got an error from unknown thread, ha_myisam.cc:/ or
+                /Got an error from unknown thread, ha_maria.cc:/ or
 
                 # lowercase_table3 using case sensitive option on
                 # case insensitive filesystem (InnoDB error).

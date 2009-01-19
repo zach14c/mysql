@@ -275,6 +275,7 @@ typedef struct st_maria_share
   MARIA_COLUMNDEF *columndef;		/* Pointer to column information */
   MARIA_PACK pack;			/* Data about packed records */
   MARIA_BLOB *blobs;			/* Pointer to blobs */
+  LIST *in_use;                         /* List of threads using this table */
   uint16 *column_nr;			/* Original column order */
   LEX_STRING unique_file_name;		/* realpath() of index file */
   LEX_STRING data_file_name;		/* Resolved path names from symlinks */
@@ -496,6 +497,7 @@ struct st_maria_handler
   DYNAMIC_ARRAY *ft1_to_ft2;		/* used only in ft1->ft2 conversion */
   MEM_ROOT      ft_memroot;             /* used by the parser               */
   MYSQL_FTPARSER_PARAM *ftparser_param;	/* share info between init/deinit */
+  LIST in_use;                          /* Thread using this table          */
   uchar *buff;				/* page buffer */
   uchar *keyread_buff;                   /* Buffer for last key read */
   uchar *lastkey_buff;			/* Last used search key */
@@ -661,8 +663,10 @@ struct st_maria_handler
 */
 #define int4store_aligned(A,B) int4store((A),(B))
 
+#define ma_report_crashed(A, B) _ma_report_crashed((A), (B), __FILE__, __LINE__)
 #define maria_mark_crashed(x) do{(x)->s->state.changed|= STATE_CRASHED; \
     DBUG_PRINT("error", ("Marked table crashed"));                      \
+    ma_report_crashed((x), 0);                                          \
   }while(0)
 #define maria_mark_crashed_share(x)                                     \
   do{(x)->state.changed|= STATE_CRASHED;                                \
@@ -787,7 +791,10 @@ extern pthread_mutex_t THR_LOCK_maria;
 
 
 /* Some extern variables */
+
+C_MODE_START
 extern LIST *maria_open_list;
+C_MODE_END
 extern uchar maria_file_magic[], maria_pack_file_magic[];
 extern uchar maria_uuid[MY_UUID_SIZE];
 extern uint32 maria_read_vec[], maria_readnext_vec[];
@@ -1224,3 +1231,5 @@ extern void ma_set_index_cond_func(MARIA_HA *info, index_cond_func_t func,
                                    void *func_arg);
 int ma_check_index_cond(register MARIA_HA *info, uint keynr, uchar *record);
 
+void _ma_report_crashed(MARIA_HA *file, const char *message,
+                        const char *sfile, uint sline);
