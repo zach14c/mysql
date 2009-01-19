@@ -148,12 +148,89 @@ void Abstract_signal::eval_defaults(THD *thd, MYSQL_ERROR *cond)
   }
 }
 
-static int assign_condition_item(const char* name, THD *thd, Item *set,
-                                 UTF8String64 *ci)
+static bool assign_fixed_string(MEM_ROOT *mem_root,
+                                CHARSET_INFO *dst_cs,
+                                size_t max_char,
+                                String *dst,
+                                const String* src)
 {
-  char str_buff[(64+1)*4]; /* Room for a null terminated UFT8String64 */
+  bool truncated;
+  size_t numchars;
+  CHARSET_INFO *src_cs;
+  const char* src_str;
+  const char* src_end;
+  size_t src_len;
+  size_t to_copy;
+  char* dst_str;
+  size_t dst_len;
+  size_t dst_copied;
+  uint32 dummy_offset;
+
+  src_str= src->ptr();
+  if (src_str == NULL)
+  {
+    dst->set((const char*) NULL, 0, dst_cs);
+    return false;
+  }
+
+  src_cs= src->charset();
+  src_len= src->length();
+  src_end= src_str + src_len;
+  numchars= src_cs->cset->numchars(src_cs, src_str, src_end);
+
+  if (numchars <= max_char)
+  {
+    to_copy= src->length();
+    truncated= false;
+  }
+  else
+  {
+    numchars= max_char;
+    to_copy= dst_cs->cset->charpos(dst_cs, src_str, src_end, numchars);
+    truncated= true;
+  }
+
+  if (String::needs_conversion(to_copy, src_cs, dst_cs, & dummy_offset))
+  {
+    dst_len= numchars * dst_cs->mbmaxlen;
+    dst_str= (char*) alloc_root(mem_root, dst_len + 1);
+    if (dst_str)
+    {
+      const char* well_formed_error_pos;
+      const char* cannot_convert_error_pos;
+      const char* from_end_pos;
+
+      dst_copied= well_formed_copy_nchars(dst_cs, dst_str, dst_len,
+                                          src_cs, src_str, src_len,
+                                          numchars,
+                                          & well_formed_error_pos,
+                                          & cannot_convert_error_pos,
+                                          & from_end_pos);
+      dst_str[dst_copied]= '\0';
+    }
+  }
+  else
+  {
+    dst_len= to_copy;
+    dst_str= (char*) alloc_root(mem_root, dst_len + 1);
+    if (dst_str)
+    {
+      memcpy(dst_str, src_str, to_copy);
+      dst_str[to_copy]= '\0';
+    }
+  }
+  dst->set(dst_str, dst_len, dst_cs);
+
+  return truncated;
+}
+
+static int assign_condition_item(MEM_ROOT *mem_root, const char* name, THD *thd,
+                                 Item *set, String *ci)
+{
+  char str_buff[(64+1)*4]; /* Room for a null terminated UTF8 String 64 */
   String str_value(str_buff, sizeof(str_buff), & my_charset_utf8_bin);
   String *str;
+  bool truncated;
 
   DBUG_ENTER("assign_condition_item");
 
@@ -164,8 +241,8 @@ static int assign_condition_item(const char* name, THD *thd, Item *set,
   }
 
   str= set->val_str(& str_value);
-  ci->set(str);
-  if (ci->is_truncated())
+  truncated= assign_fixed_string(mem_root, & my_charset_utf8_bin, 64, ci, str);
+  if (truncated)
   {
     if (thd->variables.sql_mode & (MODE_STRICT_TRANS_TABLES |
                                    MODE_STRICT_ALL_TABLES))
@@ -186,7 +263,7 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
   struct cond_item_map
   {
     enum enum_diag_condition_item_name m_item;
-    UTF8String64 MYSQL_ERROR::*m_member;
+    String MYSQL_ERROR::*m_member;
   };
 
   static cond_item_map map[]=
@@ -210,7 +287,7 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
   uint j;
   int result= 1;
   enum enum_diag_condition_item_name item_enum;
-  UTF8String64 *member;
+  String *member;
   const LEX_STRING *name;
 
   DBUG_ENTER("Abstract_signal::eval_signal_informations");
@@ -232,10 +309,10 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
   }
 
   /*
-    Generically assign all the UTF8String64 condition items
+    Generically assign all the UTF8 String 64 condition items
     described in the map.
   */
-  for (j= 0; j < sizeof(map)/sizeof(map[0]); j++)
+  for (j= 0; j < array_elements(map); j++)
   {
     item_enum= map[j].m_item;
     set= m_set_signal_information.m_item[item_enum];
@@ -243,7 +320,7 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
     {
       member= & (cond->* map[j].m_member);
       name= & Diag_condition_item_names[item_enum];
-      if (assign_condition_item(name->str, thd, set, member))
+      if (assign_condition_item(cond->m_mem_root, name->str, thd, set, member))
         goto end;
     }
   }
@@ -265,11 +342,12 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
       Enforce that SET MESSAGE_TEXT = <value> evaluates the value
       as VARCHAR(128) CHARACTER SET UTF8.
     */
-    UTF8String128 utf8_text(thd->mem_root);
+    bool truncated;
+    String utf8_text;
     str= set->val_str(& str_value);
-    utf8_text.set(str->ptr(), (size_t) str->length(), str->charset());
-
-    if (utf8_text.is_truncated())
+    truncated= assign_fixed_string(thd->mem_root, & my_charset_utf8_bin, 128,
+                                   & utf8_text, str);
+    if (truncated)
     {
       if (thd->variables.sql_mode & (MODE_STRICT_TRANS_TABLES |
                                      MODE_STRICT_ALL_TABLES))
@@ -291,7 +369,7 @@ int Abstract_signal::eval_signal_informations(THD *thd, MYSQL_ERROR *cond)
     String converted_text;
     converted_text.set_charset(error_message_charset_info);
     converted_text.append(utf8_text.ptr(), utf8_text.length(),
-                          (CHARSET_INFO *) utf8_text.charset());
+                          utf8_text.charset());
     cond->set_builtin_message_text(converted_text.c_ptr_safe());
   }
 

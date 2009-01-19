@@ -59,7 +59,7 @@ ADD_EXECUTABLE(mysqld
                sql_map.cc sql_parse.cc  sql_partition.cc sql_plugin.cc
                sql_prepare.cc sql_rename.cc 
                debug_sync.cc
-               sql_repl.cc sql_select.cc sql_show.cc sql_state.c sql_string.cc 
+               sql_repl.cc sql_select.cc sql_show.cc sql_state.c
                sql_table.cc sql_test.cc sql_trigger.cc sql_udf.cc sql_union.cc
                sql_update.cc sql_view.cc strfunc.cc table.cc thr_malloc.cc 
                time.cc tztime.cc uniques.cc unireg.cc item_xmlfunc.cc 
@@ -71,7 +71,7 @@ ADD_EXECUTABLE(mysqld
                sql_connect.cc scheduler.cc transaction.cc
                ddl_blocker.cc si_objects.cc si_logs.cc
                sql_profile.cc event_parse_data.cc mdl.cc
-               sql_signal.cc sql_fixstring.cc
+               sql_signal.cc
                rpl_handler.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h

@@ -163,7 +163,7 @@ This file contains the implementation of error and warnings related
 
   - Change (#4 and #5) to store message text in UTF8 natively.
     In practice, this means changing the type of the message text to
-    'UTF8String128 MYSQL_ERROR::m_message_text', and is a direct
+    '<UTF8 String 128 class> MYSQL_ERROR::m_message_text', and is a direct
     consequence of WL#751.
 
   - Implement (#9) (GET DIAGNOSTICS).
@@ -172,16 +172,16 @@ This file contains the implementation of error and warnings related
 
 MYSQL_ERROR::MYSQL_ERROR()
  : Sql_alloc(),
-   m_class_origin(),
-   m_subclass_origin(),
-   m_constraint_catalog(),
-   m_constraint_schema(),
-   m_constraint_name(),
-   m_catalog_name(),
-   m_schema_name(),
-   m_table_name(),
-   m_column_name(),
-   m_cursor_name(),
+   m_class_origin((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_subclass_origin((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_constraint_catalog((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_constraint_schema((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_constraint_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_catalog_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_schema_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_table_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_column_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_cursor_name((const char*) NULL, 0, & my_charset_utf8_bin),
    m_message_text(),
    m_sql_errno(0),
    m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
@@ -194,31 +194,21 @@ void MYSQL_ERROR::init(MEM_ROOT *mem_root)
 {
   DBUG_ASSERT(mem_root != NULL);
   DBUG_ASSERT(m_mem_root == NULL);
-  m_class_origin.init(mem_root);
-  m_subclass_origin.init(mem_root);
-  m_constraint_catalog.init(mem_root);
-  m_constraint_schema.init(mem_root);
-  m_constraint_name.init(mem_root);
-  m_catalog_name.init(mem_root);
-  m_schema_name.init(mem_root);
-  m_table_name.init(mem_root);
-  m_column_name.init(mem_root);
-  m_cursor_name.init(mem_root);
   m_mem_root= mem_root;
 }
 
 void MYSQL_ERROR::clear()
 {
-  m_class_origin.clear();
-  m_subclass_origin.clear();
-  m_constraint_catalog.clear();
-  m_constraint_schema.clear();
-  m_constraint_name.clear();
-  m_catalog_name.clear();
-  m_schema_name.clear();
-  m_table_name.clear();
-  m_column_name.clear();
-  m_cursor_name.clear();
+  m_class_origin.length(0);
+  m_subclass_origin.length(0);
+  m_constraint_catalog.length(0);
+  m_constraint_schema.length(0);
+  m_constraint_name.length(0);
+  m_catalog_name.length(0);
+  m_schema_name.length(0);
+  m_table_name.length(0);
+  m_column_name.length(0);
+  m_cursor_name.length(0);
   m_message_text.length(0);
   m_sql_errno= 0;
   m_level= MYSQL_ERROR::WARN_LEVEL_ERROR;
@@ -226,16 +216,16 @@ void MYSQL_ERROR::clear()
 
 MYSQL_ERROR::MYSQL_ERROR(MEM_ROOT *mem_root)
  : Sql_alloc(),
-   m_class_origin(mem_root),
-   m_subclass_origin(mem_root),
-   m_constraint_catalog(mem_root),
-   m_constraint_schema(mem_root),
-   m_constraint_name(mem_root),
-   m_catalog_name(mem_root),
-   m_schema_name(mem_root),
-   m_table_name(mem_root),
-   m_column_name(mem_root),
-   m_cursor_name(mem_root),
+   m_class_origin((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_subclass_origin((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_constraint_catalog((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_constraint_schema((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_constraint_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_catalog_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_schema_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_table_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_column_name((const char*) NULL, 0, & my_charset_utf8_bin),
+   m_cursor_name((const char*) NULL, 0, & my_charset_utf8_bin),
    m_message_text(),
    m_sql_errno(0),
    m_level(MYSQL_ERROR::WARN_LEVEL_ERROR),
@@ -245,20 +235,37 @@ MYSQL_ERROR::MYSQL_ERROR(MEM_ROOT *mem_root)
   memset(m_returned_sqlstate, 0, sizeof(m_returned_sqlstate));
 }
 
+static void copy_string(MEM_ROOT *mem_root, String* dst, const String* src)
+{
+  size_t len= src->length();
+  if (len)
+  {
+    char* copy= (char*) alloc_root(mem_root, len + 1);
+    if (copy)
+    {
+      memcpy(copy, src->ptr(), len);
+      copy[len]= '\0';
+      dst->set(copy, len, src->charset());
+    }
+  }
+  else
+    dst->length(0);
+}
+
 void
 MYSQL_ERROR::copy_opt_attributes(const MYSQL_ERROR *cond)
 {
   DBUG_ASSERT(this != cond);
-  m_class_origin.copy(& cond->m_class_origin);
-  m_subclass_origin.copy(& cond->m_subclass_origin);
-  m_constraint_catalog.copy(& cond->m_constraint_catalog);
-  m_constraint_schema.copy(& cond->m_constraint_schema);
-  m_constraint_name.copy(& cond->m_constraint_name);
-  m_catalog_name.copy(& cond->m_catalog_name);
-  m_schema_name.copy(& cond->m_schema_name);
-  m_table_name.copy(& cond->m_table_name);
-  m_column_name.copy(& cond->m_column_name);
-  m_cursor_name.copy(& cond->m_cursor_name);
+  copy_string(m_mem_root, & m_class_origin, & cond->m_class_origin);
+  copy_string(m_mem_root, & m_subclass_origin, & cond->m_subclass_origin);
+  copy_string(m_mem_root, & m_constraint_catalog, & cond->m_constraint_catalog);
+  copy_string(m_mem_root, & m_constraint_schema, & cond->m_constraint_schema);
+  copy_string(m_mem_root, & m_constraint_name, & cond->m_constraint_name);
+  copy_string(m_mem_root, & m_catalog_name, & cond->m_catalog_name);
+  copy_string(m_mem_root, & m_schema_name, & cond->m_schema_name);
+  copy_string(m_mem_root, & m_table_name, & cond->m_table_name);
+  copy_string(m_mem_root, & m_column_name, & cond->m_column_name);
+  copy_string(m_mem_root, & m_cursor_name, & cond->m_cursor_name);
 }
 
 void

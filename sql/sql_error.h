@@ -19,7 +19,6 @@
 #include "sql_list.h" /* Sql_alloc, MEM_ROOT */
 #include "m_string.h" /* LEX_STRING */
 #include "mysql_com.h" /* MYSQL_ERRMSG_SIZE */
-#include "sql_fixstring.h"
 
 class THD;
 
@@ -273,34 +272,34 @@ private:
 
 private:
   /** SQL CLASS_ORIGIN condition item. */
-  UTF8String64 m_class_origin;
+  String m_class_origin;
 
   /** SQL SUBCLASS_ORIGIN condition item. */
-  UTF8String64 m_subclass_origin;
+  String m_subclass_origin;
 
   /** SQL CONSTRAINT_CATALOG condition item. */
-  UTF8String64 m_constraint_catalog;
+  String m_constraint_catalog;
 
   /** SQL CONSTRAINT_SCHEMA condition item. */
-  UTF8String64 m_constraint_schema;
+  String m_constraint_schema;
 
   /** SQL CONSTRAINT_NAME condition item. */
-  UTF8String64 m_constraint_name;
+  String m_constraint_name;
 
   /** SQL CATALOG_NAME condition item. */
-  UTF8String64 m_catalog_name;
+  String m_catalog_name;
 
   /** SQL SCHEMA_NAME condition item. */
-  UTF8String64 m_schema_name;
+  String m_schema_name;
 
   /** SQL TABLE_NAME condition item. */
-  UTF8String64 m_table_name;
+  String m_table_name;
 
   /** SQL COLUMN_NAME condition item. */
-  UTF8String64 m_column_name;
+  String m_column_name;
 
   /** SQL CURSOR_NAME condition item. */
-  UTF8String64 m_cursor_name;
+  String m_cursor_name;
 
   /** Message text, expressed in the character set implied by --language. */
   String m_message_text;
