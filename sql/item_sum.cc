@@ -35,7 +35,7 @@
     for a set function that are used to check validity of the set function
     occurrence.
     If the set function is not allowed in any subquery where it occurs
-    an error is reported immediately.
+    an error is reported immediately. 
 
   @param thd      reference to the thread context info
 
