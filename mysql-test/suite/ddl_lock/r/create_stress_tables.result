@@ -1,0 +1,39 @@
+CREATE TABLE t1 (id INT PRIMARY KEY, b CHAR(100) DEFAULT "initial value")
+ENGINE=<engine_type>;
+INSERT INTO t1(id) VALUES (1), (2), (3), (4), (5), (6), (7), (8);
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+SELECT MAX(id) FROM t1 INTO @max;
+INSERT INTO t1(id) SELECT id + @max FROM t1
+WHERE id + @max <= <num_stress_rows>;
+CREATE PROCEDURE t_proc (OUT b_p CHAR(100))
+BEGIN
+SELECT b INTO @b_p FROM t1 WHERE Id = 1;
+END|
+CREATE FUNCTION t_func (s CHAR(20)) RETURNS CHAR(30) DETERMINISTIC
+RETURN CONCAT('Hello, ', s, '!');
