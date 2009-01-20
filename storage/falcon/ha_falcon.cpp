@@ -1589,18 +1589,104 @@ void StorageInterface::getKeyDesc(TABLE *srvTable, int indexId, StorageIndexDesc
 		segment->isUnsigned = (part->field->flags & ENUM_FLAG) ?
 			true : ((Field_num*) part->field)->unsigned_flag;
 
+		segment->mysql_charset = NULL;
+
+		// Separate correctly between types that may map to
+		// the same key type, but that should be treated differently.
+		// This way StorageInterface::getSegmentValue only have
+		// to switch on the keyFormat, and the logic needed at runtime
+		// is minimal.
+		// Also set the correct charset where appropriate.
 		switch (segment->type)
 			{
-			case HA_KEYTYPE_TEXT:
-			case HA_KEYTYPE_VARTEXT1:
-			case HA_KEYTYPE_VARTEXT2:
+			case HA_KEYTYPE_LONG_INT:
+				segment->keyFormat = KEY_FORMAT_LONG_INT;
+				break;
+				
+			case HA_KEYTYPE_SHORT_INT:
+				segment->keyFormat = KEY_FORMAT_SHORT_INT;
+				break;
+				
+			case HA_KEYTYPE_ULONGLONG:
+				segment->keyFormat = KEY_FORMAT_ULONGLONG;
+				break;
+
+			case HA_KEYTYPE_LONGLONG:
+				segment->keyFormat = KEY_FORMAT_LONGLONG;
+				break;
+				
+			case HA_KEYTYPE_FLOAT:
+				segment->keyFormat = KEY_FORMAT_FLOAT;
+				break;
+				
+			case HA_KEYTYPE_DOUBLE:
+				segment->keyFormat = KEY_FORMAT_DOUBLE;
+				break;
+				
 			case HA_KEYTYPE_VARBINARY1:
 			case HA_KEYTYPE_VARBINARY2:
+				segment->keyFormat = KEY_FORMAT_VARBINARY;
 				segment->mysql_charset = part->field->charset();
 				break;
 
+			case HA_KEYTYPE_VARTEXT1:
+			case HA_KEYTYPE_VARTEXT2:
+				segment->keyFormat = KEY_FORMAT_VARTEXT;
+				segment->mysql_charset = part->field->charset();
+				break;
+				
+			case HA_KEYTYPE_BINARY:
+				switch (part->field->real_type())
+					{
+					case MYSQL_TYPE_TINY:
+					case MYSQL_TYPE_BIT:
+					case MYSQL_TYPE_YEAR:
+					case MYSQL_TYPE_SET:
+					case MYSQL_TYPE_ENUM:
+					case MYSQL_TYPE_DATETIME:
+						segment->keyFormat = KEY_FORMAT_BINARY_INTEGER;
+						break;
+						
+					case MYSQL_TYPE_NEWDECIMAL:
+						segment->keyFormat = KEY_FORMAT_BINARY_NEWDECIMAL;
+						break;
+						
+					default:
+						segment->keyFormat = KEY_FORMAT_BINARY_STRING;
+						break;
+					}
+				break;
+				
+			case HA_KEYTYPE_TEXT:
+				segment->keyFormat = KEY_FORMAT_TEXT;
+				segment->mysql_charset = part->field->charset();
+				break;
+				
+			case HA_KEYTYPE_ULONG_INT:
+				if (part->field->real_type() == MYSQL_TYPE_TIMESTAMP)
+					segment->keyFormat = KEY_FORMAT_TIMESTAMP;
+				else
+					segment->keyFormat = KEY_FORMAT_ULONG_INT;
+				break;
+				
+			case HA_KEYTYPE_INT8:
+				segment->keyFormat = KEY_FORMAT_INT8;
+				break;
+				
+			case HA_KEYTYPE_USHORT_INT:
+				segment->keyFormat = KEY_FORMAT_USHORT_INT;
+				break;
+				
+			case HA_KEYTYPE_UINT24:
+				segment->keyFormat = KEY_FORMAT_UINT24;
+				break;
+				
+			case HA_KEYTYPE_INT24:
+				segment->keyFormat = KEY_FORMAT_INT24;
+				break;
+				
 			default:
-				segment->mysql_charset = NULL;
+				segment->keyFormat = KEY_FORMAT_OTHER;
 			}
 		}
 }
