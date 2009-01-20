@@ -590,9 +590,14 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
 {
   using namespace backup;
   
+  // Do nothing if context is in error state.
   if (m_error)
     return NULL;
   
+  /*
+   Note: Logger must be initialized before any call to report_error() - 
+   otherwise an assertion will fail.
+  */ 
   if (Logger::init(BACKUP, query))      // Logs errors
   {
     fatal_error(ER_BACKUP_LOGGER_INIT);
@@ -690,6 +695,21 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 {
   using namespace backup;  
 
+
+  // Do nothing if context is in error state.
+  if (m_error)
+    return NULL;
+  
+  /*
+   Note: Logger must be initialized before any call to report_error() - 
+   otherwise an assertion will fail.
+  */ 
+  if (Logger::init(RESTORE, query))
+  {
+    fatal_error(ER_BACKUP_LOGGER_INIT);
+    return NULL;
+  }
+
   /*
     Block replication from starting.
   */
@@ -701,15 +721,6 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
   if (obs::is_slave())
   {
     fatal_error(report_error(ER_RESTORE_ON_SLAVE));
-    return NULL;
-  }
-
-  if (m_error)
-    return NULL;
-  
-  if (Logger::init(RESTORE, query))
-  {
-    fatal_error(ER_BACKUP_LOGGER_INIT);
     return NULL;
   }
 

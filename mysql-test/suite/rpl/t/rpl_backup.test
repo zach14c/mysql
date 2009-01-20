@@ -388,7 +388,7 @@ SET DEBUG_SYNC = 'reset';
 
 connection slave1;
 
-SET DEBUG_SYNC = 'restore_before_end SIGNAL restore_running WAIT_FOR proceed';
+SET DEBUG_SYNC = 'before_restore_done SIGNAL restore_running WAIT_FOR proceed';
 SEND RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
 
 connection slave;

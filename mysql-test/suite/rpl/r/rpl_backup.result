@@ -330,7 +330,7 @@ Delta
 RESET MASTER;
 RESET SLAVE;
 SET DEBUG_SYNC = 'reset';
-SET DEBUG_SYNC = 'restore_before_end SIGNAL restore_running WAIT_FOR proceed';
+SET DEBUG_SYNC = 'before_restore_done SIGNAL restore_running WAIT_FOR proceed';
 RESTORE FROM 'rpl_bup_s3.bak' OVERWRITE;
 SET DEBUG_SYNC = 'now WAIT_FOR restore_running';
 Try to start the slave while restore is running -- gets error.
