@@ -1136,26 +1136,40 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   /*
    To avoid copying bytes to the internal output buffer we try to cut a prefix
    of the data to be written which forms a valid fragment and write this
-   fragment to output stream.
-
-   Note: after call to biggest_fragment_prefix() blob fragment contains the
-   bytes which didn't fit into the prefix.
+   prefix to output stream.
   */
   *(s->buf.header)= biggest_fragment_prefix(&fragment);
 
   /*
-    We use this method only if it will actually write enough of the bytes
-    to be written - if it is only few bytes we save them into the output
-    buffer anyway.
+   After the call to biggest_fragment_prefix the situation is as follows:
+
+       output buffer
+               current fragment
+   [ ===== | 0x00 ===============]
+            ^
+            header                       data
+                                 [====================]
+
+                  --------------------[---------------]
+                       prefix              fragment
+
+   Fragment blob describes the data which did not fit into the prefix.
+  */ 
+
+  /*
+    We write prefix directly to the stream if it includes whole output
+    buffer and there is enough bytes to be written - if it is only few bytes 
+    we rather keep them in the buffer.
    */
-  if (fragment.end > (s->buf.pos + MIN_WRITE_SIZE))
+  if (fragment.begin > s->buf.pos && 
+      fragment.begin > (s->buf.begin + MIN_WRITE_SIZE))
   {
     /* write contents of the output buffer */
     ret= write_buffer(s);
     if (ret != BSTREAM_OK)
       return BSTREAM_ERROR;
 
-    /* write remainder of the fragment from data blob */
+    /* write remainder of the prefix from data blob */
     saved_end= data->end;
     data->end= data->begin + (fragment.begin - s->buf.pos);
 
