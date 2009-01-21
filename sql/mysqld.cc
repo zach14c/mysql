@@ -548,7 +548,7 @@ ulong open_files_limit, max_binlog_size, max_relay_log_size;
 ulong slave_net_timeout, slave_trans_retries;
 my_bool slave_allow_batching;
 my_bool allow_slave_start= TRUE;
-LEX_STRING reason_slave_blocked;
+LEX_CSTRING reason_slave_blocked;
 ulong slave_exec_mode_options;
 const char *slave_exec_mode_str= "STRICT";
 ulong thread_cache_size=0, thread_pool_size= 0;

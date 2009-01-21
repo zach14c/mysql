@@ -1953,7 +1953,7 @@ extern ulong table_cache_size, table_def_size;
 extern ulong max_connections,max_connect_errors, connect_timeout;
 extern my_bool slave_allow_batching;
 extern my_bool allow_slave_start;
-extern LEX_STRING reason_slave_blocked;
+extern LEX_CSTRING reason_slave_blocked;
 extern ulong slave_net_timeout, slave_trans_retries;
 extern uint max_user_connections;
 extern ulong what_to_log,flush_time;
