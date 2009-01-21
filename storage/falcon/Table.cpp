@@ -2555,6 +2555,9 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			if (dup->state == recLock)
 				continue;  // Next record version.
 
+			if (dup->state == recRollback)
+				continue;  // Next record version.
+			
 			// The record has been deleted.
 			ASSERT(dup->state == recDeleted);
 

@@ -27,7 +27,7 @@
 #define ALLOCATE_RECORD(n)		(char*) MemMgrRecordAllocate (n, __FILE__, __LINE__)
 #define DELETE_RECORD(record)	MemMgrRecordDelete (record);
 
-#define CHECK_RECORD_ACTIVITY
+//#define CHECK_RECORD_ACTIVITY
 
 #include "SynchronizationObject.h"
 
