@@ -1,46 +1,120 @@
 DROP DATABASE IF EXISTS adb;
 DROP DATABASE IF EXISTS bdb;
+# non-existent backup archive
 RESTORE FROM 'test.bak';
 ERROR HY000: File 'MYSQLTEST_VARDIR/master-data/test.bak' not found (Errcode: #)
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "RESTORE FROM 'test%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	restore	test.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Can't read backup location 'test.bak'
+error
 CREATE DATABASE adb;
 CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
+# invalid location
 BACKUP DATABASE adb TO '';
 ERROR HY000: Malformed file path ''
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Malformed file path ''
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE adb TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Malformed file path ''
+error
+# don't overwrite existing files
 BACKUP DATABASE adb TO "bdb/t1.frm";
 ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/bdb/t1.frm' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/bdb/t1.frm' (Errcode: #)
 Error	#	Can't write to backup location 'bdb/t1.frm'
+Warning	#	Operation aborted
 BACKUP DATABASE adb TO "test.bak";
 backup_id
 #
 SHOW WARNINGS;
 Level	Code	Message
+# don't overwrite existing backup image
 BACKUP DATABASE adb TO "test.bak";
 ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE adb TO%";
+verify backup history and progress logs for backup_state.
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	test.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Can't write to backup location 'test.bak'
+error
+# non-existent database
 DROP DATABASE IF EXISTS foo;
 DROP DATABASE IF EXISTS bar;
 BACKUP DATABASE foo TO 'test.bak';
 ERROR 42000: Unknown database 'foo'
 SHOW WARNINGS;
 Level	Code	Message
-Error	1049	Unknown database 'foo'
+Error	#	Unknown database 'foo'
+Warning	#	Operation aborted
 BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
 ERROR 42000: Unknown database 'foo,bar'
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Unknown database 'foo,bar'
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE test,foo,bdb,bar TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation,backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	test.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Unknown database 'foo,bar'
+error
+# repeated database
 BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
 ERROR 42000: Not unique database: 'foo'
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Not unique database: 'foo'
 use adb;
 create table t1 (a int);
 create procedure p1() backup database test to 'test.bak';
@@ -71,36 +145,117 @@ ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	t.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Database 'mysql' cannot be included in a backup
+error
 Backup of mysql, information_schema scenario 2
 BACKUP DATABASE information_schema TO 't.bak';
 ERROR HY000: Database 'information_schema' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'information_schema' cannot be included in a backup
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE information_schema TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	t.bak
+SELECT  notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Database 'information_schema' cannot be included in a backup
+error
 Backup of mysql, information_schema scenario 3
 BACKUP DATABASE mysql, information_schema TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql, information_schema TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	t.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Database 'mysql' cannot be included in a backup
+error
 Backup of mysql, information_schema scenario 4
 BACKUP DATABASE mysql, test TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql, test TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	t.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Database 'mysql' cannot be included in a backup
+error
 Backup of mysql, information_schema scenario 5
 BACKUP DATABASE information_schema, test TO 't.bak';
 ERROR HY000: Database 'information_schema' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'information_schema' cannot be included in a backup
+Warning	#	Operation aborted
 Backup of mysql, information_schema scenario 6
 BACKUP DATABASE mysql, information_schema, test TO 't.bak';
 ERROR HY000: Database 'mysql' cannot be included in a backup
 SHOW WARNINGS;
 Level	Code	Message
 Error	#	Database 'mysql' cannot be included in a backup
+Warning	#	Operation aborted
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql, information_schema, test TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	t.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Database 'mysql' cannot be included in a backup
+error
 Making copies of progress tables.
 CREATE TABLE IF NOT EXISTS test.ob_copy LIKE mysql.backup_history;
 CREATE TABLE IF NOT EXISTS test.obp_copy LIKE mysql.backup_progress;
@@ -168,6 +323,21 @@ trigger metadata
 SET SESSION DEBUG='+d,backup_fail_add_trigger';
 BACKUP DATABASE db1 TO 'bup_db1.bak';
 ERROR HY000: Failed to obtain meta-data for trigger `db1`.`trg`
+Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE db1 TO%";
+verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+WHERE backup_id=@bup_id;
+backup_state	operation	backup_file
+error	backup	bup_db1.bak
+SELECT notes FROM mysql.backup_progress
+WHERE backup_id=@bup_id;
+notes
+starting
+running
+Failed to obtain meta-data for trigger `db1`.`trg`
+error
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
 
@@ -218,4 +388,54 @@ Show that inserted value 2 is not there
 SELECT * FROM table1;
 text
 Inserted before
+#
+# Test error handling by backup code when injecting commit blocker error.
+#
+SET SESSION DEBUG='+d,backup_grl_fail';
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+ERROR HY000: Backup failed to synchronize table images.
+SET SESSION DEBUG='-d';
+
+SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+ERROR HY000: Backup failed to synchronize table images.
+SET SESSION DEBUG='-d';
+#
+# Test that BACKUP and RESTORE clears warning stack
+#
+BACKUP DATABASE db1 TO 'test.bak';
+backup_id
+#
+# Generate warning - test.bak cannot be overwritten
+BACKUP DATABASE db1 TO 'test.bak';
+ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+Error	#	Can't write to backup location 'test.bak'
+Warning	#	Operation aborted
+
+# Test that there are no warnings after successful BACKUP
+BACKUP DATABASE db1 TO 'newtest.bak';
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+
+# Generate warning - test.bak cannot be overwritten
+BACKUP DATABASE db1 TO 'test.bak';
+ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+Error	#	Can't write to backup location 'test.bak'
+Warning	#	Operation aborted
+
+# Test that there are no warnings after successful RESTORE
+RESTORE FROM 'newtest.bak' OVERWRITE;
+backup_id
+#
+SHOW WARNINGS;
+Level	Code	Message
+
 DROP DATABASE db1;

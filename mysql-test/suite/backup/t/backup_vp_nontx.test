@@ -208,6 +208,12 @@ SET DEBUG_SYNC= 'now SIGNAL insert_blocked';
   SET DEBUG_SYNC= 'now SIGNAL finish_bup';
 
 
+### CON 2 ###
+    connection con_ntx2;
+    --echo con_ntx2: Reap insert
+    reap;
+
+
 ### CON BUP ###
 --echo 
 connection con_bup;

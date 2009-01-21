@@ -328,6 +328,9 @@ sub mtr_report_stats ($) {
 		/Slave: Can't drop database.* database doesn't exist/ or
                 /Slave SQL:.*(?:Error_code: \d+|Query:.*)/ or
 		
+		# Ignore warnings issued when backup/restore operation is aborted.
+		/\[Warning\] (Backup|Restore): Operation aborted/ or
+		
 		# backup_errors test is supposed to trigger lots of backup related errors
 		($testname eq 'backup.backup_errors') and
 		(
@@ -365,6 +368,14 @@ sub mtr_report_stats ($) {
 		  /Restore: Open and lock tables failed in RESTORE/
 		) or
                 
+		# myisam_keycache_coverage intentionally provokes errors
+		($testname eq 'main.myisam_keycache_coverage') and
+		(
+		  /Incorrect key file/ or
+		  /Got an error from .* mi_update/ or
+		  /MySQL thread id .* localhost root Updating/
+		) or
+                
 		# The tablespace test triggers error below on purpose
 		($testname eq 'backup.backup_tablespace') and
 		(
@@ -375,6 +386,13 @@ sub mtr_report_stats ($) {
 		($testname eq 'backup.backup_securefilepriv') and
 		(
 		  /Backup: The MySQL server is running with the /
+		) or
+		
+		# The rpl_backup test will throw an error about running restore
+		# on a slave.
+		($testname eq 'rpl.rpl_backup') and
+		(
+		  /A restore operation was attempted on a slave during replication/
 		) or
 		
 		# The views test triggers errors below on purpose
