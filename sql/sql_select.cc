@@ -6642,45 +6642,6 @@ choose_plan(JOIN *join, table_map join_tables)
             jtab_sort_func, (void*)join->emb_sjm_nest);
   join->cur_sj_inner_tables= 0;
 
-#if 0
-  if (!join->emb_sjm_nest && straight_join)
-  {
-    /* Put all sj-inner tables right after their last outer table table.  */
-    uint inner;
-
-    /* Find the first inner table (inner tables follow outer) */
-    for (inner= join->const_tables;
-         inner < join->tables && !join->best_ref[inner]->emb_sj_nest;
-         inner++);
-
-    while (inner < join->tables) /* for each group of inner tables... */
-    {
-      TABLE_LIST *emb_sj_nest= join->best_ref[inner]->emb_sj_nest;
-      uint n_tables= my_count_bits(emb_sj_nest->sj_inner_tables);
-      table_map cur_map= join->const_table_map;
-      table_map needed_map= emb_sj_nest->nested_join->sj_depends_on |
-                            emb_sj_nest->nested_join->sj_corr_tables;
-      /* Locate the last outer table with which this semi-join is correlated */
-      uint last_outer;
-      for (last_outer= join->const_tables; last_outer < inner; last_outer++)
-      {
-        cur_map |= join->best_ref[last_outer]->table->map;
-        if (!(needed_map & ~cur_map))
-          break;
-      }
-      /* Move the inner tables to here */
-      JOIN_TAB *tmp[MAX_TABLES];
-      memcpy(tmp, join->best_ref + inner, n_tables*sizeof(JOIN_TAB));
-      for (uint i= inner - 1; i > last_outer; i--)
-      {
-        join->best_ref[i + n_tables]= join->best_ref[i]; 
-      }
-      memcpy(join->best_ref + last_outer + 1, tmp, n_tables*sizeof(JOIN_TAB));
-      inner += n_tables;
-    }
-  }
-#endif
-
   if (straight_join)
   {
     optimize_straight_join(join, join_tables);
@@ -9076,6 +9037,7 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
     uint n_marked= 0;
     if (((Item_cond*) cond)->functype() == Item_func::COND_AND_FUNC)
     {
+      table_map used_tables= 0;
       Item_cond_and *new_cond=new Item_cond_and;
       if (!new_cond)
 	return (COND*) 0;
@@ -9085,7 +9047,10 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
       {
 	Item *fix= make_cond_for_index(item, table, keyno, other_tbls_ok);
 	if (fix)
+        {
 	  new_cond->argument_list()->push_back(fix);
+          used_tables|= fix->used_tables();
+        }
         n_marked += test(item->marker == ICP_COND_USES_INDEX_ONLY);
       }
       if (n_marked ==((Item_cond*)cond)->argument_list()->elements)
@@ -9094,9 +9059,11 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
       case 0:
 	return (COND*) 0;
       case 1:
+        new_cond->used_tables_cache= used_tables;
 	return new_cond->argument_list()->head();
       default:
 	new_cond->quick_fix_field();
+        new_cond->used_tables_cache= used_tables;
 	return new_cond;
       }
     }
@@ -9118,6 +9085,7 @@ Item *make_cond_for_index(Item *cond, TABLE *table, uint keyno,
       if (n_marked ==((Item_cond*)cond)->argument_list()->elements)
         cond->marker= ICP_COND_USES_INDEX_ONLY;
       new_cond->quick_fix_field();
+      new_cond->used_tables_cache= ((Item_cond_or*) cond)->used_tables_cache;
       new_cond->top_level_item();
       return new_cond;
     }
@@ -9223,9 +9191,28 @@ static void push_index_cond(JOIN_TAB *tab, uint keyno, bool other_tbls_ok)
 
     if (idx_cond)
     {
+      Item *idx_remainder_cond= 0;
       tab->pre_idx_push_select_cond= tab->select_cond;
-      Item *idx_remainder_cond= 
-        tab->table->file->idx_cond_push(keyno, idx_cond);
+
+      /*
+        For BKA cache we store condition to special BKA cache field
+        because evaluation of the condition requires additional operations
+        before the evaluation. This condition is used in 
+        JOIN_CACHE_BKA[_UNIQUE]::skip_index_tuple() functions.
+      */
+      if (tab->use_join_cache &&
+          /*
+            if cache is used then the value is TRUE only 
+            for BKA[_UNIQUE] cache (see check_join_cache_usage func).
+            In this case other_tbls_ok is an equivalent of
+            cache->is_key_access().
+          */
+          other_tbls_ok &&
+          (idx_cond->used_tables() &
+           ~(tab->table->map | tab->join->const_table_map)))
+        tab->cache_idx_cond= idx_cond;
+      else
+        idx_remainder_cond= tab->table->file->idx_cond_push(keyno, idx_cond);
 
       /*
         Disable eq_ref's "lookup cache" if we've pushed down an index
@@ -9725,10 +9712,12 @@ bool setup_sj_materialization(JOIN_TAB *tab)
 
   SYNOPSIS
     check_join_cache_usage()
-      tab            joined table to check join buffer usage for 
-      join           join for which the check is performed 
-      options        options of the join 
-      no_jbuf_after  don't use join buffering after table with this number
+      tab                 joined table to check join buffer usage for
+      join                join for which the check is performed
+      options             options of the join
+      no_jbuf_after       don't use join buffering after table with this number
+      icp_other_tables_ok OUT TRUE if condition pushdown supports
+                          other tables presence
 
   DESCRIPTION
     The function finds out whether the table 'tab' can be joined using a join
@@ -9803,14 +9792,15 @@ bool setup_sj_materialization(JOIN_TAB *tab)
 #endif
 
   RETURN
-    TRUE   if a join buffer can be employed to join the table 'tab'
-    FALSE  otherwise 
+
+    cache level if cache is used, otherwise returns 0
 */
 
 static
-bool check_join_cache_usage(JOIN_TAB *tab,
+uint check_join_cache_usage(JOIN_TAB *tab,
                             JOIN *join, ulonglong options,
-                            uint no_jbuf_after)
+                            uint no_jbuf_after,
+                            bool *icp_other_tables_ok)
 {
   uint flags;
   COST_VECT cost;
@@ -9820,9 +9810,10 @@ bool check_join_cache_usage(JOIN_TAB *tab,
   uint cache_level= join->thd->variables.join_cache_level;
   bool force_unlinked_cache= test(cache_level & 1);
   uint i= tab - join->join_tab;
-  
+
+  *icp_other_tables_ok= TRUE;
   if (cache_level == 0 || i == join->const_tables)
-    return FALSE;
+    return 0;
 
   if (options & SELECT_NO_JOIN_CACHE)
     goto no_join_cache;
@@ -9889,17 +9880,19 @@ bool check_join_cache_usage(JOIN_TAB *tab,
     if (cache_level <= 2 && (tab->first_inner || tab->first_sj_inner_tab))
       goto no_join_cache;
     if ((options & SELECT_DESCRIBE) ||
-        (tab->cache || 
-         (tab->cache= new JOIN_CACHE_BNL(join, tab, prev_cache))) &&
+        ((tab->cache= new JOIN_CACHE_BNL(join, tab, prev_cache))) &&
         !tab->cache->init())
-      return TRUE;
+    {
+      *icp_other_tables_ok= FALSE;
+      return cache_level;
+    }
     goto no_join_cache;
   case JT_SYSTEM:
   case JT_CONST:
   case JT_REF:
   case JT_EQ_REF:
     if (cache_level <= 4)
-      return FALSE;
+      return 0;
     flags= HA_MRR_NO_NULL_ENDPOINTS;
     if (tab->table->covering_keys.is_set(tab->ref.key))
       flags|= HA_MRR_INDEX_ONLY;
@@ -9908,14 +9901,12 @@ bool check_join_cache_usage(JOIN_TAB *tab,
     if ((rows != HA_POS_ERROR) && !(flags & HA_MRR_USE_DEFAULT_IMPL) &&
         (!(flags & HA_MRR_NO_ASSOCIATION) || cache_level > 6) &&
         ((options & SELECT_DESCRIBE) ||
-         (tab->cache ||
-          cache_level <= 6 && 
+         (cache_level <= 6 && 
           (tab->cache= new JOIN_CACHE_BKA(join, tab, flags, prev_cache)) ||
 	  cache_level > 6 &&  
           (tab->cache= new JOIN_CACHE_BKA_UNIQUE(join, tab, flags, prev_cache))
-         ) &&
-	 !tab->cache->init()))
-      return TRUE;
+          ) && !tab->cache->init()))
+      return cache_level;
     goto no_join_cache;
   default : ;
   }
@@ -9923,7 +9914,7 @@ bool check_join_cache_usage(JOIN_TAB *tab,
 no_join_cache:
   if (cache_level>2)
     revise_cache_usage(tab); 
-  return FALSE;          
+  return 0;
 }
 
 
@@ -9967,10 +9958,12 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
   {
     JOIN_TAB *tab=join->join_tab+i;
     TABLE *table=tab->table;
-    bool using_join_cache;
+    bool icp_other_tables_ok;
     tab->read_record.table= table;
     tab->read_record.file=table->file;
     tab->next_select=sub_select;		/* normal select */
+    tab->use_join_cache= FALSE;
+    tab->cache_idx_cond= 0;
     /* 
       TODO: don't always instruct first table's ref/range access method to 
       produce sorted output.
@@ -10005,13 +9998,12 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
       tab->read_first_record= tab->type == JT_SYSTEM ?
 	                        join_read_system :join_read_const;
       tab->read_record.read_record= join_no_more_records;
-      using_join_cache= FALSE;
-      if (check_join_cache_usage(tab, join, options, no_jbuf_after))
+      if (check_join_cache_usage(tab, join, options, no_jbuf_after,
+                                 &icp_other_tables_ok))
       {
-        using_join_cache= TRUE;
+        tab->use_join_cache= TRUE;
 	tab[-1].next_select=sub_select_cache;
       }
-      tab->use_join_cache= using_join_cache;        
       if (table->covering_keys.is_set(tab->ref.key) &&
           !table->no_keyread)
       {
@@ -10019,7 +10011,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
         table->file->extra(HA_EXTRA_KEYREAD);
       }
       else
-        push_index_cond(tab, tab->ref.key, !using_join_cache);
+        push_index_cond(tab, tab->ref.key, icp_other_tables_ok);
       break;
     case JT_EQ_REF:
       table->status=STATUS_NO_RECORD;
@@ -10032,13 +10024,12 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
       tab->quick=0;
       tab->read_first_record= join_read_key;
       tab->read_record.read_record= join_no_more_records;
-      using_join_cache= FALSE;
-      if (check_join_cache_usage(tab, join, options, no_jbuf_after))
+      if (check_join_cache_usage(tab, join, options, no_jbuf_after,
+                                 &icp_other_tables_ok))
       {
-        using_join_cache= TRUE;
+        tab->use_join_cache= TRUE;
 	tab[-1].next_select=sub_select_cache;
       }
-      tab->use_join_cache= using_join_cache;        
       if (table->covering_keys.is_set(tab->ref.key) &&
 	  !table->no_keyread)
       {
@@ -10046,7 +10037,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 	table->file->extra(HA_EXTRA_KEYREAD);
       }
       else
-        push_index_cond(tab, tab->ref.key, !using_join_cache);
+        push_index_cond(tab, tab->ref.key, icp_other_tables_ok);
       break;
     case JT_REF_OR_NULL:
     case JT_REF:
@@ -10058,11 +10049,11 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
       }
       delete tab->quick;
       tab->quick=0;
-      using_join_cache= FALSE;
-      if (check_join_cache_usage(tab, join, options, no_jbuf_after))
+      if (check_join_cache_usage(tab, join, options, no_jbuf_after,
+                                 &icp_other_tables_ok))
       {
-        using_join_cache= TRUE;
-	tab[-1].next_select=sub_select_cache;
+        tab->use_join_cache= TRUE;
+        tab[-1].next_select=sub_select_cache;
       } 
       if (tab->type == JT_REF)
       {
@@ -10074,7 +10065,6 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 	tab->read_first_record= join_read_always_key_or_null;
 	tab->read_record.read_record= join_read_next_same_or_null;
       }
-      tab->use_join_cache= using_join_cache;
       if (table->covering_keys.is_set(tab->ref.key) &&
 	  !table->no_keyread)
       {
@@ -10082,7 +10072,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 	table->file->extra(HA_EXTRA_KEYREAD);
       }
       else
-        push_index_cond(tab, tab->ref.key, !using_join_cache);
+        push_index_cond(tab, tab->ref.key, icp_other_tables_ok);
       break;
     case JT_FT:
       table->status=STATUS_NO_RECORD;
@@ -10097,11 +10087,11 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
           materialization nest.
       */
       table->status=STATUS_NO_RECORD;
-      using_join_cache= FALSE;
-      if (check_join_cache_usage(tab, join, options, no_jbuf_after))
+      if (check_join_cache_usage(tab, join, options, no_jbuf_after,
+                                 &icp_other_tables_ok))
       {
-          using_join_cache= TRUE;
-	  tab[-1].next_select=sub_select_cache;
+        tab->use_join_cache= TRUE;
+        tab[-1].next_select=sub_select_cache;
       }
       /* These init changes read_record */
       if (tab->use_quick == 2)
@@ -10173,10 +10163,9 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
 	    tab->type=JT_NEXT;		// Read with index_first / index_next
 	  }
 	}
-        tab->use_join_cache= using_join_cache;
         if (tab->select && tab->select->quick &&
             tab->select->quick->index != MAX_KEY && ! tab->table->key_read)
-          push_index_cond(tab, tab->select->quick->index, !using_join_cache);
+          push_index_cond(tab, tab->select->quick->index, icp_other_tables_ok);
       }
       break;
     default:
@@ -21500,6 +21489,8 @@ void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
         if (keyno != MAX_KEY && keyno == table->file->pushed_idx_cond_keyno &&
             table->file->pushed_idx_cond)
           extra.append(STRING_WITH_LEN("; Using index condition"));
+        else if (tab->cache_idx_cond)
+          extra.append(STRING_WITH_LEN("; Using index condition(BKA)"));
 
         if (quick_type == QUICK_SELECT_I::QS_TYPE_ROR_UNION || 
             quick_type == QUICK_SELECT_I::QS_TYPE_ROR_INTERSECT ||
