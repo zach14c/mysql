@@ -67,7 +67,6 @@ struct StorageSegment {
 	int				offset;
 	int				length;
 	unsigned char	nullBit;
-	char			isUnsigned;
 	void			*mysql_charset;
 	};
 

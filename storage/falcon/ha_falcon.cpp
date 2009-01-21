@@ -1586,9 +1586,6 @@ void StorageInterface::getKeyDesc(TABLE *srvTable, int indexId, StorageIndexDesc
 		segment->length	= part->length;
 		segment->type	= part->field->key_type();
 		segment->nullBit = part->null_bit;
-		segment->isUnsigned = (part->field->flags & ENUM_FLAG) ?
-			true : ((Field_num*) part->field)->unsigned_flag;
-
 		segment->mysql_charset = NULL;
 
 		// Separate correctly between types that may map to
