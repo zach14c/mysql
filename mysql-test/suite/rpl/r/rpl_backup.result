@@ -400,7 +400,7 @@ Master_Log_File	#
 Read_Master_Log_Pos	#
 Relay_Log_File	#
 Relay_Log_Pos	#
-Relay_Master_Log_File	master-bin.000001
+Relay_Master_Log_File	#
 Slave_IO_Running	Yes
 Slave_SQL_Running	Yes
 Replicate_Do_DB	
