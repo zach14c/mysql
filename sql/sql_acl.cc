@@ -6411,10 +6411,12 @@ int wild_case_compare(CHARSET_INFO *cs, const char *str,const char *wildstr)
 }
 
 
-void update_schema_privilege(TABLE *table, char *buff, const char* db,
-                             const char* t_name, const char* column,
-                             uint col_length, const char *priv, 
-                             uint priv_length, const char* is_grantable)
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+static bool update_schema_privilege(THD *thd, TABLE *table, char *buff,
+                                    const char* db, const char* t_name,
+                                    const char* column, uint col_length,
+                                    const char *priv, uint priv_length,
+                                    const char* is_grantable)
 {
   int i= 2;
   CHARSET_INFO *cs= system_charset_info;
@@ -6427,14 +6429,16 @@ void update_schema_privilege(TABLE *table, char *buff, const char* db,
   if (column)
     table->field[i++]->store(column, col_length, cs);
   table->field[i++]->store(priv, priv_length, cs);
-  table->field[i]->store(is_grantable, (uint) strlen(is_grantable), cs);
-  table->file->ha_write_row(table->record[0]);
+  table->field[i]->store(is_grantable, strlen(is_grantable), cs);
+  return schema_table_store_record(thd, table);
 }
+#endif
 
 
 int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint counter;
   ACL_USER *acl_user;
   ulong want_access;
@@ -6468,8 +6472,14 @@ int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 
     strxmov(buff,"'",user,"'@'",host,"'",NullS);
     if (!(want_access & ~GRANT_ACL))
-      update_schema_privilege(table, buff, 0, 0, 0, 0,
-                              STRING_WITH_LEN("USAGE"), is_grantable);
+    {
+      if (update_schema_privilege(thd, table, buff, 0, 0, 0, 0,
+                                  STRING_WITH_LEN("USAGE"), is_grantable))
+      {
+        error= 1;
+        goto err;
+      }
+    }
     else
     {
       uint priv_id;
@@ -6477,16 +6487,22 @@ int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
       for (priv_id=0, j = SELECT_ACL;j <= GLOBAL_ACLS; priv_id++,j <<= 1)
       {
 	if (test_access & j)
-          update_schema_privilege(table, buff, 0, 0, 0, 0, 
-                                  command_array[priv_id],
-                                  command_lengths[priv_id], is_grantable);
+        {
+          if (update_schema_privilege(thd, table, buff, 0, 0, 0, 0, 
+                                      command_array[priv_id],
+                                      command_lengths[priv_id], is_grantable))
+          {
+            error= 1;
+            goto err;
+          }
+        }
       }
     }
   }
-
+err:
   pthread_mutex_unlock(&acl_cache->lock);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return(0);
 #endif
@@ -6496,6 +6512,7 @@ int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint counter;
   ACL_DB *acl_db;
   ulong want_access;
@@ -6533,24 +6550,36 @@ int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
       }
       strxmov(buff,"'",user,"'@'",host,"'",NullS);
       if (!(want_access & ~GRANT_ACL))
-        update_schema_privilege(table, buff, acl_db->db, 0, 0,
-                                0, STRING_WITH_LEN("USAGE"), is_grantable);
+      {
+        if (update_schema_privilege(thd, table, buff, acl_db->db, 0, 0,
+                                    0, STRING_WITH_LEN("USAGE"), is_grantable))
+        {
+          error= 1;
+          goto err;
+        }
+      }
       else
       {
         int cnt;
         ulong j,test_access= want_access & ~GRANT_ACL;
         for (cnt=0, j = SELECT_ACL; j <= DB_ACLS; cnt++,j <<= 1)
           if (test_access & j)
-            update_schema_privilege(table, buff, acl_db->db, 0, 0, 0,
-                                    command_array[cnt], command_lengths[cnt],
-                                    is_grantable);
+          {
+            if (update_schema_privilege(thd, table, buff, acl_db->db, 0, 0, 0,
+                                        command_array[cnt], command_lengths[cnt],
+                                        is_grantable))
+            {
+              error= 1;
+              goto err;
+            }
+          }
       }
     }
   }
-
+err:
   pthread_mutex_unlock(&acl_cache->lock);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return (0);
 #endif
@@ -6560,6 +6589,7 @@ int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint index;
   char buff[100];
   TABLE *table= tables->table;
@@ -6599,8 +6629,15 @@ int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 
       strxmov(buff, "'", user, "'@'", host, "'", NullS);
       if (!test_access)
-        update_schema_privilege(table, buff, grant_table->db, grant_table->tname,
-                                0, 0, STRING_WITH_LEN("USAGE"), is_grantable);
+      {
+        if (update_schema_privilege(thd, table, buff, grant_table->db,
+                                    grant_table->tname, 0, 0,
+                                    STRING_WITH_LEN("USAGE"), is_grantable))
+        {
+          error= 1;
+          goto err;
+        }
+      }
       else
       {
         ulong j;
@@ -6608,17 +6645,24 @@ int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
         for (cnt= 0, j= SELECT_ACL; j <= TABLE_ACLS; cnt++, j<<= 1)
         {
           if (test_access & j)
-            update_schema_privilege(table, buff, grant_table->db, 
-                                    grant_table->tname, 0, 0, command_array[cnt],
-                                    command_lengths[cnt], is_grantable);
+          {
+            if (update_schema_privilege(thd, table, buff, grant_table->db,
+                                        grant_table->tname, 0, 0,
+                                        command_array[cnt],
+                                        command_lengths[cnt], is_grantable))
+            {
+              error= 1;
+              goto err;
+            }
+          }
         }
       }
-    }
+    }   
   }
-
+err:
   rw_unlock(&LOCK_grant);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return (0);
 #endif
@@ -6628,6 +6672,7 @@ int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 int fill_schema_column_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint index;
   char buff[100];
   TABLE *table= tables->table;
@@ -6677,22 +6722,28 @@ int fill_schema_column_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
               GRANT_COLUMN *grant_column = (GRANT_COLUMN*)
                 hash_element(&grant_table->hash_columns,col_index);
               if ((grant_column->rights & j) && (table_access & j))
-                  update_schema_privilege(table, buff, grant_table->db,
-                                          grant_table->tname,
-                                          grant_column->column,
-                                          grant_column->key_length,
-                                          command_array[cnt],
-                                          command_lengths[cnt], is_grantable);
+              {
+                if (update_schema_privilege(thd, table, buff, grant_table->db,
+                                            grant_table->tname,
+                                            grant_column->column,
+                                            grant_column->key_length,
+                                            command_array[cnt],
+                                            command_lengths[cnt], is_grantable))
+                {
+                  error= 1;
+                  goto err;
+                }
+              }
             }
           }
         }
       }
     }
   }
-
+err:
   rw_unlock(&LOCK_grant);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return (0);
 #endif

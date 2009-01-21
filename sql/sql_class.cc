@@ -43,6 +43,7 @@
 #include "sp_rcontext.h"
 #include "sp_cache.h"
 #include "transaction.h"
+#include "debug_sync.h"
 
 /*
   The following is used to initialise Table_ident with a internal
@@ -400,7 +401,6 @@ THD::THD()
    first_successful_insert_id_in_prev_stmt_for_binlog(0),
    first_successful_insert_id_in_cur_stmt(0),
    stmt_depends_on_first_successful_insert_id_in_prev_stmt(FALSE),
-   main_warning_info(0),
    warning_info(&main_warning_info),
    stmt_da(&main_da),
    global_read_lock(0),
@@ -425,7 +425,8 @@ THD::THD()
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
-   locked_tables_root(NULL)
+   locked_tables_root(NULL),
+   main_warning_info(0)
 {
   ulong tmp;
 

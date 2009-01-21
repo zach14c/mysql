@@ -1633,9 +1633,7 @@ public:
   table_map  used_tables;
   USER_CONN *user_connect;
   CHARSET_INFO *db_charset;
-  Warning_info main_warning_info;
   Warning_info *warning_info;
-  Diagnostics_area main_da;
   Diagnostics_area *stmt_da;
 #if defined(ENABLED_PROFILING)
   PROFILING  profiling;
@@ -2256,13 +2254,15 @@ private:
     tree itself is reused between executions and thus is stored elsewhere.
   */
   MEM_ROOT main_mem_root;
+  Warning_info main_warning_info;
+  Diagnostics_area main_da;
 };
 
 
 /** A short cut for thd->stmt_da->set_ok_status(). */
 
 inline void
-my_ok(THD *thd, ha_rows affected_rows= 0, ulonglong id= 0,
+my_ok(THD *thd, ulonglong affected_rows= 0, ulonglong id= 0,
         const char *message= NULL)
 {
   thd->stmt_da->set_ok_status(thd, affected_rows, id, message);
@@ -2668,6 +2668,67 @@ public:
     :select_subselect(item_arg){}
   bool send_data(List<Item> &items);
 };
+
+struct st_table_ref;
+
+
+/*
+  Optimizer and executor structure for the materialized semi-join info. This
+  structure contains
+   - The sj-materialization temporary table
+   - Members needed to make index lookup or a full scan of the temptable.
+*/
+class SJ_MATERIALIZATION_INFO : public Sql_alloc
+{
+public:
+  /* Optimal join sub-order */
+  struct st_position *positions;
+
+  uint tables; /* Number of tables in the sj-nest */
+
+  /* Expected #rows in the materialized table */
+  double rows;
+
+  /* 
+    Cost to materialize - execute the sub-join and write rows into temp.table
+  */
+  COST_VECT materialization_cost;
+
+  /* Cost to make one lookup in the temptable */
+  COST_VECT lookup_cost;
+  
+  /* Cost of scanning the materialized table */
+  COST_VECT scan_cost;
+
+  /* --- Execution structures ---------- */
+  
+  /*
+    TRUE <=> This structure is used for execution. We don't necessarily pick
+    sj-materialization, so some of SJ_MATERIALIZATION_INFO structures are not
+    used by materialization
+  */
+  bool is_used;
+  
+  bool materialized; /* TRUE <=> materialization already performed */
+  /*
+    TRUE  - the temptable is read with full scan
+    FALSE - we use the temptable for index lookups
+  */
+  bool is_sj_scan; 
+  
+  /* The temptable and its related info */
+  TMP_TABLE_PARAM sjm_table_param;
+  List<Item> sjm_table_cols;
+  TABLE *table;
+
+  /* Structure used to make index lookups */
+  struct st_table_ref *tab_ref;
+  Item *in_equality; /* See create_subq_in_equalities() */
+
+  Item *join_cond; /* See comments in make_join_select() */
+  Copy_field *copy_field; /* Needed for SJ_Materialization scan */
+};
+
 
 /* Structs used when sorting */
 

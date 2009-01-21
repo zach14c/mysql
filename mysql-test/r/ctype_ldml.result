@@ -373,3 +373,10 @@ def	test	t1	t1	c1	c1	254	2	2	Y	0	0	359
 c1
  a
 drop table t1;
+CREATE TABLE t1 (s1 char(10) character set utf8 collate utf8_maxuserid_ci);
+INSERT INTO t1 VALUES ('a'),('b');
+SELECT * FROM t1 WHERE s1='a' ORDER BY BINARY s1;
+s1
+a
+b
+DROP TABLE t1;

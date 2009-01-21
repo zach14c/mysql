@@ -25,70 +25,7 @@ END WHILE;
 END//
 CALL p1();
 Warnings:
-Warning	1366	Incorrect string value: '\x11\x03\x13' for column 'char_column' at row 310
-Warning	1366	Incorrect string value: '\x11\x06p' for column 'char_column' at row 311
-Warning	1366	Incorrect string value: '\x11\x10'' for column 'char_column' at row 312
-Warning	1366	Incorrect string value: '\x11\x13\x84' for column 'char_column' at row 313
-Warning	1366	Incorrect string value: '\x11\x17A' for column 'char_column' at row 314
-Warning	1366	Incorrect string value: '\x11 \x98' for column 'char_column' at row 315
-Warning	1366	Incorrect string value: '\x11$U' for column 'char_column' at row 316
-Warning	1366	Incorrect string value: '\x11(\x12' for column 'char_column' at row 317
-Warning	1366	Incorrect string value: '\x111i' for column 'char_column' at row 318
-Warning	1366	Incorrect string value: '\x115&' for column 'char_column' at row 319
-Warning	1366	Incorrect string value: '\x118\x83' for column 'char_column' at row 320
-Warning	1366	Incorrect string value: '\x11B@' for column 'char_column' at row 321
-Warning	1366	Incorrect string value: '\x11E\x97' for column 'char_column' at row 322
-Warning	1366	Incorrect string value: '\x11IT' for column 'char_column' at row 323
-Warning	1366	Incorrect string value: '\x11S\x11' for column 'char_column' at row 324
-Warning	1366	Incorrect string value: '\x11Vh' for column 'char_column' at row 325
-Warning	1366	Incorrect string value: '\x11`%' for column 'char_column' at row 326
-Warning	1366	Incorrect string value: '\x11c\x82' for column 'char_column' at row 327
-Warning	1366	Incorrect string value: '\x11g9' for column 'char_column' at row 328
-Warning	1366	Incorrect string value: '\x11p\x96' for column 'char_column' at row 329
-Warning	1366	Incorrect string value: '\x11tS' for column 'char_column' at row 330
-Warning	1366	Incorrect string value: '\x11x\x10' for column 'char_column' at row 331
-Warning	1366	Incorrect string value: '\x11\x81g' for column 'char_column' at row 332
-Warning	1366	Incorrect string value: '\x11\x85$' for column 'char_column' at row 333
-Warning	1366	Incorrect string value: '\x11\x88\x81' for column 'char_column' at row 334
-Warning	1366	Incorrect string value: '\x11\x928' for column 'char_column' at row 335
-Warning	1366	Incorrect string value: '\x11\x95\x95' for column 'char_column' at row 336
-Warning	1366	Incorrect string value: '\x11\x99R' for column 'char_column' at row 337
-Warning	1366	Incorrect string value: '\x12\x03\x09' for column 'char_column' at row 338
-Warning	1366	Incorrect string value: '\x12\x06f' for column 'char_column' at row 339
-Warning	1366	Incorrect string value: '\x12\x10#' for column 'char_column' at row 340
-Warning	1366	Incorrect string value: '\x12\x13\x80' for column 'char_column' at row 341
-Warning	1366	Incorrect string value: '\x12\x177' for column 'char_column' at row 342
-Warning	1366	Incorrect string value: '\x12 \x94' for column 'char_column' at row 343
-Warning	1366	Incorrect string value: '\x12$Q' for column 'char_column' at row 344
-Warning	1366	Incorrect string value: '\x12(\x08' for column 'char_column' at row 345
-Warning	1366	Incorrect string value: '\x121e' for column 'char_column' at row 346
-Warning	1366	Incorrect string value: '\x125"' for column 'char_column' at row 347
-Warning	1366	Incorrect string value: '\x128y' for column 'char_column' at row 348
-Warning	1366	Incorrect string value: '\x12B6' for column 'char_column' at row 349
-Warning	1366	Incorrect string value: '\x12E\x93' for column 'char_column' at row 350
-Warning	1366	Incorrect string value: '\x12IP' for column 'char_column' at row 351
-Warning	1366	Incorrect string value: '\x12S\x07' for column 'char_column' at row 352
-Warning	1366	Incorrect string value: '\x12Vd' for column 'char_column' at row 353
-Warning	1366	Incorrect string value: '\x12`!' for column 'char_column' at row 354
-Warning	1366	Incorrect string value: '\x12cx' for column 'char_column' at row 355
-Warning	1366	Incorrect string value: '\x12g5' for column 'char_column' at row 356
-Warning	1366	Incorrect string value: '\x12p\x92' for column 'char_column' at row 357
-Warning	1366	Incorrect string value: '\x12tI' for column 'char_column' at row 358
-Warning	1366	Incorrect string value: '\x12x\x06' for column 'char_column' at row 359
-Warning	1366	Incorrect string value: '\x12\x81c' for column 'char_column' at row 360
-Warning	1366	Incorrect string value: '\x12\x85 ' for column 'char_column' at row 361
-Warning	1366	Incorrect string value: '\x12\x88w' for column 'char_column' at row 362
-Warning	1366	Incorrect string value: '\x12\x924' for column 'char_column' at row 363
-Warning	1366	Incorrect string value: '\x12\x95\x91' for column 'char_column' at row 364
-Warning	1366	Incorrect string value: '\x12\x99H' for column 'char_column' at row 365
-Warning	1366	Incorrect string value: '\x13\x03\x05' for column 'char_column' at row 366
-Warning	1366	Incorrect string value: '\x13\x06b' for column 'char_column' at row 367
-Warning	1366	Incorrect string value: '\x13\x10\x19' for column 'char_column' at row 368
-Warning	1366	Incorrect string value: '\x13\x13v' for column 'char_column' at row 369
-Warning	1366	Incorrect string value: '\x13\x173' for column 'char_column' at row 370
-Warning	1366	Incorrect string value: '\x13 \x90' for column 'char_column' at row 371
-Warning	1366	Incorrect string value: '\x13$G' for column 'char_column' at row 372
-Warning	1366	Incorrect string value: '\x13(\x04' for column 'char_column' at row 373
+Warning	1366	Incorrect string value: '\x99\x99W' for column 'char_column' at row 1
 SELECT count(*) FROM t1;
 count(*)
 2802

@@ -11,7 +11,7 @@ AC_CANONICAL_SYSTEM
 # When changing major version number please also check switch statement
 # in mysqlbinlog::check_master_version().
 
-AM_INIT_AUTOMAKE(mysql, 6.0.9-alpha)
+AM_INIT_AUTOMAKE(mysql, 6.0.10-alpha)
 AM_CONFIG_HEADER([include/config.h:config.h.in])
 
 NDB_VERSION_MAJOR=6
@@ -64,6 +64,8 @@ sinclude(config/ac-macros/readline.m4)
 sinclude(config/ac-macros/ssl.m4)
 sinclude(config/ac-macros/libevent.m4)
 sinclude(config/ac-macros/zlib.m4)
+sinclude(config/search_for_lib.m4)
+sinclude(config/libmemcached.m4)
 
 # Remember to add a directory sql/share/LANGUAGE
 AVAILABLE_LANGUAGES="\
@@ -403,7 +405,7 @@ fi
 MYSQL_PROG_AR
 
 # libmysqlclient versioning when linked with GNU ld.
-if $LD --version 2>/dev/null| grep GNU >/dev/null 2>&1; then
+if $LD --version 2>/dev/null | grep GNU >/dev/null 2>&1; then
   LD_VERSION_SCRIPT="-Wl,--version-script=\$(top_builddir)/libmysql/libmysql.ver"
   AC_CONFIG_FILES(libmysql/libmysql.ver)
 fi

@@ -109,7 +109,7 @@ bufferevent_readcb(int fd, short event, void *arg)
 	 * read more data than would make us reach the watermark.
 	 */
 	if (bufev->wm_read.high != 0)
-		howmuch = bufev->wm_read.high;
+		howmuch = (int)bufev->wm_read.high;
 
 	res = evbuffer_read(bufev->input, fd, howmuch);
 	if (res == -1) {

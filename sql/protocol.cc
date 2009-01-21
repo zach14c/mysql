@@ -30,7 +30,7 @@
 static const unsigned int PACKET_BUFFER_EXTRA_ALLOC= 1024;
 void net_send_error_packet(THD *thd, uint sql_errno, const char *err);
 /* Declared non-static only because of the embedded library. */
-void net_send_ok(THD *, uint, uint, ha_rows, ulonglong, const char *);
+void net_send_ok(THD *, uint, uint, ulonglong, ulonglong, const char *);
 /* Declared non-static only because of the embedded library. */
 void net_send_eof(THD *thd, uint server_status, uint statement_warn_count);
 #ifndef EMBEDDED_LIBRARY
@@ -180,7 +180,7 @@ void net_send_error(THD *thd, uint sql_errno, const char *err)
 void
 net_send_ok(THD *thd,
             uint server_status, uint statement_warn_count,
-            ha_rows affected_rows, ulonglong id, const char *message)
+            ulonglong affected_rows, ulonglong id, const char *message)
 {
   NET *net= &thd->net;
   uchar buff[MYSQL_ERRMSG_SIZE+10],*pos;
@@ -487,7 +487,7 @@ void Protocol::end_statement()
 */
 
 void Protocol::send_ok(uint server_status, uint statement_warn_count,
-                       ha_rows affected_rows, ulonglong last_insert_id,
+                       ulonglong affected_rows, ulonglong last_insert_id,
                        const char *message)
 {
   DBUG_ENTER("Protocol::send_ok");
@@ -930,7 +930,7 @@ bool Protocol_text::store(const char *from, size_t length,
 {
   CHARSET_INFO *tocs= this->thd->variables.character_set_results;
 #ifndef DBUG_OFF
-  DBUG_PRINT("info", ("Protocol_text::store field %u (%u): %*s", field_pos,
+  DBUG_PRINT("info", ("Protocol_text::store field %u (%u): %.*s", field_pos,
                       field_count, (int) length, from));
   DBUG_ASSERT(field_pos < field_count);
   DBUG_ASSERT(field_types == 0 ||
