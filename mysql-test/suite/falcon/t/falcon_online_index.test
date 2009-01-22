@@ -198,6 +198,7 @@ ALTER ONLINE TABLE t1 DROP PRIMARY KEY;
 SHOW INDEXES FROM t1;
 # Re-set primary key on 'a'
 ALTER ONLINE TABLE t1 ADD PRIMARY KEY (a);
+SHOW INDEXES FROM t1;
 
 ##
 ## Testing some statement variations using ADD/DROP INDEX

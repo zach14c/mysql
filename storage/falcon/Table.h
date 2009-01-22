@@ -42,8 +42,8 @@ static const int PostCommit	= 128;
 
 static const int BL_SIZE			= 128;
 static const int FORMAT_HASH_SIZE	= 20;
-static const int SYNC_VERSIONS_SIZE	= 16;
-static const int SYNC_THAW_SIZE		= 16;
+static const int SYNC_VERSIONS_SIZE	= 32; // 16;
+static const int SYNC_THAW_SIZE		= 32; // 16;
 
 #define FOR_FIELDS(field,table)	{for (Field *field=table->fields; field; field = field->next){
 
