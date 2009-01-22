@@ -1,0 +1,75 @@
+##
+## Test for WL #4343 - DDL locking for all metadata objects
+##
+
+##
+## Test case 3: Concurrent system scenarios - DDL load
+##
+
+# Detect whether or not this test is run from the stress test,
+# with the proper setup
+let $have_table= `SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                  WHERE TABLE_SCHEMA='test' AND TABLE_NAME='t1'`;
+
+let $have_proc= `SELECT (COUNT(*) = 1) FROM INFORMATION_SCHEMA.ROUTINES
+                 WHERE ROUTINE_SCHEMA='test' AND ROUTINE_NAME='t_proc'`;
+
+let $have_func= `SELECT (COUNT(*) = 1) FROM INFORMATION_SCHEMA.ROUTINES
+                 WHERE ROUTINE_SCHEMA='test' AND ROUTINE_NAME='t_func'`;
+
+if (`SELECT ($have_table = 0) OR ($have_proc = 0) OR ($have_func = 0)`) {
+    --disable_query_log
+    --disable_result_log
+    --source suite/ddl_lock/t/create_stress_tables.test
+    --enable_result_log
+    --enable_query_log
+}
+
+# Use connection id so that the db objects created here get unique names
+let $conn_id= `SELECT CONNECTION_ID()`;
+
+let $col_name= c_$conn_id;
+let $idx_name= t1_indx_c_$conn_id;
+let $view_name= view_$conn_id;
+let $all_view_name= all_view_$conn_id;
+
+--source suite/ddl_lock/include/stress_settings.inc
+let $row_id= `SELECT ROUND(RAND() * $num_stress_rows)`;
+
+#
+# Table and Index
+#
+--replace_result $col_name <column_name>
+eval ALTER TABLE t1 ADD COLUMN $col_name CHAR(200) DEFAULT "New column";
+--replace_result $idx_name <index_name> $col_name <column_name>
+eval CREATE INDEX $idx_name ON t1 ($col_name);
+--replace_result $col_name <column_name>
+eval SELECT DISTINCT($col_name) FROM t1;
+--replace_result $idx_name <index_name>
+eval DROP INDEX $idx_name ON t1;
+--replace_result $col_name <column_name>
+eval ALTER TABLE t1 DROP COLUMN $col_name;
+
+#
+# View
+#
+--replace_result $view_name <view_name>
+eval CREATE VIEW $view_name AS SELECT DISTINCT b FROM t1;
+--replace_result $all_view_name <all_view_name>
+eval CREATE VIEW $all_view_name AS SELECT id, b FROM t1;
+--replace_result $all_view_name <all_view_name> $row_id <random_id>
+eval SELECT id FROM $all_view_name WHERE id = $row_id;
+--replace_result $all_view_name <all_view_name> $view_name <view_name>
+eval DROP VIEW $view_name, $all_view_name;
+
+#
+# Stored Procedure
+#
+--replace_result $conn_id <conn_id>
+eval ALTER PROCEDURE t_proc COMMENT 'Now with a comment from conn $conn_id';
+
+#
+# Function
+#
+--replace_result $conn_id <conn_id>
+eval ALTER FUNCTION t_func COMMENT 'Now with a comment from conn $conn_id';

@@ -37,6 +37,7 @@
 #include "sp_head.h"
 #include "sp_rcontext.h"
 #include "sp.h"
+#include "debug_sync.h"
 
 #ifdef NO_EMBEDDED_ACCESS_CHECKS
 #define sp_restore_security_context(A,B) while (0) {}
@@ -4430,6 +4431,15 @@ my_decimal *Item_func_set_user_var::val_decimal_result(my_decimal *val)
   check(TRUE);
   update();					// Store expression
   return entry->val_decimal(&null_value, val);
+}
+
+
+bool Item_func_set_user_var::is_null_result()
+{
+  DBUG_ASSERT(fixed == 1);
+  check(TRUE);
+  update();					// Store expression
+  return is_null();
 }
 
 
