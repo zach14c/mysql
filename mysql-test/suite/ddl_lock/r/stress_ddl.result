@@ -1,0 +1,15 @@
+ALTER TABLE t1 ADD COLUMN <column_name> CHAR(200) DEFAULT "New column";
+CREATE INDEX <index_name> ON t1 (<column_name>);
+SELECT DISTINCT(<column_name>) FROM t1;
+<column_name>
+New column
+DROP INDEX <index_name> ON t1;
+ALTER TABLE t1 DROP COLUMN <column_name>;
+CREATE VIEW <view_name> AS SELECT DISTINCT b FROM t1;
+CREATE VIEW <all_view_name> AS SELECT id, b FROM t1;
+SELECT id FROM <all_view_name> WHERE id = <random_id>;
+id
+<random_id>
+DROP VIEW <view_name>, <all_view_name>;
+ALTER PROCEDURE t_proc COMMENT 'Now with a comment from conn <conn_id>';
+ALTER FUNCTION t_func COMMENT 'Now with a comment from conn <conn_id>';

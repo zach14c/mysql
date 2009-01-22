@@ -96,7 +96,7 @@
 #include "../myisam/ha_myisam.h"
 #include "ha_myisammrg.h"
 #include "myrg_def.h"
-
+#include "debug_sync.h"
 
 static handler *myisammrg_create_handler(handlerton *hton,
                                          TABLE_SHARE *table,

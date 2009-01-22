@@ -1743,14 +1743,15 @@ master_def:
         | MASTER_HEARTBEAT_PERIOD_SYM EQ NUM_literal
           {
             Lex->mi.heartbeat_period= (float) $3->val_real();
-            if (Lex->mi.heartbeat_period > SLAVE_MAX_HEARTBEAT_PERIOD ||
-                Lex->mi.heartbeat_period < 0.0)
-            {
-              char buf[sizeof(SLAVE_MAX_HEARTBEAT_PERIOD*4)];
-              my_sprintf(buf, (buf, "%d seconds", SLAVE_MAX_HEARTBEAT_PERIOD));
-              my_error(ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE,
-                       MYF(0),
-                       " is negative or exceeds the maximum ",
+           if (Lex->mi.heartbeat_period > SLAVE_MAX_HEARTBEAT_PERIOD ||
+               Lex->mi.heartbeat_period < 0.0)
+           {
+             const char format[]= "%d seconds";
+             char buf[4*sizeof(SLAVE_MAX_HEARTBEAT_PERIOD) + sizeof(format)];
+             my_sprintf(buf, (buf, format, SLAVE_MAX_HEARTBEAT_PERIOD));
+             my_error(ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE,
+                      MYF(0),
+                      " is negative or exceeds the maximum ",
                        buf); 
               MYSQL_YYABORT;
             }

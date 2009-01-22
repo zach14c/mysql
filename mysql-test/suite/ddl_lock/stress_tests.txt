@@ -1,0 +1,13 @@
+#
+# 10% DDL transactions
+#
+stress_dml
+stress_dml
+stress_dml
+stress_dml
+stress_dml
+stress_dml
+stress_dml
+stress_dml
+stress_dml
+stress_ddl

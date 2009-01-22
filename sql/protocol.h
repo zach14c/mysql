@@ -50,7 +50,7 @@ protected:
                         CHARSET_INFO *fromcs, CHARSET_INFO *tocs);
 
   virtual void send_ok(uint server_status, uint statement_warn_count,
-                       ha_rows affected_rows, ulonglong last_insert_id,
+                       ulonglong affected_rows, ulonglong last_insert_id,
                        const char *message);
 
   virtual void send_eof(uint server_status, uint statement_warn_count);
