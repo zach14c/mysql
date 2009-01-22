@@ -1255,23 +1255,32 @@ void Table::insertIndexes(Transaction *transaction, RecordVersion *record)
 {
 	if (indexes)
 		{
+		Sync syncTable(&syncObject, "Table::insertIndexes");
+		
 		FOR_INDEXES(index, this);
-			Sync sync(&index->syncUnique, "Table::insertIndexes");
+			Sync syncUnique(&index->syncUnique, "Table::insertIndexes");
 			
 			if (needUniqueCheck(index,record))
 				for(;;)
 					{
-					sync.lock(Exclusive);
+					syncUnique.lock(Exclusive);
 					
-					if(!checkUniqueIndex(index, transaction, record, &sync))
+					if(!checkUniqueIndex(index, transaction, record, &syncUnique))
 						break;
 					}
 				
-			index->insert(record, transaction);
+			// Block concurrent DDL with a shared lock. Double-check the
+			// index id in case the index was deleted.
+			
+			syncTable.lock(Shared);
+
+			if (index->indexId != -1)
+				index->insert(record, transaction);
+
+				syncTable.unlock();
 		END_FOR;
 		}
 }
-
 
 void Table::update(Transaction * transaction, Record * oldRecord, int numberFields, Field** updateFields, Value * * values)
 {

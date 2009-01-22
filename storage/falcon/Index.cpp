@@ -406,8 +406,14 @@ void Index::deleteIndex(Transaction *transaction)
 {
 	if (!damaged && indexId != -1)
 		{
-		dbb->deleteIndex(indexId, indexVersion, TRANSACTION_ID(transaction));
+
+		// The Index class does not use a Sync object. To ensure that concurrent
+		// SRLUpdateIndex operations ignore DeferredIndexes associated with
+		// this index, set indexId to -1 before writing to the Serial Log.
+
+		int id = indexId;
 		indexId = -1;
+		dbb->deleteIndex(id, indexVersion, TRANSACTION_ID(transaction));
 		}
 }
 
