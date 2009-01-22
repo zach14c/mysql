@@ -362,31 +362,29 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey)
 		return;
 		}
 
-	uint p = 0, q = 0;
+	uint p = 0;
 	int n;
 	UCHAR *key = indexKey->key;
 
 	for (n = 0; (n < count) && values[n]; ++n)
 		{
 		Field *field = fields[n];
-		char padByte = PAD_BYTE(field);
 
-		while (p % RUN != 0)
-			key[p++] = padByte;
 		
 		IndexKey tempKey(this);
 		makeKey(field, values[n], n, &tempKey);
 		int length = tempKey.keyLength;
 		UCHAR *t = tempKey.key;
-		
-		// All segments before the last one are padded to the nearest RUN length.
 
-		if (n < count - 1)
-			q = (length + RUN - 1) / (RUN - 1) * RUN;
-		else
-			q = (length * RUN / (RUN - 1)) + (length % (RUN -1));
-		
-		if (p + q > maxIndexKeyRunLength(database->getMaxKeyLength()))
+		// Calculate segment length to check for index overflow
+		// - There is a segment byte inserted at the start of the segment and every RUN bytes.
+		// - All segments before the last one are padded to the nearest RUN length.
+
+		uint segmentLength = (length + length/(RUN-1) + ((length%(RUN-1))?1:0));
+		if(n < numberFields - 1)
+			segmentLength = ROUNDUP(segmentLength , RUN);
+	
+		if (p + segmentLength > maxIndexKeyRunLength(database->getMaxKeyLength()))
 			throw SQLError (INDEX_OVERFLOW, "maximum index key length exceeded");
 			
 		for (int i = 0; i < length; ++i)
@@ -396,6 +394,25 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey)
 
 			key[p++] = t[i];
 			}
+
+		if (n < numberFields - 1)
+			{
+			char padByte = PAD_BYTE(field);
+
+			while (p % RUN != 0)
+				key[p++] = padByte;
+			}
+		}
+
+	if (n && n < numberFields)
+		{
+		// We're constructing partial search key, with only some
+		// first fields given. Append segment byte for the next
+		// segment. This will make key larger and will hopefully
+		// reduce the number of false positives in search (saves
+		// work in postprocessing).
+		if (p < (uint)database->getMaxKeyLength())
+			key[p++] = SEGMENT_BYTE(n, numberFields);
 		}
 
 	indexKey->keyLength = p;
