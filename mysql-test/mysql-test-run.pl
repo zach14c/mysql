@@ -2316,7 +2316,7 @@ sub setup_vardir() {
       mtr_error("The destination for symlink $opt_vardir does not exist")
 	if ! -d readlink($opt_vardir);
     }
-    elsif ( $opt_mem )
+    elsif ( ! $glob_win32 && $opt_mem )
     {
       # Runinng with "var" as a link to some "memory" location, normally tmpfs
       mtr_verbose("Creating $opt_mem");
@@ -2345,7 +2345,8 @@ sub setup_vardir() {
   mkpath("$opt_vardir/tmp");
   mkpath($opt_tmpdir) if $opt_tmpdir ne "$opt_vardir/tmp";
 
-  if ($master->[0]->{'path_sock'} !~ m/^$opt_tmpdir/)
+  # Set up link to master sock if not in var/tmp (not on Windows)
+  if (! $glob_win32 && $master->[0]->{'path_sock'} !~ m/^$opt_tmpdir/)
   {
     mtr_report("Symlinking $master->[0]->{'path_sock'}");
 	symlink($master->[0]->{'path_sock'}, "$opt_tmpdir/master.sock");
