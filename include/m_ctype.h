@@ -567,6 +567,7 @@ my_bool my_propagate_complex(CHARSET_INFO *cs, const uchar *str, size_t len);
 uint my_string_repertoire(CHARSET_INFO *cs, const char *str, ulong len);
 my_bool my_charset_is_ascii_based(CHARSET_INFO *cs);
 my_bool my_charset_is_8bit_pure_ascii(CHARSET_INFO *cs);
+uint my_charset_repertoire(CHARSET_INFO *cs);
 
 
 uint my_strxfrm_flag_normalize(uint flags, uint nlevels);

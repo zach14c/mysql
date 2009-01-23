@@ -342,7 +342,7 @@ row_mysql_store_col_in_innobase_format(
 		/* In some cases we strip trailing spaces from UTF-8 and other
 		multibyte charsets, from FIXED-length CHAR columns, to save
 		space. UTF-8 would otherwise normally use 3 * the string length
-		bytes to store a latin1 string! */
+		bytes to store an ASCII string! */
 
 		/* We assume that this CHAR field is encoded in a
 		variable-length character set where spaces have
@@ -620,6 +620,7 @@ row_create_prebuilt(
 	prebuilt->ins_node = NULL;
 
 	prebuilt->ins_upd_rec_buff = NULL;
+	prebuilt->default_rec = NULL;
 
 	prebuilt->upd_node = NULL;
 	prebuilt->ins_graph = NULL;
@@ -661,7 +662,14 @@ row_create_prebuilt(
 
 	prebuilt->old_vers_heap = NULL;
 
-	prebuilt->last_value = 0;
+	prebuilt->autoinc_error = 0;
+	prebuilt->autoinc_offset = 0;
+
+	/* Default to 1, we will set the actual value later in 
+	ha_innobase::get_auto_increment(). */
+	prebuilt->autoinc_increment = 1;
+
+	prebuilt->autoinc_last_value = 0;
 
 	return(prebuilt);
 }
@@ -1478,12 +1486,13 @@ row_unlock_for_mysql(
 	ut_ad(prebuilt && trx);
 	ut_ad(trx->mysql_thread_id == os_thread_get_curr_id());
 
-	if (!(srv_locks_unsafe_for_binlog
-	      || trx->isolation_level == TRX_ISO_READ_COMMITTED)) {
+	if (UNIV_UNLIKELY
+	    (!srv_locks_unsafe_for_binlog
+	     && trx->isolation_level != TRX_ISO_READ_COMMITTED)) {
 
 		fprintf(stderr,
 			"InnoDB: Error: calling row_unlock_for_mysql though\n"
-			"InnoDB: srv_locks_unsafe_for_binlog is FALSE and\n"
+			"InnoDB: innodb_locks_unsafe_for_binlog is FALSE and\n"
 			"InnoDB: this session is not using"
 			" READ COMMITTED isolation level.\n");
 
@@ -2451,8 +2460,8 @@ row_discard_tablespace_for_mysql(
 
 	new_id = dict_hdr_get_new_id(DICT_HDR_TABLE_ID);
 
-	/* Remove any locks there are on the table or its records */
-	lock_reset_all_on_table(table);
+	/* Remove all locks except the table-level S and X locks. */
+	lock_remove_all_on_table(table, FALSE);
 
 	info = pars_info_create();
 
@@ -2787,9 +2796,8 @@ row_truncate_table_for_mysql(
 		goto funct_exit;
 	}
 
-	/* Remove any locks there are on the table or its records */
-
-	lock_reset_all_on_table(table);
+	/* Remove all locks except the table-level S and X locks. */
+	lock_remove_all_on_table(table, FALSE);
 
 	trx->table_id = table->id;
 
@@ -2904,7 +2912,7 @@ next_rec:
 	/* MySQL calls ha_innobase::reset_auto_increment() which does
 	the same thing. */
 	dict_table_autoinc_lock(table);
-	dict_table_autoinc_initialize(table, 0);
+	dict_table_autoinc_initialize(table, 1);
 	dict_table_autoinc_unlock(table);
 	dict_update_statistics(table);
 
@@ -3139,9 +3147,8 @@ check_next_foreign:
 		goto funct_exit;
 	}
 
-	/* Remove any locks there are on the table or its records */
-
-	lock_reset_all_on_table(table);
+	/* Remove all locks there are on the table or its records */
+	lock_remove_all_on_table(table, TRUE);
 
 	trx->dict_operation = TRUE;
 	trx->table_id = table->id;
@@ -3437,8 +3444,6 @@ loop:
 
 		err = row_drop_table_for_mysql(table_name, trx, TRUE);
 
-		mem_free(table_name);
-
 		if (err != DB_SUCCESS) {
 			fputs("InnoDB: DROP DATABASE ", stderr);
 			ut_print_name(stderr, trx, TRUE, name);
@@ -3446,8 +3451,11 @@ loop:
 				(ulint) err);
 			ut_print_name(stderr, trx, TRUE, table_name);
 			putc('\n', stderr);
+			mem_free(table_name);
 			break;
 		}
+
+		mem_free(table_name);
 	}
 
 	if (err == DB_SUCCESS) {

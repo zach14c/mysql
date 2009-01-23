@@ -1133,6 +1133,28 @@ static void mark_temp_tables_as_free_for_reuse(THD *thd)
       /* Detach temporary MERGE children from temporary parent. */
       DBUG_ASSERT(table->file);
       table->file->extra(HA_EXTRA_DETACH_CHILDREN);
+
+      /*
+        Reset temporary table lock type to it's default value (TL_WRITE).
+
+        Statements such as INSERT INTO .. SELECT FROM tmp, CREATE TABLE
+        .. SELECT FROM tmp and UPDATE may under some circumstances modify
+        the lock type of the tables participating in the statement. This
+        isn't a problem for non-temporary tables since their lock type is
+        reset at every open, but the same does not occur for temporary
+        tables for historical reasons.
+
+        Furthermore, the lock type of temporary tables is not really that
+        important because they can only be used by one query at a time and
+        not even twice in a query -- a temporary table is represented by
+        only one TABLE object. Nonetheless, it's safer from a maintenance
+        point of view to reset the lock type of this singleton TABLE object
+        as to not cause problems when the table is reused.
+
+        Even under LOCK TABLES mode its okay to reset the lock type as
+        LOCK TABLES is allowed (but ignored) for a temporary table.
+      */
+      table->reginfo.lock_type= TL_WRITE;
     }
   }
 }
@@ -3836,7 +3858,7 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
       else if (tables->lock_type == TL_READ_DEFAULT)
         tables->table->reginfo.lock_type=
           read_lock_type_for_table(thd, tables->table);
-      else if (tables->table->s->tmp_table == NO_TMP_TABLE)
+      else
         tables->table->reginfo.lock_type= tables->lock_type;
     }
     tables->table->grant= tables->grant;
@@ -5144,7 +5166,9 @@ find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
       table_name && table_name[0] &&
       (my_strcasecmp(table_alias_charset, table_list->alias, table_name) ||
        (db_name && db_name[0] && table_list->db && table_list->db[0] &&
-        strcmp(db_name, table_list->db))))
+        (table_list->schema_table ?
+         my_strcasecmp(system_charset_info, db_name, table_list->db) :
+         strcmp(db_name, table_list->db)))))
     DBUG_RETURN(0);
 
   *actual_table= NULL;

@@ -308,13 +308,25 @@ while (1)						\
   if (IS_END(p, src, len))				\
   {							\
     /* when we are at the end of string */		\
-    /* return either 0 for end of string */		\
+    /* return either -1 for end of string */		\
    /* or 1 for end of pass */				\
-   value= pass < 3 && ml ? 1 : -1;			\
-   if (pass != 3 && ml && len > 0)			\
+                                                        \
+   /* latin2_czech_cs WEIGHT_STRING() returns level */  \
+   /* separators even for empty string: 01.01.01.00 */  \
+   /* The another Czech collation (cp1250_czech_cs) */  \
+   /* returns *empty* WEIGHT_STRING() for empty input.*/\
+   /* This is why the below if(){}else{} code block */  \
+   /* differs from the similar piece in             */  \
+   /* ctype-win1250.c                               */  \
+   if (pass != 3 && ml)					\
    {							\
      p= src;						\
      pass++;						\
+     value= 1; /* Level separator */                    \
+   }                                                    \
+   else                                                 \
+   {                                                    \
+     value= -1; /* End-of-line marker*/                 \
    }							\
    break;						\
   }							\
