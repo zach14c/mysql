@@ -11,11 +11,8 @@
 ##############################################################################
 key_buffer_size_basic_64    : Bug #36522: Some tests of system variables have diffs on 64bit platorms
 rpl_recovery_rank_basic_64  : Bug #36522: Some tests of system variables have diffs on 64bit platorms
-sort_buffer_size_basic_64   : Bug #36522: Some tests of system variables have diffs on 64bit platorms
 query_cache_size_basic_32   : Bug#36747: Allocating a large query cache is not deterministic
 query_cache_size_basic_64   : Bug#36747: Allocating a large query cache is not deterministic
 query_alloc_block_size_basic_64:  Bug #37708 query_alloc_block_size_basic_64 fails in pushbuild
-sort_buffer_size_basic_32   : Bug#36875 main.sort_buffer_size_basic_32 fails on some systems
 key_buffer_size_basic_32    : Bug#36876 main.key_buffer_size_basic_32 fails on some systems
 max_heap_table_size_basic_32 : Bug#36877 main.max_heap_table_size_basic_32 fails on some systems
-tmp_table_size_basic_32     : Bug#36878 main.tmp_table_size_basic_32 fails on some systems

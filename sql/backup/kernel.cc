@@ -1241,7 +1241,7 @@ int Backup_restore_ctx::do_restore(bool overwrite)
     following line should be removed.
    */
   close_thread_tables(m_thd);                   // Never errors
-  m_thd->main_da.reset_diagnostics_area();      // Never errors  
+  m_thd->stmt_da->reset_diagnostics_area();     // Never errors
 
   err= lock_tables_for_restore();               // logs errors
   if (err)
@@ -1273,7 +1273,7 @@ int Backup_restore_ctx::do_restore(bool overwrite)
     following line should be removed.
    */
   close_thread_tables(m_thd);                   // Never errors
-  m_thd->main_da.reset_diagnostics_area();      // Never errors
+  m_thd->stmt_da->reset_diagnostics_area();     // Never errors
 
   DBUG_PRINT("restore",("Done."));
 
