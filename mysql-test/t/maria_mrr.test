@@ -19,4 +19,3 @@ set storage_engine=Maria;
 set storage_engine= @save_storage_engine;
 set @@read_rnd_buffer_size= @read_rnd_buffer_size_save;
 
-drop table t1, t2, t3, t4;

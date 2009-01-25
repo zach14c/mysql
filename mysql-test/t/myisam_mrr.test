@@ -14,8 +14,6 @@ select @@read_rnd_buffer_size;
 
 set @@read_rnd_buffer_size= @read_rnd_buffer_size_save;
 
-drop table t1, t2, t3, t4;
-
 #
 # BUG#30622: Incorrect query results for MRR + filesort
 # 
