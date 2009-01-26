@@ -18825,7 +18825,7 @@ check_reverse_order:
     }
   }
   else if (select && select->quick)
-    select->quick->sorted= 1;
+    select->quick->need_sorted_output();
   DBUG_RETURN(1);
 use_filesort:
   table->file->extra(HA_EXTRA_NO_ORDERBY_LIMIT);

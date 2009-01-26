@@ -1849,7 +1849,7 @@ ha_rows StorageInterface::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *
 											   flags, cost);
 	if ((res != HA_POS_ERROR) && !native_requested)
 		{
-		*flags &= ~HA_MRR_USE_DEFAULT_IMPL;
+		*flags &= ~(HA_MRR_USE_DEFAULT_IMPL | HA_MRR_SORTED);
 		/* We'll be returning records without telling which range they are contained in */
 		*flags |= HA_MRR_NO_ASSOCIATION;
 		/* We'll use our own internal buffer so we won't need any buffer space from the SQL layer */
@@ -1870,7 +1870,7 @@ ha_rows StorageInterface::multi_range_read_info(uint keyno, uint n_ranges,
 										 cost);
 	if ((res != HA_POS_ERROR) && !native_requested)
 		{
-		*flags &= ~HA_MRR_USE_DEFAULT_IMPL;
+		*flags &= ~(HA_MRR_USE_DEFAULT_IMPL | HA_MRR_SORTED);
 		/* See _info_const() function for explanation of these: */
 		*flags |= HA_MRR_NO_ASSOCIATION;
 		*bufsz = 0;
