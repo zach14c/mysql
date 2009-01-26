@@ -242,6 +242,7 @@ SET(FALCON_SOURCES
 		SRLIndexDelete.cpp
 		SRLIndexPage.cpp
 		SRLIndexUpdate.cpp
+		SRLInventoryPage.cpp
 		SRLInversionPage.cpp
 		SRLOverflowPages.cpp
 		SRLPrepare.cpp 
@@ -522,6 +523,7 @@ SET(FALCON_SOURCES
 		SRLIndexAdd.h
 		SRLIndexDelete.h
 		SRLIndexPage.h
+		SRLInventoryPage.h
 		SRLInversionPage.h
 		SRLIndexUpdate.h
 		SRLOverflowPages.h

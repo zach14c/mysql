@@ -152,6 +152,7 @@ falcon_headers= Agent.h Alias.h Application.h \
 		SRLIndexDelete.h \
 		SRLIndexPage.h \
 		SRLIndexUpdate.h \
+		SRLInventoryPage.h \
 		SRLInversionPage.h \
 		SRLOverflowPages.h \
 		SRLPrepare.h \
@@ -335,6 +336,7 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SRLIndexDelete.cpp \
 		SRLIndexPage.cpp \
 		SRLIndexUpdate.cpp \
+		SRLInventoryPage.cpp \
 		SRLInversionPage.cpp \
 		SRLOverflowPages.cpp \
 		SRLPrepare.cpp \
