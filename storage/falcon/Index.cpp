@@ -28,6 +28,7 @@
 #include "Database.h"
 #include "Value.h"
 #include "Record.h"
+#include "Format.h"
 #include "ResultSet.h"
 #include "Collation.h"
 #include "Sync.h"
@@ -606,6 +607,9 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	makeKey (record, &key);
 
 	// If there is a duplicate in the old version chain, don't bother with another
+
+	Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
+	syncPrior.lock(Shared);
 
 	if (duplicateKey (&key, oldRecord))
 		return;
