@@ -1360,7 +1360,7 @@ def_week_frmt: %lu, in_trans: %d, autocommit: %d",
   }
   DBUG_PRINT("qcache", ("Query have result %p", query));
 
-  if ((thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
+  if (thd->in_multi_stmt_transaction() &&
       (query->tables_type() & HA_CACHE_TBL_TRANSACT))
   {
     DBUG_PRINT("qcache",
@@ -1518,8 +1518,7 @@ void Query_cache::invalidate(THD *thd, TABLE_LIST *tables_used,
   if (is_disabled())
     DBUG_VOID_RETURN;
 
-  using_transactions= using_transactions &&
-    (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  using_transactions= using_transactions && thd->in_multi_stmt_transaction();
   for (; tables_used; tables_used= tables_used->next_local)
   {
     DBUG_ASSERT(!using_transactions || tables_used->table!=0);
@@ -1600,8 +1599,7 @@ void Query_cache::invalidate(THD *thd, TABLE *table,
   if (is_disabled())
     DBUG_VOID_RETURN;
 
-  using_transactions= using_transactions &&
-    (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  using_transactions= using_transactions && thd->in_multi_stmt_transaction();
   if (using_transactions && 
       (table->file->table_cache_type() == HA_CACHE_TBL_TRANSACT))
     thd->add_changed_table(table);
@@ -1619,8 +1617,7 @@ void Query_cache::invalidate(THD *thd, const char *key, uint32  key_length,
   if (is_disabled())
     DBUG_VOID_RETURN;
 
-  using_transactions= using_transactions &&
-    (thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN));
+  using_transactions= using_transactions && thd->in_multi_stmt_transaction();
   if (using_transactions) // used for innodb => has_transactions() is TRUE
     thd->add_changed_table(key, key_length);
   else
@@ -3472,7 +3469,7 @@ Query_cache::is_cacheable(THD *thd, size_t query_len, const char *query,
                                                 tables_type)))
       DBUG_RETURN(0);
 
-    if ((thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) &&
+    if (thd->in_multi_stmt_transaction() &&
 	((*tables_type)&HA_CACHE_TBL_TRANSACT))
     {
       DBUG_PRINT("qcache", ("not in autocommin mode"));
