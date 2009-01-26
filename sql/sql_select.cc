@@ -119,7 +119,7 @@ static COND* substitute_for_best_equal_field(COND *cond,
                                              void *table_join_idx);
 static COND *simplify_joins(JOIN *join, List<TABLE_LIST> *join_list,
                             COND *conds, bool top, bool in_sj);
-static bool check_interleaving_with_nj(JOIN_TAB *last, JOIN_TAB *next);
+static bool check_interleaving_with_nj(JOIN_TAB *next);
 static void restore_prev_nj_state(JOIN_TAB *last);
 static void reset_nj_counters(List<TABLE_LIST> *join_list);
 static uint build_bitmap_for_nested_joins(List<TABLE_LIST> *join_list,
@@ -2329,8 +2329,12 @@ JOIN::exec()
 		      (zero_result_cause?zero_result_cause:"No tables used"));
     else
     {
-      result->send_result_set_metadata(*columns_list,
-                          Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+      if (result->send_result_set_metadata(*columns_list,
+                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
+      {
+        DBUG_VOID_RETURN;
+      }
+
       /*
         We have to test for 'conds' here as the WHERE may not be constant
         even if we don't have any tables for prepared statements or if
@@ -2469,7 +2473,8 @@ JOIN::exec()
     if (!items1)
     {
       items1= items0 + all_fields.elements;
-      if (sort_and_group || curr_tmp_table->group)
+      if (sort_and_group || curr_tmp_table->group ||
+          tmp_table_param.precomputed_group_by)
       {
 	if (change_to_use_tmp_fields(thd, items1,
 				     tmp_fields_list1, tmp_all_fields1,
@@ -4109,7 +4114,7 @@ make_join_statistics(JOIN *join, TABLE_LIST *tables, COND *conds,
         if (s->dependent & table->map)
           s->dependent |= table->reginfo.join_tab->dependent;
       }
-      if (s->dependent)
+      if (outer_join & s->table->map)
         s->table->maybe_null= 1;
     }
     /* Catch illegal cross references for outer joins */
@@ -7076,6 +7081,18 @@ greedy_search(JOIN      *join,
     */
     join->positions[idx]= best_pos;
 
+    /*
+      Update the interleaving state after extending the current partial plan
+      with a new table.
+      We are doing this here because best_extension_by_limited_search reverts
+      the interleaving state to the one of the non-extended partial plan 
+      on exit.
+    */
+    IF_DBUG(bool is_interleave_error= )
+    check_interleaving_with_nj (best_table);
+    /* This has been already checked by best_extension_by_limited_search */
+    DBUG_ASSERT(!is_interleave_error);
+
     /* find the position of 'best_table' in 'join->best_ref' */
     best_idx= idx;
     JOIN_TAB *pos= join->best_ref[best_idx];
@@ -7093,7 +7110,7 @@ greedy_search(JOIN      *join,
     --size_remain;
     ++idx;
 
-    DBUG_EXECUTE("opt", print_plan(join, n_tables, record_count, read_time, 
+    DBUG_EXECUTE("opt", print_plan(join, idx, record_count, read_time, 
                                    read_time, "extended"););
   } while (TRUE);
 }
@@ -7296,7 +7313,7 @@ best_extension_by_limited_search(JOIN      *join,
     if ((remaining_tables & real_table_bit) && 
         (allowed_tables & real_table_bit) &&
         !(remaining_tables & s->dependent) && 
-        (!idx || !check_interleaving_with_nj(join->positions[idx-1].table, s)))
+        (!idx || !check_interleaving_with_nj(s)))
     {
       double current_record_count, current_read_time;
       POSITION *position= join->positions + idx;
@@ -7452,7 +7469,7 @@ find_best(JOIN *join,table_map rest_tables,uint idx,double record_count,
   {
     table_map real_table_bit=s->table->map;
     if ((rest_tables & real_table_bit) && !(rest_tables & s->dependent) &&
-        (!idx|| !check_interleaving_with_nj(join->positions[idx-1].table, s)))
+        (!idx|| !check_interleaving_with_nj(s)))
     {
       double records, best;
       POSITION loose_scan_pos;
@@ -7504,9 +7521,10 @@ void calc_used_field_length(THD *thd, JOIN_TAB *join_tab)
 {
   uint null_fields,blobs,fields,rec_length;
   Field **f_ptr,*field;
-  MY_BITMAP *read_set= join_tab->table->read_set;;
+  uint uneven_bit_fields;
+  MY_BITMAP *read_set= join_tab->table->read_set;
 
-  null_fields= blobs= fields= rec_length=0;
+  uneven_bit_fields= null_fields= blobs= fields= rec_length=0;
   for (f_ptr=join_tab->table->field ; (field= *f_ptr) ; f_ptr++)
   {
     if (bitmap_is_set(read_set, field->field_index))
@@ -7518,9 +7536,12 @@ void calc_used_field_length(THD *thd, JOIN_TAB *join_tab)
 	blobs++;
       if (!(flags & NOT_NULL_FLAG))
 	null_fields++;
+      if (field->type() == MYSQL_TYPE_BIT &&
+          ((Field_bit*)field)->bit_len)
+        uneven_bit_fields++;
     }
   }
-  if (null_fields)
+  if (null_fields || uneven_bit_fields)
     rec_length+=(join_tab->table->s->null_fields+7)/8;
   if (join_tab->table->maybe_null)
     rec_length+=sizeof(my_bool);
@@ -7534,6 +7555,7 @@ void calc_used_field_length(THD *thd, JOIN_TAB *join_tab)
   join_tab->used_fieldlength=rec_length;
   join_tab->used_blobs=blobs;
   join_tab->used_null_fields= null_fields;
+  join_tab->used_uneven_bit_fields= uneven_bit_fields;
 }
 
 
@@ -12505,9 +12527,6 @@ static void reset_nj_counters(List<TABLE_LIST> *join_list)
              the partial join order.
   @endverbatim
 
-  @param join       Join being processed
-  @param last_tab   Last table in current partial join order (this function is
-                    not called for empty partial join orders)
   @param next_tab   Table we're going to extend the current partial join with
 
   @retval
@@ -12517,10 +12536,10 @@ static void reset_nj_counters(List<TABLE_LIST> *join_list)
     TRUE   Requested join order extension not allowed.
 */
 
-static bool check_interleaving_with_nj(JOIN_TAB *last_tab, JOIN_TAB *next_tab)
+static bool check_interleaving_with_nj(JOIN_TAB *next_tab)
 {
   TABLE_LIST *next_emb= next_tab->table->pos_in_table_list->embedding;
-  JOIN *join= last_tab->join;
+  JOIN *join= next_tab->join;
 
   if (join->cur_embedding_map & ~next_tab->embedding_map)
   {
@@ -14106,6 +14125,8 @@ create_tmp_table(THD *thd,TMP_TABLE_PARAM *param,List<Item> &fields,
   share->primary_key= MAX_KEY;               // Indicate no primary key
   share->keys_for_keyread.init();
   share->keys_in_use.init();
+  if (param->schema_table)
+    share->db= INFORMATION_SCHEMA_NAME;
 
   /* Calculate which type of fields we will store in the temporary table */
 

@@ -75,6 +75,7 @@
 
 #include "mysql_priv.h"
 #include "transaction.h"
+#include "debug_sync.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -425,6 +426,7 @@ static int lock_external(THD *thd, TABLE **tables, uint count)
       (*tables)->current_lock= lock_type;
     }
   }
+  DEBUG_SYNC(thd, "locked_external");
   DBUG_RETURN(0);
 }
 

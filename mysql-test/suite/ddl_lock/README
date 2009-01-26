@@ -1,0 +1,22 @@
+*DDL LOCKING TEST SUITE*
+
+This is the test suite for WL#4343
+
+Tests:
+- concurrent_ddl.test - WL#4343 Part 1. (Functional testing of
+  concurrent DDL operations)
+
+*STRESS TESTING*
+
+Typical example of running the stress test for one hour:
+
+./mysql-test-run --stress  \
+                 --stress-suite=ddl_lock \
+                 --stress-threads=55 \
+                 --stress-test-duration=3600
+
+This stress test used the tests specified in stress_init.txt and
+stress_tests.txt.
+
+
+Jorgen.Austvik@Sun.COM

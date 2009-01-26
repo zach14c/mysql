@@ -205,6 +205,7 @@ typedef struct st_join_table
   uint		used_fields,used_fieldlength,used_blobs;
   uint          used_null_fields;
   uint          used_rowid_fields;
+  uint          used_uneven_bit_fields;
   enum join_type type;
   bool		cached_eq_ref_table,eq_ref_table,not_used_in_distinct;
   /* TRUE <=> index-based access method must return records in order */
@@ -1425,7 +1426,11 @@ public:
     fetching data from a cursor
   */
   bool     resume_nested_loop;
-  table_map const_table_map,found_const_table_map,outer_join;
+  table_map const_table_map,found_const_table_map;
+  /*
+     Bitmap of all inner tables from outer joins
+  */
+  table_map outer_join;
   /* Number of records produced after join + group operation */
   ha_rows  send_records;
   ha_rows found_records,examined_rows,row_limit, select_limit;

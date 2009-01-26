@@ -1,0 +1,55 @@
+##
+## Test for WL #4343 - DDL locking for all metadata objects
+##
+
+##
+## Test case 3: Concurrent system scenarios - DML load
+##
+
+# Detect whether or not this test is run from the stress test,
+# with the proper setup
+let $have_table= `SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                  WHERE TABLE_SCHEMA='test' AND TABLE_NAME='t1'`;
+
+let $have_proc= `SELECT (COUNT(*) = 1) FROM INFORMATION_SCHEMA.ROUTINES
+                 WHERE ROUTINE_SCHEMA='test' AND ROUTINE_NAME='t_proc'`;
+
+let $have_func= `SELECT (COUNT(*) = 1) FROM INFORMATION_SCHEMA.ROUTINES
+                 WHERE ROUTINE_SCHEMA='test' AND ROUTINE_NAME='t_func'`;
+
+if (`SELECT ($have_table = 0) OR ($have_proc = 0) OR ($have_func = 0)`) {
+    --disable_query_log
+    --disable_result_log
+    --source suite/ddl_lock/t/create_stress_tables.test
+    --enable_result_log
+    --enable_query_log
+}
+
+--source suite/ddl_lock/include/stress_settings.inc
+
+let $row_id= `SELECT ROUND(RAND() * $num_stress_rows)`;
+
+START TRANSACTION;
+--replace_result $row_id <random>
+eval UPDATE t1 SET b = "changed" WHERE id=$row_id;
+--replace_result $row_id <random>
+eval SELECT id,b FROM t1 WHERE id=$row_id;
+COMMIT;
+
+START TRANSACTION;
+--replace_result $row_id <random>
+eval DELETE FROM t1 WHERE id=$row_id;
+--replace_result $row_id <random>
+eval INSERT INTO t1 (id, b) VALUES ($row_id, "newly_inserted");
+COMMIT;
+
+#
+# Call stored procedure
+#
+eval CALL t_proc(@b);
+SELECT @b;
+
+#
+# Call function
+#
+eval SELECT t_func('world');
