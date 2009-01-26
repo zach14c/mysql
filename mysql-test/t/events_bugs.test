@@ -1226,6 +1226,6 @@ DROP DATABASE events_test;
 # (option with no argument in events_bugs-master.opt  turns the scheduler on).
 SET GLOBAL event_scheduler = 'ON';
 --source include/running_event_scheduler.inc
-SET @@global.concurrent_insert = @concurrent_insert;
+SET @@global.concurrent_insert= @concurrent_insert;
 
 # THIS MUST BE THE LAST LINE in this file.

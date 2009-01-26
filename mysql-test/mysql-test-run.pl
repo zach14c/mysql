@@ -122,7 +122,6 @@ our $opt_suites;
 our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
-
 our $exe_mysql;
 our $exe_mysqladmin;
 our $exe_mysqltest;
@@ -1861,7 +1860,6 @@ sub environment_setup {
 		   "$path_client_bindir/my_print_defaults",
 		   "$basedir/extra/my_print_defaults");
   $ENV{'MYSQL_MY_PRINT_DEFAULTS'}= native_path($exe_my_print_defaults);
-
 
   # ----------------------------------------------------
   # myisam tools

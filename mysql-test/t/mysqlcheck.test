@@ -192,4 +192,5 @@ DROP DATABASE `a@b`;
 
 USE test;
 
+
 --echo End of 5.1 tests

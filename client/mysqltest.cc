@@ -1438,6 +1438,7 @@ static int run_tool(const char *tool_path, DYNAMIC_STRING *ds_res, ...)
   DBUG_RETURN(ret);
 }
 
+
 /*
   Test if diff is present.  This is needed on Windows systems
   as the OS returns 1 whether diff is successful or if it is
@@ -1451,21 +1452,21 @@ static int run_tool(const char *tool_path, DYNAMIC_STRING *ds_res, ...)
 
 int diff_check()
 {
- char buf[512]= {0};
- FILE *res_file;
- const char *cmd = "diff -v";
- int have_diff = 0;
+    char buf[512]= {0};
+    FILE *res_file;
+    const char *cmd = "diff -v";
+    int have_diff = 0;
 
-  if (!(res_file= popen(cmd, "r")))
-    die("popen(\"%s\", \"r\") failed", cmd);
+    if (!(res_file= popen(cmd, "r")))
+        die("popen(\"%s\", \"r\") failed", cmd);
 
-/* if diff is not present, nothing will be in stdout to increment have_diff */
-  if (fgets(buf, sizeof(buf), res_file))
-  {
-    have_diff += 1;
-  } 
- pclose(res_file);
- return have_diff;
+    /* if diff is not present, nothing will be in stdout to increment have_diff */
+    if (fgets(buf, sizeof(buf), res_file))
+        {
+            have_diff += 1;
+        } 
+    pclose(res_file);
+    return have_diff;
 }
 
 /*
@@ -1489,7 +1490,7 @@ void show_diff(DYNAMIC_STRING* ds,
 
   if (init_dynamic_string(&ds_tmp, "", 256, 256))
     die("Out of memory");
-  
+
   /* determine if we have diff on Windows
      needs special processing due to return values
      on that OS
@@ -1536,9 +1537,9 @@ void show_diff(DYNAMIC_STRING* ds,
 	    }
       }
     }
-  }
+  }  
 
-  if (!(have_diff))
+  if (! have_diff)
   {
     /*
       Fallback to dump both files to result file and inform
