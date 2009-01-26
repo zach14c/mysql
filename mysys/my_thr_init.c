@@ -69,18 +69,11 @@ nptl_pthread_exit_hack_handler(void *arg __attribute((unused)))
 
 
 
-/*
-  initialize thread attributes
-
-  SYNOPSIS
-    my_threadattr_global_init()
-
-  RETURN  is error?
-    FALSE  ok
-    TRUE   error
+/**
+  Initialize thread attributes.
 */
 
-my_bool my_threadattr_global_init(void)
+void my_threadattr_global_init(void)
 {
 #ifdef PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP
   /*
@@ -104,8 +97,6 @@ my_bool my_threadattr_global_init(void)
   pthread_mutexattr_settype(&my_errorcheck_mutexattr,
                             PTHREAD_MUTEX_ERRORCHECK);
 #endif
-
-  return FALSE;
 }
 
 

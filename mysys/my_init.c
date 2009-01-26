@@ -85,8 +85,7 @@ my_bool my_init(void)
     my_progname_short= my_progname + dirname_length(my_progname);
 
 #if defined(THREAD)
-  if (my_threadattr_global_init())
-    return 1;
+  (void) my_threadattr_global_init();
 #  if defined(SAFE_MUTEX)
   safe_mutex_global_init();		/* Must be called early */
 #  elif defined(MY_PTHREAD_FASTMUTEX)
