@@ -43,6 +43,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
     ++share->w_locks;
     ++share->tot_locks;
     info->lock_type= lock_type;
+    info->s->in_use= list_add(info->s->in_use, &info->in_use);
     DBUG_RETURN(0);
   }
 
@@ -136,6 +137,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       }
       info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
       info->lock_type= F_UNLCK;
+      info->s->in_use= list_delete(info->s->in_use, &info->in_use);
       break;
     case F_RDLCK:
       if (info->lock_type == F_WRLCK)
@@ -166,6 +168,7 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       share->r_locks++;
       share->tot_locks++;
       info->lock_type=lock_type;
+      info->s->in_use= list_add(info->s->in_use, &info->in_use);
       break;
     case F_WRLCK:
       if (info->lock_type == F_RDLCK)
@@ -216,13 +219,14 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
       info->invalidator=share->invalidator;
       share->w_locks++;
       share->tot_locks++;
+      info->s->in_use= list_add(info->s->in_use, &info->in_use);
       break;
     default:
       DBUG_ASSERT(0);
       break;				/* Impossible */
     }
   }
-#ifdef __WIN__
+#ifdef _WIN32
   else
   {
     /*
@@ -319,11 +323,11 @@ int _ma_writeinfo(register MARIA_HA *info, uint operation)
       if ((error= _ma_state_info_write_sub(share->kfile.file,
                                            &share->state, 1)))
 	olderror=my_errno;
-#ifdef __WIN__
+#ifdef _WIN32
       if (maria_flush)
       {
-	_commit(share->kfile.file);
-	_commit(info->dfile.file);
+        my_sync(share->kfile,0);
+        my_sync(info->dfile,0);
       }
 #endif
       my_errno=olderror;

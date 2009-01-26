@@ -808,7 +808,7 @@ static int chk_index(HA_CHECK *param, MARIA_HA *info, MARIA_KEYDEF *keyinfo,
 		     ha_checksum *key_checksum, uint level)
 {
   int flag;
-  uint used_length,comp_flag,page_flag,nod_flag;
+  uint used_length,comp_flag,page_flag,nod_flag,key_length=0;
   uchar *temp_buff, *keypos, *old_keypos, *endpos;
   my_off_t next_page,record;
   MARIA_SHARE *share= info->s;
@@ -888,8 +888,9 @@ static int chk_index(HA_CHECK *param, MARIA_HA *info, MARIA_KEYDEF *keyinfo,
     }
     old_keypos=keypos;
     if (keypos >= endpos ||
-	!(*keyinfo->get_key)(&tmp_key, page_flag, nod_flag, &keypos))
+	(key_length=(*keyinfo->get_key)(&tmp_key, page_flag, nod_flag, &keypos)) == 0)
       break;
+    DBUG_ASSERT(key_length <= sizeof(tmp_key_buff));
     if (keypos > endpos)
     {
       _ma_check_print_error(param,
