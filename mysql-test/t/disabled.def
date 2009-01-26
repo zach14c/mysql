@@ -18,3 +18,4 @@ csv_alter_table                   : Bug#33696 2008-01-21 pcrews no .result file 
 cast                              : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 thread_cache_size_func            : Bug#40575 2008-11-07 joro main.thread_cache_size_func fails in pushbuild when run with pool of threads
 log_output_basic                  : Bug#40988 log_output_basic.test succeeded though syntactically false.
+user_limits                       : Bug#41147 main.user_limits test fails with user exceeding the 'max_questions' resource (because of thread pool)
