@@ -257,12 +257,14 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 		(type != UniqueIndex) && 
 		(transaction->scanIndexCount == 0))
 		{
-		if (deferredIndex->sizeEstimate > database->configuration->indexChillThreshold)
+
+		// Scavenge (or chill) this DeferredIndex and get a new one
+		
+		if (deferredIndex->count > 0 &&
+			deferredIndex->sizeEstimate > database->configuration->indexChillThreshold)
 			{
-			// Scavenge (or chill) this DeferredIndex and get a new one
-			deferredIndex->chill(dbb);
-			ASSERT(deferredIndex->virtualOffset);
-			deferredIndex = NULL;
+			if (deferredIndex->chill(dbb))
+				deferredIndex = NULL;
 			}
 		}
 
