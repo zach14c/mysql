@@ -123,7 +123,7 @@ set optimizer_switch='no_materialization,no_loosescan';
 select @@optimizer_switch; 
 set optimizer_switch='';
 
-drop table t0, t1;
+drop table t0, t1, t2;
 drop table t10, t11, t12;
 
 --echo

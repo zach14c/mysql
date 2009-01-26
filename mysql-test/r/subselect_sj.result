@@ -236,7 +236,7 @@ select @@optimizer_switch;
 @@optimizer_switch
 no_materialization,no_loosescan
 set optimizer_switch='';
-drop table t0, t1;
+drop table t0, t1, t2;
 drop table t10, t11, t12;
 
 Bug#37899: Wrongly checked optimization prerequisite caused failed
