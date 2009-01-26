@@ -28,6 +28,7 @@
 #include "Database.h"
 #include "Value.h"
 #include "Record.h"
+#include "Format.h"
 #include "ResultSet.h"
 #include "Collation.h"
 #include "Sync.h"
@@ -257,12 +258,14 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 		(type != UniqueIndex) && 
 		(transaction->scanIndexCount == 0))
 		{
-		if (deferredIndex->sizeEstimate > database->configuration->indexChillThreshold)
+
+		// Scavenge (or chill) this DeferredIndex and get a new one
+		
+		if (deferredIndex->count > 0 &&
+			deferredIndex->sizeEstimate > database->configuration->indexChillThreshold)
 			{
-			// Scavenge (or chill) this DeferredIndex and get a new one
-			deferredIndex->chill(dbb);
-			ASSERT(deferredIndex->virtualOffset);
-			deferredIndex = NULL;
+			if (deferredIndex->chill(dbb))
+				deferredIndex = NULL;
 			}
 		}
 
@@ -604,6 +607,9 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	makeKey (record, &key);
 
 	// If there is a duplicate in the old version chain, don't bother with another
+
+	Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
+	syncPrior.lock(Shared);
 
 	if (duplicateKey (&key, oldRecord))
 		return;

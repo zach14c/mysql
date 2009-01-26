@@ -146,7 +146,12 @@ void RecordLeaf::pruneRecords (Table *table, int base, RecordScavenge *recordSca
 
 				for (Record *prune = prior; prune; prune = prune->getPriorVersion())
 					{
-					ASSERT(prune->useCount == 1);
+//					ASSERT(prune->useCount == 1);
+					if (prune->useCount != 1)
+						{
+						prior = NULL;
+						break;
+						}
 					recordScavenge->recordsPruned++;
 					recordScavenge->spacePruned += prune->getMemUsage();
 					}

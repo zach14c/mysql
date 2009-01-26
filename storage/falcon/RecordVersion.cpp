@@ -317,8 +317,14 @@ Record* RecordVersion::clearPriorVersion(void)
 	syncPrior.lock(Exclusive);
 
 	Record * prior = priorVersion;
-	priorVersion = NULL;
-	return prior;
+	
+	if (prior && prior->useCount == 1)
+		{
+		priorVersion = NULL;
+		return prior;
+		}
+	
+	return NULL;
 }
 
 void RecordVersion::setPriorVersion(Record *oldVersion)
