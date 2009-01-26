@@ -13,3 +13,4 @@
 rpl_ndb_innodb2ndb       : Bug#34725 2008-02-26 hakank Currently failing.
 rpl_ndb_extraCol	: Bug#41369 2008-12-10 alik
 rpl_ndb_circular_2ch     : Bug#41732 rpl_ndb_circular_2ch needs an updated configuration file
+rpl_ndb_mixed_tables    : Bug #42199 2009-01-19 joro

@@ -1881,6 +1881,7 @@ sp_cache_routines_and_add_tables_for_triggers(THD *thd, LEX *lex,
     Returns TRUE on success, FALSE on (alloc) failure.
 */
 static bool
+
 create_string(THD *thd, String *buf,
               int type,
               const char *db, ulong dblen,
@@ -2008,7 +2009,7 @@ sp_load_for_information_schema(THD *thd, TABLE *proc_table, String *db,
   bzero((char*) &sp_chistics, sizeof(sp_chistics));
   defstr.set_charset(creation_ctx->get_client_cs());
   if (!create_string(thd, &defstr, type, 
-                     NULL, 0, 
+                     sp_db_str.str, sp_db_str.length, 
                      sp_name_obj.m_name.str, sp_name_obj.m_name.length, 
                      params, strlen(params),
                      returns, strlen(returns), 

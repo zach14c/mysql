@@ -1713,6 +1713,18 @@ sub environment_setup {
 
   }
 
+  # ----------------------------------------------------
+  # Add the path where mysqld will find mypluglib.so
+  # ----------------------------------------------------
+  my $lib_simple_parser=
+    mtr_file_exists(vs_config_dirs('plugin/fulltext', 'mypluglib.dll'),
+		    "$basedir/plugin/fulltext/.libs/mypluglib.so",);
+
+  $ENV{'SIMPLE_PARSER'}=
+    ($lib_simple_parser ? basename($lib_simple_parser) : "");
+  $ENV{'SIMPLE_PARSER_OPT'}=
+    ($lib_simple_parser ? "--plugin_dir=" . dirname($lib_simple_parser) : "");
+
   # --------------------------------------------------------------------------
   # Valgrind need to be run with debug libraries otherwise it's almost
   # impossible to add correct supressions, that means if "/usr/lib/debug"
@@ -1966,6 +1978,9 @@ sub remove_stale_vardir () {
     mtr_verbose("Removing $opt_vardir/");
     rmtree("$opt_vardir/");
   }
+  # Remove the "tmp" dir
+  mtr_verbose("Removing $opt_tmpdir/");
+  rmtree("$opt_tmpdir/");
 }
 
 

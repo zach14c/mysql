@@ -950,7 +950,11 @@ int ha_archive::index_read_idx(uchar *buf, uint index, const uchar *key,
   }
 
   if (found)
+  {
+    /* notify handler that a record has been found */
+    table->status= 0;
     DBUG_RETURN(0);
+  }
 
 error:
   DBUG_RETURN(rc ? rc : HA_ERR_END_OF_FILE);
@@ -1389,8 +1393,8 @@ int ha_archive::info(uint flag)
 
     stats.mean_rec_length= table->s->reclength + buffer.alloced_length();
     stats.data_file_length= file_stat.st_size;
-    stats.create_time= file_stat.st_ctime;
-    stats.update_time= file_stat.st_mtime;
+    stats.create_time= (ulong) file_stat.st_ctime;
+    stats.update_time= (ulong) file_stat.st_mtime;
     stats.max_data_file_length= share->rows_recorded * stats.mean_rec_length;
   }
   stats.delete_length= 0;
