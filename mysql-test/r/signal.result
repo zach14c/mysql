@@ -2355,3 +2355,10 @@ end $$
 call test_signal $$
 ERROR 12345: Unhandled user-defined exception condition
 drop procedure test_signal $$
+create procedure test_signal()
+begin
+SIGNAL SQLSTATE '77777' SET MYSQL_ERRNO = 1000, MESSAGE_TEXT='ÁÂÃÅÄ';
+end $$
+call test_signal $$
+ERROR 77777: ÁÂÃÅÄ
+drop procedure test_signal $$

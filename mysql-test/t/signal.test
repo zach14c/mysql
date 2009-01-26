@@ -2671,5 +2671,14 @@ end $$
 call test_signal $$
 drop procedure test_signal $$
 
+create procedure test_signal()
+begin
+  SIGNAL SQLSTATE '77777' SET MYSQL_ERRNO = 1000, MESSAGE_TEXT='ÁÂÃÅÄ';
+end $$
+
+-- error 1000
+call test_signal $$
+drop procedure test_signal $$
+
 delimiter ; $$
 
