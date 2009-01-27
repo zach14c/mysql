@@ -263,15 +263,15 @@ template<class A, class B>
 inline
 Map<A,B>::Map(size_t init_size)
 {
-  hash_init(&m_hash, &::my_charset_bin, init_size, 
-            0, sizeof(A), NULL, Node::del_key, MYF(0));
+  my_hash_init(&m_hash, &::my_charset_bin, init_size,
+               0, sizeof(A), NULL, Node::del_key, MYF(0));
 }
 
 template<class A, class B>
 inline
 Map<A,B>::~Map()
 {
-  hash_free(&m_hash);
+  my_hash_free(&m_hash);
 }
 
 /** 
@@ -293,7 +293,7 @@ template<class A, class B>
 inline
 B* Map<A,B>::operator[](const A &a) const
 {
-  Node *n= (Node*) hash_search(&m_hash, (uchar*) &a, sizeof(A));
+  Node *n= (Node*) my_hash_search(&m_hash, (uchar*) &a, sizeof(A));
   
   return n ? n->ptr : NULL;
 }

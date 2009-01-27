@@ -696,8 +696,8 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   thr_lock_data_init(&share->lock,&m_info->lock,(void*) m_info);
 #endif
   if (mi_log_tables_physical &&
-      hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
-                  share->unique_name_length))
+      my_hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
+                     share->unique_name_length))
     m_info->s->physical_logging= TRUE; /* set before publishing table */
   m_info->open_list.data=(void*) m_info;
   myisam_open_list=list_add(myisam_open_list,&m_info->open_list);

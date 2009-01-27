@@ -119,8 +119,8 @@ void mdl_init()
   mdl_initialized= 1;
   pthread_mutex_init(&LOCK_mdl, NULL);
   pthread_cond_init(&COND_mdl, NULL);
-  hash_init(&mdl_locks, &my_charset_bin, 16 /* FIXME */, 0, 0,
-            mdl_locks_key, 0, 0);
+  my_hash_init(&mdl_locks, &my_charset_bin, 16 /* FIXME */, 0, 0,
+               mdl_locks_key, 0, 0);
   global_lock.waiting_shared= global_lock.active_shared= 0;
   global_lock.active_intention_exclusive= 0;
 }
@@ -141,7 +141,7 @@ void mdl_destroy()
     DBUG_ASSERT(!mdl_locks.records);
     pthread_mutex_destroy(&LOCK_mdl);
     pthread_cond_destroy(&COND_mdl);
-    hash_free(&mdl_locks);
+    my_hash_free(&mdl_locks);
   }
 }
 
@@ -740,8 +740,8 @@ bool mdl_acquire_shared_lock(MDL_CONTEXT *context, MDL_LOCK_DATA *lock_data,
     return TRUE;
   }
 
-  if (!(lock= (MDL_LOCK *)hash_search(&mdl_locks, (uchar*)lock_data->key,
-                                      lock_data->key_length)))
+  if (!(lock= (MDL_LOCK*) my_hash_search(&mdl_locks, (uchar*)lock_data->key,
+                                         lock_data->key_length)))
   {
     if (!(lock= get_lock_object()))
     {
@@ -829,8 +829,8 @@ bool mdl_acquire_exclusive_locks(MDL_CONTEXT *context)
   {
     DBUG_ASSERT(lock_data->type == MDL_EXCLUSIVE &&
                 lock_data->state == MDL_INITIALIZED);
-    if (!(lock= (MDL_LOCK *)hash_search(&mdl_locks, (uchar*)lock_data->key,
-                                        lock_data->key_length)))
+    if (!(lock= (MDL_LOCK*) my_hash_search(&mdl_locks, (uchar*)lock_data->key,
+                                           lock_data->key_length)))
     {
       if (!(lock= get_lock_object()))
         goto err;
@@ -1105,8 +1105,8 @@ bool mdl_try_acquire_exclusive_lock(MDL_CONTEXT *context,
 
   pthread_mutex_lock(&LOCK_mdl);
 
-  if (!(lock= (MDL_LOCK *)hash_search(&mdl_locks, (uchar*)lock_data->key,
-                                      lock_data->key_length)))
+  if (!(lock= (MDL_LOCK*) my_hash_search(&mdl_locks, (uchar*)lock_data->key,
+                                         lock_data->key_length)))
   {
     if (!(lock= get_lock_object()))
       goto err;
@@ -1227,8 +1227,8 @@ bool mdl_wait_for_locks(MDL_CONTEXT *context)
         request for MDL_EXCLUSIVE lock.
       */
       if (is_shared(lock_data) &&
-          (lock= (MDL_LOCK *)hash_search(&mdl_locks, (uchar*)lock_data->key,
-                                         lock_data->key_length)) &&
+          (lock= (MDL_LOCK*) my_hash_search(&mdl_locks, (uchar*)lock_data->key,
+                                            lock_data->key_length)) &&
           !can_grant_lock(lock, lock_data))
         break;
     }
@@ -1264,7 +1264,7 @@ static void release_lock(MDL_LOCK_DATA *lock_data)
   lock= lock_data->lock;
   if (lock->has_one_lock_data())
   {
-    hash_delete(&mdl_locks, (uchar *)lock);
+    my_hash_delete(&mdl_locks, (uchar *)lock);
     DBUG_PRINT("info", ("releasing cached_object cached_object=%p",
                         lock->cached_object));
     if (lock->cached_object)
