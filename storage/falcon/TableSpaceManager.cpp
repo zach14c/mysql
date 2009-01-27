@@ -214,27 +214,11 @@ void TableSpaceManager::bootstrap(int sectionId)
 		p = EncodedDataStream::decode(p, &id, true);
 		p = EncodedDataStream::decode(p, &fileName, true);
 		p = EncodedDataStream::decode(p, &type, true);
-		/***
-		p = EncodedDataStream::decode(p, &comment, true);
 
-		TableSpaceInit tsInit;
-		tsInit.comment		= comment.getString();
-		***/
 		
 		TableSpace *tableSpace = new TableSpace(database, name.getString(), id.getInt(), fileName.getString(), type.getInt(), NULL);
 		Log::debug("New table space %s, id %d, type %d, filename %s\n", (const char*) tableSpace->name, tableSpace->tableSpaceId, tableSpace->type, (const char*) tableSpace->filename);
-		
-		if (tableSpace->type == TABLESPACE_TYPE_TABLESPACE)
-			try
-				{
-				tableSpace->open();
-				}
-			catch(SQLException& exception)
-				{
-				Log::log("Couldn't open table space file \"%s\" for tablespace \"%s\": %s\n", 
-						fileName.getString(), name.getString(), exception.getText());
-				}
-			
+
 		add(tableSpace);
 		stream.clear();
 		}
@@ -396,30 +380,44 @@ void TableSpaceManager::redoCreateTableSpace(int id, int nameLength, const char*
 {
 	Sync sync(&syncObject, "TableSpaceManager::redoCreateTableSpace");
 	sync.lock(Exclusive);
-	TableSpace *tableSpace;
+	TableSpace *tableSpace = NULL;
 
 	for (tableSpace = idHash[id % TS_HASH_SIZE]; tableSpace; tableSpace = tableSpace->idCollision)
 		if (tableSpace->tableSpaceId == id)
-			return;
+		{
+			tableSpace->close();
+			break;
+		}
 
-	char buffer[1024];
-	memcpy(buffer, name, nameLength);
-	buffer[nameLength] = 0;
-	char *file = buffer + nameLength + 1;
-	memcpy(file, fileName, fileNameLength);
-	file[fileNameLength] = 0;
-	tableSpace = new TableSpace(database, buffer, id, file, type, tsInit);
-	tableSpace->needSave = true;
-	add(tableSpace);	
+	if (!tableSpace)
+		{
+		char buffer[1024];
+		memcpy(buffer, name, nameLength);
+		buffer[nameLength] = 0;
+		char *file = buffer + nameLength + 1;
+		memcpy(file, fileName, fileNameLength);
+		file[fileNameLength] = 0;
+		tableSpace = new TableSpace(database, buffer, id, file, type, tsInit);
+		tableSpace->needSave = true;
+		add(tableSpace);
+		}
 
 	try
 		{
-		tableSpace->open();
+		Dbb *dbb = tableSpace->dbb;
+
+		dbb->create(tableSpace->filename, database->dbb->pageSize, 0, HdrTableSpace, 
+			NO_TRANSACTION, "", true);
+		dbb->close();
+
 		}
 	catch(SQLException& exception)
 		{
 		Log::log("Couldn't open table space file \"%s\" for tablespace \"%s\": %s\n", 
-					file, buffer, exception.getText());
+			tableSpace->filename, tableSpace->name, exception.getText());
+
+		// remove from various hashtables
+		expungeTableSpace(tableSpace->tableSpaceId);
 		}
 }
 

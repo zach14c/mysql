@@ -78,7 +78,8 @@ Bdb* PageInventoryPage::createInventoryPage(Dbb * dbb, int32 pageNumber, TransId
 	for (int n = 0; n < dbb->pipSlots; ++n)
 		page->freePages [n] = -1;
 
-	if (dbb->database->serialLog && !dbb->database->serialLog->recovering)
+	if (dbb->database->serialLog && !dbb->database->serialLog->recovering
+		&& (pageNumber != PIP_PAGE))
 		dbb->database->serialLog->logControl->inventoryPage.append(dbb, pageNumber);
 
 	return bdb;

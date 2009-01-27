@@ -149,7 +149,7 @@ Dbb::~Dbb()
 		dbb->close();
 }
 
-Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot)
+Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, bool useExistingFile)
 {
 	serialLog = database->serialLog;
 	odsVersion = ODS_VERSION;
@@ -157,7 +157,11 @@ Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType 
 	sequence = 1;
 
 	init(pageSz, (int) ((cacheSize + pageSz - 1) / pageSz));
-	createFile(fileName);
+	if(useExistingFile)
+		openFile(fileName, false);
+	else
+		createFile(fileName);
+
 	try
 		{
 		Hdr::create(this, fileType, transId, logRoot);
@@ -168,7 +172,8 @@ Cache* Dbb::create(const char * fileName, int pageSz, int64 cacheSize, FileType 
 	catch(...)
 		{
 		closeFile();
-		deleteFile();
+		if(!useExistingFile)
+			deleteFile();
 		throw;
 		}
 

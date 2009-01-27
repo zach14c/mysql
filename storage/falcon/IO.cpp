@@ -792,6 +792,7 @@ static int winOpen(const char *filename, int flags,...)
 		switch(GetLastError())
 			{
 			case ERROR_ACCESS_DENIED:
+			case ERROR_SHARING_VIOLATION:
 				errno = EACCES;
 				break;
 			case ERROR_FILE_NOT_FOUND:

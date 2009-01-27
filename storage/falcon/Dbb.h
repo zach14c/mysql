@@ -165,7 +165,9 @@ public:
 	Bdb*	fakePage (int32 pageNumber, PageType pageType, TransId transId);
 	Bdb*	trialFetch(int32 pageNumber, PageType pageType, LockType lockType);
 	void	init(int pageSz, int cacheSize);
-	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot);
+	Cache*	create (const char *fileName, int pageSize, int64 cacheSize, FileType fileType, TransId transId, const char *logRoot, 
+		bool useExistingFile = false);
+
 	void	validateCache(void);
 	void	logUpdatedRecords(Transaction* transaction, RecordVersion* records, bool chill = false);
 	void	logIndexUpdates(DeferredIndex* deferredIndex);
