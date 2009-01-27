@@ -19,7 +19,7 @@
 #include "PageInventoryPage.h"
 #include "SerialLogControl.h"
 #include "Dbb.h"
-#include "Bdb.h"
+#include "BDB.h"
 #include "Page.h"
 #include "Log.h"
 
