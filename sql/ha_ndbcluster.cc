@@ -9274,18 +9274,18 @@ multi_range_row(uchar *p)
 }
 
 /* Get and put upper layer custom char *, use memcpy() for unaligned access. */
-static char *
-multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no)
+static void
+multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no, char **pcustom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  return ((char **)(buffer->buffer))[range_no];
+  memcpy(*pcustom, ((char **)(buffer->buffer))[range_no], sizeof(*pcustom));
 }
 
 static void
 multi_range_put_custom(HANDLER_BUFFER *buffer, int range_no, char *custom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  ((char **)(buffer->buffer))[range_no]= custom;
+  memcpy(((char **)(buffer->buffer))[range_no], &custom, sizeof(custom));
 }
 
 /*
@@ -9883,8 +9883,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
           m_active_cursor= NULL;
 
           /* Return the record. */
-          *range_info= multi_range_get_custom(multi_range_buffer,
-                                              expected_range_no);
+          multi_range_get_custom(multi_range_buffer,
+                                 expected_range_no, range_info);
           memcpy(table->record[0], multi_range_row(row_buf),
                  table_share->reclength);
           DBUG_RETURN(0);
@@ -9895,8 +9895,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             int res;
             if ((res= read_multi_range_fetch_next()) != 0)
             {
-              *range_info= multi_range_get_custom(multi_range_buffer,
-                                                  expected_range_no);
+              multi_range_get_custom(multi_range_buffer,
+                                     expected_range_no, range_info);
               first_running_range++;
               m_multi_range_result_ptr=
                 multi_range_next_entry(m_multi_range_result_ptr,
@@ -9927,8 +9927,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             */
             if (!mrr_is_output_sorted || expected_range_no == current_range_no)
             {
-              *range_info= multi_range_get_custom(multi_range_buffer,
-                                                  current_range_no);
+              multi_range_get_custom(multi_range_buffer,
+                                     current_range_no, range_info);
               /* Copy out data from the new row. */
               unpack_record(table->record[0], m_next_row);
               /*
