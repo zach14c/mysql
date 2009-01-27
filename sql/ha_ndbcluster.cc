@@ -9345,11 +9345,9 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
   KEY* key_info= table->key_info + keyno;
   ulong reclength= table_share->reclength;
   uint entry_size= multi_range_max_entry(key_type, reclength);
-  ulong total_bufsize;
+  ulong total_bufsize= 0;
   uint save_bufsize= *bufsz;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_info_const");
-
-  total_bufsize= multi_range_fixed_size(n_ranges_arg);
 
   seq_it= seq->init(seq_init_param, n_ranges, *flags);
   while (!seq->next(seq_it, &range))
@@ -9380,6 +9378,9 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                              UNIQUE_INDEX),
                             reclength);
   }
+
+  /* n_ranges_arg may not be calculated, so we use actual calculated instead */
+  total_bufsize+= multi_range_fixed_size(n_ranges);
 
   if (total_rows != HA_POS_ERROR)
   {
