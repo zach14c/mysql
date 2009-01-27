@@ -9278,14 +9278,14 @@ static void
 multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no, char **pcustom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  memcpy(*pcustom, ((char **)(buffer->buffer))[range_no], sizeof(*pcustom));
+  memcpy(pcustom, (char **)(buffer->buffer) + range_no, sizeof(*pcustom));
 }
 
 static void
 multi_range_put_custom(HANDLER_BUFFER *buffer, int range_no, char *custom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  memcpy(((char **)(buffer->buffer))[range_no], &custom, sizeof(custom));
+  memcpy((char **)(buffer->buffer) + range_no, &custom, sizeof(custom));
 }
 
 /*
