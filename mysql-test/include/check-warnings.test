@@ -30,8 +30,8 @@ let $log_error= query_get_value(show variables like 'log_error', Value, 1);
 let $log_warning= $log_error.warnings;
 
 # Load the warnings into a temporary table
-eval load data infile '$log_warning' into table error_log
-  fields terminated by 'xykls37'
+eval load data local infile '$log_warning' into table error_log
+  fields terminated by 'xykls37' escaped by ''
   ignore 1 lines
   (line)
   set file_name='$log_error';
