@@ -39,7 +39,6 @@ SET(FALCON_SOURCES
 		BigInteger.cpp 
 		BinaryBlob.cpp 
 		Bitmap.cpp 
-		Blob.cpp
 		BlobReference.cpp 
 		Btn.cpp 
 		Cache.cpp 
@@ -151,7 +150,6 @@ SET(FALCON_SOURCES
 		NStat.cpp 
 		NUpdate.cpp 
 		OpSys.cpp 
-		Page.cpp
 		PageInventoryPage.cpp 
 		PagePrecedence.cpp 
 		PageWriter.cpp
@@ -277,7 +275,6 @@ SET(FALCON_SOURCES
 		SyncHandler.cpp
 		SyncObject.cpp
 		SyncTest.cpp
-		SyncWait.cpp
 		Syntax.cpp
 		TableAttachment.cpp
 		Table.cpp 
