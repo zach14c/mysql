@@ -1482,7 +1482,6 @@ C_MODE_START
 my_bool index_cond_func_myisam(void *arg)
 {
   ha_myisam *h= (ha_myisam*)arg;
-  /*if (h->in_range_read)*/
   if (h->end_range)
   {
     if (h->compare_key2(h->end_range) > 0)
@@ -1497,7 +1496,6 @@ C_MODE_END
 int ha_myisam::index_init(uint idx, bool sorted)
 { 
   active_index=idx;
-  //in_range_read= FALSE;
   if (pushed_idx_cond_keyno == idx)
     mi_set_index_cond_func(file, index_cond_func_myisam, this);
   return 0; 
@@ -1605,13 +1603,9 @@ int ha_myisam::read_range_first(const key_range *start_key,
                                 bool sorted /* ignored */)
 {
   int res;
-  //if (!eq_range_arg)
-  //  in_range_read= TRUE;
 
   res= handler::read_range_first(start_key, end_key, eq_range_arg, sorted);
 
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 
@@ -1619,8 +1613,6 @@ int ha_myisam::read_range_first(const key_range *start_key,
 int ha_myisam::read_range_next()
 {
   int res= handler::read_range_next();
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 
@@ -2039,13 +2031,12 @@ int ha_myisam::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                      uint n_ranges, uint mode, 
                                      HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_myisam::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_myisam::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
