@@ -414,7 +414,7 @@ void TableSpaceManager::redoCreateTableSpace(int id, int nameLength, const char*
 	catch(SQLException& exception)
 		{
 		Log::log("Couldn't open table space file \"%s\" for tablespace \"%s\": %s\n", 
-			tableSpace->filename, tableSpace->name, exception.getText());
+			tableSpace->filename.getString(), tableSpace->name.getString(), exception.getText());
 
 		// remove from various hashtables
 		expungeTableSpace(tableSpace->tableSpaceId);
