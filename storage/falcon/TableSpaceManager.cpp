@@ -147,7 +147,7 @@ TableSpace* TableSpaceManager::getTableSpace(const char *name)
 		throw SQLError(TABLESPACE_NOT_EXIST_ERROR, "can't find table space \"%s\"", name);
 
 	if (!tableSpace->active)
-		throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
+		tableSpace->open();
 
 	return tableSpace;
 }
@@ -241,7 +241,6 @@ TableSpace* TableSpaceManager::getTableSpace(int id)
 		throw SQLError(COMPILE_ERROR, "can't find table space %d", id);
 
 	if (!tableSpace->active)
-		//throw SQLError(RUNTIME_ERROR, "table space \"%s\" is not active", (const char*) tableSpace->name);
 		tableSpace->open();
 
 	return tableSpace;
