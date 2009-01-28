@@ -3751,9 +3751,12 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--pid-file=%s", $prefix,
 	      $mysqld->{'path_pid'});
-        
-   mtr_add_arg($args, "%s--log-err=%s", $prefix,
-	      $mysqld->{'path_myerr'});
+ 
+  if ($glob_win32)
+  {  
+    # write to stdout
+    mtr_add_arg($args, "%s--console", $prefix);
+  }
 
   mtr_add_arg($args, "%s--port=%d", $prefix,
                 $mysqld->{'port'});
