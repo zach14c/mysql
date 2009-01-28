@@ -1,0 +1,777 @@
+Test - 4
+Test to ensure routine-level GRANT statements are recorded in the
+backup image and restore reapplies the GRANT statements.
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+
+create databases and tables
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+CREATE TABLE db1.t1(a INT, b CHAR(20), years YEAR);
+CREATE TABLE db1.t2(a1 INT, b1 CHAR(20));
+CREATE TABLE db2.t1(d INT, e VARCHAR(20));
+CREATE TABLE db2.t2(d1 INT, e1 DATE);
+INSERT INTO db1.t1 VALUES
+(1,'TEST1','1990'),(2,'TEST2','1984'),(3,'TEST3','2004'),(4,'TEST4','2009');
+INSERT INTO db1.t2 VALUES(10,'a'),(20,'b'),(30,'c'),(40,'d');
+INSERT INTO db2.t1 VALUES(10,'a1'),(20,'b1'),(30,'c1'),(40,'d1');
+INSERT INTO db2.t2 VALUES(100,'2008-09-09'),(200,'1996-06-13');
+
+create users
+
+CREATE USER 'jim'@'%';
+CREATE USER 'carry'@'%';
+
+create procedures and functions.
+
+CREATE PROCEDURE db1.p11(xy INT)
+SQL SECURITY DEFINER SELECT 1;||
+CREATE PROCEDURE db2.p21(a CHAR(20))
+BEGIN
+INSERT INTO db1.t2 VALUES(50,'e');
+END;||
+CREATE FUNCTION db1.f11(j INT) RETURNS INT
+RETURN j-10;||
+CREATE FUNCTION db2.f21() RETURNS INT
+BEGIN 
+RETURN(SELECT COUNT(*) FROM db1.t2);
+END;||
+
+Grant Routine level privileges to users
+
+GRANT EXECUTE ON PROCEDURE db2.p21 TO jim@'%';
+GRANT EXECUTE ON FUNCTION db1.f11 TO jim@'%';
+GRANT SELECT on db1.* TO jim@'%';
+GRANT SELECT on db2.* TO jim@'%';
+GRANT EXECUTE ON PROCEDURE db1.p11 TO carry@'%';
+GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
+FLUSH PRIVILEGES;
+
+Verify the grant privileges for users
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON PROCEDURE `db1`.`p11` TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT * FROM mysql.procs_priv;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
+%	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+Perform backup
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+backup_id
+#
+Drop database and users
+DROP DATABASE db1;
+DROP DATABASE db2;
+Perform restore and verify that restore properly reapplies all 
+grants for users.
+RESTORE FROM 'db12.bak';
+backup_id
+#
+Verify the objects and grants
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	p11	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW FUNCTION STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON PROCEDURE `db1`.`p11` TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT * FROM mysql.procs_priv;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
+%	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+We notice that all the grants are restored intact.
+Excercise objects
+CALL db1.p11(2);
+1
+1
+CALL db2.p21('TEST');
+SELECT db1.f11(11);
+db1.f11(11)
+1
+SELECT db2.f21();
+db2.f21()
+5
+SELECT * FROM db1.t1;
+a	b	years
+1	TEST1	1990
+2	TEST2	1984
+3	TEST3	2004
+4	TEST4	2009
+SELECT * FROM db2.t1;
+d	e
+10	a1
+20	b1
+30	c1
+40	d1
+SELECT * FROM db1.t2;
+a1	b1
+10	a
+20	b
+30	c
+40	d
+50	e
+SELECT * FROM db2.t2;
+d1	e1
+100	2008-09-09
+200	1996-06-13
+
+Drop database and users
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP USER jim@'%';
+DROP USER carry@'%';
+
+Recreate users
+CREATE USER 'jim'@'%';
+CREATE USER 'carry'@'%';
+Verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+Ensure that restore properly reapplies all grants for users.
+RESTORE FROM 'db12.bak';
+backup_id
+#
+Verify the objects and grants
+FLUSH PRIVILEGES;
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	p11	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW FUNCTION STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+SELECT * FROM mysql.procs_priv;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+From the above table, We can notice that grants for stored routines will--echo not be restored. Bug#41979
+Drop users, then restore and verify the grants.
+Restore will throw a warning message
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP USER jim@'%';
+DROP USER carry@'%';
+RESTORE FROM 'db12.bak';
+backup_id
+#
+Warnings:
+#	1738	The grant 'SELECT ON db1.*' for the user 'jim'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SELECT ON db2.*' for the user 'jim'@'%' was skipped because the user does not exist.
+SHOW WARNINGS;
+Level	Code	Message
+Warning	#	The grant 'SELECT ON db1.*' for the user 'jim'@'%' was skipped because the user does not exist.
+Warning	#	The grant 'SELECT ON db2.*' for the user 'jim'@'%' was skipped because the user does not exist.
+Verify grants after restore
+SHOW GRANTS FOR jim@'%';
+ERROR 42000: There is no such grant defined for user 'jim' on host '%'
+SHOW GRANTS FOR carry@'%';
+ERROR 42000: There is no such grant defined for user 'carry' on host '%'
+
+Test 5 : Verify restore when grants assigned to procedure or function is
+dropped before backup.
+
+Recreate users, perform restore and verify grants.
+CREATE USER 'jim'@'%';
+CREATE USER 'carry'@'%';
+RESTORE FROM 'db12.bak' OVERWRITE;
+backup_id
+#
+Verify the objects and grants
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	p11	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW FUNCTION STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+Grant Routine level privileges to users
+GRANT EXECUTE ON PROCEDURE db2.p21 TO jim@'%';
+GRANT EXECUTE ON PROCEDURE db1.p11 TO carry@'%';
+GRANT EXECUTE ON FUNCTION db1.f11 TO jim@'%';
+GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON PROCEDURE `db1`.`p11` TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+Drop procedure db1.p11 and check the grants for users
+DROP PROCEDURE db1.p11;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+Perform backup 
+BACKUP DATABASE db1, db2 TO 'db12a.bak';
+backup_id
+#
+drop database
+DROP DATABASE db1;
+DROP DATABASE db2;
+verify grants
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+Perform restore
+RESTORE FROM 'db12a.bak';
+backup_id
+#
+Verify objects and grant privileges
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT * FROM mysql.procs_priv;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+%	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW FUNCTION STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+Drop function and check grants for users
+DROP FUNCTION db1.f11;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+Perform backup 
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+backup_id
+#
+drop database
+DROP DATABASE db1;
+DROP DATABASE db2;
+Perform restore
+RESTORE FROM 'db12b.bak';
+backup_id
+#
+Verify objects and grant privileges
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT ON `db2`.* TO 'jim'@'%'
+GRANT SELECT ON `db1`.* TO 'jim'@'%'
+GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT * FROM mysql.procs_priv;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SHOW PROCEDURE STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+SHOW FUNCTION STATUS;
+Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
+db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
+
+Test 1: Verify that database and GRANTs are restored, when a table 
+or column assigned with privileges is dropped before backup operation
+
+REVOKE EXECUTE ON PROCEDURE db2.p21 FROM jim@'%';
+REVOKE EXECUTE ON FUNCTION db2.f21 FROM carry@'%';
+REVOKE SELECT ON db1.* FROM jim@'%';
+REVOKE SELECT ON db2.* FROM jim@'%';
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+Grant table level and column level privileges to users.
+GRANT SELECT(a), UPDATE(b) ON db1.t1 TO jim@'%';
+GRANT INSERT, SELECT ON db2.t1 TO jim@'%';
+GRANT INSERT(a1) ON db1.t2 TO carry@'%';
+GRANT UPDATE, SELECT ON db2.t2 TO carry@'%';
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+perform backup
+BACKUP DATABASE db1, db2 TO 'db12a.bak';
+backup_id
+#
+
+Drop a column to which grant is assigned
+ALTER TABLE db1.t1 DROP COLUMN b;
+check the grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Perform backup again
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+backup_id
+#
+drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+Restore will fail because of bug#41578
+RESTORE FROM 'db12b.bak';
+ERROR HY000: Could not execute grant '`db1`.`<empty> #`'.
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Unknown column 'b' in 't1'
+Error	#	Could not execute grant '`db1`.`<empty> #`'.
+Warning	#	Operation aborted - data might be corrupted
+RESTORE FROM 'db12a.bak' OVERWRITE;
+backup_id
+#
+verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Now drop a table to which privilege is assigned
+DROP TABLE db2.t2;
+check the grants for users
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Perform backup operation
+BACKUP DATABASE db1, db2 TO 'db12c.bak';
+backup_id
+#
+drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+Restore will fail because of bug#41578
+RESTORE FROM 'db12c.bak';
+ERROR HY000: Could not execute grant '`db2`.`<empty> #`'.
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Table 'db2.t2' doesn't exist
+Error	#	Could not execute grant '`db2`.`<empty> #`'.
+Warning	#	Operation aborted - data might be corrupted
+RESTORE FROM 'db12a.bak' OVERWRITE;
+backup_id
+#
+verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SELECT * FROM db1.t1;
+a	b	years
+1	TEST1	1990
+2	TEST2	1984
+3	TEST3	2004
+4	TEST4	2009
+SELECT * FROM db1.t2;
+a1	b1
+10	a
+20	b
+30	c
+40	d
+SELECT * FROM db2.t1;
+d	e
+10	a1
+20	b1
+30	c1
+40	d1
+SELECT * FROM db2.t2;
+d1	e1
+100	2008-09-09
+200	1996-06-13
+
+Test 2: Rename a table / column to which grant is assigned and verify 
+the backup / restore.
+
+Rename table to which grant is assigned.
+RENAME TABLE db2.t1 TO db2.trename;
+check the grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Perform backup again
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+backup_id
+#
+drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12b.bak';
+ERROR HY000: Could not execute grant '`db2`.`<empty> #`'.
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Table 'db2.t1' doesn't exist
+Error	#	Could not execute grant '`db2`.`<empty> #`'.
+Warning	#	Operation aborted - data might be corrupted
+RESTORE FROM 'db12a.bak' OVERWRITE;
+backup_id
+#
+verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Rename a column to which grant is assigned.
+ALTER TABLE db1.t2 CHANGE a1 a1rename SMALLINT;
+DESCRIBE db1.t2;
+Field	Type	Null	Key	Default	Extra
+a1rename	smallint(6)	YES		NULL	
+b1	char(20)	YES		NULL	
+check the grants for users
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Perform backup again
+BACKUP DATABASE db1, db2 TO 'db12c.bak';
+backup_id
+#
+drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12c.bak';
+ERROR HY000: Could not execute grant '`db1`.`<empty> #`'.
+SHOW WARNINGS;
+Level	Code	Message
+Error	#	Unknown column 'a1' in 't2'
+Error	#	Could not execute grant '`db1`.`<empty> #`'.
+Warning	#	Operation aborted - data might be corrupted
+RESTORE FROM 'db12a.bak' OVERWRITE;
+backup_id
+#
+verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SHOW TABLES FROM db1;
+Tables_in_db1
+t1
+t2
+SHOW TABLES FROM db2;
+Tables_in_db2
+t1
+t2
+SELECT * FROM db1.t1;
+a	b	years
+1	TEST1	1990
+2	TEST2	1984
+3	TEST3	2004
+4	TEST4	2009
+SELECT * FROM db1.t2;
+a1	b1
+10	a
+20	b
+30	c
+40	d
+SELECT * FROM db2.t1;
+d	e
+10	a1
+20	b1
+30	c1
+40	d1
+SELECT * FROM db2.t2;
+d1	e1
+100	2008-09-09
+200	1996-06-13
+
+Test 3: Rename a privileged user, backup database and verify
+grants after restore
+
+Rename the username to which table and column level grant is assigned
+RENAME USER jim@'%' TO tom@'%';
+check the grants for users
+SHOW GRANTS FOR jim@'%';
+ERROR 42000: There is no such grant defined for user 'jim' on host '%'
+SHOW GRANTS FOR tom@'%';
+Grants for tom@%
+GRANT USAGE ON *.* TO 'tom'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Perform backup again
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+backup_id
+#
+drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12b.bak';
+backup_id
+#
+verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR tom@'%';
+Grants for tom@%
+GRANT USAGE ON *.* TO 'tom'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+drop database and perform restore from db12a.bak
+DROP DATABASE db1;
+DROP DATABASE db2;
+RESTORE FROM 'db12a.bak';
+backup_id
+#
+Warnings:
+#	1738	The grant 'SELECT(a) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+#	1738	The grant 'UPDATE(b) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+#	1738	The grant 'INSERT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SELECT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+SHOW WARNINGS;
+Level	Code	Message
+Warning	#	The grant 'SELECT(a) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+Warning	#	The grant 'UPDATE(b) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+Warning	#	The grant 'INSERT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+Warning	#	The grant 'SELECT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
+verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR tom@'%';
+Grants for tom@%
+GRANT USAGE ON *.* TO 'tom'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
+SHOW GRANTS FOR carry@'%';
+Grants for carry@%
+GRANT USAGE ON *.* TO 'carry'@'%'
+GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
+GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+Create new user with same name jim@'%'
+CREATE USER jim@'%';
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+RESTORE FROM 'db12a.bak' OVERWRITE;
+backup_id
+#
+Verify grants for user jim and tom
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+Grants for jim@%
+GRANT USAGE ON *.* TO 'jim'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
+SHOW GRANTS FOR tom@'%';
+Grants for tom@%
+GRANT USAGE ON *.* TO 'tom'@'%'
+GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
+GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
+We can notice that there are some additional grants shown for jim
+Bug#41597
+REVOKE ALL ON *.* FROM jim@'%';
+REVOKE ALL ON *.* FROM carry@'%';
+REVOKE ALL ON *.* FROM tom@'%';
+DROP USER jim@'%';
+DROP USER tom@'%';
+DROP USER carry@'%';
+drop database 
+DROP DATABASE db1;
+DROP DATABASE db2;
+FLUSH PRIVILEGES;

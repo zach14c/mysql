@@ -402,7 +402,15 @@ sub mtr_report_stats ($) {
 		  /Backup: Failed to obtain meta-data for view/ or
 		  /Restore: Could not restore view/
 		) or
- 	 
+ 	
+                # The backup_db_grants_extra test triggers errors below on                      # purpose
+                ($testname eq 'backup.backup_db_grants_extra') and
+                (
+                  /Restore:/ or /was skipped because the user does not exist/
+                       or
+                  /Restore: Could not execute grant/
+                ) or
+ 
 		# ignore warning generated when backup engine selection algorithm is tested
 		($testname eq 'backup.backup_no_be') and /Backup: Cannot create backup engine/ or
 		# ignore warnings generated when backup privilege is tested

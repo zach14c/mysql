@@ -1,0 +1,558 @@
+--echo Test - 4
+--echo Test to ensure routine-level GRANT statements are recorded in the
+--echo backup image and restore reapplies the GRANT statements.
+
+--source include/not_embedded.inc
+
+--disable_warnings
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+--enable_warnings
+
+--echo
+--echo create databases and tables
+--echo
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+
+CREATE TABLE db1.t1(a INT, b CHAR(20), years YEAR);
+CREATE TABLE db1.t2(a1 INT, b1 CHAR(20));
+CREATE TABLE db2.t1(d INT, e VARCHAR(20));
+CREATE TABLE db2.t2(d1 INT, e1 DATE);
+
+INSERT INTO db1.t1 VALUES
+(1,'TEST1','1990'),(2,'TEST2','1984'),(3,'TEST3','2004'),(4,'TEST4','2009');
+INSERT INTO db1.t2 VALUES(10,'a'),(20,'b'),(30,'c'),(40,'d');
+
+INSERT INTO db2.t1 VALUES(10,'a1'),(20,'b1'),(30,'c1'),(40,'d1');
+INSERT INTO db2.t2 VALUES(100,'2008-09-09'),(200,'1996-06-13');
+
+--echo
+--echo create users
+--echo
+
+CREATE USER 'jim'@'%';
+CREATE USER 'carry'@'%';
+
+--echo
+--echo create procedures and functions.
+--echo
+
+DELIMITER ||;
+
+CREATE PROCEDURE db1.p11(xy INT)
+ SQL SECURITY DEFINER SELECT 1;||
+
+CREATE PROCEDURE db2.p21(a CHAR(20))
+  BEGIN
+    INSERT INTO db1.t2 VALUES(50,'e');
+  END;||
+ 
+CREATE FUNCTION db1.f11(j INT) RETURNS INT
+  RETURN j-10;||
+
+CREATE FUNCTION db2.f21() RETURNS INT
+  BEGIN 
+    RETURN(SELECT COUNT(*) FROM db1.t2);
+  END;||
+
+DELIMITER ;||
+
+--echo
+--echo Grant Routine level privileges to users
+--echo
+
+GRANT EXECUTE ON PROCEDURE db2.p21 TO jim@'%';
+GRANT EXECUTE ON FUNCTION db1.f11 TO jim@'%';
+GRANT SELECT on db1.* TO jim@'%';
+GRANT SELECT on db2.* TO jim@'%';
+
+GRANT EXECUTE ON PROCEDURE db1.p11 TO carry@'%';
+GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
+FLUSH PRIVILEGES;
+
+--echo
+--echo Verify the grant privileges for users
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+--replace_column 8 #
+SELECT * FROM mysql.procs_priv;
+
+--echo Perform backup
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12.bak';
+
+--echo Drop database and users
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--echo Perform restore and verify that restore properly reapplies all 
+--echo grants for users.
+
+--replace_column 1 #
+RESTORE FROM 'db12.bak';
+
+--echo Verify the objects and grants
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+--replace_column 5 # 6 #
+SHOW PROCEDURE STATUS;
+--replace_column 5 # 6 #
+SHOW FUNCTION STATUS;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+--replace_column 8 #
+SELECT * FROM mysql.procs_priv;
+
+--echo We notice that all the grants are restored intact.
+--echo Excercise objects
+
+CALL db1.p11(2);
+CALL db2.p21('TEST');
+SELECT db1.f11(11);
+SELECT db2.f21();
+
+SELECT * FROM db1.t1;
+SELECT * FROM db2.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db2.t2;
+
+--echo
+--echo Drop database and users
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP USER jim@'%';
+DROP USER carry@'%';
+
+--echo
+--echo Recreate users
+
+CREATE USER 'jim'@'%';
+CREATE USER 'carry'@'%';
+
+--echo Verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Ensure that restore properly reapplies all grants for users.
+
+--replace_column 1 #
+RESTORE FROM 'db12.bak';
+
+--echo Verify the objects and grants
+
+FLUSH PRIVILEGES;
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+--replace_column 5 # 6 #
+SHOW PROCEDURE STATUS;
+--replace_column 5 # 6 #
+SHOW FUNCTION STATUS;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+--replace_column 8 # 
+SELECT * FROM mysql.procs_priv;
+
+--echo From the above table, We can notice that grants for stored routines will--echo not be restored. Bug#41979
+
+--echo Drop users, then restore and verify the grants.
+--echo Restore will throw a warning message
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+DROP USER jim@'%';
+DROP USER carry@'%';
+
+--replace_column 1 # 
+RESTORE FROM 'db12.bak';
+--replace_column 2 #
+SHOW WARNINGS;
+
+--echo Verify grants after restore
+# If the users are dropped, grants will not be restored.
+
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR jim@'%';
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR carry@'%';
+
+--echo
+--echo Test 5 : Verify restore when grants assigned to procedure or function is
+--echo         dropped before backup.
+--echo
+
+--echo Recreate users, perform restore and verify grants.
+
+CREATE USER 'jim'@'%';
+CREATE USER 'carry'@'%';
+
+--replace_column 1 #
+RESTORE FROM 'db12.bak' OVERWRITE;
+
+--echo Verify the objects and grants
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+--replace_column 5 # 6 #
+SHOW PROCEDURE STATUS;
+--replace_column 5 # 6 #
+SHOW FUNCTION STATUS;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Grant Routine level privileges to users
+
+GRANT EXECUTE ON PROCEDURE db2.p21 TO jim@'%';
+GRANT EXECUTE ON PROCEDURE db1.p11 TO carry@'%';
+GRANT EXECUTE ON FUNCTION db1.f11 TO jim@'%';
+GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
+FLUSH PRIVILEGES;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Drop procedure db1.p11 and check the grants for users
+DROP PROCEDURE db1.p11;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup 
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12a.bak';
+
+--echo drop database
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--echo verify grants
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform restore
+--replace_column 1 #
+RESTORE FROM 'db12a.bak';
+
+--echo Verify objects and grant privileges
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+--replace_column 8 #
+SELECT * FROM mysql.procs_priv;
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+--replace_column 5 # 6 #
+SHOW PROCEDURE STATUS;
+--replace_column 5 # 6 #
+SHOW FUNCTION STATUS;
+
+--echo Drop function and check grants for users
+DROP FUNCTION db1.f11;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup 
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+
+--echo drop database
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--echo Perform restore
+--replace_column 1 #
+RESTORE FROM 'db12b.bak';
+
+--echo Verify objects and grant privileges
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+--replace_column 8 #
+SELECT * FROM mysql.procs_priv;
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+--replace_column 5 # 6 #
+SHOW PROCEDURE STATUS;
+--replace_column 5 # 6 #
+SHOW FUNCTION STATUS;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/db12a.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
+
+--echo 
+--echo Test 1: Verify that database and GRANTs are restored, when a table 
+--echo or column assigned with privileges is dropped before backup operation
+--echo
+
+REVOKE EXECUTE ON PROCEDURE db2.p21 FROM jim@'%';
+REVOKE EXECUTE ON FUNCTION db2.f21 FROM carry@'%';
+REVOKE SELECT ON db1.* FROM jim@'%';
+REVOKE SELECT ON db2.* FROM jim@'%';
+
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Grant table level and column level privileges to users.
+
+GRANT SELECT(a), UPDATE(b) ON db1.t1 TO jim@'%';
+GRANT INSERT, SELECT ON db2.t1 TO jim@'%';
+GRANT INSERT(a1) ON db1.t2 TO carry@'%';
+GRANT UPDATE, SELECT ON db2.t2 TO carry@'%';
+
+FLUSH PRIVILEGES;
+
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo perform backup
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12a.bak';
+
+--echo
+--echo Drop a column to which grant is assigned
+ALTER TABLE db1.t1 DROP COLUMN b;
+
+--echo check the grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup again
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+
+--echo drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--echo Restore will fail because of bug#41578
+--replace_column 1 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+--error ER_BACKUP_CANT_RESTORE_PRIV
+RESTORE FROM 'db12b.bak';
+--replace_column 2 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+SHOW WARNINGS;
+
+--replace_column 1 #
+RESTORE FROM 'db12a.bak' OVERWRITE;
+
+--echo verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Now drop a table to which privilege is assigned
+DROP TABLE db2.t2;
+
+--echo check the grants for users
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup operation
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12c.bak';
+
+--echo drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--echo Restore will fail because of bug#41578
+--replace_column 1 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+--error ER_BACKUP_CANT_RESTORE_PRIV
+RESTORE FROM 'db12c.bak';
+--replace_column 2 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+SHOW WARNINGS;
+
+--replace_column 1 #
+RESTORE FROM 'db12a.bak' OVERWRITE;
+
+--echo verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+ 
+--remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/db12c.bak
+
+--echo 
+--echo Test 2: Rename a table / column to which grant is assigned and verify 
+--echo the backup / restore.
+--echo
+
+--echo Rename table to which grant is assigned.
+RENAME TABLE db2.t1 TO db2.trename;
+
+--echo check the grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup again
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+
+--echo drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--replace_column 1 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+--error ER_BACKUP_CANT_RESTORE_PRIV
+RESTORE FROM 'db12b.bak';
+--replace_column 2 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+SHOW WARNINGS;
+
+--replace_column 1 #
+RESTORE FROM 'db12a.bak' OVERWRITE;
+
+--echo verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Rename a column to which grant is assigned.
+ALTER TABLE db1.t2 CHANGE a1 a1rename SMALLINT;
+DESCRIBE db1.t2;
+
+--echo check the grants for users
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup again
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12c.bak';
+
+--echo drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--replace_column 1 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+--error ER_BACKUP_CANT_RESTORE_PRIV
+RESTORE FROM 'db12c.bak';
+--replace_column 2 #
+--replace_regex /<empty> [00-99]+/<empty> #/
+SHOW WARNINGS;
+
+--replace_column 1 #
+RESTORE FROM 'db12a.bak' OVERWRITE;
+
+--echo verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR carry@'%';
+
+SHOW TABLES FROM db1;
+SHOW TABLES FROM db2;
+
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/db12c.bak
+
+--echo 
+--echo Test 3: Rename a privileged user, backup database and verify
+--echo grants after restore
+--echo
+
+--echo Rename the username to which table and column level grant is assigned
+RENAME USER jim@'%' TO tom@'%';
+
+--echo check the grants for users
+--error ER_NONEXISTING_GRANT
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR tom@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Perform backup again
+--replace_column 1 #
+BACKUP DATABASE db1, db2 TO 'db12b.bak';
+
+--echo drop database and perform restore
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--replace_column 1 #
+RESTORE FROM 'db12b.bak';
+
+--echo verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR tom@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo drop database and perform restore from db12a.bak
+DROP DATABASE db1;
+DROP DATABASE db2;
+
+--replace_column 1 #
+RESTORE FROM 'db12a.bak';
+--replace_column 2 #
+SHOW WARNINGS;
+
+--echo verify grants for users
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR tom@'%';
+SHOW GRANTS FOR carry@'%';
+
+--echo Create new user with same name jim@'%'
+CREATE USER jim@'%';
+SHOW GRANTS FOR jim@'%';
+
+--replace_column 1 #
+RESTORE FROM 'db12a.bak' OVERWRITE;
+
+--echo Verify grants for user jim and tom
+FLUSH PRIVILEGES;
+SHOW GRANTS FOR jim@'%';
+SHOW GRANTS FOR tom@'%';
+
+--echo We can notice that there are some additional grants shown for jim
+--echo Bug#41597
+
+#Test cleanup
+
+REVOKE ALL ON *.* FROM jim@'%';
+REVOKE ALL ON *.* FROM carry@'%';
+REVOKE ALL ON *.* FROM tom@'%';
+
+DROP USER jim@'%';
+DROP USER tom@'%';
+DROP USER carry@'%';
+
+--echo drop database 
+DROP DATABASE db1;
+DROP DATABASE db2;
+FLUSH PRIVILEGES;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/db12a.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/db12.bak
