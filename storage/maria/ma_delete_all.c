@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -124,6 +125,9 @@ int maria_delete_all_rows(MARIA_HA *info)
       goto err;
   }
 
+  if (unlikely(ma_get_physical_logging_state(info->s)))
+    _maria_log_command(&maria_physical_log, MA_LOG_DELETE_ALL, share,
+                       NULL, 0, 0);
   (void)(_ma_writeinfo(info,WRITEINFO_UPDATE_KEYFILE));
 #ifdef HAVE_MMAP
   /* Map again */

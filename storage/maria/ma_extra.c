@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,6 +22,9 @@
 
 static void maria_extra_keyflag(MARIA_HA *info,
                                 enum ha_extra_function function);
+static int log_flushed_write_cache_physical(IO_CACHE *cache_to_table,
+                                            const uchar *buffert,
+                                            uint length, my_off_t offset);
 
 /**
    @brief Set options and buffers to optimize table handling
@@ -152,6 +156,19 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
                            HA_STATE_WRITE_AT_END |
                            HA_STATE_EXTEND_BLOCK);
       }
+#ifdef HAVE_MARIA_PHYSICAL_LOGGING
+    if (!share->temporary)
+    {
+      /*
+        This is a post_write: physical_logging_state has to be checked after
+        doing the table write (see ma_log_start_physical()).
+        We set it now as physical logging may be requested later when the
+        cache has started being used.
+      */
+      info->rec_cache.post_write= log_flushed_write_cache_physical;
+      info->rec_cache.arg= share;
+    }
+#endif
     break;
   case HA_EXTRA_PREPARE_FOR_UPDATE:
     if (info->s->data_file_type != DYNAMIC_RECORD)
@@ -508,6 +525,19 @@ int maria_reset(MARIA_HA *info)
   */
   if (info->opt_flag & (READ_CACHE_USED | WRITE_CACHE_USED))
   {
+    /*
+      If there is a WRITE_CACHE here and we don't hold a write-lock or
+      intern_lock on the table, then ma_log_stop_physical() may be running
+      now in another thread and may be flushing the write cache now (and two
+      concurrent end_io_cache() will cause problems). For example when the
+      SQL layer unlocks tables and then calls ha_maria::reset() we must not
+      come here. Temp tables are not concerned.
+    */
+    if (!share->temporary && (info->opt_flag & WRITE_CACHE_USED) &&
+        (info->lock.type <= TL_READ_NO_INSERT))
+    {
+      safe_mutex_assert_owner(&share->intern_lock);
+    }
     info->opt_flag&= ~(READ_CACHE_USED | WRITE_CACHE_USED);
     error= end_io_cache(&info->rec_cache);
   }
@@ -610,4 +640,32 @@ int _ma_flush_table_files(MARIA_HA *info, uint flush_data_or_index,
   maria_print_error(info->s, HA_ERR_CRASHED);
   maria_mark_crashed(info);
   return 1;
+}
+
+
+/**
+  Logs when the WRITE_CACHE is flushed to the data file, to the physical
+  log.
+
+  @param  cache_for_table  pointer to the table's WRITE_CACHE IO_CACHE
+  @param  buffert          argument to the pwrite
+  @param  length           length of buffer
+  @param  filepos          offset in file where buffer was written
+
+  @return Operation status, always 0
+    @retval 0      ok. Yes, even if log write fails we return ok, don't want
+                   to make the table writer believe its table is now
+                   corrupted.
+*/
+
+static int log_flushed_write_cache_physical(IO_CACHE *cache_for_table,
+                                            const uchar *buffert,
+                                            uint length, my_off_t filepos)
+{
+  MARIA_SHARE *share= (MARIA_SHARE *)(cache_for_table->arg);
+  DBUG_ENTER("log_flushed_write_cache_physical");
+  if (unlikely(ma_get_physical_logging_state(share)))
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAD, share, buffert,
+                              length, filepos);
+  DBUG_RETURN(0);
 }

@@ -1,0 +1,140 @@
+DROP DATABASE IF EXISTS mysqltest;
+CREATE DATABASE mysqltest;
+USE mysqltest;
+CREATE TABLE t1 (a int, b varchar(100), c blob, index(a), index(b),
+index(c(10))) transactional=1 engine=maria;
+insert into t1 values(1,"abc","def");
+insert into t1 values(100,"UJL-JK","PPMLsn!");
+CREATE TABLE t2 like t1;
+alter table t2 transactional=0 row_format=page;
+insert into t2 select * from t1;
+CREATE TABLE t3 like t1;
+alter table t3 transactional=0 row_format=dynamic;
+insert into t3 select * from t1;
+CREATE TABLE t4 like t1;
+alter table t4 page_checksum=0;
+insert into t4 select * from t1;
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	2361375562
+CHECKSUM TABLE t2;
+Table	Checksum
+mysqltest.t2	2361375562
+CHECKSUM TABLE t3;
+Table	Checksum
+mysqltest.t3	2361375562
+CHECKSUM TABLE t4;
+Table	Checksum
+mysqltest.t4	2361375562
+BACKUP DATABASE mysqltest TO 'test.ba';
+backup_id
+#
+DROP DATABASE mysqltest;
+RESTORE FROM 'test.ba';
+backup_id
+#
+select count(*) from t1;
+count(*)
+2
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	2361375562
+CHECKSUM TABLE t2;
+Table	Checksum
+mysqltest.t2	2361375562
+CHECKSUM TABLE t3;
+Table	Checksum
+mysqltest.t3	2361375562
+CHECKSUM TABLE t4;
+Table	Checksum
+mysqltest.t4	2361375562
+
+connection backup: Start backup
+SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
+                     WAIT_FOR bup_finish';
+BACKUP DATABASE mysqltest TO 'test.ba';
+
+connection default: Wait for BACKUP to reach its sync point
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+Modify tables
+update t1 set c=repeat("SUN", 4000);
+insert into t1 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t1 select * from t1;
+insert into t1 select * from t1;
+delete from t1 where a=200;
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	3493755364
+select count(*) from t1;
+count(*)
+8
+update t2 set c=repeat("SUN", 4000);
+insert into t2 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t2 select * from t2;
+insert into t2 select * from t2;
+delete from t2 where a=200;
+CHECKSUM TABLE t2;
+Table	Checksum
+mysqltest.t2	3493755364
+select count(*) from t2;
+count(*)
+8
+update t3 set c=repeat("SUN", 4000);
+insert into t3 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t3 select * from t3;
+insert into t3 select * from t3;
+delete from t3 where a=200;
+CHECKSUM TABLE t3;
+Table	Checksum
+mysqltest.t3	3493755364
+select count(*) from t3;
+count(*)
+8
+update t4 set c=repeat("SUN", 4000);
+insert into t4 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t4 select * from t4;
+insert into t4 select * from t4;
+delete from t4 where a=200;
+CHECKSUM TABLE t4;
+Table	Checksum
+mysqltest.t4	3493755364
+select count(*) from t4;
+count(*)
+8
+Signal BACKUP to finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+connection backup: Fetch result
+backup_id
+#
+DROP DATABASE mysqltest;
+RESTORE FROM 'test.ba';
+backup_id
+#
+CHECKSUM TABLE t1;
+Table	Checksum
+mysqltest.t1	3493755364
+CHECK TABLE t1 EXTENDED;
+Table	Op	Msg_type	Msg_text
+mysqltest.t1	check	status	OK
+CHECKSUM TABLE t2;
+Table	Checksum
+mysqltest.t2	3493755364
+CHECK TABLE t2 EXTENDED;
+Table	Op	Msg_type	Msg_text
+mysqltest.t2	check	status	OK
+CHECKSUM TABLE t3;
+Table	Checksum
+mysqltest.t3	3493755364
+CHECK TABLE t3 EXTENDED;
+Table	Op	Msg_type	Msg_text
+mysqltest.t3	check	status	OK
+CHECKSUM TABLE t4;
+Table	Checksum
+mysqltest.t4	3493755364
+CHECK TABLE t4 EXTENDED;
+Table	Op	Msg_type	Msg_text
+mysqltest.t4	check	status	OK
+
+connection default: cleanup
+drop database mysqltest;

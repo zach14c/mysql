@@ -1,4 +1,4 @@
-# Copyright (C) 2000-2008 MySQL AB
+# Copyright (C) 2000-2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,12 +35,18 @@ EXTRA_DIST =		ma_test_all.sh ma_test_all.res ma_test_big.sh \
 pkgdata_DATA =		ma_test_all ma_test_all.res ma_test_recovery
 pkglib_LIBRARIES =	libmaria.a
 bin_PROGRAMS =		maria_chk maria_pack maria_ftdump maria_read_log \
-			maria_dump_log
+			maria_dump_log maria_non_trans_log
 maria_chk_DEPENDENCIES=	$(LIBRARIES)
 # Only reason to link with libmyisam.a here is that it's where some fulltext
 # pieces are (but soon we'll remove fulltext dependencies from Maria).
 # For now, it imposes that storage/myisam be built before storage/maria.
 maria_chk_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
+                        $(top_builddir)/storage/myisam/libmyisam.a \
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
+			$(top_builddir)/strings/libmystringslt.la @ZLIB_LIBS@
+maria_non_trans_log_DEPENDENCIES=	$(LIBRARIES)
+maria_non_trans_log_LDADD=		@CLIENT_EXTRA_LDFLAGS@ libmaria.a \
                         $(top_builddir)/storage/myisam/libmyisam.a \
 			$(top_builddir)/mysys/libmysyslt.la \
 			$(top_builddir)/dbug/libdbuglt.la \
@@ -135,7 +141,9 @@ libmaria_a_SOURCES =	ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c \
 			ma_pagecache.c ma_pagecaches.c \
 			ma_checkpoint.c ma_recovery.c ma_commit.c \
 			ma_pagecrc.c ma_recovery_util.c \
-			ha_maria.cc
+			ha_maria.cc ma_non_trans_log.c ma_examine_non_trans_log.c \
+			maria_backup_engine.cc
+
 CLEANFILES =		test?.MA? FT?.MA? isam.log ma_test_all ma_rt_test.MA? sp_test.MA? maria_log_control maria_log.0000*
 
 SUFFIXES = .sh

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright (C) 2000-2006 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -855,6 +855,10 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
 
 err:
   pthread_mutex_unlock(&THR_LOCK_myisam);
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
+
 err_no_lock:
 
   save_errno=my_errno;
@@ -876,9 +880,6 @@ err_no_lock:
                                        MY_UNPACK_FILENAME | MY_APPEND_EXT),
 			     MYF(0));
   }
-#ifdef THREAD
-  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
-#endif
   my_free((char*) rec_per_key_part, MYF(0));
   DBUG_RETURN(my_errno=save_errno);		/* return the fatal errno */
 }

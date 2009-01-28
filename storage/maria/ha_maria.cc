@@ -1,4 +1,5 @@
-/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -991,7 +992,8 @@ int ha_maria::check(THD * thd, HA_CHECK_OPT * check_opt)
       file->update |= HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
       pthread_mutex_lock(&share->intern_lock);
       share->state.changed &= ~(STATE_CHANGED | STATE_CRASHED |
-                                STATE_CRASHED_ON_REPAIR);
+                                STATE_CRASHED_ON_REPAIR |
+                                STATE_BAD_OPEN_COUNT);
       if (!(table->db_stat & HA_READ_ONLY))
         error= maria_update_state_info(&param, file,
                                        UPDATE_TIME | UPDATE_OPEN_COUNT |
@@ -1284,7 +1286,8 @@ int ha_maria::repair(THD *thd, HA_CHECK *param, bool do_optimize)
     if ((share->state.changed & STATE_CHANGED) || maria_is_crashed(file))
     {
       share->state.changed &= ~(STATE_CHANGED | STATE_CRASHED |
-                                STATE_CRASHED_ON_REPAIR);
+                                STATE_CRASHED_ON_REPAIR |
+                                STATE_BAD_OPEN_COUNT);
       file->update |= HA_STATE_CHANGED | HA_STATE_ROW_CHANGED;
     }
     /*
@@ -2988,6 +2991,9 @@ static int ha_maria_init(void *p)
   maria_hton->show_status= maria_show_status;
   /* TODO: decide if we support Maria being used for log tables */
   maria_hton->flags= HTON_CAN_RECREATE | HTON_SUPPORT_LOG_TABLES;
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MARIA_PHYSICAL_LOGGING)
+  maria_hton->get_backup_engine= maria_backup_engine;
+#endif
   bzero(maria_log_pagecache, sizeof(*maria_log_pagecache));
   maria_tmpdir= &mysql_tmpdir_list;             /* For REDO */
   res= maria_init() || ma_control_file_open(TRUE, TRUE) ||

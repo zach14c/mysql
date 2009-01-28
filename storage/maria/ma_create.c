@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -765,6 +766,10 @@ int maria_create(const char *name, enum data_file_type datafile_type,
 
   if (! (flags & HA_DONT_TOUCH_DATA))
     share.state.create_time= (long) time((time_t*) 0);
+#ifdef THREAD
+  /* This rwlock is used in ma_state_info_write(). */
+  my_atomic_rwlock_init(&share.physical_logging_rwlock);
+#endif
 
   pthread_mutex_lock(&THR_LOCK_maria);
 
@@ -839,6 +844,14 @@ int maria_create(const char *name, enum data_file_type datafile_type,
     my_errno= HA_ERR_TABLE_EXIST;
     goto err;
   }
+  /*
+    TRUNCATE TABLE does not work with physical logging. If we changed TRUNCATE
+    to always use maria_delete_all_rows() (remove HTON_CAN_RECREATE from
+    Maria) this would solve the problem.
+  */
+  DBUG_ASSERT((options & HA_OPTION_TMP_TABLE) || !ma_log_tables_physical ||
+              !hash_search(ma_log_tables_physical, filename,
+                           strlen(filename)));
 
   if ((file= my_create_with_symlink(linkname_ptr, filename, 0, create_mode,
 				    MYF(MY_WME|create_flag))) < 0)
@@ -846,7 +859,7 @@ int maria_create(const char *name, enum data_file_type datafile_type,
   errpos=1;
 
   DBUG_PRINT("info", ("write state info and base info"));
-  if (_ma_state_info_write_sub(file, &share.state, 2) ||
+  if (_ma_state_info_write_sub(&share, file, &share.state, 2) ||
       _ma_base_info_write(file, &share.base))
     goto err;
   DBUG_PRINT("info", ("base_pos: %d  base_info_size: %d",
@@ -1140,10 +1153,16 @@ int maria_create(const char *name, enum data_file_type datafile_type,
   errpos=0;
   if (my_close(file,MYF(0)))
     res= my_errno;
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
   DBUG_RETURN(res);
 
 err:
   pthread_mutex_unlock(&THR_LOCK_maria);
+#ifdef THREAD
+  my_atomic_rwlock_destroy(&share.physical_logging_rwlock);
+#endif
 
 err_no_lock:
   save_errno=my_errno;
@@ -1342,11 +1361,11 @@ int _ma_update_state_lsns_sub(MARIA_SHARE *share, LSN lsn, TrID create_trid,
   uchar buf[LSN_STORE_SIZE * 3], *ptr;
   uchar trid_buff[8];
   File file= share->kfile.file;
+  int res;
   DBUG_ASSERT(file >= 0);
 
   if (lsn == LSN_IMPOSSIBLE)
   {
-    int res;
     LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 1];
     /* table name is logged only for information */
     log_array[TRANSLOG_INTERNAL_PARTS + 0].str=
@@ -1387,13 +1406,24 @@ int _ma_update_state_lsns_sub(MARIA_SHARE *share, LSN lsn, TrID create_trid,
   }
   else
     lsn_store(buf, share->state.create_rename_lsn);
-  return (my_pwrite(file, buf, sizeof(buf),
-                    sizeof(share->state.header) +
-                    MARIA_FILE_CREATE_RENAME_LSN_OFFSET, MYF(MY_NABP)) ||
-          my_pwrite(file, trid_buff, sizeof(trid_buff),
-                    sizeof(share->state.header) +
-                    MARIA_FILE_CREATE_TRID_OFFSET, MYF(MY_NABP)) ||
-          (do_sync && my_sync(file, MYF(0))));
+  res= (my_pwrite(file, buf, sizeof(buf),
+                  sizeof(share->state.header) +
+                  MARIA_FILE_CREATE_RENAME_LSN_OFFSET, MYF(MY_NABP)) ||
+        my_pwrite(file, trid_buff, sizeof(trid_buff),
+                  sizeof(share->state.header) +
+                  MARIA_FILE_CREATE_TRID_OFFSET, MYF(MY_NABP)) ||
+        (do_sync && my_sync(file, MYF(0))));
+  if (unlikely(ma_get_physical_logging_state(share)))
+  {
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI, share, buf,
+                              sizeof(buf),
+                              MARIA_FILE_CREATE_RENAME_LSN_OFFSET);
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI, share, trid_buff,
+                              sizeof(trid_buff),
+                              sizeof(share->state.header) +
+                              MARIA_FILE_CREATE_TRID_OFFSET);
+  }
+  return res;
 }
 #if (_MSC_VER == 1310)
 #pragma optimize("",on)

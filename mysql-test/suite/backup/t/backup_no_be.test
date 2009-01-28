@@ -1,6 +1,7 @@
 --source include/not_embedded.inc
 --source include/have_debug.inc
 --source include/not_embedded.inc
+--source include/have_myisam_or_maria_default.inc
 
 #
 # This test script tests the behaviour reported in BUG#34721
@@ -27,7 +28,7 @@ DROP DATABASE IF EXISTS db1;
 
 CREATE DATABASE db1;
 USE db1;
-CREATE TABLE t1 (a int) ENGINE=Myisam;
+CREATE TABLE t1 (a int);
 INSERT INTO t1 VALUES (1),(2),(3);
 
 # First check the normal behaviour when server is not modified.

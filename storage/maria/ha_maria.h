@@ -1,4 +1,5 @@
-/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006,2004 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -184,3 +185,8 @@ private:
   key_map keys_with_parts;
   friend my_bool index_cond_func_maria(void *arg);
 };
+
+#if !defined(EMBEDDED_LIBRARY) && defined(HAVE_MARIA_PHYSICAL_LOGGING)
+// If embedded, there is no online backup
+Backup_result_t maria_backup_engine(handlerton *self, Backup_engine* &be);
+#endif

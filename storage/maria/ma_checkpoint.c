@@ -1,4 +1,4 @@
-/* Copyright (C) 2006,2007 MySQL AB
+/* Copyright (C) 2006,2007 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1046,7 +1046,8 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
           state_copies_horizon;
         if (kfile.file >= 0)
           sync_error|=
-            _ma_state_info_write_sub(kfile.file, &state_copy->state, 1);
+            _ma_state_info_write_sub(share, kfile.file,
+                                     &state_copy->state, 1);
         /*
           We don't set share->changed=0 because it may interfere with a
           concurrent _ma_writeinfo() doing share->changed=1 (cancel its

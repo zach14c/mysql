@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,7 +41,6 @@ int maria_delete(MARIA_HA *info,const uchar *record)
   uint i;
   uchar *old_key;
   int save_errno;
-  char lastpos[8];
   MARIA_SHARE *share= info->s;
   MARIA_KEYDEF *keyinfo;
   DBUG_ENTER("maria_delete");
@@ -118,7 +118,6 @@ int maria_delete(MARIA_HA *info,const uchar *record)
                           STATE_NOT_ZEROFILLED);
   info->state->changed=1;
 
-  mi_sizestore(lastpos, info->cur_row.lastpos);
   (void)(_ma_writeinfo(info,WRITEINFO_UPDATE_KEYFILE));
   allow_break();			/* Allow SIGHUP & SIGINT */
   if (info->invalidator != 0)
@@ -136,7 +135,6 @@ err:
   if (!save_errno)
     save_errno= HA_ERR_INTERNAL_ERROR;          /* Should never happen */
 
-  mi_sizestore(lastpos, info->cur_row.lastpos);
   if (save_errno != HA_ERR_RECORD_CHANGED)
   {
     maria_print_error(share, HA_ERR_CRASHED);

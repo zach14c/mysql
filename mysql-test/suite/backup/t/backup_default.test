@@ -53,7 +53,6 @@ USE db1;
 CREATE TABLE partition_table (
   int_column int(11), 
   char_column char(5))
-ENGINE=myisam
 PARTITION BY HASH (int_column);
 
 INSERT INTO partition_table VALUES (0,'pVtIa');
@@ -75,7 +74,7 @@ INSERT INTO csv_table VALUES(1,'aa1','bb1'),(2,'aa2','bb2'),(3,'aa3','bb3');
 CREATE TABLE myisam_table(
    i int,
    v varchar(20))
-ENGINE=myisam;
+;
 
 INSERT INTO myisam_table VALUES(1,'v1'),(2,'v2'),(3,'v3');
 

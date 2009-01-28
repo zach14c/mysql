@@ -1,3 +1,18 @@
+/* Copyright (C) 2008 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+
 /**
   @file
 
@@ -161,7 +176,11 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
     {
       handlerton *hton= se_hton(se);
       saved_factory= hton->get_backup_engine;
-      if (hton == myisam_hton) 
+      if (hton == myisam_hton
+#ifdef WITH_MARIA_STORAGE_ENGINE
+          || hton == maria_hton
+#endif
+          ) 
         hton->get_backup_engine= dummy_backup_engine_factory;
     });
 #endif
