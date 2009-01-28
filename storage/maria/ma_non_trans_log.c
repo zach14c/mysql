@@ -249,7 +249,6 @@ void _maria_log_command(IO_CACHE *log, enum maria_log_commands command,
   File file;
 
   file= share->kfile.file;
-  LINT_INIT(error);
 
   DBUG_ASSERT(command == MA_LOG_OPEN  || command == MA_LOG_CLOSE ||
               command == MA_LOG_DELETE_ALL);
