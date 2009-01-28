@@ -94,10 +94,10 @@ SET @@session.query_alloc_block_size = 1024;
 SELECT @@session.query_alloc_block_size;
 SET @@session.query_alloc_block_size = 1025;
 SELECT @@session.query_alloc_block_size;
-SET @@session.query_alloc_block_size = 4294967295;
-SELECT @@session.query_alloc_block_size;
-SET @@session.query_alloc_block_size = 4294967294;
-SELECT @@session.query_alloc_block_size;
+#SET @@session.query_alloc_block_size = 4294967295;
+#SELECT @@session.query_alloc_block_size;
+#SET @@session.query_alloc_block_size = 4294967294;
+#SELECT @@session.query_alloc_block_size;
 SET @@session.query_alloc_block_size = 655536;
 SELECT @@session.query_alloc_block_size;
 
@@ -129,8 +129,8 @@ SELECT @@session.query_alloc_block_size;
 SET @@session.query_alloc_block_size = 65530.34.;
 SET @@session.query_alloc_block_size = 1023;
 SELECT @@session.query_alloc_block_size;
-SET @@session.query_alloc_block_size = 4294967296;
-SELECT @@session.query_alloc_block_size;
+#SET @@session.query_alloc_block_size = 4294967296;
+#SELECT @@session.query_alloc_block_size;
 --echo 'Bug # 34837: Errors are not coming on assigning invalid values to variable';
 
 --Error ER_WRONG_TYPE_FOR_VAR

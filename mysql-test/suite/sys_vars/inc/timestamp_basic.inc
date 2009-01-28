@@ -102,9 +102,10 @@ SET @@timestamp = 9999999999999999999999;
 #     Check if the value in SESSION Table matches value in variable     #
 #########################################################################
 
-SELECT @@timestamp = VARIABLE_VALUE 
-FROM INFORMATION_SCHEMA.SESSION_VARIABLES 
-WHERE VARIABLE_NAME='timestamp';
+# disabled due to bug#41584
+#SELECT @@timestamp = VARIABLE_VALUE 
+#FROM INFORMATION_SCHEMA.SESSION_VARIABLES 
+#WHERE VARIABLE_NAME='timestamp';
 
 --echo '#---------------------FN_DYNVARS_001_08-------------------------#'
 ############################################################################# 
