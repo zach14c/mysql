@@ -621,7 +621,7 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 
 	thread->queue = NULL;
 	thread->lockType = type;
-	*ptr = thread;
+	*ptr = thread;				// Add this thread to the SyncObject queue
 	thread->lockGranted = false;
 	thread->lockPending = sync;
 	++thread->activeLocks;

@@ -984,7 +984,6 @@ void StorageHandler::initialize(void)
 
 	try
 		{
-		defaultDatabase->getOpenConnection();
 		dictionaryConnection = defaultDatabase->getOpenConnection();
 		dropTempTables();
 		dictionaryConnection->commit();
