@@ -26,9 +26,12 @@
 // Recreate inventory page 
 void SRLInventoryPage::pass2()
 {
-	Bdb* bdb = PageInventoryPage::createInventoryPage(log->getDbb(tableSpaceId), pageNumber, NO_TRANSACTION);
-	bdb->mark(NO_TRANSACTION);
-	bdb->release(REL_HISTORY);
+	if (control->isPostFlush())
+		{
+		Bdb* bdb = PageInventoryPage::createInventoryPage(log->getDbb(tableSpaceId), pageNumber, NO_TRANSACTION);
+		bdb->mark(NO_TRANSACTION);
+		bdb->release(REL_HISTORY);
+		}
 }
 
 void SRLInventoryPage::print()
