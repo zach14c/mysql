@@ -1203,6 +1203,7 @@ bool Section::isCleanupRequired()
 }
 ***/
 
+
 void Section::redoSectionPage(Dbb *dbb, int32 parentPage, int32 pageNumber, int slot, int sectionId, int sequence, int level)
 {
 	Bdb *bdb = dbb->fetchPage (parentPage, PAGE_sections, Exclusive);
@@ -1210,20 +1211,24 @@ void Section::redoSectionPage(Dbb *dbb, int32 parentPage, int32 pageNumber, int 
 	SectionPage *page = (SectionPage*) bdb->buffer;
 
 
-	Bdb *sectionBdb = dbb->fakePage(pageNumber, PAGE_any, 0);
-	BDB_HISTORY(bdb);
-	SectionPage *sectionPage = (SectionPage*) sectionBdb->buffer;
-	memset(sectionPage, 0, dbb->pageSize);
-	sectionBdb->setPageHeader(PAGE_sections);
-	sectionPage->section = sectionId;
-	sectionPage->sequence = sequence;
-	sectionPage->level = level;
+	// If page number != 0, we are creating a new section page
+	// Otherwise, the log record comes from deleteSection and we just need to 
+	// clear the slot in the parent pade
 
-	PageInventoryPage::markPageInUse(dbb, pageNumber, NO_TRANSACTION);
-	sectionBdb->release(REL_HISTORY);
+	if (pageNumber != 0)
+		{
+		Bdb *sectionBdb = dbb->fakePage(pageNumber, PAGE_any, 0);
+		BDB_HISTORY(bdb);
+		SectionPage *sectionPage = (SectionPage*) sectionBdb->buffer;
+		memset(sectionPage, 0, dbb->pageSize);
+		sectionBdb->setPageHeader(PAGE_sections);
+		sectionPage->section = sectionId;
+		sectionPage->sequence = sequence;
+		sectionPage->level = level;
 
-
-	// Now store it in the right place
+		PageInventoryPage::markPageInUse(dbb, pageNumber, NO_TRANSACTION);
+		sectionBdb->release(REL_HISTORY);
+		}
 
 	if (page->pages[slot] != pageNumber)
 		{
