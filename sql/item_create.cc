@@ -5125,7 +5125,7 @@ create_func_cast(THD *thd, Item *a, Cast_target cast_type,
   {
     if (c_len == NULL)
     {
-      len= LL(-1);
+      len= (ulong) -1L;
     }
     else
     {

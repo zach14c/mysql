@@ -58,11 +58,14 @@ NdbOperation::equal_impl(const NdbColumnImpl* tAttrInfo,
 {
   DBUG_ENTER("NdbOperation::equal_impl");
   DBUG_PRINT("enter", ("col: %s  op: %d  val: 0x%lx",
-                       tAttrInfo->m_name.c_str(), theOperationType,
+                       (tAttrInfo == NULL) ? "NULL" :
+                       tAttrInfo->m_name.c_str(), 
+                       theOperationType,
                        (long) aValuePassed));
   
   const char* aValue = aValuePassed;
-  Uint64 tempData[512];
+  const Uint32 MaxKeyLenInLongWords= (NDB_MAX_KEY_SIZE + 7)/8;
+  Uint64 tempData[ MaxKeyLenInLongWords ];
 
   if ((theStatus == OperationDefined) &&
       (aValue != NULL) &&
@@ -465,8 +468,8 @@ LastWordLabel:
 void
 NdbOperation::reorderKEYINFO()
 {
-  Uint32 data[4000];
-  Uint32 size = 4000;
+  Uint32 data[ NDB_MAX_KEYSIZE_IN_WORDS ];
+  Uint32 size = NDB_MAX_KEYSIZE_IN_WORDS;
   getKeyFromTCREQ(data, size);
   Uint32 pos = 1;
   Uint32 k;
@@ -480,7 +483,8 @@ NdbOperation::reorderKEYINFO()
           if (theTupleKeyDefined[j][0] == i) {
             Uint32 off = theTupleKeyDefined[j][1] - 1;
             Uint32 len = theTupleKeyDefined[j][2];
-            assert(off < 4000 && off + len <= 4000);
+            assert(off < NDB_MAX_KEYSIZE_IN_WORDS && 
+                   off + len <= NDB_MAX_KEYSIZE_IN_WORDS);
             int ret = insertKEYINFO((char*)&data[off], pos, len);
             assert(ret == 0);
             pos += len;
@@ -508,11 +512,12 @@ NdbOperation::getKeyFromTCREQ(Uint32* data, Uint32 & size)
   NdbApiSignal* tSignal = theTCREQ->next();
   unsigned n = 0;
   while (pos < size) {
-    if (n == 20) {
+    if (n == KeyInfo::DataLength) {
       tSignal = tSignal->next();
       n = 0;
     }
-    data[pos++] = tSignal->getDataPtrSend()[3 + n++];
+    data[pos++] = 
+      tSignal->getDataPtrSend()[KeyInfo::HeaderLength + n++];
   }
   return 0;
 }
@@ -538,7 +543,8 @@ NdbOperation::handle_distribution_key(const NdbColumnImpl* tAttrInfo,
     ptrs[0].len = len;
     ptrs[1].ptr = 0;
     
-    Uint64 tmp[1000];
+    const Uint32 MaxKeyLenInLongWords= (NDB_MAX_KEY_SIZE + 7)/ 8; 
+    Uint64 tmp[ MaxKeyLenInLongWords ]; 
     Uint32 hashValue;
     int ret = Ndb::computeHash(&hashValue, 
                                m_currentTable,
@@ -562,28 +568,18 @@ NdbOperation::handle_distribution_key(const NdbColumnImpl* tAttrInfo,
 void
 NdbOperation::setPartitionId(Uint32 value)
 {
+  if (theStatus == UseNdbRecord)
+  {
+    /* Method not allowed for NdbRecord, use OperationOptions or 
+       ScanOptions structure instead */
+    setErrorCodeAbort(4515);
+    return; // TODO : Consider adding int rc for error
+  }
+
   theDistributionKey = value;
   theDistrKeyIndicator_ = 1;
   DBUG_PRINT("info", ("NdbOperation::setPartitionId: %u",
                        theDistributionKey));
-  /*
-    NdbBlob needs the distribution key to set it correctly on the injected
-    operations.
-    Unfortunately, NdbBlob currently requires that distribution key be set
-    _before_ calling getBlobHandle() (and not changed afterwards). This is
-    impossible for NdbRecord operations, which do getBlobHandle() before the
-    operation is even returned to the caller.
-
-    This hack allows things to work in a few more cases, however it is still
-    necessary to set the distribution key before doing any blob operations
-    (and not change it after).
-  */
-  NdbBlob *blob = theBlobList;
-  while (blob != NULL)
-  {
-    blob->thePartitionId = value;
-    blob= blob->next();
-  }
 }
 
 Uint32

@@ -22,6 +22,7 @@
 #include "rpl_filter.h"
 #include <my_dir.h>
 #include "rpl_handler.h"
+#include "debug_sync.h"
 
 int max_binlog_dump_events = 0; // unlimited
 my_bool opt_sporadic_binlog_dump_fail = 0;
@@ -259,6 +260,17 @@ bool purge_error_message(THD* thd, int res)
 }
 
 
+/**
+  Execute a PURGE BINARY LOGS TO <log> command.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param to_log Name of the last log to purge.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool purge_master_logs(THD* thd, const char* to_log)
 {
   char search_file_name[FN_REFLEN];
@@ -275,6 +287,17 @@ bool purge_master_logs(THD* thd, const char* to_log)
 }
 
 
+/**
+  Execute a PURGE BINARY LOGS BEFORE <date> command.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param purge_time Date before which logs should be purged.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool purge_master_logs_before_date(THD* thd, time_t purge_time)
 {
   if (!mysql_bin_log.is_open())
@@ -992,9 +1015,11 @@ err:
   DBUG_VOID_RETURN;
 }
 
+
 /**
   Initialize mutex for slave start variable.
 */
+
 void init_slave_start()
 {
   pthread_mutex_init(&LOCK_slave_start, MY_MUTEX_INIT_FAST);
@@ -1005,14 +1030,30 @@ void init_slave_start()
   pthread_mutex_unlock(&LOCK_slave_start);
 }
 
+
 /**
   Destroy mutex for slave start variable.
 */
+
 void end_slave_start()
 {
   pthread_mutex_destroy(&LOCK_slave_start);
 }
 
+
+/**
+  Execute a START SLAVE statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param mi Pointer to Master_info object for the slave's IO thread.
+
+  @param net_report If true, saves the exit status into thd->main_da.
+
+  @retval 0 success
+  @retval 1 error
+*/
 int start_slave(THD* thd , Master_info* mi,  bool net_report)
 {
   int slave_errno= 0;
@@ -1157,6 +1198,19 @@ int start_slave(THD* thd , Master_info* mi,  bool net_report)
 }
 
 
+/**
+  Execute a STOP SLAVE statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param mi Pointer to Master_info object for the slave's IO thread.
+
+  @param net_report If true, saves the exit status into thd->main_da.
+
+  @retval 0 success
+  @retval 1 error
+*/
 int stop_slave(THD* thd, Master_info* mi, bool net_report )
 {
   DBUG_ENTER("stop_slave");
@@ -1209,20 +1263,17 @@ int stop_slave(THD* thd, Master_info* mi, bool net_report )
 }
 
 
-/*
-  Remove all relay logs and start replication from the start
+/**
+  Execute a RESET SLAVE statement.
 
-  SYNOPSIS
-    reset_slave()
-    thd			Thread handler
-    mi			Master info for the slave
+  @param thd Pointer to THD object of the client thread executing the
+  statement.
 
-  RETURN
-    0	ok
-    1	error
+  @param mi Pointer to Master_info object for the slave.
+
+  @retval 0 success
+  @retval 1 error
 */
-
-
 int reset_slave(THD *thd, Master_info* mi)
 {
   MY_STAT stat_area;
@@ -1241,7 +1292,8 @@ int reset_slave(THD *thd, Master_info* mi)
     goto err;
   }
 
-  ha_reset_slave(thd);
+  if ((error= ha_reset_slave(thd)))
+    goto err;
 
   // delete relay logs, clear relay log coordinates
   if ((error= purge_relay_logs(&mi->rli, thd,
@@ -1332,6 +1384,18 @@ void kill_zombie_dump_threads(uint32 slave_server_id)
 }
 
 
+/**
+  Execute a CHANGE MASTER statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param mi Pointer to Master_info object belonging to the slave's IO
+  thread.
+
+  @retval FALSE success
+  @retval TRUE error
+*/
 bool change_master(THD* thd, Master_info* mi)
 {
   int thread_mask;
@@ -1550,6 +1614,16 @@ bool change_master(THD* thd, Master_info* mi)
   DBUG_RETURN(FALSE);
 }
 
+
+/**
+  Execute a RESET MASTER statement.
+
+  @param thd Pointer to THD object of the client thread executing the
+  statement.
+
+  @retval 0 success
+  @retval 1 error
+*/
 int reset_master(THD* thd)
 {
   if (!mysql_bin_log.is_open())
@@ -1583,6 +1657,15 @@ int cmp_master_pos(const char* log_file_name1, ulonglong log_pos1,
 }
 
 
+/**
+  Execute a SHOW BINLOG EVENTS statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool mysql_show_binlog_events(THD* thd)
 {
   Protocol *protocol= thd->protocol;
@@ -1733,6 +1816,15 @@ err:
 }
 
 
+/**
+  Execute a SHOW MASTER STATUS statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool show_binlog_info(THD* thd)
 {
   Protocol *protocol= thd->protocol;
@@ -1766,18 +1858,15 @@ bool show_binlog_info(THD* thd)
 }
 
 
-/*
-  Send a list of all binary logs to client
+/**
+  Execute a SHOW BINARY LOGS statement.
 
-  SYNOPSIS
-    show_binlogs()
-    thd		Thread specific variable
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
 
-  RETURN VALUES
-    FALSE OK
-    TRUE  error
+  @retval FALSE success
+  @retval TRUE failure
 */
-
 bool show_binlogs(THD* thd)
 {
   IO_CACHE *index_file;

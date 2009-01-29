@@ -31,6 +31,7 @@ FLUSH TABLE t1;
 --echo # Inject error key_cache_read_block_error
 --echo #
 SET debug='d,key_cache_read_block_error';
+--replace_regex /'.*\//'/
 --error 126
 SELECT COUNT(*) FROM t1 WHERE c2 < 5;
 FLUSH TABLE t1;
@@ -46,6 +47,7 @@ FLUSH TABLE t1;
 --echo # Inject error key_cache_write_block_error
 --echo #
 SET debug='d,key_cache_write_block_error';
+--replace_regex /'.*\//'/
 --error 126
 UPDATE t1 SET c2=1;
 FLUSH TABLE t1;

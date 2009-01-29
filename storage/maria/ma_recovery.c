@@ -171,7 +171,8 @@ void maria_recover_error_handler_hook(uint error, const char *str,
   (*save_error_handler_hook)(error, str, flags);
 }
 
-#define ALERT_USER() DBUG_ASSERT(0)
+/* Define this if you want gdb to break in some interesting situations */
+#define ALERT_USER()
 
 static void print_preamble()
 {
@@ -554,8 +555,9 @@ static void new_transaction(uint16 sid, TrID long_id, LSN undo_lsn,
   char llbuf[22];
   all_active_trans[sid].long_trid= long_id;
   llstr(long_id, llbuf);
-  tprint(tracef, "Transaction long_trid %s short_trid %u starts\n",
-         llbuf, sid);
+  tprint(tracef, "Transaction long_trid %s short_trid %u starts,"
+         " undo_lsn (%lu,0x%lx) first_undo_lsn (%lu,0x%lx)\n",
+         llbuf, sid, LSN_IN_PARTS(undo_lsn), LSN_IN_PARTS(first_undo_lsn));
   all_active_trans[sid].undo_lsn= undo_lsn;
   all_active_trans[sid].first_undo_lsn= first_undo_lsn;
   set_if_bigger(max_long_trid, long_id);
@@ -2967,6 +2969,8 @@ static LSN parse_checkpoint_record(LSN lsn)
   ptr= log_record_buffer.str;
   start_address= lsn_korr(ptr);
   ptr+= LSN_STORE_SIZE;
+  tprint(tracef, "Checkpoint record has start_horizon at (%lu,0x%lx)\n",
+         LSN_IN_PARTS(start_address));
 
   /* transactions */
   nb_active_transactions= uint2korr(ptr);
@@ -2982,6 +2986,9 @@ static LSN parse_checkpoint_record(LSN lsn)
     line. It may make start_address slightly decrease (only by the time it
     takes to write one or a few rows, roughly).
   */
+  tprint(tracef, "Checkpoint record has min_rec_lsn of active transactions"
+         " at (%lu,0x%lx)\n",
+         LSN_IN_PARTS(minimum_rec_lsn_of_active_transactions));
   set_if_smaller(start_address, minimum_rec_lsn_of_active_transactions);
 
   for (i= 0; i < nb_active_transactions; i++)
@@ -3085,6 +3092,8 @@ static LSN parse_checkpoint_record(LSN lsn)
   */
   start_address= checkpoint_start=
     translog_next_LSN(start_address, LSN_IMPOSSIBLE);
+  tprint(tracef, "Checkpoint record start_horizon now adjusted to"
+         " LSN (%lu,0x%lx)\n", LSN_IN_PARTS(start_address));
   if (checkpoint_start == LSN_IMPOSSIBLE)
   {
     /*
@@ -3094,6 +3103,8 @@ static LSN parse_checkpoint_record(LSN lsn)
     return LSN_ERROR;
   }
   /* now, where the REDO phase should start reading log: */
+  tprint(tracef, "Checkpoint has min_rec_lsn of dirty pages at"
+         " LSN (%lu,0x%lx)\n", LSN_IN_PARTS(minimum_rec_lsn_of_dirty_pages));
   set_if_smaller(start_address, minimum_rec_lsn_of_dirty_pages);
   DBUG_PRINT("info",
              ("checkpoint_start: (%lu,0x%lx) start_address: (%lu,0x%lx)",
@@ -3243,6 +3254,7 @@ void _ma_tmp_disable_logging_for_table(MARIA_HA *info,
    */
   share->state.common= *info->state;
   info->state= &share->state.common;
+  info->switched_transactional= TRUE;
 
   /*
     Some code in ma_blockrec.c assumes a trn even if !now_transactional but in
@@ -3264,6 +3276,8 @@ void _ma_tmp_disable_logging_for_table(MARIA_HA *info,
 /**
    Re-enables logging for a table which had it temporarily disabled.
 
+   Only the thread which disabled logging is allowed to reenable it.
+
    @param  info            table
    @param  flush_pages     if function needs to flush pages first
 */
@@ -3273,8 +3287,10 @@ my_bool _ma_reenable_logging_for_table(MARIA_HA *info, my_bool flush_pages)
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("_ma_reenable_logging_for_table");
 
-  if (share->now_transactional == share->base.born_transactional)
+  if (share->now_transactional == share->base.born_transactional ||
+      !info->switched_transactional)
     DBUG_RETURN(0);
+  info->switched_transactional= FALSE;
 
   if ((share->now_transactional= share->base.born_transactional))
   {

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1004,6 +1004,11 @@ public:
 };
 
 
+class SJ_MATERIALIZATION_INFO;
+class Index_hint;
+class Item_in_subselect;
+
+
 /*
   Table reference in the FROM clause.
 
@@ -1039,7 +1044,6 @@ public:
 */
 
 struct LEX;
-class Index_hint;
 struct TABLE_LIST
 {
   TABLE_LIST() {}                          /* Remove gcc warning */
@@ -1085,6 +1089,9 @@ struct TABLE_LIST
   table_map     sj_inner_tables;
   /* Number of IN-compared expressions */
   uint          sj_in_exprs; 
+  Item_in_subselect  *sj_subq_pred;
+  SJ_MATERIALIZATION_INFO *sj_mat_info;
+
   /*
     The structure of ON expression presented in the member above
     can be changed during certain optimizations. This member
@@ -1502,6 +1509,10 @@ private:
   ulong m_table_ref_version;
 };
 
+struct st_position;
+
+class SJ_MATERIALIZATION_INFO;
+  
 class Item;
 
 /*
@@ -1711,6 +1722,36 @@ static inline void dbug_tmp_restore_column_map(MY_BITMAP *bitmap,
   tmp_restore_column_map(bitmap, old);
 #endif
 }
+
+
+/* 
+  Variant of the above : handle both read and write sets.
+  Provide for the possiblity of the read set being the same as the write set
+*/
+static inline void dbug_tmp_use_all_columns(TABLE *table,
+                                            my_bitmap_map **save,
+                                            MY_BITMAP *read_set,
+                                            MY_BITMAP *write_set)
+{
+#ifndef DBUG_OFF
+  save[0]= read_set->bitmap;
+  save[1]= write_set->bitmap;
+  (void) tmp_use_all_columns(table, read_set);
+  (void) tmp_use_all_columns(table, write_set);
+#endif
+}
+
+
+static inline void dbug_tmp_restore_column_maps(MY_BITMAP *read_set,
+                                                MY_BITMAP *write_set,
+                                                my_bitmap_map **old)
+{
+#ifndef DBUG_OFF
+  tmp_restore_column_map(read_set, old[0]);
+  tmp_restore_column_map(write_set, old[1]);
+#endif
+}
+
 
 size_t max_row_length(TABLE *table, const uchar *data);
 

@@ -27,6 +27,7 @@
 #include "myisamdef.h" // to access dfile and kfile
 #include "backup/backup_engine.h"
 #include "backup/backup_aux.h"         // for build_table_list()
+#include "debug_sync.h"
 #include <hash.h>
 
 /**
@@ -256,6 +257,9 @@ private:
   ulong sleep_time;
   size_t bytes_since_last_sleep; ///< how many bytes sent since we last slept
 };
+
+/* Needed for VisualAge 6.0 */
+const size_t Backup::bytes_between_sleeps;
 
 /**
   When we send a backup packet to the backup kernel, we prefix it with a code

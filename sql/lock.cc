@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -75,6 +75,7 @@
 
 #include "mysql_priv.h"
 #include "transaction.h"
+#include "debug_sync.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -425,6 +426,7 @@ static int lock_external(THD *thd, TABLE **tables, uint count)
       (*tables)->current_lock= lock_type;
     }
   }
+  DEBUG_SYNC(thd, "locked_external");
   DBUG_RETURN(0);
 }
 

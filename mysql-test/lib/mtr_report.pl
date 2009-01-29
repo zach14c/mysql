@@ -1,5 +1,5 @@
 # -*- cperl -*-
-# Copyright (C) 2004-2006 MySQL AB
+# Copyright 2004-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -464,7 +464,14 @@ sub mtr_report_stats ($) {
                 /setrlimit could not change the size of core files to 'infinity'/ or
 
                 # rpl_ndb_basic expects this error
-                /Slave: Got error 146 during COMMIT Error_code: 1180/ or
+                ($testname eq 'rpl_ndb.rpl_ndb_basic'
+                 and (/Slave: Got error 146 during COMMIT Error_code: 1180/)
+                ) or
+
+                # ndb_autodiscover3 expects this error
+                ($testname eq 'ndb_team.ndb_autodiscover3'
+                 and (/NDB_SHARE: \.\/test\/t1 already exists/)
+                ) or
 
 		# rpl_extrColmaster_*.test, the slave thread produces warnings
 		# when it get updates to a table that has more columns on the
@@ -513,15 +520,18 @@ sub mtr_report_stats ($) {
                 # on a case sensitive file system. Bug#37402.
                 /lower_case_table_names was set to 2, even though your the file system '.*' is case sensitive.  Now setting lower_case_table_names to 0 to avoid future problems./ or
 
+                # this test is expected to print warnings
+                ($testname eq 'main.innodb_bug39438') or
+
                 # maria-recovery.test has warning about missing log file
                 /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
                 # and about marked-corrupted table
-                /Table '.\/mysqltest\/t_corrupted1' is crashed, skipping it. Please repair it with maria_chk -r/ or
+                /Table '..mysqltest.t_corrupted1' is crashed, skipping it. Please repair it with maria_chk -r/ or
                 # maria-recover.test corrupts tables on purpose
-                /Checking table:   '.\/mysqltest\/t_corrupted2'/ or
-                /Recovering table: '.\/mysqltest\/t_corrupted2'/ or
-                /Table '.\/mysqltest\/t_corrupted2' is marked as crashed and should be repaired/ or
-                /Incorrect key file for table '.\/mysqltest\/t_corrupted2.MAI'; try to repair it/ or
+                /Checking table:   '..mysqltest.t_corrupted2'/ or
+                /Recovering table: '..mysqltest.t_corrupted2'/ or
+                /Table '..mysqltest.t_corrupted2' is marked as crashed and should be repaired/ or
+                /Incorrect key file for table '..mysqltest.t_corrupted2.MAI'; try to repair it/ or
                 # Bug#35161, test of auto repair --myisam-recover
                 /able.*_will_crash/ or
                 /Got an error from unknown thread, ha_myisam.cc:/ or

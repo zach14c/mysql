@@ -46,6 +46,8 @@ a	b	c
 1	1	1
 6	1	1
 10	1	1
+select * from t1 where a in (21,22,23) order by a;
+a	b	c
 INSERT into t1 values (1, 2, 2);
 select max(b) from t1 where a = 1;
 max(b)

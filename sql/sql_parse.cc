@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #include "sql_audit.h"
 #include "transaction.h"
 #include "sql_prepare.h"
+#include "debug_sync.h"
 
 #ifdef BACKUP_TEST
 #include "backup/backup_test.h"
@@ -1849,9 +1850,8 @@ mysql_execute_command(THD *thd)
     A better approach would be to reset this for any commands
     that is not a SHOW command or a select that only access local
     variables, but for now this is probably good enough.
-    Don't reset warnings when executing a stored routine.
   */
-  if ((all_tables || !lex->is_single_level_stmt()) && !thd->spcont)
+  if (all_tables)
     thd->warning_info->opt_clear_warning_info(thd->query_id);
 
 #ifdef HAVE_REPLICATION
@@ -2516,6 +2516,7 @@ mysql_execute_command(THD *thd)
     if (select_lex->item_list.elements)		// With select
     {
       select_result *result;
+      Ha_global_schema_lock_guard global_schema_lock_guard(thd);
 
       select_lex->options|= SELECT_NO_UNLOCK;
       unit->set_limit(select_lex);
@@ -2537,6 +2538,8 @@ mysql_execute_command(THD *thd)
       {
         lex->link_first_table_back(create_table, link_to_local);
         create_table->open_type= TABLE_LIST::OPEN_OR_CREATE;
+        if (!thd->locked_tables_mode)
+          global_schema_lock_guard.lock();
       }
 
       if (!(res= open_and_lock_tables(thd, lex->query_tables)))
@@ -6037,7 +6040,19 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   if (!ptr->derived && !my_strcasecmp(system_charset_info, ptr->db,
                                       INFORMATION_SCHEMA_NAME.str))
   {
-    ST_SCHEMA_TABLE *schema_table= find_schema_table(thd, ptr->table_name);
+    ST_SCHEMA_TABLE *schema_table;
+    if (ptr->updating &&
+        /* Special cases which are processed by commands itself */
+        lex->sql_command != SQLCOM_CHECK &&
+        lex->sql_command != SQLCOM_CHECKSUM)
+    {
+      my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
+               thd->security_ctx->priv_user,
+               thd->security_ctx->priv_host,
+               INFORMATION_SCHEMA_NAME.str);
+      DBUG_RETURN(0);
+    }
+    schema_table= find_schema_table(thd, ptr->table_name);
     if (!schema_table ||
         (schema_table->hidden && 
          ((sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0 || 

@@ -352,6 +352,42 @@ const ConfigInfo::ParamInfo ConfigInfo::m_ParamInfo[] = {
     STR_VALUE(MAX_INT_RNIL) },
 
   { 
+    CFG_DB_SUBSCRIPTIONS,
+    "MaxNoOfSubscriptions",
+    DB_TOKEN,
+    "Max no of subscriptions (default 0 == MaxNoOfTables)",
+    ConfigInfo::CI_USED,
+    false,
+    ConfigInfo::CI_INT,
+    "0",
+    "0",
+    STR_VALUE(MAX_INT_RNIL) },
+
+  {
+    CFG_DB_SUBSCRIBERS,
+    "MaxNoOfSubscribers",
+    DB_TOKEN,
+    "Max no of subscribers (default 0 == 2 * MaxNoOfTables)",
+    ConfigInfo::CI_USED,
+    false,
+    ConfigInfo::CI_INT,
+    "0",
+    "0",
+    STR_VALUE(MAX_INT_RNIL) },
+
+  {
+    CFG_DB_SUB_OPERATIONS,
+    "MaxNoOfConcurrentSubOperations",
+    DB_TOKEN,
+    "Max no of concurrent subscriber operations",
+    ConfigInfo::CI_USED,
+    false,
+    ConfigInfo::CI_INT,
+    "256",
+    "0",
+    STR_VALUE(MAX_INT_RNIL) },
+
+  {
     KEY_INTERNAL,
     "TcpBind_INADDR_ANY",
     DB_TOKEN,
@@ -915,6 +951,18 @@ const ConfigInfo::ParamInfo ConfigInfo::m_ParamInfo[] = {
     "4000",
     "0",
     "32000" },
+
+  {
+    CFG_DB_MAX_BUFFERED_EPOCHS,
+    "MaxBufferedEpochs",
+    DB_TOKEN,
+    "Allowed numbered of epochs that a subscribing node can lag behind (unprocessed epochs).  Exceeding will cause lagging subscribers to be disconnected.",
+    ConfigInfo::CI_USED,
+    true,
+    ConfigInfo::CI_INT,
+    "100",
+    "0",
+    "100000" },
 
   {
     CFG_DB_NO_REDOLOG_FILES,
@@ -3834,8 +3882,8 @@ add_node_connections(Vector<ConfigInfo::ConfigRuleSection>&sections,
     if(!tmp->get("NodeId2", &nodeId2)) continue;
     p_connections.put("", nodeId2, nodeId2);
 
-    p_connections2.put("", nodeId1 + nodeId2<<16, nodeId1);
-    p_connections2.put("", nodeId2 + nodeId1<<16, nodeId2);
+    p_connections2.put("", nodeId1 + (nodeId2<<16), nodeId1);
+    p_connections2.put("", nodeId2 + (nodeId1<<16), nodeId2);
   }
 
   Uint32 nNodes;
@@ -3867,7 +3915,7 @@ add_node_connections(Vector<ConfigInfo::ConfigRuleSection>&sections,
   for (i= 0; p_db_nodes.get("", i, &nodeId1); i++){
     for (Uint32 j= i+1;; j++){
       if(!p_db_nodes.get("", j, &nodeId2)) break;
-      if(!p_connections2.get("", nodeId1+nodeId2<<16, &dummy)) 
+      if(!p_connections2.get("", nodeId1+(nodeId2<<16), &dummy)) 
       {
 	if (!add_a_connection(sections,ctx,nodeId1,nodeId2,opt_ndb_shm))
 	  goto err;

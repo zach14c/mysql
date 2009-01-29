@@ -27,7 +27,7 @@ FLUSH TABLE t1;
 #
 SET debug='d,key_cache_read_block_error';
 SELECT COUNT(*) FROM t1 WHERE c2 < 5;
-ERROR HY000: Incorrect key file for table './test/t1.MYI'; try to repair it
+ERROR HY000: Incorrect key file for table 't1.MYI'; try to repair it
 FLUSH TABLE t1;
 #
 # Inject error key_cache_insert_block_error
@@ -43,7 +43,7 @@ FLUSH TABLE t1;
 #
 SET debug='d,key_cache_write_block_error';
 UPDATE t1 SET c2=1;
-ERROR HY000: Incorrect key file for table './test/t1.MYI'; try to repair it
+ERROR HY000: Incorrect key file for table 't1.MYI'; try to repair it
 FLUSH TABLE t1;
 #
 # Cleanup

@@ -1,4 +1,4 @@
-/* Copyright (C) 2005 MySQL AB
+/* Copyright 2005-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -239,6 +239,7 @@ void ha_partition::init_handler_variables()
   m_curr_key_info[0]= NULL;
   m_curr_key_info[1]= NULL;
   is_clone= FALSE,
+  m_part_func_monotonicity_info= NON_MONOTONIC;
   auto_increment_lock= FALSE;
   auto_increment_safe_stmt_log_lock= FALSE;
   /*
@@ -2451,11 +2452,17 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
     }
   }
 
+  /* Initialize the bitmap we use to minimize ha_start_bulk_insert calls */
+  if (bitmap_init(&m_bulk_insert_started, NULL, m_tot_parts + 1, FALSE))
+    DBUG_RETURN(1);
   /* Initialize the bitmap we use to determine what partitions are used */
   if (!is_clone)
   {
     if (bitmap_init(&(m_part_info->used_partitions), NULL, m_tot_parts, TRUE))
+    {
+      bitmap_free(&m_bulk_insert_started);
       DBUG_RETURN(1);
+    }
     bitmap_set_all(&(m_part_info->used_partitions));
   }
 
@@ -2539,12 +2546,18 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
     calling open on all individual handlers.
   */
   m_handler_status= handler_opened;
+  if (m_part_info->part_expr)
+    m_part_func_monotonicity_info=
+                            m_part_info->part_expr->get_monotonicity_info();
+  else if (m_part_info->list_of_part_fields)
+    m_part_func_monotonicity_info= MONOTONIC_STRICT_INCREASING;
   info(HA_STATUS_VARIABLE | HA_STATUS_CONST);
   DBUG_RETURN(0);
 
 err_handler:
   while (file-- != m_file)
     (*file)->close();
+  bitmap_free(&m_bulk_insert_started);
   if (!is_clone)
     bitmap_free(&(m_part_info->used_partitions));
 
@@ -2592,6 +2605,7 @@ int ha_partition::close(void)
 
   DBUG_ASSERT(table->s == table_share);
   delete_queue(&m_queue);
+  bitmap_free(&m_bulk_insert_started);
   if (!is_clone)
     bitmap_free(&(m_part_info->used_partitions));
   file= m_file;
@@ -2833,6 +2847,36 @@ void ha_partition::unlock_row()
   DBUG_VOID_RETURN;
 }
 
+/**
+  Check if semi consistent read was used
+
+  SYNOPSIS
+    was_semi_consistent_read()
+
+  RETURN VALUE
+    TRUE   Previous read was a semi consistent read
+    FALSE  Previous read was not a semi consistent read
+
+  DESCRIPTION
+    See handler.h:
+    In an UPDATE or DELETE, if the row under the cursor was locked by another
+    transaction, and the engine used an optimistic read of the last
+    committed row value under the cursor, then the engine returns 1 from this
+    function. MySQL must NOT try to update this optimistic value. If the
+    optimistic value does not match the WHERE condition, MySQL can decide to
+    skip over this row. Currently only works for InnoDB. This can be used to
+    avoid unnecessary lock waits.
+
+    If this method returns nonzero, it will also signal the storage
+    engine that the next read will be a locking re-read of the row.
+*/
+bool ha_partition::was_semi_consistent_read()
+{
+  DBUG_ENTER("ha_partition::was_semi_consistent_read");
+  DBUG_ASSERT(m_last_part < m_tot_parts &&
+              bitmap_is_set(&(m_part_info->used_partitions), m_last_part));
+  DBUG_RETURN(m_file[m_last_part]->was_semi_consistent_read());
+}
 
 /**
   Use semi consistent read if possible
@@ -2977,6 +3021,8 @@ int ha_partition::write_row(uchar * buf)
   }
   m_last_part= part_id;
   DBUG_PRINT("info", ("Insert in partition %d", part_id));
+  start_part_bulk_insert(part_id);
+
   tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
   error= m_file[part_id]->ha_write_row(buf);
   if (have_auto_increment && !table->s->next_number_keypart)
@@ -3039,6 +3085,7 @@ int ha_partition::update_row(const uchar *old_data, uchar *new_data)
   }
 
   m_last_part= new_part_id;
+  start_part_bulk_insert(new_part_id);
   if (new_part_id == old_part_id)
   {
     DBUG_PRINT("info", ("Update in partition %d", new_part_id));
@@ -3198,19 +3245,62 @@ int ha_partition::delete_all_rows()
   DESCRIPTION
     rows == 0 means we will probably insert many rows
 */
-
 void ha_partition::start_bulk_insert(ha_rows rows)
 {
-  handler **file;
   DBUG_ENTER("ha_partition::start_bulk_insert");
 
-  rows= rows ? rows/m_tot_parts + 1 : 0;
-  file= m_file;
-  do
-  {
-    (*file)->ha_start_bulk_insert(rows);
-  } while (*(++file));
+  m_bulk_inserted_rows= 0;
+  bitmap_clear_all(&m_bulk_insert_started);
+  /* use the last bit for marking if bulk_insert_started was called */
+  bitmap_set_bit(&m_bulk_insert_started, m_tot_parts);
   DBUG_VOID_RETURN;
+}
+
+
+/*
+  Check if start_bulk_insert has been called for this partition,
+  if not, call it and mark it called
+*/
+void ha_partition::start_part_bulk_insert(uint part_id)
+{
+  if (!bitmap_is_set(&m_bulk_insert_started, part_id) &&
+      bitmap_is_set(&m_bulk_insert_started, m_tot_parts))
+  {
+    m_file[part_id]->ha_start_bulk_insert(guess_bulk_insert_rows());
+    bitmap_set_bit(&m_bulk_insert_started, part_id);
+  }
+  m_bulk_inserted_rows++;
+}
+
+
+/*
+  Try to predict the number of inserts into this partition.
+
+  If less than 10 rows (including 0 which means Unknown)
+    just give that as a guess
+  If monotonic partitioning function was used
+    guess that 50 % of the inserts goes to the first partition
+  For all other cases, guess on equal distribution between the partitions
+*/ 
+ha_rows ha_partition::guess_bulk_insert_rows()
+{
+  DBUG_ENTER("guess_bulk_insert_rows");
+
+  if (estimation_rows_to_insert < 10)
+    DBUG_RETURN(estimation_rows_to_insert);
+
+  /* If first insert/partition and monotonic partition function, guess 50%.  */
+  if (!m_bulk_inserted_rows && 
+      m_part_func_monotonicity_info != NON_MONOTONIC &&
+      m_tot_parts > 1)
+    DBUG_RETURN(estimation_rows_to_insert / 2);
+
+  /* Else guess on equal distribution (+1 is to avoid returning 0/Unknown) */
+  if (m_bulk_inserted_rows < estimation_rows_to_insert)
+    DBUG_RETURN(((estimation_rows_to_insert - m_bulk_inserted_rows)
+                / m_tot_parts) + 1);
+  /* The estimation was wrong, must say 'Unknown' */
+  DBUG_RETURN(0);
 }
 
 
@@ -3229,16 +3319,18 @@ void ha_partition::start_bulk_insert(ha_rows rows)
 int ha_partition::end_bulk_insert(bool abort)
 {
   int error= 0;
-  handler **file;
+  uint i;
   DBUG_ENTER("ha_partition::end_bulk_insert");
 
-  file= m_file;
-  do
+  DBUG_ASSERT(bitmap_is_set(&m_bulk_insert_started, m_tot_parts));
+  for (i= 0; i < m_tot_parts; i++)
   {
     int tmp;
-    if ((tmp= (*file)->ha_end_bulk_insert(abort)))
+    if (bitmap_is_set(&m_bulk_insert_started, i) &&
+        (tmp= m_file[i]->ha_end_bulk_insert(abort)))
       error= tmp;
-  } while (*(++file));
+  }
+  bitmap_clear_all(&m_bulk_insert_started);
   DBUG_RETURN(error);
 }
 
@@ -4801,7 +4893,7 @@ int ha_partition::info(uint flag)
     /*
       Calculates statistical variables
       records:           Estimate of number records in table
-      We report sum (always at least 2)
+      We report sum (always at least 2 if not empty)
       deleted:           Estimate of number holes in the table due to
       deletes
       We report sum
@@ -4840,13 +4932,13 @@ int ha_partition::info(uint flag)
           stats.check_time= file->stats.check_time;
       }
     } while (*(++file_array));
-    if (stats.records < 2 &&
+    if (stats.records && stats.records < 2 &&
         !(m_file[0]->ha_table_flags() & HA_STATS_RECORDS_IS_EXACT))
       stats.records= 2;
     if (stats.records > 0)
       stats.mean_rec_length= (ulong) (stats.data_file_length / stats.records);
     else
-      stats.mean_rec_length= 1; //? What should we set here 
+      stats.mean_rec_length= 0;
   }
   if (flag & HA_STATUS_CONST)
   {

@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2004 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -124,6 +124,9 @@ static my_bool show_plugins(THD *thd, plugin_ref plugin,
     break;
   case PLUGIN_IS_READY:
     table->field[2]->store(STRING_WITH_LEN("ACTIVE"), cs);
+    break;
+  case PLUGIN_IS_DISABLED:
+    table->field[2]->store(STRING_WITH_LEN("DISABLED"), cs);
     break;
   default:
     DBUG_ASSERT(0);
@@ -862,6 +865,7 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
 {
   bool has_default;
   bool has_now_default;
+  enum enum_field_types field_type= field->type();
 
   /*
      We are using CURRENT_TIMESTAMP instead of NOW because it is
@@ -870,7 +874,7 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
   has_now_default= (timestamp_field == field &&
                     field->unireg_check != Field::TIMESTAMP_UN_FIELD);
 
-  has_default= (field->type() != FIELD_TYPE_BLOB &&
+  has_default= (field_type != FIELD_TYPE_BLOB &&
                 !(field->flags & NO_DEFAULT_VALUE_FLAG) &&
                 field->unireg_check != Field::NEXT_NUMBER &&
                 !((thd->variables.sql_mode & (MODE_MYSQL323 | MODE_MYSQL40))
@@ -885,7 +889,19 @@ static bool get_field_default_value(THD *thd, Field *timestamp_field,
     {                                             // Not null by default
       char tmp[MAX_FIELD_WIDTH];
       String type(tmp, sizeof(tmp), field->charset());
-      field->val_str(&type);
+      if (field_type == MYSQL_TYPE_BIT)
+      {
+        longlong dec= field->val_int();
+        char *ptr= longlong2str(dec, tmp + 2, 2);
+        uint32 length= (uint32) (ptr - tmp);
+        tmp[0]= 'b';
+        tmp[1]= '\'';        
+        tmp[length]= '\'';
+        type.length(length + 1);
+        quoted= 0;
+      }
+      else
+        field->val_str(&type);
       if (type.length())
       {
         String def_val;
@@ -2134,7 +2150,6 @@ static bool show_status_array(THD *thd, const char *wild,
         const char *pos, *end;                  // We assign a lot of const's
 
         pthread_mutex_lock(&LOCK_global_system_variables);
-
         if (show_type == SHOW_SYS)
         {
           sys_var *var= ((sys_var *) value);
@@ -2217,11 +2232,10 @@ static bool show_status_array(THD *thd, const char *wild,
           DBUG_ASSERT(0);
           break;
         }
+        pthread_mutex_unlock(&LOCK_global_system_variables);
         table->field[1]->store(pos, (uint32) (end - pos), charset);
         thd->count_cuted_fields= CHECK_FIELD_IGNORE;
         table->field[1]->set_notnull();
-
-        pthread_mutex_unlock(&LOCK_global_system_variables);
 
         if (schema_table_store_record(thd, table))
         {
@@ -3681,6 +3695,11 @@ static int get_schema_tables_record(THD *thd, TABLE_LIST *tables,
     if (share->transactional != HA_CHOICE_UNDEF)
       ptr= strxmov(ptr, " transactional=",
                    ha_choice_values[(uint) share->transactional], NullS);
+    if (share->key_block_size)
+    {
+      ptr= strmov(ptr, " KEY_BLOCK_SIZE=");
+      ptr= longlong10_to_str(share->key_block_size, ptr, 10);
+    }
     table->field[19]->store(option_buff+1,
                             (ptr == option_buff ? 0 :
                              (uint) (ptr-option_buff)-1), cs);
@@ -4092,6 +4111,25 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
   handlerton *default_type= ha_default_handlerton(thd);
   DBUG_ENTER("iter_schema_engines");
 
+
+  /* Disabled plugins */
+  if (plugin_state(plugin) != PLUGIN_IS_READY)
+  {
+
+    struct st_mysql_plugin *plug= plugin_decl(plugin);
+    if (!(wild && wild[0] &&
+          wild_case_compare(scs, plug->name,wild)))
+    {
+      restore_record(table, s->default_values);
+      table->field[0]->store(plug->name, strlen(plug->name), scs);
+      table->field[1]->store(C_STRING_WITH_LEN("NO"), scs);
+      table->field[2]->store(plug->descr, strlen(plug->descr), scs);
+      if (schema_table_store_record(thd, table))
+        DBUG_RETURN(1);
+    }
+    DBUG_RETURN(0);
+  }
+
   if (!(hton->flags & HTON_HIDDEN))
   {
     LEX_STRING *name= plugin_name(plugin);
@@ -4112,10 +4150,13 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
                              strlen(plugin_decl(plugin)->descr), scs);
       tmp= &yesno[test(hton->commit)];
       table->field[3]->store(tmp->str, tmp->length, scs);
+      table->field[3]->set_notnull();
       tmp= &yesno[test(hton->prepare)];
       table->field[4]->store(tmp->str, tmp->length, scs);
+      table->field[4]->set_notnull();
       tmp= &yesno[test(hton->savepoint_set)];
       table->field[5]->store(tmp->str, tmp->length, scs);
+      table->field[5]->set_notnull();
 
       if (schema_table_store_record(thd, table))
         DBUG_RETURN(1);
@@ -4126,8 +4167,12 @@ static my_bool iter_schema_engines(THD *thd, plugin_ref plugin,
 
 int fill_schema_engines(THD *thd, TABLE_LIST *tables, COND *cond)
 {
-  return plugin_foreach(thd, iter_schema_engines,
-                        MYSQL_STORAGE_ENGINE_PLUGIN, tables->table);
+  DBUG_ENTER("fill_schema_engines");
+  if (plugin_foreach_with_mask(thd, iter_schema_engines,
+                               MYSQL_STORAGE_ENGINE_PLUGIN,
+                               ~PLUGIN_IS_FREED, tables->table))
+    DBUG_RETURN(1);
+  DBUG_RETURN(0);
 }
 
 
@@ -6551,9 +6596,9 @@ ST_FIELD_INFO engines_fields_info[]=
   {"ENGINE", 64, MYSQL_TYPE_STRING, 0, 0, "Engine", SKIP_OPEN_TABLE},
   {"SUPPORT", 8, MYSQL_TYPE_STRING, 0, 0, "Support", SKIP_OPEN_TABLE},
   {"COMMENT", 80, MYSQL_TYPE_STRING, 0, 0, "Comment", SKIP_OPEN_TABLE},
-  {"TRANSACTIONS", 3, MYSQL_TYPE_STRING, 0, 0, "Transactions", SKIP_OPEN_TABLE},
-  {"XA", 3, MYSQL_TYPE_STRING, 0, 0, "XA", SKIP_OPEN_TABLE},
-  {"SAVEPOINTS", 3 ,MYSQL_TYPE_STRING, 0, 0, "Savepoints", SKIP_OPEN_TABLE},
+  {"TRANSACTIONS", 3, MYSQL_TYPE_STRING, 0, 1, "Transactions", SKIP_OPEN_TABLE},
+  {"XA", 3, MYSQL_TYPE_STRING, 0, 1, "XA", SKIP_OPEN_TABLE},
+  {"SAVEPOINTS", 3 ,MYSQL_TYPE_STRING, 0, 1, "Savepoints", SKIP_OPEN_TABLE},
   {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, SKIP_OPEN_TABLE}
 };
 
@@ -7096,13 +7141,14 @@ ST_SCHEMA_TABLE schema_tables[]=
    fill_variables, make_old_format, 0, 0, -1, 0, 0},
   {"KEY_COLUMN_USAGE", key_column_usage_fields_info, create_schema_table,
    get_all_tables, 0, get_schema_key_column_usage_record, 4, 5, 0,
-   OPEN_TABLE_ONLY},
+   OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"OPEN_TABLES", open_tables_fields_info, create_schema_table,
    fill_open_tables, make_old_format, 0, -1, -1, 1, 0},
   {"PARAMETERS", parameters_fields_info, create_schema_table,
    fill_schema_proc, 0, 0, -1, -1, 0, 0},
   {"PARTITIONS", partitions_fields_info, create_schema_table,
-   get_all_tables, 0, get_schema_partitions_record, 1, 2, 0, OPEN_TABLE_ONLY},
+   get_all_tables, 0, get_schema_partitions_record, 1, 2, 0,
+   OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"PLUGINS", plugin_fields_info, create_schema_table,
    fill_plugins, make_old_format, 0, -1, -1, 0, 0},
   {"PROCESSLIST", processlist_fields_info, create_schema_table,
@@ -7112,7 +7158,7 @@ ST_SCHEMA_TABLE schema_tables[]=
     NULL, -1, -1, false, 0},
   {"REFERENTIAL_CONSTRAINTS", referential_constraints_fields_info,
    create_schema_table, get_all_tables, 0, get_referential_constraints_record,
-   1, 9, 0, OPEN_TABLE_ONLY},
+   1, 9, 0, OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"ROUTINES", proc_fields_info, create_schema_table,
    fill_schema_proc, make_proc_old_format, 0, -1, -1, 0, 0},
   {"SCHEMATA", schema_fields_info, create_schema_table,
@@ -7134,7 +7180,8 @@ ST_SCHEMA_TABLE schema_tables[]=
   {"TABLESPACES", tablespaces_fields_info, create_schema_table,
    hton_fill_schema_table, 0, 0, -1, -1, 0, 0},
   {"TABLE_CONSTRAINTS", table_constraints_fields_info, create_schema_table,
-   get_all_tables, 0, get_schema_constraints_record, 3, 4, 0, OPEN_TABLE_ONLY},
+   get_all_tables, 0, get_schema_constraints_record, 3, 4, 0,
+   OPTIMIZE_I_S_TABLE|OPEN_TABLE_ONLY},
   {"TABLE_NAMES", table_names_fields_info, create_schema_table,
    get_all_tables, make_table_names_old_format, 0, 1, 2, 1, 0},
   {"TABLE_PRIVILEGES", table_privileges_fields_info, create_schema_table,
