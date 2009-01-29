@@ -497,6 +497,11 @@ sub mtr_report_stats ($) {
                 # this test is expected to print warnings
                 ($testname eq 'main.innodb_bug39438') or
 
+                # Bug#39886, logs 'Table full' error message
+                (($testname eq 'main.almost_full' or 
+                  $testname eq 'main.myisam_data_pointer_size_func') and
+                 (/The table '.*' is full/
+                )) or
                 # maria-recovery.test has warning about missing log file
                 /File '.*maria_log.000.*' not found \(Errcode: 2\)/ or
                 # and about marked-corrupted table
