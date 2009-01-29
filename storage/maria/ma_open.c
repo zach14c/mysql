@@ -211,7 +211,8 @@ static MARIA_HA *maria_clone_internal(MARIA_SHARE *share, const char *name,
   thr_lock_data_init(&share->lock,&m_info->lock,(void*) m_info);
 #endif
   if (ma_log_tables_physical &&
-      hash_search(ma_log_tables_physical, share->unique_file_name.str,
+      hash_search(ma_log_tables_physical,
+                  (uchar *)share->unique_file_name.str,
                   share->unique_file_name.length))
     m_info->s->physical_logging= TRUE; /* set before publishing table */
   m_info->open_list.data=(void*) m_info;
@@ -683,6 +684,12 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
                             KEYPAGE_USED_SIZE);
     share->kfile.file= kfile;
 
+#ifdef THREAD
+    /* we need this rwlock early for _ma_update_state_lsns_sub() */
+    my_atomic_rwlock_init(&share->physical_logging_rwlock);
+#endif
+    errpos= 5;
+
     if (open_flags & HA_OPEN_COPY)
     {
       /*
@@ -774,7 +781,7 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
         goto err;
       data_file= info.dfile.file;
     }
-    errpos= 5;
+    errpos= 6;
 
     if (open_flags & HA_OPEN_DELAY_KEY_WRITE)
       share->options|= HA_OPTION_DELAY_KEY_WRITE;
@@ -843,7 +850,6 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
     pthread_mutex_init(&share->key_del_lock, MY_MUTEX_INIT_FAST);
     pthread_cond_init(&share->key_del_cond, 0);
     pthread_mutex_init(&share->close_lock, MY_MUTEX_INIT_FAST);
-    my_atomic_rwlock_init(&share->physical_logging_rwlock);
     for (i=0; i<keys; i++)
       (void)(my_rwlock_init(&share->keyinfo[i].root_lock, NULL));
     (void)(my_rwlock_init(&share->mmap_lock, NULL));
@@ -939,12 +945,17 @@ err:
   if (save_errno == HA_ERR_OLD_FILE) /* uuid is different ? */
     save_errno= HA_ERR_CRASHED_ON_USAGE; /* the code to trigger auto-repair */
   switch (errpos) {
-  case 5:
+  case 6:
     if (data_file >= 0)
       (void)(my_close(data_file, MYF(0)));
     if (old_info)
       break;					/* Don't remove open table */
     (*share->once_end)(share);
+    /* fall through */
+  case 5:
+#ifdef THREAD
+    my_atomic_rwlock_destroy(&share->physical_logging_rwlock);
+#endif
     /* fall through */
   case 4:
     my_free((uchar*) share,MYF(0));
@@ -1344,7 +1355,7 @@ uint _ma_state_info_write_sub(MARIA_SHARE *share, File file,
              MYF(MY_NABP));
   if (ma_get_physical_logging_state(share))
     maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI,
-                              share, buff, (size_t) (ptr-buff), 0L);
+                              share, buff, (uint) (ptr-buff), 0L);
   DBUG_RETURN(res != 0);
 }
 

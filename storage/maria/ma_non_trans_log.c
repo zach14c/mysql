@@ -320,7 +320,7 @@ retry:
       DBUG_ASSERT(command != MA_LOG_CLOSE);
       pthread_mutex_unlock(&THR_LOCK_maria_log);
       _maria_log_command(&maria_physical_log, MA_LOG_OPEN, share,
-                         share->open_file_name.str,
+                         (uchar *)share->open_file_name.str,
                          share->open_file_name.length, 0);
       goto retry;
     }
@@ -399,7 +399,7 @@ retry:
     {
       pthread_mutex_unlock(&THR_LOCK_maria_log);
       _maria_log_command(&maria_physical_log, MA_LOG_OPEN, share,
-                          share->open_file_name.str,
+                         (uchar *)share->open_file_name.str,
                           share->open_file_name.length, 0);
       goto retry;
     }
@@ -452,7 +452,7 @@ retry:
     {
       pthread_mutex_unlock(&THR_LOCK_maria_log);
       _maria_log_command(&maria_physical_log, MA_LOG_OPEN, share,
-                          share->open_file_name.str,
+                         (uchar *)share->open_file_name.str,
                           share->open_file_name.length, 0);
       goto retry;
     }
@@ -530,7 +530,7 @@ static int ma_log_start_physical(const char *log_filename, const HASH *tables)
     DBUG_PRINT("info",("table '%s' 0x%lx tested against hash",
                        share->unique_file_name.str, (ulong)info));
     if (!hash_search(ma_log_tables_physical,
-                     share->unique_file_name.str,
+                     (uchar *)share->unique_file_name.str,
                      share->unique_file_name.length))
       continue;
     /* Backup kernel shouldn't ask for temporary table's backup */

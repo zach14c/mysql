@@ -1353,7 +1353,9 @@ int ma_check_index_cond(register MARIA_HA *info, uint keynr, uchar *record);
 void _ma_report_crashed(MARIA_HA *file, const char *message,
                         const char *sfile, uint sline);
 
+C_MODE_START
 extern const char *maria_error_messages[];
 extern my_bool ma_log_index_pages_physical;
 extern IO_CACHE maria_physical_log;
 extern pthread_mutex_t THR_LOCK_maria;
+C_MODE_END
