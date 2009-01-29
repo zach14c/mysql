@@ -63,8 +63,10 @@ create table mysqltest2.t2 (id int);
 # Create a grant that should replicate
 GRANT SELECT ON mysqltest2.t2 TO mysqltest4@localhost IDENTIFIED BY 'pass';
 
-# Create a grant manually
-insert into mysql.user (user, host) values ("mysqltest5", "somehost");
+# Create a grant manually. Note that BLOB NOT NULL columns does not
+# have default values, and not supplying values will cause the slave
+# to stop under row-based replication.
+insert into mysql.user (user, host, ssl_cipher, x509_issuer, x509_subject) values ("mysqltest5", "somehost", '', '', '');
 
 # Partial replicate 3 with *.*
 GRANT SELECT ON *.* TO mysqltest6@localhost;

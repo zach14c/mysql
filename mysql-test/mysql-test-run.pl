@@ -134,14 +134,14 @@ our @opt_combinations;
 our @opt_extra_mysqld_opt;
 our @opt_extra_mysqltest_opt;
 
-our $opt_compress;
-our $opt_ssl;
-our $opt_skip_ssl;
-our $opt_ssl_supported;
-our $opt_ps_protocol;
-our $opt_sp_protocol;
-our $opt_cursor_protocol;
-our $opt_view_protocol;
+my $opt_compress;
+my $opt_ssl;
+my $opt_skip_ssl = 1; # Until bug#42366 has been fixed
+my $opt_ssl_supported;
+my $opt_ps_protocol;
+my $opt_sp_protocol;
+my $opt_cursor_protocol;
+my $opt_view_protocol;
 
 our $opt_debug;
 our @opt_cases;                  # The test cases names in argv
@@ -381,9 +381,9 @@ sub main {
 
     if ($opt_force){
       # All test should have been run, print any that are still in $tests
-      foreach my $test ( @$tests ){
-        $test->print_test();
-      }
+      #foreach my $test ( @$tests ){
+      #  $test->print_test();
+      #}
     }
 
     # Not all tests completed, failure
@@ -474,8 +474,9 @@ sub run_test_server ($$$) {
 	      mtr_report(" - saving '$worker_savedir/' to '$savedir/'");
 	      rename($worker_savedir, $savedir);
 	      # Move any core files from e.g. mysqltest
-	      foreach my $coref (glob("core*"))
+	      foreach my $coref (glob("core*"), glob("*.dmp"))
 	      {
+		mtr_report(" - found '$coref', moving it to '$savedir'");
                 move($coref, $savedir);
               }
 	      if ($opt_max_save_core > 0) {
@@ -485,7 +486,9 @@ sub run_test_server ($$$) {
 			 my $core_file= $File::Find::name;
 			 my $core_name= basename($core_file);
 
-			 if ($core_name =~ "core*"){
+			 if ($core_name =~ /^core/ or  # Starting with core
+			     (IS_WINDOWS and $core_name =~ /\.dmp$/)){
+                                                       # Ending with .dmp
 			   mtr_report(" - found '$core_name'",
 				      "($num_saved_cores/$opt_max_save_core)");
 
@@ -707,6 +710,12 @@ sub run_worker ($) {
     if ($line eq 'TESTCASE'){
       my $test= My::Test::read_test($server);
       #$test->print_test();
+
+      # Clear comment and logfile, to avoid
+      # reusing them from previous test
+      delete($test->{'comment'});
+      delete($test->{'logfile'});
+
       run_testcase($test);
       #$test->{result}= 'MTR_RES_PASSED';
       # Send it back, now with results set
@@ -1721,8 +1730,8 @@ sub environment_setup {
 
   $ENV{'SIMPLE_PARSER'}=
     ($lib_simple_parser ? basename($lib_simple_parser) : "");
-  $ENV{'SIMPLE_PARSER_OPT'}=
-    ($lib_simple_parser ? "--plugin_dir=" . dirname($lib_simple_parser) : "");
+  $ENV{'SIMPLE_PARSER_OPT'}= "--plugin-dir=".
+    ($lib_simple_parser ? dirname($lib_simple_parser) : "");
 
   # --------------------------------------------------------------------------
   # Valgrind need to be run with debug libraries otherwise it's almost
@@ -2966,6 +2975,7 @@ sub start_run_one ($$) {
      output        => $errfile,
      args          => \$args,
      user_data     => $errfile,
+     verbose       => $opt_verbose,
     );
   mtr_verbose("Started $proc");
   return $proc;
@@ -3413,6 +3423,92 @@ sub run_testcase ($) {
 }
 
 
+#
+# Perform a rough examination of the servers
+# error log and write all lines that look
+# suspicious into $error_log.warnings
+#
+sub extract_warning_lines ($) {
+  my ($error_log) = @_;
+
+  # Open the servers .err log file and read all lines
+  # belonging to current tets into @lines
+  my $Ferr = IO::File->new($error_log)
+    or mtr_error("Could not open file '$error_log' for reading: $!");
+
+  my @lines;
+  while ( my $line = <$Ferr> )
+  {
+    if ( $line =~ /^CURRENT_TEST:/ )
+    {
+      # Throw away lines from previous tests
+      @lines = ();
+    }
+    push(@lines, $line);
+  }
+  $Ferr = undef; # Close error log file
+
+  # mysql_client_test.test sends a COM_DEBUG packet to the server
+  # to provoke a SAFEMALLOC leak report, ignore any warnings
+  # between "Begin/end safemalloc memory dump"
+  if ( grep(/Begin safemalloc memory dump:/, @lines) > 0)
+  {
+    my $discard_lines= 1;
+    foreach my $line ( @lines )
+    {
+      if ($line =~ /Begin safemalloc memory dump:/){
+	$discard_lines = 1;
+      } elsif ($line =~ /End safemalloc memory dump./){
+	$discard_lines = 0;
+      }
+
+      if ($discard_lines){
+	$line = "ignored";
+      }
+    }
+  }
+
+  # Write all suspicious lines to $error_log.warnings file
+  my $warning_log = "$error_log.warnings";
+  my $Fwarn = IO::File->new($warning_log, "w")
+    or die("Could not open file '$warning_log' for writing: $!");
+  print $Fwarn "Suspicious lines from $error_log\n";
+
+  my @patterns =
+    (
+     # The patterns for detection of [Warning] and [ERROR]
+     # in the server log files have been faulty for a longer period
+     # and correcting them shows a few additional harmless warnings.
+     # Thus those patterns are temporarily removed from the list
+     # of patterns. For more info see BUG#42408
+     # qr/^Warning:|mysqld: Warning|\[Warning\]/,
+     # qr/^Error:|\[ERROR\]/,
+     qr/^Warning:|mysqld: Warning/,
+     qr/^Error:/,
+     qr/^==.* at 0x/,
+     qr/InnoDB: Warning|InnoDB: Error/,
+     qr/^safe_mutex:|allocated at line/,
+     qr/missing DBUG_RETURN/,
+     qr/Attempting backtrace/,
+     qr/Assertion .* failed/,
+    );
+
+  foreach my $line ( @lines )
+  {
+    foreach my $pat ( @patterns )
+    {
+      if ( $line =~ /$pat/ )
+      {
+	print $Fwarn $line;
+	last;
+      }
+    }
+  }
+  $Fwarn = undef; # Close file
+
+}
+
+
 # Run include/check-warnings.test
 #
 # RETURN VALUE
@@ -3424,6 +3520,8 @@ sub start_check_warnings ($$) {
   my $mysqld=   shift;
 
   my $name= "warnings-".$mysqld->name();
+
+  extract_warning_lines($mysqld->value('log-error'));
 
   my $args;
   mtr_init_args(\$args);
@@ -3460,6 +3558,7 @@ sub start_check_warnings ($$) {
      output        => $errfile,
      args          => \$args,
      user_data     => $errfile,
+     verbose       => $opt_verbose,
     );
   mtr_verbose("Started $proc");
   return $proc;
@@ -3696,6 +3795,17 @@ sub save_datadir_after_failure($$) {
 }
 
 
+sub remove_ndbfs_from_ndbd_datadir {
+  my ($ndbd_datadir)= @_;
+  # Remove the ndb_*_fs directory from ndbd.X/ dir
+  foreach my $ndbfs_dir ( glob("$ndbd_datadir/ndb_*_fs") )
+  {
+    next unless -d $ndbfs_dir; # Skip if not a directory
+    rmtree($ndbfs_dir);
+  }
+}
+
+
 sub after_failure ($) {
   my ($tinfo)= @_;
 
@@ -3721,6 +3831,14 @@ sub after_failure ($) {
   if ( clusters() ) {
     foreach my $cluster ( clusters() ) {
       my $cluster_dir= "$opt_vardir/".$cluster->{name};
+
+      # Remove the fileystem of each ndbd
+      foreach my $ndbd ( in_cluster($cluster, ndbds()) )
+      {
+        my $ndbd_datadir= $ndbd->value("DataDir");
+        remove_ndbfs_from_ndbd_datadir($ndbd_datadir);
+      }
+
       save_datadir_after_failure($cluster_dir, $save_dir);
     }
   }
@@ -4519,10 +4637,6 @@ sub start_mysqltest ($) {
   {
     # Turn on SSL for _all_ test cases if option --ssl was used
     mtr_add_arg($args, "--ssl");
-  }
-  elsif ( $opt_ssl_supported )
-  {
-    mtr_add_arg($args, "--skip-ssl");
   }
 
   if ( $opt_embedded_server )
