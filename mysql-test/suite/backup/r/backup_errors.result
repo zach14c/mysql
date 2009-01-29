@@ -340,6 +340,7 @@ Failed to obtain meta-data for trigger `db1`.`trg`
 error
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
+SET SESSION DEBUG='';
 
 Done testing for Bug#38624
 

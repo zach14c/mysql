@@ -56,10 +56,11 @@ SET DEBUG_SYNC= 'reset';
 # include/backup_ddl_create_data.inc
 #
 
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak;
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak;
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 #
 # Connections used in this test
@@ -386,7 +387,7 @@ DESCRIBE bup_ddl_blocker.t3;
 DESCRIBE bup_ddl_blocker.t4;
 
 # Cleanup
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 
 
@@ -534,7 +535,7 @@ SHOW TABLES;
 --source include/backup_ddl_create_data.inc
 
 # Get a backup to work with.
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_ddl_blocker to 'bup_ddl_blocker_orig.bak';
 
@@ -647,7 +648,7 @@ use bup_ddl_blocker;
 SHOW TABLES;
 
 # Cleanup
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 
 
@@ -793,7 +794,7 @@ SHOW TABLES;
 --source include/backup_ddl_create_data.inc
 
 # Get a backup to work with.
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_ddl_blocker to 'bup_ddl_blocker_orig.bak';
 
@@ -906,7 +907,7 @@ use bup_ddl_blocker;
 SHOW TABLES;
 
 # Cleanup
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 
 
@@ -1107,7 +1108,7 @@ INSERT INTO bup_ddl_blocker_4.t1 VALUES ("03 Some data to test");
 SHOW DATABASES LIKE 'bup_ddl_blocker_%';
 
 # Get a backup to work with.
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_ddl_blocker_2, bup_ddl_blocker_4 to 'bup_ddl_blocker_orig.bak';
 
@@ -1219,7 +1220,7 @@ reap;
 SHOW DATABASES LIKE 'bup_ddl_blocker_%';
 
 # Cleanup
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 
 
@@ -1435,7 +1436,7 @@ INSERT INTO bup_ddl_blocker_4.t1 VALUES ("03 Some data to test");
 SHOW DATABASES LIKE 'bup_ddl_blocker_%';
 
 # Get a backup to work with.
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_ddl_blocker_2, bup_ddl_blocker_4 to 'bup_ddl_blocker_orig.bak';
 
@@ -1557,7 +1558,7 @@ DROP DATABASE bup_ddl_blocker_2;
 DROP DATABASE bup_ddl_blocker_4;
 
 # Cleanup
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 
 
@@ -1797,7 +1798,7 @@ INSERT INTO bup_ddl_blocker_4.t1 VALUES ("03 Some data to test", 3);
 CREATE INDEX 4t1col_b ON bup_ddl_blocker_4.t1 (col_b); 
 
 # Get a backup to work with.
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 --replace_column 1 #
 BACKUP DATABASE bup_ddl_blocker_1, bup_ddl_blocker_2,
                 bup_ddl_blocker_3, bup_ddl_blocker_4
@@ -1921,7 +1922,7 @@ DROP DATABASE bup_ddl_blocker_3;
 DROP DATABASE bup_ddl_blocker_4;
 
 # Cleanup
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker.bak
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker.bak;
 
 
 
@@ -2073,8 +2074,8 @@ DROP DATABASE bup_ddl_blocker;
 # avoid this situation we remove the test/db.opt file as a part of
 # clean-up.
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/test/db.opt
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ddl_blocker_orig.bak
+remove_file $MYSQLD_DATADIR/test/db.opt;
+remove_file $MYSQLD_DATADIR/bup_ddl_blocker_orig.bak;
 
 connection default;
 disconnect con1;

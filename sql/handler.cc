@@ -34,6 +34,8 @@
 #include "ha_partition.h"
 #endif
 
+#include "rpl_handler.h"
+
 /*
   While we have legacy_db_type, we have this array to
   check for dups and to find handlerton from legacy_db_type.
@@ -409,7 +411,13 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
     reuse an array slot. Otherwise the number of uninstall/install
     cycles would be limited.
   */
-  hton2plugin[hton->slot]= NULL;
+  if (hton->slot != HA_SLOT_UNDEF)
+  {
+    /* Make sure we are not unpluging another plugin */
+    DBUG_ASSERT(hton2plugin[hton->slot] == plugin);
+    DBUG_ASSERT(hton->slot < MAX_HA);
+    hton2plugin[hton->slot]= NULL;
+  }
 
   my_free((uchar*)hton, MYF(0));
 
@@ -434,6 +442,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
     not initialized.
    */
   bzero(hton, sizeof(hton));
+  hton->slot= HA_SLOT_UNDEF;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
   if (plugin->plugin->init)
@@ -1184,6 +1193,7 @@ int ha_commit_trans(THD *thd, bool all)
     if (cookie)
       tc_log->unlog(cookie, xid);
     DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
+    RUN_HOOK(transaction, after_commit, (thd, all));
 end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
@@ -1319,6 +1329,7 @@ int ha_rollback_trans(THD *thd, bool all)
     push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                  ER_WARNING_NOT_COMPLETE_ROLLBACK,
                  ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
+  RUN_HOOK(transaction, after_rollback, (thd, all));
   DBUG_RETURN(error);
 }
 
@@ -5279,8 +5290,6 @@ static int write_locked_table_maps(THD *thd)
   DBUG_ENTER("write_locked_table_maps");
   DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
                        thd, thd->lock, thd->extra_lock));
-
-  DBUG_PRINT("debug", ("get_binlog_table_maps(): %d", thd->get_binlog_table_maps()));
 
   if (thd->get_binlog_table_maps() == 0)
   {

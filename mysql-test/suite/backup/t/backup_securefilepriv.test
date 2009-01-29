@@ -4,21 +4,23 @@
 #
 # See backup_securefilepriv-master.opt for --secure-file-priv command line option
 #
-# backupdir        is MYSQLTEST_VARDIR/master-data/
-# secure-file-priv is MYSQLTEST_VARDIR/master-data/securefilepriv_path/
+# backupdir        is MYSQLD_DATADIR/
+# secure-file-priv is MYSQLD_DATADIR/securefilepriv_path/
 
 --source include/not_embedded.inc
 
 --echo Initializing tests
 
+let $MYSQLD_DATADIR = `select @@datadir`;
+
 --error 0,1
-rmdir $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath;
+rmdir $MYSQLD_DATADIR/securefilepriv_path/subpath;
 --error 0,1
-rmdir $MYSQLTEST_VARDIR/master-data/securefilepriv_path;
+rmdir $MYSQLD_DATADIR/securefilepriv_path;
 
 --echo Create directories for backup images
-mkdir $MYSQLTEST_VARDIR/master-data/securefilepriv_path;
-mkdir $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath;
+mkdir $MYSQLD_DATADIR/securefilepriv_path;
+mkdir $MYSQLD_DATADIR/securefilepriv_path/subpath;
 
 --echo Creating database and populating tables
 
@@ -37,58 +39,58 @@ INSERT INTO mysqltest.t1 VALUES (1),(2),(3),(4),(5),(10),(15),(100);
 
 --echo 
 --echo Backup to path specified by --secure-file-priv option
---echo (MYSQLTEST_VARDIR/master-data/securefilepriv_path)
+--echo (MYSQLD_DATADIR/securefilepriv_path)
 --replace_column 1 #
 BACKUP DATABASE mysqltest TO 'securefilepriv_path/bup_sfp1.bak';
 
 --echo Ensure backup image file went to the correct location
---file_exists $MYSQLTEST_VARDIR/master-data/securefilepriv_path/bup_sfp1.bak
+--file_exists $MYSQLD_DATADIR/securefilepriv_path/bup_sfp1.bak
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/securefilepriv_path/bup_sfp1.bak
+--remove_file $MYSQLD_DATADIR/securefilepriv_path/bup_sfp1.bak
 
 --echo  
 --echo Backup to subpath of path specified by --secure-file-priv option
---echo (MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath)
+--echo (MYSQLD_DATADIR/securefilepriv_path/subpath)
 --replace_column 1 #
 BACKUP DATABASE mysqltest TO 'securefilepriv_path/subpath/bup_sfp2.bak';
 
 --echo Ensure backup image file went to the correct location
---file_exists $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath/bup_sfp2.bak
+--file_exists $MYSQLD_DATADIR/securefilepriv_path/subpath/bup_sfp2.bak
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath/bup_sfp2.bak
+--remove_file $MYSQLD_DATADIR/securefilepriv_path/subpath/bup_sfp2.bak
 
 --echo  
 --echo Change backupdir to securefilepriv_path/subpath 
---echo (MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath)
+--echo (MYSQLD_DATADIR/securefilepriv_path/subpath)
 SET @@global.backupdir = 'securefilepriv_path/subpath';
 
 --echo  
 --echo Backup to subpath of path specified by --secure-file-priv option, 
 --echo no dir in backup file name
---echo (MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath)
+--echo (MYSQLD_DATADIR/securefilepriv_path/subpath)
 --replace_column 1 #
 BACKUP DATABASE mysqltest TO 'bup_sfp3.bak';
 
 --echo Ensure backup image file went to the correct location
---file_exists $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath/bup_sfp3.bak
+--file_exists $MYSQLD_DATADIR/securefilepriv_path/subpath/bup_sfp3.bak
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath/bup_sfp3.bak
+--remove_file $MYSQLD_DATADIR/securefilepriv_path/subpath/bup_sfp3.bak
 
 --echo  
 --echo Backup to path specified by --secure-file-priv, 
 --echo relative path in backup file name
---echo (MYSQLTEST_VARDIR/master-data/securefilepriv_path)
+--echo (MYSQLD_DATADIR/securefilepriv_path)
 --replace_column 1 #
 BACKUP DATABASE mysqltest TO '../bup_sfp4.bak';
 
 --echo Ensure backup image file went to the correct location
---file_exists $MYSQLTEST_VARDIR/master-data/securefilepriv_path/bup_sfp4.bak
+--file_exists $MYSQLD_DATADIR/securefilepriv_path/bup_sfp4.bak
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/securefilepriv_path/bup_sfp4.bak
+--remove_file $MYSQLD_DATADIR/securefilepriv_path/bup_sfp4.bak
 
 # Tests that fail
 
@@ -99,7 +101,7 @@ BACKUP DATABASE mysqltest TO '../bup_sfp4.bak';
 BACKUP DATABASE mysqltest TO '../../bup_sfp_fail1.bak';
 
 --echo  
---echo Reset backupdir to MYSQLTEST_VARDIR/master-data/
+--echo Reset backupdir to MYSQLD_DATADIR/
 SET @@global.backupdir = @@global.datadir;
 
 --echo  
@@ -115,6 +117,6 @@ DROP TABLE mysqltest.t1;
 DROP DATABASE mysqltest;
 
 --error 0,1,2
-rmdir $MYSQLTEST_VARDIR/master-data/securefilepriv_path/subpath;
+rmdir $MYSQLD_DATADIR/securefilepriv_path/subpath;
 --error 0,1,2
-rmdir $MYSQLTEST_VARDIR/master-data/securefilepriv_path;
+rmdir $MYSQLD_DATADIR/securefilepriv_path;

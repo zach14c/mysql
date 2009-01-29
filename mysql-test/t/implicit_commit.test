@@ -5,6 +5,7 @@ SET GLOBAL EVENT_SCHEDULER = OFF;
 SET BINLOG_FORMAT = STATEMENT;
 
 LET $OLD_DB= `SELECT DATABASE()`;
+LET $MYSQLD_DATADIR= `SELECT @@datadir`;
 
 CREATE DATABASE db1;
 USE db1;
@@ -156,7 +157,7 @@ source include/implicit_commit_helper.inc;
 create table t4 (a varchar(100));
 
 let $statement=
-  load data infile '../std_data_ln/words.dat' into table t4;
+  load data infile '../../std_data/words.dat' into table t4;
 source include/implicit_commit_helper.inc;
 
 drop table t4;
@@ -1115,7 +1116,7 @@ let $statement=
   restore from 'backup_db.ba';
 source include/implicit_commit_helper.inc;
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_db.ba
+--remove_file $MYSQLD_DATADIR/backup_db.ba
 
 drop database backup_db;
 
