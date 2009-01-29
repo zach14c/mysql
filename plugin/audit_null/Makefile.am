@@ -15,13 +15,13 @@
 
 #Makefile.am example for a plugin
 
-MYSQLLIBdir=		$(pkglibdir)
+pkgplugindir=		$(pkglibdir)/plugin
 
 AM_CPPFLAGS =		-I$(top_srcdir)/include
 
 EXTRA_LTLIBRARIES=	adt_null.la
-pkglib_LTLIBRARIES=	@plugin_audit_null_shared_target@
-adt_null_la_LDFLAGS=	-module -rpath $(MYSQLLIBdir)
+pkgplugin_LTLIBRARIES=	@plugin_audit_null_shared_target@
+adt_null_la_LDFLAGS=	-module -rpath $(pkgplugindir)
 adt_null_la_CPPFLAGS=	$(AM_CPPFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 adt_null_la_SOURCES=	audit_null.c
 

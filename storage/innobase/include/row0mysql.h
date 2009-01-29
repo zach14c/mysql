@@ -596,6 +596,8 @@ struct row_prebuilt_struct {
 	byte*		ins_upd_rec_buff;/* buffer for storing data converted
 					to the Innobase format from the MySQL
 					format */
+	const byte*	default_rec;	/* the default values of all columns
+					(a "default row") in MySQL format */
 	ulint		hint_need_to_fetch_extra_cols;
 					/* normally this is set to 0; if this
 					is set to ROW_RETRIEVE_PRIMARY_KEY,
@@ -685,14 +687,28 @@ struct row_prebuilt_struct {
 					to this heap */
 	mem_heap_t*	old_vers_heap;	/* memory heap where a previous
 					version is built in consistent read */
-	ulonglong	last_value;	/* last value of AUTO-INC interval */
-
+	/*----------------------*/
+	ulonglong	autoinc_last_value;/* last value of AUTO-INC interval */
+	ulonglong	autoinc_increment;/* The increment step of the auto 
+					increment column. Value must be
+					greater than or equal to 1. Required to
+					calculate the next value */
+	ulonglong	autoinc_offset; /* The offset passed to
+					get_auto_increment() by MySQL. Required
+					to calculate the next value */
+	ulint		autoinc_error;	/* The actual error code encountered
+					while trying to init or read the
+					autoinc value from the table. We
+					store it here so that we can return
+					it to MySQL */
+	/*----------------------*/
         index_cond_func_t idx_cond_func;/* Index Condition Pushdown function,
                                         or NULL if there is none set */
         void*           idx_cond_func_arg;/* ICP function  argument */
         ulint           n_index_fields; /* Number of fields at the start of
                                         mysql_template. Valid only when using
                                         ICP. */
+	/*----------------------*/
 	ulint		magic_n2;	/* this should be the same as
 					magic_n */
 };
