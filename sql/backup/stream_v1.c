@@ -19,6 +19,7 @@
 # define ASSERT(X)
 #else
 # include <assert.h>
+/// Macro to map assertion call when debug is off.
 # define ASSERT(X) assert(X)
 #endif
 
@@ -32,14 +33,18 @@
 
 /* local types */
 
-typedef unsigned char bool;
-#define TRUE    1
-#define FALSE   0
+typedef unsigned char bool; ///< definition of bool
+#define TRUE    1  ///< definition of true
+#define FALSE   0  ///< definition of false
 
-typedef bstream_byte byte;
-typedef bstream_blob blob;
+typedef bstream_byte byte;  ///< type definition of bstream byte
+typedef bstream_blob blob;  ///< type definition of bstream blob
 
-/* this is needed for seamless compilation on windows */
+/**
+  Macro mapping bzro() to memset().
+  
+  @note This is needed for seamless compilation on windows.
+*/
 #define bzero(A,B)  memset((A),0,(B))
 
 /*
@@ -50,17 +55,20 @@ typedef bstream_blob blob;
   error.
 */
 
+/// Macro to check write result.
 #define CHECK_WR_RES(X) \
   do{\
    if ((ret= X) != BSTREAM_OK) goto wr_error;\
   } while(0)
 
+/// Macro to check read ok return.
 #define CHECK_RD_OK(X) \
  do{\
    if ((ret= X) != BSTREAM_OK)\
     { ret=BSTREAM_ERROR; goto rd_error; }\
  } while(0)
 
+/// Macro to check read result.
 #define CHECK_RD_RES(X) \
  do{\
    if ((ret= X) == BSTREAM_ERROR) goto rd_error;\
@@ -82,6 +90,16 @@ int bstream_write(backup_stream*, bstream_blob*);
 int bstream_write_part(backup_stream*, bstream_blob*, bstream_blob);
 int bstream_write_blob(backup_stream*, bstream_blob);
 int bstream_end_chunk(backup_stream*);
+
+/**
+ Flush backup stream`s output buffer to the output stream.
+
+ This empties the output buffer.
+
+ @param[in]  s  The backup stream to flush.
+
+ @returns Status of operation.
+*/
 int bstream_flush(backup_stream*);
 
 int bstream_read(backup_stream*, bstream_blob*);
@@ -108,6 +126,11 @@ byte get_byte_short(short value)
   return (byte)value;
 }
 
+/**
+  Return byte from unsigned short.
+
+  @param[in]  value  Item to be changed to byte type.
+*/
 byte get_byte_ushort(unsigned short value)
 {
   ASSERT(value < 256);
@@ -600,6 +623,7 @@ int bstream_rd_image_info(backup_stream *s, struct st_bstream_snapshot_info *inf
   @endverbatim
 */
 
+/// Definition of extra data flag bits.
 #define BSTREAM_FLAG_HAS_EXTRA_DATA   0x80
 
 int bstream_wr_db_catalogue(backup_stream*, struct st_bstream_image_header*,
@@ -1394,6 +1418,7 @@ int bstream_rd_meta_data(backup_stream *s, struct st_bstream_image_header *cat)
   @endverbatim
 */
 
+/// Definition of create statement flag bits.
 #define BSTREAM_FLAG_HAS_CREATE_STMT 0x40
 
 /**
@@ -1441,21 +1466,18 @@ int bstream_wr_meta_item(backup_stream *s,
   @c (*item). This description is not persistent - next call to this function
   can overwrite it with description of another item.
 
-  @param cat  the catalogue object where items are located
-  @param db   default database for per-db items for which database coordinates
-              are not stored in the entry (i.e., for tables)
-  @param kind  format in which item coordinates are stored
-  @param flags the flags saved in the entry are stored in that location
-  @param item  pointer to a structure describing item found is stored here.
-
+  @param[in] s    the backup stream
+  @param[in] kind  format in which item coordinates are stored
+  @param[in] flags the flags saved in the entry are stored in that location
+  @param[in] item  pointer to a structure describing item found is stored here.
 
   @retval BSTREAM_ERROR  Error while reading
   @retval BSTREAM_OK     Read successful
   @retval BSTREAM_EOC    Read successful and end of chunk has been reached
   @retval BSTREAM_EOS    Read successful and end of stream has been reached
 
-  If function returns BSTREAM_OK and @c (*item) is set to NULL, it means that we
-  are looking at an empty item list.
+  @note If function returns BSTREAM_OK and @c (*item) is set to NULL, it means
+        that we are looking at an empty item list.
 */
 int bstream_rd_meta_item(backup_stream *s,
                          enum enum_bstream_meta_item_kind kind,
@@ -1542,7 +1564,12 @@ int bstream_rd_meta_item(backup_stream *s,
 /**
   Write entry with given item's meta-data.
 
-  @param kind  determines format in which item's coordinates are saved.
+  @param[in]  s     backup stream.
+  @param[in]  cat   image catalogue.
+  @param[in]  kind  determines format in which item's coordinates are saved.
+  @param[in]  item  stream item to write.
+
+  @returns Status of operation.
 */
 int bstream_wr_item_def(backup_stream *s,
                    struct st_bstream_image_header *cat,

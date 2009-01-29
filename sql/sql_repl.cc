@@ -1017,6 +1017,31 @@ err:
 
 
 /**
+  Initialize mutex for slave start variable.
+*/
+
+void init_slave_start()
+{
+  pthread_mutex_init(&LOCK_slave_start, MY_MUTEX_INIT_FAST);
+  pthread_mutex_lock(&LOCK_slave_start);
+  allow_slave_start= TRUE;
+  reason_slave_blocked.length= 0;
+  reason_slave_blocked.str= (char *)"";
+  pthread_mutex_unlock(&LOCK_slave_start);
+}
+
+
+/**
+  Destroy mutex for slave start variable.
+*/
+
+void end_slave_start()
+{
+  pthread_mutex_destroy(&LOCK_slave_start);
+}
+
+
+/**
   Execute a START SLAVE statement.
 
   @param thd Pointer to THD object for the client thread executing the
@@ -1037,6 +1062,25 @@ int start_slave(THD* thd , Master_info* mi,  bool net_report)
 
   if (check_access(thd, SUPER_ACL, any_db,0,0,0,0))
     DBUG_RETURN(1);
+
+
+  /*
+    Ensure there are no restores running on the server.
+  */
+  pthread_mutex_lock(&LOCK_slave_start);
+  bool proceed= allow_slave_start;
+  bool success= TRUE;
+  if (!proceed)
+  {
+    slave_errno= ER_RESTORE_CANNOT_START_SLAVE;
+    if (net_report)
+      my_error(slave_errno, MYF(0), reason_slave_blocked);
+    success= FALSE;
+  }
+  pthread_mutex_unlock(&LOCK_slave_start);
+  if (!success)
+    DBUG_RETURN(1);
+
   lock_slave_threads(mi);  // this allows us to cleanly read slave_running
   // Get a mask of _stopped_ threads
   init_thread_mask(&thread_mask,mi,1 /* inverse */);

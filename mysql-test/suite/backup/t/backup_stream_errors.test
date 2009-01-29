@@ -1,0 +1,129 @@
+#
+# Test for BUG#39375
+# 
+# This test enforces the backup stream writing logic to enter the incorrect 
+# branch  inside function bstream_write_part(). This is tricky and depends 
+# very much on the low-level implementation details.
+#
+# The problem is triggered when BACKUP writes meta-data section of backup 
+# image.  More precisely, when writing the data chunk containing definitions 
+# of per-database objects (stored procedures in this case). The definitions 
+# have to be written in well designed stages to force internal buffering 
+# code to enter the incorrect execution path.
+#
+# Here is what must happen:
+# 
+# 1. Several procedures are stored such that the size of their meta-data 
+# do not exceed MIN_WRITE_SIZE constant (currently 1024 bytes). This is 
+# so that definition of each procedure is not directly written to the stream 
+# but rather stored in the output buffer.
+#
+# 2. The output buffer should be filled to slightly more than 4k bytes - the 
+# minimal size of a huge fragment (on the transport layer, data is split into 
+# chunk fragments and there are certain limits on possible sizes of such a 
+# fragment - see sql/backup/stream_v1_transport.c for some details).
+#
+# 3. Now BACKUP should write meta-data entry whose size is bigger than 
+# MIN_WRITE_SIZE (to force direct write to the output stream) but such that 
+# the total length of all meta-data entries written so far should not exceed 
+# 2*4k. This will force the internal buffering logic to follow the incorrect 
+# execution path:
+#
+# a) bstream_write_part() will be called with data blob of length > 
+#    MIN_WRITE_SIZE.
+#
+# b) At this time the output buffer will be filled with more than 4k of data - 
+#    the situation should be as follows:
+#
+#       out buffer (more than 4k)
+#     [hdr=======================]   data (more than MIN_WRITE_SIZE)
+#                                [====================]
+#
+# c) Now the biggest prefix of all the available data (data in the output 
+#    buffer + data passed to bstream_write_part) is determined which has 
+#    a valid size. This is done with calculations involving fragment blob:
+#
+#             prefix                fragment
+#         ------------------[-------------------------]
+#
+#   Since there is more than 4k of data to write but less than 8k, a prefix 
+#   of size 4k will be choosen. Fragment blob will hold the remainder of 
+#   the data. The crucial fact is that fragment starts inside the output 
+#   buffer (fragment.begin < buf.pos).
+#
+# d) Since there is more than MIN_WRITE_SIZE of new data available, this 
+#    branch will be entered:
+#
+#    if (fragment.end > (s->buf.pos + MIN_WRITE_SIZE))
+#    {
+#      /* write contents of the output buffer */
+#      ret= write_buffer(s);
+#      if (ret != BSTREAM_OK)
+#        return BSTREAM_ERROR;
+#
+#      /* write remainder of the fragment from data blob */
+#      saved_end= data->end;
+#      data->end= data->begin + (fragment.begin - s->buf.pos);
+#      ...
+#
+#    But this code is written under assumption that fragment starts outside 
+#    the output buffer (fragment.begin > s->buf.pos). Violating this assumption 
+#    leads to corrupted data in backup image.
+
+--source include/not_embedded.inc
+
+--echo # Preparations
+
+let $bdir=`SELECT @@backupdir`;
+--disable_warnings
+DROP DATABASE IF EXISTS db;
+--error 0,1
+--remove_file $bdir/db.bkp
+--enable_warnings
+
+CREATE DATABASE db;
+USE db;
+
+# Create string of length 512 (=2^9).
+
+let $string=12345678;
+let $power= 6;
+
+while ($power)
+{
+ let $string=$string$string;
+ dec $power;
+}
+
+
+--echo # Create procedures whose definitions will be shorter than MIN_WRITE_SIZE 
+--echo # (approx 700 bytes).
+
+eval CREATE PROCEDURE p1() SET @foo='$string';
+eval CREATE PROCEDURE p2() SET @foo='$string';
+eval CREATE PROCEDURE p3() SET @foo='$string';
+eval CREATE PROCEDURE p4() SET @foo='$string';
+eval CREATE PROCEDURE p5() SET @foo='$string';
+eval CREATE PROCEDURE p6() SET @foo='$string';
+
+# After 6 procedures we will have slightly more than 4k of metadata in the 
+# output buffer.
+
+--echo # Now create procedure whose definition is longer than 1024 (MIN_WRITE_SIZE)
+--echo # but such that in total we have no more than 8k of metadata. Use string of
+--echo # length 1.5k.
+
+let $string=$string$string$string;
+eval CREATE PROCEDURE q1() SET @foo='$string';
+
+--echo # Backup the database - the image should be corrupted without bug#39375 fix.
+--replace_column 1 #
+BACKUP DATABASE db TO 'db.bkp';
+
+--echo # Try to restore - should fail if image is corrupted.
+--replace_column 1 #
+RESTORE FROM 'db.bkp' OVERWRITE;
+
+--echo # Cleanup
+DROP DATABASE db;
+--remove_file $bdir/db.bkp

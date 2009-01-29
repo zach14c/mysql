@@ -30,6 +30,7 @@ int mi_close(register MI_INFO *info)
   DBUG_PRINT("enter",("base: %p  reopen: %u  locks: %u",
 		      info, (uint) share->reopen,
                       (uint) share->tot_locks));
+  DBUG_PRINT("myisam", ("close '%s'", share->unresolv_file_name));
 
   pthread_mutex_lock(&THR_LOCK_myisam);
   if (info->lock_type == F_EXTRA_LCK)
@@ -65,6 +66,7 @@ int mi_close(register MI_INFO *info)
   my_free(mi_get_rec_buff_ptr(info, info->rec_buff), MYF(MY_ALLOW_ZERO_PTR));
   if (flag)
   {
+    DBUG_PRINT("myisam", ("close share '%s'", share->unresolv_file_name));
     if (share->kfile >= 0 &&
 	flush_key_blocks(share->key_cache, share->kfile,
 			 share->temporary ? FLUSH_IGNORE_CHANGED :
