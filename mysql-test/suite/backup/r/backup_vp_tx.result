@@ -28,21 +28,21 @@ INSERT INTO bup_vp.t3 VALUES ("04 Some data to test");
 INSERT INTO bup_vp.t3 VALUES ("05 Some data to test");
 
 con_bup: Show the data before we start backup
-SELECT * FROM bup_vp.t1;
+SELECT * FROM bup_vp.t1  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
 03 Some data to test
 04 Some data to test
 05 Some data to test
-SELECT * FROM bup_vp.t2;
+SELECT * FROM bup_vp.t2  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
 03 Some data to test
 04 Some data to test
 05 Some data to test
-SELECT * FROM bup_vp.t3;
+SELECT * FROM bup_vp.t3  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
@@ -125,7 +125,7 @@ backup_id
 #
 
 con_bup: Showing data after updates and backup
-SELECT * FROM bup_vp.t1;
+SELECT * FROM bup_vp.t1  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
@@ -133,7 +133,7 @@ col_a
 04 Some data to test
 05 Some data to test
 tx1: 06 Some data to test
-SELECT * FROM bup_vp.t2;
+SELECT * FROM bup_vp.t2  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
@@ -141,7 +141,7 @@ col_a
 04 Some data to test
 05 Some data to test
 tx2: 06 Should NOT be in backup
-SELECT * FROM bup_vp.t3;
+SELECT * FROM bup_vp.t3  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
@@ -160,7 +160,7 @@ backup_id
 #
 
 con_bup: Showing the data after restore (tx2 and tx3 should not be there)
-SELECT * FROM bup_vp.t1;
+SELECT * FROM bup_vp.t1  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
@@ -168,14 +168,14 @@ col_a
 04 Some data to test
 05 Some data to test
 tx1: 06 Some data to test
-SELECT * FROM bup_vp.t2;
+SELECT * FROM bup_vp.t2  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
 03 Some data to test
 04 Some data to test
 05 Some data to test
-SELECT * FROM bup_vp.t3;
+SELECT * FROM bup_vp.t3  ORDER BY col_a;
 col_a
 01 Some data to test
 02 Some data to test
