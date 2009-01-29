@@ -14,7 +14,7 @@ ctype_create         : Bug#32965 main.ctype_create fails
 csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 delayed_insert_limit_func             : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
-event_scheduler_func                  : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
+event_scheduler_func                  : BUG#37962 BUG#40816 2008-07-08 sven *_func tests containing sleeps/race conditions
 interactive_timeout_func              : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
 query_cache_wlock_invalidate_func     : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
 rpl_init_slave_func                   : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
@@ -30,7 +30,6 @@ innodb_max_dirty_pages_pct_func       : BUG#41018 BUG#39382 2008-12-02 sven test
 log_output_basic     : Bug #40988       log_output_basic.test succeeded though syntactically false.
 innodb               : Bug #41056    Innodb.test shows some difference to its result file.
 innodb                            : Bug#41299 2008-12-08 alik
-log_bin_trust_function_creators_func : Bug#41003 Dec-12-2008 andrei todo:re-enable after merging the bug fixes from the main trees.
 federated_transactions            : Bug#29523 Transactions do not work
 ;backup_no_engine                  : Bug#36021 2008-04-13 rsomla server crashes when openning table with unknown storage engine
 ;backup_triggers_and_events       : Bug#37762 2008-07-01 rafal Test fails on remove_file for unknown reasons
