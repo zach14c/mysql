@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -117,7 +117,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_CREATE_EVENT, SQLCOM_SHOW_EVENTS,
   SQLCOM_SHOW_CREATE_TRIGGER,
   SQLCOM_ALTER_DB_UPGRADE,
-  SQLCOM_BACKUP, SQLCOM_RESTORE,
+  SQLCOM_BACKUP, SQLCOM_RESTORE, SQLCOM_PURGE_BACKUP_LOGS, 
 #ifdef BACKUP_TEST
   SQLCOM_BACKUP_TEST,
 #endif
@@ -194,6 +194,15 @@ typedef struct st_lex_server_options
   char *server_name, *host, *db, *username, *password, *scheme, *socket, *owner;
 } LEX_SERVER_OPTIONS;
 
+
+/**
+  Structure to hold parameters for CHANGE MASTER or START/STOP SLAVE
+  or SHOW NEW MASTER.
+
+  Remark: this should not be confused with Master_info (and perhaps
+  would better be renamed to st_lex_replication_info).  Some fields,
+  e.g., delay, are saved in Relay_log_info, not in Master_info.
+*/
 typedef struct st_lex_master_info
 {
   char *host, *user, *password, *log_file_name;
@@ -206,10 +215,11 @@ typedef struct st_lex_master_info
     changed variable or if it should be left at old value
    */
   enum {LEX_MI_UNCHANGED, LEX_MI_DISABLE, LEX_MI_ENABLE}
-    ssl, ssl_verify_server_cert, heartbeat_opt;
+    ssl, ssl_verify_server_cert, heartbeat_opt, repl_ignore_server_ids_opt;
   char *ssl_key, *ssl_cert, *ssl_ca, *ssl_capath, *ssl_cipher;
   char *relay_log_name;
   ulong relay_log_pos;
+  DYNAMIC_ARRAY repl_ignore_server_ids; 
 } LEX_MASTER_INFO;
 
 
@@ -678,6 +688,7 @@ public:
     case of an error during prepare the PS is not created.
   */
   bool first_execution;
+  bool first_natural_join_processing;
   bool first_cond_optimization;
   /* do not wrap view fields with Item_ref */
   bool no_wrap_view_item;
@@ -819,7 +830,7 @@ public:
   }
 
   void clear_index_hints(void) { index_hints= NULL; }
-
+  bool is_part_of_union() { return master_unit()->is_union(); }
 private:  
   /* current index hint kind. used in filling up index_hints */
   enum index_hint_type current_index_hint_type;
@@ -858,15 +869,12 @@ inline bool st_select_lex_unit::is_union ()
 #define ALTER_COALESCE_PARTITION (1L << 20)
 #define ALTER_REORGANIZE_PARTITION (1L << 21)
 #define ALTER_PARTITION          (1L << 22)
-#define ALTER_OPTIMIZE_PARTITION (1L << 23)
+#define ALTER_ADMIN_PARTITION    (1L << 23)
 #define ALTER_TABLE_REORG        (1L << 24)
 #define ALTER_REBUILD_PARTITION  (1L << 25)
 #define ALTER_ALL_PARTITION      (1L << 26)
-#define ALTER_ANALYZE_PARTITION  (1L << 27)
-#define ALTER_CHECK_PARTITION    (1L << 28)
-#define ALTER_REPAIR_PARTITION   (1L << 29)
-#define ALTER_REMOVE_PARTITIONING (1L << 30)
-#define ALTER_FOREIGN_KEY         (1L << 31)
+#define ALTER_REMOVE_PARTITIONING (1L << 27)
+#define ALTER_FOREIGN_KEY         (1L << 28)
 
 /**
   @brief Parsing data for CREATE or ALTER TABLE.
@@ -944,6 +952,7 @@ enum xa_option_words {XA_NONE, XA_JOIN, XA_RESUME, XA_ONE_PHASE,
                       XA_SUSPEND, XA_FOR_MIGRATE};
 
 extern const LEX_STRING null_lex_str;
+extern const LEX_STRING empty_lex_str;
 
 
 /*
@@ -1479,9 +1488,13 @@ public:
 
   /**
     TRUE if we're parsing a prepared statement: in this mode
-    we should allow placeholders and disallow multi-statements.
+    we should allow placeholders.
   */
   bool stmt_prepare_mode;
+  /**
+    TRUE if we should allow multi-statements.
+  */
+  bool multi_statements;
 
   /** State of the lexical analyser for comments. */
   enum_comment_state in_comment;
@@ -1528,6 +1541,7 @@ struct LEX: public Query_tables_list
   LEX_STRING backup_dir;				/* For RESTORE/BACKUP */
   bool backup_compression;
   char* to_log;                                 /* For PURGE MASTER LOGS TO */
+  ulonglong backup_id;     /* For PURGE BACKUP LOGS */
   char* x509_subject,*x509_issuer,*ssl_cipher;
   String *wild;
   sql_exchange *exchange;
@@ -1572,6 +1586,7 @@ struct LEX: public Query_tables_list
   List<Item>	      *insert_list,field_list,value_list,update_list;
   List<List_item>     many_values;
   List<set_var_base>  var_list;
+  List<Item_func_set_user_var> set_var_list; // in-query assignment list
   List<Item_param>    param_list;
   List<LEX_STRING>    view_list; // view list (list of field names in view)
   /*
@@ -1873,6 +1888,13 @@ struct LEX: public Query_tables_list
     }
     return FALSE;
   }
+
+  void clear_db_list()
+  {
+    db_list.empty();
+  }
+
+  int add_db_to_list(LEX_STRING *name);
 };
 
 

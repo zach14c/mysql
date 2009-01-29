@@ -11,12 +11,12 @@ do
   echo $a
   rm -f maria_log*
   ma_test2 -s -L -K -W -P -M -T -c -b32768 -t4 -A1 -m$a > /dev/null
-  maria_read_log -a -s >& /dev/null
+  maria_read_log -a -s >/dev/null 2>&1
   maria_chk -es test2
-  maria_read_log -a -s >& /dev/null
+  maria_read_log -a -s >/dev/null 2>&1
   maria_chk -es test2
   rm test2.MA?
-  maria_read_log -a -s >& /dev/null
+  maria_read_log -a -s >/dev/null 2>&1
   maria_chk -es test2
   a=$((a+1))
 done

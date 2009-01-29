@@ -96,7 +96,8 @@ enum StorageError {
 	StorageErrorTableNotEmpty		= -108,
 	StorageErrorTableSpaceNotExist	= -109,
 	StorageErrorDeviceFull			= -110,
-	StorageErrorTableSpaceDataFileExist	= -111
+	StorageErrorTableSpaceDataFileExist	= -111,
+	StorageErrorIOErrorSerialLog	= -112
 	};
 	
 static const int StoreErrorIndexShift	= 10;
@@ -114,7 +115,7 @@ public:
 	virtual void		lockIndexes(bool exclusiveLock=false);
 	virtual void		unlockIndexes(void);
 	virtual int			createIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
-	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql);
+	virtual int			dropIndex(StorageConnection *storageConnection, StorageIndexDesc *indexDesc, const char *sql, bool online);
 	virtual bool		validateIndex(int indexId, StorageIndexDesc *indexTarget);
 	virtual void		deleteIndexes();
 	virtual int			numberIndexes();
@@ -122,7 +123,7 @@ public:
 	virtual INT64		getSequenceValue(int delta);
 	virtual int			setSequenceValue(INT64 value);
 	virtual int			haveIndexes(int indexCount);
-	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength);
+	virtual const char*	cleanupFieldName(const char* name, char* buffer, int bufferLength, bool doubleQuotes);
 	virtual void		setTablePath(const char* path, bool tempTable);
 	virtual void		registerCollation(const char* collationName, void* arg);
 

@@ -277,7 +277,6 @@ my_bool acl_init(bool dont_read_acl_tables)
     DBUG_RETURN(1); /* purecov: inspected */
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
   /*
     It is safe to call acl_reload() since acl_* arrays and hashes which
     will be freed there are global static objects and thus are initialized
@@ -699,7 +698,7 @@ my_bool acl_reload(THD *thd)
   if (simple_open_n_lock_tables(thd, tables))
   {
     sql_print_error("Fatal error: Can't open and lock privilege tables: %s",
-		    thd->main_da.message());
+		    thd->stmt_da->message());
     goto end;
   }
 
@@ -3091,12 +3090,8 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
       continue;					// Add next user
     }
 
-    db_name= (table_list->view_db.length ?
-	      table_list->view_db.str :
-	      table_list->db);
-    table_name= (table_list->view_name.length ?
-		table_list->view_name.str :
-		table_list->table_name);
+    db_name= table_list->get_db_name();
+    table_name= table_list->get_table_name();
 
     /* Find/create cached table grant */
     grant_table= table_hash_search(Str->host.str, NullS, db_name,
@@ -3510,7 +3505,6 @@ my_bool grant_init()
     DBUG_RETURN(1);				/* purecov: deadcode */
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
   return_val=  grant_reload(thd);
   delete thd;
   /* Remember that we don't have a THD */
@@ -3924,8 +3918,8 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
     if (!want_access)
       continue;                                 // ok
 
-    if (!(~table->grant.privilege & want_access) || 
-        table->derived || table->schema_table)
+    if (!(~table->grant.privilege & want_access) ||
+        table->is_anonymous_derived_table() || table->schema_table)
     {
       /*
         It is subquery in the FROM clause. VIEW set table->derived after
@@ -3943,8 +3937,8 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
       continue;
     }
     if (!(grant_table= table_hash_search(sctx->host, sctx->ip,
-                                         table->db, sctx->priv_user,
-                                         table->table_name,0)))
+                                         table->get_db_name(), sctx->priv_user,
+                                         table->get_table_name(), FALSE)))
     {
       want_access &= ~table->grant.privilege;
       goto err;					// No grants
@@ -3985,7 +3979,7 @@ err:
              command,
              sctx->priv_user,
              sctx->host_or_ip,
-             table ? table->table_name : "unknown");
+             table ? table->get_table_name() : "unknown");
   }
   DBUG_RETURN(TRUE);
 }
@@ -4229,7 +4223,7 @@ bool check_column_grant_in_table_ref(THD *thd, TABLE_LIST * table_ref,
     @retval 1 Falure
   @details This function walks over the columns of a table reference 
    The columns may originate from different tables, depending on the kind of
-   table reference, e.g. join.
+   table reference, e.g. join, view.
    For each table it will retrieve the grant information and will use it
    to check the required access privileges for the fields requested from it.
 */    
@@ -4244,6 +4238,11 @@ bool check_grant_all_columns(THD *thd, ulong want_access_arg,
   GRANT_INFO *grant;
   /* Initialized only to make gcc happy */
   GRANT_TABLE *grant_table= NULL;
+  /* 
+     Flag that gets set if privilege checking has to be performed on column
+     level.
+  */
+  bool using_column_privileges= FALSE;
 
   rw_rdlock(&LOCK_grant);
 
@@ -4251,10 +4250,10 @@ bool check_grant_all_columns(THD *thd, ulong want_access_arg,
   {
     const char *field_name= fields->name();
 
-    if (table_name != fields->table_name())
+    if (table_name != fields->get_table_name())
     {
-      table_name= fields->table_name();
-      db_name= fields->db_name();
+      table_name= fields->get_table_name();
+      db_name= fields->get_db_name();
       grant= fields->grant();
       /* get a fresh one for each table */
       want_access= want_access_arg & ~grant->privilege;
@@ -4280,6 +4279,8 @@ bool check_grant_all_columns(THD *thd, ulong want_access_arg,
       GRANT_COLUMN *grant_column= 
         column_hash_search(grant_table, field_name,
                            (uint) strlen(field_name));
+      if (grant_column)
+        using_column_privileges= TRUE;
       if (!grant_column || (~grant_column->rights & want_access))
         goto err;
     }
@@ -4292,12 +4293,21 @@ err:
 
   char command[128];
   get_privilege_desc(command, sizeof(command), want_access);
-  my_error(ER_COLUMNACCESS_DENIED_ERROR, MYF(0),
-           command,
-           sctx->priv_user,
-           sctx->host_or_ip,
-           fields->name(),
-           table_name);
+  /*
+    Do not give an error message listing a column name unless the user has
+    privilege to see all columns.
+  */
+  if (using_column_privileges)
+    my_error(ER_TABLEACCESS_DENIED_ERROR, MYF(0),
+             command, sctx->priv_user,
+             sctx->host_or_ip, table_name); 
+  else
+    my_error(ER_COLUMNACCESS_DENIED_ERROR, MYF(0),
+             command,
+             sctx->priv_user,
+             sctx->host_or_ip,
+             fields->name(),
+             table_name);
   return 1;
 }
 
@@ -6132,9 +6142,9 @@ public:
   virtual ~Silence_routine_definer_errors()
   {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
 
   bool has_errors() { return is_grave; }
 
@@ -6143,10 +6153,9 @@ private:
 };
 
 bool
-Silence_routine_definer_errors::handle_error(uint sql_errno,
-                                       const char *message,
-                                       MYSQL_ERROR::enum_warning_level level,
-                                       THD *thd)
+Silence_routine_definer_errors::
+handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+             uint sql_errno, const char *message)
 {
   if (level == MYSQL_ERROR::WARN_LEVEL_ERROR)
   {
@@ -6402,10 +6411,12 @@ int wild_case_compare(CHARSET_INFO *cs, const char *str,const char *wildstr)
 }
 
 
-void update_schema_privilege(TABLE *table, char *buff, const char* db,
-                             const char* t_name, const char* column,
-                             uint col_length, const char *priv, 
-                             uint priv_length, const char* is_grantable)
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+static bool update_schema_privilege(THD *thd, TABLE *table, char *buff,
+                                    const char* db, const char* t_name,
+                                    const char* column, uint col_length,
+                                    const char *priv, uint priv_length,
+                                    const char* is_grantable)
 {
   int i= 2;
   CHARSET_INFO *cs= system_charset_info;
@@ -6418,14 +6429,16 @@ void update_schema_privilege(TABLE *table, char *buff, const char* db,
   if (column)
     table->field[i++]->store(column, col_length, cs);
   table->field[i++]->store(priv, priv_length, cs);
-  table->field[i]->store(is_grantable, (uint) strlen(is_grantable), cs);
-  table->file->ha_write_row(table->record[0]);
+  table->field[i]->store(is_grantable, strlen(is_grantable), cs);
+  return schema_table_store_record(thd, table);
 }
+#endif
 
 
 int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint counter;
   ACL_USER *acl_user;
   ulong want_access;
@@ -6459,8 +6472,14 @@ int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 
     strxmov(buff,"'",user,"'@'",host,"'",NullS);
     if (!(want_access & ~GRANT_ACL))
-      update_schema_privilege(table, buff, 0, 0, 0, 0,
-                              STRING_WITH_LEN("USAGE"), is_grantable);
+    {
+      if (update_schema_privilege(thd, table, buff, 0, 0, 0, 0,
+                                  STRING_WITH_LEN("USAGE"), is_grantable))
+      {
+        error= 1;
+        goto err;
+      }
+    }
     else
     {
       uint priv_id;
@@ -6468,16 +6487,22 @@ int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
       for (priv_id=0, j = SELECT_ACL;j <= GLOBAL_ACLS; priv_id++,j <<= 1)
       {
 	if (test_access & j)
-          update_schema_privilege(table, buff, 0, 0, 0, 0, 
-                                  command_array[priv_id],
-                                  command_lengths[priv_id], is_grantable);
+        {
+          if (update_schema_privilege(thd, table, buff, 0, 0, 0, 0, 
+                                      command_array[priv_id],
+                                      command_lengths[priv_id], is_grantable))
+          {
+            error= 1;
+            goto err;
+          }
+        }
       }
     }
   }
-
+err:
   pthread_mutex_unlock(&acl_cache->lock);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return(0);
 #endif
@@ -6487,6 +6512,7 @@ int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint counter;
   ACL_DB *acl_db;
   ulong want_access;
@@ -6524,24 +6550,36 @@ int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
       }
       strxmov(buff,"'",user,"'@'",host,"'",NullS);
       if (!(want_access & ~GRANT_ACL))
-        update_schema_privilege(table, buff, acl_db->db, 0, 0,
-                                0, STRING_WITH_LEN("USAGE"), is_grantable);
+      {
+        if (update_schema_privilege(thd, table, buff, acl_db->db, 0, 0,
+                                    0, STRING_WITH_LEN("USAGE"), is_grantable))
+        {
+          error= 1;
+          goto err;
+        }
+      }
       else
       {
         int cnt;
         ulong j,test_access= want_access & ~GRANT_ACL;
         for (cnt=0, j = SELECT_ACL; j <= DB_ACLS; cnt++,j <<= 1)
           if (test_access & j)
-            update_schema_privilege(table, buff, acl_db->db, 0, 0, 0,
-                                    command_array[cnt], command_lengths[cnt],
-                                    is_grantable);
+          {
+            if (update_schema_privilege(thd, table, buff, acl_db->db, 0, 0, 0,
+                                        command_array[cnt], command_lengths[cnt],
+                                        is_grantable))
+            {
+              error= 1;
+              goto err;
+            }
+          }
       }
     }
   }
-
+err:
   pthread_mutex_unlock(&acl_cache->lock);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return (0);
 #endif
@@ -6551,6 +6589,7 @@ int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint index;
   char buff[100];
   TABLE *table= tables->table;
@@ -6590,8 +6629,15 @@ int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 
       strxmov(buff, "'", user, "'@'", host, "'", NullS);
       if (!test_access)
-        update_schema_privilege(table, buff, grant_table->db, grant_table->tname,
-                                0, 0, STRING_WITH_LEN("USAGE"), is_grantable);
+      {
+        if (update_schema_privilege(thd, table, buff, grant_table->db,
+                                    grant_table->tname, 0, 0,
+                                    STRING_WITH_LEN("USAGE"), is_grantable))
+        {
+          error= 1;
+          goto err;
+        }
+      }
       else
       {
         ulong j;
@@ -6599,17 +6645,24 @@ int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
         for (cnt= 0, j= SELECT_ACL; j <= TABLE_ACLS; cnt++, j<<= 1)
         {
           if (test_access & j)
-            update_schema_privilege(table, buff, grant_table->db, 
-                                    grant_table->tname, 0, 0, command_array[cnt],
-                                    command_lengths[cnt], is_grantable);
+          {
+            if (update_schema_privilege(thd, table, buff, grant_table->db,
+                                        grant_table->tname, 0, 0,
+                                        command_array[cnt],
+                                        command_lengths[cnt], is_grantable))
+            {
+              error= 1;
+              goto err;
+            }
+          }
         }
       }
-    }
+    }   
   }
-
+err:
   rw_unlock(&LOCK_grant);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return (0);
 #endif
@@ -6619,6 +6672,7 @@ int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 int fill_schema_column_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
 {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+  int error= 0;
   uint index;
   char buff[100];
   TABLE *table= tables->table;
@@ -6668,22 +6722,28 @@ int fill_schema_column_privileges(THD *thd, TABLE_LIST *tables, COND *cond)
               GRANT_COLUMN *grant_column = (GRANT_COLUMN*)
                 hash_element(&grant_table->hash_columns,col_index);
               if ((grant_column->rights & j) && (table_access & j))
-                  update_schema_privilege(table, buff, grant_table->db,
-                                          grant_table->tname,
-                                          grant_column->column,
-                                          grant_column->key_length,
-                                          command_array[cnt],
-                                          command_lengths[cnt], is_grantable);
+              {
+                if (update_schema_privilege(thd, table, buff, grant_table->db,
+                                            grant_table->tname,
+                                            grant_column->column,
+                                            grant_column->key_length,
+                                            command_array[cnt],
+                                            command_lengths[cnt], is_grantable))
+                {
+                  error= 1;
+                  goto err;
+                }
+              }
             }
           }
         }
       }
     }
   }
-
+err:
   rw_unlock(&LOCK_grant);
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error);
 #else
   return (0);
 #endif

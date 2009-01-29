@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # generate lexer files from flex input files.
 

@@ -5,6 +5,14 @@
 # Binlog is required
 --source include/have_log_bin.inc
 
+
+--echo Bug#37938 - Test "mysqldump" lacks various insert statements
+--echo Turn off concurrent inserts to avoid random errors
+--echo NOTE:  We reset the variable back to saved value at the end of test
+SET @OLD_CONCURRENT_INSERT = @@GLOBAL.CONCURRENT_INSERT;
+SET @@GLOBAL.CONCURRENT_INSERT = 0;
+
+
 --disable_warnings
 DROP TABLE IF EXISTS t1, `"t"1`, t1aa, t2, t2aa, t3;
 drop database if exists mysqldump_test_db;
@@ -1593,6 +1601,7 @@ DROP TABLE t1,t2;
 --replace_regex /-- [^D][^u][^m][^p].*// /\/\*!.*// / on [0-9 :-]+/ on DATE/
 --exec $MYSQL_DUMP test
 
+
 --echo #
 --echo # End of 5.0 tests
 --echo #
@@ -1637,7 +1646,7 @@ select * from t2;
 # Now we test with multiple threads, but less threads than files.
 create table words(a varchar(255));
 create table words2(b varchar(255));
---exec $MYSQL_IMPORT --silent --use-threads=2 test $MYSQLTEST_VARDIR/tmp/t1.txt $MYSQLTEST_VARDIR/tmp/t2.txt $MYSQLTEST_VARDIR/std_data_ln/words.dat $MYSQLTEST_VARDIR/std_data_ln/words2.dat
+--exec $MYSQL_IMPORT --silent --use-threads=2 test $MYSQLTEST_VARDIR/tmp/t1.txt $MYSQLTEST_VARDIR/tmp/t2.txt $MYSQLTEST_VARDIR/std_data/words.dat $MYSQLTEST_VARDIR/std_data/words2.dat
 select * from t1;
 select * from t2;
 select * from words;
@@ -1647,7 +1656,7 @@ select * from words2;
 drop table words;
 --replace_regex /.*mysqlimport(\.exe)*/mysql-import/
 --error 1
---exec $MYSQL_IMPORT --silent --use-threads=2 test $MYSQLTEST_VARDIR/tmp/t1.txt $MYSQLTEST_VARDIR/tmp/t2.txt $MYSQLTEST_VARDIR/std_data_ln/words.dat $MYSQLTEST_VARDIR/std_data_ln/words2.dat 2>&1
+--exec $MYSQL_IMPORT --silent --use-threads=2 test $MYSQLTEST_VARDIR/tmp/t1.txt $MYSQLTEST_VARDIR/tmp/t2.txt $MYSQLTEST_VARDIR/std_data/words.dat $MYSQLTEST_VARDIR/std_data/words2.dat 2>&1
 
 drop table t1;
 drop table t2;
@@ -1858,6 +1867,10 @@ DROP DATABASE mysqldump_test_db;
 --echo
 --echo # -- End of test case for Bug#32538.
 --echo
+
+# We reset concurrent_inserts value to whatever it was at the start of the test
+SET @@GLOBAL.CONCURRENT_INSERT = @OLD_CONCURRENT_INSERT;
+
 
 ###########################################################################
 

@@ -35,7 +35,6 @@ public:
 	
 	const UCHAR		*data;
 	int			recordNumber;
-	int			tableSpaceId;
 	int			length;
 	int			sectionId;
 };

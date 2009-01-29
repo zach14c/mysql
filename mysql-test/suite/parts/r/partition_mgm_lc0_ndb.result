@@ -55,7 +55,15 @@ SHOW CREATE TABLE TableA;
 Table	Create Table
 TableA	CREATE TABLE `TableA` (
   `a` int(11) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY KEY (a) (PARTITION parta ENGINE = ndbcluster, PARTITION partB ENGINE = ndbcluster, PARTITION Partc ENGINE = ndbcluster, PARTITION PartD ENGINE = ndbcluster, PARTITION partE ENGINE = ndbcluster, PARTITION Partf ENGINE = ndbcluster, PARTITION PartG ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY KEY (a)
+(PARTITION parta ENGINE = ndbcluster,
+ PARTITION partB ENGINE = ndbcluster,
+ PARTITION Partc ENGINE = ndbcluster,
+ PARTITION PartD ENGINE = ndbcluster,
+ PARTITION partE ENGINE = ndbcluster,
+ PARTITION Partf ENGINE = ndbcluster,
+ PARTITION PartG ENGINE = ndbcluster) */
 ALTER TABLE TableA COALESCE PARTITION 4;
 SELECT * FROM TableA;
 a
@@ -75,17 +83,21 @@ SHOW CREATE TABLE TableA;
 Table	Create Table
 TableA	CREATE TABLE `TableA` (
   `a` int(11) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY KEY (a) (PARTITION parta ENGINE = ndbcluster, PARTITION partB ENGINE = ndbcluster, PARTITION Partc ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY KEY (a)
+(PARTITION parta ENGINE = ndbcluster,
+ PARTITION partB ENGINE = ndbcluster,
+ PARTITION Partc ENGINE = ndbcluster) */
 # Test of REORGANIZE PARTITIONS
 # Should not work on HASH/KEY
 ALTER TABLE TableA REORGANIZE PARTITION parta,partB,Partc INTO
 (PARTITION PARTA ,
 PARTITION partc );
-ERROR HY000: REORGANISE PARTITION can only be used to reorganise partitions not to change their numbers
+ERROR HY000: REORGANIZE PARTITION can only be used to reorganize partitions not to change their numbers
 ALTER TABLE TableA REORGANIZE PARTITION parta,Partc INTO
 (PARTITION partB ,
 PARTITION parta );
-ERROR HY000: When reorganising a set of partitions they must be in consecutive order
+ERROR HY000: When reorganizing a set of partitions they must be in consecutive order
 ALTER TABLE TableA REORGANIZE PARTITION parta,partB INTO
 (PARTITION partB  COMMENT="Previusly named parta",
 PARTITION parta  COMMENT="Previusly named partB");
@@ -107,7 +119,11 @@ SHOW CREATE TABLE TableA;
 Table	Create Table
 TableA	CREATE TABLE `TableA` (
   `a` int(11) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY KEY (a) (PARTITION partB COMMENT = 'Previusly named parta' ENGINE = ndbcluster, PARTITION parta COMMENT = 'Previusly named partB' ENGINE = ndbcluster, PARTITION Partc ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY KEY (a)
+(PARTITION partB COMMENT = 'Previusly named parta' ENGINE = ndbcluster,
+ PARTITION parta COMMENT = 'Previusly named partB' ENGINE = ndbcluster,
+ PARTITION Partc ENGINE = ndbcluster) */
 # Test of RENAME TABLE
 RENAME TABLE TableA to TableB;
 SELECT * FROM TableB;

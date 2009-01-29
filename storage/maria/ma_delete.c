@@ -116,6 +116,7 @@ int maria_delete(MARIA_HA *info,const uchar *record)
   info->update= HA_STATE_CHANGED+HA_STATE_DELETED+HA_STATE_ROW_CHANGED;
   share->state.changed|= (STATE_NOT_OPTIMIZED_ROWS | STATE_NOT_MOVABLE |
                           STATE_NOT_ZEROFILLED);
+  info->state->changed=1;
 
   mi_sizestore(lastpos, info->cur_row.lastpos);
   (void)(_ma_writeinfo(info,WRITEINFO_UPDATE_KEYFILE));
@@ -1112,7 +1113,7 @@ static int underflow(register MARIA_HA *info, MARIA_KEYDEF *keyinfo,
     MARIA_KEY_PARAM anc_key_inserted;
     size_t tmp_length;
 
-    if (first_key)
+    if (keypos == anc_buff + share->keypage_header + key_reflength)
       anc_pos= 0;				/* First key */
     else
     {

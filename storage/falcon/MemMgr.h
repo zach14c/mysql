@@ -19,6 +19,7 @@
 
 #include "Mutex.h"
 #include "SyncObject.h"
+#include <limits.h>
 
 
 #ifndef MEM_DEBUG
@@ -135,12 +136,12 @@ public:
 	friend void  MemMgrLogDump();
 
 protected:
-	MemBlock*	alloc(int size);
+	MemBlock*	alloc(size_t size);
 	static void	corrupt(const char* text);
 	
 public:
-	void*		allocate(int size);
-	void*		allocateDebug(int size, const char* fileName, int line);
+	void*		allocate(size_t size);
+	void*		allocateDebug(size_t size, const char* fileName, int line);
 	void		releaseBlock(MemBlock *block);
 	void		validateBlock(MemBlock *block);
 	void		analyze (int mask, Stream *stream, InfoTable *summaryTable, InfoTable *detailTable);

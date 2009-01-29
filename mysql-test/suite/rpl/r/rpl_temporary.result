@@ -4,6 +4,7 @@ reset master;
 reset slave;
 drop table if exists t1,t2,t3,t4,t5,t6,t7,t8,t9;
 start slave;
+call mtr.add_suppression("Slave: Can\'t find record in \'user\' Error_code: 1032");
 reset master;
 SET @save_select_limit=@@session.sql_select_limit;
 SET @@session.sql_select_limit=10, @@session.pseudo_thread_id=100;
@@ -24,6 +25,9 @@ drop table if exists t1,t2;
 create table t1(f int);
 create table t2(f int);
 insert into t1 values (1),(2),(3),(4),(5),(6),(7),(8),(9),(10);
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+10
 create temporary table t3(f int);
 insert into t3 select * from t1 where f<6;
 create temporary table t3(f int);

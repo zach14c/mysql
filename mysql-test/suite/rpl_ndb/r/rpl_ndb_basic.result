@@ -127,6 +127,7 @@ select count(*) from t1;
 count(*)
 12
 DROP table t1;
+call mtr.add_suppression("Slave: Got error 146 during COMMIT Error_code: 1180");
 CREATE TABLE `t1` ( `nid` int(11) NOT NULL default '0',
 `nom` char(4) default NULL,
 `prenom` char(4) default NULL,
@@ -179,8 +180,10 @@ Last_IO_Errno	<Last_IO_Errno>
 Last_IO_Error	<Last_IO_Error>
 Last_SQL_Errno	<Last_SQL_Errno>
 Last_SQL_Error	<Last_SQL_Error>
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 set GLOBAL slave_transaction_retries=10;
-START SLAVE;
+include/start_slave.inc
 select * from t1 order by nid;
 nid	nom	prenom
 1	LOCK	ABC1
@@ -247,4 +250,24 @@ c1
 103
 104
 105
+DROP TABLE t1;
+create table t1 (a int primary key,
+b00 int,b01 int,b02 int,b03 int,b04 int,b05 int,b06 int,b07 int,
+b08 int,b09 int,b10 int,b11 int,b12 int,b13 int,b14 int,b15 int,
+b16 int,b17 int,b18 int,b19 int,b20 int,b21 int,b22 int,b23 int,
+b24 int,b25 int,b26 int,b27 int,b28 int,b29 int,b30 int,b31 int,
+b32 int,b33 int,b34 int,b35 int,b36 int,b37 int,b38 int,b39 int,
+b40 int,b41 int,b42 int,b43 int,b44 int,b45 int,b46 int,b47 int,
+b48 int,b49 int,b50 int,b51 int,b52 int,b53 int,b54 int,b55 int,
+b56 int,b57 int,b58 int,b59 int,b60 int,b61 int,b62 int,b63 int,
+b64 int,b65 int,b66 int,b67 int,b68 int,b69 int,b70 int) engine=ndb;
+insert into t1 (a,b00) values (1,1);
+update t1 set b00 = 2 where a = 1;
+update t1 set b66 = 1 where a = 1;
+select b00 from t1;
+b00
+1
+select b00 from t1;
+b00
+2
 DROP TABLE t1;

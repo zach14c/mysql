@@ -109,7 +109,7 @@ enum NType {
 	Cast,
 	BlobRef,
 	Upper,
-	Lower,
+	Lower
    };
 
 class NNode  

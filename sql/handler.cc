@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #endif
 
 #include "mysql_priv.h"
+#include "debug_sync.h"
 #include "rpl_filter.h"
 #include <myisampack.h>
 #include "myisam.h"
@@ -32,6 +33,8 @@
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
 #endif
+
+#include "rpl_handler.h"
 
 /*
   While we have legacy_db_type, we have this array to
@@ -261,7 +264,7 @@ handler *get_ha_partition(partition_info *part_info)
   DBUG_ENTER("get_ha_partition");
   if ((partition= new ha_partition(partition_hton, part_info)))
   {
-    if (partition->initialise_partition(current_thd->mem_root))
+    if (partition->initialize_partition(current_thd->mem_root))
     {
       delete partition;
       partition= 0;
@@ -371,7 +374,12 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
   handlerton *hton= (handlerton *)plugin->data;
   DBUG_ENTER("ha_finalize_handlerton");
 
-  switch (hton->state) {
+  /* hton can be NULL here, if ha_initialize_handlerton() failed. */
+  if (!hton)
+    goto end;
+
+  switch (hton->state)
+  {
   case SHOW_OPTION_NO:
   case SHOW_OPTION_DISABLED:
     break;
@@ -398,8 +406,22 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
     }
   }
 
+  /*
+    In case a plugin is uninstalled and re-installed later, it should
+    reuse an array slot. Otherwise the number of uninstall/install
+    cycles would be limited.
+  */
+  if (hton->slot != HA_SLOT_UNDEF)
+  {
+    /* Make sure we are not unpluging another plugin */
+    DBUG_ASSERT(hton2plugin[hton->slot] == plugin);
+    DBUG_ASSERT(hton->slot < MAX_HA);
+    hton2plugin[hton->slot]= NULL;
+  }
+
   my_free((uchar*)hton, MYF(0));
 
+ end:
   DBUG_RETURN(0);
 }
 
@@ -420,6 +442,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
     not initialized.
    */
   bzero(hton, sizeof(hton));
+  hton->slot= HA_SLOT_UNDEF;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
   if (plugin->plugin->init)
@@ -442,6 +465,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
   case SHOW_OPTION_YES:
     {
       uint tmp;
+      ulong fslot;
       /* now check the db_type for conflict */
       if (hton->db_type <= DB_TYPE_UNKNOWN ||
           hton->db_type >= DB_TYPE_DEFAULT ||
@@ -466,7 +490,31 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
       tmp= hton->savepoint_offset;
       hton->savepoint_offset= savepoint_alloc_size;
       savepoint_alloc_size+= tmp;
-      hton->slot= total_ha++;
+
+      /*
+        In case a plugin is uninstalled and re-installed later, it should
+        reuse an array slot. Otherwise the number of uninstall/install
+        cycles would be limited. So look for a free slot.
+      */
+      DBUG_PRINT("plugin", ("total_ha: %lu", total_ha));
+      for (fslot= 0; fslot < total_ha; fslot++)
+      {
+        if (!hton2plugin[fslot])
+          break;
+      }
+      if (fslot < total_ha)
+        hton->slot= fslot;
+      else
+      {
+        if (total_ha >= MAX_HA)
+        {
+          sql_print_error("Too many plugins loaded. Limit is %lu. "
+                          "Failed on '%s'", (ulong) MAX_HA, plugin->name.str);
+          goto err;
+        }
+        hton->slot= total_ha++;
+      }
+
       hton2plugin[hton->slot]=plugin;
       if (hton->prepare)
         total_ha_2pc++;
@@ -1145,6 +1193,7 @@ int ha_commit_trans(THD *thd, bool all)
     if (cookie)
       tc_log->unlog(cookie, xid);
     DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
+    RUN_HOOK(transaction, after_commit, (thd, all));
 end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
@@ -1250,7 +1299,12 @@ int ha_rollback_trans(THD *thd, bool all)
     trans->ha_list= 0;
     trans->no_2pc=0;
     if (is_real_trans)
-      thd->transaction.xid_state.xid.null();
+    {
+      if (thd->transaction_rollback_request)
+        thd->transaction.xid_state.rm_error= thd->stmt_da->sql_errno();
+      else
+        thd->transaction.xid_state.xid.null();
+    }
     if (all)
     {
       thd->variables.tx_isolation=thd->session_tx_isolation;
@@ -1275,6 +1329,7 @@ int ha_rollback_trans(THD *thd, bool all)
     push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                  ER_WARNING_NOT_COMPLETE_ROLLBACK,
                  ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
+  RUN_HOOK(transaction, after_rollback, (thd, all));
   DBUG_RETURN(error);
 }
 
@@ -1819,20 +1874,20 @@ const char *get_canonical_filename(handler *file, const char *path,
 struct Ha_delete_table_error_handler: public Internal_error_handler
 {
 public:
-  virtual bool handle_error(uint sql_errno,
-                            const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno,
+                            const char *message);
   char buff[MYSQL_ERRMSG_SIZE];
 };
 
 
 bool
 Ha_delete_table_error_handler::
-handle_error(uint sql_errno,
-             const char *message,
+handle_error(THD *thd,
              MYSQL_ERROR::enum_warning_level level,
-             THD *thd)
+             uint sql_errno,
+             const char *message)
 {
   /* Grab the error message */
   strmake(buff, message, sizeof(buff)-1);
@@ -2172,7 +2227,12 @@ prev_insert_id(ulonglong nr, struct system_variables *variables)
   - In both cases, the reserved intervals are remembered in
     thd->auto_inc_intervals_in_cur_stmt_for_binlog if statement-based
     binlogging; the last reserved interval is remembered in
-    auto_inc_interval_for_cur_row.
+    auto_inc_interval_for_cur_row. The number of reserved intervals is
+    remembered in auto_inc_intervals_count. It differs from the number of
+    elements in thd->auto_inc_intervals_in_cur_stmt_for_binlog() because the
+    latter list is cumulative over all statements forming one binlog event
+    (when stored functions and triggers are used), and collapses two
+    contiguous intervals in one (see its append() method).
 
     The idea is that generated auto_increment values are predictable and
     independent of the column values in the table.  This is needed to be
@@ -2256,8 +2316,6 @@ int handler::update_auto_increment()
         handler::estimation_rows_to_insert was set by
         handler::ha_start_bulk_insert(); if 0 it means "unknown".
       */
-      uint nb_already_reserved_intervals=
-        thd->auto_inc_intervals_in_cur_stmt_for_binlog.nb_elements();
       ulonglong nb_desired_values;
       /*
         If an estimation was given to the engine:
@@ -2269,17 +2327,17 @@ int handler::update_auto_increment()
         start, starting from AUTO_INC_DEFAULT_NB_ROWS.
         Don't go beyond a max to not reserve "way too much" (because
         reservation means potentially losing unused values).
+        Note that in prelocked mode no estimation is given.
       */
-      if (nb_already_reserved_intervals == 0 &&
-          (estimation_rows_to_insert > 0))
+      if ((auto_inc_intervals_count == 0) && (estimation_rows_to_insert > 0))
         nb_desired_values= estimation_rows_to_insert;
       else /* go with the increasing defaults */
       {
         /* avoid overflow in formula, with this if() */
-        if (nb_already_reserved_intervals <= AUTO_INC_DEFAULT_NB_MAX_BITS)
+        if (auto_inc_intervals_count <= AUTO_INC_DEFAULT_NB_MAX_BITS)
         {
-          nb_desired_values= AUTO_INC_DEFAULT_NB_ROWS * 
-            (1 << nb_already_reserved_intervals);
+          nb_desired_values= AUTO_INC_DEFAULT_NB_ROWS *
+            (1 << auto_inc_intervals_count);
           set_if_smaller(nb_desired_values, AUTO_INC_DEFAULT_NB_MAX);
         }
         else
@@ -2292,7 +2350,7 @@ int handler::update_auto_increment()
                          &nb_reserved_values);
       if (nr == ~(ulonglong) 0)
         DBUG_RETURN(HA_ERR_AUTOINC_READ_FAILED);  // Mark failure
-      
+
       /*
         That rounding below should not be needed when all engines actually
         respect offset and increment in get_auto_increment(). But they don't
@@ -2303,7 +2361,7 @@ int handler::update_auto_increment()
       */
       nr= compute_next_insert_id(nr-1, variables);
     }
-    
+
     if (table->s->next_number_keypart == 0)
     {
       /* We must defer the appending until "nr" has been possibly truncated */
@@ -2347,8 +2405,9 @@ int handler::update_auto_increment()
   {
     auto_inc_interval_for_cur_row.replace(nr, nb_reserved_values,
                                           variables->auto_increment_increment);
+    auto_inc_intervals_count++;
     /* Row-based replication does not need to store intervals in binlog */
-    if (!thd->current_stmt_binlog_row_based)
+    if (mysql_bin_log.is_open() && !thd->current_stmt_binlog_row_based)
         thd->auto_inc_intervals_in_cur_stmt_for_binlog.append(auto_inc_interval_for_cur_row.minimum(),
                                                               auto_inc_interval_for_cur_row.values(),
                                                               variables->auto_increment_increment);
@@ -2465,6 +2524,7 @@ void handler::ha_release_auto_increment()
   release_auto_increment();
   insert_id_for_cur_row= 0;
   auto_inc_interval_for_cur_row.replace(0, 0, 0);
+  auto_inc_intervals_count= 0;
   if (next_insert_id > 0)
   {
     next_insert_id= 0;
@@ -2500,7 +2560,7 @@ void handler::print_keydup_error(uint key_nr, const char *msg)
       str.append(STRING_WITH_LEN("..."));
     }
     my_printf_error(ER_DUP_ENTRY, msg,
-		    MYF(0), str.c_ptr(), table->key_info[key_nr].name);
+		    MYF(0), str.c_ptr_safe(), table->key_info[key_nr].name);
   }
 }
 
@@ -2571,7 +2631,7 @@ void handler::print_error(int error, myf errflag)
         str.append(STRING_WITH_LEN("..."));
       }
       my_error(ER_FOREIGN_DUPLICATE_KEY, MYF(0), table_share->table_name.str,
-        str.c_ptr(), key_nr+1);
+        str.c_ptr_safe(), key_nr+1);
       DBUG_VOID_RETURN;
     }
     textno= ER_DUP_KEY;
@@ -2722,8 +2782,63 @@ bool handler::get_error_message(int error, String* buf)
 }
 
 
+/**
+  Check for incompatible collation changes.
+   
+  @retval
+    HA_ADMIN_NEEDS_UPGRADE   Table may have data requiring upgrade.
+  @retval
+    0                        No upgrade required.
+*/
+
+int handler::check_collation_compatibility()
+{
+  ulong mysql_version= table->s->mysql_version;
+
+  if (mysql_version < 60006)
+  {
+    KEY *key= table->key_info;
+    KEY *key_end= key + table->s->keys;
+    for (; key < key_end; key++)
+    {
+      KEY_PART_INFO *key_part= key->key_part;
+      KEY_PART_INFO *key_part_end= key_part + key->key_parts;
+      for (; key_part < key_part_end; key_part++)
+      {
+        if (!key_part->fieldnr)
+          continue;
+        Field *field= table->field[key_part->fieldnr - 1];
+        uint cs_number= field->charset()->number;
+        if ((mysql_version < 50048 &&
+             (cs_number == 11 ||   /* ascii_general_ci - bug #29499, bug #27562 */
+              cs_number == 41 ||   /* latin7_general_ci - bug #29461 */
+              cs_number == 42 ||   /* latin7_general_cs - bug #29461 */
+              cs_number == 20 ||   /* latin7_estonian_cs - bug #29461 */
+              cs_number == 21 ||   /* latin2_hungarian_ci - bug #29461 */
+              cs_number == 22 ||   /* koi8u_general_ci - bug #29461 */
+              cs_number == 23 ||   /* cp1251_ukrainian_ci - bug #29461 */
+              cs_number == 26)) || /* cp1250_general_ci - bug #29461 */
+            (mysql_version < 50124 &&
+             (cs_number == 33 ||   /* utf8_general_ci - bug #27877 */
+              cs_number == 35)) || /* ucs2_general_ci - bug #27877 */
+            (mysql_version < 60001 &&
+             (cs_number == 2)) ||  /* latin2_czech_cs - WL #3664 */
+            (mysql_version < 60006 &&
+             (cs_number == 1 ||    /* big5_chinese_ci - bug #25420 */
+              cs_number == 36 ||   /* cp866_general_ci - bug #25420 */
+              cs_number == 24 ||   /* gb2312_chinese_ci - bug #25420 */
+              cs_number == 28)))   /* gbk_chinese_ci - bug #25420 */
+          return HA_ADMIN_NEEDS_UPGRADE;
+      }  
+    }  
+  }  
+  return 0;
+}
+
+
 int handler::ha_check_for_upgrade(HA_CHECK_OPT *check_opt)
 {
+  int error;
   KEY *keyinfo, *keyend;
   KEY_PART_INFO *keypart, *keypartend;
 
@@ -2752,6 +2867,10 @@ int handler::ha_check_for_upgrade(HA_CHECK_OPT *check_opt)
   }
   if (table->s->frm_version != FRM_VER_TRUE_VARCHAR)
     return HA_ADMIN_NEEDS_ALTER;
+
+  if ((error= check_collation_compatibility()))
+    return error;
+    
   return check_for_upgrade(check_opt);
 }
 
@@ -2827,7 +2946,7 @@ uint handler::get_dup_key(int error)
   if (error == HA_ERR_FOUND_DUPP_KEY || error == HA_ERR_FOREIGN_DUPLICATE_KEY ||
       error == HA_ERR_FOUND_DUPP_UNIQUE || error == HA_ERR_NULL_IN_SPATIAL ||
       error == HA_ERR_DROP_INDEX_FK)
-    info(HA_STATUS_ERRKEY | HA_STATUS_NO_LOCK);
+    table->file->info(HA_STATUS_ERRKEY | HA_STATUS_NO_LOCK);
   DBUG_RETURN(table->file->errkey);
 }
 
@@ -3509,7 +3628,7 @@ int ha_init_key_cache(const char *name, KEY_CACHE *key_cache)
   if (!key_cache->key_cache_inited)
   {
     pthread_mutex_lock(&LOCK_global_system_variables);
-    ulong tmp_buff_size= (ulong) key_cache->param_buff_size;
+    size_t tmp_buff_size= (size_t) key_cache->param_buff_size;
     uint tmp_block_size= (uint) key_cache->param_block_size;
     uint division_limit= key_cache->param_division_limit;
     uint age_threshold=  key_cache->param_age_threshold;
@@ -3533,7 +3652,7 @@ int ha_resize_key_cache(KEY_CACHE *key_cache)
   if (key_cache->key_cache_inited)
   {
     pthread_mutex_lock(&LOCK_global_system_variables);
-    long tmp_buff_size= (long) key_cache->param_buff_size;
+    size_t tmp_buff_size= (size_t) key_cache->param_buff_size;
     long tmp_block_size= (long) key_cache->param_block_size;
     uint division_limit= key_cache->param_division_limit;
     uint age_threshold=  key_cache->param_age_threshold;
@@ -3770,27 +3889,33 @@ static my_bool binlog_func_foreach(THD *thd, binlog_func_st *bfn)
 {
   hton_list_st hton_list;
   uint i, sz;
+  int res= 0;
 
   hton_list.sz= 0;
   plugin_foreach(thd, binlog_func_list,
                  MYSQL_STORAGE_ENGINE_PLUGIN, &hton_list);
 
   for (i= 0, sz= hton_list.sz; i < sz ; i++)
-    hton_list.hton[i]->binlog_func(hton_list.hton[i], thd, bfn->fn, bfn->arg);
-  return FALSE;
+    res|= hton_list.hton[i]->binlog_func(hton_list.hton[i], thd, bfn->fn, bfn->arg);
+  return res != 0;
 }
 
 int ha_reset_logs(THD *thd)
 {
   binlog_func_st bfn= {BFN_RESET_LOGS, 0};
   binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
   return 0;
 }
 
-void ha_reset_slave(THD* thd)
+int ha_reset_slave(THD* thd)
 {
   binlog_func_st bfn= {BFN_RESET_SLAVE, 0};
   binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
+  return 0;
 }
 
 void ha_binlog_wait(THD* thd)
@@ -3810,7 +3935,45 @@ int ha_binlog_index_purge_file(THD *thd, const char *file)
 {
   binlog_func_st bfn= {BFN_BINLOG_PURGE_FILE, (void *)file};
   binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
   return 0;
+}
+
+static int ha_global_schema_lock(THD *thd, int no_queue)
+{
+  binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_LOCK, (void *)&no_queue};
+  int res= binlog_func_foreach(thd, &bfn);
+  if (res || thd->stmt_da->is_error())
+    return 1;
+  return 0;
+}
+
+static int ha_global_schema_unlock(THD *thd)
+{
+  binlog_func_st bfn= {BFN_GLOBAL_SCHEMA_UNLOCK, 0};
+  binlog_func_foreach(thd, &bfn);
+  if (thd->stmt_da->is_error())
+    return 1;
+  return 0;
+}
+
+Ha_global_schema_lock_guard::Ha_global_schema_lock_guard(THD *thd)
+  : m_thd(thd), m_lock(0)
+{
+}
+
+Ha_global_schema_lock_guard::~Ha_global_schema_lock_guard()
+{
+  if (m_lock)
+    ha_global_schema_unlock(m_thd);
+}
+
+int Ha_global_schema_lock_guard::lock(int no_queue)
+{
+  DBUG_ASSERT(m_lock == 0);
+  m_lock= 1;
+  return ha_global_schema_lock(m_thd, no_queue);
 }
 
 struct binlog_log_query_st
@@ -4030,8 +4193,8 @@ handler::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
     other Error or can't perform the requested scan
 */
 
-int handler::multi_range_read_info(uint keyno, uint n_ranges, uint n_rows,
-                                   uint *bufsz, uint *flags, COST_VECT *cost)
+ha_rows handler::multi_range_read_info(uint keyno, uint n_ranges, uint n_rows,
+                                       uint *bufsz, uint *flags, COST_VECT *cost)
 {
   *bufsz= 0; /* Default implementation doesn't need a buffer */
 
@@ -4202,10 +4365,10 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
   uint elem_size;
   uint keyno;
   Item *pushed_cond= NULL;
-  handler *new_h2;
+  handler *new_h2= 0;
   DBUG_ENTER("DsMrr_impl::dsmrr_init");
   keyno= h->active_index;
-  DBUG_ASSERT(h2 == NULL);
+
   if (mode & HA_MRR_USE_DEFAULT_IMPL || mode & HA_MRR_SORTED)
   {
     use_default_impl= TRUE;
@@ -4213,20 +4376,23 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
                                                   n_ranges, mode, buf));
   }
   rowids_buf= buf->buffer;
-  //psergey-todo: don't add key_length as it is not needed anymore
-  rowids_buf += key->key_length + h->ref_length;
 
   is_mrr_assoc= !test(mode & HA_MRR_NO_ASSOCIATION);
+
+  if (is_mrr_assoc)
+    status_var_increment(table->in_use->status_var.ha_multi_range_read_init_count);
+ 
   rowids_buf_end= buf->buffer_end;
-  
   elem_size= h->ref_length + (int)is_mrr_assoc * sizeof(void*);
   rowids_buf_last= rowids_buf + 
                       ((rowids_buf_end - rowids_buf)/ elem_size)*
                       elem_size;
   rowids_buf_end= rowids_buf_last;
 
-  /* Create a separate handler object to do rndpos() calls. */
-  THD *thd= current_thd;
+  if (!h2)
+  {
+    /* Create a separate handler object to do rndpos() calls. */
+    THD *thd= current_thd;
 
   /*
     ::clone() takes up a lot of stack, especially on 64 bit platforms.
@@ -4234,30 +4400,32 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
   */
   if (check_stack_overrun(thd, 5*STACK_MIN_SIZE, (uchar*) &new_h2))
     DBUG_RETURN(1);
-  if (!(new_h2= h->clone(thd->mem_root)) || 
-      new_h2->ha_external_lock(thd, F_RDLCK))
-  {
-    delete new_h2;
-    DBUG_RETURN(1);
+    if (!(new_h2= h->clone(thd->mem_root)) || 
+        new_h2->ha_external_lock(thd, F_RDLCK))
+    {
+      delete new_h2;
+      DBUG_RETURN(1);
+    }
+
+    if (keyno == h->pushed_idx_cond_keyno)
+      pushed_cond= h->pushed_idx_cond;
+    if (h->ha_index_end())
+    {
+      new_h2= h2;
+      goto error;
+    }
+
+    h2= new_h2;
+    table->prepare_for_position();
+    new_h2->extra(HA_EXTRA_KEYREAD);
+  
+    if (h2->ha_index_init(keyno, FALSE))
+      goto error;
   }
 
-  if (keyno == h->pushed_idx_cond_keyno)
-    pushed_cond= h->pushed_idx_cond;
-  if (h->ha_index_end())
-  {
-    new_h2= h2;
-    goto error;
-  }
-
-  h2= new_h2;
-  table->prepare_for_position();
-  new_h2->extra(HA_EXTRA_KEYREAD);
-
-  if (h2->ha_index_init(keyno, FALSE) || 
-      h2->handler::multi_range_read_init(seq_funcs, seq_init_param, n_ranges,
+  if (h2->handler::multi_range_read_init(seq_funcs, seq_init_param, n_ranges,
                                          mode, buf))
     goto error;
-  use_default_impl= FALSE;
   
   if (pushed_cond)
     h2->idx_cond_push(keyno, pushed_cond);
@@ -4271,13 +4439,22 @@ int DsMrr_impl::dsmrr_init(handler *h, KEY *key,
   if (dsmrr_eof) 
     buf->end_of_used_area= rowids_buf_last;
 
-  if (h->ha_rnd_init(FALSE))
-    goto error;
+  /*
+     h->inited == INDEX may occur when 'range checked for each record' is
+     used.
+  */
+  if ((h->inited != handler::RND) && 
+      ((h->inited==handler::INDEX? h->ha_index_end(): FALSE) || 
+       (h->ha_rnd_init(FALSE))))
+      goto error;
+
+  use_default_impl= FALSE;
+  h->mrr_funcs= *seq_funcs;
   
   DBUG_RETURN(0);
 error:
   h2->ha_index_or_rnd_end();
-  h2->ha_external_lock(thd, F_UNLCK);
+  h2->ha_external_lock(current_thd, F_UNLCK);
   h2->close();
   delete h2;
   DBUG_RETURN(1);
@@ -4336,7 +4513,7 @@ int DsMrr_impl::dsmrr_fill_buffer(handler *unused)
     /* Put rowid, or {rowid, range_id} pair into the buffer */
     h2->position(table->record[0]);
     memcpy(rowids_buf_cur, h2->ref, h2->ref_length);
-    rowids_buf_cur += h->ref_length;
+    rowids_buf_cur += h2->ref_length;
 
     if (is_mrr_assoc)
     {
@@ -4368,40 +4545,51 @@ int DsMrr_impl::dsmrr_fill_buffer(handler *unused)
 int DsMrr_impl::dsmrr_next(handler *h, char **range_info)
 {
   int res;
-  
+  uchar *cur_range_info= 0;
+  uchar *rowid;
+
   if (use_default_impl)
     return h->handler::multi_range_read_next(range_info);
-    
-  if (rowids_buf_cur == rowids_buf_last)
+  
+  do
   {
-    if (dsmrr_eof)
+    if (rowids_buf_cur == rowids_buf_last)
+    {
+      if (dsmrr_eof)
+      {
+        res= HA_ERR_END_OF_FILE;
+        goto end;
+      }
+
+      res= dsmrr_fill_buffer(h);
+      if (res)
+        goto end;
+    }
+   
+    /* return eof if there are no rowids in the buffer after re-fill attempt */
+    if (rowids_buf_cur == rowids_buf_last)
     {
       res= HA_ERR_END_OF_FILE;
       goto end;
     }
-    res= dsmrr_fill_buffer(h);
-    if (res)
-      goto end;
-  }
-  
-  /* Return EOF if there are no rowids in the buffer after re-fill attempt */
-  if (rowids_buf_cur == rowids_buf_last)
-  {
-    res= HA_ERR_END_OF_FILE;
-    goto end;
-  }
+    rowid= rowids_buf_cur;
 
-  res= h->rnd_pos(table->record[0], rowids_buf_cur);
-  rowids_buf_cur += h->ref_length;
+    if (is_mrr_assoc)
+      memcpy(&cur_range_info, rowids_buf_cur + h->ref_length, sizeof(uchar**));
+
+    rowids_buf_cur += h->ref_length + sizeof(void*) * test(is_mrr_assoc);
+    if (h2->mrr_funcs.skip_record &&
+	h2->mrr_funcs.skip_record(h2->mrr_iter, (char *) cur_range_info, rowid))
+      continue;
+    res= h->rnd_pos(table->record[0], rowid);
+    break;
+  } while (true);
+ 
   if (is_mrr_assoc)
   {
-    memcpy(range_info, rowids_buf_cur, sizeof(void*));
-    rowids_buf_cur += sizeof(void*);
+    memcpy(range_info, rowid + h->ref_length, sizeof(void*));
   }
-
 end:
-  if (res)
-    dsmrr_close();
   return res;
 }
 
@@ -4409,10 +4597,10 @@ end:
 /**
   DS-MRR implementation: multi_range_read_info() function
 */
-int DsMrr_impl::dsmrr_info(uint keyno, uint n_ranges, uint rows, uint *bufsz,
-                           uint *flags, COST_VECT *cost)
+ha_rows DsMrr_impl::dsmrr_info(uint keyno, uint n_ranges, uint rows,
+                               uint *bufsz, uint *flags, COST_VECT *cost)
 {  
-  int res;
+  ha_rows res;
   uint def_flags= *flags;
   uint def_bufsz= *bufsz;
 
@@ -5176,13 +5364,51 @@ int handler::ha_external_lock(THD *thd, int lock_type)
   */
   DBUG_ASSERT(next_insert_id == 0);
 
+  if (MYSQL_HANDLER_RDLOCK_START_ENABLED() ||
+      MYSQL_HANDLER_WRLOCK_START_ENABLED() ||
+      MYSQL_HANDLER_UNLOCK_START_ENABLED())
+  {
+    if (lock_type == F_RDLCK)
+    {
+      MYSQL_HANDLER_RDLOCK_START(table_share->db.str,
+                                 table_share->table_name.str);
+    }
+    else if (lock_type == F_WRLCK)
+    {
+      MYSQL_HANDLER_WRLOCK_START(table_share->db.str,
+                                 table_share->table_name.str);
+    }
+    else if (lock_type == F_UNLCK)
+    {
+      MYSQL_HANDLER_UNLOCK_START(table_share->db.str,
+                                 table_share->table_name.str);
+    }
+  }
+
   /*
     We cache the table flags if the locking succeeded. Otherwise, we
     keep them as they were when they were fetched in ha_open().
   */
-  MYSQL_EXTERNAL_LOCK(lock_type);
-
   int error= external_lock(thd, lock_type);
+
+  if (MYSQL_HANDLER_RDLOCK_DONE_ENABLED() ||
+      MYSQL_HANDLER_WRLOCK_DONE_ENABLED() ||
+      MYSQL_HANDLER_UNLOCK_DONE_ENABLED())
+  {
+    if (lock_type == F_RDLCK)
+    {
+      MYSQL_HANDLER_RDLOCK_DONE(error);
+    }
+    else if (lock_type == F_WRLCK)
+    {
+      MYSQL_HANDLER_WRLOCK_DONE(error);
+    }
+    else if (lock_type == F_UNLCK)
+    {
+      MYSQL_HANDLER_UNLOCK_DONE(error);
+    }
+  }
+  
   if (error == 0)
     cached_table_flags= table_flags();
   DBUG_RETURN(error);
@@ -5216,15 +5442,16 @@ int handler::ha_write_row(uchar *buf)
   int error;
   Log_func *log_func= Write_rows_log_event::binlog_row_logging_function;
   DBUG_ENTER("handler::ha_write_row");
-  MYSQL_INSERT_ROW_START();
 
+  MYSQL_INSERT_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
-
-  if (unlikely(error= write_row(buf)))
+  error= write_row(buf);
+  MYSQL_INSERT_ROW_DONE(error);
+  
+  if (unlikely(error != 0))
     DBUG_RETURN(error);
   if (unlikely(error= binlog_log_row(table, 0, buf, log_func)))
     DBUG_RETURN(error); /* purecov: inspected */
-  MYSQL_INSERT_ROW_END();
   DBUG_RETURN(0);
 }
 
@@ -5240,9 +5467,12 @@ int handler::ha_update_row(const uchar *old_data, uchar *new_data)
    */
   DBUG_ASSERT(new_data == table->record[0]);
 
+  MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
+  error= update_row(old_data, new_data);
+  MYSQL_UPDATE_ROW_DONE(error);
 
-  if (unlikely(error= update_row(old_data, new_data)))
+  if (unlikely(error != 0))
     return error;
   if (unlikely(error= binlog_log_row(table, old_data, new_data, log_func)))
     return error;
@@ -5254,9 +5484,12 @@ int handler::ha_delete_row(const uchar *buf)
   int error;
   Log_func *log_func= Delete_rows_log_event::binlog_row_logging_function;
 
+  MYSQL_DELETE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
+  error= delete_row(buf);
+  MYSQL_DELETE_ROW_DONE(error);
 
-  if (unlikely(error= delete_row(buf)))
+  if (unlikely(error != 0))
     return error;
   if (unlikely(error= binlog_log_row(table, buf, 0, log_func)))
     return error;

@@ -1,0 +1,12 @@
+[myisam]
+--default-storage-engine=myisam
+
+[falcon]
+--default-storage-engine=falcon
+
+[memory]
+--default-storage-engine=memory
+
+[innodb]
+--innodb=1
+--default-storage-engine=innodb

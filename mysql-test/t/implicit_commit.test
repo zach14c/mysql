@@ -5,6 +5,7 @@ SET GLOBAL EVENT_SCHEDULER = OFF;
 SET BINLOG_FORMAT = STATEMENT;
 
 LET $OLD_DB= `SELECT DATABASE()`;
+LET $MYSQLD_DATADIR= `SELECT @@datadir`;
 
 CREATE DATABASE db1;
 USE db1;
@@ -156,7 +157,7 @@ source include/implicit_commit_helper.inc;
 create table t4 (a varchar(100));
 
 let $statement=
-  load data infile '../std_data_ln/words.dat' into table t4;
+  load data infile '../../std_data/words.dat' into table t4;
 source include/implicit_commit_helper.inc;
 
 drop table t4;
@@ -205,13 +206,9 @@ source include/implicit_commit_helper.inc;
 --echo # SQLCOM_SHOW_STATUS
 --echo #
 
-#
-# Bug#37908
-#
-#let $statement=
-#  show status where (1) in (select * from t1);
-#source include/implicit_commit_helper.inc;
-#
+let $statement=
+  show status where (1) in (select * from t1);
+source include/implicit_commit_helper.inc;
 
 --echo #
 --echo # SQLCOM_SHOW_ENGINE_MUTEX
@@ -289,25 +286,17 @@ source include/implicit_commit_helper.inc;
 --echo # SQLCOM_SHOW_STATUS_PROC
 --echo #
 
-#
-# Bug#37908
-#
-#let $statement=
-#  show procedure status where (1) in (select * from t1);
-#source include/implicit_commit_helper.inc;
-#
+let $statement=
+  show procedure status where (1) in (select * from t1);
+source include/implicit_commit_helper.inc;
 
 --echo #
 --echo # SQLCOM_SHOW_STATUS_FUNC
 --echo #
 
-#
-# Bug#37908
-#
-#let $statement=
-#  show function status where (1) in (select * from t1);
-#source include/implicit_commit_helper.inc;
-#
+let $statement=
+  show function status where (1) in (select * from t1);
+source include/implicit_commit_helper.inc;
 
 --echo #
 --echo # SQLCOM_SET_OPTION
@@ -331,13 +320,9 @@ source include/implicit_commit_helper.inc;
 
 create procedure p1(a int) begin end;
 
-#
-# Bug#37949
-#
-#let $statement=
-#  call p1((1) in (select * from t1));
-#source include/implicit_commit_helper.inc;
-#
+let $statement=
+  call p1((1) in (select * from t1));
+source include/implicit_commit_helper.inc;
 
 drop procedure p1;
 
@@ -1115,31 +1100,25 @@ source include/implicit_commit_helper.inc;
 --echo # SQLCOM_BACKUP
 --echo #
 
+create database backup_db;
+
 let $statement=
-  backup database db1 to 'backup_db1.ba';
+  backup database backup_db to 'backup_db.ba';
 source include/implicit_commit_helper.inc;
 
---echo #
---echo # SQLCOM_SHOW_ARCHIVE
---echo #
-
-#
-# --error ER_NOT_ALLOWED_COMMAND
-#
-#let $statement=
-#  show backup 'backup_db1.ba';
-#source include/implicit_commit_helper.inc;
-#
+drop database backup_db;
 
 --echo #
 --echo # SQLCOM_RESTORE
 --echo #
 
 let $statement=
-  restore from 'backup_db1.ba';
+  restore from 'backup_db.ba';
 source include/implicit_commit_helper.inc;
 
---remove_file $MYSQLTEST_VARDIR/master-data/backup_db1.ba
+--remove_file $MYSQLD_DATADIR/backup_db.ba
+
+drop database backup_db;
 
 --echo #
 --echo # SQLCOM_BACKUP_TEST

@@ -81,7 +81,7 @@ public:
 	int					nextIndexed(StorageTable *storageTable, void* recordBitmap, int recordNumber, bool lockForUpdate);
 	int					nextIndexed(StorageTable* storageTable, IndexWalker* indexWalker, bool lockForUpdate);
 	int					fetch(StorageConnection* storageConnection, StorageTable* storageTable, int recordNumber, bool lockForUpdate);
-	RecordVersion*		lockRecord(StorageConnection* storageConnection, Table *table, Record* record);
+//	RecordVersion*		lockRecord(StorageConnection* storageConnection, Table *table, Record* record);
 	
 	int					updateRow(StorageConnection* storageConnection, Table* table, Record *oldRecord, Stream* stream);
 	int					getSegmentValue(StorageSegment* segment, const UCHAR* ptr, Value* value, Field *field);

@@ -5,6 +5,8 @@
 #include <backup_stream.h>
 #include <backup/error.h>
 #include "si_logs.h"
+#include "rpl_mi.h"
+#include "debug_sync.h"
 
 namespace backup {
 
@@ -44,19 +46,22 @@ class Logger
 
    Logger(THD*);
    ~Logger();
-   int init(enum_type type, const LEX_STRING path, const char *query);
+   int init(enum_type type, const char *query);
 
    int report_error(int error_code, ...);
    int report_error(log_level::value level, int error_code, ...);
    int report_error(const char *format, ...);
    int write_message(log_level::value level, const char *msg, ...);
+   int log_error(int error_code, ...);
 
    void report_start(time_t);
    void report_stop(time_t, bool);
    void report_state(enum_backup_state);
-   void report_vp_time(time_t);
+   void report_vp_time(time_t, bool);
    void report_binlog_pos(const st_bstream_binlog_pos&);
+   void report_master_binlog_pos(const st_bstream_binlog_pos&);
    void report_driver(const char *driver);
+   void report_backup_file(char * path);
    void report_stats_pre(const Image_info&);
    void report_stats_post(const Image_info&);
    ulonglong get_op_id() const 
@@ -64,12 +69,9 @@ class Logger
      DBUG_ASSERT(backup_log);
      return backup_log->get_backup_id(); 
    }
-   void report_cleanup() { delete backup_log; }
    
-   void save_errors();
-   void stop_save_errors();
-   void clear_saved_errors();
-   MYSQL_ERROR *last_saved_error();
+   bool push_errors(bool);
+   bool error_reported() const;
 
  protected:
 
@@ -82,30 +84,36 @@ class Logger
 
  private:
 
-  List<MYSQL_ERROR> errors;  ///< Used to store saved errors.
-  bool m_save_errors;        ///< Flag telling if errors should be saved.
+  // Prevent copying/assigments
+  Logger(const Logger&);
+  Logger& operator=(const Logger&);
+
+  bool m_push_errors;        ///< Should errors be pushed on warning stack?
+  bool m_error_reported;     ///< Has any error been reported?
+
   Backup_log *backup_log;    ///< Backup log interface class.
 };
 
 inline
 Logger::Logger(THD *thd) 
-  :m_type(BACKUP), m_state(CREATED),
-   m_thd(thd), m_save_errors(FALSE), backup_log(0)
+   :m_type(BACKUP), m_state(CREATED), m_thd(thd), m_push_errors(TRUE), 
+    m_error_reported(FALSE), backup_log(0)
 {}
 
 inline
 Logger::~Logger()
 {
-  clear_saved_errors();
+  delete backup_log;
 }
 
+/// Report unregistered message.
 inline
 int Logger::write_message(log_level::value level, const char *msg, ...)
 {
   va_list args;
 
   va_start(args, msg);
-  int res= v_write_message(level, 0, msg, args);
+  int res= v_write_message(level, ER_UNKNOWN_ERROR, msg, args);
   va_end(args);
 
   return res;
@@ -150,37 +158,20 @@ int Logger::report_error(const char *format, ...)
   return res;
 }
 
-///  Request that all reported errors are saved in the logger.
+/// Reports error without pushing it on server's error stack.
 inline
-void Logger::save_errors()
+int Logger::log_error(int error_code, ...)
 {
-  if (m_save_errors)
-    return;
-  clear_saved_errors();
-  m_save_errors= TRUE;
-}
+  va_list args;
+  bool    saved= push_errors(FALSE);
+  
+  va_start(args, error_code);
+  int res= v_report_error(log_level::ERROR, error_code, args);
+  va_end(args);
 
-/// Stop saving errors.
-inline
-void Logger::stop_save_errors()
-{
-  if (!m_save_errors)
-    return;
-  m_save_errors= FALSE;
-}
+  push_errors(saved);
 
-/// Delete all saved errors to free resources.
-inline
-void Logger::clear_saved_errors()
-{ 
-  errors.delete_elements();
-}
-
-/// Return a pointer to most recent saved error.
-inline
-MYSQL_ERROR *Logger::last_saved_error()
-{ 
-  return errors.is_empty() ? NULL : errors.head();
+  return res;
 }
 
 /// Report start of an operation.
@@ -237,13 +228,19 @@ void Logger::report_state(enum_backup_state state)
   backup_log->state(state);
 }
 
-/// Report validity point creation time.
+/** 
+  Report validity point creation time.
+
+  @param[IN] when   the time of validity point
+  @param[IN] report determines if VP time should be also reported in the
+                    backup_progress log
+*/
 inline
-void Logger::report_vp_time(time_t when)
+void Logger::report_vp_time(time_t when, bool report)
 {
   DBUG_ASSERT(m_state == RUNNING);
   DBUG_ASSERT(backup_log);
-  backup_log->vp_time(when);
+  backup_log->vp_time(when, report);
 }
 
 /** 
@@ -261,6 +258,22 @@ void Logger::report_binlog_pos(const st_bstream_binlog_pos &pos)
 }
 
 /**
+  Report master's binlog information.
+
+  @todo Write this information to the backup image file.
+*/
+inline
+void Logger::report_master_binlog_pos(const st_bstream_binlog_pos &pos)
+{
+  if (active_mi)
+  {
+    backup_log->master_binlog_pos(pos.pos);
+    backup_log->master_binlog_file(pos.file);
+    backup_log->write_master_binlog_info();
+  }
+}
+
+/**
   Report driver.
 */
 inline 
@@ -271,6 +284,17 @@ void Logger::report_driver(const char *driver)
   backup_log->add_driver(driver); 
 }
 
+/** 
+  Report backup file and path.
+*/
+inline
+void Logger::report_backup_file(char *path)
+{ 
+  DBUG_ASSERT(m_state == RUNNING);
+  DBUG_ASSERT(backup_log);
+  backup_log->backup_file(path); 
+}
+
 /**
   Initialize logger for backup or restore operation.
   
@@ -278,26 +302,31 @@ void Logger::report_driver(const char *driver)
   member.
   
   @param[in]  type  type of operation (backup or restore)
-  @param[in]  path  location of the backup image
   @param[in]  query backup or restore query starting the operation
     
   @returns 0 on success, error code otherwise.
 
-  @todo Decide what to do if @c initialize() signals errors.
+  @todo Detect, log and report errors to the caller.
   @todo Add code to get the user comment from command.
 */ 
 inline
-int Logger::init(enum_type type, const LEX_STRING path, const char *query)
+int Logger::init(enum_type type, const char *query)
 {
   if (m_state != CREATED)
     return 0;
 
   m_type= type;
-  m_state= READY;
-  backup_log = new Backup_log(m_thd, (enum_backup_operation)type, path, query);
+  backup_log = new Backup_log(m_thd, (enum_backup_operation)type, query);
   backup_log->state(BUP_STARTING);
+  m_state= READY;
   DEBUG_SYNC(m_thd, "after_backup_log_init");
   return 0;
+}
+
+inline
+bool Logger::error_reported() const
+{
+  return m_error_reported;
 }
 
 } // backup namespace

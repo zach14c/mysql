@@ -32,7 +32,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 
   {
     String tmp_db_name("qqq", 3, system_charset_info);
-    DBUG_ASSERT(obs::check_db_existence(&tmp_db_name));
+    DBUG_ASSERT(obs::check_db_existence(thd, &tmp_db_name));
   }
 
   /*
@@ -44,7 +44,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   field_list.push_back(new Item_empty_string("serialization", 13));
   protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
-  //obs::ObjIterator *it= obs::get_databases(thd);
+  //obs::Obj_iterator *it= obs::get_databases(thd);
   List_iterator<LEX_STRING> it(*db_list);
   
   //if (it)
@@ -57,18 +57,18 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
     {
       String dir;
       dir.copy(dbname->str, dbname->length, system_charset_info);
-      db= get_database(&dir);
+      db= get_database_stub(&dir);
 
       if (is_internal_db_name(db->get_db_name()))
           continue;
 
-      DBUG_ASSERT(!obs::check_db_existence(db->get_db_name()));
+      DBUG_ASSERT(!obs::check_db_existence(thd, db->get_db_name()));
 
       //
       // List tables..
       //
 
-      obs::ObjIterator *tit= obs::get_db_tables(thd, db->get_name());
+      obs::Obj_iterator *tit= obs::get_db_tables(thd, db->get_name());
 
       if (tit)
       {
@@ -247,10 +247,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
           protocol->prepare_for_resend();
           protocol->store(const_cast<String*>(db->get_name()));
           protocol->store(const_cast<String*>(grant->get_name()));
-          String user;
-          String host;
-          String *user_host= (String *)grant->get_name();
-          user_exists(thd, user_host);
+          check_user_existence(thd, grant);
           protocol->store(C_STRING_WITH_LEN("GRANT"),
                           system_charset_info);
           grant->serialize(thd, &serial);
@@ -264,7 +261,6 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
       }
     }
   }
-  thd->main_da.reset_diagnostics_area();
   my_eof(thd);
   DBUG_RETURN(res);
 }

@@ -703,7 +703,7 @@ drop procedure into_test4|
 --disable_warnings
 drop procedure if exists into_outfile|
 --enable_warnings
---replace_result $MYSQLTEST_VARDIR ..
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval create procedure into_outfile(x char(16), y int)
 begin
   insert into test.t1 values (x, y);
@@ -722,7 +722,7 @@ drop procedure into_outfile|
 --disable_warnings
 drop procedure if exists into_dumpfile|
 --enable_warnings
---replace_result $MYSQLTEST_VARDIR ..
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval create procedure into_dumpfile(x char(16), y int)
 begin
   insert into test.t1 values (x, y);
@@ -1542,7 +1542,7 @@ begin
 end|
 show create procedure opp|
 --replace_column 4 'root@localhost' 5 '0000-00-00 00:00:00' 6 '0000-00-00 00:00:00'
-show procedure status like '%p%'|
+show procedure status where name like '%p%' and db='test'|
 
 # This isn't the fastest way in the world to compute prime numbers, so
 # don't be too ambitious. ;-)
@@ -1560,7 +1560,7 @@ drop table t3|
 drop procedure opp|
 drop procedure ip|
 --replace_column 4 'root@localhost' 5 '0000-00-00 00:00:00' 6 '0000-00-00 00:00:00'
-show procedure status like '%p%'|
+show procedure status where name like '%p%' and db='test'|
 
 
 # Fibonacci, for recursion test. (Yet Another Numerical series :)
@@ -2282,7 +2282,7 @@ drop procedure if exists bug2267_1|
 --enable_warnings
 create procedure bug2267_1()
 begin
-  show procedure status;
+  show procedure status where db='test';
 end|
 
 --disable_warnings
@@ -2290,7 +2290,7 @@ drop procedure if exists bug2267_2|
 --enable_warnings
 create procedure bug2267_2()
 begin
-  show function status;
+  show function status where db='test';
 end|
 
 --disable_warnings
@@ -7994,8 +7994,24 @@ select (select func30787(f1)) as ttt from t1;
 drop function func30787;
 drop table t1;
 
-###########################################################################
+#
+# Bug #33811: Call to stored procedure with SELECT * / RIGHT JOIN fails
+# after the first time
+#
+CREATE TABLE t1 (id INT);
+INSERT INTO t1 VALUES (1),(2),(3),(4);
 
+CREATE PROCEDURE test_sp()
+  SELECT t1.* FROM t1 RIGHT JOIN t1 t2 ON t1.id=t2.id;
+
+CALL test_sp();
+CALL test_sp();
+
+DROP PROCEDURE test_sp;
+DROP TABLE t1;
+
+
+###########################################################################
 #
 # Bug#38291 memory corruption and server crash with view/sp/function
 #
@@ -8019,6 +8035,46 @@ drop procedure p1;
 drop function f1;
 drop view v1;
 drop table t1;
+
+#
+# Bug#38469 invalid memory read and/or crash with utf8 text field, stored procedure, uservar 
+#
+delimiter $;
+--disable_warnings
+drop procedure if exists `p2` $
+--enable_warnings
+create procedure `p2`(in `a` text charset utf8)
+begin
+        declare `pos` int default 1;
+        declare `str` text charset utf8;
+        set `str` := `a`;
+        select substr(`str`, `pos`+ 1 ) into `str`;
+end $
+delimiter ;$
+call `p2`('s s s s s s');
+drop procedure `p2`;
+
+#
+# Bug#38823: Invalid memory access when a SP statement does wildcard expansion
+#
+
+--disable_warnings
+drop table if exists t1;
+drop procedure if exists p1;
+--enable_warnings
+
+delimiter $;
+create procedure p1() begin select * from t1; end$
+--error ER_NO_SUCH_TABLE
+call p1$
+create table t1 (a integer)$
+call p1$
+alter table t1 add b integer;
+call p1$
+delimiter ;$
+
+drop table t1;
+drop procedure p1;
 
 --echo # ------------------------------------------------------------------
 --echo # -- End of 5.0 tests
@@ -8201,4 +8257,149 @@ drop procedure p;
 
 --echo # ------------------------------------------------------------------
 --echo # -- End of 5.1 tests
+--echo # ------------------------------------------------------------------
+
+#
+# Bug#39255: Stored procedures: crash if function references nonexistent table
+#
+
+--disable_warnings
+DROP FUNCTION IF EXISTS f1;
+DROP TABLE IF EXISTS t_non_existing;
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+delimiter |;
+CREATE FUNCTION f1() RETURNS INT
+BEGIN
+   DECLARE v INT;
+   SELECT a INTO v FROM t_non_existing;
+   RETURN 1;
+END|
+delimiter ;|
+
+CREATE TABLE t1 (a INT) ENGINE = myisam;
+INSERT INTO t1 VALUES (1);
+
+--error ER_NO_SUCH_TABLE
+SELECT * FROM t1 WHERE a = f1();
+
+DROP FUNCTION f1;
+DROP TABLE t1;
+
+#
+# Bug#36649: Condition area is not properly cleaned up after stored routine invocation
+#
+
+--disable_warnings
+DROP PROCEDURE IF EXISTS p1;
+--enable_warnings
+
+delimiter |;
+CREATE PROCEDURE p1(a INT, b CHAR)
+BEGIN
+  IF a > 0 THEN
+    CALL p1(a-1, 'ab');
+  ELSE
+    SELECT 1;
+  END IF;
+END|
+delimiter ;|
+
+SET @save_max_sp_recursion= @@max_sp_recursion_depth;
+SET @@max_sp_recursion_depth= 5;
+CALL p1(4, 'a');
+SET @@max_sp_recursion_depth= @save_max_sp_recursion;
+
+DROP PROCEDURE p1;
+
+#
+# Ensure that rules for message list clean up are being respected.
+#
+
+--disable_warnings
+DROP PROCEDURE IF EXISTS p1;
+--enable_warnings
+
+delimiter |;
+CREATE PROCEDURE p1(a CHAR)
+BEGIN
+  SELECT 1;
+  SELECT CAST('10 ' as UNSIGNED INTEGER);
+  SELECT 1;
+END|
+delimiter ;|
+
+CALL p1('data truncated parameter');
+
+DROP PROCEDURE p1;
+
+#
+# Cascading stored procedure/function calls.
+#
+
+--disable_warnings
+DROP PROCEDURE IF EXISTS p1;
+DROP PROCEDURE IF EXISTS p2;
+DROP PROCEDURE IF EXISTS p3;
+DROP PROCEDURE IF EXISTS p4;
+--enable_warnings
+
+delimiter |;
+CREATE PROCEDURE p1()
+  CALL p2()|
+CREATE PROCEDURE p2()
+  CALL p3()|
+CREATE PROCEDURE p3()
+  CALL p4()|
+CREATE PROCEDURE p4()
+BEGIN
+  SELECT 1;
+  SELECT CAST('10 ' as UNSIGNED INTEGER);
+  SELECT 2;
+END|
+delimiter ;|
+
+CALL p1();
+
+DROP PROCEDURE p1;
+DROP PROCEDURE p2;
+DROP PROCEDURE p3;
+DROP PROCEDURE p4;
+
+--disable_warnings
+DROP FUNCTION IF EXISTS f1;
+DROP FUNCTION IF EXISTS f2;
+DROP FUNCTION IF EXISTS f3;
+DROP FUNCTION IF EXISTS f4;
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1 (a CHAR(2));
+
+INSERT INTO t1 VALUES ('aa');
+
+delimiter |;
+CREATE FUNCTION f1() RETURNS CHAR
+  RETURN (SELECT f2())|
+CREATE FUNCTION f2() RETURNS CHAR
+  RETURN (SELECT f3())|
+CREATE FUNCTION f3() RETURNS CHAR
+  RETURN (SELECT f4())|
+CREATE FUNCTION f4() RETURNS CHAR
+BEGIN
+  RETURN (SELECT a FROM t1);
+END|
+delimiter ;|
+
+SELECT f1();
+
+DROP FUNCTION f1;
+DROP FUNCTION f2;
+DROP FUNCTION f3;
+DROP FUNCTION f4;
+DROP TABLE t1;
+
+--echo # ------------------------------------------------------------------
+--echo # -- End of 6.0 tests
 --echo # ------------------------------------------------------------------

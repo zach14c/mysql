@@ -95,7 +95,7 @@ public:
 	
 	virtual int		updateRow(int recordNumber);
 	virtual int		createIndex(StorageIndexDesc *indexDesc, const char *sql);
-	virtual int		dropIndex(StorageIndexDesc *indexDesc, const char *sql);
+	virtual int		dropIndex(StorageIndexDesc *indexDesc, const char *sql, bool online);
 	virtual const unsigned char* getEncoding(int fieldIndex);
 	virtual const char*			 getName(void);
 	virtual const char*			 getSchemaName(void);

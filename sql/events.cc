@@ -854,7 +854,6 @@ Events::init(my_bool opt_noacl)
   */
   thd->thread_stack= (char*) &thd;
   thd->store_globals();
-  lex_start(thd);
 
   /*
     We will need Event_db_repository anyway, even if the scheduler is
@@ -965,7 +964,12 @@ Events::deinit()
 void
 Events::init_mutexes()
 {
-  pthread_mutex_init(&LOCK_event_metadata, MY_MUTEX_INIT_FAST);
+  /*
+    Inconsisent usage between LOCK_event_metadata and LOCK_scheduler_state
+    and LOCK_open
+  */
+  my_pthread_mutex_init(&LOCK_event_metadata, MY_MUTEX_INIT_FAST,
+                        "LOCK_event_metadata", MYF_NO_DEADLOCK_DETECTION);
 }
 
 

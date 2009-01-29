@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2003 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,12 +29,13 @@
 #include "rpl_filter.h"
 #include "rpl_rli.h"
 #include "sql_audit.h"
+#include "si_objects.h"
 
 #include <my_dir.h>
 #include <stdarg.h>
 #include <m_ctype.h>				// For test_if_number
 
-#ifdef __NT__
+#ifdef _WIN32
 #include "message.h"
 #endif
 
@@ -52,8 +53,7 @@
 
 LOGGER logger;
 
-MYSQL_BIN_LOG mysql_bin_log;
-ulong sync_binlog_counter= 0;
+MYSQL_BIN_LOG mysql_bin_log(&sync_binlog_period);
 
 static bool test_if_number(const char *str,
 			   long *res, bool allow_wildcards);
@@ -83,23 +83,30 @@ public:
 
   virtual ~Silence_log_table_errors() {}
 
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
   const char *message() const { return m_message; }
 };
 
 bool
-Silence_log_table_errors::handle_error(uint /* sql_errno */,
-                                       const char *message_arg,
-                                       MYSQL_ERROR::enum_warning_level /* level */,
-                                       THD * /* thd */)
+Silence_log_table_errors::
+handle_error(THD * /* thd */,
+             MYSQL_ERROR::enum_warning_level /* level */,
+             uint /* sql_errno */,
+             const char *message_arg)
 {
   strmake(m_message, message_arg, sizeof(m_message)-1);
   return TRUE;
 }
 
+/*
+  Array of warning report functions.
+  The functions are listed in the order defined by
+  MYSQL_ERROR::enum_warning_level.
 
+  @todo: merge the array with MYSQL_ERROR class
+*/
 sql_print_message_func sql_print_message_handlers[3] =
 {
   sql_print_information,
@@ -229,6 +236,7 @@ public:
       truncate(0);
     before_stmt_pos= MY_OFF_T_UNDEF;
     trans_log.end_of_file= max_binlog_cache_size;
+    DBUG_ASSERT(empty());
   }
 
   Rows_log_event *pending() const
@@ -778,9 +786,17 @@ bool Log_to_csv_event_handler::
   bool need_close= FALSE;
   bool need_rnd_end= FALSE;
   Open_tables_state open_tables_backup;
+  ulonglong save_thd_options;
   bool save_time_zone_used;
   char *host= current_thd->security_ctx->host; // host name
   char *user= current_thd->security_ctx->user; // user name
+
+  /*
+    Turn the binlog off and don't replicate the
+    updates to the backup logs.
+  */
+  save_thd_options= thd->options;
+  thd->options&= ~OPTION_BIN_LOG;
 
   save_time_zone_used= thd->time_zone_used;
   bzero(& table_list, sizeof(TABLE_LIST));
@@ -856,6 +872,11 @@ bool Log_to_csv_event_handler::
   if (history_data->start)
   {
     MYSQL_TIME time;
+    /*
+      Set time ahead a few hours to allow backup purge test to test
+      PURGE BACKUP LOGS BEFORE command.
+    */
+    DBUG_EXECUTE_IF("set_log_time", history_data->start= my_time(0) + 100000;);
     my_tz_OFFSET0->gmt_sec_to_TIME(&time, (my_time_t)history_data->start);
 
     table->field[ET_OBH_FIELD_START_TIME]->set_notnull();
@@ -896,6 +917,15 @@ bool Log_to_csv_event_handler::
         strlen(history_data->backup_file), system_charset_info))
       goto err;
     table->field[ET_OBH_FIELD_BACKUP_FILE]->set_notnull();
+  }
+
+  if (history_data->backup_file_path)
+  {
+    if (table->field[ET_OBH_FIELD_BACKUP_FILE_PATH]->store(
+        history_data->backup_file_path, 
+        strlen(history_data->backup_file_path), system_charset_info))
+      goto err;
+    table->field[ET_OBH_FIELD_BACKUP_FILE_PATH]->set_notnull();
   }
 
   if (history_data->user_comment)
@@ -942,6 +972,12 @@ err:
     close_performance_schema_table(thd, & open_tables_backup);
 
   thd->time_zone_used= save_time_zone_used;
+
+  /*
+    Turn binlog back on if disengaged.
+  */
+  thd->options= save_thd_options;
+
   return result;
 }
 
@@ -1086,6 +1122,322 @@ err:
   thd->time_zone_used= save_time_zone_used;
   return result;
 }
+
+/**
+  Delete the current row from a log table.
+
+  This method is used to delete a row from a log that is being
+  accessed as a table. The row to be deleted is the current
+  row that the handler is pointing to via tbl->record[0].
+
+  Note: The handler must be positioned correctly and the
+        tbl->record[0] must be fetched by the appropriate
+        method (e.g., hdl->next()). 
+
+  @param[IN]  hdl   Table handler.
+  @param[IN]  tbl   Table class.
+
+  @returns Result of delete operation
+*/
+static bool delete_current_log_row(handler *hdl, TABLE *tbl)
+{
+  bool result= 0;
+
+  /*
+    Tell the handler to allow deletes for this log table
+    by turning off log table flag.
+  */
+  hdl->extra(HA_EXTRA_ALLOW_LOG_DELETE);
+  result= hdl->ha_delete_row(tbl->record[0]);
+  hdl->extra(HA_EXTRA_MARK_AS_LOG_TABLE);
+  return result;
+}
+
+/**
+  Perform a table scan of the backup log tables for deleting rows.
+
+  This method is a helper method designed to delete rows from the
+  backup logs when the destination includes writing to tables.
+
+  The method is designed to work with either the backup_history or
+  backup_progress log. The log is specified using the @c log_name
+  parameter and should be either BACKUP_HISTORY_LOG_NAME or
+  BACKUP_PROGRESS_LOG_NAME.
+
+  There are three ways this method can be used. The choice of which of 
+  the operations to run depends on the values of the parameters as stated.
+  1. Delete rows whose backup_id is < a given value. This is used
+     for @c PURGE BACKUP LOGS TO <@c backup_id>.
+     To use this method, set @c backup_id to the value passed from the
+     command, @c delete_exact_row = FALSE, and @c datetime_val = 0. 
+  2. Delete rows in the log where backuip_id is == to a given value.
+     This is used when cascading deletes from the backup_history log 
+     to the backup_progress log. 
+     To use this method, set @c backup_id to the value of the rows needing
+     deletion, @c delete_exact_row = TRUE, and @c datetime_val = 0. 
+  3. Delete rows whose start_time < a given value. This is used for
+     @c PURGE BACKUP LOGS BEFORE <datetimeval>.
+     To use this method, set @c backup_id = 0, @c delete_exact_row = FALSE, 
+     and @c datetime_val = value passed from the command. 
+
+  @note Deleting rows by date is limited to the backup_history table.
+
+  @param[IN]  THD                 The current thread
+  @param[IN]  log_name            is used to determine which log to process 
+                                  (backup_history or backup_progress).
+  @param[IN]  backup_id           value specified on the command for deleting 
+                                  rows by id or value for exact match 
+  @param[IN]  datetime_val        value specified on the command for deleting 
+                                  rows by date
+  @param[IN]  delete_exact_row    if TRUE, use the comparison for the log 
+                                  column backup_id_in_row == @c backup_id else 
+                                  use the comparison backup_id_in_row < 
+                                  @c backup_id.
+  @param[OUT] num                 Number of rows affected.
+
+  @returns TRUE if error
+*/
+static bool del_bup_log_row(THD *thd, 
+                            LEX_STRING log_name, 
+                            ulonglong backup_id, 
+                            my_time_t datetime_val,
+                            bool delete_exact_row,
+                            int *rows)
+{
+  TABLE_LIST table_list;
+  handler *hdl;
+  TABLE *tbl;
+  uint result= 0;
+  int num_rows= 0;
+  Open_tables_state open_tables_backup;
+  MYSQL_TIME tmp;
+
+  DBUG_ASSERT((my_strcasecmp(system_charset_info, log_name.str, 
+               BACKUP_HISTORY_LOG_NAME.str) == 0) ||
+              (my_strcasecmp(system_charset_info, log_name.str, 
+               BACKUP_PROGRESS_LOG_NAME.str) == 0));
+
+  /*
+    Setup table list for open.
+  */
+  bzero(&table_list, sizeof(TABLE_LIST));
+  table_list.alias= table_list.table_name= log_name.str;
+  table_list.table_name_length= log_name.length;
+
+  table_list.lock_type= TL_WRITE_CONCURRENT_INSERT;
+
+  table_list.db= MYSQL_SCHEMA_NAME.str;
+  table_list.db_length= MYSQL_SCHEMA_NAME.length;
+
+  tbl= open_performance_schema_table(thd, &table_list,
+                                       &open_tables_backup);
+  hdl= tbl->file;
+  hdl->extra(HA_EXTRA_MARK_AS_LOG_TABLE);
+
+  /*
+    Get time zone conversion of value to compare for
+    PURGE BACKUP LOGS BEFORE <datetime>.
+  */
+  bzero(&tmp, sizeof(MYSQL_TIME));
+  thd->variables.time_zone->gmt_sec_to_TIME(&tmp, datetime_val);
+
+  /*
+    Begin table scan.
+  */
+  result= hdl->ha_rnd_init(1);
+  result= hdl->rnd_next(tbl->record[0]);
+  while (result != HA_ERR_END_OF_FILE)
+  {
+    // backup_id is field number 0 in both logs.
+    ulonglong id= tbl->field[0]->val_int();
+    /*
+      Delete by id.
+    */
+    if (!datetime_val)
+    {
+      /*
+        Here we delete a specific row. For example, a specific
+        row in the backup_history log as the result of a 
+        cascade delete initiated from backup_history log.
+      */
+      if (delete_exact_row)
+      {
+        if (id == backup_id) // delete log row
+        {
+          result= delete_current_log_row(hdl, tbl);
+          if (result)
+            goto error;
+        }
+      }
+      /*
+        Here we execute the delete all rows 'to' a specific
+        id, e.g. PURGE BACKUP LOGS TO 17 -- we delete id < 17.
+      */
+      else if (id < backup_id)
+      {
+        result= delete_current_log_row(hdl, tbl);
+        if (result)
+          goto error;
+        num_rows++;
+      }
+    }
+    /*
+      Delete by date
+    */
+    else  
+    {
+      MYSQL_TIME time;      
+
+      DBUG_ASSERT(my_strcasecmp(system_charset_info, log_name.str, 
+                  BACKUP_HISTORY_LOG_NAME.str) == 0);
+
+      tbl->field[ET_OBH_FIELD_START_TIME]->get_date(&time, TIME_NO_ZERO_DATE);
+      if (my_time_compare(&time, &tmp) < 0)
+      {
+        /*
+          When deleting by date for the backup_history table,
+          we must also delete rows from the backup_progress table
+          for this backup id.
+        */
+        if ((my_strcasecmp(system_charset_info, log_name.str, 
+             BACKUP_HISTORY_LOG_NAME.str) == 0) &&
+            opt_backup_progress_log && 
+            (log_backup_output_options & LOG_TABLE))
+        {
+          int r= 0;
+
+          del_bup_log_row(thd, BACKUP_PROGRESS_LOG_NAME, 
+                          id, 0, TRUE, &r);
+        }
+        result= delete_current_log_row(hdl, tbl);
+        if (result)
+          goto error;
+        num_rows++;
+      }
+    }
+    result= hdl->rnd_next(tbl->record[0]);
+  }
+error:
+  int res_end= hdl->ha_rnd_end();
+  *rows= num_rows;
+  close_performance_schema_table(thd, &open_tables_backup);
+  return (result != HA_ERR_END_OF_FILE) ? result : res_end;
+}
+
+/**
+  Remove all rows from the backup logs.
+
+  This method removes (via truncate) all data from the backup logs. It checks
+  if the backup logs are turned on and if the log_backup_output_option is set
+  to include writing to tables. If these conditions are true, each log 
+  (backup_history, backup_progress) is truncated.
+
+  @param[IN] THD  current thread
+
+  @returns TRUE = success, FALSE = failed
+*/
+bool Log_to_csv_event_handler::purge_backup_logs(THD *thd)
+{
+  TABLE_LIST tables;
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_TABLE))
+  {
+    // need to truncate the table.
+    tables.init_one_table("mysql", strlen("mysql"), 
+                          "backup_history", strlen("backup_history"),
+                          "backup_history", TL_READ);
+    alloc_mdl_locks(&tables, thd->mem_root);
+    res= mysql_truncate(thd, &tables, 1);
+    close_thread_tables(thd);
+    if (res)
+      goto err;
+  }
+  if (opt_backup_progress_log && (log_backup_output_options & LOG_TABLE))
+  {
+    // need to truncate the table.
+    tables.init_one_table("mysql", strlen("mysql"), 
+                          "backup_progress", strlen("backup_progress"),
+                          "backup_progress", TL_READ);
+    alloc_mdl_locks(&tables, thd->mem_root);
+    res= mysql_truncate(thd, &tables, 1);
+    close_thread_tables(thd);
+  }
+err:
+  return res;
+}
+
+/**
+  Purge backup logs of rows less than backup_id passed.
+
+  This method walks the backup log tables deleting all rows whose
+  backup id is less than @c backup_id passed. 
+
+  @param[IN]  THD                 The current thread
+  @param[IN]  backup_id           Value for backup id
+  @param[OUT] num                 Number of rows affected.
+
+  @retval num  Number of rows affected.
+
+  @returns TRUE if error
+*/
+bool 
+Log_to_csv_event_handler::purge_backup_logs_before_id(THD *thd, 
+                                                      ulonglong backup_id,
+                                                      int *rows)
+{
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_TABLE))
+  { 
+    res= del_bup_log_row(thd, BACKUP_HISTORY_LOG_NAME, 
+                         backup_id, 0, FALSE, rows);
+    if (res)
+      goto err;
+  }
+  if (opt_backup_progress_log && (log_backup_output_options & LOG_TABLE))
+  {
+    int r= 0;   //ignore this for progress log
+
+    res= del_bup_log_row(thd, BACKUP_PROGRESS_LOG_NAME, 
+                         backup_id, 0, FALSE, &r);
+  }
+err:
+  return res;
+}
+
+/**
+  Purge backup logs of rows previous to start date passed.
+
+  This method walks the backup log tables deleting all rows whose
+  start column value is less than @c t passed. 
+
+  Implementation Description: This method uses cascading delete 
+  functionality to remove rows from the backup_progress log when 
+  rows from the backup_history log are removed. Thus, only one 
+  call to delete rows from the logs is necessary.
+
+  @param[IN]  THD                 The current thread
+  @param[IN]  t                   Value for start datetime
+  @param[OUT] num                 Number of rows affected.
+
+  @retval num  Number of rows affected.
+
+  @returns TRUE if error
+*/
+bool 
+Log_to_csv_event_handler::purge_backup_logs_before_date(THD *thd, 
+                                                        my_time_t t,
+                                                        int *rows)
+{
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_TABLE))
+    res= del_bup_log_row(thd, BACKUP_HISTORY_LOG_NAME, 
+                         0, t, FALSE, rows);
+  return res;
+}
+
 
 bool Log_to_csv_event_handler::
   log_error(enum loglevel level, const char *format, va_list args)
@@ -1247,10 +1599,53 @@ void Log_to_file_event_handler::flush_backup_logs()
     reopen log files 
 
     Where TRUE means perform open on history file (backup_history) and
-    FALSE means perform open on the progress file (backkup_progress).
+    FALSE means perform open on the progress file (backup_progress).
   */
   mysql_backup_history_log.reopen_file(TRUE);
   mysql_backup_progress_log.reopen_file(FALSE);
+}
+
+/**
+  Purge the backup logs of all data.
+
+  This method truncates the backup log files. It will only do so if the
+  log_backup_output_options includes logging to FILE. It also checks to
+  see if each log is turned on (backup_history and backup_progress) and
+  if so, truncates it. Truncate in this case means resetting the size
+  to 0 bytes using my_chsize().
+
+  @returns TRUE = success, FALSE = failed.
+*/
+bool Log_to_file_event_handler::purge_backup_logs()
+{
+  bool res= FALSE;
+
+  if (opt_backup_history_log && (log_backup_output_options & LOG_FILE))
+  {
+    MYSQL_BACKUP_LOG *backup_log= logger.get_backup_history_log_file_handler();
+
+    pthread_mutex_lock(backup_log->get_log_lock());
+    res= my_sync(backup_log->get_file(), MYF(MY_WME));
+    if (!res)
+      res= my_chsize(backup_log->get_file(), 0, 0, MYF(MY_WME));
+    pthread_mutex_unlock(backup_log->get_log_lock());
+    if (res)
+      goto err;
+  }
+  if (opt_backup_progress_log && (log_backup_output_options & LOG_FILE))
+  {
+    MYSQL_BACKUP_LOG *backup_log= logger.get_backup_progress_log_file_handler();
+
+    pthread_mutex_lock(backup_log->get_log_lock());
+    res= my_sync(backup_log->get_file(), MYF(MY_WME));
+    if (!res)
+      res= my_chsize(backup_log->get_file(), 0, 0, MYF(MY_WME));
+    pthread_mutex_unlock(backup_log->get_log_lock());
+    if (res)
+      goto err;
+  }
+err:
+  return res;
 }
 
 void Log_to_file_event_handler::cleanup()
@@ -1402,6 +1797,91 @@ bool LOGGER::flush_backup_logs(THD *thd)
   return rc;
 }
 
+/**
+  Delete contents of backup logs.
+
+  This method deletes the data from the backup logs. This applies to both
+  log file and table destinations.
+
+  @param[IN]  thd  The current thread.
+
+  @returns TRUE if error.
+*/
+bool LOGGER::purge_backup_logs(THD *thd)
+{
+  my_bool res= FALSE;
+
+  DBUG_ENTER("LOGGER::purge_backup_logs");
+  /*
+    Here we need to truncate the files if writing to files.
+  */
+  res= file_log_handler->purge_backup_logs();
+  if (res)
+    goto err;
+
+  /*
+    We also need to truncate the table if writing to tables.
+  */
+  res= table_log_handler->purge_backup_logs(thd);
+
+err:
+  DBUG_RETURN(res);
+}
+
+/**
+  Delete contents of backup logs where backup id is less than a given id.
+
+  This method deletes the data from the backup logs where a backup id is 
+  less than the backup id specified. This applies only to table destinations.
+
+  @param[IN]  thd        The current thread.
+  @param[IN]  backup_id  The backup id to compare rows to.
+  @param[OUT] rows       The number of rows affected.
+
+  @retval  num  The number of rows affected.
+
+  @returns TRUE if error.
+*/
+bool LOGGER::purge_backup_logs_before_id(THD *thd, 
+                                         ulonglong backup_id, 
+                                         int *rows)
+{
+  my_bool res= FALSE;
+
+  DBUG_ENTER("LOGGER::purge_backup_logs_before_id");
+
+  res= table_log_handler->purge_backup_logs_before_id(thd, backup_id, rows);
+
+  DBUG_RETURN(res);
+}
+
+/**
+  Delete backup rows less than a certain date.
+
+  This method scans the backup history log and deletes the rows for those
+  operations that were created (start column) previous to the date specified in 
+  @c t.
+
+  @param[IN]  thd        The current thread.
+  @param[IN]  t          The date to compare rows to.
+  @param[OUT] rows       The number of rows affected.
+
+  @retval  rows  The number of rows affected.
+
+  @returns TRUE if error.
+*/
+bool LOGGER::purge_backup_logs_before_date(THD *thd, 
+                                           my_time_t t, 
+                                           int *rows)
+{
+  my_bool res= FALSE;
+
+  DBUG_ENTER("LOGGER::purge_backup_logs_before_date");
+
+  res= table_log_handler->purge_backup_logs_before_date(thd, t, rows);
+
+  DBUG_RETURN(res);
+}
 
 /*
   Log slow query with all enabled log event handlers
@@ -1641,6 +2121,7 @@ bool LOGGER::backup_progress_log_write(THD *thd,
     id= thd->thread_id;                 /* Normal thread */
   else
     id= 0;                              /* Log from connect handler */
+
 
   lock_shared();
   while (*current_handler)
@@ -2130,6 +2611,7 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
   */
   if (end_ev != NULL)
   {
+    thd->binlog_flush_pending_rows_event(TRUE);
     /*
       Doing a commit or a rollback including non-transactional tables,
       i.e., ending a transaction where we might write the transaction
@@ -2140,8 +2622,6 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
       were, we would have to ensure that we're not ending a statement
       inside a stored function.
      */
-    thd->binlog_flush_pending_rows_event(TRUE);
-
     error= mysql_bin_log.write(thd, &trx_data->trans_log, end_ev);
     trx_data->reset();
 
@@ -2166,6 +2646,7 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
       If rolling back a statement in a transaction, we truncate the
       transaction cache to remove the statement.
      */
+    thd->binlog_remove_pending_rows_event(TRUE);
     if (all || !(thd->options & (OPTION_BEGIN | OPTION_NOT_AUTOCOMMIT)))
     {
       trx_data->reset();
@@ -2184,6 +2665,7 @@ binlog_end_trans(THD *thd, binlog_trx_data *trx_data,
     mysql_bin_log.update_table_map_version();
   }
 
+  DBUG_ASSERT(thd->binlog_get_pending_rows_event() == NULL);
   DBUG_RETURN(error);
 }
 
@@ -2197,8 +2679,6 @@ static int binlog_prepare(handlerton *hton, THD *thd, bool all)
   */
   return 0;
 }
-
-#define YESNO(X) ((X) ? "yes" : "no")
 
 /**
   This function is called once after each statement.
@@ -2215,6 +2695,7 @@ static int binlog_prepare(handlerton *hton, THD *thd, bool all)
 */
 static int binlog_commit(handlerton *hton, THD *thd, bool all)
 {
+  int error= 0;
   DBUG_ENTER("binlog_commit");
   binlog_trx_data *const trx_data=
     (binlog_trx_data*) thd_get_ha_data(thd, binlog_hton);
@@ -2227,60 +2708,11 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
   }
 
   /*
-    Decision table for committing a transaction. The top part, the
-    *conditions* represent different cases that can occur, and hte
-    bottom part, the *actions*, represent what should be done in that
-    particular case.
+    We commit the transaction if:
 
-    Real transaction        'all' was true
+     - We are not in a transaction and committing a statement, or
 
-    Statement in cache      There were at least one statement in the
-                            transaction cache
-
-    In transaction          We are inside a transaction
-
-    Stmt modified non-trans The statement being committed modified a
-                            non-transactional table
-
-    All modified non-trans  Some statement before this one in the
-                            transaction modified a non-transactional
-                            table
-
-
-    =============================  = = = = = = = = = = = = = = = =
-    Real transaction               N N N N N N N N N N N N N N N N
-    Statement in cache             N N N N N N N N Y Y Y Y Y Y Y Y
-    In transaction                 N N N N Y Y Y Y N N N N Y Y Y Y
-    Stmt modified non-trans        N N Y Y N N Y Y N N Y Y N N Y Y
-    All modified non-trans         N Y N Y N Y N Y N Y N Y N Y N Y
-
-    Action: (C)ommit/(A)ccumulate  C C - C A C - C - - - - A A - A
-    =============================  = = = = = = = = = = = = = = = =
-
-
-    =============================  = = = = = = = = = = = = = = = =
-    Real transaction               Y Y Y Y Y Y Y Y Y Y Y Y Y Y Y Y
-    Statement in cache             N N N N N N N N Y Y Y Y Y Y Y Y
-    In transaction                 N N N N Y Y Y Y N N N N Y Y Y Y
-    Stmt modified non-trans        N N Y Y N N Y Y N N Y Y N N Y Y
-    All modified non-trans         N Y N Y N Y N Y N Y N Y N Y N Y
-
-    (C)ommit/(A)ccumulate/(-)      - - - - C C - C - - - - C C - C
-    =============================  = = = = = = = = = = = = = = = =
-
-    In other words, we commit the transaction if and only if both of
-    the following are true:
-     - We are not in a transaction and committing a statement
-
-     - We are in a transaction and one (or more) of the following are
-       true:
-
-       - A full transaction is committed
-
-         OR
-
-       - A non-transactional statement is committed and there is
-         no statement cached
+     - We are in a transaction and a full transaction is committed
 
     Otherwise, we accumulate the statement
   */
@@ -2295,23 +2727,22 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
               YESNO(thd->transaction.stmt.modified_non_trans_table)));
   if (thd->options & OPTION_BIN_LOG)
   {
-    if (in_transaction &&
-        (all ||
-         (!trx_data->at_least_one_stmt &&
-          thd->transaction.stmt.modified_non_trans_table)) ||
-        !in_transaction && !all)
+    if (!in_transaction || all)
     {
       Query_log_event qev(thd, STRING_WITH_LEN("COMMIT"), TRUE, FALSE);
       qev.error_code= 0; // see comment in MYSQL_LOG::write(THD, IO_CACHE)
-      int error= binlog_end_trans(thd, trx_data, &qev, all);
-      DBUG_RETURN(error);
+      error= binlog_end_trans(thd, trx_data, &qev, all);
+      goto end;
     }
   }
   else
   {
     trx_data->reset();
   }
-  DBUG_RETURN(0);
+end:
+  if (!all)
+    trx_data->before_stmt_pos = MY_OFF_T_UNDEF; // part of the stmt commit
+  DBUG_RETURN(error);
 }
 
 /**
@@ -2371,6 +2802,8 @@ static int binlog_rollback(handlerton *hton, THD *thd, bool all)
      */
     error= binlog_end_trans(thd, trx_data, 0, all);
   }
+  if (!all)
+    trx_data->before_stmt_pos = MY_OFF_T_UNDEF; // part of the stmt rollback
   DBUG_RETURN(error);
 }
 
@@ -2488,7 +2921,7 @@ err:
   DBUG_RETURN(-1);
 }
 
-#ifdef __NT__
+#ifdef _WIN32
 static int eventSource = 0;
 
 static void setup_windows_event_source()
@@ -2523,8 +2956,7 @@ static void setup_windows_event_source()
   RegCloseKey(hRegKey);
 }
 
-#endif /* __NT__ */
-
+#endif /* _WIN32 */
 
 /**
   Find a unique filename for 'filename.#'.
@@ -2654,7 +3086,7 @@ bool MYSQL_LOG::open(const char *log_name, enum_log_type log_type_arg,
 #ifdef EMBEDDED_LIBRARY
                         "embedded library\n",
                         my_progname, server_version, MYSQL_COMPILATION_COMMENT
-#elif __NT__
+#elif _WIN32
 			"started with:\nTCP Port: %d, Named Pipe: %s\n",
                         my_progname, server_version, MYSQL_COMPILATION_COMMENT,
                         mysqld_port, mysqld_unix_port
@@ -3145,7 +3577,7 @@ bool MYSQL_BACKUP_LOG::open(const char *log_name,
                    "\terror_num \tnum_objects \ttotal_bytes "
                    "\tvalidity_point_time \tstart_time \tstop_time "
                    "\thost_or_server_name \tusername \tbackup_file "
-                   "\tuser_comment \tcommand \tdrivers\n",
+                   "\tbackup_file_path \tuser_comment \tcommand \tdrivers\n",
                    sizeof(buff) - len);
     else
       end= strnmov(buff + len, "\nbackup_id \tobject \tstart_time \tstop_time "
@@ -3339,6 +3771,10 @@ bool MYSQL_BACKUP_LOG::write(THD *thd, st_backup_history *history_data)
       goto err;
     if (write_str(user))
       goto err;
+    if (write_str(history_data->backup_file))
+      goto err;
+    if (write_str(history_data->backup_file_path))
+      goto err;
     if (write_str(history_data->user_comment))
       goto err;
     if (write_str(history_data->command))
@@ -3474,8 +3910,17 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
   alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
+    /*
+      Here we wish to change the error that is generated by the open method,
+      "table does not exist" to a specific error message for missing
+      backup logs. In this case, we reset the old error and issue the new one.
+    */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -3487,8 +3932,17 @@ my_bool MYSQL_BACKUP_LOG::check_backup_logs(THD *thd)
   alloc_mdl_locks(&tables, thd->mem_root);
   if (simple_open_n_lock_tables(thd, &tables))
   {
+    /*
+      Here we wish to change the error that is generated by the open method,
+      "table does not exist" to a specific error message for missing
+      backup logs. In this case, we reset the old error and issue the new one.
+    */
     ret= TRUE;
     sql_print_error(ER(ER_BACKUP_PROGRESS_TABLES));
+    thd->stmt_da->reset_diagnostics_area();
+    thd->stmt_da->set_error_status(thd, 
+                                   ER_BACKUP_PROGRESS_TABLES, 
+                                   ER(ER_BACKUP_PROGRESS_TABLES));
     DBUG_RETURN(ret);
   }
   close_thread_tables(thd);
@@ -3574,7 +4028,7 @@ ulonglong MYSQL_BACKUP_LOG::get_next_backup_id()
   else  // increment the counter
     id= m_next_id + 1;
 
-  DBUG_EXECUTE_IF("set_backup_id", id= 500;);
+  DBUG_EXECUTE_IF("set_backup_id", id= obs::is_slave() ? 600 : 500;);
 
   /* 
     Write the new value to the file
@@ -3674,9 +4128,11 @@ const char *MYSQL_LOG::generate_name(const char *log_name,
 
 
 
-MYSQL_BIN_LOG::MYSQL_BIN_LOG()
+MYSQL_BIN_LOG::MYSQL_BIN_LOG(uint *sync_period)
   :bytes_written(0), prepared_xids(0), file_id(1), open_count(1),
    need_start_event(TRUE), m_table_map_version(0),
+   sync_period_ptr(sync_period),
+   is_relay_log(0),
    description_event_for_exec(0), description_event_for_queue(0)
 {
   /*
@@ -3687,6 +4143,7 @@ MYSQL_BIN_LOG::MYSQL_BIN_LOG()
   */
   index_file_name[0] = 0;
   bzero((char*) &index_file, sizeof(index_file));
+  bzero((char*) &purge_temp, sizeof(purge_temp));
 }
 
 /* this is called only once */
@@ -3724,7 +4181,12 @@ void MYSQL_BIN_LOG::init_pthread_objects()
   DBUG_ASSERT(inited == 0);
   inited= 1;
   (void) pthread_mutex_init(&LOCK_log, MY_MUTEX_INIT_SLOW);
-  (void) pthread_mutex_init(&LOCK_index, MY_MUTEX_INIT_SLOW);
+  /*
+    LOCK_index and LOCK_log are taken in wrong order
+    Can be seen with 'mysql-test-run ndb.ndb_binlog_basic'
+  */ 
+  (void) my_pthread_mutex_init(&LOCK_index, MY_MUTEX_INIT_SLOW, "LOCK_index",
+                               MYF_NO_DEADLOCK_DETECTION);
   (void) pthread_cond_init(&update_cond, 0);
 }
 
@@ -3874,7 +4336,7 @@ bool MYSQL_BIN_LOG::open(const char *log_name,
       */
       description_event_for_queue->created= 0;
       /* Don't set log_pos in event header */
-      description_event_for_queue->artificial_event=1;
+      description_event_for_queue->set_artificial_event();
 
       if (description_event_for_queue->write(&log_file))
         goto err;
@@ -4138,7 +4600,11 @@ bool MYSQL_BIN_LOG::reset_logs(THD* thd)
   const char* save_name;
   DBUG_ENTER("reset_logs");
 
-  ha_reset_logs(thd);
+  if (ha_reset_logs(thd))
+  {
+    DBUG_RETURN(1);
+  }
+
   /*
     We need to get both locks to be sure that no one is trying to
     write to the index log file.
@@ -4281,6 +4747,7 @@ err:
 int MYSQL_BIN_LOG::purge_first_log(Relay_log_info* rli, bool included)
 {
   int error;
+  char *to_purge_if_included= NULL;
   DBUG_ENTER("purge_first_log");
 
   DBUG_ASSERT(is_open());
@@ -4288,36 +4755,20 @@ int MYSQL_BIN_LOG::purge_first_log(Relay_log_info* rli, bool included)
   DBUG_ASSERT(!strcmp(rli->linfo.log_file_name,rli->event_relay_log_name));
 
   pthread_mutex_lock(&LOCK_index);
-  pthread_mutex_lock(&rli->log_space_lock);
-  rli->relay_log.purge_logs(rli->group_relay_log_name, included,
-                            0, 0, &rli->log_space_total);
-  // Tell the I/O thread to take the relay_log_space_limit into account
-  rli->ignore_log_space_limit= 0;
-  pthread_mutex_unlock(&rli->log_space_lock);
+  to_purge_if_included= my_strdup(rli->group_relay_log_name, MYF(0));
 
   /*
-    Ok to broadcast after the critical region as there is no risk of
-    the mutex being destroyed by this thread later - this helps save
-    context switches
-  */
-  pthread_cond_broadcast(&rli->log_space_cond);
-  
-  /*
     Read the next log file name from the index file and pass it back to
-    the caller
-    If included is true, we want the first relay log;
-    otherwise we want the one after event_relay_log_name.
+    the caller.
   */
-  if ((included && (error=find_log_pos(&rli->linfo, NullS, 0))) ||
-      (!included &&
-       ((error=find_log_pos(&rli->linfo, rli->event_relay_log_name, 0)) ||
-        (error=find_next_log(&rli->linfo, 0)))))
+  if((error=find_log_pos(&rli->linfo, rli->event_relay_log_name, 0)) || 
+     (error=find_next_log(&rli->linfo, 0)))
   {
     char buff[22];
     sql_print_error("next log error: %d  offset: %s  log: %s included: %d",
                     error,
                     llstr(rli->linfo.index_file_offset,buff),
-                    rli->group_relay_log_name,
+                    rli->event_relay_log_name,
                     included);
     goto err;
   }
@@ -4345,7 +4796,42 @@ int MYSQL_BIN_LOG::purge_first_log(Relay_log_info* rli, bool included)
   /* Store where we are in the new file for the execution thread */
   flush_relay_log_info(rli);
 
+  DBUG_EXECUTE_IF("crash_before_purge_logs", abort(););
+
+  pthread_mutex_lock(&rli->log_space_lock);
+  rli->relay_log.purge_logs(to_purge_if_included, included,
+                            0, 0, &rli->log_space_total);
+  // Tell the I/O thread to take the relay_log_space_limit into account
+  rli->ignore_log_space_limit= 0;
+  pthread_mutex_unlock(&rli->log_space_lock);
+
+  /*
+    Ok to broadcast after the critical region as there is no risk of
+    the mutex being destroyed by this thread later - this helps save
+    context switches
+  */
+  pthread_cond_broadcast(&rli->log_space_cond);
+
+  /*
+   * Need to update the log pos because purge logs has been called 
+   * after fetching initially the log pos at the begining of the method.
+   */
+  if((error=find_log_pos(&rli->linfo, rli->event_relay_log_name, 0)))
+  {
+    char buff[22];
+    sql_print_error("next log error: %d  offset: %s  log: %s included: %d",
+                    error,
+                    llstr(rli->linfo.index_file_offset,buff),
+                    rli->group_relay_log_name,
+                    included);
+    goto err;
+  }
+
+  /* If included was passed, rli->linfo should be the first entry. */
+  DBUG_ASSERT(!included || rli->linfo.index_file_start_offset == 0);
+
 err:
+  my_free(to_purge_if_included, MYF(0));
   pthread_mutex_unlock(&LOCK_index);
   DBUG_RETURN(error);
 }
@@ -4396,7 +4882,6 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
                           ulonglong *decrease_log_space)
 {
   int error;
-  int ret = 0;
   bool exit_loop= 0;
   LOG_INFO log_info;
   THD *thd= current_thd;
@@ -4405,8 +4890,36 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
 
   if (need_mutex)
     pthread_mutex_lock(&LOCK_index);
-  if ((error=find_log_pos(&log_info, to_log, 0 /*no mutex*/)))
+  if ((error=find_log_pos(&log_info, to_log, 0 /*no mutex*/))) 
+  {
+    sql_print_error("MYSQL_LOG::purge_logs was called with file %s not "
+                    "listed in the index.", to_log);
     goto err;
+  }
+
+  /*
+    For crash recovery reasons the index needs to be updated before
+    any files are deleted. Move files to be deleted into a temp file
+    to be processed after the index is updated.
+  */
+  if (!my_b_inited(&purge_temp))
+  {
+    if ((error=open_cached_file(&purge_temp, mysql_tmpdir, TEMP_PREFIX,
+                                DISK_BUFFER_SIZE, MYF(MY_WME))))
+    {
+      sql_print_error("MYSQL_LOG::purge_logs failed to open purge_temp");
+      goto err;
+    }
+  }
+  else
+  {
+    if ((error=reinit_io_cache(&purge_temp, WRITE_CACHE, 0, 0, 1)))
+    {
+      sql_print_error("MYSQL_LOG::purge_logs failed to reinit purge_temp "
+                      "for write");
+      goto err;
+    }
+  }
 
   /*
     File name exists in index file; delete until we find this file
@@ -4417,6 +4930,61 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
   while ((strcmp(to_log,log_info.log_file_name) || (exit_loop=included)) &&
          !log_in_use(log_info.log_file_name))
   {
+    if ((error=my_b_write(&purge_temp, (const uchar*)log_info.log_file_name,
+                          strlen(log_info.log_file_name))) ||
+        (error=my_b_write(&purge_temp, (const uchar*)"\n", 1)))
+    {
+      sql_print_error("MYSQL_LOG::purge_logs failed to copy %s to purge_temp",
+                      log_info.log_file_name);
+      goto err;
+    }
+
+    if (find_next_log(&log_info, 0) || exit_loop)
+      break;
+ }
+
+  /* We know how many files to delete. Update index file. */
+  if ((error=update_log_index(&log_info, need_update_threads)))
+  {
+    sql_print_error("MSYQL_LOG::purge_logs failed to update the index file");
+    goto err;
+  }
+
+  DBUG_EXECUTE_IF("crash_after_update_index", abort(););
+
+  /* Switch purge_temp for read. */
+  if ((error=reinit_io_cache(&purge_temp, READ_CACHE, 0, 0, 0)))
+  {
+    sql_print_error("MSYQL_LOG::purge_logs failed to reinit purge_temp "
+                    "for read");
+    goto err;
+  }
+
+  /* Read each entry from purge_temp and delete the file. */
+  for (;;)
+  {
+    uint length;
+
+    if ((length=my_b_gets(&purge_temp, log_info.log_file_name,
+                          FN_REFLEN)) <= 1)
+    {
+      if (purge_temp.error)
+      {
+        error= purge_temp.error;
+        sql_print_error("MSYQL_LOG::purge_logs error %d reading from "
+                        "purge_temp", error);
+        goto err;
+      }
+
+      /* Reached EOF */
+      break;
+    }
+
+    /* Get rid of the trailing '\n' */
+    log_info.log_file_name[length-1]= 0;
+
+    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
+
     MY_STAT s;
     if (!my_stat(log_info.log_file_name, &s, MYF(0)))
     {
@@ -4517,23 +5085,10 @@ int MYSQL_BIN_LOG::purge_logs(const char *to_log,
         }
       }
     }
-
-    ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
-
-    if (find_next_log(&log_info, 0) || exit_loop)
-      break;
-  }
-  
-  /*
-    If we get killed -9 here, the sysadmin would have to edit
-    the log index file after restart - otherwise, this should be safe
-  */
-  error= update_log_index(&log_info, need_update_threads);
-  if (error == 0) {
-    error = ret;
   }
 
 err:
+  close_cached_file(&purge_temp);
   if (need_mutex)
     pthread_mutex_unlock(&LOCK_index);
   DBUG_RETURN(error);
@@ -4544,7 +5099,7 @@ err:
   index file.
 
   @param thd		Thread pointer
-  @param before_date	Delete all log files before given date.
+  @param purge_time	Delete all log files before given date.
 
   @note
     If any of the logs before the deleted one is in use,
@@ -4561,6 +5116,7 @@ err:
 int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
 {
   int error;
+  char to_log[FN_REFLEN];
   LOG_INFO log_info;
   MY_STAT stat_area;
   THD *thd= current_thd;
@@ -4568,12 +5124,8 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
   DBUG_ENTER("purge_logs_before_date");
 
   pthread_mutex_lock(&LOCK_index);
+  to_log[0]= 0;
 
-  /*
-    Delete until we find curren file
-    or a file that is used or a file
-    that is older than purge_time.
-  */
   if ((error=find_log_pos(&log_info, NullS, 0 /*no mutex*/)))
     goto err;
 
@@ -4623,55 +5175,18 @@ int MYSQL_BIN_LOG::purge_logs_before_date(time_t purge_time)
     }
     else
     {
-      if (stat_area.st_mtime >= purge_time)
+      if (stat_area.st_mtime < purge_time) 
+        strmake(to_log, 
+                log_info.log_file_name, 
+                sizeof(log_info.log_file_name));
+      else
         break;
-      if (my_delete(log_info.log_file_name, MYF(0)))
-      {
-        if (my_errno == ENOENT) 
-        {
-          /* It's not fatal even if we can't delete a log file */
-          if (thd)
-          {
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                                ER_LOG_PURGE_NO_FILE, ER(ER_LOG_PURGE_NO_FILE),
-                                log_info.log_file_name);
-          }
-          sql_print_information("Failed to delete file '%s'",
-                                log_info.log_file_name);
-          my_errno= 0;
-        }
-        else
-        {
-          if (thd)
-          {
-            push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
-                                ER_BINLOG_PURGE_FATAL_ERR,
-                                "a problem with deleting %s; "
-                                "consider examining correspondence "
-                                "of your binlog index file "
-                                "to the actual binlog files",
-                                log_info.log_file_name);
-          }
-          else
-          {
-            sql_print_information("Failed to delete log file '%s'",
-                                  log_info.log_file_name); 
-          }
-          error= LOG_INFO_FATAL;
-          goto err;
-        }
-      }
-      ha_binlog_index_purge_file(current_thd, log_info.log_file_name);
     }
     if (find_next_log(&log_info, 0))
       break;
   }
 
-  /*
-    If we get killed -9 here, the sysadmin would have to edit
-    the log index file after restart - otherwise, this should be safe
-  */
-  error= update_log_index(&log_info, 1);
+  error= (to_log[0] ? purge_logs(to_log, 1, 0, 1, (ulonglong *) 0) : 0);
 
 err:
   pthread_mutex_unlock(&LOCK_index);
@@ -4797,7 +5312,7 @@ void MYSQL_BIN_LOG::new_file_impl(bool need_lock)
         to change base names at some point.
       */
       Rotate_log_event r(new_name+dirname_length(new_name),
-                         0, LOG_EVENT_OFFSET, 0);
+                         0, LOG_EVENT_OFFSET, is_relay_log ? Rotate_log_event::RELAY_LOG : 0);
       r.write(&log_file);
       bytes_written += r.data_written;
     }
@@ -4856,6 +5371,8 @@ bool MYSQL_BIN_LOG::append(Log_event* ev)
   }
   bytes_written+= ev->data_written;
   DBUG_PRINT("info",("max_size: %lu",max_size));
+  if (flush_and_sync(0))
+    goto err;
   if ((uint) my_b_append_tell(&log_file) > max_size)
     new_file_without_locking();
 
@@ -4886,6 +5403,8 @@ bool MYSQL_BIN_LOG::appendv(const char* buf, uint len,...)
     bytes_written += len;
   } while ((buf=va_arg(args,const char*)) && (len=va_arg(args,uint)));
   DBUG_PRINT("info",("max_size: %lu",max_size));
+  if (flush_and_sync(0))
+    goto err;
   if ((uint) my_b_append_tell(&log_file) > max_size)
     new_file_without_locking();
 
@@ -4904,9 +5423,10 @@ bool MYSQL_BIN_LOG::flush_and_sync(bool *synced)
   safe_mutex_assert_owner(&LOCK_log);
   if (flush_io_cache(&log_file))
     return 1;
-  if (++sync_binlog_counter >= sync_binlog_period && sync_binlog_period)
+  uint sync_period= get_sync_period();
+  if (sync_period && ++sync_counter >= sync_period)
   {
-    sync_binlog_counter= 0;
+    sync_counter= 0;
     err=my_sync(fd, MYF(MY_WME));
     if (synced)
       *synced= 1;
@@ -5101,6 +5621,31 @@ THD::binlog_set_pending_rows_event(Rows_log_event* ev)
   trx_data->set_pending(ev);
 }
 
+
+/**
+  Remove the pending rows event, discarding any outstanding rows.
+
+  If there is no pending rows event available, this is effectively a
+  no-op.
+ */
+int
+MYSQL_BIN_LOG::remove_pending_rows_event(THD *thd)
+{
+  DBUG_ENTER("MYSQL_BIN_LOG::remove_pending_rows_event");
+
+  binlog_trx_data *const trx_data=
+    (binlog_trx_data*) thd_get_ha_data(thd, binlog_hton);
+
+  DBUG_ASSERT(trx_data);
+
+  if (Rows_log_event* pending= trx_data->pending())
+  {
+    delete pending;
+    trx_data->set_pending(NULL);
+  }
+
+  DBUG_RETURN(0);
+}
 
 /*
   Moves the last bunch of rows from the pending Rows event to the binlog
@@ -5317,11 +5862,6 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
           DBUG_PRINT("info",("number of auto_inc intervals: %u",
                              thd->auto_inc_intervals_in_cur_stmt_for_binlog.
                              nb_elements()));
-          /*
-            If the auto_increment was second in a table's index (possible with
-            MyISAM or BDB) (table->next_number_keypart != 0), such event is
-            in fact not necessary. We could avoid logging it.
-          */
           Intvar_log_event e(thd, (uchar) INSERT_ID_EVENT,
                              thd->auto_inc_intervals_in_cur_stmt_for_binlog.
                              minimum());
@@ -5360,6 +5900,7 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
     if (event_info->write(file))
       goto err;
 
+    error=0;
     if (file == &log_file) // we are writing to the real log (disk)
     {
       bool synced;
@@ -5374,7 +5915,6 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
       signal_update();
       rotate_and_purge(RP_LOCK_LOG_IS_ALREADY_LOCKED);
     }
-    error=0;
 
 err:
     if (error)
@@ -5631,7 +6171,7 @@ int MYSQL_BIN_LOG::write_cache(IO_CACHE *cache, bool lock_log, bool sync_log)
   DBUG_ASSERT(carry == 0);
 
   if (sync_log)
-    flush_and_sync(0);
+    return flush_and_sync(0);
 
   return 0;                                     // All OK
 }
@@ -6032,7 +6572,7 @@ void MYSQL_BIN_LOG::signal_update()
   DBUG_VOID_RETURN;
 }
 
-#ifdef __NT__
+#ifdef _WIN32
 static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
                                         size_t length, size_t buffLen)
 {
@@ -6065,7 +6605,7 @@ static void print_buffer_to_nt_eventlog(enum loglevel level, char *buff,
 
   DBUG_VOID_RETURN;
 }
-#endif /* __NT__ */
+#endif /* _WIN32 */
 
 
 /**
@@ -6123,13 +6663,13 @@ int vprint_msg_to_log(enum loglevel level, const char *format, va_list args)
   char   buff[1024];
   DBUG_ENTER("vprint_msg_to_log");
 
-#ifdef __NT__
+#ifdef _WIN32
   size_t length=
 #endif
     my_vsnprintf(buff, sizeof(buff), format, args);
   print_buffer_to_file(level, buff);
 
-#ifdef __NT__
+#ifdef _WIN32
   print_buffer_to_nt_eventlog(level, buff, length, sizeof(buff));
 #endif
 

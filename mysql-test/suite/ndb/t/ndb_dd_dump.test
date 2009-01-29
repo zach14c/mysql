@@ -257,8 +257,10 @@ CREATE TABLE test.t (
 #'TRUNCATE test.t' failed: 1205: Lock wait timeout exceeded; try restarting 
 #transaction. TABLESPACE ts STORAGE DISK ENGINE=NDB;
 
+let $MYSQLD_DATADIR= `select @@datadir`;
  SELECT count(*) FROM test.t;
  LOAD DATA INFILE 't_backup' INTO TABLE test.t;
+ --remove_file $MYSQLD_DATADIR/test/t_backup
 
  SELECT * FROM test.t order by a;
 

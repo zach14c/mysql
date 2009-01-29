@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -75,6 +75,7 @@
 
 #include "mysql_priv.h"
 #include "transaction.h"
+#include "debug_sync.h"
 #include <hash.h>
 #include <assert.h>
 
@@ -169,9 +170,8 @@ int mysql_lock_tables_check(THD *thd, TABLE **tables, uint count, uint flags)
   DBUG_RETURN(0);
 }
 
-
 /**
-  Reset lock type in lock data and free.
+  Reset lock type in lock data
 
   @param mysql_lock Lock structures to reset.
 
@@ -190,10 +190,11 @@ int mysql_lock_tables_check(THD *thd, TABLE **tables, uint count, uint flags)
         lock request will set its lock type properly.
 */
 
-static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
+
+static void reset_lock_data(MYSQL_LOCK *sql_lock)
 {
-  MYSQL_LOCK *sql_lock= *mysql_lock;
   THR_LOCK_DATA **ldata, **ldata_end;
+  DBUG_ENTER("reset_lock_data");
 
   /* Clear the lock type of all lock data to avoid reusage. */
   for (ldata= sql_lock->locks, ldata_end= ldata + sql_lock->lock_count;
@@ -203,7 +204,21 @@ static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
     /* Reset lock type. */
     (*ldata)->type= TL_UNLOCK;
   }
-  my_free((uchar*) sql_lock, MYF(0));
+  DBUG_VOID_RETURN;
+}
+
+
+/**
+  Reset lock type in lock data and free.
+
+  @param mysql_lock Lock structures to reset.
+
+*/
+
+static void reset_lock_data_and_free(MYSQL_LOCK **mysql_lock)
+{
+  reset_lock_data(*mysql_lock);
+  my_free(*mysql_lock, MYF(0));
   *mysql_lock= 0;
 }
 
@@ -315,6 +330,13 @@ MYSQL_LOCK *mysql_lock_tables(THD *thd, TABLE **tables, uint count,
     }
     else if (rc == 1)                           /* aborted or killed */
     {
+      /*
+        reset_lock_data is required here. If thr_multi_lock fails it
+        resets lock type for tables, which were locked before (and
+        including) one that caused error. Lock type for other tables
+        preserved.
+      */
+      reset_lock_data(sql_lock);
       thd->some_tables_deleted=1;		// Try again
       sql_lock->lock_count= 0;                  // Locks are already freed
       // Fall through: unlock, reset lock data, free and retry
@@ -404,6 +426,7 @@ static int lock_external(THD *thd, TABLE **tables, uint count)
       (*tables)->current_lock= lock_type;
     }
   }
+  DEBUG_SYNC(thd, "locked_external");
   DBUG_RETURN(0);
 }
 
@@ -868,7 +891,7 @@ static MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count,
     if ((table=table_ptr[i])->s->tmp_table == NON_TRANSACTIONAL_TMP_TABLE)
       continue;
     lock_type= table->reginfo.lock_type;
-    DBUG_ASSERT (lock_type != TL_WRITE_DEFAULT);
+    DBUG_ASSERT(lock_type != TL_WRITE_DEFAULT && lock_type != TL_READ_DEFAULT);
     if (lock_type >= TL_WRITE_ALLOW_WRITE)
     {
       *write_lock_used=table;

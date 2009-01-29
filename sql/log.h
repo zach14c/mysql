@@ -38,6 +38,7 @@ enum enum_backup_history_log_field
   ET_OBH_FIELD_HOST_OR_SERVER,
   ET_OBH_FIELD_USERNAME,
   ET_OBH_FIELD_BACKUP_FILE,
+  ET_OBH_FIELD_BACKUP_FILE_PATH,
   ET_OBH_FIELD_COMMENT,
   ET_OBH_FIELD_COMMAND,
   ET_OBH_FIELD_DRIVERS,
@@ -267,6 +268,14 @@ private:
   time_t last_time;
 };
 
+/*
+  Values for the type enum. This reflects the order of the enum 
+  declaration in the PURGE BACKUP LOGS command.
+*/
+#define TYPE_ENUM_PURGE_BACKUP_LOGS       1
+#define TYPE_ENUM_PURGE_BACKUP_LOGS_ID    2
+#define TYPE_ENUM_PURGE_BACKUP_LOGS_DATE  3
+
 class MYSQL_BACKUP_LOG: public MYSQL_LOG
 {
 public:
@@ -306,6 +315,8 @@ public:
   }
   ulonglong get_next_backup_id();
   my_bool check_backup_logs(THD *thd);
+  File get_file() { return log_file.file; }
+  inline pthread_mutex_t* get_log_lock() { return &LOCK_log; }
 
 private:
   bool write_int(uint num);
@@ -327,6 +338,13 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
   pthread_cond_t update_cond;
   ulonglong bytes_written;
   IO_CACHE index_file;
+  /*
+    purge_temp is a temp file used in purge_logs so that the index file
+    can be updated before deleting files from disk, yielding better crash
+    recovery. It is created on demand the first time purge_logs is called
+    and then reused for subsequent calls. It is cleaned up in cleanup().
+  */
+  IO_CACHE purge_temp;
   char index_file_name[FN_REFLEN];
   /*
      The max size before rotation (usable only if log_type == LOG_BIN: binary
@@ -356,6 +374,18 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 
   ulonglong m_table_map_version;
 
+  /* pointer to the sync period variable, for binlog this will be
+     sync_binlog_period, for relay log this will be
+     sync_relay_log_period
+  */
+  uint *sync_period_ptr;
+  uint sync_counter;
+
+  inline uint get_sync_period()
+  {
+    return *sync_period_ptr;
+  }
+
   int write_to_file(IO_CACHE *cache);
   /*
     This is used to start writing to a new log file. The difference from
@@ -368,6 +398,10 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 public:
   MYSQL_LOG::generate_name;
   MYSQL_LOG::is_open;
+
+  /* This is relay log */
+  bool is_relay_log;
+
   /*
     These describe the log's format. This is used only for relay logs.
     _for_exec is used by the SQL thread, _for_queue by the I/O thread. It's
@@ -379,7 +413,7 @@ public:
   Format_description_log_event *description_event_for_exec,
     *description_event_for_queue;
 
-  MYSQL_BIN_LOG();
+  MYSQL_BIN_LOG(uint *sync_period);
   /*
     note that there's no destructor ~MYSQL_BIN_LOG() !
     The reason is that we don't want it to be automatically called
@@ -401,6 +435,7 @@ public:
   void update_table_map_version() { ++m_table_map_version; }
 
   int flush_and_set_pending_rows_event(THD *thd, Rows_log_event* event);
+  int remove_pending_rows_event(THD *thd);
 
 #endif /* !defined(MYSQL_CLIENT) */
   void reset_bytes_written()
@@ -575,6 +610,13 @@ public:
                                    longlong progress,
                                    int error_num,
                                    const char *notes);
+  bool purge_backup_logs(THD *thd);
+  bool purge_backup_logs_before_id(THD *thd, 
+                                   ulonglong backup_id, 
+                                   int *rows);
+  bool purge_backup_logs_before_date(THD *thd, 
+                                     my_time_t t, 
+                                     int *rows);
 
   int activate_log(THD *thd, uint log_type);
 
@@ -628,6 +670,7 @@ public:
 
   void flush();
   void flush_backup_logs();
+  bool purge_backup_logs();
   void init_pthread_objects();
   MYSQL_QUERY_LOG *get_mysql_slow_log() { return &mysql_slow_log; }
   MYSQL_QUERY_LOG *get_mysql_log() { return &mysql_log; }
@@ -682,6 +725,13 @@ public:
   void init_log_tables();
   bool flush_logs(THD *thd);
   bool flush_backup_logs(THD *thd);
+  bool purge_backup_logs(THD *thd);
+  bool purge_backup_logs_before_id(THD *thd, 
+                                   ulonglong backup_id, 
+                                   int *rows);
+  bool purge_backup_logs_before_date(THD *thd, 
+                                     my_time_t t, 
+                                     int *rows);
   /* Perform basic logger cleanup. this will leave e.g. error log open. */
   void cleanup_base();
   /* Free memory. Nothing could be logged after this function is called */

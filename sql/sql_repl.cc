@@ -22,12 +22,14 @@
 #include "rpl_filter.h"
 #include <my_dir.h>
 #include "rpl_handler.h"
+#include "debug_sync.h"
 
 int max_binlog_dump_events = 0; // unlimited
 my_bool opt_sporadic_binlog_dump_fail = 0;
 #ifndef DBUG_OFF
 static int binlog_dump_count = 0;
 #endif
+extern my_bool disable_slaves;
 
 /*
     fake_rotate_event() builds a fake (=which does not exist physically in any
@@ -64,7 +66,7 @@ static int fake_rotate_event(NET* net, String* packet, char* log_file_name,
   ulong event_len = ident_len + LOG_EVENT_HEADER_LEN + ROTATE_HEADER_LEN;
   int4store(header + SERVER_ID_OFFSET, server_id);
   int4store(header + EVENT_LEN_OFFSET, event_len);
-  int2store(header + FLAGS_OFFSET, 0);
+  int2store(header + FLAGS_OFFSET, LOG_EVENT_ARTIFICIAL_F);
 
   // TODO: check what problems this may cause and fix them
   int4store(header + LOG_POS_OFFSET, 0);
@@ -258,6 +260,17 @@ bool purge_error_message(THD* thd, int res)
 }
 
 
+/**
+  Execute a PURGE BINARY LOGS TO <log> command.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param to_log Name of the last log to purge.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool purge_master_logs(THD* thd, const char* to_log)
 {
   char search_file_name[FN_REFLEN];
@@ -274,6 +287,17 @@ bool purge_master_logs(THD* thd, const char* to_log)
 }
 
 
+/**
+  Execute a PURGE BINARY LOGS BEFORE <date> command.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param purge_time Date before which logs should be purged.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool purge_master_logs_before_date(THD* thd, time_t purge_time)
 {
   if (!mysql_bin_log.is_open())
@@ -470,6 +494,17 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
     goto err;
   }
 #endif
+
+  /*
+    Tell the connecting slave the master cannot accept any connections
+    if disable_slaves == TRUE.
+  */
+  if (disable_slaves)
+  {
+     errmsg= "Master does not allow slaves to connect.";
+     my_errno= ER_MASTER_BLOCKING_SLAVES;
+     goto err;
+  }
 
   if (!mysql_bin_log.is_open())
   {
@@ -980,6 +1015,20 @@ err:
   DBUG_VOID_RETURN;
 }
 
+
+/**
+  Execute a START SLAVE statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param mi Pointer to Master_info object for the slave's IO thread.
+
+  @param net_report If true, saves the exit status into thd->main_da.
+
+  @retval 0 success
+  @retval 1 error
+*/
 int start_slave(THD* thd , Master_info* mi,  bool net_report)
 {
   int slave_errno= 0;
@@ -1105,6 +1154,19 @@ int start_slave(THD* thd , Master_info* mi,  bool net_report)
 }
 
 
+/**
+  Execute a STOP SLAVE statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param mi Pointer to Master_info object for the slave's IO thread.
+
+  @param net_report If true, saves the exit status into thd->main_da.
+
+  @retval 0 success
+  @retval 1 error
+*/
 int stop_slave(THD* thd, Master_info* mi, bool net_report )
 {
   DBUG_ENTER("stop_slave");
@@ -1157,20 +1219,17 @@ int stop_slave(THD* thd, Master_info* mi, bool net_report )
 }
 
 
-/*
-  Remove all relay logs and start replication from the start
+/**
+  Execute a RESET SLAVE statement.
 
-  SYNOPSIS
-    reset_slave()
-    thd			Thread handler
-    mi			Master info for the slave
+  @param thd Pointer to THD object of the client thread executing the
+  statement.
 
-  RETURN
-    0	ok
-    1	error
+  @param mi Pointer to Master_info object for the slave.
+
+  @retval 0 success
+  @retval 1 error
 */
-
-
 int reset_slave(THD *thd, Master_info* mi)
 {
   MY_STAT stat_area;
@@ -1189,7 +1248,8 @@ int reset_slave(THD *thd, Master_info* mi)
     goto err;
   }
 
-  ha_reset_slave(thd);
+  if ((error= ha_reset_slave(thd)))
+    goto err;
 
   // delete relay logs, clear relay log coordinates
   if ((error= purge_relay_logs(&mi->rli, thd,
@@ -1203,6 +1263,7 @@ int reset_slave(THD *thd, Master_info* mi)
      Reset errors (the idea is that we forget about the
      old master).
   */
+  mi->clear_error();
   mi->rli.clear_error();
   mi->rli.clear_until_condition();
 
@@ -1279,32 +1340,44 @@ void kill_zombie_dump_threads(uint32 slave_server_id)
   }
 }
 
+/**
+  Execute a CHANGE MASTER statement.
 
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @param mi Pointer to Master_info object belonging to the slave's IO
+  thread.
+
+  @retval FALSE success
+  @retval TRUE error
+*/
 bool change_master(THD* thd, Master_info* mi)
 {
   int thread_mask;
   const char* errmsg= 0;
   bool need_relay_log_purge= 1;
+  bool ret= FALSE;
   DBUG_ENTER("change_master");
 
   lock_slave_threads(mi);
   init_thread_mask(&thread_mask,mi,0 /*not inverse*/);
+  LEX_MASTER_INFO* lex_mi= &thd->lex->mi;
   if (thread_mask) // We refuse if any slave thread is running
   {
     my_message(ER_SLAVE_MUST_STOP, ER(ER_SLAVE_MUST_STOP), MYF(0));
-    unlock_slave_threads(mi);
-    DBUG_RETURN(TRUE);
+    ret= TRUE;
+    goto err;
   }
 
   thd_proc_info(thd, "Changing master");
-  LEX_MASTER_INFO* lex_mi= &thd->lex->mi;
   // TODO: see if needs re-write
   if (init_master_info(mi, master_info_file, relay_log_info_file, 0,
 		       thread_mask))
   {
     my_message(ER_MASTER_INFO, ER(ER_MASTER_INFO), MYF(0));
-    unlock_slave_threads(mi);
-    DBUG_RETURN(TRUE);
+    ret= TRUE;
+    goto err;
   }
 
   /*
@@ -1349,6 +1422,34 @@ bool change_master(THD* thd, Master_info* mi)
     mi->heartbeat_period= (float) min(SLAVE_MAX_HEARTBEAT_PERIOD,
                                       (slave_net_timeout/2.0));
   mi->received_heartbeats= LL(0); // counter lives until master is CHANGEd
+  /*
+    reset the last time server_id list if the current CHANGE MASTER 
+    is mentioning IGNORE_SERVER_IDS= (...)
+  */
+  if (lex_mi->repl_ignore_server_ids_opt == LEX_MASTER_INFO::LEX_MI_ENABLE)
+    reset_dynamic(&mi->ignore_server_ids);
+  for (uint i= 0; i < lex_mi->repl_ignore_server_ids.elements; i++)
+  {
+    ulong s_id;
+    get_dynamic(&lex_mi->repl_ignore_server_ids, (uchar*) &s_id, i);
+    if (s_id == ::server_id && replicate_same_server_id)
+    {
+      my_error(ER_SLAVE_IGNORE_SERVER_IDS, MYF(0), s_id);
+      ret= TRUE;
+      goto err;
+    }
+    else
+    {
+      if (bsearch((const ulong *) &s_id,
+                  mi->ignore_server_ids.buffer,
+                  mi->ignore_server_ids.elements, sizeof(ulong),
+                  (int (*) (const void*, const void*))
+                  server_id_cmp) == NULL)
+        insert_dynamic(&mi->ignore_server_ids, (uchar*) &s_id);
+    }
+  }
+  sort_dynamic(&mi->ignore_server_ids, (qsort_cmp) server_id_cmp);
+
   if (lex_mi->ssl != LEX_MASTER_INFO::LEX_MI_UNCHANGED)
     mi->ssl= (lex_mi->ssl == LEX_MASTER_INFO::LEX_MI_ENABLE);
 
@@ -1426,8 +1527,8 @@ bool change_master(THD* thd, Master_info* mi)
   if (flush_master_info(mi, 0))
   {
     my_error(ER_RELAY_LOG_INIT, MYF(0), "Failed to flush master info file");
-    unlock_slave_threads(mi);
-    DBUG_RETURN(TRUE);
+    ret= TRUE;
+    goto err;
   }
   if (need_relay_log_purge)
   {
@@ -1438,8 +1539,8 @@ bool change_master(THD* thd, Master_info* mi)
 			 &errmsg))
     {
       my_error(ER_RELAY_LOG_FAIL, MYF(0), errmsg);
-      unlock_slave_threads(mi);
-      DBUG_RETURN(TRUE);
+      ret= TRUE;
+      goto err;
     }
   }
   else
@@ -1454,8 +1555,8 @@ bool change_master(THD* thd, Master_info* mi)
 			   &msg, 0))
     {
       my_error(ER_RELAY_LOG_INIT, MYF(0), msg);
-      unlock_slave_threads(mi);
-      DBUG_RETURN(TRUE);
+      ret= TRUE;
+      goto err;
     }
   }
   /*
@@ -1492,12 +1593,25 @@ bool change_master(THD* thd, Master_info* mi)
   pthread_cond_broadcast(&mi->data_cond);
   pthread_mutex_unlock(&mi->rli.data_lock);
 
+err:
   unlock_slave_threads(mi);
   thd_proc_info(thd, 0);
-  my_ok(thd);
-  DBUG_RETURN(FALSE);
+  if (ret == FALSE)
+    my_ok(thd);
+  delete_dynamic(&lex_mi->repl_ignore_server_ids); //freeing of parser-time alloc
+  DBUG_RETURN(ret);
 }
 
+
+/**
+  Execute a RESET MASTER statement.
+
+  @param thd Pointer to THD object of the client thread executing the
+  statement.
+
+  @retval 0 success
+  @retval 1 error
+*/
 int reset_master(THD* thd)
 {
   if (!mysql_bin_log.is_open())
@@ -1531,6 +1645,15 @@ int cmp_master_pos(const char* log_file_name1, ulonglong log_pos1,
 }
 
 
+/**
+  Execute a SHOW BINLOG EVENTS statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool mysql_show_binlog_events(THD* thd)
 {
   Protocol *protocol= thd->protocol;
@@ -1681,6 +1804,15 @@ err:
 }
 
 
+/**
+  Execute a SHOW MASTER STATUS statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool show_binlog_info(THD* thd)
 {
   Protocol *protocol= thd->protocol;
@@ -1714,18 +1846,15 @@ bool show_binlog_info(THD* thd)
 }
 
 
-/*
-  Send a list of all binary logs to client
+/**
+  Execute a SHOW BINARY LOGS statement.
 
-  SYNOPSIS
-    show_binlogs()
-    thd		Thread specific variable
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
 
-  RETURN VALUES
-    FALSE OK
-    TRUE  error
+  @retval FALSE success
+  @retval TRUE failure
 */
-
 bool show_binlogs(THD* thd)
 {
   IO_CACHE *index_file;
@@ -1871,15 +2000,6 @@ public:
   */
 };
 
-class sys_var_sync_binlog_period :public sys_var_long_ptr
-{
-public:
-  sys_var_sync_binlog_period(sys_var_chain *chain, const char *name_arg, 
-                             ulong *value_ptr)
-    :sys_var_long_ptr(chain, name_arg,value_ptr) {}
-  bool update(THD *thd, set_var *var);
-};
-
 static void fix_slave_net_timeout(THD *thd, enum_var_type type)
 {
   DBUG_ENTER("fix_slave_net_timeout");
@@ -1902,65 +2022,40 @@ static void fix_slave_net_timeout(THD *thd, enum_var_type type)
 
 static sys_var_chain vars = { NULL, NULL };
 
+static sys_var_const    sys_log_slave_updates(&vars, "log_slave_updates",
+                                              OPT_GLOBAL, SHOW_MY_BOOL,
+                                              (uchar*) &opt_log_slave_updates);
+static sys_var_const    sys_relay_log(&vars, "relay_log",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &opt_relay_logname);
+static sys_var_const    sys_relay_log_index(&vars, "relay_log_index",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &opt_relaylog_index_name);
+static sys_var_const    sys_relay_log_info_file(&vars, "relay_log_info_file",
+                                      OPT_GLOBAL, SHOW_CHAR_PTR,
+                                      (uchar*) &relay_log_info_file);
 static sys_var_bool_ptr	sys_relay_log_purge(&vars, "relay_log_purge",
 					    &relay_log_purge);
+static sys_var_const    sys_relay_log_space_limit(&vars,
+                                                  "relay_log_space_limit",
+                                                  OPT_GLOBAL, SHOW_LONGLONG,
+                                                  (uchar*)
+                                                  &relay_log_space_limit);
+static sys_var_const    sys_slave_load_tmpdir(&vars, "slave_load_tmpdir",
+                                              OPT_GLOBAL, SHOW_CHAR_PTR,
+                                              (uchar*) &slave_load_tmpdir);
 static sys_var_long_ptr	sys_slave_net_timeout(&vars, "slave_net_timeout",
 					      &slave_net_timeout,
                                               fix_slave_net_timeout);
+static sys_var_const    sys_slave_skip_errors(&vars, "slave_skip_errors",
+                                              OPT_GLOBAL, SHOW_CHAR,
+                                              (uchar*) slave_skip_error_names);
 static sys_var_long_ptr	sys_slave_trans_retries(&vars, "slave_transaction_retries",
 						&slave_trans_retries);
-static sys_var_sync_binlog_period sys_sync_binlog_period(&vars, "sync_binlog", &sync_binlog_period);
+static sys_var_int_ptr sys_sync_binlog_period(&vars, "sync_binlog", &sync_binlog_period);
+static sys_var_int_ptr sys_sync_relaylog_period(&vars, "sync_relay_log", &sync_relaylog_period);
 static sys_var_slave_skip_counter sys_slave_skip_counter(&vars, "sql_slave_skip_counter");
 
-static int show_slave_skip_errors(THD *thd, SHOW_VAR *var, char *buff);
-
-
-static SHOW_VAR fixed_vars[]= {
-  {"log_slave_updates",       (char*) &opt_log_slave_updates,       SHOW_MY_BOOL},
-  {"relay_log" , (char*) &opt_relay_logname, SHOW_CHAR_PTR},
-  {"relay_log_index", (char*) &opt_relaylog_index_name, SHOW_CHAR_PTR},
-  {"relay_log_info_file", (char*) &relay_log_info_file, SHOW_CHAR_PTR},
-  {"relay_log_space_limit",   (char*) &relay_log_space_limit,       SHOW_LONGLONG},
-  {"slave_load_tmpdir",       (char*) &slave_load_tmpdir,           SHOW_CHAR_PTR},
-  {"slave_skip_errors",       (char*) &show_slave_skip_errors,      SHOW_FUNC},
-};
-
-static int show_slave_skip_errors(THD *thd, SHOW_VAR *var, char *buff)
-{
-  var->type=SHOW_CHAR;
-  var->value= buff;
-  if (!use_slave_mask || bitmap_is_clear_all(&slave_error_mask))
-  {
-    var->value= const_cast<char *>("OFF");
-  }
-  else if (bitmap_is_set_all(&slave_error_mask))
-  {
-    var->value= const_cast<char *>("ALL");
-  }
-  else
-  {
-    /* 10 is enough assuming errors are max 4 digits */
-    int i;
-    var->value= buff;
-    for (i= 1;
-         i < MAX_SLAVE_ERROR &&
-         (buff - var->value) < SHOW_VAR_FUNC_BUFF_SIZE;
-         i++)
-    {
-      if (bitmap_is_set(&slave_error_mask, i))
-      {
-        buff= int10_to_str(i, buff, 10);
-        *buff++= ',';
-      }
-    }
-    if (var->value != buff)
-      buff--;				// Remove last ','
-    if (i < MAX_SLAVE_ERROR)
-      buff= strmov(buff, "...");  // Couldn't show all errors
-    *buff=0;
-  }
-  return 0;
-}
 
 bool sys_var_slave_skip_counter::check(THD *thd, set_var *var)
 {
@@ -2000,16 +2095,8 @@ bool sys_var_slave_skip_counter::update(THD *thd, set_var *var)
 }
 
 
-bool sys_var_sync_binlog_period::update(THD *thd, set_var *var)
-{
-  sync_binlog_period= (ulong) var->save_result.ulonglong_value;
-  return 0;
-}
-
 int init_replication_sys_vars()
 {
-  mysql_append_static_vars(fixed_vars, sizeof(fixed_vars) / sizeof(SHOW_VAR));
-
   if (mysql_add_sys_var_chain(vars.first, my_long_options))
   {
     /* should not happen */

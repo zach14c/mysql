@@ -260,6 +260,7 @@ prepare stmt4 from ' show databases ';
 execute stmt4;
 Database
 information_schema
+mtr
 mysql
 test
 prepare stmt4 from ' show tables from test like ''t2%'' ';
@@ -278,6 +279,9 @@ b	char(10)	YES		NULL
 SET @arg00=1;
 execute stmt4 using @arg00;
 Field	Type	Null	Key	Default	Extra
+Warnings:
+Warning	1292	Truncated incorrect DOUBLE value: 'a'
+Warning	1292	Truncated incorrect DOUBLE value: 'b'
 prepare stmt4 from ' show columns from t2 from test like ''a%'' ';
 execute stmt4;
 Field	Type	Null	Key	Default	Extra

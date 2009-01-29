@@ -3,12 +3,13 @@ WHERE table_schema = 'mysql'
 ORDER BY table_schema, table_name, column_name;
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	STORAGE	FORMAT
 NULL	mysql	backup_history	backup_file	15		NO	char	100	400	NULL	NULL	utf8	utf8_general_ci	char(100)			select,insert,update,references	The name of the file	Default	Default
+NULL	mysql	backup_history	backup_file_path	16		NO	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The full path to the backup image file	Default	Default
 NULL	mysql	backup_history	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	Surrogate key for (near) duplicate entries	Default	Default
 NULL	mysql	backup_history	backup_state	5	NULL	NO	enum	14	56	NULL	NULL	utf8	utf8_general_ci	enum('complete','starting','validity point','running','error','cancel')			select,insert,update,references	Status of current operation	Default	Default
 NULL	mysql	backup_history	binlog_file	4		NO	char	64	256	NULL	NULL	utf8	utf8_general_ci	char(64)			select,insert,update,references	The recorded binlog filename at time of backup/restore	Default	Default
 NULL	mysql	backup_history	binlog_pos	3	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The recorded binlog position of backup/restore	Default	Default
-NULL	mysql	backup_history	command	17		NO	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
-NULL	mysql	backup_history	drivers	18		NO	varchar	100	400	NULL	NULL	utf8	utf8_general_ci	varchar(100)			select,insert,update,references	The name of the storage engines used in the operation	Default	Default
+NULL	mysql	backup_history	command	18		NO	varchar	512	2048	NULL	NULL	utf8	utf8_general_ci	varchar(512)			select,insert,update,references	The command used to issue operation	Default	Default
+NULL	mysql	backup_history	drivers	19		NO	varchar	100	400	NULL	NULL	utf8	utf8_general_ci	varchar(100)			select,insert,update,references	The name of the storage engines used in the operation	Default	Default
 NULL	mysql	backup_history	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
 NULL	mysql	backup_history	host_or_server_name	13		NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The server name where operation ran	Default	Default
 NULL	mysql	backup_history	num_objects	8	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(10) unsigned			select,insert,update,references	The number of objects in the backup	Default	Default
@@ -18,7 +19,7 @@ NULL	mysql	backup_history	start_time	11	0000-00-00 00:00:00	NO	datetime	NULL	NUL
 NULL	mysql	backup_history	stop_time	12	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The date/time of end of operation	Default	Default
 NULL	mysql	backup_history	total_bytes	9	0	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	The size of the backup repository in bytes	Default	Default
 NULL	mysql	backup_history	username	14		NO	char	30	120	NULL	NULL	utf8	utf8_general_ci	char(30)			select,insert,update,references	The user name who ran the operation	Default	Default
-NULL	mysql	backup_history	user_comment	16		NO	varchar	200	800	NULL	NULL	utf8	utf8_general_ci	varchar(200)			select,insert,update,references	The comment from user entered at command line	Default	Default
+NULL	mysql	backup_history	user_comment	17		NO	varchar	200	800	NULL	NULL	utf8	utf8_general_ci	varchar(200)			select,insert,update,references	The comment from user entered at command line	Default	Default
 NULL	mysql	backup_history	validity_point_time	10	0000-00-00 00:00:00	NO	datetime	NULL	NULL	NULL	NULL	NULL	NULL	datetime			select,insert,update,references	The time of the validity point.	Default	Default
 NULL	mysql	backup_progress	backup_id	1	NULL	NO	bigint	NULL	NULL	19	0	NULL	NULL	bigint(20) unsigned			select,insert,update,references	Key for backup_history table entries	Default	Default
 NULL	mysql	backup_progress	error_num	7	0	NO	int	NULL	NULL	10	0	NULL	NULL	int(11)			select,insert,update,references	The error from this run 0 == none	Default	Default
@@ -329,6 +330,7 @@ NULL	mysql	backup_history	stop_time	datetime	NULL	NULL	NULL	NULL	datetime
 4.0000	mysql	backup_history	host_or_server_name	char	30	120	utf8	utf8_general_ci	char(30)
 4.0000	mysql	backup_history	username	char	30	120	utf8	utf8_general_ci	char(30)
 4.0000	mysql	backup_history	backup_file	char	100	400	utf8	utf8_general_ci	char(100)
+4.0000	mysql	backup_history	backup_file_path	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
 4.0000	mysql	backup_history	user_comment	varchar	200	800	utf8	utf8_general_ci	varchar(200)
 4.0000	mysql	backup_history	command	varchar	512	2048	utf8	utf8_general_ci	varchar(512)
 4.0000	mysql	backup_history	drivers	varchar	100	400	utf8	utf8_general_ci	varchar(100)

@@ -46,6 +46,7 @@ static const int FALC0N_SYNC_OBJECTS		= 4;
 static const int FALC0N_FREEZE				= 8;
 static const int FALC0N_REPORT_WRITES		= 16;
 static const int FALC0N_SYNC_HANDLER		= 32;
+static const int FALC0N_TEST_BITMAP			= 64;
 
 #define TABLE_HASH_SIZE		101
 
@@ -305,7 +306,7 @@ public:
 	int					noSchedule;
 	int					pendingIOErrorCode;
 	uint32				serialLogBlockSize;
-	
+
 	volatile INTERLOCK_TYPE	currentGeneration;
 	uint64				recordMemoryMax;
 	uint64				recordScavengeThreshold;

@@ -45,6 +45,7 @@
 #include "be_snapshot.h"
 #include "backup_aux.h"
 #include "transaction.h"
+#include "debug_sync.h"
 
 namespace snapshot_backup {
 
@@ -126,7 +127,15 @@ result_t Backup::get_data(Buffer &buf)
     // open_and_lock_tables. Otherwise, open_and_lock_tables will try to open
     // previously opened views and crash.
     locking_thd->m_thd->lex->cleanup_after_one_table_open();
-    open_and_lock_tables(locking_thd->m_thd, locking_thd->tables_in_backup);
+    /*
+      The MYSQL_OPEN_SKIP_TEMPORARY flag is needed so that temporary tables are
+      not opened which would occulde the regular tables selected for backup 
+      (BUG#33574).
+     */ 
+    open_and_lock_tables_derived(locking_thd->m_thd, 
+                                 locking_thd->tables_in_backup,
+                                 FALSE, /* do not process derived tables */
+                                 MYSQL_OPEN_SKIP_TEMPORARY);
     tables_open= TRUE;
   }
   if (locking_thd->lock_state == LOCK_ACQUIRED)

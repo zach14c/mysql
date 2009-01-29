@@ -280,9 +280,10 @@ private:
                       TABLE_FLUSH_IN_PROGRESS };
 
   Cache_status m_cache_status;
-
+  bool m_query_cache_is_disabled;
   void free_query_internal(Query_cache_block *point);
   void invalidate_table_internal(THD *thd, uchar *key, uint32 key_length);
+  void disable_query_cache(void) { m_query_cache_is_disabled= TRUE; }
 
 protected:
   /*
@@ -427,6 +428,8 @@ protected:
 	      ulong min_result_data_size = QUERY_CACHE_MIN_RESULT_DATA_SIZE,
 	      uint def_query_hash_size = QUERY_CACHE_DEF_QUERY_HASH_SIZE,
 	      uint def_table_hash_size = QUERY_CACHE_DEF_TABLE_HASH_SIZE);
+
+  bool is_disabled(void) { return m_query_cache_is_disabled; }
 
   /* initialize cache (mutex) */
   void init();

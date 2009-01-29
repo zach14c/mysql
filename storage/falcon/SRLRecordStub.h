@@ -37,7 +37,6 @@ public:
 	SRLRecordStub();
 	virtual ~SRLRecordStub();
 
-	int		tableSpaceId;
 	int32	sectionId;
 	int32	recordId;
 

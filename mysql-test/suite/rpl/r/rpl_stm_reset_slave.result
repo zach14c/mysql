@@ -43,6 +43,8 @@ Last_IO_Errno	#
 Last_IO_Error	#
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 stop slave;
 change master to master_user='test';
 SHOW SLAVE STATUS;
@@ -84,6 +86,8 @@ Last_IO_Errno	#
 Last_IO_Error	#
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 reset slave;
 SHOW SLAVE STATUS;
 Slave_IO_State	#
@@ -124,6 +128,8 @@ Last_IO_Errno	#
 Last_IO_Error	#
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 change master to master_user='root';
 start slave;
 SHOW SLAVE STATUS;
@@ -165,6 +171,8 @@ Last_IO_Errno	#
 Last_IO_Error	#
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 stop slave;
 reset slave;
 start slave;
@@ -175,3 +183,26 @@ start slave;
 show status like 'slave_open_temp_tables';
 Variable_name	Value
 Slave_open_temp_tables	1
+stop slave;
+reset slave;
+*** errno must be zero: 0 ***
+change master to master_user='impossible_user_name';
+start slave;
+ONE
+1
+stop slave;
+change master to master_user='root';
+start slave;
+*** last errno must be  zero: 0 ***
+*** last error must be blank:  ***
+stop slave;
+change master to master_user='impossible_user_name';
+start slave;
+ONE
+1
+stop slave;
+reset slave;
+*** io  last errno must be  zero: 0  ***
+*** io  last error must be blank:   ***
+*** sql last errno must be  zero: 0 ***
+*** sql last error must be blank:  ***

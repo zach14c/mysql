@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@ sys_var *trg_new_row_fake_var= (sys_var*) 0x01;
   LEX_STRING constant for null-string to be used in parser and other places.
 */
 const LEX_STRING null_lex_str= {NULL, 0};
+const LEX_STRING empty_lex_str= { (char*) "", 0 };
 
 /* Longest standard keyword name */
 
@@ -144,6 +145,7 @@ Lex_input_stream::Lex_input_stream(THD *thd,
   found_semicolon(NULL),
   ignore_space(test(thd->variables.sql_mode & MODE_IGNORE_SPACE)),
   stmt_prepare_mode(FALSE),
+  multi_statements(TRUE),
   in_comment(NO_COMMENT),
   m_underscore_cs(NULL)
 {
@@ -303,6 +305,7 @@ void lex_start(THD *thd)
   lex->select_lex.init_query();
   lex->value_list.empty();
   lex->update_list.empty();
+  lex->set_var_list.empty();
   lex->param_list.empty();
   lex->view_list.empty();
   lex->prepared_stmt_params.empty();
@@ -1617,6 +1620,7 @@ void st_select_lex::init_query()
   subquery_in_having= explicit_limit= 0;
   is_item_list_lookup= 0;
   first_execution= 1;
+  first_natural_join_processing= 1;
   first_cond_optimization= 1;
   parsing_place= NO_MATTER;
   exclude_from_table_unique_test= no_wrap_view_item= FALSE;
@@ -2477,15 +2481,20 @@ void st_select_lex_unit::set_limit(st_select_lex *sl)
   val= sl->select_limit ? sl->select_limit->val_uint() : HA_POS_ERROR;
   select_limit_val= (ha_rows)val;
 #ifndef BIG_TABLES
-  /* 
+  /*
     Check for overflow : ha_rows can be smaller then ulonglong if
     BIG_TABLES is off.
     */
   if (val != (ulonglong)select_limit_val)
     select_limit_val= HA_POS_ERROR;
 #endif
-  offset_limit_cnt= (ha_rows)(sl->offset_limit ? sl->offset_limit->val_uint() :
-                                                 ULL(0));
+  val= sl->offset_limit ? sl->offset_limit->val_uint() : ULL(0);
+  offset_limit_cnt= (ha_rows)val;
+#ifndef BIG_TABLES
+  /* Check for truncation. */
+  if (val != (ulonglong)offset_limit_cnt)
+    offset_limit_cnt= HA_POS_ERROR;
+#endif
   select_limit_cnt= select_limit_val + offset_limit_cnt;
   if (select_limit_cnt < select_limit_val)
     select_limit_cnt= HA_POS_ERROR;		// no limit
@@ -3020,3 +3029,28 @@ bool LEX::is_partition_management() const
            alter_info.flags == ALTER_REORGANIZE_PARTITION));
 }
 
+int LEX::add_db_to_list(LEX_STRING *name)
+{
+  DBUG_ASSERT(name);
+    
+  List_iterator<LEX_STRING> it(db_list);
+  LEX_STRING *copy;
+  
+  while ((copy= it++))
+   if (!my_strnncoll(system_charset_info, 
+                     (const uchar*) name->str, name->length , 
+                     (const uchar*) copy->str, copy->length ))
+   {    
+     my_error(ER_NONUNIQ_DB, MYF(0), name->str);
+     return ER_NONUNIQ_DB;
+   }
+
+  copy= (LEX_STRING*) sql_memdup(name, sizeof(LEX_STRING));
+  if (copy == NULL)
+    return ER_OUT_OF_RESOURCES;
+    
+  if (db_list.push_back(copy))
+    return ER_OUT_OF_RESOURCES;
+
+  return 0;
+}

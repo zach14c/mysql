@@ -70,6 +70,19 @@ public:
 	virtual int		index_end(void);
 	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
+
+	// Multi Range Read interface
+	virtual int		multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+										  uint n_ranges, uint mode, HANDLER_BUFFER *buf);
+	virtual int		multi_range_read_next(char **range_info);
+	virtual ha_rows	multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+												void *seq_init_param, 
+												uint n_ranges, uint *bufsz,
+												uint *flags, COST_VECT *cost);
+	virtual ha_rows	multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+										  uint *bufsz, uint *flags, COST_VECT *cost);
+	// Multi Range Read interface ends
+
 	virtual int		index_next_same(uchar *buf, const uchar *key, uint key_len);
 
 	virtual ha_rows	records_in_range(uint index,
@@ -114,7 +127,7 @@ public:
 
 	void			getDemographics(void);
 	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
-	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online);
 	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
@@ -132,6 +145,10 @@ public:
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
+	int			scanRange(const key_range *startKey,
+					  const key_range *endKey,
+					  bool eqRange);
+	int			fillMrrBitmap();
 	void			mapFields(TABLE *table);
 	void			unmapFields(void);
 
@@ -150,6 +167,7 @@ public:
 	static void		shutdown(handlerton *);
 	static int		closeConnection(handlerton *, THD *thd);
 	static void		logger(int mask, const char *text, void *arg);
+	static void		mysqlLogger(int mask, const char *text, void *arg);
 	static int		panic(handlerton* hton, ha_panic_function flag);
 	//static bool	show_status(handlerton* hton, THD* thd, stat_print_fn* print, enum ha_stat_type stat);
 	static int		getMySqlError(int storageError);
@@ -176,12 +194,12 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
-	Field				**fieldMap;
+	Field					**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
-	TABLE_SHARE *share;
-	uint				recordLength;
+	TABLE_SHARE			*share;
+	uint					recordLength;
 	int					lastRecord;
 	int					nextRecord;
 	int					indexErrorId;
@@ -189,16 +207,17 @@ public:
 	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
-	bool				haveStartKey;
-	bool				haveEndKey;
-	bool				tableLocked;
-	bool				tempTable;
-	bool				lockForUpdate;
-	bool				indexOrder;
+	bool					haveStartKey;
+	bool					haveEndKey;
+	bool					tableLocked;
+	bool					tempTable;
+	bool					lockForUpdate;
+	bool					indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;
 	ulonglong			tableFlags;
+	bool				useDefaultMrrImpl;
 };
 
 class NfsPluginHandler

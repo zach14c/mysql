@@ -289,12 +289,12 @@ int read_fragment_header(byte **header)
 int as_write_all(struct st_abstract_stream *s, bstream_blob b, bstream_blob env)
 {
   int ret= BSTREAM_OK;
-
   while ((ret == BSTREAM_OK) && (b.begin < b.end))
    ret= as_write(s,&b,env);
 
   return ret;
-};
+}
+
 
 /** Fill blob with bytes from stream */
 int as_read_all(struct st_abstract_stream *s, bstream_blob b, bstream_blob env)
@@ -305,7 +305,7 @@ int as_read_all(struct st_abstract_stream *s, bstream_blob b, bstream_blob env)
    ret= as_read(s,&b,env);
 
   return ret;
-};
+}
 
 
 /*************************************************************************
@@ -775,7 +775,7 @@ int load_next_fragment(backup_stream *s)
 
   s->state= NORMAL; /* default, unless changed below */
 
-  ret= read_fragment_header(&s->buf.header);    // Never errors.
+  ret= read_fragment_header(&s->buf.header);    /* Never errors. */
 
   /*
     If buf.header was not moved, it means that the fragment extends to
@@ -1128,7 +1128,7 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
     If nothing else worked, we just append the data to the output buffer
     and return.
    */
-  append_to_buffer(s,data);  // Never errors.
+  append_to_buffer(s,data);  /* Never errors. */
   return BSTREAM_OK;
 }
 
@@ -1638,7 +1638,7 @@ int bstream_next_chunk(backup_stream *s)
   ASSERT(s->buf.pos > s->buf.header);
 
   ret= load_next_fragment(s);
-  if (ret == BSTREAM_ERROR)     // To avoid invariant check below.
+  if (ret == BSTREAM_ERROR)     /* To avoid invariant check below. */
     return BSTREAM_ERROR;
   /* if we hit EOC marker here, we treat it as empty chunk */
   if (ret == BSTREAM_EOC)

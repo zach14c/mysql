@@ -1665,7 +1665,7 @@ DROP PROCEDURE IF EXISTS p1;
 let $iterations= 100;
 --disable_query_log
 --disable_result_log
-while ($iterations > 0)
+while ($iterations)
 {
   --error ER_PARSE_ERROR
   PREPARE stmt FROM "CREATE PROCEDURE p1()";
@@ -3194,6 +3194,15 @@ SELECT @a;
 
 DROP PROCEDURE p1;
 DROP PROCEDURE p2;
+
+#
+# Additional cleanup.
+#
+# Delete files which were created by "select ... into outfile ...".
+#
+
+let $datadir= `select @@datadir`;
+--remove_file $datadir/test/f1.txt
 
 --echo
 --echo # End of WL#4435.

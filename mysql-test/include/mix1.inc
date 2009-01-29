@@ -623,7 +623,8 @@ DROP TABLE t1,t2,t3;
 #
 
 create table t1 (a int) engine=innodb;
-copy_file $MYSQLTEST_VARDIR/master-data/test/t1.frm $MYSQLTEST_VARDIR/master-data/test/bug29807.frm;
+let $MYSQLD_DATADIR= `select @@datadir`;
+copy_file $MYSQLD_DATADIR/test/t1.frm $MYSQLD_DATADIR/test/bug29807.frm;
 --error 1146
 select * from bug29807;
 drop table t1;
@@ -1256,6 +1257,7 @@ connect (con1,localhost,root,,);
 connect (con2,localhost,root,,);
 SET SESSION AUTOCOMMIT = 0;
 SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
+set binlog_format=mixed;
 --echo # Switch to connection con1
 connection con1;
 

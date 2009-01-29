@@ -118,9 +118,23 @@ Transaction* TransactionManager::startTransaction(Connection* connection)
 		if (transaction->state == Available && transaction->dependencies == 0)
 			if (COMPARE_EXCHANGE(&transaction->state, Available, Initializing))
 				{
-				transaction->initialize(connection, INTERLOCKED_INCREMENT(transactionSequence));
+				// Check again that the dependencies are zero. The transaction
+				// object might have been re-use between the previous if-test
+				// and the actual change of state
 
-				return transaction;
+				if (transaction->dependencies != 0)
+					{
+					// Return the transaction object back to the list
+
+					transaction->state = Available;
+					}
+				else
+					{
+					ASSERT(transaction->dependencies == 0);
+					transaction->initialize(connection, INTERLOCKED_INCREMENT(transactionSequence));
+
+					return transaction;
+					}
 				}
 
 	sync.unlock();
@@ -291,7 +305,7 @@ void TransactionManager::purgeTransactions()
 	Sync syncCommitted(&committedTransactions.syncObject, "Transaction::purgeTransactions");
 	syncCommitted.lock(Exclusive);
 	
-	// And, while we're at it, check for any fully mature transactions to ditch
+	// Check for any fully mature transactions to ditch
 	
 	for (Transaction *transaction, *next = committedTransactions.first; (transaction = next);)
 		{

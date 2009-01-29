@@ -1,0 +1,54 @@
+##
+## Test for WL #4343 - DDL locking for all metadata objects
+##
+
+##
+## Test case 3: Concurrent system scenarios - create tables
+##
+
+--source suite/ddl_lock/include/stress_settings.inc
+
+if (`SELECT LENGTH("$engine_type") = 0`) {
+  let $engine_type= myisam;
+}
+
+#
+# Create test table with some data
+#
+
+--replace_result $engine_type <engine_type>
+eval CREATE TABLE t1 (id INT PRIMARY KEY, b CHAR(100) DEFAULT "initial value")
+     ENGINE=$engine_type;
+
+# Need something to start with
+INSERT INTO t1(id) VALUES (1), (2), (3), (4), (5), (6), (7), (8);
+
+# Bulk load the correct number of rows
+while (`SELECT MAX(id) < $num_stress_rows FROM t1`)
+{
+   SELECT MAX(id) FROM t1 INTO @max;
+--replace_result $num_stress_rows <num_stress_rows>
+   eval INSERT INTO t1(id) SELECT id + @max FROM t1
+        WHERE id + @max <= $num_stress_rows;
+}
+
+#
+# Create stored Procedure
+#
+delimiter |;
+CREATE PROCEDURE t_proc (OUT b_p CHAR(100))
+BEGIN
+   SELECT b INTO @b_p FROM t1 WHERE Id = 1;
+END|
+delimiter ;|
+
+#
+# Create function
+#
+CREATE FUNCTION t_func (s CHAR(20)) RETURNS CHAR(30) DETERMINISTIC
+RETURN CONCAT('Hello, ', s, '!');
+
+#
+# Side effects: this test will create table t1, and routines t_proc
+#               and t_func. This is intentional.
+#

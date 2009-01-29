@@ -491,7 +491,7 @@ int StorageDatabase::nextIndexed(StorageTable* storageTable, IndexWalker* indexW
 	
 	return record->recordNumber;
 }
-
+/*
 RecordVersion* StorageDatabase::lockRecord(StorageConnection* storageConnection, Table *table, Record* record)
 {
 	try
@@ -505,7 +505,7 @@ RecordVersion* StorageDatabase::lockRecord(StorageConnection* storageConnection,
 		return NULL;
 		}
 }
-
+*/
 int StorageDatabase::savepointSet(Connection* connection)
 {
 	Transaction *transaction = connection->getTransaction();

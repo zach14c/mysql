@@ -626,7 +626,7 @@ int DateTime::lookup(const char *string, const char **table)
 
 	for (const char **tbl = table; *tbl; ++tbl)
 		if (match (temp, *tbl))
-			return tbl - table;
+			return (int)(tbl - table);
 
 	return -1;
 }
@@ -660,7 +660,7 @@ int DateTime::getString(int length, char * buffer)
 			  time.tm_mon + 1, 
 			  time.tm_mday);
 
-	return strlen (buffer);
+	return (int)strlen(buffer);
 }
 
 
@@ -1056,7 +1056,7 @@ int DateTime::compare(DateTime when)
 
 DateTime DateTime::convert(const char *string)
 {
-	return convert (string, strlen (string));
+	return convert (string, (int)strlen (string));
 }
 
 const char* DateTime::getTimeZone()
@@ -1143,7 +1143,7 @@ int Time::getString(int length, char *buffer)
 			  time.tm_min, 
 			  time.tm_sec);
 
-	return strlen (buffer);
+	return (int)strlen (buffer);
 }
 
 const TimeZone* DateTime::findTimeZone(const char *string)

@@ -1275,6 +1275,36 @@ tt
 41
 SET sql_mode=@save_sql_mode;
 DROP TABLE t1, t2;
+# 
+# BUG#38072: Wrong result: HAVING not observed in a query with aggregate
+# 
+CREATE TABLE t1 (
+pk int(11) NOT NULL AUTO_INCREMENT,
+int_nokey int(11) NOT NULL,
+int_key int(11) NOT NULL,
+varchar_key varchar(1) NOT NULL,
+varchar_nokey varchar(1) NOT NULL,
+PRIMARY KEY (pk),
+KEY int_key (int_key),
+KEY varchar_key (varchar_key)
+);
+INSERT INTO t1 VALUES 
+(1,5,5, 'h','h'),
+(2,1,1, '{','{'),
+(3,1,1, 'z','z'),
+(4,8,8, 'x','x'),
+(5,7,7, 'o','o'),
+(6,3,3, 'p','p'),
+(7,9,9, 'c','c'),
+(8,0,0, 'k','k'),
+(9,6,6, 't','t'),
+(10,0,0,'c','c');
+explain SELECT COUNT(varchar_key) AS X FROM t1 WHERE pk = 8 having 'foo'='bar';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	Impossible HAVING
+SELECT COUNT(varchar_key) AS X FROM t1 WHERE pk = 8 having 'foo'='bar';
+X
+drop table t1;
 End of 5.0 tests
 CREATE TABLE t1 (a INT, b INT,
 PRIMARY KEY (a),
@@ -1513,8 +1543,8 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 EXPLAIN SELECT 1 FROM t1 WHERE a IN
 (SELECT a FROM t1 USE INDEX (i2) IGNORE INDEX (i2));
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	144	Start temporary
-1	PRIMARY	t1	eq_ref	PRIMARY,i2	PRIMARY	4	test.t1.a	1	Using index; End temporary
+1	PRIMARY	t1	index	PRIMARY,i2	PRIMARY	4	NULL	144	Using index
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	144	Using where; FirstMatch(t1)
 CREATE TABLE t2 (a INT, b INT, KEY(a));
 INSERT INTO t2 VALUES (1, 1), (2, 2), (3,3), (4,4);
 EXPLAIN SELECT a, SUM(b) FROM t2 GROUP BY a LIMIT 2;
@@ -1526,8 +1556,8 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 EXPLAIN SELECT 1 FROM t2 WHERE a IN
 (SELECT a FROM t1 USE INDEX (i2) IGNORE INDEX (i2));
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	144	Start temporary
-1	PRIMARY	t2	index	a	a	5	NULL	4	Using where; Using index; End temporary; Using join buffer
+1	PRIMARY	t2	index	a	a	5	NULL	4	Using index
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	144	Using where; FirstMatch(t2)
 SHOW VARIABLES LIKE 'old';
 Variable_name	Value
 old	OFF
@@ -1624,7 +1654,7 @@ b
 NULL
 1
 2
-DROP TABLE t1;
+DROP TABLE t1, t2;
 CREATE TABLE t1 ( a INT, b INT );
 SELECT b c, (SELECT a FROM t1 WHERE b = c)
 FROM t1;
@@ -1661,3 +1691,33 @@ FROM t1;
 ERROR 21000: Subquery returns more than 1 row
 DROP TABLE t1;
 SET @@sql_mode = @old_sql_mode;
+
+BUG#38072: Wrong result: HAVING not observed in a query with aggregate
+
+CREATE TABLE t1 (
+pk int(11) NOT NULL AUTO_INCREMENT,
+int_nokey int(11) NOT NULL,
+int_key int(11) NOT NULL,
+varchar_key varchar(1) NOT NULL,
+varchar_nokey varchar(1) NOT NULL,
+PRIMARY KEY (pk),
+KEY int_key (int_key),
+KEY varchar_key (varchar_key)
+);
+INSERT INTO t1 VALUES 
+(1,5,5, 'h','h'),
+(2,1,1, '{','{'),
+(3,1,1, 'z','z'),
+(4,8,8, 'x','x'),
+(5,7,7, 'o','o'),
+(6,3,3, 'p','p'),
+(7,9,9, 'c','c'),
+(8,0,0, 'k','k'),
+(9,6,6, 't','t'),
+(10,0,0,'c','c');
+explain SELECT COUNT(varchar_key) AS X FROM t1 WHERE pk = 8 having 'foo'='bar';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	Impossible HAVING
+SELECT COUNT(varchar_key) AS X FROM t1 WHERE pk = 8 having 'foo'='bar';
+X
+drop table t1;

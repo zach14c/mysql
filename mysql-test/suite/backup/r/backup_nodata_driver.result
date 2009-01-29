@@ -1,0 +1,314 @@
+INSTALL PLUGIN example SONAME 'ha_example.so';
+DROP DATABASE IF EXISTS bup_nodata;
+DROP DATABASE IF EXISTS bup_data;
+#
+# Create a database with tables that can work as
+# base tables for MERGE and FEDERATED.
+#
+CREATE DATABASE bup_data;
+CREATE TABLE bup_data.myisam1 (a int, b char(30)) ENGINE=MYISAM;
+CREATE TABLE bup_data.myisam2 (a int, b char(30)) ENGINE=MYISAM;
+CREATE TABLE bup_data.myisam3 (a int, b char(30)) ENGINE=MYISAM;
+CREATE TABLE bup_data.f1 (
+`id` int(20) NOT NULL,
+`group` int NOT NULL default 0,
+`batch` InT NOT NULL default 0,
+`qty` int NOT NULL default 0,
+`name` varchar(32) NOT NULL default ''
+    )
+DEFAULT CHARSET=latin1;
+#
+# Create a database with tables from no-data engines.
+#
+CREATE DATABASE bup_nodata;
+CREATE TABLE bup_nodata.merge1 (a int, b char(30))
+ENGINE=MERGE UNION=(bup_data.myisam1, bup_data.myisam2, bup_data.myisam3);
+CREATE TABLE bup_nodata.f1 (
+`id` int(20) NOT NULL,
+`group` int NOT NULL default 0,
+`batch` InT NOT NULL default 0,
+`qty` int NOT NULL default 0,
+`name` varchar(32) NOT NULL default ''
+    )
+ENGINE="FEDERATED" DEFAULT CHARSET=latin1
+CONNECTION='mysql://root@127.0.0.1:MASTER_PORT/bup_data/f1';
+CREATE TABLE bup_nodata.b1 (a int, b int, c char(10)) ENGINE=BLACKHOLE;
+CREATE TABLE bup_nodata.e1 (
+Period smallint(4) unsigned zerofill DEFAULT '0000' NOT NULL,
+Vapor_period smallint(4) unsigned DEFAULT '0' NOT NULL
+) ENGINE=example;
+#
+# Insert some data.
+#
+INSERT INTO bup_data.myisam1 VALUES (11, 'table 1');
+INSERT INTO bup_data.myisam1 VALUES (12, 'table 1');
+INSERT INTO bup_data.myisam1 VALUES (13, 'table 1');
+INSERT INTO bup_data.myisam2 VALUES (21, 'table 2');
+INSERT INTO bup_data.myisam2 VALUES (22, 'table 2');
+INSERT INTO bup_data.myisam2 VALUES (23, 'table 2');
+INSERT INTO bup_data.myisam3 VALUES (31, 'table 3');
+INSERT INTO bup_data.myisam3 VALUES (32, 'table 3');
+INSERT INTO bup_data.myisam3 VALUES (33, 'table 3');
+INSERT INTO bup_data.f1 (id, name) VALUES (1, 'foo');
+INSERT INTO bup_data.f1 (id, name) VALUES (2, 'fee');
+INSERT INTO bup_data.f1 (id, `group`) VALUES (3, 42);
+INSERT INTO bup_data.f1 (id, `batch`) VALUES (4, 23);
+INSERT INTO bup_data.f1 (id, `qty`) VALUES (5, 1);
+#
+# Show the data.
+#
+SHOW FULL TABLES FROM bup_data;
+Tables_in_bup_data	Table_type
+f1	BASE TABLE
+myisam1	BASE TABLE
+myisam2	BASE TABLE
+myisam3	BASE TABLE
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+a	b
+11	table 1
+12	table 1
+13	table 1
+21	table 2
+22	table 2
+23	table 2
+31	table 3
+32	table 3
+33	table 3
+SELECT * FROM bup_nodata.f1;
+id	group	batch	qty	name
+1	0	0	0	foo
+2	0	0	0	fee
+3	42	0	0	
+4	0	23	0	
+5	0	0	1	
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Backup the bup_data DB, which tables contain data.
+#
+BACKUP DATABASE bup_data TO 'bup_data.bak';
+backup_id
+#
+#
+# Backup the bup_nodata DB, which tables do not contain data.
+#
+BACKUP DATABASE bup_nodata TO 'bup_nodata.bak';
+backup_id
+#
+#
+# Show the data again. Backup did not modify them.
+#
+SHOW FULL TABLES FROM bup_data;
+Tables_in_bup_data	Table_type
+f1	BASE TABLE
+myisam1	BASE TABLE
+myisam2	BASE TABLE
+myisam3	BASE TABLE
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+a	b
+11	table 1
+12	table 1
+13	table 1
+21	table 2
+22	table 2
+23	table 2
+31	table 3
+32	table 3
+33	table 3
+SELECT * FROM bup_nodata.f1;
+id	group	batch	qty	name
+1	0	0	0	foo
+2	0	0	0	fee
+3	42	0	0	
+4	0	23	0	
+5	0	0	1	
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Now drop the bup_data database.
+#
+DROP DATABASE bup_data;
+#
+# Show that the data have gone.
+# The MERGE and FEDERATED tables have errors since
+# their base tables have been dropped with bup_data.
+#
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
+SELECT * FROM bup_nodata.f1;
+Got one of the listed errors
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Now drop the bup_nodata database too.
+#
+DROP DATABASE bup_nodata;
+#
+# Now try to restore the bup_nodata database. This fails because
+# restore opens the tables for filling them with data, even when
+# they were empty on backup. 'bup_nodata.bak' does not contain
+# the base tables for the MERGE and FEDERATED tables.
+# NOTE: Since restore fails after restoring the meta data,
+# after creating the tables that is, we have the same
+# situation as before. The tables exist, but the base
+# tables for MERGE and FEDERATED do not exist.
+#
+RESTORE FROM 'bup_nodata.bak' OVERWRITE;
+Got one of the listed errors
+#
+# Show what we have.
+# NOTE: If restore would work as all or nothing,
+# all of the SHOW and SELECT statements in this section would fail.
+#
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
+SELECT * FROM bup_nodata.f1;
+Got one of the listed errors
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Now restore the bup_data database as well.
+#
+RESTORE FROM 'bup_data.bak';
+backup_id
+#
+#
+# Show that everything is well.
+# NOTE: If restore would work as all or nothing,
+# the bup_nodata tables would not exist here.
+#
+SHOW FULL TABLES FROM bup_data;
+Tables_in_bup_data	Table_type
+f1	BASE TABLE
+myisam1	BASE TABLE
+myisam2	BASE TABLE
+myisam3	BASE TABLE
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+a	b
+11	table 1
+12	table 1
+13	table 1
+21	table 2
+22	table 2
+23	table 2
+31	table 3
+32	table 3
+33	table 3
+SELECT * FROM bup_nodata.f1;
+id	group	batch	qty	name
+1	0	0	0	foo
+2	0	0	0	fee
+3	42	0	0	
+4	0	23	0	
+5	0	0	1	
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Now restore the bup_nodata database and see if it is the same
+# as above. Note that this step would not be required here
+# because all bup_nodata tables have no data and were created
+# by the failed restore. Anyway, the correct approach is to do a
+# succeeding restore before assuming that everything exists again.
+#
+RESTORE FROM 'bup_nodata.bak' OVERWRITE;
+backup_id
+#
+#
+# Show that everything is well.
+#
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+a	b
+11	table 1
+12	table 1
+13	table 1
+21	table 2
+22	table 2
+23	table 2
+31	table 3
+32	table 3
+33	table 3
+SELECT * FROM bup_nodata.f1;
+id	group	batch	qty	name
+1	0	0	0	foo
+2	0	0	0	fee
+3	42	0	0	
+4	0	23	0	
+5	0	0	1	
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Now drop the bup_data database with the base tables again.
+#
+DROP DATABASE bup_data;
+#
+# Show that the data have gone.
+# The MERGE and FEDERATED tables have errors since
+# their base tables have been dropped with bup_data.
+#
+SHOW FULL TABLES FROM bup_nodata;
+Tables_in_bup_nodata	Table_type
+b1	BASE TABLE
+e1	BASE TABLE
+f1	BASE TABLE
+merge1	BASE TABLE
+SELECT * FROM bup_nodata.merge1;
+ERROR HY000: Unable to open underlying table which is differently defined or of non-MyISAM type or doesn't exist
+SELECT * FROM bup_nodata.f1;
+Got one of the listed errors
+SELECT * FROM bup_nodata.b1;
+a	b	c
+SELECT * FROM bup_nodata.e1;
+Period	Vapor_period
+#
+# Cleanup.
+#
+DROP DATABASE bup_nodata;
+UNINSTALL PLUGIN example;

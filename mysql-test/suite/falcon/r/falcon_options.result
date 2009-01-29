@@ -1,9 +1,11 @@
-SHOW VARIABLES where variable_name LIKE 'falcon_%' and variable_name <>'falcon_serial_log_dir';
+SHOW VARIABLES
+WHERE variable_name LIKE 'falcon_%'
+    AND variable_name <> 'falcon_serial_log_dir'
+    AND variable_name <> 'falcon_debug_mask';
 Variable_name	Value
 falcon_checkpoint_schedule	7 * * * * *
 falcon_checksums	ON
 falcon_consistent_read	ON
-falcon_debug_mask	0
 falcon_debug_server	OFF
 falcon_debug_trace	0
 falcon_direct_io	1
@@ -27,6 +29,9 @@ falcon_support_xa	OFF
 falcon_use_deferred_index_hash	OFF
 falcon_use_sectorcache	OFF
 falcon_use_supernodes	ON
+SHOW VARIABLES WHERE variable_name LIKE 'falcon_debug_mask';
+Variable_name	Value
+falcon_debug_mask	0
 SELECT @@GLOBAL.falcon_debug_server;
 @@GLOBAL.falcon_debug_server
 0

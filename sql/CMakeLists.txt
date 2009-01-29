@@ -14,23 +14,16 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
-SET(CMAKE_CXX_FLAGS_DEBUG 
-    "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX -DUSE_SYMDIR /Zi")
-SET(CMAKE_C_FLAGS_DEBUG 
-    "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX -DUSE_SYMDIR /Zi")
-SET(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /MAP /MAPINFO:EXPORTS") 
-
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include 
                     ${CMAKE_SOURCE_DIR}/extra/yassl/include 
                     ${CMAKE_SOURCE_DIR}/sql 
                     ${CMAKE_SOURCE_DIR}/regex 
                     ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql/backup
+                    ${CMAKE_SOURCE_DIR}/extra/libevent
 )
 
-SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/sql/message.rc 
-                            ${CMAKE_SOURCE_DIR}/sql/message.h 
-                            ${CMAKE_SOURCE_DIR}/sql/sql_yacc.h 
+SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/sql/sql_yacc.h 
                             ${CMAKE_SOURCE_DIR}/sql/sql_yacc.cc
                             ${CMAKE_SOURCE_DIR}/include/mysql_version.h
                             ${CMAKE_SOURCE_DIR}/sql/sql_builtin.cc
@@ -62,9 +55,10 @@ ADD_EXECUTABLE(mysqld
                sp_rcontext.cc spatial.cc sql_acl.cc sql_analyse.cc sql_base.cc 
                sql_cache.cc sql_class.cc sql_client.cc sql_crypt.cc sql_crypt.h 
                sql_cursor.cc sql_db.cc sql_delete.cc sql_derived.cc sql_do.cc 
-               sql_error.cc sql_handler.cc sql_help.cc sql_insert.cc sql_lex.cc 
-               sql_list.cc sql_load.cc sql_manager.cc sql_map.cc sql_parse.cc 
-               sql_partition.cc sql_plugin.cc sql_prepare.cc sql_rename.cc 
+               sql_error.cc sql_handler.cc sql_help.cc sql_insert.cc
+               sql_join_cache.cc sql_lex.cc sql_list.cc sql_load.cc sql_manager.cc
+               sql_map.cc sql_parse.cc  sql_partition.cc sql_plugin.cc
+               sql_prepare.cc sql_rename.cc 
                debug_sync.cc
                sql_repl.cc sql_select.cc sql_show.cc sql_state.c sql_string.cc 
                sql_table.cc sql_test.cc sql_trigger.cc sql_udf.cc sql_union.cc
@@ -77,7 +71,7 @@ ADD_EXECUTABLE(mysqld
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
                ddl_blocker.cc si_objects.cc si_logs.cc
-               sql_profile.cc event_parse_data.cc mdl.cc
+               sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc
                rpl_handler.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
@@ -89,8 +83,9 @@ ADD_EXECUTABLE(mysqld
                ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
 
 TARGET_LINK_LIBRARIES(mysqld
-                      heap myisam myisammrg mysys yassl zlib debug dbug yassl 
-                      taocrypt strings vio regex ws2_32)
+                      heap myisam myisammrg mysys yassl zlib dbug yassl libevent
+                      taocrypt strings vio regex)
+
 
 TARGET_LINK_LIBRARIES(mysqld backup)
 
@@ -137,18 +132,10 @@ ADD_CUSTOM_COMMAND(
                                --output=sql_yacc.cc sql_yacc.yy
         DEPENDS ${PROJECT_SOURCE_DIR}/sql/sql_yacc.yy)
 
-IF(WIN32)
-  # Windows message file
-  ADD_CUSTOM_COMMAND(
-          OUTPUT ${PROJECT_SOURCE_DIR}/sql/message.h
-#                ${PROJECT_SOURCE_DIR}/sql/message.rc
-          COMMAND mc ARGS message.mc
-          DEPENDS ${PROJECT_SOURCE_DIR}/sql/message.mc)
-ENDIF(WIN32)
 
 # Gen_lex_hash
 ADD_EXECUTABLE(gen_lex_hash gen_lex_hash.cc)
-TARGET_LINK_LIBRARIES(gen_lex_hash debug dbug mysqlclient ws2_32)
+TARGET_LINK_LIBRARIES(gen_lex_hash dbug mysqlclient)
 GET_TARGET_PROPERTY(GEN_LEX_HASH_EXE gen_lex_hash LOCATION)
 ADD_CUSTOM_COMMAND(
         OUTPUT ${PROJECT_SOURCE_DIR}/sql/lex_hash.h
@@ -167,11 +154,11 @@ ADD_DEPENDENCIES(mysqld GenServerSource)
 
 # Remove the auto-generated files as part of 'Clean Solution'
 SET_DIRECTORY_PROPERTIES(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES 
-                         "lex_hash.h;message.rc;message.h;sql_yacc.h;sql_yacc.cc")
+                         "lex_hash.h;sql_yacc.h;sql_yacc.cc")
 
 ADD_LIBRARY(udf_example MODULE udf_example.c udf_example.def)
 ADD_DEPENDENCIES(udf_example strings GenError)
-TARGET_LINK_LIBRARIES(udf_example strings ws2_32)
+TARGET_LINK_LIBRARIES(udf_example strings)
 
 ADD_SUBDIRECTORY(backup)
 

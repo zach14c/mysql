@@ -53,9 +53,9 @@ insert into t2 values (17 );
 insert into t3 values (5 );
 insert into t3 values (13 );
 insert into t3 values (17 );
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_int.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_int.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_int.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_int.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_int.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_int.inc' into table t6;
 select abs(col1) from t1 order by col1;
 abs(col1)
 5
@@ -592,7 +592,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` int(11) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (abs(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (abs(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	15
@@ -1256,9 +1261,9 @@ insert into t2 values (17);
 insert into t3 values (5);
 insert into t3 values (19);
 insert into t3 values (17);
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_int.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_int.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_int.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_int.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_int.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_int.inc' into table t6;
 select mod(col1,10) from t1 order by col1;
 mod(col1,10)
 5
@@ -1795,7 +1800,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` int(11) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (mod(col1,10)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (mod(col1,10))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	15
@@ -2469,9 +2479,9 @@ insert into t2 values ('2006-01-25');
 insert into t3 values ('2006-02-03');
 insert into t3 values ('2006-01-17');
 insert into t3 values ('2006-01-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select day(col1) from t1 order by col1;
 day(col1)
 17
@@ -2639,7 +2649,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (day(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (day(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-05
@@ -2852,9 +2867,9 @@ insert into t2 values ('2006-01-25');
 insert into t3 values ('2006-02-03');
 insert into t3 values ('2006-01-17');
 insert into t3 values ('2006-01-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select dayofmonth(col1) from t1 order by col1;
 dayofmonth(col1)
 17
@@ -3022,7 +3037,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (dayofmonth(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (dayofmonth(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-05
@@ -3235,9 +3255,9 @@ insert into t2 values ('2006-01-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-02-17');
 insert into t3 values ('2006-01-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select dayofweek(col1) from t1 order by col1;
 dayofweek(col1)
 3
@@ -3405,7 +3425,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (dayofweek(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (dayofweek(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -3628,9 +3653,9 @@ insert into t2 values ('2006-02-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-01-17');
 insert into t3 values ('2006-02-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select dayofyear(col1) from t1 order by col1;
 dayofyear(col1)
 3
@@ -3798,7 +3823,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (dayofyear(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (dayofyear(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -4011,9 +4041,9 @@ insert into t2 values ('2006-02-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-01-17');
 insert into t3 values ('2006-02-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select dayofyear(col1) from t1 order by col1;
 dayofyear(col1)
 3
@@ -4181,7 +4211,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` char(30) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (dayofyear(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (dayofyear(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -4394,9 +4429,9 @@ insert into t2 values ('2006-01-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-02-17');
 insert into t3 values ('2006-01-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select extract(month from col1) from t1 order by col1;
 extract(month from col1)
 1
@@ -4564,7 +4599,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (extract(month from col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (extract(month from col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -4787,9 +4827,9 @@ insert into t2 values ('21:59');
 insert into t3 values ('09:09');
 insert into t3 values ('14:30');
 insert into t3 values ('21:59');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t6;
 select hour(col1) from t1 order by col1;
 hour(col1)
 9
@@ -4957,7 +4997,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` time DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (hour(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (hour(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	09:09:15
@@ -5180,9 +5225,9 @@ insert into t2 values ('00:59:22.000024');
 insert into t3 values ('09:09:15.000002');
 insert into t3 values ('04:30:01.000018');
 insert into t3 values ('00:59:22.000024');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t6;
 select microsecond(col1) from t1 order by col1;
 microsecond(col1)
 0
@@ -5350,7 +5395,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` time DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (microsecond(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (microsecond(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	05:30:34
@@ -5563,9 +5613,9 @@ insert into t2 values ('21:59:22');
 insert into t3 values ('09:09:15');
 insert into t3 values ('14:30:45');
 insert into t3 values ('21:59:22');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t6;
 select minute(col1) from t1 order by col1;
 minute(col1)
 9
@@ -5733,7 +5783,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` time DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (minute(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (minute(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	10:24:23
@@ -5956,9 +6011,9 @@ insert into t2 values ('21:59:22');
 insert into t3 values ('09:09:09');
 insert into t3 values ('14:30:20');
 insert into t3 values ('21:59:22');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t6;
 select second(col1) from t1 order by col1;
 second(col1)
 9
@@ -6126,7 +6181,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` time DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (second(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (second(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	09:09:15
@@ -6349,9 +6409,9 @@ insert into t2 values ('21:59:22');
 insert into t3 values ('09:09:09');
 insert into t3 values ('14:30:20');
 insert into t3 values ('21:59:22');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t6;
 select second(col1) from t1 order by col1;
 second(col1)
 9
@@ -6519,7 +6579,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` char(30) DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (second(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (second(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	09:09:15.000002
@@ -6742,9 +6807,9 @@ insert into t2 values ('2006-05-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-12-17');
 insert into t3 values ('2006-05-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select month(col1) from t1 order by col1;
 month(col1)
 1
@@ -6912,7 +6977,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (month(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (month(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -7135,9 +7205,9 @@ insert into t2 values ('2006-09-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-12-17');
 insert into t3 values ('2006-09-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select quarter(col1) from t1 order by col1;
 quarter(col1)
 1
@@ -7305,7 +7375,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (quarter(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (quarter(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -7528,9 +7603,9 @@ insert into t2 values ('21:59:22');
 insert into t3 values ('09:09:15');
 insert into t3 values ('14:30:45');
 insert into t3 values ('21:59:22');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_time.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_time.inc' into table t6;
 select time_to_sec(col1)-(time_to_sec(col1)-20) from t1 order by col1;
 time_to_sec(col1)-(time_to_sec(col1)-20)
 20
@@ -7698,7 +7773,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` time DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (time_to_sec(col1)-(time_to_sec(col1)-20)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (time_to_sec(col1)-(time_to_sec(col1)-20))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	10:33:11
@@ -7921,9 +8001,9 @@ insert into t2 values ('2006-01-25');
 insert into t3 values ('2006-02-03');
 insert into t3 values ('2006-01-17');
 insert into t3 values ('2006-01-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select to_days(col1)-to_days('2006-01-01') from t1 order by col1;
 to_days(col1)-to_days('2006-01-01')
 16
@@ -8091,7 +8171,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (to_days(col1)-to_days('2006-01-01')) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (to_days(col1)-to_days('2006-01-01'))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-06
@@ -8304,9 +8389,9 @@ insert into t2 values ('2006-01-25');
 insert into t3 values ('2006-02-03');
 insert into t3 values ('2006-01-17');
 insert into t3 values ('2006-01-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select datediff(col1, '2006-01-01') from t1 order by col1;
 datediff(col1, '2006-01-01')
 16
@@ -8474,7 +8559,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (datediff(col1, '2006-01-01')) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (datediff(col1, '2006-01-01'))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-06
@@ -8687,9 +8777,9 @@ insert into t2 values ('2006-05-25');
 insert into t3 values ('2006-12-03');
 insert into t3 values ('2006-11-17');
 insert into t3 values ('2006-05-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select weekday(col1) from t1 order by col1;
 weekday(col1)
 4
@@ -8857,7 +8947,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (weekday(col1)) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (weekday(col1))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -9080,9 +9175,9 @@ insert into t2 values ('2004-05-25');
 insert into t3 values ('1996-01-03');
 insert into t3 values ('2000-02-17');
 insert into t3 values ('2004-05-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select year(col1)-1990 from t1 order by col1;
 year(col1)-1990
 6
@@ -9250,7 +9345,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (year(col1)-1990) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (year(col1)-1990)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03
@@ -9473,9 +9573,9 @@ insert into t2 values ('2006-03-25');
 insert into t3 values ('2006-01-03');
 insert into t3 values ('2006-08-17');
 insert into t3 values ('2006-03-25');
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t4;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t5;
-load data infile '../std_data_ln/parts/part_supported_sql_funcs_int_date.inc' into table t6;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t4;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t5;
+load data infile 'MYSQLTEST_VARDIR/std_data/parts/part_supported_sql_funcs_int_date.inc' into table t6;
 select yearweek(col1)-200600 from t1 order by col1;
 yearweek(col1)-200600
 1
@@ -9643,7 +9743,12 @@ Table	Create Table
 t55	CREATE TABLE `t55` (
   `colint` int(11) DEFAULT NULL,
   `col1` date DEFAULT NULL
-) ENGINE=ndbcluster DEFAULT CHARSET=latin1 /*!50100 PARTITION BY LIST (colint) SUBPARTITION BY HASH (yearweek(col1)-200600) SUBPARTITIONS 4 (PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster, PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
+) ENGINE=ndbcluster DEFAULT CHARSET=latin1
+/*!50100 PARTITION BY LIST (colint)
+SUBPARTITION BY HASH (yearweek(col1)-200600)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30) ENGINE = ndbcluster,
+ PARTITION p1 VALUES IN (31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60) ENGINE = ndbcluster) */
 select * from t55 order by colint;
 colint	col1
 1	2006-02-03

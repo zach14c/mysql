@@ -32,10 +32,10 @@
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
 
-Scavenger::Scavenger (Database *db, ScavengeType scavengeType, const char *schedule) : Schedule (schedule)
+Scavenger::Scavenger (Database *db, ScavengerType scavengerType, const char *schedule) : Schedule (schedule)
 {
 	database = db;
-	type = scavengeType;
+	type = scavengerType;
 }
 
 Scavenger::~Scavenger()

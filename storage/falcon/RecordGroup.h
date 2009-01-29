@@ -33,16 +33,17 @@ public:
 	RecordGroup(int32 base);
 	virtual ~RecordGroup();
 
-	virtual int		countActiveRecords();
-	virtual bool	store (Record *record, Record *prior, int32 id, RecordSection **parentPtr);
-	virtual void	inventoryRecords(RecordScavenge* recordScavenge);
+	virtual int     countActiveRecords();
+	virtual bool    anyActiveRecords();
+	virtual	int    chartActiveRecords(int *chart);
+	virtual bool    store (Record *record, Record *prior, int32 id, RecordSection **parentPtr);
+	virtual void    inventoryRecords(RecordScavenge* recordScavenge);
 	virtual Record* fetch (int32 id);
-	virtual int		retireRecords(Table *table, int base, RecordScavenge *recordScavenge);
-	virtual bool	retireSections(Table * table, int id);
-	virtual bool	inactive();
+	virtual int     retireRecords(Table *table, int base, RecordScavenge *recordScavenge);
+	virtual bool    retireSections(Table * table, int id);
+	virtual bool    inactive();
 	
-	RecordSection	*records [RECORD_SLOTS];
-	//int32			base;
+	RecordSection   *records [RECORD_SLOTS];
 };
 
 #endif // !defined(AFX_RECORDGROUP_H__02AD6A55_A433_11D2_AB5B_0000C01D2301__INCLUDED_)

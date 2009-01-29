@@ -12,7 +12,7 @@
 # BUG: 14354 Partitions: data directory clause fails
 #
 --system rm -rf $MYSQLTEST_VARDIR/tmp/bug14354
---system mkdir $MYSQLTEST_VARDIR/tmp/bug14354
+--mkdir $MYSQLTEST_VARDIR/tmp/bug14354
 disable_query_log;
 eval CREATE TABLE t1 (id int) PARTITION BY RANGE(id) (
 PARTITION p1 VALUES LESS THAN (20) ENGINE=myisam

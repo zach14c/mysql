@@ -31,8 +31,10 @@
 class RecordLeaf : public RecordSection  
 {
 public:
-	virtual int countActiveRecords();
-	virtual int retireRecords(Table *table, int id, RecordScavenge *recordScavenge);
+	virtual int  countActiveRecords();
+	virtual bool anyActiveRecords();
+	virtual int  chartActiveRecords(int *chart);
+	virtual int  retireRecords(Table *table, int id, RecordScavenge *recordScavenge);
 	virtual bool retireSections(Table * table, int id);
 	virtual bool inactive();
 	virtual bool store(Record *record, Record *prior, int32 id,RecordSection **parentPtr);

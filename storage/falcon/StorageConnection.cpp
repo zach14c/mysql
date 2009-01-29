@@ -133,6 +133,8 @@ void StorageConnection::close(void)
 
 int StorageConnection::commit(void)
 {
+	int errorCode = 0;
+
 	if (connection)
 		{
 		if (traceStream)
@@ -142,15 +144,22 @@ int StorageConnection::commit(void)
 			
 			traceStream->clear();
 			}
-		
-		connection->commit();
+
+		try
+			{
+			connection->commit();
+			}
+		catch (SQLException& exception)
+			{
+			errorCode = translateError(exception, StorageErrorIOErrorSerialLog);
+			}
 		}
 	
 	transactionActive = false;
 	implicitTransactionCount = 0;
 	verbMark = 0;
 	
-	return 0;
+	return errorCode;
 }
 
 int StorageConnection::prepare(int xidLength, const UCHAR *xid)
@@ -165,6 +174,8 @@ int StorageConnection::prepare(int xidLength, const UCHAR *xid)
 
 int StorageConnection::rollback(void)
 {
+	int errorCode = 0;
+
 	if (connection)
 		{
 		if (traceStream)
@@ -174,14 +185,22 @@ int StorageConnection::rollback(void)
 			
 			traceStream->clear();
 			}
-		connection->rollback();
+
+		try
+			{
+			connection->rollback();
+			}
+		catch (SQLException& exception)
+			{
+			errorCode = translateError(exception, StorageErrorIOErrorSerialLog);
+			}
 		}
 	
 	transactionActive = false;
 	implicitTransactionCount = 0;
 	verbMark = 0;
 	
-	return 0;
+	return errorCode;
 }
 
 int StorageConnection::startTransaction(int isolationLevel)
@@ -321,10 +340,16 @@ int StorageConnection::startImplicitTransaction(int isolationLevel)
 	return false;
 }
 
-void StorageConnection::endImplicitTransaction(void)
+int StorageConnection::endImplicitTransaction(void)
 {
+	int errorCode = 0;
+
 	if (implicitTransactionCount > 0 && --implicitTransactionCount == 0)
-		commit();		
+		{
+		errorCode = commit();
+		}
+
+	return errorCode;
 }
 
 int StorageConnection::markVerb(void)
@@ -339,13 +364,22 @@ int StorageConnection::markVerb(void)
 	return false;
 }
 
-void StorageConnection::rollbackVerb(void)
+int StorageConnection::rollbackVerb(void)
 {
 	if (verbMark)
 		{
-		savepointRollback(verbMark);
-		verbMark = 0;
+		try
+			{
+			savepointRollback(verbMark);
+			verbMark = 0;
+			}
+		catch (SQLException& exception)
+			{
+			return translateError(exception, StorageErrorIOErrorSerialLog);
+			}
 		}
+
+	return 0;
 }
 
 void StorageConnection::releaseVerb(void)
@@ -415,4 +449,27 @@ void StorageConnection::validate(int options)
 		flags |= validateRepair;
 	
 	connection->validate(flags);
+}
+
+int StorageConnection::translateError(SQLException& exception, int defaultStorageError)
+{
+	// This method is inspired by the corresponding method in
+	// StorageTable::translateError.
+
+	int errorCode;
+	int sqlCode = exception.getSqlcode();
+
+	switch (sqlCode)
+		{
+		case IO_ERROR_SERIALLOG:
+			errorCode = StorageErrorIOErrorSerialLog;
+			break;
+
+		default:
+			errorCode = defaultStorageError;
+		}
+
+	setErrorText(&exception);
+
+	return errorCode;
 }

@@ -29,13 +29,17 @@ int my_getncpus()
 #ifdef _SC_NPROCESSORS_ONLN
     ncpus= sysconf(_SC_NPROCESSORS_ONLN);
 #elif defined(__WIN__)
-#ifdef REGGIE_WILL_FIX_IN_A_PORTABLE_WAY
     SYSTEM_INFO sysinfo;
-    GetSystemInfo(&sysinfo);
+
+	/*
+	* We are not calling GetNativeSystemInfo here because (1) we
+	* don't believe that they return different values for number
+	* of processors and (2) if WOW64 limits processors for Win32
+	* then we don't want to try to override that.
+	*/
+	GetSystemInfo(&sysinfo);
+
     ncpus= sysinfo.dwNumberOfProcessors;
-#else
-    ncpus=2;
-#endif
 #else
 /* unknown so play safe: assume SMP and forbid uniprocessor build */
     ncpus= 2;

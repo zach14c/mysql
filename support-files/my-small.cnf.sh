@@ -34,7 +34,7 @@ sort_buffer_size = 64K
 read_buffer_size = 256K
 read_rnd_buffer_size = 256K
 net_buffer_length = 2K
-thread_stack = 64K
+thread_stack = 128K
 
 # Don't listen on a TCP/IP port at all. This can be a security enhancement,
 # if all processes that need to connect to mysqld run on the same host.
@@ -48,11 +48,13 @@ server-id	= 1
 # Uncomment the following if you want to log updates
 #log-bin=mysql-bin
 
+# binary logging format - mixed recommended
+#binlog_format=mixed
+
 # Uncomment the following if you are using InnoDB tables
 #innodb_data_home_dir = @localstatedir@/
 #innodb_data_file_path = ibdata1:10M:autoextend
 #innodb_log_group_home_dir = @localstatedir@/
-#innodb_log_arch_dir = @localstatedir@/
 # You can set .._buffer_pool_size up to 50 - 80 %
 # of RAM but beware of setting memory usage too high
 #innodb_buffer_pool_size = 16M

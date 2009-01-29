@@ -80,7 +80,7 @@ path=`dirname $0`
 . "$path/check-cpu"
 
 export AM_MAKEFLAGS
-AM_MAKEFLAGS="-j 4"
+AM_MAKEFLAGS="-j 6"
 
 # SSL library to use.--with-ssl will select our bundled yaSSL
 # implementation of SSL. To use openSSl you will nee too point out
@@ -92,20 +92,24 @@ if [ "x$warning_mode" != "xpedantic" ]; then
 # Both C and C++ warnings
   warnings="-Wimplicit -Wreturn-type -Wswitch -Wtrigraphs -Wcomment -W"
   warnings="$warnings -Wchar-subscripts -Wformat -Wparentheses -Wsign-compare"
-  warnings="$warnings -Wwrite-strings -Wunused-function -Wunused-label -Wunused-value -Wunused-variable"
+  warnings="$warnings -Wwrite-strings -Wunused-function -Wunused-label"
+  warnings="$warnings -Wunused-value -Wunused-variable"
+
+  # Make "printf like format specifier warnings" into error
+  #warnings="$warnings -Werror=format"
 
 # For more warnings, uncomment the following line
 # warnings="$global_warnings -Wshadow"
 
 # C warnings
-  c_warnings="$warnings -Wunused-parameter"
+  c_warnings="$warnings -Wunused-parameter -Wno-format-zero-length"
 # C++ warnings
   cxx_warnings="$warnings"
 # cxx_warnings="$cxx_warnings -Woverloaded-virtual -Wsign-promo"
   cxx_warnings="$cxx_warnings -Wreorder"
   cxx_warnings="$cxx_warnings -Wctor-dtor-privacy -Wnon-virtual-dtor"
 # Added unless --with-debug=full
-  debug_extra_cflags="-O1 -Wuninitialized"
+  debug_extra_cflags="-O0 -g3 -gdwarf-2" #1 -Wuninitialized"
 else
   warnings="-W -Wall -ansi -pedantic -Wno-long-long -Wno-unused -D_POSIX_SOURCE"
   c_warnings="$warnings"
@@ -192,7 +196,7 @@ if test -z "$CC" ; then
 fi
 
 if test -z "$CXX" ; then
-  CXX=gcc
+  CXX=g++
 fi
 
 # If ccache (a compiler cache which reduces build time)

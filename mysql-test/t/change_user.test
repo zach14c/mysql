@@ -50,9 +50,39 @@ SELECT IS_USED_LOCK('bug31418');
 # Bug#31222: com_% global status counters behave randomly with
 # mysql_change_user.
 #
-# Moved to not_embedded_server.test due to Bug#34517: SHOW GLOBAL STATUS does
-# not work properly in embedded server.
-#
-# TODO: move it back when Bug#34517 is fixed (don't forget to add
-# --force-restart into change_user-master.opt).
-#
+
+FLUSH STATUS;
+
+let $start= query_get_value(SHOW GLOBAL STATUS LIKE 'com_select', Value, 1);
+--disable_result_log
+--disable_query_log
+
+let $i = 100;
+
+while ($i)
+{
+  dec $i;
+
+  SELECT 1;
+}
+
+--enable_query_log
+--enable_result_log
+
+let $probe= query_get_value(SHOW GLOBAL STATUS LIKE 'com_select', Value, 1);
+let $before= `SELECT $probe - $start`;
+
+--change_user
+
+let $probe= query_get_value(SHOW GLOBAL STATUS LIKE 'com_select', Value, 1);
+let $after= `SELECT $probe - $start`;
+
+# we check to see if the value is the same after the change user. note that we 
+# need to add one to the $before variable as we need to account for the 
+# select in the "let $before=`SELECT $probe - $start`" instruction
+if (!`SELECT $after = $before+1`)
+{
+  let $expected= `SELECT $before+1`;
+  --echo Expected: $expected, Got: $after
+  die select count mismatch!;
+}

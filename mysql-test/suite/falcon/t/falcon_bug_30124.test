@@ -1,14 +1,15 @@
 --source include/have_falcon.inc
+
 #
 # Bug #30124: UPDATE has unacceptable performance
 #
-# This update should take just a few seconds.
-# It must unlock 900,000 records after updating only 100,000.
-# With the bug, it took 30 to 60 minutes.
-# It takes a while to build the file though.
+#    This update should take just a few seconds.
+#    It must unlock 900,000 records after updating only 100,000.
+#    With the bug, it took 30 to 60 minutes.
+#    It takes a while to build the file though.
 #
-# Note: original test case is with loop count of 1 mio.
-#       Lowered to 500k due to long run time.
+# Note: Original test case is with loop count of 1 mio.
+#       Lowered to 100k due to long run time on slow machines.
 --echo *** Bug #30124 ***
 
 # ----------------------------------------------------- #
@@ -34,7 +35,7 @@ BEGIN
   SET @i = 0;
   SET @v = 0;
 
-  WHILE @i < 500000 DO
+  WHILE @i < 100000 DO
     SET @a = @v;
 
     EXECUTE stmt1 USING @a;

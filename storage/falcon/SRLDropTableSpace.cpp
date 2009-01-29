@@ -63,14 +63,16 @@ void SRLDropTableSpace::read()
 		transactionId = 0;
 }
 
+
 void SRLDropTableSpace::pass1()
 {
-
+	log->setTableSpaceDropped(tableSpaceId);
 }
 
 void SRLDropTableSpace::pass2()
 {
 
+	log->tableSpaceManager->expungeTableSpace(tableSpaceId);
 }
 
 void SRLDropTableSpace::commit()
@@ -80,5 +82,4 @@ void SRLDropTableSpace::commit()
 
 void SRLDropTableSpace::redo()
 {
-	log->tableSpaceManager->expungeTableSpace(tableSpaceId);
 }

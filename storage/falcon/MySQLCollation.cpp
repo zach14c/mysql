@@ -69,10 +69,7 @@ int MySQLCollation::makeKey (Value *value, IndexKey *key, int partialKey, int ma
 	if (!isBinary)
 		srcLen = computeKeyLength(srcLen, temp, padChar, minSortChar);
 
-	// Since some collations make dstLen > srcLen, be sure dstLen is < partialKey.
-
-	int dstLen = falcon_strnxfrmlen(charset, temp, srcLen, partialKey, MAX_PHYSICAL_KEY_LENGTH);
-	int len = falcon_strnxfrm(charset, (char*) key->key, dstLen, maxKeyLength, temp, srcLen);
+	int len = falcon_strnxfrm(charset, (char*) key->key, MAX_PHYSICAL_KEY_LENGTH, partialKey ? partialKey / falcon_get_mbmaxlen(charset) : maxKeyLength, temp, srcLen);
 	key->keyLength = len;
 	
 	return len;

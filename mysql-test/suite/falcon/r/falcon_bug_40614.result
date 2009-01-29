@@ -1,0 +1,774 @@
+*** Bug #40614 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (datetime_key datetime, key(datetime_key));
+insert into t1 values ('0000-00-00');
+select * from  t1 where datetime_key < '1000-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1901-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1902-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1903-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1904-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1905-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1906-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1907-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1908-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1909-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1910-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1911-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1912-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1913-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1914-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1915-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1916-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1917-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1918-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1919-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1920-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1921-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1922-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1923-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1924-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1925-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1926-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1927-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1928-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1929-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1930-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1931-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1932-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1933-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1934-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1935-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1936-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1937-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1938-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1939-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1940-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1941-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1942-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1943-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1944-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1945-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1946-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1947-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1948-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1949-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1950-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1951-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1952-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1953-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1954-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1955-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1956-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1957-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1958-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1959-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1960-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1961-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1962-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1963-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1964-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1965-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1966-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1967-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1968-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1969-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1970-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1971-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1972-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1973-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1974-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1975-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1976-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1977-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1978-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1979-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1980-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1981-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1982-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1983-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1984-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1985-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1986-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1987-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1988-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1989-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1990-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1991-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1992-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1993-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1994-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1995-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1996-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1997-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1998-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '1999-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2000-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2001-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2002-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2003-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2004-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2005-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2006-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2007-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2008-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2009-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2010-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2011-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2012-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2013-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2014-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2015-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2016-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2017-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2018-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2019-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2020-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2021-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2022-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2023-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2024-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2025-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2026-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2027-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2028-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2029-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2030-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2031-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2032-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2033-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2034-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2035-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2036-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2037-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2038-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2039-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2040-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2041-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2042-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2043-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2044-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2045-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2046-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2047-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2048-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2049-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2050-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2051-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2052-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2053-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2054-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2055-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2056-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2057-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2058-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2059-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2060-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2061-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2062-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2063-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2064-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2065-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2066-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2067-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2068-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2069-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2070-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2071-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2072-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2073-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2074-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2075-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2076-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2077-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2078-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2079-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2080-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2081-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2082-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2083-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2084-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2085-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2086-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2087-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2088-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2089-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2090-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2091-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2092-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2093-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2094-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2095-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2096-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2097-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2098-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2099-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2100-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2101-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2102-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2103-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2104-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2105-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2106-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2107-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2108-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2109-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2110-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2111-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2112-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2113-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2114-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2115-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2116-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2117-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2118-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2119-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2120-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2121-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2122-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2123-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2124-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2125-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2126-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2127-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2128-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2129-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2130-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2131-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2132-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2133-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2134-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2135-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2136-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2137-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2138-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2139-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2140-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2141-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2142-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2143-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2144-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2145-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2146-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2147-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2148-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2149-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2150-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2151-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2152-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2153-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '2154-01-01';
+datetime_key
+0000-00-00 00:00:00
+select * from  t1 where datetime_key < '9999-12-31';
+datetime_key
+0000-00-00 00:00:00
+DROP TABLE t1;

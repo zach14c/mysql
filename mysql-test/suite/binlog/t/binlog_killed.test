@@ -1,5 +1,10 @@
 -- source include/have_innodb.inc
 -- source include/have_binlog_format_mixed_or_statement.inc
+
+# You cannot use `KILL' with the Embedded MySQL Server library,
+# because the embedded server merely runs inside the threads of the host
+# application. -- the docs
+
 -- source include/not_embedded.inc
 
 ###
@@ -22,6 +27,12 @@ select get_lock("a", 20);
 
 connection con2;
 let $ID= `select connection_id()`;
+
+#
+# reset master does not reset binlogging on the embedded server.
+# the test is not run on the embedded for reason of using KILL query.
+# `reset master' problem is to be addressed by bug#15580 fixes.
+#
 reset master;
 send insert into t2 values (null, null), (null, get_lock("a", 10));
 
@@ -39,7 +50,8 @@ connection con2;
 reap;
 let $rows= `select count(*) from t2  /* must be 2 or 0 */`;
 
---exec $MYSQL_BINLOG --force-if-open --start-position=135 $MYSQLTEST_VARDIR/log/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/kill_query_calling_sp.binlog
+let $MYSQLD_DATADIR= `select @@datadir`;
+--exec $MYSQL_BINLOG --force-if-open --start-position=135 $MYSQLD_DATADIR/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/kill_query_calling_sp.binlog
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval select
 (@a:=load_file("$MYSQLTEST_VARDIR/tmp/kill_query_calling_sp.binlog"))
@@ -250,7 +262,7 @@ source include/show_binlog_events.inc;
 
 # a proof the query is binlogged with an error
 
---exec $MYSQL_BINLOG --force-if-open --start-position=106 $MYSQLTEST_VARDIR/log/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/binlog_killed_bug27571.binlog
+--exec $MYSQL_BINLOG --force-if-open --start-position=106 $MYSQLD_DATADIR/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/binlog_killed_bug27571.binlog
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval select
 (@a:=load_file("$MYSQLTEST_VARDIR/tmp/binlog_killed_bug27571.binlog"))
@@ -296,7 +308,7 @@ source include/show_binlog_events.inc;
 
 # a proof the query is binlogged with an error
 
---exec $MYSQL_BINLOG --force-if-open --start-position=106 $MYSQLTEST_VARDIR/log/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/binlog_killed_bug27571.binlog
+--exec $MYSQL_BINLOG --force-if-open --start-position=106 $MYSQLD_DATADIR/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/binlog_killed_bug27571.binlog
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 eval select
 (@a:=load_file("$MYSQLTEST_VARDIR/tmp/binlog_killed_bug27571.binlog"))

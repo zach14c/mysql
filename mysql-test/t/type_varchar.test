@@ -3,7 +3,8 @@ drop table if exists t1, t2;
 --enable_warnings
 
 create table t1 (v varchar(30), c char(3), e enum('abc','def','ghi'), t text);
-copy_file $MYSQL_TEST_DIR/std_data/vchar.frm $MYSQLTEST_VARDIR/master-data/test/vchar.frm;
+let $MYSQLD_DATADIR= `select @@datadir`;
+copy_file $MYSQL_TEST_DIR/std_data/vchar.frm $MYSQLD_DATADIR/test/vchar.frm;
 truncate table vchar;
 show create table t1;
 show create table vchar;
@@ -162,8 +163,8 @@ create table t3 (
   en varchar(255) character set utf8,
   cz varchar(255) character set utf8
 );
-remove_file $MYSQLTEST_VARDIR/master-data/test/t3.frm;
-copy_file $MYSQL_TEST_DIR/std_data/14897.frm $MYSQLTEST_VARDIR/master-data/test/t3.frm;
+remove_file $MYSQLD_DATADIR/test/t3.frm;
+copy_file $MYSQL_TEST_DIR/std_data/14897.frm $MYSQLD_DATADIR/test/t3.frm;
 truncate table t3;
 insert into t3 (id, en, cz) values 
 (1,'en string 1','cz string 1'),
@@ -197,4 +198,22 @@ INSERT INTO t1 VALUES (10), (50), (30), ('1a'), (60), ('t');
 SELECT a,(a + 0) FROM t1 ORDER BY a;
 SELECT a,(a DIV 2) FROM t1 ORDER BY a;
 SELECT a,CAST(a AS SIGNED) FROM t1 ORDER BY a;
+DROP TABLE t1;
+
+#
+# Bug #28299: To-number conversion warnings work differenly with CHAR
+# and VARCHAR sp variables
+#
+# * Verify that 'Truncated incorrect DOUBLE value' is shown for 's' 
+#   when using both CHAR and VARCHAR.
+#
+
+CREATE TABLE t1 (a VARCHAR(16));
+INSERT INTO t1 VALUES ('5'), ('s'), ('');
+SELECT 5 = a FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a CHAR(16));
+INSERT INTO t1 VALUES ('5'), ('s'), ('');
+SELECT 5 = a FROM t1;
 DROP TABLE t1;

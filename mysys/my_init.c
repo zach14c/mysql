@@ -27,10 +27,11 @@
 #ifdef _MSC_VER
 #include <locale.h>
 #include <crtdbg.h>
+/* WSAStartup needs winsock library*/
+#pragma comment(lib, "ws2_32")
 #endif
 my_bool have_tcpip=0;
 static void my_win_init(void);
-static my_bool win32_have_tcpip(void);
 static my_bool win32_init_tcp_ip();
 #else
 #define my_win_init()
@@ -165,6 +166,9 @@ void my_end(int infoflag)
   free_charsets();
   my_error_unregister_all();
   my_once_free();
+#ifdef THREAD
+  my_thread_destroy_mutex();
+#endif
 
   if ((infoflag & MY_GIVE_INFO) || print_info)
   {
@@ -195,6 +199,10 @@ Voluntary context switches %ld, Involuntary context switches %ld\n",
     fprintf(info_file,"\nRun time: %.1f\n",(double) clock()/CLOCKS_PER_SEC);
 #endif
 #if defined(SAFEMALLOC)
+    /* Wait for other threads to free mysys_var */
+#ifdef THREAD
+    (void) my_wait_for_other_threads_to_die(1);
+#endif
     TERMINATE(stderr, (infoflag & MY_GIVE_INFO) != 0);
 #elif defined(__WIN__) && defined(_MSC_VER)
    _CrtSetReportMode( _CRT_WARN, _CRTDBG_MODE_FILE );
@@ -246,29 +254,6 @@ void my_debug_put_break_here(void)
 
 #ifdef __WIN__
 
-/*
-  This code is specially for running MySQL, but it should work in
-  other cases too.
-
-  Inizializzazione delle variabili d'ambiente per Win a 32 bit.
-
-  Vengono inserite nelle variabili d'ambiente (utilizzando cosi'
-  le funzioni getenv e putenv) i valori presenti nelle chiavi
-  del file di registro:
-
-  HKEY_LOCAL_MACHINE\software\MySQL
-
-  Se la kiave non esiste nonn inserisce nessun valore
-*/
-
-/* Crea la stringa d'ambiente */
-
-void setEnvString(char *ret, const char *name, const char *value)
-{
-  DBUG_ENTER("setEnvString");
-  strxmov(ret, name,"=",value,NullS);
-  DBUG_VOID_RETURN ;
-}
 
 /*
   my_parameter_handler
@@ -318,20 +303,7 @@ int handle_rtc_failure(int err_type, const char *file, int line,
 
 static void my_win_init(void)
 {
-  HKEY	hSoftMysql ;
-  DWORD dimName = 256 ;
-  DWORD dimData = 1024 ;
-  DWORD dimNameValueBuffer = 256 ;
-  DWORD dimDataValueBuffer = 1024 ;
-  DWORD indexValue = 0 ;
-  long	retCodeEnumValue ;
-  char	NameValueBuffer[256] ;
-  char	DataValueBuffer[1024] ;
-  char	EnvString[1271] ;
-  const char *targetKey = "Software\\MySQL" ;
   DBUG_ENTER("my_win_init");
-
-  setlocale(LC_CTYPE, "");             /* To get right sortorder */
 
 #if defined(_MSC_VER)
 #if _MSC_VER < 1300
@@ -356,6 +328,30 @@ static void my_win_init(void)
 
   _tzset();
 
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
+               
   /* The following is used by time functions */
 #define OFFSET_TO_EPOC ((__int64) 134774 * 24 * 60 * 60 * 1000 * 1000 * 10)
 #define MS 10000000
@@ -380,43 +376,57 @@ static void my_win_init(void)
     }
   }
 
-  /* apre la chiave HKEY_LOCAL_MACHINES\software\MySQL */
-  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,(LPCTSTR)targetKey,0,
-		   KEY_READ,&hSoftMysql) != ERROR_SUCCESS)
-    DBUG_VOID_RETURN;
-
-  /*
-  ** Ne legge i valori e li inserisce  nell'ambiente
-  ** suppone che tutti i valori letti siano di tipo stringa + '\0'
-  ** Legge il valore con indice 0 e lo scarta
-  */
-  retCodeEnumValue = RegEnumValue(hSoftMysql, indexValue++,
-				  (LPTSTR)NameValueBuffer, &dimNameValueBuffer,
-				  NULL, NULL, (LPBYTE)DataValueBuffer,
-				  &dimDataValueBuffer) ;
-
-  while (retCodeEnumValue != ERROR_NO_MORE_ITEMS)
   {
-    char *my_env;
-    /* Crea la stringa d'ambiente */
-    setEnvString(EnvString, NameValueBuffer, DataValueBuffer) ;
+    /*
+      Open HKEY_LOCAL_MACHINE\SOFTWARE\MySQL and set any strings found
+      there as environment variables
+    */
+    HKEY key_handle;
+    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, (LPCTSTR)"SOFTWARE\\MySQL",
+                     0, KEY_READ, &key_handle) == ERROR_SUCCESS)
+    {
+      LONG ret;
+      DWORD index= 0;
+      DWORD type;
+      char key_name[256], key_data[1024];
+      DWORD key_name_len= sizeof(key_name) - 1;
+      DWORD key_data_len= sizeof(key_data) - 1;
 
-    /* Inserisce i dati come variabili d'ambiente */
-    my_env=strdup(EnvString);  /* variable for putenv must be allocated ! */
-    putenv(my_env) ;
+      while ((ret= RegEnumValue(key_handle, index++,
+                                key_name, &key_name_len,
+                                NULL, &type, (LPBYTE)&key_data,
+                                &key_data_len)) != ERROR_NO_MORE_ITEMS)
+      {
+        char env_string[sizeof(key_name) + sizeof(key_data) + 2];
 
-    dimNameValueBuffer = dimName ;
-    dimDataValueBuffer = dimData ;
+        if (ret == ERROR_MORE_DATA)
+        {
+          /* Registry value larger than 'key_data', skip it */
+          DBUG_PRINT("error", ("Skipped registry value that was too large"));
+        }
+        else if (ret == ERROR_SUCCESS)
+        {
+          if (type == REG_SZ)
+          {
+            strxmov(env_string, key_name, "=", key_data, NullS);
 
-    retCodeEnumValue = RegEnumValue(hSoftMysql, indexValue++,
-				    NameValueBuffer, &dimNameValueBuffer,
-				    NULL, NULL, (LPBYTE)DataValueBuffer,
-				    &dimDataValueBuffer) ;
+            /* variable for putenv must be allocated ! */
+            putenv(strdup(env_string)) ;
+          }
+        }
+        else
+        {
+          /* Unhandled error, break out of loop */
+          break;
+        }
+
+        key_name_len= sizeof(key_name) - 1;
+        key_data_len= sizeof(key_data) - 1;
+      }
+
+      RegCloseKey(key_handle) ;
+    }
   }
-
-  /* chiude la chiave */
-  RegCloseKey(hSoftMysql) ;
-
   DBUG_VOID_RETURN ;
 }
 

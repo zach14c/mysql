@@ -109,10 +109,7 @@ pthread_handler_t backup_thread_for_locking(void *arg)
     Turn off condition variable check for lock.
   */
   locking_thd->lock_state= LOCK_NOT_STARTED;
-
-#if !defined( __WIN__) /* Win32 calls this in pthread_create */
   my_thread_init();
-#endif
 
   /*
     First, create a new THD object.
@@ -161,7 +158,16 @@ pthread_handler_t backup_thread_for_locking(void *arg)
     killing the thread. In this case, we need to close the tables 
     and exit.
   */
-  if (open_and_lock_tables(thd, locking_thd->tables_in_backup))
+
+  /*
+    The MYSQL_OPEN_SKIP_TEMPORARY flag is needed so that temporary tables are
+    not opened which would occulde the regular tables selected for backup 
+    (BUG#33574).
+  */ 
+  if (open_and_lock_tables_derived(thd, locking_thd->tables_in_backup,
+                                   FALSE, /* do not process derived tables */
+                                   MYSQL_OPEN_SKIP_TEMPORARY)
+     )
   {
     DBUG_PRINT("info",("Online backup locking thread dying"));
     THD_SET_PROC_INFO(thd, "lock error");
@@ -213,7 +219,6 @@ end2:
 
   pthread_mutex_lock(&locking_thd->THR_LOCK_caller);
   net_end(&thd->net);
-  my_thread_end();
   delete thd;
   locking_thd->lock_thd= NULL;
   if (locking_thd->lock_state != LOCK_ERROR)
@@ -224,6 +229,7 @@ end2:
   */
   pthread_cond_signal(&locking_thd->COND_caller_wait);
   pthread_mutex_unlock(&locking_thd->THR_LOCK_caller);
+  my_thread_end(); /* always last, after all mutex usage */
   pthread_exit(0);
   return (0);
 }
