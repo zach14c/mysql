@@ -3717,12 +3717,11 @@ bool find_eq_ref_candidate(TABLE *table, table_map sj_inner_tables)
      
     PRECONDITIONS
     When this function is called, the join may have several semi-join nests
-    (possibly within different semi-join nests), but it is guaranteed that
-    one semi-join nest does not contain another.
+    but it is guaranteed that one semi-join nest does not contain another.
    
     ACTION
     A table can be pulled out of the semi-join nest if
-     - It is a constant table
+     - It is a constant table, or
      - It is accessed via eq_ref(outer_tables)
 
     POSTCONDITIONS
