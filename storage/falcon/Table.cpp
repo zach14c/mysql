@@ -2617,12 +2617,14 @@ bool Table::checkUniqueRecordVersion(int32 recordNumber, Index *index, Transacti
 			{
 			if (state == Active)
 				{
+				dup->addRef();
 				syncPrior.unlock(); // release lock before wait
 				syncUnique->unlock(); // release lock before wait
 
 				// Wait for that transaction, then restart checkUniqueIndexes()
 
 				state = transaction->getRelativeState(dup, WAIT_IF_ACTIVE);
+				dup->release();  // We are done with this now.
 
 				if (state != Deadlock)
 					{
@@ -2798,7 +2800,7 @@ int Table::chartActiveRecords(int *chart)
 void Table::rebuildIndex(Index *index, Transaction *transaction)
 {
 	index->rebuildIndex(transaction);
-	populateIndex(index, transaction);	
+	populateIndex(index, transaction);
 }
 
 

@@ -90,9 +90,12 @@ void SRLCreateTableSpace::pass1()
 
 void SRLCreateTableSpace::pass2()
 {
-	TableSpaceInit tsInit;
-	tsInit.comment		= comment;
-	log->database->tableSpaceManager->redoCreateTableSpace(tableSpaceId, nameLength, name, filenameLength, filename, type, &tsInit);
+	if (control->isPostFlush())
+		{
+		TableSpaceInit tsInit;
+		tsInit.comment		= comment;
+		log->database->tableSpaceManager->redoCreateTableSpace(tableSpaceId, nameLength, name, filenameLength, filename, type, &tsInit);
+		}
 }
 
 void SRLCreateTableSpace::commit()

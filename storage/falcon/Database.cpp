@@ -455,7 +455,9 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	scheduler = NULL;
 	internalScheduler = NULL;
 	scavenger = NULL;
+#ifndef STORAGE_ENGINE
 	garbageCollector = NULL;
+#endif
 	sequenceManager = NULL;
 	repositoryManager = NULL;
 	sessionManager = NULL;
@@ -522,7 +524,9 @@ void Database::start()
 	scheduler = new Scheduler(this);
 	internalScheduler = new Scheduler(this);
 	scavenger = new Scavenger(this, scvRecords, configuration->scavengeSchedule);
+#ifndef STORAGE_ENGINE
 	garbageCollector = new Scavenger(this, scvJava, configuration->gcSchedule);
+#endif
 	sequenceManager = new SequenceManager(this);
 	repositoryManager = new RepositoryManager(this);
 	transactionManager = new TransactionManager(this);
@@ -533,7 +537,9 @@ void Database::start()
 	cardinalityThread = threads->start("Database::cardinalityThreadMain", &Database::cardinalityThreadMain, this);
 	scavengerThread = threads->start("Database::scavengerThreadMain", &Database::scavengerThreadMain, this);
 	internalScheduler->addEvent(scavenger);
+#ifndef STORAGE_ENGINE
 	internalScheduler->addEvent(garbageCollector);
+#endif
 	internalScheduler->addEvent(serialLog);
 	pageWriter->start();
 	cache->setPageWriter(pageWriter);
@@ -585,9 +591,10 @@ Database::~Database()
 	if (scavenger)
 		scavenger->release();
 
+#ifndef STORAGE_ENGINE
 	if (garbageCollector)
 		garbageCollector->release();
-
+#endif
 	if (threads)
 		{
 		threads->shutdownAll();

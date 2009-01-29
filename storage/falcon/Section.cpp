@@ -164,6 +164,10 @@ void Section::createSection(Dbb *dbb, int32 sectionId, TransId transId)
 
 	if (sections->pages [slot] == 0)
 		{
+		// If we're in recovery and slot is empty, something went wrong , page must have
+		// been logged and rebuilt already (every allocation is redone)
+		ASSERT (!(dbb->serialLog && dbb->serialLog->recovering));
+
 		sectionsBdb->mark(transId);
 		Bdb *sectionBdb = dbb->allocPage(PAGE_sections, transId);
 		BDB_HISTORY(sectionBdb);
@@ -172,6 +176,11 @@ void Section::createSection(Dbb *dbb, int32 sectionId, TransId transId)
 		sections->pages [slot] = sectionBdb->pageNumber;
 		SectionPage	 *page = (SectionPage*) sectionBdb->buffer;
 		page->section = sectionId;
+
+		// Log allocated page
+		dbb->serialLog->logControl->sectionPage.append(dbb, transId, SECTION_ROOT,
+				sectionBdb->pageNumber, slot, sectionId, 0, 0);
+
 		sectionBdb->release(REL_HISTORY);
 		}
 
@@ -1194,40 +1203,32 @@ bool Section::isCleanupRequired()
 }
 ***/
 
+
 void Section::redoSectionPage(Dbb *dbb, int32 parentPage, int32 pageNumber, int slot, int sectionId, int sequence, int level)
 {
-	Bdb *bdb = dbb->fetchPage (parentPage, PAGE_any, Exclusive);
+	Bdb *bdb = dbb->fetchPage (parentPage, PAGE_sections, Exclusive);
 	BDB_HISTORY(bdb);
 	SectionPage *page = (SectionPage*) bdb->buffer;
 
-	//  Unless parent page is already leaf, probe and if necessary rebuild section page
 
-	//if (pageNumber && (page->level > 0 || parentPage == SECTION_ROOT))
-	if (pageNumber && (page->level > 0 || page->section == -1))
+	// If page number != 0, we are creating a new section page
+	// Otherwise, the log record comes from deleteSection and we just need to 
+	// clear the slot in the parent page
+
+	if (pageNumber != 0)
 		{
 		Bdb *sectionBdb = dbb->fakePage(pageNumber, PAGE_any, 0);
 		BDB_HISTORY(bdb);
 		SectionPage *sectionPage = (SectionPage*) sectionBdb->buffer;
-		
-		if (!dbb->trialRead(sectionBdb) ||
-			sectionPage->pageType != PAGE_sections ||
-			sectionPage->section != sectionId ||
-			sectionPage->sequence != sequence ||
-			sectionPage->level != level)
-			{
-			memset(sectionPage, 0, dbb->pageSize);
-			//sectionPage->pageType = PAGE_sections;
-			sectionBdb->setPageHeader(PAGE_sections);
-			sectionPage->section = sectionId;
-			sectionPage->sequence = sequence;
-			sectionPage->level = level;
-			}
+		memset(sectionPage, 0, dbb->pageSize);
+		sectionBdb->setPageHeader(PAGE_sections);
+		sectionPage->section = sectionId;
+		sectionPage->sequence = sequence;
+		sectionPage->level = level;
 
 		PageInventoryPage::markPageInUse(dbb, pageNumber, NO_TRANSACTION);
 		sectionBdb->release(REL_HISTORY);
 		}
-
-	// Now try to store it in the right place
 
 	if (page->pages[slot] != pageNumber)
 		{
@@ -1243,33 +1244,9 @@ int32 Section::getSectionRoot()
 	Bdb *bdb = getSectionPage(dbb, SECTION_ROOT, sectionId / dbb->pagesPerSection, Shared, NO_TRANSACTION);
 	BDB_HISTORY(bdb);
 	SectionPage *sectionPage = (SectionPage*) bdb->buffer;
-	root = sectionPage->pages[sectionId % dbb->pagesPerSection];
+	int slot = sectionId % dbb->pagesPerSection;
+	root = sectionPage->pages[slot];
 	bdb->release(REL_HISTORY);
-
-	if (root == 0)
-		{
-		if (!dbb->serialLog->recovering)
-			throw SQLError(DATABASE_DAMAGED, "Missing section root for section %d/%d\n", sectionId, dbb->tableSpaceId);
-
-		// Missing root page -- make a new one
-		
-		Bdb *sectionBdb = dbb->allocPage(PAGE_sections, NO_TRANSACTION);
-		BDB_HISTORY(sectionBdb);
-		root = sectionBdb->pageNumber;
-		SectionPage *page = (SectionPage*) sectionBdb->buffer;
-		page->section = sectionId;
-		sectionBdb->release(REL_HISTORY);
-		
-		// Register new root page
-			
-		bdb = getSectionPage(dbb, SECTION_ROOT, sectionId / dbb->pagesPerSection, Exclusive, NO_TRANSACTION);
-		BDB_HISTORY(bdb);
-		sectionPage = (SectionPage*) bdb->buffer;
-		sectionPage->pages[sectionId % dbb->pagesPerSection] = root;
-		bdb->release(REL_HISTORY);
-		}
-
-		
 	return root;
 }
 

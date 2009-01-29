@@ -290,7 +290,9 @@ public:
 	Scheduler			*scheduler;
 	Scheduler			*internalScheduler;
 	Scavenger			*scavenger;
+#ifndef STORAGE_ENGINE
 	Scavenger			*garbageCollector;
+#endif
 	TemplateManager		*templateManager;
 	ImageManager		*imageManager;
 	SessionManager		*sessionManager;
