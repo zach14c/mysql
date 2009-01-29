@@ -3723,7 +3723,7 @@ bool find_eq_ref_candidate(TABLE *table, table_map sj_inner_tables)
     ACTION
     A table can be pulled out of the semi-join nest if
      - It is a constant table
-     - It is accessed 
+     - It is accessed via eq_ref(outer_tables)
 
     POSTCONDITIONS
      * Tables that were pulled out have JOIN_TAB::emb_sj_nest == NULL
