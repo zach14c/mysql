@@ -29,6 +29,10 @@ DISTCLEANFILES =	$(BUILT_SOURCES) $(EXTRA_PROGRAMS)
 SUBDIRS =		@yassl_dir@ @libevent_dir@
 DIST_SUBDIRS =		yassl libevent
 
+# Compile "stand alone", only zlib from this build if bundled
+comp_err_CPPFLAGS =	$(ZLIB_INCLUDES)
+comp_err_LDADD =	$(ZLIB_LIBS)
+
 # This will build mysqld_error.h, mysqld_ername.h and sql_state.h
 # NOTE Built files should depend on their sources to avoid
 # the built files being rebuilt in source dist
