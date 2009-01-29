@@ -9725,7 +9725,6 @@ bool setup_sj_materialization(JOIN_TAB *tab)
       bool dummy;
       Item_equal *item_eq;
       Field *copy_to=((Item_field*)it++)->field; 
-      Item *head;
       /*
         Tricks with Item_equal are due to the following: suppose we have a
         query:
