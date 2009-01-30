@@ -35,6 +35,7 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 --echo 'mylog.000002 exists'
 
 SET @@global.max_binlog_size= @saved_max_binlog_size;
+
 DROP TABLE t1;
 ###############################################################################
 # End of functionality testing for max_binlog_size                            #
