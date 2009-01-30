@@ -1437,7 +1437,7 @@ void Section::redoBlobUpdate(Dbb* dbb, int32 locatorPage, int locatorLine, int32
 	if (page->maxLine <= locatorLine)
 		page->maxLine = locatorLine + 1;
 
-	page->setIndexSlot(locatorLine, dataPage, dataLine, dbb->pageSize);
+	page->setIndexSlot(locatorLine, dataPage, dataLine, DATA_PAGE_MAX_AVAILABLE_SPACE(dbb->pageSize));
 	bdb->release(REL_HISTORY);
 }
 
@@ -1471,7 +1471,7 @@ void Section::redoBlobDelete(Dbb* dbb, int32 locatorPage, int locatorLine, int32
 	BDB_HISTORY(bdb);
 	bdb->mark(NO_TRANSACTION);
 	RecordLocatorPage *page = (RecordLocatorPage*) bdb->buffer;
-	page->setIndexSlot(locatorLine, 0, 0, dbb->pageSize);
+	page->setIndexSlot(locatorLine, 0, 0, DATA_PAGE_MAX_AVAILABLE_SPACE(dbb->pageSize));
 	bdb->release(REL_HISTORY);
 }
 
