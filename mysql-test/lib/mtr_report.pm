@@ -267,25 +267,6 @@ sub mtr_report_stats ($) {
  }
 
   print "\n";
-		# Ignore warnings issued when backup/restore operation is aborted.
-		/\[Warning\] (Backup|Restore): Operation aborted/ or
-		
-		# myisam_keycache_coverage intentionally provokes errors
-		($testname eq 'main.myisam_keycache_coverage') and
-		(
-		  /Incorrect key file/ or
-		  /Got an error from .* mi_update/ or
-		  /MySQL thread id .* localhost root Updating/
-		) or
-                
-		) or
-		
-		# The rpl_backup test will throw an error about running restore
-		# on a slave.
-		($testname eq 'rpl.rpl_backup') and
-		(
-		  /A restore operation was attempted on a slave during replication/
-
   # Print a list of check_testcases that failed(if any)
   if ( $::opt_check_testcases )
   {
