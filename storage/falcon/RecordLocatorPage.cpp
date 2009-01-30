@@ -368,7 +368,6 @@ void RecordLocatorPage::setIndexSlot(int slot, int32 pageNumber, int line, int a
 
 void RecordLocatorPage::insertSpaceSlot(int slot, int availableSpace)
 {
-	ASSERT(availableSpace > 0 && availableSpace < 0x8000); 
 	int priorSlot;
 	int nextSlot;
 	
