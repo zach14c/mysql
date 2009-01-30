@@ -3545,7 +3545,10 @@ bool JOIN::flatten_subqueries()
       DBUG_RETURN(TRUE);
   }
 skip_conversion:
-  /* 3. Finalize those we didn't convert */
+  /* 
+    3. Finalize (perform IN->EXISTS rewrite) the subqueries that we didn't
+    convert:
+  */
   for (; in_subq!= in_subq_end; in_subq++)
   {
     JOIN *child_join= (*in_subq)->unit->first_select()->join;
