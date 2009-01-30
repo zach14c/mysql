@@ -266,7 +266,7 @@ int send_error(Backup_restore_ctx &context, int error_code, ...)
 {
   if (!context.error_reported())
   {
-    char buf[ERRMSGSIZE + 20];
+    char buf[MYSQL_ERRMSG_SIZE];
     va_list args;
     va_start(args, error_code);
 

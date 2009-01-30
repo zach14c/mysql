@@ -33,7 +33,7 @@ namespace backup {
 int Logger::write_message(log_level::value level, int error_code,
                           const char *msg)
 {
-   char buf[ERRMSGSIZE + 30];
+   char buf[MYSQL_ERRMSG_SIZE];
    /*
      When logging to server's error log, msg will be prefixed with
      "Backup:"/"Restore:" if the operation has been initialized (i.e., after
@@ -141,7 +141,7 @@ int Logger::v_report_error(log_level::value level, int error_code, va_list args)
 int Logger::v_write_message(log_level::value level, int error_code,
                             const char *format, va_list args)
 {
-  char buf[ERRMSGSIZE + 20];
+  char buf[MYSQL_ERRMSG_SIZE];
 
   my_vsnprintf(buf, sizeof(buf), format, args);
   return write_message(level, error_code, buf);
