@@ -17,8 +17,9 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_sp.bak
+remove_file $MYSQLD_DATADIR/bup_sp.bak;
 
 # Multiple instances of stored routines without atleast one table in
 # database results in failure.
@@ -76,7 +77,7 @@ SELECT @x;
 --replace_result $ENGINE ENGINE
 --query_vertical SHOW CREATE TABLE country;
 --replace_column 4 # 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db <> 'mtr';
 
 #Backup and restore data.
 
@@ -98,7 +99,7 @@ RESTORE FROM 'bup_sp.bak';
 --replace_result $ENGINE ENGINE
 --query_vertical SHOW CREATE TABLE country;
 --replace_column 4 # 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db <> 'mtr';
 
 
 #Excercise the objects after restore to make sure if objects are backedup and
@@ -120,5 +121,4 @@ SELECT @x;
 
 DROP DATABASE bup_sp;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_sp.bak
-
+remove_file $MYSQLD_DATADIR/bup_sp.bak;

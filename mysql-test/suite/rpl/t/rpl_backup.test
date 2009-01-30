@@ -27,6 +27,9 @@ PURGE BACKUP LOGS;
 sync_slave_with_master;
 connection slave;
 
+--echo Get slave's datadir.
+let $MYSQLD_S_DATADIR= `select @@datadir`;
+
 --echo Remove all entries in the backup logs.
 FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
@@ -37,6 +40,9 @@ let $slave_before_pos =
 
 connection master;
 
+--echo Get master's datadir.
+let $MYSQLD_M_DATADIR= `select @@datadir`;
+
 --echo Get master's binlog position before backup.
 let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
 
@@ -45,6 +51,8 @@ let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
 #
 SET SESSION debug="+d,set_backup_id";
 
+# Must mask command because dir in evaluation of $MYSQL... is not deterministic
+replace_regex /(location ').*'/location '$MYSQLD_M_DATADIR\/master_data\/not\/there\/either\/rpl_backup_m1.bak'/ ;
 # We are using debug insertion to set the first backup_id to
 # 500 so we can expect the output of this operation to be 500.
 --echo Backup_id = 500.
@@ -141,6 +149,8 @@ connection slave;
 
 SET SESSION debug="+d,set_backup_id";
 
+# Must mask command because dir in evaluation of $MYSQL... is not deterministic
+replace_regex /(location ').*'/location '$MYSQLD_S_DATADIR\/master_data\/not\/there\/either\/rpl_backup_s1.bak'/ ;
 # We are using debug insertion to set the first backup_id to
 # 600 so we can expect the output of this operation to be 600.
 --echo Backup_id = 600.
@@ -179,7 +189,11 @@ connection master;
 INSERT INTO rpl_backup.t1 VALUES (10), (20), (30);
 
 --echo Backup_id = 501.
-BACKUP DATABASE rpl_backup TO 'rpl_bup_m2.bak';
+# Must mask command because dir in evaluation of $MYSQL... is not deterministic
+--echo BACKUP DATABASE rpl_backup TO 'rpl_bup_m2.bak';
+--disable_query_log
+eval BACKUP DATABASE rpl_backup TO '$MYSQLTEST_VARDIR/rpl_bup_m2.bak';
+--enable_query_log
 
 SELECT count(*) FROM rpl_backup.t1;
 
@@ -189,6 +203,8 @@ connection slave;
 SELECT count(*) FROM rpl_backup.t1;
 
 --echo Make a backup for later use.
+# Must mask command because dir in evaluation of $MYSQL... is not deterministic
+replace_regex /(location ').*'/location '$MYSQLD_S_DATADIR\/master_data\/not\/there\/either\/rpl_backup_s2.bak'/ ;
 --echo Backup_id = 601.
 BACKUP DATABASE rpl_backup TO 'rpl_bup_s2.bak';
 
@@ -208,8 +224,13 @@ INSERT INTO rpl_backup.t2 VALUES (888), (999);
 --echo Get master's binlog position before restore.
 let $master_before_pos = query_get_value("SHOW MASTER STATUS", Position, 1);
 
+# Must mask command because dir in evaluation of $MYSQL... is not deterministic
+replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/there\/either\/rpl_backup_m2.bak'/ ;
 --echo Backup_id = 502.
-RESTORE FROM 'rpl_bup_m2.bak' OVERWRITE;
+--echo RESTORE FROM 'rpl_bup_m2.bak';
+--disable_query_log
+eval RESTORE FROM '$MYSQLTEST_VARDIR/rpl_bup_m2.bak' OVERWRITE;
+--enable_query_log
 
 --echo Show the incident event issued as a result of restore.
 --replace_column 2 # 5 #
@@ -225,9 +246,9 @@ SELECT count(*) FROM rpl_backup.t1;
 #
 # Wait for slave to stop as result of incident event.
 #
-source include/wait_for_slave_sql_to_stop.inc;
-
 connection slave;
+
+source include/wait_for_slave_sql_to_stop.inc;
 
 --echo Check slave got everything up to incident event.
 --echo Should be two rows: 888, 999.
@@ -265,8 +286,13 @@ SHOW FULL TABLES FROM rpl_backup;
 STOP SLAVE;
 --source include/wait_for_slave_to_stop.inc
 
+# Must mask command because dir in evaluation of $MYSQL... is not deterministic
+replace_regex /(location ').*'/location '$MYSQLTEST_VARDIR\/master_data\/not\/there\/either\/rpl_backup_m2.bak'/ ;
 --echo Backup_id = 602.
-RESTORE FROM '../master-data/rpl_bup_m2.bak' OVERWRITE;
+--echo RESTORE_FROM 'rpl_bup_m2.bak';
+--disable_query_log
+eval RESTORE FROM '$MYSQLTEST_VARDIR/rpl_bup_m2.bak' OVERWRITE;
+--enable_query_log
 
 --echo Showing databases on slave.
 SHOW DATABASES LIKE 'rpl_backup%';
@@ -383,9 +409,9 @@ FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
 DROP DATABASE rpl_backup;
 
---remove_file $MYSQLTEST_VARDIR/master-data/rpl_bup_m1.bak
---remove_file $MYSQLTEST_VARDIR/master-data/rpl_bup_m2.bak
---remove_file $MYSQLTEST_VARDIR/master-data/rpl_bup_m3.bak
+--remove_file $MYSQLD_M_DATADIR/rpl_bup_m1.bak
+--remove_file $MYSQLTEST_VARDIR/rpl_bup_m2.bak
+--remove_file $MYSQLD_M_DATADIR/rpl_bup_m3.bak
 
 connection slave;
 
@@ -393,7 +419,7 @@ FLUSH BACKUP LOGS;
 PURGE BACKUP LOGS;
 DROP DATABASE rpl_backup;
 
---remove_file $MYSQLTEST_VARDIR/slave-data/rpl_bup_s1.bak
---remove_file $MYSQLTEST_VARDIR/slave-data/rpl_bup_s2.bak
---remove_file $MYSQLTEST_VARDIR/slave-data/rpl_bup_s3.bak
+--remove_file $MYSQLD_S_DATADIR/rpl_bup_s1.bak
+--remove_file $MYSQLD_S_DATADIR/rpl_bup_s2.bak
+--remove_file $MYSQLD_S_DATADIR/rpl_bup_s3.bak
 

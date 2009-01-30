@@ -38,3 +38,4 @@ show grants for x@y;
 source include/show_binlog_events.inc;
 drop user x@y;
 drop database d1;
+--sync_slave_with_master
