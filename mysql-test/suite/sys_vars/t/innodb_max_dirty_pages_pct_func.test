@@ -27,72 +27,6 @@
 # safe initial value
 SET @innodb_max_dirty_pages_pct = @@global.innodb_max_dirty_pages_pct;
 
---echo '#--------------------FN_DYNVARS_044_02-------------------------#'
-############################################################################
-# Check if setting innodb_max_dirty_pages_pct is changed in new connection #
-############################################################################
-
-SET @@global.innodb_max_dirty_pages_pct = 80;
---echo 'connect (con1,localhost,root,,,,)'
-connect (con1,localhost,root,,,,);
---echo 'connection con1'
-connection con1;
-SELECT @@global.innodb_max_dirty_pages_pct;
-SET @@global.innodb_max_dirty_pages_pct = 70;
---echo 'connect (con2,localhost,root,,,,)'
-connect (con2,localhost,root,,,,);
---echo 'connection con2'
-connection con2;
-SELECT @@global.innodb_max_dirty_pages_pct;
---echo 'connection default'
-connection default;
---echo 'disconnect con2'
-disconnect con2;
---echo 'disconnect con1'
-disconnect con1;
-# restore initial value
-SET @@global.innodb_max_dirty_pages_pct = @innodb_max_dirty_pages_pct;
-
---echo '#--------------------FN_DYNVARS_044_02-------------------------#'
-###################################################################
-# Begin the functionality Testing of innodb_max_dirty_pages_pct   #
-###################################################################
-
-
---disable_warnings
-DROP PROCEDURE IF EXISTS add_records;
-DROP PROCEDURE IF EXISTS add_until;
-DROP PROCEDURE IF EXISTS check_pct;
-DROP FUNCTION IF EXISTS dirty_pct;
-DROP TABLE IF EXISTS t1;
---enable_warnings
-
-DELIMITER //;
-CREATE PROCEDURE add_records(IN num INT)
-BEGIN
-   START TRANSACTION;
-   WHILE (num > 0) DO
-      INSERT INTO t1(b) VALUES('MYSQL');
-      SET num = num - 1;
-   END WHILE;
-   COMMIT;
-END//
-
-CREATE FUNCTION dirty_pct() RETURNS DECIMAL(20,17)
-BEGIN
-  DECLARE res DECIMAL(20,17);
-  DECLARE a1, b1 VARCHAR(256);
-  DECLARE a2, b2 VARCHAR(256);
-  DECLARE dirty CURSOR FOR SELECT * FROM information_schema.global_status
-                WHERE variable_name LIKE 'Innodb_buffer_pool_pages_dirty';
-  DECLARE total CURSOR FOR SELECT * FROM information_schema.global_status
-                WHERE variable_name LIKE 'Innodb_buffer_pool_pages_total';
-
-  OPEN dirty;
-  OPEN total;
-
-  FETCH dirty INTO a1, b1;
-  FETCH total INTO a2, b2;
 
   SET res = (CONVERT(b1,DECIMAL) * 100) / CONVERT(b2,DECIMAL);
 
@@ -133,6 +67,7 @@ a INT AUTO_INCREMENT PRIMARY KEY,
 b CHAR(200)
 ) ENGINE = INNODB;
 
+
 #==========================================================
 --echo '---Check when innodb_max_dirty_pages_pct is 10---'
 #==========================================================
@@ -156,6 +91,7 @@ let $wait_condition= SELECT (dirty_pct() <= @@global.innodb_max_dirty_pages_pct)
 
 --echo 'We expect dirty pages pct to be BELOW_MAX after some time depending on performance'
 CALL check_pct(10);
+
 DROP PROCEDURE add_records;
 DROP PROCEDURE add_until;
 DROP PROCEDURE check_pct;
