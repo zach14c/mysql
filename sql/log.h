@@ -374,6 +374,18 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 
   ulonglong m_table_map_version;
 
+  /* pointer to the sync period variable, for binlog this will be
+     sync_binlog_period, for relay log this will be
+     sync_relay_log_period
+  */
+  uint *sync_period_ptr;
+  uint sync_counter;
+
+  inline uint get_sync_period()
+  {
+    return *sync_period_ptr;
+  }
+
   int write_to_file(IO_CACHE *cache);
   /*
     This is used to start writing to a new log file. The difference from
@@ -386,6 +398,10 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 public:
   MYSQL_LOG::generate_name;
   MYSQL_LOG::is_open;
+
+  /* This is relay log */
+  bool is_relay_log;
+
   /*
     These describe the log's format. This is used only for relay logs.
     _for_exec is used by the SQL thread, _for_queue by the I/O thread. It's
@@ -397,7 +413,7 @@ public:
   Format_description_log_event *description_event_for_exec,
     *description_event_for_queue;
 
-  MYSQL_BIN_LOG();
+  MYSQL_BIN_LOG(uint *sync_period);
   /*
     note that there's no destructor ~MYSQL_BIN_LOG() !
     The reason is that we don't want it to be automatically called

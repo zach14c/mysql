@@ -23,9 +23,10 @@ drop table if exists t1, t2, t3, t4;
 --enable_warnings
 connect (slave,localhost,root,,test,$SLAVE_MYPORT,$SLAVE_MYSOCK);
 # Create empty file
-write_file $MYSQLTEST_VARDIR/slave-data/master.info;
+let $MYSQLD_SLAVE_DATADIR= `select @@datadir`;
+write_file $MYSQLD_SLAVE_DATADIR/master.info;
 EOF
-chmod 0000 $MYSQLTEST_VARDIR/slave-data/master.info;
+chmod 0000 $MYSQLD_SLAVE_DATADIR/master.info;
 connection slave;
 --disable_warnings
 drop table if exists t1, t2, t3, t4;
@@ -36,7 +37,7 @@ drop table if exists t1, t2, t3, t4;
 --replace_result $MYSQL_TEST_DIR TESTDIR
 --error 1105,1105,29
 start slave;
-chmod 0600  $MYSQLTEST_VARDIR/slave-data/master.info;
+chmod 0600  $MYSQLD_SLAVE_DATADIR/master.info;
 # It will fail again because the file is empty so the slave cannot get valuable
 # info about how to connect to the master from it (failure in
 # init_strvar_from_file() in init_master_info()).
@@ -55,6 +56,7 @@ connection master;
 reset master;
 connection slave;
 start slave;
+--source include/wait_for_slave_to_start.inc
 connection master;
 
 #
@@ -99,6 +101,7 @@ connection slave;
 #restart slave skipping one event
 set global sql_slave_skip_counter=1;
 start slave;
+--source include/wait_for_slave_to_start.inc
 
 connection master;
 
@@ -150,9 +153,7 @@ select count(*) from t3 where n >= 4;
 create table t4 select * from temp_table;
 source include/show_binary_logs.inc;
 source include/show_master_status.inc;
-save_master_pos;
-connection slave;
-sync_with_master;
+sync_slave_with_master;
 select * from t4;
 
 source include/show_slave_status2.inc;
