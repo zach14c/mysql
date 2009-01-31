@@ -157,9 +157,8 @@ TableSpace* TableSpaceManager::createTableSpace(const char *name, const char *fi
 	Sync syncDDL(&database->syncSysDDL, "TableSpaceManager::createTableSpace");
 	syncDDL.lock(Exclusive);
 
-	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
 	int type = (repository) ? TABLESPACE_TYPE_REPOSITORY : TABLESPACE_TYPE_TABLESPACE;
-	int id = (int) sequence->update(1, database->getSystemTransaction());
+	int id = createTableSpaceId();
 	
 	TableSpace *tableSpace = new TableSpace(database, name, id, fileName, type, tsInit);
 	
@@ -565,3 +564,9 @@ void TableSpaceManager::getTableSpaceFilesInfo(InfoTable* infoTable)
 		}
 }
 
+int TableSpaceManager::createTableSpaceId()
+{
+	Sequence *sequence = database->sequenceManager->getSequence(database->getSymbol("SYSTEM"), database->getSymbol("TABLESPACE_IDS"));
+	int id = (int) sequence->update(1, database->getSystemTransaction());
+	return id;
+}

@@ -1816,7 +1816,7 @@ void Database::scavengeRecords(void)
 
 	// Check for low memory 
 
-	if (recordScavenge.spaceRemaining > recordScavengeFloor)
+	if (recordScavenge.retiredActiveMemory > recordScavengeFloor)
 		setLowMemory();
 
 	recordScavenge.print();
