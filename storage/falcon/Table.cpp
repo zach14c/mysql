@@ -3642,12 +3642,13 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 
-			database->signalScavenger();
+			database->signalScavenger(true);
 
-			// Give the scavenger thread a chance to release some memory
+			// Give the scavenger thread a chance to release memory.
+			// Increase the wait time per iteration.
 
 			Thread *thread = Thread::getThread("Database::ticker");
-			thread->sleep(10);
+			thread->sleep(n * SCAVENGE_WAIT_MS);
 			}
 		}
 
@@ -3678,7 +3679,7 @@ Record* Table::allocRecord(int recordNumber, Stream* stream)
 				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 
-			database->signalScavenger();
+			database->signalScavenger(true);
 
 			// Give the scavenger thread a chance to release some memory
 

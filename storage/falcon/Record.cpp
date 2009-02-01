@@ -953,7 +953,7 @@ char* Record::allocRecordData(int length)
 				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 			
-			format->table->database->signalScavenger();
+			format->table->database->signalScavenger(true);
 
 			// Give the scavenger thread a chance to release some memory
 
