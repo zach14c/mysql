@@ -652,6 +652,7 @@ void SyncObject::wait(LockType type, Thread *thread, Sync *sync, int timeout)
 						}
 
 				mutex.release();
+				thread->lockPending = NULL;
 				timedout(timeout);
 				}
 			}
