@@ -40,7 +40,7 @@
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
 #define VERSION_SERIAL_LOG				COMBINED_VERSION(ODS_VERSION2, ODS_MINOR_VERSION1)
 
-#define SCAVENGE_WAIT_MS   10       // Milliseconds per iteration to wait for the Scavenger
+#define SCAVENGE_WAIT_MS    20       // Milliseconds per iteration to wait for the Scavenger
 
 static const int FALC0N_TRACE_TRANSACTIONS	= 1;
 static const int FALC0N_SYNC_TEST			= 2;

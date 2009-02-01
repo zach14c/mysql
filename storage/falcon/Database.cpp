@@ -2474,6 +2474,7 @@ void Database::updateCardinalities(void)
 	Sync syncTbl(&syncTables, "Database::updateCardinalities(2)");
 	syncTbl.lock(Shared);
 	
+	Log::log("Update cardinalities begin...\n");
 	bool hit = false;
 	
 	try
@@ -2522,6 +2523,8 @@ void Database::updateCardinalities(void)
 		// Situations where this might happen can be due to problems with
 		// writing to the serial log
 		}
+	
+	Log::log("Update cardinalities complete.\n");
 }
 
 void Database::sync()
