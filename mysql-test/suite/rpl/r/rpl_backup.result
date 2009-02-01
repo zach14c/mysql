@@ -384,6 +384,8 @@ Last_IO_Errno	0
 Last_IO_Error	
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 Restore is now complete.
 backup_id
 #
@@ -392,6 +394,7 @@ SET DEBUG_SYNC = 'now WAIT_FOR done';
 SHOW DATABASES;
 Database
 information_schema
+mtr
 mysql
 rpl_backup
 test
@@ -437,6 +440,8 @@ Last_IO_Errno	0
 Last_IO_Error	
 Last_SQL_Errno	0
 Last_SQL_Error	
+Replicate_Ignore_Server_Ids	
+Master_Server_Id	1
 Now stop the slave.
 SLAVE STOP;
 FLUSH BACKUP LOGS;
