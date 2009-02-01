@@ -236,7 +236,7 @@ FROM mysql.backup_history
 WHERE backup_id = @bid; 
 
 DROP DATABASE db1;
---remove_file $MYSQLTEST_VARDIR/master-data/db1.bkp
+--remove_file $MYSQLD_DATADIR/db1.bkp
 
 
 #

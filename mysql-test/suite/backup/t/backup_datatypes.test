@@ -17,9 +17,10 @@ connect (breakpoints,localhost,root,,);
 --echo starting the test for backup
 --echo
 ##############################################################
+let $MYSQLD_DATADIR= `select @@datadir`;
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_datatype.bak
+--remove_file $MYSQLD_DATADIR/bup_datatype.bak
 
 #Create Database and tables with different datatypes for this test.
 
@@ -139,5 +140,5 @@ SET NAMES utf8;
 
 DROP DATABASE `¥ü`;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_datatype.bak
+--remove_file $MYSQLD_DATADIR/bup_datatype.bak
 

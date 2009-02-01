@@ -94,7 +94,7 @@ LET $result=`SELECT @backup_id_history = $backup_id AS are_identical`;
 
 --echo We can notice that, if result is 1 then backup_id
 --echo from backup_history log and from backup_command is same.
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs1.bak
+--remove_file $MYSQLD_DATADIR/backup_logs1.bak
 
 #
 # Test 2 - Check output of backup and verify different columns in
@@ -128,7 +128,7 @@ SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
 WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
 SELECT operation,num_objects, username, command FROM mysql.backup_history
      WHERE backup_id=@bup_id;
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs1.bak
+--remove_file $MYSQLD_DATADIR/backup_logs1.bak
 
 connection con3;
 SELECT CURRENT_USER();
@@ -141,7 +141,7 @@ SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
 WHERE command LIKE "BACKUP DATABASE backup_logs TO%";
 SELECT operation,num_objects, username, command FROM mysql.backup_history
      WHERE backup_id=@bup_id;
---remove_file $MYSQLTEST_VARDIR/master-data/backup_logs1.bak
+--remove_file $MYSQLD_DATADIR/backup_logs1.bak
 
 --echo
 --echo From the above tables we can notice that num_objects shows '0' if only DB
@@ -366,11 +366,11 @@ EOF
 --echo because of bug#37980. Once this bug is fixed, both should show 
 --echo same bytes.
 
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
 
-#cat_file $MYSQLTEST_VARDIR/master-data/backup_history.log;
-#cat_file $MYSQLTEST_VARDIR/master-data/backup_progress.log;
+#cat_file $MYSQLD_DATADIR/backup_history.log;
+#cat_file $MYSQLD_DATADIR/backup_progress.log;
 
 connection con2;
 
@@ -433,10 +433,10 @@ SELECT timediff(now(),@start_restore) > 5;
 --replace_column 1 # 3 # 4 #
 SELECT * FROM mysql.backup_progress WHERE backup_id = 501;
 
---file_exists $MYSQLTEST_VARDIR/master-data/backup_history.log
---file_exists $MYSQLTEST_VARDIR/master-data/backup_progress.log
-#cat_file $MYSQLTEST_VARDIR/master-data/backup_history.log;
-#cat_file $MYSQLTEST_VARDIR/master-data/backup_progress.log;
+--file_exists $MYSQLD_DATADIR/backup_history.log
+--file_exists $MYSQLD_DATADIR/backup_progress.log
+#cat_file $MYSQLD_DATADIR/backup_history.log;
+#cat_file $MYSQLD_DATADIR/backup_progress.log;
 
 SET DEBUG_SYNC= 'RESET';
 
