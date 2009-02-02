@@ -1,0 +1,109 @@
+--source include/have_falcon.inc
+
+#
+# Prepared statement test with concurrent transaction.
+#
+--echo *** falcon_ps_03621 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+SET @@tx_isolation = 'REPEATABLE-READ';
+SET @@autocommit = 0;
+
+CREATE TABLE t1 (
+  a char(3) character set latin1 collate latin1_bin NOT NULL default '000',
+  b char(3) character set latin1 collate latin1_bin NOT NULL default '',
+  c char(3) character set latin1 collate latin1_bin NOT NULL default '',
+  d varchar(10) character set latin1 collate latin1_bin NOT NULL default '',
+  e int(11) NOT NULL default '0',
+  PRIMARY KEY  (a,b,c),
+  KEY i1 (b,d,e),
+  KEY i2 (b,c)
+) DEFAULT CHARSET=latin1;
+
+COMMIT;
+
+connect (conn1,localhost,root,,);
+eval SET @@storage_engine = $engine;
+SET @@tx_isolation = 'REPEATABLE-READ';
+SET @@autocommit = 0;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--echo # Switch to connection default
+connection default;
+PREPARE stmt FROM
+'INSERT INTO t1 (a ,b ,c ,d ,e) VALUES ( ? , ? , ? , ? , ? )';
+
+SET @var1 = '000';
+SET @var2 = ' 0';
+SET @var3 = ' 0';
+SET @var4 = 'Text 001';
+SET @var5 = 0;
+
+EXECUTE stmt USING @var1, @var2, @var3, @var4, @var5;
+
+SET @var1 = '000';
+SET @var2 = ' 1';
+SET @var3 = ' 0';
+SET @var4 = 'Text 005';
+SET @var5 = 1;
+
+EXECUTE stmt USING @var1, @var2, @var3, @var4, @var5;
+
+DEALLOCATE PREPARE stmt ;
+
+COMMIT;
+
+BEGIN;
+
+PREPARE stmt FROM 'DELETE FROM t1 WHERE a = ? AND b = ?';
+
+# SET vars
+SET @var1 = '000';
+SET @var2 = ' 0';
+
+EXECUTE stmt USING @var1, @var2;
+
+DEALLOCATE PREPARE stmt ;
+# No commit here!
+
+--echo # Switch to connection conn1
+connection conn1;
+BEGIN;
+
+PREPARE stmt FROM 'UPDATE t1 SET d = ? WHERE a = ? AND b = ?';
+
+SET @var1 = 'error';
+SET @var2 = '000';
+SET @var3 = ' 1';
+
+EXECUTE stmt USING @var1, @var2, @var3;
+
+DEALLOCATE PREPARE stmt;
+
+COMMIT;
+
+--echo # Switch to connection default
+connection default;
+COMMIT;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+disconnect conn1;
+DROP TABLE t1;
