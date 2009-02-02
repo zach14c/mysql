@@ -159,7 +159,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
 	  error=my_errno;
 	  break;
 	}
-	if (mi_state_info_read_dsk(share->kfile, &share->state, 1))
+	if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
 	{
 	  error=my_errno;
 	  (void) my_lock(share->kfile,F_UNLCK,0L,F_TO_EOF,MYF(MY_SEEK_NOT_DONE));
@@ -204,7 +204,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
 	  }
 	  if (!share->r_locks)
 	  {
-	    if (mi_state_info_read_dsk(share->kfile, &share->state, 1))
+	    if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
 	    {
 	      error=my_errno;
 	      (void) my_lock(share->kfile,F_UNLCK,0L,F_TO_EOF,
@@ -227,7 +227,7 @@ int mi_lock_database(MI_INFO *info, int lock_type)
       break;				/* Impossible */
     }
   }
-#ifdef __WIN__
+#ifdef _WIN32
   else
   {
     /*
@@ -415,7 +415,7 @@ int _mi_readinfo(register MI_INFO *info, int lock_type, int check_keybuffer)
       if (my_lock(share->kfile,lock_type,0L,F_TO_EOF,
 		  info->lock_wait | MY_SEEK_NOT_DONE))
 	DBUG_RETURN(1);
-      if (mi_state_info_read_dsk(share->kfile, &share->state, 1))
+      if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 0))
       {
 	int error= my_errno ? my_errno : HA_ERR_FILE_TOO_SHORT;
 	(void) my_lock(share->kfile,F_UNLCK,0L,F_TO_EOF,
@@ -461,11 +461,11 @@ int _mi_writeinfo(register MI_INFO *info, uint operation)
       share->state.update_count= info->last_loop= ++info->this_loop;
       if ((error= mi_state_info_write(share, share->kfile, &share->state, 1)))
 	olderror=my_errno;
-#ifdef __WIN__
+#ifdef _WIN32
       if (myisam_flush)
       {
-	_commit(share->kfile);
-	_commit(info->dfile);
+        my_sync(share->kfile,0);
+        my_sync(info->dfile,0);
       }
 #endif
     }

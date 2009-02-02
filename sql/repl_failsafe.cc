@@ -470,7 +470,7 @@ bool show_new_master(THD* thd)
     field_list.push_back(new Item_empty_string("Log_name", 20));
     field_list.push_back(new Item_return_int("Log_pos", 10,
 					     MYSQL_TYPE_LONGLONG));
-    if (protocol->send_fields(&field_list,
+    if (protocol->send_result_set_metadata(&field_list,
                               Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
       DBUG_RETURN(TRUE);
     protocol->prepare_for_resend();
@@ -644,6 +644,16 @@ err:
 }
 #endif
 
+
+/**
+  Execute a SHOW SLAVE HOSTS statement.
+
+  @param thd Pointer to THD object for the client thread executing the
+  statement.
+
+  @retval FALSE success
+  @retval TRUE failure
+*/
 bool show_slave_hosts(THD* thd)
 {
   List<Item> field_list;
@@ -664,7 +674,7 @@ bool show_slave_hosts(THD* thd)
   field_list.push_back(new Item_return_int("Master_id", 10,
 					   MYSQL_TYPE_LONG));
 
-  if (protocol->send_fields(&field_list,
+  if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
 

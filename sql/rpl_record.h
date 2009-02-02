@@ -20,14 +20,16 @@
 
 #if !defined(MYSQL_CLIENT)
 size_t pack_row(TABLE* table, MY_BITMAP const* cols,
-                uchar *row_data, const uchar *data);
+                uchar *row_data, const uchar *data,
+                bool pack_blobs);
 #endif
 
 #if !defined(MYSQL_CLIENT) && defined(HAVE_REPLICATION)
 int unpack_row(Relay_log_info const *rli,
                TABLE *table, uint const colcnt,
                uchar const *const row_data, MY_BITMAP const *cols,
-               uchar const **const row_end, ulong *const master_reclength);
+               uchar const **const row_end, ulong *const master_reclength,
+               bool unpack_blobs);
 
 // Fill table's record[0] with default values.
 int prepare_record(TABLE *const, const MY_BITMAP *cols, uint width, const bool);

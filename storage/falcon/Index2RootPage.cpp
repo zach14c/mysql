@@ -518,9 +518,9 @@ bool Index2RootPage::splitIndexPage(Dbb * dbb, int32 indexId, Bdb * bdb, TransId
 		
 		leftPage->parentPage = bdb->pageNumber;
 		splitPage->parentPage = bdb->pageNumber;
-		Index2Page::logIndexPage(bdb, transId);
 		Index2Page::logIndexPage(splitBdb, transId);
 		Index2Page::logIndexPage(leftBdb, transId);
+		Index2Page::logIndexPage(bdb, transId);
 
 		splitBdb->release(REL_HISTORY);
 		leftBdb->release(REL_HISTORY);

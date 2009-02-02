@@ -54,12 +54,12 @@ public:
 	virtual int		rollback(void);
 	virtual int		startTransaction(int isolationLevel);
 	virtual int		startImplicitTransaction(int isolationLevel);
-	virtual void	endImplicitTransaction(void);
+	virtual int 	endImplicitTransaction(void);
 	virtual int		savepointSet();
 	virtual int		savepointRelease(int savePoint);
 	virtual int		savepointRollback(int savePoint);
 	virtual int		markVerb();
-	virtual void	rollbackVerb();
+	virtual int	    rollbackVerb();
 	virtual void	releaseVerb();
 	virtual void	addRef(void);
 	virtual void	release(void);
@@ -81,6 +81,7 @@ public:
 	void			setMySqlThread(THD* thd);
 	void			setCurrentStatement(const char* text);
 	Transaction*	getTransaction(void);
+	int				translateError(SQLException& exception, int defaultStorageError);
 	
 	Connection		*connection;
 	Database		*database;

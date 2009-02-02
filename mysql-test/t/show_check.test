@@ -544,17 +544,12 @@ SHOW CREATE VIEW v1;
 DROP VIEW v1;
 
 # Check that SQL_NO_CACHE always wins.
+--error ER_WRONG_USAGE
 CREATE VIEW v1 AS SELECT SQL_CACHE SQL_NO_CACHE NOW();
-SHOW CREATE VIEW v1;
-DROP VIEW v1;
-
+--error ER_WRONG_USAGE
 CREATE VIEW v1 AS SELECT SQL_NO_CACHE SQL_CACHE NOW();
-SHOW CREATE VIEW v1;
-DROP VIEW v1;
-
+--error ER_WRONG_USAGE
 CREATE VIEW v1 AS SELECT SQL_CACHE SQL_NO_CACHE SQL_CACHE NOW();
-SHOW CREATE VIEW v1;
-DROP VIEW v1;
 
 # Check CREATE VIEW in a prepared statement in a procedure.
 delimiter |;
@@ -622,7 +617,6 @@ show plugins;
 show columns in t1;
 show slave hosts;
 show keys in t1;
-show column types;
 show storage engines;
 show authors;
 show contributors;
@@ -944,6 +938,26 @@ show status like 'slow_queries';
 # Bug #30088: Can't disable myisam-recover by a value of ""
 #
 show variables like 'myisam_recover_options';
+
+#
+# Bug#37301 Length and Max_length differ with no obvious reason
+#
+CREATE TABLE t1 (
+ Codigo int(10) unsigned NOT NULL auto_increment,
+ Nombre varchar(255) default NULL,
+ Telefono varchar(255) default NULL,
+ Observaciones longtext,
+ Direccion varchar(255) default NULL,
+ Dni varchar(255) default NULL,
+ CP int(11) default NULL,
+ Provincia varchar(255) default NULL,
+ Poblacion varchar(255) default NULL,
+ PRIMARY KEY  (Codigo)
+) ENGINE=MyISAM AUTO_INCREMENT=11 DEFAULT CHARSET=utf8;
+--enable_metadata
+show create table t1;
+--disable_metadata
+drop table t1;
 
 --echo End of 5.0 tests
 

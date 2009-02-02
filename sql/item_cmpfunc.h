@@ -42,8 +42,8 @@ class Arg_comparator: public Sql_alloc
   bool is_nulls_eq;                // TRUE <=> compare for the EQUAL_FUNC
   enum enum_date_cmp_type { CMP_DATE_DFLT= 0, CMP_DATE_WITH_DATE,
                             CMP_DATE_WITH_STR, CMP_STR_WITH_DATE };
-  ulonglong (*get_value_func)(THD *thd, Item ***item_arg, Item **cache_arg,
-                              Item *warn_item, bool *is_null);
+  longlong (*get_value_func)(THD *thd, Item ***item_arg, Item **cache_arg,
+                             Item *warn_item, bool *is_null);
 public:
   DTCollation cmp_collation;
 
@@ -463,13 +463,23 @@ public:
 class Item_func_eq :public Item_bool_rowready_func2
 {
 public:
-  Item_func_eq(Item *a,Item *b) :Item_bool_rowready_func2(a,b) {}
+  Item_func_eq(Item *a,Item *b) :
+    Item_bool_rowready_func2(a,b), in_equality_no(UINT_MAX)
+  {}
   longlong val_int();
   enum Functype functype() const { return EQ_FUNC; }
   enum Functype rev_functype() const { return EQ_FUNC; }
   cond_result eq_cmp_result() const { return COND_TRUE; }
   const char *func_name() const { return "="; }
   Item *negated_item();
+  /* 
+    - If this equality is created from the subquery's IN-equality:
+      number of the item it was created from, e.g. for
+       (a,b) IN (SELECT c,d ...)  a=c will have in_equality_no=0, 
+       and b=d will have in_equality_no=1.
+    - Otherwise, UINT_MAX
+  */
+  uint in_equality_no;
 };
 
 class Item_func_equal :public Item_bool_rowready_func2
@@ -1015,7 +1025,7 @@ public:
 */
 class cmp_item_datetime :public cmp_item
 {
-  ulonglong value;
+  longlong value;
 public:
   THD *thd;
   /* Item used for issuing warnings. */
@@ -1404,7 +1414,7 @@ class Item_func_regex :public Item_bool_func
   CHARSET_INFO *regex_lib_charset;
   int regex_lib_flags;
   String conv;
-  bool regcomp(bool send_error);
+  int regcomp(bool send_error);
 public:
   Item_func_regex(Item *a,Item *b) :Item_bool_func(a,b),
     regex_compiled(0),regex_is_const(0) {}
@@ -1562,6 +1572,7 @@ public:
   for them. We have to take care of restricting the predicate such an
   object represents f1=f2= ...=fn to the projection of known fields fi1=...=fik.
 */
+struct st_join_table;
 
 class Item_equal: public Item_bool_func
 {
@@ -1598,6 +1609,9 @@ public:
   virtual void print(String *str, enum_query_type query_type);
   CHARSET_INFO *compare_collation() 
   { return fields.head()->collation.collation; }
+  friend Item *eliminate_item_equal(COND *cond, COND_EQUAL *upper_levels,
+                           Item_equal *item_equal);
+  friend bool setup_sj_materialization(struct st_join_table *tab);
 }; 
 
 class COND_EQUAL: public Sql_alloc

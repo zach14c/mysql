@@ -206,7 +206,10 @@ enum ha_extra_function {
   HA_EXTRA_IS_ATTACHED_CHILDREN,
   HA_EXTRA_DETACH_CHILDREN,
   HA_EXTRA_ORDERBY_LIMIT,
-  HA_EXTRA_NO_ORDERBY_LIMIT
+  HA_EXTRA_NO_ORDERBY_LIMIT,
+  /* Inform handler we will force a close as part of flush */
+  HA_EXTRA_PREPARE_FOR_FORCED_CLOSE,
+  HA_EXTRA_ALLOW_LOG_DELETE
 };
 
 /* Compatible option, to be deleted in 6.0 */
@@ -577,8 +580,8 @@ enum data_file_type {
 
 #define GEOM_FLAG      128
 
-/* Deprecated, currently used only by NDB at row retrieval */
 #define SKIP_RANGE     256
+#define EMPTY_RANGE    512
 
 typedef struct st_key_range
 {

@@ -32,7 +32,7 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 
   {
     String tmp_db_name("qqq", 3, system_charset_info);
-    DBUG_ASSERT(obs::check_db_existence(&tmp_db_name));
+    DBUG_ASSERT(obs::check_db_existence(thd, &tmp_db_name));
   }
 
   /*
@@ -42,27 +42,33 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
   field_list.push_back(new Item_empty_string("name", 5));
   field_list.push_back(new Item_empty_string("type", 4));
   field_list.push_back(new Item_empty_string("serialization", 13));
-  protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
 
-  obs::ObjIterator *it= obs::get_databases(thd);
-
-  if (it)
+  //obs::Obj_iterator *it= obs::get_databases(thd);
+  List_iterator<LEX_STRING> it(*db_list);
+  
+  //if (it)
   {
     obs::Obj *db;
 
-    while ((db= it->next()))
+    //while ((db= it->next()))
+    LEX_STRING *dbname;
+    while ((dbname= it++))
     {
+      String dir;
+      dir.copy(dbname->str, dbname->length, system_charset_info);
+      db= get_database_stub(&dir);
 
       if (is_internal_db_name(db->get_db_name()))
           continue;
 
-      DBUG_ASSERT(!obs::check_db_existence(db->get_db_name()));
+      DBUG_ASSERT(!obs::check_db_existence(thd, db->get_db_name()));
 
       //
       // List tables..
       //
 
-      obs::ObjIterator *tit= obs::get_db_tables(thd, db->get_name());
+      obs::Obj_iterator *tit= obs::get_db_tables(thd, db->get_name());
 
       if (tit)
       {
@@ -223,18 +229,38 @@ int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 
           delete event;
         }
-
-        delete tit;
       }
 
-      // That's it.
+      //
+      // List db grants.
+      //
+      tit= obs::get_all_db_grants(thd, db->get_name());
 
-      delete db;
+      if (tit)
+      {
+        obs::Obj *grant;
+
+        while ((grant= tit->next()))
+        {
+          String serial;
+          serial.length(0);
+          protocol->prepare_for_resend();
+          protocol->store(const_cast<String*>(db->get_name()));
+          protocol->store(const_cast<String*>(grant->get_name()));
+          check_user_existence(thd, grant);
+          protocol->store(C_STRING_WITH_LEN("GRANT"),
+                          system_charset_info);
+          grant->serialize(thd, &serial);
+          protocol->store(&serial);
+          protocol->write();
+
+          delete grant;
+        }
+
+      delete tit;
+      }
     }
   }
-
-  delete it;
-
   my_eof(thd);
   DBUG_RETURN(res);
 }

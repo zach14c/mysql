@@ -1,0 +1,100 @@
+--source include/have_falcon.inc
+#
+# Bug #22189: Duplicate entry '1' for key 'PRIMARY'.
+#     This test was written with SERIALIZABLE isolation
+#     level in mind. As Falcon will not have SERIALIZABLE in
+#     any near future, we rewrote the test to use REPEATABLE-READ.
+#
+--echo *** Bug #22189 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP DATABASE IF EXISTS db62;
+--enable_warnings
+
+--echo # Establish connection conn1 (user = root)
+connect (conn1,localhost,root,,);
+eval SET @@storage_engine = $engine;
+
+--echo # Switch to connection default
+connection default;
+SET @@autocommit = 0;
+CREATE DATABASE db62;
+USE db62;
+
+CREATE TABLE x1 (x1 int primary key, x2 int);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+START TRANSACTION;
+SELECT * FROM x1;
+INSERT INTO x1 VALUES (0,0);
+
+--echo # Switch to connection conn1
+connection conn1;
+SET @@autocommit = 1;
+USE db62;
+INSERT INTO x1 VALUES (1,1);
+
+--echo # Switch to connection default
+connection default;
+--error ER_DUP_ENTRY
+INSERT INTO x1 VALUES (1,2);
+
+--echo # Switch to connection conn1
+connection conn1;
+--send INSERT INTO x1 VALUES (0,3)
+
+--echo # Switch to connection default
+connection default;
+ROLLBACK;
+
+--echo # Switch to connection conn1
+connection conn1;
+--reap
+
+connection default;
+--error ER_DUP_ENTRY
+UPDATE x1 SET x1 = 1, x2 = 4;
+--sorted_result
+SELECT * FROM x1;
+
+--echo # Switch to connection conn1
+connection conn1;
+--error ER_DUP_ENTRY
+UPDATE x1 SET x1 = 0, x2 = 5;
+--error ER_DUP_ENTRY
+INSERT INTO x1 VALUES (0,6);
+
+--echo # Switch to connection default
+connection default;
+ROLLBACK;
+
+--echo # Switch to connection conn1
+connection conn1;
+--error ER_DUP_ENTRY
+INSERT INTO x1 VALUES (0,6);
+--error ER_DUP_ENTRY
+INSERT INTO x1 VALUES (0,6);
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+--echo # Switch to connection default
+connection default;
+--sorted_result
+SELECT * FROM x1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+disconnect conn1;
+DROP DATABASE db62;
+USE test;

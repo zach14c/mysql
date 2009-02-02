@@ -37,6 +37,8 @@ falcon_headers= Agent.h Alias.h Application.h \
 		CollationUnknown.h \
 		Collation.h \
 		CollationManager.h \
+		CompareAndSwapSparc.h \
+		CompareAndSwapSparc.il \
 		CompiledStatement.h Configuration.h Connection.h Context.h \
 		Coterie.h CoterieRange.h \
 		Database.h \
@@ -168,7 +170,9 @@ falcon_headers= Agent.h Alias.h Application.h \
 		SRLUpdateRecords.h \
 		SRLVersion.h \
 		SRLWordUpdate.h \
-		Stack.h Statement.h StorageConnection.h \
+		Stack.h \
+		Statement.h \
+		StorageConnection.h \
 		StorageDatabase.h \
 		StorageHandler.h \
 		StorageParameters.h \
@@ -176,8 +180,12 @@ falcon_headers= Agent.h Alias.h Application.h \
 		StorageTableShare.h \
 		StorageVersion.h \
 		Stream.h \
-		StreamSegment.h SymbolManager.h Sync.h SynchronizationObject.h \
+		StreamSegment.h \
+		SymbolManager.h \
+		Sync.h \
+		SynchronizationObject.h \
 		Synchronize.h \
+		SyncHandler.h \
 		SyncObject.h \
 		SyncTest.h \
 		SyncWait.h \
@@ -347,11 +355,18 @@ falcon_sources= Agent.cpp Alias.cpp \
 		SRLVersion.cpp \
 		SRLWordUpdate.cpp \
 		Stack.cpp \
-		Statement.cpp StorageConnection.cpp \
+		Statement.cpp \
+		StorageConnection.cpp \
 		StorageDatabase.cpp \
 		StorageHandler.cpp \
-		StorageTable.cpp StorageTableShare.cpp Stream.cpp \
-		StreamSegment.cpp SymbolManager.cpp Sync.cpp Synchronize.cpp \
+		StorageTable.cpp \
+		StorageTableShare.cpp \
+		Stream.cpp \
+		StreamSegment.cpp \
+		SymbolManager.cpp \
+		Sync.cpp \
+		Synchronize.cpp \
+		SyncHandler.cpp \
 		SyncObject.cpp\
 		SyncTest.cpp\
 		SyncWait.cpp\
@@ -424,6 +439,8 @@ falcon_probes.h: falcon_probes.d
 
 falcon_probes.o:
 	$(DTRACE) $(DTRACEFLAGS) -G -s falcon_probes.d $(DTRACEFILES)
+
+CLEANFILES=	libhafalcon.a
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%

@@ -1,0 +1,462 @@
+#
+# This test includes tests for ensuring the backup logs can be purged
+# of data.
+#
+
+--source include/not_embedded.inc
+--source include/have_debug_sync.inc
+--source include/have_debug.inc
+--source include/have_innodb.inc
+
+connect (con1,localhost,root,,);
+connect (con2,localhost,root,,);
+
+connection con1;
+
+SET @@global.log_backup_output = 'FILE,TABLE';
+
+PURGE BACKUP LOGS;
+
+--echo 
+--echo Now starting real tests
+--echo 
+
+# Create a database and some data to work with.
+
+--disable_warnings
+DROP DATABASE IF EXISTS backup_logs;
+--enable warnings
+CREATE DATABASE backup_logs;
+
+--echo Create table and populate with data.
+
+CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
+CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
+
+INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("02 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("03 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("04 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("05 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("06 Test #1 - progress"); 
+INSERT INTO backup_logs.t1 VALUES ("07 Test #1 - progress"); 
+
+INSERT INTO backup_logs.t2 VALUES ("01 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("02 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("03 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("04 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("05 Test #1 - progress"); 
+INSERT INTO backup_logs.t2 VALUES ("06 Test #1 - progress"); 
+
+INSERT INTO backup_logs.t3 VALUES ("01 Test #1 - progress"); 
+INSERT INTO backup_logs.t3 VALUES ("02 Test #1 - progress"); 
+INSERT INTO backup_logs.t3 VALUES ("03 Test #1 - progress"); 
+INSERT INTO backup_logs.t3 VALUES ("04 Test #1 - progress"); 
+
+#
+# Now test read of backupid with known id using debug insertion
+#
+SET SESSION debug="+d,set_backup_id";
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup1.bak';
+
+SET SESSION debug="-d";
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup2.bak';
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup3.bak';
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup4.bak';
+
+--echo Do restore of database
+RESTORE from 'backup1.bak' OVERWRITE;
+
+--echo Do restore of database
+RESTORE from 'backup2.bak' OVERWRITE;
+
+--echo Do restore of database
+RESTORE from 'backup3.bak' OVERWRITE;
+
+--echo Do restore of database
+RESTORE from 'backup4.bak' OVERWRITE;
+
+--file_exists $MYSQLTEST_VARDIR/master-data/backup1.bak
+--file_exists $MYSQLTEST_VARDIR/master-data/backup2.bak
+--file_exists $MYSQLTEST_VARDIR/master-data/backup3.bak
+--file_exists $MYSQLTEST_VARDIR/master-data/backup4.bak
+
+--echo Display results from backup logs
+SELECT backup_id FROM mysql.backup_history;
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+--echo Purge all backup log data prior to id = 502.
+PURGE BACKUP LOGS TO 502;
+
+--echo Display results from backup logs
+SELECT backup_id FROM mysql.backup_history;
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+--echo Purge all backup log data.
+PURGE BACKUP LOGS;
+
+--echo Display results from backup logs
+SELECT backup_id FROM mysql.backup_history;
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+--echo Cleanup the logs and images for later testing.
+PURGE BACKUP LOGS;
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+
+SET @@time_zone = '+00:00';
+
+SET SESSION debug="+d,set_backup_id";
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup1.bak';
+
+SET SESSION debug="-d";
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup2.bak';
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup3.bak';
+
+SET SESSION debug="+d,set_log_time";
+
+--echo Do backup of database
+BACKUP DATABASE backup_logs to 'backup4.bak';
+
+SET SESSION debug="-d";
+
+--echo Do restore of database
+RESTORE from 'backup1.bak' OVERWRITE;
+
+--echo Do restore of database
+RESTORE from 'backup2.bak' OVERWRITE;
+
+--echo Do restore of database
+RESTORE from 'backup3.bak' OVERWRITE;
+
+SET SESSION debug="+d,set_log_time";
+
+--echo Do restore of database
+RESTORE from 'backup4.bak' OVERWRITE;
+
+SET SESSION debug="-d";
+
+--file_exists $MYSQLTEST_VARDIR/master-data/backup1.bak
+--file_exists $MYSQLTEST_VARDIR/master-data/backup2.bak
+--file_exists $MYSQLTEST_VARDIR/master-data/backup3.bak
+--file_exists $MYSQLTEST_VARDIR/master-data/backup4.bak
+
+--echo Display the results.
+SELECT backup_id FROM mysql.backup_history;
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+
+#
+# We need to sleep to allow time to pass in order to ensure the time
+# compare method in log.cc has two different times to compare.
+#
+real_sleep 3;
+
+SET @now_time= now();
+
+PURGE BACKUP LOGS BEFORE @now_time; 
+
+SELECT backup_id FROM mysql.backup_history;
+SELECT DISTINCT backup_id FROM mysql.backup_progress;
+
+SET @@time_zone = @@global.time_zone;
+
+PURGE BACKUP LOGS;
+
+#
+# Test purge of logs for locations other than backupdir.
+#
+--echo Perform backup
+SET SESSION debug="+d,set_backup_id";
+
+BACKUP DATABASE backup_logs TO '../bup_logs_dir.bak';
+
+SET SESSION debug="-d";
+
+--echo Ensure backup image file went to the correct location
+--file_exists $MYSQLTEST_VARDIR/bup_logs_dir.bak
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+PURGE BACKUP LOGS TO 501;
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+#
+# Test error conditions.
+#
+
+--error ER_BACKUP_PURGE_DATETIME
+PURGE BACKUP LOGS BEFORE 123123;
+
+SET @@global.log_backup_output = 'FILE';
+
+--error ER_BACKUP_LOG_OUTPUT
+PURGE BACKUP LOGS TO 99999999;
+
+--error ER_BACKUP_LOG_OUTPUT
+PURGE BACKUP LOGS BEFORE @now_time;
+
+SET @@global.log_backup_output = 'TABLE';
+
+#
+# Now test what happens when PURGE is run at the same
+# time as a backup or restore is run.
+#
+
+--echo Test backup and purge concurrent execution.
+
+PURGE BACKUP LOGS;
+
+--echo Get rid of any lingering image files.
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/bup_logs_dir.bak
+
+SET DEBUG_SYNC= 'RESET';
+
+connection con1;
+
+--echo con2: Do some backups to add entries in logs.
+--replace_column 1 #
+BACKUP DATABASE backup_logs to 'backup1.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs to 'backup2.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs to 'backup3.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs to 'backup4.bak';
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+connection con2;
+
+SET SESSION debug="+d,set_backup_id";
+
+#
+# Stop backup after it has written rows to the logs but before
+# it writes the history log and last complete log entry.
+#
+--echo con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'before_backup_done SIGNAL ready WAIT_FOR proceed';
+SEND BACKUP DATABASE backup_logs to 'backup5.bak';
+
+connection con1;
+
+--echo con1: Wait for the backup to be ready.
+SET DEBUG_SYNC= 'now WAIT_FOR ready';
+
+PURGE BACKUP LOGS;
+
+SET DEBUG_SYNC= 'now SIGNAL proceed';
+
+connection con2;
+--replace_column 1 #
+reap;
+
+SET SESSION debug="-d";
+
+connection con1;
+
+--echo There should be one row in this table: the backup id from last
+--echo backup (500).
+SELECT count(*) FROM mysql.backup_history;
+SELECT backup_id, command FROM mysql.backup_history;
+
+--echo There should be one row in this table: the backup id from last
+--echo backup (500). We should only see the complete progress 
+--echo statement because all others were deleted while backup was
+--echo in progress.
+SELECT count(*) FROM mysql.backup_progress;
+--replace_column 3 # 4 #
+--query_vertical SELECT * FROM mysql.backup_progress
+
+--echo Now do the same test for restore.
+
+--replace_column 1 #
+RESTORE FROM 'backup1.bak' OVERWRITE;
+--replace_column 1 #
+RESTORE FROM 'backup2.bak' OVERWRITE;
+--replace_column 1 #
+RESTORE FROM 'backup3.bak' OVERWRITE;
+--replace_column 1 #
+RESTORE FROM 'backup4.bak' OVERWRITE;
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+connection con2;
+
+#
+# Stop restore after it has written rows to the logs but before
+# it writes the history log and last complete log entry.
+#
+--echo con2: Activate sync points for the backup statement.
+SET DEBUG_SYNC= 'before_restore_done SIGNAL ready WAIT_FOR proceed';
+SEND RESTORE FROM 'backup5.bak' OVERWRITE;
+
+connection con1;
+
+--echo con1: Wait for the backup to be ready.
+SET DEBUG_SYNC= 'now WAIT_FOR ready';
+
+PURGE BACKUP LOGS;
+
+SET DEBUG_SYNC= 'now SIGNAL proceed';
+
+connection con2;
+--replace_column 1 #
+reap;
+
+connection con1;
+
+--echo There should be one row in this table: the backup id from last
+--echo restore (505).
+SELECT count(*) FROM mysql.backup_history;
+SELECT backup_id, command FROM mysql.backup_history;
+
+--echo There should be one row in this table: the backup id from last
+--echo restore (505). We should only see the complete progress 
+--echo statement because all others were deleted while restore was
+--echo in progress.
+SELECT count(*) FROM mysql.backup_progress;
+--replace_column 3 # 4 #
+--query_vertical SELECT * FROM mysql.backup_progress
+
+#
+# Test removal of entries that do not meet criteria and
+# removal of all entries.
+#
+
+--remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup5.bak
+
+--echo First, run some backups.
+
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup1.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup2.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup3.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup4.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup5.bak';
+
+--echo Test purges that do not meet criteria.
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+PURGE BACKUP LOGS BEFORE '1988-10-12 12:00:00';
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+PURGE BACKUP LOGS TO 0;
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+--echo Test empty logs (delete all entries).
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+PURGE BACKUP LOGS TO 999999999;
+
+--echo Check to be sure backup logs are empty (count(*) = 0).
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/backup5.bak
+
+--echo Run some more backups to generate more rows.
+
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup1.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup2.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup3.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup4.bak';
+--replace_column 1 #
+BACKUP DATABASE backup_logs TO 'backup5.bak';
+
+--echo Test purges that do not meet criteria.
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+PURGE BACKUP LOGS BEFORE '2024-10-12 12:00:00';
+
+--echo Test empty logs (delete all entries).
+
+SELECT count(*) FROM mysql.backup_history;
+SELECT count(*) FROM mysql.backup_progress;
+
+
+#
+# Cleanup.
+#
+
+SET DEBUG_SYNC= 'RESET';
+
+DROP DATABASE backup_logs;
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup1.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup2.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup3.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup4.bak
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/backup5.bak
+
+PURGE BACKUP LOGS;
+
+

@@ -25,7 +25,7 @@ typedef long long INT64;
 class THD;
 struct charset_info_st;
 struct TABLE_LIST;
-struct st_table;
+struct TABLE;
 
 class InfoTable
 {
@@ -37,6 +37,8 @@ public:
     virtual void    putDouble(int column, double value) = 0;
     virtual void    putString(int column, const char *string) = 0;
     virtual void    putString(int column, unsigned int stringLength, const char *string) = 0;
+    virtual void    setNull(int column) = 0;
+    virtual void    setNotNull(int column) = 0;
 };
 
 class InfoTableImpl : public InfoTable
@@ -51,9 +53,11 @@ public:
     virtual void    putString(int column, const char *string);
     virtual void    putString(int column, unsigned int stringLength, const char *string);
     virtual void    putDouble(int column, double value);
+    virtual void    setNull(int column);
+    virtual void    setNotNull(int column);
     
     int             error;
-    st_table        *table;
+    TABLE          *table;
     THD             *mySqlThread;
     charset_info_st *charSetInfo;
 };

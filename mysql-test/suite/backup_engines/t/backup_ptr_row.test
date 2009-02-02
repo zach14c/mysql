@@ -1,0 +1,15 @@
+##########################################################################
+# Author: Hema
+# Date: 2008-07-30
+# Purpose: Test to ensure that point in time recovery is preserved during 
+# backup
+###############################################################################
+
+--source suite/backup_engines/include/backup_engine.inc
+--source suite/backup_engines/include/not_have_memory.inc
+
+# Memory engine is skipped as it does not support TEXT datatype.
+SET GLOBAL BINLOG_FORMAT='ROW';
+SET BINLOG_FORMAT='ROW';
+--source suite/backup_engines/include/backup_ptr.inc
+

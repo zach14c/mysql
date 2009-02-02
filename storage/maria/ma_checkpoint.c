@@ -222,7 +222,7 @@ static int really_execute_checkpoint(void)
     */
     LEX_CUSTRING log_array[TRANSLOG_INTERNAL_PARTS + 5];
     log_array[TRANSLOG_INTERNAL_PARTS + 0].str=
-      checkpoint_start_log_horizon_char;
+      (uchar*) checkpoint_start_log_horizon_char;
     log_array[TRANSLOG_INTERNAL_PARTS + 0].length= total_rec_length=
       sizeof(checkpoint_start_log_horizon_char);
     for (i= 0; i < (sizeof(record_pieces)/sizeof(record_pieces[0])); i++)
@@ -784,10 +784,8 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
         !(share->in_checkpoint & MARIA_CHECKPOINT_SEEN_IN_LOOP))
     {
       /*
-        Why we didn't take intern_lock above: table had in_checkpoint==0 so no
-        thread could set in_checkpoint. And no thread needs to know that we
-        are setting in_checkpoint, because only maria_close() needs it and
-        cannot run now as we hold THR_LOCK_maria.
+        Apart from us, only maria_close() reads/sets in_checkpoint but cannot
+        run now as we hold THR_LOCK_maria.
       */
       /*
         This table is relevant for checkpoint and not already seen. Mark it,
@@ -820,7 +818,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
       */
       share->in_checkpoint= MARIA_CHECKPOINT_LOOKS_AT_ME;
       /** @todo avoid strlen() */
-      total_names_length+= strlen(share->open_file_name);
+      total_names_length+= share->open_file_name.length;
     }
   }
 
@@ -887,14 +885,17 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
     my_bool ignore_share;
     if (!(share->in_checkpoint & MARIA_CHECKPOINT_LOOKS_AT_ME))
     {
-      /* No need for a mutex to read the above, only us can write this flag */
+      /*
+        No need for a mutex to read the above, only us can write *this* bit of
+        the in_checkpoint bitmap
+      */
       continue;
     }
     /**
        @todo We should not look at tables which didn't change since last
        checkpoint.
     */
-    DBUG_PRINT("info",("looking at table '%s'", share->open_file_name));
+    DBUG_PRINT("info",("looking at table '%s'", share->open_file_name.str));
     if (state_copy == state_copies_end) /* we have no more cached states */
     {
       /*
@@ -956,6 +957,14 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
 
     /* OS file descriptors are ints which we stored in 4 bytes */
     compile_time_assert(sizeof(int) <= 4);
+    /*
+      Protect against maria_close() (which does some memory freeing in
+      MARIA_FILE_BITMAP) with close_lock. intern_lock is not
+      sufficient as we, as well as maria_close(), are going to unlock
+      intern_lock in the middle of manipulating the table. Serializing us and
+      maria_close() should help avoid problems.
+    */
+    pthread_mutex_lock(&share->close_lock);
     pthread_mutex_lock(&share->intern_lock);
     /*
       Tables in a normal state have their two file descriptors open.
@@ -978,8 +987,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
     DBUG_PRINT("info", ("ignore_share: %d", ignore_share));
     if (!ignore_share)
     {
-      /** @todo avoid strlen */
-      uint open_file_name_len= strlen(share->open_file_name) + 1;
+      uint open_file_name_len= share->open_file_name.length + 1;
       /* remember the descriptors for background flush */
       *(dfiles_end++)= dfile;
       *(kfiles_end++)= kfile;
@@ -1000,7 +1008,7 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
         If no crash, maria_close() will write the exact value.
       */
       state_copy->state.first_bitmap_with_space= ~(ulonglong)0;
-      memcpy(ptr, share->open_file_name, open_file_name_len);
+      memcpy(ptr, share->open_file_name.str, open_file_name_len);
       ptr+= open_file_name_len;
       if (cmp_translog_addr(share->state.is_of_horizon,
                             checkpoint_start_log_horizon) >= 0)
@@ -1046,6 +1054,20 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
           each checkpoint if the table was once written and then not anymore.
         */
       }
+    }
+    /*
+      _ma_bitmap_flush_all() may wait, so don't keep intern_lock as
+      otherwise this would deadlock with allocate_and_write_block_record()
+      calling _ma_set_share_data_file_length()
+    */
+    pthread_mutex_unlock(&share->intern_lock);
+    
+    if (!ignore_share)
+    {
+      /*
+        share->bitmap is valid because it's destroyed under close_lock which
+        we hold.
+      */
       if (_ma_bitmap_flush_all(share))
       {
         sync_error= 1;
@@ -1058,23 +1080,28 @@ static int collect_tables(LEX_STRING *str, LSN checkpoint_start_log_horizon)
       Clean up any unused states.
       TODO: Only do this call if there has been # (10?) ended transactions
       since last call.
+      We had to release intern_lock to respect lock order with LOCK_trn_list.
     */
-    pthread_mutex_unlock(&share->intern_lock);
-    _ma_remove_not_visible_states_with_lock(share);
-    pthread_mutex_lock(&share->intern_lock);
+    _ma_remove_not_visible_states_with_lock(share, FALSE);
 
     if (share->in_checkpoint & MARIA_CHECKPOINT_SHOULD_FREE_ME)
     {
-      /* maria_close() left us to free the share */
-      pthread_mutex_unlock(&share->intern_lock);
+      /*
+        maria_close() left us free the share. When it run it set share->id
+        to 0. As it run before we locked close_lock, we should have seen this
+        and so this assertion should be true:
+      */
+      DBUG_ASSERT(ignore_share);
       pthread_mutex_destroy(&share->intern_lock);
+      pthread_mutex_unlock(&share->close_lock);
+      pthread_mutex_destroy(&share->close_lock);
       my_free((uchar *)share, MYF(0));
     }
     else
     {
       /* share goes back to normal state */
       share->in_checkpoint= 0;
-      pthread_mutex_unlock(&share->intern_lock);
+      pthread_mutex_unlock(&share->close_lock);
     }
 
     /*

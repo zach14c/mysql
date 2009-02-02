@@ -75,6 +75,8 @@ public:
 	bool		ourExclusiveLock(void);
 	void		frequentStaller(Thread *thread, Sync *sync);
 	void		setName(const char* name);
+	const char*	getName(void);
+	const char*	getLocation(void);
 	void		timedout(int timeout);
 	void		backoff(Thread* thread);
 

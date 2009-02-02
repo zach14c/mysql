@@ -1,6 +1,13 @@
 #ifndef _BACKUP_AUX_H
 #define _BACKUP_AUX_H
 
+/** 
+  @file
+ 
+  @brief Auxiliary declarations used in online backup code.
+
+*/ 
+
 typedef st_plugin_int* storage_engine_ref;
 
 // Macro which transforms plugin_ref to storage_engine_ref
@@ -122,8 +129,8 @@ class String: public ::String
 };
 
 inline
-void set_table_list(TABLE_LIST &tl, const Table_ref &tbl, 
-                    thr_lock_type lock_type, MEM_ROOT *mem)
+int set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
+                   thr_lock_type lock_type, MEM_ROOT *mem)
 {
   DBUG_ASSERT(mem);
 
@@ -132,6 +139,11 @@ void set_table_list(TABLE_LIST &tl, const Table_ref &tbl,
   tl.lock_type= lock_type;
 
   tl.mdl_lock_data= mdl_alloc_lock(0, tl.db, tl.table_name, mem); 
+  if (!tl.mdl_lock_data)                    // Failed to allocate lock
+  {
+    return 1;
+  }
+  return 0;
 }
 
 inline
@@ -146,7 +158,10 @@ TABLE_LIST* mk_table_list(const Table_ref &tbl, thr_lock_type lock_type,
      return NULL;
 
   bzero(ptr, sizeof(TABLE_LIST));
-  set_table_list(*ptr, tbl, lock_type, mem);
+  if (set_table_list(*ptr, tbl, lock_type, mem)) // Failed to allocate lock
+  {
+    return NULL;
+  }
 
   return ptr;
 }

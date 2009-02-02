@@ -37,7 +37,6 @@ public:
 	int				thaw(RecordVersion *record, bool *thawed);
 	
 	const UCHAR		*data;
-	int				tableSpaceId;
 	int				savepointId;
 	int				dataLength;
 };

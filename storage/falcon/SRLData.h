@@ -44,7 +44,6 @@ public:
 	
 	void			append(Dbb *dbb, Transaction *transaction, int32 sectionId, int32 recordId, Stream *stream);
 
-	int			tableSpaceId;
 	int32		sectionId;
 	int32		recordId;
 	int32		length;

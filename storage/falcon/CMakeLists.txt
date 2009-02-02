@@ -23,13 +23,11 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
                     . TransformLib
                     ${CMAKE_SOURCE_DIR}/extra/yassl/include
                     ${CMAKE_SOURCE_DIR}/zlib)
-IF(CMAKE_GENERATOR MATCHES "Visual Studio 7" OR
-   CMAKE_GENERATOR MATCHES "Visual Studio 8")
+IF(MSVC)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   SET(CMAKE_CXX_FLAGS_INIT "${CMAKE_CXX_FLAGS_INIT} /EHsc")
   SET(CMAKE_CXX_FLAGS_DEBUG_INIT "${CMAKE_CXX_FLAGS_DEBUG_INIT} /EHsc")
-ENDIF(CMAKE_GENERATOR MATCHES "Visual Studio 7" OR
-      CMAKE_GENERATOR MATCHES "Visual Studio 8")
+ENDIF(MSVC)
 
 SET(FALCON_SOURCES 
 		Agent.cpp 
@@ -274,12 +272,12 @@ SET(FALCON_SOURCES
 		StreamSegment.cpp 
 		SymbolManager.cpp 
 		Sync.cpp 
-		SyncWait.cpp 
 		Synchronize.cpp
-		SyncObject.cpp 
-		SyncTest.cpp 
-		SyncWait.cpp 
-		Syntax.cpp 
+		SyncHandler.cpp
+		SyncObject.cpp
+		SyncTest.cpp
+		SyncWait.cpp
+		Syntax.cpp
 		TableAttachment.cpp
 		Table.cpp 
 		TableFilter.cpp 
@@ -558,6 +556,7 @@ SET(FALCON_SOURCES
 		SymbolManager.h 
 		Sync.h 
 		Synchronize.h
+		SyncHandler.h 
 		SyncObject.h 
 		SyncTest.h 
 		SyncWait.h 

@@ -55,6 +55,7 @@ public:
 	JString			tableSpaceType(JString name);
 	void			getIOInfo(InfoTable* infoTable);
 	void			getTableSpaceInfo(InfoTable* infoTable);
+	JString			tableSpaceFileType(JString name);
 	void			getTableSpaceFilesInfo(InfoTable* infoTable);
 	void			validate(int optionMask);
 	void			sync();
@@ -62,7 +63,6 @@ public:
 	void			reportWrites(void);
 	void			redoCreateTableSpace(int id, int nameLength, const char* name, int fileNameLength, const char* fileName, int type, TableSpaceInit* tsInit);
 	void			initialize(void);
-	bool			waitForPendingDrop(const char *filename, int seconds);
 
 	Database	*database;
 	TableSpace	*tableSpaces;
@@ -70,7 +70,6 @@ public:
 	TableSpace	*idHash[TS_HASH_SIZE];
 	SyncObject	syncObject;
 	void postRecovery(void);
-	int pendingDrops;
 };
 
 #endif // !defined(AFX_TABLESPACEMANAGER_H__BD1D39F6_2201_4136_899C_7CB106E99B8C__INCLUDED_)

@@ -31,10 +31,19 @@ EXTRA_PROGRAMS =	gen_lex_hash
 bin_PROGRAMS =		mysql_tzinfo_to_sql
 DTRACE =                @DTRACE@
 DTRACEFLAGS =           @DTRACEFLAGS@
-DTRACEFILES =           handler.o \
-			filesort.o \
-			sql_insert.o \
+DTRACEFILES =           filesort.o \
+			handler.o \
+			mysqld.o \
+			net_serv.o \
+			scheduler.o \
+			sp_head.o \
+			sql_cache.o \
+			sql_connect.o \
+			sql_cursor.o \
 			sql_delete.o \
+			sql_insert.o \
+			sql_parse.o \
+			sql_prepare.o \
 			sql_select.o \
 			sql_update.o
 
@@ -42,10 +51,12 @@ noinst_LTLIBRARIES=	libndb.la \
 			udf_example.la
 
 SUPPORTING_LIBS =	$(top_builddir)/vio/libvio.a \
-			$(top_builddir)/mysys/libmysys.a \
-			$(top_builddir)/dbug/libdbug.a \
+			$(top_builddir)/mysys/libmysyswrap.la \
+			$(top_builddir)/mysys/libmysyslt.la \
+			$(top_builddir)/dbug/libdbuglt.la \
 			$(top_builddir)/regex/libregex.a \
-			$(top_builddir)/strings/libmystrings.a
+			$(top_builddir)/strings/libmystringsextra.la \
+			$(top_builddir)/strings/libmystringslt.la
 mysqld_DEPENDENCIES=	@mysql_plugin_libs@ $(SUPPORTING_LIBS) backup/libbackup.la libndb.la
 LDADD = $(SUPPORTING_LIBS) @ZLIB_LIBS@ @NDB_SCI_LIBS@
 mysqld_LDADD =		libndb.la \
@@ -68,6 +79,7 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			ha_ndbcluster.h ha_ndbcluster_cond.h \
 			ha_ndbcluster_binlog.h ha_ndbcluster_tables.h \
 			ha_ndbcluster_connection.h ha_ndbcluster_connection.h \
+			ha_ndbcluster_lock_ext.h \
 			ha_partition.h rpl_constants.h \
 			opt_range.h protocol.h rpl_tblmap.h rpl_utility.h \
 			rpl_reporting.h \
@@ -87,9 +99,10 @@ noinst_HEADERS =	item.h item_func.h item_sum.h item_cmpfunc.h \
 			sql_plugin.h authors.h event_parse_data.h \
 			event_data_objects.h event_scheduler.h \
 			sql_partition.h partition_info.h partition_element.h \
-			probes.h sql_audit.h \
+			probes.h sql_audit.h transaction.h \
 			contributors.h sql_servers.h ddl_blocker.h \
-			si_objects.h sql_plist.h mdl.h
+			si_objects.h si_logs.h sql_plist.h mdl.h records.h \
+			rpl_handler.h replication.h sql_prepare.h debug_sync.h
 
 mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			item.cc item_sum.cc item_buff.cc item_func.cc \
@@ -103,6 +116,7 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			mysqld.cc password.c hash_filo.cc hostname.cc \
 			sql_connect.cc scheduler.cc sql_parse.cc \
 			set_var.cc sql_yacc.yy \
+                        sql_join_cache.cc \
 			sql_base.cc table.cc sql_select.cc sql_insert.cc \
 			sql_profile.cc \
 			sql_prepare.cc sql_error.cc sql_locale.cc \
@@ -135,8 +149,9 @@ mysqld_SOURCES =	sql_lex.cc sql_handler.cc sql_partition.cc \
 			sql_plugin.cc sql_binlog.cc \
 			sql_builtin.cc sql_tablespace.cc partition_info.cc \
 			sql_servers.cc sql_audit.cc sha2.cc \
-			ddl_blocker.cc si_objects.cc event_parse_data.cc \
-			mdl.cc
+			ddl_blocker.cc si_objects.cc si_logs.cc \
+			event_parse_data.cc mdl.cc transaction.cc \
+			rpl_handler.cc
 
 if HAVE_DTRACE
   mysqld_SOURCES += probes.d
@@ -167,9 +182,12 @@ DEFS =			-DMYSQL_SERVER \
 BUILT_MAINT_SRC =	sql_yacc.cc sql_yacc.h
 BUILT_SOURCES =		$(BUILT_MAINT_SRC) lex_hash.h link_sources
 EXTRA_DIST =		udf_example.c udf_example.def $(BUILT_MAINT_SRC) \
-			nt_servc.cc nt_servc.h message.mc CMakeLists.txt \
+			nt_servc.cc nt_servc.h CMakeLists.txt \
 			probes.d \
-			udf_example.c udf_example.def
+			message.mc  message.h message.rc MSG00001.bin \
+			nt_servc.cc nt_servc.h \
+			CMakeLists.txt
+
 CLEANFILES =        	lex_hash.h sql_yacc.output link_sources
 DISTCLEANFILES =        $(EXTRA_PROGRAMS)
 MAINTAINERCLEANFILES =  $(BUILT_MAINT_SRC)
@@ -216,8 +234,10 @@ install-exec-hook:
 
 SUFFIXES : .d
 
-.d.o : $(DTRACEFILES)
+.d.o :
 	$(DTRACE) $(DTRACEFLAGS) -G -s $< $(DTRACEFILES)
+
+probes.o : $(DTRACEFILES)
 
 # Don't update the files from bitkeeper
 %::SCCS/s.%

@@ -1,0 +1,7 @@
+*** Bug #39702 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT) PARTITION BY RANGE(a) (
+PARTITION p1 VALUES LESS THAN (10) TABLESPACE nosuchtablespace,
+PARTITION p2 VALUES LESS THAN MAXVALUE TABLESPACE nosuchtablespace);
+ERROR HY000: Tablespace 'nosuchtablespace' doesn't exist

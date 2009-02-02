@@ -51,6 +51,7 @@ public:
 	Mutex		syncObject;
 	Database	*database;
 	bool		forceFsync;
+	bool		created;
 
 #ifdef _WIN32
 	void	*handle;

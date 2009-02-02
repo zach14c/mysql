@@ -35,6 +35,7 @@ public:
 	void			dropTable(Table* table, Transaction* transaction);
 	void			truncateTable(Table* table, Transaction* transaction);
 	bool			hasUncommittedRecords(Table* table, Transaction* transaction);
+	void			waitForWriteComplete(Table *table);
 	void			commitByXid(int xidLength, const UCHAR* xid);
 	void			rollbackByXid(int xidLength, const UCHAR* xid);
 	void			print(void);

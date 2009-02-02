@@ -293,9 +293,8 @@ sp_rcontext::find_handler(THD *thd, uint sql_errno,
     FALSE      if no handler was found.
 */
 bool
-sp_rcontext::handle_error(uint sql_errno,
-                          MYSQL_ERROR::enum_warning_level level,
-                          THD *thd)
+sp_rcontext::handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+                          uint sql_errno)
 {
   MYSQL_ERROR::enum_warning_level elevated_level= level;
 
@@ -335,7 +334,7 @@ sp_rcontext::pop_cursors(uint count)
 }
 
 void
-sp_rcontext::push_handler(struct sp_cond_type *cond, uint h, int type, uint f)
+sp_rcontext::push_handler(struct sp_cond_type *cond, uint h, int type)
 {
   DBUG_ENTER("sp_rcontext::push_handler");
   DBUG_ASSERT(m_hcount < m_root_parsing_ctx->max_handler_index());
@@ -343,7 +342,6 @@ sp_rcontext::push_handler(struct sp_cond_type *cond, uint h, int type, uint f)
   m_handler[m_hcount].cond= cond;
   m_handler[m_hcount].handler= h;
   m_handler[m_hcount].type= type;
-  m_handler[m_hcount].foffset= f;
   m_hcount+= 1;
 
   DBUG_PRINT("info", ("m_hcount: %d", m_hcount));

@@ -173,6 +173,7 @@ int maria_update(register MARIA_HA *info, const uchar *oldrec, uchar *newrec)
   */
   info->update= (HA_STATE_CHANGED | HA_STATE_ROW_CHANGED | key_changed);
   share->state.changed|= STATE_NOT_MOVABLE | STATE_NOT_ZEROFILLED;
+  info->state->changed= 1;
 
   /*
     Every Maria function that updates Maria table must end with
@@ -188,8 +189,9 @@ int maria_update(register MARIA_HA *info, const uchar *oldrec, uchar *newrec)
   allow_break();				/* Allow SIGHUP & SIGINT */
   if (info->invalidator != 0)
   {
-    DBUG_PRINT("info", ("invalidator... '%s' (update)", share->open_file_name));
-    (*info->invalidator)(share->open_file_name);
+    DBUG_PRINT("info", ("invalidator... '%s' (update)",
+                        share->open_file_name.str));
+    (*info->invalidator)(share->open_file_name.str);
     info->invalidator=0;
   }
   DBUG_RETURN(0);

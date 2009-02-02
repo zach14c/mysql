@@ -70,7 +70,7 @@ enum JdbcType {
 	jdbcBLOB	= 2004,
 	jdbcCLOB	= 2005,
 	CLOB		= 2005,
-	NUMERIC		= 2,
+	NUMERIC		= 2
 	};
 #endif
 
@@ -103,7 +103,7 @@ enum TerType {
 	terScaledLong,
 	terScaledQuad,
 	terRepositoryBlob,
-	terRepositoryClob,
+	terRepositoryClob
 	};
 
 

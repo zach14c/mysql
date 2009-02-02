@@ -1171,6 +1171,7 @@ SELECT * FROM t1;
 
 DROP TABLE t1, t2;
 
+
 #
 # Test of BUG#35570 CHECKSUM TABLE unreliable if LINESTRING field
 # (same content / differen checksum)
@@ -1185,6 +1186,20 @@ checksum table t2;
 CREATE TABLE t3 select * from t1;
 checksum table t3;
 drop table t1,t2,t3;
+
+#
+# Bug#37310: 'on update CURRENT_TIMESTAMP' option crashes the table
+#
+CREATE TABLE t1 (a INT) ENGINE=MyISAM CHECKSUM=1 ROW_FORMAT=DYNAMIC;
+INSERT INTO t1 VALUES (0);
+UPDATE t1 SET a=1;
+SELECT a FROM t1;
+CHECK TABLE t1;
+INSERT INTO t1 VALUES (0), (5), (4), (2);
+UPDATE t1 SET a=2;
+SELECT a FROM t1;
+CHECK TABLE t1;
+DROP TABLE t1; 
 
 --echo End of 5.0 tests
 

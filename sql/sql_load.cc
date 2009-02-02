@@ -359,7 +359,9 @@ int mysql_load(THD *thd,sql_exchange *ex,TABLE_LIST *table_list,
   bzero((char*) &info,sizeof(info));
   info.ignore= ignore;
   info.handle_duplicates=handle_duplicates;
-  info.escape_char=escaped->length() ? (*escaped)[0] : INT_MAX;
+  info.escape_char= (escaped->length() && (ex->escaped_given() ||
+                    !(thd->variables.sql_mode & MODE_NO_BACKSLASH_ESCAPES)))
+                    ? (*escaped)[0] : INT_MAX;
 
   READ_INFO read_info(file,tot_length,
                       ex->cs ? ex->cs : thd->variables.collation_database,
@@ -642,7 +644,8 @@ read_fixed_length(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
         thd->cuted_fields++;			/* Not enough fields */
         push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 
                             ER_WARN_TOO_FEW_RECORDS, 
-                            ER(ER_WARN_TOO_FEW_RECORDS), thd->row_count);
+                            ER(ER_WARN_TOO_FEW_RECORDS),
+                            thd->warning_info->current_row_for_warning());
         if (!field->maybe_null() && field->type() == FIELD_TYPE_TIMESTAMP)
             ((Field_timestamp*) field)->set_time();
       }
@@ -665,7 +668,8 @@ read_fixed_length(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
       thd->cuted_fields++;			/* To long row */
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 
                           ER_WARN_TOO_MANY_RECORDS, 
-                          ER(ER_WARN_TOO_MANY_RECORDS), thd->row_count); 
+                          ER(ER_WARN_TOO_MANY_RECORDS),
+                          thd->warning_info->current_row_for_warning());
     }
 
     if (thd->killed ||
@@ -700,9 +704,10 @@ read_fixed_length(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
       thd->cuted_fields++;			/* To long row */
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 
                           ER_WARN_TOO_MANY_RECORDS, 
-                          ER(ER_WARN_TOO_MANY_RECORDS), thd->row_count); 
+                          ER(ER_WARN_TOO_MANY_RECORDS),
+                          thd->warning_info->current_row_for_warning());
     }
-    thd->row_count++;
+    thd->warning_info->inc_current_row_for_warning();
 continue_loop:;
   }
   DBUG_RETURN(test(read_info.error));
@@ -766,7 +771,7 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
           if (field->reset())
           {
             my_error(ER_WARN_NULL_TO_NOTNULL, MYF(0), field->field_name,
-                     thd->row_count);
+                     thd->warning_info->current_row_for_warning());
             DBUG_RETURN(1);
           }
           field->set_null();
@@ -834,7 +839,7 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
           if (field->reset())
           {
             my_error(ER_WARN_NULL_TO_NOTNULL, MYF(0),field->field_name,
-                     thd->row_count);
+                     thd->warning_info->current_row_for_warning());
             DBUG_RETURN(1);
           }
           if (!field->maybe_null() && field->type() == FIELD_TYPE_TIMESTAMP)
@@ -848,7 +853,8 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
           thd->cuted_fields++;
           push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                               ER_WARN_TOO_FEW_RECORDS,
-                              ER(ER_WARN_TOO_FEW_RECORDS), thd->row_count);
+                              ER(ER_WARN_TOO_FEW_RECORDS),
+                              thd->warning_info->current_row_for_warning());
         }
         else if (item->type() == Item::STRING_ITEM)
         {
@@ -894,11 +900,11 @@ read_sep_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
       thd->cuted_fields++;			/* To long row */
       push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 
                           ER_WARN_TOO_MANY_RECORDS, ER(ER_WARN_TOO_MANY_RECORDS), 
-                          thd->row_count);   
+                          thd->warning_info->current_row_for_warning());
       if (thd->killed)
         DBUG_RETURN(1);
     }
-    thd->row_count++;
+    thd->warning_info->inc_current_row_for_warning();
 continue_loop:;
   }
   DBUG_RETURN(test(read_info.error));
@@ -1031,7 +1037,8 @@ read_xml_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
           thd->cuted_fields++;
           push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                               ER_WARN_TOO_FEW_RECORDS,
-                              ER(ER_WARN_TOO_FEW_RECORDS), thd->row_count);
+                              ER(ER_WARN_TOO_FEW_RECORDS),
+                              thd->warning_info->current_row_for_warning());
         }
         else
           ((Item_user_var_as_out_param *)item)->set_null_value(cs);
@@ -1062,7 +1069,7 @@ read_xml_field(THD *thd, COPY_INFO &info, TABLE_LIST *table_list,
       its default value at the beginning of each loop iteration.
     */
     thd->transaction.stmt.modified_non_trans_table= no_trans_update_stmt;
-    thd->row_count++;
+    thd->warning_info->inc_current_row_for_warning();
     continue_loop:;
   }
   DBUG_RETURN(test(read_info.error));

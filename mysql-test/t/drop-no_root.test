@@ -37,8 +37,8 @@ SELECT DATABASE();
 
 --echo
 --echo rm mysql_test/t1.MYD mysql_test/t1.MYI
---exec rm $MYSQLTEST_VARDIR/master-data/mysql_test/t1.MYD
---exec rm $MYSQLTEST_VARDIR/master-data/mysql_test/t1.MYI
+--remove_file $MYSQLTEST_VARDIR/master-data/mysql_test/t1.MYD
+--remove_file $MYSQLTEST_VARDIR/master-data/mysql_test/t1.MYI
 
 --echo
 DROP DATABASE mysql_test;

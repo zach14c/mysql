@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -167,14 +167,11 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_FILE_BASED	       (1 << 26)
 #define HA_NO_VARCHAR	       (1 << 27)
 #define HA_CAN_BIT_FIELD       (1 << 28) /* supports bit fields */
-#define HA_NEED_READ_RANGE_BUFFER (1 << 29) /* for read_multi_range */
 #define HA_ANY_INDEX_MAY_BE_UNIQUE (1 << 30)
 #define HA_NO_COPY_ON_ALTER    (LL(1) << 31)
 #define HA_HAS_RECORDS	       (LL(1) << 32) /* records() gives exact count*/
 /* Has it's own method of binlog logging */
 #define HA_HAS_OWN_BINLOGGING  (LL(1) << 33)
-#define HA_MRR_CANT_SORT       (LL(1) << 34)
-
 /*
   Engine is capable of row-format and statement-format logging,
   respectively
@@ -186,6 +183,30 @@ typedef Bitmap<HA_MAX_ALTER_FLAGS> HA_ALTER_FLAGS;
 #define HA_CAN_READ_ORDER_IF_LIMIT (LL(1) << 38)
 /* Has automatic checksums and uses the new checksum format */
 #define HA_HAS_NEW_CHECKSUM    (LL(1) << 39)
+
+/*
+    When a multiple key conflict happens in a REPLACE command mysql
+    expects the conflicts to be reported in the ascending order of
+    key names.
+
+    For e.g.
+
+    CREATE TABLE t1 (a INT, UNIQUE (a), b INT NOT NULL, UNIQUE (b), c INT NOT
+                     NULL, INDEX(c));
+
+    REPLACE INTO t1 VALUES (1,1,1),(2,2,2),(2,1,3);
+
+    MySQL expects the conflict with 'a' to be reported before the conflict with
+    'b'.
+
+    If the underlying storage engine does not report the conflicting keys in
+    ascending order, it causes unexpected errors when the REPLACE command is
+    executed.
+
+    This flag helps the underlying SE to inform the server that the keys are not
+    ordered.
+ */
+#define HA_DUPLICATE_KEY_NOT_IN_ORDER    (LL(1) << 40)
 
 /*
   Set of all binlog flags. Currently only contain the capabilities
@@ -334,7 +355,9 @@ enum enum_binlog_func {
   BFN_RESET_SLAVE=       2,
   BFN_BINLOG_WAIT=       3,
   BFN_BINLOG_END=        4,
-  BFN_BINLOG_PURGE_FILE= 5
+  BFN_BINLOG_PURGE_FILE= 5,
+  BFN_GLOBAL_SCHEMA_LOCK=  6,
+  BFN_GLOBAL_SCHEMA_UNLOCK=7
 };
 
 enum enum_binlog_command {
@@ -548,9 +571,50 @@ class st_alter_tablespace : public Sql_alloc
 
 /* The handler for a table type.  Will be included in the TABLE structure */
 
-struct st_table;
-typedef struct st_table TABLE;
-typedef struct st_table_share TABLE_SHARE;
+struct TABLE;
+struct TABLE_SHARE;
+
+/*
+  Make sure that the order of schema_tables and enum_schema_tables are the same.
+*/
+enum enum_schema_tables
+{
+  SCH_CHARSETS= 0,
+  SCH_COLLATIONS,
+  SCH_COLLATION_CHARACTER_SET_APPLICABILITY,
+  SCH_COLUMNS,
+  SCH_COLUMN_PRIVILEGES,
+  SCH_ENGINES,
+  SCH_EVENTS,
+  SCH_FILES,
+  SCH_GLOBAL_STATUS,
+  SCH_GLOBAL_VARIABLES,
+  SCH_KEY_COLUMN_USAGE,
+  SCH_OPEN_TABLES,
+  SCH_PARAMETERS,
+  SCH_PARTITIONS,
+  SCH_PLUGINS,
+  SCH_PROCESSLIST,
+  SCH_PROFILES,
+  SCH_REFERENTIAL_CONSTRAINTS,
+  SCH_PROCEDURES,
+  SCH_SCHEMATA,
+  SCH_SCHEMA_PRIVILEGES,
+  SCH_SESSION_STATUS,
+  SCH_SESSION_VARIABLES,
+  SCH_STATISTICS,
+  SCH_STATUS,
+  SCH_TABLES,
+  SCH_TABLESPACES,
+  SCH_TABLE_CONSTRAINTS,
+  SCH_TABLE_NAMES,
+  SCH_TABLE_PRIVILEGES,
+  SCH_TRIGGERS,
+  SCH_USER_PRIVILEGES,
+  SCH_VARIABLES,
+  SCH_VIEWS
+};
+
 struct st_foreign_key_info;
 typedef struct st_foreign_key_info FOREIGN_KEY_INFO;
 typedef bool (stat_print_fn)(THD *thd, const char *type, uint type_len,
@@ -625,6 +689,7 @@ struct handler_iterator {
   void *buffer;
 };
 
+class handler;
 /*
   handlerton is a singleton structure - one instance per storage engine -
   to provide access to storage engine functionality that works on the
@@ -713,9 +778,9 @@ struct handlerton
    uint (*partition_flags)();
    uint (*alter_partition_flags)();
    int (*alter_tablespace)(handlerton *hton, THD *thd, st_alter_tablespace *ts_info);
-   int (*fill_files_table)(handlerton *hton, THD *thd,
-                           TABLE_LIST *tables,
-                           class Item *cond);
+   int (*fill_is_table)(handlerton *hton, THD *thd, TABLE_LIST *tables, 
+                        class Item *cond, 
+                        enum enum_schema_tables);
    uint32 flags;                                /* global handler flags */
    /*
       Those handlerton functions below are properly initialized at handler
@@ -931,9 +996,9 @@ typedef struct {
   ulonglong delete_length;
   ha_rows records;
   ulong mean_rec_length;
-  time_t create_time;
-  time_t check_time;
-  time_t update_time;
+  ulong create_time;
+  ulong check_time;
+  ulong update_time;
   ulonglong check_sum;
 } PARTITION_INFO;
 
@@ -1116,10 +1181,37 @@ typedef struct st_range_seq_if
       1 - No more ranges
   */
   uint (*next) (range_seq_t seq, KEY_MULTI_RANGE *range);
-} RANGE_SEQ_IF;
 
-uint16 &mrr_persistent_flag_storage(range_seq_t seq, uint idx);
-char* &mrr_get_ptr_by_idx(range_seq_t seq, uint idx);
+  /*
+    Check whether range_info orders to skip the next record
+
+    SYNOPSIS
+      skip_record()
+        seq         The value returned by RANGE_SEQ_IF::init()
+        range_info  Information about the next range 
+                    (Ignored if MRR_NO_ASSOCIATION is set)
+        rowid       Rowid of the record to be checked (ignored if set to 0)
+    
+    RETURN
+      1 - Record with this range_info and/or this rowid shall be filtered
+          out from the stream of records returned by multi_range_read_next()
+      0 - The record shall be left in the stream
+  */ 
+  bool (*skip_record) (range_seq_t seq, char *range_info, uchar *rowid);
+
+  /*
+    Check if the record combination matches the index condition
+    SYNOPSIS
+      skip_index_tuple()
+        seq         The value returned by RANGE_SEQ_IF::init()
+        range_info  Information about the next range 
+    
+    RETURN
+      0 - The record combination satisfies the index condition
+      1 - Otherwise
+  */ 
+  bool (*skip_index_tuple) (range_seq_t seq, char *range_info);
+} RANGE_SEQ_IF;
 
 class COST_VECT
 { 
@@ -1171,6 +1263,17 @@ public:
                   add_io_cnt * add_avg_cost) / io_count_sum;
     io_count= io_count_sum;
   }
+
+  /*
+    To be used when we go from old single value-based cost calculations to
+    the new COST_VECT-based.
+  */
+  void convert_from_cost(double cost)
+  {
+    zero();
+    avg_io_cost= 1.0;
+    io_count= cost;
+  }
 };
 
 void get_sweep_read_cost(TABLE *table, ha_rows nrows, bool interrupted, 
@@ -1221,7 +1324,6 @@ void get_sweep_read_cost(TABLE *table, ha_rows nrows, bool interrupted,
 */
 #define HA_MRR_NO_NULL_ENDPOINTS 128
 
-
 class ha_statistics
 {
 public:
@@ -1242,10 +1344,15 @@ public:
   ha_rows records;
   ha_rows deleted;			/* Deleted records */
   ulong mean_rec_length;		/* physical reclength */
-  time_t create_time;			/* When table was created */
-  time_t check_time;
-  time_t update_time;
+  ulong create_time;			/* When table was created */
+  ulong check_time;
+  ulong update_time;
   uint block_size;			/* index block size */
+  
+  /*
+    number of buffer bytes that native mrr implementation needs,
+  */
+  uint mrr_length_per_rec; 
 
   ha_statistics():
     data_file_length(0), max_data_file_length(0),
@@ -1320,8 +1427,8 @@ class handler :public Sql_alloc
 public:
   typedef ulonglong Table_flags;
 protected:
-  struct st_table_share *table_share;   /* The table definition */
-  struct st_table *table;               /* The current open table */
+  TABLE_SHARE *table_share;   /* The table definition */
+  TABLE *table;               /* The current open table */
   Table_flags cached_table_flags;       /* Set on init() and open() */
 
   ha_rows estimation_rows_to_insert;
@@ -1391,6 +1498,13 @@ public:
     inserter.
   */
   Discrete_interval auto_inc_interval_for_cur_row;
+  /**
+     Number of reserved auto-increment intervals. Serves as a heuristic
+     when we have no estimation of how many records the statement will insert:
+     the more intervals we have reserved, the bigger the next one. Reset in
+     handler::ha_release_auto_increment().
+  */
+  uint auto_inc_intervals_count;
 
   handler(handlerton *ht_arg, TABLE_SHARE *share_arg)
     :table_share(share_arg), table(0),
@@ -1401,7 +1515,7 @@ public:
     ft_handler(0), inited(NONE),
     locked(FALSE), implicit_emptied(0),
     pushed_cond(0), pushed_idx_cond(NULL), pushed_idx_cond_keyno(MAX_KEY),
-    next_insert_id(0), insert_id_for_cur_row(0)
+    next_insert_id(0), insert_id_for_cur_row(0), auto_inc_intervals_count(0)
     {}
   virtual ~handler(void)
   {
@@ -1456,6 +1570,9 @@ public:
   {
     return inited == INDEX ? ha_index_end() : inited == RND ? ha_rnd_end() : 0;
   }
+  /**
+    The cached_table_flags is set at ha_open and ha_external_lock
+  */
   Table_flags ha_table_flags() const { return cached_table_flags; }
   /**
     These functions represent the public interface to *users* of the
@@ -1469,6 +1586,7 @@ public:
   int ha_delete_row(const uchar * buf);
   void ha_release_auto_increment();
 
+  int check_collation_compatibility();
   int ha_check_for_upgrade(HA_CHECK_OPT *check_opt);
   /** to be actually called to get 'check()' functionality*/
   int ha_check(THD *thd, HA_CHECK_OPT *check_opt);
@@ -1511,10 +1629,6 @@ public:
                            size_t pack_frm_len);
   int ha_drop_partitions(THD *thd, const char *path);
   int ha_rename_partitions(THD *thd, const char *path);
-  int ha_optimize_partitions(THD *thd);
-  int ha_analyze_partitions(THD *thd);
-  int ha_check_partitions(THD *thd);
-  int ha_repair_partitions(THD *thd);
 
   void adjust_next_insert_id_after_explicit_value(ulonglong nr);
   int update_auto_increment();
@@ -1539,8 +1653,8 @@ public:
                                               void *seq_init_param, 
                                               uint n_ranges, uint *bufsz,
                                               uint *flags, COST_VECT *cost);
-  virtual int multi_range_read_info(uint keyno, uint n_ranges, uint keys,
-                                    uint *bufsz, uint *flags, COST_VECT *cost);
+  virtual ha_rows multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+                                        uint *bufsz, uint *flags, COST_VECT *cost);
   virtual int multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                     uint n_ranges, uint mode,
                                     HANDLER_BUFFER *buf);
@@ -2097,7 +2211,7 @@ public:
     @param    thd               The thread handle
     @param    table             The altered table, re-opened
  */
- virtual int alter_table_phase3(THD *thd, TABLE *table)
+ virtual int alter_table_phase3(THD *, TABLE *)
  {
    return HA_ERR_UNSUPPORTED;
  }
@@ -2318,14 +2432,6 @@ private:
   { return HA_ERR_WRONG_COMMAND; }
   virtual int rename_partitions(THD *thd, const char *path)
   { return HA_ERR_WRONG_COMMAND; }
-  virtual int optimize_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
-  virtual int analyze_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
-  virtual int check_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
-  virtual int repair_partitions(THD *thd)
-  { return HA_ERR_WRONG_COMMAND; }
 };
 
 
@@ -2383,8 +2489,8 @@ public:
   int dsmrr_fill_buffer();
   int dsmrr_next(char **range_info);
 
-  int dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
-                 uint *flags, COST_VECT *cost);
+  ha_rows dsmrr_info(uint keyno, uint n_ranges, uint keys, uint *bufsz,
+                     uint *flags, COST_VECT *cost);
 
   ha_rows dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq, 
                             void *seq_init_param, uint n_ranges, uint *bufsz,
@@ -2402,10 +2508,6 @@ extern const char *binlog_format_names[];
 extern TYPELIB tx_isolation_typelib;
 extern TYPELIB myisam_stats_method_typelib;
 extern ulong total_ha, total_ha_2pc;
-
-       /* Wrapper functions */
-#define ha_commit(thd) (ha_commit_trans((thd), TRUE))
-#define ha_rollback(thd) (ha_rollback_trans((thd), TRUE))
 
 /* lookups */
 handlerton *ha_default_handlerton(THD *thd);
@@ -2483,13 +2585,12 @@ int ha_release_temporary_latches(THD *thd);
 int ha_start_consistent_snapshot(THD *thd);
 int ha_commit_or_rollback_by_xid(XID *xid, bool commit);
 int ha_commit_one_phase(THD *thd, bool all);
+int ha_commit_trans(THD *thd, bool all);
 int ha_rollback_trans(THD *thd, bool all);
 int ha_prepare(THD *thd);
 int ha_recover(HASH *commit_list);
 
 /* transactions: these functions never call handlerton functions directly */
-int ha_commit_trans(THD *thd, bool all);
-int ha_autocommit_or_rollback(THD *thd, int error);
 int ha_enable_transaction(THD *thd, bool on);
 
 /* savepoints */
@@ -2511,18 +2612,36 @@ void trans_register_ha(THD *thd, bool all, handlerton *ht);
 #ifdef HAVE_NDB_BINLOG
 int ha_reset_logs(THD *thd);
 int ha_binlog_index_purge_file(THD *thd, const char *file);
-void ha_reset_slave(THD *thd);
+int ha_reset_slave(THD *thd);
 void ha_binlog_log_query(THD *thd, handlerton *db_type,
                          enum_binlog_command binlog_command,
                          const char *query, uint query_length,
                          const char *db, const char *table_name);
 void ha_binlog_wait(THD *thd);
 int ha_binlog_end(THD *thd);
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd);
+  ~Ha_global_schema_lock_guard();
+  int lock(int no_queue= 0);
+private:
+  THD *m_thd;
+  int m_lock;
+};
 #else
-#define ha_reset_logs(a) do {} while (0)
-#define ha_binlog_index_purge_file(a,b) do {} while (0)
-#define ha_reset_slave(a) do {} while (0)
+inline int ha_int_dummy() { return 0; }
+#define ha_reset_logs(a) ha_int_dummy()
+#define ha_binlog_index_purge_file(a,b) ha_int_dummy()
+#define ha_reset_slave(a) ha_int_dummy()
 #define ha_binlog_log_query(a,b,c,d,e,f,g) do {} while (0)
 #define ha_binlog_wait(a) do {} while (0)
 #define ha_binlog_end(a)  do {} while (0)
+class Ha_global_schema_lock_guard
+{
+public:
+  Ha_global_schema_lock_guard(THD *thd) {}
+  ~Ha_global_schema_lock_guard() {}
+  int lock(int no_queue= 0) { return 0; }
+};
 #endif

@@ -29,12 +29,12 @@ int maria_lock_database(MARIA_HA *info, int lock_type)
   uint count;
   MARIA_SHARE *share= info->s;
   DBUG_ENTER("maria_lock_database");
-  DBUG_PRINT("enter",("lock_type: %d  old lock %d  r_locks: %u  w_locks: %u "
+  DBUG_PRINT("enter",("lock_type: %d  old lock %d  r_locks: %u  w_locks: %u  "
                       "global_changed:  %d  open_count: %u  name: '%s'",
                       lock_type, info->lock_type, share->r_locks,
                       share->w_locks,
                       share->global_changed, share->state.open_count,
-                      share->index_file_name));
+                      share->index_file_name.str));
   if (share->options & HA_OPTION_READ_ONLY_DATA ||
       info->lock_type == lock_type)
     DBUG_RETURN(0);

@@ -37,7 +37,7 @@ static long mysql_rm_known_files(THD *thd, MY_DIR *dirp,
 				 const char *db, const char *path, uint level, 
                                  TABLE_LIST **dropped_tables);
          
-static long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path);
+long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path);
 static my_bool rm_dir_w_symlink(const char *org_path, my_bool send_error);
 static void mysql_change_db_impl(THD *thd,
                                  LEX_STRING *new_db_name,
@@ -616,6 +616,7 @@ int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create_info,
   MY_STAT stat_info;
   uint create_options= create_info ? create_info->options : 0;
   uint path_len;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_create_db");
 
   /* do not create 'information_schema' db */
@@ -642,6 +643,8 @@ int mysql_create_db(THD *thd, char *db, HA_CREATE_INFO *create_info,
     error= -1;
     goto exit2;
   }
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -767,6 +770,7 @@ bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create_info)
   char path[FN_REFLEN+16];
   long result=1;
   int error= 0;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_alter_db");
 
   /*
@@ -783,6 +787,8 @@ bool mysql_alter_db(THD *thd, const char *db, HA_CREATE_INFO *create_info)
   */
   if ((error=wait_if_global_read_lock(thd,0,1)))
     goto exit2;
+
+  global_schema_lock_guard.lock();
 
   pthread_mutex_lock(&LOCK_mysql_create_db);
 
@@ -861,6 +867,7 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
   MY_DIR *dirp;
   uint length;
   TABLE_LIST* dropped_tables= 0;
+  Ha_global_schema_lock_guard global_schema_lock_guard(thd);
   DBUG_ENTER("mysql_rm_db");
 
   /*
@@ -881,14 +888,9 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
     goto exit2;
   }
 
-  pthread_mutex_lock(&LOCK_mysql_create_db);
+  global_schema_lock_guard.lock();
 
-  /*
-    This statement will be replicated as a statement, even when using
-    row-based replication. The flag will be reset at the end of the
-    statement.
-  */
-  thd->clear_current_stmt_binlog_row_based();
+  pthread_mutex_lock(&LOCK_mysql_create_db);
 
   length= build_table_filename(path, sizeof(path), db, "", "", 0);
   strmov(path+length, MY_DB_OPT_FILE);		// Append db option file name
@@ -911,16 +913,36 @@ bool mysql_rm_db(THD *thd,char *db,bool if_exists, bool silent)
   else
   {
     error= -1;
+    /*
+      We temporarily disable the binary log while dropping the objects
+      in the database. Since the DROP DATABASE statement is always
+      replicated as a statement, execution of it will drop all objects
+      in the database on the slave as well, so there is no need to
+      replicate the removal of the individual objects in the database
+      as well.
+
+      This is more of a safety precaution, since normally no objects
+      should be dropped while the database is being cleaned, but in
+      the event that a change in the code to remove other objects is
+      made, these drops should still not be logged.
+
+      Notice that the binary log have to be enabled over the call to
+      ha_drop_database(), since NDB otherwise detects the binary log
+      as disabled and will not log the drop database statement on any
+      other connected server.
+     */
     if ((deleted= mysql_rm_known_files(thd, dirp, db, path, 0,
                                        &dropped_tables)) >= 0)
     {
       ha_drop_database(path);
+      tmp_disable_binlog(thd);
       query_cache_invalidate1(db);
       (void) sp_drop_db_routines(thd, db); /* @todo Do not ignore errors */
 #ifdef HAVE_EVENT_SCHEDULER
       Events::drop_schema_events(thd, db);
 #endif
       error = 0;
+      reenable_binlog(thd);
     }
   }
   if (!silent && deleted>=0)
@@ -1078,7 +1100,10 @@ static long mysql_rm_known_files(THD *thd, MY_DIR *dirp, const char *db,
     else if (file->name[0] == 'a' && file->name[1] == 'r' &&
              file->name[2] == 'c' && file->name[3] == '\0')
     {
-      /* .frm archive */
+      /* .frm archive:
+        Those archives are obsolete, but following code should
+        exist to remove existent "arc" directories.
+      */
       char newpath[FN_REFLEN];
       MY_DIR *new_dirp;
       strxmov(newpath, org_path, "/", "arc", NullS);
@@ -1247,9 +1272,12 @@ static my_bool rm_dir_w_symlink(const char *org_path, my_bool send_error)
   RETURN
     > 0 number of removed files
     -1  error
+
+  NOTE
+    A support of "arc" directories is obsolete, however this
+    function should exist to remove existent "arc" directories.
 */
-static long mysql_rm_arc_files(THD *thd, MY_DIR *dirp,
-				 const char *org_path)
+long mysql_rm_arc_files(THD *thd, MY_DIR *dirp, const char *org_path)
 {
   long deleted= 0;
   ulong found_other_files= 0;
@@ -1291,6 +1319,7 @@ static long mysql_rm_arc_files(THD *thd, MY_DIR *dirp,
     {
       goto err;
     }
+    deleted++;
   }
   if (thd->killed)
     goto err;
@@ -1979,6 +2008,7 @@ bool check_db_dir_existence(const char *db_name)
 {
   char db_dir_path[FN_REFLEN];
   uint db_dir_path_len;
+  MY_STAT my_stat_result;
 
   db_dir_path_len= build_table_filename(db_dir_path, sizeof(db_dir_path),
                                         db_name, "", "", 0);
@@ -1986,7 +2016,13 @@ bool check_db_dir_existence(const char *db_name)
   if (db_dir_path_len && db_dir_path[db_dir_path_len - 1] == FN_LIBCHAR)
     db_dir_path[db_dir_path_len - 1]= 0;
 
-  /* Check access. */
+  /* Verify that db_name is accessible and is a directory */
 
-  return my_access(db_dir_path, F_OK);
+  if (! my_stat(db_dir_path, &my_stat_result, MYF(0)))
+    return TRUE;
+
+  if (! MY_S_ISDIR(my_stat_result.st_mode))
+    return TRUE;
+
+  return FALSE;
 }

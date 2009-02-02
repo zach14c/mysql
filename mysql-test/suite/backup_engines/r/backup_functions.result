@@ -1,0 +1,601 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+
+starting the test for backup
+
+DROP DATABASE IF EXISTS bup_sfs;
+CREATE DATABASE bup_sfs;
+USE bup_sfs;
+SET SQL_MODE=TRADITIONAL;
+Creating table
+CREATE TABLE bup_sfs.players(
+playerno INT not null PRIMARY KEY,
+name CHAR(10),
+Bdate DATE,
+sex CHAR(2),
+joined YEAR
+);
+CREATE TABLE bup_sfs.teams(
+teamno INT NOT NULL PRIMARY KEY,
+playerno INT,
+division CHAR(10),
+FOREIGN KEY(playerno) REFERENCES players(playerno)
+);
+CREATE TABLE bup_sfs.matches(
+Matchno INT NOT NULL PRIMARY KEY,
+teamno INT ,
+playerno INT,
+won INT,
+lost INT,
+FOREIGN KEY(teamno) REFERENCES teams(teamno),
+FOREIGN KEY(playerno) REFERENCES players(playerno)
+);
+CREATE TABLE bup_sfs.penalties(
+paymentno INT not null PRIMARY KEY,
+playerno INT,
+paymentdate DATE,
+amount FLOAT,
+FOREIGN KEY(playerno) REFERENCES players(playerno)
+);
+Load Data in tables
+INSERT INTO bup_sfs.players VALUES
+(1,'aa1','1948-10-09','M','1960'),(2,'aa2','1950-05-09','M','1965'),
+(3,'aa3','1953-10-10','F','1970'),(4,'aa4','1970-10-19','M','1985'),
+(5,'aa5','1972-04-28','F','1994'),(6,'aa6','1945-01-26','M','1960');
+INSERT INTO bup_sfs.teams VALUES(1,3,'first'),(2,4,'division');
+INSERT INTO bup_sfs.matches VALUES
+(1,1,2,3,1),(2,2,1,4,2),(3,1,5,0,1),(4,2,4,3,0),(5,2,5,2,2),
+(6,1,3,3,1),(7,2,1,4,2),(8,1,5,0,1),(9,2,2,3,0),(10,2,2,2,2);
+INSERT INTO bup_sfs.penalties VALUES
+(1,5,'1980-10-10',100.23),(2,3,'1967-12-10',123.23),
+(3,3,'1983-05-25',25.25), (4,4,'1981-11-10',210.23) ,
+(5,5,'1980-12-12',300), (6,1,'1984-07-02',10),
+(7,1,'1985-10-10',23.90);
+CREATE FUNCTION number_of_players() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END;
+||
+CREATE FUNCTION number_of_players1() RETURNS INTEGER
+BEGIN
+RETURN (SELECT COUNT(*) FROM players WHERE playerno > 2);
+END;
+||
+CREATE FUNCTION fcount() RETURNS INTEGER
+BEGIN
+DECLARE v_out INT;
+SELECT count(*) FROM matches INTO v_out;
+RETURN v_out;
+END;
+||
+CREATE FUNCTION dollars(amount FLOAT(7,2)) RETURNS FLOAT(7,2)
+BEGIN
+RETURN amount * (1/0.8);
+END;
+||
+SELECT number_of_players();
+number_of_players()
+6
+SELECT number_of_players1();
+number_of_players1()
+4
+SELECT fcount();
+fcount()
+10
+SELECT paymentno,amount, dollars(amount) FROM penalties;
+paymentno	amount	dollars(amount)
+1	100.23	125.29
+2	123.23	154.04
+3	25.25	31.56
+4	210.23	262.79
+5	300	375.00
+6	10	12.50
+7	23.9	29.87
+creating stored functions which is not dependent on table
+CREATE FUNCTION square_area(side tinyINT)
+RETURNS FLOAT
+RETURN side * side;
+SELECT square_area(11);
+square_area(11)
+121
+showing objects and create statements.
+SHOW CREATE FUNCTION number_of_players;;
+Function	number_of_players
+sql_mode	STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_AUTO_CREATE_USER
+Create Function	CREATE DEFINER=`root`@`localhost` FUNCTION `number_of_players`() RETURNS int(11)
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TABLE players;;
+Table	players
+Create Table	CREATE TABLE `players` (
+  `playerno` int(11) NOT NULL,
+  `name` char(10) DEFAULT NULL,
+  `Bdate` date DEFAULT NULL,
+  `sex` char(2) DEFAULT NULL,
+  `joined` year(4) DEFAULT NULL,
+  PRIMARY KEY (`playerno`)
+) ENGINE=ENGINE DEFAULT CHARSET=latin1
+describe penalties;
+Field	Type	Null	Key	Default	Extra
+paymentno	int(11)	NO	PRI	NULL	
+playerno	int(11)	YES	MUL	NULL	
+paymentdate	date	YES		NULL	
+amount	float	YES		NULL	
+SHOW FUNCTION STATUS;;
+Db	bup_sfs
+Name	dollars
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	fcount
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players1
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	square_area
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+backup data
+BACKUP DATABASE bup_sfs TO 'bup_sfs.bak';
+backup_id
+#
+dropping  database.
+DROP DATABASE bup_sfs;
+Restoring Database
+RESTORE FROM 'bup_sfs.bak';
+backup_id
+#
+SELECT @@SQL_MODE;
+@@SQL_MODE
+STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_AUTO_CREATE_USER
+showing objects and create statements
+SHOW CREATE DATABASE bup_sfs;;
+Database	bup_sfs
+Create Database	CREATE DATABASE `bup_sfs` /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW CREATE FUNCTION number_of_players;;
+Function	number_of_players
+sql_mode	STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_AUTO_CREATE_USER
+Create Function	CREATE DEFINER=`root`@`localhost` FUNCTION `number_of_players`() RETURNS int(11)
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+describe penalties;
+Field	Type	Null	Key	Default	Extra
+paymentno	int(11)	NO	PRI	NULL	
+playerno	int(11)	YES	MUL	NULL	
+paymentdate	date	YES		NULL	
+amount	float	YES		NULL	
+describe matches;
+Field	Type	Null	Key	Default	Extra
+Matchno	int(11)	NO	PRI	NULL	
+teamno	int(11)	YES	MUL	NULL	
+playerno	int(11)	YES	MUL	NULL	
+won	int(11)	YES		NULL	
+lost	int(11)	YES		NULL	
+SHOW FUNCTION STATUS;;
+Db	bup_sfs
+Name	dollars
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	fcount
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players1
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	square_area
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+INSERT INTO bup_sfs.players VALUES
+(57,'brown','1971-08-17','M','1985'),(95,'Miller','1963-05-14','M','1972');
+INSERT INTO bup_sfs.matches VALUES(11,2,6,0,3);
+SELECT square_area(12);
+square_area(12)
+144
+SELECT number_of_players();
+number_of_players()
+8
+SELECT number_of_players1();
+number_of_players1()
+6
+SELECT fcount();
+fcount()
+11
+SELECT paymentno,amount, dollars(amount) FROM penalties WHERE paymentno<=3;
+paymentno	amount	dollars(amount)
+1	100.23	125.29
+2	123.23	154.04
+3	25.25	31.56
+DROP DATABASE bup_sfs;
+change SQL_MODE and then perform RESTORE operation
+SET SQL_MODE=ANSI;
+RESTORE FROM 'bup_sfs.bak';
+backup_id
+#
+SELECT @@SQL_MODE;
+@@SQL_MODE
+REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI
+showing objects and create statements
+SHOW CREATE DATABASE bup_sfs;;
+Database	bup_sfs
+Create Database	CREATE DATABASE "bup_sfs" /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW CREATE FUNCTION number_of_players;;
+Function	number_of_players
+sql_mode	STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_AUTO_CREATE_USER
+Create Function	CREATE DEFINER=`root`@`localhost` FUNCTION `number_of_players`() RETURNS int(11)
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW FUNCTION STATUS;;
+Db	bup_sfs
+Name	dollars
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	fcount
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players1
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	square_area
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SELECT square_area(13);
+square_area(13)
+169
+SELECT number_of_players();
+number_of_players()
+6
+SELECT fcount();
+fcount()
+10
+DROP DATABASE bup_sfs;
+change SQL_MODE and then perform RESTORE
+SET SQL_MODE=MAXDB;
+RESTORE FROM 'bup_sfs.bak';
+backup_id
+#
+SELECT @@SQL_MODE;
+@@SQL_MODE
+PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,MAXDB,NO_KEY_OPTIONS,NO_TABLE_OPTIONS,NO_FIELD_OPTIONS,NO_AUTO_CREATE_USER
+showing objects and create statements
+SHOW CREATE DATABASE bup_sfs;;
+Database	bup_sfs
+Create Database	CREATE DATABASE "bup_sfs" /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW CREATE FUNCTION number_of_players;;
+Function	number_of_players
+sql_mode	STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_AUTO_CREATE_USER
+Create Function	CREATE DEFINER=`root`@`localhost` FUNCTION `number_of_players`() RETURNS int(11)
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW FUNCTION STATUS;;
+Db	bup_sfs
+Name	dollars
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	fcount
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players1
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	square_area
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SELECT square_area(14);
+square_area(14)
+196
+SELECT number_of_players();
+number_of_players()
+6
+SELECT fcount();
+fcount()
+10
+SELECT paymentno,amount, dollars(amount) FROM penalties WHERE paymentno >=3;
+paymentno	amount	dollars(amount)
+3	25.25	31.56
+4	210.23	262.79
+5	300	375.00
+6	10	12.50
+7	23.9	29.87
+DROP DATABASE bup_sfs;
+change SQL_MODE and then perform RESTORE
+SET SQL_MODE=' ';
+RESTORE FROM 'bup_sfs.bak';
+backup_id
+#
+SELECT @@SQL_MODE;
+@@SQL_MODE
+
+showing objects and create statements
+SHOW CREATE DATABASE bup_sfs;;
+Database	bup_sfs
+Create Database	CREATE DATABASE `bup_sfs` /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW CREATE FUNCTION number_of_players;;
+Function	number_of_players
+sql_mode	STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,TRADITIONAL,NO_AUTO_CREATE_USER
+Create Function	CREATE DEFINER=`root`@`localhost` FUNCTION `number_of_players`() RETURNS int(11)
+BEGIN
+RETURN (SELECT COUNT(*) FROM players);
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TABLE players;;
+Table	players
+Create Table	CREATE TABLE `players` (
+  `playerno` int(11) NOT NULL,
+  `name` char(10) DEFAULT NULL,
+  `Bdate` date DEFAULT NULL,
+  `sex` char(2) DEFAULT NULL,
+  `joined` year(4) DEFAULT NULL,
+  PRIMARY KEY (`playerno`)
+) ENGINE=ENGINE DEFAULT CHARSET=latin1
+describe matches;
+Field	Type	Null	Key	Default	Extra
+Matchno	int(11)	NO	PRI	NULL	
+teamno	int(11)	YES	MUL	NULL	
+playerno	int(11)	YES	MUL	NULL	
+won	int(11)	YES		NULL	
+lost	int(11)	YES		NULL	
+SHOW FUNCTION STATUS;;
+Db	bup_sfs
+Name	dollars
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	fcount
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	number_of_players1
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Db	bup_sfs
+Name	square_area
+Type	FUNCTION
+Definer	#
+Modified	#
+Created	#
+Security_type	DEFINER
+Comment	
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SELECT square_area(20);
+square_area(20)
+400
+SELECT number_of_players();
+number_of_players()
+6
+SELECT fcount();
+fcount()
+10
+SELECT paymentno,amount, dollars(amount) FROM penalties;
+paymentno	amount	dollars(amount)
+1	100.23	125.29
+2	123.23	154.04
+3	25.25	31.56
+4	210.23	262.79
+5	300	375.00
+6	10	12.50
+7	23.9	29.87
+
+***  DROP bup_sfs DATABASE ****
+
+DROP DATABASE bup_sfs;

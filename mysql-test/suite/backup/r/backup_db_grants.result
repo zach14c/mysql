@@ -1,0 +1,226 @@
+DROP DATABASE IF EXISTS bup_db_grants;
+DROP DATABASE IF EXISTS db2;
+Create two databases and two tables.
+CREATE DATABASE bup_db_grants;
+CREATE DATABASE db2;
+CREATE TABLE bup_db_grants.t1(a INT);
+CREATE TABLE bup_db_grants.s1(b INT);
+INSERT INTO bup_db_grants.t1 VALUES (1), (2), (3), (4);
+INSERT INTO bup_db_grants.s1 VALUES (10), (20), (30), (40);
+Now create users and assign various rights to the databases
+CREATE USER 'bup_user1'@'%';
+CREATE USER bup_user2;
+CREATE USER 'bup_user3'@'%';
+REVOKE ALL ON *.* FROM 'bup_user1'@'%';
+REVOKE ALL ON *.* FROM bup_user2;
+GRANT ALL ON db2.* TO 'bup_user1'@'%';
+GRANT SELECT ON bup_db_grants.* TO 'bup_user1'@'%';
+GRANT INSERT ON bup_db_grants.* TO bup_user2;
+GRANT ALL ON bup_db_grants.* TO 'no_user'@'%';
+GRANT SELECT (a) ON bup_db_grants.t1 TO 'bup_user1'@'%';
+GRANT SELECT (b), INSERT (b) ON bup_db_grants.s1 TO bup_user2;
+FLUSH PRIVILEGES;
+Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+Grants for bup_user1@%
+GRANT USAGE ON *.* TO 'bup_user1'@'%'
+GRANT ALL PRIVILEGES ON `db2`.* TO 'bup_user1'@'%'
+GRANT SELECT ON `bup_db_grants`.* TO 'bup_user1'@'%'
+GRANT SELECT (a) ON `bup_db_grants`.`t1` TO 'bup_user1'@'%'
+SHOW GRANTS FOR bup_user2;
+Grants for bup_user2@%
+GRANT USAGE ON *.* TO 'bup_user2'@'%'
+GRANT INSERT ON `bup_db_grants`.* TO 'bup_user2'@'%'
+GRANT SELECT (b), INSERT (b) ON `bup_db_grants`.`s1` TO 'bup_user2'@'%'
+SHOW GRANTS FOR 'bup_user3'@'%';
+Grants for bup_user3@%
+GRANT USAGE ON *.* TO 'bup_user3'@'%'
+SHOW GRANTS FOR 'no_user'@'%';
+Grants for no_user@%
+GRANT USAGE ON *.* TO 'no_user'@'%'
+GRANT ALL PRIVILEGES ON `bup_db_grants`.* TO 'no_user'@'%'
+Run backup
+BACKUP DATABASE bup_db_grants TO 'bup_db_grants.bak';
+backup_id
+#
+Drop users and recreate them (removes grants completely).
+DROP USER 'bup_user1'@'%';
+DROP USER bup_user2;
+DROP USER 'bup_user3'@'%';
+DROP USER 'no_user'@'%';
+FLUSH PRIVILEGES;
+CREATE USER 'bup_user1'@'%';
+CREATE USER bup_user2;
+CREATE USER 'bup_user3'@'%';
+FLUSH PRIVILEGES;
+Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+Grants for bup_user1@%
+GRANT USAGE ON *.* TO 'bup_user1'@'%'
+SHOW GRANTS FOR bup_user2;
+Grants for bup_user2@%
+GRANT USAGE ON *.* TO 'bup_user2'@'%'
+SHOW GRANTS FOR 'bup_user3'@'%';
+Grants for bup_user3@%
+GRANT USAGE ON *.* TO 'bup_user3'@'%'
+SHOW GRANTS FOR 'no_user'@'%';
+ERROR 42000: There is no such grant defined for user 'no_user' on host '%'
+Run Restore
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
+backup_id
+#
+Warnings:
+#	1738	The grant 'ALTER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'ALTER ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE TEMPORARY TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'DELETE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'DROP ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'EVENT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'EXECUTE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'INDEX ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'INSERT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'LOCK TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'REFERENCES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SELECT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SHOW VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'TRIGGER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'UPDATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+SHOW TABLES FROM bup_db_grants;
+Tables_in_bup_db_grants
+s1
+t1
+Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+Grants for bup_user1@%
+GRANT USAGE ON *.* TO 'bup_user1'@'%'
+GRANT SELECT ON `bup_db_grants`.* TO 'bup_user1'@'%'
+GRANT SELECT (a) ON `bup_db_grants`.`t1` TO 'bup_user1'@'%'
+SHOW GRANTS FOR bup_user2;
+Grants for bup_user2@%
+GRANT USAGE ON *.* TO 'bup_user2'@'%'
+GRANT INSERT ON `bup_db_grants`.* TO 'bup_user2'@'%'
+GRANT SELECT (b), INSERT (b) ON `bup_db_grants`.`s1` TO 'bup_user2'@'%'
+SHOW GRANTS FOR 'bup_user3'@'%';
+Grants for bup_user3@%
+GRANT USAGE ON *.* TO 'bup_user3'@'%'
+SHOW GRANTS FOR 'no_user'@'%';
+ERROR 42000: There is no such grant defined for user 'no_user' on host '%'
+Now test what happens on backup if users are deleted.
+Drop users and recreate one of them (removes grants completely).
+DROP USER 'bup_user1'@'%';
+DROP USER bup_user2;
+DROP USER 'bup_user3'@'%';
+FLUSH PRIVILEGES;
+CREATE USER 'bup_user1'@'%';
+CREATE USER 'bup_user1'@'nosuchhost';
+Run Restore
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
+backup_id
+#
+Warnings:
+#	1738	The grant 'INSERT ON bup_db_grants.*' for the user 'bup_user2'@'%' was skipped because the user does not exist.
+#	1738	The grant 'INSERT(b) ON bup_db_grants.s1' for the user 'bup_user2'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SELECT(b) ON bup_db_grants.s1' for the user 'bup_user2'@'%' was skipped because the user does not exist.
+#	1738	The grant 'ALTER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'ALTER ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE ROUTINE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE TEMPORARY TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'CREATE VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'DELETE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'DROP ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'EVENT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'EXECUTE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'INDEX ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'INSERT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'LOCK TABLES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'REFERENCES ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SELECT ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'SHOW VIEW ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'TRIGGER ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+#	1738	The grant 'UPDATE ON bup_db_grants.*' for the user 'no_user'@'%' was skipped because the user does not exist.
+SHOW TABLES FROM bup_db_grants;
+Tables_in_bup_db_grants
+s1
+t1
+Demonstrate rights of the users.
+SHOW GRANTS FOR 'bup_user1'@'%';
+Grants for bup_user1@%
+GRANT USAGE ON *.* TO 'bup_user1'@'%'
+GRANT SELECT ON `bup_db_grants`.* TO 'bup_user1'@'%'
+GRANT SELECT (a) ON `bup_db_grants`.`t1` TO 'bup_user1'@'%'
+SHOW GRANTS FOR bup_user2;
+ERROR 42000: There is no such grant defined for user 'bup_user2' on host '%'
+SHOW GRANTS FOR 'bup_user3'@'%';
+ERROR 42000: There is no such grant defined for user 'bup_user3' on host '%'
+SHOW GRANTS FOR 'no_user'@'%';
+ERROR 42000: There is no such grant defined for user 'no_user' on host '%'
+Cleanup
+DROP USER 'bup_user1'@'%';
+DROP USER 'bup_user1'@'nosuchhost';
+DROP USER bup_user2;
+ERROR HY000: Operation DROP USER failed for 'bup_user2'@'%'
+DROP USER 'bup_user3'@'%';
+ERROR HY000: Operation DROP USER failed for 'bup_user3'@'%'
+DROP USER 'no_user'@'%';
+ERROR HY000: Operation DROP USER failed for 'no_user'@'%'
+FLUSH PRIVILEGES;
+Now test for encoded user names with an x40 in the middle.
+SET NAMES sjis;
+DROP DATABASE bup_db_grants;
+Create a database and some tables.
+CREATE DATABASE bup_db_grants;
+CREATE TABLE bup_db_grants.t1(a INT);
+CREATE TABLE bup_db_grants.s1(b INT);
+Create a user with multibyte username with @ in the middle.
+SET @name = CONVERT(0x8340 using sjis);
+SELECT @name;
+@name
+ァ
+SET @cmd = CONCAT('CREATE USER ', @name);
+PREPARE stmt1 FROM @cmd;
+EXECUTE stmt1;
+Grant privileges to user.
+SET @cmd = CONCAT('GRANT SELECT ON bup_db_grants.* TO ', @name);
+PREPARE stmt2 from @cmd;
+EXECUTE stmt2;
+FLUSH PRIVILEGES;
+Show existing grants.
+SET @cmd = CONCAT('SHOW GRANTS FOR ', @name);
+PREPARE stmt3 FROM @cmd;
+EXECUTE stmt3;
+Grants for ァ@%
+GRANT USAGE ON *.* TO 'ァ'@'%'
+GRANT SELECT ON `bup_db_grants`.* TO 'ァ'@'%'
+Backup database.
+BACKUP DATABASE bup_db_grants TO 'bup_db_grants.bak';
+backup_id
+#
+Remove privileges from user.
+SET @cmd = CONCAT('REVOKE ALL ON bup_db_grants.* FROM ', @name);
+PREPARE stmt4 FROM @cmd;
+EXECUTE stmt4;
+FLUSH PRIVILEGES;
+Show existing grants -- should only USAGE.
+EXECUTE stmt3;
+Grants for ァ@%
+GRANT USAGE ON *.* TO 'ァ'@'%'
+Run restore.
+RESTORE FROM 'bup_db_grants.bak' OVERWRITE;
+backup_id
+#
+FLUSH PRIVILEGES;
+Ensure grants have been restored.
+EXECUTE stmt3;
+Grants for ァ@%
+GRANT USAGE ON *.* TO 'ァ'@'%'
+GRANT SELECT ON `bup_db_grants`.* TO 'ァ'@'%'
+SET @cmd = CONCAT('DROP USER ', @name);
+PREPARE stmt5 FROM @cmd;
+EXECUTE stmt5;
+SET NAMES latin1;
+DROP DATABASE bup_db_grants;
+DROP DATABASE db2;

@@ -82,7 +82,7 @@ void Serialize::putInt(int value)
 		*p++ = (value >> (lengthShifts [count])) & 0x7f;
 
 	*p++ = value | LOW_BYTE_FLAG;
-	release(p - data);
+	release((uint)(p - data));
 }
 
 void Serialize::putInt64(int64 value)
@@ -95,7 +95,7 @@ void Serialize::putInt64(int64 value)
 		*p++ = (UCHAR) (value >> (lengthShifts [count])) & 0x7f;
 
 	*p++ = ((UCHAR) value) | LOW_BYTE_FLAG;
-	release(p - data);
+	release((uint)(p - data));
 }
 
 void Serialize::putData(uint length, const UCHAR* data)

@@ -1,4 +1,4 @@
-/* Copyright (C) 2002 MySQL AB
+/* Copyright 2002-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,6 +14,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #include "mysql_priv.h"
+#include "sql_prepare.h"
 #ifdef USE_PRAGMA_IMPLEMENTATION
 #pragma implementation
 #endif
@@ -126,6 +127,9 @@ sp_get_item_value(THD *thd, Item *item, String *str)
         if (cs->escape_with_backslash_is_dangerous)
           buf.append(' ');
         append_query_string(cs, result, &buf);
+        buf.append(" COLLATE '");
+        buf.append(item->collation.collation->name);
+        buf.append('\'');
         str->copy(buf);
 
         return str;
@@ -1066,8 +1070,8 @@ sp_head::execute(THD *thd)
   Item_change_list old_change_list;
   String old_packet;
   Reprepare_observer *save_reprepare_observer= thd->m_reprepare_observer;
-
   Object_creation_ctx *saved_creation_ctx;
+  Warning_info *saved_warning_info, warning_info(thd->warning_info->warn_id());
 
   /* Use some extra margin for possible SP recursion and functions */
   if (check_stack_overrun(thd, 8 * STACK_MIN_SIZE, (uchar*)&old_packet))
@@ -1115,6 +1119,11 @@ sp_head::execute(THD *thd)
     ctx->clear_handler();
   thd->is_slave_error= 0;
   old_arena= thd->stmt_arena;
+
+  /* Push a new warning information area. */
+  warning_info.append_warning_info(thd, thd->warning_info);
+  saved_warning_info= thd->warning_info;
+  thd->warning_info= &warning_info;
 
   /*
     Switch query context. This has to be done early as this is sometimes
@@ -1263,9 +1272,7 @@ sp_head::execute(THD *thd)
     */
     if (ctx)
     {
-      uint hf;
-
-      switch (ctx->found_handler(&hip, &hf)) {
+      switch (ctx->found_handler(&hip)) {
       case SP_HANDLER_NONE:
         break;
       case SP_HANDLER_CONTINUE:
@@ -1318,6 +1325,10 @@ sp_head::execute(THD *thd)
 
   thd->stmt_arena= old_arena;
   state= EXECUTED;
+
+  /* Restore the caller's original warning information area. */
+  saved_warning_info->merge_with_routine_info(thd, thd->warning_info);
+  thd->warning_info= saved_warning_info;
 
  done:
   DBUG_PRINT("info", ("err_status: %d  killed: %d  is_slave_error: %d  report_error: %d",
@@ -1943,8 +1954,8 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
       thd->rollback_item_tree_changes();
     }
 
-    DBUG_PRINT("info",(" %.*s: eval args done",
-                       (int) m_name.length, m_name.str));
+    DBUG_PRINT("info",(" %.*s: eval args done", (int) m_name.length, 
+                       m_name.str));
   }
   if (!(m_flags & LOG_SLOW_STATEMENTS) && thd->enable_slow_log)
   {
@@ -2012,6 +2023,16 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
         err_status= TRUE;
         break;
       }
+
+      Send_field *out_param_info= new (thd->mem_root) Send_field();
+      nctx->get_item(i)->make_field(out_param_info);
+      out_param_info->db_name= m_db.str;
+      out_param_info->table_name= m_name.str;
+      out_param_info->org_table_name= m_name.str;
+      out_param_info->col_name= spvar->name.str;
+      out_param_info->org_col_name= spvar->name.str;
+
+      srp->set_out_param_info(out_param_info);
     }
   }
 
@@ -2420,7 +2441,7 @@ sp_head::show_create_routine(THD *thd, int type)
   fields.push_back(new Item_empty_string("Database Collation",
                                          MY_CS_NAME_SIZE));
 
-  if (protocol->send_fields(&fields,
+  if (protocol->send_result_set_metadata(&fields,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
   {
     DBUG_RETURN(TRUE);
@@ -2605,7 +2626,7 @@ sp_head::show_routine_code(THD *thd)
   // 1024 is for not to confuse old clients
   field_list.push_back(new Item_empty_string("Instruction",
                                              max(buffer.length(), 1024)));
-  if (protocol->send_fields(&field_list, Protocol::SEND_NUM_ROWS |
+  if (protocol->send_result_set_metadata(&field_list, Protocol::SEND_NUM_ROWS |
                                          Protocol::SEND_EOF))
     DBUG_RETURN(1);
 
@@ -2835,8 +2856,8 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     {
       res= m_lex_keeper.reset_lex_and_exec_core(thd, nextp, FALSE, this);
 
-      if (thd->main_da.is_eof())
-        net_end_statement(thd);
+      if (thd->stmt_da->is_eof())
+        thd->protocol->end_statement();
 
       query_cache_end_of_result(thd);
 
@@ -2849,7 +2870,7 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     thd->query_length= query_length;
 
     if (!thd->is_error())
-      thd->main_da.reset_diagnostics_area();
+      thd->stmt_da->reset_diagnostics_area();
   }
   DBUG_RETURN(res);
 }
@@ -2890,7 +2911,14 @@ sp_instr_stmt::print(String *str)
 int
 sp_instr_stmt::exec_core(THD *thd, uint *nextp)
 {
+  MYSQL_QUERY_EXEC_START(thd->query,
+                         thd->thread_id,
+                         (char *) (thd->db ? thd->db: ""),
+                         thd->security_ctx->priv_user,
+                         (char *) thd->security_ctx->host_or_ip,
+                         3);
   int res= mysql_execute_command(thd);
+  MYSQL_QUERY_EXEC_DONE(res);
   *nextp= m_ip+1;
   return res;
 }
@@ -3218,7 +3246,7 @@ sp_instr_hpush_jump::execute(THD *thd, uint *nextp)
   sp_cond_type_t *p;
 
   while ((p= li++))
-    thd->spcont->push_handler(p, m_ip+1, m_type, m_frame);
+    thd->spcont->push_handler(p, m_ip+1, m_type);
 
   *nextp= m_dest;
   DBUG_RETURN(0);
@@ -3470,9 +3498,9 @@ sp_instr_copen::execute(THD *thd, uint *nextp)
     */
     if (!res)
     {
-      uint dummy1, dummy2;
+      uint dummy1;
 
-      if (thd->spcont->found_handler(&dummy1, &dummy2))
+      if (thd->spcont->found_handler(&dummy1))
         res= -1;
     }
     /* TODO: Assert here that we either have an error or a cursor */
@@ -3964,7 +3992,7 @@ sp_head::add_used_tables_to_table_list(THD *thd,
 
 
 /**
-  Simple function for adding an explicetly named (systems) table to
+  Simple function for adding an explicitly named (systems) table to
   the global table list, e.g. "mysql", "proc".
 */
 

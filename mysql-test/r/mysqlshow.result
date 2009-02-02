@@ -80,6 +80,7 @@ Database: information_schema  Wildcard: TABLE%
 |      Tables       |
 +-------------------+
 | TABLES            |
+| TABLESPACES       |
 | TABLE_CONSTRAINTS |
 | TABLE_PRIVILEGES  |
 +-------------------+
@@ -88,6 +89,7 @@ Database: INFORMATION_SCHEMA  Wildcard: TABLE%
 |      Tables       |
 +-------------------+
 | TABLES            |
+| TABLESPACES       |
 | TABLE_CONSTRAINTS |
 | TABLE_PRIVILEGES  |
 +-------------------+

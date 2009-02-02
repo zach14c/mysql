@@ -145,7 +145,12 @@ mkdir $DESTDIR
 mkdir $DESTDIR/bin
 cp client/$TARGET/*.exe                                  $DESTDIR/bin/
 cp extra/$TARGET/*.exe                                   $DESTDIR/bin/
+cp storage/maria/$TARGET/*.exe                           $DESTDIR/bin/ || true
 cp storage/myisam/$TARGET/*.exe                          $DESTDIR/bin/
+# Maria engine is optional, so clients might not exist
+if ls storage/maria/$TARGET/*.exe > /dev/null 2>&1; then
+  cp storage/maria/$TARGET/*.exe                         $DESTDIR/bin/
+fi
 if [ x"$TARGET" != x"release" ] ; then
   cp client/$TARGET/mysql.pdb                            $DESTDIR/bin/
   cp client/$TARGET/mysqladmin.pdb                       $DESTDIR/bin/
@@ -158,7 +163,6 @@ cp tests/$TARGET/*.exe                                   $DESTDIR/bin/
 cp libmysql/$TARGET/libmysql.dll                         $DESTDIR/bin/
 
 cp sql/$TARGET/mysqld.exe                $DESTDIR/bin/mysqld$EXE_SUFFIX.exe
-cp sql/$TARGET/mysqld.map                $DESTDIR/bin/mysqld$EXE_SUFFIX.map
 if [ x"$TARGET" != x"release" ] ; then
   cp sql/$TARGET/mysqld.pdb              $DESTDIR/bin/mysqld$EXE_SUFFIX.pdb
 fi
@@ -167,7 +171,6 @@ if [ x"$PACK_DEBUG" = x"" -a -f "sql/debug/mysqld.exe" -o \
      x"$PACK_DEBUG" = x"yes" ] ; then
   cp sql/debug/mysqld.exe                $DESTDIR/bin/mysqld-debug.exe
   cp sql/debug/mysqld.pdb                $DESTDIR/bin/mysqld-debug.pdb
-  cp sql/debug/mysqld.map                $DESTDIR/bin/mysqld-debug.map
 fi
 
 # ----------------------------------------------------------------------

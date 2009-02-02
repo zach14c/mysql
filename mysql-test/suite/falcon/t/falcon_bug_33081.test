@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+--source include/have_ucs2.inc
 #
 # Bug #33081: Falcon: crash and database corruption when altering indexed ucs2 column
 #

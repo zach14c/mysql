@@ -55,9 +55,9 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
   {
     if (*fmt != '%')
     {
-      if (to == end)			/* End of buffer */
+      if (to == end)                            /* End of buffer */
 	break;
-      *to++= *fmt;			/* Copy ordinary char */
+      *to++= *fmt;                            /* Copy ordinary char */
       continue;
     }
     fmt++;					/* skip '%' */
@@ -76,7 +76,7 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
       {
         length= length * 10 + (uint)(*fmt - '0');
         if (!length)
-          pre_zero= 1;			/* first digit was 0 */
+          pre_zero= 1;                         /* first digit was 0 */
       }
     if (*fmt == '.')
     {
@@ -87,15 +87,17 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
         width= va_arg(ap, int);
       }
       else
+      {
         for (; my_isdigit(&my_charset_latin1, *fmt); fmt++)
           width= width * 10 + (uint)(*fmt - '0');
+      }
     }
     else
       width= SIZE_T_MAX;
     if (*fmt == 'l')
     {
       fmt++;
-      if (fmt[1] != 'l')
+      if (*fmt != 'l')
         have_longlong= (sizeof(long) == sizeof(longlong));
       else
       {
@@ -103,20 +105,21 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
         have_longlong= 1;
       }
     }
-    else if(*fmt == 'z')
+    else if (*fmt == 'z')
     {
       fmt++;
       have_longlong= (sizeof(size_t) == sizeof(longlong));
     }
     if (*fmt == 's')				/* String parameter */
     {
-      reg2 char	*par = va_arg(ap, char *);
-      size_t plen,left_len = (size_t) (end - to) + 1;
-      if (!par) par = (char*)"(null)";
-      plen= (uint) strnlen(par, width);
+      reg2 char	*par= va_arg(ap, char *);
+      size_t plen, left_len= (size_t) (end - to) + 1;
+      if (!par)
+        par = (char*) "(null)";
+      plen= strnlen(par, width);
       if (left_len <= plen)
 	plen = left_len - 1;
-      to=strnmov(to,par,plen);
+      to= strnmov(to,par,plen);
       continue;
     }
     else if (*fmt == 'b')				/* Buffer parameter */
@@ -143,9 +146,10 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
       else
         to+= my_gcvt(d, MY_GCVT_ARG_DOUBLE, (int) width , to, NULL);
     }
-    else if (*fmt == 'd' || *fmt == 'u'|| *fmt== 'x' || *fmt =='X' || *fmt =='p')
-    /* Integer parameter */
+    else if (*fmt == 'd' || *fmt == 'u' || *fmt == 'x' || *fmt == 'X' ||
+             *fmt == 'p')
     {
+      /* Integer parameter */
       longlong larg;
       size_t res_length, to_length;
       char *store_start= to, *store_end;
@@ -159,27 +163,25 @@ size_t my_vsnprintf(char *to, size_t n, const char* fmt, va_list ap)
 	store_start= buff;
       if (have_longlong)
         larg = va_arg(ap,longlong);
+      else if (*fmt == 'd')
+        larg = va_arg(ap, int);
       else
-        if (*fmt == 'd')
-          larg = va_arg(ap, int);
-        else
-          larg= va_arg(ap, uint);
+        larg= va_arg(ap, uint);
       if (*fmt == 'd')
 	store_end= longlong10_to_str(larg, store_start, -10);
+      else if (*fmt == 'u')
+        store_end= longlong10_to_str(larg, store_start, 10);
+      else if (*fmt == 'p')
+      {
+        store_start[0]= '0';
+        store_start[1]= 'x';
+        store_end= ll2str(larg, store_start + 2, 16, 0);
+      }
       else
-        if (*fmt== 'u')
-          store_end= longlong10_to_str(larg, store_start, 10);
-        else if(*fmt == 'p')
-        {
-          store_start[0]= '0';
-          store_start[1]= 'x';
-          store_end= ll2str(larg, store_start + 2, 16, 0);
-        }
-        else
-        {
-          DBUG_ASSERT(*fmt == 'X' || *fmt =='x');
-          store_end= ll2str(larg, store_start, 16, (*fmt == 'X'));
-        }
+      {
+        DBUG_ASSERT(*fmt == 'X' || *fmt =='x');
+        store_end= ll2str(larg, store_start, 16, (*fmt == 'X'));
+      }
 
       if ((res_length= (size_t) (store_end - store_start)) > to_length)
 	break;					/* num doesn't fit in output */

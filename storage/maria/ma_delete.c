@@ -116,14 +116,16 @@ int maria_delete(MARIA_HA *info,const uchar *record)
   info->update= HA_STATE_CHANGED+HA_STATE_DELETED+HA_STATE_ROW_CHANGED;
   share->state.changed|= (STATE_NOT_OPTIMIZED_ROWS | STATE_NOT_MOVABLE |
                           STATE_NOT_ZEROFILLED);
+  info->state->changed=1;
 
   mi_sizestore(lastpos, info->cur_row.lastpos);
   (void)(_ma_writeinfo(info,WRITEINFO_UPDATE_KEYFILE));
   allow_break();			/* Allow SIGHUP & SIGINT */
   if (info->invalidator != 0)
   {
-    DBUG_PRINT("info", ("invalidator... '%s' (delete)", share->open_file_name));
-    (*info->invalidator)(share->open_file_name);
+    DBUG_PRINT("info", ("invalidator... '%s' (delete)",
+                        share->open_file_name.str));
+    (*info->invalidator)(share->open_file_name.str);
     info->invalidator=0;
   }
   DBUG_RETURN(0);
@@ -780,6 +782,7 @@ static int underflow(register MARIA_HA *info, MARIA_KEYDEF *keyinfo,
       first_key)
   {
     size_t tmp_length;
+    uint next_page_flag;
     /* Use page right of anc-page */
     DBUG_PRINT("test",("use right page"));
 
@@ -805,6 +808,7 @@ static int underflow(register MARIA_HA *info, MARIA_KEYDEF *keyinfo,
                            DFLT_INIT_HITS, buff, 0, &next_page_link))
       goto err;
     next_buff_length= _ma_get_page_used(share, buff);
+    next_page_flag=   _ma_get_keypage_flag(share,buff);
     DBUG_DUMP("next", buff, next_buff_length);
 
     /* find keys to make a big key-page */
@@ -829,7 +833,7 @@ static int underflow(register MARIA_HA *info, MARIA_KEYDEF *keyinfo,
     _ma_store_page_used(share, buff, buff_length);
 
     /* Set page flag from combination of both key pages and parting key */
-    page_flag= (_ma_get_keypage_flag(share, buff) |
+    page_flag= (next_page_flag |
                 _ma_get_keypage_flag(share, leaf_buff));
     if (anc_key.flag & (SEARCH_USER_KEY_HAS_TRANSID |
                         SEARCH_PAGE_KEY_HAS_TRANSID))
@@ -1109,7 +1113,7 @@ static int underflow(register MARIA_HA *info, MARIA_KEYDEF *keyinfo,
     MARIA_KEY_PARAM anc_key_inserted;
     size_t tmp_length;
 
-    if (first_key)
+    if (keypos == anc_buff + share->keypage_header + key_reflength)
       anc_pos= 0;				/* First key */
     else
     {

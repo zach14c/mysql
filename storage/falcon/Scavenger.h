@@ -26,7 +26,7 @@
 
 #include "Schedule.h"
 
-enum ScavengeType {
+enum ScavengerType {
 	scvRecords,
 	scvJava,
 	};
@@ -38,13 +38,13 @@ class Scavenger : public Schedule
 public:
 	virtual void execute (Scheduler *scheduler);
 	void scavenge();
-	Scavenger(Database *db, ScavengeType scavengeType, const char *schedule);
+	Scavenger(Database *db, ScavengerType scavengerType, const char *schedule);
 
 protected:
 	virtual ~Scavenger();
 
 	Database		*database;
-	ScavengeType	type;
+	ScavengerType	type;
 };
 
 #endif // !defined(AFX_SCAVENGER_H__9E139FC3_1F3E_11D3_AB74_0000C01D2301__INCLUDED_)

@@ -1,4 +1,5 @@
 --source include/have_falcon.inc
+--source include/have_ucs2.inc
 #
 # Bug #22179: UCS2 searches fail if index exists	
 #

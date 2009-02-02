@@ -28,14 +28,14 @@ static const int TRANSACTION_WRITE_COMMITTED  = 4;	// Dirty reads are prevented;
 static const int TRANSACTION_CONSISTENT_READ  = 8;	// Dirty reads and non-repeatable reads are prevented; phantom reads can occur.   
 static const int TRANSACTION_SERIALIZABLE     = 16;	// Dirty reads, non-repeatable reads and phantom reads are prevented.
 
-struct st_table_share;
-struct StorageIndexDesc;
+struct TABLE_SHARE;
+class StorageIndexDesc;
 struct StorageBlob;
 
 class StorageInterface : public handler
 {
 public:
-	StorageInterface(handlerton *, st_table_share *table_arg);
+	StorageInterface(handlerton *, TABLE_SHARE *table_arg);
 	~StorageInterface(void);
 
 	virtual int		open(const char *name, int mode, uint test_if_locked);
@@ -70,6 +70,19 @@ public:
 	virtual int		index_end(void);
 	virtual int		index_first(uchar* buf);
 	virtual int		index_next(uchar *buf);
+
+	// Multi Range Read interface
+	virtual int		multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
+										  uint n_ranges, uint mode, HANDLER_BUFFER *buf);
+	virtual int		multi_range_read_next(char **range_info);
+	virtual ha_rows	multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
+												void *seq_init_param, 
+												uint n_ranges, uint *bufsz,
+												uint *flags, COST_VECT *cost);
+	virtual ha_rows	multi_range_read_info(uint keyno, uint n_ranges, uint keys,
+										  uint *bufsz, uint *flags, COST_VECT *cost);
+	// Multi Range Read interface ends
+
 	virtual int		index_next_same(uchar *buf, const uchar *key, uint key_len);
 
 	virtual ha_rows	records_in_range(uint index,
@@ -113,15 +126,18 @@ public:
 	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
-	int				dropIndex(const char *schemaName, const char *tableName, KEY *key, int indexNumber);
-	void			getKeyDesc(KEY *keyInfo, StorageIndexDesc *indexInfo);
+	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online);
+	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
 	int				threadSwitchError(void);
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
-	int				setIndexes(void);
+	int				setIndex(TABLE *table, int indexId);
+	int				setIndexes(TABLE *table);
+	int				remapIndexes(TABLE *table);
+	bool			validateIndexes(TABLE *table, bool exclusiveLock = false);
 	int				genTable(TABLE* table, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
@@ -129,6 +145,10 @@ public:
 	void			decodeRecord(uchar *buf);
 	void			unlockTable(void);
 	void			checkBinLog(void);
+	int			scanRange(const key_range *startKey,
+					  const key_range *endKey,
+					  bool eqRange);
+	int			fillMrrBitmap();
 	void			mapFields(TABLE *table);
 	void			unmapFields(void);
 
@@ -147,6 +167,7 @@ public:
 	static void		shutdown(handlerton *);
 	static int		closeConnection(handlerton *, THD *thd);
 	static void		logger(int mask, const char *text, void *arg);
+	static void		mysqlLogger(int mask, const char *text, void *arg);
 	static int		panic(handlerton* hton, ha_panic_function flag);
 	//static bool	show_status(handlerton* hton, THD* thd, stat_print_fn* print, enum ha_stat_type stat);
 	static int		getMySqlError(int storageError);
@@ -155,6 +176,7 @@ public:
 	static uint		alter_table_flags(uint flags);
 #endif
 	static int		alter_tablespace(handlerton* hton, THD* thd, st_alter_tablespace* ts_info);
+	static int		fill_is_table(handlerton *hton, THD *thd, TABLE_LIST *tables, class Item *cond, enum enum_schema_tables);
 
 	static int		commit_by_xid(handlerton* hton, XID* xid);
 	static int		rollback_by_xid(handlerton* hton, XID* xid);
@@ -172,12 +194,12 @@ public:
 	StorageConnection*	storageConnection;
 	StorageTable*		storageTable;
 	StorageTableShare*	storageShare;
-	Field				**fieldMap;
+	Field					**fieldMap;
 	const char*			errorText;
 	THR_LOCK_DATA		lockData;			// MySQL lock
 	THD					*mySqlThread;
-	st_table_share		*share;
-	uint				recordLength;
+	TABLE_SHARE			*share;
+	uint					recordLength;
 	int					lastRecord;
 	int					nextRecord;
 	int					indexErrorId;
@@ -185,16 +207,17 @@ public:
 	int					maxFields;
 	StorageBlob			*activeBlobs;
 	StorageBlob			*freeBlobs;
-	bool				haveStartKey;
-	bool				haveEndKey;
-	bool				tableLocked;
-	bool				tempTable;
-	bool				lockForUpdate;
-	bool				indexOrder;
+	bool					haveStartKey;
+	bool					haveEndKey;
+	bool					tableLocked;
+	bool					tempTable;
+	bool					lockForUpdate;
+	bool					indexOrder;
 	key_range			startKey;
 	key_range			endKey;
 	uint64				insertCount;
 	ulonglong			tableFlags;
+	bool				useDefaultMrrImpl;
 };
 
 class NfsPluginHandler
@@ -245,12 +268,4 @@ public:
 	static int getSyncInfo(THD *thd, TABLE_LIST *tables, COND *cond);
 	static int initSyncInfo(void *p);
 	static int deinitSyncInfo(void *p);
-
-	static int getTableSpaceInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTableSpaceInfo(void *p);
-	static int deinitTableSpaceInfo(void *p);
-
-	static int getTableSpaceFilesInfo(THD *thd, TABLE_LIST *tables, COND *cond);
-	static int initTableSpaceFilesInfo(void *p);
-	static int deinitTableSpaceFilesInfo(void *p);
 };

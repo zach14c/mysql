@@ -132,6 +132,7 @@ extern  void _db_flush_();
 #define DEBUGGER_ON                     do { } while(0)
 #define IF_DBUG(A)
 #define DBUG_ABORT()                    abort()
+
 #endif
 #ifdef  __cplusplus
 }

@@ -232,7 +232,9 @@ void RepositoryVolume::makeWritable()
 
 void RepositoryVolume::create()
 {
+#ifndef FALCONDB
 	IO::createPath (fileName);
+#endif
 	dbb->create(fileName, dbb->pageSize, 0, HdrRepositoryFile, 0, NULL);
 	Sync syncDDL(&database->syncSysDDL, "RepositoryVolume::create");
 	Transaction *transaction = database->getSystemTransaction();

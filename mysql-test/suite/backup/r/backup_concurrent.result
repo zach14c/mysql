@@ -1,0 +1,75 @@
+SET DEBUG_SYNC= 'reset';
+DROP DATABASE IF EXISTS backup_concurrent;
+CREATE DATABASE backup_concurrent;
+USE backup_concurrent;
+Creating Table
+CREATE TABLE t (
+t1 INTEGER NOT NULL,
+t2 CHAR(36),
+PRIMARY KEY (t1)
+);
+---------------------------------------------------
+Testing starting new backup while backup is ongoing
+---------------------------------------------------
+Starting first backup
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL running WAIT_FOR backup';
+BACKUP DATABASE backup_concurrent TO 'backup1';
+Waiting for first backup to get going
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+Starting second backup in another connection.  
+(Should fail because another backup is running.)
+BACKUP DATABASE backup_concurrent TO 'backup2';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Insert Data
+INSERT INTO t VALUES (1, 'test');
+Wait for first backup to complete
+SET DEBUG_SYNC= 'now SIGNAL backup';
+backup_id
+#
+---------------------------------------------------
+Testing starting restore while backup is ongoing
+---------------------------------------------------
+Starting backup
+SET DEBUG_SYNC= 'after_backup_start_backup SIGNAL running WAIT_FOR backup';
+BACKUP DATABASE backup_concurrent TO 'backup3';
+Waiting for backup to get going
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+Starting restore in another connection.  
+(Should fail because another backup is running.)
+RESTORE FROM 'backup1';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Insert Data
+INSERT INTO t VALUES (2, 'test');
+Wait for backup to complete
+SET DEBUG_SYNC= 'now SIGNAL backup';
+backup_id
+#
+---------------------------------------------------
+Testing starting backup/restore restore is ongoing
+---------------------------------------------------
+Starting restore
+SET DEBUG_SYNC= 'after_backup_start_restore SIGNAL running WAIT_FOR restore';
+RESTORE FROM 'backup1' OVERWRITE;
+Waiting for restore to get going
+SET DEBUG_SYNC= 'now WAIT_FOR running';
+Starting backup in another connection.  
+(Should fail because restore is running.)
+BACKUP DATABASE backup_concurrent TO 'backup4';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Insert Data
+INSERT INTO t VALUES (3, 'test');
+Starting a new restore in another connection.  
+(Should fail because another restore is running.)
+RESTORE FROM 'backup3';
+ERROR HY000: Can't execute this command because another BACKUP/RESTORE operation is in progress
+Insert Data
+INSERT INTO t VALUES (4, 'test');
+Wait for backup to complete
+SET DEBUG_SYNC= 'now SIGNAL restore';
+backup_id
+#
+
+Test completed. Cleaning up.
+
+DROP DATABASE backup_concurrent;
+SET DEBUG_SYNC= 'reset';

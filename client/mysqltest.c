@@ -75,7 +75,8 @@
 enum {
   OPT_SKIP_SAFEMALLOC=OPT_MAX_CLIENT_OPTION,
   OPT_PS_PROTOCOL, OPT_SP_PROTOCOL, OPT_CURSOR_PROTOCOL, OPT_VIEW_PROTOCOL,
-  OPT_MAX_CONNECT_RETRIES, OPT_MARK_PROGRESS, OPT_LOG_DIR, OPT_TAIL_LINES
+  OPT_MAX_CONNECT_RETRIES, OPT_MARK_PROGRESS, OPT_LOG_DIR, OPT_TAIL_LINES,
+  OPT_RESULT_FORMAT_VERSION
 };
 
 static int record= 0, opt_sleep= -1;
@@ -85,6 +86,7 @@ const char *opt_logdir= "";
 const char *opt_include= 0, *opt_charsets_dir;
 static int opt_port= 0;
 static int opt_max_connect_retries;
+static int opt_result_format_version;
 static my_bool opt_compress= 0, silent= 0, verbose= 0;
 static my_bool debug_info_flag= 0, debug_check_flag= 0;
 static my_bool tty_password= 0;
@@ -279,10 +281,13 @@ enum enum_commands {
   Q_CHMOD_FILE, Q_APPEND_FILE, Q_CAT_FILE, Q_DIFF_FILES,
   Q_SEND_QUIT, Q_CHANGE_USER, Q_MKDIR, Q_RMDIR, Q_LIST_FILES,
   Q_LIST_FILES_WRITE_FILE, Q_LIST_FILES_APPEND_FILE,
+  Q_SEND_SHUTDOWN, Q_SHUTDOWN_SERVER,
+  Q_RESULT_FORMAT_VERSION,
 
   Q_UNKNOWN,			       /* Unknown command.   */
   Q_COMMENT,			       /* Comments, ignored. */
-  Q_COMMENT_WITH_COMMAND
+  Q_COMMENT_WITH_COMMAND,
+  Q_EMPTY_LINE
 };
 
 
@@ -370,6 +375,10 @@ const char *command_names[]=
   "list_files",
   "list_files_write_file",
   "list_files_append_file",
+  "send_shutdown",
+  "shutdown_server",
+  "result_format",
+  "result_format",
 
   0
 };
@@ -1321,6 +1330,35 @@ static int run_tool(const char *tool_path, DYNAMIC_STRING *ds_res, ...)
   DBUG_RETURN(ret);
 }
 
+/*
+  Test if diff is present.  This is needed on Windows systems
+  as the OS returns 1 whether diff is successful or if it is
+  not present.
+  
+  We run diff -v and look for output in stdout.
+  We don't redirect stderr to stdout to make for a simplified check
+  Windows will output '"diff"' is not recognized... to stderr if it is
+  not present.
+*/
+
+int diff_check()
+{
+ char buf[512]= {0};
+ FILE *res_file;
+ const char *cmd = "diff -v";
+ int have_diff = 0;
+
+  if (!(res_file= popen(cmd, "r")))
+    die("popen(\"%s\", \"r\") failed", cmd);
+
+/* if diff is not present, nothing will be in stdout to increment have_diff */
+  if (fgets(buf, sizeof(buf), res_file))
+  {
+    have_diff += 1;
+  } 
+ pclose(res_file);
+ return have_diff;
+}
 
 /*
   Show the diff of two files using the systems builtin diff
@@ -1340,34 +1378,51 @@ void show_diff(DYNAMIC_STRING* ds,
 {
 
   DYNAMIC_STRING ds_tmp;
+  int have_diff = 0;
 
   if (init_dynamic_string(&ds_tmp, "", 256, 256))
     die("Out of memory");
+  
+  /* determine if we have diff on Windows
+     needs special processing due to return values
+     on that OS
+  */
+  have_diff = diff_check();
 
-  /* First try with unified diff */
-  if (run_tool("diff",
-               &ds_tmp, /* Get output from diff in ds_tmp */
-               "-u",
-               filename1,
-               filename2,
-               "2>&1",
-               NULL) > 1) /* Most "diff" tools return >1 if error */
+  if (have_diff)
   {
-    dynstr_set(&ds_tmp, "");
-
-    /* Fallback to context diff with "diff -c" */
+    /* First try with unified diff */
     if (run_tool("diff",
                  &ds_tmp, /* Get output from diff in ds_tmp */
-                 "-c",
+                 "-u",
                  filename1,
                  filename2,
                  "2>&1",
                  NULL) > 1) /* Most "diff" tools return >1 if error */
     {
-      /*
-        Fallback to dump both files to result file and inform
-        about installing "diff"
-      */
+      dynstr_set(&ds_tmp, "");
+
+      /* Fallback to context diff with "diff -c" */
+      if (run_tool("diff",
+                   &ds_tmp, /* Get output from diff in ds_tmp */
+                   "-c",
+                   filename1,
+                   filename2,
+                   "2>&1",
+                   NULL) > 1) /* Most "diff" tools return >1 if error */
+      {
+        have_diff= 1;
+      }  
+    }
+  }
+
+if (!(have_diff))
+  {
+    /*
+      Fallback to dump both files to result file and inform
+      about installing "diff"
+    */
+      
       dynstr_set(&ds_tmp, "");
 
       dynstr_append(&ds_tmp,
@@ -1391,8 +1446,7 @@ void show_diff(DYNAMIC_STRING* ds,
       dynstr_append(&ds_tmp, " >>>\n");
       cat_file(&ds_tmp, filename2);
       dynstr_append(&ds_tmp, "<<<<\n");
-    }
-  }
+  } 
 
   if (ds)
   {
@@ -2000,6 +2054,59 @@ void var_query_set(VAR *var, const char *query, const char** query_end)
 
   mysql_free_result(res);
   DBUG_VOID_RETURN;
+}
+
+
+static void
+set_result_format_version(ulong new_version)
+{
+  switch (new_version){
+  case 1:
+    /* The first format */
+    break;
+  case 2:
+    /* New format that also writes comments and empty lines
+       from test file to result */
+    break;
+  default:
+    die("Version format %lu has not yet been implemented", new_version);
+    break;
+  }
+  opt_result_format_version= new_version;
+}
+
+
+/*
+  Set the result format version to use when generating
+  the .result file
+*/
+
+static void
+do_result_format_version(struct st_command *command)
+{
+  long version;
+  static DYNAMIC_STRING ds_version;
+  const struct command_arg result_format_args[] = {
+    "version", ARG_STRING, TRUE, &ds_version, "Version to use",
+  };
+
+  DBUG_ENTER("do_result_format_version");
+
+  check_command_args(command, command->first_argument,
+                     result_format_args,
+                     sizeof(result_format_args)/sizeof(struct command_arg),
+                     ',');
+
+  /* Convert version  number to int */
+  if (!str2int(ds_version.str, 10, (long) 0, (long) INT_MAX, &version))
+    die("Invalid version number: '%s'", ds_version.str);
+
+  set_result_format_version(version);
+
+  dynstr_append(&ds_res, "result_format: ");
+  dynstr_append_mem(&ds_res, ds_version.str, ds_version.length);
+  dynstr_append(&ds_res, "\n");
+  dynstr_free(&ds_version);
 }
 
 
@@ -2784,7 +2891,7 @@ void do_mkdir(struct st_command *command)
   int error;
   static DYNAMIC_STRING ds_dirname;
   const struct command_arg mkdir_args[] = {
-    "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to create"
+    {"dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to create"}
   };
   DBUG_ENTER("do_mkdir");
 
@@ -2814,7 +2921,7 @@ void do_rmdir(struct st_command *command)
   int error;
   static DYNAMIC_STRING ds_dirname;
   const struct command_arg rmdir_args[] = {
-    "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to remove"
+    { "dirname", ARG_STRING, TRUE, &ds_dirname, "Directory to remove" }
   };
   DBUG_ENTER("do_rmdir");
 
@@ -3855,6 +3962,145 @@ void do_set_charset(struct st_command *command)
 }
 
 
+/*
+  Run query and return one field in the result set from the
+  first row and <column>
+*/
+
+int query_get_string(MYSQL* mysql, const char* query,
+                     int column, DYNAMIC_STRING* ds)
+{
+  MYSQL_RES *res= NULL;
+  MYSQL_ROW row;
+
+  if (mysql_query(mysql, query))
+    die("'%s' failed: %d %s", query,
+        mysql_errno(mysql), mysql_error(mysql));
+  if ((res= mysql_store_result(mysql)) == NULL)
+    die("Failed to store result: %d %s",
+        mysql_errno(mysql), mysql_error(mysql));
+
+  if ((row= mysql_fetch_row(res)) == NULL)
+  {
+    mysql_free_result(res);
+    ds= 0;
+    return 1;
+  }
+  init_dynamic_string(ds, (row[column] ? row[column] : "NULL"), ~0, 32);
+  mysql_free_result(res);
+  return 0;
+}
+
+
+static int my_kill(int pid, int sig)
+{
+#ifdef __WIN__
+  HANDLE proc;
+  if ((proc= OpenProcess(PROCESS_TERMINATE, FALSE, pid)) == NULL)
+    return -1;
+  if (sig == 0)
+  {
+    CloseHandle(proc);
+    return 0;
+  }
+  (void)TerminateProcess(proc, 201);
+  CloseHandle(proc);
+  return 1;
+#else
+  return kill(pid, sig);
+#endif
+}
+
+
+
+/*
+  Shutdown the server of current connection and
+  make sure it goes away within <timeout> seconds
+
+  NOTE! Currently only works with local server
+
+  SYNOPSIS
+  do_shutdown_server()
+  command  called command
+
+  DESCRIPTION
+  shutdown [<timeout>]
+
+*/
+
+void do_shutdown_server(struct st_command *command)
+{
+  int timeout=60, pid;
+  DYNAMIC_STRING ds_pidfile_name;
+  MYSQL* mysql = &cur_con->mysql;
+  static DYNAMIC_STRING ds_timeout;
+  const struct command_arg shutdown_args[] = {
+    {"timeout", ARG_STRING, FALSE, &ds_timeout, "Timeout before killing server"}
+  };
+  DBUG_ENTER("do_shutdown_server");
+
+  check_command_args(command, command->first_argument, shutdown_args,
+                     sizeof(shutdown_args)/sizeof(struct command_arg),
+                     ' ');
+
+  if (ds_timeout.length)
+  {
+    timeout= atoi(ds_timeout.str);
+    if (timeout == 0)
+      die("Illegal argument for timeout: '%s'", ds_timeout.str);
+  }
+  dynstr_free(&ds_timeout);
+
+  /* Get the servers pid_file name and use it to read pid */
+  if (query_get_string(mysql, "SHOW VARIABLES LIKE 'pid_file'", 1,
+                       &ds_pidfile_name))
+    die("Failed to get pid_file from server");
+
+  /* Read the pid from the file */
+  {
+    int fd;
+    char buff[32];
+
+    if ((fd= my_open(ds_pidfile_name.str, O_RDONLY, MYF(0))) < 0)
+      die("Failed to open file '%s'", ds_pidfile_name.str);
+    dynstr_free(&ds_pidfile_name);
+
+    if (my_read(fd, (uchar*)&buff,
+                sizeof(buff), MYF(0)) <= 0){
+      my_close(fd, MYF(0));
+      die("pid file was empty");
+    }
+    my_close(fd, MYF(0));
+
+    pid= atoi(buff);
+    if (pid == 0)
+      die("Pidfile didn't contain a valid number");
+  }
+  DBUG_PRINT("info", ("Got pid %d", pid));
+
+  /* Tell server to shutdown if timeout > 0*/
+  if (timeout && mysql_shutdown(mysql, SHUTDOWN_DEFAULT))
+    die("mysql_shutdown failed");
+
+  /* Check that server dies */
+  while(timeout--){
+    if (my_kill(0, pid) < 0){
+      DBUG_PRINT("info", ("Process %d does not exist anymore", pid));
+      break;
+    }
+    DBUG_PRINT("info", ("Sleeping, timeout: %d", timeout));
+    my_sleep(1000000L);
+  }
+
+  /* Kill the server */
+  DBUG_PRINT("info", ("Killing server, pid: %d", pid));
+  (void)my_kill(9, pid);
+
+  DBUG_VOID_RETURN;
+
+}
+
+
 #if MYSQL_VERSION_ID >= 50000
 /* List of error names to error codes, available from 5.0 */
 typedef struct
@@ -4774,7 +5020,7 @@ my_bool end_of_query(int c)
 
 int read_line(char *buf, int size)
 {
-  char c, last_quote;
+  char c, last_quote, last_char= 0;
   char *p= buf, *buf_end= buf + size - 1;
   int skip_char= 0;
   enum {R_NORMAL, R_Q, R_SLASH_IN_Q,
@@ -4873,9 +5119,17 @@ int read_line(char *buf, int size)
       }
       else if (my_isspace(charset_info, c))
       {
-        /* Skip all space at begining of line */
 	if (c == '\n')
         {
+          if (last_char == '\n')
+          {
+            /* Two new lines in a row, return empty line */
+            DBUG_PRINT("info", ("Found two new lines in a row"));
+            *p++= c;
+            *p= 0;
+            DBUG_RETURN(0);
+          }
+
           /* Query hasn't started yet */
 	  start_lineno= cur_file->lineno;
           DBUG_PRINT("info", ("Query hasn't started yet, start_lineno: %d",
@@ -4921,6 +5175,7 @@ int read_line(char *buf, int size)
 
     }
 
+    last_char= c;
     if (!skip_char)
     {
       /* Could be a multibyte character */
@@ -5166,9 +5421,10 @@ int read_command(struct st_command** command_ptr)
     DBUG_RETURN(1);
   }
 
-  convert_to_format_v1(read_command_buf);
+  if (opt_result_format_version == 1)
+    convert_to_format_v1(read_command_buf);
 
-  DBUG_PRINT("info", ("query: %s", read_command_buf));
+  DBUG_PRINT("info", ("query: '%s'", read_command_buf));
   if (*p == '#')
   {
     command->type= Q_COMMENT;
@@ -5177,6 +5433,10 @@ int read_command(struct st_command** command_ptr)
   {
     command->type= Q_COMMENT_WITH_COMMAND;
     p+= 2; /* Skip past -- */
+  }
+  else if (*p == '\n')
+  {
+    command->type= Q_EMPTY_LINE;
   }
 
   /* Skip leading spaces */
@@ -5270,6 +5530,11 @@ static struct my_option my_long_options[] =
   {"result-file", 'R', "Read/Store result from/in this file.",
    (uchar**) &result_file_name, (uchar**) &result_file_name, 0,
    GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"result-format-version", OPT_RESULT_FORMAT_VERSION,
+   "Version of the result file format to use",
+   (uchar**) &opt_result_format_version,
+   (uchar**) &opt_result_format_version, 0,
+   GET_INT, REQUIRED_ARG, 1, 1, 2, 0, 0, 0},
   {"server-arg", 'A', "Send option value to embedded server as a parameter.",
    0, 0, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"server-file", 'F', "Read embedded server arguments from file.",
@@ -5460,6 +5725,9 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
 #ifdef SAFEMALLOC
     sf_malloc_quick=1;
 #endif
+    break;
+  case OPT_RESULT_FORMAT_VERSION:
+    set_result_format_version(opt_result_format_version);
     break;
   case 'V':
     print_version();
@@ -7318,6 +7586,7 @@ int main(int argc, char **argv)
       case Q_COPY_FILE: do_copy_file(command); break;
       case Q_CHMOD_FILE: do_chmod_file(command); break;
       case Q_PERL: do_perl(command); break;
+      case Q_RESULT_FORMAT_VERSION: do_result_format_version(command); break;
       case Q_DELIMITER:
         do_delimiter(command);
 	break;
@@ -7434,12 +7703,49 @@ int main(int argc, char **argv)
 	do_sync_with_master2(0);
 	break;
       }
-      case Q_COMMENT:				/* Ignore row */
+      case Q_COMMENT:
+      {
+        const char* p= command->query;
         command->last_argument= command->end;
+
+        /* Don't output comments in v1 */
+        if (opt_result_format_version == 1)
+          break;
+
+        /* Don't output comments if query logging is off */
+        if (disable_query_log)
+          break;
+
+        /* Write comment's with two starting #'s to result file */
+        if (p && *p == '#' && *(p+1) == '#')
+        {
+          dynstr_append_mem(&ds_res, command->query, command->query_len);
+          dynstr_append(&ds_res, "\n");
+        }
 	break;
+      }
+      case Q_EMPTY_LINE:
+        /* Don't output newline in v1 */
+        if (opt_result_format_version == 1)
+          break;
+
+        /* Don't output newline if query logging is off */
+        if (disable_query_log)
+          break;
+
+        dynstr_append(&ds_res, "\n");
+        break;
       case Q_PING:
 	(void) mysql_ping(&cur_con->mysql);
 	break;
+      case Q_SEND_SHUTDOWN:
+        handle_command_error(command,
+                             mysql_shutdown(&cur_con->mysql,
+                                            SHUTDOWN_DEFAULT));
+        break;
+      case Q_SHUTDOWN_SERVER:
+        do_shutdown_server(command);
+        break;
       case Q_EXEC:
 	do_exec(command);
 	command_executed++;

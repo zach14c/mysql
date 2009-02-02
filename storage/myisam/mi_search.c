@@ -816,7 +816,7 @@ uint _mi_get_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
 	    DBUG_PRINT("error",
                        ("Found too long null packed key: %u of %u at %p",
                         length, keyseg->length, *page_pos));
-	    DBUG_DUMP("key",(uchar*) *page_pos,16);
+	    DBUG_DUMP("key",*page_pos,16);
             mi_print_error(keyinfo->share, HA_ERR_CRASHED);
 	    my_errno=HA_ERR_CRASHED;
 	    return 0;
@@ -873,7 +873,7 @@ uint _mi_get_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
       {
         DBUG_PRINT("error",("Found too long packed key: %u of %u at %p",
                             length, keyseg->length, *page_pos));
-        DBUG_DUMP("key",(uchar*) *page_pos,16);
+        DBUG_DUMP("key",*page_pos,16);
         mi_print_error(keyinfo->share, HA_ERR_CRASHED);
         my_errno=HA_ERR_CRASHED;
         return 0;                               /* Error */
@@ -945,7 +945,7 @@ uint _mi_get_binary_pack_key(register MI_KEYDEF *keyinfo, uint nod_flag,
       DBUG_PRINT("error",
                  ("Found too long binary packed key: %u of %u at %p",
                   length, keyinfo->maxlength, *page_pos));
-      DBUG_DUMP("key",(uchar*) *page_pos,16);
+      DBUG_DUMP("key",*page_pos,16);
       mi_print_error(keyinfo->share, HA_ERR_CRASHED);
       my_errno=HA_ERR_CRASHED;
       DBUG_RETURN(0);                                 /* Wrong key */
@@ -1802,13 +1802,13 @@ _mi_calc_bin_pack_key_length(MI_KEYDEF *keyinfo,uint nod_flag,uchar *next_key,
     }
     /* Check how many characters are identical to next key */
     key= s_temp->key+next_length;
+    s_temp->prev_length= 0;
     while (*key++ == *next_key++) ;
     if ((ref_length= (uint) (key - s_temp->key)-1) == next_length)
     {
       s_temp->next_key_pos=0;
       return length;                            /* can't pack next key */
     }
-    s_temp->prev_length=0;
     s_temp->n_ref_length=ref_length;
     return (int) (length-(ref_length - next_length) - next_length_pack +
                   get_pack_length(ref_length));

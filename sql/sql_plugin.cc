@@ -20,14 +20,6 @@
 #define REPORT_TO_LOG  1
 #define REPORT_TO_USER 2
 
-#ifdef DBUG_OFF
-#define plugin_ref_to_int(A) A
-#define plugin_int_to_ref(A) A
-#else
-#define plugin_ref_to_int(A) (A ? A[0] : NULL)
-#define plugin_int_to_ref(A) &(A)
-#endif
-
 extern struct st_mysql_plugin *mysqld_builtins[];
 
 char *opt_plugin_load= NULL;
@@ -44,7 +36,8 @@ const LEX_STRING plugin_type_names[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   { C_STRING_WITH_LEN("FTPARSER") },
   { C_STRING_WITH_LEN("DAEMON") },
   { C_STRING_WITH_LEN("INFORMATION SCHEMA") },
-  { C_STRING_WITH_LEN("AUDIT") }
+  { C_STRING_WITH_LEN("AUDIT") },
+  { C_STRING_WITH_LEN("REPLICATION") },
 };
 
 extern int initialize_schema_table(st_plugin_int *plugin);
@@ -89,7 +82,8 @@ static int min_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_FTPARSER_INTERFACE_VERSION,
   MYSQL_DAEMON_INTERFACE_VERSION,
   MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION,
-  MYSQL_AUDIT_INTERFACE_VERSION
+  MYSQL_AUDIT_INTERFACE_VERSION,
+  MYSQL_REPLICATION_INTERFACE_VERSION
 };
 static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
 {
@@ -98,7 +92,8 @@ static int cur_plugin_info_interface_version[MYSQL_MAX_PLUGIN_TYPE_NUM]=
   MYSQL_FTPARSER_INTERFACE_VERSION,
   MYSQL_DAEMON_INTERFACE_VERSION,
   MYSQL_INFORMATION_SCHEMA_INTERFACE_VERSION,
-  MYSQL_AUDIT_INTERFACE_VERSION
+  MYSQL_AUDIT_INTERFACE_VERSION,
+  MYSQL_REPLICATION_INTERFACE_VERSION
 };
 
 static bool initialized= 0;
@@ -760,21 +755,22 @@ static bool plugin_add(MEM_ROOT *tmp_root,
       tmp.name.length= name_len;
       tmp.ref_count= 0;
       tmp.state= PLUGIN_IS_UNINITIALIZED;
-      if (!test_plugin_options(tmp_root, &tmp, argc, argv, true))
+      if (test_plugin_options(tmp_root, &tmp, argc, argv, true))
+        tmp.state= PLUGIN_IS_DISABLED;
+
+      if ((tmp_plugin_ptr= plugin_insert_or_reuse(&tmp)))
       {
-        if ((tmp_plugin_ptr= plugin_insert_or_reuse(&tmp)))
+        plugin_array_version++;
+        if (!my_hash_insert(&plugin_hash[plugin->type], (uchar*)tmp_plugin_ptr))
         {
-          plugin_array_version++;
-          if (!my_hash_insert(&plugin_hash[plugin->type], (uchar*)tmp_plugin_ptr))
-          {
-            init_alloc_root(&tmp_plugin_ptr->mem_root, 4096, 4096);
-            DBUG_RETURN(FALSE);
-          }
-          tmp_plugin_ptr->state= PLUGIN_IS_FREED;
+          init_alloc_root(&tmp_plugin_ptr->mem_root, 4096, 4096);
+          DBUG_RETURN(FALSE);
         }
-        mysql_del_sys_var_chain(tmp.system_vars);
-        goto err;
+        tmp_plugin_ptr->state= PLUGIN_IS_FREED;
       }
+      mysql_del_sys_var_chain(tmp.system_vars);
+      goto err;
+
       /* plugin was disabled */
       plugin_dl_del(dl);
       DBUG_RETURN(FALSE);
@@ -1154,11 +1150,12 @@ int plugin_init(int *argc, char **argv, int flags)
       tmp.plugin= plugin;
       tmp.name.str= (char *)plugin->name;
       tmp.name.length= strlen(plugin->name);
-
+      tmp.state= 0;
       free_root(&tmp_root, MYF(MY_MARK_BLOCKS_FREE));
       if (test_plugin_options(&tmp_root, &tmp, argc, argv, def_enabled))
-        continue;
-
+        tmp.state= PLUGIN_IS_DISABLED;
+      else
+        tmp.state= PLUGIN_IS_UNINITIALIZED;
       if (register_builtin(plugin, &tmp, &plugin_ptr))
         goto err_unlock;
 
@@ -1168,7 +1165,8 @@ int plugin_init(int *argc, char **argv, int flags)
           my_strcasecmp(&my_charset_latin1, plugin->name, "CSV"))
         continue;
 
-      if (plugin_initialize(plugin_ptr))
+      if (plugin_ptr->state == PLUGIN_IS_UNINITIALIZED &&
+          plugin_initialize(plugin_ptr))
         goto err_unlock;
 
       /*
@@ -1255,8 +1253,6 @@ static bool register_builtin(struct st_mysql_plugin *plugin,
                              struct st_plugin_int **ptr)
 {
   DBUG_ENTER("register_builtin");
-
-  tmp->state= PLUGIN_IS_UNINITIALIZED;
   tmp->ref_count= 0;
   tmp->plugin_dl= 0;
 
@@ -1305,7 +1301,7 @@ bool plugin_register_builtin(THD *thd, struct st_mysql_plugin *plugin)
 
   if (test_plugin_options(thd->mem_root, &tmp, &dummy_argc, NULL, true))
     goto end;
-
+  tmp.state= PLUGIN_IS_UNINITIALIZED;
   if ((result= register_builtin(plugin, &tmp, &ptr)))
     mysql_del_sys_var_chain(tmp.system_vars);
 
@@ -1336,7 +1332,6 @@ static void plugin_load(MEM_ROOT *tmp_root, int *argc, char **argv)
 
   new_thd->thread_stack= (char*) &tables;
   new_thd->store_globals();
-  lex_start(new_thd);
   new_thd->db= my_strdup("mysql", MYF(0));
   new_thd->db_length= 5;
   bzero((char*) &thd.net, sizeof(thd.net));
@@ -1560,7 +1555,8 @@ void plugin_shutdown(void)
       We loop through all plugins and call deinit() if they have one.
     */
     for (i= 0; i < count; i++)
-      if (!(plugins[i]->state & (PLUGIN_IS_UNINITIALIZED | PLUGIN_IS_FREED)))
+      if (!(plugins[i]->state & (PLUGIN_IS_UNINITIALIZED | PLUGIN_IS_FREED |
+                                 PLUGIN_IS_DISABLED)))
       {
         sql_print_information("Plugin '%s' will be forced to shutdown",
                               plugins[i]->name.str);
@@ -1669,11 +1665,18 @@ bool mysql_install_plugin(THD *thd, const LEX_STRING *name, const LEX_STRING *dl
     goto deinit;
   }
 
+  /*
+    We do not replicate the INSTALL PLUGIN statement. Disable binlogging
+    of the insert into the plugin table, so that it is not replicated in
+    row based mode.
+  */
+  tmp_disable_binlog(thd);
   table->use_all_columns();
   restore_record(table, s->default_values);
   table->field[0]->store(name->str, name->length, system_charset_info);
   table->field[1]->store(dl->str, dl->length, files_charset_info);
   error= table->file->ha_write_row(table->record[0]);
+  reenable_binlog(thd);
   if (error)
   {
     table->file->print_error(error, MYF(0));
@@ -1716,16 +1719,16 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
   }
   if (!plugin->plugin_dl)
   {
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                 "Built-in plugins cannot be deleted,.");
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                 WARN_PLUGIN_DELETE_BUILTIN, ER(WARN_PLUGIN_DELETE_BUILTIN));
     my_error(ER_SP_DOES_NOT_EXIST, MYF(0), "PLUGIN", name->str);
     goto err;
   }
 
   plugin->state= PLUGIN_IS_DELETED;
   if (plugin->ref_count)
-    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN, 0,
-                 "Plugin is busy and will be uninstalled on shutdown");
+    push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+                 WARN_PLUGIN_BUSY, ER(WARN_PLUGIN_BUSY));
   else
     reap_needed= true;
   reap_plugins();
@@ -1739,7 +1742,15 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_STRING *name)
                                         HA_READ_KEY_EXACT))
   {
     int error;
-    if ((error= table->file->ha_delete_row(table->record[0])))
+    /*
+      We do not replicate the UNINSTALL PLUGIN statement. Disable binlogging
+      of the delete from the plugin table, so that it is not replicated in
+      row based mode.
+    */
+    tmp_disable_binlog(thd);
+    error= table->file->ha_delete_row(table->record[0]);
+    reenable_binlog(thd);
+    if (error)
     {
       table->file->print_error(error, MYF(0));
       DBUG_RETURN(TRUE);

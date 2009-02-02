@@ -1,0 +1,64 @@
+###########################################################################
+# Purpose: Test backup/restore of blobs
+###########################################################################
+
+# This is currently only a regression test for bug#37212. When the
+# test is moved to the backup suite, at least one storage engine for
+# each driver should be tested.
+
+--source include/not_embedded.inc
+--source include/have_innodb.inc
+
+--disable_warnings
+DROP DATABASE IF EXISTS mysqltest;
+--enable_warnings
+
+--echo
+--echo Test blobs, InnoDB
+--echo
+
+CREATE DATABASE mysqltest;
+USE mysqltest;
+
+CREATE TABLE t1 (id int, txt longblob) ENGINE=innodb;
+INSERT INTO t1 VALUES(1, "short text");
+INSERT INTO t1 VALUES(2, "a little longer, but still short text");
+
+CREATE TABLE t2 (id int, txt longblob) ENGINE=innodb;
+INSERT INTO t2 VALUES(1, REPEAT('x',1000));
+INSERT INTO t2 VALUES(2, REPEAT('y',10000));
+INSERT INTO t2 VALUES(3, REPEAT('z',1048576));
+
+CREATE TABLE t3 (id int, txt longblob, txt2 longblob, txt3 longblob) ENGINE=innodb;
+INSERT INTO t3 VALUES(1, REPEAT('x',1048576), REPEAT('y',1048576), REPEAT('z',1048576));
+
+--echo
+--echo Check tables before backup
+SELECT * FROM t1 ORDER BY id; 
+CHECKSUM TABLE t2;
+CHECKSUM TABLE t3;
+
+--echo
+--echo Backup, drop and restore database
+
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'blob.bak';
+
+DROP DATABASE mysqltest;
+--replace_column 1 #
+RESTORE FROM 'blob.bak';
+
+--echo
+--echo Check tables after restore
+
+SELECT * FROM t1 ORDER BY id; 
+CHECKSUM TABLE t2;
+CHECKSUM TABLE t3;
+
+--echo
+--echo Cleanup 
+--echo
+
+DROP DATABASE mysqltest;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/blob.bak

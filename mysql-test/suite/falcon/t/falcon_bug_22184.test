@@ -8,7 +8,6 @@ SET STORAGE_ENGINE = Falcon;
 DROP TABLE IF EXISTS t6;
 --enable_warnings
 
-SET @@max_allowed_packet = 20000000;
 CREATE TABLE t6 (s1 longblob);
 INSERT INTO t6 VALUES (repeat('a',2100000));
 INSERT INTO t6 VALUES (repeat('a',2200000));

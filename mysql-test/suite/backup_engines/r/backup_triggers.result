@@ -1,0 +1,775 @@
+SHOW VARIABLES LIKE 'storage_engine';
+Variable_name	Value
+storage_engine	#
+
+starting the test for backup
+
+DROP DATABASE IF EXISTS bup_ts;
+CREATE DATABASE bup_ts;
+USE bup_ts;
+SELECT @@SQL_MODE;
+@@SQL_MODE
+
+*****Creating table cap ******
+CREATE TABLE bup_ts.cap(
+id SMALLINT,
+country CHAR(20),
+city VARCHAR(20),
+population BIGINT,
+capital CHAR(20)
+);
+******* Creating table city*****.
+CREATE TABLE bup_ts.city(
+id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(20),
+ccode CHAR(10),
+population bigint
+);
+*******Creating table dropcity *****
+CREATE TABLE bup_ts.dropcity(
+id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(20)
+);
+******Create Trigger for the table*******
+*******creating trigger with event before insert**********
+CREATE TRIGGER cap_tri BEFORE INSERT ON cap FOR EACH ROW
+SET new.population= if(new.population<0,0,truncate(new.population,-3));||
+********creating trigger with event before Update******
+CREATE  TRIGGER capu_tri BEFORE UPDATE ON cap FOR EACH ROW
+BEGIN
+SET @country=old.country;
+SET @capital_old=old.capital;
+SET @capital_new=new.capital;
+END;
+||
+*****creating trigger with event after delete********
+CREATE TRIGGER cityin_d AFTER
+DELETE ON city FOR EACH ROW
+INSERT INTO dropcity(id, name) VALUES(old.id, old.name);||
+Creating Tables
+CREATE TABLE bup_ts.t2(a CHAR(4));
+CREATE TABLE bup_ts.t3(a CHAR(4));
+CREATE TABLE bup_ts.t4(a CHAR(4));
+Creating Triggers
+Creating trigger with event after insert
+CREATE TRIGGER trai AFTER INSERT ON t2 FOR EACH ROW
+BEGIN
+INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END;
+||
+Creating trigger with event after Update
+CREATE TRIGGER trau AFTER UPDATE ON t2 FOR EACH ROW
+BEGIN
+INSERT INTO t4 VALUES('J'),('O'),('B');
+END;
+||
+Load data in to table
+********Inserting Values in tables*********
+INSERT INTO bup_ts.cap VALUES
+(1,'IND','chn',87874646468,'deli'),(2,'US','Austin',-6466547,'DC'),
+(3,'Russia','moscow',76487623235682,'moscow'),(4,'IND','bang',-83875477,'deli'),
+(5,'US','sacramento',-388348,'DC'),(6,'IND','jammu',3848488,'deli'),
+(7,'Russia','xx',-373788,'moscow'),(8,'IND','hyd',647747,'deli');
+INSERT INTO bup_ts.city VALUES
+(1,'aa','AD',263768),(2,'bb','PO',8839898),(3,'cc','KL',898778),
+(4,'dd','IK',73287328),(5,'ee','YU',89399),(6,'ff','IL',90880),
+(7,'gg','TY',345),(8,'hh','WE',9239084);
+Updating the table to fire trigger with event update
+UPDATE cap SET capital='Delhi' WHERE country='Ind';
+UPDATE cap SET capital='Washington DC' WHERE country='US';
+SELECT @country as country, @capital_old as 'old capital',
+@capital_new as 'new capital';
+country	old capital	new capital
+US	DC	Washington DC
+showing the tables to check the trigger is fired  with event insert
+SELECT * FROM bup_ts.cap ORDER BY city;
+id	country	city	population	capital
+2	US	Austin	0	Washington DC
+4	IND	bang	0	Delhi
+1	IND	chn	87874646000	Delhi
+8	IND	hyd	647000	Delhi
+6	IND	jammu	3848000	Delhi
+3	Russia	moscow	76487623235000	moscow
+5	US	sacramento	0	Washington DC
+7	Russia	xx	0	moscow
+selecting data from table city
+SELECT * FROM bup_ts.city ORDER BY name;
+id	name	ccode	population
+1	aa	AD	263768
+2	bb	PO	8839898
+3	cc	KL	898778
+4	dd	IK	73287328
+5	ee	YU	89399
+6	ff	IL	90880
+7	gg	TY	345
+8	hh	WE	9239084
+deleting few rows from table city to fire trigger with event delete.
+DELETE FROM bup_ts.city WHERE name='dd';
+DELETE FROM bup_ts.city WHERE name='bb';
+
+Checking table contents of city and dropcity to verify if trigger is
+fired for event delete.
+SELECT * FROM city ORDER BY name;
+id	name	ccode	population
+1	aa	AD	263768
+3	cc	KL	898778
+5	ee	YU	89399
+6	ff	IL	90880
+7	gg	TY	345
+8	hh	WE	9239084
+SELECT * FROM dropcity ORDER BY id;
+id	name
+2	bb
+4	dd
+******Firing Trigger after insert and after update *********
+INSERT INTO bup_ts.t2 values('a'),('k'),('*'),('i');
+SELECT * FROM bup_ts.t3;
+a
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+UPDATE t2 SET a='*' WHERE a='k';
+SELECT * FROM bup_ts.t4;
+a
+J
+O
+B
+Show the data and Create statements
+showing objects and create statements.
+SHOW TRIGGERS;;
+Trigger	cap_tri
+Event	INSERT
+Table	cap
+Statement	SET new.population= if(new.population<0,0,truncate(new.population,-3))
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	capu_tri
+Event	UPDATE
+Table	cap
+Statement	BEGIN
+SET @country=old.country;
+SET @capital_old=old.capital;
+SET @capital_new=new.capital;
+END
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	cityin_d
+Event	DELETE
+Table	city
+Statement	INSERT INTO dropcity(id, name) VALUES(old.id, old.name)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	trai
+Event	INSERT
+Table	t2
+Statement	BEGIN
+INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	trau
+Event	UPDATE
+Table	t2
+Statement	BEGIN
+INSERT INTO t4 VALUES('J'),('O'),('B');
+END
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER cap_tri;;
+Trigger	cap_tri
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER cap_tri BEFORE INSERT ON cap FOR EACH ROW
+SET new.population= if(new.population<0,0,truncate(new.population,-3))
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER capu_tri;;
+Trigger	capu_tri
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER capu_tri BEFORE UPDATE ON cap FOR EACH ROW
+BEGIN
+SET @country=old.country;
+SET @capital_old=old.capital;
+SET @capital_new=new.capital;
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER cityin_d;;
+Trigger	cityin_d
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER cityin_d AFTER
+DELETE ON city FOR EACH ROW
+INSERT INTO dropcity(id, name) VALUES(old.id, old.name)
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER trai;;
+Trigger	trai
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER trai AFTER INSERT ON t2 FOR EACH ROW
+BEGIN
+INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER trau;;
+Trigger	trau
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER trau AFTER UPDATE ON t2 FOR EACH ROW
+BEGIN
+INSERT INTO t4 VALUES('J'),('O'),('B');
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TABLE city;;
+Table	city
+Create Table	CREATE TABLE `city` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(20) DEFAULT NULL,
+  `ccode` char(10) DEFAULT NULL,
+  `population` bigint(20) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=ENGINE AUTO_INCREMENT=9 DEFAULT CHARSET=latin1
+SHOW CREATE TABLE t2;;
+Table	t2
+Create Table	CREATE TABLE `t2` (
+  `a` char(4) DEFAULT NULL
+) ENGINE=ENGINE DEFAULT CHARSET=latin1
+backup data
+BACKUP DATABASE bup_ts TO 'bup_ts.bak';
+backup_id
+#
+dropping  database.
+DROP DATABASE bup_ts;
+perform restore
+RESTORE FROM 'bup_ts.bak';
+backup_id
+#
+show data and create statements after Restore
+showing objects and create statements
+SHOW CREATE DATABASE bup_ts;;
+Database	bup_ts
+Create Database	CREATE DATABASE `bup_ts` /*!40100 DEFAULT CHARACTER SET latin1 */
+SHOW CREATE TRIGGER cap_tri;;
+Trigger	cap_tri
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER cap_tri BEFORE INSERT ON cap FOR EACH ROW
+SET new.population= if(new.population<0,0,truncate(new.population,-3))
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER cityin_d;;
+Trigger	cityin_d
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER cityin_d AFTER
+DELETE ON city FOR EACH ROW
+INSERT INTO dropcity(id, name) VALUES(old.id, old.name)
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER trai;;
+Trigger	trai
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER trai AFTER INSERT ON t2 FOR EACH ROW
+BEGIN
+INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TRIGGER trau;;
+Trigger	trau
+sql_mode	
+SQL Original Statement	CREATE DEFINER=`root`@`localhost` TRIGGER trau AFTER UPDATE ON t2 FOR EACH ROW
+BEGIN
+INSERT INTO t4 VALUES('J'),('O'),('B');
+END
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW TRIGGERS;;
+Trigger	cap_tri
+Event	INSERT
+Table	cap
+Statement	SET new.population= if(new.population<0,0,truncate(new.population,-3))
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	capu_tri
+Event	UPDATE
+Table	cap
+Statement	BEGIN
+SET @country=old.country;
+SET @capital_old=old.capital;
+SET @capital_new=new.capital;
+END
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	cityin_d
+Event	DELETE
+Table	city
+Statement	INSERT INTO dropcity(id, name) VALUES(old.id, old.name)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	trai
+Event	INSERT
+Table	t2
+Statement	BEGIN
+INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	trau
+Event	UPDATE
+Table	t2
+Statement	BEGIN
+INSERT INTO t4 VALUES('J'),('O'),('B');
+END
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Inserting some more values in the table to check the trigger with event insert
+INSERT INTO bup_ts.cap VALUES
+(9,'US','houston',-33399587677866656555655555655,'texas');
+Warnings:
+Warning	1264	Out of range value for column 'population' at row 1
+SELECT * FROM bup_ts.cap ORDER BY city;
+id	country	city	population	capital
+2	US	Austin	0	Washington DC
+4	IND	bang	0	Delhi
+1	IND	chn	87874646000	Delhi
+9	US	houston	0	texas
+8	IND	hyd	647000	Delhi
+6	IND	jammu	3848000	Delhi
+3	Russia	moscow	76487623235000	moscow
+5	US	sacramento	0	Washington DC
+7	Russia	xx	0	moscow
+Deleting some rows from city to check the trigger with event delete
+DELETE FROM city WHERE name='aa';
+Checking table city and drop city
+SELECT * FROM bup_ts.city ORDER BY name;
+id	name	ccode	population
+3	cc	KL	898778
+5	ee	YU	89399
+6	ff	IL	90880
+7	gg	TY	345
+8	hh	WE	9239084
+SELECT * FROM bup_ts.dropcity ORDER BY id;
+id	name
+1	aa
+2	bb
+4	dd
+INSERT INTO bup_ts.t2 VALUES('m'),('s1'),('s'),('q'),('l');
+SELECT * FROM bup_ts.t3;
+a
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+UPDATE t2 SET a='y' WHERE a='s1';
+SELECT * FROM bup_ts.t4;
+a
+J
+O
+B
+J
+O
+B
+DROP DATABASE bup_ts;
+Change sql mode and perform Restore and check the table contents.
+SET SQL_MODE=TRADITIONAL;
+RESTORE FROM 'bup_ts.bak';
+backup_id
+#
+SHOW TRIGGERS;;
+Trigger	cap_tri
+Event	INSERT
+Table	cap
+Statement	SET new.population= if(new.population<0,0,truncate(new.population,-3))
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	capu_tri
+Event	UPDATE
+Table	cap
+Statement	BEGIN
+SET @country=old.country;
+SET @capital_old=old.capital;
+SET @capital_new=new.capital;
+END
+Timing	BEFORE
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	cityin_d
+Event	DELETE
+Table	city
+Statement	INSERT INTO dropcity(id, name) VALUES(old.id, old.name)
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	trai
+Event	INSERT
+Table	t2
+Statement	BEGIN
+INSERT INTO t3 VALUES('H'),('E'),('L'),('L'),('O');
+END
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+Trigger	trau
+Event	UPDATE
+Table	t2
+Statement	BEGIN
+INSERT INTO t4 VALUES('J'),('O'),('B');
+END
+Timing	AFTER
+Created	NULL
+sql_mode	
+Definer	root@localhost
+character_set_client	latin1
+collation_connection	latin1_swedish_ci
+Database Collation	latin1_swedish_ci
+SHOW CREATE TABLE t2;;
+Table	t2
+Create Table	CREATE TABLE `t2` (
+  `a` char(4) DEFAULT NULL
+) ENGINE=ENGINE DEFAULT CHARSET=latin1
+SHOW CREATE TABLE city;;
+Table	city
+Create Table	CREATE TABLE `city` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(20) DEFAULT NULL,
+  `ccode` char(10) DEFAULT NULL,
+  `population` bigint(20) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=ENGINE AUTO_INCREMENT=9 DEFAULT CHARSET=latin1
+SHOW CREATE TABLE cap;;
+Table	cap
+Create Table	CREATE TABLE `cap` (
+  `id` smallint(6) DEFAULT NULL,
+  `country` char(20) DEFAULT NULL,
+  `city` varchar(20) DEFAULT NULL,
+  `population` bigint(20) DEFAULT NULL,
+  `capital` char(20) DEFAULT NULL
+) ENGINE=ENGINE DEFAULT CHARSET=latin1
+Check contents after Restore and change of SQL mode
+INSERT INTO bup_ts.cap VALUES(10,'India','Daund',36637782899,'maharashtra');
+SELECT * FROM bup_ts.cap ORDER BY city;
+id	country	city	population	capital
+2	US	Austin	0	Washington DC
+4	IND	bang	0	Delhi
+1	IND	chn	87874646000	Delhi
+10	India	Daund	36637782000	maharashtra
+8	IND	hyd	647000	Delhi
+6	IND	jammu	3848000	Delhi
+3	Russia	moscow	76487623235000	moscow
+5	US	sacramento	0	Washington DC
+7	Russia	xx	0	moscow
+INSERT INTO bup_ts.t2 VALUES('i'),('w');
+SELECT * FROM t3;
+a
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+UPDATE t2 SET a='^' WHERE a='w';
+SELECT * FROM t4;
+a
+J
+O
+B
+J
+O
+B
+DROP DATABASE bup_ts;
+change of SQL mode
+SET SQL_MODE=MAXDB;
+RESTORE FROM 'bup_ts.bak';
+backup_id
+#
+Check contents after Restore and change of SQL mode
+INSERT INTO bup_ts.cap VALUES(11,'UK','Edenburg',-36637782899,'london');
+SELECT * FROM bup_ts.cap ORDER BY city;
+id	country	city	population	capital
+2	US	Austin	0	Washington DC
+4	IND	bang	0	Delhi
+1	IND	chn	87874646000	Delhi
+11	UK	Edenburg	0	london
+8	IND	hyd	647000	Delhi
+6	IND	jammu	3848000	Delhi
+3	Russia	moscow	76487623235000	moscow
+5	US	sacramento	0	Washington DC
+7	Russia	xx	0	moscow
+INSERT INTO bup_ts.t2 VALUES('i'),('w'),('h');
+SELECT * FROM bup_ts.t3;
+a
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+UPDATE t2 SET a='p' WHERE a='h';
+SELECT * FROM bup_ts.t4;
+a
+J
+O
+B
+J
+O
+B
+DROP DATABASE bup_ts;
+Chnage SQL mode and then perform Restore.
+SET SQL_MODE=ANSI;
+RESTORE FROM 'bup_ts.bak';
+backup_id
+#
+Check contents after Restore and change of SQL mode
+INSERT INTO bup_ts.cap VALUES(12,'India','vooty',789,'Tamilnadu');
+SELECT * FROM bup_ts.cap ORDER BY city;
+id	country	city	population	capital
+2	US	Austin	0	Washington DC
+4	IND	bang	0	Delhi
+1	IND	chn	87874646000	Delhi
+8	IND	hyd	647000	Delhi
+6	IND	jammu	3848000	Delhi
+3	Russia	moscow	76487623235000	moscow
+5	US	sacramento	0	Washington DC
+12	India	vooty	0	Tamilnadu
+7	Russia	xx	0	moscow
+INSERT INTO bup_ts.t2 VALUES('i'),('w'),('h'),('b');
+SELECT * FROM bup_ts.t3;
+a
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+H
+E
+L
+L
+O
+UPDATE bup_ts.t2 SET a='#' WHERE a='w';
+SELECT * FROM bup_ts.t4;
+a
+J
+O
+B
+J
+O
+B
+
+***  DROP bup_ts DATABASE ****
+
+DROP DATABASE bup_ts;

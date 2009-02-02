@@ -35,8 +35,8 @@ struct RecordIndex;
 struct SectionAnalysis;
 
 struct LineIndex {
-	short		offset;
-	short		length;				// negative means record has overflow page
+	uint16		offset;
+	int16		length;				// negative means record has overflow page
 	};
 
 class DataPage : public Page

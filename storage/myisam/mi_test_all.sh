@@ -80,7 +80,7 @@ if test -f mi_test1$MACH ; then suffix=$MACH ; else suffix=""; fi
 # check of myisampack / myisamchk
 ./myisampack$suffix --force -s test1
 # Ignore error for index file
-./myisamchk$suffix -es test1 2>&1 >& /dev/null
+./myisamchk$suffix -es test1 >/dev/null 2>&1
 ./myisamchk$suffix -rqs test1
 ./myisamchk$suffix -es test1
 ./myisamchk$suffix -rs test1
@@ -135,7 +135,7 @@ echo "mi_test2$suffix $silent -L -K -R1 -m2000 ;  Should give error 135"
 ./mi_test2$suffix $silent -m10000 -e16384 -E16384 -K -L
 ./myisamchk$suffix -sm test2
 
-/bin/rm myisam.log
+/bin/rm -f myisam.log
 ./mi_test2$suffix $silent -L -K -W -P -m50 -l
 ./myisamlog$suffix
 /bin/rm myisam.log

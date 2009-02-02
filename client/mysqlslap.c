@@ -754,9 +754,7 @@ static void usage(void)
 {
   print_version();
   puts("Copyright (C) 2005 MySQL AB");
-  puts("This software comes with ABSOLUTELY NO WARRANTY. This is free software,\
-       \nand you are welcome to modify and redistribute it under the GPL \
-       license\n");
+  puts("This software comes with ABSOLUTELY NO WARRANTY. This is free software,\nand you are welcome to modify and redistribute it under the GPL license\n");
   puts("Run a query multiple times against the server\n");
   printf("Usage: %s [OPTIONS]\n",my_progname);
   print_defaults("my",load_default_groups);
@@ -1331,7 +1329,7 @@ get_options(int *argc,char ***argv)
     
     if (opt_csv_str[0] == '-')
     {
-      csv_file= fileno(stdout);
+      csv_file= my_fileno(stdout);
     }
     else
     {
@@ -1547,9 +1545,9 @@ get_options(int *argc,char ***argv)
         fprintf(stderr,"%s: Could not open create file\n", my_progname);
         exit(1);
       }
-      tmp_string= (char *)my_malloc(sbuf.st_size + 1,
+      tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                               MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-      my_read(data_file, (uchar*) tmp_string, sbuf.st_size, MYF(0));
+      my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
       tmp_string[sbuf.st_size]= '\0';
       my_close(data_file,MYF(0));
       parse_delimiter(tmp_string, &create_statements, delimiter[0]);
@@ -1584,9 +1582,9 @@ get_options(int *argc,char ***argv)
         fprintf(stderr,"%s: Could not open query supplied file\n", my_progname);
         exit(1);
       }
-      tmp_string= (char *)my_malloc(sbuf.st_size + 1,
+      tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                                     MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-      my_read(data_file, (uchar*) tmp_string, sbuf.st_size, MYF(0));
+      my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
       tmp_string[sbuf.st_size]= '\0';
       my_close(data_file,MYF(0));
       if (user_supplied_query)
@@ -1615,9 +1613,9 @@ get_options(int *argc,char ***argv)
       fprintf(stderr,"%s: Could not open query supplied file\n", my_progname);
       exit(1);
     }
-    tmp_string= (char *)my_malloc(sbuf.st_size + 1,
+    tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                                   MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-    my_read(data_file, (uchar*) tmp_string, sbuf.st_size, MYF(0));
+    my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
     tmp_string[sbuf.st_size]= '\0';
     my_close(data_file,MYF(0));
     if (user_supplied_pre_statements)
@@ -1646,9 +1644,9 @@ get_options(int *argc,char ***argv)
       fprintf(stderr,"%s: Could not open query supplied file\n", my_progname);
       exit(1);
     }
-    tmp_string= (char *)my_malloc(sbuf.st_size + 1,
+    tmp_string= (char *)my_malloc((size_t)sbuf.st_size + 1,
                                   MYF(MY_ZEROFILL|MY_FAE|MY_WME));
-    my_read(data_file, (uchar*) tmp_string, sbuf.st_size, MYF(0));
+    my_read(data_file, (uchar*) tmp_string, (size_t)sbuf.st_size, MYF(0));
     tmp_string[sbuf.st_size]= '\0';
     my_close(data_file,MYF(0));
     if (user_supplied_post_statements)
@@ -2175,10 +2173,17 @@ limit_not_met:
         {
           if (mysql_field_count(&mysql))
           {
-            result= mysql_store_result(&mysql);
-            while ((row = mysql_fetch_row(result)))
-              counter++;
-            mysql_free_result(result);
+            if ((result= mysql_store_result(&mysql)))
+            {
+              while ((row = mysql_fetch_row(result)))
+                counter++;
+              mysql_free_result(result);
+            }
+            else
+            {
+              fprintf(stderr,"%s: Error in mysql_store_result(): %d %s\n",
+                      my_progname, mysql_errno(&mysql), mysql_error(&mysql));
+            }
           }
         } while(mysql_next_result(&mysql) == 0);
       }

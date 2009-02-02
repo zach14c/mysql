@@ -1,0 +1,329 @@
+#
+# This test is one of two validity point tests. See:
+#    backup_vp_nontx.test
+#
+# The goal of the test should be to ensure the following assumptions
+# for the behavior of validity point (VP) hold. Validity point is
+# implemented using commit blocker (CB).
+#
+# a) transactions that commit before VP are in the backup image
+#
+# b) setting the validity point should not be done while commits are
+#    being processed in any table involved in the backup. Transactions
+#    with ongoing commits therefore block backup from setting commit
+#    blocker. The commit has to complete before backup can set CB (and
+#    ultimately set the VP), and will therefore be in the backup image
+#
+# c) setting the validity point should not be done while commits are
+#    being processed in any table involved in the backup. Transactions
+#    that try to commit when backup is ready to set VP are therefore
+#    blocked by CB. The commit has to wait for CB to be released
+#    before it can continue, and will therefore not be in the backup
+#    image
+#
+# d) transactions that commit after VP are not in the backup image
+#
+# Note: the transactions have to modify data.
+#
+#
+#
+
+--source include/have_innodb.inc
+--source include/have_debug_sync.inc
+--source include/not_embedded.inc
+
+--disable_warnings
+SET DEBUG_SYNC= 'RESET';
+DROP DATABASE IF EXISTS bup_vp;
+
+let $bdir=`SELECT @@backupdir`;
+
+--error 0,1
+remove_file $bdir/bup_vp.bak;
+--enable_warnings
+
+CREATE DATABASE bup_vp;
+
+#
+# Connections used in this test
+#
+# con_bup  - used to create data, load data, and run the backup 
+# con_tx1  - used for transactional execution
+# con_tx2  - used for transactional execution
+# con_tx3  - used for transactional execution
+# con_sync - used to make sync point work flow easier to read
+#
+
+connect (con_bup,localhost,root,,);
+connect (con_tx1,localhost,root,,);
+connect (con_tx2,localhost,root,,);
+connect (con_tx3,localhost,root,,);
+connect (con_sync,localhost,root,,);
+
+connection con_bup;
+
+--echo 
+--echo Starting Test
+--echo 
+
+#
+# Sequence diagram (not UML), only relevant parts shown
+#
+#      bup     tx1      tx2      tx3
+#       |       |        |        |
+#       a)      |        |        |
+#    (setup)    |        |        |
+#     COMMIT    |        |        d)
+#       |       |        |      BEGIN
+#       |       b)       |    INSERT t3
+#       |     BEGIN      |        |
+#       |   INSERT t1    |        |
+#       |     COMMIT     c)       |
+#       |     <...>    BEGIN      |
+#       |     <...>  INSERT t2    |
+#       |     <...>      |        |   
+#     BACKUP  <...>      |        |
+#     SET CB  <...>      |        |   
+#     <###>   <...>      |        |  
+#     <...>     |        |        |  
+#       |       |     COMMIT      |  
+#    SET VP     |      <###>      |   
+#   RELEASE CB  |      <###>      |  
+#       |       |      <...>    COMMIT
+#       |       |        |        |  
+#    BUP DONE   |        |        |  
+#   (results)   |        |        |     
+#
+# Note: Ongoing operations are indicated with <...>
+#       Blocked operations are indicated with <###>
+#
+
+# Create transaction tables and load them with data.
+--echo con_bup: Creating tables
+CREATE TABLE bup_vp.t1 (col_a CHAR(40)) ENGINE=INNODB;
+CREATE TABLE bup_vp.t2 (col_a CHAR(40)) ENGINE=INNODB;
+CREATE TABLE bup_vp.t3 (col_a CHAR(40)) ENGINE=INNODB;
+
+--echo 
+--echo con_bup: Loading data
+--echo con_bup: Scenario a) - commited before backup
+INSERT INTO bup_vp.t1 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t1 VALUES ("05 Some data to test");
+
+INSERT INTO bup_vp.t2 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t2 VALUES ("05 Some data to test");
+
+INSERT INTO bup_vp.t3 VALUES ("01 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("02 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("03 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("04 Some data to test");
+INSERT INTO bup_vp.t3 VALUES ("05 Some data to test");
+
+--echo 
+--echo con_bup: Show the data before we start backup
+SELECT * FROM bup_vp.t1;
+SELECT * FROM bup_vp.t2;
+SELECT * FROM bup_vp.t3;
+
+### CON 3 ###
+      --echo 
+      connection con_tx3;
+
+      --echo Scenario d) - commit after VP; tx not included in backup
+      --echo con_tx3: Start transaction but do not commit
+      BEGIN;
+          INSERT INTO bup_vp.t3 VALUES ("tx3: 06 Should NOT be in backup");
+
+### CON 1 ###
+  --echo 
+  connection con_tx1;
+
+  --echo Scenario b) - Commit in progress blocks CB; tx is included in backup
+  --echo con_tx1: Get a transaction going and stop in the middle of commit
+  BEGIN;
+      INSERT INTO bup_vp.t1 VALUES ("tx1: 06 Some data to test");
+
+      --echo con_tx1: Make commit stop in the middle of execution
+      # Will continue once backup has been blocked from setting CB
+      SET DEBUG_SYNC= 'within_ha_commit_trans SIGNAL commit_started
+                       WAIT_FOR complete_commit';
+      send COMMIT;
+
+### CON 2 ###
+    --echo 
+    connection con_tx2;
+
+    --echo Scenario c) - commit blocked by CB; tx not included in backup
+    --echo con_tx2: Wait until tx1 has started
+    SET DEBUG_SYNC= 'now WAIT_FOR commit_started';
+    --echo con_tx2: Start transaction but do not commit
+    BEGIN;
+        INSERT INTO bup_vp.t2 VALUES ("tx2: 06 Should NOT be in backup");
+    
+### CON BUP ###
+--echo 
+connection con_bup;
+
+# Backup will be blocked from setting CB by the ongoing commit in
+# con_tx1. Backup will signal con_tx1 that it has been blocked. The
+# commit will then finish, making backup able to set CB. When CB has
+# been set, tx2 will be signaled to try to commit. tx2 commit will be
+# blocked by the CB and send a signal that it has been blocked. CB is
+# then released, but backup is stopped immediately after releasing CB.
+# tx2 will now be able to complete the commit, and tx3 will issue and
+# complete a commit. Finally, backup is allowed to complete.
+
+--echo con_bup: Activate synchronization points for BACKUP.
+# Signal when backup is blocked by ongoing commit in con_tx1
+SET DEBUG_SYNC= 'wait_lock_global_read_lock SIGNAL sync_complete_commit';
+
+# tx1 commit is completed, so backup can set CB. Just before reaching
+# VP, signal tx2 should try to commit. Wait until tx2 signals it has
+# been blocked
+SET DEBUG_SYNC= 'before_backup_data_lock SIGNAL try_commit 
+                 WAIT_FOR commit_blocked';
+
+# tx2 commit has been blocked. Create VP and release CB, and then wait
+# while tx2 and tx2 commits.
+SET DEBUG_SYNC= 'after_backup_binlog SIGNAL commit_unblocked
+                 WAIT_FOR finish_bup';
+
+--echo con_bup: Backing up database -- will block with lock
+send BACKUP DATABASE bup_vp TO "bup_vp.bak";
+
+
+### CON SYNC ###
+--echo 
+connection con_sync;
+SET DEBUG_SYNC= 'now WAIT_FOR sync_complete_commit';
+--echo Backup has been blocked by ongoing commit
+
+--echo Check that con_tx1 has not committed; Should be 0 records
+SELECT * FROM bup_vp.t1 WHERE col_a like 'tx1%';
+--echo 
+
+SET DEBUG_SYNC= 'now SIGNAL complete_commit';
+
+### CON 1 ###
+  --echo 
+  connection con_tx1;
+  --echo con_tx1: Reap commit
+  reap;
+  --echo Check that con_tx1 has committed; Should be 1 record
+  SELECT * FROM bup_vp.t1 WHERE col_a like 'tx1%';
+  --echo 
+
+###########
+## Below this line happens after BACKUP has taken CB
+###########
+
+### CON 2 ###
+    --echo 
+    connection con_tx2;
+    --echo con_tx2: Commit request will be blocked by CB
+
+    # Wait for backup to set CB
+    SET DEBUG_SYNC= 'now WAIT_FOR try_commit';
+
+    # Signal to backup that the commit is blocked
+    SET DEBUG_SYNC= 'wait_if_global_read_lock SIGNAL sync_commit_blocked';
+
+    send COMMIT;
+
+    # Test is blocked on COMMIT until CB has been released
+
+### CON SYNC ###
+--echo 
+connection con_sync;
+SET DEBUG_SYNC= 'now WAIT_FOR sync_commit_blocked';
+
+--echo Check that con_tx2 has not committed; Should be 0 records
+SELECT * FROM bup_vp.t2 WHERE col_a like 'tx2%';
+--echo 
+
+SET DEBUG_SYNC= 'now SIGNAL commit_blocked';
+
+### CON 2 ###
+    --echo 
+    connection con_tx2;
+    --echo con_bup: Reap commit
+    # commit completes only after CB has been released
+    reap;
+
+    --echo con_tx2: Backup has now released CB.
+    --echo Check that con_tx2 has committed; Should be 1 record
+    SELECT * FROM bup_vp.t2 WHERE col_a like 'tx2%';
+    --echo 
+
+### CON 3 ###
+      --echo 
+      connection con_tx3;
+      --echo con_tx3: Backup has now released CB. Commit transaction
+
+      # Double-check that backup has reached sync point after CB release
+      SET DEBUG_SYNC= 'now WAIT_FOR commit_unblocked';
+      COMMIT;
+      SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+
+
+### CON BUP ###
+--echo 
+connection con_bup;
+--echo con_bup: Reap backup
+--replace_column 1 #
+reap;
+
+###########
+## Verify results
+###########
+
+# Do selects to show that all changes got applied.
+--echo 
+--echo con_bup: Showing data after updates and backup
+SELECT * FROM bup_vp.t1;
+SELECT * FROM bup_vp.t2;
+SELECT * FROM bup_vp.t3;
+
+--echo con_bup: Dropping the database
+DROP TABLE bup_vp.t1;
+DROP TABLE bup_vp.t2;
+DROP TABLE bup_vp.t3;
+DROP DATABASE bup_vp;
+
+--echo con_bup: Restoring the database
+--replace_column 1 #
+RESTORE FROM "bup_vp.bak";
+
+--echo 
+--echo con_bup: Showing the data after restore (tx2 and tx3 should not be there)
+SELECT * FROM bup_vp.t1;
+SELECT * FROM bup_vp.t2;
+SELECT * FROM bup_vp.t3;
+
+--echo
+--echo Verifying results:
+--echo
+
+--echo T1 should have changes from con_tx1; Should be 1 record
+SELECT * FROM bup_vp.t1 WHERE col_a like 'tx1%';
+
+--echo 
+--echo T2 should not have the changes from con_tx2; Should be 0 records
+SELECT * FROM bup_vp.t2 WHERE col_a like 'tx2%';
+
+--echo 
+--echo T3 should not have the changes from con_tx3; Should be 0 records
+SELECT * FROM bup_vp.t3 WHERE col_a like 'tx3%';
+
+--echo 
+--echo con_bup: Cleanup
+DROP DATABASE bup_vp;
+
+remove_file $bdir/bup_vp.bak;
+SET DEBUG_SYNC= 'RESET';

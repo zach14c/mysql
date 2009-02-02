@@ -25,9 +25,8 @@
 /* Forward declarations */
 class handler;
 class MYSQL_BIN_LOG;
-struct st_table;
+struct TABLE;
 
-typedef st_table TABLE;
 
 /*
   Injector to inject rows into the MySQL server.
@@ -236,6 +235,14 @@ public:
         for example, releasing resource and unlocking files.
       */
       int commit();
+
+      /*
+        Rollback a transaction.
+
+        This member function will clean up after a sequence of *_row calls by,
+        for example, releasing resource and unlocking files.
+      */
+      int rollback();
 
       /*
         Get the position for the start of the transaction.

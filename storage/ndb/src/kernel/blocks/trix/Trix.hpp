@@ -113,6 +113,7 @@ private:
     Uint32 noOfIndexColumns;
     Uint32 noOfKeyColumns;
     Uint32 parallelism;
+    Uint32 syncPtr;
     BuildIndxRef::ErrorCode errorCode;
     bool subscriptionCreated;
     bool pendingSubSyncContinueConf;
@@ -130,6 +131,7 @@ private:
    * The pool of node records
    */
   ArrayPool<SubscriptionRecord> c_theSubscriptionRecPool;
+  RSS_AP_SNAPSHOT(c_theSubscriptionRecPool);
 
   /**
    * The list of other subscriptions

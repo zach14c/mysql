@@ -133,7 +133,7 @@ int Filter::getWord(int bufferLength, char * buffer)
 
 	*q = 0;
 
-	return q - buffer;
+	return (int)(q - buffer);
 }
 
 void Filter::start()

@@ -369,6 +369,8 @@ void Dbb::expungeRecord(Section *section, int32 recordId)
 
 Section* Dbb::findSection(int32 sectionId)
 {
+	ASSERT(sectionId != Section::INVALID_SECTION_ID);
+
 	int slot = sectionId % SECTION_HASH_SIZE;
 	Section *section;
 
@@ -666,10 +668,10 @@ void Dbb::validate(int optionMask)
 	Validation validation (this, optionMask);
 	validation.inUse ((int32) HEADER_PAGE, "HeaderPage");
 	PageInventoryPage::validate (this, &validation);
-	
+
 	if (inversion)
 		inversion->validate (&validation);
-		
+
 	Section::validateIndexes (this, &validation);
 	Section::validateSections (this, &validation);
 	PageInventoryPage::validateInventory (this, &validation);
@@ -1394,4 +1396,9 @@ void Dbb::updateSerialLogBlockSize(void)
 	Hdr *header = (Hdr*) bdb->buffer;
 	header->serialLogBlockSize = database->serialLogBlockSize;
 	bdb->release(REL_HISTORY);
+}
+
+void Dbb::setCacheRecovering(bool state)
+{
+	cache->recovering = state;
 }

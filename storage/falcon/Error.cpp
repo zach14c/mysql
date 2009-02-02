@@ -89,10 +89,9 @@ void Error::validateHeap(const char *where)
 void Error::debugBreak()
 {
 #ifdef _WIN32
-	DebugBreak();
-#else
-	raise (SIGABRT);
+	__debugbreak();
 #endif
+	raise (SIGABRT);
 }
 
 void Error::notYetImplemented(const char *fileName, int line)

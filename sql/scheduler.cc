@@ -105,8 +105,8 @@ static struct event thd_kill_event;
 static pthread_mutex_t LOCK_thd_add;    /* protects thds_need_adding */
 static LIST *thds_need_adding;    /* list of thds to add to libevent queue */
 
-static int thd_add_pipe[2]; /* pipe to signal add a connection to libevent*/
-static int thd_kill_pipe[2]; /* pipe to signal kill a connection in libevent */
+static int thd_add_pair[2]; /* pipe to signal add a connection to libevent*/
+static int thd_kill_pair[2]; /* pipe to signal kill a connection in libevent */
 
 /*
   LOCK_event_loop protects the non-thread safe libevent calls (event_add and 
@@ -132,16 +132,21 @@ void libevent_kill_thd_callback(int Fd, short Operation, void *ctx);
   Returns TRUE if there is an error.
 */
 
-static bool init_pipe(int pipe_fds[])
+static bool init_socketpair(int sock_pair[])
 {
-  int flags;
-  return pipe(pipe_fds) < 0 ||
-          (flags= fcntl(pipe_fds[0], F_GETFL)) == -1 ||
-          fcntl(pipe_fds[0], F_SETFL, flags | O_NONBLOCK) == -1 ||
-          (flags= fcntl(pipe_fds[1], F_GETFL)) == -1 ||
-          fcntl(pipe_fds[1], F_SETFL, flags | O_NONBLOCK) == -1;
+  sock_pair[0]= sock_pair[1]= -1;
+  return (evutil_socketpair(AF_UNIX, SOCK_STREAM, 0, sock_pair) < 0 ||
+          evutil_make_socket_nonblocking(sock_pair[0]) == -1 ||
+          evutil_make_socket_nonblocking(sock_pair[1]) == -1);
 }
 
+static void close_socketpair(int sock_pair[])
+{
+  if (sock_pair[0] != -1)
+    EVUTIL_CLOSESOCKET(sock_pair[0]);
+  if (sock_pair[1] != -1)
+    EVUTIL_CLOSESOCKET(sock_pair[1]);
+}
 
 /*
   thd_scheduler keeps the link between THD and events.
@@ -175,7 +180,7 @@ bool thd_scheduler::init(THD *parent_thd)
     return TRUE;
   }
 
-  event_set(io_event, parent_thd->net.vio->sd, EV_READ,
+  event_set(io_event, (int)parent_thd->net.vio->sd, EV_READ,
             libevent_io_callback, (void*)parent_thd);
 
   list.data= parent_thd;
@@ -272,23 +277,22 @@ static bool libevent_init(void)
   pthread_mutex_init(&LOCK_event_loop, NULL);
   pthread_mutex_init(&LOCK_thd_add, NULL);
 
-  /* set up the pipe used to add new thds to the event pool */
-  if (init_pipe(thd_add_pipe))
+  /* set up sockets used to add new thds to the event pool */
+  if (init_socketpair(thd_add_pair))
   {
-    sql_print_error("init_pipe(thd_add_pipe) error in libevent_init\n");
+    sql_print_error("init_socketpair(thd_add_spair) error in libevent_init\n");
     DBUG_RETURN(1);
   }
-  /* set up the pipe used to kill thds in the event queue */
-  if (init_pipe(thd_kill_pipe))
+  /* set up sockets used to kill thds in the event queue */
+  if (init_socketpair(thd_kill_pair))
   {
-    sql_print_error("init_pipe(thd_kill_pipe) error in libevent_init\n");
-    close(thd_add_pipe[0]);
-    close(thd_add_pipe[1]);
+    sql_print_error("init_socketpair(thd_kill_pair) error in libevent_init\n");
+    close_socketpair(thd_add_pair);
     DBUG_RETURN(1);
   }
-  event_set(&thd_add_event, thd_add_pipe[0], EV_READ|EV_PERSIST,
+  event_set(&thd_add_event, thd_add_pair[0], EV_READ|EV_PERSIST,
             libevent_add_thd_callback, NULL);
-  event_set(&thd_kill_event, thd_kill_pipe[0], EV_READ|EV_PERSIST,
+  event_set(&thd_kill_event, thd_kill_pair[0], EV_READ|EV_PERSIST,
             libevent_kill_thd_callback, NULL);
 
   if (event_add(&thd_add_event, NULL) || event_add(&thd_kill_event, NULL))
@@ -358,7 +362,7 @@ void libevent_kill_thd_callback(int Fd, short, void*)
 
   /* clear the pending events */
   char c;
-  while (read(Fd, &c, sizeof(c)) == sizeof(c))
+  while (recv(Fd, &c, sizeof(c), 0) == sizeof(c))
   {}
 
   LIST* list= thds_waiting_for_io;
@@ -383,7 +387,7 @@ void libevent_kill_thd_callback(int Fd, short, void*)
 
 /*
   This is used to add connections to the pool. This callback is invoked from
-  the libevent event_loop() call whenever the thd_add_pipe[1] pipe has a byte
+  the libevent event_loop() call whenever the thd_add_pair[1]  has a byte
   written to it.
 
   NOTES
@@ -396,7 +400,7 @@ void libevent_add_thd_callback(int Fd, short, void *)
 
   /* clear the pending events */
   char c;
-  while (read(Fd, &c, sizeof(c)) == sizeof(c))
+  while (recv(Fd, &c, sizeof(c), 0) == sizeof(c))
   {}
 
   pthread_mutex_lock(&LOCK_thd_add);
@@ -487,7 +491,7 @@ static void libevent_post_kill_notification(THD *)
     later.
   */
   char c= 0;
-  write(thd_kill_pipe[1], &c, sizeof(c));
+  send(thd_kill_pair[1], &c, sizeof(c), 0);
 }
 
 
@@ -548,6 +552,7 @@ pthread_handler_t libevent_thread_proc(void *arg)
   */
   (void) pthread_mutex_lock(&LOCK_thread_count);
   created_threads++;
+  thread_created++;
   if (created_threads == thread_pool_size)
     (void) pthread_cond_signal(&COND_thread_count);
   (void) pthread_mutex_unlock(&LOCK_thread_count);
@@ -601,6 +606,8 @@ pthread_handler_t libevent_thread_proc(void *arg)
       else
       {
         /* login successful */
+        MYSQL_CONNECTION_START(thd->thread_id, thd->security_ctx->priv_user,
+                               (char *) thd->security_ctx->host_or_ip);
         thd->scheduler.logged_in= TRUE;
         prepare_new_connection_state(thd);
         if (!libevent_needs_immediate_processing(thd))
@@ -663,7 +670,7 @@ static bool libevent_needs_immediate_processing(THD *thd)
 
   This call does not actually register the event with libevent.
   Instead, it places the THD onto a queue and signals libevent by writing
-  a byte into thd_add_pipe, which will cause our libevent_add_thd_callback to
+  a byte into thd_add_pair, which will cause our libevent_add_thd_callback to
   be invoked which will find the THD on the queue and add it to libevent.
 */
 
@@ -676,7 +683,7 @@ static void libevent_thd_add(THD* thd)
   /* queue for libevent */
   thds_need_adding= list_add(thds_need_adding, &thd->scheduler.list);
   /* notify libevent */
-  write(thd_add_pipe[1], &c, sizeof(c));
+  send(thd_add_pair[1], &c, sizeof(c), 0);
   pthread_mutex_unlock(&LOCK_thd_add);
 }
 
@@ -698,18 +705,15 @@ static void libevent_end()
   {
     /* wake up the event loop */
     char c= 0;
-    write(thd_add_pipe[1], &c, sizeof(c));
-
+    send(thd_add_pair[1], &c, sizeof(c), 0);
     pthread_cond_wait(&COND_thread_count, &LOCK_thread_count);
   }
   (void) pthread_mutex_unlock(&LOCK_thread_count);
 
   event_del(&thd_add_event);
-  close(thd_add_pipe[0]);
-  close(thd_add_pipe[1]);
+  close_socketpair(thd_add_pair);
   event_del(&thd_kill_event);
-  close(thd_kill_pipe[0]);
-  close(thd_kill_pipe[1]);
+  close_socketpair(thd_kill_pair);
   event_base_free(base);
 
   (void) pthread_mutex_destroy(&LOCK_event_loop);

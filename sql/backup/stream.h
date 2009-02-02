@@ -79,8 +79,9 @@ class Stream: public fd_stream
 {
  public:
 
-  bool open();
-  virtual void close();
+  int open();
+  virtual bool close();
+
   bool rewind();
 
   /// Check if stream is opened
@@ -92,15 +93,23 @@ class Stream: public fd_stream
 
  protected:
 
-  Stream(Logger&, const ::String&, int);
+  Stream(Logger&, ::String *, int);
 
-  String  m_path;
+  ::String  *m_path;
   int     m_flags;  ///< flags used when opening the file
   size_t  m_block_size;
-  Logger  m_log;
+  Logger&  m_log;
+
+  virtual File get_file() = 0; // Create or open file
+
 
   friend int stream_write(void*, bstream_blob*, bstream_blob);
   friend int stream_read(void*, bstream_blob*, bstream_blob);
+
+private:
+
+  bool test_secure_file_priv_access(char *path);
+
 };
 
 /// Used to write to backup stream.
@@ -109,11 +118,15 @@ class Output_stream:
 {
  public:
 
-  Output_stream(Logger&, const ::String&, bool);
+  Output_stream(Logger&, ::String *, bool);
 
-  bool open();
-  void close();
+  int open();
+  bool close();
   bool rewind();
+
+ protected:
+
+  virtual File get_file();
 
  private:
 
@@ -127,13 +140,17 @@ class Input_stream:
 {
  public:
 
-  Input_stream(Logger&, const ::String &name);
+   Input_stream(Logger&, ::String *);
 
-  bool open();
-  void close();
+  int open();
+  bool close();
   bool rewind();
 
   int next_chunk();
+
+ protected:
+
+  virtual File get_file();
 
  private:
 

@@ -82,7 +82,9 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	pageWriter = NULL;
 	hashTable = new Bdb* [hashSz];
 	memset (hashTable, 0, sizeof (Bdb*) * hashSize);
-	sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
+	
+	if (falcon_use_sectorcache)
+		sectorCache = new SectorCache(sectorCacheSize / SECTOR_BUFFER_SIZE, pageSize);
 
 	uint64 n = ((uint64) pageSize * numberBuffers + cacheHunkSize - 1) / cacheHunkSize;
 	numberHunks = (int) n;
@@ -100,6 +102,7 @@ Cache::Cache(Database *db, int pageSz, int hashSz, int numBuffers)
 	ioThreads = new Thread*[numberIoThreads];
 	memset(ioThreads, 0, numberIoThreads * sizeof(ioThreads[0]));
 	flushing = false;
+	recovering = false;
 	
 	try
 		{
@@ -153,7 +156,9 @@ Cache::~Cache()
 	delete [] bdbs;
 	delete [] ioThreads;
 	delete flushBitmap;
-	delete sectorCache;
+
+	if (falcon_use_sectorcache)
+		delete sectorCache;
 	
 	if (bufferHunks)
 		{
@@ -217,6 +222,15 @@ Bdb* Cache::fetchPage(Dbb *dbb, int32 pageNumber, PageType pageType, LockType lo
 #endif
 
 	ASSERT (pageNumber >= 0);
+
+	if (recovering && pageType != PAGE_inventory &&
+		!PageInventoryPage::isPageInUse (dbb, pageNumber))
+		{
+		Log::debug ("During recovery, fetched page %d tablespace %d type %d marked free in PIP\n",
+			pageNumber, dbb->tableSpaceId, pageType);
+		PageInventoryPage::markPageInUse(dbb, pageNumber, 0);
+		}
+
 	int slot = pageNumber % hashSize;
 	LockType actual = lockType;
 	Sync sync (&syncObject, "Cache::fetchPage");
@@ -838,7 +852,7 @@ void Cache::ioThread(void)
 						
 					flushLock.unlock();
 					//Log::debug(" %d Writing %s %d pages: %d - %d\n", thread->threadId, (const char*) dbb->fileName, count, pageNumber, pageNumber + count - 1);
-					int length = p - buffer;
+					int length = (int)(p - buffer);
 					priority.schedule(PRIORITY_LOW);
 					
 					try
@@ -930,7 +944,15 @@ void Cache::ioThread(void)
 					Log::log(LogInfo, "%d: Cache flush: %d pages, %d writes in %d seconds (%d pps)\n",
 								database->deltaTime, pages, writes, delta, pages / MAX(delta, 1));
 
-				database->pageCacheFlushed(flushArg);
+				try
+					{
+					database->pageCacheFlushed(flushArg);
+					}
+				catch (...)
+					{
+					// Ignores any errors from writing the checkpoint
+					// log record (ie. if we have issues with the serial log)
+					}
 				}
 			else
 				flushLock.unlock();

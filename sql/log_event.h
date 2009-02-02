@@ -34,6 +34,14 @@
 
 #include <my_bitmap.h>
 #include "rpl_constants.h"
+
+#ifdef MYSQL_CLIENT
+#include "rpl_utility.h"
+#include "hash.h"
+#include "rpl_tblmap.h"
+#include "rpl_tblmap.cc"
+#endif
+
 #ifndef MYSQL_CLIENT
 #include "rpl_record.h"
 #include "rpl_reporting.h"
@@ -219,14 +227,22 @@ struct sql_ex_info
 #define QUERY_HEADER_MINIMAL_LEN     (4 + 4 + 1 + 2)
 // where 5.0 differs: 2 for len of N-bytes vars.
 #define QUERY_HEADER_LEN     (QUERY_HEADER_MINIMAL_LEN + 2)
+#define STOP_HEADER_LEN      0
 #define LOAD_HEADER_LEN      (4 + 4 + 4 + 1 +1 + 4)
+#define SLAVE_HEADER_LEN     0
 #define START_V3_HEADER_LEN     (2 + ST_SERVER_VER_LEN + 4)
 #define ROTATE_HEADER_LEN    8 // this is FROZEN (the Rotate post-header is frozen)
+#define INTVAR_HEADER_LEN      0
 #define CREATE_FILE_HEADER_LEN 4
 #define APPEND_BLOCK_HEADER_LEN 4
 #define EXEC_LOAD_HEADER_LEN   4
 #define DELETE_FILE_HEADER_LEN 4
+#define NEW_LOAD_HEADER_LEN    LOAD_HEADER_LEN
+#define RAND_HEADER_LEN        0
+#define USER_VAR_HEADER_LEN    0
 #define FORMAT_DESCRIPTION_HEADER_LEN (START_V3_HEADER_LEN+1+LOG_EVENT_TYPES)
+#define XID_HEADER_LEN         0
+#define BEGIN_LOAD_QUERY_HEADER_LEN APPEND_BLOCK_HEADER_LEN
 #define ROWS_HEADER_LEN        8
 #define TABLE_MAP_HEADER_LEN   8
 #define EXECUTE_LOAD_QUERY_EXTRA_HEADER_LEN (4 + 4 + 4 + 1)
@@ -238,12 +254,15 @@ struct sql_ex_info
   packet (i.e. a query) sent from client to master;
   First, an auxiliary log_event status vars estimation:
 */
-#define MAX_SIZE_LOG_EVENT_STATUS (4 /* flags2 */   + \
-                                   8 /* sql mode */ + \
-                                   1 + 1 + 255 /* catalog */ + \
-                                   4 /* autoinc */ + \
-                                   6 /* charset */ + \
-                                   MAX_TIME_ZONE_NAME_LENGTH)
+#define MAX_SIZE_LOG_EVENT_STATUS (1 + 4          /* type, flags2 */   + \
+                                   1 + 8          /* type, sql_mode */ + \
+                                   1 + 1 + 255    /* type, length, catalog */ + \
+                                   1 + 4          /* type, auto_increment */ + \
+                                   1 + 6          /* type, charset */ + \
+                                   1 + 1 + 255    /* type, length, time_zone */ + \
+                                   1 + 2          /* type, lc_time_names_number */ + \
+                                   1 + 2          /* type, charset_database_number */ + \
+                                   1 + 8          /* type, table_map_for_update */)
 #define MAX_LOG_EVENT_HEADER   ( /* in order of Query_log_event::write */ \
   LOG_EVENT_HEADER_LEN + /* write_header */ \
   QUERY_HEADER_LEN     + /* write_data */   \
@@ -307,18 +326,18 @@ struct sql_ex_info
 #define Q_LC_TIME_NAMES_CODE    7
 
 #define Q_CHARSET_DATABASE_CODE 8
-/* Intvar event post-header */
 
+#define Q_TABLE_MAP_FOR_UPDATE_CODE 9
+
+/* Intvar event data */
 #define I_TYPE_OFFSET        0
 #define I_VAL_OFFSET         1
 
-/* Rand event post-header */
-
+/* Rand event data */
 #define RAND_SEED1_OFFSET 0
 #define RAND_SEED2_OFFSET 8
 
-/* User_var event post-header */
-
+/* User_var event data */
 #define UV_VAL_LEN_SIZE        4
 #define UV_VAL_IS_NULL         1
 #define UV_VAL_TYPE_SIZE       1
@@ -326,7 +345,6 @@ struct sql_ex_info
 #define UV_CHARSET_NUMBER_SIZE 4
 
 /* Load event post-header */
-
 #define L_THREAD_ID_OFFSET   0
 #define L_EXEC_TIME_OFFSET   4
 #define L_SKIP_LINES_OFFSET  8
@@ -337,7 +355,6 @@ struct sql_ex_info
 #define L_DATA_OFFSET        LOAD_HEADER_LEN
 
 /* Rotate event post-header */
-
 #define R_POS_OFFSET       0
 #define R_IDENT_OFFSET     8
 
@@ -579,6 +596,7 @@ enum enum_base64_output_mode {
   BASE64_OUTPUT_AUTO= 1,
   BASE64_OUTPUT_ALWAYS= 2,
   BASE64_OUTPUT_UNSPEC= 3,
+  BASE64_OUTPUT_DECODE_ROWS= 4,
   /* insert new output modes here */
   BASE64_OUTPUT_MODE_COUNT
 };
@@ -640,6 +658,11 @@ typedef struct st_print_event_info
   my_off_t hexdump_from;
   uint8 common_header_len;
   char delimiter[16];
+
+#ifdef MYSQL_CLIENT
+  uint verbose;
+  table_mapping m_table_map;
+#endif
 
   /*
      These two caches are used by the row-based replication events to
@@ -1476,6 +1499,22 @@ protected:
     This field is written if it is not 0.
     </td>
   </tr>
+  <tr>
+    <td>table_map_for_update</td>
+    <td>Q_TABLE_MAP_FOR_UPDATE_CODE == 9</td>
+    <td>8 byte integer</td>
+
+    <td>The value of the table map that is to be updated by the
+    multi-table update query statement. Every bit of this variable
+    represents a table, and is set to 1 if the corresponding table is
+    to be updated by this statement.
+
+    The value of this variable is set when executing a multi-table update
+    statement and used by slave to apply filter rules without opening
+    all the tables on slave. This is required because some tables may
+    not exist on slave because of the filter rules.
+    </td>
+  </tr>
   </table>
 
   @subsection Query_log_event_notes_on_previous_versions Notes on Previous Versions
@@ -1491,6 +1530,9 @@ protected:
   be understood by a new slave.
 
   * See Q_CHARSET_DATABASE_CODE in the table above.
+
+  * When adding new status vars, please don't forget to update the
+  MAX_SIZE_LOG_EVENT_STATUS, and update function code_name
 
 */
 class Query_log_event: public Log_event
@@ -1569,6 +1611,11 @@ public:
   const char *time_zone_str;
   uint lc_time_names_number; /* 0 means en_US */
   uint charset_database_number;
+  /*
+    map for tables that will be updated for a multi-table update query
+    statement, for other query statements, this will be zero.
+  */
+  ulonglong table_map_for_update;
 
 #ifndef MYSQL_CLIENT
 
@@ -2184,10 +2231,11 @@ protected:
 
   @section Intvar_log_event_binary_format Binary Format
 
-  The Post-Header has two components:
+  The Post-Header for this event type is empty.  The Body has two
+  components:
 
   <table>
-  <caption>Post-Header for Intvar_log_event</caption>
+  <caption>Body for Intvar_log_event</caption>
 
   <tr>
     <th>Name</th>
@@ -2261,11 +2309,12 @@ private:
   which are stored internally as two 64-bit numbers.
 
   @section Rand_log_event_binary_format Binary Format  
-  This event type has no Post-Header. The Body of this event type has
-  two components:
+
+  The Post-Header for this event type is empty.  The Body has two
+  components:
 
   <table>
-  <caption>Post-Header for Intvar_log_event</caption>
+  <caption>Body for Rand_log_event</caption>
 
   <tr>
     <th>Name</th>
@@ -3256,6 +3305,17 @@ public:
 
   ~Table_map_log_event();
 
+#ifdef MYSQL_CLIENT
+  table_def *create_table_def()
+  {
+    return new table_def(m_coltype, m_colcnt, m_field_metadata,
+                         m_field_metadata_size, m_null_bits);
+  }
+  ulong get_table_id() const        { return m_table_id; }
+  const char *get_table_name() const { return m_tblnam; }
+  const char *get_db_name() const    { return m_dbnam; }
+#endif
+
   virtual Log_event_type get_type_code() { return TABLE_MAP_EVENT; }
   virtual bool is_valid() const { return m_memory != NULL; /* we check malloc */ }
 
@@ -3386,6 +3446,12 @@ public:
 #ifdef MYSQL_CLIENT
   /* not for direct call, each derived has its own ::print() */
   virtual void print(FILE *file, PRINT_EVENT_INFO *print_event_info)= 0;
+  void print_verbose(IO_CACHE *file,
+                     PRINT_EVENT_INFO *print_event_info);
+  size_t print_verbose_one_row(IO_CACHE *file, table_def *td,
+                               PRINT_EVENT_INFO *print_event_info,
+                               MY_BITMAP *cols_bitmap,
+                               const uchar *ptr, const uchar *prefix);
 #endif
 
 #ifndef MYSQL_CLIENT
@@ -3485,7 +3551,7 @@ protected:
     DBUG_ASSERT(m_table);
     ASSERT_OR_RETURN_ERROR(m_curr_row < m_rows_end, HA_ERR_CORRUPT_EVENT);
     int const result= ::unpack_row(rli, m_table, m_width, m_curr_row, cols,
-                                   &m_curr_row_end, &m_master_reclength);
+                                   &m_curr_row_end, &m_master_reclength, TRUE);
     if (m_curr_row_end > m_rows_end)
       my_error(ER_SLAVE_CORRUPT_EVENT, MYF(0));
     ASSERT_OR_RETURN_ERROR(m_curr_row_end <= m_rows_end, HA_ERR_CORRUPT_EVENT);
@@ -3818,7 +3884,10 @@ public:
 
   virtual Log_event_type get_type_code() { return INCIDENT_EVENT; }
 
-  virtual bool is_valid() const { return 1; }
+  virtual bool is_valid() const
+  {
+    return m_incident > INCIDENT_NONE && m_incident < INCIDENT_COUNT;
+  }
   virtual int get_data_size() {
     return INCIDENT_HEADER_LEN + 1 + m_message.length;
   }

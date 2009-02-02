@@ -37,7 +37,6 @@ typedef struct
   struct sp_cond_type *cond;
   uint handler;			// Location of handler
   int type;
-  uint foffset;			// Frame offset for the handlers declare level
 } sp_handler_t;
 
 
@@ -107,7 +106,7 @@ class sp_rcontext : public Sql_alloc
     return m_return_value_set;
   }
 
-  void push_handler(struct sp_cond_type *cond, uint h, int type, uint f);
+  void push_handler(struct sp_cond_type *cond, uint h, int type);
 
   void pop_handlers(uint count);
 
@@ -117,18 +116,16 @@ class sp_rcontext : public Sql_alloc
 
   // If there is an error handler for this error, handle it and return TRUE.
   bool
-  handle_error(uint sql_errno,
-               MYSQL_ERROR::enum_warning_level level,
-               THD *thd);
+  handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+               uint sql_errno);
 
   // Returns handler type and sets *ip to location if one was found
   inline int
-  found_handler(uint *ip, uint *fp)
+  found_handler(uint *ip)
   {
     if (m_hfound < 0)
       return SP_HANDLER_NONE;
     *ip= m_handler[m_hfound].handler;
-    *fp= m_handler[m_hfound].foffset;
     return m_handler[m_hfound].type;
   }
 

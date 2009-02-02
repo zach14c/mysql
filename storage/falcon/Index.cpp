@@ -107,7 +107,6 @@ void Index::init(Table *tbl, const char *indexName, int indexType, int count)
 	DIHashTable = NULL;
 	DIHashTableCounts =  0;
 	DIHashTableSlotsUsed =  0;
-
 	syncDIHash.setName("Index::syncDIHash");
 	syncUnique.setName("Index::syncUnique");
 	deferredIndexes.syncObject.setName("Index::deferredIndexes.syncObject");
@@ -124,6 +123,7 @@ Index::~Index()
 			{
 			ASSERT(deferredIndex->index == this);
 			deferredIndex->detachIndex();
+//			deferredIndex->release();  not currently refCounted;
 			}
 		}
 
@@ -278,6 +278,7 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 	deferredIndex = new DeferredIndex(this, transaction);
 	sync.lock(Exclusive);
 	deferredIndexes.append(deferredIndex);
+//	deferredIndex->addRef() not currently refCounted;
 	sync.unlock();
 	transaction->add(deferredIndex);
 
@@ -417,9 +418,7 @@ Bitmap* Index::scanIndex(IndexKey* lowKey, IndexKey* highKey, int searchFlags, T
 
 	ASSERT (indexId != -1);
 
-	if (bitmap)
-		bitmap->clear();
-	else
+	if (!bitmap)
 		bitmap = new Bitmap;
 
 	// Use the DIHash if we can.
@@ -581,7 +580,7 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 	IndexKey key(this);
 	makeKey (record, &key);
 
-	// If there is a duplicate in the old version chain, don't both with another
+	// If there is a duplicate in the old version chain, don't bother with another
 
 	if (duplicateKey (&key, oldRecord))
 		return;
@@ -844,6 +843,7 @@ void Index::detachDeferredIndex(DeferredIndex *deferredIndex)
 	Sync sync(&deferredIndexes.syncObject, "Index::detachDeferredIndex(1)");
 	sync.lock(Exclusive);
 	deferredIndexes.remove(deferredIndex);
+//	deferredIndex->release();  not currently refCounted;
 	sync.unlock();
 
 	if (   (database->configuration->useDeferredIndexHash)

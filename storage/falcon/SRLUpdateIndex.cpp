@@ -40,36 +40,59 @@ SRLUpdateIndex::~SRLUpdateIndex(void)
 
 void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 {
-	Sync syncIndexes(&log->syncIndexes, "SRLUpdateIndex::append(1)");
+	Sync syncDI(&deferredIndex->syncObject, "SRLUpdateIndex::append(DI)");
+	syncDI.lock(Shared);
+
+	if (!deferredIndex->index)
+		return;
+
+	uint indexId = deferredIndex->index->indexId;
+	int idxVersion = deferredIndex->index->indexVersion;
+	int tableSpaceId = deferredIndex->index->dbb->tableSpaceId;
+
+	syncDI.unlock();
+
+	Sync syncIndexes(&log->syncIndexes, "SRLUpdateIndex::append(Indexes)");
 	syncIndexes.lock(Shared);
 
 	Transaction *transaction = deferredIndex->transaction;
 	DeferredIndexWalker walker(deferredIndex, NULL);
-	uint indexId = deferredIndex->index->indexId;
-	int idxVersion = deferredIndex->index->indexVersion;
-	int tableSpaceId = deferredIndex->index->dbb->tableSpaceId;
 	uint64 virtualOffset = 0;
 	uint64 virtualOffsetAtEnd = 0;
-
-	// Remember where this is logged
-
-	virtualOffset = log->writeWindow->getNextVirtualOffset();
 
 	for (DINode *node = walker.next(); node;)
 		{
 		START_RECORD(srlUpdateIndex, "SRLUpdateIndex::append(2)");
+		
+		// Save the absolute offset of the DeferredIndex record within the serial log.
+		// This must be done inside the SerialLog::syncWrite lock set by START_RECORD().
+
+		if (virtualOffset == 0)
+			virtualOffset = log->startRecordVirtualOffset;
+
 		log->updateIndexUseVector(indexId, tableSpaceId, 1);
 		SerialLogTransaction *srlTrans = log->getTransaction(transaction->transactionId);
 		srlTrans->setTransaction(transaction);
 		ASSERT(transaction->writePending);
+		
+		// Set the record header fields
+		
 		putInt(tableSpaceId);
 		putInt(transaction->transactionId);
 		putInt(indexId);
 		putInt(idxVersion);
+		
+		// Initialize the length field, adjust with correct length later.
+		// Use a fixed-length integer to accommodate a larger number.
+		
 		UCHAR *lengthPtr = putFixedInt(0);
 		UCHAR *start = log->writePtr;
 		UCHAR *end = log->writeWarningTrack;
 
+		// Write the variable-length index node data. If the data length
+		// will extend past the end of the current window, start a new
+		// record.
+		
 		for (; node; node = walker.next())
 			{
 			if (log->writePtr + byteCount(node->recordNumber) +
@@ -84,10 +107,18 @@ void SRLUpdateIndex::append(DeferredIndex* deferredIndex)
 		int len = (int) (log->writePtr - start);
 		//printf("SRLUpdateIndex::append tid %d, index %d, length %d, ptr %x (%x)\n",  transaction->transactionId, indexId, len, lengthPtr, org);
 		ASSERT(len >= 0);
-		putFixedInt(len, lengthPtr);
-		const UCHAR *p = lengthPtr;
-		ASSERT(getInt(&p) == len);
+
+		// Update the length field
+		
+		if (len > 0)
+			putFixedInt(len, lengthPtr);
+		
+		// Save the absolute offset of the end of the DeferredIndex record
+		
 		virtualOffsetAtEnd = log->writeWindow->getNextVirtualOffset();
+		
+		// End this serial log record and flush to disk. Force the creation of
+		// a new serial log window.
 		log->endRecord();
 		
 		if (node)
@@ -209,9 +240,9 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 {
 	Sync sync(&log->syncWrite, "SRLUpdateIndex::thaw");
 	sync.lock(Exclusive);
+
 	uint64 virtualOffset = deferredIndex->virtualOffset;
 	int recordNumber = 0;  // a valid record number to get into the loop.
-	ASSERT(deferredIndex->virtualOffset);
 	Transaction *trans = deferredIndex->transaction;
 	TransId transId = trans->transactionId;
 	indexId = deferredIndex->index->indexId;
@@ -226,21 +257,25 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 	
 	if (window == NULL)
 		{
-		Log::log("A window for DeferredIndex::virtualOffset=" I64FORMAT " could not be found.\n",
-		         deferredIndex->virtualOffset);
+		Log::log("Index thaw FAIL: A window for DeferredIndex::virtualOffset=" I64FORMAT " could not be found.\n", deferredIndex->virtualOffset);
 		log->printWindows();
-		
 		return;
 		}
-		
-	// Find the correct block within the window and set the offset using that block.
 
-	SerialLogBlock *block = window->firstBlock();
-	uint32 blockOffset = 0;
-	ASSERT( (UCHAR *) block == window->buffer);
+	// Location of the DeferredIndex within the window
+	
 	uint32 windowOffset = (uint32) (virtualOffset - window->virtualOffset);
-
-	while (windowOffset >= blockOffset + block->length)
+	
+	// Location of the block in which the DeferredIndex resides
+	
+	uint32 blockOffset = 0; 
+	
+	// Find the block in which the DeferredIndex resides, starting with the first
+	// block in the window. Accumulate each block's offset in blockOffset.
+	
+	SerialLogBlock *block = window->firstBlock();
+	
+	while (blockOffset + block->length <= windowOffset)
 		{
 		SerialLogBlock *prevBlock = block;
 		block = window->nextBlock(block);
@@ -248,21 +283,37 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 		blockOffset += thisBlockOffset;
 		}
 
+	// Find the location of the DeferredIndex in the target block. Adjust for the
+	// offset of the data buffer within the block structure.
+	
 	uint32 offsetWithinBlock = (windowOffset - blockOffset - OFFSET(SerialLogBlock*, data));
+	
+	// Get the serial log version and set the input pointer to the specified offset within
+	// the target block. Activate the window, if necessary.
+	
 	control->setWindow(window, block, offsetWithinBlock);
 	ASSERT(control->input == window->buffer + windowOffset);
 	ASSERT(control->inputEnd <= window->bufferEnd);
 
-	// Read the SerialLogRecord type and header
+	// Now we are pointing at a serial log record, so read the entire record.
+	// Version records are written at the top of each block. If necessary,
+	// advance past the version record and read the SRLUpdateIndex record.
 
-	UCHAR type = getInt();
-	ASSERT(type == srlUpdateIndex);
-	read();		// this read() is also in control->nextRecord() below.
-
-	while (virtualOffset < deferredIndex->virtualOffsetAtEnd)
+	SerialLogRecord* srlRecord = control->nextRecord();
+	
+	if (srlRecord && srlRecord->type == srlVersion)
+		srlRecord = control->nextRecord();
+		
+	if (srlRecord)
+		ASSERT(srlRecord->type == srlUpdateIndex);
+	else
+		Log::log("Index thaw FAIL: SRLUpdateIndex record not found. DeferredIndex::virtualOffset=" I64FORMAT "\n", deferredIndex->virtualOffset);
+	
+	// The DeferredIndex may reside in several serial log records. Read each record and
+	// rebuild the index from the nodes stored within the record.
+	
+	while (srlRecord && virtualOffset < deferredIndex->virtualOffsetAtEnd)
 		{
-		sync.unlock();
-
 		// Read the header of the deferredIndex and validate.
 
 		ASSERT(transactionId == transId);
@@ -274,7 +325,7 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 					
 		IndexKey indexKey(deferredIndex->index);
 
-		// Read each IndexKey and add it to the deferredIndex.   set ptr and end for nextKey()
+		// Read each IndexKey and add it to the deferredIndex. Set ptr and end for nextKey().
 
 		ptr = data;
 		end = ptr + dataLength;
@@ -282,13 +333,15 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 		for (recordNumber = nextKey(&indexKey); recordNumber >= 0; recordNumber = nextKey(&indexKey))
 			deferredIndex->addNode(&indexKey, recordNumber);
 
-		sync.lock(Exclusive);
-
 		for (;;)
 			{
 			// Quit if there are no more SerialLogRecords for this DeferredIndex.
 
 			SerialLogWindow *inputWindow = control->inputWindow;
+
+			if (!inputWindow)
+				break;
+				
 			virtualOffset = inputWindow->virtualOffset + (control->input - inputWindow->buffer);
 
 			if (virtualOffset >= deferredIndex->virtualOffsetAtEnd)
@@ -296,9 +349,9 @@ void SRLUpdateIndex::thaw(DeferredIndex* deferredIndex)
 
 			// Find the next SerialLogRecord of this deferredIndex.
 
-			SerialLogRecord *record = control->nextRecord();
+			srlRecord = control->nextRecord();
 
-			if ((record == this) && (transactionId == transId) && (indexId == deferredIndex->index->indexId))
+			if (srlRecord == this && transactionId == transId && indexId == deferredIndex->index->indexId)
 				break;
 			}
 		}

@@ -53,6 +53,7 @@ class THD;
 extern "C" 
 {
 StorageHandler*	getFalconStorageHandler(int lockSize);
+void freeFalconStorageHandler(void);
 }
 
 static const int databaseHashSize = 101;
@@ -126,6 +127,7 @@ public:
 	int					closeConnections(THD* thd);
 	int					dropDatabase(const char* path);
 	void				initialize(void);
+	void				createDatabase(void);
 	void				dropTempTables(void);
 	void				cleanFileName(const char* pathname, char* filename, int filenameLength);
 	JString				genCreateTableSpace(const char* tableSpaceName, const char* filename, const char* comment = NULL);
@@ -141,6 +143,7 @@ public:
 	Connection			*dictionaryConnection;
 	int					mySqlLockSize;
 	bool				initialized;
+	static void			setDataDirectory(const char *directory);
 };
 
 #endif

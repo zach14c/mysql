@@ -119,6 +119,20 @@ a	b	c
 2	3	2
 9	2	8
 5	2	12
+select a,b,c from t1 where c in (0,200,199,198,197,196,195,194,193,192,191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,168,167,166,165,164,163,162,161,160,159,158,157,156,155,154,153,152,151,150,149,148,147,146,145,144,143,142,141,140,139,138,137,136,135,134,133,132,131,130,129,128,127,126,125,124,123,122,121,120,119,118,117,116,115,114,113,112,111,110,109,108,107,106,105,104,103,102,101,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1) order by c desc;
+a	b	c
+5	2	12
+6	3	11
+7	4	10
+8	5	9
+9	2	8
+10	3	7
+11	4	6
+12	5	5
+4	5	4
+3	4	3
+2	3	2
+1	2	1
 drop table t1;
 create table t1 (
 a int not null,
@@ -211,6 +225,21 @@ a	b	c	d	e
 delete from t1 where d in (12,6,7);
 select * from t1 where d in (12,6,7);
 a	b	c	d	e
+select d from t1 where d in (0,200,199,198,197,196,195,194,193,192,191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,168,167,166,165,164,163,162,161,160,159,158,157,156,155,154,153,152,151,150,149,148,147,146,145,144,143,142,141,140,139,138,137,136,135,134,133,132,131,130,129,128,127,126,125,124,123,122,121,120,119,118,117,116,115,114,113,112,111,110,109,108,107,106,105,104,103,102,101,100,99,98,97,96,95,94,93,92,91,90,89,88,87,86,85,84,83,82,81,80,79,78,77,76,75,74,73,72,71,70,69,68,67,66,65,64,63,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1) order by d desc;
+d
+5
+5
+5
+4
+3
+3
+3
+3
+2
+2
+1
+1
+1
 drop table t1;
 create table t1 (
 a int not null primary key,
@@ -506,4 +535,104 @@ a	b
 delete from t1 where a in (7,8) or a >= 10;
 select * from t1 order by a;
 a	b
+drop table t1;
+create table t1 (a int primary key, b int, key b_idx (b)) engine ndb;
+insert into t1 values(1,1), (2,2), (3,3), (4,4), (5,5);
+select one.a 
+from t1 one left join t1 two 
+on (two.b = one.b) 
+where one.a in (3, 4) 
+order by a;
+a
+3
+4
+drop table t1;
+create table t1 (a varchar(2040) not null,
+b varchar(2040) not null,
+c int, primary key (a,b)) engine=ndb;
+insert into t1 values ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3),
+('d', 'd', 4), ('e', 'e', 5), ('f', 'f', 6),
+('g', 'g', 7), ('h', 'h', 8), ('i', 'i', 9),
+('j', 'j', 10), ('k', 'k', 11), ('l', 'l', 12),
+('m', 'm', 13), ('n', 'n', 14), ('o', 'o', 15),
+('p', 'p', 16), ('q', 'q', 17), ('r', 'r', 18),
+('s', 's', 19), ('t', 't', 20), ('u', 'u', 21),
+('v', 'v', 22), ('w', 'w', 23), ('x', 'x', 24);
+set @old_ecpd = @@session.engine_condition_pushdown;
+set engine_condition_pushdown = off;
+set @x = repeat('x', 2000);
+select * from t1
+where (a = 'a')
+or (a > concat('az',@x) and a < concat('bb', @x))
+or (a > concat('bz',@x) and a < concat('cb', @x))
+or (a > concat('cz',@x) and a < concat('db', @x))
+or (a > concat('dz',@x) and a < concat('eb', @x))
+or (a > concat('ez',@x) and a < concat('fb', @x))
+or (a > concat('fz',@x) and a < concat('gb', @x))
+or (a > concat('gz',@x) and a < concat('hb', @x))
+or (a > concat('hz',@x) and a < concat('ib', @x))
+or (a > concat('iz',@x) and a < concat('jb', @x))
+or (a > concat('jz',@x) and a < concat('kb', @x))
+or (a > concat('kz',@x) and a < concat('lb', @x))
+or (a > concat('lz',@x) and a < concat('mb', @x))
+or (a > concat('mz',@x) and a < concat('nb', @x))
+or (a > concat('nz',@x) and a < concat('ob', @x))
+or (a > concat('oz',@x) and a < concat('pb', @x))
+or (a > concat('pz',@x) and a < concat('qb', @x))
+or (a > concat('qz',@x) and a < concat('rb', @x))
+or (a > concat('rz',@x) and a < concat('sb', @x))
+or (a = 'x')
+order by a asc, b asc;
+a	b	c
+a	a	1
+b	b	2
+c	c	3
+d	d	4
+e	e	5
+f	f	6
+g	g	7
+h	h	8
+i	i	9
+j	j	10
+k	k	11
+l	l	12
+m	m	13
+n	n	14
+o	o	15
+p	p	16
+q	q	17
+r	r	18
+s	s	19
+x	x	24
+set engine_condition_pushdown = @old_ecpd;
+drop table t1;
+create table t1 (a varchar(1536) not null,
+b varchar(1536) not null,
+c int, primary key (a,b)) engine=ndb;
+insert into t1 values ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3),
+('d', 'd', 4), ('e', 'e', 5), ('f', 'f', 6),
+('g', 'g', 7), ('h', 'h', 8), ('i', 'i', 9),
+('j', 'j', 10), ('k', 'k', 11), ('l', 'l', 12),
+('m', 'm', 13), ('n', 'n', 14), ('o', 'o', 15),
+('p', 'p', 16), ('q', 'q', 17), ('r', 'r', 18),
+('s', 's', 19), ('t', 't', 20), ('u', 'u', 21),
+('v', 'v', 22), ('w', 'w', 23), ('x', 'x', 24);
+select * from t1
+where (a >= 'aa' and b >= 'x' and a <= 'c' and b <= 'c')
+or (a = 'd')
+or (a = 'e')
+or (a = 'f')
+or (a > 'g' and a < 'ii')
+or (a >= 'j' and b >= 'x' and a <= 'k' and b <= 'k')
+or (a = 'm' and b = 'm')
+or (a = 'v')
+order by a asc, b asc;
+a	b	c
+d	d	4
+e	e	5
+f	f	6
+h	h	8
+i	i	9
+m	m	13
+v	v	22
 drop table t1;

@@ -27,6 +27,7 @@
 #include "myisamdef.h" // to access dfile and kfile
 #include "backup/backup_engine.h"
 #include "backup/backup_aux.h"         // for build_table_list()
+#include "debug_sync.h"
 #include <hash.h>
 
 /**
@@ -256,6 +257,9 @@ private:
   ulong sleep_time;
   size_t bytes_since_last_sleep; ///< how many bytes sent since we last slept
 };
+
+/* Needed for VisualAge 6.0 */
+const size_t Backup::bytes_between_sleeps;
 
 /**
   When we send a backup packet to the backup kernel, we prefix it with a code
@@ -1758,7 +1762,6 @@ result_t Table_restore::close()
   {
     MI_INFO      *mi_info;
     MYISAM_SHARE *share;
-    my_bool      old_myisam_single_user;
 
     mi_info= mi_open(file_name.ptr(), O_RDWR, HA_OPEN_FOR_REPAIR);
     if (mi_info == NULL)
@@ -1766,14 +1769,8 @@ result_t Table_restore::close()
     share= mi_info->s;
     DBUG_PRINT("myisam_backup", ("share data_file: %lu",
                                  (ulong) share->state.state.data_file_length));
-    old_myisam_single_user= myisam_single_user;
-    myisam_single_user= FALSE;
-    if (mi_state_info_read_dsk(share->kfile,&share->state,1))
-    {
-      myisam_single_user= old_myisam_single_user;
+    if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 1))
       goto err;
-    }
-    myisam_single_user= old_myisam_single_user;
     DBUG_PRINT("myisam_backup", ("share data_file: %lu",
                                  (ulong) share->state.state.data_file_length));
     /*

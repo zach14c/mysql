@@ -13,12 +13,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/unittest/mytap)
-LINK_LIBRARIES(maria myisam mytap mysys dbug strings wsock32 zlib)
+LINK_LIBRARIES(maria myisam mytap mysys dbug strings zlib)
 
 ADD_EXECUTABLE(ma_control_file-t ma_control_file-t.c)
 ADD_EXECUTABLE(trnman-t trnman-t.c)
@@ -94,3 +91,5 @@ SET_TARGET_PROPERTIES(ma_pagecache_consist_64kWR-t
 	PROPERTIES COMPILE_FLAGS "${ma_pagecache_common_cppflags} -DTEST_PAGE_SIZE=65536 -DTEST_WRITERS")
 ADD_EXECUTABLE(ma_pagecache_rwconsist_1k-t ma_pagecache_rwconsist.c)
 SET_TARGET_PROPERTIES(ma_pagecache_rwconsist_1k-t PROPERTIES COMPILE_FLAGS "-DTEST_PAGE_SIZE=1024")
+ADD_EXECUTABLE(ma_pagecache_rwconsist2_1k-t ma_pagecache_rwconsist2.c)
+SET_TARGET_PROPERTIES(ma_pagecache_rwconsist2_1k-t PROPERTIES COMPILE_FLAGS "-DTEST_PAGE_SIZE=1024")

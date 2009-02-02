@@ -1,0 +1,31 @@
+*** Bug #24024 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a int, b int, primary key(a));
+INSERT INTO t1(a) VALUES (1);
+COMMIT;
+# Establish connection conn1 (user=root)
+# Switch to connection default
+SET @@autocommit = 0;
+UPDATE t1 SET b = 5 WHERE a = 1;
+# Switch to connection conn1
+INSERT INTO t1(a) VALUES(7);
+COMMIT;
+SELECT * FROM t1;
+a	b
+1	NULL
+7	NULL
+!!! Error message is total crap!
+!!! Something like "Cannot drop locked table" or similar would be fine,
+!!! But never the misleading    ERROR 42S02: Unknown table 't1'.
+DROP TABLE t1;
+ERROR 42S02: Unknown table 't1'
+SHOW WARNINGS;
+Level	Code	Message
+Warning	178	Can't execute the given command because you have active locked tables or an active transaction
+SELECT count(*) FROM t1;
+count(*)
+2
+# Switch to connection default
+COMMIT;
+DROP TABLE t1;

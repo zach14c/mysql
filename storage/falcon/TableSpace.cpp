@@ -123,7 +123,9 @@ void TableSpace::open()
 
 void TableSpace::create()
 {
+#ifndef FALCONDB
 	dbb->createPath(filename);
+#endif
 	dbb->create(filename, dbb->pageSize, 0, HdrTableSpace, 0, NULL);
 	active = true;
 	dbb->flush();

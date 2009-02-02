@@ -1,0 +1,52 @@
+--source include/have_falcon.inc
+
+#
+# Bug #23945: crash during drop table, AUTOCOMMIT=0, CREATE TABLE .. AS SELECT
+#
+--echo *** Bug #23945 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+SET @@autocommit = 1;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+--error ER_DUP_ENTRY
+CREATE TABLE t1 (PRIMARY KEY (a)) SELECT 1 AS a UNION ALL SELECT 1;
+--error ER_NO_SUCH_TABLE
+SELECT * FROM t1;
+--error ER_BAD_TABLE_ERROR
+DROP TABLE t1;
+
+SET @@autocommit = 0;
+--error ER_DUP_ENTRY
+CREATE TABLE t1 (PRIMARY KEY (a)) SELECT 1 AS a UNION ALL SELECT 1;
+--error ER_NO_SUCH_TABLE
+SELECT * FROM t1;
+# Here comes a server crash.
+--error ER_BAD_TABLE_ERROR
+DROP TABLE t1;
+
+CREATE TABLE t1(a INT);
+DROP TABLE t1;
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+# Check not applicable in this test.
+#SELECT count(*) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+# Final cleanup not applicable in this test.
+#DROP TABLE t1;

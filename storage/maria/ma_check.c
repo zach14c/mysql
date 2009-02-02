@@ -2097,14 +2097,14 @@ int maria_chk_data_link(HA_CHECK *param, MARIA_HA *info, my_bool extend)
     if (param->del_blocks != share->state.state.del)
     {
       _ma_check_print_warning(param,
-                              "Found %10s deleted blocks       Should be: %s",
+                              "Found %10s deleted blocks.  Should be: %s",
                               llstr(param->del_blocks,llbuff),
                               llstr(share->state.state.del,llbuff2));
     }
     if (param->splits != share->state.split)
     {
       _ma_check_print_warning(param,
-                              "Found %10s parts                Should be: %s parts",
+                              "Found %10s key parts.  Should be: %s",
                               llstr(param->splits, llbuff),
                               llstr(share->state.split,llbuff2));
     }
@@ -2476,7 +2476,7 @@ int maria_repair(HA_CHECK *param, register MARIA_HA *info,
   {
     /* Get real path for data file */
     if ((new_file= my_create(fn_format(param->temp_filename,
-                                       share->data_file_name, "",
+                                       share->data_file_name.str, "",
                                        DATA_TMP_EXT, 2+4),
                              0,param->tmpfile_createflag,
                              MYF(0))) < 0)
@@ -2680,12 +2680,12 @@ int maria_repair(HA_CHECK *param, register MARIA_HA *info,
       my_close(new_file, MYF(MY_WME));
     new_file= -1;
     change_data_file_descriptor(info, -1);
-    if (maria_change_to_newfile(share->data_file_name,MARIA_NAME_DEXT,
+    if (maria_change_to_newfile(share->data_file_name.str, MARIA_NAME_DEXT,
                                 DATA_TMP_EXT,
                                 (param->testflag & T_BACKUP_DATA ?
                                  MYF(MY_REDEL_MAKE_BACKUP): MYF(0)) |
                                 sync_dir) ||
-        _ma_open_datafile(info, share, -1))
+        _ma_open_datafile(info, share, NullS, -1))
     {
       goto err;
     }
@@ -2992,8 +2992,8 @@ int maria_sort_index(HA_CHECK *param, register MARIA_HA *info, char *name)
   (void)(my_close(share->kfile.file, MYF(MY_WME)));
   share->kfile.file = -1;
   pthread_mutex_unlock(&share->intern_lock);
-  (void)(my_close(new_file,MYF(MY_WME)));
-  if (maria_change_to_newfile(share->index_file_name, MARIA_NAME_IEXT,
+  (void) my_close(new_file,MYF(MY_WME));
+  if (maria_change_to_newfile(share->index_file_name.str, MARIA_NAME_IEXT,
                               INDEX_TMP_EXT, sync_dir) ||
       _ma_open_keyfile(share))
     goto err2;
@@ -3184,7 +3184,7 @@ static my_bool maria_zerofill_index(HA_CHECK *param, MARIA_HA *info,
       pagecache_unlock_by_link(share->pagecache, page_link.link,
                                PAGECACHE_LOCK_WRITE_UNLOCK,
                                PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
-                               LSN_IMPOSSIBLE, 0);
+                               LSN_IMPOSSIBLE, 0, FALSE);
       _ma_check_print_error(param,
                             "Page %9s: Got error %d when reading index file",
                             llstr(pos, llbuff), my_errno);
@@ -3218,7 +3218,7 @@ static my_bool maria_zerofill_index(HA_CHECK *param, MARIA_HA *info,
     pagecache_unlock_by_link(share->pagecache, page_link.link,
                              PAGECACHE_LOCK_WRITE_UNLOCK,
                              PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
-                             LSN_IMPOSSIBLE, 1);
+                             LSN_IMPOSSIBLE, 1, FALSE);
   }
   if (flush_pagecache_blocks(share->pagecache, &share->kfile,
                              FLUSH_FORCE_WRITE))
@@ -3342,7 +3342,7 @@ static my_bool maria_zerofill_data(HA_CHECK *param, MARIA_HA *info,
     pagecache_unlock_by_link(share->pagecache, page_link.link,
                              PAGECACHE_LOCK_WRITE_UNLOCK,
                              PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
-                             LSN_IMPOSSIBLE, 1);
+                             LSN_IMPOSSIBLE, 1, FALSE);
   }
   DBUG_RETURN(_ma_bitmap_flush(share) ||
               flush_pagecache_blocks(share->pagecache, &info->dfile,
@@ -3352,7 +3352,7 @@ err:
   pagecache_unlock_by_link(share->pagecache, page_link.link,
                            PAGECACHE_LOCK_WRITE_UNLOCK,
                            PAGECACHE_UNPIN, LSN_IMPOSSIBLE,
-                           LSN_IMPOSSIBLE, 0);
+                           LSN_IMPOSSIBLE, 0, FALSE);
   DBUG_RETURN(1);
 }
 
@@ -3524,7 +3524,7 @@ int maria_repair_by_sort(HA_CHECK *param, register MARIA_HA *info,
   {
     /* Get real path for data file */
     if ((new_file=my_create(fn_format(param->temp_filename,
-                                      share->data_file_name, "",
+                                      share->data_file_name.str, "",
                                       DATA_TMP_EXT, 2+4),
                             0,param->tmpfile_createflag,
                             MYF(0))) < 0)
@@ -3789,12 +3789,12 @@ int maria_repair_by_sort(HA_CHECK *param, register MARIA_HA *info,
         new_file= -1;
       }
       change_data_file_descriptor(info, -1);
-      if (maria_change_to_newfile(share->data_file_name,MARIA_NAME_DEXT,
+      if (maria_change_to_newfile(share->data_file_name.str, MARIA_NAME_DEXT,
                                   DATA_TMP_EXT,
                                   (param->testflag & T_BACKUP_DATA ?
                                    MYF(MY_REDEL_MAKE_BACKUP): MYF(0)) |
                                   sync_dir) ||
-          _ma_open_datafile(info, share, -1))
+          _ma_open_datafile(info, share, NullS, -1))
       {
         _ma_check_print_error(param, "Couldn't change to new data file");
         goto err;
@@ -4070,7 +4070,7 @@ int maria_repair_parallel(HA_CHECK *param, register MARIA_HA *info,
   {
     /* Get real path for data file */
     if ((new_file= my_create(fn_format(param->temp_filename,
-                                       share->data_file_name, "",
+                                       share->data_file_name.str, "",
                                        DATA_TMP_EXT,
                                        2+4),
                              0,param->tmpfile_createflag,
@@ -4397,12 +4397,12 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile.file= new_file= -1;
-      if (maria_change_to_newfile(share->data_file_name,MARIA_NAME_DEXT,
+      if (maria_change_to_newfile(share->data_file_name.str, MARIA_NAME_DEXT,
                                   DATA_TMP_EXT,
                                   MYF((param->testflag & T_BACKUP_DATA ?
                                        MY_REDEL_MAKE_BACKUP : 0) |
                                       sync_dir)) ||
-	  _ma_open_datafile(info,share,-1))
+	  _ma_open_datafile(info,share, NullS, -1))
 	got_error=1;
     }
   }
@@ -6236,7 +6236,7 @@ static my_bool create_new_data_handle(MARIA_SORT_PARAM *param, File new_file)
   MARIA_HA *new_info;
   DBUG_ENTER("create_new_data_handle");
 
-  if (!(sort_info->new_info= maria_open(info->s->open_file_name, O_RDWR,
+  if (!(sort_info->new_info= maria_open(info->s->open_file_name.str, O_RDWR,
                                         HA_OPEN_COPY | HA_OPEN_FOR_REPAIR)))
     DBUG_RETURN(1);
 

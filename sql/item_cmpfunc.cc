@@ -394,29 +394,31 @@ static bool convert_constant_item(THD *thd, Item_field *field_item,
     TABLE *table= field->table;
     ulong orig_sql_mode= thd->variables.sql_mode;
     enum_check_fields orig_count_cuted_fields= thd->count_cuted_fields;
-    my_bitmap_map *old_write_map;
-    my_bitmap_map *old_read_map;
+    my_bitmap_map *old_maps[2];
     ulonglong orig_field_val; /* original field value if valid */
 
-    LINT_INIT(old_write_map);
-    LINT_INIT(old_read_map);
+    LINT_INIT(old_maps[0]);
+    LINT_INIT(old_maps[1]);
     LINT_INIT(orig_field_val);
 
     if (table)
-    {
-      old_write_map= dbug_tmp_use_all_columns(table, table->write_set);
-      old_read_map= dbug_tmp_use_all_columns(table, table->read_set);
-    }
+      dbug_tmp_use_all_columns(table, old_maps, 
+                               table->read_set, table->write_set);
     /* For comparison purposes allow invalid dates like 2000-01-32 */
     thd->variables.sql_mode= (orig_sql_mode & ~MODE_NO_ZERO_DATE) | 
                              MODE_INVALID_DATES;
     thd->count_cuted_fields= CHECK_FIELD_IGNORE;
 
     /*
-      Store the value of the field if it references an outer field because
-      the call to save_in_field below overrides that value.
+      Store the value of the field/constant if it references an outer field
+      because the call to save_in_field below overrides that value.
+      Don't save field value if no data has been read yet.
+      Outer constant values are always saved.
     */
-    if (field_item->depended_from)
+    bool save_field_value= (field_item->depended_from &&
+                            (field_item->const_item() ||
+                             !(field->table->status & STATUS_NO_RECORD)));
+    if (save_field_value)
       orig_field_val= field->val_int();
     if (!(*item)->is_null() && !(*item)->save_in_field(field, 1))
     {
@@ -427,7 +429,7 @@ static bool convert_constant_item(THD *thd, Item_field *field_item,
       result= 1;					// Item was replaced
     }
     /* Restore the original field value. */
-    if (field_item->depended_from)
+    if (save_field_value)
     {
       result= field->store(orig_field_val, TRUE);
       /* orig_field_val must be a valid value that can be restored back. */
@@ -436,10 +438,7 @@ static bool convert_constant_item(THD *thd, Item_field *field_item,
     thd->variables.sql_mode= orig_sql_mode;
     thd->count_cuted_fields= orig_count_cuted_fields;
     if (table)
-    {
-      dbug_tmp_restore_column_map(table->write_set, old_write_map);
-      dbug_tmp_restore_column_map(table->read_set, old_read_map);
-    }
+      dbug_tmp_restore_column_maps(table->read_set, table->write_set, old_maps);
   }
   return result;
 }
@@ -805,11 +804,11 @@ Arg_comparator::can_compare_as_dates(Item *a, Item *b, ulonglong *const_value)
     obtained value
 */
 
-ulonglong
+longlong
 get_time_value(THD *thd, Item ***item_arg, Item **cache_arg,
                Item *warn_item, bool *is_null)
 {
-  ulonglong value;
+  longlong value;
   Item *item= **item_arg;
   MYSQL_TIME ltime;
 
@@ -821,7 +820,7 @@ get_time_value(THD *thd, Item ***item_arg, Item **cache_arg,
   else
   {
     *is_null= item->get_time(&ltime);
-    value= !*is_null ? TIME_to_ulonglong_datetime(&ltime) : 0;
+    value= !*is_null ? (longlong) TIME_to_ulonglong_datetime(&ltime) : 0;
   }
   /*
     Do not cache GET_USER_VAR() function as its const_item() may return TRUE
@@ -945,11 +944,11 @@ void Arg_comparator::set_datetime_cmp_func(Item **a1, Item **b1)
     obtained value
 */
 
-ulonglong
+longlong
 get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
                    Item *warn_item, bool *is_null)
 {
-  ulonglong value= 0;
+  longlong value= 0;
   String buf, *str= 0;
   Item *item= **item_arg;
 
@@ -987,7 +986,7 @@ get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
     enum_field_types f_type= warn_item->field_type();
     timestamp_type t_type= f_type ==
       MYSQL_TYPE_DATE ? MYSQL_TIMESTAMP_DATE : MYSQL_TIMESTAMP_DATETIME;
-    value= get_date_from_str(thd, str, t_type, warn_item->name, &error);
+    value= (longlong) get_date_from_str(thd, str, t_type, warn_item->name, &error);
     /*
       If str did not contain a valid date according to the current
       SQL_MODE, get_date_from_str() has already thrown a warning,
@@ -1028,19 +1027,24 @@ get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
        1    if items are equal or both are null
        0    otherwise
     If is_nulls_eq is FALSE:
-      -1   a < b or one of items is null
+      -1   a < b or at least one item is null
        0   a == b
        1   a > b
+    See the table:
+    is_nulls_eq | 1 | 1 | 1 | 1 | 0 | 0 | 0 | 0 |
+    a_is_null   | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 0 |
+    b_is_null   | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 |
+    result      | 1 | 0 | 0 |0/1|-1 |-1 |-1 |-1/0/1|
 */
 
 int Arg_comparator::compare_datetime()
 {
-  bool is_null= FALSE;
-  ulonglong a_value, b_value;
+  bool a_is_null, b_is_null;
+  longlong a_value, b_value;
 
   /* Get DATE/DATETIME/TIME value of the 'a' item. */
-  a_value= (*get_value_func)(thd, &a, &a_cache, *b, &is_null);
-  if (!is_nulls_eq && is_null)
+  a_value= (*get_value_func)(thd, &a, &a_cache, *b, &a_is_null);
+  if (!is_nulls_eq && a_is_null)
   {
     if (owner)
       owner->null_value= 1;
@@ -1048,14 +1052,15 @@ int Arg_comparator::compare_datetime()
   }
 
   /* Get DATE/DATETIME/TIME value of the 'b' item. */
-  b_value= (*get_value_func)(thd, &b, &b_cache, *a, &is_null);
-  if (is_null)
+  b_value= (*get_value_func)(thd, &b, &b_cache, *a, &b_is_null);
+  if (a_is_null || b_is_null)
   {
     if (owner)
       owner->null_value= is_nulls_eq ? 0 : 1;
-    return is_nulls_eq ? 1 : -1;
+    return is_nulls_eq ? (a_is_null == b_is_null) : -1;
   }
 
+  /* Here we have two not-NULL values. */
   if (owner)
     owner->null_value= 0;
 
@@ -2772,6 +2777,16 @@ void Item_func_case::fix_length_and_dec()
     nagg++;
     if (!(found_types= collect_cmp_types(agg, nagg)))
       return;
+    if (with_sum_func || current_thd->lex->current_select->group_list.elements)
+    {
+      /*
+        See TODO commentary in the setup_copy_fields function:
+        item in a group may be wrapped with an Item_copy_string item.
+        That item has a STRING_RESULT result type, so we need
+        to take this type into account.
+      */
+      found_types |= (1 << item_cmp_type(left_result_type, STRING_RESULT));
+    }
 
     for (i= 0; i <= (uint)DECIMAL_RESULT; i++)
     {
@@ -3920,7 +3935,7 @@ Item_cond::fix_fields(THD *thd, Item **ref)
   not_null_tables_cache= used_tables_cache= 0;
   const_item_cache= 1;
 
-  if (functype() == COND_OR_FUNC)
+  if (functype() != COND_AND_FUNC)
     thd->thd_marker.emb_on_expr_nest= NULL;
   /*
     and_table_cache is the value that Item_cond_or() returns for
@@ -4562,8 +4577,20 @@ void Item_func_like::cleanup()
 
 #ifdef USE_REGEX
 
-bool
-Item_func_regex::regcomp(bool send_error)
+/**
+  @brief Compile regular expression.
+
+  @param[in]    send_error     send error message if any.
+
+  @details Make necessary character set conversion then 
+  compile regular expression passed in the args[1].
+
+  @retval    0     success.
+  @retval    1     error occurred.
+  @retval   -1     given null regular expression.
+ */
+
+int Item_func_regex::regcomp(bool send_error)
 {
   char buff[MAX_FIELD_WIDTH];
   String tmp(buff,sizeof(buff),&my_charset_bin);
@@ -4571,12 +4598,12 @@ Item_func_regex::regcomp(bool send_error)
   int error;
 
   if (args[1]->null_value)
-    return TRUE;
+    return -1;
 
   if (regex_compiled)
   {
     if (!stringcmp(res, &prev_regexp))
-      return FALSE;
+      return 0;
     prev_regexp.copy(*res);
     my_regfree(&preg);
     regex_compiled= 0;
@@ -4588,7 +4615,7 @@ Item_func_regex::regcomp(bool send_error)
     uint dummy_errors;
     if (conv.copy(res->ptr(), res->length(), res->charset(),
                   regex_lib_charset, &dummy_errors))
-      return TRUE;
+      return 1;
     res= &conv;
   }
 
@@ -4600,10 +4627,10 @@ Item_func_regex::regcomp(bool send_error)
       (void) my_regerror(error, &preg, buff, sizeof(buff));
       my_error(ER_REGEXP_ERROR, MYF(0), buff);
     }
-    return TRUE;
+    return 1;
   }
   regex_compiled= 1;
-  return FALSE;
+  return 0;
 }
 
 
@@ -4641,13 +4668,14 @@ Item_func_regex::fix_fields(THD *thd, Item **ref)
   const_item_cache=args[0]->const_item() && args[1]->const_item();
   if (!regex_compiled && args[1]->const_item())
   {
-    if (args[1]->null_value)
+    int comp_res= regcomp(TRUE);
+    if (comp_res == -1)
     {						// Will always return NULL
       maybe_null=1;
       fixed= 1;
       return FALSE;
     }
-    if (regcomp(TRUE))
+    else if (comp_res)
       return TRUE;
     regex_is_const= 1;
     maybe_null= args[0]->maybe_null;
@@ -4694,6 +4722,7 @@ void Item_func_regex::cleanup()
   {
     my_regfree(&preg);
     regex_compiled=0;
+    prev_regexp.length(0);
   }
   DBUG_VOID_RETURN;
 }

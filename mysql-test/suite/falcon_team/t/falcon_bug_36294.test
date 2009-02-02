@@ -1,52 +1,66 @@
 --source include/have_falcon.inc
+
 #
 # Bug#36294: Assertion in Cache::writePage
 #    This test produces no output. It is only here to crash the server
 #    once insert/select runs into error 305 (record memory exhaused).
 #    Exact point of crash is generally unpredictable.
 #
+--echo *** Bug #36294 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
 let $engine = 'Falcon';
 eval SET @@storage_engine = $engine;
 
+--disable_warnings
+DROP TABLE IF EXISTS ftest;
+--enable_warnings
+
+eval CREATE TABLESPACE gimdata ADD DATAFILE 'gimdata.fts' ENGINE $engine;
+eval CREATE TABLE ftest (id serial, col1 varchar(500)) ENGINE $engine TABLESPACE gimdata;
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
 --disable_abort_on_error
 --disable_warnings
 --disable_query_log
-drop table if exists ftest;
-create tablespace gimdata add datafile 'gimdata.fts' engine=$engine;
-create table ftest (id serial, col1 varchar(500)) engine=$engine tablespace gimdata;
-insert into ftest values (null,repeat("a",500));
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-insert into ftest(col1) select col1 from ftest;
-drop table ftest;
-drop tablespace gimdata engine=$engine;
+INSERT INTO ftest VALUES (null,repeat("a",500));
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
+INSERT INTO ftest(col1) SELECT col1 FROM ftest;
 --enable_warnings
 --enable_abort_on_error
 --enable_query_log
+
 # ----------------------------------------------------- #
 # --- Check                                         --- #
 # ----------------------------------------------------- #
---echo hello,world
+--echo Hello, world!
 
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
+DROP TABLE ftest;
+eval DROP TABLESPACE gimdata ENGINE $engine;

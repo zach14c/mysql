@@ -1,6 +1,8 @@
 drop table if exists t1,t1aa,t2aa;
 show tables;
 Tables_in_db
+backup_history
+backup_progress
 columns_priv
 db
 event
@@ -12,8 +14,6 @@ help_relation
 help_topic
 host
 ndb_binlog_index
-online_backup
-online_backup_progress
 plugin
 proc
 procs_priv

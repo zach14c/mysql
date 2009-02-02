@@ -45,6 +45,6 @@ select 1 as xml;
 #
 # Clean up
 #
---system rm $MYSQLTEST_VARDIR/loadxml-dump.xml
+--remove_file $MYSQLTEST_VARDIR/loadxml-dump.xml
 drop table t1;
 

@@ -81,6 +81,7 @@ public:
 	int			numberBuffers;
 	bool		panicShutdown;
 	bool		flushing;
+	bool		recovering;
 
 protected:
 	Bdb*		findBuffer (Dbb *dbb, int pageNumber, LockType lockType);

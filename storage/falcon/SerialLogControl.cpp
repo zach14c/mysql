@@ -337,6 +337,7 @@ SerialLogRecord* SerialLogControl::nextRecord()
 	ASSERT(version > 0);
 	ASSERT(type < srlMax);
 	SerialLogRecord *record = records[type];
+	record->type = type;
 	record->read();
 	
 	if (debug)

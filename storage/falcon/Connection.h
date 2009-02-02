@@ -72,6 +72,7 @@ const int analyzeObjects	= 64;
 const int analyzeSpace		= 128;
 const int analyzeSync		= 256;
 const int analyzeIO			= 512;
+const int analyzeRecordLeafs = 1024;
 
 const int traceBooleans		= 1;
 const int traceTriggers		= 2;

@@ -15,10 +15,11 @@
 
 
 #include "mdl.h"
-
+#include "debug_sync.h"
 #include <hash.h>
 #include <mysqld_error.h>
 
+static bool mdl_initialized= 0;
 
 /**
    The lock context. Created internally for an acquired lock.
@@ -115,6 +116,7 @@ extern "C" uchar *mdl_locks_key(const uchar *record, size_t *length,
 
 void mdl_init()
 {
+  mdl_initialized= 1;
   pthread_mutex_init(&LOCK_mdl, NULL);
   pthread_cond_init(&COND_mdl, NULL);
   hash_init(&mdl_locks, &my_charset_bin, 16 /* FIXME */, 0, 0,
@@ -133,10 +135,14 @@ void mdl_init()
 
 void mdl_destroy()
 {
-  DBUG_ASSERT(!mdl_locks.records);
-  pthread_mutex_destroy(&LOCK_mdl);
-  pthread_cond_destroy(&COND_mdl);
-  hash_free(&mdl_locks);
+  if (mdl_initialized)
+  {
+    mdl_initialized= 0;
+    DBUG_ASSERT(!mdl_locks.records);
+    pthread_mutex_destroy(&LOCK_mdl);
+    pthread_cond_destroy(&COND_mdl);
+    hash_free(&mdl_locks);
+  }
 }
 
 
@@ -294,7 +300,7 @@ void mdl_init_lock(MDL_LOCK_DATA *lock_data, char *key, int type,
 
    @note The allocated lock request will have MDL_SHARED type.
 
-   @retval 0      Error
+   @retval 0      Error if out of memory
    @retval non-0  Pointer to an object representing a lock request
 */
 
@@ -464,6 +470,8 @@ static inline const char* mdl_enter_cond(MDL_CONTEXT *context,
   mysys_var->current_mutex= &LOCK_mdl;
   mysys_var->current_cond= &COND_mdl;
 
+  DEBUG_SYNC(context->thd, "mdl_enter_cond");
+
   return set_thd_proc_info(context->thd, "Waiting for table",
                            calling_func, calling_file, calling_line);
 }
@@ -484,6 +492,8 @@ static inline void mdl_exit_cond(MDL_CONTEXT *context,
   mysys_var->current_mutex= 0;
   mysys_var->current_cond= 0;
   pthread_mutex_unlock(&mysys_var->mutex);
+
+  DEBUG_SYNC(context->thd, "mdl_exit_cond");
 
   (void) set_thd_proc_info(context->thd, old_msg, calling_func,
                            calling_file, calling_line);

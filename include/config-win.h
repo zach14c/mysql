@@ -1,4 +1,4 @@
-/* Copyright (C) 2000 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #include <io.h>
 #include <malloc.h>
 #include <sys/stat.h>
+#include <process.h>     /* getpid()*/
 
 #define HAVE_SMEM 1
 
@@ -75,7 +76,6 @@
 #endif
 
 /* File and lock constants */
-#define O_SHARE		0x1000		/* Open file in sharing mode */
 #ifdef __BORLANDC__
 #define F_RDLCK		LK_NBLCK	/* read lock */
 #define F_WRLCK		LK_NBRLCK	/* write lock */
@@ -216,7 +216,7 @@ typedef SSIZE_T ssize_t;
 #define SIZEOF_CHARP		4
 #endif
 #define HAVE_BROKEN_NETINET_INCLUDES
-#ifdef __NT__
+#ifdef _WIN32
 #define HAVE_NAMED_PIPE			/* We can only create pipes on NT */
 #endif
 
@@ -227,11 +227,6 @@ typedef SSIZE_T ssize_t;
 #ifndef SIGNAL_WITH_VIO_CLOSE
 #define SIGNAL_WITH_VIO_CLOSE
 #endif
-
-/* Use all character sets in MySQL */
-#define USE_MB 1
-#define USE_MB_IDENT 1
-#define USE_STRCOLL 1
 
 /* All windows servers should support .sym files */
 #undef USE_SYMDIR
@@ -273,6 +268,15 @@ inline double ulonglong2double(ulonglong value)
 }
 #define my_off_t2double(A) ulonglong2double(A)
 #endif /* _WIN64 */
+
+inline ulonglong double2ulonglong(double d)
+{
+  double t= d - (double) 0x8000000000000000ULL;
+
+  if (t >= 0)
+    return  ((ulonglong) t) + 0x8000000000000000ULL;
+  return (ulonglong) d;
+}
 
 #if SIZEOF_OFF_T > 4
 #define lseek(A,B,C) _lseeki64((A),(longlong) (B),(C))
@@ -325,7 +329,7 @@ inline double ulonglong2double(ulonglong value)
 #define strcasecmp stricmp
 #define strncasecmp strnicmp
 
-#ifndef __NT__
+#ifndef _WIN32
 #undef FILE_SHARE_DELETE
 #define FILE_SHARE_DELETE 0     /* Not implemented on Win 98/ME */
 #endif
@@ -371,13 +375,13 @@ inline double ulonglong2double(ulonglong value)
 #define FN_DEVCHAR	':'
 #define FN_NETWORK_DRIVES	/* Uses \\ to indicate network drives */
 #define FN_NO_CASE_SENCE	/* Files are not case-sensitive */
-#define OS_FILE_LIMIT	2048
+#define OS_FILE_LIMIT	UINT_MAX /* No limit*/
 
 #define DO_NOT_REMOVE_THREAD_WRAPPERS
 #define thread_safe_increment(V,L) InterlockedIncrement((long*) &(V))
 #define thread_safe_decrement(V,L) InterlockedDecrement((long*) &(V))
 /* The following is only used for statistics, so it should be good enough */
-#ifdef __NT__  /* This should also work on Win98 but .. */
+#ifdef _WIN32  /* This should also work on Win98 but .. */
 #define thread_safe_add(V,C,L) InterlockedExchangeAdd((long*) &(V),(C))
 #define thread_safe_sub(V,C,L) InterlockedExchangeAdd((long*) &(V),-(long) (C))
 #endif
@@ -385,52 +389,69 @@ inline double ulonglong2double(ulonglong value)
 #define shared_memory_buffer_length 16000
 #define default_shared_memory_base_name "MYSQL"
 
-#define MYSQL_DEFAULT_CHARSET_NAME "latin1"
-#define MYSQL_DEFAULT_COLLATION_NAME "latin1_swedish_ci"
-
 #define HAVE_SPATIAL 1
 #define HAVE_RTREE_KEYS 1
 
 #define HAVE_OPENSSL 1
 #define HAVE_YASSL 1
 
-/* Define charsets you want */
-/* #undef HAVE_CHARSET_armscii8 */
-/* #undef HAVE_CHARSET_ascii */
+#define COMMUNITY_SERVER 1
+#define ENABLED_PROFILING 1
+
+/*
+  Our Windows binaries include all character sets which MySQL supports.
+  Any changes to the available character sets must also go into
+  config/ac-macros/character_sets.m4
+*/
+
+#define MYSQL_DEFAULT_CHARSET_NAME "latin1"
+#define MYSQL_DEFAULT_COLLATION_NAME "latin1_swedish_ci"
+
+#define USE_MB 1
+#define USE_MB_IDENT 1
+#define USE_STRCOLL 1
+
+#define HAVE_CHARSET_armscii8
+#define HAVE_CHARSET_ascii
 #define HAVE_CHARSET_big5 1
 #define HAVE_CHARSET_cp1250 1
-/* #undef HAVE_CHARSET_cp1251 */
-/* #undef HAVE_CHARSET_cp1256 */
-/* #undef HAVE_CHARSET_cp1257 */
-/* #undef HAVE_CHARSET_cp850 */
-/* #undef HAVE_CHARSET_cp852 */
-/* #undef HAVE_CHARSET_cp866 */
+#define HAVE_CHARSET_cp1251
+#define HAVE_CHARSET_cp1256
+#define HAVE_CHARSET_cp1257
+#define HAVE_CHARSET_cp850
+#define HAVE_CHARSET_cp852
+#define HAVE_CHARSET_cp866
 #define HAVE_CHARSET_cp932 1
-/* #undef HAVE_CHARSET_dec8 */
+#define HAVE_CHARSET_dec8
 #define HAVE_CHARSET_eucjpms 1
 #define HAVE_CHARSET_euckr 1
 #define HAVE_CHARSET_gb2312 1
 #define HAVE_CHARSET_gbk 1
-/* #undef HAVE_CHARSET_greek */
-/* #undef HAVE_CHARSET_hebrew */
-/* #undef HAVE_CHARSET_hp8 */
-/* #undef HAVE_CHARSET_keybcs2 */
-/* #undef HAVE_CHARSET_koi8r */
-/* #undef HAVE_CHARSET_koi8u */
+#define HAVE_CHARSET_geostd8
+#define HAVE_CHARSET_greek
+#define HAVE_CHARSET_hebrew
+#define HAVE_CHARSET_hp8
+#define HAVE_CHARSET_keybcs2
+#define HAVE_CHARSET_koi8r
+#define HAVE_CHARSET_koi8u
 #define HAVE_CHARSET_latin1 1
 #define HAVE_CHARSET_latin2 1
-/* #undef HAVE_CHARSET_latin5 */
-/* #undef HAVE_CHARSET_latin7 */
-/* #undef HAVE_CHARSET_macce */
-/* #undef HAVE_CHARSET_macroman */
+#define HAVE_CHARSET_latin5
+#define HAVE_CHARSET_latin7
+#define HAVE_CHARSET_macce
+#define HAVE_CHARSET_macroman
 #define HAVE_CHARSET_sjis 1
-/* #undef HAVE_CHARSET_swe7 */
+#define HAVE_CHARSET_swe7
 #define HAVE_CHARSET_tis620 1
 #define HAVE_CHARSET_ucs2 1
 #define HAVE_CHARSET_ujis 1
-#define HAVE_CHARSET_utf16 1
-#define HAVE_CHARSET_utf32 1
 #define HAVE_CHARSET_utf8mb4 1
 #define HAVE_CHARSET_utf8mb3 1
+#define HAVE_CHARSET_utf16 1
+#define HAVE_CHARSET_utf32 1
 #define HAVE_UCA_COLLATIONS 1
 #define HAVE_BOOL 1
+#ifndef EMBEDDED_LIBRARY
+#define HAVE_LIBEVENT 1
+#define HAVE_POOL_OF_THREADS 1
+#endif

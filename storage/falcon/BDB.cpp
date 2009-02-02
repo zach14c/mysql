@@ -53,6 +53,9 @@ Bdb::Bdb()
 	pageNumber = -1;
 	useCount = 0;
 	age = 0;
+#ifdef CHECK_STALLED_BDB
+	stallCount = 0;
+#endif // CHECK_STALLED_BDB
 	markingThread = NULL;
 	priorDirty = nextDirty = NULL;
 	flushIt = false;
@@ -132,7 +135,7 @@ void Bdb::release()
 	if (cache->panicShutdown)
 		{
 		Thread *thread = Thread::getThread("Cache::fetchPage");
-		
+
 		if (thread->pageMarks == 0)
 			throw SQLError(RUNTIME_ERROR, "Emergency shut is underway");
 		}

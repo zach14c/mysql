@@ -1,0 +1,230 @@
+#
+# This test tests interraction of BACKUP command with transactions in
+# the same and different connection (BUG#38261)
+#
+# BACKUP should commit ongoing transaction in the same connection but
+# should not interferre with transactions executing in other connections.
+#
+
+--source include/not_embedded.inc
+--source include/have_innodb.inc
+--source include/have_falcon.inc
+
+
+LET $BDIR=`select @@backupdir`;
+
+disable_warnings;
+DROP DATABASE IF EXISTS db1;
+DROP DATABASE IF EXISTS db2;
+error 0,1;
+remove_file $BDIR/db1.bak;
+enable_warnings;
+
+CREATE DATABASE db1;
+CREATE DATABASE db2;
+
+CREATE TABLE db1.t1 (s1 CHAR(3)) ENGINE=innodb; # CS driver
+CREATE TABLE db1.t2 (s1 CHAR(3)) ENGINE=falcon; # CS driver
+CREATE TABLE db1.t3 (s1 CHAR(3)) ENGINE=memory; # default driver
+CREATE TABLE db1.t4 (s1 CHAR(3)) ENGINE=myisam; # native driver
+
+CREATE TABLE db2.t1 (s1 CHAR(3)) ENGINE=innodb; # trx1
+CREATE TABLE db2.t2 (s1 CHAR(3)) ENGINE=falcon; # trx2
+CREATE TABLE db2.t3 (s1 CHAR(3)) ENGINE=myisam; # non-trx
+
+
+# Create test connections. The setup is as follows
+#
+# connA		connB
+# -----		-----
+#		BEGIN
+#		insert data
+# BEGIN
+# insert data
+#		insert data
+#		BACKUP
+#		ROLLBACK
+# insert data
+# COMMIT	
+#
+# The default connection is used to check contents of the tables after each
+# operation.
+#
+# Note: we use "sync" lock to synchronize connections.  Without it, data 
+# inserted in one thread could be not always seen in another one, which would
+# made test non-deterministic.
+
+  connect(connA, localhost, root,,);
+    connect(connB, localhost, root,,);
+
+    connection connB;
+    echo connection B - starting transaction B; 
+    #------------------
+    SET autocommit=0;
+    BEGIN;
+
+    SELECT get_lock("sync",10);
+    INSERT INTO db1.t1 VALUES ('b1');
+    INSERT INTO db1.t2 VALUES ('b1');
+    INSERT INTO db1.t3 VALUES ('b1');
+    INSERT INTO db1.t4 VALUES ('b1');
+
+    INSERT INTO db2.t1 VALUES ('b1');
+    INSERT INTO db2.t2 VALUES ('b1');
+    INSERT INTO db2.t3 VALUES ('b1');
+    SELECT release_lock("sync");
+
+connection default;
+#------------------
+SELECT get_lock("sync",10);
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SELECT * FROM db2.t3;
+SELECT release_lock("sync");
+
+  connection connA;
+  echo connection A - starting transaction A;
+  #------------------
+  SET autocommit=0;
+  BEGIN;
+
+  SELECT get_lock("sync",10);
+  INSERT INTO db1.t1 VALUES ('a1');
+  INSERT INTO db1.t2 VALUES ('a1');
+  INSERT INTO db1.t3 VALUES ('a1');
+  INSERT INTO db1.t4 VALUES ('a1');
+
+  INSERT INTO db2.t1 VALUES ('a1');
+  INSERT INTO db2.t2 VALUES ('a1');
+  INSERT INTO db2.t3 VALUES ('a1');
+  SELECT release_lock("sync");
+
+connection default;
+#------------------
+SELECT get_lock("sync",10);
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SELECT * FROM db2.t3;
+SELECT release_lock("sync");
+
+    connection connB;
+    echo connection B - performing BACKUP which commits transaction B;
+    #------------------
+    SELECT get_lock("sync",10);
+    INSERT INTO db1.t1 VALUES ('b2');
+    INSERT INTO db1.t2 VALUES ('b2');
+    INSERT INTO db1.t3 VALUES ('b2');
+    INSERT INTO db1.t4 VALUES ('b2');
+
+    INSERT INTO db2.t1 VALUES ('b2');
+    INSERT INTO db2.t2 VALUES ('b2');
+    INSERT INTO db2.t3 VALUES ('b2');
+
+    replace_column 1 #;
+    BACKUP DATABASE db1 TO 'db1.bak';
+    SELECT release_lock("sync");
+
+connection default;
+#------------------
+SELECT get_lock("sync",10);
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SELECT * FROM db2.t3;
+SELECT release_lock("sync");
+
+    connection connB;
+    echo connection B - doing ROLLBACK which should be a no-op after the implicit commit;
+    #------------------
+    SELECT get_lock("sync",10);
+    ROLLBACK;
+    SELECT release_lock("sync");
+
+connection default;
+#------------------
+SELECT get_lock("sync",10);
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SELECT * FROM db2.t3;
+SELECT release_lock("sync");
+
+  connection connA;
+  echo connection A - finishing transaction A;
+  #------------------
+  SELECT get_lock("sync",10);
+  INSERT INTO db1.t1 VALUES ('a2');
+  INSERT INTO db1.t2 VALUES ('a2');
+  INSERT INTO db1.t3 VALUES ('a2');
+  INSERT INTO db1.t4 VALUES ('a2');
+
+  INSERT INTO db2.t1 VALUES ('a2');
+  INSERT INTO db2.t2 VALUES ('a2');
+  INSERT INTO db2.t3 VALUES ('a2');
+  SELECT release_lock("sync");
+
+connection default;
+#------------------
+SELECT get_lock("sync",10);
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SELECT * FROM db2.t3;
+SELECT release_lock("sync");
+
+  connection connA;
+  #------------------
+  SELECT get_lock("sync",10);
+  COMMIT;
+  SELECT release_lock("sync");
+
+connection default;
+#------------------
+SELECT get_lock("sync",10);
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+SELECT * FROM db2.t1;
+SELECT * FROM db2.t2;
+SELECT * FROM db2.t3;
+SELECT release_lock("sync");
+
+echo Checking contents of the backup image;
+
+replace_column 1 #;
+RESTORE FROM 'db1.bak' OVERWRITE;
+
+SELECT * FROM db1.t1;
+SELECT * FROM db1.t2;
+SELECT * FROM db1.t3;
+SELECT * FROM db1.t4;
+
+# Cleanup
+
+DROP DATABASE db1;
+DROP DATABASE db2;
+remove_file $BDIR/db1.bak;

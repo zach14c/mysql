@@ -496,15 +496,15 @@ db_find_routine(THD *thd, int type, sp_name *name, sp_head **sphp)
 struct Silence_deprecated_warning : public Internal_error_handler
 {
 public:
-  virtual bool handle_error(uint sql_errno, const char *message,
+  virtual bool handle_error(THD *thd,
                             MYSQL_ERROR::enum_warning_level level,
-                            THD *thd);
+                            uint sql_errno, const char *message);
 };
 
 bool
-Silence_deprecated_warning::handle_error(uint sql_errno, const char *message,
-                                         MYSQL_ERROR::enum_warning_level level,
-                                         THD *thd)
+Silence_deprecated_warning::
+handle_error(THD *thd, MYSQL_ERROR::enum_warning_level level,
+             uint sql_errno, const char *message)
 {
   if (sql_errno == ER_WARN_DEPRECATED_SYNTAX &&
       level == MYSQL_ERROR::WARN_LEVEL_WARN)
@@ -1329,7 +1329,7 @@ sp_exist_routines(THD *thd, TABLE_LIST *routines, bool any, bool no_error)
                                      &thd->sp_proc_cache, FALSE) != NULL ||
                      sp_find_routine(thd, TYPE_ENUM_FUNCTION, name,
                                      &thd->sp_func_cache, FALSE) != NULL;
-    mysql_reset_errors(thd, TRUE);
+    thd->warning_info->clear_warning_info(thd->query_id);
     if (sp_object_found)
     {
       if (any)
@@ -1881,6 +1881,7 @@ sp_cache_routines_and_add_tables_for_triggers(THD *thd, LEX *lex,
     Returns TRUE on success, FALSE on (alloc) failure.
 */
 static bool
+
 create_string(THD *thd, String *buf,
               int type,
               const char *db, ulong dblen,
@@ -2008,7 +2009,7 @@ sp_load_for_information_schema(THD *thd, TABLE *proc_table, String *db,
   bzero((char*) &sp_chistics, sizeof(sp_chistics));
   defstr.set_charset(creation_ctx->get_client_cs());
   if (!create_string(thd, &defstr, type, 
-                     NULL, 0, 
+                     sp_db_str.str, sp_db_str.length, 
                      sp_name_obj.m_name.str, sp_name_obj.m_name.length, 
                      params, strlen(params),
                      returns, strlen(returns), 

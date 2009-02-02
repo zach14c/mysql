@@ -1,4 +1,4 @@
-/* Copyright (C) 2000-2006 MySQL AB
+/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -55,7 +55,7 @@ public:
                   NOW_FUNC, TRIG_COND_FUNC,
                   SUSERVAR_FUNC, GUSERVAR_FUNC, COLLATE_FUNC,
                   EXTRACT_FUNC, CHAR_TYPECAST_FUNC, FUNC_SP, UDF_FUNC,
-                  NEG_FUNC };
+                  NEG_FUNC, GSYSVAR_FUNC };
   enum optimize_type { OPTIMIZE_NONE,OPTIMIZE_KEY,OPTIMIZE_OP, OPTIMIZE_NULL,
                        OPTIMIZE_EQUAL };
   enum Type type() const { return FUNC_ITEM; }
@@ -361,7 +361,10 @@ public:
   Item_func_unsigned(Item *a) :Item_func_signed(a) {}
   const char *func_name() const { return "cast_as_unsigned"; }
   void fix_length_and_dec()
-  { max_length=args[0]->max_length; unsigned_flag=1; }
+  {
+    max_length= min(args[0]->max_length, DECIMAL_MAX_PRECISION + 2);
+    unsigned_flag=1;
+  }
   longlong val_int();
   virtual void print(String *str, enum_query_type query_type);
 };
@@ -1293,6 +1296,17 @@ class Item_func_set_user_var :public Item_func
 {
   enum Item_result cached_result_type;
   user_var_entry *entry;
+  /*
+    The entry_thread_id variable is used:
+    1) to skip unnecessary updates of the entry field (see above);
+    2) to reset the entry field that was initialized in the other thread
+       (for example, an item tree of a trigger that updates user variables
+       may be shared between several connections, and the entry_thread_id field
+       prevents updates of one connection user variables from a concurrent
+       connection calling the same trigger that initially updated some
+       user variable it the first connection context).
+  */
+  my_thread_id entry_thread_id;
   char buffer[MAX_FIELD_WIDTH];
   String value;
   my_decimal decimal_buff;
@@ -1308,7 +1322,8 @@ class Item_func_set_user_var :public Item_func
 public:
   LEX_STRING name; // keep it public
   Item_func_set_user_var(LEX_STRING a,Item *b)
-    :Item_func(b), cached_result_type(INT_RESULT), name(a)
+    :Item_func(b), cached_result_type(INT_RESULT),
+     entry(NULL), entry_thread_id(0), name(a)
   {}
   enum Functype functype() const { return SUSERVAR_FUNC; }
   double val_real();
@@ -1319,6 +1334,7 @@ public:
   longlong val_int_result();
   String *str_result(String *str);
   my_decimal *val_decimal_result(my_decimal *);
+  bool is_null_result();
   bool update_hash(void *ptr, uint length, enum Item_result type,
   		   CHARSET_INFO *cs, Derivation dv, bool unsigned_arg);
   bool send(Protocol *protocol, String *str_arg);
@@ -1339,6 +1355,7 @@ public:
   }
   void save_org_in_field(Field *field) { (void)save_in_field(field, 1, 0); }
   bool register_field_in_read_map(uchar *arg);
+  bool set_entry(THD *thd, bool create_if_not_exists);
 };
 
 
@@ -1412,24 +1429,36 @@ public:
 
 /* A system variable */
 
+#define GET_SYS_VAR_CACHE_LONG     1
+#define GET_SYS_VAR_CACHE_DOUBLE   2
+#define GET_SYS_VAR_CACHE_STRING   4
+
 class Item_func_get_system_var :public Item_func
 {
   sys_var *var;
-  enum_var_type var_type;
+  enum_var_type var_type, orig_var_type;
   LEX_STRING component;
+  longlong cached_llval;
+  double cached_dval;
+  String cached_strval;
+  my_bool cached_null_value;
+  query_id_t used_query_id;
+  uchar cache_present;
+
 public:
   Item_func_get_system_var(sys_var *var_arg, enum_var_type var_type_arg,
                            LEX_STRING *component_arg, const char *name_arg,
                            size_t name_len_arg);
-  bool fix_fields(THD *thd, Item **ref);
-  /*
-    Stubs for pure virtual methods. Should never be called: this
-    item is always substituted with a constant in fix_fields().
-  */
-  double val_real()         { DBUG_ASSERT(0); return 0.0; }
-  longlong val_int()        { DBUG_ASSERT(0); return 0; }
-  String* val_str(String*)  { DBUG_ASSERT(0); return 0; }
-  void fix_length_and_dec() { DBUG_ASSERT(0); }
+  enum Functype functype() const { return GSYSVAR_FUNC; }
+  void fix_length_and_dec();
+  void print(String *str, enum_query_type query_type);
+  bool const_item() const { return true; }
+  table_map used_tables() const { return 0; }
+  enum Item_result result_type() const;
+  enum_field_types field_type() const;
+  double val_real();
+  longlong val_int();
+  String* val_str(String*);
   /* TODO: fix to support views */
   const char *func_name() const { return "get_system_var"; }
   /**
@@ -1441,6 +1470,9 @@ public:
     @return true if the variable is written to the binlog, false otherwise.
   */
   bool is_written_to_binlog();
+  bool eq(const Item *item, bool binary_cmp) const;
+
+  void cleanup();
 };
 
 

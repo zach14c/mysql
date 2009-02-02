@@ -50,7 +50,6 @@ static struct my_option my_long_options[] =
   { 0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };
 
-
 int main(int argc,char *argv[])
 {
   int error=0, subkeys;
@@ -63,6 +62,7 @@ int main(int argc,char *argv[])
   struct { MI_INFO *info; } aio0, *aio=&aio0; /* for GWS_IN_USE */
 
   MY_INIT(argv[0]);
+
   if ((error= handle_options(&argc, &argv, my_long_options, get_one_option)))
     exit(error);
   if (count || dump)

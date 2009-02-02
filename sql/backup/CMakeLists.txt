@@ -13,9 +13,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-SET(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DSAFEMALLOC -DSAFE_MUTEX")
-
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/sql
                     ${CMAKE_SOURCE_DIR}/sql/backup
@@ -25,7 +22,7 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
 SET(BACKUP_SOURCES stream.cc logger.cc kernel.cc
                image_info.cc backup_info.cc data_backup.cc
                be_default.cc buffer_iterator.cc
-               be_snapshot.cc be_thread.cc backup_progress.cc
+               be_snapshot.cc be_thread.cc 
                backup_test.cc be_nodata.cc)
 
 IF(NOT SOURCE_SUBLIBS)

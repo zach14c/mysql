@@ -133,7 +133,7 @@ our $default_vardir;
 
 our $opt_usage;
 our $opt_suites;
-our $opt_suites_default= "main,backup,binlog,rpl,rpl_ndb,ndb"; # Default suites to run
+our $opt_suites_default= "main,backup,backup_engines,binlog,rpl,rpl_ndb,ndb,maria"; # Default suites to run
 our $opt_script_debug= 0;  # Script debugging, enable with --script-debug
 our $opt_verbose= 0;  # Verbose output, enable with --verbose
 
@@ -161,6 +161,7 @@ our $exe_my_print_defaults;
 our $exe_perror;
 our $lib_udf_example;
 our $lib_example_plugin;
+our $lib_simple_parser;
 our $exe_libtool;
 
 our $opt_bench= 0;
@@ -404,17 +405,18 @@ sub main () {
       # Check for any extra suites to enable based on the path name
       my %extra_suites=
 	(
-	 "mysql-5.1-new-ndb"              => "ndb_team",
-	 "mysql-5.1-new-ndb-merge"        => "ndb_team",
-	 "mysql-5.1-telco-6.2"            => "ndb_team",
-	 "mysql-5.1-telco-6.2-merge"      => "ndb_team",
-	 "mysql-5.1-telco-6.3"            => "ndb_team",
-	 "mysql-6.0-ndb"                  => "ndb_team",
-	 "mysql-6.0-falcon"               => "falcon_team",
-	 "mysql-6.0-falcon-team"          => "falcon_team",
-	 "mysql-6.0-falcon-wlad"          => "falcon_team",
-	 "mysql-6.0-falcon-chris"         => "falcon_team",
-	 "mysql-6.0-falcon-kevin"         => "falcon_team",
+	 "bzr_mysql-5.1-ndb"                  => "ndb_team",
+	 "bzr_mysql-5.1-ndb-merge"            => "ndb_team",
+	 "bzr_mysql-5.1-telco-6.2"            => "ndb_team",
+	 "bzr_mysql-5.1-telco-6.2-merge"      => "ndb_team",
+	 "bzr_mysql-5.1-telco-6.3"            => "ndb_team",
+	 "bzr_mysql-5.1-telco-6.4"            => "ndb_team",
+	 "bzr_mysql-6.0-ndb"                  => "ndb_team,rpl_ndb_big",
+	 "bzr_mysql-6.0-falcon"               => "falcon_team",
+	 "bzr_mysql-6.0-falcon-team"          => "falcon_team",
+	 "bzr_mysql-6.0-falcon-wlad"          => "falcon_team",
+	 "bzr_mysql-6.0-falcon-chris"         => "falcon_team",
+	 "bzr_mysql-6.0-falcon-kevin"         => "falcon_team",
 	);
 
       foreach my $dir ( reverse splitdir($glob_basedir) )
@@ -1472,16 +1474,22 @@ sub executable_setup_ndb () {
 				"$glob_basedir/storage/ndb",
 				"$glob_basedir/bin");
 
+  # Some might be found in sbin, not bin.
+  my $daemon_path= mtr_file_exists("$glob_basedir/ndb",
+				   "$glob_basedir/storage/ndb",
+				   "$glob_basedir/sbin",
+				   "$glob_basedir/bin");
+
   $exe_ndbd=
     mtr_exe_maybe_exists("$ndb_path/src/kernel/ndbd",
-			 "$ndb_path/ndbd",
+			 "$daemon_path/ndbd",
 			 "$glob_basedir/libexec/ndbd");
   $exe_ndb_mgm=
     mtr_exe_maybe_exists("$ndb_path/src/mgmclient/ndb_mgm",
 			 "$ndb_path/ndb_mgm");
   $exe_ndb_mgmd=
     mtr_exe_maybe_exists("$ndb_path/src/mgmsrv/ndb_mgmd",
-			 "$ndb_path/ndb_mgmd",
+			 "$daemon_path/ndb_mgmd",
 			 "$glob_basedir/libexec/ndb_mgmd");
   $exe_ndb_waiter=
     mtr_exe_maybe_exists("$ndb_path/tools/ndb_waiter",
@@ -1604,6 +1612,10 @@ sub executable_setup () {
       mtr_file_exists(vs_config_dirs('storage/example', 'ha_example.dll'),
                       "$glob_basedir/storage/example/.libs/ha_example.so",);
 
+    # Look for the simple_parser library
+    $lib_simple_parser=
+      mtr_file_exists(vs_config_dirs('plugin/fulltext', 'mypluglib.dll'),
+                      "$glob_basedir/plugin/fulltext/.libs/mypluglib.so",);
   }
 
   # Look for mysqltest executable
@@ -2072,6 +2084,14 @@ sub environment_setup () {
     ($lib_example_plugin ? "--plugin_dir=" . dirname($lib_example_plugin) : "");
 
   # ----------------------------------------------------
+  # Add the path where mysqld will find mypluglib.so
+  # ----------------------------------------------------
+  $ENV{'SIMPLE_PARSER'}=
+    ($lib_simple_parser ? basename($lib_simple_parser) : "");
+  $ENV{'SIMPLE_PARSER_OPT'}=
+    ($lib_simple_parser ? "--plugin_dir=" . dirname($lib_simple_parser) : "");
+
+  # ----------------------------------------------------
   # Setup env so childs can execute myisampack and myisamchk
   # ----------------------------------------------------
   $ENV{'MYISAMCHK'}= mtr_native_path(mtr_exe_exists(
@@ -2273,6 +2293,9 @@ sub remove_stale_vardir () {
     mtr_verbose("Removing $opt_vardir/");
     mtr_rmtree("$opt_vardir/");
   }
+  # Remove the "tmp" dir
+  mtr_verbose("Removing $opt_tmpdir/");
+  mtr_rmtree("$opt_tmpdir/");
 }
 
 #
@@ -2322,6 +2345,12 @@ sub setup_vardir() {
   mkpath("$opt_vardir/run");
   mkpath("$opt_vardir/tmp");
   mkpath($opt_tmpdir) if $opt_tmpdir ne "$opt_vardir/tmp";
+
+  if ($master->[0]->{'path_sock'} !~ m/^$opt_tmpdir/)
+  {
+    mtr_report("Symlinking $master->[0]->{'path_sock'}");
+	symlink($master->[0]->{'path_sock'}, "$opt_tmpdir/master.sock");
+  }
 
   # Create new data dirs
   foreach my $data_dir (@data_dir_lst)
@@ -2720,7 +2749,7 @@ sub ndbd_start ($$$) {
   mtr_add_arg($args, "$extra_args");
 
   my $nodeid= $cluster->{'ndbds'}->[$idx]->{'nodeid'};
-  my $path_ndbd_log= "$cluster->{'data_dir'}/ndb_${nodeid}.log";
+  my $path_ndbd_log= "$cluster->{'data_dir'}/ndb_${nodeid}_out.log";
   $pid= mtr_spawn($exe_ndbd, $args, "",
 		  $path_ndbd_log,
 		  $path_ndbd_log,
@@ -2829,7 +2858,7 @@ sub run_benchmarks ($) {
 
   if ( ! $benchmark )
   {
-    mtr_add_arg($args, "--log");
+    mtr_add_arg($args, "--general-log");
     mtr_run("$glob_mysql_bench_dir/run-all-tests", $args, "", "", "", "");
     # FIXME check result code?!
   }
@@ -3171,6 +3200,24 @@ sub run_testcase_check_skip_test($)
   my ($tinfo)= @_;
 
   # ----------------------------------------------------------------------
+  # Skip some tests silently
+  # ----------------------------------------------------------------------
+
+  if ( $::opt_start_from )
+  {
+    if ($tinfo->{'name'} eq $::opt_start_from )
+    {
+      ## Found parting test. Run this test and all tests after this one
+      $::opt_start_from= "";
+    }
+    else
+    {
+      $tinfo->{'result'}= 'MTR_RES_SKIPPED';
+      return 1;
+    }
+  }
+
+  # ----------------------------------------------------------------------
   # If marked to skip, just print out and return.
   # Note that a test case not marked as 'skip' can still be
   # skipped later, because of the test case itself in cooperation
@@ -3405,7 +3452,16 @@ sub run_testcase ($) {
   {
     mtr_timer_stop_all($glob_timers);
     mtr_report("\nServers started, exiting");
-    exit(0);
+    if ($glob_win32_perl)
+    {
+      #ActiveState perl hangs  when using normal exit, use  POSIX::_exit instead
+      use POSIX qw[ _exit ]; 
+      POSIX::_exit(0);
+    }
+    else
+    {
+      exit(0);
+    }
   }
 
   {
@@ -3670,15 +3726,17 @@ sub mysqld_arguments ($$$$) {
   mtr_add_arg($args, "%s--basedir=%s", $prefix, $path_my_basedir);
   mtr_add_arg($args, "%s--character-sets-dir=%s", $prefix, $path_charsetsdir);
 
-  if ( $mysql_version_id >= 50036)
+  if (!$opt_extern)
   {
-    # By default, prevent the started mysqld to access files outside of vardir
-    mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
-  }
+    if ( $mysql_version_id >= 50036)
+    {
+      # Prevent the started mysqld to access files outside of vardir
+      mtr_add_arg($args, "%s--secure-file-priv=%s", $prefix, $opt_vardir);
+    }
 
-  if ( $mysql_version_id >= 50000 )
-  {
-    mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    if ( $mysql_version_id >= 50000 ) {
+      mtr_add_arg($args, "%s--log-bin-trust-function-creators", $prefix);
+    }
   }
 
   mtr_add_arg($args, "%s--default-character-set=latin1", $prefix);
@@ -3730,16 +3788,18 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--disable-sync-frm", $prefix);  # Faster test
 
-  if ( $mysql_version_id >= 50106 )
+  if (!$opt_extern and $mysql_version_id >= 50106 )
   {
     # Turn on logging to bothe tables and file
     mtr_add_arg($args, "%s--log-output=table,file", $prefix);
   }
 
   my $log_base_path= "$opt_vardir/log/$mysqld->{'type'}$sidx";
-  mtr_add_arg($args, "%s--log=%s.log", $prefix, $log_base_path);
+  mtr_add_arg($args, "%s--general-log", $prefix);
+  mtr_add_arg($args, "%s--general-log-file=%s.log", $prefix, $log_base_path);
+  mtr_add_arg($args, "%s--slow-query-log", $prefix);
   mtr_add_arg($args,
-	      "%s--log-slow-queries=%s-slow.log", $prefix, $log_base_path);
+	      "%s--slow-query-log-file=%s-slow.log", $prefix, $log_base_path);
 
   # Check if "extra_opt" contains --skip-log-bin
   my $skip_binlog= grep(/^--skip-log-bin/, @$extra_opt, @opt_extra_mysqld_opt);
@@ -3776,7 +3836,6 @@ sub mysqld_arguments ($$$$) {
       mtr_add_arg($args, "%s--slave-allow-batching", $prefix);
       if ( $mysql_version_id >= 50100 )
       {
-	mtr_add_arg($args, "%s--ndb-extra-logging", $prefix);
 	mtr_add_arg($args, "%s--ndb-log-orig", $prefix);
       }
     }
@@ -3844,7 +3903,6 @@ sub mysqld_arguments ($$$$) {
       mtr_add_arg($args, "%s--slave-allow-batching", $prefix);
       if ( $mysql_version_id >= 50100 )
       {
-	mtr_add_arg($args, "%s--ndb-extra-logging", $prefix);
 	mtr_add_arg($args, "%s--ndb-log-orig", $prefix);
       }
     }
@@ -4160,19 +4218,10 @@ sub run_testcase_need_master_restart($)
   elsif (! mtr_same_opts($master->[0]->{'start_opts'},
                          $tinfo->{'master_opt'}) )
   {
-    # Chech that diff is binlog format only
-    my $diff_opts= mtr_diff_opts($master->[0]->{'start_opts'},$tinfo->{'master_opt'});
-    if (scalar(@$diff_opts) eq 2) 
-    {
-      $do_restart= 1 unless ($diff_opts->[0] =~/^--binlog-format=/ and $diff_opts->[1] =~/^--binlog-format=/);
-    }
-    else
-    {
-      $do_restart= 1;
-      mtr_verbose("Restart master: running with different options '" .
-	         join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
+    $do_restart= 1;
+    mtr_verbose("Restart master: running with different options '" .
+		join(" ", @{$tinfo->{'master_opt'}}) . "' != '" .
 	  	join(" ", @{$master->[0]->{'start_opts'}}) . "'" );
-    }
   }
   elsif( ! $master->[0]->{'pid'} )
   {
@@ -4423,22 +4472,6 @@ sub run_testcase_start_servers($) {
 	 $tinfo->{'master_num'} > 1 )
     {
       # Test needs cluster, start an extra mysqld connected to cluster
-
-      if ( $mysql_version_id >= 50100 )
-      {
-	# First wait for first mysql server to have created ndb system
-	# tables ok FIXME This is a workaround so that only one mysqld
-	# create the tables
-	if ( ! sleep_until_file_created(
-		  "$master->[0]->{'path_myddir'}/mysql/ndb_apply_status.ndb",
-					$master->[0]->{'start_timeout'},
-					$master->[0]->{'pid'}))
-	{
-
-	  $tinfo->{'comment'}= "Failed to create 'mysql/ndb_apply_status' table";
-	  return 1;
-	}
-      }
       mysqld_start($master->[1],$tinfo->{'master_opt'},[]);
     }
 
@@ -4705,15 +4738,11 @@ sub run_mysqltest ($) {
 
   # ----------------------------------------------------------------------
   # If embedded server, we create server args to give mysqltest to pass on
-  # and remove existing falcon tables
   # ----------------------------------------------------------------------
-  
+
   if ( $glob_use_embedded_server )
   {
     mysqld_arguments($args,$master->[0],$tinfo->{'master_opt'},[]);
-    #Remove  falcon tables before each test, otherwise every start might fail
-    #if there is an error in falcon recovery
-    rm_falcon_tables($master->[0]->{'path_myddir'});
   }
 
   # ----------------------------------------------------------------------
@@ -4822,8 +4851,9 @@ sub gdb_arguments {
   else
   {
     # write init file for mysqld
-    mtr_tofile($gdb_init_file,
-	       "set args $str\n");
+    mtr_tofile($gdb_init_file, <<EOGDB );
+set args $str
+EOGDB
   }
 
   if ( $opt_manual_gdb )
