@@ -95,7 +95,6 @@ TEST_DIRS = t r include std_data std_data/parts \
 	suite/funcs_2/t \
 	suite/jp suite/jp/t suite/jp/r suite/jp/std_data \
 	suite/manual/t suite/manual/r \
-	suite/ndb_team suite/ndb_team/t suite/ndb_team/r \
 	suite/rpl suite/rpl/data suite/rpl/include suite/rpl/r \
 	suite/rpl/t \
 	suite/stress/include suite/stress/t suite/stress/r \
@@ -103,6 +102,7 @@ TEST_DIRS = t r include std_data std_data/parts \
 	suite/ndb_binlog suite/ndb_binlog/t suite/ndb_binlog/r \
 	suite/ndb_team suite/ndb_team/t suite/ndb_team/r \
 	suite/rpl_ndb suite/rpl_ndb/t suite/rpl_ndb/r \
+	suite/rpl_ndb_big suite/rpl_ndb_big/t suite/rpl_ndb_big/r \
 	suite/falcon suite/falcon/t suite/falcon/r \
 	suite/falcon_team suite/falcon_team/t suite/falcon_team/r \
 	suite/parts suite/parts/t suite/parts/r suite/parts/inc
