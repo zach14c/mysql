@@ -167,6 +167,15 @@ Cache::~Cache()
 
 		delete[] bufferHunks;
 		}
+
+	// When the IO threads terminate during shutdown the syncWait lock
+	// might still be held. The syncWait lock is locked in Cache::flush()
+	// and unlocked by one of the IO threads. If this IO thread terminates
+	// with this lock being held we hit an assert in the SyncObject destructor.
+	// To avoid this we release this lock here (see Bug#40633).
+
+	if (syncWait.isLocked())
+		syncWait.unlock();
 }
 
 Bdb* Cache::probePage(Dbb *dbb, int32 pageNumber)

@@ -42,7 +42,7 @@ CREATE TABLE t1 (
 # Populate t1, 20 rows
 let $i=20;
 let $r=0;
-while ($i < 20)
+while ($i)
 {
   eval INSERT INTO t1 VALUES ($r, 'TestRow$r', $r*2, 'Char$r');
   dec $i;

@@ -19,8 +19,9 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ts.bak
+remove_file $MYSQLD_DATADIR/bup_ts.bak;
 
 --error 0,1
 --disable_warnings
@@ -293,6 +294,6 @@ SELECT * FROM bup_ts.t4;
 
 DROP DATABASE bup_ts;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_ts.bak
+remove_file $MYSQLD_DATADIR/bup_ts.bak;
 
 

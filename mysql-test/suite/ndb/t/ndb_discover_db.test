@@ -19,7 +19,7 @@ drop database if exists discover_db_2;
 -- connection server1
 # Write file to make mysql-test-run.pl expect the "crash", but don't start
 # it until it's told to.
---write_file $MYSQLTEST_VARDIR/tmp/master0.expect
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.1.expect
 wait
 EOF
 # Send shutdown to the connected server and give
@@ -48,7 +48,7 @@ create table discover_db_2.t1 (a int key, b int) engine ndb;
 
 -- connection server1
 # Write file to make mysql-test-run.pl start up the server again.
---append_file $MYSQLTEST_VARDIR/tmp/master0.expect
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.1.expect
 restart
 EOF
 # Turn on reconnect.

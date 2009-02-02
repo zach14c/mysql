@@ -169,10 +169,10 @@ CALL test.p2(6);
 SELECT * FROM test.t1;
 a	t
 1	texas
-3	next
-5	OK
 20	Live
+3	next
 40	to
+5	OK
 60	MySQL
 SELECT * FROM test.t2;
 a	f
@@ -188,10 +188,10 @@ a	f
 SELECT * FROM test.t1;
 a	t
 1	texas
-3	next
-5	OK
 20	Live
+3	next
 40	to
+5	OK
 60	MySQL
 SELECT * FROM test.t2;
 a	f
@@ -217,16 +217,16 @@ end|
 SET AUTOCOMMIT=0;
 START TRANSACTION;
 ROLLBACK;
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 a	t
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 a	t
 START TRANSACTION;
 COMMIT;
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 a	t
 98	NONE
-select * from test.t3;
+SELECT * FROM test.t3 ORDER BY a;
 a	t
 98	NONE
 SET AUTOCOMMIT=1;

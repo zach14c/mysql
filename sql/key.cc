@@ -385,7 +385,6 @@ void key_unpack(String *to,TABLE *table,uint idx)
                                  char_length)) < tmp.length())
           tmp.length(charpos);
       }
-      
       if (key_part->length < field->pack_length())
 	tmp.length(min(tmp.length(),key_part->length));
       to->append(tmp);
