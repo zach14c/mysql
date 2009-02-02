@@ -37,7 +37,7 @@ int my_delete(const char *name, myf MyFlags)
 } /* my_delete */
 
 #if defined(__WIN__)
-/*
+/**
   Delete file which is possibly not closed.
 
   This function is intended to be used exclusively as a temporal solution
@@ -53,6 +53,20 @@ int my_delete(const char *name, myf MyFlags)
   renamed to <name>.<num>.deleted where <name> - the initial name of the
   file, <num> - a hexadecimal number chosen to make the temporal name to
   be unique.
+
+  @param the name of the being deleted file
+  @param the flags instructing how to react on an error internally in
+         the function
+
+  @note The per-thread @c my_errno holds additional info for a caller to
+        decide how critical the error can be.
+
+  @retval
+    0	ok
+  @retval
+    1   error
+
+
 */
 int nt_share_delete(const char *name, myf MyFlags)
 {
@@ -61,6 +75,7 @@ int nt_share_delete(const char *name, myf MyFlags)
   DBUG_ENTER("nt_share_delete");
   DBUG_PRINT("my",("name %s MyFlags %d", name, MyFlags));
 
+  errno= 0;
   for (cnt= GetTickCount(); cnt; cnt--)
   {
     sprintf(buf, "%s.%08X.deleted", name, cnt);
@@ -78,15 +93,23 @@ int nt_share_delete(const char *name, myf MyFlags)
                            name, buf, errno));
     break;
   }
-
-  if (DeleteFile(buf))
-    DBUG_RETURN(0);
-
-  my_errno= GetLastError();
+  
+  if (errno == ERROR_FILE_NOT_FOUND)
+  {
+       my_errno= ENOENT;    // marking, that `name' doesn't exist 
+  }
+  else if (errno == 0)
+  {
+       if (DeleteFile(buf))
+            DBUG_RETURN(0);
+       else if ((my_errno= GetLastError()) == 0)
+            my_errno= ENOENT; // marking, that `buf' doesn't exist
+  } else
+       my_errno= errno;
+  
   if (MyFlags & (MY_FAE+MY_WME))
-    my_error(EE_DELETE, MYF(ME_BELL + ME_WAITTANG + (MyFlags & ME_NOINPUT)),
-	       name, my_errno);
-
+       my_error(EE_DELETE, MYF(ME_BELL + ME_WAITTANG + (MyFlags & ME_NOINPUT)),
+                name, my_errno);
   DBUG_RETURN(-1);
 }
 #endif
