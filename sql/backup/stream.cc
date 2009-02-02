@@ -201,6 +201,7 @@ Stream::Stream(Logger &log, ::String *path, int flags)
   state= CLOSED;
 }
 
+
 /**
   Check if secure-file-priv option has been set and if so, whether
   or not backup tries to write to the path (or a sub-path) specified
@@ -246,6 +247,12 @@ int Stream::open()
   return 0;
 }
 
+/**
+  Close stream
+
+  @retval TRUE success 
+  @retval FALSE failure
+*/
 bool Stream::close()
 {
   bool ret= TRUE;
@@ -260,6 +267,11 @@ bool Stream::close()
   return ret;
 }
 
+/**
+  Rewind stream
+
+  @returns int result of seek to start of stream
+*/
 bool Stream::rewind()
 {
 #ifdef HAVE_COMPRESS

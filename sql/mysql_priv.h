@@ -607,7 +607,7 @@ enum open_table_mode
 
 /* Used to check GROUP BY list in the MODE_ONLY_FULL_GROUP_BY mode */
 #define UNDEF_POS (-1)
-#define BACKUP_WAIT_TIMEOUT_DEFAULT 50;
+#define BACKUP_WAIT_TIMEOUT_DEFAULT 50
 
 /* BINLOG_DUMP options */
 
@@ -1952,6 +1952,8 @@ extern ulong slow_launch_threads, slow_launch_time;
 extern ulong table_cache_size, table_def_size;
 extern ulong max_connections,max_connect_errors, connect_timeout;
 extern my_bool slave_allow_batching;
+extern my_bool allow_slave_start;
+extern LEX_CSTRING reason_slave_blocked;
 extern ulong slave_net_timeout, slave_trans_retries;
 extern uint max_user_connections;
 extern ulong what_to_log,flush_time;
@@ -1968,7 +1970,8 @@ extern ulong specialflag;
 #endif /* MYSQL_SERVER || INNODB_COMPATIBILITY_HOOKS */
 #ifdef MYSQL_SERVER
 extern ulong current_pid;
-extern ulong expire_logs_days, sync_binlog_period, sync_binlog_counter;
+extern ulong expire_logs_days;
+extern uint sync_binlog_period, sync_relaylog_period;
 extern ulong opt_tc_log_size, tc_log_max_pages_used, tc_log_page_size;
 extern ulong tc_log_page_waits;
 extern my_bool relay_log_purge, opt_innodb_safe_binlog, opt_innodb;
@@ -2042,7 +2045,7 @@ extern pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_lock_db,
        LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_short,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_slave_list, LOCK_active_mi, LOCK_manager, LOCK_global_read_lock,
-       LOCK_global_system_variables, LOCK_user_conn,
+       LOCK_global_system_variables, LOCK_user_conn, LOCK_slave_start,
        LOCK_prepared_stmt_count,
        LOCK_connection_count;
 #ifdef HAVE_OPENSSL

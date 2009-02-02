@@ -17,8 +17,9 @@ class Native_snapshot: public Snapshot_info
   const char *m_name;  ///< Saved name of storage engine.
   uint       m_se_ver; ///< Storage engine version number.
 
- public:
+public:
 
+  /// Constructor
   Native_snapshot(Logger &log, const storage_engine_ref se) 
     :Snapshot_info(0), m_hton(NULL), m_be(NULL)
   {
@@ -26,7 +27,8 @@ class Native_snapshot: public Snapshot_info
     if (m_be)
       m_version= m_be->version();
   }
-  
+
+  /// Constructor
   Native_snapshot(Logger &log, const version_t ver, const storage_engine_ref se) 
     :Snapshot_info(ver), m_hton(NULL), m_be(NULL)
   {
@@ -45,9 +47,11 @@ class Native_snapshot: public Snapshot_info
   enum_snap_type type() const
   { return NATIVE_SNAPSHOT; }
 
+  /// Return the version number of the storage engine.
   uint se_ver() const
   { return m_se_ver; }
 
+  /// Return the name of the storage engine.
   const char* se_name() const
   { return m_name; }
 
@@ -72,7 +76,7 @@ class Native_snapshot: public Snapshot_info
     return m_be->get_restore(m_version, Driver::PARTIAL, m_tables, drv);
   }
 
- private:
+private:
 
   int init(Logger &log, const storage_engine_ref se);
 };

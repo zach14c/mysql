@@ -25,8 +25,12 @@ SELECT @@general_log;
 ## Inserting some Records & Verifying output in log ##
 INSERT into t1(name) values('Record_3');
 INSERT into t1(name) values('Record_4');
-## There should be no difference, case should pass ##
-## This case is failing which shows that mysql is writing in general ##
-## log when we set general_log to ON ##
+## There should be a difference ##
+SET @@global.max_allowed_packet= 1024*1024*1024;
+SET @orig_file= load_file('MYSQLD_LOGFILE.orig');
+SET @copy_file= load_file('MYSQLD_LOGFILE.copy');
+SELECT STRCMP(@orig_file, @copy_file);
+STRCMP(@orig_file, @copy_file)
+1
 ## Dropping tables ##
 DROP TABLE t1;

@@ -1,9 +1,6 @@
 #
-# Include this script after a shutdown to wait until the connection
-# to the server has been lost or timeout occurs.
-# When you change this file you may have to chance its cousin
-# wait_until_connected_again.inc
-
+# Include this script to wait until the connection to the
+# server has been dropped.
 --disable_result_log
 --disable_query_log
 let $counter= 600;

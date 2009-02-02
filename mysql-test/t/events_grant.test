@@ -3,7 +3,7 @@
 
 --disable_warnings
 CREATE DATABASE IF NOT EXISTS events_test;
---enabled_warnings
+--enable_warnings
 use events_test;
 #
 # Events grants test begin

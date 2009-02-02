@@ -1,0 +1,27 @@
+USE test;
+DROP DATABASE IF EXISTS mysql_db1;
+CREATE DATABASE mysql_db1;
+CREATE TABLE mysql_db1.t1 (c1 VARCHAR(5), c2 int);
+CREATE INDEX i1 ON mysql_db1.t1 (c1, c2);
+INSERT INTO mysql_db1.t1 VALUES ('A',1);
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+FLUSH TABLE mysql_db1.t1;
+BACKUP DATABASE mysql_db1 to 'bup_myisam3.bak';
+backup_id
+#
+SET debug='d,Backup_restore_ctx_unlock_tables_alloc';
+RESTORE FROM 'bup_myisam3.bak' OVERWRITE;
+backup_id
+#
+SELECT COUNT(*) FROM mysql_db1.t1 WHERE c2 < 5;
+COUNT(*)
+128
+SET debug='';
+DROP TABLE mysql_db1.t1;
+DROP DATABASE mysql_db1;
