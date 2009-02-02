@@ -13,7 +13,7 @@
 # the results.
 #
 --source include/not_embedded.inc
---source include/have_federated_db.inc
+--source suite/federated/have_federated_db.inc
 # MERGE is always available --source include/have_merge.inc
 --source include/have_blackhole.inc
 #
@@ -28,6 +28,12 @@ INSTALL PLUGIN example SONAME 'ha_example.so';
 --disable_warnings
 DROP DATABASE IF EXISTS bup_nodata;
 DROP DATABASE IF EXISTS bup_data;
+
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
+--error 0,1
+remove_file $MYSQLD_DATADIR/bup_data.bak;
+--error 0,1
+remove_file $MYSQLD_DATADIR/bup_nodata.bak;
 --enable_warnings
 
 --echo #
@@ -238,10 +244,8 @@ SELECT * FROM bup_nodata.e1;
 --echo #
 DROP DATABASE bup_nodata;
 
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_data.bak
---error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_nodata.bak
+remove_file $MYSQLD_DATADIR/bup_data.bak;
+remove_file $MYSQLD_DATADIR/bup_nodata.bak;
 
 UNINSTALL PLUGIN example;
 

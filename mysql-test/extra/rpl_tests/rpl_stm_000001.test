@@ -2,7 +2,7 @@
 -- source include/master-slave.inc
 
 create table t1 (word char(20) not null);
-load data infile '../std_data_ln/words.dat' into table t1;
+load data infile '../../std_data/words.dat' into table t1;
 --replace_result $MYSQL_TEST_DIR MYSQL_TEST_DIR
 eval load data local infile '$MYSQL_TEST_DIR/std_data/words.dat' into table t1;
 select * from t1 limit 10;
@@ -68,8 +68,8 @@ enable_query_log;
 connection slave;
 lock tables t1 read;
 start slave;
-#hope this is long enough for I/O thread to fetch over 16K relay log data
-sleep 3;
+connection master;
+--source include/sync_slave_io_with_master.inc
 unlock tables;
 
 #test handling of aborted connection in the middle of update

@@ -201,6 +201,7 @@ Stream::Stream(Logger &log, ::String *path, int flags)
   state= CLOSED;
 }
 
+
 /**
   Check if secure-file-priv option has been set and if so, whether
   or not backup tries to write to the path (or a sub-path) specified

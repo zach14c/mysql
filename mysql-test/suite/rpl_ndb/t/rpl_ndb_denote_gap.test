@@ -1,0 +1,92 @@
+#############################################################
+# Author:  Serge Kozlov <skozlov@mysql.com>
+# Date:    08/25/2008
+# Purpose: Testing replication event to denote gap 
+# (LOST_EVENTS) in cluster replication if master mysqld is
+# restarted
+# Scenario:
+# 1) Stop master
+# 2) Wait while slave IO thread lost connection
+# 3) Start master
+# 4) Wait while slave SQL thread stops with LOST_EVENTS
+#    error
+#############################################################
+--source include/have_ndb.inc
+--source include/ndb_master-slave.inc
+--echo
+
+# When master shuts down, the slave I/O thread can fail due to various
+# reasons, and result in various error code and message, for example:
+#  1) reconnect error
+#  2) error in get_master_version_and_clock
+#  3) error in register_slave_on_master
+# So add suppresions for these errors.
+--disable_query_log
+call mtr.add_suppression("slave I/O thread stops");
+call mtr.add_suppression("Slave I/O thread couldn't register on master");
+call mtr.add_suppression("Slave I/O: Master command COM_REGISTER_SLAVE failed");
+--enable_query_log
+
+# Stop master mysql server
+--echo * shutdown master *
+--connection master
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.1.expect
+wait
+EOF
+--shutdown_server 10
+--source include/wait_until_disconnected.inc
+
+# Wait while slave lost connection to master
+--connection slave
+--source include/wait_for_slave_io_to_stop.inc
+--echo * slave status*
+let $io_run= query_get_value("SHOW SLAVE STATUS", Slave_IO_Running, 1);
+echo Slave_IO_Running = $io_run;
+let $sql_run= query_get_value("SHOW SLAVE STATUS", Slave_SQL_Running, 1);
+echo Slave_SQL_Running = $sql_run;
+
+# Start master server again
+--echo * start master *
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.1.expect
+restart
+EOF
+
+# Reconnect to master
+--connection master
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+--connection slave
+
+# restart the slave IO thread
+#
+# NOTE: wait_for_slave_io_to_stop.inc above only waits for the
+# Slave_IO_running of SHOW SLAVE STATUS to become 'No', but this does
+# not mean the slave I/O thread is truly stopped, it will try to
+# reconnect to master for 'master_retry_count' times before giving up,
+# so if later the master restarts quickly enough, the slave I/O thread
+# will automatically reconnect to master and running.
+# 
+# So the slave I/O thread still be running and the following statement
+# can emit a warning.
+#
+# See BUG#41613, this restriction can be lifted if this bug is fixed.
+#
+--disable_warnings
+start slave io_thread;
+--enable_warnings
+
+# Wait for stop slave SQL thread with error LOST EVENTS
+--source include/wait_for_slave_sql_to_stop.inc
+--echo * slave status *
+let $io_run= query_get_value("SHOW SLAVE STATUS", Slave_IO_Running, 1);
+echo Slave_IO_Running = $io_run;
+let $sql_run= query_get_value("SHOW SLAVE STATUS", Slave_SQL_Running, 1);
+echo Slave_SQL_Running = $sql_run;
+let $errno= query_get_value("SHOW SLAVE STATUS", Last_SQL_Errno, 1);
+echo Last_SQL_Errno = $errno;
+let $error= query_get_value("SHOW SLAVE STATUS", Last_SQL_Error, 1);
+echo Last_SQL_Error = $error;
+
+# End of test 6.0
+

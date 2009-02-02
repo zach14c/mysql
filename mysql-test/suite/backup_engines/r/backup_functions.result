@@ -126,7 +126,7 @@ paymentno	int(11)	NO	PRI	NULL
 playerno	int(11)	YES	MUL	NULL	
 paymentdate	date	YES		NULL	
 amount	float	YES		NULL	
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db <> 'mtr';;
 Db	bup_sfs
 Name	dollars
 Type	FUNCTION
@@ -222,7 +222,7 @@ teamno	int(11)	YES	MUL	NULL
 playerno	int(11)	YES	MUL	NULL	
 won	int(11)	YES		NULL	
 lost	int(11)	YES		NULL	
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db <> 'mtr';;
 Db	bup_sfs
 Name	dollars
 Type	FUNCTION
@@ -321,7 +321,7 @@ END
 character_set_client	latin1
 collation_connection	latin1_swedish_ci
 Database Collation	latin1_swedish_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db <> 'mtr';;
 Db	bup_sfs
 Name	dollars
 Type	FUNCTION
@@ -409,7 +409,7 @@ END
 character_set_client	latin1
 collation_connection	latin1_swedish_ci
 Database Collation	latin1_swedish_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db <> 'mtr';;
 Db	bup_sfs
 Name	dollars
 Type	FUNCTION
@@ -521,7 +521,7 @@ teamno	int(11)	YES	MUL	NULL
 playerno	int(11)	YES	MUL	NULL	
 won	int(11)	YES		NULL	
 lost	int(11)	YES		NULL	
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db <> 'mtr';;
 Db	bup_sfs
 Name	dollars
 Type	FUNCTION

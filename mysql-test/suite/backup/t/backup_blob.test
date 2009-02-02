@@ -17,6 +17,8 @@ DROP DATABASE IF EXISTS mysqltest;
 --echo Test blobs, InnoDB
 --echo
 
+let $MYSQLD_BACKUPDIR = `select @@backupdir`;
+
 CREATE DATABASE mysqltest;
 USE mysqltest;
 
@@ -61,4 +63,4 @@ CHECKSUM TABLE t3;
 
 DROP DATABASE mysqltest;
 
---remove_file $MYSQLTEST_VARDIR/master-data/blob.bak
+--remove_file $MYSQLD_BACKUPDIR/blob.bak

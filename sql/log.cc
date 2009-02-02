@@ -53,8 +53,7 @@
 
 LOGGER logger;
 
-MYSQL_BIN_LOG mysql_bin_log;
-ulong sync_binlog_counter= 0;
+MYSQL_BIN_LOG mysql_bin_log(&sync_binlog_period);
 
 static bool test_if_number(const char *str,
 			   long *res, bool allow_wildcards);
@@ -101,7 +100,13 @@ handle_error(THD * /* thd */,
   return TRUE;
 }
 
+/*
+  Array of warning report functions.
+  The functions are listed in the order defined by
+  MYSQL_ERROR::enum_warning_level.
 
+  @todo: merge the array with MYSQL_ERROR class
+*/
 sql_print_message_func sql_print_message_handlers[3] =
 {
   sql_print_information,
@@ -2675,8 +2680,6 @@ static int binlog_prepare(handlerton *hton, THD *thd, bool all)
   return 0;
 }
 
-#define YESNO(X) ((X) ? "yes" : "no")
-
 /**
   This function is called once after each statement.
 
@@ -4125,9 +4128,11 @@ const char *MYSQL_LOG::generate_name(const char *log_name,
 
 
 
-MYSQL_BIN_LOG::MYSQL_BIN_LOG()
+MYSQL_BIN_LOG::MYSQL_BIN_LOG(uint *sync_period)
   :bytes_written(0), prepared_xids(0), file_id(1), open_count(1),
    need_start_event(TRUE), m_table_map_version(0),
+   sync_period_ptr(sync_period),
+   is_relay_log(0),
    description_event_for_exec(0), description_event_for_queue(0)
 {
   /*
@@ -4331,7 +4336,7 @@ bool MYSQL_BIN_LOG::open(const char *log_name,
       */
       description_event_for_queue->created= 0;
       /* Don't set log_pos in event header */
-      description_event_for_queue->artificial_event=1;
+      description_event_for_queue->set_artificial_event();
 
       if (description_event_for_queue->write(&log_file))
         goto err;
@@ -5307,7 +5312,7 @@ void MYSQL_BIN_LOG::new_file_impl(bool need_lock)
         to change base names at some point.
       */
       Rotate_log_event r(new_name+dirname_length(new_name),
-                         0, LOG_EVENT_OFFSET, 0);
+                         0, LOG_EVENT_OFFSET, is_relay_log ? Rotate_log_event::RELAY_LOG : 0);
       r.write(&log_file);
       bytes_written += r.data_written;
     }
@@ -5366,6 +5371,8 @@ bool MYSQL_BIN_LOG::append(Log_event* ev)
   }
   bytes_written+= ev->data_written;
   DBUG_PRINT("info",("max_size: %lu",max_size));
+  if (flush_and_sync(0))
+    goto err;
   if ((uint) my_b_append_tell(&log_file) > max_size)
     new_file_without_locking();
 
@@ -5396,6 +5403,8 @@ bool MYSQL_BIN_LOG::appendv(const char* buf, uint len,...)
     bytes_written += len;
   } while ((buf=va_arg(args,const char*)) && (len=va_arg(args,uint)));
   DBUG_PRINT("info",("max_size: %lu",max_size));
+  if (flush_and_sync(0))
+    goto err;
   if ((uint) my_b_append_tell(&log_file) > max_size)
     new_file_without_locking();
 
@@ -5414,9 +5423,10 @@ bool MYSQL_BIN_LOG::flush_and_sync(bool *synced)
   safe_mutex_assert_owner(&LOCK_log);
   if (flush_io_cache(&log_file))
     return 1;
-  if (++sync_binlog_counter >= sync_binlog_period && sync_binlog_period)
+  uint sync_period= get_sync_period();
+  if (sync_period && ++sync_counter >= sync_period)
   {
-    sync_binlog_counter= 0;
+    sync_counter= 0;
     err=my_sync(fd, MYF(MY_WME));
     if (synced)
       *synced= 1;
@@ -5890,6 +5900,7 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
     if (event_info->write(file))
       goto err;
 
+    error=0;
     if (file == &log_file) // we are writing to the real log (disk)
     {
       bool synced;
@@ -5904,7 +5915,6 @@ bool MYSQL_BIN_LOG::write(Log_event *event_info)
       signal_update();
       rotate_and_purge(RP_LOCK_LOG_IS_ALREADY_LOCKED);
     }
-    error=0;
 
 err:
     if (error)
@@ -6161,7 +6171,7 @@ int MYSQL_BIN_LOG::write_cache(IO_CACHE *cache, bool lock_log, bool sync_log)
   DBUG_ASSERT(carry == 0);
 
   if (sync_log)
-    flush_and_sync(0);
+    return flush_and_sync(0);
 
   return 0;                                     // All OK
 }

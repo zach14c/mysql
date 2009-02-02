@@ -29,11 +29,7 @@ to mysqltest3@localhost;
 create database mysqltest2;
 create table mysqltest2.t2 (id int);
 GRANT SELECT ON mysqltest2.t2 TO mysqltest4@localhost IDENTIFIED BY 'pass';
-insert into mysql.user (user, host) values ("mysqltest5", "somehost");
-Warnings:
-Warning	1364	Field 'ssl_cipher' doesn't have a default value
-Warning	1364	Field 'x509_issuer' doesn't have a default value
-Warning	1364	Field 'x509_subject' doesn't have a default value
+insert into mysql.user (user, host, ssl_cipher, x509_issuer, x509_subject) values ("mysqltest5", "somehost", '', '', '');
 GRANT SELECT ON *.* TO mysqltest6@localhost;
 GRANT INSERT ON *.* TO mysqltest6@localhost;
 GRANT INSERT ON test.* TO mysqltest6@localhost;
@@ -116,7 +112,8 @@ show grants for mysqltest4@localhost;
 Grants for mysqltest4@localhost
 GRANT USAGE ON *.* TO 'mysqltest4'@'localhost' IDENTIFIED BY PASSWORD '*196BDEDE2AE4F84CA44C47D54D78478C7E2BD7B7'
 set global slave_exec_mode='IDEMPOTENT';
-drop table t1, t4, mysqltest2.t2;
+drop table t1, mysqltest2.t2;
+drop table t4;
 drop database mysqltest2;
 delete from mysql.user where user like "mysqltest%";
 delete from mysql.db where user like "mysqltest%";
