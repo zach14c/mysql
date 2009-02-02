@@ -4447,8 +4447,14 @@ int DsMrr_impl::dsmrr_init(handler *h_arg, RANGE_SEQ_IF *seq_funcs,
   }
   else
   {
-    /* if we call h->index_end() will invoke this->dsmrr_close(), which will  Do not let it delete h2. */
-    // psergey-todo: WTF??
+    /* 
+      We get here when the access alternates betwen MRR scan(s) and non-MRR
+      scans.
+
+      Calling h->index_end() will invoke dsmrr_close() for this object,
+      which will delete h2. We need to keep it, so save put it away and dont
+      let it be deleted:
+    */
     handler *save_h2= h2;
     h2= NULL;
     int res= (h->inited == handler::INDEX && h->ha_index_end());
@@ -4457,6 +4463,7 @@ int DsMrr_impl::dsmrr_init(handler *h_arg, RANGE_SEQ_IF *seq_funcs,
     if (res)
       goto error;
   }
+
   if (h2->handler::multi_range_read_init(seq_funcs, seq_init_param, n_ranges,
                                           mode, buf) || 
       dsmrr_fill_buffer())
