@@ -265,11 +265,10 @@ sub main {
        "mysql-5.1-telco-6.2-merge"      => "ndb_team",
        "mysql-5.1-telco-6.3"            => "ndb_team",
        "mysql-6.0-ndb"                  => "ndb_team",
-       "mysql-6.0-falcon"               => "falcon_team",
-       "mysql-6.0-falcon-team"          => "falcon_team",
-       "mysql-6.0-falcon-wlad"          => "falcon_team",
-       "mysql-6.0-falcon-chris"         => "falcon_team",
-       "mysql-6.0-falcon-kevin"         => "falcon_team",
+       "bzr_mysql-6.0-falcon-team"      => "falcon_team",
+       "bzr_mysql-6.0-falcon-ann"       => "falcon_team",
+       "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
+       "bzr_mysql-6.0-falcon-kevin"     => "falcon_team",
       );
 
     foreach my $dir ( reverse splitdir($basedir) ) {
@@ -325,7 +324,6 @@ sub main {
      LocalAddr => 'localhost',
      Proto => 'tcp',
      Listen => $opt_parallel,
-	 "bzr_mysql-6.0-falcon-ann"           => "falcon_team",
     );
   mtr_error("Could not create testcase server port: $!") unless $server;
   my $server_port = $server->sockport();
@@ -2012,7 +2010,7 @@ sub setup_vardir() {
       mtr_error("The destination for symlink $opt_vardir does not exist")
 	if ! -d readlink($opt_vardir);
     }
-    elsif ( ! $glob_win32 && $opt_mem )
+    elsif ( $opt_mem )
     {
       # Runinng with "var" as a link to some "memory" location, normally tmpfs
       mtr_verbose("Creating $opt_mem");
