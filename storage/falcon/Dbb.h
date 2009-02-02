@@ -36,6 +36,7 @@
 
 #define PAGE_SIZE		4096
 #define CACHE_SIZE		1024
+#define SECTION_HASH_SIZE	997
 
 // Selective debugging
 
@@ -201,7 +202,7 @@ public:
 	int			sequencesPerSection;
 	bool		utf8;
 	bool		noLog;
-	Section		**sections;
+	Section		*sections[SECTION_HASH_SIZE];
 	int			debug;
 	int			sequence;
 	int			odsVersion;
