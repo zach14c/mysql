@@ -1457,7 +1457,7 @@ int ha_maria::preload_keys(THD * thd, HA_CHECK_OPT *check_opt)
 
   if ((error= maria_preload(file, map, table_list->ignore_leaves)))
   {
-    char buf[128];
+    char buf[MYSYS_ERRMSG_SIZE];
     const char *errmsg;
 
     switch (error) {
