@@ -241,6 +241,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	add_suppression
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN   INSERT INTO test_suppressions (pattern) VALUES (pattern); END
@@ -251,8 +258,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -264,6 +271,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	check_testcase
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN    SELECT * FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES     WHERE variable_name != 'timestamp' ORDER BY VARIABLE_NAME;    SELECT * FROM INFORMATION_SCHEMA.SCHEMATA;    SELECT table_name AS tables_in_test FROM INFORMATION_SCHEMA.TABLES     WHERE table_schema='test';    SELECT CONCAT(table_schema, '.', table_name) AS tables_in_mysql     FROM INFORMATION_SCHEMA.TABLES       WHERE table_schema='mysql' AND table_name != 'ndb_apply_status'         ORDER BY tables_in_mysql;   SELECT CONCAT(table_schema, '.', table_name) AS columns_in_mysql,   	 column_name, ordinal_position, column_default, is_nullable,          data_type, character_maximum_length, character_octet_length,          numeric_precision, numeric_scale, character_set_name,          collation_name, column_type, column_key, extra, column_comment     FROM INFORMATION_SCHEMA.COLUMNS       WHERE table_schema='mysql' AND table_name != 'ndb_apply_status'         ORDER BY columns_in_mysql;    checksum table     mysql.columns_priv,     mysql.db,     mysql.func,     mysql.help_category,     mysql.help_keyword,     mysql.help_relation,     mysql.host,     mysql.proc,     mysql.procs_priv,     mysql.tables_priv,     mysql.time_zone,     mysql.time_zone_leap_second,     mysql.time_zone_name,     mysql.time_zone_transition,     mysql.time_zone_transition_type,     mysql.user;  END
@@ -274,8 +288,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -287,6 +301,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	check_warnings
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN   DECLARE `pos` bigint unsigned;    SET SQL_LOG_BIN=0;    UPDATE error_log el, global_suppressions gs     SET suspicious=0       WHERE el.suspicious=1 AND el.line REGEXP gs.pattern;    UPDATE error_log el, test_suppressions ts     SET suspicious=0       WHERE el.suspicious=1 AND el.line REGEXP ts.pattern;    SELECT COUNT(*) INTO @num_warnings FROM error_log     WHERE suspicious=1;    IF @num_warnings > 0 THEN     SELECT file_name, line         FROM error_log WHERE suspicious=1;     SELECT 2 INTO result;   ELSE     SELECT 0 INTO RESULT;   END IF;    TRUNCATE test_suppressions;   DROP TABLE error_log;  END
@@ -297,8 +318,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -556,6 +577,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	add_suppression
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN   INSERT INTO test_suppressions (pattern) VALUES (pattern); END
@@ -566,8 +594,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -579,6 +607,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	check_testcase
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN    SELECT * FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES     WHERE variable_name != 'timestamp' ORDER BY VARIABLE_NAME;    SELECT * FROM INFORMATION_SCHEMA.SCHEMATA;    SELECT table_name AS tables_in_test FROM INFORMATION_SCHEMA.TABLES     WHERE table_schema='test';    SELECT CONCAT(table_schema, '.', table_name) AS tables_in_mysql     FROM INFORMATION_SCHEMA.TABLES       WHERE table_schema='mysql' AND table_name != 'ndb_apply_status'         ORDER BY tables_in_mysql;   SELECT CONCAT(table_schema, '.', table_name) AS columns_in_mysql,   	 column_name, ordinal_position, column_default, is_nullable,          data_type, character_maximum_length, character_octet_length,          numeric_precision, numeric_scale, character_set_name,          collation_name, column_type, column_key, extra, column_comment     FROM INFORMATION_SCHEMA.COLUMNS       WHERE table_schema='mysql' AND table_name != 'ndb_apply_status'         ORDER BY columns_in_mysql;    checksum table     mysql.columns_priv,     mysql.db,     mysql.func,     mysql.help_category,     mysql.help_keyword,     mysql.help_relation,     mysql.host,     mysql.proc,     mysql.procs_priv,     mysql.tables_priv,     mysql.time_zone,     mysql.time_zone_leap_second,     mysql.time_zone_name,     mysql.time_zone_transition,     mysql.time_zone_transition_type,     mysql.user;  END
@@ -589,8 +624,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -602,6 +637,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	check_warnings
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN   DECLARE `pos` bigint unsigned;    SET SQL_LOG_BIN=0;    UPDATE error_log el, global_suppressions gs     SET suspicious=0       WHERE el.suspicious=1 AND el.line REGEXP gs.pattern;    UPDATE error_log el, test_suppressions ts     SET suspicious=0       WHERE el.suspicious=1 AND el.line REGEXP ts.pattern;    SELECT COUNT(*) INTO @num_warnings FROM error_log     WHERE suspicious=1;    IF @num_warnings > 0 THEN     SELECT file_name, line         FROM error_log WHERE suspicious=1;     SELECT 2 INTO result;   ELSE     SELECT 0 INTO RESULT;   END IF;    TRUNCATE test_suppressions;   DROP TABLE error_log;  END
@@ -612,8 +654,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -864,6 +906,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	add_suppression
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN   INSERT INTO test_suppressions (pattern) VALUES (pattern); END
@@ -874,8 +923,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -887,6 +936,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	check_testcase
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN    SELECT * FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES     WHERE variable_name != 'timestamp' ORDER BY VARIABLE_NAME;    SELECT * FROM INFORMATION_SCHEMA.SCHEMATA;    SELECT table_name AS tables_in_test FROM INFORMATION_SCHEMA.TABLES     WHERE table_schema='test';    SELECT CONCAT(table_schema, '.', table_name) AS tables_in_mysql     FROM INFORMATION_SCHEMA.TABLES       WHERE table_schema='mysql' AND table_name != 'ndb_apply_status'         ORDER BY tables_in_mysql;   SELECT CONCAT(table_schema, '.', table_name) AS columns_in_mysql,   	 column_name, ordinal_position, column_default, is_nullable,          data_type, character_maximum_length, character_octet_length,          numeric_precision, numeric_scale, character_set_name,          collation_name, column_type, column_key, extra, column_comment     FROM INFORMATION_SCHEMA.COLUMNS       WHERE table_schema='mysql' AND table_name != 'ndb_apply_status'         ORDER BY columns_in_mysql;    checksum table     mysql.columns_priv,     mysql.db,     mysql.func,     mysql.help_category,     mysql.help_keyword,     mysql.help_relation,     mysql.host,     mysql.proc,     mysql.procs_priv,     mysql.tables_priv,     mysql.time_zone,     mysql.time_zone_leap_second,     mysql.time_zone_name,     mysql.time_zone_transition,     mysql.time_zone_transition_type,     mysql.user;  END
@@ -897,8 +953,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
@@ -910,6 +966,13 @@ ROUTINE_CATALOG	NULL
 ROUTINE_SCHEMA	mtr
 ROUTINE_NAME	check_warnings
 ROUTINE_TYPE	PROCEDURE
+DATA_TYPE	
+CHARACTER_MAXIMUM_LENGTH	NULL
+CHARACTER_OCTET_LENGTH	NULL
+NUMERIC_PRECISION	NULL
+NUMERIC_SCALE	NULL
+CHARACTER_SET_NAME	NULL
+COLLATION_NAME	NULL
 DTD_IDENTIFIER	NULL
 ROUTINE_BODY	SQL
 ROUTINE_DEFINITION	BEGIN   DECLARE `pos` bigint unsigned;    SET SQL_LOG_BIN=0;    UPDATE error_log el, global_suppressions gs     SET suspicious=0       WHERE el.suspicious=1 AND el.line REGEXP gs.pattern;    UPDATE error_log el, test_suppressions ts     SET suspicious=0       WHERE el.suspicious=1 AND el.line REGEXP ts.pattern;    SELECT COUNT(*) INTO @num_warnings FROM error_log     WHERE suspicious=1;    IF @num_warnings > 0 THEN     SELECT file_name, line         FROM error_log WHERE suspicious=1;     SELECT 2 INTO result;   ELSE     SELECT 0 INTO RESULT;   END IF;    TRUNCATE test_suppressions;   DROP TABLE error_log;  END
@@ -920,8 +983,8 @@ IS_DETERMINISTIC	NO
 SQL_DATA_ACCESS	CONTAINS SQL
 SQL_PATH	NULL
 SECURITY_TYPE	DEFINER
-CREATED	<modified>
-LAST_ALTERED	<created>
+CREATED	<created>
+LAST_ALTERED	<modified>
 SQL_MODE	
 ROUTINE_COMMENT	
 DEFINER	root@localhost
