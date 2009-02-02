@@ -83,11 +83,13 @@ my_bool my_init(void)
   if (my_progname)
     my_progname_short= my_progname + dirname_length(my_progname);
 
-#if defined(THREAD) && defined(SAFE_MUTEX)
+#if defined(THREAD)
+  (void) my_threadattr_global_init();
+#  if defined(SAFE_MUTEX)
   safe_mutex_global_init();		/* Must be called early */
-#endif
-#if defined(THREAD) && defined(MY_PTHREAD_FASTMUTEX) && !defined(SAFE_MUTEX)
+#  elif defined(MY_PTHREAD_FASTMUTEX)
   fastmutex_global_init();              /* Must be called early */
+#  endif
 #endif
   netware_init();
 #ifdef THREAD

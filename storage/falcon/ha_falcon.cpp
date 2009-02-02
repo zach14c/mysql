@@ -1062,8 +1062,7 @@ int StorageInterface::delete_all_rows()
 
 	// If this isn't a truncate, punt!
 	
-//	if (thd_sql_command(mySqlThread) != SQLCOM_TRUNCATE)
-	if (current_thd->transaction.on)
+	if (thd_sql_command(mySqlThread) != SQLCOM_TRUNCATE)
 		DBUG_RETURN(my_errno=HA_ERR_WRONG_COMMAND);
 
 	int ret = 0;
