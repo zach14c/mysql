@@ -472,6 +472,7 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	scavengerThreadSleeping = 0;
 	scavengerThreadSignaled = 0;
 	scavengeForced = 0;
+	scavengeCount = 0;
 	serialLog = NULL;
 	pageWriter = NULL;
 	zombieTables = NULL;
@@ -1735,8 +1736,11 @@ void Database::scavenge(bool forced)
 {
 	// Signal the cardinality task unless a forced scavenge is pending
 
-	if (!forced)
+	if (!forced &&
+		++scavengeCount % CARDINALITY_FREQUENCY == 0)
+		{
 		signalCardinality();
+		}
 	
 	scavengeForced = 0;
 
@@ -2474,7 +2478,7 @@ void Database::updateCardinalities(void)
 	Sync syncTbl(&syncTables, "Database::updateCardinalities(2)");
 	syncTbl.lock(Shared);
 	
-	Log::log("Update cardinalities begin...\n");
+	Log::log("Update cardinalities\n");
 	bool hit = false;
 	
 	try
@@ -2523,8 +2527,6 @@ void Database::updateCardinalities(void)
 		// Situations where this might happen can be due to problems with
 		// writing to the serial log
 		}
-	
-	Log::log("Update cardinalities complete.\n");
 }
 
 void Database::sync()

@@ -324,8 +324,8 @@ void RecordScavenge::print(void)
 
 	if (!recordsRetired)
 		{
-		recordsRemaining = totalRecords - recordsPruned;
-		spaceRemaining = totalRecordSpace - spacePruned;
+		recordsRemaining = totalRecords - recordsPruned - recordsRetired;
+		spaceRemaining = totalRecordSpace - spacePruned - spaceRetired;
 		}
 
 	Log::log(LogScavenge, "Cycle=" I64FORMAT 

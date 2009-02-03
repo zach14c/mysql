@@ -40,8 +40,6 @@
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
 #define VERSION_SERIAL_LOG				COMBINED_VERSION(ODS_VERSION2, ODS_MINOR_VERSION1)
 
-#define SCAVENGE_WAIT_MS    20       // Milliseconds per iteration to wait for the Scavenger
-
 static const int FALC0N_TRACE_TRANSACTIONS	= 1;
 static const int FALC0N_SYNC_TEST			= 2;
 static const int FALC0N_SYNC_OBJECTS		= 4;
@@ -55,6 +53,15 @@ static const int FALC0N_TEST_BITMAP			= 64;
 // before it gives up and returns OUT_OF_RECORD_MEMORY_ERROR.
 
 static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
+
+// Milliseconds per iteration to wait for the Scavenger
+
+static const int SCAVENGE_WAIT_MS			  = 20;
+
+// Scavenger cycles per call to updateCardinalities()
+
+static const int CARDINALITY_FREQUENCY		  = 20;
+
 
 #define TABLE_HASH_SIZE		101
 
@@ -342,6 +349,7 @@ public:
 	uint64				recordPoolAllocCount;
 	uint64				lastGenerationMemory;
 	uint64				lastActiveMemoryChecked;
+	uint64				scavengeCount;
 	time_t				creationTime;
 	volatile time_t		lastScavenge;
 };
