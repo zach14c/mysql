@@ -75,9 +75,9 @@ int nt_share_delete(const char *name, myf MyFlags)
   DBUG_ENTER("nt_share_delete");
   DBUG_PRINT("my",("name %s MyFlags %d", name, MyFlags));
 
-  errno= 0;
   for (cnt= GetTickCount(); cnt; cnt--)
   {
+    errno= 0;
     sprintf(buf, "%s.%08X.deleted", name, cnt);
     if (MoveFile(name, buf))
       break;
