@@ -276,7 +276,7 @@ SET SESSION debug="+d,set_backup_id";
 # it writes the history log and last complete log entry.
 #
 --echo con2: Activate sync points for the backup statement.
-SET DEBUG_SYNC= 'before_backup_done SIGNAL ready WAIT_FOR proceed';
+SET DEBUG_SYNC= 'before_backup_completed SIGNAL ready WAIT_FOR proceed';
 SEND BACKUP DATABASE backup_logs to 'backup5.bak';
 
 connection con1;
@@ -330,7 +330,7 @@ connection con2;
 # it writes the history log and last complete log entry.
 #
 --echo con2: Activate sync points for the backup statement.
-SET DEBUG_SYNC= 'before_restore_done SIGNAL ready WAIT_FOR proceed';
+SET DEBUG_SYNC= 'before_restore_completed SIGNAL ready WAIT_FOR proceed';
 SEND RESTORE FROM 'backup5.bak' OVERWRITE;
 
 connection con1;

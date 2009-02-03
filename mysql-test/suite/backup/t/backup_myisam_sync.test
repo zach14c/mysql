@@ -8,10 +8,11 @@
 #
 --disable_warnings
 SET DEBUG_SYNC= 'RESET';
+USE test;
 DROP DATABASE IF EXISTS mysqltest;
 let $MYSQLD_DATADIR= `SELECT @@datadir`;
 --error 0,1
-remove_file $MYSQLD_DATADIR/test.ba;
+remove_file $MYSQLD_DATADIR/bup_myisam_sync.bak;
 --enable_warnings
 
 #
@@ -39,7 +40,7 @@ CREATE TABLE t1 (c1 LONGTEXT) ENGINE=MyISAM;
     # to be emitted by another connection.
     SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
                      WAIT_FOR bup_finish';
-    send BACKUP DATABASE mysqltest TO 'test.ba';
+    send BACKUP DATABASE mysqltest TO 'bup_myisam_sync.bak';
 
 --echo
 --echo connection default: Wait for BACKUP to reach its sync point
@@ -69,7 +70,7 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
     DROP DATABASE mysqltest;
 
     --replace_column 1 #
-    RESTORE FROM 'test.ba';
+    RESTORE FROM 'bup_myisam_sync.bak';
 
     SELECT LENGTH(c1) FROM t1;
     CHECKSUM TABLE t1;
@@ -79,20 +80,8 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
 --echo
 --echo connection default: cleanup
 connection default;
-remove_file $MYSQLD_DATADIR/test.ba;
+remove_file $MYSQLD_DATADIR/bup_myisam_sync.bak;
 SET DEBUG_SYNC= 'RESET';
-
-
---echo
---echo #
---echo # Bug#38045 - Backup, MyISAM and file system encoding
---echo #
-CREATE TABLE `äöüß£å` (id SERIAL) ENGINE=MyISAM;
---replace_column 1 #
-BACKUP DATABASE mysqltest TO 'test.ba';
-DROP TABLE `äöüß£å`;
-remove_file $MYSQLD_DATADIR/test.ba;
-
 
 #
 # Cleanup from this test case
