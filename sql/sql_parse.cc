@@ -764,6 +764,7 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   DBUG_RETURN(FALSE);
 }
 
+
 /**
   Perform one connection-level (COM_XXXX) command.
 
@@ -2302,6 +2303,14 @@ mysql_execute_command(THD *thd)
     goto error;
 #else
   {
+    /* 
+       Reset warnings for BACKUP and RESTORE commands. Note: this will
+       cause problems if BACKUP/RESTORE is allowed inside stored
+       routines and events. In that case, warnings should not be
+       cleared.
+    */
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
+
     /*
       Create a string from the backupdir system variable and pass
       to backup system.
@@ -5201,9 +5210,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
     if ((sctx->master_access & want_access) == want_access &&
         thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->get_db_name(),
-                          &tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (tables->db && thd->db && strcmp(tables->db, thd->db) == 0)
+    {
+      if (check_access(thd, want_access, tables->get_db_name(),
+                       &tables->grant.privilege, 0, no_errors, 
+                       test(tables->schema_table)))
+        goto deny;                            // Access denied
+    }
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
@@ -6678,8 +6693,8 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       tmp_write_to_binlog= 0;
       if (lock_global_read_lock(thd))
 	return 1;                               // Killed
-      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE))
+      if (close_cached_tables(thd, tables, FALSE,
+                              (options & REFRESH_FAST) ? FALSE : TRUE))
           result= 1;
       
       if (make_global_read_lock_block_commit(thd)) // Killed
@@ -6718,8 +6733,9 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
         }
       }
 
-      result= close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE);
+      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
+                              FALSE : TRUE))
+        result= 1;
     }
     my_dbopt_cleanup();
   }

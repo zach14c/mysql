@@ -265,7 +265,7 @@ void backup_shutdown();
 #if defined(__linux__)
 #define ENABLE_TEMP_POOL 1
 #else
-#define ENABLE_TEMP_POOL 0
+#define ENABLE_TEMP_TOOL 0
 #endif
 
 /* Constants */
@@ -547,6 +547,8 @@ ulong query_buff_size, slow_launch_time, slave_open_temp_tables;
 ulong open_files_limit, max_binlog_size, max_relay_log_size;
 ulong slave_net_timeout, slave_trans_retries;
 my_bool slave_allow_batching;
+my_bool allow_slave_start= TRUE;
+LEX_CSTRING reason_slave_blocked;
 ulong slave_exec_mode_options;
 const char *slave_exec_mode_str= "STRICT";
 ulong thread_cache_size=0, thread_pool_size= 0;
@@ -579,7 +581,8 @@ ulong max_prepared_stmt_count;
 */
 ulong prepared_stmt_count=0;
 ulong thread_id=1L,current_pid;
-ulong slow_launch_threads = 0, sync_binlog_period;
+ulong slow_launch_threads = 0;
+uint sync_binlog_period= 0, sync_relaylog_period= 0;
 ulong expire_logs_days = 0;
 ulong rpl_recovery_rank=0;
 const char *log_output_str= "FILE";
@@ -697,7 +700,7 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_thread_count,
 		LOCK_crypt,
 	        LOCK_global_system_variables,
                 LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
-                LOCK_connection_count;
+                LOCK_connection_count, LOCK_slave_start;
 
 /**
   The below lock protects access to two global server variables:
@@ -997,6 +1000,7 @@ static void close_connections(void)
 
     tmp->killed= THD::KILL_CONNECTION;
     thread_scheduler.post_kill_notification(tmp);
+    pthread_mutex_lock(&tmp->LOCK_delete);
     if (tmp->mysys_var)
     {
       tmp->mysys_var->abort=1;
@@ -1019,6 +1023,7 @@ static void close_connections(void)
       }
       pthread_mutex_unlock(&tmp->mysys_var->mutex);
     }
+    pthread_mutex_unlock(&tmp->LOCK_delete);
   }
   (void) pthread_mutex_unlock(&LOCK_thread_count); // For unlink from list
 
@@ -1399,6 +1404,7 @@ void clean_up(bool print_message)
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
   end_slave_list();
+  end_slave_start();
 #endif
   delete binlog_filter;
   delete rpl_filter;
@@ -3939,6 +3945,7 @@ static int init_server_components()
   my_uuid_init((ulong) (my_rnd(&sql_rand))*12345,12345);
 #ifdef HAVE_REPLICATION
   init_slave_list();
+  init_slave_start();
 #endif
 
   /* Setup logs */
@@ -5914,6 +5921,7 @@ enum options_mysqld
   OPT_DEADLOCK_TIMEOUT_LONG,
   OPT_GENERAL_LOG_FILE,
   OPT_SLOW_QUERY_LOG_FILE,
+  OPT_SYNC_RELAY_LOG,
   OPT_BACKUP_HISTORY_LOG_FILE,
   OPT_BACKUP_PROGRESS_LOG_FILE
 };
@@ -7210,8 +7218,13 @@ The minimum value for this variable is 4096.",
   {"sync-binlog", OPT_SYNC_BINLOG,
    "Synchronously flush binary log to disk after every #th event. "
    "Use 0 (default) to disable synchronous flushing.",
-   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_ULONG,
-   REQUIRED_ARG, 0, 0, (longlong) ULONG_MAX, 0, 1, 0},
+   (uchar**) &sync_binlog_period, (uchar**) &sync_binlog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
+  {"sync-relay-log", OPT_SYNC_RELAY_LOG,
+   "Synchronously flush relay log to disk after every #th event. "
+   "Use 0 (default) to disable synchronous flushing.",
+   (uchar**) &sync_relaylog_period, (uchar**) &sync_relaylog_period, 0, GET_UINT,
+   REQUIRED_ARG, 0, 0, (longlong) UINT_MAX, 0, 1, 0},
   {"sync-frm", OPT_SYNC_FRM, "Sync .frm to disk on create. Enabled by default.",
    (uchar**) &opt_sync_frm, (uchar**) &opt_sync_frm, 0, GET_BOOL, NO_ARG, 1, 0,
    0, 0, 0, 0},

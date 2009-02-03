@@ -1,0 +1,144 @@
+####################################################################
+# Author: Hema
+# Date: 2008-03-11
+# Purpose: To test the backup/restore of all datatypes using accented letters.
+# We will ensure that backup stores identifiers properly in utf8 format and
+# is retreived during restore without changing the client character set.
+#########################################################################
+
+--source include/not_embedded.inc
+--source include/have_debug.inc
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+let $MYSQLD_DATADIR= `select @@datadir`;
+
+--error 0,1
+--remove_file $MYSQLD_DATADIR/bup_datatype.bak
+
+#Create Database and tables with different datatypes for this test.
+
+--disable_warnings
+DROP DATABASE IF EXISTS `¥ü`;
+--enable_warnings
+
+#SET NAMES latin1;
+SET NAMES utf8;
+CREATE DATABASE `¥ü`;
+USE `¥ü`;
+
+--echo Create table with all datatypes and load with data.
+
+CREATE TABLE `§Æ`(
+rint INT,
+tint TINYINT,
+sint SMALLINT,
+bint BIGINT,
+mint MEDIUMINT,
+name CHAR(100),
+city  VARCHAR(100),
+fl FLOAT(7,4),
+pers DECIMAL(8,2),
+sal DOUBLE,
+colours SET('red','blue','yellow'),
+continent ENUM('Asia', 'Europe','Africa','Antartica'),
+ts TIMESTAMP DEFAULT 0,
+dt DATETIME NOT NULL,
+dob DATE,
+time TIME,
+y YEAR
+);
+
+--echo creating table with blob and text columns
+
+CREATE TABLE `§Æ2`(
+region TEXT,
+summary LONGTEXT,
+data BLOB,
+details MEDIUMBLOB,
+queries TINYTEXT,
+query2 TINYBLOB,
+extract LONGBLOB,
+paras MEDIUMTEXT
+);
+
+CREATE TABLE `§¶œ`(b1 BINARY(3), b2 VARBINARY(2),bitvalue BIT(64));
+INSERT INTO `§¶œ` VALUES(0x61,0x2130,b'1111111111111111111111111111111111111111111111111111111111111111'), (0x6120,0x4100,b'101010101010101'), (0x612020, 0x4120,b'000000001');
+SELECT HEX(b1), HEX(b2), HEX(bitvalue) FROM `§¶œ`;
+
+INSERT INTO `§Æ` VALUES
+(785,127,7288,278829899,3777,'testing1','sweden','678.299',200.23,829899.909,
+'red','Asia','2008-06-01 16:23:30','98/12/31 11*30*45','1984-09-08','7:05','1984');
+
+INSERT INTO `§Æ2` VALUES
+('xxxxxxxx','Testofonline backup','aaaaaaaaaa','bbbbbbbbbbb','hhhhhhhhhhh',
+'kkkkkkkkkkkkk','mmmmmmmmmmmm','onlinebackup1');
+
+# Bug #37212  Restore crashes if table has longblob of size 1MB
+UPDATE `§Æ2` SET extract=repeat('z',100);
+--query_vertical SELECT * FROM `§Æ`;
+SELECT * FROM `§Æ2`;
+
+DESCRIBE `§Æ`;
+DESCRIBE `§Æ2`;
+DESCRIBE `§¶œ`;
+
+--echo ** Backup data **
+--echo
+--replace_column 1 #
+BACKUP DATABASE `¥ü` to 'bup_datatype.bak';
+
+--echo ** dropping  database**
+DROP DATABASE `¥ü`;
+
+--echo **Restore**
+--replace_column 1 #
+RESTORE FROM 'bup_datatype.bak' OVERWRITE;
+
+SHOW DATABASES;
+--echo ** checking the character set **
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+USE `¥ü`;
+#show data and table columns
+DESCRIBE `§Æ`;
+DESCRIBE `§Æ2`;
+DESCRIBE `§¶œ`;
+
+--query_vertical SELECT * FROM `§Æ`;
+SELECT * FROM `§Æ2`;
+SELECT HEX(b1), HEX(b2),HEX(bitvalue) FROM `§¶œ`;
+
+INSERT INTO `§¶œ` VALUES(0x7120,0x41,b'1010101010101010101010101010101010101010101010101010101010101010'), (0x5122, 0x6120,b'1000000000000000000000000000000000000000000000000000000000000000');
+SELECT HEX(b1), HEX(b2), HEX(bitvalue) FROM `§¶œ`;
+
+--echo Perform restore again by changing the character set
+SET NAMES latin1;
+
+--echo **Restore**
+--replace_column 1 #
+RESTORE FROM 'bup_datatype.bak' OVERWRITE;
+
+SHOW DATABASES;
+
+--echo ** checking client character set **
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+SET NAMES utf8;
+# Test cleanup section
+--echo
+--echo ***  DROP `¥ü` DATABASE ****
+--echo
+
+DROP DATABASE `¥ü`;
+
+--remove_file $MYSQLD_DATADIR/bup_datatype.bak
+
