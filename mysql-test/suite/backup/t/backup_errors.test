@@ -417,6 +417,7 @@ SET DEBUG_SYNC= 'reset';
 SET SESSION DEBUG='+d,backup_fail_add_trigger';
 --error ER_BACKUP_GET_META_TRIGGER
 BACKUP DATABASE db1 TO 'bup_db1.bak';
+SET SESSION DEBUG='-d';
 
 --echo Get last backup_id
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
@@ -543,5 +544,148 @@ SHOW WARNINGS;
 --remove_file $MYSQLTEST_VARDIR/master-data/newtest.bak
 
 --echo
+
+--echo #
+--echo # Test error handling by injecting errors into RESTORE
+--echo #
+
+--echo # Make backup image with objects necessary for error injection
+
+# A MyISAM table (table1) already exists in db1
+
+# A table that uses default backup driver is required
+CREATE TABLE table2 (i int NOT NULL) ENGINE=CSV;
+INSERT INTO table2 values (1),(2);
+
+# A trigger is required
+DELIMITER ||;
+CREATE TRIGGER db1.trg AFTER INSERT ON db1.table2 FOR EACH ROW
+BEGIN
+  INSERT INTO db1.table1(v) VALUES ('Test trigger fired');   
+END;||
+DELIMITER ;||
+
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'errorinject.bak';
+
 DROP DATABASE db1;
+
+--echo #
+--echo # Backup image created. Start RESTORE with error injection
+
+--echo #
+--echo # Error injection in RESTORE: Read header
+--echo #
+SET SESSION DEBUG='+d,restore_read_header';
+--error ER_BACKUP_READ_HEADER
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Error injection in RESTORE: Get next chunk;
+--echo # Called from prepare_for_restore, after read_header 
+--echo #
+SET SESSION DEBUG='+d,restore_prepare_next_chunk_1';
+--error ER_BACKUP_NEXT_CHUNK
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Error injection in RESTORE: Read catalog
+--echo #
+SET SESSION DEBUG='+d,restore_read_catalog';
+--error ER_BACKUP_READ_HEADER
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Error injection in RESTORE: Get next chunk;
+--echo # Called from prepare_for_restore, after read_catalog 
+--echo #
+SET SESSION DEBUG='+d,restore_prepare_next_chunk_2';
+--error ER_BACKUP_NEXT_CHUNK
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Error injection in RESTORE: Read metadata from stream
+--echo #
+SET SESSION DEBUG='+d,restore_read_meta_data';
+--error ER_BACKUP_READ_META
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+# Database partially created by the failing restore
+DROP DATABASE db1;
+
+--echo #
+--echo # Error injection in RESTORE: Get next chunk;
+--echo # Called from do_restore 
+--echo #
+SET SESSION DEBUG='+d,restore_stream_next_chunk';
+--error ER_BACKUP_NEXT_CHUNK
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+# Database partially created by the failing restore
+DROP DATABASE db1;
+
+--echo #
+--echo # Error injection in RESTORE: Lock tables
+--echo #
+SET SESSION DEBUG='+d,restore_lock_tables_for_restore';
+--error ER_BACKUP_OPEN_TABLES
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+# Database partially created by the failing restore
+DROP DATABASE db1;
+
+--echo #
+--echo # Error injection in RESTORE: Restore table data
+--echo #
+SET SESSION DEBUG='+d,restore_tbl_data_read';
+--error ER_BACKUP_READ_DATA
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+# Database partially created by the failing restore
+DROP DATABASE db1;
+
+--echo #
+--echo # Error injection in RESTORE: Send data (default driver)
+--echo #
+SET SESSION DEBUG='+d,restore_default_send_data';
+--error ER_BACKUP_SEND_DATA
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+DROP DATABASE db1;
+
+--echo #
+--echo # Error injection in RESTORE: Restore trigger
+--echo #
+SET SESSION DEBUG='+d,restore_trigger';
+--error ER_BACKUP_CANT_RESTORE_TRIGGER
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+DROP DATABASE db1;
+
+--echo #
+--echo # Error injection in RESTORE: Read summary
+--echo #
+SET SESSION DEBUG='+d,restore_read_summary';
+--error ER_BACKUP_READ_SUMMARY
+RESTORE FROM 'errorinject.bak';
+SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Cleanup
+--echo #
+
+DROP DATABASE db1;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/overwrite.bak
+--remove_file $MYSQLTEST_VARDIR/master-data/errorinject.bak
 

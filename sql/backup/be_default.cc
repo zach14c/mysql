@@ -699,6 +699,8 @@ result_t Restore::send_data(Buffer &buf)
   DBUG_PRINT("default_restore",("Got packet with %lu bytes from stream %u",
                                 (unsigned long)buf.size, buf.table_num));
   
+  DBUG_EXECUTE_IF("restore_default_send_data", DBUG_RETURN(ERROR););
+
   /* 
     get_data() should not be called after cancel has been called.
   */

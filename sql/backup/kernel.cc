@@ -791,7 +791,10 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
     return NULL;
   }
 
-  if (s->next_chunk() != BSTREAM_OK)
+  ret= s->next_chunk();
+  /* Mimic error in next_chunk */
+  DBUG_EXECUTE_IF("restore_prepare_next_chunk_1", ret= BSTREAM_ERROR; );
+  if (ret != BSTREAM_OK)
   {
     fatal_error(report_error(ER_BACKUP_NEXT_CHUNK));
     return NULL;
@@ -806,7 +809,10 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
     return NULL;
   }
 
-  if (s->next_chunk() != BSTREAM_OK)
+  ret= s->next_chunk();
+  /* Mimic error in next_chunk */
+  DBUG_EXECUTE_IF("restore_prepare_next_chunk_2", ret= BSTREAM_ERROR; );
+  if (ret != BSTREAM_OK)
   {
     fatal_error(report_error(ER_BACKUP_NEXT_CHUNK));
     return NULL;
@@ -886,6 +892,15 @@ int Backup_restore_ctx::lock_tables_for_restore()
       tbl->m_table= ptr;
     }
   }
+
+  DBUG_EXECUTE_IF("restore_lock_tables_for_restore",
+    /* 
+       Mimic error in opening tables. Cannot be done by setting ret=1
+       after open_and_lock_tables_derived becase that method is
+       supposed to release the lock before returning error.
+     */
+    return fatal_error(report_error(ER_BACKUP_OPEN_TABLES,"RESTORE"));
+  );
 
   /*
     Open and lock the tables.
@@ -1182,10 +1197,15 @@ int Backup_restore_ctx::restore_triggers_and_events()
         break;
       
       case BSTREAM_IT_TRIGGER:
+      {
         DBUG_ASSERT(obj->m_obj_ptr);
         // Mark that data is being changed.
         info->m_data_changed= TRUE;
-        if (obj->m_obj_ptr->create(m_thd))
+
+        bool ret= obj->m_obj_ptr->create(m_thd);
+        /* Mimic error in restore of trigger */
+        DBUG_EXECUTE_IF("restore_trigger", ret= TRUE;); 
+        if (ret)
         {
           delete it;
           delete dbit;
@@ -1194,7 +1214,7 @@ int Backup_restore_ctx::restore_triggers_and_events()
           DBUG_RETURN(fatal_error(err));
         }
         break;
-
+      }
       default: break;      
       }
 
@@ -1285,7 +1305,10 @@ int Backup_restore_ctx::do_restore(bool overwrite)
     DBUG_RETURN(fatal_error(err));
   }
 
-  if (s.next_chunk() == BSTREAM_ERROR)
+  err= s.next_chunk();
+  /* Mimic error in next_chunk */
+  DBUG_EXECUTE_IF("restore_stream_next_chunk", err= BSTREAM_ERROR; );
+  if (err == BSTREAM_ERROR)
   {
     DBUG_RETURN(fatal_error(report_error(ER_BACKUP_NEXT_CHUNK)));
   }

@@ -323,6 +323,7 @@ trigger metadata
 SET SESSION DEBUG='+d,backup_fail_add_trigger';
 BACKUP DATABASE db1 TO 'bup_db1.bak';
 ERROR HY000: Failed to obtain meta-data for trigger `db1`.`trg`
+SET SESSION DEBUG='-d';
 Get last backup_id
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
 WHERE command LIKE "BACKUP DATABASE db1 TO%";
@@ -438,4 +439,109 @@ backup_id
 SHOW WARNINGS;
 Level	Code	Message
 
+#
+# Test error handling by injecting errors into RESTORE
+#
+# Make backup image with objects necessary for error injection
+CREATE TABLE table2 (i int NOT NULL) ENGINE=CSV;
+INSERT INTO table2 values (1),(2);
+CREATE TRIGGER db1.trg AFTER INSERT ON db1.table2 FOR EACH ROW
+BEGIN
+INSERT INTO db1.table1(v) VALUES ('Test trigger fired');   
+END;||
+BACKUP DATABASE db1 TO 'errorinject.bak';
+backup_id
+#
+DROP DATABASE db1;
+#
+# Backup image created. Start RESTORE with error injection
+#
+# Error injection in RESTORE: Read header
+#
+SET SESSION DEBUG='+d,restore_read_header';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't read backup archive preamble
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Get next chunk;
+# Called from prepare_for_restore, after read_header 
+#
+SET SESSION DEBUG='+d,restore_prepare_next_chunk_1';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't go to the next chunk in backup stream
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Read catalog
+#
+SET SESSION DEBUG='+d,restore_read_catalog';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't read backup archive preamble
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Get next chunk;
+# Called from prepare_for_restore, after read_catalog 
+#
+SET SESSION DEBUG='+d,restore_prepare_next_chunk_2';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't go to the next chunk in backup stream
+SET SESSION DEBUG='-d';
+#
+# Error injection in RESTORE: Read metadata from stream
+#
+SET SESSION DEBUG='+d,restore_read_meta_data';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when reading meta-data
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Get next chunk;
+# Called from do_restore 
+#
+SET SESSION DEBUG='+d,restore_stream_next_chunk';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Can't go to the next chunk in backup stream
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Lock tables
+#
+SET SESSION DEBUG='+d,restore_lock_tables_for_restore';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Open and lock tables failed in RESTORE
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Restore table data
+#
+SET SESSION DEBUG='+d,restore_tbl_data_read';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when reading data from backup stream
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Send data (default driver)
+#
+SET SESSION DEBUG='+d,restore_default_send_data';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when sending data (for table #1) to Default restore driver
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Restore trigger
+#
+SET SESSION DEBUG='+d,restore_trigger';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Could not restore trigger `db1`.`trg`
+SET SESSION DEBUG='-d';
+DROP DATABASE db1;
+#
+# Error injection in RESTORE: Read summary
+#
+SET SESSION DEBUG='+d,restore_read_summary';
+RESTORE FROM 'errorinject.bak';
+ERROR HY000: Error when reading summary section of backup image
+SET SESSION DEBUG='-d';
+#
+# Cleanup
+#
 DROP DATABASE db1;
