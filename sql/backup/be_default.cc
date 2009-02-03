@@ -15,53 +15,52 @@
 */
 
 /**
- * @file 
- *
- * @brief Contains the default backup algorithm driver.
- *
- * This file contains the default backup algorithm (also called a "driver"
- * in the online backup terminology. The default backup algorithm may be
- * used in place of an engine-specific driver if one does not exist or if
- * chosen by the user.
- *
- * The default backup algorithm is a blocking algorithm that locks all of
- * the tables given at the start of the backup/restore process. Once all of
- * the data is backed up or restored, the locks are removed. The default
- * backup is a row-level backup and therefore does not backup the indexes
- * or any of the engine-specific files.
- *
- * The classes in this file use the namespace @c default_backup to distinguish
- * these classes from other backup drivers. The backup functionality is
- * contained in the backup class shown below. Similarly, the restore
- * functionality is contained in the restore class below.
- *
- * The format of the backup is written as a series of data blocks where each
- * block contains a flag indicating what kind of data is in the block. The 
- * flags are:
- *
- * <code>
- *   RCD_ONCE   - Single data block for record data
- *   RCD_FIRST  - First data block in buffer for record buffer
- *   RCD_DATA   - Intermediate data block for record buffer
- *   RCD_LAST   - Last data block in buffer for record buffer
- *   BLOB_ONCE  - Single data block for blob data
- *   BLOB_FIRST - First data block in buffer for blob buffer
- *   BLOB_DATA  - Intermediate data block for blob buffer
- *   BLOB_LAST  - Last data block in buffer for blob buffer
- * </code>
- *
- * The flag is the first byte in the block. The remaining space in the block
- * is the data -- either record data or blob fields.
- *
- * The block flagged as BLOB_FIRST also contains a 4-byte field which 
- * contains the total size of the blob field. This is necessary for restore
- * because the size of the blob field is unknown and the size is needed to 
- * allocate memory for the buffer_iterator used to buffer large data from
- * the kernel.
- *
- * TODO 
- *  - Consider making the enums for BACKUP_MODE and RESTORE_MODE bit fields.
- *  - Change code to ignore blobs with no data (NULL).
+   @file 
+ 
+   @brief Contains the default backup algorithm driver.
+ 
+   This file contains the default backup algorithm (also called a "driver"
+   in the online backup terminology. The default backup algorithm may be
+   used in place of an engine-specific driver if one does not exist or if
+   chosen by the user.
+ 
+   The default backup algorithm is a blocking algorithm that locks all of
+   the tables given at the start of the backup/restore process. Once all of
+   the data is backed up or restored, the locks are removed. The default
+   backup is a row-level backup and therefore does not backup the indexes
+   or any of the engine-specific files.
+ 
+   The classes in this file use the namespace @c default_backup to distinguish
+   these classes from other backup drivers. The backup functionality is
+   contained in the backup class shown below. Similarly, the restore
+   functionality is contained in the restore class below.
+ 
+   The format of the backup is written as a series of data blocks where each
+   block contains a flag indicating what kind of data is in the block. The 
+   flags are:
+ 
+   <code>
+     RCD_ONCE   - Single data block for record data
+     RCD_FIRST  - First data block in buffer for record buffer
+     RCD_DATA   - Intermediate data block for record buffer
+     RCD_LAST   - Last data block in buffer for record buffer
+     BLOB_ONCE  - Single data block for blob data
+     BLOB_FIRST - First data block in buffer for blob buffer
+     BLOB_DATA  - Intermediate data block for blob buffer
+     BLOB_LAST  - Last data block in buffer for blob buffer
+   </code>
+ 
+   The flag is the first byte in the block. The remaining space in the block
+   is the data -- either record data or blob fields.
+ 
+   The block flagged as BLOB_FIRST also contains a 4-byte field which 
+   contains the total size of the blob field. This is necessary for restore
+   because the size of the blob field is unknown and the size is needed to 
+   allocate memory for the buffer_iterator used to buffer large data from
+   the kernel.
+ 
+   @todo Consider making the enums for BACKUP_MODE and RESTORE_MODE bit fields.
+   @todo Change code to ignore blobs with no data (NULL).
  */
 #include "../mysql_priv.h"
 #include "backup_engine.h"
@@ -155,12 +154,12 @@ Backup::~Backup()
 
 
 /**
-  * @brief Prelock call to setup locking.
-  *
-  * Launches a separate thread ("locking thread") which will lock
-  * tables. Locking in a separate thread is needed to have a non-blocking
-  * prelock() (given that thr_lock() is blocking).
-  */
+  @brief Prelock call to setup locking.
+  
+  Launches a separate thread ("locking thread") which will lock
+  tables. Locking in a separate thread is needed to have a non-blocking
+  prelock() (given that thr_lock() is blocking).
+*/
 result_t Backup::prelock()
 {
   DBUG_ENTER("Default_backup::prelock()");
@@ -168,14 +167,14 @@ result_t Backup::prelock()
 }
 
 /**
-  * @brief Start table read.
-  *
-  * This method saves the handler for the table and initializes the
-  * handler for reading.
-  *
-  * @retval OK     handler initialized properly.
-  * @retval ERROR  problem with hander initialization.
-  */
+  @brief Start table read.
+ 
+  This method saves the handler for the table and initializes the
+  handler for reading.
+ 
+  @retval OK     handler initialized properly.
+  @retval ERROR  problem with hander initialization.
+*/
 result_t Backup::start_tbl_read(TABLE *tbl)
 {
   int last_read_res;  
@@ -193,13 +192,12 @@ result_t Backup::start_tbl_read(TABLE *tbl)
 }
 
 /**
-  * @brief End table read.
-  *
-  * This method signals the handler that the reading process is complete.
-  *
-  * @retval OK     handler read stopped properly.
-  * @retval ERROR  problem with hander.
-  */
+  @brief End table read.
+  This method signals the handler that the reading process is complete.
+  
+  @retval OK     handler read stopped properly.
+  @retval ERROR  problem with hander.
+*/
 result_t Backup::end_tbl_read()
 {
   int last_read_res;
@@ -217,14 +215,14 @@ result_t Backup::end_tbl_read()
 }
 
 /**
-  * @brief Get next table in the list.
-  *
-  * This method iterates through the list of tables selecting the
-  * next table in the list and starting the read process.
-  *
-  * @retval 0   no errors.
-  * @retval -1  no more tables in list.
-  */
+  @brief Get next table in the list.
+ 
+  This method iterates through the list of tables selecting the
+  next table in the list and starting the read process.
+ 
+  @retval 0   no errors.
+  @retval -1  no more tables in list.
+*/
 int Backup::next_table()
 {
   DBUG_ENTER("Backup::next_table()");
@@ -251,16 +249,17 @@ int Backup::next_table()
 }
 
 /* Potential buffer on the stack for the bitmap */
+/// Define bitmap stack size.
 #define BITMAP_STACKBUF_SIZE (128/8)
 
 /**
-  * @brief Pack the data for a row in the table.
-  *
-  * This method uses the binary log methods to pack a row from the
-  * internal row format to the binary log format.
-  *
-  * @returns  Size of packed row.
-  */
+  @brief Pack the data for a row in the table.
+   
+  This method uses the binary log methods to pack a row from the
+  internal row format to the binary log format.
+ 
+  @returns  Size of packed row.
+*/
 uint Backup::pack(byte *rcd, byte *packed_row)
 {
   uint size= 0;
@@ -284,30 +283,30 @@ uint Backup::pack(byte *rcd, byte *packed_row)
 }
 
 /**
-  * @brief Get the data for a row in the table.
-  * This method is the main method used in the backup operation. It is
-  * responsible for reading a row from the table and placing the data in
-  * the buffer (buf.data) and setting the correct attributes for processing
-  * (e.g., buf.size = size of record data).
-  *
-  * Control of the method is accomplished by using several modes that
-  * signal portions of the method to run. These modes are:
-  *
-  * <code>
-  * INITIALIZE          Indicates time to initialize read
-  * GET_NEXT_TABLE      Open next table in the list
-  * READ_RCD            Reading rows from table mode
-  * READ_RCD_BUFFER     Buffer records mode
-  * CHECK_BLOBS         See if record has blobs
-  * READ_BLOB           Reading blobs from record mode
-  * READ_BLOB_BUFFER    Buffer blobs mode
-  * </code>
-  *
-  * @retval READY   initialization phase complete.
-  * @retval OK      data read.
-  * @retval ERROR   problem with reading data.
-  * @retval DONE    driver finished reading from all tables.
-  */
+  @brief Get the data for a row in the table.
+  This method is the main method used in the backup operation. It is
+  responsible for reading a row from the table and placing the data in
+  the buffer (buf.data) and setting the correct attributes for processing
+  (e.g., buf.size = size of record data).
+  
+  Control of the method is accomplished by using several modes that
+  signal portions of the method to run. These modes are:
+  
+  <code>
+  INITIALIZE          Indicates time to initialize read
+  GET_NEXT_TABLE      Open next table in the list
+  READ_RCD            Reading rows from table mode
+  READ_RCD_BUFFER     Buffer records mode
+  CHECK_BLOBS         See if record has blobs
+  READ_BLOB           Reading blobs from record mode
+  READ_BLOB_BUFFER    Buffer blobs mode
+  </code>
+  
+  @retval READY   initialization phase complete.
+  @retval OK      data read.
+  @retval ERROR   problem with reading data.
+  @retval DONE    driver finished reading from all tables.
+*/
 result_t Backup::get_data(Buffer &buf)
 {
   int last_read_res;  
@@ -620,23 +619,12 @@ result_t Restore::cleanup()
 }
 
 /**
-  * @brief Truncate table.
-  *
-  * This method saves the handler for the table and deletes all rows in
-  * the table.
-  *
-  * @retval OK     rows deleted.
-  * @retval ERROR  problem with deleting rows.
-  */
-
-
-/**
-  * @brief End restore process.
-  *
-  * This method unlocks and closes all of the tables.
-  *
-  * @retval OK    all tables unlocked.
-  */
+  @brief End restore process.
+  
+  This method unlocks and closes all of the tables.
+  
+  @retval OK    all tables unlocked.
+*/
 result_t Restore::end()
 {
   DBUG_ENTER("Restore::end");
@@ -644,25 +632,14 @@ result_t Restore::end()
 }
 
 /**
-  * @brief Get next table in the list.
-  *
-  * This method iterates through the list of tables selecting the
-  *  next table in the list and starting the write process.
-  *
-  * @retval 0   no errors.
-  * @retval -1  no more tables in list.
-  */
-
-
-/**
-  * @brief Unpack the data for a row in the table.
-  *
-  * This method uses the binary log methods to unpack a row from the
-  * binary log format to the internal row format.
-  *
-  * @retval 0   no errors.
-  * @retval !0  errors during unpack_row().
-  */
+  @brief Unpack the data for a row in the table.
+  
+  This method uses the binary log methods to unpack a row from the
+  binary log format to the internal row format.
+  
+  @retval 0   no errors.
+  @retval !0  errors during unpack_row().
+*/
 uint Restore::unpack(byte *packed_row)
 {
   int error= 0;
@@ -689,29 +666,29 @@ uint Restore::unpack(byte *packed_row)
 }
 
 /**
-  * @brief Restore the data for a row in the table.
-  *
-  * This method is the main method used in the restore operation. It is
-  * responsible for writing a row to the table.
-  *
-  * Control of the method is accomplished by using several modes that
-  * signal portions of the method to run. These modes are:
-  *
-  * <code>
-  * INITIALIZE          Indicates time to initialize read
-  * GET_NEXT_TABLE      Open next table in the list
-  * WRITE_RCD           Writing rows from table mode
-  * CHECK_BLOBS         See if record has blobs
-  * WRITE_BLOB          Writing blobs from record mode
-  * WRITE_BLOB_BUFFER   Buffer blobs mode
-  * </code>
-  *
-  * @retval READY       initialization phase complete.
-  * @retval OK          data written.
-  * @retval ERROR       problem with writing data.
-  * @retval PROCESSING  switching modes -- do not advance stream.
-  * @retval DONE        driver finished writing to all tables.
-  */
+  @brief Restore the data for a row in the table.
+  
+  This method is the main method used in the restore operation. It is
+  responsible for writing a row to the table.
+  
+  Control of the method is accomplished by using several modes that
+  Signal portions of the method to run. These modes are:
+  
+  <code>
+  INITIALIZE          Indicates time to initialize read
+  GET_NEXT_TABLE      Open next table in the list
+  WRITE_RCD           Writing rows from table mode
+  CHECK_BLOBS         See if record has blobs
+  WRITE_BLOB          Writing blobs from record mode
+  WRITE_BLOB_BUFFER   Buffer blobs mode
+  </code>
+  
+  @retval READY       initialization phase complete.
+  @retval OK          data written.
+  @retval ERROR       problem with writing data.
+  @retval PROCESSING  switching modes -- do not advance stream.
+  @retval DONE        driver finished writing to all tables.
+*/
 result_t Restore::send_data(Buffer &buf)
 {
   byte *ptr= 0;
