@@ -471,6 +471,8 @@ Database::Database(const char *dbName, Configuration *config, Threads *parent)
 	scavengerThread = NULL;
 	scavengerThreadSleeping = 0;
 	scavengerThreadSignaled = 0;
+	scavengeForced = 0;
+	scavengeCount = 0;
 	serialLog = NULL;
 	pageWriter = NULL;
 	zombieTables = NULL;
@@ -1730,9 +1732,17 @@ void Database::validate(int optionMask)
 	Log::debug ("Database::validate: validation complete\n");
 }
 
-void Database::scavenge()
+void Database::scavenge(bool forced)
 {
-	signalCardinality();
+	// Signal the cardinality task unless a forced scavenge is pending
+
+	if (!forced &&
+		++scavengeCount % CARDINALITY_FREQUENCY == 0)
+		{
+		signalCardinality();
+		}
+	
+	scavengeForced = 0;
 
 	// Start by scavenging compiled statements.  If they're moldy and not in use,
 	// off with their heads!
@@ -1763,7 +1773,7 @@ void Database::scavenge()
 	transactionManager->purgeTransactions();
 
 	// Scavenge the record cache
-	scavengeRecords();
+	scavengeRecords(forced);
 
 	// Scavenge expired licenses
 	
@@ -1791,15 +1801,16 @@ void Database::scavenge()
 		backLog->reportStatistics();
 }
 
-void Database::scavengeRecords(void)
+void Database::scavengeRecords(bool forced)
 {
 	Sync syncScavenger(&syncScavenge, "Database::scavengeRecords(Scavenge)");
 	syncScavenger.lock(Exclusive);
 
-	// Create an object to track this record scavenge cycle.
+	// Create an object to track this record scavenge cycle. Scavenge up to and
+	// including the current generation.
 
-	RecordScavenge recordScavenge(this);
-
+	RecordScavenge recordScavenge(this, currentGeneration, forced);
+	
 	// Take inventory of the record cache and prune invisible record versions
 
 	pruneRecords(&recordScavenge);
@@ -1814,10 +1825,12 @@ void Database::scavengeRecords(void)
 	recordScavenge.retiredActiveMemory = recordDataPool->activeMemory;
 	recordScavenge.retireStop = deltaTime;
 
-	// Check for low memory 
+	// Enable backlogging if memory is low
 
-	if (recordScavenge.spaceRemaining > recordScavengeFloor)
+	if (recordScavenge.retiredActiveMemory > recordScavengeFloor)
 		setLowMemory();
+	else
+		clearLowMemory();
 
 	recordScavenge.print();
 	// Log::log(analyze(analyzeRecordLeafs));
@@ -1864,9 +1877,11 @@ void Database::pruneRecords(RecordScavenge *recordScavenge)
 
 void Database::retireRecords(RecordScavenge *recordScavenge)
 {
-	// If we passed the upper limit, scavenge.
+	// Scavenge if we passed the upper limit or if a forced scavenge
+	// was requested.
 
-	if (recordDataPool->activeMemory < recordScavengeThreshold)
+	if (recordDataPool->activeMemory < recordScavengeThreshold
+		&& !recordScavenge->forced)
 		return;
 
 	//LogStream stream;
@@ -1927,7 +1942,7 @@ void Database::scavengerThreadMain(void)
 
 	while (!thread->shutdownInProgress)
 		{
-		scavenge();
+		scavenge((scavengeForced > 0));
 		
 		if (recordDataPool->activeMemory < recordScavengeThreshold)
 			{
@@ -2463,11 +2478,16 @@ void Database::updateCardinalities(void)
 	Sync syncTbl(&syncTables, "Database::updateCardinalities(2)");
 	syncTbl.lock(Shared);
 	
+	Log::log("Update cardinalities\n");
 	bool hit = false;
 	
 	try
 		{
-		for (Table *table = tableList; table; table = table->next)
+		
+		// Establish the record cardinality for each table. Abandon the effort
+		// if a forced scavenge operation is pending.
+		
+		for (Table *table = tableList; (table && scavengeForced == 0); table = table->next)
 			{
 			uint64 cardinality = table->cardinality;
 			
@@ -2611,7 +2631,7 @@ void Database::checkRecordScavenge(void)
 
 // Signal the scavenger thread
 
-void Database::signalScavenger(void)
+void Database::signalScavenger(bool force)
 {
 	Sync syncMem(&syncMemory, "Database::signalScavenger");
 	syncMem.lock(Exclusive);
@@ -2619,6 +2639,10 @@ void Database::signalScavenger(void)
 	if (scavengerThreadSleeping && !scavengerThreadSignaled)
 		{
 		INTERLOCKED_INCREMENT(scavengerThreadSignaled);
+		
+		if (force)
+			INTERLOCKED_INCREMENT(scavengeForced);
+		
 		scavengerThreadWakeup();
 		}
 }
@@ -2733,4 +2757,9 @@ void Database::setLowMemory(void)
 		}
 
 	lowMemory = true;
+}
+
+void Database::clearLowMemory(void)
+{
+	lowMemory = false;
 }

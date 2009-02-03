@@ -25,24 +25,22 @@
 #include "Transaction.h"
 #include "TransactionManager.h"
 
-RecordScavenge::RecordScavenge(Database *db)
+RecordScavenge::RecordScavenge(Database *db, uint64 generation, bool forceScavenge)
+								: database(db), baseGeneration(generation), forced(forceScavenge)
 {
-	database = db;
 	cycle = ++database->scavengeCycle;
 
 	memset(ageGroups, 0, sizeof(ageGroups));
 	veryOldRecords = 0;
 	veryOldRecordSpace = 0;
 
-	startingActiveMemory = db->recordDataPool->activeMemory;
+	startingActiveMemory = database->recordDataPool->activeMemory;
 	prunedActiveMemory = 0;
 	retiredActiveMemory = 0;
 
-	scavengeStart = db->deltaTime;
+	scavengeStart = database->deltaTime;
 	pruneStop = 0;
 	retireStop = 0;
-
-	baseGeneration = database->currentGeneration;
 	scavengeGeneration = 0;
 
 	// Results of Scavenging
@@ -63,10 +61,10 @@ RecordScavenge::RecordScavenge(Database *db)
 	unScavengeableRecords = 0;
 	unScavengeableSpace = 0;
 
-	Sync syncActive(&db->transactionManager->activeTransactions.syncObject, "RecordScavenge::RecordScavenge");
+	Sync syncActive(&database->transactionManager->activeTransactions.syncObject, "RecordScavenge::RecordScavenge");
 	syncActive.lock(Shared);
 
-	oldestActiveTransaction = db->transactionManager->findOldestInActiveList();
+	oldestActiveTransaction = database->transactionManager->findOldestInActiveList();
 }
 
 RecordScavenge::~RecordScavenge(void)
@@ -251,7 +249,10 @@ uint64 RecordScavenge::computeThreshold(uint64 spaceToRetire)
 			scavengeGeneration = baseGeneration - n;
 		}
 
-	return scavengeGeneration;
+	// We still may want to scavenge even if the age group total is
+	// too small, so use the base generation as a starting point.
+	
+	return (scavengeGeneration ? scavengeGeneration : baseGeneration);
 }
 
 void RecordScavenge::print(void)
@@ -272,8 +273,10 @@ void RecordScavenge::print(void)
 
 	Log::log (LogScavenge,"Cycle=" I64FORMAT 
 		"  Base Generation=" I64FORMAT 
-		"  Scavenge Generation=" I64FORMAT "\n", 
-		cycle, baseGeneration, scavengeGeneration);
+		"  Scavenge Generation=" I64FORMAT
+		"  Forced=%d"
+		"  Low Memory=%d\n", 
+		cycle, baseGeneration, scavengeGeneration, (int)forced, (int)database->lowMemory);
 	Log::log (LogScavenge,"Cycle=" I64FORMAT 
 		"  Oldest Active Transaction=%d\n", 
 		cycle, oldestActiveTransaction);
@@ -321,8 +324,8 @@ void RecordScavenge::print(void)
 
 	if (!recordsRetired)
 		{
-		recordsRemaining = totalRecords - recordsPruned;
-		spaceRemaining = totalRecordSpace - spacePruned;
+		recordsRemaining = totalRecords - recordsPruned - recordsRetired;
+		spaceRemaining = totalRecordSpace - spacePruned - spaceRetired;
 		}
 
 	Log::log(LogScavenge, "Cycle=" I64FORMAT 

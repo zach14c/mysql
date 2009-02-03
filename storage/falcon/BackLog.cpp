@@ -16,6 +16,7 @@
 #include "Engine.h"
 #include "BackLog.h"
 #include "Database.h"
+#include "TableSpaceManager.h"
 #include "Dbb.h"
 #include "Section.h"
 #include "Index.h"
@@ -33,16 +34,15 @@
 static const char THIS_FILE[]=__FILE__;
 #endif
 
-BackLog::BackLog(Database *db, const char *fileName)
+BackLog::BackLog(Database *db, const char *fileName) : database(db)
 {
-	database = db;
 	dbb = new Dbb(database->dbb, 0);
 #ifndef FALCONDB
 	dbb->createPath(fileName);
 #endif
 	dbb->create(fileName, dbb->pageSize, 0, HdrTableSpace, 0, NULL);
 	dbb->noLog = true;
-	dbb->tableSpaceId = -1;
+	dbb->tableSpaceId = database->tableSpaceManager->createTableSpaceId();
 	int32 sectionId = Section::createSection (dbb, NO_TRANSACTION);
 	section = new Section(dbb, sectionId, NO_TRANSACTION);
 	recordsBacklogged = 0;

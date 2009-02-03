@@ -29,7 +29,7 @@ class Record;
 class RecordScavenge
 {
 public:
-	RecordScavenge(Database *db);
+	RecordScavenge(Database *db, uint64 generation, bool forceScavenge = false);
 	~RecordScavenge(void);
 
 	bool     canBeRetired(Record* record);
@@ -71,6 +71,8 @@ public:
 	uint64		ageGroups[AGE_GROUPS];
 	uint64		veryOldRecords;
 	uint64		veryOldRecordSpace;
+	
+	bool		forced;
 };
 
 #endif

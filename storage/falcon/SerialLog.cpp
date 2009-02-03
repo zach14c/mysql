@@ -285,7 +285,7 @@ void SerialLog::recover()
 	SerialLogBlock *recoveryBlock = recoveryWindow->firstBlock();
 	recoveryBlockNumber = recoveryBlock->blockNumber;
 	SerialLogBlock *lastBlock = findLastBlock(recoveryWindow);
-	Log::log("/nFirst recovery block is " I64FORMAT "\n", 
+	Log::log("\nFirst recovery block is " I64FORMAT "\n", 
 			(otherWindow) ? otherWindow->firstBlock()->blockNumber : recoveryBlockNumber);
 	Log::log("Last recovery block is " I64FORMAT "\n", lastBlock->blockNumber);
 
@@ -354,7 +354,7 @@ void SerialLog::recover()
 
 	// Next, make a second pass to reallocate any necessary pages
 
-	Log::log("\nRecovery phase 2...\n");
+	Log::log("Recovery phase 2...\n");
 	recordCount = 0;
 	
 	while ( (record = control.nextRecord()) )
@@ -383,7 +383,7 @@ void SerialLog::recover()
 
 	// Make a third pass doing things
 
-	Log::log("\nRecovery phase 3...\n");
+	Log::log("Recovery phase 3...\n");
 	recordCount = 0;
 	
 	while ( (record = control.nextRecord()) )

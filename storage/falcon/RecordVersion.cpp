@@ -221,16 +221,6 @@ bool RecordVersion::retire(RecordScavenge *recordScavenge)
 		return true;
 		}
 
-	// Cannot retire this record.  Add up remaining space.
-
-	recordScavenge->recordsRemaining++;
-	recordScavenge->spaceRemaining += getMemUsage();
-
-	for (Record *prior = getPriorVersion(); prior; prior = prior->getPriorVersion())
-		{
-		++recordScavenge->recordsRemaining;
-		recordScavenge->spaceRemaining += prior->getMemUsage();
-		}
 	return false;
 }
 

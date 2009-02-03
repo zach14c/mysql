@@ -54,6 +54,15 @@ static const int FALC0N_TEST_BITMAP			= 64;
 
 static const int OUT_OF_RECORD_MEMORY_RETRIES = 10;
 
+// Milliseconds per iteration to wait for the Scavenger
+
+static const int SCAVENGE_WAIT_MS			  = 20;
+
+// Scavenger cycles per call to updateCardinalities()
+
+static const int CARDINALITY_FREQUENCY		  = 20;
+
+
 #define TABLE_HASH_SIZE		101
 
 class Table;
@@ -132,7 +141,7 @@ public:
 	const char*		fetchTemplate (JString applicationName, JString templateName, TemplateContext *context);
 	void			licenseCheck();
 	void			serverOperation (int op, Parameters *parameters);
-	void			scavengeRecords(void);
+	void			scavengeRecords(bool forced = false);
 	void			pruneRecords(RecordScavenge* recordScavenge);
 	void			retireRecords(RecordScavenge* recordScavenge);
 	int				getMemorySize (const char *string);
@@ -159,7 +168,7 @@ public:
 	static void		scavengerThreadMain(void * database);
 	void			scavengerThreadMain(void);
 	void			scavengerThreadWakeup(void);
-	void			scavenge();
+	void			scavenge(bool forced = false);
 	void			validate (int optionMask);
 	Role*			findRole(const char *schemaName, const char * roleName);
 	User*			findUser (const char *account);
@@ -233,7 +242,7 @@ public:
 	void			setRecordScavengeFloor(int value);
 	void			checkRecordScavenge(void);
 	void			signalCardinality(void);
-	void			signalScavenger(void);
+	void			signalScavenger(bool force = false);
 	void			debugTrace(void);
 	void			pageCacheFlushed(int64 flushArg);
 	JString			setLogRoot(const char *defaultPath, bool create);
@@ -241,6 +250,7 @@ public:
 	void			clearIOError(void);
 	void			flushWait(void);
 	void			setLowMemory(void);
+	void			clearLowMemory(void);
 
 
 	Dbb					*dbb;
@@ -313,6 +323,7 @@ public:
 	volatile INTERLOCK_TYPE	cardinalityThreadSignaled;
 	volatile INTERLOCK_TYPE	scavengerThreadSleeping;
 	volatile INTERLOCK_TYPE	scavengerThreadSignaled;
+	volatile INTERLOCK_TYPE	scavengeForced;
 	PageWriter			*pageWriter;
 	PreparedStatement	*updateCardinality;
 	MemMgr				*recordDataPool;
@@ -338,6 +349,7 @@ public:
 	uint64				recordPoolAllocCount;
 	uint64				lastGenerationMemory;
 	uint64				lastActiveMemoryChecked;
+	uint64				scavengeCount;
 	time_t				creationTime;
 	volatile time_t		lastScavenge;
 };

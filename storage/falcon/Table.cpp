@@ -3581,14 +3581,22 @@ void Table::optimize(Connection *connection)
 		record = record->fetchVersion(transaction);
 		
 		if (record)
+			{
+			record->release(); // no need to keep it around
 			++count;
+			}
 		}
 	
 	cardinality = count;
 	
+	// Disable index optimization until a more
+	// efficient method is implemented using
+	// the IndexWalker (Bug#36442)
+#if 0
 	FOR_INDEXES(index, this);
 		index->optimize(count, connection);
 	END_FOR;
+#endif	
 
 	database->commitSystemTransaction();
 }
@@ -3642,12 +3650,13 @@ RecordVersion* Table::allocRecordVersion(Format* format, Transaction* transactio
 				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 
-			database->signalScavenger();
+			database->signalScavenger(true);
 
-			// Give the scavenger thread a chance to release some memory
+			// Give the scavenger thread a chance to release memory.
+			// Increase the wait time per iteration.
 
 			Thread *thread = Thread::getThread("Database::ticker");
-			thread->sleep(10);
+			thread->sleep(n * SCAVENGE_WAIT_MS);
 			}
 		}
 
@@ -3678,12 +3687,13 @@ Record* Table::allocRecord(int recordNumber, Stream* stream)
 				|| n > OUT_OF_RECORD_MEMORY_RETRIES)
 				throw;
 
-			database->signalScavenger();
+			database->signalScavenger(true);
 
-			// Give the scavenger thread a chance to release some memory
+			// Give the scavenger thread a chance to release memory.
+			// Increase the wait time per iteration.
 
 			Thread *thread = Thread::getThread("Database::ticker");
-			thread->sleep(10);
+			thread->sleep(n * SCAVENGE_WAIT_MS);
 			}
 		}
 
