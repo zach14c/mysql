@@ -80,7 +80,7 @@ path=`dirname $0`
 . "$path/check-cpu"
 
 export AM_MAKEFLAGS
-AM_MAKEFLAGS="-j 2"
+AM_MAKEFLAGS="-j 6"
 
 # SSL library to use.--with-ssl will select our bundled yaSSL
 # implementation of SSL. To use openSSl you will nee too point out
