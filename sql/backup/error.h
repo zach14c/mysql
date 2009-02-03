@@ -5,9 +5,9 @@ namespace util {
 
 /// Used to save messages pushed into the stack
 struct SAVED_MYSQL_ERROR {
-  uint code;
-  MYSQL_ERROR::enum_warning_level level;
-  char *msg;
+  uint code;                             ///< error code
+  MYSQL_ERROR::enum_warning_level level; ///< warning level
+  char *msg;                             ///< error message
 };
 
 

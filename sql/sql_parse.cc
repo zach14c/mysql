@@ -2303,6 +2303,14 @@ mysql_execute_command(THD *thd)
     goto error;
 #else
   {
+    /* 
+       Reset warnings for BACKUP and RESTORE commands. Note: this will
+       cause problems if BACKUP/RESTORE is allowed inside stored
+       routines and events. In that case, warnings should not be
+       cleared.
+    */
+    thd->warning_info->opt_clear_warning_info(thd->query_id);
+
     /*
       Create a string from the backupdir system variable and pass
       to backup system.

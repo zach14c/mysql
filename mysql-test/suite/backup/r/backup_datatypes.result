@@ -1,0 +1,232 @@
+
+starting the test for backup
+
+DROP DATABASE IF EXISTS `¥ü`;
+SET NAMES utf8;
+CREATE DATABASE `¥ü`;
+USE `¥ü`;
+Create table with all datatypes and load with data.
+CREATE TABLE `§Æ`(
+rint INT,
+tint TINYINT,
+sint SMALLINT,
+bint BIGINT,
+mint MEDIUMINT,
+name CHAR(100),
+city  VARCHAR(100),
+fl FLOAT(7,4),
+pers DECIMAL(8,2),
+sal DOUBLE,
+colours SET('red','blue','yellow'),
+continent ENUM('Asia', 'Europe','Africa','Antartica'),
+ts TIMESTAMP DEFAULT 0,
+dt DATETIME NOT NULL,
+dob DATE,
+time TIME,
+y YEAR
+);
+creating table with blob and text columns
+CREATE TABLE `§Æ2`(
+region TEXT,
+summary LONGTEXT,
+data BLOB,
+details MEDIUMBLOB,
+queries TINYTEXT,
+query2 TINYBLOB,
+extract LONGBLOB,
+paras MEDIUMTEXT
+);
+CREATE TABLE `§¶œ`(b1 BINARY(3), b2 VARBINARY(2),bitvalue BIT(64));
+INSERT INTO `§¶œ` VALUES(0x61,0x2130,b'1111111111111111111111111111111111111111111111111111111111111111'), (0x6120,0x4100,b'101010101010101'), (0x612020, 0x4120,b'000000001');
+SELECT HEX(b1), HEX(b2), HEX(bitvalue) FROM `§¶œ`;
+HEX(b1)	HEX(b2)	HEX(bitvalue)
+610000	2130	FFFFFFFFFFFFFFFF
+612000	4100	5555
+612020	4120	1
+INSERT INTO `§Æ` VALUES
+(785,127,7288,278829899,3777,'testing1','sweden','678.299',200.23,829899.909,
+'red','Asia','2008-06-01 16:23:30','98/12/31 11*30*45','1984-09-08','7:05','1984');
+INSERT INTO `§Æ2` VALUES
+('xxxxxxxx','Testofonline backup','aaaaaaaaaa','bbbbbbbbbbb','hhhhhhhhhhh',
+'kkkkkkkkkkkkk','mmmmmmmmmmmm','onlinebackup1');
+UPDATE `§Æ2` SET extract=repeat('z',100);
+SELECT * FROM `§Æ`;;
+rint	785
+tint	127
+sint	7288
+bint	278829899
+mint	3777
+name	testing1
+city	sweden
+fl	678.2990
+pers	200.23
+sal	829899.909
+colours	red
+continent	Asia
+ts	2008-06-01 16:23:30
+dt	1998-12-31 11:30:45
+dob	1984-09-08
+time	07:05:00
+y	1984
+SELECT * FROM `§Æ2`;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz	onlinebackup1
+DESCRIBE `§Æ`;
+Field	Type	Null	Key	Default	Extra
+rint	int(11)	YES		NULL	
+tint	tinyint(4)	YES		NULL	
+sint	smallint(6)	YES		NULL	
+bint	bigint(20)	YES		NULL	
+mint	mediumint(9)	YES		NULL	
+name	char(100)	YES		NULL	
+city	varchar(100)	YES		NULL	
+fl	float(7,4)	YES		NULL	
+pers	decimal(8,2)	YES		NULL	
+sal	double	YES		NULL	
+colours	set('red','blue','yellow')	YES		NULL	
+continent	enum('Asia','Europe','Africa','Antartica')	YES		NULL	
+ts	timestamp	NO		0000-00-00 00:00:00	
+dt	datetime	NO		NULL	
+dob	date	YES		NULL	
+time	time	YES		NULL	
+y	year(4)	YES		NULL	
+DESCRIBE `§Æ2`;
+Field	Type	Null	Key	Default	Extra
+region	text	YES		NULL	
+summary	longtext	YES		NULL	
+data	blob	YES		NULL	
+details	mediumblob	YES		NULL	
+queries	tinytext	YES		NULL	
+query2	tinyblob	YES		NULL	
+extract	longblob	YES		NULL	
+paras	mediumtext	YES		NULL	
+DESCRIBE `§¶œ`;
+Field	Type	Null	Key	Default	Extra
+b1	binary(3)	YES		NULL	
+b2	varbinary(2)	YES		NULL	
+bitvalue	bit(64)	YES		NULL	
+** Backup data **
+
+BACKUP DATABASE `¥ü` to 'bup_datatype.bak';
+backup_id
+#
+** dropping  database**
+DROP DATABASE `¥ü`;
+**Restore**
+RESTORE FROM 'bup_datatype.bak' OVERWRITE;
+backup_id
+#
+SHOW DATABASES;
+Database
+information_schema
+¥ü
+mtr
+mysql
+test
+** checking the character set **
+SELECT @@character_set_client;
+@@character_set_client
+utf8
+SELECT @@character_set_results;
+@@character_set_results
+utf8
+SELECT @@character_set_connection;
+@@character_set_connection
+utf8
+USE `¥ü`;
+DESCRIBE `§Æ`;
+Field	Type	Null	Key	Default	Extra
+rint	int(11)	YES		NULL	
+tint	tinyint(4)	YES		NULL	
+sint	smallint(6)	YES		NULL	
+bint	bigint(20)	YES		NULL	
+mint	mediumint(9)	YES		NULL	
+name	char(100)	YES		NULL	
+city	varchar(100)	YES		NULL	
+fl	float(7,4)	YES		NULL	
+pers	decimal(8,2)	YES		NULL	
+sal	double	YES		NULL	
+colours	set('red','blue','yellow')	YES		NULL	
+continent	enum('Asia','Europe','Africa','Antartica')	YES		NULL	
+ts	timestamp	NO		0000-00-00 00:00:00	
+dt	datetime	NO		NULL	
+dob	date	YES		NULL	
+time	time	YES		NULL	
+y	year(4)	YES		NULL	
+DESCRIBE `§Æ2`;
+Field	Type	Null	Key	Default	Extra
+region	text	YES		NULL	
+summary	longtext	YES		NULL	
+data	blob	YES		NULL	
+details	mediumblob	YES		NULL	
+queries	tinytext	YES		NULL	
+query2	tinyblob	YES		NULL	
+extract	longblob	YES		NULL	
+paras	mediumtext	YES		NULL	
+DESCRIBE `§¶œ`;
+Field	Type	Null	Key	Default	Extra
+b1	binary(3)	YES		NULL	
+b2	varbinary(2)	YES		NULL	
+bitvalue	bit(64)	YES		NULL	
+SELECT * FROM `§Æ`;;
+rint	785
+tint	127
+sint	7288
+bint	278829899
+mint	3777
+name	testing1
+city	sweden
+fl	678.2990
+pers	200.23
+sal	829899.909
+colours	red
+continent	Asia
+ts	2008-06-01 16:23:30
+dt	1998-12-31 11:30:45
+dob	1984-09-08
+time	07:05:00
+y	1984
+SELECT * FROM `§Æ2`;
+region	summary	data	details	queries	query2	extract	paras
+xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz	onlinebackup1
+SELECT HEX(b1), HEX(b2),HEX(bitvalue) FROM `§¶œ`;
+HEX(b1)	HEX(b2)	HEX(bitvalue)
+610000	2130	FFFFFFFFFFFFFFFF
+612000	4100	5555
+612020	4120	1
+INSERT INTO `§¶œ` VALUES(0x7120,0x41,b'1010101010101010101010101010101010101010101010101010101010101010'), (0x5122, 0x6120,b'1000000000000000000000000000000000000000000000000000000000000000');
+SELECT HEX(b1), HEX(b2), HEX(bitvalue) FROM `§¶œ`;
+HEX(b1)	HEX(b2)	HEX(bitvalue)
+610000	2130	FFFFFFFFFFFFFFFF
+612000	4100	5555
+612020	4120	1
+712000	41	AAAAAAAAAAAAAAAA
+512200	6120	8000000000000000
+Perform restore again by changing the character set
+SET NAMES latin1;
+**Restore**
+RESTORE FROM 'bup_datatype.bak' OVERWRITE;
+backup_id
+#
+SHOW DATABASES;
+Database
+information_schema
+��
+mtr
+mysql
+test
+** checking client character set **
+SELECT @@character_set_client;
+@@character_set_client
+latin1
+SELECT @@character_set_results;
+@@character_set_results
+latin1
+SELECT @@character_set_connection;
+@@character_set_connection
+latin1
+SET NAMES utf8;
+
+***  DROP `¥ü` DATABASE ****
+
+DROP DATABASE `¥ü`;

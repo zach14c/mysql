@@ -67,66 +67,71 @@ public: // public interface
 
    // datatypes
    
-   typedef enum_bstream_item_type obj_type;
+  /// The object type from the stream item.
+  typedef enum_bstream_item_type obj_type;
 
-   class Obj;   ///< Base for all object classes.
-   class Ts;    ///< Class representing a tablespace.
-   class Db;    ///< Class representing a database.
-   class Table; ///< Class representing a table.
-   class Dbobj; ///< Class representing a per-database object other than table.
+  class Obj;   ///< Base for all object classes.
+  class Ts;    ///< Class representing a tablespace.
+  class Db;    ///< Class representing a database.
+  class Table; ///< Class representing a table.
+  class Dbobj; ///< Class representing a per-database object other than table.
 
-   class Iterator;      ///< Base for all iterators.
-   class Ts_iterator;   ///< Iterates over all tablespaces.
-   class Db_iterator;   ///< Iterates over all databases.
-   class Dbobj_iterator;  ///< Iterates over objects in a database.
+  class Iterator;      ///< Base for all iterators.
+  class Ts_iterator;   ///< Iterates over all tablespaces.
+  class Db_iterator;   ///< Iterates over all databases.
+  class Dbobj_iterator;  ///< Iterates over objects in a database.
 
-   virtual ~Image_info();
+  virtual ~Image_info();
  
-   // info about image (most of it is in the st_bstream_image_header base
+  // info about image (most of it is in the st_bstream_image_header base
 
-   size_t     data_size;      ///< How much of table data is saved in the image.
-   st_bstream_binlog_pos  master_pos; ///< To store master position info.
+  virtual bool is_valid() =0;  ///< Is the structure valid?
 
-   ulong      table_count() const;
-   uint       db_count() const;
-   uint       ts_count() const;
-   ushort     snap_count() const;
+  size_t     data_size;      ///< How much of table data is saved in the image.
+  st_bstream_binlog_pos  master_pos; ///< To store master position info.
 
-   // Examine contents of the catalogue.
+  ulong      table_count() const;
+  uint       db_count() const;
+  uint       ts_count() const;
+  ushort     snap_count() const;
 
-   bool has_db(const String&) const;
+  // Examine contents of the catalogue.
 
-   // Retrieve objects using their coordinates.
+  bool has_db(const String&) const;
 
-   Db*    get_db(uint pos) const;
-   Ts*    get_ts(uint pos) const;
-   Dbobj* get_db_object(uint db_num, ulong pos) const;
-   Table* get_table(ushort snap_num, ulong pos) const;
+  // Retrieve objects using their coordinates.
 
-   // Iterators for enumerating the contents of the archive.
+  Db*    get_db(uint pos) const;
+  Ts*    get_ts(uint pos) const;
+  Dbobj* get_db_object(uint db_num, ulong pos) const;
+  Table* get_table(ushort snap_num, ulong pos) const;
 
-   Db_iterator*     get_dbs() const;
-   Ts_iterator*     get_tablespaces() const;
-   Dbobj_iterator*  get_db_objects(const Db &db) const;
+  // Iterators for enumerating the contents of the archive.
 
-   /**
-     Pointers to @c Snapshot_info objects corresponding to the snapshots
-     present in the image.
-    */ 
-   Snapshot_info *m_snap[MAX_SNAP_COUNT];
+  Db_iterator*     get_dbs() const;
+  Ts_iterator*     get_tablespaces() const;
+  Dbobj_iterator*  get_db_objects(const Db &db) const;
+
+  /**
+    Pointers to @c Snapshot_info objects corresponding to the snapshots
+    present in the image.
+   */ 
+  Snapshot_info *m_snap[MAX_SNAP_COUNT];
    
-   // save timing & binlog info 
+  // save timing & binlog info 
    
-   void save_start_time(const time_t time);   
-   void save_end_time(const time_t time);
-   void save_vp_time(const time_t time);   
+  void save_start_time(const time_t time);   
+  void save_end_time(const time_t time);
+  void save_vp_time(const time_t time);   
 
-   void save_binlog_pos(const ::LOG_INFO&);
-   void save_master_pos(const ::Master_info&);
+  void save_binlog_pos(const ::LOG_INFO&);
+  /// Save the master's binlog position.
+  void save_master_pos(const ::Master_info&);
 
-   time_t get_vp_time() const;
+  /// Return the validity point time.
+  time_t get_vp_time() const;
 
- protected: // internal interface
+protected: // internal interface
   
   // Populate the catalogue
   
@@ -140,15 +145,15 @@ public: // public interface
 
  // IMPLEMENTATION
 
- protected:
+protected:
 
   Image_info();
-  uint m_table_count;
+  uint m_table_count;    ///< Number of tables in the image.
   MEM_ROOT  mem_root;    ///< Memory root for storage of catalogue items.
 
   class Tables; ///< Implementation of Table_list interface. 
 
- private:
+private:
 
   Map<uint, Db>   m_dbs; ///< Pointers to Db instances.
   Map<uint, Ts>   m_ts_map; ///< Pointers to Ts instances.
@@ -181,7 +186,7 @@ class Image_info::Tables:
 {
   typedef Map<uint, Image_info::Table> Base;
  
- public:
+public:
 
   Tables(ulong, ulong);
   ulong count() const;
@@ -222,19 +227,17 @@ Image_info::Tables::Tables(ulong init_size, ulong increase)
  */
 class Snapshot_info
 {
- public:
+public:
 
+  /// Enumeration for snapshot type
   enum enum_snap_type {
-    /** snapshot created by native backup engine. */
-    NATIVE_SNAPSHOT= BI_NATIVE,
-    /** Snapshot created by built-in, blocking backup engine. */
-    DEFAULT_SNAPSHOT= BI_DEFAULT,
-    /** Snapshot created by built-in CS backup engine. */
-    CS_SNAPSHOT= BI_CS,
-    /** snapshot created by No data backup driver. */
-    NODATA_SNAPSHOT= BI_NODATA
+    NATIVE_SNAPSHOT= BI_NATIVE,   ///< created by native backup engine.
+    DEFAULT_SNAPSHOT= BI_DEFAULT, ///< created by blocking backup engine.
+    CS_SNAPSHOT= BI_CS,           ///< created by CS backup engine.
+    NODATA_SNAPSHOT= BI_NODATA    ///< created by No data backup engine.
   };
 
+  /// Enumeration for snapshot type type
   virtual enum_snap_type type() const =0; 
   version_t version() const; ///< Returns version of snapshot's format.
   
@@ -273,14 +276,16 @@ class Snapshot_info
   /// Create restore driver for the image.
   virtual result_t get_restore_driver(Restore_driver*&) =0;
 
+  /// Destructor
   virtual ~Snapshot_info();
 
   Image_info::Table* get_table(ulong pos) const;
 
- protected:
+protected:
  
   version_t m_version; ///< Stores version number of the snapshot's format.
 
+  /// Constructor
   Snapshot_info(const version_t);
 
   // Methods for adding and accessing tables stored in the table list.
@@ -330,7 +335,7 @@ Snapshot_info::~Snapshot_info()
 */
 class Image_info::Obj: public Sql_alloc
 {
- public:
+public:
  
   /* 
     Note: Since we are using Sql_alloc and allocate instances using MEM_ROOT,
@@ -338,6 +343,7 @@ class Image_info::Obj: public Sql_alloc
    */
   virtual ~Obj();
 
+  /// The type of the object
   obj_type type() const;
 
   /**
@@ -346,20 +352,19 @@ class Image_info::Obj: public Sql_alloc
    */ 
   virtual const st_bstream_item_info* info() const =0;
 
-  /**
-    Pointer to the corresponding @c obs::Obj instance, if it is known.
-   */ 
+  /// Pointer to the corresponding @c obs::Obj instance, if it is known.
   obs::Obj  *m_obj_ptr;
-  
-  /**
-    Create corresponding @c obs::Obj instance from a serialization string.
-   */ 
+
+  /// Create corresponding @c obs::Obj instance from a serialization string.
   virtual obs::Obj *materialize(uint ver, const ::String&) =0;
 
+  /// Definition for a table name in a Table_ref object.
   typedef Table_ref::name_buf describe_buf;
+
+  /// Description of object.
   virtual const char* describe(describe_buf&) const =0;
 
- protected:
+protected:
 
   String m_name;  ///< For storing object's name.
 
@@ -389,13 +394,17 @@ class Image_info::Ts
  : public st_bstream_ts_info,
    public Image_info::Obj
 {
- public:
+public:
 
+  /// Constructor
   Ts(const ::String&);
 
+  /// The information about the image.
   const st_bstream_item_info* info() const;
+  /// The information about the tablespace.
   const st_bstream_ts_info* ts_info() const;
   obs::Obj* materialize(uint ver, const ::String &sdata);
+  /// Description of object.
   const char* describe(describe_buf&) const;
 };
 
@@ -418,20 +427,23 @@ class Image_info::Db
 {
   ulong m_obj_count;    ///< Number of non-table objects in the database.
 
- public:
+public:
 
+  /// Constuctor
   Db(const ::String&);
 
   const st_bstream_item_info* info() const;
+  /// The database information in the stream.
   const st_bstream_db_info* db_info() const;
   ulong obj_count() const;
   obs::Obj* materialize(uint ver, const ::String &sdata);
   result_t add_obj(Dbobj&, ulong pos);
   Dbobj*   get_obj(ulong pos) const;
   void add_table(Table&);
+  /// Description of object.
   const char* describe(describe_buf&) const;
 
- private:
+private:
  
   Table *first_table; ///< Pointer to the first table in database's table list. 
   Table *last_table;  ///< Pointer to the last table in database's table list.
@@ -470,12 +482,14 @@ class Image_info::Dbobj
 {
   const Db &m_db;     ///< The database to which this obj belongs.
 
- public:
+public:
 
+  /// Constructor
   Dbobj(const Db &db, const obj_type type, const ::String &name);
 
   const st_bstream_item_info* info() const;
   obs::Obj* materialize(uint ver, const ::String &sdata);
+  /// Description of object.
   const char* describe(Obj::describe_buf&) const;
 
   friend class Db;
@@ -506,12 +520,14 @@ class Image_info::Table
   Table  *next_table; ///< Used to crate a linked list of tables in a database.
   TABLE_LIST  *m_table; ///< If not NULL, points at opened table.
 
- public:
+public:
 
+  /// Constructor
   Table(const Db &db, const ::String &name);
 
   const st_bstream_item_info* info() const;
   obs::Obj* materialize(uint ver, const ::String &sdata);
+  /// Description of object.
   const char* describe(Obj::describe_buf&) const;
 
   friend class Db;
@@ -558,8 +574,9 @@ Image_info::Table::Table(const Db &db, const ::String &name)
  */ 
 class Image_info::Iterator
 {
- public:
+public:
 
+  /// Constructor
   Iterator(const Image_info &info);
   virtual ~Iterator();
 
@@ -572,13 +589,15 @@ class Image_info::Iterator
    */
   virtual int init() { return 0; }  
 
+  /// The increment operation.
   Obj* operator++(int);
 
- protected:
+protected:
 
+  /// The image information class pointer.
   const Image_info &m_info;
 
- private:
+private:
 
   /** 
     Return pointer to the current object of the iterator.
@@ -615,14 +634,15 @@ Image_info::Iterator::~Iterator()
 class Image_info::Ts_iterator
  : public Image_info::Iterator
 {
- public:
+public:
 
+  /// Constructor  
   Ts_iterator(const Image_info&);
 
- protected:
+protected:
 
-  uint pos;
-  Obj* get_ptr() const;
+  uint pos;              ///< position in the iterator
+  Obj* get_ptr() const;  
   bool next();
 };
 
@@ -643,13 +663,14 @@ Image_info::Ts_iterator::Ts_iterator(const Image_info &info)
 class Image_info::Db_iterator
  : public Image_info::Iterator
 {
- public:
+public:
 
+  /// Constructor
   Db_iterator(const Image_info&);
 
- protected:
+protected:
 
-  uint pos;
+  uint pos;  ///< Position in the iterator
   Obj* get_ptr() const;
   bool next();
 };
@@ -676,11 +697,12 @@ class Image_info::Dbobj_iterator
   Table *ptr;
   ulong pos;
 
- public:
+public:
 
+  /// Constructor
   Dbobj_iterator(const Image_info&, const Db&);
 
- private:
+private:
 
   Obj* get_ptr() const;
   bool next();
@@ -971,12 +993,12 @@ const st_bstream_item_info* Image_info::Ts::info() const
   return &base; 
 }
 
+/// Implementation of Image_info::ts_info virtual method.
 inline
 const st_bstream_ts_info* Image_info::Ts::ts_info() const 
 {
   return this; 
 }
-
 
 /// Implementation of @c Image_info::Obj virtual method.
 inline
@@ -993,7 +1015,11 @@ const st_bstream_item_info* Image_info::Dbobj::info() const
 }
 
 
-/// Implementation of @c Image_info::Obj virtual method.
+/**
+  Implementation of @c Image_info::Obj virtual method.
+
+  @param[in] buf  The buffer for the desciption info.
+*/
 inline
 const char* Image_info::Ts::describe(describe_buf &buf) const
 {

@@ -3137,6 +3137,28 @@ int disable_slave_connections(bool disable)
 }
 
 /**
+  Set state where replication is blocked from starting.
+
+  This method tells the server that a process that requires replication
+  to be turned off while the operation is in progress.
+  This is used to prohibit slaves from starting.
+
+  @param[in] block  TRUE = block slave start, FALSE = do not block
+  @param[in] reason  Reason for the block
+*/
+void block_replication(bool block, const char *reason)
+{
+  pthread_mutex_lock(&LOCK_slave_start);
+  allow_slave_start= !block;
+  if (block)
+  {
+    reason_slave_blocked.length= strlen(reason);
+    reason_slave_blocked.str= (char *)reason;
+  }
+  pthread_mutex_unlock(&LOCK_slave_start);
+}
+
+/**
   Write an incident event in the binary log.
 
   This method can be used to issue an incident event to inform the slave

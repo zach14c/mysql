@@ -118,8 +118,9 @@ int Logger::write_message(log_level::value level, int error_code,
 /**
   Output message registered in errmsg.txt database.
 
-  @param level       level of the message (INFO,WARNING,ERROR)
-  @param error_code  code assigned to the message in errmsg.txt
+  @param[in] level       level of the message (INFO,WARNING,ERROR)
+  @param[in] error_code  code assigned to the message in errmsg.txt
+  @param[in] args        list of arguments
 
   If the message contains placeholders, additional arguments provide
   values to be put there.
@@ -206,7 +207,7 @@ void Logger::report_stats_post(const Image_info &info)
   backup_log->size(info.data_size);
 }
 
-/*
+/**
  Indicate if reported errors should be pushed on the warning stack.
 
  If @c flag is TRUE, errors will be pushed on the warning stack, otherwise

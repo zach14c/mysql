@@ -20,6 +20,7 @@
 # define ASSERT(X)
 #else
 # include <assert.h>
+/// Macro to map assertion call when debug is off.
 # define ASSERT(X) assert(X)
 #endif
 
@@ -67,23 +68,57 @@
 
 /* Local type definitions. */
 
-#define TRUE    1
-#define FALSE   0
+#define TRUE    1  ///< definition of true
+#define FALSE   0  ///< definition of false
 
-typedef unsigned char bool;
-typedef bstream_byte byte;
-typedef bstream_blob blob;
+typedef unsigned char bool; ///< Type definition of unsigned character to bool.
+typedef bstream_byte byte;  ///< Type definition of bstream_byte to byte.
+typedef bstream_blob blob;  ///< Type definition of bstream_blob to blob.
 
-/* this is needed for seamless compilation on windows */
+/**
+  Macro mapping bzro() to memset().
+  
+  @note This is needed for seamless compilation on windows.
+*/
 #define bzero(A,B)  memset((A),0,(B))
 
 /*
   Helper functions defined in stream_v1.c
 */
+
+/**
+  Return byte from unsigned long int.
+
+  @param[in]  value  Item to be changed to byte type.
+*/
 extern byte get_byte_ulong(unsigned long int value);
+
+/**
+  Return byte from unsigned int.
+
+  @param[in]  value  Item to be changed to byte type.
+*/
 extern byte get_byte_uint(unsigned int value);
+
+/**
+  Return byte from unsigned short.
+
+  @param[in]  value  Item to be changed to byte type.
+*/
 extern byte get_byte_ushort(short value);
+
+/**
+  Return byte from short.
+
+  @param[in]  value  Item to be changed to byte type.
+*/
 extern byte get_byte_short(short value);
+
+/**
+  Return byte from size_t.
+
+  @param[in]  value  Item to be changed to byte type.
+*/
 extern byte get_byte_size_t(size_t value);
 
 /*
@@ -139,20 +174,20 @@ extern byte get_byte_size_t(size_t value);
  *
  *************************************************************************/
 
-#define FR_EOC    0x80
-#define FR_EOS    0xC0
-#define FR_MORE   0x00
-#define FR_LAST   0x40
+#define FR_EOC    0x80  ///< bits for EOC fragment
+#define FR_EOS    0xC0  ///< bits for EOS fragment
+#define FR_MORE   0x00  ///< bits for MORE fragment
+#define FR_LAST   0x40  ///< bits for LAST fragment
 
-#define FR_TYPE_MASK  0xC0
-#define FR_LEN_MASK   (~FR_TYPE_MASK)
+#define FR_TYPE_MASK  0xC0  ///< type bits for mask
+#define FR_LEN_MASK   (~FR_TYPE_MASK)  ///< type length for mask
 
 /** biggest size of small fragment */
 #define FR_SMALL_MAX  ((size_t)FR_LEN_MASK)
-#define FR_BIG        0x80        /**< type bits for big fragment */
-#define FR_HUGE       0xC0        /**< type bits for huge fragment */
-#define FR_BIG_SHIFT  6           /**< value shift for big fragment */
-#define FR_HUGE_SHIFT 12          /**< value shift for huge fragment */
+#define FR_BIG        0x80        ///< type bits for big fragment
+#define FR_HUGE       0xC0        ///< type bits for huge fragment
+#define FR_BIG_SHIFT  6           ///< value shift for big fragment 
+#define FR_HUGE_SHIFT 12          ///< value shift for huge fragment 
 /** header for the biggest possible chunk */
 #define FR_HUGE_MAX_HDR (FR_HUGE|FR_LEN_MASK)
 /** size of the biggest possible chunk */
@@ -276,12 +311,15 @@ int read_fragment_header(byte **header)
  (parameter S) to write/read bytes to/from underlying stream.
 */
 
+/// Macro mapping as_write to write method call result.
 #define as_write(S,Data,Env) \
   ((S)->write ? (S)->write((S),(Data),(Env)) : BSTREAM_ERROR)
 
+/// Macro mapping as_read to read method call result.
 #define as_read(S,Buf,Env) \
   ((S)->read ?(S)->read((S),(Buf),(Env)) : BSTREAM_ERROR)
 
+/// Macro mapping as_forward to forward method call result.
 #define as_forward(S,Off) \
   ((S)->forward ? (S)->forward((S),(Off)) : (*(Off)=0, BSTREAM_ERROR))
 
@@ -546,6 +584,7 @@ int close_current_fragment(backup_stream *s)
 
  *************************************************************************/
 
+/// Input buffer macro to check validity.
 #define IBUF_INV(B) \
   ASSERT((B).begin <= (B).pos); \
   ASSERT((B).begin <= (B).header); \
@@ -829,9 +868,10 @@ int load_next_fragment(backup_stream *s)
 /**
   Open backup stream for writing.
 
-  @param block_size   size of output stream blocks
-  @param offset       current position of the output stream inside the
-                      current stream block
+  @param[in] s            backup stream
+  @param[in] block_size   size of output stream blocks
+  @param[in] offset       current position of the output stream inside the
+                          current stream block
 
   @pre The abstract stream methods in @c s should be setup and ready for
   writing.
@@ -868,8 +908,9 @@ int bstream_open_wr(backup_stream *s,
 /**
   Open backup stream for reading.
 
-  @param offset    current position of the input stream inside the
-                   current stream block
+  @param[in] s       backup stream
+  @param[in] offset  current position of the input stream inside the
+                     current stream block
 
   @pre The abstract stream methods in @c s should be setup and ready for
   reading.
@@ -907,7 +948,24 @@ int bstream_open_rd(backup_stream *s, unsigned long int offset)
   return BSTREAM_OK;
 }
 
+/**
+ Set the end chunk for the output stream.
+
+ @param[in]  s  The backup stream.
+
+ @returns Status of operation.
+*/
 int bstream_end_chunk(backup_stream *s);
+
+/**
+ Flush backup stream`s output buffer to the output stream.
+
+ This empties the output buffer.
+
+ @param[in]  s  The backup stream to flush.
+
+ @returns Status of operation.
+*/
 int bstream_flush(backup_stream *s);
 
 /**
@@ -1078,26 +1136,40 @@ int bstream_write_part(backup_stream *s, bstream_blob *data, bstream_blob buf)
   /*
    To avoid copying bytes to the internal output buffer we try to cut a prefix
    of the data to be written which forms a valid fragment and write this
-   fragment to output stream.
-
-   Note: after call to biggest_fragment_prefix() blob fragment contains the
-   bytes which didn't fit into the prefix.
+   prefix to output stream.
   */
   *(s->buf.header)= biggest_fragment_prefix(&fragment);
 
   /*
-    We use this method only if it will actually write enough of the bytes
-    to be written - if it is only few bytes we save them into the output
-    buffer anyway.
+   After the call to biggest_fragment_prefix the situation is as follows:
+
+       output buffer
+               current fragment
+   [ ===== | 0x00 ===============]
+            ^
+            header                       data
+                                 [====================]
+
+                  --------------------[---------------]
+                       prefix              fragment
+
+   Fragment blob describes the data which did not fit into the prefix.
+  */ 
+
+  /*
+    We write prefix directly to the stream if it includes whole output
+    buffer and there is enough bytes to be written - if it is only few bytes 
+    we rather keep them in the buffer.
    */
-  if (fragment.end > (s->buf.pos + MIN_WRITE_SIZE))
+  if (fragment.begin > s->buf.pos && 
+      fragment.begin > (s->buf.begin + MIN_WRITE_SIZE))
   {
     /* write contents of the output buffer */
     ret= write_buffer(s);
     if (ret != BSTREAM_OK)
       return BSTREAM_ERROR;
 
-    /* write remainder of the fragment from data blob */
+    /* write remainder of the prefix from data blob */
     saved_end= data->end;
     data->end= data->begin + (fragment.begin - s->buf.pos);
 
@@ -1258,11 +1330,6 @@ int bstream_end_chunk(backup_stream *s)
   return ret;
 }
 
-/**
- Flush backup stream`s output buffer to the output stream.
-
- This empties the output buffer.
-*/
 int bstream_flush(backup_stream *s)
 {
   struct st_bstream_buffer *buf= &s->buf;

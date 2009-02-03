@@ -33,8 +33,10 @@
 
 namespace backup {
 
+/// Structure for storing stream results.
 struct stream_result
 {
+  /// Enumeration of stream result values.
   enum value {
     OK= BSTREAM_OK,
     EOC= BSTREAM_EOC,
@@ -53,15 +55,16 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob);
 
  ****************************************************/
 
+/// Structure for storing information about the file stream.
 struct fd_stream: public backup_stream
 {
-  int m_fd;
-  size_t bytes;
-  uchar m_header_buf[10];
-  bool m_with_compression;
+  int m_fd;                 ///< file descriptor
+  size_t bytes;             ///< bytes read
+  uchar m_header_buf[10];   ///< header buffer
+  bool m_with_compression;  ///< switch to use compression
 #ifdef HAVE_COMPRESS
-  z_stream zstream;
-  uchar *zbuf;
+  z_stream zstream;         ///< the compression stream
+  uchar *zbuf;              ///< compression buffer
 #endif
   
   fd_stream() :m_fd(-1), bytes(0) {}
@@ -77,7 +80,7 @@ struct fd_stream: public backup_stream
 */
 class Stream: public fd_stream
 {
- public:
+public:
 
   int open();
   virtual bool close();
@@ -91,17 +94,18 @@ class Stream: public fd_stream
   virtual ~Stream()
   { close(); }
 
- protected:
+protected:
 
+  /// Constructor
   Stream(Logger&, ::String *, int);
 
-  ::String  *m_path;
-  int     m_flags;  ///< flags used when opening the file
-  size_t  m_block_size;
-  Logger&  m_log;
+  ::String  *m_path;    ///< path for file
+  int     m_flags;      ///< flags used when opening the file
+  size_t  m_block_size; ///< block size for data stream
+  Logger&  m_log;       ///< reference to logger class
 
-  virtual File get_file() = 0; // Create or open file
-
+  /// Create or open file
+  virtual File get_file() = 0; 
 
   friend int stream_write(void*, bstream_blob*, bstream_blob);
   friend int stream_read(void*, bstream_blob*, bstream_blob);
@@ -113,34 +117,34 @@ private:
 };
 
 /// Used to write to backup stream.
-class Output_stream:
-  public Stream
+class Output_stream: public Stream
 {
- public:
+public:
 
+  /// Constructor
   Output_stream(Logger&, ::String *, bool);
 
   int open();
   bool close();
   bool rewind();
 
- protected:
+protected:
 
   virtual File get_file();
 
- private:
+private:
 
   int write_magic_and_version();
   bool init();
 };
 
 /// Used to read from backup stream.
-class Input_stream:
-  public Stream
+class Input_stream: public Stream
 {
- public:
+public:
 
-   Input_stream(Logger&, ::String *);
+  /// Constructor
+  Input_stream(Logger&, ::String *);
 
   int open();
   bool close();
@@ -148,11 +152,11 @@ class Input_stream:
 
   int next_chunk();
 
- protected:
+protected:
 
   virtual File get_file();
 
- private:
+private:
 
   int check_magic_and_version();
   bool init();
@@ -163,6 +167,14 @@ class Input_stream:
  Wrappers around backup stream functions which perform necessary type conversions.
 */
 
+/**
+  Write the preamble.
+
+  @param[in]  info  The image info.
+  @param[in]  s     The output stream.
+
+  @retval  ERROR if stream error, OK if no errors.
+*/
 inline
 result_t
 write_preamble(const Image_info &info, Output_stream &s)
@@ -175,6 +187,14 @@ write_preamble(const Image_info &info, Output_stream &s)
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
+/**
+  Write the summary.
+
+  @param[in]  info  The image info.
+  @param[in]  s     The output stream.
+
+  @retval  ERROR if stream error, OK if no errors.
+*/
 inline
 result_t
 write_summary(const Image_info &info, Output_stream &s)
@@ -187,6 +207,14 @@ write_summary(const Image_info &info, Output_stream &s)
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
+/**
+  Read the header.
+
+  @param[in]  info  The image info.
+  @param[in]  s     The input stream.
+
+  @retval  ERROR if stream error, OK if no errors.
+*/
 inline
 result_t
 read_header(Image_info &info, Input_stream &s)
@@ -195,6 +223,14 @@ read_header(Image_info &info, Input_stream &s)
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
+/**
+  Read the catalogue.
+
+  @param[in]  info  The image info.
+  @param[in]  s     The input stream.
+
+  @retval  ERROR if stream error, OK if no errors.
+*/
 inline
 result_t
 read_catalog(Image_info &info, Input_stream &s)
@@ -203,6 +239,14 @@ read_catalog(Image_info &info, Input_stream &s)
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
+/**
+  Read the metadata.
+
+  @param[in]  info  The image info.
+  @param[in]  s     The input stream.
+
+  @retval  ERROR if stream error, OK if no errors.
+*/
 inline
 result_t
 read_meta_data(Image_info &info, Input_stream &s)
@@ -211,6 +255,14 @@ read_meta_data(Image_info &info, Input_stream &s)
   return ret == BSTREAM_ERROR ? ERROR : OK;
 }
 
+/**
+  Read the summary data.
+
+  @param[in]  info  The image info.
+  @param[in]  s     The input stream.
+
+  @retval  ERROR if stream error, OK if no errors.
+*/
 inline
 result_t
 read_summary(Image_info &info, Input_stream &s)

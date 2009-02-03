@@ -260,7 +260,6 @@ sub mtr_report_stats ($) {
   }
 
   print "\n";
-
   # Print a list of check_testcases that failed(if any)
   if ( $::opt_check_testcases )
   {
