@@ -56,7 +56,7 @@
 //#define STOP_RECORD	123
 //#define TRACE_PAGE	109
 
-static const int SECTION_HASH_SIZE	= 997;
+
 
 extern uint falcon_large_blob_threshold;
 
@@ -74,7 +74,6 @@ Dbb::Dbb(Database *dbase)
 {
 	database = dbase;
 	cache = NULL;
-	sections = NULL;
 	sequenceSection = NULL;
 	nextIndex = 0;
 	nextSection = 0;
@@ -91,6 +90,7 @@ Dbb::Dbb(Database *dbase)
 	noLog = false;
 	syncClone.setName("Dbb::syncClone");
 	syncSequences.setName("Dbb::syncSequences");
+	memset (sections, 0, sizeof (sections));
 }
 
 
@@ -101,7 +101,6 @@ Dbb::Dbb(Dbb *dbb, int tblSpaceId)
 	cache = dbb->cache;
 	pageSize = dbb->pageSize;
 	serialLog = dbb->serialLog;
-	sections = NULL;
 	sequenceSection = NULL;
 	nextIndex = 0;
 	nextSection = 0;
@@ -113,6 +112,7 @@ Dbb::Dbb(Dbb *dbb, int tblSpaceId)
 	highPage = 0;
 	defaultIndexVersion = dbb->defaultIndexVersion;
 	noLog = false;
+	memset (sections, 0, sizeof (sections));
 }
 
 Dbb::~Dbb()
@@ -131,16 +131,14 @@ Dbb::~Dbb()
 
 	Section *section;
 
-	if (sections)
-		for (int n = 0; n < SECTION_HASH_SIZE; ++n)
-			while ((section = sections [n]))
-				{
-				sections [n] = section->hash;
-				delete section;
-				}
+	for (int n = 0; n < SECTION_HASH_SIZE; ++n)
+		while ((section = sections [n]))
+			{
+			sections [n] = section->hash;
+			delete section;
+			}
 
-	if (sections)
-		delete [] sections;
+
 
 	if (inversion)
 		delete inversion;
@@ -199,8 +197,7 @@ void Dbb::init()
 	linesPerPage = (short) ((pageSize - OFFSET (RecordLocatorPage*, elements)) / sizeof (struct RecordIndex));
 	sequencesPerPage = (short) ((pageSize - OFFSET (SequencePage*, sequences)) / sizeof (int64));
 	sequencesPerSection = (int) (pagesPerSection * sequencesPerPage);
-	sections = new Section* [SECTION_HASH_SIZE];
-	memset (sections, 0, sizeof (Section*) * SECTION_HASH_SIZE);
+
 	utf8 = false;
 }
 
