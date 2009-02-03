@@ -69,6 +69,15 @@ static const char THIS_FILE[]=__FILE__;
 //////////////////////////////////////////////////////////////////////
 
 
+static Bdb* allocSectionPage(Dbb *dbb, int transId, int parentPage, int slot, int sectionId, int sequence, int level)
+{
+	Bdb *newBdb = dbb->allocPage(PAGE_sections, transId);
+
+	if (!dbb->serialLog->recovering)
+		dbb->serialLog->logControl->sectionPage.append(dbb, transId, parentPage, newBdb->pageNumber, slot, sectionId, sequence, level);
+	return newBdb;
+}
+
 Section::Section(Dbb *pDbb, int32 id, TransId transId)
 {
 	dbb = pDbb;
@@ -129,7 +138,7 @@ int32 Section::createSection(Dbb * dbb, TransId transId)
 				}
 			else
 				{
-				Bdb *sectionBdb = dbb->allocPage(PAGE_sections, transId);
+				Bdb *sectionBdb = allocSectionPage(dbb, transId, sections->pageNumber, slot, id, 0, 0);
 				BDB_HISTORY(sectionBdb);
 				int32 sectionPageNumber = sectionBdb->pageNumber;
 				page = (SectionPage*) sectionBdb->buffer;
@@ -139,10 +148,6 @@ int32 Section::createSection(Dbb * dbb, TransId transId)
 				sectionsBdb->mark(transId);
 				sections->pages [slot] = sectionPageNumber;
 				dbb->nextSection = (sectionSkipped) ? sectionSkipped : (id + 1);
-
-				if (!dbb->serialLog->recovering && !dbb->noLog)
-					dbb->serialLog->logControl->sectionPage.append(dbb, transId, sectionsBdb->pageNumber, sectionPageNumber, slot, id, 0, 0);
-					
 				sectionsBdb->release(REL_HISTORY);
 				//Log::debug("Section::createSection: section %d created\n", id);
 
@@ -169,17 +174,13 @@ void Section::createSection(Dbb *dbb, int32 sectionId, TransId transId)
 		ASSERT (!(dbb->serialLog && dbb->serialLog->recovering));
 
 		sectionsBdb->mark(transId);
-		Bdb *sectionBdb = dbb->allocPage(PAGE_sections, transId);
+		Bdb *sectionBdb = allocSectionPage(dbb, transId, sectionsBdb->pageNumber, slot, sectionId, sequence, 0);
 		BDB_HISTORY(sectionBdb);
 		Log::debug("Section::createSection: recreating section %d, root %d\n", 
 					sectionId, sectionBdb->pageNumber);
 		sections->pages [slot] = sectionBdb->pageNumber;
 		SectionPage	 *page = (SectionPage*) sectionBdb->buffer;
 		page->section = sectionId;
-
-		// Log allocated page
-		dbb->serialLog->logControl->sectionPage.append(dbb, transId, SECTION_ROOT,
-				sectionBdb->pageNumber, slot, sectionId, 0, 0);
 
 		sectionBdb->release(REL_HISTORY);
 		}
@@ -279,18 +280,15 @@ Bdb* Section::getSectionPage(Dbb *dbb, int32 root, int32 sequence, LockType requ
 					break;
 					}
 
-				Bdb *newBdb = dbb->allocPage(PAGE_sections, transId);
+				Bdb *newBdb = allocSectionPage(dbb, transId, bdb->pageNumber, slot, page->section, sequence, page->level -1);
 				BDB_HISTORY(newBdb);
 				SectionPage *newPage = (SectionPage*) newBdb->buffer;
-				int32 newPageNumber = newBdb->pageNumber;
-				int sectionId = page->section;
-				newPage->section = sectionId;
+				newPage->section = page->section;
 				newPage->sequence = sequence;
 				newPage->level = page->level - 1;
 
 				bdb->mark(transId);
-				page->pages [slot] = newPageNumber;
-				int32 parentPage = bdb->pageNumber;
+				page->pages [slot] = newBdb->pageNumber;
 				bdb->release(REL_HISTORY);
 
 				if (newPage->level == 0)
@@ -300,8 +298,6 @@ Bdb* Section::getSectionPage(Dbb *dbb, int32 root, int32 sequence, LockType requ
 				page = newPage;
 				lockType = Exclusive;
 
-				if (!dbb->serialLog->recovering && !dbb->noLog)
-					dbb->serialLog->logControl->sectionPage.append(dbb, transId, parentPage, newPageNumber, slot, sectionId, sequence, page->level - 1);
 				}
 			}
 		}
