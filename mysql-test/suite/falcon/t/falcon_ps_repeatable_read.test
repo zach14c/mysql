@@ -3,6 +3,12 @@
 #
 # Prepared statement test with concurrent transaction.
 #
+# This test was designed for InnoDB's next key locking
+# behaviour in concurrent transactions. Falcon does not
+# have something like next key locking. We test to update
+# a record in $other_connection, while the active connection
+# has an open transaction.
+#
 --echo *** falcon_ps_03621 ***
 
 # ----------------------------------------------------- #
