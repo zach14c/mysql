@@ -3785,6 +3785,8 @@ static bool lock_table_name_if_not_cached(THD *thd, const char *db,
     }
     else
       *lock_data= 0;
+  } else {
+    DEBUG_SYNC(thd, "locked_table_name");
   }
   return FALSE;
 }
