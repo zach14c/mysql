@@ -105,4 +105,5 @@ backup_history, backup_progress;
 # check that we dropped all system tables
 show tables;
 
+exit;
 # End of 4.1 tests
