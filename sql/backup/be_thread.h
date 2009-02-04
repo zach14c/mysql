@@ -30,18 +30,20 @@ using backup::Table_list;
    backup_thread_for_locking
 
    This method creates a new thread and opens and locks the tables.
+
+   @param[in] arg  List of arguments.
 */
 pthread_handler_t backup_thread_for_locking(void *arg);
 
 /**
- * @struct Locking_thread
- *
- * @brief Adds variables for using a locking thread for opening tables.
- *
- * The Backup_thread structure contains a mutex and condition variable
- * for using a thread to open and lock the tables. This is meant to be a
- * generic class that can be used elsewhere for opening and locking tables.
- */
+  Locking_thread
+ 
+  @brief Adds variables for using a locking thread for opening tables.
+ 
+  The Backup_thread structure contains a mutex and condition variable
+  for using a thread to open and lock the tables. This is meant to be a
+  generic class that can be used elsewhere for opening and locking tables.
+*/
 struct Locking_thread_st
 {
 public:
@@ -66,25 +68,27 @@ public:
 }; // Locking_thread_st
 
 /**
- * @class Backup_thread_driver
- *
- * @brief Adds variables for using a locking thread for opening tables.
- *
- * The Backup_thread_driver class extends the Backup_driver class by adding
- * a mutex and condition variable for using a thread to open and lock the 
- * tables.
- *
- * @see <backup driver> and <backup thread driver>
- */
+  @class Backup_thread_driver
+ 
+  @brief Adds variables for using a locking thread for opening tables.
+ 
+  The Backup_thread_driver class extends the Backup_driver class by adding
+  a mutex and condition variable for using a thread to open and lock the 
+  tables.
+ 
+  @see Backup_driver
+*/
 class Backup_thread_driver : public Backup_driver
 {
 public:
 
+  /// Constructor
   Backup_thread_driver(const backup::Table_list &tables)
     :Backup_driver(tables) { locking_thd = new Locking_thread_st(); }
+  /// Destructor
   ~Backup_thread_driver() { delete locking_thd; }
 
-  Locking_thread_st *locking_thd;
+  Locking_thread_st *locking_thd;  ///< Pointer to locking thread data.
 }; // Backup_thread_driver class
 
 

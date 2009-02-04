@@ -3,9 +3,7 @@
 --source include/have_debug_sync.inc
 
 # Check that BACKUP/RESTORE commands correctly report errors 
-#
-# TODO: When we know how to do that, check that the backup progress table
-# contains appropriate rows when errors have been detected.
+# and are updated in backup history and progress logs
 
 disable_query_log;
 call mtr.add_suppression("Backup:");
@@ -24,23 +22,43 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 --remove_file $MYSQLD_DATADIR/test.bak
 --enable_warnings
 
-# non-existent backup archive
+--echo # non-existent backup archive
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 29
 RESTORE FROM 'test.bak';
 
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "RESTORE FROM 'test%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
 CREATE DATABASE adb;
 CREATE DATABASE bdb;
 CREATE TABLE bdb.t1(a int) ENGINE=MEMORY;
 
-# invalid location
+--echo # invalid location
 --error ER_BAD_PATH
 BACKUP DATABASE adb TO '';
 --replace_column 2 #
 SHOW WARNINGS;
 
-# don't overwrite existing files
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE adb TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
+--echo # don't overwrite existing files
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
@@ -52,10 +70,10 @@ SHOW WARNINGS;
 
 --replace_column 1 #
 BACKUP DATABASE adb TO "test.bak";
---replace_column 2 #
+# There should be no warnings after a successful backup
 SHOW WARNINGS;
 
-# don't overwrite existing backup image
+--echo # don't overwrite existing backup image
 --replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 --error 1
@@ -65,9 +83,19 @@ BACKUP DATABASE adb TO "test.bak";
 --replace_regex /Errcode: [0-9]+/Errcode: #/
 SHOW WARNINGS;
 
---remove_file $MYSQLD_DATADIR/test.bak
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE adb TO%";
 
-# non-existent database
+--echo verify backup history and progress logs for backup_state.
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
+--remove_file $MYSQLD_DATADIR/test.bak     
+
+--echo # non-existent database
 --disable_warnings
 DROP DATABASE IF EXISTS foo;
 DROP DATABASE IF EXISTS bar;
@@ -75,15 +103,33 @@ DROP DATABASE IF EXISTS bar;
 
 -- error ER_BAD_DB_ERROR
 BACKUP DATABASE foo TO 'test.bak';
+--replace_column 2 #
 SHOW WARNINGS;
+
 -- error ER_BAD_DB_ERROR
 BACKUP DATABASE test,foo,bdb,bar TO 'test.bak';
 --replace_column 2 #
 SHOW WARNINGS;
 
-# repeated database
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE test,foo,bdb,bar TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation,backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
+#
+# Note: the following error is detected on parser level. Thus no 
+# backup_id is assigned and nothing is written to backup logs.
+#
+--echo # repeated database
 -- error ER_NONUNIQ_DB
 BACKUP DATABASE foo,test,bar,foo TO 'test.bak';
+--replace_column 2 #
+SHOW WARNINGS;
 
 # Test that BACKUP/RESTORE statements are disable inside stored routines,
 # triggers and events.
@@ -151,6 +197,16 @@ BACKUP DATABASE mysql TO 't.bak';
 --replace_column 2 #
 SHOW WARNINGS;
 
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
@@ -160,6 +216,16 @@ SHOW WARNINGS;
 BACKUP DATABASE information_schema TO 't.bak';
 --replace_column 2 #
 SHOW WARNINGS;
+
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE information_schema TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT  notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
@@ -171,6 +237,16 @@ BACKUP DATABASE mysql, information_schema TO 't.bak';
 --replace_column 2 #
 SHOW WARNINGS;
 
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql, information_schema TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
 
@@ -180,6 +256,16 @@ SHOW WARNINGS;
 BACKUP DATABASE mysql, test TO 't.bak';
 --replace_column 2 #
 SHOW WARNINGS;
+
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql, test TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
@@ -200,6 +286,16 @@ SHOW WARNINGS;
 BACKUP DATABASE mysql, information_schema, test TO 't.bak';
 --replace_column 2 #
 SHOW WARNINGS;
+
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE mysql, information_schema, test TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
 
 --error 0, 1
 --remove_file $MYSQLD_DATADIR/t.bak
@@ -247,6 +343,7 @@ DROP TABLE mysql.backup_progress;
 --echo Backup the database;
 --error ER_BACKUP_PROGRESS_TABLES
 BACKUP DATABASE test_ob_error TO 'ob_err.bak';
+
 --error 0,1
 --remove_file $MYSQLD_DATADIR/ob_err.bak
 --replace_column 2 #
@@ -258,7 +355,6 @@ CREATE TABLE mysql.backup_progress LIKE test.obp_copy;
 DROP TABLE test.obp_copy;
 
 DROP DATABASE test_ob_error;
-
 
 --echo
 --echo Bug#38624
@@ -332,6 +428,16 @@ SET SESSION DEBUG='+d,backup_fail_add_trigger';
 --error ER_BACKUP_GET_META_TRIGGER
 BACKUP DATABASE db1 TO 'bup_db1.bak';
 
+--echo Get last backup_id
+SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
+WHERE command LIKE "BACKUP DATABASE db1 TO%";
+
+--echo verify backup history and progress logs:
+SELECT backup_state,operation, backup_file FROM mysql.backup_history
+     WHERE backup_id=@bup_id;
+SELECT notes FROM mysql.backup_progress
+     WHERE backup_id=@bup_id;
+
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
 
@@ -339,8 +445,7 @@ SET SESSION DEBUG='';
 --echo
 --echo Done testing for Bug#38624
 
-
---echo 
+--echo
 --echo Testing RESTORE ... OVERWRITE functionality
 --echo See bug#34579
 --echo
@@ -353,39 +458,101 @@ USE db1;
 CREATE TABLE table1 (text VARCHAR(20));
 INSERT INTO table1 VALUES ('Inserted before');
 
---echo 
+--echo
 --echo Backup database
 --replace_column 1 #
 BACKUP DATABASE db1 TO 'overwrite.bak';
 
---echo 
+--echo
 --echo Insert more data and display
 INSERT INTO table1 VALUES ('Inserted after');
 SELECT * FROM table1;
 
---echo 
+--echo
 --echo Restore without OVERWRITE flag; will fail
 --error ER_RESTORE_DB_EXISTS
 RESTORE FROM 'overwrite.bak';
 
---echo 
+--echo
 --echo Restore with OVERWRITE flag; will succeed
 --replace_column 1 #
 RESTORE FROM 'overwrite.bak' OVERWRITE;
 
---echo 
+--echo
 --echo Show that inserted value 2 is not there
 SELECT * FROM table1;
 
 DROP DATABASE db1;
 
---echo 
+--echo
 --echo Restore after deleting db; will succeed
 --replace_column 1 #
 RESTORE FROM 'overwrite.bak';
-
---echo 
+--echo
 --echo Show that inserted value 2 is not there
 SELECT * FROM table1;
 
+--echo #
+--echo # Test error handling by backup code when injecting commit blocker error.
+--echo #
+
+SET SESSION DEBUG='+d,backup_grl_fail';
+--error ER_BACKUP_SYNCHRONIZE
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+SET SESSION DEBUG='-d';
+
+--echo
+
+SET SESSION DEBUG='+d,backup_grl_block_commit_fail';
+--error ER_BACKUP_SYNCHRONIZE
+BACKUP DATABASE db1 TO 'overwrite1.bak';
+SET SESSION DEBUG='-d';
+
+--echo #
+--echo # Test that BACKUP and RESTORE clears warning stack
+--echo #
+
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'test.bak';
+
+--echo # Generate warning - test.bak cannot be overwritten
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
+BACKUP DATABASE db1 TO 'test.bak';
+--replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+SHOW WARNINGS;
+--echo
+
+--echo # Test that there are no warnings after successful BACKUP
+--replace_column 1 #
+BACKUP DATABASE db1 TO 'newtest.bak';
+--replace_column 2 #
+SHOW WARNINGS;
+--echo
+
+--echo # Generate warning - test.bak cannot be overwritten
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+--error 1
+BACKUP DATABASE db1 TO 'test.bak';
+--replace_column 2 #
+--replace_result $MYSQLTEST_VARDIR MYSQLTEST_VARDIR
+--replace_regex /Errcode: [0-9]+/Errcode: #/
+SHOW WARNINGS;
+--echo
+
+--echo # Test that there are no warnings after successful RESTORE
+--replace_column 1 #
+RESTORE FROM 'newtest.bak' OVERWRITE;
+--replace_column 2 #
+SHOW WARNINGS;
+
+--remove_file $MYSQLD_DATADIR/test.bak
+--remove_file $MYSQLD_DATADIR/newtest.bak
+
+--echo
 DROP DATABASE db1;
+

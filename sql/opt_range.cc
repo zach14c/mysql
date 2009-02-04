@@ -1159,7 +1159,6 @@ QUICK_RANGE_SELECT::QUICK_RANGE_SELECT(THD *thd, TABLE *table, uint key_nr,
   DBUG_ENTER("QUICK_RANGE_SELECT::QUICK_RANGE_SELECT");
 
   in_ror_merged_scan= 0;
-  sorted= 0;
   index= key_nr;
   head=  table;
   key_part_info= head->key_info[index].key_part;
@@ -1192,6 +1191,20 @@ QUICK_RANGE_SELECT::QUICK_RANGE_SELECT(THD *thd, TABLE *table, uint key_nr,
   else
     bitmap_init(&column_bitmap, bitmap, head->s->fields, FALSE);
   DBUG_VOID_RETURN;
+}
+
+
+void QUICK_RANGE_SELECT::need_sorted_output()
+{
+  if (!(mrr_flags & HA_MRR_SORTED))
+  {
+    /*
+      Native implementation can't produce sorted output. We'll have to
+      switch to default
+    */
+    mrr_flags |= HA_MRR_USE_DEFAULT_IMPL; 
+  }
+  mrr_flags |= HA_MRR_SORTED;
 }
 
 
@@ -7518,7 +7531,7 @@ ha_rows check_quick_select(PARAM *param, uint idx, bool index_only,
                            uint *mrr_flags, uint *bufsize, COST_VECT *cost)
 {
   SEL_ARG_RANGE_SEQ seq;
-  RANGE_SEQ_IF seq_if = {sel_arg_range_seq_init, sel_arg_range_seq_next, 0};
+  RANGE_SEQ_IF seq_if = {sel_arg_range_seq_init, sel_arg_range_seq_next, 0, 0};
   handler *file= param->table->file;
   ha_rows rows;
   uint keynr= param->real_keynr[idx];
@@ -7545,7 +7558,10 @@ ha_rows check_quick_select(PARAM *param, uint idx, bool index_only,
     param->is_ror_scan= FALSE;
   
   *mrr_flags= param->force_default_mrr? HA_MRR_USE_DEFAULT_IMPL: 0;
-  *mrr_flags|= HA_MRR_NO_ASSOCIATION;
+  /*
+    Pass HA_MRR_SORTED to see if MRR implementation can handle sorting.
+  */
+  *mrr_flags|= HA_MRR_NO_ASSOCIATION | HA_MRR_SORTED;
 
   bool pk_is_clustered= file->primary_key_is_clustered();
   if (index_only && 
@@ -8434,9 +8450,7 @@ int QUICK_RANGE_SELECT::reset()
   if (!mrr_buf_desc)
     empty_buf.buffer= empty_buf.buffer_end= empty_buf.end_of_used_area= NULL;
  
-  if (sorted)
-     mrr_flags |= HA_MRR_SORTED;
-  RANGE_SEQ_IF seq_funcs= {quick_range_seq_init, quick_range_seq_next, 0};
+  RANGE_SEQ_IF seq_funcs= {quick_range_seq_init, quick_range_seq_next, 0, 0};
   error= file->multi_range_read_init(&seq_funcs, (void*)this, ranges.elements,
                                      mrr_flags, mrr_buf_desc? mrr_buf_desc: 
                                                               &empty_buf);
@@ -8628,7 +8642,7 @@ int QUICK_RANGE_SELECT::get_next_prefix(uint prefix_length,
     result= file->read_range_first(last_range->min_keypart_map ? &start_key : 0,
 				   last_range->max_keypart_map ? &end_key : 0,
                                    test(last_range->flag & EQ_RANGE),
-				   sorted);
+				   TRUE);
     if (last_range->flag == (UNIQUE_RANGE | EQ_RANGE))
       last_range= 0;			// Stop searching
 
