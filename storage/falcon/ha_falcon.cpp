@@ -179,6 +179,18 @@ bool checkExceptionSupport()
 	return false;
 }
 
+// Init/term routines for THR_LOCK, used within StorageTableShare.
+void falcon_lock_init(void *lock)
+{
+	thr_lock_init((THR_LOCK *)lock);
+}
+
+
+void falcon_lock_deinit(void *lock)
+{
+	thr_lock_delete((THR_LOCK *)lock);
+}
+
 int StorageInterface::falcon_init(void *p)
 {
 	DBUG_ENTER("falcon_init");
@@ -520,7 +532,6 @@ int StorageInterface::open(const char *name, int mode, uint test_if_locked)
 
 			if (!storageShare->initialized)
 				{
-				thr_lock_init((THR_LOCK *)storageShare->impure);
 				storageShare->setTablePath(name, tempTable);
 				storageShare->initialized = true;
 				}
@@ -1049,12 +1060,7 @@ int StorageInterface::delete_table(const char *tableName)
 		storageShare->lockIndexes(true);
 		storageShare->lock(true);
 
-		if (storageShare->initialized)
-			{
-			thr_lock_delete((THR_LOCK*) storageShare->impure);
-			storageShare->initialized = false;
-			//DBUG_ASSERT(false);
-			}
+		storageShare->initialized = false;
 
 		storageShare->unlock();
 		storageShare->unlockIndexes();
