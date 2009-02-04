@@ -24,6 +24,7 @@
 #include "sql_select.h"
 #include "sp_head.h"
 #include "sql_trigger.h"
+#include "transaction.h"
 
 /**
   Implement DELETE SQL word.
@@ -968,6 +969,35 @@ bool multi_delete::send_eof()
 ****************************************************************************/
 
 /*
+  Row-by-row truncation if the engine does not support table recreation.
+  Probably a InnoDB table.
+*/
+
+static bool mysql_truncate_by_delete(THD *thd, TABLE_LIST *table_list)
+{
+  bool error, save_binlog_row_based= thd->current_stmt_binlog_row_based;
+  DBUG_ENTER("mysql_truncate_by_delete");
+  table_list->lock_type= TL_WRITE;
+  mysql_init_select(thd->lex);
+  thd->clear_current_stmt_binlog_row_based();
+  /* Delete all rows from table */
+  error= mysql_delete(thd, table_list, NULL, NULL, HA_POS_ERROR, LL(0), TRUE);
+  /*
+    All effects of a TRUNCATE TABLE operation are rolled back if a row by row
+    deletion fails. Otherwise, operation is automatically committed at the end.
+  */
+  if (error)
+  {
+    DBUG_ASSERT(thd->stmt_da->is_error());
+    trans_rollback_stmt(thd);
+    trans_rollback(thd);
+  }
+  thd->current_stmt_binlog_row_based= save_binlog_row_based;
+  DBUG_RETURN(error);
+}
+
+
+/*
   Optimize delete of all rows by doing a full generate of the table
   This will work even if the .ISM and .ISD tables are destroyed
 
@@ -1015,6 +1045,9 @@ bool mysql_truncate(THD *thd, TABLE_LIST *table_list, bool dont_send_ok)
 					     share->table_name.str, 1,
                                              OTM_OPEN))))
       (void) rm_temporary_table(table_type, path, frm_only);
+    else
+      thd->thread_specific_used= TRUE;
+    
     free_table_share(share);
     my_free((char*) table,MYF(0));
     /*
@@ -1105,21 +1138,6 @@ end:
   DBUG_RETURN(error);
 
 trunc_by_del:
-  /* Probably InnoDB table */
-  ulonglong save_options= thd->options;
-  bool save_binlog_row_based= thd->current_stmt_binlog_row_based;
-
-  table_list->lock_type= TL_WRITE;
-  thd->options&= ~(OPTION_BEGIN | OPTION_NOT_AUTOCOMMIT);
-  ha_enable_transaction(thd, FALSE);
-  mysql_init_select(thd->lex);
-  thd->clear_current_stmt_binlog_row_based();
-
-  /* Delete all rows from table */
-  error= mysql_delete(thd, table_list, (COND*) 0, (SQL_LIST*) 0,
-                      HA_POS_ERROR, LL(0), TRUE);
-  ha_enable_transaction(thd, TRUE);
-  thd->options= save_options;
-  thd->current_stmt_binlog_row_based= save_binlog_row_based;
+  error= mysql_truncate_by_delete(thd, table_list);
   DBUG_RETURN(error);
 }

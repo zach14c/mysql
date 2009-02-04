@@ -835,6 +835,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  IDENT_QUOTED
 %token  IF
 %token  IGNORE_SYM
+%token  IGNORE_SERVER_IDS_SYM
 %token  IMPORT
 %token  INDEXES
 %token  INDEX_SYM
@@ -1701,6 +1702,13 @@ change:
             LEX *lex = Lex;
             lex->sql_command = SQLCOM_CHANGE_MASTER;
             bzero((char*) &lex->mi, sizeof(lex->mi));
+            /*
+              resetting flags that can left from the previous CHANGE MASTER
+            */
+            lex->mi.heartbeat_opt= LEX_MASTER_INFO::LEX_MI_UNCHANGED;
+            lex->mi.repl_ignore_server_ids_opt= LEX_MASTER_INFO::LEX_MI_UNCHANGED;
+            my_init_dynamic_array(&Lex->mi.repl_ignore_server_ids,
+                                  sizeof(::server_id), 16, 16);
           }
           master_defs
           {}
@@ -1765,14 +1773,15 @@ master_def:
         | MASTER_HEARTBEAT_PERIOD_SYM EQ NUM_literal
           {
             Lex->mi.heartbeat_period= (float) $3->val_real();
-            if (Lex->mi.heartbeat_period > SLAVE_MAX_HEARTBEAT_PERIOD ||
-                Lex->mi.heartbeat_period < 0.0)
-            {
-              char buf[sizeof(SLAVE_MAX_HEARTBEAT_PERIOD*4)];
-              my_sprintf(buf, (buf, "%d seconds", SLAVE_MAX_HEARTBEAT_PERIOD));
-              my_error(ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE,
-                       MYF(0),
-                       " is negative or exceeds the maximum ",
+           if (Lex->mi.heartbeat_period > SLAVE_MAX_HEARTBEAT_PERIOD ||
+               Lex->mi.heartbeat_period < 0.0)
+           {
+             const char format[]= "%d seconds";
+             char buf[4*sizeof(SLAVE_MAX_HEARTBEAT_PERIOD) + sizeof(format)];
+             my_sprintf(buf, (buf, format, SLAVE_MAX_HEARTBEAT_PERIOD));
+             my_error(ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE,
+                      MYF(0),
+                      " is negative or exceeds the maximum ",
                        buf); 
               MYSQL_YYABORT;
             }
@@ -1801,8 +1810,25 @@ master_def:
             }
             Lex->mi.heartbeat_opt=  LEX_MASTER_INFO::LEX_MI_ENABLE;
           }
+        | IGNORE_SERVER_IDS_SYM EQ '(' ignore_server_id_list ')'
+          {
+            Lex->mi.repl_ignore_server_ids_opt= LEX_MASTER_INFO::LEX_MI_ENABLE;
+          }
         |
         master_file_def
+        ;
+
+ignore_server_id_list:
+          /* Empty */
+          | ignore_server_id
+          | ignore_server_id_list ',' ignore_server_id
+        ;
+
+ignore_server_id:
+          ulong_num
+          {
+            insert_dynamic(&Lex->mi.repl_ignore_server_ids, (uchar*) &($1));
+          }
         ;
 
 master_file_def:

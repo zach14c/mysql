@@ -658,8 +658,6 @@ int ha_myisam::open(const char *name, int mode, uint test_if_locked)
       int_table_flags|= HA_HAS_OLD_CHECKSUM;
   }
   
-  keys_with_parts.clear_all();
-
   for (i= 0; i < table->s->keys; i++)
   {
     plugin_ref parser= table->key_info[i].parser;
@@ -667,17 +665,6 @@ int ha_myisam::open(const char *name, int mode, uint test_if_locked)
       file->s->keyinfo[i].parser=
         (struct st_mysql_ftparser *)plugin_decl(parser)->info;
     table->key_info[i].block_size= file->s->keyinfo[i].block_length;
-
-    KEY_PART_INFO *kp= table->key_info[i].key_part;
-    KEY_PART_INFO *kp_end= kp + table->key_info[i].key_parts;
-    for (; kp != kp_end; kp++)
-    {
-      if (!kp->field->part_of_key.is_set(i))
-      {
-        keys_with_parts.set_bit(i);
-        break;
-      }
-    }
   }
   my_errno= 0;
   goto end;
@@ -1656,7 +1643,7 @@ int ha_myisam::info(uint flag)
     stats.data_file_length=  misam_info.data_file_length;
     stats.index_file_length= misam_info.index_file_length;
     stats.delete_length=     misam_info.delete_length;
-    stats.check_time=        misam_info.check_time;
+    stats.check_time=        (ulong) misam_info.check_time;
     stats.mean_rec_length=   misam_info.mean_reclength;
   }
   if (flag & HA_STATUS_CONST)
@@ -1664,7 +1651,7 @@ int ha_myisam::info(uint flag)
     TABLE_SHARE *share= table->s;
     stats.max_data_file_length=  misam_info.max_data_file_length;
     stats.max_index_file_length= misam_info.max_index_file_length;
-    stats.create_time= misam_info.create_time;
+    stats.create_time= (ulong) misam_info.create_time;
     /* 
       We want the value of stats.mrr_length_per_rec to be platform independent.
       The size of the chunk at the end of the join buffer used for MRR needs
@@ -1713,7 +1700,7 @@ int ha_myisam::info(uint flag)
     my_store_ptr(dup_ref, ref_length, misam_info.dupp_key_pos);
   }
   if (flag & HA_STATUS_TIME)
-    stats.update_time = misam_info.update_time;
+    stats.update_time = (ulong) misam_info.update_time;
   if (flag & HA_STATUS_AUTO)
     stats.auto_increment_value= misam_info.auto_increment;
 

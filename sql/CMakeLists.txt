@@ -20,6 +20,7 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/regex 
                     ${CMAKE_SOURCE_DIR}/zlib
                     ${CMAKE_SOURCE_DIR}/sql/backup
+                    ${CMAKE_SOURCE_DIR}/extra/libevent
 )
 
 SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/sql/sql_yacc.h 
@@ -70,9 +71,8 @@ ADD_EXECUTABLE(mysqld
                rpl_rli.cc rpl_mi.cc sql_servers.cc sql_audit.cc
                sql_connect.cc scheduler.cc transaction.cc
                ddl_blocker.cc si_objects.cc si_logs.cc
-               sql_profile.cc event_parse_data.cc mdl.cc
+               sql_profile.cc event_parse_data.cc mdl.cc rpl_handler.cc
                sql_signal.cc
-               rpl_handler.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.cc
                ${PROJECT_SOURCE_DIR}/sql/sql_yacc.h
                ${PROJECT_SOURCE_DIR}/include/mysqld_error.h
@@ -83,8 +83,9 @@ ADD_EXECUTABLE(mysqld
                ${PROJECT_SOURCE_DIR}/sql/lex_hash.h)
 
 TARGET_LINK_LIBRARIES(mysqld
-                      heap myisam myisammrg mysys yassl zlib dbug yassl 
+                      heap myisam myisammrg mysys yassl zlib dbug yassl libevent
                       taocrypt strings vio regex)
+
 
 TARGET_LINK_LIBRARIES(mysqld backup)
 

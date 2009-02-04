@@ -1,0 +1,317 @@
+###########################################################################
+# Author: Hema
+# Date: 2008-06-28
+# Purpose: To test the backup and Restore of different partitions using
+# accented letters. We will ensure that backup stores identifiers properly in
+# utf8 format and is retreived during restore without changing the client 
+# character set.
+###############################################################################
+--source include/not_embedded.inc
+--source include/have_debug.inc
+--source suite/backup_engines/include/backup_engine.inc
+
+connect (backup,localhost,root,,);
+connect (breakpoints,localhost,root,,);
+
+##############################################################
+--echo
+--echo starting the test for backup
+--echo
+##############################################################
+
+--error 0,1
+--remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+
+#Create Database and and tables with different types of partitions.
+
+--disable_warnings
+DROP DATABASE IF EXISTS `¥`;
+--enable_warnings
+
+--echo *** The following defects were reported while executing WL#4227 ***
+
+--echo Bug #34391 Character sets: crash if char(), utf32, innodb
+--echo Bug #33566 Backup: crash with partitions and Falcon
+--echo Bug #37551 Junk detected in data contents sometimes when utf8mb3
+--echo character set is used.
+--echo Bug #37554 Use of character set and collate as 'filename' shows
+--echo unusual behaviour.
+--echo Bug #35499 View when created with swe7 character set fails.
+--echo Bug #38784 Mysql server crash if table is altered by partition changes.
+
+#SET NAMES latin5;
+SET NAMES utf8;
+
+CREATE DATABASE `¥`;
+USE `¥`;
+
+#Create table and load with data.
+
+--echo *****Creating table with range partition*********
+
+CREATE TABLE `ê`(
+ ID INT NOT NULL,
+NAME CHAR(20),
+AGE TINYINT,
+DOB DATE,
+SAL FLOAT,
+PRIMARY KEY(DOB)) PARTITION BY RANGE(Year(DOB))(
+        PARTITION P0 values less than (1970),
+        PARTITION P1 values less than (1980),
+        PARTITION P2 values less than (1990),
+        PARTITION P3 values less than (2000),
+        PARTITION P4 values less than maxvalue);
+
+--echo loading data
+
+INSERT INTO `ê` VALUES
+(10,'aa','20','1988-12-19',2345.89),(11,'bb',31,'1977-10-19',6009.89),
+(12,'cc',78,'1945-09-12',3897),(13,'dd',12,'1994-09-18',7892.78),
+(14,'ee',45,'1960-12-23',7845.90),(15,'ff',25,'1984-02-07',3500.89);
+
+--echo select data
+
+SELECT * FROM `ê` ORDER BY DOB;
+SELECT COUNT(*) FROM `ê`;
+
+--echo
+--echo ******Creating table partition with List**************
+
+CREATE TABLE `cÿd`(`numeric` INT, `char` CHAR(20))
+PARTITION BY LIST (`numeric`)
+(
+   PARTITION p0 VALUES IN (1,3,5),
+   PARTITION p1 VALUES IN (2,4,6)
+);
+--echo insert data
+
+INSERT INTO `cÿd` VALUES(1,'a'),(6,'c'),(5,'j'),(2,'l');
+
+--echo selecting data
+
+SELECT * FROM `cÿd` ORDER BY `numeric`;
+SELECT COUNT(*) FROM `cÿd`;
+
+--echo
+--echo *******Creating table partition with Hash***********
+
+CREATE TABLE `µ`(
+col1 INT,
+col2 CHAR(20),
+col3 DATE)
+PARTITION BY HASH (YEAR(col3))
+PARTITIONS 4;
+
+--echo Insert data
+
+INSERT INTO `µ` VALUES
+(1,'a','1942-10-09'),(2,'b','1950-08-07'),
+(3,'c','1952-10-10'),(4,'d','1954-10-04');
+
+--echo selecting data
+
+SELECT * FROM `µ` ORDER BY col3;
+SELECT COUNT(*) FROM `µ`;
+
+--echo ********Creating table partition with keys*******
+
+CREATE TABLE `вап` (id INT)
+PARTITION BY KEY(id)
+PARTITIONS 2;
+
+--echo insert data
+
+INSERT INTO `вап` VALUES(1),(2),(3),(4);
+
+--echo selecting the data
+
+SELECT * FROM `вап`;
+SELECT COUNT(*) FROM `вап`;
+
+--echo ***Creating views from partitoned Tables****
+
+CREATE VIEW `ïö` AS SELECT * FROM `ê`;
+
+# We mask some of the columns in Explain Partitions command because of
+# Bug #37532 Explain command shows incorrect rows,
+# when table is partitioned and innodb.
+
+--echo Obtaining information about Partitions
+SHOW FULL TABLES;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `ê`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `cÿd`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `µ`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `вап`;
+
+--echo backup data
+--replace_column 1 #
+BACKUP DATABASE `¥` TO 'partitions.bak';
+
+--echo dropping  database.
+
+DROP DATABASE `¥`;
+
+--echo Restore
+--replace_column 1 #
+RESTORE FROM 'partitions.bak';
+--remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+
+--echo
+--echo ** RESULTS AFTER RESTORE **
+--echo
+
+#show data and create statements
+--echo Obtaining Information about Partitions
+--query_vertical SHOW FULL TABLES;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `ê`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `cÿd`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `µ`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `вап`;
+
+# Make some changes to existing partitions, take backup and then perform
+# Restore
+
+ALTER TABLE `ê` PARTITION BY KEY(DOB) PARTITIONS 2;
+
+#All the maintenence operations of partitions like ANALYZE, OPTIMIZE
+#REPAIR are currently disabled in 6.0 and 5.0.
+#Bug#20129
+#We can include these operations in the test case once this bug is fixed.
+
+#Bug#38784 Mysql server crash if table is altered with partition changes.
+#This happens only in Windows OS. The # can be removed once the bug#38784
+#is fixed.
+
+#ALTER TABLE `cÿd` ADD PARTITION (PARTITION p2 VALUES IN (10,20,30));
+#INSERT INTO `cÿd` VALUES(10,'h'),(3,'b'),(10,'s'),(5,'l');
+#SELECT * FROM `cÿd`;
+#SELECT COUNT(*) FROM `cÿd`;
+
+INSERT INTO `ïö` VALUES(17,'kk','90','2020-12-19',2000);
+SELECT COUNT(*) FROM `ïö`;
+SELECT COUNT(*) FROM `ê`;
+--echo
+--echo **Creating table with subpartitions**
+
+CREATE TABLE `фы` (`int` INT)
+PARTITION BY range (`int`)
+SUBPARTITION BY key (`int`)
+(PARTITION p0 VALUES LESS THAN (2));
+
+INSERT INTO `фы` VALUES(0),(1);
+
+#show data and create statements
+SHOW FULL TABLES;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `ê`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `cÿd`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `µ`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `вап`;
+
+--replace_column 1 #
+BACKUP DATABASE `¥` TO 'partitions.bak';
+DROP DATABASE `¥`;
+--replace_column 1 #
+RESTORE FROM 'partitions.bak';
+--remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+
+#show data and create statements
+--echo showing objects and create statements
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `ê`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `cÿd`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `µ`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `вап`;
+
+SELECT * FROM `cÿd` ORDER BY `numeric`;
+SELECT * FROM `вап`;
+SELECT * FROM `µ` ORDER BY col3;
+SELECT * FROM `ê` ORDER BY DOB;
+SELECT * FROM `фы`;
+
+--echo **creating view from view***
+CREATE VIEW v2 AS SELECT * FROM `ïö`;
+INSERT INTO v2 VALUES(18,'pp',51,'1990-10-19',6009.89);
+
+SELECT COUNT(*) FROM `ïö`;
+SELECT COUNT(*) FROM `ê`;
+
+--echo Make some changes and then perform Restore.
+
+#Bug#38784 Mysql server crash if table is altered with partition changes.
+#This happens only in Windows OS. The # can be removed once the bug#38784
+#is fixed.
+
+#ALTER TABLE `фы` ADD PARTITION (PARTITION p1 VALUES LESS THAN (4));
+#INSERT INTO `фы` VALUES(2),(3),(1);
+
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `фы`;
+SHOW FULL TABLES;
+ALTER TABLE `фы` REMOVE PARTITIONING;
+
+--replace_column 1 #
+BACKUP DATABASE `¥` to 'partitions.bak';
+
+DROP DATABASE `¥`;
+--replace_column 1 #
+RESTORE FROM 'partitions.bak';
+
+SHOW FULL TABLES;
+SELECT * FROM `фы`;
+--replace_column 1 # 10 #
+--query_vertical EXPLAIN PARTITIONS SELECT * FROM `фы`;
+SELECT * FROM `ïö` ORDER BY DOB;
+SELECT COUNT(*) FROM `ê`;
+
+--echo Perform restore again by changing the character set
+
+SET NAMES latin7;
+
+--echo **Restore**
+--replace_column 1 #
+RESTORE FROM 'partitions.bak' OVERWRITE;
+
+#show data and table columns
+
+SHOW DATABASES;
+SHOW FULL TABLES;
+
+--echo ** checking client character set **
+#check if restore does not change the character set.
+SELECT @@character_set_client;
+SELECT @@character_set_results;
+SELECT @@character_set_connection;
+
+#Change the character set and restore again 
+SET NAMES latin5;
+
+--replace_column 1 #
+RESTORE FROM 'partitions.bak' OVERWRITE;
+SHOW DATABASES;
+
+SET NAMES utf8;
+
+# Test cleanup section
+
+--echo
+--echo ***  DROP `¥` DATABASE ****
+--echo
+DROP DATABASE `¥`;
+
+--remove_file $MYSQLTEST_VARDIR/master-data/partitions.bak
+

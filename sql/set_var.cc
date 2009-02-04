@@ -1514,6 +1514,22 @@ static bool get_unsigned(THD *thd, set_var *var)
 }
 
 
+bool sys_var_int_ptr::check(THD *thd, set_var *var)
+{
+  return get_unsigned(thd, var);
+}
+
+bool sys_var_int_ptr::update(THD *thd, set_var *var)
+{
+  *value= (uint) var->save_result.ulonglong_value;
+  return 0;
+}
+
+void sys_var_int_ptr::set_default(THD *thd, enum_var_type type)
+{
+  *value= (uint) option_limits->def_value;
+}
+
 sys_var_long_ptr::
 sys_var_long_ptr(sys_var_chain *chain, const char *name_arg, ulong *value_ptr_arg,
                  sys_after_update_func after_update_arg)
@@ -1627,14 +1643,14 @@ bool sys_var_thd_ulong::update(THD *thd, set_var *var)
   ulonglong tmp= var->save_result.ulonglong_value;
 
   /* Don't use bigger value than given with --maximum-variable-name=.. */
-  if ((ulong) tmp > max_system_variables.*offset)
+  if (tmp > max_system_variables.*offset)
   {
     throw_bounds_warning(thd, TRUE, TRUE, name, (longlong) tmp);
     tmp= max_system_variables.*offset;
   }
 
   if (option_limits)
-    tmp= (ulong) fix_unsigned(thd, tmp, option_limits);
+    tmp= fix_unsigned(thd, tmp, option_limits);
 #if SIZEOF_LONG < SIZEOF_LONG_LONG
   else if (tmp > ULONG_MAX)
   {
@@ -1643,6 +1659,7 @@ bool sys_var_thd_ulong::update(THD *thd, set_var *var)
   }
 #endif
 
+  DBUG_ASSERT(tmp <= ULONG_MAX);
   if (var->type == OPT_GLOBAL)
     global_system_variables.*offset= (ulong) tmp;
   else
@@ -3098,40 +3115,60 @@ bool sys_var_insert_id::update(THD *thd, set_var *var)
 
 
 /**
-  Get value.
+  Get value of backup_wait_timeout.
 
   Returns the value for the backup_wait_timeout session variable.
 
-  @param[IN] thd    Thread object
-  @param[IN] type   Type of variable
-  @param[IN] base   Not used 
+  The variable is of type SHOW_LONG.
 
-  @returns value of variable
+  @param[IN] thd    Thread object
+  @param[IN] type   Type of variable (unused)
+  @param[IN] base   base name (unused)
+
+  @returns value of variable as address to ulong
 */
-uchar *sys_var_backup_wait_timeout::value_ptr(THD *thd, enum_var_type type,
-				   LEX_STRING *base)
+
+uchar *sys_var_backup_wait_timeout::value_ptr(THD *thd, enum_var_type type
+                                              __attribute__((unused)),
+                                              LEX_STRING *base
+                                              __attribute__((unused)))
 {
-  thd->sys_var_tmp.ulong_value= thd->backup_wait_timeout;
-  return (uchar*) &thd->sys_var_tmp.ulonglong_value;
+  return (uchar*) &thd->backup_wait_timeout;
 }
 
 
 /**
-  Update value.
+  Update value of backup_wait_timeout.
 
   Set the backup_wait_timeout variable.
+
+  The variable is of type SHOW_LONG.
 
   @param[IN] thd    Thread object
   @param[IN] var    Pointer to value from command.
 
   @returns 0
 */
+
 bool sys_var_backup_wait_timeout::update(THD *thd, set_var *var)
 {
-  if (var->save_result.ulong_value > (LONG_MAX/1000))
-    thd->backup_wait_timeout= LONG_MAX/1000;
+  /*
+    The default sys_var::check() method sets ulonglong_value.
+    This can corrupt other values on some platforms.
+    Since we don't redefine check() for backup_wait_timeout,
+    we need to use ulonglong_value. Since we assign to an ulong
+    variable, we better check the value and limit it.
+  */
+  if (var->save_result.ulonglong_value > ULONG_MAX)
+    thd->backup_wait_timeout= ULONG_MAX;
   else
-    thd->backup_wait_timeout= var->save_result.ulong_value;
+  {
+    /*
+      This cast is required for the Windows compiler. The assignment is
+      safe because we checked the range of the value above.
+    */
+    thd->backup_wait_timeout= (ulong) var->save_result.ulonglong_value;
+  }
   return 0;
 }
 
@@ -3139,16 +3176,16 @@ bool sys_var_backup_wait_timeout::update(THD *thd, set_var *var)
 /**
   Set default value.
 
-  Set the backup_wait_timeout variable to the default value.
+  Set the backup_wait_timeout variable to their default value.
 
   @param[IN] thd    Thread object
-  @param[IN] type   Type of variable
-
-  @returns 0
+  @param[IN] type   Type of variable (unused)
 */
-void sys_var_backup_wait_timeout::set_default(THD *thd, enum_var_type type)
-{ 
-  thd->backup_wait_timeout= BACKUP_WAIT_TIMEOUT_DEFAULT; 
+
+void sys_var_backup_wait_timeout::set_default(THD *thd, enum_var_type type
+                                              __attribute__((unused)))
+{
+  thd->backup_wait_timeout= BACKUP_WAIT_TIMEOUT_DEFAULT;
 }
 
 
@@ -3745,7 +3782,7 @@ int set_var_init()
   uint count= 0;
   DBUG_ENTER("set_var_init");
   
-  for (sys_var *var=vars.first; var; var= var->next, count++);
+  for (sys_var *var=vars.first; var; var= var->next, count++) {}
 
   if (hash_init(&system_variable_hash, system_charset_info, count, 0,
                 0, (hash_get_key) get_sys_var_length, 0, HASH_UNIQUE))
@@ -4045,6 +4082,7 @@ int set_var_password::check(THD *thd)
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   if (!user->host.str)
   {
+    DBUG_ASSERT(thd->security_ctx->priv_host);
     if (*thd->security_ctx->priv_host != 0)
     {
       user->host.str= (char *) thd->security_ctx->priv_host;
@@ -4055,6 +4093,12 @@ int set_var_password::check(THD *thd)
       user->host.str= (char *)"%";
       user->host.length= 1;
     }
+  }
+  if (!user->user.str)
+  {
+    DBUG_ASSERT(thd->security_ctx->priv_user);
+    user->user.str= (char *) thd->security_ctx->priv_user;
+    user->user.length= strlen(thd->security_ctx->priv_user);
   }
   /* Returns 1 as the function sends error to client */
   return check_change_password(thd, user->host.str, user->user.str,
@@ -4506,10 +4550,10 @@ bool sys_var_opt_readonly::update(THD *thd, set_var *var)
     can cause to wait on a read lock, it's required for the client application
     to unlock everything, and acceptable for the server to wait on all locks.
   */
-  if (result= close_cached_tables(thd, NULL, FALSE, TRUE))
+  if ((result= close_cached_tables(thd, NULL, FALSE, TRUE)))
     goto end_with_read_lock;
 
-  if (result= make_global_read_lock_block_commit(thd))
+  if ((result= make_global_read_lock_block_commit(thd)))
     goto end_with_read_lock;
 
   /* Change the opt_readonly system variable, safe because the lock is held */

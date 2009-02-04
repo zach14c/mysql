@@ -9,9 +9,9 @@ start slave;
 grant replication slave on *.* to rpl@127.0.0.1 identified by 'rpl';
 flush privileges;
 [on slave]
-stop slave;
+include/stop_slave.inc
 change master to master_user='rpl',master_password='rpl';
-start slave;
+include/start_slave.inc
 ==== Do replication as new user ====
 [on master]
 create table t1 (n int);
@@ -26,7 +26,7 @@ drop user rpl@127.0.0.1;
 flush privileges;
 [on slave]
 ==== Restart slave without privileges =====
-stop slave;
+include/stop_slave.inc
 start slave;
 ==== Verify that Slave_IO_Running = No ====
 Slave_IO_Running = No (should be No)

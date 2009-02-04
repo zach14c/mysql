@@ -421,7 +421,7 @@ THD::THD()
           when the DDL blocker is engaged.
   */
    DDL_exception(FALSE),
-   backup_wait_timeout(50),
+   backup_wait_timeout(BACKUP_WAIT_TIMEOUT_DEFAULT),
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
@@ -1008,6 +1008,12 @@ THD::~THD()
   DBUG_ENTER("~THD()");
   /* Ensure that no one is using THD */
   pthread_mutex_lock(&LOCK_delete);
+  /*
+    resetting mysys_var is guarded by LOCK_delete
+    the same mutex as a killer thread acquires in order to get access
+    to the victim's mysys_var
+  */
+  mysys_var= NULL;
   pthread_mutex_unlock(&LOCK_delete);
   add_to_status(&global_status_var, &status_var);
 
@@ -1209,6 +1215,7 @@ void THD::awake(THD::killed_state state_to_set)
 
 bool THD::store_globals()
 {
+  DBUG_ENTER("THD::store_globals");
   /*
     Assert that thread_stack is initialized: it's necessary to be able
     to track stack overrun.
@@ -1217,7 +1224,15 @@ bool THD::store_globals()
 
   if (my_pthread_setspecific_ptr(THR_THD,  this) ||
       my_pthread_setspecific_ptr(THR_MALLOC, &mem_root))
-    return 1;
+    DBUG_RETURN(1);
+#ifndef EMBEDDED_LIBRARY
+  /*
+    mysys_var is concurrently readable by a killer thread.
+    LOCK_delete is not needed to lock while the pointer is
+    changing from NULL not non-NULL.
+  */
+  DBUG_ASSERT(mysys_var == NULL);
+#endif
   mysys_var=my_thread_var;
   /*
     Let mysqld define the thread id (not mysys)
@@ -1240,7 +1255,7 @@ bool THD::store_globals()
   pthread_mutex_unlock(&mysys_var->mutex);
   pthread_mutex_unlock(&LOCK_delete);
 #endif
-  return 0;
+  DBUG_RETURN(0);
 }
 
 
@@ -3712,7 +3727,6 @@ show_query_type(THD::enum_binlog_query_type qtype)
   default:
     DBUG_ASSERT(0 <= qtype && qtype < THD::QUERY_TYPE_COUNT);
   }
-
   static char buf[64];
   sprintf(buf, "UNKNOWN#%d", qtype);
   return buf;
