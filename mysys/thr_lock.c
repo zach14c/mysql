@@ -1423,7 +1423,8 @@ void thr_downgrade_write_lock(THR_LOCK_DATA *in_data,
 
 /* Upgrade a WRITE_DELAY lock to a WRITE_LOCK */
 
-my_bool thr_upgrade_write_delay_lock(THR_LOCK_DATA *data)
+my_bool thr_upgrade_write_delay_lock(THR_LOCK_DATA *data,
+                                     enum thr_lock_type new_lock_type)
 {
   THR_LOCK *lock=data->lock;
   DBUG_ENTER("thr_upgrade_write_delay_lock");
@@ -1436,7 +1437,7 @@ my_bool thr_upgrade_write_delay_lock(THR_LOCK_DATA *data)
   }
   check_locks(lock,"before upgrading lock",0);
   /* TODO:  Upgrade to TL_WRITE_CONCURRENT_INSERT in some cases */
-  data->type=TL_WRITE;				/* Upgrade lock */
+  data->type= new_lock_type;                    /* Upgrade lock */
 
   /* Check if someone has given us the lock */
   if (!data->cond)
@@ -1475,6 +1476,7 @@ my_bool thr_upgrade_write_delay_lock(THR_LOCK_DATA *data)
 my_bool thr_reschedule_write_lock(THR_LOCK_DATA *data)
 {
   THR_LOCK *lock=data->lock;
+  enum thr_lock_type write_lock_type;
   DBUG_ENTER("thr_reschedule_write_lock");
 
   pthread_mutex_lock(&lock->mutex);
@@ -1484,6 +1486,7 @@ my_bool thr_reschedule_write_lock(THR_LOCK_DATA *data)
     DBUG_RETURN(0);
   }
 
+  write_lock_type= data->type;
   data->type=TL_WRITE_DELAYED;
   if (lock->update_status)
     (*lock->update_status)(data->status_param);
@@ -1502,7 +1505,7 @@ my_bool thr_reschedule_write_lock(THR_LOCK_DATA *data)
   free_all_read_locks(lock,0);
 
   pthread_mutex_unlock(&lock->mutex);
-  DBUG_RETURN(thr_upgrade_write_delay_lock(data));
+  DBUG_RETURN(thr_upgrade_write_delay_lock(data, write_lock_type));
 }
 
 
