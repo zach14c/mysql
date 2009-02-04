@@ -2407,7 +2407,7 @@ sub setup_vardir() {
       mtr_error("The destination for symlink $opt_vardir does not exist")
 	if ! -d readlink($opt_vardir);
     }
-    elsif ( $opt_mem )
+    elsif ( $opt_mem && !$glob_win32)
     {
       # Runinng with "var" as a link to some "memory" location, normally tmpfs
       mtr_verbose("Creating $opt_mem");
