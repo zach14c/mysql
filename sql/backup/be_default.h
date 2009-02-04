@@ -34,40 +34,51 @@ const byte BLOB_LAST=  (3U<<3); // Last data block in buffer for blob buffer
 
 
 /**
- * @class Backup
- *
- * @brief Contains the default backup algorithm backup functionality.
- *
- * The backup class is a row-level backup mechanism designed to perform
- * a table scan on each table reading the rows and saving the data to the
- * buffer from the backup algorithm.
- *
- * @see <backup driver> and <backup thread driver>
- */
+  @class Backup
+ 
+  @brief Contains the default backup algorithm backup functionality.
+ 
+  The backup class is a row-level backup mechanism designed to perform
+  a table scan on each table reading the rows and saving the data to the
+  buffer from the backup algorithm.
+ 
+  @see Backup_driver and Backup_thread_driver
+*/
 class Backup: public Backup_thread_driver
 {
-  public:
+public:
+    /// Enumeration values for status of data.
     enum has_data_info { YES, WAIT, EOD };
+    /// Constructor
     Backup(const Table_list &tables, THD *t_thd, thr_lock_type lock_type);
     virtual ~Backup(); 
+    /// Return current size of data
     size_t size()  { return UNKNOWN_SIZE; };
+    /// Return initial size of data
     size_t init_size() { return 0; };
+    /// Initialize backup process
     result_t  begin(const size_t) { return backup::OK; };
+    /// End backup process
     result_t end() { return backup::OK; };
     result_t get_data(Buffer &buf);
+    /// Lock signal
     result_t lock() { return backup::OK; };
+    /// Unlock signal
     result_t unlock() { return backup::OK; };
+    /// Cancel the process
     result_t cancel() 
     { 
       mode= CANCEL;
       cleanup();
       return backup::OK;
     }
+    /// Return table list containing all tables
     TABLE_LIST *get_table_list() { return all_tables; }
+    /// Free the class resources
     void free() { delete this; };
     result_t prelock(); 
 
- protected:
+protected:
     TABLE *cur_table;              ///< The table currently being read.
     my_bool init_phase_complete;   ///< Used to identify end of init phase.
     my_bool locks_acquired;        ///< Used to help kernel synchronize drivers.
@@ -75,7 +86,7 @@ class Backup: public Backup_thread_driver
     my_bool m_cleanup;             ///< Is call to cleanup() needed?
     result_t end_tbl_read(); 
 
-  private:
+private:
     /*
       We use an enum to control the flow of the algorithm. Each mode 
       invokes a different behavior through a large switch. The mode is
@@ -109,20 +120,22 @@ class Backup: public Backup_thread_driver
 };
 
 /**
- * @class Restore
- *
- * @brief Contains the default backup algorithm restore functionality.
- *
- * The restore class is a row-level backup mechanism designed to restore
- * data for each table by writing the data for the rows from the
- * buffer given by the backup algorithm.
- *
- * @see <restore driver>
- */
+  @class Restore
+ 
+  @brief Contains the default backup algorithm restore functionality.
+ 
+  The restore class is a row-level backup mechanism designed to restore
+  data for each table by writing the data for the rows from the
+  buffer given by the backup algorithm.
+ 
+  @see Restore_driver
+*/
 class Restore: public Restore_driver
 {
-  public:
+public:
+    /// Enumeration values for status of data.
     enum has_data_info { YES, WAIT, EOD };
+    /// Constructor
     Restore(const backup::Logical_snapshot &info, THD *t_thd);
     virtual ~Restore()
     { 
@@ -139,7 +152,7 @@ class Restore: public Restore_driver
     }
     void free() { delete this; };
 
- private:
+private:
      /*
       We use an enum to control the flow of the algorithm. Each mode 
       invokes a different behavior through a large switch. The mode is
@@ -190,18 +203,25 @@ namespace backup {
 
 class Logger;
 
+/**
+  Extends Logical_info to implement the default backup driver.
+*/
 class Default_snapshot: public Logical_snapshot
 {
- public:
+public:
 
+  /// Constructor
   Default_snapshot(Logger&) :Logical_snapshot(1) // current version number is 1
   {}
+  /// Constructor
   Default_snapshot(Logger&, const version_t ver) :Logical_snapshot(ver)
   {}
 
+  /// Return snapshot type.
   enum_snap_type type() const
   { return DEFAULT_SNAPSHOT; }
 
+  /// Return the name of the snapshot.
   const char* name() const
   { return "Default"; }
 

@@ -377,7 +377,6 @@ const char *command_names[]=
   "send_shutdown",
   "shutdown_server",
   "result_format",
-  "result_format",
 
   0
 };
@@ -482,6 +481,7 @@ void free_all_replace(){
   free_replace_regex();
   free_replace_column();
 }
+
 
 class LogFile {
   FILE* m_file;
@@ -1494,12 +1494,15 @@ void show_diff(DYNAMIC_STRING* ds,
   /* determine if we have diff on Windows
      needs special processing due to return values
      on that OS
+     This test is only done on Windows since it's only needed there
+     in order to correctly detect non-availibility of 'diff', and
+     the way it's implemented does not work with default 'diff' on Solaris.
   */
 #ifdef __WIN__
   have_diff = diff_check();
 #else
   have_diff = 1;
-#endif  
+#endif
 
   if (have_diff)
   {

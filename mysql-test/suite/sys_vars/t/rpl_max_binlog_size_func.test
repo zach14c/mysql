@@ -37,7 +37,6 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 SET @@global.max_binlog_size= @saved_max_binlog_size;
 
 DROP TABLE t1;
-
 ###############################################################################
 # End of functionality testing for max_binlog_size                            #
 ###############################################################################

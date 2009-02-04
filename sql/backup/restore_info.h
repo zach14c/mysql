@@ -31,20 +31,21 @@ int restore_table_data(THD*, Restore_info&,
 
 class Restore_info: public backup::Image_info
 {
- public:
+public:
 
-  backup::Logger &m_log;
+  backup::Logger &m_log;  ///< Pointer to logger class
 
   ~Restore_info();
 
-  bool is_valid() const;
+  /// Determine of information class is valid.
+  bool is_valid();
 
   Image_info::Ts* add_ts(const ::String&, uint);
   Image_info::Db* add_db(const ::String&, uint);
   Image_info::Table* add_table(Image_info::Db&, const ::String&, 
                                backup::Snapshot_info&, ulong);
 
- private:
+private:
 
   /*
     Note: constructor is private because instances of this class are supposed
@@ -57,6 +58,9 @@ class Restore_info: public backup::Image_info
   Restore_info& operator=(const Restore_info&);
 
   THD *m_thd;
+
+  /// A flag to indicate that data has been modified during restore operation.
+  bool m_data_changed;
 
   friend int backup::restore_table_data(THD*, Restore_info&, 
                                         backup::Input_stream&);
@@ -71,7 +75,7 @@ class Restore_info: public backup::Image_info
 
 inline
 Restore_info::Restore_info(backup::Logger &log, THD *thd)
-  :m_log(log), m_thd(thd)
+  :m_log(log), m_thd(thd), m_data_changed(FALSE)
 {}
 
 inline
@@ -85,7 +89,7 @@ Restore_info::~Restore_info()
 }
 
 inline
-bool Restore_info::is_valid() const
+bool Restore_info::is_valid()
 {
   return TRUE; 
 }
