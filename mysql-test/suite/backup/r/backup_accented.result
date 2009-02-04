@@ -1,0 +1,2117 @@
+
+starting the test for backup
+
+DROP DATABASE IF EXISTS acc1;
+DROP DATABASE IF EXISTS acc2;
+SET NAMES utf8;
+SET CHARACTER_SET_SERVER=utf8;
+CREATE DATABASE acc1 CHARACTER SET utf8;
+CREATE DATABASE acc2 CHARACTER SET utf8;
+USE acc1;
+
+Creating table
+CREATE TABLE `—Ñ—ã–≤–∞–ø—Ä`(`√´` char(20) CHARACTER SET utf8);
+CREATE TABLE acc2.t1(a char(20)CHARACTER SET utf8);
+INSERT INTO  `—Ñ—ã–≤–∞–ø—Ä` VALUES
+('√°'),( '√ã'),('√ñ'),('√Ñ'),('√ø√°√∫√´√™√†'),('√´'),('√Ø'),('√∂'),('√º'),('√ø'),('√É'),('√ë'),
+('√ï'),('√£'),('√±'),('√µ'),('√±'),('√Ç'),('√ä'),('√é'),('√î'),('√õ'),('√¢'),('√™'),
+('√Æ'),('√¥'),('√ª'),('√Ü'),('√¶'),('√û'),('√æ'),('√ò'),('√∏'),('‚Ç¨'),('¬•'),('¬£'),
+('¬¢'),('¬µ'),('¬±'),('¬¨'),('¬∞'),('√∑'),('≈í'),('≈ì'),('≈∏'),('¬©'),('¬Æ'),('¬ß'),
+('¬∂'),('–ü'),('–§'),('—â“ñ'),('Œ≤œã');
+**Creating Views in database acc1 **
+
+CREATE VIEW `√ø√°√∫√´√™√†` AS SELECT * FROM `—Ñ—ã–≤–∞–ø—Ä`;
+CREATE VIEW v2 AS SELECT * FROM `√ø√°√∫√´√™√†`;
+CREATE VIEW v3 AS SELECT * FROM v2;
+** Creating Views in database acc2 **
+CREATE VIEW acc2.v1 AS SELECT * FROM acc1.`√ø√°√∫√´√™√†`;
+CREATE VIEW acc2.v4 AS SELECT * FROM acc1.v2;
+CREATE TRIGGER acc2.trai AFTER INSERT ON acc2.t1 FOR EACH ROW
+BEGIN
+INSERT INTO acc1.v2 VALUES('√Ü√¶√û√æ√ò'),('√°√è√ã√ñ√Ñ'),('¬£¬¢¬µ¬±');
+END;
+||
+**Creating procedures**
+CREATE TABLE acc1.t1 (a CHAR(16) NOT NULL DEFAULT '', data INT NOT NULL)||
+CREATE PROCEDURE acc1.p1(x char(16), y int)
+BEGIN
+DECLARE z INT;
+SET @z = y, z = 666;
+INSERT INTO acc1.t1 VALUES (x, z);
+END||
+CALL acc1.p1("√¶√û√æ", 19)||
+SELECT a,data,@z FROM t1||
+a	data	@z
+√¶√û√æ	666	19
+SELECT * FROM acc1.t1||
+a	data
+√¶√û√æ	666
+**creating functions**
+CREATE FUNCTION append(s1 char(10), s2 char(10)) RETURNS CHAR(20)
+RETURN concat(s1, s2);
+SELECT append("≈ì≈∏","‚Ç¨¬•");
+append("≈ì≈∏","‚Ç¨¬•")
+≈ì≈∏‚Ç¨¬•
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+53
+INSERT INTO acc2.t1 VALUES('√∑'),('≈í'),('≈ì');
+SELECT * FROM acc2.t1;
+a
+√∑
+≈í
+≈ì
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+62
+SELECT * FROM acc1.v3;
+√´
+√°
+√ã
+√ñ
+√Ñ
+√ø√°√∫√´√™√†
+√´
+√Ø
+√∂
+√º
+√ø
+√É
+√ë
+√ï
+√£
+√±
+√µ
+√±
+√Ç
+√ä
+√é
+√î
+√õ
+√¢
+√™
+√Æ
+√¥
+√ª
+√Ü
+√¶
+√û
+√æ
+√ò
+√∏
+‚Ç¨
+¬•
+¬£
+¬¢
+¬µ
+¬±
+¬¨
+¬∞
+√∑
+≈í
+≈ì
+≈∏
+¬©
+¬Æ
+¬ß
+¬∂
+–ü
+–§
+—â“ñ
+Œ≤œã
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+SELECT COUNT(*) FROM acc2.v4;
+COUNT(*)
+62
+SELECT * FROM `—Ñ—ã–≤–∞–ø—Ä`;
+√´
+√°
+√ã
+√ñ
+√Ñ
+√ø√°√∫√´√™√†
+√´
+√Ø
+√∂
+√º
+√ø
+√É
+√ë
+√ï
+√£
+√±
+√µ
+√±
+√Ç
+√ä
+√é
+√î
+√õ
+√¢
+√™
+√Æ
+√¥
+√ª
+√Ü
+√¶
+√û
+√æ
+√ò
+√∏
+‚Ç¨
+¬•
+¬£
+¬¢
+¬µ
+¬±
+¬¨
+¬∞
+√∑
+≈í
+≈ì
+≈∏
+¬©
+¬Æ
+¬ß
+¬∂
+–ü
+–§
+—â“ñ
+Œ≤œã
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+SELECT COUNT(*) FROM  `—Ñ—ã–≤–∞–ø—Ä`;
+COUNT(*)
+62
+SELECT COUNT(*) FROM `√ø√°√∫√´√™√†`;
+COUNT(*)
+62
+SELECT COUNT(*) FROM acc2.v1;
+COUNT(*)
+62
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+√ø√°√∫√´√™√†	VIEW
+—Ñ—ã–≤–∞–ø—Ä	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+utf8
+SELECT @@character_set_results;
+@@character_set_results
+utf8
+SELECT @@character_set_connection;
+@@character_set_connection
+utf8
+BACKUP DATABASE acc1, acc2 to 'acc.bak';
+backup_id
+#
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+√ø√°√∫√´√™√†	VIEW
+—Ñ—ã–≤–∞–ø—Ä	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('√Ü√¶√û√æ√ò'),('√°√è√ã√ñ√Ñ'),('¬£¬¢¬µ¬±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬µ", 20);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+√¶√û√æ	666	20
+¬µ	666	20
+SELECT acc1.append("√´√Ø", "√∏");
+acc1.append("√´√Ø", "√∏")
+√´√Ø√∏
+SELECT * FROM acc1.t1;
+a	data
+√¶√û√æ	666
+¬µ	666
+SELECT * FROM acc1.`—Ñ—ã–≤–∞–ø—Ä`;
+√´
+√°
+√ã
+√ñ
+√Ñ
+√ø√°√∫√´√™√†
+√´
+√Ø
+√∂
+√º
+√ø
+√É
+√ë
+√ï
+√£
+√±
+√µ
+√±
+√Ç
+√ä
+√é
+√î
+√õ
+√¢
+√™
+√Æ
+√¥
+√ª
+√Ü
+√¶
+√û
+√æ
+√ò
+√∏
+‚Ç¨
+¬•
+¬£
+¬¢
+¬µ
+¬±
+¬¨
+¬∞
+√∑
+≈í
+≈ì
+≈∏
+¬©
+¬Æ
+¬ß
+¬∂
+–ü
+–§
+—â“ñ
+Œ≤œã
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+SELECT COUNT(*) FROM acc2.v1;
+COUNT(*)
+62
+SELECT COUNT(*) FROM acc1.`—Ñ—ã–≤–∞–ø—Ä`;
+COUNT(*)
+62
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+62
+INSERT INTO acc2.t1 VALUES('Œè'),('Œ≤'),('Œ≤–ä');
+SELECT * FROM acc2.t1;
+a
+√∑
+≈í
+≈ì
+Œè
+Œ≤
+Œ≤–ä
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+71
+SELECT * FROM acc1.v3;
+√´
+√°
+√ã
+√ñ
+√Ñ
+√ø√°√∫√´√™√†
+√´
+√Ø
+√∂
+√º
+√ø
+√É
+√ë
+√ï
+√£
+√±
+√µ
+√±
+√Ç
+√ä
+√é
+√î
+√õ
+√¢
+√™
+√Æ
+√¥
+√ª
+√Ü
+√¶
+√û
+√æ
+√ò
+√∏
+‚Ç¨
+¬•
+¬£
+¬¢
+¬µ
+¬±
+¬¨
+¬∞
+√∑
+≈í
+≈ì
+≈∏
+¬©
+¬Æ
+¬ß
+¬∂
+–ü
+–§
+—â“ñ
+Œ≤œã
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+√Ü√¶√û√æ√ò
+√°√è√ã√ñ√Ñ
+¬£¬¢¬µ¬±
+SELECT COUNT(*) FROM acc2.v4;
+COUNT(*)
+71
+**change character set and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES latin5;
+SET CHARACTER_SET_SERVER=latin5;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+ˇ·˙ÎÍ‡	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+latin5
+SELECT @@character_set_results;
+@@character_set_results
+latin5
+SELECT @@character_set_connection;
+@@character_set_connection
+latin5
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('∆Ê??ÿ'),('·œÀ÷ƒ'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 10);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+Ê??	666	10
+¬ß¬∂	666	10
+SELECT acc1.append("Testing≈∏¬Æ", "Activity≈í≈ì");
+acc1.append("Testing≈∏¬Æ", "Activity≈í≈ì")
+Testing≈∏¬Activity≈í
+SELECT * FROM acc1.t1;
+a	data
+Ê??	666
+¬ß¬∂	666
+SELECT count(*) FROM acc2.v1;
+count(*)
+62
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+62
+INSERT INTO acc2.t1 VALUES('p');
+SELECT * FROM acc2.t1;
+a
+˜
+?
+?
+p
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+65
+SELECT * FROM acc1.v3;
+Î
+·
+À
+÷
+ƒ
+ˇ·˙ÎÍ‡
+Î
+Ô
+ˆ
+¸
+ˇ
+√
+—
+’
+„
+Ò
+ı
+Ò
+¬
+ 
+Œ
+‘
+€
+‚
+Í
+Ó
+Ù
+˚
+∆
+Ê
+?
+?
+ÿ
+¯
+?
+•
+£
+¢
+µ
+±
+¨
+∞
+˜
+?
+?
+?
+©
+Æ
+ß
+∂
+?
+?
+??
+??
+∆Ê??ÿ
+·œÀ÷ƒ
+£¢µ±
+∆Ê??ÿ
+·œÀ÷ƒ
+£¢µ±
+∆Ê??ÿ
+·œÀ÷ƒ
+£¢µ±
+∆Ê??ÿ
+·œÀ÷ƒ
+£¢µ±
+SELECT COUNT(*) FROM acc2.v4;
+COUNT(*)
+65
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES latin7;
+SET CHARACTER_SET_SERVER=latin7;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+latin7
+SELECT @@character_set_results;
+@@character_set_results
+latin7
+SELECT @@character_set_connection;
+@@character_set_connection
+latin7
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('Øø??®'),('???÷ƒ'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+ø??	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+SELECT * FROM acc1.t1;
+a	data
+ø??	666
+¬ß¬∂	666
+SELECT count(*) FROM acc2.v1;
+count(*)
+62
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+62
+INSERT INTO acc2.t1 VALUES('≈ì'),('≈ì≈æ');
+SELECT * FROM acc2.t1;
+a
+˜
+?
+?
+≈ì
+≈ì≈æ
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+68
+SELECT * FROM acc1.v3;
+?
+?
+?
+÷
+ƒ
+??????
+?
+?
+ˆ
+¸
+?
+?
+?
+’
+?
+?
+ı
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+Ø
+ø
+?
+?
+®
+∏
+?
+?
+£
+¢
+µ
+±
+¨
+∞
+˜
+?
+?
+?
+©
+Æ
+ß
+∂
+?
+?
+??
+??
+Øø??®
+???÷ƒ
+£¢µ±
+Øø??®
+???÷ƒ
+£¢µ±
+Øø??®
+???÷ƒ
+£¢µ±
+Øø??®
+???÷ƒ
+£¢µ±
+Øø??®
+???÷ƒ
+£¢µ±
+SELECT COUNT(*) FROM acc2.v4;
+COUNT(*)
+68
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES swe7;
+SET CHARACTER_SET_SERVER=swe7;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+swe7
+SELECT @@character_set_results;
+@@character_set_results
+swe7
+SELECT @@character_set_connection;
+@@character_set_connection
+swe7
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('???\['),('????');
+END	AFTER	NULL		root?localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root?localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root?localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	100
+????	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A????")
+TestA????
+SELECT count(*) FROM acc2.v1;
+count(*)
+62
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+62
+INSERT INTO acc2.t1 VALUES('≈∏'),('≈∏@');
+SELECT * FROM acc2.t1;
+a
+?
+?
+?
+??
+??@
+SELECT COUNT(*) FROM acc1.v2;
+COUNT(*)
+68
+SELECT * FROM acc1.v3;
+?
+?
+?
+\
+[
+??????
+?
+?
+|
+~
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+?
+??
+??
+?????
+???\[
+????
+?????
+???\[
+????
+?????
+???\[
+????
+?????
+???\[
+????
+?????
+???\[
+????
+SELECT COUNT(*) FROM acc2.v4;
+COUNT(*)
+68
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES big5;
+SET CHARACTER_SET_SERVER=big5;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+«›«‰« «»«ÿ«Ÿ	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+big5
+SELECT @@character_set_results;
+@@character_set_results
+big5
+SELECT @@character_set_connection;
+@@character_set_connection
+big5
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('¢G¢F?°”');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A??")
+TestA??
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES euckr;
+SET CHARACTER_SET_SERVER=euckr;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+¨Ê¨Ì¨”¨—¨·¨‚	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+euckr
+SELECT @@character_set_results;
+@@character_set_results
+euckr
+SELECT @@character_set_connection;
+@@character_set_connection
+euckr
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('®°©°®≠©≠®™'),('?????'),('???°æ');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+©°®≠©≠	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES armscii8;
+SET CHARACTER_SET_SERVER=armscii8;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+armscii8
+SELECT @@character_set_results;
+@@character_set_results
+armscii8
+SELECT @@character_set_connection;
+@@character_set_connection
+armscii8
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????ˇ§´•ˇ?????ˇ§´•ˇ????ˇ§;
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì"§
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES dec8;
+SET CHARACTER_SET_SERVER=dec8;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+˝·˙ÎÍ‡	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+dec8
+SELECT @@character_set_results;
+@@character_set_results
+dec8
+SELECT @@character_set_connection;
+@@character_set_connection
+dec8
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('∆Ê??ÿ'),('·œÀ÷ƒ'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+Ê??	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+SELECT * FROM acc1.t1;
+a	data
+Ê??	666
+¬ß¬∂	666
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES cp850;
+SET CHARACTER_SET_SERVER=cp850;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+ò†£âàÖ	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+cp850
+SELECT @@character_set_results;
+@@character_set_results
+cp850
+SELECT @@character_set_connection;
+@@character_set_connection
+cp850
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('íëËÁù'),('†ÿ”ôé'),('úΩÊÒ');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+ëËÁ	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES hp8;
+SET CHARACTER_SET_SERVER=hp8;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+Ôƒ«Õ¡»	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+hp8
+SELECT @@character_set_results;
+@@character_set_results
+hp8
+SELECT @@character_set_connection;
+@@character_set_connection
+hp8
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('”◊Ò“'),('ƒß•⁄ÿ'),('ªøÛ˛');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+◊Ò	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES koi8r;
+SET CHARACTER_SET_SERVER=koi8r;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+∆Ÿ◊¡–“	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+koi8r
+SELECT @@character_set_results;
+@@character_set_results
+koi8r
+SELECT @@character_set_connection;
+@@character_set_connection
+koi8r
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('????');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+SELECT * FROM acc1.t1;
+a	data
+???	666
+¬ß¬∂	666
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES ujis;
+SET CHARACTER_SET_SERVER=ujis;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+è´Ûè´°è´‚è´≥è´¥è´¢	VIEW
+ßÊßÌß”ß—ß·ß‚	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+ujis
+SELECT @@character_set_results;
+@@character_set_results
+ujis
+SELECT @@character_set_connection;
+@@character_set_connection
+ujis
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('è©°è©¡è©∞è©–è©¨'),('è´°è™¡è™≥è™”è™£'),('°Ú°Ò?°ﬁ');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 109);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+è©¡è©∞è©–	666	109
+¬ß¬∂	666	109
+SELECT acc1.append("Test", "done");
+acc1.append("Test", "done")
+Testdone
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES sjis;
+SET CHARACTER_SET_SERVER=sjis;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+ÑÜÑçÑrÑpÑÅÑÇ	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('ÅíÅë?Å}');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 120);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	120
+¬ß¬∂	666	120
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈?)
+TestA≈í≈
+SELECT * FROM acc1.t1;
+a	data
+???	666
+¬ß¬∂	666
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES hebrew;
+SET CHARACTER_SET_SERVER=hebrew;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 200);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	200
+?ß?∂	666	200
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A?í?ì")
+TestA?í?ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES cp866;
+SET CHARACTER_SET_SERVER=cp866;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+‰Î¢†Ø‡	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+cp866
+SELECT @@character_set_results;
+@@character_set_results
+cp866
+SELECT @@character_set_connection;
+@@character_set_connection
+cp866
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('????');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 200);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	200
+¬ß¬∂	666	200
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES keybcs2;
+SET CHARACTER_SET_SERVER=keybcs2;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+?†£???	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+keybcs2
+SELECT @@character_set_results;
+@@character_set_results
+keybcs2
+SELECT @@character_set_connection;
+@@character_set_connection
+keybcs2
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('†??ôé'),('??ÊÒ');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("test", 240);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	240
+test	666	240
+SELECT acc1.append("backup", "A≈í≈ì");
+acc1.append("backup", "A≈í≈ì")
+backupA≈í≈ì
+SELECT * FROM acc1.t1;
+a	data
+???	666
+test	666
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES geostd8;
+SET CHARACTER_SET_SERVER=geostd8;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+geostd8
+SELECT @@character_set_results;
+@@character_set_results
+geostd8
+SELECT @@character_set_connection;
+@@character_set_connection
+geostd8
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES cp1256;
+SET CHARACTER_SET_SERVER=cp1256;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+???ÎÍ‡	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+cp1256
+SELECT @@character_set_results;
+@@character_set_results
+cp1256
+SELECT @@character_set_connection;
+@@character_set_connection
+cp1256
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('?????'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES cp1257;
+SET CHARACTER_SET_SERVER=cp1257;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+??????	VIEW
+??????	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+cp1257
+SELECT @@character_set_results;
+@@character_set_results
+cp1257
+SELECT @@character_set_connection;
+@@character_set_connection
+cp1257
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('Øø??®'),('???÷ƒ'),('£¢µ±');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("¬ß¬∂", 100);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+ø??	666	100
+¬ß¬∂	666	100
+SELECT acc1.append("Test", "A≈í≈ì");
+acc1.append("Test", "A≈í≈ì")
+TestA≈í≈ì
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES gbk;
+SET CHARACTER_SET_SERVER=gbk;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+?®¢®≤?®∫®§	VIEW
+ßÊßÌß”ß—ß·ß‚	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+gbk
+SELECT @@character_set_results;
+@@character_set_results
+gbk
+SELECT @@character_set_connection;
+@@character_set_connection
+gbk
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('?????'),('®¢????'),('???°¿');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("√±√Ç√ä", 300);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+???	666	300
+√±√Ç√ä	666	300
+SELECT acc1.append("√è≈ì¬±√è≈ì¬±√•√•", "A≈í≈ì");
+acc1.append("√è≈ì¬±√è≈ì¬±√•√•", "A≈í≈ì")
+√è≈ì¬±√è≈ì¬±√•√•A≈í≈ì
+SELECT * FROM acc1.t1;
+a	data
+???	666
+√±√Ç√ä	666
+**change character sets and again perform restore**
+DROP DATABASE acc1;
+DROP DATABASE acc2;
+SET NAMES eucjpms;
+SET CHARACTER_SET_SERVER=eucjpms;
+RESTORE FROM 'acc.bak';
+backup_id
+#
+
+**Results after Restore**
+
+SHOW FULL TABLES FROM acc1;
+Tables_in_acc1	Table_type
+è´Ûè´°è´‚è´≥è´¥è´¢	VIEW
+ßÊßÌß”ß—ß·ß‚	BASE TABLE
+t1	BASE TABLE
+v2	VIEW
+v3	VIEW
+SHOW FULL TABLES FROM acc2;
+Tables_in_acc2	Table_type
+t1	BASE TABLE
+v1	VIEW
+v4	VIEW
+SELECT @@character_set_client;
+@@character_set_client
+eucjpms
+SELECT @@character_set_results;
+@@character_set_results
+eucjpms
+SELECT @@character_set_connection;
+@@character_set_connection
+eucjpms
+SHOW TRIGGERS FROM acc2;
+Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_client	collation_connection	Database Collation
+trai	INSERT	t1	BEGIN
+INSERT INTO acc1.v2 VALUES('è©°è©¡è©∞è©–è©¨'),('è´°è™¡è™≥è™”è™£'),('???°ﬁ');
+END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+SHOW PROCEDURE STATUS;;
+Db	acc1
+Name	p1
+Type	PROCEDURE
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+SHOW FUNCTION STATUS;;
+Db	acc1
+Name	append
+Type	FUNCTION
+Definer	root@localhost
+Modified	#
+Created	#
+Security_type	#
+Comment	
+character_set_client	utf8
+collation_connection	utf8_general_ci
+Database Collation	utf8_general_ci
+CALL acc1.p1("√±√Ç√ä", 300);
+SELECT a,data,@z FROM acc1.t1;
+a	data	@z
+è©¡è©∞è©–	666	300
+√±???	666	300
+SELECT acc1.append("√è≈ì¬±√è≈ì¬±√•√•", "attach");
+acc1.append("????¬±????¬±√•√•", "attach")
+????¬±????¬±attach
+SELECT * FROM acc1.t1;
+a	data
+è©¡è©∞è©–	666
+√±???	666
+
+***  DROP bup_accented DATABASE ****
+
+DROP DATABASE acc1;
+DROP DATABASE acc2;
