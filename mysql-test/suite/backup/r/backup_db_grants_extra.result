@@ -49,23 +49,17 @@ GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
 FLUSH PRIVILEGES;
 
 Verify the grant privileges for users
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON PROCEDURE `db1`.`p11` TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
-SELECT * FROM mysql.procs_priv;
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM 
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR 
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
-%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
 %	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 Perform backup
 BACKUP DATABASE db1, db2 TO 'db12.bak';
@@ -96,23 +90,17 @@ SHOW FUNCTION STATUS;
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON PROCEDURE `db1`.`p11` TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
-SELECT * FROM mysql.procs_priv;
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
-%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
 %	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 We notice that all the grants are restored intact.
 Excercise objects
@@ -189,15 +177,13 @@ SHOW FUNCTION STATUS;
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-SELECT * FROM mysql.procs_priv;
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY db;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 From the above table, We can notice that grants for stored routines will--echo not be restored. Bug#41979
 Drop users, then restore and verify the grants.
@@ -248,45 +234,43 @@ SHOW FUNCTION STATUS;
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
 Grant Routine level privileges to users
 GRANT EXECUTE ON PROCEDURE db2.p21 TO jim@'%';
 GRANT EXECUTE ON PROCEDURE db1.p11 TO carry@'%';
 GRANT EXECUTE ON FUNCTION db1.f11 TO jim@'%';
 GRANT EXECUTE ON FUNCTION db2.f21 TO carry@'%';
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON PROCEDURE `db1`.`p11` TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 Drop procedure db1.p11 and check the grants for users
 DROP PROCEDURE db1.p11;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 Perform backup 
 BACKUP DATABASE db1, db2 TO 'db12a.bak';
 backup_id
@@ -296,38 +280,33 @@ DROP DATABASE db1;
 DROP DATABASE db2;
 verify grants
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 Perform restore
 RESTORE FROM 'db12a.bak';
 backup_id
 #
 Verify objects and grant privileges
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-GRANT EXECUTE ON FUNCTION `db1`.`f11` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
-SELECT * FROM mysql.procs_priv;
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
-%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 %	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 SHOW TABLES FROM db1;
 Tables_in_db1
@@ -346,16 +325,16 @@ db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swe
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 Drop function and check grants for users
 DROP FUNCTION db1.f11;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
+Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
+%	db2	carry	f21	FUNCTION	root@localhost	Execute	#
+%	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
 Perform backup 
 BACKUP DATABASE db1, db2 TO 'db12b.bak';
 backup_id
@@ -369,17 +348,13 @@ backup_id
 #
 Verify objects and grant privileges
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT ON `db2`.* TO 'jim'@'%'
-GRANT SELECT ON `db1`.* TO 'jim'@'%'
-GRANT EXECUTE ON PROCEDURE `db2`.`p21` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT EXECUTE ON FUNCTION `db2`.`f21` TO 'carry'@'%'
-SELECT * FROM mysql.procs_priv;
+SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA FROM
+INFORMATION_SCHEMA.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_SCHEMA, GRANTEE;
+GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
+'jim'@'%'	SELECT	db1
+'jim'@'%'	SELECT	db2
+SELECT * FROM mysql.procs_priv ORDER BY Db;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 %	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
@@ -418,16 +393,19 @@ GRANT INSERT, SELECT ON db2.t1 TO jim@'%';
 GRANT INSERT(a1) ON db1.t2 TO carry@'%';
 GRANT UPDATE, SELECT ON db2.t2 TO carry@'%';
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 perform backup
 BACKUP DATABASE db1, db2 TO 'db12a.bak';
 backup_id
@@ -437,16 +415,19 @@ Drop a column to which grant is assigned
 ALTER TABLE db1.t1 DROP COLUMN b;
 check the grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Perform backup again
 BACKUP DATABASE db1, db2 TO 'db12b.bak';
 backup_id
@@ -467,29 +448,35 @@ backup_id
 #
 verify grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Now drop a table to which privilege is assigned
 DROP TABLE db2.t2;
 check the grants for users
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Perform backup operation
 BACKUP DATABASE db1, db2 TO 'db12c.bak';
 backup_id
@@ -510,16 +497,19 @@ backup_id
 #
 verify grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 SHOW TABLES FROM db1;
 Tables_in_db1
 t1
@@ -558,16 +548,19 @@ Rename table to which grant is assigned.
 RENAME TABLE db2.t1 TO db2.trename;
 check the grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Perform backup again
 BACKUP DATABASE db1, db2 TO 'db12b.bak';
 backup_id
@@ -587,16 +580,19 @@ backup_id
 #
 verify grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Rename a column to which grant is assigned.
 ALTER TABLE db1.t2 CHANGE a1 a1rename SMALLINT;
 DESCRIBE db1.t2;
@@ -604,16 +600,19 @@ Field	Type	Null	Key	Default	Extra
 a1rename	smallint(6)	YES		NULL	
 b1	char(20)	YES		NULL	
 check the grants for users
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Perform backup again
 BACKUP DATABASE db1, db2 TO 'db12c.bak';
 backup_id
@@ -633,16 +632,19 @@ backup_id
 #
 verify grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 SHOW TABLES FROM db1;
 Tables_in_db1
 t1
@@ -682,16 +684,19 @@ RENAME USER jim@'%' TO tom@'%';
 check the grants for users
 SHOW GRANTS FOR jim@'%';
 ERROR 42000: There is no such grant defined for user 'jim' on host '%'
-SHOW GRANTS FOR tom@'%';
-Grants for tom@%
-GRANT USAGE ON *.* TO 'tom'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'tom'@'%'	NULL	db2	t1	INSERT	NO
+'tom'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'tom'@'%'	NULL	db1	t1	a	SELECT	NO
+'tom'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Perform backup again
 BACKUP DATABASE db1, db2 TO 'db12b.bak';
 backup_id
@@ -704,16 +709,19 @@ backup_id
 #
 verify grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR tom@'%';
-Grants for tom@%
-GRANT USAGE ON *.* TO 'tom'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'tom'@'%'	NULL	db2	t1	INSERT	NO
+'tom'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'tom'@'%'	NULL	db1	t1	a	SELECT	NO
+'tom'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 drop database and perform restore from db12a.bak
 DROP DATABASE db1;
 DROP DATABASE db2;
@@ -733,16 +741,19 @@ Warning	#	The grant 'INSERT ON db2.t1' for the user 'jim'@'%' was skipped becaus
 Warning	#	The grant 'SELECT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
 verify grants for users
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR tom@'%';
-Grants for tom@%
-GRANT USAGE ON *.* TO 'tom'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
-SHOW GRANTS FOR carry@'%';
-Grants for carry@%
-GRANT USAGE ON *.* TO 'carry'@'%'
-GRANT SELECT, UPDATE ON `db2`.`t2` TO 'carry'@'%'
-GRANT INSERT (a1) ON `db1`.`t2` TO 'carry'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'tom'@'%'	NULL	db2	t1	INSERT	NO
+'tom'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'tom'@'%'	NULL	db1	t1	a	SELECT	NO
+'tom'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 Create new user with same name jim@'%'
 CREATE USER jim@'%';
 SHOW GRANTS FOR jim@'%';
@@ -753,16 +764,23 @@ backup_id
 #
 Verify grants for user jim and tom
 FLUSH PRIVILEGES;
-SHOW GRANTS FOR jim@'%';
-Grants for jim@%
-GRANT USAGE ON *.* TO 'jim'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'jim'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'jim'@'%'
-SHOW GRANTS FOR tom@'%';
-Grants for tom@%
-GRANT USAGE ON *.* TO 'tom'@'%'
-GRANT SELECT, INSERT ON `db2`.`t1` TO 'tom'@'%'
-GRANT SELECT (a), UPDATE (b) ON `db1`.`t1` TO 'tom'@'%'
+SELECT * FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db2	t1	INSERT	NO
+'tom'@'%'	NULL	db2	t1	INSERT	NO
+'jim'@'%'	NULL	db2	t1	SELECT	NO
+'tom'@'%'	NULL	db2	t1	SELECT	NO
+'carry'@'%'	NULL	db2	t2	SELECT	NO
+'carry'@'%'	NULL	db2	t2	UPDATE	NO
+SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES WHERE TABLE_SCHEMA='db1' OR
+TABLE_SCHEMA='db2' ORDER BY TABLE_NAME, PRIVILEGE_TYPE, GRANTEE;
+GRANTEE	TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	PRIVILEGE_TYPE	IS_GRANTABLE
+'jim'@'%'	NULL	db1	t1	a	SELECT	NO
+'tom'@'%'	NULL	db1	t1	a	SELECT	NO
+'jim'@'%'	NULL	db1	t1	b	UPDATE	NO
+'tom'@'%'	NULL	db1	t1	b	UPDATE	NO
+'carry'@'%'	NULL	db1	t2	a1	INSERT	NO
 We can notice that there are some additional grants shown for jim
 Bug#41597
 REVOKE ALL ON *.* FROM jim@'%';
