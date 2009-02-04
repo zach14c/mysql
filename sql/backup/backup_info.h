@@ -29,9 +29,9 @@ int write_table_data(THD*, backup::Logger&, Backup_info&,
 */
 class Backup_info: public backup::Image_info
 {
- public:
+public:
 
-  backup::Logger &m_log;
+  backup::Logger &m_log;  ///< Pointer to logger class.
 
   ~Backup_info();
 
@@ -45,7 +45,7 @@ class Backup_info: public backup::Image_info
   Iterator* get_global() const;
   Iterator* get_perdb()  const;
 
- private:
+private:
 
   /*
     Note: constructor is private because instances of this class are supposed

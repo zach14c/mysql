@@ -1,0 +1,54 @@
+#
+# Tests with MyISAM native driver, coverage testing.
+#
+
+--source include/have_debug.inc
+--source include/not_embedded.inc
+
+#
+# Precautionary cleanup
+#
+let $MYSQLD_DATADIR= `select @@datadir`;
+--disable_warnings
+USE test;
+DROP DATABASE IF EXISTS mysql_db1;
+--error 0,1
+--remove_file $MYSQLD_DATADIR/bup_myisam3.bak
+--enable_warnings
+
+#
+# Bug#40944 - Backup: crash after myisampack
+#
+CREATE DATABASE mysql_db1;
+CREATE TABLE mysql_db1.t1 (c1 VARCHAR(5), c2 int);
+CREATE INDEX i1 ON mysql_db1.t1 (c1, c2);
+INSERT INTO mysql_db1.t1 VALUES ('A',1);
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+INSERT INTO mysql_db1.t1 SELECT * FROM mysql_db1.t1;
+FLUSH TABLE mysql_db1.t1;
+#
+--exec $MYISAMPACK -s $MYSQLD_DATADIR/mysql_db1/t1
+--exec $MYISAMCHK -srq $MYSQLD_DATADIR/mysql_db1/t1
+#
+--replace_column 1 #
+BACKUP DATABASE mysql_db1 to 'bup_myisam3.bak';
+#
+# Inject error at Backup_restore_ctx_unlock_tables_alloc
+SET debug='d,Backup_restore_ctx_unlock_tables_alloc';
+--replace_column 1 #
+RESTORE FROM 'bup_myisam3.bak' OVERWRITE;
+#
+SELECT COUNT(*) FROM mysql_db1.t1 WHERE c2 < 5;
+#
+# Cleanup
+#
+SET debug='';
+DROP TABLE mysql_db1.t1;
+DROP DATABASE mysql_db1;
+--remove_file $MYSQLD_DATADIR/bup_myisam3.bak
+
