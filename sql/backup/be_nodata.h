@@ -16,7 +16,7 @@ using backup::Buffer;
 /**
   @class Engine
  
-  @brief Encapsulates nodata online backup/restore functionality.
+  Encapsulates nodata online backup/restore functionality.
  
   Using this class, the caller can create an instance of the nodata backup
   backup and restore class. The nodata driver does not read or write to any 
@@ -25,72 +25,75 @@ using backup::Buffer;
 */
 class Engine: public Backup_engine
 {
-  public:
-    Engine(THD *t_thd);
+public:
+  /// Constructor
+  Engine(THD *t_thd) { m_thd= t_thd; }
 
-    /*
-      Return version of backup images created by this engine.
-    */
-    version_t version() const { return 0; };
-    result_t get_backup(const uint32, const Table_list &tables, 
-                        Backup_driver* &drv);
-    result_t get_restore(const version_t ver, const uint32, const Table_list &tables,
-                         Restore_driver* &drv);
+  /*
+    Return version of backup images created by this engine.
+  */
+  version_t version() const { return 0; };
+  result_t get_backup(const uint32, const Table_list &tables, 
+                      Backup_driver* &drv);
+  result_t get_restore(const version_t version, const uint32 flags, 
+                       const Table_list &tables, Restore_driver* &drv);
 
-    /*
-     Free any resources allocated by the nodata backup engine.
-    */
-    void free() { delete this; }
+  /*
+   Free any resources allocated by the nodata backup engine.
+  */
+  void free() { delete this; }
 
 private:
-    THD *m_thd;
+  THD *m_thd; ///< Current thread reference.
 };
 
 /**
   @class Backup
  
-  @brief Contains the nodata backup algorithm backup functionality.
+  Contains the nodata backup algorithm backup functionality.
  
   Creates a stubbed driver class for the backup kernel code. This
   allows the driver to be used in a backup while not reading data.
 */
 class Backup: public Backup_driver
 {
-  public:
-    Backup(const backup::Table_list &tables):
-    Backup_driver(tables) {};
-    virtual ~Backup() {}; 
-    size_t size()  { return 0; };
-    size_t init_size() { return 0; };
-    result_t begin(const size_t) { return backup::OK; };
-    result_t end() { return backup::OK; };
-    result_t get_data(Buffer &buf);
-    result_t lock() { return backup::OK; };
-    result_t unlock() { return backup::OK; };
-    result_t cancel() { return backup::OK; };
-    void free() { delete this; };
-    result_t prelock() { return backup::OK; };
+public:
+  /// Constructor
+  Backup(const backup::Table_list &tables):
+  Backup_driver(tables) {};
+  virtual ~Backup() {}; 
+  size_t size()  { return 0; };
+  size_t init_size() { return 0; };
+  result_t begin(const size_t) { return backup::OK; };
+  result_t end() { return backup::OK; };
+  result_t get_data(Buffer &buf);
+  result_t lock() { return backup::OK; };
+  result_t unlock() { return backup::OK; };
+  result_t cancel() { return backup::OK; };
+  void free() { delete this; };
+  result_t prelock() { return backup::OK; };
 };
 
 /**
   @class Restore
  
-  @brief Contains the nodata backup algorithm restore functionality.
+  Contains the nodata backup algorithm restore functionality.
  
   Creates a stubbed driver class for the backup kernel code. This
   allows the driver to be used in a restore while not writing data.
 */
 class Restore: public Restore_driver
 {
-  public:
-    Restore(const Table_list &tables, THD *t_thd):
-        Restore_driver(tables) {};
-    virtual ~Restore() {};
-    result_t begin(const size_t) { return backup::OK; };
-    result_t end() { return backup::OK; };
-    result_t send_data(Buffer &buf);
-    result_t cancel() { return backup::OK; };
-    void free() { delete this; };
+public:
+  /// Constructor
+  Restore(const Table_list &tables, THD *t_thd):
+         Restore_driver(tables) {};
+  virtual ~Restore() {};
+  result_t begin(const size_t) { return backup::OK; };
+  result_t end() { return backup::OK; };
+  result_t send_data(Buffer &buf);
+  result_t cancel() { return backup::OK; };
+  void free() { delete this; };
 };
 } // nodata_backup namespace
 
@@ -105,18 +108,27 @@ namespace backup {
 
 class Logger;
 
+/**
+  @class Nodata_snapshot
+
+  This extends Snapshot_info for implementation of the no data backup driver.
+*/
 class Nodata_snapshot: public Snapshot_info
 {
- public:
+public:
 
+  /// Constructor
   Nodata_snapshot(Logger&) :Snapshot_info(1) // current version number is 1
   {}
+  /// Constructor
   Nodata_snapshot(Logger&, const version_t ver) :Snapshot_info(ver)
   {}
 
+  /// Return snapshot type.
   enum_snap_type type() const
   { return NODATA_SNAPSHOT; }
 
+  /// Return the name of the snapshot.
   const char* name() const
   { return "Nodata"; }
 

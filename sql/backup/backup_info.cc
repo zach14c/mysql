@@ -231,19 +231,28 @@ Backup_info::find_backup_engine(const backup::Table_ref &tbl)
 
  *************************************************/
 
-/*
+/**
   Definition of Backup_info::Ts_hash_node structure used by Backup_info::ts_hash
   HASH.
- */ 
-
+*/ 
 struct Backup_info::Ts_hash_node
 {
   const String *name;	///< Name of the tablespace.
   Ts *it;               ///< Catalogue entry holding the tablespace (if exists).
 
+  /// Constructor
   Ts_hash_node(const String*);
 
-  static uchar* get_key(const uchar *record, size_t *key_length, my_bool);
+  /**
+    Return the key of the node.
+
+    @param[in]  record      The data in the record.
+    @param[in]  key_length  The length of the key.
+    @param[in]  attr        Not_used __attribute__((unused)))
+    @returns Pointer to the key.
+  */
+  static uchar* get_key(const uchar *record, size_t *key_length, my_bool attr);
+  /// Free data.
   static void free(void *record);
 };
 
@@ -281,14 +290,35 @@ uchar* Backup_info::Ts_hash_node::get_key(const uchar *record,
  */ 
 struct Backup_info::Dep_node: public Sql_alloc
 {
-  Dep_node *next;
-  Dbobj *obj;
-  String key;
+  Dep_node *next; ///< Pointer to next node.
+  Dbobj *obj;     ///< Pointer to database object.
+  String key;     ///< The key name.
 
+  /**
+    Constructor using data items.
+
+    @param[in]  db_name   Name of the database.
+    @param[in]  name      Name of object.
+    @param[in]  type      Type of object.
+  */
   Dep_node(const ::String &db_name, const ::String &name, const obj_type type);
+  /// Base constructor using existing node.
   Dep_node(const Dep_node&);
 
-  static uchar* get_key(const uchar *record, size_t *key_length, my_bool);
+  /**
+    Return the key of the node.
+
+    @param[in]  record      The data in the record.
+    @param[in]  key_length  The length of the key.
+    @param[in]  attr        Not_used __attribute__((unused)))
+    @returns Pointer to the key.
+  */
+  static uchar* get_key(const uchar *record, size_t *key_length, my_bool attr);
+  /**
+    Free the node.
+
+    @param[in]  record  The data to free.
+  */
   static void free(void *record);
 };
 
@@ -573,7 +603,8 @@ backup::Image_info::Db* Backup_info::add_db(obs::Obj *obj)
 /**
   Select given databases for backup.
 
-  @param[in]  list of databases to be backed-up
+  @param[in]  thd  Current thread.
+  @param[in]  dbs  List of databases to be backed-up
 
   For each database, all objects stored in that database are also added to
   the image.
@@ -888,7 +919,7 @@ namespace {
  */ 
 class Tbl: public backup::Table_ref
 {
- public:
+public:
 
    Tbl(obs::Obj *obj) :backup::Table_ref(*obj->get_db_name(), *obj->get_name())
    {}
@@ -1348,13 +1379,14 @@ class Backup_info::Global_iterator
   Iterator *m_it; ///< Points at the currently used iterator.
   Obj *m_obj;         ///< Points at next object to be returned by this iterator.
 
- public:
+public:
 
+  /// Constructor
   Global_iterator(const Backup_info&);
 
   int init();
 
- private:
+private:
 
   Obj* get_ptr() const;
   bool next();
@@ -1450,11 +1482,12 @@ class Backup_info::Perdb_iterator : public backup::Image_info::Iterator
 {
   Dep_node *ptr;
 
- public:
+public:
 
+  /// Constructor
   Perdb_iterator(const Backup_info&);
 
- private:
+private:
 
   Obj* get_ptr() const;
   bool next();

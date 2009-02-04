@@ -219,6 +219,10 @@ typedef struct st_join_table
   TABLE_REF	ref;
   bool          use_join_cache;
   JOIN_CACHE	*cache;
+  /*
+    Index condition for BKA access join
+  */
+  Item          *cache_idx_cond;
   SQL_SELECT    *cache_select;
   JOIN		*join;
   /* SemiJoinDuplicateElimination variables: */
@@ -833,7 +837,7 @@ public:
     join= j;
     join_tab= tab;
     prev_cache= next_cache= 0;
-    mrr_mode= flags;    
+    mrr_mode= flags;
   }
 
   /* 
@@ -860,8 +864,10 @@ public:
   bool is_key_access() { return TRUE; }
 
   /* Shall get the key built over the next record from the join buffer */
-  virtual uint get_next_key(uchar **key);    
+  virtual uint get_next_key(uchar **key);
 
+  /* Check if the record combination matches the index condition */
+  bool skip_index_tuple(range_seq_t rseq, char *range_info);
 };
 
 /*
@@ -1150,7 +1156,9 @@ public:
     return get_next_rec_ref(curr_key_entry+key_entry_length-
                             get_size_of_rec_offset());
   }
-
+  
+  /* Check if the record combination matches the index condition */
+  bool skip_index_tuple(range_seq_t rseq, char *range_info);
 };
 
 

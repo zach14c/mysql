@@ -28,6 +28,11 @@
 
 namespace backup {
 
+/**
+  Backup state
+
+  Structure to store the backup state.
+*/
 struct backup_state {
 
  /// State of a single backup driver.
@@ -45,8 +50,13 @@ struct backup_state {
 
 #ifndef DBUG_OFF
 
-  static const char* name[];
+  static const char* name[];  ///< The text of the state.
 
+  /** 
+    Initializer
+
+    Structure for containing state names.
+  */
   struct Initializer
   {
     Initializer()
@@ -64,7 +74,7 @@ struct backup_state {
     }
   };
 
- private:
+private:
 
   static Initializer init;
 
@@ -75,7 +85,7 @@ struct backup_state {
 #ifndef DBUG_OFF
 
 const char* backup_state::name[backup_state::MAX];
-backup_state::Initializer init;
+backup_state::Initializer init;  ///< Initializer state.
 
 #endif
 
@@ -87,18 +97,20 @@ backup_state::Initializer init;
  */
 class Block_writer
 {
- public:
+public:
 
+  /// Enumeration of the result conditions.
   enum result_t { OK, NO_RES, ERROR };
 
   result_t  get_buf(Buffer &);
   result_t  write_buf(const Buffer&);
   void      drop_buf(Buffer&);
 
+  /// Constructor
   Block_writer(byte, size_t, Output_stream&);
   ~Block_writer();
 
- private:
+private:
 
   byte           snap_num;  ///< snapshot to which the data belongs
   Output_stream  &m_str;    ///< stream to which we write
@@ -124,23 +136,26 @@ class Block_writer
 
 class Backup_pump
 {
- public:
+public:
 
   backup_state::value  state; ///< State of the backup driver.
 
+  /// Enumeration for mode (reading or writing) data.
   enum { READING, ///< Pump is polling driver for data.
          WRITING  ///< Pump sends data to the stream.
-       } mode;
+       } mode;    ///< mode of operation.
 
-  /** The estimate returned by backup driver's @c init_data() method. */
-  size_t  init_size;
-  size_t  bytes_in, bytes_out;
+  size_t  init_size; ///< size as returned by backup driver's @c init_data().
+  size_t  bytes_in;  ///< number of bytes written. 
+  size_t  bytes_out; ///< number of bytes read.
 
   const char *m_name; ///< Name of the driver (for debug purposes).
 
+  /// Constructor
   Backup_pump(Snapshot_info&, Block_writer&);
   ~Backup_pump();
 
+  /// Determine of the state of the driver is valid.
   bool is_valid()
   { return m_drv && state != backup_state::ERROR; }
 
@@ -149,8 +164,11 @@ class Backup_pump
   int begin();
   int end();
   int prepare();
+  /// Lock signal
   int lock();
+  /// Unlock signal
   int unlock();
+  /// Cancel the process
   int cancel();
 
   /// Return the backup driver used by the pump.
@@ -160,10 +178,11 @@ class Backup_pump
     return *m_drv;
   }
 
+  /// Set the logger class pointer.
   void set_logger(Logger *log)
   { m_log= log; }
 
- private:
+private:
 
   /// If block writer has no buffers, retry this many times before giving up.
   static const uint get_buf_retries= 3; 
@@ -221,7 +240,7 @@ class Scheduler
   class Pump;
   class Pump_iterator;
 
- public:
+public:
 
   int add(Pump*);
   int step();
@@ -234,18 +253,21 @@ class Scheduler
   uint  prepare_count;  ///< no. drivers preparing for lock
   uint  finish_count;   ///< no. drivers sending final data
 
+  /// Return number of initial items left to process.
   size_t init_left() const
   { return m_known_count? m_init_left/m_known_count + 1 : 0; }
 
+  /// Return total bytes written from members.
   size_t bytes_written() const
   { return m_total; }
 
+  /// Determine if the list is empty.
   bool is_empty() const
   { return m_count == 0; }
 
   ~Scheduler() { cancel_backup(); }
 
- private:
+private:
 
   LIST   *m_pumps, *m_last;
   Logger &m_log;        ///< for reporting errors          
@@ -282,8 +304,9 @@ class Scheduler::Pump: public Backup_pump
 
   friend class Scheduler;
 
- public:
+public:
 
+  /// Constructor
   Pump(Snapshot_info &snap, Output_stream &s)
     :Backup_pump(snap, bw), start_pos(0),
     bw(snap.m_num - 1, DATA_BUFFER_SIZE, s)
@@ -291,6 +314,7 @@ class Scheduler::Pump: public Backup_pump
     DBUG_ASSERT(snap.m_num > 0);
   }
 
+  /// Return current position of pump.
   size_t pos() const
   { return start_pos + bytes_in; }
 };
@@ -360,6 +384,10 @@ int block_commits(THD *thd, TABLE_LIST *tables)
 {
   DBUG_ENTER("block_commits()");
 
+  DBUG_EXECUTE_IF("backup_grl_fail", 
+    /* Mimic behavior of a failing lock_global_read_lock */
+    DBUG_RETURN(1););
+
   /*
     Step 1 - global read lock.
   */
@@ -382,6 +410,12 @@ int block_commits(THD *thd, TABLE_LIST *tables)
     result= close_cached_tables(thd, 0, tables);
   */
 
+  DBUG_EXECUTE_IF("backup_grl_block_commit_fail",
+    /* Mimic behavior of a failing make_global_read_lock_block_commit */
+    unlock_global_read_lock(thd);
+    DBUG_RETURN(1);
+  );
+  
   /*
     Step 3 - make the global read lock to block commits.
   */
@@ -402,13 +436,13 @@ int block_commits(THD *thd, TABLE_LIST *tables)
 
    @param  thd    (in) the current thread structure.
 
-   @returns 0
+   This method cannot fail.
   */
-int unblock_commits(THD *thd)
+void unblock_commits(THD *thd)
 {
   DBUG_ENTER("unblock_commits()");
   unlock_global_read_lock(thd);
-  DBUG_RETURN(0);
+  DBUG_VOID_RETURN;
 }
 
 /**
@@ -652,7 +686,10 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
     int error= 0;
     error= block_commits(thd, NULL);
     if (error)
+    {
+      log.report_error(ER_BACKUP_SYNCHRONIZE);
       goto error;
+    }
 
     if (sch.prepare())    // logs errors
       goto error;
@@ -691,9 +728,7 @@ int write_table_data(THD* thd, Backup_info &info, Output_stream &s)
       Unblock commits.
     */
     DEBUG_SYNC(thd, "before_backup_unblock_commit");
-    error= unblock_commits(thd);
-    if (error)
-      goto error;
+    unblock_commits(thd);
 
 
     report_vp_info(info);
@@ -738,30 +773,36 @@ namespace backup {
  */
 class Scheduler::Pump_iterator
 {
- public:
+public:
 
-  LIST  *el;
+  LIST  *pumps;  ///< The list of pumps.
 
+  /// The next operator.
   Pump* operator->()
   {
-    return el? static_cast<Pump*>(el->data) : NULL;
+    return pumps? static_cast<Pump*>(pumps->data) : NULL;
   }
 
+  /// The increment operator.
   void  operator++()
   {
-    if(el) el= el->next;
+    if(pumps) pumps= pumps->next;
   }
 
+  /// Check to see if pumps list exist and has data.
   operator bool() const
-  { return el && el->data; }
+  { return pumps && pumps->data; }
 
+  /// The comparison operator.
   void operator=(const Pump_iterator &p)
-  { el= p.el; }
+  { pumps= p.pumps; }
 
-  Pump_iterator(): el(NULL)
+  /// Base constructor for null list.
+  Pump_iterator(): pumps(NULL)
   {}
 
-  Pump_iterator(const Scheduler &sch) :el(sch.m_pumps)
+  /// Base constructor for existing list of pumps.
+  Pump_iterator(const Scheduler &sch) :pumps(sch.m_pumps)
   {}
 
 };
@@ -941,13 +982,13 @@ void Scheduler::move_pump_to_end(const Pump_iterator &p)
 {
   // The pump to move is in the m_pumps list so the list can't be empty.
   DBUG_ASSERT(m_pumps);
-  if (m_last != p.el)
+  if (m_last != p.pumps)
   {
-    m_pumps= list_delete(m_pumps, p.el);
-    m_last->next= p.el;
-    p.el->prev= m_last;
-    p.el->next= NULL;
-    m_last= p.el;
+    m_pumps= list_delete(m_pumps, p.pumps);
+    m_last->next= p.pumps;
+    p.pumps->prev= m_last;
+    p.pumps->next= NULL;
+    m_last= p.pumps;
   }
 }
 
@@ -958,22 +999,22 @@ void Scheduler::move_pump_to_end(const Pump_iterator &p)
  */
 void Scheduler::remove_pump(Pump_iterator &p)
 {
-  DBUG_ASSERT(p.el);
+  DBUG_ASSERT(p.pumps);
 
-  if (m_last == p.el)
+  if (m_last == p.pumps)
     m_last= m_last->prev;
 
   if (m_pumps)
   {
-    m_pumps= list_delete(m_pumps, p.el);
+    m_pumps= list_delete(m_pumps, p.pumps);
     m_count--;
   }
 
   if (p)
   {
     // destructor calls driver's free() method
-    delete static_cast<Pump*>(p.el->data);
-    my_free(p.el, MYF(0));
+    delete static_cast<Pump*>(p.pumps->data);
+    my_free(p.pumps, MYF(0));
   }
 }
 

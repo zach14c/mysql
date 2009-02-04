@@ -1135,6 +1135,7 @@ int main(int argc,char *argv[])
   {
     put_error(NULL);
     free_defaults(defaults_argv);
+    batch_readline_end(status.line_buff);
     my_end(0);
     exit(1);
   }
@@ -1204,7 +1205,9 @@ int main(int argc,char *argv[])
 					    MYF(MY_WME))))
       {
 	fprintf(stderr, "Couldn't allocate memory for temp histfile!\n");
-	exit(1);
+        status.exit_status= 1;
+        mysql_end(1);
+        exit(1); /* purecov: deadcode */
       }
       sprintf(histfile_tmp, "%s.TMP", histfile);
     }
@@ -1238,11 +1241,11 @@ sig_handler mysql_end(int sig)
     if (!write_history(histfile_tmp))
       my_rename(histfile_tmp, histfile, MYF(MY_WME));
   }
-  batch_readline_end(status.line_buff);
   completion_hash_free(&ht);
   free_root(&hash_mem_root,MYF(0));
-
 #endif
+  batch_readline_end(status.line_buff);
+
   if (sig >= 0)
     put_info(sig ? "Aborted" : "Bye", INFO_RESULT);
   glob_buffer.free();
