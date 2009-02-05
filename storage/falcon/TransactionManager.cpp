@@ -32,8 +32,6 @@
 
 static const int EXTRA_TRANSACTIONS = 10;
 
-static TransId OLD = 0;  // Temporary for debugging
-
 #ifdef _DEBUG
 #undef THIS_FILE
 static const char THIS_FILE[]=__FILE__;
@@ -320,9 +318,6 @@ void TransactionManager::purgeTransactionsWithLocks()
 	// Find the transaction id of the oldest active transaction
 
 	TransId oldestActive = findOldestInActiveList();
-
-	ASSERT(oldestActive >= OLD);   // Temporary for debugging
-	OLD = oldestActive;            // Please ignore
 
 	// Check for any fully mature transactions to ditch
   
