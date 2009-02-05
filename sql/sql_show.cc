@@ -607,7 +607,7 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
 bool mysqld_show_create_db(THD *thd, char *dbname,
                            HA_CREATE_INFO *create_info)
 {
-  char buff[2048];
+  char buff[2048], orig_dbname[NAME_LEN];
   String buffer(buff, sizeof(buff), system_charset_info);
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Security_context *sctx= thd->security_ctx;
@@ -615,6 +615,10 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
 #endif
   Protocol *protocol=thd->protocol;
   DBUG_ENTER("mysql_show_create_db");
+
+  strcpy(orig_dbname, dbname);
+  if (lower_case_table_names && dbname != any_db)
+    my_casedn_str(files_charset_info, dbname);
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   if (test_all_bits(sctx->master_access, DB_ACLS))
@@ -632,7 +636,7 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
   }
 #endif
 
-  if (store_db_create_info(thd, dbname, &buffer, create_info))
+  if (store_db_create_info(thd, dbname, &buffer, create_info, orig_dbname))
   {
     /* 
       This assumes that the only reason for which store_db_create_info()
@@ -651,7 +655,7 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
     DBUG_RETURN(TRUE);
 
   protocol->prepare_for_resend();
-  protocol->store(dbname, strlen(dbname), system_charset_info);
+  protocol->store(orig_dbname, strlen(orig_dbname), system_charset_info);
   protocol->store(buffer.ptr(), buffer.length(), buffer.charset());
 
   if (protocol->write())
@@ -1458,7 +1462,7 @@ int store_create_info(THD *thd, TABLE_LIST *table_list, String *packet,
 */
 
 bool store_db_create_info(THD *thd, const char *dbname, String *buffer,
-                          HA_CREATE_INFO *create_info)
+                          HA_CREATE_INFO *create_info, const char* orig_dbname)
 {
   HA_CREATE_INFO create;
   uint create_options = create_info ? create_info->options : 0;
@@ -1486,7 +1490,7 @@ bool store_db_create_info(THD *thd, const char *dbname, String *buffer,
   if (create_options & HA_LEX_CREATE_IF_NOT_EXISTS)
     buffer->append(STRING_WITH_LEN("/*!32312 IF NOT EXISTS*/ "));
 
-  append_identifier(thd, buffer, dbname, strlen(dbname));
+  append_identifier(thd, buffer, orig_dbname, strlen(orig_dbname));
 
   if (create.default_table_charset)
   {

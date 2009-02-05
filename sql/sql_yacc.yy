@@ -2202,7 +2202,7 @@ clear_privileges:
 sp_name:
           ident '.' ident
           {
-            if (!$1.str || check_db_name(&$1))
+            if (!$1.str || check_and_convert_db_name(&$1, FALSE))
             {
               my_error(ER_WRONG_DB_NAME, MYF(0), $1.str);
               MYSQL_YYABORT;
@@ -6268,7 +6268,7 @@ alter_list_item:
               MYSQL_YYABORT;
             }
             if (check_table_name($3->table.str,$3->table.length) ||
-                $3->db.str && check_db_name(&$3->db))
+                $3->db.str && check_and_convert_db_name(&$3->db, FALSE))
             {
               my_error(ER_WRONG_TABLE_NAME, MYF(0), $3->table.str);
               MYSQL_YYABORT;
