@@ -1,0 +1,121 @@
+# We need normal server as we use several connections in this test.
+# We also need binary log enabled as only in this case TL_READ_NO_INSERT
+# locks are acquired for tables participating in subqueries.
+--source include/have_falcon.inc
+--source include/not_embedded.inc
+--source include/have_log_bin.inc
+
+--echo #
+--echo # Bug #41688: Foreign keys: lock warnings
+--echo #
+--echo # The combination of facts that Falcon was not downgrading
+--echo # TL_READ_NO_INSERT and that SQL-layer impoperly handled
+--echo # handled locking for combination of TL_READ_NO_INSERT and
+--echo # TL_WRITE_ALLOW_WRITE locks let to warnings appearing in
+--echo # error log.
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+connect (addcon1, localhost, root,,);
+connect (addcon2, localhost, root,,);
+connect (addcon3, localhost, root,,);
+connection default;
+
+--disable_warnings
+drop table if exists t1;
+--enable_warnings
+create table t1 (s1 int);
+insert into t1 values (1);
+select get_lock("bug41688_lock_1", 100);
+--echo Switching to connection 'addcon3'
+connection addcon3;
+select get_lock("bug41688_lock_2", 100);
+
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+--echo # First part of the test. Before fix in this situation
+--echo # TL_READ_NO_INSERT was acquired even although another
+--echo # was holding TL_WRITE_ALLOW_WRITE lock.
+--echo Switching to connection 'addcon1'
+connection addcon1;
+--send insert into t1 values (get_lock("bug41688_lock_1", 100));
+
+--echo Switching to connection 'default'
+connection default;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "User lock" and info = 'insert into t1 values (get_lock("bug41688_lock_1", 100))';
+--source include/wait_condition.inc
+
+--echo # This statement should not get blocked or produce warnings in error log
+insert into t1 select * from t1;
+
+--echo # Allow statement in 'addcon1' to proceed
+select release_lock("bug41688_lock_1");
+
+--echo Switching to connection 'addcon1'
+connection addcon1;
+--reap
+select release_lock("bug41688_lock_1");
+
+--echo # Second part of the test. Before fix in this situation
+--echo # TL_WRITE_ALLOW_WRITE was acquired even although another
+--echo # thread was holding TL_WRITE_ALLOW_WRITE and TL_READ_NO_INSERT
+--echo # on the table.
+--echo Switching to connection 'default'
+connection default;
+select get_lock("bug41688_lock_1", 100);
+
+--echo Switching to connection 'addcon1'
+connection addcon1;
+--send insert into t1 select count(*) * get_lock("bug41688_lock_1", 100) from t1;
+
+--echo Switching to connection 'addcon2'
+connection addcon2;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "User lock" and info = 'insert into t1 select count(*) * get_lock("bug41688_lock_1", 100) from t1';
+--source include/wait_condition.inc
+
+--echo # This statement should not get blocked or produce warnings in error log
+--send insert into t1 values (get_lock("bug41688_lock_2", 100));
+
+--echo Switching to connection 'default'
+connection default;
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "User lock" and info = 'insert into t1 values (get_lock("bug41688_lock_2", 100))';
+--source include/wait_condition.inc
+
+--echo # Allow statement in 'addcon1' to proceed
+select release_lock("bug41688_lock_1");
+
+--echo Switching to connection 'addcon1'
+connection addcon1;
+--reap
+select release_lock("bug41688_lock_1");
+
+--echo Switching to connection 'addcon3'
+connection addcon3;
+--echo # Allow statement in 'addcon2' to proceed
+select release_lock("bug41688_lock_2");
+
+--echo Switching to connection 'addcon2'
+connection addcon2;
+--reap
+select release_lock("bug41688_lock_2");
+                             
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+--echo Switching to connection 'default'
+connection default;
+drop table t1;

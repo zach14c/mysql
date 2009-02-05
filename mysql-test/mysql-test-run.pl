@@ -3484,6 +3484,7 @@ sub extract_warning_lines ($) {
      # qr/^Warning:|mysqld: Warning|\[Warning\]/,
      # qr/^Error:|\[ERROR\]/,
      qr/^Warning:|mysqld: Warning/,
+     qr/^Warning at/,
      qr/^Error:/,
      qr/^==.* at 0x/,
      qr/InnoDB: Warning|InnoDB: Error/,
