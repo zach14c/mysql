@@ -447,6 +447,7 @@ revoke all on test.t1 from mysqltest_2@localhost;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 YES
+drop user mysqltest_2@localhost;
 #
 # SQLCOM_SHOW_GRANTS
 #

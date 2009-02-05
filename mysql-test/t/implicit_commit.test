@@ -461,6 +461,8 @@ let $statement=
   revoke all on test.t1 from mysqltest_2@localhost;
 source include/implicit_commit_helper.inc;
 
+drop user mysqltest_2@localhost;
+
 --echo #
 --echo # SQLCOM_SHOW_GRANTS
 --echo #
