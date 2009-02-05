@@ -225,13 +225,12 @@ struct st_table_lock {
   uchar  lock_type;
 };
 
-#define hash_insert my_hash_insert /* for consistency :) */
 
 static inline
 TABLE_LOCK *find_by_loid(LOCKED_TABLE *table, uint16 loid)
 {
-  return (TABLE_LOCK *)hash_search(& table->latest_locks,
-                                   (uchar *)& loid, sizeof(loid));
+  return (TABLE_LOCK *)my_hash_search(& table->latest_locks,
+                                      (uchar *)& loid, sizeof(loid));
 }
 
 static inline
@@ -485,8 +484,8 @@ tablockman_getlock(TABLOCKMAN *lm, TABLE_LOCK_OWNER *lo,
 
   /* update the latest_locks hash */
   if (old)
-    hash_delete(& table->latest_locks, (uchar *)old);
-  hash_insert(& table->latest_locks, (uchar *)new);
+    my_hash_delete(& table->latest_locks, (uchar *)old);
+  my_hash_insert(& table->latest_locks, (uchar *)new);
 
   new->upgraded_from= old;
 
@@ -569,7 +568,7 @@ void tablockman_release_locks(TABLOCKMAN *lm, TABLE_LOCK_OWNER *lo)
 
     /* TODO ? group locks by table to reduce the number of mutex locks */
     pthread_mutex_lock(mutex);
-    hash_delete(& cur->table->latest_locks, (uchar *)cur);
+    my_hash_delete(& cur->table->latest_locks, (uchar *)cur);
 
     if (cur->prev)
       cur->prev->next= cur->next;
@@ -632,9 +631,9 @@ void tablockman_init_locked_table(LOCKED_TABLE *lt, int initial_hash_size)
 {
   bzero(lt, sizeof(*lt));
   pthread_mutex_init(& lt->mutex, MY_MUTEX_INIT_FAST);
-  hash_init(& lt->latest_locks, & my_charset_bin, initial_hash_size,
-            offsetof(TABLE_LOCK, loid),
-            sizeof(((TABLE_LOCK*)0)->loid), 0, 0, 0);
+  my_hash_init(& lt->latest_locks, & my_charset_bin, initial_hash_size,
+               offsetof(TABLE_LOCK, loid),
+               sizeof(((TABLE_LOCK*)0)->loid), 0, 0, 0);
 }
 
 void tablockman_destroy_locked_table(LOCKED_TABLE *lt)
@@ -647,7 +646,7 @@ void tablockman_destroy_locked_table(LOCKED_TABLE *lt)
   for (i= 0; i<LOCK_TYPES; i++)
      DBUG_ASSERT(lt->active_locks[i] == 0);
 
-  hash_free(& lt->latest_locks);
+  my_hash_free(& lt->latest_locks);
   pthread_mutex_destroy(& lt->mutex);
 }
 

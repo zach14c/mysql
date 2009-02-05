@@ -124,8 +124,8 @@ my_bool _ma_redo_not_needed_for_page(uint16 shortid, LSN lsn,
     uint64 file_and_page_id=
       (((uint64)((index << 16) | shortid)) << 40) | page;
     struct st_dirty_page *dirty_page= (struct st_dirty_page *)
-      hash_search(&all_dirty_pages,
-                  (uchar *)&file_and_page_id, sizeof(file_and_page_id));
+      my_hash_search(&all_dirty_pages,
+                     (uchar *)&file_and_page_id, sizeof(file_and_page_id));
     DBUG_PRINT("info", ("in dirty pages list: %d", dirty_page != NULL));
     if ((dirty_page == NULL) ||
         cmp_translog_addr(lsn, dirty_page->rec_lsn) < 0)

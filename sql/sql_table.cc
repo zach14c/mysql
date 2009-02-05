@@ -3785,6 +3785,8 @@ static bool lock_table_name_if_not_cached(THD *thd, const char *db,
     }
     else
       *lock_data= 0;
+  } else {
+    DEBUG_SYNC(thd, "locked_table_name");
   }
   return FALSE;
 }
@@ -3813,7 +3815,7 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
   /* Wait for any database locks */
   pthread_mutex_lock(&LOCK_lock_db);
   while (!thd->killed &&
-         hash_search(&lock_db_cache,(uchar*) db, strlen(db)))
+         my_hash_search(&lock_db_cache,(uchar*) db, strlen(db)))
   {
     wait_for_condition(thd, &LOCK_lock_db, &COND_refresh);
     pthread_mutex_lock(&LOCK_lock_db);
@@ -4495,8 +4497,8 @@ send_result_message:
     switch (result_code) {
     case HA_ADMIN_NOT_IMPLEMENTED:
       {
-	char buf[ERRMSGSIZE+20];
-	uint length=my_snprintf(buf, ERRMSGSIZE,
+	char buf[MYSQL_ERRMSG_SIZE];
+	uint length=my_snprintf(buf, sizeof(buf),
 				ER(ER_CHECK_NOT_IMPLEMENTED), operator_name);
 	protocol->store(STRING_WITH_LEN("note"), system_charset_info);
 	protocol->store(buf, length, system_charset_info);
@@ -4505,8 +4507,8 @@ send_result_message:
 
     case HA_ADMIN_NOT_BASE_TABLE:
       {
-        char buf[ERRMSGSIZE+20];
-        uint length= my_snprintf(buf, ERRMSGSIZE,
+        char buf[MYSQL_ERRMSG_SIZE];
+        uint length= my_snprintf(buf, sizeof(buf),
                                  ER(ER_BAD_TABLE_ERROR), table_name);
         protocol->store(STRING_WITH_LEN("note"), system_charset_info);
         protocol->store(buf, length, system_charset_info);
@@ -4633,11 +4635,12 @@ send_result_message:
     case HA_ADMIN_NEEDS_UPGRADE:
     case HA_ADMIN_NEEDS_ALTER:
     {
-      char buf[ERRMSGSIZE];
+      char buf[MYSQL_ERRMSG_SIZE];
       uint length;
 
       protocol->store(STRING_WITH_LEN("error"), system_charset_info);
-      length=my_snprintf(buf, ERRMSGSIZE, ER(ER_TABLE_NEEDS_UPGRADE), table->table_name);
+      length=my_snprintf(buf, sizeof(buf), ER(ER_TABLE_NEEDS_UPGRADE),
+                         table->table_name);
       protocol->store(buf, length, system_charset_info);
       fatal_error=1;
       break;
@@ -4645,8 +4648,8 @@ send_result_message:
 
     default:				// Probably HA_ADMIN_INTERNAL_ERROR
       {
-        char buf[ERRMSGSIZE+20];
-        uint length=my_snprintf(buf, ERRMSGSIZE,
+        char buf[MYSQL_ERRMSG_SIZE];
+        uint length=my_snprintf(buf, sizeof(buf),
                                 "Unknown - internal error %d during operation",
                                 result_code);
         protocol->store(STRING_WITH_LEN("error"), system_charset_info);
