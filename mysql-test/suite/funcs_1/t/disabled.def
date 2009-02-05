@@ -6,8 +6,9 @@
 #
 #      <testcasename>  : Comment test
 #
-#  Don't use any TAB characters for whitespace.
+#  Dont use any TAB characters for whitespace.
 #
 ##############################################################################
 
 ndb_views:		Bug #40860 funcs_1.ndb_views fail
+falcon_storedproc:      BUG#42536: funcs_1.falcon_storedproc fails due to missing file storedproc_master.inc

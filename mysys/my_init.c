@@ -83,11 +83,13 @@ my_bool my_init(void)
   if (my_progname)
     my_progname_short= my_progname + dirname_length(my_progname);
 
-#if defined(THREAD) && defined(SAFE_MUTEX)
+#if defined(THREAD)
+  (void) my_threadattr_global_init();
+#  if defined(SAFE_MUTEX)
   safe_mutex_global_init();		/* Must be called early */
-#endif
-#if defined(THREAD) && defined(MY_PTHREAD_FASTMUTEX) && !defined(SAFE_MUTEX)
+#  elif defined(MY_PTHREAD_FASTMUTEX)
   fastmutex_global_init();              /* Must be called early */
+#  endif
 #endif
   netware_init();
 #ifdef THREAD
@@ -157,9 +159,11 @@ void my_end(int infoflag)
   {					/* Test if some file is left open */
     if (my_file_opened | my_stream_opened)
     {
-      sprintf(errbuff[0],EE(EE_OPEN_WARNING),my_file_opened,my_stream_opened);
-      (void) my_message_no_curses(EE_OPEN_WARNING,errbuff[0],ME_BELL);
-      DBUG_PRINT("error",("%s",errbuff[0]));
+      char ebuff[MYSYS_ERRMSG_SIZE];
+      my_snprintf(ebuff, sizeof(ebuff), EE(EE_OPEN_WARNING),
+                  my_file_opened, my_stream_opened);
+      my_message_no_curses(EE_OPEN_WARNING, ebuff, ME_BELL);
+      DBUG_PRINT("error", ("%s", ebuff));
       my_print_open_files();
     }
   }
