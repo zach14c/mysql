@@ -155,7 +155,7 @@ static void check_unused(void)
   }
   for (idx=0 ; idx < table_def_cache.records ; idx++)
   {
-    share= (TABLE_SHARE*) hash_element(&table_def_cache, idx);
+    share= (TABLE_SHARE*) my_hash_element(&table_def_cache, idx);
 
     I_P_List_iterator<TABLE, TABLE_share> it(share->free_tables);
     while ((entry= it++))
@@ -268,9 +268,9 @@ bool table_def_init(void)
   oldest_unused_share= &end_of_unused_share;
   end_of_unused_share.prev= &oldest_unused_share;
 
-  return hash_init(&table_def_cache, &my_charset_bin, table_def_size,
-		   0, 0, table_def_key,
-		   (hash_free_key) table_def_free_entry, 0) != 0;
+  return my_hash_init(&table_def_cache, &my_charset_bin, table_def_size,
+                      0, 0, table_def_key,
+                      (my_hash_free_key) table_def_free_entry, 0) != 0;
 }
 
 
@@ -283,7 +283,7 @@ void table_def_free(void)
     close_cached_tables(NULL, NULL, FALSE, FALSE);
     table_def_inited= 0;
     /* Free table definitions. */
-    hash_free(&table_def_cache);
+    my_hash_free(&table_def_cache);
   }
   DBUG_VOID_RETURN;
 }
@@ -448,8 +448,8 @@ TABLE_SHARE *get_table_share(THD *thd, TABLE_LIST *table_list, char *key,
                                 table_list->table_name));
 
   /* Read table definition from cache */
-  if ((share= (TABLE_SHARE*) hash_search(&table_def_cache,(uchar*) key,
-                                         key_length)))
+  if ((share= (TABLE_SHARE*) my_hash_search(&table_def_cache,(uchar*) key,
+                                            key_length)))
     goto found;
 
   if (!(share= alloc_table_share(table_list, key, key_length)))
@@ -480,7 +480,7 @@ TABLE_SHARE *get_table_share(THD *thd, TABLE_LIST *table_list, char *key,
   if (open_table_def(thd, share, db_flags))
   {
     *error= share->error;
-    (void) hash_delete(&table_def_cache, (uchar*) share);
+    (void) my_hash_delete(&table_def_cache, (uchar*) share);
     DBUG_RETURN(0);
   }
   share->ref_count++;				// Mark in use
@@ -521,7 +521,7 @@ found:
    /* Free cache if too big */
   while (table_def_cache.records > table_def_size &&
          oldest_unused_share->next)
-    hash_delete(&table_def_cache, (uchar*) oldest_unused_share);
+    my_hash_delete(&table_def_cache, (uchar*) oldest_unused_share);
 
   DBUG_PRINT("exit", ("share: %p  ref_count: %u",
                       share, share->ref_count));
@@ -659,7 +659,7 @@ void release_table_share(TABLE_SHARE *share)
   if (to_be_deleted)
   {
     DBUG_PRINT("info", ("Deleting share"));
-    hash_delete(&table_def_cache, (uchar*) share);
+    my_hash_delete(&table_def_cache, (uchar*) share);
   }
   DBUG_VOID_RETURN;
 }
@@ -688,7 +688,8 @@ TABLE_SHARE *get_cached_table_share(const char *db, const char *table_name)
   table_list.db= (char*) db;
   table_list.table_name= (char*) table_name;
   key_length= create_table_def_key((THD*) 0, key, &table_list, 0);
-  return (TABLE_SHARE*) hash_search(&table_def_cache,(uchar*) key, key_length);
+  return (TABLE_SHARE*) my_hash_search(&table_def_cache,
+                                       (uchar*) key, key_length);
 }  
 
 
@@ -743,7 +744,7 @@ OPEN_TABLE_LIST *list_open_tables(THD *thd, const char *db, const char *wild)
 
   for (uint idx=0 ; result == 0 && idx < table_def_cache.records; idx++)
   {
-    TABLE_SHARE *share= (TABLE_SHARE *)hash_element(&table_def_cache, idx);
+    TABLE_SHARE *share= (TABLE_SHARE *)my_hash_element(&table_def_cache, idx);
 
     if (db && my_strcasecmp(system_charset_info, db, share->db.str))
       continue;
@@ -919,7 +920,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
       free_cache_entry(unused_tables);
     /* Free table shares which were not freed implicitly by loop above. */
     while (oldest_unused_share->next)
-      (void) hash_delete(&table_def_cache, (uchar*) oldest_unused_share);
+      (void) my_hash_delete(&table_def_cache, (uchar*) oldest_unused_share);
   }
   else
   {
@@ -1001,7 +1002,8 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables, bool have_lock,
     {
       for (uint idx=0 ; idx < table_def_cache.records ; idx++)
       {
-        TABLE_SHARE *share=(TABLE_SHARE*) hash_element(&table_def_cache, idx);
+        TABLE_SHARE *share=(TABLE_SHARE*) my_hash_element(&table_def_cache,
+                                                          idx);
         if (share->version != refresh_version)
         {
           found= TRUE;
@@ -1073,7 +1075,7 @@ bool close_cached_connection_tables(THD *thd, bool if_wait_for_refresh,
 
   for (idx= 0; idx < table_def_cache.records; idx++)
   {
-    TABLE_SHARE *share= (TABLE_SHARE *) hash_element(&table_def_cache, idx);
+    TABLE_SHARE *share= (TABLE_SHARE *) my_hash_element(&table_def_cache, idx);
 
     /* Ignore if table is not open or does not have a connect_string */
     if (!share->connect_string.length || !share->ref_count)
@@ -3818,7 +3820,7 @@ int open_tables(THD *thd, TABLE_LIST **start, uint *counter, uint flags)
         Let us free memory used by 'sroutines' hash here since we never
         call destructor for this LEX.
       */
-      hash_free(&tables->view->sroutines);
+      my_hash_free(&tables->view->sroutines);
       goto process_view_routines;
     }
 
@@ -5044,8 +5046,8 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
     field_ptr= table->field + cached_field_index;
   else if (table->s->name_hash.records)
   {
-    field_ptr= (Field**) hash_search(&table->s->name_hash, (uchar*) name,
-                                     length);
+    field_ptr= (Field**) my_hash_search(&table->s->name_hash, (uchar*) name,
+                                        length);
     if (field_ptr)
     {
       /*
@@ -5293,8 +5295,8 @@ Field *find_field_in_table_sef(TABLE *table, const char *name)
   Field **field_ptr;
   if (table->s->name_hash.records)
   {
-    field_ptr= (Field**)hash_search(&table->s->name_hash,(uchar*) name,
-                                    strlen(name));
+    field_ptr= (Field**)my_hash_search(&table->s->name_hash,(uchar*) name,
+                                       strlen(name));
     if (field_ptr)
     {
       /*
@@ -7647,8 +7649,8 @@ void tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
 
   key_length=(uint) (strmov(strmov(key,db)+1,table_name)-key)+1;
 
-  if ((share= (TABLE_SHARE*) hash_search(&table_def_cache,(uchar*) key,
-                                         key_length)))
+  if ((share= (TABLE_SHARE*) my_hash_search(&table_def_cache,(uchar*) key,
+                                            key_length)))
   {
     if (share->ref_count)
     {
@@ -7677,7 +7679,7 @@ void tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
         free_cache_entry(table);
     }
     else
-      (void) hash_delete(&table_def_cache, (uchar*) share);
+      (void) my_hash_delete(&table_def_cache, (uchar*) share);
   }
 }
 
@@ -7713,8 +7715,9 @@ static bool tdc_wait_for_old_versions(THD *thd, MDL_CONTEXT *context)
     while ((lock_data= it++))
     {
       mdl_get_tdc_key(lock_data, &key);
-      if ((share= (TABLE_SHARE*) hash_search(&table_def_cache, (uchar*) key.str,
-                                             key.length)) &&
+      if ((share= (TABLE_SHARE*) my_hash_search(&table_def_cache,
+                                                (uchar*) key.str,
+                                                key.length)) &&
           share->version != refresh_version)
         break;
     }

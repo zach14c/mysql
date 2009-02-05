@@ -2011,3 +2011,4 @@ libmysql/probes.h
 libmysql_r/probes.h
 unittest/tmp
 libmysqld/sql_join_cache.cc
+libmysqld/examples/mysqltest.cc

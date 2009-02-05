@@ -791,8 +791,8 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
       /* Setup initial state that is visible for all */
       MARIA_STATE_HISTORY_CLOSED *history;
       if ((history= (MARIA_STATE_HISTORY_CLOSED *)
-           hash_search(&maria_stored_state,
-                       (uchar*) &share->state.create_rename_lsn, 0)))
+           my_hash_search(&maria_stored_state,
+                          (uchar*) &share->state.create_rename_lsn, 0)))
       {
         /*
           Move history from hash to share. This is safe to do as we
@@ -801,7 +801,7 @@ MARIA_HA *maria_open(const char *name, int mode, uint open_flags)
         share->state_history=
           _ma_remove_not_visible_states(history->state_history, 0, 0);
         history->state_history= 0;
-        (void) hash_delete(&maria_stored_state, (uchar*) history);
+        (void) my_hash_delete(&maria_stored_state, (uchar*) history);
       }
       else
       {
