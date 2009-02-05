@@ -1552,7 +1552,7 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
       schema_select_lex->table_list.first= NULL;
       db.length= strlen(db.str);
 
-      if (check_db_name(&db))
+      if (check_and_convert_db_name(&db, FALSE))
       {
         my_error(ER_WRONG_DB_NAME, MYF(0), db.str);
         DBUG_RETURN(1);
@@ -3554,7 +3554,7 @@ ddl_blocker_err:
     HA_CREATE_INFO create_info(lex->create_info);
     char *alias;
     if (!(alias=thd->strmake(lex->name.str, lex->name.length)) ||
-        check_db_name(&lex->name))
+        check_and_convert_db_name(&lex->name, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
       break;
@@ -3587,7 +3587,7 @@ ddl_blocker_err:
   }
   case SQLCOM_DROP_DB:
   {
-    if (check_db_name(&lex->name))
+    if (check_and_convert_db_name(&lex->name, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
       break;
@@ -3636,7 +3636,7 @@ ddl_blocker_err:
       break;
     }
 #endif
-    if (check_db_name(db))
+    if (check_and_convert_db_name(db, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), db->str);
       break;
@@ -3668,7 +3668,7 @@ ddl_blocker_err:
   {
     LEX_STRING *db= &lex->name;
     HA_CREATE_INFO create_info(lex->create_info);
-    if (check_db_name(db))
+    if (check_and_convert_db_name(db, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), db->str);
       break;
@@ -3707,7 +3707,7 @@ ddl_blocker_err:
   {
     DBUG_EXECUTE_IF("4x_server_emul",
                     my_error(ER_UNKNOWN_ERROR, MYF(0)); goto error;);
-    if (check_db_name(&lex->name))
+    if (check_and_convert_db_name(&lex->name, TRUE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
       break;
@@ -4084,7 +4084,7 @@ ddl_blocker_err:
       Verify that the database name is allowed, optionally
       lowercase it.
     */
-    if (check_db_name(&lex->sphead->m_db))
+    if (check_and_convert_db_name(&lex->sphead->m_db, FALSE))
     {
       my_error(ER_WRONG_DB_NAME, MYF(0), lex->sphead->m_db.str);
       goto create_sp_error;
@@ -5386,9 +5386,10 @@ bool check_stack_overrun(THD *thd, long margin,
   if ((stack_used=used_stack(thd->thread_stack,(char*) &stack_used)) >=
       (long) (my_thread_stack_size - margin))
   {
-    sprintf(errbuff[0],ER(ER_STACK_OVERRUN_NEED_MORE),
-            stack_used,my_thread_stack_size,margin);
-    my_message(ER_STACK_OVERRUN_NEED_MORE,errbuff[0],MYF(ME_FATALERROR));
+    char ebuff[MYSQL_ERRMSG_SIZE];
+    my_snprintf(ebuff, sizeof(ebuff), ER(ER_STACK_OVERRUN_NEED_MORE),
+                stack_used, my_thread_stack_size, margin);
+    my_message(ER_STACK_OVERRUN_NEED_MORE, ebuff, MYF(ME_FATALERROR));
     return 1;
   }
 #ifndef DBUG_OFF
@@ -6001,7 +6002,7 @@ TABLE_LIST *st_select_lex::add_table_to_list(THD *thd,
   }
 
   if (table->is_derived_table() == FALSE && table->db.str &&
-      check_db_name(&table->db))
+      check_and_convert_db_name(&table->db, FALSE))
   {
     my_error(ER_WRONG_DB_NAME, MYF(0), table->db.str);
     DBUG_RETURN(0);
