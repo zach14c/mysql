@@ -8,7 +8,9 @@
 # - SHOW STATUS like 'Slave_heartbeat_period' report
 
 -- source include/have_log_bin.inc
--- source include/not_windows.inc
+### commented out to watch for bug#37714 regression after mtr2 is pushed
+### -- source include/not_windows.inc
+
 
 connect (master,localhost,root,,test,$MASTER_MYPORT,$MASTER_MYSOCK);
 connect (slave,localhost,root,,test,$SLAVE_MYPORT,$SLAVE_MYSOCK);
