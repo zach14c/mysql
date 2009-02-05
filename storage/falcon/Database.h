@@ -40,6 +40,11 @@
 #define VERSION_CURRENT					COMBINED_VERSION(ODS_VERSION, ODS_MINOR_VERSION)					
 #define VERSION_SERIAL_LOG				COMBINED_VERSION(ODS_VERSION2, ODS_MINOR_VERSION1)
 
+// Reserved tablespaces
+
+static const int TABLESPACE_ID_BACKLOG		= -1;
+static const int TABLESPACE_ID_RESERVED		= -2;
+
 static const int FALC0N_TRACE_TRANSACTIONS	= 1;
 static const int FALC0N_SYNC_TEST			= 2;
 static const int FALC0N_SYNC_OBJECTS		= 4;

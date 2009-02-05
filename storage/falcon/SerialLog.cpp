@@ -119,8 +119,10 @@ SerialLog::SerialLog(Database *db, JString schedule, int maxTransactionBacklog) 
 	blocking = false;
 	writeError = false;
 	windowBuffers = MAX(database->configuration->serialLogWindows, SRL_MIN_WINDOWS);
-	tableSpaceInfo = NULL;
+	
 	memset(tableSpaces, 0, sizeof(tableSpaces));
+	tableSpaceInfo = NULL;
+	
 	syncWrite.setName("SerialLog::syncWrite");
 	syncSections.setName("SerialLog::syncSections");
 	syncIndexes.setName("SerialLog::syncIndexes");
@@ -1533,7 +1535,10 @@ Dbb* SerialLog::findDbb(int tableSpaceId)
 TableSpaceInfo* SerialLog::getTableSpaceInfo(int tableSpaceId)
 {
 	TableSpaceInfo *info;
-	int slot = tableSpaceId %SLT_HASH_SIZE;
+	
+	// Map reserved tablespace ids from the end of the hash table
+	
+	int slot = (tableSpaceId >= 0) ? (tableSpaceId % SLT_HASH_SIZE) : (SLT_HASH_SIZE + tableSpaceId);
 	
 	for (info = tableSpaces[slot]; info; info = info->collision)
 		if (info->tableSpaceId == tableSpaceId)

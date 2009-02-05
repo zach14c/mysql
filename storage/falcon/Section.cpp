@@ -73,7 +73,7 @@ static Bdb* allocSectionPage(Dbb *dbb, int transId, int parentPage, int slot, in
 {
 	Bdb *newBdb = dbb->allocPage(PAGE_sections, transId);
 
-	if (!dbb->serialLog->recovering)
+	if (!dbb->serialLog->recovering && !dbb->noLog)
 		dbb->serialLog->logControl->sectionPage.append(dbb, transId, parentPage, newBdb->pageNumber, slot, sectionId, sequence, level);
 	return newBdb;
 }
