@@ -224,7 +224,7 @@ lock_wrap(lf_alloc_new, void *,
 typedef struct {
   LF_DYNARRAY array;                    /* hash itself */
   LF_ALLOCATOR alloc;                   /* allocator for elements */
-  hash_get_key get_key;                 /* see HASH */
+  my_hash_get_key get_key;              /* see HASH */
   CHARSET_INFO *charset;                /* see HASH */
   uint key_offset, key_length;          /* see HASH */
   uint element_size;                    /* size of memcpy'ed area on insert */
@@ -234,7 +234,7 @@ typedef struct {
 } LF_HASH;
 
 void lf_hash_init(LF_HASH *hash, uint element_size, uint flags,
-                  uint key_offset, uint key_length, hash_get_key get_key,
+                  uint key_offset, uint key_length, my_hash_get_key get_key,
                   CHARSET_INFO *charset);
 void lf_hash_destroy(LF_HASH *hash);
 int lf_hash_insert(LF_HASH *hash, LF_PINS *pins, const void *data);

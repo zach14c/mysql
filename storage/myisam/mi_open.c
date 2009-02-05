@@ -370,6 +370,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
     share->blocksize=min(IO_SIZE,myisam_block_size);
     {
       HA_KEYSEG *pos=share->keyparts;
+      uint32 ftkey_nr= 1;
       for (i=0 ; i < keys ; i++)
       {
         share->keyinfo[i].share= share;
@@ -451,6 +452,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
             share->ft2_keyinfo.end=pos;
             setup_key_functions(& share->ft2_keyinfo);
           }
+          share->keyinfo[i].ftkey_nr= ftkey_nr++;
 	}
         setup_key_functions(share->keyinfo+i);
 	share->keyinfo[i].end=pos;
@@ -460,6 +462,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 	pos->flag=0;					/* For purify */
 	pos++;
       }
+      
       for (i=0 ; i < uniques ; i++)
       {
 	disk_pos=mi_uniquedef_read(disk_pos, &share->uniqueinfo[i]);
@@ -488,7 +491,7 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
 	pos->flag=0;
 	pos++;
       }
-      share->ftparsers= 0;
+      share->ftkeys= ftkey_nr;
     }
 
     disk_pos_assert(disk_pos + share->base.fields *MI_COLUMNDEF_SIZE, end_pos);
@@ -698,8 +701,8 @@ MI_INFO *mi_open(const char *name, int mode, uint open_flags)
   thr_lock_data_init(&share->lock,&m_info->lock,(void*) m_info);
 #endif
   if (mi_log_tables_physical &&
-      hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
-                  share->unique_name_length))
+      my_hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
+                     share->unique_name_length))
     m_info->s->physical_logging= TRUE; /* set before publishing table */
   m_info->open_list.data=(void*) m_info;
   myisam_open_list=list_add(myisam_open_list,&m_info->open_list);
@@ -1217,7 +1220,7 @@ uchar *mi_keydef_read(uchar *ptr, MI_KEYDEF *keydef)
    keydef->underflow_block_length=keydef->block_length/3;
    keydef->version	= 0;			/* Not saved */
    keydef->parser       = &ft_default_parser;
-   keydef->ftparser_nr  = 0;
+   keydef->ftkey_nr     = 0;
    return ptr;
 }
 

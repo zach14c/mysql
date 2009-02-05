@@ -1492,16 +1492,16 @@ Iterator *View_base_obj_iterator::create(THD *thd,
 inline View_base_obj_iterator::View_base_obj_iterator()
   :m_cur_idx(0)
 {
-  hash_init(&m_table_names, system_charset_info, 16, 0, 0,
-            get_table_name_key, free_table_name_key,
-            MYF(0));
+  my_hash_init(&m_table_names, system_charset_info, 16, 0, 0,
+               get_table_name_key, free_table_name_key,
+               MYF(0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
 
 inline View_base_obj_iterator::~View_base_obj_iterator()
 {
-  hash_free(&m_table_names);
+  my_hash_free(&m_table_names);
 }
 
 
@@ -1631,7 +1631,7 @@ Obj *View_base_obj_iterator::next()
     return NULL;
 
   Table_name_key *table_name_key=
-    (Table_name_key *) hash_element(&m_table_names, m_cur_idx);
+    (Table_name_key *) my_hash_element(&m_table_names, m_cur_idx);
 
   ++m_cur_idx;
 

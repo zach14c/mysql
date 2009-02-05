@@ -259,6 +259,8 @@ while ($rnd)
   
   connection master;
   eval drop table t1$rnd;
+  sync_slave_with_master;
+  connection master;
   
   dec $rnd;
 }
@@ -296,8 +298,28 @@ STOP SLAVE;
 connection master;
 let $MYSQLD_DATADIR= `select @@datadir`;
 FLUSH LOGS;
+
+# Stop master server
+--echo --> Stop master server
+--write_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+wait
+EOF
+--shutdown_server 10
+--source include/wait_until_disconnected.inc
+# Replace binlog
 remove_file $MYSQLD_DATADIR/master-bin.000001;
 copy_file $MYSQL_TEST_DIR/std_data/bug16266.000001 $MYSQLD_DATADIR/master-bin.000001;
+  
+--echo --> Start master server
+--append_file $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+restart
+EOF
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+let $binlog_version= query_get_value(SHOW BINLOG EVENTS, Info, 1);
+
+# Make the slave to replay the new binlog.
+--echo --> Master binlog: $binlog_version
 
 # Make the slave to replay the new binlog.
 
