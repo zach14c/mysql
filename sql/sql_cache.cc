@@ -799,6 +799,9 @@ void Query_cache::end_of_result(THD *thd)
   if (query_cache_tls->first_query_block == NULL)
     DBUG_VOID_RETURN;
 
+  /* Ensure that only complete results are cached. */
+  DBUG_ASSERT(thd->stmt_da->is_eof());
+
   if (thd->killed)
   {
     query_cache_abort(&thd->query_cache_tls);

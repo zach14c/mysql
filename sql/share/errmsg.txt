@@ -6452,3 +6452,12 @@ ER_BACKUP_RESTORE_DBS
 
 ER_WARN_ENGINE_TRANSACTION_ROLLBACK
   eng "Storage engine %s does not support rollback for this statement. Transaction rolled back and must be restarted"
+
+ER_BACKUP_SYNCHRONIZE
+  eng "Backup failed to synchronize table images."
+ER_RESTORE_CANNOT_START_SLAVE
+  eng "Cannot start slave. SLAVE START is blocked by %-.64s."
+ER_OPERATION_ABORTED
+  eng "Operation aborted"
+ER_OPERATION_ABORTED_CORRUPTED
+  eng "Operation aborted - data might be corrupted"

@@ -65,6 +65,7 @@ con_ntx1: Backup has now released CB. Perform insert
 SET DEBUG_SYNC= 'now WAIT_FOR commit_unblocked';
 INSERT INTO bup_vp.t1 VALUES ("ntx1: Should NOT be in backup");
 SET DEBUG_SYNC= 'now SIGNAL finish_bup';
+con_ntx2: Reap insert
 
 con_ntx1: Reap backup
 backup_id

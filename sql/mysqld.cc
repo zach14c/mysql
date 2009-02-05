@@ -547,6 +547,8 @@ ulong query_buff_size, slow_launch_time, slave_open_temp_tables;
 ulong open_files_limit, max_binlog_size, max_relay_log_size;
 ulong slave_net_timeout, slave_trans_retries;
 my_bool slave_allow_batching;
+my_bool allow_slave_start= TRUE;
+LEX_CSTRING reason_slave_blocked;
 ulong slave_exec_mode_options;
 const char *slave_exec_mode_str= "STRICT";
 ulong thread_cache_size=0, thread_pool_size= 0;
@@ -698,7 +700,7 @@ pthread_mutex_t LOCK_mysql_create_db, LOCK_open, LOCK_thread_count,
 		LOCK_crypt,
 	        LOCK_global_system_variables,
                 LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
-                LOCK_connection_count;
+                LOCK_connection_count, LOCK_slave_start;
 
 /**
   The below lock protects access to two global server variables:
@@ -1402,6 +1404,7 @@ void clean_up(bool print_message)
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
   end_slave_list();
+  end_slave_start();
 #endif
   delete binlog_filter;
   delete rpl_filter;
@@ -3942,6 +3945,7 @@ static int init_server_components()
   my_uuid_init((ulong) (my_rnd(&sql_rand))*12345,12345);
 #ifdef HAVE_REPLICATION
   init_slave_list();
+  init_slave_start();
 #endif
 
   /* Setup logs */

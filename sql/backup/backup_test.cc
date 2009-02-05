@@ -16,7 +16,7 @@ using namespace obs;
    Call backup kernel API to execute backup related SQL statement.
 
    @param[in] thd  current thread
-   @param[in] lex  results of parsing the statement.
+   @param[in] db_list  List of databases.
   */
 int execute_backup_test_command(THD *thd, List<LEX_STRING> *db_list)
 {

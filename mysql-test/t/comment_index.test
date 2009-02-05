@@ -96,6 +96,4 @@ SELECT comment,index_comment,char_length(index_comment) FROM information_schema.
 let $ENGINE=`select variable_value from information_schema.global_variables where variable_name='STORAGE_ENGINE'`;
 --replace_result $ENGINE ENGINE
 SHOW CREATE TABLE t1;
-
-
-
+DROP TABLE t1;

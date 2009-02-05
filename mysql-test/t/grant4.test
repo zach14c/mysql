@@ -143,4 +143,4 @@ SHOW CREATE VIEW v3;
 connection default;
 disconnect con1;
 drop database mysqltest_db1;
-
+drop user mysqltest_u1@localhost;

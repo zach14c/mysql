@@ -1758,6 +1758,25 @@ result_t Table_restore::close()
     But since the share does now cache the new values from the
     index file, the backup kernel's close writes the correct
     information back to the file.
+
+    This used to work until a brave soul tried to backup and restore
+    compressed tables. Now we know, that replacing the state info is
+    insufficient. The table is always re-created as a non-compressed
+    table. The setup of the share is pretty different between normal and
+    compressed tables. We could try to replace all relevant information.
+    But that would make quite some code duplication with mi_open().
+    Changes there might be forgotten here. And it might still be
+    insufficient. The table instance MI_OPEN might have some setup
+    differences too. Perhaps even the handler ha_myisam. In theory it
+    might even happen that we create fixed length records, while the
+    restored MYI has dynamic records or vice versa. Or we restore a
+    table that had been created by a former MySQL version and has
+    different field types, e.g. varchar.
+
+    So the only practical solution seems to be to re-open the table
+    after restore. But this must be done in the server. The fix here is
+    still required to defeat writing of wrong share data at close as
+    decribed above.
   */
   {
     MI_INFO      *mi_info;

@@ -1373,7 +1373,11 @@ static void unreg_request(KEY_CACHE *keycache,
   DBUG_ASSERT(block->prev_changed && *block->prev_changed == block);
   DBUG_ASSERT(!block->next_used);
   DBUG_ASSERT(!block->prev_used);
-  if (! --block->requests)
+  /*
+    Unregister the request, but do not link erroneous blocks into the
+    LRU ring.
+  */
+  if (!--block->requests && !(block->status & BLOCK_ERROR))
   {
     my_bool hot;
     if (block->hits_left)
@@ -1455,8 +1459,7 @@ static void wait_for_readers(KEY_CACHE *keycache,
 #ifdef THREAD
   struct st_my_thread_var *thread= my_thread_var;
   DBUG_ASSERT(block->status & (BLOCK_READ | BLOCK_IN_USE));
-  DBUG_ASSERT(!(block->status & (BLOCK_ERROR | BLOCK_IN_FLUSH |
-                                 BLOCK_CHANGED)));
+  DBUG_ASSERT(!(block->status & (BLOCK_IN_FLUSH | BLOCK_CHANGED)));
   DBUG_ASSERT(block->hash_link);
   DBUG_ASSERT(block->hash_link->block == block);
   /* Linked in file_blocks or changed_blocks hash. */
@@ -2567,7 +2570,6 @@ uchar *key_cache_read(KEY_CACHE *keycache,
     reg1 BLOCK_LINK *block;
     uint read_length;
     uint offset;
-    uint status;
     int page_st;
 
     /*
@@ -2665,7 +2667,7 @@ uchar *key_cache_read(KEY_CACHE *keycache,
       }
 
       /* block status may have added BLOCK_ERROR in the above 'if'. */
-      if (!((status= block->status) & BLOCK_ERROR))
+      if (!(block->status & BLOCK_ERROR))
       {
 #ifndef THREAD
         if (! return_buffer)
@@ -2691,14 +2693,22 @@ uchar *key_cache_read(KEY_CACHE *keycache,
 
       remove_reader(block);
 
-      /*
-         Link the block into the LRU ring if it's the last submitted
-         request for the block. This enables eviction for the block.
-           */
-      unreg_request(keycache, block, 1);
+      /* Error injection for coverage testing. */
+      DBUG_EXECUTE_IF("key_cache_read_block_error",
+                      block->status|= BLOCK_ERROR;);
 
-      if (status & BLOCK_ERROR)
+      /* Do not link erroneous blocks into the LRU ring, but free them. */
+      if (!(block->status & BLOCK_ERROR))
       {
+        /*
+          Link the block into the LRU ring if it's the last submitted
+          request for the block. This enables eviction for the block.
+        */
+        unreg_request(keycache, block, 1);
+      }
+      else
+      {
+        free_block(keycache, block);
         error= 1;
         break;
       }
@@ -2947,16 +2957,25 @@ int key_cache_insert(KEY_CACHE *keycache,
 
       remove_reader(block);
 
-      /*
-         Link the block into the LRU ring if it's the last submitted
-         request for the block. This enables eviction for the block.
-      */
-      unreg_request(keycache, block, 1);
+      /* Error injection for coverage testing. */
+      DBUG_EXECUTE_IF("key_cache_insert_block_error",
+                      block->status|= BLOCK_ERROR; errno=EIO;);
 
-      error= (block->status & BLOCK_ERROR);
-
-      if (error)
+      /* Do not link erroneous blocks into the LRU ring, but free them. */
+      if (!(block->status & BLOCK_ERROR))
+      {
+        /*
+          Link the block into the LRU ring if it's the last submitted
+          request for the block. This enables eviction for the block.
+        */
+        unreg_request(keycache, block, 1);
+      }
+      else
+      {
+        free_block(keycache, block);
+        error= 1;
         break;
+      }
 
       buff+= read_length;
       filepos+= read_length+offset;
@@ -3245,14 +3264,24 @@ int key_cache_write(KEY_CACHE *keycache,
       */
       remove_reader(block);
 
-      /*
-         Link the block into the LRU ring if it's the last submitted
-         request for the block. This enables eviction for the block.
-      */
-      unreg_request(keycache, block, 1);
+      /* Error injection for coverage testing. */
+      DBUG_EXECUTE_IF("key_cache_write_block_error",
+                      block->status|= BLOCK_ERROR;);
 
-      if (block->status & BLOCK_ERROR)
+      /* Do not link erroneous blocks into the LRU ring, but free them. */
+      if (!(block->status & BLOCK_ERROR))
       {
+        /*
+          Link the block into the LRU ring if it's the last submitted
+          request for the block. This enables eviction for the block.
+        */
+        unreg_request(keycache, block, 1);
+      }
+      else
+      {
+        /* Pretend a "clean" block to avoid complications. */
+        block->status&= ~(BLOCK_CHANGED);
+        free_block(keycache, block);
         error= 1;
         break;
       }
@@ -3328,8 +3357,9 @@ static void free_block(KEY_CACHE *keycache, BLOCK_LINK *block)
 {
   KEYCACHE_THREAD_TRACE("free block");
   KEYCACHE_DBUG_PRINT("free_block",
-                      ("block %u to be freed, hash_link %p",
-                       BLOCK_NUMBER(block), block->hash_link));
+                      ("block %u to be freed, hash_link %p  status: %u",
+                       BLOCK_NUMBER(block), block->hash_link,
+                       block->status));
   /*
     Assert that the block is not free already. And that it is in a clean
     state. Note that the block might just be assigned to a hash_link and
@@ -3411,10 +3441,14 @@ static void free_block(KEY_CACHE *keycache, BLOCK_LINK *block)
   if (block->status & BLOCK_IN_EVICTION)
     return;
 
-  /* Here the block must be in the LRU ring. Unlink it again. */
-  DBUG_ASSERT(block->next_used && block->prev_used &&
-              *block->prev_used == block);
-  unlink_block(keycache, block);
+  /* Error blocks are not put into the LRU ring. */
+  if (!(block->status & BLOCK_ERROR))
+  {
+    /* Here the block must be in the LRU ring. Unlink it again. */
+    DBUG_ASSERT(block->next_used && block->prev_used &&
+                *block->prev_used == block);
+    unlink_block(keycache, block);
+  }
   if (block->temperature == BLOCK_WARM)
     keycache->warm_blocks--;
   block->temperature= BLOCK_COLD;
