@@ -114,10 +114,6 @@ connection breakpoints;
 --echo breakpoints: Wait for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_thread_added';
 
---replace_column 1 #
-query_vertical SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%" OR state LIKE "%holding table locks%";
-
 --echo breakpoints: Sending finish signal to wake BACKUP.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 
