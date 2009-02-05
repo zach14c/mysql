@@ -667,7 +667,7 @@ static int mi_log_start_physical(const char *log_filename, const HASH *tables)
   int error;
   DBUG_ENTER("mi_log_start_physical");
   DBUG_ASSERT(log_filename != NULL);
-  DBUG_ASSERT(hash_inited(tables));
+  DBUG_ASSERT(my_hash_inited(tables));
 
   pthread_mutex_lock(&THR_LOCK_myisam);
   if (mi_log_tables_physical) /* physical logging already running */
@@ -690,8 +690,9 @@ static int mi_log_start_physical(const char *log_filename, const HASH *tables)
     MYISAM_SHARE *share= info->s;
     DBUG_PRINT("info",("table '%s' 0x%lx tested against hash",
                        share->unique_file_name, (ulong)info));
-    if (!hash_search(mi_log_tables_physical, (uchar *)share->unique_file_name,
-                     share->unique_name_length))
+    if (!my_hash_search(mi_log_tables_physical,
+                        (uchar *)share->unique_file_name,
+                        share->unique_name_length))
       continue;
     /* Backup kernel shouldn't ask for temporary table's backup */
     DBUG_ASSERT(!share->temporary);

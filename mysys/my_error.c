@@ -19,6 +19,9 @@
 #include <stdarg.h>
 #include <m_ctype.h>
 
+/* Max length of a error message. Should be kept in sync with MYSQL_ERRMSG_SIZE. */
+#define ERRMSGSIZE      (512)
+
 /* Define some external variables for error handling */
 
 /*
@@ -29,8 +32,6 @@
   - With some special text of errror message use:
   my_printf_error(ER_CODE, format, MYF(N), ...)
 */
-
-char NEAR errbuff[NRERRBUFFS][ERRMSGSIZE];
 
 /*
   Message texts are registered into a linked list of 'my_err_head' structs.
@@ -71,7 +72,7 @@ void my_error(int nr, myf MyFlags, ...)
   const char *format;
   struct my_err_head *meh_p;
   va_list args;
-  char ebuff[ERRMSGSIZE + 20];
+  char ebuff[ERRMSGSIZE];
   DBUG_ENTER("my_error");
   DBUG_PRINT("my", ("nr: %d  MyFlags: %d  errno: %d", nr, MyFlags, errno));
 
@@ -109,7 +110,7 @@ void my_error(int nr, myf MyFlags, ...)
 void my_printf_error(uint error, const char *format, myf MyFlags, ...)
 {
   va_list args;
-  char ebuff[ERRMSGSIZE+20];
+  char ebuff[ERRMSGSIZE];
   DBUG_ENTER("my_printf_error");
   DBUG_PRINT("my", ("nr: %d  MyFlags: %d  errno: %d  format: %s",
 		    error, MyFlags, errno, format));
@@ -135,7 +136,7 @@ void my_printf_error(uint error, const char *format, myf MyFlags, ...)
 
 void my_printv_error(uint error, const char *format, myf MyFlags, va_list ap)
 {
-  char ebuff[ERRMSGSIZE+20];
+  char ebuff[ERRMSGSIZE];
   DBUG_ENTER("my_printv_error");
   DBUG_PRINT("my", ("nr: %d  MyFlags: %d  errno: %d  format: %s",
 		    error, MyFlags, errno, format));

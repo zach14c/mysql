@@ -384,10 +384,12 @@ eval
 CREATE TABLE t1(a INT, b CHAR(100))
 ENGINE=$engine_type;
 
+INSERT INTO t1 (a, b) VALUES (1, 'one');
+
 --echo # Switch to connection locker
 connection locker;
-SET DEBUG_SYNC= 'after_lock_tables_takes_lock
-                 SIGNAL locked WAIT_FOR do_unlock';
+SET DEBUG_SYNC= 'locked_table_name
+                 SIGNAL locked WAIT_FOR do_unlock HIT_LIMIT 2';
 --echo # "send" next statement
 send
 ALTER TABLE t1 RENAME t2;
@@ -395,7 +397,7 @@ ALTER TABLE t1 RENAME t2;
 --echo # Switch to connection waiter
 connection waiter;
 SET DEBUG_SYNC= 'now WAIT_FOR locked';
-SET DEBUG_SYNC= 'after_start_ddl SIGNAL do_unlock';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
 --echo # "send" next statement
 send
 ALTER TABLE t2 RENAME t3;
