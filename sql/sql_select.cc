@@ -95,7 +95,6 @@ static store_key *get_store_key(THD *thd,
 				KEYUSE *keyuse, table_map used_tables,
 				KEY_PART_INFO *key_part, uchar *key_buff,
 				uint maybe_null);
-static bool make_simple_join(JOIN *join,TABLE *tmp_table);
 static void make_outerjoin_info(JOIN *join);
 static Item*
 make_cond_after_sjm(Item *root_cond, Item *cond, table_map tables, table_map sjm_tables);
@@ -2551,7 +2550,7 @@ JOIN::exec()
       
       /* Free first data from old join */
       curr_join->join_free();
-      if (make_simple_join(curr_join, curr_tmp_table))
+      if (curr_join->make_simple_join(this, curr_tmp_table))
 	DBUG_VOID_RETURN;
       calc_group_buffer(curr_join, group_list);
       count_field_types(select_lex, &curr_join->tmp_table_param,
@@ -2674,7 +2673,7 @@ JOIN::exec()
       curr_join->select_distinct=0;
     }
     curr_tmp_table->reginfo.lock_type= TL_UNLOCK;
-    if (make_simple_join(curr_join, curr_tmp_table))
+    if (curr_join->make_simple_join(this, curr_tmp_table))
       DBUG_VOID_RETURN;
     calc_group_buffer(curr_join, curr_join->group_list);
     count_field_types(select_lex, &curr_join->tmp_table_param, 
@@ -8176,48 +8175,42 @@ store_val_in_field(Field *field, Item *item, enum_check_fields check_flag)
 }
 
 
-static bool
-make_simple_join(JOIN *join,TABLE *tmp_table)
+/**
+  @details Initialize a JOIN as a query execution plan
+  that accesses a single table via a table scan.
+
+  @param  parent      contains JOIN_TAB and TABLE object buffers for this join
+  @param  tmp_table   temporary table
+
+  @retval FALSE       success
+  @retval TRUE        error occurred
+*/
+bool
+JOIN::make_simple_join(JOIN *parent, TABLE *tmp_table)
 {
-  TABLE **tableptr;
-  JOIN_TAB *join_tab;
-  DBUG_ENTER("make_simple_join");
+  DBUG_ENTER("JOIN::make_simple_join");
 
   /*
     Reuse TABLE * and JOIN_TAB if already allocated by a previous call
     to this function through JOIN::exec (may happen for sub-queries).
   */
-  if (!join->table_reexec)
-  {
-    if (!(join->table_reexec= (TABLE**) join->thd->alloc(sizeof(TABLE*))))
-      DBUG_RETURN(TRUE);                        /* purecov: inspected */
-    if (join->tmp_join)
-      join->tmp_join->table_reexec= join->table_reexec;
-  }
-  if (!join->join_tab_reexec)
-  {
-    if (!(join->join_tab_reexec=
-          (JOIN_TAB*) join->thd->alloc(sizeof(JOIN_TAB))))
-      DBUG_RETURN(TRUE);                        /* purecov: inspected */
-    if (join->tmp_join)
-      join->tmp_join->join_tab_reexec= join->join_tab_reexec;
-  }
-  tableptr= join->table_reexec;
-  join_tab= join->join_tab_reexec;
+  if (!parent->join_tab_reexec &&
+      !(parent->join_tab_reexec= (JOIN_TAB*) thd->alloc(sizeof(JOIN_TAB))))
+    DBUG_RETURN(TRUE);                        /* purecov: inspected */
 
-  join->join_tab=join_tab;
-  join->all_tables=tableptr; tableptr[0]=tmp_table;
-  join->tables=1;
-  join->const_tables=0;
-  join->const_table_map=0;
-  join->tmp_table_param.field_count= join->tmp_table_param.sum_func_count=
-    join->tmp_table_param.func_count=0;
-  join->tmp_table_param.copy_field=join->tmp_table_param.copy_field_end=0;
-  join->first_record=join->sort_and_group=0;
-  join->send_records=(ha_rows) 0;
-  join->group=0;
-  join->row_limit=join->unit->select_limit_cnt;
-  join->do_send_rows = (join->row_limit) ? 1 : 0;
+  join_tab= parent->join_tab_reexec;
+  all_tables= &parent->table_reexec[0]; parent->table_reexec[0]= tmp_table;
+  tables= 1;
+  const_tables= 0;
+  const_table_map= 0;
+  tmp_table_param.field_count= tmp_table_param.sum_func_count=
+    tmp_table_param.func_count= 0;
+  tmp_table_param.copy_field= tmp_table_param.copy_field_end=0;
+  first_record= sort_and_group=0;
+  send_records= (ha_rows) 0;
+  group= 0;
+  row_limit= unit->select_limit_cnt;
+  do_send_rows= row_limit ? 1 : 0;
 
   join_tab->use_join_cache= FALSE;
   join_tab->cache=0;			        /* No caching */
@@ -8236,7 +8229,7 @@ make_simple_join(JOIN *join,TABLE *tmp_table)
   join_tab->ref.key = -1;
   join_tab->not_used_in_distinct=0;
   join_tab->read_first_record= join_init_read_record;
-  join_tab->join=join;
+  join_tab->join= this;
   join_tab->ref.key_parts= 0;
   join_tab->keep_current_rowid= FALSE;
   join_tab->flush_weedout_table= join_tab->check_weed_out_table= NULL;
