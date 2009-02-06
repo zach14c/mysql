@@ -757,7 +757,6 @@ typedef SOCKET_SIZE_TYPE size_socket;
 #define UNSINT32		/* unsigned int32 */
 
 	/* General constants */
-#define SC_MAXWIDTH	256	/* Max width of screen (for error messages) */
 #define FN_LEN		256	/* Max file name len */
 #define FN_HEADLEN	253	/* Max length of filepart of file name */
 #define FN_EXTLEN	20	/* Max length of extension (part of FN_LEN) */
@@ -871,7 +870,10 @@ typedef SOCKET_SIZE_TYPE size_socket;
 #endif
 
 #if !defined(HAVE_STRTOK_R)
-#define strtok_r(A,B,C) strtok((A),(B))
+inline char *strtok_r(char *str, const char *delim, char **saveptr)
+{
+  return strtok(str,delim);
+}
 #endif
 
 /* This is from the old m-machine.h file */
@@ -1197,6 +1199,9 @@ typedef char		bool;	/* Ordinary boolean values 0 1 */
 #else
 #define dbug_volatile
 #endif
+
+/* Some helper macros */
+#define YESNO(X) ((X) ? "yes" : "no")
 
 /* Defines for time function */
 #define SCALE_SEC	100

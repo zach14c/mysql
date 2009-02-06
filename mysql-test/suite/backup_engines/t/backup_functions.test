@@ -17,8 +17,9 @@ connect (breakpoints,localhost,root,,);
 --echo
 ##############################################################
 
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_sfs.bak
+remove_file $MYSQLD_DATADIR/bup_sfs.bak;
 
 #Create Database and object stored function for this test.
 
@@ -144,7 +145,7 @@ SELECT square_area(11);
 --query_vertical SHOW CREATE TABLE players;
 describe penalties;
 --replace_column  4 # 5 # 6 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Backup and restore data.
 --echo backup data
@@ -171,7 +172,7 @@ describe penalties;
 describe matches;
 --replace_column  4 # 5 # 6 #
 
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored properly or
 # not.
@@ -203,7 +204,7 @@ SELECT @@SQL_MODE;
 --query_vertical SHOW CREATE FUNCTION number_of_players;
 --replace_column  4 # 5 # 6 #
 
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored
 #properly or not.
@@ -226,7 +227,7 @@ SELECT @@SQL_MODE;
 --query_vertical SHOW CREATE DATABASE bup_sfs;
 --query_vertical SHOW CREATE FUNCTION number_of_players;
 --replace_column  4 # 5 # 6 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored properly
 #or not.
@@ -251,7 +252,7 @@ SELECT @@SQL_MODE;
 --query_vertical SHOW CREATE TABLE players;
 describe matches;
 --replace_column  4 # 5 # 6 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db <> 'mtr';
 
 #Again calling function to check if Sf are backed up and restored properly
 # ornot
@@ -269,5 +270,4 @@ SELECT paymentno,amount, dollars(amount) FROM penalties;
 
 DROP DATABASE bup_sfs;
 
---remove_file $MYSQLTEST_VARDIR/master-data/bup_sfs.bak
-
+remove_file $MYSQLD_DATADIR/bup_sfs.bak;

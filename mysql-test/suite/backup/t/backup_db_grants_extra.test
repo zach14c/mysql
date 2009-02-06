@@ -4,6 +4,8 @@
 
 --source include/not_embedded.inc
 
+let $bdir= `select @@backupdir`;
+
 --disable_warnings
 DROP DATABASE IF EXISTS db1;
 DROP DATABASE IF EXISTS db2;
@@ -80,7 +82,9 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  WHERE TABLE_SCHEMA='db1' OR TABLE_SCHEMA='db2' 
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo Perform backup
 --replace_column 1 #
@@ -102,16 +106,18 @@ RESTORE FROM 'db12.bak';
 SHOW TABLES FROM db1;
 SHOW TABLES FROM db2;
 --replace_column 5 # 6 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 --replace_column 5 # 6 #
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 
 SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA 
 FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES 
  WHERE TABLE_SCHEMA='db1' OR TABLE_SCHEMA='db2' 
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo We notice that all the grants are restored intact.
 --echo Excercise objects
@@ -156,16 +162,18 @@ FLUSH PRIVILEGES;
 SHOW TABLES FROM db1;
 SHOW TABLES FROM db2;
 --replace_column 5 # 6 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 --replace_column 5 # 6 #
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 
 SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA 
 FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES 
  WHERE TABLE_SCHEMA='db1' OR TABLE_SCHEMA='db2' 
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 --replace_column 8 # 
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo From the above table, We can notice that grants for stored routines will
 --echo not be restored. Bug#41979
@@ -178,8 +186,10 @@ DROP DATABASE db2;
 DROP USER jim@'%';
 DROP USER carry@'%';
 
+--disable_warnings
 --replace_column 1 # 
 RESTORE FROM 'db12.bak';
+--enable_warnings
 --replace_column 2 #
 SHOW WARNINGS;
 
@@ -209,9 +219,9 @@ RESTORE FROM 'db12.bak' OVERWRITE;
 SHOW TABLES FROM db1;
 SHOW TABLES FROM db2;
 --replace_column 5 # 6 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 --replace_column 5 # 6 #
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 
 SELECT GRANTEE, PRIVILEGE_TYPE, TABLE_SCHEMA 
 FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES 
@@ -231,7 +241,9 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  WHERE TABLE_SCHEMA='db1' OR TABLE_SCHEMA='db2' 
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo Drop procedure db1.p11 and check the grants for users
 DROP PROCEDURE db1.p11;
@@ -241,7 +253,9 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  WHERE TABLE_SCHEMA='db1' OR TABLE_SCHEMA='db2' 
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo Perform backup 
 --replace_column 1 #
@@ -258,7 +272,9 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  WHERE TABLE_SCHEMA='db1' OR TABLE_SCHEMA='db2' 
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo Perform restore
 --replace_column 1 #
@@ -273,14 +289,16 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 SHOW TABLES FROM db1;
 SHOW TABLES FROM db2;
 --replace_column 5 # 6 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 --replace_column 5 # 6 #
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 
 --echo Drop function and check grants for users
 DROP FUNCTION db1.f11;
@@ -291,7 +309,9 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 --echo Perform backup 
 --replace_column 1 #
@@ -313,17 +333,19 @@ FROM INFORMATION_SCHEMA.SCHEMA_PRIVILEGES
  ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 
 --replace_column 8 #
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+ WHERE Db='db1' OR Db='db2' 
+ ORDER BY Db, User, Routine_name;
 
 SHOW TABLES FROM db1;
 SHOW TABLES FROM db2;
 --replace_column 5 # 6 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 --replace_column 5 # 6 #
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 
---remove_file $MYSQLTEST_VARDIR/master-data/db12a.bak
---remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
+--remove_file $bdir/db12a.bak
+--remove_file $bdir/db12b.bak
 
 --echo 
 --echo Test 1: Verify that database and GRANTs are restored, when a table 
@@ -448,8 +470,8 @@ SELECT * FROM db1.t2;
 SELECT * FROM db2.t1;
 SELECT * FROM db2.t2;
  
---remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
---remove_file $MYSQLTEST_VARDIR/master-data/db12c.bak
+--remove_file $bdir/db12b.bak
+--remove_file $bdir/db12c.bak
 
 --echo 
 --echo Test 2: Rename a table / column to which grant is assigned and verify 
@@ -544,8 +566,8 @@ SELECT * FROM db1.t2;
 SELECT * FROM db2.t1;
 SELECT * FROM db2.t2;
 
---remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
---remove_file $MYSQLTEST_VARDIR/master-data/db12c.bak
+--remove_file $bdir/db12b.bak
+--remove_file $bdir/db12c.bak
 
 --echo 
 --echo Test 3: Rename a privileged user, backup database and verify
@@ -589,8 +611,10 @@ SELECT * FROM INFORMATION_SCHEMA.COLUMN_PRIVILEGES
 DROP DATABASE db1;
 DROP DATABASE db2;
 
+--disable_warnings
 --replace_column 1 #
 RESTORE FROM 'db12a.bak';
+--enable_warnings
 --replace_column 2 #
 SHOW WARNINGS;
 
@@ -637,6 +661,6 @@ DROP DATABASE db1;
 DROP DATABASE db2;
 FLUSH PRIVILEGES;
 
---remove_file $MYSQLTEST_VARDIR/master-data/db12b.bak
---remove_file $MYSQLTEST_VARDIR/master-data/db12a.bak
---remove_file $MYSQLTEST_VARDIR/master-data/db12.bak
+--remove_file $bdir/db12b.bak
+--remove_file $bdir/db12a.bak
+--remove_file $bdir/db12.bak

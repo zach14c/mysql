@@ -117,13 +117,10 @@ backup_id
 
 **Results after Restore**
 
-SHOW DATABASES;
-Database
-information_schema
-mysql
+SHOW DATABASES LIKE 'sp%';
+Database (sp%)
 sp!
 sp@
-test
 SHOW FULL TABLES FROM `sp!`;
 Tables_in_sp!	Table_type
 ####	BASE TABLE
@@ -141,10 +138,10 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	%%	BEGIN
 INSERT INTO `sp!`.`v2%&` VALUES('(((('),('))))');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='sp!' OR Db='sp@';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 sp!	p*&	PROCEDURE	root@localhost	#	#	#		utf8	utf8_general_ci	utf8_general_ci
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='sp!' OR Db='sp@';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 sp!	@fun&	FUNCTION	root@localhost	#	#	#		utf8	utf8_general_ci	utf8_general_ci
 sp!	f@@	FUNCTION	root@localhost	#	#	#		utf8	utf8_general_ci	utf8_general_ci
@@ -266,13 +263,10 @@ SET NAMES latin5;
 RESTORE FROM 'sp.bak' OVERWRITE;
 backup_id
 #
-SHOW DATABASES;
-Database
-information_schema
-mysql
+SHOW DATABASES LIKE 'sp%';
+Database (sp%)
 sp!
 sp@
-test
 SHOW FULL TABLES FROM `sp!`;
 Tables_in_sp!	Table_type
 ####	BASE TABLE

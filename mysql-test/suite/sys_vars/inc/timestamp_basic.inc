@@ -18,8 +18,8 @@
 #              * Scope & Access method                                        #
 #              * Data Integrity                                               #
 #                                                                             #
-# Reference: http://dev.mysql.com/doc/refman/5.1/en/                          #
-#  server-system-variables.html                                               #
+# Reference:                                                                  #
+# http://dev.mysql.com/doc/refman/5.1/en/server-system-variables.html         #
 #                                                                             #
 ###############################################################################
 

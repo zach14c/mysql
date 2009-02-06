@@ -120,6 +120,7 @@ SHOW DATABASES;
 Database
 information_schema
 Â¥Ã¼
+mtr
 mysql
 test
 ** checking the character set **
@@ -211,6 +212,7 @@ SHOW DATABASES;
 Database
 information_schema
 ¥ü
+mtr
 mysql
 test
 ** checking client character set **

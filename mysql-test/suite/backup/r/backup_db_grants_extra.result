@@ -56,7 +56,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
@@ -83,11 +85,11 @@ SHOW TABLES FROM db2;
 Tables_in_db2
 t1
 t2
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	p11	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
@@ -98,7 +100,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
@@ -171,11 +175,11 @@ SHOW TABLES FROM db2;
 Tables_in_db2
 t1
 t2
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	p11	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
@@ -186,7 +190,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 From the above table, We can notice that grants for stored routines will
 not be restored. Bug#41979
@@ -199,9 +205,6 @@ DROP USER carry@'%';
 RESTORE FROM 'db12.bak';
 backup_id
 #
-Warnings:
-#	1738	The grant 'SELECT ON db1.*' for the user 'jim'@'%' was skipped because the user does not exist.
-#	1738	The grant 'SELECT ON db2.*' for the user 'jim'@'%' was skipped because the user does not exist.
 SHOW WARNINGS;
 Level	Code	Message
 Warning	#	The grant 'SELECT ON db1.*' for the user 'jim'@'%' was skipped because the user does not exist.
@@ -230,11 +233,11 @@ SHOW TABLES FROM db2;
 Tables_in_db2
 t1
 t2
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	p11	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
@@ -258,7 +261,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db1	carry	p11	PROCEDURE	root@localhost	Execute	#
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
@@ -273,7 +278,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
@@ -294,7 +301,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
@@ -312,7 +321,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db1	jim	f11	FUNCTION	root@localhost	Execute	#
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
@@ -325,10 +336,10 @@ SHOW TABLES FROM db2;
 Tables_in_db2
 t1
 t2
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db1	f11	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
@@ -341,7 +352,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 %	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
@@ -365,7 +378,9 @@ ORDER BY TABLE_SCHEMA, PRIVILEGE_TYPE, GRANTEE;
 GRANTEE	PRIVILEGE_TYPE	TABLE_SCHEMA
 'jim'@'%'	SELECT	db1
 'jim'@'%'	SELECT	db2
-SELECT * FROM mysql.procs_priv ORDER BY Db, User, Routine_name;
+SELECT * FROM mysql.procs_priv 
+WHERE Db='db1' OR Db='db2' 
+ORDER BY Db, User, Routine_name;
 Host	Db	User	Routine_name	Routine_type	Grantor	Proc_priv	Timestamp
 %	db2	carry	f21	FUNCTION	root@localhost	Execute	#
 %	db2	jim	p21	PROCEDURE	root@localhost	Execute	#
@@ -377,10 +392,10 @@ SHOW TABLES FROM db2;
 Tables_in_db2
 t1
 t2
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db2	p21	PROCEDURE	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='db1' OR Db='db2';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 db2	f21	FUNCTION	root@localhost	#	#	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 
@@ -761,11 +776,6 @@ DROP DATABASE db2;
 RESTORE FROM 'db12a.bak';
 backup_id
 #
-Warnings:
-#	1738	The grant 'SELECT(a) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.
-#	1738	The grant 'UPDATE(b) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.
-#	1738	The grant 'INSERT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
-#	1738	The grant 'SELECT ON db2.t1' for the user 'jim'@'%' was skipped because the user does not exist.
 SHOW WARNINGS;
 Level	Code	Message
 Warning	#	The grant 'SELECT(a) ON db1.t1' for the user 'jim'@'%' was skipped because the user does not exist.

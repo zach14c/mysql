@@ -142,7 +142,7 @@ NO
 #
 create table t4 (a varchar(100));
 INSERT INTO db1.trans (a) VALUES (1);
-load data infile '../std_data_ln/words.dat' into table t4;
+load data infile '../../std_data/words.dat' into table t4;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 NO
@@ -447,6 +447,7 @@ revoke all on test.t1 from mysqltest_2@localhost;
 CALL db1.test_if_commit();
 IMPLICIT COMMIT
 YES
+drop user mysqltest_2@localhost;
 #
 # SQLCOM_SHOW_GRANTS
 #

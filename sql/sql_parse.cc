@@ -764,6 +764,7 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   DBUG_RETURN(FALSE);
 }
 
+
 /**
   Perform one connection-level (COM_XXXX) command.
 
@@ -5209,9 +5210,15 @@ check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
     if ((sctx->master_access & want_access) == want_access &&
         thd->db)
       tables->grant.privilege= want_access;
-    else if (check_access(thd,want_access,tables->get_db_name(),
-                          &tables->grant.privilege,
-                          0, no_errors, 0))
+    else if (tables->db && thd->db && strcmp(tables->db, thd->db) == 0)
+    {
+      if (check_access(thd, want_access, tables->get_db_name(),
+                       &tables->grant.privilege, 0, no_errors, 
+                       test(tables->schema_table)))
+        goto deny;                            // Access denied
+    }
+    else if (check_access(thd, want_access, tables->get_db_name(),
+                          &tables->grant.privilege, 0, no_errors, 0))
       goto deny;
   }
   thd->security_ctx= backup_ctx;
@@ -5379,9 +5386,10 @@ bool check_stack_overrun(THD *thd, long margin,
   if ((stack_used=used_stack(thd->thread_stack,(char*) &stack_used)) >=
       (long) (my_thread_stack_size - margin))
   {
-    sprintf(errbuff[0],ER(ER_STACK_OVERRUN_NEED_MORE),
-            stack_used,my_thread_stack_size,margin);
-    my_message(ER_STACK_OVERRUN_NEED_MORE,errbuff[0],MYF(ME_FATALERROR));
+    char ebuff[MYSQL_ERRMSG_SIZE];
+    my_snprintf(ebuff, sizeof(ebuff), ER(ER_STACK_OVERRUN_NEED_MORE),
+                stack_used, my_thread_stack_size, margin);
+    my_message(ER_STACK_OVERRUN_NEED_MORE, ebuff, MYF(ME_FATALERROR));
     return 1;
   }
 #ifndef DBUG_OFF
@@ -5470,7 +5478,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
     OPTION_STATUS_NO_TRANS_UPDATE | OPTION_KEEP_LOG to not get warnings
     in ha_rollback_trans() about some tables couldn't be rolled back.
   */
-  if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (!thd->in_multi_stmt_transaction())
   {
     thd->options&= ~OPTION_KEEP_LOG;
     thd->transaction.all.modified_non_trans_table= FALSE;
@@ -6686,8 +6694,8 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
       tmp_write_to_binlog= 0;
       if (lock_global_read_lock(thd))
 	return 1;                               // Killed
-      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE))
+      if (close_cached_tables(thd, tables, FALSE,
+                              (options & REFRESH_FAST) ? FALSE : TRUE))
           result= 1;
       
       if (make_global_read_lock_block_commit(thd)) // Killed
@@ -6726,8 +6734,9 @@ bool reload_acl_and_cache(THD *thd, ulong options, TABLE_LIST *tables,
         }
       }
 
-      result= close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
-                                  FALSE : TRUE);
+      if (close_cached_tables(thd, tables, FALSE, (options & REFRESH_FAST) ?
+                              FALSE : TRUE))
+        result= 1;
     }
     my_dbopt_cleanup();
   }

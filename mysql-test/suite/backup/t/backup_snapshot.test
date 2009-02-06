@@ -28,8 +28,10 @@
 --disable_warnings
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE IF EXISTS bup_snapshot;
+
+let $MYSQLD_DATADIR= `select @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_snapshot.bak;
+remove_file $MYSQLD_DATADIR/bup_snapshot.bak;
 --enable_warnings
 
 --echo #
@@ -123,7 +125,7 @@ SELECT * FROM bup_snapshot.t1 WHERE word LIKE '-%';
 SELECT COUNT(*) FROM bup_snapshot.t1;
 SELECT COUNT(*) FROM bup_snapshot.t2;
 
-remove_file $MYSQLTEST_VARDIR/master-data/bup_snapshot.bak;
+remove_file $MYSQLD_DATADIR/bup_snapshot.bak;
 
 --echo #
 --echo # Test 2: Check for consistent read after open and lock tables
@@ -187,5 +189,5 @@ SELECT COUNT(*) FROM bup_snapshot.t2;
 #
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE bup_snapshot;
-remove_file $MYSQLTEST_VARDIR/master-data/bup_snapshot.bak;
+remove_file $MYSQLD_DATADIR/bup_snapshot.bak;
 

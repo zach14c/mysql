@@ -7,6 +7,8 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
+let $bdir= `select @@backupdir`;
+
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
 
@@ -17,7 +19,7 @@ connect (breakpoints,localhost,root,,);
 ##############################################################
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/acc.bak
+--remove_file $bdir/acc.bak
 #Create Database.
 
 --disable_warnings
@@ -125,9 +127,9 @@ SHOW FULL TABLES FROM acc1;
 SHOW FULL TABLES FROM acc2;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("µ", 20);
 SELECT a,data,@z FROM acc1.t1;
@@ -168,9 +170,9 @@ SELECT @@character_set_connection;
 
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 10);
 SELECT a,data,@z FROM acc1.t1;
@@ -207,9 +209,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -246,9 +248,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -286,9 +288,9 @@ SELECT @@character_set_connection;
 
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -316,9 +318,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -346,9 +348,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -376,9 +378,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -408,9 +410,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -439,9 +441,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -470,9 +472,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -501,9 +503,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 109);
 SELECT a,data,@z FROM acc1.t1;
@@ -529,9 +531,9 @@ SHOW FULL TABLES FROM acc1;
 SHOW FULL TABLES FROM acc2;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 120);
 SELECT a,data,@z FROM acc1.t1;
@@ -557,9 +559,9 @@ SHOW FULL TABLES FROM acc1;
 SHOW FULL TABLES FROM acc2;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 200);
 SELECT a,data,@z FROM acc1.t1;
@@ -588,9 +590,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 200);
 SELECT a,data,@z FROM acc1.t1;
@@ -619,9 +621,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("test", 240);
 SELECT a,data,@z FROM acc1.t1;
@@ -651,9 +653,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -682,9 +684,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -713,9 +715,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("§¶", 100);
 SELECT a,data,@z FROM acc1.t1;
@@ -744,9 +746,9 @@ SELECT @@character_set_results;
 SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("ñÂÊ", 300);
 SELECT a,data,@z FROM acc1.t1;
@@ -777,9 +779,9 @@ SELECT @@character_set_connection;
 SHOW TRIGGERS FROM acc2;
 
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW PROCEDURE STATUS;
+--query_vertical SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';
 --replace_column 5 # 6 # 7 #
---query_vertical SHOW FUNCTION STATUS;
+--query_vertical SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';
 
 CALL acc1.p1("ñÂÊ", 300);
 SELECT a,data,@z FROM acc1.t1;
@@ -795,5 +797,5 @@ SELECT * FROM acc1.t1;
 DROP DATABASE acc1;
 DROP DATABASE acc2;
 
---remove_file $MYSQLTEST_VARDIR/master-data/acc.bak
+--remove_file $bdir/acc.bak
 

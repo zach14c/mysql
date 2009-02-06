@@ -10,9 +10,11 @@
 #
 ##############################################################################
 
+rpl_ndb_multi              : Bug#30751: rpl_ndb_multi missing row in output
+rpl_log_pos                : Bug#8693 Test 'rpl_log_pos' fails sometimes
 rpl_extraColmaster_innodb  : BUG#41097 2008-12-12 sven result files for rpl_extraColmaster_myisam, rpl_extraColmaster_innodb are gone
 rpl_extraColmaster_myisam  : BUG#41097 2008-12-12 sven result files for rpl_extraColmaster_myisam, rpl_extraColmaster_innodb are gone
 rpl_row_until              : BUG#41423 2008-12-12 sven rpl_row_until needs maintenance
-rpl_ignore_table           : BUG#41424 2008-12-12 sven rpl_ignore_table fails, "could not execute write_rows event"
 rpl_binlog_corruption : BUG#41793 2008-12-30 sven rpl_binlog_corruption disabled in main (needs new mtr)
 rpl_extraCol_falcon        : Bug#40930 2008-11-21 johnemb rpl.rpl_extraCol_falcon fails doing STOP SLAVE (on Windows PB2)
+rpl_cross_version	   : Bug #42311 2009-01-23 aelkin

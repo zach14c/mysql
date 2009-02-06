@@ -82,7 +82,7 @@ void print_cached_tables(void)
 
   for (idx=unused=0 ; idx < table_def_cache.records ; idx++)
   {
-    share= (TABLE_SHARE*) hash_element(&table_def_cache, idx);
+    share= (TABLE_SHARE*) my_hash_element(&table_def_cache, idx);
 
     I_P_List_iterator<TABLE, TABLE_share> it(share->used_tables);
     while ((entry= it++))
@@ -121,7 +121,7 @@ void print_cached_tables(void)
     printf("Unused_links (%d) doesn't match table_def_cache: %d\n", count,
            unused);
   printf("\nCurrent refresh version: %ld\n",refresh_version);
-  if (hash_check(&table_def_cache))
+  if (my_hash_check(&table_def_cache))
     printf("Error: Table definition hash table is corrupted\n");
   fflush(stdout);
   pthread_mutex_unlock(&LOCK_open);
@@ -582,7 +582,7 @@ Next alarm time: %lu\n",
   fprintf(stdout,"\nBegin safemalloc memory dump:\n"); // tag needed for test suite
   TERMINATE(stdout, 1);				// Write malloc information
   fprintf(stdout,"\nEnd safemalloc memory dump.\n");  
-
+  fflush(stdout);
 #ifdef HAVE_MALLINFO
   struct mallinfo info= mallinfo();
   printf("\nMemory status:\n\

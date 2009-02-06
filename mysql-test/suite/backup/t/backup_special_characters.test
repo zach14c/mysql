@@ -6,6 +6,8 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
+let $bdir= `select @@backupdir`;
+
 connect (backup,localhost,root,,);
 connect (breakpoints,localhost,root,,);
 
@@ -16,7 +18,7 @@ connect (breakpoints,localhost,root,,);
 ##############################################################
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/sp.bak
+--remove_file $bdir/sp.bak
 
 #Create Database.
 
@@ -106,14 +108,14 @@ RESTORE FROM 'sp.bak';
 --echo **Results after Restore**
 --echo
 
-SHOW DATABASES;
+SHOW DATABASES LIKE 'sp%';
 SHOW FULL TABLES FROM `sp!`;
 SHOW FULL TABLES FROM `sp@`;
 SHOW TRIGGERS FROM `sp@`;
 --replace_column 5 # 6 # 7 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db='sp!' OR Db='sp@';
 --replace_column 5 # 6 # 7 #
-SHOW FUNCTION STATUS;
+SHOW FUNCTION STATUS WHERE Db='sp!' OR Db='sp@';
 
 --echo **call procedures**
 CALL `sp!`.`p*&`();
@@ -135,7 +137,7 @@ SELECT COUNT(*) FROM `sp@`.`v4&$`;
 SET NAMES latin5;
 --replace_column 1 #
 RESTORE FROM 'sp.bak' OVERWRITE;
-SHOW DATABASES;
+SHOW DATABASES LIKE 'sp%';
 SHOW FULL TABLES FROM `sp!`;
 SHOW FULL TABLES FROM `sp@`;
 
@@ -153,7 +155,7 @@ SELECT@@character_set_results;
 DROP DATABASE `sp!`;
 DROP DATABASE `sp@`;
 
---remove_file $MYSQLTEST_VARDIR/master-data/sp.bak
+--remove_file $bdir/sp.bak
 
 
 

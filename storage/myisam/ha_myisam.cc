@@ -658,8 +658,6 @@ int ha_myisam::open(const char *name, int mode, uint test_if_locked)
       int_table_flags|= HA_HAS_OLD_CHECKSUM;
   }
   
-  keys_with_parts.clear_all();
-
   for (i= 0; i < table->s->keys; i++)
   {
     plugin_ref parser= table->key_info[i].parser;
@@ -667,17 +665,6 @@ int ha_myisam::open(const char *name, int mode, uint test_if_locked)
       file->s->keyinfo[i].parser=
         (struct st_mysql_ftparser *)plugin_decl(parser)->info;
     table->key_info[i].block_size= file->s->keyinfo[i].block_length;
-
-    KEY_PART_INFO *kp= table->key_info[i].key_part;
-    KEY_PART_INFO *kp_end= kp + table->key_info[i].key_parts;
-    for (; kp != kp_end; kp++)
-    {
-      if (!kp->field->part_of_key.is_set(i))
-      {
-        keys_with_parts.set_bit(i);
-        break;
-      }
-    }
   }
   my_errno= 0;
   goto end;
@@ -1134,7 +1121,7 @@ int ha_myisam::preload_keys(THD* thd, HA_CHECK_OPT *check_opt)
   ulonglong map;
   TABLE_LIST *table_list= table->pos_in_table_list;
   my_bool ignore_leaves= table_list->ignore_leaves;
-  char buf[ERRMSGSIZE+20];
+  char buf[MYSQL_ERRMSG_SIZE];
 
   DBUG_ENTER("ha_myisam::preload_keys");
 
@@ -1162,7 +1149,7 @@ int ha_myisam::preload_keys(THD* thd, HA_CHECK_OPT *check_opt)
       errmsg= "Failed to allocate buffer";
       break;
     default:
-      my_snprintf(buf, ERRMSGSIZE,
+      my_snprintf(buf, sizeof(buf),
                   "Failed to read from index file (errno: %d)", my_errno);
       errmsg= buf;
     }

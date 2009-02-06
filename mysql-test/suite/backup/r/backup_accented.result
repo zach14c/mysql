@@ -253,7 +253,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('√Ü√¶√û√æ√ò'),('√°√è√ã√ñ√Ñ'),('¬£¬¢¬µ¬±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -265,7 +265,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -487,7 +487,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('∆Ê??ÿ'),('·œÀ÷ƒ'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -499,7 +499,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -646,7 +646,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('Øø??®'),('???÷ƒ'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -658,7 +658,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -809,7 +809,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('???\['),('????');
 END	AFTER	NULL		root?localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -821,7 +821,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -968,7 +968,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('¢G¢F?°”');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -980,7 +980,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1037,7 +1037,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('®°©°®≠©≠®™'),('?????'),('???°æ');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1049,7 +1049,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1106,7 +1106,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????ˇ§´•ˇ?????ˇ§´•ˇ????ˇ§;
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1118,7 +1118,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1175,7 +1175,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('∆Ê??ÿ'),('·œÀ÷ƒ'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1187,7 +1187,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1248,7 +1248,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('íëËÁù'),('†ÿ”ôé'),('úΩÊÒ');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1260,7 +1260,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1317,7 +1317,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('”◊Ò“'),('ƒß•⁄ÿ'),('ªøÛ˛');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1329,7 +1329,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1386,7 +1386,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('????');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1398,7 +1398,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1459,7 +1459,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('è©°è©¡è©∞è©–è©¨'),('è´°è™¡è™≥è™”è™£'),('°Ú°Ò?°ﬁ');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1471,7 +1471,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1519,7 +1519,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('ÅíÅë?Å}');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1531,7 +1531,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1583,7 +1583,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1595,7 +1595,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1652,7 +1652,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('????');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1664,7 +1664,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1721,7 +1721,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('†??ôé'),('??ÊÒ');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1733,7 +1733,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1794,7 +1794,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1806,7 +1806,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1863,7 +1863,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('?????'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1875,7 +1875,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -1932,7 +1932,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('Øø??®'),('???÷ƒ'),('£¢µ±');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -1944,7 +1944,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -2001,7 +2001,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('?????'),('®¢????'),('???°¿');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -2013,7 +2013,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION
@@ -2074,7 +2074,7 @@ Trigger	Event	Table	Statement	Timing	Created	sql_mode	Definer	character_set_clie
 trai	INSERT	t1	BEGIN
 INSERT INTO acc1.v2 VALUES('è©°è©¡è©∞è©–è©¨'),('è´°è™¡è™≥è™”è™£'),('???°ﬁ');
 END	AFTER	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
-SHOW PROCEDURE STATUS;;
+SHOW PROCEDURE STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	p1
 Type	PROCEDURE
@@ -2086,7 +2086,7 @@ Comment
 character_set_client	utf8
 collation_connection	utf8_general_ci
 Database Collation	utf8_general_ci
-SHOW FUNCTION STATUS;;
+SHOW FUNCTION STATUS WHERE Db='acc1' OR Db='acc2';;
 Db	acc1
 Name	append
 Type	FUNCTION

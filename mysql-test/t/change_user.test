@@ -53,6 +53,7 @@ SELECT IS_USED_LOCK('bug31418');
 
 FLUSH STATUS;
 
+let $start= query_get_value(SHOW GLOBAL STATUS LIKE 'com_select', Value, 1);
 --disable_result_log
 --disable_query_log
 
@@ -68,8 +69,20 @@ while ($i)
 --enable_query_log
 --enable_result_log
 
-SHOW GLOBAL STATUS LIKE 'com_select';
+let $probe= query_get_value(SHOW GLOBAL STATUS LIKE 'com_select', Value, 1);
+let $before= `SELECT $probe - $start`;
 
 --change_user
 
-SHOW GLOBAL STATUS LIKE 'com_select';
+let $probe= query_get_value(SHOW GLOBAL STATUS LIKE 'com_select', Value, 1);
+let $after= `SELECT $probe - $start`;
+
+# we check to see if the value is the same after the change user. note that we 
+# need to add one to the $before variable as we need to account for the 
+# select in the "let $before=`SELECT $probe - $start`" instruction
+if (!`SELECT $after = $before+1`)
+{
+  let $expected= `SELECT $before+1`;
+  --echo Expected: $expected, Got: $after
+  die select count mismatch!;
+}

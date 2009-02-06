@@ -1652,7 +1652,6 @@ void st_select_lex::init_select()
   select_limit= 0;      /* denotes the default limit = HA_POS_ERROR */
   offset_limit= 0;      /* denotes the default offset = 0 */
   with_sum_func= 0;
-  is_correlated= 0;
   cur_pos_in_select_list= UNDEF_POS;
   non_agg_fields.empty();
   cond_value= having_value= Item::COND_UNDEF;
@@ -1860,7 +1859,6 @@ void st_select_lex::mark_as_dependent(st_select_lex *last)
           sl->uncacheable|= UNCACHEABLE_UNITED;
       }
     }
-    s->is_correlated= TRUE;
     Item_subselect *subquery_predicate= s->master_unit()->item;
     if (subquery_predicate)
       subquery_predicate->is_correlated= TRUE;
@@ -2173,7 +2171,7 @@ void Query_tables_list::reset_query_tables_list(bool init)
       We delay real initialization of hash (and therefore related
       memory allocation) until first insertion into this hash.
     */
-    hash_clear(&sroutines);
+    my_hash_clear(&sroutines);
   }
   else if (sroutines.records)
   {
@@ -2196,7 +2194,7 @@ void Query_tables_list::reset_query_tables_list(bool init)
 
 void Query_tables_list::destroy_query_tables_list()
 {
-  hash_free(&sroutines);
+  my_hash_free(&sroutines);
 }
 
 

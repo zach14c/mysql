@@ -10,8 +10,9 @@
 SET DEBUG_SYNC= 'RESET';
 USE test;
 DROP DATABASE IF EXISTS mysqltest;
+let $MYSQLD_DATADIR= `SELECT @@datadir`;
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/bup_myisam_sync.bak
+remove_file $MYSQLD_DATADIR/bup_myisam_sync.bak;
 --enable_warnings
 
 #
@@ -79,7 +80,7 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
 --echo
 --echo connection default: cleanup
 connection default;
---remove_file $MYSQLTEST_VARDIR/master-data/bup_myisam_sync.bak
+remove_file $MYSQLD_DATADIR/bup_myisam_sync.bak;
 SET DEBUG_SYNC= 'RESET';
 
 #

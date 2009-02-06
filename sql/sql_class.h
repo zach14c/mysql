@@ -724,8 +724,8 @@ public:
   Statement *find_by_name(LEX_STRING *name)
   {
     Statement *stmt;
-    stmt= (Statement*)hash_search(&names_hash, (uchar*)name->str,
-                                  name->length);
+    stmt= (Statement*)my_hash_search(&names_hash, (uchar*)name->str,
+                                     name->length);
     return stmt;
   }
 
@@ -734,7 +734,7 @@ public:
     if (last_found_statement == 0 || id != last_found_statement->id)
     {
       Statement *stmt;
-      stmt= (Statement *) hash_search(&st_hash, (uchar *) &id, sizeof(id));
+      stmt= (Statement *) my_hash_search(&st_hash, (uchar *) &id, sizeof(id));
       if (stmt && stmt->name.str)
         return NULL;
       last_found_statement= stmt;
@@ -1048,6 +1048,7 @@ show_system_thread(enum_thread_type thread)
 {
 #define RETURN_NAME_AS_STRING(NAME) case (NAME): return #NAME
   switch (thread) {
+    static char buf[64];
     RETURN_NAME_AS_STRING(NON_SYSTEM_THREAD);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_DELAYED_INSERT);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_SLAVE_IO);
@@ -1056,9 +1057,11 @@ show_system_thread(enum_thread_type thread)
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_SCHEDULER);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_EVENT_WORKER);
     RETURN_NAME_AS_STRING(SYSTEM_THREAD_BACKUP);
+  default:
+    sprintf(buf, "<UNKNOWN SYSTEM THREAD: %d>", thread);
+    return buf;
   }
 #undef RETURN_NAME_AS_STRING
-  return "UNKNOWN"; /* keep gcc happy */
 }
 
 /**
@@ -1951,6 +1954,21 @@ public:
   {
     return server_status & SERVER_STATUS_IN_TRANS;
   }
+  /**
+    Returns TRUE if session is in a multi-statement transaction mode.
+
+    OPTION_NOT_AUTOCOMMIT: When autocommit is off, a multi-statement
+    transaction is implicitly started on the first statement after a
+    previous transaction has been ended.
+
+    OPTION_BEGIN: Regardless of the autocommit status, a multi-statement
+    transaction can be explicitly started with the statements "START
+    TRANSACTION", "BEGIN [WORK]", "[COMMIT | ROLLBACK] AND CHAIN", etc.
+  */
+  inline bool in_multi_stmt_transaction()
+  {
+    return options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN);
+  }
   inline bool fill_derived_tables()
   {
     return !stmt_arena->is_stmt_prepare() && !lex->only_view_structure();
@@ -2131,8 +2149,8 @@ public:
       Don't reset binlog format for NDB binlog injector thread.
     */
     DBUG_PRINT("debug",
-               ("temporary_tables: %p, in_sub_stmt: %d, system_thread: %s",
-                temporary_tables, in_sub_stmt,
+               ("temporary_tables: %s, in_sub_stmt: %s, system_thread: %s",
+                YESNO(temporary_tables), YESNO(in_sub_stmt),
                 show_system_thread(system_thread)));
     if ((temporary_tables == NULL) && (in_sub_stmt == 0) &&
         (system_thread != SYSTEM_THREAD_NDBCLUSTER_BINLOG))

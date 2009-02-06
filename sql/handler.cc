@@ -34,6 +34,8 @@
 #include "ha_partition.h"
 #endif
 
+#include "rpl_handler.h"
+
 /*
   While we have legacy_db_type, we have this array to
   check for dups and to find handlerton from legacy_db_type.
@@ -409,7 +411,13 @@ int ha_finalize_handlerton(st_plugin_int *plugin)
     reuse an array slot. Otherwise the number of uninstall/install
     cycles would be limited.
   */
-  hton2plugin[hton->slot]= NULL;
+  if (hton->slot != HA_SLOT_UNDEF)
+  {
+    /* Make sure we are not unpluging another plugin */
+    DBUG_ASSERT(hton2plugin[hton->slot] == plugin);
+    DBUG_ASSERT(hton->slot < MAX_HA);
+    hton2plugin[hton->slot]= NULL;
+  }
 
   my_free((uchar*)hton, MYF(0));
 
@@ -434,6 +442,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
     not initialized.
    */
   bzero(hton, sizeof(hton));
+  hton->slot= HA_SLOT_UNDEF;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
   if (plugin->plugin->init)
@@ -1184,6 +1193,7 @@ int ha_commit_trans(THD *thd, bool all)
     if (cookie)
       tc_log->unlog(cookie, xid);
     DBUG_EXECUTE_IF("crash_commit_after", DBUG_ABORT(););
+    RUN_HOOK(transaction, after_commit, (thd, all));
 end:
     if (rw_trans)
       start_waiting_global_read_lock(thd);
@@ -1319,6 +1329,7 @@ int ha_rollback_trans(THD *thd, bool all)
     push_warning(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                  ER_WARNING_NOT_COMPLETE_ROLLBACK,
                  ER(ER_WARNING_NOT_COMPLETE_ROLLBACK));
+  RUN_HOOK(transaction, after_rollback, (thd, all));
   DBUG_RETURN(error);
 }
 
@@ -1478,7 +1489,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
         }
         // recovery mode
         if (info->commit_list ?
-            hash_search(info->commit_list, (uchar *)&x, sizeof(x)) != 0 :
+            my_hash_search(info->commit_list, (uchar *)&x, sizeof(x)) != 0 :
             tc_heuristic_recover == TC_HEURISTIC_RECOVER_COMMIT)
         {
 #ifndef DBUG_OFF
@@ -1598,7 +1609,7 @@ bool mysql_xa_recover(THD *thd)
     DBUG_RETURN(1);
 
   pthread_mutex_lock(&LOCK_xid_cache);
-  while ((xs= (XID_STATE*)hash_element(&xid_cache, i++)))
+  while ((xs= (XID_STATE*) my_hash_element(&xid_cache, i++)))
   {
     if (xs->xa_state==XA_PREPARED)
     {
@@ -2664,8 +2675,12 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_RECORD_FILE_FULL:
   case HA_ERR_INDEX_FILE_FULL:
+  {
     textno=ER_RECORD_FILE_FULL;
+    /* Write the error message to error log */
+    errflag|= ME_NOREFRESH;
     break;
+  }
   case HA_ERR_LOCK_WAIT_TIMEOUT:
     textno=ER_LOCK_WAIT_TIMEOUT;
     break;
@@ -4499,6 +4514,11 @@ int DsMrr_impl::dsmrr_fill_buffer(handler *unused)
   while ((rowids_buf_cur < rowids_buf_end) && 
          !(res= h2->handler::multi_range_read_next(&range_info)))
   {
+    KEY_MULTI_RANGE *curr_range= &h2->handler::mrr_cur_range;
+    if (h2->mrr_funcs.skip_index_tuple &&
+        h2->mrr_funcs.skip_index_tuple(h2->mrr_iter, curr_range->ptr))
+      continue;
+    
     /* Put rowid, or {rowid, range_id} pair into the buffer */
     h2->position(table->record[0]);
     memcpy(rowids_buf_cur, h2->ref, h2->ref_length);
@@ -4608,6 +4628,7 @@ ha_rows DsMrr_impl::dsmrr_info(uint keyno, uint n_ranges, uint rows,
   }
   else
   {
+    /* *flags and *bufsz were set by choose_mrr_impl */
     DBUG_PRINT("info", ("DS-MRR implementation choosen"));
   }
   return 0;
@@ -4649,7 +4670,7 @@ ha_rows DsMrr_impl::dsmrr_info_const(uint keyno, RANGE_SEQ_IF *seq,
   }
   else
   {
-    *flags &= ~HA_MRR_USE_DEFAULT_IMPL;
+    /* *flags and *bufsz were set by choose_mrr_impl */
     DBUG_PRINT("info", ("DS-MRR implementation choosen"));
   }
   return rows;
@@ -4715,10 +4736,8 @@ bool DsMrr_impl::choose_mrr_impl(uint keyno, ha_rows rows, uint *flags,
   COST_VECT dsmrr_cost;
   bool res;
   THD *thd= current_thd;
-  if ((thd->variables.optimizer_use_mrr == 2) || 
-      (*flags & HA_MRR_INDEX_ONLY) || (*flags & HA_MRR_SORTED) ||
-      (keyno == table->s->primary_key && 
-       h->primary_key_is_clustered()) || 
+  if (thd->variables.optimizer_use_mrr == 2 || *flags & HA_MRR_INDEX_ONLY ||
+      (keyno == table->s->primary_key && h->primary_key_is_clustered()) ||
        key_uses_partial_cols(table, keyno))
   {
     /* Use the default implementation */
@@ -5275,8 +5294,6 @@ static int write_locked_table_maps(THD *thd)
   DBUG_ENTER("write_locked_table_maps");
   DBUG_PRINT("enter", ("thd: %p  thd->lock: %p thd->extra_lock: %p",
                        thd, thd->lock, thd->extra_lock));
-
-  DBUG_PRINT("debug", ("get_binlog_table_maps(): %d", thd->get_binlog_table_maps()));
 
   if (thd->get_binlog_table_maps() == 0)
   {

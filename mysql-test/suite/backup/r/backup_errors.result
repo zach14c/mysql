@@ -2,7 +2,7 @@ DROP DATABASE IF EXISTS adb;
 DROP DATABASE IF EXISTS bdb;
 # non-existent backup archive
 RESTORE FROM 'test.bak';
-ERROR HY000: File 'MYSQLTEST_VARDIR/master-data/test.bak' not found (Errcode: #)
+ERROR HY000: File 'MYSQLD_DATADIR/test.bak' not found (Errcode: #)
 Get last backup_id
 SELECT MAX(backup_id) INTO @bup_id FROM mysql.backup_history
 WHERE command LIKE "RESTORE FROM 'test%";
@@ -45,10 +45,10 @@ Malformed file path ''
 error
 # don't overwrite existing files
 BACKUP DATABASE adb TO "bdb/t1.frm";
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/bdb/t1.frm' (Errcode: #)
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/bdb/t1.frm' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/bdb/t1.frm' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/bdb/t1.frm' (Errcode: #)
 Error	#	Can't write to backup location 'bdb/t1.frm'
 Warning	#	Operation aborted
 BACKUP DATABASE adb TO "test.bak";
@@ -58,10 +58,10 @@ SHOW WARNINGS;
 Level	Code	Message
 # don't overwrite existing backup image
 BACKUP DATABASE adb TO "test.bak";
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
 Get last backup_id
@@ -341,6 +341,7 @@ Failed to obtain meta-data for trigger `db1`.`trg`
 error
 SET DEBUG_SYNC= 'reset';
 DROP DATABASE db1;
+SET SESSION DEBUG='';
 
 Done testing for Bug#38624
 
@@ -409,10 +410,10 @@ backup_id
 #
 # Generate warning - test.bak cannot be overwritten
 BACKUP DATABASE db1 TO 'test.bak';
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
 
@@ -425,10 +426,10 @@ Level	Code	Message
 
 # Generate warning - test.bak cannot be overwritten
 BACKUP DATABASE db1 TO 'test.bak';
-ERROR HY000: Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+ERROR HY000: Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 SHOW WARNINGS;
 Level	Code	Message
-Error	#	Can't create/write to file 'MYSQLTEST_VARDIR/master-data/test.bak' (Errcode: #)
+Error	#	Can't create/write to file 'MYSQLD_DATADIR/test.bak' (Errcode: #)
 Error	#	Can't write to backup location 'test.bak'
 Warning	#	Operation aborted
 
