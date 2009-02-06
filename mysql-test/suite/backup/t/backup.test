@@ -534,6 +534,37 @@ DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;
 --enable_warnings
 
+--echo # 
+--echo # Bug#38294 - Backup fails if no database selected.
+--echo #
+
+CREATE DATABASE bup_usedb;
+CREATE FUNCTION bup_usedb.f1() RETURNS INT RETURN (SELECT 1);
+
+# The SHOW TABLES below is used to ensure that no database is
+# selected. If something changes to the other tests in this file so
+# that SHOW TABLES does not fail as expected, the following
+# create/use/drop sequence will result in the expected bahavior of no
+# database selected.
+
+# CREATE DATABASE dbuseme;
+# USE dbuseme;
+# DROP DATABASE dbuseme;
+
+--error ER_NO_DB_ERROR
+SHOW TABLES;
+
+# Calling backup without calling 'use db' first
+--replace_column 1 #
+BACKUP DATABASE bup_usedb TO 'bup_usedb.bak';
+
+DROP DATABASE bup_usedb;
+
+--echo #
+--echo # Cleanup
+--echo #
+
+--remove_file $MYSQLTEST_VARDIR/master-data/bup_usedb.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_delete.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_default_timestamp.bak
 --remove_file $MYSQLTEST_VARDIR/master-data/bup_default.bak
