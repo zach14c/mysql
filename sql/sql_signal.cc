@@ -206,6 +206,8 @@ static bool assign_fixed_string(MEM_ROOT *mem_root,
                                           & well_formed_error_pos,
                                           & cannot_convert_error_pos,
                                           & from_end_pos);
+      DBUG_ASSERT(dst_copied <= dst_len);
+      dst_len= dst_copied; /* In case the copy truncated the data */
       dst_str[dst_copied]= '\0';
     }
   }
