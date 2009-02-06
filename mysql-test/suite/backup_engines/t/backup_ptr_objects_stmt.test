@@ -17,7 +17,10 @@
 # Bug#38872. Once this bug is fixed, allow this test to run with
 # Innodb storage engine.
 
+let $saved_format=`select @@binlog_format`;
+
 SET GLOBAL BINLOG_FORMAT='STATEMENT';
 SET BINLOG_FORMAT='STATEMENT';
 --source suite/backup_engines/include/backup_ptr_objects.inc
 
+eval SET GLOBAL BINLOG_FORMAT='$saved_format';

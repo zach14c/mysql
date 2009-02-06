@@ -106,11 +106,6 @@ SET DEBUG_SYNC= 'restore_in_progress SIGNAL wait_for_restore WAIT_FOR finish';
 --echo Wait for restore to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR wait_for_restore';
 
---echo breakpoints: Show process list.
---replace_column 1 #
-query_vertical SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "RESTORE%";
-
 --echo From con2:
 --connection con2
 --echo Now do the insert while restore is running.
@@ -154,11 +149,6 @@ SET DEBUG_SYNC= 'restore_in_progress SIGNAL wait_for_restore WAIT_FOR finish';
 --connection breakpoints
 --echo Wait for restore to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR wait_for_restore';
-
---echo breakpoints: Show process list.
---replace_column 1 #
-query_vertical SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "RESTORE%";
 
 --echo From con2:
 --connection con2

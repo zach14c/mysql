@@ -315,7 +315,7 @@ id
 3
 5
 ** Checking data contents in all the tables before performing backup **
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -600,7 +600,7 @@ id
 3
 5
 Checking the data contents after backup.
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -745,7 +745,7 @@ FLUSH LOGS;
 DROP DATABASE ptr_ob1;
 DROP DATABASE ptr_ob2;
 **** Execute mysqlbinlog to recover the data from start to backup ****
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -865,7 +865,7 @@ SELECT ptr_ob1.f1();
 ptr_ob1.f1()
 7
 **** Now perform another recovery to recover data after backup ****
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1015,7 +1015,7 @@ Perfrom Restore operation
 RESTORE FROM 'ptr_objects.bak';
 backup_id
 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1135,7 +1135,7 @@ SELECT ptr_ob1.f1();
 ptr_ob1.f1()
 7
 Now use binlog position to recover data after backup
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1282,7 +1282,7 @@ This test will recover data and objects using binlog dates
 till point of backup and after backup.
 
 Use mysqlbinlog dates to recover data till point of backup.
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1402,7 +1402,7 @@ SELECT ptr_ob1.f1();
 ptr_ob1.f1()
 7
 Use mysqlbinlog dates to recover data after backup 
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1552,7 +1552,7 @@ Perform Restore operation
 RESTORE FROM 'ptr_objects.bak';
 backup_id
 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1672,7 +1672,7 @@ SELECT ptr_ob1.f1();
 ptr_ob1.f1()
 7
 use binlog dates to recover data after backup.
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1817,7 +1817,7 @@ DROP DATABASE ptr_ob2;
 *** TEST5 *** :
 Do complete recovery of data after backup using binlog position. Ensure
 that presence of backup operation in the binlog shouldn't have any impact
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -1962,7 +1962,7 @@ DROP DATABASE ptr_ob2;
 *** TEST6 *** :
 Do complete recovery of data after backup using binlog dates. Ensure
 that presence of backup operation in the binlog shouldn't have any impact
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 ptr_ob1	p1	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
 ptr_ob1	p2	PROCEDURE	root@localhost	#	#	DEFINER		#	#	#
@@ -2107,3 +2107,4 @@ ptr_ob1.f1()
 
 DROP DATABASE ptr_ob1;
 DROP DATABASE ptr_ob2;
+SET GLOBAL BINLOG_FORMAT='MIXED';

@@ -45,16 +45,6 @@ backup: Send the backup command.
 BACKUP DATABASE db1,db2 TO 'test.ba';
 breakpoints: Wait for BACKUP to reach its synchronization point.
 SET DEBUG_SYNC= 'now WAIT_FOR bup_thread_added';
-SELECT id, command, state, info FROM INFORMATION_SCHEMA.PROCESSLIST
-WHERE info LIKE "BACKUP DATABASE%" OR state LIKE "%holding table locks%";
-id	#
-command	Daemon
-state	MyISAM backup: holding table locks
-info	MyISAM driver locking thread
-id	#
-command	Query
-state	debug sync point: myisam_locking_thread_added
-info	BACKUP DATABASE db1,db2 TO 'test.ba'
 breakpoints: Sending finish signal to wake BACKUP.
 SET DEBUG_SYNC= 'now SIGNAL finish';
 backup_id
@@ -641,3 +631,17 @@ a	b
 5	2008-04-01 00:00:01
 DROP DATABASE IF EXISTS bup_delete;
 DROP DATABASE IF EXISTS bup_default;
+# 
+# Bug#38294 - Backup fails if no database selected.
+#
+CREATE DATABASE bup_usedb;
+CREATE FUNCTION bup_usedb.f1() RETURNS INT RETURN (SELECT 1);
+SHOW TABLES;
+ERROR 3D000: No database selected
+BACKUP DATABASE bup_usedb TO 'bup_usedb.bak';
+backup_id
+#
+DROP DATABASE bup_usedb;
+#
+# Cleanup
+#

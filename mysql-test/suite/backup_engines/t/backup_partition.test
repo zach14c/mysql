@@ -11,6 +11,8 @@
 --source include/have_partition.inc
 --source include/not_embedded.inc
 
+let $bdir=`select @@backupdir`;
+
 # Find expected backup driver for the current storage engine.
 
 let $exp_drv= Default;
@@ -67,4 +69,4 @@ SELECT * FROM backup_part.t1 ORDER BY t1_autoinc;
 
 DROP DATABASE backup_part;
 
---remove_file $MYSQLTEST_VARDIR/master-data/partition.bak
+--remove_file $bdir/partition.bak

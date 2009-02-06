@@ -10,11 +10,14 @@
 
 --source include/not_embedded.inc
 --source include/have_log_bin.inc
+
+let $MYSQLD_DATADIR=`select @@datadir`;
+
 SELECT @@BINLOG_FORMAT;
 RESET MASTER;
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/ptr_objects.bak;
+--remove_file $MYSQLD_DATADIR/ptr_objects.bak;
 
 --echo **START TEST**
 --echo *** TEST1 ***
@@ -237,7 +240,7 @@ SELECT * FROM ptr_ob1.tv1;
 --echo ** Checking data contents in all the tables before performing backup **
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -326,7 +329,7 @@ SELECT * FROM ptr_ob1.tv1;
 --echo Checking the data contents after backup.
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -356,13 +359,13 @@ DROP DATABASE ptr_ob2;
 
 --echo **** Execute mysqlbinlog to recover the data from start to backup ****
 
---exec $MYSQL_BINLOG  $MYSQLTEST_VARDIR/log/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/qobject.bin
---exec $MYSQL_BINLOG  --stop-position=$binlog_pos $MYSQLTEST_VARDIR/log/$binlog_file |$MYSQL
+--exec $MYSQL_BINLOG  $MYSQLD_DATADIR/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/qobject.bin
+--exec $MYSQL_BINLOG  --stop-position=$binlog_pos $MYSQLD_DATADIR/$binlog_file |$MYSQL
 
 # Verify that the table we just dropped has been restored
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -382,10 +385,10 @@ SELECT ptr_ob1.f1();
 
 --echo **** Now perform another recovery to recover data after backup ****
 
---exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLTEST_VARDIR/log/$binlog_file |$MYSQL
+--exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLD_DATADIR/$binlog_file |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -417,7 +420,7 @@ DROP DATABASE ptr_ob2;
 RESTORE FROM 'ptr_objects.bak';
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -436,10 +439,10 @@ SELECT * FROM ptr_ob1.vv;
 SELECT ptr_ob1.f1();
 
 --echo Now use binlog position to recover data after backup
---exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLTEST_VARDIR/log/$binlog_file |$MYSQL
+--exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLD_DATADIR/$binlog_file |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -467,10 +470,10 @@ DROP DATABASE ptr_ob2;
 --echo
 
 --echo Use mysqlbinlog dates to recover data till point of backup.
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:22" --stop-datetime="2010-01-21 15:32:24" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:22" --stop-datetime="2010-01-21 15:32:24" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -489,10 +492,10 @@ SELECT * FROM ptr_ob1.vv;
 SELECT ptr_ob1.f1();
 
 --echo Use mysqlbinlog dates to recover data after backup 
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -524,7 +527,7 @@ DROP DATABASE ptr_ob2;
 RESTORE FROM 'ptr_objects.bak';
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -543,10 +546,10 @@ SELECT * FROM ptr_ob1.vv;
 SELECT ptr_ob1.f1();
 
 --echo use binlog dates to recover data after backup.
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -572,10 +575,10 @@ DROP DATABASE ptr_ob2;
 --echo Do complete recovery of data after backup using binlog position. Ensure
 --echo that presence of backup operation in the binlog shouldn't have any impact
 
---exec $MYSQL_BINLOG  --stop-position=$binpos $MYSQLTEST_VARDIR/log/$binfile |$MYSQL
+--exec $MYSQL_BINLOG  --stop-position=$binpos $MYSQLD_DATADIR/$binfile |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -601,10 +604,10 @@ DROP DATABASE ptr_ob2;
 --echo Do complete recovery of data after backup using binlog dates. Ensure
 --echo that presence of backup operation in the binlog shouldn't have any impact
 
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:22" --stop-datetime="2010-01-21 15:32:26" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:22" --stop-datetime="2010-01-21 15:32:26" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 
 --replace_column 5 # 6 # 9 # 10 # 11 #
-SHOW PROCEDURE STATUS;
+SHOW PROCEDURE STATUS WHERE Db LIKE 'ptr_%';
 --replace_column 5 # 6 # 9 # 10 # 11 #
 SHOW TRIGGERS FROM ptr_ob1;
 --replace_column 5 # 6 # 9 # 10 # 11 #
@@ -631,7 +634,7 @@ SELECT ptr_ob1.f1();
 
 DROP DATABASE ptr_ob1;
 DROP DATABASE ptr_ob2;
---remove_file $MYSQLTEST_VARDIR/master-data/ptr_objects.bak
+--remove_file $MYSQLD_DATADIR/ptr_objects.bak
 
 
 

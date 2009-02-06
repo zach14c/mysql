@@ -9,8 +9,11 @@
 --source suite/backup_engines/include/not_have_falcon.inc
 --source suite/backup_engines/include/not_have_memory.inc
 
+let $saved_format=`select @@binlog_format`;
+
 # Memory engine is skipped as it does not support TEXT datatype.
 SET GLOBAL BINLOG_FORMAT='STATEMENT';
 SET BINLOG_FORMAT='STATEMENT';
 --source suite/backup_engines/include/backup_ptr.inc
 
+eval SET GLOBAL BINLOG_FORMAT='$saved_format';

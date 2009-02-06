@@ -10,7 +10,10 @@
 --source suite/backup_engines/include/not_have_memory.inc
 --source suite/backup_engines/include/not_have_myisam.inc
 
+let $saved_format=`select @@binlog_format`;
+
 SET GLOBAL BINLOG_FORMAT='MIXED';
 SET BINLOG_FORMAT='MIXED';
 --source suite/backup_engines/include/backup_ptr_commit.inc
 
+eval SET GLOBAL BINLOG_FORMAT='$saved_format';

@@ -11,11 +11,14 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 --source include/have_log_bin.inc
+
+let $MYSQLD_DATADIR=`select @@datadir`;
+
 SELECT @@BINLOG_FORMAT;
 RESET MASTER;
 
 --error 0,1
---remove_file $MYSQLTEST_VARDIR/master-data/ptr_objects.bak;
+--remove_file $MYSQLD_DATADIR/ptr_objects.bak;
 
 connect (con1,localhost,root,,);
 connect (con2,localhost,root,,);
@@ -137,8 +140,8 @@ SELECT * FROM ptr.t3;
 
 DROP DATABASE ptr;
 
---exec $MYSQL_BINLOG $MYSQLTEST_VARDIR/log/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/qcommit.bin
---exec $MYSQL_BINLOG --stop-position=$binlog_pos $MYSQLTEST_VARDIR/log/$binlog_file |$MYSQL
+--exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 > $MYSQLTEST_VARDIR/tmp/qcommit.bin
+--exec $MYSQL_BINLOG --stop-position=$binlog_pos $MYSQLD_DATADIR/$binlog_file |$MYSQL
 --echo *** Recovering data till point of backup using mysql binlog_position ***
 
 SELECT * FROM ptr.t1;
@@ -146,7 +149,7 @@ SELECT * FROM ptr.t2;
 SELECT * FROM ptr.t3;
 
 --echo *** Recover data after backup ***
---exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLTEST_VARDIR/log/$binlog_file |$MYSQL
+--exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLD_DATADIR/$binlog_file |$MYSQL
 
 SELECT * FROM ptr.t1;
 SELECT * FROM ptr.t2;
@@ -167,7 +170,7 @@ SELECT * FROM ptr.t1;
 SELECT * FROM ptr.t2;
 SELECT * FROM ptr.t3;
 
---exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLTEST_VARDIR/log/$binlog_file |$MYSQL
+--exec $MYSQL_BINLOG --start-position=$binlog_pos $MYSQLD_DATADIR/$binlog_file |$MYSQL
 --echo *** Recover data using binlog position after backup ***
 
 SELECT * FROM ptr.t1;
@@ -181,7 +184,7 @@ DROP DATABASE ptr;
 --echo 
 
 --echo use binlog dates to recover data till backup.
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:22" --stop-datetime="2010-01-21 15:32:24" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:22" --stop-datetime="2010-01-21 15:32:24" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 
 SHOW TABLES FROM ptr;
 SELECT * FROM ptr.t1;
@@ -189,7 +192,7 @@ SELECT * FROM ptr.t2;
 SELECT * FROM ptr.t3;
 
 --echo use binlog dates to recover data after backup.
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 --echo *** Now recover data after backup using binlog dates ***
 
 SELECT * FROM ptr.t1;
@@ -208,7 +211,7 @@ SELECT * FROM ptr.t1;
 SELECT * FROM ptr.t2;
 SELECT * FROM ptr.t3;
 
---exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLTEST_VARDIR/log/master-bin.000001 |$MYSQL
+--exec $MYSQL_BINLOG --start-datetime="2010-01-21 15:32:24" --stop-datetime="2010-01-21 15:32:26" $MYSQLD_DATADIR/master-bin.000001 |$MYSQL
 --echo *** Now recover data after backup using binlog dates ***
 
 SELECT * FROM ptr.t1;
@@ -222,5 +225,5 @@ SELECT * FROM ptr.t3;
 --echo
 
 DROP DATABASE ptr;
---remove_file $MYSQLTEST_VARDIR/master-data/ptr_commit.bak
+--remove_file $MYSQLD_DATADIR/ptr_commit.bak
 SET DEBUG_SYNC= 'RESET';

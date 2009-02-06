@@ -654,6 +654,7 @@ xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mm
 SHOW DATABASES;
 Database
 information_schema
+mtr
 mysql
 ptr
 test
@@ -718,6 +719,7 @@ that presence of backup operation in the binlog shouldn't have any impact
 SHOW DATABASES;
 Database
 information_schema
+mtr
 mysql
 ptr
 test
@@ -782,6 +784,7 @@ that presence of backup operation in the binlog shouldn't have any impact
 SHOW DATABASES;
 Database
 information_schema
+mtr
 mysql
 ptr
 test
@@ -843,3 +846,4 @@ xxxxxxxx	Testofonline backup	aaaaaaaaaa	bbbbbbbbbbb	hhhhhhhhhhh	kkkkkkkkkkkkk	mm
 ***  DROP ptr DATABASE ****
 
 DROP DATABASE ptr;
+SET GLOBAL BINLOG_FORMAT='MIXED';
