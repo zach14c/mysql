@@ -13,13 +13,10 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-AM_CPPFLAGS     = -I$(srcdir) -I$(top_builddir)/include -I$(srcdir)/.. -I$(top_srcdir)/include
+AM_CPPFLAGS     = -I$(srcdir)/.. -I$(top_srcdir)/include
 
 AM_LDFLAGS      = -L$(top_builddir)/unittest/mytap
 
 LDADD           = -lmytap
 
 noinst_PROGRAMS = basic-t
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

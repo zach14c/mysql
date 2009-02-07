@@ -13,7 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-INCLUDES =		@ZLIB_INCLUDES@ -I$(top_builddir)/include \
+AM_CPPFLAGS =	  @ZLIB_INCLUDES@ \
 			-I$(top_srcdir)/include -I$(top_srcdir)/unittest/mytap 
 
 noinst_HEADERS = thr_template.c
@@ -27,6 +27,3 @@ LDADD 		= $(top_builddir)/unittest/mytap/libmytap.a \
 		  @ZLIB_LIBS@
 
 EXTRA_DIST       = CMakeLists.txt 
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

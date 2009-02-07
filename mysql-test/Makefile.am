@@ -141,5 +141,3 @@ mysql-test-run:
 	$(RM) -f mysql-test-run
 	$(LN_S) mysql-test-run.pl mysql-test-run
 
-# Don't update the files from bitkeeper
-%::SCCS/s.%

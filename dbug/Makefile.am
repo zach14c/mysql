@@ -15,7 +15,7 @@
 # Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
 # MA 02111-1307, USA
 
-INCLUDES =              -I$(top_builddir)/include -I$(top_srcdir)/include
+AM_CPPFLAGS =           -I$(top_srcdir)/include
 LDADD =                 libdbuglt.la $(top_builddir)/mysys/libmysyslt.la \
 			$(top_builddir)/strings/libmystringslt.la ${ZLIB_LIBS}
 pkglib_LTLIBRARIES =	libdbug.la
@@ -73,6 +73,3 @@ output5.r:      factorial
 # a hack to have executable in builddir, not in srcdir
 tests-t:	tests-t.pl
 		cp -f $(srcdir)/tests-t.pl ./tests-t
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

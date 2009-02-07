@@ -17,10 +17,9 @@ MYSQLDATAdir =          $(localstatedir)
 MYSQLSHAREdir =         $(pkgdatadir)
 MYSQLBASEdir=           $(prefix)
 MYSQLLIBdir=            $(pkglibdir)
-INCLUDES =              -I$(top_srcdir)/include -I$(top_builddir)/include \
+AM_CPPFLAGS =              -I$(top_srcdir)/include \
 			-I$(top_srcdir)/regex \
-			-I$(top_srcdir)/sql \
-                        -I$(srcdir)
+			-I$(top_srcdir)/sql
 WRAPLIBS=
 
 LDADD =
@@ -39,6 +38,3 @@ libmyisammrg_a_SOURCES = myrg_open.c myrg_extra.c myrg_info.c myrg_locking.c \
 
 
 EXTRA_DIST =		CMakeLists.txt plug.in
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

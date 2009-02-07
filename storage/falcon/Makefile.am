@@ -21,8 +21,10 @@ MYSQL_EXTRA_CXXFLAGS = @FALCON_CXXFLAGS@
 DEFS= @DEFS@ \
       -D_REENTRANT -D_PTHREADS -DFALCONDB -DSTORAGE_ENGINE -DNAMESPACE=Nfs
 
-INCLUDES= -I$(top_srcdir)/include -I$(top_builddir)/include \
-	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql -I$(srcdir) \
+pkgplugindir=	$(pkglibdir)/plugin
+
+AM_CPPFLAGS = -I$(top_srcdir)/include \
+	  -I$(top_srcdir)/regex -I$(top_srcdir)/sql \
 	  -I$(srcdir)/TransformLib @ZLIB_INCLUDES@ @FALCON_SPARC_ASSEMBLY@
 
 falcon_headers= Agent.h Alias.h Application.h \
@@ -394,9 +396,9 @@ noinst_HEADERS=	$(falcon_headers) \
 		falcon_probes.h
 
 EXTRA_LTLIBRARIES=	ha_falcon.la
-pkglib_LTLIBRARIES=	@plugin_falcon_shared_target@
-ha_falcon_la_LDFLAGS=	-module -rpath $(pkglibdir)
-ha_falcon_la_CXXFLAGS=	$(AM_CXXFLAGS) -DMYSQL_DYNAMIC_PLUGIN
+pkgplugin_LTLIBRARIES=	@plugin_falcon_shared_target@
+ha_falcon_la_LDFLAGS=	-module -rpath $(pkgplugindir)
+ha_falcon_la_CPPFLAGS=	$(AM_CPPFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_CFLAGS=	$(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_falcon_la_LIBADD=	TransformLib/libtransform.la
 ha_falcon_la_SOURCES=	$(falcon_sources)
@@ -410,8 +412,6 @@ EXTRA_LIBRARIES=	libfalcon.a libhafalcon.a
 noinst_LIBRARIES=	@plugin_falcon_static_target@
 libfalcon_a_LIBADD=	libhafalcon.a TransformLib/libtransform.a
 libfalcon_a_SOURCES=
-libhafalcon_a_CXXFLAGS=	$(AM_CXXFLAGS)
-libhafalcon_a_CFLAGS=	$(AM_CFLAGS)
 libhafalcon_a_SOURCES=	$(falcon_sources)
 
 libfalcon.a:		$(libfalcon_a_LIBADD)
@@ -441,6 +441,3 @@ falcon_probes.o:
 	$(DTRACE) $(DTRACEFLAGS) -G -s falcon_probes.d $(DTRACEFILES)
 
 CLEANFILES=	libhafalcon.a
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

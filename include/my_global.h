@@ -683,7 +683,7 @@ typedef int	my_socket;	/* File descriptor for sockets */
 #define INVALID_SOCKET -1
 #endif
 /* Type for fuctions that handles signals */
-#define sig_handler RETSIGTYPE
+#define sig_handler void
 C_MODE_START
 typedef void	(*sig_return)();/* Returns type from signal */
 C_MODE_END
