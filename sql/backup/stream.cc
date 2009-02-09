@@ -165,6 +165,13 @@ extern "C" int stream_read(void *instance, bstream_blob *buf, bstream_blob)
   else
 #endif
   {
+    DBUG_EXECUTE_IF("backup_read_simulate_pipe",{
+      /*
+        Simulate reading from a pipe, when less bytes is read than actually
+        requested.
+      */
+      if (howmuch > 1024) howmuch= 1024;
+    });
     howmuch= my_read(fd, buf->begin, howmuch, MYF(0));
   }
 
