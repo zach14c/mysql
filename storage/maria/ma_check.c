@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -100,6 +101,7 @@ static my_bool _ma_flush_table_files_before_swap(HA_CHECK *param,
 static TrID max_trid_in_system(void);
 static void _ma_check_print_not_visible_error(HA_CHECK *param, TrID used_trid);
 void retry_if_quick(MARIA_SORT_PARAM *param, int error);
+static int chsize_kfile(MARIA_HA *info);
 
 
 /* Initialize check param with default values */
@@ -808,7 +810,7 @@ static int chk_index(HA_CHECK *param, MARIA_HA *info, MARIA_KEYDEF *keyinfo,
 		     ha_checksum *key_checksum, uint level)
 {
   int flag;
-  uint used_length,comp_flag,page_flag,nod_flag;
+  uint used_length,comp_flag,page_flag,nod_flag,key_length=0;
   uchar *temp_buff, *keypos, *old_keypos, *endpos;
   my_off_t next_page,record;
   MARIA_SHARE *share= info->s;
@@ -888,8 +890,9 @@ static int chk_index(HA_CHECK *param, MARIA_HA *info, MARIA_KEYDEF *keyinfo,
     }
     old_keypos=keypos;
     if (keypos >= endpos ||
-	!(*keyinfo->get_key)(&tmp_key, page_flag, nod_flag, &keypos))
+	(key_length=(*keyinfo->get_key)(&tmp_key, page_flag, nod_flag, &keypos)) == 0)
       break;
+    DBUG_ASSERT(key_length <= sizeof(tmp_key_buff));
     if (keypos > endpos)
     {
       _ma_check_print_error(param,
@@ -2619,7 +2622,7 @@ int maria_repair(HA_CHECK *param, register MARIA_HA *info,
   {
     (void)(fputs("          \r",stdout)); (void)(fflush(stdout));
   }
-  if (my_chsize(share->kfile.file, share->state.state.key_file_length, 0, MYF(0)))
+  if (chsize_kfile(info))
   {
     _ma_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
@@ -2647,7 +2650,7 @@ int maria_repair(HA_CHECK *param, register MARIA_HA *info,
   }
 
   (void)(end_io_cache(&sort_info.new_info->rec_cache));
-  info->opt_flag&= ~WRITE_CACHE_USED;
+  sort_info.new_info->opt_flag&= ~WRITE_CACHE_USED;
 
   /*
     As we have read the data file (sort_get_next_record()) we may have
@@ -2680,6 +2683,11 @@ int maria_repair(HA_CHECK *param, register MARIA_HA *info,
       my_close(new_file, MYF(MY_WME));
     new_file= -1;
     change_data_file_descriptor(info, -1);
+    /*
+      File change like this is not handled in physical log. maria_filecopy()
+      above is also not handled.
+    */
+    DBUG_ASSERT(!share->physical_logging);
     if (maria_change_to_newfile(share->data_file_name.str, MARIA_NAME_DEXT,
                                 DATA_TMP_EXT,
                                 (param->testflag & T_BACKUP_DATA ?
@@ -2993,6 +3001,7 @@ int maria_sort_index(HA_CHECK *param, register MARIA_HA *info, char *name)
   share->kfile.file = -1;
   pthread_mutex_unlock(&share->intern_lock);
   (void) my_close(new_file,MYF(MY_WME));
+  DBUG_ASSERT(!share->physical_logging);
   if (maria_change_to_newfile(share->index_file_name.str, MARIA_NAME_IEXT,
                               INDEX_TMP_EXT, sync_dir) ||
       _ma_open_keyfile(share))
@@ -3129,6 +3138,7 @@ static int sort_one_index(HA_CHECK *param, MARIA_HA *info,
   length= _ma_get_page_used(share, buff);
   bzero((uchar*) buff+length,keyinfo->block_length-length);
   put_crc(buff, new_page_pos, share);
+  DBUG_ASSERT(!info->s->physical_logging);
   if (my_pwrite(new_file,(uchar*) buff,(uint) keyinfo->block_length,
 		new_page_pos,MYF(MY_NABP | MY_WAIT_IF_FULL)))
   {
@@ -3789,6 +3799,7 @@ int maria_repair_by_sort(HA_CHECK *param, register MARIA_HA *info,
         new_file= -1;
       }
       change_data_file_descriptor(info, -1);
+      DBUG_ASSERT(!share->physical_logging);
       if (maria_change_to_newfile(share->data_file_name.str, MARIA_NAME_DEXT,
                                   DATA_TMP_EXT,
                                   (param->testflag & T_BACKUP_DATA ?
@@ -3841,16 +3852,19 @@ int maria_repair_by_sort(HA_CHECK *param, register MARIA_HA *info,
       skr=share->base.reloc*share->base.min_pack_length;
 #endif
     if (skr != sort_info.filelength)
+    {
+      DBUG_ASSERT(!share->physical_logging);
       if (my_chsize(info->dfile.file, skr, 0, MYF(0)))
 	_ma_check_print_warning(param,
 			       "Can't change size of datafile,  error: %d",
 			       my_errno);
+    }
   }
 
   if (param->testflag & T_CALC_CHECKSUM)
     share->state.state.checksum=param->glob_crc;
 
-  if (my_chsize(share->kfile.file, share->state.state.key_file_length, 0, MYF(0)))
+  if (chsize_kfile(info))
     _ma_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
 			   my_errno);
@@ -4343,15 +4357,18 @@ int maria_repair_parallel(HA_CHECK *param, register MARIA_HA *info,
       skr=share->base.reloc*share->base.min_pack_length;
 #endif
     if (skr != sort_info.filelength)
+    {
+      DBUG_ASSERT(!share->physical_logging);
       if (my_chsize(info->dfile.file, skr, 0, MYF(0)))
 	_ma_check_print_warning(param,
 			       "Can't change size of datafile,  error: %d",
 			       my_errno);
+    }
   }
   if (param->testflag & T_CALC_CHECKSUM)
     share->state.state.checksum=param->glob_crc;
 
-  if (my_chsize(share->kfile.file, share->state.state.key_file_length, 0, MYF(0)))
+  if (chsize_kfile(info))
     _ma_check_print_warning(param,
 			   "Can't change size of indexfile, error: %d",
                             my_errno);
@@ -4397,6 +4414,7 @@ err:
     {
       my_close(new_file,MYF(0));
       info->dfile.file= new_file= -1;
+      DBUG_ASSERT(!share->physical_logging);
       if (maria_change_to_newfile(share->data_file_name.str, MARIA_NAME_DEXT,
                                   DATA_TMP_EXT,
                                   MYF((param->testflag & T_BACKUP_DATA ?
@@ -5529,6 +5547,10 @@ static int sort_insert_key(MARIA_SORT_PARAM *sort_param,
     if (my_pwrite(share->kfile.file, anc_buff,
                   (uint) keyinfo->block_length, filepos, param->myf_rw))
       DBUG_RETURN(1);
+    if (unlikely(ma_log_index_pages_physical &&
+                 ma_get_physical_logging_state(info->s)))
+      maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI, info->s, anc_buff,
+                                keyinfo->block_length, filepos);
   }
   DBUG_DUMP("buff", anc_buff, _ma_get_page_used(share, anc_buff));
 
@@ -5658,6 +5680,11 @@ int _ma_flush_pending_blocks(MARIA_SORT_PARAM *sort_param)
       if (my_pwrite(info->s->kfile.file, key_block->buff,
                     (uint) keyinfo->block_length,filepos, myf_rw))
         goto err;
+      if (unlikely(ma_log_index_pages_physical &&
+                   ma_get_physical_logging_state(info->s)))
+        maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAI, info->s,
+                                  key_block->buff, keyinfo->block_length,
+                                  filepos);
     }
     DBUG_DUMP("buff",key_block->buff,length);
     nod_flag=1;
@@ -6674,4 +6701,46 @@ void retry_if_quick(MARIA_SORT_PARAM *sort_param, int error)
     param->retry_repair=1;
     param->testflag|=T_RETRY_WITHOUT_QUICK;
   }
+}
+
+
+/**
+  Changes the size of an index file, and logs the operation to the physical
+  log if needed.
+
+  The only known case when my_chsize(kfile) can happen on a table doing
+  physical logging, is when the table was empty, bulk insert on it has been
+  done, it's the end of bulk insert: we re-enable indices (maria_repair*()):
+  thus my_chsize() is in fact a void operation (file already has grown,
+  starting from empty, info->state->key_file_length is up-to-date and so file
+  already has the requested size). We however log the operation, in case there
+  are unknown cases.
+
+  @param  info            table
+
+  @return Operation status
+    @retval 0      ok
+    @retval !=0    error
+*/
+
+static int chsize_kfile(MARIA_HA *info)
+{
+  MARIA_SHARE *share= info->s;
+  my_off_t new_length= info->state->key_file_length;
+  int ret;
+#ifndef DBUG_OFF
+  my_bool no_length_change=
+    (my_seek(share->kfile.file, 0L, MY_SEEK_END, MYF(0)) == new_length);
+#endif
+
+  ret= my_chsize(share->kfile.file, new_length, 0, MYF(0));
+
+  if (unlikely(ma_log_index_pages_physical &&
+               ma_get_physical_logging_state(share)))
+  {
+    DBUG_ASSERT(no_length_change);
+    maria_log_chsize_kfile_physical(share, new_length);
+  }
+
+  return ret;
 }

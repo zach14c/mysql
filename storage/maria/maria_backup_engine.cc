@@ -1,4 +1,4 @@
-/* Copyright (C) 2007 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
+/* Copyright (C) 2009 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -11,31 +11,36 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-*/
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 /**
   @file
-  Online backup engine for the MyISAM storage engine.
+  Online backup engine for the Maria storage engine.
 
-  @see myisam_backup
+  This is a clone of MyISAM's online backup, same design, same good and bad
+  points.
+  Later, for transactional tables, we will change the design so that backup:
+  1) re-uses the transaction log instead of adding a physical log
+  2) has an instant validity-point creation (roughly, just block commits).
+
+  @see maria_backup
 */
 
 #define MYSQL_SERVER 1 // need it to have mysql_tmpdir defined
 #include "mysql_priv.h"
-#include "ha_myisam.h"
-#include "myisamdef.h" // to access dfile and kfile
+#include "ha_maria.h"
+#include "maria_def.h" // to access dfile and kfile
 #include "backup/backup_engine.h"
 #include "backup/backup_aux.h"         // for build_table_list()
 #include <hash.h>
 
 /**
-  Online backup engine for the MyISAM storage engine.
+  Online backup engine for the Maria storage engine.
 
   Reference of the Online Backup API:
   http://forge.mysql.com/source/OnlineBackup.
 
-  Here is how the MyISAM online backup works.
+  Here is how the Maria online backup works.
   It is online because we dirtily copy the data and index files,
   and the tables maintain a physical idempotent log of changes done to them
   during the copy process, applying this log to the dirty copy yields a clean
@@ -45,7 +50,7 @@
 
   A condition for this to work is that any update done to a table after the
   copy process started must be present in the log. See the comment of
-  mi_log_start_physical() for how this is ensured.
+  ma_log_start_physical() for how this is ensured.
 
   HOW THE BACKUP WORKS
 
@@ -103,7 +108,7 @@
 
   @todo if an index rebuild is needed, possibly do it at backup time.
 */
-namespace myisam_backup {
+namespace maria_backup {
 
 using backup::byte;
 using backup::result_t;
@@ -113,23 +118,23 @@ using backup::Table_ref;
 using backup::Buffer;
 
 /**
-  The current version of the format stored in MyISAM backup images by this
+  The current version of the format stored in Maria backup images by this
   code. Increase it when making a backward-incompatible change.
 */
-#define MYISAM_BACKUP_VERSION 1
+#define MARIA_BACKUP_VERSION 1
 
 /** Like Table_ref but with file name added */
-class Myisam_table_ref
+class Maria_table_ref
 {
 public:
-  Myisam_table_ref(const Table_ref &);
+  Maria_table_ref(const Table_ref &);
 protected:
   String db, name;
   String file_name; ///< concatenation of db and table name
 };
 
 
-Myisam_table_ref::Myisam_table_ref(const Table_ref &tbl)
+Maria_table_ref::Maria_table_ref(const Table_ref &tbl)
 {
   int error= 0;
   char path[FN_REFLEN];
@@ -177,7 +182,7 @@ class Engine: public Backup_engine
 {
   public:
     Engine() {}
-    virtual version_t version() const { return MYISAM_BACKUP_VERSION; };
+    virtual version_t version() const { return MARIA_BACKUP_VERSION; };
     virtual result_t get_backup(const uint32, const Table_list &,
                                 Backup_driver* &);
     virtual result_t get_restore(const version_t, const uint32,
@@ -228,7 +233,7 @@ private:
   uint stream; ///< which stream we are currently writing to
   char backup_log_name[FN_REFLEN];
   /**
-    All db||table names in a HASH structure. Passed to MyISAM functions for
+    All db||table names in a HASH structure. Passed to Maria functions for
     them to detect if a table is part of the backup (=> should do logging) or
     not.
   */
@@ -321,7 +326,7 @@ private:
 
 
 /** Handles backing up a single table */
-class Table_backup: public Myisam_table_ref, public Object_backup
+class Table_backup: public Maria_table_ref, public Object_backup
 {
 public:
   Table_backup(const backup::Table_ref &);
@@ -385,14 +390,14 @@ Backup::Backup(const Table_list &tables):
 
 void Backup::kill_locking_thread()
 {
-  DBUG_ENTER("myisam_backup::Backup::kill_locking_thread");
+  DBUG_ENTER("maria_backup::Backup::kill_locking_thread");
   /*
     If everything worked well, when unlock() calls us we kill the thread and
     so when free() calls us the locking thread is already dead here
     (LOCK_ERROR).
   */
 retry:
-  pthread_mutex_lock(&THR_LOCK_myisam);
+  pthread_mutex_lock(&THR_LOCK_maria);
   /* If thread started and not already dead, kill it */
   if ((lock_state != LOCK_NOT_STARTED) & (lock_state != LOCK_ERROR))
   {
@@ -402,7 +407,7 @@ retry:
     */
     if (unlikely(lock_thd == NULL))
     {
-      pthread_mutex_unlock(&THR_LOCK_myisam);
+      pthread_mutex_unlock(&THR_LOCK_maria);
       DBUG_PRINT("info",("lock_thd not yet set"));
       sleep(1);
       goto retry;
@@ -412,18 +417,18 @@ retry:
       (waiting for others to release locks etc), wake it up and kill it. Or it
       may have locked tables successfully, and be waiting for us to kill it.
       To do that we will use lock_thd, but how to be sure that lock_thd is not
-      being deleted now? One way would be to hold THR_LOCK_myisam but
+      being deleted now? One way would be to hold THR_LOCK_maria but
       THD::awake() can't bear it (same mutex locked twice).
       Another way is to take lock_thd->LOCK_delete (THD::awake() requires it
       anyway), but again that requires that lock_thd is not deleted while we
-      access the mutex. We cannot hold THR_LOCK_myisam to get LOCK_delete,
+      access the mutex. We cannot hold THR_LOCK_maria to get LOCK_delete,
       because that could deadlock if a some other thread is doing a KILL on
       the locking thread (it would indeed take LOCK_delete and then
-      THR_LOCK_myisam to wake up the locking thread).
+      THR_LOCK_maria to wake up the locking thread).
       So So we set a flag:
     */
     cannot_delete_lock_thd= TRUE;
-    pthread_mutex_unlock(&THR_LOCK_myisam);
+    pthread_mutex_unlock(&THR_LOCK_maria);
     /*
       So now lock_thd cannot be destroyed.
       We kill the thread (which will in particular work if it is waiting for
@@ -433,15 +438,15 @@ retry:
     lock_thd->awake(THD::KILL_CONNECTION);
     pthread_mutex_unlock(&lock_thd->LOCK_delete);
     /* won't look at lock_thd anymore, allow its deletion */
-    pthread_mutex_lock(&THR_LOCK_myisam);
+    pthread_mutex_lock(&THR_LOCK_maria);
     cannot_delete_lock_thd= FALSE;
     /* we wake up thread if it was blocked on the bool above */
     pthread_cond_broadcast(&COND_lock_state);
     /* And we wait for the thread to inform of its death */
     while (lock_state != LOCK_ERROR)
-      pthread_cond_wait(&COND_lock_state, &THR_LOCK_myisam);
+      pthread_cond_wait(&COND_lock_state, &THR_LOCK_maria);
   }
-  pthread_mutex_unlock(&THR_LOCK_myisam);
+  pthread_mutex_unlock(&THR_LOCK_maria);
   DBUG_VOID_RETURN;
 }
 
@@ -456,9 +461,9 @@ retry:
 
 Backup::~Backup()
 {
-  DBUG_ENTER("myisam_backup::Backup::~Backup");
+  DBUG_ENTER("maria_backup::Backup::~Backup");
   /* If we had already started backup logging, we must dirtily stop it */
-  mi_log(MI_LOG_ACTION_CLOSE_INCONSISTENT, MI_LOG_PHYSICAL, NULL, NULL);
+  ma_log(MA_LOG_ACTION_CLOSE_INCONSISTENT, NULL, NULL);
   delete image;
   if (hash_of_tables)
   {
@@ -505,8 +510,8 @@ static void backup_free_hash_key(void *lsv)
 
 
 /**
-  Sets MyISAM in a state ready for the copy to start. I.e. builds
-  a hash of tables and starts MyISAM physical logging for those tables.
+  Sets Maria in a state ready for the copy to start. I.e. builds
+  a hash of tables and starts Maria physical logging for those tables.
 
   @return Operation status
     @retval backup::OK
@@ -515,7 +520,7 @@ static void backup_free_hash_key(void *lsv)
 
 result_t Backup::begin(const size_t)
 {
-  DBUG_ENTER("myisam_backup::Backup::begin");
+  DBUG_ENTER("maria_backup::Backup::begin");
   DBUG_PRINT("info",("%lu tables", m_tables.count()));
 
   /*
@@ -529,11 +534,15 @@ result_t Backup::begin(const size_t)
     while we are copying them, those modifications will not reach the log,
     backup will be corrupted.
   */
-  if (!my_disable_locking || !myisam_single_user)
+  if (!my_disable_locking
+#ifdef EXTERNAL_LOCKING
+ || !maria_single_user
+#endif
+)
   {
     my_error(ER_GET_ERRMSG, MYF(0),
-             MYISAM_ERR_NO_BACKUP_WITH_EXTERNAL_LOCKING,
-             MYISAM_ERR(MYISAM_ERR_NO_BACKUP_WITH_EXTERNAL_LOCKING), "MyISAM");
+             MARIA_ERR_NO_BACKUP_WITH_EXTERNAL_LOCKING,
+             MARIA_ERR(MARIA_ERR_NO_BACKUP_WITH_EXTERNAL_LOCKING), "Maria");
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
   }
   hash_of_tables= new HASH;
@@ -542,7 +551,7 @@ result_t Backup::begin(const size_t)
                 (hash_get_key)backup_get_table_from_hash_key,
                 (hash_free_key)backup_free_hash_key, 0))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
-  /* Build the hash of tables for the MyISAM layer (mi_log.c etc) */
+  /* Build the hash of tables for the Maria layer (ma_log.c etc) */
   for (uint n=0 ; n < m_tables.count() ; n++ )
   {
     char path[FN_REFLEN];
@@ -556,7 +565,7 @@ result_t Backup::begin(const size_t)
     */
     (void) m_tables[n].internal_name(path, sizeof(path));
     if (my_realpath(unique_file_name,
-                    fn_format(unique_file_name, path, "", MI_NAME_IEXT,
+                    fn_format(unique_file_name, path, "", MARIA_NAME_IEXT,
                               MY_UNPACK_FILENAME), MYF(MY_WME)))
         SET_STATE_TO_ERROR_AND_DBUG_RETURN;
     str_len= strlen(unique_file_name);
@@ -596,10 +605,10 @@ result_t Backup::begin(const size_t)
       indications on how it wants the backup, and by which the backup kernel
       tells it to the driver (API), we resort to this.
     */
-    char *env_arg= getenv("MYISAM_BACKUP_NO_INDEX");
+    char *env_arg= getenv("MARIA_BACKUP_NO_INDEX");
     /* By default we log index pages */
-    mi_log_index_pages_physical= !(env_arg && atoi(env_arg));
-    env_arg= getenv("MYISAM_BACKUP_SLEEP");
+    ma_log_index_pages_physical= !(env_arg && atoi(env_arg));
+    env_arg= getenv("MARIA_BACKUP_SLEEP");
     /*
       By default we don't sleep at all; however, 500 ms every 10MB gives a
       low penalty on clients, so it can be a good choice.
@@ -607,8 +616,7 @@ result_t Backup::begin(const size_t)
     sleep_time= env_arg ? atoi(env_arg) : 0;
   }
 
-  if (mi_log(MI_LOG_ACTION_OPEN, MI_LOG_PHYSICAL,
-             backup_log_name, hash_of_tables))
+  if (ma_log(MA_LOG_ACTION_OPEN, backup_log_name, hash_of_tables))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
 
   state= DUMPING_DATA_INDEX_FILES;
@@ -626,7 +634,7 @@ result_t Backup::begin(const size_t)
 
 result_t Backup::end()
 {
-  DBUG_ENTER("myisam_backup::Backup::end");
+  DBUG_ENTER("maria_backup::Backup::end");
   DBUG_RETURN(backup::OK);
 }
 
@@ -646,7 +654,7 @@ result_t Backup::end()
 result_t Backup::get_data(Buffer &buf)
 {
   result_t ret;
-  DBUG_ENTER("myisam::backup::Backup::get_data");
+  DBUG_ENTER("maria::backup::Backup::get_data");
   DBUG_PRINT("enter",("stream %d",stream));
 
   /* we are currently on stream 'stream' */
@@ -718,24 +726,24 @@ result_t Backup::get_data(Buffer &buf)
     if (lock_state == LOCK_NOT_STARTED)
       DBUG_RETURN(backup::OK);
     /* Let's see if the locking thread has finished locking all tables */
-    pthread_mutex_lock(&THR_LOCK_myisam);
+    pthread_mutex_lock(&THR_LOCK_maria);
     if (lock_state == LOCK_STARTED) // not yet
     {
-      pthread_mutex_unlock(&THR_LOCK_myisam);
+      pthread_mutex_unlock(&THR_LOCK_maria);
       DBUG_RETURN(backup::OK);
     }
     if (lock_state !=  LOCK_ACQUIRED) // it failed, so do we
     {
-      pthread_mutex_unlock(&THR_LOCK_myisam);
+      pthread_mutex_unlock(&THR_LOCK_maria);
       SET_STATE_TO_ERROR_AND_DBUG_RETURN;
     }
     DBUG_PRINT("info",("locking thread acquired locks on tables"));
 
-    pthread_mutex_unlock(&THR_LOCK_myisam);
-    if (mi_log(MI_LOG_ACTION_CLOSE_CONSISTENT, MI_LOG_PHYSICAL, NULL, NULL))
+    pthread_mutex_unlock(&THR_LOCK_maria);
+    if (ma_log(MA_LOG_ACTION_CLOSE_CONSISTENT, NULL, NULL))
       SET_STATE_TO_ERROR_AND_DBUG_RETURN;
     state= DUMPING_LOG_FILE_AFTER_TABLES_ARE_LOCKED;
-    DEBUG_SYNC(current_thd, "myisam_locking_thread_added");
+    DEBUG_SYNC(current_thd, "maria_locking_thread_added");
     /* signal "end of prepare-for-lock, ready for lock()" */
     DBUG_RETURN(backup::READY);
   }
@@ -781,8 +789,8 @@ void Backup::lock_tables_TL_READ_NO_INSERT()
 {
   THD *thd;
   TABLE_LIST *tables_in_TABLE_LIST_form=NULL ; ///< for open_and_lock_tables()
-  const char thread_name[]= "MyISAM driver locking thread";
-  DBUG_ENTER("myisam::backup::Backup::lock_tables_TL_READ_NO_INSERT");
+  const char thread_name[]= "Maria driver locking thread";
+  DBUG_ENTER("maria::backup::Backup::lock_tables_TL_READ_NO_INSERT");
 
   thd= new THD;
   if (unlikely(!thd))
@@ -825,9 +833,9 @@ void Backup::lock_tables_TL_READ_NO_INSERT()
     which created us (the "master" thread), so that it can kill us early if
     needed.
   */
-  pthread_mutex_lock(&THR_LOCK_myisam);
+  pthread_mutex_lock(&THR_LOCK_maria);
   lock_thd= thd;
-  pthread_mutex_unlock(&THR_LOCK_myisam);
+  pthread_mutex_unlock(&THR_LOCK_maria);
   /*
     We need TL_READ_NO_INSERT (and not TL_READ) because we want to prevent
     concurrent inserts (we indeed need to freeze the tables to correspond to
@@ -840,30 +848,30 @@ void Backup::lock_tables_TL_READ_NO_INSERT()
   if (open_and_lock_tables(thd, tables_in_TABLE_LIST_form))
     goto end;
 
-  DBUG_PRINT("info",("MyISAM backup locking thread got locks"));
-  pthread_mutex_lock(&THR_LOCK_myisam);
-  thd->enter_cond(&COND_lock_state, &THR_LOCK_myisam,
-                  "MyISAM backup: holding table locks");
+  DBUG_PRINT("info",("Maria backup locking thread got locks"));
+  pthread_mutex_lock(&THR_LOCK_maria);
+  thd->enter_cond(&COND_lock_state, &THR_LOCK_maria,
+                  "Maria backup: holding table locks");
   /* show master thread that we got locks */
   lock_state= LOCK_ACQUIRED;
   /* and wait for it to kill us */
   while (!thd->killed)
-    pthread_cond_wait(&COND_lock_state, &THR_LOCK_myisam);
-  thd->exit_cond("MyISAM backup: terminating");
+    pthread_cond_wait(&COND_lock_state, &THR_LOCK_maria);
+  thd->exit_cond("Maria backup: terminating");
 
 end:
-  DBUG_PRINT("info",("MyISAM backup locking thread dying"));
+  DBUG_PRINT("info",("Maria backup locking thread dying"));
   close_thread_tables(thd);
 end2:
-  pthread_mutex_lock(&THR_LOCK_myisam);
+  pthread_mutex_lock(&THR_LOCK_maria);
   while (cannot_delete_lock_thd)
   {
     /* master thread is looking at our THD; wait for authorization */
-    pthread_cond_wait(&COND_lock_state, &THR_LOCK_myisam);
+    pthread_cond_wait(&COND_lock_state, &THR_LOCK_maria);
   }
   lock_state= LOCK_ERROR;
   pthread_cond_broadcast(&COND_lock_state);
-  pthread_mutex_unlock(&THR_LOCK_myisam);
+  pthread_mutex_unlock(&THR_LOCK_maria);
   backup::free_table_list(tables_in_TABLE_LIST_form);
   net_end(&thd->net);
   delete thd;
@@ -873,10 +881,10 @@ end2:
 
 /** Entry point for the locking thread */
 
-pthread_handler_t myisam_backup_separate_thread_for_locking(void *arg)
+pthread_handler_t maria_backup_separate_thread_for_locking(void *arg)
 {
   my_thread_init();
-  DBUG_PRINT("info", ("myisam_backup::separate_thread_for_locking"));
+  DBUG_PRINT("info", ("maria_backup::separate_thread_for_locking"));
   pthread_detach_this_thread();
   (static_cast<Backup *>(arg))->lock_tables_TL_READ_NO_INSERT();
   my_thread_end();
@@ -899,13 +907,13 @@ pthread_handler_t myisam_backup_separate_thread_for_locking(void *arg)
 
 result_t Backup::prelock()
 {
-  DBUG_ENTER("myisam_backup::Backup::prelock");
+  DBUG_ENTER("maria_backup::Backup::prelock");
   /* we are going to launch a thread, we need to remember to kill it */
   lock_state= LOCK_STARTED;
   {
     pthread_t th;
     if (pthread_create(&th, &connection_attrib,
-                       myisam_backup_separate_thread_for_locking, this))
+                       maria_backup_separate_thread_for_locking, this))
     {
       lock_state= LOCK_ERROR;
       SET_STATE_TO_ERROR_AND_DBUG_RETURN;
@@ -917,7 +925,7 @@ result_t Backup::prelock()
 
 result_t Backup::lock()
 {
-  DBUG_ENTER("myisam_backup::Backup::lock");
+  DBUG_ENTER("maria_backup::Backup::lock");
   /* locking was done in prelock() already, nothing to do */
   DBUG_RETURN(backup::OK);
 }
@@ -925,7 +933,7 @@ result_t Backup::lock()
 
 result_t Backup::unlock()
 {
-  DBUG_ENTER("myisam_backup::Backup::unlock");
+  DBUG_ENTER("maria_backup::Backup::unlock");
   /* kill the locking thread which owns table locks, it will unlock them */
   kill_locking_thread();
   DBUG_RETURN(backup::OK);
@@ -944,7 +952,7 @@ result_t Backup::unlock()
 Log_backup::Log_backup(const char *log_name_arg) : log_name(log_name_arg),
                                                    log_deleted(FALSE)
 {
-  DBUG_ENTER("myisam_backup::Log_backup::Log_backup");
+  DBUG_ENTER("maria_backup::Log_backup::Log_backup");
   int fd= my_open(log_name, O_RDONLY, MYF(MY_WME));
   if (fd < 0)
     SET_STATE_TO_ERROR_AND_DBUG_VOID_RETURN;
@@ -969,7 +977,7 @@ Log_backup::Log_backup(const char *log_name_arg) : log_name(log_name_arg),
 
 result_t Log_backup::end()
 {
-  DBUG_ENTER("myisam_backup::Log_backup::end");
+  DBUG_ENTER("maria_backup::Log_backup::end");
   /*
     Log is safe in the stream, or backup is cancelled, so we don't need it
     anymore.
@@ -993,52 +1001,52 @@ Log_backup::~Log_backup()
 }
 
 
-/** The header of a MYI index file always fits in this size */
+/** The header of a MAI index file always fits in this size */
 #define MAX_INDEX_HEADER_SIZE (64*1024)
 
 
 /**
-  Opens a MyISAM table for backing it up.
+  Opens a Maria table for backing it up.
 
   @param  tbl             The table to open
 */
 
 Table_backup::Table_backup(const backup::Table_ref &tbl) :
-  Myisam_table_ref(tbl)
+  Maria_table_ref(tbl)
 {
-  MI_INFO *mi_info;
+  MARIA_HA *mi_info;
   File dfiledes= -1, kfiledes= -1;
   my_off_t file_size;
-  DBUG_ENTER("myisam_backup::Table_backup::Table_backup");
+  DBUG_ENTER("maria_backup::Table_backup::Table_backup");
   DBUG_PRINT("info",("Initializing backup image for table %s",
                      file_name.ptr()));
   /*
-    Here we use low-level mi_* functions as all we want is a pair of file
+    Here we use low-level maria_* functions as all we want is a pair of file
     descriptors.
     O_RDONLY is not ok, as it forces all instances of the table to be
     read-only (sets HA_OPTION_READ_ONLY_DATA of share->options).
     We don't use HA_OPEN_FOR_REPAIR so will fail to back up a known corrupted
     table (would be a corrupted backup).
   */
-  mi_info= mi_open(file_name.ptr(), O_RDWR, 0);
+  mi_info= maria_open(file_name.ptr(), O_RDWR, 0);
   if (!mi_info) // table does not exist or is corrupted? backup not ok
     goto err;
   /*
     we create our own descriptors, to use my_read() (faster than my_pread()
     which may use mutex).
   */
-  dfiledes= my_open(mi_info->s->data_file_name, O_RDONLY, MYF(MY_WME));
-  kfiledes= my_open(mi_info->s->unique_file_name, O_RDONLY, MYF(MY_WME));
+  dfiledes= my_open(mi_info->s->data_file_name.str, O_RDONLY, MYF(MY_WME));
+  kfiledes= my_open(mi_info->s->unique_file_name.str, O_RDONLY, MYF(MY_WME));
   if ((dfiledes < 0) || (kfiledes < 0))
     goto err;
-  mi_close(mi_info);
+  maria_close(mi_info);
   mi_info= NULL;
   file_size= my_seek(dfiledes, 0, SEEK_END, MYF(MY_WME));
   if (file_size == MY_FILEPOS_ERROR ||
       my_seek(dfiledes, 0, SEEK_SET, MYF(MY_WME)) == MY_FILEPOS_ERROR)
     goto err;
   dfile_backup.init(dfiledes, file_size, DATA_FILE_CODE);
-  if (mi_log_index_pages_physical)
+  if (ma_log_index_pages_physical)
   {
     file_size= my_seek(kfiledes, 0, SEEK_END, MYF(MY_WME));
     if (file_size == MY_FILEPOS_ERROR ||
@@ -1066,13 +1074,13 @@ err:
   if (kfiledes > 0)
     my_close(kfiledes, MYF(MY_WME));
   if (mi_info != NULL)
-    mi_close(mi_info);
+    maria_close(mi_info);
   SET_STATE_TO_ERROR_AND_DBUG_VOID_RETURN;
 }
 
 
 /**
-  Closes the MyISAM table.
+  Closes the Maria table.
 
   @return Operation status
     @retval backup::OK
@@ -1081,7 +1089,7 @@ err:
 
 result_t Table_backup::end()
 {
-  DBUG_ENTER("myisam_backup::Table_backup::end");
+  DBUG_ENTER("maria_backup::Table_backup::end");
   /* even if one close fails we still want to try the other one */
   if ((dfile_backup.close_file() != backup::OK) |
       (kfile_backup.close_file() != backup::OK))
@@ -1110,7 +1118,7 @@ Table_backup::~Table_backup()
 result_t Table_backup::get_data(Buffer &buf)
 {
   result_t ret;
-  DBUG_ENTER("myisam_backup::Table_backup::get_data");
+  DBUG_ENTER("maria_backup::Table_backup::get_data");
   switch (in_file)
     {
     case DATA_FILE:
@@ -1147,13 +1155,13 @@ result_t Table_backup::get_data(Buffer &buf)
 result_t Log_backup::get_data(Buffer &buf)
 {
   result_t ret;
-  DBUG_ENTER("myisam_backup::Log_backup::get_data");
+  DBUG_ENTER("maria_backup::Log_backup::get_data");
   /*
-    See, we detect a log write error encountered by the MyISAM myisam_log*
-    and mi_log* functions, every time we read a packet from the log file.
+    See, we detect a log write error encountered by the Maria maria_log*
+    and ma_log* functions, every time we read a packet from the log file.
   */
   if (((ret= log_file_backup.get_data(buf)) != backup::OK) ||
-      (myisam_physical_log.hard_write_error_in_the_past == -1))
+      (maria_physical_log.hard_write_error_in_the_past == -1))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
   DBUG_RETURN(backup::OK);
 }
@@ -1193,7 +1201,7 @@ result_t File_backup::get_data(Buffer &buf)
   size_t    res, howmuch= buf.size;
   result_t  ret= backup::OK;
 
-  DBUG_ENTER("myisam_backup::File_backup::get_data");
+  DBUG_ENTER("maria_backup::File_backup::get_data");
 
   buf.size= 1;
   DBUG_ASSERT(howmuch >= 2); // need at least 2 bytes
@@ -1304,7 +1312,7 @@ private:
 
 
 /** Handles restoring a single table */
-class Table_restore: public Object_restore, public Myisam_table_ref
+class Table_restore: public Object_restore, public Maria_table_ref
 {
 public:
   Table_restore(const Table_ref &tbl);
@@ -1348,14 +1356,14 @@ private:
 result_t Engine::get_restore(const version_t ver, const uint32,
                              const Table_list &tables, Restore_driver* &drv)
 {
-  if (ver > MYISAM_BACKUP_VERSION)
+  if (ver > MARIA_BACKUP_VERSION)
   {
     char errbuff[200];
     my_snprintf(errbuff, sizeof(errbuff),
-                MYISAM_ERR(MYISAM_ERR_BACKUP_TOO_RECENT),
-                ver, MYISAM_BACKUP_VERSION);
+                MARIA_ERR(MARIA_ERR_BACKUP_TOO_RECENT),
+                ver, MARIA_BACKUP_VERSION);
     my_error(ER_GET_ERRMSG, MYF(0),
-             MYISAM_ERR_BACKUP_TOO_RECENT, errbuff, "MyISAM");
+             MARIA_ERR_BACKUP_TOO_RECENT, errbuff, "Maria");
     return backup::ERROR;    
   }
 
@@ -1383,7 +1391,7 @@ Restore::Restore(const Table_list &tables):
 
 Restore::~Restore()
 {
-  DBUG_ENTER("myisam_backup::Restore::~Restore");
+  DBUG_ENTER("maria_backup::Restore::~Restore");
   if (images)
   {
     for (uint n= 0; n <= m_tables.count(); ++n)
@@ -1395,7 +1403,7 @@ Restore::~Restore()
 
 
 /**
-  Sets MyISAM in a state ready for us to restore. I.e. creates a temporary
+  Sets Maria in a state ready for us to restore. I.e. creates a temporary
   file to host the log's restored copy.
 
   @return Operation status
@@ -1406,7 +1414,7 @@ Restore::~Restore()
 result_t Restore::begin(const size_t)
 {
   THD *thd= current_thd;
-  DBUG_ENTER("myisam_backup::Restore::begin");
+  DBUG_ENTER("maria_backup::Restore::begin");
   my_snprintf(restore_log_name, sizeof(restore_log_name),
 	      "%s/%s%lx_%lx_%x-restorelog", mysql_tmpdir,
 	      tmp_file_prefix, current_pid, thd->thread_id,
@@ -1443,7 +1451,7 @@ result_t Restore::begin(const size_t)
 
 result_t Restore::end()
 {
-  DBUG_ENTER("myisam_backup::Restore::end");
+  DBUG_ENTER("maria_backup::Restore::end");
   /*
     Rafal said currently end() is called in case of error but said he'll fix
     that (only free() will be called)
@@ -1491,7 +1499,7 @@ result_t Restore::send_data(Buffer &buf)
 {
   result_t ret;
   uint stream= buf.table_num;
-  DBUG_ENTER("myisam_backup::Restore::send_data");
+  DBUG_ENTER("maria_backup::Restore::send_data");
   DBUG_PRINT("enter",("Got packet with %u bytes from stream %d",
                       static_cast<uint>(buf.size), buf.table_num));
 
@@ -1553,7 +1561,7 @@ result_t Restore::send_data(Buffer &buf)
 
 Log_restore::Log_restore(const char *log_name_arg) : log_name(log_name_arg)
 {
-  DBUG_ENTER("myisam_backup::Log_restore::Log_restore");
+  DBUG_ENTER("maria_backup::Log_restore::Log_restore");
   int fd= my_create(log_name, 0, O_WRONLY, MYF(MY_WME));
   if (fd < 0)
   {
@@ -1577,7 +1585,7 @@ Log_restore::Log_restore(const char *log_name_arg) : log_name(log_name_arg)
 
 result_t Log_restore::close()
 {
-  DBUG_ENTER("myisam_backup::Log_restore::close");
+  DBUG_ENTER("maria_backup::Log_restore::close");
   if (log_file_restore.close_file() != backup::OK)
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
   DBUG_RETURN(backup::OK);
@@ -1594,9 +1602,9 @@ result_t Log_restore::close()
 
 result_t Log_restore::post_restore()
 {
-  MI_EXAMINE_LOG_PARAM mi_exl;
-  DBUG_ENTER("myisam_backup::Log_restore::post_restore");
-  mi_examine_log_param_init(&mi_exl);
+  MA_EXAMINE_LOG_PARAM mi_exl;
+  DBUG_ENTER("maria_backup::Log_restore::post_restore");
+  ma_examine_log_param_init(&mi_exl);
   mi_exl.log_filename= log_name;
   mi_exl.update= 1;
   /*
@@ -1604,7 +1612,7 @@ result_t Log_restore::post_restore()
     enough file descriptors and so should have that many now.
   */
   mi_exl.max_files= open_files_limit;
-  if (mi_examine_log(&mi_exl))
+  if (ma_examine_log(&mi_exl))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
 
   DBUG_RETURN(backup::OK);
@@ -1621,7 +1629,7 @@ result_t Log_restore::post_restore()
 
 result_t Log_restore::end()
 {
-  DBUG_ENTER("myisam_backup::Log_restore::end");
+  DBUG_ENTER("maria_backup::Log_restore::end");
   /* log is applied so we don't need it anymore */
   if (close() != backup::OK ||
       (!log_deleted && my_delete(log_name, MYF(MY_WME))))
@@ -1638,23 +1646,23 @@ Log_restore::~Log_restore()
 }
 
 
-/** Opens a MyISAM table for restoring it */
+/** Opens a Maria table for restoring it */
 
 Table_restore::Table_restore(const Table_ref &tbl):
-  Myisam_table_ref(tbl), rebuild_index(FALSE)
+  Maria_table_ref(tbl), rebuild_index(FALSE)
 {
-  MI_INFO *mi_info;
+  MARIA_HA *mi_info;
   File dfiledes= -1, kfiledes= -1;
-  DBUG_ENTER("myisam_backup::Table_restore::Table_restore");
+  DBUG_ENTER("maria_backup::Table_restore::Table_restore");
   DBUG_PRINT("enter",("Initializing backup image for table %s",
                       file_name.ptr()));
   /*
-    Here we use low-level mi_* functions as all we want is a pair of file
+    Here we use low-level maria_* functions as all we want is a pair of file
     descriptors.
     Though we only want to write (O_WRONLY), the SQL layer uses only O_RDONLY
     and O_RDWR, so here we don't try to be original.
   */
-  mi_info= mi_open(file_name.ptr(), O_RDWR, 0);
+  mi_info= maria_open(file_name.ptr(), O_RDWR, 0);
   if (!mi_info)
   {
     /* table does not exist or is corrupted? not normal, it's just created */
@@ -1665,15 +1673,15 @@ Table_restore::Table_restore(const Table_ref &tbl):
     guarantee that we are the only user of the brand new table (nobody will
     lseek() under our feet).
   */
-  if (((dfiledes= my_dup(mi_info->dfile, MYF(MY_WME))) < 0) ||
-      ((kfiledes= my_dup(mi_info->s->kfile, MYF(MY_WME))) < 0))
+  if (((dfiledes= my_dup(mi_info->dfile.file, MYF(MY_WME))) < 0) ||
+      ((kfiledes= my_dup(mi_info->s->kfile.file, MYF(MY_WME))) < 0))
     goto err;
   /*
     We are going to my_write() to the files without updating the table's
-    state (mi_info->state). If we called mi_close() only at end of restore,
+    state (mi_info->state). If we called maria_close() only at end of restore,
     that function may write its out-of-date state on the table.
   */
-  mi_close(mi_info);
+  maria_close(mi_info);
   mi_info= NULL;
   /* seek them at start, because we use my_write() */
   if ((my_seek(dfiledes, 0, SEEK_SET, MYF(MY_WME)) == MY_FILEPOS_ERROR) ||
@@ -1690,7 +1698,7 @@ err:
   if (kfiledes > 0)
     my_close(kfiledes, MYF(MY_WME));
   if (mi_info != NULL)
-    mi_close(mi_info);
+    maria_close(mi_info);
 }
 
 
@@ -1704,7 +1712,7 @@ err:
 
 result_t Table_restore::close()
 {
-  DBUG_ENTER("myisam_backup::Table_restore::close");
+  DBUG_ENTER("maria_backup::Table_restore::close");
   DBUG_PRINT("info",("table: %s", file_name.ptr()));
   if ((dfile_restore.close_file() != backup::OK) |
       (kfile_restore.close_file() != backup::OK))
@@ -1712,11 +1720,11 @@ result_t Table_restore::close()
 
   /*
     CAUTION! Ugliest hack ever!
-    This hack tries to recover from bypassing the MyISAM interface
-    by the MyISAM restore driver.
+    This hack tries to recover from bypassing the Maria interface
+    by the Maria restore driver.
     The situation is so:
     The backup kernel opens and locks the tables in backup.
-    But the MyISAM restore driver does not use the open MI_INFO
+    But the Maria restore driver does not use the open MARIA_HA
     instance. Instead it opens another instance, duplicates its
     file descriptors, and closes the instance. Then it uses the
     duplicate file descriptors to write directly ("physically")
@@ -1730,15 +1738,15 @@ result_t Table_restore::close()
     open at the time. Then a new open would read all table info from
     disk and everybody would be happy.
     However, the backup kernel still has the table open. Parts of
-    the index file are cached in the open MYISAM_SHARE object.
+    the index file are cached in the open MARIA_SHARE object.
     If the backup kernel would close the tables, this old information
     would be written to the index file, which crashes the table.
     This hack tries to solve the problem by loading the share with
-    information from the index file. At first, we open a new MI_INFO
+    information from the index file. At first, we open a new MARIA_HA
     instance from the table. This open does not read the state info
     from the file because another instance is already open from the
     same table. But the open gives us access to the share.
-    We do then explicitly call mi_state_info_read_dsk(), which is
+    We do then explicitly call _ma_state_info_read_dsk(), which is
     the function that loads the share from the index file at an
     initial open. Well, not exactly. At open a similar function is
     used, after the index header has been read by a direct read.
@@ -1747,71 +1755,51 @@ result_t Table_restore::close()
     if external locking is disabled. It assumes that no external
     (or bypassing) writes happen to the files. Since we did exactly
     this, we must pretend that we are doing external locking. The
-    function uses the variable 'myisam_single_user' for the
+    function uses the variable 'maria_single_user' for the
     decision. So we temporarily change it.
     Now we can close the new table instance. This won't write the
     state again, because is is not the last open instance.
     But since the share does now cache the new values from the
     index file, the backup kernel's close writes the correct
     information back to the file.
-
-    This used to work until a brave soul tried to backup and restore
-    compressed tables. Now we know, that replacing the state info is
-    insufficient. The table is always re-created as a non-compressed
-    table. The setup of the share is pretty different between normal and
-    compressed tables. We could try to replace all relevant information.
-    But that would make quite some code duplication with mi_open().
-    Changes there might be forgotten here. And it might still be
-    insufficient. The table instance MI_OPEN might have some setup
-    differences too. Perhaps even the handler ha_myisam. In theory it
-    might even happen that we create fixed length records, while the
-    restored MYI has dynamic records or vice versa. Or we restore a
-    table that had been created by a former MySQL version and has
-    different field types, e.g. varchar.
-
-    So the only practical solution seems to be to re-open the table
-    after restore. But this must be done in the server. The fix here is
-    still required to defeat writing of wrong share data at close as
-    decribed above.
   */
   {
-    MI_INFO      *mi_info;
-    MYISAM_SHARE *share;
+    MARIA_HA      *mi_info;
+    MARIA_SHARE *share;
 
-    mi_info= mi_open(file_name.ptr(), O_RDWR, HA_OPEN_FOR_REPAIR);
+    mi_info= maria_open(file_name.ptr(), O_RDWR, HA_OPEN_FOR_REPAIR);
     if (mi_info == NULL)
       goto err;
     share= mi_info->s;
-    DBUG_PRINT("myisam_backup", ("share data_file: %lu",
+    DBUG_PRINT("maria_backup", ("share data_file: %lu",
                                  (ulong) share->state.state.data_file_length));
-    if (mi_state_info_read_dsk(share->kfile, &share->state, 1, 1))
+    if (_ma_state_info_read_dsk(share->kfile.file, &share->state, 1))
       goto err;
-    DBUG_PRINT("myisam_backup", ("share data_file: %lu",
-                                 (ulong) share->state.state.data_file_length));
+    DBUG_PRINT("maria_backup", ("share data_file: %lu",
+                                 (ulong)
+                                 share->state.state.data_file_length));
     /*
       Now follows the most dirty part of the hack.
       We have correct information in the share, but the instance that
       holds the lock on the table has a local copy of the state.
       We must find this instance and fix the local info.
-      Fortunately there is a state pointer, which can be set to the
-      share. This invalidates the instance's local copy.
     */
     {
       LIST *list_element ;
-      pthread_mutex_lock(&THR_LOCK_myisam);
+      pthread_mutex_lock(&THR_LOCK_maria);
       pthread_mutex_lock(&share->intern_lock);
-      for (list_element= myisam_open_list;
+      for (list_element= maria_open_list;
            list_element;
            list_element= list_element->next)
       {
-        MI_INFO *tmpinfo= (MI_INFO*) list_element->data;
+        MARIA_HA *tmpinfo= (MARIA_HA*) list_element->data;
         if (tmpinfo->s == share)
-          tmpinfo->state= &share->state.state;
+          *tmpinfo->state= share->state.state;
       }
-      pthread_mutex_unlock(&THR_LOCK_myisam);
+      pthread_mutex_unlock(&THR_LOCK_maria);
       pthread_mutex_unlock(&share->intern_lock);
     }
-    if (mi_close(mi_info))
+    if (maria_close(mi_info))
       goto err;
     goto end;
 
@@ -1860,19 +1848,19 @@ result_t Table_restore::post_restore()
   TABLE *table= NULL;
   int error;
   Vio* save_vio;
-  DBUG_ENTER("myisam_backup::Table_restore::post_restore");
+  DBUG_ENTER("maria_backup::Table_restore::post_restore");
 
   if (!rebuild_index)
   {
-    MI_INFO *mi_info;
-    MYISAM_SHARE *share;
+    MARIA_HA *mi_info;
+    MARIA_SHARE *share;
     /*
       Table was copied while it was possibly open by other clients; we need to
       correct open_count to not trigger superfluous warning messages or repair
-      by --myisam-recover. If we rebuild the index, that will automatically
+      by --maria-recover. If we rebuild the index, that will automatically
       fix open_count.
     */
-    mi_info= mi_open(file_name.ptr(), O_RDWR, HA_OPEN_FOR_REPAIR);
+    mi_info= maria_open(file_name.ptr(), O_RDWR, HA_OPEN_FOR_REPAIR);
     if ((error= (mi_info == NULL)))
       goto err;
     share= mi_info->s;
@@ -1885,19 +1873,33 @@ result_t Table_restore::post_restore()
     {
       /* open_count>0 only because we copied while open, no problem */
       share->state.open_count= 0;
-      /* force this correct open_count to disk */
-      error= mi_state_info_write(share, share->kfile, &share->state, 1);
     }
-    error|= mi_close(mi_info);
+    if (share->base.born_transactional)
+    {
+      /*
+        This table starts a new life: old REDOs shouldn't apply to it,
+        otherwise there could be this wrong sequence:
+        create table empty; back it up; bulk insert (no REDO); insert (REDO);
+        drop; restore; crash: then recovery will fail on the REDO for insert.
+        However, we don't change the uuid: if the table originally comes from
+        our instance, we don't want to zerofill it for nothing.
+      */
+      share->state.create_rename_lsn= share->state.is_of_horizon=
+        share->state.skip_redo_lsn= LSN_NEEDS_NEW_STATE_LSNS;
+    }
+    /* force new open_count, LSNs to disk */
+    error= _ma_state_info_write_sub(share, share->kfile.file,
+                                    &share->state, 1);
+    error|= maria_close(mi_info);
     goto err;
   }
 
   /*
-    myisamchk() as well as ha_myisam::repair() do a lot of operations before
-    and after mi_repair(); to not duplicate code we reuse one of them.
+    mariachk() as well as ha_maria::repair() do a lot of operations before
+    and after maria_repair(); to not duplicate code we reuse one of them.
     As we are in the server here, we use the one of the server.
-    A "new ha_myisam + ha_open()" is not sufficient as TABLE and TABLE_SHARE
-    are needed for ha_myisam::open(). So we use open_temporary_table() which
+    A "new ha_maria + ha_open()" is not sufficient as TABLE and TABLE_SHARE
+    are needed for ha_maria::open(). So we use open_temporary_table() which
     sets up all fine without touching thread's structure (and so, without
     causing problems to locks, without interfering with close_thread_tables()
     which would be done by another driver in the same thread etc).
@@ -1919,7 +1921,7 @@ result_t Table_restore::post_restore()
     We do not want repair() to spam us with messages (protocol->store() etc).
     Just send them to the error log, and report the failure in case of
     problems.
-    Note that ha_myisam::restore() does not do that (merely uses the same
+    Note that ha_maria::restore() does not do that (merely uses the same
     check_opt.flags as us), as it is allowed to return an array of errors.
   */
   save_vio= thd->net.vio;
@@ -1953,7 +1955,7 @@ result_t Table_restore::send_data(const Buffer &buf)
 {
   enum enum_file_code file_code= static_cast<enum enum_file_code>(*buf.data);
   result_t ret;
-  DBUG_ENTER("myisam_backup::Table_restore::send_data");
+  DBUG_ENTER("maria_backup::Table_restore::send_data");
 
   switch (file_code)
   {
@@ -1991,7 +1993,7 @@ result_t Log_restore::send_data(const Buffer &buf)
 {
   enum enum_file_code file_code= static_cast<enum enum_file_code>(*buf.data);
   result_t ret;
-  DBUG_ENTER("myisam_backup::Log_restore::send_data");
+  DBUG_ENTER("maria_backup::Log_restore::send_data");
 
   ret= (file_code == LOG_FILE_CODE) ? log_file_restore.send_data(buf) :
     backup::ERROR;
@@ -2015,7 +2017,7 @@ result_t File_restore::send_data(const Buffer &buf)
 {
   size_t howmuch= buf.size;
 
-  DBUG_ENTER("myisam_backup::File_restore::send_data");
+  DBUG_ENTER("maria_backup::File_restore::send_data");
   //DBUG_DUMP("receiving",buf.data + 1, 16);
 
   // We should receive same buffers as those made at backup time
@@ -2046,7 +2048,7 @@ result_t File_restore::close_file()
 }
 
 
-} // myisam_backup namespace
+} // maria_backup namespace
 
 
 /**
@@ -2057,9 +2059,9 @@ result_t File_restore::close_file()
     @retval backup::ERROR
 */
 
-Backup_result_t myisam_backup_engine(handlerton *self, Backup_engine* &be)
+Backup_result_t maria_backup_engine(handlerton *self, Backup_engine* &be)
 {
-  be= new myisam_backup::Engine();
+  be= new maria_backup::Engine();
 
   if (unlikely(!be))
     return backup::ERROR;

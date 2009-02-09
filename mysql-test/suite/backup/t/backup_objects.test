@@ -16,6 +16,7 @@
 
 --source include/have_innodb.inc
 --source include/not_embedded.inc
+--source include/have_myisam_or_maria_default.inc
 
 # Note: BACKUP crashes server when InnoDB engine is used and views are 
 # included in the image (see BUG#34758). Until this issue is resolved we 
@@ -23,14 +24,13 @@
 # foreign key constraints.
 #
 # If tables use MyISAM storage engine the test works but all foreign
-# key constraints are silently ignored. When BUG#34758 is fixed, the line 
-# below should be changed to make InnoDB the default storage engine so that
+# key constraints are silently ignored. When BUG#34758 is fixed, 
+# "SET storage_engine=InnoDB;" should be added just below
+# to make InnoDB the default storage engine so that
 # handling of dependencies introduced by foreign keys can also be tested.
 #
 # Note that there is a separate test backup_fkey testing foreign key
 # constraints.
-
-SET storage_engine=MyISAM;
 
 ##############################################################
 --echo 

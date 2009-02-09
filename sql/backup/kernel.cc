@@ -840,15 +840,17 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 */ 
 int Backup_restore_ctx::lock_tables_for_restore()
 {
-  TABLE_LIST *tables= NULL;
   int ret;
 
   /*
-    Iterate over all tables in all snapshots and create a linked TABLE_LIST
-    for call to open_and_lock_tables(). Store pointers to TABLE_LIST structures
-    in the restore catalogue for later access to opened tables.
-  */ 
+    Iterate over all tables in all snapshots and create a linked
+    TABLE_LIST for call to open_and_lock_tables(). Remember the
+    TABLE_LIST for later use in Backup_restore_ctx::unlock_tables().
+    Store pointers to TABLE_LIST structures in the restore catalogue for
+    later access to opened tables.
+  */
 
+  m_backup_tables= NULL;
   for (uint s= 0; s < m_catalog->snap_count(); ++s)
   {
     backup::Snapshot_info *snap= m_catalog->m_snap[s];
@@ -865,7 +867,8 @@ int Backup_restore_ctx::lock_tables_for_restore()
         return fatal_error(log_error(ER_OUT_OF_RESOURCES));
       }
 
-      tables= backup::link_table_list(*ptr, tables); // Never errors
+      m_backup_tables= backup::link_table_list(*ptr, m_backup_tables);
+      DBUG_ASSERT(m_backup_tables);
       tbl->m_table= ptr;
     }
   }
@@ -879,7 +882,7 @@ int Backup_restore_ctx::lock_tables_for_restore()
     Note 2: Skiping tmp tables is also important because otherwise a tmp table
     can occlude a regular table with the same name (BUG#33574).
   */ 
-  ret= open_and_lock_tables_derived(m_thd, tables,
+  ret= open_and_lock_tables_derived(m_thd, m_backup_tables,
                                     FALSE, /* do not process derived tables */
                                     MYSQL_OPEN_SKIP_TEMPORARY 
                                           /* do not open tmp tables */
@@ -901,6 +904,22 @@ void Backup_restore_ctx::unlock_tables()
     return;
 
   DBUG_PRINT("restore",("unlocking tables"));
+
+  /*
+    Refresh tables that have been restored. Some restore drivers might
+    restore a table layout that differs from the version created by
+    materialize(). We need to force a final close after restore with
+    close_cached_tables(). Note that we do this before we unlock the
+    tables. Otherwise other threads could use the still open tables
+    before we refresh them.
+
+    For information about a concrete problem, see the comment in
+    myisam_backup_engine.cc:Table_restore::close().
+
+    Use the restore table list as created by lock_tables_for_restore().
+  */
+  if (m_backup_tables)
+    close_cached_tables(m_thd, m_backup_tables, FALSE, FALSE);
 
   close_thread_tables(m_thd);                   // Never errors
   m_tables_locked= FALSE;

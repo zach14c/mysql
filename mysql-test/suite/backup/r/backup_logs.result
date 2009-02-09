@@ -34,7 +34,7 @@ DROP DATABASE IF EXISTS backup_logs;
 PURGE BACKUP LOGS;
 CREATE DATABASE backup_logs;
 con1: Create table and new users.
-CREATE TABLE backup_logs.t1 (a char(30)) ENGINE=MYISAM;
+CREATE TABLE backup_logs.t1 (a char(30));
 CREATE TABLE backup_logs.t2 (a char(30)) ENGINE=INNODB;
 CREATE TABLE backup_logs.t3 (a char(30)) ENGINE=MEMORY;
 INSERT INTO backup_logs.t1 VALUES ("01 Test #1 - progress");

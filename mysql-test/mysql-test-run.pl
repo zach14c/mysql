@@ -3045,7 +3045,11 @@ sub copy_install_db ($$) {
 
   # Just copy the installed db from first master
   mtr_copy_dir($master->[0]->{'path_myddir'}, $data_dir);
-
+  # control file has to be unique between servers, no copy:
+  foreach my $file ( glob("$data_dir/maria_log*"))
+  {
+    unlink ($file);
+  }
 }
 
 
@@ -3751,9 +3755,12 @@ sub mysqld_arguments ($$$$) {
 
   mtr_add_arg($args, "%s--pid-file=%s", $prefix,
 	      $mysqld->{'path_pid'});
-        
-   mtr_add_arg($args, "%s--log-err=%s", $prefix,
-	      $mysqld->{'path_myerr'});
+ 
+  if ($glob_win32)
+  {  
+    # write to stdout
+    mtr_add_arg($args, "%s--console", $prefix);
+  }
 
   mtr_add_arg($args, "%s--port=%d", $prefix,
                 $mysqld->{'port'});

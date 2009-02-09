@@ -14,7 +14,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/* This file should be included when using maria functions */
+/**
+  @file
+  This file should be included when using maria functions.
+*/
 
 #ifndef _maria_h
 #define _maria_h
@@ -109,6 +112,7 @@ extern "C" {
 
 typedef ulonglong MARIA_RECORD_POS;
 
+/** Information local to the table's instance */
 typedef struct st_maria_info
 {
   ha_rows records;			/* Records in database */
@@ -264,6 +268,8 @@ typedef struct st_maria_columndef		/* column information */
 } MARIA_COLUMNDEF;
 
 
+/** Physical logging is always compiled in. Undefine if want to benchmark */
+#define HAVE_MARIA_PHYSICAL_LOGGING 1
 extern ulong maria_block_size, maria_checkpoint_frequency;
 extern ulong maria_concurrent_insert;
 extern my_bool maria_flush, maria_single_user, maria_page_checksums;
@@ -323,6 +329,14 @@ extern int maria_extra(MARIA_HA *file,
 extern int maria_reset(MARIA_HA *file);
 extern ha_rows maria_records_in_range(MARIA_HA *info, int inx,
 				      key_range *min_key, key_range *max_key);
+/** Open/close actions allowed on a Maria physical log */
+enum enum_ma_log_action
+{
+  MA_LOG_ACTION_OPEN,
+  MA_LOG_ACTION_CLOSE_CONSISTENT, MA_LOG_ACTION_CLOSE_INCONSISTENT
+};
+extern int ma_log(enum enum_ma_log_action action,
+                  const char *log_filename, const HASH *tables);
 extern int maria_is_changed(MARIA_HA *info);
 extern int maria_delete_all_rows(MARIA_HA *info);
 extern uint maria_get_pointer_length(ulonglong file_length, uint def);

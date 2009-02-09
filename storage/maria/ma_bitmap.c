@@ -1,4 +1,5 @@
-/* Copyright (C) 2007 Michael Widenius
+/* Copyright (C) 2007 Michael Widenius,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -144,7 +145,7 @@ static inline my_bool write_changed_bitmap(MARIA_SHARE *share,
 {
   DBUG_ENTER("write_changed_bitmap");
   DBUG_ASSERT(share->pagecache->block_size == bitmap->block_size);
-  DBUG_ASSERT(bitmap->file.write_callback != 0);
+  DBUG_ASSERT(bitmap->file.pre_write_callback != NULL);
   DBUG_PRINT("info", ("bitmap->non_flushable: %u", bitmap->non_flushable));
 
   if ((bitmap->non_flushable == 0)
@@ -2516,7 +2517,7 @@ int _ma_bitmap_create_first(MARIA_SHARE *share)
     if it is needed
   */
   int4store(marker, MARIA_NO_CRC_BITMAP_PAGE);
-
+  DBUG_ASSERT(!share->physical_logging);
   if (my_chsize(file, block_size - sizeof(marker),
                 0, MYF(MY_WME)) ||
       my_pwrite(file, marker, sizeof(marker),
@@ -2572,19 +2573,20 @@ void _ma_bitmap_set_pagecache_callbacks(PAGECACHE_FILE *file,
   file->callback_data= (uchar*) share;
   file->flush_log_callback= maria_flush_log_for_page_none;
   file->write_fail= maria_page_write_failure;
+  file->post_write_callback= maria_log_data_page_flush_physical;
 
   if (share->temporary)
   {
     file->read_callback=  &maria_page_crc_check_none;
-    file->write_callback= &maria_page_filler_set_none;
+    file->pre_write_callback= &maria_page_filler_set_none;
   }
   else
   {
     file->read_callback=  &maria_page_crc_check_bitmap;
     if (share->options & HA_OPTION_PAGE_CHECKSUM)
-      file->write_callback= &maria_page_crc_set_normal;
+      file->pre_write_callback= &maria_page_crc_set_normal;
     else
-      file->write_callback= &maria_page_filler_set_bitmap;
+      file->pre_write_callback= &maria_page_filler_set_bitmap;
     if (share->now_transactional)
       file->flush_log_callback= flush_log_for_bitmap;
   }

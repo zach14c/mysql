@@ -1,4 +1,4 @@
-/* Copyright (C) 2006, 2007 MySQL AB
+/* Copyright (C) 2006, 2007 MySQL AB, 2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2760,7 +2760,7 @@ static void prepare_table_for_close(MARIA_HA *info, TRANSLOG_ADDRESS horizon)
       cmp_translog_addr(share->lsn_of_file_id, horizon) < 0)
   {
     share->state.is_of_horizon= horizon;
-    _ma_state_info_write_sub(share->kfile.file, &share->state, 1);
+    _ma_state_info_write_sub(share, share->kfile.file, &share->state, 1);
   }
 
   /*

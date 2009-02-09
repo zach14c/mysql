@@ -1,4 +1,5 @@
-/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB
+/* Copyright (C) 2006 MySQL AB & MySQL Finland AB & TCX DataKonsult AB,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,7 +14,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-/* This file is included by all internal maria files */
+/*
+  @file
+  This file is included by all internal maria files
+*/
 
 #include "maria.h"				/* Structs & some defines */
 #include <myisampack.h>				/* packing of keys */
@@ -263,6 +267,7 @@ typedef struct st_maria_file_bitmap
 #define MARIA_CHECKPOINT_SHOULD_FREE_ME 2
 #define MARIA_CHECKPOINT_SEEN_IN_LOOP 4
 
+/** Information shared by all open instances of the same table */
 typedef struct st_maria_share
 {					/* Shared between opens */
   MARIA_STATE_INFO state;
@@ -275,10 +280,12 @@ typedef struct st_maria_share
   MARIA_COLUMNDEF *columndef;		/* Pointer to column information */
   MARIA_PACK pack;			/* Data about packed records */
   MARIA_BLOB *blobs;			/* Pointer to blobs */
+  LIST *in_use;                         /* List of threads using this table */
   uint16 *column_nr;			/* Original column order */
   LEX_STRING unique_file_name;		/* realpath() of index file */
   LEX_STRING data_file_name;		/* Resolved path names from symlinks */
   LEX_STRING index_file_name;
+  /** File name before resolving any symlink or expanding directory */
   LEX_STRING open_file_name;		/* parameter to open filename */
   uchar *file_map;			/* mem-map of file if possible */
   PAGECACHE *pagecache;			/* ref to the current key cache */
@@ -410,6 +417,21 @@ typedef struct st_maria_share
   MARIA_FILE_BITMAP bitmap;
   rw_lock_t mmap_lock;
   LSN lsn_of_file_id; /**< LSN of its last LOGREC_FILE_ID */
+  /**
+    If this table is doing physical logging (1) or not (0).
+    Set under MARIA_HA::physical_logging_rwlock and THR_LOCK_maria.
+    Read under either one of the two locks above.
+  */
+  volatile int32 physical_logging;
+  /** For protecting MARIA_SHARE::physical_logging */
+  my_atomic_rwlock_t physical_logging_rwlock;
+  /**
+    If we already stored MA_LOG_OPEN in physical log for this share.
+    Set to TRUE only by writer thread under THR_LOCK_maria_log atomically
+    with logging the MA_LOG_OPEN; set to FALSE only by ma_log_stop_physical()
+    after closing the log.
+  */
+  my_bool MA_LOG_OPEN_stored_in_physical_log;
 } MARIA_SHARE;
 
 
@@ -473,7 +495,7 @@ typedef struct st_maria_block_scan
   MARIA_RECORD_POS row_base_page;
 } MARIA_BLOCK_SCAN;
 
-//psergey-todo: do really need to have copies of this all over the place?
+/*psergey-todo: do really need to have copies of this all over the place?*/
 typedef my_bool (*index_cond_func_t)(void *param);
 
 struct st_maria_handler
@@ -496,6 +518,7 @@ struct st_maria_handler
   DYNAMIC_ARRAY *ft1_to_ft2;		/* used only in ft1->ft2 conversion */
   MEM_ROOT      ft_memroot;             /* used by the parser               */
   MYSQL_FTPARSER_PARAM *ftparser_param;	/* share info between init/deinit */
+  LIST in_use;                          /* Thread using this table          */
   uchar *buff;				/* page buffer */
   uchar *keyread_buff;                   /* Buffer for last key read */
   uchar *lastkey_buff;			/* Last used search key */
@@ -608,6 +631,12 @@ struct st_maria_handler
 #define STATE_NOT_ZEROFILLED     128
 #define STATE_NOT_MOVABLE        256
 #define STATE_MOVED              512 /* set if base->uuid != maria_uuid */
+/**
+   If open_count>0 the first time we opened this table; cleared after
+   successful check or repair
+*/
+#define STATE_BAD_OPEN_COUNT     1024
+
 
 /* options to maria_read_cache */
 
@@ -661,8 +690,10 @@ struct st_maria_handler
 */
 #define int4store_aligned(A,B) int4store((A),(B))
 
+#define ma_report_crashed(A, B) _ma_report_crashed((A), (B), __FILE__, __LINE__)
 #define maria_mark_crashed(x) do{(x)->s->state.changed|= STATE_CRASHED; \
     DBUG_PRINT("error", ("Marked table crashed"));                      \
+    ma_report_crashed((x), 0);                                          \
   }while(0)
 #define maria_mark_crashed_share(x)                                     \
   do{(x)->state.changed|= STATE_CRASHED;                                \
@@ -767,7 +798,7 @@ struct st_maria_handler
 #define maria_unique_store(A,B)    mi_int4store((A),(B))
 
 #ifdef THREAD
-extern pthread_mutex_t THR_LOCK_maria;
+extern pthread_mutex_t THR_LOCK_maria_log;
 #endif
 #if !defined(THREAD) || defined(DONT_USE_RW_LOCKS)
 #define rw_wrlock(A) {}
@@ -787,7 +818,10 @@ extern pthread_mutex_t THR_LOCK_maria;
 
 
 /* Some extern variables */
+
+C_MODE_START
 extern LIST *maria_open_list;
+C_MODE_END
 extern uchar maria_file_magic[], maria_pack_file_magic[];
 extern uchar maria_uuid[MY_UUID_SIZE];
 extern uint32 maria_read_vec[], maria_readnext_vec[];
@@ -796,6 +830,7 @@ extern char *maria_data_root;
 extern uchar maria_zero_string[];
 extern my_bool maria_inited, maria_in_ha_maria;
 extern HASH maria_stored_state;
+extern const HASH *ma_log_tables_physical;
 
 /* This is used by _ma_calc_xxx_key_length och _ma_store_key */
 typedef struct st_maria_s_param
@@ -1055,6 +1090,36 @@ typedef struct st_maria_block_info
 #define SORT_BUFFER_INIT	(1024L*1024L*64-MALLOC_OVERHEAD)
 #define MIN_SORT_BUFFER		(4096-MALLOC_OVERHEAD)
 
+/**
+  Commands storable in Maria non-transactional log (physical log).
+*/
+enum maria_log_commands {
+  MA_LOG_OPEN, /**< when maria_open() */
+  MA_LOG_CLOSE, /**< when maria_close() */
+  MA_LOG_DELETE_ALL, /**< when maria_delete_all() */
+  MA_LOG_WRITE_BYTES_MAD, /**< when Maria writes to the data file */
+  MA_LOG_WRITE_BYTES_MAI, /**< when Maria writes to the index file */
+  MA_LOG_CHSIZE_MAI,      /**< when Maria changes size of index file */
+  MA_LOG_END_SENTINEL /**< keep this one unused and last */
+};
+extern const char *ma_log_command_name[];
+/** If log record stores numerical info in long format */
+#define MA_LOG_BIG_NUMBERS 128
+
+/**
+  Maria-specific errors (not generic enough to be HA_ERR), sent to the
+  caller wrapped inside ER_GET_ERRMSG. Not yet stabilized, so not yet
+  exported to maria.h.
+*/
+enum maria_errors
+{
+  /* decrease, starting with -1 */
+  MARIA_ERR_NO_BACKUP_WITH_EXTERNAL_LOCKING= -1,
+  MARIA_ERR_BACKUP_TOO_RECENT= -2,
+  MARIA_ERR_LAST=-3 /**< keep it last and unused */
+  /* use only numbers<0, to not collide with OS errors, ER_, HA_ERR etc */
+};
+#define MARIA_ERR(errnumber) maria_error_messages[-errnumber-1]
 #define fast_ma_writeinfo(INFO) if (!(INFO)->s->tot_locks) (void) _ma_writeinfo((INFO),0)
 #define fast_ma_readinfo(INFO) ((INFO)->lock_type == F_UNLCK) && _ma_readinfo((INFO),F_RDLCK,1)
 
@@ -1065,6 +1130,56 @@ extern uint _ma_pack_get_block_info(MARIA_HA *maria, MARIA_BIT_BUFF *bit_buff,
                                     size_t *rec_buff_size,
                                     File file, my_off_t filepos);
 extern void _ma_store_blob_length(uchar *pos, uint pack_length, uint length);
+extern void _maria_log_command(IO_CACHE *log,
+                               enum maria_log_commands command,
+                               MARIA_SHARE *share,
+                               const uchar *buffert,
+                                uint length, int result);
+extern void maria_log_pwrite_physical(enum maria_log_commands command,
+                                       MARIA_SHARE *share,
+                                       const uchar *buffert, uint length,
+                                       my_off_t filepos);
+extern void maria_log_chsize_kfile_physical(MARIA_SHARE *share,
+                                             my_off_t new_length);
+#ifdef HAVE_MARIA_PHYSICAL_LOGGING
+static inline int32 ma_get_physical_logging_state(MARIA_SHARE *share)
+{
+  int32 ret;
+  my_atomic_rwlock_rdlock(&share->physical_logging_rwlock);
+  ret= my_atomic_load32(&share->physical_logging);
+  my_atomic_rwlock_rdunlock(&share->physical_logging_rwlock);
+  return ret;
+}
+static inline void
+ma_set_physical_logging_state(MARIA_SHARE *share, int32 new_state)
+{
+  my_atomic_rwlock_wrlock(&share->physical_logging_rwlock);
+  my_atomic_store32(&share->physical_logging, new_state);
+  my_atomic_rwlock_wrunlock(&share->physical_logging_rwlock);
+}
+#else
+#define ma_get_physical_logging_state(share) 0
+#define ma_set_physical_logging_state(share, new_state)
+#endif
+C_MODE_START
+/**
+  IN and OUT structure for instructing how to apply a Maria log and later
+  getting statistics about this log.
+*/
+typedef struct ma_examine_log_param
+{
+  uint verbose, update, max_files, re_open_count, recover, prefix_remove,
+    opt_processes;
+  ulong number_of_commands;
+  my_off_t start_offset,record_pos;
+  const char *log_filename, *filepath, *write_filename, *record_pos_file;
+  /** Count of commands found in log and their errors */
+  ulong com_count[MA_LOG_END_SENTINEL][3];
+  my_bool (*table_selection_hook)(const char *); /**< to filter tables */
+} MA_EXAMINE_LOG_PARAM;
+extern void ma_examine_log_param_init(MA_EXAMINE_LOG_PARAM *param);
+extern int ma_examine_log(MA_EXAMINE_LOG_PARAM *param);
+C_MODE_END
 extern void _ma_report_error(int errcode, const LEX_STRING *file_name);
 extern my_bool _ma_memmap_file(MARIA_HA *info);
 extern void _ma_unmap_file(MARIA_HA *info);
@@ -1081,9 +1196,14 @@ extern size_t _ma_nommap_pread(MARIA_HA *info, uchar *Buffer,
 extern size_t _ma_nommap_pwrite(MARIA_HA *info, const uchar *Buffer,
 				size_t Count, my_off_t offset, myf MyFlags);
 
+C_MODE_START
 uint _ma_state_info_write(MARIA_SHARE *share, uint pWrite);
-uint _ma_state_info_write_sub(File file, MARIA_STATE_INFO *state, uint pWrite);
-uint _ma_state_info_read_dsk(File file, MARIA_STATE_INFO *state);
+uint _ma_state_info_read_dsk(File file, MARIA_STATE_INFO *state,
+                             my_bool force);
+uint _ma_state_info_write_sub(MARIA_SHARE *share, File file,
+                              MARIA_STATE_INFO *state, uint pWrite);
+C_MODE_END
+int ma_remap_file_and_write_state_for_unlock(MARIA_HA *info, my_bool force);
 uint _ma_base_info_write(File file, MARIA_BASE_INFO *base);
 my_bool _ma_keyseg_write(File file, const HA_KEYSEG *keyseg);
 uchar *_ma_keyseg_read(uchar *ptr, HA_KEYSEG *keyseg);
@@ -1216,6 +1336,12 @@ extern my_bool maria_flush_log_for_page(uchar *page,
 extern my_bool maria_flush_log_for_page_none(uchar *page,
                                              pgcache_page_no_t page_no,
                                              uchar *data_ptr);
+extern my_bool maria_log_index_page_flush_physical(uchar *page,
+                                                   pgcache_page_no_t page_no,
+                                                   uchar *data_ptr);
+extern my_bool maria_log_data_page_flush_physical(uchar *page,
+                                                  pgcache_page_no_t page_no,
+                                                  uchar *data_ptr);
 void maria_concurrent_inserts(MARIA_HA *info, my_bool concurrent_insert);
 extern PAGECACHE *maria_log_pagecache;
 
@@ -1224,3 +1350,12 @@ extern void ma_set_index_cond_func(MARIA_HA *info, index_cond_func_t func,
                                    void *func_arg);
 int ma_check_index_cond(register MARIA_HA *info, uint keynr, uchar *record);
 
+void _ma_report_crashed(MARIA_HA *file, const char *message,
+                        const char *sfile, uint sline);
+
+C_MODE_START
+extern const char *maria_error_messages[];
+extern my_bool ma_log_index_pages_physical;
+extern IO_CACHE maria_physical_log;
+extern pthread_mutex_t THR_LOCK_maria;
+C_MODE_END

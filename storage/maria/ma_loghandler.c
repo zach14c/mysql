@@ -1,4 +1,5 @@
-/* Copyright (C) 2007 MySQL AB & Sanja Belkin
+/* Copyright (C) 2007 MySQL AB & Sanja Belkin,
+   2008 - 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1512,7 +1513,9 @@ static void translog_file_init(TRANSLOG_FILE *file, uint32 number,
   pagecache_file_init(file->handler, &translog_page_validator,
                       &translog_dummy_callback,
                       &translog_dummy_write_failure,
-                      maria_flush_log_for_page_none, file);
+                      maria_flush_log_for_page_none,
+                      &translog_dummy_callback,
+                      file);
   file->number= number;
   file->was_recovered= 0;
   file->is_sync= is_sync;
@@ -8655,7 +8658,7 @@ static void dump_datapage(uchar *buffer)
     }
     tfile.number= file;
     tfile.handler.file= handler;
-    pagecache_file_init(tfile.handler, NULL, NULL, NULL, NULL, NULL);
+    pagecache_file_init(tfile.handler, NULL, NULL, NULL, NULL, NULL, NULL);
     tfile.was_recovered= 0;
     tfile.is_sync= 1;
     if (translog_check_sector_protection(buffer, &tfile))
