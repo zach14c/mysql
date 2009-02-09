@@ -66,8 +66,8 @@ int maria_init(void)
     trnman_end_trans_hook= _ma_trnman_end_trans_hook;
     my_handler_error_register();
   }
-  hash_init(&maria_stored_state, &my_charset_bin, 32,
-            0, sizeof(LSN), 0, (hash_free_key) history_state_free, 0);
+  my_hash_init(&maria_stored_state, &my_charset_bin, 32,
+            0, sizeof(LSN), 0, (my_hash_free_key) history_state_free, 0);
   DBUG_PRINT("info",("dummy_transaction_object: %p",
                      &dummy_transaction_object));
   return 0;
@@ -99,6 +99,6 @@ void maria_end(void)
     end_pagecache(maria_pagecache, TRUE);
     ma_control_file_end();
     pthread_mutex_destroy(&THR_LOCK_maria);
-    hash_free(&maria_stored_state);
+    my_hash_free(&maria_stored_state);
   }
 }

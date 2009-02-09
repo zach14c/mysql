@@ -212,6 +212,8 @@ copy_uca_collation(CHARSET_INFO *to, CHARSET_INFO *from)
   to->max_sort_char= from->max_sort_char;
   to->mbminlen= from->mbminlen;
   to->mbmaxlen= from->mbmaxlen;
+  to->state|= MY_CS_AVAILABLE | MY_CS_LOADED |
+              MY_CS_STRNXFRM  | MY_CS_UNICODE;
 }
 
 

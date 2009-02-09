@@ -120,16 +120,16 @@ int safe_mutex_init(safe_mutex_t *mp,
       pthread_mutex_lock(&THR_LOCK_mutex);
       mp->id= ++safe_mutex_id;
       pthread_mutex_unlock(&THR_LOCK_mutex);
-      hash_init(mp->locked_mutex, &my_charset_bin,
-                1000,
-                offsetof(safe_mutex_deadlock_t, id),
-                sizeof(mp->id),
-                0, 0, HASH_UNIQUE);
-      hash_init(mp->used_mutex, &my_charset_bin,
-                1000,
-                offsetof(safe_mutex_t, id),
-                sizeof(mp->id),
-                0, 0, HASH_UNIQUE);
+      my_hash_init(mp->locked_mutex, &my_charset_bin,
+                   1000,
+                   offsetof(safe_mutex_deadlock_t, id),
+                   sizeof(mp->id),
+                   0, 0, HASH_UNIQUE);
+      my_hash_init(mp->used_mutex, &my_charset_bin,
+                   1000,
+                   offsetof(safe_mutex_t, id),
+                   sizeof(mp->id),
+                   0, 0, HASH_UNIQUE);
     }
   }
   else
@@ -267,7 +267,7 @@ int safe_mutex_lock(safe_mutex_t *mp, myf my_flags, const char *file,
         */
         pthread_mutex_lock(&THR_LOCK_mutex);
 
-        if (!hash_search(mutex_root->locked_mutex, (uchar*) &mp->id, 0))
+        if (! my_hash_search(mutex_root->locked_mutex, (uchar*) &mp->id, 0))
         {
           safe_mutex_deadlock_t *deadlock;
           safe_mutex_t *mutex;
@@ -287,7 +287,7 @@ int safe_mutex_lock(safe_mutex_t *mp, myf my_flags, const char *file,
           mutex= mutex_root;
           do
           {
-            if (hash_search(mp->locked_mutex, (uchar*) &mutex->id, 0))
+            if (my_hash_search(mp->locked_mutex, (uchar*) &mutex->id, 0))
             {
               print_deadlock_warning(mp, mutex);
               /* Mark wrong usage to avoid future warnings for same error */
@@ -592,8 +592,8 @@ void safe_mutex_free_deadlock_data(safe_mutex_t *mp)
                     mp);
     pthread_mutex_unlock(&THR_LOCK_mutex);
 
-    hash_free(mp->used_mutex);
-    hash_free(mp->locked_mutex);
+    my_hash_free(mp->used_mutex);
+    my_hash_free(mp->locked_mutex);
     my_free(mp->locked_mutex, 0);
     mp->create_flags|= MYF_NO_DEADLOCK_DETECTION;
   }
@@ -702,12 +702,12 @@ static my_bool remove_from_locked_mutex(safe_mutex_t *mp,
                        (ulong) delete_mutex, (ulong) mp, 
                        delete_mutex->id, mp->id));
 
-  found= (safe_mutex_deadlock_t *) hash_search(mp->locked_mutex,
-                                               (uchar*) &delete_mutex->id, 0);
+  found= (safe_mutex_deadlock_t*) my_hash_search(mp->locked_mutex,
+                                                 (uchar*) &delete_mutex->id, 0);
   DBUG_ASSERT(found);
   if (found)
   {
-    if (hash_delete(mp->locked_mutex, (uchar*) found))
+    if (my_hash_delete(mp->locked_mutex, (uchar*) found))
     {
       DBUG_ASSERT(0);
     }
@@ -724,7 +724,7 @@ static my_bool remove_from_used_mutex(safe_mutex_deadlock_t *locked_mutex,
   DBUG_PRINT("enter", ("delete_mutex: 0x%lx  mutex: 0x%lx  (id: %lu <- %lu)",
                        (ulong) mutex, (ulong) locked_mutex, 
                        mutex->id, locked_mutex->id));
-  if (hash_delete(locked_mutex->mutex->used_mutex, (uchar*) mutex))
+  if (my_hash_delete(locked_mutex->mutex->used_mutex, (uchar*) mutex))
   {
     DBUG_ASSERT(0);
   }

@@ -8,6 +8,7 @@
 # - SHOW STATUS like 'Slave_heartbeat_period' report
 
 -- source include/have_log_bin.inc
+-- source include/not_windows.inc
 
 connect (master,localhost,root,,test,$MASTER_MYPORT,$MASTER_MYSOCK);
 connect (slave,localhost,root,,test,$SLAVE_MYPORT,$SLAVE_MYSOCK);
