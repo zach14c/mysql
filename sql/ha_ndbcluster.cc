@@ -2602,7 +2602,7 @@ int ha_ndbcluster::ordered_index_scan(const key_range *start_key,
   if (lm == NdbOperation::LM_Read)
     options.scan_flags|= NdbScanOperation::SF_KeyInfo;
   if (sorted)
-    options.scan_flags|= NdbScanOperation::SF_OrderBy;
+    options.scan_flags|= NdbScanOperation::SF_OrderByFull;
   if (descending)
     options.scan_flags|= NdbScanOperation::SF_Descending;
   const NdbRecord *key_rec= m_index[active_index].ndb_record_key;
@@ -9698,7 +9698,7 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
         if (lm == NdbOperation::LM_Read)
           options.scan_flags|= NdbScanOperation::SF_KeyInfo;
         if (mrr_is_output_sorted)
-          options.scan_flags|= NdbScanOperation::SF_OrderBy;
+          options.scan_flags|= NdbScanOperation::SF_OrderByFull;
 
         options.parallel=parallelism;
 
