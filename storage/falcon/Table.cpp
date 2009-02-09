@@ -387,7 +387,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		checkNullable(record);  // Verify that record is valid
 
 		transaction->addRecord(record);
-		insert(record, NULL, recordNumber);
+		insertIntoTree(record, NULL, recordNumber);
 		inserted = true;
 		insertIndexes(transaction, record);
 		updateInversion(record, transaction);
@@ -400,7 +400,7 @@ void Table::insert(Transaction *transaction, int count, Field **fieldVector, Val
 		if (inserted)
 			{
 			transaction->removeRecord(record);
-			insert(NULL, record, recordNumber);
+			insertIntoTree(NULL, record, recordNumber);
 			}
 
 		if (recordNumber >= 0)
@@ -545,7 +545,7 @@ Record* Table::fetchNext(int32 start)
 
 			for (int n = 0; (record = databaseFetch(bitNumber)); ++n)
 				{
-				if (insert(record, NULL, bitNumber))
+				if (insertIntoTree(record, NULL, bitNumber))
 					{
 					record->poke();
 
@@ -622,7 +622,7 @@ Record* Table::fetchNext(int32 start)
 			sync.unlock();
 			record = allocRecord(recNumber, &stream);
 			
-			if (insert(record, NULL, recNumber))
+			if (insertIntoTree(record, NULL, recNumber))
 				{
 				if (bitNumber < 0 || recNumber <= bitNumber)
 					return record;
@@ -638,7 +638,10 @@ Record* Table::fetchNext(int32 start)
 			sync.lock(Shared);
 			}
 		
-		if (bitNumber >= 0 && bitNumber < recNumber && records && (record = records->fetch(bitNumber)))
+		if (   (bitNumber >= 0 )
+		    && (bitNumber < recNumber)
+		    && (records)
+		    && (record = records->fetch(bitNumber)))
 			break;
 
 		sync.unlock();
@@ -931,7 +934,7 @@ Record* Table::fetch(int32 recordNumber)
 				sync.lock(Exclusive);
 				record = database->backLog->fetch(backlogId);
 				
-				if (insert(record, NULL, recordNumber))
+				if (insertIntoTree(record, NULL, recordNumber))
 					return record;
 				
 #ifdef CHECK_RECORD_ACTIVITY
@@ -950,7 +953,7 @@ Record* Table::fetch(int32 recordNumber)
 			
 		record->poke();
 		
-		if (insert(record, NULL, recordNumber))
+		if (insertIntoTree(record, NULL, recordNumber))
 			return record;
 		
 #ifdef CHECK_RECORD_ACTIVITY
@@ -996,7 +999,7 @@ Record* Table::backlogFetch(int32 recordNumber)
 		if (backlogId)
 			{
 			Record *record = database->backLog->fetch(backlogId);
-			ASSERT (insert(record, NULL, recordNumber));
+			ASSERT (insertIntoTree(record, NULL, recordNumber));
 			
 			return record;
 			}
@@ -1029,7 +1032,7 @@ void Table::rollbackRecord(RecordVersion * recordToRollback, Transaction *transa
 
 	// Replace the current version of this record.
 
-	if (!insert(priorRecord, recordToRollback, recordToRollback->recordNumber))
+	if (!insertIntoTree(priorRecord, recordToRollback, recordToRollback->recordNumber))
 		{
 		if (priorRecord == NULL && priorState == recDeleted)
 			return;
@@ -1351,9 +1354,8 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 
 		// If this is a re-update in the same transaction and the same savepoint,
 		// carefully remove the prior version.
-		
-		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
 
+		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
 		record->release();
 		}
 	catch (...)
@@ -1361,7 +1363,7 @@ void Table::update(Transaction * transaction, Record * oldRecord, int numberFiel
 		if (updated)
 			{
 			transaction->removeRecord(record);
-			insert(oldRecord, record, recordNumber);
+			insertIntoTree(oldRecord, record, recordNumber);
 			}
 			
 		garbageCollect(record, oldRecord, transaction, true);
@@ -1950,7 +1952,7 @@ void Table::retireRecords(RecordScavenge *recordScavenge)
 	return;
 }
 
-bool Table::insert(Record * record, Record *prior, int recordNumber)
+bool Table::insertIntoTree(Record * record, Record *prior, int recordNumber)
 {
 	ageGroup = database->currentGeneration;
 	Sync sync(&syncObject, "Table::insert");
@@ -3052,7 +3054,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		// Do the actual insert
 
 		transaction->addRecord(record);
-		bool ret = insert(record, NULL, recordNumber);
+		bool ret = insertIntoTree(record, NULL, recordNumber);
 		inserted = true;
 		insertIndexes(transaction, record);
 		ASSERT(ret);
@@ -3064,7 +3066,7 @@ uint Table::insert(Transaction *transaction, Stream *stream)
 		if (inserted)
 			{
 			transaction->removeRecord(record);
-			insert(NULL, record, recordNumber);
+			insertIntoTree(NULL, record, recordNumber);
 			}
 
 		if (recordNumber >= 0)
@@ -3185,9 +3187,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 		// carefully remove the prior version.
 
 		record->scavengeSavepoint(transaction->transactionId, transaction->curSavePointId);
-
-		if (record)
-			record->release();
+		record->release();
 
 		oldRecord->release();	// This reference originated in this function.
 		}
@@ -3197,7 +3197,7 @@ void Table::update(Transaction * transaction, Record *orgRecord, Stream *stream)
 			{
 			transaction->removeRecord(record);
 
-			if (!insert(oldRecord, record, record->recordNumber))
+			if (!insertIntoTree(oldRecord, record, record->recordNumber))
 				Log::debug("record backout failed after failed update\n");
 			}
 
@@ -3361,7 +3361,7 @@ void Table::validateAndInsert(Transaction *transaction, RecordVersion *record)
 				}
 			}
 
-		if (insert(record, prior, record->recordNumber))
+		if (insertIntoTree(record, prior, record->recordNumber))
 			return;
 		
 		if (n >= 7)
@@ -3414,7 +3414,8 @@ void Table::unlockRecord(RecordVersion* record)
 
 	if ((record->state == recLock) && !record->isSuperceded())
 		{
-		if (insert(record->getPriorVersion(), record, record->recordNumber))
+		Record *prior = record->getPriorVersion();
+		if (insertIntoTree(prior, record, record->recordNumber))
 			record->setSuperceded(true);
 		else
 			Log::debug("Table::unlockRecord: record lock not in record tree\n");
@@ -3798,7 +3799,7 @@ int32 Table::backlogRecord(RecordVersion* record)
 		backloggedRecords->set(record->recordNumber, backlogId);
 		}
 	
-	ASSERT(insert(NULL, record, record->recordNumber));
+	ASSERT(insertIntoTree(NULL, record, record->recordNumber));
 	recordBitmap->set(record->recordNumber);
 	
 	return backlogId;

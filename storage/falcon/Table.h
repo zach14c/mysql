@@ -216,7 +216,7 @@ public:
 
 	void			insert (Transaction *transaction, int count, Field **fields, Value **values);
 	uint			insert (Transaction *transaction, Stream *stream);
-	bool			insert (Record *record, Record *prior, int recordNumber);
+	bool			insertIntoTree (Record *record, Record *prior, int recordNumber);
 	void			insertIndexes(Transaction *transaction, RecordVersion *record);
 	
 	void			update (Transaction *transaction, Record *record, int numberFields, Field **fields, Value** values);

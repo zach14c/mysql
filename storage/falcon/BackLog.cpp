@@ -105,7 +105,7 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		
 		Table *table = record->format->table;
 		
-		if (!table->insert(record, NULL, record->recordNumber))
+		if (!table->insertIntoTree(record, NULL, record->recordNumber))
 			{
 			record->release();
 			int32 recordNumber = record->recordNumber;

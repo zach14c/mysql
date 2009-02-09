@@ -1199,17 +1199,15 @@ bool Section::isCleanupRequired()
 }
 ***/
 
-
 void Section::redoSectionPage(Dbb *dbb, int32 parentPage, int32 pageNumber, int slot, int sectionId, int sequence, int level)
 {
 	Bdb *bdb = dbb->fetchPage (parentPage, PAGE_sections, Exclusive);
 	BDB_HISTORY(bdb);
 	SectionPage *page = (SectionPage*) bdb->buffer;
 
-
 	// If page number != 0, we are creating a new section page
-	// Otherwise, the log record comes from deleteSection and we just need to 
-	// clear the slot in the parent page
+	// Otherwise, the log record comes from deleteSection and  
+	// we just need to clear the slot in the parent page.
 
 	if (pageNumber != 0)
 		{
