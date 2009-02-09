@@ -3526,7 +3526,7 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 				RecordVersion *recordVersion = allocRecordVersion(NULL, transaction, record);
 				recordVersion->state = recLock;
 				
-				if (insert(recordVersion, record, recordNumber))
+				if (insertIntoTree(recordVersion, record, recordNumber))
 					{
 					transaction->addRecord(recordVersion);
 					recordVersion->release();
