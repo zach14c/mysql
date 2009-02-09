@@ -85,6 +85,7 @@ sec_to_time(time_to_sec(t))
 13:00:00
 09:00:00
 drop table t1;
+End of 4.1 tests
 select cast('100:55:50' as time) < cast('24:00:00' as time);
 cast('100:55:50' as time) < cast('24:00:00' as time)
 0
@@ -128,3 +129,27 @@ SELECT sum(f3) FROM t1 where f2='2007-07-01 00:00:00' group by f2;
 sum(f3)
 3
 drop table t1;
+CREATE TABLE t1 (f1 TIME);
+INSERT INTO t1 VALUES ('24:00:00');
+SELECT      '24:00:00' = (SELECT f1 FROM t1);
+'24:00:00' = (SELECT f1 FROM t1)
+1
+SELECT CAST('24:00:00' AS TIME) = (SELECT f1 FROM t1);
+CAST('24:00:00' AS TIME) = (SELECT f1 FROM t1)
+1
+SELECT CAST('-24:00:00' AS TIME) = (SELECT f1 FROM t1);
+CAST('-24:00:00' AS TIME) = (SELECT f1 FROM t1)
+0
+TRUNCATE t1;
+INSERT INTO t1 VALUES ('-24:00:00');
+SELECT CAST('24:00:00' AS TIME) = (SELECT f1 FROM t1);
+CAST('24:00:00' AS TIME) = (SELECT f1 FROM t1)
+0
+SELECT CAST('-24:00:00' AS TIME) = (SELECT f1 FROM t1);
+CAST('-24:00:00' AS TIME) = (SELECT f1 FROM t1)
+1
+SELECT '-24:00:00' = (SELECT f1 FROM t1);
+'-24:00:00' = (SELECT f1 FROM t1)
+1
+DROP TABLE t1;
+End of 5.0 tests
