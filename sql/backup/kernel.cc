@@ -1397,7 +1397,7 @@ int Backup_restore_ctx::report_stream_open_failure(int my_open_status,
   int error= 0;
   switch (my_open_status) {
     case ER_OPTION_PREVENTS_STATEMENT:
-      error= report_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-file-priv");
+      error= report_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-backup-file-priv");
       break;
     case ER_BACKUP_WRITE_LOC:
       /*

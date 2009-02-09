@@ -210,23 +210,29 @@ Stream::Stream(Logger &log, ::String *path, int flags)
 
 
 /**
-  Check if secure-file-priv option has been set and if so, whether
+  Check if secure-backup-file-priv option has been set and if so, whether
   or not backup tries to write to the path (or a sub-path) specified
-  by secure-file-priv.
+  by secure-backup-file-priv.
 
   Reports error ER_OPTION_PREVENTS_STATEMENT if backup tries to write
-  to a different path than specified by secure-file-priv.
+  to a different path than specified by secure-backup-file-priv.
   
   @retval TRUE  backup is allowed to write to this path
   @retval FALSE backup is not allowed to write to this path. Side
                 effect: error is reported
 */
 bool Stream::test_secure_file_priv_access(char *path) {
-  bool has_access = !opt_secure_file_priv ||                 // option not specified, or
-                    !strncmp(opt_secure_file_priv, path,     // path is (subpath of)
-                             strlen(opt_secure_file_priv));  // secure-file-priv option
+  /*
+     Access is granted if:
+      a) option not specified, or
+      b) path is (subpath of) secure-backup-file-priv option
+  */
+  bool has_access = !opt_secure_backup_file_priv ||                 
+                    !strncmp(opt_secure_backup_file_priv, path,     
+                             strlen(opt_secure_backup_file_priv));  
    if (!has_access)
-     m_log.report_error(ER_OPTION_PREVENTS_STATEMENT, "--secure-file-priv");
+     m_log.report_error(ER_OPTION_PREVENTS_STATEMENT, 
+                        "--secure-backup-file-priv");
 
   return has_access;
 }
@@ -235,7 +241,7 @@ bool Stream::test_secure_file_priv_access(char *path) {
    Open a stream.
 
    @retval 0 if stream was successfully opened
-   @retval ER_OPTION_PREVENTS_STATEMENT if secure-file-priv option
+   @retval ER_OPTION_PREVENTS_STATEMENT if secure-backup-file-priv option
            prevented stream open from this path
    @retval -1 if open failed for another reason
  */
@@ -361,7 +367,7 @@ bool Output_stream::init()
   Open and initialize backup stream for writing.
 
   @retval 0                             operation succeeded
-  @retval ER_OPTION_PREVENTS_STATEMENT  secure-file-priv option
+  @retval ER_OPTION_PREVENTS_STATEMENT  secure-backup-file-priv option
                                         prevented stream open from this path
   @retval ER_BACKUP_WRITE_LOC           open failed for another reason
 
@@ -567,7 +573,7 @@ bool Input_stream::init()
   m_header_buf member and examined by check_magic_and_version().
 
   @retval 0                             operation succeeded
-  @retval ER_OPTION_PREVENTS_STATEMENT  secure-file-priv option
+  @retval ER_OPTION_PREVENTS_STATEMENT  secure-backup-file-priv option
                                         prevented stream open from this path
   @retval ER_BACKUP_READ_LOC            open failed for another reason
 

@@ -502,6 +502,7 @@ my_bool opt_readonly, use_temp_pool, relay_log_purge;
 my_bool opt_sync_frm, opt_allow_suspicious_udfs;
 my_bool opt_secure_auth= 0;
 char* opt_secure_file_priv= 0;
+char* opt_secure_backup_file_priv= 0;
 my_bool opt_log_slow_admin_statements= 0;
 my_bool opt_log_slow_slave_statements= 0;
 my_bool lower_case_file_system= 0;
@@ -1400,6 +1401,7 @@ void clean_up(bool print_message)
   x_free(opt_bin_logname);
   x_free(opt_relay_logname);
   x_free(opt_secure_file_priv);
+  x_free(opt_secure_backup_file_priv);
   bitmap_free(&temp_pool);
   free_max_user_conn();
 #ifdef HAVE_REPLICATION
@@ -5904,6 +5906,7 @@ enum options_mysqld
   OPT_THREAD_HANDLING,
   OPT_INNODB_ROLLBACK_ON_TIMEOUT,
   OPT_SECURE_FILE_PRIV,
+  OPT_SECURE_BACKUP_FILE_PRIV,
   OPT_MIN_EXAMINED_ROW_LIMIT,
   OPT_LOG_SLOW_SLAVE_STATEMENTS,
 #if defined(ENABLED_DEBUG_SYNC)
@@ -6608,6 +6611,10 @@ Can't be set to 1 if --log-slave-updates is used.",
   {"secure-file-priv", OPT_SECURE_FILE_PRIV,
    "Limit LOAD DATA, SELECT ... OUTFILE, and LOAD_FILE() to files within specified directory",
    (uchar**) &opt_secure_file_priv, (uchar**) &opt_secure_file_priv, 0,
+   GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"secure-backup-file-priv", OPT_SECURE_BACKUP_FILE_PRIV,
+   "Limit BACKUP and RESTORE to files within specified directory",
+   (uchar**) &opt_secure_backup_file_priv, (uchar**) &opt_secure_backup_file_priv, 0,
    GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"server-id",	OPT_SERVER_ID,
    "Uniquely identifies the server instance in the community of replication partners.",
@@ -7927,6 +7934,7 @@ static int mysql_init_variables(void)
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_secure_file_priv= 0;
+  opt_secure_backup_file_priv= 0;
   opt_bootstrap= opt_myisam_logical_log= 0;
   mqh_used= 0;
   segfaulted= kill_in_progress= 0;
@@ -8980,6 +8988,17 @@ static void fix_paths(void)
     convert_dirname(buff, opt_secure_file_priv, NullS);
     my_free(opt_secure_file_priv, MYF(0));
     opt_secure_file_priv= my_strdup(buff, MYF(MY_FAE));
+  }
+
+  /*
+    Convert the secure-backup-file-priv option to system format, allowing
+    a quick strcmp to check if read or write is in an allowed dir
+   */
+  if (opt_secure_backup_file_priv)
+  {
+    convert_dirname(buff, opt_secure_backup_file_priv, NullS);
+    my_free(opt_secure_backup_file_priv, MYF(0));
+    opt_secure_backup_file_priv= my_strdup(buff, MYF(MY_FAE));
   }
 }
 

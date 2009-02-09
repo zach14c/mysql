@@ -601,6 +601,8 @@ sys_query_cache_wlock_invalidate(&vars, "query_cache_wlock_invalidate",
 static sys_var_bool_ptr	sys_secure_auth(&vars, "secure_auth", &opt_secure_auth);
 static sys_var_const_str_ptr sys_secure_file_priv(&vars, "secure_file_priv",
                                              &opt_secure_file_priv);
+static sys_var_const_str_ptr sys_secure_backup_file_priv(&vars, "secure_backup_file_priv",
+                                             &opt_secure_backup_file_priv);
 static sys_var_long_ptr	sys_server_id(&vars, "server_id", &server_id, fix_server_id);
 static sys_var_bool_ptr	sys_slave_compressed_protocol(&vars, "slave_compressed_protocol",
 						      &opt_slave_compressed_protocol);
