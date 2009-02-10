@@ -124,6 +124,115 @@ SET DEBUG_SYNC= 'now SIGNAL bup_finish';
     CHECKSUM TABLE t4;
     CHECK TABLE t4 EXTENDED;
 
+connection default;
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+
+# Once more, with deletion of all rows
+
+    --echo
+    --echo connection backup: Start backup
+    connection backup;
+
+    SET DEBUG_SYNC= 'before_backup_data_prepare SIGNAL bup_sync
+                     WAIT_FOR bup_finish';
+    send BACKUP DATABASE mysqltest TO 'test.ba';
+
+--echo
+--echo connection default: Wait for BACKUP to reach its sync point
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR bup_sync';
+
+--echo Modify tables
+delete from t1;
+insert into t1 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t1 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t1 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t1 select * from t1;
+insert into t1 select * from t1;
+delete from t1 where a=200;
+CHECKSUM TABLE t1;
+select count(*) from t1;
+delete from t2;
+insert into t2 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t2 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t2 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t2 select * from t2;
+insert into t2 select * from t2;
+delete from t2 where a=200;
+CHECKSUM TABLE t2;
+select count(*) from t2;
+delete from t3;
+insert into t3 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t3 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t3 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t3 select * from t3;
+insert into t3 select * from t3;
+delete from t3 where a=200;
+CHECKSUM TABLE t3;
+select count(*) from t3;
+delete from t4;
+insert into t4 values(2000,"UJLlk5454j-JK","PferZZZfPMLsn!");
+update t4 set c=repeat("NUS", 4000); # a multi-page blob
+insert into t4 values(200,"UJLlkj-JK","PferfPMLsn!");
+insert into t4 select * from t4;
+insert into t4 select * from t4;
+delete from t4 where a=200;
+CHECKSUM TABLE t4;
+select count(*) from t4;
+
+
+--echo Signal BACKUP to finish
+SET DEBUG_SYNC= 'now SIGNAL bup_finish';
+
+    --echo
+    --echo connection backup: Fetch result
+    connection backup;
+    --replace_column 1 #
+    reap;
+    DROP DATABASE mysqltest;
+
+    --replace_column 1 #
+    RESTORE FROM 'test.ba';
+    CHECKSUM TABLE t1;
+    CHECK TABLE t1 EXTENDED;
+    CHECKSUM TABLE t2;
+    CHECK TABLE t2 EXTENDED;
+    CHECKSUM TABLE t3;
+    CHECK TABLE t3 EXTENDED;
+    CHECKSUM TABLE t4;
+    CHECK TABLE t4 EXTENDED;
+
+connection default;
+drop database mysqltest;
+--remove_file $MYSQLTEST_VARDIR/master-data/test.ba
+
+# test for BUG#42519 "Maria: RESTORE leads to corrupted table and assertion":
+
+create database mysqltest;
+CREATE TABLE mysqltest.t1 (a int, b varchar(100), unique(a)) engine=maria;
+
+--replace_column 1 #
+BACKUP DATABASE mysqltest TO 'test.ba';
+DROP DATABASE mysqltest;
+
+connection backup;
+SET DEBUG_SYNC= 'before_restore_locks_tables SIGNAL wait_for_restore WAIT_FOR finish';
+send RESTORE FROM 'test.ba';
+
+connection default;
+SET DEBUG_SYNC= 'now WAIT_FOR wait_for_restore';
+insert into mysqltest.t1 values(1,"def");
+SET DEBUG_SYNC= 'now SIGNAL finish';
+
+connection backup;
+--replace_column 1 #
+reap;
+
+connection default;
+select * from mysqltest.t1;
+check table mysqltest.t1;
+select * from mysqltest.t1;
+
 --echo
 --echo connection default: cleanup
 connection default;

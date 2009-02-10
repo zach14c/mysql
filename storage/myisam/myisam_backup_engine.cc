@@ -118,6 +118,23 @@ using backup::Buffer;
 */
 #define MYISAM_BACKUP_VERSION 1
 
+/**
+  Restore kernel opens tables and locks them for the duration of restore
+  (after having created them empty); this means that cached objects stay
+  around (MYISAM_SHARE, MI_INFO) and can become out-of-sync with the
+  data/index file filled by the driver, unless we take precautions which are
+  recognizable by this symbol.
+*/
+#define RESTORE_KERNEL_KEEPS_OPEN_TABLES 1
+/**
+  Restore kernel leaves a time windows between end of creation of table (via
+  execution of CREATE TABLE) and locking of this table; in this window another
+  client can open/lock/modify/unlock the table, which conflicts with what the
+  driver is going to write to the data/index file, unless we take precautions
+  which are recognizable by this symbol.
+*/
+#define RESTORE_KERNEL_NOT_ATOMIC 1
+
 /** Like Table_ref but with file name added */
 class Myisam_table_ref
 {
@@ -1660,6 +1677,19 @@ Table_restore::Table_restore(const Table_ref &tbl):
     /* table does not exist or is corrupted? not normal, it's just created */
     goto err;
   }
+#ifdef RESTORE_KERNEL_NOT_ATOMIC
+  /*
+    Restore kernel leaves a window between creation of table and locking it;
+    in this window, another thread can modify the table, put pages in page
+    cache, alter state, increase the files's length to greater than what the
+    driver has to write...
+    So we re-empty it here. We know we are alone using the table at this
+    point, as restore kernel has finished locking tables.
+    See BUG#42519, BUG#41716.
+  */
+  if (mi_delete_all_rows(mi_info))
+    goto err;
+#endif
   /*
     It's ok to copy the kfile descriptor and write() to it as the upper layers
     guarantee that we are the only user of the brand new table (nobody will
@@ -1710,6 +1740,7 @@ result_t Table_restore::close()
       (kfile_restore.close_file() != backup::OK))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
 
+#ifdef RESTORE_KERNEL_KEEPS_OPEN_TABLES
   /*
     CAUTION! Ugliest hack ever!
     This hack tries to recover from bypassing the MyISAM interface
@@ -1821,6 +1852,7 @@ result_t Table_restore::close()
   end :
     do {} while (0); /* Empty statement, syntactically required. */
   }
+#endif
 
   DBUG_RETURN(backup::OK);
 }
@@ -1862,7 +1894,6 @@ result_t Table_restore::post_restore()
   Vio* save_vio;
   DBUG_ENTER("myisam_backup::Table_restore::post_restore");
 
-  if (!rebuild_index)
   {
     MI_INFO *mi_info;
     MYISAM_SHARE *share;
@@ -1889,8 +1920,10 @@ result_t Table_restore::post_restore()
       error= mi_state_info_write(share, share->kfile, &share->state, 1);
     }
     error|= mi_close(mi_info);
-    goto err;
   }
+
+  if (!rebuild_index)
+    goto err;
 
   /*
     myisamchk() as well as ha_myisam::repair() do a lot of operations before

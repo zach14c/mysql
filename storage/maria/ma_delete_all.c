@@ -102,6 +102,11 @@ int maria_delete_all_rows(MARIA_HA *info)
       my_chsize(info->dfile.file, 0, 0, MYF(MY_WME)) ||
       my_chsize(share->kfile.file, share->base.keystart, 0, MYF(MY_WME)))
     goto err;
+  if (unlikely(ma_get_physical_logging_state(share)))
+  {
+    maria_log_chsize_physical(share, MA_LOG_CHSIZE_MAD, 0);
+    maria_log_chsize_physical(share, MA_LOG_CHSIZE_MAI, share->base.keystart);
+  }
 
   if (_ma_initialize_data_file(share, info->dfile.file))
     goto err;
@@ -125,9 +130,6 @@ int maria_delete_all_rows(MARIA_HA *info)
       goto err;
   }
 
-  if (unlikely(ma_get_physical_logging_state(info->s)))
-    _maria_log_command(&maria_physical_log, MA_LOG_DELETE_ALL, share,
-                       NULL, 0, 0);
   (void)(_ma_writeinfo(info,WRITEINFO_UPDATE_KEYFILE));
 #ifdef HAVE_MMAP
   /* Map again */
