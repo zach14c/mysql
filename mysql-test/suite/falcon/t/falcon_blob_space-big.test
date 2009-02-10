@@ -1,0 +1,267 @@
+--source include/have_falcon.inc
+--source include/big_test.inc
+
+#
+# Bug #41870: Unbounded tablespace growth when updating BLOB record
+#
+# This test inserts a 1 MB BLOB into a table and updates it
+# i times (i = 50) with the same data. The test measures the size
+# of the falcon_user.fts tablespace file before and after updating
+# BLOB data. If the file size growth is "too large" (i.e. close to
+# "i" times the BLOB data), we probably have introduced a regression.
+#
+# See also Bug#42202 (Unacceptable tablespace growth when doing rapid BLOB
+# updates).
+#
+# This test requires a few megabytes of storage (depending on how many updates
+# we do and how well the Falcon scavenger performs). Also, with disk-based
+# storage Falcon currently needs some time to process this kind of data in the
+# database, so it's a --big-test to avoid timeouts on slow machines.
+#
+# This test depends to some degree on the timing of the Falcon scavenger,
+# because with such large blobs and no/few other smaller record allocations
+# scavenging relies on time-based triggering, not load-based (as long as a fix
+# for Bug#42202 (BLOB-specific triggering of scavenger) remains unimplemented).
+#
+# Currently, load-based scavenging does not trigger unless a certain 
+# percentage (2%) of the record cache has been filled (this is checked
+# every 64 record allocations). Time-based scavenging is scheduled from the 
+# value of the --falcon-scavenge-schedule option.
+#
+# Hence the sleeps, to allow the test to succeed even in main memory (--mem). 
+# If scavenger timing changes, one might have to modify this test (e.g. number 
+# of BLOB updates, sleeps, size of BLOB, etc.).
+#
+# NOTE: This test currently requires a non-default falcon_scavenge_schedule, to
+#       avoid timing dependencies.
+#       This option is set in this test's .cnf file because the value contains
+#       spaces and asterisks, which do not apply nicely in all unix shells and 
+#       Windows command lines (even with -master.opt file).
+#       The falcon_scavenge_schedule option is static, and must be set upon
+#       Falcon initialization. This means that the server normally should not 
+#       bootstrap with Falcon enabled.
+#
+
+--echo *** Bug #41870 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+--enable_warnings
+
+CREATE TABLE t1 (
+  pk INT AUTO_INCREMENT PRIMARY KEY, 
+  myblob LONGBLOB
+);
+
+
+--echo
+--echo ** Load BLOB data into table
+--echo
+INSERT INTO t1 (myblob) VALUES (repeat('a', 1*1024*1024));
+
+## Alternatively, load from a file...
+#eval INSERT INTO t1 (myblob) VALUES (LOAD_FILE('$MYSQL_TEST_DIR/include/UnicodeData.txt'));
+
+#
+# Check that the data load went ok. 
+# Otherwise we have NULL in the myblob column.
+#
+SELECT pk, LENGTH(myblob) FROM t1;
+
+#
+# We need to know the server's datadir in order to check Falcon's
+# tablespace files. Store the datadir path as an environment
+# variable so that we can read it from Perl later in the test.
+# (Using Perl to check and compare file sizes).
+#
+let MYSQLD_DATADIR= `SELECT @@datadir`;
+
+#
+# Check and make a note of the size of the falcon tablespace 
+# before updating data. This is to allow the test to run e.g. 
+# several times in a row, or after other tests using the same 
+# server instance, without failing.
+#
+# Storing the file size value in a file, as we would have a 
+# hard time retreiving it later (in a different perl section
+# or in the test script itself) otherwise.
+#
+perl;
+  #
+  # Get hold of path to current datadir
+  #
+  $datadir= $ENV{'MYSQLD_DATADIR'};
+  if (length($datadir) < 1)
+  {
+    print "ERROR: Unable to get path to datadir (MYSQLD_DATADIR)\n";
+    exit;
+  }
+
+  #
+  # Measure the size of the default Falcon tablespace file:
+  #
+  $filesize_before = -s "$datadir/falcon_user.fts";
+  
+  #
+  # Note: Forward slashes inside file path on Perl/Windows should work, but
+  #       if it does not, consider adding logic for handling this, e.g.
+  #       similar to http://search.cpan.org/~duncand/File-VirtualPath-1.011/lib/File/VirtualPath.pm
+  #
+  
+  if ($filesize_before < 1)
+  {
+    print "ERROR: Unable to read tablespace file falcon_user.fts\n";
+    print "       Looked in datadir: $datadir\n";
+    print "       Larger than INT_MAX bytes? (value: $filesize_before)\n";
+    exit;
+  }
+
+  #
+  # Using a file in MYSQL_TMP_DIR as temporary storage,
+  # to be able to read the value later in the test.
+  #
+
+  print "** Recording initial size of falcon_user.fts tablespace file\n";
+  $tmp_file= "$ENV{'MYSQL_TMP_DIR'}/falcon_filesize.tmp";
+
+  open(OUTFILE, ">$tmp_file")
+    or die("Unable to write to file $tmp_file: $!\n");
+  print OUTFILE "$filesize_before\n";
+  close(OUTFILE);
+
+EOF
+
+#
+# Test depends on the value of the falcon_scavenge_schedule option.
+#
+--echo
+--echo ** Verify that falcon_scavenge_schedule is as expected:
+--echo
+SHOW VARIABLES LIKE '%falcon_scavenge_schedule%';
+
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+#
+# i = number of BLOB updates to do in this test before
+#     measuring tablespace file size.
+#
+let $i=50;
+
+--echo
+--echo ** Updating BLOB data $i times
+--echo
+
+while ($i)
+{
+  --echo $i updates left
+  UPDATE t1 SET myblob = (repeat('b', 1*1024*1024)) WHERE pk = 1;
+  
+  # Sleep to allow the scavenger to catch up (e.g. if test is run with --mem).
+  # This is not really needed on slower storage systems/disks if
+  # $i is large enough. Adjustable at runtime by setting --sleep option of MTR.
+  # Depends on the value of the option falcon_scavenge_schedule.
+  --sleep 0.1
+  
+  dec $i;
+}
+
+## Check tablespace file size after updates
+--echo
+--echo ** Checking file size of default tablespace file (falcon_user.fts)...
+
+perl;
+  #
+  # Get hold of path to current datadir, previously stored as env var.
+  #
+  $datadir= $ENV{'MYSQLD_DATADIR'};
+  if (length($datadir) < 1)
+  {
+    print "ERROR: Unable to get path to datadir\n";
+    exit;
+  }
+
+  #
+  # Measure current file size
+  #
+  $filesize_after = -s "$datadir/falcon_user.fts";
+  
+  #
+  # Now, read the value (file size) recorded at the beginning of the test.
+  # We assume that the file $tmp_file  contains a single line with a 
+  # single number representing the original file size in bytes.
+  #
+
+  $tmp_file= "$ENV{'MYSQL_TMP_DIR'}/falcon_filesize.tmp";
+  open(FILE, "<", $tmp_file) or die("Unable to read $tmp_file!: $!\n");
+  $filesize_before=<FILE>;
+  $filesize_before =~ s/\s+$//;  # remove line endings from number
+  close(FILE);
+
+  if ( !($filesize_before =~ /^[1-9][0-9]*$/) || ($filesize_before < 1) )
+  {
+    print "ERROR: Unable to read original file size.\n";
+    print "       Expected to find a single positive number in the \n";
+    print "       file $tmp_file, but did not.\n";
+    print "       File contents: $filesize_before\n";
+    print "       Tablespace file larger than INT_MAX bytes?\n";
+    exit;
+  }
+
+  #
+  # Calculate file size growth.
+  #
+  $growth= $filesize_after - $filesize_before;
+  
+  #
+  # threshold = tablespace file size growth threshold. If the 
+  #             tablespace file size exceeds this threshold, 
+  #             we call it a test failure. 
+  #
+  #   Current threshold: $i * approx. BLOB size (rounded down)
+  #
+
+  $threshold= 50 * 1 * 1024 * 1024;
+  print "** Tablespace growth threshold: $threshold bytes\n";
+  
+  if ($growth > $threshold)
+  {
+    print "FAILURE: Tablespace filesize growth exceeded our threshold!\n";
+    print "         Size of tablespace file before: $filesize_before bytes\n";
+    print "         Size of tablespace file after:  $filesize_after bytes\n";
+    print "         Growth during BLOB updates was: $growth bytes\n";
+    print "\n";
+    print "         Please investigate if this is a regression or if the\n";
+    print "         test case needs adjustments (see bug 41870).\n";
+  }
+  else
+  {
+    print "** File size growth below test threshold. Test OK.\n";
+  }
+EOF
+
+--echo
+--echo ** Final checks and cleanup...
+--echo
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+SELECT count(*) FROM t1;
+SELECT pk, LENGTH(myblob) FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+DROP TABLE t1;
+# Unset temporarily used environment variable
+let MYSQLD_DATADIR=;
+
