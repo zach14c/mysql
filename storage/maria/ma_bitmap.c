@@ -2517,13 +2517,22 @@ int _ma_bitmap_create_first(MARIA_SHARE *share)
     if it is needed
   */
   int4store(marker, MARIA_NO_CRC_BITMAP_PAGE);
-  DBUG_ASSERT(!share->physical_logging);
+
   if (my_chsize(file, block_size - sizeof(marker),
                 0, MYF(MY_WME)) ||
       my_pwrite(file, marker, sizeof(marker),
                 block_size - sizeof(marker),
                 MYF(MY_NABP | MY_WME)))
     return 1;
+  if (unlikely(ma_get_physical_logging_state(share)))
+  {
+    maria_log_chsize_physical(share, MA_LOG_CHSIZE_MAD,
+                              block_size - sizeof(marker));
+    maria_log_pwrite_physical(MA_LOG_WRITE_BYTES_MAD, share, marker,
+                              sizeof(marker),
+                              block_size - sizeof(marker));
+  }
+
   share->state.state.data_file_length= block_size;
   _ma_bitmap_delete_all(share);
   return 0;
@@ -2573,7 +2582,7 @@ void _ma_bitmap_set_pagecache_callbacks(PAGECACHE_FILE *file,
   file->callback_data= (uchar*) share;
   file->flush_log_callback= maria_flush_log_for_page_none;
   file->write_fail= maria_page_write_failure;
-  file->post_write_callback= maria_log_data_page_flush_physical;
+  file->post_write_callback= &maria_flush_log_for_page_none;
 
   if (share->temporary)
   {
@@ -2589,6 +2598,9 @@ void _ma_bitmap_set_pagecache_callbacks(PAGECACHE_FILE *file,
       file->pre_write_callback= &maria_page_filler_set_bitmap;
     if (share->now_transactional)
       file->flush_log_callback= flush_log_for_bitmap;
+#ifdef HAVE_MARIA_PHYSICAL_LOGGING
+    file->post_write_callback= &maria_log_data_page_flush_physical;
+#endif
   }
 }
 

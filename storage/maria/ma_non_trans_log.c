@@ -246,13 +246,13 @@ void _maria_log_command(IO_CACHE *log, enum maria_log_commands command,
   uchar header[14];
   int old_errno, headerlen;
   ulong pid=(ulong) GETPID();
-  File file;
-
-  file= share->kfile.file;
-
-  DBUG_ASSERT(command == MA_LOG_OPEN  || command == MA_LOG_CLOSE ||
-              command == MA_LOG_DELETE_ALL);
+  File file= share->kfile.file;
   old_errno=my_errno;
+  DBUG_ENTER("_maria_log_command");
+  DBUG_PRINT("enter", ("command: %u share->open_file_name.str '%s'",
+                       command, share->open_file_name.str));
+  DBUG_ASSERT(command == MA_LOG_OPEN  || command == MA_LOG_CLOSE);
+
   DBUG_ASSERT(((uint)result) <= UINT_MAX16);
   if (file >= UINT_MAX16 || length >= UINT_MAX16)
   {
@@ -340,6 +340,7 @@ retry:
   }
   pthread_mutex_unlock(&THR_LOCK_maria_log);
   my_errno=old_errno;
+  DBUG_VOID_RETURN;
 }
 
 
@@ -413,24 +414,27 @@ retry:
 
 
 /**
-  Logs a my_chsize() done to the index file to the physical log.
+  Logs a my_chsize() done to the data or index file to the physical log.
 
   Also logs MA_LOG_OPEN if first time.
 
   @param  share            table's share
-  @param  new_length       new length of the table's index file
+  @param  command          MA_LOG_CHSIZE_MAD or MA_LOG_CHSIZE_MAI
+  @param  new_length       new length of the table's file
 */
 
-void maria_log_chsize_kfile_physical(MARIA_SHARE *share,
-                                      my_off_t new_length)
+void maria_log_chsize_physical(MARIA_SHARE *share,
+                               enum maria_log_commands command,
+                               my_off_t new_length)
 {
   uchar header[12];
   int old_errno, headerlen;
-  DBUG_ENTER("maria_log_chsize_kfile_physical");
+  DBUG_ENTER("maria_log_chsize_physical");
   old_errno= my_errno;
+  DBUG_ASSERT(command == MA_LOG_CHSIZE_MAD  || command == MA_LOG_CHSIZE_MAI);
   if (share->kfile.file >= UINT_MAX16 || new_length >= UINT_MAX32)
   {
-    header[0]= MA_LOG_CHSIZE_MAI | MA_LOG_BIG_NUMBERS;
+    header[0]= ((uchar) command) | MA_LOG_BIG_NUMBERS;
     DBUG_ASSERT(share->kfile.file < (2<<24));
     mi_int3store(header + 1, share->kfile.file);
     mi_sizestore(header + 4, new_length);
@@ -438,7 +442,7 @@ void maria_log_chsize_kfile_physical(MARIA_SHARE *share,
   }
   else
   {
-    header[0]= MA_LOG_CHSIZE_MAI;
+    header[0]= (uchar)command;
     mi_int2store(header + 1, share->kfile.file);
     mi_int4store(header + 3, new_length);
     headerlen= 7;

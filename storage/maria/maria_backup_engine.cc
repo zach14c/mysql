@@ -29,7 +29,10 @@
 #define MYSQL_SERVER 1 // need it to have mysql_tmpdir defined
 #include "mysql_priv.h"
 #include "ha_maria.h"
+C_MODE_START
 #include "maria_def.h" // to access dfile and kfile
+#include "ma_blockrec.h"
+C_MODE_END
 #include "backup/backup_engine.h"
 #include "backup/backup_aux.h"         // for build_table_list()
 #include <hash.h>
@@ -122,6 +125,23 @@ using backup::Buffer;
   code. Increase it when making a backward-incompatible change.
 */
 #define MARIA_BACKUP_VERSION 1
+
+/**
+  Restore kernel opens tables and locks them for the duration of restore
+  (after having created them empty); this means that cached objects stay
+  around (MARIA_SHARE, MARIA_HA) and can become out-of-sync with the
+  data/index file filled by the driver, unless we take precautions which are
+  recognizable by this symbol.
+*/
+#define RESTORE_KERNEL_KEEPS_OPEN_TABLES 1
+/**
+  Restore kernel leaves a time windows between end of creation of table (via
+  execution of CREATE TABLE) and locking of this table; in this window another
+  client can open/lock/modify/unlock the table, which conflicts with what the
+  driver is going to write to the data/index file, unless we take precautions
+  which are recognizable by this symbol.
+*/
+#define RESTORE_KERNEL_NOT_ATOMIC 1
 
 /** Like Table_ref but with file name added */
 class Maria_table_ref
@@ -1652,7 +1672,9 @@ Table_restore::Table_restore(const Table_ref &tbl):
   Maria_table_ref(tbl), rebuild_index(FALSE)
 {
   MARIA_HA *mi_info;
+  MARIA_SHARE *share;
   File dfiledes= -1, kfiledes= -1;
+  my_bool save_transactional= FALSE;
   DBUG_ENTER("maria_backup::Table_restore::Table_restore");
   DBUG_PRINT("enter",("Initializing backup image for table %s",
                       file_name.ptr()));
@@ -1668,13 +1690,65 @@ Table_restore::Table_restore(const Table_ref &tbl):
     /* table does not exist or is corrupted? not normal, it's just created */
     goto err;
   }
+
+  share= mi_info->s;
+
+#ifdef RESTORE_KERNEL_NOT_ATOMIC
+  /*
+    Restore kernel leaves a window between creation of table and locking it;
+    in this window, another thread can modify the table, put pages in page
+    cache, changed cached bitmap or state, increase the files's length to
+    greater than what the driver has to write...
+    So we re-empty it here. We know we are alone using the table at this
+    point, as restore kernel has finished locking tables.
+    See BUG#42519, BUG#41716.
+  */
+  /* Another thread may have assigned an id */
+  pthread_mutex_lock(&share->intern_lock);
+  if (share->id != 0)
+  {
+    translog_deassign_id_from_share(share);
+    /*
+      Because id is 0, checkpoint will ignore this table, which is good
+      (otherwise Checkpoint may flush old info to the files, overwriting the
+      writes done by the driver.
+    */
+  }
+  pthread_mutex_unlock(&share->intern_lock);
+  save_transactional= share->now_transactional;
+  if (save_transactional) /* don't need logging */
+    _ma_tmp_disable_logging_for_table(mi_info, FALSE);
+  if (maria_delete_all_rows(mi_info))
+    goto err;
+  if (share->data_file_type == BLOCK_RECORD)
+  {
+    /*
+      maria_delete_all_rows() filled bitmap->map with zeroes and marked this
+      bitmap as changed. Flushing those zeroes would be wrong as soon as we
+      have restored the first bitmap page of the data file: prevent it.
+      Checkpoint can't flush between maria_delete_all_rows() and here, because
+      share->id is 0.
+    */
+    pthread_mutex_lock(&share->bitmap.bitmap_lock);
+    share->bitmap.changed= FALSE;
+    pthread_mutex_unlock(&share->bitmap.bitmap_lock);
+    DBUG_ASSERT(share->id == 0);
+  }
+  if (save_transactional)
+  {
+    save_transactional= FALSE;
+    if (_ma_reenable_logging_for_table(mi_info, FALSE))
+      goto err;
+  }
+#endif
+
   /*
     It's ok to copy the kfile descriptor and write() to it as the upper layers
     guarantee that we are the only user of the brand new table (nobody will
     lseek() under our feet).
   */
   if (((dfiledes= my_dup(mi_info->dfile.file, MYF(MY_WME))) < 0) ||
-      ((kfiledes= my_dup(mi_info->s->kfile.file, MYF(MY_WME))) < 0))
+      ((kfiledes= my_dup(share->kfile.file, MYF(MY_WME))) < 0))
     goto err;
   /*
     We are going to my_write() to the files without updating the table's
@@ -1697,6 +1771,8 @@ err:
     my_close(dfiledes, MYF(MY_WME));
   if (kfiledes > 0)
     my_close(kfiledes, MYF(MY_WME));
+  if (save_transactional)
+    _ma_reenable_logging_for_table(mi_info, FALSE);
   if (mi_info != NULL)
     maria_close(mi_info);
 }
@@ -1718,6 +1794,7 @@ result_t Table_restore::close()
       (kfile_restore.close_file() != backup::OK))
     SET_STATE_TO_ERROR_AND_DBUG_RETURN;
 
+#ifdef RESTORE_KERNEL_KEEPS_OPEN_TABLES
   /*
     CAUTION! Ugliest hack ever!
     This hack tries to recover from bypassing the Maria interface
@@ -1787,6 +1864,7 @@ result_t Table_restore::close()
     {
       LIST *list_element ;
       pthread_mutex_lock(&THR_LOCK_maria);
+      pthread_mutex_lock(&share->close_lock);
       pthread_mutex_lock(&share->intern_lock);
       for (list_element= maria_open_list;
            list_element;
@@ -1798,6 +1876,7 @@ result_t Table_restore::close()
       }
       pthread_mutex_unlock(&THR_LOCK_maria);
       pthread_mutex_unlock(&share->intern_lock);
+      pthread_mutex_unlock(&share->close_lock);
     }
     if (maria_close(mi_info))
       goto err;
@@ -1809,6 +1888,7 @@ result_t Table_restore::close()
   end :
     do {} while (0); /* Empty statement, syntactically required. */
   }
+#endif
 
   DBUG_RETURN(backup::OK);
 }
@@ -1850,7 +1930,6 @@ result_t Table_restore::post_restore()
   Vio* save_vio;
   DBUG_ENTER("maria_backup::Table_restore::post_restore");
 
-  if (!rebuild_index)
   {
     MARIA_HA *mi_info;
     MARIA_SHARE *share;
@@ -1874,6 +1953,31 @@ result_t Table_restore::post_restore()
       /* open_count>0 only because we copied while open, no problem */
       share->state.open_count= 0;
     }
+
+#ifdef RESTORE_KERNEL_KEEPS_OPEN_TABLES
+    if (share->data_file_type == BLOCK_RECORD)
+    {
+      /*
+        bitmap->map is full of zeroes (it dates from maria_delete_all_rows()
+        above). If we leave it like this, next threads may use it
+        (close_cached_tables() doesn't help here: if a thread has managed to
+        open the table while we had it locked, close_cached_tables() doesn't
+        close the table (BUG#40944)). So they will see it as empty, thus treat
+        data pages as empty, thus overwrite existing data records. To prevent
+        this, we reload this bitmap from disk.
+        We must do it in Table_restore::post_restore() and not in
+        Table_restore::close() (which is called two times): if we did it in
+        close(), the bitmap of before-log-applying would be read by page cache
+        and stay cached there, so the second close() (of after-log-applying)
+        will pick it from page cache instead of from disk, and so it will stay
+        old and empty.
+      */
+      pthread_mutex_lock(&share->bitmap.bitmap_lock);
+      share->bitmap.page= ~(ULL(0)); /* to force a read below */
+      (void)_ma_bitmap_get_page_bits(mi_info, &share->bitmap, 1);
+      pthread_mutex_unlock(&share->bitmap.bitmap_lock);
+    }
+#endif
     if (share->base.born_transactional)
     {
       /*
@@ -1891,8 +1995,10 @@ result_t Table_restore::post_restore()
     error= _ma_state_info_write_sub(share, share->kfile.file,
                                     &share->state, 1);
     error|= maria_close(mi_info);
-    goto err;
   }
+
+  if (!rebuild_index)
+    goto err;
 
   /*
     mariachk() as well as ha_maria::repair() do a lot of operations before

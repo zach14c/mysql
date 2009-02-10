@@ -32,7 +32,7 @@
 /** Human-readable names of commands storable in Maria logs */
 const char *ma_log_command_name[]=
 {"open","close",
- "delete-all", "write-bytes-to-MAD", "write-bytes-to-MAI", "chsize-MAI",
+ "write-bytes-to-MAD", "write-bytes-to-MAI", "chsize-MAD", "chsize-MAI",
  /*
    This one is special: it is never in log records, it's just used by
    ma_examine_log() to tell the user that it failed when reopening a table. It
@@ -144,8 +144,8 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
   TREE tree;
   struct file_info file_info,*curr_file_info;
   uint head_len[][2]=
-    { { 11, 14 }, { 11, 14 }, { 11, 14 }, {  9, 16 }, {  9, 16 }, {  7, 12 }  };
-  uint has_pid_and_result[]= {1, 1, 1, 0, 0, 0};
+    { { 11, 14 }, { 11, 14 }, { 9, 16 }, { 9, 16 }, { 7, 12 }, { 7, 12 } };
+  uint has_pid_and_result[]= {1, 1, 0, 0, 0, 0};
   DBUG_ENTER("ma_examine_log");
 
   compile_time_assert((sizeof(ma_log_command_name) /
@@ -393,6 +393,7 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
       }
       my_free(buff,MYF(0));
       break;
+    case MA_LOG_CHSIZE_MAD:
     case MA_LOG_CHSIZE_MAI:
       /* here 'filepos' means new length of file */
       if (big_numbers)
@@ -416,22 +417,11 @@ int ma_examine_log(MA_EXAMINE_LOG_PARAM *mi_exl)
       if (mi_exl->update && curr_file_info && !curr_file_info->closed)
       {
         update_index_on_close= FALSE;
-        if (my_chsize(curr_file_info->isam->s->kfile.file, filepos,
-                      0, MYF(MY_WME)))
+        if (my_chsize((command == MA_LOG_CHSIZE_MAI) ?
+                      curr_file_info->isam->s->kfile.file :
+                      curr_file_info->isam->dfile.file,
+                      filepos, 0, MYF(MY_WME)))
           goto com_err;
-      }
-      break;
-    case MA_LOG_DELETE_ALL:
-      if (mi_exl->verbose && !mi_exl->record_pos_file &&
-	  (!mi_exl->table_selection_hook ||
-           (curr_file_info && curr_file_info->used)))
-	printf_log(mi_exl->verbose, isamlog_process, isamlog_filepos,
-                   "%s: %s -> %d",FILENAME(curr_file_info),
-		   ma_log_command_name[command],result);
-      if (mi_exl->update && curr_file_info && !curr_file_info->closed)
-      {
-	if (maria_delete_all_rows(curr_file_info->isam) != (int) result)
-	  goto com_err;
       }
       break;
     default:

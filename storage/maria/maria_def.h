@@ -1096,9 +1096,9 @@ typedef struct st_maria_block_info
 enum maria_log_commands {
   MA_LOG_OPEN, /**< when maria_open() */
   MA_LOG_CLOSE, /**< when maria_close() */
-  MA_LOG_DELETE_ALL, /**< when maria_delete_all() */
   MA_LOG_WRITE_BYTES_MAD, /**< when Maria writes to the data file */
   MA_LOG_WRITE_BYTES_MAI, /**< when Maria writes to the index file */
+  MA_LOG_CHSIZE_MAD,      /**< when Maria changes size of data file */
   MA_LOG_CHSIZE_MAI,      /**< when Maria changes size of index file */
   MA_LOG_END_SENTINEL /**< keep this one unused and last */
 };
@@ -1139,8 +1139,9 @@ extern void maria_log_pwrite_physical(enum maria_log_commands command,
                                        MARIA_SHARE *share,
                                        const uchar *buffert, uint length,
                                        my_off_t filepos);
-extern void maria_log_chsize_kfile_physical(MARIA_SHARE *share,
-                                             my_off_t new_length);
+extern void maria_log_chsize_physical(MARIA_SHARE *share,
+                                      enum maria_log_commands command,
+                                      my_off_t new_length);
 #ifdef HAVE_MARIA_PHYSICAL_LOGGING
 static inline int32 ma_get_physical_logging_state(MARIA_SHARE *share)
 {

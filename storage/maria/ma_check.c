@@ -6739,7 +6739,7 @@ static int chsize_kfile(MARIA_HA *info)
                ma_get_physical_logging_state(share)))
   {
     DBUG_ASSERT(no_length_change);
-    maria_log_chsize_kfile_physical(share, new_length);
+    maria_log_chsize_physical(share, MA_LOG_CHSIZE_MAI, new_length);
   }
 
   return ret;
