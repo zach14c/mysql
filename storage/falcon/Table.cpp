@@ -3576,16 +3576,15 @@ void Table::optimize(Connection *connection)
 	int recordNumber = 0;
 	Transaction *transaction = connection->getTransaction();
 	
-	for (Record *record; (record = fetchNext(recordNumber));)
+	for (Record *candidate; (candidate = fetchNext(recordNumber));)
 		{
-		recordNumber = record->recordNumber + 1;
-		record = record->fetchVersion(transaction);
+		recordNumber = candidate->recordNumber + 1;
+		Record *record = candidate->fetchVersion(transaction);
 		
 		if (record)
-			{
-			record->release(); // no need to keep it around
 			++count;
-			}
+		
+		candidate->release(); // no need to keep it around
 		}
 	
 	cardinality = count;
