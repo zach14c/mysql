@@ -96,15 +96,9 @@ int32 IndexRootPage::createIndex(Dbb * dbb, TransId transId)
 				}
 			else
 				{
-				sectionsBdb->mark(transId);
-				Bdb *indexBdb = createIndexRoot(dbb, transId);
-				BDB_HISTORY(indexBdb);
-				sections->pages [slot] = indexBdb->pageNumber;
-				IndexPage::logIndexPage(indexBdb, transId);
-				indexBdb->release(REL_HISTORY);
+				createIndexRoot(dbb, transId,0, id, sectionsBdb);
 				sectionsBdb->release(REL_HISTORY);
 				dbb->nextIndex = (skipped) ? skipped : id + 1;
-
 				return id;
 				}
 			}
@@ -787,22 +781,10 @@ void IndexRootPage::debugBucket(Dbb *dbb, int indexId, int recordNumber, TransId
 void IndexRootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage, int level, int32 priorPage, int32 nextPage, int length, const UCHAR *data, bool haveSuperNodes)
 {
 	//Log::debug("redoIndexPage %d -> %d -> %d level %d, parent %d)\n", priorPage, pageNumber, nextPage, level, parentPage);
-	Bdb *bdb = dbb->fakePage(pageNumber, PAGE_any, 0);
+	Bdb *bdb = dbb->fakePage(pageNumber, PAGE_btree, NO_TRANSACTION);
 	BDB_HISTORY(bdb);
+
 	IndexPage *indexPage = (IndexPage*) bdb->buffer;
-
-	//  Try to read page.  If it looks OK, keep it.  Otherwise, rebuild it
-
-	if (!dbb->trialRead(bdb) ||
-		 indexPage->pageType != PAGE_btree ||
-		 indexPage->parentPage != parentPage ||
-		 indexPage->level == level)
-		{
-		memset(indexPage, 0, dbb->pageSize);
-		//indexPage->pageType = PAGE_btree;
-		bdb->setPageHeader(PAGE_btree);
-		}
-
 	indexPage->level = level;
 	indexPage->parentPage = parentPage;
 	indexPage->nextPage = nextPage;
@@ -820,7 +802,7 @@ void IndexRootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage, 
 		memset(indexPage->superNodes, 0, sizeof(indexPage->superNodes));
 		}
 
-	// If we have a parent page, propogate the first node upward
+	// If we have a parent page, propagate the first node upward
 
 	if (parentPage && indexPage->priorPage != 0)
 		{
@@ -852,75 +834,19 @@ void IndexRootPage::redoIndexPage(Dbb* dbb, int32 pageNumber, int32 parentPage, 
 		}
 
 	bdb->release(REL_HISTORY);
-	
-	if (nextPage)
-		{
-		bdb = dbb->trialFetch(nextPage, PAGE_any, Exclusive);
-		BDB_HISTORY(bdb);
-		
-		if (bdb)
-			{
-			indexPage = (IndexPage*) bdb->buffer;
-			
-			if (indexPage->pageType == PAGE_btree &&
-				indexPage->parentPage == parentPage &&
-				indexPage->level == level)
-				{
-				if (indexPage->priorPage != pageNumber)
-					{
-					bdb->mark(NO_TRANSACTION);
-					indexPage->priorPage = pageNumber;
-					}
-				}
-			
-			bdb->release(REL_HISTORY);
-			}
-		}
-		
-	if (priorPage)
-		{
-		bdb = dbb->trialFetch(priorPage, PAGE_any, Exclusive);
-		BDB_HISTORY(bdb);
-		
-		if (bdb)
-			{
-			indexPage = (IndexPage*) bdb->buffer;
-			
-			if (indexPage->pageType == PAGE_btree &&
-				indexPage->parentPage == parentPage &&
-				indexPage->level == level)
-				{
-				if (indexPage->nextPage != pageNumber)
-					{
-					bdb->mark(NO_TRANSACTION);
-					indexPage->nextPage = pageNumber;
-					}
-				}
-				
-			bdb->release(REL_HISTORY);
-			}
-		}
-}
-
-void IndexRootPage::setIndexRoot(Dbb* dbb, int indexId, int32 pageNumber, TransId transId)
-{
-	int sequence = indexId / dbb->pagesPerSection;
-	int slot = indexId % dbb->pagesPerSection;
-	Bdb *bdb = Section::getSectionPage (dbb, INDEX_ROOT, sequence, Exclusive, transId);
-	BDB_HISTORY(bdb);
-	bdb->mark(transId);
-	SectionPage *sections = (SectionPage*) bdb->buffer;
-	sections->pages[slot] = pageNumber;
-	
-	if (!dbb->serialLog->recovering && !dbb->noLog)
-		dbb->serialLog->logControl->sectionPage.append(dbb, transId, bdb->pageNumber, pageNumber, slot, INDEX_ROOT, sequence, 0);
-
-	bdb->release(REL_HISTORY);
 }
 
 void IndexRootPage::redoIndexDelete(Dbb* dbb, int indexId)
 {
-	setIndexRoot(dbb, indexId, 0, NO_TRANSACTION);
+	ASSERT(dbb->serialLog->recovering);
+	int sequence = indexId / dbb->pagesPerSection;
+	int slot = indexId % dbb->pagesPerSection;
+	Bdb *bdb = Section::getSectionPage (dbb, INDEX_ROOT, sequence, Exclusive, NO_TRANSACTION);
+	BDB_HISTORY(bdb);
+	bdb->mark(NO_TRANSACTION);
+	SectionPage *sections = (SectionPage*) bdb->buffer;
+	sections->pages[slot] =0;
+	bdb->release(REL_HISTORY);
 }
 
 void IndexRootPage::indexMerge(Dbb *dbb, int indexId, SRLUpdateIndex *logRecord, TransId transId)
@@ -1050,30 +976,39 @@ void IndexRootPage::indexMerge(Dbb *dbb, int indexId, SRLUpdateIndex *logRecord,
 	//Log::debug("indexMerge: index %d, %d insertions, %d punts, %d duplicates, %d rollovers\n",  indexId, insertions, punts, duplicates, rollovers);
 }
 
-void IndexRootPage::redoCreateIndex(Dbb* dbb, int indexId)
+void IndexRootPage::redoCreateIndex(Dbb* dbb, int indexId, int pageNumber)
 {
 	Bdb *bdb = Section::getSectionPage (dbb, INDEX_ROOT, indexId / dbb->pagesPerSection, Exclusive, NO_TRANSACTION);
 	BDB_HISTORY(bdb);
 	ASSERT(bdb);
-	SectionPage *sections = (SectionPage*) bdb->buffer;
-	int slot = indexId % dbb->pagesPerSection;
 
-	if (!sections->pages [slot])
-		{
-		bdb->mark(NO_TRANSACTION);
-		Bdb *pageBdb = createIndexRoot(dbb, NO_TRANSACTION);
-		sections->pages [slot] = pageBdb->pageNumber;
-		pageBdb->release(REL_HISTORY);
-		}
-
+	createIndexRoot(dbb, NO_TRANSACTION, pageNumber, indexId ,bdb);
 	bdb->release(REL_HISTORY);
 }
 
-Bdb* IndexRootPage::createIndexRoot(Dbb* dbb, TransId transId)
+void IndexRootPage::createIndexRoot(Dbb* dbb, TransId transId, int pageNumber, int id, Bdb *sectionsBdb)
 {
-	Bdb *bdb = IndexPage::createNewLevel(dbb, 0, INDEX_CURRENT_VERSION, transId);
+	Bdb *bdb;
 
-	return bdb;
+	if (dbb->serialLog->recovering)
+		// Use given page number.
+		bdb = dbb->fakePage (pageNumber, PAGE_btree, transId);
+	else
+		{
+		// This is not recovery , allocate a new page and log it.
+		bdb = dbb->allocPage(PAGE_btree, transId);
+		dbb->serialLog->logControl->createIndex.append(dbb, transId, id, INDEX_CURRENT_VERSION, 
+					bdb->pageNumber);
+		}
+	BDB_HISTORY(bdb);
+
+	IndexPage::initRootPage(bdb);
+
+	// link index root to sections
+	SectionPage *sections = (SectionPage *)sectionsBdb->buffer;
+	sections->pages [id%dbb->pagesPerSection] = bdb->pageNumber;
+	sectionsBdb->mark(transId);
+	bdb->release(REL_HISTORY);
 }
 
 void IndexRootPage::analyzeIndex(Dbb* dbb, int indexId, IndexAnalysis *indexAnalysis)
