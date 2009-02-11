@@ -213,7 +213,10 @@ static int update_status_variables(st_ndb_status *ns, Ndb_cluster_connection *c)
                             ns->connected_port);
   }
   ns->number_of_replicas= 0;
-  ns->number_of_ready_data_nodes= c->get_no_ready();
+  {
+    int n= c->get_no_ready();
+    ns->number_of_ready_data_nodes= n > 0 ?  n : 0;
+  }
   ns->number_of_data_nodes= c->no_db_nodes();
   ns->connect_count= c->get_connect_count();
   return 0;
@@ -2599,7 +2602,7 @@ int ha_ndbcluster::ordered_index_scan(const key_range *start_key,
   if (lm == NdbOperation::LM_Read)
     options.scan_flags|= NdbScanOperation::SF_KeyInfo;
   if (sorted)
-    options.scan_flags|= NdbScanOperation::SF_OrderBy;
+    options.scan_flags|= NdbScanOperation::SF_OrderByFull;
   if (descending)
     options.scan_flags|= NdbScanOperation::SF_Descending;
   const NdbRecord *key_rec= m_index[active_index].ndb_record_key;
@@ -9276,18 +9279,18 @@ multi_range_row(uchar *p)
 }
 
 /* Get and put upper layer custom char *, use memcpy() for unaligned access. */
-static char *
-multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no)
+static void
+multi_range_get_custom(HANDLER_BUFFER *buffer, int range_no, char **pcustom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  return ((char **)(buffer->buffer))[range_no];
+  memcpy(pcustom, (char **)(buffer->buffer) + range_no, sizeof(*pcustom));
 }
 
 static void
 multi_range_put_custom(HANDLER_BUFFER *buffer, int range_no, char *custom)
 {
   DBUG_ASSERT(range_no < MRR_MAX_RANGES);
-  ((char **)(buffer->buffer))[range_no]= custom;
+  memcpy((char **)(buffer->buffer) + range_no, &custom, sizeof(custom));
 }
 
 /*
@@ -9347,11 +9350,9 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
   KEY* key_info= table->key_info + keyno;
   ulong reclength= table_share->reclength;
   uint entry_size= multi_range_max_entry(key_type, reclength);
-  ulong total_bufsize;
+  ulong total_bufsize= 0;
   uint save_bufsize= *bufsz;
   DBUG_ENTER("ha_ndbcluster::multi_range_read_info_const");
-
-  total_bufsize= multi_range_fixed_size(n_ranges_arg);
 
   seq_it= seq->init(seq_init_param, n_ranges, *flags);
   while (!seq->next(seq_it, &range))
@@ -9382,6 +9383,9 @@ ha_ndbcluster::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
                              UNIQUE_INDEX),
                             reclength);
   }
+
+  /* n_ranges_arg may not be calculated, so we use actual calculated instead */
+  total_bufsize+= multi_range_fixed_size(n_ranges);
 
   if (total_rows != HA_POS_ERROR)
   {
@@ -9694,7 +9698,7 @@ int ha_ndbcluster::multi_range_start_retrievals(uint starting_range)
         if (lm == NdbOperation::LM_Read)
           options.scan_flags|= NdbScanOperation::SF_KeyInfo;
         if (mrr_is_output_sorted)
-          options.scan_flags|= NdbScanOperation::SF_OrderBy;
+          options.scan_flags|= NdbScanOperation::SF_OrderByFull;
 
         options.parallel=parallelism;
 
@@ -9884,8 +9888,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
           m_active_cursor= NULL;
 
           /* Return the record. */
-          *range_info= multi_range_get_custom(multi_range_buffer,
-                                              expected_range_no);
+          multi_range_get_custom(multi_range_buffer,
+                                 expected_range_no, range_info);
           memcpy(table->record[0], multi_range_row(row_buf),
                  table_share->reclength);
           DBUG_RETURN(0);
@@ -9896,8 +9900,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             int res;
             if ((res= read_multi_range_fetch_next()) != 0)
             {
-              *range_info= multi_range_get_custom(multi_range_buffer,
-                                                  expected_range_no);
+              multi_range_get_custom(multi_range_buffer,
+                                     expected_range_no, range_info);
               first_running_range++;
               m_multi_range_result_ptr=
                 multi_range_next_entry(m_multi_range_result_ptr,
@@ -9928,8 +9932,8 @@ int ha_ndbcluster::multi_range_read_next(char **range_info)
             */
             if (!mrr_is_output_sorted || expected_range_no == current_range_no)
             {
-              *range_info= multi_range_get_custom(multi_range_buffer,
-                                                  current_range_no);
+              multi_range_get_custom(multi_range_buffer,
+                                     current_range_no, range_info);
               /* Copy out data from the new row. */
               unpack_record(table->record[0], m_next_row);
               /*
@@ -11139,20 +11143,20 @@ int ha_ndbcluster::alter_table_phase1(THD *thd,
          goto err;
        }
        /*
-	 If the user has not specified the field format
-	 make it dynamic to enable on-line add attribute
+         If the user has not specified the field format
+         make it dynamic to enable on-line add attribute
        */
        if (field->column_format() == COLUMN_FORMAT_TYPE_DEFAULT &&
            create_info->row_type == ROW_TYPE_DEFAULT &&
            col.getDynamic())
        {
-	 push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+         push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_WARN,
                              ER_ILLEGAL_HA_CREATE_OPTION,
-		             "Converted FIXED field to DYNAMIC "
-			     "to enable on-line ADD COLUMN",
+                             "Converted FIXED field to DYNAMIC "
+                             "to enable on-line ADD COLUMN",
                              field->field_name);
-	}
-        new_tab->addColumn(col);
+       }
+       new_tab->addColumn(col);
      }
   }
 
@@ -11232,8 +11236,11 @@ int ha_ndbcluster::alter_table_phase2(THD *thd,
 
 #ifdef HAVE_NDB_BINLOG
   if (!ndbcluster_has_global_schema_lock(get_thd_ndb(thd)))
-    DBUG_RETURN(ndbcluster_no_global_schema_lock_abort
-                (thd, "ha_ndbcluster::alter_table_phase2"));
+  {
+    error= ndbcluster_no_global_schema_lock_abort
+      (thd, "ha_ndbcluster::alter_table_phase2");
+    goto err;
+  }
 #endif
 
   if ((*alter_flags & dropping).is_set())
@@ -11253,11 +11260,11 @@ int ha_ndbcluster::alter_table_phase2(THD *thd,
  err:
   if (error)
   {
-    set_ndb_share_state(m_share, NSS_INITIAL);
     /* ndb_share reference schema free */
     DBUG_PRINT("NDB_SHARE", ("%s binlog schema free  use_count: %u",
                              m_share->key, m_share->use_count));
   }
+  set_ndb_share_state(m_share, NSS_INITIAL);
   free_share(&m_share); // Decrease ref_count
   delete alter_data;
   DBUG_RETURN(error);
