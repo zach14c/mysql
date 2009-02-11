@@ -4428,6 +4428,7 @@ create_sp_error:
       case SP_KEY_NOT_FOUND:
 	if (lex->drop_if_exists)
 	{
+          write_bin_log(thd, TRUE, thd->query, thd->query_length);
 	  push_warning_printf(thd, MYSQL_ERROR::WARN_LEVEL_NOTE,
 			      ER_SP_DOES_NOT_EXIST, ER(ER_SP_DOES_NOT_EXIST),
                               SP_COM_STRING(lex), lex->spname->m_qname.str);
@@ -5478,7 +5479,7 @@ void mysql_reset_thd_for_next_command(THD *thd)
     OPTION_STATUS_NO_TRANS_UPDATE | OPTION_KEEP_LOG to not get warnings
     in ha_rollback_trans() about some tables couldn't be rolled back.
   */
-  if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)))
+  if (!thd->in_multi_stmt_transaction())
   {
     thd->options&= ~OPTION_KEEP_LOG;
     thd->transaction.all.modified_non_trans_table= FALSE;

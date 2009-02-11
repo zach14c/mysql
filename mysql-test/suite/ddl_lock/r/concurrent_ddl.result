@@ -311,14 +311,15 @@ DROP TABLE t4;
 ##
 CREATE TABLE t1(a INT, b CHAR(100))
 ENGINE=<engine_type>;
+INSERT INTO t1 (a, b) VALUES (1, 'one');
 # Switch to connection locker
-SET DEBUG_SYNC= 'after_lock_tables_takes_lock
-                 SIGNAL locked WAIT_FOR do_unlock';
+SET DEBUG_SYNC= 'locked_table_name
+                 SIGNAL locked WAIT_FOR do_unlock HIT_LIMIT 2';
 # "send" next statement
 ALTER TABLE t1 RENAME t2;
 # Switch to connection waiter
 SET DEBUG_SYNC= 'now WAIT_FOR locked';
-SET DEBUG_SYNC= 'after_start_ddl SIGNAL do_unlock';
+SET DEBUG_SYNC= 'mdl_enter_cond SIGNAL do_unlock';
 # "send" next statement
 ALTER TABLE t2 RENAME t3;
 # Switch to connection locker
@@ -328,10 +329,10 @@ ALTER TABLE t2 RENAME t3;
 # Switch to connection default
 SELECT SUM(a) FROM t3;
 SUM(a)
-NULL
+1
 SELECT COUNT(*) FROM t3;
 COUNT(*)
-0
+1
 SET DEBUG_SYNC= 'RESET';
 DROP TABLE t3;
 ##

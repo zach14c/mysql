@@ -474,7 +474,7 @@ void free_table_share(TABLE_SHARE *share)
   /* The mutex is initialized only for shares that are part of the TDC */
   if (share->tmp_table == NO_TMP_TABLE)
     pthread_mutex_destroy(&share->LOCK_ha_data);
-  hash_free(&share->name_hash);
+  my_hash_free(&share->name_hash);
 
   plugin_unlock(NULL, share->db_plugin);
   share->db_plugin= NULL;
@@ -1263,10 +1263,10 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
 
   use_hash= share->fields >= MAX_FIELDS_BEFORE_HASH;
   if (use_hash)
-    use_hash= !hash_init(&share->name_hash,
-			 system_charset_info,
-			 share->fields,0,0,
-			 (hash_get_key) get_field_name,0,0);
+    use_hash= !my_hash_init(&share->name_hash,
+                            system_charset_info,
+                            share->fields,0,0,
+                            (my_hash_get_key) get_field_name,0,0);
 
   for (i=0 ; i < share->fields; i++, strpos+=field_pack_length, field_ptr++)
   {
@@ -1710,7 +1710,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   delete handler_file;
 #ifndef DBUG_OFF
   if (use_hash)
-    (void) hash_check(&share->name_hash);
+    (void) my_hash_check(&share->name_hash);
 #endif
   if (buffbuff)
     my_free(buffbuff, MYF(0));
@@ -1725,7 +1725,7 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
   x_free((uchar*) disk_buff);
   delete crypted;
   delete handler_file;
-  hash_free(&share->name_hash);
+  my_hash_free(&share->name_hash);
 
   open_table_error(share, error, share->open_errno, errarg);
   DBUG_RETURN(error);

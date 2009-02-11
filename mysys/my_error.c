@@ -22,7 +22,6 @@
 /* Max length of a error message. Should be kept in sync with MYSQL_ERRMSG_SIZE. */
 #define ERRMSGSIZE      (512)
 
-
 /* Define some external variables for error handling */
 
 /*
@@ -137,7 +136,7 @@ void my_printf_error(uint error, const char *format, myf MyFlags, ...)
 
 void my_printv_error(uint error, const char *format, myf MyFlags, va_list ap)
 {
-  char ebuff[ERRMSGSIZE+20];
+  char ebuff[ERRMSGSIZE];
   DBUG_ENTER("my_printv_error");
   DBUG_PRINT("my", ("nr: %d  MyFlags: %d  errno: %d  format: %s",
 		    error, MyFlags, errno, format));
