@@ -312,7 +312,7 @@ static int initialize_bucket(LF_HASH *, LF_SLIST * volatile*, uint, LF_PINS *);
   See wt_init() for example.
 */
 void lf_hash_init(LF_HASH *hash, uint element_size, uint flags,
-                  uint key_offset, uint key_length, hash_get_key get_key,
+                  uint key_offset, uint key_length, my_hash_get_key get_key,
                   CHARSET_INFO *charset)
 {
   compile_time_assert(sizeof(LF_SLIST) == LF_HASH_OVERHEAD);

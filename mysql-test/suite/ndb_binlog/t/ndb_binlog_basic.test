@@ -10,6 +10,9 @@ drop database mysqltest;
 use test;
 --enable_warnings
 
+# check type and schema for ndb_binlog_index
+show create table mysql.ndb_binlog_index;
+
 #
 # basic insert, update, delete test, alter, rename, drop
 # check that ndb_binlog_index gets the right info

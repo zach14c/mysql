@@ -45,8 +45,8 @@ BEGIN {
     print "=======================================================\n";
     print "  WARNING: Using mysql-test-run.pl version 1!  \n";
     print "=======================================================\n";
-    require "lib/v1/mysql-test-run.pl";
-    exit(1);
+    # Should use exec() here on *nix but this appears not to work on Windows
+    exit(system($^X, "lib/v1/mysql-test-run.pl", @ARGV) >> 8);
   }
   elsif ( $version == 2 )
   {
@@ -259,17 +259,18 @@ sub main {
     # Check for any extra suites to enable based on the path name
     my %extra_suites=
       (
-       "mysql-5.1-new-ndb"              => "ndb_team",
-       "mysql-5.1-new-ndb-merge"        => "ndb_team",
-       "mysql-5.1-telco-6.2"            => "ndb_team",
-       "mysql-5.1-telco-6.2-merge"      => "ndb_team",
-       "mysql-5.1-telco-6.3"            => "ndb_team",
-       "mysql-6.0-ndb"                  => "ndb_team",
-       "mysql-6.0-falcon"               => "falcon_team",
-       "mysql-6.0-falcon-team"          => "falcon_team",
-       "mysql-6.0-falcon-wlad"          => "falcon_team",
-       "mysql-6.0-falcon-chris"         => "falcon_team",
-       "mysql-6.0-falcon-kevin"         => "falcon_team",
+       "bzr_mysql-5.1-ndb"              => "ndb_team",
+       "bzr_mysql-5.1-ndb-merge"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.2"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.2-merge"  => "ndb_team",
+       "bzr_mysql-5.1-telco-6.3"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.4"        => "ndb_team",
+       "bzr_mysql-6.0-ndb"              => "ndb_team,rpl_ndb_big,ndb_binlog",
+       "bzr_mysql-6.0-falcon"           => "falcon_team",
+       "bzr_mysql-6.0-falcon-team"      => "falcon_team",
+       "bzr_mysql-6.0-falcon-wlad"      => "falcon_team",
+       "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
+       "bzr_mysql-6.0-falcon-kevin"     => "falcon_team",
       );
 
     foreach my $dir ( reverse splitdir($basedir) ) {
