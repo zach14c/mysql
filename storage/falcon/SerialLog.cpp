@@ -365,7 +365,22 @@ void SerialLog::recover()
 			Log::log("Processed: %8ld\n", recordCount);
 			
 		if (!isTableSpaceDropped(record->tableSpaceId) || record->type == srlDropTableSpace)
-			record->pass2();
+			try 
+				{
+				record->pass2();
+				}
+			catch(SQLException &e)
+				{
+				// We can have missing tablespaces at this stage.
+				//(missing in the system table at the time of crash
+				// and not found by bootstrap). Handle them as dropped
+				// until someone comes up with a better idea
+				if (e.getSqlcode() == TABLESPACE_NOT_EXIST_ERROR)
+					{
+					Log::log("Cannot find tablespace %d",record->tableSpaceId);
+					setTableSpaceDropped(record->tableSpaceId);
+					}
+				}
 		}
 
 	Log::log("Processed: %8ld\n", recordCount);
