@@ -1562,3 +1562,6 @@ insert into t1 set a='';
 insert into t1 set a='a';
 check table t1 extended;
 drop table t1;
+
+--echo # Test file cleanup
+SET GLOBAL archive_aio=off;

@@ -4,6 +4,21 @@ create database mysqltest;
 use mysqltest;
 drop database mysqltest;
 use test;
+show create table mysql.ndb_binlog_index;
+Table	Create Table
+ndb_binlog_index	CREATE TABLE `ndb_binlog_index` (
+  `Position` bigint(20) unsigned NOT NULL,
+  `File` varchar(255) NOT NULL,
+  `epoch` bigint(20) unsigned NOT NULL,
+  `inserts` int(10) unsigned NOT NULL,
+  `updates` int(10) unsigned NOT NULL,
+  `deletes` int(10) unsigned NOT NULL,
+  `schemaops` int(10) unsigned NOT NULL,
+  `orig_server_id` int(10) unsigned NOT NULL,
+  `orig_epoch` bigint(20) unsigned NOT NULL,
+  `gci` int(10) unsigned NOT NULL,
+  PRIMARY KEY (`epoch`,`orig_server_id`,`orig_epoch`)
+) ENGINE=MARIA DEFAULT CHARSET=latin1 PAGE_CHECKSUM=1
 reset master;
 create table t1 (a int primary key) engine=ndb;
 insert into t1 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
