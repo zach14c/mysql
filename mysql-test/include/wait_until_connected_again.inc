@@ -7,9 +7,11 @@
 # When you change this file you may have to chance its cousin
 # wait_until_disconnected.inc
 
-#--disable_result_log
+--disable_result_log
 --disable_query_log
-let $counter= 600;
+# We wait for 7 minutes, because some storage engines need quite
+# some to restart with Valgrind runs on Pushbuild.
+let $counter= 4200;
 let $mysql_errno= 9999;
 while ($mysql_errno)
 {
@@ -27,4 +29,4 @@ while ($mysql_errno)
   --real_sleep 0.1
 }
 --enable_query_log
-#--enable_result_log
+--enable_result_log
