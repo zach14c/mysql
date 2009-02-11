@@ -45,7 +45,7 @@
   @defgroup Runtime_Environment Runtime Environment
   @{
 */
-int execute_backup_command(THD*, LEX*, String*, bool);
+int execute_backup_command(THD*, LEX*, String*, bool, bool);
 
 /* Used in error handling only */
 #define SP_TYPE_STRING(LP) \
@@ -2325,26 +2325,43 @@ mysql_execute_command(THD *thd)
     /* Used to specify if RESTORE should overwrite existing db with same name */
     bool overwrite_restore= false;
 
-    Item *it= (Item *)lex->value_list.head();
+    /* Used to specify if RESTORE should skup writing the gap event. */
+    bool skip_gap_event= false;
 
-    // Item only set for RESTORE in sql_yacc.yy, no error checking of
-    // item necessary
-    if (it)
+    List<Item> lit= lex->value_list;
+    Item *it= 0;
+
+    // value list only set for RESTORE in sql_yacc.yy, no error checking of
+    // item necessary for backup
+    while (lit.elements)
     {
+      it= lit.pop();
       /*
         it is OK to only emulate fix_fields, because we need only
         value of constant
       */
       it->quick_fix_field();
-
-      if ((int8)it->val_int() == 1)
-        overwrite_restore= true;
+      int val= (int)it->val_int();
+      /*
+        Check options.
+      */
+      switch (val) {
+        /* OVERWRITE option */
+        case 1:
+          overwrite_restore= true;
+          break;
+        /* SKIP GAP EVENT option */
+        case 2:
+          skip_gap_event= true;
+          break;
+      }
     }
     /*
       Note: execute_backup_command() sends a correct response to the client
       (either ok, result set or error message).
      */ 
-    if (execute_backup_command(thd, lex, &backupdir, overwrite_restore))
+    if (execute_backup_command(thd, lex, &backupdir, overwrite_restore,
+                               skip_gap_event))
       goto error;
     break;
   }

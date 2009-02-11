@@ -486,6 +486,7 @@ static SYMBOL symbols[] = {
   { "SHUTDOWN",		SYM(SHUTDOWN)},
   { "SIGNED",		SYM(SIGNED_SYM)},
   { "SIMPLE",		SYM(SIMPLE_SYM)},
+  { "SKIP_GAP_EVENT",     SYM(SKIP_GAP_EVENT_SYM)},
   { "SLAVE",            SYM(SLAVE)},
   { "SNAPSHOT",         SYM(SNAPSHOT_SYM)},
   { "SMALLINT",		SYM(SMALLINT)},

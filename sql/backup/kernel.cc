@@ -123,6 +123,9 @@ static int send_reply(Backup_restore_ctx &context);
   @param[in] backupdir  value of the backupdir variable from server.
   @param[in] overwrite  whether or not restore should overwrite existing
                         DB with same name as in backup image
+  @param[in] skip_gap_event  whether or not restore should skip writing
+                             the gap event if run on a master in an active
+                             replication scenario
 
   @note This function sends response to the client (ok, result set or error).
 
@@ -134,7 +137,11 @@ static int send_reply(Backup_restore_ctx &context);
  */
 
 int
-execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
+execute_backup_command(THD *thd, 
+                       LEX *lex, 
+                       String *backupdir, 
+                       bool overwrite,
+                       bool skip_gap_event)
 {
   int res= 0;
   
@@ -209,7 +216,7 @@ execute_backup_command(THD *thd, LEX *lex, String *backupdir, bool overwrite)
   {
 
     Restore_info *info= context.prepare_for_restore(backupdir, lex->backup_dir, 
-                                                    thd->query);
+                                                    thd->query, skip_gap_event);
     
     if (!info || !info->is_valid())
       DBUG_RETURN(send_error(context, ER_BACKUP_RESTORE_PREPARE));
@@ -682,6 +689,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   @param[in] backupdir  path to the file where backup image is stored
   @param[in] orig_loc   path as specified on command line for backup image
   @param[in] query      RESTORE query starting the operation
+  @param[in] skip_gap_event TRUE means do not write gap event
   
   @returns Pointer to a @c Restore_info instance containing catalogue of the
   backup image (read from the image). NULL if errors were detected.
@@ -691,7 +699,8 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
 Restore_info* 
 Backup_restore_ctx::prepare_for_restore(String *backupdir,
                                         LEX_STRING orig_loc, 
-                                        const char *query)
+                                        const char *query,
+                                        bool skip_gap_event)
 {
   using namespace backup;  
 
@@ -834,7 +843,8 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
 
     DEBUG_SYNC(m_thd, "after_disable_slave_connections");
 
-    obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
+    if (!skip_gap_event)
+      obs::write_incident_event(m_thd, obs::RESTORE_EVENT);
     m_engage_binlog= TRUE;
     obs::engage_binlog(FALSE);
   }
