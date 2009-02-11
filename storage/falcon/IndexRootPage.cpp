@@ -1026,8 +1026,7 @@ void IndexRootPage::indexMerge(Dbb *dbb, int indexId, SRLUpdateIndex *logRecord,
 			// If the key is out of order, somebody screwed up.  Punt out of here
 			
 			if (key.compare(&priorKey) > 0)
-				//ASSERT(false);
-				Log::log("IndexRootPage::addIndexEntry: Unexpected out of order index");
+				ASSERT(false);
 
 			// Find the next insertion point, compute the next key, etc.
 			

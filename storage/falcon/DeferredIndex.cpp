@@ -453,41 +453,28 @@ int DeferredIndex::compare(DINode* node1, DINode* node2)
 	if (!node2)
 		return 1;
 
-	const UCHAR *p1 = node1->key;
-	const UCHAR *p2 = node2->key;
-	uint len = MIN(node1->keyLength, node2->keyLength);
-	const UCHAR *end = p1 + len;
+	uint len1 = node1->keyLength;
+	uint len2 = node2->keyLength;
+	uint minLen = MIN(len1, len2);
+	int ret = 0;
+
+	// Check which key is greatest up to the length of
+	// the shortest key
+
+	if (ret = memcmp(node1->key, node2->key, minLen))
+		return ret;
+
+	// Still equal, check wich key that is the longest
+
+	if (ret = len1 > len2 ? 1 : len1 < len2 ? -1 : 0)
+		return ret;
+
+	// Still equal, check which has the greatest
+	// recordNumber
 	
-	while (p1 < end)
-		if (*p1++ != *p2++)
-			return p1[-1] - p2[-1];
-	
-	/***		
-	for (uint l = len; l; --l)
-		{
-		int n = *p1++ - *p2++;
-		
-		if (n)
-			return n;
-		}
-	***/
-	
-	if (len < node1->keyLength)
-		{
-		int n = checkTail(len, node1);
-		
-		if (n)
-			return n;
-		}
-	else if (len < node2->keyLength)
-		{
-		int n = checkTail(len, node2);
-		
-		if (n)
-			return -n;
-		}
-		
-	return node1->recordNumber - node2->recordNumber;
+	int32 rno1 = node1->recordNumber;
+	int32 rno2 = node2->recordNumber;
+	return rno1 > rno2 ? 1 : rno1 < rno2 ? -1 : 0;
 }
 
 int DeferredIndex::compare(IndexKey *node1, DINode *node2, bool partial)
@@ -503,44 +490,23 @@ int DeferredIndex::compare(IndexKey *node1, DINode *node2, bool partial)
 		return 1;
 		}
 
-	const UCHAR *p1 = node1->key;
-	const UCHAR *p2 = node2->key;
-	uint len = MIN(node1->keyLength, node2->keyLength);
-	const UCHAR *end = p1 + len;
-	
-	while (p1 < end)
-		if (*p1++ != *p2++)
-			return p1[-1] - p2[-1];
+	uint len1 = node1->keyLength;
+	uint len2 = node2->keyLength;
+	uint minLen = MIN(len1, len2);
+	int ret = 0;
 
-	/***	
-	for (uint l = len; l; --l)
-		{
-		int n = *p1++ - *p2++;
-		
-		if (n)
-			return n;
-		}
-	***/
-	
+ 	// Check which key is greatest up to the length of
+	// the shortest key
+
+	if (ret = memcmp(node1->key, node2->key, minLen))
+		return ret;
+
 	if (partial)
 		return 0;
 
-	if (len < node1->keyLength)
-		{
-		int n = checkTail(len, node1);
-		
-		if (n)
-			return n;
-		}
-	else if (len < node2->keyLength)
-		{
-		int n = checkTail(len, node2);
-		
-		if (n)
-			return -n;
-		}
-		
-	return 0;
+	// Still equal, check wich key that is the longest
+
+	return len1 > len2 ? 1 : len1 < len2 ? -1 : 0;
 }
 
 
@@ -552,66 +518,28 @@ int DeferredIndex::compare(IndexKey* node1, int32 recordNumber, DINode* node2)
 	if (!node2)
 		return 1;
 
-	const UCHAR *p1 = node1->key;
-	const UCHAR *p2 = node2->key;
-	uint len = MIN(node1->keyLength, node2->keyLength);
-	
-	for (uint l = len; l; --l)
-		{
-		int n = *p1++ - *p2++;
-		
-		if (n)
-			return n;
-		}
-	
-	if (len < node1->keyLength)
-		{
-		int n = checkTail(len, node1);
-		
-		if (n)
-			return n;
-		}
-	else if (len < node2->keyLength)
-		{
-		int n = checkTail(len, node2);
-		
-		if (n)
-			return -n;
-		}
-		
-	return recordNumber - node2->recordNumber;
-}
+	uint len1 = node1->keyLength;
+	uint len2 = node2->keyLength;
+	uint minLen = MIN(len1, len2);
+	int ret = 0;
 
-int DeferredIndex::checkTail(uint position, DINode* node)
-{
-	UCHAR padByte = index->getPadByte();
-	
-	for (uint pos = position; pos < node->keyLength; ++pos)
-		if (index->numberFields == 1 || pos % RUN != 0)
-			{
-			int n = node->key[pos] - padByte;
-			
-			if (n)
-				return n;
-			}
-	
-	return 0;
-}
+	// Check which key is greatest up to the length of
+	// the shortest key
 
-int DeferredIndex::checkTail(uint position, IndexKey *indexKey)
-{
-	UCHAR padByte = index->getPadByte();
-	
-	for (uint pos = position; pos < indexKey->keyLength; ++pos)
-		if (index->numberFields == 1 || pos % RUN != 0)
-			{
-			int n = indexKey->key[pos] - padByte;
-			
-			if (n)
-				return n;
-			}
-	
-	return 0;		
+	if (ret = memcmp(node1->key, node2->key, minLen))
+		return ret;
+
+	// Still equal, check wich key that is the longest
+
+	if (ret = len1 > len2 ? 1 : len1 < len2 ? -1 : 0)
+		return ret;
+
+	// Still equal, check which has the greatest
+	// recordNumber
+
+	int32 rno2 = node2->recordNumber;
+	return recordNumber > rno2 ? 1 : recordNumber < rno2 ? -1 : 0;
+
 }
 
 void DeferredIndex::validate(void)
