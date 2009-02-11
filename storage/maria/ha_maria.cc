@@ -1457,7 +1457,7 @@ int ha_maria::preload_keys(THD * thd, HA_CHECK_OPT *check_opt)
 
   if ((error= maria_preload(file, map, table_list->ignore_leaves)))
   {
-    char buf[128];
+    char buf[MYSYS_ERRMSG_SIZE];
     const char *errmsg;
 
     switch (error) {
@@ -3198,13 +3198,12 @@ int ha_maria::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                      uint n_ranges, uint mode, 
                                      HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_maria::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_maria::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,

@@ -651,8 +651,8 @@ int mi_create(const char *name,uint keys,MI_KEYDEF *keydefs,
     this would solve the problem.
  */
   DBUG_ASSERT((options & HA_OPTION_TMP_TABLE) || !mi_log_tables_physical ||
-              !hash_search(mi_log_tables_physical, filename,
-                           strlen(filename)));
+              !my_hash_search(mi_log_tables_physical, filename,
+                              strlen(filename)));
 
   if ((file= my_create_with_symlink(linkname_ptr, filename, 0, create_mode,
 				    MYF(MY_WME | create_flag))) < 0)
