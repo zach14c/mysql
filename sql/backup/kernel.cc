@@ -1191,6 +1191,8 @@ int Backup_restore_ctx::restore_triggers_and_events()
         DBUG_ASSERT(obj->m_obj_ptr);
         if (events.push_back(obj))
         {
+          delete it;
+          delete dbit;
           // Error has been reported, but not logged to backup logs
           DBUG_RETURN(fatal_error(log_error(ER_OUT_OF_RESOURCES))); 
         }
