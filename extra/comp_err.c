@@ -58,6 +58,8 @@
 #include <sys/stat.h>
 #ifndef _WIN32
 #include <unistd.h>
+#else
+#include <direct.h> /* mkdir */
 #endif
 
 #include <errno.h>
@@ -796,7 +798,7 @@ static unsigned long checksum_format_specifier(const char* msg)
       case 'u':
       case 'x':
       case 's':
-        chksum= crc32(chksum, start, p - start);
+        chksum= crc32(chksum, start, (uInt)(p - start));
         start= 0; /* Not in format specifier anymore */
         break;
 
