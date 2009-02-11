@@ -1,8 +1,10 @@
 --source include/not_embedded.inc
 
+let $MYSQLD_DATADIR= `select @@datadir`;
+
 --disable_warnings
---rmdir $MYSQLTEST_VARDIR/master-data/test
---mkdir $MYSQLTEST_VARDIR/master-data/test
+--rmdir $MYSQLD_DATADIR/test
+--mkdir $MYSQLD_DATADIR/test
 DROP DATABASE IF EXISTS empty_db;
 DROP DATABASE IF EXISTS other_db;
 --enable_warnings
