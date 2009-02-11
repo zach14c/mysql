@@ -461,12 +461,12 @@ int DeferredIndex::compare(DINode* node1, DINode* node2)
 	// Check which key is greatest up to the length of
 	// the shortest key
 
-	if (ret = memcmp(node1->key, node2->key, minLen))
+	if ((ret = memcmp(node1->key, node2->key, minLen)))
 		return ret;
 
 	// Still equal, check wich key that is the longest
 
-	if (ret = len1 > len2 ? 1 : len1 < len2 ? -1 : 0)
+	if ((ret = len1 > len2 ? 1 : len1 < len2 ? -1 : 0))
 		return ret;
 
 	// Still equal, check which has the greatest
@@ -498,7 +498,7 @@ int DeferredIndex::compare(IndexKey *node1, DINode *node2, bool partial)
  	// Check which key is greatest up to the length of
 	// the shortest key
 
-	if (ret = memcmp(node1->key, node2->key, minLen))
+	if ((ret = memcmp(node1->key, node2->key, minLen)))
 		return ret;
 
 	if (partial)
@@ -526,12 +526,12 @@ int DeferredIndex::compare(IndexKey* node1, int32 recordNumber, DINode* node2)
 	// Check which key is greatest up to the length of
 	// the shortest key
 
-	if (ret = memcmp(node1->key, node2->key, minLen))
+	if ((ret = memcmp(node1->key, node2->key, minLen)))
 		return ret;
 
 	// Still equal, check wich key that is the longest
 
-	if (ret = len1 > len2 ? 1 : len1 < len2 ? -1 : 0)
+	if ((ret = len1 > len2 ? 1 : len1 < len2 ? -1 : 0))
 		return ret;
 
 	// Still equal, check which has the greatest
