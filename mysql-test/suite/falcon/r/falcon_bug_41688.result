@@ -1,0 +1,68 @@
+#
+# Bug #41688: Foreign keys: lock warnings
+#
+# The combination of facts that Falcon was not downgrading
+# TL_READ_NO_INSERT and that SQL-layer impoperly handled
+# handled locking for combination of TL_READ_NO_INSERT and
+# TL_WRITE_ALLOW_WRITE locks let to warnings appearing in
+# error log.
+SET @@storage_engine = 'Falcon';
+drop table if exists t1;
+create table t1 (s1 int);
+insert into t1 values (1);
+select get_lock("bug41688_lock_1", 100);
+get_lock("bug41688_lock_1", 100)
+1
+Switching to connection 'addcon3'
+select get_lock("bug41688_lock_2", 100);
+get_lock("bug41688_lock_2", 100)
+1
+# First part of the test. Before fix in this situation
+# TL_READ_NO_INSERT was acquired even although another
+# was holding TL_WRITE_ALLOW_WRITE lock.
+Switching to connection 'addcon1'
+insert into t1 values (get_lock("bug41688_lock_1", 100));;
+Switching to connection 'default'
+# This statement should not get blocked or produce warnings in error log
+insert into t1 select * from t1;
+# Allow statement in 'addcon1' to proceed
+select release_lock("bug41688_lock_1");
+release_lock("bug41688_lock_1")
+1
+Switching to connection 'addcon1'
+select release_lock("bug41688_lock_1");
+release_lock("bug41688_lock_1")
+1
+# Second part of the test. Before fix in this situation
+# TL_WRITE_ALLOW_WRITE was acquired even although another
+# thread was holding TL_WRITE_ALLOW_WRITE and TL_READ_NO_INSERT
+# on the table.
+Switching to connection 'default'
+select get_lock("bug41688_lock_1", 100);
+get_lock("bug41688_lock_1", 100)
+1
+Switching to connection 'addcon1'
+insert into t1 select count(*) * get_lock("bug41688_lock_1", 100) from t1;;
+Switching to connection 'addcon2'
+# This statement should not get blocked or produce warnings in error log
+insert into t1 values (get_lock("bug41688_lock_2", 100));;
+Switching to connection 'default'
+# Allow statement in 'addcon1' to proceed
+select release_lock("bug41688_lock_1");
+release_lock("bug41688_lock_1")
+1
+Switching to connection 'addcon1'
+select release_lock("bug41688_lock_1");
+release_lock("bug41688_lock_1")
+1
+Switching to connection 'addcon3'
+# Allow statement in 'addcon2' to proceed
+select release_lock("bug41688_lock_2");
+release_lock("bug41688_lock_2")
+1
+Switching to connection 'addcon2'
+select release_lock("bug41688_lock_2");
+release_lock("bug41688_lock_2")
+1
+Switching to connection 'default'
+drop table t1;

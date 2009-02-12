@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -163,7 +163,7 @@ public:
 	static void		release(void* block);
 	static void		validate(void *object);
 	static void		validateBlock (void *object);
-	
+	static int		blockSize(void *object);
 };
 
 #endif

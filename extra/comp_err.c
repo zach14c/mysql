@@ -58,6 +58,8 @@
 #include <sys/stat.h>
 #ifndef _WIN32
 #include <unistd.h>
+#else
+#include <direct.h> /* mkdir */
 #endif
 
 #include <errno.h>
@@ -84,7 +86,7 @@ static char *NAMEFILE= (char*) "mysqld_ername.h";
 static char *STATEFILE= (char*) "sql_state.h";
 static char *TXTFILE= (char*) "../sql/share/errmsg.txt";
 static char *DATADIRECTORY= (char*) "../sql/share/";
-static char *charsets_dir= DEFAULT_CHARSET_DIR;
+static char *charsets_dir= (char*) DEFAULT_CHARSET_DIR;
 static int debug= 0;
 
 #define string_eq(_STR1, _STR2) (strcmp(_STR1, _STR2) == 0)
@@ -796,7 +798,7 @@ static unsigned long checksum_format_specifier(const char* msg)
       case 'u':
       case 'x':
       case 's':
-        chksum= crc32(chksum, start, p - start);
+        chksum= crc32(chksum, start, (uInt)(p - start));
         start= 0; /* Not in format specifier anymore */
         break;
 

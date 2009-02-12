@@ -109,8 +109,8 @@ static int tina_init_func(void *p)
 
   tina_hton= (handlerton *)p;
   pthread_mutex_init(&tina_mutex,MY_MUTEX_INIT_FAST);
-  (void) hash_init(&tina_open_tables,system_charset_info,32,0,0,
-                   (hash_get_key) tina_get_key,0,0);
+  (void) my_hash_init(&tina_open_tables,system_charset_info,32,0,0,
+                      (my_hash_get_key) tina_get_key,0,0);
   tina_hton->state= SHOW_OPTION_YES;
   tina_hton->db_type= DB_TYPE_CSV_DB;
   tina_hton->create= tina_create_handler;
@@ -121,7 +121,7 @@ static int tina_init_func(void *p)
 
 static int tina_done_func(void *p)
 {
-  hash_free(&tina_open_tables);
+  my_hash_free(&tina_open_tables);
   pthread_mutex_destroy(&tina_mutex);
 
   return 0;
@@ -146,9 +146,9 @@ static TINA_SHARE *get_share(const char *table_name, TABLE *table)
     If share is not present in the hash, create a new share and
     initialize its members.
   */
-  if (!(share=(TINA_SHARE*) hash_search(&tina_open_tables,
-                                        (uchar*) table_name,
-                                       length)))
+  if (!(share=(TINA_SHARE*) my_hash_search(&tina_open_tables,
+                                           (uchar*) table_name,
+                                           length)))
   {
     if (!my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
                          &share, sizeof(*share),
@@ -376,7 +376,7 @@ static int free_share(TINA_SHARE *share)
       share->tina_write_opened= FALSE;
     }
 
-    hash_delete(&tina_open_tables, (uchar*) share);
+    my_hash_delete(&tina_open_tables, (uchar*) share);
     thr_lock_delete(&share->lock);
     pthread_mutex_destroy(&share->mutex);
     my_free((uchar*) share, MYF(0));
@@ -1686,10 +1686,10 @@ int ha_tina::check(THD* thd, HA_CHECK_OPT* check_opt)
 bool ha_tina::check_if_incompatible_data(HA_CREATE_INFO *info,
 					   uint table_changes)
 {
-  if (table_changes == IS_EQUAL_NO)  
+  if (table_changes == IS_EQUAL_NO)
     return COMPATIBLE_DATA_NO;
   else
-    return COMPATIBLE_DATA_YES;    
+    return COMPATIBLE_DATA_YES;
 }
 
 struct st_mysql_storage_engine csv_storage_engine=

@@ -102,7 +102,6 @@ public:
 	volatile int32	activeLocks;
 	Sync			*locks;
 	Sync			*lockPending;
-	SyncWait		*syncWait;
 	bool			marked;
 	int				pageMarks;
 	int				eventNumber;		// for debugging

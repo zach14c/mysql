@@ -1,0 +1,5 @@
+*** Bug #33720 ***
+SET @@storage_engine = 'Falcon';
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(a INT) TABLESPACE FALCON_TEMPORARY;
+ERROR HY000: Cannot create non-temporary table 'T1' in 'FALCON_TEMPORARY' tablespace.

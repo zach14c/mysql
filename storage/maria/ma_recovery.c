@@ -435,7 +435,7 @@ err:
     delete_all_transactions();
 end:
   error_handler_hook= save_error_handler_hook;
-  hash_free(&all_dirty_pages);
+  my_hash_free(&all_dirty_pages);
   bzero(&all_dirty_pages, sizeof(all_dirty_pages));
   my_free(dirty_pages_pool, MYF(MY_ALLOW_ZERO_PTR));
   dirty_pages_pool= NULL;
@@ -2534,7 +2534,7 @@ static uint end_of_redo_phase(my_bool prepare_for_undo_phase)
   char llbuf[22];
   LSN addr;
 
-  hash_free(&all_dirty_pages);
+  my_hash_free(&all_dirty_pages);
   /*
     hash_free() can be called multiple times probably, but be safe if that
     changes
@@ -3043,10 +3043,10 @@ static LSN parse_checkpoint_record(LSN lsn)
 
   ptr+= 8;
   tprint(tracef, "%lu dirty pages\n", (ulong) nb_dirty_pages);
-  if (hash_init(&all_dirty_pages, &my_charset_bin, (ulong)nb_dirty_pages,
-                offsetof(struct st_dirty_page, file_and_page_id),
-                sizeof(((struct st_dirty_page *)NULL)->file_and_page_id),
-                NULL, NULL, 0))
+  if (my_hash_init(&all_dirty_pages, &my_charset_bin, (ulong)nb_dirty_pages,
+                   offsetof(struct st_dirty_page, file_and_page_id),
+                   sizeof(((struct st_dirty_page *)NULL)->file_and_page_id),
+                   NULL, NULL, 0))
     return LSN_ERROR;
   dirty_pages_pool=
     (struct st_dirty_page *)my_malloc((size_t)nb_dirty_pages *
