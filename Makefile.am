@@ -134,6 +134,10 @@ smoke:
 	cd mysql-test ; \
 	    @PERL@ ./mysql-test-run.pl --do-test=s
 
+smoke:
+	cd mysql-test ; \
+	    @PERL@ ./mysql-test-run.pl --do-test=s
+
 test-full:	test test-nr test-ps
 
 test-force:
