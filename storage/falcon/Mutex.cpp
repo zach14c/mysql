@@ -21,6 +21,8 @@
 #undef ASSERT
 #endif
 
+#include <stdio.h>
+
 #include "Engine.h"
 #include "Mutex.h"
 
@@ -40,8 +42,8 @@ Mutex::Mutex()
 #endif
 
 #ifdef _PTHREADS
-	//int ret = 
-	pthread_mutex_init (&mutex, NULL);
+	int ret = pthread_mutex_init (&mutex, NULL);
+	ASSERT(ret == 0);
 #endif
 
 #ifdef SOLARIS_MT
@@ -77,6 +79,16 @@ void Mutex::lock()
 
 #ifdef _PTHREADS
 	int ret = pthread_mutex_lock (&mutex);
+
+	// The following code is added to get more information about why
+	// the call to pthread_mutex_lock fails in some out-of-memory situations,
+	// see bug 40155.
+
+	if (ret != 0)
+		{
+		fprintf(stderr, "[Falcon] Error: Mutex::lock: pthread_mutex_lock returned errno %d\n", ret);
+		fflush(stderr);
+		}
 	ASSERT(ret == 0);
 #endif
 
