@@ -406,9 +406,13 @@ void Transaction::rollback()
 	firstRecord = NULL;
 	syncRec.unlock();
 
+	Sync syncSP(&syncSavepoints, "Transaction::rollback");
+	syncSP.lock(Shared);
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->backloggedRecords)
 			database->backLog->rollbackRecords(savePoint->backloggedRecords, this);
+
+	syncSP.unlock();
 
 	if (backloggedRecords)
 		database->backLog->rollbackRecords(backloggedRecords, this);
@@ -519,11 +523,16 @@ void Transaction::chillRecords()
 
 	// The idea is that if savepoint N is rolled back, then chilled records attached to
 	// savepoints >= N	are ignored and not committed to the database.
-	
+
+	Sync syncSP(&syncSavepoints, "Transaction::rollback");
+	syncSP.lock(Shared);
+
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->id != curSavePointId)
 			savePoint->setIncludedSavepoint(curSavePointId);
-	
+
+	syncSP.unlock();
+
 	if (database->lowMemory)
 		backlogRecords();
 
@@ -651,9 +660,14 @@ void Transaction::removeRecordNoLock(RecordVersion *record)
 	record->nextInTrans = NULL;
 	record->transaction = NULL;
 
+	Sync syncSP(&syncSavepoints, "Transaction::rollback");
+	syncSP.lock(Shared);
+
 	for (SavePoint *savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->records == &record->nextInTrans)
 			savePoint->records = ptr;
+
+	syncSP.unlock();
 
 	if (chillPoint == &record->nextInTrans)
 		chillPoint = ptr;
@@ -1041,15 +1055,11 @@ void Transaction::release()
 
 int Transaction::createSavepoint()
 {
-	Sync sync(&syncSavepoints, "Transaction::createSavepoint");
 	SavePoint *savePoint;
+	Sync sync(&syncSavepoints, "Transaction::createSavepoint");
+	sync.lock(Exclusive);
 	
 	ASSERT((savePoints || freeSavePoints) ? (savePoints != freeSavePoints) : true);
-	
-	// System transactions require an exclusive lock for concurrent access
-	
-	if (systemTransaction)
-		sync.lock(Exclusive);
 	
 	if ( (savePoint = freeSavePoints) )
 		freeSavePoints = savePoint->next;
@@ -1073,34 +1083,31 @@ void Transaction::releaseSavepoint(int savePointId)
 {
 	//validateRecords();
 	Sync sync(&syncSavepoints, "Transaction::releaseSavepoint");
+	sync.lock(Exclusive);
 
-	// System transactions require an exclusive lock for concurrent access
+	// The savePoints list goes from newest to oldest within this transaction.
 
-	if (systemTransaction)
-		sync.lock(Exclusive);
-	
 	for (SavePoint **ptr = &savePoints, *savePoint; (savePoint = *ptr); ptr = &savePoint->next)
 		if (savePoint->id == savePointId)
 			{
-			
 			// Savepoints are linked in descending order, so the next lower id is next on the list
-			
+
 			int nextLowerSavePointId = (savePoint->next) ? savePoint->next->id : 0;
 			*ptr = savePoint->next;
-			
-			// If we have backed logged records, merge them in to the previous savepoint or the transaction itself
-			
+
+			// If we have backlogged records, merge them in to the 
+			// previous savepoint or the transaction itself
+
 			if (savePoint->backloggedRecords)
 				{
 				SavePoint *nextSavePoint = savePoint->next;
-				
+
 				if (nextSavePoint)
 					{
 					if (nextSavePoint->backloggedRecords)
 						nextSavePoint->backloggedRecords->orBitmap(savePoint->backloggedRecords);
 					else
 						nextSavePoint->backloggedRecords = savePoint->backloggedRecords;
-					
 					}
 				else
 					{
@@ -1109,17 +1116,22 @@ void Transaction::releaseSavepoint(int savePointId)
 					else
 						backloggedRecords = savePoint->backloggedRecords;
 					}
-					
+
 				savePoint->backloggedRecords = NULL;
 				}
-					
+
 			if (savePoint->savepoints)
 				savePoint->clear();
 
-			// This savepoint is no longer needed, so commit pending record versions to the next pending savepoint
-			// Scavenge prior record versions having 1) the same transaction and 2) savepoint >= the savepoint being released
-			
-			for (RecordVersion *record = *savePoint->records; record && record->savePointId == savePointId; record = record->nextInTrans)
+			// This savepoint is no longer needed, so commit pending 
+			// record versions to the next pending savepoint
+			// Scavenge prior record versions having 
+			// 1) the same transaction and 
+			// 2) savepoint >= the savepoint being released
+
+			for (RecordVersion *record = *savePoint->records; 
+				 record && record->savePointId == savePointId; 
+				 record = record->nextInTrans)
 				{
 				record->savePointId = nextLowerSavePointId;
 				record->scavengeSavepoint(transactionId, nextLowerSavePointId);
@@ -1138,22 +1150,19 @@ void Transaction::releaseSavepoint(int savePointId)
 
 void Transaction::releaseSavepoints(void)
 {
-	Sync sync(&syncSavepoints, "Transaction::releaseSavepoints");
 	SavePoint *savePoint;
+	Sync sync(&syncSavepoints, "Transaction::releaseSavepoints");
+	sync.lock(Exclusive);
 	
 	// System transactions require an exclusive lock for concurrent access
 
-	if (systemTransaction)
-		sync.lock(Exclusive);
-	
-	
 	while ( (savePoint = savePoints) )
 		{
 		savePoints = savePoint->next;
-		
+
 		if (savePoint->savepoints)
 			savePoint->clear();
-			
+
 		if (savePoint < localSavePoints || savePoint >= localSavePoints + LOCAL_SAVE_POINTS)
 			delete savePoint;
 		}
@@ -1169,17 +1178,13 @@ void Transaction::releaseSavepoints(void)
 
 void Transaction::rollbackSavepoint(int savePointId)
 {
+	SavePoint *savePoint;
 	//validateRecords();
 	Sync sync(&syncSavepoints, "Transaction::rollbackSavepoint");
-	SavePoint *savePoint;
-
-	// System transactions require an exclusive lock for concurrent access
-
-	if (systemTransaction)
-		sync.lock(Exclusive);
+	sync.lock(Exclusive);
 
 	// Be sure the target savepoint is valid before rolling them back.
-	
+
 	for (savePoint = savePoints; savePoint; savePoint = savePoint->next)
 		if (savePoint->id <= savePointId)
 			break;
@@ -1483,28 +1488,31 @@ void Transaction::releaseDeferredIndexes(Table* table)
 void Transaction::backlogRecords(void)
 {
 	SavePoint *savePoint = savePoints;
-	
+
 	for (RecordVersion *record = lastRecord, *prior; record; record = prior)
 		{
 		prior = record->prevInTrans;
-		
+
 		if (!record->hasRecord(false))
 			{
+			Sync syncSP(&syncSavepoints, "Transaction::rollback");
+			syncSP.lock(Shared);
+
 			if (savePoints)
 				for (; savePoint && record->savePointId < savePoint->id; savePoint = savePoint->next)
 					;	
-									
+
 			if (savePoint)
 				savePoint->backlogRecord(record);
 			else
 				{
 				if (!backloggedRecords)
 					backloggedRecords = new Bitmap;
-				
+
 				int32 backlogId = record->format->table->backlogRecord(record);
 				backloggedRecords->set(backlogId);
 				}
-			
+
 			removeRecord(record);
 			}
 		}
