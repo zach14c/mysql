@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright 2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -11,24 +11,25 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+*/
 
+#ifndef SRL_INVENTORY_PAGE_H
+#define SRL_INVENTORY_PAGE_H
 
-// Blob.cpp: implementation of the Blob class.
-//
-//////////////////////////////////////////////////////////////////////
+#include "SerialLogRecord.h"
+#include "Dbb.h"
 
-#include <stdio.h>
-#include <string.h>
-#include "Engine.h"
-#include "Blob.h"
+class SRLInventoryPage : public SerialLogRecord
+{
+public:
+	virtual void pass2();
+	void print();
+	virtual void read();
+	void append(Dbb *dbb, int32 pageNumber);
+	SRLInventoryPage();
+	virtual ~SRLInventoryPage();
+	int32	pageNumber;
 
-#ifdef _DEBUG
-#undef THIS_FILE
-static const char THIS_FILE[]=__FILE__;
+};
 #endif
-
-//////////////////////////////////////////////////////////////////////
-// Construction/Destruction
-//////////////////////////////////////////////////////////////////////
-

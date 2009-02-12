@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006 MySQL AB, 2008 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -36,15 +36,15 @@ class RecordSection
 public:
 	virtual bool retireSections(Table * table, int id) = 0;
 	virtual bool inactive() = 0;
-	virtual		~RecordSection();
+	virtual      ~RecordSection();
 	
-	virtual	Record* fetch (int32 id) = 0;
-	virtual	bool    store (Record *record, Record *prior, int32 id, RecordSection **parentPtr) = 0;
-	virtual	int     retireRecords(Table *table, int base, RecordScavenge *recordScavenge) = 0;
-	virtual	void    inventoryRecords(RecordScavenge* recordScavenge) = 0;
-	virtual	int     countActiveRecords() = 0;
-	virtual	bool    anyActiveRecords() = 0;
-	virtual	int     chartActiveRecords(int *chart) = 0;
+	virtual Record* fetch (int32 id) = 0;
+	virtual bool    store (Record *record, Record *prior, int32 id, RecordSection **parentPtr) = 0;
+	virtual void    pruneRecords (Table *table, int base, RecordScavenge *recordScavenge) = 0;
+	virtual void    retireRecords(Table *table, int base, RecordScavenge *recordScavenge) = 0;
+	virtual int     countActiveRecords() = 0;
+	virtual bool    anyActiveRecords() = 0;
+	virtual int     chartActiveRecords(int *chart) = 0;
 
 	int32			base;
 };

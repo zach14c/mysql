@@ -1,5 +1,10 @@
 --source include/have_falcon.inc
 
+# If you use a "special" character set (such as ucs2, utf8, utf32), 
+# then please source an appropriate include file to avoid test failure in 
+# case of missing support for extra character sets in the binary, like this:
+# --source include/have_ucs2.inc
+
 #
 # Bug #<xyz>: <Bug description>
 #

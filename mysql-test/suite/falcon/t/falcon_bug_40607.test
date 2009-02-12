@@ -1,8 +1,9 @@
 --source include/have_falcon.inc
+
 #
-# Bug #29246: Falcon: searches fail if prefix index on latin1_german2_ci column
+# Bug #40607: Falcon unsigned indexes broken
 #
---echo *** Bug #29246 ***
+--echo *** Bug #40607 ***
 
 # ----------------------------------------------------- #
 # --- Initialisation                                --- #
@@ -14,14 +15,14 @@ eval SET @@storage_engine = $engine;
 DROP TABLE IF EXISTS t1;
 --enable_warnings
 
-CREATE TABLE t1 (a varchar(2) CHARACTER SET latin1 COLLATE latin1_german2_ci);
-INSERT INTO t1 VALUES (0xdc);
-CREATE INDEX i1 ON t1 (a(1));
-
 # ----------------------------------------------------- #
 # --- Test                                          --- #
 # ----------------------------------------------------- #
-SELECT count(*) FROM t1 WHERE a = 'ue';
+CREATE TABLE t1 (id decimal unsigned, key (id));
+INSERT INTO t1 VALUES (5),(6),(7), (8), (9);
+SELECT * FROM t1 WHERE id < 7;
+SELECT * FROM t1 WHERE id = 7;
+SELECT * FROM t1 WHERE id > 7;
 
 # ----------------------------------------------------- #
 # --- Check                                         --- #
@@ -31,4 +32,4 @@ SELECT count(*) FROM t1;
 # ----------------------------------------------------- #
 # --- Final cleanup                                 --- #
 # ----------------------------------------------------- #
-DROP TABLE t1;
+DROP TABLE t1;											

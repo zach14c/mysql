@@ -321,6 +321,7 @@ static void check_locks(THR_LOCK *lock, const char *where,
     }
     if (found_errors != old_found_errors)
     {
+      fflush(stderr);
       DBUG_PRINT("error",("Found wrong lock"));
     }
   }

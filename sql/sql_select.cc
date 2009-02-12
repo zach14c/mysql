@@ -2647,14 +2647,19 @@ JOIN::exec()
 				     tmp_fields_list2, tmp_all_fields2, 
 				     fields_list.elements, tmp_all_fields1))
 	  DBUG_VOID_RETURN;
-	curr_join->tmp_fields_list2= tmp_fields_list2;
-	curr_join->tmp_all_fields2= tmp_all_fields2;
+
+        if (curr_join != this)
+        {
+          curr_join->tmp_fields_list2= tmp_fields_list2;
+          curr_join->tmp_all_fields2= tmp_all_fields2;
+        }
+
       }
       curr_fields_list= &curr_join->tmp_fields_list2;
       curr_all_fields= &curr_join->tmp_all_fields2;
       curr_join->set_items_ref_array(items2);
       curr_join->tmp_table_param.field_count+= 
-	curr_join->tmp_table_param.sum_func_count;
+      curr_join->tmp_table_param.sum_func_count;
       curr_join->tmp_table_param.sum_func_count= 0;
     }
     if (curr_tmp_table->distinct)

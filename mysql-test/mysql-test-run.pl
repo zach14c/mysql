@@ -268,7 +268,7 @@ sub main {
        "bzr_mysql-6.0-ndb"              => "ndb_team,rpl_ndb_big,ndb_binlog",
        "bzr_mysql-6.0-falcon"           => "falcon_team",
        "bzr_mysql-6.0-falcon-team"      => "falcon_team",
-       "bzr_mysql-6.0-falcon-wlad"      => "falcon_team",
+       "bzr_mysql-6.0-falcon-ann"       => "falcon_team",
        "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
        "bzr_mysql-6.0-falcon-kevin"     => "falcon_team",
       );
@@ -2012,7 +2012,7 @@ sub setup_vardir() {
       mtr_error("The destination for symlink $opt_vardir does not exist")
 	if ! -d readlink($opt_vardir);
     }
-    elsif ( $opt_mem )
+    elsif ( $opt_mem && !IS_WINDOWS)
     {
       # Runinng with "var" as a link to some "memory" location, normally tmpfs
       mtr_verbose("Creating $opt_mem");
@@ -3485,6 +3485,7 @@ sub extract_warning_lines ($) {
      # qr/^Warning:|mysqld: Warning|\[Warning\]/,
      # qr/^Error:|\[ERROR\]/,
      qr/^Warning:|mysqld: Warning/,
+     qr/^Warning at/,
      qr/^Error:/,
      qr/^==.* at 0x/,
      qr/InnoDB: Warning|InnoDB: Error/,
