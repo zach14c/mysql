@@ -68,6 +68,7 @@ public:
 	uint64		retireableSpace;
 	uint64		unScavengeableRecords;
 	uint64		unScavengeableSpace;
+	uint64		maxChainLength;
 	uint64		ageGroups[AGE_GROUPS];
 	uint64		veryOldRecords;
 	uint64		veryOldRecordSpace;

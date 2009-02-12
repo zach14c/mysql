@@ -966,7 +966,7 @@ void Cache::ioThread(void)
 			if (!flushing) 
 				{
 				// Check whether we have been requested to exit the IO thread.
-				// Note that is is neccessary to hold the flush lock when
+				// Note that this is neccessary to hold the flush lock when
 				// checking the shutdown status to avoid that a new 
 				// flush request arriving just before the shutdown command is
 				// overlooked.

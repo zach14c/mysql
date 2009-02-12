@@ -105,7 +105,6 @@ void SRLDeleteIndex::redo()
 	log->bumpIndexIncarnation(indexId, tableSpaceId, objDeleted);
 }
 
-
 void SRLDeleteIndex::print()
 {
 	logPrint("Delete Index %d\n", indexId);

@@ -531,6 +531,7 @@ Record* Table::fetchNext(int32 start)
 
 				if (record->state == recInserting)
 					{
+					record->release();
 					recordNumber = bitNumber + 1;
 					continue;
 					}
@@ -1902,7 +1903,7 @@ void Table::pruneRecords(RecordScavenge *recordScavenge)
 	if (!records)
 		return;
 
-	Sync syncObj(&syncObject, "Table::retireRecords");
+	Sync syncObj(&syncObject, "Table::pruneRecords");
 	syncObj.lock(Shared);
 
 	if (records)
@@ -3448,47 +3449,54 @@ void Table::checkAncestor(Record* current, Record* oldRecord)
 
 Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usingIndex)
 {
-	Record *record = source;
-	int recordNumber = record->recordNumber;
+	//  Find the record that will be locked
+
+	int recordNumber = source->recordNumber;
 
 	// If we already have this locked or updated, get the active version
 
-	if (record->getTransaction() == transaction)
+	if (source->getTransaction() == transaction)
 		{
-		if (record->state == recDeleted)
+		if (source->state == recDeleted)
 			{
-			record->release();
+			source->release();
 			
 			return NULL;
 			}
 
-		if (record->state != recLock)
-			return record;
+		if (source->state != recLock)
+			return source;
 
-		Sync syncPrior(getSyncPrior(record), "Table::fetchForUpdate");
+		// The source record (base record) is a lockRecord.
+		// There is only one lock record.  It is at the savepoint 
+		// where it was locked. The prior record is the real record.
+
+		Sync syncPrior(getSyncPrior(source), "Table::fetchForUpdate");
 		syncPrior.lock(Shared);
 	
-		Record *prior = record->getPriorVersion();
+		Record *prior = source->getPriorVersion();
 		prior->addRef();
-		record->release();
+		source->release();
 
 		return prior;
 		}
+
+	// The record number is not currently locked.
 
 	for (;;)
 		{
 		// Try to avoid getting a lock if there is no way we will be updating this record.
 
-		if (!transaction->needToLock(record))
+		if (!transaction->needToLock(source))
 			{
-			record->release();
+			source->release();
 
 			return NULL;
 			}
 
 		// We may need to lock the record
 
-		State state = transaction->getRelativeState(record, WAIT_IF_ACTIVE);
+		State state = transaction->getRelativeState(source, WAIT_IF_ACTIVE);
 
 		switch (state)
 			{
@@ -3496,23 +3504,23 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 				// CommittedInvisible only happens for consistent read.
 
 				ASSERT(IS_CONSISTENT_READ(transaction->isolationLevel));
-				record->release();
+				source->release();
 				Log::debug("Table::fetchForUpdate: Update Conflict: TransId=%d, RecordNumber=%d, Table %s.%s\n", 
-					transaction->transactionId, record->recordNumber, schemaName, name);
+					transaction->transactionId, source->recordNumber, schemaName, name);
 				throw SQLError(UPDATE_CONFLICT, "update conflict in table %s.%s", schemaName, name);
 
 			case CommittedVisible:
 				{
-				if (record->state == recDeleted)
+				if (source->state == recDeleted)
 					{
-					record->release();
+					source->release();
 
 					return NULL;
 					}
 
-				if (record->state == recChilled	&& !record->thaw())
+				if (source->state == recChilled	&& !source->thaw())
 					{
-					record->release();
+					source->release();
 
 					return NULL;
 					}
@@ -3523,44 +3531,45 @@ Record* Table::fetchForUpdate(Transaction* transaction, Record* source, bool usi
 					Log::debug("Table::fetchForUpdate: TransactionId=%d, isolationLevel=%d, recordNumber=%d\n", 
 					           transaction->transactionId, transaction->isolationLevel, recordNumber);
 
-				RecordVersion *recordVersion = allocRecordVersion(NULL, transaction, record);
-				recordVersion->state = recLock;
-				
-				if (insertIntoTree(recordVersion, record, recordNumber))
-					{
-					transaction->addRecord(recordVersion);
-					recordVersion->release();
+				RecordVersion *lockRecord = allocRecordVersion(NULL, transaction, source);
+				lockRecord->state = recLock;
 
-					ASSERT(record->useCount >= 2);
-						
-					return record;
+				if (insertIntoTree(lockRecord, source, recordNumber))
+					{
+					transaction->addRecord(lockRecord);
+					lockRecord->release();
+
+					ASSERT(source->useCount >= 2);
+
+					return source;
 					}
-		
+
 #ifdef CHECK_RECORD_ACTIVITY
-				recordVersion->active = false;
+				lockRecord->active = false;
 #endif
-				recordVersion->release();
+				lockRecord->release();
 				}
 				break;
-			
+
 			case Deadlock:
-				record->release();
+				source->release();
 				throw SQLError(DEADLOCK, "Deadlock on table %s.%s, tid %d", schemaName, name, transaction->transactionId);
-				
+
 			case WasActive:
 			case RolledBack:
-				break;
-				
+				break;  // need to re-fetch the base record
+
 			default:
-				record->release();
+				source->release();
 				Log::debug("Table::fetchForUpdate: unexpected state %d\n", state);
 				throw SQLError(RUNTIME_ERROR, "unexpected transaction state %d", state);
 			}
-			
-		record->release();
-		record = fetch(recordNumber);
-		
-		if (record == NULL)
+
+		source->release();
+
+		source = fetch(recordNumber);
+
+		if (source == NULL)
 			return NULL;	
 		}
 }
