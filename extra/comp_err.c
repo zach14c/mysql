@@ -86,7 +86,7 @@ static char *NAMEFILE= (char*) "mysqld_ername.h";
 static char *STATEFILE= (char*) "sql_state.h";
 static char *TXTFILE= (char*) "../sql/share/errmsg.txt";
 static char *DATADIRECTORY= (char*) "../sql/share/";
-static char *charsets_dir= DEFAULT_CHARSET_DIR;
+static char *charsets_dir= (char*) DEFAULT_CHARSET_DIR;
 static int debug= 0;
 
 #define string_eq(_STR1, _STR2) (strcmp(_STR1, _STR2) == 0)
