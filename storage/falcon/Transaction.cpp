@@ -396,7 +396,7 @@ void Transaction::rollback()
 		record->nextInTrans = NULL;
 
 		if (record->state == recLock)
-			record->format->table->unlockRecord(record);
+			record->format->table->unlockRecord(record, 0);
 		else
 			record->rollback(this);
 		
@@ -1304,7 +1304,7 @@ void Transaction::releaseRecordLocks(void)
 	for (RecordVersion *record = firstRecord; record; record = record->nextInTrans)
 		if (record->state == recLock)
 			{
-			record->format->table->unlockRecord(record);
+			record->format->table->unlockRecord(record, 0);
 
 			// Don't do  removeRecord(record); now.  Other threads might be 
 			// pointing to it and need the transaction pointer to determine 

@@ -628,7 +628,7 @@ void StorageTable::unlockRow(void)
 {
 	if (recordLocked)
 		{
-		share->table->unlockRecord(record->recordNumber);
+		share->table->unlockRecord(record->recordNumber, storageConnection->verbMark);
 		recordLocked = false;
 		}
 }

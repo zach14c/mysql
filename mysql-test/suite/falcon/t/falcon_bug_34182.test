@@ -1,0 +1,169 @@
+--source include/have_falcon.inc
+#--disable_abort_on_error
+#
+# Bug #34182: SELECT ... FOR UPDATE does not lock when in subquery
+#
+--echo *** Bug #34182 ***
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+--echo # Initialisation
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+--enable_warnings
+
+# ----------------------------------------------------- #
+# --- Test #1 - Double locking in a subselect       --- #
+# ----------------------------------------------------- #
+--echo # Test #1 - Double locking in a subselect
+CREATE TABLE t1 (id INTEGER primary key, x INTEGER) ENGINE falcon;
+CREATE TABLE t2 (b integer, a integer) ENGINE falcon;
+INSERT INTO t1 VALUES (1, 1), (222, 222);
+INSERT INTO t2 VALUES (1, 10), (2, 20), (3, 30);
+SELECT * FROM t1;
+SELECT * FROM t2;
+
+--echo # Following UPDATE should leave record id=1 locked in T1.
+BEGIN;
+UPDATE t2 SET a = 100 WHERE b = (SELECT x FROM t1 WHERE id = b FOR UPDATE);
+
+
+--echo # Establish connection conn1 (user = root)
+connect (conn1,localhost,root,,);
+connection conn1;
+
+--echo # conn1 should be able to make updates to t1 id=222
+UPDATE t1 SET x = 2222 WHERE id = 222;  
+
+--echo # conn1 should not be able to make updates to t1 id=1
+--send  UPDATE t1 SET x = 1111 WHERE id = 1
+
+--echo # Connect to default and COMMIT
+connection default;
+--real_sleep 1
+COMMIT;
+
+--echo # Connect to conn1 and reap the UPDATE
+connection conn1;
+--reap
+--echo # Connect to default and prepare for Test #2
+connection default;
+DROP TABLE t1;
+DROP TABLE t2;
+
+# ----------------------------------------------------- #
+# --- Test #2 - Multiple locking within savepoints  --- #
+# ----------------------------------------------------- #
+--echo # Test #2 - Multiple locking within savepoints
+CREATE TABLE t1 (id INTEGER primary key, x INTEGER) ENGINE falcon;
+INSERT INTO t1 VALUES (1, 1), (2, 2), (3, 3);
+BEGIN;
+SELECT * FROM t1 WHERE id = 1 FOR UPDATE;
+SAVEPOINT SP1;
+SELECT * FROM t1 WHERE id <= 2 FOR UPDATE;
+SAVEPOINT SP2;
+SELECT * FROM t1 WHERE id <= 3 FOR UPDATE;
+
+--echo # This update will fetch all 3 records for update, 
+--echo # replace the lock on id=3, and then attempt to unlock
+--echo # both id=1 and id=2.  But they should remain locked.
+UPDATE t1 SET x = 333 WHERE x = 3;
+SELECT * FROM t1;
+
+
+--echo # conn1 should not be able to make updates to t1 id=1
+connection conn1;
+--send  UPDATE t1 SET x = 1111 WHERE id = 1
+
+--echo # Establish connection conn2 (user = root)
+connect (conn2,localhost,root,,);
+connection conn2;
+--echo # conn2 should not be able to make updates to t1 id=2
+--send  UPDATE t1 SET x = 2222 WHERE id = 2
+
+--echo # Connect to default and ROLLBACK TO SP1
+connection default;
+--real_sleep 1
+ROLLBACK;
+--real_sleep 1
+SELECT * FROM t1;
+
+# ----------------------------------------------------- #
+# --- Check Results For Test 2                      --- #
+# ----------------------------------------------------- #
+--echo # Check Results For Test 2
+--echo # Check Results
+--echo # Connect to conn1 and reap
+connection conn1;
+--reap
+SELECT * FROM t1;
+
+--echo # Connect to conn2 and reap
+connection conn2;
+--reap
+SELECT * FROM t1;
+
+
+# ----------------------------------------------------- #
+# --- Test #3 - More locking within savepoints      --- #
+# ----------------------------------------------------- #
+--echo # Test #3 - Multiple locking within savepoints
+--echo # Connect to default and lock records again
+connection default;
+BEGIN;
+SELECT * FROM t1 WHERE id = 1 FOR UPDATE;
+SAVEPOINT SP1;
+SELECT * FROM t1 WHERE id <= 2 FOR UPDATE;
+SAVEPOINT SP2;
+SELECT * FROM t1 WHERE id <= 3 FOR UPDATE;
+UPDATE t1 SET x = 333 WHERE x = 3;
+SELECT * FROM t1;
+ROLLBACK TO SP1;
+SELECT * FROM t1;
+
+
+--echo # conn1 should not be able to make updates to t1 id=1
+connection conn1;
+--send  UPDATE t1 SET x = 111111 WHERE id = 1
+
+--echo # conn2 should be able to make updates to t1 id=2
+connection conn2;
+UPDATE t1 SET x = 222222 WHERE id = 2;
+
+
+--echo # Connect to default and commit;
+connection default;
+--real_sleep 1
+COMMIT;
+--real_sleep 1
+SELECT * FROM t1;
+
+
+# ----------------------------------------------------- #
+# --- Check Results For Test 3                      --- #
+# ----------------------------------------------------- #
+--echo # Check Results
+--echo # Connect to conn1 and reap
+connection conn1;
+--reap
+SELECT * FROM t1;
+
+--echo # Connect to conn2
+connection conn2;
+SELECT * FROM t1;
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+--echo # Final cleanup
+connection default;
+disconnect conn1;
+disconnect conn2;
+
+DROP TABLE t1;
+

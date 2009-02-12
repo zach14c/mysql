@@ -3393,34 +3393,39 @@ void Table::waitForWriteComplete()
 	database->waitForWriteComplete(this);
 }
 
-void Table::unlockRecord(int recordNumber)
+void Table::unlockRecord(int recordNumber, int verbMark)
 {
 	Record *record = fetch(recordNumber);
 
 	if (record)
 		{
 		if (record->state == recLock)
-			unlockRecord((RecordVersion*) record);
-		
+			unlockRecord((RecordVersion*) record, verbMark);
+
 		record->release();
 		}
 }
 
-void Table::unlockRecord(RecordVersion* record)
+void Table::unlockRecord(RecordVersion* record, int verbMark)
 {
-	//int uc = record->useCount;
-	ASSERT(record->getPriorVersion());
+	if (record->state != recLock)
+		return;
 
 	// A lock record that has superceded=true is already unlocked
 
-	if ((record->state == recLock) && !record->isSuperceded())
-		{
-		Record *prior = record->getPriorVersion();
-		if (insertIntoTree(prior, record, record->recordNumber))
-			record->setSuperceded(true);
-		else
-			Log::debug("Table::unlockRecord: record lock not in record tree\n");
-		}
+	if (record->isSuperceded())
+		return;
+
+	// Only unlock records at the current savepoint
+
+	if (record->savePointId < verbMark)
+		return;
+
+	Record *prior = record->getPriorVersion();
+	if (insertIntoTree(prior, record, record->recordNumber))
+		record->setSuperceded(true);
+	else
+		Log::debug("Table::unlockRecord: record lock not in record tree\n");
 }
 
 void Table::checkAncestor(Record* current, Record* oldRecord)
