@@ -295,8 +295,6 @@ insert into t1 values (1,1);
 lock table t1 read;
 connection: update
 insert delayed into t1 values (2,2);;
-Timeout in wait_condition.inc for select count(*) = 1 from information_schema.processlist
-where command = "Delayed insert" and state = "upgrading lock"
 connection: select
 select * from t1;
 a	b
