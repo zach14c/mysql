@@ -624,6 +624,7 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
   /*
     Open output stream.
    */
+  DEBUG_SYNC(m_thd, "before_backup_open_stream");
   Output_stream *s= new Output_stream(*this, 
                                       &m_path,
                                       with_compression);
@@ -746,7 +747,7 @@ Backup_restore_ctx::prepare_for_restore(String *backupdir,
   /*
     Open input stream.
    */
-
+  DEBUG_SYNC(m_thd, "before_restore_open_stream");
   Input_stream *s= new Input_stream(*this, &m_path);
   m_stream= s;
   
