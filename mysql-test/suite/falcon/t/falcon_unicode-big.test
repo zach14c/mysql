@@ -1,5 +1,6 @@
 --source include/have_falcon.inc
 --source include/big_test.inc
+--source include/have_utf8.inc
 
 #
 # Unicode related tests for Falcon

@@ -24,7 +24,7 @@ target = libmysqlclient_r.la
 target_defs = -DDONT_USE_RAID -DMYSQL_CLIENT @LIB_EXTRA_CCFLAGS@
 LIBS = @LIBS@ @ZLIB_LIBS@ @openssl_libs@
 
-INCLUDES =	-I$(top_builddir)/include -I$(top_srcdir)/include \
+AM_CPPFLAGS =	-I$(top_srcdir)/include \
 		$(openssl_includes) @ZLIB_INCLUDES@
 ## automake barfs if you don't use $(srcdir) or $(top_srcdir) in include
 include $(top_srcdir)/libmysql/Makefile.shared
@@ -42,6 +42,3 @@ link_sources:
 	  done; \
 	done
 	echo timestamp > link_sources
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

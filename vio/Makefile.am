@@ -13,8 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include \
-			$(openssl_includes)
+AM_CPPFLAGS =		-I$(top_srcdir)/include $(openssl_includes)
 LDADD =			@CLIENT_EXTRA_LDFLAGS@ $(openssl_libs) $(yassl_libs)
 pkglib_LIBRARIES =	libvio.a
 
@@ -23,6 +22,3 @@ noinst_HEADERS =	vio_priv.h
 libvio_a_SOURCES =	vio.c viosocket.c viossl.c viosslfactories.c
 
 EXTRA_DIST=		CMakeLists.txt
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

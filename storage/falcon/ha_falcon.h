@@ -126,19 +126,19 @@ public:
 	int				dropIndex(THD* thd, TABLE* alteredTable, HA_CREATE_INFO* createInfo, HA_ALTER_INFO* alterInfo, HA_ALTER_FLAGS* alterFlags);
 
 	void			getDemographics(void);
-	int				createIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId);
-	int				dropIndex(const char *schemaName, const char *tableName, TABLE *table, int indexId, bool online);
-	void			getKeyDesc(TABLE *table, int indexId, StorageIndexDesc *indexInfo);
+	int				createIndex(const char *schemaName, const char *tableName, TABLE *srvTable, int indexId);
+	int				dropIndex(const char *schemaName, const char *tableName, TABLE *srvTable, int indexId, bool online);
+	void			getKeyDesc(TABLE *srvTable, int indexId, StorageIndexDesc *indexInfo);
 	void			startTransaction(void);
 	bool			threadSwitch(THD *newThread);
 	int				threadSwitchError(void);
 	int				error(int storageError);
 	void			freeActiveBlobs(void);
-	int				setIndex(TABLE *table, int indexId);
-	int				setIndexes(TABLE *table);
-	int				remapIndexes(TABLE *table);
-	bool			validateIndexes(TABLE *table, bool exclusiveLock = false);
-	int				genTable(TABLE* table, CmdGen* gen);
+	int				setIndex(TABLE *srvTable, int indexId);
+	int				setIndexes(TABLE *srvTable);
+	int				remapIndexes(TABLE *srvTable);
+	bool			validateIndexes(TABLE *srvTable, bool exclusiveLock = false);
+	int				genTable(TABLE* srvTable, CmdGen* gen);
 	int				genType(Field *field, CmdGen *gen);
 	void			genKeyFields(KEY *key, CmdGen *gen);
 	void			encodeRecord(uchar *buf, bool updateFlag);

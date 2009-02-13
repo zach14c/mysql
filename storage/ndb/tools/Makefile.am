@@ -75,9 +75,6 @@ ndb_select_count_LDFLAGS = @ndb_bin_am_ldflags@
 ndb_restore_LDFLAGS = @ndb_bin_am_ldflags@
 ndb_config_LDFLAGS = @ndb_bin_am_ldflags@
 
-# Don't update the files from bitkeeper
-%::SCCS/s.%
-
 windoze-dsp: \
   ndb_waiter.dsp \
   ndb_drop_table.dsp \
@@ -96,7 +93,7 @@ ndb_waiter.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_waiter
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_waiter_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -108,7 +105,7 @@ ndb_drop_table.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_drop_table
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_drop_table_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -120,7 +117,7 @@ ndb_delete_all.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_delete_all
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_delete_all_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -132,7 +129,7 @@ ndb_desc.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_desc
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_desc_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -144,7 +141,7 @@ ndb_drop_index.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_drop_index
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_drop_index_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -156,7 +153,7 @@ ndb_show_tables.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_show_tables
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_show_tables_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -168,7 +165,7 @@ ndb_select_all.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_select_all
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_select_all_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)
 
@@ -180,6 +177,6 @@ ndb_select_count.dsp: Makefile \
                $(top_srcdir)/storage/ndb/config/win-libraries
 	cat $(top_srcdir)/storage/ndb/config/win-prg.am > $@
 	@$(top_srcdir)/storage/ndb/config/win-name $@ ndb_select_count
-	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(INCLUDES)
+	@$(top_srcdir)/storage/ndb/config/win-includes $@ $(AM_CPPFLAGS)
 	@$(top_srcdir)/storage/ndb/config/win-sources $@ $(ndb_select_count_SOURCES)
 	@$(top_srcdir)/storage/ndb/config/win-libraries $@ LINK $(LDADD)

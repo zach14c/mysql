@@ -64,10 +64,14 @@ save_CPPFLAGS="$CPPFLAGS"
 save_LIBS="$LIBS"
 CPPFLAGS="$ssl_incs $CPPFLAGS"
 LIBS="$LIBS $ssl_libs"
-AC_TRY_LINK([#include <openssl/ssl.h>],
-    [return SSL_library_init();],
+  AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+       [[#include <openssl/ssl.h>]],
+       [[return SSL_library_init();]]
+    )],
     [mysql_ssl_found="yes"],
-    [mysql_ssl_found="no"])
+    [mysql_ssl_found="no"]
+  )
 CPPFLAGS="$save_CPPFLAGS"
 LIBS="$save_LIBS"
 ])

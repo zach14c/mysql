@@ -3,8 +3,7 @@
 # Copyright (C) 1994,1996,1997 Free Software Foundation, Inc.
 
 # Last  -I$(top_srcdir) needed for RedHat!
-INCLUDES =		-I$(top_builddir)/include -I$(top_srcdir)/include \
-			-I$(top_srcdir)
+AM_CPPFLAGS =		-I$(top_srcdir)/include
 
 noinst_LIBRARIES =	libreadline.a
 
@@ -32,6 +31,3 @@ noinst_HEADERS =	readline.h chardefs.h keymaps.h \
 EXTRA_DIST=		emacs_keymap.c vi_keymap.c
 
 DEFS =			-DUNDEF_THREADS_HACK -DHAVE_CONFIG_H -DNO_KILL_INTR
-
-# Don't update the files from bitkeeper
-%::SCCS/s.%

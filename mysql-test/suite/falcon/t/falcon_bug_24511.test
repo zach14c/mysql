@@ -1,4 +1,6 @@
 --source include/have_falcon.inc
+--source include/have_utf8.inc
+
 SET @@storage_engine = Falcon;
 #
 # Bug #24511: Falcon: BETWEEN fails with unicode field

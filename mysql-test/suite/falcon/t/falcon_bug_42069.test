@@ -1,0 +1,72 @@
+# We need normal server as we use several connections in this test.
+# We also need binary log enabled as only in this case TL_READ_NO_INSERT
+# locks are acquired for tables participating in subqueries.
+--source include/have_falcon.inc
+--source include/not_embedded.inc
+--source include/have_log_bin.inc
+
+--echo #
+--echo # Bug #42069: Foreign keys: hang if two connections
+--echo #
+--echo # The fact that Falcon was not downgrading TL_READ_NO_INSERT
+--echo # lock led to possibility of deadlocks involving SQL-layer
+--echo # table locks even for statements which used only Falcon
+--echo # tables.
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+connect (addcon, localhost, root,,);
+connection default;
+
+--disable_warnings
+drop tables if exists t1, t2;
+--enable_warnings
+create table t1 (s1 int primary key);
+create table t2 (s1 int primary key);
+insert into t1 values (1);
+insert into t2 values (1);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+set @@autocommit= 0;
+--echo # Start transaction which will put row-level "lock" on t1
+begin;
+update t1 set s1= s1 + 1;
+
+--echo Switching to connection 'addcon'
+connection addcon;
+--echo # Execute statement which will wait on this row-level "lock"
+--echo # and which by default acquires TL_READ_NO_INSERT on t2.
+--send insert into t1 values (1) on duplicate key update s1= 1 + (select count(*) from t2);
+
+--echo Switching to connection 'default'
+connection default;
+--echo # Wait till the above statement will start executing
+let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Update" and info = "insert into t1 values (1) on duplicate key update s1= 1 + (select count(*) from t2)";
+--source include/wait_condition.inc
+
+--echo # This statement should not deadlock as there should be no
+--echo # TL_READ_NO_INSERT lock on t2.
+insert into t2 values (2);
+--echo # Rollback transaction to avoid "Record has changed since last read"
+--echo # error in 'addcon' connection
+rollback;
+
+--echo Switching to connection 'addcon'
+connection addcon;
+--reap
+
+# ----------------------------------------------------- #
+# --- Final cleanup                                 --- #
+# ----------------------------------------------------- #
+--echo Switching to connection 'default'
+connection default;
+set @@autocommit= 1;
+drop tables t1, t2;
