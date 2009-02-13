@@ -17,7 +17,7 @@
 /**
   @file
   
-  @brief Contains the thread methods for online backup.
+  @brief Contains the thread methods for MYSQL backup.
   
   The methods in this class are used to initialize the mutexes
   for the backup threads. Helper methods are included to make thread

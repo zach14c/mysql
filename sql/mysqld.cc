@@ -26,7 +26,7 @@
 #include "mysqld_suffix.h"
 #include "mysys_err.h"
 #include "events.h"
-#include "ddl_blocker.h"
+#include "bml.h"
 #include "sql_audit.h"
 #include "debug_sync.h"
 #include <waiting_threads.h>
@@ -433,7 +433,7 @@ static pthread_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
 
-extern DDL_blocker_class *DDL_blocker;
+extern BML_class *BML_instance;
 bool opt_update_log, opt_bin_log;
 my_bool opt_log, opt_slow_log;
 my_bool opt_backup_history_log;
@@ -1520,7 +1520,7 @@ static void clean_up_mutexes()
   (void) pthread_cond_destroy(&COND_thread_cache);
   (void) pthread_cond_destroy(&COND_flush_thread_cache);
   (void) pthread_cond_destroy(&COND_manager);
-  DDL_blocker_class::destroy_DDL_blocker_class_instance();
+  BML_class::destroy_BML_class_instance();
   DBUG_VOID_RETURN;
 }
 
@@ -3787,7 +3787,7 @@ static int init_thread_environment()
   /*
     Initialize the DDL blocker
   */
-  DDL_blocker= DDL_blocker_class::get_DDL_blocker_class_instance();
+  BML_instance= BML_class::get_BML_class_instance();
 
   sp_cache_init();
 #ifdef HAVE_EVENT_SCHEDULER
@@ -4142,7 +4142,7 @@ server.");
 #ifndef EMBEDDED_LIBRARY
   if (backup_init())
   {
-    sql_print_error("Failed to initialize online backup.");
+    sql_print_error("Failed to initialize MySQL backup.");
     unireg_abort(1);
   }
 #endif

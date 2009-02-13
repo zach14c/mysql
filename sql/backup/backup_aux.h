@@ -4,7 +4,7 @@
 /** 
   @file
  
-  @brief Auxiliary declarations used in online backup code.
+  @brief Auxiliary declarations used in MySQL backup code.
 
 */ 
 

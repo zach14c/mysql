@@ -71,12 +71,11 @@
 #include "be_default.h"
 #include "be_snapshot.h"
 #include "be_nodata.h"
-#include "ddl_blocker.h"
 #include "transaction.h"
 
 
 /** 
-  Global Initialization for online backup system.
+  Global Initialization for MYSQL backup system.
  
   @note This function is called in the server initialization sequence, just
   after it loads all its plugins.
@@ -89,7 +88,7 @@ int backup_init()
 }
 
 /**
-  Global clean-up for online backup system.
+  Global clean-up for MySQL backup system.
   
   @note This function is called in the server shut-down sequences, just before
   it shuts-down all its plugins.
@@ -564,9 +563,11 @@ int Backup_restore_ctx::prepare(::String *backupdir, LEX_STRING location)
 
   // Freeze all meta-data. 
 
-  ret= obs::ddl_blocker_enable(m_thd);
+  ret= obs::bml_get(m_thd);
   if (ret)
     return fatal_error(report_error(ER_DDL_BLOCK));
+
+  DEBUG_SYNC(m_thd, "after_backup_restore_prepare");
 
   return 0;
 }
@@ -679,8 +680,8 @@ Backup_restore_ctx::prepare_for_backup(String *backupdir,
 
   info->save_start_time(when);
   m_catalog= info;
-  m_state= PREPARED_FOR_BACKUP;
-  
+  m_state= PREPARED_FOR_BACKUP;  
+
   return info;
 }
 
@@ -1036,7 +1037,7 @@ int Backup_restore_ctx::close()
   unlock_tables();                              // Never errors
 
   // unfreeze meta-data
-  obs::ddl_blocker_disable();                   // Never errors
+  obs::bml_release();                           // Never errors
 
   // restore thread options
 
@@ -1282,6 +1283,8 @@ int Backup_restore_ctx::do_restore(bool overwrite)
   int err;
   Input_stream &s= *static_cast<Input_stream*>(m_stream);
   Restore_info &info= *static_cast<Restore_info*>(m_catalog);
+
+  DEBUG_SYNC(m_thd, "start_do_restore");
 
   report_stats_pre(info);                       // Never errors
 

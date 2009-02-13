@@ -18,7 +18,7 @@
 #define DATA_BUFFER_SIZE  (1024*1024)
 
 /*
-  Functions used to initialize and shut down the online backup system.
+  Functions used to initialize and shut down the MySQL backup system.
   
   Note: these functions are called at plugin load and plugin shutdown time,
   respectively.

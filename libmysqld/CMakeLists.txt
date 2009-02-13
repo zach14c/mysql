@@ -193,7 +193,7 @@ SET(LIBMYSQLD_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/time.cc ../sql/tztime.cc ../sql/uniques.cc ../sql/unireg.cc
            ../sql/partition_info.cc ../sql/sql_connect.cc 
            ../sql/scheduler.cc ../sql/sql_audit.cc
-           ../sql/ddl_blocker.cc ../sql/si_objects.cc
+           ../sql/bml.cc ../sql/si_objects.cc
            ../sql/event_parse_data.cc ../sql/mdl.cc
            ../sql/transaction.cc
 	   ../sql/rpl_handler.cc
