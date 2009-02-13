@@ -37,11 +37,14 @@
 #endif
 
 extern my_bool opt_ndb_log_orig;
+extern my_bool opt_ndb_log_bin;
 
 extern my_bool opt_ndb_log_update_as_write;
 extern my_bool opt_ndb_log_updated_only;
 
 extern my_bool ndbcluster_silent;
+
+extern my_bool ndb_log_binlog_index;
 
 /*
   defines for cluster replication table names
@@ -989,9 +992,9 @@ static NDB_SHARE *ndbcluster_check_ndb_apply_status_share()
 {
   pthread_mutex_lock(&ndbcluster_mutex);
 
-  void *share= hash_search(&ndbcluster_open_tables, 
-                           (uchar*) NDB_APPLY_TABLE_FILE,
-                           sizeof(NDB_APPLY_TABLE_FILE) - 1);
+  void *share= my_hash_search(&ndbcluster_open_tables,
+                              (uchar*) NDB_APPLY_TABLE_FILE,
+                              sizeof(NDB_APPLY_TABLE_FILE) - 1);
   DBUG_PRINT("info",("ndbcluster_check_ndb_apply_status_share %s %p",
                      NDB_APPLY_TABLE_FILE, share));
   pthread_mutex_unlock(&ndbcluster_mutex);
@@ -1007,9 +1010,9 @@ static NDB_SHARE *ndbcluster_check_ndb_schema_share()
 {
   pthread_mutex_lock(&ndbcluster_mutex);
 
-  void *share= hash_search(&ndbcluster_open_tables, 
-                           (uchar*) NDB_SCHEMA_TABLE_FILE,
-                           sizeof(NDB_SCHEMA_TABLE_FILE) - 1);
+  void *share= my_hash_search(&ndbcluster_open_tables,
+                              (uchar*) NDB_SCHEMA_TABLE_FILE,
+                              sizeof(NDB_SCHEMA_TABLE_FILE) - 1);
   DBUG_PRINT("info",("ndbcluster_check_ndb_schema_share %s %p",
                      NDB_SCHEMA_TABLE_FILE, share));
   pthread_mutex_unlock(&ndbcluster_mutex);
@@ -2633,8 +2636,8 @@ ndb_binlog_thread_handle_schema_event_post_epoch(THD *thd,
       {
         pthread_mutex_lock(&ndbcluster_mutex);
         NDB_SCHEMA_OBJECT *ndb_schema_object=
-          (NDB_SCHEMA_OBJECT*) hash_search(&ndb_schema_objects,
-                                           (uchar*) key, strlen(key));
+          (NDB_SCHEMA_OBJECT*) my_hash_search(&ndb_schema_objects,
+                                              (uchar*) key, strlen(key));
         if (ndb_schema_object)
         {
           pthread_mutex_lock(&ndb_schema_object->mutex);
@@ -3068,21 +3071,23 @@ ndb_add_ndb_binlog_index(THD *thd, ndb_binlog_index_row *row)
   */
   do
   {
+    ulonglong epoch= 0, orig_epoch= 0;
+    uint orig_server_id= 0;
     empty_record(ndb_binlog_index);
 
     ndb_binlog_index->field[0]->store(first->master_log_pos);
     ndb_binlog_index->field[1]->store(first->master_log_file,
                                       strlen(first->master_log_file),
                                       &my_charset_bin);
-    ndb_binlog_index->field[2]->store(first->epoch);
+    ndb_binlog_index->field[2]->store(epoch= first->epoch);
     if (ndb_binlog_index->s->fields > 7)
     {
       ndb_binlog_index->field[3]->store(row->n_inserts);
       ndb_binlog_index->field[4]->store(row->n_updates);
       ndb_binlog_index->field[5]->store(row->n_deletes);
       ndb_binlog_index->field[6]->store(row->n_schemaops);
-      ndb_binlog_index->field[7]->store(row->orig_server_id);
-      ndb_binlog_index->field[8]->store(row->orig_epoch);
+      ndb_binlog_index->field[7]->store(orig_server_id= row->orig_server_id);
+      ndb_binlog_index->field[8]->store(orig_epoch= row->orig_epoch);
       ndb_binlog_index->field[9]->store(first->gci);
       row= row->next;
     }
@@ -3103,7 +3108,17 @@ ndb_add_ndb_binlog_index(THD *thd, ndb_binlog_index_row *row)
 
     if ((error= ndb_binlog_index->file->ha_write_row(ndb_binlog_index->record[0])))
     {
-      sql_print_error("NDB Binlog: Writing row to ndb_binlog_index: %d", error);
+      char tmp[128];
+      if (ndb_binlog_index->s->fields > 7)
+        my_snprintf(tmp, sizeof(tmp), "%u/%u,%u,%u/%u",
+                    uint(epoch >> 32), uint(epoch),
+                    orig_server_id,
+                    uint(orig_epoch >> 32), uint(orig_epoch));
+
+      else
+        my_snprintf(tmp, sizeof(tmp), "%u/%u", uint(epoch >> 32), uint(epoch));
+      sql_print_error("NDB Binlog: Writing row (%s) to ndb_binlog_index: %d",
+                      tmp, error);
       error= -1;
       goto add_ndb_binlog_index_err;
     }
@@ -3270,8 +3285,8 @@ int ndbcluster_create_binlog_setup(THD *thd, Ndb *ndb, const char *key,
   pthread_mutex_lock(&ndbcluster_mutex);
 
   /* Handle any trailing share */
-  NDB_SHARE *share= (NDB_SHARE*) hash_search(&ndbcluster_open_tables,
-                                             (uchar*) key, key_len);
+  NDB_SHARE *share= (NDB_SHARE*) my_hash_search(&ndbcluster_open_tables,
+                                                (uchar*) key, key_len);
 
   if (share && share_may_exist)
   {
@@ -4595,9 +4610,9 @@ static NDB_SCHEMA_OBJECT *ndb_get_schema_object(const char *key,
   if (!have_lock)
     pthread_mutex_lock(&ndbcluster_mutex);
   while (!(ndb_schema_object=
-           (NDB_SCHEMA_OBJECT*) hash_search(&ndb_schema_objects,
-                                            (uchar*) key,
-                                            length)))
+           (NDB_SCHEMA_OBJECT*) my_hash_search(&ndb_schema_objects,
+                                               (uchar*) key,
+                                               length)))
   {
     if (!create_if_not_exists)
     {
@@ -4646,7 +4661,7 @@ static void ndb_free_schema_object(NDB_SCHEMA_OBJECT **ndb_schema_object,
   if (!--(*ndb_schema_object)->use_count)
   {
     DBUG_PRINT("info", ("use_count: %d", (*ndb_schema_object)->use_count));
-    hash_delete(&ndb_schema_objects, (uchar*) *ndb_schema_object);
+    my_hash_delete(&ndb_schema_objects, (uchar*) *ndb_schema_object);
     pthread_mutex_destroy(&(*ndb_schema_object)->mutex);
     my_free((uchar*) *ndb_schema_object, MYF(0));
     *ndb_schema_object= 0;
@@ -4667,7 +4682,6 @@ pthread_handler_t ndb_binlog_thread_func(void *arg)
   Ndb *i_ndb= 0;
   Ndb *s_ndb= 0;
   Thd_ndb *thd_ndb=0;
-  int ndb_update_ndb_binlog_index= 1;
   injector *inj= injector::instance();
   uint incident_id= 0;
 
@@ -4750,8 +4764,8 @@ pthread_handler_t ndb_binlog_thread_func(void *arg)
   }
 
   /* init hash for schema object distribution */
-  (void) hash_init(&ndb_schema_objects, system_charset_info, 32, 0, 0,
-                   (hash_get_key)ndb_schema_objects_get_key, 0, 0);
+  (void) my_hash_init(&ndb_schema_objects, system_charset_info, 32, 0, 0,
+                   (my_hash_get_key)ndb_schema_objects_get_key, 0, 0);
 
   /*
     Expose global reference to our ndb object.
@@ -4764,7 +4778,7 @@ pthread_handler_t ndb_binlog_thread_func(void *arg)
   injector_ndb= i_ndb;
   schema_ndb= s_ndb;
 
-  if (opt_bin_log)
+  if (opt_bin_log && opt_ndb_log_bin)
   {
     ndb_binlog_running= TRUE;
   }
@@ -5093,6 +5107,44 @@ restart:
     {
       DBUG_PRINT("info", ("pollEvents res: %d", res));
       THD_SET_PROC_INFO(thd, "Processing events");
+      uchar apply_status_buf[512];
+      TABLE *apply_status_table= NULL;
+      if (ndb_apply_status_share)
+      {
+        /*
+          We construct the buffer to write the apply status binlog
+          event here, as the table->record[0] buffer is referenced
+          by the apply status event operation, and will be filled
+          with data at the nextEvent call if the first event should
+          happen to be from the apply status table
+        */
+        Ndb_event_data *event_data= ndb_apply_status_share->event_data;
+        if (!event_data)
+        {
+          DBUG_ASSERT(ndb_apply_status_share->op);
+          event_data= 
+            (Ndb_event_data *) ndb_apply_status_share->op->getCustomData();
+          DBUG_ASSERT(event_data);
+        }
+        apply_status_table= event_data->table;
+
+        /* 
+           Intialize apply_status_table->record[0] 
+        */
+        empty_record(apply_status_table);
+
+        apply_status_table->field[0]->store((longlong)::server_id);
+        /*
+          gci is added later, just before writing to binlog as gci
+          is unknown here
+        */
+        apply_status_table->field[2]->store("", 0, &my_charset_bin);
+        apply_status_table->field[3]->store((longlong)0);
+        apply_status_table->field[4]->store((longlong)0);
+        DBUG_ASSERT(sizeof(apply_status_buf) >= apply_status_table->s->reclength);
+        memcpy(apply_status_buf, apply_status_table->record[0],
+               apply_status_table->s->reclength);
+      }
       NdbEventOperation *pOp= i_ndb->nextEvent();
       ndb_binlog_index_row _row;
       while (pOp != NULL)
@@ -5197,44 +5249,30 @@ restart:
         }
         if (trans.good())
         {
-          if (ndb_apply_status_share)
+          if (apply_status_table)
           {
-            Ndb_event_data *event_data= 0;
-            if (ndb_apply_status_share->event_data)
-            {
-              event_data= ndb_apply_status_share->event_data;
-            }
-            else if (ndb_apply_status_share->op)
-            {
-              event_data= 
-                (Ndb_event_data *) ndb_apply_status_share->op->getCustomData();
-            }
-            DBUG_ASSERT(event_data);
-            TABLE *table= event_data->table;
-
 #ifndef DBUG_OFF
-            const LEX_STRING& name= table->s->table_name;
+            const LEX_STRING& name= apply_status_table->s->table_name;
             DBUG_PRINT("info", ("use_table: %.*s",
                                 (int) name.length, name.str));
 #endif
-            injector::transaction::table tbl(table, TRUE);
+            injector::transaction::table tbl(apply_status_table, TRUE);
             IF_DBUG(int ret=) trans.use_table(::server_id, tbl);
             DBUG_ASSERT(ret == 0);
 
-	    /* 
-	       Intialize table->record[0] 
-	    */
-	    empty_record(table);
+            /* add the gci to the record */
+            Field *field= apply_status_table->field[1];
+            my_ptrdiff_t row_offset=
+              (my_ptrdiff_t) (apply_status_buf - apply_status_table->record[0]);
+            field->move_field_offset(row_offset);
+            field->store((longlong)gci);
+            field->move_field_offset(-row_offset);
 
-            table->field[0]->store((longlong)::server_id);
-            table->field[1]->store((longlong)gci);
-            table->field[2]->store("", 0, &my_charset_bin);
-            table->field[3]->store((longlong)0);
-            table->field[4]->store((longlong)0);
             trans.write_row(::server_id,
-                            injector::transaction::table(table, TRUE),
-                            &table->s->all_set, table->s->fields,
-                            table->record[0]);
+                            injector::transaction::table(apply_status_table, TRUE),
+                            &apply_status_table->s->all_set,
+                            apply_status_table->s->fields,
+                            apply_status_buf);
           }
           else
           {
@@ -5360,7 +5398,7 @@ restart:
           rows->master_log_pos= start.file_pos();
 
           DBUG_PRINT("info", ("COMMIT gci: %lu", (ulong) gci));
-          if (ndb_update_ndb_binlog_index)
+          if (ndb_log_binlog_index)
           {
             ndb_add_ndb_binlog_index(thd, rows);
           }
@@ -5508,7 +5546,7 @@ err:
     i_ndb= 0;
   }
 
-  hash_free(&ndb_schema_objects);
+  my_hash_free(&ndb_schema_objects);
 
   net_end(&thd->net);
   thd->cleanup();

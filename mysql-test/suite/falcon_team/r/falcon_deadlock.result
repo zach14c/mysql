@@ -26,6 +26,7 @@ id	x
 0	1
 COMMIT;
 # Switch to connection conn2
+ERROR HY000: Record has changed since last read in table 't1'
 ROLLBACK;
 # Switch to connection conn1
 SELECT * FROM t1;
@@ -50,10 +51,10 @@ a	b
 0	10
 1	20
 2	30
-UPDATE t2 SET a = 100 WHERE b = (SELECT x FROM t1 WHERE id = b FOR UPDATE);
+UPDATE t2 SET b = 100 WHERE a = (SELECT x FROM t1 WHERE id = a FOR UPDATE);
 SELECT * FROM t2;
 a	b
-0	10
+0	100
 1	20
 2	30
 SELECT * FROM t1;
@@ -70,11 +71,12 @@ id	x
 300	300
 COMMIT;
 # Switch to connection conn2
+ERROR HY000: Record has changed since last read in table 't1'
 COMMIT;
 # Switch to connection conn1
 SELECT * FROM t1;
 id	x
-0	2
+0	1
 300	300
 COMMIT;
 DROP TABLE t1;
@@ -121,11 +123,12 @@ id	x
 300	300
 COMMIT;
 # Switch to connection conn2
+ERROR HY000: Record has changed since last read in table 't1'
 COMMIT;
 # Switch to connection conn1
 SELECT * FROM t1;
 id	x
-0	2
+0	1
 300	300
 COMMIT;
 SELECT count(*) FROM t1;

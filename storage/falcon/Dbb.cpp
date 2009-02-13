@@ -56,8 +56,6 @@
 //#define STOP_RECORD	123
 //#define TRACE_PAGE	109
 
-
-
 extern uint falcon_large_blob_threshold;
 
 #ifdef _DEBUG
@@ -137,8 +135,6 @@ Dbb::~Dbb()
 			sections [n] = section->hash;
 			delete section;
 			}
-
-
 
 	if (inversion)
 		delete inversion;

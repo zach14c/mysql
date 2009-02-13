@@ -1121,7 +1121,7 @@ int ha_myisam::preload_keys(THD* thd, HA_CHECK_OPT *check_opt)
   ulonglong map;
   TABLE_LIST *table_list= table->pos_in_table_list;
   my_bool ignore_leaves= table_list->ignore_leaves;
-  char buf[ERRMSGSIZE+20];
+  char buf[MYSQL_ERRMSG_SIZE];
 
   DBUG_ENTER("ha_myisam::preload_keys");
 
@@ -1149,7 +1149,7 @@ int ha_myisam::preload_keys(THD* thd, HA_CHECK_OPT *check_opt)
       errmsg= "Failed to allocate buffer";
       break;
     default:
-      my_snprintf(buf, ERRMSGSIZE,
+      my_snprintf(buf, sizeof(buf),
                   "Failed to read from index file (errno: %d)", my_errno);
       errmsg= buf;
     }
@@ -2013,13 +2013,12 @@ int ha_myisam::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                      uint n_ranges, uint mode, 
                                      HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_myisam::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_myisam::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,

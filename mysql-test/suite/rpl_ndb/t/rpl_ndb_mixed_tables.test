@@ -135,8 +135,8 @@ connection master;
 --echo ---- ROLLBACK ----
 
 # Rollback of MyISAM tables not possible, so testing with a MyISAM on
-# master and InnoDB on slave will lead to mismatching tables, so we
-# don't test that.  For more information, see BUG#40116.
+# master and InnoDB or NDB on slave will lead to mismatching tables,
+# so we don't test that.  For more information, see BUG#40116.
 
 BEGIN;
 INSERT INTO innodb_myisam VALUES (15);
@@ -145,12 +145,6 @@ ROLLBACK;
 sync_slave_with_master;
 connection master;
 
-BEGIN;
-INSERT INTO myisam_ndb VALUES (17);
-INSERT INTO myisam_ndb VALUES (18);
-ROLLBACK;
-sync_slave_with_master;
-connection master;
 BEGIN;
 INSERT INTO ndb_myisam VALUES (19);
 INSERT INTO ndb_myisam VALUES (20);
@@ -231,12 +225,6 @@ sync_slave_with_master;
 connection master;
 
 BEGIN;
-INSERT INTO myisam_ndb VALUES (41);
-INSERT INTO myisam_ndb VALUES (42);
-ROLLBACK;
-sync_slave_with_master;
-connection master;
-BEGIN;
 INSERT INTO ndb_myisam VALUES (43);
 INSERT INTO ndb_myisam VALUES (44);
 ROLLBACK;
@@ -287,21 +275,9 @@ sync_slave_with_master;
 connection master;
 
 
---echo ==== AUTOCOMMIT=0, single statements, myisam on master ====
-
-SET AUTOCOMMIT = 0;
-
-# This tests BUG#29288.
-INSERT INTO myisam_innodb VALUES (61);
-INSERT INTO myisam_innodb VALUES (62);
-sync_slave_with_master;
-connection master;
-
-INSERT INTO myisam_ndb VALUES (63);
-INSERT INTO myisam_ndb VALUES (64);
-sync_slave_with_master;
-connection master;
-
+# As of the fix for BUG#40116, AUTOCOMMIT=0 on for MyISAM tables
+# master will not work without a COMMIT last, so we do not have any
+# tests that try that combination. For details, see the bug report.
 
 --echo ==== Show results ====
 

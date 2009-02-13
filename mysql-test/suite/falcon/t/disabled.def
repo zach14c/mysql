@@ -10,4 +10,3 @@
 #
 ##############################################################################
 
-falcon_bug_22173 : Bug#42079 2009-01-13 joro Falcon does not reset auto_increment on transactional truncate

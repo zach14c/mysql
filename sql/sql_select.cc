@@ -2340,8 +2340,13 @@ JOIN::exec()
         We have to test for 'conds' here as the WHERE may not be constant
         even if we don't have any tables for prepared statements or if
         conds uses something like 'rand()'.
+        If the HAVING clause is either impossible or always true, then
+        JOIN::having is set to NULL by optimize_cond.
+        In this case JOIN::exec must check for JOIN::having_value, in the
+        same way it checks for JOIN::cond_value.
       */
       if (cond_value != Item::COND_FALSE &&
+          having_value != Item::COND_FALSE &&
           (!conds || conds->val_int()) &&
           (!having || having->val_int()))
       {
@@ -2643,14 +2648,19 @@ JOIN::exec()
 				     tmp_fields_list2, tmp_all_fields2, 
 				     fields_list.elements, tmp_all_fields1))
 	  DBUG_VOID_RETURN;
-	curr_join->tmp_fields_list2= tmp_fields_list2;
-	curr_join->tmp_all_fields2= tmp_all_fields2;
+
+        if (curr_join != this)
+        {
+          curr_join->tmp_fields_list2= tmp_fields_list2;
+          curr_join->tmp_all_fields2= tmp_all_fields2;
+        }
+
       }
       curr_fields_list= &curr_join->tmp_fields_list2;
       curr_all_fields= &curr_join->tmp_all_fields2;
       curr_join->set_items_ref_array(items2);
       curr_join->tmp_table_param.field_count+= 
-	curr_join->tmp_table_param.sum_func_count;
+      curr_join->tmp_table_param.sum_func_count;
       curr_join->tmp_table_param.sum_func_count= 0;
     }
     if (curr_tmp_table->distinct)
@@ -19286,8 +19296,8 @@ static int remove_dup_with_hash_index(THD *thd, TABLE *table,
     extra_length= ALIGN_SIZE(key_length)-key_length;
   }
 
-  if (hash_init(&hash, &my_charset_bin, (uint) file->stats.records, 0, 
-		key_length, (hash_get_key) 0, 0, 0))
+  if (my_hash_init(&hash, &my_charset_bin, (uint) file->stats.records, 0, 
+                   key_length, (my_hash_get_key) 0, 0, 0))
   {
     my_free((char*) key_buffer,MYF(0));
     DBUG_RETURN(1);
@@ -19328,7 +19338,7 @@ static int remove_dup_with_hash_index(THD *thd, TABLE *table,
       key_pos+= *field_length++;
     }
     /* Check if it exists before */
-    if (hash_search(&hash, org_key_pos, key_length))
+    if (my_hash_search(&hash, org_key_pos, key_length))
     {
       /* Duplicated found ; Remove the row */
       if ((error=file->ha_delete_row(record)))
@@ -19339,14 +19349,14 @@ static int remove_dup_with_hash_index(THD *thd, TABLE *table,
     key_pos+=extra_length;
   }
   my_free((char*) key_buffer,MYF(0));
-  hash_free(&hash);
+  my_hash_free(&hash);
   file->extra(HA_EXTRA_NO_CACHE);
   (void) file->ha_rnd_end();
   DBUG_RETURN(0);
 
 err:
   my_free((char*) key_buffer,MYF(0));
-  hash_free(&hash);
+  my_hash_free(&hash);
   file->extra(HA_EXTRA_NO_CACHE);
   (void) file->ha_rnd_end();
   if (error)

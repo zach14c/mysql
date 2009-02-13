@@ -98,7 +98,7 @@ INSERT INTO t2 VALUES (0, 10), (1, 20), (2, 30);
 COMMIT;
 
 SELECT * FROM t2;
-UPDATE t2 SET a = 100 WHERE b = (SELECT x FROM t1 WHERE id = b FOR UPDATE);
+UPDATE t2 SET b = 100 WHERE a = (SELECT x FROM t1 WHERE id = a FOR UPDATE);
 SELECT * FROM t2;
 SELECT * FROM t1;
 
@@ -117,6 +117,14 @@ COMMIT;
 
 --echo # Switch to connection conn2
 connection conn2;
+# If we set Falcon to
+#     falcon_consistent_read = off
+#
+# we should get a
+#     Record has changed since last read in table 't1'
+# here. Please note that falcon_consistent_read = off
+# is the default setting.
+--error ER_CHECKREAD
 --reap
 COMMIT;
 
@@ -166,6 +174,14 @@ COMMIT;
 
 --echo # Switch to connection conn2
 connection conn2;
+# If we set Falcon to
+#     falcon_consistent_read = off
+#
+# we should get a
+#     Record has changed since last read in table 't1'
+# here. Please note that falcon_consistent_read = off
+# is the default setting.
+--error ER_CHECKREAD
 --reap
 COMMIT;
 

@@ -42,7 +42,7 @@ BackLog::BackLog(Database *db, const char *fileName) : database(db)
 #endif
 	dbb->create(fileName, dbb->pageSize, 0, HdrTableSpace, 0, NULL);
 	dbb->noLog = true;
-	dbb->tableSpaceId = database->tableSpaceManager->createTableSpaceId();
+	dbb->tableSpaceId = TABLESPACE_ID_BACKLOG; // reserved for internal use
 	int32 sectionId = Section::createSection (dbb, NO_TRANSACTION);
 	section = new Section(dbb, sectionId, NO_TRANSACTION);
 	recordsBacklogged = 0;
@@ -105,7 +105,7 @@ void BackLog::rollbackRecords(Bitmap* records, Transaction *transaction)
 		
 		Table *table = record->format->table;
 		
-		if (!table->insert(record, NULL, record->recordNumber))
+		if (!table->insertIntoTree(record, NULL, record->recordNumber))
 			{
 			record->release();
 			int32 recordNumber = record->recordNumber;

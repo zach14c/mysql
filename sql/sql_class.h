@@ -724,8 +724,8 @@ public:
   Statement *find_by_name(LEX_STRING *name)
   {
     Statement *stmt;
-    stmt= (Statement*)hash_search(&names_hash, (uchar*)name->str,
-                                  name->length);
+    stmt= (Statement*)my_hash_search(&names_hash, (uchar*)name->str,
+                                     name->length);
     return stmt;
   }
 
@@ -734,7 +734,7 @@ public:
     if (last_found_statement == 0 || id != last_found_statement->id)
     {
       Statement *stmt;
-      stmt= (Statement *) hash_search(&st_hash, (uchar *) &id, sizeof(id));
+      stmt= (Statement *) my_hash_search(&st_hash, (uchar *) &id, sizeof(id));
       if (stmt && stmt->name.str)
         return NULL;
       last_found_statement= stmt;
@@ -1953,6 +1953,21 @@ public:
   inline bool active_transaction()
   {
     return server_status & SERVER_STATUS_IN_TRANS;
+  }
+  /**
+    Returns TRUE if session is in a multi-statement transaction mode.
+
+    OPTION_NOT_AUTOCOMMIT: When autocommit is off, a multi-statement
+    transaction is implicitly started on the first statement after a
+    previous transaction has been ended.
+
+    OPTION_BEGIN: Regardless of the autocommit status, a multi-statement
+    transaction can be explicitly started with the statements "START
+    TRANSACTION", "BEGIN [WORK]", "[COMMIT | ROLLBACK] AND CHAIN", etc.
+  */
+  inline bool in_multi_stmt_transaction()
+  {
+    return options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN);
   }
   inline bool fill_derived_tables()
   {

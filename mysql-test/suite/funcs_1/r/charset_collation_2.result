@@ -288,7 +288,6 @@ eucjpms_bin	eucjpms
 eucjpms_japanese_ci	eucjpms
 euckr_bin	euckr
 euckr_korean_ci	euckr
-filename	filename
 gb2312_bin	gb2312
 gb2312_chinese_ci	gb2312
 gbk_bin	gbk

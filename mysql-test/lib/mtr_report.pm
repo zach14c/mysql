@@ -1,5 +1,5 @@
 # -*- cperl -*-
-# Copyright (C) 2004-2006 MySQL AB, 2008 Sun Microsystems, Inc.
+# Copyright 2004-2008 MySQL AB, 2008 Sun Microsystems, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,6 +30,8 @@ our @EXPORT= qw(report_option mtr_print_line mtr_print_thick_line
 		mtr_report_test);
 
 use mtr_match;
+use My::Platform;
+use POSIX qw[ _exit ];
 require "mtr_io.pl";
 
 my $tot_real_time= 0;
@@ -165,18 +167,11 @@ sub mtr_report_test ($) {
     }
     elsif ( $comment )
     {
-      if ( $tinfo->{skip_detected_by_test} )
-      {
-	mtr_report("[ skip ]. $comment");
-      }
-      else
-      {
-	mtr_report("[ skip ]  $comment");
-      }
+      mtr_report("[ skipped ]  $comment");
     }
     else
     {
-      mtr_report("[ skip ]");
+      mtr_report("[ skipped ]");
     }
   }
   elsif ($result eq 'MTR_RES_PASSED')
@@ -264,7 +259,7 @@ sub mtr_report_stats ($) {
   {
     mtr_warning("Got errors/warnings while running tests, please examine",
 		"'$warnlog' for details.");
- }
+  }
 
   print "\n";
   # Print a list of check_testcases that failed(if any)
@@ -353,7 +348,7 @@ sub mtr_print_line () {
 
 sub mtr_print_thick_line {
   my $char= shift || '=';
-  print $char x 60, "\n";
+  print $char x 78, "\n";
 }
 
 
@@ -435,7 +430,14 @@ sub mtr_warning (@) {
 sub mtr_error (@) {
   print STDERR _name(), _timestamp(),
     "mysql-test-run: *** ERROR: ", join(" ", @_), "\n";
-  exit(1);
+  if (IS_WINDOWS)
+  {
+    POSIX::_exit(1);
+  }
+  else
+  {
+    exit(1);
+  }
 }
 
 

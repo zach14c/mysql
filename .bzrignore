@@ -760,6 +760,7 @@ mysql-test/dump.txt
 mysql-test/funcs_1-ps.log
 mysql-test/funcs_1.log
 mysql-test/funcs_1.tar
+mysql-test/gmon.out
 mysql-test/install_test_db
 mysql-test/lib/My/SafeProcess/my_safe_process
 mysql-test/lib/init_db.sql
@@ -2009,3 +2010,4 @@ libmysql/probes.h
 libmysql_r/probes.h
 unittest/tmp
 libmysqld/sql_join_cache.cc
+libmysqld/examples/mysqltest.cc
