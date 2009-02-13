@@ -45,8 +45,8 @@ BEGIN {
     print "=======================================================\n";
     print "  WARNING: Using mysql-test-run.pl version 1!  \n";
     print "=======================================================\n";
-    require "lib/v1/mysql-test-run.pl";
-    exit(1);
+    # Should use exec() here on *nix but this appears not to work on Windows
+    exit(system($^X, "lib/v1/mysql-test-run.pl", @ARGV) >> 8);
   }
   elsif ( $version == 2 )
   {
@@ -107,6 +107,17 @@ our $default_vardir;
 our $opt_vardir;                # Path to use for var/ dir
 my $path_vardir_trace;          # unix formatted opt_vardir for trace files
 my $opt_tmpdir;                 # Path to use for tmp/ dir
+my $opt_tmpdir_pid;
+
+END {
+  if (defined $opt_tmpdir_pid and
+      $opt_tmpdir_pid == $$){
+    # Remove the tempdir this process has created
+    mtr_verbose("Removing tmpdir '$opt_tmpdir");
+    rmtree($opt_tmpdir);
+  }
+}
+
 my $path_config_file;           # The generated config file, var/my.cnf
 
 # Visual Studio produces executables in different sub-directories based on the
@@ -259,17 +270,18 @@ sub main {
     # Check for any extra suites to enable based on the path name
     my %extra_suites=
       (
-       "mysql-5.1-new-ndb"              => "ndb_team",
-       "mysql-5.1-new-ndb-merge"        => "ndb_team",
-       "mysql-5.1-telco-6.2"            => "ndb_team",
-       "mysql-5.1-telco-6.2-merge"      => "ndb_team",
-       "mysql-5.1-telco-6.3"            => "ndb_team",
-       "mysql-6.0-ndb"                  => "ndb_team",
-       "mysql-6.0-falcon"               => "falcon_team",
-       "mysql-6.0-falcon-team"          => "falcon_team",
-       "mysql-6.0-falcon-wlad"          => "falcon_team",
-       "mysql-6.0-falcon-chris"         => "falcon_team",
-       "mysql-6.0-falcon-kevin"         => "falcon_team",
+       "bzr_mysql-5.1-ndb"              => "ndb_team",
+       "bzr_mysql-5.1-ndb-merge"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.2"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.2-merge"  => "ndb_team",
+       "bzr_mysql-5.1-telco-6.3"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.4"        => "ndb_team",
+       "bzr_mysql-6.0-ndb"              => "ndb_team,rpl_ndb_big,ndb_binlog",
+       "bzr_mysql-6.0-falcon"           => "falcon_team",
+       "bzr_mysql-6.0-falcon-team"      => "falcon_team",
+       "bzr_mysql-6.0-falcon-ann"       => "falcon_team",
+       "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
+       "bzr_mysql-6.0-falcon-kevin"     => "falcon_team",
       );
 
     foreach my $dir ( reverse splitdir($basedir) ) {
@@ -1080,8 +1092,11 @@ sub command_line_setup {
 		 " creating a shorter one...");
 
       # Create temporary directory in standard location for temporary files
-      $opt_tmpdir= tempdir( TMPDIR => 1, CLEANUP => 1 );
+      $opt_tmpdir= tempdir( TMPDIR => 1, CLEANUP => 0 );
       mtr_report(" - using tmpdir: '$opt_tmpdir'\n");
+
+      # Remember pid that created dir so it's removed by correct process
+      $opt_tmpdir_pid= $$;
     }
   }
   $opt_tmpdir =~ s,/+$,,;       # Remove ending slash if any
@@ -2011,7 +2026,7 @@ sub setup_vardir() {
       mtr_error("The destination for symlink $opt_vardir does not exist")
 	if ! -d readlink($opt_vardir);
     }
-    elsif ( $opt_mem )
+    elsif ( $opt_mem && !IS_WINDOWS)
     {
       # Runinng with "var" as a link to some "memory" location, normally tmpfs
       mtr_verbose("Creating $opt_mem");
@@ -2911,9 +2926,6 @@ test case was executed:\n";
 	  $result= 2;
 	}
 
-	# Remove the .err file the check generated
-	unlink($err_file);
-
 	# Remove the .result file the check generated
 	unlink("$base_file.result");
 
@@ -3484,6 +3496,7 @@ sub extract_warning_lines ($) {
      # qr/^Warning:|mysqld: Warning|\[Warning\]/,
      # qr/^Error:|\[ERROR\]/,
      qr/^Warning:|mysqld: Warning/,
+     qr/^Warning at/,
      qr/^Error:/,
      qr/^==.* at 0x/,
      qr/InnoDB: Warning|InnoDB: Error/,
@@ -3531,6 +3544,7 @@ sub start_check_warnings ($$) {
 
   mtr_add_arg($args, "--skip-safemalloc");
   mtr_add_arg($args, "--test-file=%s", "include/check-warnings.test");
+  mtr_add_arg($args, "--verbose");
 
   if ( $opt_embedded_server )
   {
@@ -3620,10 +3634,9 @@ sub check_warnings ($) {
 
 	if ( $res == 62 ) {
 	  # Test case was ok and called "skip"
-	  ;
+	  # Remove the .err file the check generated
+	  unlink($err_file);
 	}
-	# Remove the .err file the check generated
-	unlink($err_file);
 
 	if ( keys(%started) == 0){
 	  # All checks completed
@@ -3645,8 +3658,6 @@ sub check_warnings ($) {
 
 	$result= 2;
       }
-      # Remove the .err file the check generated
-      unlink($err_file);
     }
     elsif ( $proc eq $timeout_proc ) {
       $tinfo->{comment}.= "Timeout $timeout_proc for ".
@@ -4545,6 +4556,7 @@ sub start_check_testcase ($$$) {
 
   mtr_add_arg($args, "--result-file=%s", "$opt_vardir/tmp/$name.result");
   mtr_add_arg($args, "--test-file=%s", "include/check-testcase.test");
+  mtr_add_arg($args, "--verbose");
 
   if ( $mode eq "before" )
   {
@@ -4719,8 +4731,7 @@ sub start_mysqltest ($) {
   elsif ( $opt_client_debugger )
   {
     debugger_arguments(\$args, \$exe, "client");
- }
-
+  }
 
   my $proc= My::SafeProcess->new
     (

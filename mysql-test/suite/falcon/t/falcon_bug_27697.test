@@ -1,4 +1,6 @@
 --source include/have_falcon.inc
+--source include/have_utf8.inc
+
 #
 # Bug #27697: Non-western-collation searches fail if index exists
 #

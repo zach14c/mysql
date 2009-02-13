@@ -376,7 +376,6 @@ void Connection::shutdownDatabases()
 		{
 		unlink(database);
 		database->shutdown();
-		database->shutdown();
 		database->release();
 		}
 }

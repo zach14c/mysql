@@ -1790,8 +1790,8 @@ innobase_init(
 		goto error;
 	}
 
-	(void) hash_init(&innobase_open_tables,system_charset_info, 32, 0, 0,
-					(hash_get_key) innobase_get_key, 0, 0);
+        (void) my_hash_init(&innobase_open_tables,system_charset_info, 32, 0, 0,
+                            (my_hash_get_key) innobase_get_key, 0, 0);
 	pthread_mutex_init(&innobase_share_mutex, MY_MUTEX_INIT_FAST);
 	pthread_mutex_init(&prepare_commit_mutex, MY_MUTEX_INIT_FAST);
 	pthread_mutex_init(&commit_threads_m, MY_MUTEX_INIT_FAST);
@@ -1828,7 +1828,7 @@ innobase_end(handlerton *hton, ha_panic_function type)
 		if (innobase_shutdown_for_mysql() != DB_SUCCESS) {
 			err = 1;
 		}
-		hash_free(&innobase_open_tables);
+		my_hash_free(&innobase_open_tables);
 		my_free(internal_innobase_data_file_path,
 						MYF(MY_ALLOW_ZERO_PTR));
 		pthread_mutex_destroy(&innobase_share_mutex);
@@ -3468,7 +3468,6 @@ skip_field:
           prebuilt->idx_cond_func= NULL;
           prebuilt->n_index_fields= n_requested_fields;
         }
-       // file->in_range_read= FALSE;
 
 	if (index != clust_index && prebuilt->need_to_access_clustered) {
 		/* Change rec_field_no's to correspond to the clustered index
@@ -6677,7 +6676,6 @@ ha_innobase::extra(
                         /* Reset index condition pushdown state */
                         pushed_idx_cond= FALSE;
                         pushed_idx_cond_keyno= MAX_KEY;
-                        //in_range_read= FALSE;
                         prebuilt->idx_cond_func= NULL;
 			break;
 		case HA_EXTRA_NO_KEYREAD:
@@ -7344,7 +7342,7 @@ static INNOBASE_SHARE* get_share(const char* table_name)
 	pthread_mutex_lock(&innobase_share_mutex);
 	uint length=(uint) strlen(table_name);
 
-	if (!(share=(INNOBASE_SHARE*) hash_search(&innobase_open_tables,
+	if (!(share=(INNOBASE_SHARE*) my_hash_search(&innobase_open_tables,
 				(uchar*) table_name,
 				length))) {
 
@@ -7378,7 +7376,7 @@ static void free_share(INNOBASE_SHARE* share)
 	pthread_mutex_lock(&innobase_share_mutex);
 
 	if (!--share->use_count) {
-		hash_delete(&innobase_open_tables, (uchar*) share);
+		my_hash_delete(&innobase_open_tables, (uchar*) share);
 		thr_lock_delete(&share->lock);
 		pthread_mutex_destroy(&share->mutex);
 		my_free(share, MYF(0));
@@ -8499,13 +8497,12 @@ mysql_declare_plugin_end;
 int ha_innobase::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                           uint n_ranges, uint mode, HANDLER_BUFFER *buf)
 {
-  return ds_mrr.dsmrr_init(this, &table->key_info[active_index], 
-                           seq, seq_init_param, n_ranges, mode, buf);
+  return ds_mrr.dsmrr_init(this, seq, seq_init_param, n_ranges, mode, buf);
 }
 
 int ha_innobase::multi_range_read_next(char **range_info)
 {
-  return ds_mrr.dsmrr_next(this, range_info);
+  return ds_mrr.dsmrr_next(range_info);
 }
 
 ha_rows ha_innobase::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
@@ -8541,7 +8538,7 @@ C_MODE_START
 static my_bool index_cond_func_innodb(void *arg)
 {
   ha_innobase *h= (ha_innobase*)arg;
-  if (h->end_range) //was: h->in_range_read
+  if (h->end_range)
   {
     if (h->compare_key2(h->end_range) > 0)
       return 2; /* caller should return HA_ERR_END_OF_FILE already */
@@ -8571,11 +8568,7 @@ int ha_innobase::read_range_first(const key_range *start_key,
                                 bool sorted /* ignored */)
 {
   int res;
-  //if (!eq_range_arg)
-    //in_range_read= TRUE;
   res= handler::read_range_first(start_key, end_key, eq_range_arg, sorted);
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 
@@ -8583,8 +8576,6 @@ int ha_innobase::read_range_first(const key_range *start_key,
 int ha_innobase::read_range_next()
 {
   int res= handler::read_range_next();
-  //if (res)
-  //  in_range_read= FALSE;
   return res;
 }
 

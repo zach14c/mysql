@@ -28,6 +28,7 @@
 #include "Database.h"
 #include "Value.h"
 #include "Record.h"
+#include "Format.h"
 #include "ResultSet.h"
 #include "Collation.h"
 #include "Sync.h"
@@ -257,12 +258,14 @@ DeferredIndex *Index::getDeferredIndex(Transaction *transaction)
 		(type != UniqueIndex) && 
 		(transaction->scanIndexCount == 0))
 		{
-		if (deferredIndex->sizeEstimate > database->configuration->indexChillThreshold)
+
+		// Scavenge (or chill) this DeferredIndex and get a new one
+		
+		if (deferredIndex->count > 0 &&
+			deferredIndex->sizeEstimate > database->configuration->indexChillThreshold)
 			{
-			// Scavenge (or chill) this DeferredIndex and get a new one
-			deferredIndex->chill(dbb);
-			ASSERT(deferredIndex->virtualOffset);
-			deferredIndex = NULL;
+			if (deferredIndex->chill(dbb))
+				deferredIndex = NULL;
 			}
 		}
 
@@ -362,31 +365,29 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey)
 		return;
 		}
 
-	uint p = 0, q = 0;
+	uint p = 0;
 	int n;
 	UCHAR *key = indexKey->key;
 
 	for (n = 0; (n < count) && values[n]; ++n)
 		{
 		Field *field = fields[n];
-		char padByte = PAD_BYTE(field);
 
-		while (p % RUN != 0)
-			key[p++] = padByte;
 		
 		IndexKey tempKey(this);
 		makeKey(field, values[n], n, &tempKey);
 		int length = tempKey.keyLength;
 		UCHAR *t = tempKey.key;
-		
-		// All segments before the last one are padded to the nearest RUN length.
 
-		if (n < count - 1)
-			q = (length + RUN - 1) / (RUN - 1) * RUN;
-		else
-			q = (length * RUN / (RUN - 1)) + (length % (RUN -1));
-		
-		if (p + q > maxIndexKeyRunLength(database->getMaxKeyLength()))
+		// Calculate segment length to check for index overflow
+		// - There is a segment byte inserted at the start of the segment and every RUN bytes.
+		// - All segments before the last one are padded to the nearest RUN length.
+
+		uint segmentLength = (length + length/(RUN-1) + ((length%(RUN-1))?1:0));
+		if(n < numberFields - 1)
+			segmentLength = ROUNDUP(segmentLength , RUN);
+	
+		if (p + segmentLength > maxIndexKeyRunLength(database->getMaxKeyLength()))
 			throw SQLError (INDEX_OVERFLOW, "maximum index key length exceeded");
 			
 		for (int i = 0; i < length; ++i)
@@ -396,6 +397,25 @@ void Index::makeKey(int count, Value **values, IndexKey *indexKey)
 
 			key[p++] = t[i];
 			}
+
+		if (n < numberFields - 1)
+			{
+			char padByte = PAD_BYTE(field);
+
+			while (p % RUN != 0)
+				key[p++] = padByte;
+			}
+		}
+
+	if (n && n < numberFields)
+		{
+		// We're constructing partial search key, with only some
+		// first fields given. Append segment byte for the next
+		// segment. This will make key larger and will hopefully
+		// reduce the number of false positives in search (saves
+		// work in postprocessing).
+		if (p < (uint)database->getMaxKeyLength())
+			key[p++] = SEGMENT_BYTE(n, numberFields);
 		}
 
 	indexKey->keyLength = p;
@@ -406,8 +426,14 @@ void Index::deleteIndex(Transaction *transaction)
 {
 	if (!damaged && indexId != -1)
 		{
-		dbb->deleteIndex(indexId, indexVersion, TRANSACTION_ID(transaction));
+
+		// The Index class does not use a Sync object. To ensure that concurrent
+		// SRLUpdateIndex operations ignore DeferredIndexes associated with
+		// this index, set indexId to -1 before writing to the Serial Log.
+
+		int id = indexId;
 		indexId = -1;
+		dbb->deleteIndex(id, indexVersion, TRANSACTION_ID(transaction));
 		}
 }
 
@@ -582,6 +608,9 @@ void Index::update(Record * oldRecord, Record * record, Transaction *transaction
 
 	// If there is a duplicate in the old version chain, don't bother with another
 
+	Sync syncPrior(record->format->table->getSyncPrior(record), "Index::update");
+	syncPrior.lock(Shared);
+
 	if (duplicateKey (&key, oldRecord))
 		return;
 
@@ -614,13 +643,18 @@ void Index::garbageCollect(Record * leaving, Record * staying, Transaction *tran
 {
 	int n = 0;
 	
+	// Delete index entries of prior record versions of the 'leaving' record 
+	
 	for (Record *record = leaving; record && record != staying; record = record->getGCPriorVersion(), ++n)
 		if (record->hasRecord() && record->recordNumber >= 0)
 			{
 			IndexKey key(this);
 			makeKey (record, &key);
 
-			if (!duplicateKey(&key, record->getPriorVersion()) && !duplicateKey (&key, staying))
+			// Delete the index entry for this record version if the key is not used by other record versions
+			
+			if (!duplicateKey(&key, record->getPriorVersion())	// key not in 'leaving' record chain
+				&& !duplicateKey (&key, staying))				// key not in 'staying' record chain
 				{
 				bool hit = false;
 				
@@ -633,6 +667,8 @@ void Index::garbageCollect(Record * leaving, Record * staying, Transaction *tran
 						if (deferredIndex->deleteNode(&key, record->recordNumber))
 							hit = true;
 					}
+				
+				// Delete the index entry directly from the index page
 				
 				if (dbb->deleteIndexEntry(indexId, indexVersion, &key, record->recordNumber, TRANSACTION_ID(transaction)))
 					hit = true;

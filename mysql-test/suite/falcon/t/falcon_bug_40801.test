@@ -1,0 +1,146 @@
+# Bug#40801 - Falcon garbage collection can erase valid key values
+# Note: This test creates a second file that is used just to start
+#       a scavenge cycle in which records will get pruned.
+#       This file is sized to force a scavenge cycle for pruning
+#       using the current scavenger design and the default setting
+#       for record cache size.  This test will not cause a scavenge
+#       with the old scavenger.  See the bug for a script that 
+#       reproduces this with the old scavenger.
+
+--echo #---- Bug 40801 ----
+
+--source include/have_falcon.inc
+
+# ----------------------------------------------------- #
+# --- Initialisation                                --- #
+# ----------------------------------------------------- #
+let $engine = 'Falcon';
+eval SET @@storage_engine = $engine;
+
+--disable_warnings
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+--enable_warnings
+
+# Create a table to control scavenge cycles.
+# The new scavenger will scavenge for every (250Mb / 50) = 5Mb of record data.
+
+CREATE TABLE t1 (a  varchar(1000));
+INSERT INTO t1 VALUES (repeat('-', 1000));
+INSERT INTO t1 SELECT * FROM t1;  #     2,000
+INSERT INTO t1 SELECT * FROM t1;  #     4,000
+INSERT INTO t1 SELECT * FROM t1;  #     8,000
+INSERT INTO t1 SELECT * FROM t1;  #    16,000
+INSERT INTO t1 SELECT * FROM t1;  #    32,000
+INSERT INTO t1 SELECT * FROM t1;  #    64,000
+INSERT INTO t1 SELECT * FROM t1;  #   128,000
+INSERT INTO t1 SELECT * FROM t1;  #   256,000
+INSERT INTO t1 SELECT * FROM t1;  #   512,000
+INSERT INTO t1 SELECT * FROM t1;  # 1,024,000
+INSERT INTO t1 SELECT * FROM t1;  # 2,048,000
+INSERT INTO t1 SELECT * FROM t1;  # 4,096,000
+INSERT INTO t1 SELECT * FROM t1;  # 8,192,000
+# That should have caused at least one scavenge
+
+# Create a second table for the test.
+CREATE TABLE t2 (f1 CHAR(10) PRIMARY KEY);
+
+# ----------------------------------------------------- #
+# --- Test                                          --- #
+# ----------------------------------------------------- #
+
+INSERT INTO t2 VALUES ('-');
+UPDATE t2 SET f1 = 'A';
+UPDATE t2 SET f1 = 'B';
+UPDATE t2 SET f1 = 'C';
+UPDATE t2 SET f1 = 'D';
+
+--echo # Establish connection con1 (user=root)
+connect (con1,localhost,root,,);
+# Con1 - Should see 'D'
+BEGIN;
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = 'D';
+
+--echo # Use default client to commit an update;
+--echo # Change the field value to 'A'
+connection default;
+UPDATE t2 SET f1 = 'A';
+
+--echo # Establish connection con2 (user=root)
+connect (con2,localhost,root,,);
+# Con2 - Should see 'A'
+BEGIN;
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = 'A';
+
+--echo # Use default client to commit an update; 
+--echo # Change the field value back to 'B'
+--echo # and then 'C' in a second savepoint, then commit.
+connection default;
+BEGIN;
+UPDATE t2 SET f1 = 'B';
+SAVEPOINT sp1;
+UPDATE t2 SET f1 = 'C';
+RELEASE SAVEPOINT sp1;
+COMMIT;
+
+--echo # Establish connection con3 (user=root)
+connect (con3,localhost,root,,);
+# Con3 - Should see 'C'
+BEGIN;
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = 'C';
+
+--echo # Use default client to update value back to '-'
+connection default;
+UPDATE t2 SET f1 = '-';
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = '-';
+
+--echo # There are now two record versions with 'A' and two with 'C'
+--echo # This update should cause a scavenge to prune old records.
+UPDATE t1 SET a = repeat('a',1000);
+
+# ----------------------------------------------------- #
+# --- Check                                         --- #
+# ----------------------------------------------------- #
+
+# con1 - Should still see 'D'
+connection con1;
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = 'D';
+COMMIT;
+
+# con2 - Should still see 'A'
+connection con2;
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = 'A';
+COMMIT;
+
+# con3 - Should see 'C'
+connection con3;
+SELECT * FROM t2;
+SELECT * FROM t2 WHERE f1 = 'C';
+COMMIT;
+
+# commit con1
+connection con1;
+COMMIT;
+
+# commit con2
+connection con2;
+COMMIT;
+
+# commit con3
+connection con3;
+COMMIT;
+
+#disconnect 
+connection default;
+disconnect con1;
+disconnect con2;
+disconnect con3;
+
+DROP TABLE t1;
+DROP TABLE t2;

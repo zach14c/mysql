@@ -159,7 +159,7 @@ void my_end(int infoflag)
   {					/* Test if some file is left open */
     if (my_file_opened | my_stream_opened)
     {
-      char ebuff[512];
+      char ebuff[MYSYS_ERRMSG_SIZE];
       my_snprintf(ebuff, sizeof(ebuff), EE(EE_OPEN_WARNING),
                   my_file_opened, my_stream_opened);
       my_message_no_curses(EE_OPEN_WARNING, ebuff, ME_BELL);

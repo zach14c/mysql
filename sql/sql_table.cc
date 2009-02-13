@@ -3785,6 +3785,8 @@ static bool lock_table_name_if_not_cached(THD *thd, const char *db,
     }
     else
       *lock_data= 0;
+  } else {
+    DEBUG_SYNC(thd, "locked_table_name");
   }
   return FALSE;
 }
@@ -3813,7 +3815,7 @@ bool mysql_create_table(THD *thd, const char *db, const char *table_name,
   /* Wait for any database locks */
   pthread_mutex_lock(&LOCK_lock_db);
   while (!thd->killed &&
-         hash_search(&lock_db_cache,(uchar*) db, strlen(db)))
+         my_hash_search(&lock_db_cache,(uchar*) db, strlen(db)))
   {
     wait_for_condition(thd, &LOCK_lock_db, &COND_refresh);
     pthread_mutex_lock(&LOCK_lock_db);
@@ -4495,8 +4497,8 @@ send_result_message:
     switch (result_code) {
     case HA_ADMIN_NOT_IMPLEMENTED:
       {
-       char buf[MYSQL_ERRMSG_SIZE];
-       uint length=my_snprintf(buf, sizeof(buf),
+	char buf[MYSQL_ERRMSG_SIZE];
+	uint length=my_snprintf(buf, sizeof(buf),
 				ER(ER_CHECK_NOT_IMPLEMENTED), operator_name);
 	protocol->store(STRING_WITH_LEN("note"), system_charset_info);
 	protocol->store(buf, length, system_charset_info);

@@ -12686,3 +12686,5 @@ check table t1 extended;
 Table	Op	Msg_type	Msg_text
 test.t1	check	status	OK
 drop table t1;
+# Test file cleanup
+SET GLOBAL archive_aio=off;
