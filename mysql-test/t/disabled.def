@@ -11,7 +11,6 @@
 ##############################################################################
 lowercase_table3         : Bug#32667 lowercase_table3.test reports to error log
 ctype_create         : Bug#32965 main.ctype_create fails
-csv_alter_table      : Bug#33696 2008-01-21 pcrews no .result file - bug allows NULL columns in CSV tables
 cast                 : Bug#35594 2008-03-27 main.cast fails on Windows2003-64
 delayed_insert_limit_func             : BUG#37962 2008-07-08 sven *_func tests containing sleeps/race conditions
 event_scheduler_func                  : BUG#37962 BUG#40816 2008-07-08 sven *_func tests containing sleeps/race conditions
