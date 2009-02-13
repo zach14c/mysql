@@ -1416,7 +1416,7 @@ int ha_maria::preload_keys(THD * thd, HA_CHECK_OPT *check_opt)
 
   if ((error= maria_preload(file, map, table_list->ignore_leaves)))
   {
-    char buf[MYSYS_ERRMSG_SIZE];
+    char buf[MYSQL_ERRMSG_SIZE];
     const char *errmsg;
 
     switch (error) {
@@ -2043,7 +2043,7 @@ int ha_maria::info(uint flag, my_bool lock_table_share)
     stats.data_file_length=  maria_info.data_file_length;
     stats.index_file_length= maria_info.index_file_length;
     stats.delete_length=     maria_info.delete_length;
-    stats.check_time=        maria_info.check_time;
+    stats.check_time=        (ulong) maria_info.check_time;
     stats.mean_rec_length=   maria_info.mean_reclength;
   }
   if (flag & HA_STATUS_CONST)
@@ -2051,7 +2051,7 @@ int ha_maria::info(uint flag, my_bool lock_table_share)
     TABLE_SHARE *share= table->s;
     stats.max_data_file_length=  maria_info.max_data_file_length;
     stats.max_index_file_length= maria_info.max_index_file_length;
-    stats.create_time= maria_info.create_time;
+    stats.create_time= (ulong) maria_info.create_time;
     ref_length= maria_info.reflength;
     share->db_options_in_use= maria_info.options;
     stats.block_size= maria_block_size;
@@ -2094,7 +2094,7 @@ int ha_maria::info(uint flag, my_bool lock_table_share)
     my_store_ptr(dup_ref, ref_length, maria_info.dup_key_pos);
   }
   /* Faster to always update, than to do it based on flag */
-  stats.update_time= maria_info.update_time;
+  stats.update_time= (ulong) maria_info.update_time;
   stats.auto_increment_value= maria_info.auto_increment;
 
   return 0;
