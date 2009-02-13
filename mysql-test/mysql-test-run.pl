@@ -259,12 +259,14 @@ sub main {
     # Check for any extra suites to enable based on the path name
     my %extra_suites=
       (
-       "mysql-5.1-new-ndb"              => "ndb_team",
-       "mysql-5.1-new-ndb-merge"        => "ndb_team",
-       "mysql-5.1-telco-6.2"            => "ndb_team",
-       "mysql-5.1-telco-6.2-merge"      => "ndb_team",
-       "mysql-5.1-telco-6.3"            => "ndb_team",
-       "mysql-6.0-ndb"                  => "ndb_team",
+       "bzr_mysql-5.1-ndb"              => "ndb_team",
+       "bzr_mysql-5.1-ndb-merge"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.2"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.2-merge"  => "ndb_team",
+       "bzr_mysql-5.1-telco-6.3"        => "ndb_team",
+       "bzr_mysql-5.1-telco-6.4"        => "ndb_team",
+       "bzr_mysql-6.0-ndb"              => "ndb_team,rpl_ndb_big,ndb_binlog",
+       "bzr_mysql-6.0-falcon"           => "falcon_team",
        "bzr_mysql-6.0-falcon-team"      => "falcon_team",
        "bzr_mysql-6.0-falcon-ann"       => "falcon_team",
        "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
@@ -3483,6 +3485,7 @@ sub extract_warning_lines ($) {
      # qr/^Warning:|mysqld: Warning|\[Warning\]/,
      # qr/^Error:|\[ERROR\]/,
      qr/^Warning:|mysqld: Warning/,
+     qr/^Warning at/,
      qr/^Error:/,
      qr/^==.* at 0x/,
      qr/InnoDB: Warning|InnoDB: Error/,
