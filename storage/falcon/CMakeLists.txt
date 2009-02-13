@@ -39,7 +39,6 @@ SET(FALCON_SOURCES
 		BigInteger.cpp 
 		BinaryBlob.cpp 
 		Bitmap.cpp 
-		Blob.cpp
 		BlobReference.cpp 
 		Btn.cpp 
 		Cache.cpp 
@@ -151,7 +150,6 @@ SET(FALCON_SOURCES
 		NStat.cpp 
 		NUpdate.cpp 
 		OpSys.cpp 
-		Page.cpp
 		PageInventoryPage.cpp 
 		PagePrecedence.cpp 
 		PageWriter.cpp
@@ -242,6 +240,7 @@ SET(FALCON_SOURCES
 		SRLIndexDelete.cpp
 		SRLIndexPage.cpp
 		SRLIndexUpdate.cpp
+		SRLInventoryPage.cpp
 		SRLInversionPage.cpp
 		SRLOverflowPages.cpp
 		SRLPrepare.cpp 
@@ -276,7 +275,6 @@ SET(FALCON_SOURCES
 		SyncHandler.cpp
 		SyncObject.cpp
 		SyncTest.cpp
-		SyncWait.cpp
 		Syntax.cpp
 		TableAttachment.cpp
 		Table.cpp 
@@ -522,6 +520,7 @@ SET(FALCON_SOURCES
 		SRLIndexAdd.h
 		SRLIndexDelete.h
 		SRLIndexPage.h
+		SRLInventoryPage.h
 		SRLInversionPage.h
 		SRLIndexUpdate.h
 		SRLOverflowPages.h

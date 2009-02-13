@@ -332,15 +332,19 @@ void Statement::createIndex(Syntax * syntax, bool upgrade)
 		table->deleteIndex(oldIndex, transaction);
 		}
 
+	// If not adding system tables, create and populate the index
+	
 	if (!database->formatting)
 		{
 		Transaction *sysTransaction = database->getSystemTransaction();
 		index->create(sysTransaction);
 		index->save();
 		database->commitSystemTransaction();
+		
 		sysTransaction  = database->getSystemTransaction();
 		table->populateIndex (index, sysTransaction);
 		database->commitSystemTransaction();
+		
 		database->invalidateCompiledStatements (table);
 		//database->flush();
 		}
@@ -1301,13 +1305,32 @@ void Statement::upgradeTable(Syntax * syntax)
 	END_FOR;
 
 	FOR_OBJECTS (Field*, field, &changedFields)
-		field->update();
+		field->update(); // does commitSystemTransaction
 	END_FOR;
 
+	if (!transaction)
+		transaction = database->getSystemTransaction();
+
 	FOR_OBJECTS (Index*, index, &newIndexes)
-		index->create(transaction);
-		index->save();
-		table->populateIndex (index, transaction);
+		if (!database->formatting)
+			{
+			// Commit and populate the index in separate transactions
+			
+			Transaction *sysTransaction = database->getSystemTransaction();
+			index->create(sysTransaction);
+			index->save();
+			database->commitSystemTransaction();
+			
+			sysTransaction = database->getSystemTransaction();
+			table->populateIndex (index, sysTransaction);
+			database->commitSystemTransaction();
+			}
+		else
+			{
+			index->create(transaction);
+			index->save();
+			table->populateIndex (index, transaction);
+			}
 	END_FOR;
 
 	for (field = table->fields; field; field = field->next)

@@ -45,8 +45,8 @@ BEGIN {
     print "=======================================================\n";
     print "  WARNING: Using mysql-test-run.pl version 1!  \n";
     print "=======================================================\n";
-    require "lib/v1/mysql-test-run.pl";
-    exit(1);
+    # Should use exec() here on *nix but this appears not to work on Windows
+    exit(system($^X, "lib/v1/mysql-test-run.pl", @ARGV) >> 8);
   }
   elsif ( $version == 2 )
   {
@@ -136,7 +136,7 @@ our @opt_extra_mysqltest_opt;
 
 my $opt_compress;
 my $opt_ssl;
-my $opt_skip_ssl = 1; # Until bug#42366 has been fixed
+my $opt_skip_ssl;
 my $opt_ssl_supported;
 my $opt_ps_protocol;
 my $opt_sp_protocol;
@@ -268,7 +268,7 @@ sub main {
        "bzr_mysql-6.0-ndb"              => "ndb_team,rpl_ndb_big,ndb_binlog",
        "bzr_mysql-6.0-falcon"           => "falcon_team",
        "bzr_mysql-6.0-falcon-team"      => "falcon_team",
-       "bzr_mysql-6.0-falcon-wlad"      => "falcon_team",
+       "bzr_mysql-6.0-falcon-ann"       => "falcon_team",
        "bzr_mysql-6.0-falcon-chris"     => "falcon_team",
        "bzr_mysql-6.0-falcon-kevin"     => "falcon_team",
       );
@@ -1543,8 +1543,8 @@ sub mysql_fix_arguments () {
   mtr_init_args(\$args);
   mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
 
-  mtr_add_arg($args, "--basedir=", $basedir);
-  mtr_add_arg($args, "--bindir=", $path_client_bindir);
+  mtr_add_arg($args, "--basedir=%s", $basedir);
+  mtr_add_arg($args, "--bindir=%s", $path_client_bindir);
   mtr_add_arg($args, "--verbose");
   return mtr_args2str($exe, @$args);
 }
@@ -2012,7 +2012,7 @@ sub setup_vardir() {
       mtr_error("The destination for symlink $opt_vardir does not exist")
 	if ! -d readlink($opt_vardir);
     }
-    elsif ( $opt_mem )
+    elsif ( $opt_mem && !IS_WINDOWS)
     {
       # Runinng with "var" as a link to some "memory" location, normally tmpfs
       mtr_verbose("Creating $opt_mem");
@@ -3485,6 +3485,7 @@ sub extract_warning_lines ($) {
      # qr/^Warning:|mysqld: Warning|\[Warning\]/,
      # qr/^Error:|\[ERROR\]/,
      qr/^Warning:|mysqld: Warning/,
+     qr/^Warning at/,
      qr/^Error:/,
      qr/^==.* at 0x/,
      qr/InnoDB: Warning|InnoDB: Error/,

@@ -46,18 +46,16 @@ void SRLCommit::append(Transaction *transaction)
 	transaction->addRef();
 	START_RECORD(srlCommit, "SRLCommit::append");
 	putInt(transaction->transactionId);
-	//uint64 commitBlockNumber = log->nextBlockNumber;
 	uint64 commitBlockNumber = log->getWriteBlockNumber();
 	SerialLogTransaction *srlTransaction = log->getTransaction(transaction->transactionId);
-	
+	srlTransaction->setTransaction(transaction);
+
+	// Flush transactions with changes immediately for durability
+
 	if (transaction->hasUpdates)
 		log->flush(false, commitBlockNumber, &sync);
 	else
 		sync.unlock();
-
-	srlTransaction->setTransaction(transaction);
-	srlTransaction->setState(sltCommitted);
-	wakeup();
 }
 
 void SRLCommit::read()

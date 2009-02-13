@@ -15,10 +15,10 @@
 INCLUDE("${PROJECT_SOURCE_DIR}/win/mysql_manifest.cmake")
 
 
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/zlib)
 
 ADD_EXECUTABLE(comp_err comp_err.c)
-TARGET_LINK_LIBRARIES(comp_err dbug mysys strings zlib)
+TARGET_LINK_LIBRARIES(comp_err zlib)
 
 GET_TARGET_PROPERTY(COMP_ERR_EXE comp_err LOCATION)
 
@@ -45,9 +45,6 @@ TARGET_LINK_LIBRARIES(perror strings mysys dbug)
 
 ADD_EXECUTABLE(resolveip resolveip.c)
 TARGET_LINK_LIBRARIES(resolveip strings mysys dbug)
-
-ADD_EXECUTABLE(resolveip resolveip.c)
-TARGET_LINK_LIBRARIES(resolveip strings mysys debug dbug wsock32)
 
 ADD_EXECUTABLE(replace replace.c)
 TARGET_LINK_LIBRARIES(replace strings mysys dbug)

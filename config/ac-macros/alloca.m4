@@ -8,15 +8,21 @@ then
  # The Ultrix 4.2 mips builtin alloca declared by alloca.h only works
  # for constant arguments.  Useless!
  AC_CACHE_CHECK([for working alloca.h], ac_cv_header_alloca_h,
- [AC_TRY_LINK([#include <alloca.h>], [char *p = alloca(2 * sizeof(int));],
-   ac_cv_header_alloca_h=yes, ac_cv_header_alloca_h=no)])
+   [AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([[#include <alloca.h>]], [[char *p = alloca(2 * sizeof(int));]])],
+      [ac_cv_header_alloca_h=yes],
+      [ac_cv_header_alloca_h=no]
+   )]
+ )
  if test "$ac_cv_header_alloca_h" = "yes"
  then
 	AC_DEFINE(HAVE_ALLOCA, 1)
  fi
  
  AC_CACHE_CHECK([for alloca], ac_cv_func_alloca_works,
- [AC_TRY_LINK([
+   [AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM(
+	 [[
  #ifdef __GNUC__
  # define alloca __builtin_alloca
  #else
@@ -32,8 +38,15 @@ then
  #  endif
  # endif
  #endif
- ], [char *p = (char *) alloca(1);],
-   ac_cv_func_alloca_works=yes, ac_cv_func_alloca_works=no)])
+	 ]],
+	 [[
+	   char *p = (char *) alloca(1);
+	 ]]
+      )],
+      [ac_cv_func_alloca_works=yes],
+      [ac_cv_func_alloca_works=no]
+   )]
+ )
  if test "$ac_cv_func_alloca_works" = "yes"; then
    AC_DEFINE([HAVE_ALLOCA], [1], [If we have a working alloca() implementation])
  fi

@@ -843,7 +843,7 @@ void DeferredIndex::detachTransaction(void)
 	//releaseRef();
 }
 
-void DeferredIndex::chill(Dbb *dbb)
+bool DeferredIndex::chill(Dbb *dbb)
 {
 	Sync sync(&syncObject, "DeferredIndex::chill");
 	sync.lock(Exclusive);
@@ -852,23 +852,34 @@ void DeferredIndex::chill(Dbb *dbb)
 		window = dbb->serialLog->setWindowInterest();
 		
 	dbb->logIndexUpdates(this);
+	
+	if (virtualOffset > 0)
+		{
+		// Virtual offset will be > 0 if chill was successful.
+		// Free up the space used by this DeferredIndex.
+	
+		freeHunks();
+		initializeSpace();
+		levels = 0;
+		DILeaf *leaf = (DILeaf*) alloc(sizeof(DILeaf));
+		leaf->count = 0;
+		root = leaf;
+		count = 0;
+		minValue = NULL;
+		maxValue = NULL;
+		haveMinValue = true;
+		haveMaxValue = true;
 
-	// Free up the space used by this DeferredIndex
-
-	freeHunks();
-	initializeSpace();
-	levels = 0;
-	DILeaf *leaf = (DILeaf*) alloc(sizeof(DILeaf));
-	leaf->count = 0;
-	root = leaf;
-	count = 0;
-	minValue = NULL;
-	maxValue = NULL;
-	haveMinValue = true;
-	haveMaxValue = true;
-
-	Log::log(LogInfo, "%d: Index chill: transaction %ld, index %ld, %ld bytes, address %p, vofs %llx\n",
+		Log::log(LogInfo, "%d: Index chill: transaction %ld, index %ld, %ld bytes, address %p, vofs %llx\n",
+					dbb->database->deltaTime, transaction->transactionId, index->indexId, sizeEstimate, this, virtualOffset);
+		}
+	else
+		{
+		Log::log(LogInfo, "%d: Index chill: transaction %ld, index %ld, %ld bytes, address %p, vofs %llx - NOT CHILLED\n",
 				dbb->database->deltaTime, transaction->transactionId, index->indexId, sizeEstimate, this, virtualOffset);
+		}
+	
+	return virtualOffset > 0;
 }
 
 DINode* DeferredIndex::findMaxValue(void)
