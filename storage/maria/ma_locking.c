@@ -294,7 +294,8 @@ int _ma_writeinfo(register MARIA_HA *info, uint operation)
 #endif
 
       if ((error= _ma_state_info_write_sub(share, share->kfile.file,
-                                           &share->state, 1)))
+                                           &share->state,
+                                           MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET)))
 	olderror=my_errno;
 #ifdef _WIN32
       if (maria_flush)
@@ -362,9 +363,15 @@ int _ma_mark_file_changed(MARIA_HA *info)
 {
   uchar buff[3];
   register MARIA_SHARE *share= info->s;
+  int error= 1;
   DBUG_ENTER("_ma_mark_file_changed");
 
-  if (!(share->state.changed & STATE_CHANGED) || ! share->global_changed)
+#define _MA_ALREADY_MARKED_FILE_CHANGED                                 \
+  ((share->state.changed & STATE_CHANGED) && share->global_changed)
+  if (_MA_ALREADY_MARKED_FILE_CHANGED)
+    DBUG_RETURN(0);
+  pthread_mutex_lock(&share->intern_lock); /* recheck under mutex */
+  if (! _MA_ALREADY_MARKED_FILE_CHANGED)
   {
     share->state.changed|=(STATE_CHANGED | STATE_NOT_ANALYZED |
 			   STATE_NOT_OPTIMIZED_KEYS);
@@ -395,7 +402,7 @@ int _ma_mark_file_changed(MARIA_HA *info)
                     sizeof(share->state.header) +
                     MARIA_FILE_OPEN_COUNT_OFFSET,
                     MYF(MY_NABP)))
-        DBUG_RETURN(1);
+        goto err;
     }
     /* Set uuid of file if not yet set (zerofilled file) */
     if (share->base.born_transactional &&
@@ -407,11 +414,15 @@ int _ma_mark_file_changed(MARIA_HA *info)
            _ma_update_state_lsns_sub(share, LSN_IMPOSSIBLE,
                                      trnman_get_min_trid(),
                                      TRUE, TRUE)))
-        DBUG_RETURN(1);
+        goto err;
       share->state.changed|= STATE_NOT_MOVABLE;
     }
   }
-  DBUG_RETURN(0);
+  error= 0;
+err:
+  pthread_mutex_unlock(&share->intern_lock);
+  DBUG_RETURN(error);
+#undef _MA_ALREADY_MARKED_FILE_CHANGED
 }
 
 /*
@@ -568,7 +579,8 @@ int ma_remap_file_and_write_state_for_unlock(MARIA_HA *info, my_bool force)
 #endif
   if (!share->base.born_transactional || force)
   {
-    if (_ma_state_info_write_sub(share, share->kfile.file, &share->state, 1))
+    if (_ma_state_info_write_sub(share, share->kfile.file, &share->state,
+                                 MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET))
       error=my_errno;
     else
     {

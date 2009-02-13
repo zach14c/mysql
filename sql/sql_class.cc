@@ -1,4 +1,4 @@
-/* Copyright 2000-2008 MySQL AB, 2008 Sun Microsystems, Inc.
+/* Copyright (C) 2000-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1028,6 +1028,8 @@ bool THD::store_globals()
   */
   mysys_var->id= thread_id;
   real_id= pthread_self();                      // For debugging
+  mysys_var->stack_ends_here= thread_stack +    // for consistency, see libevent_thread_proc
+                              STACK_DIRECTION * (long)my_thread_stack_size;
 
   /*
     We have to call thr_lock_info_init() again here as THD may have been

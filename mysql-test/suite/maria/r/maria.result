@@ -2132,7 +2132,7 @@ c3 VARCHAR(10) NOT NULL,
 KEY (c1),
 KEY (c2)
 ) ENGINE=maria DEFAULT CHARSET=utf8 PACK_KEYS=0;
-MARIA file:          MYSQLTEST_VARDIR/master-data/test/t1
+MARIA file:          MYSQLD_DATADIR/test/t1
 Record format:       Block
 Crashsafe:           yes
 Character set:       utf8_general_ci (45)
@@ -2594,3 +2594,13 @@ flush tables with read lock;
 ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
 unlock tables;
 drop table t1, t2;
+create table t1(a int primary key, b blob, c blob) engine=maria;
+insert into t1 values(1,repeat('a',100), repeat('b',657860));
+Warnings:
+Warning	1265	Data truncated for column 'c' at row 1
+insert into t1 values(1,repeat('a',100), repeat('b',657860));
+ERROR 23000: Duplicate entry '1' for key 'PRIMARY'
+check table t1;
+Table	Op	Msg_type	Msg_text
+test.t1	check	status	OK
+drop table t1;

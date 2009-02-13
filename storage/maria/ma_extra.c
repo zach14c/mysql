@@ -289,7 +289,9 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
         for the posterity is by writing it to disk.
       */
       DBUG_ASSERT(!maria_in_recovery);
-      error= _ma_state_info_write(share, 1|2);
+      error= _ma_state_info_write(share,
+                                  MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET |
+                                  MA_STATE_INFO_WRITE_FULL_INFO);
     }
     pthread_mutex_unlock(&share->intern_lock);
     break;
@@ -307,7 +309,9 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
     if (!error && share->changed)
     {
       pthread_mutex_lock(&share->intern_lock);
-      if (!(error= _ma_state_info_write(share, 1|2)))
+      if (!(error= _ma_state_info_write(share,
+                                        MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET|
+                                        MA_STATE_INFO_WRITE_FULL_INFO)))
         share->changed= 0;
       pthread_mutex_unlock(&share->intern_lock);
     }
@@ -365,7 +369,10 @@ int maria_extra(MARIA_HA *info, enum ha_extra_function function,
       if (do_flush)
       {
         /* Save the state so that others can find it from disk. */
-        if ((share->changed && _ma_state_info_write(share, 1 | 2)) ||
+        if ((share->changed &&
+             _ma_state_info_write(share,
+                                  MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET |
+                                  MA_STATE_INFO_WRITE_FULL_INFO)) ||
             my_sync(share->kfile.file, MYF(0)))
           error= my_errno;
         else
@@ -624,7 +631,11 @@ int _ma_flush_table_files(MARIA_HA *info, uint flush_data_or_index,
           error= 1;
       }
       else
-        info->s->bitmap.changed= 0;
+      {
+        pthread_mutex_lock(&share->bitmap.bitmap_lock);
+        share->bitmap.changed= 0;
+        pthread_mutex_unlock(&share->bitmap.bitmap_lock);
+      }
       if (flush_pagecache_blocks(share->pagecache, &info->dfile,
                                  flush_type_for_data))
         error= 1;

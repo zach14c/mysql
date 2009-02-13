@@ -62,3 +62,4 @@ enable_ps_protocol;
 select * from t_corrupted2; # should show just rows
 
 drop database mysqltest;
+set global maria_recover=backup;

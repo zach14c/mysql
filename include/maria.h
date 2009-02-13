@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 MySQL AB
+/* Copyright (C) 2006-2008 MySQL AB, 2008-2009 Sun Microsystems, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,6 +35,8 @@ extern "C" {
 #include "ft_global.h"
 #include <myisamchk.h>
 #include <mysql/plugin.h>
+
+#define MARIA_CANNOT_ROLLBACK
 
 /*
   Limit max keys according to HA_MAX_POSSIBLE_KEY; See myisamchk.h for details
@@ -193,7 +195,7 @@ typedef struct st_maria_keydef          /* Key definition with open & info */
   uint16 maxlength;                     /* max length of (packed) key (auto) */
   uint32 write_comp_flag;		/* compare flag for write key (auto) */
   uint32 version;                       /* For concurrent read/write */
-  uint32 ftparser_nr;                   /* distinct ftparser number */
+  uint32 ftkey_nr;                      /* full-text index number */
 
   HA_KEYSEG *seg, *end;
   struct st_mysql_ftparser *parser;     /* Fulltext [pre]parser */

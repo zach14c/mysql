@@ -355,7 +355,7 @@ typedef struct st_maria_share
   ulong state_diff_length;
   uint rec_reflength;			/* rec_reflength in use now */
   uint keypage_header;
-  uint32 ftparsers;			/* Number of distinct ftparsers
+  uint32 ftkeys;			/* Number of distinct full-text keys
 						   + 1 */
   PAGECACHE_FILE kfile;			/* Shared keyfile */
   File data_file;			/* Shared data file */
@@ -1198,6 +1198,12 @@ extern size_t _ma_nommap_pwrite(MARIA_HA *info, const uchar *Buffer,
 				size_t Count, my_off_t offset, myf MyFlags);
 
 C_MODE_START
+/* my_pwrite instead of my_write used */
+#define MA_STATE_INFO_WRITE_DONT_MOVE_OFFSET 1
+/* info should be written */
+#define MA_STATE_INFO_WRITE_FULL_INFO        2
+/* intern_lock taking is needed */
+#define MA_STATE_INFO_WRITE_LOCK             4
 uint _ma_state_info_write(MARIA_SHARE *share, uint pWrite);
 uint _ma_state_info_read_dsk(File file, MARIA_STATE_INFO *state,
                              my_bool force);
