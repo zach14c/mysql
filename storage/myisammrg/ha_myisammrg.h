@@ -25,6 +25,7 @@
 class ha_myisammrg: public handler
 {
   MYRG_INFO *file;
+  my_bool is_cloned;                    /* This instance has been cloned */
 
  public:
   MEM_ROOT      children_mem_root;      /* mem root for children list */
@@ -64,6 +65,7 @@ class ha_myisammrg: public handler
   int add_children_list(void);
   int attach_children(void);
   int detach_children(void);
+  virtual handler *clone(MEM_ROOT *mem_root);
   int close(void);
   int write_row(uchar * buf);
   int update_row(const uchar * old_data, uchar * new_data);
