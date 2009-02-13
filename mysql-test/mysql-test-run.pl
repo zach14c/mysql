@@ -4983,7 +4983,7 @@ Options to control what engine/variation to run
 
   config|defaults-file=<config template> Use fixed config template for all
                         tests
-  defaults_extra_file=<config template> Extra config template to add to
+  defaults-extra-file=<config template> Extra config template to add to
                         all generated configs
 
 Options to control directories to use
